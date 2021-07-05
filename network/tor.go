@@ -118,11 +118,9 @@ func (bounceTor *TorNetwork) Start() error {
 			"error": err.Error(),
 		}).Fatal("failed to start TOR")
 	}
-	//defer t.Close()
 
 	// Wait at most a few minutes to publish the service
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Minute) // TODO: assign cancel variable and let UI close Tor early
-	//defer cancel()
 
 	// Create an onion service to listen on any port but show as 80
 	onion, err := t.Listen(
@@ -140,7 +138,6 @@ func (bounceTor *TorNetwork) Start() error {
 		}).Fatal("failed to create TOR hidden service")
 	}
 	bounceTor.onion = onion
-	//defer onion.Close()
 
 	log.WithFields(log.Fields{
 		"at":      "network.TorNetwork.Start",
@@ -155,14 +152,14 @@ func (bounceTor *TorNetwork) ServeGRPC(grpcServer *grpc.Server) error {
 			"at": "network.TorNetwork.ServeGRPC",
 		}).Fatal("onion listener is nil, cannot setup gRPC")
 	}
-	// TODO this blocks forever, so make sure that's what I want
 	err := grpcServer.Serve(bounceTor.onion)
 	//err := grpcServer.Serve(bounceTor.onion.LocalListener) // TODO: should I be passing the lower level listner here instead?
 	if err != nil {
 		log.WithFields(log.Fields{
 			"at":    "network.TorNetwork.ServeGRPC",
 			"error": err.Error(),
-		}).Fatal("error attaching hidden service listener to gRPC server")
+		}).Error("error serving gRPC server on Tor")
+		return err
 	}
 	return nil
 }
@@ -173,4 +170,24 @@ func (bounceTor *TorNetwork) Connect(address BounceAddress) (*net.Conn, error) {
 
 func (bounceTor *TorNetwork) VerifySignature(address BounceAddress, data []byte) error {
 	return nil
+}
+
+func (bounceTor *TorNetwork) Shutdown() {
+	// Stop the hidden service
+	err := bounceTor.onion.Close()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"at":    "network.TorNetwork.Shutdown",
+			"error": err.Error(),
+		}).Error("error stopping hidden service")
+	}
+
+	// Stop Tor
+	err = bounceTor.onion.Tor.Close()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"at":    "network.TorNetwork.Shutdown",
+			"error": err.Error(),
+		}).Error("error stopping tor")
+	}
 }

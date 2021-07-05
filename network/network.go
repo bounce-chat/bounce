@@ -29,4 +29,5 @@ type BounceNetwork interface {
 	VerifySignature(BounceAddress, []byte) error
 	//Sign
 	//IsValidAddress
+	Shutdown()
 }

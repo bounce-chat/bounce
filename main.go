@@ -1,15 +1,13 @@
 package main
 
 import (
-	//"fyne.io/fyne/v2/app"
-	//"fyne.io/fyne/v2/container"
-	//"fyne.io/fyne/v2/widget"
 	"os"
 
 	log "github.com/sirupsen/logrus"
 
 	"github.com/hkparker/bounce/chat"
 	"github.com/hkparker/bounce/network"
+	"github.com/hkparker/bounce/ui/desktop"
 )
 
 func getConfigDirectory() string {
@@ -25,23 +23,24 @@ func getConfigDirectory() string {
 }
 
 func main() {
-	/*
-		a := app.New()
-		w := a.NewWindow("Hello")
-
-		hello := widget.NewLabel("Hello Fyne!")
-		w.SetContent(container.NewVBox(
-			hello,
-			widget.NewButton("Hi!", func() {
-				hello.SetText("Welcome :)")
-			}),
-		))
-
-		w.ShowAndRun()
-	*/
 	configDirectory := getConfigDirectory()
 
-	//ui ;= ui.NewDesktopUI()
+	// Build the user interface
+	ui := desktop.NewDesktopUI()
+
+	// Initialize the network that will carry Bounce
 	network := network.NewTorNetwork(configDirectory)
-	chat.Start(network)
+
+	// Start the chat engine using the chosen network and user interface
+	err := chat.Start(network, ui)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"at":    "main",
+			"error": err.Error(),
+		}).Error("bounce stopped with error")
+	} else {
+		log.WithFields(log.Fields{
+			"at": "main",
+		}).Info("bounce stopped")
+	}
 }
