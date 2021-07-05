@@ -1,22 +1,22 @@
 package network
 
 import (
-	"net"
-	"os"
 	"context"
-	"time"
 	"crypto/ed25519"
 	"crypto/rand"
 	"io/ioutil"
+	"net"
+	"os"
+	"time"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/cretz/bine/tor"
 	"github.com/ipsn/go-libtor"
+	log "github.com/sirupsen/logrus"
 )
 
 type TorNetwork struct {
-	directory string
-	publicKey ed25519.PublicKey
+	directory  string
+	publicKey  ed25519.PublicKey
 	privateKey ed25519.PrivateKey
 }
 
@@ -29,7 +29,7 @@ func NewTorNetwork(configDirectory string) *TorNetwork {
 	err := os.MkdirAll(bounceTor.directory, 0700)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"at": "network.TorNetwork.Start",
+			"at":    "network.TorNetwork.Start",
 			"error": err.Error(),
 		}).Fatal("error creating tor config directory")
 	}
@@ -42,13 +42,13 @@ func NewTorNetwork(configDirectory string) *TorNetwork {
 	return bounceTor
 }
 
-func (bounceTor * TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.PrivateKey) {
+func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.PrivateKey) {
 	// Create the config directory if needed
 	hiddenServiceKeyDirectory := bounceTor.directory + "/hidden_service_keys"
 	err := os.MkdirAll(hiddenServiceKeyDirectory, 0700)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"at": "network.TorNetwork.hiddenServiceKey",
+			"at":    "network.TorNetwork.hiddenServiceKey",
 			"error": err.Error(),
 		}).Fatal("error creating hidden service key directory")
 	}
@@ -65,9 +65,9 @@ func (bounceTor * TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Pri
 		publicKeyBytes, err := ioutil.ReadFile(privateKeyFile)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"at": "network.TorNetwork.hiddenServiceKey",
+				"at":    "network.TorNetwork.hiddenServiceKey",
 				"error": err.Error(),
-				"path": publicKeyFile,
+				"path":  publicKeyFile,
 			}).Fatal("private key found but no public key found, something is wrong")
 		} else {
 			return privateKeyBytes, publicKeyBytes
@@ -82,14 +82,14 @@ func (bounceTor * TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Pri
 	err = ioutil.WriteFile(publicKeyFile, pubkey, 0600)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"at": "network.TorNetwork.hiddenServiceKey",
+			"at":    "network.TorNetwork.hiddenServiceKey",
 			"error": err.Error(),
 		}).Fatal("error writing public key")
 	}
 	err = ioutil.WriteFile(privateKeyFile, privkey, 0600)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"at": "network.TorNetwork.hiddenServiceKey",
+			"at":    "network.TorNetwork.hiddenServiceKey",
 			"error": err.Error(),
 		}).Fatal("error writing private key")
 	}
@@ -102,9 +102,9 @@ func (bounceTor *TorNetwork) Start() error {
 	t, err := tor.Start(
 		nil,
 		&tor.StartConf{
-			DataDir: bounceTor.directory,
+			DataDir:        bounceTor.directory,
 			ProcessCreator: libtor.Creator,
-			DebugWriter: os.Stderr,
+			DebugWriter:    os.Stderr,
 		},
 	)
 	if err != nil {
@@ -120,8 +120,8 @@ func (bounceTor *TorNetwork) Start() error {
 	onion, err := t.Listen(
 		ctx,
 		&tor.ListenConf{
-			Version3: true,
-			Key: bounceTor.privateKey,
+			Version3:    true,
+			Key:         bounceTor.privateKey,
 			RemotePorts: []int{80},
 		},
 	)

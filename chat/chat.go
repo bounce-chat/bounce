@@ -15,7 +15,8 @@ func Start(network network.BounceNetwork) {
 
 	// Start the network
 	err := network.Start()
-	if err != nil {}
+	if err != nil {
+	}
 
 	// attach grpc server to network
 }
