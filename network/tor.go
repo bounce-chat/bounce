@@ -17,7 +17,7 @@ import (
 
 type TorNetwork struct {
 	directory  string
-	onion      tor.OnionService // access hidden service address with onion.ID
+	onion      *tor.OnionService // access hidden service address with onion.ID
 	publicKey  ed25519.PublicKey
 	privateKey ed25519.PrivateKey
 }
@@ -139,6 +139,7 @@ func (bounceTor *TorNetwork) Start() error {
 			"error": err.Error(),
 		}).Fatal("failed to create TOR hidden service")
 	}
+	bounceTor.onion = onion
 	//defer onion.Close()
 
 	log.WithFields(log.Fields{
@@ -155,7 +156,8 @@ func (bounceTor *TorNetwork) ServeGRPC(grpcServer *grpc.Server) error {
 		}).Fatal("onion listener is nil, cannot setup gRPC")
 	}
 	// TODO this blocks forever, so make sure that's what I want
-	err := grpcServer.Serve(bounceTor.onion.LocalListener)
+	err := grpcServer.Serve(bounceTor.onion)
+	//err := grpcServer.Serve(bounceTor.onion.LocalListener) // TODO: should I be passing the lower level listner here instead?
 	if err != nil {
 		log.WithFields(log.Fields{
 			"at":    "network.TorNetwork.ServeGRPC",
