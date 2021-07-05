@@ -11,18 +11,27 @@ import (
 	"github.com/ipsn/go-libtor"
 )
 
-var TorDataDirectory = "/home/hayden/.bounce/tor"
-
 type TorNetwork struct {
+	directory string
 }
 
-func NewTorNetwork() *TorNetwork {
-	err := os.MkdirAll(TorDataDirectory, 0700)
-	if err != nil {
-		log.Fatal(err.Error())
+func NewTorNetwork(configDirectory string) *TorNetwork {
+	bounceTor := &TorNetwork{
+		directory: configDirectory + "/tor",
 	}
 
-	bounceTor := &TorNetwork{}
+	// Create the config directory if needed
+	err := os.MkdirAll(bounceTor.directory, 0700)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"at": "network.TorNetwork.Start",
+			"error": err.Error(),
+		}).Fatal("error creating tor config directory")
+	}
+
+	// Load or create the keypair for the hidden service
+
+	//bounceTor.privateKey
 
 	return bounceTor
 }
@@ -32,7 +41,7 @@ func (bounceTor *TorNetwork) Start() error {
 	t, err := tor.Start(
 		nil,
 		&tor.StartConf{
-			DataDir: TorDataDirectory,
+			DataDir: bounceTor.directory,
 			ProcessCreator: libtor.Creator,
 			DebugWriter: os.Stderr,
 		},
@@ -47,7 +56,13 @@ func (bounceTor *TorNetwork) Start() error {
 	defer cancel()
 
 	// Create an onion service to listen on any port but show as 80
-	onion, err := t.Listen(ctx, &tor.ListenConf{RemotePorts: []int{80}})
+	onion, err := t.Listen(
+		ctx,
+		&tor.ListenConf{
+			Version3: true,
+			RemotePorts: []int{80},
+		},
+	)
 	if err != nil {
 		log.Panicf("Failed to create onion service: %v", err)
 	}

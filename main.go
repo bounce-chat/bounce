@@ -4,9 +4,24 @@ import (
 	//"fyne.io/fyne/v2/app"
 	//"fyne.io/fyne/v2/container"
 	//"fyne.io/fyne/v2/widget"
+	"os"
+	log "github.com/sirupsen/logrus"
+
 	"github.com/hkparker/bounce/network"
 	"github.com/hkparker/bounce/chat"
 )
+
+func getConfigDirectory() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"at": "configDirectory",
+			"error": err.Error(),
+		}).Fatal("error getting home directory")
+	}
+
+	return home + "/.bounce"
+}
 
 func main() {
 	/*
@@ -23,8 +38,9 @@ func main() {
 
 	w.ShowAndRun()
 	*/
+	configDirectory := getConfigDirectory()
 
 	//ui ;= ui.NewDesktopUI()
-	network := network.NewTorNetwork()
+	network := network.NewTorNetwork(configDirectory)
 	chat.Start(network)
 }
