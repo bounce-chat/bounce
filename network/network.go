@@ -2,6 +2,8 @@ package network
 
 import (
 	"net"
+
+	"google.golang.org/grpc"
 )
 
 //
@@ -22,6 +24,7 @@ type BounceAddress string
 //
 type BounceNetwork interface {
 	Start() error
+	ServeGRPC(*grpc.Server) error
 	Connect(BounceAddress) (*net.Conn, error)
 	VerifySignature(BounceAddress, []byte) error
 	//Listen(grpc server)

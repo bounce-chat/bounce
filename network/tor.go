@@ -12,10 +12,12 @@ import (
 	"github.com/cretz/bine/tor"
 	"github.com/ipsn/go-libtor"
 	log "github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
 )
 
 type TorNetwork struct {
 	directory  string
+	onion      tor.OnionService
 	publicKey  ed25519.PublicKey
 	privateKey ed25519.PrivateKey
 }
@@ -131,6 +133,11 @@ func (bounceTor *TorNetwork) Start() error {
 	defer onion.Close()
 
 	log.Info("Listening on " + onion.ID + ".onion")
+	return nil
+}
+
+func (bounceTor *TorNetwork) ServeGRPC(grpcServer *grpc.Server) error {
+	grpcServer.Serve(bounceTor.onion.LocalListener)
 	return nil
 }
 

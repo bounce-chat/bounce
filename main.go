@@ -4,8 +4,9 @@ import (
 	//"fyne.io/fyne/v2/app"
 	//"fyne.io/fyne/v2/container"
 	//"fyne.io/fyne/v2/widget"
-	log "github.com/sirupsen/logrus"
 	"os"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/hkparker/bounce/chat"
 	"github.com/hkparker/bounce/network"

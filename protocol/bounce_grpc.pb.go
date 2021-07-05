@@ -39,21 +39,19 @@ func (c *bounceClient) ReceiveMessage(ctx context.Context, in *ChatMessage, opts
 }
 
 // BounceServer is the server API for Bounce service.
-// All implementations must embed UnimplementedBounceServer
+// All implementations should embed UnimplementedBounceServer
 // for forward compatibility
 type BounceServer interface {
 	ReceiveMessage(context.Context, *ChatMessage) (*Errors, error)
-	mustEmbedUnimplementedBounceServer()
 }
 
-// UnimplementedBounceServer must be embedded to have forward compatible implementations.
+// UnimplementedBounceServer should be embedded to have forward compatible implementations.
 type UnimplementedBounceServer struct {
 }
 
 func (UnimplementedBounceServer) ReceiveMessage(context.Context, *ChatMessage) (*Errors, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReceiveMessage not implemented")
 }
-func (UnimplementedBounceServer) mustEmbedUnimplementedBounceServer() {}
 
 // UnsafeBounceServer may be embedded to opt out of forward compatibility for this service.
 // Use of this interface is not recommended, as added methods to BounceServer will
