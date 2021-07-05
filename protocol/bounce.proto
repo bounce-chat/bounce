@@ -1,0 +1,71 @@
+syntax = "proto3";
+option go_package = "github.com/hkparker/bounce/protocol";
+
+service Bounce {
+	rpc ReceiveMessage(ChatMessage) returns (Errors) {}
+	//rpc ReceiveReadRecipt(string) returns (Errors) {}
+}
+
+message Errors {
+	repeated string all = 1;
+}
+
+//
+// Messages that can be sent in chats
+//
+
+message ChatMessage {
+	string id = 1;
+	string source = 2;
+	string destination = 3;			// Group UUID or DM
+	string test = 4;
+	repeated bytes images = 5;
+	bytes audio = 6;
+	bytes video = 7;
+	bytes file = 8;
+}
+
+message SignedChatMessage {
+	bytes MarshalledChatMessage = 1;
+	bytes Signature = 2;			//sig(SHA3(message))
+}
+
+//
+// Device and DeviceGroup management
+//
+
+message Device {
+	string NetworkAddress = 1;
+}
+
+message AddDeviceToDeviceGroup {
+	string id = 1;
+	MutualDeviceSignature signature = 2;
+}
+
+message MutualDeviceSignature {
+	Device deviceOne = 1;
+	Device deviceTwo = 2;
+	bytes deviceOneSignatureOfDeviceTwo = 3;
+	bytes deviceTwoSignatureOfDeviceOne = 4;
+}
+
+message DeviceGroupIntroduction {
+	string id = 1;
+	string name = 2;
+	bytes image = 3;
+	repeated MutualDeviceSignature signatureSet = 4;
+	Device metadataSigningDevice = 5;
+}
+
+//
+// Managing chat groups
+//
+
+// You've been invited to join a group
+message GroupInvite {
+	string id = 1;
+	string name = 2;
+	bytes image = 3;
+	repeated DeviceGroupIntroduction deviceGroupIntroductions = 4;
+}
