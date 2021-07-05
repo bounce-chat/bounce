@@ -27,7 +27,6 @@ type BounceNetwork interface {
 	ServeGRPC(*grpc.Server) error
 	Connect(BounceAddress) (*net.Conn, error)
 	VerifySignature(BounceAddress, []byte) error
-	//Listen(grpc server)
 	//Sign
 	//IsValidAddress
 }

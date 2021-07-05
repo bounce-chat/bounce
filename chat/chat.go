@@ -2,14 +2,11 @@ package chat
 
 import (
 	"context"
-	"net"
 
 	"github.com/hkparker/bounce/network"
 	"github.com/hkparker/bounce/protocol"
 	"google.golang.org/grpc"
 )
-
-var deviceConnections = make(map[network.BounceAddress]*net.Conn)
 
 func Start(network network.BounceNetwork) {
 	// Start the UI
@@ -28,7 +25,9 @@ func Start(network network.BounceNetwork) {
 }
 
 // Actual object that implements the protocol
-type BounceChat struct{}
+type BounceChat struct {
+	// TODO some connection to the gRPC server so the UI can close it
+}
 
 func (bounce *BounceChat) ReceiveMessage(context.Context, *protocol.ChatMessage) (*protocol.Errors, error) {
 	return &protocol.Errors{}, nil

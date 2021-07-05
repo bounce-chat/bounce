@@ -17,7 +17,7 @@ import (
 
 type TorNetwork struct {
 	directory  string
-	onion      tor.OnionService
+	onion      tor.OnionService // access hidden service address with onion.ID
 	publicKey  ed25519.PublicKey
 	privateKey ed25519.PrivateKey
 }
@@ -100,7 +100,10 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 }
 
 func (bounceTor *TorNetwork) Start() error {
-	log.Info("Starting and registering onion service, please wait a bit...")
+	log.WithFields(log.Fields{
+		"at": "network.TorNetwork.Start",
+	}).Info("connecting to the TOR network")
+
 	t, err := tor.Start(
 		nil,
 		&tor.StartConf{
@@ -110,13 +113,16 @@ func (bounceTor *TorNetwork) Start() error {
 		},
 	)
 	if err != nil {
-		log.Fatal("Failed to start tor: %v", err)
+		log.WithFields(log.Fields{
+			"at":    "network.TorNetwork.Start",
+			"error": err.Error(),
+		}).Fatal("failed to start TOR")
 	}
-	defer t.Close()
+	//defer t.Close()
 
 	// Wait at most a few minutes to publish the service
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Minute) // TODO: assign cancel variable and let UI close Tor early
+	//defer cancel()
 
 	// Create an onion service to listen on any port but show as 80
 	onion, err := t.Listen(
@@ -128,16 +134,34 @@ func (bounceTor *TorNetwork) Start() error {
 		},
 	)
 	if err != nil {
-		log.Panicf("Failed to create onion service: %v", err)
+		log.WithFields(log.Fields{
+			"at":    "network.TorNetwork.Start",
+			"error": err.Error(),
+		}).Fatal("failed to create TOR hidden service")
 	}
-	defer onion.Close()
+	//defer onion.Close()
 
-	log.Info("Listening on " + onion.ID + ".onion")
+	log.WithFields(log.Fields{
+		"at":      "network.TorNetwork.Start",
+		"address": onion.ID + ".onion",
+	}).Info("registered hidden service")
 	return nil
 }
 
 func (bounceTor *TorNetwork) ServeGRPC(grpcServer *grpc.Server) error {
-	grpcServer.Serve(bounceTor.onion.LocalListener)
+	if bounceTor.onion.LocalListener == nil {
+		log.WithFields(log.Fields{
+			"at": "network.TorNetwork.ServeGRPC",
+		}).Fatal("onion listener is nil, cannot setup gRPC")
+	}
+	// TODO this blocks forever, so make sure that's what I want
+	err := grpcServer.Serve(bounceTor.onion.LocalListener)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"at":    "network.TorNetwork.ServeGRPC",
+			"error": err.Error(),
+		}).Fatal("error attaching hidden service listener to gRPC server")
+	}
 	return nil
 }
 
