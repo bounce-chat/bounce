@@ -1,19 +1,17 @@
 package desktop
 
 import (
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 )
 
 type DesktopUI struct {
+	app fyne.App
 }
 
 func NewDesktopUI() *DesktopUI {
-	return &DesktopUI{}
-}
-
-func (desktopUI *DesktopUI) Run() {
 	a := app.New()
 	w := a.NewWindow("Hello")
 
@@ -24,6 +22,17 @@ func (desktopUI *DesktopUI) Run() {
 			hello.SetText("Welcome :)")
 		}),
 	))
+	w.Show()
 
-	w.ShowAndRun()
+	return &DesktopUI{
+		app: a,
+	}
+}
+
+func (desktopUI *DesktopUI) Run() {
+	desktopUI.app.Run()
+}
+
+func (desktopUI *DesktopUI) Quit() {
+	desktopUI.app.Quit()
 }

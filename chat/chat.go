@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"context"
 	"os"
 	"os/signal"
 
@@ -13,10 +12,16 @@ import (
 	"google.golang.org/grpc"
 )
 
+// Actual object that implements the protocol
+type BounceChat struct {
+	// TODO some connection to the gRPC server so the UI can close it
+}
+
 func Start(network network.BounceNetwork, ui ui.BounceUI) error {
 	chat := &BounceChat{}
 	grpcServer := grpc.NewServer()
 
+	// TODO do this in a goroutine
 	// Start the network
 	err := network.Start()
 	if err != nil {
@@ -33,6 +38,7 @@ func Start(network network.BounceNetwork, ui ui.BounceUI) error {
 		//if err != nil {
 		//	return err
 		//}
+		ui.Quit()
 	}()
 
 	// Run the UI and block
@@ -56,13 +62,4 @@ func handleInterrupts(server *grpc.Server) {
 			//ui.Stop()
 		}
 	}()
-}
-
-// Actual object that implements the protocol
-type BounceChat struct {
-	// TODO some connection to the gRPC server so the UI can close it
-}
-
-func (bounce *BounceChat) ReceiveMessage(context.Context, *protocol.ChatMessage) (*protocol.Errors, error) {
-	return &protocol.Errors{}, nil
 }

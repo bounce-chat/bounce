@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-
 	log "github.com/sirupsen/logrus"
 
 	"github.com/hkparker/bounce/chat"
@@ -10,20 +8,10 @@ import (
 	"github.com/hkparker/bounce/ui/desktop"
 )
 
-func getConfigDirectory() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"at":    "configDirectory",
-			"error": err.Error(),
-		}).Fatal("error getting home directory")
-	}
-
-	return home + "/.bounce"
-}
-
 func main() {
-	configDirectory := getConfigDirectory()
+	//err := chat.New(network.Tor{}, ui.Desktop{}).Start()
+
+	configDirectory := chat.GetConfigDirectory()
 
 	// Build the user interface
 	ui := desktop.NewDesktopUI()
