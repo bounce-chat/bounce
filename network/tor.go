@@ -22,10 +22,8 @@ type TorNetwork struct {
 	privateKey ed25519.PrivateKey
 }
 
-func NewTorNetwork(configDirectory string) *TorNetwork {
-	bounceTor := &TorNetwork{
-		directory: configDirectory + "/tor",
-	}
+func (bounceTor *TorNetwork) Init(configDirectory string) {
+	bounceTor.directory = configDirectory + "/tor"
 
 	// Create the config directory if needed
 	err := os.MkdirAll(bounceTor.directory, 0700)
@@ -40,8 +38,6 @@ func NewTorNetwork(configDirectory string) *TorNetwork {
 	pubkey, privkey := bounceTor.hiddenServiceKey()
 	bounceTor.publicKey = pubkey
 	bounceTor.privateKey = privkey
-
-	return bounceTor
 }
 
 func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.PrivateKey) {
@@ -164,7 +160,7 @@ func (bounceTor *TorNetwork) ServeGRPC(grpcServer *grpc.Server) error {
 	return nil
 }
 
-func (bounceTor *TorNetwork) Connect(address BounceAddress) (*net.Conn, error) {
+func (bounceTor *TorNetwork) Dial(address BounceAddress) (*net.Conn, error) {
 	return nil, nil
 }
 
@@ -174,20 +170,26 @@ func (bounceTor *TorNetwork) VerifySignature(address BounceAddress, data []byte)
 
 func (bounceTor *TorNetwork) Shutdown() {
 	// Stop the hidden service
-	err := bounceTor.onion.Close()
-	if err != nil {
+	if bounceTor.onion == nil {
+		// Network never fully started and we're already closing the app
 		log.WithFields(log.Fields{
-			"at":    "network.TorNetwork.Shutdown",
-			"error": err.Error(),
-		}).Error("error stopping hidden service")
-	}
-
-	// Stop Tor
-	err = bounceTor.onion.Tor.Close()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"at":    "network.TorNetwork.Shutdown",
-			"error": err.Error(),
-		}).Error("error stopping tor")
+			"at": "network.TorNetwork.Shutdown",
+		}).Warn("stopping tor before tor has fully started")
+	} else {
+		err := bounceTor.onion.Close()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"at":    "network.TorNetwork.Shutdown",
+				"error": err.Error(),
+			}).Error("error stopping hidden service")
+		}
+		// Stop Tor
+		err = bounceTor.onion.Tor.Close()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"at":    "network.TorNetwork.Shutdown",
+				"error": err.Error(),
+			}).Error("error stopping tor")
+		}
 	}
 }

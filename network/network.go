@@ -23,9 +23,10 @@ type BounceAddress string
 // Any overlay network that can satisfy this interface can host Bounce
 //
 type BounceNetwork interface {
+	Init(string)
 	Start() error
 	ServeGRPC(*grpc.Server) error
-	Connect(BounceAddress) (*net.Conn, error)
+	Dial(BounceAddress) (*net.Conn, error)
 	VerifySignature(BounceAddress, []byte) error
 	//Sign
 	//IsValidAddress

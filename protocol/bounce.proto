@@ -17,7 +17,7 @@ message Errors {
 message ChatMessage {
 	string id = 1;
 	string source = 2;
-	string destination = 3;			// Group UUID or DM
+	string destination = 3;			// Group UUID or DM.  DMs are groups of only two?
 	string test = 4;
 	repeated bytes images = 5;
 	bytes audio = 6;

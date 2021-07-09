@@ -11,7 +11,7 @@ type DesktopUI struct {
 	app fyne.App
 }
 
-func NewDesktopUI() *DesktopUI {
+func (desktopUI *DesktopUI) Init(configDirectory string) {
 	a := app.New()
 	w := a.NewWindow("Hello")
 
@@ -24,9 +24,7 @@ func NewDesktopUI() *DesktopUI {
 	))
 	w.Show()
 
-	return &DesktopUI{
-		app: a,
-	}
+	desktopUI.app = a
 }
 
 func (desktopUI *DesktopUI) Run() {
