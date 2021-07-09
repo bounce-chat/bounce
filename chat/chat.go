@@ -20,24 +20,28 @@ type BounceChat struct {
 	grpcServer      *grpc.Server
 }
 
+//
+// The main entrypoint for starting the Bounce chat engine, blocks until the user interface
+// is closed, the network reaches a fatal error, or the process is sent an interrupt.
+//
 func Start(network network.BounceNetwork, ui ui.BounceUI) {
-	chat := &BounceChat{
+	bounce := &BounceChat{
 		configDirectory: getConfigDirectory(),
 		userInterface:   ui,
 		network:         network,
 		grpcServer:      grpc.NewServer(),
 	}
-	chat.network.Init(chat.configDirectory)
-	chat.userInterface.Init(chat.configDirectory)
+	bounce.network.LoadConfig(bounce.configDirectory) // TODO; move these into their start functions?
+	bounce.userInterface.Build(bounce.configDirectory)
 
 	// Start the network and attach gRPC server in a goroutine
-	go chat.runNetwork()
+	go bounce.runNetwork()
 
 	// Run the UI and block
-	ui.Run()
+	bounce.userInterface.Run()
 	// Once the UI is closed, stop the server
-	chat.grpcServer.GracefulStop()
-	network.Shutdown()
+	bounce.grpcServer.GracefulStop()
+	bounce.network.Shutdown()
 }
 
 //
@@ -48,6 +52,8 @@ func (chat *BounceChat) runNetwork() {
 	// When this function returns the gRPC server will be stopped and it
 	// will be time to close the user interface
 	defer chat.userInterface.Quit()
+	// TODO: rather than return and close the UI, call into the UI that the network has failed
+	// so that it can be displayed
 
 	// Start the network router
 	err := chat.network.Start()

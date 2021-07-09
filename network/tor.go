@@ -22,7 +22,7 @@ type TorNetwork struct {
 	privateKey ed25519.PrivateKey
 }
 
-func (bounceTor *TorNetwork) Init(configDirectory string) {
+func (bounceTor *TorNetwork) LoadConfig(configDirectory string) {
 	bounceTor.directory = configDirectory + "/tor"
 
 	// Create the config directory if needed

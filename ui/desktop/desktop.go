@@ -11,16 +11,21 @@ type DesktopUI struct {
 	app fyne.App
 }
 
-func (desktopUI *DesktopUI) Init(configDirectory string) {
+func (desktopUI *DesktopUI) Build(configDirectory string) {
 	a := app.New()
-	w := a.NewWindow("Hello")
+	w := a.NewWindow("Bounce")
+	w.SetMaster()
 
-	hello := widget.NewLabel("Hello Fyne!")
-	w.SetContent(container.NewVBox(
-		hello,
-		widget.NewButton("Hi!", func() {
-			hello.SetText("Welcome :)")
-		}),
+	threads := container.NewVBox(
+		widget.NewButton("Chat 1", func() {}),
+		widget.NewButton("Chat 2", func() {}),
+	)
+	w.SetContent(container.NewHSplit(
+		threads,
+		container.NewVSplit(
+			widget.NewMultiLineEntry(),
+			widget.NewMultiLineEntry(),
+		),
 	))
 	w.Show()
 

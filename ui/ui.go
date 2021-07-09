@@ -1,7 +1,7 @@
 package ui
 
 type BounceUI interface {
-	Init(string)
+	Build(string)
 	Run()
 	Quit()
 }

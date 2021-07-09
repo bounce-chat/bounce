@@ -23,11 +23,11 @@ type BounceAddress string
 // Any overlay network that can satisfy this interface can host Bounce
 //
 type BounceNetwork interface {
-	Init(string)
+	LoadConfig(string)
 	Start() error
 	ServeGRPC(*grpc.Server) error
 	Dial(BounceAddress) (*net.Conn, error)
-	VerifySignature(BounceAddress, []byte) error
+	VerifySignature(BounceAddress, []byte) error // TODO: better to have a "get public key" function and do this in the database?  Can support more networks but each has different key format
 	//Sign
 	//IsValidAddress
 	Shutdown()
