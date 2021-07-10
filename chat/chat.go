@@ -35,7 +35,7 @@ func Start(network network.BounceNetwork, ui ui.BounceUI) {
 	bounce.userInterface.Build(bounce.configDirectory)
 
 	// Start the network and attach gRPC server in a goroutine
-	go bounce.runNetwork()
+	//go bounce.runNetwork() // TODO: just disabled for now for UI prototyping
 
 	// Run the UI and block
 	bounce.userInterface.Run()
