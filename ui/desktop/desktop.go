@@ -2,10 +2,16 @@ package desktop
 
 import (
 	// Fyne
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/widget"
+	/*
+		"fyne.io/fyne/v2"
+		"fyne.io/fyne/v2/app"
+		"fyne.io/fyne/v2/container"
+		"fyne.io/fyne/v2/widget"
+		log "github.com/sirupsen/logrus"
+	*/
+
+	// GTK
+	"github.com/gotk3/gotk3/gtk"
 	log "github.com/sirupsen/logrus"
 	// QML
 	/*
@@ -25,37 +31,87 @@ import (
 	*/)
 
 type DesktopUI struct {
-	app fyne.App
+	//app fyne.App
 	//app *widgets.QApplication
 }
 
 func (desktopUI *DesktopUI) Build(configDirectory string) {
 	// Fyne
-	a := app.New()
-	desktopUI.app = a
-	w := a.NewWindow("Bounce")
-	w.SetMaster()
-	w.SetCloseIntercept(func() {
-		log.WithFields(log.Fields{
-			"at": "desktop.DesktopUI.Build",
-		}).Info("window close button hit, shutting down")
-		//w.Close()
-		//a.Quit()
-		desktopUI.Quit()
+	/*
+		a := app.New()
+		desktopUI.app = a
+		w := a.NewWindow("Bounce")
+		w.SetMaster()
+		w.SetCloseIntercept(func() {
+			log.WithFields(log.Fields{
+				"at": "desktop.DesktopUI.Build",
+			}).Info("window close button hit, shutting down")
+			//w.Close()
+			//a.Quit()
+			desktopUI.Quit()
+		})
+
+		threads := container.NewVBox(
+			widget.NewButton("Chat 1", func() {}),
+			widget.NewButton("Chat 2", func() {}),
+		)
+		w.SetContent(container.NewHSplit(
+			threads,
+			container.NewVSplit(
+				widget.NewMultiLineEntry(),
+				widget.NewMultiLineEntry(),
+			),
+		))
+		w.Show()
+	*/
+
+	// Initialize GTK without parsing any command line arguments.
+	gtk.Init(nil)
+
+	// Create a new toplevel window, set its title, and connect it to the
+	// "destroy" signal to exit the GTK main loop when it is destroyed.
+	win, err := gtk.WindowNew(gtk.WINDOW_TOPLEVEL)
+	if err != nil {
+		log.Fatal("Unable to create window:", err)
+	}
+	win.SetTitle("Bounce")
+	win.Connect("destroy", func() {
+		gtk.MainQuit()
 	})
 
-	threads := container.NewVBox(
-		widget.NewButton("Chat 1", func() {}),
-		widget.NewButton("Chat 2", func() {}),
-	)
-	w.SetContent(container.NewHSplit(
-		threads,
-		container.NewVSplit(
-			widget.NewMultiLineEntry(),
-			widget.NewMultiLineEntry(),
-		),
-	))
-	w.Show()
+	// Create a new label widget to show in the window.
+	l, err := gtk.LabelNew("Hello, gotk3!")
+	if err != nil {
+		log.Fatal("Unable to create label:", err)
+	}
+
+	layout, _ := gtk.PanedNew(gtk.ORIENTATION_HORIZONTAL)
+	layout.SetSizeRequest(1000, 700)
+	l.SetSizeRequest(200, 10)
+	chats, _ := gtk.PanedNew(gtk.ORIENTATION_VERTICAL)
+	chats.Add(l)
+	activeChat, _ := gtk.PanedNew(gtk.ORIENTATION_VERTICAL)
+	activeChatEntry, _ := gtk.EntryNew()
+	activeChatEntry.SetSizeRequest(300, 100)
+	table, _ := gtk.TextTagTableNew()
+	chatHistoryBuffer, _ := gtk.TextBufferNew(table)
+	chatHistoryBuffer.InsertAtCursor("some chat history")
+	chatHistory, _ := gtk.TextViewNewWithBuffer(chatHistoryBuffer)
+	chatHistory.SetSizeRequest(300, 600)
+	chatHistory.SetEditable(false)
+	activeChat.Add(chatHistory)
+	activeChat.Add(activeChatEntry)
+	layout.Add(chats)
+	layout.Add(activeChat)
+
+	// Add the label to the window.
+	win.Add(layout)
+
+	// Set the default window size.
+	win.SetDefaultSize(800, 600)
+
+	// Recursively show all widgets contained in this window.
+	win.ShowAll()
 
 	// QML
 	/*
@@ -124,7 +180,10 @@ func (desktopUI *DesktopUI) Build(configDirectory string) {
 }
 
 func (desktopUI *DesktopUI) Run() {
-	desktopUI.app.Run()
+	//desktopUI.app.Run()
+
+	//GTK
+	gtk.Main()
 
 	// start the main Qt event loop
 	// and block until app.Exit() is called
@@ -135,8 +194,9 @@ func (desktopUI *DesktopUI) Run() {
 }
 
 func (desktopUI *DesktopUI) Quit() {
-	desktopUI.app.Quit()
+	//desktopUI.app.Quit()
 	//gui.Exit(0)
+	gtk.MainQuit()
 }
 
 /*
