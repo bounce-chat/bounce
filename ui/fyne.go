@@ -11,35 +11,33 @@ import (
 )
 
 type Fyne struct {
-	app        fyne.App
-	threadVBox *fyne.Container
-	entryBar   *container.Split
+	app                fyne.App
+	threadVBox         *fyne.Container
+	entryBar           *container.Split
+	chatContainer      *fyne.Container
+	chatHistory        *container.Scroll
+	chatHistoriesViews map[string]*container.Scroll
 }
 
 func (fyneUI *Fyne) simulate() {
-	time.Sleep(3 * time.Second)
+	time.Sleep(1 * time.Second)
 	fyneUI.AddThread("person1")
-	time.Sleep(3 * time.Second)
+	time.Sleep(2 * time.Second)
 	fyneUI.AddThread("person2")
 	time.Sleep(3 * time.Second)
 	fyneUI.AddThread("person3")
-}
+	go func() {
+		for i := 0; i < 25; i++ {
+			fyneUI.ReceivedMessage("person1", "Person 1", "hello this is from person 1")
+			time.Sleep(500 * time.Millisecond)
+		}
+	}()
 
-func (fyneUI *Fyne) Build(configDirectory string) {
-	fyneApp := app.New()
-	fyneUI.app = fyneApp
-	mainWindow := fyneUI.app.NewWindow("Bounce")
-	mainWindow.SetMaster()
-	mainWindow.SetMainMenu(fyneUI.mainMenu())
-	mainWindow.SetCloseIntercept(func() {
-		log.WithFields(log.Fields{
-			"at": "desktop.DesktopUI.Build",
-		}).Info("window close button hit, shutting down")
-		//w.Close()
-		//a.Quit()
-		fyneUI.Quit()
-	})
-
+	fyneUI.ReceivedMessage("person2", "Person 2", "hello this is from person 2")
+	fyneUI.ReceivedMessage("person1", "Person 1", "hello this is from person 1")
+	fyneUI.ReceivedMessage("person2", "Person 2", "hello this is from person 2")
+	fyneUI.ReceivedMessage("person3", "Person 3", "hello this is from person 3")
+	fyneUI.ReceivedMessage("person1", "Person 1", "hello this is from person 1")
 	/*
 		chat1 := widget.NewButton("Chat 1", func() {})
 		chat1.Importance = widget.LowImportance
@@ -70,15 +68,33 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 			chatHistory.Refresh()
 		}()
 	*/
+}
+
+func (fyneUI *Fyne) Build(configDirectory string) {
+	fyneUI.chatHistoriesViews = make(map[string]*container.Scroll)
+	fyneApp := app.New()
+	fyneUI.app = fyneApp
+	mainWindow := fyneUI.app.NewWindow("Bounce")
+	mainWindow.SetMaster()
+	mainWindow.SetMainMenu(fyneUI.mainMenu())
+	mainWindow.SetCloseIntercept(func() {
+		log.WithFields(log.Fields{
+			"at": "desktop.DesktopUI.Build",
+		}).Info("window close button hit, shutting down")
+		//w.Close()
+		//a.Quit()
+		fyneUI.Quit()
+	})
 
 	threads := fyneUI.threadView()
+	fyneUI.chatContainer = container.NewMax(widget.NewLabel("Select a chat thread on the left"))
+	chatBox := container.NewVSplit(
+		fyneUI.chatContainer,
+		fyneUI.textEntry(),
+	)
 	mainWindow.SetContent(container.NewHSplit(
 		threads,
-		container.NewVSplit(
-			//chatHistoryScroll,
-			widget.NewLabel("Select a chat thread on the left"),
-			fyneUI.textEntry(),
-		),
+		chatBox,
 	))
 	mainWindow.Show()
 
@@ -108,6 +124,17 @@ func (fyneUI *Fyne) textEntry() *container.Split {
 	return fyneUI.entryBar
 }
 
+func (fyneUI *Fyne) findOrCreateChatHistoryScroll(id string) *container.Scroll {
+	// if it exists in the UI's map, return it
+	if history, exists := fyneUI.chatHistoriesViews[id]; exists {
+		return history
+	}
+	chatHistory := container.NewVBox()
+	chatHistoryScroll := container.NewVScroll(chatHistory)
+	fyneUI.chatHistoriesViews[id] = chatHistoryScroll
+	return chatHistoryScroll
+}
+
 func (fyneUI *Fyne) Run() {
 	go fyneUI.simulate()
 	fyneUI.app.Run()
@@ -117,8 +144,15 @@ func (fyneUI *Fyne) Quit() {
 	fyneUI.app.Quit()
 }
 
-func (fyneUI *Fyne) AddThread(name string) {
-	newThread := widget.NewButton(name, func() {})
+func (fyneUI *Fyne) AddThread(name string) { // TODO: add UUID
+	fyneUI.findOrCreateChatHistoryScroll(name)
+	newThread := widget.NewButton(name, func() {
+		chatHistory := fyneUI.findOrCreateChatHistoryScroll(name) // actually ID
+		fyneUI.chatContainer.Objects = []fyne.CanvasObject{chatHistory}
+		fyneUI.chatContainer.Refresh()
+
+		// Thread selected, show the chat history for this thread
+	})
 	newThread.Importance = widget.HighImportance
 	fyneUI.threadVBox.Objects = append(
 		fyneUI.threadVBox.Objects,
@@ -127,5 +161,21 @@ func (fyneUI *Fyne) AddThread(name string) {
 	fyneUI.threadVBox.Refresh()
 }
 
-func (fyneUI *Fyne) ReceivedMessage() {
+func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) {
+	if thread, exists := fyneUI.chatHistoriesViews[threadID]; exists {
+		chatHistory := thread.Content.(*fyne.Container)
+		usernameText := widget.NewLabel(username)
+		usernameText.TextStyle = fyne.TextStyle{Bold: true}
+		messageBox := container.NewVBox(
+			usernameText,
+			widget.NewLabel(message),
+			widget.NewSeparator(),
+		)
+		chatHistory.Objects = append(chatHistory.Objects, messageBox)
+		//chatHistoryScroll.ScrollToBottom() // TODO: not working
+		chatHistory.Refresh()
+
+	} else {
+		log.Warn("thread does not exist: " + threadID)
+	}
 }
