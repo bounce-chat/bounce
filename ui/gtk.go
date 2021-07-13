@@ -1,14 +1,17 @@
-package desktop
+package ui
 
 import (
+	"time"
+
 	"github.com/gotk3/gotk3/gtk"
 	log "github.com/sirupsen/logrus"
 )
 
-type DesktopUI struct {
+type GTK struct {
+	demobuffer *gtk.TextBuffer
 }
 
-func (desktopUI *DesktopUI) Build(configDirectory string) {
+func (desktopUI *GTK) Build(configDirectory string) {
 	// Initialize GTK without parsing any command line arguments.
 	gtk.Init(nil)
 
@@ -36,8 +39,8 @@ func (desktopUI *DesktopUI) Build(configDirectory string) {
 	chats.Add(l)
 	activeChat, _ := gtk.PanedNew(gtk.ORIENTATION_VERTICAL)
 	activeChatEntry, _ := gtk.EntryNew()
-	activeChatEntry.SetSizeRequest(300, 100)
-	activeChat.Pack1(getCurrentChatHistory(), true, false) // resize, shrink
+	activeChatEntry.SetSizeRequest(300, 10)
+	activeChat.Pack1(desktopUI.getCurrentChatHistory(), true, false) // resize, shrink
 	activeChat.Pack2(activeChatEntry, true, false)
 	layout.Pack1(chats, true, false)
 	layout.Pack2(activeChat, true, false)
@@ -52,11 +55,21 @@ func (desktopUI *DesktopUI) Build(configDirectory string) {
 	win.ShowAll()
 }
 
-func (desktopUI *DesktopUI) Run() {
+func (desktopUI *GTK) Run() {
+	go func() {
+		for i := 0; i < 100; i++ {
+			desktopUI.demobuffer.InsertMarkup(desktopUI.demobuffer.GetEndIter(), "<b><span foreground=\"#0000FF\">username</span></b>: sent this message\n")
+			time.Sleep(100 * time.Millisecond)
+			//scroll to the bottom
+			//adjustment := scrollWindow.GetVAdjustment()
+			//adjustment.SetValue(adjustment.GetUpper())
+		}
+	}()
+
 	gtk.Main()
 }
 
-func (desktopUI *DesktopUI) Quit() {
+func (desktopUI *GTK) Quit() {
 	gtk.MainQuit()
 }
 
@@ -64,7 +77,7 @@ func (desktopUI *DesktopUI) Quit() {
 // GTK views
 //
 
-func getCurrentChatHistory() *gtk.ScrolledWindow { // box should be wrapped in scrollable
+func (desktopUI *GTK) getCurrentChatHistory() *gtk.ScrolledWindow { // box should be wrapped in scrollable
 	/*
 		sw = gtk_scrolled_window_new (NULL, NULL);
 		gtk_scrolled_window_set_policy (
@@ -80,25 +93,30 @@ func getCurrentChatHistory() *gtk.ScrolledWindow { // box should be wrapped in s
 	//scrollWindow.SetMinContentWidth(300)
 	scrollWindow.SetHExpand(true)
 	scrollWindow.SetVExpand(true)
-	currentChatHistory, err := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 0)
+	scrollWindow.SetSizeRequest(600, 700)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
 	table, _ := gtk.TextTagTableNew()
 	chatHistoryBuffer, _ := gtk.TextBufferNew(table)
-	for i := 0; i < 100; i++ {
-		chatHistoryBuffer.InsertMarkup(chatHistoryBuffer.GetEndIter(), "<b><span foreground=\"#0000FF\">username</span></b>: sent this message\n")
-	}
+	desktopUI.demobuffer = chatHistoryBuffer
+
 	chatHistory, _ := gtk.TextViewNewWithBuffer(chatHistoryBuffer)
-	//chatHistory.SetSizeRequest(300, 600)
 	chatHistory.SetEditable(false)
 	chatHistory.SetHExpand(true)
 	chatHistory.SetVExpand(true)
+	//chatHistory.Connect("size-allocate", func(ch *gtk.TextView) {
+	//	ch.ScrollToIter(chatHistoryBuffer.GetEndIter(), 0, false, 0, 0)
+	//})
 
-	currentChatHistory.Add(chatHistory)
-	currentChatHistory.SetHExpand(true)
-	currentChatHistory.SetVExpand(true)
-	scrollWindow.Add(currentChatHistory)
+	//currentChatHistory, err := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 0)
+	//currentChatHistory.Add(chatHistory)
+	//currentChatHistory.SetHExpand(true)
+	//currentChatHistory.SetVExpand(true)
+	chatHistory.SetHExpand(true)
+	chatHistory.SetVExpand(true)
+	//scrollWindow.Add(currentChatHistory)
+	scrollWindow.Add(chatHistory)
 	return scrollWindow
 }
