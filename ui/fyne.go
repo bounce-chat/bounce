@@ -50,24 +50,6 @@ func (fyneUI *Fyne) simulate() {
 			threads.Refresh()
 		}()
 	*/
-
-	/*
-		chatHistory := container.NewVBox()
-		chatHistoryScroll := container.NewVScroll(chatHistory)
-		go func() {
-			time.Sleep(10 * time.Second)
-			username := widget.NewLabel("username")
-			username.TextStyle = fyne.TextStyle{Bold: true}
-			oldMessage1 := container.NewVBox(
-				username,
-				widget.NewLabel("this is a message someone sent"),
-				widget.NewSeparator(),
-			)
-			chatHistory.Objects = append(chatHistory.Objects, oldMessage1)
-			//chatHistoryScroll.ScrollToBottom() // TODO: not working
-			chatHistory.Refresh()
-		}()
-	*/
 }
 
 func (fyneUI *Fyne) Build(configDirectory string) {
@@ -150,10 +132,12 @@ func (fyneUI *Fyne) AddThread(name string) { // TODO: add UUID
 		chatHistory := fyneUI.findOrCreateChatHistoryScroll(name) // actually ID
 		fyneUI.chatContainer.Objects = []fyne.CanvasObject{chatHistory}
 		fyneUI.chatContainer.Refresh()
-
-		// Thread selected, show the chat history for this thread
+		// TODO: how do I reference self in this function?
+		//newThread.Importance = widget.LowImportance
+		//newThread.Refresh()
 	})
-	newThread.Importance = widget.HighImportance
+	newThread.Importance = widget.LowImportance
+	newThread.Alignment = widget.ButtonAlignLeading
 	fyneUI.threadVBox.Objects = append(
 		fyneUI.threadVBox.Objects,
 		newThread,
@@ -172,9 +156,16 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) {
 			widget.NewSeparator(),
 		)
 		chatHistory.Objects = append(chatHistory.Objects, messageBox)
-		//chatHistoryScroll.ScrollToBottom() // TODO: not working
 		chatHistory.Refresh()
-
+		// TODO: not working, always off by one.  Also only want this when open
+		// probably best to make a custom "thread" object using fyne objects internally
+		// to exist concepts like "IsOpen()" and "IsUnread()"
+		thread.ScrollToBottom()
+		// TODO: mark as important and sort to the top.  insertion sort by most
+		// recent unread
+		// TODO: need a refernce to the thread's button
+		//thread.Importance = widget.HighImportance
+		//thread.Refresh()
 	} else {
 		log.Warn("thread does not exist: " + threadID)
 	}
