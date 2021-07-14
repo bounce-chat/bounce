@@ -23,6 +23,7 @@ type Fyne struct {
 
 type thread struct {
 	id          string
+	name        string
 	button      *widget.Button
 	scroll      *container.Scroll
 	lastMessage int64
@@ -87,6 +88,7 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 
 	fyneUI.threadVBox = container.NewVBox()
 	threads := container.NewVScroll(fyneUI.threadVBox)
+	// TODO: add a chat header to the chat container
 	fyneUI.chatContainer = container.NewMax(widget.NewLabel("Select a chat thread on the left"))
 	chatBox := container.NewVSplit(
 		fyneUI.chatContainer,
@@ -125,7 +127,12 @@ func (fyneUI *Fyne) mainMenu() *fyne.MainMenu {
 }
 
 func (fyneUI *Fyne) textEntry() *container.Split {
-	fyneUI.entryBar = container.NewHSplit( // TODO: something better for always smallest button
+	// TODO: this looks bad, the entry and button are
+	// equally sized by default.  If possible, make it
+	// not a split and expand the entry all the way,
+	// leaving minimum room for the button.  Or just
+	// remove the button.
+	fyneUI.entryBar = container.NewHSplit(
 		widget.NewMultiLineEntry(),
 		widget.NewButton("Send", func() {}),
 	)
@@ -194,6 +201,8 @@ func (fyneUI *Fyne) AddThread(id string) { // TODO: add group/user name add that
 func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TODO: this should probably take the protobuf definition
 	if thread, exists := fyneUI.threads[threadID]; exists {
 		chatHistory := thread.scroll.Content.(*fyne.Container)
+
+		// Creathe the new message box
 		usernameText := widget.NewLabel(username)
 		usernameText.TextStyle = fyne.TextStyle{Bold: true}
 		messageBox := container.NewVBox(
@@ -201,14 +210,26 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TOD
 			widget.NewLabel(message),
 			widget.NewSeparator(),
 		)
+
+		// Check if we're already scrolled to the bottom, for auto-scroll reasons
+		autoscroll := false
+		location := thread.scroll.Offset.Y
+		height := thread.scroll.Content.Size().Height - thread.scroll.Size().Height
+		if height-location <= 20 {
+			// We really should be able to check if we're _exactly_ at the bottom, but the scrolling
+			// logic is kinda messed up in Fyne right now so we'll approximate with "close to the bottom"
+			autoscroll = true
+		}
+
+		// Add the message to the thread
 		chatHistory.Objects = append(chatHistory.Objects, messageBox)
 		chatHistory.Refresh()
 
 		if fyneUI.isActive(thread) {
-			// TODO: not working, always off by one.  probably need something manual based on this
-			// https://github.com/fyne-io/fyne/blob/a25b08480d742f016ee24c1b37aa02c3bb433bd5/internal/widget/scroller.go#L473
-			// also: this should only happen when the user was already scrolled all the way down,
-			thread.scroll.ScrollToBottom()
+			if autoscroll {
+				// TODO: There's something wrong with ScrollToBottom.  It's always off by one.  This is a little closer, but  it's not perfect.
+				thread.scroll.Offset.Y = thread.scroll.Content.Size().Height - thread.scroll.Size().Height + messageBox.Size().Height //thread.scroll.ScrollToBottom()
+			}
 		} else {
 			// This thread isn't active, mark the button as unread
 			thread.button.Importance = widget.HighImportance
