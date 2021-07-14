@@ -16,7 +16,6 @@ type Fyne struct {
 	threadVBox    *fyne.Container
 	entryBar      *container.Split
 	chatContainer *fyne.Container
-	chatHistory   *container.Scroll
 	threads       map[string]*thread
 	activeThread  string
 }
@@ -241,8 +240,7 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TOD
 		fyneUI.refreshThreadOrder()
 	} else {
 		log.WithFields(log.Fields{
-			"thread_id":   threadID,
-			"thread_name": name,
+			"thread_id": threadID,
 		}).Error("thread does not exist on message receive, ignoring the message")
 	}
 }
