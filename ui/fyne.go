@@ -45,25 +45,25 @@ func (t threads) Less(i, j int) bool {
 
 func (fyneUI *Fyne) simulate() {
 	time.Sleep(1 * time.Second)
-	fyneUI.AddThread("person1")
+	fyneUI.AddThread("1", "Group 1")
 	time.Sleep(2 * time.Second)
-	fyneUI.AddThread("person2")
+	fyneUI.AddThread("2", "Group 2")
 	time.Sleep(3 * time.Second)
-	fyneUI.AddThread("person3")
+	fyneUI.AddThread("3", "DM 1")
 	go func() {
 		for i := 0; i < 25; i++ {
-			fyneUI.ReceivedMessage("person1", "Person 1", "hello this is from person 1")
+			fyneUI.ReceivedMessage("1", "Person 1", "hello this is from person 1")
 			time.Sleep(1 * time.Second)
 		}
 	}()
 	go func() {
 		for i := 0; i < 10; i++ {
-			fyneUI.ReceivedMessage("person2", "Person 2", "hello this is from person 2")
+			fyneUI.ReceivedMessage("2", "Person 2", "hello this is from person 2")
 			time.Sleep(5 * time.Second)
 		}
 	}()
 
-	fyneUI.ReceivedMessage("person3", "Person 3", "hello this is from person 3")
+	fyneUI.ReceivedMessage("3", "Person 3", "hello this is from person 3")
 }
 
 //
@@ -143,7 +143,7 @@ func (fyneUI *Fyne) textEntry() *container.Split {
 // User interface manipulation
 //
 
-func (fyneUI *Fyne) displayHistory(thread *thread) {
+func (fyneUI *Fyne) displayThread(thread *thread) {
 	fyneUI.activeThread = thread.id
 	fyneUI.chatContainer.Objects = []fyne.CanvasObject{thread.scroll}
 	fyneUI.chatContainer.Refresh()
@@ -174,22 +174,24 @@ func (fyneUI *Fyne) refreshThreadOrder() {
 // Exported functions for the chat engine
 //
 
-func (fyneUI *Fyne) AddThread(id string) { // TODO: add group/user name add that as button
+func (fyneUI *Fyne) AddThread(id, name string) {
 	if _, exists := fyneUI.threads[id]; exists {
 		log.WithFields(log.Fields{
-			"id": id,
+			"id":   id,
+			"name": name,
 		}).Warn("attempt to create a thread that already exists, ignored")
 		return
 	}
 
 	thread := &thread{
 		id:          id,
+		name:        name,
 		scroll:      container.NewVScroll(container.NewVBox()),
 		lastMessage: time.Now().Unix(),
 	}
 
-	thread.button = widget.NewButton(id, func() {
-		fyneUI.displayHistory(thread)
+	thread.button = widget.NewButton(name, func() {
+		fyneUI.displayThread(thread)
 	})
 	thread.button.Importance = widget.LowImportance
 	thread.button.Alignment = widget.ButtonAlignLeading
@@ -202,7 +204,7 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TOD
 	if thread, exists := fyneUI.threads[threadID]; exists {
 		chatHistory := thread.scroll.Content.(*fyne.Container)
 
-		// Creathe the new message box
+		// Create the new message box
 		usernameText := widget.NewLabel(username)
 		usernameText.TextStyle = fyne.TextStyle{Bold: true}
 		messageBox := container.NewVBox(
@@ -239,7 +241,8 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TOD
 		fyneUI.refreshThreadOrder()
 	} else {
 		log.WithFields(log.Fields{
-			"id": threadID,
-		}).Warn("thread does not exist on message receive")
+			"thread_id":   threadID,
+			"thread_name": name,
+		}).Error("thread does not exist on message receive, ignoring the message")
 	}
 }
