@@ -215,20 +215,19 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TOD
 		autoscroll := false
 		location := thread.scroll.Offset.Y
 		height := thread.scroll.Content.Size().Height - thread.scroll.Size().Height
-		if height-location <= 20 {
-			// We really should be able to check if we're _exactly_ at the bottom, but the scrolling
-			// logic is kinda messed up in Fyne right now so we'll approximate with "close to the bottom"
+		if height == location {
 			autoscroll = true
 		}
 
 		// Add the message to the thread
 		chatHistory.Objects = append(chatHistory.Objects, messageBox)
 		chatHistory.Refresh()
+		thread.scroll.Refresh()
 
 		if fyneUI.isActive(thread) {
 			if autoscroll {
-				// TODO: There's something wrong with ScrollToBottom.  It's always off by one.  This is a little closer, but  it's not perfect.
-				thread.scroll.Offset.Y = thread.scroll.Content.Size().Height - thread.scroll.Size().Height + messageBox.Size().Height //thread.scroll.ScrollToBottom()
+				thread.scroll.ScrollToBottom()
+				thread.scroll.Refresh()
 			}
 		} else {
 			// This thread isn't active, mark the button as unread
