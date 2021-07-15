@@ -31,17 +31,17 @@ type thread struct {
 }
 
 // For sorting by last message received
-type threads []*thread
+type sortableThreads []*thread
 
-func (t threads) Len() int {
-	return len(t)
+func (threads sortableThreads) Len() int {
+	return len(threads)
 }
-func (t threads) Swap(i, j int) {
-	t[i], t[j] = t[j], t[i]
+func (threads sortableThreads) Swap(i, j int) {
+	threads[i], threads[j] = threads[j], threads[i]
 }
-func (t threads) Less(i, j int) bool {
+func (threads sortableThreads) Less(i, j int) bool {
 	// Reverse order, highest timestamp on top
-	return t[i].lastMessage > t[j].lastMessage
+	return threads[i].lastMessage > threads[j].lastMessage
 }
 
 func (fyneUI *Fyne) simulate() {
@@ -99,12 +99,6 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 		threads,
 		chatBox,
 	))
-	/*
-		mainWindow.SetContent(container.NewHSplit(
-			threads,
-			chatBox,
-		))
-	*/
 	mainWindow.Show()
 
 }
@@ -168,7 +162,7 @@ func (fyneUI *Fyne) isActive(thread *thread) bool {
 }
 
 func (fyneUI *Fyne) refreshThreadOrder() {
-	allThreads := threads{}
+	allThreads := sortableThreads{}
 	for _, thread := range fyneUI.threads {
 		allThreads = append(allThreads, thread)
 	}
