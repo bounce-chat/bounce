@@ -26,7 +26,7 @@ type thread struct {
 	header      *fyne.Container
 	button      *widget.Button
 	scroll      *container.Scroll
-	entry       *widget.Entry
+	entry       *fyne.Container
 	lastMessage int64
 }
 
@@ -89,15 +89,12 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 
 	fyneUI.threadVBox = container.NewVBox()
 	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
-	fyneUI.chatContainer = container.NewMax(widget.NewLabel("Select a chat thread on the left"))
-	chatBox := container.NewVSplit( // TODO: the entry should be part of the thread so that buffers can be saved bewteen clicking around threads.  Also, center layout the welcome message
-		fyneUI.chatContainer,
-		fyneUI.textEntry(),
-	)
+	welcomeMessage := container.NewMax(container.New(layout.NewCenterLayout(), widget.NewLabel("Select a thread on the left to get started"))) // TODO: make this pretty, images, etc
+	fyneUI.chatContainer = welcomeMessage
 	mainWindow.SetContent(container.New(
 		layout.NewBorderLayout(nil, nil, threads, nil),
 		threads,
-		chatBox,
+		welcomeMessage,
 	))
 	mainWindow.Show()
 
@@ -127,17 +124,17 @@ func (fyneUI *Fyne) mainMenu() *fyne.MainMenu {
 	)
 }
 
-func (fyneUI *Fyne) textEntry() *fyne.Container {
+func (fyneUI *Fyne) textEntry(thread *thread) *fyne.Container {
 	entry := widget.NewMultiLineEntry()
 	entry.Wrapping = fyne.TextWrapWord
 	entry.OnSubmitted = func(message string) {
-		fyneUI.displaySentMessageInCurrentThread(message)
+		fyneUI.displaySentMessage(thread, message)
 		entry.Text = ""
 		entry.Refresh()
 	}
 
 	button := widget.NewButton("Send", func() {
-		fyneUI.displaySentMessageInCurrentThread(entry.Text)
+		fyneUI.displaySentMessage(thread, entry.Text)
 		entry.Text = ""
 		entry.Refresh()
 	})
@@ -157,8 +154,9 @@ func (fyneUI *Fyne) displayThread(thread *thread) {
 	fyneUI.activeThread = thread.id
 	fyneUI.chatContainer.Objects = []fyne.CanvasObject{
 		container.New(
-			layout.NewBorderLayout(thread.header, nil, nil, nil),
+			layout.NewBorderLayout(thread.header, thread.entry, nil, nil),
 			thread.header,
+			thread.entry,
 			thread.scroll,
 		),
 	}
@@ -184,17 +182,6 @@ func (fyneUI *Fyne) refreshThreadOrder() {
 	}
 	fyneUI.threadVBox.Objects = buttons
 	fyneUI.threadVBox.Refresh()
-}
-
-func (fyneUI *Fyne) displaySentMessageInCurrentThread(message string) {
-	thread, exists := fyneUI.threads[fyneUI.activeThread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"thread_id": fyneUI.activeThread,
-		}).Error("cannot display message, thread not found")
-		return
-	}
-	fyneUI.displaySentMessage(thread, message)
 }
 
 func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
@@ -267,6 +254,7 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 		lastMessage: time.Now().Unix(),
 	}
 
+	thread.entry = fyneUI.textEntry(thread)
 	thread.button = widget.NewButton(name, func() {
 		fyneUI.displayThread(thread)
 	})
