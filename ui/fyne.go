@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	log "github.com/sirupsen/logrus"
 )
@@ -14,7 +15,7 @@ import (
 type Fyne struct {
 	app           fyne.App
 	threadVBox    *fyne.Container
-	entryBar      *container.Split
+	entryBar      *fyne.Container
 	chatContainer *fyne.Container
 	threads       map[string]*thread
 	activeThread  string
@@ -24,6 +25,7 @@ type thread struct {
 	id          string
 	name        string
 	button      *widget.Button
+	header      *fyne.Container
 	scroll      *container.Scroll
 	lastMessage int64
 }
@@ -86,17 +88,23 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	})
 
 	fyneUI.threadVBox = container.NewVBox()
-	threads := container.NewVScroll(fyneUI.threadVBox)
-	// TODO: add a chat header to the chat container
+	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
 	fyneUI.chatContainer = container.NewMax(widget.NewLabel("Select a chat thread on the left"))
 	chatBox := container.NewVSplit(
 		fyneUI.chatContainer,
 		fyneUI.textEntry(),
 	)
-	mainWindow.SetContent(container.NewHSplit(
+	mainWindow.SetContent(container.New(
+		layout.NewBorderLayout(nil, nil, threads, nil),
 		threads,
 		chatBox,
 	))
+	/*
+		mainWindow.SetContent(container.NewHSplit(
+			threads,
+			chatBox,
+		))
+	*/
 	mainWindow.Show()
 
 }
@@ -125,15 +133,14 @@ func (fyneUI *Fyne) mainMenu() *fyne.MainMenu {
 	)
 }
 
-func (fyneUI *Fyne) textEntry() *container.Split {
-	// TODO: this looks bad, the entry and button are
-	// equally sized by default.  If possible, make it
-	// not a split and expand the entry all the way,
-	// leaving minimum room for the button.  Or just
-	// remove the button.
-	fyneUI.entryBar = container.NewHSplit(
-		widget.NewMultiLineEntry(),
-		widget.NewButton("Send", func() {}),
+func (fyneUI *Fyne) textEntry() *fyne.Container {
+	entry := widget.NewMultiLineEntry()
+	entry.Wrapping = fyne.TextWrapWord
+	button := widget.NewButton("Send", func() {})
+	fyneUI.entryBar = container.New(
+		layout.NewBorderLayout(nil, nil, nil, button),
+		entry,
+		button,
 	)
 	return fyneUI.entryBar
 }
@@ -144,7 +151,13 @@ func (fyneUI *Fyne) textEntry() *container.Split {
 
 func (fyneUI *Fyne) displayThread(thread *thread) {
 	fyneUI.activeThread = thread.id
-	fyneUI.chatContainer.Objects = []fyne.CanvasObject{thread.scroll}
+	fyneUI.chatContainer.Objects = []fyne.CanvasObject{
+		container.New(
+			layout.NewBorderLayout(thread.header, nil, nil, nil),
+			thread.header,
+			thread.scroll,
+		),
+	}
 	fyneUI.chatContainer.Refresh()
 	thread.button.Importance = widget.LowImportance
 	thread.button.Refresh()
@@ -182,9 +195,19 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 		return
 	}
 
+	addUser := widget.NewButton("Add users", func() {})
+
+	threadLabel := widget.NewLabel(name)
+	threadButtons := container.NewHBox(addUser)
+	header := container.New(
+		layout.NewBorderLayout(nil, nil, threadLabel, threadButtons),
+		threadLabel,
+		threadButtons,
+	)
 	thread := &thread{
 		id:          id,
 		name:        name,
+		header:      header,
 		scroll:      container.NewVScroll(container.NewVBox()),
 		lastMessage: time.Now().Unix(),
 	}
@@ -200,47 +223,50 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 }
 
 func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TODO: this should probably take the protobuf definition
-	if thread, exists := fyneUI.threads[threadID]; exists {
-		chatHistory := thread.scroll.Content.(*fyne.Container)
-
-		// Create the new message box
-		usernameText := widget.NewLabel(username)
-		usernameText.TextStyle = fyne.TextStyle{Bold: true}
-		messageBox := container.NewVBox(
-			usernameText,
-			widget.NewLabel(message),
-			widget.NewSeparator(),
-		)
-
-		// Check if we're already scrolled to the bottom, for auto-scroll reasons
-		autoscroll := false
-		location := thread.scroll.Offset.Y
-		height := thread.scroll.Content.Size().Height - thread.scroll.Size().Height
-		if height == location {
-			autoscroll = true
-		}
-
-		// Add the message to the thread
-		chatHistory.Objects = append(chatHistory.Objects, messageBox)
-		chatHistory.Refresh()
-		thread.scroll.Refresh()
-
-		if fyneUI.isActive(thread) {
-			if autoscroll {
-				thread.scroll.ScrollToBottom()
-				thread.scroll.Refresh()
-			}
-		} else {
-			// This thread isn't active, mark the button as unread
-			thread.button.Importance = widget.HighImportance
-			thread.button.Refresh()
-		}
-
-		thread.lastMessage = time.Now().Unix()
-		fyneUI.refreshThreadOrder()
-	} else {
+	// Log an error and early return if the thread doesn't exist
+	thread, exists := fyneUI.threads[threadID]
+	if !exists {
 		log.WithFields(log.Fields{
 			"thread_id": threadID,
 		}).Error("thread does not exist on message receive, ignoring the message")
+		return
 	}
+
+	chatHistory := thread.scroll.Content.(*fyne.Container)
+
+	// Create the new message box
+	usernameText := widget.NewLabel(username)
+	usernameText.TextStyle = fyne.TextStyle{Bold: true}
+	messageBox := container.NewVBox(
+		usernameText,
+		widget.NewLabel(message),
+		widget.NewSeparator(),
+	)
+
+	// Check if we're already scrolled to the bottom, for auto-scroll reasons
+	autoscroll := false
+	location := thread.scroll.Offset.Y
+	height := thread.scroll.Content.Size().Height - thread.scroll.Size().Height
+	if height == location {
+		autoscroll = true
+	}
+
+	// Add the message to the thread
+	chatHistory.Objects = append(chatHistory.Objects, messageBox)
+	chatHistory.Refresh()
+	thread.scroll.Refresh()
+
+	if fyneUI.isActive(thread) {
+		if autoscroll {
+			thread.scroll.ScrollToBottom()
+			thread.scroll.Refresh()
+		}
+	} else {
+		// This thread isn't active, mark the button as unread
+		thread.button.Importance = widget.HighImportance
+		thread.button.Refresh()
+	}
+
+	thread.lastMessage = time.Now().Unix()
+	fyneUI.refreshThreadOrder()
 }
