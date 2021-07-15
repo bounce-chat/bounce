@@ -15,7 +15,6 @@ import (
 type Fyne struct {
 	app           fyne.App
 	threadVBox    *fyne.Container
-	entryBar      *fyne.Container
 	chatContainer *fyne.Container
 	threads       map[string]*thread
 	activeThread  string
@@ -24,9 +23,10 @@ type Fyne struct {
 type thread struct {
 	id          string
 	name        string
-	button      *widget.Button
 	header      *fyne.Container
+	button      *widget.Button
 	scroll      *container.Scroll
+	entry       *widget.Entry
 	lastMessage int64
 }
 
@@ -90,7 +90,7 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	fyneUI.threadVBox = container.NewVBox()
 	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
 	fyneUI.chatContainer = container.NewMax(widget.NewLabel("Select a chat thread on the left"))
-	chatBox := container.NewVSplit(
+	chatBox := container.NewVSplit( // TODO: the entry should be part of the thread so that buffers can be saved bewteen clicking around threads.  Also, center layout the welcome message
 		fyneUI.chatContainer,
 		fyneUI.textEntry(),
 	)
@@ -130,13 +130,23 @@ func (fyneUI *Fyne) mainMenu() *fyne.MainMenu {
 func (fyneUI *Fyne) textEntry() *fyne.Container {
 	entry := widget.NewMultiLineEntry()
 	entry.Wrapping = fyne.TextWrapWord
-	button := widget.NewButton("Send", func() {})
-	fyneUI.entryBar = container.New(
+	entry.OnSubmitted = func(message string) {
+		fyneUI.displaySentMessageInCurrentThread(message)
+		entry.Text = ""
+		entry.Refresh()
+	}
+
+	button := widget.NewButton("Send", func() {
+		fyneUI.displaySentMessageInCurrentThread(entry.Text)
+		entry.Text = ""
+		entry.Refresh()
+	})
+
+	return container.New(
 		layout.NewBorderLayout(nil, nil, nil, button),
 		entry,
 		button,
 	)
-	return fyneUI.entryBar
 }
 
 //
@@ -176,6 +186,56 @@ func (fyneUI *Fyne) refreshThreadOrder() {
 	fyneUI.threadVBox.Refresh()
 }
 
+func (fyneUI *Fyne) displaySentMessageInCurrentThread(message string) {
+	thread, exists := fyneUI.threads[fyneUI.activeThread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"thread_id": fyneUI.activeThread,
+		}).Error("cannot display message, thread not found")
+		return
+	}
+	fyneUI.displaySentMessage(thread, message)
+}
+
+func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
+	if message == "" {
+		return
+	}
+	chatHistory := thread.scroll.Content.(*fyne.Container)
+
+	// Create the new message box
+	usernameText := widget.NewLabel("You")
+	usernameText.TextStyle = fyne.TextStyle{Bold: true}
+	usernameText.Alignment = fyne.TextAlignTrailing
+	usernameText.Wrapping = fyne.TextWrapWord
+	messageText := widget.NewLabel(message)
+	//messageText.Alignment = fyne.TextAlignTrailing
+	messageText.Wrapping = fyne.TextWrapWord
+
+	// TODO: left aligning a Label with a boarder layout inside of a VBox doesn't work when
+	// text alignment is set to trailing.  Open a ticket about this.
+	//alignedMessageText := container.New(
+	//	layout.NewBorderLayout(nil, nil, nil, messageText),
+	//	messageText,
+	//)
+	messageBox := container.NewVBox(
+		usernameText,
+		messageText, //alignedMessageText,
+		widget.NewSeparator(),
+	)
+
+	// Add the message to the thread
+	chatHistory.Objects = append(chatHistory.Objects, messageBox)
+	chatHistory.Refresh()
+
+	thread.scroll.Refresh()
+	thread.scroll.ScrollToBottom()
+	thread.scroll.Refresh()
+
+	thread.lastMessage = time.Now().Unix()
+	fyneUI.refreshThreadOrder()
+}
+
 //
 // Exported functions for the chat engine
 //
@@ -192,6 +252,7 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 	addUser := widget.NewButton("Add users", func() {})
 
 	threadLabel := widget.NewLabel(name)
+	threadLabel.TextStyle = fyne.TextStyle{Bold: true}
 	threadButtons := container.NewHBox(addUser)
 	header := container.New(
 		layout.NewBorderLayout(nil, nil, threadLabel, threadButtons),
@@ -231,9 +292,12 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TOD
 	// Create the new message box
 	usernameText := widget.NewLabel(username)
 	usernameText.TextStyle = fyne.TextStyle{Bold: true}
+	usernameText.Wrapping = fyne.TextWrapWord
+	messageText := widget.NewLabel(message)
+	messageText.Wrapping = fyne.TextWrapWord
 	messageBox := container.NewVBox(
 		usernameText,
-		widget.NewLabel(message),
+		messageText,
 		widget.NewSeparator(),
 	)
 
@@ -263,4 +327,6 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TOD
 
 	thread.lastMessage = time.Now().Unix()
 	fyneUI.refreshThreadOrder()
+
+	// TODO: OS notifications?
 }
