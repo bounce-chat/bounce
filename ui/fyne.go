@@ -14,6 +14,7 @@ import (
 
 type Fyne struct {
 	app           fyne.App
+	mainWindow    fyne.Window
 	threadVBox    *fyne.Container
 	chatContainer *fyne.Container
 	threads       map[string]*thread
@@ -26,7 +27,8 @@ type thread struct {
 	header      *fyne.Container
 	button      *widget.Button
 	scroll      *container.Scroll
-	entry       *fyne.Container
+	entry       *widget.Entry
+	entryBar    *fyne.Container
 	lastMessage int64
 }
 
@@ -86,6 +88,7 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 		// is hit unless this is explicitly set
 		fyneUI.Quit()
 	})
+	fyneUI.mainWindow = mainWindow
 
 	fyneUI.threadVBox = container.NewVBox()
 	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
@@ -139,6 +142,8 @@ func (fyneUI *Fyne) textEntry(thread *thread) *fyne.Container {
 		entry.Refresh()
 	})
 
+	thread.entry = entry
+
 	return container.New(
 		layout.NewBorderLayout(nil, nil, nil, button),
 		entry,
@@ -154,15 +159,16 @@ func (fyneUI *Fyne) displayThread(thread *thread) {
 	fyneUI.activeThread = thread.id
 	fyneUI.chatContainer.Objects = []fyne.CanvasObject{
 		container.New(
-			layout.NewBorderLayout(thread.header, thread.entry, nil, nil),
+			layout.NewBorderLayout(thread.header, thread.entryBar, nil, nil),
 			thread.header,
-			thread.entry,
+			thread.entryBar,
 			thread.scroll,
 		),
 	}
 	fyneUI.chatContainer.Refresh()
 	thread.button.Importance = widget.LowImportance
 	thread.button.Refresh()
+	fyneUI.mainWindow.Canvas().Focus(thread.entry)
 }
 
 func (fyneUI *Fyne) isActive(thread *thread) bool {
@@ -254,7 +260,7 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 		lastMessage: time.Now().Unix(),
 	}
 
-	thread.entry = fyneUI.textEntry(thread)
+	thread.entryBar = fyneUI.textEntry(thread)
 	thread.button = widget.NewButton(name, func() {
 		fyneUI.displayThread(thread)
 	})
