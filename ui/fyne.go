@@ -28,8 +28,10 @@ type Fyne struct {
 type thread struct {
 	id                      string
 	name                    string
+	isDM                    bool // TODO: prevents things like showing an option to set an image
 	notificationsEnabled    bool
 	notificationsMutedUntil int64
+	editWindow              fyne.Window
 	header                  *fyne.Container
 	button                  *widget.Button
 	scroll                  *container.Scroll
@@ -193,6 +195,14 @@ func (fyneUI *Fyne) buildMainMenu() *fyne.MainMenu {
 	)
 }
 
+func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
+	thread.editWindow = fyneUI.app.NewWindow("Edit Thread")
+	thread.editWindow.SetContent(container.NewMax(widget.NewLabel("Edit your thread here")))
+	thread.editWindow.SetCloseIntercept(func() {
+		thread.editWindow.Hide()
+	})
+}
+
 func (fyneUI *Fyne) textEntry(thread *thread) *fyne.Container {
 	entry := widget.NewMultiLineEntry()
 	entry.Wrapping = fyne.TextWrapWord
@@ -308,24 +318,26 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 		return
 	}
 
-	addUser := widget.NewButton("Edit", func() {})
-
-	threadLabel := widget.NewLabel(name)
-	threadLabel.TextStyle = fyne.TextStyle{Bold: true}
-	threadButtons := container.NewHBox(addUser)
-	header := container.New(
-		layout.NewBorderLayout(nil, nil, threadLabel, threadButtons),
-		threadLabel,
-		threadButtons,
-	)
 	thread := &thread{
 		id:                   id,
 		name:                 name,
-		header:               header,
 		scroll:               container.NewVScroll(container.NewVBox()),
 		notificationsEnabled: false,
 		lastMessage:          time.Now().Unix(),
 	}
+
+	fyneUI.buildEditThreadWindow(thread)
+	addUser := widget.NewButton("Edit", func() {
+		thread.editWindow.Show()
+	})
+	threadLabel := widget.NewLabel(name)
+	threadLabel.TextStyle = fyne.TextStyle{Bold: true}
+	threadButtons := container.NewMax(addUser)
+	thread.header = container.New(
+		layout.NewBorderLayout(nil, nil, threadLabel, threadButtons),
+		threadLabel,
+		threadButtons,
+	)
 
 	thread.entryBar = fyneUI.textEntry(thread)
 	thread.button = widget.NewButton(name, func() {
