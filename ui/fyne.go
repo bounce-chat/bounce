@@ -128,6 +128,7 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	fyneUI.threads = make(map[string]*thread)
 
 	fyneUI.app = app.New()
+	fyneUI.app.SetIcon(NewEmbeddedResource("assets/icon.png"))
 	fyneUI.buildNetworkLoading()
 	fyneUI.buildProfileWindow()
 	fyneUI.buildAddContactWindow()
@@ -153,6 +154,7 @@ func (fyneUI *Fyne) buildMainWindow() {
 	mainWindow := fyneUI.app.NewWindow("Bounce")
 	mainWindow.SetMaster()
 	mainWindow.SetMainMenu(fyneUI.buildMainMenu())
+
 	mainWindow.SetCloseIntercept(func() {
 		log.WithFields(log.Fields{
 			"at": "desktop.DesktopUI.Build",
