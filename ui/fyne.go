@@ -6,6 +6,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
@@ -13,12 +14,15 @@ import (
 )
 
 type Fyne struct {
-	app           fyne.App
-	mainWindow    fyne.Window
-	threadVBox    *fyne.Container
-	chatContainer *fyne.Container
-	threads       map[string]*thread
-	activeThread  string
+	app               fyne.App
+	mainWindow        fyne.Window
+	profileWindow     fyne.Window
+	addContactWindow  fyne.Window
+	createGroupWindow fyne.Window
+	threadVBox        *fyne.Container
+	chatContainer     *fyne.Container
+	threads           map[string]*thread
+	activeThread      string
 }
 
 type thread struct {
@@ -75,31 +79,12 @@ func (fyneUI *Fyne) simulate() {
 
 func (fyneUI *Fyne) Build(configDirectory string) {
 	fyneUI.threads = make(map[string]*thread)
-	fyneApp := app.New()
-	fyneUI.app = fyneApp
-	mainWindow := fyneUI.app.NewWindow("Bounce")
-	mainWindow.SetMaster()
-	mainWindow.SetMainMenu(fyneUI.mainMenu())
-	mainWindow.SetCloseIntercept(func() {
-		log.WithFields(log.Fields{
-			"at": "desktop.DesktopUI.Build",
-		}).Info("window close button hit, shutting down")
-		// There's some bug in Fyne where the app will hang when the close button
-		// is hit unless this is explicitly set
-		fyneUI.Quit()
-	})
-	fyneUI.mainWindow = mainWindow
 
-	fyneUI.threadVBox = container.NewVBox()
-	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
-	welcomeMessage := container.NewMax(container.New(layout.NewCenterLayout(), widget.NewLabel("Select a thread on the left to get started"))) // TODO: make this pretty, images, etc
-	fyneUI.chatContainer = welcomeMessage
-	mainWindow.SetContent(container.New(
-		layout.NewBorderLayout(nil, nil, threads, nil),
-		threads,
-		welcomeMessage,
-	))
-	mainWindow.Show()
+	fyneUI.app = app.New()
+	fyneUI.buildMainWindow()
+	fyneUI.buildProfileWindow()
+	fyneUI.buildAddContactWindow()
+	fyneUI.buildCreateGroupWindow()
 
 }
 
@@ -113,16 +98,91 @@ func (fyneUI *Fyne) Quit() {
 }
 
 //
-// User interface objects
+// Build user interface objects
 //
 
-func (fyneUI *Fyne) mainMenu() *fyne.MainMenu {
+func (fyneUI *Fyne) buildMainWindow() {
+	mainWindow := fyneUI.app.NewWindow("Bounce")
+	mainWindow.SetMaster()
+	mainWindow.SetMainMenu(fyneUI.buildMainMenu())
+	mainWindow.SetCloseIntercept(func() {
+		log.WithFields(log.Fields{
+			"at": "desktop.DesktopUI.Build",
+		}).Info("window close button hit, shutting down")
+		// There's some bug in Fyne where the app will hang when the close button
+		// is hit unless this is explicitly set
+		fyneUI.Quit()
+	})
+
+	//
+	// Logo and welcome message / instructions to be shown before a thread is selected
+	//
+	logoResource, _ := fyne.LoadResourceFromPath("ui/assets/logo.png") // TODO: embed
+	logo := canvas.NewImageFromResource(logoResource)
+	logo.FillMode = canvas.ImageFillContain
+	logo.SetMinSize(fyne.NewSize(228, 167))
+
+	fyneUI.chatContainer = container.NewMax(
+		container.New(
+			layout.NewCenterLayout(),
+			container.NewVBox(
+				logo,
+				widget.NewLabel("Select a thread on the left to get started"),
+			),
+		),
+	)
+
+	fyneUI.threadVBox = container.NewVBox()
+	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
+
+	mainWindow.SetContent(container.New(
+		layout.NewBorderLayout(nil, nil, threads, nil),
+		threads,
+		fyneUI.chatContainer,
+	))
+	mainWindow.Show()
+
+	fyneUI.mainWindow = mainWindow
+}
+
+func (fyneUI *Fyne) buildProfileWindow() {
+	fyneUI.profileWindow = fyneUI.app.NewWindow("Profile")
+	fyneUI.profileWindow.SetContent(container.NewMax(widget.NewLabel("Edit your profile")))
+	fyneUI.profileWindow.SetCloseIntercept(func() {
+		fyneUI.profileWindow.Hide()
+	})
+
+}
+
+func (fyneUI *Fyne) buildAddContactWindow() {
+	fyneUI.addContactWindow = fyneUI.app.NewWindow("Add Contact")
+	fyneUI.addContactWindow.SetContent(container.NewMax(widget.NewLabel("Add a contact")))
+	fyneUI.addContactWindow.SetCloseIntercept(func() {
+		fyneUI.addContactWindow.Hide()
+	})
+}
+
+func (fyneUI *Fyne) buildCreateGroupWindow() {
+	fyneUI.createGroupWindow = fyneUI.app.NewWindow("Create Group")
+	fyneUI.createGroupWindow.SetContent(container.NewMax(widget.NewLabel("Create a group here")))
+	fyneUI.createGroupWindow.SetCloseIntercept(func() {
+		fyneUI.createGroupWindow.Hide()
+	})
+}
+
+func (fyneUI *Fyne) buildMainMenu() *fyne.MainMenu {
 	return fyne.NewMainMenu(
 		fyne.NewMenu(
 			"Bounce",
-			fyne.NewMenuItem("My Profile", func() {}),
-			fyne.NewMenuItem("Add Contact", func() {}),
-			fyne.NewMenuItem("Create Group", func() {}),
+			fyne.NewMenuItem("My Profile", func() {
+				fyneUI.profileWindow.Show()
+			}),
+			fyne.NewMenuItem("Add Contact", func() {
+				fyneUI.addContactWindow.Show()
+			}),
+			fyne.NewMenuItem("Create Group", func() {
+				fyneUI.createGroupWindow.Show()
+			}),
 		),
 	)
 }
@@ -242,7 +302,7 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 		return
 	}
 
-	addUser := widget.NewButton("Add users", func() {})
+	addUser := widget.NewButton("Edit", func() {})
 
 	threadLabel := widget.NewLabel(name)
 	threadLabel.TextStyle = fyne.TextStyle{Bold: true}
@@ -322,5 +382,5 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TOD
 	thread.lastMessage = time.Now().Unix()
 	fyneUI.refreshThreadOrder()
 
-	// TODO: OS notifications?
+	// TODO: OS notifications
 }

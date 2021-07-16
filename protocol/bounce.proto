@@ -19,7 +19,7 @@ message ChatMessage {
 	string source = 2;
 	string destinationThread = 3;			// Group UUID or DM.  DMs are groups of only two?  this is a thread UUID
 	string text = 4;
-	repeated bytes images = 5;
+	repeated bytes images = 5; // Should be a preview to a future image
 	bytes audio = 6;
 	bytes video = 7;
 	bytes file = 8;
