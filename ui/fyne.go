@@ -34,6 +34,7 @@ type thread struct {
 	notificationsEnabled    bool
 	notificationsMutedUntil int64
 	editWindow              fyne.Window
+	view                    *fyne.Container
 	header                  *fyne.Container
 	button                  *widget.Button
 	scroll                  *container.Scroll
@@ -265,14 +266,7 @@ func (fyneUI *Fyne) textEntry(thread *thread) *fyne.Container {
 
 func (fyneUI *Fyne) displayThread(thread *thread) {
 	fyneUI.activeThread = thread.id
-	fyneUI.chatContainer.Objects = []fyne.CanvasObject{
-		container.New(
-			layout.NewBorderLayout(thread.header, thread.entryBar, nil, nil),
-			thread.header,
-			thread.entryBar,
-			thread.scroll,
-		),
-	}
+	fyneUI.chatContainer.Objects = []fyne.CanvasObject{thread.view}
 	fyneUI.chatContainer.Refresh()
 	thread.button.Importance = widget.LowImportance
 	thread.button.Refresh()
@@ -387,6 +381,12 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 	thread.button.Importance = widget.LowImportance
 	thread.button.Alignment = widget.ButtonAlignLeading
 
+	thread.view = container.New(
+		layout.NewBorderLayout(thread.header, thread.entryBar, nil, nil),
+		thread.header,
+		thread.entryBar,
+		thread.scroll,
+	)
 	fyneUI.threads[id] = thread
 	fyneUI.refreshThreadOrder()
 }
