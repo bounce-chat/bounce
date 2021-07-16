@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"embed"
 	"sort"
 	"time"
 
@@ -12,6 +13,9 @@ import (
 	"fyne.io/fyne/v2/widget"
 	log "github.com/sirupsen/logrus"
 )
+
+//go:embed assets
+var assets embed.FS
 
 type Fyne struct {
 	app               fyne.App
@@ -55,6 +59,33 @@ func (threads sortableThreads) Swap(i, j int) {
 func (threads sortableThreads) Less(i, j int) bool {
 	// Reverse order, highest timestamp on top
 	return threads[i].lastMessage > threads[j].lastMessage
+}
+
+// Implement Fyne's fyne.Resource, loading from embedded files
+type embededResource struct {
+	name  string
+	bytes []byte
+}
+
+func NewEmbeddedResource(path string) *embededResource {
+	bytes, err := assets.ReadFile(path)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"path": path,
+		}).Fatal("unable to locate embedded resource")
+	}
+	return &embededResource{
+		name:  path,
+		bytes: bytes,
+	}
+}
+
+func (resource *embededResource) Name() string {
+	return resource.name
+}
+
+func (resource *embededResource) Content() []byte {
+	return resource.bytes
 }
 
 func (fyneUI *Fyne) simulate() {
@@ -134,8 +165,8 @@ func (fyneUI *Fyne) buildMainWindow() {
 	//
 	// Logo and welcome message / instructions to be shown before a thread is selected
 	//
-	logoResource, _ := fyne.LoadResourceFromPath("ui/assets/logo.png") // TODO: embed
-	logo := canvas.NewImageFromResource(logoResource)
+
+	logo := canvas.NewImageFromResource(NewEmbeddedResource("assets/logo.png"))
 	logo.FillMode = canvas.ImageFillContain
 	// TODO: choose reasonable values here
 	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
@@ -167,8 +198,7 @@ func (fyneUI *Fyne) buildMainWindow() {
 }
 
 func (fyneUI *Fyne) buildNetworkLoading() {
-	logoResource, _ := fyne.LoadResourceFromPath("ui/assets/logo_with_network.png") // TODO: embed
-	logo := canvas.NewImageFromResource(logoResource)
+	logo := canvas.NewImageFromResource(NewEmbeddedResource("assets/logo_with_network.png"))
 	logo.FillMode = canvas.ImageFillContain
 	// TODO: choose reasonable values here
 	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
