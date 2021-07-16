@@ -26,14 +26,16 @@ type Fyne struct {
 }
 
 type thread struct {
-	id          string
-	name        string
-	header      *fyne.Container
-	button      *widget.Button
-	scroll      *container.Scroll
-	entry       *widget.Entry
-	entryBar    *fyne.Container
-	lastMessage int64
+	id                      string
+	name                    string
+	notificationsEnabled    bool
+	notificationsMutedUntil int64
+	header                  *fyne.Container
+	button                  *widget.Button
+	scroll                  *container.Scroll
+	entry                   *widget.Entry
+	entryBar                *fyne.Container
+	lastMessage             int64
 }
 
 // For sorting by last message received
@@ -51,6 +53,8 @@ func (threads sortableThreads) Less(i, j int) bool {
 }
 
 func (fyneUI *Fyne) simulate() {
+	//TODO: test network loading here
+
 	time.Sleep(1 * time.Second)
 	fyneUI.AddThread("1", "Group 1")
 	time.Sleep(2 * time.Second)
@@ -120,6 +124,8 @@ func (fyneUI *Fyne) buildMainWindow() {
 	logoResource, _ := fyne.LoadResourceFromPath("ui/assets/logo.png") // TODO: embed
 	logo := canvas.NewImageFromResource(logoResource)
 	logo.FillMode = canvas.ImageFillContain
+	// TODO: choose reasonable values here
+	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
 	logo.SetMinSize(fyne.NewSize(228, 167))
 
 	fyneUI.chatContainer = container.NewMax(
@@ -313,11 +319,12 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 		threadButtons,
 	)
 	thread := &thread{
-		id:          id,
-		name:        name,
-		header:      header,
-		scroll:      container.NewVScroll(container.NewVBox()),
-		lastMessage: time.Now().Unix(),
+		id:                   id,
+		name:                 name,
+		header:               header,
+		scroll:               container.NewVScroll(container.NewVBox()),
+		notificationsEnabled: false,
+		lastMessage:          time.Now().Unix(),
 	}
 
 	thread.entryBar = fyneUI.textEntry(thread)
@@ -382,5 +389,7 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TOD
 	thread.lastMessage = time.Now().Unix()
 	fyneUI.refreshThreadOrder()
 
-	// TODO: OS notifications
+	if thread.notificationsEnabled && time.Now().Unix() > thread.notificationsMutedUntil && !autoscroll {
+		fyneUI.app.SendNotification(fyne.NewNotification(thread.name, "New message from "+username))
+	}
 }
