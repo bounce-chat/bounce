@@ -57,8 +57,6 @@ func (threads sortableThreads) Less(i, j int) bool {
 }
 
 func (fyneUI *Fyne) simulate() {
-	//TODO: test network loading here
-
 	time.Sleep(3 * time.Second)
 	fyneUI.NetworkLoaded()
 	time.Sleep(1 * time.Second)
