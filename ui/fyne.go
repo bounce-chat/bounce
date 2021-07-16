@@ -19,6 +19,8 @@ type Fyne struct {
 	profileWindow     fyne.Window
 	addContactWindow  fyne.Window
 	createGroupWindow fyne.Window
+	mainContainer     *fyne.Container
+	networkLoading    *fyne.Container
 	threadVBox        *fyne.Container
 	chatContainer     *fyne.Container
 	threads           map[string]*thread
@@ -57,6 +59,8 @@ func (threads sortableThreads) Less(i, j int) bool {
 func (fyneUI *Fyne) simulate() {
 	//TODO: test network loading here
 
+	time.Sleep(3 * time.Second)
+	fyneUI.NetworkLoaded()
 	time.Sleep(1 * time.Second)
 	fyneUI.AddThread("1", "Group 1")
 	time.Sleep(2 * time.Second)
@@ -77,6 +81,13 @@ func (fyneUI *Fyne) simulate() {
 	}()
 
 	fyneUI.ReceivedMessage("3", "Person 3", "hello this is from person 3")
+
+	/*
+		time.Sleep(5 * time.Second)
+		fyneUI.NetworkDisconnected()
+		time.Sleep(5 * time.Second)
+		fyneUI.NetworkLoaded()
+	*/
 }
 
 //
@@ -87,10 +98,11 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	fyneUI.threads = make(map[string]*thread)
 
 	fyneUI.app = app.New()
-	fyneUI.buildMainWindow()
+	fyneUI.buildNetworkLoading()
 	fyneUI.buildProfileWindow()
 	fyneUI.buildAddContactWindow()
 	fyneUI.buildCreateGroupWindow()
+	fyneUI.buildMainWindow()
 
 }
 
@@ -143,14 +155,36 @@ func (fyneUI *Fyne) buildMainWindow() {
 	fyneUI.threadVBox = container.NewVBox()
 	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
 
-	mainWindow.SetContent(container.New(
+	fyneUI.mainContainer = container.New(
 		layout.NewBorderLayout(nil, nil, threads, nil),
 		threads,
 		fyneUI.chatContainer,
-	))
+	)
+
+	mainWindow.SetContent(fyneUI.networkLoading)
 	mainWindow.Show()
 
 	fyneUI.mainWindow = mainWindow
+}
+
+func (fyneUI *Fyne) buildNetworkLoading() {
+	logoResource, _ := fyne.LoadResourceFromPath("ui/assets/logo_with_network.png") // TODO: embed
+	logo := canvas.NewImageFromResource(logoResource)
+	logo.FillMode = canvas.ImageFillContain
+	// TODO: choose reasonable values here
+	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
+	logo.SetMinSize(fyne.NewSize(228, 167))
+
+	fyneUI.networkLoading = container.NewMax(
+		container.New(
+			layout.NewCenterLayout(),
+			container.NewVBox(
+				logo,
+				widget.NewLabel("Connecting to the Tor network..."),
+				widget.NewProgressBarInfinite(),
+			),
+		),
+	)
 }
 
 func (fyneUI *Fyne) buildProfileWindow() {
@@ -308,6 +342,15 @@ func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 //
 // Exported functions for the chat engine
 //
+
+func (fyneUI *Fyne) NetworkLoaded() {
+	fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
+}
+
+// TODO: figure out why SetContent doesn't work again here
+//func (fyneUI *Fyne) NetworkDisconnected() {
+//	fyneUI.mainWindow.SetContent(fyneUI.networkLoading)
+//}
 
 func (fyneUI *Fyne) AddThread(id, name string) {
 	if _, exists := fyneUI.threads[id]; exists {
