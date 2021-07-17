@@ -36,9 +36,9 @@ type Fyne struct {
 type thread struct {
 	id                      string
 	name                    binding.String
-	isDM                    bool // TODO: prevents things like showing an option to set an image
-	notificationsEnabled    bool
-	notificationsMutedUntil int64
+	isDM                    bool         // TODO: prevents things like showing an option to set an image
+	notificationsEnabled    binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
+	notificationsMutedUntil int64        // TODO: fyne feature request: support binding int64 for time.Time
 	editWindow              fyne.Window
 	view                    *fyne.Container
 	header                  *fyne.Container
@@ -278,8 +278,7 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 	threadIcon.FillMode = canvas.ImageFillContain
 	threadIcon.SetMinSize(fyne.NewSize(64, 64))
 
-	notificationsCheck := widget.NewCheck("Enable notifications", func(bool) {})
-	notificationsCheck.Checked = thread.notificationsEnabled
+	notificationsCheck := widget.NewCheckWithData("Enable notifications", thread.notificationsEnabled)
 
 	saveButton := widget.NewButton("Save", func() {
 		newThreadName := threadNameEntry.Text
@@ -292,7 +291,7 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 		thread.button.Text = newThreadName
 		thread.button.Refresh()
 
-		thread.notificationsEnabled = notificationsCheck.Checked
+		// TODO: persist settings in Fyne
 		thread.editWindow.Hide()
 	})
 	saveButton.Importance = widget.HighImportance
@@ -307,7 +306,7 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 	)
 
 	usersLabel := widget.NewLabel("Users:")
-	addUserButton := widget.NewButton("+", func() {})
+	addUserButton := widget.NewButton("  +  ", func() {})
 	addUserButton.Importance = widget.LowImportance
 	usersTitle := container.New(
 		layout.NewBorderLayout(nil, nil, usersLabel, addUserButton),
@@ -469,10 +468,16 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 		id:                   id,
 		name:                 binding.NewString(),
 		scroll:               container.NewVScroll(container.NewVBox()),
-		notificationsEnabled: false,
+		notificationsEnabled: binding.NewBool(),
 		lastMessage:          time.Now().Unix(),
 	}
 	err := thread.name.Set(name)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("data bindings are broken")
+	}
+	err = thread.notificationsEnabled.Set(false) // TODO: this should default to true when ready
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -572,7 +577,14 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TOD
 	thread.lastMessage = time.Now().Unix()
 	fyneUI.refreshThreadOrder()
 
-	if thread.notificationsEnabled && time.Now().Unix() > thread.notificationsMutedUntil && !autoscroll {
+	notificationsEnabled, err := thread.notificationsEnabled.Get()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("data bindings are broken")
+	}
+
+	if notificationsEnabled && time.Now().Unix() > thread.notificationsMutedUntil && !autoscroll { //TODO: also notify if not focused?
 		threadName, err := thread.name.Get()
 		if err != nil {
 			log.WithFields(log.Fields{
