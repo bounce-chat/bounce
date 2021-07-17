@@ -2,6 +2,7 @@ package ui
 
 import (
 	"embed"
+	"image/color"
 	"sort"
 	"time"
 
@@ -333,22 +334,19 @@ func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 	// Create the new message box
 	usernameText := widget.NewLabel("You")
 	usernameText.TextStyle = fyne.TextStyle{Bold: true}
-	usernameText.Alignment = fyne.TextAlignTrailing
+	//usernameText.Alignment = fyne.TextAlignTrailing
 	usernameText.Wrapping = fyne.TextWrapWord
 	messageText := widget.NewLabel(message)
-	//messageText.Alignment = fyne.TextAlignTrailing
 	messageText.Wrapping = fyne.TextWrapWord
 
-	// TODO: left aligning a Label with a boarder layout inside of a VBox doesn't work when
-	// text alignment is set to trailing.  Open a ticket about this.
-	//alignedMessageText := container.New(
-	//	layout.NewBorderLayout(nil, nil, nil, messageText),
-	//	messageText,
-	//)
-	messageBox := container.NewVBox(
-		usernameText,
-		messageText, //alignedMessageText,
-		widget.NewSeparator(),
+	messageBox := container.New(
+		layout.NewMaxLayout(),
+		&canvas.Rectangle{FillColor: color.NRGBA{0, 0, 0x40, 0x40}},
+		container.NewVBox(
+			usernameText,
+			messageText,
+			widget.NewSeparator(),
+		),
 	)
 
 	// Add the message to the thread
