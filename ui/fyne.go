@@ -30,15 +30,17 @@ type Fyne struct {
 	threadVBox        *fyne.Container
 	chatContainer     *fyne.Container
 	threads           map[string]*thread
+	users             map[string]*user
 	activeThread      string
 }
 
 type thread struct {
 	id                      string
 	name                    binding.String
+	users                   map[string]*user
 	isDM                    bool         // TODO: prevents things like showing an option to set an image
 	notificationsEnabled    binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
-	notificationsMutedUntil int64        // TODO: fyne feature request: support binding int64 for time.Time
+	notificationsMutedUntil int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
 	editWindow              fyne.Window
 	view                    *fyne.Container
 	header                  *fyne.Container
@@ -47,6 +49,11 @@ type thread struct {
 	entry                   *widget.Entry
 	entryBar                *fyne.Container
 	lastMessage             int64
+}
+
+type user struct {
+	id   string
+	name string
 }
 
 // For sorting by last message received
@@ -94,25 +101,42 @@ func (fyneUI *Fyne) simulate() {
 	//time.Sleep(3 * time.Second)
 	fyneUI.NetworkLoaded()
 	//time.Sleep(1 * time.Second)
-	fyneUI.AddThread("1", "Group 1")
-	time.Sleep(2 * time.Second)
-	fyneUI.AddThread("2", "Group 2")
-	time.Sleep(3 * time.Second)
-	fyneUI.AddThread("3", "DM 1")
+	user1 := &user{
+		id:   "1",
+		name: "User 1",
+	}
+	user2 := &user{
+		id:   "2",
+		name: "User 2",
+	}
+	user3 := &user{
+		id:   "3",
+		name: "User 3",
+	}
+	user4 := &user{
+		id:   "4",
+		name: "User 4",
+	}
+	fyneUI.LoadUsers([]*user{user1, user2, user3, user4})
+	fyneUI.AddThread("1", "Group with 1 and 2", []string{"1", "2"})
+	//time.Sleep(2 * time.Second)
+	fyneUI.AddThread("2", "Group with 2 and 3", []string{"2", "3"})
+	//time.Sleep(3 * time.Second)
+	fyneUI.AddThread("3", "DM and 4", []string{"4"})
 	go func() {
 		for i := 0; i < 25; i++ {
-			fyneUI.ReceivedMessage("1", "Person 1", "hello this is from person 1")
+			fyneUI.ReceivedMessage("1", "1", "hello this is from user 1")
 			time.Sleep(1 * time.Second)
 		}
 	}()
 	go func() {
 		for i := 0; i < 10; i++ {
-			fyneUI.ReceivedMessage("2", "Person 2", "hello this is from person 2")
+			fyneUI.ReceivedMessage("2", "2", "hello this is from user 2")
 			time.Sleep(5 * time.Second)
 		}
 	}()
 
-	fyneUI.ReceivedMessage("3", "Person 3", "hello this is from person 3")
+	fyneUI.ReceivedMessage("3", "4", "hello this is from user 4")
 
 	/*
 		time.Sleep(5 * time.Second)
@@ -128,6 +152,7 @@ func (fyneUI *Fyne) simulate() {
 
 func (fyneUI *Fyne) Build(configDirectory string) {
 	fyneUI.threads = make(map[string]*thread)
+	fyneUI.users = make(map[string]*user)
 
 	fyneUI.app = app.New()
 	fyneUI.app.SetIcon(newEmbeddedResource("assets/icon.png"))
@@ -314,13 +339,16 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 		addUserButton,
 	)
 
+	userListBox := container.NewVBox()
+	for _, user := range thread.users {
+		userListBox.Objects = append(
+			userListBox.Objects,
+			widget.NewLabel(user.name),
+		)
+	}
+
 	userList := container.NewPadded(
-		container.NewVScroll(container.NewVBox(
-			widget.NewLabel("user 1"),
-			widget.NewLabel("user 2"),
-			widget.NewLabel("user 3"),
-			widget.NewLabel("user 4"),
-		)),
+		container.NewVScroll(userListBox),
 	)
 
 	topOptionsVBox := container.NewVBox(
@@ -446,6 +474,12 @@ func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 // Exported functions for the chat engine
 //
 
+func (fyneUI *Fyne) LoadUsers(users []*user) { // TODO: this needs to take a type defined in the chat engine
+	for _, user := range users {
+		fyneUI.users[user.id] = user
+	}
+}
+
 func (fyneUI *Fyne) NetworkLoaded() {
 	fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
 }
@@ -455,7 +489,7 @@ func (fyneUI *Fyne) NetworkLoaded() {
 //	fyneUI.mainWindow.SetContent(fyneUI.networkLoading)
 //}
 
-func (fyneUI *Fyne) AddThread(id, name string) {
+func (fyneUI *Fyne) AddThread(id, name string, userIDs []string) {
 	if _, exists := fyneUI.threads[id]; exists {
 		log.WithFields(log.Fields{
 			"id":   id,
@@ -467,10 +501,23 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 	thread := &thread{
 		id:                   id,
 		name:                 binding.NewString(),
+		users:                make(map[string]*user),
 		scroll:               container.NewVScroll(container.NewVBox()),
 		notificationsEnabled: binding.NewBool(),
 		lastMessage:          time.Now().Unix(),
 	}
+	for _, userID := range userIDs {
+		user, exists := fyneUI.users[userID]
+		if !exists {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+			}).Error("attempted to create thread with user unknown to UI")
+			return
+		} else {
+			thread.users[userID] = user
+		}
+	}
+
 	err := thread.name.Set(name)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -526,7 +573,7 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 	fyneUI.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TODO: this should probably take the protobuf definition
+func (fyneUI *Fyne) ReceivedMessage(threadID, userID, message string) { // TODO: this should probably take the protobuf definition
 	// Log an error and early return if the thread doesn't exist
 	thread, exists := fyneUI.threads[threadID]
 	if !exists {
@@ -539,7 +586,14 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TOD
 	chatHistory := thread.scroll.Content.(*fyne.Container)
 
 	// Create the new message box
-	usernameText := widget.NewLabel(username)
+	user, exists := thread.users[userID]
+	if !exists {
+		log.WithFields(log.Fields{
+			"user_id": userID,
+		}).Error("thread received a message from user ID not in thread")
+		return
+	}
+	usernameText := widget.NewLabel(user.name)
 	usernameText.TextStyle = fyne.TextStyle{Bold: true}
 	usernameText.Wrapping = fyne.TextWrapWord
 	messageText := widget.NewLabel(message)
@@ -591,7 +645,7 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TOD
 				"error": err.Error(),
 			}).Fatal("data bindings are broken")
 		}
-		fyneUI.app.SendNotification(fyne.NewNotification(threadName, "New message from "+username))
+		fyneUI.app.SendNotification(fyne.NewNotification(threadName, "New message from "+user.name))
 	}
 }
 
