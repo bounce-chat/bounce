@@ -64,7 +64,7 @@ func (threads sortableThreads) Less(i, j int) bool {
 
 // Implement Fyne's fyne.Resource, loading from embedded files
 type embededResource struct {
-	name  string
+	path  string
 	bytes []byte
 }
 
@@ -76,13 +76,13 @@ func NewEmbeddedResource(path string) *embededResource {
 		}).Fatal("unable to locate embedded resource")
 	}
 	return &embededResource{
-		name:  path,
+		path:  path,
 		bytes: bytes,
 	}
 }
 
 func (resource *embededResource) Name() string {
-	return resource.name
+	return resource.path
 }
 
 func (resource *embededResource) Content() []byte {
@@ -269,7 +269,7 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 	})
 }
 
-func (fyneUI *Fyne) textEntry(thread *thread) *fyne.Container {
+func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
 	entry := widget.NewMultiLineEntry()
 	entry.Wrapping = fyne.TextWrapWord
 	entry.OnSubmitted = func(message string) {
@@ -404,7 +404,7 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 		threadButtons,
 	)
 
-	thread.entryBar = fyneUI.textEntry(thread)
+	thread.entryBar = fyneUI.buildThreadEntry(thread)
 	thread.button = widget.NewButton(name, func() {
 		fyneUI.displayThread(thread)
 	})
