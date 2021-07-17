@@ -459,9 +459,19 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 	editButton := widget.NewButton("Edit", func() {
 		thread.editWindow.Show()
 	})
-	threadLabel := widget.NewLabel(name)
-	threadLabel.Bind(thread.name)
-	threadLabel.TextStyle = fyne.TextStyle{Bold: true}
+	threadIcon := NewEmbeddedResource("assets/not_found.png")
+	threadIconCanvas := canvas.NewImageFromResource(NewEmbeddedResource("assets/not_found.png"))
+	threadIconCanvas.FillMode = canvas.ImageFillContain
+	threadIconCanvas.SetMinSize(fyne.NewSize(32, 32))
+
+	threadLabelText := widget.NewLabel(name)
+	threadLabel := container.NewHBox(
+		threadIconCanvas,
+		threadLabelText,
+	)
+
+	threadLabelText.Bind(thread.name)
+	threadLabelText.TextStyle = fyne.TextStyle{Bold: true}
 	threadButtons := container.NewMax(editButton)
 	thread.header = container.New(
 		layout.NewBorderLayout(nil, nil, threadLabel, threadButtons),
@@ -470,7 +480,8 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 	)
 
 	thread.entryBar = fyneUI.buildThreadEntry(thread)
-	thread.button = widget.NewButton(name, func() {
+
+	thread.button = widget.NewButtonWithIcon(name, threadIcon, func() {
 		fyneUI.displayThread(thread)
 	})
 	thread.button.Importance = widget.LowImportance
