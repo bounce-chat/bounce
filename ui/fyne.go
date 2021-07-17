@@ -268,7 +268,9 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 	threadNameEntry := widget.NewEntry()
 	currentThreadName, err := thread.name.Get()
 	if err != nil {
-		// TODO: fatal
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("data bindings are broken")
 	}
 	threadNameEntry.Text = currentThreadName
 
@@ -280,11 +282,14 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 	notificationsCheck.Checked = thread.notificationsEnabled
 
 	saveButton := widget.NewButton("Save", func() {
-		// TODO: fix this, thread objects don't reflect actual underlying data on struct
-		err := thread.name.Set(threadNameEntry.Text)
+		newThreadName := threadNameEntry.Text
+		err := thread.name.Set(newThreadName)
 		if err != nil {
-			// TODO: fatal
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("data bindings are broken")
 		}
+		thread.button.Text = newThreadName
 		thread.button.Refresh()
 
 		thread.notificationsEnabled = notificationsCheck.Checked
@@ -445,7 +450,9 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 	}
 	err := thread.name.Set(name)
 	if err != nil {
-		// TODO: fatal
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("data bindings are broken")
 	}
 
 	fyneUI.buildEditThreadWindow(thread)
@@ -533,7 +540,9 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TOD
 	if thread.notificationsEnabled && time.Now().Unix() > thread.notificationsMutedUntil && !autoscroll {
 		threadName, err := thread.name.Get()
 		if err != nil {
-			//TODO: fatal
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("data bindings are broken")
 		}
 		fyneUI.app.SendNotification(fyne.NewNotification(threadName, "New message from "+username))
 	}
