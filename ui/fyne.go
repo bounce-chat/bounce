@@ -306,17 +306,41 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 		cancelButton,
 	)
 
+	usersLabel := widget.NewLabel("Users:")
+	addUserButton := widget.NewButton("+", func() {})
+	addUserButton.Importance = widget.LowImportance
+	usersTitle := container.New(
+		layout.NewBorderLayout(nil, nil, usersLabel, addUserButton),
+		usersLabel,
+		addUserButton,
+	)
+
+	userList := container.NewPadded(
+		container.NewVScroll(container.NewVBox(
+			widget.NewLabel("user 1"),
+			widget.NewLabel("user 2"),
+			widget.NewLabel("user 3"),
+			widget.NewLabel("user 4"),
+		)),
+	)
+
+	topOptionsVBox := container.NewVBox(
+		threadIcon,
+		threadNameEntry,
+		notificationsCheck,
+		usersTitle,
+	)
+
 	thread.editWindow.SetContent(
 		container.NewPadded(
 			container.New(
 				layout.NewBorderLayout(nil, actionButtons, nil, nil),
 				container.New(
-					layout.NewCenterLayout(),
-					container.NewVBox(
-						threadIcon,
-						threadNameEntry,
-						notificationsCheck,
-						widget.NewButton("Add Users", func() {}),
+					layout.NewPaddedLayout(),
+					container.New(
+						layout.NewBorderLayout(topOptionsVBox, nil, nil, nil),
+						topOptionsVBox,
+						userList,
 					),
 				),
 				actionButtons,
