@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	log "github.com/sirupsen/logrus"
@@ -34,7 +35,7 @@ type Fyne struct {
 
 type thread struct {
 	id                      string
-	name                    string
+	name                    binding.String
 	isDM                    bool // TODO: prevents things like showing an option to set an image
 	notificationsEnabled    bool
 	notificationsMutedUntil int64
@@ -90,9 +91,9 @@ func (resource *embededResource) Content() []byte {
 }
 
 func (fyneUI *Fyne) simulate() {
-	time.Sleep(3 * time.Second)
+	//time.Sleep(3 * time.Second)
 	fyneUI.NetworkLoaded()
-	time.Sleep(1 * time.Second)
+	//time.Sleep(1 * time.Second)
 	fyneUI.AddThread("1", "Group 1")
 	time.Sleep(2 * time.Second)
 	fyneUI.AddThread("2", "Group 2")
@@ -263,7 +264,60 @@ func (fyneUI *Fyne) buildMainMenu() *fyne.MainMenu {
 
 func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 	thread.editWindow = fyneUI.app.NewWindow("Edit Thread")
-	thread.editWindow.SetContent(container.NewMax(widget.NewLabel("Edit your thread here")))
+
+	threadNameEntry := widget.NewEntry()
+	currentThreadName, err := thread.name.Get()
+	if err != nil {
+		// TODO: fatal
+	}
+	threadNameEntry.Text = currentThreadName
+
+	threadIcon := canvas.NewImageFromResource(NewEmbeddedResource("assets/not_found.png"))
+	threadIcon.FillMode = canvas.ImageFillContain
+	threadIcon.SetMinSize(fyne.NewSize(64, 64))
+
+	notificationsCheck := widget.NewCheck("Enable notifications", func(bool) {})
+	notificationsCheck.Checked = thread.notificationsEnabled
+
+	saveButton := widget.NewButton("Save", func() {
+		// TODO: fix this, thread objects don't reflect actual underlying data on struct
+		err := thread.name.Set(threadNameEntry.Text)
+		if err != nil {
+			// TODO: fatal
+		}
+		thread.button.Refresh()
+
+		thread.notificationsEnabled = notificationsCheck.Checked
+		thread.editWindow.Hide()
+	})
+	saveButton.Importance = widget.HighImportance
+	cancelButton := widget.NewButton("Cancel", func() {
+		// TODO: reset everything to original values
+		thread.editWindow.Hide()
+	})
+	actionButtons := container.New(
+		layout.NewBorderLayout(nil, nil, cancelButton, saveButton),
+		saveButton,
+		cancelButton,
+	)
+
+	thread.editWindow.SetContent(
+		container.NewPadded(
+			container.New(
+				layout.NewBorderLayout(nil, actionButtons, nil, nil),
+				container.New(
+					layout.NewCenterLayout(),
+					container.NewVBox(
+						threadIcon,
+						threadNameEntry,
+						notificationsCheck,
+						widget.NewButton("Add Users", func() {}),
+					),
+				),
+				actionButtons,
+			),
+		),
+	)
 	thread.editWindow.SetCloseIntercept(func() {
 		thread.editWindow.Hide()
 	})
@@ -334,7 +388,6 @@ func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 	// Create the new message box
 	usernameText := widget.NewLabel("You")
 	usernameText.TextStyle = fyne.TextStyle{Bold: true}
-	//usernameText.Alignment = fyne.TextAlignTrailing
 	usernameText.Wrapping = fyne.TextWrapWord
 	messageText := widget.NewLabel(message)
 	messageText.Wrapping = fyne.TextWrapWord
@@ -385,19 +438,24 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 
 	thread := &thread{
 		id:                   id,
-		name:                 name,
+		name:                 binding.NewString(),
 		scroll:               container.NewVScroll(container.NewVBox()),
 		notificationsEnabled: false,
 		lastMessage:          time.Now().Unix(),
 	}
+	err := thread.name.Set(name)
+	if err != nil {
+		// TODO: fatal
+	}
 
 	fyneUI.buildEditThreadWindow(thread)
-	addUser := widget.NewButton("Edit", func() {
+	editButton := widget.NewButton("Edit", func() {
 		thread.editWindow.Show()
 	})
 	threadLabel := widget.NewLabel(name)
+	threadLabel.Bind(thread.name)
 	threadLabel.TextStyle = fyne.TextStyle{Bold: true}
-	threadButtons := container.NewMax(addUser)
+	threadButtons := container.NewMax(editButton)
 	thread.header = container.New(
 		layout.NewBorderLayout(nil, nil, threadLabel, threadButtons),
 		threadLabel,
@@ -473,6 +531,16 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, username, message string) { // TOD
 	fyneUI.refreshThreadOrder()
 
 	if thread.notificationsEnabled && time.Now().Unix() > thread.notificationsMutedUntil && !autoscroll {
-		fyneUI.app.SendNotification(fyne.NewNotification(thread.name, "New message from "+username))
+		threadName, err := thread.name.Get()
+		if err != nil {
+			//TODO: fatal
+		}
+		fyneUI.app.SendNotification(fyne.NewNotification(threadName, "New message from "+username))
 	}
 }
+
+// TODO: figure out callbacks for things like
+//fyneUI.SetOnThreadRename(func(string, string))
+// The UI interface must let the chat app pass a function to handle database updates and stuff
+// when things stored in the DB are changed
+// However, what is a chat engine setting and what is a UI setting?  Notifications UI, thread name chat?
