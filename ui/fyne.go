@@ -69,7 +69,7 @@ type embededResource struct {
 	bytes []byte
 }
 
-func NewEmbeddedResource(path string) *embededResource {
+func newEmbeddedResource(path string) *embededResource {
 	bytes, err := assets.ReadFile(path)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -130,7 +130,7 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	fyneUI.threads = make(map[string]*thread)
 
 	fyneUI.app = app.New()
-	fyneUI.app.SetIcon(NewEmbeddedResource("assets/icon.png"))
+	fyneUI.app.SetIcon(newEmbeddedResource("assets/icon.png"))
 	fyneUI.buildNetworkLoading()
 	fyneUI.buildProfileWindow()
 	fyneUI.buildAddContactWindow()
@@ -170,7 +170,7 @@ func (fyneUI *Fyne) buildMainWindow() {
 	// Logo and welcome message / instructions to be shown before a thread is selected
 	//
 
-	logo := canvas.NewImageFromResource(NewEmbeddedResource("assets/logo.png"))
+	logo := canvas.NewImageFromResource(newEmbeddedResource("assets/logo.png"))
 	logo.FillMode = canvas.ImageFillContain
 	// TODO: choose reasonable values here
 	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
@@ -202,7 +202,7 @@ func (fyneUI *Fyne) buildMainWindow() {
 }
 
 func (fyneUI *Fyne) buildNetworkLoading() {
-	logo := canvas.NewImageFromResource(NewEmbeddedResource("assets/logo_with_network.png"))
+	logo := canvas.NewImageFromResource(newEmbeddedResource("assets/logo_with_network.png"))
 	logo.FillMode = canvas.ImageFillContain
 	// TODO: choose reasonable values here
 	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
@@ -274,7 +274,7 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 	}
 	threadNameEntry.Text = currentThreadName
 
-	threadIcon := canvas.NewImageFromResource(NewEmbeddedResource("assets/not_found.png"))
+	threadIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
 	threadIcon.FillMode = canvas.ImageFillContain
 	threadIcon.SetMinSize(fyne.NewSize(64, 64))
 
@@ -488,8 +488,8 @@ func (fyneUI *Fyne) AddThread(id, name string) {
 	editButton := widget.NewButton("Edit", func() {
 		thread.editWindow.Show()
 	})
-	threadIcon := NewEmbeddedResource("assets/not_found.png")
-	threadIconCanvas := canvas.NewImageFromResource(NewEmbeddedResource("assets/not_found.png"))
+	threadIcon := newEmbeddedResource("assets/not_found.png")
+	threadIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
 	threadIconCanvas.FillMode = canvas.ImageFillContain
 	threadIconCanvas.SetMinSize(fyne.NewSize(32, 32))
 
