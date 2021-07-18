@@ -35,24 +35,25 @@ type Fyne struct {
 }
 
 type thread struct {
-	id                      string
-	name                    binding.String
-	users                   map[string]*user
-	pendingUsers            map[string]*user
-	isDM                    bool         // TODO: prevents things like showing an option to set an image
-	notificationsEnabled    binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
-	notificationsMutedUntil int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
-	editWindow              fyne.Window
-	addUsersWindow          fyne.Window
-	view                    *fyne.Container
-	header                  *fyne.Container
-	button                  *widget.Button
-	scroll                  *container.Scroll
-	availableNewUsersScroll *container.Scroll
-	currentUsersContainer   *fyne.Container
-	entry                   *widget.Entry
-	entryBar                *fyne.Container
-	lastMessage             int64
+	id                           string
+	name                         binding.String
+	users                        map[string]*user
+	pendingUsers                 map[string]*user
+	isDM                         bool         // TODO: prevents things like showing an option to set an image
+	notificationsEnabled         binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
+	notificationsMutedUntil      int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
+	editWindow                   fyne.Window
+	addUsersWindow               fyne.Window
+	view                         *fyne.Container
+	header                       *fyne.Container
+	button                       *widget.Button
+	scroll                       *container.Scroll
+	availableNewUsersScroll      *container.Scroll
+	currentUsersContainer        *fyne.Container
+	currentUsersDMLinksContainer *fyne.Container
+	entry                        *widget.Entry
+	entryBar                     *fyne.Container
+	lastMessage                  int64
 }
 
 type user struct {
@@ -292,9 +293,37 @@ func (fyneUI *Fyne) buildMainMenu() *fyne.MainMenu {
 }
 
 func (fyneUI *Fyne) refreshUserSelections(thread *thread) {
+	fyneUI.refreshCurrentUsersWithDMLinks(thread)
 	fyneUI.refreshCurrentAndPendingUsers(thread)
 	fyneUI.refreshAvailableNewUsers(thread)
+}
 
+func (fyneUI *Fyne) refreshCurrentUsersWithDMLinks(thread *thread) {
+	currentUsersList := container.NewVBox()
+
+	for _, thisUser := range thread.users {
+		userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
+		userIconCanvas.FillMode = canvas.ImageFillContain
+		userIconCanvas.SetMinSize(fyne.NewSize(24, 24)) // TODO: figure out how to get the ideal consistent size
+
+		dmButton := widget.NewButton(thisUser.name, func() {
+			// TODO: hide this window and open a DM
+			// check fyneUI for existing DMs, create thread if needed and focus it
+		}) // TODO: when arbitrary canvas objects can be clicked, we want the icon to be clickable too
+		dmButton.Alignment = widget.ButtonAlignLeading
+		dmButton.Importance = widget.LowImportance
+
+		currentUsersList.Objects = append(
+			currentUsersList.Objects,
+			container.NewHBox(
+				userIconCanvas,
+				dmButton,
+			),
+		)
+	}
+
+	thread.currentUsersDMLinksContainer.Objects = []fyne.CanvasObject{currentUsersList}
+	thread.currentUsersDMLinksContainer.Refresh()
 }
 
 func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *thread) {
@@ -316,11 +345,12 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *thread) {
 
 	for _, thisUser := range thread.pendingUsers {
 		func(u *user) {
-			removePendingUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() {
+			removePendingUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
 				delete(thread.pendingUsers, u.id)
 				fyneUI.refreshUserSelections(thread)
 			})
 			removePendingUserButton.Alignment = widget.ButtonAlignLeading
+			removePendingUserButton.Importance = widget.LowImportance
 			currentUsersList.Objects = append(
 				currentUsersList.Objects,
 				container.New(
@@ -355,6 +385,7 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(thread *thread) {
 				fyneUI.refreshUserSelections(thread)
 			})
 			addUserButton.Alignment = widget.ButtonAlignLeading
+			addUserButton.Importance = widget.LowImportance
 			allUsersListBox.Objects = append(
 				allUsersListBox.Objects,
 				addUserButton,
@@ -486,17 +517,19 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 		addUserButton,
 	)
 
-	userListBox := container.NewVBox()
-	for _, user := range thread.users {
-		userListBox.Objects = append(
-			userListBox.Objects,
-			widget.NewLabel(user.name), // TODO when this is a link the iteration thing will break it
-		)
-	}
+	/*
+		userListBox := container.NewVBox()
+		for _, user := range thread.users {
+			userListBox.Objects = append(
+				userListBox.Objects,
+				widget.NewLabel(user.name), // TODO when this is a link the iteration thing will break it
+			)
+		}
 
-	userList := container.NewPadded(
-		container.NewVScroll(userListBox),
-	)
+		userList := container.NewPadded(
+			container.NewVScroll(userListBox),
+		)
+	*/
 
 	topOptionsVBox := container.NewVBox(
 		threadIcon,
@@ -514,8 +547,8 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 					container.New(
 						layout.NewBorderLayout(topOptionsVBox, nil, nil, nil),
 						topOptionsVBox,
-						userList,
-						//container.NewVScroll(thread.currentUsersContainer), // TODO: no, use a new view just for this
+						//userList,
+						container.NewVScroll(thread.currentUsersDMLinksContainer), // TODO: no, use a new view just for this
 					),
 				),
 				actionButtons,
@@ -648,15 +681,16 @@ func (fyneUI *Fyne) AddThread(id, name string, userIDs []string) {
 	}
 
 	thread := &thread{
-		id:                      id,
-		name:                    binding.NewString(),
-		users:                   make(map[string]*user),
-		pendingUsers:            make(map[string]*user),
-		scroll:                  container.NewVScroll(container.NewVBox()),
-		availableNewUsersScroll: container.NewVScroll(container.NewVBox()),
-		currentUsersContainer:   container.NewMax(),
-		notificationsEnabled:    binding.NewBool(),
-		lastMessage:             time.Now().Unix(),
+		id:                           id,
+		name:                         binding.NewString(),
+		users:                        make(map[string]*user),
+		pendingUsers:                 make(map[string]*user),
+		scroll:                       container.NewVScroll(container.NewVBox()),
+		availableNewUsersScroll:      container.NewVScroll(container.NewVBox()),
+		currentUsersContainer:        container.NewMax(),
+		currentUsersDMLinksContainer: container.NewMax(),
+		notificationsEnabled:         binding.NewBool(),
+		lastMessage:                  time.Now().Unix(),
 	}
 	for _, userID := range userIDs {
 		user, exists := fyneUI.users[userID]
@@ -686,6 +720,7 @@ func (fyneUI *Fyne) AddThread(id, name string, userIDs []string) {
 	fyneUI.buildEditThreadWindow(thread)
 	fyneUI.buildAddUsersThreadWindow(thread)
 	editButton := widget.NewButton("Edit", func() {
+		fyneUI.refreshUserSelections(thread)
 		thread.editWindow.Show()
 	})
 	threadIcon := newEmbeddedResource("assets/not_found.png")
