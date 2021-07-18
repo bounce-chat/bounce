@@ -340,24 +340,26 @@ func (fyneUI *Fyne) refreshCurrentUsersWithDMLinks(thread *thread) {
 	currentUsersList := container.NewVBox()
 
 	for _, thisUser := range thread.users.alphabetized() {
-		userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-		userIconCanvas.FillMode = canvas.ImageFillContain
-		userIconCanvas.SetMinSize(fyne.NewSize(24, 24)) // TODO: figure out how to get the ideal consistent size
+		func(u *user) {
+			userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
+			userIconCanvas.FillMode = canvas.ImageFillContain
+			userIconCanvas.SetMinSize(fyne.NewSize(24, 24)) // TODO: figure out how to get the ideal consistent size
 
-		dmButton := widget.NewButton(thisUser.name, func() {
-			// TODO: hide this window and open a DM
-			// check fyneUI for existing DMs, create thread if needed and focus it
-		}) // TODO: when arbitrary canvas objects can be clicked, we want the icon to be clickable too
-		dmButton.Alignment = widget.ButtonAlignLeading
-		dmButton.Importance = widget.LowImportance
+			dmButton := widget.NewButton(u.name, func() {
+				// TODO: hide this window and open a DM
+				// check fyneUI for existing DMs, create thread if needed and focus it
+			}) // TODO: when arbitrary canvas objects can be clicked, we want the icon to be clickable too
+			dmButton.Alignment = widget.ButtonAlignLeading
+			dmButton.Importance = widget.LowImportance
 
-		currentUsersList.Objects = append(
-			currentUsersList.Objects,
-			container.NewHBox(
-				userIconCanvas,
-				dmButton,
-			),
-		)
+			currentUsersList.Objects = append(
+				currentUsersList.Objects,
+				container.NewHBox(
+					userIconCanvas,
+					dmButton,
+				),
+			)
+		}(thisUser)
 	}
 
 	thread.currentUsersDMLinksContainer.Objects = []fyne.CanvasObject{currentUsersList}
@@ -368,17 +370,19 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *thread) {
 	currentUsersList := container.NewVBox()
 
 	for _, thisUser := range thread.users.alphabetized() {
-		userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-		userIconCanvas.FillMode = canvas.ImageFillContain
-		userIconCanvas.SetMinSize(fyne.NewSize(24, 24)) // TODO: figure out how to get the ideal consistent size
+		func(u *user) {
+			userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
+			userIconCanvas.FillMode = canvas.ImageFillContain
+			userIconCanvas.SetMinSize(fyne.NewSize(24, 24)) // TODO: figure out how to get the ideal consistent size
 
-		currentUsersList.Objects = append(
-			currentUsersList.Objects,
-			container.NewHBox(
-				userIconCanvas,
-				widget.NewLabel(thisUser.name),
-			),
-		)
+			currentUsersList.Objects = append(
+				currentUsersList.Objects,
+				container.NewHBox(
+					userIconCanvas,
+					widget.NewLabel(u.name),
+				),
+			)
+		}(thisUser)
 	}
 
 	for _, thisUser := range thread.pendingUsers.alphabetized() {
@@ -555,20 +559,6 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 		addUserButton,
 	)
 
-	/*
-		userListBox := container.NewVBox()
-		for _, user := range thread.users {
-			userListBox.Objects = append(
-				userListBox.Objects,
-				widget.NewLabel(user.name), // TODO when this is a link the iteration thing will break it
-			)
-		}
-
-		userList := container.NewPadded(
-			container.NewVScroll(userListBox),
-		)
-	*/
-
 	topOptionsVBox := container.NewVBox(
 		threadIcon,
 		threadNameEntry,
@@ -585,8 +575,7 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 					container.New(
 						layout.NewBorderLayout(topOptionsVBox, nil, nil, nil),
 						topOptionsVBox,
-						//userList,
-						container.NewVScroll(thread.currentUsersDMLinksContainer), // TODO: no, use a new view just for this
+						container.NewVScroll(thread.currentUsersDMLinksContainer),
 					),
 				),
 				actionButtons,
