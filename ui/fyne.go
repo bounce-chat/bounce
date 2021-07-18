@@ -30,15 +30,15 @@ type Fyne struct {
 	threadVBox        *fyne.Container
 	chatContainer     *fyne.Container
 	threads           map[string]*thread
-	users             map[string]*user
+	users             *userStore
 	activeThread      string
 }
 
 type thread struct {
 	id                           string
 	name                         binding.String
-	users                        map[string]*user
-	pendingUsers                 map[string]*user
+	users                        *userStore
+	pendingUsers                 *userStore
 	isDM                         bool         // TODO: prevents things like showing an option to set an image
 	notificationsEnabled         binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
 	notificationsMutedUntil      int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
@@ -104,7 +104,7 @@ func (resource *embededResource) Content() []byte {
 
 func (fyneUI *Fyne) simulate() {
 	//time.Sleep(3 * time.Second)
-	fyneUI.NetworkLoaded()
+	fyneUI.NetworkLoaded() // TODO: try after there's already stuff going on in the UI
 	//time.Sleep(1 * time.Second)
 	user1 := &user{
 		id:   "1",
@@ -123,25 +123,25 @@ func (fyneUI *Fyne) simulate() {
 		name: "User 4",
 	}
 	fyneUI.LoadUsers([]*user{user1, user2, user3, user4})
-	fyneUI.AddThread("1", "Group with 1 and 2", []string{"1", "2"})
+	fyneUI.AddThread("001", "Group with 1 and 2", []string{"1", "2"})
 	//time.Sleep(2 * time.Second)
-	fyneUI.AddThread("2", "Group with 2 and 3", []string{"2", "3"})
+	fyneUI.AddThread("002", "Group with 2 and 3", []string{"2", "3"})
 	//time.Sleep(3 * time.Second)
-	fyneUI.AddThread("3", "DM and 4", []string{"4"})
+	fyneUI.AddThread("4", "DM and 4", []string{"4"})
 	go func() {
 		for i := 0; i < 25; i++ {
-			fyneUI.ReceivedMessage("1", "1", "hello this is from user 1")
+			fyneUI.ReceivedMessage("001", "1", "hello this is from user 1")
 			time.Sleep(1 * time.Second)
 		}
 	}()
 	go func() {
 		for i := 0; i < 10; i++ {
-			fyneUI.ReceivedMessage("2", "2", "hello this is from user 2")
+			fyneUI.ReceivedMessage("002", "2", "hello this is from user 2")
 			time.Sleep(5 * time.Second)
 		}
 	}()
 
-	fyneUI.ReceivedMessage("3", "4", "hello this is from user 4")
+	fyneUI.ReceivedMessage("4", "4", "hello this is from user 4")
 
 	/*
 		time.Sleep(5 * time.Second)
@@ -157,7 +157,7 @@ func (fyneUI *Fyne) simulate() {
 
 func (fyneUI *Fyne) Build(configDirectory string) {
 	fyneUI.threads = make(map[string]*thread)
-	fyneUI.users = make(map[string]*user)
+	fyneUI.users = newUserStore()
 
 	fyneUI.app = app.New()
 	fyneUI.app.SetIcon(newEmbeddedResource("assets/icon.png"))
@@ -301,7 +301,7 @@ func (fyneUI *Fyne) refreshUserSelections(thread *thread) {
 func (fyneUI *Fyne) refreshCurrentUsersWithDMLinks(thread *thread) {
 	currentUsersList := container.NewVBox()
 
-	for _, thisUser := range thread.users {
+	for _, thisUser := range thread.users.alphabetized() {
 		userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
 		userIconCanvas.FillMode = canvas.ImageFillContain
 		userIconCanvas.SetMinSize(fyne.NewSize(24, 24)) // TODO: figure out how to get the ideal consistent size
@@ -329,7 +329,7 @@ func (fyneUI *Fyne) refreshCurrentUsersWithDMLinks(thread *thread) {
 func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *thread) {
 	currentUsersList := container.NewVBox()
 
-	for _, thisUser := range thread.users {
+	for _, thisUser := range thread.users.alphabetized() {
 		userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
 		userIconCanvas.FillMode = canvas.ImageFillContain
 		userIconCanvas.SetMinSize(fyne.NewSize(24, 24)) // TODO: figure out how to get the ideal consistent size
@@ -343,10 +343,10 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *thread) {
 		)
 	}
 
-	for _, thisUser := range thread.pendingUsers {
+	for _, thisUser := range thread.pendingUsers.alphabetized() {
 		func(u *user) {
 			removePendingUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
-				delete(thread.pendingUsers, u.id)
+				thread.pendingUsers.remove(u.id)
 				fyneUI.refreshUserSelections(thread)
 			})
 			removePendingUserButton.Alignment = widget.ButtonAlignLeading
@@ -368,20 +368,20 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *thread) {
 
 func (fyneUI *Fyne) refreshAvailableNewUsers(thread *thread) {
 	allUsersListBox := container.NewVBox()
-	for _, thisUser := range fyneUI.users {
+	for _, thisUser := range fyneUI.users.alphabetized() {
 		// Exclude users already in the thread
-		if _, exists := thread.users[thisUser.id]; exists {
+		if _, exists := thread.users.get(thisUser.id); exists {
 			continue
 		}
 		// Exclude users that are pending addition to the group
-		if _, exists := thread.pendingUsers[thisUser.id]; exists {
+		if _, exists := thread.pendingUsers.get(thisUser.id); exists {
 			continue
 		}
 		// This weirdness is so that the iteration over user works with the dynamically created buttons
 		// TODO: make sure I'm not making this mistake anywhere else
 		func(u *user) {
 			addUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
-				thread.pendingUsers[u.id] = u
+				thread.pendingUsers.add(u)
 				fyneUI.refreshUserSelections(thread)
 			})
 			addUserButton.Alignment = widget.ButtonAlignLeading
@@ -427,18 +427,18 @@ func (fyneUI *Fyne) buildAddUsersThreadWindow(thread *thread) {
 	// Buttons to confirm or cancel the new user additions
 	//
 	saveAddUsersButton := widget.NewButton("Save", func() {
-		for userID, user := range thread.pendingUsers {
-			thread.users[userID] = user
+		for _, user := range thread.pendingUsers.alphabetized() {
+			thread.users.add(user)
+			thread.pendingUsers.remove(user.id)
+			// TODO: tell the chat engine to add them
 		}
-		thread.pendingUsers = make(map[string]*user)
-		// TODO: tell the chat engine to add them
 		fyneUI.refreshUserSelections(thread)
 		thread.addUsersWindow.Hide()
 	})
 	saveAddUsersButton.Importance = widget.HighImportance
 	cancelAddUsersButton := widget.NewButton("Cancel", func() {
 		// Reset everything
-		thread.pendingUsers = make(map[string]*user)
+		thread.pendingUsers.empty()
 		fyneUI.refreshUserSelections(thread)
 		thread.addUsersWindow.Hide()
 	})
@@ -658,7 +658,7 @@ func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 
 func (fyneUI *Fyne) LoadUsers(users []*user) { // TODO: this needs to take a type defined in the chat engine
 	for _, user := range users {
-		fyneUI.users[user.id] = user
+		fyneUI.users.add(user)
 	}
 }
 
@@ -683,8 +683,8 @@ func (fyneUI *Fyne) AddThread(id, name string, userIDs []string) {
 	thread := &thread{
 		id:                           id,
 		name:                         binding.NewString(),
-		users:                        make(map[string]*user),
-		pendingUsers:                 make(map[string]*user),
+		users:                        newUserStore(),
+		pendingUsers:                 newUserStore(),
 		scroll:                       container.NewVScroll(container.NewVBox()),
 		availableNewUsersScroll:      container.NewVScroll(container.NewVBox()),
 		currentUsersContainer:        container.NewMax(),
@@ -693,14 +693,14 @@ func (fyneUI *Fyne) AddThread(id, name string, userIDs []string) {
 		lastMessage:                  time.Now().Unix(),
 	}
 	for _, userID := range userIDs {
-		user, exists := fyneUI.users[userID]
+		user, exists := fyneUI.users.get(userID)
 		if !exists {
 			log.WithFields(log.Fields{
 				"user_id": userID,
 			}).Error("attempted to create thread with user unknown to UI")
 			return
 		} else {
-			thread.users[userID] = user
+			thread.users.add(user)
 		}
 	}
 
@@ -774,7 +774,7 @@ func (fyneUI *Fyne) ReceivedMessage(threadID, userID, message string) { // TODO:
 	chatHistory := thread.scroll.Content.(*fyne.Container)
 
 	// Create the new message box
-	user, exists := thread.users[userID]
+	user, exists := thread.users.get(userID)
 	if !exists {
 		log.WithFields(log.Fields{
 			"user_id": userID,
