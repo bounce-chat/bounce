@@ -6,6 +6,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/hkparker/bounce/chat"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
@@ -125,55 +127,6 @@ func (resource *embededResource) Content() []byte {
 	return resource.bytes
 }
 
-func (fyneUI *Fyne) simulate() {
-	//time.Sleep(3 * time.Second)
-	fyneUI.NetworkLoaded() // TODO: try after there's already stuff going on in the UI
-	//time.Sleep(1 * time.Second)
-	user1 := &user{
-		id:   "1",
-		name: "Alice",
-	}
-	user2 := &user{
-		id:   "2",
-		name: "Bob",
-	}
-	user3 := &user{
-		id:   "3",
-		name: "Charlie",
-	}
-	user4 := &user{
-		id:   "4",
-		name: "David",
-	}
-	fyneUI.LoadUsers([]*user{user1, user2, user3, user4})
-	fyneUI.AddThread("001", "Group with Alice and Bob", []string{"1", "2"})
-	//time.Sleep(2 * time.Second)
-	fyneUI.AddThread("002", "Group with Bob and Charlie", []string{"2", "3"})
-	//time.Sleep(3 * time.Second)
-	fyneUI.AddThread("4", "DM with David", []string{"4"})
-	go func() {
-		for i := 0; i < 25; i++ {
-			fyneUI.ReceivedMessage("001", "1", "hello this is from user 1")
-			time.Sleep(1 * time.Second)
-		}
-	}()
-	go func() {
-		for i := 0; i < 10; i++ {
-			fyneUI.ReceivedMessage("002", "2", "hello this is from user 2")
-			time.Sleep(5 * time.Second)
-		}
-	}()
-
-	fyneUI.ReceivedMessage("4", "4", "hello this is from user 4")
-
-	/*
-		time.Sleep(5 * time.Second)
-		fyneUI.NetworkDisconnected()
-		time.Sleep(5 * time.Second)
-		fyneUI.NetworkLoaded()
-	*/
-}
-
 //
 // Lifecycle
 //
@@ -193,7 +146,6 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 }
 
 func (fyneUI *Fyne) Run() {
-	go fyneUI.simulate()
 	fyneUI.app.Run()
 }
 
@@ -683,9 +635,9 @@ func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 // Exported functions for the chat engine
 //
 
-func (fyneUI *Fyne) LoadUsers(users []*user) { // TODO: this needs to take a type defined in the chat engine
-	for _, user := range users {
-		fyneUI.users.add(user)
+func (fyneUI *Fyne) LoadUsers(users []chat.User) { // TODO: this needs to take a type defined in the chat engine
+	for _, u := range users {
+		fyneUI.users.add(&user{id: u.ID, name: u.Name})
 	}
 }
 
@@ -698,7 +650,11 @@ func (fyneUI *Fyne) NetworkLoaded() {
 //	fyneUI.mainWindow.SetContent(fyneUI.networkLoading)
 //}
 
-func (fyneUI *Fyne) AddThread(id, name string, userIDs []string) {
+func (fyneUI *Fyne) LoadThread(bounceThread chat.Thread) { //id, name string, userIDs []string) {
+	id := bounceThread.ID
+	name := bounceThread.Name
+	userIDs := bounceThread.UserIDs
+
 	if _, exists := fyneUI.threads[id]; exists {
 		log.WithFields(log.Fields{
 			"id":   id,
@@ -788,7 +744,11 @@ func (fyneUI *Fyne) AddThread(id, name string, userIDs []string) {
 	fyneUI.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) ReceivedMessage(threadID, userID, message string) { // TODO: this should probably take the protobuf definition
+func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.Message) { //threadID, userID, message string) { // TODO: this should probably take the protobuf definition
+	threadID := bounceMessage.ThreadID
+	userID := bounceMessage.UserID
+	message := bounceMessage.Text
+
 	// Log an error and early return if the thread doesn't exist
 	thread, exists := fyneUI.threads[threadID]
 	if !exists {

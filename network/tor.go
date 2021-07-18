@@ -160,11 +160,11 @@ func (bounceTor *TorNetwork) ServeGRPC(grpcServer *grpc.Server) error {
 	return nil
 }
 
-func (bounceTor *TorNetwork) Dial(address BounceAddress) (*net.Conn, error) {
+func (bounceTor *TorNetwork) Dial(address string) (*net.Conn, error) {
 	return nil, nil
 }
 
-func (bounceTor *TorNetwork) VerifySignature(address BounceAddress, data []byte) error {
+func (bounceTor *TorNetwork) VerifySignature(address string, data []byte) error {
 	return nil
 }
 

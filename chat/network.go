@@ -1,4 +1,4 @@
-package network
+package chat
 
 import (
 	"net"
@@ -17,7 +17,7 @@ import (
 // public key retrival and verification in that design, and may do
 // so in the future as needed.
 //
-type BounceAddress string
+//type BounceAddress string
 
 //
 // Any overlay network that can satisfy this interface can host Bounce
@@ -26,8 +26,8 @@ type BounceNetwork interface {
 	LoadConfig(string)
 	Start() error
 	ServeGRPC(*grpc.Server) error
-	Dial(BounceAddress) (*net.Conn, error)
-	VerifySignature(BounceAddress, []byte) error // TODO: better to have a "get public key" function and do this in the database?  Can support more networks but each has different key format
+	Dial(address string) (*net.Conn, error)
+	VerifySignature(string, []byte) error // TODO: better to have a "get public key" function and do this in the database?  Can support more networks but each has different key format
 	//Sign
 	//IsValidAddress
 	Shutdown()
