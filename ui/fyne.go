@@ -59,7 +59,30 @@ type thread struct {
 type user struct {
 	id   string
 	name string
+	//profilePicture []byte
+	//cavas *canvas.Image
 }
+
+/*
+func (u *user) updateProfilePicture(data []byte) {
+	u.profilePicture = data
+	// refresh the user's canvas.Image
+	profilePictureCanvas := canvas.NewImageFromResource(&imageResource{name: u.name, data: u.profilePicture})
+	profilePictureCanvas.FillMode = canvas.ImageFillContain
+	//profilePictureCanvas.SetMinSize(fyne.NewSize(24, 24)) // TODO: maybe never set this here?
+}
+
+func (u *user) getProfilePictureImage() canvas.Image {
+	//TODO: if there's no profile picture, make a circle
+
+	return profilePictureCanvas
+}
+
+type imageResource struct {
+	name string
+	data []byte
+}
+*/
 
 // For sorting by last message received
 type sortableThreads []*thread
@@ -108,26 +131,26 @@ func (fyneUI *Fyne) simulate() {
 	//time.Sleep(1 * time.Second)
 	user1 := &user{
 		id:   "1",
-		name: "User 1",
+		name: "Alice",
 	}
 	user2 := &user{
 		id:   "2",
-		name: "User 2",
+		name: "Bob",
 	}
 	user3 := &user{
 		id:   "3",
-		name: "User 3",
+		name: "Charlie",
 	}
 	user4 := &user{
 		id:   "4",
-		name: "User 4",
+		name: "David",
 	}
 	fyneUI.LoadUsers([]*user{user1, user2, user3, user4})
-	fyneUI.AddThread("001", "Group with 1 and 2", []string{"1", "2"})
+	fyneUI.AddThread("001", "Group with Alice and Bob", []string{"1", "2"})
 	//time.Sleep(2 * time.Second)
-	fyneUI.AddThread("002", "Group with 2 and 3", []string{"2", "3"})
+	fyneUI.AddThread("002", "Group with Bob and Charlie", []string{"2", "3"})
 	//time.Sleep(3 * time.Second)
-	fyneUI.AddThread("4", "DM and 4", []string{"4"})
+	fyneUI.AddThread("4", "DM with David", []string{"4"})
 	go func() {
 		for i := 0; i < 25; i++ {
 			fyneUI.ReceivedMessage("001", "1", "hello this is from user 1")
@@ -282,11 +305,26 @@ func (fyneUI *Fyne) buildMainMenu() *fyne.MainMenu {
 			fyne.NewMenuItem("My Profile", func() {
 				fyneUI.profileWindow.Show()
 			}),
-			fyne.NewMenuItem("Add Contact", func() {
-				fyneUI.addContactWindow.Show()
+			fyne.NewMenuItem("Settings", func() {
+				//fyneUI.addContactWindow.Show()
 			}),
-			fyne.NewMenuItem("Create Group", func() {
+			fyne.NewMenuItem("About", func() {
+				//fyneUI.createGroupWindow.Show()
+			}),
+		),
+		fyne.NewMenu(
+			"Chat",
+			fyne.NewMenuItem("New Group", func() {
 				fyneUI.createGroupWindow.Show()
+			}),
+			fyne.NewMenuItem("New DM", func() {
+				//fyneUI.createGroupWindow.Show()
+			}),
+			fyne.NewMenuItem("Introduce", func() {
+				//fyneUI.addContactWindow.Show()
+			}),
+			fyne.NewMenuItem("Import Contact", func() {
+				fyneUI.addContactWindow.Show()
 			}),
 		),
 	)
