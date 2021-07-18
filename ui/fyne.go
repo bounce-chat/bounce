@@ -38,14 +38,18 @@ type thread struct {
 	id                      string
 	name                    binding.String
 	users                   map[string]*user
+	pendingUsers            map[string]*user
 	isDM                    bool         // TODO: prevents things like showing an option to set an image
 	notificationsEnabled    binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
 	notificationsMutedUntil int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
 	editWindow              fyne.Window
+	addUsersWindow          fyne.Window
 	view                    *fyne.Container
 	header                  *fyne.Container
 	button                  *widget.Button
 	scroll                  *container.Scroll
+	availableNewUsersScroll *container.Scroll
+	currentUsersContainer   *fyne.Container
 	entry                   *widget.Entry
 	entryBar                *fyne.Container
 	lastMessage             int64
@@ -287,8 +291,147 @@ func (fyneUI *Fyne) buildMainMenu() *fyne.MainMenu {
 	)
 }
 
+func (fyneUI *Fyne) refreshUserSelections(thread *thread) {
+	fyneUI.refreshCurrentAndPendingUsers(thread)
+	fyneUI.refreshAvailableNewUsers(thread)
+
+}
+
+func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *thread) {
+	currentUsersList := container.NewVBox()
+
+	for _, thisUser := range thread.users {
+		userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
+		userIconCanvas.FillMode = canvas.ImageFillContain
+		userIconCanvas.SetMinSize(fyne.NewSize(24, 24)) // TODO: figure out how to get the ideal consistent size
+
+		currentUsersList.Objects = append(
+			currentUsersList.Objects,
+			container.NewHBox(
+				userIconCanvas,
+				widget.NewLabel(thisUser.name),
+			),
+		)
+	}
+
+	for _, thisUser := range thread.pendingUsers {
+		func(u *user) {
+			removePendingUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() {
+				delete(thread.pendingUsers, u.id)
+				fyneUI.refreshUserSelections(thread)
+			})
+			removePendingUserButton.Alignment = widget.ButtonAlignLeading
+			currentUsersList.Objects = append(
+				currentUsersList.Objects,
+				container.New(
+					layout.NewMaxLayout(),
+					&canvas.Rectangle{FillColor: color.NRGBA{0, 0, 0x40, 0x40}},
+					removePendingUserButton,
+				),
+			)
+		}(thisUser)
+	}
+
+	thread.currentUsersContainer.Objects = []fyne.CanvasObject{currentUsersList}
+	thread.currentUsersContainer.Refresh()
+}
+
+func (fyneUI *Fyne) refreshAvailableNewUsers(thread *thread) {
+	allUsersListBox := container.NewVBox()
+	for _, thisUser := range fyneUI.users {
+		// Exclude users already in the thread
+		if _, exists := thread.users[thisUser.id]; exists {
+			continue
+		}
+		// Exclude users that are pending addition to the group
+		if _, exists := thread.pendingUsers[thisUser.id]; exists {
+			continue
+		}
+		// This weirdness is so that the iteration over user works with the dynamically created buttons
+		// TODO: make sure I'm not making this mistake anywhere else
+		func(u *user) {
+			addUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
+				thread.pendingUsers[u.id] = u
+				fyneUI.refreshUserSelections(thread)
+			})
+			addUserButton.Alignment = widget.ButtonAlignLeading
+			allUsersListBox.Objects = append(
+				allUsersListBox.Objects,
+				addUserButton,
+			)
+		}(thisUser)
+	}
+	thread.availableNewUsersScroll.Content = allUsersListBox
+	thread.availableNewUsersScroll.Refresh()
+}
+
+func (fyneUI *Fyne) buildAddUsersThreadWindow(thread *thread) {
+	thread.addUsersWindow = fyneUI.app.NewWindow("Add Users")
+	thread.addUsersWindow.SetCloseIntercept(func() {
+		thread.addUsersWindow.Hide()
+	})
+
+	//
+	// List all users who are already in this thread
+	//
+	currentUsersLabel := widget.NewLabel("Current Users:")
+	currentUsersListView := container.New(
+		layout.NewBorderLayout(currentUsersLabel, nil, nil, nil),
+		currentUsersLabel,
+		thread.currentUsersContainer, // TODO: eventually this will get so long it breaks the UI.  Need a better looking scroll wrapper.
+	)
+
+	//
+	// List all users who are not in this thread
+	//
+	fyneUI.refreshAvailableNewUsers(thread)
+	addUsersLabel := widget.NewLabel("Add Users:")
+	allUsersList := container.New(
+		layout.NewBorderLayout(addUsersLabel, nil, nil, nil),
+		addUsersLabel,
+		thread.availableNewUsersScroll,
+	)
+
+	//
+	// Buttons to confirm or cancel the new user additions
+	//
+	saveAddUsersButton := widget.NewButton("Save", func() {
+		for userID, user := range thread.pendingUsers {
+			thread.users[userID] = user
+		}
+		thread.pendingUsers = make(map[string]*user)
+		// TODO: tell the chat engine to add them
+		fyneUI.refreshUserSelections(thread)
+		thread.addUsersWindow.Hide()
+	})
+	saveAddUsersButton.Importance = widget.HighImportance
+	cancelAddUsersButton := widget.NewButton("Cancel", func() {
+		// Reset everything
+		thread.pendingUsers = make(map[string]*user)
+		fyneUI.refreshUserSelections(thread)
+		thread.addUsersWindow.Hide()
+	})
+	addUsersActionButtons := container.New(
+		layout.NewBorderLayout(nil, nil, cancelAddUsersButton, saveAddUsersButton),
+		saveAddUsersButton,
+		cancelAddUsersButton,
+	)
+
+	addUsersContent := container.New(
+		layout.NewBorderLayout(currentUsersListView, addUsersActionButtons, nil, nil),
+		currentUsersListView,
+		allUsersList,
+		addUsersActionButtons,
+	)
+	thread.addUsersWindow.SetContent(addUsersContent)
+
+}
+
 func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 	thread.editWindow = fyneUI.app.NewWindow("Edit Thread")
+	thread.editWindow.SetCloseIntercept(func() {
+		thread.editWindow.Hide()
+	})
 
 	threadNameEntry := widget.NewEntry()
 	currentThreadName, err := thread.name.Get()
@@ -321,7 +464,8 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 	})
 	saveButton.Importance = widget.HighImportance
 	cancelButton := widget.NewButton("Cancel", func() {
-		// TODO: reset everything to original values
+		threadNameEntry.Text = currentThreadName
+		threadNameEntry.Refresh()
 		thread.editWindow.Hide()
 	})
 	actionButtons := container.New(
@@ -331,7 +475,10 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 	)
 
 	usersLabel := widget.NewLabel("Users:")
-	addUserButton := widget.NewButton("  +  ", func() {})
+	addUserButton := widget.NewButton("  +  ", func() {
+		fyneUI.refreshUserSelections(thread)
+		thread.addUsersWindow.Show()
+	})
 	addUserButton.Importance = widget.LowImportance
 	usersTitle := container.New(
 		layout.NewBorderLayout(nil, nil, usersLabel, addUserButton),
@@ -343,7 +490,7 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 	for _, user := range thread.users {
 		userListBox.Objects = append(
 			userListBox.Objects,
-			widget.NewLabel(user.name),
+			widget.NewLabel(user.name), // TODO when this is a link the iteration thing will break it
 		)
 	}
 
@@ -368,21 +515,23 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 						layout.NewBorderLayout(topOptionsVBox, nil, nil, nil),
 						topOptionsVBox,
 						userList,
+						//container.NewVScroll(thread.currentUsersContainer), // TODO: no, use a new view just for this
 					),
 				),
 				actionButtons,
 			),
 		),
 	)
-	thread.editWindow.SetCloseIntercept(func() {
-		thread.editWindow.Hide()
-	})
 }
 
 func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
 	entry := widget.NewMultiLineEntry()
+	// TODO: custom submit functionality here
 	entry.Wrapping = fyne.TextWrapWord
 	entry.OnSubmitted = func(message string) {
+		// TODO: hook into the chat engine
+		// immediately delete, put back if it fails to send?
+		//fyneUI.onMessageSent(thread, message)
 		fyneUI.displaySentMessage(thread, message)
 		entry.Text = ""
 		entry.Refresh()
@@ -499,12 +648,15 @@ func (fyneUI *Fyne) AddThread(id, name string, userIDs []string) {
 	}
 
 	thread := &thread{
-		id:                   id,
-		name:                 binding.NewString(),
-		users:                make(map[string]*user),
-		scroll:               container.NewVScroll(container.NewVBox()),
-		notificationsEnabled: binding.NewBool(),
-		lastMessage:          time.Now().Unix(),
+		id:                      id,
+		name:                    binding.NewString(),
+		users:                   make(map[string]*user),
+		pendingUsers:            make(map[string]*user),
+		scroll:                  container.NewVScroll(container.NewVBox()),
+		availableNewUsersScroll: container.NewVScroll(container.NewVBox()),
+		currentUsersContainer:   container.NewMax(),
+		notificationsEnabled:    binding.NewBool(),
+		lastMessage:             time.Now().Unix(),
 	}
 	for _, userID := range userIDs {
 		user, exists := fyneUI.users[userID]
@@ -532,6 +684,7 @@ func (fyneUI *Fyne) AddThread(id, name string, userIDs []string) {
 	}
 
 	fyneUI.buildEditThreadWindow(thread)
+	fyneUI.buildAddUsersThreadWindow(thread)
 	editButton := widget.NewButton("Edit", func() {
 		thread.editWindow.Show()
 	})
