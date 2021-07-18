@@ -96,6 +96,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 	bounce.userInterface.Build(bounce.configDirectory)
 	// TODO: load database state into UI
 	// TODO: hookup UI callbacks
+	bounce.userInterface.SetOnMessageSent(dispatchMessage)
 
 	// Start the network and attach gRPC server in a goroutine
 	//go bounce.runNetwork() // TODO: just disabled for now for UI prototyping

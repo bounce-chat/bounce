@@ -34,6 +34,8 @@ type Fyne struct {
 	threads           map[string]*thread
 	users             *userStore
 	activeThread      string
+	//Callbacks
+	onMessageSent func(chat.Message)
 }
 
 type thread struct {
@@ -541,9 +543,10 @@ func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
 	// TODO: custom submit functionality here
 	entry.Wrapping = fyne.TextWrapWord
 	entry.OnSubmitted = func(message string) {
-		// TODO: hook into the chat engine
-		// immediately delete, put back if it fails to send?
-		//fyneUI.onMessageSent(thread, message)
+		fyneUI.onMessageSent(chat.Message{
+			ThreadID: thread.id,
+			Text:     message,
+		})
 		fyneUI.displaySentMessage(thread, message)
 		entry.Text = ""
 		entry.Refresh()
