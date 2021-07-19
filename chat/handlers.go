@@ -17,3 +17,10 @@ func addUserToGroup(threadID, userID string) {
 		"user":   userID,
 	}).Info("UI wants to add user to group")
 }
+
+func renameGroup(threadID, newName string) {
+	log.WithFields(log.Fields{
+		"thread":   threadID,
+		"new_name": newName,
+	}).Info("UI wants to rename a group")
+}

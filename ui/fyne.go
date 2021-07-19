@@ -36,6 +36,7 @@ type Fyne struct {
 	activeThread      string
 	onMessageSent     chat.OutgoingMessageCallback
 	onAddUserToGroup  chat.AddUserToGroupCallback
+	onGroupRename     chat.RenameGroupCallback
 }
 
 type thread struct {
@@ -274,10 +275,13 @@ func (fyneUI *Fyne) buildMainMenu() *fyne.MainMenu {
 			fyne.NewMenuItem("New DM", func() {
 				//fyneUI.createGroupWindow.Show()
 			}),
+		),
+		fyne.NewMenu(
+			"Contacts",
 			fyne.NewMenuItem("Introduce", func() {
 				//fyneUI.addContactWindow.Show()
 			}),
-			fyne.NewMenuItem("Import Contact", func() {
+			fyne.NewMenuItem("Import", func() {
 				fyneUI.addContactWindow.Show()
 			}),
 		),
@@ -485,6 +489,7 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 		}
 		thread.button.Text = newThreadName
 		thread.button.Refresh()
+		fyneUI.onGroupRename(thread.id, newThreadName)
 
 		// TODO: persist settings in Fyne
 		thread.editWindow.Hide()

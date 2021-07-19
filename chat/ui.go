@@ -12,7 +12,7 @@ type BounceUI interface {
 	// Create user interface objects
 	Build(configPath string)
 	// Define callbacks the interface will use to communicate with the chat ending
-	RegisterCallbacks(onMessageSent OutgoingMessageCallback, onAddUserToGroup AddUserToGroupCallback)
+	RegisterCallbacks(onMessageSent OutgoingMessageCallback, onAddUserToGroup AddUserToGroupCallback, onGroupRename RenameGroupCallback) // TODO: make this take a struct?
 	// Load the initial state
 	LoadUsers([]User)
 	LoadThread(Thread) // TODO: []Thread
@@ -30,6 +30,7 @@ type BounceUI interface {
 
 	// New chat message to display in a thread
 	ReceivedMessage(IncomingMessage)
+	//RenameGroup()
 
 	// Run displays the user interface and blocks.  A network loading message should be displayed first until NetworkOnline() is called.
 	Run()
