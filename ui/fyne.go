@@ -35,7 +35,8 @@ type Fyne struct {
 	users             *userStore
 	activeThread      string
 	//Callbacks
-	onMessageSent func(chat.Message)
+	onMessageSent    chat.OutgoingMessageCallback
+	onAddUserToGroup chat.AddUserToGroupCallback
 }
 
 type thread struct {
@@ -426,7 +427,7 @@ func (fyneUI *Fyne) buildAddUsersThreadWindow(thread *thread) {
 		for _, user := range thread.pendingUsers.alphabetized() {
 			thread.users.add(user)
 			thread.pendingUsers.remove(user.id)
-			// TODO: tell the chat engine to add them
+			fyneUI.onAddUserToGroup(thread.id, user.id)
 		}
 		fyneUI.refreshUserSelections(thread)
 		thread.addUsersWindow.Hide()
@@ -543,9 +544,9 @@ func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
 	// TODO: custom submit functionality here
 	entry.Wrapping = fyne.TextWrapWord
 	entry.OnSubmitted = func(message string) {
-		fyneUI.onMessageSent(chat.Message{
-			ThreadID: thread.id,
-			Text:     message,
+		fyneUI.onMessageSent(chat.OutgoingMessage{
+			Destination: thread.id,
+			Text:        message,
 		})
 		fyneUI.displaySentMessage(thread, message)
 		entry.Text = ""
@@ -644,7 +645,7 @@ func (fyneUI *Fyne) LoadUsers(users []chat.User) { // TODO: this needs to take a
 	}
 }
 
-func (fyneUI *Fyne) NetworkLoaded() {
+func (fyneUI *Fyne) NetworkOnline() {
 	fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
 }
 
@@ -653,7 +654,7 @@ func (fyneUI *Fyne) NetworkLoaded() {
 //	fyneUI.mainWindow.SetContent(fyneUI.networkLoading)
 //}
 
-func (fyneUI *Fyne) LoadThread(bounceThread chat.Thread) { //id, name string, userIDs []string) {
+func (fyneUI *Fyne) LoadThread(bounceThread chat.Thread) {
 	id := bounceThread.ID
 	name := bounceThread.Name
 	userIDs := bounceThread.UserIDs
@@ -747,7 +748,7 @@ func (fyneUI *Fyne) LoadThread(bounceThread chat.Thread) { //id, name string, us
 	fyneUI.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.Message) { //threadID, userID, message string) { // TODO: this should probably take the protobuf definition
+func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.IncomingMessage) {
 	threadID := bounceMessage.ThreadID
 	userID := bounceMessage.UserID
 	message := bounceMessage.Text
