@@ -1,25 +1,31 @@
 package chat
 
 //
-// TODO: A description of these types...
+// Common types passed to the UI or network implementations
 //
 
 //
 // A bounce address is the public key and dialable address of another
 // bounce device on an overlay network.  Not all networks have this
 // property, Bounce was designed with I2P or Tor hidden services v3
-// in  mind.
-//
-// Many networks, like libp2p, use a hash of the public key as the
-// dialable address.  Bounce would need to be expanded to support
-// public key retrival and verification in that design, and may do
-// so in the future as needed.
+// in  mind.  In networks where the dialable address is a hash of a
+// public key, like libp2p, the network implementation will need to
+// internally retrieve, store, and use the public key for the address.
 //
 type BounceAddress string
 
+type InitialState struct {
+	Profile          User
+	Users            []User
+	Threads          []Thread
+	ReceivedMessages []IncomingMessage
+	SentMessages     []OutgoingMessage
+}
+
 type User struct {
-	ID   string
-	Name string
+	ID    string
+	Name  string
+	Image []byte
 }
 
 type Thread struct {
