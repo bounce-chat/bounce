@@ -9,6 +9,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/hkparker/bounce/chat"
+
 	"github.com/cretz/bine/tor"
 	"github.com/ipsn/go-libtor"
 	log "github.com/sirupsen/logrus"
@@ -160,11 +162,11 @@ func (bounceTor *TorNetwork) ServeGRPC(grpcServer *grpc.Server) error {
 	return nil
 }
 
-func (bounceTor *TorNetwork) Dial(address string) (*net.Conn, error) {
+func (bounceTor *TorNetwork) Dial(address chat.BounceAddress) (*net.Conn, error) {
 	return nil, nil
 }
 
-func (bounceTor *TorNetwork) VerifySignature(address string, data []byte) error {
+func (bounceTor *TorNetwork) VerifySignature(address chat.BounceAddress, data []byte) error {
 	return nil
 }
 

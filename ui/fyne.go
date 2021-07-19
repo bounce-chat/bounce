@@ -34,9 +34,8 @@ type Fyne struct {
 	threads           map[string]*thread
 	users             *userStore
 	activeThread      string
-	//Callbacks
-	onMessageSent    chat.OutgoingMessageCallback
-	onAddUserToGroup chat.AddUserToGroupCallback
+	onMessageSent     chat.OutgoingMessageCallback
+	onAddUserToGroup  chat.AddUserToGroupCallback
 }
 
 type thread struct {
