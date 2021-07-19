@@ -51,3 +51,4 @@ type OutgoingMessage struct {
 type OutgoingMessageCallback func(OutgoingMessage) // TODO: return an error?
 type AddUserToGroupCallback func(groupID, userID string)
 type RenameGroupCallback func(groupID, newName string)
+type ChangeNotificationSettingsCallback func(groupID string, enabled bool)

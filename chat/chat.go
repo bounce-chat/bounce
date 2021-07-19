@@ -32,7 +32,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 	//bounce.openDatabase()
 	bounce.network.LoadConfig(bounce.configDirectory)
 	bounce.userInterface.Build(bounce.configDirectory)
-	bounce.userInterface.RegisterCallbacks(dispatchMessage, addUserToGroup, renameGroup)
+	bounce.userInterface.RegisterCallbacks(dispatchMessage, addUserToGroup, renameGroup, changeNotificationSettings)
 	//bounce.userInterface.LoadInitialState(bounce.buildInitialState())
 
 	// Start the network and attach gRPC server in a goroutine

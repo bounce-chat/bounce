@@ -22,21 +22,22 @@ import (
 var assets embed.FS
 
 type Fyne struct {
-	app               fyne.App
-	mainWindow        fyne.Window
-	profileWindow     fyne.Window
-	addContactWindow  fyne.Window
-	createGroupWindow fyne.Window
-	mainContainer     *fyne.Container
-	networkLoading    *fyne.Container
-	threadVBox        *fyne.Container
-	chatContainer     *fyne.Container
-	threads           map[string]*thread
-	users             *userStore
-	activeThread      string
-	onMessageSent     chat.OutgoingMessageCallback
-	onAddUserToGroup  chat.AddUserToGroupCallback
-	onGroupRename     chat.RenameGroupCallback
+	app                          fyne.App
+	mainWindow                   fyne.Window
+	profileWindow                fyne.Window
+	addContactWindow             fyne.Window
+	createGroupWindow            fyne.Window
+	mainContainer                *fyne.Container
+	networkLoading               *fyne.Container
+	threadVBox                   *fyne.Container
+	chatContainer                *fyne.Container
+	threads                      map[string]*thread
+	users                        *userStore
+	activeThread                 string
+	onMessageSent                chat.OutgoingMessageCallback
+	onAddUserToGroup             chat.AddUserToGroupCallback
+	onGroupRename                chat.RenameGroupCallback
+	onThreadNotificationsChanged chat.ChangeNotificationSettingsCallback
 }
 
 type thread struct {
@@ -478,6 +479,9 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 	threadIcon.SetMinSize(fyne.NewSize(64, 64))
 
 	notificationsCheck := widget.NewCheckWithData("Enable notifications", thread.notificationsEnabled)
+	notificationsCheck.OnChanged = func(state bool) {
+		fyneUI.onThreadNotificationsChanged(thread.id, state)
+	}
 
 	saveButton := widget.NewButton("Save", func() {
 		newThreadName := threadNameEntry.Text

@@ -24,3 +24,10 @@ func renameGroup(threadID, newName string) {
 		"new_name": newName,
 	}).Info("UI wants to rename a group")
 }
+
+func changeNotificationSettings(threadID string, enabled bool) {
+	log.WithFields(log.Fields{
+		"thread":                threadID,
+		"notifications_enabled": enabled,
+	}).Info("UI wants to chnage notification settings")
+}
