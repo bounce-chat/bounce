@@ -7,7 +7,7 @@ import (
 //TODO: delete this, just for testing UI interactions
 func simulate(ui BounceUI) {
 	//time.Sleep(3 * time.Second)
-	ui.NetworkOnline() // TODO: try after there's already stuff going on in the UI
+	ui.NetworkOnline()
 	//time.Sleep(1 * time.Second)
 	user1 := User{
 		ID:   "1",

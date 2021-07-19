@@ -29,12 +29,14 @@ type Thread struct {
 }
 
 type IncomingMessage struct {
-	ThreadID string
-	UserID   string
-	Text     string
+	ThreadID  string
+	CreatedAt int64
+	UserID    string
+	Text      string
 }
 
 type OutgoingMessage struct {
+	CreatedAt   int64
 	Destination string
 	Text        string
 	// TODO: support images, files, etc

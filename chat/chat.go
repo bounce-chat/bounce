@@ -37,7 +37,6 @@ func Start(network BounceNetwork, ui BounceUI) {
 
 	// Start the network and attach gRPC server in a goroutine
 	//go bounce.runNetwork() // TODO: just disabled for now for UI prototyping
-
 	// TODO: delete this, just for testing interactions during prototyping
 	go simulate(ui)
 

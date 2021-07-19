@@ -6,29 +6,33 @@ package chat
 
 type BounceUI interface {
 	//
-	// Functions are defined in the order they will be called by the engine.
+	// During initial startup, the following functions are called in order to build the interface
+	//
+
+	// Create user interface objects
 	Build(configPath string)
-	//
-	// The following functions are called only during startup, before the UI's Run() function is called, in order
-	// to load the current state of the database into the UI
-	//
+	// Define callbacks the interface will use to communicate with the chat ending
+	RegisterCallbacks(onMessageSent OutgoingMessageCallback, onAddUserToGroup AddUserToGroupCallback)
+	// Load the initial state
 	LoadUsers([]User)
 	LoadThread(Thread) // TODO: []Thread
 	//LoadChatHistory([]Message)
 	//LoadInitialState
-	//
-	// Callbacks
-	//
-	RegisterCallbacks(onMessageSent OutgoingMessageCallback, onAddUserToGroup AddUserToGroupCallback)
-	//
-	// These functions are called as needed by the chat engine
-	//
-	ReceivedMessage(IncomingMessage)
 
+	//
+	// The following functions can be called at any time
+	//
+
+	// The network is ready
 	NetworkOnline()
+	// Network connection has been lost, go back to displaying a loading message, blocking user interaction
 	//NetworkDisconnected()
 
-	// Run must display the user interface and block
+	// New chat message to display in a thread
+	ReceivedMessage(IncomingMessage)
+
+	// Run displays the user interface and blocks.  A network loading message should be displayed first until NetworkOnline() is called.
 	Run()
+	// Application is closing due to a fatal error, show down the user interface
 	Quit()
 }

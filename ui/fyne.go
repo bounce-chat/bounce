@@ -544,6 +544,7 @@ func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
 	entry.Wrapping = fyne.TextWrapWord
 	entry.OnSubmitted = func(message string) {
 		fyneUI.onMessageSent(chat.OutgoingMessage{
+			CreatedAt:   time.Now().Unix(),
 			Destination: thread.id,
 			Text:        message,
 		})
