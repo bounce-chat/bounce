@@ -20,6 +20,15 @@ type BounceUI interface {
 	//TODO: LoadInitialState
 
 	//
+	// These functions control the user interface lifecycle
+	//
+
+	// Run displays the user interface and blocks.  A network loading message should be displayed first until NetworkOnline() is called.
+	Run()
+	// Application is closing due to a fatal error, show down the user interface
+	Quit()
+
+	//
 	// The following functions can be called at any time
 	//
 
@@ -31,9 +40,4 @@ type BounceUI interface {
 	// New chat message to display in a thread
 	ReceivedMessage(IncomingMessage)
 	//RenameGroup()
-
-	// Run displays the user interface and blocks.  A network loading message should be displayed first until NetworkOnline() is called.
-	Run()
-	// Application is closing due to a fatal error, show down the user interface
-	Quit()
 }
