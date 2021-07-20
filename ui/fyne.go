@@ -651,12 +651,13 @@ func (fyneUI *Fyne) LoadUsers(users []chat.User) { // TODO: this needs to take a
 
 func (fyneUI *Fyne) NetworkOnline() {
 	fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
+	fyneUI.mainContainer.Show()
 }
 
-// TODO: figure out why SetContent doesn't work again here
-//func (fyneUI *Fyne) NetworkDisconnected() {
-//	fyneUI.mainWindow.SetContent(fyneUI.networkLoading)
-//}
+func (fyneUI *Fyne) NetworkDisconnected() {
+	fyneUI.mainWindow.SetContent(fyneUI.networkLoading)
+	fyneUI.networkLoading.Show()
+}
 
 func (fyneUI *Fyne) LoadThread(bounceThread chat.Thread) {
 	id := bounceThread.ID

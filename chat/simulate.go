@@ -7,7 +7,7 @@ import (
 //TODO: delete this, just for testing UI interactions
 func simulate(ui BounceUI) {
 	//time.Sleep(3 * time.Second)
-	ui.NetworkOnline()
+	//ui.NetworkOnline()
 	//time.Sleep(1 * time.Second)
 	user1 := User{
 		ID:   "1",
@@ -58,10 +58,8 @@ func simulate(ui BounceUI) {
 
 	ui.ReceivedMessage(IncomingMessage{ThreadID: "4", UserID: "4", Text: "hello this is from user 4"})
 
-	/*
-		time.Sleep(5 * time.Second)
-		fyneUI.NetworkDisconnected()
-		time.Sleep(5 * time.Second)
-		fyneUI.NetworkLoaded()
-	*/
+	//time.Sleep(5 * time.Second)
+	//ui.NetworkDisconnected()
+	//time.Sleep(5 * time.Second)
+	//ui.NetworkOnline()
 }
