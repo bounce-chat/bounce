@@ -91,3 +91,8 @@ func (e *threadEntry) KeyUp(key *fyne.KeyEvent) {
 	}
 	e.Entry.KeyUp(key)
 }
+
+func (e *threadEntry) FocusLost() {
+	e.selectKeyDown = false
+	e.Entry.FocusLost()
+}
