@@ -548,10 +548,10 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 }
 
 func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
-	entry := widget.NewMultiLineEntry()
-	// TODO: custom submit functionality here
-	entry.Wrapping = fyne.TextWrapWord
-	entry.OnSubmitted = func(message string) {
+	entry := newThreadEntry(5)
+
+	entry.customOnSubmitted = func() {
+		message := entry.Text
 		fyneUI.onMessageSent(chat.OutgoingMessage{
 			CreatedAt:   time.Now().Unix(),
 			Destination: thread.id,
@@ -562,19 +562,7 @@ func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
 		entry.Refresh()
 	}
 
-	button := widget.NewButton("Send", func() {
-		fyneUI.displaySentMessage(thread, entry.Text)
-		entry.Text = ""
-		entry.Refresh()
-	})
-
-	thread.entry = entry
-
-	return container.New(
-		layout.NewBorderLayout(nil, nil, nil, button),
-		entry,
-		button,
-	)
+	return container.NewMax(entry)
 }
 
 //

@@ -48,6 +48,23 @@ type OutgoingMessage struct {
 	// TODO: support images, files, etc
 }
 
+//
+// The chat engine will provide these callbacks to a user interface
+//
+type Callbacks struct {
+	// The user wants to send a message
+	OnOutgoingMessage func(OutgoingMessage)
+	// The user wants to add another user to a group
+	AddUserToGroup func(groupID, userID string)
+	// The user wants to rename a group
+	RenameGroup func(groupID, newName string)
+	// The user wants to change the notification settings for a group on all their devices
+	ChangeNotificationSettings func(groupID string, notificationsEnabled bool)
+
+	//Unimplemented:
+	//MessageRead()
+}
+
 type OutgoingMessageCallback func(OutgoingMessage) // TODO: return an error?
 type AddUserToGroupCallback func(groupID, userID string)
 type RenameGroupCallback func(groupID, newName string)
