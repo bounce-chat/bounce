@@ -57,7 +57,7 @@ type thread struct {
 	availableNewUsersScroll      *container.Scroll
 	currentUsersContainer        *fyne.Container
 	currentUsersDMLinksContainer *fyne.Container
-	entry                        *widget.Entry
+	entry                        *threadEntry
 	entryBar                     *fyne.Container
 	lastMessage                  int64
 }
@@ -174,11 +174,8 @@ func (fyneUI *Fyne) buildMainWindow() {
 	mainWindow.SetMainMenu(fyneUI.buildMainMenu())
 
 	mainWindow.SetCloseIntercept(func() {
-		log.WithFields(log.Fields{
-			"at": "desktop.DesktopUI.Build",
-		}).Info("window close button hit, shutting down")
 		// There's some bug in Fyne where the app will hang when the close button
-		// is hit unless this is explicitly set
+		// is hit unless this is explicitly set https://github.com/fyne-io/fyne/issues/2314
 		fyneUI.Quit()
 	})
 
@@ -211,7 +208,7 @@ func (fyneUI *Fyne) buildMainWindow() {
 		fyneUI.chatContainer,
 	)
 
-	mainWindow.SetContent(fyneUI.networkLoading)
+	mainWindow.SetContent(fyneUI.networkLoading) // TODO: move to main builder function
 	mainWindow.Show()
 
 	fyneUI.mainWindow = mainWindow
@@ -556,6 +553,7 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 
 func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
 	entry := newThreadEntry(5)
+	thread.entry = entry
 
 	entry.customOnSubmitted = func() {
 		message := entry.Text

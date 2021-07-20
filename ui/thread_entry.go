@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
+	log "github.com/sirupsen/logrus"
 )
 
 type threadEntry struct {
@@ -57,7 +58,11 @@ func (entry *threadEntry) TypedKey(ev *fyne.KeyEvent) {
 		if entry.selectKeyDown {
 			entry.Refresh()
 		} else {
-			entry.customOnSubmitted()
+			if entry.customOnSubmitted == nil {
+				log.Fatal("user interface bug: a threadEntry does not have a customOnSubmitted defined")
+			} else {
+				entry.customOnSubmitted()
+			}
 			return
 		}
 	}
