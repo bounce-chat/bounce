@@ -12,12 +12,12 @@ type BounceUI interface {
 	// Create user interface objects
 	Build(configPath string)
 	// Define callbacks the interface will use to communicate with the chat ending
-	RegisterCallbacks(onMessageSent OutgoingMessageCallback, onAddUserToGroup AddUserToGroupCallback, onGroupRename RenameGroupCallback, onNotificationSettingsChange ChangeNotificationSettingsCallback) // TODO: make this take a struct?
+	RegisterCallbacks(Callbacks)
 	// Load the initial state
 	LoadUsers([]User)
-	LoadThread(Thread) // TODO: []Thread
+	LoadThread(Thread)
 	//LoadChatHistory([]Message)
-	//LoadInitialState
+	//TODO: LoadInitialState
 
 	//
 	// The following functions can be called at any time

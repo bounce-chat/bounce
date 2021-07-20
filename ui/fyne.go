@@ -34,10 +34,10 @@ type Fyne struct {
 	threads                      map[string]*thread
 	users                        *userStore
 	activeThread                 string
-	onMessageSent                chat.OutgoingMessageCallback
+	onSendMessage                chat.SendMessageCallback
 	onAddUserToGroup             chat.AddUserToGroupCallback
-	onGroupRename                chat.RenameGroupCallback
-	onThreadNotificationsChanged chat.ChangeNotificationSettingsCallback
+	onRenameGroup                chat.RenameGroupCallback
+	onChangeNotificationSettings chat.ChangeNotificationSettingsCallback
 }
 
 type thread struct {
@@ -147,6 +147,13 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	fyneUI.buildCreateGroupWindow()
 	fyneUI.buildMainWindow()
 
+}
+
+func (fyneUI *Fyne) RegisterCallbacks(callbacks chat.Callbacks) {
+	fyneUI.onSendMessage = callbacks.SendMessage
+	fyneUI.onAddUserToGroup = callbacks.AddUserToGroup
+	fyneUI.onRenameGroup = callbacks.RenameGroup
+	fyneUI.onChangeNotificationSettings = callbacks.ChangeNotificationSettings
 }
 
 func (fyneUI *Fyne) Run() {
@@ -480,7 +487,7 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 
 	notificationsCheck := widget.NewCheckWithData("Enable notifications", thread.notificationsEnabled)
 	notificationsCheck.OnChanged = func(state bool) {
-		fyneUI.onThreadNotificationsChanged(thread.id, state)
+		fyneUI.onChangeNotificationSettings(thread.id, state)
 	}
 
 	saveButton := widget.NewButton("Save", func() {
@@ -493,7 +500,7 @@ func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
 		}
 		thread.button.Text = newThreadName
 		thread.button.Refresh()
-		fyneUI.onGroupRename(thread.id, newThreadName)
+		fyneUI.onRenameGroup(thread.id, newThreadName)
 
 		// TODO: persist settings in Fyne
 		thread.editWindow.Hide()
@@ -552,7 +559,7 @@ func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
 
 	entry.customOnSubmitted = func() {
 		message := entry.Text
-		fyneUI.onMessageSent(chat.OutgoingMessage{
+		fyneUI.onSendMessage(chat.OutgoingMessage{
 			CreatedAt:   time.Now().Unix(),
 			Destination: thread.id,
 			Text:        message,

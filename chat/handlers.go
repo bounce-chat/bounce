@@ -4,11 +4,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func dispatchMessage(message OutgoingMessage) {
+func sendMessage(message OutgoingMessage) {
 	log.WithFields(log.Fields{
 		"destination": message.Destination,
 		"text":        message.Text,
-	}).Info("UI wants to dispatch a message")
+	}).Info("UI wants to send a message")
 }
 
 func addUserToGroup(threadID, userID string) {
