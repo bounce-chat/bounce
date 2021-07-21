@@ -14,17 +14,7 @@ func (fyneUI *Fyne) showMainContainer() {
 
 }
 
-func (fyneUI *Fyne) buildMainWindow() {
-	mainWindow := fyneUI.app.NewWindow("Bounce")
-	mainWindow.SetMaster()
-	mainWindow.SetMainMenu(fyneUI.buildMainMenu())
-
-	mainWindow.SetCloseIntercept(func() {
-		// There's some bug in Fyne where the app will hang when the close button
-		// is hit unless this is explicitly set https://github.com/fyne-io/fyne/issues/2314
-		fyneUI.Quit()
-	})
-
+func (fyneUI *Fyne) buildMainContainer() {
 	//
 	// Logo and welcome message / instructions to be shown before a thread is selected
 	//
@@ -45,7 +35,7 @@ func (fyneUI *Fyne) buildMainWindow() {
 		),
 	)
 
-	fyneUI.threadVBox = container.NewVBox()
+	fyneUI.threadVBox = container.NewVBox() // TODO: move to build function?
 	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
 
 	fyneUI.mainContainer = container.New(
@@ -53,9 +43,4 @@ func (fyneUI *Fyne) buildMainWindow() {
 		threads,
 		fyneUI.chatContainer,
 	)
-
-	mainWindow.SetContent(fyneUI.networkLoading) // TODO: move to main builder function
-	mainWindow.Show()
-
-	fyneUI.mainWindow = mainWindow
 }

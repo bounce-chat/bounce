@@ -17,6 +17,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+//
+// An implementation of the Bounce chat.UI interface using Fyne
+//
 type Fyne struct {
 	app                          fyne.App
 	mainWindow                   fyne.Window
@@ -36,23 +39,45 @@ type Fyne struct {
 	onChangeNotificationSettings chat.ChangeNotificationSettingsCallback
 }
 
-type user struct {
-	id   string
-	name string
-}
-
 func (fyneUI *Fyne) Build(configDirectory string) {
+	//
+	// Initialize types that require it
+	//
 	fyneUI.threads = make(map[string]*thread)
 	fyneUI.users = newUserStore()
 
-	fyneUI.app = app.New()
+	//
+	// Define the app
+	//
+	fyneUI.app = app.NewWithID("chat.bounce")
 	fyneUI.app.SetIcon(newEmbeddedResource("assets/icon.png"))
+
+	//
+	// Define the main window
+	//
+	fyneUI.mainWindow = fyneUI.app.NewWindow("Bounce")
+	fyneUI.mainWindow.SetMaster()
+	fyneUI.mainWindow.SetMainMenu(fyneUI.buildMainMenu())
+	fyneUI.mainWindow.SetCloseIntercept(func() {
+		// There's some bug in Fyne where the app will hang when the close button
+		// is hit unless this is explicitly set https://github.com/fyne-io/fyne/issues/2314
+		fyneUI.Quit()
+	})
+	fyneUI.mainWindow.Show()
+
+	//
+	// Build all the containers
+	//
 	fyneUI.buildNetworkLoading()
 	fyneUI.buildProfileWindow()
 	fyneUI.buildAddContactWindow()
 	fyneUI.buildCreateGroupWindow()
-	fyneUI.buildMainWindow()
+	fyneUI.buildMainContainer()
 
+	//
+	// Default to displaying the "network loading" container
+	//
+	fyneUI.showNetworkLoading()
 }
 
 func (fyneUI *Fyne) RegisterCallbacks(callbacks chat.Callbacks) {
@@ -60,6 +85,10 @@ func (fyneUI *Fyne) RegisterCallbacks(callbacks chat.Callbacks) {
 	fyneUI.onAddUserToGroup = callbacks.AddUserToGroup
 	fyneUI.onRenameGroup = callbacks.RenameGroup
 	fyneUI.onChangeNotificationSettings = callbacks.ChangeNotificationSettings
+}
+
+func (fyneUI *Fyne) LoadInitialState() {
+	// TODO
 }
 
 func (fyneUI *Fyne) Run() {
@@ -279,6 +308,8 @@ func (fyneUI *Fyne) LoadThread(bounceThread chat.Thread) {
 	thread.entryBar = fyneUI.buildThreadEntry(thread)
 
 	thread.button = widget.NewButtonWithIcon(name, threadIcon, func() {
+		// TODO: tell the entine this is happening so that it can make sure
+		// there's a connection open
 		fyneUI.displayThread(thread)
 	})
 	thread.button.Importance = widget.LowImportance

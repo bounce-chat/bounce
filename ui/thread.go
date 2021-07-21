@@ -18,7 +18,7 @@ type thread struct {
 	name                         binding.String
 	users                        *userStore
 	pendingUsers                 *userStore
-	isDM                         bool         // TODO: prevents things like showing an option to set an image
+	isDM                         bool         // TODO: prevents things like showing an option to set an image or editing the name
 	notificationsEnabled         binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
 	notificationsMutedUntil      int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
 	editContainer                *fyne.Container
