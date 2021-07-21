@@ -31,8 +31,8 @@ type Fyne struct {
 	threadVBox                   *fyne.Container
 	chatContainer                *fyne.Container
 	threads                      map[string]*thread
-	users                        *userStore
 	activeThread                 string
+	users                        *userStore
 	onSendMessage                chat.SendMessageCallback
 	onAddUserToGroup             chat.AddUserToGroupCallback
 	onRenameGroup                chat.RenameGroupCallback

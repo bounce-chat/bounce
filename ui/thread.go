@@ -40,23 +40,16 @@ func (fyneUI *Fyne) refreshCurrentUsersWithDMLinks(thread *thread) {
 
 	for _, thisUser := range thread.users.alphabetized() {
 		func(u *user) {
-			userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-			userIconCanvas.FillMode = canvas.ImageFillContain
-			userIconCanvas.SetMinSize(fyne.NewSize(24, 24)) // TODO: figure out how to get the ideal consistent size
-
-			dmButton := widget.NewButton(u.name, func() {
+			dmButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() {
 				// TODO: hide this window and open a DM
 				// check fyneUI for existing DMs, create thread if needed and focus it
-			}) // TODO: when arbitrary canvas objects can be clicked, we want the icon to be clickable too
+			})
 			dmButton.Alignment = widget.ButtonAlignLeading
 			dmButton.Importance = widget.LowImportance
 
 			currentUsersList.Objects = append(
 				currentUsersList.Objects,
-				container.NewHBox(
-					userIconCanvas,
-					dmButton,
-				),
+				dmButton,
 			)
 		}(thisUser)
 	}
