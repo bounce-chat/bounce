@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"embed"
 	"image/color"
 	"sort"
 	"time"
@@ -17,9 +16,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 	log "github.com/sirupsen/logrus"
 )
-
-//go:embed assets
-var assets embed.FS
 
 type Fyne struct {
 	app                          fyne.App
@@ -40,100 +36,10 @@ type Fyne struct {
 	onChangeNotificationSettings chat.ChangeNotificationSettingsCallback
 }
 
-type thread struct {
-	id                           string
-	name                         binding.String
-	users                        *userStore
-	pendingUsers                 *userStore
-	isDM                         bool         // TODO: prevents things like showing an option to set an image
-	notificationsEnabled         binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
-	notificationsMutedUntil      int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
-	editWindow                   fyne.Window
-	addUsersWindow               fyne.Window
-	view                         *fyne.Container
-	header                       *fyne.Container
-	button                       *widget.Button
-	scroll                       *container.Scroll
-	availableNewUsersScroll      *container.Scroll
-	currentUsersContainer        *fyne.Container
-	currentUsersDMLinksContainer *fyne.Container
-	entry                        *threadEntry
-	entryBar                     *fyne.Container
-	lastMessage                  int64
-}
-
 type user struct {
 	id   string
 	name string
-	//profilePicture []byte
-	//cavas *canvas.Image
 }
-
-/*
-func (u *user) updateProfilePicture(data []byte) {
-	u.profilePicture = data
-	// refresh the user's canvas.Image
-	profilePictureCanvas := canvas.NewImageFromResource(&imageResource{name: u.name, data: u.profilePicture})
-	profilePictureCanvas.FillMode = canvas.ImageFillContain
-	//profilePictureCanvas.SetMinSize(fyne.NewSize(24, 24)) // TODO: maybe never set this here?
-}
-
-func (u *user) getProfilePictureImage() canvas.Image {
-	//TODO: if there's no profile picture, make a circle
-
-	return profilePictureCanvas
-}
-
-type imageResource struct {
-	name string
-	data []byte
-}
-*/
-
-// For sorting by last message received
-type sortableThreads []*thread
-
-func (threads sortableThreads) Len() int {
-	return len(threads)
-}
-func (threads sortableThreads) Swap(i, j int) {
-	threads[i], threads[j] = threads[j], threads[i]
-}
-func (threads sortableThreads) Less(i, j int) bool {
-	// Reverse order, highest timestamp on top
-	return threads[i].lastMessage > threads[j].lastMessage
-}
-
-// Implement Fyne's fyne.Resource, loading from embedded files
-type embededResource struct {
-	path  string
-	bytes []byte
-}
-
-func newEmbeddedResource(path string) *embededResource {
-	bytes, err := assets.ReadFile(path)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"path": path,
-		}).Fatal("unable to locate embedded resource")
-	}
-	return &embededResource{
-		path:  path,
-		bytes: bytes,
-	}
-}
-
-func (resource *embededResource) Name() string {
-	return resource.path
-}
-
-func (resource *embededResource) Content() []byte {
-	return resource.bytes
-}
-
-//
-// Lifecycle
-//
 
 func (fyneUI *Fyne) Build(configDirectory string) {
 	fyneUI.threads = make(map[string]*thread)
@@ -162,75 +68,6 @@ func (fyneUI *Fyne) Run() {
 
 func (fyneUI *Fyne) Quit() {
 	fyneUI.app.Quit()
-}
-
-//
-// Build user interface objects
-//
-
-func (fyneUI *Fyne) buildMainWindow() {
-	mainWindow := fyneUI.app.NewWindow("Bounce")
-	mainWindow.SetMaster()
-	mainWindow.SetMainMenu(fyneUI.buildMainMenu())
-
-	mainWindow.SetCloseIntercept(func() {
-		// There's some bug in Fyne where the app will hang when the close button
-		// is hit unless this is explicitly set https://github.com/fyne-io/fyne/issues/2314
-		fyneUI.Quit()
-	})
-
-	//
-	// Logo and welcome message / instructions to be shown before a thread is selected
-	//
-
-	logo := canvas.NewImageFromResource(newEmbeddedResource("assets/logo.png"))
-	logo.FillMode = canvas.ImageFillContain
-	// TODO: choose reasonable values here
-	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
-	logo.SetMinSize(fyne.NewSize(228, 167))
-
-	fyneUI.chatContainer = container.NewMax(
-		container.New(
-			layout.NewCenterLayout(),
-			container.NewVBox(
-				logo,
-				widget.NewLabel("Select a thread on the left to get started"),
-			),
-		),
-	)
-
-	fyneUI.threadVBox = container.NewVBox()
-	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
-
-	fyneUI.mainContainer = container.New(
-		layout.NewBorderLayout(nil, nil, threads, nil),
-		threads,
-		fyneUI.chatContainer,
-	)
-
-	mainWindow.SetContent(fyneUI.networkLoading) // TODO: move to main builder function
-	mainWindow.Show()
-
-	fyneUI.mainWindow = mainWindow
-}
-
-func (fyneUI *Fyne) buildNetworkLoading() {
-	logo := canvas.NewImageFromResource(newEmbeddedResource("assets/logo_with_network.png"))
-	logo.FillMode = canvas.ImageFillContain
-	// TODO: choose reasonable values here
-	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
-	logo.SetMinSize(fyne.NewSize(228, 167))
-
-	fyneUI.networkLoading = container.NewMax(
-		container.New(
-			layout.NewCenterLayout(),
-			container.NewVBox(
-				logo,
-				widget.NewLabel("Connecting to the Tor network..."),
-				widget.NewProgressBarInfinite(),
-			),
-		),
-	)
 }
 
 func (fyneUI *Fyne) buildProfileWindow() {
@@ -293,300 +130,6 @@ func (fyneUI *Fyne) buildMainMenu() *fyne.MainMenu {
 	)
 }
 
-func (fyneUI *Fyne) refreshUserSelections(thread *thread) {
-	fyneUI.refreshCurrentUsersWithDMLinks(thread)
-	fyneUI.refreshCurrentAndPendingUsers(thread)
-	fyneUI.refreshAvailableNewUsers(thread)
-}
-
-func (fyneUI *Fyne) refreshCurrentUsersWithDMLinks(thread *thread) {
-	currentUsersList := container.NewVBox()
-
-	for _, thisUser := range thread.users.alphabetized() {
-		func(u *user) {
-			userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-			userIconCanvas.FillMode = canvas.ImageFillContain
-			userIconCanvas.SetMinSize(fyne.NewSize(24, 24)) // TODO: figure out how to get the ideal consistent size
-
-			dmButton := widget.NewButton(u.name, func() {
-				// TODO: hide this window and open a DM
-				// check fyneUI for existing DMs, create thread if needed and focus it
-			}) // TODO: when arbitrary canvas objects can be clicked, we want the icon to be clickable too
-			dmButton.Alignment = widget.ButtonAlignLeading
-			dmButton.Importance = widget.LowImportance
-
-			currentUsersList.Objects = append(
-				currentUsersList.Objects,
-				container.NewHBox(
-					userIconCanvas,
-					dmButton,
-				),
-			)
-		}(thisUser)
-	}
-
-	thread.currentUsersDMLinksContainer.Objects = []fyne.CanvasObject{currentUsersList}
-	thread.currentUsersDMLinksContainer.Refresh()
-}
-
-func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *thread) {
-	currentUsersList := container.NewVBox()
-
-	for _, thisUser := range thread.users.alphabetized() {
-		func(u *user) {
-			userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-			userIconCanvas.FillMode = canvas.ImageFillContain
-			userIconCanvas.SetMinSize(fyne.NewSize(24, 24)) // TODO: figure out how to get the ideal consistent size
-
-			currentUsersList.Objects = append(
-				currentUsersList.Objects,
-				container.NewHBox(
-					userIconCanvas,
-					widget.NewLabel(u.name),
-				),
-			)
-		}(thisUser)
-	}
-
-	for _, thisUser := range thread.pendingUsers.alphabetized() {
-		func(u *user) {
-			removePendingUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
-				thread.pendingUsers.remove(u.id)
-				fyneUI.refreshUserSelections(thread)
-			})
-			removePendingUserButton.Alignment = widget.ButtonAlignLeading
-			removePendingUserButton.Importance = widget.LowImportance
-			currentUsersList.Objects = append(
-				currentUsersList.Objects,
-				container.New(
-					layout.NewMaxLayout(),
-					&canvas.Rectangle{FillColor: color.NRGBA{0, 0, 0x40, 0x40}},
-					removePendingUserButton,
-				),
-			)
-		}(thisUser)
-	}
-
-	thread.currentUsersContainer.Objects = []fyne.CanvasObject{currentUsersList}
-	thread.currentUsersContainer.Refresh()
-}
-
-func (fyneUI *Fyne) refreshAvailableNewUsers(thread *thread) {
-	allUsersListBox := container.NewVBox()
-	for _, thisUser := range fyneUI.users.alphabetized() {
-		// Exclude users already in the thread
-		if _, exists := thread.users.get(thisUser.id); exists {
-			continue
-		}
-		// Exclude users that are pending addition to the group
-		if _, exists := thread.pendingUsers.get(thisUser.id); exists {
-			continue
-		}
-		// This weirdness is so that the iteration over user works with the dynamically created buttons
-		// TODO: make sure I'm not making this mistake anywhere else
-		func(u *user) {
-			addUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
-				thread.pendingUsers.add(u)
-				fyneUI.refreshUserSelections(thread)
-			})
-			addUserButton.Alignment = widget.ButtonAlignLeading
-			addUserButton.Importance = widget.LowImportance
-			allUsersListBox.Objects = append(
-				allUsersListBox.Objects,
-				addUserButton,
-			)
-		}(thisUser)
-	}
-	thread.availableNewUsersScroll.Content = allUsersListBox
-	thread.availableNewUsersScroll.Refresh()
-}
-
-func (fyneUI *Fyne) buildAddUsersThreadWindow(thread *thread) {
-	thread.addUsersWindow = fyneUI.app.NewWindow("Add Users")
-	thread.addUsersWindow.SetCloseIntercept(func() {
-		thread.addUsersWindow.Hide()
-	})
-
-	//
-	// List all users who are already in this thread
-	//
-	currentUsersLabel := widget.NewLabel("Current Users:")
-	currentUsersListView := container.New(
-		layout.NewBorderLayout(currentUsersLabel, nil, nil, nil),
-		currentUsersLabel,
-		thread.currentUsersContainer, // TODO: eventually this will get so long it breaks the UI.  Need a better looking scroll wrapper.
-	)
-
-	//
-	// List all users who are not in this thread
-	//
-	fyneUI.refreshAvailableNewUsers(thread)
-	addUsersLabel := widget.NewLabel("Add Users:")
-	allUsersList := container.New(
-		layout.NewBorderLayout(addUsersLabel, nil, nil, nil),
-		addUsersLabel,
-		thread.availableNewUsersScroll,
-	)
-
-	//
-	// Buttons to confirm or cancel the new user additions
-	//
-	saveAddUsersButton := widget.NewButton("Save", func() {
-		for _, user := range thread.pendingUsers.alphabetized() {
-			thread.users.add(user)
-			thread.pendingUsers.remove(user.id)
-			fyneUI.onAddUserToGroup(thread.id, user.id)
-		}
-		fyneUI.refreshUserSelections(thread)
-		thread.addUsersWindow.Hide()
-	})
-	saveAddUsersButton.Importance = widget.HighImportance
-	cancelAddUsersButton := widget.NewButton("Cancel", func() {
-		// Reset everything
-		thread.pendingUsers.empty()
-		fyneUI.refreshUserSelections(thread)
-		thread.addUsersWindow.Hide()
-	})
-	addUsersActionButtons := container.New(
-		layout.NewBorderLayout(nil, nil, cancelAddUsersButton, saveAddUsersButton),
-		saveAddUsersButton,
-		cancelAddUsersButton,
-	)
-
-	addUsersContent := container.New(
-		layout.NewBorderLayout(currentUsersListView, addUsersActionButtons, nil, nil),
-		currentUsersListView,
-		allUsersList,
-		addUsersActionButtons,
-	)
-	thread.addUsersWindow.SetContent(addUsersContent)
-
-}
-
-func (fyneUI *Fyne) buildEditThreadWindow(thread *thread) {
-	thread.editWindow = fyneUI.app.NewWindow("Edit Thread")
-	thread.editWindow.SetCloseIntercept(func() {
-		thread.editWindow.Hide()
-	})
-
-	threadNameEntry := widget.NewEntry()
-	currentThreadName, err := thread.name.Get()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("data bindings are broken")
-	}
-	threadNameEntry.Text = currentThreadName
-
-	threadIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-	threadIcon.FillMode = canvas.ImageFillContain
-	threadIcon.SetMinSize(fyne.NewSize(64, 64))
-
-	notificationsCheck := widget.NewCheckWithData("Enable notifications", thread.notificationsEnabled)
-	notificationsCheck.OnChanged = func(state bool) {
-		fyneUI.onChangeNotificationSettings(thread.id, state)
-	}
-
-	saveButton := widget.NewButton("Save", func() {
-		newThreadName := threadNameEntry.Text
-		err := thread.name.Set(newThreadName)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("data bindings are broken")
-		}
-		thread.button.Text = newThreadName
-		thread.button.Refresh()
-		fyneUI.onRenameGroup(thread.id, newThreadName)
-
-		// TODO: persist settings in Fyne
-		thread.editWindow.Hide()
-	})
-	saveButton.Importance = widget.HighImportance
-	cancelButton := widget.NewButton("Cancel", func() {
-		threadNameEntry.Text = currentThreadName
-		threadNameEntry.Refresh()
-		thread.editWindow.Hide()
-	})
-	actionButtons := container.New(
-		layout.NewBorderLayout(nil, nil, cancelButton, saveButton),
-		saveButton,
-		cancelButton,
-	)
-
-	usersLabel := widget.NewLabel("Users:")
-	addUserButton := widget.NewButton("  +  ", func() {
-		fyneUI.refreshUserSelections(thread)
-		thread.addUsersWindow.Show()
-	})
-	addUserButton.Importance = widget.LowImportance
-	usersTitle := container.New(
-		layout.NewBorderLayout(nil, nil, usersLabel, addUserButton),
-		usersLabel,
-		addUserButton,
-	)
-
-	topOptionsVBox := container.NewVBox(
-		threadIcon,
-		threadNameEntry,
-		notificationsCheck,
-		usersTitle,
-	)
-
-	thread.editWindow.SetContent(
-		container.NewPadded(
-			container.New(
-				layout.NewBorderLayout(nil, actionButtons, nil, nil),
-				container.New(
-					layout.NewPaddedLayout(),
-					container.New(
-						layout.NewBorderLayout(topOptionsVBox, nil, nil, nil),
-						topOptionsVBox,
-						container.NewVScroll(thread.currentUsersDMLinksContainer),
-					),
-				),
-				actionButtons,
-			),
-		),
-	)
-}
-
-func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
-	entry := newThreadEntry(5)
-	thread.entry = entry
-
-	entry.customOnSubmitted = func() {
-		message := entry.Text
-		fyneUI.onSendMessage(chat.OutgoingMessage{
-			CreatedAt:   time.Now().Unix(),
-			Destination: thread.id,
-			Text:        message,
-		})
-		fyneUI.displaySentMessage(thread, message)
-		entry.Text = ""
-		entry.Refresh()
-	}
-
-	return container.NewMax(entry)
-}
-
-//
-// User interface manipulation
-//
-
-func (fyneUI *Fyne) displayThread(thread *thread) {
-	fyneUI.activeThread = thread.id
-	fyneUI.chatContainer.Objects = []fyne.CanvasObject{thread.view}
-	fyneUI.chatContainer.Refresh()
-	thread.button.Importance = widget.LowImportance
-	thread.button.Refresh()
-	fyneUI.mainWindow.Canvas().Focus(thread.entry)
-}
-
-func (fyneUI *Fyne) isActive(thread *thread) bool {
-	return fyneUI.activeThread == thread.id
-}
-
 func (fyneUI *Fyne) refreshThreadOrder() {
 	allThreads := sortableThreads{}
 	for _, thread := range fyneUI.threads {
@@ -641,7 +184,7 @@ func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 // Exported functions for the chat engine
 //
 
-func (fyneUI *Fyne) LoadUsers(users []chat.User) { // TODO: this needs to take a type defined in the chat engine
+func (fyneUI *Fyne) LoadUsers(users []chat.User) {
 	for _, u := range users {
 		fyneUI.users.add(&user{id: u.ID, name: u.Name})
 	}
@@ -653,8 +196,7 @@ func (fyneUI *Fyne) NetworkOnline() {
 }
 
 func (fyneUI *Fyne) NetworkDisconnected() {
-	fyneUI.mainWindow.SetContent(fyneUI.networkLoading)
-	fyneUI.networkLoading.Show()
+	fyneUI.showNetworkLoading()
 }
 
 func (fyneUI *Fyne) LoadThread(bounceThread chat.Thread) {
@@ -707,11 +249,12 @@ func (fyneUI *Fyne) LoadThread(bounceThread chat.Thread) {
 		}).Fatal("data bindings are broken")
 	}
 
-	fyneUI.buildEditThreadWindow(thread)
+	//fyneUI.buildEditThreadWindow(thread)
+	fyneUI.buildEditThreadContainer(thread)
 	fyneUI.buildAddUsersThreadWindow(thread)
 	editButton := widget.NewButton("Edit", func() {
 		fyneUI.refreshUserSelections(thread)
-		thread.editWindow.Show()
+		fyneUI.showEditThreadContainer(thread)
 	})
 	threadIcon := newEmbeddedResource("assets/not_found.png")
 	threadIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
@@ -830,9 +373,3 @@ func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.IncomingMessage) {
 		fyneUI.app.SendNotification(fyne.NewNotification(threadName, "New message from "+user.name))
 	}
 }
-
-// TODO: figure out callbacks for things like
-//fyneUI.SetOnThreadRename(func(string, string))
-// The UI interface must let the chat app pass a function to handle database updates and stuff
-// when things stored in the DB are changed
-// However, what is a chat engine setting and what is a UI setting?  Notifications UI, thread name chat?

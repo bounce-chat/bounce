@@ -16,7 +16,6 @@ type BounceUI interface {
 	// Load the initial state
 	LoadUsers([]User)
 	LoadThread(Thread)
-	//LoadChatHistory([]Message)
 	//TODO: LoadInitialState
 
 	//
