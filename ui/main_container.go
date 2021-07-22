@@ -34,7 +34,7 @@ func (fyneUI *Fyne) buildMainContainer() {
 		),
 	)
 
-	fyneUI.threadVBox = container.NewVBox() // TODO: move to build function?
+	fyneUI.threadVBox = container.NewVBox()
 	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
 
 	fyneUI.mainContainer = container.New(

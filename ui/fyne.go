@@ -230,9 +230,7 @@ func (fyneUI *Fyne) LoadThread(bounceThread chat.Thread) {
 		}).Fatal("data bindings are broken")
 	}
 
-	//fyneUI.buildEditThreadWindow(thread)
 	fyneUI.buildEditThreadContainer(thread)
-	fyneUI.buildAddUsersThreadWindow(thread)
 	editButton := widget.NewButton("Edit", func() {
 		fyneUI.refreshUserSelections(thread)
 		fyneUI.showEditThreadContainer(thread)

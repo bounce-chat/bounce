@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/hkparker/bounce/chat"
+	log "github.com/sirupsen/logrus"
 )
 
 type thread struct {
@@ -35,12 +36,13 @@ type thread struct {
 	lastMessage                  int64
 }
 
-func (fyneUI *Fyne) refreshCurrentUsersWithDMLinks(thread *thread) {
+func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *thread) {
 	currentUsersList := container.NewVBox()
 
 	for _, thisUser := range thread.users.alphabetized() {
 		func(u *user) {
 			dmButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() {
+				log.Info("user wants to open a DM with " + u.name)
 				// TODO: hide this window and open a DM
 				// check fyneUI for existing DMs, create thread if needed and focus it
 			})
@@ -50,29 +52,6 @@ func (fyneUI *Fyne) refreshCurrentUsersWithDMLinks(thread *thread) {
 			currentUsersList.Objects = append(
 				currentUsersList.Objects,
 				dmButton,
-			)
-		}(thisUser)
-	}
-
-	thread.currentUsersDMLinksContainer.Objects = []fyne.CanvasObject{currentUsersList}
-	thread.currentUsersDMLinksContainer.Refresh()
-}
-
-func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *thread) {
-	currentUsersList := container.NewVBox()
-
-	for _, thisUser := range thread.users.alphabetized() {
-		func(u *user) {
-			userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-			userIconCanvas.FillMode = canvas.ImageFillContain
-			userIconCanvas.SetMinSize(fyne.NewSize(24, 24)) // TODO: figure out how to get the ideal consistent size
-
-			currentUsersList.Objects = append(
-				currentUsersList.Objects,
-				container.NewHBox(
-					userIconCanvas,
-					widget.NewLabel(u.name),
-				),
 			)
 		}(thisUser)
 	}
@@ -126,70 +105,8 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(thread *thread) {
 			)
 		}(thisUser)
 	}
-	thread.availableNewUsersScroll.Content = allUsersListBox
+	thread.availableNewUsersScroll.Content = allUsersListBox // TODO: this scroll behaves weird.  Why?
 	thread.availableNewUsersScroll.Refresh()
-}
-
-func (fyneUI *Fyne) buildAddUsersThreadWindow(thread *thread) {
-	thread.addUsersWindow = fyneUI.app.NewWindow("Add Users")
-	thread.addUsersWindow.SetCloseIntercept(func() {
-		thread.addUsersWindow.Hide()
-	})
-
-	//
-	// List all users who are already in this thread
-	//
-	currentUsersLabel := widget.NewLabel("Current Users:")
-	currentUsersListView := container.New(
-		layout.NewBorderLayout(currentUsersLabel, nil, nil, nil),
-		currentUsersLabel,
-		thread.currentUsersContainer, // TODO: eventually this will get so long it breaks the UI.  Need a better looking scroll wrapper.
-	)
-
-	//
-	// List all users who are not in this thread
-	//
-	fyneUI.refreshAvailableNewUsers(thread)
-	addUsersLabel := widget.NewLabel("Add Users:")
-	allUsersList := container.New(
-		layout.NewBorderLayout(addUsersLabel, nil, nil, nil),
-		addUsersLabel,
-		thread.availableNewUsersScroll,
-	)
-
-	//
-	// Buttons to confirm or cancel the new user additions
-	//
-	saveAddUsersButton := widget.NewButton("Save", func() {
-		for _, user := range thread.pendingUsers.alphabetized() {
-			thread.users.add(user)
-			thread.pendingUsers.remove(user.id)
-			fyneUI.onAddUserToGroup(thread.id, user.id)
-		}
-		fyneUI.refreshUserSelections(thread)
-		thread.addUsersWindow.Hide()
-	})
-	saveAddUsersButton.Importance = widget.HighImportance
-	cancelAddUsersButton := widget.NewButton("Cancel", func() {
-		// Reset everything
-		thread.pendingUsers.empty()
-		fyneUI.refreshUserSelections(thread)
-		thread.addUsersWindow.Hide()
-	})
-	addUsersActionButtons := container.New(
-		layout.NewBorderLayout(nil, nil, cancelAddUsersButton, saveAddUsersButton),
-		saveAddUsersButton,
-		cancelAddUsersButton,
-	)
-
-	addUsersContent := container.New(
-		layout.NewBorderLayout(currentUsersListView, addUsersActionButtons, nil, nil),
-		currentUsersListView,
-		allUsersList,
-		addUsersActionButtons,
-	)
-	thread.addUsersWindow.SetContent(addUsersContent)
-
 }
 
 func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
@@ -229,7 +146,6 @@ func (fyneUI *Fyne) isActive(thread *thread) bool {
 }
 
 func (fyneUI *Fyne) refreshUserSelections(thread *thread) {
-	fyneUI.refreshCurrentUsersWithDMLinks(thread)
 	fyneUI.refreshCurrentAndPendingUsers(thread)
 	fyneUI.refreshAvailableNewUsers(thread)
 }
