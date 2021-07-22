@@ -67,6 +67,7 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 		// is hit unless this is explicitly set https://github.com/fyne-io/fyne/issues/2314
 		fyneUI.Quit()
 	})
+	fyneUI.mainWindow.Resize(fyne.Size{Height: 600, Width: 800})
 	fyneUI.mainWindow.Show()
 
 	//
