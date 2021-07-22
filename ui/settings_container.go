@@ -27,7 +27,7 @@ func (fyneUI *Fyne) buildSettings() {
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.NewCenter(
-			widget.NewLabel("There are no settings yet..."),
+			widget.NewLabel("There are no settings yet."),
 		),
 	)
 }

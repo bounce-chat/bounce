@@ -88,8 +88,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *thread) {
 	currentUsersListView := container.New(
 		layout.NewBorderLayout(usersLabel, nil, nil, nil),
 		usersLabel,
-		//thread.currentUsersDMLinksContainer,
-		thread.currentUsersContainer, // TODO: eventually this will get so long it breaks the UI.  Need a better looking scroll wrapper.
+		thread.currentUsersContainer, // TODO: eventually this will get so long it breaks the UI.  Need a better looking scroll wrapper.  https://github.com/fyne-io/fyne/issues/2322
 	)
 
 	topOptionsVBox := container.NewVBox(

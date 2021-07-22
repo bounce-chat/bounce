@@ -15,25 +15,24 @@ import (
 )
 
 type thread struct {
-	id                           string
-	name                         binding.String
-	users                        *userStore
-	pendingUsers                 *userStore
-	isDM                         bool         // TODO: prevents things like showing an option to set an image or editing the name
-	notificationsEnabled         binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
-	notificationsMutedUntil      int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
-	editContainer                *fyne.Container
-	addUsersWindow               fyne.Window
-	view                         *fyne.Container
-	header                       *fyne.Container
-	button                       *widget.Button
-	scroll                       *container.Scroll
-	availableNewUsersScroll      *container.Scroll
-	currentUsersContainer        *fyne.Container
-	currentUsersDMLinksContainer *fyne.Container
-	entry                        *threadEntry
-	entryBar                     *fyne.Container
-	lastMessage                  int64
+	id                      string
+	name                    binding.String
+	users                   *userStore
+	pendingUsers            *userStore
+	isDM                    bool         // TODO: prevents things like showing an option to set an image or editing the name
+	notificationsEnabled    binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
+	notificationsMutedUntil int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
+	editContainer           *fyne.Container
+	addUsersWindow          fyne.Window
+	view                    *fyne.Container
+	header                  *fyne.Container
+	button                  *widget.Button
+	scroll                  *container.Scroll
+	availableNewUsersScroll *container.Scroll
+	currentUsersContainer   *fyne.Container
+	entry                   *threadEntry
+	entryBar                *fyne.Container
+	lastMessage             int64
 }
 
 func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *thread) {

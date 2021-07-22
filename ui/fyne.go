@@ -194,16 +194,15 @@ func (fyneUI *Fyne) LoadThread(bounceThread chat.Thread) {
 	}
 
 	thread := &thread{
-		id:                           id,
-		name:                         binding.NewString(),
-		users:                        newUserStore(),
-		pendingUsers:                 newUserStore(),
-		scroll:                       container.NewVScroll(container.NewVBox()),
-		availableNewUsersScroll:      container.NewVScroll(container.NewVBox()),
-		currentUsersContainer:        container.NewMax(),
-		currentUsersDMLinksContainer: container.NewMax(),
-		notificationsEnabled:         binding.NewBool(),
-		lastMessage:                  time.Now().Unix(),
+		id:                      id,
+		name:                    binding.NewString(),
+		users:                   newUserStore(),
+		pendingUsers:            newUserStore(),
+		scroll:                  container.NewVScroll(container.NewVBox()),
+		availableNewUsersScroll: container.NewVScroll(container.NewVBox()),
+		currentUsersContainer:   container.NewMax(),
+		notificationsEnabled:    binding.NewBool(),
+		lastMessage:             time.Now().Unix(),
 	}
 	for _, userID := range userIDs {
 		user, exists := fyneUI.users.get(userID)
