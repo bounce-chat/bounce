@@ -23,11 +23,15 @@ import (
 type Fyne struct {
 	app                          fyne.App
 	mainWindow                   fyne.Window
-	profileWindow                fyne.Window
-	addContactWindow             fyne.Window
-	createGroupWindow            fyne.Window
 	mainContainer                *fyne.Container
 	networkLoading               *fyne.Container
+	editProfile                  *fyne.Container
+	settings                     *fyne.Container
+	about                        *fyne.Container
+	newGroup                     *fyne.Container
+	newDM                        *fyne.Container
+	introduceContacts            *fyne.Container
+	importContact                *fyne.Container
 	threadVBox                   *fyne.Container
 	chatContainer                *fyne.Container
 	threads                      map[string]*thread
@@ -57,7 +61,7 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	//
 	fyneUI.mainWindow = fyneUI.app.NewWindow("Bounce")
 	fyneUI.mainWindow.SetMaster()
-	fyneUI.mainWindow.SetMainMenu(fyneUI.buildMainMenu())
+	fyneUI.mainWindow.SetMainMenu(fyneUI.buildMenu())
 	fyneUI.mainWindow.SetCloseIntercept(func() {
 		// There's some bug in Fyne where the app will hang when the close button
 		// is hit unless this is explicitly set https://github.com/fyne-io/fyne/issues/2314
@@ -69,9 +73,13 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	// Build all the containers
 	//
 	fyneUI.buildNetworkLoading()
-	fyneUI.buildProfileWindow()
-	fyneUI.buildAddContactWindow()
-	fyneUI.buildCreateGroupWindow()
+	fyneUI.buildEditProfile()
+	fyneUI.buildSettings()
+	fyneUI.buildAbout()
+	fyneUI.buildNewGroup()
+	fyneUI.buildNewDM()
+	fyneUI.buildIntroduceContacts()
+	fyneUI.buildImportContact()
 	fyneUI.buildMainContainer()
 
 	//
@@ -99,65 +107,9 @@ func (fyneUI *Fyne) Quit() {
 	fyneUI.app.Quit()
 }
 
-func (fyneUI *Fyne) buildProfileWindow() {
-	fyneUI.profileWindow = fyneUI.app.NewWindow("Profile")
-	fyneUI.profileWindow.SetContent(container.NewMax(widget.NewLabel("Edit your profile")))
-	fyneUI.profileWindow.SetCloseIntercept(func() {
-		fyneUI.profileWindow.Hide()
-	})
-
-}
-
-func (fyneUI *Fyne) buildAddContactWindow() {
-	fyneUI.addContactWindow = fyneUI.app.NewWindow("Add Contact")
-	fyneUI.addContactWindow.SetContent(container.NewMax(widget.NewLabel("Add a contact")))
-	fyneUI.addContactWindow.SetCloseIntercept(func() {
-		fyneUI.addContactWindow.Hide()
-	})
-}
-
-func (fyneUI *Fyne) buildCreateGroupWindow() {
-	fyneUI.createGroupWindow = fyneUI.app.NewWindow("Create Group")
-	fyneUI.createGroupWindow.SetContent(container.NewMax(widget.NewLabel("Create a group here")))
-	fyneUI.createGroupWindow.SetCloseIntercept(func() {
-		fyneUI.createGroupWindow.Hide()
-	})
-}
-
-func (fyneUI *Fyne) buildMainMenu() *fyne.MainMenu {
-	return fyne.NewMainMenu(
-		fyne.NewMenu(
-			"Bounce",
-			fyne.NewMenuItem("My Profile", func() {
-				fyneUI.profileWindow.Show()
-			}),
-			fyne.NewMenuItem("Settings", func() {
-				//fyneUI.addContactWindow.Show()
-			}),
-			fyne.NewMenuItem("About", func() {
-				//fyneUI.createGroupWindow.Show()
-			}),
-		),
-		fyne.NewMenu(
-			"Chat",
-			fyne.NewMenuItem("New Group", func() {
-				fyneUI.createGroupWindow.Show()
-			}),
-			fyne.NewMenuItem("New DM", func() {
-				//fyneUI.createGroupWindow.Show()
-			}),
-		),
-		fyne.NewMenu(
-			"Contacts",
-			fyne.NewMenuItem("Introduce", func() {
-				//fyneUI.addContactWindow.Show()
-			}),
-			fyne.NewMenuItem("Import", func() {
-				fyneUI.addContactWindow.Show()
-			}),
-		),
-	)
-}
+//
+// TODO: move these:
+//
 
 func (fyneUI *Fyne) refreshThreadOrder() {
 	allThreads := sortableThreads{}
@@ -220,8 +172,7 @@ func (fyneUI *Fyne) LoadUsers(users []chat.User) {
 }
 
 func (fyneUI *Fyne) NetworkOnline() {
-	fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
-	fyneUI.mainContainer.Show()
+	fyneUI.showMainContainer()
 }
 
 func (fyneUI *Fyne) NetworkDisconnected() {

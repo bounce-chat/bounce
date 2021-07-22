@@ -18,7 +18,6 @@ func (fyneUI *Fyne) buildMainContainer() {
 	//
 	// Logo and welcome message / instructions to be shown before a thread is selected
 	//
-
 	logo := canvas.NewImageFromResource(newEmbeddedResource("assets/logo.png"))
 	logo.FillMode = canvas.ImageFillContain
 	// TODO: choose reasonable values here
