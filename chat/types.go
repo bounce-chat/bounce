@@ -82,7 +82,7 @@ type RenameGroupCallback func(groupID, newName string)
 type ChangeNotificationSettingsCallback func(groupID string, notificationEnabled bool)
 
 //
-// TODO: to be deleted once I figure out loading messages in order during initial state loading
+// TODO: to be deleted once I figure out loading messages in order during initial state loading.  Or maybe not?
 //
 
 type Message struct {

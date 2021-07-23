@@ -113,13 +113,16 @@ func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
 	thread.entry = entry
 
 	entry.customOnSubmitted = func() {
-		message := entry.Text
-		fyneUI.onSendMessage(chat.Message{ // TODO: if dm, fyneUI.onSendDirectMessage(chat.OutgoingDirectMessage
+		message := chat.Message{ // TODO: if dm, fyneUI.onSendDirectMessage(chat.OutgoingDirectMessage
 			CreatedAt:   time.Now().Unix(),
 			Destination: thread.id,
-			Text:        message,
-		})
-		fyneUI.displaySentMessage(thread, message)
+			Text:        entry.Text,
+		}
+
+		fyneUI.onSendMessage(message)
+		// TODO: if dm, fyneUI.onSendDirectMessage(chat.OutgoingDirectMessage, etc?
+		fyneUI.displaySentMessage(thread, message.Text) // TODO: should be a pointer receiver on thread?
+
 		entry.Text = ""
 		entry.Refresh()
 	}

@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"image/color"
 	"sort"
 	"time"
 
@@ -134,24 +133,26 @@ func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 	chatHistory := thread.scroll.Content.(*fyne.Container)
 
 	// Create the new message box
-	usernameText := widget.NewLabel("You")
-	usernameText.TextStyle = fyne.TextStyle{Bold: true}
-	usernameText.Wrapping = fyne.TextWrapWord
-	messageText := widget.NewLabel(message)
-	messageText.Wrapping = fyne.TextWrapWord
+	/*
+		usernameText := widget.NewLabel("You")
+		usernameText.TextStyle = fyne.TextStyle{Bold: true}
+		usernameText.Wrapping = fyne.TextWrapWord
+		messageText := widget.NewLabel(message)
+		messageText.Wrapping = fyne.TextWrapWord
 
-	messageBox := container.New(
-		layout.NewMaxLayout(),
-		&canvas.Rectangle{FillColor: color.NRGBA{0, 0, 0x40, 0x40}},
-		container.NewVBox(
-			usernameText,
-			messageText,
-			widget.NewSeparator(),
-		),
-	)
-
+		messageBox := container.New(
+			layout.NewMaxLayout(),
+			&canvas.Rectangle{FillColor: color.NRGBA{0, 0, 0x40, 0x40}},
+			container.NewVBox(
+				usernameText,
+				messageText,
+				widget.NewSeparator(),
+			),
+		)
+	*/
 	// Add the message to the thread
-	chatHistory.Objects = append(chatHistory.Objects, messageBox)
+	//chatHistory.Objects = append(chatHistory.Objects, messageBox)
+	chatHistory.Objects = append(chatHistory.Objects, newChatBubble("You", message))
 	chatHistory.Refresh()
 
 	thread.scroll.Refresh()
