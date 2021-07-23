@@ -61,7 +61,9 @@ func (entry *threadEntry) TypedKey(ev *fyne.KeyEvent) {
 			if entry.customOnSubmitted == nil {
 				log.Fatal("user interface bug: a threadEntry does not have a customOnSubmitted defined")
 			} else {
-				entry.customOnSubmitted()
+				if entry.Text != "" {
+					entry.customOnSubmitted()
+				}
 			}
 			return
 		}

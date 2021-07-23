@@ -98,7 +98,6 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *thread) {
 		currentUsersListView,
 	)
 
-	fyneUI.refreshAvailableNewUsers(thread)
 	addUsersLabel := widget.NewLabel("Add Users:")
 	allUsersList := container.New(
 		layout.NewBorderLayout(addUsersLabel, nil, nil, nil),

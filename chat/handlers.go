@@ -4,7 +4,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func sendMessage(message OutgoingMessage) {
+func sendMessage(message Message) {
 	log.WithFields(log.Fields{
 		"destination": message.Destination,
 		"text":        message.Text,

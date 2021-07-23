@@ -96,10 +96,6 @@ func (fyneUI *Fyne) RegisterCallbacks(callbacks chat.Callbacks) {
 	fyneUI.onChangeNotificationSettings = callbacks.ChangeNotificationSettings
 }
 
-func (fyneUI *Fyne) LoadInitialState() {
-	// TODO
-}
-
 func (fyneUI *Fyne) Run() {
 	fyneUI.app.Run()
 }
@@ -129,6 +125,10 @@ func (fyneUI *Fyne) refreshThreadOrder() {
 
 func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 	if message == "" {
+		log.WithFields(log.Fields{
+			"thread_id":   thread.id,
+			"thread_name": thread.name,
+		}).Warn("UI asked to display an empty sent message")
 		return
 	}
 	chatHistory := thread.scroll.Content.(*fyne.Container)
@@ -166,9 +166,15 @@ func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 // Exported functions for the chat engine
 //
 
-func (fyneUI *Fyne) LoadUsers(users []chat.User) {
-	for _, u := range users {
+func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
+	for _, u := range state.Users {
 		fyneUI.users.add(&user{id: u.ID, name: u.Name})
+	}
+	for _, t := range state.Threads {
+		fyneUI.LoadThread(t)
+	}
+	for _, m := range state.Messages {
+		fyneUI.ReceivedMessage(m) // TODO: except we don't want to mark them as unread (unless they are, I guess)
 	}
 }
 
@@ -274,9 +280,9 @@ func (fyneUI *Fyne) LoadThread(bounceThread chat.Thread) {
 	fyneUI.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.IncomingMessage) {
-	threadID := bounceMessage.ThreadID
-	userID := bounceMessage.UserID
+func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.Message) {
+	threadID := bounceMessage.Destination
+	userID := bounceMessage.Source
 	message := bounceMessage.Text
 
 	// Log an error and early return if the thread doesn't exist

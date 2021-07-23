@@ -15,11 +15,10 @@ package chat
 type BounceAddress string
 
 type InitialState struct {
-	Profile          User
-	Users            []User
-	Threads          []Thread
-	ReceivedMessages []IncomingMessage
-	SentMessages     []OutgoingMessage
+	Profile  User
+	Users    []User
+	Threads  []Thread
+	Messages []Message // TODO: break this into each type of message once possible.  Right now they all need to be sorted by timestamp
 }
 
 type User struct {
@@ -34,18 +33,27 @@ type Thread struct {
 	UserIDs []string
 }
 
-type IncomingMessage struct {
-	ThreadID  string
-	CreatedAt int64
-	UserID    string
-	Text      string
+type IncomingThreadMessage struct {
+	ID          string
+	CreatedAt   int64
+	Read        bool
+	Author      string // User UUID
+	Destination string // Group ID
+	Text        string
 }
 
-type OutgoingMessage struct {
-	CreatedAt   int64
-	Destination string
-	Text        string
-	// TODO: support images, files, etc
+type OutgoingThreadMessage struct {
+}
+
+type IncomingDirectMessage struct {
+}
+
+type OutgoingDirectMessage struct {
+}
+
+type Device struct {
+	// SQL relation to user who owns it
+	Address BounceAddress
 }
 
 //
@@ -62,7 +70,7 @@ type Callbacks struct {
 }
 
 // The user wants to send a message
-type SendMessageCallback func(OutgoingMessage) // TODO: return an error?
+type SendMessageCallback func(Message) // TODO: return an error?
 
 // The user wants to add another user to a group
 type AddUserToGroupCallback func(groupID, userID string)
@@ -72,3 +80,16 @@ type RenameGroupCallback func(groupID, newName string)
 
 // The user wants to change the notification settings for a group on all their devices
 type ChangeNotificationSettingsCallback func(groupID string, notificationEnabled bool)
+
+//
+// TODO: to be deleted once I figure out loading messages in order during initial state loading
+//
+
+type Message struct {
+	ID          string
+	CreatedAt   int64
+	DM          bool
+	Source      string // Always a user's UUID
+	Destination string // a user UUID if DM == true, otherwise a group UUID
+	Text        string
+}

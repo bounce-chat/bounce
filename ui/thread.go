@@ -114,7 +114,7 @@ func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
 
 	entry.customOnSubmitted = func() {
 		message := entry.Text
-		fyneUI.onSendMessage(chat.OutgoingMessage{
+		fyneUI.onSendMessage(chat.Message{ // TODO: if dm, fyneUI.onSendDirectMessage(chat.OutgoingDirectMessage
 			CreatedAt:   time.Now().Unix(),
 			Destination: thread.id,
 			Text:        message,

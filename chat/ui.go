@@ -14,9 +14,7 @@ type BounceUI interface {
 	// Define callbacks the interface will use to communicate with the chat ending
 	RegisterCallbacks(Callbacks)
 	// Load the initial state
-	LoadUsers([]User)
-	LoadThread(Thread)
-	//TODO: LoadInitialState
+	LoadInitialState(InitialState)
 
 	//
 	// These functions control the user interface lifecycle
@@ -37,6 +35,6 @@ type BounceUI interface {
 	NetworkDisconnected()
 
 	// New chat message to display in a thread
-	ReceivedMessage(IncomingMessage)
+	ReceivedMessage(Message) // TODO: should be specific to threads (DM vs group)
 	//RenameGroup()
 }

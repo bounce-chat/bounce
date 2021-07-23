@@ -6,9 +6,7 @@ import (
 
 //TODO: delete this, just for testing UI interactions
 func simulate(ui BounceUI) {
-	//time.Sleep(3 * time.Second)
-	ui.NetworkOnline()
-	//time.Sleep(1 * time.Second)
+	// "Loaded from the database"
 	user1 := User{
 		ID:   "1",
 		Name: "Alice",
@@ -25,38 +23,52 @@ func simulate(ui BounceUI) {
 		ID:   "4",
 		Name: "David",
 	}
-	ui.LoadUsers([]User{user1, user2, user3, user4})
-	ui.LoadThread(Thread{
+	thread1 := Thread{
 		ID:      "001",
 		Name:    "Group with Alice and Bob",
 		UserIDs: []string{user1.ID, user2.ID},
-	})
-	//time.Sleep(2 * time.Second)
-	ui.LoadThread(Thread{
+	}
+	thread2 := Thread{
 		ID:      "002",
 		Name:    "Group with Bob and Charlie",
 		UserIDs: []string{user2.ID, user3.ID},
-	})
-	//time.Sleep(3 * time.Second)
-	ui.LoadThread(Thread{
+	}
+	thread3 := Thread{
 		ID:      "4",
-		Name:    "DM with David",
+		Name:    "Group with David",
 		UserIDs: []string{user4.ID},
+	}
+	message1 := Message{
+		Source:      "2",
+		Destination: "001",
+		Text:        "this came from the database",
+	}
+
+	ui.LoadInitialState(InitialState{
+		Profile:  User{},
+		Users:    []User{user1, user2, user3, user4},
+		Threads:  []Thread{thread1, thread2, thread3},
+		Messages: []Message{message1},
 	})
+
+	//time.Sleep(3 * time.Second)
+	ui.NetworkOnline()
+	time.Sleep(3 * time.Second)
+
 	go func() {
 		for i := 0; i < 25; i++ {
-			ui.ReceivedMessage(IncomingMessage{ThreadID: "001", UserID: "1", Text: "hello this is from user 1"})
+			ui.ReceivedMessage(Message{Destination: thread1.ID, Source: user1.ID, Text: "hello this is from user 1"})
 			time.Sleep(1 * time.Second)
 		}
 	}()
 	go func() {
 		for i := 0; i < 10; i++ {
-			ui.ReceivedMessage(IncomingMessage{ThreadID: "002", UserID: "2", Text: "hello this is from user 2"})
+			ui.ReceivedMessage(Message{Destination: thread2.ID, Source: user2.ID, Text: "hello this is from user 2"})
 			time.Sleep(5 * time.Second)
 		}
 	}()
 
-	ui.ReceivedMessage(IncomingMessage{ThreadID: "4", UserID: "4", Text: "hello this is from user 4"})
+	ui.ReceivedMessage(Message{Destination: thread3.ID, Source: user4.ID, Text: "hello this is from user 4"})
 
 	//time.Sleep(5 * time.Second)
 	//ui.NetworkDisconnected()
