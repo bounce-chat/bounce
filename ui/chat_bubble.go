@@ -117,18 +117,20 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 		renderer.horizontalPaddingMinimumOnOtherSize
 
 	// Resize the message label into how big of space we're actually going to give it.  That's the total
-	// size that we're being asked to layout in, minus the space in our widget used for padding and other
-	// items like the username and metadata
+	// size that we're being asked to layout in, minus the space in our widget uses for padding and other
+	// items like the username and timestamp text
 	renderer.message.Resize(
 		size.Subtract(fyne.Size{
 			Width:  allHorizontalPadding,
-			Height: allVerticalPadding + usernameSize.Height,
+			Height: allVerticalPadding + usernameSize.Height + metadataSize.Height,
 		}),
 	)
 	messageSize := renderer.message.MinSize()
 
-	// Now let's figure out how far we're going to move the chat bubble over from the side it isn't attached to.
-	// TODO: explain this better
+	//
+	// Now we take some measurments for how much of the available space we want to use for the bubble vs how much
+	// we need to reserve for space on the non-justified side, and calculate offsets we're going to use later
+	//
 	xOffset := renderer.horizontalPaddingMinimumOnOtherSize
 	availableWidth := size.Width
 	takenUsernameSpace := fyne.MeasureText(renderer.username.Text, theme.TextSize(), renderer.bubble.message.TextStyle).Width
@@ -140,15 +142,18 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	if metadataSize.Width > maximumTextWidth {
 		maximumTextWidth = metadataSize.Width
 	}
-
 	// Check if the longest line in the message is going to want to be larger than the space we've been told to
-	// layout in.  If so then we're going to wrap and we can't add additional offset.
+	// make a layout in.  If so then we're going to wrap and we can't add additional offset.
 	if maximumTextWidth < availableWidth {
 		// We're not going to wrap the text, so the offset can expand to fill remaining space
 		xOffset += availableWidth - maximumTextWidth - allHorizontalPadding
 	}
 	// Lastly, there's going to be padding on the justified side of the bubble.  Reduce the offset for that.
 	xOffset -= renderer.horizontalPaddingSideOfBackground
+
+	//
+	// Now, place all the objects where they belong
+	//
 
 	// Put the username on the top of the bubble
 	renderer.username.Move(fyne.Position{
