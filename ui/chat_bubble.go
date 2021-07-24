@@ -51,20 +51,20 @@ func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 	}
 
 	renderer := &bubbleRenderer{
-		background:                          background,
-		bubble:                              bubble,
-		username:                            usernameText,
-		message:                             bubble.message,
-		longestLine:                         longestLine(bubble.message.Text), // We have to know the longest line for width calculation, more on that later
-		verticalPaddingAboveBackground:      theme.Padding() * 2,
-		verticalPaddingAboveUsername:        theme.Padding() * 2,
-		verticalPaddingAboveMessage:         theme.Padding() * 2,
-		verticalPaddingAboveMetadata:        theme.Padding() * 2,
-		verticalPaddingAboveBackgroundEnd:   theme.Padding() * 2,
-		verticalPaddingAboveEnd:             theme.Padding() * 2,
-		horizontalPaddingSideOfBackground:   theme.Padding() * 2,
-		horizontalPaddingSideOfText:         theme.Padding() * 2,
-		horizontalPaddingSideOfIcon:         theme.Padding() * 2,
+		background:                        background,
+		bubble:                            bubble,
+		username:                          usernameText,
+		message:                           bubble.message,
+		longestLine:                       longestLine(bubble.message.Text), // We have to know the longest line for width calculation, more on that later
+		verticalPaddingAboveBackground:    theme.Padding() * 2,
+		verticalPaddingAboveUsername:      theme.Padding() * 2,
+		verticalPaddingAboveMessage:       theme.Padding() * 2,
+		verticalPaddingAboveMetadata:      theme.Padding() * 2,
+		verticalPaddingAboveBackgroundEnd: theme.Padding() * 2,
+		verticalPaddingAboveEnd:           theme.Padding() * 2,
+		horizontalPaddingSideOfBackground: theme.Padding() * 2,
+		horizontalPaddingSideOfText:       theme.Padding() * 2,
+		//horizontalPaddingSideOfIcon:         theme.Padding() * 2,
 		horizontalPaddingMinimumOnOtherSize: theme.Padding() * 7,
 	}
 	return renderer
@@ -78,15 +78,15 @@ type bubbleRenderer struct {
 	bubble      *chatBubble
 	layout      fyne.Layout
 	// Easier to read the Layout math by using these variable names
-	verticalPaddingAboveBackground      float32
-	verticalPaddingAboveUsername        float32
-	verticalPaddingAboveMessage         float32
-	verticalPaddingAboveMetadata        float32
-	verticalPaddingAboveBackgroundEnd   float32
-	verticalPaddingAboveEnd             float32
-	horizontalPaddingSideOfBackground   float32
-	horizontalPaddingSideOfText         float32
-	horizontalPaddingSideOfIcon         float32
+	verticalPaddingAboveBackground    float32
+	verticalPaddingAboveUsername      float32
+	verticalPaddingAboveMessage       float32
+	verticalPaddingAboveMetadata      float32
+	verticalPaddingAboveBackgroundEnd float32
+	verticalPaddingAboveEnd           float32
+	horizontalPaddingSideOfBackground float32
+	horizontalPaddingSideOfText       float32
+	//horizontalPaddingSideOfIcon         float32
 	horizontalPaddingMinimumOnOtherSize float32
 }
 
@@ -103,9 +103,10 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 		renderer.verticalPaddingAboveBackgroundEnd +
 		renderer.verticalPaddingAboveEnd
 
-	allHorizontalPadding := renderer.horizontalPaddingSideOfBackground + // TODO: used?
-		renderer.horizontalPaddingSideOfText +
-		renderer.horizontalPaddingSideOfIcon +
+	// We multiply the things that are on both sides by 2
+	allHorizontalPadding := renderer.horizontalPaddingSideOfBackground*2 +
+		renderer.horizontalPaddingSideOfText*2 +
+		//renderer.horizontalPaddingSideOfIcon*2 +
 		renderer.horizontalPaddingMinimumOnOtherSize
 
 	// Resize the message label into how big of space we're actually going to give it.  That's the total
@@ -170,9 +171,16 @@ func (renderer *bubbleRenderer) MinSize() (size fyne.Size) {
 	usernameSize := renderer.username.MinSize()
 	messageSize := renderer.message.MinSize()
 
+	allVerticalPadding := renderer.verticalPaddingAboveBackground +
+		renderer.verticalPaddingAboveUsername +
+		renderer.verticalPaddingAboveMessage +
+		renderer.verticalPaddingAboveMetadata +
+		renderer.verticalPaddingAboveBackgroundEnd +
+		renderer.verticalPaddingAboveEnd
+
 	return fyne.Size{
-		Width:  renderer.message.MinSize().Width + renderer.padding()*4,
-		Height: usernameSize.Height + messageSize.Height + renderer.padding()*5,
+		Width:  renderer.horizontalPaddingSideOfBackground*2 + renderer.horizontalPaddingSideOfText*2 + messageSize.Width,
+		Height: allVerticalPadding + usernameSize.Height + messageSize.Height, // TODO: +metadataSize.Height
 	}
 }
 
