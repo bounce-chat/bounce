@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image/color"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -43,10 +44,11 @@ func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 		//ShadowingRenderer: widget.NewShadowingRenderer(objects, shadowLevel),
 		background: background,
 		//tapBG:             tapBG,
-		bubble:   bubble,
-		username: usernameText,
-		message:  bubble.message,         //Text,
-		layout:   layout.NewHBoxLayout(), // TODO: hmmmm
+		bubble:      bubble,
+		username:    usernameText,
+		message:     bubble.message, //Text,
+		longestLine: longestLine(bubble.message.Text),
+		layout:      layout.NewHBoxLayout(), // TODO: hmmmm
 	}
 	//renderer.updateIconAndText()
 	//renderer.applyTheme()
@@ -56,10 +58,11 @@ func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 type bubbleRenderer struct {
 	username *canvas.Text
 	//message    *canvas.Text
-	message    *widget.Label
-	background *canvas.Rectangle
-	bubble     *chatBubble
-	layout     fyne.Layout
+	message     *widget.Label
+	longestLine string
+	background  *canvas.Rectangle
+	bubble      *chatBubble
+	layout      fyne.Layout
 }
 
 func (renderer *bubbleRenderer) Layout(size fyne.Size) {
@@ -67,22 +70,28 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 
 	usernameSize := renderer.username.MinSize()
 
+	// Minimum buffer
+	xOffset := float32(30)
+
 	renderer.message.Resize(
 		size.Subtract(fyne.Size{
-			Width:  renderer.padding() * 4, // + xOffset,
+			Width:  renderer.padding()*4 + xOffset,
 			Height: renderer.padding() * 7,
 		}),
 	)
 	messageSize := renderer.message.MinSize() // TODO: word wrapping works with a label.  But I don't want to use a label?
 
 	availableWidth := size.Width
-	takenSpace := fyne.MeasureText(renderer.bubble.message.Text, theme.TextSize(), renderer.bubble.message.TextStyle).Width
-	xOffset := float32(0)
+	takenSpace := fyne.MeasureText(renderer.username.Text, theme.TextSize(), renderer.bubble.message.TextStyle).Width
+	takenMessageSpace := fyne.MeasureText(renderer.longestLine, theme.TextSize(), renderer.bubble.message.TextStyle).Width
+	if takenMessageSpace > takenSpace {
+		takenSpace = takenMessageSpace
+	}
+
 	if takenSpace < availableWidth {
 		// We're not going to wrap the text
-		xOffset = availableWidth - takenSpace - renderer.padding()*7
+		xOffset += availableWidth - takenSpace - renderer.padding()*7
 	}
-	//takenSpace := messageSize.Width + renderer.padding()*4
 
 	// Put the username on the top
 	renderer.username.Move(fyne.Position{
@@ -92,14 +101,14 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 
 	// Put the message underneight it
 	renderer.message.Move(fyne.Position{
-		X: renderer.padding()*2 + xOffset,                 //(padding.Width / 2),
-		Y: (renderer.padding() * 3) + usernameSize.Height, //padding.Height + usernameSize.Height + padding.Height,
+		X: renderer.padding()*2 + xOffset,
+		Y: (renderer.padding() * 3) + usernameSize.Height,
 	})
 
 	// Determine the size of the chat bubble
 	renderer.background.Resize(fyne.Size{
 		Height: usernameSize.Height + messageSize.Height + renderer.padding()*3,
-		Width:  size.Width + renderer.padding()*4,
+		Width:  size.Width - xOffset - renderer.padding(), //*2, //+ renderer.padding()*4,
 	})
 
 	// Place the background
@@ -124,6 +133,7 @@ func (renderer *bubbleRenderer) MinSize() (size fyne.Size) {
 func (renderer *bubbleRenderer) Refresh() {
 	renderer.username.Text = renderer.bubble.username
 	renderer.message = renderer.bubble.message
+	renderer.longestLine = longestLine(renderer.message.Text)
 	//r.updateIconAndText()
 	//r.applyTheme()
 	//r.background.Refresh()
@@ -132,10 +142,11 @@ func (renderer *bubbleRenderer) Refresh() {
 }
 
 func (renderer *bubbleRenderer) Destroy() {
+	// TODO: do I need to do something here?
 }
 
 func (renderer *bubbleRenderer) Objects() []fyne.CanvasObject {
-	//return renderer.bubble.objects
+	// TODO: return renderer.bubble.objects?
 	return []fyne.CanvasObject{
 		renderer.background,
 		renderer.username,
@@ -147,6 +158,13 @@ func (renderer *bubbleRenderer) padding() float32 {
 	return theme.Padding() * 2
 }
 
-func (renderer *bubbleRenderer) paddingSize() fyne.Size {
-	return fyne.NewSize(theme.Padding()*6, theme.Padding()*4)
+func longestLine(message string) string {
+	lines := strings.Split(message, "\n") // OS specific?  Maybe do this https://stackoverflow.com/a/49963413
+	longest := ""
+	for _, line := range lines {
+		if len(line) > len(longest) {
+			longest = line
+		}
+	}
+	return longest
 }
