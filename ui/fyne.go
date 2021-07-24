@@ -305,16 +305,18 @@ func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.Message) {
 		}).Error("thread received a message from user ID not in thread")
 		return
 	}
-	usernameText := widget.NewLabel(user.name)
-	usernameText.TextStyle = fyne.TextStyle{Bold: true}
-	usernameText.Wrapping = fyne.TextWrapWord
-	messageText := widget.NewLabel(message)
-	messageText.Wrapping = fyne.TextWrapWord
-	messageBox := container.NewVBox(
-		usernameText,
-		messageText,
-		widget.NewSeparator(),
-	)
+	//usernameText := widget.NewLabel(user.name)
+	//usernameText.TextStyle = fyne.TextStyle{Bold: true}
+	//usernameText.Wrapping = fyne.TextWrapWord
+	//messageText := widget.NewLabel(message)
+	//messageText.Wrapping = fyne.TextWrapWord
+	//messageBox := container.NewVBox(
+	//	usernameText,
+	//	messageText,
+	//	widget.NewSeparator(),
+	//)
+
+	messageBox := newChatBubble(user.name, message, false, time.Now().Unix())
 
 	// Check if we're already scrolled to the bottom, for auto-scroll reasons
 	autoscroll := false

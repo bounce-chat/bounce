@@ -68,7 +68,7 @@ func simulate(ui BounceUI) {
 		}
 	}()
 
-	ui.ReceivedMessage(Message{Destination: thread3.ID, Source: user4.ID, Text: "hello this is from user 4"})
+	ui.ReceivedMessage(Message{Destination: thread3.ID, Source: user4.ID, Text: "hello this is from user 4.  this is a long message that is certainly going to wrap so that the bubble view can be tested."})
 
 	//time.Sleep(5 * time.Second)
 	//ui.NetworkDisconnected()

@@ -15,7 +15,8 @@ package chat
 type BounceAddress string
 
 type InitialState struct {
-	Profile  User
+	Profile User
+	//Devices  []Device
 	Users    []User
 	Threads  []Thread
 	Messages []Message // TODO: break this into each type of message once possible.  Right now they all need to be sorted by timestamp
