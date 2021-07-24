@@ -65,47 +65,46 @@ type bubbleRenderer struct {
 func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	//iconSize := fyne.NewSize(theme.IconInlineSize(), theme.IconInlineSize())
 
-	//renderer.username.Resize(size)
 	usernameSize := renderer.username.MinSize()
 
-	//renderer.message.Resize(size)             // TODO: no, this should be the smaller size within size that fits the message body             // TODO: remove padding size  //bgSize = size.Subtract(fyne.NewSize(theme.Padding(), theme.Padding()))
 	renderer.message.Resize(
 		size.Subtract(fyne.Size{
-			Width:  renderer.padding() * 4,
+			Width:  renderer.padding() * 4, // + xOffset,
 			Height: renderer.padding() * 7,
 		}),
 	)
 	messageSize := renderer.message.MinSize() // TODO: word wrapping works with a label.  But I don't want to use a label?
 
-	//padding := renderer.paddingSize()
+	availableWidth := size.Width
+	takenSpace := fyne.MeasureText(renderer.bubble.message.Text, theme.TextSize(), renderer.bubble.message.TextStyle).Width
+	xOffset := float32(0)
+	if takenSpace < availableWidth {
+		// We're not going to wrap the text
+		xOffset = availableWidth - takenSpace - renderer.padding()*7
+	}
+	//takenSpace := messageSize.Width + renderer.padding()*4
 
 	// Put the username on the top
 	renderer.username.Move(fyne.Position{
-		X: renderer.padding() * 2,
+		X: renderer.padding()*2 + xOffset,
 		Y: renderer.padding() * 2,
 	})
 
 	// Put the message underneight it
 	renderer.message.Move(fyne.Position{
-		X: renderer.padding() * 2,                         //(padding.Width / 2),
+		X: renderer.padding()*2 + xOffset,                 //(padding.Width / 2),
 		Y: (renderer.padding() * 3) + usernameSize.Height, //padding.Height + usernameSize.Height + padding.Height,
 	})
 
 	// Determine the size of the chat bubble
-	backgroundSize := fyne.Size{
+	renderer.background.Resize(fyne.Size{
 		Height: usernameSize.Height + messageSize.Height + renderer.padding()*3,
 		Width:  size.Width + renderer.padding()*4,
-	}
-	//bgSize = fyne.Size{
-	//	Height: usernameSize.Height + messageSize.Height + padding.Height*2,
-	//	Width:  size.Width, ////messageSize.Width + padding.Width,
-	//}
-	renderer.background.Resize(backgroundSize)
+	})
 
 	// Place the background
-	//inset := fyne.NewPos(theme.Padding()/2, theme.Padding()/2)
 	renderer.background.Move(fyne.Position{
-		X: renderer.padding(),
+		X: renderer.padding() + xOffset,
 		Y: renderer.padding(),
 	})
 
@@ -115,9 +114,9 @@ func (renderer *bubbleRenderer) MinSize() (size fyne.Size) {
 	usernameSize := renderer.username.MinSize()
 	messageSize := renderer.message.MinSize()
 
-	size.Width = renderer.message.MinSize().Width // 100 //usernameSize.Width + messageSize.Width
+	size.Width = renderer.message.MinSize().Width + renderer.padding()*4 // 100 //usernameSize.Width + messageSize.Width
 	size.Height = usernameSize.Height + messageSize.Height + renderer.padding()*5
-	//size = size.Add(renderer.paddingSize())
+	//size = size.Add(renderer..paddingSize))
 	//size = size.Add(renderer.paddingSize())
 	return
 }
