@@ -3,6 +3,7 @@ package ui
 import (
 	"image/color"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -13,13 +14,13 @@ import (
 type chatBubble struct {
 	widget.BaseWidget
 	id        string
-	createdAt int64
+	timestamp int64
 	username  string // TODO: needs to update when user changes name.  user.name should be a binding.String
 	message   *widget.Label
 	outgoing  bool
 }
 
-func newChatBubble(username, message string, outgoing bool) *chatBubble {
+func newChatBubble(username, message string, outgoing bool, timestamp int64) *chatBubble {
 	// TODO: I'm just using a widget.Label because it comes with wrapping out of the box, and all the wrapping code
 	// isn't exported and non-trivial to copy out.  A canvas.Text would probably be better as I would have more
 	// control over the presentation of the font and could hopefully enable click and drag selection for copying
@@ -29,9 +30,10 @@ func newChatBubble(username, message string, outgoing bool) *chatBubble {
 	messageLabel.Wrapping = fyne.TextWrapWord
 
 	bubble := &chatBubble{
-		username: username,
-		message:  messageLabel,
-		outgoing: outgoing,
+		username:  username,
+		message:   messageLabel,
+		outgoing:  outgoing,
+		timestamp: timestamp,
 	}
 
 	bubble.ExtendBaseWidget(bubble)
@@ -42,6 +44,9 @@ func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 	bubble.ExtendBaseWidget(bubble)
 	usernameText := canvas.NewText(bubble.username, theme.ForegroundColor())
 	usernameText.TextStyle.Bold = true
+
+	timestampText := canvas.NewText(time.Unix(bubble.timestamp, 0).Format("1/2 15:04"), theme.ForegroundColor())
+	timestampText.TextSize = theme.TextSize() * 0.6
 
 	// Incoming messages have a grey background and justify to the left
 	background := &canvas.Rectangle{FillColor: color.NRGBA{0x20, 0x20, 0x20, 0xff}}
@@ -55,6 +60,7 @@ func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 		bubble:                            bubble,
 		username:                          usernameText,
 		message:                           bubble.message,
+		timestamp:                         timestampText,
 		longestLine:                       longestLine(bubble.message.Text), // We have to know the longest line for width calculation, more on that later
 		verticalPaddingAboveBackground:    theme.Padding() * 2,
 		verticalPaddingAboveUsername:      theme.Padding() * 2,
@@ -73,6 +79,7 @@ func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 type bubbleRenderer struct {
 	username    *canvas.Text
 	message     *widget.Label
+	timestamp   *canvas.Text
 	longestLine string
 	background  *canvas.Rectangle
 	bubble      *chatBubble
@@ -94,7 +101,7 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	//iconSize := fyne.NewSize(theme.IconInlineSize(), theme.IconInlineSize())
 
 	usernameSize := renderer.username.MinSize()
-	//metadataSize :=
+	metadataSize := renderer.timestamp.MinSize()
 
 	allVerticalPadding := renderer.verticalPaddingAboveBackground +
 		renderer.verticalPaddingAboveUsername +
@@ -118,6 +125,7 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 			Height: allVerticalPadding + usernameSize.Height,
 		}),
 	)
+	messageSize := renderer.message.MinSize()
 
 	// Now let's figure out how far we're going to move the chat bubble over from the side it isn't attached to.
 	// TODO: explain this better
@@ -129,6 +137,10 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	if takenMessageSpace > takenUsernameSpace {
 		maximumTextWidth = takenMessageSpace
 	}
+	if metadataSize.Width > maximumTextWidth {
+		maximumTextWidth = metadataSize.Width
+	}
+
 	// Check if the longest line in the message is going to want to be larger than the space we've been told to
 	// layout in.  If so then we're going to wrap and we can't add additional offset.
 	if maximumTextWidth < availableWidth {
@@ -150,12 +162,15 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 		Y: renderer.verticalPaddingAboveBackground + renderer.verticalPaddingAboveUsername + usernameSize.Height + renderer.verticalPaddingAboveMessage,
 	})
 
-	// TODO: place the timestamp
+	// Put the timestamp in the bottom right of the bubble
+	renderer.timestamp.Move(fyne.Position{
+		X: availableWidth - renderer.horizontalPaddingSideOfBackground - renderer.horizontalPaddingSideOfText/2 - metadataSize.Width,
+		Y: renderer.verticalPaddingAboveBackground + renderer.verticalPaddingAboveUsername + usernameSize.Height + renderer.verticalPaddingAboveMessage + messageSize.Height + renderer.verticalPaddingAboveMetadata,
+	})
 
 	// Determine the size of the chat bubble
-	messageSize := renderer.message.MinSize()
 	renderer.background.Resize(fyne.Size{
-		Height: renderer.verticalPaddingAboveUsername + usernameSize.Height + renderer.verticalPaddingAboveMessage + messageSize.Height + renderer.verticalPaddingAboveBackgroundEnd, // TODO: + metadataSize.Height
+		Height: renderer.verticalPaddingAboveUsername + usernameSize.Height + renderer.verticalPaddingAboveMessage + messageSize.Height + renderer.verticalPaddingAboveMetadata + metadataSize.Height + renderer.verticalPaddingAboveBackgroundEnd,
 		Width:  size.Width - xOffset - renderer.horizontalPaddingSideOfText + maximumTextWidth + renderer.horizontalPaddingSideOfText,
 	})
 
@@ -170,6 +185,7 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 func (renderer *bubbleRenderer) MinSize() (size fyne.Size) {
 	usernameSize := renderer.username.MinSize()
 	messageSize := renderer.message.MinSize()
+	metadataSize := renderer.timestamp.MinSize()
 
 	allVerticalPadding := renderer.verticalPaddingAboveBackground +
 		renderer.verticalPaddingAboveUsername +
@@ -180,7 +196,7 @@ func (renderer *bubbleRenderer) MinSize() (size fyne.Size) {
 
 	return fyne.Size{
 		Width:  renderer.horizontalPaddingSideOfBackground*2 + renderer.horizontalPaddingSideOfText*2 + messageSize.Width,
-		Height: allVerticalPadding + usernameSize.Height + messageSize.Height, // TODO: +metadataSize.Height
+		Height: allVerticalPadding + usernameSize.Height + messageSize.Height + metadataSize.Height,
 	}
 }
 
@@ -205,6 +221,7 @@ func (renderer *bubbleRenderer) Objects() []fyne.CanvasObject {
 		renderer.background,
 		renderer.username,
 		renderer.message,
+		renderer.timestamp,
 	}
 }
 
