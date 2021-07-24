@@ -152,7 +152,7 @@ func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 	*/
 	// Add the message to the thread
 	//chatHistory.Objects = append(chatHistory.Objects, messageBox)
-	chatHistory.Objects = append(chatHistory.Objects, newChatBubble("You", message, true, time.Now().Unix()))
+	chatHistory.Objects = append(chatHistory.Objects, newChatBubble("You", message, true, time.Now().Unix(), nil))
 	chatHistory.Refresh()
 
 	thread.scroll.Refresh()
@@ -315,8 +315,11 @@ func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.Message) {
 	//	messageText,
 	//	widget.NewSeparator(),
 	//)
-
-	messageBox := newChatBubble(user.name, message, false, time.Now().Unix())
+	//profileButton := widget.NewButtonWithIcon("", newEmbeddedResource("assets/not_found.png"), func() { // TODO: get image from user
+	//	log.Info("user wants to open the profile of " + user.name)
+	//	// TODO: display this user's profile
+	//})
+	messageBox := newChatBubble(user.name, message, false, time.Now().Unix(), nil) //profileButton)
 
 	// Check if we're already scrolled to the bottom, for auto-scroll reasons
 	autoscroll := false
