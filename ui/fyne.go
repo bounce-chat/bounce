@@ -152,7 +152,7 @@ func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 	*/
 	// Add the message to the thread
 	//chatHistory.Objects = append(chatHistory.Objects, messageBox)
-	chatHistory.Objects = append(chatHistory.Objects, newChatBubble("You", message))
+	chatHistory.Objects = append(chatHistory.Objects, newChatBubble("You", message, true))
 	chatHistory.Refresh()
 
 	thread.scroll.Refresh()
