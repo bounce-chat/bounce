@@ -48,6 +48,7 @@ func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 	timestampText := canvas.NewText(time.Unix(bubble.timestamp, 0).Format("1/2 15:04"), theme.ForegroundColor())
 	timestampText.TextSize = theme.TextSize() * 0.6
 
+	// TODO: round the corners when possible: https://github.com/fyne-io/fyne/issues/1090
 	// Incoming messages have a grey background and justify to the left
 	background := &canvas.Rectangle{FillColor: color.NRGBA{0x20, 0x20, 0x20, 0xff}}
 	if bubble.outgoing {
@@ -105,7 +106,7 @@ type bubbleRenderer struct {
 
 func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	usernameSize := renderer.username.MinSize()
-	metadataSize := renderer.timestamp.MinSize()
+	timestampSize := renderer.timestamp.MinSize()
 
 	allVerticalPadding := renderer.verticalPaddingAboveBackground +
 		renderer.verticalPaddingAboveUsername +
@@ -126,7 +127,7 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	renderer.message.Resize(
 		size.Subtract(fyne.Size{
 			Width:  allHorizontalPadding,
-			Height: allVerticalPadding + usernameSize.Height + metadataSize.Height,
+			Height: allVerticalPadding + usernameSize.Height + timestampSize.Height,
 		}),
 	)
 	messageSize := renderer.message.MinSize()
@@ -135,34 +136,40 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	// Now we take some measurments for how much of the available space we want to use for the bubble vs how much
 	// we need to reserve for space on the non-justified side, and calculate offsets we're going to use later
 	//
+
+	// Our xOffset is far how to scoot everything to the right when we're left justified
 	xOffset := renderer.horizontalPaddingMinimumOnOtherSize
+	// Creating this variable just so things below are a little more readable
 	availableWidth := size.Width
-	takenUsernameSpace := fyne.MeasureText(renderer.username.Text, theme.TextSize(), renderer.bubble.message.TextStyle).Width
-	maximumTextWidth := takenUsernameSpace
-	takenMessageSpace := fyne.MeasureText(renderer.longestLine, theme.TextSize(), renderer.bubble.message.TextStyle).Width
-	if takenMessageSpace > takenUsernameSpace {
-		maximumTextWidth = takenMessageSpace
+	// We need to figure out which text in the bubble is going to be the widest so we can size the colored background accordingly
+	// We do this by measuring all the text we're going to print in the bubble, and comparing them and their padding
+	takenTimestampWidth := fyne.MeasureText(renderer.timestamp.Text, renderer.timestamp.TextSize, renderer.timestamp.TextStyle).Width + renderer.horizontalPaddingSideOfText*2
+	takenUsernameWidth := fyne.MeasureText(renderer.username.Text, renderer.username.TextSize, renderer.username.TextStyle).Width + renderer.horizontalPaddingSideOfText*2
+	// For multi-line messages, we measure the longest line.  Note: this measurment doesn't account for line wrapping, so we
+	// will have to detect when it's going to wrap and make some additional adjustments based on that.
+	takenMessageWidth := fyne.MeasureText(renderer.longestLine, theme.TextSize(), renderer.message.TextStyle).Width + renderer.horizontalPaddingSideOfText*2 // Can't get the TextSize of a label, use theme.TextSize()
+
+	// We start by assuming the timestamp is the widest text in the bubble, then replace that definition if anything else is wider.
+	// It is importatnt to remember in that this variable includes padding built in
+	maximumTextWidth := takenTimestampWidth
+	if takenUsernameWidth > maximumTextWidth {
+		maximumTextWidth = takenUsernameWidth
 	}
-	if metadataSize.Width > maximumTextWidth {
-		maximumTextWidth = metadataSize.Width
+	if takenMessageWidth > maximumTextWidth {
+		maximumTextWidth = takenMessageWidth
 	}
-	// Check if the longest line in the message is going to want to be larger than the space we've been told to
-	// make a layout in.  If so then we're going to wrap and we can't add additional offset.
-	//if maximumTextWidth < availableWidth {
+
+	//
+	// Now, if we're not going to wrap the text then we can expand the xOffset to fill in the remaining space.
+	// We determine this by checking if the maximum text width is going to be larger than what we have available.
+	// If not, we increase the xOffset to make up the difference
+	//
 	if maximumTextWidth+allHorizontalPadding < availableWidth {
-		// We're not going to wrap the text, so the offset can expand to fill remaining space
-		xOffset += availableWidth - maximumTextWidth - allHorizontalPadding
-		//xOffset += availableWidth - (renderer.horizontalPaddingSideOfText + maximumTextWidth + renderer.horizontalPaddingSideOfText)
-		bubbleX := renderer.horizontalPaddingSideOfBackground + xOffset
-		bubbleWidth := renderer.horizontalPaddingSideOfText + maximumTextWidth + renderer.horizontalPaddingSideOfText
-		endOfTheBubble := bubbleX + bubbleWidth
-		missingGap := availableWidth - endOfTheBubble
-		xOffset += missingGap
-	} else {
-		// Lastly, there's going to be padding on the justified side of the bubble.  Reduce the offset for that.
-		xOffset -= renderer.horizontalPaddingSideOfBackground
+		// We're not going to wrap, we can use up all the space that isn't the text with padding
+		xOffset = availableWidth - maximumTextWidth
 	}
-	//xOffset -= renderer.horizontalPaddingSideOfBackground
+	// Lastly, there's going to be padding on the justified side of the bubble.  Reduce the offset for that.
+	xOffset -= renderer.horizontalPaddingSideOfBackground * 2
 
 	//
 	// Now, make the correct size bubble and place all the objects where they belong, adding the xOffset where needed for right justification
@@ -170,8 +177,8 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 
 	// Determine the size of the chat bubble
 	renderer.background.Resize(fyne.Size{
-		Height: renderer.verticalPaddingAboveUsername + usernameSize.Height + renderer.verticalPaddingAboveMessage + messageSize.Height + renderer.verticalPaddingAboveMetadata + metadataSize.Height + renderer.verticalPaddingAboveBackgroundEnd,
-		Width:  renderer.horizontalPaddingSideOfText + maximumTextWidth + renderer.horizontalPaddingSideOfText,
+		Height: renderer.verticalPaddingAboveUsername + usernameSize.Height + renderer.verticalPaddingAboveMessage + messageSize.Height + renderer.verticalPaddingAboveMetadata + timestampSize.Height + renderer.verticalPaddingAboveBackgroundEnd,
+		Width:  maximumTextWidth + renderer.horizontalPaddingSideOfBackground*2,
 	})
 
 	// Put the username on the top of the bubble
@@ -185,7 +192,7 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	})
 
 	// Put the message underneith the username
-	messageX := renderer.horizontalPaddingSideOfBackground + renderer.horizontalPaddingSideOfText - theme.Padding() // subtract theme.Padding() to compensate for widget.Label's built-in padding, TODO: remove when using canvas.Text
+	messageX := renderer.horizontalPaddingSideOfBackground + renderer.horizontalPaddingSideOfText - theme.Padding() // subtract theme.Padding() to compensate for widget.Label's built-in padding, TODO: remove if/when using canvas.Text
 	if renderer.bubble.outgoing {
 		messageX += xOffset
 	}
@@ -194,10 +201,10 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 		Y: renderer.verticalPaddingAboveBackground + renderer.verticalPaddingAboveUsername + usernameSize.Height + renderer.verticalPaddingAboveMessage,
 	})
 
-	// Put the timestamp at the bottom left or bottom right depending on justification
+	// Put the timestamp at the bottom left or bottom right depending on justification, half way less indented than the message
 	timestampX := float32(0)
 	if renderer.bubble.outgoing {
-		timestampX = availableWidth - renderer.horizontalPaddingSideOfBackground - renderer.horizontalPaddingSideOfText*2 - metadataSize.Width
+		timestampX = availableWidth - renderer.horizontalPaddingSideOfBackground - renderer.horizontalPaddingSideOfText/2 - timestampSize.Width
 	} else {
 		timestampX = renderer.horizontalPaddingSideOfBackground + renderer.horizontalPaddingSideOfText/2
 	}
@@ -220,7 +227,7 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 func (renderer *bubbleRenderer) MinSize() (size fyne.Size) {
 	usernameSize := renderer.username.MinSize()
 	messageSize := renderer.message.MinSize()
-	metadataSize := renderer.timestamp.MinSize()
+	timestampSize := renderer.timestamp.MinSize()
 
 	allVerticalPadding := renderer.verticalPaddingAboveBackground +
 		renderer.verticalPaddingAboveUsername +
@@ -231,7 +238,7 @@ func (renderer *bubbleRenderer) MinSize() (size fyne.Size) {
 
 	return fyne.Size{
 		Width:  renderer.horizontalPaddingSideOfBackground*2 + renderer.horizontalPaddingSideOfText*2 + messageSize.Width,
-		Height: allVerticalPadding + usernameSize.Height + messageSize.Height + metadataSize.Height,
+		Height: allVerticalPadding + usernameSize.Height + messageSize.Height + timestampSize.Height,
 	}
 }
 
@@ -240,7 +247,7 @@ func (renderer *bubbleRenderer) Refresh() {
 	renderer.message = renderer.bubble.message
 	renderer.longestLine = longestLine(renderer.message.Text)
 	//r.updateIconAndText()
-	//r.applyTheme() // TODO: check if these are important to implement
+	//r.applyTheme() // TODO: got these from the button example, do I need to build equivalents?
 	//r.background.Refresh()
 	renderer.Layout(renderer.bubble.Size())
 	//canvas.Refresh(renderer.bubble.super())
