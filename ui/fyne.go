@@ -132,26 +132,6 @@ func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 	}
 	chatHistory := thread.scroll.Content.(*fyne.Container)
 
-	// Create the new message box
-	/*
-		usernameText := widget.NewLabel("You")
-		usernameText.TextStyle = fyne.TextStyle{Bold: true}
-		usernameText.Wrapping = fyne.TextWrapWord
-		messageText := widget.NewLabel(message)
-		messageText.Wrapping = fyne.TextWrapWord
-
-		messageBox := container.New(
-			layout.NewMaxLayout(),
-			&canvas.Rectangle{FillColor: color.NRGBA{0, 0, 0x40, 0x40}},
-			container.NewVBox(
-				usernameText,
-				messageText,
-				widget.NewSeparator(),
-			),
-		)
-	*/
-	// Add the message to the thread
-	//chatHistory.Objects = append(chatHistory.Objects, messageBox)
 	chatHistory.Objects = append(chatHistory.Objects, newChatBubble("You", message, true, time.Now().Unix(), nil))
 	chatHistory.Refresh()
 
@@ -305,16 +285,6 @@ func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.Message) {
 		}).Error("thread received a message from user ID not in thread")
 		return
 	}
-	//usernameText := widget.NewLabel(user.name)
-	//usernameText.TextStyle = fyne.TextStyle{Bold: true}
-	//usernameText.Wrapping = fyne.TextWrapWord
-	//messageText := widget.NewLabel(message)
-	//messageText.Wrapping = fyne.TextWrapWord
-	//messageBox := container.NewVBox(
-	//	usernameText,
-	//	messageText,
-	//	widget.NewSeparator(),
-	//)
 	//profileButton := widget.NewButtonWithIcon("", newEmbeddedResource("assets/not_found.png"), func() { // TODO: get image from user
 	//	log.Info("user wants to open the profile of " + user.name)
 	//	// TODO: display this user's profile
