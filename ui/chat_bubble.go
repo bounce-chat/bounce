@@ -55,7 +55,7 @@ func newChatBubble(username, message string, outgoing bool, timestamp int64, ico
 
 func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 	bubble.ExtendBaseWidget(bubble)
-	usernameText := canvas.NewText(bubble.username, theme.ForegroundColor()) // TODO: users should have uniqie colors derived from ID
+	usernameText := canvas.NewText(bubble.username, theme.ForegroundColor()) // TODO: users should have unique colors derived from ID
 	usernameText.TextStyle.Bold = true
 
 	timestampText := canvas.NewText(time.Unix(bubble.timestamp, 0).Format("1/2 15:04"), theme.ForegroundColor())
@@ -138,7 +138,6 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	// We multiply the things that are on both sides by 2
 	allHorizontalPadding := renderer.horizontalPaddingSideOfBackground*2 +
 		renderer.horizontalPaddingSideOfText*2 +
-		//renderer.horizontalPaddingSideOfIcon*2 +
 		renderer.horizontalPaddingMinimumOnOtherSize
 
 	// Resize the message label into how big of space we're actually going to give it.  That's the total
@@ -217,7 +216,7 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	renderer.background.Resize(fyne.Size{
 		Height: backgroundHeight,
 		Width:  maximumTextWidth + renderer.horizontalPaddingSideOfBackground*2,
-	})
+	}) // TODO: look into using a subtractive size like the oginal message sizer
 
 	// Put the username on the top of the bubble
 	usernameX := renderer.horizontalPaddingSideOfBackground + renderer.horizontalPaddingSideOfText
