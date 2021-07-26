@@ -108,7 +108,7 @@ func (bounceTor *TorNetwork) Start() error {
 		&tor.StartConf{
 			DataDir:        bounceTor.directory,
 			ProcessCreator: libtor.Creator,
-			DebugWriter:    os.Stderr,
+			DebugWriter:    os.Stderr, // TODO: logrus
 		},
 	)
 	if err != nil {
@@ -116,6 +116,8 @@ func (bounceTor *TorNetwork) Start() error {
 			"at":    "network.TorNetwork.Start",
 			"error": err.Error(),
 		}).Fatal("failed to start TOR")
+		// TODO: detect the type of error and decide if it's fatal or
+		// if we can try again
 	}
 
 	// Wait at most a few minutes to publish the service

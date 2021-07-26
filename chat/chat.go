@@ -24,6 +24,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 		userInterface:   ui,
 		network:         network,
 	}
+	go bounce.handleInterrupts()
 	//bounce.openDatabase()
 	bounce.network.LoadConfig(bounce.configDirectory)
 	bounce.userInterface.Build(bounce.configDirectory)
@@ -52,12 +53,11 @@ func Start(network BounceNetwork, ui BounceUI) {
 // Start the network and serve the Bounce protocol over the provided network.
 //
 func (chat *BounceChat) runNetwork() {
-	go chat.handleInterrupts()
 	// If this function ever returns then we should close the user interface.  This function
 	// should only return after the user interface is already closed, however.  This is just
 	// to prevent bugs that break the application from result in a hung UI.
 	// TODO: do I really need this?  Consider removing.
-	defer chat.userInterface.Quit()
+	//defer chat.userInterface.Quit()
 
 	// Start the network router
 	err := chat.network.Start()
