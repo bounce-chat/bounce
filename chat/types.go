@@ -60,7 +60,14 @@ type Device struct {
 //
 // The chat engine will provide these callbacks to a user interface
 //
-type Callbacks struct {
+type NetworkCallbacks struct {
+	NetworkOffline func()
+}
+
+//
+// The chat engine will provide these callbacks to a user interface
+//
+type UICallbacks struct {
 	SendMessage                SendMessageCallback
 	AddUserToGroup             AddUserToGroupCallback
 	RenameGroup                RenameGroupCallback

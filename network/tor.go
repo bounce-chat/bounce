@@ -14,7 +14,6 @@ import (
 	"github.com/cretz/bine/tor"
 	"github.com/ipsn/go-libtor"
 	log "github.com/sirupsen/logrus"
-	"google.golang.org/grpc"
 )
 
 type TorNetwork struct {
@@ -97,6 +96,8 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 	return pubkey, privkey
 }
 
+func (bounceTor *TorNetwork) RegisterCallbacks(chat.NetworkCallbacks) {}
+
 func (bounceTor *TorNetwork) Start() error {
 	log.WithFields(log.Fields{
 		"at": "network.TorNetwork.Start",
@@ -144,21 +145,7 @@ func (bounceTor *TorNetwork) Start() error {
 	return nil
 }
 
-func (bounceTor *TorNetwork) ServeGRPC(grpcServer *grpc.Server) error {
-	if bounceTor.onion.LocalListener == nil {
-		log.WithFields(log.Fields{
-			"at": "network.TorNetwork.ServeGRPC",
-		}).Fatal("onion listener is nil, cannot setup gRPC")
-	}
-	err := grpcServer.Serve(bounceTor.onion)
-	//err := grpcServer.Serve(bounceTor.onion.LocalListener) // TODO: should I be passing the lower level listner here instead?
-	if err != nil {
-		log.WithFields(log.Fields{
-			"at":    "network.TorNetwork.ServeGRPC",
-			"error": err.Error(),
-		}).Error("error serving gRPC server on Tor")
-		return err
-	}
+func (bounceTor *TorNetwork) Accept() *net.Conn {
 	return nil
 }
 

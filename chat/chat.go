@@ -4,10 +4,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/hkparker/bounce/protocol"
-
 	log "github.com/sirupsen/logrus"
-	"google.golang.org/grpc"
 )
 
 // Actual object that implements the protocol
@@ -15,7 +12,6 @@ type BounceChat struct {
 	configDirectory string
 	userInterface   BounceUI
 	network         BounceNetwork
-	grpcServer      *grpc.Server
 }
 
 //
@@ -27,38 +23,39 @@ func Start(network BounceNetwork, ui BounceUI) {
 		configDirectory: getConfigDirectory(),
 		userInterface:   ui,
 		network:         network,
-		grpcServer:      grpc.NewServer(),
 	}
 	//bounce.openDatabase()
 	bounce.network.LoadConfig(bounce.configDirectory)
 	bounce.userInterface.Build(bounce.configDirectory)
-	bounce.userInterface.RegisterCallbacks(Callbacks{
+	bounce.userInterface.RegisterCallbacks(UICallbacks{
 		SendMessage:                sendMessage,
 		AddUserToGroup:             addUserToGroup,
 		RenameGroup:                renameGroup,
 		ChangeNotificationSettings: changeNotificationSettings,
 	})
+	//bounce.network.RegisterCallbacks(NetworkCallbacks{
+	//	NetworkOffline:
+	//})
 	//bounce.userInterface.LoadInitialState(bounce.buildInitialState())
 
-	// Start the network and attach gRPC server in a goroutine
 	//go bounce.runNetwork() // TODO: just disabled for now for UI prototyping
-	// TODO: delete this, just for testing interactions during prototyping
-	go simulate(ui)
+	go simulate(ui) // TODO: delete this, just for testing interactions during prototyping
 
 	// Run the UI and block
 	bounce.userInterface.Run()
 	// Once the UI is closed, stop the server
-	bounce.grpcServer.GracefulStop()
+	// TODO: gracefully shut down our handlers
 	bounce.network.Shutdown()
 }
 
 //
-// Start the network and serve the Bounce protocol over gRPC.  If the network
-// encounters a fatal error, close the user interface, exiting the application
+// Start the network and serve the Bounce protocol over the provided network.
 //
 func (chat *BounceChat) runNetwork() {
-	// When this function returns the gRPC server will be stopped and it
-	// will be time to close the user interface
+	go chat.handleInterrupts()
+	// If this function ever returns then we should close the user interface.  This function
+	// should only return after the user interface is already closed, however.  This is just
+	// to prevent bugs that break the application from result in a hung UI.
 	defer chat.userInterface.Quit()
 	// TODO: rather than return and close the UI, call into the UI that the network has failed
 	// so that it can be displayed
@@ -76,15 +73,10 @@ func (chat *BounceChat) runNetwork() {
 	}
 
 	// Serve the Bounce protocol on the network
-	protocol.RegisterBounceServer(chat.grpcServer, chat)
-	go chat.handleInterrupts()
-	err = chat.network.ServeGRPC(chat.grpcServer)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"at":    "chat.runNetwork",
-			"error": err.Error(),
-		}).Error("error returned from gRPC server")
-	}
+	//for {
+	//	// check if we're gracefully shutting down
+	//	handleIncomingConnection(chat.network.Accept())
+	//}
 }
 
 //
@@ -103,7 +95,7 @@ func (chat *BounceChat) handleInterrupts() {
 			"signal": s.String(),
 		}).Info("signal received to kill process, shutting down")
 		// Stopping the user interface unblocks the main blocking call of the appplication,
-		// which in turn shuts down the gRPC server and the network
+		// which in turn shuts down the network handler and the network
 		chat.userInterface.Quit()
 	}
 }

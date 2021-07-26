@@ -88,7 +88,7 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	fyneUI.showNetworkLoading()
 }
 
-func (fyneUI *Fyne) RegisterCallbacks(callbacks chat.Callbacks) {
+func (fyneUI *Fyne) RegisterCallbacks(callbacks chat.UICallbacks) {
 	fyneUI.onSendMessage = callbacks.SendMessage
 	fyneUI.onAddUserToGroup = callbacks.AddUserToGroup
 	fyneUI.onRenameGroup = callbacks.RenameGroup

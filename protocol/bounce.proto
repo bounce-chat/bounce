@@ -1,15 +1,6 @@
 syntax = "proto3";
 option go_package = "github.com/hkparker/bounce/protocol";
 
-service Bounce {
-	rpc ReceiveMessage(ChatMessage) returns (Errors) {}
-	//rpc ReceiveReadRecipt(string) returns (Errors) {}
-}
-
-message Errors {
-	repeated string all = 1;
-}
-
 //
 // Messages that can be sent in chats
 //
