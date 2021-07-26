@@ -56,9 +56,8 @@ func (chat *BounceChat) runNetwork() {
 	// If this function ever returns then we should close the user interface.  This function
 	// should only return after the user interface is already closed, however.  This is just
 	// to prevent bugs that break the application from result in a hung UI.
+	// TODO: do I really need this?  Consider removing.
 	defer chat.userInterface.Quit()
-	// TODO: rather than return and close the UI, call into the UI that the network has failed
-	// so that it can be displayed
 
 	// Start the network router
 	err := chat.network.Start()
@@ -67,6 +66,8 @@ func (chat *BounceChat) runNetwork() {
 			"at":    "chat.runNetwork",
 			"error": err.Error(),
 		}).Error("unable to start network router")
+		// TODO: this shouldn't fail here.  Need a good UX for starting the app while the
+		// internet is disconnected.
 		return
 	} else {
 		chat.userInterface.NetworkOnline()

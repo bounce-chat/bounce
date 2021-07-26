@@ -145,8 +145,19 @@ func (bounceTor *TorNetwork) Start() error {
 	return nil
 }
 
-func (bounceTor *TorNetwork) Accept() *net.Conn {
-	return nil
+func (bounceTor *TorNetwork) Accept() net.Conn {
+	connection, err := bounceTor.onion.Accept()
+	if err != nil {
+		// TODO: the network needs to be restarted, either the machine
+		// is offline or the Tor node is having problems and should be
+		// restarted.  Determine the best choice for how to bring the
+		// network back online.
+		// TODO: use a waitgroup and recursion to make this always return
+		// a good connection, or pass the error up and let the chat engine
+		// wait until the network online callback informs it that it's ok
+		// to try again?
+	}
+	return connection
 }
 
 func (bounceTor *TorNetwork) Dial(address chat.BounceAddress) (*net.Conn, error) {
