@@ -32,7 +32,7 @@ func (bounce *Bounce) changeNotificationSettings(threadID string, enabled bool) 
 	}).Info("UI wants to chnage notification settings")
 }
 
-func (bounce *Bounce) requestUserConnection(user string) {
+func (bounce *Bounce) requestUserConnection(userID string) {
 	// Make sure there's a connection to the user
 	// if there's already a connection, early return and notify the UI that the user is online
 	// if not, attempt to make one.  Notify the UI if a connection is made or not

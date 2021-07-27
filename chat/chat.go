@@ -25,7 +25,12 @@ func Start(network BounceNetwork, ui BounceUI) {
 	}
 	go bounce.handleInterrupts()
 	//bounce.openDatabase()
+
 	bounce.network.LoadConfig(bounce.configDirectory)
+	//bounce.network.RegisterCallbacks(NetworkCallbacks{
+	//	NetworkOffline:
+	//})
+
 	bounce.userInterface.Build(bounce.configDirectory)
 	bounce.userInterface.RegisterCallbacks(UICallbacks{
 		SendMessage:                bounce.sendMessage,
@@ -33,14 +38,10 @@ func Start(network BounceNetwork, ui BounceUI) {
 		RenameGroup:                bounce.renameGroup,
 		ChangeNotificationSettings: bounce.changeNotificationSettings,
 	})
-	//bounce.network.RegisterCallbacks(NetworkCallbacks{
-	//	NetworkOffline:
-	//})
 	//bounce.userInterface.LoadInitialState(bounce.buildInitialState())
 
 	//go bounce.runNetwork() // TODO: just disabled for now for UI prototyping
 	go simulate(ui) // TODO: delete this, just for testing interactions during prototyping
-	//go bounce.gossip()
 
 	// Run the UI and block
 	bounce.userInterface.Run()
@@ -68,8 +69,12 @@ func (bounce *Bounce) runNetwork() {
 		}).Error("unable to start network router")
 		// TODO: this shouldn't fail here.  Need a good UX for starting the app while the
 		// internet is disconnected.
+		// TODO: perhaps send a network failed callback which will let the user view their
+		// messages, but adds a banner informing them the network is offline and disables
+		// all chat entries
 		return
 	} else {
+		//go bounce.gossip() // TODO: put this in the right place
 		bounce.userInterface.NetworkOnline()
 	}
 
