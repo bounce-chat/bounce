@@ -4,30 +4,36 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func sendMessage(message Message) {
+func (bounce *Bounce) sendMessage(message Message) {
 	log.WithFields(log.Fields{
 		"destination": message.Destination,
 		"text":        message.Text,
 	}).Info("UI wants to send a message")
 }
 
-func addUserToGroup(threadID, userID string) {
+func (bounce *Bounce) addUserToGroup(threadID, userID string) {
 	log.WithFields(log.Fields{
 		"thread": threadID,
 		"user":   userID,
 	}).Info("UI wants to add user to group")
 }
 
-func renameGroup(threadID, newName string) {
+func (bounce *Bounce) renameGroup(threadID, newName string) {
 	log.WithFields(log.Fields{
 		"thread":   threadID,
 		"new_name": newName,
 	}).Info("UI wants to rename a group")
 }
 
-func changeNotificationSettings(threadID string, enabled bool) {
+func (bounce *Bounce) changeNotificationSettings(threadID string, enabled bool) {
 	log.WithFields(log.Fields{
 		"thread":                threadID,
 		"notifications_enabled": enabled,
 	}).Info("UI wants to chnage notification settings")
+}
+
+func (bounce *Bounce) requestUserConnection(user string) {
+	// Make sure there's a connection to the user
+	// if there's already a connection, early return and notify the UI that the user is online
+	// if not, attempt to make one.  Notify the UI if a connection is made or not
 }

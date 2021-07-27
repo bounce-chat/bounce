@@ -7,8 +7,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Actual object that implements the protocol
-type BounceChat struct {
+type Bounce struct {
 	configDirectory string
 	userInterface   BounceUI
 	network         BounceNetwork
@@ -19,7 +18,7 @@ type BounceChat struct {
 // is closed, the network reaches a fatal error, or the process is sent an interrupt.
 //
 func Start(network BounceNetwork, ui BounceUI) {
-	bounce := &BounceChat{
+	bounce := &Bounce{
 		configDirectory: getConfigDirectory(),
 		userInterface:   ui,
 		network:         network,
@@ -29,10 +28,10 @@ func Start(network BounceNetwork, ui BounceUI) {
 	bounce.network.LoadConfig(bounce.configDirectory)
 	bounce.userInterface.Build(bounce.configDirectory)
 	bounce.userInterface.RegisterCallbacks(UICallbacks{
-		SendMessage:                sendMessage,
-		AddUserToGroup:             addUserToGroup,
-		RenameGroup:                renameGroup,
-		ChangeNotificationSettings: changeNotificationSettings,
+		SendMessage:                bounce.sendMessage,
+		AddUserToGroup:             bounce.addUserToGroup,
+		RenameGroup:                bounce.renameGroup,
+		ChangeNotificationSettings: bounce.changeNotificationSettings,
 	})
 	//bounce.network.RegisterCallbacks(NetworkCallbacks{
 	//	NetworkOffline:
@@ -41,6 +40,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 
 	//go bounce.runNetwork() // TODO: just disabled for now for UI prototyping
 	go simulate(ui) // TODO: delete this, just for testing interactions during prototyping
+	//go bounce.gossip()
 
 	// Run the UI and block
 	bounce.userInterface.Run()
@@ -52,7 +52,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 //
 // Start the network and serve the Bounce protocol over the provided network.
 //
-func (chat *BounceChat) runNetwork() {
+func (bounce *Bounce) runNetwork() {
 	// If this function ever returns then we should close the user interface.  This function
 	// should only return after the user interface is already closed, however.  This is just
 	// to prevent bugs that break the application from result in a hung UI.
@@ -60,7 +60,7 @@ func (chat *BounceChat) runNetwork() {
 	//defer chat.userInterface.Quit()
 
 	// Start the network router
-	err := chat.network.Start()
+	err := bounce.network.Start()
 	if err != nil {
 		log.WithFields(log.Fields{
 			"at":    "chat.runNetwork",
@@ -70,20 +70,20 @@ func (chat *BounceChat) runNetwork() {
 		// internet is disconnected.
 		return
 	} else {
-		chat.userInterface.NetworkOnline()
+		bounce.userInterface.NetworkOnline()
 	}
 
 	// Serve the Bounce protocol on the network
-	//for {
-	//	// check if we're gracefully shutting down
-	//	handleIncomingConnection(chat.network.Accept())
-	//}
+	for {
+		// TODO: check if we're gracefully shutting down
+		bounce.handleIncomingConnection(bounce.network.Accept())
+	}
 }
 
 //
 // Shut the app down if the process receives an interrupt
 //
-func (chat *BounceChat) handleInterrupts() {
+func (bounce *Bounce) handleInterrupts() {
 	//
 	// Handle interrupts, from a Ctrl+C on the command
 	// line or a kill signal elsewhere
@@ -97,7 +97,7 @@ func (chat *BounceChat) handleInterrupts() {
 		}).Info("signal received to kill process, shutting down")
 		// Stopping the user interface unblocks the main blocking call of the appplication,
 		// which in turn shuts down the network handler and the network
-		chat.userInterface.Quit()
+		bounce.userInterface.Quit()
 	}
 }
 
