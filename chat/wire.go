@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"net"
+
+	log "github.com/sirupsen/logrus"
 )
 
 //
@@ -71,6 +73,10 @@ func writeFrame(conn net.Conn, frameType uint16, payload []byte) error {
 	lengthSpace := headerSize - typeSize
 	length := len(payload)
 	if length > maxPayloadSize {
+		log.WithFields(log.Fields{
+			"frame_type":     frameType,
+			"payload_length": length,
+		}).Error("attempted to send message that does not fit in frame")
 		return errors.New("payload cannot fit in frame")
 	}
 	lengthBytes := make([]byte, lengthSpace)
