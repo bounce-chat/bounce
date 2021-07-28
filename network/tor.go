@@ -158,6 +158,9 @@ func (bounceTor *TorNetwork) Accept() net.Conn {
 		// a good connection, or pass the error up and let the chat engine
 		// wait until the network online callback informs it that it's ok
 		// to try again?
+		// TODO: another thing to consider is that when we are trying
+		// to shut down the network, we expect this to return an error
+		// so we need to account for that and handle this gracefully
 	}
 	return connection
 }
