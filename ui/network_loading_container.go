@@ -9,8 +9,9 @@ import (
 )
 
 func (fyneUI *Fyne) showNetworkLoading() {
+	fyneUI.mainWindow.SetMainMenu(nil)
 	fyneUI.mainWindow.SetContent(fyneUI.networkLoading)
-	fyneUI.mainContainer.Show()
+	fyneUI.networkLoading.Show()
 }
 
 func (fyneUI *Fyne) buildNetworkLoading() {

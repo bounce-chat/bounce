@@ -33,7 +33,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 	//	NetworkOffline:
 	//})
 
-	bounce.userInterface.Build(bounce.configDirectory)
+	bounce.userInterface.Build(bounce.configDirectory) // TODO: could replace all this with .Start(initialState, callbacks)
 	bounce.userInterface.RegisterCallbacks(UICallbacks{
 		SendMessage:                bounce.sendMessage,
 		AddUserToGroup:             bounce.addUserToGroup,

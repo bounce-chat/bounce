@@ -33,6 +33,7 @@ type Fyne struct {
 	importContact                *fyne.Container
 	threadVBox                   *fyne.Container
 	chatContainer                *fyne.Container
+	mainMenu                     *fyne.MainMenu
 	threads                      map[string]*thread
 	activeThread                 string
 	users                        *userStore
@@ -60,7 +61,6 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	//
 	fyneUI.mainWindow = fyneUI.app.NewWindow("Bounce")
 	fyneUI.mainWindow.SetMaster()
-	fyneUI.mainWindow.SetMainMenu(fyneUI.buildMenu())
 	fyneUI.mainWindow.SetCloseIntercept(func() {
 		// There's some bug in Fyne where the app will hang when the close button
 		// is hit unless this is explicitly set https://github.com/fyne-io/fyne/issues/2314
@@ -72,6 +72,7 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	//
 	// Build all the containers
 	//
+	fyneUI.buildMenu()
 	fyneUI.buildNetworkLoading()
 	fyneUI.buildEditProfile()
 	fyneUI.buildSettings()
@@ -148,6 +149,9 @@ func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 //
 
 func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
+	// TODO: if the profile is nil, then the "main view" is a profile
+	// builder / device sync UI, until a profile is set by the user or
+	// over the wire
 	for _, u := range state.Users {
 		fyneUI.users.add(&user{id: u.ID, name: u.Name})
 	}

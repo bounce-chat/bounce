@@ -9,6 +9,8 @@ import (
 )
 
 func (fyneUI *Fyne) showMainContainer() {
+	// TODO: if the profile isn't set, show the profile builder
+	fyneUI.mainWindow.SetMainMenu(fyneUI.mainMenu)
 	fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
 	fyneUI.mainContainer.Show()
 

@@ -4,8 +4,8 @@ import (
 	"fyne.io/fyne/v2"
 )
 
-func (fyneUI *Fyne) buildMenu() *fyne.MainMenu {
-	return fyne.NewMainMenu(
+func (fyneUI *Fyne) buildMenu() {
+	fyneUI.mainMenu = fyne.NewMainMenu(
 		fyne.NewMenu(
 			"Bounce",
 			fyne.NewMenuItem("My Profile", func() {
@@ -28,6 +28,9 @@ func (fyneUI *Fyne) buildMenu() *fyne.MainMenu {
 			}),
 			fyne.NewMenuItem("New DM", func() {
 				fyneUI.showNewDM()
+			}),
+			fyne.NewMenuItem("New Workspace", func() {
+				//fyneUI.showNewWorkspace()
 			}),
 		),
 		fyne.NewMenu(
