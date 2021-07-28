@@ -3,7 +3,7 @@ module github.com/hkparker/bounce
 go 1.16
 
 require (
-	fyne.io/fyne/v2 v2.0.3
+	fyne.io/fyne/v2 v2.0.3-rc2.0.20210728171157-2ce1063f5b20
 	github.com/cretz/bine v0.2.0
 	github.com/golang/protobuf v1.5.2
 	github.com/google/uuid v1.3.0 // indirect
