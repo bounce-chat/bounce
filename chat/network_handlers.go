@@ -21,6 +21,7 @@ func (bounce *Bounce) handleIncomingConnection(conn net.Conn) {
 		frameType, data, err := readFrame(conn)
 		if err != nil {
 			// tell the larger device pool this connection is dead
+			return
 		}
 		handler, ok := handlers[frameType]
 		if !ok {
@@ -30,8 +31,10 @@ func (bounce *Bounce) handleIncomingConnection(conn net.Conn) {
 			}).Error("peer sent an unsupported frame type, disconnecting")
 			// tell the larger device pool this connection is dead
 			// TODO: conn.Close()?
+			return
+		} else {
+			handler(data)
 		}
-		handler(data)
 	}
 }
 
