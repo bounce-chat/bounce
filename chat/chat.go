@@ -5,10 +5,12 @@ import (
 	"os/signal"
 
 	log "github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 type Bounce struct {
 	configDirectory string
+	database        *gorm.DB
 	userInterface   BounceUI
 	network         BounceNetwork
 }
@@ -24,7 +26,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 		network:         network,
 	}
 	go bounce.handleInterrupts()
-	//bounce.openDatabase()
+	bounce.openDatabase()
 
 	bounce.network.LoadConfig(bounce.configDirectory)
 	//bounce.network.RegisterCallbacks(NetworkCallbacks{
@@ -44,9 +46,11 @@ func Start(network BounceNetwork, ui BounceUI) {
 	go simulate(ui) // TODO: delete this, just for testing interactions during prototyping
 
 	// Run the UI and block
+	// TODO: if there's no profile in the database, prep the UI to ask for that first
 	bounce.userInterface.Run()
+
 	// Once the UI is closed, stop the server
-	// TODO: gracefully shut down our handlers
+	// TODO: gracefully shut down our handlers and close the database
 	bounce.network.Shutdown()
 }
 
@@ -115,5 +119,15 @@ func getConfigDirectory() string {
 		}).Fatal("error getting home directory")
 	}
 
-	return home + "/.bounce"
+	configDirectory := home + "/.bounce"
+
+	err = os.MkdirAll(configDirectory, 0700)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"path":  configDirectory,
+			"error": err.Error(),
+		}).Fatal("error creating config directory")
+	}
+
+	return configDirectory
 }
