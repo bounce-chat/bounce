@@ -12,15 +12,30 @@ import (
 )
 
 func (fyneUI *Fyne) showMainContainer() {
-	// TODO: if the profile isn't set, show the profile builder
-	if fyneUI.profileSet {
-		fyneUI.mainWindow.SetMainMenu(fyneUI.mainMenu)
-		fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
-		fyneUI.mainContainer.Show()
-	} else {
+	if !fyneUI.networkOnline {
 		fyneUI.mainWindow.SetMainMenu(nil)
-		fyneUI.mainWindow.SetContent(fyneUI.newInstall)
-		fyneUI.newInstall.Show()
+		fyneUI.mainWindow.SetContent(fyneUI.networkLoading)
+		fyneUI.networkLoading.Show()
+	} else {
+		if !fyneUI.initialStateSet {
+			// The chat engine has not yet loaded the its state into the UI,
+			// show a page that indicates the database is loading
+			fyneUI.mainWindow.SetMainMenu(nil)
+			fyneUI.mainWindow.SetContent(fyneUI.databaseLoading)
+			fyneUI.databaseLoading.Show()
+		} else if !fyneUI.profileSet {
+			// The chat engine has loaded into the UI but there's no profile
+			// on this device yet.  The user must make one.
+			fyneUI.mainWindow.SetMainMenu(nil)
+			fyneUI.mainWindow.SetContent(fyneUI.newInstall)
+			fyneUI.newInstall.Show()
+		} else {
+			// The chat engine is loaded and there's an existing profile,
+			// the user is ready to use the app
+			fyneUI.mainWindow.SetMainMenu(fyneUI.mainMenu)
+			fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
+			fyneUI.mainContainer.Show()
+		}
 	}
 }
 
@@ -51,6 +66,44 @@ func (fyneUI *Fyne) buildMainContainer() {
 		layout.NewBorderLayout(nil, nil, threads, nil),
 		threads,
 		fyneUI.chatContainer,
+	)
+}
+
+func (fyneUI *Fyne) buildNetworkLoading() {
+	logo := canvas.NewImageFromResource(newEmbeddedResource("assets/logo_with_network.png"))
+	logo.FillMode = canvas.ImageFillContain
+	// TODO: choose reasonable values here
+	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
+	logo.SetMinSize(fyne.NewSize(228, 167))
+
+	fyneUI.networkLoading = container.NewMax(
+		container.New(
+			layout.NewCenterLayout(),
+			container.NewVBox(
+				logo,
+				widget.NewLabel("Connecting to the Tor network..."),
+				widget.NewProgressBarInfinite(),
+			),
+		),
+	)
+}
+
+func (fyneUI *Fyne) buildDatabaseLoading() {
+	logo := canvas.NewImageFromResource(newEmbeddedResource("assets/logo.png"))
+	logo.FillMode = canvas.ImageFillContain
+	// TODO: choose reasonable values here
+	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
+	logo.SetMinSize(fyne.NewSize(228, 167))
+
+	fyneUI.databaseLoading = container.NewMax(
+		container.New(
+			layout.NewCenterLayout(),
+			container.NewVBox(
+				logo,
+				widget.NewLabel("Loading the database..."),
+				widget.NewProgressBarInfinite(),
+			),
+		),
 	)
 }
 

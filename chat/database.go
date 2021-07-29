@@ -28,13 +28,27 @@ func (bounce *Bounce) openDatabase() {
 }
 
 func (bounce *Bounce) buildInitialState() InitialState {
-	return InitialState{}
+	profileSet := false
+	var count int64
+	bounce.database.Model(&profile{}).Count(&count)
+	if count > 0 {
+		profileSet = true
+	}
+
+	return InitialState{
+		ProfileSet: profileSet,
+	}
 }
 
 type profile struct {
 	ID      uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name    string
 	Devices []device
+}
+
+func (profile *profile) BeforeCreate(tx *gorm.DB) error {
+	profile.ID = uuid.New()
+	return nil
 }
 
 type device struct {
@@ -45,8 +59,18 @@ type device struct {
 	Address   string
 }
 
+func (device *device) BeforeCreate(tx *gorm.DB) error {
+	device.ID = uuid.New()
+	return nil
+}
+
 type user struct {
 	ID      uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name    string
 	Devices []device
+}
+
+func (user *user) BeforeCreate(tx *gorm.DB) error {
+	user.ID = uuid.New()
+	return nil
 }

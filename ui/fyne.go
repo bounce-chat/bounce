@@ -26,6 +26,7 @@ type Fyne struct {
 	newInstall                   *fyne.Container
 	newProfileCreator            *fyne.Container
 	networkLoading               *fyne.Container
+	databaseLoading              *fyne.Container
 	editProfile                  *fyne.Container
 	settings                     *fyne.Container
 	about                        *fyne.Container
@@ -40,6 +41,8 @@ type Fyne struct {
 	activeThread                 string
 	users                        *userStore
 	profileSet                   bool
+	initialStateSet              bool
+	networkOnline                bool
 	onSendMessage                chat.SendMessageCallback
 	onAddUserToGroup             chat.AddUserToGroupCallback
 	onRenameGroup                chat.RenameGroupCallback
@@ -80,6 +83,7 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	fyneUI.buildNewInstall()
 	fyneUI.buildNewProfileCreator()
 	fyneUI.buildNetworkLoading()
+	fyneUI.buildDatabaseLoading()
 	fyneUI.buildEditProfile()
 	fyneUI.buildSettings()
 	fyneUI.buildAbout()
@@ -92,7 +96,7 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	//
 	// Default to displaying the "network loading" container
 	//
-	fyneUI.showNetworkLoading()
+	fyneUI.showMainContainer()
 }
 
 func (fyneUI *Fyne) RegisterCallbacks(callbacks chat.UICallbacks) {
@@ -156,9 +160,13 @@ func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
 //
 
 func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
-	// TODO: if the profile is nil, then the "main view" is a profile
-	// builder / device sync UI, until a profile is set by the user or
-	// over the wire
+	if fyneUI.initialStateSet {
+		log.Fatal("the initial state of the UI can only be loaded once")
+	}
+	fyneUI.initialStateSet = true
+	// Refresh the state of the main view after the state is loaded
+	defer fyneUI.showMainContainer()
+
 	if !state.ProfileSet {
 		// This is a brand new installation.  Tell the user interface it must have the
 		// user create a profile or sync this device to an existing device group before
@@ -182,11 +190,13 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 }
 
 func (fyneUI *Fyne) NetworkOnline() {
+	fyneUI.networkOnline = true
 	fyneUI.showMainContainer()
 }
 
 func (fyneUI *Fyne) NetworkDisconnected() {
-	fyneUI.showNetworkLoading()
+	fyneUI.networkOnline = false
+	fyneUI.showMainContainer()
 }
 
 func (fyneUI *Fyne) LoadThread(bounceThread chat.Thread) {

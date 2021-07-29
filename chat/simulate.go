@@ -51,9 +51,9 @@ func simulate(ui BounceUI) {
 		Messages:   []Message{message1},
 	})
 
-	//time.Sleep(3 * time.Second)
-	ui.NetworkOnline()
 	time.Sleep(3 * time.Second)
+	ui.NetworkOnline()
+	//time.Sleep(3 * time.Second)
 
 	go func() {
 		for i := 0; i < 25; i++ {
