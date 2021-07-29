@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"io/ioutil"
 	"net"
 	"os"
@@ -145,6 +146,13 @@ func (bounceTor *TorNetwork) Start() error {
 		"address": onion.ID + ".onion",
 	}).Info("registered hidden service")
 	return nil
+}
+
+func (bounceTor *TorNetwork) Address() (string, error) {
+	if bounceTor.onion == nil {
+		return "", errors.New("network is not online, cannot determine device address")
+	}
+	return bounceTor.onion.ID + ".onion", nil // TODO: do I need to add .onion for dialing?
 }
 
 func (bounceTor *TorNetwork) Accept() net.Conn {

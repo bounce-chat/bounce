@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"errors"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -30,6 +32,39 @@ func (bounce *Bounce) changeNotificationSettings(threadID string, enabled bool) 
 		"thread":                threadID,
 		"notifications_enabled": enabled,
 	}).Info("UI wants to chnage notification settings")
+}
+
+func (bounce *Bounce) setProfile(profileName, deviceName string) error {
+	if bounce.database == nil {
+		// TODO: should I check this everywhere or let it panic?  probably log fatal
+	}
+
+	address, err := bounce.network.Address()
+	if err != nil {
+		return err
+	}
+
+	log.WithFields(log.Fields{
+		"name":    profileName,
+		"device":  deviceName,
+		"address": address,
+	}).Info("user wants to set their profile")
+
+	var count int64
+	bounce.database.Model(&profile{}).Count(&count)
+	if count > 0 {
+		return errors.New("profile already exists on this device")
+	}
+
+	return bounce.database.Save(&profile{
+		Name: profileName,
+		Devices: []device{
+			device{
+				Name:    deviceName,
+				Address: address,
+			},
+		},
+	}).Error
 }
 
 func (bounce *Bounce) requestUserConnection(userID string) {

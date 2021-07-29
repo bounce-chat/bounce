@@ -23,6 +23,8 @@ type Fyne struct {
 	app                          fyne.App
 	mainWindow                   fyne.Window
 	mainContainer                *fyne.Container
+	newInstall                   *fyne.Container
+	newProfileCreator            *fyne.Container
 	networkLoading               *fyne.Container
 	editProfile                  *fyne.Container
 	settings                     *fyne.Container
@@ -37,10 +39,12 @@ type Fyne struct {
 	threads                      map[string]*thread
 	activeThread                 string
 	users                        *userStore
+	profileSet                   bool
 	onSendMessage                chat.SendMessageCallback
 	onAddUserToGroup             chat.AddUserToGroupCallback
 	onRenameGroup                chat.RenameGroupCallback
 	onChangeNotificationSettings chat.ChangeNotificationSettingsCallback
+	onSetProfile                 chat.SetProfileCallback
 }
 
 func (fyneUI *Fyne) Build(configDirectory string) {
@@ -73,6 +77,8 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	// Build all the containers
 	//
 	fyneUI.buildMenu()
+	fyneUI.buildNewInstall()
+	fyneUI.buildNewProfileCreator()
 	fyneUI.buildNetworkLoading()
 	fyneUI.buildEditProfile()
 	fyneUI.buildSettings()
@@ -94,6 +100,7 @@ func (fyneUI *Fyne) RegisterCallbacks(callbacks chat.UICallbacks) {
 	fyneUI.onAddUserToGroup = callbacks.AddUserToGroup
 	fyneUI.onRenameGroup = callbacks.RenameGroup
 	fyneUI.onChangeNotificationSettings = callbacks.ChangeNotificationSettings
+	fyneUI.onSetProfile = callbacks.SetProfile
 }
 
 func (fyneUI *Fyne) Run() {
@@ -152,6 +159,17 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	// TODO: if the profile is nil, then the "main view" is a profile
 	// builder / device sync UI, until a profile is set by the user or
 	// over the wire
+	if !state.ProfileSet {
+		// This is a brand new installation.  Tell the user interface it must have the
+		// user create a profile or sync this device to an existing device group before
+		// the app can be used.
+		fyneUI.profileSet = false
+		// TODO: log fatal if anything else is set
+		return
+	} else {
+		fyneUI.profileSet = true
+	}
+
 	for _, u := range state.Users {
 		fyneUI.users.add(&user{id: u.ID, name: u.Name})
 	}

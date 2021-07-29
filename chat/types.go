@@ -15,7 +15,7 @@ package chat
 type BounceAddress string
 
 type InitialState struct {
-	Profile User
+	ProfileSet bool // *User
 	//Devices  []Device
 	Users    []User
 	Threads  []Thread
@@ -72,6 +72,7 @@ type UICallbacks struct {
 	AddUserToGroup             AddUserToGroupCallback
 	RenameGroup                RenameGroupCallback
 	ChangeNotificationSettings ChangeNotificationSettingsCallback
+	SetProfile                 SetProfileCallback
 
 	//Unimplemented:
 	//MessageRead()
@@ -88,6 +89,9 @@ type RenameGroupCallback func(groupID, newName string)
 
 // The user wants to change the notification settings for a group on all their devices
 type ChangeNotificationSettingsCallback func(groupID string, notificationEnabled bool)
+
+// Setup a new profile on a fresh install
+type SetProfileCallback func(profileName, deviceName string) error
 
 //
 // TODO: to be deleted once I figure out loading messages in order during initial state loading.  Or maybe not?

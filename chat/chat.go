@@ -39,6 +39,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 		AddUserToGroup:             bounce.addUserToGroup,
 		RenameGroup:                bounce.renameGroup,
 		ChangeNotificationSettings: bounce.changeNotificationSettings,
+		SetProfile:                 bounce.setProfile,
 	})
 	//bounce.userInterface.LoadInitialState(bounce.buildInitialState())
 

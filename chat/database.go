@@ -21,19 +21,32 @@ func (bounce *Bounce) openDatabase() {
 	}
 
 	bounce.database.AutoMigrate(
+		&profile{},
 		&user{},
 		&device{},
 	)
 }
 
-type device struct {
+func (bounce *Bounce) buildInitialState() InitialState {
+	return InitialState{}
+}
+
+type profile struct {
 	ID      uuid.UUID `gorm:"type:uuid;primary_key;"`
-	UserID  uuid.UUID
-	Address string
+	Name    string
+	Devices []device
+}
+
+type device struct {
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name      string
+	UserID    uuid.UUID
+	ProfileID uuid.UUID
+	Address   string
 }
 
 type user struct {
 	ID      uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name    string
-	Devices []device //`gorm:"foreignKey:Owner"`
+	Devices []device
 }
