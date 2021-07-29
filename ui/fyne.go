@@ -182,7 +182,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		fyneUI.users.add(&user{id: u.ID, name: u.Name})
 	}
 	for _, t := range state.Threads {
-		fyneUI.LoadThread(t)
+		fyneUI.NewThread(t)
 	}
 	for _, m := range state.Messages {
 		fyneUI.ReceivedMessage(m) // TODO: except we don't want to mark them as unread (unless they are, I guess)
@@ -199,7 +199,11 @@ func (fyneUI *Fyne) NetworkDisconnected() {
 	fyneUI.showMainContainer()
 }
 
-func (fyneUI *Fyne) LoadThread(bounceThread chat.Thread) {
+func (fyneUI *Fyne) NewUser(id, name string) {
+	fyneUI.users.add(&user{id: id, name: name})
+}
+
+func (fyneUI *Fyne) NewThread(bounceThread chat.Thread) {
 	id := bounceThread.ID
 	name := bounceThread.Name
 	userIDs := bounceThread.UserIDs

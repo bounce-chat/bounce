@@ -35,6 +35,11 @@ type BounceUI interface {
 	NetworkDisconnected()
 
 	// New chat message to display in a thread
+
 	ReceivedMessage(Message) // TODO: should be specific to threads (DM vs group)
 	//RenameGroup()
+
+	// TODO:  Just testing, to be removed
+	NewThread(Thread)
+	NewUser(string, string)
 }

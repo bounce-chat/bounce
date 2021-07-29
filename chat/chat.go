@@ -41,7 +41,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 		ChangeNotificationSettings: bounce.changeNotificationSettings,
 		SetProfile:                 bounce.setProfile,
 	})
-	//bounce.userInterface.LoadInitialState(bounce.buildInitialState())
+	bounce.userInterface.LoadInitialState(bounce.buildInitialState())
 
 	//go bounce.runNetwork() // TODO: just disabled for now for UI prototyping
 	go simulate(ui) // TODO: delete this, just for testing interactions during prototyping
