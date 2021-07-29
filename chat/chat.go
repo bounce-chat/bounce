@@ -33,7 +33,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 	//	NetworkOffline:
 	//})
 
-	bounce.userInterface.Build(bounce.configDirectory) // TODO: could replace all this with .Start(initialState, callbacks)
+	bounce.userInterface.Build(bounce.configDirectory)
 	bounce.userInterface.RegisterCallbacks(UICallbacks{
 		SendMessage:                bounce.sendMessage,
 		AddUserToGroup:             bounce.addUserToGroup,
@@ -41,13 +41,15 @@ func Start(network BounceNetwork, ui BounceUI) {
 		ChangeNotificationSettings: bounce.changeNotificationSettings,
 		SetProfile:                 bounce.setProfile,
 	})
-	bounce.userInterface.LoadInitialState(bounce.buildInitialState())
+	// To make the user interface more responsive to open, we load the database in a goroutine
+	// and call in to let the UI know it's done after.  Most of the time this will appear instant,
+	// but with a very large database it would be nice to see the window open while it's loading.
+	go bounce.userInterface.LoadInitialState(bounce.buildInitialState())
 
 	//go bounce.runNetwork() // TODO: just disabled for now for UI prototyping
 	go simulate(ui) // TODO: delete this, just for testing interactions during prototyping
 
 	// Run the UI and block
-	// TODO: if there's no profile in the database, prep the UI to ask for that first
 	bounce.userInterface.Run()
 
 	// Once the UI is closed, stop the server
