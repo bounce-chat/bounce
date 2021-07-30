@@ -139,7 +139,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 
 		fyneUI.onSendMessage(message)
 		// TODO: if dm, fyneUI.onSendDirectMessage(chat.OutgoingDirectMessage, etc?
-		fyneUI.displaySentMessage(dm, message.Text) // TODO: should be a pointer receiver on dm?  // TODO: needs to acccept a threadable
+		fyneUI.displaySentMessage(dm, message.Text) // TODO: should be a pointer receiver on dm?
 
 		entry.Text = ""
 		entry.Refresh()

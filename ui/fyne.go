@@ -139,7 +139,7 @@ func (fyneUI *Fyne) refreshThreadOrder() {
 	fyneUI.threadVBox.Refresh()
 }
 
-func (fyneUI *Fyne) displaySentMessage(thread threadable, message string) {
+func (fyneUI *Fyne) displaySentMessage(thread thread, message string) {
 	if message == "" {
 		// Shouldn't be possible, entry widget doesn't allow it.
 		// Report if that is broken.
