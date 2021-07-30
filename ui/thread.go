@@ -35,6 +35,68 @@ type thread struct {
 	lastMessage             int64
 }
 
+func (group *thread) getName() string {
+	name, err := group.name.Get()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("data bindings are broken")
+	}
+	return name
+}
+
+func (group *thread) chatHistoryScroll() *container.Scroll {
+	return group.scroll
+}
+
+func (group *thread) getUser(id string) (*user, bool) {
+	return group.users.get(id)
+}
+
+func (group *thread) getButton() *widget.Button {
+	return group.button
+}
+
+func (group *thread) getLastMessage() int64 {
+	return group.lastMessage
+}
+
+func (group *thread) setLastMessage(time int64) {
+	group.lastMessage = time
+}
+
+func (group *thread) getID() string {
+	return group.id
+}
+
+func (group *thread) getNotificationsEnabled() bool {
+	enabled, err := group.notificationsEnabled.Get()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("data bindings are broken")
+	}
+	return enabled
+}
+
+func (group *thread) getNotificationsMutedUntil() int64 {
+	return group.notificationsMutedUntil
+}
+
+func (group *thread) getView() *fyne.Container {
+	return group.view
+}
+func (group *thread) getEntry() *threadEntry {
+	return group.entry
+}
+
+//
+//
+//
+//
+//
+//
+
 func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *thread) {
 	currentUsersList := container.NewVBox()
 
@@ -134,17 +196,17 @@ func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
 // User interface manipulation
 //
 
-func (fyneUI *Fyne) displayThread(thread *thread) {
-	fyneUI.activeThread = thread.id
-	fyneUI.chatContainer.Objects = []fyne.CanvasObject{thread.view}
+func (fyneUI *Fyne) displayThread(thread threadable) {
+	fyneUI.activeThread = thread.getID()
+	fyneUI.chatContainer.Objects = []fyne.CanvasObject{thread.getView()}
 	fyneUI.chatContainer.Refresh()
-	thread.button.Importance = widget.LowImportance
-	thread.button.Refresh()
-	fyneUI.mainWindow.Canvas().Focus(thread.entry)
+	thread.getButton().Importance = widget.LowImportance
+	thread.getButton().Refresh()
+	fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
 }
 
-func (fyneUI *Fyne) isActive(thread *thread) bool {
-	return fyneUI.activeThread == thread.id
+func (fyneUI *Fyne) isActive(thread threadable) bool {
+	return fyneUI.activeThread == thread.getID()
 }
 
 func (fyneUI *Fyne) refreshUserSelections(thread *thread) {

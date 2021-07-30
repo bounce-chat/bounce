@@ -61,12 +61,6 @@ func Start(network BounceNetwork, ui BounceUI) {
 // Start the network and serve the Bounce protocol over the provided network.
 //
 func (bounce *Bounce) runNetwork() {
-	// If this function ever returns then we should close the user interface.  This function
-	// should only return after the user interface is already closed, however.  This is just
-	// to prevent bugs that break the application from result in a hung UI.
-	// TODO: do I really need this?  Consider removing.
-	//defer chat.userInterface.Quit()
-
 	// Start the network router
 	err := bounce.network.Start()
 	if err != nil {
@@ -86,6 +80,7 @@ func (bounce *Bounce) runNetwork() {
 	}
 
 	// Serve the Bounce protocol on the network
+	// TODO: make sure the intial database state exists in the UI before accepting new connections?
 	for {
 		// TODO: check if we're gracefully shutting down
 		bounce.handleIncomingConnection(bounce.network.Accept())

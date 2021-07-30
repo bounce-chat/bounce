@@ -155,7 +155,7 @@ func (bounceTor *TorNetwork) Address() (string, error) {
 	return bounceTor.onion.ID + ".onion", nil // TODO: do I need to add .onion for dialing?
 }
 
-func (bounceTor *TorNetwork) Accept() net.Conn {
+func (bounceTor *TorNetwork) Accept() net.Conn { // TODO: also return an error
 	connection, err := bounceTor.onion.Accept()
 	if err != nil {
 		// TODO: the network needs to be restarted, either the machine

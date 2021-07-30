@@ -35,20 +35,10 @@ func (bounce *Bounce) changeNotificationSettings(threadID string, enabled bool) 
 }
 
 func (bounce *Bounce) setProfile(profileName, deviceName string) error {
-	if bounce.database == nil {
-		// TODO: should I check this everywhere or let it panic?  probably log fatal
-	}
-
 	address, err := bounce.network.Address()
 	if err != nil {
 		return err
 	}
-
-	log.WithFields(log.Fields{
-		"name":    profileName,
-		"device":  deviceName,
-		"address": address,
-	}).Info("user wants to set their profile")
 
 	var count int64
 	bounce.database.Model(&profile{}).Count(&count)

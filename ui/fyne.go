@@ -37,7 +37,7 @@ type Fyne struct {
 	threadVBox                   *fyne.Container
 	chatContainer                *fyne.Container
 	mainMenu                     *fyne.MainMenu
-	threads                      map[string]*thread
+	threads                      map[string]threadable //*thread
 	activeThread                 string
 	users                        *userStore
 	profileSet                   bool
@@ -54,7 +54,7 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	//
 	// Initialize types that require it
 	//
-	fyneUI.threads = make(map[string]*thread)
+	fyneUI.threads = make(map[string]threadable)
 	fyneUI.users = newUserStore()
 
 	//
@@ -128,30 +128,32 @@ func (fyneUI *Fyne) refreshThreadOrder() {
 
 	buttons := []fyne.CanvasObject{}
 	for _, thread := range allThreads {
-		buttons = append(buttons, thread.button)
+		buttons = append(buttons, thread.getButton())
 	}
 	fyneUI.threadVBox.Objects = buttons
 	fyneUI.threadVBox.Refresh()
 }
 
-func (fyneUI *Fyne) displaySentMessage(thread *thread, message string) {
+func (fyneUI *Fyne) displaySentMessage(thread threadable, message string) {
 	if message == "" {
-		log.WithFields(log.Fields{
-			"thread_id":   thread.id,
-			"thread_name": thread.name,
-		}).Warn("UI asked to display an empty sent message")
+		// Shouldn't be possible, entry widget doesn't allow it.
+		// Report if that is broken.
+		//log.WithFields(log.Fields{
+		//	"thread_id":   thread.id,
+		//	"thread_name": thread.name,
+		//}).Warn("UI asked to display an empty sent message")
 		return
 	}
-	chatHistory := thread.scroll.Content.(*fyne.Container)
+	chatHistory := thread.chatHistoryScroll().Content.(*fyne.Container)
 
 	chatHistory.Objects = append(chatHistory.Objects, newChatBubble("You", message, true, time.Now().Unix(), nil))
 	chatHistory.Refresh()
 
-	thread.scroll.Refresh()
-	thread.scroll.ScrollToBottom()
-	thread.scroll.Refresh()
+	thread.chatHistoryScroll().Refresh()
+	thread.chatHistoryScroll().ScrollToBottom()
+	thread.chatHistoryScroll().Refresh()
 
-	thread.lastMessage = time.Now().Unix()
+	thread.setLastMessage(time.Now().Unix())
 	fyneUI.refreshThreadOrder()
 }
 
@@ -311,10 +313,11 @@ func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.Message) {
 		return
 	}
 
-	chatHistory := thread.scroll.Content.(*fyne.Container)
+	chatHistory := thread.chatHistoryScroll().Content.(*fyne.Container)
 
 	// Create the new message box
-	user, exists := thread.users.get(userID)
+	user, exists := thread.getUser(userID)
+	//user, exists := thread.users.get(userID)
 	if !exists {
 		log.WithFields(log.Fields{
 			"user_id": userID,
@@ -329,8 +332,8 @@ func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.Message) {
 
 	// Check if we're already scrolled to the bottom, for auto-scroll reasons
 	autoscroll := false
-	location := thread.scroll.Offset.Y
-	height := thread.scroll.Content.Size().Height - thread.scroll.Size().Height
+	location := thread.chatHistoryScroll().Offset.Y
+	height := thread.chatHistoryScroll().Content.Size().Height - thread.chatHistoryScroll().Size().Height
 	if height == location {
 		autoscroll = true
 	}
@@ -338,36 +341,26 @@ func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.Message) {
 	// Add the message to the thread
 	chatHistory.Objects = append(chatHistory.Objects, messageBox)
 	chatHistory.Refresh()
-	thread.scroll.Refresh()
+	thread.chatHistoryScroll().Refresh()
 
 	if fyneUI.isActive(thread) {
 		if autoscroll {
-			thread.scroll.ScrollToBottom()
-			thread.scroll.Refresh()
+			thread.chatHistoryScroll().ScrollToBottom()
+			thread.chatHistoryScroll().Refresh()
 		}
 	} else {
 		// This thread isn't active, mark the button as unread
-		thread.button.Importance = widget.HighImportance
-		thread.button.Refresh()
+		thread.getButton().Importance = widget.HighImportance
+		thread.getButton().Refresh()
 	}
 
-	thread.lastMessage = time.Now().Unix()
+	thread.setLastMessage(time.Now().Unix())
 	fyneUI.refreshThreadOrder()
 
-	notificationsEnabled, err := thread.notificationsEnabled.Get()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("data bindings are broken")
-	}
+	notificationsEnabled := thread.getNotificationsEnabled()
+	notificationsMuted := time.Now().Unix() < thread.getNotificationsMutedUntil()
 
-	if notificationsEnabled && time.Now().Unix() > thread.notificationsMutedUntil && !autoscroll { //TODO: also notify if not focused?
-		threadName, err := thread.name.Get()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("data bindings are broken")
-		}
-		fyneUI.app.SendNotification(fyne.NewNotification(threadName, "New message from "+user.name))
+	if notificationsEnabled && !notificationsMuted && !autoscroll { //TODO: also notify if not focused?
+		fyneUI.app.SendNotification(fyne.NewNotification(thread.getName(), "New message from "+user.name))
 	}
 }
