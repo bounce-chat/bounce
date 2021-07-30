@@ -6,13 +6,11 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-type threadable interface {
-	getName() string
+type threadable interface { // TODO: probably only need this for sorting threads
 	getView() *fyne.Container
 	getEntry() *threadEntry
 	chatHistoryScroll() *container.Scroll
 	getButton() *widget.Button
-	getUser(string) (*user, bool)
 	getLastMessage() int64 // TODO: rename these better
 	setLastMessage(int64)
 	getID() string

@@ -36,10 +36,10 @@ type BounceUI interface {
 
 	// New chat message to display in a thread
 
-	ReceivedMessage(Message) // TODO: should be specific to threads (DM vs group)
+	ReceivedGroupMessage(Message) // TODO: should be specific to threads (DM vs group)
 	//RenameGroup()
 
 	// TODO:  Just testing, to be removed
-	NewThread(Thread)
+	NewGroupChat(Thread)
 	NewUser(string, string)
 }

@@ -10,12 +10,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (fyneUI *Fyne) showEditThreadContainer(thread *thread) {
+func (fyneUI *Fyne) showEditThreadContainer(thread *group) {
 	fyneUI.mainWindow.SetContent(thread.editContainer)
 	thread.editContainer.Show()
 }
 
-func (fyneUI *Fyne) buildEditThreadContainer(thread *thread) {
+func (fyneUI *Fyne) buildEditThreadContainer(thread *group) {
 	threadNameEntry := widget.NewEntry()
 	currentThreadName, err := thread.name.Get()
 	if err != nil {

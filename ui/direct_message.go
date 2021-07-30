@@ -28,17 +28,8 @@ type directMessage struct {
 	lastMessage             int64
 }
 
-func (dm *directMessage) getName() string {
-	return dm.user.name
-}
-
 func (dm *directMessage) chatHistoryScroll() *container.Scroll {
 	return dm.scroll
-}
-
-func (dm *directMessage) getUser(id string) (*user, bool) {
-	// TODO: make sure we're never asking for the wrong user
-	return dm.user, true
 }
 
 func (dm *directMessage) getButton() *widget.Button {
@@ -87,7 +78,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 		}).Error("cannot create DM with user unknown to the UI")
 		return
 	}
-	if _, exists := fyneUI.threads[bounceUser.ID]; exists {
+	if _, exists := fyneUI.dms[bounceUser.ID]; exists {
 		log.WithFields(log.Fields{
 			"user_id":   bounceUser.ID,
 			"user_name": bounceUser.Name,
@@ -169,7 +160,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 		dm.entryBar,
 		dm.scroll,
 	)
-	fyneUI.threads[bounceUser.ID] = dm
+	fyneUI.dms[bounceUser.ID] = dm
 	fyneUI.refreshThreadOrder()
 }
 

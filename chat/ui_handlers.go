@@ -11,6 +11,12 @@ func (bounce *Bounce) sendMessage(message Message) {
 		"destination": message.Destination,
 		"text":        message.Text,
 	}).Info("UI wants to send a message")
+	// gossip (takes gossipable interface?)
+	//	devices := getDevicePool(destination) // returns []deviceConnection
+	//	database.Save(message)
+	//	for each device, sent
+	//	update database for deliveredTo
+	//	UI callbacks for delivery status
 }
 
 func (bounce *Bounce) addUserToGroup(threadID, userID string) {

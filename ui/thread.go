@@ -14,7 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type thread struct {
+type group struct {
 	id                      string
 	name                    binding.String
 	users                   *userStore
@@ -35,41 +35,27 @@ type thread struct {
 	lastMessage             int64
 }
 
-func (group *thread) getName() string {
-	name, err := group.name.Get()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("data bindings are broken")
-	}
-	return name
-}
-
-func (group *thread) chatHistoryScroll() *container.Scroll {
+func (group *group) chatHistoryScroll() *container.Scroll {
 	return group.scroll
 }
 
-func (group *thread) getUser(id string) (*user, bool) {
-	return group.users.get(id)
-}
-
-func (group *thread) getButton() *widget.Button {
+func (group *group) getButton() *widget.Button {
 	return group.button
 }
 
-func (group *thread) getLastMessage() int64 {
+func (group *group) getLastMessage() int64 {
 	return group.lastMessage
 }
 
-func (group *thread) setLastMessage(time int64) {
+func (group *group) setLastMessage(time int64) {
 	group.lastMessage = time
 }
 
-func (group *thread) getID() string {
+func (group *group) getID() string {
 	return group.id
 }
 
-func (group *thread) getNotificationsEnabled() bool {
+func (group *group) getNotificationsEnabled() bool {
 	enabled, err := group.notificationsEnabled.Get()
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -79,14 +65,14 @@ func (group *thread) getNotificationsEnabled() bool {
 	return enabled
 }
 
-func (group *thread) getNotificationsMutedUntil() int64 {
+func (group *group) getNotificationsMutedUntil() int64 {
 	return group.notificationsMutedUntil
 }
 
-func (group *thread) getView() *fyne.Container {
+func (group *group) getView() *fyne.Container {
 	return group.view
 }
-func (group *thread) getEntry() *threadEntry {
+func (group *group) getEntry() *threadEntry {
 	return group.entry
 }
 
@@ -97,7 +83,7 @@ func (group *thread) getEntry() *threadEntry {
 //
 //
 
-func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *thread) {
+func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 	currentUsersList := container.NewVBox()
 
 	for _, thisUser := range thread.users.alphabetized() {
@@ -140,7 +126,7 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *thread) {
 	thread.currentUsersContainer.Refresh()
 }
 
-func (fyneUI *Fyne) refreshAvailableNewUsers(thread *thread) {
+func (fyneUI *Fyne) refreshAvailableNewUsers(thread *group) {
 	allUsersListBox := container.NewVBox()
 	for _, thisUser := range fyneUI.users.alphabetized() {
 		// Exclude users already in the thread
@@ -170,7 +156,7 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(thread *thread) {
 	thread.availableNewUsersScroll.Refresh()
 }
 
-func (fyneUI *Fyne) buildThreadEntry(thread *thread) *fyne.Container {
+func (fyneUI *Fyne) buildThreadEntry(thread *group) *fyne.Container {
 	entry := newThreadEntry(5)
 	thread.entry = entry
 
@@ -209,7 +195,7 @@ func (fyneUI *Fyne) isActive(thread threadable) bool {
 	return fyneUI.activeThread == thread.getID()
 }
 
-func (fyneUI *Fyne) refreshUserSelections(thread *thread) {
+func (fyneUI *Fyne) refreshUserSelections(thread *group) {
 	fyneUI.refreshCurrentAndPendingUsers(thread)
 	fyneUI.refreshAvailableNewUsers(thread)
 }

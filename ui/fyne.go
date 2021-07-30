@@ -37,7 +37,8 @@ type Fyne struct {
 	threadVBox                   *fyne.Container
 	chatContainer                *fyne.Container
 	mainMenu                     *fyne.MainMenu
-	threads                      map[string]threadable //*thread
+	groups                       map[string]*group
+	dms                          map[string]*directMessage
 	activeThread                 string
 	users                        *userStore
 	profileSet                   bool
@@ -54,7 +55,8 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	//
 	// Initialize types that require it
 	//
-	fyneUI.threads = make(map[string]threadable)
+	fyneUI.groups = make(map[string]*group)
+	fyneUI.dms = make(map[string]*directMessage)
 	fyneUI.users = newUserStore()
 
 	//
@@ -121,8 +123,11 @@ func (fyneUI *Fyne) Quit() {
 
 func (fyneUI *Fyne) refreshThreadOrder() {
 	allThreads := sortableThreads{}
-	for _, thread := range fyneUI.threads {
-		allThreads = append(allThreads, thread)
+	for _, group := range fyneUI.groups {
+		allThreads = append(allThreads, group)
+	}
+	for _, dm := range fyneUI.dms {
+		allThreads = append(allThreads, dm)
 	}
 	sort.Sort(allThreads)
 
@@ -183,12 +188,12 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	for _, u := range state.Users {
 		fyneUI.users.add(&user{id: u.ID, name: u.Name})
 	}
-	for _, t := range state.Threads {
-		fyneUI.NewThread(t)
-	}
-	for _, m := range state.Messages {
-		fyneUI.ReceivedMessage(m) // TODO: except we don't want to mark them as unread (unless they are, I guess)
-	}
+	//for _, t := range state.Threads {
+	//	fyneUI.NewThread(t)
+	//}
+	//for _, m := range state.Messages {
+	//	fyneUI.ReceivedMessage(m) // TODO: except we don't want to mark them as unread (unless they are, I guess)
+	//}
 }
 
 func (fyneUI *Fyne) NetworkOnline() {
@@ -205,12 +210,12 @@ func (fyneUI *Fyne) NewUser(id, name string) {
 	fyneUI.users.add(&user{id: id, name: name})
 }
 
-func (fyneUI *Fyne) NewThread(bounceThread chat.Thread) {
+func (fyneUI *Fyne) NewGroupChat(bounceThread chat.Thread) {
 	id := bounceThread.ID
 	name := bounceThread.Name
 	userIDs := bounceThread.UserIDs
 
-	if _, exists := fyneUI.threads[id]; exists {
+	if _, exists := fyneUI.groups[id]; exists {
 		log.WithFields(log.Fields{
 			"id":   id,
 			"name": name,
@@ -218,7 +223,7 @@ func (fyneUI *Fyne) NewThread(bounceThread chat.Thread) {
 		return
 	}
 
-	thread := &thread{
+	thread := &group{
 		id:                      id,
 		name:                    binding.NewString(),
 		users:                   newUserStore(),
@@ -295,17 +300,17 @@ func (fyneUI *Fyne) NewThread(bounceThread chat.Thread) {
 		thread.entryBar,
 		thread.scroll,
 	)
-	fyneUI.threads[id] = thread
+	fyneUI.groups[id] = thread
 	fyneUI.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.Message) {
+func (fyneUI *Fyne) ReceivedGroupMessage(bounceMessage chat.Message) {
 	threadID := bounceMessage.Destination
 	userID := bounceMessage.Source
 	message := bounceMessage.Text
 
 	// Log an error and early return if the thread doesn't exist
-	thread, exists := fyneUI.threads[threadID]
+	thread, exists := fyneUI.groups[threadID]
 	if !exists {
 		log.WithFields(log.Fields{
 			"thread_id": threadID,
@@ -316,7 +321,7 @@ func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.Message) {
 	chatHistory := thread.chatHistoryScroll().Content.(*fyne.Container)
 
 	// Create the new message box
-	user, exists := thread.getUser(userID)
+	user, exists := thread.users.get(userID)
 	//user, exists := thread.users.get(userID)
 	if !exists {
 		log.WithFields(log.Fields{
@@ -360,7 +365,11 @@ func (fyneUI *Fyne) ReceivedMessage(bounceMessage chat.Message) {
 	notificationsEnabled := thread.getNotificationsEnabled()
 	notificationsMuted := time.Now().Unix() < thread.getNotificationsMutedUntil()
 
+	groupName, err := thread.name.Get()
+	if err != nil {
+		log.Fatal("data bindings are broken")
+	}
 	if notificationsEnabled && !notificationsMuted && !autoscroll { //TODO: also notify if not focused?
-		fyneUI.app.SendNotification(fyne.NewNotification(thread.getName(), "New message from "+user.name))
+		fyneUI.app.SendNotification(fyne.NewNotification(groupName, "New message from "+user.name))
 	}
 }
