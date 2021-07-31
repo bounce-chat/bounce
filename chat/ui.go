@@ -34,30 +34,37 @@ type BounceUI interface {
 	// Network connection has been lost, go back to displaying a loading message, blocking user interaction
 	NetworkDisconnected() // TODO: when internet connection is lost, still let the user browse messages
 
+	// Chats
+	//UserIntroduced(Introduction)
+	UserImported(User)
 	ReceivedDirectMessage(Message)
 
-	// New chat message to display in a thread
-
-	ReceivedGroupMessage(Message) // TODO: should be specific to threads (DM vs group)
+	NewGroupChat(Group)
+	ReceivedGroupMessage(Message)
 	//RenameGroup()
 
-	// TODO:  Just testing, to be removed
-	NewGroupChat(Group)
-	NewUser(string, string)
+	// Profile updates from other devices owned by this user
+	//UpdateMyName()
 }
 
 type InitialState struct {
 	ProfileSet bool // *User
 	//Devices  []Device
-	Users    []User
-	Groups   []Group
-	Messages []Message // TODO: break this into each type of message once possible.  Right now they all need to be sorted by timestamp
+	Users         []User
+	Groups        []Group
+	DirecMessages []Message
+	GroupMessages []Message
 }
 
 type User struct {
 	ID    string
 	Name  string
 	Image []byte
+}
+
+type Introduction struct {
+	Introducer string
+	User       User
 }
 
 type Group struct {

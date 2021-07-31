@@ -149,6 +149,6 @@ func (fyneUI *Fyne) NetworkDisconnected() {
 	fyneUI.showMainContainer()
 }
 
-func (fyneUI *Fyne) NewUser(id, name string) {
-	fyneUI.users.add(&user{id: id, name: name})
+func (fyneUI *Fyne) UserImported(u chat.User) {
+	fyneUI.users.add(&user{id: u.ID, name: u.Name})
 }

@@ -240,6 +240,19 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 				log.Info("user wants to open a DM with " + u.name)
 				// TODO: hide this window and open a DM
 				// check fyneUI for existing DMs, create thread if needed and focus it
+				dm, dmExists := fyneUI.dms[u.id]
+				if !dmExists {
+					fyneUI.NewDirectMessage(chat.User{
+						ID:   u.id,
+						Name: u.name,
+					})
+					dm, dmExists = fyneUI.dms[u.id]
+					if !dmExists {
+						log.Fatal("DM doesn't exist immediately after creation")
+					}
+				}
+				fyneUI.showMainContainer()
+				fyneUI.displayThread(dm)
 			})
 			dmButton.Alignment = widget.ButtonAlignLeading
 			dmButton.Importance = widget.LowImportance

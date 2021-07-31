@@ -25,6 +25,8 @@ func (bounce *Bounce) openDatabase() {
 		&user{},
 		&device{},
 	)
+
+	bounce.seedTestDatabase()
 }
 
 func (bounce *Bounce) buildInitialState() InitialState {
@@ -35,8 +37,19 @@ func (bounce *Bounce) buildInitialState() InitialState {
 		profileSet = true
 	}
 
+	users := []user{}
+	bounce.database.Find(&users)
+	chatUsers := []User{}
+	for _, u := range users {
+		chatUsers = append(chatUsers, User{
+			ID:   u.ID.String(),
+			Name: u.Name,
+		})
+	}
+
 	return InitialState{
 		ProfileSet: profileSet,
+		Users:      chatUsers,
 	}
 }
 

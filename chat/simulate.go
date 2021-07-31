@@ -4,24 +4,43 @@ import (
 	"time"
 )
 
+func (bounce *Bounce) seedTestDatabase() {
+	var userCount int64
+	bounce.database.Model(&user{}).Count(&userCount)
+	if userCount < 4 {
+		bounce.database.Save(&user{
+			Name: "Alice",
+		})
+		bounce.database.Save(&user{
+			Name: "Bob",
+		})
+		bounce.database.Save(&user{
+			Name: "Charlie",
+		})
+		bounce.database.Save(&user{
+			Name: "Dave",
+		})
+	}
+}
+
 //TODO: delete this, just for testing UI interactions
 func simulate(ui BounceUI) {
 	// "Loaded from the database"
 	user1 := User{
 		ID:   "1",
-		Name: "Alice",
+		Name: "Alice2",
 	}
 	user2 := User{
 		ID:   "2",
-		Name: "Bob",
+		Name: "Bob2",
 	}
 	user3 := User{
 		ID:   "3",
-		Name: "Charlie",
+		Name: "Charlie2",
 	}
 	user4 := User{
 		ID:   "4",
-		Name: "David",
+		Name: "David2",
 	}
 	thread1 := Group{
 		ID:      "001",
@@ -38,10 +57,10 @@ func simulate(ui BounceUI) {
 	ui.NetworkOnline()
 	//time.Sleep(3 * time.Second)
 
-	ui.NewUser(user1.ID, user1.Name)
-	ui.NewUser(user2.ID, user2.Name)
-	ui.NewUser(user3.ID, user3.Name)
-	ui.NewUser(user4.ID, user4.Name)
+	ui.UserImported(user1)
+	ui.UserImported(user2)
+	ui.UserImported(user3)
+	ui.UserImported(user4)
 	ui.NewGroupChat(thread1)
 	ui.NewGroupChat(thread2)
 

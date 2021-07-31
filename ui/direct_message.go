@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	log "github.com/sirupsen/logrus"
 )
@@ -117,7 +118,7 @@ func (fyneUI *Fyne) ReceivedDirectMessage(msg chat.Message) {
 	}
 }
 
-func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
+func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wrap around something that takes the internal user object
 	user, exists := fyneUI.users.get(bounceUser.ID)
 	if !exists {
 		log.WithFields(log.Fields{
@@ -212,5 +213,63 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	fyneUI.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {}
-func (fyneUI *Fyne) showEditDMContainer(dm *directMessage)  {}
+func (fyneUI *Fyne) showEditDMContainer(dm *directMessage) {
+	fyneUI.mainWindow.SetContent(dm.editContainer)
+	dm.editContainer.Show()
+}
+
+func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
+	threadIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
+	threadIcon.FillMode = canvas.ImageFillContain
+	threadIcon.SetMinSize(fyne.NewSize(64, 64))
+
+	username := widget.NewLabel(dm.user.name)
+
+	notificationsCheck := widget.NewCheckWithData("Enable notifications", dm.notificationsEnabled)
+	notificationsCheck.OnChanged = func(state bool) { // TODO: do we really want this to apply before save?
+		fyneUI.onChangeNotificationSettings(dm.user.id, state) // TODO: change DM notification setting
+	}
+
+	saveButton := widget.NewButton("Save", func() {
+		fyneUI.showMainContainer()
+	})
+	saveButton.Importance = widget.HighImportance
+	cancelButton := widget.NewButton("Cancel", func() {
+		fyneUI.showMainContainer()
+	})
+	actionButtons := container.New(
+		layout.NewBorderLayout(nil, nil, cancelButton, saveButton),
+		saveButton,
+		cancelButton,
+	)
+	topOptionsVBox := container.NewVBox(
+		threadIcon,
+		username,
+		notificationsCheck,
+	)
+
+	// Close the window but save state.  TODO: should it clear state as well?
+	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+		fyneUI.showMainContainer()
+	})
+	closeButton.Importance = widget.LowImportance
+
+	closeBar := container.New(
+		layout.NewBorderLayout(nil, nil, nil, closeButton),
+		closeButton,
+	)
+
+	// TODO: add option to introduce this contact to someone
+	dm.editContainer = container.NewMax(
+		container.New(
+			layout.NewBorderLayout(closeBar, actionButtons, nil, nil),
+			container.New(
+				layout.NewBorderLayout(topOptionsVBox, nil, nil, nil),
+				topOptionsVBox,
+			),
+			closeBar,
+			actionButtons,
+		),
+	)
+
+}
