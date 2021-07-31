@@ -14,8 +14,6 @@ type thread interface { // TODO: probably only need this for sorting threads
 	getLastMessage() int64 // TODO: rename these better
 	setLastMessage(int64)
 	getID() string
-	getNotificationsEnabled() bool
-	getNotificationsMutedUntil() int64
 }
 
 //

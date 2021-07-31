@@ -48,20 +48,6 @@ func (dm *directMessage) getID() string {
 	return dm.user.id
 }
 
-func (dm *directMessage) getNotificationsEnabled() bool {
-	enabled, err := dm.notificationsEnabled.Get()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("data bindings are broken")
-	}
-	return enabled
-}
-
-func (dm *directMessage) getNotificationsMutedUntil() int64 {
-	return dm.notificationsMutedUntil
-}
-
 func (dm *directMessage) getView() *fyne.Container {
 	return dm.view
 }

@@ -34,6 +34,8 @@ type BounceUI interface {
 	// Network connection has been lost, go back to displaying a loading message, blocking user interaction
 	NetworkDisconnected() // TODO: when internet connection is lost, still let the user browse messages
 
+	ReceivedDirectMessage(Message)
+
 	// New chat message to display in a thread
 
 	ReceivedGroupMessage(Message) // TODO: should be specific to threads (DM vs group)

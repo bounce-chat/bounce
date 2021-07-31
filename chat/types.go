@@ -100,8 +100,8 @@ type SetProfileCallback func(profileName, deviceName string) error
 type Message struct {
 	ID          string
 	CreatedAt   int64
-	DM          bool
+	Read        bool
 	Source      string // Always a user's UUID
-	Destination string // a user UUID if DM == true, otherwise a group UUID
+	Destination string // a user UUID or a group UUID
 	Text        string
 }

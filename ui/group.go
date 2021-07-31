@@ -55,20 +55,6 @@ func (group *group) getID() string {
 	return group.id
 }
 
-func (group *group) getNotificationsEnabled() bool {
-	enabled, err := group.notificationsEnabled.Get()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("data bindings are broken")
-	}
-	return enabled
-}
-
-func (group *group) getNotificationsMutedUntil() int64 {
-	return group.notificationsMutedUntil
-}
-
 func (group *group) getView() *fyne.Container {
 	return group.view
 }
