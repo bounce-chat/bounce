@@ -23,3 +23,20 @@ type BounceNetwork interface {
 	//IsValidAddress
 	Shutdown()
 }
+
+//
+// A bounce address is the public key and dialable address of another
+// bounce device on an overlay network.  Not all networks have this
+// property, Bounce was designed with I2P or Tor hidden services v3
+// in  mind.  In networks where the dialable address is a hash of a
+// public key, like libp2p, the network implementation will need to
+// internally retrieve, store, and use the public key for the address.
+//
+type BounceAddress string
+
+//
+// The chat engine will provide these callbacks to a user interface
+//
+type NetworkCallbacks struct {
+	NetworkOffline func()
+}

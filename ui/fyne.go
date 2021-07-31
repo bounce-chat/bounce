@@ -210,7 +210,7 @@ func (fyneUI *Fyne) NewUser(id, name string) {
 	fyneUI.users.add(&user{id: id, name: name})
 }
 
-func (fyneUI *Fyne) NewGroupChat(bounceThread chat.Thread) {
+func (fyneUI *Fyne) NewGroupChat(bounceThread chat.Group) {
 	id := bounceThread.ID
 	name := bounceThread.Name
 	userIDs := bounceThread.UserIDs

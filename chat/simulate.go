@@ -23,12 +23,12 @@ func simulate(ui BounceUI) {
 		ID:   "4",
 		Name: "David",
 	}
-	thread1 := Thread{
+	thread1 := Group{
 		ID:      "001",
 		Name:    "Group with Alice and Bob",
 		UserIDs: []string{user1.ID, user2.ID},
 	}
-	thread2 := Thread{
+	thread2 := Group{
 		ID:      "002",
 		Name:    "Group with Bob and Charlie",
 		UserIDs: []string{user2.ID, user3.ID},
