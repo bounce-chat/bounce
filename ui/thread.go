@@ -4,21 +4,19 @@ import (
 	"sort"
 	"time"
 
-	"github.com/hkparker/bounce/chat"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 )
 
 type thread interface {
+	getID() string
 	getView() *fyne.Container
 	getEntry() *threadEntry
 	chatHistoryScroll() *container.Scroll
 	getButton() *widget.Button
-	getLastMessage() int64 // TODO: rename these better
-	setLastMessage(int64)
-	getID() string
+	getLastMessageTime() int64
+	setLastMessageTime(int64)
 }
 
 //
@@ -36,8 +34,12 @@ func (threads sortableThreads) Swap(i, j int) {
 }
 func (threads sortableThreads) Less(i, j int) bool {
 	// Reverse order, highest timestamp on top
-	return threads[i].getLastMessage() > threads[j].getLastMessage()
+	return threads[i].getLastMessageTime() > threads[j].getLastMessageTime()
 }
+
+//
+// Helper functions for organizing and displaying threads in the UI
+//
 
 func (fyneUI *Fyne) refreshThreadOrder() {
 	allThreads := sortableThreads{}
@@ -67,7 +69,7 @@ func (fyneUI *Fyne) displaySentMessage(thread thread, message string) {
 	thread.chatHistoryScroll().ScrollToBottom()
 	thread.chatHistoryScroll().Refresh()
 
-	thread.setLastMessage(time.Now().Unix())
+	thread.setLastMessageTime(time.Now().Unix())
 	fyneUI.refreshThreadOrder()
 }
 
@@ -82,26 +84,4 @@ func (fyneUI *Fyne) displayThread(thread thread) {
 
 func (fyneUI *Fyne) isActive(thread thread) bool {
 	return fyneUI.activeThread == thread.getID()
-}
-
-func (fyneUI *Fyne) buildThreadEntry(thread *group) *fyne.Container {
-	entry := newThreadEntry(5)
-	thread.entry = entry
-
-	entry.customOnSubmitted = func() {
-		message := chat.Message{ // TODO: if dm, fyneUI.onSendDirectMessage(chat.OutgoingDirectMessage
-			CreatedAt:   time.Now().Unix(),
-			Destination: thread.id,
-			Text:        entry.Text,
-		}
-
-		fyneUI.onSendMessage(message)
-		// TODO: if dm, fyneUI.onSendDirectMessage(chat.OutgoingDirectMessage, etc?
-		fyneUI.displaySentMessage(thread, message.Text) // TODO: should be a pointer receiver on thread?
-
-		entry.Text = ""
-		entry.Refresh()
-	}
-
-	return container.NewMax(entry)
 }

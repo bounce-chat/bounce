@@ -18,7 +18,6 @@ type group struct {
 	name                    binding.String
 	users                   *userStore
 	pendingUsers            *userStore
-	isDM                    bool         // TODO: prevents things like showing an option to set an image or editing the name
 	notificationsEnabled    binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
 	notificationsMutedUntil int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
 	editContainer           *fyne.Container
@@ -34,22 +33,6 @@ type group struct {
 	lastMessage             int64
 }
 
-func (group *group) chatHistoryScroll() *container.Scroll {
-	return group.scroll
-}
-
-func (group *group) getButton() *widget.Button {
-	return group.button
-}
-
-func (group *group) getLastMessage() int64 {
-	return group.lastMessage
-}
-
-func (group *group) setLastMessage(time int64) {
-	group.lastMessage = time
-}
-
 func (group *group) getID() string {
 	return group.id
 }
@@ -61,10 +44,21 @@ func (group *group) getEntry() *threadEntry {
 	return group.entry
 }
 
-//
-//
-//
-//
+func (group *group) chatHistoryScroll() *container.Scroll {
+	return group.scroll
+}
+
+func (group *group) getButton() *widget.Button {
+	return group.button
+}
+
+func (group *group) getLastMessageTime() int64 {
+	return group.lastMessage
+}
+
+func (group *group) setLastMessageTime(time int64) {
+	group.lastMessage = time
+}
 
 func (fyneUI *Fyne) NewGroupChat(bounceThread chat.Group) {
 	id := bounceThread.ID
@@ -140,7 +134,24 @@ func (fyneUI *Fyne) NewGroupChat(bounceThread chat.Group) {
 		threadButtons,
 	)
 
-	thread.entryBar = fyneUI.buildThreadEntry(thread)
+	entry := newThreadEntry(5)
+	thread.entry = entry
+
+	entry.customOnSubmitted = func() {
+		message := chat.Message{
+			CreatedAt:   time.Now().Unix(),
+			Destination: thread.id,
+			Text:        entry.Text,
+		}
+
+		fyneUI.onSendMessage(message) // TODO: group-specific callback?
+		fyneUI.displaySentMessage(thread, message.Text)
+
+		entry.Text = ""
+		entry.Refresh()
+	}
+
+	thread.entryBar = container.NewMax(entry)
 
 	thread.button = widget.NewButtonWithIcon(name, threadIcon, func() {
 		// TODO: tell the entine this is happening so that it can make sure

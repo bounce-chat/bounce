@@ -24,7 +24,7 @@ func (store *userStore) add(u *user) {
 	store.userMap[u.id] = u
 	smaller := 0
 	for _, existingUser := range store.userList {
-		if existingUser.name < u.name { // TODO: where < is alphabetize?
+		if existingUser.name < u.name {
 			smaller++
 		}
 	}
