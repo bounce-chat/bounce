@@ -8,18 +8,20 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/hkparker/bounce/chat"
 
 	"github.com/cretz/bine/tor"
+	"github.com/cretz/bine/torutil"
 	"github.com/ipsn/go-libtor"
 	log "github.com/sirupsen/logrus"
 )
 
 type TorNetwork struct {
 	directory  string
-	onion      *tor.OnionService // access hidden service address with onion.ID
+	onion      *tor.OnionService
 	publicKey  ed25519.PublicKey
 	privateKey ed25519.PrivateKey
 }
@@ -102,7 +104,7 @@ func (bounceTor *TorNetwork) RegisterCallbacks(chat.NetworkCallbacks) {}
 func (bounceTor *TorNetwork) Start() error {
 	log.WithFields(log.Fields{
 		"at": "network.TorNetwork.Start",
-	}).Info("connecting to the TOR network")
+	}).Info("connecting to the Tor network")
 
 	t, err := tor.Start(
 		nil,
@@ -122,7 +124,7 @@ func (bounceTor *TorNetwork) Start() error {
 	}
 
 	// Wait at most a few minutes to publish the service
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Minute) // TODO: assign cancel variable and let UI close Tor early
+	ctx, _ := context.WithTimeout(context.Background(), 3*time.Minute) // TODO: assign cancel variable and let UI close Tor early, or defer it
 
 	// Create an onion service to listen on any port but show as 80
 	onion, err := t.Listen(
@@ -148,11 +150,11 @@ func (bounceTor *TorNetwork) Start() error {
 	return nil
 }
 
-func (bounceTor *TorNetwork) Address() (string, error) {
+func (bounceTor *TorNetwork) Address() (string, error) { // TODO: never return error, fatal if can't get address
 	if bounceTor.onion == nil {
 		return "", errors.New("network is not online, cannot determine device address")
 	}
-	return bounceTor.onion.ID + ".onion", nil // TODO: do I need to add .onion for dialing?
+	return bounceTor.onion.ID + ".onion", nil // TODO: do I need to add .onion for dialing?  return a chat.BounceAddress
 }
 
 func (bounceTor *TorNetwork) Accept() net.Conn { // TODO: also return an error
@@ -177,8 +179,24 @@ func (bounceTor *TorNetwork) Dial(address chat.BounceAddress) (*net.Conn, error)
 	return nil, nil
 }
 
-func (bounceTor *TorNetwork) VerifySignature(address chat.BounceAddress, data []byte) error {
-	return nil
+func (bounceTor *TorNetwork) Sign(data []byte) []byte {
+	return ed25519.Sign(bounceTor.privateKey, data)
+}
+
+func (bounceTor *TorNetwork) VerifySignature(address chat.BounceAddress, data []byte, signature []byte) bool {
+	torID := string(address)
+	if strings.HasSuffix(torID, ".onion") { // TODO: only need to keep this if adding .onion in Address()
+		torID = strings.TrimSuffix(torID, ".onion")
+	}
+
+	publicKey, err := torutil.PublicKeyFromV3OnionServiceID(torID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("invalid address passed to VerifySignature")
+		return false
+	}
+	return ed25519.Verify(ed25519.PublicKey(publicKey), data, signature)
 }
 
 func (bounceTor *TorNetwork) Shutdown() {

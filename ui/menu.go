@@ -11,9 +11,9 @@ func (fyneUI *Fyne) buildMenu() {
 			fyne.NewMenuItem("My Profile", func() {
 				fyneUI.showEditProfile()
 			}),
-			fyne.NewMenuItem("My Devices", func() {
-				//fyneUI.showEditDevices()
-			}),
+			//fyne.NewMenuItem("My Devices", func() {
+			//fyneUI.showEditDevices()
+			//}),
 			fyne.NewMenuItem("Settings", func() {
 				fyneUI.showSettings()
 			}),

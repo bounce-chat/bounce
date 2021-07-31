@@ -52,7 +52,6 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	fyneUI.groups = make(map[string]*group)
 	fyneUI.dms = make(map[string]*directMessage)
 	fyneUI.users = newUserStore()
-	//fyneUI.refreshAllUsersDMLinks()
 
 	//
 	// Define the app

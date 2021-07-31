@@ -10,7 +10,7 @@ import (
 type BounceNetwork interface {
 	LoadConfig(string)
 	RegisterCallbacks(NetworkCallbacks)
-	Start() error
+	Start() error // TODO: don't return error, async and use callbacks to communicate state
 	// Get the local address of this device
 	Address() (string, error)
 	// Accept() cannot return an error because the network implementation must be self-healing.  In the event that the router
@@ -18,8 +18,8 @@ type BounceNetwork interface {
 	// connections again when the network is healthy.
 	Accept() net.Conn
 	Dial(address BounceAddress) (*net.Conn, error)
-	VerifySignature(BounceAddress, []byte) error // TODO: better to have a "get public key" function and do this in the database?  Can support more networks but each has different key format
-	//Sign
+	Sign([]byte) []byte
+	VerifySignature(address BounceAddress, data []byte, signature []byte) bool
 	//IsValidAddress
 	Shutdown()
 }
