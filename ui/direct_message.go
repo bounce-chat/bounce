@@ -55,6 +55,68 @@ func (dm *directMessage) getEntry() *threadEntry {
 	return dm.entry
 }
 
+func (fyneUI *Fyne) ReceivedDirectMessage(msg chat.Message) {
+	user, userExists := fyneUI.users.get(msg.Source)
+	if !userExists {
+		log.WithFields(log.Fields{
+			"user_id": msg.Source,
+		}).Error("chat engine sent DM from user unknown to UI")
+		return
+	}
+
+	dm, dmExists := fyneUI.dms[msg.Source]
+	if !dmExists {
+		fyneUI.NewDirectMessage(chat.User{
+			ID:   user.id,
+			Name: user.name,
+		})
+		dm, dmExists = fyneUI.dms[msg.Source]
+		if !dmExists {
+			log.Fatal("DM doesn't exist immediately after creation")
+		}
+	}
+
+	chatHistory := dm.scroll.Content.(*fyne.Container)
+
+	autoscroll := false
+	location := dm.scroll.Offset.Y
+	height := dm.scroll.Content.Size().Height - dm.scroll.Size().Height
+	if height == location {
+		autoscroll = true
+	}
+
+	chatHistory.Objects = append(
+		chatHistory.Objects,
+		newChatBubble(user.name, msg.Text, false, time.Now().Unix(), nil), // TODO: user's name should be a binding.  Display the creation time too, if needed
+	)
+	chatHistory.Refresh()
+	dm.scroll.Refresh()
+
+	if fyneUI.isActive(dm) {
+		if autoscroll {
+			dm.scroll.ScrollToBottom()
+			dm.scroll.Refresh()
+		}
+	} else {
+		// This thread isn't active, mark the button as unread
+		dm.button.Importance = widget.HighImportance
+		dm.button.Refresh()
+	}
+
+	dm.lastMessage = time.Now().Unix()
+	fyneUI.refreshThreadOrder()
+
+	notificationsMuted := time.Now().Unix() < dm.notificationsMutedUntil
+	notificationsEnabled, err := dm.notificationsEnabled.Get()
+	if err != nil {
+		log.Fatal("data bindings are broken")
+	}
+
+	if notificationsEnabled && !notificationsMuted && !autoscroll { //TODO: also notify if not focused?
+		fyneUI.app.SendNotification(fyne.NewNotification(user.name, msg.Text))
+	}
+}
+
 func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	user, exists := fyneUI.users.get(bounceUser.ID)
 	if !exists {

@@ -33,11 +33,6 @@ func simulate(ui BounceUI) {
 		Name:    "Group with Bob and Charlie",
 		UserIDs: []string{user2.ID, user3.ID},
 	}
-	thread3 := Thread{
-		ID:      "4",
-		Name:    "Group with David",
-		UserIDs: []string{user4.ID},
-	}
 
 	//time.Sleep(3 * time.Second)
 	ui.NetworkOnline()
@@ -49,7 +44,6 @@ func simulate(ui BounceUI) {
 	ui.NewUser(user4.ID, user4.Name)
 	ui.NewGroupChat(thread1)
 	ui.NewGroupChat(thread2)
-	ui.NewGroupChat(thread3)
 
 	go func() {
 		for i := 0; i < 25; i++ {
@@ -64,7 +58,7 @@ func simulate(ui BounceUI) {
 		}
 	}()
 
-	ui.ReceivedGroupMessage(Message{Destination: thread3.ID, Source: user4.ID, Text: "hello this is from user 4.  this is a long message that is certainly going to wrap so that the bubble view can be tested."})
+	ui.ReceivedDirectMessage(Message{Destination: "", Source: user4.ID, Text: "hello this is from user 4.  this is a long message that is certainly going to wrap so that the bubble view can be tested."})
 
 	//time.Sleep(5 * time.Second)
 	//ui.NetworkDisconnected()
