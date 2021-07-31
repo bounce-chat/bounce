@@ -5,6 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/container"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -29,6 +30,7 @@ type Fyne struct {
 	threadVBox                   *fyne.Container
 	chatContainer                *fyne.Container
 	mainMenu                     *fyne.MainMenu
+	allUsersDMLinksScroll        *container.Scroll
 	groups                       map[string]*group
 	dms                          map[string]*directMessage
 	activeThread                 string
@@ -50,6 +52,7 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	fyneUI.groups = make(map[string]*group)
 	fyneUI.dms = make(map[string]*directMessage)
 	fyneUI.users = newUserStore()
+	//fyneUI.refreshAllUsersDMLinks()
 
 	//
 	// Define the app
@@ -73,6 +76,7 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	//
 	// Build all the containers
 	//
+	fyneUI.allUsersDMLinksScroll = container.NewVScroll(container.NewVBox())
 	fyneUI.buildMenu()
 	fyneUI.buildNewInstall()
 	fyneUI.buildNewProfileCreator()

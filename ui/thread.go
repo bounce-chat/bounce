@@ -4,6 +4,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/hkparker/bounce/chat"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
@@ -80,4 +82,26 @@ func (fyneUI *Fyne) displayThread(thread thread) {
 
 func (fyneUI *Fyne) isActive(thread thread) bool {
 	return fyneUI.activeThread == thread.getID()
+}
+
+func (fyneUI *Fyne) buildThreadEntry(thread *group) *fyne.Container {
+	entry := newThreadEntry(5)
+	thread.entry = entry
+
+	entry.customOnSubmitted = func() {
+		message := chat.Message{ // TODO: if dm, fyneUI.onSendDirectMessage(chat.OutgoingDirectMessage
+			CreatedAt:   time.Now().Unix(),
+			Destination: thread.id,
+			Text:        entry.Text,
+		}
+
+		fyneUI.onSendMessage(message)
+		// TODO: if dm, fyneUI.onSendDirectMessage(chat.OutgoingDirectMessage, etc?
+		fyneUI.displaySentMessage(thread, message.Text) // TODO: should be a pointer receiver on thread?
+
+		entry.Text = ""
+		entry.Refresh()
+	}
+
+	return container.NewMax(entry)
 }

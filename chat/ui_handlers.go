@@ -63,6 +63,22 @@ func (bounce *Bounce) setProfile(profileName, deviceName string) error {
 	}).Error
 }
 
+func (bounce *Bounce) exportContact() []byte {
+	var count int64
+	bounce.database.Model(&profile{}).Count(&count)
+	if count != 1 {
+		// TODO: fatal
+	}
+
+	// get the profile
+	return []byte{}
+}
+
+func (bounce *Bounce) importUser(data []byte) error {
+	// Parse and save to DB
+	return nil
+}
+
 func (bounce *Bounce) requestUserConnection(userID string) {
 	// Make sure there's a connection to the user
 	// if there's already a connection, early return and notify the UI that the user is online

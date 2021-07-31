@@ -77,6 +77,13 @@ func (device *device) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+type deviceAssertion struct {
+	DeviceOne   string
+	DeviceTwo   string
+	OneSignsTwo []byte
+	TwoSignsOne []byte
+}
+
 type user struct {
 	ID      uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name    string

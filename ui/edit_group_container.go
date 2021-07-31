@@ -1,12 +1,17 @@
 package ui
 
 import (
+	"image/color"
+
+	"github.com/hkparker/bounce/chat"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -15,7 +20,7 @@ func (fyneUI *Fyne) showEditThreadContainer(thread *group) {
 	thread.editContainer.Show()
 }
 
-func (fyneUI *Fyne) buildEditThreadContainer(thread *group) {
+func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename these to group
 	threadNameEntry := widget.NewEntry()
 	currentThreadName, err := thread.name.Get()
 	if err != nil {
@@ -128,4 +133,95 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) {
 			actionButtons,
 		),
 	)
+}
+
+func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
+	currentUsersList := container.NewVBox()
+
+	for _, thisUser := range thread.users.alphabetized() {
+		func(u *user) {
+			dmButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() {
+				log.Info("user wants to open a DM with " + u.name)
+				// TODO: hide this window and open a DM
+				// check fyneUI for existing DMs, create thread if needed and focus it
+				dm, dmExists := fyneUI.dms[u.id]
+				if !dmExists {
+					fyneUI.NewDirectMessage(chat.User{
+						ID:   u.id,
+						Name: u.name,
+					})
+					dm, dmExists = fyneUI.dms[u.id]
+					if !dmExists {
+						log.Fatal("DM doesn't exist immediately after creation")
+					}
+				}
+				fyneUI.showMainContainer()
+				fyneUI.displayThread(dm)
+			})
+			dmButton.Alignment = widget.ButtonAlignLeading
+			dmButton.Importance = widget.LowImportance
+
+			currentUsersList.Objects = append(
+				currentUsersList.Objects,
+				dmButton,
+			)
+		}(thisUser)
+	}
+
+	for _, thisUser := range thread.pendingUsers.alphabetized() {
+		func(u *user) {
+			removePendingUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
+				thread.pendingUsers.remove(u.id)
+				fyneUI.refreshUserSelections(thread)
+			})
+			removePendingUserButton.Alignment = widget.ButtonAlignLeading
+			removePendingUserButton.Importance = widget.LowImportance
+			currentUsersList.Objects = append(
+				currentUsersList.Objects,
+				container.New(
+					layout.NewMaxLayout(),
+					&canvas.Rectangle{FillColor: color.NRGBA{0, 0, 0x40, 0x40}},
+					removePendingUserButton,
+				),
+			)
+		}(thisUser)
+	}
+
+	thread.currentUsersContainer.Objects = []fyne.CanvasObject{currentUsersList}
+	thread.currentUsersContainer.Refresh()
+}
+
+func (fyneUI *Fyne) refreshAvailableNewUsers(thread *group) {
+	allUsersListBox := container.NewVBox()
+	for _, thisUser := range fyneUI.users.alphabetized() {
+		// Exclude users already in the thread
+		if _, exists := thread.users.get(thisUser.id); exists {
+			continue
+		}
+		// Exclude users that are pending addition to the group
+		if _, exists := thread.pendingUsers.get(thisUser.id); exists {
+			continue
+		}
+		// This weirdness is so that the iteration over user works with the dynamically created buttons
+		// TODO: make sure I'm not making this mistake anywhere else
+		func(u *user) {
+			addUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
+				thread.pendingUsers.add(u)
+				fyneUI.refreshUserSelections(thread)
+			})
+			addUserButton.Alignment = widget.ButtonAlignLeading
+			addUserButton.Importance = widget.LowImportance
+			allUsersListBox.Objects = append(
+				allUsersListBox.Objects,
+				addUserButton,
+			)
+		}(thisUser)
+	}
+	thread.availableNewUsersScroll.Content = allUsersListBox
+	thread.availableNewUsersScroll.Refresh()
+}
+
+func (fyneUI *Fyne) refreshUserSelections(group *group) {
+	fyneUI.refreshCurrentAndPendingUsers(group)
+	fyneUI.refreshAvailableNewUsers(group)
 }
