@@ -21,7 +21,6 @@ type group struct {
 	notificationsEnabled    binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
 	notificationsMutedUntil int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
 	editContainer           *fyne.Container
-	addUsersWindow          fyne.Window
 	view                    *fyne.Container
 	header                  *fyne.Container
 	button                  *widget.Button
@@ -60,21 +59,17 @@ func (group *group) setLastMessageTime(time int64) {
 	group.lastMessage = time
 }
 
-func (fyneUI *Fyne) NewGroupChat(bounceThread chat.Group) {
-	id := bounceThread.ID
-	name := bounceThread.Name
-	userIDs := bounceThread.UserIDs
-
-	if _, exists := fyneUI.groups[id]; exists {
+func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
+	if _, exists := fyneUI.groups[bounceGroup.ID]; exists {
 		log.WithFields(log.Fields{
-			"id":   id,
-			"name": name,
-		}).Warn("attempt to create a thread that already exists, ignored")
+			"id":   bounceGroup.ID,
+			"name": bounceGroup.Name,
+		}).Warn("requested to create a group that already exists, ignored")
 		return
 	}
 
-	thread := &group{
-		id:                      id,
+	group := &group{
+		id:                      bounceGroup.ID,
 		name:                    binding.NewString(),
 		users:                   newUserStore(),
 		pendingUsers:            newUserStore(),
@@ -84,90 +79,90 @@ func (fyneUI *Fyne) NewGroupChat(bounceThread chat.Group) {
 		notificationsEnabled:    binding.NewBool(),
 		lastMessage:             time.Now().Unix(),
 	}
-	for _, userID := range userIDs {
+	for _, userID := range bounceGroup.UserIDs {
 		user, exists := fyneUI.users.get(userID)
 		if !exists {
 			log.WithFields(log.Fields{
 				"user_id": userID,
-			}).Error("attempted to create thread with user unknown to UI")
+			}).Error("attempted to create group with user unknown to UI")
 			return
 		} else {
-			thread.users.add(user)
+			group.users.add(user)
 		}
 	}
 
-	err := thread.name.Set(name)
+	err := group.name.Set(bounceGroup.Name)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("data bindings are broken")
 	}
-	err = thread.notificationsEnabled.Set(false) // TODO: this should default to true when ready
+	err = group.notificationsEnabled.Set(false) // TODO: this should default to true when ready
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("data bindings are broken")
 	}
 
-	fyneUI.buildEditThreadContainer(thread)
+	fyneUI.buildEditThreadContainer(group)
 	editButton := widget.NewButton("Edit", func() {
-		fyneUI.refreshUserSelections(thread)
-		fyneUI.showEditThreadContainer(thread)
+		fyneUI.refreshUserSelections(group)
+		fyneUI.showEditThreadContainer(group)
 	})
-	threadIcon := newEmbeddedResource("assets/not_found.png")
-	threadIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-	threadIconCanvas.FillMode = canvas.ImageFillContain
-	threadIconCanvas.SetMinSize(fyne.NewSize(32, 32))
+	groupIcon := newEmbeddedResource("assets/not_found.png")
+	groupIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
+	groupIconCanvas.FillMode = canvas.ImageFillContain
+	groupIconCanvas.SetMinSize(fyne.NewSize(32, 32))
 
-	threadLabelText := widget.NewLabel(name)
-	threadLabel := container.NewHBox(
-		threadIconCanvas,
-		threadLabelText,
+	groupLabelText := widget.NewLabel(bounceGroup.Name)
+	groupLabel := container.NewHBox(
+		groupIconCanvas,
+		groupLabelText,
 	)
 
-	threadLabelText.Bind(thread.name)
-	threadLabelText.TextStyle = fyne.TextStyle{Bold: true}
-	threadButtons := container.NewMax(editButton)
-	thread.header = container.New(
-		layout.NewBorderLayout(nil, nil, threadLabel, threadButtons),
-		threadLabel,
-		threadButtons,
+	groupLabelText.Bind(group.name)
+	groupLabelText.TextStyle = fyne.TextStyle{Bold: true}
+	groupButtons := container.NewMax(editButton)
+	group.header = container.New(
+		layout.NewBorderLayout(nil, nil, groupLabel, groupButtons),
+		groupLabel,
+		groupButtons,
 	)
 
 	entry := newThreadEntry(5)
-	thread.entry = entry
+	group.entry = entry
 
 	entry.customOnSubmitted = func() {
 		message := chat.Message{
 			CreatedAt:   time.Now().Unix(),
-			Destination: thread.id,
+			Destination: group.id,
 			Text:        entry.Text,
 		}
 
 		fyneUI.onSendMessage(message) // TODO: group-specific callback?
-		fyneUI.displaySentMessage(thread, message.Text)
+		fyneUI.displaySentMessage(group, message.Text)
 
 		entry.Text = ""
 		entry.Refresh()
 	}
 
-	thread.entryBar = container.NewMax(entry)
+	group.entryBar = container.NewMax(entry)
 
-	thread.button = widget.NewButtonWithIcon(name, threadIcon, func() {
+	group.button = widget.NewButtonWithIcon(bounceGroup.Name, groupIcon, func() {
 		// TODO: tell the entine this is happening so that it can make sure
 		// there's a connection open
-		fyneUI.displayThread(thread)
+		fyneUI.displayThread(group)
 	})
-	thread.button.Importance = widget.LowImportance
-	thread.button.Alignment = widget.ButtonAlignLeading
+	group.button.Importance = widget.LowImportance
+	group.button.Alignment = widget.ButtonAlignLeading
 
-	thread.view = container.New(
-		layout.NewBorderLayout(thread.header, thread.entryBar, nil, nil),
-		thread.header,
-		thread.entryBar,
-		thread.scroll,
+	group.view = container.New(
+		layout.NewBorderLayout(group.header, group.entryBar, nil, nil),
+		group.header,
+		group.entryBar,
+		group.scroll,
 	)
-	fyneUI.groups[id] = thread
+	fyneUI.groups[group.id] = group
 	fyneUI.refreshThreadOrder()
 }
 
