@@ -77,7 +77,7 @@ func (device *device) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-type deviceAssertion struct {
+type mutualDeviceSignature struct {
 	DeviceOne   string
 	DeviceTwo   string
 	OneSignsTwo []byte

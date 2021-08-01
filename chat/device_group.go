@@ -1,7 +1,7 @@
 package chat
 
 type deviceGroup struct {
-	assertions []deviceAssertion
+	signatures []mutualDeviceSignature
 }
 
 func (dg deviceGroup) valid() bool {

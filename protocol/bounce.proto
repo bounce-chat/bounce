@@ -46,7 +46,7 @@ message MutualDeviceSignature {
 	bytes deviceTwoSignatureOfDeviceOne = 4;
 }
 
-message DeviceGroupIntroduction {
+message User {
 	string id = 1;
 	string name = 2;
 	bytes image = 3;
@@ -63,7 +63,7 @@ message GroupInvite {
 	string id = 1;
 	string name = 2;
 	bytes image = 3;
-	repeated DeviceGroupIntroduction deviceGroupIntroductions = 4;
+	repeated User users = 4;
 }
 
 //
