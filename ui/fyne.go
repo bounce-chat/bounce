@@ -43,6 +43,7 @@ type Fyne struct {
 	onRenameGroup                chat.RenameGroupCallback
 	onChangeNotificationSettings chat.ChangeNotificationSettingsCallback
 	onSetProfile                 chat.SetProfileCallback
+	onImportUser                 chat.ImportUserCallback
 }
 
 func (fyneUI *Fyne) Build(configDirectory string) {
@@ -102,6 +103,7 @@ func (fyneUI *Fyne) RegisterCallbacks(callbacks chat.UICallbacks) {
 	fyneUI.onRenameGroup = callbacks.RenameGroup
 	fyneUI.onChangeNotificationSettings = callbacks.ChangeNotificationSettings
 	fyneUI.onSetProfile = callbacks.SetProfile
+	fyneUI.onImportUser = callbacks.ImportUser
 }
 
 func (fyneUI *Fyne) Run() {

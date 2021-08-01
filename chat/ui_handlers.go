@@ -75,6 +75,7 @@ func (bounce *Bounce) exportContact() []byte {
 }
 
 func (bounce *Bounce) importUser(data []byte) error {
+	log.Info("user wants to import a contact")
 	// Parse and save to DB
 	return nil
 }

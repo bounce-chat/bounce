@@ -1,7 +1,12 @@
 package ui
 
 import (
+	"errors"
+	"io"
+
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -23,11 +28,29 @@ func (fyneUI *Fyne) buildImportContact() {
 		closeButton,
 	)
 
+	fileSelector := dialog.NewFileOpen(func(handler fyne.URIReadCloser, err error) {
+		if handler == nil {
+			// Selection canceled
+			return
+		}
+		data, err := io.ReadAll(handler)
+		if err != nil {
+			dialog.ShowError(errors.New("error reading file: "+err.Error()), fyneUI.mainWindow)
+			// TODO: log
+		}
+		err = fyneUI.onImportUser(data) // TODO: also return username to display?
+		if err != nil {
+			dialog.ShowError(errors.New("error importing contact: "+err.Error()), fyneUI.mainWindow)
+		} else {
+			dialog.ShowInformation("Success", "User has been imported", fyneUI.mainWindow)
+		}
+	}, fyneUI.mainWindow)
+
 	fyneUI.importContact = container.New(
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.NewCenter(
-			widget.NewLabel("You'll import a contact here"),
+			widget.NewButton("Click here to select a contact file", func() { fileSelector.Show() }),
 		),
 	)
 }

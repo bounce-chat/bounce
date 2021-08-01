@@ -83,7 +83,7 @@ type UICallbacks struct {
 	RenameGroup                RenameGroupCallback
 	ChangeNotificationSettings ChangeNotificationSettingsCallback
 	SetProfile                 SetProfileCallback
-
+	ImportUser                 ImportUserCallback
 	//Unimplemented:
 	//MessageRead()
 }
@@ -102,6 +102,8 @@ type ChangeNotificationSettingsCallback func(groupID string, notificationEnabled
 
 // Setup a new profile on a fresh install
 type SetProfileCallback func(profileName, deviceName string) error
+
+type ImportUserCallback func(user []byte) error
 
 //
 // TODO: to be deleted once I figure out loading messages in order during initial state loading.  Or maybe not?
