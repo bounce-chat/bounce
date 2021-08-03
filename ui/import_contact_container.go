@@ -46,7 +46,7 @@ func (fyneUI *Fyne) buildImportContact() {
 		}
 	}, fyneUI.mainWindow)
 
-	fyneUI.importContact = container.New(
+	fyneUI.importContact = container.New( // TODO: scan QR code, have the engine respond will full contact details if QR secret is sent within 30 mins
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.NewCenter(

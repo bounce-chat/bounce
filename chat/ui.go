@@ -45,6 +45,8 @@ type BounceUI interface {
 
 	// Profile updates from other devices owned by this user
 	//UpdateMyName()
+
+	// Chat engine updating the delivery status of a message
 }
 
 type InitialState struct {
