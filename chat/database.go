@@ -68,8 +68,9 @@ type device struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name      string
 	UserID    uuid.UUID
-	ProfileID uuid.UUID
+	ProfileID uuid.UUID // TODO: merge profile and user?
 	Address   string
+	Signature introductionSignature
 }
 
 func (device *device) BeforeCreate(tx *gorm.DB) error {
@@ -77,11 +78,13 @@ func (device *device) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-type mutualDeviceSignature struct {
-	DeviceOne   string
-	DeviceTwo   string
-	OneSignsTwo []byte
-	TwoSignsOne []byte
+type introductionSignature struct {
+	ID       uuid.UUID `gorm:"type:uuid;primary_key;"`
+	DeviceID uuid.UUID
+	//DeviceOne   string // TODO: clean these fields up
+	SigningDevice            string
+	SigningDeviceSignature   []byte
+	SignatureOfSigningDevice []byte
 }
 
 type user struct {

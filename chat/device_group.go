@@ -1,5 +1,24 @@
 package chat
 
+func (u *user) validDeviceGroup() bool {
+	// for each device the user owns
+	//	make a mutual device signature from their introduction signature
+	// create a device group from these mutual signatures
+	// validate the group
+	return true
+}
+
+func (u *user) validDeviceGroupAfterAddition(addition mutualDeviceSignature) bool {
+	return true
+}
+
+type mutualDeviceSignature struct {
+	DeviceOne   string
+	DeviceTwo   string
+	OneSignsTwo []byte
+	TwoSignsOne []byte
+}
+
 type deviceGroup struct {
 	signatures []mutualDeviceSignature
 }
