@@ -175,8 +175,14 @@ func (bounceTor *TorNetwork) Accept() net.Conn { // TODO: also return an error
 	return connection
 }
 
-func (bounceTor *TorNetwork) Dial(address chat.BounceAddress) (*net.Conn, error) {
-	return nil, nil
+func (bounceTor *TorNetwork) Dial(address chat.BounceAddress) (net.Conn, error) {
+	dialer, err := bounceTor.onion.Tor.Dialer(context.TODO(), &tor.DialConf{}) // TODO: store this so it doesn't need to be recreated all the time?
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error creating dialer")
+	}
+	return dialer.Dial("tcp", string(address))
 }
 
 func (bounceTor *TorNetwork) Sign(data []byte) []byte {

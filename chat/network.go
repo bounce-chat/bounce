@@ -17,7 +17,7 @@ type BounceNetwork interface {
 	// fails to accept a new connection internally, it must communicate this to the chat engine via callback then return new
 	// connections again when the network is healthy.
 	Accept() net.Conn
-	Dial(address BounceAddress) (*net.Conn, error)
+	Dial(address BounceAddress) (net.Conn, error)
 	Sign([]byte) []byte
 	VerifySignature(address BounceAddress, data []byte, signature []byte) bool
 	//IsValidAddress
