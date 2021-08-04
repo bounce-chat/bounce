@@ -66,11 +66,11 @@ func (profile *profile) BeforeCreate(tx *gorm.DB) error {
 
 type device struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name      string
-	UserID    uuid.UUID
+	Name      string    `json:"-"`
+	UserID    uuid.UUID `json:"-"`
 	ProfileID uuid.UUID // TODO: merge profile and user?
 	Address   string
-	Signature introductionSignature
+	Signature introductionSignature `json:",omitempty"` // TODO: json omit not working
 }
 
 func (device *device) BeforeCreate(tx *gorm.DB) error {

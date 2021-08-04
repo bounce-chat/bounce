@@ -86,6 +86,7 @@ type UICallbacks struct {
 	ChangeNotificationSettings ChangeNotificationSettingsCallback
 	SetProfile                 SetProfileCallback
 	ImportUser                 ImportUserCallback
+	ExportContact              ExportContactCallback
 	//Unimplemented:
 	//MessageRead()
 }
@@ -106,6 +107,8 @@ type ChangeNotificationSettingsCallback func(groupID string, notificationEnabled
 type SetProfileCallback func(profileName, deviceName string) error
 
 type ImportUserCallback func(user []byte) error
+
+type ExportContactCallback func() []byte
 
 //
 // TODO: to be deleted once I figure out loading messages in order during initial state loading.  Or maybe not?

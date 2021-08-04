@@ -1,9 +1,11 @@
 package chat
 
 import (
+	"encoding/json"
 	"errors"
 
 	log "github.com/sirupsen/logrus"
+	"gorm.io/gorm/clause"
 )
 
 func (bounce *Bounce) sendMessage(message Message) {
@@ -63,6 +65,12 @@ func (bounce *Bounce) setProfile(profileName, deviceName string) error {
 	}).Error
 }
 
+// TODO: put this somewhere
+type profileExport struct {
+	Secret  string
+	Profile profile
+}
+
 func (bounce *Bounce) exportContact() []byte {
 	var count int64
 	bounce.database.Model(&profile{}).Count(&count)
@@ -70,8 +78,20 @@ func (bounce *Bounce) exportContact() []byte {
 		// TODO: fatal
 	}
 
-	// get the profile
-	return []byte{}
+	var myProfile profile
+	bounce.database.Preload(clause.Associations).First(&myProfile)
+	secret := "secret" // TODO: generate random string and save to database
+
+	bytes, err := json.Marshal(profileExport{
+		Secret:  secret,
+		Profile: myProfile,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error exporting profile")
+	}
+	return bytes
 }
 
 func (bounce *Bounce) importUser(data []byte) error {
