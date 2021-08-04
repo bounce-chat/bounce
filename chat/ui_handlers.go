@@ -67,8 +67,9 @@ func (bounce *Bounce) setProfile(profileName, deviceName string) error {
 
 // TODO: put this somewhere
 type profileExport struct {
-	Secret  string
-	Profile profile
+	Secret     string
+	Expiration int64
+	Profile    profile
 }
 
 func (bounce *Bounce) exportContact() []byte {
@@ -81,6 +82,7 @@ func (bounce *Bounce) exportContact() []byte {
 	var myProfile profile
 	bounce.database.Preload(clause.Associations).First(&myProfile)
 	secret := "secret" // TODO: generate random string and save to database
+	// TODO: also set the expiration in the exported struct
 
 	bytes, err := json.Marshal(profileExport{
 		Secret:  secret,
