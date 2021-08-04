@@ -70,7 +70,7 @@ type device struct {
 	UserID    uuid.UUID `json:"-"`
 	ProfileID uuid.UUID // TODO: merge profile and user?
 	Address   string
-	Signature introductionSignature `json:",omitempty"` // TODO: json omit not working
+	Signature introductionSignature `json:",omitempty"` // TODO: json omit not working.  Maybe use this in query https://gorm.io/docs/associations.html#Select-Omit-Association-fields
 }
 
 func (device *device) BeforeCreate(tx *gorm.DB) error {
