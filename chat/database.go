@@ -54,7 +54,7 @@ func (bounce *Bounce) buildInitialState() InitialState {
 }
 
 type profile struct {
-	ID      uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID      uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
 	Name    string
 	Devices []device
 }
@@ -65,12 +65,12 @@ func (profile *profile) BeforeCreate(tx *gorm.DB) error {
 }
 
 type device struct {
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
 	Name      string    `json:"-"`
 	UserID    uuid.UUID `json:"-"`
-	ProfileID uuid.UUID // TODO: merge profile and user?
+	ProfileID uuid.UUID `json:"-"` // TODO: merge profile and user?
 	Address   string
-	Signature introductionSignature `json:",omitempty"` // TODO: json omit not working.  Maybe use this in query https://gorm.io/docs/associations.html#Select-Omit-Association-fields
+	Signature *introductionSignature `json:",omitempty"`
 }
 
 func (device *device) BeforeCreate(tx *gorm.DB) error {
