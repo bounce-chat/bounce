@@ -79,7 +79,7 @@ func (bounce *Bounce) exportContact() []byte {
 	var count int64
 	bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count != 1 {
-		// TODO: fatal
+		log.Fatal("no profile exists to export")
 	}
 
 	var myProfile user

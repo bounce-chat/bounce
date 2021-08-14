@@ -13,6 +13,7 @@ type Bounce struct {
 	database        *gorm.DB
 	userInterface   BounceUI
 	network         BounceNetwork
+	devicePool      *devicePool
 }
 
 //
@@ -24,6 +25,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 		configDirectory: getConfigDirectory(),
 		userInterface:   ui,
 		network:         network,
+		devicePool:      newDevicePool(),
 	}
 	go bounce.handleInterrupts()
 	bounce.openDatabase()
