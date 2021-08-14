@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"errors"
+
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
@@ -21,7 +23,6 @@ func (bounce *Bounce) openDatabase() {
 	}
 
 	bounce.database.AutoMigrate(
-		&profile{},
 		&user{},
 		&device{},
 	)
@@ -32,7 +33,7 @@ func (bounce *Bounce) openDatabase() {
 func (bounce *Bounce) buildInitialState() InitialState {
 	profileSet := false
 	var count int64
-	bounce.database.Model(&profile{}).Count(&count)
+	bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count > 0 {
 		profileSet = true
 	}
@@ -53,23 +54,11 @@ func (bounce *Bounce) buildInitialState() InitialState {
 	}
 }
 
-type profile struct { // TODO: delete
-	ID      uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
-	Name    string
-	Devices []device
-}
-
-func (profile *profile) BeforeCreate(tx *gorm.DB) error {
-	profile.ID = uuid.New()
-	return nil
-}
-
 type device struct {
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
-	Name      string    `json:"-"`
-	UserID    uuid.UUID `json:"-"`
-	ProfileID uuid.UUID `json:"-"` // TODO: merge profile and user?
-	Address   string
+	ID        uuid.UUID              `gorm:"type:uuid;primary_key;" json:"-"`
+	Name      string                 `json:"-"`
+	UserID    uuid.UUID              `json:"-"`
+	Address   string                 `gorm:"unique"`
 	Signature *introductionSignature `json:",omitempty"`
 }
 
@@ -79,21 +68,34 @@ func (device *device) BeforeCreate(tx *gorm.DB) error {
 }
 
 type introductionSignature struct {
-	ID       uuid.UUID `gorm:"type:uuid;primary_key;"`
-	DeviceID uuid.UUID
-	//DeviceOne   string // TODO: clean these fields up
+	ID                       uuid.UUID `gorm:"type:uuid;primary_key;"`
+	DeviceID                 uuid.UUID
 	SigningDevice            string
-	SigningDeviceSignature   []byte
+	SigningDeviceSignature   []byte // TODO: clean these field names up
 	SignatureOfSigningDevice []byte
+}
+
+func (introductionSignature *introductionSignature) BeforeCreate(tx *gorm.DB) error {
+	introductionSignature.ID = uuid.New()
+	return nil
 }
 
 type user struct {
 	ID      uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name    string
+	Profile bool
 	Devices []device
 }
 
-func (user *user) BeforeCreate(tx *gorm.DB) error {
-	user.ID = uuid.New()
+func (u *user) BeforeCreate(tx *gorm.DB) error {
+	u.ID = uuid.New()
+
+	if u.Profile {
+		var count int64
+		tx.Model(&user{}).Where("profile = ?", true).Count(&count)
+		if count > 0 {
+			return errors.New("profile user already exists")
+		}
+	}
 	return nil
 }

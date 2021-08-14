@@ -50,13 +50,14 @@ func (bounce *Bounce) setProfile(profileName, deviceName string) error {
 	}
 
 	var count int64
-	bounce.database.Model(&profile{}).Count(&count)
+	bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count > 0 {
 		return errors.New("profile already exists on this device")
 	}
 
-	return bounce.database.Save(&profile{
-		Name: profileName,
+	return bounce.database.Save(&user{
+		Name:    profileName,
+		Profile: true,
 		Devices: []device{
 			device{
 				Name:    deviceName,
@@ -76,12 +77,12 @@ type profileExport struct {
 
 func (bounce *Bounce) exportContact() []byte {
 	var count int64
-	bounce.database.Model(&profile{}).Count(&count)
+	bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count != 1 {
 		// TODO: fatal
 	}
 
-	var myProfile profile
+	var myProfile user
 	bounce.database.Preload(clause.Associations).First(&myProfile)
 	secret := "secret" // TODO: generate random string and save to database
 	// TODO: user should specify if this can only be claimed once and that should be saved in the database
