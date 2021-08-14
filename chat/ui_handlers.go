@@ -108,8 +108,6 @@ func (bounce *Bounce) exportContact() []byte {
 }
 
 func (bounce *Bounce) importUser(data []byte) error {
-	log.Info("user wants to import a contact")
-
 	newUser := profileExport{}
 	err := json.Unmarshal(data, &newUser)
 	if err != nil {
@@ -135,8 +133,11 @@ func (bounce *Bounce) importUser(data []byte) error {
 		return errors.New("invalid device group")
 	}
 
-	// save to the database and attempt contact (on the UI side, make a thread that says that we're awaiting acceptance, once it's accepted a callback will make the thread live and post a notification)
-	return nil
+	// Save to the database
+	return bounce.database.Save(&newUser.Profile).Error
+	// TODO: some sort of UI feedback on the secret being accepted on the remote side?
+	// As in, bounce only accepts DMs from user's in a shared group or who send an import secret
+	// TODO: try to dial right away
 }
 
 func (bounce *Bounce) requestUserConnection(userID string) {
