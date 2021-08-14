@@ -1,6 +1,10 @@
 package chat
 
 func (u *user) validDeviceGroup() bool {
+	if len(u.Devices) == 0 {
+		return false
+	}
+
 	originalDeviceFound := false
 	deviceGroup := &deviceGroup{}
 	for _, dev := range u.Devices {
