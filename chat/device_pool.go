@@ -31,7 +31,8 @@ func (dp *devicePool) remove(connections net.Conn) {
 }
 
 type remoteDevice struct {
-	user        uuid.UUID
-	address     string
+	user    uuid.UUID
+	address string
+	// TODO: lock this or use a channel?
 	connections []net.Conn
 }

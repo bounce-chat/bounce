@@ -13,9 +13,9 @@ func (u *user) validDeviceGroup() bool {
 				deviceGroup.signatures,
 				mutualDeviceSignature{
 					DeviceOne:   dev.Address,
-					DeviceTwo:   dev.Signature.SigningDevice,
-					OneSignsTwo: dev.Signature.SignatureOfSigningDevice,
-					TwoSignsOne: dev.Signature.SigningDeviceSignature,
+					DeviceTwo:   dev.Signature.PreexistingDevice,
+					OneSignsTwo: dev.Signature.SignatureOfPreexistingDevice,
+					TwoSignsOne: dev.Signature.SignatureOfNewDevice,
 				},
 			)
 		} else {
@@ -58,7 +58,7 @@ func (dg *deviceGroup) valid() bool {
 	sample := ""
 	nodes := map[string]*node{}
 	for _, pair := range dg.signatures {
-		// TODO: validate both signatures are legit
+		// TODO: validate both signatures are legit.  Needs access to the network.
 		// Create a node for this device if it doesn't exist
 		if _, exists := nodes[pair.DeviceOne]; !exists {
 			nodes[pair.DeviceOne] = &node{}

@@ -68,11 +68,11 @@ func (device *device) BeforeCreate(tx *gorm.DB) error {
 }
 
 type introductionSignature struct {
-	ID                       uuid.UUID `gorm:"type:uuid;primary_key;"`
-	DeviceID                 uuid.UUID
-	SigningDevice            string
-	SigningDeviceSignature   []byte // TODO: clean these field names up
-	SignatureOfSigningDevice []byte
+	ID                           uuid.UUID `gorm:"type:uuid;primary_key;"`
+	DeviceID                     uuid.UUID
+	PreexistingDevice            string // TODO: should this reference a device model?
+	SignatureOfNewDevice         []byte
+	SignatureOfPreexistingDevice []byte
 }
 
 func (introductionSignature *introductionSignature) BeforeCreate(tx *gorm.DB) error {
