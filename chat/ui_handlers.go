@@ -83,18 +83,14 @@ func (bounce *Bounce) exportContact() []byte {
 	}
 
 	var myProfile user
-	bounce.database.Preload(clause.Associations).First(&myProfile)
+	bounce.database.Model(&user{}).Preload(clause.Associations).Where("profile = ?", true).First(&myProfile)
 	secret := "secret" // TODO: generate random string and save to database
 	// TODO: user should specify if this can only be claimed once and that should be saved in the database
 
 	bytes, err := json.Marshal(profileExport{
 		Secret:     secret,
 		Expiration: 0, // TODO: user-defined
-		Profile: user{ // TODO: delete this once user and profile are merged
-			ID:      myProfile.ID,
-			Name:    myProfile.Name,
-			Devices: myProfile.Devices,
-		},
+		Profile:    myProfile,
 	})
 	if err != nil {
 		log.WithFields(log.Fields{

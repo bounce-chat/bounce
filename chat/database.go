@@ -81,9 +81,9 @@ func (introductionSignature *introductionSignature) BeforeCreate(tx *gorm.DB) er
 }
 
 type user struct {
-	ID      uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID      uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
 	Name    string
-	Profile bool
+	Profile bool `json:"-"`
 	Devices []device
 }
 
