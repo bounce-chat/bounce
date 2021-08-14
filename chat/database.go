@@ -53,7 +53,7 @@ func (bounce *Bounce) buildInitialState() InitialState {
 	}
 }
 
-type profile struct {
+type profile struct { // TODO: delete
 	ID      uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
 	Name    string
 	Devices []device

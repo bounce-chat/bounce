@@ -43,6 +43,7 @@ func (fyneUI *Fyne) buildImportContact() {
 			dialog.ShowError(errors.New("error importing contact: "+err.Error()), fyneUI.mainWindow)
 		} else {
 			dialog.ShowInformation("Success", "User has been imported", fyneUI.mainWindow)
+			// TODO: offer to delete file?
 		}
 	}, fyneUI.mainWindow)
 

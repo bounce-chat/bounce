@@ -1,11 +1,29 @@
 package chat
 
 func (u *user) validDeviceGroup() bool {
-	// for each device the user owns
-	//	make a mutual device signature from their introduction signature
-	// create a device group from these mutual signatures
-	// validate the group
-	return true
+	originalDeviceFound := false
+	deviceGroup := &deviceGroup{}
+	for _, dev := range u.Devices {
+		if dev.Signature != nil {
+			deviceGroup.signatures = append(
+				deviceGroup.signatures,
+				mutualDeviceSignature{
+					DeviceOne:   dev.Address,
+					DeviceTwo:   dev.Signature.SigningDevice,
+					OneSignsTwo: dev.Signature.SignatureOfSigningDevice,
+					TwoSignsOne: dev.Signature.SigningDeviceSignature,
+				},
+			)
+		} else {
+			if originalDeviceFound {
+				// Can't have more than one device that was never signed
+				return false
+			} else {
+				originalDeviceFound = true
+			}
+		}
+	}
+	return deviceGroup.valid()
 }
 
 func (u *user) validDeviceGroupAfterAddition(addition mutualDeviceSignature) bool {
@@ -29,12 +47,14 @@ type node struct {
 }
 
 func (dg *deviceGroup) valid() bool {
-	// Ensure the length is at least one
+	if len(dg.signatures) == 0 {
+		return true
+	}
 
 	sample := ""
 	nodes := map[string]*node{}
 	for _, pair := range dg.signatures {
-		// validate both signatures are legit
+		// TODO: validate both signatures are legit
 		// Create a node for this device if it doesn't exist
 		if _, exists := nodes[pair.DeviceOne]; !exists {
 			nodes[pair.DeviceOne] = &node{}

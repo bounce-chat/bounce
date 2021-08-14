@@ -3,6 +3,7 @@ package chat
 import (
 	"encoding/json"
 	"errors"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm/clause"
@@ -68,8 +69,9 @@ func (bounce *Bounce) setProfile(profileName, deviceName string) error {
 // TODO: put this somewhere
 type profileExport struct {
 	Secret     string
+	OneTimeUse bool `json:"-"`
 	Expiration int64
-	Profile    profile
+	Profile    user
 }
 
 func (bounce *Bounce) exportContact() []byte {
@@ -82,23 +84,57 @@ func (bounce *Bounce) exportContact() []byte {
 	var myProfile profile
 	bounce.database.Preload(clause.Associations).First(&myProfile)
 	secret := "secret" // TODO: generate random string and save to database
-	// TODO: also set the expiration in the exported struct
+	// TODO: user should specify if this can only be claimed once and that should be saved in the database
 
 	bytes, err := json.Marshal(profileExport{
-		Secret:  secret,
-		Profile: myProfile,
+		Secret:     secret,
+		Expiration: 0, // TODO: user-defined
+		Profile: user{ // TODO: delete this once user and profile are merged
+			ID:      myProfile.ID,
+			Name:    myProfile.Name,
+			Devices: myProfile.Devices,
+		},
 	})
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error exporting profile")
 	}
+
+	// TODO: save this to the database so we know how to handle incoming import requests
+
 	return bytes
 }
 
 func (bounce *Bounce) importUser(data []byte) error {
 	log.Info("user wants to import a contact")
-	// Parse and save to DB
+
+	newUser := profileExport{}
+	err := json.Unmarshal(data, &newUser)
+	if err != nil {
+		return err
+	}
+
+	// Make sure the export hasn't expired
+	if newUser.Expiration != 0 && newUser.Expiration > time.Now().Unix() {
+		return errors.New("file has expired")
+	}
+
+	// Make sure we don't already know about any of the devices
+	for _, contactDevice := range newUser.Profile.Devices {
+		count := int64(0)
+		bounce.database.Model(&device{}).Where("address = ?", contactDevice.Address).Count(&count)
+		if count > 0 {
+			return errors.New("contact contains device that already exists in database")
+		}
+	}
+
+	// Make sure this contact has a valid device group
+	if !newUser.Profile.validDeviceGroup() {
+		return errors.New("invalid device group")
+	}
+
+	// save to the database and attempt contact (on the UI side, make a thread that says that we're awaiting acceptance, once it's accepted a callback will make the thread live and post a notification)
 	return nil
 }
 
