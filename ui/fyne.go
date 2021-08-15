@@ -43,7 +43,7 @@ type Fyne struct {
 	onRenameGroup                chat.RenameGroupCallback
 	onChangeNotificationSettings chat.ChangeNotificationSettingsCallback
 	onSetProfile                 chat.SetProfileCallback
-	onImportUser                 chat.ImportUserCallback // TODO: rename to contactr?
+	onImportUser                 chat.ImportUserCallback // TODO: rename to contact?
 	onExportContact              chat.ExportContactCallback
 }
 

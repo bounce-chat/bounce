@@ -30,9 +30,15 @@ func (dp *devicePool) remove(connections net.Conn) {
 
 }
 
+func (bounce *Bounce) dialUser(u user) {
+	// if we've got an open connection we're all good
+	// try to dial all the devices for this user if not
+}
+
+// TODO: create one of these for each device on startup and only dial as needed?
 type remoteDevice struct {
-	user    uuid.UUID
-	address string
+	user   uuid.UUID
+	device uuid.UUID
 	// TODO: lock this or use a channel?
 	connections []net.Conn
 }
