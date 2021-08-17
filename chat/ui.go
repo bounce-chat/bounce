@@ -108,7 +108,7 @@ type SetProfileCallback func(profileName, deviceName string) error
 
 type ImportUserCallback func(user []byte) error
 
-type ExportContactCallback func() []byte
+type ExportContactCallback func(name string, expiration int64, oneTime bool) []byte
 
 //
 // TODO: to be deleted once I figure out loading messages in order during initial state loading.  Or maybe not?

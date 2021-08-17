@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"errors"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
@@ -16,6 +18,10 @@ func (fyneUI *Fyne) showEditProfile() {
 }
 
 func (fyneUI *Fyne) buildEditProfile() {
+	//
+	// Personal details section
+	//
+
 	// TODO: click to change profile image
 	profileIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
 	profileIcon.FillMode = canvas.ImageFillContain
@@ -44,28 +50,52 @@ func (fyneUI *Fyne) buildEditProfile() {
 		saveProfileButtonBar,
 	)
 
+	//
+	// Sync devices secttion
+	//
+
 	devicesLabel := widget.NewLabel("Devices")
-	profileAndDevices := container.NewVBox(
-		profileOptions,
-		devicesLabel,
-	)
+	devicesLabel.TextStyle = fyne.TextStyle{Bold: true}
 
-	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		fyneUI.showMainContainer()
-	})
-	closeButton.Importance = widget.LowImportance
+	//
+	// Existing exports section
+	//
 
-	closeBar := container.New(
-		layout.NewBorderLayout(nil, nil, nil, closeButton),
-		closeButton,
+	//widget.NewLabel("Contact Exports")
+
+	//
+	// New exports section
+	//
+
+	exportLabel := widget.NewLabel("New Export")
+	exportLabel.TextStyle = fyne.TextStyle{Bold: true}
+
+	exportNameEntry := widget.NewEntry()
+	oneTimeUse := widget.NewCheck("One-Time Use", nil)
+	exportContactForm := widget.NewForm(
+		&widget.FormItem{
+			Text:   "Name:",
+			Widget: exportNameEntry,
+		},
+		&widget.FormItem{
+			Text:   "Expires:",
+			Widget: widget.NewSelect([]string{"1 Hour", "1 Day", "1 Week", "Never"}, nil),
+		},
+		&widget.FormItem{
+			Text:   "",
+			Widget: oneTimeUse,
+		},
 	)
+	exportContactForm.SubmitText = "Export"
 
 	fileSelector := dialog.NewFileSave(func(handler fyne.URIWriteCloser, err error) {
+		// TODO: err check the error passed in
 		if handler == nil {
 			// Selection canceled
 			return
 		}
-		profileData := fyneUI.onExportContact()
+		expiration := int64(0) // TODO: translate from selection
+		profileData := fyneUI.onExportContact(exportNameEntry.Text, expiration, oneTimeUse.Checked)
 		// TODO: err check these two
 		handler.Write(profileData)
 		handler.Close()
@@ -77,14 +107,37 @@ func (fyneUI *Fyne) buildEditProfile() {
 		//}
 	}, fyneUI.mainWindow)
 
-	exportContactMenu := container.NewCenter(
-		widget.NewButton("Click here to export your contact", func() {
-			fileSelector.SetFileName("profile.bounce") // TODO: set the user's current profile name
-			fileSelector.Show()
-		}),
+	exportContactForm.OnSubmit = func() {
+		if exportNameEntry.Text == "" {
+			dialog.ShowError(errors.New("Please select a name for this export"), fyneUI.mainWindow)
+			return
+		}
+		fileSelector.SetFileName("profile.bounce") // TODO: set the user's current profile name
+		fileSelector.Show()
+	}
+
+	exportContactMenu := container.NewVBox(
+		exportLabel,
+		exportContactForm,
 	)
 
-	// TODO: other things here: change profile name, manage sync devices
+	//
+	// Layout of all sections
+	//
+
+	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+		fyneUI.showMainContainer()
+	})
+	closeButton.Importance = widget.LowImportance
+
+	closeBar := container.New(
+		layout.NewBorderLayout(nil, nil, nil, closeButton),
+		closeButton,
+	)
+	profileAndDevices := container.NewVBox(
+		profileOptions,
+		devicesLabel,
+	)
 	fyneUI.editProfile = container.New(
 		layout.NewBorderLayout(closeBar, exportContactMenu, nil, nil),
 		closeBar,

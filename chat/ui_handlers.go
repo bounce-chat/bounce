@@ -70,12 +70,13 @@ func (bounce *Bounce) setProfile(profileName, deviceName string) error {
 // TODO: put this somewhere
 type profileExport struct {
 	Secret     string
-	OneTimeUse bool `json:"-"`
+	Name       string `json:"-"`
+	OneTimeUse bool   `json:"-"`
 	Expiration int64
-	Profile    user
+	Profile    user `gorm:"-"`
 }
 
-func (bounce *Bounce) exportContact() []byte {
+func (bounce *Bounce) exportContact(name string, expiration int64, oneTime bool) []byte {
 	var count int64
 	bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count != 1 {
