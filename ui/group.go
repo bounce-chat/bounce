@@ -139,7 +139,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 			Text:        entry.Text,
 		}
 
-		fyneUI.onSendMessage(message) // TODO: group-specific callback?
+		fyneUI.callbacks.SendMessage(message) // TODO: group-specific callback?
 		fyneUI.displaySentMessage(group, message.Text)
 
 		entry.Text = ""

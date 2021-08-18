@@ -176,7 +176,7 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 			dialog.ShowError(errors.New("Device name must be set"), fyneUI.mainWindow)
 			return
 		}
-		err := fyneUI.onSetProfile(profileNameEntry.Text, deviceNameEntry.Text) // TODO: send profile bytes if set
+		err := fyneUI.callbacks.SetProfile(profileNameEntry.Text, deviceNameEntry.Text) // TODO: send profile image bytes if set
 		if err != nil {
 			dialog.ShowError(errors.New("Error saving profile: "+err.Error()), fyneUI.mainWindow)
 			return

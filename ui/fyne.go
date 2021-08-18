@@ -13,41 +13,35 @@ import (
 // An implementation of the Bounce chat.UI interface using Fyne
 //
 type Fyne struct {
-	app                          fyne.App
-	mainWindow                   fyne.Window
-	mainContainer                *fyne.Container
-	newInstall                   *fyne.Container
-	newProfileCreator            *fyne.Container
-	networkLoading               *fyne.Container
-	databaseLoading              *fyne.Container
-	editProfile                  *fyne.Container
-	settings                     *fyne.Container
-	about                        *fyne.Container
-	newGroup                     *fyne.Container
-	newDM                        *fyne.Container
-	introduceContacts            *fyne.Container
-	importContact                *fyne.Container
-	threadVBox                   *fyne.Container
-	chatContainer                *fyne.Container
-	mainMenu                     *fyne.MainMenu
-	allUsersDMLinksScroll        *container.Scroll
-	groups                       map[string]*group
-	dms                          map[string]*directMessage
-	activeThread                 string
-	users                        *userStore
-	profileSet                   bool
-	initialStateSet              bool
-	networkOnline                bool
-	onSendMessage                chat.SendMessageCallback
-	onAddUserToGroup             chat.AddUserToGroupCallback
-	onRenameGroup                chat.RenameGroupCallback
-	onChangeNotificationSettings chat.ChangeNotificationSettingsCallback
-	onSetProfile                 chat.SetProfileCallback
-	onImportUser                 chat.ImportUserCallback // TODO: rename to contact?
-	onExportContact              chat.ExportContactCallback
+	app                   fyne.App
+	mainWindow            fyne.Window
+	mainContainer         *fyne.Container
+	newInstall            *fyne.Container
+	newProfileCreator     *fyne.Container
+	networkLoading        *fyne.Container
+	databaseLoading       *fyne.Container
+	editProfile           *fyne.Container
+	settings              *fyne.Container
+	about                 *fyne.Container
+	newGroup              *fyne.Container
+	newDM                 *fyne.Container
+	introduceContacts     *fyne.Container
+	importContact         *fyne.Container
+	threadVBox            *fyne.Container
+	chatContainer         *fyne.Container
+	mainMenu              *fyne.MainMenu
+	allUsersDMLinksScroll *container.Scroll
+	groups                map[string]*group
+	dms                   map[string]*directMessage
+	activeThread          string
+	users                 *userStore
+	profileSet            bool
+	initialStateSet       bool
+	networkOnline         bool
+	callbacks             chat.UICallbacks
 }
 
-func (fyneUI *Fyne) Build(configDirectory string) {
+func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	// Initialize types that require it
 	//
@@ -93,19 +87,14 @@ func (fyneUI *Fyne) Build(configDirectory string) {
 	fyneUI.buildMainContainer()
 
 	//
+	// Hookup callbacks
+	//
+	fyneUI.callbacks = callbacks
+
+	//
 	// Default to displaying the "network loading" container
 	//
 	fyneUI.showMainContainer()
-}
-
-func (fyneUI *Fyne) RegisterCallbacks(callbacks chat.UICallbacks) {
-	fyneUI.onSendMessage = callbacks.SendMessage
-	fyneUI.onAddUserToGroup = callbacks.AddUserToGroup
-	fyneUI.onRenameGroup = callbacks.RenameGroup
-	fyneUI.onChangeNotificationSettings = callbacks.ChangeNotificationSettings
-	fyneUI.onSetProfile = callbacks.SetProfile
-	fyneUI.onImportUser = callbacks.ImportUser
-	fyneUI.onExportContact = callbacks.ExportContact
 }
 
 func (fyneUI *Fyne) Run() {

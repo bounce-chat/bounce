@@ -150,7 +150,7 @@ func (fyneUI *Fyne) buildEditProfile() {
 			expiration = time.Now().Unix() + increment
 		}
 
-		profileData := fyneUI.onExportContact(exportNameEntry.Text, expiration, oneTimeUse.Checked)
+		profileData := fyneUI.callbacks.ExportContact(exportNameEntry.Text, expiration, oneTimeUse.Checked)
 		_, err = handler.Write(profileData)
 		if err != nil {
 			dialog.ShowError(errors.New("error writing file: "+err.Error()), fyneUI.mainWindow)

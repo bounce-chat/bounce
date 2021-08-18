@@ -35,16 +35,18 @@ func Start(network BounceNetwork, ui BounceUI) {
 	//	NetworkOffline:
 	//})
 
-	bounce.userInterface.Build(bounce.configDirectory)
-	bounce.userInterface.RegisterCallbacks(UICallbacks{
-		SendMessage:                bounce.sendMessage,
-		AddUserToGroup:             bounce.addUserToGroup,
-		RenameGroup:                bounce.renameGroup,
-		ChangeNotificationSettings: bounce.changeNotificationSettings,
-		SetProfile:                 bounce.setProfile,
-		ImportUser:                 bounce.importUser,
-		ExportContact:              bounce.exportContact,
-	})
+	bounce.userInterface.Build(
+		bounce.configDirectory,
+		UICallbacks{
+			SendMessage:                bounce.sendMessage,
+			AddUserToGroup:             bounce.addUserToGroup,
+			RenameGroup:                bounce.renameGroup,
+			ChangeNotificationSettings: bounce.changeNotificationSettings,
+			SetProfile:                 bounce.setProfile,
+			ImportUser:                 bounce.importUser,
+			ExportContact:              bounce.exportContact,
+		},
+	)
 	// To make the user interface more responsive to open, we load the database in a goroutine
 	// and call in to let the UI know it's done after.  Most of the time this will appear instant,
 	// but with a very large database it would be nice to see the window open while it's loading.

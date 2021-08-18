@@ -124,7 +124,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 			Text:        entry.Text,
 		}
 
-		fyneUI.onSendMessage(message) // TODO: DM-specific callback?
+		fyneUI.callbacks.SendMessage(message) // TODO: DM-specific callback?
 		fyneUI.displaySentMessage(dm, message.Text)
 
 		entry.Text = ""
@@ -226,7 +226,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 
 	notificationsCheck := widget.NewCheckWithData("Enable notifications", dm.notificationsEnabled)
 	notificationsCheck.OnChanged = func(state bool) { // TODO: do we really want this to apply before save?
-		fyneUI.onChangeNotificationSettings(dm.user.id, state) // TODO: change DM notification setting
+		fyneUI.callbacks.ChangeNotificationSettings(dm.user.id, state)
 	}
 
 	saveButton := widget.NewButton("Save", func() {

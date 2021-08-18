@@ -36,7 +36,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 
 	notificationsCheck := widget.NewCheckWithData("Enable notifications", thread.notificationsEnabled)
 	notificationsCheck.OnChanged = func(state bool) { // TODO: do we really want this to apply before save?
-		fyneUI.onChangeNotificationSettings(thread.id, state)
+		fyneUI.callbacks.ChangeNotificationSettings(thread.id, state)
 	}
 
 	saveButton := widget.NewButton("Save", func() {
@@ -57,13 +57,13 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 			}
 			thread.button.Text = newThreadName
 			thread.button.Refresh()
-			fyneUI.onRenameGroup(thread.id, newThreadName)
+			fyneUI.callbacks.RenameGroup(thread.id, newThreadName)
 		}
 		// Add the selected users to the group
 		for _, user := range thread.pendingUsers.alphabetized() {
 			thread.users.add(user)
 			thread.pendingUsers.remove(user.id)
-			fyneUI.onAddUserToGroup(thread.id, user.id)
+			fyneUI.callbacks.AddUserToGroup(thread.id, user.id)
 		}
 		fyneUI.refreshUserSelections(thread)
 		fyneUI.showMainContainer()

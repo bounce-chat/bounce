@@ -10,9 +10,7 @@ type BounceUI interface {
 	//
 
 	// Create user interface objects
-	Build(configPath string)
-	// Define callbacks the interface will use to communicate with the chat ending
-	RegisterCallbacks(UICallbacks) // TODO: merge into build?
+	Build(configPath string, callbacks UICallbacks)
 	// Load the initial state
 	LoadInitialState(InitialState)
 

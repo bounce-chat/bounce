@@ -39,7 +39,7 @@ func (fyneUI *Fyne) buildImportContact() {
 			dialog.ShowError(errors.New("error reading file: "+err.Error()), fyneUI.mainWindow)
 			// TODO: log
 		}
-		err = fyneUI.onImportUser(data) // TODO: also return username to display?
+		err = fyneUI.callbacks.ImportUser(data) // TODO: also return username to display?
 		if err != nil {
 			dialog.ShowError(errors.New("error importing contact: "+err.Error()), fyneUI.mainWindow)
 		} else {
