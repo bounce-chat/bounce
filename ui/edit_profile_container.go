@@ -35,8 +35,7 @@ var expirationOneWeek = expirationSelection{
 }
 
 var expirationNever = expirationSelection{
-	display:       "Never",
-	unixIncrement: 0,
+	display: "Never",
 }
 
 var expirationSelections = []string{expirationOneHour.display, expirationOneDay.display, expirationOneWeek.display, expirationNever.display}
@@ -44,7 +43,6 @@ var expirationIncrements = map[string]int64{
 	expirationOneHour.display: expirationOneHour.unixIncrement,
 	expirationOneDay.display:  expirationOneDay.unixIncrement,
 	expirationOneWeek.display: expirationOneWeek.unixIncrement,
-	expirationNever.display:   expirationNever.unixIncrement,
 }
 
 func (fyneUI *Fyne) showEditProfile() {
@@ -96,7 +94,23 @@ func (fyneUI *Fyne) buildEditProfile() {
 	// Existing exports section
 	//
 
-	//widget.NewLabel("Contact Exports")
+	contactExportsLabel := widget.NewLabel("Contact Exports")
+	contactExportsLabel.TextStyle = fyne.TextStyle{Bold: true}
+	contactExportContainer := container.NewVScroll(container.NewGridWithColumns(
+		6,
+		widget.NewLabel("Name"),
+		widget.NewLabel("Created"),
+		widget.NewLabel("Expires"),
+		widget.NewLabel("One Time Use"),
+		widget.NewLabel("Claimed"),
+		widget.NewLabel("Delete"),
+		widget.NewLabel("Sample"),
+		widget.NewLabel("1/1/21 1:11"),
+		widget.NewLabel("1/2/21 1:11"),
+		widget.NewLabel("Yes"),
+		widget.NewLabel("0"),
+		widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {}),
+	))
 
 	//
 	// New exports section
@@ -189,14 +203,20 @@ func (fyneUI *Fyne) buildEditProfile() {
 		layout.NewBorderLayout(nil, nil, nil, closeButton),
 		closeButton,
 	)
-	profileAndDevices := container.NewVBox(
+	nonScrollingContainers := container.NewVBox(
 		profileOptions,
 		devicesLabel,
+		// TODO: list devices
+		contactExportsLabel,
 	)
 	fyneUI.editProfile = container.New(
 		layout.NewBorderLayout(closeBar, exportContactMenu, nil, nil),
 		closeBar,
 		exportContactMenu,
-		profileAndDevices, // TODO: a border layout with this at the top and the exports scroll taking up the remaining space
+		container.New(
+			layout.NewBorderLayout(nonScrollingContainers, nil, nil, nil),
+			nonScrollingContainers, // TODO: a border layout with this at the top and the exports scroll taking up the remaining space
+			contactExportContainer,
+		),
 	)
 }

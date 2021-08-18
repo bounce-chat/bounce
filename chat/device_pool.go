@@ -36,6 +36,7 @@ func (bounce *Bounce) dialUser(u user) {
 }
 
 // TODO: create one of these for each device on startup and only dial as needed?
+// TODO: Accept() should create one of these and insert it into the pool, then read frames
 type remoteDevice struct {
 	user   uuid.UUID
 	device uuid.UUID
