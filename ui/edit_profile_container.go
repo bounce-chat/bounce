@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -10,7 +11,41 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	log "github.com/sirupsen/logrus"
 )
+
+type expirationSelection struct {
+	display       string
+	unixIncrement int64
+}
+
+var expirationOneHour = expirationSelection{
+	display:       "1 Hour",
+	unixIncrement: int64(time.Duration(1 * time.Hour).Seconds()),
+}
+
+var expirationOneDay = expirationSelection{
+	display:       "1 Day",
+	unixIncrement: int64(time.Duration(24 * time.Hour).Seconds()),
+}
+
+var expirationOneWeek = expirationSelection{
+	display:       "1 Week",
+	unixIncrement: int64(time.Duration(7 * time.Hour * 7).Seconds()),
+}
+
+var expirationNever = expirationSelection{
+	display:       "Never",
+	unixIncrement: 0,
+}
+
+var expirationSelections = []string{expirationOneHour.display, expirationOneDay.display, expirationOneWeek.display, expirationNever.display}
+var expirationIncrements = map[string]int64{
+	expirationOneHour.display: expirationOneHour.unixIncrement,
+	expirationOneDay.display:  expirationOneDay.unixIncrement,
+	expirationOneWeek.display: expirationOneWeek.unixIncrement,
+	expirationNever.display:   expirationNever.unixIncrement,
+}
 
 func (fyneUI *Fyne) showEditProfile() {
 	fyneUI.mainWindow.SetContent(fyneUI.editProfile)
@@ -71,7 +106,11 @@ func (fyneUI *Fyne) buildEditProfile() {
 	exportLabel.TextStyle = fyne.TextStyle{Bold: true}
 
 	exportNameEntry := widget.NewEntry()
+	exportExpirationSelect := widget.NewSelect(expirationSelections, nil)
+	exportExpirationSelect.Selected = expirationOneHour.display
 	oneTimeUse := widget.NewCheck("One-Time Use", nil)
+	oneTimeUse.Checked = true
+
 	exportContactForm := widget.NewForm(
 		&widget.FormItem{
 			Text:   "Name:",
@@ -79,7 +118,7 @@ func (fyneUI *Fyne) buildEditProfile() {
 		},
 		&widget.FormItem{
 			Text:   "Expires:",
-			Widget: widget.NewSelect([]string{"1 Hour", "1 Day", "1 Week", "Never"}, nil),
+			Widget: exportExpirationSelect,
 		},
 		&widget.FormItem{
 			Text:   "",
@@ -94,7 +133,16 @@ func (fyneUI *Fyne) buildEditProfile() {
 			// Selection canceled
 			return
 		}
-		expiration := int64(0) // TODO: translate from selection
+		expiration := int64(0)
+		if exportExpirationSelect.Selected != expirationNever.display {
+			increment, ok := expirationIncrements[exportExpirationSelect.Selected]
+			if !ok {
+				log.WithFields(log.Fields{
+					"selection": exportExpirationSelect.Selected,
+				}).Fatal("unsupported selection for export expiration")
+			}
+			expiration = time.Now().Unix() + increment
+		}
 		profileData := fyneUI.onExportContact(exportNameEntry.Text, expiration, oneTimeUse.Checked)
 		// TODO: err check these two
 		handler.Write(profileData)
