@@ -29,6 +29,7 @@ func (fyneUI *Fyne) buildImportContact() {
 	)
 
 	fileSelector := dialog.NewFileOpen(func(handler fyne.URIReadCloser, err error) {
+		// TODO: handle the passed error
 		if handler == nil {
 			// Selection canceled
 			return

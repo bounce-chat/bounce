@@ -128,11 +128,14 @@ func (fyneUI *Fyne) buildEditProfile() {
 	exportContactForm.SubmitText = "Export"
 
 	fileSelector := dialog.NewFileSave(func(handler fyne.URIWriteCloser, err error) {
-		// TODO: err check the error passed in
-		if handler == nil {
-			// Selection canceled
+		if err != nil {
+			dialog.ShowError(errors.New("error opening file: "+err.Error()), fyneUI.mainWindow)
 			return
 		}
+		if handler == nil {
+			return
+		}
+
 		expiration := int64(0)
 		if exportExpirationSelect.Selected != expirationNever.display {
 			increment, ok := expirationIncrements[exportExpirationSelect.Selected]
@@ -143,16 +146,20 @@ func (fyneUI *Fyne) buildEditProfile() {
 			}
 			expiration = time.Now().Unix() + increment
 		}
-		profileData := fyneUI.onExportContact(exportNameEntry.Text, expiration, oneTimeUse.Checked)
-		// TODO: err check these two
-		handler.Write(profileData)
-		handler.Close()
 
-		//if err != nil {
-		//	dialog.ShowError(errors.New("error importing contact: "+err.Error()), fyneUI.mainWindow)
-		//} else {
+		profileData := fyneUI.onExportContact(exportNameEntry.Text, expiration, oneTimeUse.Checked)
+		_, err = handler.Write(profileData)
+		if err != nil {
+			dialog.ShowError(errors.New("error writing file: "+err.Error()), fyneUI.mainWindow)
+			return
+		}
+		err = handler.Close()
+		if err != nil {
+			dialog.ShowError(errors.New("error closing file: "+err.Error()), fyneUI.mainWindow)
+			return
+		}
+
 		dialog.ShowInformation("Success", "Contact export written to "+handler.URI().Name(), fyneUI.mainWindow)
-		//}
 	}, fyneUI.mainWindow)
 
 	exportContactForm.OnSubmit = func() {
