@@ -25,6 +25,7 @@ func (bounce *Bounce) openDatabase() {
 	bounce.database.AutoMigrate(
 		&user{},
 		&device{},
+		&profileExport{},
 	)
 
 	bounce.seedTestDatabase()
@@ -97,5 +98,19 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 			return errors.New("profile user already exists")
 		}
 	}
+	return nil
+}
+
+type profileExport struct {
+	ID         uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
+	Secret     string
+	Name       string `json:"-"`
+	OneTimeUse bool   `json:"-"`
+	Expiration int64
+	Profile    user `gorm:"-"`
+}
+
+func (profileExport *profileExport) BeforeCreate(tx *gorm.DB) error {
+	profileExport.ID = uuid.New()
 	return nil
 }

@@ -1,8 +1,10 @@
 package chat
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -67,40 +69,46 @@ func (bounce *Bounce) setProfile(profileName, deviceName string) error {
 	}).Error
 }
 
-// TODO: put this somewhere
-type profileExport struct {
-	Secret     string
-	Name       string `json:"-"`
-	OneTimeUse bool   `json:"-"`
-	Expiration int64
-	Profile    user `gorm:"-"`
-}
-
 func (bounce *Bounce) exportContact(name string, expiration int64, oneTime bool) []byte {
 	var count int64
 	bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count != 1 {
-		// This should be unreachable
-		log.Fatal("no profile exists to export")
+		log.Fatal("no contact exists to export")
 	}
 
 	var myProfile user
-	bounce.database.Model(&user{}).Preload(clause.Associations).Where("profile = ?", true).First(&myProfile)
-	secret := "secret" // TODO: generate random string and save to database
-	// TODO: user should specify if this can only be claimed once and that should be saved in the database
-
-	bytes, err := json.Marshal(profileExport{
-		Secret:     secret,
-		Expiration: 0, // TODO: user-defined
-		Profile:    myProfile,
-	})
+	err := bounce.database.Model(&user{}).Preload(clause.Associations).Where("profile = ?", true).First(&myProfile).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error exporting profile")
+		}).Fatal("error loading contact for export")
 	}
 
-	// TODO: save this to the database so we know how to handle incoming import requests
+	secretBytes := make([]byte, 16)
+	rand.Read(secretBytes)
+	secret := fmt.Sprintf("%x", secretBytes)
+
+	export := profileExport{
+		Name:       name,
+		Secret:     secret,
+		Expiration: expiration,
+		OneTimeUse: oneTime,
+		Profile:    myProfile,
+	}
+
+	bytes, err := json.Marshal(export)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling contact export")
+	}
+
+	err = bounce.database.Save(&export).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error saving contact export")
+	}
 
 	return bytes
 }
