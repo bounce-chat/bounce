@@ -90,27 +90,16 @@ func (fyneUI *Fyne) buildEditProfile() {
 	devicesLabel := widget.NewLabel("Devices")
 	devicesLabel.TextStyle = fyne.TextStyle{Bold: true}
 
+	devicesContainer := container.NewVBox(widget.NewLabel("viewing devices not implemented"))
+
 	//
 	// Existing exports section
 	//
 
 	contactExportsLabel := widget.NewLabel("Contact Exports")
 	contactExportsLabel.TextStyle = fyne.TextStyle{Bold: true}
-	contactExportContainer := container.NewVScroll(container.NewGridWithColumns(
-		6,
-		widget.NewLabel("Name"),
-		widget.NewLabel("Created"),
-		widget.NewLabel("Expires"),
-		widget.NewLabel("One Time Use"),
-		widget.NewLabel("Claimed"),
-		widget.NewLabel("Delete"),
-		widget.NewLabel("Sample"),
-		widget.NewLabel("1/1/21 1:11"),
-		widget.NewLabel("1/2/21 1:11"),
-		widget.NewLabel("Yes"),
-		widget.NewLabel("0"),
-		widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {}),
-	))
+
+	contactExportContainer := container.NewVScroll(widget.NewLabel("viewing past exports not implemented"))
 
 	//
 	// New exports section
@@ -206,7 +195,7 @@ func (fyneUI *Fyne) buildEditProfile() {
 	nonScrollingContainers := container.NewVBox(
 		profileOptions,
 		devicesLabel,
-		// TODO: list devices
+		devicesContainer,
 		contactExportsLabel,
 	)
 	fyneUI.editProfile = container.New(
