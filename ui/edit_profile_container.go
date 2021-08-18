@@ -31,7 +31,7 @@ var expirationOneDay = expirationSelection{
 
 var expirationOneWeek = expirationSelection{
 	display:       "1 Week",
-	unixIncrement: int64(time.Duration(7 * time.Hour * 7).Seconds()),
+	unixIncrement: int64(time.Duration(24 * time.Hour * 7).Seconds()),
 }
 
 var expirationNever = expirationSelection{
