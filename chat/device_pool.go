@@ -15,7 +15,7 @@ type pendingFrame struct {
 }
 
 type devicePool struct {
-	groups map[uuid.UUID][]*connectionGroup
+	groups map[uuid.UUID]*connectionGroup
 	users  map[uuid.UUID]*connectionGroup // Map from user UUID to any connections to that user's devices
 	//lookup map[string]*remoteDevice // TODO: from device UUID to connection.  Needed?
 	sync *connectionGroup
@@ -23,7 +23,7 @@ type devicePool struct {
 
 func (bounce *Bounce) newDevicePool() *devicePool {
 	devicePool := &devicePool{
-		groups: make(map[uuid.UUID][]*connectionGroup),
+		groups: make(map[uuid.UUID]*connectionGroup),
 		users:  make(map[uuid.UUID]*connectionGroup),
 		//lookup: make(map[string]*remoteDevice),
 	}
@@ -80,25 +80,25 @@ func (dp *devicePool) remove(connections net.Conn) {
 //
 type connectionGroup struct { // TODO: need one for users vs threads?  maybe not, for large user groups have a cap as well?  need to async dial all connections until min met
 	connectionDesired bool
-	remoteDevices     []*remoteDevice
+	remoteDevices     []*remoteDevice // TODO: online vs offline devices
 }
 
-func (cg *connectionGroup) writeFrame() {
+func (cg *connectionGroup) writeFrame(frameType uint16, payload []byte) {
 	if !cg.connectionDesired {
 		cg.connectionDesired = true
 		// TODO dial if needed
 	}
-	for _, remoteDev := range cg.remoteDevices {
-		//remoteDev.queue = append(remoteDev.queue, frame)
-		// TODO: can't just append to a queue slice, need to write in real time if possible
-		// maybe that's as easy as forcing a queue flush at this point?
-		// or, have a channel for each remoteConnection, that writes back into itself when there's a failure
-		// TODO: should this object even be responsible for making sure things get written to each device, or
-		// should that logic just get pushed up?  if it's pushed up this whole pool concept is just for storing
-		// a more flat list of devices and their connection state, then nothing gets stuck pending in here
-		// and it's easier to track delivery state in the database.  rather than having things stuck in a queue,
-		// have the Accept() call trigger a database lookup.  that's probably better.
-	}
+	//for _, remoteDev := range cg.remoteDevices {
+	//remoteDev.queue = append(remoteDev.queue, frame)
+	// TODO: can't just append to a queue slice, need to write in real time if possible
+	// maybe that's as easy as forcing a queue flush at this point?
+	// or, have a channel for each remoteConnection, that writes back into itself when there's a failure
+	// TODO: should this object even be responsible for making sure things get written to each device, or
+	// should that logic just get pushed up?  if it's pushed up this whole pool concept is just for storing
+	// a more flat list of devices and their connection state, then nothing gets stuck pending in here
+	// and it's easier to track delivery state in the database.  rather than having things stuck in a queue,
+	// have the Accept() call trigger a database lookup.  that's probably better.
+	//}
 }
 
 // TODO: create one of these for each device on startup and only dial as needed?

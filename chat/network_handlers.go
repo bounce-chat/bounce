@@ -24,6 +24,7 @@ func (bounce *Bounce) handleIncomingConnection(conn net.Conn) {
 			// tell the larger device pool this connection is dead
 			return
 		}
+		// TODO: some type of filtering on which types of peers can send which types of messages
 		handler, ok := handlers[frameType]
 		if !ok {
 			log.WithFields(log.Fields{
