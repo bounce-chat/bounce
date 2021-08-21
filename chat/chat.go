@@ -25,10 +25,10 @@ func Start(network BounceNetwork, ui BounceUI) {
 		configDirectory: getConfigDirectory(),
 		userInterface:   ui,
 		network:         network,
-		devicePool:      newDevicePool(),
 	}
 	go bounce.handleInterrupts()
 	bounce.openDatabase()
+	bounce.devicePool = bounce.newDevicePool()
 
 	bounce.network.LoadConfig(bounce.configDirectory)
 	//bounce.network.RegisterCallbacks(NetworkCallbacks{
