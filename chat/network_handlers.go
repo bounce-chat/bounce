@@ -40,7 +40,7 @@ func (bounce *Bounce) handleIncomingConnection(conn net.Conn) {
 }
 
 func (bounce *Bounce) handleChatMessage(peer BounceAddress, payload []byte) {
-	// protobuf unmarshal the bytes
+	// unmarshal the bytes
 	// put it in the database
 	// send it to the UI
 	// gossip it as needed
