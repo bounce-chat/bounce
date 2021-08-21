@@ -140,6 +140,7 @@ func (bounce *Bounce) dialUser(u *user) {
 		group.connectionDesired = true
 		// TODO: redial if needed
 	} else {
+		// TODO: error?  This should user should have been created at startup, or when it was introduced on the wire.
 		group = &connectionGroup{
 			connectionDesired: true,
 		}
