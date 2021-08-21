@@ -15,7 +15,7 @@ type pendingFrame struct {
 }
 
 type devicePool struct {
-	groups map[string]*connectionGroup
+	groups map[uuid.UUID][]*connectionGroup
 	users  map[uuid.UUID]*connectionGroup // Map from user UUID to any connections to that user's devices
 	//lookup map[string]*remoteDevice // TODO: from device UUID to connection.  Needed?
 	sync *connectionGroup
@@ -23,7 +23,7 @@ type devicePool struct {
 
 func (bounce *Bounce) newDevicePool() *devicePool {
 	devicePool := &devicePool{
-		groups: make(map[string]*connectionGroup),
+		groups: make(map[uuid.UUID][]*connectionGroup),
 		users:  make(map[uuid.UUID]*connectionGroup),
 		//lookup: make(map[string]*remoteDevice),
 	}
