@@ -24,44 +24,51 @@ type broadcastable interface {
 func (bounce *Bounce) broadcast(b broadcastable) {
 	// TODO: this should only be called after the message has been persisted in the database
 
-	//peers := &connectionGroup{} // []*remoteDevice{}
+	cg := &connectionGroup{} // []*remoteDevice{}
 	frameScope := b.getScope()
 	if frameScope == SYNC_SCOPE {
-		//	peers = bounce.devicePool.sync
+		cg = bounce.devicePool.sync
 	} else if frameScope == USER_SCOPE {
-		//	peers = bounce.devicePool.users[b.getDestination()]
+		cg = bounce.devicePool.users[b.getDestination()]
 	} else if frameScope == GROUP_SCOPE {
-		//	peers = bounce.devicePool.groups[b.getDestination()]
+		cg = bounce.devicePool.groups[b.getDestination()]
 		//} else if frameScope == GLOBAL_SCOPE {
 	} else {
 		// TODO: log.Fatal
 	}
 
-	//for _, peer := range peers.remoteDevices { // TODO: only online devices
-	//	// TODO: async in a goroutine
-	//	//err := peer.writeFrame(b.getType(), b.getPayload())
-	//	//if err != nil {
-	//	// TODO: maybe don't handle this with the interface?  Going to depend on how normalized the protocol is with the db
-	//	//b.deliveredTo(peer.device.ID)
-	//	//}
-	//	// TODO: UI callbacks for delivery status
-	//}
+	for _, peer := range cg.connected { // TODO: only online devices
+		// Async try to write this message to every device that should be written to
+		go func(frameType uint16, framePayload []byte) {
+			err := peer.writeFrame(frameType, framePayload)
+			if err != nil {
+				// TODO: maybe don't handle this with the interface?  Going to depend on how normalized the protocol is with the db
+				//b.deliveredTo(peer.device.ID)
+			}
+			// TODO: UI callbacks for delivery status
+		}(b.getType(), b.getPayload())
+	}
 }
 
 //
 // Below are all the types of messages that can be sent in bounce, expressed as implementations of the broadcastable interface
 //
 
+//
+// A message sent from user A to user B when user A imports user B's contact file.  User B will be promped to accept the invitation to connected in the
+// user interface, and if this is accepted will respond to user A's device group with TODO
+//
 type contactImported struct {
 }
 
 //
-// A direct message that implements the broadcastable interface
+// A direct message
 //
 type directMessage struct {
 	Source      uuid.UUID // TODO: could only include one of these depending on if syncing outgoing/incoming and if going to syncdevices  or other user
 	Destination uuid.UUID
 	Text        string
+	payload     []byte
 }
 
 func (dm *directMessage) getScope() scope {
@@ -77,7 +84,10 @@ func (dm *directMessage) getType() uint16 {
 }
 
 func (dm *directMessage) getPayload() []byte {
-	return []byte{} // TODO: messagepack.  memoize?
+	if len(dm.payload) == 0 {
+		// TODO: dm.payload = messagepack
+	}
+	return dm.payload
 }
 
 func (dm *directMessage) deliveredTo(destination uuid.UUID) {
