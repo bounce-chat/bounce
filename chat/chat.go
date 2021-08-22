@@ -81,7 +81,6 @@ func (bounce *Bounce) runNetwork() {
 		// all chat entries
 		return
 	} else {
-		//go bounce.gossip() // TODO: put this in the right place
 		bounce.userInterface.NetworkOnline()
 	}
 

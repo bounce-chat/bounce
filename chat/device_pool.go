@@ -9,8 +9,6 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-var maximumGroupConnections = 15
-
 type devicePool struct {
 	groups  map[uuid.UUID]*connectionGroup
 	users   map[uuid.UUID]*connectionGroup
@@ -51,6 +49,7 @@ func (bounce *Bounce) newDevicePool() *devicePool {
 		}).Fatal("error loading all users")
 	}
 	for _, u := range allUsers {
+		// TODO: replace al lthis with a call to something like dialUser except with an argument on if it should be connected to?
 		userDevices := &connectionGroup{
 			connectionDesired: false, // Should be true if there are pending messages
 		}
@@ -95,6 +94,7 @@ type connectionGroup struct {
 func (cg *connectionGroup) maintainConnection() {
 	// TODO: dial the correct number of devices, monitor them and keep this group integrated
 	// if we're no longer "connectionDesired", stop doing that, but monitor for when we want it again?  or maybe just wait for another call?
+	// TODO: connect to log of the total number of devices, with a min of 15?
 }
 
 // TODO: Accept() should create one of these and insert it into the pool, then read frames

@@ -2,9 +2,10 @@ package chat
 
 import (
 	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 )
 
-type scope string
+type scope string // TODO: do I really get anything out of using a custom type here?
 
 var SYNC_SCOPE = scope("sync")
 var USER_SCOPE = scope("user")
@@ -22,9 +23,7 @@ type broadcastable interface {
 }
 
 func (bounce *Bounce) broadcast(b broadcastable) {
-	// TODO: this should only be called after the message has been persisted in the database
-
-	cg := &connectionGroup{} // []*remoteDevice{}
+	var cg *connectionGroup
 	frameScope := b.getScope()
 	if frameScope == SYNC_SCOPE {
 		cg = bounce.devicePool.sync
@@ -34,10 +33,12 @@ func (bounce *Bounce) broadcast(b broadcastable) {
 		cg = bounce.devicePool.groups[b.getDestination()]
 		//} else if frameScope == GLOBAL_SCOPE {
 	} else {
-		// TODO: log.Fatal
+		log.WithFields(log.Fields{
+			"scope": frameScope,
+		}).Fatal("cannot broadcast to an unknown scope")
 	}
 
-	for _, peer := range cg.connected { // TODO: only online devices
+	for _, peer := range cg.connected {
 		// Async try to write this message to every device that should be written to
 		go func(frameType uint16, framePayload []byte) {
 			err := peer.writeFrame(frameType, framePayload)

@@ -6,7 +6,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (bounce *Bounce) getHandlers() map[uint16]func(BounceAddress, []byte) { // TODO: custom types for these uint16s
+func (bounce *Bounce) getHandlers() map[uint16]func(BounceAddress, []byte) {
 	return map[uint16]func(BounceAddress, []byte){
 		0: bounce.handleChatMessage,
 	}
