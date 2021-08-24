@@ -45,7 +45,7 @@ func (bounce *Bounce) buildInitialState() InitialState {
 	chatUsers := []User{}
 	for _, u := range users {
 		chatUsers = append(chatUsers, User{
-			ID:   u.ID.String(),
+			ID:   u.ID,
 			Name: u.Name,
 		})
 	}
@@ -119,9 +119,9 @@ func (profileExport *profileExport) BeforeCreate(tx *gorm.DB) error {
 type GroupMessage struct {
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
 	CreatedAt   int64
-	Read        bool   `msgpack:"-"`
-	Source      string // TODO:  UUIDs for all these
-	Destination string
+	Read        bool `msgpack:"-"`
+	Source      uuid.UUID
+	Destination uuid.UUID
 	Text        string
 	// TODO: other things that can be in a message, like a reference to an image, audio, video, or file attachment
 }
@@ -132,14 +132,19 @@ func (groupMessage *GroupMessage) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+/*
 type DirectMessage struct { // TODO: don't want the UI to be able to set things like ID.  Need another object?
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
 	CreatedAt   int64
-	Read        bool   `msgpack:"-"`
-	Source      string //uuid.UUID
-	Destination string //uuid.UUID
+	Read        bool `msgpack:"-"`
+	Source      uuid.UUID
+	Destination uuid.UUID
 	Text        string
 }
+*/
+
+// TODO: `type DirectMessage GroupMessage`?  if they have all the same fields and we just need new named to tell what the destination means
+type DirectMessage GroupMessage
 
 func (directMessage *DirectMessage) BeforeCreate(tx *gorm.DB) error {
 	directMessage.ID = uuid.New()

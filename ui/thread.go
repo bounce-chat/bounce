@@ -7,10 +7,11 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"github.com/google/uuid"
 )
 
 type thread interface {
-	getID() string
+	getID() uuid.UUID
 	getView() *fyne.Container
 	getEntry() *threadEntry
 	chatHistoryScroll() *container.Scroll

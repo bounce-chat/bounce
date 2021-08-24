@@ -2,17 +2,19 @@ package ui
 
 import (
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 type userStore struct {
 	sync.Mutex
-	userMap  map[string]*user
+	userMap  map[uuid.UUID]*user
 	userList []*user
 }
 
 func newUserStore() *userStore {
 	return &userStore{
-		userMap:  make(map[string]*user),
+		userMap:  make(map[uuid.UUID]*user),
 		userList: []*user{},
 	}
 }
@@ -33,14 +35,14 @@ func (store *userStore) add(u *user) {
 	store.userList = append(smaller_users, append([]*user{u}, larger_users...)...)
 }
 
-func (store *userStore) remove(uuid string) {
+func (store *userStore) remove(id uuid.UUID) {
 	store.Lock()
 	defer store.Unlock()
 
-	delete(store.userMap, uuid)
+	delete(store.userMap, id)
 	newList := []*user{}
 	for _, u := range store.userList {
-		if u.id != uuid {
+		if u.id != id {
 			newList = append(newList, u)
 		}
 	}
@@ -54,11 +56,11 @@ func (store *userStore) alphabetized() []*user {
 	return store.userList
 }
 
-func (store *userStore) get(uuid string) (*user, bool) {
+func (store *userStore) get(id uuid.UUID) (*user, bool) {
 	store.Lock()
 	defer store.Unlock()
 
-	u, exists := store.userMap[uuid]
+	u, exists := store.userMap[id]
 	return u, exists
 }
 
@@ -66,6 +68,6 @@ func (store *userStore) empty() {
 	store.Lock()
 	defer store.Unlock()
 
-	store.userMap = make(map[string]*user)
+	store.userMap = make(map[uuid.UUID]*user)
 	store.userList = []*user{}
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm/clause"
 )
@@ -23,21 +24,21 @@ func (bounce *Bounce) sendGroupMessage(message GroupMessage) {
 func (bounce *Bounce) sendDirectMessage(message DirectMessage) {
 }
 
-func (bounce *Bounce) addUserToGroup(threadID, userID string) {
+func (bounce *Bounce) addUserToGroup(threadID, userID uuid.UUID) {
 	log.WithFields(log.Fields{
 		"thread": threadID,
 		"user":   userID,
 	}).Info("UI wants to add user to group")
 }
 
-func (bounce *Bounce) renameGroup(threadID, newName string) {
+func (bounce *Bounce) renameGroup(threadID uuid.UUID, newName string) {
 	log.WithFields(log.Fields{
 		"thread":   threadID,
 		"new_name": newName,
 	}).Info("UI wants to rename a group")
 }
 
-func (bounce *Bounce) changeNotificationSettings(threadID string, enabled bool) {
+func (bounce *Bounce) changeNotificationSettings(threadID uuid.UUID, enabled bool) {
 	log.WithFields(log.Fields{
 		"thread":                threadID,
 		"notifications_enabled": enabled,

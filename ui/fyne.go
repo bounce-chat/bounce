@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -31,9 +32,9 @@ type Fyne struct {
 	chatContainer         *fyne.Container
 	mainMenu              *fyne.MainMenu
 	allUsersDMLinksScroll *container.Scroll
-	groups                map[string]*group
-	dms                   map[string]*directMessage
-	activeThread          string
+	groups                map[uuid.UUID]*group
+	dms                   map[uuid.UUID]*directMessage
+	activeThread          uuid.UUID
 	users                 *userStore
 	profileSet            bool
 	initialStateSet       bool
@@ -45,8 +46,8 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	// Initialize types that require it
 	//
-	fyneUI.groups = make(map[string]*group)
-	fyneUI.dms = make(map[string]*directMessage)
+	fyneUI.groups = make(map[uuid.UUID]*group)
+	fyneUI.dms = make(map[uuid.UUID]*directMessage)
 	fyneUI.users = newUserStore()
 
 	//

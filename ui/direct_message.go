@@ -3,6 +3,7 @@ package ui
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 
 	"fyne.io/fyne/v2"
@@ -29,7 +30,7 @@ type directMessage struct {
 	lastMessage             int64
 }
 
-func (dm *directMessage) getID() string {
+func (dm *directMessage) getID() uuid.UUID {
 	return dm.user.id
 }
 

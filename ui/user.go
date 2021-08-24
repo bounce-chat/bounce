@@ -1,6 +1,10 @@
 package ui
 
+import (
+	"github.com/google/uuid"
+)
+
 type user struct {
-	id   string // TODO: should be a UUID to match the chat engine
+	id   uuid.UUID
 	name string // TODO: bind this, support update functions
 }

@@ -1,5 +1,9 @@
 package chat
 
+import (
+	"github.com/google/uuid"
+)
+
 //
 // User interfaces for bounce are achieved by implementing the BounceUI interface.
 //
@@ -57,7 +61,7 @@ type InitialState struct {
 }
 
 type User struct {
-	ID    string
+	ID    uuid.UUID
 	Name  string
 	Image []byte
 }
@@ -68,10 +72,10 @@ type Introduction struct {
 }
 
 type Group struct {
-	ID      string
+	ID      uuid.UUID
 	Name    string
 	Image   []byte
-	UserIDs []string
+	UserIDs []uuid.UUID
 }
 
 //
@@ -97,13 +101,13 @@ type SendDirectMessageCallback func(DirectMessage) // TODO: return an error?
 type SendGroupMessageCallback func(GroupMessage) // TODO: return an error?
 
 // The user wants to add another user to a group
-type AddUserToGroupCallback func(groupID, userID string)
+type AddUserToGroupCallback func(groupID, userID uuid.UUID)
 
 // The user wants to rename a group
-type RenameGroupCallback func(groupID, newName string)
+type RenameGroupCallback func(groupID uuid.UUID, newName string)
 
 // The user wants to change the notification settings for a group on all their devices
-type ChangeNotificationSettingsCallback func(groupID string, notificationEnabled bool)
+type ChangeNotificationSettingsCallback func(groupID uuid.UUID, notificationEnabled bool)
 
 // Setup a new profile on a fresh install
 type SetProfileCallback func(profileName, deviceName string) error

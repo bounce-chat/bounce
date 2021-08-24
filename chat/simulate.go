@@ -2,6 +2,8 @@ package chat
 
 import (
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func (bounce *Bounce) seedTestDatabase() {
@@ -27,30 +29,30 @@ func (bounce *Bounce) seedTestDatabase() {
 func simulate(ui BounceUI) {
 	// "Loaded from the database"
 	user1 := User{
-		ID:   "1",
+		ID:   uuid.New(),
 		Name: "Alice2",
 	}
 	user2 := User{
-		ID:   "2",
+		ID:   uuid.New(),
 		Name: "Bob2",
 	}
 	user3 := User{
-		ID:   "3",
+		ID:   uuid.New(),
 		Name: "Charlie2",
 	}
 	user4 := User{
-		ID:   "4",
+		ID:   uuid.New(),
 		Name: "David2",
 	}
 	thread1 := Group{
-		ID:      "001",
+		ID:      uuid.New(),
 		Name:    "Group with Alice and Bob",
-		UserIDs: []string{user1.ID, user2.ID},
+		UserIDs: []uuid.UUID{user1.ID, user2.ID},
 	}
 	thread2 := Group{
-		ID:      "002",
+		ID:      uuid.New(),
 		Name:    "Group with Bob and Charlie",
-		UserIDs: []string{user2.ID, user3.ID},
+		UserIDs: []uuid.UUID{user2.ID, user3.ID},
 	}
 
 	//time.Sleep(3 * time.Second)
@@ -77,7 +79,7 @@ func simulate(ui BounceUI) {
 		}
 	}()
 
-	ui.ReceivedDirectMessage(DirectMessage{Destination: "", Source: user4.ID, Text: "hello this is from user 4.  this is a long message that is certainly going to wrap so that the bubble view can be tested."})
+	ui.ReceivedDirectMessage(DirectMessage{Destination: uuid.UUID{}, Source: user4.ID, Text: "hello this is from user 4.  this is a long message that is certainly going to wrap so that the bubble view can be tested."})
 
 	//time.Sleep(5 * time.Second)
 	//ui.NetworkDisconnected()

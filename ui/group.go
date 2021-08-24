@@ -3,18 +3,20 @@ package ui
 import (
 	"time"
 
+	"github.com/hkparker/bounce/chat"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
-	"github.com/hkparker/bounce/chat"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 type group struct {
-	id                      string
+	id                      uuid.UUID
 	name                    binding.String
 	users                   *userStore
 	pendingUsers            *userStore
@@ -32,7 +34,7 @@ type group struct {
 	lastMessage             int64
 }
 
-func (group *group) getID() string {
+func (group *group) getID() uuid.UUID {
 	return group.id
 }
 
