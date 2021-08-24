@@ -35,10 +35,10 @@ type BounceUI interface {
 	// Chats
 	//UserIntroduced(Introduction)
 	UserImported(User)
-	ReceivedDirectMessage(Message)
+	ReceivedDirectMessage(DirectMessage)
 
 	NewGroupChat(Group)
-	ReceivedGroupMessage(Message)
+	ReceivedGroupMessage(GroupMessage)
 	//RenameGroup()
 
 	// Profile updates from other devices owned by this user
@@ -50,10 +50,10 @@ type BounceUI interface {
 type InitialState struct {
 	ProfileSet bool // *User
 	//Devices  []Device
-	Users         []User
-	Groups        []Group
-	DirecMessages []Message
-	GroupMessages []Message
+	Users  []User
+	Groups []Group
+	//DirecMessages []Message
+	//GroupMessages []Message
 }
 
 type User struct {
@@ -78,7 +78,8 @@ type Group struct {
 // The chat engine will provide these callbacks to a user interface
 //
 type UICallbacks struct {
-	SendMessage                SendMessageCallback
+	SendDirectMessage          SendDirectMessageCallback
+	SendGroupMessage           SendGroupMessageCallback
 	AddUserToGroup             AddUserToGroupCallback
 	RenameGroup                RenameGroupCallback
 	ChangeNotificationSettings ChangeNotificationSettingsCallback
@@ -89,8 +90,11 @@ type UICallbacks struct {
 	//MessageRead()
 }
 
-// The user wants to send a message
-type SendMessageCallback func(Message) // TODO: return an error?
+// The user wants to send a direct message
+type SendDirectMessageCallback func(DirectMessage) // TODO: return an error?
+
+// The user wants to send a group  message
+type SendGroupMessageCallback func(GroupMessage) // TODO: return an error?
 
 // The user wants to add another user to a group
 type AddUserToGroupCallback func(groupID, userID string)
@@ -107,16 +111,3 @@ type SetProfileCallback func(profileName, deviceName string) error
 type ImportUserCallback func(user []byte) error
 
 type ExportContactCallback func(name string, expiration int64, oneTime bool) []byte
-
-//
-// TODO: to be deleted once I figure out loading messages in order during initial state loading.  Or maybe not?
-//
-
-type Message struct {
-	ID          string
-	CreatedAt   int64
-	Read        bool
-	Source      string // Always a user's UUID
-	Destination string // a user UUID or a group UUID
-	Text        string
-}

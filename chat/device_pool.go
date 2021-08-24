@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"errors"
 	"net"
 	"sync"
 
@@ -99,6 +100,7 @@ func (cg *connectionGroup) maintainConnection() {
 
 // TODO: Accept() should create one of these and insert it into the pool, then read frames
 type remoteDevice struct {
+	// TODO: lock this for manipulating the remote connections?
 	device      device
 	smallFrames []*remoteConnection
 	largeFrames []*remoteConnection // TODO: usage determined by len(pendingFrame.payload)
@@ -114,7 +116,40 @@ func newRemoteDevice(device device) *remoteDevice {
 }
 
 func (rd *remoteDevice) writeFrame(frameType uint16, payload []byte) error {
-	// TODO write to the correct remoteConnection, based on payload size and available connections
+	small := len(payload) < 1024
+
+	onlineSmallChannels := 0
+	for _, connection := range rd.smallFrames {
+		if connection.alive {
+			onlineSmallChannels += 1
+		}
+	}
+
+	onlineLargeChannels := 0
+	for _, connection := range rd.smallFrames {
+		if connection.alive {
+			onlineLargeChannels += 1
+		}
+	}
+
+	if onlineSmallChannels+onlineLargeChannels == 0 {
+		return errors.New("no available connections to device")
+	}
+
+	if small {
+		if onlineSmallChannels > 0 {
+			// write it which one?  round robin?  how to handle failues?
+		} else {
+			// write it down a large one because that's all we have
+		}
+	} else {
+		if onlineLargeChannels > 0 {
+			// write it which one?  round robin?  how to handle failues?
+		} else {
+			// write it down a small one because that's all we have
+		}
+	}
+
 	// if some fail, properly dispose of them and try other sockets while kicking off other dials.
 	// if this device is totally offline however, some way to communicate that up the connection
 	// group is needed

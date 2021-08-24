@@ -8,7 +8,7 @@ import (
 
 func (bounce *Bounce) getHandlers() map[uint16]func(BounceAddress, []byte) {
 	return map[uint16]func(BounceAddress, []byte){
-		0: bounce.handleChatMessage,
+		TYPE_DIRECT_MESSAGE: bounce.handleDirectMessage,
 	}
 }
 
@@ -40,9 +40,10 @@ func (bounce *Bounce) handleIncomingConnection(conn net.Conn) {
 	}
 }
 
-func (bounce *Bounce) handleChatMessage(peer BounceAddress, payload []byte) {
+func (bounce *Bounce) handleDirectMessage(peer BounceAddress, payload []byte) {
 	// unmarshal the bytes
-	// put it in the database
+	// put it in the database (also saving that it was delivered to this peer)
 	// send it to the UI
+	//bounce.ui.ReceivedGroupMessage(GroupMessage{})
 	// gossip it as needed
 }

@@ -11,13 +11,16 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-func (bounce *Bounce) sendMessage(message Message) {
-	log.WithFields(log.Fields{
-		"destination": message.Destination,
-		"text":        message.Text,
-	}).Info("UI wants to send a message")
-	// save to the database
-	//bounce.broadcast(&directMessage{Destination: message.Destination, Test:message.Text})
+func (bounce *Bounce) sendGroupMessage(message GroupMessage) {
+	//bounce.database.Save(message)    // TODO: check for errors
+	//bounce.broadcast(newSignedGroupMessage(GroupMessage{
+	//	//Source:      "", // TODO: my UUID
+	//	Destination: dm.Destination,
+	//	Text:        dm.Text,
+	//}))
+}
+
+func (bounce *Bounce) sendDirectMessage(message DirectMessage) {
 }
 
 func (bounce *Bounce) addUserToGroup(threadID, userID string) {

@@ -38,7 +38,8 @@ func Start(network BounceNetwork, ui BounceUI) {
 	bounce.userInterface.Build(
 		bounce.configDirectory,
 		UICallbacks{
-			SendMessage:                bounce.sendMessage,
+			SendDirectMessage:          bounce.sendDirectMessage,
+			SendGroupMessage:           bounce.sendGroupMessage,
 			AddUserToGroup:             bounce.addUserToGroup,
 			RenameGroup:                bounce.renameGroup,
 			ChangeNotificationSettings: bounce.changeNotificationSettings,

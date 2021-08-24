@@ -118,13 +118,12 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 	entry := newThreadEntry(5)
 	dm.entry = entry
 	entry.customOnSubmitted = func() {
-		message := chat.Message{
-			CreatedAt:   time.Now().Unix(),
+		message := chat.DirectMessage{
 			Destination: dm.user.id,
 			Text:        entry.Text,
 		}
 
-		fyneUI.callbacks.SendMessage(message) // TODO: DM-specific callback?
+		fyneUI.callbacks.SendDirectMessage(message)
 		fyneUI.displaySentMessage(dm, message.Text)
 
 		entry.Text = ""
@@ -150,7 +149,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 	fyneUI.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) ReceivedDirectMessage(msg chat.Message) {
+func (fyneUI *Fyne) ReceivedDirectMessage(msg chat.DirectMessage) {
 	user, userExists := fyneUI.users.get(msg.Source)
 	if !userExists {
 		log.WithFields(log.Fields{

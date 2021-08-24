@@ -133,13 +133,12 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	group.entry = entry
 
 	entry.customOnSubmitted = func() {
-		message := chat.Message{
-			CreatedAt:   time.Now().Unix(),
+		message := chat.GroupMessage{
 			Destination: group.id,
 			Text:        entry.Text,
 		}
 
-		fyneUI.callbacks.SendMessage(message) // TODO: group-specific callback?
+		fyneUI.callbacks.SendGroupMessage(message) // TODO: group-specific callback?
 		fyneUI.displaySentMessage(group, message.Text)
 
 		entry.Text = ""
@@ -166,7 +165,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	fyneUI.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) ReceivedGroupMessage(msg chat.Message) {
+func (fyneUI *Fyne) ReceivedGroupMessage(msg chat.GroupMessage) {
 	// Log an error and early return if the group doesn't exist
 	group, exists := fyneUI.groups[msg.Destination]
 	if !exists {

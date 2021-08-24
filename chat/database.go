@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -112,5 +113,36 @@ type profileExport struct {
 
 func (profileExport *profileExport) BeforeCreate(tx *gorm.DB) error {
 	profileExport.ID = uuid.New()
+	return nil
+}
+
+type GroupMessage struct {
+	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
+	CreatedAt   int64
+	Read        bool   `msgpack:"-"`
+	Source      string // TODO:  UUIDs for all these
+	Destination string
+	Text        string
+	// TODO: other things that can be in a message, like a reference to an image
+}
+
+func (groupMessage *GroupMessage) BeforeCreate(tx *gorm.DB) error {
+	groupMessage.ID = uuid.New()
+	groupMessage.CreatedAt = time.Now().Unix()
+	return nil
+}
+
+type DirectMessage struct { // TODO: don't want the UI to be able to set things like ID.  Need another object?
+	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
+	CreatedAt   int64
+	Read        bool   `msgpack:"-"`
+	Source      string //uuid.UUID
+	Destination string //uuid.UUID
+	Text        string
+}
+
+func (directMessage *DirectMessage) BeforeCreate(tx *gorm.DB) error {
+	directMessage.ID = uuid.New()
+	directMessage.CreatedAt = time.Now().Unix()
 	return nil
 }
