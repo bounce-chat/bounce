@@ -42,6 +42,7 @@ func (bounce *Bounce) handleIncomingConnection(conn net.Conn) {
 
 func (bounce *Bounce) handleDirectMessage(peer BounceAddress, payload []byte) {
 	// unmarshal the bytes
+	// ensure that the source of the message lines up with the peer address
 	// put it in the database (also saving that it was delivered to this peer)
 	// send it to the UI
 	//bounce.ui.ReceivedGroupMessage(GroupMessage{})

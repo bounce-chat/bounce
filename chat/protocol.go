@@ -46,7 +46,7 @@ func (bounce *Bounce) broadcast(b broadcastable) {
 				//b.deliveredTo(peer.device.ID)
 			}
 			// TODO: UI callbacks for delivery status
-		}(b.getType(), b.getPayload())
+		}(b.getType(), b.getPayload()) // TODO: skip if it's already been delivered to this device?
 	}
 }
 
@@ -106,8 +106,8 @@ type signedGroupMessage struct {
 }
 
 func newSignedGroupMessage(message GroupMessage, signer BounceNetwork) *signedGroupMessage { // TODO: remove the signer arg and put this on bounce
-	marshalledMessage := []byte{} // TODO: msgpack
-	signature := signer.Sign(marshalledMessage)
+	marshalledMessage := []byte{}               // TODO: msgpack
+	signature := signer.Sign(marshalledMessage) // TODO: just sign the SHA3 of the data for speed reasons
 
 	sgm := &signedGroupMessage{
 		Message:     marshalledMessage,

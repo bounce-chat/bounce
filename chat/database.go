@@ -123,7 +123,7 @@ type GroupMessage struct {
 	Source      string // TODO:  UUIDs for all these
 	Destination string
 	Text        string
-	// TODO: other things that can be in a message, like a reference to an image
+	// TODO: other things that can be in a message, like a reference to an image, audio, video, or file attachment
 }
 
 func (groupMessage *GroupMessage) BeforeCreate(tx *gorm.DB) error {
