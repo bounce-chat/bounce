@@ -82,7 +82,13 @@ func (bounce *Bounce) runNetwork() {
 		return
 	} else {
 		bounce.userInterface.NetworkOnline()
-		bounce.devicePool = bounce.newDevicePool()
+
+		// TODO: this is just for testing but move this somewhere were it runs only when a profile already exists
+		var count int64
+		bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
+		if count > 0 {
+			bounce.devicePool = bounce.newDevicePool()
+		}
 	}
 
 	// Serve the Bounce protocol on the network
