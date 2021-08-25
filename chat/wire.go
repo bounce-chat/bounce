@@ -15,7 +15,7 @@ import (
 
 var headerSize = 6
 var typeSize = 2
-var maxPayloadSize = intPow(2, headerSize-typeSize)
+var maxPayloadSize = 4294967295 // intPow(2, headerSize-typeSize) TODO: this is broken?
 
 //
 // Read a Bounce frame from the socket.  This will return the type of frame, the frame bytes, and any error
@@ -74,8 +74,9 @@ func writeFrame(conn net.Conn, frameType uint16, payload []byte) error {
 	length := len(payload)
 	if length > maxPayloadSize {
 		log.WithFields(log.Fields{
-			"frame_type":     frameType,
-			"payload_length": length,
+			"frame_type":   frameType,
+			"payload_size": length,
+			"maximum_size": maxPayloadSize,
 		}).Error("attempted to send message that does not fit in frame")
 		return errors.New("payload cannot fit in frame")
 	}
