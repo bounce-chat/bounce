@@ -133,7 +133,7 @@ func (bounceTor *TorNetwork) Start() error {
 			Version3:    true,
 			Key:         bounceTor.privateKey,
 			RemotePorts: []int{80},
-			LocalPort:   8080,
+			LocalPort:   8080, // TODO: try removing
 		},
 	)
 	if err != nil {

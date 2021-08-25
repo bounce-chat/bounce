@@ -4,6 +4,7 @@ import (
 	"net"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 func (bounce *Bounce) getHandlers() map[uint16]func(BounceAddress, []byte) {
@@ -42,14 +43,18 @@ func (bounce *Bounce) handleIncomingConnection(conn net.Conn) {
 }
 
 func (bounce *Bounce) handleDirectMessage(peer BounceAddress, payload []byte) {
-	log.WithFields(log.Fields{
-		"peer":    peer,
-		"payload": payload,
-	}).Info("got a DM")
-	// unmarshal the bytes
+	var dm directMessage
+	err := msgpack.Unmarshal(payload, &dm)
+	if err != nil {
+		log.Error("error unmarshalling direct message")
+		return
+	}
+	bounce.userInterface.ReceivedDirectMessage(DirectMessage{
+		//Destination: directMessage.Destination,
+		Source: dm.Source,
+		Text:   dm.Text,
+	})
 	// ensure that the source of the message lines up with the peer address
 	// put it in the database (also saving that it was delivered to this peer)
-	// send it to the UI
-	//bounce.ui.ReceivedGroupMessage(GroupMessage{})
 	// gossip it as needed
 }
