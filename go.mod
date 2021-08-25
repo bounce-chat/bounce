@@ -9,6 +9,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/ipsn/go-libtor v1.0.380
 	github.com/sirupsen/logrus v1.8.1
+	github.com/vmihailenco/msgpack/v5 v5.3.4 // indirect
 	gorm.io/driver/sqlite v1.1.4
 	gorm.io/gorm v1.21.12
 )

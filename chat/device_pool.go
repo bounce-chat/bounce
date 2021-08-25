@@ -36,6 +36,7 @@ func (bounce *Bounce) newDevicePool() *devicePool {
 		connectionDesired: true,
 	}
 	for _, dev := range myProfile.Devices {
+		// TODO: exclude current device
 		syncDevices.offline = append(syncDevices.offline, newRemoteDevice(dev))
 	}
 	devicePool.sync = syncDevices

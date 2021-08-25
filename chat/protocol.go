@@ -3,12 +3,14 @@ package chat
 import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 var SYNC_SCOPE = 0 // TODO: unexport these
 var USER_SCOPE = 1
 var GROUP_SCOPE = 2
-var GLOBAL_SCOPE = 3 // TODO: how should this be used?
+
+//var GLOBAL_SCOPE = 3 // TODO: how should this be used?
 
 var TYPE_DIRECT_MESSAGE = uint16(0)
 var TYPE_GROUP_MESSAGE = uint16(1)
@@ -37,13 +39,20 @@ func (bounce *Bounce) broadcast(b broadcastable) {
 		}).Fatal("cannot broadcast to an unknown scope")
 	}
 
-	for _, peer := range cg.connected {
+	peerScope := cg.connected
+	if frameScope != SYNC_SCOPE {
+		// We always send messages to our sync devices, so any scope that isn't also the sync scope gets the sync scope added in
+		peerScope = append(peerScope, bounce.devicePool.sync.connected...)
+	}
+	for _, peer := range peerScope {
 		// Async try to write this message to every device that should be written to
 		go func(frameType uint16, framePayload []byte) {
 			err := peer.writeFrame(frameType, framePayload)
-			if err != nil {
+			if err == nil {
 				// TODO: maybe don't handle this with the interface?  Going to depend on how normalized the protocol is with the db
 				//b.deliveredTo(peer.device.ID)
+			} else {
+				// log
 			}
 			// TODO: UI callbacks for delivery status
 		}(b.getType(), b.getPayload()) // TODO: skip if it's already been delivered to this device?
@@ -85,7 +94,11 @@ func (dm *directMessage) getType() uint16 {
 
 func (dm *directMessage) getPayload() []byte {
 	if len(dm.payload) == 0 {
-		// TODO: dm.payload = messagepack
+		bytes, err := msgpack.Marshal(dm)
+		if err != nil {
+			// TODO: how to handle?
+		}
+		dm.payload = bytes
 	}
 	return dm.payload
 }
@@ -106,13 +119,16 @@ type signedGroupMessage struct {
 }
 
 func newSignedGroupMessage(message GroupMessage, signer BounceNetwork) *signedGroupMessage { // TODO: remove the signer arg and put this on bounce
-	marshalledMessage := []byte{}               // TODO: msgpack
+	marshalledMessage, err := msgpack.Marshal(message)
+	if err != nil {
+		// TODO: how to handle?
+	}
 	signature := signer.Sign(marshalledMessage) // TODO: just sign the SHA3 of the data for speed reasons
 
 	sgm := &signedGroupMessage{
 		Message:     marshalledMessage,
 		Signature:   signature,
-		destination: uuid.UUID{}, // TODO: message.Destination once it's a UUID
+		destination: message.Destination,
 	}
 
 	return sgm
@@ -130,7 +146,7 @@ func (sgm *signedGroupMessage) getType() uint16 {
 	return TYPE_GROUP_MESSAGE // TODO: after I figure out types
 }
 
-func (sgm *signedGroupMessage) getPayload() []byte { // TODO: broadcastable should have some handling for signature?  I'm probably going to need to wrap this.
+func (sgm *signedGroupMessage) getPayload() []byte {
 	return sgm.payload
 }
 

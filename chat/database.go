@@ -6,6 +6,7 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -54,6 +55,17 @@ func (bounce *Bounce) buildInitialState() InitialState {
 		ProfileSet: profileSet,
 		Users:      chatUsers,
 	}
+}
+
+func (bounce *Bounce) currentUser() user {
+	var currentUser user
+	err := bounce.database.Model(&user{}).Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error loading current user")
+	}
+	return currentUser
 }
 
 type device struct {
@@ -116,7 +128,7 @@ func (profileExport *profileExport) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-type GroupMessage struct {
+type GroupMessage struct { // TODO: don't want the UI to be able to set things like ID.  Need another object?
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
 	CreatedAt   int64
 	Read        bool `msgpack:"-"`
@@ -133,7 +145,7 @@ func (groupMessage *GroupMessage) BeforeCreate(tx *gorm.DB) error {
 }
 
 /*
-type DirectMessage struct { // TODO: don't want the UI to be able to set things like ID.  Need another object?
+type DirectMessage struct {
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
 	CreatedAt   int64
 	Read        bool `msgpack:"-"`

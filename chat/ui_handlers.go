@@ -22,6 +22,14 @@ func (bounce *Bounce) sendGroupMessage(message GroupMessage) {
 }
 
 func (bounce *Bounce) sendDirectMessage(message DirectMessage) {
+	//message.Read = true
+	//bounce.database.Save(message) // TODO: check for errors.  Also do actual saves after exported/unexported representations figured out
+	bounce.broadcast(&directMessage{
+		Source:      bounce.currentUser().ID,
+		Destination: message.Destination,
+		Text:        message.Text,
+	})
+	// TODO: broadcast an outoing DM as well as a sync DM?
 }
 
 func (bounce *Bounce) addUserToGroup(threadID, userID uuid.UUID) {
