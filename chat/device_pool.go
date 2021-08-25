@@ -155,7 +155,7 @@ func (rd *remoteDevice) dial(network BounceNetwork) error {
 		log.WithFields(log.Fields{
 			"address": rd.device.Address,
 		}).Info("dialed device")
-		rd.smallFrames = append(rd.smallFrames, &remoteConnection{connection: connection})
+		rd.smallFrames = append(rd.smallFrames, &remoteConnection{connection: connection, alive: true})
 	}
 	return nil
 }
