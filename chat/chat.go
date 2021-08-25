@@ -95,8 +95,9 @@ func (bounce *Bounce) runNetwork() {
 	// TODO: make sure the intial database state exists in the UI before accepting new connections?
 	for {
 		// TODO: check if we're gracefully shutting down
-		bounce.handleIncomingConnection(bounce.network.Accept())
-		log.Info("accpted socket") // TODO: debug logging, delete later
+		log.Info("trying to accept socket")
+		go bounce.handleIncomingConnection(bounce.network.Accept())
+		log.Info("accepted socket") // TODO: debug logging, delete later
 	}
 }
 

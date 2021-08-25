@@ -38,6 +38,10 @@ func readFrame(conn net.Conn) (uint16, []byte, error) {
 		header = append(header, buf[:n]...)
 	} // TODO: maybe break header reading out so the engine can drop connections with unknown frame types before reading the whole thing?
 
+	log.WithFields(log.Fields{
+		"header": header,
+	}).Info("read header")
+
 	typeBytes := header[:typeSize]
 	sizeBytes := header[typeSize:]
 
@@ -81,7 +85,7 @@ func writeFrame(conn net.Conn, frameType uint16, payload []byte) error {
 		return errors.New("payload cannot fit in frame")
 	}
 	lengthBytes := make([]byte, lengthSpace)
-	binary.LittleEndian.PutUint32(lengthBytes, uint32(length))
+	binary.BigEndian.PutUint32(lengthBytes, uint32(length))
 	frame = append(frame, lengthBytes...)
 
 	frame = append(frame, payload...)

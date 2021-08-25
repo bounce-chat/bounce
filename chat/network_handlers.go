@@ -21,6 +21,7 @@ func (bounce *Bounce) handleIncomingConnection(conn net.Conn) {
 	for {
 		frameType, data, err := readFrame(conn)
 		if err != nil {
+			log.WithFields(log.Fields{"error": err.Error()}).Error("error reading frame")
 			// tell the larger device pool this connection is dead
 			return
 		}

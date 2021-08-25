@@ -133,6 +133,7 @@ func (bounceTor *TorNetwork) Start() error {
 			Version3:    true,
 			Key:         bounceTor.privateKey,
 			RemotePorts: []int{80},
+			LocalPort:   8080,
 		},
 	)
 	if err != nil {
@@ -160,6 +161,9 @@ func (bounceTor *TorNetwork) Address() (string, error) { // TODO: never return e
 func (bounceTor *TorNetwork) Accept() net.Conn { // TODO: also return an error
 	connection, err := bounceTor.onion.Accept()
 	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error accepting Tor socket")
 		// TODO: the network needs to be restarted, either the machine
 		// is offline or the Tor node is having problems and should be
 		// restarted.  Determine the best choice for how to bring the
