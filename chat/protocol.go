@@ -52,7 +52,10 @@ func (bounce *Bounce) broadcast(b broadcastable) {
 				// TODO: maybe don't handle this with the interface?  Going to depend on how normalized the protocol is with the db
 				//b.deliveredTo(peer.device.ID)
 			} else {
-				// log
+				// TODO: no need to log here?  just for testing?
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error writing frame")
 			}
 			// TODO: UI callbacks for delivery status
 		}(b.getType(), b.getPayload()) // TODO: skip if it's already been delivered to this device?
