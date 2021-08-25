@@ -28,6 +28,7 @@ func (bounce *Bounce) openDatabase() {
 		&user{},
 		&device{},
 		&profileExport{},
+		&introductionSignature{},
 	)
 
 	bounce.seedTestDatabase()
@@ -66,6 +67,24 @@ func (bounce *Bounce) currentUser() user {
 		}).Fatal("error loading current user")
 	}
 	return currentUser
+}
+
+func (bounce *Bounce) currentDevice() device {
+	currentAddress, err := bounce.network.Address()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error loading current address when requesting current device")
+	}
+
+	var currentDevice device
+	err = bounce.database.Model(&device{}).Preload(clause.Associations).Where("address = ?", currentAddress).First(&currentDevice).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error loading current device")
+	}
+	return currentDevice
 }
 
 type device struct {

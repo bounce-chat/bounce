@@ -17,7 +17,7 @@ type devicePool struct {
 	devices map[uuid.UUID]*remoteDevice
 }
 
-func (bounce *Bounce) newDevicePool() *devicePool {
+func (bounce *Bounce) newDevicePool() *devicePool { // TODO: assign externally or call this openDevicePool` and have it assign itself to bounce?
 	devicePool := &devicePool{
 		groups:  make(map[uuid.UUID]*connectionGroup),
 		users:   make(map[uuid.UUID]*connectionGroup),
@@ -36,11 +36,18 @@ func (bounce *Bounce) newDevicePool() *devicePool {
 		connectionDesired: true,
 	}
 	for _, dev := range myProfile.Devices {
-		// TODO: exclude current device
-		syncDevices.offline = append(syncDevices.offline, newRemoteDevice(dev))
+		if dev.ID == bounce.currentDevice().ID {
+			continue
+		} // TODO: can't know current device address until the network starts up.
+		newDevice, ok := devicePool.devices[dev.ID]
+		if !ok {
+			newDevice = newRemoteDevice(dev)
+			devicePool.devices[dev.ID] = newDevice
+		}
+		syncDevices.offline = append(syncDevices.offline, newDevice)
 	}
 	devicePool.sync = syncDevices
-	go devicePool.sync.maintainConnection()
+	go devicePool.sync.maintainConnection(bounce.network)
 
 	// Create a connection group for each user
 	var allUsers []user
@@ -56,12 +63,20 @@ func (bounce *Bounce) newDevicePool() *devicePool {
 			connectionDesired: false, // Should be true if there are pending messages
 		}
 		for _, dev := range u.Devices {
-			userDevices.offline = append(userDevices.offline, newRemoteDevice(dev)) // TODO: don't make a new one every time, use the lookup feature
+			newDevice, ok := devicePool.devices[dev.ID]
+			if !ok {
+				newDevice = newRemoteDevice(dev)
+				devicePool.devices[dev.ID] = newDevice
+			}
+			userDevices.offline = append(userDevices.offline, newDevice)
 		}
 		devicePool.users[u.ID] = userDevices
 		// TODO: probably doesn't make sense to flush pending messages in the db here, but somewhere after devicePool creation we need
 		// to load everything that's pending and write it to the network as a reference.  This is probably best done as queries on the
-		// users and groups
+		// users and groups.  Do this in some callback on Accept and Dial.
+
+		// TODO: just conecting to all users for testing right now.  In the future be smart about who needs to be dialed
+		go userDevices.maintainConnection(bounce.network) // TODO: do I want to need to pass network here?
 	}
 
 	// TODO: create connection groups for all all groups.  Waiting on a database concept for groups
@@ -93,10 +108,18 @@ type connectionGroup struct {
 	offline           []*remoteDevice
 }
 
-func (cg *connectionGroup) maintainConnection() {
+func (cg *connectionGroup) maintainConnection(network BounceNetwork) {
 	// TODO: dial the correct number of devices, monitor them and keep this group integrated
 	// if we're no longer "connectionDesired", stop doing that, but monitor for when we want it again?  or maybe just wait for another call?
 	// TODO: connect to log of the total number of devices, with a min of 15?
+
+	// TODO: just for testing, dial everything
+	for _, offlineDevice := range cg.offline {
+		err := offlineDevice.dial(network)
+		if err == nil {
+			cg.connected = append(cg.connected, offlineDevice)
+		}
+	}
 }
 
 // TODO: Accept() should create one of these and insert it into the pool, then read frames
@@ -114,6 +137,27 @@ func newRemoteDevice(device device) *remoteDevice {
 	}
 
 	return rd
+}
+
+func (rd *remoteDevice) dial(network BounceNetwork) error {
+	log.WithFields(log.Fields{
+		"address": rd.device.Address,
+	}).Info("attempting to dial device")
+
+	connection, err := network.Dial(BounceAddress(rd.device.Address)) // TODO: revisit "BounceAddress"
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"address": rd.device.Address,
+		}).Error("error dialing device")
+		return err
+	} else {
+		log.WithFields(log.Fields{
+			"address": rd.device.Address,
+		}).Info("dialed device")
+		rd.smallFrames = append(rd.smallFrames, &remoteConnection{connection: connection})
+	}
+	return nil
 }
 
 func (rd *remoteDevice) writeFrame(frameType uint16, payload []byte) error {
@@ -137,17 +181,18 @@ func (rd *remoteDevice) writeFrame(frameType uint16, payload []byte) error {
 		return errors.New("no available connections to device")
 	}
 
+	// TODO: just writing down index 0 for now, fix this with a round robin.  Also handle failues
 	if small {
 		if onlineSmallChannels > 0 {
-			// write it which one?  round robin?  how to handle failues?
+			return rd.smallFrames[0].writeFrame(frameType, payload)
 		} else {
-			// write it down a large one because that's all we have
+			return rd.largeFrames[0].writeFrame(frameType, payload)
 		}
 	} else {
 		if onlineLargeChannels > 0 {
-			// write it which one?  round robin?  how to handle failues?
+			return rd.largeFrames[0].writeFrame(frameType, payload)
 		} else {
-			// write it down a small one because that's all we have
+			return rd.smallFrames[0].writeFrame(frameType, payload)
 		}
 	}
 
@@ -155,9 +200,6 @@ func (rd *remoteDevice) writeFrame(frameType uint16, payload []byte) error {
 	// if this device is totally offline however, some way to communicate that up the connection
 	// group is needed
 	return nil
-}
-
-func (rd *remoteDevice) dial() {
 }
 
 func (rd *remoteDevice) insert(connection net.Conn) {
@@ -200,7 +242,7 @@ func (bounce *Bounce) dialUser(u *user) {
 		for _, device := range u.Devices { // TODO: random selection if group size is too large?  database LIMIT query?
 			userDevice := newRemoteDevice(device)
 			group.offline = append(group.offline, userDevice)
-			go group.maintainConnection()
+			go group.maintainConnection(bounce.network)
 		}
 	}
 }

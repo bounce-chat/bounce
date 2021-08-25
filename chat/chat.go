@@ -28,7 +28,6 @@ func Start(network BounceNetwork, ui BounceUI) {
 	}
 	go bounce.handleInterrupts()
 	bounce.openDatabase()
-	bounce.devicePool = bounce.newDevicePool()
 
 	bounce.network.LoadConfig(bounce.configDirectory)
 	//bounce.network.RegisterCallbacks(NetworkCallbacks{
@@ -53,8 +52,8 @@ func Start(network BounceNetwork, ui BounceUI) {
 	// but with a very large database it would be nice to see the window open while it's loading.
 	go bounce.userInterface.LoadInitialState(bounce.buildInitialState())
 
-	//go bounce.runNetwork() // TODO: just disabled for now for UI prototyping
-	go simulate(ui) // TODO: delete this, just for testing interactions during prototyping
+	go bounce.runNetwork() // TODO: just disabled for now for UI prototyping
+	//go simulate(ui) // TODO: delete this, just for testing interactions during prototyping
 
 	// Run the UI and block
 	bounce.userInterface.Run()
@@ -83,6 +82,7 @@ func (bounce *Bounce) runNetwork() {
 		return
 	} else {
 		bounce.userInterface.NetworkOnline()
+		bounce.devicePool = bounce.newDevicePool()
 	}
 
 	// Serve the Bounce protocol on the network

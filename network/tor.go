@@ -182,7 +182,7 @@ func (bounceTor *TorNetwork) Dial(address chat.BounceAddress) (net.Conn, error) 
 			"error": err.Error(),
 		}).Fatal("error creating dialer")
 	}
-	return dialer.Dial("tcp", string(address))
+	return dialer.Dial("tcp", string(address)+":80")
 }
 
 func (bounceTor *TorNetwork) Sign(data []byte) []byte {

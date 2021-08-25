@@ -41,6 +41,10 @@ func (bounce *Bounce) handleIncomingConnection(conn net.Conn) {
 }
 
 func (bounce *Bounce) handleDirectMessage(peer BounceAddress, payload []byte) {
+	log.WithFields(log.Fields{
+		"peer":    peer,
+		"payload": payload,
+	}).Info("got a DM")
 	// unmarshal the bytes
 	// ensure that the source of the message lines up with the peer address
 	// put it in the database (also saving that it was delivered to this peer)
