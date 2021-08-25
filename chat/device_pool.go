@@ -221,6 +221,9 @@ func (rc *remoteConnection) writeFrame(frameType uint16, payload []byte) error {
 	err := writeFrame(rc.connection, frameType, payload)
 	if err != nil {
 		rc.alive = false
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error writing frame to the wire")
 	}
 	rc.busy = false
 	return err
