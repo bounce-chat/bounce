@@ -96,6 +96,7 @@ func (bounce *Bounce) runNetwork() {
 	for {
 		// TODO: check if we're gracefully shutting down
 		bounce.handleIncomingConnection(bounce.network.Accept())
+		log.Info("accpted socket") // TODO: debug logging, delete later
 	}
 }
 
