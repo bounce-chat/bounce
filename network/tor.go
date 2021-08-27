@@ -183,7 +183,7 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
 	}
 
 	// All onion IDs will be the same size, read the number of bytes that correspond to our ID
-	peerAddress, err := read(connection, len([]byte(bounceTor.onion.ID)))
+	peerAddress, err := read(connection, len(bounceTor.onion.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -243,11 +243,7 @@ func (bounceTor *TorNetwork) Dial(address chat.BounceAddress) (net.Conn, error) 
 	}
 	response := bounceTor.Sign(challenge)
 
-	myID := []byte(bounceTor.onion.ID)
-	log.WithFields(log.Fields{
-		"id": string(myID),
-	}).Info("writing my ID")
-	err = write(conn, myID)
+	err = write(conn, []byte(bounceTor.onion.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -374,7 +370,7 @@ func (ta *torAddress) String() string {
 //
 
 func read(conn net.Conn, size int) ([]byte, error) {
-	payload := make([]byte, size)
+	payload := make([]byte, 0)
 	payloadRead := 0
 	for payloadRead < size {
 		buf := make([]byte, size-payloadRead)

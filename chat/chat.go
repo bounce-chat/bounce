@@ -98,7 +98,7 @@ func (bounce *Bounce) runNetwork() {
 
 		conn, err := bounce.network.Accept()
 		if err != nil {
-			log.Error("error accepting connection")
+			log.Fatal("error accepting connection") // TODO: just fatal for testing right now
 		} else {
 			log.WithFields(log.Fields{
 				"peer": conn.RemoteAddr().String(),
