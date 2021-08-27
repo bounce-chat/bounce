@@ -30,8 +30,6 @@ func (bounce *Bounce) openDatabase() {
 		&profileExport{},
 		&introductionSignature{},
 	)
-
-	bounce.seedTestDatabase()
 }
 
 func (bounce *Bounce) buildInitialState() InitialState {

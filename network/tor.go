@@ -139,7 +139,6 @@ func (bounceTor *TorNetwork) Start() error {
 			Version3:    true,
 			Key:         bounceTor.privateKey,
 			RemotePorts: []int{80},
-			//LocalPort:   8080, // TODO: try removing
 		},
 	)
 	if err != nil {
@@ -157,7 +156,7 @@ func (bounceTor *TorNetwork) Start() error {
 	return nil
 }
 
-func (bounceTor *TorNetwork) Address() (string, error) { // TODO: never return error, fatal if can't get address
+func (bounceTor *TorNetwork) Address() (string, error) { // TODO: never return error, fatal if can't get address?  probably not.
 	if bounceTor.onion == nil {
 		return "", errors.New("network is not online, cannot determine device address")
 	}

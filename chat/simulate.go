@@ -6,25 +6,6 @@ import (
 	"github.com/google/uuid"
 )
 
-func (bounce *Bounce) seedTestDatabase() {
-	var userCount int64
-	bounce.database.Model(&user{}).Count(&userCount)
-	if userCount < 4 {
-		bounce.database.Save(&user{
-			Name: "Alice",
-		})
-		bounce.database.Save(&user{
-			Name: "Bob",
-		})
-		bounce.database.Save(&user{
-			Name: "Charlie",
-		})
-		bounce.database.Save(&user{
-			Name: "Dave",
-		})
-	}
-}
-
 //TODO: delete this, just for testing UI interactions
 func simulate(ui BounceUI) {
 	// "Loaded from the database"

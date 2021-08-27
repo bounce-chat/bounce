@@ -216,7 +216,6 @@ func (rc *remoteConnection) writeFrame(frameType uint16, payload []byte) error {
 	rc.Lock()
 	defer rc.Unlock()
 
-	log.Info("writing frame to the wire")
 	rc.busy = true
 	err := writeFrame(rc.connection, frameType, payload)
 	if err != nil {
