@@ -64,6 +64,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.mainWindow.SetCloseIntercept(func() {
 		// There's some bug in Fyne where the app will hang when the close button
 		// is hit unless this is explicitly set https://github.com/fyne-io/fyne/issues/2314
+		// TODO: maybe we actually want to use this to display a closing message and wait for the network to go offline
 		fyneUI.Quit()
 	})
 	fyneUI.mainWindow.Resize(fyne.Size{Height: 600, Width: 800})

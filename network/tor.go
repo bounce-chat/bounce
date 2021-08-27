@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -18,6 +19,9 @@ import (
 	"github.com/ipsn/go-libtor"
 	log "github.com/sirupsen/logrus"
 )
+
+var handshakeChallengeSize = 32
+var signatureSize = 64
 
 type TorNetwork struct {
 	directory  string
@@ -158,25 +162,57 @@ func (bounceTor *TorNetwork) Address() (string, error) { // TODO: never return e
 	return bounceTor.onion.ID + ".onion", nil // TODO: do I need to add .onion for dialing?  return a chat.BounceAddress
 }
 
-func (bounceTor *TorNetwork) Accept() net.Conn { // TODO: also return an error
+func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
 	connection, err := bounceTor.onion.Accept()
 	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error accepting Tor socket")
-		// TODO: the network needs to be restarted, either the machine
-		// is offline or the Tor node is having problems and should be
-		// restarted.  Determine the best choice for how to bring the
-		// network back online.
-		// TODO: use a waitgroup and recursion to make this always return
-		// a good connection, or pass the error up and let the chat engine
-		// wait until the network online callback informs it that it's ok
-		// to try again?
-		// TODO: another thing to consider is that when we are trying
-		// to shut down the network, we expect this to return an error
-		// so we need to account for that and handle this gracefully
+		return nil, err
 	}
-	return connection
+
+	// Handshake with the connection to learn the remote address
+	challenge := make([]byte, handshakeChallengeSize)
+	n, err := rand.Read(challenge)
+	if n != handshakeChallengeSize {
+		return nil, errors.New("failed to generate random challenge for handshake")
+	}
+	if err != nil {
+		return nil, err
+	}
+	err = write(connection, challenge)
+	if err != nil {
+		return nil, err
+	}
+
+	// All onion IDs will be the same size, read the number of bytes that correspond to our ID
+	peerAddress, err := read(connection, len(bounceTor.onion.ID))
+	if err != nil {
+		return nil, err
+	}
+
+	// Read their signature of the challenge
+	response, err := read(connection, signatureSize)
+	if err != nil {
+		return nil, err
+	}
+
+	ok := bounceTor.VerifySignature(chat.BounceAddress(peerAddress), challenge, response)
+	if !ok {
+		return nil, errors.New("signature validation failed during handshake")
+	}
+
+	localAddress, err := bounceTor.Address()
+	if err != nil {
+		return nil, err
+	}
+	torConn := &torNetworkConnection{
+		underlying: connection,
+		localAddress: &torAddress{
+			address: localAddress,
+		},
+		remoteAddress: &torAddress{
+			address: string(peerAddress) + ".onion",
+		},
+	}
+	return torConn, nil
 }
 
 func (bounceTor *TorNetwork) Dial(address chat.BounceAddress) (net.Conn, error) {
@@ -186,7 +222,44 @@ func (bounceTor *TorNetwork) Dial(address chat.BounceAddress) (net.Conn, error) 
 			"error": err.Error(),
 		}).Fatal("error creating dialer")
 	}
-	return dialer.Dial("tcp", string(address)+":80")
+
+	localAddress, err := bounceTor.Address()
+	if err != nil {
+		return nil, err
+	}
+
+	conn, err := dialer.Dial("tcp", string(address)+":80")
+	if err != nil {
+		return nil, err
+	}
+
+	// Handshake
+	challenge, err := read(conn, handshakeChallengeSize)
+	if err != nil {
+		return nil, err
+	}
+	response := bounceTor.Sign(challenge)
+
+	err = write(conn, []byte(bounceTor.onion.ID))
+	if err != nil {
+		return nil, err
+	}
+
+	err = write(conn, response)
+	if err != nil {
+		return nil, err
+	}
+
+	torConn := &torNetworkConnection{
+		underlying: conn,
+		localAddress: &torAddress{
+			address: localAddress,
+		},
+		remoteAddress: &torAddress{
+			address: string(address), // TODO: going to get rid of "BounceAddress"
+		},
+	}
+	return torConn, nil
 }
 
 func (bounceTor *TorNetwork) Sign(data []byte) []byte {
@@ -233,4 +306,94 @@ func (bounceTor *TorNetwork) Shutdown() {
 			}).Error("error stopping tor")
 		}
 	}
+}
+
+//
+// torNetworkConnection is an implementation of net.Conn that allows us to specify the onion ID as the remote and local address
+//
+
+type torNetworkConnection struct {
+	underlying    net.Conn
+	localAddress  net.Addr
+	remoteAddress net.Addr
+}
+
+func (conn *torNetworkConnection) Read(b []byte) (int, error) {
+	return conn.underlying.Read(b)
+}
+
+func (conn *torNetworkConnection) Write(b []byte) (int, error) {
+	return conn.underlying.Read(b)
+}
+
+func (conn *torNetworkConnection) Close() error {
+	return conn.underlying.Close()
+}
+
+func (conn *torNetworkConnection) LocalAddr() net.Addr {
+	return conn.localAddress
+}
+
+func (conn *torNetworkConnection) RemoteAddr() net.Addr {
+	return conn.remoteAddress
+}
+
+func (conn *torNetworkConnection) SetDeadline(t time.Time) error {
+	return conn.underlying.SetDeadline(t)
+}
+
+func (conn *torNetworkConnection) SetReadDeadline(t time.Time) error {
+	return conn.underlying.SetReadDeadline(t)
+}
+
+func (conn *torNetworkConnection) SetWriteDeadline(t time.Time) error {
+	return conn.underlying.SetWriteDeadline(t)
+}
+
+type torAddress struct {
+	address string
+}
+
+func (ta *torAddress) Network() string {
+	return "tor"
+}
+
+func (ta *torAddress) String() string {
+	return ta.address
+}
+
+//
+// Writing primatives for the handshake
+//
+
+func read(conn net.Conn, size int) ([]byte, error) {
+	payload := make([]byte, size)
+	payloadRead := 0
+	for payloadRead < size {
+		buf := make([]byte, size-payloadRead)
+		n, err := conn.Read(buf)
+		payloadRead += n
+		if err == io.EOF {
+			if payloadRead != size {
+				return []byte{}, err
+			}
+		} else if err != nil {
+			return []byte{}, err
+		}
+		payload = append(payload, buf[:n]...)
+	}
+	return payload, nil
+}
+
+func write(conn net.Conn, payload []byte) error {
+	bytesToWrite := len(payload)
+	bytesWritten := 0
+	for bytesWritten < bytesToWrite {
+		n, err := conn.Write(payload[bytesWritten:])
+		if err != nil {
+			return err
+		}
+		bytesWritten += n
+	}
+	return nil
 }

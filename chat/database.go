@@ -43,7 +43,7 @@ func (bounce *Bounce) buildInitialState() InitialState {
 	}
 
 	users := []user{}
-	bounce.database.Find(&users)
+	bounce.database.Find(&users) // TODO: exclude current profile
 	chatUsers := []User{}
 	for _, u := range users {
 		chatUsers = append(chatUsers, User{
