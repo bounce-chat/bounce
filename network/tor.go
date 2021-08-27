@@ -103,7 +103,9 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 	return pubkey, privkey
 }
 
-func (bounceTor *TorNetwork) RegisterCallbacks(chat.NetworkCallbacks) {}
+func (bounceTor *TorNetwork) RegisterCallbacks(chat.NetworkCallbacks) {
+	// TODO: in theory use this to signal when the network is online / offline.  We'll see if it's needed.
+}
 
 func (bounceTor *TorNetwork) Start() error {
 	log.WithFields(log.Fields{
@@ -137,7 +139,7 @@ func (bounceTor *TorNetwork) Start() error {
 			Version3:    true,
 			Key:         bounceTor.privateKey,
 			RemotePorts: []int{80},
-			LocalPort:   8080, // TODO: try removing
+			//LocalPort:   8080, // TODO: try removing
 		},
 	)
 	if err != nil {
@@ -159,7 +161,7 @@ func (bounceTor *TorNetwork) Address() (string, error) { // TODO: never return e
 	if bounceTor.onion == nil {
 		return "", errors.New("network is not online, cannot determine device address")
 	}
-	return bounceTor.onion.ID + ".onion", nil // TODO: do I need to add .onion for dialing?  return a chat.BounceAddress
+	return bounceTor.onion.ID + ".onion", nil // TODO: do I need to add .onion for dialing?
 }
 
 func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
@@ -197,7 +199,7 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
 	log.WithFields(log.Fields{
 		"address": string(peerAddress),
 	}).Info("handshake read this address")
-	ok := bounceTor.VerifySignature(chat.BounceAddress(string(peerAddress)), challenge, response)
+	ok := bounceTor.VerifySignature(string(peerAddress), challenge, response)
 	if !ok {
 		return nil, errors.New("signature validation failed during handshake")
 	}
@@ -218,7 +220,7 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
 	return torConn, nil
 }
 
-func (bounceTor *TorNetwork) Dial(address chat.BounceAddress) (net.Conn, error) {
+func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
 	dialer, err := bounceTor.onion.Tor.Dialer(context.TODO(), &tor.DialConf{}) // TODO: store this so it doesn't need to be recreated all the time?
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -259,7 +261,7 @@ func (bounceTor *TorNetwork) Dial(address chat.BounceAddress) (net.Conn, error) 
 			address: localAddress,
 		},
 		remoteAddress: &torAddress{
-			address: string(address), // TODO: going to get rid of "BounceAddress"
+			address: address,
 		},
 	}
 	return torConn, nil
@@ -269,13 +271,12 @@ func (bounceTor *TorNetwork) Sign(data []byte) []byte {
 	return ed25519.Sign(bounceTor.privateKey, data)
 }
 
-func (bounceTor *TorNetwork) VerifySignature(address chat.BounceAddress, data []byte, signature []byte) bool {
-	torID := string(address)
-	if strings.HasSuffix(torID, ".onion") { // TODO: only need to keep this if adding .onion in Address()
-		torID = strings.TrimSuffix(torID, ".onion")
+func (bounceTor *TorNetwork) VerifySignature(address string, data []byte, signature []byte) bool {
+	if strings.HasSuffix(address, ".onion") { // TODO: only need to keep this if adding .onion in Address()
+		address = strings.TrimSuffix(address, ".onion")
 	}
 
-	publicKey, err := torutil.PublicKeyFromV3OnionServiceID(torID)
+	publicKey, err := torutil.PublicKeyFromV3OnionServiceID(address)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

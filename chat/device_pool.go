@@ -144,7 +144,7 @@ func (rd *remoteDevice) dial(network BounceNetwork) error {
 		"address": rd.device.Address,
 	}).Info("attempting to dial device")
 
-	connection, err := network.Dial(BounceAddress(rd.device.Address)) // TODO: revisit "BounceAddress"
+	connection, err := network.Dial(rd.device.Address)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),

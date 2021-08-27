@@ -7,15 +7,15 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-func (bounce *Bounce) getHandlers() map[uint16]func(BounceAddress, []byte) {
-	return map[uint16]func(BounceAddress, []byte){
+func (bounce *Bounce) getHandlers() map[uint16]func(string, []byte) {
+	return map[uint16]func(string, []byte){
 		TYPE_DIRECT_MESSAGE: bounce.handleDirectMessage,
 	}
 }
 
 func (bounce *Bounce) handleIncomingConnection(conn net.Conn) {
 	handlers := bounce.getHandlers()
-	peer := BounceAddress(conn.RemoteAddr().String())
+	peer := conn.RemoteAddr().String()
 	// Get the peer address
 	// reject it if it isn't a known device?  Maybe don't want to if introductions / group membership is out of order
 	// if it is known, add this connection to the larger device structure, which will mark the owner's user as online
@@ -42,7 +42,7 @@ func (bounce *Bounce) handleIncomingConnection(conn net.Conn) {
 	}
 }
 
-func (bounce *Bounce) handleDirectMessage(peer BounceAddress, payload []byte) {
+func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 	var dm directMessage
 	err := msgpack.Unmarshal(payload, &dm)
 	if err != nil {
