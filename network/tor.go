@@ -326,7 +326,7 @@ func (conn *torNetworkConnection) Read(b []byte) (int, error) {
 }
 
 func (conn *torNetworkConnection) Write(b []byte) (int, error) {
-	return conn.underlying.Read(b)
+	return conn.underlying.Write(b)
 }
 
 func (conn *torNetworkConnection) Close() error {
