@@ -183,7 +183,7 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
 	}
 
 	// All onion IDs will be the same size, read the number of bytes that correspond to our ID
-	peerAddress, err := read(connection, len(bounceTor.onion.ID))
+	peerAddress, err := read(connection, len([]byte(bounceTor.onion.ID)))
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +194,10 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
-	ok := bounceTor.VerifySignature(chat.BounceAddress(peerAddress), challenge, response)
+	log.WithFields(log.Fields{
+		"address": string(peerAddress),
+	}).Info("handshake read this address")
+	ok := bounceTor.VerifySignature(chat.BounceAddress(string(peerAddress)), challenge, response)
 	if !ok {
 		return nil, errors.New("signature validation failed during handshake")
 	}
@@ -240,7 +243,11 @@ func (bounceTor *TorNetwork) Dial(address chat.BounceAddress) (net.Conn, error) 
 	}
 	response := bounceTor.Sign(challenge)
 
-	err = write(conn, []byte(bounceTor.onion.ID))
+	myID := []byte(bounceTor.onion.ID)
+	log.WithFields(log.Fields{
+		"id": string(myID),
+	}).Info("writing my ID")
+	err = write(conn, myID)
 	if err != nil {
 		return nil, err
 	}
