@@ -65,7 +65,7 @@ func (bounce *Bounce) setProfile(profileName, deviceName string) error {
 		return errors.New("profile already exists on this device")
 	}
 
-	return bounce.database.Save(&user{
+	return bounce.database.Create(&user{
 		ID:      uuid.New(),
 		Name:    profileName,
 		Profile: true,
