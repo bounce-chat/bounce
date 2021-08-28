@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/hkparker/bounce/chat"
@@ -83,7 +82,9 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 	// The keys do not exist.  Generate, save, and return them.
 	pubkey, privkey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
-		log.Fatal()
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error generating new private key for tor")
 	}
 	err = ioutil.WriteFile(publicKeyFile, pubkey, 0600)
 	if err != nil {
@@ -160,7 +161,7 @@ func (bounceTor *TorNetwork) Address() (string, error) { // TODO: never return e
 	if bounceTor.onion == nil {
 		return "", errors.New("network is not online, cannot determine device address")
 	}
-	return bounceTor.onion.ID + ".onion", nil // TODO: do I need to add .onion for dialing?
+	return bounceTor.onion.ID, nil
 }
 
 func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
@@ -232,7 +233,7 @@ func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
 		return nil, err
 	}
 
-	conn, err := dialer.Dial("tcp", string(address)+":80")
+	conn, err := dialer.Dial("tcp", address+".onion:80")
 	if err != nil {
 		return nil, err
 	}
@@ -271,10 +272,6 @@ func (bounceTor *TorNetwork) Sign(data []byte) []byte {
 }
 
 func (bounceTor *TorNetwork) VerifySignature(address string, data []byte, signature []byte) bool {
-	if strings.HasSuffix(address, ".onion") { // TODO: only need to keep this if adding .onion in Address()
-		address = strings.TrimSuffix(address, ".onion")
-	}
-
 	publicKey, err := torutil.PublicKeyFromV3OnionServiceID(address)
 	if err != nil {
 		log.WithFields(log.Fields{

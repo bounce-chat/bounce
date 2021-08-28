@@ -112,15 +112,13 @@ func (introductionSignature *introductionSignature) BeforeCreate(tx *gorm.DB) er
 }
 
 type user struct {
-	ID      uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
+	ID      uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name    string
 	Profile bool `json:"-"`
 	Devices []device
 }
 
 func (u *user) BeforeCreate(tx *gorm.DB) error {
-	u.ID = uuid.New()
-
 	if u.Profile {
 		var count int64
 		tx.Model(&user{}).Where("profile = ?", true).Count(&count)

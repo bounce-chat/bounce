@@ -66,6 +66,7 @@ func (bounce *Bounce) setProfile(profileName, deviceName string) error {
 	}
 
 	return bounce.database.Save(&user{
+		ID:      uuid.New(),
 		Name:    profileName,
 		Profile: true,
 		Devices: []device{
