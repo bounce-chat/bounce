@@ -17,7 +17,7 @@ type devicePool struct {
 	devices map[uuid.UUID]*remoteDevice
 }
 
-func (bounce *Bounce) newDevicePool() *devicePool { // TODO: assign externally or call this openDevicePool` and have it assign itself to bounce?
+func (bounce *Bounce) newDevicePool() *devicePool { // TODO: assign externally or call this openDevicePool and have it assign itself to bounce?
 	devicePool := &devicePool{
 		groups:  make(map[uuid.UUID]*connectionGroup),
 		users:   make(map[uuid.UUID]*connectionGroup),
@@ -203,6 +203,9 @@ func (rd *remoteDevice) writeFrame(frameType uint16, payload []byte) error {
 }
 
 func (rd *remoteDevice) insert(connection net.Conn) {
+	if len(rd.smallFrames) == 0 {
+		rd.smallFrames = append(rd.smallFrames, &remoteConnection{connection: connection, alive: true})
+	}
 }
 
 type remoteConnection struct {
@@ -220,9 +223,6 @@ func (rc *remoteConnection) writeFrame(frameType uint16, payload []byte) error {
 	err := writeFrame(rc.connection, frameType, payload)
 	if err != nil {
 		rc.alive = false
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error writing frame to the wire")
 	}
 	rc.busy = false
 	return err

@@ -19,11 +19,11 @@ func (bounce *Bounce) handleIncomingConnection(conn net.Conn) {
 	// Get the peer address
 	// reject it if it isn't a known device?  Maybe don't want to if introductions / group membership is out of order
 	// if it is known, add this connection to the larger device structure, which will mark the owner's user as online
+	// If it isn't know perhaps we put it in some limited handshake flow for new devices
 	for {
 		frameType, data, err := readFrame(conn)
 		if err != nil {
-			log.WithFields(log.Fields{"error": err.Error()}).Error("error reading frame")
-			// tell the larger device pool this connection is dead
+			// TODO: do I need to tell the larger device pool this connection is dead?
 			return
 		}
 		// TODO: some type of filtering on which types of peers can send which types of messages
@@ -55,6 +55,6 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 		Text:   dm.Text,
 	})
 	// ensure that the source of the message lines up with the peer address
-	// put it in the database (also saving that it was delivered to this peer)
+	// put it in the database (also saving that it was delivered to this peer and the sender)
 	// gossip it as needed
 }

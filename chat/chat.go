@@ -100,6 +100,7 @@ func (bounce *Bounce) runNetwork() {
 		if err != nil {
 			log.Fatal("error accepting connection") // TODO: just fatal for testing right now
 		} else {
+			// TODO: just logging for testing right now
 			log.WithFields(log.Fields{
 				"peer": conn.RemoteAddr().String(),
 			}).Info("accepted connection")

@@ -10,7 +10,7 @@ var SYNC_SCOPE = 0 // TODO: unexport these
 var USER_SCOPE = 1
 var GROUP_SCOPE = 2
 
-//var GLOBAL_SCOPE = 3 // TODO: how should this be used?
+//var GLOBAL_SCOPE = 3 // TODO: how should this be used?  all groups + all users not in groups?
 
 var TYPE_DIRECT_MESSAGE = uint16(0)
 var TYPE_GROUP_MESSAGE = uint16(1)
@@ -51,11 +51,6 @@ func (bounce *Bounce) broadcast(b broadcastable) {
 			if err == nil {
 				// TODO: maybe don't handle this with the interface?  Going to depend on how normalized the protocol is with the db
 				//b.deliveredTo(peer.device.ID)
-			} else {
-				// TODO: no need to log here?  just for testing?
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error writing frame")
 			}
 			// TODO: UI callbacks for delivery status
 		}(b.getType(), b.getPayload()) // TODO: skip if it's already been delivered to this device?

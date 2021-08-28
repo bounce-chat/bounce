@@ -41,7 +41,7 @@ func (bounce *Bounce) buildInitialState() InitialState {
 	}
 
 	users := []user{}
-	bounce.database.Find(&users) // TODO: exclude current profile
+	bounce.database.Find(&users) // TODO: exclude current profile?  Self DMs are actually useful for sending data between devices, saving things
 	chatUsers := []User{}
 	for _, u := range users {
 		chatUsers = append(chatUsers, User{
@@ -170,7 +170,7 @@ type DirectMessage struct {
 }
 */
 
-// TODO: `type DirectMessage GroupMessage`?  if they have all the same fields and we just need new named to tell what the destination means
+// TODO:  if they have all the same fields and we just need a new type to tell what the destination means
 type DirectMessage GroupMessage
 
 func (directMessage *DirectMessage) BeforeCreate(tx *gorm.DB) error {
