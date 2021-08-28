@@ -149,7 +149,7 @@ func (bounce *Bounce) importUser(data []byte) error {
 	}
 
 	// Save to the database
-	return bounce.database.Save(&newUser.Profile).Error
+	return bounce.database.Create(&newUser.Profile).Error
 	// TODO: some sort of UI feedback on the secret being accepted on the remote side?
 	// As in, bounce only accepts DMs from user's in a shared group or who send an import secret
 	// TODO: try to dial right away
