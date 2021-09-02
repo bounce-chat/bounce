@@ -87,7 +87,7 @@ func (bounce *Bounce) runNetwork() {
 		var count int64
 		bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 		if count > 0 {
-			bounce.devicePool = bounce.newDevicePool()
+			bounce.startDevicePool()
 		}
 	}
 
@@ -105,7 +105,8 @@ func (bounce *Bounce) runNetwork() {
 				"peer": conn.RemoteAddr().String(),
 			}).Info("accepted connection")
 		}
-		go bounce.handleIncomingConnection(conn)
+		bounce.insertIntoDevicePool(conn)
+		go bounce.readFrames(conn)
 	}
 }
 

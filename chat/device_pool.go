@@ -17,7 +17,7 @@ type devicePool struct {
 	devices map[uuid.UUID]*remoteDevice
 }
 
-func (bounce *Bounce) newDevicePool() *devicePool { // TODO: assign externally or call this openDevicePool and have it assign itself to bounce?
+func (bounce *Bounce) startDevicePool() {
 	devicePool := &devicePool{
 		groups:  make(map[uuid.UUID]*connectionGroup),
 		users:   make(map[uuid.UUID]*connectionGroup),
@@ -81,18 +81,18 @@ func (bounce *Bounce) newDevicePool() *devicePool { // TODO: assign externally o
 
 	// TODO: create connection groups for all all groups.  Waiting on a database concept for groups
 
-	return devicePool
+	bounce.devicePool = devicePool
+}
+
+// TODO: used both during accept and dial?
+func (bounce *Bounce) insertIntoDevicePool(conn net.Conn) {
+
+}
+func (bounce *Bounce) removeFromDevicePool(conn net.Conn) {
+
 }
 
 /*
-func (dp *devicePool) insert(connections net.Conn) { // TODO: or: bounce.insertIntoDevicePool(conn)
-
-}
-
-func (dp *devicePool) remove(connections net.Conn) {
-
-}
-
 func (dp *devicePool) isUserOnline(id uuid.UUID) bool {
 	// TODO: is thig needed?  check all the devices, look for an open socket
 	return false
@@ -106,6 +106,15 @@ type connectionGroup struct {
 	connectionDesired bool            // TODO: this state transition should be done with function calls?
 	connected         []*remoteDevice // TODO: manage the transition between these two slices.  Maybe they should be maps from addresses to make it easier?
 	offline           []*remoteDevice
+}
+
+// TODO: stay connected to a user/group/sync
+func (bounce *Bounce) maintainUserConnection(id uuid.UUID) {
+}
+func (bounce *Bounce) maintainGroupConnection(id uuid.UUID) {
+}
+
+func (bounce *Bounce) maintainConnection(cg *connectionGroup) {
 }
 
 func (cg *connectionGroup) maintainConnection(network BounceNetwork) {
@@ -139,6 +148,39 @@ func newRemoteDevice(device device) *remoteDevice {
 	return rd
 }
 
+//
+// Dial a connection to the device specified by UUID
+//
+func (bounce *Bounce) dialDevice(id uuid.UUID) error {
+	rd, ok := bounce.devicePool.devices[id]
+	if !ok {
+		// Attmpeting to dial a device we don't know about yet.  Add it?
+		// if we're going to do that we need to pass the whole device in
+		// Also, we'll want to associate it with the proper user/groups in the
+		// pool so that information will need to be gathered / passed here as well
+	}
+
+	connection, err := bounce.network.Dial(rd.device.Address)
+	if err != nil {
+		// TODO: debug logging for now
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"address": rd.device.Address,
+		}).Error("error dialing device")
+		return err
+	}
+	// TODO: debug logging for now
+	log.WithFields(log.Fields{
+		"address": rd.device.Address,
+	}).Info("dialed device")
+
+	// TODO: actually insert this in the correct place
+	rd.smallFrames = append(rd.smallFrames, &remoteConnection{connection: connection, alive: true}) // bounce.insertIntoDevicePool(connection)
+	bounce.readFrames(connection)
+
+	return nil
+}
+
 func (rd *remoteDevice) dial(network BounceNetwork) error {
 	log.WithFields(log.Fields{
 		"address": rd.device.Address,
@@ -156,6 +198,8 @@ func (rd *remoteDevice) dial(network BounceNetwork) error {
 			"address": rd.device.Address,
 		}).Info("dialed device")
 		rd.smallFrames = append(rd.smallFrames, &remoteConnection{connection: connection, alive: true})
+		// TODO: start reading frames from it
+		//bounce.readFrames(connection)
 	}
 	return nil
 }
@@ -202,11 +246,13 @@ func (rd *remoteDevice) writeFrame(frameType uint16, payload []byte) error {
 	return nil
 }
 
+/*
 func (rd *remoteDevice) insert(connection net.Conn) {
 	if len(rd.smallFrames) == 0 {
 		rd.smallFrames = append(rd.smallFrames, &remoteConnection{connection: connection, alive: true})
 	}
 }
+*/
 
 type remoteConnection struct {
 	sync.Mutex
@@ -228,6 +274,7 @@ func (rc *remoteConnection) writeFrame(frameType uint16, payload []byte) error {
 	return err
 }
 
+/*
 func (bounce *Bounce) dialUser(u *user) {
 	// If we don't have a connection to this user already maintained, create one
 	// TODO: how to handle new devices added to a group?  just connect when we learn about them?
@@ -249,3 +296,4 @@ func (bounce *Bounce) dialUser(u *user) {
 		}
 	}
 }
+*/

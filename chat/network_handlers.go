@@ -13,12 +13,11 @@ func (bounce *Bounce) getHandlers() map[uint16]func(string, []byte) {
 	}
 }
 
-func (bounce *Bounce) handleIncomingConnection(conn net.Conn) {
+func (bounce *Bounce) readFrames(conn net.Conn) {
 	handlers := bounce.getHandlers()
 	peer := conn.RemoteAddr().String()
 	// Get the peer address
 	// reject it if it isn't a known device?  Maybe don't want to if introductions / group membership is out of order
-	// if it is known, add this connection to the larger device structure, which will mark the owner's user as online
 	// If it isn't know perhaps we put it in some limited handshake flow for new devices
 	for {
 		frameType, data, err := readFrame(conn)

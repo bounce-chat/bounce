@@ -46,14 +46,15 @@ func (bounce *Bounce) broadcast(b broadcastable) {
 	}
 	for _, peer := range peerScope {
 		// Async try to write this message to every device that should be written to
+		// TODO: skip if it's already been delivered to this device
 		go func(frameType uint16, framePayload []byte) {
 			err := peer.writeFrame(frameType, framePayload)
 			if err == nil {
 				// TODO: maybe don't handle this with the interface?  Going to depend on how normalized the protocol is with the db
 				//b.deliveredTo(peer.device.ID)
+				// TODO: UI callbacks for delivery status
 			}
-			// TODO: UI callbacks for delivery status
-		}(b.getType(), b.getPayload()) // TODO: skip if it's already been delivered to this device?
+		}(b.getType(), b.getPayload())
 	}
 }
 
