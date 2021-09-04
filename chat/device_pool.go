@@ -84,13 +84,48 @@ func (bounce *Bounce) startDevicePool() {
 	bounce.devicePool = devicePool
 }
 
-// TODO: used both during accept and dial?
 func (bounce *Bounce) insertIntoDevicePool(conn net.Conn) {
+	address := conn.RemoteAddr().String()
+	var dev device
+	found := bounce.database.Model(&device{}).Where("address = ?", address).First(&dev).RowsAffected
+	if found == 0 {
+		// We've accepted a connection from a device we're not aware of.  This may be a user importing
+		// our contact for the first time.  TODO: if we go ahead with the import, we're going to want
+		// to attach this connection to that user after.  Need to figure out how to do that.
+		return
+	}
 
-}
-func (bounce *Bounce) removeFromDevicePool(conn net.Conn) {
+	rd, ok := bounce.devicePool.devices[dev.ID]
+	if !ok {
+		rd = newRemoteDevice(dev)
+		bounce.devicePool.devices[dev.ID] = rd
+		// We aren't aware of this device in the device pool yet.
+		// TODO: add it to the right user?  look up the user UUID, add it to the online slice in that user's connection pool
+		// TODO: for groups, look up the groups that user is in and add it to the online devices in those groups' connection pools
+	}
 
+	//
+	// Have an equal number of connections that are used for small messages as for large messages, preferring
+	// to add new small ones first, until a maximum of 5 large connections are open, at which point all new
+	// connections are designated for small frames.  It is unexpected to ever have that many connections open
+	// to the same device however.
+	//
+	smallChannelCount := rd.onlineSmallChannels()
+	largeChannelCount := rd.onlineLargeChannels()
+	if smallChannelCount > largeChannelCount {
+		if largeChannelCount < 5 {
+			rd.largeFrames = append(rd.largeFrames, &remoteConnection{connection: conn, alive: true})
+		} else {
+			rd.smallFrames = append(rd.smallFrames, &remoteConnection{connection: conn, alive: true})
+		}
+	} else {
+		rd.smallFrames = append(rd.smallFrames, &remoteConnection{connection: conn, alive: true})
+	}
 }
+
+//func (bounce *Bounce) removeFromDevicePool(conn net.Conn) {
+//
+//}
 
 /*
 func (dp *devicePool) isUserOnline(id uuid.UUID) bool {
@@ -174,9 +209,8 @@ func (bounce *Bounce) dialDevice(id uuid.UUID) error {
 		"address": rd.device.Address,
 	}).Info("dialed device")
 
-	// TODO: actually insert this in the correct place
-	rd.smallFrames = append(rd.smallFrames, &remoteConnection{connection: connection, alive: true}) // bounce.insertIntoDevicePool(connection)
-	bounce.readFrames(connection)
+	bounce.insertIntoDevicePool(connection)
+	go bounce.readFrames(connection)
 
 	return nil
 }
@@ -204,7 +238,27 @@ func (rd *remoteDevice) dial(network BounceNetwork) error {
 	return nil
 }
 
-func (rd *remoteDevice) writeFrame(frameType uint16, payload []byte) error {
+func (rd *remoteDevice) onlineSmallChannels() int {
+	onlineSmallChannels := 0
+	for _, connection := range rd.smallFrames {
+		if connection.alive {
+			onlineSmallChannels += 1
+		}
+	}
+	return onlineSmallChannels
+}
+
+func (rd *remoteDevice) onlineLargeChannels() int {
+	onlineLargeChannels := 0
+	for _, connection := range rd.smallFrames {
+		if connection.alive {
+			onlineLargeChannels += 1
+		}
+	}
+	return onlineLargeChannels
+}
+
+func (rd *remoteDevice) writeFrame(frameType uint16, payload []byte) error { // TODO: some writeLowPriroityFrame for references in highly-connected connection group?
 	small := len(payload) < 1024
 
 	onlineSmallChannels := 0
