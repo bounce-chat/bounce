@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -84,7 +85,11 @@ func (bounce *Bounce) startDevicePool() {
 	bounce.devicePool = devicePool
 }
 
-func (bounce *Bounce) insertIntoDevicePool(conn net.Conn) {
+func (bounce *Bounce) insertDeviceIntoDevicePool(dev device) {
+	//
+}
+
+func (bounce *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	address := conn.RemoteAddr().String()
 	var dev device
 	found := bounce.database.Model(&device{}).Where("address = ?", address).First(&dev).RowsAffected
@@ -92,16 +97,16 @@ func (bounce *Bounce) insertIntoDevicePool(conn net.Conn) {
 		// We've accepted a connection from a device we're not aware of.  This may be a user importing
 		// our contact for the first time.  TODO: if we go ahead with the import, we're going to want
 		// to attach this connection to that user after.  Need to figure out how to do that.
+		// Perhaps have a map from addresses to unknown connections, and when a device is imported
+		// look for connections to it that aren't yet assigned and assign them.
 		return
 	}
 
-	rd, ok := bounce.devicePool.devices[dev.ID]
-	if !ok {
+	rd, preexistingDevice := bounce.devicePool.devices[dev.ID]
+	if !preexistingDevice {
+		// We aren't aware of this device in the device pool yet.
 		rd = newRemoteDevice(dev)
 		bounce.devicePool.devices[dev.ID] = rd
-		// We aren't aware of this device in the device pool yet.
-		// TODO: add it to the right user?  look up the user UUID, add it to the online slice in that user's connection pool
-		// TODO: for groups, look up the groups that user is in and add it to the online devices in those groups' connection pools
 	}
 
 	//
@@ -121,35 +126,48 @@ func (bounce *Bounce) insertIntoDevicePool(conn net.Conn) {
 	} else {
 		rd.smallFrames = append(rd.smallFrames, &remoteConnection{connection: conn, alive: true})
 	}
-}
 
-//func (bounce *Bounce) removeFromDevicePool(conn net.Conn) {
-//
-//}
+	// Now that the connection exists in the remove device we can add it to the user's and groups' connection pools
+	if !preexistingDevice {
+		userConnections, ok := bounce.devicePool.users[dev.UserID]
+		if !ok {
+			// TODO: log?  create the user?
+		} else {
+			userConnections.online = append(userConnections.online, rd)
+		}
 
-/*
-func (dp *devicePool) isUserOnline(id uuid.UUID) bool {
-	// TODO: is thig needed?  check all the devices, look for an open socket
-	return false
+		// TODO: for groups, look up the groups that user is in and add it to the online devices in those groups' connection pools
+	}
 }
-*/
 
 //
 // A conection group is a collection of devices that represent one gossip scope, such as a chat group, a remote user, or your devices
 //
 type connectionGroup struct {
 	connectionDesired bool            // TODO: this state transition should be done with function calls?
-	connected         []*remoteDevice // TODO: manage the transition between these two slices.  Maybe they should be maps from addresses to make it easier?
+	online            []*remoteDevice // TODO: manage the transition between these two slices.  Maybe they should be maps from addresses to make it easier?
 	offline           []*remoteDevice
 }
 
 // TODO: stay connected to a user/group/sync
 func (bounce *Bounce) maintainUserConnection(id uuid.UUID) {
+
 }
+
 func (bounce *Bounce) maintainGroupConnection(id uuid.UUID) {
+
 }
 
 func (bounce *Bounce) maintainConnection(cg *connectionGroup) {
+	// stop and return if we no longer desire a connection
+	// try to dial random offline devices until there are
+	for {
+
+		time.Sleep(1 * time.Minute)
+	}
+	// at least 15 devices dialed.  Above that, log2(len(offline+online))
+	// until a maximum of 100 devices are dialed?
+
 }
 
 func (cg *connectionGroup) maintainConnection(network BounceNetwork) {
@@ -161,7 +179,7 @@ func (cg *connectionGroup) maintainConnection(network BounceNetwork) {
 	for _, offlineDevice := range cg.offline {
 		err := offlineDevice.dial(network)
 		if err == nil {
-			cg.connected = append(cg.connected, offlineDevice)
+			cg.online = append(cg.online, offlineDevice)
 		}
 	}
 }
@@ -171,7 +189,8 @@ type remoteDevice struct {
 	// TODO: lock this for manipulating the remote connections?
 	device      device
 	smallFrames []*remoteConnection
-	largeFrames []*remoteConnection // TODO: usage determined by len(pendingFrame.payload)
+	largeFrames []*remoteConnection
+	// TODO: round robin trackers.  That or just iterate until one that isn't busy is found?
 	// TODO: if there's "socket pressue" (tons of open connections), maybe only keep one socket open
 }
 
@@ -182,6 +201,22 @@ func newRemoteDevice(device device) *remoteDevice {
 
 	return rd
 }
+
+/*
+func (rd *remoteDevice) pruneDeadConnections() {
+	rd.Lock()
+	defer rd.Unlock()
+
+	aliveSmallConnections := []*remoteConnection{}
+	for _, smallConnection := range rd.smallFrames {
+		if smallFrames.online {
+			aliveSmallConnections = append(aliveSmallConnections, smallConnection)
+		}
+	}
+	rd.smallFrames = aliveSmallConnections
+
+}
+*/
 
 //
 // Dial a connection to the device specified by UUID
@@ -209,7 +244,7 @@ func (bounce *Bounce) dialDevice(id uuid.UUID) error {
 		"address": rd.device.Address,
 	}).Info("dialed device")
 
-	bounce.insertIntoDevicePool(connection)
+	bounce.insertConnectionIntoDevicePool(connection)
 	go bounce.readFrames(connection)
 
 	return nil
@@ -261,19 +296,8 @@ func (rd *remoteDevice) onlineLargeChannels() int {
 func (rd *remoteDevice) writeFrame(frameType uint16, payload []byte) error { // TODO: some writeLowPriroityFrame for references in highly-connected connection group?
 	small := len(payload) < 1024
 
-	onlineSmallChannels := 0
-	for _, connection := range rd.smallFrames {
-		if connection.alive {
-			onlineSmallChannels += 1
-		}
-	}
-
-	onlineLargeChannels := 0
-	for _, connection := range rd.smallFrames {
-		if connection.alive {
-			onlineLargeChannels += 1
-		}
-	}
+	onlineSmallChannels := rd.onlineSmallChannels()
+	onlineLargeChannels := rd.onlineLargeChannels()
 
 	if onlineSmallChannels+onlineLargeChannels == 0 {
 		return errors.New("no available connections to device")
@@ -300,14 +324,6 @@ func (rd *remoteDevice) writeFrame(frameType uint16, payload []byte) error { // 
 	return nil
 }
 
-/*
-func (rd *remoteDevice) insert(connection net.Conn) {
-	if len(rd.smallFrames) == 0 {
-		rd.smallFrames = append(rd.smallFrames, &remoteConnection{connection: connection, alive: true})
-	}
-}
-*/
-
 type remoteConnection struct {
 	sync.Mutex
 	alive      bool
@@ -323,31 +339,8 @@ func (rc *remoteConnection) writeFrame(frameType uint16, payload []byte) error {
 	err := writeFrame(rc.connection, frameType, payload)
 	if err != nil {
 		rc.alive = false
+		// TODO: prune it now?  Just get rid of "remote connection" as a concept and have "remode device" manage sockets?  Still need a way to lock each socket during writing.
 	}
 	rc.busy = false
 	return err
 }
-
-/*
-func (bounce *Bounce) dialUser(u *user) {
-	// If we don't have a connection to this user already maintained, create one
-	// TODO: how to handle new devices added to a group?  just connect when we learn about them?
-	group, exists := bounce.devicePool.users[u.ID]
-	if exists {
-		group.connectionDesired = true
-		// TODO: redial if needed
-	} else {
-		// TODO: error?  This should user should have been created at startup, or when it was introduced on the wire.  Maybe this is actually what should
-		// be called when a user is introduced over the wire.
-		group = &connectionGroup{
-			connectionDesired: true,
-		}
-		bounce.devicePool.users[u.ID] = group
-		for _, device := range u.Devices { // TODO: random selection if group size is too large?  database LIMIT query?
-			userDevice := newRemoteDevice(device)
-			group.offline = append(group.offline, userDevice)
-			go group.maintainConnection(bounce.network)
-		}
-	}
-}
-*/

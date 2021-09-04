@@ -39,10 +39,10 @@ func (bounce *Bounce) broadcast(b broadcastable) {
 		}).Fatal("cannot broadcast to an unknown scope")
 	}
 
-	peerScope := cg.connected // TODO: nil pointer dereference with a self-DM.  Something up there.
+	peerScope := cg.online // TODO: nil pointer dereference with a self-DM.  Something up there.
 	if frameScope != SYNC_SCOPE {
 		// We always send messages to our sync devices, so any scope that isn't also the sync scope gets the sync scope added in
-		peerScope = append(peerScope, bounce.devicePool.sync.connected...)
+		peerScope = append(peerScope, bounce.devicePool.sync.online...)
 	}
 	for _, peer := range peerScope {
 		// Async try to write this message to every device that should be written to

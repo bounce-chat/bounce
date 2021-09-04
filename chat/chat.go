@@ -105,7 +105,7 @@ func (bounce *Bounce) runNetwork() {
 				"peer": conn.RemoteAddr().String(),
 			}).Info("accepted connection")
 		}
-		bounce.insertIntoDevicePool(conn)
+		bounce.insertConnectionIntoDevicePool(conn)
 		go bounce.readFrames(conn)
 	}
 }
