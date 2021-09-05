@@ -214,7 +214,7 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
 			address: localAddress,
 		},
 		remoteAddress: &torAddress{
-			address: string(peerAddress) + ".onion",
+			address: string(peerAddress),
 		},
 	}
 	return torConn, nil
