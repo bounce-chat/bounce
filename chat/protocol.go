@@ -2,7 +2,6 @@ package chat
 
 import (
 	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -20,41 +19,21 @@ type broadcastable interface {
 	getDestination() uuid.UUID // A group or user ID depending on the scope
 	getType() uint16           // TODO: make these a custom type?
 	getPayload() []byte
-	deliveredTo(device uuid.UUID)
+	deliveredTo(address string)
 }
 
 func (bounce *Bounce) broadcast(b broadcastable) {
-	var cg *connectionGroup
-	frameScope := b.getScope()
-	if frameScope == SYNC_SCOPE {
-		cg = bounce.devicePool.sync
-	} else if frameScope == USER_SCOPE {
-		cg = bounce.devicePool.users[b.getDestination()]
-	} else if frameScope == GROUP_SCOPE {
-		cg = bounce.devicePool.groups[b.getDestination()]
-		//} else if frameScope == GLOBAL_SCOPE {
-	} else {
-		log.WithFields(log.Fields{
-			"scope": frameScope,
-		}).Fatal("cannot broadcast to an unknown scope")
+	peerScope, err := bounce.getBroadcastScope(b)
+	if err != nil {
+		// TODO: log
+		return
 	}
 
-	peerScope := cg.online // TODO: nil pointer dereference with a self-DM.  Something up there.
-	if frameScope != SYNC_SCOPE {
-		// We always send messages to our sync devices, so any scope that isn't also the sync scope gets the sync scope added in
-		peerScope = append(peerScope, bounce.devicePool.sync.online...)
-	}
 	for _, peer := range peerScope {
 		// Async try to write this message to every device that should be written to
-		// TODO: skip if it's already been delivered to this device
-		go func(frameType uint16, framePayload []byte) {
-			err := peer.writeFrame(frameType, framePayload)
-			if err == nil {
-				// TODO: maybe don't handle this with the interface?  Going to depend on how normalized the protocol is with the db
-				//b.deliveredTo(peer.device.ID)
-				// TODO: UI callbacks for delivery status
-			}
-		}(b.getType(), b.getPayload())
+		go func(msg broadcastable) {
+			peer.messages <- msg
+		}(b)
 	}
 }
 
@@ -102,8 +81,9 @@ func (dm *directMessage) getPayload() []byte {
 	return dm.payload
 }
 
-func (dm *directMessage) deliveredTo(destination uuid.UUID) {
+func (dm *directMessage) deliveredTo(address string) {
 	// TODO: update the database, need access to bounce.database...
+	// TODO: should UI delivery status callbacks also happen here?
 }
 
 //

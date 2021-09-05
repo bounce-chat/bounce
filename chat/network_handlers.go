@@ -13,7 +13,7 @@ func (bounce *Bounce) getHandlers() map[uint16]func(string, []byte) {
 	}
 }
 
-func (bounce *Bounce) readFrames(conn net.Conn) {
+func (bounce *Bounce) readFrames(conn net.Conn) { // TODO: move to device pool?
 	handlers := bounce.getHandlers()
 	peer := conn.RemoteAddr().String()
 	// Get the peer address

@@ -106,7 +106,6 @@ func (bounce *Bounce) runNetwork() {
 			}).Info("accepted connection")
 		}
 		bounce.insertConnectionIntoDevicePool(conn)
-		go bounce.readFrames(conn)
 	}
 }
 
