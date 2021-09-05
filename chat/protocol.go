@@ -27,7 +27,10 @@ func (bounce *Bounce) broadcast(b broadcastable) {
 	log.Info("broadcasting a message")
 	peerScope, err := bounce.getBroadcastScope(b)
 	if err != nil {
-		// TODO: log
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error getting broadcast targets")
+		// TODO: don't need to error if there's just noone online  maybe handle other error logs in the get functions
 		return
 	}
 	log.WithFields(log.Fields{

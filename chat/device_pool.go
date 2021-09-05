@@ -79,6 +79,7 @@ func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error
 	broadcastTargets := []*remoteDevice{}
 
 	if scope == USER_SCOPE {
+		log.Info("loading devices for user scope")
 		var destinationUser user
 		result := bounce.database.Find(&destinationUser, destination)
 		if result.Error != nil {
@@ -88,6 +89,7 @@ func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error
 			return broadcastTargets, errors.New("no devices found belonging to destination user")
 		}
 		for _, dev := range destinationUser.Devices {
+			log.Info("found a device belonging to that user")
 			// TODO: skip if it's already been delivered to this device.  Need to know a broadcastable's PK and be able to query already delivered devices
 			// polymorphic association to broadcastable metadata?
 			rd, ok := bounce.devicePool.devices[dev.Address]
