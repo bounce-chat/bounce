@@ -92,10 +92,16 @@ func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error
 			// polymorphic association to broadcastable metadata?
 			rd, ok := bounce.devicePool.devices[dev.Address]
 			if !ok {
+				log.Error("didn't find the remote device") // TODO: just for debugging
 				// TODO: Hasn't been loaded before, create it?
 			}
 			if rd.connectedSockets > 0 {
 				broadcastTargets = append(broadcastTargets, rd)
+			} else {
+				log.WithFields(log.Fields{
+					"address": dev.Address,
+					"sockets": rd.connectedSockets,
+				}).Info("I found this device but it has no sockets")
 			}
 		}
 		// TODO: make sure to add sync devices
@@ -134,7 +140,9 @@ func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 	rd.closer.Add(1)
 	defer rd.closer.Done()
 
-	log.Info("ready to write frames that get sent to the channel")
+	log.WithFields(log.Fields{
+		"currently_connected_sockets": rd.connectedSockets,
+	}).Info("ready to write frames that get sent to the channel")
 
 	for b := range rd.messages {
 		err := writeFrame(conn, b.getType(), b.getPayload())
