@@ -54,6 +54,7 @@ func (bounce *Bounce) maintainDevicePoolConnections() { // go bounce.peer() afte
 	// always try to maintain connection to users that are recently communicated with
 	// dial anyone we've got pending messages for (in the database, or if the len of the messages channel >0 while the number of sockets is 0?)
 	// connect to anyone asked by the UI
+	// send keep-alive tests to each connected device
 }
 
 func (bounce *Bounce) tryDialing(address string) {
@@ -80,7 +81,6 @@ func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error
 	broadcastTargets := []*remoteDevice{}
 
 	if scope == USER_SCOPE {
-		log.Info("loading devices for user scope")
 		var destinationUser user
 		//result := bounce.database.Find(&destinationUser, destination) //TODO: load assocations!
 		result := bounce.database.Model(&user{}).Preload(clause.Associations).Find(&destinationUser, destination)
@@ -91,21 +91,14 @@ func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error
 			return broadcastTargets, errors.New("no devices found belonging to destination user")
 		}
 		for _, dev := range destinationUser.Devices {
-			log.Info("found a device belonging to that user")
 			// TODO: skip if it's already been delivered to this device.  Need to know a broadcastable's PK and be able to query already delivered devices
 			// polymorphic association to broadcastable metadata?
 			rd, ok := bounce.devicePool.devices[dev.Address]
 			if !ok {
-				log.Error("didn't find the remote device") // TODO: just for debugging
 				// TODO: Hasn't been loaded before, create it?
 			}
 			if rd.connectedSockets > 0 {
 				broadcastTargets = append(broadcastTargets, rd)
-			} else {
-				log.WithFields(log.Fields{
-					"address": dev.Address,
-					"sockets": rd.connectedSockets,
-				}).Info("I found this device but it has no sockets")
 			}
 		}
 		// TODO: make sure to add sync devices
@@ -144,22 +137,17 @@ func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 	rd.closer.Add(1)
 	defer rd.closer.Done()
 
-	log.WithFields(log.Fields{
-		"currently_connected_sockets": rd.connectedSockets,
-	}).Info("ready to write frames that get sent to the channel")
-
 	for b := range rd.messages {
 		err := writeFrame(conn, b.getType(), b.getPayload())
 		if err == nil {
-			log.Info("write a frame")
+			// TODO: messages can be dropped and still not return an error!  How to handle this?
+			// perhaps there's a type of reference acks that the peer sends back and we update delivery
+			// status and UI indicators then?
 			b.deliveredTo(conn.RemoteAddr().String()) // TODO: pass the database.  pass the UI?
 			// TODO: UI callbacks for delivery status
 		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error writing a frame")
 			rd.connectedSockets -= 1
-			// TODO: if this was the last alive socket, drain the channel?
+			// TODO: if this was the last alive socket, drain the channel?  Or maybe re-write to the channel?
 			return
 		}
 	}

@@ -24,7 +24,6 @@ type broadcastable interface {
 }
 
 func (bounce *Bounce) broadcast(b broadcastable) {
-	log.Info("broadcasting a message")
 	peerScope, err := bounce.getBroadcastScope(b)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -33,9 +32,6 @@ func (bounce *Bounce) broadcast(b broadcastable) {
 		// TODO: don't need to error if there's just noone online  maybe handle other error logs in the get functions
 		return
 	}
-	log.WithFields(log.Fields{
-		"size": len(peerScope),
-	}).Info("found this many devices in scope")
 
 	for _, peer := range peerScope {
 		// Async try to write this message to every device that should be written to
