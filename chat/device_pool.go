@@ -7,6 +7,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"gorm.io/gorm/clause"
 )
 
 type devicePool struct {
@@ -81,7 +82,8 @@ func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error
 	if scope == USER_SCOPE {
 		log.Info("loading devices for user scope")
 		var destinationUser user
-		result := bounce.database.Find(&destinationUser, destination)
+		//result := bounce.database.Find(&destinationUser, destination) //TODO: load assocations!
+		result := bounce.database.Model(&user{}).Preload(clause.Associations).Find(&destinationUser, destination)
 		if result.Error != nil {
 			return broadcastTargets, result.Error
 		}
