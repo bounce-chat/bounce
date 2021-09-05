@@ -2,6 +2,7 @@ package chat
 
 import (
 	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -23,11 +24,15 @@ type broadcastable interface {
 }
 
 func (bounce *Bounce) broadcast(b broadcastable) {
+	log.Info("broadcasting a message")
 	peerScope, err := bounce.getBroadcastScope(b)
 	if err != nil {
 		// TODO: log
 		return
 	}
+	log.WithFields(log.Fields{
+		"size": len(peerScope),
+	}).Info("found this many devices in scope")
 
 	for _, peer := range peerScope {
 		// Async try to write this message to every device that should be written to

@@ -134,12 +134,18 @@ func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 	rd.closer.Add(1)
 	defer rd.closer.Done()
 
+	log.Info("ready to write frames that get sent to the channel")
+
 	for b := range rd.messages {
 		err := writeFrame(conn, b.getType(), b.getPayload())
 		if err == nil {
+			log.Info("write a frame")
 			b.deliveredTo(conn.RemoteAddr().String()) // TODO: pass the database.  pass the UI?
 			// TODO: UI callbacks for delivery status
 		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error writing a frame")
 			rd.connectedSockets -= 1
 			// TODO: if this was the last alive socket, drain the channel?
 			return

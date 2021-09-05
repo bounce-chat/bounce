@@ -196,9 +196,6 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
-	log.WithFields(log.Fields{
-		"address": string(peerAddress),
-	}).Info("handshake read this address")
 	ok := bounceTor.VerifySignature(string(peerAddress), challenge, response)
 	if !ok {
 		return nil, errors.New("signature validation failed during handshake")
