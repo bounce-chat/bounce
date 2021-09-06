@@ -87,7 +87,7 @@ func (bounce *Bounce) runNetwork() {
 		var count int64
 		bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 		if count > 0 {
-			bounce.startDevicePool()
+			bounce.peer()
 		}
 	}
 

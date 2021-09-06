@@ -35,9 +35,9 @@ func (bounce *Bounce) broadcast(b broadcastable) {
 
 	for _, peer := range peerScope {
 		// Async try to write this message to every device that should be written to
-		go func(msg broadcastable) {
-			peer.messages <- msg
-		}(b)
+		go func(dst chan broadcastable, msg broadcastable) {
+			dst <- msg
+		}(peer.messages, b)
 	}
 }
 

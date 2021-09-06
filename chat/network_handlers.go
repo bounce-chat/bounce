@@ -36,7 +36,7 @@ func (bounce *Bounce) readFrames(conn net.Conn) { // TODO: move to device pool?
 			// TODO: conn.Close()?
 			return
 		} else {
-			handler(peer, data)
+			go handler(peer, data)
 		}
 	}
 }

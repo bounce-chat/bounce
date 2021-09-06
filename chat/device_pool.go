@@ -11,34 +11,38 @@ import (
 )
 
 type devicePool struct {
-	devices map[string]*remoteDevice // TODO: maybe replace this struct with just this top level map
+	sync.Mutex
+	devices map[string]*remoteDevice
 }
 
-func (bounce *Bounce) startDevicePool() {
-	devicePool := &devicePool{
+func (bounce *Bounce) peer() {
+	if bounce.devicePool != nil {
+		log.Fatal("attempted to start device pool after it has already been started")
+	}
+
+	bounce.devicePool = &devicePool{
 		devices: make(map[string]*remoteDevice),
 	}
 
 	var allDevices []device
 	err := bounce.database.Find(&allDevices).Error
 	if err != nil {
-		// TODO: err log
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error loading all devices from the database")
 	}
 
 	for _, dev := range allDevices {
-		// TODO: exclude the current device
-		devicePool.devices[dev.Address] = &remoteDevice{
-			connectedSockets: 0,
-			messages:         make(chan broadcastable),
+		if dev.Address == bounce.currentDevice().Address {
+			continue
 		}
+		bounce.devicePool.devices[dev.Address] = newRemoteDevice()
 	}
 
-	go bounce.maintainDevicePoolConnections()
-
-	bounce.devicePool = devicePool
+	go bounce.maintainPeers()
 }
 
-func (bounce *Bounce) maintainDevicePoolConnections() { // go bounce.peer() after network online for the firs time?
+func (bounce *Bounce) maintainPeers() { // go bounce.peer() after network online for the firs time?
 	// forever loop
 	ticker := time.NewTicker(30 * time.Second) // TODO: doesn't tick immediately.  I want it to.
 	for _ = range ticker.C {
@@ -75,14 +79,13 @@ func (bounce *Bounce) tryDialing(address string) {
 	}
 }
 
-func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error) { // TODO: move to protocol?
+func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error) {
 	scope := b.getScope()
 	destination := b.getDestination()
 	broadcastTargets := []*remoteDevice{}
 
 	if scope == USER_SCOPE {
 		var destinationUser user
-		//result := bounce.database.Find(&destinationUser, destination) //TODO: load assocations!
 		result := bounce.database.Model(&user{}).Preload(clause.Associations).Find(&destinationUser, destination)
 		if result.Error != nil {
 			return broadcastTargets, result.Error
@@ -93,15 +96,12 @@ func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error
 		for _, dev := range destinationUser.Devices {
 			// TODO: skip if it's already been delivered to this device.  Need to know a broadcastable's PK and be able to query already delivered devices
 			// polymorphic association to broadcastable metadata?
-			rd, ok := bounce.devicePool.devices[dev.Address]
-			if !ok {
-				// TODO: Hasn't been loaded before, create it?
-			}
+			rd := bounce.getRemoteDevice(dev.Address)
 			if rd.connectedSockets > 0 {
 				broadcastTargets = append(broadcastTargets, rd)
 			}
 		}
-		// TODO: make sure to add sync devices
+		// TODO: make sure to always add sync devices
 	}
 
 	// TODO: err if no devices are online?
@@ -115,16 +115,28 @@ type remoteDevice struct {
 	closer           sync.WaitGroup
 }
 
+func newRemoteDevice() *remoteDevice {
+	return &remoteDevice{
+		connectedSockets: 0,
+		messages:         make(chan broadcastable),
+	}
+}
+
+func (bounce *Bounce) getRemoteDevice(address string) *remoteDevice {
+	bounce.devicePool.Lock()
+	defer bounce.devicePool.Unlock()
+
+	rd, ok := bounce.devicePool.devices[address]
+	if !ok {
+		rd = newRemoteDevice()
+		bounce.devicePool.devices[address] = rd
+	}
+	return rd
+}
+
 func (bounce *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	peerAddress := conn.RemoteAddr().String()
-	rd, ok := bounce.devicePool.devices[peerAddress]
-	if !ok {
-		rd = &remoteDevice{
-			connectedSockets: 0,
-			messages:         make(chan broadcastable),
-		}
-		bounce.devicePool.devices[peerAddress] = rd
-	}
+	rd := bounce.getRemoteDevice(peerAddress)
 
 	// write references to missing messages?
 	go bounce.readFrames(conn)
@@ -148,6 +160,8 @@ func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 		} else {
 			rd.connectedSockets -= 1
 			// TODO: if this was the last alive socket, drain the channel?  Or maybe re-write to the channel?
+			// TODO: we should also test all the other sockets at this point.  Perhaps just write enough health
+			// checks into the channel so that each socket will try to send one?
 			return
 		}
 	}
