@@ -23,6 +23,7 @@ func (bounce *Bounce) sendGroupMessage(message GroupMessage) {
 
 func (bounce *Bounce) sendDirectMessage(message *DirectMessage) {
 	message.Read = true
+	message.Source = bounce.currentUser().ID
 	err := bounce.database.Create(message).Error // TODO: check for errors.  Also do actual saves after exported/unexported representations figured out
 	if err != nil {
 		log.WithFields(log.Fields{
