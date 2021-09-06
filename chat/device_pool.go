@@ -42,15 +42,20 @@ func (bounce *Bounce) peer() {
 	go bounce.maintainPeers()
 }
 
-func (bounce *Bounce) maintainPeers() { // go bounce.peer() after network online for the firs time?
-	// forever loop
-	ticker := time.NewTicker(30 * time.Second) // TODO: doesn't tick immediately.  I want it to.
+func (bounce *Bounce) maintainPeers() {
+	// TODO: figure out the right way to close this down during shutdown
+	bounce.auditPeers()
+	ticker := time.NewTicker(30 * time.Second)
 	for _ = range ticker.C {
-		// TODO: just for now, let's dial every device we know about if it doesn't have a connection
-		for address, rd := range bounce.devicePool.devices {
-			if address != bounce.currentDevice().Address && rd.connectedSockets == 0 {
-				go bounce.tryDialing(address)
-			}
+		bounce.auditPeers()
+	}
+}
+
+func (bounce *Bounce) auditPeers() {
+	// TODO: just for now, let's dial every device we know about if it doesn't have a connection
+	for address, rd := range bounce.devicePool.devices {
+		if address != bounce.currentDevice().Address && rd.connectedSockets == 0 {
+			go bounce.tryDialing(address)
 		}
 	}
 	// always try to dial sync devices
@@ -59,6 +64,7 @@ func (bounce *Bounce) maintainPeers() { // go bounce.peer() after network online
 	// dial anyone we've got pending messages for (in the database, or if the len of the messages channel >0 while the number of sockets is 0?)
 	// connect to anyone asked by the UI
 	// send keep-alive tests to each connected device
+
 }
 
 func (bounce *Bounce) tryDialing(address string) {
@@ -138,10 +144,18 @@ func (bounce *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	peerAddress := conn.RemoteAddr().String()
 	rd := bounce.getRemoteDevice(peerAddress)
 
-	// write references to missing messages?
+	writeReferences := false
+	if rd.connectedSockets == 0 {
+		writeReferences = true
+	}
+
 	go bounce.readFrames(conn)
 	go bounce.writeFrames(rd, conn)
 
+	if writeReferences {
+		// Select all things that should be sent to this device but haven't been yet (by us)
+		// write those references
+	}
 }
 
 func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
