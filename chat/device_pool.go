@@ -167,7 +167,8 @@ func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 		err := writeFrame(conn, b.getType(), b.getPayload())
 		if err == nil {
 			// TODO: messages can be dropped and still not return an error!  How to handle this?
-			// perhaps there's a type of reference acks that the peer sends back and we update delivery
+			// perhaps there's a type of reference acks that the peer sends back and we update delivery.
+			// Should that delivery never come though, must there be some retry logic outside the normal references?
 			// status and UI indicators then?
 			b.deliveredTo(conn.RemoteAddr().String()) // TODO: pass the database.  pass the UI?
 			// TODO: UI callbacks for delivery status
@@ -176,6 +177,8 @@ func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 			// TODO: if this was the last alive socket, drain the channel?  Or maybe re-write to the channel?
 			// TODO: we should also test all the other sockets at this point.  Perhaps just write enough health
 			// checks into the channel so that each socket will try to send one?
+			// Also, automatically retry here?
+			// rd.messages <- b
 			return
 		}
 	}
