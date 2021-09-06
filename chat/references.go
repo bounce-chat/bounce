@@ -41,6 +41,7 @@ func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, boo
 		// Not a device we know about in the database, no references to offer
 		return offer, false
 	}
+	offer.destination = dev.ID
 
 	// After a week, we give up trying to deliver messages to a device we haven't seen
 	aWeekAgo := time.Now().Add(-7 * 24 * time.Hour).Unix()
