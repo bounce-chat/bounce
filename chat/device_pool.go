@@ -109,6 +109,19 @@ func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error
 			}
 		}
 		// TODO: make sure to always add sync devices
+	} else if scope == DEVICE_SCOPE {
+		var target device
+		result := bounce.database.First(&target, b.getDestination())
+		if result.Error != nil {
+			return broadcastTargets, result.Error
+		}
+		if result.RowsAffected == 0 {
+			return broadcastTargets, errors.New("no device found in database for broadcastable message tageting device") // TODO: log the UUID
+		}
+		rd := bounce.getRemoteDevice(target.Address)
+		if rd.connectedSockets > 0 {
+			broadcastTargets = append(broadcastTargets, rd)
+		}
 	}
 
 	// TODO: err if no devices are online?
@@ -148,10 +161,10 @@ func (bounce *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	go bounce.readFrames(conn)
 	go bounce.writeFrames(rd, conn)
 
-	//references, needed := bounce.getReferenceOfferFor(peerAddress)
-	//if needed {
-	//	go bounce.broadcast(references)
-	//}
+	references, needed := bounce.getReferenceOfferFor(peerAddress)
+	if needed {
+		go bounce.broadcast(references)
+	}
 }
 
 func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {

@@ -96,6 +96,13 @@ func (ro *referenceOffer) getPayload() []byte {
 	return ro.payload
 }
 
+func (ro *referenceOffer) isAlreadyDeliveredTo(address string) bool {
+	return false
+}
+
+//
+//
+//
 type referenceRequest references
 
 //	getScope() int
