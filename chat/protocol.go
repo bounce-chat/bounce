@@ -11,16 +11,17 @@ var USER_SCOPE = 1
 var GROUP_SCOPE = 2
 
 //var GLOBAL_SCOPE = 3 // TODO: how should this be used?  all groups + all users not in groups?
+var DEVICE_SCOPE = 4
 
 var TYPE_DIRECT_MESSAGE = uint16(0)
 var TYPE_GROUP_MESSAGE = uint16(1)
+var TYPE_REFERENCE_OFFER = uint16(2)
 
 type broadcastable interface {
 	getScope() int
 	getDestination() uuid.UUID // A group or user ID depending on the scope
 	getType() uint16           // TODO: make these a custom type?
 	getPayload() []byte
-	deliveredTo(address string)
 }
 
 func (bounce *Bounce) broadcast(b broadcastable) {
@@ -55,7 +56,9 @@ type contactImported struct {
 //
 // A direct message.  TODO: merge with the database object since we don't need to sign?
 //
+/*
 type directMessage struct {
+	ID          uuid.UUID
 	Source      uuid.UUID // TODO: could only include one of these depending on if syncing outgoing/incoming and if going to sync devices or other user
 	Destination uuid.UUID
 	Text        string
@@ -84,11 +87,7 @@ func (dm *directMessage) getPayload() []byte {
 	}
 	return dm.payload
 }
-
-func (dm *directMessage) deliveredTo(address string) {
-	// TODO: update the database, need access to bounce.database...
-	// TODO: should UI delivery status callbacks also happen here?
-}
+*/
 
 //
 // A group message is wrapped in a signed object because it can come from devices that are not owned by the author
@@ -101,12 +100,12 @@ type signedGroupMessage struct {
 	destination uuid.UUID
 }
 
-func newSignedGroupMessage(message GroupMessage, signer BounceNetwork) *signedGroupMessage { // TODO: remove the signer arg and put this on bounce
+func (bounce *Bounce) newSignedGroupMessage(message GroupMessage) *signedGroupMessage {
 	marshalledMessage, err := msgpack.Marshal(message)
 	if err != nil {
 		// TODO: how to handle?
 	}
-	signature := signer.Sign(marshalledMessage) // TODO: just sign the SHA3 of the data for speed reasons
+	signature := bounce.network.Sign(marshalledMessage) // TODO: just sign the SHA3 of the data for speed reasons
 
 	sgm := &signedGroupMessage{
 		Message:     marshalledMessage,
@@ -131,8 +130,4 @@ func (sgm *signedGroupMessage) getType() uint16 {
 
 func (sgm *signedGroupMessage) getPayload() []byte {
 	return sgm.payload
-}
-
-func (sgm *signedGroupMessage) deliveredTo(destination uuid.UUID) {
-	// TODO: update the database, need access to bounce.database...
 }

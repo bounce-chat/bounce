@@ -119,7 +119,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 	entry := newThreadEntry(5)
 	dm.entry = entry
 	entry.customOnSubmitted = func() {
-		message := chat.DirectMessage{
+		message := &chat.DirectMessage{
 			Destination: dm.user.id,
 			Text:        entry.Text,
 		}

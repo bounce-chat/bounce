@@ -21,15 +21,24 @@ func (bounce *Bounce) sendGroupMessage(message GroupMessage) {
 	//}))
 }
 
-func (bounce *Bounce) sendDirectMessage(message DirectMessage) {
-	//message.Read = true
-	//bounce.database.Save(message) // TODO: check for errors.  Also do actual saves after exported/unexported representations figured out
-	bounce.broadcast(&directMessage{
-		Source:      bounce.currentUser().ID,
-		Destination: message.Destination,
-		Text:        message.Text,
-	})
-	// TODO: broadcast an outoing DM as well as a sync DM?
+func (bounce *Bounce) sendDirectMessage(message *DirectMessage) {
+	message.Read = true
+	err := bounce.database.Create(message).Error // TODO: check for errors.  Also do actual saves after exported/unexported representations figured out
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error saving direct message to the database")
+		// TODO: return an error the UI so it knows it was never sent
+		return
+	}
+	bounce.broadcast(message)
+	//&directMessage{
+	//	ID:          message.ID,
+	//	Source:      bounce.currentUser().ID,
+	//	Destination: message.Destination,
+	//	Text:        message.Text,
+	//})
+	// TODO: return the message's UUID so that chat engine can reference it to the UI later
 }
 
 func (bounce *Bounce) addUserToGroup(threadID, userID uuid.UUID) {

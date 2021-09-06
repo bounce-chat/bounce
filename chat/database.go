@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 func (bounce *Bounce) openDatabase() {
@@ -29,6 +30,7 @@ func (bounce *Bounce) openDatabase() {
 		&device{},
 		&profileExport{},
 		&introductionSignature{},
+		&DirectMessage{}, // TODO: still need to decide if we'll export a simplified one for the UI
 	)
 }
 
@@ -151,6 +153,8 @@ type GroupMessage struct { // TODO: don't want the UI to be able to set things l
 	Destination uuid.UUID
 	Text        string
 	// TODO: other things that can be in a message, like a reference to an image, audio, video, or file attachment
+	//DeliveredTo string `msgpack:"-"` // Comma-separated list of addresses that have acked this message
+	payload []byte
 }
 
 func (groupMessage *GroupMessage) BeforeCreate(tx *gorm.DB) error {
@@ -159,22 +163,33 @@ func (groupMessage *GroupMessage) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-/*
-type DirectMessage struct {
-	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
-	CreatedAt   int64
-	Read        bool `msgpack:"-"`
-	Source      uuid.UUID
-	Destination uuid.UUID
-	Text        string
-}
-*/
-
-// TODO:  if they have all the same fields and we just need a new type to tell what the destination means
-type DirectMessage GroupMessage
+type DirectMessage GroupMessage // TODO: a shared "message" type they both come from that isn't exported
 
 func (directMessage *DirectMessage) BeforeCreate(tx *gorm.DB) error {
 	directMessage.ID = uuid.New()
 	directMessage.CreatedAt = time.Now().Unix()
 	return nil
+}
+
+func (dm *DirectMessage) getScope() int {
+	return USER_SCOPE
+}
+
+func (dm *DirectMessage) getDestination() uuid.UUID {
+	return dm.Destination
+}
+
+func (dm *DirectMessage) getType() uint16 {
+	return TYPE_DIRECT_MESSAGE
+}
+
+func (dm *DirectMessage) getPayload() []byte {
+	if len(dm.payload) == 0 {
+		bytes, err := msgpack.Marshal(dm)
+		if err != nil {
+			// TODO: how to handle?
+		}
+		dm.payload = bytes
+	}
+	return dm.payload
 }

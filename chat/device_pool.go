@@ -90,7 +90,7 @@ func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error
 	destination := b.getDestination()
 	broadcastTargets := []*remoteDevice{}
 
-	if scope == USER_SCOPE {
+	if scope == USER_SCOPE { // TODO: break these out
 		var destinationUser user
 		result := bounce.database.Model(&user{}).Preload(clause.Associations).Find(&destinationUser, destination)
 		if result.Error != nil {
@@ -144,18 +144,9 @@ func (bounce *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	peerAddress := conn.RemoteAddr().String()
 	rd := bounce.getRemoteDevice(peerAddress)
 
-	writeReferences := false
-	if rd.connectedSockets == 0 {
-		writeReferences = true
-	}
-
 	go bounce.readFrames(conn)
 	go bounce.writeFrames(rd, conn)
-
-	if writeReferences {
-		// Select all things that should be sent to this device but haven't been yet (by us)
-		// write those references
-	}
+	//go bounce.broadcast(bounce.getReferenceOfferFor(peerAddress))
 }
 
 func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
@@ -165,16 +156,8 @@ func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 
 	for b := range rd.messages {
 		err := writeFrame(conn, b.getType(), b.getPayload())
-		if err == nil {
-			// TODO: messages can be dropped and still not return an error!  How to handle this?
-			// perhaps there's a type of reference acks that the peer sends back and we update delivery.
-			// Should that delivery never come though, must there be some retry logic outside the normal references?
-			// status and UI indicators then?
-			b.deliveredTo(conn.RemoteAddr().String()) // TODO: pass the database.  pass the UI?
-			// TODO: UI callbacks for delivery status
-		} else {
+		if err != nil {
 			rd.connectedSockets -= 1
-			// TODO: if this was the last alive socket, drain the channel?  Or maybe re-write to the channel?
 			// TODO: we should also test all the other sockets at this point.  Perhaps just write enough health
 			// checks into the channel so that each socket will try to send one?
 			// Also, automatically retry here?
