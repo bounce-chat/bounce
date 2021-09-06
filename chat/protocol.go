@@ -54,42 +54,6 @@ type contactImported struct {
 }
 
 //
-// A direct message.  TODO: merge with the database object since we don't need to sign?
-//
-/*
-type directMessage struct {
-	ID          uuid.UUID
-	Source      uuid.UUID // TODO: could only include one of these depending on if syncing outgoing/incoming and if going to sync devices or other user
-	Destination uuid.UUID
-	Text        string
-	payload     []byte
-}
-
-func (dm *directMessage) getScope() int {
-	return USER_SCOPE
-}
-
-func (dm *directMessage) getDestination() uuid.UUID {
-	return dm.Destination
-}
-
-func (dm *directMessage) getType() uint16 {
-	return TYPE_DIRECT_MESSAGE
-}
-
-func (dm *directMessage) getPayload() []byte {
-	if len(dm.payload) == 0 {
-		bytes, err := msgpack.Marshal(dm)
-		if err != nil {
-			// TODO: how to handle?
-		}
-		dm.payload = bytes
-	}
-	return dm.payload
-}
-*/
-
-//
 // A group message is wrapped in a signed object because it can come from devices that are not owned by the author
 //
 

@@ -47,13 +47,16 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 		log.Error("error unmarshalling direct message")
 		return
 	}
+
 	// ensure that the source of the message lines up with the peer address
 	// put it in the database (also saving that it was delivered to this peer and the sender)
+	err = bounce.database.Create(&dm).Error // TODO: make sure to include that is was delivered to the device that sent it before saving
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error saving incoming direct message")
+	}
 	// send an ack to the sender that we got it
 	// gossip it, or references to it, as needed
-	bounce.userInterface.ReceivedDirectMessage(DirectMessage{
-		//Destination: directMessage.Destination,
-		Source: dm.Source,
-		Text:   dm.Text,
-	})
+	bounce.userInterface.ReceivedDirectMessage(dm)
 }
