@@ -100,8 +100,9 @@ func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error
 			return broadcastTargets, errors.New("no devices found belonging to destination user")
 		}
 		for _, dev := range destinationUser.Devices {
-			// TODO: skip if it's already been delivered to this device.  Need to know a broadcastable's PK and be able to query already delivered devices
-			// polymorphic association to broadcastable metadata?
+			if b.isAlreadyDeliveredTo(dev.Address) {
+				continue
+			}
 			rd := bounce.getRemoteDevice(dev.Address)
 			if rd.connectedSockets > 0 {
 				broadcastTargets = append(broadcastTargets, rd)
@@ -146,7 +147,11 @@ func (bounce *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 
 	go bounce.readFrames(conn)
 	go bounce.writeFrames(rd, conn)
-	//go bounce.broadcast(bounce.getReferenceOfferFor(peerAddress))
+
+	//references, needed := bounce.getReferenceOfferFor(peerAddress)
+	//if needed {
+	//	go bounce.broadcast(references)
+	//}
 }
 
 func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {

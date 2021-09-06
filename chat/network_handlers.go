@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"fmt"
 	"net"
 
 	log "github.com/sirupsen/logrus"
@@ -9,7 +10,8 @@ import (
 
 func (bounce *Bounce) getHandlers() map[uint16]func(string, []byte) {
 	return map[uint16]func(string, []byte){
-		TYPE_DIRECT_MESSAGE: bounce.handleDirectMessage,
+		TYPE_DIRECT_MESSAGE:  bounce.handleDirectMessage,
+		TYPE_REFERENCE_OFFER: bounce.handleReferenceOffer,
 	}
 }
 
@@ -48,6 +50,7 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 		return
 	}
 
+	// check if we already got this message, if so all we need to do is mark that it has been delivered to this device already
 	// ensure that the source of the message lines up with the peer address
 	// put it in the database (also saving that it was delivered to this peer and the sender)
 	err = bounce.database.Create(&dm).Error // TODO: make sure to include that is was delivered to the device that sent it before saving
@@ -59,4 +62,14 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 	// send an ack to the sender that we got it
 	// gossip it, or references to it, as needed
 	bounce.userInterface.ReceivedDirectMessage(dm)
+}
+
+func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
+	var ro referenceOffer
+	err := msgpack.Unmarshal(payload, &ro)
+	if err != nil {
+		log.Error("error unmarshalling reference offer")
+		return
+	}
+	fmt.Printf("%+v\n", ro)
 }

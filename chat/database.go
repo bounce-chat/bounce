@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 func (bounce *Bounce) openDatabase() {
@@ -78,7 +76,7 @@ func (bounce *Bounce) currentDevice() device {
 	}
 
 	var currentDevice device
-	err = bounce.database.Model(&device{}).Preload(clause.Associations).Where("address = ?", currentAddress).First(&currentDevice).Error
+	err = bounce.database.Model(&device{}).Preload(clause.Associations).Where("address = ?", currentAddress).First(&currentDevice).Error // TODO: do I need to load associations here?
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -143,53 +141,4 @@ type profileExport struct {
 func (profileExport *profileExport) BeforeCreate(tx *gorm.DB) error {
 	profileExport.ID = uuid.New()
 	return nil
-}
-
-type GroupMessage struct { // TODO: don't want the UI to be able to set things like ID.  Need another object?
-	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
-	CreatedAt   int64
-	Read        bool `msgpack:"-"`
-	Source      uuid.UUID
-	Destination uuid.UUID
-	Text        string
-	// TODO: other things that can be in a message, like a reference to an image, audio, video, or file attachment
-	//DeliveredTo string `msgpack:"-"` // Comma-separated list of addresses that have acked this message
-	payload []byte
-}
-
-func (groupMessage *GroupMessage) BeforeCreate(tx *gorm.DB) error {
-	groupMessage.ID = uuid.New()
-	groupMessage.CreatedAt = time.Now().Unix()
-	return nil
-}
-
-type DirectMessage GroupMessage // TODO: a shared "message" type they both come from that isn't exported
-
-func (directMessage *DirectMessage) BeforeCreate(tx *gorm.DB) error {
-	directMessage.ID = uuid.New()
-	directMessage.CreatedAt = time.Now().Unix()
-	return nil
-}
-
-func (dm *DirectMessage) getScope() int {
-	return USER_SCOPE
-}
-
-func (dm *DirectMessage) getDestination() uuid.UUID {
-	return dm.Destination
-}
-
-func (dm *DirectMessage) getType() uint16 {
-	return TYPE_DIRECT_MESSAGE
-}
-
-func (dm *DirectMessage) getPayload() []byte {
-	if len(dm.payload) == 0 {
-		bytes, err := msgpack.Marshal(dm)
-		if err != nil {
-			// TODO: how to handle?
-		}
-		dm.payload = bytes
-	}
-	return dm.payload
 }

@@ -1,7 +1,10 @@
 package chat
 
 import (
+	"time"
+
 	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -17,13 +20,57 @@ type references struct {
 	DirectMessages []uuid.UUID
 }
 
+//
+// A reference offer is a message sent to a newly connected device that provides the UUIDs of any messages that device
+// should have, but that we didn't deliver to it.
+//
 type referenceOffer references
 
-func (bounce *Bounce) getReferenceOfferFor(address string) *referenceOffer {
-	// Load all the messages from the database that this device should know about that we
-	// can't confirm we've already delivired to this device
-	// SELECT * FROM direct_messages WHERE CREATED_AT > 1 week ago AND destination = user_id AND delivered_to NOT INCLUDE device_id;
-	return &referenceOffer{}
+func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, bool) {
+	offer := &referenceOffer{}
+
+	var dev device
+	res := bounce.database.Model(&device{}).Where("address = ?", address).First(&dev)
+	if res.Error != nil {
+		log.WithFields(log.Fields{
+			"error": res.Error.Error(),
+		}).Error("error loading device for incoming connection") // TODO: make sure we don't error with every unknown device
+		return offer, false
+	}
+	if res.RowsAffected == 0 {
+		// Not a device we know about in the database, no references to offer
+		return offer, false
+	}
+
+	// After a week, we give up trying to deliver messages to a device we haven't seen
+	aWeekAgo := time.Now().Add(-7 * 24 * time.Hour).Unix()
+
+	// All DMs we have sent to this user this week
+	var outgoingDMs []DirectMessage
+	err := bounce.database.Where("created_at >= ? AND destination = ?", aWeekAgo, dev.UserID).Find(&outgoingDMs).Error
+	if err != nil {
+		// TODO: log and return
+	}
+
+	// All DMs this user has sent us this ween
+	var incomingDMs []DirectMessage
+	err = bounce.database.Where("created_at >= ? AND source = ?", aWeekAgo, dev.UserID).Find(&incomingDMs).Error
+	if err != nil {
+		// TODO: log and return
+	}
+
+	dms := append(outgoingDMs, incomingDMs...)
+
+	// for each dm, if it isn't delivered to this address, include it
+	for _, dm := range dms {
+		if !dm.isAlreadyDeliveredTo(address) {
+			offer.DirectMessages = append(offer.DirectMessages, dm.ID)
+		}
+	}
+
+	// TODO: some check so that if everything is empty we return false
+
+	return offer, true
 }
 
 func (ro *referenceOffer) getScope() int {

@@ -22,6 +22,7 @@ type broadcastable interface {
 	getDestination() uuid.UUID // A group or user ID depending on the scope
 	getType() uint16           // TODO: make these a custom type?
 	getPayload() []byte
+	isAlreadyDeliveredTo(address string) bool
 }
 
 func (bounce *Bounce) broadcast(b broadcastable) {
