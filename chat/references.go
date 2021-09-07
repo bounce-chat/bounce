@@ -14,10 +14,11 @@ import (
 // three types of broadcastable frames: reference offers, reference requests, and acks.
 //
 type references struct {
-	_msgpack       struct{} `msgpack:",omitempty"`
+	_msgpack       struct{}  `msgpack:",omitempty"`
+	ID             uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
+	DirectMessages string    // Comma-separated list of DM UUIDs
 	destination    uuid.UUID
 	payload        []byte
-	DirectMessages []uuid.UUID
 }
 
 //
@@ -27,7 +28,9 @@ type references struct {
 type referenceOffer references
 
 func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, bool) {
-	offer := &referenceOffer{}
+	offer := &referenceOffer{
+		ID: uuid.New(),
+	}
 
 	var dev device
 	res := bounce.database.Model(&device{}).Where("address = ?", address).First(&dev)
@@ -63,15 +66,28 @@ func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, boo
 	dms := append(outgoingDMs, incomingDMs...)
 
 	// for each dm, if it isn't delivered to this address, include it
-	for _, dm := range dms {
+	for i, dm := range dms {
 		if !dm.isAlreadyDeliveredTo(address) {
-			offer.DirectMessages = append(offer.DirectMessages, dm.ID)
+			if i != 0 {
+				offer.DirectMessages = offer.DirectMessages + ","
+			}
+			offer.DirectMessages = offer.DirectMessages + dm.ID.String()
 		}
 	}
 
 	// TODO: some check so that if everything is empty we return false
+	needToSend := false
+	if len(offer.DirectMessages) > 0 {
+		needToSend = true
+		err := bounce.database.Create(offer).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error saving referenceOffer")
+		}
+	}
 
-	return offer, true
+	return offer, needToSend
 }
 
 func (ro *referenceOffer) getScope() int {

@@ -17,7 +17,7 @@ type message struct {
 	Destination uuid.UUID
 	Text        string
 	// TODO: other things that can be in a message, like a reference to an image, audio, video, or file attachment
-	DeliveredTo string `msgpack:"-"` // Comma-separated list of addresses that have acked this message
+	DeliveredTo string `msgpack:"-"` // Comma-separated list of addresses that have acked this message.  TODO: make an actual relation to the devices?
 	payload     []byte
 }
 

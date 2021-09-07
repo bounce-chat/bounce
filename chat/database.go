@@ -29,7 +29,10 @@ func (bounce *Bounce) openDatabase() {
 		&profileExport{},
 		&introductionSignature{},
 		&DirectMessage{}, // TODO: still need to decide if we'll export a simplified one for the UI
+		&referenceOffer{},
 	)
+
+	// TODO: prune old reference offers
 }
 
 func (bounce *Bounce) buildInitialState() InitialState {

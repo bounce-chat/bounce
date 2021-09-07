@@ -46,21 +46,26 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 	var dm DirectMessage
 	err := msgpack.Unmarshal(payload, &dm)
 	if err != nil {
-		log.Error("error unmarshalling direct message")
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling direct message")
 		return
 	}
 
-	// check if we already got this message, if so all we need to do is mark that it has been delivered to this device already
 	// ensure that the source of the message lines up with the peer address
-	// put it in the database (also saving that it was delivered to this peer and the sender)
+	// check if we already got this message, if so all we need to do is mark that it has been delivered to this device already
+
+	dm.DeliveredTo = peer
 	err = bounce.database.Create(&dm).Error // TODO: make sure to include that is was delivered to the device that sent it before saving
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error saving incoming direct message")
 	}
+
 	// send an ack to the sender that we got it
-	// gossip it, or references to it, as needed
+	// gossip it as needed, or references to it (if it's a small group and we're pretty sure that this peer is connected to everyone else, decide that here or automatically in the broadcast function?)
+
 	bounce.userInterface.ReceivedDirectMessage(dm)
 }
 
@@ -68,8 +73,24 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 	var ro referenceOffer
 	err := msgpack.Unmarshal(payload, &ro)
 	if err != nil {
-		log.Error("error unmarshalling reference offer")
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling reference offer")
 		return
 	}
+	// Prep a reference request in response to this offer.
+	// for each thing in the offer, if we already have it, make sure to mark that this device has it as well
+	// if we don't have it, put in the reference request
+	// broadcast the reference request back to this device
 	fmt.Printf("%+v\n", ro)
+}
+
+func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
+	// look up the offer by ID
+	// anything that isn't in this request, but that was in the offer, we can assume the device already has
+	// for the rest of the messages, look them up, and broadcast them at this specific device
+}
+
+func (bounce *Bounce) handleAck(peer string, payload []byte) {
+	// for each thing being acked, update in the database that it was delivered to this peer
 }

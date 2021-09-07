@@ -58,7 +58,7 @@ type contactImported struct {
 // A group message is wrapped in a signed object because it can come from devices that are not owned by the author
 //
 
-type signedGroupMessage struct {
+type signedGroupMessage struct { // TODO: can the behavior of this be "merged" into the regular struct?  such that calling the broadcastable functions on that struct transparently does the signed ones?
 	Message     []byte
 	Signature   []byte
 	payload     []byte
