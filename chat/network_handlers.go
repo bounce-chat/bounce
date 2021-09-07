@@ -3,15 +3,19 @@ package chat
 import (
 	"fmt"
 	"net"
+	"strings"
 
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
+	"gorm.io/gorm"
 )
 
 func (bounce *Bounce) getHandlers() map[uint16]func(string, []byte) {
 	return map[uint16]func(string, []byte){
-		TYPE_DIRECT_MESSAGE:  bounce.handleDirectMessage,
-		TYPE_REFERENCE_OFFER: bounce.handleReferenceOffer,
+		TYPE_DIRECT_MESSAGE:    bounce.handleDirectMessage,
+		TYPE_REFERENCE_OFFER:   bounce.handleReferenceOffer,
+		TYPE_REFERENCE_REQUEST: bounce.handleReferenceRequest,
 	}
 }
 
@@ -78,17 +82,67 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 		}).Error("error unmarshalling reference offer")
 		return
 	}
-	// Prep a reference request in response to this offer.
-	// for each thing in the offer, if we already have it, make sure to mark that this device has it as well
-	// if we don't have it, put in the reference request
-	// broadcast the reference request back to this device
-	fmt.Printf("%+v\n", ro)
+
+	var srcDevice device
+	res := bounce.database.Model(&device{}).Where("address = ?", peer).First(&srcDevice)
+	if res.Error != nil {
+		log.WithFields(log.Fields{
+			"error": res.Error.Error(),
+			"peer":  peer,
+		}).Info("error loading device for reference offer handling")
+	}
+
+	response := &referenceRequest{
+		ID:          ro.ID,
+		destination: srcDevice.ID,
+	}
+
+	requestedDMs := []string{}
+	for _, dmIDString := range strings.Split(ro.DirectMessages, ",") {
+		dmID, err := uuid.FromBytes([]byte(dmIDString))
+		if err != nil {
+			// TODO: report the invalid ID
+			continue
+		}
+		var dm DirectMessage
+		err = bounce.database.First(&dm, dmID).Error
+		if err == gorm.ErrRecordNotFound {
+			requestedDMs = append(requestedDMs, dmID.String())
+		} else if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error getting message from database")
+			continue
+		} else {
+			// we already have it, make sure we now know that they have it as well by updating our record of where it was delivered
+		}
+	}
+
+	for i, dm := range requestedDMs {
+		if i != 0 {
+			response.DirectMessages = response.DirectMessages + ","
+		}
+		response.DirectMessages = response.DirectMessages + dm
+	}
+
+	bounce.broadcast(response)
 }
 
 func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
+	var rr referenceRequest
+	err := msgpack.Unmarshal(payload, &rr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling reference request")
+		return
+	}
+	fmt.Printf("%+v\n", rr)
+
 	// look up the offer by ID
 	// anything that isn't in this request, but that was in the offer, we can assume the device already has
-	// for the rest of the messages, look them up, and broadcast them at this specific device
+	// for the rest of the messages, look them up, and broadcast them at this specific device in time order (assuming they are authorized to get them)
+	// delete our offer record that generated this request
 }
 
 func (bounce *Bounce) handleAck(peer string, payload []byte) {

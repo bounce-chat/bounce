@@ -16,6 +16,7 @@ var DEVICE_SCOPE = 4
 var TYPE_DIRECT_MESSAGE = uint16(0)
 var TYPE_GROUP_MESSAGE = uint16(1)
 var TYPE_REFERENCE_OFFER = uint16(2)
+var TYPE_REFERENCE_REQUEST = uint16(3)
 
 type broadcastable interface {
 	getScope() int
