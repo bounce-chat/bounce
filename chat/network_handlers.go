@@ -118,7 +118,25 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 		if count == 0 {
 			requestedDMs = append(requestedDMs, dmID.String())
 		} else {
-			// we already have it, make sure we now know that they have it as well by updating our record of where it was delivered
+			// We already have this message, but if we didn't already know they had it, we update our records
+			var dm DirectMessage
+			err = bounce.database.First(&dm, dmID).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error looking up known DM in reference offer")
+				continue
+			}
+			if !dm.isAlreadyDeliveredTo(peer) {
+				dm.DeliveredTo = dm.DeliveredTo + "," + peer
+				err = bounce.database.Save(dm).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":   err.Error(),
+						"message": dm.ID,
+					}).Error("error updating message during reference offer handling")
+				}
+			}
 		}
 	}
 

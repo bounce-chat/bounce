@@ -32,7 +32,7 @@ func (bounce *Bounce) openDatabase() {
 		&referenceOffer{},
 	)
 
-	// TODO: prune old reference offers
+	// TODO: prune old reference offers.  Better to kick off something that prunes everything old (messages, profile state changes, etc)?
 }
 
 func (bounce *Bounce) buildInitialState() InitialState {
