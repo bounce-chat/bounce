@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
-	"gorm.io/gorm"
 )
 
 func (bounce *Bounce) getHandlers() map[uint16]func(string, []byte) {
@@ -99,20 +98,25 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 
 	requestedDMs := []string{}
 	for _, dmIDString := range strings.Split(ro.DirectMessages, ",") {
-		dmID, err := uuid.FromBytes([]byte(dmIDString))
+		dmID, err := uuid.Parse(dmIDString)
 		if err != nil {
-			// TODO: report the invalid ID
+			log.WithFields(log.Fields{
+				"error":  err.Error(),
+				"string": dmIDString,
+			}).Error("invalid UUID in reference offer")
 			continue
 		}
-		var dm DirectMessage
-		err = bounce.database.First(&dm, dmID).Error
-		if err == gorm.ErrRecordNotFound {
-			requestedDMs = append(requestedDMs, dmID.String())
-		} else if err != nil {
+
+		var count int64
+		err = bounce.database.Model(&DirectMessage{}).Where("id = ?", dmID).Count(&count).Error
+		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Error("error getting message from database")
 			continue
+		}
+		if count == 0 {
+			requestedDMs = append(requestedDMs, dmID.String())
 		} else {
 			// we already have it, make sure we now know that they have it as well by updating our record of where it was delivered
 		}
