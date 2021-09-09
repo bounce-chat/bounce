@@ -209,9 +209,9 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 		}
 
 		if _, present := dmRequested[dmID]; present {
-			go func(dmCopy DirectMessage) {
-				rd.messages <- &dmCopy
-			}(dm) // TODO: needed?  better way to copy?  would prefer to do this sync not in routines
+			//go func(dmCopy DirectMessage) {
+			rd.messages <- &dm //Copy
+			//}(dm) // TODO: needed?  better way to copy?  would prefer to do this sync not in routines
 		} else {
 			bounce.markDeliveredTo(&dm, peer)
 		}
