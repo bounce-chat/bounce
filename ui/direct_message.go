@@ -163,9 +163,11 @@ func (fyneUI *Fyne) ReceivedDirectMessage(msg chat.DirectMessage) {
 		// TODO: fatal error?
 	}
 
+	isOutgoing := false
 	targetDM := msg.Source
 	if msg.Source == fyneUI.profile.id {
 		// We're learning about a DM we sent from another device
+		isOutgoing = true
 		targetDM = msg.Destination
 	}
 
@@ -192,7 +194,7 @@ func (fyneUI *Fyne) ReceivedDirectMessage(msg chat.DirectMessage) {
 
 	chatHistory.Objects = append(
 		chatHistory.Objects,
-		newChatBubble(user.name, msg.Text, false, time.Now().Unix(), nil), // TODO: user's name should be a binding.  Display the creation time too, if needed
+		newChatBubble(user.name, msg.Text, isOutgoing, time.Now().Unix(), nil), // TODO: user's name should be a binding.  Display the creation time too, if needed
 	)
 	chatHistory.Refresh()
 	dm.scroll.Refresh()
