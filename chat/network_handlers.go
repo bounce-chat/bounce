@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"fmt"
 	"net"
 	"strings"
 
@@ -128,14 +127,7 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 				continue
 			}
 			if !dm.isAlreadyDeliveredTo(peer) {
-				dm.DeliveredTo = dm.DeliveredTo + "," + peer
-				err = bounce.database.Save(dm).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error":   err.Error(),
-						"message": dm.ID,
-					}).Error("error updating message during reference offer handling")
-				}
+				bounce.markDeliveredTo(&dm, peer)
 			}
 		}
 	}
@@ -159,12 +151,73 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 		}).Error("error unmarshalling reference request")
 		return
 	}
-	fmt.Printf("%+v\n", rr)
 
-	// look up the offer by ID
-	// anything that isn't in this request, but that was in the offer, we can assume the device already has
-	// for the rest of the messages, look them up, and broadcast them at this specific device in time order (assuming they are authorized to get them)
-	// delete our offer record that generated this request
+	var originalOffer referenceOffer
+	err = bounce.database.First(&originalOffer, rr.ID).Error // TODO: store which device we gave this offer to as well to make sure they are the ones asking
+	if err != nil {
+		log.WithFields(log.Fields{
+			"peer":     peer,
+			"offer_id": rr.ID,
+		}).Error("peer sent a reference request for an offer not in the database")
+		return
+	}
+
+	var dev device
+	res := bounce.database.Model(&device{}).Where("address = ?", peer).First(&dev)
+	if res.Error != nil {
+		log.WithFields(log.Fields{
+			"error": res.Error.Error(),
+		}).Error("error loading device that sent reference request")
+		return
+	}
+
+	rd := bounce.getRemoteDevice(peer)
+
+	dmRequested := make(map[uuid.UUID]bool)
+	for _, dmIDString := range strings.Split(rr.DirectMessages, ",") {
+		dmID, err := uuid.Parse(dmIDString)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":  err.Error(),
+				"string": dmIDString,
+			}).Error("invalid UUID in reference offer generated locally")
+			continue
+		}
+		dmRequested[dmID] = true
+	}
+
+	for _, dmIDString := range strings.Split(originalOffer.DirectMessages, ",") {
+		dmID, err := uuid.Parse(dmIDString)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":  err.Error(),
+				"string": dmIDString,
+			}).Error("invalid UUID in reference offer generated locally")
+			continue
+		}
+
+		var dm DirectMessage
+		err = bounce.database.
+			//Where("destination = ?", dev.UserID).
+			//Or("source = ?", dev.UserID). // TODO: validate after the fact?  Database is preferred
+			Find(&dm, dmID).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("reference request asks for unknown DM")
+			continue
+		}
+
+		if _, present := dmRequested[dmID]; present {
+			go func(dmCopy DirectMessage) {
+				rd.messages <- &dmCopy
+			}(dm) // TODO: needed?  better way to copy?  would prefer to do this sync not in routines
+		} else {
+			bounce.markDeliveredTo(&dm, peer)
+		}
+	}
+
+	bounce.database.Delete(&originalOffer)
 }
 
 func (bounce *Bounce) handleAck(peer string, payload []byte) {

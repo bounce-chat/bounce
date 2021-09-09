@@ -49,21 +49,16 @@ func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, boo
 	// After a week, we give up trying to deliver messages to a device we haven't seen
 	aWeekAgo := time.Now().Add(-7 * 24 * time.Hour).Unix()
 
-	// All DMs we have sent to this user this week
-	var outgoingDMs []DirectMessage
-	err := bounce.database.Where("created_at >= ? AND destination = ?", aWeekAgo, dev.UserID).Find(&outgoingDMs).Error
+	// All DMs we have sent to or received from this user in the past week
+	var dms []DirectMessage
+	err := bounce.database.
+		Order("created_at asc").
+		Where("created_at >= ? AND destination = ?", aWeekAgo, dev.UserID).
+		Or("created_at >= ? AND source = ?", aWeekAgo, dev.UserID).
+		Find(&dms).Error
 	if err != nil {
 		// TODO: log and return
 	}
-
-	// All DMs this user has sent us this ween
-	var incomingDMs []DirectMessage
-	err = bounce.database.Where("created_at >= ? AND source = ?", aWeekAgo, dev.UserID).Find(&incomingDMs).Error
-	if err != nil {
-		// TODO: log and return
-	}
-
-	dms := append(outgoingDMs, incomingDMs...)
 
 	// for each dm, if it isn't delivered to this address, include it
 	for i, dm := range dms {

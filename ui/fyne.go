@@ -35,8 +35,8 @@ type Fyne struct {
 	groups                map[uuid.UUID]*group
 	dms                   map[uuid.UUID]*directMessage
 	activeThread          uuid.UUID
+	profile               *user
 	users                 *userStore
-	profileSet            bool
 	initialStateSet       bool
 	networkOnline         bool
 	callbacks             chat.UICallbacks
@@ -115,15 +115,14 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	// Refresh the state of the main view after the state is loaded
 	defer fyneUI.showMainContainer()
 
-	if !state.ProfileSet {
+	if state.Profile == nil {
 		// This is a brand new installation.  Tell the user interface it must have the
 		// user create a profile or sync this device to an existing device group before
 		// the app can be used.
-		fyneUI.profileSet = false
 		// TODO: log fatal if anything else is set
 		return
 	} else {
-		fyneUI.profileSet = true
+		fyneUI.profile = &user{id: state.Profile.ID, name: state.Profile.Name} // TODO: use the exported user concept in the UI?
 	}
 
 	for _, u := range state.Users {

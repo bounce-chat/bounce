@@ -36,11 +36,16 @@ func (bounce *Bounce) openDatabase() {
 }
 
 func (bounce *Bounce) buildInitialState() InitialState {
-	profileSet := false
+	var profile *User
 	var count int64
 	bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count > 0 {
-		profileSet = true
+		var dbProfile user
+		bounce.database.Model(&user{}).Where("profile = ?", true).First(&dbProfile) // TODO: error check, clean this up
+		profile = &User{
+			ID:   dbProfile.ID,
+			Name: dbProfile.Name,
+		}
 	}
 
 	users := []user{}
@@ -54,8 +59,8 @@ func (bounce *Bounce) buildInitialState() InitialState {
 	}
 
 	return InitialState{
-		ProfileSet: profileSet,
-		Users:      chatUsers,
+		Profile: profile,
+		Users:   chatUsers,
 	}
 }
 

@@ -52,11 +52,12 @@ type BounceUI interface {
 }
 
 type InitialState struct {
-	ProfileSet bool // *User
+	//ProfileSet bool // *User
+	Profile *User
 	//Devices  []Device
-	Users  []User
-	Groups []Group
-	//DirecMessages []Message
+	Users         []User
+	Groups        []Group
+	DirecMessages []DirectMessage
 	//GroupMessages []Message
 }
 
@@ -110,7 +111,7 @@ type RenameGroupCallback func(groupID uuid.UUID, newName string)
 type ChangeNotificationSettingsCallback func(groupID uuid.UUID, notificationEnabled bool)
 
 // Setup a new profile on a fresh install
-type SetProfileCallback func(profileName, deviceName string) error
+type SetProfileCallback func(profileName, deviceName string) (uuid.UUID, error)
 
 type ImportUserCallback func(user []byte) error
 

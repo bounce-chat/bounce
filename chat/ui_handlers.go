@@ -59,20 +59,22 @@ func (bounce *Bounce) changeNotificationSettings(threadID uuid.UUID, enabled boo
 	}).Info("UI wants to chnage notification settings")
 }
 
-func (bounce *Bounce) setProfile(profileName, deviceName string) error {
+func (bounce *Bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
+	newID := uuid.New()
+
 	address, err := bounce.network.Address()
 	if err != nil {
-		return err
+		return newID, err
 	}
 
 	var count int64
 	bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count > 0 {
-		return errors.New("profile already exists on this device")
+		return newID, errors.New("profile already exists on this device")
 	}
 
-	return bounce.database.Create(&user{
-		ID:      uuid.New(),
+	return newID, bounce.database.Create(&user{
+		ID:      newID,
 		Name:    profileName,
 		Profile: true,
 		Devices: []device{

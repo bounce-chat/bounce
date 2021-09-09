@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
 )
@@ -68,4 +69,22 @@ func (dm *DirectMessage) isAlreadyDeliveredTo(address string) bool {
 		}
 	}
 	return false
+}
+
+func (bounce *Bounce) markDeliveredTo(dm *DirectMessage, address string) {
+	if !dm.isAlreadyDeliveredTo(address) {
+		// TODO: don't add comma is it's empty. DRY
+		if len(dm.DeliveredTo) == 0 {
+			dm.DeliveredTo = dm.DeliveredTo + ","
+		}
+		dm.DeliveredTo = dm.DeliveredTo + address
+
+		err := bounce.database.Save(dm).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"message": dm.ID,
+			}).Error("error updating direct message delivery status")
+		}
+	}
 }

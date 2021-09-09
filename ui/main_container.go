@@ -23,7 +23,7 @@ func (fyneUI *Fyne) showMainContainer() {
 			fyneUI.mainWindow.SetMainMenu(nil)
 			fyneUI.mainWindow.SetContent(fyneUI.databaseLoading)
 			fyneUI.databaseLoading.Show()
-		} else if !fyneUI.profileSet {
+		} else if fyneUI.profile == nil {
 			// The chat engine has loaded into the UI but there's no profile
 			// on this device yet.  The user must make one.
 			fyneUI.mainWindow.SetMainMenu(nil)
@@ -176,12 +176,15 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 			dialog.ShowError(errors.New("Device name must be set"), fyneUI.mainWindow)
 			return
 		}
-		err := fyneUI.callbacks.SetProfile(profileNameEntry.Text, deviceNameEntry.Text) // TODO: send profile image bytes if set
+		id, err := fyneUI.callbacks.SetProfile(profileNameEntry.Text, deviceNameEntry.Text) // TODO: send profile image bytes if set
 		if err != nil {
 			dialog.ShowError(errors.New("Error saving profile: "+err.Error()), fyneUI.mainWindow)
 			return
 		}
-		fyneUI.profileSet = true
+		fyneUI.profile = &user{
+			id:   id,
+			name: profileNameEntry.Text,
+		}
 		fyneUI.showMainContainer()
 	})
 	saveButton.Importance = widget.HighImportance

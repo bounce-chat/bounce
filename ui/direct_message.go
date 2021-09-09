@@ -159,7 +159,17 @@ func (fyneUI *Fyne) ReceivedDirectMessage(msg chat.DirectMessage) {
 		return
 	}
 
-	dm, dmExists := fyneUI.dms[msg.Source]
+	if fyneUI.profile == nil {
+		// TODO: fatal error?
+	}
+
+	targetDM := msg.Source
+	if msg.Source == fyneUI.profile.id {
+		// We're learning about a DM we sent from another device
+		targetDM = msg.Destination
+	}
+
+	dm, dmExists := fyneUI.dms[targetDM]
 	if !dmExists {
 		fyneUI.NewDirectMessage(chat.User{
 			ID:   user.id,
