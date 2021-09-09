@@ -60,7 +60,7 @@ func (fyneUI *Fyne) refreshThreadOrder() {
 	fyneUI.threadVBox.Refresh()
 }
 
-func (fyneUI *Fyne) displaySentMessage(thread thread, message string) {
+func (fyneUI *Fyne) displaySentMessage(thread thread, message string) { // TODO: going to be able to get rid of this if using thread-specific message handlers for displaying outgoing and incoming?
 	chatHistory := thread.chatHistoryScroll().Content.(*fyne.Container)
 
 	chatHistory.Objects = append(chatHistory.Objects, newChatBubble("You", message, true, time.Now().Unix(), nil))
