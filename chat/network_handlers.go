@@ -153,13 +153,19 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 	}
 
 	var originalOffer referenceOffer
-	err = bounce.database.First(&originalOffer, rr.ID).Error // TODO: store which device we gave this offer to as well to make sure they are the ones asking
+	err = bounce.database.First(&originalOffer, rr.ID).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"peer":     peer,
 			"offer_id": rr.ID,
 		}).Error("peer sent a reference request for an offer not in the database")
 		return
+	}
+	if originalOffer.For != peer { // TODO: make this part of the database query, so nothing is found if it doesn't line up
+		log.WithFields(log.Fields{
+			"peer":  peer,
+			"offer": rr.ID,
+		}).Error("peer is asking for a known reference offer not intended for peer")
 	}
 
 	var dev device

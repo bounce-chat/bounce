@@ -16,6 +16,7 @@ import (
 type references struct {
 	_msgpack       struct{}  `msgpack:",omitempty"`
 	ID             uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
+	For            string    `msgpack:"-"`
 	DirectMessages string    // Comma-separated list of DM UUIDs
 	destination    uuid.UUID
 	payload        []byte
@@ -29,7 +30,8 @@ type referenceOffer references
 
 func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, bool) {
 	offer := &referenceOffer{
-		ID: uuid.New(),
+		ID:  uuid.New(),
+		For: address,
 	}
 
 	var dev device
