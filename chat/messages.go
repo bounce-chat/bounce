@@ -72,8 +72,7 @@ func (dm *DirectMessage) isAlreadyDeliveredTo(address string) bool {
 
 func (bounce *Bounce) markDeliveredTo(dm *DirectMessage, address string) {
 	if !dm.isAlreadyDeliveredTo(address) {
-		// TODO: don't add comma is it's empty. DRY
-		if len(dm.DeliveredTo) == 0 {
+		if len(dm.DeliveredTo) != 0 {
 			dm.DeliveredTo = dm.DeliveredTo + ","
 		}
 		dm.DeliveredTo = dm.DeliveredTo + address
