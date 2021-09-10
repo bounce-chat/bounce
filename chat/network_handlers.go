@@ -101,9 +101,8 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 			dmID, err := uuid.Parse(dmIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
-					"error":      err.Error(),
-					"string":     dmIDString,
-					"full_offer": ro.DirectMessages,
+					"error":  err.Error(),
+					"string": dmIDString,
 				}).Error("invalid UUID in reference offer")
 				continue
 			}
@@ -188,9 +187,8 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 			dmID, err := uuid.Parse(dmIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
-					"error":      err.Error(),
-					"string":     dmIDString,
-					"full_offer": rr.DirectMessages,
+					"error":  err.Error(),
+					"string": dmIDString,
 				}).Error("invalid UUID in reference request")
 				continue
 			}
@@ -203,9 +201,8 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 			dmID, err := uuid.Parse(dmIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
-					"error":      err.Error(),
-					"string":     dmIDString,
-					"full_offer": originalOffer.DirectMessages,
+					"error":  err.Error(),
+					"string": dmIDString,
 				}).Error("invalid UUID in reference offer generated locally")
 				continue
 			}
