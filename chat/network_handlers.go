@@ -96,38 +96,40 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 	}
 
 	requestedDMs := []string{}
-	for _, dmIDString := range strings.Split(ro.DirectMessages, ",") {
-		dmID, err := uuid.Parse(dmIDString)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":  err.Error(),
-				"string": dmIDString,
-			}).Error("invalid UUID in reference offer")
-			continue
-		}
+	if len(ro.DirectMessages) > 0 {
+		for _, dmIDString := range strings.Split(ro.DirectMessages, ",") {
+			dmID, err := uuid.Parse(dmIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": dmIDString,
+				}).Error("invalid UUID in reference offer")
+				continue
+			}
 
-		var count int64
-		err = bounce.database.Model(&DirectMessage{}).Where("id = ?", dmID).Count(&count).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error getting message from database")
-			continue
-		}
-		if count == 0 {
-			requestedDMs = append(requestedDMs, dmID.String())
-		} else {
-			// We already have this message, but if we didn't already know they had it, we update our records
-			var dm DirectMessage
-			err = bounce.database.First(&dm, dmID).Error
+			var count int64
+			err = bounce.database.Model(&DirectMessage{}).Where("id = ?", dmID).Count(&count).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Error("error looking up known DM in reference offer")
+				}).Error("error getting message from database")
 				continue
 			}
-			if !dm.isAlreadyDeliveredTo(peer) {
-				bounce.markDeliveredTo(&dm, peer)
+			if count == 0 {
+				requestedDMs = append(requestedDMs, dmID.String())
+			} else {
+				// We already have this message, but if we didn't already know they had it, we update our records
+				var dm DirectMessage
+				err = bounce.database.First(&dm, dmID).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error looking up known DM in reference offer")
+					continue
+				}
+				if !dm.isAlreadyDeliveredTo(peer) {
+					bounce.markDeliveredTo(&dm, peer)
+				}
 			}
 		}
 	}
@@ -180,47 +182,59 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 	rd := bounce.getRemoteDevice(peer)
 
 	dmRequested := make(map[uuid.UUID]bool)
-	for _, dmIDString := range strings.Split(rr.DirectMessages, ",") {
-		dmID, err := uuid.Parse(dmIDString)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":  err.Error(),
-				"string": dmIDString,
-			}).Error("invalid UUID in reference offer generated locally")
-			continue
+	if len(rr.DirectMessages) > 0 {
+		for _, dmIDString := range strings.Split(rr.DirectMessages, ",") {
+			dmID, err := uuid.Parse(dmIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": dmIDString,
+				}).Error("invalid UUID in reference offer generated locally")
+				continue
+			}
+			dmRequested[dmID] = true
 		}
-		dmRequested[dmID] = true
 	}
 
-	for _, dmIDString := range strings.Split(originalOffer.DirectMessages, ",") {
-		dmID, err := uuid.Parse(dmIDString)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":  err.Error(),
-				"string": dmIDString,
-			}).Error("invalid UUID in reference offer generated locally")
-			continue
-		}
+	if len(originalOffer.DirectMessages) > 0 {
+		for _, dmIDString := range strings.Split(originalOffer.DirectMessages, ",") {
+			dmID, err := uuid.Parse(dmIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": dmIDString,
+				}).Error("invalid UUID in reference offer generated locally")
+				continue
+			}
 
-		var dm DirectMessage
-		err = bounce.database.
-			//Where("destination = ?", dev.UserID).
-			//Or("source = ?", dev.UserID). // TODO: validate after the fact?  Database is preferred
-			Find(&dm, dmID).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("reference request asks for unknown DM")
-			continue
-		}
+			var dm DirectMessage
+			err = bounce.database.
+				//Where("destination = ?", dev.UserID).
+				//Or("source = ?", dev.UserID). // TODO: validate after the fact?  Database is preferred
+				Find(&dm, dmID).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("reference request asks for unknown DM")
+				continue
+			}
 
-		if _, present := dmRequested[dmID]; present {
-			//go func(dmCopy DirectMessage) {
-			rd.messages <- &dm //Copy
-			//}(dm) // TODO: needed?  better way to copy?  would prefer to do this sync not in routines
-		} else {
-			bounce.markDeliveredTo(&dm, peer)
+			if _, present := dmRequested[dmID]; present {
+				//go func(dmCopy DirectMessage) {
+				rd.messages <- &dm //Copy
+				//}(dm) // TODO: needed?  better way to copy?  would prefer to do this sync not in routines
+			} else {
+				bounce.markDeliveredTo(&dm, peer)
+			}
 		}
+	}
+
+	if len(rr.DirectMessages) > len(originalOffer.DirectMessages) {
+		log.WithFields(log.Fields{
+			"offer_length":   len(originalOffer.DirectMessages),
+			"request_length": len(rr.DirectMessages),
+		}).Error("reference request is requesting more direct messages than were offered")
+		// TODO: save the evidence for analysis?
 	}
 
 	bounce.database.Delete(&originalOffer)

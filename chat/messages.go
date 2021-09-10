@@ -13,6 +13,7 @@ import (
 type message struct {
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
 	CreatedAt   int64
+	ReceivedAt  int64
 	Read        bool `msgpack:"-"`
 	Source      uuid.UUID
 	Destination uuid.UUID
@@ -25,16 +26,14 @@ type message struct {
 type GroupMessage message
 
 func (groupMessage *GroupMessage) BeforeCreate(tx *gorm.DB) error {
-	groupMessage.ID = uuid.New()
-	groupMessage.CreatedAt = time.Now().Unix()
+	groupMessage.ReceivedAt = time.Now().Unix()
 	return nil
 }
 
 type DirectMessage message
 
 func (directMessage *DirectMessage) BeforeCreate(tx *gorm.DB) error {
-	directMessage.ID = uuid.New()
-	directMessage.CreatedAt = time.Now().Unix()
+	directMessage.ReceivedAt = time.Now().Unix()
 	return nil
 }
 

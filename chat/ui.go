@@ -96,7 +96,7 @@ type UICallbacks struct {
 }
 
 // The user wants to send a direct message
-type SendDirectMessageCallback func(*DirectMessage) // TODO: return an error?
+type SendDirectMessageCallback func(*DirectMessage) (uuid.UUID, error)
 
 // The user wants to send a group  message
 type SendGroupMessageCallback func(GroupMessage) // TODO: return an error?

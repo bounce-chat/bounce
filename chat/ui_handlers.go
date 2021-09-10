@@ -21,7 +21,9 @@ func (bounce *Bounce) sendGroupMessage(message GroupMessage) {
 	//}))
 }
 
-func (bounce *Bounce) sendDirectMessage(message *DirectMessage) {
+func (bounce *Bounce) sendDirectMessage(message *DirectMessage) (uuid.UUID, error) {
+	message.ID = uuid.New()
+	message.CreatedAt = time.Now().Unix()
 	message.Read = true
 	message.Source = bounce.currentUser().ID
 
@@ -30,12 +32,12 @@ func (bounce *Bounce) sendDirectMessage(message *DirectMessage) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error saving direct message to the database")
-		// TODO: return an error the UI so it knows it was never sent
-		return
+		return message.ID, err
 	}
 
 	bounce.broadcast(message)
-	// TODO: return the message's UUID so that chat engine can reference it to the UI later
+
+	return message.ID, nil
 }
 
 func (bounce *Bounce) addUserToGroup(threadID, userID uuid.UUID) {
