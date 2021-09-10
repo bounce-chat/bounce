@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -63,14 +64,13 @@ func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, boo
 	}
 
 	// for each dm, if it isn't delivered to this address, include it
-	for i, dm := range dms {
+	dmsToOffer := []string{}
+	for _, dm := range dms {
 		if !dm.isAlreadyDeliveredTo(address) {
-			if i != 0 {
-				offer.DirectMessages = offer.DirectMessages + ","
-			}
-			offer.DirectMessages = offer.DirectMessages + dm.ID.String()
+			dmsToOffer = append(dmsToOffer, dm.ID.String())
 		}
 	}
+	offer.DirectMessages = strings.Join(dmsToOffer, ",")
 
 	// TODO: some check so that if everything is empty we return false
 	needToSend := false
