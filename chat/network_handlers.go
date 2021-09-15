@@ -81,11 +81,6 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 		return
 	}
 
-	log.WithFields(log.Fields{
-		"peer":  peer,
-		"offer": ro.DirectMessages,
-	}).Info("peer offered the following DMs")
-
 	var srcDevice device
 	res := bounce.database.Model(&device{}).Where("address = ?", peer).First(&srcDevice)
 	if res.Error != nil {
@@ -158,11 +153,6 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 		}).Error("error unmarshalling reference request")
 		return
 	}
-
-	log.WithFields(log.Fields{
-		"peer":  peer,
-		"offer": rr.DirectMessages,
-	}).Info("peer requested the following DMs")
 
 	var originalOffer referenceOffer
 	err = bounce.database.First(&originalOffer, rr.ID).Error

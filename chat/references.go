@@ -60,7 +60,11 @@ func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, boo
 		Or("created_at >= ? AND source = ?", aWeekAgo, dev.UserID).
 		Find(&dms).Error
 	if err != nil {
-		// TODO: log and return
+		log.WithFields(log.Fields{
+			"peer":  address,
+			"error": err.Error(),
+		}).Error("error loading DMs for reference offer")
+		return offer, false
 	}
 
 	// for each dm, if it isn't delivered to this address, include it

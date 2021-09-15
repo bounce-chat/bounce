@@ -133,6 +133,7 @@ type remoteDevice struct {
 	connectedSockets int
 	messages         chan broadcastable
 	closer           sync.WaitGroup
+	lastError        int64
 }
 
 func newRemoteDevice() *remoteDevice {
@@ -165,20 +166,49 @@ func (bounce *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	if needed {
 		go bounce.broadcast(references)
 	}
+
+	/*
+		// Before writing any other frames down this socket, first deliver the reference offer.
+		// This is because we might have other sockets for this device that just died and
+		// we haven't detected that yet, we don't want the offer to get lost in one of those
+		// sockets.  TODO: rather than doing this, since this is going to be an issue all over the place,
+		// either have one dead socket reset all other sockets as well, or run references on a loop
+		//
+		// could have each reader store it's start time, and every time there's an error we kill all
+		// readers that were created before the error?
+		references, needed := bounce.getReferenceOfferFor(peerAddress)
+		if needed {
+			err := writeFrame(conn, references.getType(), references.getPayload())
+			if err != nil {
+				return
+			}
+		}
+
+		go bounce.writeFrames(rd, conn)
+	*/
+
 }
 
 func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
+	createdAt := time.Now().Unix()
 	rd.connectedSockets += 1
 	rd.closer.Add(1)
 	defer rd.closer.Done()
 
 	for b := range rd.messages {
+		if rd.lastError > createdAt {
+			// Another socket died after this one was created, and this one might be dead too.
+			// Write doesn't return an error until the socket has been dead for some time, so
+			// we're just going to assume this one is dead and let the newer sockets transport.
+			rd.messages <- b
+			rd.connectedSockets -= 1
+			return
+		}
 		err := writeFrame(conn, b.getType(), b.getPayload())
 		if err != nil {
 			rd.connectedSockets -= 1
-			// TODO: we should also test all the other sockets at this point.  Perhaps just write enough health
-			// checks into the channel so that each socket will try to send one?
-			// Also, automatically retry here?
+			rd.lastError = time.Now().Unix()
+			// TODO: automatically retry here?
 			// rd.messages <- b
 			return
 		}
