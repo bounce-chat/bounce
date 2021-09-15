@@ -61,6 +61,7 @@ func (dm *DirectMessage) getPayload() []byte {
 }
 
 func (dm *DirectMessage) isAlreadyDeliveredTo(address string) bool {
+	// TODO: reload from the database?
 	recipients := strings.Split(dm.DeliveredTo, ",")
 	for _, recipient := range recipients {
 		if address == recipient {

@@ -58,7 +58,7 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 	// check if we already got this message, if so all we need to do is mark that it has been delivered to this device already
 
 	dm.DeliveredTo = peer
-	err = bounce.database.Create(&dm).Error // TODO: make sure to include that is was delivered to the device that sent it before saving
+	err = bounce.database.Create(&dm).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -80,6 +80,11 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 		}).Error("error unmarshalling reference offer")
 		return
 	}
+
+	log.WithFields(log.Fields{
+		"peer":  peer,
+		"offer": ro.DirectMessages,
+	}).Info("peer offered the following DMs")
 
 	var srcDevice device
 	res := bounce.database.Model(&device{}).Where("address = ?", peer).First(&srcDevice)
@@ -154,6 +159,11 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 		return
 	}
 
+	log.WithFields(log.Fields{
+		"peer":  peer,
+		"offer": rr.DirectMessages,
+	}).Info("peer requested the following DMs")
+
 	var originalOffer referenceOffer
 	err = bounce.database.First(&originalOffer, rr.ID).Error
 	if err != nil {
@@ -220,9 +230,7 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 			}
 
 			if _, present := dmRequested[dmID]; present {
-				//go func(dmCopy DirectMessage) {
-				rd.messages <- &dm //Copy
-				//}(dm) // TODO: needed?  better way to copy?  would prefer to do this sync not in routines
+				rd.messages <- &dm
 			} else {
 				bounce.markDeliveredTo(&dm, peer)
 			}
