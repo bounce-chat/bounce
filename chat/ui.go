@@ -55,9 +55,9 @@ type InitialState struct {
 	//ProfileSet bool // *User
 	Profile *User
 	//Devices  []Device
-	Users         []User
-	Groups        []Group
-	DirecMessages []DirectMessage
+	Users          []User
+	Groups         []Group
+	DirectMessages []DirectMessage
 	//GroupMessages []Message
 }
 

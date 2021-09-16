@@ -55,7 +55,7 @@ func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, boo
 	// All DMs we have sent to or received from this user in the past week
 	var dms []DirectMessage
 	err := bounce.database.
-		Order("created_at asc").
+		Order("created_at asc"). // TODO: receieved at?
 		Where("created_at >= ? AND destination = ?", aWeekAgo, dev.UserID).
 		Or("created_at >= ? AND source = ?", aWeekAgo, dev.UserID).
 		Find(&dms).Error

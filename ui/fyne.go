@@ -131,9 +131,9 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	//for _, t := range state.Threads {
 	//	fyneUI.NewThread(t)
 	//}
-	//for _, m := range state.Messages {
-	//	fyneUI.ReceivedMessage(m) // TODO: except we don't want to mark them as unread (unless they are, I guess)
-	//}
+	for _, dm := range state.DirectMessages {
+		fyneUI.loadDirectMessage(dm, true, true) // TODO: need to handle what's read / unread
+	}
 }
 
 func (fyneUI *Fyne) NetworkOnline() {

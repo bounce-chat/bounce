@@ -58,9 +58,13 @@ func (bounce *Bounce) buildInitialState() InitialState {
 		})
 	}
 
+	dms := []DirectMessage{}
+	bounce.database.Order("received_at asc").Find(&dms) // TODO: error check
+
 	return InitialState{
-		Profile: profile,
-		Users:   chatUsers,
+		Profile:        profile,
+		Users:          chatUsers,
+		DirectMessages: dms,
 	}
 }
 

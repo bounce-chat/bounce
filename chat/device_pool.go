@@ -166,27 +166,6 @@ func (bounce *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	if needed {
 		go bounce.broadcast(references)
 	}
-
-	/*
-		// Before writing any other frames down this socket, first deliver the reference offer.
-		// This is because we might have other sockets for this device that just died and
-		// we haven't detected that yet, we don't want the offer to get lost in one of those
-		// sockets.  TODO: rather than doing this, since this is going to be an issue all over the place,
-		// either have one dead socket reset all other sockets as well, or run references on a loop
-		//
-		// could have each reader store it's start time, and every time there's an error we kill all
-		// readers that were created before the error?
-		references, needed := bounce.getReferenceOfferFor(peerAddress)
-		if needed {
-			err := writeFrame(conn, references.getType(), references.getPayload())
-			if err != nil {
-				return
-			}
-		}
-
-		go bounce.writeFrames(rd, conn)
-	*/
-
 }
 
 func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {

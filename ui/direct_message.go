@@ -151,6 +151,10 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 }
 
 func (fyneUI *Fyne) ReceivedDirectMessage(msg chat.DirectMessage) {
+	fyneUI.loadDirectMessage(msg, false, false)
+}
+
+func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hideNotification bool) {
 	user, userExists := fyneUI.users.get(msg.Source)
 	if !userExists {
 		log.WithFields(log.Fields{
@@ -208,8 +212,15 @@ func (fyneUI *Fyne) ReceivedDirectMessage(msg chat.DirectMessage) {
 		}
 	} else {
 		// This thread isn't active, mark the button as unread
-		dm.button.Importance = widget.HighImportance
-		dm.button.Refresh()
+		if !hideNotification {
+			dm.button.Importance = widget.HighImportance
+			dm.button.Refresh()
+		}
+	}
+
+	if overrideScroll {
+		dm.scroll.ScrollToBottom()
+		dm.scroll.Refresh()
 	}
 
 	dm.lastMessage = time.Now().Unix()
@@ -221,7 +232,7 @@ func (fyneUI *Fyne) ReceivedDirectMessage(msg chat.DirectMessage) {
 		log.Fatal("data bindings are broken")
 	}
 
-	if notificationsEnabled && !notificationsMuted && !autoscroll { //TODO: also notify if not focused?
+	if notificationsEnabled && !notificationsMuted && !autoscroll && !hideNotification { //TODO: also notify if not focused?
 		fyneUI.app.SendNotification(fyne.NewNotification(user.name, msg.Text))
 	}
 }
