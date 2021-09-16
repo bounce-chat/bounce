@@ -2,10 +2,14 @@ package chat
 
 import (
 	"errors"
+	"os"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"gorm.io/gorm/logger"
+
+	stdlog "log"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -14,8 +18,19 @@ import (
 func (bounce *Bounce) openDatabase() {
 	databaseFile := bounce.configDirectory + "/bounce.db"
 
+	gormLogger := logger.New(
+		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags), // TODO: https://gist.github.com/bnadland/2e4287b801a47dcfcc94
+		logger.Config{
+			//SlowThreshold:             time.Second,
+			LogLevel:                  logger.Error,
+			IgnoreRecordNotFoundError: true,
+		},
+	)
+
 	var err error
-	bounce.database, err = gorm.Open(sqlite.Open(databaseFile), &gorm.Config{})
+	bounce.database, err = gorm.Open(sqlite.Open(databaseFile), &gorm.Config{
+		Logger: gormLogger,
+	})
 	if err != nil {
 		log.WithFields(log.Fields{
 			"file":  databaseFile,
