@@ -26,7 +26,6 @@ func (bounce *Bounce) readFrames(conn net.Conn) { // TODO: move to device pool?
 	for {
 		frameType, data, err := readFrame(conn) // TODO: just read the header first, make sure we want to read the rest in the context of the device (untrusted devices can't send large messages, etc)
 		if err != nil {
-			// TODO: do I need to tell the larger device pool this connection is dead?
 			return
 		}
 		// TODO: some type of filtering on which types of peers can send which types of messages
@@ -116,6 +115,8 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 				continue
 			}
 			if count == 0 {
+				// TODO: want to make sure this can't be used to probe a devices for messages that it might already have from another chat,
+				// to test group membership if a chat message from another group is known
 				requestedDMs = append(requestedDMs, dmID.String())
 			} else {
 				// We already have this message, but if we didn't already know they had it, we update our records
@@ -155,19 +156,13 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 	}
 
 	var originalOffer referenceOffer
-	err = bounce.database.First(&originalOffer, rr.ID).Error
+	err = bounce.database.Where("id = ? AND for = ?", rr.ID, peer).First(&originalOffer).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"peer":     peer,
 			"offer_id": rr.ID,
 		}).Error("peer sent a reference request for an offer not in the database")
 		return
-	}
-	if originalOffer.For != peer { // TODO: make this part of the database query, so nothing is found if it doesn't line up
-		log.WithFields(log.Fields{
-			"peer":  peer,
-			"offer": rr.ID,
-		}).Error("peer is asking for a known reference offer not intended for peer")
 	}
 
 	var dev device
@@ -208,10 +203,7 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 			}
 
 			var dm DirectMessage
-			err = bounce.database.
-				//Where("destination = ?", dev.UserID).
-				//Or("source = ?", dev.UserID). // TODO: validate after the fact?  Database is preferred
-				Find(&dm, dmID).Error
+			err = bounce.database.Where("id = ? AND (source = ? OR destination = ?)", dmID, dev.UserID, dev.UserID).First(&dm).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -220,6 +212,8 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 			}
 
 			if _, present := dmRequested[dmID]; present {
+				// TODO: these come too out-of-order, better to chunk them into an ordered list and send as one message,
+				// unless we're going to do some inbound ordering
 				rd.messages <- &dm
 			} else {
 				bounce.markDeliveredTo(&dm, peer)

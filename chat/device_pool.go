@@ -179,8 +179,8 @@ func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 			// Another socket died after this one was created, and this one might be dead too.
 			// Write doesn't return an error until the socket has been dead for some time, so
 			// we're just going to assume this one is dead and let the newer sockets transport.
-			rd.messages <- b
 			rd.connectedSockets -= 1
+			rd.messages <- b
 			return
 		}
 		err := writeFrame(conn, b.getType(), b.getPayload())
