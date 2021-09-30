@@ -190,6 +190,9 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 		}).Error("peer sent a reference request for an offer not in the database")
 		return
 	}
+	bounce.devicePool.receivedAcksMutex.Lock()
+	bounce.devicePool.receivedAcks[rr.ID.String()] = true
+	bounce.devicePool.receivedAcksMutex.Unlock()
 
 	var dev device
 	res := bounce.database.Model(&device{}).Where("address = ?", peer).First(&dev)

@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
@@ -42,6 +44,39 @@ func (bounce *Bounce) broadcast(b broadcastable) {
 			dst <- msg
 		}(peer.messages, b)
 	}
+}
+
+// TODO: move this to references?
+// TODO: generalize this so arbitrary things are sent until there's an ack?
+//     what would that even include?  if something arises, do it
+func (bounce *Bounce) broadcastReferenceOffer(ro *referenceOffer) {
+	giveUpTime := time.Now().Add(5 * time.Minute)
+	for {
+		bounce.broadcast(ro)
+		time.Sleep(15 * time.Second)
+		bounce.devicePool.receivedAcksMutex.Lock()
+		_, ok := bounce.devicePool.receivedAcks[ro.ID.String()]
+		bounce.devicePool.receivedAcksMutex.Unlock()
+		if ok {
+			// we got the request, our offer was delivered
+			bounce.devicePool.receivedAcksMutex.Lock()
+			delete(bounce.devicePool.receivedAcks, ro.ID.String())
+			bounce.devicePool.receivedAcksMutex.Unlock()
+			return
+		}
+		if time.Now().After(giveUpTime) {
+			log.WithFields(log.Fields{
+				"id":          ro.ID,
+				"destination": ro.For,
+			}).Warn("gave up attempting to deliver reference offer")
+			return
+		}
+	}
+	// send the reference offer until it was acked by a reference request
+	// send the reference request request until it's ack by a ....?
+	//  we don't really need to do this, since if we fail to send the reference request then we'll get another offer soon
+	// send a catch-up struct until there's an ack?
+	//   perhaps offers with content are resent until the desired structs are provided?
 }
 
 //

@@ -50,7 +50,7 @@ func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, boo
 	offer.destination = dev.ID
 
 	// After a week, we give up trying to deliver messages to a device we haven't seen
-	aWeekAgo := time.Now().Add(-7 * 24 * time.Hour).Unix()
+	aWeekAgo := time.Now().Add(-7 * 24 * time.Hour).Unix() // TODO: also do a sane LIMIT?
 
 	// All DMs we have sent to or received from this user in the past week
 	var dms []DirectMessage
@@ -76,10 +76,12 @@ func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, boo
 	}
 	offer.DirectMessages = strings.Join(dmsToOffer, ",")
 
-	// TODO: some check so that if everything is empty we return false
 	needToSend := false
-	if len(offer.DirectMessages) > 0 {
+	if len(offer.DirectMessages) > 0 { // TODO: check everything else we're going to send in here
 		needToSend = true
+	}
+
+	if needToSend {
 		err := bounce.database.Create(offer).Error
 		if err != nil {
 			log.WithFields(log.Fields{

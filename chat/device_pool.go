@@ -12,7 +12,9 @@ import (
 
 type devicePool struct {
 	sync.Mutex
-	devices map[string]*remoteDevice
+	devices           map[string]*remoteDevice
+	receivedAcksMutex sync.Mutex
+	receivedAcks      map[string]bool
 }
 
 func (bounce *Bounce) peer() {
@@ -21,7 +23,8 @@ func (bounce *Bounce) peer() {
 	}
 
 	bounce.devicePool = &devicePool{
-		devices: make(map[string]*remoteDevice),
+		devices:      make(map[string]*remoteDevice),
+		receivedAcks: make(map[string]bool),
 	}
 
 	var allDevices []device
@@ -133,7 +136,6 @@ type remoteDevice struct {
 	connectedSockets int
 	messages         chan broadcastable
 	closer           sync.WaitGroup
-	lastError        int64
 }
 
 func newRemoteDevice() *remoteDevice {
@@ -164,31 +166,23 @@ func (bounce *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 
 	references, needed := bounce.getReferenceOfferFor(peerAddress)
 	if needed {
-		go bounce.broadcast(references)
+		go bounce.broadcastReferenceOffer(references)
 	}
 }
 
 func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
-	createdAt := time.Now().Unix()
 	rd.connectedSockets += 1
 	rd.closer.Add(1)
 	defer rd.closer.Done()
 
 	for b := range rd.messages {
-		if rd.lastError > createdAt {
-			// Another socket died after this one was created, and this one might be dead too.
-			// Write doesn't return an error until the socket has been dead for some time, so
-			// we're just going to assume this one is dead and let the newer sockets transport.
-			rd.connectedSockets -= 1
-			rd.messages <- b
-			return
-		}
 		err := writeFrame(conn, b.getType(), b.getPayload())
 		if err != nil {
 			rd.connectedSockets -= 1
-			rd.lastError = time.Now().Unix()
-			// TODO: automatically retry here?
-			// rd.messages <- b
+			references, needed := bounce.getReferenceOfferFor(conn.RemoteAddr().String())
+			if needed {
+				go bounce.broadcastReferenceOffer(references)
+			}
 			return
 		}
 	}
