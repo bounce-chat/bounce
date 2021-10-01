@@ -311,41 +311,45 @@ func (bounce *Bounce) handleAck(peer string, payload []byte) {
 		return
 	}
 
-	for _, dmIDString := range strings.Split(a.DirectMessages, ",") {
-		dmID, err := uuid.Parse(dmIDString)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":  err.Error(),
-				"string": dmIDString,
-			}).Error("invalid DM UUID in ack")
-			continue
-		}
+	if len(a.DirectMessages) > 0 {
+		for _, dmIDString := range strings.Split(a.DirectMessages, ",") {
+			dmID, err := uuid.Parse(dmIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": dmIDString,
+				}).Error("invalid DM UUID in ack")
+				continue
+			}
 
-		var dm DirectMessage
-		err = bounce.database.First(&dm, dmID).Error // TODO: confirm the device should be able to see this DM?
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-				"peer":  peer,
-			}).Error("ack of unknown DM from peer")
-			continue
-		}
-		bounce.markDeliveredTo(&dm, peer)
+			var dm DirectMessage
+			err = bounce.database.First(&dm, dmID).Error // TODO: confirm the device should be able to see this DM?
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"peer":  peer,
+				}).Error("ack of unknown DM from peer")
+				continue
+			}
+			bounce.markDeliveredTo(&dm, peer)
 
+		}
 	}
 
-	for _, catchUpIDString := range strings.Split(a.CatchUps, ",") {
-		catchUpID, err := uuid.Parse(catchUpIDString)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":  err.Error(),
-				"string": catchUpIDString,
-			}).Error("invalid catch up UUID in ack")
-			continue
-		}
+	if len(a.CatchUps) > 0 {
+		for _, catchUpIDString := range strings.Split(a.CatchUps, ",") {
+			catchUpID, err := uuid.Parse(catchUpIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": catchUpIDString,
+				}).Error("invalid catch up UUID in ack")
+				continue
+			}
 
-		bounce.devicePool.receivedAcksMutex.Lock()
-		bounce.devicePool.receivedAcks[catchUpID.String()] = true
-		bounce.devicePool.receivedAcksMutex.Unlock()
+			bounce.devicePool.receivedAcksMutex.Lock()
+			bounce.devicePool.receivedAcks[catchUpID.String()] = true
+			bounce.devicePool.receivedAcksMutex.Unlock()
+		}
 	}
 }
