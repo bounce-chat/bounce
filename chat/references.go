@@ -198,7 +198,29 @@ func (rr *referenceRequest) isAlreadyDeliveredTo(address string) bool {
 
 type ack references
 
-//	getScope() int
-//	getDestination() uuid.UUID
-//	getType() uint16
-//	getPayload() []byte
+func (a *ack) getScope() int {
+	return DEVICE_SCOPE
+}
+
+func (a *ack) getDestination() uuid.UUID {
+	return a.destination
+}
+
+func (a *ack) getType() uint16 {
+	return TYPE_ACK
+}
+
+func (a *ack) getPayload() []byte {
+	if len(a.payload) == 0 {
+		bytes, err := msgpack.Marshal(a)
+		if err != nil {
+			// TODO: how to handle?
+		}
+		a.payload = bytes
+	}
+	return a.payload
+}
+
+func (a *ack) isAlreadyDeliveredTo(address string) bool {
+	return false
+}

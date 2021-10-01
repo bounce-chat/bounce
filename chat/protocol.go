@@ -20,6 +20,7 @@ var TYPE_GROUP_MESSAGE = uint16(1)
 var TYPE_REFERENCE_OFFER = uint16(2)
 var TYPE_REFERENCE_REQUEST = uint16(3)
 var TYPE_CATCH_UP = uint16(4)
+var TYPE_ACK = uint16(5)
 
 type broadcastable interface {
 	getScope() int

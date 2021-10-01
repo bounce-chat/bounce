@@ -17,6 +17,7 @@ func (bounce *Bounce) getHandlers() map[uint16]func(string, []byte) {
 		TYPE_REFERENCE_OFFER:   bounce.handleReferenceOffer,
 		TYPE_REFERENCE_REQUEST: bounce.handleReferenceRequest,
 		TYPE_CATCH_UP:          bounce.handleCatchUp,
+		TYPE_ACK:               bounce.handleAck,
 	}
 }
 
@@ -92,6 +93,10 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 	}
 
 	// send an ack to the sender that we got it
+	go bounce.broadcast(&ack{
+		destination:    srcDevice.ID,
+		DirectMessages: dm.ID.String(),
+	})
 	// gossip it as needed, or references to it (if it's a small group and we're pretty sure that this peer is connected to everyone else, decide that here or automatically in the broadcast function?)
 
 	bounce.userInterface.ReceivedDirectMessage(dm)
@@ -237,7 +242,7 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 
 			var dm DirectMessage
 			err = bounce.database.Where("id = ? AND (source = ? OR destination = ?)", dmID, dev.UserID, dev.UserID).First(&dm).Error
-			if err != nil {
+			if err != nil { // TODO: ErrNotFound vs. actual DB error
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("reference request asks for unknown DM")
@@ -268,10 +273,6 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 	bounce.database.Delete(&originalOffer)
 }
 
-func (bounce *Bounce) handleAck(peer string, payload []byte) {
-	// for each thing being acked, update in the database that it was delivered to this peer
-}
-
 func (bounce *Bounce) handleCatchUp(peer string, payload []byte) {
 	var cu catchUp
 	err := msgpack.Unmarshal(payload, &cu)
@@ -282,9 +283,69 @@ func (bounce *Bounce) handleCatchUp(peer string, payload []byte) {
 		return
 	}
 
-	// ack it
+	var dev device
+	res := bounce.database.Model(&device{}).Where("address = ?", peer).First(&dev)
+	if res.Error != nil {
+		log.WithFields(log.Fields{
+			"error": res.Error.Error(),
+		}).Error("error loading device that sent catch up")
+		return
+	}
+	go bounce.broadcast(&ack{
+		destination: dev.ID,
+		CatchUps:    cu.ID.String(),
+	})
 
 	for _, dmPayload := range cu.DirectMessages {
 		bounce.handleDirectMessage(peer, dmPayload)
+	}
+}
+
+func (bounce *Bounce) handleAck(peer string, payload []byte) {
+	var a ack
+	err := msgpack.Unmarshal(payload, &a)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling ack")
+		return
+	}
+
+	for _, dmIDString := range strings.Split(a.DirectMessages, ",") {
+		dmID, err := uuid.Parse(dmIDString)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":  err.Error(),
+				"string": dmIDString,
+			}).Error("invalid DM UUID in ack")
+			continue
+		}
+
+		var dm DirectMessage
+		err = bounce.database.First(&dm, dmID).Error // TODO: confirm the device should be able to see this DM?
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"peer":  peer,
+			}).Error("ack of unknown DM from peer")
+			continue
+		}
+		bounce.markDeliveredTo(&dm, peer)
+
+	}
+
+	for _, catchUpIDString := range strings.Split(a.CatchUps, ",") {
+		catchUpID, err := uuid.Parse(catchUpIDString)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":  err.Error(),
+				"string": catchUpIDString,
+			}).Error("invalid catch up UUID in ack")
+			continue
+		}
+
+		bounce.devicePool.receivedAcksMutex.Lock()
+		bounce.devicePool.receivedAcks[catchUpID.String()] = true
+		bounce.devicePool.receivedAcksMutex.Unlock()
 	}
 }
