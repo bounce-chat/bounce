@@ -16,6 +16,7 @@ func (bounce *Bounce) getHandlers() map[uint16]func(string, []byte) {
 		TYPE_DIRECT_MESSAGE:    bounce.handleDirectMessage,
 		TYPE_REFERENCE_OFFER:   bounce.handleReferenceOffer,
 		TYPE_REFERENCE_REQUEST: bounce.handleReferenceRequest,
+		TYPE_CATCH_UP:          bounce.handleCatchUp,
 	}
 }
 
@@ -203,8 +204,6 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 		return
 	}
 
-	rd := bounce.getRemoteDevice(peer)
-
 	dmRequested := make(map[uuid.UUID]bool)
 	if len(rr.DirectMessages) > 0 {
 		for _, dmIDString := range strings.Split(rr.DirectMessages, ",") {
@@ -218,6 +217,11 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 			}
 			dmRequested[dmID] = true
 		}
+	}
+
+	catchUpResponse := &catchUp{
+		ID:          uuid.New(),
+		destination: originalOffer.destination,
 	}
 
 	if len(originalOffer.DirectMessages) > 0 {
@@ -237,17 +241,20 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("reference request asks for unknown DM")
+				// TODO: detect if any are legit but out of scope for security reasons?
 				continue
 			}
 
 			if _, present := dmRequested[dmID]; present {
-				// TODO: these come too out-of-order, better to chunk them into an ordered list and send as one message,
-				// unless we're going to do some inbound ordering
-				rd.messages <- &dm
+				catchUpResponse.DirectMessages = append(catchUpResponse.DirectMessages, dm.getPayload())
 			} else {
 				bounce.markDeliveredTo(&dm, peer)
 			}
 		}
+	}
+
+	if catchUpResponse.hasContent() {
+		bounce.broadcastCatchUp(catchUpResponse)
 	}
 
 	if len(rr.DirectMessages) > len(originalOffer.DirectMessages) {
@@ -263,4 +270,21 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 
 func (bounce *Bounce) handleAck(peer string, payload []byte) {
 	// for each thing being acked, update in the database that it was delivered to this peer
+}
+
+func (bounce *Bounce) handleCatchUp(peer string, payload []byte) {
+	var cu catchUp
+	err := msgpack.Unmarshal(payload, &cu)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling catch up")
+		return
+	}
+
+	// ack it
+
+	for _, dmPayload := range cu.DirectMessages {
+		bounce.handleDirectMessage(peer, dmPayload)
+	}
 }

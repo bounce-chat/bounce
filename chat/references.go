@@ -16,11 +16,55 @@ import (
 //
 type references struct {
 	_msgpack       struct{}  `msgpack:",omitempty"`
-	ID             uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
+	ID             uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"` // TODO: why did I omit json?
 	For            string    `msgpack:"-"`
 	DirectMessages string    // Comma-separated list of DM UUIDs
+	CatchUps       string
 	destination    uuid.UUID
 	payload        []byte
+}
+
+type catchUp struct {
+	_msgpack       struct{} `msgpack:",omitempty"`
+	ID             uuid.UUID
+	DirectMessages [][]byte
+	destination    uuid.UUID
+	payload        []byte
+}
+
+func (cu *catchUp) getScope() int {
+	return DEVICE_SCOPE
+}
+
+func (cu *catchUp) getDestination() uuid.UUID {
+	return cu.destination
+
+}
+
+func (cu *catchUp) getType() uint16 {
+	return TYPE_CATCH_UP
+}
+
+func (cu *catchUp) getPayload() []byte {
+	if len(cu.payload) == 0 {
+		bytes, err := msgpack.Marshal(cu)
+		if err != nil {
+			// TODO: how to handle?
+		}
+		cu.payload = bytes
+	}
+	return cu.payload
+}
+
+func (cu *catchUp) isAlreadyDeliveredTo(address string) bool {
+	return false
+}
+
+func (cu *catchUp) hasContent() bool {
+	if len(cu.DirectMessages) > 0 {
+		return true
+	}
+	return false
 }
 
 //
@@ -55,7 +99,7 @@ func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, boo
 	// All DMs we have sent to or received from this user in the past week
 	var dms []DirectMessage
 	err := bounce.database.
-		Order("created_at asc"). // TODO: receieved at?
+		Order("received_at asc").
 		Where("created_at >= ? AND destination = ?", aWeekAgo, dev.UserID).
 		Or("created_at >= ? AND source = ?", aWeekAgo, dev.UserID).
 		Find(&dms).Error

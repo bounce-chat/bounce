@@ -19,6 +19,7 @@ var TYPE_DIRECT_MESSAGE = uint16(0)
 var TYPE_GROUP_MESSAGE = uint16(1)
 var TYPE_REFERENCE_OFFER = uint16(2)
 var TYPE_REFERENCE_REQUEST = uint16(3)
+var TYPE_CATCH_UP = uint16(4)
 
 type broadcastable interface {
 	getScope() int
@@ -77,6 +78,32 @@ func (bounce *Bounce) broadcastReferenceOffer(ro *referenceOffer) {
 	//  we don't really need to do this, since if we fail to send the reference request then we'll get another offer soon
 	// send a catch-up struct until there's an ack?
 	//   perhaps offers with content are resent until the desired structs are provided?
+}
+
+// TODO: merge with the above?
+func (bounce *Bounce) broadcastCatchUp(cu *catchUp) {
+	giveUpTime := time.Now().Add(5 * time.Minute)
+	for {
+		bounce.broadcast(cu)
+		time.Sleep(30 * time.Second) // TODO: derive from message size?
+		bounce.devicePool.receivedAcksMutex.Lock()
+		_, ok := bounce.devicePool.receivedAcks[cu.ID.String()]
+		bounce.devicePool.receivedAcksMutex.Unlock()
+		if ok {
+			// we got the request, our offer was delivered
+			bounce.devicePool.receivedAcksMutex.Lock()
+			delete(bounce.devicePool.receivedAcks, cu.ID.String())
+			bounce.devicePool.receivedAcksMutex.Unlock()
+			return
+		}
+		if time.Now().After(giveUpTime) {
+			log.WithFields(log.Fields{
+				"id":          cu.ID,
+				"destination": cu.getDestination(),
+			}).Warn("gave up attempting to deliver catch up")
+			return
+		}
+	}
 }
 
 //
