@@ -221,7 +221,7 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 
 	catchUpResponse := &catchUp{
 		ID:          uuid.New(),
-		destination: originalOffer.destination,
+		destination: dev.ID,
 	}
 
 	if len(originalOffer.DirectMessages) > 0 {
