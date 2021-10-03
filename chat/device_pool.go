@@ -87,24 +87,30 @@ func (bounce *Bounce) connectToUsers() {
 	var allUsers []user
 	err := bounce.database.Preload(clause.Associations).Where("profile = ?", false).Find(&allUsers).Error
 	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error loading all non-profile users")
 	}
 
 	for _, u := range allUsers {
 		for _, dev := range u.Devices {
 			references := bounce.getReferenceOfferFor(dev.Address)
-			if references.hasContent() {
+			if references.hasContent() { // TODO: this should actually check for anything except group messages (if it's only group messages, we don't need to try to dial?)
 				go bounce.tryDialing(dev.Address)
 			}
 		}
 	}
 
-	// TODO: connect to any users that we've messaged in the last 3 days?
+	// TODO: connect to any users that we've messaged in the last 3 days?  if socket pressure allows?
 }
 
 func (bounce *Bounce) sendKeepAlives() {
-	for _, rd := range bounce.devicePool.devices {
+	for address, rd := range bounce.devicePool.devices {
 		if rd.connectedSockets != 0 {
-			//rd.messages <-keepAlive{} // TODO: build this broadcastable type
+			dev, ok := bounce.getDeviceFromAddress(address)
+			if ok {
+				rd.messages <- keepAlive{destination: dev.ID}
+			}
 		}
 	}
 }

@@ -5,7 +5,6 @@ import (
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 var SYNC_SCOPE = 0 // TODO: unexport these
@@ -21,6 +20,7 @@ var TYPE_REFERENCE_OFFER = uint16(2)
 var TYPE_REFERENCE_REQUEST = uint16(3)
 var TYPE_CATCH_UP = uint16(4)
 var TYPE_ACK = uint16(5)
+var TYPE_KEEP_ALIVE = uint16(6)
 
 type broadcastable interface {
 	getScope() int
@@ -107,6 +107,7 @@ func (bounce *Bounce) broadcastCatchUp(cu *catchUp) {
 	}
 }
 
+/*
 //
 // Below are all the types of messages that can be sent in bounce, expressed as implementations of the broadcastable interface
 //
@@ -160,3 +161,4 @@ func (sgm *signedGroupMessage) getType() uint16 {
 func (sgm *signedGroupMessage) getPayload() []byte {
 	return sgm.payload
 }
+*/

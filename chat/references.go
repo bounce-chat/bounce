@@ -19,7 +19,7 @@ type references struct {
 	ID             uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"` // TODO: why did I omit json?
 	For            string    `msgpack:"-"`
 	DirectMessages string    // Comma-separated list of DM UUIDs
-	CatchUps       string    // for ack-ing catch ups to ensure delivery.  TODO: maybe not what we stick with.
+	CatchUps       string    // for ack-ing catch ups to ensure delivery.  TODO: maybe not what we stick with, maybe break acks out of references
 	destination    uuid.UUID
 	payload        []byte
 }
@@ -93,16 +93,9 @@ func (bounce *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 		For: address,
 	}
 
-	var dev device
-	res := bounce.database.Model(&device{}).Where("address = ?", address).First(&dev)
-	if res.Error != nil {
-		log.WithFields(log.Fields{
-			"error": res.Error.Error(),
-		}).Error("error loading device for incoming connection") // TODO: make sure we don't error with every unknown device
-		return offer
-	}
-	if res.RowsAffected == 0 {
-		// Not a device we know about in the database, no references to offer
+	dev, ok := bounce.getDeviceFromAddress(address)
+	if !ok {
+		// TODO: some kind of error?
 		return offer
 	}
 	offer.destination = dev.ID
@@ -151,6 +144,7 @@ func (ro *referenceOffer) getScope() int {
 }
 
 func (ro *referenceOffer) getDestination() uuid.UUID {
+	// TODO: derive from ro.For?
 	return ro.destination
 }
 
@@ -183,6 +177,7 @@ func (rr *referenceRequest) getScope() int {
 }
 
 func (rr *referenceRequest) getDestination() uuid.UUID {
+	// TODO: derive from rr.For?
 	return rr.destination
 }
 

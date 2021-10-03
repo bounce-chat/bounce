@@ -18,6 +18,7 @@ func (bounce *Bounce) getHandlers() map[uint16]func(string, []byte) {
 		TYPE_REFERENCE_REQUEST: bounce.handleReferenceRequest,
 		TYPE_CATCH_UP:          bounce.handleCatchUp,
 		TYPE_ACK:               bounce.handleAck,
+		TYPE_KEEP_ALIVE:        bounce.handleKeepAlive,
 	}
 }
 
@@ -92,14 +93,15 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 		}).Error("error saving incoming direct message")
 	}
 
-	// send an ack to the sender that we got it
+	// Send the message to the user interface
+	bounce.userInterface.ReceivedDirectMessage(dm)
+
+	// Send an ack to the sender that we got it
 	go bounce.broadcast(&ack{
 		destination:    srcDevice.ID,
 		DirectMessages: dm.ID.String(),
 	})
 	// gossip it as needed, or references to it (if it's a small group and we're pretty sure that this peer is connected to everyone else, decide that here or automatically in the broadcast function?)
-
-	bounce.userInterface.ReceivedDirectMessage(dm)
 }
 
 func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
