@@ -19,7 +19,7 @@ type references struct {
 	ID             uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"` // TODO: why did I omit json?
 	For            string    `msgpack:"-"`
 	DirectMessages string    // Comma-separated list of DM UUIDs
-	CatchUps       string
+	CatchUps       string    // for ack-ing catch ups to ensure delivery.  TODO: maybe not what we stick with.
 	destination    uuid.UUID
 	payload        []byte
 }
@@ -73,7 +73,21 @@ func (cu *catchUp) hasContent() bool {
 //
 type referenceOffer references
 
-func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, bool) {
+func (bounce *Bounce) sendReferences(peerAddress string) {
+	references := bounce.getReferenceOfferFor(peerAddress)
+	if references.hasContent() {
+		err := bounce.database.Create(references).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error saving referenceOffer")
+		} else {
+			go bounce.broadcastReferenceOffer(references)
+		}
+	}
+}
+
+func (bounce *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	offer := &referenceOffer{
 		ID:  uuid.New(),
 		For: address,
@@ -85,11 +99,11 @@ func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, boo
 		log.WithFields(log.Fields{
 			"error": res.Error.Error(),
 		}).Error("error loading device for incoming connection") // TODO: make sure we don't error with every unknown device
-		return offer, false
+		return offer
 	}
 	if res.RowsAffected == 0 {
 		// Not a device we know about in the database, no references to offer
-		return offer, false
+		return offer
 	}
 	offer.destination = dev.ID
 
@@ -99,42 +113,37 @@ func (bounce *Bounce) getReferenceOfferFor(address string) (*referenceOffer, boo
 	// All DMs we have sent to or received from this user in the past week
 	var dms []DirectMessage
 	err := bounce.database.
-		Order("received_at asc").
-		Where("created_at >= ? AND destination = ?", aWeekAgo, dev.UserID).
-		Or("created_at >= ? AND source = ?", aWeekAgo, dev.UserID).
-		Find(&dms).Error
+		Where(
+			"created_at >= ? AND (destination = ? OR source = ?) AND delivered_to NOT LIKE ?",
+			aWeekAgo,
+			dev.UserID,
+			dev.UserID,
+			"%"+address+"%",
+		).Find(&dms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"peer":  address,
 			"error": err.Error(),
 		}).Error("error loading DMs for reference offer")
-		return offer, false
+		return offer
 	}
 
-	// for each dm, if it isn't delivered to this address, include it
+	// Collect IDs from the DMs
 	dmsToOffer := []string{}
 	for _, dm := range dms {
-		if !dm.isAlreadyDeliveredTo(address) {
-			dmsToOffer = append(dmsToOffer, dm.ID.String())
-		}
+		dmsToOffer = append(dmsToOffer, dm.ID.String())
 	}
 	offer.DirectMessages = strings.Join(dmsToOffer, ",")
 
-	needToSend := false
-	if len(offer.DirectMessages) > 0 { // TODO: check everything else we're going to send in here
-		needToSend = true
-	}
+	return offer
+}
 
-	if needToSend {
-		err := bounce.database.Create(offer).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error saving referenceOffer")
-		}
+func (ro *referenceOffer) hasContent() bool {
+	if len(ro.DirectMessages) > 0 {
+		return true
 	}
-
-	return offer, needToSend
+	// TODO: check for any future referenced content
+	return false
 }
 
 func (ro *referenceOffer) getScope() int {

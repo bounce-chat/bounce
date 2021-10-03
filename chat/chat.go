@@ -3,6 +3,7 @@ package chat
 import (
 	"os"
 	"os/signal"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
@@ -25,6 +26,11 @@ func Start(network BounceNetwork, ui BounceUI) {
 		configDirectory: getConfigDirectory(),
 		userInterface:   ui,
 		network:         network,
+		devicePool: &devicePool{
+			devices:      make(map[string]*remoteDevice),
+			receivedAcks: make(map[string]bool),
+			lastDial:     make(map[string]time.Time),
+		},
 	}
 	go bounce.handleInterrupts()
 	bounce.openDatabase()
@@ -52,8 +58,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 	// but with a very large database it would be nice to see the window open while it's loading.
 	go bounce.userInterface.LoadInitialState(bounce.buildInitialState())
 
-	go bounce.runNetwork() // TODO: just disabled for now for UI prototyping
-	//go simulate(ui) // TODO: delete this, just for testing interactions during prototyping
+	go bounce.runNetwork()
 
 	// Run the UI and block
 	bounce.userInterface.Run()
@@ -87,7 +92,7 @@ func (bounce *Bounce) runNetwork() {
 		var count int64
 		bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 		if count > 0 {
-			bounce.peer()
+			go bounce.peer()
 		}
 	}
 

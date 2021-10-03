@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const dialCooldown = time.Duration(5 * time.Minute)
+const dialCooldown = time.Duration(5 * time.Minute) // TODO: should this be much larger?
 
 type devicePool struct {
 	deviceMutex       sync.Mutex
@@ -41,35 +41,6 @@ func (dp *devicePool) setLastDial(address string, t time.Time) {
 }
 
 func (bounce *Bounce) peer() {
-	if bounce.devicePool != nil {
-		log.Fatal("attempted to start device pool after it has already been started")
-	}
-
-	bounce.devicePool = &devicePool{
-		devices:      make(map[string]*remoteDevice),
-		receivedAcks: make(map[string]bool),
-		lastDial:     make(map[string]time.Time),
-	}
-
-	var allDevices []device
-	err := bounce.database.Find(&allDevices).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error loading all devices from the database")
-	}
-
-	for _, dev := range allDevices { // TODO: is there really a reason to build these all upfront?
-		if dev.Address == bounce.currentDevice().Address {
-			continue
-		}
-		bounce.devicePool.devices[dev.Address] = newRemoteDevice()
-	}
-
-	go bounce.maintainPeers()
-}
-
-func (bounce *Bounce) maintainPeers() {
 	// TODO: figure out the right way to close this down during shutdown
 	bounce.auditPeers()
 	ticker := time.NewTicker(30 * time.Second)
@@ -82,20 +53,14 @@ func (bounce *Bounce) auditPeers() {
 	// Always try to keep a socket open to every sync device
 	go bounce.connectToSyncDevices()
 
-	// always try to maintain connection to groups that are recently communicated with
-	// always try to maintain connection to users that are recently communicated with
-	// dial anyone we've got pending messages for (users or groups where 0 devices have gotten a message, perhaps part of calculating the above two)
-	// connect to anyone asked by the UI
+	// Connect to any groups we have pending messages for or who we talk to frequently
+	go bounce.connectToGroups()
+
+	// Connect to any users we have pending messages for or who we talk to frequently
+	go bounce.connectToUsers()
 
 	// Send keep alive packets to each device that appears to have an open socket
 	go bounce.sendKeepAlives()
-
-	// TODO: just for now, let's dial every device we know about if it doesn't have a connection
-	for address, rd := range bounce.devicePool.devices {
-		if address != bounce.currentDevice().Address && rd.connectedSockets == 0 {
-			go bounce.tryDialing(address)
-		}
-	}
 }
 
 func (bounce *Bounce) connectToSyncDevices() {
@@ -111,6 +76,29 @@ func (bounce *Bounce) connectToSyncDevices() {
 			}
 		}
 	}
+}
+
+func (bounce *Bounce) connectToGroups() {
+	// TODO
+}
+
+func (bounce *Bounce) connectToUsers() {
+	// First, ensure that we try to contact any user device we have direct messages for
+	var allUsers []user
+	err := bounce.database.Preload(clause.Associations).Where("profile = ?", false).Find(&allUsers).Error
+	if err != nil {
+	}
+
+	for _, u := range allUsers {
+		for _, dev := range u.Devices {
+			references := bounce.getReferenceOfferFor(dev.Address)
+			if references.hasContent() {
+				go bounce.tryDialing(dev.Address)
+			}
+		}
+	}
+
+	// TODO: connect to any users that we've messaged in the last 3 days?
 }
 
 func (bounce *Bounce) sendKeepAlives() {
@@ -216,10 +204,7 @@ func (bounce *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	go bounce.readFrames(conn)
 	go bounce.writeFrames(rd, conn)
 
-	references, needed := bounce.getReferenceOfferFor(peerAddress)
-	if needed {
-		go bounce.broadcastReferenceOffer(references)
-	}
+	bounce.sendReferences(peerAddress)
 }
 
 func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
@@ -232,10 +217,7 @@ func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 		if err != nil {
 			rd.connectedSockets -= 1
 			// TODO: if we now have 0 connections, let the UI know the user is offline
-			references, needed := bounce.getReferenceOfferFor(conn.RemoteAddr().String())
-			if needed {
-				go bounce.broadcastReferenceOffer(references)
-			}
+			bounce.sendReferences(conn.RemoteAddr().String())
 			return
 		}
 	}
