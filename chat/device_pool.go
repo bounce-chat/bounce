@@ -10,11 +10,34 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const dialCooldown = time.Duration(5 * time.Minute)
+
 type devicePool struct {
-	sync.Mutex
+	deviceMutex       sync.Mutex
 	devices           map[string]*remoteDevice
 	receivedAcksMutex sync.Mutex
 	receivedAcks      map[string]bool
+	lastDialMutex     sync.Mutex
+	lastDial          map[string]time.Time
+}
+
+func (dp *devicePool) getLastDial(address string) time.Time {
+	dp.lastDialMutex.Lock()
+	defer dp.lastDialMutex.Unlock()
+
+	t, ok := dp.lastDial[address]
+	if !ok {
+		t = time.Time{}
+		dp.lastDial[address] = t
+	}
+	return t
+}
+
+func (dp *devicePool) setLastDial(address string, t time.Time) {
+	dp.lastDialMutex.Lock()
+	defer dp.lastDialMutex.Unlock()
+
+	dp.lastDial[address] = t
 }
 
 func (bounce *Bounce) peer() {
@@ -25,6 +48,7 @@ func (bounce *Bounce) peer() {
 	bounce.devicePool = &devicePool{
 		devices:      make(map[string]*remoteDevice),
 		receivedAcks: make(map[string]bool),
+		lastDial:     make(map[string]time.Time),
 	}
 
 	var allDevices []device
@@ -35,7 +59,7 @@ func (bounce *Bounce) peer() {
 		}).Fatal("error loading all devices from the database")
 	}
 
-	for _, dev := range allDevices {
+	for _, dev := range allDevices { // TODO: is there really a reason to build these all upfront?
 		if dev.Address == bounce.currentDevice().Address {
 			continue
 		}
@@ -55,19 +79,46 @@ func (bounce *Bounce) maintainPeers() {
 }
 
 func (bounce *Bounce) auditPeers() {
+	// Always try to keep a socket open to every sync device
+	go bounce.connectToSyncDevices()
+
+	// always try to maintain connection to groups that are recently communicated with
+	// always try to maintain connection to users that are recently communicated with
+	// dial anyone we've got pending messages for (users or groups where 0 devices have gotten a message, perhaps part of calculating the above two)
+	// connect to anyone asked by the UI
+
+	// Send keep alive packets to each device that appears to have an open socket
+	go bounce.sendKeepAlives()
+
 	// TODO: just for now, let's dial every device we know about if it doesn't have a connection
 	for address, rd := range bounce.devicePool.devices {
 		if address != bounce.currentDevice().Address && rd.connectedSockets == 0 {
 			go bounce.tryDialing(address)
 		}
 	}
-	// always try to dial sync devices
-	// always try to maintain connection to groups that aren't dead
-	// always try to maintain connection to users that are recently communicated with
-	// dial anyone we've got pending messages for (in the database, or if the len of the messages channel >0 while the number of sockets is 0?)
-	// connect to anyone asked by the UI
-	// send keep-alive tests to each connected device
+}
 
+func (bounce *Bounce) connectToSyncDevices() {
+	for _, dev := range bounce.currentUser().Devices {
+		if dev.Address == bounce.currentDevice().Address {
+			continue
+		}
+		rd := bounce.getRemoteDevice(dev.Address)
+		if rd.connectedSockets == 0 {
+			lastDial := bounce.devicePool.getLastDial(dev.Address)
+			if time.Now().After(lastDial.Add(dialCooldown)) {
+				go bounce.tryDialing(dev.Address)
+			}
+		}
+	}
+}
+
+func (bounce *Bounce) sendKeepAlives() {
+	for _, rd := range bounce.devicePool.devices {
+		if rd.connectedSockets != 0 {
+			//rd.messages <-keepAlive{} // TODO: build this broadcastable type
+		}
+	}
 }
 
 func (bounce *Bounce) tryDialing(address string) {
@@ -84,6 +135,7 @@ func (bounce *Bounce) tryDialing(address string) {
 		log.WithFields(log.Fields{
 			"peer": address,
 		}).Info("dialed")
+		// TODO: callback to inform the UI that a user is online?  use a callback?
 		bounce.insertConnectionIntoDevicePool(conn)
 	}
 }
@@ -146,8 +198,8 @@ func newRemoteDevice() *remoteDevice {
 }
 
 func (bounce *Bounce) getRemoteDevice(address string) *remoteDevice {
-	bounce.devicePool.Lock()
-	defer bounce.devicePool.Unlock()
+	bounce.devicePool.deviceMutex.Lock()
+	defer bounce.devicePool.deviceMutex.Unlock()
 
 	rd, ok := bounce.devicePool.devices[address]
 	if !ok {
@@ -179,6 +231,7 @@ func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 		err := writeFrame(conn, b.getType(), b.getPayload())
 		if err != nil {
 			rd.connectedSockets -= 1
+			// TODO: if we now have 0 connections, let the UI know the user is offline
 			references, needed := bounce.getReferenceOfferFor(conn.RemoteAddr().String())
 			if needed {
 				go bounce.broadcastReferenceOffer(references)

@@ -94,7 +94,7 @@ func (bounce *Bounce) currentUser() user {
 	return currentUser
 }
 
-func (bounce *Bounce) currentDevice() device {
+func (bounce *Bounce) currentDevice() device { // TODO: memoize?
 	currentAddress, err := bounce.network.Address()
 	if err != nil {
 		log.WithFields(log.Fields{
