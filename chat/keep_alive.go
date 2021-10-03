@@ -2,7 +2,6 @@ package chat
 
 import (
 	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 type keepAlive struct {
@@ -30,6 +29,5 @@ func (ka keepAlive) isAlreadyDeliveredTo(address string) bool {
 }
 
 func (bounce *Bounce) handleKeepAlive(peer string, payload []byte) {
-	log.Info("got a keep alive packet")
 	return
 }
