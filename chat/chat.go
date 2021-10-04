@@ -51,6 +51,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 			SetProfile:                 bounce.setProfile,
 			ImportUser:                 bounce.importUser,
 			ExportContact:              bounce.exportContact,
+			UserConnectionDesired:      bounce.userConnectionDesired,
 		},
 	)
 	// To make the user interface more responsive to open, we load the database in a goroutine

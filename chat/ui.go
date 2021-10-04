@@ -91,6 +91,7 @@ type UICallbacks struct {
 	SetProfile                 SetProfileCallback
 	ImportUser                 ImportUserCallback
 	ExportContact              ExportContactCallback
+	UserConnectionDesired      UserConnectionDesiredCallback
 	//Unimplemented:
 	//MessageRead()
 }
@@ -116,3 +117,6 @@ type SetProfileCallback func(profileName, deviceName string) (uuid.UUID, error)
 type ImportUserCallback func(user []byte) error
 
 type ExportContactCallback func(name string, expiration int64, oneTime bool) []byte
+
+// Tell the chat engine that some user interaction makes indicates a message might soon be sent to this user
+type UserConnectionDesiredCallback func(uuid.UUID)

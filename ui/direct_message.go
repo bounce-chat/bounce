@@ -133,9 +133,8 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 	dm.entryBar = container.NewMax(entry)
 
 	dm.button = widget.NewButtonWithIcon(user.name, userIcon, func() {
-		// TODO: tell the entine this is happening so that it can make sure
-		// there's a connection open
 		fyneUI.displayThread(dm)
+		fyneUI.callbacks.UserConnectionDesired(user.id)
 	})
 	dm.button.Importance = widget.LowImportance
 	dm.button.Alignment = widget.ButtonAlignLeading

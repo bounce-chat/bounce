@@ -6,11 +6,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-const dialCooldown = time.Duration(5 * time.Minute) // TODO: should this be much larger?
+const dialCooldown = time.Duration(5 * time.Minute) // TODO: should this be much larger?  Specific to the context?
 
 type devicePool struct {
 	deviceMutex       sync.Mutex
@@ -33,11 +35,11 @@ func (dp *devicePool) getLastDial(address string) time.Time {
 	return t
 }
 
-func (dp *devicePool) setLastDial(address string, t time.Time) {
+func (dp *devicePool) updateLastDial(address string) {
 	dp.lastDialMutex.Lock()
 	defer dp.lastDialMutex.Unlock()
 
-	dp.lastDial[address] = t
+	dp.lastDial[address] = time.Now()
 }
 
 func (bounce *Bounce) peer() {
@@ -83,7 +85,7 @@ func (bounce *Bounce) connectToGroups() {
 }
 
 func (bounce *Bounce) connectToUsers() {
-	// First, ensure that we try to contact any user device we have direct messages for
+	// First, ensure that we try to contact any user device we have messages for
 	var allUsers []user
 	err := bounce.database.Preload(clause.Associations).Where("profile = ?", false).Find(&allUsers).Error
 	if err != nil {
@@ -101,12 +103,31 @@ func (bounce *Bounce) connectToUsers() {
 		}
 	}
 
-	// TODO: connect to any users that we've messaged in the last 3 days?  if socket pressure allows?
+	// Connect to any users we have sent messages to in the last 3 days
+	// TODO: unless we're under socket pressure?  in which case order by most recent
+	var userIDs []uuid.UUID
+	err = bounce.database.Model(&DirectMessage{}).
+		Distinct("destination").
+		Where(
+			"source = ? and created_at > ?",
+			bounce.currentUser().ID,
+			time.Now().Add(-3*24*time.Hour).Unix(),
+		).Find(&userIDs).Error
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up users with recent direct messages")
+		}
+	}
+	for _, id := range userIDs {
+		bounce.userConnectionDesired(id)
+	}
 }
 
 func (bounce *Bounce) sendKeepAlives() {
 	for address, rd := range bounce.devicePool.devices {
-		if rd.connectedSockets != 0 {
+		if rd.connectedSockets > 0 {
 			dev, ok := bounce.getDeviceFromAddress(address)
 			if ok {
 				rd.messages <- keepAlive{destination: dev.ID}
@@ -115,7 +136,34 @@ func (bounce *Bounce) sendKeepAlives() {
 	}
 }
 
+func (bounce *Bounce) userConnectionDesired(id uuid.UUID) {
+	var u user
+	err := bounce.database.Preload(clause.Associations).First(&u, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": id,
+			}).Error("user not found for direct message")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up user")
+		}
+	}
+	for _, dev := range u.Devices {
+		if bounce.getRemoteDevice(dev.Address).connectedSockets == 0 { // TODO: we want 2 open if we're actively chatting though
+			lastDial := bounce.devicePool.getLastDial(dev.Address)
+			if time.Now().After(lastDial.Add(dialCooldown)) {
+				go bounce.tryDialing(dev.Address)
+			}
+		}
+	}
+
+}
+
 func (bounce *Bounce) tryDialing(address string) {
+	bounce.devicePool.updateLastDial(address)
 	log.WithFields(log.Fields{
 		"peer": address,
 	}).Info("attempting to dial")
