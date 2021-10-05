@@ -39,6 +39,7 @@ func newThreadEntry(maxRows int) *threadEntry {
 func (entry *threadEntry) MinSize() fyne.Size {
 	entry.sizingLabel.Text = entry.Text
 	entry.sizingLabel.Resize(entry.Size())
+	entry.sizingLabel.Refresh()
 
 	height := float32(0)
 	maxHeight := entry.maxHeightLabel.MinSize().Height
