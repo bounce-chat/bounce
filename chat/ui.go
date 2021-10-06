@@ -61,18 +61,18 @@ type InitialState struct {
 	//GroupMessages []Message
 }
 
-type User struct {
+type User struct { // TODO: replace with model?
 	ID    uuid.UUID
 	Name  string
 	Image []byte
 }
 
-type Introduction struct {
-	Introducer string
-	User       User
-}
+//type Introduction struct {
+//	Introducer string
+//	User       User
+//}
 
-type Group struct {
+type Group struct { // TODO: replace with model?
 	ID      uuid.UUID
 	Name    string
 	Image   []byte
@@ -83,40 +83,22 @@ type Group struct {
 // The chat engine will provide these callbacks to a user interface
 //
 type UICallbacks struct {
-	SendDirectMessage          SendDirectMessageCallback
-	SendGroupMessage           SendGroupMessageCallback
-	AddUserToGroup             AddUserToGroupCallback
-	RenameGroup                RenameGroupCallback
-	ChangeNotificationSettings ChangeNotificationSettingsCallback
-	SetProfile                 SetProfileCallback
-	ImportUser                 ImportUserCallback
-	ExportContact              ExportContactCallback
-	UserConnectionDesired      UserConnectionDesiredCallback
+	// The user wants to send a direct message.
+	SendDirectMessage func(*DirectMessage) (uuid.UUID, error)
+	// The user wants to send a group  message
+	SendGroupMessage func(GroupMessage) // TODO: return an error?
+	// The user wants to add another user to a group
+	AddUserToGroup func(groupID, userID uuid.UUID)
+	// The user wants to rename a group
+	RenameGroup func(groupID uuid.UUID, newName string)
+	// The user wants to change the notification settings for a group on all their devices
+	ChangeNotificationSettings func(groupID uuid.UUID, notificationEnabled bool)
+	// Setup a new profile on a fresh install
+	SetProfile    func(profileName, deviceName string) (uuid.UUID, error)
+	ImportUser    func(user []byte) error
+	ExportContact func(name string, expiration int64, oneTime bool) []byte
+	// Tell the chat engine that some user interaction makes indicates a message might soon be sent to this user
+	UserConnectionDesired func(uuid.UUID)
 	//Unimplemented:
 	//MessageRead()
 }
-
-// The user wants to send a direct message
-type SendDirectMessageCallback func(*DirectMessage) (uuid.UUID, error)
-
-// The user wants to send a group  message
-type SendGroupMessageCallback func(GroupMessage) // TODO: return an error?
-
-// The user wants to add another user to a group
-type AddUserToGroupCallback func(groupID, userID uuid.UUID)
-
-// The user wants to rename a group
-type RenameGroupCallback func(groupID uuid.UUID, newName string)
-
-// The user wants to change the notification settings for a group on all their devices
-type ChangeNotificationSettingsCallback func(groupID uuid.UUID, notificationEnabled bool)
-
-// Setup a new profile on a fresh install
-type SetProfileCallback func(profileName, deviceName string) (uuid.UUID, error)
-
-type ImportUserCallback func(user []byte) error
-
-type ExportContactCallback func(name string, expiration int64, oneTime bool) []byte
-
-// Tell the chat engine that some user interaction makes indicates a message might soon be sent to this user
-type UserConnectionDesiredCallback func(uuid.UUID)
