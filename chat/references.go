@@ -16,7 +16,7 @@ import (
 //
 type references struct {
 	_msgpack       struct{}  `msgpack:",omitempty"`
-	ID             uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"` // TODO: why did I omit json?
+	ID             uuid.UUID `gorm:"type:uuid;primary_key;"`
 	For            string    `msgpack:"-"`
 	DirectMessages string    // Comma-separated list of DM UUIDs
 	CatchUps       string    // for ack-ing catch ups to ensure delivery.  TODO: maybe not what we stick with, maybe break acks out of references
