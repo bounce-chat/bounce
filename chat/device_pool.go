@@ -182,50 +182,6 @@ func (bounce *Bounce) tryDialing(address string) {
 	}
 }
 
-func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error) {
-	scope := b.getScope()
-	destination := b.getDestination()
-	broadcastTargets := []*remoteDevice{}
-
-	if scope == USER_SCOPE { // TODO: break these out
-		var destinationUser user
-		result := bounce.database.Model(&user{}).Preload(clause.Associations).Find(&destinationUser, destination)
-		if result.Error != nil {
-			return broadcastTargets, result.Error
-		}
-		if result.RowsAffected == 0 {
-			return broadcastTargets, errors.New("no devices found belonging to destination user")
-		}
-		for _, dev := range destinationUser.Devices {
-			if b.isAlreadyDeliveredTo(dev.Address) {
-				continue
-			}
-			rd := bounce.getRemoteDevice(dev.Address)
-			if rd.connectedSockets > 0 {
-				broadcastTargets = append(broadcastTargets, rd)
-			}
-		}
-		// TODO: make sure to always add sync devices
-	} else if scope == DEVICE_SCOPE {
-		var target device
-		result := bounce.database.First(&target, b.getDestination())
-		if result.Error != nil {
-			return broadcastTargets, result.Error
-		}
-		if result.RowsAffected == 0 {
-			return broadcastTargets, errors.New("no device found in database for broadcastable message tageting device") // TODO: log the UUID
-		}
-		rd := bounce.getRemoteDevice(target.Address)
-		if rd.connectedSockets > 0 {
-			broadcastTargets = append(broadcastTargets, rd)
-		}
-	}
-
-	// TODO: err if no devices are online?
-
-	return broadcastTargets, nil
-}
-
 type remoteDevice struct {
 	connectedSockets int
 	messages         chan broadcastable
@@ -259,6 +215,32 @@ func (bounce *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	go bounce.writeFrames(rd, conn)
 
 	bounce.sendReferences(peerAddress)
+}
+
+func (bounce *Bounce) readFrames(conn net.Conn) { // TODO: move to protocol or something else?
+	handlers := bounce.getHandlers()
+	peer := conn.RemoteAddr().String()
+	// Get the peer address
+	// reject it if it isn't a known device?  Maybe don't want to if introductions / group membership is out of order
+	// If it isn't know perhaps we put it in some limited handshake flow for new devices
+	for {
+		frameType, data, err := readFrame(conn) // TODO: just read the header first, make sure we want to read the rest in the context of the device (untrusted devices can't send large messages, etc)
+		if err != nil {
+			return
+		}
+		// TODO: some type of filtering on which types of peers can send which types of messages
+		handler, ok := handlers[frameType]
+		if !ok {
+			log.WithFields(log.Fields{
+				"peer": peer,
+				"type": frameType,
+			}).Error("peer sent an unsupported frame type, disconnecting")
+			conn.Close()
+			return
+		} else {
+			go handler(peer, data)
+		}
+	}
 }
 
 func (bounce *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {

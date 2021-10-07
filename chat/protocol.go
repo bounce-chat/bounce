@@ -1,10 +1,11 @@
 package chat
 
 import (
-	"time"
+	"errors"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	"gorm.io/gorm/clause"
 )
 
 var SYNC_SCOPE = 0 // TODO: unexport these
@@ -30,6 +31,17 @@ type broadcastable interface {
 	isAlreadyDeliveredTo(address string) bool
 }
 
+func (bounce *Bounce) getHandlers() map[uint16]func(string, []byte) {
+	return map[uint16]func(string, []byte){
+		TYPE_DIRECT_MESSAGE:    bounce.handleDirectMessage,
+		TYPE_REFERENCE_OFFER:   bounce.handleReferenceOffer,
+		TYPE_REFERENCE_REQUEST: bounce.handleReferenceRequest,
+		TYPE_CATCH_UP:          bounce.handleCatchUp,
+		TYPE_ACK:               bounce.handleAck,
+		TYPE_KEEP_ALIVE:        bounce.handleKeepAlive,
+	}
+}
+
 func (bounce *Bounce) broadcast(b broadcastable) {
 	peerScope, err := bounce.getBroadcastScope(b)
 	if err != nil {
@@ -48,117 +60,46 @@ func (bounce *Bounce) broadcast(b broadcastable) {
 	}
 }
 
-// TODO: move this to references?
-// TODO: generalize this so arbitrary things are sent until there's an ack?
-//     what would that even include?  if something arises, do it
-func (bounce *Bounce) broadcastReferenceOffer(ro *referenceOffer) {
-	giveUpTime := time.Now().Add(5 * time.Minute)
-	for {
-		bounce.broadcast(ro)
-		time.Sleep(15 * time.Second)
-		bounce.devicePool.receivedAcksMutex.Lock()
-		_, ok := bounce.devicePool.receivedAcks[ro.ID.String()]
-		bounce.devicePool.receivedAcksMutex.Unlock()
-		if ok {
-			// we got the request, our offer was delivered
-			bounce.devicePool.receivedAcksMutex.Lock()
-			delete(bounce.devicePool.receivedAcks, ro.ID.String())
-			bounce.devicePool.receivedAcksMutex.Unlock()
-			return
-		}
-		if time.Now().After(giveUpTime) {
-			log.WithFields(log.Fields{
-				"id":          ro.ID,
-				"destination": ro.For,
-			}).Warn("gave up attempting to deliver reference offer")
-			return
-		}
-	}
-	// send the reference offer until it was acked by a reference request
-	// send the reference request request until it's ack by a ....?
-	//  we don't really need to do this, since if we fail to send the reference request then we'll get another offer soon
-	// send a catch-up struct until there's an ack?
-	//   perhaps offers with content are resent until the desired structs are provided?
-}
+func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error) {
+	scope := b.getScope()
+	destination := b.getDestination()
+	broadcastTargets := []*remoteDevice{}
 
-// TODO: merge with the above?
-func (bounce *Bounce) broadcastCatchUp(cu *catchUp) {
-	giveUpTime := time.Now().Add(5 * time.Minute)
-	for {
-		bounce.broadcast(cu)
-		time.Sleep(30 * time.Second) // TODO: derive from message size?
-		bounce.devicePool.receivedAcksMutex.Lock()
-		_, ok := bounce.devicePool.receivedAcks[cu.ID.String()]
-		bounce.devicePool.receivedAcksMutex.Unlock()
-		if ok {
-			// we got the request, our offer was delivered
-			bounce.devicePool.receivedAcksMutex.Lock()
-			delete(bounce.devicePool.receivedAcks, cu.ID.String())
-			bounce.devicePool.receivedAcksMutex.Unlock()
-			return
+	if scope == USER_SCOPE { // TODO: break these out
+		var destinationUser user
+		result := bounce.database.Model(&user{}).Preload(clause.Associations).Find(&destinationUser, destination)
+		if result.Error != nil {
+			return broadcastTargets, result.Error
 		}
-		if time.Now().After(giveUpTime) {
-			log.WithFields(log.Fields{
-				"id":          cu.ID,
-				"destination": cu.getDestination(),
-			}).Warn("gave up attempting to deliver catch up")
-			return
+		if result.RowsAffected == 0 {
+			return broadcastTargets, errors.New("no devices found belonging to destination user")
+		}
+		for _, dev := range destinationUser.Devices {
+			if b.isAlreadyDeliveredTo(dev.Address) {
+				continue
+			}
+			rd := bounce.getRemoteDevice(dev.Address)
+			if rd.connectedSockets > 0 {
+				broadcastTargets = append(broadcastTargets, rd)
+			}
+		}
+		// TODO: make sure to always add sync devices
+	} else if scope == DEVICE_SCOPE {
+		var target device
+		result := bounce.database.First(&target, b.getDestination())
+		if result.Error != nil {
+			return broadcastTargets, result.Error
+		}
+		if result.RowsAffected == 0 {
+			return broadcastTargets, errors.New("no device found in database for broadcastable message tageting device") // TODO: log the UUID
+		}
+		rd := bounce.getRemoteDevice(target.Address)
+		if rd.connectedSockets > 0 {
+			broadcastTargets = append(broadcastTargets, rd)
 		}
 	}
+
+	// TODO: err if no devices are online?
+
+	return broadcastTargets, nil
 }
-
-/*
-//
-// Below are all the types of messages that can be sent in bounce, expressed as implementations of the broadcastable interface
-//
-
-//
-// A message sent from user A to user B when user A imports user B's contact file.  User B will be promped to accept the invitation to connected in the
-// user interface, and if this is accepted will respond to user A's device group with TODO
-//
-type contactImported struct {
-}
-
-//
-// A group message is wrapped in a signed object because it can come from devices that are not owned by the author
-//
-
-type signedGroupMessage struct { // TODO: can the behavior of this be "merged" into the regular struct?  such that calling the broadcastable functions on that struct transparently does the signed ones?
-	Message     []byte
-	Signature   []byte
-	payload     []byte
-	destination uuid.UUID
-}
-
-func (bounce *Bounce) newSignedGroupMessage(message GroupMessage) *signedGroupMessage {
-	marshalledMessage, err := msgpack.Marshal(message)
-	if err != nil {
-		// TODO: how to handle?
-	}
-	signature := bounce.network.Sign(marshalledMessage) // TODO: just sign the SHA3 of the data for speed reasons
-
-	sgm := &signedGroupMessage{
-		Message:     marshalledMessage,
-		Signature:   signature,
-		destination: message.Destination,
-	}
-
-	return sgm
-}
-
-func (sgm *signedGroupMessage) getScope() int {
-	return GROUP_SCOPE
-}
-
-func (sgm *signedGroupMessage) getDestination() uuid.UUID {
-	return sgm.destination
-}
-
-func (sgm *signedGroupMessage) getType() uint16 {
-	return TYPE_GROUP_MESSAGE // TODO: after I figure out types
-}
-
-func (sgm *signedGroupMessage) getPayload() []byte {
-	return sgm.payload
-}
-*/
