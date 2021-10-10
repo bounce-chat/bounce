@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -43,16 +44,7 @@ func (bounce *Bounce) getHandlers() map[uint16]func(string, []byte) {
 }
 
 func (bounce *Bounce) broadcast(b broadcastable) {
-	peerScope, err := bounce.getBroadcastScope(b)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error getting broadcast targets")
-		// TODO: don't need to error if there's just noone online  maybe handle other error logs in the get functions
-		return
-	}
-
-	for _, peer := range peerScope {
+	for _, peer := range bounce.getBroadcastScope(b) {
 		// Async try to write this message to every device that should be written to
 		go func(dst chan broadcastable, msg broadcastable) {
 			dst <- msg
@@ -60,19 +52,27 @@ func (bounce *Bounce) broadcast(b broadcastable) {
 	}
 }
 
-func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error) {
+func (bounce *Bounce) getBroadcastScope(b broadcastable) []*remoteDevice {
 	scope := b.getScope()
 	destination := b.getDestination()
 	broadcastTargets := []*remoteDevice{}
 
 	if scope == USER_SCOPE { // TODO: break these out
 		var destinationUser user
-		result := bounce.database.Model(&user{}).Preload(clause.Associations).Find(&destinationUser, destination)
-		if result.Error != nil {
-			return broadcastTargets, result.Error
-		}
-		if result.RowsAffected == 0 {
-			return broadcastTargets, errors.New("no devices found belonging to destination user")
+		err := bounce.database.Preload(clause.Associations).First(&destinationUser, "id = ?", destination).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"scope":        scope,
+					"destinations": destination,
+					"type":         b.getType(),
+				}).Error("user not found when determining broadcast scope for message")
+				return broadcastTargets
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error loading user from database")
+			}
 		}
 		for _, dev := range destinationUser.Devices {
 			if b.isAlreadyDeliveredTo(dev.Address) {
@@ -86,12 +86,20 @@ func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error
 		// TODO: make sure to always add sync devices
 	} else if scope == DEVICE_SCOPE {
 		var target device
-		result := bounce.database.First(&target, b.getDestination())
-		if result.Error != nil {
-			return broadcastTargets, result.Error
-		}
-		if result.RowsAffected == 0 {
-			return broadcastTargets, errors.New("no device found in database for broadcastable message tageting device") // TODO: log the UUID
+		err := bounce.database.First(&target, "id = ?", destination).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"scope":        scope,
+					"destinations": destination,
+					"type":         b.getType(),
+				}).Error("device not found when determining broadcast scope for message")
+				return broadcastTargets
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error loading device from database")
+			}
 		}
 		rd := bounce.getRemoteDevice(target.Address)
 		if rd.connectedSockets > 0 {
@@ -99,7 +107,5 @@ func (bounce *Bounce) getBroadcastScope(b broadcastable) ([]*remoteDevice, error
 		}
 	}
 
-	// TODO: err if no devices are online?
-
-	return broadcastTargets, nil
+	return broadcastTargets
 }

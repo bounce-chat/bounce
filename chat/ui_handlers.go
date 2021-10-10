@@ -13,15 +13,9 @@ import (
 )
 
 func (bounce *Bounce) sendGroupMessage(message GroupMessage) {
-	//bounce.database.Save(message)    // TODO: check for errors
-	//bounce.broadcast(newSignedGroupMessage(GroupMessage{
-	//	//Source:      "", // TODO: my UUID
-	//	Destination: dm.Destination,
-	//	Text:        dm.Text,
-	//}))
 }
 
-func (bounce *Bounce) sendDirectMessage(message *DirectMessage) (uuid.UUID, error) {
+func (bounce *Bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
 	message.ID = uuid.New()
 	message.CreatedAt = time.Now().Unix()
 	message.Read = true
@@ -31,13 +25,12 @@ func (bounce *Bounce) sendDirectMessage(message *DirectMessage) (uuid.UUID, erro
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error saving direct message to the database")
-		return message.ID, err
+		}).Fatal("error saving direct message to the database")
 	}
 
 	bounce.broadcast(message)
 
-	return message.ID, nil
+	return message.ID
 }
 
 func (bounce *Bounce) addUserToGroup(threadID, userID uuid.UUID) {

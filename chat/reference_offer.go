@@ -73,7 +73,6 @@ func (bounce *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 
 	dev, ok := bounce.getDeviceFromAddress(address)
 	if !ok {
-		// TODO: some kind of error?
 		return offer
 	}
 	offer.destination = dev.ID

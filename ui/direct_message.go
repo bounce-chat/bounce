@@ -124,7 +124,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 			Text:        entry.Text,
 		}
 
-		fyneUI.callbacks.SendDirectMessage(message) // TODO: handle error and store reference to ID
+		fyneUI.callbacks.SendDirectMessage(message) // TODO: store reference to ID?
 		fyneUI.displaySentMessage(dm, message.Text) // TODO: just build the bubble around the actual object?
 
 		entry.Text = ""

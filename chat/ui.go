@@ -84,9 +84,9 @@ type Group struct { // TODO: replace with model?
 //
 type UICallbacks struct {
 	// The user wants to send a direct message.
-	SendDirectMessage func(*DirectMessage) (uuid.UUID, error)
+	SendDirectMessage func(*DirectMessage) uuid.UUID
 	// The user wants to send a group  message
-	SendGroupMessage func(GroupMessage) // TODO: return an error?
+	SendGroupMessage func(GroupMessage) // TODO: return the UUID?
 	// The user wants to add another user to a group
 	AddUserToGroup func(groupID, userID uuid.UUID)
 	// The user wants to rename a group

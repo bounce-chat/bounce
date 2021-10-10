@@ -1,11 +1,13 @@
 package chat
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
+	"gorm.io/gorm"
 )
 
 type referenceRequest references
@@ -103,12 +105,18 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 
 			var dm DirectMessage
 			err = bounce.database.Where("id = ? AND (source = ? OR destination = ?)", dmID, dev.UserID, dev.UserID).First(&dm).Error
-			if err != nil { // TODO: ErrNotFound vs. actual DB error
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("reference request asks for unknown DM")
-				// TODO: detect if any are legit but out of scope for security reasons?
-				continue
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("reference request asks for unknown DM")
+					// TODO: detect if any are legit but out of scope for security reasons?
+					continue
+				} else {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("error loading DM from database")
+				}
 			}
 
 			if _, present := dmRequested[dmID]; present {

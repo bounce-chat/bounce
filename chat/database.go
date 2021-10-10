@@ -38,7 +38,7 @@ func (bounce *Bounce) openDatabase() {
 		}).Fatal("error opening database")
 	}
 
-	bounce.database.AutoMigrate(
+	err = bounce.database.AutoMigrate(
 		&user{},
 		&device{},
 		&profileExport{},
@@ -46,6 +46,11 @@ func (bounce *Bounce) openDatabase() {
 		&DirectMessage{}, // TODO: still need to decide if we'll export a simplified one for the UI
 		&referenceOffer{},
 	)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error migrating the database")
+	}
 
 	// TODO: prune old reference offers.  Better to kick off something that prunes everything old (messages, profile state changes, etc)?
 }

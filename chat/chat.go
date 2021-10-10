@@ -22,6 +22,9 @@ type Bounce struct {
 // is closed, the network reaches a fatal error, or the process is sent an interrupt.
 //
 func Start(network BounceNetwork, ui BounceUI) {
+	//log.SetReportCaller(true)
+	//log.SetFormatter(&log.JSONFormatter{})
+
 	bounce := &Bounce{
 		configDirectory: getConfigDirectory(),
 		userInterface:   ui,
