@@ -128,7 +128,7 @@ func (bounce *Bounce) importUser(data []byte) error {
 	}
 
 	// Make sure the export hasn't expired
-	if newUser.Expiration != 0 && newUser.Expiration > time.Now().Unix() {
+	if newUser.Expiration != 0 && time.Now().Unix() >= newUser.Expiration {
 		return errors.New("file has expired")
 	}
 

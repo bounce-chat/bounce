@@ -13,34 +13,6 @@ import (
 )
 
 func (fyneUI *Fyne) showMainContainer() {
-	/*
-		if fyneUI.networkState == networkStateStarting {
-			fyneUI.mainWindow.SetMainMenu(nil)
-			fyneUI.mainWindow.SetContent(fyneUI.networkLoading)
-			fyneUI.networkLoading.Show()
-		} else {
-			if !fyneUI.initialStateSet {
-				// The chat engine has not yet loaded the its state into the UI,
-				// show a page that indicates the database is loading
-				fyneUI.mainWindow.SetMainMenu(nil)
-				fyneUI.mainWindow.SetContent(fyneUI.databaseLoading)
-				fyneUI.databaseLoading.Show()
-			} else if fyneUI.profile == nil {
-				// The chat engine has loaded into the UI but there's no profile
-				// on this device yet.  The user must make one.
-				fyneUI.mainWindow.SetMainMenu(nil)
-				fyneUI.mainWindow.SetContent(fyneUI.newInstall)
-				fyneUI.newInstall.Show()
-			} else {
-				// The chat engine is loaded and there's an existing profile,
-				// the user is ready to use the app
-				fyneUI.mainWindow.SetMainMenu(fyneUI.mainMenu)
-				fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
-				fyneUI.mainContainer.Show()
-			}
-		}
-	*/
-
 	if !fyneUI.initialStateSet { // TODO: rename?
 		// The database has not been loaded yet.  Display "network loading" until
 		// the network is online, after that if the database still isn't loaded
@@ -56,8 +28,7 @@ func (fyneUI *Fyne) showMainContainer() {
 		}
 	} else if fyneUI.profile == nil {
 		// The database has been loaded but this is a new install with no profile setup.
-		// Display the start screen for creating a new profile or adding this device
-		// to an existing profile
+		// Display the screen that the user is on for walking through new device setup.
 		if fyneUI.setupStep == setupStepInit {
 			fyneUI.mainWindow.SetMainMenu(nil)
 			fyneUI.mainWindow.SetContent(fyneUI.newInstall)
