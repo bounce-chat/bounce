@@ -27,6 +27,7 @@ var signatureSize = 64
 type TorNetwork struct {
 	directory     string
 	onion         *tor.OnionService
+	callbacks     chat.NetworkCallbacks
 	publicKey     ed25519.PublicKey
 	privateKey    ed25519.PrivateKey
 	shutdown      bool
@@ -40,7 +41,6 @@ func (bounceTor *TorNetwork) LoadConfig(configDirectory string) {
 	err := os.MkdirAll(bounceTor.directory, 0700)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"at":    "network.TorNetwork.Start",
 			"error": err.Error(),
 		}).Fatal("error creating tor config directory")
 	}
@@ -57,7 +57,6 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 	err := os.MkdirAll(hiddenServiceKeyDirectory, 0700)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"at":    "network.TorNetwork.hiddenServiceKey",
 			"error": err.Error(),
 		}).Fatal("error creating hidden service key directory")
 	}
@@ -73,12 +72,15 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 	} else {
 		publicKeyBytes, err := ioutil.ReadFile(publicKeyFile)
 		if err != nil {
-			// TODO: regenerate public key
-			log.WithFields(log.Fields{
-				"at":    "network.TorNetwork.hiddenServiceKey",
-				"error": err.Error(),
-				"path":  publicKeyFile,
-			}).Fatal("private key found but no public key found, something is wrong")
+			// We have the private key but the public key is missing.  This is weird, but we can regenerate it.
+			pubkey := ed25519.PrivateKey(privateKeyBytes).PublicKey()
+			err = ioutil.WriteFile(publicKeyFile, pubkey, 0600)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error writing regenerated public key")
+			}
+			return pubkey, privateKeyBytes
 		} else {
 			return publicKeyBytes, privateKeyBytes
 		}
@@ -94,14 +96,12 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 	err = ioutil.WriteFile(publicKeyFile, keypair.PublicKey(), 0600)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"at":    "network.TorNetwork.hiddenServiceKey",
 			"error": err.Error(),
 		}).Fatal("error writing public key")
 	}
 	err = ioutil.WriteFile(privateKeyFile, keypair.PrivateKey(), 0600)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"at":    "network.TorNetwork.hiddenServiceKey",
 			"error": err.Error(),
 		}).Fatal("error writing private key")
 	}
@@ -114,21 +114,18 @@ func (bounceTor *TorNetwork) RegisterCallbacks(chat.NetworkCallbacks) {
 }
 
 func (bounceTor *TorNetwork) Start() error {
-	log.WithFields(log.Fields{
-		"at": "network.TorNetwork.Start",
-	}).Info("connecting to the Tor network")
+	log.Info("connecting to the Tor network")
 
 	t, err := tor.Start(
 		nil,
 		&tor.StartConf{
 			DataDir:        bounceTor.directory,
 			ProcessCreator: libtor.Creator,
-			DebugWriter:    os.Stderr, // TODO: logrus
+			DebugWriter:    &torLogger{},
 		},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"at":    "network.TorNetwork.Start",
 			"error": err.Error(),
 		}).Fatal("failed to start TOR")
 		// TODO: detect the type of error and decide if it's fatal or
@@ -149,15 +146,13 @@ func (bounceTor *TorNetwork) Start() error {
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"at":    "network.TorNetwork.Start",
 			"error": err.Error(),
 		}).Fatal("failed to create TOR hidden service")
 	}
 	bounceTor.onion = onion
 
 	log.WithFields(log.Fields{
-		"at":      "network.TorNetwork.Start",
-		"address": onion.ID + ".onion",
+		"id": onion.ID,
 	}).Info("registered hidden service")
 	return nil
 }
@@ -167,6 +162,8 @@ func (bounceTor *TorNetwork) Address() string {
 	if bounceTor.onion != nil {
 		return bounceTor.onion.ID
 	}
+
+	// TODO: get it off the bounceTor object?
 
 	// If the network is offline, parse the address from the public key on disk
 	pubkey, _ := bounceTor.hiddenServiceKey()
@@ -183,7 +180,7 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
 	challenge := make([]byte, handshakeChallengeSize)
 	n, err := rand.Read(challenge)
 	if n != handshakeChallengeSize {
-		return nil, errors.New("failed to generate random challenge for handshake") // TODO: fatal
+		return nil, errors.New("failed to generate random challenge for handshake")
 	}
 	if err != nil {
 		return nil, err
@@ -290,17 +287,15 @@ func (bounceTor *TorNetwork) Shutdown() {
 	bounceTor.shutdown = true
 	bounceTor.shutdownMutex.Unlock()
 
+	log.Info("shutting down tor")
 	// Stop the hidden service
 	if bounceTor.onion == nil {
 		// Network never fully started and we're already closing the app
-		log.WithFields(log.Fields{
-			"at": "network.TorNetwork.Shutdown",
-		}).Warn("stopping tor before tor has fully started")
+		log.Warn("stopping tor before tor has fully started")
 	} else {
 		err := bounceTor.onion.Close()
 		if err != nil {
 			log.WithFields(log.Fields{
-				"at":    "network.TorNetwork.Shutdown",
 				"error": err.Error(),
 			}).Error("error stopping hidden service")
 		}
@@ -308,11 +303,11 @@ func (bounceTor *TorNetwork) Shutdown() {
 		err = bounceTor.onion.Tor.Close()
 		if err != nil {
 			log.WithFields(log.Fields{
-				"at":    "network.TorNetwork.Shutdown",
 				"error": err.Error(),
 			}).Error("error stopping tor")
 		}
 	}
+	log.Info("tor stopped")
 }
 
 //
@@ -370,7 +365,7 @@ func (ta *torAddress) String() string {
 }
 
 //
-// Writing primatives for the handshake
+// Wire primatives for the handshake
 //
 
 func read(conn net.Conn, size int) ([]byte, error) {
@@ -403,4 +398,18 @@ func write(conn net.Conn, payload []byte) error {
 		bytesWritten += n
 	}
 	return nil
+}
+
+//
+// A custom logger that will send Tor logs to logrus for debug logging
+//
+
+type torLogger struct{}
+
+func (_ *torLogger) Write(line []byte) (int, error) {
+	log.WithFields(log.Fields{
+		"source": "tor",
+	}).Debug(string(line))
+
+	return len(line), nil
 }

@@ -25,6 +25,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 	if os.Getenv("DEBUG") == "true" {
 		log.SetReportCaller(true)
 	}
+	log.SetLevel(log.DebugLevel) // TODO: put behind the envar when ready
 
 	bounce := &Bounce{
 		configDirectory: getConfigDirectory(),
@@ -114,7 +115,7 @@ func (bounce *Bounce) runNetwork() {
 			// TODO: just logging for testing right now
 			log.WithFields(log.Fields{
 				"peer": conn.RemoteAddr().String(),
-			}).Info("accepted connection")
+			}).Debug("accepted connection")
 		}
 		go bounce.insertConnectionIntoDevicePool(conn)
 	}

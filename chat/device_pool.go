@@ -166,17 +166,17 @@ func (bounce *Bounce) tryDialing(address string) {
 	bounce.devicePool.updateLastDial(address)
 	log.WithFields(log.Fields{
 		"peer": address,
-	}).Info("attempting to dial")
+	}).Debug("attempting to dial")
 	conn, err := bounce.network.Dial(address)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"peer":  address,
 			"error": err.Error(),
-		}).Error("error dialing")
+		}).Debug("error dialing")
 	} else {
 		log.WithFields(log.Fields{
 			"peer": address,
-		}).Info("dialed")
+		}).Debug("dialed")
 		// TODO: callback to inform the UI that a user is online?  use a callback?
 		bounce.insertConnectionIntoDevicePool(conn)
 	}
