@@ -34,7 +34,7 @@ type BounceUI interface {
 	// The network is ready
 	NetworkOnline()
 	// Network connection has been lost, go back to displaying a loading message, blocking user interaction
-	NetworkDisconnected() // TODO: when internet connection is lost, still let the user browse messages
+	NetworkOffline() // TODO: when internet connection is lost, still let the user browse messages
 
 	// Chats
 	//UserIntroduced(Introduction)

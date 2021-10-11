@@ -113,7 +113,8 @@ func (bounceTor *TorNetwork) RegisterCallbacks(chat.NetworkCallbacks) {
 	// TODO: in theory use this to signal when the network is online / offline.  We'll see if it's needed.
 }
 
-func (bounceTor *TorNetwork) Start() error {
+func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) error {
+	bounceTor.callbacks = callbacks
 	log.Info("connecting to the Tor network")
 
 	t, err := tor.Start(
@@ -154,7 +155,49 @@ func (bounceTor *TorNetwork) Start() error {
 	log.WithFields(log.Fields{
 		"id": onion.ID,
 	}).Info("registered hidden service")
+
+	go func() { // TODO: async for testing in the current setup
+		bounceTor.updateOnlineStatus()
+		ticker := time.NewTicker(10 * time.Second)
+		for _ = range ticker.C {
+			bounceTor.updateOnlineStatus()
+		}
+	}()
+
 	return nil
+}
+
+func (bounceTor *TorNetwork) updateOnlineStatus() {
+	if bounceTor.onion == nil {
+		bounceTor.callbacks.NetworkOffline()
+		return
+	}
+
+	// TODO: possible alternatives:
+	// circuit-status
+	// status/circuit-established
+	response, err := bounceTor.onion.Tor.Control.GetInfo("network-liveness")
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error calling network-liveness on tor control port")
+	} else {
+		for _, kv := range response {
+			if kv.Key == "network-liveness" {
+				if kv.Val == "up" {
+					bounceTor.callbacks.NetworkOnline()
+				} else {
+					bounceTor.callbacks.NetworkOffline()
+				}
+			}
+			log.WithFields(log.Fields{
+				"key":   kv.Key,
+				"value": kv.Val,
+				"empty": kv.ValSetAndEmpty,
+			}).Debug("result from network-liveness check on Tor control port")
+		}
+	}
+
 }
 
 func (bounceTor *TorNetwork) Address() string {

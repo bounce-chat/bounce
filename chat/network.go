@@ -9,8 +9,7 @@ import (
 //
 type BounceNetwork interface {
 	LoadConfig(string)
-	RegisterCallbacks(NetworkCallbacks)
-	Start() error // TODO: don't return error, async and use callbacks to communicate state
+	Start(callbacks NetworkCallbacks) error // TODO: don't return error, async and use callbacks to communicate state
 	// Get the local address of this device
 	Address() string
 	// Accept() cannot return an error because the network implementation must be self-healing.  In the event that the router
@@ -28,5 +27,6 @@ type BounceNetwork interface {
 // The chat engine will provide these callbacks to a user interface
 //
 type NetworkCallbacks struct {
+	NetworkOnline  func()
 	NetworkOffline func()
 }

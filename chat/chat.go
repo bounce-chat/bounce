@@ -80,7 +80,10 @@ func Start(network BounceNetwork, ui BounceUI) {
 //
 func (bounce *Bounce) runNetwork() {
 	// Start the network router
-	err := bounce.network.Start()
+	err := bounce.network.Start(NetworkCallbacks{
+		NetworkOnline:  bounce.userInterface.NetworkOnline,
+		NetworkOffline: bounce.userInterface.NetworkOffline,
+	})
 	if err != nil {
 		log.WithFields(log.Fields{
 			"at":    "chat.runNetwork",
@@ -93,7 +96,7 @@ func (bounce *Bounce) runNetwork() {
 		// all chat entries
 		return
 	} else {
-		bounce.userInterface.NetworkOnline()
+		//bounce.userInterface.NetworkOnline() // TODO: testing tor-internal online monitor
 
 		// TODO: this is just for testing but move this somewhere were it runs only when a profile already exists
 		var count int64
@@ -110,7 +113,10 @@ func (bounce *Bounce) runNetwork() {
 
 		conn, err := bounce.network.Accept()
 		if err != nil {
-			log.Fatal("error accepting connection") // TODO: just fatal for testing right now
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error accepting connection") // TODO: just fatal for testing right now
+			return
 		} else {
 			// TODO: just logging for testing right now
 			log.WithFields(log.Fields{

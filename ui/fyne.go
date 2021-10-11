@@ -154,7 +154,7 @@ func (fyneUI *Fyne) NetworkOnline() {
 	fyneUI.showMainContainer()
 }
 
-func (fyneUI *Fyne) NetworkDisconnected() {
+func (fyneUI *Fyne) NetworkOffline() {
 	fyneUI.networkOfflineWarning.Show()
 	fyneUI.networkState = networkStateOffline
 	fyneUI.showMainContainer()
