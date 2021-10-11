@@ -57,11 +57,6 @@ func (bounce *Bounce) changeNotificationSettings(threadID uuid.UUID, enabled boo
 func (bounce *Bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 	newID := uuid.New()
 
-	address, err := bounce.network.Address()
-	if err != nil {
-		return newID, err
-	}
-
 	var count int64
 	bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count > 0 {
@@ -75,7 +70,7 @@ func (bounce *Bounce) setProfile(profileName, deviceName string) (uuid.UUID, err
 		Devices: []device{
 			device{
 				Name:    deviceName,
-				Address: address,
+				Address: bounce.network.Address(),
 			},
 		},
 	}).Error

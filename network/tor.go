@@ -2,19 +2,21 @@ package network
 
 import (
 	"context"
-	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
 	"io"
 	"io/ioutil"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/hkparker/bounce/chat"
 
 	"github.com/cretz/bine/tor"
 	"github.com/cretz/bine/torutil"
+
+	"github.com/cretz/bine/torutil/ed25519"
 	"github.com/ipsn/go-libtor"
 	log "github.com/sirupsen/logrus"
 )
@@ -23,10 +25,12 @@ var handshakeChallengeSize = 32
 var signatureSize = 64
 
 type TorNetwork struct {
-	directory  string
-	onion      *tor.OnionService
-	publicKey  ed25519.PublicKey
-	privateKey ed25519.PrivateKey
+	directory     string
+	onion         *tor.OnionService
+	publicKey     ed25519.PublicKey
+	privateKey    ed25519.PrivateKey
+	shutdown      bool
+	shutdownMutex sync.Mutex
 }
 
 func (bounceTor *TorNetwork) LoadConfig(configDirectory string) {
@@ -47,7 +51,7 @@ func (bounceTor *TorNetwork) LoadConfig(configDirectory string) {
 	bounceTor.privateKey = privkey
 }
 
-func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.PrivateKey) {
+func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.PrivateKey) { // TODO: reverse the order?
 	// Create the config directory if needed
 	hiddenServiceKeyDirectory := bounceTor.directory + "/hidden_service_keys"
 	err := os.MkdirAll(hiddenServiceKeyDirectory, 0700)
@@ -67,33 +71,34 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 			"path": privateKeyFile,
 		}).Info("no hidden service private key found, generating new key pair")
 	} else {
-		publicKeyBytes, err := ioutil.ReadFile(privateKeyFile)
+		publicKeyBytes, err := ioutil.ReadFile(publicKeyFile)
 		if err != nil {
+			// TODO: regenerate public key
 			log.WithFields(log.Fields{
 				"at":    "network.TorNetwork.hiddenServiceKey",
 				"error": err.Error(),
 				"path":  publicKeyFile,
 			}).Fatal("private key found but no public key found, something is wrong")
 		} else {
-			return privateKeyBytes, publicKeyBytes
+			return publicKeyBytes, privateKeyBytes
 		}
 	}
 
 	// The keys do not exist.  Generate, save, and return them.
-	pubkey, privkey, err := ed25519.GenerateKey(rand.Reader)
+	keypair, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error generating new private key for tor")
 	}
-	err = ioutil.WriteFile(publicKeyFile, pubkey, 0600)
+	err = ioutil.WriteFile(publicKeyFile, keypair.PublicKey(), 0600)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"at":    "network.TorNetwork.hiddenServiceKey",
 			"error": err.Error(),
 		}).Fatal("error writing public key")
 	}
-	err = ioutil.WriteFile(privateKeyFile, privkey, 0600)
+	err = ioutil.WriteFile(privateKeyFile, keypair.PrivateKey(), 0600)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"at":    "network.TorNetwork.hiddenServiceKey",
@@ -101,7 +106,7 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 		}).Fatal("error writing private key")
 	}
 
-	return pubkey, privkey
+	return keypair.PublicKey(), keypair.PrivateKey()
 }
 
 func (bounceTor *TorNetwork) RegisterCallbacks(chat.NetworkCallbacks) {
@@ -157,11 +162,15 @@ func (bounceTor *TorNetwork) Start() error {
 	return nil
 }
 
-func (bounceTor *TorNetwork) Address() (string, error) { // TODO: never return error, fatal if can't get address?  probably not.
-	if bounceTor.onion == nil {
-		return "", errors.New("network is not online, cannot determine device address")
+func (bounceTor *TorNetwork) Address() string {
+	// If the network is online, get the ID from the service
+	if bounceTor.onion != nil {
+		return bounceTor.onion.ID
 	}
-	return bounceTor.onion.ID, nil
+
+	// If the network is offline, parse the address from the public key on disk
+	pubkey, _ := bounceTor.hiddenServiceKey()
+	return torutil.OnionServiceIDFromV3PublicKey(pubkey)
 }
 
 func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
@@ -174,7 +183,7 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
 	challenge := make([]byte, handshakeChallengeSize)
 	n, err := rand.Read(challenge)
 	if n != handshakeChallengeSize {
-		return nil, errors.New("failed to generate random challenge for handshake")
+		return nil, errors.New("failed to generate random challenge for handshake") // TODO: fatal
 	}
 	if err != nil {
 		return nil, err
@@ -201,14 +210,10 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
 		return nil, errors.New("signature validation failed during handshake")
 	}
 
-	localAddress, err := bounceTor.Address()
-	if err != nil {
-		return nil, err
-	}
 	torConn := &torNetworkConnection{
 		underlying: connection,
 		localAddress: &torAddress{
-			address: localAddress,
+			address: bounceTor.onion.ID,
 		},
 		remoteAddress: &torAddress{
 			address: string(peerAddress),
@@ -223,11 +228,6 @@ func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error creating dialer")
-	}
-
-	localAddress, err := bounceTor.Address()
-	if err != nil {
-		return nil, err
 	}
 
 	conn, err := dialer.Dial("tcp", address+".onion:80")
@@ -255,7 +255,7 @@ func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
 	torConn := &torNetworkConnection{
 		underlying: conn,
 		localAddress: &torAddress{
-			address: localAddress,
+			address: bounceTor.onion.ID,
 		},
 		remoteAddress: &torAddress{
 			address: address,
@@ -276,10 +276,20 @@ func (bounceTor *TorNetwork) VerifySignature(address string, data []byte, signat
 		}).Error("invalid address passed to VerifySignature")
 		return false
 	}
-	return ed25519.Verify(ed25519.PublicKey(publicKey), data, signature)
+	return ed25519.Verify(publicKey, data, signature)
 }
 
 func (bounceTor *TorNetwork) Shutdown() {
+	bounceTor.shutdownMutex.Lock()
+	if bounceTor.shutdown {
+		// We're already shutting down, there's no need to enter this
+		// function again, and doing so can cause segfaults.
+		bounceTor.shutdownMutex.Unlock()
+		return
+	}
+	bounceTor.shutdown = true
+	bounceTor.shutdownMutex.Unlock()
+
 	// Stop the hidden service
 	if bounceTor.onion == nil {
 		// Network never fully started and we're already closing the app

@@ -9,29 +9,77 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+	log "github.com/sirupsen/logrus"
 )
 
 func (fyneUI *Fyne) showMainContainer() {
-	if !fyneUI.networkOnline {
-		fyneUI.mainWindow.SetMainMenu(nil)
-		fyneUI.mainWindow.SetContent(fyneUI.networkLoading)
-		fyneUI.networkLoading.Show()
-	} else {
-		if !fyneUI.initialStateSet {
-			// The chat engine has not yet loaded the its state into the UI,
-			// show a page that indicates the database is loading
+	/*
+		if fyneUI.networkState == networkStateStarting {
+			fyneUI.mainWindow.SetMainMenu(nil)
+			fyneUI.mainWindow.SetContent(fyneUI.networkLoading)
+			fyneUI.networkLoading.Show()
+		} else {
+			if !fyneUI.initialStateSet {
+				// The chat engine has not yet loaded the its state into the UI,
+				// show a page that indicates the database is loading
+				fyneUI.mainWindow.SetMainMenu(nil)
+				fyneUI.mainWindow.SetContent(fyneUI.databaseLoading)
+				fyneUI.databaseLoading.Show()
+			} else if fyneUI.profile == nil {
+				// The chat engine has loaded into the UI but there's no profile
+				// on this device yet.  The user must make one.
+				fyneUI.mainWindow.SetMainMenu(nil)
+				fyneUI.mainWindow.SetContent(fyneUI.newInstall)
+				fyneUI.newInstall.Show()
+			} else {
+				// The chat engine is loaded and there's an existing profile,
+				// the user is ready to use the app
+				fyneUI.mainWindow.SetMainMenu(fyneUI.mainMenu)
+				fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
+				fyneUI.mainContainer.Show()
+			}
+		}
+	*/
+
+	if !fyneUI.initialStateSet { // TODO: rename?
+		// The database has not been loaded yet.  Display "network loading" until
+		// the network is online, after that if the database still isn't loaded
+		// display "database loading" until it is
+		if fyneUI.networkState == networkStateStarting {
+			fyneUI.mainWindow.SetMainMenu(nil)
+			fyneUI.mainWindow.SetContent(fyneUI.networkLoading)
+			fyneUI.networkLoading.Show()
+		} else {
 			fyneUI.mainWindow.SetMainMenu(nil)
 			fyneUI.mainWindow.SetContent(fyneUI.databaseLoading)
 			fyneUI.databaseLoading.Show()
-		} else if fyneUI.profile == nil {
-			// The chat engine has loaded into the UI but there's no profile
-			// on this device yet.  The user must make one.
+		}
+	} else if fyneUI.profile == nil {
+		// The database has been loaded but this is a new install with no profile setup.
+		// Display the start screen for creating a new profile or adding this device
+		// to an existing profile
+		if fyneUI.setupStep == setupStepInit {
 			fyneUI.mainWindow.SetMainMenu(nil)
 			fyneUI.mainWindow.SetContent(fyneUI.newInstall)
 			fyneUI.newInstall.Show()
+		} else if fyneUI.setupStep == setupStepProfile {
+			fyneUI.mainWindow.SetMainMenu(nil)
+			fyneUI.mainWindow.SetContent(fyneUI.newProfileCreator)
+			fyneUI.newProfileCreator.Show()
 		} else {
-			// The chat engine is loaded and there's an existing profile,
-			// the user is ready to use the app
+			log.WithFields(log.Fields{
+				"step": fyneUI.setupStep,
+			}).Fatal("unconfigured user interface is in unknown setup step")
+		}
+	} else {
+		// The database is loaded and a profile exists.  Display "network loading"
+		// if we're still waiting for the network, otherwise go to the main chat
+		// interface.
+		if fyneUI.networkState == networkStateStarting {
+			fyneUI.mainWindow.SetMainMenu(nil)
+			fyneUI.mainWindow.SetContent(fyneUI.networkLoading)
+			fyneUI.networkLoading.Show()
+		} else {
 			fyneUI.mainWindow.SetMainMenu(fyneUI.mainMenu)
 			fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
 			fyneUI.mainContainer.Show()
@@ -63,7 +111,8 @@ func (fyneUI *Fyne) buildMainContainer() {
 	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
 
 	fyneUI.mainContainer = container.New(
-		layout.NewBorderLayout(nil, nil, threads, nil),
+		layout.NewBorderLayout(fyneUI.networkOfflineWarning, nil, threads, nil),
+		fyneUI.networkOfflineWarning,
 		threads,
 		fyneUI.chatContainer,
 	)
@@ -121,6 +170,7 @@ func (fyneUI *Fyne) buildNewInstall() {
 
 	// TODO: make these buttons nice custom clickable widgets with images
 	selectNewProfile := widget.NewButton("Create a new profile", func() {
+		fyneUI.setupStep = setupStepProfile
 		fyneUI.mainWindow.SetContent(fyneUI.newProfileCreator)
 		fyneUI.newProfileCreator.Show()
 	})
@@ -189,6 +239,7 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 	})
 	saveButton.Importance = widget.HighImportance
 	backButton := widget.NewButton("Back", func() {
+		fyneUI.setupStep = setupStepInit
 		fyneUI.mainWindow.SetContent(fyneUI.newInstall)
 		fyneUI.newInstall.Show()
 	})

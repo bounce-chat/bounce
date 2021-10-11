@@ -22,8 +22,9 @@ type Bounce struct {
 // is closed, the network reaches a fatal error, or the process is sent an interrupt.
 //
 func Start(network BounceNetwork, ui BounceUI) {
-	//log.SetReportCaller(true)
-	//log.SetFormatter(&log.JSONFormatter{})
+	if os.Getenv("DEBUG") == "true" {
+		log.SetReportCaller(true)
+	}
 
 	bounce := &Bounce{
 		configDirectory: getConfigDirectory(),
@@ -36,6 +37,8 @@ func Start(network BounceNetwork, ui BounceUI) {
 		},
 	}
 	go bounce.handleInterrupts()
+	log.RegisterExitHandler(bounce.shutdown)
+
 	bounce.openDatabase()
 
 	bounce.network.LoadConfig(bounce.configDirectory)
@@ -67,9 +70,8 @@ func Start(network BounceNetwork, ui BounceUI) {
 	// Run the UI and block
 	bounce.userInterface.Run()
 
-	// Once the UI is closed, stop the server
-	// TODO: gracefully shut down our handlers and close the database
-	bounce.network.Shutdown()
+	// Once the UI is closed, stop bounce
+	bounce.shutdown()
 }
 
 //
@@ -116,6 +118,34 @@ func (bounce *Bounce) runNetwork() {
 		}
 		go bounce.insertConnectionIntoDevicePool(conn)
 	}
+}
+
+//
+// Gracefully stop all Bounce.  Used when a fatal error is encountered or the user interface is closed
+//
+func (bounce *Bounce) shutdown() {
+	// Stop all running tasks and close all connections to remote devices
+	// TODO
+
+	// Shutdown the network
+	bounce.network.Shutdown()
+
+	// Close the database
+	sqliteDB, err := bounce.database.DB()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error getting underlying database interface from gorm during shutdown")
+	}
+	err = sqliteDB.Close()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error closing database during shutdown")
+	}
+
+	// Close the user interface if it isn't already closed
+	bounce.userInterface.Quit()
 }
 
 //

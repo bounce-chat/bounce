@@ -99,16 +99,9 @@ func (bounce *Bounce) currentUser() user {
 	return currentUser
 }
 
-func (bounce *Bounce) currentDevice() device { // TODO: memoize?
-	currentAddress, err := bounce.network.Address()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error loading current address when requesting current device")
-	}
-
+func (bounce *Bounce) currentDevice() device {
 	var currentDevice device
-	err = bounce.database.Model(&device{}).Preload(clause.Associations).Where("address = ?", currentAddress).First(&currentDevice).Error // TODO: do I need to load associations here?
+	err := bounce.database.Model(&device{}).Preload(clause.Associations).Where("address = ?", bounce.network.Address()).First(&currentDevice).Error // TODO: do I need to load associations here?
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

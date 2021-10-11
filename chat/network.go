@@ -12,7 +12,7 @@ type BounceNetwork interface {
 	RegisterCallbacks(NetworkCallbacks)
 	Start() error // TODO: don't return error, async and use callbacks to communicate state
 	// Get the local address of this device
-	Address() (string, error)
+	Address() string
 	// Accept() cannot return an error because the network implementation must be self-healing.  In the event that the router
 	// fails to accept a new connection internally, it must communicate this to the chat engine via callback then return new
 	// connections again when the network is healthy.

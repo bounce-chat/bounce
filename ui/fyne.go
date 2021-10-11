@@ -6,9 +6,17 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
+
+const networkStateStarting = 0
+const networkStateOnline = 1
+const networkStateOffline = 2
+
+const setupStepInit = 0
+const setupStepProfile = 1
 
 //
 // An implementation of the Bounce chat.UI interface using Fyne
@@ -32,13 +40,15 @@ type Fyne struct {
 	chatContainer         *fyne.Container
 	mainMenu              *fyne.MainMenu
 	allUsersDMLinksScroll *container.Scroll
+	networkOfflineWarning *widget.Label
 	groups                map[uuid.UUID]*group
 	dms                   map[uuid.UUID]*directMessage
 	activeThread          uuid.UUID
 	profile               *user
 	users                 *userStore
 	initialStateSet       bool
-	networkOnline         bool
+	networkState          int
+	setupStep             int
 	callbacks             chat.UICallbacks
 }
 
@@ -49,6 +59,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.groups = make(map[uuid.UUID]*group)
 	fyneUI.dms = make(map[uuid.UUID]*directMessage)
 	fyneUI.users = newUserStore()
+	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is offline, reconnecting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}) // TODO: red rich text
 
 	//
 	// Define the app
@@ -96,6 +107,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	// Default to displaying the "network loading" container
 	//
+	fyneUI.networkState = networkStateStarting
 	fyneUI.showMainContainer()
 }
 
@@ -137,12 +149,14 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 }
 
 func (fyneUI *Fyne) NetworkOnline() {
-	fyneUI.networkOnline = true
+	fyneUI.networkOfflineWarning.Hide()
+	fyneUI.networkState = networkStateOnline
 	fyneUI.showMainContainer()
 }
 
 func (fyneUI *Fyne) NetworkDisconnected() {
-	fyneUI.networkOnline = false
+	fyneUI.networkOfflineWarning.Show()
+	fyneUI.networkState = networkStateOffline
 	fyneUI.showMainContainer()
 }
 
