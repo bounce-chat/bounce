@@ -10,11 +10,13 @@ import (
 )
 
 type Bounce struct {
-	configDirectory string
-	database        *gorm.DB
-	userInterface   BounceUI
-	network         BounceNetwork
-	devicePool      *devicePool
+	configDirectory      string
+	database             *gorm.DB
+	userInterface        BounceUI
+	network              BounceNetwork
+	devicePool           *devicePool
+	networkIsOnline      bool
+	networkHasBeenOnline bool
 }
 
 //
@@ -66,65 +68,17 @@ func Start(network BounceNetwork, ui BounceUI) {
 	// but with a very large database it would be nice to see the window open while it's loading.
 	go bounce.userInterface.LoadInitialState(bounce.buildInitialState())
 
-	go bounce.runNetwork()
+	go bounce.network.Start(NetworkCallbacks{
+		NetworkOnline:  bounce.networkOnline,
+		NetworkOffline: bounce.networkOffline,
+	})
+	go bounce.peer()
 
 	// Run the UI and block
 	bounce.userInterface.Run()
 
 	// Once the UI is closed, stop bounce
 	bounce.shutdown()
-}
-
-//
-// Start the network and serve the Bounce protocol over the provided network.
-//
-func (bounce *Bounce) runNetwork() {
-	// Start the network router
-	err := bounce.network.Start(NetworkCallbacks{
-		NetworkOnline:  bounce.userInterface.NetworkOnline,
-		NetworkOffline: bounce.userInterface.NetworkOffline,
-	})
-	if err != nil {
-		log.WithFields(log.Fields{
-			"at":    "chat.runNetwork",
-			"error": err.Error(),
-		}).Error("unable to start network router")
-		// TODO: this shouldn't fail here.  Need a good UX for starting the app while the
-		// internet is disconnected.
-		// TODO: perhaps send a network failed callback which will let the user view their
-		// messages, but adds a banner informing them the network is offline and disables
-		// all chat entries
-		return
-	} else {
-		//bounce.userInterface.NetworkOnline() // TODO: testing tor-internal online monitor
-
-		// TODO: this is just for testing but move this somewhere were it runs only when a profile already exists
-		var count int64
-		bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
-		if count > 0 {
-			go bounce.peer()
-		}
-	}
-
-	// Serve the Bounce protocol on the network
-	// TODO: make sure the intial database state exists in the UI before accepting new connections?
-	for {
-		// TODO: check if we're gracefully shutting down
-
-		conn, err := bounce.network.Accept()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error accepting connection") // TODO: just fatal for testing right now
-			return
-		} else {
-			// TODO: just logging for testing right now
-			log.WithFields(log.Fields{
-				"peer": conn.RemoteAddr().String(),
-			}).Debug("accepted connection")
-		}
-		go bounce.insertConnectionIntoDevicePool(conn)
-	}
 }
 
 //

@@ -88,13 +88,28 @@ func (bounce *Bounce) buildInitialState() InitialState {
 	}
 }
 
+func (bounce *Bounce) profileExists() bool {
+	var currentUser user
+	err := bounce.database.Model(&user{}).Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return false
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error loading current user")
+		}
+	}
+	return true
+}
+
 func (bounce *Bounce) currentUser() user {
 	var currentUser user
 	err := bounce.database.Model(&user{}).Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error loading current user")
+		}).Fatal("error loading current user") // TODO: should this also return a bool and not do a fatal if there's no rpfile user?
 	}
 	return currentUser
 }

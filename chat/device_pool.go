@@ -52,6 +52,15 @@ func (bounce *Bounce) peer() {
 }
 
 func (bounce *Bounce) auditPeers() {
+	// Send keep alive packets to each device that appears to have an open socket.  We do this reguardless of
+	// if the network is online in order to detect dead sockets while the network is offline.
+	go bounce.sendKeepAlives()
+
+	// Skip this audit if the network isn't online
+	if !bounce.networkIsOnline {
+		return
+	}
+
 	// Always try to keep a socket open to every sync device
 	go bounce.connectToSyncDevices()
 
@@ -60,12 +69,13 @@ func (bounce *Bounce) auditPeers() {
 
 	// Connect to any users we have pending messages for or who we talk to frequently
 	go bounce.connectToUsers()
-
-	// Send keep alive packets to each device that appears to have an open socket
-	go bounce.sendKeepAlives()
 }
 
 func (bounce *Bounce) connectToSyncDevices() {
+	if !bounce.profileExists() {
+		return
+	}
+
 	for _, dev := range bounce.currentUser().Devices {
 		if dev.Address == bounce.currentDevice().Address {
 			continue

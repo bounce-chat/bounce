@@ -9,13 +9,18 @@ import (
 //
 type BounceNetwork interface {
 	LoadConfig(string)
-	Start(callbacks NetworkCallbacks) error // TODO: don't return error, async and use callbacks to communicate state
+
+	// Start is the main entry point to a network provider.  It is responsible for connecting to the overlay network and
+	// maintain a connection between network failures
+	Start(callbacks NetworkCallbacks)
+
 	// Get the local address of this device
 	Address() string
+
 	// Accept() cannot return an error because the network implementation must be self-healing.  In the event that the router
 	// fails to accept a new connection internally, it must communicate this to the chat engine via callback then return new
 	// connections again when the network is healthy.
-	Accept() (net.Conn, error)
+	Accept() (net.Conn, error, bool)
 	Dial(address string) (net.Conn, error)
 	Sign([]byte) []byte
 	VerifySignature(address string, data []byte, signature []byte) bool

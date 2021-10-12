@@ -30,6 +30,7 @@ type TorNetwork struct {
 	callbacks     chat.NetworkCallbacks
 	publicKey     ed25519.PublicKey
 	privateKey    ed25519.PrivateKey
+	online        bool
 	shutdown      bool
 	shutdownMutex sync.Mutex
 }
@@ -109,11 +110,7 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 	return keypair.PublicKey(), keypair.PrivateKey()
 }
 
-func (bounceTor *TorNetwork) RegisterCallbacks(chat.NetworkCallbacks) {
-	// TODO: in theory use this to signal when the network is online / offline.  We'll see if it's needed.
-}
-
-func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) error {
+func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
 	bounceTor.callbacks = callbacks
 	log.Info("connecting to the Tor network")
 
@@ -129,8 +126,6 @@ func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) error {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("failed to start TOR")
-		// TODO: detect the type of error and decide if it's fatal or
-		// if we can try again
 	}
 
 	// Wait at most a few minutes to publish the service
@@ -156,26 +151,25 @@ func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) error {
 		"id": onion.ID,
 	}).Info("registered hidden service")
 
-	go func() { // TODO: async for testing in the current setup
+	bounceTor.updateOnlineStatus()
+	ticker := time.NewTicker(10 * time.Second)
+	for _ = range ticker.C {
 		bounceTor.updateOnlineStatus()
-		ticker := time.NewTicker(10 * time.Second)
-		for _ = range ticker.C {
-			bounceTor.updateOnlineStatus()
-		}
-	}()
-
-	return nil
+	}
 }
 
 func (bounceTor *TorNetwork) updateOnlineStatus() {
 	if bounceTor.onion == nil {
-		bounceTor.callbacks.NetworkOffline()
+		if bounceTor.online {
+			// This shoudn't be possible, but let's handle it anyway
+			bounceTor.online = false
+			bounceTor.callbacks.NetworkOffline()
+		}
 		return
 	}
 
-	// TODO: possible alternatives:
-	// circuit-status
-	// status/circuit-established
+	// This works, but it's slow to detect network failures.  It might be faster (though more involved) to
+	// look at the status of cirtuits with "circuit-status" or "status/circuit-established"
 	response, err := bounceTor.onion.Tor.Control.GetInfo("network-liveness")
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -185,9 +179,19 @@ func (bounceTor *TorNetwork) updateOnlineStatus() {
 		for _, kv := range response {
 			if kv.Key == "network-liveness" {
 				if kv.Val == "up" {
-					bounceTor.callbacks.NetworkOnline()
+					if !bounceTor.online {
+						bounceTor.online = true
+						bounceTor.callbacks.NetworkOnline()
+					}
+				} else if kv.Val == "down" {
+					if bounceTor.online {
+						bounceTor.online = false
+						bounceTor.callbacks.NetworkOffline()
+					}
 				} else {
-					bounceTor.callbacks.NetworkOffline()
+					log.WithFields(log.Fields{
+						"value": kv.Val,
+					}).Error("unknown tor network-liveness value")
 				}
 			}
 			log.WithFields(log.Fields{
@@ -213,41 +217,41 @@ func (bounceTor *TorNetwork) Address() string {
 	return torutil.OnionServiceIDFromV3PublicKey(pubkey)
 }
 
-func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
+func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 	connection, err := bounceTor.onion.Accept()
 	if err != nil {
-		return nil, err
+		return nil, err, true
 	}
 
 	// Handshake with the connection to learn the remote address
 	challenge := make([]byte, handshakeChallengeSize)
 	n, err := rand.Read(challenge)
 	if n != handshakeChallengeSize {
-		return nil, errors.New("failed to generate random challenge for handshake")
+		return nil, errors.New("failed to generate random challenge for handshake"), false
 	}
 	if err != nil {
-		return nil, err
+		return nil, err, false
 	}
 	err = write(connection, challenge)
 	if err != nil {
-		return nil, err
+		return nil, err, false
 	}
 
 	// All onion IDs will be the same size, read the number of bytes that correspond to our ID
 	peerAddress, err := read(connection, len(bounceTor.onion.ID))
 	if err != nil {
-		return nil, err
+		return nil, err, false
 	}
 
 	// Read their signature of the challenge
 	response, err := read(connection, signatureSize)
 	if err != nil {
-		return nil, err
+		return nil, err, false
 	}
 
 	ok := bounceTor.VerifySignature(string(peerAddress), challenge, response)
 	if !ok {
-		return nil, errors.New("signature validation failed during handshake")
+		return nil, errors.New("signature validation failed during handshake"), false
 	}
 
 	torConn := &torNetworkConnection{
@@ -259,7 +263,7 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error) {
 			address: string(peerAddress),
 		},
 	}
-	return torConn, nil
+	return torConn, nil, false
 }
 
 func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
