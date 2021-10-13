@@ -267,6 +267,10 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 }
 
 func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
+	if bounceTor.onion == nil {
+		return nil, errors.New("cannot dial while network is not started")
+	}
+
 	dialer, err := bounceTor.onion.Tor.Dialer(context.TODO(), &tor.DialConf{}) // TODO: store this so it doesn't need to be recreated all the time?
 	if err != nil {
 		log.WithFields(log.Fields{

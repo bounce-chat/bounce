@@ -27,7 +27,6 @@ type Fyne struct {
 	mainContainer         *fyne.Container
 	newInstall            *fyne.Container
 	newProfileCreator     *fyne.Container
-	networkLoading        *fyne.Container
 	databaseLoading       *fyne.Container
 	editProfile           *fyne.Container
 	settings              *fyne.Container
@@ -59,7 +58,8 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.groups = make(map[uuid.UUID]*group)
 	fyneUI.dms = make(map[uuid.UUID]*directMessage)
 	fyneUI.users = newUserStore()
-	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is offline, reconnecting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}) // TODO: red rich text
+	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}) // TODO: red rich text
+	fyneUI.networkOfflineWarning.Show()
 
 	//
 	// Define the app
@@ -88,7 +88,6 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.buildMenu()
 	fyneUI.buildNewInstall()
 	fyneUI.buildNewProfileCreator()
-	fyneUI.buildNetworkLoading()
 	fyneUI.buildDatabaseLoading()
 	fyneUI.buildEditProfile()
 	fyneUI.buildSettings()
@@ -123,8 +122,8 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	if fyneUI.initialStateSet {
 		log.Fatal("the initial state of the UI can only be loaded once")
 	}
-	fyneUI.initialStateSet = true
 	// Refresh the state of the main view after the state is loaded
+	fyneUI.initialStateSet = true
 	defer fyneUI.showMainContainer()
 
 	if state.Profile == nil {
@@ -155,8 +154,9 @@ func (fyneUI *Fyne) NetworkOnline() {
 }
 
 func (fyneUI *Fyne) NetworkOffline() {
-	fyneUI.networkOfflineWarning.Show()
 	fyneUI.networkState = networkStateOffline
+	fyneUI.networkOfflineWarning.SetText("network connection lost, reconnecting...")
+	fyneUI.networkOfflineWarning.Show()
 	fyneUI.showMainContainer()
 }
 

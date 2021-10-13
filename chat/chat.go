@@ -3,6 +3,7 @@ package chat
 import (
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -17,6 +18,8 @@ type Bounce struct {
 	devicePool           *devicePool
 	networkIsOnline      bool
 	networkHasBeenOnline bool
+	shutdownStarted      bool
+	shutdownMutex        sync.Mutex
 }
 
 //
@@ -45,9 +48,6 @@ func Start(network BounceNetwork, ui BounceUI) {
 	bounce.openDatabase()
 
 	bounce.network.LoadConfig(bounce.configDirectory)
-	//bounce.network.RegisterCallbacks(NetworkCallbacks{
-	//	NetworkOffline:
-	//})
 
 	bounce.userInterface.Build(
 		bounce.configDirectory,
@@ -66,7 +66,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 	// To make the user interface more responsive to open, we load the database in a goroutine
 	// and call in to let the UI know it's done after.  Most of the time this will appear instant,
 	// but with a very large database it would be nice to see the window open while it's loading.
-	go bounce.userInterface.LoadInitialState(bounce.buildInitialState())
+	bounce.userInterface.LoadInitialState(bounce.buildInitialState()) // TODO: this should be in a goroutine but that causes bugs.  Unclear why.
 
 	go bounce.network.Start(NetworkCallbacks{
 		NetworkOnline:  bounce.networkOnline,
@@ -85,6 +85,16 @@ func Start(network BounceNetwork, ui BounceUI) {
 // Gracefully stop all Bounce.  Used when a fatal error is encountered or the user interface is closed
 //
 func (bounce *Bounce) shutdown() {
+	// Logrus is going to call in here on a fatal error, then os.Exit.  If multiple fatal logs occur, which
+	// is likely as the shutdown process is going to cause other fatal errors, the first one will spend some
+	// time closing down the network while the second will return much faster.  This second fatal error will
+	// then call os.Exit before the network is actually shut down and this function has returned.  Therefore
+	// we make this shutdown process synchronous with a mutex lock.  In theory unlocking it isn't necessary
+	// since we're going to os.Exit as soon as this function returns, but it just feels wrong to not unlock
+	// it, and I wouldn't want to create the appearance of an accidental deadlock being possible.
+	bounce.shutdownMutex.Lock()
+	defer bounce.shutdownMutex.Unlock()
+
 	// Stop all running tasks and close all connections to remote devices
 	// TODO
 
