@@ -104,7 +104,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.callbacks = callbacks
 
 	//
-	// Default to displaying the "network loading" container
+	// Default to displaying the loading container
 	//
 	fyneUI.networkState = networkStateStarting
 	fyneUI.showMainContainer()
@@ -150,14 +150,12 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 func (fyneUI *Fyne) NetworkOnline() {
 	fyneUI.networkOfflineWarning.Hide()
 	fyneUI.networkState = networkStateOnline
-	fyneUI.showMainContainer()
 }
 
 func (fyneUI *Fyne) NetworkOffline() {
 	fyneUI.networkState = networkStateOffline
 	fyneUI.networkOfflineWarning.SetText("network connection lost, reconnecting...")
 	fyneUI.networkOfflineWarning.Show()
-	fyneUI.showMainContainer()
 }
 
 func (fyneUI *Fyne) UserImported(u chat.User) {

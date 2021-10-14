@@ -13,7 +13,6 @@ import (
 )
 
 func (fyneUI *Fyne) showMainContainer() {
-	// TODO: only re-set content if there's a change?
 	if !fyneUI.initialStateSet { // TODO: rename?
 		fyneUI.mainWindow.SetMainMenu(nil)
 		fyneUI.mainWindow.SetContent(fyneUI.databaseLoading)
