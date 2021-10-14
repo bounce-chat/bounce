@@ -27,6 +27,7 @@ var signatureSize = 64
 type TorNetwork struct {
 	directory     string
 	onion         *tor.OnionService
+	tor           *tor.Tor
 	callbacks     chat.NetworkCallbacks
 	publicKey     ed25519.PublicKey
 	privateKey    ed25519.PrivateKey
@@ -44,6 +45,22 @@ func (bounceTor *TorNetwork) LoadConfig(configDirectory string) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error creating tor config directory")
+	}
+
+	// Create an empty torrc file.  If we don't create and specify a file, we leak torrc files with bine
+	if _, err := os.Stat(bounceTor.directory + "/torrc"); os.IsNotExist(err) {
+		torrc, err := os.OpenFile(bounceTor.directory+"/torrc", os.O_RDONLY|os.O_CREATE, 0600)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error creating torrc file")
+		}
+		err = torrc.Close()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error closing torrc file")
+		}
 	}
 
 	// Load or create the keypair for the hidden service
@@ -111,13 +128,20 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 }
 
 func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Fatal("recovered a panic while starting Tor, this happens due to a nil-pointer derefernce in bine when Tor is shut down while publishing a hidden service")
+		}
+	}()
 	bounceTor.callbacks = callbacks
 	log.Info("connecting to the Tor network")
 
-	t, err := tor.Start(
+	var err error
+	bounceTor.tor, err = tor.Start(
 		nil,
 		&tor.StartConf{
 			DataDir:        bounceTor.directory,
+			TorrcFile:      bounceTor.directory + "/torrc",
 			ProcessCreator: libtor.Creator,
 			DebugWriter:    &torLogger{},
 		},
@@ -128,12 +152,9 @@ func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
 		}).Fatal("failed to start TOR")
 	}
 
-	// Wait at most a few minutes to publish the service
-	ctx, _ := context.WithTimeout(context.Background(), 3*time.Minute) // TODO: assign cancel variable and let UI close Tor early, or defer it
-
 	// Create an onion service to listen on any port but show as 80
-	onion, err := t.Listen(
-		ctx,
+	bounceTor.onion, err = bounceTor.tor.Listen(
+		context.Background(),
 		&tor.ListenConf{
 			Version3:    true,
 			Key:         bounceTor.privateKey,
@@ -145,10 +166,9 @@ func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
 			"error": err.Error(),
 		}).Fatal("failed to create TOR hidden service")
 	}
-	bounceTor.onion = onion
 
 	log.WithFields(log.Fields{
-		"id": onion.ID,
+		"id": bounceTor.onion.ID,
 	}).Info("registered hidden service")
 
 	bounceTor.updateOnlineStatus()
@@ -159,7 +179,7 @@ func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
 }
 
 func (bounceTor *TorNetwork) updateOnlineStatus() {
-	if bounceTor.onion == nil {
+	if bounceTor.tor == nil {
 		if bounceTor.online {
 			// This shoudn't be possible, but let's handle it anyway
 			bounceTor.online = false
@@ -170,7 +190,7 @@ func (bounceTor *TorNetwork) updateOnlineStatus() {
 
 	// This works, but it's slow to detect network failures.  It might be faster (though more involved) to
 	// look at the status of cirtuits with "circuit-status" or "status/circuit-established"
-	response, err := bounceTor.onion.Tor.Control.GetInfo("network-liveness")
+	response, err := bounceTor.tor.Control.GetInfo("network-liveness")
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -267,11 +287,13 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 }
 
 func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
-	if bounceTor.onion == nil {
+	if bounceTor.tor == nil || bounceTor.onion == nil {
+		// Technically we don't need to wait for the hidden service to be published before we can dial,
+		// but any failures to publish indicate a major problem
 		return nil, errors.New("cannot dial while network is not started")
 	}
 
-	dialer, err := bounceTor.onion.Tor.Dialer(context.TODO(), &tor.DialConf{}) // TODO: store this so it doesn't need to be recreated all the time?
+	dialer, err := bounceTor.tor.Dialer(context.TODO(), &tor.DialConf{}) // TODO: store this so it doesn't need to be recreated all the time?
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -339,19 +361,24 @@ func (bounceTor *TorNetwork) Shutdown() {
 	bounceTor.shutdownMutex.Unlock()
 
 	log.Info("shutting down tor")
-	// Stop the hidden service
 	if bounceTor.onion == nil {
 		// Network never fully started and we're already closing the app
-		log.Warn("stopping tor before tor has fully started")
+		log.Warn("stopping tor before hidden service was published")
 	} else {
+		// Stop the hidden service
 		err := bounceTor.onion.Close()
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Error("error stopping hidden service")
 		}
+	}
+	if bounceTor.tor == nil {
+		// Network never fully started and we're already closing the app
+		log.Warn("stopping tor before tor has fully started")
+	} else {
 		// Stop Tor
-		err = bounceTor.onion.Tor.Close()
+		err := bounceTor.tor.Close()
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
