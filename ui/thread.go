@@ -64,7 +64,7 @@ func (fyneUI *Fyne) displaySentMessage(thread thread, message string) { // TODO:
 	chatHistory := thread.chatHistoryScroll().Content.(*fyne.Container)
 
 	chatHistory.Objects = append(chatHistory.Objects, newChatBubble("You", message, true, time.Now().Unix(), nil))
-	chatHistory.Refresh()
+	chatHistory.Refresh() // TODO: all this needed?
 
 	thread.chatHistoryScroll().Refresh()
 	thread.chatHistoryScroll().ScrollToBottom()

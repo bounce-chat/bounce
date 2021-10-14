@@ -89,9 +89,9 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 		}).Fatal("data bindings are broken")
 	}
 
-	fyneUI.buildEditDMContainer(dm) // TODO: dm.buildEditContainer
+	fyneUI.buildEditDMContainer(dm)
 	editButton := widget.NewButton("Edit", func() {
-		fyneUI.showEditDMContainer(dm) // TODO: dm.showEditContainer()
+		fyneUI.showEditDMContainer(dm)
 	})
 	userIcon := newEmbeddedResource("assets/not_found.png")
 	userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
@@ -174,6 +174,7 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 		displayName = "You"
 		isOutgoing = true
 		targetDM = msg.Destination
+		hideNotification = true
 	}
 
 	dm, dmExists := fyneUI.dms[targetDM]
@@ -231,7 +232,8 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 		log.Fatal("data bindings are broken")
 	}
 
-	if notificationsEnabled && !notificationsMuted && !autoscroll && !hideNotification { //TODO: also notify if not focused?
+	// TODO: different criteria on mobile probably.  need to clean this up and add context around fyneUI.focused
+	if notificationsEnabled && !notificationsMuted && !autoscroll && !hideNotification {
 		fyneUI.app.SendNotification(fyne.NewNotification(user.name, msg.Text))
 	}
 }
@@ -250,6 +252,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 
 	notificationsCheck := widget.NewCheckWithData("Enable notifications", dm.notificationsEnabled)
 	notificationsCheck.OnChanged = func(state bool) { // TODO: do we really want this to apply before save?
+		dm.notificationsEnabled.Set(state) // TODO: error check
 		fyneUI.callbacks.ChangeNotificationSettings(dm.user.id, state)
 	}
 

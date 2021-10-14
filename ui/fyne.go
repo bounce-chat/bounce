@@ -46,6 +46,7 @@ type Fyne struct {
 	profile               *user
 	users                 *userStore
 	initialStateSet       bool
+	focused               bool
 	networkState          int
 	setupStep             int
 	callbacks             chat.UICallbacks
@@ -58,6 +59,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.groups = make(map[uuid.UUID]*group)
 	fyneUI.dms = make(map[uuid.UUID]*directMessage)
 	fyneUI.users = newUserStore()
+	fyneUI.focused = true
 	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}) // TODO: red rich text
 	fyneUI.networkOfflineWarning.Show()
 
@@ -66,6 +68,8 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	fyneUI.app = app.NewWithID("chat.bounce")
 	fyneUI.app.SetIcon(newEmbeddedResource("assets/icon.png"))
+	fyneUI.app.Lifecycle().SetOnEnteredForeground(func() { fyneUI.focused = true })
+	fyneUI.app.Lifecycle().SetOnExitedForeground(func() { fyneUI.focused = false })
 
 	//
 	// Define the main window
