@@ -15,7 +15,6 @@ import (
 
 	"github.com/cretz/bine/tor"
 	"github.com/cretz/bine/torutil"
-
 	"github.com/cretz/bine/torutil/ed25519"
 	"github.com/ipsn/go-libtor"
 	log "github.com/sirupsen/logrus"
@@ -25,31 +24,41 @@ var handshakeChallengeSize = 32
 var signatureSize = 64
 
 type TorNetwork struct {
-	directory     string
-	onion         *tor.OnionService
-	tor           *tor.Tor
-	callbacks     chat.NetworkCallbacks
-	publicKey     ed25519.PublicKey
-	privateKey    ed25519.PrivateKey
-	online        bool
-	shutdown      bool
-	shutdownMutex sync.Mutex
+	routerDirectory string
+	keyDirectory    string
+	onion           *tor.OnionService
+	tor             *tor.Tor
+	callbacks       chat.NetworkCallbacks
+	publicKey       ed25519.PublicKey
+	privateKey      ed25519.PrivateKey
+	online          bool
+	shutdown        bool
+	shutdownMutex   sync.Mutex
 }
 
 func (bounceTor *TorNetwork) LoadConfig(configDirectory string) {
-	bounceTor.directory = configDirectory + "/tor"
+	bounceTor.routerDirectory = configDirectory + "/tor/router"
+	bounceTor.keyDirectory = configDirectory + "/tor/keys"
 
-	// Create the config directory if needed
-	err := os.MkdirAll(bounceTor.directory, 0700)
+	// Create the router directory if needed
+	err := os.MkdirAll(bounceTor.routerDirectory, 0700)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error creating tor config directory")
+		}).Fatal("error creating tor router directory")
+	}
+
+	// Create the key directory if needed
+	err = os.MkdirAll(bounceTor.keyDirectory, 0700)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error creating tor key directory")
 	}
 
 	// Create an empty torrc file.  If we don't create and specify a file, we leak torrc files with bine
-	if _, err := os.Stat(bounceTor.directory + "/torrc"); os.IsNotExist(err) {
-		torrc, err := os.OpenFile(bounceTor.directory+"/torrc", os.O_RDONLY|os.O_CREATE, 0600)
+	if _, err := os.Stat(bounceTor.routerDirectory + "/torrc"); os.IsNotExist(err) {
+		torrc, err := os.OpenFile(bounceTor.routerDirectory+"/torrc", os.O_RDONLY|os.O_CREATE, 0600)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -65,14 +74,13 @@ func (bounceTor *TorNetwork) LoadConfig(configDirectory string) {
 
 	// Load or create the keypair for the hidden service
 	pubkey, privkey := bounceTor.hiddenServiceKey()
-	bounceTor.publicKey = pubkey
+	bounceTor.publicKey = pubkey // TODO: needed?  move to the get function?
 	bounceTor.privateKey = privkey
 }
 
 func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.PrivateKey) { // TODO: reverse the order?
 	// Create the config directory if needed
-	hiddenServiceKeyDirectory := bounceTor.directory + "/hidden_service_keys"
-	err := os.MkdirAll(hiddenServiceKeyDirectory, 0700)
+	err := os.MkdirAll(bounceTor.keyDirectory, 0700)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -80,8 +88,8 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 	}
 
 	// Check for keys on disk, return them if they exist
-	privateKeyFile := hiddenServiceKeyDirectory + "/private_key"
-	publicKeyFile := hiddenServiceKeyDirectory + "/public_key"
+	privateKeyFile := bounceTor.keyDirectory + "/private_key"
+	publicKeyFile := bounceTor.keyDirectory + "/public_key"
 	privateKeyBytes, err := ioutil.ReadFile(privateKeyFile)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -130,6 +138,7 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
 	defer func() {
 		if r := recover(); r != nil {
+			// https://github.com/cretz/bine/issues/57
 			log.Fatal("recovered a panic while starting Tor, this happens due to a nil-pointer derefernce in bine when Tor is shut down while publishing a hidden service")
 		}
 	}()
@@ -140,8 +149,8 @@ func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
 	bounceTor.tor, err = tor.Start(
 		nil,
 		&tor.StartConf{
-			DataDir:        bounceTor.directory,
-			TorrcFile:      bounceTor.directory + "/torrc",
+			DataDir:        bounceTor.routerDirectory,
+			TorrcFile:      bounceTor.routerDirectory + "/torrc",
 			ProcessCreator: libtor.Creator,
 			DebugWriter:    &torLogger{},
 		},
@@ -363,7 +372,7 @@ func (bounceTor *TorNetwork) Shutdown() {
 	log.Info("shutting down tor")
 	if bounceTor.onion == nil {
 		// Network never fully started and we're already closing the app
-		log.Warn("stopping tor before hidden service was published")
+		log.Warn("stopping hidden service before hidden service was published")
 	} else {
 		// Stop the hidden service
 		err := bounceTor.onion.Close()
