@@ -9,21 +9,15 @@ import (
 //
 
 type BounceUI interface {
-	//
-	// During initial startup, the following functions are called in order to build the interface
-	//
-
 	// Create user interface objects
 	Build(configPath string, callbacks UICallbacks)
+
 	// Load the initial state
 	LoadInitialState(InitialState)
 
-	//
-	// These functions control the user interface lifecycle
-	//
-
 	// Run displays the user interface and blocks.  A network loading message should be displayed first until NetworkOnline() is called.
 	Run()
+
 	// Application is closing due to a fatal error, show down the user interface
 	Quit()
 

@@ -36,7 +36,7 @@ type TorNetwork struct {
 	shutdownMutex   sync.Mutex
 }
 
-func (bounceTor *TorNetwork) LoadConfig(configDirectory string) {
+func (bounceTor *TorNetwork) loadConfig(configDirectory string) {
 	bounceTor.routerDirectory = configDirectory + "/tor/router"
 	bounceTor.keyDirectory = configDirectory + "/tor/keys"
 
@@ -135,13 +135,14 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 	return keypair.PublicKey(), keypair.PrivateKey()
 }
 
-func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
+func (bounceTor *TorNetwork) Start(configDirectory string, callbacks chat.NetworkCallbacks) {
 	defer func() {
 		if r := recover(); r != nil {
 			// https://github.com/cretz/bine/issues/57
 			log.Fatal("recovered a panic while starting Tor, this happens due to a nil-pointer derefernce in bine when Tor is shut down while publishing a hidden service")
 		}
 	}()
+	bounceTor.loadConfig(configDirectory)
 	bounceTor.callbacks = callbacks
 	log.Info("connecting to the Tor network")
 
@@ -182,7 +183,7 @@ func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
 
 	bounceTor.updateOnlineStatus()
 	ticker := time.NewTicker(10 * time.Second)
-	for _ = range ticker.C {
+	for _ = range ticker.C { // TODO: Close this on shutdown?
 		bounceTor.updateOnlineStatus()
 	}
 }
@@ -267,7 +268,7 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 	}
 
 	// All onion IDs will be the same size, read the number of bytes that correspond to our ID
-	peerAddress, err := read(connection, len(bounceTor.onion.ID))
+	peerAddress, err := read(connection, len(bounceTor.onion.ID)) // TODO: use Address()
 	if err != nil {
 		return nil, err, false
 	}

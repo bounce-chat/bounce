@@ -47,8 +47,6 @@ func Start(network BounceNetwork, ui BounceUI) {
 
 	bounce.openDatabase()
 
-	bounce.network.LoadConfig(bounce.configDirectory)
-
 	bounce.userInterface.Build(
 		bounce.configDirectory,
 		UICallbacks{
@@ -63,15 +61,15 @@ func Start(network BounceNetwork, ui BounceUI) {
 			UserConnectionDesired:      bounce.userConnectionDesired,
 		},
 	)
-	// To make the user interface more responsive to open, we load the database in a goroutine
-	// and call in to let the UI know it's done after.  Most of the time this will appear instant,
-	// but with a very large database it would be nice to see the window open while it's loading.
-	bounce.userInterface.LoadInitialState(bounce.buildInitialState()) // TODO: this should be in a goroutine but that causes bugs.  Unclear why.
+	bounce.userInterface.LoadInitialState(bounce.buildInitialState()) // TODO: this should be in a goroutine so we can display loading until ready, but that causes bugs.  Unclear why.
 
-	go bounce.network.Start(NetworkCallbacks{
-		NetworkOnline:  bounce.networkOnline,
-		NetworkOffline: bounce.networkOffline,
-	})
+	go bounce.network.Start(
+		bounce.configDirectory,
+		NetworkCallbacks{
+			NetworkOnline:  bounce.networkOnline,
+			NetworkOffline: bounce.networkOffline,
+		},
+	)
 	go bounce.peer()
 
 	// Run the UI and block
