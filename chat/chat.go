@@ -1,9 +1,12 @@
 package chat
 
 import (
+	"io/ioutil"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -32,6 +35,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 	}
 	log.SetLevel(log.DebugLevel) // TODO: put behind the envar when ready
 
+	ensureOnlyOneInstance()
 	bounce := &Bounce{
 		configDirectory: getConfigDirectory(),
 		userInterface:   ui,
@@ -115,6 +119,16 @@ func (bounce *Bounce) shutdown() {
 
 	// Close the user interface if it isn't already closed
 	bounce.userInterface.Quit()
+
+	// Delete our PID file
+	pidFile := getConfigDirectory() + "/.pid"
+	err = os.Remove(pidFile)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"path":  pidFile,
+			"error": err.Error(),
+		}).Error("error deleting pid file")
+	}
 }
 
 //
@@ -135,6 +149,85 @@ func (bounce *Bounce) handleInterrupts() {
 		// Stopping the user interface unblocks the main blocking call of the appplication,
 		// which in turn shuts down the network handler and the network
 		bounce.userInterface.Quit()
+	}
+}
+
+func ensureOnlyOneInstance() {
+	pidFile := getConfigDirectory() + "/.pid"
+
+	// If there's no PID file, return
+	_, err := os.Stat(pidFile)
+	if os.IsNotExist(err) {
+		// Write the current PID to file
+		err = os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0600)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"path":  pidFile,
+			}).Fatal("error writing current pid file")
+		}
+		return
+	}
+
+	// If we can't stat the pid file, fatal error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"file":  pidFile,
+		}).Fatal("error stating PID file")
+	}
+
+	// Get the PID from the file
+	pidBytes, err := ioutil.ReadFile(pidFile)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"file":  pidFile,
+		}).Fatal("error reading PID file")
+	}
+
+	pid, err := strconv.Atoi(string(pidBytes))
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"file":     pidFile,
+			"contents": string(pidBytes),
+		}).Fatal("pid file did not contain int")
+	}
+
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		// Always true on unix systems, on windows an error means the process is not running
+		// https://stackoverflow.com/a/15204759
+		// TODO: delete the pid file and return here if on windows?
+		log.WithFields(log.Fields{
+			"pid":   pid,
+			"error": err.Error(),
+		}).Warn("error on os.FindProcess")
+	} else {
+		err := process.Signal(syscall.Signal(0))
+		if err == nil {
+			log.Fatal("Another instance of Bounce is running.  Please close it, or if you are sure it is not running, delete the pid file and try again: ", pidFile)
+		} else if err.Error() == "no such process" {
+			// Delete the old pid file that refers to a dead process
+			err = os.Remove(pidFile)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"path":  pidFile,
+					"error": err.Error(),
+				}).Fatal("error deleting old pid file")
+			}
+			// Write the current PID to file
+			err = os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0600)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"path":  pidFile,
+				}).Fatal("error writing current pid file")
+			}
+		} else {
+			log.Fatal("Another instance of Bounce is running.  Please close it, or if you are sure it is not running, delete the pid file and try again: ", pidFile)
+		}
 	}
 }
 

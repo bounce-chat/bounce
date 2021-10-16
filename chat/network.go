@@ -32,9 +32,6 @@ type BounceNetwork interface {
 	// Verify the signature of data signed by a device with the provided address
 	VerifySignature(address string, data []byte, signature []byte) bool
 
-	// Check if a string is a valid address on this network
-	//IsValidAddress(address string) bool
-
 	// Gracefully stop the network router
 	Shutdown()
 }
