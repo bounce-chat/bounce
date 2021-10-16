@@ -93,7 +93,9 @@ func (bounce *Bounce) shutdown() {
 	// then call os.Exit before the network is actually shut down and this function has returned.  Therefore
 	// we make this shutdown process synchronous with a mutex lock.  In theory unlocking it isn't necessary
 	// since we're going to os.Exit as soon as this function returns, but it just feels wrong to not unlock
-	// it, and I wouldn't want to create the appearance of an accidental deadlock being possible.
+	// it, and I wouldn't want to create the appearance of an accidental deadlock being possible.  A
+	// concequence of this however is that fatal errors cannot be called from within this function without
+	// locking the application, so any errors encountered here must be logged as errors.
 	bounce.shutdownMutex.Lock()
 	defer bounce.shutdownMutex.Unlock()
 
@@ -155,7 +157,7 @@ func (bounce *Bounce) handleInterrupts() {
 func ensureOnlyOneInstance() {
 	pidFile := getConfigDirectory() + "/.pid"
 
-	// If there's no PID file, return
+	// If there's no PID file, make one and return
 	_, err := os.Stat(pidFile)
 	if os.IsNotExist(err) {
 		// Write the current PID to file

@@ -3,12 +3,14 @@ module github.com/hkparker/bounce
 go 1.16
 
 require (
+	berty.tech/go-libtor v1.0.385
 	fyne.io/fyne/v2 v2.1.1-0.20210923131757-bc52c98e2468
 	github.com/cretz/bine v0.2.0
 	github.com/google/uuid v1.3.0
-	github.com/ipsn/go-libtor v1.0.380
 	github.com/sirupsen/logrus v1.8.1
 	github.com/vmihailenco/msgpack/v5 v5.3.4
+	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519 // indirect
+	golang.org/x/sys v0.0.0-20211015200801-69063c4bb744 // indirect
 	gorm.io/driver/sqlite v1.1.4
 	gorm.io/gorm v1.21.12
 )
