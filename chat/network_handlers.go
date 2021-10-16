@@ -5,11 +5,12 @@ import (
 )
 
 func (bounce *Bounce) networkOnline() {
+	bounce.networkIsOnline = true
 	if !bounce.networkHasBeenOnline {
 		bounce.networkHasBeenOnline = true
 		go bounce.acceptConnections()
 	}
-	bounce.networkIsOnline = true
+	bounce.auditPeers()
 	bounce.userInterface.NetworkOnline()
 }
 
