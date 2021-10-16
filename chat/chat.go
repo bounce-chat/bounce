@@ -100,12 +100,21 @@ func (bounce *Bounce) shutdown() {
 	defer bounce.shutdownMutex.Unlock()
 
 	// Stop all running tasks and close all connections to remote devices
-	// TODO
+	log.Info("closing all remote connections")
+	for _, rd := range bounce.devicePool.devices {
+		close(rd.messages)
+	}
+	for _, rd := range bounce.devicePool.devices {
+		rd.closer.Wait()
+	}
+	// TODO: stop the database pruning loop
 
 	// Shutdown the network
+	log.Info("stopping the network")
 	bounce.network.Shutdown()
 
 	// Close the database
+	log.Info("closing the database")
 	sqliteDB, err := bounce.database.DB()
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -131,6 +140,8 @@ func (bounce *Bounce) shutdown() {
 			"error": err.Error(),
 		}).Error("error deleting pid file")
 	}
+
+	log.Info("stopped bounce")
 }
 
 //
