@@ -89,7 +89,7 @@ type UICallbacks struct {
 	ChangeNotificationSettings func(groupID uuid.UUID, notificationEnabled bool)
 	// Setup a new profile on a fresh install
 	SetProfile    func(profileName, deviceName string) (uuid.UUID, error)
-	ImportUser    func(user []byte) error
+	ImportUser    func(user []byte) (User, error)
 	ExportContact func(name string, expiration int64, oneTime bool) []byte
 	// Tell the chat engine that some user interaction makes indicates a message might soon be sent to this user
 	UserConnectionDesired func(uuid.UUID)

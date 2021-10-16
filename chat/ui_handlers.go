@@ -120,16 +120,16 @@ func (bounce *Bounce) exportContact(name string, expiration int64, oneTime bool)
 	return bytes
 }
 
-func (bounce *Bounce) importUser(data []byte) error {
+func (bounce *Bounce) importUser(data []byte) (User, error) {
 	newUser := profileExport{}
 	err := json.Unmarshal(data, &newUser)
 	if err != nil {
-		return err
+		return User{}, err
 	}
 
 	// Make sure the export hasn't expired
 	if newUser.Expiration != 0 && time.Now().Unix() >= newUser.Expiration {
-		return errors.New("file has expired")
+		return User{}, errors.New("file has expired")
 	}
 
 	// Make sure we don't already know about any of the devices
@@ -137,17 +137,22 @@ func (bounce *Bounce) importUser(data []byte) error {
 		count := int64(0)
 		bounce.database.Model(&device{}).Where("address = ?", contactDevice.Address).Count(&count)
 		if count > 0 {
-			return errors.New("contact contains device that already exists in database")
+			return User{}, errors.New("contact contains device that already exists in database")
 		}
 	}
 
 	// Make sure this contact has a valid device group
 	if !newUser.Profile.validDeviceGroup() {
-		return errors.New("invalid device group")
+		return User{}, errors.New("invalid device group")
+	}
+
+	uiUser := User{
+		ID:   newUser.Profile.ID,
+		Name: newUser.Profile.Name,
 	}
 
 	// Save to the database
-	return bounce.database.Create(&newUser.Profile).Error
+	return uiUser, bounce.database.Create(&newUser.Profile).Error
 	// TODO: some sort of UI feedback on the secret being accepted on the remote side?
 	// As in, bounce only accepts DMs from user's in a shared group or who send an import secret
 	// TODO: try to dial right away

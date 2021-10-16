@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"io"
 
 	"fyne.io/fyne/v2"
@@ -39,11 +40,13 @@ func (fyneUI *Fyne) buildImportContact() {
 			dialog.ShowError(errors.New("error reading file: "+err.Error()), fyneUI.mainWindow)
 			// TODO: log
 		}
-		err = fyneUI.callbacks.ImportUser(data) // TODO: also return username to display?
+		newUser, err := fyneUI.callbacks.ImportUser(data)
 		if err != nil {
 			dialog.ShowError(errors.New("error importing contact: "+err.Error()), fyneUI.mainWindow)
 		} else {
-			dialog.ShowInformation("Success", "User has been imported", fyneUI.mainWindow)
+			// TODO: add this user to the store as a pending user, waiting on confirmation
+			//fyneUI.users.add(&user{id: newUser.ID, name: newUser.Name}) // TODO: user store should use exported type
+			dialog.ShowInformation("Success", fmt.Sprintf("%s has been imported", newUser.Name), fyneUI.mainWindow)
 			// TODO: offer to delete file?
 		}
 	}, fyneUI.mainWindow)
