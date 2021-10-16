@@ -152,6 +152,17 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 }
 
 func (fyneUI *Fyne) NetworkOnline() {
+	if fyneUI.activeThread != uuid.Nil {
+		if _, ok := fyneUI.dms[fyneUI.activeThread]; ok {
+			fyneUI.callbacks.UserConnectionDesired(fyneUI.activeThread)
+		} else if _, ok = fyneUI.groups[fyneUI.activeThread]; ok {
+			//fyneUI.callbacks.GroupConnectionDesired(fyneUI.activeThread)
+		} else {
+			log.WithFields(log.Fields{
+				"thread": fyneUI.activeThread,
+			}).Error("active thread is not a known user or group")
+		}
+	}
 	fyneUI.networkOfflineWarning.Hide()
 	fyneUI.networkState = networkStateOnline
 }

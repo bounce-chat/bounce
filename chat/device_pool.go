@@ -173,6 +173,13 @@ func (bounce *Bounce) userConnectionDesired(id uuid.UUID) {
 }
 
 func (bounce *Bounce) tryDialing(address string) {
+	if !bounce.networkIsOnline {
+		log.WithFields(log.Fields{
+			"peer": address,
+		}).Debug("ignoring request to dial while network is offline")
+		return
+	}
+
 	bounce.devicePool.updateLastDial(address)
 	log.WithFields(log.Fields{
 		"peer": address,
