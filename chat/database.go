@@ -61,7 +61,7 @@ func (bounce *Bounce) buildInitialState() InitialState {
 	bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count > 0 {
 		var dbProfile user
-		bounce.database.Model(&user{}).Where("profile = ?", true).First(&dbProfile) // TODO: error check, clean this up
+		bounce.database.Where("profile = ?", true).First(&dbProfile) // TODO: error check, clean this up
 		profile = &User{
 			ID:   dbProfile.ID,
 			Name: dbProfile.Name,
@@ -90,7 +90,7 @@ func (bounce *Bounce) buildInitialState() InitialState {
 
 func (bounce *Bounce) profileExists() bool {
 	var currentUser user
-	err := bounce.database.Model(&user{}).Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
+	err := bounce.database.Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return false
@@ -105,7 +105,7 @@ func (bounce *Bounce) profileExists() bool {
 
 func (bounce *Bounce) currentUser() user {
 	var currentUser user
-	err := bounce.database.Model(&user{}).Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
+	err := bounce.database.Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

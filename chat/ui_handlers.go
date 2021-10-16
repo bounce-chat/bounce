@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"gorm.io/gorm/clause"
 )
 
 func (bounce *Bounce) sendGroupMessage(message GroupMessage) {
@@ -83,14 +82,7 @@ func (bounce *Bounce) exportContact(name string, expiration int64, oneTime bool)
 		log.Fatal("no contact exists to export")
 	}
 
-	var myProfile user
-	err := bounce.database.Model(&user{}).Preload(clause.Associations).Where("profile = ?", true).First(&myProfile).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error loading contact for export")
-	}
-
+	myProfile := bounce.currentUser()
 	secretBytes := make([]byte, 16)
 	rand.Read(secretBytes)
 	secret := fmt.Sprintf("%x", secretBytes)
