@@ -81,18 +81,12 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 	}
 
 	// Look up the device that sent it
-	var srcDevice device
-	err = bounce.database.Where("address = ?", peer).First(&srcDevice).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"peer": peer,
-			}).Warn("an unknown device sent a direct message, ignoring")
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error looking up device while handling incoming direct message")
-		}
+	srcDevice, exists := bounce.getDeviceFromAddress(peer)
+	if !exists {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("an unknown device sent a direct message, ignoring")
+		return
 	}
 
 	// TODO: Ensure that this device is a sync device, or that it is either the source or destination of the message while the other side is us

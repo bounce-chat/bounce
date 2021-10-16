@@ -134,9 +134,8 @@ func (bounce *Bounce) importUser(data []byte) (User, error) {
 
 	// Make sure we don't already know about any of the devices
 	for _, contactDevice := range newUser.Profile.Devices {
-		count := int64(0)
-		bounce.database.Model(&device{}).Where("address = ?", contactDevice.Address).Count(&count)
-		if count > 0 {
+		_, exists := bounce.getDeviceFromAddress(contactDevice.Address)
+		if exists {
 			return User{}, errors.New("contact contains device that already exists in database")
 		}
 	}

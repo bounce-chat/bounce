@@ -87,11 +87,10 @@ func (bounce *Bounce) handleCatchUp(peer string, payload []byte) {
 		return
 	}
 
-	var dev device
-	res := bounce.database.Model(&device{}).Where("address = ?", peer).First(&dev)
-	if res.Error != nil {
+	dev, exists := bounce.getDeviceFromAddress(peer)
+	if !exists {
 		log.WithFields(log.Fields{
-			"error": res.Error.Error(),
+			"peer": peer,
 		}).Error("error loading device that sent catch up")
 		return
 	}

@@ -63,11 +63,10 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 	bounce.devicePool.receivedAcks[rr.ID.String()] = true
 	bounce.devicePool.receivedAcksMutex.Unlock()
 
-	var dev device
-	res := bounce.database.Model(&device{}).Where("address = ?", peer).First(&dev)
-	if res.Error != nil {
+	dev, exists := bounce.getDeviceFromAddress(peer)
+	if !exists {
 		log.WithFields(log.Fields{
-			"error": res.Error.Error(),
+			"peer": peer,
 		}).Error("error loading device that sent reference request")
 		return
 	}

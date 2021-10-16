@@ -145,13 +145,12 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 		return
 	}
 
-	var srcDevice device
-	res := bounce.database.Model(&device{}).Where("address = ?", peer).First(&srcDevice)
-	if res.Error != nil {
+	srcDevice, exists := bounce.getDeviceFromAddress(peer)
+	if !exists {
 		log.WithFields(log.Fields{
-			"error": res.Error.Error(),
-			"peer":  peer,
+			"peer": peer,
 		}).Info("error loading device for reference offer handling")
+		return
 	}
 
 	response := &referenceRequest{

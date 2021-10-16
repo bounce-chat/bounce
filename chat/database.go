@@ -109,23 +109,21 @@ func (bounce *Bounce) currentUser() user {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error loading current user") // TODO: should this also return a bool and not do a fatal if there's no rpfile user?
+		}).Fatal("error loading current user") // TODO: should this also return a bool and not do a fatal if there's no profile user?
 	}
 	return currentUser
 }
 
 func (bounce *Bounce) currentDevice() device {
-	var currentDevice device
-	err := bounce.database.Model(&device{}).Preload(clause.Associations).Where("address = ?", bounce.network.Address()).First(&currentDevice).Error // TODO: do I need to load associations here?
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error loading current device")
+	currentDevice, exists := bounce.getDeviceFromAddress(bounce.network.Address())
+	if !exists {
+		log.Fatal("attempt to get current device from database before it has been created in the database")
 	}
 	return currentDevice
 }
 
 func (bounce *Bounce) getDeviceFromAddress(address string) (device, bool) {
+	// TODO: can be cached, devices never change after they are saved
 	var dev device
 	err := bounce.database.Where("address = ?", address).First(&dev).Error
 	if err != nil {
