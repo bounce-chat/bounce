@@ -97,12 +97,19 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 
 	// TODO: Ensure that this device is a sync device, or that it is either the source or destination of the message while the other side is us
 
-	// If we have already seen this message, all we need to do is mark that this peer has the message as well
+	// If we have already seen this message, all we need to do is mark that this peer has the message as well.  If not, we save the message
+	// in the database.  This step is synchroniszed with a mutex lock since the same message can come in concurrently during gossip.
+	bounce.dmExistenceCheck.Lock()
 	var existingDM DirectMessage
-	err = bounce.database.Where("id = ?", dm.ID).First(&existingDM).Error // TODO: other conditions?
+	err = bounce.database.Where("id = ?", dm.ID).First(&existingDM).Error
 	if err == nil {
 		bounce.markDeliveredTo(&existingDM, peer)
+		bounce.dmExistenceCheck.Unlock()
 		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error lookinf up direct message")
 	}
 
 	// Save the new message
@@ -113,6 +120,7 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Error("error saving incoming direct message")
 	}
+	bounce.dmExistenceCheck.Unlock()
 
 	// Send the message to the user interface
 	bounce.userInterface.ReceivedDirectMessage(dm)

@@ -23,6 +23,7 @@ type Bounce struct {
 	networkHasBeenOnline bool
 	shutdownStarted      bool
 	shutdownMutex        sync.Mutex
+	dmExistenceCheck     sync.Mutex
 }
 
 //
