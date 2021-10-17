@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -19,6 +20,7 @@ type Bounce struct {
 	userInterface        BounceUI
 	network              BounceNetwork
 	devicePool           *devicePool
+	userID               uuid.UUID
 	networkIsOnline      bool
 	networkHasBeenOnline bool
 	shutdownStarted      bool

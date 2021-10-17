@@ -1,12 +1,10 @@
 package chat
 
 import (
-	"errors"
 	"os"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 
 	stdlog "log"
@@ -86,100 +84,6 @@ func (bounce *Bounce) buildInitialState() InitialState {
 		Users:          chatUsers,
 		DirectMessages: dms,
 	}
-}
-
-func (bounce *Bounce) profileExists() bool {
-	var currentUser user
-	err := bounce.database.Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
-	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return false
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error loading current user")
-		}
-	}
-	return true
-}
-
-func (bounce *Bounce) currentUser() user {
-	var currentUser user
-	err := bounce.database.Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error loading current user") // TODO: should this also return a bool and not do a fatal if there's no profile user?
-	}
-	return currentUser
-}
-
-func (bounce *Bounce) currentDevice() device {
-	currentDevice, exists := bounce.getDeviceFromAddress(bounce.network.Address())
-	if !exists {
-		log.Fatal("attempt to get current device from database before it has been created in the database")
-	}
-	return currentDevice
-}
-
-func (bounce *Bounce) getDeviceFromAddress(address string) (device, bool) {
-	// TODO: can be cached, devices never change after they are saved
-	var dev device
-	err := bounce.database.Where("address = ?", address).First(&dev).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return dev, false
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up device")
-		}
-	}
-	return dev, true
-}
-
-type device struct {
-	ID        uuid.UUID              `gorm:"type:uuid;primary_key;" json:"-"`
-	Name      string                 `json:"-"`
-	UserID    uuid.UUID              `json:"-"`
-	Address   string                 `gorm:"unique"`
-	Signature *introductionSignature `json:",omitempty"`
-}
-
-func (device *device) BeforeCreate(tx *gorm.DB) error {
-	device.ID = uuid.New()
-	return nil
-}
-
-type introductionSignature struct {
-	ID                           uuid.UUID `gorm:"type:uuid;primary_key;"`
-	DeviceID                     uuid.UUID
-	PreexistingDevice            string // TODO: should this reference a device model?
-	SignatureOfNewDevice         []byte
-	SignatureOfPreexistingDevice []byte
-}
-
-func (introductionSignature *introductionSignature) BeforeCreate(tx *gorm.DB) error {
-	introductionSignature.ID = uuid.New()
-	return nil
-}
-
-type user struct {
-	ID      uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name    string
-	Profile bool `json:"-"`
-	Devices []device
-}
-
-func (u *user) BeforeCreate(tx *gorm.DB) error {
-	if u.Profile {
-		var count int64
-		tx.Model(&user{}).Where("profile = ?", true).Count(&count)
-		if count > 0 {
-			return errors.New("profile user already exists")
-		}
-	}
-	return nil
 }
 
 type profileExport struct {

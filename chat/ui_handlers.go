@@ -18,7 +18,7 @@ func (bounce *Bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
 	message.ID = uuid.New()
 	message.CreatedAt = time.Now().Unix()
 	message.Read = true
-	message.Source = bounce.currentUser().ID
+	message.Source = bounce.currentUserID()
 
 	err := bounce.database.Create(message).Error
 	if err != nil {
@@ -82,7 +82,10 @@ func (bounce *Bounce) exportContact(name string, expiration int64, oneTime bool)
 		log.Fatal("no contact exists to export")
 	}
 
-	myProfile := bounce.currentUser()
+	myProfile, exists := bounce.currentUser()
+	if !exists {
+		log.Fatal("cannot export contact when no profile exists")
+	}
 	secretBytes := make([]byte, 16)
 	rand.Read(secretBytes)
 	secret := fmt.Sprintf("%x", secretBytes)

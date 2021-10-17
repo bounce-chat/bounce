@@ -72,12 +72,16 @@ func (bounce *Bounce) auditPeers() {
 }
 
 func (bounce *Bounce) connectToSyncDevices() {
-	if !bounce.profileExists() {
+	currentUser, exists := bounce.currentUser()
+
+	// If a profile hasn't been created on this device yet there's no device to sync with
+	// TODO: maybe don't need this, since an empty user will have no devices?
+	if !exists {
 		return
 	}
 
-	for _, dev := range bounce.currentUser().Devices {
-		if dev.Address == bounce.currentDevice().Address {
+	for _, dev := range currentUser.Devices {
+		if dev.Address == bounce.network.Address() {
 			continue
 		}
 		rd := bounce.getRemoteDevice(dev.Address)
@@ -95,6 +99,12 @@ func (bounce *Bounce) connectToGroups() {
 }
 
 func (bounce *Bounce) connectToUsers() {
+	currentUser, exists := bounce.currentUser()
+
+	if !exists {
+		return
+	}
+
 	// First, ensure that we try to contact any user device we have messages for
 	var allUsers []user
 	err := bounce.database.Preload(clause.Associations).Where("profile = ?", false).Find(&allUsers).Error
@@ -120,7 +130,7 @@ func (bounce *Bounce) connectToUsers() {
 		Distinct("destination").
 		Where(
 			"source = ? and created_at > ?",
-			bounce.currentUser().ID,
+			currentUser.ID,
 			time.Now().Add(-3*24*time.Hour).Unix(),
 		).Find(&userIDs).Error
 	if err != nil {
