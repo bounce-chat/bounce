@@ -10,7 +10,14 @@ import (
 	"gorm.io/gorm"
 )
 
-type referenceRequest references
+type referenceRequest struct {
+	_msgpack       struct{}  `msgpack:",omitempty"`
+	ID             uuid.UUID `gorm:"type:uuid;primary_key;"`
+	For            string    `msgpack:"-"`
+	DirectMessages string    // Comma-separated list of DM UUIDs
+	destination    uuid.UUID
+	payload        []byte
+}
 
 func (rr *referenceRequest) getScope() int {
 	return DEVICE_SCOPE

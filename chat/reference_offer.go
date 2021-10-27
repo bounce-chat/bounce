@@ -1,19 +1,34 @@
 package chat
 
 import (
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
+	"gorm.io/gorm"
 )
 
 //
 // A reference offer is a message sent to a newly connected device that provides the UUIDs of any messages that device
 // should have, but that we didn't deliver to it.
 //
-type referenceOffer references
+type referenceOffer struct {
+	_msgpack       struct{} `msgpack:",omitempty"`
+	CreatedAt      int64
+	ID             uuid.UUID `gorm:"type:uuid;primary_key;"`
+	For            string    `msgpack:"-"`
+	DirectMessages string    // Comma-separated list of DM UUIDs
+	destination    uuid.UUID
+	payload        []byte
+}
+
+func (referenceOffer *referenceOffer) BeforeCreate(tx *gorm.DB) error {
+	referenceOffer.CreatedAt = time.Now().Unix()
+	return nil
+}
 
 func (ro *referenceOffer) getScope() int {
 	return DEVICE_SCOPE
@@ -131,7 +146,12 @@ func (bounce *Bounce) broadcastReferenceOffer(ro *referenceOffer) {
 				"id":          ro.ID,
 				"destination": ro.For,
 			}).Warn("gave up attempting to deliver reference offer")
-			// TODO: delete it now?
+			err := bounce.database.Delete(ro).Error
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error deleting reference offer after gave up on broadcasting")
+			}
 			return
 		}
 	}

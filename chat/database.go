@@ -2,6 +2,7 @@ package chat
 
 import (
 	"os"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -51,6 +52,28 @@ func (bounce *Bounce) openDatabase() {
 	}
 
 	// TODO: prune old reference offers.  Better to kick off something that prunes everything old (messages, profile state changes, etc)?
+	go bounce.keepDatabasePruned()
+}
+
+func (bounce *Bounce) keepDatabasePruned() {
+	bounce.pruneDatabase()
+	ticker := time.NewTicker(1 * time.Minute)
+	for _ = range ticker.C {
+		bounce.pruneDatabase()
+	}
+}
+
+func (bounce *Bounce) pruneDatabase() {
+	// If a reference offer was delivered, but a reference request was never received in response, it will only be deleted here
+	tenMinutesAgo := time.Now().Add(-10 * time.Minute).Unix()
+	err := bounce.database.Where("created_at < ?", tenMinutesAgo).Delete(referenceOffer{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error pruning reference offers")
+	}
+
+	// TODO: delete old messages
 }
 
 func (bounce *Bounce) buildInitialState() InitialState {
