@@ -179,7 +179,7 @@ func (bounceTor *TorNetwork) Start(configDirectory string, callbacks chat.Networ
 
 	log.WithFields(log.Fields{
 		"id": bounceTor.onion.ID,
-	}).Info("registered hidden service")
+	}).Info("published hidden service")
 
 	bounceTor.updateOnlineStatus()
 	ticker := time.NewTicker(10 * time.Second)

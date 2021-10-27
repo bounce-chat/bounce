@@ -36,7 +36,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 	if os.Getenv("DEBUG") == "true" {
 		log.SetReportCaller(true)
 	}
-	log.SetLevel(log.DebugLevel) // TODO: put behind the envar when ready
+	log.SetLevel(log.DebugLevel) // TODO: put behind the envar when ready.  run in warn otherwise?
 
 	ensureOnlyOneInstance()
 	bounce := &Bounce{
