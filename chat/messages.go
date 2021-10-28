@@ -8,7 +8,8 @@ type message struct {
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
 	CreatedAt   int64
 	ReceivedAt  int64
-	Read        bool `msgpack:"-"`
+	DeleteAt    int64 `msgpack:"-"`
+	Read        bool  `msgpack:"-"`
 	Source      uuid.UUID
 	Destination uuid.UUID
 	Text        string

@@ -153,6 +153,10 @@ func (fyneUI *Fyne) ReceivedDirectMessage(msg chat.DirectMessage) {
 	fyneUI.loadDirectMessage(msg, false, false)
 }
 
+func (fyneUI *Fyne) ExpireDirectMessage(uuid.UUID) {
+	// TODO: delete from the thread
+}
+
 func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hideNotification bool) {
 	user, userExists := fyneUI.users.get(msg.Source)
 	if !userExists {

@@ -34,6 +34,7 @@ type BounceUI interface {
 	//UserIntroduced(Introduction)
 	UserImported(User)
 	ReceivedDirectMessage(DirectMessage)
+	ExpireDirectMessage(uuid.UUID)
 
 	NewGroupChat(Group)
 	ReceivedGroupMessage(GroupMessage)

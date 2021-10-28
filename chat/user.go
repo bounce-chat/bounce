@@ -10,10 +10,11 @@ import (
 )
 
 type user struct {
-	ID      uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name    string
-	Profile bool `json:"-"`
-	Devices []device
+	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name             string
+	Profile          bool `json:"-"`
+	MessageRetention int64
+	Devices          []device
 }
 
 func (u *user) BeforeCreate(tx *gorm.DB) error {

@@ -15,6 +15,10 @@ type DirectMessage message
 
 func (directMessage *DirectMessage) BeforeCreate(tx *gorm.DB) error {
 	directMessage.ReceivedAt = time.Now().Unix()
+
+	// TODO: this is probably better to do at first broadcast and when received
+	// directMessage.DeleteAt = time.Now() + getUserRetention(uuid)
+
 	return nil
 }
 

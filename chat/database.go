@@ -64,7 +64,13 @@ func (bounce *Bounce) keepDatabasePruned() {
 }
 
 func (bounce *Bounce) pruneDatabase() {
-	// If a reference offer was delivered, but a reference request was never received in response, it will only be deleted here
+	bounce.pruneReferenceOffers()
+	bounce.pruneDirectMessages()
+	//bounce.pruneGroupMessages()
+}
+
+// If a reference offer was delivered, but a reference request was never received in response, it will only be deleted here
+func (bounce *Bounce) pruneReferenceOffers() {
 	tenMinutesAgo := time.Now().Add(-10 * time.Minute).Unix()
 	err := bounce.database.Where("created_at < ?", tenMinutesAgo).Delete(referenceOffer{}).Error
 	if err != nil {
@@ -72,8 +78,29 @@ func (bounce *Bounce) pruneDatabase() {
 			"error": err.Error(),
 		}).Fatal("error pruning reference offers")
 	}
+}
 
-	// TODO: delete old messages
+func (bounce *Bounce) pruneDirectMessages() {
+	now := time.Now().Unix()
+	// Find messages that should be pruned and delete them from the frontend
+	var dms []DirectMessage
+	err := bounce.database.Select("id").Where("delete_at BETWEEN 1 AND ?", now).Find(&dms).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting direct messages that are past retention for pruning")
+	}
+	for _, dm := range dms {
+		bounce.userInterface.ExpireDirectMessage(dm.ID)
+	}
+
+	// Delete those messages from the database as well
+	err = bounce.database.Where("delete_at BEWTEEN 1 AND ?", now).Delete(DirectMessage{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error batch deleting direct messages past retention")
+	}
 }
 
 func (bounce *Bounce) buildInitialState() InitialState {
