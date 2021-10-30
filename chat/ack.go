@@ -82,7 +82,7 @@ func (bounce *Bounce) handleAck(peer string, payload []byte) {
 			// Now that we know the message has been delivered, if the message expires we start the clock on retention
 			// by setting the absolute time the message should be delete at as now + the retention time
 			if dm.RetentionSeconds != 0 && dm.DeleteAt == 0 {
-				dm.DeleteAt = time.Now().Unix() + dm.RetentionSeconds
+				bounce.database.Model(&dm).Update("delete_at", time.Now().Unix()+dm.RetentionSeconds)
 			}
 		}
 	}
