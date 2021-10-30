@@ -15,10 +15,6 @@ type DirectMessage message
 
 func (directMessage *DirectMessage) BeforeCreate(tx *gorm.DB) error {
 	directMessage.ReceivedAt = time.Now().Unix()
-
-	// TODO: this is probably better to do at first broadcast and when received
-	// directMessage.DeleteAt = time.Now() + getUserRetention(uuid)
-
 	return nil
 }
 
@@ -109,6 +105,13 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Fatal("database error lookinf up direct message")
 	}
+
+	// Capture the current message retention setting for this user and store it on the DM
+	id := dm.Destination
+	if id == bounce.currentUserID() {
+		id = dm.Source
+	}
+	dm.RetentionSeconds = bounce.getUserDMRetention(id)
 
 	// Save the new message
 	dm.DeliveredTo = peer

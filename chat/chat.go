@@ -49,8 +49,8 @@ func Start(network BounceNetwork, ui BounceUI) {
 			lastDial:     make(map[string]time.Time),
 		},
 	}
-	go bounce.handleInterrupts()
 	log.RegisterExitHandler(bounce.shutdown)
+	go bounce.handleInterrupts()
 
 	bounce.openDatabase()
 
@@ -104,13 +104,13 @@ func (bounce *Bounce) shutdown() {
 
 	// Stop all running tasks and close all connections to remote devices
 	log.Info("closing all remote connections")
+	// TODO: stop the peer audit loop, wait for it to return
 	for _, rd := range bounce.devicePool.devices {
 		close(rd.messages)
 	}
 	for _, rd := range bounce.devicePool.devices {
 		rd.closer.Wait()
 	}
-	// TODO: stop the database pruning loop
 
 	// Shutdown the network
 	log.Info("stopping the network")
@@ -118,6 +118,7 @@ func (bounce *Bounce) shutdown() {
 
 	// Close the database
 	log.Info("closing the database")
+	// TODO: stop the database pruning loop, wait for the function to return
 	sqliteDB, err := bounce.database.DB()
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -175,7 +176,7 @@ func ensureOnlyOneInstance() {
 	_, err := os.Stat(pidFile)
 	if os.IsNotExist(err) {
 		// Write the current PID to file
-		err = os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0600)
+		err = os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0600) // TODO: sync/flush?
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -234,7 +235,7 @@ func ensureOnlyOneInstance() {
 				}).Fatal("error deleting old pid file")
 			}
 			// Write the current PID to file
-			err = os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0600)
+			err = os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0600) // TODO: sync/flush?
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),

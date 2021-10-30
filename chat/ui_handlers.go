@@ -19,6 +19,7 @@ func (bounce *Bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
 	message.CreatedAt = time.Now().Unix()
 	message.Read = true
 	message.Source = bounce.currentUserID()
+	message.RetentionSeconds = bounce.getUserDMRetention(message.Destination)
 
 	err := bounce.database.Create(message).Error
 	if err != nil {

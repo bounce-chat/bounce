@@ -25,6 +25,10 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 			return errors.New("profile user already exists")
 		}
 	}
+
+	// DMs default to expiring in 1 week
+	u.MessageRetention = 7 * 24 * 60 * 60
+
 	return nil
 }
 
@@ -52,4 +56,15 @@ func (bounce *Bounce) currentUserID() uuid.UUID {
 		bounce.userID = currentUser.ID
 	}
 	return bounce.userID
+}
+
+func (bounce *Bounce) getUserDMRetention(id uuid.UUID) int64 {
+	var u user
+	err := bounce.database.Select("message_retention").Find(&u, "id = ?", id).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting message retention from user")
+	}
+	return u.MessageRetention
 }

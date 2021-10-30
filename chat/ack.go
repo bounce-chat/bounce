@@ -2,6 +2,7 @@ package chat
 
 import (
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -73,10 +74,16 @@ func (bounce *Bounce) handleAck(peer string, payload []byte) {
 					"error": err.Error(),
 					"peer":  peer,
 				}).Error("ack of unknown DM from peer")
+				// TODO: could be abuse attempted to waste time hitting the database, perhaps should bail / reset connection
 				continue
 			}
 			bounce.markDeliveredTo(&dm, peer)
 
+			// Now that we know the message has been delivered, if the message expires we start the clock on retention
+			// by setting the absolute time the message should be delete at as now + the retention time
+			if dm.RetentionSeconds != 0 && dm.DeleteAt == 0 {
+				dm.DeleteAt = time.Now().Unix() + dm.RetentionSeconds
+			}
 		}
 	}
 

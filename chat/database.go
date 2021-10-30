@@ -51,8 +51,7 @@ func (bounce *Bounce) openDatabase() {
 		}).Fatal("error migrating the database")
 	}
 
-	// TODO: prune old reference offers.  Better to kick off something that prunes everything old (messages, profile state changes, etc)?
-	go bounce.keepDatabasePruned()
+	go bounce.keepDatabasePruned() // TODO: start after letting load initial state clear it at startup?
 }
 
 func (bounce *Bounce) keepDatabasePruned() {
@@ -63,7 +62,7 @@ func (bounce *Bounce) keepDatabasePruned() {
 	}
 }
 
-func (bounce *Bounce) pruneDatabase() {
+func (bounce *Bounce) pruneDatabase() { // TODO: pass a bool for if we're going to notify the UI?
 	bounce.pruneReferenceOffers()
 	bounce.pruneDirectMessages()
 	//bounce.pruneGroupMessages()
@@ -84,7 +83,7 @@ func (bounce *Bounce) pruneDirectMessages() {
 	now := time.Now().Unix()
 	// Find messages that should be pruned and delete them from the frontend
 	var dms []DirectMessage
-	err := bounce.database.Select("id").Where("delete_at BETWEEN 1 AND ?", now).Find(&dms).Error
+	err := bounce.database.Select("id").Where("delete_at != 0 AND delete_at < ?", now).Find(&dms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -95,7 +94,7 @@ func (bounce *Bounce) pruneDirectMessages() {
 	}
 
 	// Delete those messages from the database as well
-	err = bounce.database.Where("delete_at BEWTEEN 1 AND ?", now).Delete(DirectMessage{}).Error
+	err = bounce.database.Where("delete_at != 0 AND delete_at < ?", now).Delete(DirectMessage{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
