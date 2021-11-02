@@ -11,7 +11,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (bounce *Bounce) sendGroupMessage(message GroupMessage) {
+func (bounce *Bounce) sendGroupMessage(message GroupMessage) uuid.UUID {
+	return uuid.New()
 }
 
 func (bounce *Bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {

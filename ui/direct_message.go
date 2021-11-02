@@ -124,8 +124,8 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 			Text:        entry.Text,
 		}
 
-		fyneUI.callbacks.SendDirectMessage(message) // TODO: store reference to ID?
-		fyneUI.displaySentMessage(dm, message.Text) // TODO: just build the bubble around the actual object?
+		id := fyneUI.callbacks.SendDirectMessage(message) // TODO: store reference to ID?
+		fyneUI.displaySentMessage(dm, id, message.Text)   // TODO: just build the bubble around the actual object?
 
 		entry.Text = ""
 		entry.Refresh()
@@ -151,10 +151,6 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 
 func (fyneUI *Fyne) ReceivedDirectMessage(msg chat.DirectMessage) {
 	fyneUI.loadDirectMessage(msg, false, false)
-}
-
-func (fyneUI *Fyne) ExpireDirectMessage(uuid.UUID) {
-	// TODO: delete from the thread
 }
 
 func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hideNotification bool) {
@@ -192,6 +188,9 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 			log.Fatal("DM doesn't exist immediately after creation")
 		}
 	}
+	fyneUI.threadWithMessageMutex.Lock()
+	fyneUI.threadWithMessage[msg.ID] = dm
+	fyneUI.threadWithMessageMutex.Unlock()
 
 	chatHistory := dm.scroll.Content.(*fyne.Container)
 
@@ -204,7 +203,7 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 
 	chatHistory.Objects = append(
 		chatHistory.Objects,
-		newChatBubble(displayName, msg.Text, isOutgoing, time.Now().Unix(), nil), // TODO: user's name should be a binding.  Display the creation time too, if needed
+		newChatBubble(displayName, msg.ID, msg.Text, isOutgoing, time.Now().Unix(), nil), // TODO: user's name should be a binding.  Display the creation time too, if needed
 	)
 	chatHistory.Refresh()
 	dm.scroll.Refresh()

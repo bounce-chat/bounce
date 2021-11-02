@@ -34,7 +34,7 @@ type BounceUI interface {
 	//UserIntroduced(Introduction)
 	UserImported(User)
 	ReceivedDirectMessage(DirectMessage)
-	ExpireDirectMessage(uuid.UUID)
+	ExpireMessage(uuid.UUID)
 
 	NewGroupChat(Group)
 	ReceivedGroupMessage(GroupMessage)
@@ -81,7 +81,7 @@ type UICallbacks struct {
 	// The user wants to send a direct message.
 	SendDirectMessage func(*DirectMessage) uuid.UUID
 	// The user wants to send a group  message
-	SendGroupMessage func(GroupMessage) // TODO: return the UUID?
+	SendGroupMessage func(GroupMessage) uuid.UUID
 	// The user wants to add another user to a group
 	AddUserToGroup func(groupID, userID uuid.UUID)
 	// The user wants to rename a group

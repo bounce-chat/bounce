@@ -9,12 +9,13 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 type chatBubble struct {
 	widget.BaseWidget
-	id        string
+	id        uuid.UUID
 	timestamp int64
 	username  string // TODO: needs to update when user changes name.  user.name should be a binding.String and should add a listener
 	message   *widget.Label
@@ -22,7 +23,7 @@ type chatBubble struct {
 	outgoing  bool
 }
 
-func newChatBubble(username, message string, outgoing bool, timestamp int64, icon *widget.Button) *chatBubble {
+func newChatBubble(username string, id uuid.UUID, message string, outgoing bool, timestamp int64, icon *widget.Button) *chatBubble { // TODO: export chat.Message for this?
 	// TODO: I'm just using a widget.Label because it comes with wrapping out of the box, and all the wrapping code
 	// isn't exported and non-trivial to copy out.  A canvas.Text would probably be better as I would have more
 	// control over the presentation of the font and could hopefully enable click and drag selection for copying
@@ -42,6 +43,7 @@ func newChatBubble(username, message string, outgoing bool, timestamp int64, ico
 	}
 
 	bubble := &chatBubble{
+		id:        id,
 		username:  username,
 		message:   messageLabel,
 		icon:      icon,

@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"sync"
+
 	"github.com/hkparker/bounce/chat"
 
 	"fyne.io/fyne/v2"
@@ -22,34 +24,36 @@ const setupStepProfile = 1
 // An implementation of the Bounce chat.UI interface using Fyne
 //
 type Fyne struct {
-	app                   fyne.App
-	mainWindow            fyne.Window
-	mainContainer         *fyne.Container
-	newInstall            *fyne.Container
-	newProfileCreator     *fyne.Container
-	databaseLoading       *fyne.Container
-	editProfile           *fyne.Container
-	settings              *fyne.Container
-	about                 *fyne.Container
-	newGroup              *fyne.Container
-	newDM                 *fyne.Container
-	introduceContacts     *fyne.Container
-	importContact         *fyne.Container
-	threadVBox            *fyne.Container
-	chatContainer         *fyne.Container
-	mainMenu              *fyne.MainMenu
-	allUsersDMLinksScroll *container.Scroll
-	networkOfflineWarning *widget.Label
-	groups                map[uuid.UUID]*group
-	dms                   map[uuid.UUID]*directMessage
-	activeThread          uuid.UUID
-	profile               *user
-	users                 *userStore
-	initialStateSet       bool
-	focused               bool
-	networkState          int
-	setupStep             int
-	callbacks             chat.UICallbacks
+	app                    fyne.App
+	mainWindow             fyne.Window
+	mainContainer          *fyne.Container
+	newInstall             *fyne.Container
+	newProfileCreator      *fyne.Container
+	databaseLoading        *fyne.Container
+	editProfile            *fyne.Container
+	settings               *fyne.Container
+	about                  *fyne.Container
+	newGroup               *fyne.Container
+	newDM                  *fyne.Container
+	introduceContacts      *fyne.Container
+	importContact          *fyne.Container
+	threadVBox             *fyne.Container
+	chatContainer          *fyne.Container
+	mainMenu               *fyne.MainMenu
+	allUsersDMLinksScroll  *container.Scroll
+	networkOfflineWarning  *widget.Label
+	groups                 map[uuid.UUID]*group
+	dms                    map[uuid.UUID]*directMessage
+	threadWithMessage      map[uuid.UUID]thread
+	threadWithMessageMutex sync.Mutex
+	activeThread           uuid.UUID
+	profile                *user
+	users                  *userStore
+	initialStateSet        bool
+	focused                bool
+	networkState           int
+	setupStep              int
+	callbacks              chat.UICallbacks
 }
 
 func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
@@ -58,6 +62,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	fyneUI.groups = make(map[uuid.UUID]*group)
 	fyneUI.dms = make(map[uuid.UUID]*directMessage)
+	fyneUI.threadWithMessage = make(map[uuid.UUID]thread)
 	fyneUI.users = newUserStore()
 	fyneUI.focused = true
 	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}) // TODO: red rich text

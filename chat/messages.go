@@ -9,7 +9,7 @@ type message struct {
 	CreatedAt        int64
 	ReceivedAt       int64
 	RetentionSeconds int64 `msgpack:"-"` // Number of seconds to retain this message, captures the retention setting at the time the message was written
-	DeleteAt         int64 `msgpack:"-"` // Absolute time at which the messages expires.  Time it was first acked + RetentionSeconds
+	DeleteAt         int64 `msgpack:"-"` // Absolute time at which the messages expires.  Time it was first acked/received + RetentionSeconds
 	Read             bool  `msgpack:"-"`
 	Source           uuid.UUID
 	Destination      uuid.UUID

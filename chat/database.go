@@ -51,20 +51,21 @@ func (bounce *Bounce) openDatabase() {
 		}).Fatal("error migrating the database")
 	}
 
-	go bounce.keepDatabasePruned() // TODO: start after letting load initial state clear it at startup?
+	bounce.pruneDatabase(false)
+	go bounce.keepDatabasePruned()
 }
 
 func (bounce *Bounce) keepDatabasePruned() {
-	bounce.pruneDatabase()
-	ticker := time.NewTicker(1 * time.Minute)
+	//ticker := time.NewTicker(1 * time.Minute) // TODO: can I get away with more frequency without resource costs?
+	ticker := time.NewTicker(10 * time.Second)
 	for _ = range ticker.C {
-		bounce.pruneDatabase()
+		bounce.pruneDatabase(true)
 	}
 }
 
-func (bounce *Bounce) pruneDatabase() { // TODO: pass a bool for if we're going to notify the UI?
+func (bounce *Bounce) pruneDatabase(informUI bool) {
 	bounce.pruneReferenceOffers()
-	bounce.pruneDirectMessages()
+	bounce.pruneDirectMessages(informUI)
 	//bounce.pruneGroupMessages()
 }
 
@@ -79,22 +80,25 @@ func (bounce *Bounce) pruneReferenceOffers() {
 	}
 }
 
-func (bounce *Bounce) pruneDirectMessages() {
+func (bounce *Bounce) pruneDirectMessages(informUI bool) {
 	now := time.Now().Unix()
-	// Find messages that should be pruned and delete them from the frontend
-	var dms []DirectMessage
-	err := bounce.database.Select("id").Where("delete_at != 0 AND delete_at < ?", now).Find(&dms).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error selecting direct messages that are past retention for pruning")
-	}
-	for _, dm := range dms {
-		bounce.userInterface.ExpireDirectMessage(dm.ID)
+
+	if informUI {
+		// Find messages that should be pruned and delete them from the UI
+		var dms []DirectMessage
+		err := bounce.database.Select("id").Where("delete_at != 0 AND delete_at < ?", now).Find(&dms).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting direct messages that are past retention for pruning")
+		}
+		for _, dm := range dms {
+			bounce.userInterface.ExpireMessage(dm.ID)
+		}
 	}
 
-	// Delete those messages from the database as well
-	err = bounce.database.Where("delete_at != 0 AND delete_at < ?", now).Delete(DirectMessage{}).Error
+	// Delete those messages from the database
+	err := bounce.database.Where("delete_at != 0 AND delete_at < ?", now).Delete(DirectMessage{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

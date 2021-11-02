@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 type thread interface {
@@ -60,18 +61,63 @@ func (fyneUI *Fyne) refreshThreadOrder() {
 	fyneUI.threadVBox.Refresh()
 }
 
-func (fyneUI *Fyne) displaySentMessage(thread thread, message string) { // TODO: going to be able to get rid of this if using thread-specific message handlers for displaying outgoing and incoming?
+func (fyneUI *Fyne) displaySentMessage(thread thread, id uuid.UUID, message string) { // TODO: going to be able to get rid of this if using thread-specific message handlers for displaying outgoing and incoming?
 	chatHistory := thread.chatHistoryScroll().Content.(*fyne.Container)
 
-	chatHistory.Objects = append(chatHistory.Objects, newChatBubble("You", message, true, time.Now().Unix(), nil))
-	chatHistory.Refresh() // TODO: all this needed?
+	chatHistory.Objects = append(chatHistory.Objects, newChatBubble("You", id, message, true, time.Now().Unix(), nil))
+	fyneUI.threadWithMessageMutex.Lock()
+	fyneUI.threadWithMessage[id] = thread
+	fyneUI.threadWithMessageMutex.Unlock()
 
 	thread.chatHistoryScroll().Refresh()
 	thread.chatHistoryScroll().ScrollToBottom()
-	thread.chatHistoryScroll().Refresh()
+	thread.chatHistoryScroll().Refresh() // TODO: needed, or does scrolling do a refresh?
 
 	thread.setLastMessageTime(time.Now().Unix())
 	fyneUI.refreshThreadOrder()
+}
+
+//
+// Silently drop a message from the chat history because it is past retention
+//
+func (fyneUI *Fyne) ExpireMessage(id uuid.UUID) {
+	fyneUI.threadWithMessageMutex.Lock()
+	thread, ok := fyneUI.threadWithMessage[id]
+	fyneUI.threadWithMessageMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"message_id": id,
+		}).Warn("attempt to expire message that was not found in any thread")
+		return
+	}
+	chatHistory := thread.chatHistoryScroll().Content.(*fyne.Container)
+
+	found := false
+	location := 0
+	for i, obj := range chatHistory.Objects {
+		bubble, ok := obj.(*chatBubble)
+		if !ok {
+			continue
+		}
+		if bubble.id == id {
+			found = true
+			location = i
+			break
+		}
+	}
+
+	if found {
+		chatHistory.Objects = append(chatHistory.Objects[:location], chatHistory.Objects[location+1:]...) // TODO: may be cheaper to use copy to shift slice
+		thread.chatHistoryScroll().Refresh()
+		fyneUI.threadWithMessageMutex.Lock()
+		delete(fyneUI.threadWithMessage, id)
+		fyneUI.threadWithMessageMutex.Unlock()
+	} else {
+		log.WithFields(log.Fields{
+			"message_id": id,
+			"thread_id":  thread.getID(),
+		}).Warn("attempt to expire message that was not in thread despite being in threadWithMessage map")
+	}
 }
 
 func (fyneUI *Fyne) displayThread(thread thread) {

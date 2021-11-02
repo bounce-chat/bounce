@@ -140,8 +140,8 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 			Text:        entry.Text,
 		}
 
-		fyneUI.callbacks.SendGroupMessage(message) // TODO: group-specific callback?
-		fyneUI.displaySentMessage(group, message.Text)
+		id := fyneUI.callbacks.SendGroupMessage(message) // TODO: group-specific callback?
+		fyneUI.displaySentMessage(group, id, message.Text)
 
 		entry.Text = ""
 		entry.Refresh()
@@ -190,7 +190,11 @@ func (fyneUI *Fyne) ReceivedGroupMessage(msg chat.GroupMessage) {
 		log.Info("user wants to open the profile of " + user.name)
 		// TODO: display this user's profile
 	})
-	messageBox := newChatBubble(user.name, msg.Text, false, time.Now().Unix(), profileButton)
+	messageBox := newChatBubble(user.name, msg.ID, msg.Text, false, time.Now().Unix(), profileButton)
+
+	fyneUI.threadWithMessageMutex.Lock()
+	fyneUI.threadWithMessage[msg.ID] = group
+	fyneUI.threadWithMessageMutex.Unlock()
 
 	// Check if we're already scrolled to the bottom, for auto-scroll reasons
 	autoscroll := false
