@@ -56,10 +56,12 @@ func (bounce *Bounce) openDatabase() {
 }
 
 func (bounce *Bounce) keepDatabasePruned() {
-	ticker := time.NewTicker(10 * time.Second) // TODO: can I get away with this frequency without resource costs?
+	bounce.databasePruningTicker = time.NewTicker(10 * time.Second) // TODO: can I get away with this frequency without resource costs?
 
-	for _ = range ticker.C {
+	for _ = range bounce.databasePruningTicker.C {
+		bounce.pruningDatabase.Add(1)
 		bounce.pruneDatabase(true)
+		bounce.pruningDatabase.Done()
 	}
 }
 

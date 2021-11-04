@@ -15,17 +15,19 @@ import (
 )
 
 type Bounce struct {
-	configDirectory      string
-	database             *gorm.DB
-	userInterface        BounceUI
-	network              BounceNetwork
-	devicePool           *devicePool
-	userID               uuid.UUID
-	networkIsOnline      bool
-	networkHasBeenOnline bool
-	shutdownStarted      bool
-	shutdownMutex        sync.Mutex
-	dmExistenceCheck     sync.Mutex
+	configDirectory       string
+	database              *gorm.DB
+	userInterface         BounceUI
+	network               BounceNetwork
+	devicePool            *devicePool
+	userID                uuid.UUID
+	networkIsOnline       bool
+	networkHasBeenOnline  bool
+	shutdownStarted       bool
+	databasePruningTicker *time.Ticker
+	pruningDatabase       sync.WaitGroup
+	shutdownMutex         sync.Mutex
+	dmExistenceCheck      sync.Mutex
 }
 
 //
@@ -92,15 +94,14 @@ func Start(network BounceNetwork, ui BounceUI) {
 func (bounce *Bounce) shutdown() {
 	// Logrus is going to call in here on a fatal error, then os.Exit.  If multiple fatal logs occur, which
 	// is likely as the shutdown process is going to cause other fatal errors, the first one will spend some
-	// time closing down the network while the second will return much faster.  This second fatal error will
-	// then call os.Exit before the network is actually shut down and this function has returned.  Therefore
-	// we make this shutdown process synchronous with a mutex lock.  In theory unlocking it isn't necessary
-	// since we're going to os.Exit as soon as this function returns, but it just feels wrong to not unlock
-	// it, and I wouldn't want to create the appearance of an accidental deadlock being possible.  A
-	// concequence of this however is that fatal errors cannot be called from within this function without
-	// locking the application, so any errors encountered here must be logged as errors.
+	// time closing down the network and database while the second will return much faster.  This second fatal
+	// error will then call os.Exit before the network is actually shut down and this function has returned.
+	// Therefore we make this shutdown process synchronous with a mutex lock.  We intentionally never unlock,
+	// so all future calls into shutdown will block indefinitely until the application exits (either because
+	// logrus has called os.Exit, or because Start() returns).  A concequence of this locking behavior however
+	// is that fatal errors cannot be called from within this function without deadlocking the application, so
+	// any errors encountered here must be logged as errors.
 	bounce.shutdownMutex.Lock()
-	defer bounce.shutdownMutex.Unlock()
 
 	// Stop all running tasks and close all connections to remote devices
 	log.Info("closing all remote connections")
@@ -118,7 +119,12 @@ func (bounce *Bounce) shutdown() {
 
 	// Close the database
 	log.Info("closing the database")
-	// TODO: stop the database pruning loop, wait for the function to return
+	// Close the pruning ticker channel and wait for the database to no longer be pruning
+	if bounce.databasePruningTicker != nil {
+		bounce.databasePruningTicker.Stop()
+	}
+	bounce.pruningDatabase.Wait()
+	// Close the database connection
 	sqliteDB, err := bounce.database.DB()
 	if err != nil {
 		log.WithFields(log.Fields{
