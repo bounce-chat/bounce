@@ -36,7 +36,7 @@ func (bounce *Bounce) currentUser() (user, bool) {
 	var currentUser user
 	err := bounce.database.Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
 	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return currentUser, false
 		} else {
 			log.WithFields(log.Fields{
