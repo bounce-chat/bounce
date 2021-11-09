@@ -75,7 +75,6 @@ func (bounce *Bounce) connectToSyncDevices() {
 	currentUser, exists := bounce.currentUser()
 
 	// If a profile hasn't been created on this device yet there's no device to sync with
-	// TODO: maybe don't need this, since an empty user will have no devices?
 	if !exists {
 		return
 	}
@@ -117,7 +116,7 @@ func (bounce *Bounce) connectToUsers() {
 	for _, u := range allUsers {
 		for _, dev := range u.Devices {
 			references := bounce.getReferenceOfferFor(dev.Address)
-			if references.hasContent() { // TODO: this should actually check for anything except group messages (if it's only group messages, we don't need to try to dial?)
+			if references.shouldDial() {
 				go bounce.tryDialing(dev.Address)
 			}
 		}

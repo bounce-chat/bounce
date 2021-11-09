@@ -58,6 +58,14 @@ func (ro *referenceOffer) isAlreadyDeliveredTo(address string) bool {
 	return false
 }
 
+func (ro *referenceOffer) shouldDial() bool {
+	if len(ro.DirectMessages) > 0 {
+		return true
+	}
+	// TODO: changes to my device group, clearing thread histories, etc
+	return false
+}
+
 func (ro *referenceOffer) hasContent() bool {
 	if len(ro.DirectMessages) > 0 {
 		return true
