@@ -115,7 +115,17 @@ func (bounce *Bounce) shutdown() {
 
 	// Shutdown the network
 	log.Info("stopping the network")
-	bounce.network.Shutdown()
+	networkShutdown := make(chan bool, 1)
+	go func() {
+		bounce.network.Shutdown()
+		networkShutdown <- true
+	}()
+
+	select {
+	case <-networkShutdown:
+	case <-time.After(5 * time.Second):
+		log.Warn("network shutdown took longer than 5 seconds, giving up")
+	}
 
 	// Close the database
 	log.Info("closing the database")
