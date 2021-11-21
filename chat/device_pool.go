@@ -117,18 +117,22 @@ func (bounce *Bounce) connectToUsers() {
 		for _, dev := range u.Devices {
 			references := bounce.getReferenceOfferFor(dev.Address)
 			if references.shouldDial() {
-				go bounce.tryDialing(dev.Address)
+				lastDial := bounce.devicePool.getLastDial(dev.Address)
+				if time.Now().After(lastDial.Add(dialCooldown)) {
+					go bounce.tryDialing(dev.Address)
+				}
 			}
 		}
 	}
 
 	// Connect to any users we have sent messages to in the last 3 days
 	// TODO: unless we're under socket pressure?  in which case order by most recent
+	// TODO: also what about people who have written us?  also connect to them
 	var userIDs []uuid.UUID
 	err = bounce.database.Model(&DirectMessage{}).
 		Distinct("destination").
 		Where(
-			"source = ? and created_at > ?",
+			"source = ? and written_at > ?",
 			currentUser.ID,
 			time.Now().Add(-3*24*time.Hour).Unix(),
 		).Find(&userIDs).Error
@@ -181,7 +185,7 @@ func (bounce *Bounce) userConnectionDesired(id uuid.UUID) {
 
 }
 
-func (bounce *Bounce) tryDialing(address string) {
+func (bounce *Bounce) tryDialing(address string) { // TODO: move cooldown logic in here?
 	if !bounce.networkIsOnline {
 		log.WithFields(log.Fields{
 			"peer": address,

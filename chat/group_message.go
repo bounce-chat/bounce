@@ -11,7 +11,7 @@ import (
 type GroupMessage message
 
 func (groupMessage *GroupMessage) BeforeCreate(tx *gorm.DB) error {
-	groupMessage.ReceivedAt = time.Now().Unix()
+	groupMessage.SavedAt = time.Now().Unix()
 	return nil
 }
 

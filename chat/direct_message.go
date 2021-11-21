@@ -14,7 +14,7 @@ import (
 type DirectMessage message
 
 func (directMessage *DirectMessage) BeforeCreate(tx *gorm.DB) error {
-	directMessage.ReceivedAt = time.Now().Unix()
+	directMessage.SavedAt = time.Now().Unix()
 	return nil
 }
 
@@ -75,7 +75,7 @@ func (bounce *Bounce) markDeliveredTo(dm *DirectMessage, address string) {
 
 func (bounce *Bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
 	message.ID = uuid.New()
-	message.CreatedAt = time.Now().Unix()
+	message.SavedAt = time.Now().Unix()
 	message.Read = true
 	message.Source = bounce.currentUserID()
 	message.RetentionSeconds = bounce.getUserDMRetention(message.Destination)

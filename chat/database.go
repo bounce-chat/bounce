@@ -132,7 +132,7 @@ func (bounce *Bounce) buildInitialState() InitialState {
 	}
 
 	dms := []DirectMessage{}
-	bounce.database.Order("received_at asc").Find(&dms) // TODO: error check
+	bounce.database.Order("saved_at asc").Find(&dms) // TODO: error check
 
 	return InitialState{
 		Profile:        profile,
