@@ -59,15 +59,16 @@ func Start(network BounceNetwork, ui BounceUI) {
 	bounce.userInterface.Build(
 		bounce.configDirectory,
 		UICallbacks{
-			SendDirectMessage:          bounce.sendDirectMessage,
-			SendGroupMessage:           bounce.sendGroupMessage,
-			AddUserToGroup:             bounce.addUserToGroup,
-			RenameGroup:                bounce.renameGroup,
-			ChangeNotificationSettings: bounce.changeNotificationSettings,
-			SetProfile:                 bounce.setProfile,
-			ImportUser:                 bounce.importUser,
-			ExportContact:              bounce.exportContact,
-			UserConnectionDesired:      bounce.userConnectionDesired,
+			SendDirectMessage:               bounce.sendDirectMessage,
+			SendGroupMessage:                bounce.sendGroupMessage,
+			AddUserToGroup:                  bounce.addUserToGroup,
+			RenameGroup:                     bounce.renameGroup,
+			ChangeDMNotificationSettings:    bounce.changeDMNotificationSettings,
+			ChangeGroupNotificationSettings: bounce.changeGroupNotificationSettings,
+			SetProfile:                      bounce.setProfile,
+			ImportUser:                      bounce.importUser,
+			ExportContact:                   bounce.exportContact,
+			UserConnectionDesired:           bounce.userConnectionDesired,
 		},
 	)
 	bounce.userInterface.LoadInitialState(bounce.buildInitialState()) // TODO: this should be in a goroutine so we can display loading until ready, but that causes bugs.  Unclear why.

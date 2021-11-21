@@ -69,6 +69,40 @@ func (bounce *Bounce) markDeliveredTo(dm *DirectMessage, address string) {
 	}
 }
 
+//
+// UI Handlers
+//
+
+func (bounce *Bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
+	message.ID = uuid.New()
+	message.CreatedAt = time.Now().Unix()
+	message.Read = true
+	message.Source = bounce.currentUserID()
+	message.RetentionSeconds = bounce.getUserDMRetention(message.Destination)
+
+	err := bounce.database.Create(message).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error saving direct message to the database")
+	}
+
+	bounce.broadcast(message)
+
+	return message.ID
+}
+
+func (bounce *Bounce) changeDMNotificationSettings(dm uuid.UUID, enabled bool) {
+	log.WithFields(log.Fields{
+		"thread":                dm,
+		"notifications_enabled": enabled,
+	}).Info("UI wants to chnage notification settings")
+}
+
+//
+// Network Handlers
+//
+
 func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 	// Unmarshal the payload
 	var dm DirectMessage

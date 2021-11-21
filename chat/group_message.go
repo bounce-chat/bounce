@@ -3,6 +3,8 @@ package chat
 import (
 	"time"
 
+	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -57,3 +59,28 @@ func (sgm *signedGroupMessage) getPayload() []byte {
 	return sgm.payload
 }
 */
+
+func (bounce *Bounce) sendGroupMessage(message GroupMessage) uuid.UUID {
+	return uuid.New()
+}
+
+func (bounce *Bounce) addUserToGroup(threadID, userID uuid.UUID) {
+	log.WithFields(log.Fields{
+		"thread": threadID,
+		"user":   userID,
+	}).Info("UI wants to add user to group")
+}
+
+func (bounce *Bounce) renameGroup(threadID uuid.UUID, newName string) {
+	log.WithFields(log.Fields{
+		"thread":   threadID,
+		"new_name": newName,
+	}).Info("UI wants to rename a group")
+}
+
+func (bounce *Bounce) changeGroupNotificationSettings(group uuid.UUID, enabled bool) {
+	log.WithFields(log.Fields{
+		"thread":                group,
+		"notifications_enabled": enabled,
+	}).Info("UI wants to chnage notification settings")
+}

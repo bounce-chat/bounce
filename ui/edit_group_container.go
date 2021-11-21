@@ -37,7 +37,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 	notificationsCheck := widget.NewCheckWithData("Enable notifications", thread.notificationsEnabled)
 	notificationsCheck.OnChanged = func(state bool) { // TODO: do we really want this to apply before save?
 		thread.notificationsEnabled.Set(state) // TODO: error check
-		fyneUI.callbacks.ChangeNotificationSettings(thread.id, state)
+		fyneUI.callbacks.ChangeGroupNotificationSettings(thread.id, state)
 	}
 
 	saveButton := widget.NewButton("Save", func() {

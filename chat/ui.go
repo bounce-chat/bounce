@@ -86,8 +86,10 @@ type UICallbacks struct {
 	AddUserToGroup func(groupID, userID uuid.UUID)
 	// The user wants to rename a group
 	RenameGroup func(groupID uuid.UUID, newName string)
-	// The user wants to change the notification settings for a group on all their devices
-	ChangeNotificationSettings func(groupID uuid.UUID, notificationEnabled bool)
+	// The user wants to change the notification settings for a DM
+	ChangeDMNotificationSettings func(groupID uuid.UUID, notificationEnabled bool)
+	// The user wants to change the notification settings for a group
+	ChangeGroupNotificationSettings func(groupID uuid.UUID, notificationEnabled bool)
 	// Setup a new profile on a fresh install
 	SetProfile    func(profileName, deviceName string) (uuid.UUID, error)
 	ImportUser    func(user []byte) (User, error)
