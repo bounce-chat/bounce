@@ -108,7 +108,7 @@ func (bounce *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	err := bounce.database.
 		Order("saved_at asc").
 		Where(
-			"created_at >= ? AND (destination = ? OR source = ?) AND delivered_to NOT LIKE ?",
+			"written_at >= ? AND (destination = ? OR source = ?) AND delivered_to NOT LIKE ?",
 			aWeekAgo,
 			dev.UserID,
 			dev.UserID,
