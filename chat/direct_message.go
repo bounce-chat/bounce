@@ -75,7 +75,7 @@ func (bounce *Bounce) markDeliveredTo(dm *DirectMessage, address string) {
 
 func (bounce *Bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
 	message.ID = uuid.New()
-	message.SavedAt = time.Now().Unix()
+	message.WrittenAt = time.Now().Unix()
 	message.Read = true
 	message.Source = bounce.currentUserID()
 	message.RetentionSeconds = bounce.getUserDMRetention(message.Destination)
