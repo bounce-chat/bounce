@@ -16,7 +16,7 @@ import (
 type user struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name             string
-	Profile          bool `json:"-"`
+	Profile          bool `gorm:"index:,where:profile = true" json:"-"`
 	MessageRetention int64
 	Devices          []device
 }

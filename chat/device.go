@@ -12,7 +12,7 @@ type device struct {
 	ID        uuid.UUID              `gorm:"type:uuid;primary_key;" json:"-"`
 	Name      string                 `json:"-"`
 	UserID    uuid.UUID              `json:"-"`
-	Address   string                 `gorm:"unique"`
+	Address   string                 `gorm:"uniqueIndex"`
 	Signature *introductionSignature `json:",omitempty"`
 }
 
