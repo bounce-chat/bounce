@@ -163,12 +163,13 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 	}
 
 	if fyneUI.profile == nil {
-		// TODO: fatal error?
+		log.Fatal("cannot load direct message if no profile exists")
 	}
 
 	displayName := user.name
 	isOutgoing := false
 	targetDM := msg.Source
+	// TODO: this really needs to be cleaned up
 	if msg.Source == fyneUI.profile.id {
 		// We're learning about a DM we sent from another device
 		displayName = "You"
@@ -180,10 +181,10 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 	dm, dmExists := fyneUI.dms[targetDM]
 	if !dmExists {
 		fyneUI.NewDirectMessage(chat.User{
-			ID:   user.id,
+			ID:   targetDM,
 			Name: user.name,
 		})
-		dm, dmExists = fyneUI.dms[msg.Source]
+		dm, dmExists = fyneUI.dms[targetDM]
 		if !dmExists {
 			log.Fatal("DM doesn't exist immediately after creation")
 		}
