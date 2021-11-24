@@ -95,7 +95,7 @@ func (bounce *Bounce) pruneDirectMessages(informUI bool) {
 			}).Fatal("error selecting direct messages that are past retention for pruning")
 		}
 		for _, dm := range dms {
-			bounce.userInterface.ExpireMessage(dm.ID)
+			bounce.userInterface.DeleteMessage(dm.ID)
 		}
 	}
 
@@ -105,6 +105,41 @@ func (bounce *Bounce) pruneDirectMessages(informUI bool) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error batch deleting direct messages past retention")
+	}
+
+	// Find all messages that are undeliverable and inform the UI, marking them for deletion if they don't have indefinite retention
+	aWeekAgo := time.Now().Add(-7 * 24 * time.Hour).Unix() // TODO: make a package variable for delivery window and use it everywhere
+	var dms []DirectMessage
+	err = bounce.database.Select("id", "retention_seconds").Where("delivered_to = \"\" AND written_at > ? AND undeliverable = false", aWeekAgo).Find(&dms).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting message that are undeliverable while pruning database")
+	}
+	for _, dm := range dms {
+		err = bounce.database.Model(&dm).Update("undeliverable", true).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"message_id": dm.ID,
+				"error":      err.Error(),
+			}).Fatal("error updating undeliverable field of undeliverable direct message")
+		}
+		if informUI {
+			bounce.userInterface.MarkMessageUndeliverable(dm.ID)
+		}
+		if dm.RetentionSeconds > 0 {
+			deleteAt := time.Now().Unix() + dm.RetentionSeconds
+			err = bounce.database.Model(&dm).Update("delete_at", deleteAt).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"message_id": dm.ID,
+					"error":      err.Error(),
+				}).Fatal("error updating delete_at of undeliverable direct message with retention")
+			}
+			if informUI {
+				bounce.userInterface.UpdateMessageDeletionTime(dm.ID, deleteAt)
+			}
+		}
 	}
 }
 

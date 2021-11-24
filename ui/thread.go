@@ -77,10 +77,25 @@ func (fyneUI *Fyne) displaySentMessage(thread thread, id uuid.UUID, message stri
 	fyneUI.refreshThreadOrder()
 }
 
+func (fyneUI *Fyne) MarkMessageUndeliverable(id uuid.UUID) {
+	log.WithFields(log.Fields{
+		"message_id": id,
+	}).Info("chat engine wants to mark a message as undeliverable")
+	// TODO
+}
+
+func (fyneUI *Fyne) UpdateMessageDeletionTime(id uuid.UUID, timestamp int64) {
+	log.WithFields(log.Fields{
+		"message_id": id,
+		"delete_at":  timestamp,
+	}).Info("chat engine wants to update the delete time of a message")
+	// TODO
+}
+
 //
 // Silently drop a message from the chat history because it is past retention
 //
-func (fyneUI *Fyne) ExpireMessage(id uuid.UUID) {
+func (fyneUI *Fyne) DeleteMessage(id uuid.UUID) {
 	fyneUI.threadWithMessageMutex.Lock()
 	thread, ok := fyneUI.threadWithMessage[id]
 	fyneUI.threadWithMessageMutex.Unlock()
