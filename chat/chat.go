@@ -47,7 +47,7 @@ func Start(network Network, ui UI) {
 	log.SetLevel(log.DebugLevel) // TODO: put behind the envar when ready.  run in warn otherwise?
 
 	ensureOnlyOneInstance()
-	bounce := &bounce{
+	b := &bounce{
 		configDirectory: getConfigDirectory(),
 		userInterface:   ui,
 		network:         network,
@@ -57,42 +57,42 @@ func Start(network Network, ui UI) {
 			lastDial:     make(map[string]time.Time),
 		},
 	}
-	log.RegisterExitHandler(bounce.shutdown)
-	go bounce.handleInterrupts()
+	log.RegisterExitHandler(b.shutdown)
+	go b.handleInterrupts()
 
-	bounce.openDatabase()
+	b.openDatabase()
 
-	bounce.userInterface.Build(
-		bounce.configDirectory,
+	b.userInterface.Build(
+		b.configDirectory,
 		UICallbacks{
-			SendDirectMessage:               bounce.sendDirectMessage,
-			SendGroupMessage:                bounce.sendGroupMessage,
-			AddUserToGroup:                  bounce.addUserToGroup,
-			RenameGroup:                     bounce.renameGroup,
-			ChangeDMNotificationSettings:    bounce.changeDMNotificationSettings,
-			ChangeGroupNotificationSettings: bounce.changeGroupNotificationSettings,
-			SetProfile:                      bounce.setProfile,
-			ImportUser:                      bounce.importUser,
-			ExportContact:                   bounce.exportContact,
-			UserConnectionDesired:           bounce.userConnectionDesired,
+			SendDirectMessage:               b.sendDirectMessage,
+			SendGroupMessage:                b.sendGroupMessage,
+			AddUserToGroup:                  b.addUserToGroup,
+			RenameGroup:                     b.renameGroup,
+			ChangeDMNotificationSettings:    b.changeDMNotificationSettings,
+			ChangeGroupNotificationSettings: b.changeGroupNotificationSettings,
+			SetProfile:                      b.setProfile,
+			ImportUser:                      b.importUser,
+			ExportContact:                   b.exportContact,
+			UserConnectionDesired:           b.userConnectionDesired,
 		},
 	)
-	bounce.userInterface.LoadInitialState(bounce.buildInitialState()) // TODO: this should be in a goroutine so we can display loading until ready, but that causes bugs.  Unclear why.
+	b.userInterface.LoadInitialState(b.buildInitialState()) // TODO: this should be in a goroutine so we can display loading until ready, but that causes bugs.  Unclear why.
 
-	go bounce.network.Start(
-		bounce.configDirectory,
+	go b.network.Start(
+		b.configDirectory,
 		NetworkCallbacks{
-			NetworkOnline:  bounce.networkOnline,
-			NetworkOffline: bounce.networkOffline,
+			NetworkOnline:  b.networkOnline,
+			NetworkOffline: b.networkOffline,
 		},
 	)
-	go bounce.peer()
+	go b.peer()
 
 	// Run the UI and block
-	bounce.userInterface.Run()
+	b.userInterface.Run()
 
 	// Once the UI is closed, stop bounce
-	bounce.shutdown()
+	b.shutdown()
 }
 
 //
