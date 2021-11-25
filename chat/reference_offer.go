@@ -100,20 +100,17 @@ func (bounce *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	}
 	offer.destination = dev.ID
 
-	// After a week, we give up trying to deliver messages to a device we haven't seen
-	aWeekAgo := time.Now().Add(-7 * 24 * time.Hour).Unix() // TODO: also do a sane LIMIT?
-
 	// All DMs we have sent to or received from this user in the past week
 	var dms []DirectMessage
 	err := bounce.database.
 		Order("saved_at asc").
 		Where(
 			"written_at >= ? AND (destination = ? OR source = ?) AND delivered_to NOT LIKE ?",
-			aWeekAgo,
+			time.Now().Add(-undeliverableAfter).Unix(),
 			dev.UserID,
 			dev.UserID,
 			"%"+address+"%",
-		).Find(&dms).Error
+		).Find(&dms).Error // TODO: also add a sane limit?
 	if err != nil {
 		log.WithFields(log.Fields{
 			"peer":  address,
@@ -132,13 +129,11 @@ func (bounce *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	return offer
 }
 
-// TODO: generalize this so arbitrary things are sent until there's an ack?
-//     what would that even include?  if something arises, do it
 func (bounce *Bounce) broadcastReferenceOffer(ro *referenceOffer) {
 	giveUpTime := time.Now().Add(5 * time.Minute)
 	for {
 		bounce.broadcast(ro)
-		time.Sleep(15 * time.Second)
+		time.Sleep(15 * time.Second) // TODO: derive from message size?
 		bounce.devicePool.receivedAcksMutex.Lock()
 		_, ok := bounce.devicePool.receivedAcks[ro.ID.String()]
 		bounce.devicePool.receivedAcksMutex.Unlock()

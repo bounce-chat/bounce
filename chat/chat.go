@@ -14,6 +14,12 @@ import (
 	"gorm.io/gorm"
 )
 
+//
+// This constant defines the amount of time a message can exist without a successful delivery
+// before the chat engine gives up and stops attempting to deliver it
+//
+const undeliverableAfter = time.Duration(7 * 24 * time.Hour)
+
 type Bounce struct {
 	configDirectory       string
 	database              *gorm.DB

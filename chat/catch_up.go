@@ -51,7 +51,6 @@ func (cu *catchUp) hasContent() bool {
 	return false
 }
 
-// TODO: rename or something after these "wait for response" flows are rethought
 func (bounce *Bounce) broadcastCatchUp(cu *catchUp) {
 	giveUpTime := time.Now().Add(5 * time.Minute)
 	for {

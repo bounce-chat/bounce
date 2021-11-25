@@ -68,7 +68,7 @@ func (bounce *Bounce) handleAck(peer string, payload []byte) {
 			}
 
 			var dm DirectMessage
-			err = bounce.database.First(&dm, dmID).Error // TODO: confirm the device should be able to see this DM?
+			err = bounce.database.First(&dm, dmID).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -77,6 +77,7 @@ func (bounce *Bounce) handleAck(peer string, payload []byte) {
 				// TODO: could be abuse attempted to waste time hitting the database, perhaps should bail / reset connection
 				continue
 			}
+			// TODO: confirm the device should be able to see this DM
 			bounce.markDeliveredTo(&dm, peer)
 
 			// Now that we know the message has been delivered, if the message expires we start the clock on retention

@@ -108,9 +108,9 @@ func (bounce *Bounce) pruneDirectMessages(informUI bool) {
 	}
 
 	// Find all messages that are undeliverable and inform the UI, marking them for deletion if they don't have indefinite retention
-	aWeekAgo := time.Now().Add(-7 * 24 * time.Hour).Unix() // TODO: make a package variable for delivery window and use it everywhere
+	//aWeekAgo := time.Now().Add(-7 * 24 * time.Hour).Unix() // TODO: make a package variable for delivery window and use it everywhere
 	var dms []DirectMessage
-	err = bounce.database.Select("id", "retention_seconds").Where("delivered_to = \"\" AND written_at > ? AND undeliverable = false", aWeekAgo).Find(&dms).Error
+	err = bounce.database.Select("id", "retention_seconds").Where("delivered_to = \"\" AND written_at > ? AND undeliverable = false", time.Now().Add(-undeliverableAfter).Unix()).Find(&dms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
