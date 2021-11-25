@@ -9,19 +9,19 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-var SYNC_SCOPE = 0 // TODO: unexport these
-var USER_SCOPE = 1
-var GROUP_SCOPE = 2
-var GLOBAL_SCOPE = 3
-var DEVICE_SCOPE = 4
+var scopeSync = 0
+var scopeUser = 1
+var scopeGroup = 2
+var scopeGlobal = 3
+var scopeDevice = 4
 
-var TYPE_DIRECT_MESSAGE = uint16(0)
-var TYPE_GROUP_MESSAGE = uint16(1)
-var TYPE_REFERENCE_OFFER = uint16(2)
-var TYPE_REFERENCE_REQUEST = uint16(3)
-var TYPE_CATCH_UP = uint16(4)
-var TYPE_ACK = uint16(5)
-var TYPE_KEEP_ALIVE = uint16(6)
+var typeDirectMessage = uint16(0)
+var typeGroupMessage = uint16(1)
+var typeReferenceOffer = uint16(2)
+var typeReferenceRequest = uint16(3)
+var typeCatchUp = uint16(4)
+var typeAck = uint16(5)
+var typeKeepAlive = uint16(6)
 
 type broadcastable interface {
 	getScope() int
@@ -31,43 +31,43 @@ type broadcastable interface {
 	isAlreadyDeliveredTo(address string) bool
 }
 
-func (bounce *Bounce) getHandlers() map[uint16]func(string, []byte) {
+func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 	return map[uint16]func(string, []byte){
-		TYPE_DIRECT_MESSAGE:    bounce.handleDirectMessage,
-		TYPE_REFERENCE_OFFER:   bounce.handleReferenceOffer,
-		TYPE_REFERENCE_REQUEST: bounce.handleReferenceRequest,
-		TYPE_CATCH_UP:          bounce.handleCatchUp,
-		TYPE_ACK:               bounce.handleAck,
-		TYPE_KEEP_ALIVE:        bounce.handleKeepAlive,
+		typeDirectMessage:    b.handleDirectMessage,
+		typeReferenceOffer:   b.handleReferenceOffer,
+		typeReferenceRequest: b.handleReferenceRequest,
+		typeCatchUp:          b.handleCatchUp,
+		typeAck:              b.handleAck,
+		typeKeepAlive:        b.handleKeepAlive,
 	}
 }
 
-func (bounce *Bounce) broadcast(b broadcastable) {
-	for _, peer := range bounce.getBroadcastScope(b) {
+func (b *bounce) broadcast(br broadcastable) {
+	for _, peer := range b.getBroadcastScope(br) {
 		// Async try to write this message to every device that should be written to
 		go func(dst chan broadcastable, msg broadcastable) {
 			dst <- msg
-		}(peer.messages, b)
+		}(peer.messages, br)
 	}
 }
 
-func (bounce *Bounce) getBroadcastScope(b broadcastable) []*remoteDevice {
-	scope := b.getScope()
+func (b *bounce) getBroadcastScope(br broadcastable) []*remoteDevice {
+	scope := br.getScope()
 
-	if scope == SYNC_SCOPE {
-		return bounce.getSyncScope()
-	} else if scope == USER_SCOPE {
-		return bounce.getUserScope(b)
-	} else if scope == DEVICE_SCOPE {
-		return bounce.getDeviceScope(b)
-	} else if scope == GROUP_SCOPE {
-		return bounce.getGroupScope(b)
-	} else if scope == GLOBAL_SCOPE {
-		return bounce.getGlobalScope()
+	if scope == scopeSync {
+		return b.getSyncScope()
+	} else if scope == scopeUser {
+		return b.getUserScope(br)
+	} else if scope == scopeDevice {
+		return b.getDeviceScope(br)
+	} else if scope == scopeGroup {
+		return b.getGroupScope(br)
+	} else if scope == scopeGlobal {
+		return b.getGlobalScope()
 	} else {
 		log.WithFields(log.Fields{
-			"destination": b.getDestination(),
-			"type":        b.getType(),
+			"destination": br.getDestination(),
+			"type":        br.getType(),
 			"scope":       scope,
 		}).Fatal("unknown broadcast scope")
 	}
@@ -75,8 +75,8 @@ func (bounce *Bounce) getBroadcastScope(b broadcastable) []*remoteDevice {
 	return []*remoteDevice{}
 }
 
-func (bounce *Bounce) getSyncScope() []*remoteDevice {
-	currentUser, exists := bounce.currentUser()
+func (b *bounce) getSyncScope() []*remoteDevice {
+	currentUser, exists := b.currentUser()
 
 	if !exists {
 		// TODO: fatal?
@@ -84,10 +84,10 @@ func (bounce *Bounce) getSyncScope() []*remoteDevice {
 
 	broadcastTargets := []*remoteDevice{}
 	for _, dev := range currentUser.Devices {
-		if dev.Address == bounce.network.Address() {
+		if dev.Address == b.network.Address() {
 			continue
 		}
-		rd := bounce.getRemoteDevice(dev.Address)
+		rd := b.getRemoteDevice(dev.Address)
 		if rd.connectedSockets > 0 {
 			broadcastTargets = append(broadcastTargets, rd)
 		}
@@ -95,18 +95,18 @@ func (bounce *Bounce) getSyncScope() []*remoteDevice {
 	return broadcastTargets
 }
 
-func (bounce *Bounce) getUserScope(b broadcastable) []*remoteDevice {
+func (b *bounce) getUserScope(br broadcastable) []*remoteDevice {
 	broadcastTargets := []*remoteDevice{}
 
 	// Add any devices that are owned by the destination user that are online
 	var destinationUser user
-	err := bounce.database.Preload(clause.Associations).First(&destinationUser, "id = ?", b.getDestination()).Error
+	err := b.database.Preload(clause.Associations).First(&destinationUser, "id = ?", br.getDestination()).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
-				"scope":        b.getScope(),
-				"destinations": b.getDestination(),
-				"type":         b.getType(),
+				"scope":        br.getScope(),
+				"destinations": br.getDestination(),
+				"type":         br.getType(),
 			}).Error("user not found when determining broadcast scope for message")
 			return broadcastTargets
 		} else {
@@ -116,33 +116,33 @@ func (bounce *Bounce) getUserScope(b broadcastable) []*remoteDevice {
 		}
 	}
 	for _, dev := range destinationUser.Devices {
-		if b.isAlreadyDeliveredTo(dev.Address) {
+		if br.isAlreadyDeliveredTo(dev.Address) {
 			continue
 		}
-		rd := bounce.getRemoteDevice(dev.Address)
+		rd := b.getRemoteDevice(dev.Address)
 		if rd.connectedSockets > 0 {
 			broadcastTargets = append(broadcastTargets, rd)
 		}
 	}
 
 	// Add any sync devices that are online
-	broadcastTargets = append(broadcastTargets, bounce.getSyncScope()...)
+	broadcastTargets = append(broadcastTargets, b.getSyncScope()...)
 
 	return broadcastTargets
 }
 
-func (bounce *Bounce) getDeviceScope(b broadcastable) []*remoteDevice {
-	destination := b.getDestination()
+func (b *bounce) getDeviceScope(br broadcastable) []*remoteDevice {
+	destination := br.getDestination()
 	broadcastTargets := []*remoteDevice{}
 
 	var target device
-	err := bounce.database.First(&target, "id = ?", destination).Error
+	err := b.database.First(&target, "id = ?", destination).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
-				"scope":        b.getScope(),
+				"scope":        br.getScope(),
 				"destinations": destination,
-				"type":         b.getType(),
+				"type":         br.getType(),
 			}).Error("device not found when determining broadcast scope for message")
 			return broadcastTargets
 		} else {
@@ -151,7 +151,7 @@ func (bounce *Bounce) getDeviceScope(b broadcastable) []*remoteDevice {
 			}).Fatal("error loading device from database")
 		}
 	}
-	rd := bounce.getRemoteDevice(target.Address)
+	rd := b.getRemoteDevice(target.Address)
 	if rd.connectedSockets > 0 {
 		broadcastTargets = append(broadcastTargets, rd)
 	}
@@ -159,7 +159,7 @@ func (bounce *Bounce) getDeviceScope(b broadcastable) []*remoteDevice {
 	return broadcastTargets
 }
 
-func (bounce *Bounce) getGroupScope(b broadcastable) []*remoteDevice {
+func (b *bounce) getGroupScope(br broadcastable) []*remoteDevice {
 	// TODO: look up the group, find all online devices
 	return []*remoteDevice{}
 }
@@ -167,9 +167,9 @@ func (bounce *Bounce) getGroupScope(b broadcastable) []*remoteDevice {
 //
 // Send a message to any device that we're connected to right now
 //
-func (bounce *Bounce) getGlobalScope() []*remoteDevice {
+func (b *bounce) getGlobalScope() []*remoteDevice {
 	broadcastTargets := []*remoteDevice{}
-	for _, dev := range bounce.devicePool.devices {
+	for _, dev := range b.devicePool.devices {
 		if dev.connectedSockets > 0 {
 			broadcastTargets = append(broadcastTargets, dev)
 		}

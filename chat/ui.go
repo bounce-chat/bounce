@@ -5,10 +5,10 @@ import (
 )
 
 //
-// User interfaces for bounce are achieved by implementing the BounceUI interface.
+// User interfaces for bounce are achieved by implementing the UI interface.
 //
 
-type BounceUI interface {
+type UI interface {
 	// Create user interface objects
 	Build(configPath string, callbacks UICallbacks)
 

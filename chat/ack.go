@@ -20,7 +20,7 @@ type ack struct {
 }
 
 func (a *ack) getScope() int {
-	return DEVICE_SCOPE
+	return scopeDevice
 }
 
 func (a *ack) getDestination() uuid.UUID {
@@ -28,7 +28,7 @@ func (a *ack) getDestination() uuid.UUID {
 }
 
 func (a *ack) getType() uint16 {
-	return TYPE_ACK
+	return typeAck
 }
 
 func (a *ack) getPayload() []byte {
@@ -46,7 +46,7 @@ func (a *ack) isAlreadyDeliveredTo(address string) bool {
 	return false
 }
 
-func (bounce *Bounce) handleAck(peer string, payload []byte) {
+func (b *bounce) handleAck(peer string, payload []byte) {
 	var a ack
 	err := msgpack.Unmarshal(payload, &a)
 	if err != nil {
@@ -68,7 +68,7 @@ func (bounce *Bounce) handleAck(peer string, payload []byte) {
 			}
 
 			var dm DirectMessage
-			err = bounce.database.First(&dm, dmID).Error
+			err = b.database.First(&dm, dmID).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -78,20 +78,20 @@ func (bounce *Bounce) handleAck(peer string, payload []byte) {
 				continue
 			}
 			// TODO: confirm the device should be able to see this DM
-			bounce.markDeliveredTo(&dm, peer)
+			b.markDeliveredTo(&dm, peer)
 
 			// Now that we know the message has been delivered, if the message expires we start the clock on retention
 			// by setting the absolute time the message should be delete at as now + the retention time
 			if dm.RetentionSeconds != 0 && dm.DeleteAt == 0 {
 				deleteAt := time.Now().Unix() + dm.RetentionSeconds
-				err := bounce.database.Model(&dm).Update("delete_at", deleteAt).Error
+				err := b.database.Model(&dm).Update("delete_at", deleteAt).Error
 				if err != nil {
 					log.WithFields(log.Fields{
 						"message_id": dm.ID,
 						"error":      err.Error(),
 					}).Fatal("error updating delete_at of acked direct message")
 				}
-				bounce.userInterface.UpdateMessageDeletionTime(dm.ID, deleteAt)
+				b.userInterface.UpdateMessageDeletionTime(dm.ID, deleteAt)
 			}
 		}
 	}
@@ -107,9 +107,9 @@ func (bounce *Bounce) handleAck(peer string, payload []byte) {
 				continue
 			}
 
-			bounce.devicePool.receivedAcksMutex.Lock()
-			bounce.devicePool.receivedAcks[catchUpID.String()] = true
-			bounce.devicePool.receivedAcksMutex.Unlock()
+			b.devicePool.receivedAcksMutex.Lock()
+			b.devicePool.receivedAcks[catchUpID.String()] = true
+			b.devicePool.receivedAcksMutex.Unlock()
 		}
 	}
 }

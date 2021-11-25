@@ -36,9 +36,9 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (bounce *Bounce) currentUser() (user, bool) {
+func (b *bounce) currentUser() (user, bool) {
 	var currentUser user
-	err := bounce.database.Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
+	err := b.database.Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return currentUser, false
@@ -51,20 +51,20 @@ func (bounce *Bounce) currentUser() (user, bool) {
 	return currentUser, true
 }
 
-func (bounce *Bounce) currentUserID() uuid.UUID {
-	if bounce.userID == uuid.Nil {
-		currentUser, ok := bounce.currentUser()
+func (b *bounce) currentUserID() uuid.UUID {
+	if b.userID == uuid.Nil {
+		currentUser, ok := b.currentUser()
 		if !ok {
 			log.Fatal("a current user must exist before currentUserID can be called")
 		}
-		bounce.userID = currentUser.ID
+		b.userID = currentUser.ID
 	}
-	return bounce.userID
+	return b.userID
 }
 
-func (bounce *Bounce) getUserDMRetention(id uuid.UUID) int64 {
+func (b *bounce) getUserDMRetention(id uuid.UUID) int64 {
 	var u user
-	err := bounce.database.Select("message_retention").Find(&u, "id = ?", id).Error
+	err := b.database.Select("message_retention").Find(&u, "id = ?", id).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -73,36 +73,36 @@ func (bounce *Bounce) getUserDMRetention(id uuid.UUID) int64 {
 	return u.MessageRetention
 }
 
-func (bounce *Bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
+func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 	newID := uuid.New()
 
 	var count int64
-	bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
+	b.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count > 0 {
 		return newID, errors.New("profile already exists on this device")
 	}
 
-	return newID, bounce.database.Create(&user{
+	return newID, b.database.Create(&user{
 		ID:      newID,
 		Name:    profileName,
 		Profile: true,
 		Devices: []device{
 			device{
 				Name:    deviceName,
-				Address: bounce.network.Address(),
+				Address: b.network.Address(),
 			},
 		},
 	}).Error
 }
 
-func (bounce *Bounce) exportContact(name string, expiration int64, oneTime bool) []byte {
+func (b *bounce) exportContact(name string, expiration int64, oneTime bool) []byte {
 	var count int64
-	bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
+	b.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count != 1 {
 		log.Fatal("no contact exists to export")
 	}
 
-	myProfile, exists := bounce.currentUser()
+	myProfile, exists := b.currentUser()
 	if !exists {
 		log.Fatal("cannot export contact when no profile exists")
 	}
@@ -125,7 +125,7 @@ func (bounce *Bounce) exportContact(name string, expiration int64, oneTime bool)
 		}).Fatal("error marshalling contact export")
 	}
 
-	err = bounce.database.Save(&export).Error
+	err = b.database.Save(&export).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -135,7 +135,7 @@ func (bounce *Bounce) exportContact(name string, expiration int64, oneTime bool)
 	return bytes
 }
 
-func (bounce *Bounce) importUser(data []byte) (User, error) {
+func (b *bounce) importUser(data []byte) (User, error) {
 	newUser := profileExport{}
 	err := json.Unmarshal(data, &newUser)
 	if err != nil {
@@ -149,7 +149,7 @@ func (bounce *Bounce) importUser(data []byte) (User, error) {
 
 	// Make sure we don't already know about any of the devices
 	for _, contactDevice := range newUser.Profile.Devices {
-		_, exists := bounce.getDeviceFromAddress(contactDevice.Address)
+		_, exists := b.getDeviceFromAddress(contactDevice.Address)
 		if exists {
 			return User{}, errors.New("contact contains device that already exists in database")
 		}
@@ -166,7 +166,7 @@ func (bounce *Bounce) importUser(data []byte) (User, error) {
 	}
 
 	// Save to the database
-	return uiUser, bounce.database.Create(&newUser.Profile).Error
+	return uiUser, b.database.Create(&newUser.Profile).Error
 	// TODO: some sort of UI feedback on the secret being accepted on the remote side?
 	// As in, bounce only accepts DMs from user's in a shared group or who send an import secret
 	// TODO: try to dial right away

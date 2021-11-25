@@ -34,9 +34,9 @@ func (introductionSignature *introductionSignature) BeforeCreate(tx *gorm.DB) er
 	return nil
 }
 
-func (bounce *Bounce) getDeviceFromAddress(address string) (device, bool) {
+func (b *bounce) getDeviceFromAddress(address string) (device, bool) {
 	var dev device
-	err := bounce.database.Where("address = ?", address).First(&dev).Error
+	err := b.database.Where("address = ?", address).First(&dev).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return dev, false

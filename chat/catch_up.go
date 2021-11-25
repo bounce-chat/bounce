@@ -17,7 +17,7 @@ type catchUp struct {
 }
 
 func (cu *catchUp) getScope() int {
-	return DEVICE_SCOPE
+	return scopeDevice
 }
 
 func (cu *catchUp) getDestination() uuid.UUID {
@@ -26,7 +26,7 @@ func (cu *catchUp) getDestination() uuid.UUID {
 }
 
 func (cu *catchUp) getType() uint16 {
-	return TYPE_CATCH_UP
+	return typeCatchUp
 }
 
 func (cu *catchUp) getPayload() []byte {
@@ -51,19 +51,19 @@ func (cu *catchUp) hasContent() bool {
 	return false
 }
 
-func (bounce *Bounce) broadcastCatchUp(cu *catchUp) {
+func (b *bounce) broadcastCatchUp(cu *catchUp) {
 	giveUpTime := time.Now().Add(5 * time.Minute)
 	for {
-		bounce.broadcast(cu)
+		b.broadcast(cu)
 		time.Sleep(30 * time.Second) // TODO: derive from message size?
-		bounce.devicePool.receivedAcksMutex.Lock()
-		_, ok := bounce.devicePool.receivedAcks[cu.ID.String()]
-		bounce.devicePool.receivedAcksMutex.Unlock()
+		b.devicePool.receivedAcksMutex.Lock()
+		_, ok := b.devicePool.receivedAcks[cu.ID.String()]
+		b.devicePool.receivedAcksMutex.Unlock()
 		if ok {
 			// we got the request, our offer was delivered
-			bounce.devicePool.receivedAcksMutex.Lock()
-			delete(bounce.devicePool.receivedAcks, cu.ID.String())
-			bounce.devicePool.receivedAcksMutex.Unlock()
+			b.devicePool.receivedAcksMutex.Lock()
+			delete(b.devicePool.receivedAcks, cu.ID.String())
+			b.devicePool.receivedAcksMutex.Unlock()
 			return
 		}
 		if time.Now().After(giveUpTime) {
@@ -76,7 +76,7 @@ func (bounce *Bounce) broadcastCatchUp(cu *catchUp) {
 	}
 }
 
-func (bounce *Bounce) handleCatchUp(peer string, payload []byte) {
+func (b *bounce) handleCatchUp(peer string, payload []byte) {
 	var cu catchUp
 	err := msgpack.Unmarshal(payload, &cu)
 	if err != nil {
@@ -86,19 +86,19 @@ func (bounce *Bounce) handleCatchUp(peer string, payload []byte) {
 		return
 	}
 
-	dev, exists := bounce.getDeviceFromAddress(peer)
+	dev, exists := b.getDeviceFromAddress(peer)
 	if !exists {
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Error("error loading device that sent catch up")
 		return
 	}
-	go bounce.broadcast(&ack{
+	go b.broadcast(&ack{
 		destination: dev.ID,
 		CatchUps:    cu.ID.String(),
 	})
 
 	for _, dmPayload := range cu.DirectMessages {
-		bounce.handleDirectMessage(peer, dmPayload)
+		b.handleDirectMessage(peer, dmPayload)
 	}
 }

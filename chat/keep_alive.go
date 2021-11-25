@@ -9,7 +9,7 @@ type keepAlive struct {
 }
 
 func (ka keepAlive) getScope() int {
-	return DEVICE_SCOPE
+	return scopeDevice
 }
 
 func (ka keepAlive) getDestination() uuid.UUID {
@@ -17,7 +17,7 @@ func (ka keepAlive) getDestination() uuid.UUID {
 }
 
 func (ka keepAlive) getType() uint16 {
-	return TYPE_KEEP_ALIVE
+	return typeKeepAlive
 }
 
 func (ka keepAlive) getPayload() []byte {
@@ -28,6 +28,6 @@ func (ka keepAlive) isAlreadyDeliveredTo(address string) bool {
 	return false
 }
 
-func (bounce *Bounce) handleKeepAlive(peer string, payload []byte) {
+func (b *bounce) handleKeepAlive(peer string, payload []byte) {
 	return
 }

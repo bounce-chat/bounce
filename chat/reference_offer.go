@@ -31,7 +31,7 @@ func (referenceOffer *referenceOffer) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (ro *referenceOffer) getScope() int {
-	return DEVICE_SCOPE
+	return scopeDevice
 }
 
 func (ro *referenceOffer) getDestination() uuid.UUID {
@@ -40,7 +40,7 @@ func (ro *referenceOffer) getDestination() uuid.UUID {
 }
 
 func (ro *referenceOffer) getType() uint16 {
-	return TYPE_REFERENCE_OFFER
+	return typeReferenceOffer
 }
 
 func (ro *referenceOffer) getPayload() []byte {
@@ -74,27 +74,27 @@ func (ro *referenceOffer) hasContent() bool {
 	return false
 }
 
-func (bounce *Bounce) sendReferences(peerAddress string) {
-	references := bounce.getReferenceOfferFor(peerAddress)
+func (b *bounce) sendReferences(peerAddress string) {
+	references := b.getReferenceOfferFor(peerAddress)
 	if references.hasContent() {
-		err := bounce.database.Create(references).Error
+		err := b.database.Create(references).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Error("error saving referenceOffer")
 		} else {
-			go bounce.broadcastReferenceOffer(references)
+			go b.broadcastReferenceOffer(references)
 		}
 	}
 }
 
-func (bounce *Bounce) getReferenceOfferFor(address string) *referenceOffer {
+func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	offer := &referenceOffer{
 		ID:  uuid.New(),
 		For: address,
 	}
 
-	dev, ok := bounce.getDeviceFromAddress(address)
+	dev, ok := b.getDeviceFromAddress(address)
 	if !ok {
 		return offer
 	}
@@ -102,7 +102,7 @@ func (bounce *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 
 	// All DMs we have sent to or received from this user in the past week
 	var dms []DirectMessage
-	err := bounce.database.
+	err := b.database.
 		Order("saved_at asc").
 		Where(
 			"written_at >= ? AND (destination = ? OR source = ?) AND delivered_to NOT LIKE ?",
@@ -129,19 +129,19 @@ func (bounce *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	return offer
 }
 
-func (bounce *Bounce) broadcastReferenceOffer(ro *referenceOffer) {
+func (b *bounce) broadcastReferenceOffer(ro *referenceOffer) {
 	giveUpTime := time.Now().Add(5 * time.Minute)
 	for {
-		bounce.broadcast(ro)
+		b.broadcast(ro)
 		time.Sleep(15 * time.Second) // TODO: derive from message size?
-		bounce.devicePool.receivedAcksMutex.Lock()
-		_, ok := bounce.devicePool.receivedAcks[ro.ID.String()]
-		bounce.devicePool.receivedAcksMutex.Unlock()
+		b.devicePool.receivedAcksMutex.Lock()
+		_, ok := b.devicePool.receivedAcks[ro.ID.String()]
+		b.devicePool.receivedAcksMutex.Unlock()
 		if ok {
 			// we got the request, our offer was delivered
-			bounce.devicePool.receivedAcksMutex.Lock()
-			delete(bounce.devicePool.receivedAcks, ro.ID.String())
-			bounce.devicePool.receivedAcksMutex.Unlock()
+			b.devicePool.receivedAcksMutex.Lock()
+			delete(b.devicePool.receivedAcks, ro.ID.String())
+			b.devicePool.receivedAcksMutex.Unlock()
 			return
 		}
 		if time.Now().After(giveUpTime) {
@@ -149,7 +149,7 @@ func (bounce *Bounce) broadcastReferenceOffer(ro *referenceOffer) {
 				"id":          ro.ID,
 				"destination": ro.For,
 			}).Warn("gave up attempting to deliver reference offer")
-			err := bounce.database.Delete(ro).Error
+			err := b.database.Delete(ro).Error
 			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -160,7 +160,7 @@ func (bounce *Bounce) broadcastReferenceOffer(ro *referenceOffer) {
 	}
 }
 
-func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
+func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 	var ro referenceOffer
 	err := msgpack.Unmarshal(payload, &ro)
 	if err != nil {
@@ -170,7 +170,7 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 		return
 	}
 
-	srcDevice, exists := bounce.getDeviceFromAddress(peer)
+	srcDevice, exists := b.getDeviceFromAddress(peer)
 	if !exists {
 		log.WithFields(log.Fields{
 			"peer": peer,
@@ -196,7 +196,7 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 			}
 
 			var count int64
-			err = bounce.database.Model(&DirectMessage{}).Where("id = ?", dmID).Count(&count).Error
+			err = b.database.Model(&DirectMessage{}).Where("id = ?", dmID).Count(&count).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -210,7 +210,7 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 			} else {
 				// We already have this message, but if we didn't already know they had it, we update our records
 				var dm DirectMessage
-				err = bounce.database.First(&dm, dmID).Error
+				err = b.database.First(&dm, dmID).Error
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
@@ -218,7 +218,7 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 					continue
 				}
 				if !dm.isAlreadyDeliveredTo(peer) {
-					bounce.markDeliveredTo(&dm, peer)
+					b.markDeliveredTo(&dm, peer)
 				}
 			}
 		}
@@ -231,5 +231,5 @@ func (bounce *Bounce) handleReferenceOffer(peer string, payload []byte) {
 		response.DirectMessages = response.DirectMessages + dm
 	}
 
-	bounce.broadcast(response)
+	b.broadcast(response)
 }

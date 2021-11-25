@@ -19,7 +19,7 @@ func (directMessage *DirectMessage) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (dm *DirectMessage) getScope() int {
-	return USER_SCOPE
+	return scopeUser
 }
 
 func (dm *DirectMessage) getDestination() uuid.UUID {
@@ -27,7 +27,7 @@ func (dm *DirectMessage) getDestination() uuid.UUID {
 }
 
 func (dm *DirectMessage) getType() uint16 {
-	return TYPE_DIRECT_MESSAGE
+	return typeDirectMessage
 }
 
 func (dm *DirectMessage) getPayload() []byte {
@@ -52,14 +52,14 @@ func (dm *DirectMessage) isAlreadyDeliveredTo(address string) bool {
 	return false
 }
 
-func (bounce *Bounce) markDeliveredTo(dm *DirectMessage, address string) {
+func (b *bounce) markDeliveredTo(dm *DirectMessage, address string) {
 	if !dm.isAlreadyDeliveredTo(address) {
 		if len(dm.DeliveredTo) != 0 {
 			dm.DeliveredTo = dm.DeliveredTo + ","
 		}
 		dm.DeliveredTo = dm.DeliveredTo + address
 
-		err := bounce.database.Save(dm).Error
+		err := b.database.Save(dm).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":   err.Error(),
@@ -73,26 +73,26 @@ func (bounce *Bounce) markDeliveredTo(dm *DirectMessage, address string) {
 // UI Handlers
 //
 
-func (bounce *Bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
+func (b *bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
 	message.ID = uuid.New()
 	message.WrittenAt = time.Now().Unix()
 	message.Read = true
-	message.Source = bounce.currentUserID()
-	message.RetentionSeconds = bounce.getUserDMRetention(message.Destination)
+	message.Source = b.currentUserID()
+	message.RetentionSeconds = b.getUserDMRetention(message.Destination)
 
-	err := bounce.database.Create(message).Error
+	err := b.database.Create(message).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error saving direct message to the database")
 	}
 
-	bounce.broadcast(message)
+	b.broadcast(message)
 
 	return message.ID
 }
 
-func (bounce *Bounce) changeDMNotificationSettings(dm uuid.UUID, enabled bool) {
+func (b *bounce) changeDMNotificationSettings(dm uuid.UUID, enabled bool) {
 	log.WithFields(log.Fields{
 		"thread":                dm,
 		"notifications_enabled": enabled,
@@ -103,7 +103,7 @@ func (bounce *Bounce) changeDMNotificationSettings(dm uuid.UUID, enabled bool) {
 // Network Handlers
 //
 
-func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
+func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	// Unmarshal the payload
 	var dm DirectMessage
 	err := msgpack.Unmarshal(payload, &dm)
@@ -115,7 +115,7 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 	}
 
 	// Look up the device that sent it
-	srcDevice, exists := bounce.getDeviceFromAddress(peer)
+	srcDevice, exists := b.getDeviceFromAddress(peer)
 	if !exists {
 		log.WithFields(log.Fields{
 			"peer": peer,
@@ -127,12 +127,12 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 
 	// If we have already seen this message, all we need to do is mark that this peer has the message as well.  If not, we save the message
 	// in the database.  This step is synchroniszed with a mutex lock since the same message can come in concurrently during gossip.
-	bounce.dmExistenceCheck.Lock()
+	b.dmExistenceCheck.Lock()
 	var existingDM DirectMessage
-	err = bounce.database.Where("id = ?", dm.ID).First(&existingDM).Error
+	err = b.database.Where("id = ?", dm.ID).First(&existingDM).Error
 	if err == nil {
-		bounce.markDeliveredTo(&existingDM, peer)
-		bounce.dmExistenceCheck.Unlock()
+		b.markDeliveredTo(&existingDM, peer)
+		b.dmExistenceCheck.Unlock()
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
@@ -142,29 +142,29 @@ func (bounce *Bounce) handleDirectMessage(peer string, payload []byte) {
 
 	// Capture the current message retention setting for this user and store it on the DM
 	id := dm.Destination
-	if id == bounce.currentUserID() {
+	if id == b.currentUserID() {
 		id = dm.Source
 	}
-	dm.RetentionSeconds = bounce.getUserDMRetention(id)
+	dm.RetentionSeconds = b.getUserDMRetention(id)
 	if dm.RetentionSeconds != 0 {
 		dm.DeleteAt = time.Now().Unix() + dm.RetentionSeconds
 	}
 
 	// Save the new message
 	dm.DeliveredTo = peer
-	err = bounce.database.Create(&dm).Error
+	err = b.database.Create(&dm).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error saving incoming direct message")
 	}
-	bounce.dmExistenceCheck.Unlock()
+	b.dmExistenceCheck.Unlock()
 
 	// Send the message to the user interface
-	bounce.userInterface.ReceivedDirectMessage(dm)
+	b.userInterface.ReceivedDirectMessage(dm)
 
 	// Send an ack to the sender that we got it
-	go bounce.broadcast(&ack{
+	go b.broadcast(&ack{
 		destination:    srcDevice.ID,
 		DirectMessages: dm.ID.String(),
 	})

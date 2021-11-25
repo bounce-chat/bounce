@@ -27,12 +27,12 @@ type signedGroupMessage struct { // TODO: can the behavior of this be "merged" i
 	destination uuid.UUID
 }
 
-func (bounce *Bounce) newSignedGroupMessage(message GroupMessage) *signedGroupMessage {
+func (b *bounce) newSignedGroupMessage(message GroupMessage) *signedGroupMessage {
 	marshalledMessage, err := msgpack.Marshal(message)
 	if err != nil {
 		// TODO: how to handle?
 	}
-	signature := bounce.network.Sign(marshalledMessage) // TODO: just sign the SHA3 of the data for speed reasons
+	signature := b.network.Sign(marshalledMessage) // TODO: just sign the SHA3 of the data for speed reasons
 
 	sgm := &signedGroupMessage{
 		Message:     marshalledMessage,
@@ -44,7 +44,7 @@ func (bounce *Bounce) newSignedGroupMessage(message GroupMessage) *signedGroupMe
 }
 
 func (sgm *signedGroupMessage) getScope() int {
-	return GROUP_SCOPE
+	return scopeGroup
 }
 
 func (sgm *signedGroupMessage) getDestination() uuid.UUID {
@@ -52,7 +52,7 @@ func (sgm *signedGroupMessage) getDestination() uuid.UUID {
 }
 
 func (sgm *signedGroupMessage) getType() uint16 {
-	return TYPE_GROUP_MESSAGE // TODO: after I figure out types
+	return typeGroupMessage // TODO: after I figure out types
 }
 
 func (sgm *signedGroupMessage) getPayload() []byte {
@@ -60,25 +60,25 @@ func (sgm *signedGroupMessage) getPayload() []byte {
 }
 */
 
-func (bounce *Bounce) sendGroupMessage(message GroupMessage) uuid.UUID {
+func (b *bounce) sendGroupMessage(message GroupMessage) uuid.UUID {
 	return uuid.New()
 }
 
-func (bounce *Bounce) addUserToGroup(threadID, userID uuid.UUID) {
+func (b *bounce) addUserToGroup(threadID, userID uuid.UUID) {
 	log.WithFields(log.Fields{
 		"thread": threadID,
 		"user":   userID,
 	}).Info("UI wants to add user to group")
 }
 
-func (bounce *Bounce) renameGroup(threadID uuid.UUID, newName string) {
+func (b *bounce) renameGroup(threadID uuid.UUID, newName string) {
 	log.WithFields(log.Fields{
 		"thread":   threadID,
 		"new_name": newName,
 	}).Info("UI wants to rename a group")
 }
 
-func (bounce *Bounce) changeGroupNotificationSettings(group uuid.UUID, enabled bool) {
+func (b *bounce) changeGroupNotificationSettings(group uuid.UUID, enabled bool) {
 	log.WithFields(log.Fields{
 		"thread":                group,
 		"notifications_enabled": enabled,

@@ -20,7 +20,7 @@ type referenceRequest struct {
 }
 
 func (rr *referenceRequest) getScope() int {
-	return DEVICE_SCOPE
+	return scopeDevice
 }
 
 func (rr *referenceRequest) getDestination() uuid.UUID {
@@ -29,7 +29,7 @@ func (rr *referenceRequest) getDestination() uuid.UUID {
 }
 
 func (rr *referenceRequest) getType() uint16 {
-	return TYPE_REFERENCE_REQUEST
+	return typeReferenceRequest
 }
 
 func (rr *referenceRequest) getPayload() []byte {
@@ -47,7 +47,7 @@ func (rr *referenceRequest) isAlreadyDeliveredTo(address string) bool {
 	return false
 }
 
-func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
+func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	var rr referenceRequest
 	err := msgpack.Unmarshal(payload, &rr)
 	if err != nil {
@@ -58,7 +58,7 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 	}
 
 	var originalOffer referenceOffer
-	err = bounce.database.Where("id = ? AND for = ?", rr.ID, peer).First(&originalOffer).Error
+	err = b.database.Where("id = ? AND for = ?", rr.ID, peer).First(&originalOffer).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"peer":     peer,
@@ -66,11 +66,11 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 		}).Error("peer sent a reference request for an offer not in the database")
 		return
 	}
-	bounce.devicePool.receivedAcksMutex.Lock()
-	bounce.devicePool.receivedAcks[rr.ID.String()] = true
-	bounce.devicePool.receivedAcksMutex.Unlock()
+	b.devicePool.receivedAcksMutex.Lock()
+	b.devicePool.receivedAcks[rr.ID.String()] = true
+	b.devicePool.receivedAcksMutex.Unlock()
 
-	dev, exists := bounce.getDeviceFromAddress(peer)
+	dev, exists := b.getDeviceFromAddress(peer)
 	if !exists {
 		log.WithFields(log.Fields{
 			"peer": peer,
@@ -110,7 +110,7 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 			}
 
 			var dm DirectMessage
-			err = bounce.database.Where("id = ? AND (source = ? OR destination = ?)", dmID, dev.UserID, dev.UserID).First(&dm).Error
+			err = b.database.Where("id = ? AND (source = ? OR destination = ?)", dmID, dev.UserID, dev.UserID).First(&dm).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					log.WithFields(log.Fields{
@@ -128,13 +128,13 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 			if _, present := dmRequested[dmID]; present {
 				catchUpResponse.DirectMessages = append(catchUpResponse.DirectMessages, dm.getPayload())
 			} else {
-				bounce.markDeliveredTo(&dm, peer)
+				b.markDeliveredTo(&dm, peer)
 			}
 		}
 	}
 
 	if catchUpResponse.hasContent() {
-		bounce.broadcastCatchUp(catchUpResponse)
+		b.broadcastCatchUp(catchUpResponse)
 	}
 
 	if len(rr.DirectMessages) > len(originalOffer.DirectMessages) {
@@ -145,5 +145,5 @@ func (bounce *Bounce) handleReferenceRequest(peer string, payload []byte) {
 		// TODO: save the evidence for analysis?
 	}
 
-	bounce.database.Delete(&originalOffer)
+	b.database.Delete(&originalOffer)
 }

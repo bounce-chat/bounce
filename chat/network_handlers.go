@@ -4,29 +4,29 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (bounce *Bounce) networkOnline() {
-	bounce.networkIsOnline = true
-	if !bounce.networkHasBeenOnline {
-		bounce.networkHasBeenOnline = true
-		go bounce.acceptConnections()
+func (b *bounce) networkOnline() {
+	b.networkIsOnline = true
+	if !b.networkHasBeenOnline {
+		b.networkHasBeenOnline = true
+		go b.acceptConnections()
 	}
-	bounce.auditPeers()
-	bounce.userInterface.NetworkOnline()
+	b.auditPeers()
+	b.userInterface.NetworkOnline()
 }
 
-func (bounce *Bounce) networkOffline() {
-	bounce.networkIsOnline = false
-	bounce.userInterface.NetworkOffline()
+func (b *bounce) networkOffline() {
+	b.networkIsOnline = false
+	b.userInterface.NetworkOffline()
 }
 
-func (bounce *Bounce) acceptConnections() {
+func (b *bounce) acceptConnections() {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Fatal("recovered a panic while accepting a connection, this can occur when the network returns a non-fatal Accept error but the next attempt causes a panic in the network provider")
 		}
 	}()
 	for {
-		conn, err, fatal := bounce.network.Accept()
+		conn, err, fatal := b.network.Accept()
 		if err != nil {
 			if fatal {
 				log.WithFields(log.Fields{
@@ -42,6 +42,6 @@ func (bounce *Bounce) acceptConnections() {
 				"peer": conn.RemoteAddr().String(),
 			}).Debug("accepted connection")
 		}
-		go bounce.insertConnectionIntoDevicePool(conn)
+		go b.insertConnectionIntoDevicePool(conn)
 	}
 }

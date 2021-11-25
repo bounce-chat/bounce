@@ -20,11 +20,11 @@ import (
 //
 const undeliverableAfter = time.Duration(7 * 24 * time.Hour)
 
-type Bounce struct {
+type bounce struct {
 	configDirectory       string
 	database              *gorm.DB
-	userInterface         BounceUI
-	network               BounceNetwork
+	userInterface         UI
+	network               Network
 	devicePool            *devicePool
 	userID                uuid.UUID
 	networkIsOnline       bool
@@ -40,14 +40,14 @@ type Bounce struct {
 // The main entrypoint for starting the Bounce chat engine, blocks until the user interface
 // is closed, the network reaches a fatal error, or the process is sent an interrupt.
 //
-func Start(network BounceNetwork, ui BounceUI) {
+func Start(network Network, ui UI) {
 	if os.Getenv("DEBUG") == "true" {
 		log.SetReportCaller(true)
 	}
 	log.SetLevel(log.DebugLevel) // TODO: put behind the envar when ready.  run in warn otherwise?
 
 	ensureOnlyOneInstance()
-	bounce := &Bounce{
+	bounce := &bounce{
 		configDirectory: getConfigDirectory(),
 		userInterface:   ui,
 		network:         network,
@@ -98,7 +98,7 @@ func Start(network BounceNetwork, ui BounceUI) {
 //
 // Gracefully stop all Bounce.  Used when a fatal error is encountered or the user interface is closed
 //
-func (bounce *Bounce) shutdown() {
+func (b *bounce) shutdown() {
 	// Logrus is going to call in here on a fatal error, then os.Exit.  If multiple fatal logs occur, which
 	// is likely as the shutdown process is going to cause other fatal errors, the first one will spend some
 	// time closing down the network and database while the second will return much faster.  This second fatal
@@ -108,15 +108,15 @@ func (bounce *Bounce) shutdown() {
 	// logrus has called os.Exit, or because Start() returns).  A concequence of this locking behavior however
 	// is that fatal errors cannot be called from within this function without deadlocking the application, so
 	// any errors encountered here must be logged as errors.
-	bounce.shutdownMutex.Lock()
+	b.shutdownMutex.Lock()
 
 	// Stop all running tasks and close all connections to remote devices
 	log.Info("closing all remote connections")
 	// TODO: stop the peer audit loop, wait for it to return
-	for _, rd := range bounce.devicePool.devices {
+	for _, rd := range b.devicePool.devices {
 		close(rd.messages)
 	}
-	for _, rd := range bounce.devicePool.devices {
+	for _, rd := range b.devicePool.devices {
 		rd.closer.Wait()
 	}
 
@@ -124,7 +124,7 @@ func (bounce *Bounce) shutdown() {
 	log.Info("stopping the network")
 	networkShutdown := make(chan bool, 1)
 	go func() {
-		bounce.network.Shutdown()
+		b.network.Shutdown()
 		networkShutdown <- true
 	}()
 
@@ -137,12 +137,12 @@ func (bounce *Bounce) shutdown() {
 	// Close the database
 	log.Info("closing the database")
 	// Close the pruning ticker channel and wait for the database to no longer be pruning
-	if bounce.databasePruningTicker != nil {
-		bounce.databasePruningTicker.Stop()
+	if b.databasePruningTicker != nil {
+		b.databasePruningTicker.Stop()
 	}
-	bounce.pruningDatabase.Wait()
+	b.pruningDatabase.Wait()
 	// Close the database connection
-	sqliteDB, err := bounce.database.DB()
+	sqliteDB, err := b.database.DB()
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -156,7 +156,7 @@ func (bounce *Bounce) shutdown() {
 	}
 
 	// Close the user interface if it isn't already closed
-	bounce.userInterface.Quit()
+	b.userInterface.Quit()
 
 	// Delete our PID file
 	pidFile := getConfigDirectory() + "/.pid"
@@ -174,7 +174,7 @@ func (bounce *Bounce) shutdown() {
 //
 // Shut the app down if the process receives an interrupt
 //
-func (bounce *Bounce) handleInterrupts() {
+func (b *bounce) handleInterrupts() {
 	//
 	// Handle interrupts, from a Ctrl+C on the command
 	// line or a kill signal elsewhere
@@ -188,7 +188,7 @@ func (bounce *Bounce) handleInterrupts() {
 		}).Info("signal received to kill process, shutting down")
 		// Stopping the user interface unblocks the main blocking call of the appplication,
 		// which in turn shuts down the network handler and the network
-		bounce.userInterface.Quit()
+		b.userInterface.Quit()
 	}
 }
 

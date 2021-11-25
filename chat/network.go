@@ -7,7 +7,7 @@ import (
 //
 // Any overlay network that can satisfy this interface can host Bounce
 //
-type BounceNetwork interface {
+type Network interface {
 	// Start is the main entry point to a network provider.  It is responsible for connecting to the overlay network and
 	// maintain a connection between network failures, and can block until Shutdown().  After Start() is called, the
 	// network must continue to run, even between failures in the device's internet connection.  Start() is only called

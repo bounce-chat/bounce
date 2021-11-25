@@ -14,8 +14,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (bounce *Bounce) openDatabase() {
-	databaseFile := bounce.configDirectory + "/bounce.db"
+func (b *bounce) openDatabase() {
+	databaseFile := b.configDirectory + "/bounce.db"
 
 	gormLogger := logger.New(
 		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags), // TODO: https://gist.github.com/bnadland/2e4287b801a47dcfcc94
@@ -27,7 +27,7 @@ func (bounce *Bounce) openDatabase() {
 	)
 
 	var err error
-	bounce.database, err = gorm.Open(sqlite.Open(databaseFile), &gorm.Config{
+	b.database, err = gorm.Open(sqlite.Open(databaseFile), &gorm.Config{
 		Logger: gormLogger,
 	})
 	if err != nil {
@@ -37,7 +37,7 @@ func (bounce *Bounce) openDatabase() {
 		}).Fatal("error opening database")
 	}
 
-	err = bounce.database.AutoMigrate(
+	err = b.database.AutoMigrate(
 		&user{},
 		&device{},
 		&profileExport{},
@@ -51,30 +51,30 @@ func (bounce *Bounce) openDatabase() {
 		}).Fatal("error migrating the database")
 	}
 
-	bounce.pruneDatabase(false)
-	go bounce.keepDatabasePruned()
+	b.pruneDatabase(false)
+	go b.keepDatabasePruned()
 }
 
-func (bounce *Bounce) keepDatabasePruned() {
-	bounce.databasePruningTicker = time.NewTicker(10 * time.Second) // TODO: can I get away with this frequency without resource costs?
+func (b *bounce) keepDatabasePruned() {
+	b.databasePruningTicker = time.NewTicker(10 * time.Second) // TODO: can I get away with this frequency without resource costs?
 
-	for _ = range bounce.databasePruningTicker.C {
-		bounce.pruningDatabase.Add(1)
-		bounce.pruneDatabase(true)
-		bounce.pruningDatabase.Done()
+	for _ = range b.databasePruningTicker.C {
+		b.pruningDatabase.Add(1)
+		b.pruneDatabase(true)
+		b.pruningDatabase.Done()
 	}
 }
 
-func (bounce *Bounce) pruneDatabase(informUI bool) {
-	bounce.pruneReferenceOffers()
-	bounce.pruneDirectMessages(informUI)
-	//bounce.pruneGroupMessages()
+func (b *bounce) pruneDatabase(informUI bool) {
+	b.pruneReferenceOffers()
+	b.pruneDirectMessages(informUI)
+	//b.pruneGroupMessages()
 }
 
 // If a reference offer was delivered, but a reference request was never received in response, it will only be deleted here
-func (bounce *Bounce) pruneReferenceOffers() {
+func (b *bounce) pruneReferenceOffers() {
 	tenMinutesAgo := time.Now().Add(-10 * time.Minute).Unix()
-	err := bounce.database.Where("created_at < ?", tenMinutesAgo).Delete(referenceOffer{}).Error
+	err := b.database.Where("created_at < ?", tenMinutesAgo).Delete(referenceOffer{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -82,25 +82,25 @@ func (bounce *Bounce) pruneReferenceOffers() {
 	}
 }
 
-func (bounce *Bounce) pruneDirectMessages(informUI bool) {
+func (b *bounce) pruneDirectMessages(informUI bool) {
 	now := time.Now().Unix()
 
 	if informUI {
 		// Find messages that should be pruned and delete them from the UI
 		var dms []DirectMessage
-		err := bounce.database.Select("id").Where("delete_at != 0 AND delete_at < ?", now).Find(&dms).Error
+		err := b.database.Select("id").Where("delete_at != 0 AND delete_at < ?", now).Find(&dms).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Fatal("error selecting direct messages that are past retention for pruning")
 		}
 		for _, dm := range dms {
-			bounce.userInterface.DeleteMessage(dm.ID)
+			b.userInterface.DeleteMessage(dm.ID)
 		}
 	}
 
 	// Delete those messages from the database
-	err := bounce.database.Where("delete_at != 0 AND delete_at < ?", now).Delete(DirectMessage{}).Error
+	err := b.database.Where("delete_at != 0 AND delete_at < ?", now).Delete(DirectMessage{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -110,14 +110,14 @@ func (bounce *Bounce) pruneDirectMessages(informUI bool) {
 	// Find all messages that are undeliverable and inform the UI, marking them for deletion if they don't have indefinite retention
 	//aWeekAgo := time.Now().Add(-7 * 24 * time.Hour).Unix() // TODO: make a package variable for delivery window and use it everywhere
 	var dms []DirectMessage
-	err = bounce.database.Select("id", "retention_seconds").Where("delivered_to = \"\" AND written_at > ? AND undeliverable = false", time.Now().Add(-undeliverableAfter).Unix()).Find(&dms).Error
+	err = b.database.Select("id", "retention_seconds").Where("delivered_to = \"\" AND written_at > ? AND undeliverable = false", time.Now().Add(-undeliverableAfter).Unix()).Find(&dms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error selecting message that are undeliverable while pruning database")
 	}
 	for _, dm := range dms {
-		err = bounce.database.Model(&dm).Update("undeliverable", true).Error
+		err = b.database.Model(&dm).Update("undeliverable", true).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"message_id": dm.ID,
@@ -125,11 +125,11 @@ func (bounce *Bounce) pruneDirectMessages(informUI bool) {
 			}).Fatal("error updating undeliverable field of undeliverable direct message")
 		}
 		if informUI {
-			bounce.userInterface.MarkMessageUndeliverable(dm.ID)
+			b.userInterface.MarkMessageUndeliverable(dm.ID)
 		}
 		if dm.RetentionSeconds > 0 {
 			deleteAt := time.Now().Unix() + dm.RetentionSeconds
-			err = bounce.database.Model(&dm).Update("delete_at", deleteAt).Error
+			err = b.database.Model(&dm).Update("delete_at", deleteAt).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"message_id": dm.ID,
@@ -137,19 +137,19 @@ func (bounce *Bounce) pruneDirectMessages(informUI bool) {
 				}).Fatal("error updating delete_at of undeliverable direct message with retention")
 			}
 			if informUI {
-				bounce.userInterface.UpdateMessageDeletionTime(dm.ID, deleteAt)
+				b.userInterface.UpdateMessageDeletionTime(dm.ID, deleteAt)
 			}
 		}
 	}
 }
 
-func (bounce *Bounce) buildInitialState() InitialState {
+func (b *bounce) buildInitialState() InitialState {
 	var profile *User
 	var count int64
-	bounce.database.Model(&user{}).Where("profile = ?", true).Count(&count)
+	b.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count > 0 {
 		var dbProfile user
-		bounce.database.Where("profile = ?", true).First(&dbProfile) // TODO: error check, clean this up
+		b.database.Where("profile = ?", true).First(&dbProfile) // TODO: error check, clean this up
 		profile = &User{
 			ID:   dbProfile.ID,
 			Name: dbProfile.Name,
@@ -157,7 +157,7 @@ func (bounce *Bounce) buildInitialState() InitialState {
 	}
 
 	users := []user{}
-	bounce.database.Find(&users) // TODO: exclude current profile?  Self DMs are actually useful for sending data between devices, saving things
+	b.database.Find(&users) // TODO: exclude current profile?  Self DMs are actually useful for sending data between devices, saving things
 	chatUsers := []User{}
 	for _, u := range users {
 		chatUsers = append(chatUsers, User{
@@ -167,7 +167,7 @@ func (bounce *Bounce) buildInitialState() InitialState {
 	}
 
 	dms := []DirectMessage{}
-	bounce.database.Order("saved_at asc").Find(&dms) // TODO: error check
+	b.database.Order("saved_at asc").Find(&dms) // TODO: error check
 
 	return InitialState{
 		Profile:        profile,
