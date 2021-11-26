@@ -126,7 +126,7 @@ func (b *bounce) getUserScope(br broadcastable) []*remoteDevice {
 	}
 
 	// Add any sync devices that are online
-	broadcastTargets = append(broadcastTargets, b.getSyncScope()...)
+	broadcastTargets = append(broadcastTargets, b.getSyncScope()...) // TODO: need to unique these for self DMs (don't suplicate sync devices when the scope is user but the user is us).  Could just compare UUIDs at the beginning and return sync scope if match.  alternatively make the scope context aware
 
 	return broadcastTargets
 }

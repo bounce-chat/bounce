@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type DirectMessage message
@@ -92,13 +93,6 @@ func (b *bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
 	return message.ID
 }
 
-func (b *bounce) changeDMNotificationSettings(dm uuid.UUID, enabled bool) {
-	log.WithFields(log.Fields{
-		"thread":                dm,
-		"notifications_enabled": enabled,
-	}).Info("UI wants to chnage notification settings")
-}
-
 //
 // Network Handlers
 //
@@ -119,11 +113,21 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	if !exists {
 		log.WithFields(log.Fields{
 			"peer": peer,
-		}).Warn("an unknown device sent a direct message, ignoring")
+		}).Warn("ignoring a direct message sent from an unknown device")
 		return
 	}
 
-	// TODO: Ensure that this device is a sync device, or that it is either the source or destination of the message while the other side is us
+	// Make sure that the peer we received this DM from makes sense, it must either be from a device belonging to the
+	// other user or one of our devices
+	if !b.dmOriginAcceptable(dm, srcDevice) {
+		log.WithFields(log.Fields{
+			"message_id":  dm.ID,
+			"source":      dm.Source,
+			"destination": dm.Destination,
+			"peer":        peer,
+		}).Warn("ignoring a direct message from an unacceptable peer")
+		return
+	}
 
 	// If we have already seen this message, all we need to do is mark that this peer has the message as well.  If not, we save the message
 	// in the database.  This step is synchroniszed with a mutex lock since the same message can come in concurrently during gossip.
@@ -137,7 +141,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("database error lookinf up direct message")
+		}).Fatal("database error looking up direct message")
 	}
 
 	// Capture the current message retention setting for this user and store it on the DM
@@ -168,5 +172,103 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 		destination:    srcDevice.ID,
 		DirectMessages: dm.ID.String(),
 	})
-	// gossip it as needed, or references to it (if it's a small group and we're pretty sure that this peer is connected to everyone else, decide that here or automatically in the broadcast function?)
+
+	// Gossip the message to any online devices that should have it
+	go b.broadcast(&dm) // TODO: only send references if the devices in the pool are less that max connections per pool?
+}
+
+func (b *bounce) dmOriginAcceptable(dm DirectMessage, dev device) bool {
+	// If this is a message to ourselves, then the peer must be a device we own
+	if dm.Source == dm.Destination {
+		if dm.Source == b.currentUserID() {
+			if dev.UserID == b.currentUserID() {
+				return true
+			} else {
+				log.WithFields(log.Fields{
+					"peer": dev.Address,
+				}).Warn("got self direct message from a device that is not a sync device")
+				return false
+			}
+		} else {
+			// This is a message from a user to themselves, but that user isn't us
+			log.WithFields(log.Fields{
+				"peer":        dev.Address,
+				"source":      dm.Source,
+				"destination": dm.Destination,
+			}).Warn("received self direct message not intended for us")
+			return false
+		}
+	} else {
+		// Make sure that at least one of the user IDs is us
+		if !(dm.Source == b.currentUserID() || dm.Destination == b.currentUserID()) {
+			log.WithFields(log.Fields{
+				"peer":        dev.Address,
+				"source":      dm.Source,
+				"destination": dm.Destination,
+			}).Warn("received direct message not intended for us")
+			return false
+		}
+
+		// Figure out which user ID is not us
+		otherParty := dm.Source
+		if dm.Source == b.currentUserID() {
+			otherParty = dm.Destination
+		}
+
+		// Make sure that user actually exists
+		var otherUser user
+		err := b.database.Preload(clause.Associations).First(&otherUser, "id = ?", otherParty).Error // TODO: cache?  otherwise each DM is another database read
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"user_id": otherParty,
+				}).Error("user not found while validating direct message peer address")
+				return false
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up user")
+			}
+		}
+
+		// Reguardless of who the other party is, if the message came from one of our devices it's allowed
+		currentUser, ok := b.currentUser()
+		if !ok {
+			// This doesn't really make sense, but if we're getting DMs that are so far valid
+			// while also not having a profile, we shouldn't allow this
+			log.Error("could not find current user while attempting to validate direct message peer")
+			return false
+		}
+		isFromSyncDevice := false
+		for _, syncDevice := range currentUser.Devices {
+			if syncDevice.Address == dev.Address {
+				isFromSyncDevice = true
+			}
+		}
+		if isFromSyncDevice {
+			return true
+		}
+
+		// If the message didn't come from one of our devices, it must come from one of theirs
+		for _, userDevice := range otherUser.Devices {
+			if userDevice.Address == dev.Address {
+				// Early return as soon as we discover the peer's device with the address
+				// that sent this message
+				return true
+			}
+		}
+
+		// The device that sent this otherwise valid DM was not owned by the indicated counterparty
+		log.WithFields(log.Fields{
+			"message_id":  dm.ID,
+			"source":      dm.Source,
+			"destination": dm.Destination,
+			"peer":        dev.Address,
+		}).Warn("received direct message from a device not in the allowed device set")
+		return false
+	}
+
+	// This case should never be hit
+	log.Warn("default denying direct message peer")
+	return false
 }
