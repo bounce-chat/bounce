@@ -10,11 +10,11 @@ import (
 )
 
 type ack struct {
-	_msgpack       struct{}  `msgpack:",omitempty"`
-	ID             uuid.UUID `gorm:"type:uuid;primary_key;"` // TODO: we don't actually store these
-	For            string    `msgpack:"-"`
-	DirectMessages string    // Comma-separated list of DM UUIDs TODO: since this isn't going in the database can we use a proper slice here?
-	CatchUps       string    // for ack-ing catch ups to ensure delivery.  TODO: maybe not what we stick with, maybe break acks out of references
+	_msgpack       struct{} `msgpack:",omitempty"`
+	ID             uuid.UUID
+	For            string `msgpack:"-"`
+	DirectMessages string // Comma-separated list of DM UUIDs TODO: since this isn't going in the database can we use a proper slice here?
+	CatchUps       string
 	destination    uuid.UUID
 	payload        []byte
 }
