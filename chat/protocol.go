@@ -98,6 +98,13 @@ func (b *bounce) getSyncScope() []*remoteDevice {
 func (b *bounce) getUserScope(br broadcastable) []*remoteDevice {
 	broadcastTargets := []*remoteDevice{}
 
+	if b.currentUserID() == br.getDestination() {
+		log.WithFields(log.Fields{
+			"type": br.getType(),
+		}).Warn("a user-scoped message has a sync destination, using sync scope")
+		return b.getSyncScope()
+	}
+
 	// Add any devices that are owned by the destination user that are online
 	var destinationUser user
 	err := b.database.Preload(clause.Associations).First(&destinationUser, "id = ?", br.getDestination()).Error
@@ -126,7 +133,7 @@ func (b *bounce) getUserScope(br broadcastable) []*remoteDevice {
 	}
 
 	// Add any sync devices that are online
-	broadcastTargets = append(broadcastTargets, b.getSyncScope()...) // TODO: need to unique these for self DMs (don't suplicate sync devices when the scope is user but the user is us).  Could just compare UUIDs at the beginning and return sync scope if match.  alternatively make the scope context aware
+	broadcastTargets = append(broadcastTargets, b.getSyncScope()...)
 
 	return broadcastTargets
 }

@@ -20,6 +20,10 @@ func (directMessage *DirectMessage) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (dm *DirectMessage) getScope() int {
+	if dm.Source == dm.Destination {
+		// A DM to ourselves, only needs to be sent to sync devices
+		return scopeSync
+	}
 	return scopeUser
 }
 
