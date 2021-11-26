@@ -12,7 +12,7 @@ import (
 type ack struct {
 	_msgpack       struct{} `msgpack:",omitempty"`
 	ID             uuid.UUID
-	For            string `msgpack:"-"`
+	For            string `msgpack:"-"` // TODO: needed?
 	DirectMessages string // Comma-separated list of DM UUIDs TODO: since this isn't going in the database can we use a proper slice here?
 	CatchUps       string
 	destination    uuid.UUID

@@ -13,7 +13,7 @@ import (
 type referenceRequest struct {
 	_msgpack       struct{} `msgpack:",omitempty"`
 	ID             uuid.UUID
-	For            string `msgpack:"-"`
+	For            string `msgpack:"-"` // TODO: needed?
 	DirectMessages string // Comma-separated list of DM UUIDs
 	destination    uuid.UUID
 	payload        []byte
