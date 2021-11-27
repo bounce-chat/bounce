@@ -98,13 +98,6 @@ func (b *bounce) getSyncScope() []*remoteDevice {
 func (b *bounce) getUserScope(br broadcastable) []*remoteDevice {
 	broadcastTargets := []*remoteDevice{}
 
-	if b.currentUserID() == br.getDestination() {
-		log.WithFields(log.Fields{
-			"type": br.getType(),
-		}).Warn("a user-scoped message has a sync destination, using sync scope")
-		return b.getSyncScope()
-	}
-
 	// Add any devices that are owned by the destination user that are online
 	var destinationUser user
 	err := b.database.Preload(clause.Associations).First(&destinationUser, "id = ?", br.getDestination()).Error
