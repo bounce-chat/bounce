@@ -10,10 +10,11 @@ import (
 	"gorm.io/gorm"
 )
 
+// DirectMessages are comma separated for consistency with reference offers, which must do this
+// since SQLite doesn't support slices
 type referenceRequest struct {
 	_msgpack       struct{} `msgpack:",omitempty"`
 	ID             uuid.UUID
-	For            string `msgpack:"-"` // TODO: needed?
 	DirectMessages string // Comma-separated list of DM UUIDs
 	destination    uuid.UUID
 	payload        []byte
@@ -24,7 +25,6 @@ func (rr *referenceRequest) getScope() int {
 }
 
 func (rr *referenceRequest) getDestination() uuid.UUID {
-	// TODO: derive from rr.For?
 	return rr.destination
 }
 
@@ -57,8 +57,18 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 		return
 	}
 
+	// get the device from this address
+	peerDevice, ok := b.getDeviceFromAddress(peer)
+	if !ok {
+		log.WithFields(log.Fields{
+			"reference_request_id": rr.ID,
+			"peer":                 peer,
+		}).Warn("got reference request from unknown peer device")
+		return
+	}
+
 	var originalOffer referenceOffer
-	err = b.database.Where("id = ? AND for = ?", rr.ID, peer).First(&originalOffer).Error
+	err = b.database.Where("id = ? AND destination = ?", rr.ID, peerDevice.ID).First(&originalOffer).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"peer":     peer,

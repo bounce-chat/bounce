@@ -9,11 +9,12 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
+// DirectMessages are comma separated for consistency with reference offers, which must do this
+// since SQLite doesn't support slices
 type ack struct {
 	_msgpack       struct{} `msgpack:",omitempty"`
 	ID             uuid.UUID
-	For            string `msgpack:"-"` // TODO: needed?
-	DirectMessages string // Comma-separated list of DM UUIDs TODO: since this isn't going in the database can we use a proper slice here?
+	DirectMessages string // Comma-separated list of DM UUIDs
 	CatchUps       string
 	destination    uuid.UUID
 	payload        []byte

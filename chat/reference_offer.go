@@ -16,12 +16,11 @@ import (
 // should have, but that we didn't deliver to it.
 //
 type referenceOffer struct {
-	_msgpack       struct{} `msgpack:",omitempty"`
-	CreatedAt      int64
+	_msgpack       struct{}  `msgpack:",omitempty"`
 	ID             uuid.UUID `gorm:"type:uuid;primary_key;"`
-	For            string    `msgpack:"-"`
+	CreatedAt      int64     // Used to delete old reference offers that were not responded to
 	DirectMessages string    // Comma-separated list of DM UUIDs
-	destination    uuid.UUID
+	Destination    uuid.UUID `msgpack:"-"`
 	payload        []byte
 }
 
@@ -35,8 +34,7 @@ func (ro *referenceOffer) getScope() int {
 }
 
 func (ro *referenceOffer) getDestination() uuid.UUID {
-	// TODO: derive from ro.For?
-	return ro.destination
+	return ro.Destination
 }
 
 func (ro *referenceOffer) getType() uint16 {
@@ -90,15 +88,14 @@ func (b *bounce) sendReferences(peerAddress string) {
 
 func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	offer := &referenceOffer{
-		ID:  uuid.New(),
-		For: address,
+		ID: uuid.New(),
 	}
 
 	dev, ok := b.getDeviceFromAddress(address)
 	if !ok {
 		return offer
 	}
-	offer.destination = dev.ID
+	offer.Destination = dev.ID
 
 	// All DMs we have sent to or received from this user in the past week
 	var dms []DirectMessage
@@ -147,7 +144,7 @@ func (b *bounce) broadcastReferenceOffer(ro *referenceOffer) {
 		if time.Now().After(giveUpTime) {
 			log.WithFields(log.Fields{
 				"id":          ro.ID,
-				"destination": ro.For,
+				"destination": ro.Destination,
 			}).Warn("gave up attempting to deliver reference offer")
 			err := b.database.Delete(ro).Error
 			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
