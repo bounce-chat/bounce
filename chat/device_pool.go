@@ -144,7 +144,9 @@ func (b *bounce) connectToUsers() {
 		}
 	}
 	for _, id := range userIDs {
-		b.userConnectionDesired(id)
+		if id != currentUser.ID {
+			b.userConnectionDesired(id)
+		}
 	}
 }
 
