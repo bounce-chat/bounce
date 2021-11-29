@@ -27,8 +27,19 @@ func (dm *DirectMessage) getScope() int {
 	return scopeUser
 }
 
-func (dm *DirectMessage) getDestination() uuid.UUID {
-	return dm.Destination
+func (dm *DirectMessage) getDestination(myID uuid.UUID) uuid.UUID {
+	if dm.Source == dm.Destination {
+		// A DM to ourselves, only needs to be sent to sync devices,
+		// which doesn't invovle needing to know a destinatinon to
+		// determine scope
+		return uuid.Nil
+	}
+
+	otherParty := dm.Source
+	if dm.Source == myID {
+		otherParty = dm.Destination
+	}
+	return otherParty
 }
 
 func (dm *DirectMessage) getType() uint16 {

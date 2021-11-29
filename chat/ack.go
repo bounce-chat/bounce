@@ -24,7 +24,7 @@ func (a *ack) getScope() int {
 	return scopeDevice
 }
 
-func (a *ack) getDestination() uuid.UUID {
+func (a *ack) getDestination(_ uuid.UUID) uuid.UUID {
 	return a.destination
 }
 

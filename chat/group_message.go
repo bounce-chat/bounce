@@ -47,7 +47,7 @@ func (sgm *signedGroupMessage) getScope() int {
 	return scopeGroup
 }
 
-func (sgm *signedGroupMessage) getDestination() uuid.UUID {
+func (sgm *signedGroupMessage) getDestination(_ uuid.UUID) uuid.UUID {
 	return sgm.destination
 }
 

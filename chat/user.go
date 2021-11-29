@@ -14,11 +14,15 @@ import (
 )
 
 type user struct {
-	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name             string
-	Profile          bool `gorm:"index:,where:profile = true" json:"-"`
-	MessageRetention int64
-	Devices          []device
+	ID                        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name                      string
+	Profile                   bool   `gorm:"index:,where:profile = true" json:"-"`
+	MessageRetention          int64  `json:"-"`
+	LastDMSettingsUpdate      int64  `json:"-"`
+	NotificationsEnabled      bool   `json:"-"`
+	NotificationsMutedUntil   uint64 `json:"-"`
+	LastLocalDMSettingsUpdate int64  `json:"-"`
+	Devices                   []device
 }
 
 func (u *user) BeforeCreate(tx *gorm.DB) error {
@@ -173,8 +177,11 @@ func (b *bounce) importUser(data []byte) (User, error) {
 }
 
 func (b *bounce) changeDMNotificationSettings(u uuid.UUID, enabled bool) {
+	// Look up the user
+	// if the new setting doesn't match the current settings, generate a local DM settings update
+	// perhaps a user.getCurrentLocalDMSettings() + changes
 	log.WithFields(log.Fields{
 		"thread":                u,
 		"notifications_enabled": enabled,
-	}).Info("UI wants to chnage notification settings")
+	}).Info("UI wants to change notification settings")
 }

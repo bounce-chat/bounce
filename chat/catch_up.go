@@ -20,7 +20,7 @@ func (cu *catchUp) getScope() int {
 	return scopeDevice
 }
 
-func (cu *catchUp) getDestination() uuid.UUID {
+func (cu *catchUp) getDestination(_ uuid.UUID) uuid.UUID {
 	return cu.destination
 
 }
@@ -69,7 +69,7 @@ func (b *bounce) broadcastCatchUp(cu *catchUp) {
 		if time.Now().After(giveUpTime) {
 			log.WithFields(log.Fields{
 				"id":          cu.ID,
-				"destination": cu.getDestination(),
+				"destination": cu.getDestination(b.currentUserID()),
 			}).Warn("gave up attempting to deliver catch up")
 			return
 		}

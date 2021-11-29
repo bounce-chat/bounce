@@ -33,7 +33,7 @@ func (ro *referenceOffer) getScope() int {
 	return scopeDevice
 }
 
-func (ro *referenceOffer) getDestination() uuid.UUID {
+func (ro *referenceOffer) getDestination(_ uuid.UUID) uuid.UUID {
 	return ro.Destination
 }
 
@@ -122,6 +122,8 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 		dmsToOffer = append(dmsToOffer, dm.ID.String())
 	}
 	offer.DirectMessages = strings.Join(dmsToOffer, ",")
+
+	// If this is a sync device, get the latest local settings update for each DM, and if it hasn't been delivered, send it
 
 	return offer
 }

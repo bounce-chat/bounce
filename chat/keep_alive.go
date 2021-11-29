@@ -12,7 +12,7 @@ func (ka keepAlive) getScope() int {
 	return scopeDevice
 }
 
-func (ka keepAlive) getDestination() uuid.UUID {
+func (ka keepAlive) getDestination(_ uuid.UUID) uuid.UUID {
 	return ka.destination
 }
 

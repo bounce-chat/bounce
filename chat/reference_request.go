@@ -24,7 +24,7 @@ func (rr *referenceRequest) getScope() int {
 	return scopeDevice
 }
 
-func (rr *referenceRequest) getDestination() uuid.UUID {
+func (rr *referenceRequest) getDestination(_ uuid.UUID) uuid.UUID {
 	return rr.destination
 }
 
