@@ -175,13 +175,3 @@ func (b *bounce) importUser(data []byte) (User, error) {
 	// As in, bounce only accepts DMs from user's in a shared group or who send an import secret
 	// TODO: try to dial right away
 }
-
-func (b *bounce) changeDMNotificationSettings(u uuid.UUID, enabled bool) {
-	// Look up the user
-	// if the new setting doesn't match the current settings, generate a local DM settings update
-	// perhaps a user.getCurrentLocalDMSettings() + changes
-	log.WithFields(log.Fields{
-		"thread":                u,
-		"notifications_enabled": enabled,
-	}).Info("UI wants to change notification settings")
-}

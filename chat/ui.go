@@ -89,8 +89,8 @@ type UICallbacks struct {
 	// The user wants to rename a group
 	RenameGroup func(groupID uuid.UUID, newName string)
 	// The user wants to change the notification settings for a DM
-	ChangeDMNotificationSettings func(groupID uuid.UUID, notificationEnabled bool) // TODO: rename to SetUserNotificationSettings
-	GetDMNotificationSettings    func(groupID uuid.UUID) (enabled bool)
+	SetDMNotificationSettings func(groupID uuid.UUID, notificationEnabled bool)
+	GetDMNotificationSettings func(groupID uuid.UUID) (enabled bool)
 	// The user wants to change the notification settings for a group
 	ChangeGroupNotificationSettings func(groupID uuid.UUID, notificationEnabled bool)
 	// Setup a new profile on a fresh install

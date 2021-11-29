@@ -44,6 +44,7 @@ func (b *bounce) openDatabase() {
 		&introductionSignature{},
 		&DirectMessage{}, // TODO: still need to decide if we'll export a simplified one for the UI
 		&referenceOffer{},
+		&updateLocalDMSettings{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{

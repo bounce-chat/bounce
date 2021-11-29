@@ -69,7 +69,7 @@ func Start(network Network, ui UI) {
 			SendGroupMessage:                b.sendGroupMessage,
 			AddUserToGroup:                  b.addUserToGroup,
 			RenameGroup:                     b.renameGroup,
-			ChangeDMNotificationSettings:    b.changeDMNotificationSettings,
+			SetDMNotificationSettings:       b.setDMNotificationSettings,
 			ChangeGroupNotificationSettings: b.changeGroupNotificationSettings,
 			SetProfile:                      b.setProfile,
 			ImportUser:                      b.importUser,
