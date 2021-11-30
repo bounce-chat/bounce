@@ -138,7 +138,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 			if _, present := dmRequested[dmID]; present {
 				catchUpResponse.DirectMessages = append(catchUpResponse.DirectMessages, dm.getPayload())
 			} else {
-				b.markDeliveredTo(&dm, peer)
+				b.markDirectMessageDeliveredTo(&dm, peer)
 			}
 		}
 	}

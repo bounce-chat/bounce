@@ -217,7 +217,7 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 					continue
 				}
 				if !dm.isAlreadyDeliveredTo(peer) {
-					b.markDeliveredTo(&dm, peer)
+					b.markDirectMessageDeliveredTo(&dm, peer)
 				}
 			}
 		}

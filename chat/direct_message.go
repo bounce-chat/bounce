@@ -68,7 +68,7 @@ func (dm *DirectMessage) isAlreadyDeliveredTo(address string) bool {
 	return false
 }
 
-func (b *bounce) markDeliveredTo(dm *DirectMessage, address string) {
+func (b *bounce) markDirectMessageDeliveredTo(dm *DirectMessage, address string) {
 	if !dm.isAlreadyDeliveredTo(address) {
 		if len(dm.DeliveredTo) != 0 {
 			dm.DeliveredTo = dm.DeliveredTo + ","
@@ -150,7 +150,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	var existingDM DirectMessage
 	err = b.database.Where("id = ?", dm.ID).First(&existingDM).Error
 	if err == nil {
-		b.markDeliveredTo(&existingDM, peer)
+		b.markDirectMessageDeliveredTo(&existingDM, peer)
 		b.dmExistenceCheck.Unlock()
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {

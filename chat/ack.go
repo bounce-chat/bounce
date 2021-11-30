@@ -79,7 +79,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 				continue
 			}
 			// TODO: confirm the device should be able to see this DM
-			b.markDeliveredTo(&dm, peer)
+			b.markDirectMessageDeliveredTo(&dm, peer)
 
 			// Now that we know the message has been delivered, if the message expires we start the clock on retention
 			// by setting the absolute time the message should be delete at as now + the retention time
