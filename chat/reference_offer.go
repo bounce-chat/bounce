@@ -209,7 +209,7 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 			} else {
 				// We already have this message, but if we didn't already know they had it, we update our records
 				var dm DirectMessage
-				err = b.database.First(&dm, dmID).Error
+				err = b.database.First(&dm, "id = ?", dmID).Error
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),

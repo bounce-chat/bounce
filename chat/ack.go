@@ -1,23 +1,26 @@
 package chat
 
 import (
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
+	"gorm.io/gorm"
 )
 
 // DirectMessages are comma separated for consistency with reference offers, which must do this
 // since SQLite doesn't support slices
 type ack struct {
-	_msgpack       struct{} `msgpack:",omitempty"`
-	ID             uuid.UUID
-	DirectMessages string // Comma-separated list of DM UUIDs
-	CatchUps       string
-	destination    uuid.UUID
-	payload        []byte
+	_msgpack              struct{} `msgpack:",omitempty"`
+	ID                    uuid.UUID
+	DirectMessages        string // Comma-separated list of DM UUIDs
+	UpdateLocalDMSettings string
+	CatchUps              string
+	destination           uuid.UUID
+	payload               []byte
 }
 
 func (a *ack) getScope() int {
@@ -69,7 +72,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 			}
 
 			var dm DirectMessage
-			err = b.database.First(&dm, dmID).Error
+			err = b.database.First(&dm, "id = ?", dmID).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -111,6 +114,37 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 			b.devicePool.receivedAcksMutex.Lock()
 			b.devicePool.receivedAcks[catchUpID.String()] = true
 			b.devicePool.receivedAcksMutex.Unlock()
+		}
+	}
+
+	if len(a.UpdateLocalDMSettings) > 0 {
+		for _, uldsIDString := range strings.Split(a.UpdateLocalDMSettings, ",") {
+			uldsID, err := uuid.Parse(uldsIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": uldsIDString,
+				}).Error("invalid ulds UUID in ack")
+				continue
+			}
+
+			var ulds updateLocalDMSettings
+			err = b.database.First(&ulds, "id = ?", uldsID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"id":   uldsID,
+						"peer": peer,
+					}).Warn("unknown update local DM settings acked")
+				} else {
+					log.WithFields(log.Fields{
+						"id":    uldsID,
+						"error": err.Error(),
+					}).Fatal("database error querying for update local DM settings")
+				}
+			} else {
+				b.markUpdateLocalDMSettingsDeliveredTo(&ulds, peer)
+			}
 		}
 	}
 }

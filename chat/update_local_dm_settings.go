@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type updateLocalDMSettings struct {
@@ -95,19 +97,90 @@ func (b *bounce) setDMNotificationSettings(u uuid.UUID, enabled bool) { // TODO:
 
 func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
 	// Make sure we only get these updates from sync devices
-	//!if b.isSyncDevice(peer) {
-	//	log.Warn()
-	//	return
-	//}
+	dev, exists := b.getDeviceFromAddress(peer)
+	if !exists || dev.UserID != b.currentUserID() {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("update local DM settings received from device that is not a sync device")
+		return
+	}
 
-	// Update the target's DM settings to the ones in this message, as long
-	// as the last update stored on that user isn't newer than this message
-	// broadcast.
+	// Unmarshal it
+	var ulds updateLocalDMSettings
+	err := msgpack.Unmarshal(payload, &ulds)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling update local DM settings")
+		return
+	}
 
-	// ACK it
-	//go b.broadcast(&ack{
-	//	UpdateLocalDMSettings: ulds.ID,
-	//	destination: dev.ID,
-	//})
-	return
+	// Reguardless of what we do with this, we should ack it
+	go b.broadcast(&ack{
+		UpdateLocalDMSettings: ulds.ID.String(),
+		destination:           dev.ID,
+	})
+
+	// Find the user this update if refering to
+	var targetUser user
+	err = b.database.Preload(clause.Associations).First(&targetUser, "id = ?", ulds.Target).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": ulds.Target,
+			}).Error("cannot update local DM settings for unknown user")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up user for local DM settings update")
+		}
+	}
+
+	// We only need to do anything if the timestamp in this update is newer than the last time we updated the user.
+	// If it isn't, we can just ignore this message.
+	if ulds.Timestamp > targetUser.LastLocalDMSettingsUpdate {
+		b.uldsExistenceCheck.Lock()
+		defer b.uldsExistenceCheck.Unlock()
+
+		var existingULDS updateLocalDMSettings
+		err = b.database.Where("id = ?", ulds.ID).First(&existingULDS).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// This update is newer than our last update and we don't have it saved.  We save it,
+			// apply it, and broadcast it to the rest of the sync devices.
+			err = b.database.Create(&ulds).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error saving update local DM settings")
+			}
+
+			// Apply the settings in this update to the user
+			targetUser.NotificationsEnabled = ulds.NotificationsEnabled
+			targetUser.NotificationsMutedUntil = ulds.NotificationsMutedUntil
+			targetUser.LastLocalDMSettingsUpdate = ulds.Timestamp
+			err = b.database.Save(targetUser).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error update local DM settings for user")
+			}
+
+			// Inform the UI about these changes
+			//TODO
+			//b.userInterface.LocalDMSettingsUpdated()
+
+			// Broadcast it to other sync devices
+			go b.broadcast(&ulds)
+		} else if err != nil {
+			// There was some other database error while attempting to look this up.
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up update local DM settings")
+		} else {
+			// There was no error looking up the update.  We have it, all we need to do is make sure
+			// to mark is as delivered to the peer who sent it to us.
+			b.markUpdateLocalDMSettingsDeliveredTo(&existingULDS, peer)
+		}
+	}
 }

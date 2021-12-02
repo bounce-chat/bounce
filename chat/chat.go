@@ -34,6 +34,7 @@ type bounce struct {
 	pruningDatabase       sync.WaitGroup
 	shutdownMutex         sync.Mutex
 	dmExistenceCheck      sync.Mutex
+	uldsExistenceCheck    sync.Mutex
 }
 
 //
