@@ -84,12 +84,11 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 
 	// Everything the device has requested will b packed into a "catch up" message
 	catchUpResponse := &catchUp{
-		ID:          uuid.New(),
-		destination: dev.ID,
+		ID:                    uuid.New(),
+		destination:           dev.ID,
+		DirectMessages:        b.getRequestedDirectMessagePayloads(dev, rr, originalOffer),
+		UpdateLocalDMSettings: b.getRequestedUpdateLocalDMSettingsPayloads(dev, rr, originalOffer),
 	}
-
-	catchUpResponse.DirectMessages = b.getRequestedDirectMessagePayloads(dev, rr, originalOffer)
-	catchUpResponse.UpdateLocalDMSettings = b.getRequestedUpdateLocalDMSettingsPayloads(dev, rr, originalOffer)
 
 	if catchUpResponse.hasContent() {
 		b.broadcastCatchUp(catchUpResponse)

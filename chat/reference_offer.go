@@ -190,7 +190,7 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 		return
 	}
 
-	srcDevice, exists := b.getDeviceFromAddress(peer)
+	dev, exists := b.getDeviceFromAddress(peer)
 	if !exists {
 		log.WithFields(log.Fields{
 			"peer": peer,
@@ -199,10 +199,16 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 	}
 
 	response := &referenceRequest{
-		ID:          ro.ID,
-		destination: srcDevice.ID,
+		ID:                    ro.ID,
+		destination:           dev.ID,
+		DirectMessages:        b.getDirectMessagesToRequest(dev, ro),
+		UpdateLocalDMSettings: b.getUpdateLocalDMSettingsToRequest(dev, ro),
 	}
 
+	b.broadcast(response)
+}
+
+func (b *bounce) getDirectMessagesToRequest(dev device, ro referenceOffer) string {
 	requestedDMs := []string{}
 	if len(ro.DirectMessages) > 0 {
 		for _, dmIDString := range strings.Split(ro.DirectMessages, ",") {
@@ -237,21 +243,28 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 					}).Error("error looking up known DM in reference offer")
 					continue
 				}
-				if !dm.isAlreadyDeliveredTo(peer) {
-					b.markDirectMessageDeliveredTo(&dm, peer)
+				if !dm.isAlreadyDeliveredTo(dev.Address) {
+					b.markDirectMessageDeliveredTo(&dm, dev.Address)
 				}
 			}
 		}
 	}
 
-	for i, dm := range requestedDMs {
-		if i != 0 {
-			response.DirectMessages = response.DirectMessages + ","
-		}
-		response.DirectMessages = response.DirectMessages + dm
-	}
+	return strings.Join(requestedDMs, ",")
+
+}
+
+func (b *bounce) getUpdateLocalDMSettingsToRequest(dev device, ro referenceOffer) string {
+	var resp string
 
 	if len(ro.UpdateLocalDMSettings) > 0 {
+		if dev.UserID != b.currentUserID() {
+			log.WithFields(log.Fields{
+				"peer": dev.Address,
+			}).Warn("a non-sync device offered update local DM settings in a reference offer, refusing to request them")
+			return resp
+		}
+
 		desiredUpdateLocalDMSettings := []string{}
 		for _, uldsIDString := range strings.Split(ro.UpdateLocalDMSettings, ",") {
 			uldsID, err := uuid.Parse(uldsIDString)
@@ -276,8 +289,8 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 				}
 			}
 		}
-		response.UpdateLocalDMSettings = strings.Join(desiredUpdateLocalDMSettings, ",")
+		resp = strings.Join(desiredUpdateLocalDMSettings, ",")
 	}
 
-	b.broadcast(response)
+	return resp
 }
