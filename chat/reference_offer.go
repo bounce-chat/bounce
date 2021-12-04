@@ -16,12 +16,13 @@ import (
 // should have, but that we didn't deliver to it.
 //
 type referenceOffer struct {
-	_msgpack       struct{}  `msgpack:",omitempty"`
-	ID             uuid.UUID `gorm:"type:uuid;primary_key;"`
-	CreatedAt      int64     // Used to delete old reference offers that were not responded to
-	DirectMessages string    // Comma-separated list of DM UUIDs
-	Destination    uuid.UUID `msgpack:"-"`
-	payload        []byte
+	_msgpack              struct{}  `msgpack:",omitempty"`
+	ID                    uuid.UUID `gorm:"type:uuid;primary_key;"`
+	CreatedAt             int64     // Used to delete old reference offers that were not responded to
+	DirectMessages        string    // Comma-separated list of DM UUIDs
+	UpdateLocalDMSettings string    // only for sync devices
+	Destination           uuid.UUID `msgpack:"-"`
+	payload               []byte
 }
 
 func (referenceOffer *referenceOffer) BeforeCreate(tx *gorm.DB) error {
@@ -107,7 +108,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 			dev.UserID,
 			dev.UserID,
 			"%"+address+"%",
-		).Find(&dms).Error // TODO: also add a sane limit?
+		).Find(&dms).Error // TODO: also add a sane limit? TODO: only select the IDs if that's all we're using?
 	if err != nil {
 		log.WithFields(log.Fields{
 			"peer":  address,
@@ -124,6 +125,20 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	offer.DirectMessages = strings.Join(dmsToOffer, ",")
 
 	// If this is a sync device, get the latest local settings update for each DM, and if it hasn't been delivered, send it
+	if b.isSyncDevice(address) {
+		uldsToOffer := []string{}
+		var localDMSettingsUpdates []updateLocalDMSettings
+		err = b.database.Where("delivered_to NOT LIKE ?", "%"+address+"%").Find(&localDMSettingsUpdates).Error // TODO: only select ID?
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting update local DM settings for reference offer")
+		}
+		for _, ulds := range localDMSettingsUpdates {
+			uldsToOffer = append(uldsToOffer, ulds.ID.String())
+		}
+		offer.UpdateLocalDMSettings = strings.Join(uldsToOffer, ",")
+	}
 
 	return offer
 }

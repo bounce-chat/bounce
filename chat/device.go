@@ -49,11 +49,10 @@ func (b *bounce) getDeviceFromAddress(address string) (device, bool) {
 	return dev, true
 }
 
-// TODO: delete if not useful
-//func (b *bounce) isSyncDevice(address string) bool {
-//	dev, exists := b.getDeviceFromAddress(address)
-//	if !exists {
-//		return false
-//	}
-//	return dev.UserID == b.currentUserID()
-//}
+func (b *bounce) isSyncDevice(address string) bool {
+	dev, exists := b.getDeviceFromAddress(address)
+	if !exists {
+		return false
+	}
+	return dev.UserID == b.currentUserID()
+}

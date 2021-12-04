@@ -166,6 +166,14 @@ func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
 				}).Fatal("error update local DM settings for user")
 			}
 
+			// Delete all old updates
+			err = b.database.Where("target = ? AND timestamp != ?", ulds.Target, ulds.Timestamp).Delete(updateLocalDMSettings{}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error pruning old update local DM settings")
+			}
+
 			// Inform the UI about these changes
 			//TODO
 			//b.userInterface.LocalDMSettingsUpdated()
