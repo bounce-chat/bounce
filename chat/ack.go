@@ -60,6 +60,12 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 		return
 	}
 
+	b.handleAckDirectMessages(peer, a)
+	b.handleAckCatchUps(peer, a)
+	b.handleAckUpdateLocalDMSettings(peer, a)
+}
+
+func (b *bounce) handleAckDirectMessages(peer string, a ack) {
 	if len(a.DirectMessages) > 0 {
 		for _, dmIDString := range strings.Split(a.DirectMessages, ",") {
 			dmID, err := uuid.Parse(dmIDString)
@@ -99,7 +105,9 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 			}
 		}
 	}
+}
 
+func (b *bounce) handleAckCatchUps(peer string, a ack) {
 	if len(a.CatchUps) > 0 {
 		for _, catchUpIDString := range strings.Split(a.CatchUps, ",") {
 			catchUpID, err := uuid.Parse(catchUpIDString)
@@ -116,7 +124,9 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 			b.devicePool.receivedAcksMutex.Unlock()
 		}
 	}
+}
 
+func (b *bounce) handleAckUpdateLocalDMSettings(peer string, a ack) {
 	if len(a.UpdateLocalDMSettings) > 0 {
 		for _, uldsIDString := range strings.Split(a.UpdateLocalDMSettings, ",") {
 			uldsID, err := uuid.Parse(uldsIDString)
