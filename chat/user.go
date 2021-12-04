@@ -32,10 +32,14 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 		if count > 0 {
 			return errors.New("profile user already exists")
 		}
+		u.NotificationsEnabled = false
 	} else {
 		// DMs with other people default to expiring in 1 week
 		u.MessageRetention = 7 * 24 * 60 * 60
+		u.NotificationsEnabled = true
 	}
+	u.LastDMSettingsUpdate = time.Now().Unix()
+	u.LastLocalDMSettingsUpdate = time.Now().Unix()
 
 	return nil
 }

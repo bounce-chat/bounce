@@ -13,11 +13,12 @@ import (
 // DirectMessages are comma separated for consistency with reference offers, which must do this
 // since SQLite doesn't support slices
 type referenceRequest struct {
-	_msgpack       struct{} `msgpack:",omitempty"`
-	ID             uuid.UUID
-	DirectMessages string // Comma-separated list of DM UUIDs
-	destination    uuid.UUID
-	payload        []byte
+	_msgpack              struct{} `msgpack:",omitempty"`
+	ID                    uuid.UUID
+	DirectMessages        string // Comma-separated list of DM UUIDs
+	UpdateLocalDMSettings string
+	destination           uuid.UUID
+	payload               []byte
 }
 
 func (rr *referenceRequest) getScope() int {
@@ -63,7 +64,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"reference_request_id": rr.ID,
 			"peer":                 peer,
-		}).Warn("got reference request from unknown peer device")
+		}).Warn("got reference request from unknown peer device, ignoring")
 		return
 	}
 
@@ -73,7 +74,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"peer":     peer,
 			"offer_id": rr.ID,
-		}).Error("peer sent a reference request for an offer not in the database")
+		}).Warn("peer sent a reference request for an offer not in the database, ignoring")
 		return
 	}
 	b.devicePool.receivedAcksMutex.Lock()
@@ -125,8 +126,8 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
-					}).Error("reference request asks for unknown DM")
-					// TODO: detect if any are legit but out of scope for security reasons?
+					}).Warn("reference request asks for unknown DM")
+					// TODO: detect if any are legit but out of scope for security reasons
 					continue
 				} else {
 					log.WithFields(log.Fields{
@@ -143,16 +144,52 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 		}
 	}
 
-	if catchUpResponse.hasContent() {
-		b.broadcastCatchUp(catchUpResponse)
-	}
-
 	if len(rr.DirectMessages) > len(originalOffer.DirectMessages) {
 		log.WithFields(log.Fields{
 			"offer_length":   len(originalOffer.DirectMessages),
 			"request_length": len(rr.DirectMessages),
-		}).Error("reference request is requesting more direct messages than were offered")
-		// TODO: save the evidence for analysis?
+		}).Warn("reference request is requesting more direct messages than were offered")
+	}
+
+	if len(rr.UpdateLocalDMSettings) > 0 {
+		if !b.isSyncDevice(peer) {
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Warn("non-sync device asked for update local DM settings in reference request, ignoring")
+		} else {
+			for _, uldsIDString := range strings.Split(rr.UpdateLocalDMSettings, ",") {
+				uldsID, err := uuid.Parse(uldsIDString)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":  err.Error(),
+						"string": uldsIDString,
+					}).Error("invalid ulds UUID in reference request")
+					continue
+				}
+
+				var ulds updateLocalDMSettings
+				err = b.database.First(&ulds, "id = ?", uldsID).Error
+				if err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						log.WithFields(log.Fields{
+							"id":   uldsID,
+							"peer": peer,
+						}).Warn("reference request asks for unknown update local DM settings")
+					} else {
+						log.WithFields(log.Fields{
+							"id":    uldsID,
+							"error": err.Error(),
+						}).Fatal("database error querying for update local DM settings")
+					}
+				} else {
+					catchUpResponse.UpdateLocalDMSettings = append(catchUpResponse.UpdateLocalDMSettings, ulds.getPayload())
+				}
+			}
+		}
+	}
+
+	if catchUpResponse.hasContent() {
+		b.broadcastCatchUp(catchUpResponse)
 	}
 
 	b.database.Delete(&originalOffer)

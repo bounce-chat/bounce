@@ -9,11 +9,12 @@ import (
 )
 
 type catchUp struct {
-	_msgpack       struct{} `msgpack:",omitempty"`
-	ID             uuid.UUID
-	DirectMessages [][]byte
-	destination    uuid.UUID
-	payload        []byte
+	_msgpack              struct{} `msgpack:",omitempty"`
+	ID                    uuid.UUID
+	DirectMessages        [][]byte
+	UpdateLocalDMSettings [][]byte
+	destination           uuid.UUID
+	payload               []byte
 }
 
 func (cu *catchUp) getScope() int {
@@ -46,6 +47,9 @@ func (cu *catchUp) isAlreadyDeliveredTo(address string) bool {
 
 func (cu *catchUp) hasContent() bool {
 	if len(cu.DirectMessages) > 0 {
+		return true
+	}
+	if len(cu.UpdateLocalDMSettings) > 0 {
 		return true
 	}
 	return false
@@ -90,7 +94,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 	if !exists {
 		log.WithFields(log.Fields{
 			"peer": peer,
-		}).Error("error loading device that sent catch up")
+		}).Warn("unable to find device that sent catch up, ignoring")
 		return
 	}
 	go b.broadcast(&ack{
@@ -98,6 +102,9 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 		CatchUps:    cu.ID.String(),
 	})
 
+	for _, uldsPayload := range cu.UpdateLocalDMSettings {
+		b.handleUpdateLocalDMSettings(peer, uldsPayload)
+	}
 	for _, dmPayload := range cu.DirectMessages {
 		b.handleDirectMessage(peer, dmPayload)
 	}

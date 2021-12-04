@@ -61,12 +61,18 @@ func (ro *referenceOffer) shouldDial() bool {
 	if len(ro.DirectMessages) > 0 {
 		return true
 	}
+	if len(ro.UpdateLocalDMSettings) > 0 {
+		return true
+	}
 	// TODO: changes to my device group, clearing thread histories, etc
 	return false
 }
 
 func (ro *referenceOffer) hasContent() bool {
 	if len(ro.DirectMessages) > 0 {
+		return true
+	}
+	if len(ro.UpdateLocalDMSettings) > 0 {
 		return true
 	}
 	// TODO: check for any future referenced content
@@ -243,6 +249,34 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 			response.DirectMessages = response.DirectMessages + ","
 		}
 		response.DirectMessages = response.DirectMessages + dm
+	}
+
+	if len(ro.UpdateLocalDMSettings) > 0 {
+		desiredUpdateLocalDMSettings := []string{}
+		for _, uldsIDString := range strings.Split(ro.UpdateLocalDMSettings, ",") {
+			uldsID, err := uuid.Parse(uldsIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": uldsIDString,
+				}).Error("invalid ulds UUID in reference offer")
+				continue
+			}
+
+			var ulds updateLocalDMSettings
+			err = b.database.First(&ulds, "id = ?", uldsID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					desiredUpdateLocalDMSettings = append(desiredUpdateLocalDMSettings, uldsID.String())
+				} else {
+					log.WithFields(log.Fields{
+						"id":    uldsID,
+						"error": err.Error(),
+					}).Fatal("database error querying for update local DM settings")
+				}
+			}
+		}
+		response.UpdateLocalDMSettings = strings.Join(desiredUpdateLocalDMSettings, ",")
 	}
 
 	b.broadcast(response)
