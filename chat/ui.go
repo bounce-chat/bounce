@@ -38,6 +38,9 @@ type UI interface {
 	MarkMessageUndeliverable(uuid.UUID)
 	UpdateMessageDeletionTime(uuid.UUID, int64)
 
+	// The notification settings for a DM have been updated
+	DMNotificationsChanged(dm uuid.UUID, enabled bool)
+
 	NewGroupChat(Group)
 	ReceivedGroupMessage(GroupMessage)
 	//RenameGroup()
@@ -77,7 +80,7 @@ type Group struct { // TODO: replace with model?
 }
 
 //
-// The chat engine will provide these callbacks to a user interface
+// The chat engine will provide these callbacks to a user interface so that the interface can instruct the chat engine
 //
 type UICallbacks struct {
 	// The user wants to send a direct message.
@@ -88,17 +91,28 @@ type UICallbacks struct {
 	AddUserToGroup func(groupID, userID uuid.UUID)
 	// The user wants to rename a group
 	RenameGroup func(groupID uuid.UUID, newName string)
-	// The user wants to change the notification settings for a DM
-	SetDMNotificationSettings func(groupID uuid.UUID, notificationEnabled bool)
-	GetDMNotificationSettings func(groupID uuid.UUID) (enabled bool)
+
+	// Set if notifications should be enabled for a DM.  Broadcasts to all sync devices.
+	SetDMNotificationEnabled func(userID uuid.UUID, notificationEnabled bool)
+
+	// Get the current notification setting for a DM
+	GetDMNotificationEnabled func(userID uuid.UUID) (enabled bool, err error)
+
+	// Set a temporary mute on a DM by setting the unix timestamp to pause notifications until
+	SetDMNotificationMutedUntil func(userID uuid.UUID, mutedUntil int64)
+
+	// Get the value of a temporary mute on a DM
+	GetDMNotificationMutedUntil func(userID uuid.UUID) (mutedUntil int64, err error)
+
 	// The user wants to change the notification settings for a group
 	ChangeGroupNotificationSettings func(groupID uuid.UUID, notificationEnabled bool)
 	// Setup a new profile on a fresh install
 	SetProfile    func(profileName, deviceName string) (uuid.UUID, error)
 	ImportUser    func(user []byte) (User, error)
 	ExportContact func(name string, expiration int64, oneTime bool) []byte
-	// Tell the chat engine that some user interaction makes indicates a message might soon be sent to this user
+
+	// Some user interaction, like opening a DM, indicates that the user might want to send a message to this
+	// user soon.  Calling this will cause the chat engine to attempt to dial the user if there isn't already
+	// an open connection, reducing the latency in message delivery should the user decide to send a message.
 	UserConnectionDesired func(uuid.UUID)
-	//Unimplemented:
-	//MessageRead()
 }

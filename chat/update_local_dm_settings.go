@@ -77,22 +77,82 @@ func (b *bounce) markUpdateLocalDMSettingsDeliveredTo(ulds *updateLocalDMSetting
 	}
 }
 
-func (b *bounce) setDMNotificationSettings(u uuid.UUID, enabled bool) { // TODO: accept mutedUntil, or make it another call?
-	update := &updateLocalDMSettings{
-		Target:                  u,
-		Timestamp:               time.Now().Unix(),
-		NotificationsEnabled:    enabled,
-		NotificationsMutedUntil: 0,
+func (b *bounce) setDMNotificationEnabled(u uuid.UUID, enabled bool) {
+	// Find the user to update
+	var target user
+	err := b.database.Find(&target, "id = ?", u).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": u,
+			}).Warn("cannot update notification settings for user not found in database")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up user")
+		}
 	}
 
-	err := b.database.Create(update).Error
+	// Apply this change locally
+	updateTime := time.Now().Unix()
+	err = b.database.Model(&target).Select(
+		"notifications_enabled",
+		"last_local_dm_settings_update",
+	).Updates(map[string]interface{}{
+		"notifications_enabled":         enabled,
+		"last_local_dm_settings_update": updateTime,
+	}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error updating notification settings for user")
+	}
+
+	// Inform the UI that the change has been applied
+	b.userInterface.DMNotificationsChanged(u, enabled)
+
+	// Create an update for other sync devices and broadcast it
+	update := &updateLocalDMSettings{
+		Target:                  u,
+		Timestamp:               updateTime,
+		NotificationsEnabled:    enabled,
+		NotificationsMutedUntil: target.NotificationsMutedUntil,
+	}
+	err = b.database.Create(update).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error while saving an updateLocalDMSettngs")
 	}
-
 	go b.broadcast(update)
+
+	// Delete all oder updates
+	err = b.database.Where("target = ? AND timestamp != ?", u, updateTime).Delete(updateLocalDMSettings{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error pruning old update local DM settings")
+	}
+}
+
+func (b *bounce) getDMNotificationEnabled(id uuid.UUID) (bool, error) {
+	var u user
+	err := b.database.Select("notifications_enabled").Find(&u, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": u,
+			}).Warn("cannot query notification settings for user not found in database")
+			return false, err
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up user notification settings")
+		}
+	}
+
+	return u.NotificationsEnabled, nil
 }
 
 func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
@@ -148,6 +208,7 @@ func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// This update is newer than our last update and we don't have it saved.  We save it,
 			// apply it, and broadcast it to the rest of the sync devices.
+			ulds.DeliveredTo = peer
 			err = b.database.Create(&ulds).Error
 			if err != nil {
 				log.WithFields(log.Fields{
@@ -156,14 +217,28 @@ func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
 			}
 
 			// Apply the settings in this update to the user
-			targetUser.NotificationsEnabled = ulds.NotificationsEnabled
-			targetUser.NotificationsMutedUntil = ulds.NotificationsMutedUntil
-			targetUser.LastLocalDMSettingsUpdate = ulds.Timestamp
-			err = b.database.Save(targetUser).Error
+			err = b.database.Model(&targetUser).Select(
+				"notifications_enabled",
+				"notifications_muted_until",
+				"last_local_dm_settings_update",
+			).Updates(map[string]interface{}{
+				"notifications_enabled":         ulds.NotificationsEnabled,
+				"notifications_muted_until":     ulds.NotificationsMutedUntil,
+				"last_local_dm_settings_update": ulds.Timestamp,
+			}).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Fatal("error update local DM settings for user")
+			}
+
+			// Inform the UI of any changes
+			if targetUser.NotificationsEnabled != ulds.NotificationsEnabled {
+				b.userInterface.DMNotificationsChanged(targetUser.ID, ulds.NotificationsEnabled)
+			}
+
+			if targetUser.NotificationsMutedUntil != ulds.NotificationsMutedUntil {
+				//b.userInterface.DMNotificationsMuteChanged(targetUser.ID, ulds.NotificationsEnabled)
 			}
 
 			// Delete all old updates
@@ -173,10 +248,6 @@ func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
 					"error": err.Error(),
 				}).Fatal("database error pruning old update local DM settings")
 			}
-
-			// Inform the UI about these changes
-			//TODO
-			//b.userInterface.LocalDMSettingsUpdated()
 
 			// Broadcast it to other sync devices
 			go b.broadcast(&ulds)

@@ -257,7 +257,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	notificationsCheck := widget.NewCheckWithData("Enable notifications", dm.notificationsEnabled)
 	notificationsCheck.OnChanged = func(state bool) { // TODO: do we really want this to apply before save?
 		dm.notificationsEnabled.Set(state) // TODO: error check
-		fyneUI.callbacks.SetDMNotificationSettings(dm.user.id, state)
+		fyneUI.callbacks.SetDMNotificationEnabled(dm.user.id, state)
 	}
 
 	saveButton := widget.NewButton("Save", func() {
@@ -302,4 +302,11 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		),
 	)
 
+}
+
+func (fyneUI *Fyne) DMNotificationsChanged(dm uuid.UUID, enabled bool) {
+	log.WithFields(log.Fields{
+		"id":      dm,
+		"enabled": enabled,
+	}).Info("chat engine wants to update the notification settings for DM")
 }
