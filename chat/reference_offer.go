@@ -135,6 +135,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 		uldsToOffer := []string{}
 		var localDMSettingsUpdates []updateLocalDMSettings
 		err = b.database.Where("delivered_to NOT LIKE ?", "%"+address+"%").Find(&localDMSettingsUpdates).Error // TODO: only select ID?
+		// TODO: only get one per unix timestamp?  UNIQUE timestamp LIMIT 1?
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

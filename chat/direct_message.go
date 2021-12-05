@@ -70,17 +70,17 @@ func (dm *DirectMessage) isAlreadyDeliveredTo(address string) bool {
 
 func (b *bounce) markDirectMessageDeliveredTo(dm *DirectMessage, address string) {
 	if !dm.isAlreadyDeliveredTo(address) {
+		currentDeliveredTo := []string{}
 		if len(dm.DeliveredTo) != 0 {
-			dm.DeliveredTo = dm.DeliveredTo + ","
+			currentDeliveredTo = strings.Split(dm.DeliveredTo, ",")
 		}
-		dm.DeliveredTo = dm.DeliveredTo + address
-
-		err := b.database.Save(dm).Error
+		updatedDeliveredTo := strings.Join(append(currentDeliveredTo, address), ",")
+		err := b.database.Model(&dm).Update("delivered_to", updatedDeliveredTo).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":   err.Error(),
 				"message": dm.ID,
-			}).Error("error updating direct message delivery status")
+			}).Fatal("error updating direct message delivery status")
 		}
 	}
 }

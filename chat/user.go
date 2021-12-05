@@ -133,7 +133,7 @@ func (b *bounce) exportContact(name string, expiration int64, oneTime bool) []by
 		}).Fatal("error marshalling contact export")
 	}
 
-	err = b.database.Save(&export).Error
+	err = b.database.Create(&export).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

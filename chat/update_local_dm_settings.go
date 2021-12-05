@@ -62,17 +62,17 @@ func (ulds *updateLocalDMSettings) isAlreadyDeliveredTo(address string) bool {
 
 func (b *bounce) markUpdateLocalDMSettingsDeliveredTo(ulds *updateLocalDMSettings, address string) {
 	if !ulds.isAlreadyDeliveredTo(address) {
+		currentDeliveredTo := []string{}
 		if len(ulds.DeliveredTo) != 0 {
-			ulds.DeliveredTo = ulds.DeliveredTo + ","
+			currentDeliveredTo = strings.Split(ulds.DeliveredTo, ",")
 		}
-		ulds.DeliveredTo = ulds.DeliveredTo + address
-
-		err := b.database.Save(ulds).Error
+		updatedDeliveredTo := strings.Join(append(currentDeliveredTo, address), ",")
+		err := b.database.Model(&ulds).Update("delivered_to", updatedDeliveredTo).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":   err.Error(),
 				"message": ulds.ID,
-			}).Error("error updating local DM settings delivery status")
+			}).Fatal("error updating update local DM settings delivery status")
 		}
 	}
 }

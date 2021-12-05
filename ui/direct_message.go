@@ -243,6 +243,7 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 }
 
 func (fyneUI *Fyne) showEditDMContainer(dm *directMessage) {
+	// Update the notification stuff from the chat engine?
 	fyneUI.mainWindow.SetContent(dm.editContainer)
 	dm.editContainer.Show()
 }
