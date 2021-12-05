@@ -162,6 +162,12 @@ func (b *bounce) sendKeepAlives() {
 }
 
 func (b *bounce) userConnectionDesired(id uuid.UUID) {
+	if id == b.currentUserID() {
+		// We always connect to sync devices, this is probably called because the UI
+		// opened a thread to ourselves, we can ignore
+		return
+	}
+
 	var u user
 	err := b.database.Preload(clause.Associations).First(&u, "id = ?", id).Error
 	if err != nil {

@@ -81,7 +81,14 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 		lastMessage:          time.Now().Unix(),
 	}
 
-	err := dm.notificationsEnabled.Set(false) // TODO: this should default to true when ready
+	enabled, err := fyneUI.callbacks.GetDMNotificationEnabled(dm.user.id)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"user_id": dm.user.id,
+		}).Error("cannot find notification settings for user")
+		return
+	}
+	err = dm.notificationsEnabled.Set(enabled)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"at":    "fyneUI.NewDirectMessage",
@@ -243,7 +250,6 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 }
 
 func (fyneUI *Fyne) showEditDMContainer(dm *directMessage) {
-	// Update the notification stuff from the chat engine?
 	fyneUI.mainWindow.SetContent(dm.editContainer)
 	dm.editContainer.Show()
 }
@@ -257,7 +263,8 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 
 	notificationsCheck := widget.NewCheckWithData("Enable notifications", dm.notificationsEnabled)
 	notificationsCheck.OnChanged = func(state bool) { // TODO: do we really want this to apply before save?
-		dm.notificationsEnabled.Set(state) // TODO: error check
+		// We don't need to update the bound value on this side because the chat engine
+		// is going to call back in after this applies, but maybe we should anyway?
 		fyneUI.callbacks.SetDMNotificationEnabled(dm.user.id, state)
 	}
 
@@ -305,9 +312,15 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 
 }
 
-func (fyneUI *Fyne) DMNotificationsChanged(dm uuid.UUID, enabled bool) {
-	log.WithFields(log.Fields{
-		"id":      dm,
-		"enabled": enabled,
-	}).Info("chat engine wants to update the notification settings for DM")
+func (fyneUI *Fyne) DMNotificationsChanged(userID uuid.UUID, enabled bool) {
+	if dm, exists := fyneUI.dms[userID]; exists {
+		err := dm.notificationsEnabled.Set(enabled)
+		if err != nil {
+			log.Fatal("data bindings are broken")
+		}
+	} else {
+		log.WithFields(log.Fields{
+			"user_id": userID,
+		}).Warn("cannot update notification settings for DM that doesn't exist")
+	}
 }
