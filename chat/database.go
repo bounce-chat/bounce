@@ -45,6 +45,7 @@ func (b *bounce) openDatabase() {
 		&DirectMessage{}, // TODO: still need to decide if we'll export a simplified one for the UI
 		&referenceOffer{},
 		&updateLocalDMSettings{},
+		&syncDeviceOffer{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -70,6 +71,7 @@ func (b *bounce) pruneDatabase(informUI bool) {
 	b.pruneReferenceOffers()
 	b.pruneDirectMessages(informUI)
 	//b.pruneGroupMessages()
+	b.pruneSyncDeviceOffers()
 }
 
 // If a reference offer was delivered, but a reference request was never received in response, it will only be deleted here
@@ -140,6 +142,17 @@ func (b *bounce) pruneDirectMessages(informUI bool) {
 				b.userInterface.UpdateMessageDeletionTime(dm.ID, deleteAt)
 			}
 		}
+	}
+}
+
+func (b *bounce) pruneSyncDeviceOffers() {
+	fiveMinutesAgo := time.Now().Add(-5 * time.Minute).Unix()
+
+	err := b.database.Where("timestamp < ?", fiveMinutesAgo).Delete(syncDeviceOffer{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error pruning old sync device offers")
 	}
 }
 

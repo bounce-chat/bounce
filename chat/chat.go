@@ -66,6 +66,7 @@ func Start(network Network, ui UI) {
 	b.userInterface.Build(
 		b.configDirectory,
 		UICallbacks{
+			GetNewSyncString:                b.getNewSyncString,
 			SendDirectMessage:               b.sendDirectMessage,
 			SendGroupMessage:                b.sendGroupMessage,
 			AddUserToGroup:                  b.addUserToGroup,

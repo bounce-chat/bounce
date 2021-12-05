@@ -83,6 +83,9 @@ type Group struct { // TODO: replace with model?
 // The chat engine will provide these callbacks to a user interface so that the interface can instruct the chat engine
 //
 type UICallbacks struct {
+	// Get a string that can be scanned by a new device in order to become a sync device of this profile
+	GetNewSyncString func() string
+
 	// The user wants to send a direct message.
 	SendDirectMessage func(*DirectMessage) uuid.UUID
 	// The user wants to send a group  message

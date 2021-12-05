@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -31,6 +32,7 @@ type Fyne struct {
 	newProfileCreator      *fyne.Container
 	databaseLoading        *fyne.Container
 	editProfile            *fyne.Container
+	displaySyncString      *fyne.Container
 	settings               *fyne.Container
 	about                  *fyne.Container
 	newGroup               *fyne.Container
@@ -47,6 +49,7 @@ type Fyne struct {
 	threadWithMessage      map[uuid.UUID]thread
 	threadWithMessageMutex sync.Mutex
 	activeThread           uuid.UUID
+	syncString             binding.String
 	profile                *user
 	users                  *userStore
 	initialStateSet        bool
@@ -65,6 +68,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.threadWithMessage = make(map[uuid.UUID]thread)
 	fyneUI.users = newUserStore()
 	fyneUI.focused = true
+	fyneUI.syncString = binding.NewString()
 	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}) // TODO: red rich text
 	fyneUI.networkOfflineWarning.Show()
 
@@ -99,6 +103,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.buildNewProfileCreator()
 	fyneUI.buildDatabaseLoading()
 	fyneUI.buildEditProfile()
+	fyneUI.buildDisplaySyncString()
 	fyneUI.buildSettings()
 	fyneUI.buildAbout()
 	fyneUI.buildNewGroup()

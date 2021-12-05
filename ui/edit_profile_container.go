@@ -90,7 +90,21 @@ func (fyneUI *Fyne) buildEditProfile() {
 	devicesLabel := widget.NewLabel("Devices")
 	devicesLabel.TextStyle = fyne.TextStyle{Bold: true}
 
-	devicesContainer := container.NewVBox(widget.NewLabel("viewing devices not implemented"))
+	currentDevices := widget.NewLabel("viewing devices not implemented")
+
+	addDeviceButton := widget.NewButton("Add Device", func() {
+		fyneUI.showDisplaySyncString()
+	})
+	addDeviceButton.Importance = widget.HighImportance
+	addDeviceButtonBar := container.New(
+		layout.NewBorderLayout(nil, nil, nil, addDeviceButton),
+		addDeviceButton,
+	)
+
+	devicesContainer := container.NewVBox(
+		currentDevices,
+		addDeviceButtonBar,
+	)
 
 	//
 	// Existing exports section
