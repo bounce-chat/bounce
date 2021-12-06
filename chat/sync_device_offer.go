@@ -11,7 +11,7 @@ import (
 )
 
 type syncDeviceOffer struct {
-	ID        uuid.UUID
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Timestamp int64
 	Secret    string
 }

@@ -30,6 +30,10 @@ type UI interface {
 	// Network connection has been lost, go back to displaying a loading message, blocking user interaction
 	NetworkOffline() // TODO: when internet connection is lost, still let the user browse messages
 
+	NewSyncDeviceAdded(string)
+	SyncDeviceRequestAccepted(uuid.UUID, string) // TODO: better name for these?
+	SyncDeviceRequestRejected()
+
 	// Chats
 	//UserIntroduced(Introduction)
 	UserImported(User)

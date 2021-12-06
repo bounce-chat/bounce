@@ -23,10 +23,13 @@ var typeCatchUp = uint16(4)
 var typeAck = uint16(5)
 var typeKeepAlive = uint16(6)
 var typeUpdateLocalDMSettings = uint16(7)
+var typeSyncDeviceRequest = uint16(8)
+var typeSyncDeviceRequestRejected = uint16(9)
+var typeSyncDeviceRequestAccepted = uint16(10)
 
 type broadcastable interface {
 	getScope() int
-	getDestination(myID uuid.UUID) uuid.UUID // A group or user ID depending on the scope
+	getDestination(myID uuid.UUID) uuid.UUID
 	getType() uint16
 	getPayload() []byte
 	isAlreadyDeliveredTo(address string) bool
@@ -34,13 +37,16 @@ type broadcastable interface {
 
 func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 	return map[uint16]func(string, []byte){
-		typeDirectMessage:         b.handleDirectMessage,
-		typeReferenceOffer:        b.handleReferenceOffer,
-		typeReferenceRequest:      b.handleReferenceRequest,
-		typeCatchUp:               b.handleCatchUp,
-		typeAck:                   b.handleAck,
-		typeKeepAlive:             b.handleKeepAlive,
-		typeUpdateLocalDMSettings: b.handleUpdateLocalDMSettings,
+		typeDirectMessage:             b.handleDirectMessage,
+		typeReferenceOffer:            b.handleReferenceOffer,
+		typeReferenceRequest:          b.handleReferenceRequest,
+		typeCatchUp:                   b.handleCatchUp,
+		typeAck:                       b.handleAck,
+		typeKeepAlive:                 b.handleKeepAlive,
+		typeUpdateLocalDMSettings:     b.handleUpdateLocalDMSettings,
+		typeSyncDeviceRequest:         b.handleSyncDeviceRequest,
+		typeSyncDeviceRequestRejected: b.handleSyncDeviceRequestRejected,
+		typeSyncDeviceRequestAccepted: b.handleSyncDeviceRequestAccepted,
 	}
 }
 
@@ -184,10 +190,10 @@ func (b *bounce) getGroupScope(br broadcastable) []*remoteDevice {
 //
 func (b *bounce) getGlobalScope(br broadcastable) []*remoteDevice {
 	broadcastTargets := []*remoteDevice{}
-	for _, dev := range b.devicePool.devices {
-		//if br.isAlreadyDeliveredTo(dev.Address) {
-		//	continue
-		//} // TODO: needed?
+	for address, dev := range b.devicePool.devices {
+		if br.isAlreadyDeliveredTo(address) {
+			continue
+		}
 		if dev.connectedSockets > 0 {
 			broadcastTargets = append(broadcastTargets, dev)
 		}

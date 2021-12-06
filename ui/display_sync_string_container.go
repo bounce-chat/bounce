@@ -46,3 +46,8 @@ func (fyneUI *Fyne) buildDisplaySyncString() {
 		),
 	)
 }
+
+func (fyneUI *Fyne) NewSyncDeviceAdded(name string) {
+	// TODO: display a dialog informing the user
+	log.Info("the chat engine added a new sync device")
+}
