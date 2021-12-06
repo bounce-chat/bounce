@@ -110,8 +110,8 @@ func (fyneUI *Fyne) buildNewInstall() {
 	})
 	selectSyncDevice := widget.NewButton("Add this device to an existing profile", func() {
 		// TODO: display the page to select a file then wait for confirmation, bulid this:
-		//fyneUI.mainWindow.SetContent(fyneUI.newSyncDevice)
-		//fyneUI.newSyncDevice.Show()
+		fyneUI.mainWindow.SetContent(fyneUI.newSyncDevice)
+		fyneUI.newSyncDevice.Show()
 	})
 
 	content := container.NewGridWithColumns(

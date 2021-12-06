@@ -89,6 +89,7 @@ type Group struct { // TODO: replace with model?
 type UICallbacks struct {
 	// Get a string that can be scanned by a new device in order to become a sync device of this profile
 	GetNewSyncString func() string
+	RequestToSync    func(string) error
 
 	// The user wants to send a direct message.
 	SendDirectMessage func(*DirectMessage) uuid.UUID

@@ -29,6 +29,7 @@ type Fyne struct {
 	mainWindow             fyne.Window
 	mainContainer          *fyne.Container
 	newInstall             *fyne.Container
+	newSyncDevice          *fyne.Container
 	newProfileCreator      *fyne.Container
 	databaseLoading        *fyne.Container
 	editProfile            *fyne.Container
@@ -100,6 +101,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.allUsersDMLinksScroll = container.NewVScroll(container.NewVBox())
 	fyneUI.buildMenu()
 	fyneUI.buildNewInstall()
+	fyneUI.buildNewSyncDevice()
 	fyneUI.buildNewProfileCreator()
 	fyneUI.buildDatabaseLoading()
 	fyneUI.buildEditProfile()
