@@ -8,7 +8,6 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 func (fyneUI *Fyne) showNewSyncDevice() {
@@ -72,12 +71,11 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 }
 
 func (fyneUI *Fyne) SyncDeviceRequestAccepted(id uuid.UUID, name string) {
-	log.Info("request to be added to an existing device group has been accepted")
 	fyneUI.profile = &user{id: id, name: name}
 	fyneUI.initialStateSet = true
 	fyneUI.showMainContainer()
 }
 
 func (fyneUI *Fyne) SyncDeviceRequestRejected() {
-	log.Info("request to be added to an existing device group has been rejected")
+	dialog.ShowError(errors.New("Sync request rejected, make sure you scan the device quickly"), fyneUI.mainWindow)
 }

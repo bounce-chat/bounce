@@ -1,7 +1,10 @@
 package ui
 
 import (
+	"fmt"
+
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -48,6 +51,5 @@ func (fyneUI *Fyne) buildDisplaySyncString() {
 }
 
 func (fyneUI *Fyne) NewSyncDeviceAdded(name string) {
-	// TODO: display a dialog informing the user
-	log.Info("the chat engine added a new sync device")
+	dialog.ShowInformation("New sync device", fmt.Sprintf("%s has been added as a sync device", name), fyneUI.mainWindow)
 }
