@@ -116,7 +116,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	err := b.database.
 		Order("saved_at asc").
 		Where(
-			"written_at >= ? AND (destination = ? OR source = ?) AND delivered_to NOT LIKE ?",
+			"written_at >= ? AND (destination = ? OR source = ?) AND (delivered_to NOT LIKE ? OR delivered_to IS NULL)",
 			time.Now().Add(-undeliverableAfter).Unix(),
 			dev.UserID,
 			dev.UserID,
