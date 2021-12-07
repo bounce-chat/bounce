@@ -141,7 +141,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	if b.isSyncDevice(address) {
 		uldsToOffer := []string{}
 		var localDMSettingsUpdates []updateLocalDMSettings
-		err = b.database.Where("delivered_to NOT LIKE ?", "%"+address+"%").Find(&localDMSettingsUpdates).Error // TODO: only select ID?
+		err = b.database.Where("delivered_to NOT LIKE ? OR delivered_to IS NULL", "%"+address+"%").Find(&localDMSettingsUpdates).Error // TODO: only select ID?
 		// TODO: only get one per unix timestamp?  UNIQUE timestamp LIMIT 1?
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -156,7 +156,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 		// Also get the devices.  TODO: break this all out
 		devicesToOffer := []string{}
 		var unsentDevices []device
-		err = b.database.Where("delivered_to NOT LIKE ?", "%"+address+"%").Find(&unsentDevices).Error // TODO: only select ID?
+		err = b.database.Where("delivered_to NOT LIKE ? OR delivered_to IS NULL", "%"+address+"%").Find(&unsentDevices).Error // TODO: only select ID?
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

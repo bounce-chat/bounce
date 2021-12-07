@@ -13,7 +13,7 @@ import (
 type device struct {
 	ID          uuid.UUID              `gorm:"type:uuid;primary_key;"`
 	Name        string                 `json:"-"`
-	UserID      uuid.UUID              `json:"-" msgpack:"-"`
+	UserID      uuid.UUID              `json:"-"`
 	Address     string                 `gorm:"uniqueIndex"`
 	Signature   *introductionSignature `json:",omitempty"`
 	DeliveredTo string                 `json:"-" msgpack:"-"`
@@ -107,6 +107,7 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 	}
 
 	// Save it
+	dev.DeliveredTo = peer
 	err = b.database.Create(&dev).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -119,11 +120,14 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 		destination: srcDevice.ID,
 		Devices:     dev.ID.String(),
 	})
+
+	// Broadcast to the rest of the peers
+	go b.broadcast(&dev)
 }
 
 func (b *bounce) getDeviceFromAddress(address string) (device, bool) {
 	var dev device
-	err := b.database.Where("address = ?", address).First(&dev).Error // TODO: reload introduction signature?
+	err := b.database.Where("address = ?", address).First(&dev).Error // TODO: preload introduction signature?
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return dev, false

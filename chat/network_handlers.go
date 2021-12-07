@@ -42,6 +42,13 @@ func (b *bounce) acceptConnections() {
 				"peer": conn.RemoteAddr().String(),
 			}).Debug("accepted connection")
 		}
-		go b.insertConnectionIntoDevicePool(conn)
+		if conn == nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"fatal": fatal,
+			}).Error("accepted nil connection")
+		} else {
+			go b.insertConnectionIntoDevicePool(conn)
+		}
 	}
 }
