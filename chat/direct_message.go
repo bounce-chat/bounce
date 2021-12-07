@@ -75,7 +75,7 @@ func (b *bounce) markDirectMessageDeliveredTo(dm *DirectMessage, address string)
 			currentDeliveredTo = strings.Split(dm.DeliveredTo, ",")
 		}
 		updatedDeliveredTo := strings.Join(append(currentDeliveredTo, address), ",")
-		err := b.database.Model(&dm).Update("delivered_to", updatedDeliveredTo).Error
+		err := b.database.Model(dm).Update("delivered_to", updatedDeliveredTo).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":   err.Error(),

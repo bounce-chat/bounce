@@ -44,6 +44,12 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+//getScope() int
+//getDestination(myID uuid.UUID) uuid.UUID
+//getType() uint16
+//getPayload() []byte
+//isAlreadyDeliveredTo(address string) bool
+
 func (b *bounce) currentUser() (user, bool) {
 	var currentUser user
 	err := b.database.Preload("Devices.Signature").Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
@@ -172,4 +178,5 @@ func (b *bounce) importUser(data []byte) (User, error) {
 	// TODO: some sort of UI feedback on the secret being accepted on the remote side?
 	// As in, bounce only accepts DMs from user's in a shared group or who send an import secret
 	// TODO: try to dial right away
+	// TODO: broadcast this user and their devices to all sync devices
 }

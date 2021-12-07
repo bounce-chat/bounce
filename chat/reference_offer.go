@@ -21,6 +21,7 @@ type referenceOffer struct {
 	CreatedAt             int64     // Used to delete old reference offers that were not responded to
 	DirectMessages        string    // Comma-separated list of DM UUIDs
 	UpdateLocalDMSettings string    // only for sync devices
+	Devices               string    // only for sync devices
 	Destination           uuid.UUID `msgpack:"-"`
 	payload               []byte
 }
@@ -64,6 +65,9 @@ func (ro *referenceOffer) shouldDial() bool {
 	if len(ro.UpdateLocalDMSettings) > 0 {
 		return true
 	}
+	if len(ro.Devices) > 0 {
+		return true
+	}
 	// TODO: changes to my device group, clearing thread histories, etc
 	return false
 }
@@ -73,6 +77,9 @@ func (ro *referenceOffer) hasContent() bool {
 		return true
 	}
 	if len(ro.UpdateLocalDMSettings) > 0 {
+		return true
+	}
+	if len(ro.Devices) > 0 {
 		return true
 	}
 	// TODO: check for any future referenced content
@@ -145,6 +152,20 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 			uldsToOffer = append(uldsToOffer, ulds.ID.String())
 		}
 		offer.UpdateLocalDMSettings = strings.Join(uldsToOffer, ",")
+
+		// Also get the devices.  TODO: break this all out
+		devicesToOffer := []string{}
+		var unsentDevices []device
+		err = b.database.Where("delivered_to NOT LIKE ?", "%"+address+"%").Find(&unsentDevices).Error // TODO: only select ID?
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting devices for reference offer")
+		}
+		for _, dev := range unsentDevices {
+			devicesToOffer = append(devicesToOffer, dev.ID.String())
+		}
+		offer.Devices = strings.Join(devicesToOffer, ",")
 	}
 
 	return offer
@@ -204,6 +225,7 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 		destination:           dev.ID,
 		DirectMessages:        b.getDirectMessagesToRequest(dev, ro),
 		UpdateLocalDMSettings: b.getUpdateLocalDMSettingsToRequest(dev, ro),
+		Devices:               b.getDevicesToRequest(dev, ro),
 	}
 
 	b.broadcast(response)
@@ -291,6 +313,47 @@ func (b *bounce) getUpdateLocalDMSettingsToRequest(dev device, ro referenceOffer
 			}
 		}
 		resp = strings.Join(desiredUpdateLocalDMSettings, ",")
+	}
+
+	return resp
+}
+
+func (b *bounce) getDevicesToRequest(dev device, ro referenceOffer) string {
+	var resp string
+
+	if len(ro.Devices) > 0 {
+		if dev.UserID != b.currentUserID() {
+			log.WithFields(log.Fields{
+				"peer": dev.Address,
+			}).Warn("a non-sync device offered devices in a reference offer, refusing to request them")
+			return resp
+		}
+
+		desiredDevices := []string{}
+		for _, deviceIDString := range strings.Split(ro.Devices, ",") {
+			deviceID, err := uuid.Parse(deviceIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": deviceIDString,
+				}).Error("invalid device UUID in reference offer")
+				continue
+			}
+
+			var dev device
+			err = b.database.First(&dev, "id = ?", deviceID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					desiredDevices = append(desiredDevices, deviceID.String())
+				} else {
+					log.WithFields(log.Fields{
+						"id":    deviceID,
+						"error": err.Error(),
+					}).Fatal("database error querying for device")
+				}
+			}
+		}
+		resp = strings.Join(desiredDevices, ",")
 	}
 
 	return resp

@@ -13,6 +13,7 @@ type catchUp struct {
 	ID                    uuid.UUID
 	DirectMessages        [][]byte
 	UpdateLocalDMSettings [][]byte
+	Devices               [][]byte
 	destination           uuid.UUID
 	payload               []byte
 }
@@ -50,6 +51,9 @@ func (cu *catchUp) hasContent() bool {
 		return true
 	}
 	if len(cu.UpdateLocalDMSettings) > 0 {
+		return true
+	}
+	if len(cu.Devices) > 0 {
 		return true
 	}
 	return false
@@ -102,6 +106,9 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 		CatchUps:    cu.ID.String(),
 	})
 
+	for _, devicePayload := range cu.Devices {
+		b.handleDevice(peer, devicePayload)
+	}
 	for _, uldsPayload := range cu.UpdateLocalDMSettings {
 		b.handleUpdateLocalDMSettings(peer, uldsPayload)
 	}

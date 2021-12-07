@@ -67,7 +67,7 @@ func (b *bounce) markUpdateLocalDMSettingsDeliveredTo(ulds *updateLocalDMSetting
 			currentDeliveredTo = strings.Split(ulds.DeliveredTo, ",")
 		}
 		updatedDeliveredTo := strings.Join(append(currentDeliveredTo, address), ",")
-		err := b.database.Model(&ulds).Update("delivered_to", updatedDeliveredTo).Error
+		err := b.database.Model(ulds).Update("delivered_to", updatedDeliveredTo).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":   err.Error(),

@@ -8,6 +8,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // DirectMessages are comma separated for consistency with reference offers, which must do this
@@ -17,6 +18,7 @@ type referenceRequest struct {
 	ID                    uuid.UUID
 	DirectMessages        string // Comma-separated list of DM UUIDs
 	UpdateLocalDMSettings string
+	Devices               string
 	destination           uuid.UUID
 	payload               []byte
 }
@@ -88,6 +90,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 		destination:           dev.ID,
 		DirectMessages:        b.getRequestedDirectMessagePayloads(dev, rr, originalOffer),
 		UpdateLocalDMSettings: b.getRequestedUpdateLocalDMSettingsPayloads(dev, rr, originalOffer),
+		Devices:               b.getRequestedDevicesPayloads(dev, rr, originalOffer),
 	}
 
 	if catchUpResponse.hasContent() {
@@ -200,6 +203,51 @@ func (b *bounce) getRequestedUpdateLocalDMSettingsPayloads(dev device, rr refere
 				}
 			} else {
 				requestedData = append(requestedData, ulds.getPayload())
+			}
+		}
+	}
+
+	return requestedData
+}
+
+func (b *bounce) getRequestedDevicesPayloads(dev device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
+	requestedData := [][]byte{}
+
+	if len(rr.Devices) > 0 {
+		if dev.UserID != b.currentUserID() {
+			log.WithFields(log.Fields{
+				"peer": dev.Address,
+			}).Warn("non-sync device asked for devices in reference request, ignoring")
+			return requestedData
+		}
+		for _, deviceIDString := range strings.Split(rr.Devices, ",") {
+			deviceID, err := uuid.Parse(deviceIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": deviceIDString,
+				}).Error("invalid device UUID in reference request")
+				continue
+			}
+
+			// TODO: check the original offer to make sure we offered it, just to detect bugs
+
+			var dev device
+			err = b.database.Preload(clause.Associations).First(&dev, "id = ?", deviceID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"id":   deviceID,
+						"peer": dev.Address,
+					}).Warn("reference request asks for unknown device")
+				} else {
+					log.WithFields(log.Fields{
+						"id":    deviceID,
+						"error": err.Error(),
+					}).Fatal("database error querying for device")
+				}
+			} else {
+				requestedData = append(requestedData, dev.getPayload())
 			}
 		}
 	}

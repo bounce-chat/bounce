@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // DirectMessages are comma separated for consistency with reference offers, which must do this
@@ -19,6 +20,7 @@ type ack struct {
 	DirectMessages        string // Comma-separated list of DM UUIDs
 	UpdateLocalDMSettings string
 	CatchUps              string
+	Devices               string
 	destination           uuid.UUID
 	payload               []byte
 }
@@ -63,6 +65,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckDirectMessages(peer, a)
 	b.handleAckCatchUps(peer, a)
 	b.handleAckUpdateLocalDMSettings(peer, a)
+	b.handleAckDevices(peer, a)
 }
 
 func (b *bounce) handleAckDirectMessages(peer string, a ack) {
@@ -154,6 +157,39 @@ func (b *bounce) handleAckUpdateLocalDMSettings(peer string, a ack) {
 				}
 			} else {
 				b.markUpdateLocalDMSettingsDeliveredTo(&ulds, peer)
+			}
+		}
+	}
+}
+
+func (b *bounce) handleAckDevices(peer string, a ack) {
+	if len(a.Devices) > 0 {
+		for _, deviceIDString := range strings.Split(a.Devices, ",") {
+			deviceID, err := uuid.Parse(deviceIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": deviceIDString,
+				}).Error("invalid device UUID in ack")
+				continue
+			}
+
+			var dev device
+			err = b.database.Preload(clause.Associations).First(&dev, "id = ?", deviceID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"id":   deviceID,
+						"peer": peer,
+					}).Warn("unknown device acked")
+				} else {
+					log.WithFields(log.Fields{
+						"id":    deviceID,
+						"error": err.Error(),
+					}).Fatal("database error querying for device")
+				}
+			} else {
+				b.markDeviceDeliveredTo(&dev, peer)
 			}
 		}
 	}

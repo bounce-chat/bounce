@@ -26,6 +26,7 @@ var typeUpdateLocalDMSettings = uint16(7)
 var typeSyncDeviceRequest = uint16(8)
 var typeSyncDeviceRequestRejected = uint16(9)
 var typeSyncDeviceRequestAccepted = uint16(10)
+var typeDevice = uint16(11)
 
 type broadcastable interface {
 	getScope() int
@@ -47,6 +48,7 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 		typeSyncDeviceRequest:         b.handleSyncDeviceRequest,
 		typeSyncDeviceRequestRejected: b.handleSyncDeviceRequestRejected,
 		typeSyncDeviceRequestAccepted: b.handleSyncDeviceRequestAccepted,
+		typeDevice:                    b.handleDevice,
 	}
 }
 
