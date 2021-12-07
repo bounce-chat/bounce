@@ -46,7 +46,7 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 
 func (b *bounce) currentUser() (user, bool) {
 	var currentUser user
-	err := b.database.Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
+	err := b.database.Preload("Devices.Signature").Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return currentUser, false
@@ -104,12 +104,6 @@ func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 }
 
 func (b *bounce) exportContact(name string, expiration int64, oneTime bool) []byte {
-	var count int64
-	b.database.Model(&user{}).Where("profile = ?", true).Count(&count)
-	if count != 1 {
-		log.Fatal("no contact exists to export")
-	}
-
 	myProfile, exists := b.currentUser()
 	if !exists {
 		log.Fatal("cannot export contact when no profile exists")

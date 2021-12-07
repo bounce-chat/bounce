@@ -94,6 +94,8 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 		b.broadcastCatchUp(catchUpResponse)
 	}
 
+	// TODO: broadcast separate catchups for each requested image/audio/file here.  Or rather than a catch up, just broadcast the data.
+
 	b.database.Delete(&originalOffer)
 }
 

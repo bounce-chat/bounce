@@ -9,7 +9,7 @@ import (
 )
 
 type device struct {
-	ID        uuid.UUID              `gorm:"type:uuid;primary_key;" json:"-" msgpack:"-"`
+	ID        uuid.UUID              `gorm:"type:uuid;primary_key;"`
 	Name      string                 `json:"-"`
 	UserID    uuid.UUID              `json:"-" msgpack:"-"`
 	Address   string                 `gorm:"uniqueIndex"`
@@ -22,7 +22,7 @@ func (device *device) BeforeCreate(tx *gorm.DB) error {
 }
 
 type introductionSignature struct {
-	ID                           uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID                           uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
 	DeviceID                     uuid.UUID
 	PreexistingDevice            string // TODO: should be a UUID?  No, this is an address not a pk
 	SignatureOfNewDevice         []byte
