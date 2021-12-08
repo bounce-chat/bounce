@@ -139,6 +139,9 @@ func (b *bounce) handleUser(peer string, payload []byte) {
 		destination: srcDevice.ID,
 		Users:       u.ID.String(),
 	})
+
+	// Tell the UI about it
+	b.userInterface.UserImported(User{ID: u.ID, Name: u.Name})
 }
 
 func (b *bounce) currentUser() (user, bool) {
