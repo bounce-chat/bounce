@@ -21,7 +21,8 @@ type referenceOffer struct {
 	CreatedAt             int64     // Used to delete old reference offers that were not responded to
 	DirectMessages        string    // Comma-separated list of DM UUIDs
 	UpdateLocalDMSettings string    // only for sync devices
-	Devices               string    // only for sync devices
+	Devices               string
+	Users                 string    // only for sync devices
 	Destination           uuid.UUID `msgpack:"-"`
 	payload               []byte
 }
@@ -68,6 +69,9 @@ func (ro *referenceOffer) shouldDial() bool {
 	if len(ro.Devices) > 0 {
 		return true
 	}
+	if len(ro.Users) > 0 {
+		return true
+	}
 	// TODO: changes to my device group, clearing thread histories, etc
 	return false
 }
@@ -80,6 +84,9 @@ func (ro *referenceOffer) hasContent() bool {
 		return true
 	}
 	if len(ro.Devices) > 0 {
+		return true
+	}
+	if len(ro.Users) > 0 {
 		return true
 	}
 	// TODO: check for any future referenced content
@@ -166,6 +173,20 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 			devicesToOffer = append(devicesToOffer, dev.ID.String())
 		}
 		offer.Devices = strings.Join(devicesToOffer, ",")
+
+		// Users
+		usersToOffer := []string{}
+		var unsentUsers []user
+		err = b.database.Where("delivered_to NOT LIKE ? OR delivered_to IS NULL", "%"+address+"%").Find(&unsentUsers).Error // TODO: only select ID?
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting users for reference offer")
+		}
+		for _, u := range unsentUsers {
+			usersToOffer = append(usersToOffer, u.ID.String())
+		}
+		offer.Users = strings.Join(usersToOffer, ",")
 	}
 
 	return offer
@@ -226,6 +247,7 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 		DirectMessages:        b.getDirectMessagesToRequest(dev, ro),
 		UpdateLocalDMSettings: b.getUpdateLocalDMSettingsToRequest(dev, ro),
 		Devices:               b.getDevicesToRequest(dev, ro),
+		Users:                 b.getUsersToRequest(dev, ro),
 	}
 
 	b.broadcast(response)
@@ -354,6 +376,47 @@ func (b *bounce) getDevicesToRequest(dev device, ro referenceOffer) string {
 			}
 		}
 		resp = strings.Join(desiredDevices, ",")
+	}
+
+	return resp
+}
+
+func (b *bounce) getUsersToRequest(dev device, ro referenceOffer) string {
+	var resp string
+
+	if len(ro.Users) > 0 {
+		if dev.UserID != b.currentUserID() {
+			log.WithFields(log.Fields{
+				"peer": dev.Address,
+			}).Warn("a non-sync device offered users in a reference offer, refusing to request them")
+			return resp
+		}
+
+		desiredUsers := []string{}
+		for _, userIDString := range strings.Split(ro.Users, ",") {
+			userID, err := uuid.Parse(userIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": userIDString,
+				}).Error("invalid user UUID in reference offer")
+				continue
+			}
+
+			var u user
+			err = b.database.First(&u, "id = ?", userID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					desiredUsers = append(desiredUsers, userID.String())
+				} else {
+					log.WithFields(log.Fields{
+						"id":    userID,
+						"error": err.Error(),
+					}).Fatal("database error querying for user")
+				}
+			}
+		}
+		resp = strings.Join(desiredUsers, ",")
 	}
 
 	return resp

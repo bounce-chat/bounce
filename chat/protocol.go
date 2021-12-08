@@ -27,6 +27,7 @@ var typeSyncDeviceRequest = uint16(8)
 var typeSyncDeviceRequestRejected = uint16(9)
 var typeSyncDeviceRequestAccepted = uint16(10)
 var typeDevice = uint16(11)
+var typeUser = uint16(12)
 
 type broadcastable interface {
 	getScope() int
@@ -49,6 +50,7 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 		typeSyncDeviceRequestRejected: b.handleSyncDeviceRequestRejected,
 		typeSyncDeviceRequestAccepted: b.handleSyncDeviceRequestAccepted,
 		typeDevice:                    b.handleDevice,
+		typeUser:                      b.handleUser,
 	}
 }
 

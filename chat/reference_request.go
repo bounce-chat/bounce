@@ -19,6 +19,7 @@ type referenceRequest struct {
 	DirectMessages        string // Comma-separated list of DM UUIDs
 	UpdateLocalDMSettings string
 	Devices               string
+	Users                 string
 	destination           uuid.UUID
 	payload               []byte
 }
@@ -91,6 +92,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 		DirectMessages:        b.getRequestedDirectMessagePayloads(dev, rr, originalOffer),
 		UpdateLocalDMSettings: b.getRequestedUpdateLocalDMSettingsPayloads(dev, rr, originalOffer),
 		Devices:               b.getRequestedDevicesPayloads(dev, rr, originalOffer),
+		Users:                 b.getRequestedUsersPayloads(dev, rr, originalOffer),
 	}
 
 	if catchUpResponse.hasContent() {
@@ -248,6 +250,51 @@ func (b *bounce) getRequestedDevicesPayloads(dev device, rr referenceRequest, or
 				}
 			} else {
 				requestedData = append(requestedData, dev.getPayload())
+			}
+		}
+	}
+
+	return requestedData
+}
+
+func (b *bounce) getRequestedUsersPayloads(dev device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
+	requestedData := [][]byte{}
+
+	if len(rr.Users) > 0 {
+		if dev.UserID != b.currentUserID() {
+			log.WithFields(log.Fields{
+				"peer": dev.Address,
+			}).Warn("non-sync device asked for users in reference request, ignoring")
+			return requestedData
+		}
+		for _, userIDString := range strings.Split(rr.Users, ",") {
+			userID, err := uuid.Parse(userIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": userIDString,
+				}).Error("invalid user UUID in reference request")
+				continue
+			}
+
+			// TODO: check the original offer to make sure we offered it, just to detect bugs
+
+			var u user
+			err = b.database.First(&u, "id = ?", userID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"id":   userID,
+						"peer": dev.Address,
+					}).Warn("reference request asks for unknown user")
+				} else {
+					log.WithFields(log.Fields{
+						"id":    userID,
+						"error": err.Error(),
+					}).Fatal("database error querying for user")
+				}
+			} else {
+				requestedData = append(requestedData, u.getPayload())
 			}
 		}
 	}

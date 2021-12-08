@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -16,13 +18,15 @@ import (
 type user struct {
 	ID                        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name                      string
-	Profile                   bool   `gorm:"index:,where:profile = true" json:"-"`
-	MessageRetention          int64  `json:"-"`
-	LastDMSettingsUpdate      int64  `json:"-"`
-	NotificationsEnabled      bool   `json:"-"`
-	NotificationsMutedUntil   uint64 `json:"-"`
-	LastLocalDMSettingsUpdate int64  `json:"-"`
-	Devices                   []device
+	Profile                   bool     `gorm:"index:,where:profile = true" json:"-"`
+	MessageRetention          int64    `json:"-"`
+	LastDMSettingsUpdate      int64    `json:"-"`
+	NotificationsEnabled      bool     `json:"-"`
+	NotificationsMutedUntil   uint64   `json:"-"`
+	LastLocalDMSettingsUpdate int64    `json:"-"`
+	Devices                   []device `msgpack:"-"`
+	DeliveredTo               string   `json:"-" msgpack:"-"`
+	payload                   []byte
 }
 
 func (u *user) BeforeCreate(tx *gorm.DB) error {
@@ -44,11 +48,98 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-//getScope() int
-//getDestination(myID uuid.UUID) uuid.UUID
-//getType() uint16
-//getPayload() []byte
-//isAlreadyDeliveredTo(address string) bool
+func (u *user) getScope() int {
+	return scopeSync
+}
+
+func (u *user) getDestination(myID uuid.UUID) uuid.UUID {
+	return uuid.Nil
+}
+
+func (u *user) getType() uint16 {
+	return typeUser
+}
+
+func (u *user) getPayload() []byte {
+	if len(u.payload) == 0 {
+		bytes, err := msgpack.Marshal(u)
+		if err != nil {
+			// TODO: how to handle?
+		}
+		u.payload = bytes
+	}
+	return u.payload
+}
+
+func (u *user) isAlreadyDeliveredTo(address string) bool {
+	// TODO: reload from the database?
+	recipients := strings.Split(u.DeliveredTo, ",")
+	for _, recipient := range recipients {
+		if address == recipient {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *bounce) markUserDeliveredTo(u *user, address string) {
+	if !u.isAlreadyDeliveredTo(address) {
+		currentDeliveredTo := []string{}
+		if len(u.DeliveredTo) != 0 {
+			currentDeliveredTo = strings.Split(u.DeliveredTo, ",")
+		}
+		updatedDeliveredTo := strings.Join(append(currentDeliveredTo, address), ",")
+		err := b.database.Model(u).Update("delivered_to", updatedDeliveredTo).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"message": u.ID,
+			}).Fatal("error updating user delivery status")
+		}
+	}
+}
+
+func (b *bounce) handleUser(peer string, payload []byte) {
+	// Make sure this is a sync device
+	srcDevice, exists := b.getDeviceFromAddress(peer)
+	if !exists {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("ignoring a user sent from an unknown device")
+		return
+	}
+
+	if srcDevice.UserID != b.currentUserID() {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("ignoring a user sent from a device that is not a sync device")
+		return
+	}
+
+	// Unmarshal the device
+	var u user
+	err := msgpack.Unmarshal(payload, &u)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling user")
+		return
+	}
+
+	// Save it
+	err = b.database.Session(&gorm.Session{SkipHooks: true}).Create(&u).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error saving new user")
+	}
+
+	// ACK it
+	go b.broadcast(&ack{
+		destination: srcDevice.ID,
+		Users:       u.ID.String(),
+	})
+}
 
 func (b *bounce) currentUser() (user, bool) {
 	var currentUser user

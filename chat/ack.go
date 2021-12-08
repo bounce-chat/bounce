@@ -21,6 +21,7 @@ type ack struct {
 	UpdateLocalDMSettings string
 	CatchUps              string
 	Devices               string
+	Users                 string
 	destination           uuid.UUID
 	payload               []byte
 }
@@ -66,6 +67,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckCatchUps(peer, a)
 	b.handleAckUpdateLocalDMSettings(peer, a)
 	b.handleAckDevices(peer, a)
+	b.handleAckUsers(peer, a)
 }
 
 func (b *bounce) handleAckDirectMessages(peer string, a ack) {
@@ -190,6 +192,39 @@ func (b *bounce) handleAckDevices(peer string, a ack) {
 				}
 			} else {
 				b.markDeviceDeliveredTo(&dev, peer)
+			}
+		}
+	}
+}
+
+func (b *bounce) handleAckUsers(peer string, a ack) {
+	if len(a.Users) > 0 {
+		for _, userIDString := range strings.Split(a.Users, ",") {
+			userID, err := uuid.Parse(userIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": userIDString,
+				}).Error("invalid user UUID in ack")
+				continue
+			}
+
+			var u user
+			err = b.database.First(&u, "id = ?", userID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"id":   userID,
+						"peer": peer,
+					}).Warn("unknown user acked")
+				} else {
+					log.WithFields(log.Fields{
+						"id":    userID,
+						"error": err.Error(),
+					}).Fatal("database error querying for user")
+				}
+			} else {
+				b.markUserDeliveredTo(&u, peer)
 			}
 		}
 	}
