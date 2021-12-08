@@ -26,7 +26,7 @@ type ack struct {
 	payload               []byte
 }
 
-func (a *ack) getScope() int {
+func (a *ack) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
 

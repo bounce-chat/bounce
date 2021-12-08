@@ -27,7 +27,7 @@ func (ulds *updateLocalDMSettings) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (ulds *updateLocalDMSettings) getScope() int {
+func (ulds *updateLocalDMSettings) getScope(_ uuid.UUID) int {
 	return scopeSync
 }
 

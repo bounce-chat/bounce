@@ -32,7 +32,7 @@ func (referenceOffer *referenceOffer) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (ro *referenceOffer) getScope() int {
+func (ro *referenceOffer) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
 
@@ -187,6 +187,21 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 			usersToOffer = append(usersToOffer, u.ID.String())
 		}
 		offer.Users = strings.Join(usersToOffer, ",")
+	} else {
+		// This is NOT a sync device, so we can only share devices that belong to us
+		// TODO: actually get devices with "overlap"
+		devicesToOffer := []string{}
+		var unsentDevices []device
+		err = b.database.Where("user_id = ? AND (delivered_to NOT LIKE ? OR delivered_to IS NULL)", b.currentUserID(), "%"+address+"%").Find(&unsentDevices).Error // TODO: only select ID?
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting devices for reference offer")
+		}
+		for _, dev := range unsentDevices {
+			devicesToOffer = append(devicesToOffer, dev.ID.String())
+		}
+		offer.Devices = strings.Join(devicesToOffer, ",")
 	}
 
 	return offer
@@ -344,13 +359,6 @@ func (b *bounce) getDevicesToRequest(dev device, ro referenceOffer) string {
 	var resp string
 
 	if len(ro.Devices) > 0 {
-		if dev.UserID != b.currentUserID() {
-			log.WithFields(log.Fields{
-				"peer": dev.Address,
-			}).Warn("a non-sync device offered devices in a reference offer, refusing to request them")
-			return resp
-		}
-
 		desiredDevices := []string{}
 		for _, deviceIDString := range strings.Split(ro.Devices, ",") {
 			deviceID, err := uuid.Parse(deviceIDString)

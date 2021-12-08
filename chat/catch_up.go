@@ -19,7 +19,7 @@ type catchUp struct {
 	payload               []byte
 }
 
-func (cu *catchUp) getScope() int {
+func (cu *catchUp) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
 

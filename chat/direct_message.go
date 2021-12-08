@@ -19,7 +19,7 @@ func (directMessage *DirectMessage) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (dm *DirectMessage) getScope() int {
+func (dm *DirectMessage) getScope(_ uuid.UUID) int {
 	if dm.Source == dm.Destination {
 		// A DM to ourselves, only needs to be sent to sync devices
 		return scopeSync

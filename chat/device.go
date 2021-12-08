@@ -27,8 +27,13 @@ func (d *device) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (d *device) getScope() int {
-	// TODO: sync for now, but global for devices I own?  sync otherwise?  How to tell other group members that another member got a new device?
+func (d *device) getScope(myID uuid.UUID) int {
+	if d.UserID == myID {
+		// Tell everyone about my devices
+		return scopeGlobal
+	}
+	// Only tell my devices about other user's devices
+	// TODO: build "overlap scope" concept
 	return scopeSync
 }
 
@@ -89,13 +94,6 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 		return
 	}
 
-	if srcDevice.UserID != b.currentUserID() {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("ignoring a device sent from a device that is not a sync device")
-		return
-	}
-
 	// Unmarshal the device
 	var dev device
 	err := msgpack.Unmarshal(payload, &dev)
@@ -105,6 +103,9 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 		}).Error("error unmarshalling device")
 		return
 	}
+
+	// TODO: make sure this user can inform us about this device
+	// TODO: make sure this device group is valid (ORM hook?)
 
 	// Save it
 	dev.DeliveredTo = peer

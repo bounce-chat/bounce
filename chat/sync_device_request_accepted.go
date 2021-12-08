@@ -11,7 +11,7 @@ type syncDeviceRequestAccepted struct {
 	payload []byte
 }
 
-func (sdra *syncDeviceRequestAccepted) getScope() int {
+func (sdra *syncDeviceRequestAccepted) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
 

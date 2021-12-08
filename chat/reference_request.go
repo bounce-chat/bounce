@@ -24,7 +24,7 @@ type referenceRequest struct {
 	payload               []byte
 }
 
-func (rr *referenceRequest) getScope() int {
+func (rr *referenceRequest) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
 
@@ -217,10 +217,11 @@ func (b *bounce) getRequestedDevicesPayloads(dev device, rr referenceRequest, or
 
 	if len(rr.Devices) > 0 {
 		if dev.UserID != b.currentUserID() {
-			log.WithFields(log.Fields{
-				"peer": dev.Address,
-			}).Warn("non-sync device asked for devices in reference request, ignoring")
-			return requestedData
+			//log.WithFields(log.Fields{
+			//	"peer": dev.Address,
+			//}).Warn("non-sync device asked for devices in reference request, ignoring")
+			//return requestedData
+			// TODO: make sure only the right devices are being shared
 		}
 		for _, deviceIDString := range strings.Split(rr.Devices, ",") {
 			deviceID, err := uuid.Parse(deviceIDString)

@@ -6,7 +6,7 @@ import (
 
 type syncDeviceRequestRejected struct{}
 
-func (sdrr *syncDeviceRequestRejected) getScope() int {
+func (sdrr *syncDeviceRequestRejected) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
 

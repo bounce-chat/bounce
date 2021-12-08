@@ -8,7 +8,7 @@ type keepAlive struct {
 	destination uuid.UUID
 }
 
-func (ka keepAlive) getScope() int {
+func (ka keepAlive) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
 

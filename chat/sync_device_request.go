@@ -17,7 +17,7 @@ type syncDeviceRequest struct {
 	payload   []byte
 }
 
-func (sdr *syncDeviceRequest) getScope() int {
+func (sdr *syncDeviceRequest) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
 
