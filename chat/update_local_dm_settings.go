@@ -216,6 +216,15 @@ func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
 				}).Fatal("error saving update local DM settings")
 			}
 
+			// Inform the UI of any changes
+			if targetUser.NotificationsEnabled != ulds.NotificationsEnabled {
+				b.userInterface.DMNotificationsChanged(targetUser.ID, ulds.NotificationsEnabled)
+			}
+
+			if targetUser.NotificationsMutedUntil != ulds.NotificationsMutedUntil {
+				//b.userInterface.DMNotificationsMuteChanged(targetUser.ID, ulds.NotificationsEnabled)
+			}
+
 			// Apply the settings in this update to the user
 			err = b.database.Model(&targetUser).Select(
 				"notifications_enabled",
@@ -230,15 +239,6 @@ func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Fatal("error update local DM settings for user")
-			}
-
-			// Inform the UI of any changes
-			if targetUser.NotificationsEnabled != ulds.NotificationsEnabled {
-				b.userInterface.DMNotificationsChanged(targetUser.ID, ulds.NotificationsEnabled)
-			}
-
-			if targetUser.NotificationsMutedUntil != ulds.NotificationsMutedUntil {
-				//b.userInterface.DMNotificationsMuteChanged(targetUser.ID, ulds.NotificationsEnabled)
 			}
 
 			// Delete all old updates

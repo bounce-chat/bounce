@@ -187,6 +187,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 			usersToOffer = append(usersToOffer, u.ID.String())
 		}
 		offer.Users = strings.Join(usersToOffer, ",")
+		// TODO: offer users to other people only if you're in the same group
 	} else {
 		// This is NOT a sync device, so we can only share devices that belong to us
 		// TODO: actually get devices with "overlap"
