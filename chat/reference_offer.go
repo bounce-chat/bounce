@@ -108,16 +108,22 @@ func (b *bounce) sendReferences(peerAddress string) {
 }
 
 func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
-	offer := &referenceOffer{
-		ID: uuid.New(),
-	}
-
 	dev, ok := b.getDeviceFromAddress(address)
 	if !ok {
-		return offer
+		return &referenceOffer{}
 	}
-	offer.Destination = dev.ID
 
+	return &referenceOffer{
+		ID:                    uuid.New(),
+		Destination:           dev.ID,
+		DirectMessages:        b.getDirectMessagesToOffer(dev),
+		UpdateLocalDMSettings: b.getUpdateLocalDMSettingsToOffer(dev),
+		Devices:               b.getDevicesToOffer(dev),
+		Users:                 b.getUsersToOffer(dev),
+	}
+}
+
+func (b *bounce) getDirectMessagesToOffer(dev device) string {
 	// All DMs we have sent to or received from this user in the past week
 	var dms []DirectMessage
 	err := b.database.
@@ -127,14 +133,13 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 			time.Now().Add(-undeliverableAfter).Unix(),
 			dev.UserID,
 			dev.UserID,
-			"%"+address+"%",
+			"%"+dev.Address+"%",
 		).Find(&dms).Error // TODO: also add a sane limit? TODO: only select the IDs if that's all we're using?
 	if err != nil {
 		log.WithFields(log.Fields{
-			"peer":  address,
+			"peer":  dev.Address,
 			"error": err.Error(),
-		}).Error("error loading DMs for reference offer")
-		return offer
+		}).Fatal("error loading DMs for reference offer")
 	}
 
 	// Collect IDs from the DMs
@@ -142,28 +147,36 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	for _, dm := range dms {
 		dmsToOffer = append(dmsToOffer, dm.ID.String())
 	}
-	offer.DirectMessages = strings.Join(dmsToOffer, ",")
+	return strings.Join(dmsToOffer, ",")
+}
 
-	// If this is a sync device, get the latest local settings update for each DM, and if it hasn't been delivered, send it
-	if b.isSyncDevice(address) {
-		uldsToOffer := []string{}
-		var localDMSettingsUpdates []updateLocalDMSettings
-		err = b.database.Where("delivered_to NOT LIKE ? OR delivered_to IS NULL", "%"+address+"%").Find(&localDMSettingsUpdates).Error // TODO: only select ID?
-		// TODO: only get one per unix timestamp?  UNIQUE timestamp LIMIT 1?
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error selecting update local DM settings for reference offer")
-		}
-		for _, ulds := range localDMSettingsUpdates {
-			uldsToOffer = append(uldsToOffer, ulds.ID.String())
-		}
-		offer.UpdateLocalDMSettings = strings.Join(uldsToOffer, ",")
+func (b *bounce) getUpdateLocalDMSettingsToOffer(dev device) string {
+	if !b.isSyncDevice(dev.Address) {
+		return ""
+	}
+	uldsToOffer := []string{}
+	var localDMSettingsUpdates []updateLocalDMSettings
+	err := b.database.Where("delivered_to NOT LIKE ? OR delivered_to IS NULL", "%"+dev.Address+"%").Find(&localDMSettingsUpdates).Error // TODO: only select ID?
+	// TODO: only get one per unix timestamp?  UNIQUE timestamp LIMIT 1?
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error selecting update local DM settings for reference offer")
+	}
+	for _, ulds := range localDMSettingsUpdates {
+		uldsToOffer = append(uldsToOffer, ulds.ID.String())
+	}
+	return strings.Join(uldsToOffer, ",")
+}
 
-		// Also get the devices.  TODO: break this all out
+func (b *bounce) getDevicesToOffer(dev device) string {
+	offerString := ""
+
+	if !b.isSyncDevice(dev.Address) {
+		// Sync devices can learn about any device we know about
 		devicesToOffer := []string{}
 		var unsentDevices []device
-		err = b.database.Where("delivered_to NOT LIKE ? OR delivered_to IS NULL", "%"+address+"%").Find(&unsentDevices).Error // TODO: only select ID?
+		err := b.database.Where("delivered_to NOT LIKE ? OR delivered_to IS NULL", "%"+dev.Address+"%").Find(&unsentDevices).Error // TODO: only select ID?
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -172,12 +185,35 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 		for _, dev := range unsentDevices {
 			devicesToOffer = append(devicesToOffer, dev.ID.String())
 		}
-		offer.Devices = strings.Join(devicesToOffer, ",")
+		offerString = strings.Join(devicesToOffer, ",")
+	} else {
+		// This is NOT a sync device, so we can only share devices that belong to us
+		// TODO: actually get devices with "overlap"
+		devicesToOffer := []string{}
+		var unsentDevices []device
+		err := b.database.Where("user_id = ? AND (delivered_to NOT LIKE ? OR delivered_to IS NULL)", b.currentUserID(), "%"+dev.Address+"%").Find(&unsentDevices).Error // TODO: only select ID?
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting devices for reference offer")
+		}
+		for _, dev := range unsentDevices {
+			devicesToOffer = append(devicesToOffer, dev.ID.String())
+		}
+		offerString = strings.Join(devicesToOffer, ",")
+	}
 
+	return offerString
+}
+
+func (b *bounce) getUsersToOffer(dev device) string {
+	offerString := ""
+
+	if b.isSyncDevice(dev.Address) {
 		// Users
 		usersToOffer := []string{}
 		var unsentUsers []user
-		err = b.database.Where("delivered_to NOT LIKE ? OR delivered_to IS NULL", "%"+address+"%").Find(&unsentUsers).Error // TODO: only select ID?
+		err := b.database.Where("delivered_to NOT LIKE ? OR delivered_to IS NULL", "%"+dev.Address+"%").Find(&unsentUsers).Error // TODO: only select ID?
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -186,26 +222,12 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 		for _, u := range unsentUsers {
 			usersToOffer = append(usersToOffer, u.ID.String())
 		}
-		offer.Users = strings.Join(usersToOffer, ",")
-		// TODO: offer users to other people only if you're in the same group
+		offerString = strings.Join(usersToOffer, ",")
 	} else {
-		// This is NOT a sync device, so we can only share devices that belong to us
-		// TODO: actually get devices with "overlap"
-		devicesToOffer := []string{}
-		var unsentDevices []device
-		err = b.database.Where("user_id = ? AND (delivered_to NOT LIKE ? OR delivered_to IS NULL)", b.currentUserID(), "%"+address+"%").Find(&unsentDevices).Error // TODO: only select ID?
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error selecting devices for reference offer")
-		}
-		for _, dev := range unsentDevices {
-			devicesToOffer = append(devicesToOffer, dev.ID.String())
-		}
-		offer.Devices = strings.Join(devicesToOffer, ",")
+		// TODO: offer users to other people only if you're in the same group
 	}
 
-	return offer
+	return offerString
 }
 
 func (b *bounce) broadcastReferenceOffer(ro *referenceOffer) {
