@@ -32,8 +32,7 @@ func (d *device) getScope(myID uuid.UUID) int {
 		// Tell everyone about my devices
 		return scopeGlobal
 	}
-	// Only tell my devices about other user's devices
-	// TODO: build "overlap scope" concept
+	//return scopeOverlap // TODO
 	return scopeSync
 }
 

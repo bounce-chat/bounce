@@ -187,8 +187,7 @@ func (b *bounce) getDevicesToOffer(dev device) string {
 		}
 		offerString = strings.Join(devicesToOffer, ",")
 	} else {
-		// This is NOT a sync device, so we can only share devices that belong to us
-		// TODO: actually get devices with "overlap"
+		// TODO: don't just get our devices, get any "overlap" devices
 		devicesToOffer := []string{}
 		var unsentDevices []device
 		err := b.database.Where("user_id = ? AND (delivered_to NOT LIKE ? OR delivered_to IS NULL)", b.currentUserID(), "%"+dev.Address+"%").Find(&unsentDevices).Error // TODO: only select ID?
@@ -224,7 +223,7 @@ func (b *bounce) getUsersToOffer(dev device) string {
 		}
 		offerString = strings.Join(usersToOffer, ",")
 	} else {
-		// TODO: offer users to other people only if you're in the same group
+		// TODO: offer "overlap" users to other people, users who share a group with this user
 	}
 
 	return offerString

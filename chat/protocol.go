@@ -14,6 +14,7 @@ var scopeUser = 1
 var scopeGroup = 2
 var scopeGlobal = 3
 var scopeDevice = 4
+var scopeOverlap = 5
 
 var typeDirectMessage = uint16(0)
 var typeGroupMessage = uint16(1)
@@ -76,6 +77,8 @@ func (b *bounce) getBroadcastScope(br broadcastable) []*remoteDevice {
 		return b.getGroupScope(br)
 	} else if scope == scopeGlobal {
 		return b.getGlobalScope(br)
+	} else if scope == scopeOverlap {
+		return b.getOverlapScope(br)
 	} else {
 		log.WithFields(log.Fields{
 			"destination": br.getDestination(b.currentUserID()),
@@ -206,5 +209,14 @@ func (b *bounce) getGlobalScope(br broadcastable) []*remoteDevice {
 			broadcastTargets = append(broadcastTargets, dev)
 		}
 	}
+	return broadcastTargets
+}
+
+func (b *bounce) getOverlapScope(br broadcastable) []*remoteDevice { // TODO: better name for this?
+	broadcastTargets := []*remoteDevice{}
+	// So that we can tell third party A something we learned about third party B,
+	// like new devices or profile updates
+	// br.getDestination() describes a user ID, get all of the devices that share any group with the user,
+	// as well as this user's devices and our sync devices
 	return broadcastTargets
 }
