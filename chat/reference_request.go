@@ -212,7 +212,7 @@ func (b *bounce) getRequestedUpdateLocalDMSettingsPayloads(dev device, rr refere
 	return requestedData
 }
 
-func (b *bounce) getRequestedDevicesPayloads(dev device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
+func (b *bounce) getRequestedDevicesPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
 	requestedData := [][]byte{}
 
 	requestedDeviceIDs, deliveredDeviceIDs := getRequestedAndDeliveredUUIDs(originalOffer.Devices, rr.Devices)
@@ -224,7 +224,7 @@ func (b *bounce) getRequestedDevicesPayloads(dev device, rr referenceRequest, or
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
 					"id":   deviceID,
-					"peer": dev.Address,
+					"peer": peer.Address,
 				}).Warn("reference request indicates we offered an unknown device")
 			} else {
 				log.WithFields(log.Fields{
@@ -233,7 +233,7 @@ func (b *bounce) getRequestedDevicesPayloads(dev device, rr referenceRequest, or
 				}).Fatal("database error querying for device")
 			}
 		} else {
-			b.markDeviceDeliveredTo(&dev, dev.Address)
+			b.markDeviceDeliveredTo(&dev, peer.Address)
 		}
 	}
 
@@ -244,7 +244,7 @@ func (b *bounce) getRequestedDevicesPayloads(dev device, rr referenceRequest, or
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
 					"id":   deviceID,
-					"peer": dev.Address,
+					"peer": peer.Address,
 				}).Warn("reference request asks for unknown device we offered")
 			} else {
 				log.WithFields(log.Fields{
@@ -260,15 +260,15 @@ func (b *bounce) getRequestedDevicesPayloads(dev device, rr referenceRequest, or
 	return requestedData
 }
 
-func (b *bounce) getRequestedUsersPayloads(dev device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
+func (b *bounce) getRequestedUsersPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
 	requestedData := [][]byte{}
 
 	requestedUserIDs, deliveredUserIDs := getRequestedAndDeliveredUUIDs(originalOffer.Users, rr.Users)
 
 	if len(requestedUserIDs) > 0 {
-		if dev.UserID != b.currentUserID() {
+		if peer.UserID != b.currentUserID() {
 			log.WithFields(log.Fields{
-				"peer": dev.Address,
+				"peer": peer.Address,
 			}).Warn("non-sync device asked for users in reference request, ignoring")
 			return requestedData
 		}
@@ -281,7 +281,7 @@ func (b *bounce) getRequestedUsersPayloads(dev device, rr referenceRequest, orig
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
 					"id":   userID,
-					"peer": dev.Address,
+					"peer": peer.Address,
 				}).Warn("reference request indicates we offered an unknown user")
 			} else {
 				log.WithFields(log.Fields{
@@ -290,7 +290,7 @@ func (b *bounce) getRequestedUsersPayloads(dev device, rr referenceRequest, orig
 				}).Fatal("database error querying for user")
 			}
 		} else {
-			b.markUserDeliveredTo(&u, dev.Address)
+			b.markUserDeliveredTo(&u, peer.Address)
 		}
 	}
 
@@ -301,7 +301,7 @@ func (b *bounce) getRequestedUsersPayloads(dev device, rr referenceRequest, orig
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
 					"id":   userID,
-					"peer": dev.Address,
+					"peer": peer.Address,
 				}).Warn("reference request asks for unknown user we offered")
 			} else {
 				log.WithFields(log.Fields{

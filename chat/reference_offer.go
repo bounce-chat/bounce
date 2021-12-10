@@ -179,7 +179,7 @@ func (b *bounce) getDevicesToOffer(dev device) string {
 		// Sync devices can learn about any device we know about
 		devicesToOffer := []string{}
 		var unsentDevices []device
-		err := b.database.Where("delivered_to NOT LIKE ? OR delivered_to IS NULL", "%"+dev.Address+"%").Find(&unsentDevices).Error // TODO: only select ID?
+		err := b.database.Where("address != ? AND (delivered_to NOT LIKE ? OR delivered_to IS NULL)", dev.Address, "%"+dev.Address+"%").Find(&unsentDevices).Error // TODO: only select ID?
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -193,7 +193,7 @@ func (b *bounce) getDevicesToOffer(dev device) string {
 		// TODO: don't just get our devices, get any "overlap" devices
 		devicesToOffer := []string{}
 		var unsentDevices []device
-		err := b.database.Where("user_id = ? AND (delivered_to NOT LIKE ? OR delivered_to IS NULL)", b.currentUserID(), "%"+dev.Address+"%").Find(&unsentDevices).Error // TODO: only select ID?
+		err := b.database.Where("address != ? AND user_id = ? AND (delivered_to NOT LIKE ? OR delivered_to IS NULL)", dev.Address, b.currentUserID(), "%"+dev.Address+"%").Find(&unsentDevices).Error // TODO: only select ID?
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

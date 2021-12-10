@@ -57,10 +57,6 @@ func (d *device) getPayload() []byte {
 }
 
 func (d *device) isAlreadyDeliveredTo(address string) bool {
-	if address == d.Address {
-		// No need to tell a device about itself
-		return true
-	}
 	// TODO: reload from the database?
 	recipients := strings.Split(d.DeliveredTo, ",")
 	for _, recipient := range recipients {
