@@ -138,7 +138,8 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 		log.Fatal("cannot accept new sync device when no profile exists")
 	}
 	rd.messages <- &syncDeviceRequestAccepted{
-		Profile: profile,
+		Profile:     profile,
+		SyncDevices: profile.Devices, // users don't marshal into protobuf with thier devices
 	} // TODO: should this be acked to ensure delivery?
 
 	// Tell the UI that we've accepted the sync device

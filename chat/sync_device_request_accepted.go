@@ -7,8 +7,9 @@ import (
 )
 
 type syncDeviceRequestAccepted struct {
-	Profile user
-	payload []byte
+	Profile     user
+	SyncDevices []device
+	payload     []byte
 }
 
 func (sdra *syncDeviceRequestAccepted) getScope(_ uuid.UUID) int {
@@ -64,6 +65,16 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error saving new profile received from sync device request accepted")
+	}
+
+	// Save our current sync devices
+	for _, dev := range sdra.SyncDevices {
+		err = b.database.Create(&dev).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error saving device included in sync device request accepted")
+		}
 	}
 
 	// Inform the UI
