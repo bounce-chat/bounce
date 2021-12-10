@@ -215,43 +215,45 @@ func (b *bounce) getRequestedUpdateLocalDMSettingsPayloads(dev device, rr refere
 func (b *bounce) getRequestedDevicesPayloads(dev device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
 	requestedData := [][]byte{}
 
-	if len(rr.Devices) > 0 {
-		if dev.UserID != b.currentUserID() {
-			//log.WithFields(log.Fields{
-			//	"peer": dev.Address,
-			//}).Warn("non-sync device asked for devices in reference request, ignoring")
-			//return requestedData
-			// TODO: make sure only the right devices are being shared
-		}
-		for _, deviceIDString := range strings.Split(rr.Devices, ",") {
-			deviceID, err := uuid.Parse(deviceIDString)
-			if err != nil {
+	requestedDeviceIDs, deliveredDeviceIDs := getRequestedAndDeliveredUUIDs(originalOffer.Devices, rr.Devices)
+
+	for _, deviceID := range deliveredDeviceIDs {
+		var dev device
+		err := b.database.Preload(clause.Associations).First(&dev, "id = ?", deviceID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": deviceIDString,
-				}).Error("invalid device UUID in reference request")
-				continue
-			}
-
-			// TODO: check the original offer to make sure we offered it, just to detect bugs
-
-			var dev device
-			err = b.database.Preload(clause.Associations).First(&dev, "id = ?", deviceID).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					log.WithFields(log.Fields{
-						"id":   deviceID,
-						"peer": dev.Address,
-					}).Warn("reference request asks for unknown device")
-				} else {
-					log.WithFields(log.Fields{
-						"id":    deviceID,
-						"error": err.Error(),
-					}).Fatal("database error querying for device")
-				}
+					"id":   deviceID,
+					"peer": dev.Address,
+				}).Warn("reference request indicates we offered an unknown device")
 			} else {
-				requestedData = append(requestedData, dev.getPayload())
+				log.WithFields(log.Fields{
+					"id":    deviceID,
+					"error": err.Error(),
+				}).Fatal("database error querying for device")
 			}
+		} else {
+			b.markDeviceDeliveredTo(&dev, dev.Address)
+		}
+	}
+
+	for _, deviceID := range requestedDeviceIDs {
+		var dev device
+		err := b.database.Preload(clause.Associations).First(&dev, "id = ?", deviceID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   deviceID,
+					"peer": dev.Address,
+				}).Warn("reference request asks for unknown device we offered")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    deviceID,
+					"error": err.Error(),
+				}).Fatal("database error querying for device")
+			}
+		} else {
+			requestedData = append(requestedData, dev.getPayload())
 		}
 	}
 
@@ -261,44 +263,134 @@ func (b *bounce) getRequestedDevicesPayloads(dev device, rr referenceRequest, or
 func (b *bounce) getRequestedUsersPayloads(dev device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
 	requestedData := [][]byte{}
 
-	if len(rr.Users) > 0 {
+	requestedUserIDs, deliveredUserIDs := getRequestedAndDeliveredUUIDs(originalOffer.Users, rr.Users)
+
+	if len(requestedUserIDs) > 0 {
 		if dev.UserID != b.currentUserID() {
 			log.WithFields(log.Fields{
 				"peer": dev.Address,
 			}).Warn("non-sync device asked for users in reference request, ignoring")
 			return requestedData
 		}
-		for _, userIDString := range strings.Split(rr.Users, ",") {
-			userID, err := uuid.Parse(userIDString)
-			if err != nil {
+	}
+
+	for _, userID := range deliveredUserIDs {
+		var u user
+		err := b.database.First(&u, "id = ?", userID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": userIDString,
-				}).Error("invalid user UUID in reference request")
-				continue
-			}
-
-			// TODO: check the original offer to make sure we offered it, just to detect bugs
-
-			var u user
-			err = b.database.First(&u, "id = ?", userID).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					log.WithFields(log.Fields{
-						"id":   userID,
-						"peer": dev.Address,
-					}).Warn("reference request asks for unknown user")
-				} else {
-					log.WithFields(log.Fields{
-						"id":    userID,
-						"error": err.Error(),
-					}).Fatal("database error querying for user")
-				}
+					"id":   userID,
+					"peer": dev.Address,
+				}).Warn("reference request indicates we offered an unknown user")
 			} else {
-				requestedData = append(requestedData, u.getPayload())
+				log.WithFields(log.Fields{
+					"id":    userID,
+					"error": err.Error(),
+				}).Fatal("database error querying for user")
 			}
+		} else {
+			b.markUserDeliveredTo(&u, dev.Address)
+		}
+	}
+
+	for _, userID := range requestedUserIDs {
+		var u user
+		err := b.database.First(&u, "id = ?", userID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   userID,
+					"peer": dev.Address,
+				}).Warn("reference request asks for unknown user we offered")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    userID,
+					"error": err.Error(),
+				}).Fatal("database error querying for user")
+			}
+		} else {
+			requestedData = append(requestedData, u.getPayload())
 		}
 	}
 
 	return requestedData
+}
+
+//
+// Given two comma-separated lists of UUIDs, one representing the original offer and the other representing what
+// was requested from the peer, parse them and separate them into the valid requested UUIDs and the UUIDs that we
+// can assume were already delivered because they were not requested.
+//
+func getRequestedAndDeliveredUUIDs(originalOffer string, requested string) ([]uuid.UUID, []uuid.UUID) {
+	requestedSet := []uuid.UUID{}
+	deliveredSet := []uuid.UUID{}
+
+	offeredCache := make(map[uuid.UUID]bool)
+	if len(originalOffer) > 0 {
+		for _, offeredIDString := range strings.Split(originalOffer, ",") {
+			offeredID, err := uuid.Parse(offeredIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": offeredIDString,
+				}).Error("invalid UUID in reference offer generated locally")
+				continue
+			}
+			if _, present := offeredCache[offeredID]; present {
+				log.WithFields(log.Fields{
+					"id": offeredID,
+				}).Warn("duplicate UUID in reference offer generated locally")
+				continue
+			}
+			offeredCache[offeredID] = true
+		}
+	}
+
+	requestedCache := make(map[uuid.UUID]bool)
+	if len(requested) > 0 {
+		for _, requestedIDString := range strings.Split(requested, ",") {
+			// Parse the UUID
+			requestedID, err := uuid.Parse(requestedIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": requestedIDString,
+				}).Warn("invalid UUID in reference request")
+				continue
+			}
+
+			// Detect if there's a duplicate UUID in the request
+			if _, present := requestedCache[requestedID]; present {
+				log.WithFields(log.Fields{
+					"id": requestedID,
+				}).Warn("duplicate UUID in reference request")
+				continue
+			}
+
+			// Add this UUID to the cache
+			requestedCache[requestedID] = true
+
+			// Make sure that this requested UUID was actually offered and skip it if not
+			if _, present := offeredCache[requestedID]; !present {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"id":    requestedID,
+				}).Warn("reference request asks for UUID not present in reference offer")
+				continue
+			}
+
+			// Include the requested UUID in the requested set
+			requestedSet = append(requestedSet, requestedID)
+		}
+	}
+
+	for offeredID, _ := range offeredCache {
+		// Check if this UUID was offered but it was not requested, indicating it has already been delivered
+		if _, present := requestedCache[offeredID]; !present {
+			deliveredSet = append(deliveredSet, offeredID)
+		}
+	}
+
+	return requestedSet, deliveredSet
 }
