@@ -285,8 +285,4 @@ func (b *bounce) dmOriginAcceptable(dm DirectMessage, dev device) bool {
 		}).Warn("received direct message from a device not in the allowed device set")
 		return false
 	}
-
-	// This case should never be hit
-	log.Warn("default denying direct message peer")
-	return false
 }
