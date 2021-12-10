@@ -27,8 +27,11 @@ type referenceOffer struct {
 	payload               []byte
 }
 
-func (referenceOffer *referenceOffer) BeforeCreate(tx *gorm.DB) error {
-	referenceOffer.CreatedAt = time.Now().Unix()
+func (ro *referenceOffer) BeforeCreate(tx *gorm.DB) error {
+	if ro.ID == uuid.Nil {
+		log.Fatal("reference offer must have ID assigned before creation")
+	}
+	ro.CreatedAt = time.Now().Unix()
 	return nil
 }
 

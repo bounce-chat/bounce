@@ -23,7 +23,9 @@ type updateLocalDMSettings struct {
 }
 
 func (ulds *updateLocalDMSettings) BeforeCreate(tx *gorm.DB) error {
-	ulds.ID = uuid.New()
+	if ulds.ID == uuid.Nil {
+		ulds.ID = uuid.New()
+	}
 	return nil
 }
 

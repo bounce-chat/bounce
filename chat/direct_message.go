@@ -15,6 +15,9 @@ import (
 type DirectMessage message
 
 func (directMessage *DirectMessage) BeforeCreate(tx *gorm.DB) error {
+	if directMessage.ID == uuid.Nil {
+		log.Fatal("direct message must have an ID assigned before save")
+	}
 	directMessage.SavedAt = time.Now().Unix()
 	return nil
 }

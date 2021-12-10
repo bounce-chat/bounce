@@ -13,7 +13,9 @@ type introductionSignature struct {
 	SignatureOfPreexistingDevice []byte
 }
 
-func (introductionSignature *introductionSignature) BeforeCreate(tx *gorm.DB) error {
-	introductionSignature.ID = uuid.New()
+func (is *introductionSignature) BeforeCreate(tx *gorm.DB) error {
+	if is.ID == uuid.Nil {
+		is.ID = uuid.New()
+	}
 	return nil
 }

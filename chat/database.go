@@ -199,6 +199,9 @@ type profileExport struct {
 }
 
 func (profileExport *profileExport) BeforeCreate(tx *gorm.DB) error {
+	if profileExport.ID != uuid.Nil {
+		log.Fatal("unexpected profileExport primary key assigned before create")
+	}
 	profileExport.ID = uuid.New()
 	return nil
 }

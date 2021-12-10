@@ -30,6 +30,10 @@ type user struct {
 }
 
 func (u *user) BeforeCreate(tx *gorm.DB) error {
+	if u.ID == uuid.Nil {
+		log.Fatal("attempt to create user with nil ID, user ID must be set before creation")
+	}
+
 	if u.Profile {
 		var count int64
 		tx.Model(&user{}).Where("profile = ?", true).Count(&count)

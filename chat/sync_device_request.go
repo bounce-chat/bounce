@@ -144,8 +144,8 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 	// Tell the UI that we've accepted the sync device
 	b.userInterface.NewSyncDeviceAdded(sdr.Name)
 
-	// Tell the rest of our sync devices about this new sync device
-	//b.broadcast(&newSyncDevice{Device: newDevice})
+	// Tell everyone about the new device
+	b.broadcast(&newDevice)
 
 	// Send a reference offer to the new device
 	b.sendReferences(peer)

@@ -8,6 +8,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type device struct {
@@ -127,7 +128,7 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 
 func (b *bounce) getDeviceFromAddress(address string) (device, bool) {
 	var dev device
-	err := b.database.Where("address = ?", address).First(&dev).Error // TODO: preload introduction signature?
+	err := b.database.Preload(clause.Associations).Where("address = ?", address).First(&dev).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return dev, false

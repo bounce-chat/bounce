@@ -17,6 +17,9 @@ type syncDeviceOffer struct {
 }
 
 func (sdo *syncDeviceOffer) BeforeCreate(tx *gorm.DB) error {
+	if sdo.ID != uuid.Nil {
+		log.Fatal("sync device offer cannot have an ID assigned before creation")
+	}
 	sdo.ID = uuid.New()
 	return nil
 }
