@@ -118,6 +118,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 		Name:    sdr.Name,
 		UserID:  b.currentUserID(),
 		Address: peer,
+		//DeliveredTo: peer, // TODO: this isn't needed since devices are always delivered to themselves.  keep it anyway?
 		Signature: &introductionSignature{
 			PreexistingDevice:            b.network.Address(),
 			SignatureOfNewDevice:         b.network.Sign([]byte(peer)),

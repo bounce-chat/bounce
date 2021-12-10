@@ -71,7 +71,9 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 }
 
 func (fyneUI *Fyne) SyncDeviceRequestAccepted(id uuid.UUID, name string) {
-	fyneUI.profile = &user{id: id, name: name}
+	profile := &user{id: id, name: name}
+	fyneUI.profile = profile
+	fyneUI.users.add(profile)
 	fyneUI.initialStateSet = true
 	fyneUI.showMainContainer()
 }

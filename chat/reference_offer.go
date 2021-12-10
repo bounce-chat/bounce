@@ -175,7 +175,7 @@ func (b *bounce) getUpdateLocalDMSettingsToOffer(dev device) string {
 func (b *bounce) getDevicesToOffer(dev device) string {
 	offerString := ""
 
-	if !b.isSyncDevice(dev.Address) {
+	if b.isSyncDevice(dev.Address) {
 		// Sync devices can learn about any device we know about
 		devicesToOffer := []string{}
 		var unsentDevices []device
