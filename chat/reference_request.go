@@ -104,64 +104,49 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	b.database.Delete(&originalOffer) // TODO: error check
 }
 
-func (b *bounce) getRequestedDirectMessagePayloads(dev device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
+func (b *bounce) getRequestedDirectMessagePayloads(peer device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
 	requestedData := [][]byte{}
 
-	dmRequested := make(map[uuid.UUID]bool)
-	if len(rr.DirectMessages) > 0 {
-		for _, dmIDString := range strings.Split(rr.DirectMessages, ",") {
-			dmID, err := uuid.Parse(dmIDString)
-			if err != nil {
+	requestedDirectMessageIDs, deliveredDirectMessageIDs := getRequestedAndDeliveredUUIDs(originalOffer.DirectMessages, rr.DirectMessages)
+
+	for _, dmID := range deliveredDirectMessageIDs {
+		var dm DirectMessage
+		err := b.database.Where("id = ?", dmID).First(&dm).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": dmIDString,
-				}).Error("invalid UUID in reference request")
-				continue
-			}
-			dmRequested[dmID] = true
-		}
-	}
-
-	if len(originalOffer.DirectMessages) > 0 {
-		for _, dmIDString := range strings.Split(originalOffer.DirectMessages, ",") {
-			dmID, err := uuid.Parse(dmIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": dmIDString,
-				}).Error("invalid UUID in reference offer generated locally")
-				continue
-			}
-
-			var dm DirectMessage
-			err = b.database.Where("id = ? AND (source = ? OR destination = ?)", dmID, dev.UserID, dev.UserID).First(&dm).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Warn("reference request asks for unknown DM")
-					// TODO: detect if any are legit but out of scope for security reasons
-					continue
-				} else {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Fatal("error loading DM from database")
-				}
-			}
-
-			if _, present := dmRequested[dmID]; present {
-				requestedData = append(requestedData, dm.getPayload())
+					"id":   dmID,
+					"peer": peer.Address,
+				}).Warn("reference request indicates we offered an unknown direct message")
 			} else {
-				b.markDirectMessageDeliveredTo(&dm, dev.Address)
+				log.WithFields(log.Fields{
+					"id":    dmID,
+					"error": err.Error(),
+				}).Fatal("database error querying for direct message")
 			}
+		} else {
+			b.markDirectMessageDeliveredTo(&dm, peer.Address)
 		}
 	}
 
-	if len(rr.DirectMessages) > len(originalOffer.DirectMessages) {
-		log.WithFields(log.Fields{
-			"offer_length":   len(originalOffer.DirectMessages),
-			"request_length": len(rr.DirectMessages),
-		}).Warn("reference request is requesting more direct messages than were offered")
+	for _, dmID := range requestedDirectMessageIDs {
+		var dm DirectMessage
+		err := b.database.Where("id = ?", dmID).First(&dm).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   dmID,
+					"peer": peer.Address,
+				}).Warn("reference request asks for an unknown direct message")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    dmID,
+					"error": err.Error(),
+				}).Fatal("database error querying for direct message")
+			}
+		} else {
+			requestedData = append(requestedData, dm.getPayload())
+		}
 	}
 
 	return requestedData
