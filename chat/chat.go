@@ -64,6 +64,7 @@ func Start(network Network, ui UI) {
 
 	b.openDatabase()
 
+	log.Debug("building ui")
 	b.userInterface.Build(
 		b.configDirectory,
 		UICallbacks{

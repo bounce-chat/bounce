@@ -15,6 +15,7 @@ import (
 )
 
 func (b *bounce) openDatabase() {
+	log.Debug("opening database")
 	databaseFile := b.configDirectory + "/bounce.db"
 
 	gormLogger := logger.New(
@@ -157,6 +158,7 @@ func (b *bounce) pruneSyncDeviceOffers() {
 }
 
 func (b *bounce) buildInitialState() InitialState {
+	log.Debug("building initial state")
 	var profile *User
 	var count int64
 	b.database.Model(&user{}).Where("profile = ?", true).Count(&count)

@@ -101,7 +101,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 
 	// TODO: broadcast separate catchups for each requested image/audio/file here.  Or rather than a catch up, just broadcast the data.
 
-	b.database.Delete(&originalOffer)
+	b.database.Delete(&originalOffer) // TODO: error check
 }
 
 func (b *bounce) getRequestedDirectMessagePayloads(dev device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
@@ -167,45 +167,59 @@ func (b *bounce) getRequestedDirectMessagePayloads(dev device, rr referenceReque
 	return requestedData
 }
 
-func (b *bounce) getRequestedUpdateLocalDMSettingsPayloads(dev device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
+func (b *bounce) getRequestedUpdateLocalDMSettingsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
 	requestedData := [][]byte{}
 
-	if len(rr.UpdateLocalDMSettings) > 0 {
-		if dev.UserID != b.currentUserID() {
+	requestedUpdateLocalDMSettingsIDs, deliveredUpdateLocalDMSettingsIDs := getRequestedAndDeliveredUUIDs(originalOffer.UpdateLocalDMSettings, rr.UpdateLocalDMSettings)
+
+	if len(requestedUpdateLocalDMSettingsIDs) > 0 {
+		// TODO: since we're never going to offer these and the diff function checks that, this shouldn't be needed,
+		// but might catch bugs that result in us offering these
+		if peer.UserID != b.currentUserID() {
 			log.WithFields(log.Fields{
-				"peer": dev.Address,
+				"peer": peer.Address,
 			}).Warn("non-sync device asked for update local DM settings in reference request, ignoring")
 			return requestedData
 		}
-		for _, uldsIDString := range strings.Split(rr.UpdateLocalDMSettings, ",") {
-			uldsID, err := uuid.Parse(uldsIDString)
-			if err != nil {
+	}
+
+	for _, uldsID := range deliveredUpdateLocalDMSettingsIDs {
+		var ulds updateLocalDMSettings
+		err := b.database.First(&ulds, "id = ?", uldsID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": uldsIDString,
-				}).Error("invalid ulds UUID in reference request")
-				continue
-			}
-
-			// TODO: check the original offer to make sure we offered it, just to detect bugs
-
-			var ulds updateLocalDMSettings
-			err = b.database.First(&ulds, "id = ?", uldsID).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					log.WithFields(log.Fields{
-						"id":   uldsID,
-						"peer": dev.Address,
-					}).Warn("reference request asks for unknown update local DM settings")
-				} else {
-					log.WithFields(log.Fields{
-						"id":    uldsID,
-						"error": err.Error(),
-					}).Fatal("database error querying for update local DM settings")
-				}
+					"id":   uldsID,
+					"peer": peer.Address,
+				}).Warn("reference request indicates we offered an unknown update local DM settings")
 			} else {
-				requestedData = append(requestedData, ulds.getPayload())
+				log.WithFields(log.Fields{
+					"id":    uldsID,
+					"error": err.Error(),
+				}).Fatal("database error querying for update local DM settings")
 			}
+		} else {
+			b.markUpdateLocalDMSettingsDeliveredTo(&ulds, peer.Address)
+		}
+	}
+
+	for _, uldsID := range requestedUpdateLocalDMSettingsIDs {
+		var ulds updateLocalDMSettings
+		err := b.database.First(&ulds, "id = ?", uldsID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   uldsID,
+					"peer": peer.Address,
+				}).Warn("reference request asks for an unknown update local DM settings")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    uldsID,
+					"error": err.Error(),
+				}).Fatal("database error querying for update local DM settings")
+			}
+		} else {
+			requestedData = append(requestedData, ulds.getPayload())
 		}
 	}
 
