@@ -85,15 +85,6 @@ func (b *bounce) markDeviceDeliveredTo(d *device, address string) {
 }
 
 func (b *bounce) handleDevice(peer string, payload []byte) {
-	// Make sure this is a sync device
-	srcDevice, exists := b.getDeviceFromAddress(peer)
-	if !exists {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("ignoring a device sent from an unknown device")
-		return
-	}
-
 	// Unmarshal the device
 	var dev device
 	err := msgpack.Unmarshal(payload, &dev)
@@ -104,16 +95,39 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 		return
 	}
 
+	srcDevice, peerExists := b.getDeviceFromAddress(peer)
+	if !peerExists {
+		if dev.Address != peer {
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Error("an unknown device can only send itself, ignoring received device")
+			return
+		}
+		// TODO: make sure this device describes a new device for a user we already know about, and that
+		// the signatures line up fine.
+	}
+
 	// TODO: make sure this user can inform us about this device
 	// TODO: make sure this device group is valid (ORM hook?)
 
-	// Save it
-	dev.DeliveredTo = peer
-	err = b.database.Create(&dev).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error saving new device")
+	// Save and broadcast this device if we've never seen it before
+	if _, deviceExists := b.getDeviceFromAddress(dev.Address); !deviceExists {
+		// Save it
+		dev.DeliveredTo = peer
+		err = b.database.Create(&dev).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error saving new device")
+		}
+		// Broadcast to the rest of the peers
+		go b.broadcast(&dev)
+	}
+
+	// If we didn't know about the peer that sent us this device, then the new device we saved
+	// is the peer
+	if !peerExists {
+		srcDevice = dev
 	}
 
 	// ACK it
@@ -121,9 +135,6 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 		destination: srcDevice.ID,
 		Devices:     dev.ID.String(),
 	})
-
-	// Broadcast to the rest of the peers
-	go b.broadcast(&dev)
 }
 
 func (b *bounce) getDeviceFromAddress(address string) (device, bool) {

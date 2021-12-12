@@ -97,6 +97,44 @@ func (ro *referenceOffer) hasContent() bool {
 }
 
 func (b *bounce) sendReferences(peerAddress string) {
+	_, exists := b.getDeviceFromAddress(peerAddress)
+	if !exists {
+		// We have nothing to offer a device that we don't know about
+		return
+	}
+
+	myDevice, exists := b.getDeviceFromAddress(b.network.Address())
+	if !exists {
+		// We're going to be inserting connections in the device pool when we add a device as
+		// a new sync device.  During that time we haven't saved anything as a local device,
+		// so we wouldn't expect anything here.  Nothing to do.
+		return
+	}
+
+	if !myDevice.isAlreadyDeliveredTo(peerAddress) {
+		for i := 0; i < 5; i++ {
+			rd := b.getRemoteDevice(peerAddress)
+			rd.messages <- &myDevice
+			time.Sleep(3 * time.Second)
+			// Refresh the model.  TODO: better to just select the field in question
+			err := b.database.Find(&myDevice, "id = ?", myDevice.ID).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("errror refreshing my device")
+			}
+			if myDevice.isAlreadyDeliveredTo(peerAddress) {
+				break
+			}
+		}
+		if !myDevice.isAlreadyDeliveredTo(peerAddress) {
+			log.WithFields(log.Fields{
+				"peer": peerAddress,
+			}).Warn("was not able to send device to peer that might not have it before reference offer")
+			return
+		}
+	}
+
 	references := b.getReferenceOfferFor(peerAddress)
 	if references.hasContent() {
 		err := b.database.Create(references).Error
