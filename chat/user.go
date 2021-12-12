@@ -271,7 +271,7 @@ func (b *bounce) importUser(data []byte) (User, error) {
 	}
 
 	// Make sure this contact has a valid device group
-	if !newUser.Profile.validDeviceGroup() {
+	if !b.hasValidDeviceGroup(newUser.Profile) {
 		return User{}, errors.New("invalid device group")
 	}
 

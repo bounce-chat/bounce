@@ -125,6 +125,9 @@ func (b *bounce) shutdown() {
 	log.Info("closing all remote connections")
 	// TODO: stop the peer audit loop, wait for it to return
 	for _, rd := range b.devicePool.devices {
+		// TODO: need to ensure no more messages will write to these channels to prevent panic
+		// TODO: alternatievly, have a separte channel to close the remote devices and always leave
+		// the message channels open
 		close(rd.messages)
 	}
 	for _, rd := range b.devicePool.devices {

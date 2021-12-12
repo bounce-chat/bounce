@@ -13,7 +13,7 @@ import (
 
 type device struct {
 	ID          uuid.UUID              `gorm:"type:uuid;primary_key;"`
-	Name        string                 `json:"-"`
+	Name        string                 `json:"-"` // TODO: exclude from tell non-sync devices
 	UserID      uuid.UUID              `json:"-"`
 	Address     string                 `gorm:"uniqueIndex"`
 	Signature   *introductionSignature `json:",omitempty"`
@@ -86,8 +86,8 @@ func (b *bounce) markDeviceDeliveredTo(d *device, address string) {
 
 func (b *bounce) handleDevice(peer string, payload []byte) {
 	// Unmarshal the device
-	var dev device
-	err := msgpack.Unmarshal(payload, &dev)
+	var newDevice device
+	err := msgpack.Unmarshal(payload, &newDevice)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -95,45 +95,78 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 		return
 	}
 
+	// Find the device that sent this new device.  If we don't have it saved, this is a device introducing itself
 	srcDevice, peerExists := b.getDeviceFromAddress(peer)
 	if !peerExists {
-		if dev.Address != peer {
+		if newDevice.Address != peer {
 			log.WithFields(log.Fields{
 				"peer": peer,
-			}).Error("an unknown device can only send itself, ignoring received device")
+			}).Warn("an unknown device can only send itself, ignoring received device")
 			return
 		}
-		// TODO: make sure this device describes a new device for a user we already know about, and that
-		// the signatures line up fine.
 	}
 
-	// TODO: make sure this user can inform us about this device
-	// TODO: make sure this device group is valid (ORM hook?)
+	// If the device already exists, ack it and return
+	if _, deviceExists := b.getDeviceFromAddress(newDevice.Address); deviceExists {
+		b.broadcast(&ack{
+			destination: srcDevice.ID,
+			Devices:     newDevice.ID.String(),
+		})
+		return
+	}
 
-	// Save and broadcast this device if we've never seen it before
-	if _, deviceExists := b.getDeviceFromAddress(dev.Address); !deviceExists {
-		// Save it
-		dev.DeliveredTo = peer
-		err = b.database.Create(&dev).Error
-		if err != nil {
+	// Find the user this new device is for
+	var targetUser user
+	err = b.database.Find(&targetUser, "id = ?", newDevice.UserID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user":    newDevice.UserID,
+				"device":  newDevice.ID,
+				"address": newDevice.Address,
+				"peer":    peer,
+			}).Warn("rejecting received device because we do have the specified user")
+			return
+		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("error saving new device")
+			}).Fatal("database error looking up user while receiving new device")
 		}
-		// Broadcast to the rest of the peers
-		go b.broadcast(&dev)
 	}
+
+	// Make sure this device is properly introduced by checking if adding the device to the user would result in an
+	// invalid device group
+	if !b.isValidAddition(targetUser, newDevice) {
+		log.WithFields(log.Fields{
+			"user":    targetUser.ID,
+			"device":  newDevice.ID,
+			"address": newDevice.Address,
+			"peer":    peer,
+		}).Warn("rejecting received device because it would result in an invalid device group")
+		return
+	}
+
+	// Save it
+	newDevice.DeliveredTo = peer
+	err = b.database.Create(&newDevice).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error saving new device")
+	}
+	// Broadcast to the rest of the peers
+	go b.broadcast(&newDevice)
 
 	// If we didn't know about the peer that sent us this device, then the new device we saved
 	// is the peer
 	if !peerExists {
-		srcDevice = dev
+		srcDevice = newDevice
 	}
 
 	// ACK it
 	go b.broadcast(&ack{
 		destination: srcDevice.ID,
-		Devices:     dev.ID.String(),
+		Devices:     newDevice.ID.String(),
 	})
 }
 
