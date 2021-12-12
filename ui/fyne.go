@@ -64,6 +64,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	// Initialize types that require it
 	//
+	log.Debug("initializing types") // TODO: remove after startup bug identified
 	fyneUI.groups = make(map[uuid.UUID]*group)
 	fyneUI.dms = make(map[uuid.UUID]*directMessage)
 	fyneUI.threadWithMessage = make(map[uuid.UUID]thread)
@@ -76,6 +77,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	// Define the app
 	//
+	log.Debug("defining the app") // TODO: remove after startup bug identified
 	fyneUI.app = app.NewWithID("chat.bounce")
 	fyneUI.app.SetIcon(newEmbeddedResource("assets/icon.png"))
 	fyneUI.app.Lifecycle().SetOnEnteredForeground(func() { fyneUI.focused = true })
@@ -84,6 +86,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	// Define the main window
 	//
+	log.Debug("defining main window") // TODO: remove after startup bug identified
 	fyneUI.mainWindow = fyneUI.app.NewWindow("Bounce")
 	fyneUI.mainWindow.SetMaster()
 	fyneUI.mainWindow.SetCloseIntercept(func() {
@@ -98,6 +101,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	// Build all the containers
 	//
+	log.Debug("building containers") // TODO: remove after startup bug identified
 	fyneUI.allUsersDMLinksScroll = container.NewVScroll(container.NewVBox())
 	fyneUI.buildMenu()
 	fyneUI.buildNewInstall()
@@ -117,13 +121,16 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	// Hookup callbacks
 	//
+	log.Debug("hooking up callbacks") // TODO: remove after startup bug identified
 	fyneUI.callbacks = callbacks
 
 	//
 	// Default to displaying the loading container
 	//
+	log.Debug("showing main container") // TODO: remove after startup bug identified
 	fyneUI.networkState = networkStateStarting
 	fyneUI.showMainContainer()
+	log.Debug("app built") // TODO: remove after startup bug identified
 }
 
 func (fyneUI *Fyne) Run() {

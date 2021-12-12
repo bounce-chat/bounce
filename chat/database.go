@@ -15,7 +15,6 @@ import (
 )
 
 func (b *bounce) openDatabase() {
-	log.Debug("opening database")
 	databaseFile := b.configDirectory + "/bounce.db"
 
 	gormLogger := logger.New(
@@ -37,6 +36,9 @@ func (b *bounce) openDatabase() {
 			"error": err.Error(),
 		}).Fatal("error opening database")
 	}
+	// To prevent database is locked errors
+	// TODO: is this the correct approach?
+	b.database.Exec("PRAGMA journal_mode=WAL;")
 
 	err = b.database.AutoMigrate(
 		&user{},
@@ -158,7 +160,6 @@ func (b *bounce) pruneSyncDeviceOffers() {
 }
 
 func (b *bounce) buildInitialState() InitialState {
-	log.Debug("building initial state")
 	var profile *User
 	var count int64
 	b.database.Model(&user{}).Where("profile = ?", true).Count(&count)

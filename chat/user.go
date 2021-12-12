@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -164,10 +165,18 @@ func (b *bounce) currentUser() (user, bool) {
 }
 
 func (b *bounce) currentUserID() uuid.UUID {
+	caller := "unknown"
+	_, file, lineNumber, ok := runtime.Caller(1)
+	if ok {
+		caller = fmt.Sprintf("called from %s#%d\n", file, lineNumber)
+	}
+
 	if b.userID == uuid.Nil {
 		currentUser, ok := b.currentUser()
 		if !ok {
-			log.Fatal("a current user must exist before currentUserID can be called")
+			log.WithFields(log.Fields{
+				"caller": caller,
+			}).Fatal("a current user must exist before currentUserID can be called")
 		}
 		b.userID = currentUser.ID
 	}

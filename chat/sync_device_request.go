@@ -106,6 +106,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 	err = b.database.Delete(&offer).Error
 	if err != nil {
 		log.WithFields(log.Fields{
+			"id":    offer.ID,
 			"error": err.Error(),
 		}).Fatal("database error deleting sync device offer after use")
 	}
