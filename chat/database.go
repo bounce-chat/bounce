@@ -15,7 +15,7 @@ import (
 )
 
 func (b *bounce) openDatabase() {
-	databaseFile := b.configDirectory + "/bounce.db"
+	databaseFile := b.configDirectory + "/bounce.db" //TODO: if needed: ?_busy_timeout=5000
 
 	gormLogger := logger.New(
 		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags), // TODO: https://gist.github.com/bnadland/2e4287b801a47dcfcc94
@@ -38,7 +38,14 @@ func (b *bounce) openDatabase() {
 	}
 	// To prevent database is locked errors
 	// TODO: is this the correct approach?
-	b.database.Exec("PRAGMA journal_mode=WAL;")
+	//b.database.Exec("PRAGMA journal_mode=WAL;")
+	sqliteDB, err := b.database.DB()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error getting underlying database interface from gorm while opening database")
+	}
+	sqliteDB.SetMaxOpenConns(1)
 
 	err = b.database.AutoMigrate(
 		&user{},

@@ -165,17 +165,31 @@ func (b *bounce) currentUser() (user, bool) {
 }
 
 func (b *bounce) currentUserID() uuid.UUID {
-	caller := "unknown"
+	// Get some of the stack trace
+	// TODO: this is just for debugging and can be removed later
+	caller1 := "unknown"
 	_, file, lineNumber, ok := runtime.Caller(1)
 	if ok {
-		caller = fmt.Sprintf("called from %s#%d\n", file, lineNumber)
+		caller1 = fmt.Sprintf("%s:%d", file, lineNumber)
+	}
+	caller2 := "unknown"
+	_, file, lineNumber, ok = runtime.Caller(2)
+	if ok {
+		caller2 = fmt.Sprintf("%s:%d", file, lineNumber)
+	}
+	caller3 := "unknown"
+	_, file, lineNumber, ok = runtime.Caller(3)
+	if ok {
+		caller3 = fmt.Sprintf("%s:%d", file, lineNumber)
 	}
 
 	if b.userID == uuid.Nil {
 		currentUser, ok := b.currentUser()
 		if !ok {
 			log.WithFields(log.Fields{
-				"caller": caller,
+				"caller1": caller1,
+				"caller2": caller2,
+				"caller3": caller3,
 			}).Fatal("a current user must exist before currentUserID can be called")
 		}
 		b.userID = currentUser.ID
