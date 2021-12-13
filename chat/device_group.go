@@ -69,6 +69,8 @@ func (b *bounce) hasValidDeviceGroup(u user) bool {
 		}
 	}
 
+	// TODO: ensure there's at least one device that doesn't have an introduction signature?
+
 	// An empty device group is valid
 	if len(dg.signatures) == 0 {
 		return true
@@ -78,7 +80,9 @@ func (b *bounce) hasValidDeviceGroup(u user) bool {
 	// sign at least one of the other devices
 	if _, present := signers[originalDevice]; !present {
 		log.WithFields(log.Fields{
-			"user": u.ID,
+			"original_device": originalDevice,
+			"device_count":    len(u.Devices),
+			"user":            u.ID,
 		}).Warn("a device group is invalid because the original device did not sign any of the other devices")
 		return false
 	}
