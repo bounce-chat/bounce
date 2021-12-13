@@ -81,4 +81,6 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte) {
 
 	// Inform the UI
 	b.userInterface.SyncDeviceRequestAccepted(sdra.Profile.ID, sdra.Profile.Name)
+
+	b.auditPeers()
 }
