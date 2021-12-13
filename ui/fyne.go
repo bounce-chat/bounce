@@ -103,19 +103,33 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	log.Debug("building containers") // TODO: remove after startup bug identified
 	fyneUI.allUsersDMLinksScroll = container.NewVScroll(container.NewVBox())
+	log.Debug("buildMenu") // TODO: remove after startup bug identified
 	fyneUI.buildMenu()
+	log.Debug("buildNewInstall") // TODO: remove after startup bug identified
 	fyneUI.buildNewInstall()
+	log.Debug("buildNewSyncDevice") // TODO: remove after startup bug identified
 	fyneUI.buildNewSyncDevice()
+	log.Debug("buildNewProfileCreator") // TODO: remove after startup bug identified
 	fyneUI.buildNewProfileCreator()
+	log.Debug("buildDatabaseLoading") // TODO: remove after startup bug identified
 	fyneUI.buildDatabaseLoading()
+	log.Debug("buildEditProfile") // TODO: remove after startup bug identified
 	fyneUI.buildEditProfile()
+	log.Debug("buildDisplaySyncString") // TODO: remove after startup bug identified
 	fyneUI.buildDisplaySyncString()
+	log.Debug("buildSettings") // TODO: remove after startup bug identified
 	fyneUI.buildSettings()
+	log.Debug("buildAbout") // TODO: remove after startup bug identified
 	fyneUI.buildAbout()
+	log.Debug("buildNewGroup") // TODO: remove after startup bug identified
 	fyneUI.buildNewGroup()
+	log.Debug("buildNewDM") // TODO: remove after startup bug identified
 	fyneUI.buildNewDM()
+	log.Debug("buildIntroduceContacts") // TODO: remove after startup bug identified
 	fyneUI.buildIntroduceContacts()
+	log.Debug("buildImportContact") // TODO: remove after startup bug identified
 	fyneUI.buildImportContact()
+	log.Debug("buildMainContainer") // TODO: remove after startup bug identified
 	fyneUI.buildMainContainer()
 
 	//
