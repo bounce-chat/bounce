@@ -10,15 +10,15 @@ import (
 type remoteDevice struct {
 	connectedSockets int
 	messages         chan broadcastable
-	shutdown         chan bool
-	closer           sync.WaitGroup
+	//shutdown         chan bool
+	closer sync.WaitGroup
 }
 
 func newRemoteDevice() *remoteDevice {
 	return &remoteDevice{
 		connectedSockets: 0,
 		messages:         make(chan broadcastable),
-		shutdown:         make(chan bool, 1),
+		//shutdown:         make(chan bool, 1),
 	}
 }
 
@@ -75,20 +75,32 @@ func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 	rd.closer.Add(1)
 	defer rd.closer.Done()
 
-	for {
-		select {
-		case <-rd.shutdown:
+	// TODO: shutdown signal channel not working
+	//for {
+	//	select {
+	//	case <-rd.shutdown:
+	//		rd.connectedSockets -= 1
+	//		conn.Close()
+	//		return
+	//	case br := <-rd.messages:
+	//		err := writeFrame(conn, br.getType(), br.getPayload())
+	//		if err != nil {
+	//			rd.connectedSockets -= 1
+	//			// TODO: if we now have 0 connections, let the UI know the user is offline
+	//			b.sendReferences(conn.RemoteAddr().String())
+	//			return
+	//		}
+	//	}
+	//}
+	for br := range rd.messages {
+		err := writeFrame(conn, br.getType(), br.getPayload())
+		if err != nil {
 			rd.connectedSockets -= 1
-			conn.Close()
+			// TODO: if we now have 0 connections, let the UI know the user is offline
+			b.sendReferences(conn.RemoteAddr().String())
 			return
-		case br := <-rd.messages:
-			err := writeFrame(conn, br.getType(), br.getPayload())
-			if err != nil {
-				rd.connectedSockets -= 1
-				// TODO: if we now have 0 connections, let the UI know the user is offline
-				b.sendReferences(conn.RemoteAddr().String())
-				return
-			}
 		}
 	}
+	rd.connectedSockets -= 1
+	conn.Close()
 }

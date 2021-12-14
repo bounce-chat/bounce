@@ -128,7 +128,8 @@ func (b *bounce) shutdown() {
 		// TODO: need to ensure no more messages will write to these channels to prevent panic
 		// TODO: alternatievly, have a separte channel to close the remote devices and always leave
 		// the message channels open
-		rd.shutdown <- true
+		//rd.shutdown <- true
+		close(rd.messages)
 	}
 	for _, rd := range b.devicePool.devices {
 		rd.closer.Wait()
