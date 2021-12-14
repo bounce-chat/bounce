@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -10,6 +11,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+var handleDevicesMutex sync.Mutex
 
 type device struct {
 	ID          uuid.UUID              `gorm:"type:uuid;primary_key;"`
@@ -85,6 +88,9 @@ func (b *bounce) markDeviceDeliveredTo(d *device, address string) {
 }
 
 func (b *bounce) handleDevice(peer string, payload []byte) {
+	handleDevicesMutex.Lock()
+	defer handleDevicesMutex.Unlock()
+
 	// Unmarshal the device
 	var newDevice device
 	err := msgpack.Unmarshal(payload, &newDevice)
