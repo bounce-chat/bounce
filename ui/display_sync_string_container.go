@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"fmt"
-
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -50,6 +48,6 @@ func (fyneUI *Fyne) buildDisplaySyncString() {
 	)
 }
 
-func (fyneUI *Fyne) NewSyncDeviceAdded(name string) {
-	dialog.ShowInformation("New sync device", fmt.Sprintf("%s has been added as a sync device", name), fyneUI.mainWindow)
+func (fyneUI *Fyne) NewSyncDeviceAdded() {
+	dialog.ShowInformation("New sync device", "A new device has been paired to your profile", fyneUI.mainWindow)
 }

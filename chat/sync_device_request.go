@@ -11,7 +11,6 @@ import (
 )
 
 type syncDeviceRequest struct {
-	Name      string
 	Signature []byte
 	Secret    string
 	payload   []byte
@@ -116,10 +115,8 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 
 	// Save this new device in our database
 	newDevice := device{
-		Name:        sdr.Name,
-		UserID:      b.currentUserID(),
-		Address:     peer,
-		DeliveredTo: peer,
+		UserID:  b.currentUserID(),
+		Address: peer,
 		Signature: &introductionSignature{
 			PreexistingDevice:            b.network.Address(),
 			SignatureOfNewDevice:         b.network.Sign([]byte(peer)),
@@ -144,12 +141,13 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 		SyncDevices: profile.Devices, // users don't marshal into protobuf with thier devices
 	} // TODO: should this be acked to ensure delivery?
 
-	// TODO: mark all the existing sync devices as delivered to this new device?
+	// TODO: do this after ack?
 
 	// Tell the UI that we've accepted the sync device
-	b.userInterface.NewSyncDeviceAdded(sdr.Name)
+	b.userInterface.NewSyncDeviceAdded()
 
 	// Tell everyone about the new device
+	b.markDeviceDeliveredTo(&newDevice, peer)
 	b.broadcast(&newDevice)
 
 	// Send a reference offer to the new device
