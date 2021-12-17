@@ -199,11 +199,18 @@ func (b *bounce) currentUserID() uuid.UUID {
 
 func (b *bounce) getUserDMRetention(id uuid.UUID) int64 {
 	var u user
-	err := b.database.Select("message_retention").Find(&u, "id = ?", id).Error
+	err := b.database.Select("message_retention").First(&u, "id = ?", id).Error
 	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error selecting message retention from user")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Warn("error selecting message retention for unknown user")
+			return 0
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting message retention from user")
+		}
 	}
 	return u.MessageRetention
 }

@@ -82,7 +82,7 @@ func (b *bounce) markUpdateLocalDMSettingsDeliveredTo(ulds *updateLocalDMSetting
 func (b *bounce) setDMNotificationEnabled(u uuid.UUID, enabled bool) {
 	// Find the user to update
 	var target user
-	err := b.database.Find(&target, "id = ?", u).Error
+	err := b.database.First(&target, "id = ?", u).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -140,7 +140,7 @@ func (b *bounce) setDMNotificationEnabled(u uuid.UUID, enabled bool) {
 
 func (b *bounce) getDMNotificationEnabled(id uuid.UUID) (bool, error) {
 	var u user
-	err := b.database.Select("notifications_enabled").Find(&u, "id = ?", id).Error
+	err := b.database.Select("notifications_enabled").First(&u, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{

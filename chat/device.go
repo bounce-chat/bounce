@@ -123,7 +123,7 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 
 	// Find the user this new device is for
 	var targetUser user
-	err = b.database.Preload(clause.Associations).Find(&targetUser, "id = ?", newDevice.UserID).Error
+	err = b.database.Preload(clause.Associations).First(&targetUser, "id = ?", newDevice.UserID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
