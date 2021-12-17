@@ -77,8 +77,6 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte) {
 		}
 	}
 
-	// TODO; ack this so that the old device knows we get it?
-
 	// Inform the UI
 	b.userInterface.SyncDeviceRequestAccepted(sdra.Profile.ID, sdra.Profile.Name)
 

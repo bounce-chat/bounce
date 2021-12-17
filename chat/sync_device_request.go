@@ -44,6 +44,10 @@ func (sdr *syncDeviceRequest) isAlreadyDeliveredTo(address string) bool {
 }
 
 func (b *bounce) requestToSync(data string) error {
+	if _, exists := b.currentUser(); exists {
+		return errors.New("profile already exists")
+	}
+
 	parts := strings.Split(data, ":")
 	if len(parts) != 2 {
 		return errors.New("invalid sync data")
@@ -88,10 +92,12 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 
 	// Make sure we've got an offer out with this secret
 	var offer syncDeviceOffer
-	err = b.database.Find(&offer, "secret = ?", sdr.Secret).Error
+	err = b.database.First(&offer, "secret = ?", sdr.Secret).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// This secret doesn't match an offer we've made, reject the request
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Warn("peer sent a sync device request with an invalid secret")
 			rd.messages <- &syncDeviceRequestRejected{}
 			return
 		} else {
@@ -111,44 +117,71 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 	}
 
 	// Validate the signature is the peer signing this device
-	// TODO
-
-	// Save this new device in our database
-	newDevice := device{
-		UserID:  b.currentUserID(),
-		Address: peer,
-		Signature: &introductionSignature{
-			PreexistingDevice:            b.network.Address(),
-			SignatureOfNewDevice:         b.network.Sign([]byte(peer)),
-			SignatureOfPreexistingDevice: sdr.Signature,
-		},
-	}
-	err = b.database.Create(&newDevice).Error
-	if err != nil {
+	if !b.network.VerifySignature(peer, []byte(b.network.Address()), sdr.Signature) {
 		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error saving new sync device")
+			"peer": peer,
+		}).Warn("peer sent a sync device request with a valid secret but invalid signature")
+		rd.messages <- &syncDeviceRequestRejected{}
+		return
 	}
 
-	// Accept this device as a new sync device by responding with our updated profile information
-	// that includes this new device
+	// Look up our user
 	profile, exists := b.currentUser()
 	if !exists {
-		log.Fatal("cannot accept new sync device when no profile exists")
+		log.Error("cannot accept new sync device when no profile exists")
+		return
 	}
-	rd.messages <- &syncDeviceRequestAccepted{
-		Profile:     profile,
-		SyncDevices: profile.Devices, // users don't marshal into protobuf with thier devices
-	} // TODO: should this be acked to ensure delivery?
 
-	// TODO: do this after ack?
+	// Make sure we don't already know this device belongs to another user
+	dev, exists := b.getDeviceFromAddress(peer)
+	if exists && dev.UserID != profile.ID {
+		log.WithFields(log.Fields{
+			"peer": peer,
+			"user": dev.UserID,
+		}).Warn("a peer that is known to belong to another user sent a valid sync device request, ignoring")
+		return
+	}
 
-	// Tell the UI that we've accepted the sync device
-	b.userInterface.NewSyncDeviceAdded()
+	if exists {
+		// This is already a known sync device.  The device must be requesting to sync again because something went
+		// wrong on their end during the process.  That's fine, everything about this device has been validated in
+		// the past, so we just send our information over again.
+		rd.messages <- &syncDeviceRequestAccepted{
+			Profile:     profile,
+			SyncDevices: profile.Devices,
+		}
+	} else {
+		// Save this new device in our database
+		newDevice := device{
+			UserID:  b.currentUserID(),
+			Address: peer,
+			Signature: &introductionSignature{
+				PreexistingDevice:            b.network.Address(),
+				SignatureOfNewDevice:         b.network.Sign([]byte(peer)),
+				SignatureOfPreexistingDevice: sdr.Signature,
+			},
+		}
+		err = b.database.Create(&newDevice).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error saving new sync device")
+		}
 
-	// Tell everyone about the new device
-	b.markDeviceDeliveredTo(&newDevice, peer)
-	b.broadcast(&newDevice)
+		// Accept this device as a new sync device by responding with our updated profile information
+		// that includes this new device
+		rd.messages <- &syncDeviceRequestAccepted{
+			Profile:     profile,
+			SyncDevices: profile.Devices,
+		}
+
+		// Tell the UI that we've accepted the sync device
+		b.userInterface.NewSyncDeviceAdded()
+
+		// Tell everyone about the new device
+		b.markDeviceDeliveredTo(&newDevice, peer)
+		b.broadcast(&newDevice)
+	}
 
 	// Send a reference offer to the new device
 	b.sendReferences(peer)
