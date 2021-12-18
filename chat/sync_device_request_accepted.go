@@ -71,7 +71,7 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte) {
 
 		// Save our current sync devices
 		for _, dev := range sdra.SyncDevices {
-			err = b.database.Create(&dev).Error
+			err = tx.Create(&dev).Error
 			if err != nil {
 				return err
 			}
