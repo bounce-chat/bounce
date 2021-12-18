@@ -62,6 +62,7 @@ func frameAllowedWithoutProfile(frameType uint16) bool {
 
 func frameAllowedFromUnknownPeer(frameType uint16) bool {
 	allowedFrames := []uint16{
+		typeDevice,
 		typeReferenceOffer,
 		typeCatchUp,
 		typeAck,
@@ -81,9 +82,7 @@ func frameAllowedFromUnknownPeer(frameType uint16) bool {
 func (b *bounce) readFrames(conn net.Conn) { // TODO: move to protocol or something else?
 	handlers := b.getHandlers()
 	peer := conn.RemoteAddr().String()
-	// Get the peer address
-	// reject it if it isn't a known device?  Maybe don't want to if introductions / group membership is out of order
-	// If it isn't know perhaps we put it in some limited handshake flow for new devices
+
 	for {
 		frameType, data, err := readFrame(conn) // TODO: just read the header first, make sure we want to read the rest in the context of the device (untrusted devices can't send large messages, etc)
 		if err != nil {
@@ -114,7 +113,6 @@ func (b *bounce) readFrames(conn net.Conn) { // TODO: move to protocol or someth
 			}
 		}
 
-		// TODO: some type of filtering on which types of peers can send which types of messages
 		handler, ok := handlers[frameType]
 		if !ok {
 			log.WithFields(log.Fields{
