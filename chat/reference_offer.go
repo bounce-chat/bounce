@@ -97,10 +97,10 @@ func (ro *referenceOffer) hasContent() bool {
 }
 
 func (b *bounce) sendReferences(peerAddress string) {
-	//if _, exists := b.currentUser(); !exists {
-	//	// Our profile hasn't been setup yet, we have nothing to offer
-	//	return
-	//}
+	if _, exists := b.currentUser(); !exists {
+		// Our profile hasn't been setup yet, we have nothing to offer
+		return
+	}
 
 	_, exists := b.getDeviceFromAddress(peerAddress)
 	if !exists {

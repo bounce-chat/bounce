@@ -150,6 +150,9 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 			Profile:     profile,
 			SyncDevices: profile.Devices,
 		}
+
+		// TODO: anything that we think we've delivered to this device we can no longer be sure was delivered, wipe
+		// all delivery records before the reference flow
 	} else {
 		// Save this new device in our database
 		newDevice := device{
