@@ -68,6 +68,8 @@ func frameAllowedFromUnknownPeer(frameType uint16) bool {
 		typeAck,
 		typeKeepAlive,
 		typeSyncDeviceRequest,
+		typeSyncDeviceRequestRejected,
+		typeSyncDeviceRequestAccepted,
 	}
 
 	for _, allowed := range allowedFrames {
