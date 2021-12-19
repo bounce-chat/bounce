@@ -46,9 +46,9 @@ func (b *bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 
 func frameAllowedWithoutProfile(frameType uint16) bool {
 	allowedFrames := []uint16{
-		typeKeepAlive,
-		typeSyncDeviceRequestRejected,
 		typeSyncDeviceRequestAccepted,
+		typeSyncDeviceRequestRejected,
+		typeKeepAlive,
 	}
 
 	for _, allowed := range allowedFrames {
@@ -63,13 +63,13 @@ func frameAllowedWithoutProfile(frameType uint16) bool {
 func frameAllowedFromUnknownPeer(frameType uint16) bool {
 	allowedFrames := []uint16{
 		typeDevice,
-		typeReferenceOffer,
-		typeCatchUp,
-		typeAck,
-		typeKeepAlive,
+		//typeReferenceOffer, // TODO: needed?
+		//typeCatchUp,
+		//typeAck, // TODO: needed?
 		typeSyncDeviceRequest,
 		typeSyncDeviceRequestRejected,
 		typeSyncDeviceRequestAccepted,
+		typeKeepAlive,
 	}
 
 	for _, allowed := range allowedFrames {
