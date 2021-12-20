@@ -63,9 +63,6 @@ func frameAllowedWithoutProfile(frameType uint16) bool {
 func frameAllowedFromUnknownPeer(frameType uint16) bool {
 	allowedFrames := []uint16{
 		typeDevice,
-		//typeReferenceOffer, // TODO: needed?
-		//typeCatchUp,
-		//typeAck, // TODO: needed?
 		typeSyncDeviceRequest,
 		typeSyncDeviceRequestRejected,
 		typeSyncDeviceRequestAccepted,

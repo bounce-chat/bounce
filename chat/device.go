@@ -19,7 +19,7 @@ type device struct {
 	Name        string                 `json:"-"` // TODO: exclude from tell non-sync devices
 	UserID      uuid.UUID              `json:"-"`
 	Address     string                 `gorm:"uniqueIndex"`
-	Signature   *introductionSignature `json:",omitempty"`
+	Signature   *introductionSignature `json:",omitempty" gorm:"constraint:OnDelete:CASCADE;"`
 	DeliveredTo string                 `json:"-" msgpack:"-"`
 	payload     []byte
 }
