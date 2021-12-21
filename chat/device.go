@@ -16,10 +16,10 @@ var handleDevicesMutex sync.Mutex
 
 type device struct {
 	ID          uuid.UUID              `gorm:"type:uuid;primary_key;"`
-	Name        string                 `json:"-"` // TODO: exclude from tell non-sync devices
+	Name        string                 `json:"-"` // TODO: exclude from non-sync devices
 	UserID      uuid.UUID              `json:"-"`
 	Address     string                 `gorm:"uniqueIndex"`
-	Signature   *introductionSignature `json:",omitempty" gorm:"constraint:OnDelete:CASCADE;"`
+	Signature   *introductionSignature `json:",omitempty" gorm:"constraint:OnDelete:CASCADE;"` // https://github.com/go-gorm/gorm/issues/4941
 	DeliveredTo string                 `json:"-" msgpack:"-"`
 	payload     []byte
 }
