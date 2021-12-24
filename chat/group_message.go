@@ -21,10 +21,11 @@ func (groupMessage *GroupMessage) BeforeCreate(tx *gorm.DB) error {
 //
 
 type signedGroupMessage struct { // TODO: can the behavior of this be "merged" into the regular struct?  such that calling the broadcastable functions on that struct transparently does the signed ones?
-	Message     []byte
-	Signature   []byte
-	payload     []byte
-	destination uuid.UUID
+	Message      []byte
+	Signature    []byte
+	payload      []byte
+	payloadMutex sync.Mutex
+	destination  uuid.UUID
 }
 
 func (b *bounce) newSignedGroupMessage(message GroupMessage) *signedGroupMessage {

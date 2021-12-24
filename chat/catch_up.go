@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +18,7 @@ type catchUp struct {
 	Users                 [][]byte
 	destination           uuid.UUID
 	payload               []byte
+	payloadMutex          sync.Mutex
 }
 
 func (cu *catchUp) getScope(_ uuid.UUID) int {
@@ -33,10 +35,15 @@ func (cu *catchUp) getType() uint16 {
 }
 
 func (cu *catchUp) getPayload() []byte {
+	cu.payloadMutex.Lock()
+	defer cu.payloadMutex.Unlock()
+
 	if len(cu.payload) == 0 {
 		bytes, err := msgpack.Marshal(cu)
 		if err != nil {
-			// TODO: how to handle?
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("cannot msgpack marshal catch up")
 		}
 		cu.payload = bytes
 	}

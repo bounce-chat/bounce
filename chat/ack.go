@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,6 +25,7 @@ type ack struct {
 	Users                 string
 	destination           uuid.UUID
 	payload               []byte
+	payloadMutex          sync.Mutex
 }
 
 func (a *ack) getScope(_ uuid.UUID) int {
@@ -39,10 +41,15 @@ func (a *ack) getType() uint16 {
 }
 
 func (a *ack) getPayload() []byte {
+	a.payloadMutex.Lock()
+	defer a.payloadMutex.Unlock()
+
 	if len(a.payload) == 0 {
 		bytes, err := msgpack.Marshal(a)
 		if err != nil {
-			// TODO: how to handle?
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("cannot msgpack marshal ack")
 		}
 		a.payload = bytes
 	}

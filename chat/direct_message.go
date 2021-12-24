@@ -50,10 +50,15 @@ func (dm *DirectMessage) getType() uint16 {
 }
 
 func (dm *DirectMessage) getPayload() []byte {
+	dm.payloadMutex.Lock()
+	defer dm.payloadMutex.Unlock()
+
 	if len(dm.payload) == 0 {
 		bytes, err := msgpack.Marshal(dm)
 		if err != nil {
-			// TODO: how to handle?
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("cannot msgpack marshal direct message")
 		}
 		dm.payload = bytes
 	}

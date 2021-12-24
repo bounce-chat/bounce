@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -22,6 +23,7 @@ type referenceRequest struct {
 	Users                 string
 	destination           uuid.UUID
 	payload               []byte
+	payloadMutex          sync.Mutex
 }
 
 func (rr *referenceRequest) getScope(_ uuid.UUID) int {
@@ -37,10 +39,15 @@ func (rr *referenceRequest) getType() uint16 {
 }
 
 func (rr *referenceRequest) getPayload() []byte {
+	rr.payloadMutex.Lock()
+	defer rr.payloadMutex.Unlock()
+
 	if len(rr.payload) == 0 {
 		bytes, err := msgpack.Marshal(rr)
 		if err != nil {
-			// TODO: how to handle?
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("cannot msgpack marshal reference request")
 		}
 		rr.payload = bytes
 	}

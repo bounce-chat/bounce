@@ -15,13 +15,14 @@ import (
 var handleDevicesMutex sync.Mutex
 
 type device struct {
-	ID          uuid.UUID              `gorm:"type:uuid;primary_key;"`
-	Name        string                 `json:"-"` // TODO: exclude from non-sync devices
-	UserID      uuid.UUID              `json:"-"`
-	Address     string                 `gorm:"uniqueIndex"`
-	Signature   *introductionSignature `json:",omitempty" gorm:"constraint:OnDelete:CASCADE;"` // https://github.com/go-gorm/gorm/issues/4941
-	DeliveredTo string                 `json:"-" msgpack:"-"`
-	payload     []byte
+	ID           uuid.UUID              `gorm:"type:uuid;primary_key;"`
+	Name         string                 `json:"-"` // TODO: exclude from non-sync devices
+	UserID       uuid.UUID              `json:"-"`
+	Address      string                 `gorm:"uniqueIndex"`
+	Signature    *introductionSignature `json:",omitempty" gorm:"constraint:OnDelete:CASCADE;"` // https://github.com/go-gorm/gorm/issues/4941
+	DeliveredTo  string                 `json:"-" msgpack:"-"`
+	payload      []byte
+	payloadMutex sync.Mutex
 }
 
 func (d *device) BeforeCreate(tx *gorm.DB) error {
@@ -49,10 +50,15 @@ func (d *device) getType() uint16 {
 }
 
 func (d *device) getPayload() []byte {
+	d.payloadMutex.Lock()
+	defer d.payloadMutex.Unlock()
+
 	if len(d.payload) == 0 {
 		bytes, err := msgpack.Marshal(d)
 		if err != nil {
-			// TODO: how to handle?
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("cannot msgpack marshal device")
 		}
 		d.payload = bytes
 	}

@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,6 +26,7 @@ type referenceOffer struct {
 	Users                 string    // only for sync devices
 	Destination           uuid.UUID `msgpack:"-"`
 	payload               []byte
+	payloadMutex          sync.Mutex
 }
 
 func (ro *referenceOffer) BeforeCreate(tx *gorm.DB) error {
@@ -48,10 +50,15 @@ func (ro *referenceOffer) getType() uint16 {
 }
 
 func (ro *referenceOffer) getPayload() []byte {
+	ro.payloadMutex.Lock()
+	defer ro.payloadMutex.Unlock()
+
 	if len(ro.payload) == 0 {
 		bytes, err := msgpack.Marshal(ro)
 		if err != nil {
-			// TODO: how to handle?
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("cannot msgpack marshal reference offer")
 		}
 		ro.payload = bytes
 	}

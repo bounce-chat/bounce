@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +21,7 @@ type updateLocalDMSettings struct {
 	NotificationsEnabled    bool   `gorm:"-"`
 	NotificationsMutedUntil uint64 `gorm:"-"`
 	payload                 []byte
+	payloadMutex            sync.Mutex
 }
 
 func (ulds *updateLocalDMSettings) BeforeCreate(tx *gorm.DB) error {
@@ -42,10 +44,15 @@ func (ulds *updateLocalDMSettings) getType() uint16 {
 }
 
 func (ulds *updateLocalDMSettings) getPayload() []byte {
+	ulds.payloadMutex.Lock()
+	defer ulds.payloadMutex.Unlock()
+
 	if len(ulds.payload) == 0 {
 		bytes, err := msgpack.Marshal(ulds)
 		if err != nil {
-			// TODO: how to handle?
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("cannot msgpack marshal update local dm settings")
 		}
 		ulds.payload = bytes
 	}

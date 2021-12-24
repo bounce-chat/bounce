@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,6 +29,7 @@ type user struct {
 	Devices                   []device `msgpack:"-"`
 	DeliveredTo               string   `json:"-" msgpack:"-"`
 	payload                   []byte
+	payloadMutex              sync.Mutex
 }
 
 func (u *user) BeforeCreate(tx *gorm.DB) error {
@@ -66,10 +68,15 @@ func (u *user) getType() uint16 {
 }
 
 func (u *user) getPayload() []byte {
+	u.payloadMutex.Lock()
+	defer u.payloadMutex.Unlock()
+
 	if len(u.payload) == 0 {
 		bytes, err := msgpack.Marshal(u)
 		if err != nil {
-			// TODO: how to handle?
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("cannot msgpack marshal user")
 		}
 		u.payload = bytes
 	}

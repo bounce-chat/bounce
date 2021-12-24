@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"sync"
+
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
@@ -8,9 +10,10 @@ import (
 )
 
 type syncDeviceRequestAccepted struct {
-	Profile     user
-	SyncDevices []device
-	payload     []byte
+	Profile      user
+	SyncDevices  []device
+	payload      []byte
+	payloadMutex sync.Mutex
 }
 
 func (sdra *syncDeviceRequestAccepted) getScope(_ uuid.UUID) int {
@@ -26,10 +29,15 @@ func (sdra *syncDeviceRequestAccepted) getType() uint16 {
 }
 
 func (sdra *syncDeviceRequestAccepted) getPayload() []byte {
+	sdra.payloadMutex.Lock()
+	defer sdra.payloadMutex.Unlock()
+
 	if len(sdra.payload) == 0 {
 		bytes, err := msgpack.Marshal(sdra)
 		if err != nil {
-			// TODO: how to handle?
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("cannot msgpack marshal sync device request accepted")
 		}
 		sdra.payload = bytes
 	}

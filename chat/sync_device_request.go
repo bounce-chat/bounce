@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -11,9 +12,10 @@ import (
 )
 
 type syncDeviceRequest struct {
-	Signature []byte
-	Secret    string
-	payload   []byte
+	Signature    []byte
+	Secret       string
+	payload      []byte
+	payloadMutex sync.Mutex
 }
 
 func (sdr *syncDeviceRequest) getScope(_ uuid.UUID) int {
@@ -29,10 +31,15 @@ func (sdr *syncDeviceRequest) getType() uint16 {
 }
 
 func (sdr *syncDeviceRequest) getPayload() []byte {
+	sdr.payloadMutex.Lock()
+	defer sdr.payloadMutex.Unlock()
+
 	if len(sdr.payload) == 0 {
 		bytes, err := msgpack.Marshal(sdr)
 		if err != nil {
-			// TODO: how to handle?
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("cannot msgpack marshal sync device request")
 		}
 		sdr.payload = bytes
 	}
@@ -175,7 +182,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 		// that includes this new device
 		rd.messages <- &syncDeviceRequestAccepted{
 			Profile:     profile,
-			SyncDevices: profile.Devices,
+			SyncDevices: append(profile.Devices, newDevice),
 		}
 
 		// Tell the UI that we've accepted the sync device
