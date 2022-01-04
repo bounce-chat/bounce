@@ -37,6 +37,10 @@ func (ro *referenceOffer) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+func (ro *referenceOffer) getID() uuid.UUID {
+	return ro.ID
+}
+
 func (ro *referenceOffer) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
@@ -65,7 +69,7 @@ func (ro *referenceOffer) getPayload() []byte {
 	return ro.payload
 }
 
-func (ro *referenceOffer) isAlreadyDeliveredTo(address string) bool {
+func (ro *referenceOffer) deliveryTrackingSupported() bool {
 	return false
 }
 
@@ -123,23 +127,16 @@ func (b *bounce) sendReferences(peerAddress string) {
 		return
 	}
 
-	if !myDevice.isAlreadyDeliveredTo(peerAddress) {
+	if !b.isDeliveredTo(&myDevice, peerAddress) {
 		for i := 0; i < 5; i++ {
 			rd := b.getRemoteDevice(peerAddress)
 			rd.messages <- &myDevice
 			time.Sleep(3 * time.Second)
-			// Refresh the model.  TODO: better to just select the field in question
-			err := b.database.Find(&myDevice, "id = ?", myDevice.ID).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("errror refreshing my device")
-			}
-			if myDevice.isAlreadyDeliveredTo(peerAddress) {
+			if b.isDeliveredTo(&myDevice, peerAddress) {
 				break
 			}
 		}
-		if !myDevice.isAlreadyDeliveredTo(peerAddress) {
+		if !b.isDeliveredTo(&myDevice, peerAddress) {
 			log.WithFields(log.Fields{
 				"peer": peerAddress,
 			}).Warn("was not able to send device to peer that might not have it before reference offer")
@@ -378,8 +375,8 @@ func (b *bounce) getDirectMessagesToRequest(dev device, ro referenceOffer) strin
 					}).Error("error looking up known DM in reference offer")
 					continue
 				}
-				if !dm.isAlreadyDeliveredTo(dev.Address) {
-					b.markDirectMessageDeliveredTo(&dm, dev.Address)
+				if !b.isDeliveredTo(&dm, dev.Address) {
+					b.markDeliveredTo(&dm, dev.Address)
 				}
 			}
 		}

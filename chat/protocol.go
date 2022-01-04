@@ -31,11 +31,12 @@ var typeDevice = uint16(11)
 var typeUser = uint16(12)
 
 type broadcastable interface {
+	getID() uuid.UUID
 	getScope(myID uuid.UUID) int
 	getDestination(myID uuid.UUID) uuid.UUID
 	getType() uint16
 	getPayload() []byte
-	isAlreadyDeliveredTo(address string) bool
+	deliveryTrackingSupported() bool
 }
 
 func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
@@ -102,7 +103,7 @@ func (b *bounce) getSyncScope(br broadcastable) []*remoteDevice {
 		if dev.Address == b.network.Address() {
 			continue
 		}
-		if br.isAlreadyDeliveredTo(dev.Address) {
+		if b.isDeliveredTo(br, dev.Address) {
 			continue
 		}
 		rd := b.getRemoteDevice(dev.Address)
@@ -141,7 +142,7 @@ func (b *bounce) getUserScope(br broadcastable) []*remoteDevice {
 		}
 	}
 	for _, dev := range destinationUser.Devices {
-		if br.isAlreadyDeliveredTo(dev.Address) {
+		if b.isDeliveredTo(br, dev.Address) {
 			continue
 		}
 		rd := b.getRemoteDevice(dev.Address)
@@ -176,7 +177,7 @@ func (b *bounce) getDeviceScope(br broadcastable) []*remoteDevice {
 			}).Fatal("error loading device from database")
 		}
 	}
-	if br.isAlreadyDeliveredTo(target.Address) {
+	if b.isDeliveredTo(br, target.Address) {
 		return broadcastTargets
 	}
 	rd := b.getRemoteDevice(target.Address)
@@ -202,7 +203,7 @@ func (b *bounce) getGlobalScope(br broadcastable) []*remoteDevice {
 			// Skip connections in the device pool if we don't have a device saved for them
 			continue
 		}
-		if br.isAlreadyDeliveredTo(address) {
+		if b.isDeliveredTo(br, address) {
 			continue
 		}
 		if dev.connectedSockets > 0 {

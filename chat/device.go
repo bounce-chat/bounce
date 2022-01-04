@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -19,8 +18,7 @@ type device struct {
 	Name         string                 `json:"-"` // TODO: exclude from non-sync devices
 	UserID       uuid.UUID              `json:"-"`
 	Address      string                 `gorm:"uniqueIndex"`
-	Signature    *introductionSignature `json:",omitempty" gorm:"constraint:OnDelete:CASCADE;"` // https://github.com/go-gorm/gorm/issues/4941
-	DeliveredTo  string                 `json:"-" msgpack:"-"`
+	Signature    *introductionSignature `json:",omitempty" gorm:"constraint:OnDelete:CASCADE;"`
 	payload      []byte
 	payloadMutex sync.Mutex
 }
@@ -30,6 +28,14 @@ func (d *device) BeforeCreate(tx *gorm.DB) error {
 		d.ID = uuid.New()
 	}
 	return nil
+}
+
+func (d *device) AfterDelete(tx *gorm.DB) error {
+	return tx.Where("frame_id = ? AND frame_type = ?", d.ID, typeDevice).Delete(&deliveryRecord{}).Error
+}
+
+func (d *device) getID() uuid.UUID {
+	return d.ID
 }
 
 func (d *device) getScope(myID uuid.UUID) int {
@@ -65,32 +71,8 @@ func (d *device) getPayload() []byte {
 	return d.payload
 }
 
-func (d *device) isAlreadyDeliveredTo(address string) bool {
-	// TODO: reload from the database?
-	recipients := strings.Split(d.DeliveredTo, ",")
-	for _, recipient := range recipients {
-		if address == recipient {
-			return true
-		}
-	}
-	return false
-}
-
-func (b *bounce) markDeviceDeliveredTo(d *device, address string) {
-	if !d.isAlreadyDeliveredTo(address) {
-		currentDeliveredTo := []string{}
-		if len(d.DeliveredTo) != 0 {
-			currentDeliveredTo = strings.Split(d.DeliveredTo, ",")
-		}
-		updatedDeliveredTo := strings.Join(append(currentDeliveredTo, address), ",")
-		err := b.database.Model(d).Update("delivered_to", updatedDeliveredTo).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":   err.Error(),
-				"message": d.ID,
-			}).Fatal("error updating device delivery status")
-		}
-	}
+func (d *device) deliveryTrackingSupported() bool {
+	return true
 }
 
 func (b *bounce) handleDevice(peer string, payload []byte) {
@@ -159,13 +141,14 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 	}
 
 	// Save it
-	newDevice.DeliveredTo = peer
 	err = b.database.Create(&newDevice).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error saving new device")
 	}
+	// Save a delivery record for the peer that sent us this device
+	b.markDeliveredTo(&newDevice, peer)
 	// Broadcast to the rest of the peers
 	go b.broadcast(&newDevice)
 

@@ -18,6 +18,10 @@ type syncDeviceRequest struct {
 	payloadMutex sync.Mutex
 }
 
+func (sdr *syncDeviceRequest) getID() uuid.UUID {
+	return uuid.Nil
+}
+
 func (sdr *syncDeviceRequest) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
@@ -46,7 +50,7 @@ func (sdr *syncDeviceRequest) getPayload() []byte {
 	return sdr.payload
 }
 
-func (sdr *syncDeviceRequest) isAlreadyDeliveredTo(address string) bool {
+func (sdr *syncDeviceRequest) deliveryTrackingSupported() bool {
 	return false
 }
 
@@ -189,7 +193,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 		b.userInterface.NewSyncDeviceAdded()
 
 		// Tell everyone about the new device
-		b.markDeviceDeliveredTo(&newDevice, peer)
+		b.markDeliveredTo(&newDevice, peer)
 		b.broadcast(&newDevice)
 	}
 

@@ -8,6 +8,10 @@ type keepAlive struct {
 	destination uuid.UUID
 }
 
+func (ka keepAlive) getID() uuid.UUID {
+	return uuid.Nil
+}
+
 func (ka keepAlive) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
@@ -24,7 +28,7 @@ func (ka keepAlive) getPayload() []byte {
 	return []byte("keep-alive")
 }
 
-func (ka keepAlive) isAlreadyDeliveredTo(address string) bool {
+func (ka keepAlive) deliveryTrackingSupported() bool {
 	return false
 }
 

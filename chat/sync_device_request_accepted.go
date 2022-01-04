@@ -16,6 +16,10 @@ type syncDeviceRequestAccepted struct {
 	payloadMutex sync.Mutex
 }
 
+func (sdra *syncDeviceRequestAccepted) getID() uuid.UUID {
+	return uuid.Nil
+}
+
 func (sdra *syncDeviceRequestAccepted) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
@@ -44,7 +48,7 @@ func (sdra *syncDeviceRequestAccepted) getPayload() []byte {
 	return sdra.payload
 }
 
-func (sdra *syncDeviceRequestAccepted) isAlreadyDeliveredTo(address string) bool {
+func (sdra *syncDeviceRequestAccepted) deliveryTrackingSupported() bool {
 	return false
 }
 

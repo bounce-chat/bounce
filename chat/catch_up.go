@@ -21,6 +21,10 @@ type catchUp struct {
 	payloadMutex          sync.Mutex
 }
 
+func (cu *catchUp) getID() uuid.UUID {
+	return cu.ID
+}
+
 func (cu *catchUp) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
@@ -50,7 +54,7 @@ func (cu *catchUp) getPayload() []byte {
 	return cu.payload
 }
 
-func (cu *catchUp) isAlreadyDeliveredTo(address string) bool {
+func (cu *catchUp) deliveryTrackingSupported() bool {
 	return false
 }
 

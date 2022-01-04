@@ -28,6 +28,10 @@ type ack struct {
 	payloadMutex          sync.Mutex
 }
 
+func (a *ack) getID() uuid.UUID {
+	return a.ID
+}
+
 func (a *ack) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
@@ -56,7 +60,7 @@ func (a *ack) getPayload() []byte {
 	return a.payload
 }
 
-func (a *ack) isAlreadyDeliveredTo(address string) bool {
+func (a *ack) deliveryTrackingSupported() bool {
 	return false
 }
 
@@ -100,7 +104,7 @@ func (b *bounce) handleAckDirectMessages(peer string, a ack) {
 				continue
 			}
 			// TODO: confirm the device should be able to see this DM
-			b.markDirectMessageDeliveredTo(&dm, peer)
+			b.markDeliveredTo(&dm, peer)
 
 			// Now that we know the message has been delivered, if the message expires we start the clock on retention
 			// by setting the absolute time the message should be delete at as now + the retention time
@@ -165,7 +169,7 @@ func (b *bounce) handleAckUpdateLocalDMSettings(peer string, a ack) {
 					}).Fatal("database error querying for update local DM settings")
 				}
 			} else {
-				b.markUpdateLocalDMSettingsDeliveredTo(&ulds, peer)
+				b.markDeliveredTo(&ulds, peer)
 			}
 		}
 	}
@@ -198,7 +202,7 @@ func (b *bounce) handleAckDevices(peer string, a ack) {
 					}).Fatal("database error querying for device")
 				}
 			} else {
-				b.markDeviceDeliveredTo(&dev, peer)
+				b.markDeliveredTo(&dev, peer)
 			}
 		}
 	}
@@ -231,7 +235,7 @@ func (b *bounce) handleAckUsers(peer string, a ack) {
 					}).Fatal("database error querying for user")
 				}
 			} else {
-				b.markUserDeliveredTo(&u, peer)
+				b.markDeliveredTo(&u, peer)
 			}
 		}
 	}

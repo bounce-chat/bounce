@@ -6,6 +6,10 @@ import (
 
 type syncDeviceRequestRejected struct{}
 
+func (sdrr *syncDeviceRequestRejected) getID() uuid.UUID {
+	return uuid.Nil
+}
+
 func (sdrr *syncDeviceRequestRejected) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
@@ -22,7 +26,7 @@ func (sdrr *syncDeviceRequestRejected) getPayload() []byte {
 	return []byte{}
 }
 
-func (sdrr *syncDeviceRequestRejected) isAlreadyDeliveredTo(address string) bool {
+func (sdrr *syncDeviceRequestRejected) deliveryTrackingSupported() bool {
 	return false
 }
 

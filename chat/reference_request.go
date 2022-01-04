@@ -26,6 +26,10 @@ type referenceRequest struct {
 	payloadMutex          sync.Mutex
 }
 
+func (rr *referenceRequest) getID() uuid.UUID {
+	return rr.ID
+}
+
 func (rr *referenceRequest) getScope(_ uuid.UUID) int {
 	return scopeDevice
 }
@@ -54,7 +58,7 @@ func (rr *referenceRequest) getPayload() []byte {
 	return rr.payload
 }
 
-func (rr *referenceRequest) isAlreadyDeliveredTo(address string) bool {
+func (rr *referenceRequest) deliveryTrackingSupported() bool {
 	return false
 }
 
@@ -132,7 +136,7 @@ func (b *bounce) getRequestedDirectMessagePayloads(peer device, rr referenceRequ
 				}).Fatal("database error querying for direct message")
 			}
 		} else {
-			b.markDirectMessageDeliveredTo(&dm, peer.Address)
+			b.markDeliveredTo(&dm, peer.Address)
 		}
 	}
 
@@ -191,7 +195,7 @@ func (b *bounce) getRequestedUpdateLocalDMSettingsPayloads(peer device, rr refer
 				}).Fatal("database error querying for update local DM settings")
 			}
 		} else {
-			b.markUpdateLocalDMSettingsDeliveredTo(&ulds, peer.Address)
+			b.markDeliveredTo(&ulds, peer.Address)
 		}
 	}
 
@@ -239,7 +243,7 @@ func (b *bounce) getRequestedDevicesPayloads(peer device, rr referenceRequest, o
 				}).Fatal("database error querying for device")
 			}
 		} else {
-			b.markDeviceDeliveredTo(&dev, peer.Address)
+			b.markDeliveredTo(&dev, peer.Address)
 		}
 	}
 
@@ -296,7 +300,7 @@ func (b *bounce) getRequestedUsersPayloads(peer device, rr referenceRequest, ori
 				}).Fatal("database error querying for user")
 			}
 		} else {
-			b.markUserDeliveredTo(&u, peer.Address)
+			b.markDeliveredTo(&u, peer.Address)
 		}
 	}
 

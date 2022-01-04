@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"strings"
 	"sync"
 	"time"
 
@@ -17,7 +16,6 @@ type updateLocalDMSettings struct {
 	ID                      uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Target                  uuid.UUID
 	Timestamp               int64
-	DeliveredTo             string `msgpack:"-"`
 	NotificationsEnabled    bool   `gorm:"-"`
 	NotificationsMutedUntil uint64 `gorm:"-"`
 	payload                 []byte
@@ -29,6 +27,14 @@ func (ulds *updateLocalDMSettings) BeforeCreate(tx *gorm.DB) error {
 		ulds.ID = uuid.New()
 	}
 	return nil
+}
+
+func (ulds *updateLocalDMSettings) AfterDelete(tx *gorm.DB) error {
+	return tx.Where("frame_id = ? AND frame_type = ?", ulds.ID, typeUpdateLocalDMSettings).Delete(&deliveryRecord{}).Error
+}
+
+func (ulds *updateLocalDMSettings) getID() uuid.UUID {
+	return ulds.ID
 }
 
 func (ulds *updateLocalDMSettings) getScope(_ uuid.UUID) int {
@@ -59,31 +65,8 @@ func (ulds *updateLocalDMSettings) getPayload() []byte {
 	return ulds.payload
 }
 
-func (ulds *updateLocalDMSettings) isAlreadyDeliveredTo(address string) bool {
-	recipients := strings.Split(ulds.DeliveredTo, ",")
-	for _, recipient := range recipients {
-		if address == recipient {
-			return true
-		}
-	}
-	return false
-}
-
-func (b *bounce) markUpdateLocalDMSettingsDeliveredTo(ulds *updateLocalDMSettings, address string) {
-	if !ulds.isAlreadyDeliveredTo(address) {
-		currentDeliveredTo := []string{}
-		if len(ulds.DeliveredTo) != 0 {
-			currentDeliveredTo = strings.Split(ulds.DeliveredTo, ",")
-		}
-		updatedDeliveredTo := strings.Join(append(currentDeliveredTo, address), ",")
-		err := b.database.Model(ulds).Update("delivered_to", updatedDeliveredTo).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":   err.Error(),
-				"message": ulds.ID,
-			}).Fatal("error updating update local DM settings delivery status")
-		}
-	}
+func (ulds *updateLocalDMSettings) deliveryTrackingSupported() bool {
+	return true
 }
 
 func (b *bounce) setDMNotificationEnabled(u uuid.UUID, enabled bool) {
@@ -217,13 +200,13 @@ func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// This update is newer than our last update and we don't have it saved.  We save it,
 			// apply it, and broadcast it to the rest of the sync devices.
-			ulds.DeliveredTo = peer
 			err = b.database.Create(&ulds).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Fatal("error saving update local DM settings")
 			}
+			b.markDeliveredTo(&ulds, peer)
 
 			// Inform the UI of any changes
 			if targetUser.NotificationsEnabled != ulds.NotificationsEnabled {
@@ -268,7 +251,7 @@ func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
 		} else {
 			// There was no error looking up the update.  We have it, all we need to do is make sure
 			// to mark is as delivered to the peer who sent it to us.
-			b.markUpdateLocalDMSettingsDeliveredTo(&existingULDS, peer)
+			b.markDeliveredTo(&existingULDS, peer)
 		}
 	}
 }

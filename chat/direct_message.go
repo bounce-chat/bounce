@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,12 +13,20 @@ import (
 
 type DirectMessage message
 
-func (directMessage *DirectMessage) BeforeCreate(tx *gorm.DB) error {
-	if directMessage.ID == uuid.Nil {
+func (dm *DirectMessage) BeforeCreate(tx *gorm.DB) error {
+	if dm.ID == uuid.Nil {
 		log.Fatal("direct message must have an ID assigned before save")
 	}
-	directMessage.SavedAt = time.Now().Unix()
+	dm.SavedAt = time.Now().Unix()
 	return nil
+}
+
+func (dm *DirectMessage) AfterDelete(tx *gorm.DB) error {
+	return tx.Where("frame_id = ? AND frame_type = ?", dm.ID, typeDirectMessage).Delete(&deliveryRecord{}).Error
+}
+
+func (dm *DirectMessage) getID() uuid.UUID {
+	return dm.ID
 }
 
 func (dm *DirectMessage) getScope(_ uuid.UUID) int {
@@ -65,32 +72,8 @@ func (dm *DirectMessage) getPayload() []byte {
 	return dm.payload
 }
 
-func (dm *DirectMessage) isAlreadyDeliveredTo(address string) bool {
-	// TODO: reload from the database?
-	recipients := strings.Split(dm.DeliveredTo, ",")
-	for _, recipient := range recipients {
-		if address == recipient {
-			return true
-		}
-	}
-	return false
-}
-
-func (b *bounce) markDirectMessageDeliveredTo(dm *DirectMessage, address string) {
-	if !dm.isAlreadyDeliveredTo(address) {
-		currentDeliveredTo := []string{}
-		if len(dm.DeliveredTo) != 0 {
-			currentDeliveredTo = strings.Split(dm.DeliveredTo, ",")
-		}
-		updatedDeliveredTo := strings.Join(append(currentDeliveredTo, address), ",")
-		err := b.database.Model(dm).Update("delivered_to", updatedDeliveredTo).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":   err.Error(),
-				"message": dm.ID,
-			}).Fatal("error updating direct message delivery status")
-		}
-	}
+func (dm *DirectMessage) deliveryTrackingSupported() bool {
+	return true
 }
 
 //
@@ -158,7 +141,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	var existingDM DirectMessage
 	err = b.database.Where("id = ?", dm.ID).First(&existingDM).Error
 	if err == nil {
-		b.markDirectMessageDeliveredTo(&existingDM, peer)
+		b.markDeliveredTo(&existingDM, peer)
 		b.dmExistenceCheck.Unlock()
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -178,13 +161,14 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	}
 
 	// Save the new message
-	dm.DeliveredTo = peer
 	err = b.database.Create(&dm).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error saving incoming direct message")
+		}).Fatal("error saving incoming direct message")
 	}
+	// Save a delivery report for the peer that send this message
+	b.markDeliveredTo(&dm, peer)
 	b.dmExistenceCheck.Unlock()
 
 	// Send the message to the user interface

@@ -1,16 +1,21 @@
 package chat
 
 import (
+	"errors"
+	"time"
+
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type deliveryRecord struct {
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
+	CreatedAt   int64
 	Destination string    `gorm:"uniqueIndex:idx_destination_frame_id_frame_type"`
 	FrameID     uuid.UUID `gorm:"uniqueIndex:idx_destination_frame_id_frame_type"`
-	FrameType   string    `gorm:"uniqueIndex:idx_destination_frame_id_frame_type"`
+	FrameType   uint16    `gorm:"uniqueIndex:idx_destination_frame_id_frame_type"`
 }
 
 func (dr *deliveryRecord) BeforeCreate(tx *gorm.DB) error {
@@ -18,27 +23,34 @@ func (dr *deliveryRecord) BeforeCreate(tx *gorm.DB) error {
 		log.Fatal("cannot create a delivery record with an ID already set")
 	}
 	dr.ID = uuid.New()
+	dr.CreatedAt = time.Now().Unix()
 	return nil
 }
 
-/*
 func (b *bounce) markDeliveredTo(br broadcastable, destination string) {
+	if !br.deliveryTrackingSupported() {
+		return
+	}
+
 	err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
 		Destination: destination,
 		FrameID:     br.getID(),
-		FrameType:   br.getTableName(),
+		FrameType:   br.getType(),
 	}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error creating delivery record")
-		// TODO: if the parent doesn't exist, this should fail with a warning
 	}
 }
 
 func (b *bounce) isDeliveredTo(br broadcastable, destination string) bool {
+	if !br.deliveryTrackingSupported() {
+		return false
+	}
+
 	var dr deliveryRecord
-	err := b.database.Where("destination = ? AND frame_id = ? AND frame_type = ?", destination, br.getID, br.getTableName).First(&dr).Error
+	err := b.database.Where("destination = ? AND frame_id = ? AND frame_type = ?", destination, br.getID(), br.getType()).First(&dr).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return false
@@ -50,4 +62,3 @@ func (b *bounce) isDeliveredTo(br broadcastable, destination string) bool {
 	}
 	return true
 }
-*/

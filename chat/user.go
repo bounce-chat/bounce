@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -27,7 +26,6 @@ type user struct {
 	NotificationsMutedUntil   uint64   `json:"-"`
 	LastLocalDMSettingsUpdate int64    `json:"-"`
 	Devices                   []device `msgpack:"-"`
-	DeliveredTo               string   `json:"-" msgpack:"-"`
 	payload                   []byte
 	payloadMutex              sync.Mutex
 }
@@ -55,11 +53,19 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (u *user) getScope() int {
+func (u *user) AfterDelete(tx *gorm.DB) error {
+	return tx.Where("frame_id = ? AND frame_type = ?", u.ID, typeUser).Delete(&deliveryRecord{}).Error
+}
+
+func (u *user) getID() uuid.UUID {
+	return u.ID
+}
+
+func (u *user) getScope(_ uuid.UUID) int {
 	return scopeSync
 }
 
-func (u *user) getDestination(myID uuid.UUID) uuid.UUID {
+func (u *user) getDestination(_ uuid.UUID) uuid.UUID {
 	return uuid.Nil
 }
 
@@ -83,32 +89,8 @@ func (u *user) getPayload() []byte {
 	return u.payload
 }
 
-func (u *user) isAlreadyDeliveredTo(address string) bool {
-	// TODO: reload from the database?
-	recipients := strings.Split(u.DeliveredTo, ",")
-	for _, recipient := range recipients {
-		if address == recipient {
-			return true
-		}
-	}
-	return false
-}
-
-func (b *bounce) markUserDeliveredTo(u *user, address string) {
-	if !u.isAlreadyDeliveredTo(address) {
-		currentDeliveredTo := []string{}
-		if len(u.DeliveredTo) != 0 {
-			currentDeliveredTo = strings.Split(u.DeliveredTo, ",")
-		}
-		updatedDeliveredTo := strings.Join(append(currentDeliveredTo, address), ",")
-		err := b.database.Model(u).Update("delivered_to", updatedDeliveredTo).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":   err.Error(),
-				"message": u.ID,
-			}).Fatal("error updating user delivery status")
-		}
-	}
+func (u *user) deliveryTrackingSupported() bool {
+	return true
 }
 
 func (b *bounce) handleUser(peer string, payload []byte) {
@@ -145,6 +127,7 @@ func (b *bounce) handleUser(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Error("error saving new user")
 	}
+	b.markDeliveredTo(&u, peer)
 
 	// ACK it
 	go b.broadcast(&ack{

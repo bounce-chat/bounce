@@ -16,7 +16,6 @@ type message struct {
 	Undeliverable    bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
 	Source           uuid.UUID
 	Destination      uuid.UUID
-	DeliveredTo      string `msgpack:"-"` // Comma-separated list of addresses that have acked this message.
 	Text             string // TODO: other things that can be in a message, like a reference to an image, audio, video, or file attachment
 	payload          []byte
 	payloadMutex     sync.Mutex

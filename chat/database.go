@@ -56,6 +56,7 @@ func (b *bounce) openDatabase() {
 		&referenceOffer{},
 		&updateLocalDMSettings{},
 		&syncDeviceOffer{},
+		&deliveryRecord{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -113,7 +114,7 @@ func (b *bounce) pruneDirectMessages(informUI bool) {
 	}
 
 	// Delete those messages from the database
-	err := b.database.Where("delete_at != 0 AND delete_at < ?", now).Delete(DirectMessage{}).Error
+	err := b.database.Where("delete_at != 0 AND delete_at < ?", now).Delete(&DirectMessage{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
