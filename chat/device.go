@@ -71,10 +71,6 @@ func (d *device) getPayload() []byte {
 	return d.payload
 }
 
-func (d *device) deliveryTrackingSupported() bool {
-	return true
-}
-
 func (b *bounce) handleDevice(peer string, payload []byte) {
 	handleDevicesMutex.Lock()
 	defer handleDevicesMutex.Unlock()

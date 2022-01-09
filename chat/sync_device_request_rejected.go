@@ -26,10 +26,6 @@ func (sdrr *syncDeviceRequestRejected) getPayload() []byte {
 	return []byte{}
 }
 
-func (sdrr *syncDeviceRequestRejected) deliveryTrackingSupported() bool {
-	return false
-}
-
 func (b *bounce) handleSyncDeviceRequestRejected(peer string, payload []byte) {
 	b.userInterface.SyncDeviceRequestRejected()
 }

@@ -28,10 +28,6 @@ func (ka keepAlive) getPayload() []byte {
 	return []byte("keep-alive")
 }
 
-func (ka keepAlive) deliveryTrackingSupported() bool {
-	return false
-}
-
 func (b *bounce) handleKeepAlive(peer string, payload []byte) {
 	return
 }

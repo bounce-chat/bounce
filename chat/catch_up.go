@@ -2,7 +2,6 @@ package chat
 
 import (
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -54,10 +53,6 @@ func (cu *catchUp) getPayload() []byte {
 	return cu.payload
 }
 
-func (cu *catchUp) deliveryTrackingSupported() bool {
-	return false
-}
-
 func (cu *catchUp) hasContent() bool {
 	if len(cu.DirectMessages) > 0 {
 		return true
@@ -72,31 +67,6 @@ func (cu *catchUp) hasContent() bool {
 		return true
 	}
 	return false
-}
-
-func (b *bounce) broadcastCatchUp(cu *catchUp) {
-	giveUpTime := time.Now().Add(5 * time.Minute)
-	for {
-		b.broadcast(cu)
-		time.Sleep(30 * time.Second) // TODO: derive from message size?
-		b.devicePool.receivedAcksMutex.Lock()
-		_, ok := b.devicePool.receivedAcks[cu.ID.String()]
-		b.devicePool.receivedAcksMutex.Unlock()
-		if ok {
-			// we got the request, our offer was delivered
-			b.devicePool.receivedAcksMutex.Lock()
-			delete(b.devicePool.receivedAcks, cu.ID.String())
-			b.devicePool.receivedAcksMutex.Unlock()
-			return
-		}
-		if time.Now().After(giveUpTime) {
-			log.WithFields(log.Fields{
-				"id":          cu.ID,
-				"destination": cu.getDestination(b.currentUserID()),
-			}).Warn("gave up attempting to deliver catch up")
-			return
-		}
-	}
 }
 
 func (b *bounce) handleCatchUp(peer string, payload []byte) {

@@ -65,10 +65,6 @@ func (ulds *updateLocalDMSettings) getPayload() []byte {
 	return ulds.payload
 }
 
-func (ulds *updateLocalDMSettings) deliveryTrackingSupported() bool {
-	return true
-}
-
 func (b *bounce) setDMNotificationEnabled(u uuid.UUID, enabled bool) {
 	// Find the user to update
 	var target user

@@ -83,6 +83,7 @@ func (b *bounce) pruneDatabase(informUI bool) {
 	b.pruneDirectMessages(informUI)
 	//b.pruneGroupMessages()
 	b.pruneSyncDeviceOffers()
+	b.pruneDeliveryRecords()
 }
 
 // If a reference offer was delivered, but a reference request was never received in response, it will only be deleted here
@@ -164,6 +165,25 @@ func (b *bounce) pruneSyncDeviceOffers() {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error pruning old sync device offers")
+	}
+}
+
+func (b *bounce) pruneDeliveryRecords() {
+	// Some objects are not meant to persist to the database, or at least not meant
+	// to persist long.  These objects cannot prune delivery records when they delete
+	// since they are never stored in the database.  To prevent leaks, we prune them
+	// here well after they are needed.
+	aDayAgo := time.Now().Add(-24 * time.Hour).Unix()
+	err := b.database.Where(
+		"created_at < ? AND frame_type IN (?, ?)",
+		aDayAgo,
+		typeReferenceOffer,
+		typeCatchUp,
+	).Delete(&deliveryRecord{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error pruning delivery records")
 	}
 }
 

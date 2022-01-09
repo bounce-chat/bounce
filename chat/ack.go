@@ -60,10 +60,6 @@ func (a *ack) getPayload() []byte {
 	return a.payload
 }
 
-func (a *ack) deliveryTrackingSupported() bool {
-	return false
-}
-
 func (b *bounce) handleAck(peer string, payload []byte) {
 	var a ack
 	err := msgpack.Unmarshal(payload, &a)
@@ -135,9 +131,17 @@ func (b *bounce) handleAckCatchUps(peer string, a ack) {
 				continue
 			}
 
-			b.devicePool.receivedAcksMutex.Lock()
-			b.devicePool.receivedAcks[catchUpID.String()] = true
-			b.devicePool.receivedAcksMutex.Unlock()
+			// Mark this catch up as delivered so we can stop broadcasting it
+			err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
+				Destination: peer,
+				FrameID:     catchUpID,
+				FrameType:   typeCatchUp,
+			}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error creating delivery record for catch up")
+			}
 		}
 	}
 }

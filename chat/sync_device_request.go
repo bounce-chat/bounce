@@ -50,10 +50,6 @@ func (sdr *syncDeviceRequest) getPayload() []byte {
 	return sdr.payload
 }
 
-func (sdr *syncDeviceRequest) deliveryTrackingSupported() bool {
-	return false
-}
-
 func (b *bounce) requestToSync(data string) error {
 	if _, exists := b.currentUser(); exists {
 		return errors.New("profile already exists")

@@ -72,10 +72,6 @@ func (dm *DirectMessage) getPayload() []byte {
 	return dm.payload
 }
 
-func (dm *DirectMessage) deliveryTrackingSupported() bool {
-	return true
-}
-
 //
 // UI Handlers
 //

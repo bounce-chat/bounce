@@ -14,12 +14,10 @@ import (
 const dialCooldown = time.Duration(5 * time.Minute) // TODO: should this be much larger?  Specific to the context?
 
 type devicePool struct {
-	deviceMutex       sync.Mutex
-	devices           map[string]*remoteDevice
-	receivedAcksMutex sync.Mutex
-	receivedAcks      map[string]bool
-	lastDialMutex     sync.Mutex
-	lastDial          map[string]time.Time
+	deviceMutex   sync.Mutex
+	devices       map[string]*remoteDevice
+	lastDialMutex sync.Mutex
+	lastDial      map[string]time.Time
 }
 
 func (dp *devicePool) getLastDial(address string) time.Time {

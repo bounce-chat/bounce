@@ -48,10 +48,6 @@ func (sdra *syncDeviceRequestAccepted) getPayload() []byte {
 	return sdra.payload
 }
 
-func (sdra *syncDeviceRequestAccepted) deliveryTrackingSupported() bool {
-	return false
-}
-
 func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte) {
 	// Unmarshal the payload
 	var sdra syncDeviceRequestAccepted

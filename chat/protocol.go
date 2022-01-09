@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -36,7 +37,6 @@ type broadcastable interface {
 	getDestination(myID uuid.UUID) uuid.UUID
 	getType() uint16
 	getPayload() []byte
-	deliveryTrackingSupported() bool
 }
 
 func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
@@ -57,12 +57,63 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 }
 
 func (b *bounce) broadcast(br broadcastable) {
+	log.WithFields(log.Fields{
+		"type":        br.getType(),
+		"scope":       br.getScope(b.currentUserID()),
+		"destination": br.getDestination(b.currentUserID()),
+	}).Debug("broadcasting frame")
 	for _, peer := range b.getBroadcastScope(br) {
 		// Async try to write this message to every device that should be written to
 		go func(dst chan broadcastable, msg broadcastable) {
 			dst <- msg
 		}(peer.messages, br)
 	}
+}
+
+// Can only be used with device-scoped frames
+func (b *bounce) broadcastUntilDelivered(br broadcastable) {
+	giveUpTime := time.Now().Add(5 * time.Minute)
+
+	if br.getScope(b.currentUserID()) != scopeDevice {
+		log.WithFields(log.Fields{
+			"frame_id":    br.getID(),
+			"frame_type":  br.getType(),
+			"frame_scope": br.getScope(b.currentUserID()),
+		}).Fatal("cannot use broadcastUntilDelivered on frames that are not device scoped")
+	}
+
+	// Look up the address of the device we're broadcasting to
+	var dev device
+	err := b.database.First(&dev, "id = ?", br.getDestination(b.currentUserID())).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"device_id": br.getDestination(b.currentUserID()),
+			}).Error("cannot broadcast to an unknown device")
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error looking up device")
+		}
+	}
+
+	for {
+		b.broadcast(br)
+		time.Sleep(30 * time.Second) // TODO: derive from message size?
+
+		if b.isDeliveredTo(br, dev.Address) {
+			// we got the request, our offer was delivered
+			return
+		}
+		if time.Now().After(giveUpTime) {
+			log.WithFields(log.Fields{
+				"id":          br.getID(),
+				"destination": br.getDestination(b.currentUserID()),
+			}).Warn("gave up attempting to deliver catch up")
+			return
+		}
+	}
+
 }
 
 func (b *bounce) getBroadcastScope(br broadcastable) []*remoteDevice {

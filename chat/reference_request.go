@@ -58,10 +58,6 @@ func (rr *referenceRequest) getPayload() []byte {
 	return rr.payload
 }
 
-func (rr *referenceRequest) deliveryTrackingSupported() bool {
-	return false
-}
-
 func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	var rr referenceRequest
 	err := msgpack.Unmarshal(payload, &rr)
@@ -92,9 +88,9 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 		}).Warn("peer sent a reference request for an offer not in the database, ignoring")
 		return
 	}
-	b.devicePool.receivedAcksMutex.Lock()
-	b.devicePool.receivedAcks[rr.ID.String()] = true
-	b.devicePool.receivedAcksMutex.Unlock()
+
+	// Mark that the original offer was delivered so that we can stop sending it
+	b.markDeliveredTo(&originalOffer, dev.Address)
 
 	// Everything the device has requested will b packed into a "catch up" message
 	catchUpResponse := &catchUp{
@@ -107,7 +103,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	}
 
 	if catchUpResponse.hasContent() {
-		b.broadcastCatchUp(catchUpResponse)
+		b.broadcastUntilDelivered(catchUpResponse)
 	}
 
 	// TODO: broadcast separate catchups for each requested image/audio/file here.  Or rather than a catch up, just broadcast the data.

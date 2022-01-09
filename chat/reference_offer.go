@@ -69,10 +69,6 @@ func (ro *referenceOffer) getPayload() []byte {
 	return ro.payload
 }
 
-func (ro *referenceOffer) deliveryTrackingSupported() bool {
-	return false
-}
-
 func (ro *referenceOffer) shouldDial() bool {
 	if len(ro.DirectMessages) > 0 {
 		return true
@@ -127,7 +123,7 @@ func (b *bounce) sendReferences(peerAddress string) {
 		return
 	}
 
-	if !b.isDeliveredTo(&myDevice, peerAddress) {
+	if !b.isDeliveredTo(&myDevice, peerAddress) { // TODO: use broadcastUntilDelivered?
 		for i := 0; i < 5; i++ {
 			rd := b.getRemoteDevice(peerAddress)
 			rd.messages <- &myDevice
@@ -152,7 +148,7 @@ func (b *bounce) sendReferences(peerAddress string) {
 				"error": err.Error(),
 			}).Error("error saving referenceOffer")
 		} else {
-			go b.broadcastReferenceOffer(references)
+			go b.broadcastUntilDelivered(references)
 		}
 	}
 }
@@ -277,37 +273,6 @@ func (b *bounce) getUsersToOffer(dev device) string {
 	}
 
 	return offerString
-}
-
-func (b *bounce) broadcastReferenceOffer(ro *referenceOffer) {
-	giveUpTime := time.Now().Add(5 * time.Minute)
-	for {
-		b.broadcast(ro)
-		time.Sleep(15 * time.Second) // TODO: derive from message size?
-		b.devicePool.receivedAcksMutex.Lock()
-		_, ok := b.devicePool.receivedAcks[ro.ID.String()]
-		b.devicePool.receivedAcksMutex.Unlock()
-		if ok {
-			// we got the request, our offer was delivered
-			b.devicePool.receivedAcksMutex.Lock()
-			delete(b.devicePool.receivedAcks, ro.ID.String())
-			b.devicePool.receivedAcksMutex.Unlock()
-			return
-		}
-		if time.Now().After(giveUpTime) {
-			log.WithFields(log.Fields{
-				"id":          ro.ID,
-				"destination": ro.Destination,
-			}).Warn("gave up attempting to deliver reference offer")
-			err := b.database.Delete(ro).Error
-			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("error deleting reference offer after gave up on broadcasting")
-			}
-			return
-		}
-	}
 }
 
 func (b *bounce) handleReferenceOffer(peer string, payload []byte) {

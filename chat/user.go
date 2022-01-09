@@ -89,10 +89,6 @@ func (u *user) getPayload() []byte {
 	return u.payload
 }
 
-func (u *user) deliveryTrackingSupported() bool {
-	return true
-}
-
 func (b *bounce) handleUser(peer string, payload []byte) {
 	// Make sure this is a sync device
 	srcDevice, exists := b.getDeviceFromAddress(peer)
