@@ -124,7 +124,14 @@ func (b *bounce) pruneDirectMessages(informUI bool) {
 
 	// Find all messages that are undeliverable and inform the UI, marking them for deletion if they don't have indefinite retention
 	var dms []DirectMessage
-	err = b.database.Select("id", "retention_seconds").Where("(delivered_to = \"\" OR delivered_to IS NULL) AND written_at < ? AND undeliverable = false", time.Now().Add(-undeliverableAfter).Unix()).Find(&dms).Error
+	err = b.database.
+		Select("direct_messages.id", "direct_messages.retention_seconds").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id").
+		Where(
+			"delivery_records.id IS NULL AND direct_messages.written_at < ? AND undeliverable = false",
+			time.Now().Add(-undeliverableAfter).Unix(),
+		).
+		Find(&dms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

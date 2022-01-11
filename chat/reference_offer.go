@@ -173,14 +173,15 @@ func (b *bounce) getDirectMessagesToOffer(dev device) string {
 	// All DMs we have sent to or received from this user in the past week
 	var dms []DirectMessage
 	err := b.database.
-		Order("saved_at asc").
+		Select("direct_messages.*").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.destination == ?", dev.Address).
 		Where(
-			"written_at >= ? AND (destination = ? OR source = ?) AND (delivered_to NOT LIKE ? OR delivered_to IS NULL)",
+			"delivery_records.id IS NULL AND direct_messages.written_at >= ? AND (direct_messages.destination = ? OR direct_messages.source = ?)",
 			time.Now().Add(-undeliverableAfter).Unix(),
 			dev.UserID,
 			dev.UserID,
-			"%"+dev.Address+"%",
-		).Find(&dms).Error // TODO: also add a sane limit? TODO: only select the IDs if that's all we're using?
+		).
+		Find(&dms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"peer":  dev.Address,
@@ -189,6 +190,7 @@ func (b *bounce) getDirectMessagesToOffer(dev device) string {
 	}
 
 	// Collect IDs from the DMs
+	// TODO: only select IDs in the first place?
 	dmsToOffer := []string{}
 	for _, dm := range dms {
 		dmsToOffer = append(dmsToOffer, dm.ID.String())
@@ -202,8 +204,12 @@ func (b *bounce) getUpdateLocalDMSettingsToOffer(dev device) string {
 	}
 	uldsToOffer := []string{}
 	var localDMSettingsUpdates []updateLocalDMSettings
-	err := b.database.Where("delivered_to NOT LIKE ? OR delivered_to IS NULL", "%"+dev.Address+"%").Find(&localDMSettingsUpdates).Error // TODO: only select ID?
-	// TODO: only get one per unix timestamp?  UNIQUE timestamp LIMIT 1?
+	err := b.database.
+		Select("local_dm_settings_updates.*").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == local_dm_settings_updates.id AND delivery_records.destination == ?", dev.Address).
+		Where("delivery_records.id IS NULL").
+		Find(&localDMSettingsUpdates).Error // TODO: only select ID?
+	// TODO: only get one per unix timestamp?  UNIQUE timestamp LIMIT 1?  Only get the latest one?
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -222,7 +228,11 @@ func (b *bounce) getDevicesToOffer(dev device) string {
 		// Sync devices can learn about any device we know about
 		devicesToOffer := []string{}
 		var unsentDevices []device
-		err := b.database.Where("address != ? AND (delivered_to NOT LIKE ? OR delivered_to IS NULL)", dev.Address, "%"+dev.Address+"%").Find(&unsentDevices).Error // TODO: only select ID?
+		err := b.database.
+			Select("devices.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ?", dev.Address).
+			Where("delivery_records.id IS NULL").
+			Find(&unsentDevices).Error // TODO: only select ID?
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -236,7 +246,11 @@ func (b *bounce) getDevicesToOffer(dev device) string {
 		// TODO: don't just get our devices, get any "overlap" devices
 		devicesToOffer := []string{}
 		var unsentDevices []device
-		err := b.database.Where("address != ? AND user_id = ? AND (delivered_to NOT LIKE ? OR delivered_to IS NULL)", dev.Address, b.currentUserID(), "%"+dev.Address+"%").Find(&unsentDevices).Error // TODO: only select ID?
+		err := b.database.
+			Select("devices.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ?", dev.Address).
+			Where("address != ? AND user_id = ? AND delivery_records.id IS NULL", dev.Address, b.currentUserID()).
+			Find(&unsentDevices).Error // TODO: only select ID?
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -258,7 +272,11 @@ func (b *bounce) getUsersToOffer(dev device) string {
 		// Users
 		usersToOffer := []string{}
 		var unsentUsers []user
-		err := b.database.Where("delivered_to NOT LIKE ? OR delivered_to IS NULL", "%"+dev.Address+"%").Find(&unsentUsers).Error // TODO: only select ID?
+		err := b.database.
+			Select("users.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == users.id AND delivery_records.destination == ?", dev.Address).
+			Where("delivery_records.id IS NULL").
+			Find(&unsentUsers).Error // TODO: only select ID?
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
