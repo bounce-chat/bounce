@@ -109,6 +109,8 @@ func Start(network Network, ui UI) {
 // Gracefully stop all Bounce.  Used when a fatal error is encountered or the user interface is closed
 //
 func (b *bounce) shutdown() {
+	b.shutdownStarted = true
+
 	// Logrus is going to call in here on a fatal error, then os.Exit.  If multiple fatal logs occur, which
 	// is likely as the shutdown process is going to cause other fatal errors, the first one will spend some
 	// time closing down the network and database while the second will return much faster.  This second fatal
