@@ -126,7 +126,7 @@ func (b *bounce) pruneDirectMessages(informUI bool) {
 	var dms []DirectMessage
 	err = b.database.
 		Select("direct_messages.id", "direct_messages.retention_seconds").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.frame_type == ?", typeDirectMessage).
 		Where(
 			"delivery_records.id IS NULL AND direct_messages.written_at < ? AND undeliverable = false",
 			time.Now().Add(-undeliverableAfter).Unix(),

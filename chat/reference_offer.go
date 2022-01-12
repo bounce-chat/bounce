@@ -174,7 +174,7 @@ func (b *bounce) getDirectMessagesToOffer(dev device) string {
 	var dms []DirectMessage
 	err := b.database.
 		Select("direct_messages.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.destination == ?", dev.Address).
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDirectMessage).
 		Where(
 			"delivery_records.id IS NULL AND direct_messages.written_at >= ? AND (direct_messages.destination = ? OR direct_messages.source = ?)",
 			time.Now().Add(-undeliverableAfter).Unix(),
@@ -206,7 +206,7 @@ func (b *bounce) getUpdateLocalDMSettingsToOffer(dev device) string {
 	var localDMSettingsUpdates []updateLocalDMSettings
 	err := b.database.
 		Select("local_dm_settings_updates.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == local_dm_settings_updates.id AND delivery_records.destination == ?", dev.Address).
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == local_dm_settings_updates.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateLocalDMSettings).
 		Where("delivery_records.id IS NULL").
 		Find(&localDMSettingsUpdates).Error // TODO: only select ID?
 	// TODO: only get one per unix timestamp?  UNIQUE timestamp LIMIT 1?  Only get the latest one?
@@ -230,7 +230,7 @@ func (b *bounce) getDevicesToOffer(dev device) string {
 		var unsentDevices []device
 		err := b.database.
 			Select("devices.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ?", dev.Address).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDevice).
 			Where("delivery_records.id IS NULL").
 			Find(&unsentDevices).Error // TODO: only select ID?
 		if err != nil {
@@ -248,7 +248,7 @@ func (b *bounce) getDevicesToOffer(dev device) string {
 		var unsentDevices []device
 		err := b.database.
 			Select("devices.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ?", dev.Address).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDevice).
 			Where("address != ? AND user_id = ? AND delivery_records.id IS NULL", dev.Address, b.currentUserID()).
 			Find(&unsentDevices).Error // TODO: only select ID?
 		if err != nil {
@@ -274,7 +274,7 @@ func (b *bounce) getUsersToOffer(dev device) string {
 		var unsentUsers []user
 		err := b.database.
 			Select("users.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == users.id AND delivery_records.destination == ?", dev.Address).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUser).
 			Where("delivery_records.id IS NULL").
 			Find(&unsentUsers).Error // TODO: only select ID?
 		if err != nil {
