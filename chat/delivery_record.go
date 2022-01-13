@@ -13,9 +13,9 @@ import (
 type deliveryRecord struct {
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
 	CreatedAt   int64
-	Destination string    `gorm:"uniqueIndex:idx_destination_frame_id_frame_type"`
-	FrameID     uuid.UUID `gorm:"uniqueIndex:idx_destination_frame_id_frame_type"`
-	FrameType   uint16    `gorm:"uniqueIndex:idx_destination_frame_id_frame_type"`
+	Destination string    `gorm:"index;uniqueIndex:idx_destination_frame_id_frame_type"`
+	FrameID     uuid.UUID `gorm:"index;uniqueIndex:idx_destination_frame_id_frame_type"`
+	FrameType   uint16    `gorm:"index;uniqueIndex:idx_destination_frame_id_frame_type"`
 }
 
 func (dr *deliveryRecord) BeforeCreate(tx *gorm.DB) error {
