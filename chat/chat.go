@@ -32,6 +32,7 @@ type bounce struct {
 	shutdownStarted       bool
 	databasePruningTicker *time.Ticker
 	pruningDatabase       sync.WaitGroup
+	runningHandlers       sync.WaitGroup
 	shutdownMutex         sync.Mutex
 	dmExistenceCheck      sync.Mutex
 	uldsExistenceCheck    sync.Mutex
@@ -121,6 +122,9 @@ func (b *bounce) shutdown() {
 	// is that fatal errors cannot be called from within this function without deadlocking the application, so
 	// any errors encountered here must be logged as errors.
 	b.shutdownMutex.Lock()
+
+	log.Info("waiting for currently running handlers to stop")
+	b.runningHandlers.Wait()
 
 	// Stop all running tasks and close all connections to remote devices
 	log.Info("closing all remote connections")

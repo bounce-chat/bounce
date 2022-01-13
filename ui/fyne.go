@@ -170,16 +170,19 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		// TODO: log fatal if anything else is set
 		return
 	} else {
+		log.Debug("setting the profile")                                       // TODO: debugging startup issue
 		fyneUI.profile = &user{id: state.Profile.ID, name: state.Profile.Name} // TODO: use the exported user concept in the UI?
 	}
 
 	for _, u := range state.Users {
+		log.Debug("adding a user") // TODO: debugging startup issue
 		fyneUI.users.add(&user{id: u.ID, name: u.Name})
 	}
 	//for _, t := range state.Threads {
 	//	fyneUI.NewThread(t)
 	//}
 	for _, dm := range state.DirectMessages {
+		log.Debug("loading a direct message")    // TODO: debugging startup issue
 		fyneUI.loadDirectMessage(dm, true, true) // TODO: need to handle what's read / unread
 	}
 }

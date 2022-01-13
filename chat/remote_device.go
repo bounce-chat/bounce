@@ -88,6 +88,12 @@ func (b *bounce) readFrames(conn net.Conn) { // TODO: move to protocol or someth
 			return
 		}
 
+		// If Bounce is shutting down, we no longer want to handle any frames coming
+		// from this connection
+		if b.shutdownStarted {
+			return
+		}
+
 		// Make sure that we can handle this type of frame without a profile if we don't have one
 		_, profileExists := b.currentUser()
 		if !profileExists {
@@ -121,7 +127,11 @@ func (b *bounce) readFrames(conn net.Conn) { // TODO: move to protocol or someth
 			conn.Close()
 			return
 		} else {
-			go handler(peer, data)
+			go func(thisPeer string, thisData []byte) {
+				b.runningHandlers.Add(1)
+				handler(thisPeer, thisData)
+				b.runningHandlers.Done()
+			}(peer, data)
 		}
 	}
 }
