@@ -115,8 +115,8 @@ func (b *bounce) setDMNotificationEnabled(u uuid.UUID, enabled bool) {
 	}
 	go b.broadcast(update)
 
-	// Delete all oder updates
-	err = b.database.Where("target = ? AND timestamp != ?", u, updateTime).Delete(updateLocalDMSettings{}).Error
+	// Delete all older updates
+	err = b.database.Where("target = ? AND timestamp != ?", u, updateTime).Delete(updateLocalDMSettings{}).Error // TODO: use the primary key?
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -169,7 +169,7 @@ func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
 		destination:           dev.ID,
 	})
 
-	// Find the user this update if refering to
+	// Find the user this update is referring to
 	var targetUser user
 	err = b.database.Preload(clause.Associations).First(&targetUser, "id = ?", ulds.Target).Error
 	if err != nil {

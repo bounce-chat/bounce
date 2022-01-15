@@ -123,22 +123,18 @@ func (b *bounce) shutdown() {
 	// any errors encountered here must be logged as errors.
 	b.shutdownMutex.Lock()
 
-	log.Info("waiting for currently running handlers to stop")
-	b.runningHandlers.Wait()
-
 	// Stop all running tasks and close all connections to remote devices
 	log.Info("closing all remote connections")
 	// TODO: stop the peer audit loop, wait for it to return
 	for _, rd := range b.devicePool.devices {
-		// TODO: need to ensure no more messages will write to these channels to prevent panic
-		// TODO: alternatievly, have a separte channel to close the remote devices and always leave
-		// the message channels open
-		//rd.shutdown <- true
-		close(rd.messages)
+		rd.shutdown <- true
 	}
 	for _, rd := range b.devicePool.devices {
 		rd.closer.Wait()
 	}
+
+	log.Info("waiting for currently running handlers to stop")
+	b.runningHandlers.Wait()
 
 	// Shutdown the network
 	log.Info("stopping the network")

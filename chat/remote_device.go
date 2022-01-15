@@ -4,22 +4,37 @@ import (
 	"net"
 	"sync"
 
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 type remoteDevice struct {
-	connectedSockets int
-	messages         chan broadcastable
-	//shutdown         chan bool
-	closer sync.WaitGroup
+	connectedSockets       int
+	messages               chan broadcastable
+	shutdown               chan bool
+	shutdownReceivers      map[uuid.UUID]chan bool
+	shutdownReceiversMutex sync.Mutex
+	closer                 sync.WaitGroup
 }
 
 func newRemoteDevice() *remoteDevice {
-	return &remoteDevice{
-		connectedSockets: 0,
-		messages:         make(chan broadcastable),
-		//shutdown:         make(chan bool, 1),
+	rd := &remoteDevice{
+		connectedSockets:  0,
+		messages:          make(chan broadcastable),
+		shutdown:          make(chan bool),
+		shutdownReceivers: make(map[uuid.UUID]chan bool),
 	}
+
+	go func(thisRd *remoteDevice) {
+		<-thisRd.shutdown
+		thisRd.shutdownReceiversMutex.Lock()
+		for _, receiver := range thisRd.shutdownReceivers {
+			receiver <- true
+		}
+		thisRd.shutdownReceiversMutex.Unlock()
+	}(rd)
+
+	return rd
 }
 
 func (b *bounce) getRemoteDevice(address string) *remoteDevice {
@@ -137,36 +152,38 @@ func (b *bounce) readFrames(conn net.Conn) { // TODO: move to protocol or someth
 }
 
 func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
+	if b.shutdownStarted {
+		return
+	}
 	rd.connectedSockets += 1
 	rd.closer.Add(1)
 	defer rd.closer.Done()
 
-	// TODO: shutdown signal channel not working
-	//for {
-	//	select {
-	//	case <-rd.shutdown:
-	//		rd.connectedSockets -= 1
-	//		conn.Close()
-	//		return
-	//	case br := <-rd.messages:
-	//		err := writeFrame(conn, br.getType(), br.getPayload())
-	//		if err != nil {
-	//			rd.connectedSockets -= 1
-	//			// TODO: if we now have 0 connections, let the UI know the user is offline
-	//			b.sendReferences(conn.RemoteAddr().String())
-	//			return
-	//		}
-	//	}
-	//}
-	for br := range rd.messages {
-		err := writeFrame(conn, br.getType(), br.getPayload())
-		if err != nil {
+	writerID := uuid.New()
+	rd.shutdownReceiversMutex.Lock()
+	rd.shutdownReceivers[writerID] = make(chan bool)
+	rd.shutdownReceiversMutex.Unlock()
+
+	for {
+		select {
+		case <-rd.shutdownReceivers[writerID]:
 			rd.connectedSockets -= 1
-			// TODO: if we now have 0 connections, let the UI know the user is offline
-			b.sendReferences(conn.RemoteAddr().String())
+			conn.Close()
 			return
+		case br := <-rd.messages:
+			err := writeFrame(conn, br.getType(), br.getPayload())
+			if err != nil {
+				rd.connectedSockets -= 1
+				// TODO: if we now have 0 connections, let the UI know the user is offline
+				b.sendReferences(conn.RemoteAddr().String())
+
+				// We will no longer be reading shutdown signals from the remote device
+				// so we remove our channel from the map
+				rd.shutdownReceiversMutex.Lock()
+				delete(rd.shutdownReceivers, writerID)
+				rd.shutdownReceiversMutex.Unlock()
+				return
+			}
 		}
 	}
-	rd.connectedSockets -= 1
-	conn.Close()
 }
