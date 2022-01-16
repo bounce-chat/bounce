@@ -268,6 +268,20 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		fyneUI.callbacks.SetDMNotificationEnabled(dm.user.id, state)
 	}
 
+	//
+	// Selection for message retention
+	//
+	retentionSelections := []string{"Off", "1 Week", "1 Day"}
+	messageRetentionSelect := widget.NewSelect(retentionSelections, nil)
+	messageRetentionSelect.Selected = "1 Week"
+	messageRetentionSelect.OnChanged = func(retention string) {
+		log.Info("desired retention: " + retention)
+	}
+
+	//
+	// Save and Cancel buttons
+	//
+
 	saveButton := widget.NewButton("Save", func() {
 		fyneUI.showMainContainer()
 	})
@@ -284,6 +298,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		threadIcon,
 		username,
 		notificationsCheck,
+		messageRetentionSelect,
 	)
 
 	// Close the window but save state.  TODO: should it clear state as well?
@@ -323,4 +338,11 @@ func (fyneUI *Fyne) DMNotificationsChanged(userID uuid.UUID, enabled bool) {
 			"user_id": userID,
 		}).Warn("cannot update notification settings for DM that doesn't exist")
 	}
+}
+
+func (fyneUI *Fyne) DMRetentionChanged(userID uuid.UUID, retention int64) {
+	log.WithFields(log.Fields{
+		"user":      userID,
+		"retention": retention,
+	}).Info("chat engine wants to update DM retention settings")
 }

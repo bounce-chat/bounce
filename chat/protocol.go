@@ -30,6 +30,7 @@ var typeSyncDeviceRequestRejected = uint16(9)
 var typeSyncDeviceRequestAccepted = uint16(10)
 var typeDevice = uint16(11)
 var typeUser = uint16(12)
+var typeUpdateDMSettings = uint16(13)
 
 type broadcastable interface {
 	getID() uuid.UUID
@@ -53,6 +54,7 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 		typeSyncDeviceRequestAccepted: b.handleSyncDeviceRequestAccepted,
 		typeDevice:                    b.handleDevice,
 		typeUser:                      b.handleUser,
+		typeUpdateDMSettings:          b.handleUpdateDMSettings,
 	}
 }
 

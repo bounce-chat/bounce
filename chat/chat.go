@@ -82,6 +82,8 @@ func Start(network Network, ui UI) {
 			ImportUser:                      b.importUser,
 			ExportContact:                   b.exportContact,
 			UserConnectionDesired:           b.userConnectionDesired,
+			GetDMRetention:                  b.getDMRetention,
+			SetDMRetention:                  b.setDMRetention,
 		},
 	)
 

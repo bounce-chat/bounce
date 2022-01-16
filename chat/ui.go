@@ -45,6 +45,9 @@ type UI interface {
 	// The notification settings for a DM have been updated
 	DMNotificationsChanged(dm uuid.UUID, enabled bool)
 
+	// The retention settings for a DM have been changed
+	DMRetentionChanged(dm uuid.UUID, retention int64)
+
 	NewGroupChat(Group)
 	ReceivedGroupMessage(GroupMessage)
 	//RenameGroup()
@@ -111,6 +114,12 @@ type UICallbacks struct {
 
 	// Get the value of a temporary mute on a DM
 	GetDMNotificationMutedUntil func(userID uuid.UUID) (mutedUntil int64, err error)
+
+	// Set the message retention settings for a DM
+	SetDMRetention func(userID uuid.UUID, retention int64)
+
+	// Get the message retention settings for a DM
+	GetDMRetention func(userID uuid.UUID) (retention int64, err error)
 
 	// The user wants to change the notification settings for a group
 	ChangeGroupNotificationSettings func(groupID uuid.UUID, notificationEnabled bool)
