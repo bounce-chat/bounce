@@ -420,11 +420,28 @@ func (fyneUI *Fyne) DMRetentionChanged(userID uuid.UUID, actorID uuid.UUID, rete
 
 		// Insert a note in this thread that the setting was changed
 		// TODO: how will this be persisted?  Should UDS frames not expire?
+		autoscroll := false
+		location := dm.scroll.Offset.Y
+		height := dm.scroll.Content.Size().Height - dm.scroll.Size().Height
+		if height == location {
+			autoscroll = true
+		}
+
 		changeLabel := widget.NewLabel(actorName + " updated disappearing messages to " + newRetentionName)
 		changeLabel.Alignment = fyne.TextAlignCenter
 		chatHistory := dm.chatHistoryScroll().Content.(*fyne.Container)
 		chatHistory.Objects = append(chatHistory.Objects, changeLabel)
 		dm.chatHistoryScroll().Refresh()
+
+		if autoscroll {
+			if fyneUI.isActive(dm) {
+				if autoscroll {
+					dm.scroll.ScrollToBottom()
+					dm.scroll.Refresh()
+				}
+			}
+		}
+
 		dm.setLastMessageTime(time.Now().Unix())
 		fyneUI.refreshThreadOrder()
 	} else {
