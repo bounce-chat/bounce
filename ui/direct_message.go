@@ -27,6 +27,7 @@ type directMessage struct {
 	scroll                  *container.Scroll
 	entry                   *threadEntry
 	entryBar                *fyne.Container
+	retentionSelection      *widget.Select
 	lastMessage             int64
 }
 
@@ -55,6 +56,53 @@ func (dm *directMessage) getLastMessageTime() int64 {
 
 func (dm *directMessage) setLastMessageTime(time int64) {
 	dm.lastMessage = time
+}
+
+type retentionSelection struct {
+	display string
+	value   int64
+}
+
+var retentionOneHour = retentionSelection{
+	display: "1 Hour",
+	value:   int64(time.Duration(1 * time.Hour).Seconds()),
+}
+
+var retentionOneDay = retentionSelection{
+	display: "1 Day",
+	value:   int64(time.Duration(24 * time.Hour).Seconds()),
+}
+
+var retentionOneWeek = retentionSelection{
+	display: "1 Week",
+	value:   int64(time.Duration(7 * 24 * time.Hour).Seconds()),
+}
+
+var retentionOff = retentionSelection{
+	display: "Off",
+	value:   0,
+}
+
+var retentionSelections = []string{retentionOneHour.display, retentionOneDay.display, retentionOneWeek.display, retentionOff.display}
+var retentionValues = map[string]int64{
+	retentionOneHour.display: retentionOneHour.value,
+	retentionOneDay.display:  retentionOneDay.value,
+	retentionOneWeek.display: retentionOneWeek.value,
+	retentionOff.display:     retentionOff.value,
+}
+var retentionNames = map[int64]string{
+	retentionOneHour.value: retentionOneHour.display,
+	retentionOneDay.value:  retentionOneDay.display,
+	retentionOneWeek.value: retentionOneWeek.display,
+	retentionOff.value:     retentionOff.display,
+}
+
+func getRetentionName(retention int64) string {
+	name, ok := retentionNames[retention]
+	if ok {
+		return name
+	}
+	return "custom" // https://github.com/hako/durafmt
 }
 
 func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wrap around something that takes the internal user object
@@ -271,11 +319,23 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	//
 	// Selection for message retention
 	//
-	retentionSelections := []string{"Off", "1 Week", "1 Day"}
-	messageRetentionSelect := widget.NewSelect(retentionSelections, nil)
-	messageRetentionSelect.Selected = "1 Week"
-	messageRetentionSelect.OnChanged = func(retention string) {
-		log.Info("desired retention: " + retention)
+	dm.retentionSelection = widget.NewSelect(retentionSelections, nil)
+	retention, err := fyneUI.callbacks.GetDMRetention(dm.user.id)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error getting user message retention settings")
+	}
+	dm.retentionSelection.Selected = getRetentionName(retention)
+	dm.retentionSelection.OnChanged = func(retention string) {
+		retentionSeconds, ok := retentionValues[retention]
+		if !ok {
+			retentionSeconds = 0
+			log.WithFields(log.Fields{
+				"selection": retention,
+			}).Warn("invalid retention selection")
+		}
+		fyneUI.callbacks.SetDMRetention(dm.user.id, retentionSeconds)
 	}
 
 	//
@@ -298,7 +358,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		threadIcon,
 		username,
 		notificationsCheck,
-		messageRetentionSelect,
+		dm.retentionSelection,
 	)
 
 	// Close the window but save state.  TODO: should it clear state as well?
@@ -341,8 +401,17 @@ func (fyneUI *Fyne) DMNotificationsChanged(userID uuid.UUID, enabled bool) {
 }
 
 func (fyneUI *Fyne) DMRetentionChanged(userID uuid.UUID, retention int64) {
-	log.WithFields(log.Fields{
-		"user":      userID,
-		"retention": retention,
-	}).Info("chat engine wants to update DM retention settings")
+	if dm, exists := fyneUI.dms[userID]; exists {
+		dm.retentionSelection.Selected = getRetentionName(retention)
+		dm.retentionSelection.Refresh()
+		// TODO: insert that this happened into the thread
+		log.WithFields(log.Fields{
+			"user":      userID,
+			"retention": retention,
+		}).Info("chat engine wants to update DM retention settings")
+	} else {
+		log.WithFields(log.Fields{
+			"user_id": userID,
+		}).Warn("cannot update retention settings for DM that doesn't exist")
+	}
 }

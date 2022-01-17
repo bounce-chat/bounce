@@ -226,7 +226,7 @@ func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Fatal("error update local DM settings for user")
+				}).Fatal("error applying update local DM settings for user")
 			}
 
 			// Delete all old updates
@@ -248,6 +248,7 @@ func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
 			// There was no error looking up the update.  We have it, all we need to do is make sure
 			// to mark is as delivered to the peer who sent it to us.
 			b.markDeliveredTo(&existingULDS, peer)
+			// TODO: is this reachable?  This update is newer than our last applied update, but we already have it?
 		}
 	}
 }

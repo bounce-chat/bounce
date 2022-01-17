@@ -36,6 +36,7 @@ type bounce struct {
 	shutdownMutex         sync.Mutex
 	dmExistenceCheck      sync.Mutex
 	uldsExistenceCheck    sync.Mutex
+	udsExistenceCheck     sync.Mutex
 	syncDeviceRequest     sync.Mutex
 }
 

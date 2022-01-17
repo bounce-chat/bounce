@@ -57,6 +57,7 @@ func (b *bounce) openDatabase() {
 		&updateLocalDMSettings{},
 		&syncDeviceOffer{},
 		&deliveryRecord{},
+		&updateDMSettings{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{

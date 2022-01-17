@@ -21,6 +21,7 @@ type user struct {
 	Name                      string
 	Profile                   bool     `gorm:"index:,where:profile = true" json:"-"`
 	MessageRetention          int64    `json:"-"`
+	ClearBefore               int64    `json:"-"`
 	LastDMSettingsUpdate      int64    `json:"-"`
 	NotificationsEnabled      bool     `json:"-"`
 	NotificationsMutedUntil   uint64   `json:"-"`

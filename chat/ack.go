@@ -23,6 +23,7 @@ type ack struct {
 	CatchUps              string
 	Devices               string
 	Users                 string
+	UpdateDMSettings      string
 	destination           uuid.UUID
 	payload               []byte
 	payloadMutex          sync.Mutex

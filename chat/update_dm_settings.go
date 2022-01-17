@@ -1,16 +1,21 @@
 package chat
 
 import (
+	"errors"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type updateDMSettings struct {
-	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID uuid.UUID `gorm:"type:uuid;primary_key;"`
+	//Actor        uuid.UUID
+	Timestamp    int64
 	Xor          uuid.UUID
 	Retention    int64
 	ClearBefore  int64
@@ -61,19 +66,191 @@ func (uds *updateDMSettings) getPayload() []byte {
 	return uds.payload
 }
 
-func (b *bounce) setDMRetention(user uuid.UUID, retention int64) {
-	// Create a uds using my ID xored with the user as the target
+func (b *bounce) setDMRetention(u uuid.UUID, retention int64) {
+	// Find the user
+	var target user
+	err := b.database.First(&target, "id = ?", u).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": u,
+			}).Warn("cannot update retention settings for user not found in database")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up user")
+		}
+	}
+
+	// Apply the change locally
+	updateTime := time.Now().Unix()
+	err = b.database.Model(&target).Select(
+		"message_retention",
+		"last_dm_settings_update",
+	).Updates(map[string]interface{}{
+		"message_retention":       retention,
+		"last_dm_settings_update": updateTime,
+	}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error updating retention settings for user")
+	}
+
+	// Inform the UI that the change has been applied
+	b.userInterface.DMRetentionChanged(u, retention)
+
+	// Create an updateDMSettings and broadcast it
+	update := &updateDMSettings{
+		Timestamp:   updateTime,
+		Xor:         xor(u, b.currentUserID()),
+		Retention:   retention,
+		ClearBefore: target.ClearBefore,
+	}
+	err = b.database.Create(update).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error while saving an updateDMSettngs")
+	}
+	go b.broadcast(update)
+
+	// Delete all other updates
+	err = b.database.Where("xor = ? AND id != ?", update.Xor, update.ID).Delete(&updateDMSettings{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error pruning old update DM settings")
+	}
 }
 
-func (b *bounce) getDMRetention(user uuid.UUID) (int64, error) {
-	return 0, nil
+func (b *bounce) getDMRetention(id uuid.UUID) (int64, error) {
+	var u user
+	err := b.database.Select("message_retention").First(&u, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": u,
+			}).Warn("cannot query message retention settings for user not found in database")
+			return 0, err
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up user message retention settings")
+		}
+	}
+
+	return u.MessageRetention, nil
 }
 
 func (b *bounce) handleUpdateDMSettings(peer string, payload []byte) {
 	// Unmarshall it
-	// XOR the target with my ID to get the user in question
-	// apply the settings change
+	var uds updateDMSettings
+	err := msgpack.Unmarshal(payload, &uds)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling update DM settings")
+		return
+	}
 
+	// Find the user this applies to
+	counterparty := xor(b.currentUserID(), uds.Xor)
+	var targetUser user
+	err = b.database.Preload(clause.Associations).First(&targetUser, "id = ?", counterparty).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": counterparty,
+			}).Error("cannot update DM settings for unknown user")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up user for DM settings update")
+		}
+	}
+
+	// Make sure this came from a sync device or one of the user's devices
+	dev, exists := b.getDeviceFromAddress(peer)
+	if !exists || !(dev.UserID == b.currentUserID() || dev.UserID == counterparty) {
+		log.WithFields(log.Fields{
+			"peer":        peer,
+			"target_user": counterparty,
+		}).Warn("rejecting update DM settings from out of scope device")
+		return
+	}
+
+	// Ack it
+	go b.broadcast(&ack{
+		UpdateDMSettings: uds.ID.String(),
+		destination:      dev.ID,
+	})
+
+	// If the timestamp is newer than the last update we're aware of, apply the update
+	if uds.Timestamp > targetUser.LastDMSettingsUpdate {
+		b.udsExistenceCheck.Lock() // TODO: just mutex all handlers here?
+		defer b.udsExistenceCheck.Unlock()
+
+		var existingUDS updateDMSettings
+		err = b.database.Where("id = ?", uds.ID).First(&existingUDS).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// This update is newer than our last update and we don't have it saved.  We save it,
+			// apply it, and broadcast it to the rest of the devices.
+			err = b.database.Create(&uds).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error saving update DM settings")
+			}
+			b.markDeliveredTo(&uds, peer)
+
+			// Inform the UI of any changes
+			if targetUser.MessageRetention != uds.Retention {
+				b.userInterface.DMRetentionChanged(targetUser.ID, uds.Retention)
+			}
+
+			if targetUser.ClearBefore != uds.ClearBefore {
+				//b.userInterface.ClearDMsBefore(targetUser.ID, ulds.ClearBefore)
+			}
+
+			// Apply the settings in this update to the user
+			err = b.database.Model(&targetUser).Select(
+				"message_retention",
+				"clear_before",
+				"last_dm_settings_update",
+			).Updates(map[string]interface{}{
+				"message_retention":       uds.Retention,
+				"clear_before":            uds.ClearBefore,
+				"last_dm_settings_update": uds.Timestamp,
+			}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error applying update DM settings for user")
+			}
+
+			// Delete all old updates
+			err = b.database.Where("xor = ? AND id != ?", uds.Xor, uds.ID).Delete(updateDMSettings{}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error pruning old update DM settings")
+			}
+
+			// Broadcast it to other devices
+			go b.broadcast(&uds)
+		} else if err != nil {
+			// There was some other database error while attempting to look this up.
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up update DM settings")
+		} else {
+			// TODO: is this reachable?
+			b.markDeliveredTo(&existingUDS, peer)
+		}
+	}
 }
 
 func xor(uuid1, uuid2 uuid.UUID) uuid.UUID {
