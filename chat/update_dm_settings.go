@@ -232,7 +232,7 @@ func (b *bounce) handleUpdateDMSettings(peer string, payload []byte) {
 			}
 
 			// Delete all old updates
-			err = b.database.Where("xor = ? AND id != ?", uds.Xor, uds.ID).Delete(updateDMSettings{}).Error
+			err = b.database.Where("xor = ? AND id != ?", uds.Xor, uds.ID).Delete(&updateDMSettings{}).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
