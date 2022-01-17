@@ -358,6 +358,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		threadIcon,
 		username,
 		notificationsCheck,
+		widget.NewLabel("Disappearing Messages"),
 		dm.retentionSelection,
 	)
 
@@ -400,15 +401,32 @@ func (fyneUI *Fyne) DMNotificationsChanged(userID uuid.UUID, enabled bool) {
 	}
 }
 
-func (fyneUI *Fyne) DMRetentionChanged(userID uuid.UUID, retention int64) {
-	if dm, exists := fyneUI.dms[userID]; exists {
-		dm.retentionSelection.Selected = getRetentionName(retention)
-		dm.retentionSelection.Refresh()
-		// TODO: insert that this happened into the thread
+func (fyneUI *Fyne) DMRetentionChanged(userID uuid.UUID, actorID uuid.UUID, retention int64) {
+	actor, ok := fyneUI.users.get(actorID)
+	actorName := ""
+	if !ok {
+		actorName = "unknown"
 		log.WithFields(log.Fields{
-			"user":      userID,
-			"retention": retention,
-		}).Info("chat engine wants to update DM retention settings")
+			"actor_id": actorID,
+		}).Warn("unknown user just updated DM retetion settings")
+	} else {
+		actorName = actor.name
+	}
+
+	if dm, exists := fyneUI.dms[userID]; exists {
+		newRetentionName := getRetentionName(retention)
+		dm.retentionSelection.Selected = newRetentionName
+		dm.retentionSelection.Refresh()
+
+		// Insert a note in this thread that the setting was changed
+		// TODO: how will this be persisted?  Should UDS frames not expire?
+		changeLabel := widget.NewLabel(actorName + " updated disappearing messages to " + newRetentionName)
+		changeLabel.Alignment = fyne.TextAlignCenter
+		chatHistory := dm.chatHistoryScroll().Content.(*fyne.Container)
+		chatHistory.Objects = append(chatHistory.Objects, changeLabel)
+		dm.chatHistoryScroll().Refresh()
+		dm.setLastMessageTime(time.Now().Unix())
+		fyneUI.refreshThreadOrder()
 	} else {
 		log.WithFields(log.Fields{
 			"user_id": userID,

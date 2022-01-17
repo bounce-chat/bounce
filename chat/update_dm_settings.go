@@ -13,8 +13,8 @@ import (
 )
 
 type updateDMSettings struct {
-	ID uuid.UUID `gorm:"type:uuid;primary_key;"`
-	//Actor        uuid.UUID
+	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Actor        uuid.UUID
 	Timestamp    int64
 	Xor          uuid.UUID
 	Retention    int64
@@ -99,12 +99,13 @@ func (b *bounce) setDMRetention(u uuid.UUID, retention int64) {
 	}
 
 	// Inform the UI that the change has been applied
-	b.userInterface.DMRetentionChanged(u, retention)
+	b.userInterface.DMRetentionChanged(u, b.currentUserID(), retention)
 
 	// Create an updateDMSettings and broadcast it
 	update := &updateDMSettings{
 		Timestamp:   updateTime,
 		Xor:         xor(u, b.currentUserID()),
+		Actor:       b.currentUserID(),
 		Retention:   retention,
 		ClearBefore: target.ClearBefore,
 	}
@@ -117,6 +118,7 @@ func (b *bounce) setDMRetention(u uuid.UUID, retention int64) {
 	go b.broadcast(update)
 
 	// Delete all other updates
+	// TODO: actually retain these so a history of who did what is available in the thread?
 	err = b.database.Where("xor = ? AND id != ?", update.Xor, update.ID).Delete(&updateDMSettings{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -208,7 +210,7 @@ func (b *bounce) handleUpdateDMSettings(peer string, payload []byte) {
 
 			// Inform the UI of any changes
 			if targetUser.MessageRetention != uds.Retention {
-				b.userInterface.DMRetentionChanged(targetUser.ID, uds.Retention)
+				b.userInterface.DMRetentionChanged(targetUser.ID, uds.Actor, uds.Retention)
 			}
 
 			if targetUser.ClearBefore != uds.ClearBefore {
@@ -232,6 +234,7 @@ func (b *bounce) handleUpdateDMSettings(peer string, payload []byte) {
 			}
 
 			// Delete all old updates
+			// TODO: actually retain these so a history of who did what is available in the thread?
 			err = b.database.Where("xor = ? AND id != ?", uds.Xor, uds.ID).Delete(&updateDMSettings{}).Error
 			if err != nil {
 				log.WithFields(log.Fields{

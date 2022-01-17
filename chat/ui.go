@@ -46,7 +46,7 @@ type UI interface {
 	DMNotificationsChanged(dm uuid.UUID, enabled bool)
 
 	// The retention settings for a DM have been changed
-	DMRetentionChanged(dm uuid.UUID, retention int64)
+	DMRetentionChanged(dm uuid.UUID, actor uuid.UUID, retention int64)
 
 	NewGroupChat(Group)
 	ReceivedGroupMessage(GroupMessage)
