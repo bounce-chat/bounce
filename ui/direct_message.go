@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hako/durafmt"
 	"github.com/hkparker/bounce/chat"
 
 	"fyne.io/fyne/v2"
@@ -102,7 +103,7 @@ func getRetentionName(retention int64) string {
 	if ok {
 		return name
 	}
-	return "custom" // https://github.com/hako/durafmt
+	return durafmt.Parse(time.Duration(retention) * time.Second).String()
 }
 
 func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wrap around something that takes the internal user object
