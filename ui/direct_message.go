@@ -103,7 +103,7 @@ func getRetentionName(retention int64) string {
 	if ok {
 		return name
 	}
-	return durafmt.Parse(time.Duration(retention) * time.Second).String()
+	return durafmt.Parse(time.Duration(retention) * time.Second).String() // TODO: language support
 }
 
 func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wrap around something that takes the internal user object
