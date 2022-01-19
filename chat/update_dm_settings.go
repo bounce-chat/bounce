@@ -127,25 +127,6 @@ func (b *bounce) setDMRetention(u uuid.UUID, retention int64) {
 	}
 }
 
-func (b *bounce) getDMRetention(id uuid.UUID) (int64, error) {
-	var u user
-	err := b.database.Select("message_retention").First(&u, "id = ?", id).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"user_id": u,
-			}).Warn("cannot query message retention settings for user not found in database")
-			return 0, err
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up user message retention settings")
-		}
-	}
-
-	return u.MessageRetention, nil
-}
-
 func (b *bounce) handleUpdateDMSettings(peer string, payload []byte) {
 	// Unmarshall it
 	var uds updateDMSettings

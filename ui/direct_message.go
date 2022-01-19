@@ -321,12 +321,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	// Selection for message retention
 	//
 	dm.retentionSelection = widget.NewSelect(retentionSelections, nil)
-	retention, err := fyneUI.callbacks.GetDMRetention(dm.user.id)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error getting user message retention settings")
-	}
+	retention := fyneUI.callbacks.GetDMRetention(dm.user.id)
 	dm.retentionSelection.Selected = getRetentionName(retention)
 	dm.retentionSelection.OnChanged = func(retention string) {
 		retentionSeconds, ok := retentionValues[retention]

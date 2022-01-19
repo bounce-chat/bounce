@@ -81,7 +81,7 @@ func (b *bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
 	message.WrittenAt = time.Now().Unix()
 	message.Read = true
 	message.Source = b.currentUserID()
-	message.RetentionSeconds = b.getUserDMRetention(message.Destination)
+	message.RetentionSeconds = b.getDMRetention(message.Destination)
 
 	err := b.database.Create(message).Error
 	if err != nil {
@@ -151,7 +151,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	if id == b.currentUserID() {
 		id = dm.Source
 	}
-	dm.RetentionSeconds = b.getUserDMRetention(id)
+	dm.RetentionSeconds = b.getDMRetention(id)
 	if dm.RetentionSeconds != 0 {
 		dm.DeleteAt = time.Now().Unix() + dm.RetentionSeconds
 	}

@@ -119,7 +119,7 @@ type UICallbacks struct {
 	SetDMRetention func(userID uuid.UUID, retention int64)
 
 	// Get the message retention settings for a DM
-	GetDMRetention func(userID uuid.UUID) (retention int64, err error)
+	GetDMRetention func(userID uuid.UUID) int64
 
 	// The user wants to change the notification settings for a group
 	ChangeGroupNotificationSettings func(groupID uuid.UUID, notificationEnabled bool)

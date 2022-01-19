@@ -184,7 +184,7 @@ func (b *bounce) currentUserID() uuid.UUID {
 	return b.userID
 }
 
-func (b *bounce) getUserDMRetention(id uuid.UUID) int64 {
+func (b *bounce) getDMRetention(id uuid.UUID) int64 {
 	var u user
 	err := b.database.Select("message_retention").First(&u, "id = ?", id).Error
 	if err != nil {
