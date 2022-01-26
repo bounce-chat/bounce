@@ -205,8 +205,8 @@ func (b *bounce) getUpdateLocalDMSettingsToOffer(dev device) string {
 	uldsToOffer := []string{}
 	var localDMSettingsUpdates []updateLocalDMSettings
 	err := b.database.
-		Select("local_dm_settings_updates.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == local_dm_settings_updates.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateLocalDMSettings).
+		Select("update_local_dm_settings.*").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_local_dm_settings.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateLocalDMSettings).
 		Where("delivery_records.id IS NULL").
 		Find(&localDMSettingsUpdates).Error // TODO: only select ID?
 	// TODO: only get one per unix timestamp?  UNIQUE timestamp LIMIT 1?  Only get the latest one?
