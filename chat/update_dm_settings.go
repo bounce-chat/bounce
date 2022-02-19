@@ -120,15 +120,6 @@ func (b *bounce) setDMRetention(u uuid.UUID, retention int64) {
 		}).Fatal("database error while saving an updateDMSettngs")
 	}
 	go b.broadcast(update)
-
-	// Delete all other updates
-	// TODO: actually retain these so a history of who did what is available in the thread?
-	err = b.database.Where("xor = ? AND id != ?", update.Xor, update.ID).Delete(&updateDMSettings{}).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error pruning old update DM settings")
-	}
 }
 
 func (b *bounce) handleUpdateDMSettings(peer string, payload []byte) {
