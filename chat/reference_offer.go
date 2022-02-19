@@ -230,22 +230,45 @@ func (b *bounce) getUpdateLocalDMSettingsToOffer(dev device) string {
 }
 
 func (b *bounce) getUpdateDMSettingsToOffer(dev device) string {
-	udsToOffer := []string{}
-	var dmSettingsUpdates []updateDMSettings
-	err := b.database.
-		Select("update_dm_settings.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dm_settings.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateLocalDMSettings).
-		Where("update_dm_settings.xor = ? AND delivery_records.id IS NULL", xor(dev.UserID, b.currentUserID())).
-		Find(&dmSettingsUpdates).Error // TODO: only select ID?
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error selecting update DM settings for reference offer")
+	offerString := ""
+
+	if b.isSyncDevice(dev.Address) {
+		udsToOffer := []string{}
+		var dmSettingsUpdates []updateDMSettings
+		err := b.database.
+			Select("update_dm_settings.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dm_settings.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateDMSettings).
+			Where("delivery_records.id IS NULL").
+			Find(&dmSettingsUpdates).Error // TODO: only select ID?
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting update DM settings for reference offer")
+		}
+		for _, uds := range dmSettingsUpdates {
+			udsToOffer = append(udsToOffer, uds.ID.String())
+		}
+		offerString = strings.Join(udsToOffer, ",")
+	} else {
+		udsToOffer := []string{}
+		var dmSettingsUpdates []updateDMSettings
+		err := b.database.
+			Select("update_dm_settings.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dm_settings.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateDMSettings).
+			Where("update_dm_settings.xor = ? AND delivery_records.id IS NULL", xor(dev.UserID, b.currentUserID())).
+			Find(&dmSettingsUpdates).Error // TODO: only select ID?
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting update DM settings for reference offer")
+		}
+		for _, uds := range dmSettingsUpdates {
+			udsToOffer = append(udsToOffer, uds.ID.String())
+		}
+		offerString = strings.Join(udsToOffer, ",")
 	}
-	for _, uds := range dmSettingsUpdates {
-		udsToOffer = append(udsToOffer, uds.ID.String())
-	}
-	return strings.Join(udsToOffer, ",")
+
+	return offerString
 }
 
 func (b *bounce) getDevicesToOffer(dev device) string {

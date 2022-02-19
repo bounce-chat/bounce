@@ -74,6 +74,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckDirectMessages(peer, a)
 	b.handleAckCatchUps(peer, a)
 	b.handleAckUpdateLocalDMSettings(peer, a)
+	b.handleAckUpdateDMSettings(peer, a)
 	b.handleAckDevices(peer, a)
 	b.handleAckUsers(peer, a)
 }
@@ -175,6 +176,39 @@ func (b *bounce) handleAckUpdateLocalDMSettings(peer string, a ack) {
 				}
 			} else {
 				b.markDeliveredTo(&ulds, peer)
+			}
+		}
+	}
+}
+
+func (b *bounce) handleAckUpdateDMSettings(peer string, a ack) {
+	if len(a.UpdateDMSettings) > 0 {
+		for _, udsIDString := range strings.Split(a.UpdateDMSettings, ",") {
+			udsID, err := uuid.Parse(udsIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": udsIDString,
+				}).Error("invalid uds UUID in ack")
+				continue
+			}
+
+			var uds updateDMSettings
+			err = b.database.First(&uds, "id = ?", udsID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"id":   udsID,
+						"peer": peer,
+					}).Warn("unknown update DM settings acked")
+				} else {
+					log.WithFields(log.Fields{
+						"id":    udsID,
+						"error": err.Error(),
+					}).Fatal("database error querying for update DM settings")
+				}
+			} else {
+				b.markDeliveredTo(&uds, peer)
 			}
 		}
 	}
