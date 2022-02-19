@@ -10,9 +10,9 @@ type message struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt          int64     `msgpack:"-"`
 	WrittenAt        int64
-	RetentionSeconds int64 `msgpack:"-"` // Number of seconds to retain this message, captures the retention setting at the time the message was written
+	RetentionSeconds int64 // Number of seconds to retain this message, captures the retention setting from the author's perspective at the time the message was written
 	DeleteAt         int64 `msgpack:"-"` // Absolute time at which the messages expires.  Time it was first acked/received + RetentionSeconds
-	Read             bool  `msgpack:"-"`
+	Read             bool  `msgpack:"-"` // TODO: can these just be unexported as opposed to excluded from msgpack?
 	Undeliverable    bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
 	Source           uuid.UUID
 	Destination      uuid.UUID

@@ -151,7 +151,6 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	if id == b.currentUserID() {
 		id = dm.Source
 	}
-	dm.RetentionSeconds = b.getDMRetention(id)
 	if dm.RetentionSeconds != 0 {
 		dm.DeleteAt = time.Now().Unix() + dm.RetentionSeconds
 	}
