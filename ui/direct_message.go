@@ -340,10 +340,12 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 
 	saveButton := widget.NewButton("Save", func() {
 		fyneUI.showMainContainer()
+		fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
 	})
 	saveButton.Importance = widget.HighImportance
 	cancelButton := widget.NewButton("Cancel", func() {
 		fyneUI.showMainContainer()
+		fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
 	})
 	actionButtons := container.New(
 		layout.NewBorderLayout(nil, nil, cancelButton, saveButton),

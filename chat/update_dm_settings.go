@@ -214,15 +214,6 @@ func (b *bounce) handleUpdateDMSettings(peer string, payload []byte) {
 				}).Fatal("error applying update DM settings for user")
 			}
 
-			// Delete all old updates
-			// TODO: actually retain these so a history of who did what is available in the thread?
-			err = b.database.Where("xor = ? AND id != ?", uds.Xor, uds.ID).Delete(&updateDMSettings{}).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error pruning old update DM settings")
-			}
-
 			// Broadcast it to other devices
 			go b.broadcast(&uds)
 		} else if err != nil {

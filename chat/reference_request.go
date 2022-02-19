@@ -19,6 +19,7 @@ type referenceRequest struct {
 	ID                    uuid.UUID
 	DirectMessages        string // Comma-separated list of DM UUIDs
 	UpdateLocalDMSettings string
+	UpdateDMSettings      string
 	Devices               string
 	Users                 string
 	destination           uuid.UUID
@@ -98,6 +99,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 		destination:           dev.ID,
 		DirectMessages:        b.getRequestedDirectMessagePayloads(dev, rr, originalOffer),
 		UpdateLocalDMSettings: b.getRequestedUpdateLocalDMSettingsPayloads(dev, rr, originalOffer),
+		UpdateDMSettings:      b.getRequestedUpdateDMSettingsPayloads(dev, rr, originalOffer),
 		Devices:               b.getRequestedDevicesPayloads(dev, rr, originalOffer),
 		Users:                 b.getRequestedUsersPayloads(dev, rr, originalOffer),
 	}
@@ -212,6 +214,54 @@ func (b *bounce) getRequestedUpdateLocalDMSettingsPayloads(peer device, rr refer
 			}
 		} else {
 			requestedData = append(requestedData, ulds.getPayload())
+		}
+	}
+
+	return requestedData
+}
+
+func (b *bounce) getRequestedUpdateDMSettingsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
+	requestedData := [][]byte{}
+
+	requestedUpdateDMSettingsIDs, deliveredUpdateDMSettingsIDs := getRequestedAndDeliveredUUIDs(originalOffer.UpdateDMSettings, rr.UpdateDMSettings)
+
+	for _, udsID := range deliveredUpdateDMSettingsIDs {
+		var uds updateDMSettings
+		err := b.database.First(&uds, "id = ?", udsID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   udsID,
+					"peer": peer.Address,
+				}).Warn("reference request indicates we offered an unknown update DM settings")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    udsID,
+					"error": err.Error(),
+				}).Fatal("database error querying for update DM settings")
+			}
+		} else {
+			b.markDeliveredTo(&uds, peer.Address)
+		}
+	}
+
+	for _, udsID := range requestedUpdateDMSettingsIDs {
+		var uds updateDMSettings
+		err := b.database.First(&uds, "id = ?", udsID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   udsID,
+					"peer": peer.Address,
+				}).Warn("reference request asks for an unknown update DM settings")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    udsID,
+					"error": err.Error(),
+				}).Fatal("database error querying for update DM settings")
+			}
+		} else {
+			requestedData = append(requestedData, uds.getPayload())
 		}
 	}
 

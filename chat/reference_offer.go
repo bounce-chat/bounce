@@ -22,6 +22,7 @@ type referenceOffer struct {
 	CreatedAt             int64     // Used to delete old reference offers that were not responded to
 	DirectMessages        string    // Comma-separated list of DM UUIDs
 	UpdateLocalDMSettings string    // only for sync devices
+	UpdateDMSettings      string
 	Devices               string
 	Users                 string    // only for sync devices
 	Destination           uuid.UUID `msgpack:"-"`
@@ -76,6 +77,9 @@ func (ro *referenceOffer) shouldDial() bool {
 	if len(ro.UpdateLocalDMSettings) > 0 {
 		return true
 	}
+	if len(ro.UpdateDMSettings) > 0 {
+		return true
+	}
 	if len(ro.Devices) > 0 {
 		return true
 	}
@@ -91,6 +95,9 @@ func (ro *referenceOffer) hasContent() bool {
 		return true
 	}
 	if len(ro.UpdateLocalDMSettings) > 0 {
+		return true
+	}
+	if len(ro.UpdateDMSettings) > 0 {
 		return true
 	}
 	if len(ro.Devices) > 0 {
@@ -164,6 +171,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 		Destination:           dev.ID,
 		DirectMessages:        b.getDirectMessagesToOffer(dev),
 		UpdateLocalDMSettings: b.getUpdateLocalDMSettingsToOffer(dev),
+		UpdateDMSettings:      b.getUpdateDMSettingsToOffer(dev),
 		Devices:               b.getDevicesToOffer(dev),
 		Users:                 b.getUsersToOffer(dev),
 	}
@@ -219,6 +227,25 @@ func (b *bounce) getUpdateLocalDMSettingsToOffer(dev device) string {
 		uldsToOffer = append(uldsToOffer, ulds.ID.String())
 	}
 	return strings.Join(uldsToOffer, ",")
+}
+
+func (b *bounce) getUpdateDMSettingsToOffer(dev device) string {
+	udsToOffer := []string{}
+	var dmSettingsUpdates []updateDMSettings
+	err := b.database.
+		Select("update_dm_settings.*").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dm_settings.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateLocalDMSettings).
+		Where("update_dm_settings.xor = ? AND delivery_records.id IS NULL", xor(dev.UserID, b.currentUserID())).
+		Find(&dmSettingsUpdates).Error // TODO: only select ID?
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error selecting update DM settings for reference offer")
+	}
+	for _, uds := range dmSettingsUpdates {
+		udsToOffer = append(udsToOffer, uds.ID.String())
+	}
+	return strings.Join(udsToOffer, ",")
 }
 
 func (b *bounce) getDevicesToOffer(dev device) string {
@@ -316,6 +343,7 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 		destination:           dev.ID,
 		DirectMessages:        b.getDirectMessagesToRequest(dev, ro),
 		UpdateLocalDMSettings: b.getUpdateLocalDMSettingsToRequest(dev, ro),
+		UpdateDMSettings:      b.getUpdateDMSettingsToRequest(dev, ro),
 		Devices:               b.getDevicesToRequest(dev, ro),
 		Users:                 b.getUsersToRequest(dev, ro),
 	}
@@ -405,6 +433,40 @@ func (b *bounce) getUpdateLocalDMSettingsToRequest(dev device, ro referenceOffer
 			}
 		}
 		resp = strings.Join(desiredUpdateLocalDMSettings, ",")
+	}
+
+	return resp
+}
+
+func (b *bounce) getUpdateDMSettingsToRequest(dev device, ro referenceOffer) string {
+	var resp string
+
+	if len(ro.UpdateDMSettings) > 0 {
+		desiredUpdateDMSettings := []string{}
+		for _, udsIDString := range strings.Split(ro.UpdateDMSettings, ",") {
+			udsID, err := uuid.Parse(udsIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": udsIDString,
+				}).Error("invalid uds UUID in reference offer")
+				continue
+			}
+
+			var uds updateDMSettings
+			err = b.database.First(&uds, "id = ?", udsID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					desiredUpdateDMSettings = append(desiredUpdateDMSettings, udsID.String())
+				} else {
+					log.WithFields(log.Fields{
+						"id":    udsID,
+						"error": err.Error(),
+					}).Fatal("database error querying for update DM settings")
+				}
+			}
+		}
+		resp = strings.Join(desiredUpdateDMSettings, ",")
 	}
 
 	return resp
