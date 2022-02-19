@@ -72,6 +72,10 @@ func (dm *DirectMessage) getPayload() []byte {
 	return dm.payload
 }
 
+func (dm *DirectMessage) getTimestamp() int64 {
+	return dm.SavedAt
+}
+
 //
 // UI Handlers
 //

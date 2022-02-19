@@ -24,7 +24,7 @@ type user struct {
 	ClearBefore               int64    `json:"-"`
 	LastDMSettingsUpdate      int64    `json:"-"`
 	NotificationsEnabled      bool     `json:"-"`
-	NotificationsMutedUntil   uint64   `json:"-"`
+	NotificationsMutedUntil   int64    `json:"-"`
 	LastLocalDMSettingsUpdate int64    `json:"-"`
 	Devices                   []device `msgpack:"-"`
 	payload                   []byte
@@ -88,6 +88,11 @@ func (u *user) getPayload() []byte {
 		u.payload = bytes
 	}
 	return u.payload
+}
+
+func (u *user) getTimestamp() int64 {
+	// For catch up messages, always sort to the front
+	return 0
 }
 
 func (b *bounce) handleUser(peer string, payload []byte) {

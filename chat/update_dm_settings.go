@@ -66,6 +66,10 @@ func (uds *updateDMSettings) getPayload() []byte {
 	return uds.payload
 }
 
+func (uds *updateDMSettings) getTimestamp() int64 {
+	return uds.Timestamp
+}
+
 func (b *bounce) setDMRetention(u uuid.UUID, retention int64) {
 	// Find the user
 	var target user

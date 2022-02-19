@@ -40,6 +40,23 @@ type broadcastable interface {
 	getPayload() []byte
 }
 
+type sortableBroadcastable interface {
+	broadcastable
+	getTimestamp() int64
+}
+
+type sortableBroadcastables []sortableBroadcastable
+
+func (sbrs sortableBroadcastables) Len() int {
+	return len(sbrs)
+}
+func (sbrs sortableBroadcastables) Swap(i, j int) {
+	sbrs[i], sbrs[j] = sbrs[j], sbrs[i]
+}
+func (sbrs sortableBroadcastables) Less(i, j int) bool {
+	return sbrs[i].getTimestamp() < sbrs[j].getTimestamp()
+}
+
 func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 	return map[uint16]func(string, []byte){
 		typeDirectMessage:             b.handleDirectMessage,

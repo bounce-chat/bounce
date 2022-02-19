@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"sort"
 	"sync"
 
 	"github.com/google/uuid"
@@ -8,17 +9,21 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
+var catchUpMutex sync.Mutex
+
+type frame struct {
+	Type    uint16
+	Payload []byte
+}
+
 type catchUp struct {
-	_msgpack              struct{} `msgpack:",omitempty"`
-	ID                    uuid.UUID
-	DirectMessages        [][]byte
-	UpdateLocalDMSettings [][]byte
-	UpdateDMSettings      [][]byte
-	Devices               [][]byte
-	Users                 [][]byte
-	destination           uuid.UUID
-	payload               []byte
-	payloadMutex          sync.Mutex
+	_msgpack       struct{} `msgpack:",omitempty"`
+	ID             uuid.UUID
+	Frames         []frame
+	broadcastables sortableBroadcastables
+	destination    uuid.UUID
+	payload        []byte
+	payloadMutex   sync.Mutex
 }
 
 func (cu *catchUp) getID() uuid.UUID {
@@ -43,6 +48,11 @@ func (cu *catchUp) getPayload() []byte {
 	defer cu.payloadMutex.Unlock()
 
 	if len(cu.payload) == 0 {
+		sort.Sort(cu.broadcastables)
+		for _, br := range cu.broadcastables {
+			cu.Frames = append(cu.Frames, frame{Type: br.getType(), Payload: br.getPayload()})
+		}
+
 		bytes, err := msgpack.Marshal(cu)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -55,25 +65,13 @@ func (cu *catchUp) getPayload() []byte {
 }
 
 func (cu *catchUp) hasContent() bool {
-	if len(cu.DirectMessages) > 0 {
-		return true
-	}
-	if len(cu.UpdateLocalDMSettings) > 0 {
-		return true
-	}
-	if len(cu.UpdateDMSettings) > 0 {
-		return true
-	}
-	if len(cu.Devices) > 0 {
-		return true
-	}
-	if len(cu.Users) > 0 {
-		return true
-	}
-	return false
+	return len(cu.broadcastables) > 0
 }
 
 func (b *bounce) handleCatchUp(peer string, payload []byte) {
+	catchUpMutex.Lock()
+	defer catchUpMutex.Unlock()
+
 	var cu catchUp
 	err := msgpack.Unmarshal(payload, &cu)
 	if err != nil {
@@ -95,19 +93,16 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 		CatchUps:    cu.ID.String(),
 	})
 
-	for _, userPayload := range cu.Users {
-		b.handleUser(peer, userPayload)
-	}
-	for _, devicePayload := range cu.Devices {
-		b.handleDevice(peer, devicePayload)
-	}
-	for _, uldsPayload := range cu.UpdateLocalDMSettings {
-		b.handleUpdateLocalDMSettings(peer, uldsPayload)
-	}
-	for _, dmPayload := range cu.DirectMessages {
-		b.handleDirectMessage(peer, dmPayload)
-	}
-	for _, udsPayload := range cu.UpdateDMSettings {
-		b.handleUpdateDMSettings(peer, udsPayload)
+	handlers := b.getHandlers()
+	for _, fr := range cu.Frames {
+		handler, ok := handlers[fr.Type]
+		if !ok {
+			log.WithFields(log.Fields{
+				"peer": peer,
+				"type": fr.Type,
+			}).Warn("peer sent a catch up frame type that doesn't have a handler")
+			continue
+		}
+		handler(peer, fr.Payload)
 	}
 }

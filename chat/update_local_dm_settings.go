@@ -16,8 +16,8 @@ type updateLocalDMSettings struct {
 	ID                      uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Target                  uuid.UUID
 	Timestamp               int64
-	NotificationsEnabled    bool   `gorm:"-"`
-	NotificationsMutedUntil uint64 `gorm:"-"`
+	NotificationsEnabled    bool  `gorm:"-"`
+	NotificationsMutedUntil int64 `gorm:"-"`
 	payload                 []byte
 	payloadMutex            sync.Mutex
 }
@@ -63,6 +63,10 @@ func (ulds *updateLocalDMSettings) getPayload() []byte {
 		ulds.payload = bytes
 	}
 	return ulds.payload
+}
+
+func (ulds *updateLocalDMSettings) getTimestamp() int64 {
+	return ulds.Timestamp
 }
 
 func (b *bounce) setDMNotificationEnabled(u uuid.UUID, enabled bool) {

@@ -71,6 +71,11 @@ func (d *device) getPayload() []byte {
 	return d.payload
 }
 
+func (d *device) getTimestamp() int64 {
+	// For catch up messages, always sort to the front
+	return 0
+}
+
 func (b *bounce) handleDevice(peer string, payload []byte) {
 	handleDevicesMutex.Lock()
 	defer handleDevicesMutex.Unlock()

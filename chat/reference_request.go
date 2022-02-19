@@ -94,18 +94,18 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	b.markDeliveredTo(&originalOffer, dev.Address)
 
 	// Everything the device has requested will b packed into a "catch up" message
-	catchUpResponse := &catchUp{
-		ID:                    uuid.New(),
-		destination:           dev.ID,
-		DirectMessages:        b.getRequestedDirectMessagePayloads(dev, rr, originalOffer),
-		UpdateLocalDMSettings: b.getRequestedUpdateLocalDMSettingsPayloads(dev, rr, originalOffer),
-		UpdateDMSettings:      b.getRequestedUpdateDMSettingsPayloads(dev, rr, originalOffer),
-		Devices:               b.getRequestedDevicesPayloads(dev, rr, originalOffer),
-		Users:                 b.getRequestedUsersPayloads(dev, rr, originalOffer),
+	cu := &catchUp{
+		ID:          uuid.New(),
+		destination: dev.ID,
 	}
+	cu.broadcastables = b.getRequestedDevicesPayloads(dev, rr, originalOffer)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedUsersPayloads(dev, rr, originalOffer)...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedDirectMessagePayloads(dev, rr, originalOffer)...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateLocalDMSettingsPayloads(dev, rr, originalOffer)...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMSettingsPayloads(dev, rr, originalOffer)...)
 
-	if catchUpResponse.hasContent() {
-		b.broadcastUntilDelivered(catchUpResponse)
+	if cu.hasContent() {
+		b.broadcastUntilDelivered(cu)
 	}
 
 	// TODO: broadcast separate catchups for each requested image/audio/file here.  Or rather than a catch up, just broadcast the data.
@@ -113,8 +113,8 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	b.database.Delete(&originalOffer) // TODO: error check
 }
 
-func (b *bounce) getRequestedDirectMessagePayloads(peer device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
-	requestedData := [][]byte{}
+func (b *bounce) getRequestedDirectMessagePayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+	requestedData := sortableBroadcastables{}
 
 	requestedDirectMessageIDs, deliveredDirectMessageIDs := getRequestedAndDeliveredUUIDs(originalOffer.DirectMessages, rr.DirectMessages)
 
@@ -154,15 +154,15 @@ func (b *bounce) getRequestedDirectMessagePayloads(peer device, rr referenceRequ
 				}).Fatal("database error querying for direct message")
 			}
 		} else {
-			requestedData = append(requestedData, dm.getPayload())
+			requestedData = append(requestedData, &dm)
 		}
 	}
 
 	return requestedData
 }
 
-func (b *bounce) getRequestedUpdateLocalDMSettingsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
-	requestedData := [][]byte{}
+func (b *bounce) getRequestedUpdateLocalDMSettingsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+	requestedData := sortableBroadcastables{}
 
 	requestedUpdateLocalDMSettingsIDs, deliveredUpdateLocalDMSettingsIDs := getRequestedAndDeliveredUUIDs(originalOffer.UpdateLocalDMSettings, rr.UpdateLocalDMSettings)
 
@@ -213,15 +213,15 @@ func (b *bounce) getRequestedUpdateLocalDMSettingsPayloads(peer device, rr refer
 				}).Fatal("database error querying for update local DM settings")
 			}
 		} else {
-			requestedData = append(requestedData, ulds.getPayload())
+			requestedData = append(requestedData, &ulds)
 		}
 	}
 
 	return requestedData
 }
 
-func (b *bounce) getRequestedUpdateDMSettingsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
-	requestedData := [][]byte{}
+func (b *bounce) getRequestedUpdateDMSettingsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+	requestedData := sortableBroadcastables{}
 
 	requestedUpdateDMSettingsIDs, deliveredUpdateDMSettingsIDs := getRequestedAndDeliveredUUIDs(originalOffer.UpdateDMSettings, rr.UpdateDMSettings)
 
@@ -261,15 +261,15 @@ func (b *bounce) getRequestedUpdateDMSettingsPayloads(peer device, rr referenceR
 				}).Fatal("database error querying for update DM settings")
 			}
 		} else {
-			requestedData = append(requestedData, uds.getPayload())
+			requestedData = append(requestedData, &uds)
 		}
 	}
 
 	return requestedData
 }
 
-func (b *bounce) getRequestedDevicesPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
-	requestedData := [][]byte{}
+func (b *bounce) getRequestedDevicesPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+	requestedData := sortableBroadcastables{}
 
 	requestedDeviceIDs, deliveredDeviceIDs := getRequestedAndDeliveredUUIDs(originalOffer.Devices, rr.Devices)
 
@@ -309,15 +309,15 @@ func (b *bounce) getRequestedDevicesPayloads(peer device, rr referenceRequest, o
 				}).Fatal("database error querying for device")
 			}
 		} else {
-			requestedData = append(requestedData, dev.getPayload())
+			requestedData = append(requestedData, &dev)
 		}
 	}
 
 	return requestedData
 }
 
-func (b *bounce) getRequestedUsersPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) [][]byte {
-	requestedData := [][]byte{}
+func (b *bounce) getRequestedUsersPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+	requestedData := sortableBroadcastables{}
 
 	requestedUserIDs, deliveredUserIDs := getRequestedAndDeliveredUUIDs(originalOffer.Users, rr.Users)
 
@@ -366,7 +366,7 @@ func (b *bounce) getRequestedUsersPayloads(peer device, rr referenceRequest, ori
 				}).Fatal("database error querying for user")
 			}
 		} else {
-			requestedData = append(requestedData, u.getPayload())
+			requestedData = append(requestedData, &u)
 		}
 	}
 
