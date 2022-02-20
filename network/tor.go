@@ -84,6 +84,7 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
+			"path":  bounceTor.keyDirectory,
 		}).Fatal("error creating hidden service key directory")
 	}
 

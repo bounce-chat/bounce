@@ -314,7 +314,17 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	notificationsCheck.OnChanged = func(state bool) { // TODO: do we really want this to apply before save?
 		// We don't need to update the bound value on this side because the chat engine
 		// is going to call back in after this applies, but maybe we should anyway?
-		fyneUI.callbacks.SetDMNotificationEnabled(dm.user.id, state)
+		currentState, err := fyneUI.callbacks.GetDMNotificationEnabled(dm.user.id)
+		if err != nil {
+			log.Fatal("data bindings are broken")
+		}
+		// TODO: for some reason, even though this bound check if created after the bound bool if first set
+		// in NewDirectMessage, the callback is called immediately on creation.  To prevent that from trying
+		// to make a broadcast / update on each load initial state, we do this check.  Ideally, we should
+		// figure out why this is being called immediately and fix that.
+		if state != currentState {
+			fyneUI.callbacks.SetDMNotificationEnabled(dm.user.id, state)
+		}
 	}
 
 	//

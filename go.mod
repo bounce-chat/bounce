@@ -4,7 +4,7 @@ go 1.16
 
 require (
 	berty.tech/go-libtor v1.0.385
-	fyne.io/fyne/v2 v2.1.1-0.20210923131757-bc52c98e2468
+	fyne.io/fyne/v2 v2.1.2
 	github.com/cretz/bine v0.2.0
 	github.com/google/uuid v1.3.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b

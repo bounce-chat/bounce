@@ -120,7 +120,7 @@ func (b *bounce) setDMNotificationEnabled(u uuid.UUID, enabled bool) {
 	go b.broadcast(update)
 
 	// Delete all older updates
-	err = b.database.Where("target = ? AND timestamp != ?", u, updateTime).Delete(updateLocalDMSettings{}).Error // TODO: use the primary key?
+	err = b.database.Where("target = ? AND timestamp != ?", u, updateTime).Delete(&updateLocalDMSettings{}).Error // TODO: use the primary key?
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -234,7 +234,7 @@ func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
 			}
 
 			// Delete all old updates
-			err = b.database.Where("target = ? AND timestamp != ?", ulds.Target, ulds.Timestamp).Delete(updateLocalDMSettings{}).Error
+			err = b.database.Where("target = ? AND timestamp != ?", ulds.Target, ulds.Timestamp).Delete(&updateLocalDMSettings{}).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
