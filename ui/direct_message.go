@@ -355,6 +355,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	// Close the window but save state.  TODO: should it clear state as well?
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		fyneUI.showMainContainer()
+		fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
 	})
 	closeButton.Importance = widget.LowImportance
 
