@@ -10,7 +10,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -18,18 +17,19 @@ import (
 )
 
 type directMessage struct {
-	user                    *user
-	notificationsEnabled    binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
-	notificationsMutedUntil int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
-	editContainer           *fyne.Container
-	view                    *fyne.Container
-	header                  *fyne.Container
-	button                  *widget.Button
-	scroll                  *container.Scroll
-	entry                   *threadEntry
-	entryBar                *fyne.Container
-	retentionSelection      *widget.Select
-	lastMessage             int64
+	user                      *user
+	notificationsEnabled      bool  //binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
+	notificationsMutedUntil   int64 // TODO: fyne feature request/PR: support binding int64 for time.Time
+	editContainer             *fyne.Container
+	view                      *fyne.Container
+	header                    *fyne.Container
+	button                    *widget.Button
+	notificationsEnabledCheck *widget.Check
+	scroll                    *container.Scroll
+	entry                     *threadEntry
+	entryBar                  *fyne.Container
+	retentionSelection        *widget.Select
+	lastMessage               int64
 }
 
 func (dm *directMessage) getID() uuid.UUID {
@@ -124,26 +124,29 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 	}
 
 	dm := &directMessage{
-		user:                 user,
-		scroll:               container.NewVScroll(container.NewVBox()),
-		notificationsEnabled: binding.NewBool(),
-		lastMessage:          time.Now().Unix(),
+		user:        user,
+		scroll:      container.NewVScroll(container.NewVBox()),
+		lastMessage: time.Now().Unix(),
 	}
 
-	enabled, err := fyneUI.callbacks.GetDMNotificationEnabled(dm.user.id)
+	var err error
+	dm.notificationsEnabled, err = fyneUI.callbacks.GetDMNotificationEnabled(dm.user.id)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"user_id": dm.user.id,
 		}).Error("cannot find notification settings for user")
 		return
 	}
-	err = dm.notificationsEnabled.Set(enabled)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"at":    "fyneUI.NewDirectMessage",
-			"error": err.Error(),
-		}).Fatal("data bindings are broken")
-	}
+
+	firstRun := true
+	dm.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(state bool) { // TODO: do we really want this to apply before save?
+		if firstRun {
+			firstRun = false
+			return
+		}
+		fyneUI.callbacks.SetDMNotificationEnabled(dm.user.id, state)
+	})
+	dm.notificationsEnabledCheck.SetChecked(dm.notificationsEnabled)
 
 	fyneUI.buildEditDMContainer(dm)
 	editButton := widget.NewButton("Edit", func() {
@@ -287,13 +290,9 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 	fyneUI.refreshThreadOrder()
 
 	notificationsMuted := time.Now().Unix() < dm.notificationsMutedUntil
-	notificationsEnabled, err := dm.notificationsEnabled.Get()
-	if err != nil {
-		log.Fatal("data bindings are broken")
-	}
 
 	// TODO: different criteria on mobile probably.  need to clean this up and add context around fyneUI.focused
-	if notificationsEnabled && !notificationsMuted && !autoscroll && !hideNotification {
+	if dm.notificationsEnabled && !notificationsMuted && !autoscroll && !hideNotification {
 		fyneUI.app.SendNotification(fyne.NewNotification(user.name, msg.Text))
 	}
 }
@@ -309,23 +308,6 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	threadIcon.SetMinSize(fyne.NewSize(64, 64))
 
 	username := widget.NewLabel(dm.user.name)
-
-	notificationsCheck := widget.NewCheckWithData("Enable notifications", dm.notificationsEnabled)
-	notificationsCheck.OnChanged = func(state bool) { // TODO: do we really want this to apply before save?
-		// We don't need to update the bound value on this side because the chat engine
-		// is going to call back in after this applies, but maybe we should anyway?
-		currentState, err := fyneUI.callbacks.GetDMNotificationEnabled(dm.user.id)
-		if err != nil {
-			log.Fatal("data bindings are broken")
-		}
-		// TODO: for some reason, even though this bound check if created after the bound bool if first set
-		// in NewDirectMessage, the callback is called immediately on creation.  To prevent that from trying
-		// to make a broadcast / update on each load initial state, we do this check.  Ideally, we should
-		// figure out why this is being called immediately and fix that.
-		if state != currentState {
-			fyneUI.callbacks.SetDMNotificationEnabled(dm.user.id, state)
-		}
-	}
 
 	//
 	// Selection for message retention
@@ -365,7 +347,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	topOptionsVBox := container.NewVBox(
 		threadIcon,
 		username,
-		notificationsCheck,
+		dm.notificationsEnabledCheck,
 		widget.NewLabel("Disappearing Messages"),
 		dm.retentionSelection,
 	)
@@ -398,10 +380,8 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 
 func (fyneUI *Fyne) DMNotificationsChanged(userID uuid.UUID, enabled bool) {
 	if dm, exists := fyneUI.dms[userID]; exists {
-		err := dm.notificationsEnabled.Set(enabled)
-		if err != nil {
-			log.Fatal("data bindings are broken")
-		}
+		dm.notificationsEnabled = enabled
+		dm.notificationsEnabledCheck.SetChecked(enabled)
 	} else {
 		log.WithFields(log.Fields{
 			"user_id": userID,
