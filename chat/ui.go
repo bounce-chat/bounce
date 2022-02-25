@@ -48,6 +48,9 @@ type UI interface {
 	// The retention settings for a DM have been changed
 	DMRetentionChanged(dm uuid.UUID, actor uuid.UUID, retention int64)
 
+	// Display that a user has deleted all past DMs
+	DMChatHistoryCleared(dm, actor uuid.UUID)
+
 	NewGroupChat(Group)
 	ReceivedGroupMessage(GroupMessage)
 	//RenameGroup()

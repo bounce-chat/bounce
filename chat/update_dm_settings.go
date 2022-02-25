@@ -172,6 +172,7 @@ func (b *bounce) clearDMChatHistory(userID uuid.UUID) {
 		}
 		b.userInterface.DeleteMessage(dm.ID)
 	}
+	b.userInterface.DMChatHistoryCleared(userID, b.currentUserID())
 }
 
 func (b *bounce) handleUpdateDMSettings(peer string, payload []byte) {
@@ -259,6 +260,7 @@ func (b *bounce) handleUpdateDMSettings(peer string, payload []byte) {
 					}
 					b.userInterface.DeleteMessage(dm.ID)
 				}
+				b.userInterface.DMChatHistoryCleared(counterparty, uds.Actor)
 			}
 
 			// Apply the settings in this update to the user

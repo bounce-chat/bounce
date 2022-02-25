@@ -398,6 +398,48 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 
 }
 
+func (fyneUI *Fyne) DMChatHistoryCleared(userID, actorID uuid.UUID) {
+	actor, ok := fyneUI.users.get(actorID)
+	actorName := ""
+	if !ok {
+		actorName = "unknown"
+		log.WithFields(log.Fields{
+			"actor_id": actorID,
+		}).Warn("unknown user just updated DM retetion settings")
+	} else {
+		actorName = actor.name
+	}
+
+	if dm, exists := fyneUI.dms[userID]; exists {
+		autoscroll := false
+		location := dm.scroll.Offset.Y
+		height := dm.scroll.Content.Size().Height - dm.scroll.Size().Height
+		if height == location {
+			autoscroll = true
+		}
+
+		changeLabel := widget.NewLabel(actorName + " cleared the chat history")
+		changeLabel.Alignment = fyne.TextAlignCenter
+		chatHistory := dm.chatHistoryScroll().Content.(*fyne.Container)
+		chatHistory.Objects = append(chatHistory.Objects, changeLabel)
+		dm.chatHistoryScroll().Refresh()
+
+		if autoscroll {
+			if fyneUI.isActive(dm) {
+				dm.scroll.ScrollToBottom()
+				dm.scroll.Refresh()
+			}
+		}
+
+		dm.setLastMessageTime(time.Now().Unix())
+		fyneUI.refreshThreadOrder()
+	} else {
+		log.WithFields(log.Fields{
+			"user_id": userID,
+		}).Warn("cannot notify messages cleared for DM that doesn't exist")
+	}
+}
+
 func (fyneUI *Fyne) DMNotificationsChanged(userID uuid.UUID, enabled bool) {
 	if dm, exists := fyneUI.dms[userID]; exists {
 		dm.notificationsEnabled = enabled
@@ -427,7 +469,6 @@ func (fyneUI *Fyne) DMRetentionChanged(userID uuid.UUID, actorID uuid.UUID, rete
 		dm.retentionSelection.Refresh()
 
 		// Insert a note in this thread that the setting was changed
-		// TODO: how will this be persisted?  Should UDS frames not expire?
 		autoscroll := false
 		location := dm.scroll.Offset.Y
 		height := dm.scroll.Content.Size().Height - dm.scroll.Size().Height
@@ -443,10 +484,8 @@ func (fyneUI *Fyne) DMRetentionChanged(userID uuid.UUID, actorID uuid.UUID, rete
 
 		if autoscroll {
 			if fyneUI.isActive(dm) {
-				if autoscroll {
-					dm.scroll.ScrollToBottom()
-					dm.scroll.Refresh()
-				}
+				dm.scroll.ScrollToBottom()
+				dm.scroll.Refresh()
 			}
 		}
 
