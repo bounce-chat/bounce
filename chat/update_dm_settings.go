@@ -122,6 +122,58 @@ func (b *bounce) setDMRetention(u uuid.UUID, retention int64) {
 	go b.broadcast(update)
 }
 
+func (b *bounce) clearDMChatHistory(userID uuid.UUID) {
+	clearTime := time.Now().Unix()
+
+	var target user
+	err := b.database.First(&target, "id = ?", userID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+			}).Warn("cannot clear chat history for user not found in database")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up user")
+		}
+	}
+
+	update := &updateDMSettings{
+		Timestamp:   clearTime,
+		Xor:         xor(userID, b.currentUserID()),
+		Actor:       b.currentUserID(),
+		Retention:   target.MessageRetention,
+		ClearBefore: clearTime,
+	}
+	err = b.database.Create(update).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error while saving an updateDMSettngs")
+	}
+	b.broadcast(update)
+
+	dms := []DirectMessage{}
+	err = b.database.Select("id").Where("written_at < ? AND (source = ? OR destination = ?)", clearTime, userID, userID).Find(&dms).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting direct messages to delete while clearing chat history")
+	}
+	for _, dm := range dms {
+		err := b.database.Delete(&dm).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"id":    dm.ID,
+			}).Fatal("error deleting direct message while clearing chat history")
+		}
+		b.userInterface.DeleteMessage(dm.ID)
+	}
+}
+
 func (b *bounce) handleUpdateDMSettings(peer string, payload []byte) {
 	// Unmarshall it
 	var uds updateDMSettings
@@ -190,7 +242,23 @@ func (b *bounce) handleUpdateDMSettings(peer string, payload []byte) {
 			}
 
 			if targetUser.ClearBefore != uds.ClearBefore {
-				//b.userInterface.ClearDMsBefore(targetUser.ID, ulds.ClearBefore)
+				dms := []DirectMessage{}
+				err := b.database.Select("id").Where("written_at < ? AND (source = ? OR destination = ?)", uds.ClearBefore, targetUser.ID, targetUser.ID).Find(&dms).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("error selecting direct messages to delete while clearing chat history")
+				}
+				for _, dm := range dms {
+					err := b.database.Delete(&dm).Error
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+							"id":    dm.ID,
+						}).Fatal("error deleting direct message while clearing chat history")
+					}
+					b.userInterface.DeleteMessage(dm.ID)
+				}
 			}
 
 			// Apply the settings in this update to the user

@@ -121,6 +121,9 @@ type UICallbacks struct {
 	// Get the message retention settings for a DM
 	GetDMRetention func(userID uuid.UUID) int64
 
+	// Clear all DM messages on all devices
+	ClearDMChatHistory func(userID uuid.UUID)
+
 	// The user wants to change the notification settings for a group
 	ChangeGroupNotificationSettings func(groupID uuid.UUID, notificationEnabled bool)
 	// Setup a new profile on a fresh install

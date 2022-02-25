@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -327,6 +328,23 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	}
 
 	//
+	// Button to clear all message history, with confirm dialog
+	//
+	confirmClearHistory := dialog.NewConfirm(
+		"Clear all message history?",
+		"Are you sure you want to permanently delete all chat history on all devices?",
+		func(confirmed bool) {
+			if confirmed {
+				fyneUI.callbacks.ClearDMChatHistory(dm.user.id)
+			}
+		},
+		fyneUI.mainWindow,
+	)
+	clearHistoryButton := widget.NewButton("Clear history", func() {
+		confirmClearHistory.Show()
+	})
+
+	//
 	// Save and Cancel buttons
 	//
 
@@ -350,6 +368,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		dm.notificationsEnabledCheck,
 		widget.NewLabel("Disappearing Messages"),
 		dm.retentionSelection,
+		container.NewHBox(clearHistoryButton),
 	)
 
 	// Close the window but save state.  TODO: should it clear state as well?

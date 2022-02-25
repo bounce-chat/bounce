@@ -85,6 +85,7 @@ func Start(network Network, ui UI) {
 			UserConnectionDesired:           b.userConnectionDesired,
 			GetDMRetention:                  b.getDMRetention,
 			SetDMRetention:                  b.setDMRetention,
+			ClearDMChatHistory:              b.clearDMChatHistory,
 		},
 	)
 
