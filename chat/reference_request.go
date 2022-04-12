@@ -375,7 +375,7 @@ func (b *bounce) getRequestedUsersPayloads(peer device, rr referenceRequest, ori
 
 //
 // Given two comma-separated lists of UUIDs, one representing the original offer and the other representing what
-// was requested from the peer, parse them and separate them into the valid requested UUIDs and the UUIDs that we
+// was requested by the peer, parse them and separate them into the valid requested UUIDs and the UUIDs that we
 // can assume were already delivered because they were not requested.
 //
 func getRequestedAndDeliveredUUIDs(originalOffer string, requested string) ([]uuid.UUID, []uuid.UUID) {

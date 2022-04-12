@@ -19,14 +19,14 @@ import (
 type user struct {
 	ID                        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name                      string
-	Profile                   bool     `gorm:"index:,where:profile = true" json:"-"`
-	MessageRetention          int64    `json:"-"`
-	ClearBefore               int64    `json:"-"`
-	LastDMSettingsUpdate      int64    `json:"-"`
-	NotificationsEnabled      bool     `json:"-"`
-	NotificationsMutedUntil   int64    `json:"-"`
-	LastLocalDMSettingsUpdate int64    `json:"-"`
-	Devices                   []device `msgpack:"-"`
+	Profile                   bool     `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
+	MessageRetention          int64    `json:"-" msgpack:"-"`
+	ClearBefore               int64    `json:"-" msgpack:"-"`
+	LastDMSettingsUpdate      int64    `json:"-" msgpack:"-"`
+	NotificationsEnabled      bool     `json:"-" msgpack:"-"`
+	NotificationsMutedUntil   int64    `json:"-" msgpack:"-"`
+	LastLocalDMSettingsUpdate int64    `json:"-" msgpack:"-"`
+	Devices                   []device `msgpack:"-"` //TODO: evaluate removing this once reference flow makes sense (just exclude it from reference flow?)
 	payload                   []byte
 	payloadMutex              sync.Mutex
 }
@@ -45,6 +45,8 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 		u.NotificationsEnabled = false
 	} else {
 		// DMs with other people default to expiring in 1 week
+		// TODO: set defaults on the profile?
+		// TODO: broadcast the initial uds/ulds here?
 		u.MessageRetention = 7 * 24 * 60 * 60
 		u.NotificationsEnabled = true
 	}
@@ -112,7 +114,7 @@ func (b *bounce) handleUser(peer string, payload []byte) {
 		return
 	}
 
-	// Unmarshal the device
+	// Unmarshal the user
 	var u user
 	err := msgpack.Unmarshal(payload, &u)
 	if err != nil {

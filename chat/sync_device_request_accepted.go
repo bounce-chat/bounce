@@ -72,6 +72,7 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte) {
 
 	err = b.database.Transaction(func(tx *gorm.DB) error {
 		// Save this user as our profile
+		sdra.Profile.Profile = true // Profile is excluded in msgpack
 		err = tx.Create(&sdra.Profile).Error
 		if err != nil {
 			return err
