@@ -19,14 +19,15 @@ import (
 type user struct {
 	ID                        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name                      string
-	Profile                   bool     `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
-	MessageRetention          int64    `json:"-" msgpack:"-"`
-	ClearBefore               int64    `json:"-" msgpack:"-"`
-	LastDMSettingsUpdate      int64    `json:"-" msgpack:"-"`
-	NotificationsEnabled      bool     `json:"-" msgpack:"-"`
-	NotificationsMutedUntil   int64    `json:"-" msgpack:"-"`
-	LastLocalDMSettingsUpdate int64    `json:"-" msgpack:"-"`
-	Devices                   []device `msgpack:"-"` //TODO: evaluate removing this once reference flow makes sense (just exclude it from reference flow?)
+	Profile                   bool  `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
+	MessageRetention          int64 `json:"-" msgpack:"-"`
+	ClearBefore               int64 `json:"-" msgpack:"-"`
+	LastDMSettingsUpdate      int64 `json:"-" msgpack:"-"`
+	NotificationsEnabled      bool  `json:"-" msgpack:"-"`
+	NotificationsMutedUntil   int64 `json:"-" msgpack:"-"`
+	LastLocalDMSettingsUpdate int64 `json:"-" msgpack:"-"`
+	Devices                   []device
+	Groups                    []*group `gorm:"many2many:group_users;"`
 	payload                   []byte
 	payloadMutex              sync.Mutex
 }
@@ -43,15 +44,7 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 			return errors.New("profile user already exists")
 		}
 		u.NotificationsEnabled = false
-	} else {
-		// DMs with other people default to expiring in 1 week
-		// TODO: set defaults on the profile?
-		// TODO: broadcast the initial uds/ulds here?
-		u.MessageRetention = 7 * 24 * 60 * 60
-		u.NotificationsEnabled = true
 	}
-	u.LastDMSettingsUpdate = time.Now().Unix()
-	u.LastLocalDMSettingsUpdate = time.Now().Unix()
 
 	return nil
 }
@@ -290,15 +283,32 @@ func (b *bounce) importUser(data []byte) (User, error) {
 		return User{}, errors.New("invalid device group")
 	}
 
-	uiUser := User{
-		ID:   newUser.Profile.ID,
-		Name: newUser.Profile.Name,
+	// Save the new user to the database
+	err = b.database.Create(&newUser.Profile).Error
+	if err != nil {
+		return User{}, err
 	}
 
-	// Save to the database
-	return uiUser, b.database.Create(&newUser.Profile).Error
 	// TODO: some sort of UI feedback on the secret being accepted on the remote side?
 	// As in, bounce only accepts DMs from user's in a shared group or who send an import secret
-	// TODO: try to dial right away
-	// TODO: broadcast this user and their devices to all sync devices
+
+	// Inform the user sync devices about it
+	b.broadcast(&newUser.Profile)
+
+	// Set the defaul local DM settings
+	enabledByDefault := true // TODO: make this a setting on our profile
+	b.setDMNotificationEnabled(newUser.Profile.ID, enabledByDefault)
+
+	// Set the default DM settings
+	defaultMessageRetention := int64(7 * 24 * 60 * 60) // TODO: make this a setting on our profile
+	b.setDMRetention(newUser.Profile.ID, defaultMessageRetention)
+
+	// Try to connect to the user we just imported
+	b.userConnectionDesired(newUser.ID)
+
+	// Return a UI representation of the user to the frontend
+	return User{
+		ID:   newUser.Profile.ID,
+		Name: newUser.Profile.Name,
+	}, nil
 }

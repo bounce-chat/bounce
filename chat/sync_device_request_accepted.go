@@ -6,12 +6,10 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
-	"gorm.io/gorm"
 )
 
 type syncDeviceRequestAccepted struct {
 	Profile      user
-	SyncDevices  []device
 	payload      []byte
 	payloadMutex sync.Mutex
 }
@@ -68,31 +66,21 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte) {
 		return
 	}
 
-	// TODO: make sure the set of sync devices contains this device and is a valid device group
+	// Profile is excluded in msgpack, make sure it is set here
+	sdra.Profile.Profile = true
 
-	err = b.database.Transaction(func(tx *gorm.DB) error {
-		// Save this user as our profile
-		sdra.Profile.Profile = true // Profile is excluded in msgpack
-		err = tx.Create(&sdra.Profile).Error
-		if err != nil {
-			return err
-		}
+	// Make sure this profile has a valid device group
+	if !b.hasValidDeviceGroup(sdra.Profile) {
+		log.Error("sdra contains profile with invalid device group")
+		return
+	}
+	// TODO: make sure this device is included in the device group
 
-		// Save our current sync devices
-		for _, dev := range sdra.SyncDevices {
-			err = tx.Create(&dev).Error
-			if err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-
+	err = b.database.Create(&sdra.Profile).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error running transaction for sync device acceptance")
+		}).Fatal("error saving new sync profile")
 	}
 
 	// Inform the UI

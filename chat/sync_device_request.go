@@ -154,8 +154,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 		// wrong on their end during the process.  That's fine, everything about this device has been validated in
 		// the past, so we just send our information over again.
 		rd.messages <- &syncDeviceRequestAccepted{
-			Profile:     profile,
-			SyncDevices: profile.Devices,
+			Profile: profile,
 		}
 
 		// TODO: anything that we think we've delivered to this device we can no longer be sure was delivered, wipe
@@ -178,11 +177,16 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 			}).Fatal("error saving new sync device")
 		}
 
+		// Reload the profile to include the new device we just saved
+		profile, exists = b.currentUser()
+		if !exists {
+			log.Fatal("profile disappeared after new sync device was saved")
+		}
+
 		// Accept this device as a new sync device by responding with our updated profile information
 		// that includes this new device
 		rd.messages <- &syncDeviceRequestAccepted{
-			Profile:     profile,
-			SyncDevices: append(profile.Devices, newDevice),
+			Profile: profile,
 		}
 
 		// Tell the UI that we've accepted the sync device

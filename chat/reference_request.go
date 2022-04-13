@@ -366,6 +366,8 @@ func (b *bounce) getRequestedUsersPayloads(peer device, rr referenceRequest, ori
 				}).Fatal("database error querying for user")
 			}
 		} else {
+			// In catchUps, devices and users are sent separately
+			u.Devices = []device{}
 			requestedData = append(requestedData, &u)
 		}
 	}
