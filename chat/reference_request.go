@@ -98,8 +98,8 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 		ID:          uuid.New(),
 		destination: dev.ID,
 	}
-	cu.broadcastables = b.getRequestedDevicesPayloads(dev, rr, originalOffer)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedUsersPayloads(dev, rr, originalOffer)...)
+	cu.broadcastables = b.getRequestedUsersPayloads(dev, rr, originalOffer)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedDevicesPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedDirectMessagePayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateLocalDMSettingsPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMSettingsPayloads(dev, rr, originalOffer)...)

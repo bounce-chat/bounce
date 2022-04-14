@@ -27,7 +27,7 @@ type user struct {
 	NotificationsMutedUntil   int64 `json:"-" msgpack:"-"`
 	LastLocalDMSettingsUpdate int64 `json:"-" msgpack:"-"`
 	Devices                   []device
-	Groups                    []*group `gorm:"many2many:group_users;"`
+	Groups                    []*group `gorm:"many2many:group_users;" json:"-"`
 	payload                   []byte
 	payloadMutex              sync.Mutex
 }

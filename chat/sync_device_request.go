@@ -94,7 +94,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 	}
 
 	// We'll be responding directly to the remote device without using the
-	// broadcast function since the destinatino device doesn't yet exist
+	// broadcast function since the destination device doesn't yet exist
 	rd := b.getRemoteDevice(peer)
 
 	// Make sure we've got an offer out with this secret
@@ -157,8 +157,13 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 			Profile: profile,
 		}
 
-		// TODO: anything that we think we've delivered to this device we can no longer be sure was delivered, wipe
-		// all delivery records before the reference flow
+		err = b.database.Where("destination = ?", peer).Delete(&deliveryRecord{}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"peer":  peer,
+				"error": err.Error(),
+			}).Error("error deleting old delivery records for sync device that is re-syncing")
+		}
 	} else {
 		// Save this new device in our database
 		newDevice := device{
