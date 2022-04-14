@@ -17,7 +17,6 @@ type frame struct {
 }
 
 type catchUp struct {
-	_msgpack       struct{} `msgpack:",omitempty"`
 	ID             uuid.UUID
 	Frames         []frame
 	broadcastables sortableBroadcastables
@@ -36,7 +35,6 @@ func (cu *catchUp) getScope(_ uuid.UUID) int {
 
 func (cu *catchUp) getDestination(_ uuid.UUID) uuid.UUID {
 	return cu.destination
-
 }
 
 func (cu *catchUp) getType() uint16 {
@@ -48,7 +46,10 @@ func (cu *catchUp) getPayload() []byte {
 	defer cu.payloadMutex.Unlock()
 
 	if len(cu.payload) == 0 {
-		sort.Sort(cu.broadcastables)
+		// A stable sort is used because the catch up is originally packed with users
+		// before devices.  Users and devices both always have a timestamp of 0, so
+		// we want to make sure the users stay ahead of the devices.
+		sort.Stable(cu.broadcastables)
 		for _, br := range cu.broadcastables {
 			cu.Frames = append(cu.Frames, frame{Type: br.getType(), Payload: br.getPayload()})
 		}

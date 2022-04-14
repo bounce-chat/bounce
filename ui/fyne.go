@@ -211,4 +211,5 @@ func (fyneUI *Fyne) NetworkOffline() {
 
 func (fyneUI *Fyne) UserImported(u chat.User) {
 	fyneUI.users.add(&user{id: u.ID, name: u.Name})
+	fyneUI.NewDirectMessage(u)
 }
