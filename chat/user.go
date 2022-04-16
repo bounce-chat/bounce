@@ -27,7 +27,7 @@ type user struct {
 	NotificationsMutedUntil   int64 `json:"-" msgpack:"-"`
 	LastLocalDMSettingsUpdate int64 `json:"-" msgpack:"-"`
 	Devices                   []device
-	Groups                    []*group `gorm:"many2many:group_users;" json:"-"`
+	Groups                    []group `gorm:"many2many:group_users;" json:"-"`
 	payload                   []byte
 	payloadMutex              sync.Mutex
 }
@@ -116,6 +116,8 @@ func (b *bounce) handleUser(peer string, payload []byte) {
 		}).Error("error unmarshalling user")
 		return
 	}
+
+	// TODO: ack and return if it already exists
 
 	// Save it
 	err = b.database.Session(&gorm.Session{SkipHooks: true}).Create(&u).Error

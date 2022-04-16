@@ -23,6 +23,7 @@ type ack struct {
 	CatchUps              string
 	Devices               string
 	Users                 string
+	Groups                string
 	UpdateDMSettings      string
 	destination           uuid.UUID
 	payload               []byte
@@ -77,6 +78,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckUpdateDMSettings(peer, a)
 	b.handleAckDevices(peer, a)
 	b.handleAckUsers(peer, a)
+	//b.handleAckGroups(peer, a)
 }
 
 func (b *bounce) handleAckDirectMessages(peer string, a ack) {

@@ -31,6 +31,7 @@ var typeSyncDeviceRequestAccepted = uint16(10)
 var typeDevice = uint16(11)
 var typeUser = uint16(12)
 var typeUpdateDMSettings = uint16(13)
+var typeGroup = uint16(14)
 
 type broadcastable interface {
 	getID() uuid.UUID
@@ -72,6 +73,7 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 		typeDevice:                    b.handleDevice,
 		typeUser:                      b.handleUser,
 		typeUpdateDMSettings:          b.handleUpdateDMSettings,
+		typeGroup:                     b.handleGroup,
 	}
 }
 
@@ -258,9 +260,41 @@ func (b *bounce) getDeviceScope(br broadcastable) []*remoteDevice {
 	return broadcastTargets
 }
 
+//
+// Get any devices that we are connected to that belong to any members of a group, including ourself
+//
 func (b *bounce) getGroupScope(br broadcastable) []*remoteDevice {
-	// TODO: look up the group, find all online devices
-	return []*remoteDevice{}
+	broadcastTargets := []*remoteDevice{}
+
+	var destinationGroup group
+	err := b.database.Preload("Users.Devices").Preload(clause.Associations).First(&destinationGroup, "id = ?", br.getDestination(b.currentUserID())).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"scope":        br.getScope(b.currentUserID()),
+				"destinations": br.getDestination(b.currentUserID()),
+				"type":         br.getType(),
+			}).Error("group not found when determining broadcast scope for message")
+			return broadcastTargets
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error loading group from database")
+		}
+	}
+	for _, u := range destinationGroup.Users {
+		for _, dev := range u.Devices {
+			if b.isDeliveredTo(br, dev.Address) {
+				continue
+			}
+			rd := b.getRemoteDevice(dev.Address)
+			if rd.connectedSockets > 0 {
+				broadcastTargets = append(broadcastTargets, rd)
+			}
+		}
+	}
+
+	return broadcastTargets
 }
 
 //
