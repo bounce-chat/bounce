@@ -359,7 +359,7 @@ func (b *bounce) getGroupsToOffer(dev device) string {
 	err := b.database.
 		Preload(clause.Associations).
 		Select("groups.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDevice).
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeGroup).
 		Joins("JOIN group_users ON groups.id = group_users.group_id JOIN users ON group_users.user_id = users.id").
 		Where("delivery_records.id IS NULL AND group_users.user_id = ?", dev.UserID).
 		Find(&unsentGroups).Error // TODO: only select ID?

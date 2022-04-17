@@ -68,5 +68,4 @@ func (fyneUI *Fyne) refreshAllUsersDMLinks() {
 	}
 	fyneUI.allUsersDMLinksScroll.Content = usersBox
 	fyneUI.allUsersDMLinksScroll.Refresh()
-
 }

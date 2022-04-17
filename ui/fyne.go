@@ -25,39 +25,41 @@ const setupStepProfile = 1
 // An implementation of the Bounce chat.UI interface using Fyne
 //
 type Fyne struct {
-	app                    fyne.App
-	mainWindow             fyne.Window
-	mainContainer          *fyne.Container
-	newInstall             *fyne.Container
-	newSyncDevice          *fyne.Container
-	newProfileCreator      *fyne.Container
-	databaseLoading        *fyne.Container
-	editProfile            *fyne.Container
-	displaySyncString      *fyne.Container
-	settings               *fyne.Container
-	about                  *fyne.Container
-	newGroup               *fyne.Container
-	newDM                  *fyne.Container
-	introduceContacts      *fyne.Container
-	importContact          *fyne.Container
-	threadVBox             *fyne.Container
-	chatContainer          *fyne.Container
-	mainMenu               *fyne.MainMenu
-	allUsersDMLinksScroll  *container.Scroll
-	networkOfflineWarning  *widget.Label
-	groups                 map[uuid.UUID]*group
-	dms                    map[uuid.UUID]*directMessage
-	threadWithMessage      map[uuid.UUID]thread
-	threadWithMessageMutex sync.Mutex
-	activeThread           uuid.UUID
-	syncString             binding.String
-	profile                *user
-	users                  *userStore
-	initialStateSet        bool
-	focused                bool
-	networkState           int
-	setupStep              int
-	callbacks              chat.UICallbacks
+	app                            fyne.App
+	mainWindow                     fyne.Window
+	mainContainer                  *fyne.Container
+	newInstall                     *fyne.Container
+	newSyncDevice                  *fyne.Container
+	newProfileCreator              *fyne.Container
+	databaseLoading                *fyne.Container
+	editProfile                    *fyne.Container
+	displaySyncString              *fyne.Container
+	settings                       *fyne.Container
+	about                          *fyne.Container
+	newGroup                       *fyne.Container
+	newDM                          *fyne.Container
+	introduceContacts              *fyne.Container
+	importContact                  *fyne.Container
+	threadVBox                     *fyne.Container
+	chatContainer                  *fyne.Container
+	newGroupCurrentlySelectedUsers *fyne.Container
+	newGroupAllAvailableUsers      *container.Scroll
+	mainMenu                       *fyne.MainMenu
+	allUsersDMLinksScroll          *container.Scroll
+	networkOfflineWarning          *widget.Label
+	groups                         map[uuid.UUID]*group
+	dms                            map[uuid.UUID]*directMessage
+	threadWithMessage              map[uuid.UUID]thread
+	threadWithMessageMutex         sync.Mutex
+	activeThread                   uuid.UUID
+	syncString                     binding.String
+	profile                        *user
+	users                          *userStore
+	initialStateSet                bool
+	focused                        bool
+	networkState                   int
+	setupStep                      int
+	callbacks                      chat.UICallbacks
 }
 
 func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
