@@ -78,7 +78,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckUpdateDMSettings(peer, a)
 	b.handleAckDevices(peer, a)
 	b.handleAckUsers(peer, a)
-	//b.handleAckGroups(peer, a)
+	b.handleAckGroups(peer, a)
 }
 
 func (b *bounce) handleAckDirectMessages(peer string, a ack) {
@@ -277,6 +277,39 @@ func (b *bounce) handleAckUsers(peer string, a ack) {
 				}
 			} else {
 				b.markDeliveredTo(&u, peer)
+			}
+		}
+	}
+}
+
+func (b *bounce) handleAckGroups(peer string, a ack) {
+	if len(a.Groups) > 0 {
+		for _, groupIDString := range strings.Split(a.Groups, ",") {
+			groupID, err := uuid.Parse(groupIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": groupIDString,
+				}).Error("invalid group UUID in ack")
+				continue
+			}
+
+			var g group
+			err = b.database.First(&g, "id = ?", groupID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"id":   groupID,
+						"peer": peer,
+					}).Warn("unknown group acked")
+				} else {
+					log.WithFields(log.Fields{
+						"id":    groupID,
+						"error": err.Error(),
+					}).Fatal("database error querying for group")
+				}
+			} else {
+				b.markDeliveredTo(&g, peer)
 			}
 		}
 	}

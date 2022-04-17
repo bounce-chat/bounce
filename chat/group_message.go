@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -33,7 +32,7 @@ func (b *bounce) newSignedGroupMessage(message GroupMessage) *signedGroupMessage
 	if err != nil {
 		// TODO: how to handle?
 	}
-	signature := b.network.Sign(marshalledMessage) // TODO: just sign the SHA3 of the data for speed reasons
+	signature := b.network.Sign(marshalledMessage) // TODO: just sign the hash of the data for speed reasons https://github.com/lukechampine/blake3 or https://github.com/zeebo/blake3
 
 	sgm := &signedGroupMessage{
 		Message:     marshalledMessage,
@@ -63,25 +62,4 @@ func (sgm *signedGroupMessage) getPayload() []byte {
 
 func (b *bounce) sendGroupMessage(message GroupMessage) uuid.UUID {
 	return uuid.New()
-}
-
-func (b *bounce) addUserToGroup(threadID, userID uuid.UUID) {
-	log.WithFields(log.Fields{
-		"thread": threadID,
-		"user":   userID,
-	}).Info("UI wants to add user to group")
-}
-
-func (b *bounce) renameGroup(threadID uuid.UUID, newName string) {
-	log.WithFields(log.Fields{
-		"thread":   threadID,
-		"new_name": newName,
-	}).Info("UI wants to rename a group")
-}
-
-func (b *bounce) changeGroupNotificationSettings(group uuid.UUID, enabled bool) {
-	log.WithFields(log.Fields{
-		"thread":                group,
-		"notifications_enabled": enabled,
-	}).Info("UI wants to chnage notification settings")
 }

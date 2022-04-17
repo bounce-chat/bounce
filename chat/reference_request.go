@@ -367,6 +367,7 @@ func (b *bounce) getRequestedUsersPayloads(peer device, rr referenceRequest, ori
 			}
 		} else {
 			// In catchUps, devices and users are sent separately
+			// TODO: do we need to null this out since we aren't preloading associations?
 			u.Devices = []device{}
 			requestedData = append(requestedData, &u)
 		}

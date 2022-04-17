@@ -91,7 +91,22 @@ func (b *bounce) connectToSyncDevices() {
 }
 
 func (b *bounce) connectToGroups() {
-	// TODO
+	var allGroups []group
+	err := b.database.Preload("Users.Devices").Preload(clause.Associations).Find(&allGroups).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error loading all groups")
+	}
+
+	// Connect to all groups // TODO: that we've talked to recently?
+	for _, g := range allGroups {
+		for _, u := range g.Users {
+			// TODO: naive approach for now, ideally want to choose 4 random
+			// users in the group to connect to
+			b.userConnectionDesired(u.ID)
+		}
+	}
 }
 
 func (b *bounce) connectToUsers() {

@@ -112,6 +112,7 @@ func (b *bounce) handleGroup(peer string, payload []byte) {
 		// Save all of the structures in this group, creating any new users or devices as needed
 		err = b.database.Transaction(func(tx *gorm.DB) error {
 			for _, u := range g.Users {
+				// TODO: if the users are new, shouldn't we ack them as well?
 				for _, dev := range u.Devices {
 					err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
 					if err != nil {
@@ -164,6 +165,6 @@ func (b *bounce) handleGroup(peer string, payload []byte) {
 	})
 }
 
-func (b *bounce) CreateGroup(users []uuid.UUID) {
+func (b *bounce) CreateGroup(groupName string, userIDs []uuid.UUID) {
 
 }
