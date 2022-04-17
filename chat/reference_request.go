@@ -22,6 +22,7 @@ type referenceRequest struct {
 	UpdateDMSettings      string
 	Devices               string
 	Users                 string
+	Groups                string
 	destination           uuid.UUID
 	payload               []byte
 	payloadMutex          sync.Mutex
@@ -100,6 +101,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	}
 	cu.broadcastables = b.getRequestedUsersPayloads(dev, rr, originalOffer)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedDevicesPayloads(dev, rr, originalOffer)...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupsPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedDirectMessagePayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateLocalDMSettingsPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMSettingsPayloads(dev, rr, originalOffer)...)
@@ -268,6 +270,54 @@ func (b *bounce) getRequestedUpdateDMSettingsPayloads(peer device, rr referenceR
 	return requestedData
 }
 
+func (b *bounce) getRequestedGroupsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+	requestedData := sortableBroadcastables{}
+
+	requestedGroupIDs, deliveredGroupIDs := getRequestedAndDeliveredUUIDs(originalOffer.Groups, rr.Groups)
+
+	for _, groupID := range deliveredGroupIDs {
+		var g group
+		err := b.database.First(&g, "id = ?", groupID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   groupID,
+					"peer": peer.Address,
+				}).Warn("reference request indicates we offered an unknown group")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    groupID,
+					"error": err.Error(),
+				}).Fatal("database error querying for group")
+			}
+		} else {
+			b.markDeliveredTo(&g, peer.Address)
+		}
+	}
+
+	for _, groupID := range requestedGroupIDs {
+		var g group
+		err := b.database.First(&g, "id = ?", groupID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   groupID,
+					"peer": peer.Address,
+				}).Warn("reference request asks for unknown group we offered")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    groupID,
+					"error": err.Error(),
+				}).Fatal("database error querying for group")
+			}
+		} else {
+			requestedData = append(requestedData, &g)
+		}
+	}
+
+	return requestedData
+}
+
 func (b *bounce) getRequestedDevicesPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
@@ -275,7 +325,7 @@ func (b *bounce) getRequestedDevicesPayloads(peer device, rr referenceRequest, o
 
 	for _, deviceID := range deliveredDeviceIDs {
 		var dev device
-		err := b.database.Preload(clause.Associations).First(&dev, "id = ?", deviceID).Error
+		err := b.database.Preload(clause.Associations).First(&dev, "id = ?", deviceID).Error // TODO: preloading needed here, or elsewhere in these?
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
@@ -366,9 +416,10 @@ func (b *bounce) getRequestedUsersPayloads(peer device, rr referenceRequest, ori
 				}).Fatal("database error querying for user")
 			}
 		} else {
-			// In catchUps, devices and users are sent separately
+			// In catchUps, devices, groups, and users are sent separately
 			// TODO: do we need to null this out since we aren't preloading associations?
 			u.Devices = []device{}
+			u.Groups = []group{}
 			requestedData = append(requestedData, &u)
 		}
 	}

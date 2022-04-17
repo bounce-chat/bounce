@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 //
@@ -24,7 +25,8 @@ type referenceOffer struct {
 	UpdateLocalDMSettings string    // only for sync devices
 	UpdateDMSettings      string
 	Devices               string
-	Users                 string    // only for sync devices
+	Users                 string // only for sync devices
+	Groups                string
 	Destination           uuid.UUID `msgpack:"-"`
 	payload               []byte
 	payloadMutex          sync.Mutex
@@ -86,6 +88,9 @@ func (ro *referenceOffer) shouldDial() bool {
 	if len(ro.Users) > 0 {
 		return true
 	}
+	if len(ro.Groups) > 0 {
+		return true
+	}
 	// TODO: changes to my device group, clearing thread histories, etc
 	return false
 }
@@ -104,6 +109,9 @@ func (ro *referenceOffer) hasContent() bool {
 		return true
 	}
 	if len(ro.Users) > 0 {
+		return true
+	}
+	if len(ro.Groups) > 0 {
 		return true
 	}
 	// TODO: check for any future referenced content
@@ -174,6 +182,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 		UpdateDMSettings:      b.getUpdateDMSettingsToOffer(dev),
 		Devices:               b.getDevicesToOffer(dev),
 		Users:                 b.getUsersToOffer(dev),
+		Groups:                b.getGroupsToOffer(dev),
 	}
 }
 
@@ -343,6 +352,30 @@ func (b *bounce) getUsersToOffer(dev device) string {
 	return offerString
 }
 
+func (b *bounce) getGroupsToOffer(dev device) string {
+	groupsToOffer := []string{}
+
+	var unsentGroups []group
+	err := b.database.
+		Preload(clause.Associations).
+		Select("groups.*").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDevice).
+		Joins("JOIN group_users ON groups.id = group_users.group_id JOIN users ON group_users.user_id = users.id").
+		Where("delivery_records.id IS NULL AND group_users.user_id = ?", dev.UserID).
+		Find(&unsentGroups).Error // TODO: only select ID?
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting unsent groups in reference offer")
+	}
+
+	for _, g := range unsentGroups {
+		groupsToOffer = append(groupsToOffer, g.ID.String())
+	}
+
+	return strings.Join(groupsToOffer, ",")
+}
+
 func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 	var ro referenceOffer
 	err := msgpack.Unmarshal(payload, &ro)
@@ -369,6 +402,7 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 		UpdateDMSettings:      b.getUpdateDMSettingsToRequest(dev, ro),
 		Devices:               b.getDevicesToRequest(dev, ro),
 		Users:                 b.getUsersToRequest(dev, ro),
+		Groups:                b.getGroupsToRequest(dev, ro),
 	}
 
 	b.broadcast(response)
@@ -565,6 +599,40 @@ func (b *bounce) getUsersToRequest(dev device, ro referenceOffer) string {
 			}
 		}
 		resp = strings.Join(desiredUsers, ",")
+	}
+
+	return resp
+}
+
+func (b *bounce) getGroupsToRequest(dev device, ro referenceOffer) string {
+	var resp string
+
+	if len(ro.Groups) > 0 {
+		desiredGroups := []string{}
+		for _, groupIDString := range strings.Split(ro.Groups, ",") {
+			groupID, err := uuid.Parse(groupIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": groupIDString,
+				}).Error("invalid group UUID in reference offer")
+				continue
+			}
+
+			var g group
+			err = b.database.First(&g, "id = ?", groupID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					desiredGroups = append(desiredGroups, groupID.String())
+				} else {
+					log.WithFields(log.Fields{
+						"id":    groupID,
+						"error": err.Error(),
+					}).Fatal("database error querying for group")
+				}
+			}
+		}
+		resp = strings.Join(desiredGroups, ",")
 	}
 
 	return resp

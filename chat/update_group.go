@@ -30,5 +30,5 @@ func (b *bounce) changeGroupNotificationSettings(group uuid.UUID, enabled bool) 
 	log.WithFields(log.Fields{
 		"thread":                group,
 		"notifications_enabled": enabled,
-	}).Info("UI wants to chnage notification settings")
+	}).Info("UI wants to change notification settings")
 }
