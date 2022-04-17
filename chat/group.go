@@ -165,10 +165,63 @@ func (b *bounce) handleGroup(peer string, payload []byte) {
 	})
 }
 
-func (b *bounce) createGroup(groupName string, userIDs []uuid.UUID) {
-	// TODO: add our user ID if it's not included in this list
-	log.WithFields(log.Fields{
-		"name":  groupName,
-		"users": userIDs,
-	}).Info("UI wants to create a new group")
+func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
+	if name == "" {
+		return errors.New("group must be named")
+	}
+
+	users := []user{}
+	userListContainsProfile := false
+	for _, userID := range userIDs {
+		var u user
+		err := b.database.Where("id = ?", userID).First(&u).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"user_id": userID,
+				}).Error("attempt to create a group with user ID that doesn't exist in the database")
+				return errors.New("cannot create group with unknown user")
+			} else {
+				log.WithFields(log.Fields{
+					"user_id": userID,
+					"error":   err.Error(),
+				}).Fatal("error looking up user")
+			}
+		}
+		users = append(users, u)
+		if u.ID == b.currentUserID() {
+			userListContainsProfile = true
+		}
+	}
+	if !userListContainsProfile {
+		profile, exists := b.currentUser()
+		if !exists {
+			log.Fatal("cannot create new group when no profile exists")
+		}
+		users = append(users, profile)
+		userIDs = append(userIDs, profile.ID)
+	}
+
+	g := group{
+		ID:        uuid.New(),
+		Name:      name,
+		Retention: 60 * 60 * 24 * 7, // TODO: have the default be a user setting
+		Users:     users,
+	}
+	err := b.database.Create(&g).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error saving new group")
+	}
+
+	go b.broadcast(&g)
+
+	b.userInterface.NewGroupChat(Group{
+		ID:      g.ID,
+		Name:    g.Name,
+		UserIDs: userIDs,
+	})
+
+	return nil
 }

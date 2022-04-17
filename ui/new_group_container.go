@@ -128,7 +128,10 @@ func (fyneUI *Fyne) buildNewGroup() {
 		for _, user := range fyneUI.newGroupSelectedUsers.alphabetized() {
 			users = append(users, user.id)
 		}
-		fyneUI.callbacks.CreateGroup(fyneUI.newGroupNameEntry.Text, users)
+		err := fyneUI.callbacks.CreateGroup(fyneUI.newGroupNameEntry.Text, users)
+		if err != nil {
+			dialog.ShowError(errors.New("Error creating group: "+err.Error()), fyneUI.mainWindow)
+		}
 	})
 	saveButton.Importance = widget.HighImportance
 	cancelButton := widget.NewButton("Cancel", func() {

@@ -103,7 +103,7 @@ type UICallbacks struct {
 	SendGroupMessage func(GroupMessage) uuid.UUID
 
 	// Create a new group
-	CreateGroup func(groupName string, userIDs []uuid.UUID)
+	CreateGroup func(groupName string, userIDs []uuid.UUID) error
 	// The user wants to add another user to a group
 	AddUserToGroup func(groupID, userID uuid.UUID)
 	// The user wants to rename a group
