@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"errors"
 	"image/color"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -23,7 +25,8 @@ func (fyneUI *Fyne) clearNewGroupSelectors() {
 	fyneUI.newGroupNameEntry.Refresh()
 
 	// Empty the currently selected users
-	fyneUI.newGroupSelectedUsersContainer = container.NewVBox()
+	fyneUI.newGroupSelectedUsersContainer.Objects = []fyne.CanvasObject{}
+	fyneUI.newGroupSelectedUsersContainer.Refresh()
 
 	// Refresh the list of available users to all users that aren't us
 	allUsersListBox := container.NewVBox()
@@ -116,7 +119,10 @@ func (fyneUI *Fyne) buildNewGroup() {
 	)
 
 	saveButton := widget.NewButton("Save", func() {
-		// TODO: dialog an error if there's no group name, or no users selected
+		if fyneUI.newGroupNameEntry.Text == "" || len(fyneUI.newGroupSelectedUsers.alphabetized()) == 0 {
+			dialog.ShowError(errors.New("New groups must have a name and at least one user"), fyneUI.mainWindow)
+			return
+		}
 
 		users := []uuid.UUID{}
 		for _, user := range fyneUI.newGroupSelectedUsers.alphabetized() {
@@ -134,11 +140,6 @@ func (fyneUI *Fyne) buildNewGroup() {
 		cancelButton,
 	)
 
-	currentUsers := container.NewVBox(
-		widget.NewLabel("current users show here:"),
-		fyneUI.newGroupSelectedUsersContainer,
-		widget.NewLabel("end current users"),
-	)
 	fyneUI.newGroup = container.New(
 		layout.NewBorderLayout(closeBar, actionButtons, nil, nil),
 		closeBar,
@@ -147,8 +148,8 @@ func (fyneUI *Fyne) buildNewGroup() {
 			layout.NewBorderLayout(fyneUI.newGroupNameEntry, nil, nil, nil),
 			fyneUI.newGroupNameEntry,
 			container.New(
-				layout.NewBorderLayout(currentUsers, nil, nil, nil),
-				currentUsers,
+				layout.NewBorderLayout(fyneUI.newGroupSelectedUsersContainer, nil, nil, nil),
+				fyneUI.newGroupSelectedUsersContainer,
 				fyneUI.newGroupAllAvailableUsers,
 			),
 		),
