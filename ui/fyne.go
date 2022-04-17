@@ -42,8 +42,10 @@ type Fyne struct {
 	importContact                  *fyne.Container
 	threadVBox                     *fyne.Container
 	chatContainer                  *fyne.Container
-	newGroupCurrentlySelectedUsers *fyne.Container
+	newGroupSelectedUsersContainer *fyne.Container
+	newGroupNameEntry              *widget.Entry
 	newGroupAllAvailableUsers      *container.Scroll
+	newGroupSelectedUsers          *userStore
 	mainMenu                       *fyne.MainMenu
 	allUsersDMLinksScroll          *container.Scroll
 	networkOfflineWarning          *widget.Label
@@ -75,6 +77,10 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.syncString = binding.NewString()
 	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}) // TODO: red rich text
 	fyneUI.networkOfflineWarning.Show()
+	fyneUI.newGroupNameEntry = widget.NewEntry()
+	fyneUI.newGroupSelectedUsersContainer = container.NewMax()
+	fyneUI.newGroupAllAvailableUsers = container.NewVScroll(container.NewVBox())
+	fyneUI.newGroupSelectedUsers = newUserStore()
 
 	//
 	// Define the app

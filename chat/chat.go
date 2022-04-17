@@ -73,6 +73,7 @@ func Start(network Network, ui UI) {
 			GetNewSyncString:                b.getNewSyncString,
 			RequestToSync:                   b.requestToSync,
 			SendDirectMessage:               b.sendDirectMessage,
+			CreateGroup:                     b.createGroup,
 			SendGroupMessage:                b.sendGroupMessage,
 			AddUserToGroup:                  b.addUserToGroup,
 			RenameGroup:                     b.renameGroup,

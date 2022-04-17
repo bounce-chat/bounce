@@ -150,7 +150,7 @@ func (b *bounce) handleGroup(peer string, payload []byte) {
 
 		go b.broadcast(&g)
 
-		//b.userInterface.NewGroup()
+		//b.userInterface.NewGroupChat(Group{})
 
 	} else {
 		log.WithFields(log.Fields{
@@ -165,6 +165,10 @@ func (b *bounce) handleGroup(peer string, payload []byte) {
 	})
 }
 
-func (b *bounce) CreateGroup(groupName string, userIDs []uuid.UUID) {
-
+func (b *bounce) createGroup(groupName string, userIDs []uuid.UUID) {
+	// TODO: add our user ID if it's not included in this list
+	log.WithFields(log.Fields{
+		"name":  groupName,
+		"users": userIDs,
+	}).Info("UI wants to create a new group")
 }
