@@ -297,7 +297,7 @@ func (b *bounce) getRequestedGroupsPayloads(peer device, rr referenceRequest, or
 
 	for _, groupID := range requestedGroupIDs {
 		var g group
-		err := b.database.First(&g, "id = ?", groupID).Error
+		err := b.database.Preload(clause.Associations).First(&g, "id = ?", groupID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{

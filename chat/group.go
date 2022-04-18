@@ -110,6 +110,7 @@ func (b *bounce) handleGroup(peer string, payload []byte) {
 		}
 
 		// Save all of the structures in this group, creating any new users or devices as needed
+		userIDs := []uuid.UUID{}
 		err = b.database.Transaction(func(tx *gorm.DB) error {
 			for _, u := range g.Users {
 				// TODO: if the users are new, shouldn't we ack them as well?
@@ -129,6 +130,7 @@ func (b *bounce) handleGroup(peer string, payload []byte) {
 					}).Error("error saving user that is part of a group")
 					return err
 				}
+				userIDs = append(userIDs, u.ID)
 			}
 			err := tx.Create(&g).Error
 			if err != nil {
@@ -150,7 +152,11 @@ func (b *bounce) handleGroup(peer string, payload []byte) {
 
 		go b.broadcast(&g)
 
-		//b.userInterface.NewGroupChat(Group{})
+		b.userInterface.NewGroupChat(Group{
+			ID:      g.ID,
+			Name:    g.Name,
+			UserIDs: userIDs,
+		})
 
 	} else {
 		log.WithFields(log.Fields{
@@ -208,7 +214,7 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 		Retention: 60 * 60 * 24 * 7, // TODO: have the default be a user setting
 		Users:     users,
 	}
-	err := b.database.Create(&g).Error
+	err := b.database.Omit("Users.*").Create(&g).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -217,7 +223,7 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 
 	go b.broadcast(&g)
 
-	b.userInterface.NewGroupChat(Group{
+	b.userInterface.OpenNewGroupChat(Group{
 		ID:      g.ID,
 		Name:    g.Name,
 		UserIDs: userIDs,

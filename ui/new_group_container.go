@@ -21,6 +21,8 @@ func (fyneUI *Fyne) showNewGroup() {
 }
 
 func (fyneUI *Fyne) clearNewGroupSelectors() {
+	fyneUI.newGroupCreateButton.Enable()
+	fyneUI.newGroupNameEntry.Enable()
 	fyneUI.newGroupNameEntry.Text = ""
 	fyneUI.newGroupNameEntry.Refresh()
 
@@ -118,8 +120,12 @@ func (fyneUI *Fyne) buildNewGroup() {
 		closeButton,
 	)
 
-	saveButton := widget.NewButton("Save", func() {
+	fyneUI.newGroupCreateButton = widget.NewButton("Create", func() {
+		fyneUI.newGroupCreateButton.Disable()
+		fyneUI.newGroupNameEntry.Disable()
 		if fyneUI.newGroupNameEntry.Text == "" || len(fyneUI.newGroupSelectedUsers.alphabetized()) == 0 {
+			fyneUI.newGroupCreateButton.Enable()
+			fyneUI.newGroupNameEntry.Enable()
 			dialog.ShowError(errors.New("New groups must have a name and at least one user"), fyneUI.mainWindow)
 			return
 		}
@@ -130,16 +136,18 @@ func (fyneUI *Fyne) buildNewGroup() {
 		}
 		err := fyneUI.callbacks.CreateGroup(fyneUI.newGroupNameEntry.Text, users)
 		if err != nil {
+			fyneUI.newGroupCreateButton.Enable()
+			fyneUI.newGroupNameEntry.Enable()
 			dialog.ShowError(errors.New("Error creating group: "+err.Error()), fyneUI.mainWindow)
 		}
 	})
-	saveButton.Importance = widget.HighImportance
+	fyneUI.newGroupCreateButton.Importance = widget.HighImportance
 	cancelButton := widget.NewButton("Cancel", func() {
 		fyneUI.showMainContainer()
 	})
 	actionButtons := container.New(
-		layout.NewBorderLayout(nil, nil, cancelButton, saveButton),
-		saveButton,
+		layout.NewBorderLayout(nil, nil, cancelButton, fyneUI.newGroupCreateButton),
+		fyneUI.newGroupCreateButton,
 		cancelButton,
 	)
 

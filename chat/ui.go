@@ -51,6 +51,7 @@ type UI interface {
 	// Display that a user has deleted all past DMs
 	DMChatHistoryCleared(dm, actor uuid.UUID)
 
+	OpenNewGroupChat(Group)
 	NewGroupChat(Group)
 	ReceivedGroupMessage(GroupMessage)
 	//RenameGroup()

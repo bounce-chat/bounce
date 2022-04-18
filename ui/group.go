@@ -61,6 +61,18 @@ func (group *group) setLastMessageTime(time int64) {
 	group.lastMessage = time
 }
 
+func (fyneUI *Fyne) OpenNewGroupChat(bounceGroup chat.Group) {
+	fyneUI.NewGroupChat(bounceGroup)
+
+	group, exists := fyneUI.groups[bounceGroup.ID]
+	if exists {
+		fyneUI.showMainContainer()
+		fyneUI.displayThread(group)
+	} else {
+		log.Error("cannot open newly created group because the UI isn't aware of it")
+	}
+}
+
 func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	if _, exists := fyneUI.groups[bounceGroup.ID]; exists {
 		log.WithFields(log.Fields{

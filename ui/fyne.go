@@ -46,6 +46,7 @@ type Fyne struct {
 	newGroupNameEntry              *widget.Entry
 	newGroupAllAvailableUsers      *container.Scroll
 	newGroupSelectedUsers          *userStore
+	newGroupCreateButton           *widget.Button
 	mainMenu                       *fyne.MainMenu
 	allUsersDMLinksScroll          *container.Scroll
 	networkOfflineWarning          *widget.Label
