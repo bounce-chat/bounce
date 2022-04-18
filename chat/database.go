@@ -6,6 +6,7 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 
 	stdlog "log"
@@ -219,12 +220,28 @@ func (b *bounce) buildInitialState() InitialState {
 		})
 	}
 
+	groups := []group{}
+	b.database.Preload(clause.Associations).Find(&groups)
+	chatGroups := []Group{}
+	for _, g := range groups {
+		userList := []uuid.UUID{}
+		for _, u := range g.Users {
+			userList = append(userList, u.ID)
+		}
+		chatGroups = append(chatGroups, Group{
+			ID:      g.ID,
+			Name:    g.Name,
+			UserIDs: userList,
+		})
+	}
+
 	dms := []DirectMessage{}
 	b.database.Order("saved_at asc").Find(&dms) // TODO: error check
 
 	return InitialState{
 		Profile:        profile,
 		Users:          chatUsers,
+		Groups:         chatGroups,
 		DirectMessages: dms,
 	}
 }

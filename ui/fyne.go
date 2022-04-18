@@ -187,9 +187,12 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		log.Debug("adding a user") // TODO: debugging startup issue
 		fyneUI.users.add(&user{id: u.ID, name: u.Name})
 	}
-	//for _, t := range state.Threads {
-	//	fyneUI.NewThread(t)
-	//}
+
+	for _, g := range state.Groups {
+		log.Debug("adding a group") // TODO: debugging startup issue
+		fyneUI.NewGroupChat(g)
+	}
+
 	for _, dm := range state.DirectMessages {
 		log.Debug("loading a direct message")    // TODO: debugging startup issue
 		fyneUI.loadDirectMessage(dm, true, true) // TODO: need to handle what's read / unread
