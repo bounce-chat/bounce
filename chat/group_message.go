@@ -124,6 +124,18 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		}).Fatal("error unmarshalling group message")
 	}
 
+	// If we have already seen this message, all we need to do is mark that this peer has the message as well.
+	var existingGM GroupMessage
+	err = b.database.Where("id = ?", gm.ID).First(&existingGM).Error
+	if err == nil {
+		b.markDeliveredTo(&existingGM, peer)
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up group message")
+	}
+
 	// TODO: validate the gm, make sure signer is the author, was delivered by a peer in the group
 
 	b.userInterface.ReceivedGroupMessage(gm)
