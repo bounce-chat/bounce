@@ -85,7 +85,7 @@ func (b *bounce) keepDatabasePruned() {
 func (b *bounce) pruneDatabase(informUI bool) {
 	b.pruneReferenceOffers()
 	b.pruneDirectMessages(informUI)
-	//b.pruneGroupMessages()
+	b.pruneGroupMessages(informUI)
 	b.pruneSyncDeviceOffers()
 	b.pruneDeliveryRecords()
 }
@@ -163,6 +163,73 @@ func (b *bounce) pruneDirectMessages(informUI bool) {
 			}
 			if informUI {
 				b.userInterface.UpdateMessageDeletionTime(dm.ID, deleteAt)
+			}
+		}
+	}
+}
+
+func (b *bounce) pruneGroupMessages(informUI bool) {
+	now := time.Now().Unix()
+
+	if informUI {
+		// Find messages that should be pruned and delete them from the UI
+		var gms []GroupMessage
+		err := b.database.Select("id").Where("delete_at != 0 AND delete_at < ?", now).Find(&gms).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting group messages that are past retention for pruning")
+		}
+		for _, gm := range gms {
+			b.userInterface.DeleteMessage(gm.ID)
+		}
+	}
+
+	// Delete those messages from the database
+	err := b.database.Where("delete_at != 0 AND delete_at < ?", now).Delete(&GroupMessage{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error batch deleting group messages past retention")
+	}
+
+	// Find all messages that are undeliverable and inform the UI, marking them for deletion if they don't have indefinite retention
+	var gms []GroupMessage
+	err = b.database.
+		Select("group_messages.id", "group_messages.retention_seconds").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_messages.id AND delivery_records.frame_type == ?", typeGroupMessage).
+		Where(
+			"delivery_records.id IS NULL AND group_messages.written_at < ? AND undeliverable = false",
+			time.Now().Add(-undeliverableAfter).Unix(),
+		).
+		Find(&gms).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting group message that are undeliverable while pruning database")
+	}
+	for _, gm := range gms {
+		err = b.database.Model(&gm).Update("undeliverable", true).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"message_id": gm.ID,
+				"error":      err.Error(),
+			}).Fatal("error updating undeliverable field of undeliverable group message")
+		}
+		if informUI {
+			b.userInterface.MarkMessageUndeliverable(gm.ID)
+		}
+		if gm.RetentionSeconds > 0 {
+			deleteAt := time.Now().Unix() + gm.RetentionSeconds
+			err = b.database.Model(&gm).Update("delete_at", deleteAt).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"message_id": gm.ID,
+					"error":      err.Error(),
+				}).Fatal("error updating delete_at of undeliverable group message with retention")
+			}
+			if informUI {
+				b.userInterface.UpdateMessageDeletionTime(gm.ID, deleteAt)
 			}
 		}
 	}
