@@ -202,7 +202,19 @@ func (fyneUI *Fyne) ReceivedGroupMessage(msg chat.GroupMessage) {
 		log.Info("user wants to open the profile of " + user.name)
 		// TODO: display this user's profile
 	})
-	messageBox := newChatBubble(user.name, msg.ID, msg.Text, false, time.Now().Unix(), profileButton)
+
+	displayName := user.name
+	isOutgoing := false
+	notify := true // TODO: need to get from chat engine's settings
+	// TODO: this really needs to be cleaned up
+	if msg.Source == fyneUI.profile.id {
+		// We're learning about a message we sent from another device
+		displayName = "You"
+		isOutgoing = true
+		notify = false
+	}
+
+	messageBox := newChatBubble(displayName, msg.ID, msg.Text, isOutgoing, time.Now().Unix(), profileButton)
 
 	fyneUI.threadWithMessageMutex.Lock()
 	fyneUI.threadWithMessage[msg.ID] = group
@@ -227,9 +239,11 @@ func (fyneUI *Fyne) ReceivedGroupMessage(msg chat.GroupMessage) {
 			group.scroll.Refresh()
 		}
 	} else {
-		// This group isn't active, mark the button as unread
-		group.button.Importance = widget.HighImportance
-		group.button.Refresh()
+		if notify {
+			// This group isn't active, mark the button as unread
+			group.button.Importance = widget.HighImportance
+			group.button.Refresh()
+		}
 	}
 
 	group.lastMessage = time.Now().Unix()
@@ -245,7 +259,7 @@ func (fyneUI *Fyne) ReceivedGroupMessage(msg chat.GroupMessage) {
 	if err != nil {
 		log.Fatal("data bindings are broken")
 	}
-	if notificationsEnabled && !notificationsMuted && !autoscroll { //TODO: also notify if not focused?
+	if notificationsEnabled && !notificationsMuted && !autoscroll && notify { //TODO: also notify if not focused?
 		fyneUI.app.SendNotification(fyne.NewNotification(groupName, "New message from "+user.name))
 	}
 }
