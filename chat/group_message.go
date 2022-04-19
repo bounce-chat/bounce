@@ -25,9 +25,11 @@ type GroupMessage struct {
 	Source           uuid.UUID
 	Destination      uuid.UUID
 	Text             string // TODO: other things that can be in a message, like a reference to an image, audio, video, or file attachment
+	Signer           string `msgpack:"-"`
+	Payload          []byte `msgpack:"-"`
+	Signature        []byte `msgpack:"-"`
 	payload          []byte
 	payloadMutex     sync.Mutex
-	signedContainerFields
 }
 
 func (gm *GroupMessage) BeforeCreate(tx *gorm.DB) error {
