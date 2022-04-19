@@ -60,6 +60,7 @@ func (b *bounce) openDatabase() {
 		&deliveryRecord{},
 		&updateDMSettings{},
 		&group{},
+		&GroupMessage{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{

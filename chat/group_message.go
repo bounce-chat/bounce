@@ -136,12 +136,13 @@ func (b *bounce) sendGroupMessage(gm *GroupMessage) uuid.UUID {
 	}
 	hash := blake3.Sum256(gm.Payload)
 	gm.Signature = b.network.Sign(hash[:]) // TODO: just sign the hash of the data for speed reasons https://github.com/lukechampine/blake3 or https://github.com/zeebo/blake3
+	gm.Signer = b.network.Address()
 
 	err = b.database.Create(gm).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error saving group message")
+		}).Fatal("error saving group message") // TODO: this breaks fyne
 	}
 
 	go b.broadcast(gm)
