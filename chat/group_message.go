@@ -26,7 +26,7 @@ type GroupMessage struct {
 	Destination      uuid.UUID
 	Text             string // TODO: other things that can be in a message, like a reference to an image, audio, video, or file attachment
 	Signer           string `msgpack:"-"`
-	Payload          []byte `msgpack:"-"`
+	Payload          []byte `msgpack:"-"` // TODO: rename to marshalled or something
 	Signature        []byte `msgpack:"-"`
 	payload          []byte
 	payloadMutex     sync.Mutex
@@ -105,7 +105,9 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	var gm GroupMessage
 	err = msgpack.Unmarshal(payload, sc.Payload)
 	if err != nil {
-
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error unmarshalling group message")
 	}
 
 	// TODO: validate the gm, make sure signer is the author, was delivered by a peer in the group
@@ -114,6 +116,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 
 	gm.Payload = sc.Payload
 	gm.Signature = sc.Signature
+	gm.Signer = sc.Signer
 
 	err = b.database.Create(&gm).Error
 	if err != nil {
