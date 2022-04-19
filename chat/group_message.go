@@ -64,6 +64,7 @@ func (gm *GroupMessage) getPayload() []byte {
 		bytes, err := msgpack.Marshal(signedContainer{
 			Payload:   gm.Payload,
 			Signature: gm.Signature,
+			Signer:    gm.Signer,
 		})
 		if err != nil {
 			log.WithFields(log.Fields{
