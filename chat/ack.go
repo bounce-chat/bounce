@@ -19,6 +19,7 @@ type ack struct {
 	_msgpack              struct{} `msgpack:",omitempty"`
 	ID                    uuid.UUID
 	DirectMessages        string // Comma-separated list of DM UUIDs
+	GroupMessages         string
 	UpdateLocalDMSettings string
 	CatchUps              string
 	Devices               string
@@ -73,6 +74,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	}
 
 	b.handleAckDirectMessages(peer, a)
+	b.handleAckGroupMessages(peer, a)
 	b.handleAckCatchUps(peer, a)
 	b.handleAckUpdateLocalDMSettings(peer, a)
 	b.handleAckUpdateDMSettings(peer, a)
@@ -118,6 +120,48 @@ func (b *bounce) handleAckDirectMessages(peer string, a ack) {
 					}).Fatal("error updating delete_at of acked direct message")
 				}
 				b.userInterface.UpdateMessageDeletionTime(dm.ID, deleteAt)
+			}
+		}
+	}
+}
+
+func (b *bounce) handleAckGroupMessages(peer string, a ack) {
+	if len(a.GroupMessages) > 0 {
+		for _, gmIDString := range strings.Split(a.GroupMessages, ",") {
+			gmID, err := uuid.Parse(gmIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": gmIDString,
+				}).Error("invalid GM UUID in ack")
+				continue
+			}
+
+			var gm GroupMessage
+			err = b.database.First(&gm, "id = ?", gmID).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"peer":  peer,
+				}).Error("ack of unknown GM from peer")
+				// TODO: could be abuse attempted to waste time hitting the database, perhaps should bail / reset connection
+				continue
+			}
+			// TODO: confirm the device should be able to see this DM
+			b.markDeliveredTo(&gm, peer)
+
+			// Now that we know the message has been delivered, if the message expires we start the clock on retention
+			// by setting the absolute time the message should be delete at as now + the retention time
+			if gm.RetentionSeconds != 0 && gm.DeleteAt == 0 {
+				deleteAt := time.Now().Unix() + gm.RetentionSeconds
+				err := b.database.Model(&gm).Update("delete_at", deleteAt).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"message_id": gm.ID,
+						"error":      err.Error(),
+					}).Fatal("error updating delete_at of acked group message")
+				}
+				b.userInterface.UpdateMessageDeletionTime(gm.ID, deleteAt)
 			}
 		}
 	}

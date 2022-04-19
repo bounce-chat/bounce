@@ -18,6 +18,7 @@ type referenceRequest struct {
 	_msgpack              struct{} `msgpack:",omitempty"`
 	ID                    uuid.UUID
 	DirectMessages        string // Comma-separated list of DM UUIDs
+	GroupMessages         string
 	UpdateLocalDMSettings string
 	UpdateDMSettings      string
 	Devices               string
@@ -103,6 +104,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedDevicesPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupsPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedDirectMessagePayloads(dev, rr, originalOffer)...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupMessagePayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateLocalDMSettingsPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMSettingsPayloads(dev, rr, originalOffer)...)
 
@@ -157,6 +159,54 @@ func (b *bounce) getRequestedDirectMessagePayloads(peer device, rr referenceRequ
 			}
 		} else {
 			requestedData = append(requestedData, &dm)
+		}
+	}
+
+	return requestedData
+}
+
+func (b *bounce) getRequestedGroupMessagePayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+	requestedData := sortableBroadcastables{}
+
+	requestedGroupMessageIDs, deliveredGroupMessageIDs := getRequestedAndDeliveredUUIDs(originalOffer.GroupMessages, rr.GroupMessages)
+
+	for _, gmID := range deliveredGroupMessageIDs {
+		var gm GroupMessage
+		err := b.database.Where("id = ?", gmID).First(&gm).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   gmID,
+					"peer": peer.Address,
+				}).Warn("reference request indicates we offered an unknown group message")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    gmID,
+					"error": err.Error(),
+				}).Fatal("database error querying for group message")
+			}
+		} else {
+			b.markDeliveredTo(&gm, peer.Address)
+		}
+	}
+
+	for _, gmID := range requestedGroupMessageIDs {
+		var gm GroupMessage
+		err := b.database.Where("id = ?", gmID).First(&gm).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   gmID,
+					"peer": peer.Address,
+				}).Warn("reference request asks for an unknown group message")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    gmID,
+					"error": err.Error(),
+				}).Fatal("database error querying for group message")
+			}
+		} else {
+			requestedData = append(requestedData, &gm)
 		}
 	}
 

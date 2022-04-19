@@ -40,6 +40,10 @@ func (gm *GroupMessage) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+func (gm *GroupMessage) AfterDelete(tx *gorm.DB) error {
+	return tx.Where("frame_id = ? AND frame_type = ?", gm.ID, typeGroupMessage).Delete(&deliveryRecord{}).Error
+}
+
 func (gm *GroupMessage) getID() uuid.UUID {
 	return gm.ID
 }
@@ -78,12 +82,21 @@ func (gm *GroupMessage) getPayload() []byte {
 }
 
 func (gm *GroupMessage) getTimestamp() int64 {
-	return 0
+	return gm.SavedAt
 }
 
 func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	groupMessageMutex.Lock()
 	defer groupMessageMutex.Unlock()
+
+	// Look up the device that sent it
+	srcDevice, exists := b.getDeviceFromAddress(peer)
+	if !exists {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("ignoring a group message sent from an unknown device")
+		return
+	}
 
 	var sc signedContainer
 	err := msgpack.Unmarshal(payload, &sc)
@@ -124,6 +137,13 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Fatal("error saving group message")
 	}
+
+	go b.broadcast(&ack{
+		destination:   srcDevice.ID,
+		GroupMessages: gm.ID.String(),
+	})
+
+	go b.broadcast(&gm)
 }
 
 func (b *bounce) sendGroupMessage(gm *GroupMessage) uuid.UUID {

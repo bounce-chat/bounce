@@ -22,7 +22,8 @@ type referenceOffer struct {
 	ID                    uuid.UUID `gorm:"type:uuid;primary_key;"`
 	CreatedAt             int64     // Used to delete old reference offers that were not responded to
 	DirectMessages        string    // Comma-separated list of DM UUIDs
-	UpdateLocalDMSettings string    // only for sync devices
+	GroupMessages         string
+	UpdateLocalDMSettings string // only for sync devices
 	UpdateDMSettings      string
 	Devices               string
 	Users                 string // only for sync devices
@@ -76,6 +77,9 @@ func (ro *referenceOffer) shouldDial() bool {
 	if len(ro.DirectMessages) > 0 {
 		return true
 	}
+	if len(ro.GroupMessages) > 0 {
+		return true
+	}
 	if len(ro.UpdateLocalDMSettings) > 0 {
 		return true
 	}
@@ -97,6 +101,9 @@ func (ro *referenceOffer) shouldDial() bool {
 
 func (ro *referenceOffer) hasContent() bool {
 	if len(ro.DirectMessages) > 0 {
+		return true
+	}
+	if len(ro.GroupMessages) > 0 {
 		return true
 	}
 	if len(ro.UpdateLocalDMSettings) > 0 {
@@ -178,6 +185,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 		ID:                    uuid.New(),
 		Destination:           dev.ID,
 		DirectMessages:        b.getDirectMessagesToOffer(dev),
+		GroupMessages:         b.getGroupMessagesToOffer(dev),
 		UpdateLocalDMSettings: b.getUpdateLocalDMSettingsToOffer(dev),
 		UpdateDMSettings:      b.getUpdateDMSettingsToOffer(dev),
 		Devices:               b.getDevicesToOffer(dev),
@@ -213,6 +221,36 @@ func (b *bounce) getDirectMessagesToOffer(dev device) string {
 		dmsToOffer = append(dmsToOffer, dm.ID.String())
 	}
 	return strings.Join(dmsToOffer, ",")
+}
+
+func (b *bounce) getGroupMessagesToOffer(dev device) string {
+	// All group messages that this device's user is a part of that are less than a week old
+	var gms []GroupMessage
+	err := b.database.
+		Select("group_messages.*").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeGroupMessage).
+		Where(
+			"delivery_records.id IS NULL AND group_messages.written_at >= ? AND group_messages.destination IN (?)",
+			time.Now().Add(-undeliverableAfter).Unix(),
+			b.database.
+				Select("groups.id").
+				Joins("JOIN group_users ON groups.id = group_users.group_id").
+				Where("group_users.user_id = ?", dev.UserID),
+		).
+		Find(&gms).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"peer":  dev.Address,
+			"error": err.Error(),
+		}).Fatal("error loading DMs for reference offer")
+	}
+
+	// TODO: only select IDs in the first place?
+	gmsToOffer := []string{}
+	for _, gm := range gms {
+		gmsToOffer = append(gmsToOffer, gm.ID.String())
+	}
+	return strings.Join(gmsToOffer, ",")
 }
 
 func (b *bounce) getUpdateLocalDMSettingsToOffer(dev device) string {
@@ -398,6 +436,7 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 		ID:                    ro.ID,
 		destination:           dev.ID,
 		DirectMessages:        b.getDirectMessagesToRequest(dev, ro),
+		GroupMessages:         b.getGroupMessagesToRequest(dev, ro),
 		UpdateLocalDMSettings: b.getUpdateLocalDMSettingsToRequest(dev, ro),
 		UpdateDMSettings:      b.getUpdateDMSettingsToRequest(dev, ro),
 		Devices:               b.getDevicesToRequest(dev, ro),
@@ -451,6 +490,52 @@ func (b *bounce) getDirectMessagesToRequest(dev device, ro referenceOffer) strin
 	}
 
 	return strings.Join(requestedDMs, ",")
+
+}
+
+func (b *bounce) getGroupMessagesToRequest(dev device, ro referenceOffer) string {
+	requestedGMs := []string{}
+	if len(ro.GroupMessages) > 0 {
+		for _, gmIDString := range strings.Split(ro.GroupMessages, ",") {
+			gmID, err := uuid.Parse(gmIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": gmIDString,
+				}).Error("invalid UUID in reference offer")
+				continue
+			}
+
+			var count int64
+			err = b.database.Model(&GroupMessage{}).Where("id = ?", gmID).Count(&count).Error // TODO: refactor this away from using count everywhere
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error getting group message from database")
+				continue
+			}
+			if count == 0 {
+				// TODO: want to make sure this can't be used to probe a devices for messages that it might already have from another chat,
+				// to test group membership if a chat message from another group is known
+				requestedGMs = append(requestedGMs, gmID.String())
+			} else {
+				// We already have this message, but if we didn't already know they had it, we update our records
+				var gm GroupMessage
+				err = b.database.First(&gm, "id = ?", gmID).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error looking up known GM in reference offer")
+					continue
+				}
+				if !b.isDeliveredTo(&gm, dev.Address) {
+					b.markDeliveredTo(&gm, dev.Address)
+				}
+			}
+		}
+	}
+
+	return strings.Join(requestedGMs, ",")
 
 }
 
