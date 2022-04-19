@@ -215,6 +215,7 @@ func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hide
 		displayName = "You"
 		isOutgoing = true
 		hideNotification = true
+		profileButton = nil
 	}
 
 	messageBox := newChatBubble(displayName, msg.ID, msg.Text, isOutgoing, time.Now().Unix(), profileButton)
