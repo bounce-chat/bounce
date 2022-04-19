@@ -69,7 +69,7 @@ type InitialState struct {
 	Users          []User
 	Groups         []Group
 	DirectMessages []DirectMessage
-	//GroupMessages []Message
+	GroupMessages  []GroupMessage
 }
 
 type User struct { // TODO: replace with model?

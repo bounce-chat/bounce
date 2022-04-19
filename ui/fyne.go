@@ -78,10 +78,6 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.syncString = binding.NewString()
 	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}) // TODO: red rich text
 	fyneUI.networkOfflineWarning.Show()
-	fyneUI.newGroupNameEntry = widget.NewEntry()
-	fyneUI.newGroupSelectedUsersContainer = container.NewMax()
-	fyneUI.newGroupAllAvailableUsers = container.NewVScroll(container.NewVBox())
-	fyneUI.newGroupSelectedUsers = newUserStore()
 
 	//
 	// Define the app
@@ -111,6 +107,10 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	// Build all the containers
 	//
 	log.Debug("building containers") // TODO: remove after startup bug identified
+	fyneUI.newGroupNameEntry = widget.NewEntry()
+	fyneUI.newGroupSelectedUsersContainer = container.NewMax()
+	fyneUI.newGroupAllAvailableUsers = container.NewVScroll(container.NewVBox())
+	fyneUI.newGroupSelectedUsers = newUserStore()
 	fyneUI.allUsersDMLinksScroll = container.NewVScroll(container.NewVBox())
 	log.Debug("buildMenu") // TODO: remove after startup bug identified
 	fyneUI.buildMenu()
@@ -196,6 +196,11 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	for _, dm := range state.DirectMessages {
 		log.Debug("loading a direct message")    // TODO: debugging startup issue
 		fyneUI.loadDirectMessage(dm, true, true) // TODO: need to handle what's read / unread
+	}
+
+	for _, gm := range state.GroupMessages {
+		log.Debug("loading a group message")    // TODO: debugging startup issue
+		fyneUI.loadGroupMessage(gm, true, true) // TODO: need to handle what's read / unread
 	}
 }
 

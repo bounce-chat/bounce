@@ -180,6 +180,10 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 }
 
 func (fyneUI *Fyne) ReceivedGroupMessage(msg chat.GroupMessage) {
+	fyneUI.loadGroupMessage(msg, false, false)
+}
+
+func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hideNotification bool) {
 	// Log an error and early return if the group doesn't exist
 	group, exists := fyneUI.groups[msg.Destination]
 	if !exists {
@@ -205,13 +209,12 @@ func (fyneUI *Fyne) ReceivedGroupMessage(msg chat.GroupMessage) {
 
 	displayName := user.name
 	isOutgoing := false
-	notify := true // TODO: need to get from chat engine's settings
 	// TODO: this really needs to be cleaned up
 	if msg.Source == fyneUI.profile.id {
 		// We're learning about a message we sent from another device
 		displayName = "You"
 		isOutgoing = true
-		notify = false
+		hideNotification = true
 	}
 
 	messageBox := newChatBubble(displayName, msg.ID, msg.Text, isOutgoing, time.Now().Unix(), profileButton)
@@ -239,11 +242,16 @@ func (fyneUI *Fyne) ReceivedGroupMessage(msg chat.GroupMessage) {
 			group.scroll.Refresh()
 		}
 	} else {
-		if notify {
+		if !hideNotification {
 			// This group isn't active, mark the button as unread
 			group.button.Importance = widget.HighImportance
 			group.button.Refresh()
 		}
+	}
+
+	if overrideScroll {
+		group.scroll.ScrollToBottom()
+		group.scroll.Refresh()
 	}
 
 	group.lastMessage = time.Now().Unix()
@@ -259,7 +267,7 @@ func (fyneUI *Fyne) ReceivedGroupMessage(msg chat.GroupMessage) {
 	if err != nil {
 		log.Fatal("data bindings are broken")
 	}
-	if notificationsEnabled && !notificationsMuted && !autoscroll && notify { //TODO: also notify if not focused?
+	if notificationsEnabled && !notificationsMuted && !autoscroll && !hideNotification { //TODO: also notify if not focused?
 		fyneUI.app.SendNotification(fyne.NewNotification(groupName, "New message from "+user.name))
 	}
 }

@@ -238,12 +238,15 @@ func (b *bounce) buildInitialState() InitialState {
 
 	dms := []DirectMessage{}
 	b.database.Order("saved_at asc").Find(&dms) // TODO: error check
+	gms := []GroupMessage{}
+	b.database.Order("saved_at asc").Find(&gms) // TODO: error check
 
 	return InitialState{
 		Profile:        profile,
 		Users:          chatUsers,
 		Groups:         chatGroups,
 		DirectMessages: dms,
+		GroupMessages:  gms,
 	}
 }
 
