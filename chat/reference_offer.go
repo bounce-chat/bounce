@@ -233,6 +233,8 @@ func (b *bounce) getGroupMessagesToOffer(dev device) string {
 			"delivery_records.id IS NULL AND group_messages.written_at >= ? AND group_messages.destination IN (?)",
 			time.Now().Add(-undeliverableAfter).Unix(),
 			b.database.
+				Model(&group{}).
+				Distinct().
 				Select("groups.id").
 				Joins("JOIN group_users ON groups.id = group_users.group_id").
 				Where("group_users.user_id = ?", dev.UserID),

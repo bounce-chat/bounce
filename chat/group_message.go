@@ -35,6 +35,7 @@ type GroupMessage struct {
 func (gm *GroupMessage) BeforeCreate(tx *gorm.DB) error {
 	gm.SavedAt = time.Now().Unix()
 	if len(gm.Payload) == 0 || len(gm.Signature) == 0 || len(gm.Signer) == 0 {
+		// TODO: just do a NOT NULL in the schema
 		return errors.New("cannot create a group message without an original signed payload")
 	}
 	return nil
