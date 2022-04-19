@@ -61,6 +61,7 @@ func (sbrs sortableBroadcastables) Less(i, j int) bool {
 func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 	return map[uint16]func(string, []byte){
 		typeDirectMessage:             b.handleDirectMessage,
+		typeGroupMessage:              b.handleGroupMessage,
 		typeReferenceOffer:            b.handleReferenceOffer,
 		typeReferenceRequest:          b.handleReferenceRequest,
 		typeCatchUp:                   b.handleCatchUp,

@@ -101,7 +101,7 @@ type UICallbacks struct {
 	// The user wants to send a direct message.
 	SendDirectMessage func(*DirectMessage) uuid.UUID
 	// The user wants to send a group  message
-	SendGroupMessage func(GroupMessage) uuid.UUID
+	SendGroupMessage func(*GroupMessage) uuid.UUID
 
 	// Create a new group
 	CreateGroup func(groupName string, userIDs []uuid.UUID) error

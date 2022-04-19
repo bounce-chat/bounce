@@ -1,65 +1,150 @@
 package chat
 
 import (
+	"errors"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
+	"github.com/vmihailenco/msgpack/v5"
+	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 )
 
-type GroupMessage message
+var groupMessageMutex sync.Mutex
 
-func (groupMessage *GroupMessage) BeforeCreate(tx *gorm.DB) error {
-	groupMessage.SavedAt = time.Now().Unix()
+type GroupMessage struct {
+	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
+	SavedAt          int64     `msgpack:"-"`
+	WrittenAt        int64
+	RetentionSeconds int64 // Number of seconds to retain this message, captures the retention setting from the author's perspective at the time the message was written
+	DeleteAt         int64 `msgpack:"-"` // Absolute time at which the messages expires.  Time it was first acked/received + RetentionSeconds
+	Read             bool  `msgpack:"-"`
+	Undeliverable    bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
+	Source           uuid.UUID
+	Destination      uuid.UUID
+	Text             string // TODO: other things that can be in a message, like a reference to an image, audio, video, or file attachment
+	payload          []byte
+	payloadMutex     sync.Mutex
+	signedContainerFields
+}
+
+func (gm *GroupMessage) BeforeCreate(tx *gorm.DB) error {
+	gm.SavedAt = time.Now().Unix()
+	if len(gm.Payload) == 0 || len(gm.Signature) == 0 || len(gm.Signer) == 0 {
+		return errors.New("cannot create a group message without an original signed payload")
+	}
 	return nil
 }
 
-/*
-//
-// A group message is wrapped in a signed object because it can come from devices that are not owned by the author
-//
-
-type signedGroupMessage struct { // TODO: can the behavior of this be "merged" into the regular struct?  such that calling the broadcastable functions on that struct transparently does the signed ones?
-	Message      []byte
-	Signature    []byte
-	payload      []byte
-	payloadMutex sync.Mutex
-	destination  uuid.UUID
+func (gm *GroupMessage) getID() uuid.UUID {
+	return gm.ID
 }
 
-func (b *bounce) newSignedGroupMessage(message GroupMessage) *signedGroupMessage {
-	marshalledMessage, err := msgpack.Marshal(message)
-	if err != nil {
-		// TODO: how to handle?
-	}
-	signature := b.network.Sign(marshalledMessage) // TODO: just sign the hash of the data for speed reasons https://github.com/lukechampine/blake3 or https://github.com/zeebo/blake3
-
-	sgm := &signedGroupMessage{
-		Message:     marshalledMessage,
-		Signature:   signature,
-		destination: message.Destination,
-	}
-
-	return sgm
-}
-
-func (sgm *signedGroupMessage) getScope() int {
+func (gm *GroupMessage) getScope(_ uuid.UUID) int {
 	return scopeGroup
 }
 
-func (sgm *signedGroupMessage) getDestination(_ uuid.UUID) uuid.UUID {
-	return sgm.destination
+func (gm *GroupMessage) getDestination(_ uuid.UUID) uuid.UUID {
+	return gm.Destination
 }
 
-func (sgm *signedGroupMessage) getType() uint16 {
-	return typeGroupMessage // TODO: after I figure out types
+func (gm *GroupMessage) getType() uint16 {
+	return typeGroupMessage
 }
 
-func (sgm *signedGroupMessage) getPayload() []byte {
-	return sgm.payload
-}
-*/
+func (gm *GroupMessage) getPayload() []byte {
+	gm.payloadMutex.Lock()
+	defer gm.payloadMutex.Unlock()
 
-func (b *bounce) sendGroupMessage(message GroupMessage) uuid.UUID {
-	return uuid.New()
+	if len(gm.payload) == 0 {
+		bytes, err := msgpack.Marshal(signedContainer{
+			Payload:   gm.Payload,
+			Signature: gm.Signature,
+		})
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error marshalling group message's signed container")
+		}
+		gm.payload = bytes
+	}
+
+	return gm.payload
+}
+
+func (gm *GroupMessage) getTimestamp() int64 {
+	return 0
+}
+
+func (b *bounce) handleGroupMessage(peer string, payload []byte) {
+	groupMessageMutex.Lock()
+	defer groupMessageMutex.Unlock()
+
+	var sc signedContainer
+	err := msgpack.Unmarshal(payload, &sc)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling group message signed container")
+		return
+	}
+
+	hash := blake3.Sum256(sc.Payload)
+	if !b.network.VerifySignature(sc.Signer, hash[:], sc.Signature) {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("group message received with invalid signature, ignoring")
+		return
+	}
+
+	var gm GroupMessage
+	err = msgpack.Unmarshal(payload, sc.Payload)
+	if err != nil {
+
+	}
+
+	// TODO: validate the gm, make sure signer is the author, was delivered by a peer in the group
+
+	b.userInterface.ReceivedGroupMessage(gm)
+
+	gm.Payload = sc.Payload
+	gm.Signature = sc.Signature
+
+	err = b.database.Create(&gm).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error saving group message")
+	}
+}
+
+func (b *bounce) sendGroupMessage(gm *GroupMessage) uuid.UUID {
+	gm.ID = uuid.New()
+	gm.WrittenAt = time.Now().Unix()
+	gm.Read = true
+	gm.Source = b.currentUserID()
+	gm.RetentionSeconds = 60 * 60 * 24 * 7 // TODO: look up for group
+
+	var err error
+	gm.Payload, err = msgpack.Marshal(gm)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling group message")
+	}
+	hash := blake3.Sum256(gm.Payload)
+	gm.Signature = b.network.Sign(hash[:]) // TODO: just sign the hash of the data for speed reasons https://github.com/lukechampine/blake3 or https://github.com/zeebo/blake3
+
+	err = b.database.Create(gm).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error saving group message")
+	}
+
+	go b.broadcast(gm)
+
+	return gm.ID
 }

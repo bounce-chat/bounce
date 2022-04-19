@@ -147,12 +147,12 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	group.entry = entry
 
 	entry.customOnSubmitted = func() {
-		message := chat.GroupMessage{
+		message := &chat.GroupMessage{
 			Destination: group.id,
 			Text:        entry.Text,
 		}
 
-		id := fyneUI.callbacks.SendGroupMessage(message) // TODO: group-specific callback?
+		id := fyneUI.callbacks.SendGroupMessage(message)
 		fyneUI.displaySentMessage(group, id, message.Text)
 
 		entry.Text = ""
