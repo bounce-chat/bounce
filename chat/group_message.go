@@ -103,7 +103,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	}
 
 	var gm GroupMessage
-	err = msgpack.Unmarshal(payload, sc.Payload)
+	err = msgpack.Unmarshal(sc.Payload, &gm)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
