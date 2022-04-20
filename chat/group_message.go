@@ -136,10 +136,67 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		}).Fatal("database error looking up group message")
 	}
 
-	// TODO: validate the gm, make sure signer is the author, was delivered by a peer in the group
+	// Make sure the author is in the group
+	err = b.database.Table("group_users").
+		Select("count(*) = 1").
+		Where("user_id = ? AND group_id", gm.Source, gm.Destination).
+		Find(&exists).
+		Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error checking if user is in group")
+	}
+	if !exists {
+		log.WithFields(log.Fields{
+			"user":  gm.Source,
+			"group": gm.Destination,
+		}).Warn("user sent message to a group they are not in, ignoring")
+		return
+	}
 
+	// Make sure the device that signed this message belongs to the author
+	signerDevice, exists := b.getDeviceFromAddress(sc.Signer)
+	if !exists {
+		log.WithFields(log.Fields{
+			"signer": sc.Signer,
+		}).Warn("received a group message signed by an unknown device, ignoring")
+		return
+	}
+	if signerDevice.UserID != gm.Source {
+		log.WithFields(log.Fields{
+			"id":     gm.ID,
+			"group":  gm.Destination,
+			"signer": sc.Signer,
+			"author": gm.Source,
+		}).Warn("received group message signed by a different user than the author, ignoring")
+		return
+	}
+
+	// Make sure the peer that delivered this message is part of the group
+	err = b.database.Table("group_users").
+		Select("count(*) = 1").
+		Where("user_id = ? AND group_id", srcDevice.UserID, gm.Destination).
+		Find(&exists).
+		Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error checking if source device is in group")
+	}
+	if !exists {
+		log.WithFields(log.Fields{
+			"user":   srcDevice.UserID,
+			"device": srcDevice.ID,
+			"group":  gm.Destination,
+		}).Warn("device sent a message for a group that the device's user is not a part of, ignoring")
+		return
+	}
+
+	// Inform the UI about the new message
 	b.userInterface.ReceivedGroupMessage(gm)
 
+	// Persist the signed container on the group message model
 	gm.Payload = sc.Payload
 	gm.Signature = sc.Signature
 	gm.Signer = sc.Signer
