@@ -193,6 +193,9 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		return
 	}
 
+	// Mark that the peer that sent this message has it
+	b.markDeliveredTo(&gm, peer)
+
 	// Inform the UI about the new message
 	b.userInterface.ReceivedGroupMessage(gm)
 
