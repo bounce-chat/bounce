@@ -61,6 +61,7 @@ func (b *bounce) openDatabase() {
 		&updateDMSettings{},
 		&group{},
 		&GroupMessage{},
+		&updateGroup{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{

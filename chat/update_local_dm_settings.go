@@ -12,6 +12,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+var updateLocalDMSettingsMutex sync.Mutex
+
 type updateLocalDMSettings struct {
 	ID                      uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Target                  uuid.UUID
@@ -148,6 +150,9 @@ func (b *bounce) getDMNotificationEnabled(id uuid.UUID) (bool, error) {
 }
 
 func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
+	updateLocalDMSettingsMutex.Lock()
+	defer updateLocalDMSettingsMutex.Unlock()
+
 	// Make sure we only get these updates from sync devices
 	dev, exists := b.getDeviceFromAddress(peer)
 	if !exists || dev.UserID != b.currentUserID() {
@@ -192,9 +197,6 @@ func (b *bounce) handleUpdateLocalDMSettings(peer string, payload []byte) {
 	// We only need to do anything if the timestamp in this update is newer than the last time we updated the user.
 	// If it isn't, we can just ignore this message.
 	if ulds.Timestamp > targetUser.LastLocalDMSettingsUpdate {
-		b.uldsExistenceCheck.Lock()
-		defer b.uldsExistenceCheck.Unlock()
-
 		var existingULDS updateLocalDMSettings
 		err = b.database.Where("id = ?", ulds.ID).First(&existingULDS).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {

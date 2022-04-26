@@ -54,7 +54,7 @@ type UI interface {
 	OpenNewGroupChat(Group)
 	NewGroupChat(Group)
 	ReceivedGroupMessage(GroupMessage)
-	//RenameGroup()
+	//RenameGroup(groupID, actor uuid.UUID, newName string)
 
 	// Profile updates from other devices owned by this user
 	//UpdateMyName()

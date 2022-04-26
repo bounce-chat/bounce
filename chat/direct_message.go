@@ -12,6 +12,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+var directMessageMutex sync.Mutex
+
 type DirectMessage struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt          int64     `msgpack:"-"`
@@ -118,6 +120,9 @@ func (b *bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
 //
 
 func (b *bounce) handleDirectMessage(peer string, payload []byte) {
+	directMessageMutex.Lock()
+	defer directMessageMutex.Unlock()
+
 	// Unmarshal the payload
 	var dm DirectMessage
 	err := msgpack.Unmarshal(payload, &dm)
@@ -151,12 +156,10 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 
 	// If we have already seen this message, all we need to do is mark that this peer has the message as well.  If not, we save the message
 	// in the database.  This step is synchroniszed with a mutex lock since the same message can come in concurrently during gossip.
-	b.dmExistenceCheck.Lock()
 	var existingDM DirectMessage
 	err = b.database.Where("id = ?", dm.ID).First(&existingDM).Error
 	if err == nil {
 		b.markDeliveredTo(&existingDM, peer)
-		b.dmExistenceCheck.Unlock()
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
@@ -182,7 +185,6 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	}
 	// Save a delivery report for the peer that send this message
 	b.markDeliveredTo(&dm, peer)
-	b.dmExistenceCheck.Unlock()
 
 	// Send the message to the user interface
 	b.userInterface.ReceivedDirectMessage(dm)

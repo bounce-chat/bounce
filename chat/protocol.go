@@ -32,6 +32,7 @@ var typeDevice = uint16(11)
 var typeUser = uint16(12)
 var typeUpdateDMSettings = uint16(13)
 var typeGroup = uint16(14)
+var typeUpdateGroup = uint16(15)
 
 type broadcastable interface {
 	getID() uuid.UUID
@@ -75,6 +76,7 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 		typeUser:                      b.handleUser,
 		typeUpdateDMSettings:          b.handleUpdateDMSettings,
 		typeGroup:                     b.handleGroup,
+		typeUpdateGroup:               b.handleUpdateGroup,
 	}
 }
 

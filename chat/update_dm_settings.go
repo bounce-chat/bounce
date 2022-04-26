@@ -12,6 +12,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+var updateDMSettingsMutex sync.Mutex
+
 type updateDMSettings struct {
 	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Actor        uuid.UUID
@@ -176,6 +178,9 @@ func (b *bounce) clearDMChatHistory(userID uuid.UUID) {
 }
 
 func (b *bounce) handleUpdateDMSettings(peer string, payload []byte) {
+	updateDMSettingsMutex.Lock()
+	defer updateDMSettingsMutex.Unlock()
+
 	// Unmarshall it
 	var uds updateDMSettings
 	err := msgpack.Unmarshal(payload, &uds)
@@ -221,9 +226,6 @@ func (b *bounce) handleUpdateDMSettings(peer string, payload []byte) {
 
 	// If the timestamp is newer than the last update we're aware of, apply the update
 	if uds.Timestamp > targetUser.LastDMSettingsUpdate {
-		b.udsExistenceCheck.Lock() // TODO: just mutex all handlers here?
-		defer b.udsExistenceCheck.Unlock()
-
 		var existingUDS updateDMSettings
 		err = b.database.Where("id = ?", uds.ID).First(&existingUDS).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {

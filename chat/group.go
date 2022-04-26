@@ -14,13 +14,17 @@ import (
 var groupMutex sync.Mutex
 
 type group struct {
-	ID           uuid.UUID
-	Name         string
-	Image        []byte
-	Retention    int64
-	Users        []user `gorm:"many2many:group_users;"` // TODO: pointer needed?  I don't think so
-	payload      []byte
-	payloadMutex sync.Mutex
+	ID                     uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name                   string
+	Image                  []byte
+	CreatedBy              uuid.UUID
+	Retention              int64
+	Users                  []user `gorm:"many2many:group_users;"` // TODO: pointer needed?  I don't think so
+	Admins                 string
+	RestrictUserManagement bool
+	RestrictGroupEdits     bool
+	payload                []byte
+	payloadMutex           sync.Mutex
 }
 
 func (g *group) BeforeCreate(tx *gorm.DB) error {

@@ -11,6 +11,8 @@ import (
 	"gorm.io/gorm"
 )
 
+var syncDeviceRequestMutex sync.Mutex
+
 type syncDeviceRequest struct {
 	Signature    []byte
 	Secret       string
@@ -80,8 +82,8 @@ func (b *bounce) requestToSync(data string) error {
 
 func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 	// Mutex lock prcessing to enure an offer can only be used once
-	b.syncDeviceRequest.Lock()
-	defer b.syncDeviceRequest.Unlock()
+	syncDeviceRequestMutex.Lock()
+	defer syncDeviceRequestMutex.Unlock()
 
 	// Unmarshal the payload
 	var sdr syncDeviceRequest

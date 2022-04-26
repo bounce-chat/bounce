@@ -34,10 +34,6 @@ type bounce struct {
 	pruningDatabase       sync.WaitGroup
 	runningHandlers       sync.WaitGroup
 	shutdownMutex         sync.Mutex
-	dmExistenceCheck      sync.Mutex
-	uldsExistenceCheck    sync.Mutex
-	udsExistenceCheck     sync.Mutex
-	syncDeviceRequest     sync.Mutex
 }
 
 //
@@ -268,7 +264,9 @@ func ensureOnlyOneInstance() {
 	} else {
 		err := process.Signal(syscall.Signal(0))
 		if err == nil {
-			log.Fatal("Another instance of Bounce is running.  Please close it, or if you are sure it is not running, delete the pid file and try again: ", pidFile)
+			log.WithFields(log.Fields{
+				"pid": pid,
+			}).Fatal("Another instance of Bounce is running.  Please close it, or if you are sure it is not running, delete the pid file and try again: ", pidFile)
 		} else if err.Error() == "no such process" || err.Error() == "os: process already finished" {
 			// Delete the old pid file that refers to a dead process
 			err = os.Remove(pidFile)
@@ -288,6 +286,7 @@ func ensureOnlyOneInstance() {
 			}
 		} else {
 			log.WithFields(log.Fields{
+				"pid":           pid,
 				"syscall_error": err.Error(),
 			}).Fatal("Another instance of Bounce is running.  Please close it, or if you are sure it is not running, delete the pid file and try again: ", pidFile)
 		}
