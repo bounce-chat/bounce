@@ -6,7 +6,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -16,7 +15,7 @@ type thread interface {
 	getView() *fyne.Container
 	getEntry() *threadEntry
 	chatHistoryScroll() *container.Scroll
-	getButton() *widget.Button
+	getButton() *threadButton
 	getLastMessageTime() int64
 	setLastMessageTime(int64)
 }
@@ -63,6 +62,8 @@ func (fyneUI *Fyne) refreshThreadOrder() {
 
 func (fyneUI *Fyne) displaySentMessage(thread thread, id uuid.UUID, message string) { // TODO: going to be able to get rid of this if using thread-specific message handlers for displaying outgoing and incoming?
 	chatHistory := thread.chatHistoryScroll().Content.(*fyne.Container)
+
+	thread.getButton().setLastMessage("You", message)
 
 	chatHistory.Objects = append(chatHistory.Objects, newChatBubble("You", id, message, true, time.Now().Unix(), nil))
 	fyneUI.threadWithMessageMutex.Lock()
@@ -136,10 +137,12 @@ func (fyneUI *Fyne) DeleteMessage(id uuid.UUID) {
 }
 
 func (fyneUI *Fyne) displayThread(thread thread) {
+	// TODO: for now, until we can actually track read status of each message
+	thread.getButton().clearUnreadCount()
+
 	fyneUI.activeThread = thread.getID()
 	fyneUI.chatContainer.Objects = []fyne.CanvasObject{thread.getView()}
 	fyneUI.chatContainer.Refresh()
-	thread.getButton().Importance = widget.LowImportance
 	thread.getButton().Refresh()
 	fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
 }

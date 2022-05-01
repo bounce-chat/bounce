@@ -24,7 +24,7 @@ type directMessage struct {
 	editContainer             *fyne.Container
 	view                      *fyne.Container
 	header                    *fyne.Container
-	button                    *widget.Button
+	button                    *threadButton
 	notificationsEnabledCheck *widget.Check
 	scroll                    *container.Scroll
 	entry                     *threadEntry
@@ -48,7 +48,7 @@ func (dm *directMessage) chatHistoryScroll() *container.Scroll {
 	return dm.scroll
 }
 
-func (dm *directMessage) getButton() *widget.Button {
+func (dm *directMessage) getButton() *threadButton {
 	return dm.button
 }
 
@@ -153,7 +153,6 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 	editButton := widget.NewButton("Edit", func() {
 		fyneUI.showEditDMContainer(dm)
 	})
-	userIcon := newEmbeddedResource("assets/not_found.png")
 	userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
 	userIconCanvas.FillMode = canvas.ImageFillContain
 	userIconCanvas.SetMinSize(fyne.NewSize(32, 32))
@@ -192,12 +191,10 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 	}
 	dm.entryBar = container.NewMax(entry)
 
-	dm.button = widget.NewButtonWithIcon(user.name, userIcon, func() {
+	dm.button = newThreadButton(todoImage(), user.name, func() {
 		fyneUI.displayThread(dm)
 		fyneUI.callbacks.UserConnectionDesired(user.id)
 	})
-	dm.button.Importance = widget.LowImportance
-	dm.button.Alignment = widget.ButtonAlignLeading
 
 	dm.view = container.New(
 		layout.NewBorderLayout(dm.header, dm.entryBar, nil, nil),
@@ -269,16 +266,16 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 	chatHistory.Refresh()
 	dm.scroll.Refresh()
 
+	dm.button.setLastMessage(displayName, msg.Text)
+
 	if fyneUI.isActive(dm) {
 		if autoscroll {
 			dm.scroll.ScrollToBottom()
 			dm.scroll.Refresh()
 		}
 	} else {
-		// This thread isn't active, mark the button as unread
 		if !hideNotification {
-			dm.button.Importance = widget.HighImportance
-			dm.button.Refresh()
+			dm.button.addUnread()
 		}
 	}
 
@@ -418,11 +415,14 @@ func (fyneUI *Fyne) DMChatHistoryCleared(userID, actorID uuid.UUID) {
 			autoscroll = true
 		}
 
-		changeLabel := widget.NewLabel(actorName + " cleared the chat history")
+		changeString := actorName + " cleared the chat history"
+		changeLabel := widget.NewLabel(changeString)
 		changeLabel.Alignment = fyne.TextAlignCenter
 		chatHistory := dm.chatHistoryScroll().Content.(*fyne.Container)
 		chatHistory.Objects = append(chatHistory.Objects, changeLabel)
 		dm.chatHistoryScroll().Refresh()
+
+		dm.button.setLastAction(changeString)
 
 		if autoscroll {
 			if fyneUI.isActive(dm) {
@@ -476,11 +476,14 @@ func (fyneUI *Fyne) DMRetentionChanged(userID uuid.UUID, actorID uuid.UUID, rete
 			autoscroll = true
 		}
 
-		changeLabel := widget.NewLabel(actorName + " updated disappearing messages to " + newRetentionName)
+		changeString := actorName + " updated disappearing messages to " + newRetentionName
+		changeLabel := widget.NewLabel(changeString)
 		changeLabel.Alignment = fyne.TextAlignCenter
 		chatHistory := dm.chatHistoryScroll().Content.(*fyne.Container)
 		chatHistory.Objects = append(chatHistory.Objects, changeLabel)
 		dm.chatHistoryScroll().Refresh()
+
+		dm.button.setLastAction(changeString)
 
 		if autoscroll {
 			if fyneUI.isActive(dm) {

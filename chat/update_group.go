@@ -10,14 +10,14 @@ import (
 )
 
 type updateGroup struct {
-	_msgpack            struct{}  `msgpack:",omitempty"`
-	ID                  uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Actor               uuid.UUID
-	Target              uuid.UUID
-	Timestamp           int64
-	Name                *string
-	Retention           *int64
-	AddUsers            []user
+	_msgpack  struct{}  `msgpack:",omitempty"`
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Actor     uuid.UUID
+	Target    uuid.UUID
+	Timestamp int64
+	Name      *string
+	Retention *int64
+	//AddUsers            []user
 	RemoveUsers         *string
 	PromoteUsersToAdmin *string
 	RemoveAdmin         *string

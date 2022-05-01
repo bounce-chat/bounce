@@ -25,7 +25,7 @@ type group struct {
 	editContainer           *fyne.Container
 	view                    *fyne.Container
 	header                  *fyne.Container
-	button                  *widget.Button
+	button                  *threadButton
 	scroll                  *container.Scroll
 	availableNewUsersScroll *container.Scroll
 	currentUsersContainer   *fyne.Container
@@ -49,7 +49,7 @@ func (group *group) chatHistoryScroll() *container.Scroll {
 	return group.scroll
 }
 
-func (group *group) getButton() *widget.Button {
+func (group *group) getButton() *threadButton {
 	return group.button
 }
 
@@ -123,7 +123,6 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		fyneUI.refreshUserSelections(group)
 		fyneUI.showEditThreadContainer(group)
 	})
-	groupIcon := newEmbeddedResource("assets/not_found.png")
 	groupIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
 	groupIconCanvas.FillMode = canvas.ImageFillContain
 	groupIconCanvas.SetMinSize(fyne.NewSize(32, 32))
@@ -161,13 +160,11 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 
 	group.entryBar = container.NewMax(entry)
 
-	group.button = widget.NewButtonWithIcon(bounceGroup.Name, groupIcon, func() {
+	group.button = newThreadButton(todoImage(), bounceGroup.Name, func() {
 		// TODO: tell the entine this is happening so that it can make sure
 		// there's a connection open
 		fyneUI.displayThread(group)
 	})
-	group.button.Importance = widget.LowImportance
-	group.button.Alignment = widget.ButtonAlignLeading
 
 	group.view = container.New(
 		layout.NewBorderLayout(group.header, group.entryBar, nil, nil),
@@ -237,6 +234,8 @@ func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hide
 	chatHistory.Refresh()
 	group.scroll.Refresh()
 
+	group.button.setLastMessage(displayName, msg.Text)
+
 	if fyneUI.isActive(group) {
 		if autoscroll {
 			group.scroll.ScrollToBottom()
@@ -244,9 +243,7 @@ func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hide
 		}
 	} else {
 		if !hideNotification {
-			// This group isn't active, mark the button as unread
-			group.button.Importance = widget.HighImportance
-			group.button.Refresh()
+			group.button.addUnread()
 		}
 	}
 

@@ -56,7 +56,8 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 					"error": err.Error(),
 				}).Fatal("data bindings are broken")
 			}
-			thread.button.Text = newThreadName
+			thread.button.threadName.Segments[0].(*widget.TextSegment).Text = newThreadName
+			thread.button.threadName.Refresh()
 			thread.button.Refresh()
 			fyneUI.callbacks.RenameGroup(thread.id, newThreadName)
 		}
