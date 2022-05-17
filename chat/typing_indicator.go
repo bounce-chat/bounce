@@ -146,7 +146,7 @@ func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
 		}).Fatal("error unmarshalling typing indicator")
 	}
 
-	if typingIndicatorAlreadySeen(ti.Thread) {
+	if typingIndicatorAlreadySeen(ti.ID) {
 		return
 	}
 
