@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
-	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 )
 
@@ -108,8 +107,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		return
 	}
 
-	hash := blake3.Sum256(sc.Payload)
-	if !b.network.VerifySignature(sc.Signer, hash[:], sc.Signature) {
+	if !b.validSignedContainer(sc) {
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("group message received with invalid signature, ignoring")
@@ -233,9 +231,9 @@ func (b *bounce) sendGroupMessage(gm *GroupMessage) uuid.UUID {
 			"error": err.Error(),
 		}).Fatal("error marshalling group message")
 	}
-	hash := blake3.Sum256(gm.Payload)
-	gm.Signature = b.network.Sign(hash[:]) // TODO: just sign the hash of the data for speed reasons https://github.com/lukechampine/blake3 or https://github.com/zeebo/blake3
-	gm.Signer = b.network.Address()
+	sc := b.createSignedContainer(gm.Payload)
+	gm.Signature = sc.Signature
+	gm.Signer = sc.Signer
 
 	err = b.database.Create(gm).Error
 	if err != nil {

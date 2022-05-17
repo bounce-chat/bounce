@@ -83,6 +83,8 @@ func Start(network Network, ui UI) {
 			GetDMRetention:                  b.getDMRetention,
 			SetDMRetention:                  b.setDMRetention,
 			ClearDMChatHistory:              b.clearDMChatHistory,
+			TypingInDirectMessage:           b.TypingInDirectMessage,
+			TypingInGroup:                   b.TypingInGroup,
 		},
 	)
 

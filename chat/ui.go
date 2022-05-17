@@ -103,6 +103,10 @@ type UICallbacks struct {
 	// The user wants to send a group  message
 	SendGroupMessage func(*GroupMessage) uuid.UUID
 
+	// Called every time a character is entered into an entry to inform the chat engine to send a typing indicator
+	TypingInDirectMessage func(userID uuid.UUID)
+	TypingInGroup         func(groupID uuid.UUID)
+
 	// Create a new group
 	CreateGroup func(groupName string, userIDs []uuid.UUID) error
 	// The user wants to add another user to a group

@@ -144,7 +144,9 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 
 	entry := newThreadEntry(5)
 	group.entry = entry
-
+	entry.OnChanged = func(_ string) {
+		fyneUI.callbacks.TypingInGroup(group.id)
+	}
 	entry.customOnSubmitted = func() {
 		message := &chat.GroupMessage{
 			Destination: group.id,
