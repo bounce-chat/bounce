@@ -262,14 +262,6 @@ func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
 	// TODO: validate that the timestamp is recent, the author and the peer share a group if this is for a group,
 	// or that the peer is sync or the other user if this is DM
 
-	log.WithFields(log.Fields{
-		"id":           ti.ID,
-		"thread":       ti.Thread,
-		"message_type": ti.MessageType,
-		"timestamp":    ti.Timestamp,
-		"author":       ti.Author,
-	}).Info("got a typing indicator")
-
 	b.updateTypingState(ti)
 
 	ti.Signer = sc.Signer

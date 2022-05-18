@@ -197,7 +197,7 @@ func (fyneUI *Fyne) ShowTypingIndicatorInButton(userID, threadID uuid.UUID) {
 }
 
 func (fyneUI *Fyne) HideTypingIndicatorInHistory(userID, threadID uuid.UUID) {
-
+	// TODO: remove the indicator that a user is typing from the chat history
 }
 
 func (fyneUI *Fyne) HideTypingIndicatorInButton(threadID uuid.UUID) {

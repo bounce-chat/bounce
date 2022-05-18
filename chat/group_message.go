@@ -197,6 +197,9 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	// Inform the UI about the new message
 	b.userInterface.ReceivedGroupMessage(gm)
 
+	// Make sure the user interface isn't still displaying that the user is typing
+	b.clearUserTypingIndicator(gm.Source, gm.Destination)
+
 	// Persist the signed container on the group message model
 	gm.Payload = sc.Payload
 	gm.Signature = sc.Signature

@@ -189,6 +189,9 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	// Send the message to the user interface
 	b.userInterface.ReceivedDirectMessage(dm)
 
+	// Make sure the user interface isn't still displaying that the user is typing
+	b.clearUserTypingIndicator(dm.Source, dm.getDestination(b.currentUserID()))
+
 	// Send an ack to the sender that we got it
 	go b.broadcast(&ack{
 		destination:    srcDevice.ID,
