@@ -64,6 +64,7 @@ func (fyneUI *Fyne) displaySentMessage(thread thread, id uuid.UUID, message stri
 	chatHistory := thread.chatHistoryScroll().Content.(*fyne.Container)
 
 	thread.getButton().setLastMessage("You", message)
+	thread.getButton().setLastMessageTime(time.Now())
 
 	chatHistory.Objects = append(chatHistory.Objects, newChatBubble("You", id, message, true, time.Now().Unix(), nil))
 	fyneUI.threadWithMessageMutex.Lock()

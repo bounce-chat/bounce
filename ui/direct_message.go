@@ -198,6 +198,13 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 		fyneUI.displayThread(dm)
 		fyneUI.callbacks.UserConnectionDesired(user.id)
 	})
+	// Keep the last message time counter up to date
+	go func() {
+		for {
+			time.Sleep(1 * time.Minute)
+			dm.button.updateLastMessageTimeText()
+		}
+	}()
 
 	dm.view = container.New(
 		layout.NewBorderLayout(dm.header, dm.entryBar, nil, nil),
@@ -264,12 +271,13 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 
 	chatHistory.Objects = append(
 		chatHistory.Objects,
-		newChatBubble(displayName, msg.ID, msg.Text, isOutgoing, time.Now().Unix(), nil), // TODO: user's name should be a binding.  Display the creation time too, if needed
+		newChatBubble(displayName, msg.ID, msg.Text, isOutgoing, msg.WrittenAt, nil), // TODO: user's name should be a binding.  Display the creation time too, if needed
 	)
 	chatHistory.Refresh()
 	dm.scroll.Refresh()
 
 	dm.button.setLastMessage(displayName, msg.Text)
+	dm.button.setLastMessageTime(time.Unix(msg.WrittenAt, 0))
 
 	if fyneUI.isActive(dm) {
 		if autoscroll {

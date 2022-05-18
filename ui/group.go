@@ -167,6 +167,13 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		// there's a connection open
 		fyneUI.displayThread(group)
 	})
+	// Keep the last message time counter up to date
+	go func() {
+		for {
+			time.Sleep(1 * time.Minute)
+			group.button.updateLastMessageTimeText()
+		}
+	}()
 
 	group.view = container.New(
 		layout.NewBorderLayout(group.header, group.entryBar, nil, nil),
@@ -217,7 +224,7 @@ func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hide
 		profileButton = nil
 	}
 
-	messageBox := newChatBubble(displayName, msg.ID, msg.Text, isOutgoing, time.Now().Unix(), profileButton)
+	messageBox := newChatBubble(displayName, msg.ID, msg.Text, isOutgoing, msg.WrittenAt, profileButton)
 
 	fyneUI.threadWithMessageMutex.Lock()
 	fyneUI.threadWithMessage[msg.ID] = group
@@ -237,6 +244,7 @@ func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hide
 	group.scroll.Refresh()
 
 	group.button.setLastMessage(displayName, msg.Text)
+	group.button.setLastMessageTime(time.Unix(msg.WrittenAt, 0))
 
 	if fyneUI.isActive(group) {
 		if autoscroll {
