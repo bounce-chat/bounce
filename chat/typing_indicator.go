@@ -11,6 +11,12 @@ import (
 	"gorm.io/gorm"
 )
 
+var indicatorAlreadySeenRetentionSeconds = int64(60)
+var sendNewTypingIndicatorCooldownSeconds = int64(3)
+var followUpTypingIndicatorUpdateSeconds = 5 * time.Second
+var typingIndicatorDisplayForSeconds = int64(3)
+var ignoreTypingIndicatorsAfterSeconds = int64(3)
+
 var typingIndicatorSeen = map[uuid.UUID]int64{}
 var typingIndicatorSeenMutex sync.Mutex
 
@@ -21,7 +27,7 @@ func typingIndicatorAlreadySeen(id uuid.UUID) bool {
 	// We'll want to keep this pruned to prevent a (small) memory leak,
 	// it's easy to just do that here
 	for k, v := range typingIndicatorSeen {
-		if v < time.Now().Unix()-60 {
+		if v < time.Now().Unix()-indicatorAlreadySeenRetentionSeconds {
 			delete(typingIndicatorSeen, k)
 		}
 	}
@@ -42,7 +48,7 @@ func shouldCooldownTypingIndicator(id uuid.UUID) bool {
 	typingIndicatorCooldownMutex.Unlock()
 
 	if lastTime, exists := typingIndicatorCooldown[id]; exists {
-		if lastTime < time.Now().Unix()-3 {
+		if lastTime < time.Now().Unix()-sendNewTypingIndicatorCooldownSeconds {
 			typingIndicatorCooldown[id] = time.Now().Unix()
 			return false
 		} else {
@@ -76,8 +82,6 @@ func (b *bounce) updateTypingState(ti typingIndicator) {
 	}
 	users := typingState[threadID]
 
-	//var status *typingStatus
-	//var ok bool
 	if _, ok := users[ti.Author]; !ok {
 		users[ti.Author] = &typingStatus{}
 	}
@@ -87,7 +91,7 @@ func (b *bounce) updateTypingState(ti typingIndicator) {
 
 	b.updateFrontendTypingIndicators()
 	go func() {
-		time.Sleep(5 * time.Second)
+		time.Sleep(followUpTypingIndicatorUpdateSeconds)
 		b.updateFrontendTypingIndicators()
 	}()
 }
@@ -100,11 +104,11 @@ func (b *bounce) updateFrontendTypingIndicators() {
 		indicatingUsers := map[uuid.UUID]*typingStatus{}
 
 		for u, status := range users {
-			if status.uiIndicatingThread && status.lastIndicated < time.Now().Unix()-3 {
+			if status.uiIndicatingThread && status.lastIndicated < time.Now().Unix()-typingIndicatorDisplayForSeconds {
 				status.uiIndicatingThread = false
 				b.userInterface.HideTypingIndicatorInHistory(u, thread)
 			}
-			if !status.uiIndicatingThread && status.lastIndicated > time.Now().Unix()-3 {
+			if !status.uiIndicatingThread && status.lastIndicated > time.Now().Unix()-typingIndicatorDisplayForSeconds {
 				status.uiIndicatingThread = true
 				b.userInterface.ShowTypingIndicatorInHistory(u, thread)
 			}
@@ -265,7 +269,7 @@ func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
 	}
 
 	// Ignore timestamps that are older than 3 seconds
-	if ti.Timestamp < time.Now().Unix()-3 {
+	if ti.Timestamp < time.Now().Unix()-ignoreTypingIndicatorsAfterSeconds {
 		return
 	}
 
