@@ -150,3 +150,64 @@ func (fyneUI *Fyne) displayThread(thread thread) {
 func (fyneUI *Fyne) isActive(thread thread) bool {
 	return fyneUI.activeThread == thread.getID()
 }
+
+func (fyneUI *Fyne) getThread(id uuid.UUID) (thread, bool) {
+	groupThread, ok := fyneUI.groups[id]
+	if ok {
+		return groupThread, true
+	}
+
+	dmThread, ok := fyneUI.dms[id]
+	if ok {
+		return dmThread, true
+	}
+
+	return nil, false
+}
+
+func (fyneUI *Fyne) ShowTypingIndicatorInHistory(userID, threadID uuid.UUID) {
+	// TODO: show in the chat history that the user is typing
+}
+
+func (fyneUI *Fyne) ShowTypingIndicatorInButton(userID, threadID uuid.UUID) {
+	thread, ok := fyneUI.getThread(threadID)
+	if !ok {
+		log.WithFields(log.Fields{
+			"thread_id": threadID,
+			"user_id":   userID,
+		}).Error("cannot indicate a user is typing in a button with unknown thread")
+		return
+	}
+
+	u, ok := fyneUI.users.get(userID)
+	if !ok {
+		log.WithFields(log.Fields{
+			"thread_id": threadID,
+			"user_id":   userID,
+		}).Error("cannot indicate a user is typing in a button with unknown user")
+		return
+	}
+
+	name := u.name
+	if u.id == fyneUI.profile.id {
+		name = "You"
+	}
+
+	thread.getButton().startTyping(name)
+}
+
+func (fyneUI *Fyne) HideTypingIndicatorInHistory(userID, threadID uuid.UUID) {
+
+}
+
+func (fyneUI *Fyne) HideTypingIndicatorInButton(threadID uuid.UUID) {
+	thread, ok := fyneUI.getThread(threadID)
+	if !ok {
+		log.WithFields(log.Fields{
+			"thread_id": threadID,
+		}).Error("cannot clear typing indicator in a button with unknown thread")
+		return
+	}
+
+	thread.getButton().stopTyping()
+}

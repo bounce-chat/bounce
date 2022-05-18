@@ -61,7 +61,7 @@ func (group *group) setLastMessageTime(time int64) {
 	group.lastMessage = time
 }
 
-func (fyneUI *Fyne) OpenNewGroupChat(bounceGroup chat.Group) {
+func (fyneUI *Fyne) OpenNewGroupChat(bounceGroup chat.Group) { // TODO: rename "create and open"?
 	fyneUI.NewGroupChat(bounceGroup)
 
 	group, exists := fyneUI.groups[bounceGroup.ID]

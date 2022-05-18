@@ -56,6 +56,11 @@ type UI interface {
 	ReceivedGroupMessage(GroupMessage)
 	//RenameGroup(groupID, actor uuid.UUID, newName string)
 
+	ShowTypingIndicatorInHistory(userID, threadID uuid.UUID)
+	ShowTypingIndicatorInButton(userID, threadID uuid.UUID)
+	HideTypingIndicatorInHistory(userID, threadID uuid.UUID)
+	HideTypingIndicatorInButton(threadID uuid.UUID)
+
 	// Profile updates from other devices owned by this user
 	//UpdateMyName()
 

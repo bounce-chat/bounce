@@ -52,6 +52,115 @@ func shouldCooldownTypingIndicator(id uuid.UUID) bool {
 	}
 }
 
+type typingStatus struct {
+	lastIndicated      int64
+	uiIndicatingThread bool
+	uiIndicatingButton bool
+}
+
+var typingState = map[uuid.UUID]map[uuid.UUID]*typingStatus{}
+var typingStateMutex sync.Mutex
+
+func (b *bounce) updateTypingState(ti typingIndicator) {
+	typingStateMutex.Lock()
+
+	threadID := ti.Thread
+	if ti.MessageType == typeDirectMessage {
+		threadID = xor(b.currentUserID(), ti.Thread)
+	}
+
+	if _, ok := typingState[threadID]; !ok {
+		typingState[threadID] = map[uuid.UUID]*typingStatus{}
+	}
+	users := typingState[threadID]
+
+	//var status *typingStatus
+	//var ok bool
+	if _, ok := users[ti.Author]; !ok {
+		users[ti.Author] = &typingStatus{}
+	}
+
+	users[ti.Author].lastIndicated = ti.Timestamp
+	typingStateMutex.Unlock()
+
+	b.updateFrontendTypingIndicators()
+	go func() {
+		time.Sleep(5 * time.Second)
+		b.updateFrontendTypingIndicators()
+	}()
+}
+
+func (b *bounce) updateFrontendTypingIndicators() {
+	typingStateMutex.Lock()
+	defer typingStateMutex.Unlock()
+
+	for thread, users := range typingState {
+		indicatingUsers := map[uuid.UUID]*typingStatus{}
+
+		for u, status := range users {
+			if status.uiIndicatingThread && status.lastIndicated < time.Now().Unix()-3 {
+				status.uiIndicatingThread = false
+				b.userInterface.HideTypingIndicatorInHistory(u, thread)
+			}
+			if !status.uiIndicatingThread && status.lastIndicated > time.Now().Unix()-3 {
+				status.uiIndicatingThread = true
+				b.userInterface.ShowTypingIndicatorInHistory(u, thread)
+			}
+
+			if status.uiIndicatingThread {
+				indicatingUsers[u] = status
+			}
+		}
+
+		if len(indicatingUsers) == 0 {
+			b.userInterface.HideTypingIndicatorInButton(thread)
+			for _, status := range users {
+				status.uiIndicatingButton = false
+			}
+		} else {
+			maxUserID := uuid.Nil
+			maxUserTimestamp := int64(0)
+
+			for id, status := range indicatingUsers {
+				if status.lastIndicated > maxUserTimestamp {
+					maxUserTimestamp = status.lastIndicated
+					maxUserID = id
+				}
+			}
+
+			if !users[maxUserID].uiIndicatingButton {
+				b.userInterface.ShowTypingIndicatorInButton(maxUserID, thread)
+				users[maxUserID].uiIndicatingButton = true
+			}
+
+			for id, status := range indicatingUsers {
+				if id != maxUserID {
+					status.uiIndicatingButton = false
+				}
+			}
+		}
+	}
+}
+
+func (b *bounce) clearUserTypingIndicator(userID, threadID uuid.UUID) {
+	typingStateMutex.Lock()
+	if _, ok := typingState[threadID]; !ok {
+		typingState[threadID] = map[uuid.UUID]*typingStatus{}
+	}
+	users := typingState[threadID]
+
+	var status *typingStatus
+	var ok bool
+	if status, ok = users[userID]; !ok {
+		status = &typingStatus{}
+	}
+
+	status.lastIndicated = 0
+	typingStateMutex.Unlock()
+
+	b.updateFrontendTypingIndicators()
+}
+
 type typingIndicator struct {
 	ID           uuid.UUID
 	Thread       uuid.UUID
@@ -161,7 +270,7 @@ func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
 		"author":       ti.Author,
 	}).Info("got a typing indicator")
 
-	// TODO: inform the UI to display the indicator (unless it's already running, track state in the chat package)
+	b.updateTypingState(ti)
 
 	ti.Signer = sc.Signer
 	ti.Payload = sc.Payload
