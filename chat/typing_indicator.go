@@ -1,12 +1,14 @@
 package chat
 
 import (
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
+	"gorm.io/gorm"
 )
 
 var typingIndicatorSeen = map[uuid.UUID]int64{}
@@ -254,19 +256,90 @@ func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Fatal("error unmarshalling typing indicator")
 	}
+	ti.Signer = sc.Signer
+	ti.Payload = sc.Payload
+	ti.Signature = sc.Signature
 
 	if typingIndicatorAlreadySeen(ti.ID) {
 		return
 	}
 
-	// TODO: validate that the timestamp is recent, the author and the peer share a group if this is for a group,
-	// or that the peer is sync or the other user if this is DM
+	// Ignore timestamps that are older than 3 seconds
+	if ti.Timestamp < time.Now().Unix()-3 {
+		return
+	}
+
+	peerDevice, ok := b.getDeviceFromAddress(peer)
+	if !ok {
+		log.WithFields(log.Fields{
+			"thread":       ti.Thread,
+			"message_type": ti.MessageType,
+			"timestamp":    ti.Timestamp,
+			"author":       ti.Author,
+		}).Warn("received a valid typing indicator from unknown device")
+		return
+	}
+
+	if ti.MessageType == typeDirectMessage {
+		if !(peerDevice.UserID == b.currentUserID() || peerDevice.UserID == xor(ti.Thread, b.currentUserID())) {
+			log.WithFields(log.Fields{
+				"thread":       ti.Thread,
+				"message_type": ti.MessageType,
+				"timestamp":    ti.Timestamp,
+				"author":       ti.Author,
+			}).Warn("received a valid typing indicator from device outside scope")
+			return
+		}
+	} else if ti.MessageType == typeGroupMessage {
+		var g group
+		err = b.database.Where("id = ?", ti.Thread).First(&g).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"thread":       ti.Thread,
+					"message_type": ti.MessageType,
+					"timestamp":    ti.Timestamp,
+					"author":       ti.Author,
+				}).Warn("received a valid typing indicator for an unknown group")
+				return
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error querying for a group")
+			}
+		}
+
+		var count int64
+		err = b.database.Raw("SELECT COUNT(*) from group_users WHERE group_id = ? AND user_id = ?", ti.Thread, ti.Author).Scan(&count).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error querying for a group_user")
+		}
+		if count == 0 {
+			log.WithFields(log.Fields{
+				"thread":       ti.Thread,
+				"message_type": ti.MessageType,
+				"timestamp":    ti.Timestamp,
+				"author":       ti.Author,
+				"peer":         peer,
+				"peer_device":  peerDevice.ID,
+				"peer_user":    peerDevice.UserID,
+			}).Warn("received a valid typing indicator from user outside of group")
+			return
+		}
+	} else {
+		log.WithFields(log.Fields{
+			"thread":       ti.Thread,
+			"message_type": ti.MessageType,
+			"timestamp":    ti.Timestamp,
+			"author":       ti.Author,
+		}).Warn("received a typing indicator with unsupported message type")
+		return
+	}
 
 	b.updateTypingState(ti)
 
-	ti.Signer = sc.Signer
-	ti.Payload = sc.Payload
-	ti.Signature = sc.Signature
 	go b.broadcast(&ti)
 }
 
