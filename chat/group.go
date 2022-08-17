@@ -35,6 +35,8 @@ func (g *group) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// TODO: after delete, cascade delete of all group updates and messages
+
 func (g *group) getID() uuid.UUID {
 	return g.ID
 }

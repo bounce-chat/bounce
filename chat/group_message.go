@@ -98,6 +98,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		return
 	}
 
+	// Verify and unpack the signed container
 	var sc signedContainer
 	err := msgpack.Unmarshal(payload, &sc)
 	if err != nil {
@@ -121,6 +122,11 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Fatal("error unmarshalling group message")
 	}
+
+	// Persist the signed container on the group message model
+	gm.Payload = sc.Payload
+	gm.Signature = sc.Signature
+	gm.Signer = sc.Signer
 
 	// If we have already seen this message, all we need to do is mark that this peer has the message as well.
 	var existingGM GroupMessage
@@ -180,7 +186,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("database error checking if source device is in group")
+		}).Fatal("database error checking if source device is in group while handling group message")
 	}
 	if !exists {
 		log.WithFields(log.Fields{
@@ -199,11 +205,6 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 
 	// Make sure the user interface isn't still displaying that the user is typing
 	b.clearUserTypingIndicator(gm.Source, gm.Destination)
-
-	// Persist the signed container on the group message model
-	gm.Payload = sc.Payload
-	gm.Signature = sc.Signature
-	gm.Signer = sc.Signer
 
 	err = b.database.Create(&gm).Error
 	if err != nil {
