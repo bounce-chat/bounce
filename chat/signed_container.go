@@ -1,8 +1,13 @@
 package chat
 
 import (
+	"errors"
+
+	"github.com/vmihailenco/msgpack/v5"
 	"github.com/zeebo/blake3"
 )
+
+var ERR_SIGNED_CONTAINER_HAS_INVALID_SIGNATURE = errors.New("signed container has invalid signature")
 
 type signedContainer struct {
 	Signer    string
@@ -22,4 +27,18 @@ func (b *bounce) createSignedContainer(payload []byte) *signedContainer {
 func (b *bounce) validSignedContainer(sc signedContainer) bool {
 	hash := blake3.Sum256(sc.Payload)
 	return b.network.VerifySignature(sc.Signer, hash[:], sc.Signature)
+}
+
+func (b *bounce) unpackSignedContainer(payload []byte) (*signedContainer, error) {
+	var sc signedContainer
+	err := msgpack.Unmarshal(payload, &sc)
+	if err != nil {
+		return nil, err
+	}
+
+	if !b.validSignedContainer(sc) {
+		return nil, ERR_SIGNED_CONTAINER_HAS_INVALID_SIGNATURE
+	}
+
+	return &sc, nil
 }

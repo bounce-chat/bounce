@@ -1,12 +1,14 @@
 package chat
 
 import (
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
+	"gorm.io/gorm"
 )
 
 var updateGroupMutex sync.Mutex
@@ -15,6 +17,8 @@ const UPDATE_GROUP_TYPE_CHANGE_NAME = uint16(0)
 const UPDATE_GROUP_TYPE_ADD_USER = uint16(1)
 const UPDATE_GROUP_TYPE_REMOVE_USER = uint16(2)
 const UPDATE_GROUP_TYPE_CHANGE_NOTIFICATION_SETTINGS = uint16(3)
+
+var ERR_UPDATE_GROUP_WITH_UNKNOWN_TYPE = errors.New("update group has unknown update type")
 
 type updateGroup struct {
 	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
@@ -85,23 +89,15 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		}).Warn("ignoring a group update sent from an unknown device")
 		return
 	}
+
 	// Unpack the signed container
-	var sc signedContainer
-	err := msgpack.Unmarshal(payload, &sc)
+	sc, err := b.unpackSignedContainer(payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error unmarshalling update group signed container")
+		}).Error("error unpacking signed container for update group")
 		return
 	}
-
-	if !b.validSignedContainer(sc) {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("update group received with invalid signature, ignoring")
-		return
-	}
-
 	var ug updateGroup
 	err = msgpack.Unmarshal(sc.Payload, &ug)
 	if err != nil {
@@ -109,22 +105,12 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Fatal("error unmarshalling update group")
 	}
-
-	// Make sure the author is in the group and has the correct permissions
-	// TODO
+	ug.Payload = sc.Payload
+	ug.Signature = sc.Signature
+	ug.Signer = sc.Signer
 
 	// Make sure the peer that delivered this message is part of the group
-	err = b.database.Table("group_users").
-		Select("count(*) = 1").
-		Where("user_id = ? AND group_id", srcDevice.UserID, ug.Target).
-		Find(&exists).
-		Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error checking if source device is in group while handling update group")
-	}
-	if !exists {
+	if !b.userIsInGroup(srcDevice.UserID, ug.Target) {
 		log.WithFields(log.Fields{
 			"user":   srcDevice.UserID,
 			"device": srcDevice.ID,
@@ -133,23 +119,37 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		return
 	}
 
-	// If we already have this update, we just mark that this peer has it too and return
-
-	// Otherwise, we save it and apply the changes
-	//err = b.database.Create(&ug).Error
-
-	// Apply the change, unless we have a more recent update of the same type, in which case just save it
-	// (this actually only applies to certain types of updates, like name changes, user additions are always going to be respected)
-	// but: what happens if two different people add the same person to the group?  display both, but ignore?  only display the first?
-	switch ug.Type {
-	case UPDATE_GROUP_TYPE_CHANGE_NAME:
-	case UPDATE_GROUP_TYPE_ADD_USER:
-	case UPDATE_GROUP_TYPE_REMOVE_USER:
-	case UPDATE_GROUP_TYPE_CHANGE_NOTIFICATION_SETTINGS:
-	default:
+	// Make sure the author is in the group
+	if !b.userIsInGroup(ug.Actor, ug.Target) {
 		log.WithFields(log.Fields{
-			"type": ug.Type,
-		}).Warn("received update group with unknown type")
+			"user":   srcDevice.UserID,
+			"device": srcDevice.ID,
+			"group":  ug.Target,
+		}).Warn("user sent an update for a group that the user is not a part of, ignoring")
+		return
+	}
+
+	// If we already have this update, we just mark that this peer has it too and return
+	var existingUG updateGroup
+	err = b.database.Where("id = ?", ug.ID).First(&existingUG).Error
+	if err == nil {
+		b.markDeliveredTo(&existingUG, peer)
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up update group")
+	}
+
+	// Apply this update locally
+	err = b.saveAndApplyUpdateGroup(ug)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"user":   srcDevice.UserID,
+			"device": srcDevice.ID,
+			"type":   ug.Type,
+			"error":  err.Error(),
+		}).Error("error applying update group")
 		return
 	}
 
@@ -163,10 +163,87 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	go b.broadcast(&ug)
 }
 
+// TODO: does this need to be mutexed, as opposed to the handler, since both are using it?
+func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
+	// Look up the group that we're updating
+	var g group
+	err := b.database.Where("id = ?", ug.Target).First(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group": ug.Target,
+			}).Error("update group specifies group not found in database")
+			return err
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up group")
+		}
+	}
+
+	//err = b.database.Create(&ug).Error // TODO: have to make sure the rules for applying it check out before saving
+
+	// Apply the change, unless we have a more recent update of the same type, in which case just save it
+	// (this actually only applies to certain types of updates, like name changes, user additions are always going to be respected)
+	// but: what happens if two different people add the same person to the group?  display both, but ignore?  only display the first?
+	// also: check permissions in here
+
+	switch ug.Type {
+	case UPDATE_GROUP_TYPE_CHANGE_NAME:
+		// Make sure the user has the permissions needed to change the group name
+		//TODO
+
+		// Save the update group
+		err = b.database.Create(&ug).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error saving update group")
+		}
+
+		// Check to make sure there isn't a more recent name change we're already aware of
+		var moreRecentUpdates bool
+		err := b.database.Table("update_group").
+			Select("count(*) >= 1").
+			Where("target = ? AND type = ? AND timestamp > ?", ug.Target, ug.Type, ug.Timestamp).
+			Find(&moreRecentUpdates).
+			Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error checking for more recent update groups")
+		}
+
+		// Apply the update if it is the most recent one
+		if !moreRecentUpdates {
+			newName := string(ug.Data)
+			err = b.database.Model(&g).Update("name", newName).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error updating group name")
+			}
+
+			// Inform the UI
+			//b.userInterface.UpdateGroupName(g.ID, newName)
+		}
+	case UPDATE_GROUP_TYPE_ADD_USER:
+	case UPDATE_GROUP_TYPE_REMOVE_USER:
+	case UPDATE_GROUP_TYPE_CHANGE_NOTIFICATION_SETTINGS:
+	default:
+		log.WithFields(log.Fields{
+			"type": ug.Type,
+		}).Warn("received update group with unknown type")
+		return ERR_UPDATE_GROUP_WITH_UNKNOWN_TYPE
+	}
+
+	return nil
+}
+
 func (b *bounce) renameGroup(groupID uuid.UUID, newName string) {
 	// TODO: make sure the new name is valid (length, character set, etc)
 
-	b.broadcastUpdateGroup(&updateGroup{
+	b.applyAndBroadcastUpdateGroup(updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -189,10 +266,10 @@ func (b *bounce) changeGroupNotificationSettings(group uuid.UUID, enabled bool) 
 	}).Info("UI wants to change notification settings")
 }
 
-func (b *bounce) broadcastUpdateGroup(ug *updateGroup) {
+func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) {
 	// Create the signed container for this update
 	var err error
-	ug.Payload, err = msgpack.Marshal(ug)
+	ug.Payload, err = msgpack.Marshal(&ug)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -202,15 +279,15 @@ func (b *bounce) broadcastUpdateGroup(ug *updateGroup) {
 	ug.Signature = sc.Signature
 	ug.Signer = sc.Signer
 
-	// Apply this update locally using the network handler function
-	signedUpdateBytes, err := msgpack.Marshal(sc)
+	// Apply the update locally
+	err = b.saveAndApplyUpdateGroup(ug)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error marshalling group update signed container")
+		}).Error("error applying update group")
+		return
 	}
-	b.handleUpdateGroup(b.network.Address(), signedUpdateBytes)
 
 	// Broadcast
-	//go b.broadcast(&update) // TODO: don't need to broadcast because the handler will, make sure this makes sense everywhere
+	go b.broadcast(&ug)
 }

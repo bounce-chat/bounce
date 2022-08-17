@@ -123,7 +123,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		}).Fatal("error unmarshalling group message")
 	}
 
-	// Persist the signed container on the group message model
+	// Persist the signed container on the model
 	gm.Payload = sc.Payload
 	gm.Signature = sc.Signature
 	gm.Signer = sc.Signer
@@ -141,17 +141,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	}
 
 	// Make sure the author is in the group
-	err = b.database.Table("group_users").
-		Select("count(*) = 1").
-		Where("user_id = ? AND group_id", gm.Source, gm.Destination).
-		Find(&exists).
-		Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error checking if user is in group")
-	}
-	if !exists {
+	if !b.userIsInGroup(gm.Source, gm.Destination) {
 		log.WithFields(log.Fields{
 			"user":  gm.Source,
 			"group": gm.Destination,
@@ -178,17 +168,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	}
 
 	// Make sure the peer that delivered this message is part of the group
-	err = b.database.Table("group_users").
-		Select("count(*) = 1").
-		Where("user_id = ? AND group_id", srcDevice.UserID, gm.Destination).
-		Find(&exists).
-		Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error checking if source device is in group while handling group message")
-	}
-	if !exists {
+	if !b.userIsInGroup(srcDevice.UserID, gm.Destination) {
 		log.WithFields(log.Fields{
 			"user":   srcDevice.UserID,
 			"device": srcDevice.ID,

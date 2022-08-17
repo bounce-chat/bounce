@@ -237,3 +237,18 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 
 	return nil
 }
+
+func (b *bounce) userIsInGroup(userID, groupID uuid.UUID) bool {
+	var exists bool
+	err := b.database.Table("group_users").
+		Select("count(*) = 1").
+		Where("user_id = ? AND group_id = ?", userID, groupID).
+		Find(&exists).
+		Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error checking if user is in group")
+	}
+	return exists
+}
