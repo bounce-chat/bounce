@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -251,4 +252,8 @@ func (b *bounce) userIsInGroup(userID, groupID uuid.UUID) bool {
 		}).Fatal("database error checking if user is in group")
 	}
 	return exists
+}
+
+func (b *bounce) validGroupName(name string) bool {
+	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= 512
 }

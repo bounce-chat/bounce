@@ -279,3 +279,43 @@ func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hide
 		fyneUI.app.SendNotification(fyne.NewNotification(groupName, "New message from "+user.name))
 	}
 }
+
+func (fyneUI *Fyne) RenameGroup(groupID, actorID uuid.UUID, newName string) {
+	// Find the actor
+	actor, ok := fyneUI.users.get(actorID)
+	actorName := ""
+	if !ok {
+		actorName = "unknown"
+		log.WithFields(log.Fields{
+			"actor_id": actorID,
+		}).Warn("unknown user just updated group name")
+		// TODO: error and return here?
+	} else {
+		actorName = actor.name
+	}
+
+	// Find the group
+	group, exists := fyneUI.groups[groupID]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+		}).Error("cannot update name of unknown group")
+		return
+	}
+
+	// Add a message to the thread indicating the change
+	changeString := actorName + " changed the group name to " + newName
+	changeLabel := widget.NewLabel(changeString)
+	changeLabel.Alignment = fyne.TextAlignCenter
+	chatHistory := group.chatHistoryScroll().Content.(*fyne.Container)
+	chatHistory.Objects = append(chatHistory.Objects, changeLabel)
+	group.chatHistoryScroll().Refresh()
+
+	// Change the group name
+	err := group.name.Set(newName)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("data bindings are broken")
+	}
+}

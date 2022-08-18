@@ -59,7 +59,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 			thread.button.threadName.Segments[0].(*widget.TextSegment).Text = newThreadName
 			thread.button.threadName.Refresh()
 			thread.button.Refresh()
-			fyneUI.callbacks.RenameGroup(thread.id, newThreadName)
+			fyneUI.callbacks.RenameGroup(thread.id, newThreadName) // TODO: error check and display error in dialog, internationalize off exported error types
 		}
 		// Add the selected users to the group
 		for _, user := range thread.pendingUsers.alphabetized() {

@@ -54,7 +54,7 @@ type UI interface {
 	OpenNewGroupChat(Group)
 	NewGroupChat(Group)
 	ReceivedGroupMessage(GroupMessage)
-	//RenameGroup(groupID, actor uuid.UUID, newName string)
+	RenameGroup(groupID, actorID uuid.UUID, newName string)
 
 	ShowTypingIndicatorInHistory(userID, threadID uuid.UUID)
 	ShowTypingIndicatorInButton(userID, threadID uuid.UUID)
@@ -117,7 +117,7 @@ type UICallbacks struct {
 	// The user wants to add another user to a group
 	AddUserToGroup func(groupID, userID uuid.UUID)
 	// The user wants to rename a group
-	RenameGroup func(groupID uuid.UUID, newName string)
+	RenameGroup func(groupID uuid.UUID, newName string) error
 
 	// Set if notifications should be enabled for a DM.  Broadcasts to all sync devices.
 	SetDMNotificationEnabled func(userID uuid.UUID, notificationEnabled bool)

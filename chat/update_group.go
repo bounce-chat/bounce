@@ -19,6 +19,7 @@ const UPDATE_GROUP_TYPE_REMOVE_USER = uint16(2)
 const UPDATE_GROUP_TYPE_CHANGE_NOTIFICATION_SETTINGS = uint16(3)
 
 var ERR_UPDATE_GROUP_WITH_UNKNOWN_TYPE = errors.New("update group has unknown update type")
+var ERR_INVALID_GROUP_NAME = errors.New("invalid group name")
 
 type updateGroup struct {
 	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
@@ -32,9 +33,14 @@ type updateGroup struct {
 	Signature    []byte `msgpack:"-"`
 	payload      []byte
 	payloadMutex sync.Mutex
-	// this will require check if we have a more recent update of this type when applying (but we don't need to cache that anywhere)
 	// should also have a string method on here for the frontend?  internationalization issues there though
 	//   each type could have it's own structure exported to the frontend for this too
+}
+
+func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
+	ug.ID = uuid.New()
+
+	return nil
 }
 
 func (ug *updateGroup) getID() uuid.UUID {
@@ -190,6 +196,15 @@ func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 
 	switch ug.Type {
 	case UPDATE_GROUP_TYPE_CHANGE_NAME:
+		// Make sure the name is valid
+		newName := string(ug.Data)
+		if !b.validGroupName(newName) {
+			log.WithFields(log.Fields{
+				"name": newName,
+			}).Error("cannot apply update group with invalid name")
+			return ERR_INVALID_GROUP_NAME
+		}
+
 		// Make sure the user has the permissions needed to change the group name
 		//TODO
 
@@ -203,7 +218,7 @@ func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 
 		// Check to make sure there isn't a more recent name change we're already aware of
 		var moreRecentUpdates bool
-		err := b.database.Table("update_group").
+		err := b.database.Table("update_groups").
 			Select("count(*) >= 1").
 			Where("target = ? AND type = ? AND timestamp > ?", ug.Target, ug.Type, ug.Timestamp).
 			Find(&moreRecentUpdates).
@@ -216,7 +231,6 @@ func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 
 		// Apply the update if it is the most recent one
 		if !moreRecentUpdates {
-			newName := string(ug.Data)
 			err = b.database.Model(&g).Update("name", newName).Error
 			if err != nil {
 				log.WithFields(log.Fields{
@@ -225,7 +239,7 @@ func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 			}
 
 			// Inform the UI
-			//b.userInterface.UpdateGroupName(g.ID, newName)
+			b.userInterface.RenameGroup(g.ID, ug.Actor, newName)
 		}
 	case UPDATE_GROUP_TYPE_ADD_USER:
 	case UPDATE_GROUP_TYPE_REMOVE_USER:
@@ -240,10 +254,8 @@ func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 	return nil
 }
 
-func (b *bounce) renameGroup(groupID uuid.UUID, newName string) {
-	// TODO: make sure the new name is valid (length, character set, etc)
-
-	b.applyAndBroadcastUpdateGroup(updateGroup{
+func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
+	return b.applyAndBroadcastUpdateGroup(updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -266,7 +278,7 @@ func (b *bounce) changeGroupNotificationSettings(group uuid.UUID, enabled bool) 
 	}).Info("UI wants to change notification settings")
 }
 
-func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) {
+func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) error {
 	// Create the signed container for this update
 	var err error
 	ug.Payload, err = msgpack.Marshal(&ug)
@@ -285,9 +297,11 @@ func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error applying update group")
-		return
+		return err
 	}
 
 	// Broadcast
 	go b.broadcast(&ug)
+
+	return nil
 }
