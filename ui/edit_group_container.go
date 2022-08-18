@@ -21,14 +21,14 @@ func (fyneUI *Fyne) showEditThreadContainer(thread *group) {
 }
 
 func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename these to group
-	threadNameEntry := widget.NewEntry()
+	thread.editNameEntry = widget.NewEntry()
 	currentThreadName, err := thread.name.Get()
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("data bindings are broken")
 	}
-	threadNameEntry.Text = currentThreadName
+	thread.editNameEntry.Text = currentThreadName
 
 	threadIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
 	threadIcon.FillMode = canvas.ImageFillContain
@@ -48,17 +48,8 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 				"error": err.Error(),
 			}).Fatal("data bindings are broken")
 		}
-		newThreadName := threadNameEntry.Text
+		newThreadName := thread.editNameEntry.Text
 		if currentThreadName != newThreadName {
-			err = thread.name.Set(newThreadName)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("data bindings are broken")
-			}
-			thread.button.threadName.Segments[0].(*widget.TextSegment).Text = newThreadName
-			thread.button.threadName.Refresh()
-			thread.button.Refresh()
 			fyneUI.callbacks.RenameGroup(thread.id, newThreadName) // TODO: error check and display error in dialog, internationalize off exported error types
 		}
 		// Add the selected users to the group
@@ -79,8 +70,8 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 				"error": err.Error(),
 			}).Fatal("data bindings are broken")
 		}
-		threadNameEntry.Text = currentThreadName
-		threadNameEntry.Refresh()
+		thread.editNameEntry.Text = currentThreadName
+		thread.editNameEntry.Refresh()
 		thread.pendingUsers.empty()
 		fyneUI.refreshUserSelections(thread)
 		fyneUI.showMainContainer()
@@ -100,7 +91,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 
 	topOptionsVBox := container.NewVBox(
 		threadIcon,
-		threadNameEntry,
+		thread.editNameEntry,
 		notificationsCheck,
 		currentUsersListView,
 	)
