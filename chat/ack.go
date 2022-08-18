@@ -25,6 +25,7 @@ type ack struct {
 	Devices               string
 	Users                 string
 	Groups                string
+	UpdateGroups          string
 	UpdateDMSettings      string
 	destination           uuid.UUID
 	payload               []byte
@@ -81,6 +82,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckDevices(peer, a)
 	b.handleAckUsers(peer, a)
 	b.handleAckGroups(peer, a)
+	b.handleAckUpdateGroups(peer, a)
 }
 
 func (b *bounce) handleAckDirectMessages(peer string, a ack) {
@@ -354,6 +356,39 @@ func (b *bounce) handleAckGroups(peer string, a ack) {
 				}
 			} else {
 				b.markDeliveredTo(&g, peer)
+			}
+		}
+	}
+}
+
+func (b *bounce) handleAckUpdateGroups(peer string, a ack) {
+	if len(a.UpdateGroups) > 0 {
+		for _, updateGroupIDString := range strings.Split(a.UpdateGroups, ",") {
+			updateGroupID, err := uuid.Parse(updateGroupIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": updateGroupIDString,
+				}).Error("invalid update group UUID in ack")
+				continue
+			}
+
+			var ug updateGroup
+			err = b.database.First(&ug, "id = ?", updateGroupID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"id":   updateGroupID,
+						"peer": peer,
+					}).Warn("unknown update group acked")
+				} else {
+					log.WithFields(log.Fields{
+						"id":    updateGroupID,
+						"error": err.Error(),
+					}).Fatal("database error querying for update group")
+				}
+			} else {
+				b.markDeliveredTo(&ug, peer)
 			}
 		}
 	}

@@ -24,6 +24,7 @@ type referenceRequest struct {
 	Devices               string
 	Users                 string
 	Groups                string
+	UpdateGroups          string
 	destination           uuid.UUID
 	payload               []byte
 	payloadMutex          sync.Mutex
@@ -95,7 +96,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	// Mark that the original offer was delivered so that we can stop sending it
 	b.markDeliveredTo(&originalOffer, dev.Address)
 
-	// Everything the device has requested will b packed into a "catch up" message
+	// Everything the device has requested will be packed into a "catch up" message
 	cu := &catchUp{
 		ID:          uuid.New(),
 		destination: dev.ID,
@@ -107,6 +108,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupMessagePayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateLocalDMSettingsPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMSettingsPayloads(dev, rr, originalOffer)...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateGroupsPayloads(dev, rr, originalOffer)...)
 
 	if cu.hasContent() {
 		b.broadcastUntilDelivered(cu)
@@ -314,6 +316,54 @@ func (b *bounce) getRequestedUpdateDMSettingsPayloads(peer device, rr referenceR
 			}
 		} else {
 			requestedData = append(requestedData, &uds)
+		}
+	}
+
+	return requestedData
+}
+
+func (b *bounce) getRequestedUpdateGroupsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+	requestedData := sortableBroadcastables{}
+
+	requestedUpdateGroupsIDs, deliveredUpdateGroupsIDs := getRequestedAndDeliveredUUIDs(originalOffer.UpdateGroups, rr.UpdateGroups)
+
+	for _, ugID := range deliveredUpdateGroupsIDs {
+		var ug updateGroup
+		err := b.database.First(&ug, "id = ?", ugID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   ugID,
+					"peer": peer.Address,
+				}).Warn("reference request indicates we offered an unknown update group")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    ugID,
+					"error": err.Error(),
+				}).Fatal("database error querying for update group")
+			}
+		} else {
+			b.markDeliveredTo(&ug, peer.Address)
+		}
+	}
+
+	for _, ugID := range requestedUpdateGroupsIDs {
+		var ug updateGroup
+		err := b.database.First(&ug, "id = ?", ugID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   ugID,
+					"peer": peer.Address,
+				}).Warn("reference request asks for an unknown update group")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    ugID,
+					"error": err.Error(),
+				}).Fatal("database error querying for update group")
+			}
+		} else {
+			requestedData = append(requestedData, &ug)
 		}
 	}
 

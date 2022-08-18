@@ -28,6 +28,7 @@ type referenceOffer struct {
 	Devices               string
 	Users                 string // only for sync devices
 	Groups                string
+	UpdateGroups          string
 	Destination           uuid.UUID `msgpack:"-"`
 	payload               []byte
 	payloadMutex          sync.Mutex
@@ -95,6 +96,9 @@ func (ro *referenceOffer) shouldDial() bool {
 	if len(ro.Groups) > 0 {
 		return true
 	}
+	if len(ro.UpdateGroups) > 0 {
+		return true
+	}
 	// TODO: changes to my device group, clearing thread histories, etc
 	return false
 }
@@ -119,6 +123,9 @@ func (ro *referenceOffer) hasContent() bool {
 		return true
 	}
 	if len(ro.Groups) > 0 {
+		return true
+	}
+	if len(ro.UpdateGroups) > 0 {
 		return true
 	}
 	// TODO: check for any future referenced content
@@ -191,6 +198,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 		Devices:               b.getDevicesToOffer(dev),
 		Users:                 b.getUsersToOffer(dev),
 		Groups:                b.getGroupsToOffer(dev),
+		UpdateGroups:          b.getUpdateGroupsToOffer(dev),
 	}
 }
 
@@ -416,6 +424,30 @@ func (b *bounce) getGroupsToOffer(dev device) string {
 	return strings.Join(groupsToOffer, ",")
 }
 
+func (b *bounce) getUpdateGroupsToOffer(dev device) string {
+	updateGroupsToOffer := []string{}
+
+	var unsentUpdateGroups []updateGroup
+	err := b.database.
+		Preload(clause.Associations).
+		Select("update_groups.*").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
+		Joins("JOIN group_users ON groups.id = group_users.group_id JOIN users ON group_users.user_id = users.id").
+		Where("delivery_records.id IS NULL AND group_users.user_id = ?", dev.UserID).
+		Find(&unsentUpdateGroups).Error // TODO: only select ID?
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting unsent update groups in reference offer")
+	}
+
+	for _, ug := range unsentUpdateGroups {
+		updateGroupsToOffer = append(updateGroupsToOffer, ug.ID.String())
+	}
+
+	return strings.Join(updateGroupsToOffer, ",")
+}
+
 func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 	var ro referenceOffer
 	err := msgpack.Unmarshal(payload, &ro)
@@ -444,6 +476,7 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 		Devices:               b.getDevicesToRequest(dev, ro),
 		Users:                 b.getUsersToRequest(dev, ro),
 		Groups:                b.getGroupsToRequest(dev, ro),
+		UpdateGroups:          b.getUpdateGroupsToRequest(dev, ro),
 	}
 
 	b.broadcast(response)
@@ -720,6 +753,40 @@ func (b *bounce) getGroupsToRequest(dev device, ro referenceOffer) string {
 			}
 		}
 		resp = strings.Join(desiredGroups, ",")
+	}
+
+	return resp
+}
+
+func (b *bounce) getUpdateGroupsToRequest(dev device, ro referenceOffer) string {
+	var resp string
+
+	if len(ro.UpdateGroups) > 0 {
+		desiredUpdateGroups := []string{}
+		for _, updateGroupIDString := range strings.Split(ro.UpdateGroups, ",") {
+			updateGroupID, err := uuid.Parse(updateGroupIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"string": updateGroupIDString,
+				}).Error("invalid update group UUID in reference offer")
+				continue
+			}
+
+			var ug updateGroup
+			err = b.database.First(&ug, "id = ?", updateGroupID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					desiredUpdateGroups = append(desiredUpdateGroups, updateGroupID.String())
+				} else {
+					log.WithFields(log.Fields{
+						"id":    updateGroupID,
+						"error": err.Error(),
+					}).Fatal("database error querying for update group")
+				}
+			}
+		}
+		resp = strings.Join(desiredUpdateGroups, ",")
 	}
 
 	return resp

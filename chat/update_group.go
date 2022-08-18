@@ -162,10 +162,10 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	}
 
 	// Ack it
-	//go b.broadcast(&ack{
-	//	destination:   srcDevice.ID,
-	//	GroupUpdates:  ug.ID.String(),
-	//})
+	go b.broadcast(&ack{
+		destination:  srcDevice.ID,
+		UpdateGroups: ug.ID.String(),
+	})
 
 	// Broadcast it
 	go b.broadcast(&ug)
