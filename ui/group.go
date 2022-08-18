@@ -303,6 +303,14 @@ func (fyneUI *Fyne) RenameGroup(groupID, actorID uuid.UUID, newName string) {
 		return
 	}
 
+	// Change the group name
+	err := group.name.Set(newName)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("data bindings are broken")
+	}
+
 	// Calculate if we should autoscroll the new message
 	autoscroll := false
 	location := group.scroll.Offset.Y
@@ -328,11 +336,6 @@ func (fyneUI *Fyne) RenameGroup(groupID, actorID uuid.UUID, newName string) {
 		}
 	}
 
-	// Change the group name
-	err := group.name.Set(newName)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("data bindings are broken")
-	}
+	group.setLastMessageTime(time.Now().Unix())
+	fyneUI.refreshThreadOrder()
 }
