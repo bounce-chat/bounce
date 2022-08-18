@@ -303,6 +303,14 @@ func (fyneUI *Fyne) RenameGroup(groupID, actorID uuid.UUID, newName string) {
 		return
 	}
 
+	// Calculate if we should autoscroll the new message
+	autoscroll := false
+	location := group.scroll.Offset.Y
+	height := group.scroll.Content.Size().Height - group.scroll.Size().Height
+	if height == location {
+		autoscroll = true
+	}
+
 	// Add a message to the thread indicating the change
 	changeString := actorName + " changed the group name to " + newName
 	changeLabel := widget.NewLabel(changeString)
@@ -310,6 +318,15 @@ func (fyneUI *Fyne) RenameGroup(groupID, actorID uuid.UUID, newName string) {
 	chatHistory := group.chatHistoryScroll().Content.(*fyne.Container)
 	chatHistory.Objects = append(chatHistory.Objects, changeLabel)
 	group.chatHistoryScroll().Refresh()
+
+	group.button.setLastAction(changeString)
+
+	if autoscroll {
+		if fyneUI.isActive(group) {
+			group.scroll.ScrollToBottom()
+			group.scroll.Refresh()
+		}
+	}
 
 	// Change the group name
 	err := group.name.Set(newName)

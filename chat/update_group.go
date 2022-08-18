@@ -38,7 +38,9 @@ type updateGroup struct {
 }
 
 func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
-	ug.ID = uuid.New()
+	if ug.ID == uuid.Nil {
+		log.Fatal("attempt to create update group with nil ID, ID must be set before creation")
+	}
 
 	return nil
 }
@@ -256,6 +258,7 @@ func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 
 func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
 	return b.applyAndBroadcastUpdateGroup(updateGroup{
+		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
