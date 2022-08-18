@@ -432,7 +432,7 @@ func (b *bounce) getUpdateGroupsToOffer(dev device) string {
 		Preload(clause.Associations).
 		Select("update_groups.*").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
-		Joins("JOIN group_users ON groups.id = group_users.group_id JOIN users ON group_users.user_id = users.id").
+		Joins("JOIN group_users ON update_groups.target = group_users.group_id JOIN users ON group_users.user_id = users.id").
 		Where("delivery_records.id IS NULL AND group_users.user_id = ?", dev.UserID).
 		Find(&unsentUpdateGroups).Error // TODO: only select ID?
 	if err != nil {
