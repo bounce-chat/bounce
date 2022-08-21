@@ -23,7 +23,6 @@ type group struct {
 	notificationsEnabled    binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
 	notificationsMutedUntil int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
 	editContainer           *fyne.Container
-	editNameEntry           *widget.Entry
 	view                    *fyne.Container
 	header                  *fyne.Container
 	button                  *threadButton
@@ -176,6 +175,19 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		}
 	}()
 
+	// Make sure chaning the name of the group also updates the thread button
+	group.name.AddListener(binding.NewDataListener(func() {
+		newName, err := group.name.Get()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("data bindings are broken")
+		}
+		button := group.getButton()
+		button.threadName.Segments[0].(*widget.TextSegment).Text = newName
+		button.threadName.Refresh()
+	}))
+
 	group.view = container.New(
 		layout.NewBorderLayout(group.header, group.entryBar, nil, nil),
 		group.header,
@@ -311,11 +323,6 @@ func (fyneUI *Fyne) RenameGroup(groupID, actorID uuid.UUID, newName string) {
 			"error": err.Error(),
 		}).Fatal("data bindings are broken")
 	}
-	button := group.getButton()
-	button.threadName.Segments[0].(*widget.TextSegment).Text = newName
-	button.threadName.Refresh()
-	group.editNameEntry.Text = newName
-	group.editNameEntry.Refresh()
 
 	// Calculate if we should autoscroll the new message
 	autoscroll := false

@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -21,14 +22,24 @@ func (fyneUI *Fyne) showEditThreadContainer(thread *group) {
 }
 
 func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename these to group
-	thread.editNameEntry = widget.NewEntry()
+	editThreadNameEntry := widget.NewEntry()
 	currentThreadName, err := thread.name.Get()
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("data bindings are broken")
 	}
-	thread.editNameEntry.Text = currentThreadName
+	editThreadNameEntry.Text = currentThreadName
+	thread.name.AddListener(binding.NewDataListener(func() {
+		newName, err := thread.name.Get()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("data bindings are broken")
+		}
+		editThreadNameEntry.Text = newName
+		editThreadNameEntry.Refresh()
+	}))
 
 	threadIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
 	threadIcon.FillMode = canvas.ImageFillContain
@@ -48,7 +59,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 				"error": err.Error(),
 			}).Fatal("data bindings are broken")
 		}
-		newThreadName := thread.editNameEntry.Text
+		newThreadName := editThreadNameEntry.Text
 		if currentThreadName != newThreadName {
 			fyneUI.callbacks.RenameGroup(thread.id, newThreadName) // TODO: error check and display error in dialog, internationalize off exported error types
 		}
@@ -70,8 +81,8 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 				"error": err.Error(),
 			}).Fatal("data bindings are broken")
 		}
-		thread.editNameEntry.Text = currentThreadName
-		thread.editNameEntry.Refresh()
+		editThreadNameEntry.Text = currentThreadName
+		editThreadNameEntry.Refresh()
 		thread.pendingUsers.empty()
 		fyneUI.refreshUserSelections(thread)
 		fyneUI.showMainContainer()
@@ -91,7 +102,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 
 	topOptionsVBox := container.NewVBox(
 		threadIcon,
-		thread.editNameEntry,
+		editThreadNameEntry,
 		notificationsCheck,
 		currentUsersListView,
 	)
