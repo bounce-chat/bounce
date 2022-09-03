@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"image/color"
 
 	"github.com/hkparker/bounce/chat"
@@ -9,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -51,6 +53,21 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		fyneUI.callbacks.ChangeGroupNotificationSettings(thread.id, state)
 	}
 
+	thread.retentionSelection = widget.NewSelect(retentionSelections, nil)
+	retention := fyneUI.callbacks.GetGroupRetention(thread.id)
+	thread.retentionSelection.Selected = getRetentionName(retention)
+	// TODO: have the retention update with the dropdown, or wait until the save button is called?
+	//thread.retentionSelection.OnChanged = func(retention string) {
+	//	retentionSeconds, ok := retentionValues[retention]
+	//	if !ok {
+	//		retentionSeconds = 0
+	//		log.WithFields(log.Fields{
+	//			"selection": retention,
+	//		}).Warn("invalid retention selection")
+	//	}
+	//	fyneUI.callbacks.SetGroupRetention(thread.id, retentionSeconds)
+	//}
+
 	saveButton := widget.NewButton("Save", func() {
 		// Update the thread name if it was changed
 		currentThreadName, err := thread.name.Get()
@@ -62,6 +79,20 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		newThreadName := editThreadNameEntry.Text
 		if currentThreadName != newThreadName {
 			fyneUI.callbacks.RenameGroup(thread.id, newThreadName) // TODO: error check and display error in dialog, internationalize off exported error types
+		}
+		// Update the retention if it changed
+		currentRetention := fyneUI.callbacks.GetGroupRetention(thread.id)
+		selectedRetentionString := thread.retentionSelection.Selected
+		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
+		if !ok {
+			dialog.ShowError(errors.New("invalid retention selection: "+selectedRetentionString), fyneUI.mainWindow)
+		} else {
+			if currentRetention != selectedRetentionValue {
+				err = fyneUI.callbacks.SetGroupRetention(thread.id, selectedRetentionValue)
+				if err != nil {
+					dialog.ShowError(errors.New("error setting new retention value: "+err.Error()), fyneUI.mainWindow)
+				}
+			}
 		}
 		// Add the selected users to the group
 		for _, user := range thread.pendingUsers.alphabetized() {
@@ -83,6 +114,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		}
 		editThreadNameEntry.Text = currentThreadName
 		editThreadNameEntry.Refresh()
+		thread.retentionSelection.Selected = getRetentionName(fyneUI.callbacks.GetGroupRetention(thread.id))
 		thread.pendingUsers.empty()
 		fyneUI.refreshUserSelections(thread)
 		fyneUI.showMainContainer()
@@ -104,6 +136,8 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		threadIcon,
 		editThreadNameEntry,
 		notificationsCheck,
+		widget.NewLabel("Disappearing Messages"),
+		thread.retentionSelection,
 		currentUsersListView,
 	)
 

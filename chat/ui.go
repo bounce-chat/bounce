@@ -119,6 +119,10 @@ type UICallbacks struct {
 	AddUserToGroup func(groupID, userID uuid.UUID)
 	// The user wants to rename a group
 	RenameGroup func(groupID uuid.UUID, newName string) error
+	// Set the message retention for a group
+	SetGroupRetention func(groupID uuid.UUID, retention int64) error
+	// Get the current retention settings for a group
+	GetGroupRetention func(groupID uuid.UUID) int64
 
 	// Set if notifications should be enabled for a DM.  Broadcasts to all sync devices.
 	SetDMNotificationEnabled func(userID uuid.UUID, notificationEnabled bool)

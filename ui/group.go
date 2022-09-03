@@ -23,6 +23,7 @@ type group struct {
 	notificationsEnabled    binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
 	notificationsMutedUntil int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
 	editContainer           *fyne.Container
+	retentionSelection      *widget.Select
 	view                    *fyne.Container
 	header                  *fyne.Container
 	button                  *threadButton
@@ -354,5 +355,59 @@ func (fyneUI *Fyne) RenameGroup(groupID, actorID uuid.UUID, newName string) {
 }
 
 func (fyneUI *Fyne) GroupRetentionChanged(groupID, actorID uuid.UUID, retention int64) {
+	// Find the actor
+	actor, ok := fyneUI.users.get(actorID)
+	actorName := ""
+	if !ok {
+		actorName = "unknown"
+		log.WithFields(log.Fields{
+			"actor_id": actorID,
+		}).Warn("unknown user just updated group retention")
+		// TODO: error and return here?
+	} else {
+		actorName = actor.name
+	}
+
+	// Find the group
+	group, exists := fyneUI.groups[groupID]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+		}).Error("cannot update retention of unknown group")
+		return
+	}
+
+	// Update the selection
+	newRetentionName := getRetentionName(retention)
+	group.retentionSelection.Selected = newRetentionName
+	group.retentionSelection.Refresh()
+
+	// Calculate if we should autoscroll the new message
+	autoscroll := false
+	location := group.scroll.Offset.Y
+	height := group.scroll.Content.Size().Height - group.scroll.Size().Height
+	if height == location {
+		autoscroll = true
+	}
+
+	// Add a message to the thread indicating the change
+	changeString := actorName + " changed the group retention to " + newRetentionName
+	changeLabel := widget.NewLabel(changeString)
+	changeLabel.Alignment = fyne.TextAlignCenter
+	chatHistory := group.chatHistoryScroll().Content.(*fyne.Container)
+	chatHistory.Objects = append(chatHistory.Objects, changeLabel)
+	group.chatHistoryScroll().Refresh()
+
+	group.button.setLastAction(changeString)
+
+	if autoscroll {
+		if fyneUI.isActive(group) {
+			group.scroll.ScrollToBottom()
+			group.scroll.Refresh()
+		}
+	}
+
+	group.setLastMessageTime(time.Now().Unix())
+	fyneUI.refreshThreadOrder()
 
 }

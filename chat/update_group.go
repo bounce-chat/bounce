@@ -19,6 +19,7 @@ const UPDATE_GROUP_TYPE_ADD_USER = uint16(1)
 const UPDATE_GROUP_TYPE_REMOVE_USER = uint16(2)
 const UPDATE_GROUP_TYPE_CHANGE_NOTIFICATION_SETTINGS = uint16(3)
 const UPDATE_GROUP_TYPE_CHANGE_RETENTION = uint16(4)
+const UPDATE_GROUP_TYPE_CLEAR_BEFORE = uint16(5)
 
 var ERR_UPDATE_GROUP_WITH_UNKNOWN_TYPE = errors.New("update group has unknown update type")
 var ERR_INVALID_GROUP_NAME = errors.New("invalid group name")
