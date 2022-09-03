@@ -352,3 +352,7 @@ func (fyneUI *Fyne) RenameGroup(groupID, actorID uuid.UUID, newName string) {
 	group.setLastMessageTime(time.Now().Unix())
 	fyneUI.refreshThreadOrder()
 }
+
+func (fyneUI *Fyne) GroupRetentionChanged(groupID, actorID uuid.UUID, retention int64) {
+
+}

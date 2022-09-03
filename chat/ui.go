@@ -55,8 +55,9 @@ type UI interface {
 	NewGroupChat(Group)
 	ReceivedGroupMessage(GroupMessage)
 	RenameGroup(groupID, actorID uuid.UUID, newName string)
+	GroupRetentionChanged(groupID uuid.UUID, actor uuid.UUID, retention int64)
 
-	ShowTypingIndicatorInHistory(userID, threadID uuid.UUID)
+	ShowTypingIndicatorInHistory(userID, threadID uuid.UUID) // TODO: why did I split these?
 	ShowTypingIndicatorInButton(userID, threadID uuid.UUID)
 	HideTypingIndicatorInHistory(userID, threadID uuid.UUID)
 	HideTypingIndicatorInButton(threadID uuid.UUID)

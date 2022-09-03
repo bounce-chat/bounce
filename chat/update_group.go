@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"encoding/binary"
 	"errors"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ const UPDATE_GROUP_TYPE_CHANGE_NAME = uint16(0)
 const UPDATE_GROUP_TYPE_ADD_USER = uint16(1)
 const UPDATE_GROUP_TYPE_REMOVE_USER = uint16(2)
 const UPDATE_GROUP_TYPE_CHANGE_NOTIFICATION_SETTINGS = uint16(3)
+const UPDATE_GROUP_TYPE_CHANGE_RETENTION = uint16(4)
 
 var ERR_UPDATE_GROUP_WITH_UNKNOWN_TYPE = errors.New("update group has unknown update type")
 var ERR_INVALID_GROUP_NAME = errors.New("invalid group name")
@@ -189,8 +191,6 @@ func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 		}
 	}
 
-	//err = b.database.Create(&ug).Error // TODO: have to make sure the rules for applying it check out before saving
-
 	// Apply the change, unless we have a more recent update of the same type, in which case just save it
 	// (this actually only applies to certain types of updates, like name changes, user additions are always going to be respected)
 	// but: what happens if two different people add the same person to the group?  display both, but ignore?  only display the first?
@@ -198,59 +198,111 @@ func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 
 	switch ug.Type {
 	case UPDATE_GROUP_TYPE_CHANGE_NAME:
-		// Make sure the name is valid
-		newName := string(ug.Data)
-		if !b.validGroupName(newName) {
-			log.WithFields(log.Fields{
-				"name": newName,
-			}).Error("cannot apply update group with invalid name")
-			return ERR_INVALID_GROUP_NAME
-		}
-
-		// Make sure the user has the permissions needed to change the group name
-		//TODO
-
-		// Save the update group
-		err = b.database.Create(&ug).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error saving update group")
-		}
-
-		// Check to make sure there isn't a more recent name change we're already aware of
-		var moreRecentUpdates bool
-		err := b.database.Table("update_groups").
-			Select("count(*) >= 1").
-			Where("target = ? AND type = ? AND timestamp > ?", ug.Target, ug.Type, ug.Timestamp).
-			Find(&moreRecentUpdates).
-			Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error checking for more recent update groups")
-		}
-
-		// Apply the update if it is the most recent one
-		if !moreRecentUpdates {
-			err = b.database.Model(&g).Update("name", newName).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error updating group name")
-			}
-
-			// Inform the UI
-			b.userInterface.RenameGroup(g.ID, ug.Actor, newName)
-		}
+		return b.saveAndApplyUpdateGroupChangeName(g, ug)
 	case UPDATE_GROUP_TYPE_ADD_USER:
 	case UPDATE_GROUP_TYPE_REMOVE_USER:
 	case UPDATE_GROUP_TYPE_CHANGE_NOTIFICATION_SETTINGS:
+	case UPDATE_GROUP_TYPE_CHANGE_RETENTION:
+		return b.saveAndApplyUpdateGroupChangeRetention(g, ug)
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
 		}).Warn("received update group with unknown type")
 		return ERR_UPDATE_GROUP_WITH_UNKNOWN_TYPE
+	}
+
+	return nil
+}
+
+func (b *bounce) saveAndApplyUpdateGroupChangeName(g group, ug updateGroup) error {
+	// Make sure the name is valid
+	newName := string(ug.Data)
+	if !b.validGroupName(newName) {
+		log.WithFields(log.Fields{
+			"name": newName,
+		}).Error("cannot apply update group with invalid name")
+		return ERR_INVALID_GROUP_NAME
+	}
+
+	// Make sure the user has the permissions needed to change the group name
+	//TODO
+
+	// Save the update group
+	err := b.database.Create(&ug).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update group")
+	}
+
+	// Check to make sure there isn't a more recent name change we're already aware of
+	var moreRecentUpdates bool
+	err = b.database.Table("update_groups").
+		Select("count(*) >= 1").
+		Where("target = ? AND type = ? AND timestamp > ?", ug.Target, ug.Type, ug.Timestamp).
+		Find(&moreRecentUpdates).
+		Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error checking for more recent update groups")
+	} // TODO: DRY?
+
+	// Apply the update if it is the most recent one
+	if !moreRecentUpdates {
+		err = b.database.Model(&g).Update("name", newName).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error updating group name")
+		}
+
+		// Inform the UI
+		b.userInterface.RenameGroup(g.ID, ug.Actor, newName)
+	}
+
+	return nil
+}
+
+func (b *bounce) saveAndApplyUpdateGroupChangeRetention(g group, ug updateGroup) error {
+	// Make sure the user has the permissions needed to change the group retention
+	//TODO
+
+	// Save the update group
+	err := b.database.Create(&ug).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update group")
+	}
+
+	// Check to make sure there isn't a more recent name change we're already aware of
+	var moreRecentUpdates bool
+	err = b.database.Table("update_groups").
+		Select("count(*) >= 1").
+		Where("target = ? AND type = ? AND timestamp > ?", ug.Target, ug.Type, ug.Timestamp).
+		Find(&moreRecentUpdates).
+		Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error checking for more recent update groups")
+	} // TODO: DRY?
+
+	// Decode the new retention value
+	retention := int64(binary.LittleEndian.Uint64(ug.Data))
+
+	// Apply the update if it is the most recent one
+	if !moreRecentUpdates {
+		err = b.database.Model(&g).Update("retention", retention).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error updating group retention")
+		}
+
+		// Inform the UI
+		b.userInterface.GroupRetentionChanged(g.ID, ug.Actor, retention)
 	}
 
 	return nil
@@ -264,6 +316,20 @@ func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
 		Timestamp: time.Now().Unix(),
 		Type:      UPDATE_GROUP_TYPE_CHANGE_NAME,
 		Data:      []byte(newName),
+	})
+}
+
+func (b *bounce) setGroupRetention(groupID uuid.UUID, retention int64) error {
+	payload := make([]byte, 8)
+	binary.LittleEndian.PutUint64(payload, uint64(retention))
+
+	return b.applyAndBroadcastUpdateGroup(updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      UPDATE_GROUP_TYPE_CHANGE_RETENTION,
+		Data:      payload,
 	})
 }
 
