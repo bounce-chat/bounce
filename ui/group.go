@@ -279,11 +279,8 @@ func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hide
 	group.lastMessage = time.Now().Unix()
 	fyneUI.refreshThreadOrder()
 
+	notificationsEnabled := group.notificationsMutedUntil != chat.MutedForever
 	notificationsMuted := time.Now().Unix() < group.notificationsMutedUntil
-	notificationsEnabled, err := group.notificationsEnabled.Get()
-	if err != nil {
-		log.Fatal("data bindings are broken")
-	}
 
 	groupName, err := group.name.Get()
 	if err != nil {
@@ -462,4 +459,23 @@ func (fyneUI *Fyne) GroupChatHistoryCleared(groupID, actorID uuid.UUID) { // TOD
 	// sense.  This will require we know the timestamp of the clearing update in the frontend,
 	// in fact everything that goes into a thread should follow an interface that has timestamps.
 	// once that's done we can insertion sort these in.
+}
+
+func (fyneUI *Fyne) GroupMutedUntilChanged(groupID uuid.UUID, mutedUntil int64) {
+	// TODO: refresh the edit widgets to reflect the new state
+	if group, exists := fyneUI.groups[groupID]; exists {
+		state := true
+		if mutedUntil == chat.MutedForever {
+			state = false
+		}
+		err := group.notificationsEnabled.Set(state)
+		if err != nil {
+			log.Fatal("data bindings are broken")
+		}
+		group.notificationsMutedUntil = mutedUntil
+	} else {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+		}).Warn("cannot notify messages cleared for group that doesn't exist")
+	}
 }

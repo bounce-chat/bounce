@@ -50,23 +50,19 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 	notificationsCheck := widget.NewCheckWithData("Enable notifications", thread.notificationsEnabled)
 	notificationsCheck.OnChanged = func(state bool) { // TODO: do we really want this to apply before save?
 		thread.notificationsEnabled.Set(state) // TODO: error check
-		fyneUI.callbacks.ChangeGroupNotificationSettings(thread.id, state)
+		mutedUntil := int64(0)
+		if !state {
+			mutedUntil = chat.MutedForever
+		}
+		err := fyneUI.callbacks.SetGroupMutedUntil(thread.id, mutedUntil)
+		if err != nil {
+			dialog.ShowError(errors.New("error updating group mute settings: "+err.Error()), fyneUI.mainWindow)
+		}
 	}
 
 	thread.retentionSelection = widget.NewSelect(retentionSelections, nil)
 	retention := fyneUI.callbacks.GetGroupRetention(thread.id)
 	thread.retentionSelection.Selected = getRetentionName(retention)
-	// TODO: have the retention update with the dropdown, or wait until the save button is called?
-	//thread.retentionSelection.OnChanged = func(retention string) {
-	//	retentionSeconds, ok := retentionValues[retention]
-	//	if !ok {
-	//		retentionSeconds = 0
-	//		log.WithFields(log.Fields{
-	//			"selection": retention,
-	//		}).Warn("invalid retention selection")
-	//	}
-	//	fyneUI.callbacks.SetGroupRetention(thread.id, retentionSeconds)
-	//}
 
 	confirmClearHistory := dialog.NewConfirm(
 		"Clear all message history?",

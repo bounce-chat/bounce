@@ -55,8 +55,9 @@ type UI interface {
 	NewGroupChat(Group)
 	ReceivedGroupMessage(GroupMessage)
 	RenameGroup(groupID, actorID uuid.UUID, newName string)
-	GroupRetentionChanged(groupID uuid.UUID, actor uuid.UUID, retention int64)
+	GroupRetentionChanged(groupID uuid.UUID, actorID uuid.UUID, retention int64)
 	GroupChatHistoryCleared(groupID uuid.UUID, actorID uuid.UUID)
+	GroupMutedUntilChanged(groupID uuid.UUID, mutedUntil int64)
 
 	ShowTypingIndicatorInHistory(userID, threadID uuid.UUID) // TODO: why did I split these?
 	ShowTypingIndicatorInButton(userID, threadID uuid.UUID)
@@ -149,7 +150,8 @@ type UICallbacks struct {
 	ClearDMChatHistory func(userID uuid.UUID)
 
 	// The user wants to change the notification settings for a group
-	ChangeGroupNotificationSettings func(groupID uuid.UUID, notificationEnabled bool)
+	SetGroupMutedUntil func(groupID uuid.UUID, mutedUntil int64) error
+
 	// Setup a new profile on a fresh install
 	SetProfile    func(profileName, deviceName string) (uuid.UUID, error)
 	ImportUser    func(user []byte) (User, error)

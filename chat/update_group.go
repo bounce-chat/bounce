@@ -17,12 +17,15 @@ var updateGroupMutex sync.Mutex
 const UPDATE_GROUP_TYPE_CHANGE_NAME = uint16(0)
 const UPDATE_GROUP_TYPE_ADD_USER = uint16(1)
 const UPDATE_GROUP_TYPE_REMOVE_USER = uint16(2)
-const UPDATE_GROUP_TYPE_CHANGE_NOTIFICATION_SETTINGS = uint16(3)
+const UPDATE_GROUP_TYPE_CHANGE_MUTED_UNTIL = uint16(3)
 const UPDATE_GROUP_TYPE_CHANGE_RETENTION = uint16(4)
 const UPDATE_GROUP_TYPE_SET_CLEAR_BEFORE = uint16(5)
 
+const MutedForever = int64(-1) // TODO: move this somewhere else because it'll be used by DMs too
+
 var ERR_UPDATE_GROUP_WITH_UNKNOWN_TYPE = errors.New("update group has unknown update type")
 var ERR_INVALID_GROUP_NAME = errors.New("invalid group name")
+var ERR_MUTED_UNTIL_ONLY_MUTABLE_BY_SELF = errors.New("group muted until settings can only be modified by current user")
 
 type updateGroup struct {
 	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
@@ -53,7 +56,7 @@ func (ug *updateGroup) getID() uuid.UUID {
 }
 
 func (ug *updateGroup) getScope(myID uuid.UUID) int {
-	if ug.Type == UPDATE_GROUP_TYPE_CHANGE_NOTIFICATION_SETTINGS {
+	if ug.Type == UPDATE_GROUP_TYPE_CHANGE_MUTED_UNTIL {
 		return scopeSync
 	}
 
@@ -134,6 +137,16 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		return
 	}
 
+	// Make sure that the user that created this signed container is the actor
+	if !b.signedByUser(sc, ug.Actor) {
+		log.WithFields(log.Fields{
+			"actor":          ug.Actor,
+			"signing_device": sc.Signer,
+			"group":          ug.Target,
+		}).Warn("ignoring group update that was not signed by the supposed actor")
+		return
+	}
+
 	// Make sure the author is in the group
 	if !b.userIsInGroup(ug.Actor, ug.Target) {
 		log.WithFields(log.Fields{
@@ -196,18 +209,13 @@ func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 		}
 	}
 
-	// Apply the change, unless we have a more recent update of the same type, in which case just save it
-	// (this actually only applies to certain types of updates, like name changes, user additions are always going to be respected)
-	// but: what happens if two different people add the same person to the group?  display both, but ignore?  only display the first?
-	// also: check permissions in here
-
 	switch ug.Type {
 	case UPDATE_GROUP_TYPE_CHANGE_NAME:
 		return b.saveAndApplyUpdateGroupChangeName(g, ug)
 	case UPDATE_GROUP_TYPE_ADD_USER:
 	case UPDATE_GROUP_TYPE_REMOVE_USER:
-	case UPDATE_GROUP_TYPE_CHANGE_NOTIFICATION_SETTINGS:
-		//return b.saveAndApplyUpdateGroupChangeNotificationSettings(g, ug)
+	case UPDATE_GROUP_TYPE_CHANGE_MUTED_UNTIL:
+		return b.saveAndApplyUpdateGroupChangeMutedUntil(g, ug)
 	case UPDATE_GROUP_TYPE_CHANGE_RETENTION:
 		return b.saveAndApplyUpdateGroupChangeRetention(g, ug)
 	case UPDATE_GROUP_TYPE_SET_CLEAR_BEFORE:
@@ -272,6 +280,52 @@ func (b *bounce) saveAndApplyUpdateGroupChangeName(g group, ug updateGroup) erro
 	return nil
 }
 
+func (b *bounce) saveAndApplyUpdateGroupChangeMutedUntil(g group, ug updateGroup) error {
+	// Notification settings can only be changed by sync devices
+	if ug.Actor != b.currentUserID() {
+		return ERR_MUTED_UNTIL_ONLY_MUTABLE_BY_SELF
+	}
+
+	// Save the update group
+	err := b.database.Create(&ug).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update group")
+	}
+
+	// Check to make sure there isn't a more recent name change we're already aware of
+	var moreRecentUpdates bool
+	err = b.database.Table("update_groups").
+		Select("count(*) >= 1").
+		Where("target = ? AND type = ? AND timestamp > ?", ug.Target, ug.Type, ug.Timestamp).
+		Find(&moreRecentUpdates).
+		Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error checking for more recent update groups")
+	} // TODO: DRY?
+
+	// Decode the new muted until value
+	mutedUntil := int64(binary.LittleEndian.Uint64(ug.Data))
+
+	// Apply the update if it is the most recent one
+	if !moreRecentUpdates {
+		err = b.database.Model(&g).Update("muted_until", mutedUntil).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error updating group muted until")
+		}
+
+		// Inform the UI
+		b.userInterface.GroupMutedUntilChanged(g.ID, mutedUntil)
+	}
+
+	return nil
+}
+
 func (b *bounce) saveAndApplyUpdateGroupChangeRetention(g group, ug updateGroup) error {
 	// Make sure the user has the permissions needed to change the group retention
 	//TODO
@@ -311,6 +365,9 @@ func (b *bounce) saveAndApplyUpdateGroupChangeRetention(g group, ug updateGroup)
 
 		// Inform the UI
 		b.userInterface.GroupRetentionChanged(g.ID, ug.Actor, retention)
+
+		// TODO: we should notify the UI even if there are more recent updates once the UI understands how to
+		// insetion sort everything by timestamp
 	}
 
 	return nil
@@ -372,6 +429,20 @@ func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
 		Timestamp: time.Now().Unix(),
 		Type:      UPDATE_GROUP_TYPE_CHANGE_NAME,
 		Data:      []byte(newName),
+	})
+}
+
+func (b *bounce) setGroupMutedUntil(groupID uuid.UUID, mutedUntil int64) error {
+	payload := make([]byte, 8)
+	binary.LittleEndian.PutUint64(payload, uint64(mutedUntil))
+
+	return b.applyAndBroadcastUpdateGroup(updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      UPDATE_GROUP_TYPE_CHANGE_MUTED_UNTIL,
+		Data:      payload,
 	})
 }
 

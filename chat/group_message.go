@@ -99,22 +99,13 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	}
 
 	// Verify and unpack the signed container
-	var sc signedContainer
-	err := msgpack.Unmarshal(payload, &sc)
+	sc, err := b.unpackSignedContainer(payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error unmarshalling group message signed container")
+		}).Error("error unpacking signed container for group message")
 		return
 	}
-
-	if !b.validSignedContainer(sc) {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("group message received with invalid signature, ignoring")
-		return
-	}
-
 	var gm GroupMessage
 	err = msgpack.Unmarshal(sc.Payload, &gm)
 	if err != nil {
@@ -122,8 +113,6 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Fatal("error unmarshalling group message")
 	}
-
-	// Persist the signed container on the model
 	gm.Payload = sc.Payload
 	gm.Signature = sc.Signature
 	gm.Signer = sc.Signer
@@ -160,14 +149,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	}
 
 	// Make sure the device that signed this message belongs to the author
-	signerDevice, exists := b.getDeviceFromAddress(sc.Signer)
-	if !exists {
-		log.WithFields(log.Fields{
-			"signer": sc.Signer,
-		}).Warn("received a group message signed by an unknown device, ignoring")
-		return
-	}
-	if signerDevice.UserID != gm.Source {
+	if !b.signedByUser(sc, gm.Source) {
 		log.WithFields(log.Fields{
 			"id":     gm.ID,
 			"group":  gm.Destination,
