@@ -187,6 +187,9 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		UpdateGroups: ug.ID.String(),
 	})
 
+	// Mark that the peer that send this update already has it
+	b.markDeliveredTo(&ug, peer)
+
 	// Broadcast it
 	go b.broadcast(&ug)
 }
