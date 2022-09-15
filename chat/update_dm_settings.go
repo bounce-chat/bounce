@@ -158,7 +158,7 @@ func (b *bounce) clearDMChatHistory(userID uuid.UUID) {
 	b.broadcast(update)
 
 	dms := []DirectMessage{}
-	err = b.database.Select("id").Where("written_at < ? AND (source = ? OR destination = ?)", clearTime, userID, userID).Find(&dms).Error
+	err = b.database.Select("id").Where("written_at <= ? AND (source = ? OR destination = ?)", clearTime, userID, userID).Find(&dms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

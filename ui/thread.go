@@ -124,6 +124,7 @@ func (fyneUI *Fyne) DeleteMessage(id uuid.UUID) {
 	}
 
 	if found {
+		// TODO: is there an error here if the message that is being deleted is the last message in the slice?
 		chatHistory.Objects = append(chatHistory.Objects[:location], chatHistory.Objects[location+1:]...) // TODO: may be cheaper to use copy to shift slice
 		thread.chatHistoryScroll().Refresh()
 		fyneUI.threadWithMessageMutex.Lock()

@@ -56,6 +56,7 @@ type UI interface {
 	ReceivedGroupMessage(GroupMessage)
 	RenameGroup(groupID, actorID uuid.UUID, newName string)
 	GroupRetentionChanged(groupID uuid.UUID, actor uuid.UUID, retention int64)
+	GroupChatHistoryCleared(groupID uuid.UUID, actorID uuid.UUID)
 
 	ShowTypingIndicatorInHistory(userID, threadID uuid.UUID) // TODO: why did I split these?
 	ShowTypingIndicatorInButton(userID, threadID uuid.UUID)
@@ -123,6 +124,8 @@ type UICallbacks struct {
 	SetGroupRetention func(groupID uuid.UUID, retention int64) error
 	// Get the current retention settings for a group
 	GetGroupRetention func(groupID uuid.UUID) int64
+	// Erase all history on all devices
+	ClearGroupChatHistory func(groupID uuid.UUID) error
 
 	// Set if notifications should be enabled for a DM.  Broadcasts to all sync devices.
 	SetDMNotificationEnabled func(userID uuid.UUID, notificationEnabled bool)

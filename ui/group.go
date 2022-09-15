@@ -411,3 +411,55 @@ func (fyneUI *Fyne) GroupRetentionChanged(groupID, actorID uuid.UUID, retention 
 	fyneUI.refreshThreadOrder()
 
 }
+
+func (fyneUI *Fyne) GroupChatHistoryCleared(groupID, actorID uuid.UUID) { // TODO: DRY with the DM version of this?  it can all be applied to threads in general
+	actor, ok := fyneUI.users.get(actorID)
+	actorName := ""
+	if !ok {
+		actorName = "unknown"
+		log.WithFields(log.Fields{
+			"actor_id": actorID,
+		}).Warn("unknown user just updated DM retetion settings")
+	} else {
+		actorName = actor.name
+	}
+
+	if gm, exists := fyneUI.groups[groupID]; exists {
+		autoscroll := false
+		location := gm.scroll.Offset.Y
+		height := gm.scroll.Content.Size().Height - gm.scroll.Size().Height
+		if height == location {
+			autoscroll = true
+		}
+
+		changeString := actorName + " cleared the chat history"
+		changeLabel := widget.NewLabel(changeString)
+		changeLabel.Alignment = fyne.TextAlignCenter
+		chatHistory := gm.chatHistoryScroll().Content.(*fyne.Container)
+		chatHistory.Objects = append(chatHistory.Objects, changeLabel)
+		gm.chatHistoryScroll().Refresh()
+
+		gm.button.setLastAction(changeString)
+
+		if autoscroll {
+			if fyneUI.isActive(gm) {
+				gm.scroll.ScrollToBottom()
+				gm.scroll.Refresh()
+			}
+		}
+
+		gm.setLastMessageTime(time.Now().Unix())
+		fyneUI.refreshThreadOrder()
+	} else {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+		}).Warn("cannot notify messages cleared for group that doesn't exist")
+	}
+
+	// TODO: it's possible we cleared messages and there are messages newer than the clear time
+	// that we want to preserve.  In that case, these messages will not have been removed from the
+	// history scroll, and we should insert the message about the clearing above them, so it makes
+	// sense.  This will require we know the timestamp of the clearing update in the frontend,
+	// in fact everything that goes into a thread should follow an interface that has timestamps.
+	// once that's done we can insertion sort these in.
+}

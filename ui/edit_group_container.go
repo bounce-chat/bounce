@@ -68,6 +68,20 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 	//	fyneUI.callbacks.SetGroupRetention(thread.id, retentionSeconds)
 	//}
 
+	confirmClearHistory := dialog.NewConfirm(
+		"Clear all message history?",
+		"Are you sure you want to permanently delete all chat history on all devices?",
+		func(confirmed bool) {
+			if confirmed {
+				fyneUI.callbacks.ClearGroupChatHistory(thread.id)
+			}
+		},
+		fyneUI.mainWindow,
+	)
+	clearHistoryButton := widget.NewButton("Clear history", func() {
+		confirmClearHistory.Show()
+	})
+
 	saveButton := widget.NewButton("Save", func() {
 		// Update the thread name if it was changed
 		currentThreadName, err := thread.name.Get()
@@ -138,6 +152,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		notificationsCheck,
 		widget.NewLabel("Disappearing Messages"),
 		thread.retentionSelection,
+		clearHistoryButton,
 		currentUsersListView,
 	)
 

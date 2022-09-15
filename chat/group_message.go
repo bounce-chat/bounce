@@ -177,6 +177,8 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		return
 	}
 
+	// TODO: if the message is older than ClearBefore, don't process it
+
 	// Mark that the peer that sent this message has it
 	b.markDeliveredTo(&gm, peer)
 

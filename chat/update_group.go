@@ -19,7 +19,7 @@ const UPDATE_GROUP_TYPE_ADD_USER = uint16(1)
 const UPDATE_GROUP_TYPE_REMOVE_USER = uint16(2)
 const UPDATE_GROUP_TYPE_CHANGE_NOTIFICATION_SETTINGS = uint16(3)
 const UPDATE_GROUP_TYPE_CHANGE_RETENTION = uint16(4)
-const UPDATE_GROUP_TYPE_CLEAR_BEFORE = uint16(5)
+const UPDATE_GROUP_TYPE_SET_CLEAR_BEFORE = uint16(5)
 
 var ERR_UPDATE_GROUP_WITH_UNKNOWN_TYPE = errors.New("update group has unknown update type")
 var ERR_INVALID_GROUP_NAME = errors.New("invalid group name")
@@ -53,6 +53,10 @@ func (ug *updateGroup) getID() uuid.UUID {
 }
 
 func (ug *updateGroup) getScope(myID uuid.UUID) int {
+	if ug.Type == UPDATE_GROUP_TYPE_CHANGE_NOTIFICATION_SETTINGS {
+		return scopeSync
+	}
+
 	return scopeGroup
 }
 
@@ -203,8 +207,11 @@ func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 	case UPDATE_GROUP_TYPE_ADD_USER:
 	case UPDATE_GROUP_TYPE_REMOVE_USER:
 	case UPDATE_GROUP_TYPE_CHANGE_NOTIFICATION_SETTINGS:
+		//return b.saveAndApplyUpdateGroupChangeNotificationSettings(g, ug)
 	case UPDATE_GROUP_TYPE_CHANGE_RETENTION:
 		return b.saveAndApplyUpdateGroupChangeRetention(g, ug)
+	case UPDATE_GROUP_TYPE_SET_CLEAR_BEFORE:
+		return b.saveAndApplyUpdateGroupSetClearBefore(g, ug)
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -309,6 +316,54 @@ func (b *bounce) saveAndApplyUpdateGroupChangeRetention(g group, ug updateGroup)
 	return nil
 }
 
+func (b *bounce) saveAndApplyUpdateGroupSetClearBefore(g group, ug updateGroup) error {
+	// TODO: make sure permissions are correct, who can clear chat history?  probably best to match message sending permissions
+
+	// Save the update group
+	err := b.database.Create(&ug).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update group")
+	}
+
+	// Decode the new retention value
+	clearBefore := int64(binary.LittleEndian.Uint64(ug.Data))
+
+	gms := []GroupMessage{}
+	err = b.database.Select("id").Where("written_at <= ? AND destination = ?", clearBefore, g.ID).Find(&gms).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting group messages to delete while clearing chat history")
+	}
+	for _, gm := range gms {
+		err := b.database.Delete(&gm).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"id":    gm.ID,
+			}).Fatal("error deleting group message while clearing chat history")
+		}
+		b.userInterface.DeleteMessage(gm.ID)
+	}
+	b.userInterface.GroupChatHistoryCleared(g.ID, ug.Actor)
+
+	// Update the clear before value on the group if this one is newer
+	if g.ClearBefore < clearBefore {
+		err := b.database.Model(&g).Update("clear_before", clearBefore).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":        err.Error(),
+				"group_id":     g.ID,
+				"clear_before": clearBefore,
+			}).Fatal("database error updating group clear before")
+		}
+	}
+
+	return nil
+}
+
 func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
 	return b.applyAndBroadcastUpdateGroup(updateGroup{
 		ID:        uuid.New(),
@@ -330,6 +385,20 @@ func (b *bounce) setGroupRetention(groupID uuid.UUID, retention int64) error {
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      UPDATE_GROUP_TYPE_CHANGE_RETENTION,
+		Data:      payload,
+	})
+}
+
+func (b *bounce) clearGroupChatHistory(groupID uuid.UUID) error {
+	payload := make([]byte, 8)
+	binary.LittleEndian.PutUint64(payload, uint64(time.Now().Unix()))
+
+	return b.applyAndBroadcastUpdateGroup(updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      UPDATE_GROUP_TYPE_SET_CLEAR_BEFORE,
 		Data:      payload,
 	})
 }
