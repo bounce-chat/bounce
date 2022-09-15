@@ -21,6 +21,7 @@ type group struct {
 	CreatedBy              uuid.UUID
 	Retention              int64
 	ClearBefore            int64
+	MutedUntil             int64
 	Users                  []user `gorm:"many2many:group_users;"` // TODO: pointer needed?  I don't think so
 	Admins                 string
 	RestrictUserManagement bool
