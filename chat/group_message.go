@@ -140,6 +140,16 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		}).Fatal("database error looking up group message")
 	}
 
+	// If the message is older than the group's ClearBefore, don't process it
+	if b.groupMessageWrittenBeforeHistoryCleared(gm.Destination, gm.WrittenAt) {
+		log.WithFields(log.Fields{
+			"user":       gm.Source,
+			"group":      gm.Destination,
+			"written_at": gm.WrittenAt,
+		}).Debug("ignoring a group message that was written before the history was cleared")
+		return
+	}
+
 	// Make sure the author is in the group
 	if !b.userIsInGroup(gm.Source, gm.Destination) {
 		log.WithFields(log.Fields{
@@ -176,8 +186,6 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		}).Warn("device sent a message for a group that the device's user is not a part of, ignoring")
 		return
 	}
-
-	// TODO: if the message is older than ClearBefore, don't process it
 
 	// Mark that the peer that sent this message has it
 	b.markDeliveredTo(&gm, peer)

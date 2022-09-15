@@ -152,7 +152,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		notificationsCheck,
 		widget.NewLabel("Disappearing Messages"),
 		thread.retentionSelection,
-		clearHistoryButton,
+		container.NewHBox(clearHistoryButton),
 		currentUsersListView,
 	)
 

@@ -248,7 +248,7 @@ func (b *bounce) getGroupRetention(groupID uuid.UUID) int64 {
 			log.WithFields(log.Fields{
 				"id":    groupID,
 				"error": err.Error(),
-			}).Warn("error selecting message retention for unknown group")
+			}).Error("error selecting message retention for unknown group")
 			return 0
 		} else {
 			log.WithFields(log.Fields{
@@ -276,4 +276,24 @@ func (b *bounce) userIsInGroup(userID, groupID uuid.UUID) bool {
 
 func (b *bounce) validGroupName(name string) bool {
 	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= 512
+}
+
+func (b *bounce) groupMessageWrittenBeforeHistoryCleared(groupID uuid.UUID, messageWrittenAt int64) bool {
+	var g group
+	err := b.database.Select("clear_before").First(&g, "id = ?", groupID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"id":    groupID,
+				"error": err.Error(),
+			}).Error("error selecting clear before for unknown group")
+			return false
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting clear before from group")
+		}
+	}
+
+	return messageWrittenAt < g.ClearBefore
 }
