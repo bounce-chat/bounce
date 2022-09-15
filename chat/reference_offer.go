@@ -264,7 +264,7 @@ func (b *bounce) getGroupMessagesToOffer(dev device) string {
 }
 
 func (b *bounce) getUpdateLocalDMSettingsToOffer(dev device) string {
-	if !b.isSyncDevice(dev.Address) {
+	if !b.isSyncDevice(dev) {
 		return ""
 	}
 	uldsToOffer := []string{}
@@ -289,7 +289,7 @@ func (b *bounce) getUpdateLocalDMSettingsToOffer(dev device) string {
 func (b *bounce) getUpdateDMSettingsToOffer(dev device) string {
 	offerString := ""
 
-	if b.isSyncDevice(dev.Address) {
+	if b.isSyncDevice(dev) {
 		udsToOffer := []string{}
 		var dmSettingsUpdates []updateDMSettings
 		err := b.database.
@@ -331,7 +331,7 @@ func (b *bounce) getUpdateDMSettingsToOffer(dev device) string {
 func (b *bounce) getDevicesToOffer(dev device) string {
 	offerString := ""
 
-	if b.isSyncDevice(dev.Address) {
+	if b.isSyncDevice(dev) {
 		// Sync devices can learn about any device we know about
 		devicesToOffer := []string{}
 		var unsentDevices []device
@@ -375,7 +375,7 @@ func (b *bounce) getDevicesToOffer(dev device) string {
 func (b *bounce) getUsersToOffer(dev device) string {
 	offerString := ""
 
-	if b.isSyncDevice(dev.Address) {
+	if b.isSyncDevice(dev) {
 		// Users
 		usersToOffer := []string{}
 		var unsentUsers []user
@@ -432,7 +432,7 @@ func (b *bounce) getUpdateGroupsToOffer(dev device) string {
 		Preload(clause.Associations).
 		Select("update_groups.*").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
-		Joins("JOIN group_users ON update_groups.target = group_users.group_id JOIN users ON group_users.user_id = users.id").
+		Joins("JOIN group_users ON update_groups.target = group_users.group_id JOIN users ON group_users.user_id = users.id"). // TODO: users join needed?
 		Where("delivery_records.id IS NULL AND group_users.user_id = ?", dev.UserID).
 		Find(&unsentUpdateGroups).Error // TODO: only select ID?
 	if err != nil {
@@ -442,6 +442,10 @@ func (b *bounce) getUpdateGroupsToOffer(dev device) string {
 	}
 
 	for _, ug := range unsentUpdateGroups {
+		// Ignore sync scoped update groups unless this is a sync device
+		if ug.getScope(b.currentUserID()) == scopeSync && !b.isSyncDevice(dev) {
+			continue
+		}
 		updateGroupsToOffer = append(updateGroupsToOffer, ug.ID.String())
 	}
 

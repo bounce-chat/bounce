@@ -181,10 +181,6 @@ func (b *bounce) getDeviceFromAddress(address string) (device, bool) {
 	return dev, true
 }
 
-func (b *bounce) isSyncDevice(address string) bool {
-	dev, exists := b.getDeviceFromAddress(address)
-	if !exists {
-		return false
-	}
+func (b *bounce) isSyncDevice(dev device) bool {
 	return dev.UserID == b.currentUserID()
 }
