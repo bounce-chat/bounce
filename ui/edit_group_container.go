@@ -47,19 +47,6 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 	threadIcon.FillMode = canvas.ImageFillContain
 	threadIcon.SetMinSize(fyne.NewSize(64, 64))
 
-	notificationsCheck := widget.NewCheckWithData("Enable notifications", thread.notificationsEnabled)
-	notificationsCheck.OnChanged = func(state bool) { // TODO: do we really want this to apply before save?
-		thread.notificationsEnabled.Set(state) // TODO: error check
-		mutedUntil := int64(0)
-		if !state {
-			mutedUntil = chat.MutedForever
-		}
-		err := fyneUI.callbacks.SetGroupMutedUntil(thread.id, mutedUntil)
-		if err != nil {
-			dialog.ShowError(errors.New("error updating group mute settings: "+err.Error()), fyneUI.mainWindow)
-		}
-	}
-
 	thread.retentionSelection = widget.NewSelect(retentionSelections, nil)
 	retention := fyneUI.callbacks.GetGroupRetention(thread.id)
 	thread.retentionSelection.Selected = getRetentionName(retention)
@@ -89,6 +76,18 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		newThreadName := editThreadNameEntry.Text
 		if currentThreadName != newThreadName {
 			fyneUI.callbacks.RenameGroup(thread.id, newThreadName) // TODO: error check and display error in dialog, internationalize off exported error types
+		}
+
+		// Update the notification settings if they have changes
+		if thread.notificationsEnabledCheck.Checked != (thread.notificationsMutedUntil != chat.MutedForever) {
+			mutedUntil := int64(0)
+			if !thread.notificationsEnabledCheck.Checked {
+				mutedUntil = chat.MutedForever
+			}
+			err := fyneUI.callbacks.SetGroupMutedUntil(thread.id, mutedUntil)
+			if err != nil {
+				dialog.ShowError(errors.New("error updating group mute settings: "+err.Error()), fyneUI.mainWindow)
+			}
 		}
 		// Update the retention if it changed
 		currentRetention := fyneUI.callbacks.GetGroupRetention(thread.id)
@@ -145,7 +144,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 	topOptionsVBox := container.NewVBox(
 		threadIcon,
 		editThreadNameEntry,
-		notificationsCheck,
+		thread.notificationsEnabledCheck,
 		widget.NewLabel("Disappearing Messages"),
 		thread.retentionSelection,
 		container.NewHBox(clearHistoryButton),

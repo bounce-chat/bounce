@@ -16,23 +16,23 @@ import (
 )
 
 type group struct {
-	id                      uuid.UUID
-	name                    binding.String
-	users                   *userStore
-	pendingUsers            *userStore
-	notificationsEnabled    binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
-	notificationsMutedUntil int64        // TODO: fyne feature request/PR: support binding int64 for time.Time
-	editContainer           *fyne.Container
-	retentionSelection      *widget.Select
-	view                    *fyne.Container
-	header                  *fyne.Container
-	button                  *threadButton
-	scroll                  *container.Scroll
-	availableNewUsersScroll *container.Scroll
-	currentUsersContainer   *fyne.Container
-	entry                   *threadEntry
-	entryBar                *fyne.Container
-	lastMessage             int64
+	id                        uuid.UUID
+	name                      binding.String
+	users                     *userStore
+	pendingUsers              *userStore
+	notificationsMutedUntil   int64
+	editContainer             *fyne.Container
+	retentionSelection        *widget.Select
+	view                      *fyne.Container
+	header                    *fyne.Container
+	button                    *threadButton
+	notificationsEnabledCheck *widget.Check
+	scroll                    *container.Scroll
+	availableNewUsersScroll   *container.Scroll
+	currentUsersContainer     *fyne.Container
+	entry                     *threadEntry
+	entryBar                  *fyne.Container
+	lastMessage               int64
 }
 
 func (group *group) getID() uuid.UUID {
@@ -91,7 +91,6 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		scroll:                  container.NewVScroll(container.NewVBox()),
 		availableNewUsersScroll: container.NewVScroll(container.NewVBox()),
 		currentUsersContainer:   container.NewMax(),
-		notificationsEnabled:    binding.NewBool(),
 		lastMessage:             time.Now().Unix(),
 	}
 	for _, userID := range bounceGroup.UserIDs {
@@ -112,12 +111,18 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 			"error": err.Error(),
 		}).Fatal("data bindings are broken")
 	}
-	err = group.notificationsEnabled.Set(false) // TODO: this should default to true when ready
+
+	group.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(_ bool) {})
+	group.notificationsMutedUntil, err = fyneUI.callbacks.GetGroupMutedUntil(group.id)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("data bindings are broken")
+			"group_id": group.id,
+		}).Error("cannot find muted until for group")
+		return
+		// TODO: fatal?
 	}
+	enabled := group.notificationsMutedUntil != chat.MutedForever
+	group.notificationsEnabledCheck.SetChecked(enabled)
 
 	fyneUI.buildEditThreadContainer(group)
 	editButton := widget.NewButton("Edit", func() {
@@ -462,17 +467,10 @@ func (fyneUI *Fyne) GroupChatHistoryCleared(groupID, actorID uuid.UUID) { // TOD
 }
 
 func (fyneUI *Fyne) GroupMutedUntilChanged(groupID uuid.UUID, mutedUntil int64) {
-	// TODO: refresh the edit widgets to reflect the new state
 	if group, exists := fyneUI.groups[groupID]; exists {
-		state := true
-		if mutedUntil == chat.MutedForever {
-			state = false
-		}
-		err := group.notificationsEnabled.Set(state)
-		if err != nil {
-			log.Fatal("data bindings are broken")
-		}
 		group.notificationsMutedUntil = mutedUntil
+		enabled := mutedUntil != chat.MutedForever
+		group.notificationsEnabledCheck.SetChecked(enabled)
 	} else {
 		log.WithFields(log.Fields{
 			"group_id": groupID,

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,7 +19,6 @@ import (
 
 type directMessage struct {
 	user                      *user
-	notificationsEnabled      bool  //binding.Bool // TODO: this makes it take effect before save is hit, do I want that?
 	notificationsMutedUntil   int64 // TODO: fyne feature request/PR: support binding int64 for time.Time
 	editContainer             *fyne.Container
 	view                      *fyne.Container
@@ -82,24 +82,18 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 		lastMessage: time.Now().Unix(),
 	}
 
+	dm.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(_ bool) {})
 	var err error
-	dm.notificationsEnabled, err = fyneUI.callbacks.GetDMNotificationEnabled(dm.user.id)
+	dm.notificationsMutedUntil, err = fyneUI.callbacks.GetDMNotificationMutedUntil(dm.user.id)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"user_id": dm.user.id,
-		}).Error("cannot find notification settings for user")
+		}).Error("cannot find muted until for user")
 		return
+		// TODO: fatal?
 	}
-
-	firstRun := true
-	dm.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(state bool) { // TODO: do we really want this to apply before save?
-		if firstRun {
-			firstRun = false
-			return
-		}
-		fyneUI.callbacks.SetDMNotificationEnabled(dm.user.id, state)
-	})
-	dm.notificationsEnabledCheck.SetChecked(dm.notificationsEnabled)
+	enabled := dm.notificationsMutedUntil != chat.MutedForever
+	dm.notificationsEnabledCheck.SetChecked(enabled)
 
 	fyneUI.buildEditDMContainer(dm)
 	editButton := widget.NewButton("Edit", func() {
@@ -250,10 +244,11 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 	dm.lastMessage = time.Now().Unix()
 	fyneUI.refreshThreadOrder()
 
+	notificationsEnabled := dm.notificationsMutedUntil != chat.MutedForever
 	notificationsMuted := time.Now().Unix() < dm.notificationsMutedUntil
 
 	// TODO: different criteria on mobile probably.  need to clean this up and add context around fyneUI.focused
-	if dm.notificationsEnabled && !notificationsMuted && !autoscroll && !hideNotification {
+	if notificationsEnabled && !notificationsMuted && !autoscroll && !hideNotification {
 		fyneUI.app.SendNotification(fyne.NewNotification(user.name, msg.Text))
 	}
 }
@@ -276,16 +271,6 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	dm.retentionSelection = widget.NewSelect(retentionSelections, nil)
 	retention := fyneUI.callbacks.GetDMRetention(dm.user.id)
 	dm.retentionSelection.Selected = getRetentionName(retention)
-	dm.retentionSelection.OnChanged = func(retention string) {
-		retentionSeconds, ok := retentionValues[retention]
-		if !ok {
-			retentionSeconds = 0
-			log.WithFields(log.Fields{
-				"selection": retention,
-			}).Warn("invalid retention selection")
-		}
-		fyneUI.callbacks.SetDMRetention(dm.user.id, retentionSeconds)
-	}
 
 	//
 	// Button to clear all message history, with confirm dialog
@@ -296,6 +281,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		func(confirmed bool) {
 			if confirmed {
 				fyneUI.callbacks.ClearDMChatHistory(dm.user.id)
+				// TODO: go back to the thread?
 			}
 		},
 		fyneUI.mainWindow,
@@ -309,6 +295,27 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	//
 
 	saveButton := widget.NewButton("Save", func() {
+		// Update notification muted until if the selection doesn't line up with what we have for this user
+		notificationsEnabled := dm.notificationsMutedUntil != chat.MutedForever
+		if dm.notificationsEnabledCheck.Checked != notificationsEnabled {
+			mutedUntil := int64(0)
+			if !dm.notificationsEnabledCheck.Checked {
+				mutedUntil = chat.MutedForever
+			}
+			fyneUI.callbacks.SetDMNotificationMutedUntil(dm.user.id, mutedUntil)
+		}
+		// Update message retention if the selection doesn't line up with what we have for this user
+		currentRetention := fyneUI.callbacks.GetDMRetention(dm.user.id)
+		selectedRetentionString := dm.retentionSelection.Selected
+		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
+		if !ok {
+			dialog.ShowError(errors.New("invalid retention selection: "+selectedRetentionString), fyneUI.mainWindow)
+		} else {
+			if currentRetention != selectedRetentionValue {
+				fyneUI.callbacks.SetDMRetention(dm.user.id, selectedRetentionValue) // TODO: this should return an error if the user ID is nonsense
+			}
+		}
+		// Go back to the thread after settings updates are done
 		fyneUI.showMainContainer()
 		fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
 	})
@@ -403,14 +410,15 @@ func (fyneUI *Fyne) DMChatHistoryCleared(userID, actorID uuid.UUID) {
 	}
 }
 
-func (fyneUI *Fyne) DMNotificationsChanged(userID uuid.UUID, enabled bool) {
+func (fyneUI *Fyne) DMNotificationsMutedUntilChanged(userID uuid.UUID, mutedUntil int64) {
 	if dm, exists := fyneUI.dms[userID]; exists {
-		dm.notificationsEnabled = enabled
+		dm.notificationsMutedUntil = mutedUntil
+		enabled := mutedUntil != chat.MutedForever
 		dm.notificationsEnabledCheck.SetChecked(enabled)
 	} else {
 		log.WithFields(log.Fields{
 			"user_id": userID,
-		}).Warn("cannot update notification settings for DM that doesn't exist")
+		}).Warn("cannot notify messages cleared for user that doesn't exist")
 	}
 }
 

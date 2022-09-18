@@ -23,7 +23,6 @@ type user struct {
 	MessageRetention          int64 `json:"-" msgpack:"-"`
 	ClearBefore               int64 `json:"-" msgpack:"-"`
 	LastDMSettingsUpdate      int64 `json:"-" msgpack:"-"`
-	NotificationsEnabled      bool  `json:"-" msgpack:"-"`
 	NotificationsMutedUntil   int64 `json:"-" msgpack:"-"`
 	LastLocalDMSettingsUpdate int64 `json:"-" msgpack:"-"`
 	Devices                   []device
@@ -43,7 +42,7 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 		if count > 0 {
 			return errors.New("profile user already exists")
 		}
-		u.NotificationsEnabled = false
+		u.NotificationsMutedUntil = MutedForever
 	}
 
 	return nil
@@ -298,8 +297,7 @@ func (b *bounce) importUser(data []byte) (User, error) {
 	b.broadcast(&newUser.Profile)
 
 	// Set the defaul local DM settings
-	enabledByDefault := true // TODO: make this a setting on our profile
-	b.setDMNotificationEnabled(newUser.Profile.ID, enabledByDefault)
+	b.setDMNotificationMutedUntil(newUser.Profile.ID, int64(0)) // TODO: make this default a setting on our profile
 
 	// Set the default DM settings
 	defaultMessageRetention := int64(7 * 24 * 60 * 60) // TODO: make this a setting on our profile

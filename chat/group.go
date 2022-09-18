@@ -250,6 +250,7 @@ func (b *bounce) getGroupRetention(groupID uuid.UUID) int64 {
 				"id":    groupID,
 				"error": err.Error(),
 			}).Error("error selecting message retention for unknown group")
+			// TODO: return error?
 			return 0
 		} else {
 			log.WithFields(log.Fields{
@@ -258,6 +259,25 @@ func (b *bounce) getGroupRetention(groupID uuid.UUID) int64 {
 		}
 	}
 	return g.Retention
+}
+
+func (b *bounce) getGroupMutedUntil(groupID uuid.UUID) (int64, error) {
+	var g group
+	err := b.database.Select("muted_until").First(&g, "id = ?", groupID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"id":    groupID,
+				"error": err.Error(),
+			}).Error("error selecting muted until for unknown group")
+			return 0, err
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting muted until from group")
+		}
+	}
+	return g.MutedUntil, nil
 }
 
 func (b *bounce) userIsInGroup(userID, groupID uuid.UUID) bool {

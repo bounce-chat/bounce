@@ -43,7 +43,7 @@ type UI interface {
 	UpdateMessageDeletionTime(uuid.UUID, int64)
 
 	// The notification settings for a DM have been updated
-	DMNotificationsChanged(dm uuid.UUID, enabled bool)
+	DMNotificationsMutedUntilChanged(dm uuid.UUID, mutedUntil int64)
 
 	// The retention settings for a DM have been changed
 	DMRetentionChanged(dm uuid.UUID, actor uuid.UUID, retention int64)
@@ -124,15 +124,13 @@ type UICallbacks struct {
 	// Set the message retention for a group
 	SetGroupRetention func(groupID uuid.UUID, retention int64) error
 	// Get the current retention settings for a group
-	GetGroupRetention func(groupID uuid.UUID) int64
+	GetGroupRetention func(groupID uuid.UUID) int64 // TODO: should return an error if the group isn't found?
 	// Erase all history on all devices
 	ClearGroupChatHistory func(groupID uuid.UUID) error
-
-	// Set if notifications should be enabled for a DM.  Broadcasts to all sync devices.
-	SetDMNotificationEnabled func(userID uuid.UUID, notificationEnabled bool)
-
-	// Get the current notification setting for a DM
-	GetDMNotificationEnabled func(userID uuid.UUID) (enabled bool, err error)
+	// Get the muted until setting for a group
+	GetGroupMutedUntil func(groupID uuid.UUID) (int64, error)
+	// The user wants to change the notification settings for a group
+	SetGroupMutedUntil func(groupID uuid.UUID, mutedUntil int64) error
 
 	// Set a temporary mute on a DM by setting the unix timestamp to pause notifications until
 	SetDMNotificationMutedUntil func(userID uuid.UUID, mutedUntil int64)
@@ -148,9 +146,6 @@ type UICallbacks struct {
 
 	// Clear all DM messages on all devices
 	ClearDMChatHistory func(userID uuid.UUID)
-
-	// The user wants to change the notification settings for a group
-	SetGroupMutedUntil func(groupID uuid.UUID, mutedUntil int64) error
 
 	// Setup a new profile on a fresh install
 	SetProfile    func(profileName, deviceName string) (uuid.UUID, error)
