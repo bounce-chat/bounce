@@ -39,6 +39,8 @@ func (g *group) BeforeCreate(tx *gorm.DB) error {
 }
 
 // TODO: after delete, cascade delete of all group updates and messages
+// could also use db.Select(clause.Associations).Delete(&group)
+// https://gorm.io/docs/associations.html#Delete-with-Select
 
 func (g *group) getID() uuid.UUID {
 	return g.ID

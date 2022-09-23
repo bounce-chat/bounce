@@ -188,30 +188,50 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 
 	for _, thisUser := range thread.users.alphabetized() {
 		func(u *user) {
-			dmButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() {
-				log.Info("user wants to open a DM with " + u.name)
-				// TODO: hide this window and open a DM
-				// check fyneUI for existing DMs, create thread if needed and focus it
-				dm, dmExists := fyneUI.dms[u.id]
-				if !dmExists {
-					fyneUI.NewDirectMessage(chat.User{
-						ID:   u.id,
-						Name: u.name,
-					})
-					dm, dmExists = fyneUI.dms[u.id]
-					if !dmExists {
-						log.Fatal("DM doesn't exist immediately after creation")
-					}
-				}
-				fyneUI.showMainContainer()
-				fyneUI.displayThread(dm)
+			userDetailsButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() {
+				// TODO: tell the chat engine to start dialing this user in case we open a DM with them?
+				var userDetailsDialog dialog.Dialog
+
+				editUserContainer := container.NewVBox(
+					widget.NewLabel(u.name),
+					widget.NewButton("Direct Message", func() {
+						// Close the dialog
+						if userDetailsDialog == nil {
+							log.Fatal("userDetailsDialog used before assignment, this should be impossible")
+						}
+						userDetailsDialog.Hide()
+
+						// Show the DM
+						dm, dmExists := fyneUI.dms[u.id]
+						if !dmExists {
+							fyneUI.NewDirectMessage(chat.User{
+								ID:   u.id,
+								Name: u.name,
+							})
+							dm, dmExists = fyneUI.dms[u.id]
+							if !dmExists {
+								log.Fatal("DM doesn't exist immediately after creation")
+							}
+						}
+						fyneUI.showMainContainer()
+						fyneUI.displayThread(dm)
+					}),
+					widget.NewButton("Remove from group", func() {}),
+					widget.NewCheck("Admin", func(set bool) {}),
+				)
+				userDetailsDialog = dialog.NewCustomConfirm(u.name, "Apply", "Cancel", editUserContainer, func(apply bool) {
+					log.WithFields(log.Fields{
+						"apply": apply,
+					}).Info("editing user in group")
+				}, fyneUI.mainWindow)
+				userDetailsDialog.Show()
 			})
-			dmButton.Alignment = widget.ButtonAlignLeading
-			dmButton.Importance = widget.LowImportance
+			userDetailsButton.Alignment = widget.ButtonAlignLeading
+			userDetailsButton.Importance = widget.LowImportance
 
 			currentUsersList.Objects = append(
 				currentUsersList.Objects,
-				dmButton,
+				userDetailsButton,
 			)
 		}(thisUser)
 	}
