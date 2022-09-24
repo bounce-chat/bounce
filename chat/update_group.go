@@ -14,14 +14,13 @@ import (
 
 var updateGroupMutex sync.Mutex
 
+// TODO: don't export
 const UPDATE_GROUP_TYPE_CHANGE_NAME = uint16(0)
 const UPDATE_GROUP_TYPE_ADD_USER = uint16(1)
 const UPDATE_GROUP_TYPE_REMOVE_USER = uint16(2)
 const UPDATE_GROUP_TYPE_CHANGE_MUTED_UNTIL = uint16(3)
 const UPDATE_GROUP_TYPE_CHANGE_RETENTION = uint16(4)
 const UPDATE_GROUP_TYPE_SET_CLEAR_BEFORE = uint16(5)
-
-const MutedForever = int64(-1) // TODO: move this somewhere else because it'll be used by DMs too
 
 var ERR_UPDATE_GROUP_WITH_UNKNOWN_TYPE = errors.New("update group has unknown update type")
 var ERR_INVALID_GROUP_NAME = errors.New("invalid group name")
@@ -254,7 +253,7 @@ func (b *bounce) saveAndApplyUpdateGroupChangeName(g group, ug updateGroup) erro
 		}).Fatal("database error saving update group")
 	}
 
-	// Check to make sure there isn't a more recent name change we're already aware of
+	// Check to make sure there isn't a more recent change we're already aware of
 	var moreRecentUpdates bool
 	err = b.database.Table("update_groups").
 		Select("count(*) >= 1").
@@ -297,7 +296,7 @@ func (b *bounce) saveAndApplyUpdateGroupChangeMutedUntil(g group, ug updateGroup
 		}).Fatal("database error saving update group")
 	}
 
-	// Check to make sure there isn't a more recent name change we're already aware of
+	// Check to make sure there isn't a more recent change we're already aware of
 	var moreRecentUpdates bool
 	err = b.database.Table("update_groups").
 		Select("count(*) >= 1").
@@ -341,7 +340,7 @@ func (b *bounce) saveAndApplyUpdateGroupChangeRetention(g group, ug updateGroup)
 		}).Fatal("database error saving update group")
 	}
 
-	// Check to make sure there isn't a more recent name change we're already aware of
+	// Check to make sure there isn't a more recent change we're already aware of
 	var moreRecentUpdates bool
 	err = b.database.Table("update_groups").
 		Select("count(*) >= 1").

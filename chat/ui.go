@@ -43,7 +43,7 @@ type UI interface {
 	UpdateMessageDeletionTime(uuid.UUID, int64)
 
 	// The notification settings for a DM have been updated
-	DMNotificationsMutedUntilChanged(dm uuid.UUID, mutedUntil int64)
+	DMMutedUntilChanged(dm uuid.UUID, mutedUntil int64)
 
 	// The retention settings for a DM have been changed
 	DMRetentionChanged(dm uuid.UUID, actor uuid.UUID, retention int64)
@@ -133,19 +133,19 @@ type UICallbacks struct {
 	SetGroupMutedUntil func(groupID uuid.UUID, mutedUntil int64) error
 
 	// Set a temporary mute on a DM by setting the unix timestamp to pause notifications until
-	SetDMNotificationMutedUntil func(userID uuid.UUID, mutedUntil int64)
+	SetDMMutedUntil func(userID uuid.UUID, mutedUntil int64) error
 
 	// Get the value of a temporary mute on a DM
-	GetDMNotificationMutedUntil func(userID uuid.UUID) (mutedUntil int64, err error)
+	GetDMMutedUntil func(userID uuid.UUID) (mutedUntil int64, err error)
 
 	// Set the message retention settings for a DM
-	SetDMRetention func(userID uuid.UUID, retention int64)
+	SetDMRetention func(userID uuid.UUID, retention int64) error
 
 	// Get the message retention settings for a DM
-	GetDMRetention func(userID uuid.UUID) int64
+	GetDMRetention func(userID uuid.UUID) int64 // TODO: should return an error if the group isn't found?
 
 	// Clear all DM messages on all devices
-	ClearDMChatHistory func(userID uuid.UUID)
+	ClearDMChatHistory func(userID uuid.UUID) error
 
 	// Setup a new profile on a fresh install
 	SetProfile    func(profileName, deviceName string) (uuid.UUID, error)

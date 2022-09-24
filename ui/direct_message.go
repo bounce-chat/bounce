@@ -84,7 +84,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 
 	dm.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(_ bool) {})
 	var err error
-	dm.notificationsMutedUntil, err = fyneUI.callbacks.GetDMNotificationMutedUntil(dm.user.id)
+	dm.notificationsMutedUntil, err = fyneUI.callbacks.GetDMMutedUntil(dm.user.id)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"user_id": dm.user.id,
@@ -302,7 +302,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 			if !dm.notificationsEnabledCheck.Checked {
 				mutedUntil = chat.MutedForever
 			}
-			fyneUI.callbacks.SetDMNotificationMutedUntil(dm.user.id, mutedUntil)
+			fyneUI.callbacks.SetDMMutedUntil(dm.user.id, mutedUntil)
 		}
 		// Update message retention if the selection doesn't line up with what we have for this user
 		currentRetention := fyneUI.callbacks.GetDMRetention(dm.user.id)
@@ -410,7 +410,7 @@ func (fyneUI *Fyne) DMChatHistoryCleared(userID, actorID uuid.UUID) {
 	}
 }
 
-func (fyneUI *Fyne) DMNotificationsMutedUntilChanged(userID uuid.UUID, mutedUntil int64) {
+func (fyneUI *Fyne) DMMutedUntilChanged(userID uuid.UUID, mutedUntil int64) {
 	if dm, exists := fyneUI.dms[userID]; exists {
 		dm.notificationsMutedUntil = mutedUntil
 		enabled := mutedUntil != chat.MutedForever

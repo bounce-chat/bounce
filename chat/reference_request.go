@@ -15,19 +15,18 @@ import (
 // DirectMessages are comma separated for consistency with reference offers, which must do this
 // since SQLite doesn't support slices
 type referenceRequest struct {
-	_msgpack              struct{} `msgpack:",omitempty"`
-	ID                    uuid.UUID
-	DirectMessages        string // Comma-separated list of DM UUIDs
-	GroupMessages         string
-	UpdateLocalDMSettings string
-	UpdateDMSettings      string
-	Devices               string
-	Users                 string
-	Groups                string
-	UpdateGroups          string
-	destination           uuid.UUID
-	payload               []byte
-	payloadMutex          sync.Mutex
+	_msgpack         struct{} `msgpack:",omitempty"`
+	ID               uuid.UUID
+	DirectMessages   string // Comma-separated list of DM UUIDs
+	GroupMessages    string
+	UpdateDMSettings string
+	Devices          string
+	Users            string
+	Groups           string
+	UpdateGroups     string
+	destination      uuid.UUID
+	payload          []byte
+	payloadMutex     sync.Mutex
 }
 
 func (rr *referenceRequest) getID() uuid.UUID {
@@ -106,7 +105,6 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupsPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedDirectMessagePayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupMessagePayloads(dev, rr, originalOffer)...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateLocalDMSettingsPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMSettingsPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateGroupsPayloads(dev, rr, originalOffer)...)
 
@@ -215,107 +213,48 @@ func (b *bounce) getRequestedGroupMessagePayloads(peer device, rr referenceReque
 	return requestedData
 }
 
-func (b *bounce) getRequestedUpdateLocalDMSettingsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
-
-	requestedUpdateLocalDMSettingsIDs, deliveredUpdateLocalDMSettingsIDs := getRequestedAndDeliveredUUIDs(originalOffer.UpdateLocalDMSettings, rr.UpdateLocalDMSettings)
-
-	if len(requestedUpdateLocalDMSettingsIDs) > 0 {
-		// TODO: since we're never going to offer these and the diff function checks that, this shouldn't be needed,
-		// but might catch bugs that result in us offering these
-		if peer.UserID != b.currentUserID() {
-			log.WithFields(log.Fields{
-				"peer": peer.Address,
-			}).Warn("non-sync device asked for update local DM settings in reference request, ignoring")
-			return requestedData
-		}
-	}
-
-	for _, uldsID := range deliveredUpdateLocalDMSettingsIDs {
-		var ulds updateLocalDMSettings
-		err := b.database.First(&ulds, "id = ?", uldsID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id":   uldsID,
-					"peer": peer.Address,
-				}).Warn("reference request indicates we offered an unknown update local DM settings")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    uldsID,
-					"error": err.Error(),
-				}).Fatal("database error querying for update local DM settings")
-			}
-		} else {
-			b.markDeliveredTo(&ulds, peer.Address)
-		}
-	}
-
-	for _, uldsID := range requestedUpdateLocalDMSettingsIDs {
-		var ulds updateLocalDMSettings
-		err := b.database.First(&ulds, "id = ?", uldsID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id":   uldsID,
-					"peer": peer.Address,
-				}).Warn("reference request asks for an unknown update local DM settings")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    uldsID,
-					"error": err.Error(),
-				}).Fatal("database error querying for update local DM settings")
-			}
-		} else {
-			requestedData = append(requestedData, &ulds)
-		}
-	}
-
-	return requestedData
-}
-
 func (b *bounce) getRequestedUpdateDMSettingsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
-	requestedUpdateDMSettingsIDs, deliveredUpdateDMSettingsIDs := getRequestedAndDeliveredUUIDs(originalOffer.UpdateDMSettings, rr.UpdateDMSettings)
+	requestedUpdateDMSettingsIDs, deliveredUpdateDMSettingsIDs := getRequestedAndDeliveredUUIDs(originalOffer.UpdateDMs, rr.UpdateDMSettings)
 
-	for _, udsID := range deliveredUpdateDMSettingsIDs {
-		var uds updateDMSettings
-		err := b.database.First(&uds, "id = ?", udsID).Error
+	for _, udID := range deliveredUpdateDMSettingsIDs {
+		var ud updateDM
+		err := b.database.First(&ud, "id = ?", udID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   udsID,
+					"id":   udID,
 					"peer": peer.Address,
 				}).Warn("reference request indicates we offered an unknown update DM settings")
 			} else {
 				log.WithFields(log.Fields{
-					"id":    udsID,
+					"id":    udID,
 					"error": err.Error(),
 				}).Fatal("database error querying for update DM settings")
 			}
 		} else {
-			b.markDeliveredTo(&uds, peer.Address)
+			b.markDeliveredTo(&ud, peer.Address)
 		}
 	}
 
-	for _, udsID := range requestedUpdateDMSettingsIDs {
-		var uds updateDMSettings
-		err := b.database.First(&uds, "id = ?", udsID).Error
+	for _, udID := range requestedUpdateDMSettingsIDs {
+		var ud updateDM
+		err := b.database.First(&ud, "id = ?", udID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   udsID,
+					"id":   udID,
 					"peer": peer.Address,
 				}).Warn("reference request asks for an unknown update DM settings")
 			} else {
 				log.WithFields(log.Fields{
-					"id":    udsID,
+					"id":    udID,
 					"error": err.Error(),
 				}).Fatal("database error querying for update DM settings")
 			}
 		} else {
-			requestedData = append(requestedData, &uds)
+			requestedData = append(requestedData, &ud)
 		}
 	}
 

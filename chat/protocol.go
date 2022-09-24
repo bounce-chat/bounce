@@ -24,13 +24,14 @@ var typeReferenceRequest = uint16(3)
 var typeCatchUp = uint16(4)
 var typeAck = uint16(5)
 var typeKeepAlive = uint16(6)
-var typeUpdateLocalDMSettings = uint16(7)
+
+//var typeUpdateLocalDMSettings = uint16(7)
 var typeSyncDeviceRequest = uint16(8)
 var typeSyncDeviceRequestRejected = uint16(9)
 var typeSyncDeviceRequestAccepted = uint16(10)
 var typeDevice = uint16(11)
 var typeUser = uint16(12)
-var typeUpdateDMSettings = uint16(13)
+var typeUpdateDM = uint16(13)
 var typeGroup = uint16(14)
 var typeUpdateGroup = uint16(15)
 var typeTypingIndicator = uint16(16)
@@ -69,13 +70,12 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 		typeCatchUp:                   b.handleCatchUp,
 		typeAck:                       b.handleAck,
 		typeKeepAlive:                 b.handleKeepAlive,
-		typeUpdateLocalDMSettings:     b.handleUpdateLocalDMSettings,
 		typeSyncDeviceRequest:         b.handleSyncDeviceRequest,
 		typeSyncDeviceRequestRejected: b.handleSyncDeviceRequestRejected,
 		typeSyncDeviceRequestAccepted: b.handleSyncDeviceRequestAccepted,
 		typeDevice:                    b.handleDevice,
 		typeUser:                      b.handleUser,
-		typeUpdateDMSettings:          b.handleUpdateDMSettings,
+		typeUpdateDM:                  b.handleUpdateDM,
 		typeGroup:                     b.handleGroup,
 		typeUpdateGroup:               b.handleUpdateGroup,
 		typeTypingIndicator:           b.handleTypingIndicator,

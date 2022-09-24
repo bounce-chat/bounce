@@ -14,6 +14,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const MutedForever = int64(-1)
+
 //
 // This constant defines the amount of time a message can exist without a successful delivery
 // before the chat engine gives up and stops attempting to deliver it
@@ -66,29 +68,29 @@ func Start(network Network, ui UI) {
 	b.userInterface.Build(
 		b.configDirectory,
 		UICallbacks{
-			GetNewSyncString:            b.getNewSyncString,
-			RequestToSync:               b.requestToSync,
-			SendDirectMessage:           b.sendDirectMessage,
-			CreateGroup:                 b.createGroup,
-			SendGroupMessage:            b.sendGroupMessage,
-			AddUserToGroup:              b.addUserToGroup,
-			RenameGroup:                 b.renameGroup,
-			SetGroupRetention:           b.setGroupRetention,
-			GetGroupRetention:           b.getGroupRetention,
-			ClearGroupChatHistory:       b.clearGroupChatHistory,
-			GetGroupMutedUntil:          b.getGroupMutedUntil,
-			SetGroupMutedUntil:          b.setGroupMutedUntil,
-			SetProfile:                  b.setProfile,
-			ImportUser:                  b.importUser,
-			ExportContact:               b.exportContact,
-			UserConnectionDesired:       b.userConnectionDesired,
-			GetDMRetention:              b.getDMRetention,
-			SetDMRetention:              b.setDMRetention,
-			GetDMNotificationMutedUntil: b.getDMNotificationMutedUntil,
-			SetDMNotificationMutedUntil: b.setDMNotificationMutedUntil,
-			ClearDMChatHistory:          b.clearDMChatHistory,
-			TypingInDirectMessage:       b.TypingInDirectMessage,
-			TypingInGroup:               b.TypingInGroup,
+			GetNewSyncString:      b.getNewSyncString,
+			RequestToSync:         b.requestToSync,
+			SendDirectMessage:     b.sendDirectMessage,
+			CreateGroup:           b.createGroup,
+			SendGroupMessage:      b.sendGroupMessage,
+			AddUserToGroup:        b.addUserToGroup,
+			RenameGroup:           b.renameGroup,
+			SetGroupRetention:     b.setGroupRetention,
+			GetGroupRetention:     b.getGroupRetention,
+			ClearGroupChatHistory: b.clearGroupChatHistory,
+			GetGroupMutedUntil:    b.getGroupMutedUntil,
+			SetGroupMutedUntil:    b.setGroupMutedUntil,
+			SetProfile:            b.setProfile,
+			ImportUser:            b.importUser,
+			ExportContact:         b.exportContact,
+			UserConnectionDesired: b.userConnectionDesired,
+			GetDMRetention:        b.getDMRetention,
+			SetDMRetention:        b.setDMRetention,
+			GetDMMutedUntil:       b.getDMMutedUntil,
+			SetDMMutedUntil:       b.setDMMutedUntil,
+			ClearDMChatHistory:    b.clearDMChatHistory,
+			TypingInDirectMessage: b.TypingInDirectMessage,
+			TypingInGroup:         b.TypingInGroup,
 		},
 	)
 

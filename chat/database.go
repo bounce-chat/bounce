@@ -55,10 +55,9 @@ func (b *bounce) openDatabase() {
 		&introductionSignature{},
 		&DirectMessage{}, // TODO: still need to decide if we'll export a simplified one for the UI
 		&referenceOffer{},
-		&updateLocalDMSettings{},
 		&syncDeviceOffer{},
 		&deliveryRecord{},
-		&updateDMSettings{},
+		&updateDM{},
 		&group{},
 		&GroupMessage{},
 		&updateGroup{},

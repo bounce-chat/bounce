@@ -16,20 +16,19 @@ import (
 // DirectMessages are comma separated for consistency with reference offers, which must do this
 // since SQLite doesn't support slices
 type ack struct {
-	_msgpack              struct{} `msgpack:",omitempty"`
-	ID                    uuid.UUID
-	DirectMessages        string // Comma-separated list of DM UUIDs
-	GroupMessages         string
-	UpdateLocalDMSettings string
-	CatchUps              string
-	Devices               string
-	Users                 string
-	Groups                string
-	UpdateGroups          string
-	UpdateDMSettings      string
-	destination           uuid.UUID
-	payload               []byte
-	payloadMutex          sync.Mutex
+	_msgpack       struct{} `msgpack:",omitempty"`
+	ID             uuid.UUID
+	DirectMessages string // Comma-separated list of DM UUIDs
+	GroupMessages  string
+	CatchUps       string
+	Devices        string
+	Users          string
+	Groups         string
+	UpdateGroups   string
+	UpdateDMs      string
+	destination    uuid.UUID
+	payload        []byte
+	payloadMutex   sync.Mutex
 }
 
 func (a *ack) getID() uuid.UUID {
@@ -77,7 +76,6 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckDirectMessages(peer, a)
 	b.handleAckGroupMessages(peer, a)
 	b.handleAckCatchUps(peer, a)
-	b.handleAckUpdateLocalDMSettings(peer, a)
 	b.handleAckUpdateDMSettings(peer, a)
 	b.handleAckDevices(peer, a)
 	b.handleAckUsers(peer, a)
@@ -196,67 +194,34 @@ func (b *bounce) handleAckCatchUps(peer string, a ack) {
 	}
 }
 
-func (b *bounce) handleAckUpdateLocalDMSettings(peer string, a ack) {
-	if len(a.UpdateLocalDMSettings) > 0 {
-		for _, uldsIDString := range strings.Split(a.UpdateLocalDMSettings, ",") {
-			uldsID, err := uuid.Parse(uldsIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": uldsIDString,
-				}).Error("invalid ulds UUID in ack")
-				continue
-			}
-
-			var ulds updateLocalDMSettings
-			err = b.database.First(&ulds, "id = ?", uldsID).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					log.WithFields(log.Fields{
-						"id":   uldsID,
-						"peer": peer,
-					}).Warn("unknown update local DM settings acked")
-				} else {
-					log.WithFields(log.Fields{
-						"id":    uldsID,
-						"error": err.Error(),
-					}).Fatal("database error querying for update local DM settings")
-				}
-			} else {
-				b.markDeliveredTo(&ulds, peer)
-			}
-		}
-	}
-}
-
 func (b *bounce) handleAckUpdateDMSettings(peer string, a ack) {
-	if len(a.UpdateDMSettings) > 0 {
-		for _, udsIDString := range strings.Split(a.UpdateDMSettings, ",") {
-			udsID, err := uuid.Parse(udsIDString)
+	if len(a.UpdateDMs) > 0 {
+		for _, udIDString := range strings.Split(a.UpdateDMs, ",") {
+			udID, err := uuid.Parse(udIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":  err.Error(),
-					"string": udsIDString,
-				}).Error("invalid uds UUID in ack")
+					"string": udIDString,
+				}).Error("invalid ud UUID in ack")
 				continue
 			}
 
-			var uds updateDMSettings
-			err = b.database.First(&uds, "id = ?", udsID).Error
+			var ud updateDM
+			err = b.database.First(&ud, "id = ?", udID).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					log.WithFields(log.Fields{
-						"id":   udsID,
+						"id":   udID,
 						"peer": peer,
 					}).Warn("unknown update DM settings acked")
 				} else {
 					log.WithFields(log.Fields{
-						"id":    udsID,
+						"id":    udID,
 						"error": err.Error(),
 					}).Fatal("database error querying for update DM settings")
 				}
 			} else {
-				b.markDeliveredTo(&uds, peer)
+				b.markDeliveredTo(&ud, peer)
 			}
 		}
 	}

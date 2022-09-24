@@ -17,18 +17,16 @@ import (
 )
 
 type user struct {
-	ID                        uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name                      string
-	Profile                   bool  `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
-	MessageRetention          int64 `json:"-" msgpack:"-"`
-	ClearBefore               int64 `json:"-" msgpack:"-"`
-	LastDMSettingsUpdate      int64 `json:"-" msgpack:"-"`
-	NotificationsMutedUntil   int64 `json:"-" msgpack:"-"`
-	LastLocalDMSettingsUpdate int64 `json:"-" msgpack:"-"`
-	Devices                   []device
-	Groups                    []group `gorm:"many2many:group_users;" json:"-"`
-	payload                   []byte
-	payloadMutex              sync.Mutex
+	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name             string
+	Profile          bool  `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
+	MessageRetention int64 `json:"-" msgpack:"-"`
+	ClearBefore      int64 `json:"-" msgpack:"-"`
+	MutedUntil       int64 `json:"-" msgpack:"-"`
+	Devices          []device
+	Groups           []group `gorm:"many2many:group_users;" json:"-"`
+	payload          []byte
+	payloadMutex     sync.Mutex
 }
 
 func (u *user) BeforeCreate(tx *gorm.DB) error {
@@ -42,7 +40,7 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 		if count > 0 {
 			return errors.New("profile user already exists")
 		}
-		u.NotificationsMutedUntil = MutedForever
+		u.MutedUntil = MutedForever
 	}
 
 	return nil
@@ -203,6 +201,25 @@ func (b *bounce) getDMRetention(id uuid.UUID) int64 {
 	return u.MessageRetention
 }
 
+func (b *bounce) getDMMutedUntil(userID uuid.UUID) (int64, error) {
+	var u user
+	err := b.database.Select("muted_until").First(&u, "id = ?", userID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": u,
+			}).Warn("cannot query muted until settings for user not found in database")
+			return 0, err
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up user muted until")
+		}
+	}
+
+	return u.MutedUntil, nil
+}
+
 func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 	newID := uuid.New()
 
@@ -297,7 +314,7 @@ func (b *bounce) importUser(data []byte) (User, error) {
 	b.broadcast(&newUser.Profile)
 
 	// Set the defaul local DM settings
-	b.setDMNotificationMutedUntil(newUser.Profile.ID, int64(0)) // TODO: make this default a setting on our profile
+	b.setDMMutedUntil(newUser.Profile.ID, int64(0)) // TODO: make this default a setting on our profile
 
 	// Set the default DM settings
 	defaultMessageRetention := int64(7 * 24 * 60 * 60) // TODO: make this a setting on our profile
