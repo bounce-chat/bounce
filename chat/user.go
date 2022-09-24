@@ -198,7 +198,7 @@ func (b *bounce) getDMRetention(id uuid.UUID) int64 {
 			}).Fatal("error selecting message retention from user")
 		}
 	}
-	return u.MessageRetention
+	return u.Retention
 }
 
 func (b *bounce) getDMMutedUntil(userID uuid.UUID) (int64, error) {
