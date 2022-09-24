@@ -253,45 +253,44 @@ func (b *bounce) getGroupMessagesToOffer(dev device) string {
 }
 
 func (b *bounce) getUpdateDMsToOffer(dev device) string {
-	offerString := ""
+	var unsentUpdateDMs []updateDM
+	updateDMsToOffer := []string{}
 
 	if b.isSyncDevice(dev) {
-		udToOffer := []string{}
-		var dmSettingsUpdates []updateDM
+		// Select all update DMs from any DM
 		err := b.database.
-			Select("update_dm_settings.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dm_settings.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateDM).
+			Select("update_dms.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dms.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateDM).
 			Where("delivery_records.id IS NULL").
-			Find(&dmSettingsUpdates).Error // TODO: only select ID?
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error selecting update DM settings for reference offer")
-		}
-		for _, ud := range dmSettingsUpdates {
-			udToOffer = append(udToOffer, ud.ID.String())
-		}
-		offerString = strings.Join(udToOffer, ",")
-	} else {
-		udToOffer := []string{}
-		var dmSettingsUpdates []updateDM
-		err := b.database.
-			Select("update_dm_settings.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dm_settings.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateDM).
-			Where("update_dm_settings.xor = ? AND delivery_records.id IS NULL", xor(dev.UserID, b.currentUserID())).
-			Find(&dmSettingsUpdates).Error // TODO: only select ID?
+			Find(&unsentUpdateDMs).Error // TODO: only select ID?
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Fatal("database error selecting update DM for reference offer")
 		}
-		for _, ud := range dmSettingsUpdates {
-			udToOffer = append(udToOffer, ud.ID.String())
+	} else {
+		// Select updateDMs related to this user
+		err := b.database.
+			Select("update_dms.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dms.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateDM).
+			Where("update_dms.target = ? AND delivery_records.id IS NULL", xor(dev.UserID, b.currentUserID())).
+			Find(&unsentUpdateDMs).Error // TODO: only select ID?
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting update DM for reference offer")
 		}
-		offerString = strings.Join(udToOffer, ",")
 	}
 
-	return offerString
+	for _, ud := range unsentUpdateDMs {
+		// Ignore sync scoped update DMs unless this is a sync device
+		if ud.getScope(b.currentUserID()) == scopeSync && !b.isSyncDevice(dev) {
+			continue
+		}
+		updateDMsToOffer = append(updateDMsToOffer, ud.ID.String())
+	}
+
+	return strings.Join(updateDMsToOffer, ",")
 }
 
 func (b *bounce) getDevicesToOffer(dev device) string {
