@@ -17,16 +17,16 @@ import (
 )
 
 type user struct {
-	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name             string
-	Profile          bool  `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
-	MessageRetention int64 `json:"-" msgpack:"-"`
-	ClearBefore      int64 `json:"-" msgpack:"-"`
-	MutedUntil       int64 `json:"-" msgpack:"-"`
-	Devices          []device
-	Groups           []group `gorm:"many2many:group_users;" json:"-"`
-	payload          []byte
-	payloadMutex     sync.Mutex
+	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name         string
+	Profile      bool  `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
+	Retention    int64 `json:"-" msgpack:"-"`
+	ClearBefore  int64 `json:"-" msgpack:"-"`
+	MutedUntil   int64 `json:"-" msgpack:"-"`
+	Devices      []device
+	Groups       []group `gorm:"many2many:group_users;" json:"-"`
+	payload      []byte
+	payloadMutex sync.Mutex
 }
 
 func (u *user) BeforeCreate(tx *gorm.DB) error {
@@ -185,7 +185,7 @@ func (b *bounce) currentUserID() uuid.UUID {
 
 func (b *bounce) getDMRetention(id uuid.UUID) int64 {
 	var u user
-	err := b.database.Select("message_retention").First(&u, "id = ?", id).Error
+	err := b.database.Select("retention").First(&u, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
