@@ -281,7 +281,8 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		func(confirmed bool) {
 			if confirmed {
 				fyneUI.callbacks.ClearDMChatHistory(dm.user.id)
-				// TODO: go back to the thread?
+				fyneUI.showMainContainer()
+				fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
 			}
 		},
 		fyneUI.mainWindow,
