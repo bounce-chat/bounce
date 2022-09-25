@@ -237,22 +237,13 @@ func (ti *typingIndicator) getPayload() []byte {
 }
 
 func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
-	var sc signedContainer
-	err := msgpack.Unmarshal(payload, &sc)
+	sc, err := b.unpackSignedContainer(payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error unmarshalling typing indicator signed container")
+		}).Error("error unpacking signed container for typing indicator")
 		return
 	}
-
-	if !b.validSignedContainer(sc) {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("typing indicator received with invalid signature, ignoring")
-		return
-	}
-
 	var ti typingIndicator
 	err = msgpack.Unmarshal(sc.Payload, &ti)
 	if err != nil {
@@ -313,14 +304,7 @@ func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
 			}
 		}
 
-		var count int64
-		err = b.database.Raw("SELECT COUNT(*) from group_users WHERE group_id = ? AND user_id = ?", ti.Thread, ti.Author).Scan(&count).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error querying for a group_user")
-		}
-		if count == 0 {
+		if !b.userIsInGroup(ti.Author, ti.Thread) {
 			log.WithFields(log.Fields{
 				"thread":       ti.Thread,
 				"message_type": ti.MessageType,
