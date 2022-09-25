@@ -57,6 +57,8 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		func(confirmed bool) {
 			if confirmed {
 				fyneUI.callbacks.ClearGroupChatHistory(thread.id)
+				fyneUI.showMainContainer()
+				fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
 			}
 		},
 		fyneUI.mainWindow,
