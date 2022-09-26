@@ -114,7 +114,22 @@ func (b *bounce) handleUser(peer string, payload []byte) {
 		return
 	}
 
-	// TODO: ack and return if it already exists
+	// Ack and mark delivered if we already know about this user
+	var existingUser user
+	err = b.database.Select("id").Where("id = ?", u.ID).First(&existingUser).Error
+	if err == nil {
+		b.markDeliveredTo(&existingUser, peer)
+		go b.broadcast(&ack{
+			destination: srcDevice.ID,
+			Users:       u.ID.String(),
+		})
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"user_id": u.ID,
+			"error":   err.Error(),
+		}).Fatal("database error looking up user")
+	}
 
 	// Save it
 	err = b.database.Session(&gorm.Session{SkipHooks: true}).Create(&u).Error

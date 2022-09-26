@@ -107,6 +107,7 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 			destination: srcDevice.ID,
 			Devices:     newDevice.ID.String(),
 		})
+		b.markDeliveredTo(&newDevice, peer)
 		return
 	}
 

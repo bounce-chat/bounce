@@ -118,7 +118,7 @@ type UICallbacks struct {
 	// Create a new group
 	CreateGroup func(groupName string, userIDs []uuid.UUID) error
 	// The user wants to add another user to a group
-	AddUserToGroup func(groupID, userID uuid.UUID)
+	AddUserToGroup func(groupID, userID uuid.UUID) error
 	// The user wants to rename a group
 	RenameGroup func(groupID uuid.UUID, newName string) error
 	// Set the message retention for a group

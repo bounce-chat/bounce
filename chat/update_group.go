@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var updateGroupMutex sync.Mutex
@@ -25,6 +26,8 @@ const UPDATE_GROUP_TYPE_SET_CLEAR_BEFORE = uint16(5)
 var ERR_UPDATE_GROUP_WITH_UNKNOWN_TYPE = errors.New("update group has unknown update type")
 var ERR_INVALID_GROUP_NAME = errors.New("invalid group name")
 var ERR_MUTED_UNTIL_ONLY_MUTABLE_BY_SELF = errors.New("group muted until settings can only be modified by current user")
+var ERR_USER_NOT_FOUND = errors.New("no user found with that ID")
+var ERR_USER_HAS_INVALID_DEVICE_GROUP = errors.New("user has invalid device group")
 
 type updateGroup struct {
 	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
@@ -161,6 +164,10 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	err = b.database.Where("id = ?", ug.ID).First(&existingUG).Error
 	if err == nil {
 		b.markDeliveredTo(&existingUG, peer)
+		go b.broadcast(&ack{
+			destination:  srcDevice.ID,
+			UpdateGroups: ug.ID.String(),
+		})
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
@@ -215,6 +222,7 @@ func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 	case UPDATE_GROUP_TYPE_CHANGE_NAME:
 		return b.saveAndApplyUpdateGroupChangeName(g, ug)
 	case UPDATE_GROUP_TYPE_ADD_USER:
+		return b.saveAndApplyUpdateGroupAddUser(g, ug)
 	case UPDATE_GROUP_TYPE_REMOVE_USER:
 	case UPDATE_GROUP_TYPE_CHANGE_MUTED_UNTIL:
 		return b.saveAndApplyUpdateGroupChangeMutedUntil(g, ug)
@@ -423,6 +431,59 @@ func (b *bounce) saveAndApplyUpdateGroupSetClearBefore(g group, ug updateGroup) 
 	return nil
 }
 
+func (b *bounce) saveAndApplyUpdateGroupAddUser(g group, ug updateGroup) error {
+	// Unmarshall the new user
+	var u user
+	err := msgpack.Unmarshal(ug.Payload, &u)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling user")
+		return err
+	}
+
+	// Ensure the user is valid
+	if !b.hasValidDeviceGroup(u) {
+		return ERR_USER_HAS_INVALID_DEVICE_GROUP
+	}
+
+	// Save the user and their devices if we don't have them
+	err = b.database.Transaction(func(tx *gorm.DB) error {
+		// TODO: if the users are new, shouldn't we ack them as well?
+		for _, dev := range u.Devices {
+			err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error saving device that belongs to a user being added to a group")
+				return err
+			}
+		}
+		err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error saving user that is being added to a group")
+			return err
+		}
+
+		return nil
+	})
+
+	// Associate the user with the group
+	err = b.database.Exec("INSERT INTO group_users VALUES(?, ?)", ug.Target, u.ID).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error adding user to group")
+	}
+
+	// Attempt to make a connection to the user
+	b.userConnectionDesired(u.ID)
+
+	return nil
+}
+
 func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
 	return b.applyAndBroadcastUpdateGroup(updateGroup{
 		ID:        uuid.New(),
@@ -476,11 +537,33 @@ func (b *bounce) clearGroupChatHistory(groupID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) addUserToGroup(groupID, userID uuid.UUID) {
-	log.WithFields(log.Fields{
-		"group": groupID,
-		"user":  userID,
-	}).Info("UI wants to add user to group")
+func (b *bounce) addUserToGroup(groupID, userID uuid.UUID) error {
+	// Look up the user to add with all associations
+	var newUser user
+	err := b.database.
+		Preload("Devices.Signature").
+		Preload(clause.Associations).
+		Where("id = ?", userID).First(&newUser).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ERR_USER_NOT_FOUND
+		} else {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Fatal("database error looking up user")
+		}
+	}
+
+	// Create an update group that adds this user
+	return b.applyAndBroadcastUpdateGroup(updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      UPDATE_GROUP_TYPE_ADD_USER,
+		Data:      newUser.getPayload(),
+	})
 }
 
 func (b *bounce) changeGroupNotificationSettings(group uuid.UUID, enabled bool) {
