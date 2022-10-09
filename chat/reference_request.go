@@ -15,18 +15,18 @@ import (
 // DirectMessages are comma separated for consistency with reference offers, which must do this
 // since SQLite doesn't support slices
 type referenceRequest struct {
-	_msgpack         struct{} `msgpack:",omitempty"`
-	ID               uuid.UUID
-	DirectMessages   string // Comma-separated list of DM UUIDs
-	GroupMessages    string
-	UpdateDMSettings string
-	Devices          string
-	Users            string
-	Groups           string
-	UpdateGroups     string
-	destination      uuid.UUID
-	payload          []byte
-	payloadMutex     sync.Mutex
+	_msgpack       struct{} `msgpack:",omitempty"`
+	ID             uuid.UUID
+	DirectMessages string // Comma-separated list of DM UUIDs
+	GroupMessages  string
+	UpdateDMs      string
+	Devices        string
+	Users          string
+	Groups         string
+	UpdateGroups   string
+	destination    uuid.UUID
+	payload        []byte
+	payloadMutex   sync.Mutex
 }
 
 func (rr *referenceRequest) getID() uuid.UUID {
@@ -105,7 +105,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupsPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedDirectMessagePayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupMessagePayloads(dev, rr, originalOffer)...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMSettingsPayloads(dev, rr, originalOffer)...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMsPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateGroupsPayloads(dev, rr, originalOffer)...)
 
 	if cu.hasContent() {
@@ -213,12 +213,12 @@ func (b *bounce) getRequestedGroupMessagePayloads(peer device, rr referenceReque
 	return requestedData
 }
 
-func (b *bounce) getRequestedUpdateDMSettingsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+func (b *bounce) getRequestedUpdateDMsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
-	requestedUpdateDMSettingsIDs, deliveredUpdateDMSettingsIDs := getRequestedAndDeliveredUUIDs(originalOffer.UpdateDMs, rr.UpdateDMSettings)
+	requestedUpdateDMsIDs, deliveredUpdateDMsIDs := getRequestedAndDeliveredUUIDs(originalOffer.UpdateDMs, rr.UpdateDMs)
 
-	for _, udID := range deliveredUpdateDMSettingsIDs {
+	for _, udID := range deliveredUpdateDMsIDs {
 		var ud updateDM
 		err := b.database.First(&ud, "id = ?", udID).Error
 		if err != nil {
@@ -238,7 +238,7 @@ func (b *bounce) getRequestedUpdateDMSettingsPayloads(peer device, rr referenceR
 		}
 	}
 
-	for _, udID := range requestedUpdateDMSettingsIDs {
+	for _, udID := range requestedUpdateDMsIDs {
 		var ud updateDM
 		err := b.database.First(&ud, "id = ?", udID).Error
 		if err != nil {

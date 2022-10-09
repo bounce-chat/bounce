@@ -76,7 +76,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckDirectMessages(peer, a)
 	b.handleAckGroupMessages(peer, a)
 	b.handleAckCatchUps(peer, a)
-	b.handleAckUpdateDMSettings(peer, a)
+	b.handleAckUpdateDMs(peer, a)
 	b.handleAckDevices(peer, a)
 	b.handleAckUsers(peer, a)
 	b.handleAckGroups(peer, a)
@@ -194,7 +194,7 @@ func (b *bounce) handleAckCatchUps(peer string, a ack) {
 	}
 }
 
-func (b *bounce) handleAckUpdateDMSettings(peer string, a ack) {
+func (b *bounce) handleAckUpdateDMs(peer string, a ack) {
 	if len(a.UpdateDMs) > 0 {
 		for _, udIDString := range strings.Split(a.UpdateDMs, ",") {
 			udID, err := uuid.Parse(udIDString)

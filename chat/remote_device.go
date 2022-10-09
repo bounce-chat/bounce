@@ -78,6 +78,9 @@ func frameAllowedWithoutProfile(frameType uint16) bool {
 func frameAllowedFromUnknownPeer(frameType uint16) bool {
 	allowedFrames := []uint16{
 		typeDevice,
+		typeCatchUp,
+		typeGroup,
+		typeUpdateGroup,
 		typeSyncDeviceRequest,
 		typeSyncDeviceRequestRejected,
 		typeSyncDeviceRequestAccepted,
@@ -96,6 +99,8 @@ func frameAllowedFromUnknownPeer(frameType uint16) bool {
 func (b *bounce) readFrames(conn net.Conn) { // TODO: move to protocol or something else?
 	handlers := b.getHandlers()
 	peer := conn.RemoteAddr().String()
+	_, profileExists := b.currentUser()
+	_, peerExists := b.getDeviceFromAddress(peer)
 
 	for {
 		frameType, data, err := readFrame(conn) // TODO: just read the header first, make sure we want to read the rest in the context of the device (untrusted devices can't send large messages, etc)
@@ -110,7 +115,10 @@ func (b *bounce) readFrames(conn net.Conn) { // TODO: move to protocol or someth
 		}
 
 		// Make sure that we can handle this type of frame without a profile if we don't have one
-		_, profileExists := b.currentUser()
+		if !profileExists {
+			// Re-check if we have a profile if needed, just in case one was setup between the last frame and this frame
+			_, profileExists = b.currentUser()
+		}
 		if !profileExists {
 			if !frameAllowedWithoutProfile(frameType) {
 				log.WithFields(log.Fields{
@@ -122,7 +130,10 @@ func (b *bounce) readFrames(conn net.Conn) { // TODO: move to protocol or someth
 		}
 
 		// Restrict the types of frames that can come from unknown peers
-		_, peerExists := b.getDeviceFromAddress(peer)
+		if !peerExists {
+			// If we didn't know about this device at first, check if we now know more about it since the last frame
+			_, peerExists = b.getDeviceFromAddress(peer)
+		}
 		if !peerExists {
 			if !frameAllowedFromUnknownPeer(frameType) {
 				log.WithFields(log.Fields{

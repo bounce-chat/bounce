@@ -85,9 +85,7 @@ func (b *bounce) handleGroup(peer string, payload []byte) {
 	// Look up the device that sent this group
 	srcDevice, exists := b.getDeviceFromAddress(peer)
 	if !exists {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("ignoring group sent from an unknown device")
+		// TODO: extra restrictions if this is a new device telling us about a group we're in?
 		return
 	}
 

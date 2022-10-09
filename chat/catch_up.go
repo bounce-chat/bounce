@@ -82,20 +82,28 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 		return
 	}
 
-	dev, exists := b.getDeviceFromAddress(peer)
-	if !exists {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("unable to find device that sent catch up, ignoring")
-		return
+	dev, deviceExists := b.getDeviceFromAddress(peer)
+	if deviceExists {
+		go b.broadcast(&ack{
+			destination: dev.ID,
+			CatchUps:    cu.ID.String(),
+		})
 	}
-	go b.broadcast(&ack{
-		destination: dev.ID,
-		CatchUps:    cu.ID.String(),
-	})
 
 	handlers := b.getHandlers()
 	for _, fr := range cu.Frames {
+		if !deviceExists && !frameAllowedFromUnknownPeer(fr.Type) {
+			log.WithFields(log.Fields{
+				"frame_type": fr.Type,
+			}).Warn("an unknown device sent a catch up that included frames that are not allowed from unknown devices")
+			return
+		}
+
+		if fr.Type == typeCatchUp {
+			log.Warn("refusing to processes recursive catch up")
+			return
+		}
+
 		handler, ok := handlers[fr.Type]
 		if !ok {
 			log.WithFields(log.Fields{
@@ -105,5 +113,18 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 			continue
 		}
 		handler(peer, fr.Payload)
+	}
+
+	if !deviceExists {
+		if dev, deviceNowExists := b.getDeviceFromAddress(peer); deviceNowExists {
+			// An unknown device sent a catch up that included frames that prove we should add the device,
+			// since we didn't initially offer references to this device we should now do so now that we
+			// have context on what this device is
+			go b.broadcast(&ack{
+				destination: dev.ID,
+				CatchUps:    cu.ID.String(),
+			})
+			// TODO: initialte reference flow
+		}
 	}
 }

@@ -142,7 +142,14 @@ func (b *bounce) sendReferences(peerAddress string) {
 		return
 	}
 
+	// We can't be sure this peer knows who we are yet
 	if !b.isDeliveredTo(&myDevice, peerAddress) { // TODO: use broadcastUntilDelivered?
+		// There are a variety of things that this peer might need to know in order to understand who we are.
+		// This can be communicted by sending any groups we have in common, their group updates, and our device.
+
+		// TODO: also pack any groups and group updates we don't know this peer has into a catchUp, then send that
+
+		// TODO: replicate the user proof if we aren't sure that this peer knows about our user
 		for i := 0; i < 5; i++ {
 			rd := b.getRemoteDevice(peerAddress)
 			rd.messages <- &myDevice
@@ -436,15 +443,15 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 	}
 
 	response := &referenceRequest{
-		ID:               ro.ID,
-		destination:      dev.ID,
-		DirectMessages:   b.getDirectMessagesToRequest(dev, ro),
-		GroupMessages:    b.getGroupMessagesToRequest(dev, ro),
-		UpdateDMSettings: b.getUpdateDMSettingsToRequest(dev, ro),
-		Devices:          b.getDevicesToRequest(dev, ro),
-		Users:            b.getUsersToRequest(dev, ro),
-		Groups:           b.getGroupsToRequest(dev, ro),
-		UpdateGroups:     b.getUpdateGroupsToRequest(dev, ro),
+		ID:             ro.ID,
+		destination:    dev.ID,
+		DirectMessages: b.getDirectMessagesToRequest(dev, ro),
+		GroupMessages:  b.getGroupMessagesToRequest(dev, ro),
+		UpdateDMs:      b.getUpdateDMsToRequest(dev, ro),
+		Devices:        b.getDevicesToRequest(dev, ro),
+		Users:          b.getUsersToRequest(dev, ro),
+		Groups:         b.getGroupsToRequest(dev, ro),
+		UpdateGroups:   b.getUpdateGroupsToRequest(dev, ro),
 	}
 
 	b.broadcast(response)
@@ -542,11 +549,11 @@ func (b *bounce) getGroupMessagesToRequest(dev device, ro referenceOffer) string
 
 }
 
-func (b *bounce) getUpdateDMSettingsToRequest(dev device, ro referenceOffer) string {
+func (b *bounce) getUpdateDMsToRequest(dev device, ro referenceOffer) string {
 	var resp string
 
 	if len(ro.UpdateDMs) > 0 {
-		desiredUpdateDMSettings := []string{}
+		desiredUpdateDMs := []string{}
 		for _, udIDString := range strings.Split(ro.UpdateDMs, ",") {
 			udID, err := uuid.Parse(udIDString)
 			if err != nil {
@@ -561,7 +568,7 @@ func (b *bounce) getUpdateDMSettingsToRequest(dev device, ro referenceOffer) str
 			err = b.database.First(&ud, "id = ?", udID).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
-					desiredUpdateDMSettings = append(desiredUpdateDMSettings, udID.String())
+					desiredUpdateDMs = append(desiredUpdateDMs, udID.String())
 				} else {
 					log.WithFields(log.Fields{
 						"id":    udID,
@@ -570,7 +577,7 @@ func (b *bounce) getUpdateDMSettingsToRequest(dev device, ro referenceOffer) str
 				}
 			}
 		}
-		resp = strings.Join(desiredUpdateDMSettings, ",")
+		resp = strings.Join(desiredUpdateDMs, ",")
 	}
 
 	return resp
