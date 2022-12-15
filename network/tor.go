@@ -13,10 +13,10 @@ import (
 
 	"github.com/hkparker/bounce/chat"
 
-	"berty.tech/go-libtor"
 	"github.com/cretz/bine/tor"
 	"github.com/cretz/bine/torutil"
 	"github.com/cretz/bine/torutil/ed25519"
+	"github.com/hkparker/go-libtor"
 	log "github.com/sirupsen/logrus"
 )
 
