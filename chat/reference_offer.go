@@ -134,36 +134,11 @@ func (b *bounce) sendReferences(peerAddress string) {
 		return
 	}
 
-	myDevice, exists := b.getDeviceFromAddress(b.network.Address())
+	_, exists = b.getDeviceFromAddress(b.network.Address())
 	if !exists {
-		// We're going to be inserting connections in the device pool when we add a device as
-		// a new sync device.  During that time we haven't saved anything as a local device,
-		// so we wouldn't expect anything here.  Nothing to do.
+		// Our own devices doesn't exist yet, we're probably going to be added as a new sync
+		// device now.  In the meantime there's nothing to do.
 		return
-	}
-
-	// We can't be sure this peer knows who we are yet
-	if !b.isDeliveredTo(&myDevice, peerAddress) { // TODO: use broadcastUntilDelivered?
-		// There are a variety of things that this peer might need to know in order to understand who we are.
-		// This can be communicted by sending any groups we have in common, their group updates, and our device.
-
-		// TODO: also pack any groups and group updates we don't know this peer has into a catchUp, then send that
-
-		// TODO: replicate the user proof if we aren't sure that this peer knows about our user
-		for i := 0; i < 5; i++ {
-			rd := b.getRemoteDevice(peerAddress)
-			rd.messages <- &myDevice
-			time.Sleep(3 * time.Second)
-			if b.isDeliveredTo(&myDevice, peerAddress) {
-				break
-			}
-		}
-		if !b.isDeliveredTo(&myDevice, peerAddress) {
-			log.WithFields(log.Fields{
-				"peer": peerAddress,
-			}).Warn("was not able to send device to peer that might not have it before reference offer")
-			return
-		}
 	}
 
 	references := b.getReferenceOfferFor(peerAddress)

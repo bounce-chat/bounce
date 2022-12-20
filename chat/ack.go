@@ -83,6 +83,11 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckUpdateGroups(peer, a)
 }
 
+func (b *bounce) sendDirectAck(peer string, a *ack) {
+	rd := b.getRemoteDevice(peer)
+	rd.messages <- a
+}
+
 func (b *bounce) handleAckDirectMessages(peer string, a ack) {
 	if len(a.DirectMessages) > 0 {
 		for _, dmIDString := range strings.Split(a.DirectMessages, ",") {

@@ -101,15 +101,6 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	updateGroupMutex.Lock()
 	defer updateGroupMutex.Unlock()
 
-	// Look up the device that sent it
-	srcDevice, exists := b.getDeviceFromAddress(peer)
-	if !exists {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("ignoring a group update sent from an unknown device")
-		return
-	}
-
 	// Unpack the signed container
 	sc, err := b.unpackSignedContainer(payload)
 	if err != nil {
@@ -129,19 +120,10 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	ug.Signature = sc.Signature
 	ug.Signer = sc.Signer
 
-	// Make sure the peer that delivered this message is part of the group
-	if !b.userIsInGroup(srcDevice.UserID, ug.Target) {
-		log.WithFields(log.Fields{
-			"user":   srcDevice.UserID,
-			"device": srcDevice.ID,
-			"group":  ug.Target,
-		}).Warn("device sent an update for a group that the device's user is not a part of, ignoring")
-		return
-	}
-
 	// Make sure that the user that created this signed container is the actor
 	if !b.signedByUser(sc, ug.Actor) {
 		log.WithFields(log.Fields{
+			"peer":           peer,
 			"actor":          ug.Actor,
 			"signing_device": sc.Signer,
 			"group":          ug.Target,
@@ -152,10 +134,10 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	// Make sure the author is in the group
 	if !b.userIsInGroup(ug.Actor, ug.Target) {
 		log.WithFields(log.Fields{
-			"user":   srcDevice.UserID,
-			"device": srcDevice.ID,
-			"group":  ug.Target,
-		}).Warn("user sent an update for a group that the user is not a part of, ignoring")
+			"peer":  peer,
+			"actor": ug.Actor,
+			"group": ug.Target,
+		}).Warn("device sent an update for a group where the actor is not a part of the group, ignoring")
 		return
 	}
 
@@ -164,8 +146,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	err = b.database.Where("id = ?", ug.ID).First(&existingUG).Error
 	if err == nil {
 		b.markDeliveredTo(&existingUG, peer)
-		go b.broadcast(&ack{
-			destination:  srcDevice.ID,
+		go b.sendDirectAck(peer, &ack{
 			UpdateGroups: ug.ID.String(),
 		})
 		return
@@ -179,17 +160,15 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	err = b.saveAndApplyUpdateGroup(ug)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"user":   srcDevice.UserID,
-			"device": srcDevice.ID,
-			"type":   ug.Type,
-			"error":  err.Error(),
+			"peer":  peer,
+			"type":  ug.Type,
+			"error": err.Error(),
 		}).Error("error applying update group")
 		return
 	}
 
 	// Ack it
-	go b.broadcast(&ack{
-		destination:  srcDevice.ID,
+	go b.sendDirectAck(peer, &ack{
 		UpdateGroups: ug.ID.String(),
 	})
 

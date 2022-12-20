@@ -75,32 +75,10 @@ func frameAllowedWithoutProfile(frameType uint16) bool {
 	return false
 }
 
-func frameAllowedFromUnknownPeer(frameType uint16) bool {
-	allowedFrames := []uint16{
-		typeDevice,
-		typeCatchUp,
-		typeGroup,
-		typeUpdateGroup,
-		typeSyncDeviceRequest,
-		typeSyncDeviceRequestRejected,
-		typeSyncDeviceRequestAccepted,
-		typeKeepAlive,
-	}
-
-	for _, allowed := range allowedFrames {
-		if frameType == allowed {
-			return true
-		}
-	}
-
-	return false
-}
-
 func (b *bounce) readFrames(conn net.Conn) { // TODO: move to protocol or something else?
 	handlers := b.getHandlers()
 	peer := conn.RemoteAddr().String()
 	_, profileExists := b.currentUser()
-	_, peerExists := b.getDeviceFromAddress(peer)
 
 	for {
 		frameType, data, err := readFrame(conn) // TODO: just read the header first, make sure we want to read the rest in the context of the device (untrusted devices can't send large messages, etc)
@@ -125,21 +103,6 @@ func (b *bounce) readFrames(conn net.Conn) { // TODO: move to protocol or someth
 					"frame_type": frameType,
 					"peer":       peer,
 				}).Warn("peer sent a frame that cannot be handeled when no profile exists")
-				continue
-			}
-		}
-
-		// Restrict the types of frames that can come from unknown peers
-		if !peerExists {
-			// If we didn't know about this device at first, check if we now know more about it since the last frame
-			_, peerExists = b.getDeviceFromAddress(peer)
-		}
-		if !peerExists {
-			if !frameAllowedFromUnknownPeer(frameType) {
-				log.WithFields(log.Fields{
-					"frame_type": frameType,
-					"peer":       peer,
-				}).Warn("unknown peer sent a frame that is not allowed from unknown peers")
 				continue
 			}
 		}
