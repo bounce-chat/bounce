@@ -421,33 +421,48 @@ func (b *bounce) saveAndApplyUpdateGroupAddUser(g group, ug updateGroup) error {
 		return err
 	}
 
-	// Ensure the user is valid
-	if !b.hasValidDeviceGroup(u) {
-		return ERR_USER_HAS_INVALID_DEVICE_GROUP
-	}
+	if u.ID == b.currentUserID() {
+		userIDs := []uuid.UUID{}
+		for _, u := range g.Users {
+			userIDs = append(userIDs, u.ID)
+		}
+		b.userInterface.NewGroupChat(Group{
+			ID:      g.ID,
+			Name:    g.Name,
+			UserIDs: userIDs,
+		})
+	} else {
+		// Ensure the user is valid
+		if !b.hasValidDeviceGroup(u) {
+			return ERR_USER_HAS_INVALID_DEVICE_GROUP
+		}
 
-	// Save the user and their devices if we don't have them
-	err = b.database.Transaction(func(tx *gorm.DB) error {
-		// TODO: if the users are new, shouldn't we ack them as well?
-		for _, dev := range u.Devices {
-			err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
+		// Save the user and their devices if we don't have them
+		err = b.database.Transaction(func(tx *gorm.DB) error {
+			// TODO: if the users are new, shouldn't we ack them as well?
+			for _, dev := range u.Devices {
+				err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error saving device that belongs to a user being added to a group")
+					return err
+				}
+			}
+			err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Error("error saving device that belongs to a user being added to a group")
+				}).Error("error saving user that is being added to a group")
 				return err
 			}
-		}
-		err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error saving user that is being added to a group")
-			return err
-		}
 
-		return nil
-	})
+			return nil
+		})
+
+		// Attempt to make a connection to the user
+		b.userConnectionDesired(u.ID)
+	}
 
 	// Associate the user with the group
 	err = b.database.Exec("INSERT INTO group_users VALUES(?, ?)", ug.Target, u.ID).Error
@@ -456,9 +471,6 @@ func (b *bounce) saveAndApplyUpdateGroupAddUser(g group, ug updateGroup) error {
 			"error": err.Error(),
 		}).Fatal("database error adding user to group")
 	}
-
-	// Attempt to make a connection to the user
-	b.userConnectionDesired(u.ID)
 
 	return nil
 }
@@ -535,7 +547,7 @@ func (b *bounce) addUserToGroup(groupID, userID uuid.UUID) error {
 	}
 
 	// Create an update group that adds this user
-	return b.applyAndBroadcastUpdateGroup(updateGroup{
+	err = b.applyAndBroadcastUpdateGroup(updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -543,6 +555,23 @@ func (b *bounce) addUserToGroup(groupID, userID uuid.UUID) error {
 		Type:      UPDATE_GROUP_TYPE_ADD_USER,
 		Data:      newUser.getPayload(),
 	})
+	if err != nil {
+		return err
+	}
+
+	// Do a reference flow with this new user to send over all the details of this group
+	addresses, err := b.getOnlinePeerAddresses(newUser.ID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"user_id": newUser.ID,
+			"error":   err.Error(),
+		}).Error("error looking up online addresses for user")
+	}
+	for _, address := range addresses {
+		b.sendReferences(address)
+	}
+
+	return nil
 }
 
 func (b *bounce) changeGroupNotificationSettings(group uuid.UUID, enabled bool) {

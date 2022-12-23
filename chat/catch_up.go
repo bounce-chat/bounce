@@ -118,4 +118,6 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 			}).Warn("catch up from unknown device did not result in learning device identity")
 		}
 	}
+
+	// TODO: make sure that any groups we learned about contain us
 }

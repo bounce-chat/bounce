@@ -23,7 +23,7 @@ type ack struct {
 	CatchUps       string
 	Devices        string
 	Users          string
-	Groups         string
+	GroupCreations string
 	UpdateGroups   string
 	UpdateDMs      string
 	destination    uuid.UUID
@@ -79,7 +79,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckUpdateDMs(peer, a)
 	b.handleAckDevices(peer, a)
 	b.handleAckUsers(peer, a)
-	b.handleAckGroups(peer, a)
+	b.handleAckGroupCreations(peer, a)
 	b.handleAckUpdateGroups(peer, a)
 }
 
@@ -298,34 +298,34 @@ func (b *bounce) handleAckUsers(peer string, a ack) {
 	}
 }
 
-func (b *bounce) handleAckGroups(peer string, a ack) {
-	if len(a.Groups) > 0 {
-		for _, groupIDString := range strings.Split(a.Groups, ",") {
-			groupID, err := uuid.Parse(groupIDString)
+func (b *bounce) handleAckGroupCreations(peer string, a ack) {
+	if len(a.GroupCreations) > 0 {
+		for _, groupCreationIDString := range strings.Split(a.GroupCreations, ",") {
+			groupCreationID, err := uuid.Parse(groupCreationIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":  err.Error(),
-					"string": groupIDString,
-				}).Error("invalid group UUID in ack")
+					"string": groupCreationIDString,
+				}).Error("invalid group creation UUID in ack")
 				continue
 			}
 
-			var g group
-			err = b.database.First(&g, "id = ?", groupID).Error
+			var gc groupCreation
+			err = b.database.First(&gc, "id = ?", groupCreationID).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					log.WithFields(log.Fields{
-						"id":   groupID,
+						"id":   groupCreationID,
 						"peer": peer,
-					}).Warn("unknown group acked")
+					}).Warn("unknown group creation acked")
 				} else {
 					log.WithFields(log.Fields{
-						"id":    groupID,
+						"id":    groupCreationID,
 						"error": err.Error(),
-					}).Fatal("database error querying for group")
+					}).Fatal("database error querying for group creation")
 				}
 			} else {
-				b.markDeliveredTo(&g, peer)
+				b.markDeliveredTo(&gc, peer)
 			}
 		}
 	}

@@ -9,7 +9,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var groupMutex sync.Mutex
@@ -19,6 +18,7 @@ type group struct {
 	Name                   string
 	Image                  []byte
 	CreatedBy              uuid.UUID
+	CreatedAt              int64
 	Retention              int64
 	ClearBefore            int64
 	MutedUntil             int64
@@ -41,144 +41,6 @@ func (g *group) BeforeCreate(tx *gorm.DB) error {
 // TODO: after delete, cascade delete of all group updates and messages
 // could also use db.Select(clause.Associations).Delete(&group)
 // https://gorm.io/docs/associations.html#Delete-with-Select
-
-func (g *group) getID() uuid.UUID {
-	return g.ID
-}
-
-func (g *group) getScope(_ uuid.UUID) int {
-	return scopeGroup
-}
-
-func (g *group) getDestination(_ uuid.UUID) uuid.UUID {
-	return g.ID
-}
-
-func (g *group) getType() uint16 {
-	return typeGroup
-}
-
-func (g *group) getPayload() []byte {
-	g.payloadMutex.Lock()
-	defer g.payloadMutex.Unlock()
-
-	if len(g.payload) == 0 {
-		bytes, err := msgpack.Marshal(g)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal group")
-		}
-		g.payload = bytes
-	}
-	return g.payload
-}
-
-func (g *group) getTimestamp() int64 {
-	return 0
-}
-
-func (b *bounce) handleGroup(peer string, payload []byte) {
-	groupMutex.Lock()
-	defer groupMutex.Unlock()
-
-	// Look up the device that sent this group
-	srcDevice, exists := b.getDeviceFromAddress(peer)
-	if !exists {
-		// TODO: extra restrictions if this is a new device telling us about a group we're in?
-		return
-	}
-
-	// Unmarshall the group
-	var g group
-	err := msgpack.Unmarshal(payload, &g)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error unmarshalling group")
-		return
-	}
-
-	// If we already know about this group, ack it and return
-	var existingGroup group
-	err = b.database.Where("id = ?", g.ID).First(&existingGroup).Error // TODO: use count or only select ID or something?
-	if err == nil {
-		// We already know about this group, just mark it as delivered to the peer
-		b.markDeliveredTo(&g, peer)
-	} else if errors.Is(err, gorm.ErrRecordNotFound) {
-		// This is a new group and we want to save it
-		// Check that each user has a valid device group
-		for _, u := range g.Users {
-			if !b.hasValidDeviceGroup(u) {
-				log.WithFields(log.Fields{
-					"peer":    peer,
-					"user_id": u.ID,
-				}).Warn("ignoring group that contains user with invalid device group")
-				return
-			}
-		}
-
-		// Save all of the structures in this group, creating any new users or devices as needed
-		userIDs := []uuid.UUID{}
-		err = b.database.Transaction(func(tx *gorm.DB) error {
-			for _, u := range g.Users {
-				// TODO: if the users are new, shouldn't we ack them as well?
-				for _, dev := range u.Devices {
-					err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
-					if err != nil {
-						log.WithFields(log.Fields{
-							"error": err.Error(),
-						}).Error("error saving device that is part of a group")
-						return err
-					}
-				}
-				err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Error("error saving user that is part of a group")
-					return err
-				}
-				userIDs = append(userIDs, u.ID)
-			}
-			err := tx.Create(&g).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error saving new group")
-				return err
-			}
-
-			return nil
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error in transaction for saving a new group")
-		}
-
-		// TODO: notify the device pool to connect right away.  groupConnectionDesired()?
-
-		go b.broadcast(&g)
-
-		b.userInterface.NewGroupChat(Group{
-			ID:      g.ID,
-			Name:    g.Name,
-			UserIDs: userIDs,
-		})
-
-	} else {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error looking up group")
-	}
-
-	// Ack the group
-	go b.broadcast(&ack{
-		destination: srcDevice.ID,
-		Groups:      g.ID.String(),
-	})
-}
 
 func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 	if name == "" {
@@ -223,14 +85,46 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 		Retention: 60 * 60 * 24 * 7, // TODO: have the default be a user setting
 		Users:     users,
 	}
-	err := b.database.Omit("Users.*").Create(&g).Error
+
+	groupData, err := msgpack.Marshal(g)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error saving new group")
+		}).Fatal("cannot msgpack marshal group")
 	}
 
-	go b.broadcast(&g)
+	gc := groupCreation{
+		ID:   g.ID,
+		Data: groupData,
+	}
+	gc.Payload, err = msgpack.Marshal(gc)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling group creation")
+	}
+	sc := b.createSignedContainer(gc.Payload)
+	gc.Signature = sc.Signature
+	gc.Signer = sc.Signer
+
+	err = b.database.Transaction(func(tx *gorm.DB) error {
+		err = tx.Omit("Users.*").Create(&g).Error
+		if err != nil {
+			return err
+		}
+		err = tx.Create(&gc).Error
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error saving new group and group creation")
+	}
+
+	go b.broadcast(&gc)
 
 	b.userInterface.OpenNewGroupChat(Group{
 		ID:      g.ID,

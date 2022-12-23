@@ -22,7 +22,7 @@ type referenceRequest struct {
 	UpdateDMs      string
 	Devices        string
 	Users          string
-	Groups         string
+	GroupCreations string
 	UpdateGroups   string
 	destination    uuid.UUID
 	payload        []byte
@@ -312,45 +312,45 @@ func (b *bounce) getRequestedUpdateGroupsPayloads(peer device, rr referenceReque
 func (b *bounce) getRequestedGroupsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
-	requestedGroupIDs, deliveredGroupIDs := getRequestedAndDeliveredUUIDs(originalOffer.Groups, rr.Groups)
+	requestedGroupCreationIDs, deliveredGroupCreationIDs := getRequestedAndDeliveredUUIDs(originalOffer.GroupCreations, rr.GroupCreations)
 
-	for _, groupID := range deliveredGroupIDs {
-		var g group
-		err := b.database.First(&g, "id = ?", groupID).Error
+	for _, groupCreationID := range deliveredGroupCreationIDs {
+		var gc groupCreation
+		err := b.database.First(&gc, "id = ?", groupCreationID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   groupID,
+					"id":   groupCreationID,
 					"peer": peer.Address,
-				}).Warn("reference request indicates we offered an unknown group")
+				}).Warn("reference request indicates we offered an unknown group creation")
 			} else {
 				log.WithFields(log.Fields{
-					"id":    groupID,
+					"id":    groupCreationID,
 					"error": err.Error(),
-				}).Fatal("database error querying for group")
+				}).Fatal("database error querying for group creation")
 			}
 		} else {
-			b.markDeliveredTo(&g, peer.Address)
+			b.markDeliveredTo(&gc, peer.Address)
 		}
 	}
 
-	for _, groupID := range requestedGroupIDs {
-		var g group
-		err := b.database.Preload(clause.Associations).First(&g, "id = ?", groupID).Error
+	for _, groupCreationID := range requestedGroupCreationIDs {
+		var gc groupCreation
+		err := b.database.First(&gc, "id = ?", groupCreationID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   groupID,
+					"id":   groupCreationID,
 					"peer": peer.Address,
-				}).Warn("reference request asks for unknown group we offered")
+				}).Warn("reference request asks for unknown group creation we offered")
 			} else {
 				log.WithFields(log.Fields{
-					"id":    groupID,
+					"id":    groupCreationID,
 					"error": err.Error(),
-				}).Fatal("database error querying for group")
+				}).Fatal("database error querying for group creation")
 			}
 		} else {
-			requestedData = append(requestedData, &g)
+			requestedData = append(requestedData, &gc)
 		}
 	}
 

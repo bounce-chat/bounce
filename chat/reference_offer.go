@@ -26,7 +26,7 @@ type referenceOffer struct {
 	UpdateDMs      string
 	Devices        string
 	Users          string // only for sync devices
-	Groups         string
+	GroupCreations string
 	UpdateGroups   string
 	Destination    uuid.UUID `msgpack:"-"`
 	payload        []byte
@@ -86,7 +86,7 @@ func (ro *referenceOffer) shouldDial() bool {
 	if len(ro.Users) > 0 {
 		return true
 	}
-	if len(ro.Groups) > 0 {
+	if len(ro.GroupCreations) > 0 {
 		return true
 	}
 	if len(ro.UpdateGroups) > 0 {
@@ -112,7 +112,7 @@ func (ro *referenceOffer) hasContent() bool {
 	if len(ro.Users) > 0 {
 		return true
 	}
-	if len(ro.Groups) > 0 {
+	if len(ro.GroupCreations) > 0 {
 		return true
 	}
 	if len(ro.UpdateGroups) > 0 {
@@ -168,7 +168,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 		UpdateDMs:      b.getUpdateDMsToOffer(dev),
 		Devices:        b.getDevicesToOffer(dev),
 		Users:          b.getUsersToOffer(dev),
-		Groups:         b.getGroupsToOffer(dev),
+		GroupCreations: b.getGroupCreationsToOffer(dev),
 		UpdateGroups:   b.getUpdateGroupsToOffer(dev),
 	}
 }
@@ -347,28 +347,29 @@ func (b *bounce) getUsersToOffer(dev device) string {
 	return offerString
 }
 
-func (b *bounce) getGroupsToOffer(dev device) string {
-	groupsToOffer := []string{}
+func (b *bounce) getGroupCreationsToOffer(dev device) string {
+	groupCreationsToOffer := []string{}
 
-	var unsentGroups []group
+	var unsentGroupCreations []groupCreation
 	err := b.database.
 		Preload(clause.Associations).
-		Select("groups.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeGroup).
+		Select("group_creations.*").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeGroupCreation).
+		Joins("JOIN groups ON groups.id = group_ceations.id").
 		Joins("JOIN group_users ON groups.id = group_users.group_id JOIN users ON group_users.user_id = users.id").
 		Where("delivery_records.id IS NULL AND group_users.user_id = ?", dev.UserID).
-		Find(&unsentGroups).Error // TODO: only select ID?
+		Find(&unsentGroupCreations).Error // TODO: only select ID?
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error selecting unsent groups in reference offer")
+		}).Fatal("error selecting unsent group creations in reference offer")
 	}
 
-	for _, g := range unsentGroups {
-		groupsToOffer = append(groupsToOffer, g.ID.String())
+	for _, gc := range unsentGroupCreations {
+		groupCreationsToOffer = append(groupCreationsToOffer, gc.ID.String())
 	}
 
-	return strings.Join(groupsToOffer, ",")
+	return strings.Join(groupCreationsToOffer, ",")
 }
 
 func (b *bounce) getUpdateGroupsToOffer(dev device) string {
@@ -425,7 +426,7 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 		UpdateDMs:      b.getUpdateDMsToRequest(dev, ro),
 		Devices:        b.getDevicesToRequest(dev, ro),
 		Users:          b.getUsersToRequest(dev, ro),
-		Groups:         b.getGroupsToRequest(dev, ro),
+		GroupCreations: b.getGroupCreationsToRequest(dev, ro),
 		UpdateGroups:   b.getUpdateGroupsToRequest(dev, ro),
 	}
 
@@ -633,35 +634,35 @@ func (b *bounce) getUsersToRequest(dev device, ro referenceOffer) string {
 	return resp
 }
 
-func (b *bounce) getGroupsToRequest(dev device, ro referenceOffer) string {
+func (b *bounce) getGroupCreationsToRequest(dev device, ro referenceOffer) string {
 	var resp string
 
-	if len(ro.Groups) > 0 {
-		desiredGroups := []string{}
-		for _, groupIDString := range strings.Split(ro.Groups, ",") {
-			groupID, err := uuid.Parse(groupIDString)
+	if len(ro.GroupCreations) > 0 {
+		desiredGroupCreations := []string{}
+		for _, groupCreationIDString := range strings.Split(ro.GroupCreations, ",") {
+			groupCreationID, err := uuid.Parse(groupCreationIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":  err.Error(),
-					"string": groupIDString,
-				}).Error("invalid group UUID in reference offer")
+					"string": groupCreationIDString,
+				}).Error("invalid group creation UUID in reference offer")
 				continue
 			}
 
-			var g group
-			err = b.database.First(&g, "id = ?", groupID).Error
+			var gc groupCreation
+			err = b.database.First(&gc, "id = ?", groupCreationID).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
-					desiredGroups = append(desiredGroups, groupID.String())
+					desiredGroupCreations = append(desiredGroupCreations, groupCreationID.String())
 				} else {
 					log.WithFields(log.Fields{
-						"id":    groupID,
+						"id":    groupCreationID,
 						"error": err.Error(),
-					}).Fatal("database error querying for group")
+					}).Fatal("database error querying for group creation")
 				}
 			}
 		}
-		resp = strings.Join(desiredGroups, ",")
+		resp = strings.Join(desiredGroupCreations, ",")
 	}
 
 	return resp

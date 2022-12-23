@@ -186,7 +186,7 @@ func (b *bounce) userConnectionDesired(id uuid.UUID) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"user_id": id,
-			}).Error("user not found for direct message")
+			}).Error("connection desired to unknown user")
 			return
 		} else {
 			log.WithFields(log.Fields{
@@ -230,4 +230,30 @@ func (b *bounce) tryDialing(address string) { // TODO: move cooldown logic in he
 		// TODO: callback to inform the UI that a user is online?  use a callback?
 		b.insertConnectionIntoDevicePool(conn)
 	}
+}
+
+func (b *bounce) getOnlinePeerAddresses(userID uuid.UUID) ([]string, error) {
+	addresses := []string{}
+
+	var u user
+	err := b.database.Preload(clause.Associations).First(&u, "id = ?", userID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+			}).Error("user not found while looking for online devices")
+			return addresses, err
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up user")
+		}
+	}
+	for _, dev := range u.Devices {
+		if b.getRemoteDevice(dev.Address).connectedSockets > 0 { // TODO: we want 2 open if we're actively chatting though
+			addresses = append(addresses, dev.Address)
+		}
+	}
+
+	return addresses, nil
 }

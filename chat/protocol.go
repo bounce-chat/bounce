@@ -32,7 +32,7 @@ var typeSyncDeviceRequestAccepted = uint16(10)
 var typeDevice = uint16(11)
 var typeUser = uint16(12)
 var typeUpdateDM = uint16(13)
-var typeGroup = uint16(14)
+var typeGroupCreation = uint16(14)
 var typeUpdateGroup = uint16(15)
 var typeTypingIndicator = uint16(16)
 
@@ -76,7 +76,7 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 		typeDevice:                    b.handleDevice,
 		typeUser:                      b.handleUser,
 		typeUpdateDM:                  b.handleUpdateDM,
-		typeGroup:                     b.handleGroup,
+		typeGroupCreation:             b.handleGroupCreation,
 		typeUpdateGroup:               b.handleUpdateGroup,
 		typeTypingIndicator:           b.handleTypingIndicator,
 	}
