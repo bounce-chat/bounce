@@ -120,4 +120,16 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 	}
 
 	// TODO: make sure that any groups we learned about contain us
+	// SELECT group_id FROM user_groups WHERE user_id != me
+	// SELECT FROM groups JOIN group_users WHERE my_id NOT IN (SELECT ID from USERS where group_users)
+	//var orphanedGroups []string
+	//err := b.database.Table("group_users").
+	//	Select("group_id").
+	//	Where("user_id != ?", b.currentUserID).
+	//	Find(&orphanedGroups).
+	//	Error
+	//if err != nil {
+	//
+	//}
+
 }

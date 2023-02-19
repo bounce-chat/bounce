@@ -58,6 +58,7 @@ func (b *bounce) openDatabase() {
 		&syncDeviceOffer{},
 		&deliveryRecord{},
 		&updateDM{},
+		&groupCreation{},
 		&group{},
 		&GroupMessage{},
 		&updateGroup{},
