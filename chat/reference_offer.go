@@ -354,7 +354,7 @@ func (b *bounce) getGroupCreationsToOffer(dev device) string {
 	err := b.database.
 		Preload(clause.Associations).
 		Select("group_creations.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeGroupCreation).
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_creations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeGroupCreation).
 		Joins("JOIN groups ON groups.id = group_creations.id").
 		Joins("JOIN group_users ON groups.id = group_users.group_id JOIN users ON group_users.user_id = users.id").
 		Where("delivery_records.id IS NULL AND group_users.user_id = ?", dev.UserID).
