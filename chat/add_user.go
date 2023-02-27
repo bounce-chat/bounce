@@ -6,7 +6,10 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
+	"github.com/zeebo/blake3"
 )
+
+var handleAddUsersMutex sync.Mutex
 
 //
 // An addUser structure contains proof that two users became friends
@@ -62,13 +65,114 @@ func (au *addUser) getTimestamp() int64 {
 }
 
 func (b *bounce) handleAddUser(peer string, payload []byte) {
-	// unmarshal both users
-	// check signatures
-	// make sure the Xor matches
-	// figure out which one is us
-	// see if we can learn anything about new sync devices that belong to us from this?
+	handleAddUsersMutex.Lock()
+	defer handleAddUsersMutex.Unlock()
+
+	// Unmarshal the structure
+	var au addUser
+	err := msgpack.Unmarshal(payload, &au)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling add user")
+		return
+	}
+
+	// Ensure that all the signatures are correct
+	offerUserHash := blake3.Sum256(au.OfferUser)
+	ok := b.network.VerifySignature(au.RequesterDevice, offerUserHash[:], au.RequesterSignature)
+	if !ok {
+		log.Warn("add user has invalid requester signature")
+		return
+
+	}
+	requesterUserHash := blake3.Sum256(au.RequesterUser)
+	ok = b.network.VerifySignature(au.OfferDevice, requesterUserHash[:], au.OfferSignature)
+	if !ok {
+		log.Warn("add user has invalid offer signature")
+		return
+	}
+
+	// Unmarshal the users in side the structure
+	var offerUser user
+	err = msgpack.Unmarshal(au.OfferUser, &offerUser)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling offer user inside of add user")
+		return
+	}
+	var requesterUser user
+	err = msgpack.Unmarshal(au.RequesterUser, &requesterUser)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling requester user inside of add user")
+		return
+	}
+
+	// Make sure the xor matches the users
+	if au.Xor != xor(offerUser.ID, requesterUser.ID) {
+		log.WithFields(log.Fields{
+			"xor":               au.Xor,
+			"actual_xor":        xor(offerUser.ID, requesterUser.ID),
+			"offer_user_id":     offerUser.ID,
+			"requester_user_id": requesterUser.ID,
+		}).Warn("rejecting add user with invalid xor")
+		return
+	}
+
+	// Ensure that the devices that did the signing are part of the users in the structure
+	offerDeviceFound := false
+	for _, dev := range offerUser.Devices {
+		if offerDeviceFound {
+			continue
+		}
+		if dev.Address == au.OfferDevice {
+			offerDeviceFound = true
+		}
+	}
+	if !offerDeviceFound {
+		log.Warn("add user offer signature not made by a device owned by the offer user")
+		return
+	}
+	requesterDeviceFound := false
+	for _, dev := range requesterUser.Devices {
+		if requesterDeviceFound {
+			continue
+		}
+		if dev.Address == au.RequesterDevice {
+			requesterDeviceFound = true
+		}
+	}
+	if !requesterDeviceFound {
+		log.Warn("add user requester signature not made by a device owned by the requester user")
+		return
+	}
+
+	var counterparty user
+	if offerUser.ID == b.currentUserID() && requesterUser.ID != b.currentUserID() {
+		counterparty = requesterUser
+	} else if requesterUser.ID == b.currentUserID() && offerUser.ID != b.currentUserID() {
+		counterparty = offerUser
+	} else {
+		log.Warn("add user does not container us and someone else")
+		return
+	}
+
+	// TODO: see if we can learn anything about new sync devices that belong to us from this?
 	// 	would those actually be replicated during the reference flow anyway?
-	// if this didn't come from a sync device, or one of the devices owned by the new user, report something weird
+
+	// Make sure the device that is sending us this makes sense
+	peerDevice, exists := b.getDeviceFromAddress(peer)
+	if !(b.isSyncDevice(peerDevice) || !exists || peerDevice.UserID == counterparty.ID) {
+		log.WithFields(log.Fields{
+			"peer":            peer,
+			"counterparty_id": counterparty.ID,
+		}).Warn("add user came from unexpected device, ignoring")
+		return
+	}
+
 	// validate the new user (device group, doesn't conflict with existing devices)
 	// save and apply (make saving part of applying?)
 	// send references to the peer

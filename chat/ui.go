@@ -36,7 +36,7 @@ type UI interface {
 
 	// Chats
 	//UserIntroduced(Introduction)
-	UserImported(User)
+	UserImported(User) // TODO: still needed?
 	ReceivedDirectMessage(DirectMessage)
 	DeleteMessage(uuid.UUID)
 	MarkMessageUndeliverable(uuid.UUID)
