@@ -322,24 +322,42 @@ func (b *bounce) getDevicesToOffer(dev device) string {
 func (b *bounce) getAddUsersToOffer(dev device) string {
 	offerString := ""
 
-	addUsersToOffer := []string{}
-	var unsentAddUsers []addUser
-	err := b.database.
-		Select("add_users.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeAddUser).
-		Where("delivery_records.id IS NULL").
-		Find(&unsentAddUsers).Error // TODO: only select ID?
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error selecting users for reference offer")
-	}
-	for _, au := range unsentAddUsers {
-		if b.isSyncDevice(dev) || dev.UserID == xor(b.currentUserID(), au.Xor) {
+	if b.isSyncDevice(dev) {
+		addUsersToOffer := []string{}
+		var unsentAddUsers []addUser
+		err := b.database.
+			Select("add_users.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeAddUser).
+			Where("delivery_records.id IS NULL").
+			Find(&unsentAddUsers).Error // TODO: only select ID?
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting users for reference offer")
+		}
+		for _, au := range unsentAddUsers {
 			addUsersToOffer = append(addUsersToOffer, au.ID.String())
 		}
+		offerString = strings.Join(addUsersToOffer, ",")
+	} else {
+		addUsersToOffer := []string{}
+		var unsentAddUsers []addUser
+		err := b.database.
+			Select("add_users.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeAddUser).
+			Where("delivery_records.id IS NULL AND add_user.xor = ?", xor(b.currentUserID(), dev.UserID)).
+			Find(&unsentAddUsers).Error // TODO: only select ID?
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting users for reference offer")
+		}
+		for _, au := range unsentAddUsers {
+			addUsersToOffer = append(addUsersToOffer, au.ID.String())
+		}
+		offerString = strings.Join(addUsersToOffer, ",")
+
 	}
-	offerString = strings.Join(addUsersToOffer, ",")
 
 	return offerString
 }
