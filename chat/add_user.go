@@ -150,13 +150,14 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 		return
 	}
 
+	// Figure out which user is not us
 	var counterparty user
 	if offerUser.ID == b.currentUserID() && requesterUser.ID != b.currentUserID() {
 		counterparty = requesterUser
 	} else if requesterUser.ID == b.currentUserID() && offerUser.ID != b.currentUserID() {
 		counterparty = offerUser
 	} else {
-		log.Warn("add user does not container us and someone else")
+		log.Warn("add user does not contain us and someone else")
 		return
 	}
 
@@ -165,7 +166,7 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 
 	// Make sure the device that is sending us this makes sense
 	peerDevice, exists := b.getDeviceFromAddress(peer)
-	if !(b.isSyncDevice(peerDevice) || !exists || peerDevice.UserID == counterparty.ID) {
+	if exists && !(b.isSyncDevice(peerDevice) || peerDevice.UserID == counterparty.ID) {
 		log.WithFields(log.Fields{
 			"peer":            peer,
 			"counterparty_id": counterparty.ID,
