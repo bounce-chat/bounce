@@ -547,13 +547,20 @@ func (b *bounce) addUserToGroup(groupID, userID uuid.UUID) error {
 	}
 
 	// Create an update group that adds this user
+	newUserBytes, err := msgpack.Marshal(newUser)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"user_id": newUser.ID,
+			"error":   err.Error(),
+		}).Fatal("error marshalling user while adding user to group")
+	}
 	err = b.applyAndBroadcastUpdateGroup(updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      UPDATE_GROUP_TYPE_ADD_USER,
-		Data:      newUser.getPayload(),
+		Data:      newUserBytes,
 	})
 	if err != nil {
 		return err

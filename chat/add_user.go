@@ -12,7 +12,9 @@ import (
 // An addUser structure contains proof that two users became friends
 //
 type addUser struct {
-	ID                 uuid.UUID
+	ID                 uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Xor                uuid.UUID
+	Timestamp          int64
 	OfferUser          []byte
 	RequesterUser      []byte
 	OfferDevice        string
@@ -31,9 +33,8 @@ func (au *addUser) getScope(_ uuid.UUID) int {
 	return scopeUser
 }
 
-func (au *addUser) getDestination(_ uuid.UUID) uuid.UUID {
-	// TODO: compute counterparty
-	return uuid.Nil
+func (au *addUser) getDestination(myID uuid.UUID) uuid.UUID {
+	return xor(myID, au.Xor)
 }
 
 func (au *addUser) getType() uint16 {
@@ -56,8 +57,23 @@ func (au *addUser) getPayload() []byte {
 	return au.payload
 }
 
+func (au *addUser) getTimestamp() int64 {
+	return au.Timestamp
+}
+
 func (b *bounce) handleAddUser(peer string, payload []byte) {
-	// TODO: handle it by validating everything, figuring out which user isn't us, then saving the other user, sending references
+	// unmarshal both users
+	// check signatures
+	// make sure the Xor matches
+	// figure out which one is us
+	// see if we can learn anything about new sync devices that belong to us from this?
+	// 	would those actually be replicated during the reference flow anyway?
+	// if this didn't come from a sync device, or one of the devices owned by the new user, report something weird
+	// validate the new user (device group, doesn't conflict with existing devices)
+	// save and apply (make saving part of applying?)
+	// send references to the peer
+	// audit peers
+	// broadcast
 }
 
 func (b *bounce) applyAddUser(au addUser) error {

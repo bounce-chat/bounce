@@ -66,7 +66,7 @@ func (b *bounce) requestToAddUser(data string) error {
 
 	conn, err := b.network.Dial(address)
 	if err != nil {
-		return errors.New("could not connect to device")
+		return errors.New("could not connect to device") // TODO: ERR_CONNECTION_FAILED
 	}
 	b.insertConnectionIntoDevicePool(conn)
 

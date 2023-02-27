@@ -21,7 +21,7 @@ type referenceRequest struct {
 	GroupMessages  string
 	UpdateDMs      string
 	Devices        string
-	Users          string
+	AddUsers       string
 	GroupCreations string
 	UpdateGroups   string
 	destination    uuid.UUID
@@ -100,7 +100,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 		ID:          uuid.New(),
 		destination: dev.ID,
 	}
-	cu.broadcastables = b.getRequestedUsersPayloads(dev, rr, originalOffer)
+	cu.broadcastables = b.getRequestedAddUsersPayloads(dev, rr, originalOffer)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedDevicesPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupsPayloads(dev, rr, originalOffer)...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedDirectMessagePayloads(dev, rr, originalOffer)...)
@@ -405,61 +405,48 @@ func (b *bounce) getRequestedDevicesPayloads(peer device, rr referenceRequest, o
 	return requestedData
 }
 
-func (b *bounce) getRequestedUsersPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+func (b *bounce) getRequestedAddUsersPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
-	requestedUserIDs, deliveredUserIDs := getRequestedAndDeliveredUUIDs(originalOffer.Users, rr.Users)
+	requestedAddUserIDs, deliveredAddUserIDs := getRequestedAndDeliveredUUIDs(originalOffer.AddUsers, rr.AddUsers)
 
-	if len(requestedUserIDs) > 0 {
-		if peer.UserID != b.currentUserID() {
-			log.WithFields(log.Fields{
-				"peer": peer.Address,
-			}).Warn("non-sync device asked for users in reference request, ignoring")
-			return requestedData
-		}
-	}
-
-	for _, userID := range deliveredUserIDs {
-		var u user
-		err := b.database.First(&u, "id = ?", userID).Error
+	for _, addUserID := range deliveredAddUserIDs {
+		var au addUser
+		err := b.database.First(&au, "id = ?", addUserID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   userID,
+					"id":   addUserID,
 					"peer": peer.Address,
-				}).Warn("reference request indicates we offered an unknown user")
+				}).Warn("reference request indicates we offered an unknown add user")
 			} else {
 				log.WithFields(log.Fields{
-					"id":    userID,
+					"id":    addUserID,
 					"error": err.Error(),
-				}).Fatal("database error querying for user")
+				}).Fatal("database error querying for add user")
 			}
 		} else {
-			b.markDeliveredTo(&u, peer.Address)
+			b.markDeliveredTo(&au, peer.Address)
 		}
 	}
 
-	for _, userID := range requestedUserIDs {
-		var u user
-		err := b.database.First(&u, "id = ?", userID).Error
+	for _, addUserID := range requestedAddUserIDs {
+		var au addUser
+		err := b.database.First(&au, "id = ?", addUserID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   userID,
+					"id":   addUserID,
 					"peer": peer.Address,
-				}).Warn("reference request asks for unknown user we offered")
+				}).Warn("reference request asks for unknown add user we offered")
 			} else {
 				log.WithFields(log.Fields{
-					"id":    userID,
+					"id":    addUserID,
 					"error": err.Error(),
-				}).Fatal("database error querying for user")
+				}).Fatal("database error querying for add user")
 			}
 		} else {
-			// In catchUps, devices, groups, and users are sent separately
-			// TODO: do we need to null this out since we aren't preloading associations?
-			u.Devices = []device{}
-			u.Groups = []group{}
-			requestedData = append(requestedData, &u)
+			requestedData = append(requestedData, &au)
 		}
 	}
 

@@ -11,7 +11,6 @@ import (
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -46,47 +45,7 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (u *user) AfterDelete(tx *gorm.DB) error {
-	return tx.Where("frame_id = ? AND frame_type = ?", u.ID, typeUser).Delete(&deliveryRecord{}).Error
-}
-
-func (u *user) getID() uuid.UUID {
-	return u.ID
-}
-
-func (u *user) getScope(_ uuid.UUID) int {
-	return scopeSync
-}
-
-func (u *user) getDestination(_ uuid.UUID) uuid.UUID {
-	return uuid.Nil
-}
-
-func (u *user) getType() uint16 {
-	return typeUser
-}
-
-func (u *user) getPayload() []byte {
-	u.payloadMutex.Lock()
-	defer u.payloadMutex.Unlock()
-
-	if len(u.payload) == 0 {
-		bytes, err := msgpack.Marshal(u)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal user")
-		}
-		u.payload = bytes
-	}
-	return u.payload
-}
-
-func (u *user) getTimestamp() int64 {
-	// For catch up messages, always sort to the front
-	return 0
-}
-
+/*
 func (b *bounce) handleUser(peer string, payload []byte) {
 	// Make sure this is a sync device
 	srcDevice, exists := b.getDeviceFromAddress(peer)
@@ -149,6 +108,7 @@ func (b *bounce) handleUser(peer string, payload []byte) {
 	// Tell the UI about it
 	b.userInterface.UserImported(User{ID: u.ID, Name: u.Name})
 }
+*/
 
 func (b *bounce) currentUser() (user, bool) {
 	var currentUser user
@@ -326,7 +286,7 @@ func (b *bounce) importUser(data []byte) (User, error) {
 	// As in, bounce only accepts DMs from user's in a shared group or who send an import secret
 
 	// Inform the user sync devices about it
-	b.broadcast(&newUser.Profile)
+	//b.broadcast(&newUser.Profile)
 
 	// Set the defaul local DM settings
 	b.setDMMutedUntil(newUser.Profile.ID, int64(0)) // TODO: make this default a setting on our profile

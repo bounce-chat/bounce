@@ -22,7 +22,7 @@ type ack struct {
 	GroupMessages  string
 	CatchUps       string
 	Devices        string
-	Users          string
+	AddUsers       string
 	GroupCreations string
 	UpdateGroups   string
 	UpdateDMs      string
@@ -78,7 +78,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckCatchUps(peer, a)
 	b.handleAckUpdateDMs(peer, a)
 	b.handleAckDevices(peer, a)
-	b.handleAckUsers(peer, a)
+	b.handleAckAddUsers(peer, a)
 	b.handleAckGroupCreations(peer, a)
 	b.handleAckUpdateGroups(peer, a)
 }
@@ -265,34 +265,34 @@ func (b *bounce) handleAckDevices(peer string, a ack) {
 	}
 }
 
-func (b *bounce) handleAckUsers(peer string, a ack) {
-	if len(a.Users) > 0 {
-		for _, userIDString := range strings.Split(a.Users, ",") {
-			userID, err := uuid.Parse(userIDString)
+func (b *bounce) handleAckAddUsers(peer string, a ack) {
+	if len(a.AddUsers) > 0 {
+		for _, addUserIDString := range strings.Split(a.AddUsers, ",") {
+			addUserID, err := uuid.Parse(addUserIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":  err.Error(),
-					"string": userIDString,
-				}).Error("invalid user UUID in ack")
+					"string": addUserIDString,
+				}).Error("invalid add user UUID in ack")
 				continue
 			}
 
-			var u user
-			err = b.database.First(&u, "id = ?", userID).Error
+			var au addUser
+			err = b.database.First(&au, "id = ?", addUserID).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					log.WithFields(log.Fields{
-						"id":   userID,
+						"id":   addUserID,
 						"peer": peer,
-					}).Warn("unknown user acked")
+					}).Warn("unknown add user acked")
 				} else {
 					log.WithFields(log.Fields{
-						"id":    userID,
+						"id":    addUserID,
 						"error": err.Error(),
-					}).Fatal("database error querying for user")
+					}).Fatal("database error querying for add user")
 				}
 			} else {
-				b.markDeliveredTo(&u, peer)
+				b.markDeliveredTo(&au, peer)
 			}
 		}
 	}

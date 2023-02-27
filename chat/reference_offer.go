@@ -25,7 +25,7 @@ type referenceOffer struct {
 	GroupMessages  string
 	UpdateDMs      string
 	Devices        string
-	Users          string // only for sync devices
+	AddUsers       string
 	GroupCreations string
 	UpdateGroups   string
 	Destination    uuid.UUID `msgpack:"-"`
@@ -83,7 +83,7 @@ func (ro *referenceOffer) shouldDial() bool {
 	if len(ro.Devices) > 0 {
 		return true
 	}
-	if len(ro.Users) > 0 {
+	if len(ro.AddUsers) > 0 {
 		return true
 	}
 	if len(ro.GroupCreations) > 0 {
@@ -109,7 +109,7 @@ func (ro *referenceOffer) hasContent() bool {
 	if len(ro.Devices) > 0 {
 		return true
 	}
-	if len(ro.Users) > 0 {
+	if len(ro.AddUsers) > 0 {
 		return true
 	}
 	if len(ro.GroupCreations) > 0 {
@@ -167,7 +167,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 		GroupMessages:  b.getGroupMessagesToOffer(dev),
 		UpdateDMs:      b.getUpdateDMsToOffer(dev),
 		Devices:        b.getDevicesToOffer(dev),
-		Users:          b.getUsersToOffer(dev),
+		AddUsers:       b.getAddUsersToOffer(dev),
 		GroupCreations: b.getGroupCreationsToOffer(dev),
 		UpdateGroups:   b.getUpdateGroupsToOffer(dev),
 	}
@@ -319,30 +319,27 @@ func (b *bounce) getDevicesToOffer(dev device) string {
 	return offerString
 }
 
-func (b *bounce) getUsersToOffer(dev device) string {
+func (b *bounce) getAddUsersToOffer(dev device) string {
 	offerString := ""
 
-	if b.isSyncDevice(dev) {
-		// Users
-		usersToOffer := []string{}
-		var unsentUsers []user
-		err := b.database.
-			Select("users.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUser).
-			Where("delivery_records.id IS NULL").
-			Find(&unsentUsers).Error // TODO: only select ID?
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error selecting users for reference offer")
-		}
-		for _, u := range unsentUsers {
-			usersToOffer = append(usersToOffer, u.ID.String())
-		}
-		offerString = strings.Join(usersToOffer, ",")
-	} else {
-		// TODO: offer "overlap" users to other people, users who share a group with this user
+	addUsersToOffer := []string{}
+	var unsentAddUsers []addUser
+	err := b.database.
+		Select("add_users.*").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeAddUser).
+		Where("delivery_records.id IS NULL").
+		Find(&unsentAddUsers).Error // TODO: only select ID?
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error selecting users for reference offer")
 	}
+	for _, au := range unsentAddUsers {
+		if b.isSyncDevice(dev) || dev.UserID == xor(b.currentUserID(), au.Xor) {
+			addUsersToOffer = append(addUsersToOffer, au.ID.String())
+		}
+	}
+	offerString = strings.Join(addUsersToOffer, ",")
 
 	return offerString
 }
@@ -425,7 +422,7 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 		GroupMessages:  b.getGroupMessagesToRequest(dev, ro),
 		UpdateDMs:      b.getUpdateDMsToRequest(dev, ro),
 		Devices:        b.getDevicesToRequest(dev, ro),
-		Users:          b.getUsersToRequest(dev, ro),
+		AddUsers:       b.getAddUsersToRequest(dev, ro),
 		GroupCreations: b.getGroupCreationsToRequest(dev, ro),
 		UpdateGroups:   b.getUpdateGroupsToRequest(dev, ro),
 	}
@@ -593,42 +590,35 @@ func (b *bounce) getDevicesToRequest(dev device, ro referenceOffer) string {
 	return resp
 }
 
-func (b *bounce) getUsersToRequest(dev device, ro referenceOffer) string {
+func (b *bounce) getAddUsersToRequest(dev device, ro referenceOffer) string {
 	var resp string
 
-	if len(ro.Users) > 0 {
-		if dev.UserID != b.currentUserID() {
-			log.WithFields(log.Fields{
-				"peer": dev.Address,
-			}).Warn("a non-sync device offered users in a reference offer, refusing to request them")
-			return resp
-		}
-
-		desiredUsers := []string{}
-		for _, userIDString := range strings.Split(ro.Users, ",") {
-			userID, err := uuid.Parse(userIDString)
+	if len(ro.AddUsers) > 0 {
+		desiredAddUsers := []string{}
+		for _, addUserIDString := range strings.Split(ro.AddUsers, ",") {
+			addUserID, err := uuid.Parse(addUserIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":  err.Error(),
-					"string": userIDString,
-				}).Error("invalid user UUID in reference offer")
+					"string": addUserIDString,
+				}).Error("invalid add user UUID in reference offer")
 				continue
 			}
 
-			var u user
-			err = b.database.First(&u, "id = ?", userID).Error
+			var au addUser
+			err = b.database.First(&au, "id = ?", addUserID).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
-					desiredUsers = append(desiredUsers, userID.String())
+					desiredAddUsers = append(desiredAddUsers, addUserID.String())
 				} else {
 					log.WithFields(log.Fields{
-						"id":    userID,
+						"id":    addUserID,
 						"error": err.Error(),
-					}).Fatal("database error querying for user")
+					}).Fatal("database error querying for add user")
 				}
 			}
 		}
-		resp = strings.Join(desiredUsers, ",")
+		resp = strings.Join(desiredAddUsers, ",")
 	}
 
 	return resp
