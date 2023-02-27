@@ -116,6 +116,8 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 		}
 	}
 
+	// TODO: enforce timestamp
+
 	// Delete the offer
 	err = b.database.Delete(&offer).Error
 	if err != nil {

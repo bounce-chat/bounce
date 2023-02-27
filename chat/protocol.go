@@ -35,6 +35,10 @@ var typeUpdateDM = uint16(13)
 var typeGroupCreation = uint16(14)
 var typeUpdateGroup = uint16(15)
 var typeTypingIndicator = uint16(16)
+var typeAddUserRequest = uint16(17)
+var typeAddUserRequestAccepted = uint16(18)
+var typeAddUserRequestRejected = uint16(19)
+var typeAddUser = uint16(20)
 
 type broadcastable interface {
 	getID() uuid.UUID
@@ -79,6 +83,10 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 		typeGroupCreation:             b.handleGroupCreation,
 		typeUpdateGroup:               b.handleUpdateGroup,
 		typeTypingIndicator:           b.handleTypingIndicator,
+		typeAddUserRequest:            b.handleAddUserRequest,
+		typeAddUserRequestAccepted:    b.handleAddUserRequestAccepted,
+		typeAddUserRequestRejected:    b.handleAddUserRequestRejected,
+		typeAddUser:                   b.handleAddUser,
 	}
 }
 

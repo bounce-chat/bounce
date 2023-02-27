@@ -160,6 +160,8 @@ func (b *bounce) connectToUsers() {
 			b.userConnectionDesired(id)
 		}
 	}
+
+	// TODO; connect to all devices for users we added very recently
 }
 
 func (b *bounce) sendKeepAlives() {
