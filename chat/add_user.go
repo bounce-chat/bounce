@@ -163,6 +163,7 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 
 	// TODO: see if we can learn anything about new sync devices that belong to us from this?
 	// 	would those actually be replicated during the reference flow anyway?
+	//	either way, validate that our user is correct
 
 	// Make sure the device that is sending us this makes sense
 	peerDevice, exists := b.getDeviceFromAddress(peer)
@@ -174,17 +175,38 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 		return
 	}
 
-	// validate the new user (device group, doesn't conflict with existing devices)
-	// save and apply (make saving part of applying?)
-	// send references to the peer
-	// audit peers
-	// broadcast
-}
+	// Make sure that this new user has a valid device group
+	if !b.hasValidDeviceGroup(counterparty) {
+		log.Warn("rejecting add user with invalid device group")
+		return
+	}
 
-func (b *bounce) applyAddUser(au addUser) error {
-	return nil
-}
+	// TODO: validate the new user (doesn't conflict with existing users/devices)
 
-func (b *bounce) validFriendAddition(u user) bool {
-	return false
+	// Save the addUser
+	err = b.database.Create(&au).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error saving add user")
+	}
+
+	// Save the new user
+	// TODO: save anything that is missing about the user
+
+	// Do a reference flow with this peer
+	go b.sendReferences(peer)
+
+	// Connect to this new user if needed
+	go b.auditPeers()
+
+	// Broadcast it
+	go b.broadcast(&au)
+
+	// Inform the UI that a new friend has been added
+	// TODO: only if this user is actually new
+	//b.userInterface.FriendAdded(User{
+	//	ID:   requesterUser.ID,
+	//	Name: requesterUser.Name,
+	//})
 }

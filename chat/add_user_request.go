@@ -193,7 +193,6 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 		}).Fatal("database error looking up user")
 	}
 
-	// Construct a new addUser object for this interaction
 	offerUser, ok := b.currentUser()
 	if !ok {
 		log.Error("cannot handle add user request when no profile exists")
@@ -210,14 +209,6 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 		OfferUser:      offerBytes,
 		OfferSignature: b.network.Sign(requesterUserHash[:]),
 	}
-
-	// TODO: send back the addUser inside of an addUserRequestAccepted
-
-	// Inform the UI that a new friend has been added
-	//b.userInterface.FriendAdded(User{
-	//	ID:   requesterUser.ID,
-	//	Name: requesterUser.Name,
-	//})
 }
 
 // TODO: request to add friend: make a userRequest with our whole profile (including devices), send to the string

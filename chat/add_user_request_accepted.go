@@ -2,6 +2,7 @@ package chat
 
 import (
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -77,8 +78,19 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 	}
 	requesterUserHash := blake3.Sum256(requesterBytes)
 
+	var offerUser user
+	err = msgpack.Unmarshal(aura.OfferUser, &offerUser)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling offer user while handling add user request accepted")
+		return
+	}
+
 	newUser := addUser{
 		ID:                 uuid.New(),
+		Xor:                xor(requesterUser.ID, offerUser.ID),
+		Timestamp:          time.Now().Unix(),
 		OfferUser:          aura.OfferUser,
 		RequesterUser:      requesterBytes,
 		OfferDevice:        peer,
@@ -87,32 +99,12 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 		RequesterSignature: b.network.Sign(requesterUserHash[:]),
 	}
 
-	// Save the user addUser
-	err = b.database.Create(&newUser).Error
+	newUserBytes, err := msgpack.Marshal(&newUser)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error saving new user")
+		}).Error("error marshalling add user")
 		return
 	}
-
-	// Apply the new addUser to create the user model for this new friend
-	err = b.applyAddUser(newUser)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error applying add user we created")
-		return
-	}
-
-	// Broadcast it
-	b.broadcast(&newUser)
-
-	// Inform the UI that a new friend has been added
-	//b.userInterface.FriendAdded(User{
-	//	ID:   requesterUser.ID,
-	//	Name: requesterUser.Name,
-	//})
-
-	b.auditPeers()
+	b.handleAddUser(b.network.Address(), newUserBytes)
 }
