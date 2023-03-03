@@ -122,6 +122,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	err = b.database.Where("id = ?", gm.ID).First(&existingGM).Error
 	if err == nil {
 		b.markDeliveredTo(&existingGM, peer)
+		// TODO: forgotten ack?
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{

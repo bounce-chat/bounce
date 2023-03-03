@@ -15,11 +15,10 @@ import (
 var addUserRequestMutex sync.Mutex
 
 type addUserRequest struct {
-	Signature    []byte
-	Secret       string
-	User         []byte
-	payload      []byte
-	payloadMutex sync.Mutex
+	Secret        string
+	RequesterUser []byte
+	payload       []byte
+	payloadMutex  sync.Mutex
 }
 
 func (aur *addUserRequest) getID() uuid.UUID {
@@ -52,30 +51,6 @@ func (aur *addUserRequest) getPayload() []byte {
 		aur.payload = bytes
 	}
 	return aur.payload
-}
-
-func (b *bounce) requestToAddUser(data string) error {
-	parts := strings.Split(data, ":")
-	if len(parts) != 2 {
-		return errors.New("invalid sync data")
-	}
-
-	address := parts[0]
-	// TODO: Check if valid network address, and check if we already know who this device is
-	secret := parts[1]
-
-	conn, err := b.network.Dial(address)
-	if err != nil {
-		return errors.New("could not connect to device") // TODO: ERR_CONNECTION_FAILED
-	}
-	b.insertConnectionIntoDevicePool(conn)
-
-	rd := b.getRemoteDevice(address)
-	rd.messages <- &addUserRequest{
-		Signature: b.network.Sign([]byte(address)),
-		Secret:    secret,
-	}
-	return nil
 }
 
 func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
@@ -125,16 +100,43 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 		}).Fatal("database error deleting add user offer after use")
 	}
 
-	// Validate the signature is the peer signing this device
-	if !b.network.VerifySignature(peer, []byte(b.network.Address()), aur.Signature) {
+	// Unmarshal the user that is requesting to be our friend
+	var requesterUser user
+	err = msgpack.Unmarshal(aur.RequesterUser, &requesterUser)
+	if err != nil {
 		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("peer sent an add user request with a valid secret but invalid signature")
+			"error": err.Error(),
+		}).Error("error unmarshalling requester user while handing user request")
+		rd.messages <- &addUserRequestRejected{}
+		return
+	}
+
+	// Validate that this new friend has a valid device group
+	if !b.hasValidDeviceGroup(requesterUser) {
+		log.WithFields(log.Fields{
+			"peer":    peer,
+			"user_id": requesterUser.ID,
+			"name":    requesterUser.Name,
+		}).Warn("rejecting friend request from user with invalid device group")
+		rd.messages <- &addUserRequestRejected{}
+		return
+	}
+
+	// Make sure that the peer that sent us this is part of the requester user's device group
+	found := false
+	for _, dev := range requesterUser.Devices {
+		if dev.Address == peer {
+			found = true
+		}
+	}
+	if !found {
+		log.Warn("add user request came from device that is not part of the requester user's device group")
 		rd.messages <- &addUserRequestRejected{}
 		return
 	}
 
 	// Check if this device is part of a user we are already aware of
+	// TODO: or if this user already exists
 	if _, exists := b.getDeviceFromAddress(peer); exists {
 		// We already have this device saved, so at some point we approved being friends with them.  This process
 		// must have been interrupted on their side, so we can send them a request accepted again.
@@ -151,29 +153,6 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 		}
 		return
 	}
-
-	// Unmarshal the user that is requesting to be our friend
-	var requesterUser user
-	err = msgpack.Unmarshal(aur.User, &requesterUser)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error unmarshalling requester user while handing user request")
-		return
-	}
-
-	// Validate that this new friend has a valid device group
-	if !b.hasValidDeviceGroup(requesterUser) {
-		log.WithFields(log.Fields{
-			"peer":    peer,
-			"user_id": requesterUser.ID,
-			"name":    requesterUser.Name,
-		}).Warn("rejecting friend request from user with invalid device group")
-		rd.messages <- &addUserRequestRejected{}
-		return
-	}
-
-	// TODO: make sure that this peer is in the user's device group
 
 	// Check if this is a user that we're already aware of
 	var existingUser user
@@ -193,6 +172,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 		}).Fatal("database error looking up user")
 	}
 
+	// Accept the request and send back our user
 	offerUser, ok := b.currentUser()
 	if !ok {
 		log.Error("cannot handle add user request when no profile exists")
@@ -204,11 +184,46 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Fatal("cannot msgpack marshal offer user while handling user request")
 	}
-	requesterUserHash := blake3.Sum256(aur.User)
+	requesterUserHash := blake3.Sum256(aur.RequesterUser)
 	rd.messages <- &addUserRequestAccepted{
 		OfferUser:      offerBytes,
 		OfferSignature: b.network.Sign(requesterUserHash[:]),
 	}
 }
 
-// TODO: request to add friend: make a userRequest with our whole profile (including devices), send to the string
+func (b *bounce) requestToAddUser(offer string) error {
+	parts := strings.Split(offer, ":")
+	if len(parts) != 2 {
+		return errors.New("invalid friend request string")
+	}
+
+	address := parts[0]
+	// TODO: Check if valid network address
+	secret := parts[1]
+
+	conn, err := b.network.Dial(address)
+	if err != nil {
+		return errors.New("could not connect to device")
+	}
+	b.insertConnectionIntoDevicePool(conn)
+
+	requesterUser, ok := b.currentUser()
+	if !ok {
+		err := errors.New("cannot add friends when no profile exists")
+		log.Error(err.Error())
+		return err
+	}
+	requesterBytes, err := msgpack.Marshal(requesterUser)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal requester user while adding friend")
+	}
+	rd := b.getRemoteDevice(address)
+	rd.messages <- &addUserRequest{
+		Secret:        secret,
+		RequesterUser: requesterBytes,
+	}
+
+	return nil
+}

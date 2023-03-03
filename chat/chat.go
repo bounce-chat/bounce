@@ -70,6 +70,8 @@ func Start(network Network, ui UI) {
 		UICallbacks{
 			GetNewSyncString:      b.getNewSyncString,
 			RequestToSync:         b.requestToSync,
+			GetNewAddUserString:   b.getNewAddUserString,
+			RequestToAddUser:      b.requestToAddUser,
 			SendDirectMessage:     b.sendDirectMessage,
 			CreateGroup:           b.createGroup,
 			SendGroupMessage:      b.sendGroupMessage,

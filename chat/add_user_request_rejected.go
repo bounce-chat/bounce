@@ -27,5 +27,5 @@ func (aurr *addUserRequestRejected) getPayload() []byte {
 }
 
 func (b *bounce) handleAddUserRequestRejected(peer string, payload []byte) {
-	//b.userInterface.AddUserRequestRejected()
+	b.userInterface.AddUserRequestRejected()
 }

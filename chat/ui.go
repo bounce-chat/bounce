@@ -34,6 +34,10 @@ type UI interface {
 	SyncDeviceRequestAccepted(uuid.UUID, string) // TODO: better name for these?
 	SyncDeviceRequestRejected()
 
+	// User management
+	AddUserRequestRejected()
+	FriendAdded(User)
+
 	// Chats
 	//UserIntroduced(Introduction)
 	UserImported(User) // TODO: still needed?
@@ -105,6 +109,10 @@ type UICallbacks struct {
 	// Get a string that can be scanned by a new device in order to become a sync device of this profile
 	GetNewSyncString func() string
 	RequestToSync    func(string) error
+
+	// Adding friends
+	GetNewAddUserString func() string
+	RequestToAddUser    func(string) error
 
 	// The user wants to send a direct message.
 	SendDirectMessage func(*DirectMessage) uuid.UUID

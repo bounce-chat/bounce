@@ -160,6 +160,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	err = b.database.Where("id = ?", dm.ID).First(&existingDM).Error
 	if err == nil {
 		b.markDeliveredTo(&existingDM, peer)
+		// TODO: forgotten ack?
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{

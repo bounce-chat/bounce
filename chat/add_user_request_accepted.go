@@ -78,6 +78,8 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 	}
 	requesterUserHash := blake3.Sum256(requesterBytes)
 
+	// TODO: make sure offer signature matches this marshal
+
 	var offerUser user
 	err = msgpack.Unmarshal(aura.OfferUser, &offerUser)
 	if err != nil {
@@ -96,7 +98,7 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 		OfferDevice:        peer,
 		RequesterDevice:    b.network.Address(),
 		OfferSignature:     aura.OfferSignature,
-		RequesterSignature: b.network.Sign(requesterUserHash[:]),
+		RequesterSignature: b.network.Sign(requesterUserHash[:]), // TODO: wrong?
 	}
 
 	newUserBytes, err := msgpack.Marshal(&newUser)

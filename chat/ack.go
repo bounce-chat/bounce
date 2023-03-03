@@ -295,6 +295,8 @@ func (b *bounce) handleAckAddUsers(peer string, a ack) {
 				b.markDeliveredTo(&au, peer)
 			}
 		}
+
+		// TODO: do a reference flow since we might have just added them?
 	}
 }
 

@@ -1,12 +1,15 @@
 package chat
 
 import (
+	"errors"
 	"sync"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"github.com/zeebo/blake3"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var handleAddUsersMutex sync.Mutex
@@ -76,6 +79,21 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Error("error unmarshalling add user")
 		return
+	}
+
+	// If we already know about this add user, just ack it and mark as delivered
+	var existingAU addUser
+	err = b.database.Where("id = ?", au.ID).First(&existingAU).Error
+	if err == nil {
+		b.markDeliveredTo(&existingAU, peer)
+		b.sendDirectAck(peer, &ack{
+			AddUsers: au.ID.String(),
+		})
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up add user")
 	}
 
 	// Ensure that all the signatures are correct
@@ -161,9 +179,7 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 		return
 	}
 
-	// TODO: see if we can learn anything about new sync devices that belong to us from this?
-	// 	would those actually be replicated during the reference flow anyway?
-	//	either way, validate that our user is correct
+	// TODO: we have an opportunity to learn about potential sync devices we don't know about here, but those should be referenced later anyway.  Might be nice to add them here though.
 
 	// Make sure the device that is sending us this makes sense
 	peerDevice, exists := b.getDeviceFromAddress(peer)
@@ -181,8 +197,6 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 		return
 	}
 
-	// TODO: validate the new user (doesn't conflict with existing users/devices)
-
 	// Save the addUser
 	err = b.database.Create(&au).Error
 	if err != nil {
@@ -191,8 +205,74 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 		}).Fatal("error saving add user")
 	}
 
+	// Make sure that none of the devices don't already belong to another user
+	for _, dev := range counterparty.Devices {
+		// Addresses cannot collide
+		if existingDevice, exists := b.getDeviceFromAddress(dev.Address); exists {
+			if existingDevice.UserID != counterparty.ID {
+				log.WithFields(log.Fields{
+					"address":        dev.Address,
+					"new_user":       counterparty.ID,
+					"exisiting_user": existingDevice.UserID,
+				}).Warn("rejecting add user with device address collision with separate existing user")
+				return
+			}
+		}
+		// Primary keys cannot collise
+		var existingDevice device
+		err = b.database.Where("id = ?", dev.ID).First(&existingDevice).Error
+		if err == nil {
+			if existingDevice.UserID != counterparty.ID {
+				log.WithFields(log.Fields{
+					"id":             dev.ID,
+					"new_user":       counterparty.ID,
+					"exisiting_user": existingDevice.UserID,
+				}).Warn("rejecting add user with device ID collision with separate existing user")
+				return
+			}
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up device")
+		}
+	}
+
+	// Check if we are already aware of this user
+	userIsNew := true
+	var existingCounterparty user
+	err = b.database.Where("id = ?", counterparty.ID).First(&existingCounterparty).Error
+	if err == nil {
+		userIsNew = false
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up user")
+	}
+
 	// Save the new user
-	// TODO: save anything that is missing about the user
+	if userIsNew {
+		// Save this new user and all of their devices
+		err = b.database.Create(counterparty).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error saving new user while handing add user")
+			return
+		}
+	} else {
+		// We already know about this user, just save any devices we might not be aware of
+		for _, dev := range counterparty.Devices {
+			err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error saving new device belonging to existing user while handling add user")
+			}
+		}
+	}
+
+	// Mark this add user as having been delivered to the peer who sent it to us
+	b.markDeliveredTo(&existingAU, peer)
 
 	// Do a reference flow with this peer
 	go b.sendReferences(peer)
@@ -204,9 +284,10 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 	go b.broadcast(&au)
 
 	// Inform the UI that a new friend has been added
-	// TODO: only if this user is actually new
-	//b.userInterface.FriendAdded(User{
-	//	ID:   requesterUser.ID,
-	//	Name: requesterUser.Name,
-	//})
+	if userIsNew {
+		b.userInterface.FriendAdded(User{
+			ID:   counterparty.ID,
+			Name: counterparty.Name,
+		})
+	}
 }
