@@ -172,8 +172,20 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 	var counterparty user
 	if offerUser.ID == b.currentUserID() && requesterUser.ID != b.currentUserID() {
 		counterparty = requesterUser
+		// Make sure we signed this counterparty
+		signingDevice, exists := b.getDeviceFromAddress(au.OfferDevice)
+		if !exists || !b.isSyncDevice(signingDevice) {
+			log.Warn("ignoring add user with a counterparty not signed by a sync device")
+			return
+		}
 	} else if requesterUser.ID == b.currentUserID() && offerUser.ID != b.currentUserID() {
 		counterparty = offerUser
+		// Make sure we signed this counterparty
+		signingDevice, exists := b.getDeviceFromAddress(au.RequesterDevice)
+		if !exists || !b.isSyncDevice(signingDevice) {
+			log.Warn("ignoring add user with a counterparty not signed by a sync device")
+			return
+		}
 	} else {
 		log.Warn("add user does not contain us and someone else")
 		return

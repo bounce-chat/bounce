@@ -60,11 +60,23 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 		return
 	}
 
+	// Unmarshal the offer user
+	var offerUser user
+	err = msgpack.Unmarshal(aura.OfferUser, &offerUser)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling offer user while handling add user request accepted")
+		return
+	}
+
 	// Make sure this profile has a valid device group
-	//if !b.hasValidDeviceGroup(aura.Profile) {
-	//	log.Error("aura contains profile with invalid device group")
-	//	return
-	//}
+	if !b.hasValidDeviceGroup(offerUser) {
+		log.Error("aura contains offer user with invalid device group")
+		return
+	}
+
+	// Re-generate our user that was originally sent in the request
 	requesterUser, ok := b.currentUser()
 	if !ok {
 		log.Error("cannot handle add user request accepted when no profile exists")
@@ -78,17 +90,14 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 	}
 	requesterUserHash := blake3.Sum256(requesterBytes)
 
-	// TODO: make sure offer signature matches this marshal
-
-	var offerUser user
-	err = msgpack.Unmarshal(aura.OfferUser, &offerUser)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error unmarshalling offer user while handling add user request accepted")
+	// Make sure the offer signature is valid
+	ok = b.network.VerifySignature(peer, requesterUserHash[:], aura.OfferSignature)
+	if !ok {
+		log.Warn("ignoring add user request accepted that contains invalid offer signature")
 		return
 	}
 
+	offerUserHash := blake3.Sum256(aura.OfferUser)
 	newUser := addUser{
 		ID:                 uuid.New(),
 		Xor:                xor(requesterUser.ID, offerUser.ID),
@@ -98,7 +107,7 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 		OfferDevice:        peer,
 		RequesterDevice:    b.network.Address(),
 		OfferSignature:     aura.OfferSignature,
-		RequesterSignature: b.network.Sign(requesterUserHash[:]), // TODO: wrong?
+		RequesterSignature: b.network.Sign(offerUserHash[:]),
 	}
 
 	newUserBytes, err := msgpack.Marshal(&newUser)

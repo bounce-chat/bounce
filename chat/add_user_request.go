@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -54,7 +55,6 @@ func (aur *addUserRequest) getPayload() []byte {
 }
 
 func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
-	// Mutex lock prcessing to enure an offer can only be used once
 	addUserRequestMutex.Lock()
 	defer addUserRequestMutex.Unlock()
 
@@ -89,8 +89,6 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 		}
 	}
 
-	// TODO: enforce timestamp
-
 	// Delete the offer
 	err = b.database.Delete(&offer).Error
 	if err != nil {
@@ -98,6 +96,11 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 			"id":    offer.ID,
 			"error": err.Error(),
 		}).Fatal("database error deleting add user offer after use")
+	}
+
+	// Enforce the timestamp on the offer
+	if time.Now().Unix() > offer.Timestamp+300 { // TODO: constant
+		rd.messages <- &addUserRequestRejected{}
 	}
 
 	// Unmarshal the user that is requesting to be our friend
@@ -135,41 +138,38 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 		return
 	}
 
-	// Check if this device is part of a user we are already aware of
-	// TODO: or if this user already exists
-	if _, exists := b.getDeviceFromAddress(peer); exists {
-		// We already have this device saved, so at some point we approved being friends with them.  This process
-		// must have been interrupted on their side, so we can send them a request accepted again.
-		rd.messages <- &addUserRequestAccepted{
-			// TODO
+	// Make sure that we don't have any of these devices already associated with another user
+	for _, dev := range requesterUser.Devices {
+		// Addresses cannot collide
+		if existingDevice, exists := b.getDeviceFromAddress(dev.Address); exists {
+			if existingDevice.UserID != requesterUser.ID {
+				log.WithFields(log.Fields{
+					"address":        dev.Address,
+					"new_user":       requesterUser.ID,
+					"exisiting_user": existingDevice.UserID,
+				}).Warn("rejecting add user request with device address collision with separate existing user")
+				rd.messages <- &addUserRequestRejected{}
+				return
+			}
 		}
-
-		err = b.database.Where("destination = ?", peer).Delete(&deliveryRecord{}).Error
-		if err != nil {
+		// Primary keys cannot collise
+		var existingDevice device
+		err = b.database.Where("id = ?", dev.ID).First(&existingDevice).Error
+		if err == nil {
+			if existingDevice.UserID != requesterUser.ID {
+				log.WithFields(log.Fields{
+					"id":             dev.ID,
+					"new_user":       requesterUser.ID,
+					"exisiting_user": existingDevice.UserID,
+				}).Warn("rejecting add user with device ID collision with separate existing user")
+				rd.messages <- &addUserRequestRejected{}
+				return
+			}
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
-				"peer":  peer,
 				"error": err.Error(),
-			}).Error("error deleting old delivery records for user device that is re-requesting to be friends")
+			}).Fatal("database error looking up device")
 		}
-		return
-	}
-
-	// Check if this is a user that we're already aware of
-	var existingUser user
-	err = b.database.Select("id").Where("id = ?", requesterUser.ID).First(&existingUser).Error
-	if err == nil {
-		log.Warn("an unknown device is attempting to add a known user as a friend")
-		rd.messages <- &addUserRequestRejected{}
-		// TODO: is this also a case where we should allow?  friend's new device we don't know about trying to re-add us?
-		return
-	} else if errors.Is(err, gorm.ErrRecordNotFound) {
-		// If this is a user that we are not aware of, make sure none of the devices belong to another user
-		// TODO
-	} else {
-		log.WithFields(log.Fields{
-			"user_id": requesterUser.ID,
-			"error":   err.Error(),
-		}).Fatal("database error looking up user")
 	}
 
 	// Accept the request and send back our user
