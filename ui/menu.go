@@ -35,6 +35,12 @@ func (fyneUI *Fyne) buildMenu() {
 		),
 		fyne.NewMenu(
 			"Contacts",
+			fyne.NewMenuItem("Share", func() {
+				fyneUI.showDisplayAddUserString()
+			}),
+			fyne.NewMenuItem("Add", func() {
+				fyneUI.showAddUser()
+			}),
 			fyne.NewMenuItem("Introduce", func() {
 				fyneUI.showIntroduceContacts()
 			}),

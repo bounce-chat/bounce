@@ -30,10 +30,12 @@ type Fyne struct {
 	mainContainer                  *fyne.Container
 	newInstall                     *fyne.Container
 	newSyncDevice                  *fyne.Container
+	addUser                        *fyne.Container
 	newProfileCreator              *fyne.Container
 	databaseLoading                *fyne.Container
 	editProfile                    *fyne.Container
 	displaySyncString              *fyne.Container
+	displayAddUserString           *fyne.Container
 	settings                       *fyne.Container
 	about                          *fyne.Container
 	newGroup                       *fyne.Container
@@ -56,6 +58,7 @@ type Fyne struct {
 	threadWithMessageMutex         sync.Mutex
 	activeThread                   uuid.UUID
 	syncString                     binding.String
+	addUserString                  binding.String
 	profile                        *user
 	users                          *userStore
 	initialStateSet                bool
@@ -76,6 +79,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.users = newUserStore()
 	fyneUI.focused = true
 	fyneUI.syncString = binding.NewString()
+	fyneUI.addUserString = binding.NewString()
 	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}) // TODO: red rich text
 	fyneUI.networkOfflineWarning.Show()
 
@@ -118,6 +122,8 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.buildNewInstall()
 	log.Debug("buildNewSyncDevice") // TODO: remove after startup bug identified
 	fyneUI.buildNewSyncDevice()
+	log.Debug("buildAddUser") // TODO: remove after startup bug identified
+	fyneUI.buildAddUser()
 	log.Debug("buildNewProfileCreator") // TODO: remove after startup bug identified
 	fyneUI.buildNewProfileCreator()
 	log.Debug("buildDatabaseLoading") // TODO: remove after startup bug identified
@@ -126,6 +132,8 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.buildEditProfile()
 	log.Debug("buildDisplaySyncString") // TODO: remove after startup bug identified
 	fyneUI.buildDisplaySyncString()
+	log.Debug("buildDisplayAddUserString") // TODO: remove after startup bug identified
+	fyneUI.buildDisplayAddUserString()
 	log.Debug("buildSettings") // TODO: remove after startup bug identified
 	fyneUI.buildSettings()
 	log.Debug("buildAbout") // TODO: remove after startup bug identified

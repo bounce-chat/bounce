@@ -345,7 +345,7 @@ func (b *bounce) getAddUsersToOffer(dev device) string {
 		err := b.database.
 			Select("add_users.*").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeAddUser).
-			Where("delivery_records.id IS NULL AND add_user.xor = ?", xor(b.currentUserID(), dev.UserID)).
+			Where("delivery_records.id IS NULL AND add_users.xor = ?", xor(b.currentUserID(), dev.UserID)).
 			Find(&unsentAddUsers).Error // TODO: only select ID?
 		if err != nil {
 			log.WithFields(log.Fields{
