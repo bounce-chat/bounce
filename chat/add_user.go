@@ -264,7 +264,7 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 	// Save the new user
 	if userIsNew {
 		// Save this new user and all of their devices
-		err = b.database.Create(counterparty).Error
+		err = b.database.Create(&counterparty).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
