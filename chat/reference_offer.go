@@ -425,31 +425,25 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 		return
 	}
 
-	dev, exists := b.getDeviceFromAddress(peer)
-	if !exists {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Info("error loading device for reference offer handling")
-		return
-	}
+	dev, deviceExists := b.getDeviceFromAddress(peer)
+	rd := b.getRemoteDevice(peer)
 
-	response := &referenceRequest{
+	rd.messages <- &referenceRequest{
 		ID:             ro.ID,
 		destination:    dev.ID,
-		DirectMessages: b.getDirectMessagesToRequest(dev, ro),
-		GroupMessages:  b.getGroupMessagesToRequest(dev, ro),
-		UpdateDMs:      b.getUpdateDMsToRequest(dev, ro),
-		Devices:        b.getDevicesToRequest(dev, ro),
-		AddUsers:       b.getAddUsersToRequest(dev, ro),
-		GroupCreations: b.getGroupCreationsToRequest(dev, ro),
-		UpdateGroups:   b.getUpdateGroupsToRequest(dev, ro),
+		DirectMessages: b.getDirectMessagesToRequest(dev, deviceExists, ro),
+		GroupMessages:  b.getGroupMessagesToRequest(dev, deviceExists, ro),
+		UpdateDMs:      b.getUpdateDMsToRequest(dev, deviceExists, ro),
+		Devices:        b.getDevicesToRequest(dev, deviceExists, ro),
+		AddUsers:       b.getAddUsersToRequest(dev, deviceExists, ro),
+		GroupCreations: b.getGroupCreationsToRequest(dev, deviceExists, ro),
+		UpdateGroups:   b.getUpdateGroupsToRequest(dev, deviceExists, ro),
 	}
-
-	b.broadcast(response)
 }
 
-func (b *bounce) getDirectMessagesToRequest(dev device, ro referenceOffer) string {
+func (b *bounce) getDirectMessagesToRequest(dev device, deviceExists bool, ro referenceOffer) string {
 	requestedDMs := []string{}
+
 	if len(ro.DirectMessages) > 0 {
 		for _, dmIDString := range strings.Split(ro.DirectMessages, ",") {
 			dmID, err := uuid.Parse(dmIDString)
@@ -461,41 +455,30 @@ func (b *bounce) getDirectMessagesToRequest(dev device, ro referenceOffer) strin
 				continue
 			}
 
-			var count int64
-			err = b.database.Model(&DirectMessage{}).Where("id = ?", dmID).Count(&count).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error getting message from database")
-				continue
-			}
-			if count == 0 {
+			var dm DirectMessage
+			err = b.database.First(&dm, "id = ?", dmID).Error
+			if err == nil {
+				if deviceExists && !b.isDeliveredTo(&dm, dev.Address) {
+					b.markDeliveredTo(&dm, dev.Address)
+				}
+			} else if errors.Is(err, gorm.ErrRecordNotFound) {
 				// TODO: want to make sure this can't be used to probe a devices for messages that it might already have from another chat,
 				// to test group membership if a chat message from another group is known
 				requestedDMs = append(requestedDMs, dmID.String())
 			} else {
-				// We already have this message, but if we didn't already know they had it, we update our records
-				var dm DirectMessage
-				err = b.database.First(&dm, "id = ?", dmID).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Error("error looking up known DM in reference offer")
-					continue
-				}
-				if !b.isDeliveredTo(&dm, dev.Address) {
-					b.markDeliveredTo(&dm, dev.Address)
-				}
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error getting direct message from database")
 			}
 		}
 	}
 
 	return strings.Join(requestedDMs, ",")
-
 }
 
-func (b *bounce) getGroupMessagesToRequest(dev device, ro referenceOffer) string {
+func (b *bounce) getGroupMessagesToRequest(dev device, deviceExists bool, ro referenceOffer) string {
 	requestedGMs := []string{}
+
 	if len(ro.GroupMessages) > 0 {
 		for _, gmIDString := range strings.Split(ro.GroupMessages, ",") {
 			gmID, err := uuid.Parse(gmIDString)
@@ -507,44 +490,31 @@ func (b *bounce) getGroupMessagesToRequest(dev device, ro referenceOffer) string
 				continue
 			}
 
-			var count int64
-			err = b.database.Model(&GroupMessage{}).Where("id = ?", gmID).Count(&count).Error // TODO: refactor this away from using count everywhere
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error getting group message from database")
-				continue
-			}
-			if count == 0 {
+			var gm GroupMessage
+			err = b.database.First(&gm, "id = ?", gmID).Error
+			if err == nil {
+				if deviceExists && !b.isDeliveredTo(&gm, dev.Address) {
+					b.markDeliveredTo(&gm, dev.Address)
+				}
+			} else if errors.Is(err, gorm.ErrRecordNotFound) {
 				// TODO: want to make sure this can't be used to probe a devices for messages that it might already have from another chat,
 				// to test group membership if a chat message from another group is known
 				requestedGMs = append(requestedGMs, gmID.String())
 			} else {
-				// We already have this message, but if we didn't already know they had it, we update our records
-				var gm GroupMessage
-				err = b.database.First(&gm, "id = ?", gmID).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Error("error looking up known GM in reference offer")
-					continue
-				}
-				if !b.isDeliveredTo(&gm, dev.Address) {
-					b.markDeliveredTo(&gm, dev.Address)
-				}
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error getting group message from database")
 			}
 		}
 	}
 
 	return strings.Join(requestedGMs, ",")
-
 }
 
-func (b *bounce) getUpdateDMsToRequest(dev device, ro referenceOffer) string {
-	var resp string
+func (b *bounce) getUpdateDMsToRequest(dev device, deviceExists bool, ro referenceOffer) string {
+	desiredUpdateDMs := []string{}
 
 	if len(ro.UpdateDMs) > 0 {
-		desiredUpdateDMs := []string{}
 		for _, udIDString := range strings.Split(ro.UpdateDMs, ",") {
 			udID, err := uuid.Parse(udIDString)
 			if err != nil {
@@ -557,28 +527,29 @@ func (b *bounce) getUpdateDMsToRequest(dev device, ro referenceOffer) string {
 
 			var ud updateDM
 			err = b.database.First(&ud, "id = ?", udID).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					desiredUpdateDMs = append(desiredUpdateDMs, udID.String())
-				} else {
-					log.WithFields(log.Fields{
-						"id":    udID,
-						"error": err.Error(),
-					}).Fatal("database error querying for update DM settings")
+			if err == nil {
+				if deviceExists && !b.isDeliveredTo(&ud, dev.Address) {
+					b.markDeliveredTo(&ud, dev.Address)
 				}
+			} else if errors.Is(err, gorm.ErrRecordNotFound) {
+				desiredUpdateDMs = append(desiredUpdateDMs, udID.String())
+			} else {
+				log.WithFields(log.Fields{
+					"id":    udID,
+					"error": err.Error(),
+				}).Fatal("database error querying for update DM settings")
 			}
 		}
-		resp = strings.Join(desiredUpdateDMs, ",")
+
 	}
 
-	return resp
+	return strings.Join(desiredUpdateDMs, ",")
 }
 
-func (b *bounce) getDevicesToRequest(dev device, ro referenceOffer) string {
-	var resp string
+func (b *bounce) getDevicesToRequest(dev device, deviceExists bool, ro referenceOffer) string {
+	desiredDevices := []string{}
 
 	if len(ro.Devices) > 0 {
-		desiredDevices := []string{}
 		for _, deviceIDString := range strings.Split(ro.Devices, ",") {
 			deviceID, err := uuid.Parse(deviceIDString)
 			if err != nil {
@@ -589,30 +560,30 @@ func (b *bounce) getDevicesToRequest(dev device, ro referenceOffer) string {
 				continue
 			}
 
-			var dev device
-			err = b.database.First(&dev, "id = ?", deviceID).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					desiredDevices = append(desiredDevices, deviceID.String())
-				} else {
-					log.WithFields(log.Fields{
-						"id":    deviceID,
-						"error": err.Error(),
-					}).Fatal("database error querying for device")
+			var existingDev device
+			err = b.database.First(&existingDev, "id = ?", deviceID).Error
+			if err == nil {
+				if deviceExists && !b.isDeliveredTo(&existingDev, dev.Address) {
+					b.markDeliveredTo(&existingDev, dev.Address)
 				}
+			} else if errors.Is(err, gorm.ErrRecordNotFound) {
+				desiredDevices = append(desiredDevices, deviceID.String())
+			} else {
+				log.WithFields(log.Fields{
+					"id":    deviceID,
+					"error": err.Error(),
+				}).Fatal("database error querying for device")
 			}
 		}
-		resp = strings.Join(desiredDevices, ",")
 	}
 
-	return resp
+	return strings.Join(desiredDevices, ",")
 }
 
-func (b *bounce) getAddUsersToRequest(dev device, ro referenceOffer) string {
-	var resp string
+func (b *bounce) getAddUsersToRequest(dev device, deviceExists bool, ro referenceOffer) string {
+	desiredAddUsers := []string{}
 
 	if len(ro.AddUsers) > 0 {
-		desiredAddUsers := []string{}
 		for _, addUserIDString := range strings.Split(ro.AddUsers, ",") {
 			addUserID, err := uuid.Parse(addUserIDString)
 			if err != nil {
@@ -625,28 +596,28 @@ func (b *bounce) getAddUsersToRequest(dev device, ro referenceOffer) string {
 
 			var au addUser
 			err = b.database.First(&au, "id = ?", addUserID).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					desiredAddUsers = append(desiredAddUsers, addUserID.String())
-				} else {
-					log.WithFields(log.Fields{
-						"id":    addUserID,
-						"error": err.Error(),
-					}).Fatal("database error querying for add user")
+			if err == nil {
+				if deviceExists && !b.isDeliveredTo(&au, dev.Address) {
+					b.markDeliveredTo(&au, dev.Address)
 				}
+			} else if errors.Is(err, gorm.ErrRecordNotFound) {
+				desiredAddUsers = append(desiredAddUsers, addUserID.String())
+			} else {
+				log.WithFields(log.Fields{
+					"id":    addUserID,
+					"error": err.Error(),
+				}).Fatal("database error querying for add user")
 			}
 		}
-		resp = strings.Join(desiredAddUsers, ",")
 	}
 
-	return resp
+	return strings.Join(desiredAddUsers, ",")
 }
 
-func (b *bounce) getGroupCreationsToRequest(dev device, ro referenceOffer) string {
-	var resp string
+func (b *bounce) getGroupCreationsToRequest(dev device, deviceExists bool, ro referenceOffer) string {
+	desiredGroupCreations := []string{}
 
 	if len(ro.GroupCreations) > 0 {
-		desiredGroupCreations := []string{}
 		for _, groupCreationIDString := range strings.Split(ro.GroupCreations, ",") {
 			groupCreationID, err := uuid.Parse(groupCreationIDString)
 			if err != nil {
@@ -659,28 +630,28 @@ func (b *bounce) getGroupCreationsToRequest(dev device, ro referenceOffer) strin
 
 			var gc groupCreation
 			err = b.database.First(&gc, "id = ?", groupCreationID).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					desiredGroupCreations = append(desiredGroupCreations, groupCreationID.String())
-				} else {
-					log.WithFields(log.Fields{
-						"id":    groupCreationID,
-						"error": err.Error(),
-					}).Fatal("database error querying for group creation")
+			if err == nil {
+				if deviceExists && !b.isDeliveredTo(&gc, dev.Address) {
+					b.markDeliveredTo(&gc, dev.Address)
 				}
+			} else if errors.Is(err, gorm.ErrRecordNotFound) {
+				desiredGroupCreations = append(desiredGroupCreations, groupCreationID.String())
+			} else {
+				log.WithFields(log.Fields{
+					"id":    groupCreationID,
+					"error": err.Error(),
+				}).Fatal("database error querying for group creation")
 			}
 		}
-		resp = strings.Join(desiredGroupCreations, ",")
 	}
 
-	return resp
+	return strings.Join(desiredGroupCreations, ",")
 }
 
-func (b *bounce) getUpdateGroupsToRequest(dev device, ro referenceOffer) string {
-	var resp string
+func (b *bounce) getUpdateGroupsToRequest(dev device, deviceExists bool, ro referenceOffer) string {
+	desiredUpdateGroups := []string{}
 
 	if len(ro.UpdateGroups) > 0 {
-		desiredUpdateGroups := []string{}
 		for _, updateGroupIDString := range strings.Split(ro.UpdateGroups, ",") {
 			updateGroupID, err := uuid.Parse(updateGroupIDString)
 			if err != nil {
@@ -693,19 +664,20 @@ func (b *bounce) getUpdateGroupsToRequest(dev device, ro referenceOffer) string 
 
 			var ug updateGroup
 			err = b.database.First(&ug, "id = ?", updateGroupID).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					desiredUpdateGroups = append(desiredUpdateGroups, updateGroupID.String())
-				} else {
-					log.WithFields(log.Fields{
-						"id":    updateGroupID,
-						"error": err.Error(),
-					}).Fatal("database error querying for update group")
+			if err == nil {
+				if deviceExists && !b.isDeliveredTo(&ug, dev.Address) {
+					b.markDeliveredTo(&ug, dev.Address)
 				}
+			} else if errors.Is(err, gorm.ErrRecordNotFound) {
+				desiredUpdateGroups = append(desiredUpdateGroups, updateGroupID.String())
+			} else {
+				log.WithFields(log.Fields{
+					"id":    updateGroupID,
+					"error": err.Error(),
+				}).Fatal("database error querying for update group")
 			}
 		}
-		resp = strings.Join(desiredUpdateGroups, ",")
 	}
 
-	return resp
+	return strings.Join(desiredUpdateGroups, ",")
 }
