@@ -90,23 +90,14 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 		return
 	}
 
-	// Find the device that sent this new device.  If we don't have it saved, this is a device introducing itself
-	srcDevice, peerExists := b.getDeviceFromAddress(peer)
-	if !peerExists {
-		if newDevice.Address != peer {
-			log.WithFields(log.Fields{
-				"peer": peer,
-			}).Warn("an unknown device can only send itself, ignoring received device")
-			return
-		}
-	}
+	// Find the device if it exists and get the remote device for this peer for direct responses
+	rd := b.getRemoteDevice(peer)
 
 	// If the device already exists, ack it and return
 	if _, deviceExists := b.getDeviceFromAddress(newDevice.Address); deviceExists {
-		b.broadcast(&ack{
-			destination: srcDevice.ID,
-			Devices:     newDevice.ID.String(),
-		})
+		rd.messages <- &ack{
+			Devices: newDevice.ID.String(),
+		}
 		b.markDeliveredTo(&newDevice, peer)
 		return
 	}
@@ -149,22 +140,17 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Fatal("error saving new device")
 	}
+
 	// Save a delivery record for the peer that sent us this device
 	b.markDeliveredTo(&newDevice, peer)
+
 	// Broadcast to the rest of the peers
 	go b.broadcast(&newDevice)
 
-	// If we didn't know about the peer that sent us this device, then the new device we saved
-	// is the peer
-	if !peerExists {
-		srcDevice = newDevice
-	}
-
 	// ACK it
-	go b.broadcast(&ack{
-		destination: srcDevice.ID,
-		Devices:     newDevice.ID.String(),
-	})
+	rd.messages <- &ack{
+		Devices: newDevice.ID.String(),
+	}
 }
 
 func (b *bounce) getDeviceFromAddress(address string) (device, bool) {
