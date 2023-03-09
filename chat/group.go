@@ -117,6 +117,7 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 			"error": err.Error(),
 		}).Fatal("cannot create UUID from hash of group data")
 	}
+	g.ID = groupID
 
 	gc := groupCreation{
 		ID:        groupID,
