@@ -134,6 +134,15 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 	// Assign the group ID as the group creation ID
 	g.ID = gc.ID
 
+	// Make sure the timestamps match
+	if gc.Timestamp != g.CreatedAt {
+		log.WithFields(log.Fields{
+			"timestamp":        gc.Timestamp,
+			"group_created_at": g.CreatedAt,
+		}).Error("rejection group creation with timestamp mismatch")
+		return
+	}
+
 	// If we already know about this group, ack it and return
 	var existingGroupCreation groupCreation
 	err = b.database.Where("id = ?", gc.ID).First(&existingGroupCreation).Error // TODO: use count or only select ID or something?
