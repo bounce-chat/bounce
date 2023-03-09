@@ -3,11 +3,13 @@ package chat
 import (
 	"errors"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
+	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 )
 
@@ -31,9 +33,9 @@ type group struct {
 }
 
 func (g *group) BeforeCreate(tx *gorm.DB) error {
-	//if g.ID == uuid.Nil {
-	//	log.Fatal("attempt to create group with nil ID, group ID must be set before creation")
-	//}
+	if g.ID == uuid.Nil {
+		log.Fatal("attempt to create group with nil ID, group ID must be set before creation")
+	}
 
 	return nil
 }
@@ -79,9 +81,11 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 		userIDs = append(userIDs, profile.ID)
 	}
 
+	creationTime := time.Now().Unix()
 	g := group{
-		ID:        uuid.New(),
+		ID:        uuid.Nil,
 		Name:      name,
+		CreatedAt: creationTime,
 		Retention: 60 * 60 * 24 * 7, // TODO: have the default be a user setting
 		Users:     users,
 	}
@@ -93,9 +97,31 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 		}).Fatal("cannot msgpack marshal group")
 	}
 
+	// Create a hash of the group without an ID to use as the group creation ID,
+	// and the group ID upon handling, to ensure that the original group state
+	// is not modified during replication
+	hasher := blake3.New()
+	written, _ := hasher.Write(groupData)
+	if written != len(groupData) {
+		log.WithFields(log.Fields{
+			"length":  len(groupData),
+			"written": written,
+		}).Fatal("failed to write all group data into hasher")
+	}
+	digest := hasher.Digest()
+	groupHash := make([]byte, 16)
+	digest.Read(groupHash)
+	groupID, err := uuid.FromBytes(groupHash)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot create UUID from hash of group data")
+	}
+
 	gc := groupCreation{
-		ID:   g.ID,
-		Data: groupData,
+		ID:        groupID,
+		Timestamp: creationTime,
+		Data:      groupData,
 	}
 	gc.Payload, err = msgpack.Marshal(gc)
 	if err != nil {

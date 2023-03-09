@@ -7,16 +7,18 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
+	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 type groupCreation struct {
 	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Data         []byte    // Original group structure, msgpacked
-	Signer       string    `msgpack:"-"`
-	Payload      []byte    `msgpack:"-"` // TODO: rename to marshalled or something
-	Signature    []byte    `msgpack:"-"`
+	Timestamp    int64
+	Data         []byte // Original group structure, msgpacked
+	Signer       string `msgpack:"-"`
+	Payload      []byte `msgpack:"-"` // TODO: rename to marshalled or something
+	Signature    []byte `msgpack:"-"`
 	payload      []byte
 	payloadMutex sync.Mutex
 }
@@ -68,8 +70,7 @@ func (gc *groupCreation) getPayload() []byte {
 }
 
 func (gc *groupCreation) getTimestamp() int64 {
-	//TODO: unmarshal and extract
-	return 0
+	return gc.Timestamp
 }
 
 func (b *bounce) handleGroupCreation(peer string, payload []byte) {
@@ -95,6 +96,31 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 	gc.Signature = sc.Signature
 	gc.Signer = sc.Signer
 
+	// Make sure the ID of this group creation matches the hash of the group data
+	hasher := blake3.New()
+	written, _ := hasher.Write(gc.Data)
+	if written != len(gc.Data) {
+		log.WithFields(log.Fields{
+			"length":  len(gc.Data),
+			"written": written,
+		}).Fatal("failed to write all group data into hasher")
+	}
+	digest := hasher.Digest()
+	groupHash := make([]byte, 16)
+	digest.Read(groupHash)
+	groupID, err := uuid.FromBytes(groupHash)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot create UUID from hash of group data")
+	}
+	if gc.ID != groupID {
+		log.WithFields(log.Fields{
+			"group_creation_id": gc.ID,
+			"group_hash_id":     groupID,
+		}).Error("rejecting group creation with ID that does not match hash of group data")
+	}
+
 	// Unmarshall the group
 	var g group
 	err = msgpack.Unmarshal(gc.Data, &g)
@@ -105,19 +131,15 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 		return
 	}
 
-	if g.ID != gc.ID {
-		log.WithFields(log.Fields{
-			"group_id":          g.ID,
-			"group_creation_id": gc.ID,
-		}).Warn("refusing to process group creation with ID mismatch")
-		return
-	}
+	// Assign the group ID as the group creation ID
+	g.ID = gc.ID
 
 	// If we already know about this group, ack it and return
 	var existingGroupCreation groupCreation
 	err = b.database.Where("id = ?", gc.ID).First(&existingGroupCreation).Error // TODO: use count or only select ID or something?
 	if err == nil {
 		// We already know about this group, just mark it as delivered to the peer
+		// TODO: ack
 		b.markDeliveredTo(&gc, peer)
 	} else if errors.Is(err, gorm.ErrRecordNotFound) {
 		// Check that each user has a valid device group
@@ -184,7 +206,6 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 
 		// We might be learning about the creation of a group that originally didn't include us, but that we were later added to.
 		// In that case it doesn't make sense to inform the UI about this group until we're added to it.
-		// TODO: prevent abuse from random devices adding nonsense groups
 		if b.userIsInGroup(b.currentUserID(), g.ID) {
 			b.userInterface.NewGroupChat(Group{
 				ID:      g.ID,
