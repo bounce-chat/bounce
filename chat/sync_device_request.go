@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -171,8 +172,9 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 	} else {
 		// Save this new device in our database
 		newDevice := device{
-			UserID:  b.currentUserID(),
-			Address: peer,
+			UserID:    b.currentUserID(),
+			Address:   peer,
+			Timestamp: time.Now().Unix(),
 			Signature: &introductionSignature{
 				PreexistingDevice:            b.network.Address(),
 				SignatureOfNewDevice:         b.network.Sign([]byte(peer)),

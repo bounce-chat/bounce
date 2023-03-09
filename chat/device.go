@@ -14,10 +14,11 @@ import (
 var handleDevicesMutex sync.Mutex
 
 type device struct {
-	ID           uuid.UUID              `gorm:"type:uuid;primary_key;"`
-	Name         string                 `json:"-"` // TODO: exclude from non-sync devices
-	UserID       uuid.UUID              `json:"-"`
-	Address      string                 `gorm:"uniqueIndex"`
+	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name         string    `json:"-"` // TODO: exclude from non-sync devices
+	UserID       uuid.UUID `json:"-"`
+	Address      string    `gorm:"uniqueIndex"`
+	Timestamp    int64
 	Signature    *introductionSignature `json:",omitempty" gorm:"constraint:OnDelete:CASCADE;"`
 	payload      []byte
 	payloadMutex sync.Mutex
@@ -72,8 +73,7 @@ func (d *device) getPayload() []byte {
 }
 
 func (d *device) getTimestamp() int64 {
-	// For catch up messages, always sort to the front
-	return 0
+	return d.Timestamp
 }
 
 func (b *bounce) handleDevice(peer string, payload []byte) {
