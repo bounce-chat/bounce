@@ -85,6 +85,7 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 	g := group{
 		ID:        uuid.Nil,
 		Name:      name,
+		CreatedBy: b.currentUserID(),
 		CreatedAt: creationTime,
 		Retention: 60 * 60 * 24 * 7, // TODO: have the default be a user setting
 		Users:     users,
