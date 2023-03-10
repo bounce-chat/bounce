@@ -165,10 +165,12 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 			dialog.ShowError(errors.New("Error saving profile: "+err.Error()), fyneUI.mainWindow)
 			return
 		}
-		fyneUI.profile = &user{
+		profile := &user{
 			id:   id,
 			name: profileNameEntry.Text,
 		}
+		fyneUI.users.add(profile)
+		fyneUI.profile = profile
 		fyneUI.showMainContainer()
 	})
 	saveButton.Importance = widget.HighImportance
