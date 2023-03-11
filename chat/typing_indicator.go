@@ -86,7 +86,7 @@ func (b *bounce) updateTypingState(ti typingIndicator) {
 		users[ti.Author] = &typingStatus{}
 	}
 
-	users[ti.Author].lastIndicated = ti.Timestamp
+	users[ti.Author].lastIndicated = ti.timestamp
 	typingStateMutex.Unlock()
 
 	b.updateFrontendTypingIndicators()
@@ -171,8 +171,8 @@ type typingIndicator struct {
 	ID           uuid.UUID
 	Thread       uuid.UUID
 	MessageType  uint16
-	Timestamp    int64
 	Author       uuid.UUID
+	timestamp    int64  // Defined when received and not sent over the wire
 	Signer       string `msgpack:"-"`
 	Payload      []byte `msgpack:"-"` // TODO: rename to marshalled or something
 	Signature    []byte `msgpack:"-"`
@@ -259,17 +259,15 @@ func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
 		return
 	}
 
-	// Ignore timestamps that are older than 3 seconds
-	if ti.Timestamp < time.Now().Unix()-ignoreTypingIndicatorsAfterSeconds {
-		return
-	}
+	// Assume a typing indicator we receive was broadcast just now and assign the timestamp to now
+	ti.timestamp = time.Now().Unix()
 
 	peerDevice, ok := b.getDeviceFromAddress(peer)
 	if !ok {
 		log.WithFields(log.Fields{
 			"thread":       ti.Thread,
 			"message_type": ti.MessageType,
-			"timestamp":    ti.Timestamp,
+			"timestamp":    ti.timestamp,
 			"author":       ti.Author,
 		}).Warn("received a valid typing indicator from unknown device")
 		return
@@ -280,7 +278,7 @@ func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
 			log.WithFields(log.Fields{
 				"thread":       ti.Thread,
 				"message_type": ti.MessageType,
-				"timestamp":    ti.Timestamp,
+				"timestamp":    ti.timestamp,
 				"author":       ti.Author,
 			}).Warn("received a valid typing indicator from device outside scope")
 			return
@@ -293,7 +291,7 @@ func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
 				log.WithFields(log.Fields{
 					"thread":       ti.Thread,
 					"message_type": ti.MessageType,
-					"timestamp":    ti.Timestamp,
+					"timestamp":    ti.timestamp,
 					"author":       ti.Author,
 				}).Warn("received a valid typing indicator for an unknown group")
 				return
@@ -308,7 +306,7 @@ func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
 			log.WithFields(log.Fields{
 				"thread":       ti.Thread,
 				"message_type": ti.MessageType,
-				"timestamp":    ti.Timestamp,
+				"timestamp":    ti.timestamp,
 				"author":       ti.Author,
 				"peer":         peer,
 				"peer_device":  peerDevice.ID,
@@ -320,7 +318,7 @@ func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"thread":       ti.Thread,
 			"message_type": ti.MessageType,
-			"timestamp":    ti.Timestamp,
+			"timestamp":    ti.timestamp,
 			"author":       ti.Author,
 		}).Warn("received a typing indicator with unsupported message type")
 		return
@@ -352,7 +350,6 @@ func (b *bounce) broadcastTypingIndicator(threadID uuid.UUID, messageType uint16
 		ID:          uuid.New(),
 		Thread:      threadID,
 		MessageType: messageType,
-		Timestamp:   time.Now().Unix(),
 		Author:      b.currentUserID(),
 	}
 
