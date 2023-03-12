@@ -90,14 +90,11 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 		return
 	}
 
-	// Find the device if it exists and get the remote device for this peer for direct responses
-	rd := b.getRemoteDevice(peer)
-
 	// If the device already exists, ack it and return
 	if _, deviceExists := b.getDeviceFromAddress(newDevice.Address); deviceExists {
-		rd.messages <- &ack{
+		b.sendDirectAck(peer, &ack{
 			Devices: newDevice.ID.String(),
-		}
+		})
 		b.markDeliveredTo(&newDevice, peer)
 		return
 	}
@@ -148,9 +145,9 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 	go b.broadcast(&newDevice)
 
 	// ACK it
-	rd.messages <- &ack{
+	b.sendDirectAck(peer, &ack{
 		Devices: newDevice.ID.String(),
-	}
+	})
 }
 
 func (b *bounce) getDeviceFromAddress(address string) (device, bool) {
