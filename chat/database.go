@@ -54,7 +54,6 @@ func (b *bounce) openDatabase() {
 		&profileExport{},
 		&introductionSignature{},
 		&DirectMessage{}, // TODO: still need to decide if we'll export a simplified one for the UI
-		&referenceOffer{},
 		&syncDeviceOffer{},
 		&deliveryRecord{},
 		&updateDM{},
@@ -86,22 +85,10 @@ func (b *bounce) keepDatabasePruned() {
 }
 
 func (b *bounce) pruneDatabase(informUI bool) {
-	b.pruneReferenceOffers()
 	b.pruneDirectMessages(informUI)
 	b.pruneGroupMessages(informUI)
 	b.pruneSyncDeviceOffers()
 	b.pruneDeliveryRecords()
-}
-
-// If a reference offer was delivered, but a reference request was never received in response, it will only be deleted here
-func (b *bounce) pruneReferenceOffers() {
-	tenMinutesAgo := time.Now().Add(-10 * time.Minute).Unix()
-	err := b.database.Where("created_at < ?", tenMinutesAgo).Delete(referenceOffer{}).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error pruning reference offers")
-	}
 }
 
 func (b *bounce) pruneDirectMessages(informUI bool) {

@@ -86,9 +86,7 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 	err = b.database.Where("id = ?", au.ID).First(&existingAU).Error
 	if err == nil {
 		b.markDeliveredTo(&existingAU, peer)
-		b.sendDirectAck(peer, &ack{
-			AddUsers: au.ID.String(),
-		})
+		b.sendDirectAck(peer, frameReference{FrameID: au.ID, Type: typeAddUser})
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{

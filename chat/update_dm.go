@@ -151,10 +151,7 @@ func (b *bounce) handleUpdateDM(peer string, payload []byte) {
 	}
 
 	// Ack it
-	go b.broadcast(&ack{
-		destination: srcDevice.ID,
-		UpdateDMs:   ud.ID.String(),
-	})
+	go b.sendDirectAck(peer, frameReference{FrameID: ud.ID, Type: typeUpdateDM})
 
 	// Mark that the peer that send this update already has it
 	b.markDeliveredTo(&ud, peer)

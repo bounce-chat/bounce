@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"strings"
 	"sync"
 	"time"
 
@@ -16,19 +15,11 @@ import (
 // DirectMessages are comma separated for consistency with reference offers, which must do this
 // since SQLite doesn't support slices
 type ack struct {
-	_msgpack       struct{} `msgpack:",omitempty"`
-	ID             uuid.UUID
-	DirectMessages string // Comma-separated list of DM UUIDs
-	GroupMessages  string
-	CatchUps       string
-	Devices        string
-	AddUsers       string
-	GroupCreations string
-	UpdateGroups   string
-	UpdateDMs      string
-	destination    uuid.UUID
-	payload        []byte
-	payloadMutex   sync.Mutex
+	ID           uuid.UUID `msgpack:"-"`
+	References   []frameReference
+	destination  uuid.UUID
+	payload      []byte
+	payloadMutex sync.Mutex
 }
 
 func (a *ack) getID() uuid.UUID {
@@ -73,295 +64,211 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 		return
 	}
 
-	b.handleAckDirectMessages(peer, a)
-	b.handleAckGroupMessages(peer, a)
-	b.handleAckCatchUps(peer, a)
-	b.handleAckUpdateDMs(peer, a)
-	b.handleAckDevices(peer, a)
-	b.handleAckAddUsers(peer, a)
-	b.handleAckGroupCreations(peer, a)
-	b.handleAckUpdateGroups(peer, a)
+	ackedIDs := referencedIDs(a.References)
+
+	b.handleAckDirectMessages(peer, ackedIDs[typeDirectMessage])
+	b.handleAckGroupMessages(peer, ackedIDs[typeGroupMessage])
+	b.handleAckCatchUps(peer, ackedIDs[typeCatchUp]) // TODO: needed?
+	b.handleAckUpdateDMs(peer, ackedIDs[typeUpdateDM])
+	b.handleAckDevices(peer, ackedIDs[typeDevice])
+	b.handleAckAddUsers(peer, ackedIDs[typeAddUser])
+	b.handleAckGroupCreations(peer, ackedIDs[typeGroupCreation])
+	b.handleAckUpdateGroups(peer, ackedIDs[typeUpdateGroup])
 }
 
-func (b *bounce) sendDirectAck(peer string, a *ack) {
+func (b *bounce) sendDirectAck(peer string, fr frameReference) {
 	rd := b.getRemoteDevice(peer)
-	rd.messages <- a
+	rd.messages <- &ack{
+		References: []frameReference{fr},
+	}
 }
 
-func (b *bounce) handleAckDirectMessages(peer string, a ack) {
-	if len(a.DirectMessages) > 0 {
-		for _, dmIDString := range strings.Split(a.DirectMessages, ",") {
-			dmID, err := uuid.Parse(dmIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": dmIDString,
-				}).Error("invalid DM UUID in ack")
-				continue
-			}
+func (b *bounce) handleAckDirectMessages(peer string, ids []uuid.UUID) {
+	for _, dmID := range ids {
+		var dm DirectMessage
+		err := b.database.First(&dm, "id = ?", dmID).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"peer":  peer,
+			}).Error("ack of unknown DM from peer")
+			// TODO: could be abuse attempted to waste time hitting the database, perhaps should bail / reset connection
+			continue
+		}
+		// TODO: confirm the device should be able to see this DM?
+		b.markDeliveredTo(&dm, peer)
 
-			var dm DirectMessage
-			err = b.database.First(&dm, "id = ?", dmID).Error
+		// Now that we know the message has been delivered, if the message expires we start the clock on retention
+		// by setting the absolute time the message should be delete at as now + the retention time
+		if dm.RetentionSeconds != 0 && dm.DeleteAt == 0 {
+			deleteAt := time.Now().Unix() + dm.RetentionSeconds
+			err := b.database.Model(&dm).Update("delete_at", deleteAt).Error
 			if err != nil {
 				log.WithFields(log.Fields{
+					"message_id": dm.ID,
+					"error":      err.Error(),
+				}).Fatal("error updating delete_at of acked direct message")
+			}
+			b.userInterface.UpdateMessageDeletionTime(dm.ID, deleteAt)
+		}
+	}
+}
+
+func (b *bounce) handleAckGroupMessages(peer string, ids []uuid.UUID) {
+	for _, gmID := range ids {
+		var gm GroupMessage
+		err := b.database.First(&gm, "id = ?", gmID).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"peer":  peer,
+			}).Error("ack of unknown GM from peer")
+			// TODO: could be abuse attempted to waste time hitting the database, perhaps should bail / reset connection
+			continue
+		}
+		// TODO: confirm the device should be able to see this DM
+		b.markDeliveredTo(&gm, peer)
+
+		// Now that we know the message has been delivered, if the message expires we start the clock on retention
+		// by setting the absolute time the message should be delete at as now + the retention time
+		if gm.RetentionSeconds != 0 && gm.DeleteAt == 0 {
+			deleteAt := time.Now().Unix() + gm.RetentionSeconds
+			err := b.database.Model(&gm).Update("delete_at", deleteAt).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"message_id": gm.ID,
+					"error":      err.Error(),
+				}).Fatal("error updating delete_at of acked group message")
+			}
+			b.userInterface.UpdateMessageDeletionTime(gm.ID, deleteAt)
+		}
+	}
+}
+
+func (b *bounce) handleAckCatchUps(peer string, ids []uuid.UUID) {
+	for _, catchUpID := range ids {
+		// Mark this catch up as delivered so we can stop broadcasting it
+		err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
+			Destination: peer,
+			FrameID:     catchUpID,
+			FrameType:   typeCatchUp,
+		}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error creating delivery record for catch up")
+		}
+	}
+}
+
+func (b *bounce) handleAckUpdateDMs(peer string, ids []uuid.UUID) {
+	for _, udID := range ids {
+		var ud updateDM
+		err := b.database.First(&ud, "id = ?", udID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   udID,
+					"peer": peer,
+				}).Warn("unknown update DM settings acked")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    udID,
 					"error": err.Error(),
-					"peer":  peer,
-				}).Error("ack of unknown DM from peer")
-				// TODO: could be abuse attempted to waste time hitting the database, perhaps should bail / reset connection
-				continue
+				}).Fatal("database error querying for update DM settings")
 			}
-			// TODO: confirm the device should be able to see this DM
-			b.markDeliveredTo(&dm, peer)
-
-			// Now that we know the message has been delivered, if the message expires we start the clock on retention
-			// by setting the absolute time the message should be delete at as now + the retention time
-			if dm.RetentionSeconds != 0 && dm.DeleteAt == 0 {
-				deleteAt := time.Now().Unix() + dm.RetentionSeconds
-				err := b.database.Model(&dm).Update("delete_at", deleteAt).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"message_id": dm.ID,
-						"error":      err.Error(),
-					}).Fatal("error updating delete_at of acked direct message")
-				}
-				b.userInterface.UpdateMessageDeletionTime(dm.ID, deleteAt)
-			}
+		} else {
+			b.markDeliveredTo(&ud, peer)
 		}
 	}
 }
 
-func (b *bounce) handleAckGroupMessages(peer string, a ack) {
-	if len(a.GroupMessages) > 0 {
-		for _, gmIDString := range strings.Split(a.GroupMessages, ",") {
-			gmID, err := uuid.Parse(gmIDString)
-			if err != nil {
+func (b *bounce) handleAckDevices(peer string, ids []uuid.UUID) {
+	for _, deviceID := range ids {
+		var dev device
+		err := b.database.Preload(clause.Associations).First(&dev, "id = ?", deviceID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": gmIDString,
-				}).Error("invalid GM UUID in ack")
-				continue
-			}
-
-			var gm GroupMessage
-			err = b.database.First(&gm, "id = ?", gmID).Error
-			if err != nil {
+					"id":   deviceID,
+					"peer": peer,
+				}).Warn("unknown device acked")
+			} else {
 				log.WithFields(log.Fields{
+					"id":    deviceID,
 					"error": err.Error(),
-					"peer":  peer,
-				}).Error("ack of unknown GM from peer")
-				// TODO: could be abuse attempted to waste time hitting the database, perhaps should bail / reset connection
-				continue
+				}).Fatal("database error querying for device")
 			}
-			// TODO: confirm the device should be able to see this DM
-			b.markDeliveredTo(&gm, peer)
-
-			// Now that we know the message has been delivered, if the message expires we start the clock on retention
-			// by setting the absolute time the message should be delete at as now + the retention time
-			if gm.RetentionSeconds != 0 && gm.DeleteAt == 0 {
-				deleteAt := time.Now().Unix() + gm.RetentionSeconds
-				err := b.database.Model(&gm).Update("delete_at", deleteAt).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"message_id": gm.ID,
-						"error":      err.Error(),
-					}).Fatal("error updating delete_at of acked group message")
-				}
-				b.userInterface.UpdateMessageDeletionTime(gm.ID, deleteAt)
-			}
+		} else {
+			b.markDeliveredTo(&dev, peer)
 		}
 	}
 }
 
-func (b *bounce) handleAckCatchUps(peer string, a ack) {
-	if len(a.CatchUps) > 0 {
-		for _, catchUpIDString := range strings.Split(a.CatchUps, ",") {
-			catchUpID, err := uuid.Parse(catchUpIDString)
-			if err != nil {
+func (b *bounce) handleAckAddUsers(peer string, ids []uuid.UUID) {
+	for _, addUserID := range ids {
+		var au addUser
+		err := b.database.First(&au, "id = ?", addUserID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": catchUpIDString,
-				}).Error("invalid catch up UUID in ack")
-				continue
-			}
-
-			// Mark this catch up as delivered so we can stop broadcasting it
-			err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
-				Destination: peer,
-				FrameID:     catchUpID,
-				FrameType:   typeCatchUp,
-			}).Error
-			if err != nil {
+					"id":   addUserID,
+					"peer": peer,
+				}).Warn("unknown add user acked")
+			} else {
 				log.WithFields(log.Fields{
+					"id":    addUserID,
 					"error": err.Error(),
-				}).Fatal("error creating delivery record for catch up")
+				}).Fatal("database error querying for add user")
 			}
+		} else {
+			b.markDeliveredTo(&au, peer)
+		}
+	}
+
+	// TODO: do a reference flow since we might have just added them?
+}
+
+func (b *bounce) handleAckGroupCreations(peer string, ids []uuid.UUID) {
+	for _, groupCreationID := range ids {
+		var gc groupCreation
+		err := b.database.First(&gc, "id = ?", groupCreationID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   groupCreationID,
+					"peer": peer,
+				}).Warn("unknown group creation acked")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    groupCreationID,
+					"error": err.Error(),
+				}).Fatal("database error querying for group creation")
+			}
+		} else {
+			b.markDeliveredTo(&gc, peer)
 		}
 	}
 }
 
-func (b *bounce) handleAckUpdateDMs(peer string, a ack) {
-	if len(a.UpdateDMs) > 0 {
-		for _, udIDString := range strings.Split(a.UpdateDMs, ",") {
-			udID, err := uuid.Parse(udIDString)
-			if err != nil {
+func (b *bounce) handleAckUpdateGroups(peer string, ids []uuid.UUID) {
+	for _, updateGroupID := range ids {
+		var ug updateGroup
+		err := b.database.First(&ug, "id = ?", updateGroupID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": udIDString,
-				}).Error("invalid ud UUID in ack")
-				continue
-			}
-
-			var ud updateDM
-			err = b.database.First(&ud, "id = ?", udID).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					log.WithFields(log.Fields{
-						"id":   udID,
-						"peer": peer,
-					}).Warn("unknown update DM settings acked")
-				} else {
-					log.WithFields(log.Fields{
-						"id":    udID,
-						"error": err.Error(),
-					}).Fatal("database error querying for update DM settings")
-				}
+					"id":   updateGroupID,
+					"peer": peer,
+				}).Warn("unknown update group acked")
 			} else {
-				b.markDeliveredTo(&ud, peer)
-			}
-		}
-	}
-}
-
-func (b *bounce) handleAckDevices(peer string, a ack) {
-	if len(a.Devices) > 0 {
-		for _, deviceIDString := range strings.Split(a.Devices, ",") {
-			deviceID, err := uuid.Parse(deviceIDString)
-			if err != nil {
 				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": deviceIDString,
-				}).Error("invalid device UUID in ack")
-				continue
+					"id":    updateGroupID,
+					"error": err.Error(),
+				}).Fatal("database error querying for update group")
 			}
-
-			var dev device
-			err = b.database.Preload(clause.Associations).First(&dev, "id = ?", deviceID).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					log.WithFields(log.Fields{
-						"id":   deviceID,
-						"peer": peer,
-					}).Warn("unknown device acked")
-				} else {
-					log.WithFields(log.Fields{
-						"id":    deviceID,
-						"error": err.Error(),
-					}).Fatal("database error querying for device")
-				}
-			} else {
-				b.markDeliveredTo(&dev, peer)
-			}
-		}
-	}
-}
-
-func (b *bounce) handleAckAddUsers(peer string, a ack) {
-	if len(a.AddUsers) > 0 {
-		for _, addUserIDString := range strings.Split(a.AddUsers, ",") {
-			addUserID, err := uuid.Parse(addUserIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": addUserIDString,
-				}).Error("invalid add user UUID in ack")
-				continue
-			}
-
-			var au addUser
-			err = b.database.First(&au, "id = ?", addUserID).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					log.WithFields(log.Fields{
-						"id":   addUserID,
-						"peer": peer,
-					}).Warn("unknown add user acked")
-				} else {
-					log.WithFields(log.Fields{
-						"id":    addUserID,
-						"error": err.Error(),
-					}).Fatal("database error querying for add user")
-				}
-			} else {
-				b.markDeliveredTo(&au, peer)
-			}
-		}
-
-		// TODO: do a reference flow since we might have just added them?
-	}
-}
-
-func (b *bounce) handleAckGroupCreations(peer string, a ack) {
-	if len(a.GroupCreations) > 0 {
-		for _, groupCreationIDString := range strings.Split(a.GroupCreations, ",") {
-			groupCreationID, err := uuid.Parse(groupCreationIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": groupCreationIDString,
-				}).Error("invalid group creation UUID in ack")
-				continue
-			}
-
-			var gc groupCreation
-			err = b.database.First(&gc, "id = ?", groupCreationID).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					log.WithFields(log.Fields{
-						"id":   groupCreationID,
-						"peer": peer,
-					}).Warn("unknown group creation acked")
-				} else {
-					log.WithFields(log.Fields{
-						"id":    groupCreationID,
-						"error": err.Error(),
-					}).Fatal("database error querying for group creation")
-				}
-			} else {
-				b.markDeliveredTo(&gc, peer)
-			}
-		}
-	}
-}
-
-func (b *bounce) handleAckUpdateGroups(peer string, a ack) {
-	if len(a.UpdateGroups) > 0 {
-		for _, updateGroupIDString := range strings.Split(a.UpdateGroups, ",") {
-			updateGroupID, err := uuid.Parse(updateGroupIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": updateGroupIDString,
-				}).Error("invalid update group UUID in ack")
-				continue
-			}
-
-			var ug updateGroup
-			err = b.database.First(&ug, "id = ?", updateGroupID).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					log.WithFields(log.Fields{
-						"id":   updateGroupID,
-						"peer": peer,
-					}).Warn("unknown update group acked")
-				} else {
-					log.WithFields(log.Fields{
-						"id":    updateGroupID,
-						"error": err.Error(),
-					}).Fatal("database error querying for update group")
-				}
-			} else {
-				b.markDeliveredTo(&ug, peer)
-			}
+		} else {
+			b.markDeliveredTo(&ug, peer)
 		}
 	}
 }

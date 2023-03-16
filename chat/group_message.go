@@ -186,10 +186,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		}).Fatal("error saving group message")
 	}
 
-	go b.broadcast(&ack{
-		destination:   srcDevice.ID,
-		GroupMessages: gm.ID.String(),
-	})
+	go b.sendDirectAck(peer, frameReference{FrameID: gm.ID, Type: typeGroupMessage})
 
 	go b.broadcast(&gm)
 }

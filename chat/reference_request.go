@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -15,18 +14,11 @@ import (
 // DirectMessages are comma separated for consistency with reference offers, which must do this
 // since SQLite doesn't support slices
 type referenceRequest struct {
-	_msgpack       struct{} `msgpack:",omitempty"`
-	ID             uuid.UUID
-	DirectMessages string // Comma-separated list of DM UUIDs
-	GroupMessages  string
-	UpdateDMs      string
-	Devices        string
-	AddUsers       string
-	GroupCreations string
-	UpdateGroups   string
-	destination    uuid.UUID
-	payload        []byte
-	payloadMutex   sync.Mutex
+	ID           uuid.UUID
+	References   []frameReference
+	destination  uuid.UUID
+	payload      []byte
+	payloadMutex sync.Mutex
 }
 
 func (rr *referenceRequest) getID() uuid.UUID {
@@ -83,7 +75,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 
 	// Find the original offer that we made to this device in order to generate this request
 	var originalOffer referenceOffer
-	err = b.database.Where("id = ? AND destination = ?", rr.ID, dev.ID).First(&originalOffer).Error
+	err = b.referenceEngine.database.Where("id = ? AND destination = ?", rr.ID, dev.ID).First(&originalOffer).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"peer":     peer,
@@ -96,17 +88,19 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	b.markDeliveredTo(&originalOffer, dev.Address)
 
 	// Everything the device has requested will be packed into a "catch up" message
+	offeredIDs := referencedIDs(originalOffer.References)
+	requestedIDs := referencedIDs(rr.References)
 	cu := &catchUp{
 		ID:          uuid.New(),
 		destination: dev.ID,
 	}
-	cu.broadcastables = b.getRequestedAddUsersPayloads(dev, rr, originalOffer)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedDevicesPayloads(dev, rr, originalOffer)...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupsPayloads(dev, rr, originalOffer)...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedDirectMessagePayloads(dev, rr, originalOffer)...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupMessagePayloads(dev, rr, originalOffer)...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMsPayloads(dev, rr, originalOffer)...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateGroupsPayloads(dev, rr, originalOffer)...)
+	cu.broadcastables = b.getRequestedAddUsersPayloads(dev, requestedIDs[typeAddUser], offeredIDs[typeAddUser])
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedDevicesPayloads(dev, requestedIDs[typeDevice], offeredIDs[typeDevice])...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupCreationPayloads(dev, requestedIDs[typeGroupCreation], offeredIDs[typeGroupCreation])...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedDirectMessagePayloads(dev, requestedIDs[typeDirectMessage], offeredIDs[typeDirectMessage])...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupMessagePayloads(dev, requestedIDs[typeGroupMessage], offeredIDs[typeGroupMessage])...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMsPayloads(dev, requestedIDs[typeUpdateDM], offeredIDs[typeUpdateDM])...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateGroupsPayloads(dev, requestedIDs[typeUpdateGroup], offeredIDs[typeUpdateGroup])...)
 
 	if cu.hasContent() {
 		b.broadcastUntilDelivered(cu)
@@ -114,33 +108,13 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 
 	// TODO: broadcast separate catchups for each requested image/audio/file here.  Or rather than a catch up, just broadcast the data.
 
-	b.database.Delete(&originalOffer) // TODO: error check
+	b.referenceEngine.database.Delete(&originalOffer) // TODO: error check
 }
 
-func (b *bounce) getRequestedDirectMessagePayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+func (b *bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
-	requestedDirectMessageIDs, deliveredDirectMessageIDs := getRequestedAndDeliveredUUIDs(originalOffer.DirectMessages, rr.DirectMessages)
-
-	for _, dmID := range deliveredDirectMessageIDs {
-		var dm DirectMessage
-		err := b.database.Where("id = ?", dmID).First(&dm).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id":   dmID,
-					"peer": peer.Address,
-				}).Warn("reference request indicates we offered an unknown direct message")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    dmID,
-					"error": err.Error(),
-				}).Fatal("database error querying for direct message")
-			}
-		} else {
-			b.markDeliveredTo(&dm, peer.Address)
-		}
-	}
+	requestedDirectMessageIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
 	for _, dmID := range requestedDirectMessageIDs {
 		var dm DirectMessage
@@ -165,30 +139,10 @@ func (b *bounce) getRequestedDirectMessagePayloads(peer device, rr referenceRequ
 	return requestedData
 }
 
-func (b *bounce) getRequestedGroupMessagePayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+func (b *bounce) getRequestedGroupMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
-	requestedGroupMessageIDs, deliveredGroupMessageIDs := getRequestedAndDeliveredUUIDs(originalOffer.GroupMessages, rr.GroupMessages)
-
-	for _, gmID := range deliveredGroupMessageIDs {
-		var gm GroupMessage
-		err := b.database.Where("id = ?", gmID).First(&gm).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id":   gmID,
-					"peer": peer.Address,
-				}).Warn("reference request indicates we offered an unknown group message")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    gmID,
-					"error": err.Error(),
-				}).Fatal("database error querying for group message")
-			}
-		} else {
-			b.markDeliveredTo(&gm, peer.Address)
-		}
-	}
+	requestedGroupMessageIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
 	for _, gmID := range requestedGroupMessageIDs {
 		var gm GroupMessage
@@ -213,30 +167,10 @@ func (b *bounce) getRequestedGroupMessagePayloads(peer device, rr referenceReque
 	return requestedData
 }
 
-func (b *bounce) getRequestedUpdateDMsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+func (b *bounce) getRequestedUpdateDMsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
-	requestedUpdateDMsIDs, deliveredUpdateDMsIDs := getRequestedAndDeliveredUUIDs(originalOffer.UpdateDMs, rr.UpdateDMs)
-
-	for _, udID := range deliveredUpdateDMsIDs {
-		var ud updateDM
-		err := b.database.First(&ud, "id = ?", udID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id":   udID,
-					"peer": peer.Address,
-				}).Warn("reference request indicates we offered an unknown update DM settings")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    udID,
-					"error": err.Error(),
-				}).Fatal("database error querying for update DM settings")
-			}
-		} else {
-			b.markDeliveredTo(&ud, peer.Address)
-		}
-	}
+	requestedUpdateDMsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
 	for _, udID := range requestedUpdateDMsIDs {
 		var ud updateDM
@@ -261,30 +195,10 @@ func (b *bounce) getRequestedUpdateDMsPayloads(peer device, rr referenceRequest,
 	return requestedData
 }
 
-func (b *bounce) getRequestedUpdateGroupsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+func (b *bounce) getRequestedUpdateGroupsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
-	requestedUpdateGroupsIDs, deliveredUpdateGroupsIDs := getRequestedAndDeliveredUUIDs(originalOffer.UpdateGroups, rr.UpdateGroups)
-
-	for _, ugID := range deliveredUpdateGroupsIDs {
-		var ug updateGroup
-		err := b.database.First(&ug, "id = ?", ugID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id":   ugID,
-					"peer": peer.Address,
-				}).Warn("reference request indicates we offered an unknown update group")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    ugID,
-					"error": err.Error(),
-				}).Fatal("database error querying for update group")
-			}
-		} else {
-			b.markDeliveredTo(&ug, peer.Address)
-		}
-	}
+	requestedUpdateGroupsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
 	for _, ugID := range requestedUpdateGroupsIDs {
 		var ug updateGroup
@@ -309,30 +223,10 @@ func (b *bounce) getRequestedUpdateGroupsPayloads(peer device, rr referenceReque
 	return requestedData
 }
 
-func (b *bounce) getRequestedGroupsPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+func (b *bounce) getRequestedGroupCreationPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
-	requestedGroupCreationIDs, deliveredGroupCreationIDs := getRequestedAndDeliveredUUIDs(originalOffer.GroupCreations, rr.GroupCreations)
-
-	for _, groupCreationID := range deliveredGroupCreationIDs {
-		var gc groupCreation
-		err := b.database.First(&gc, "id = ?", groupCreationID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id":   groupCreationID,
-					"peer": peer.Address,
-				}).Warn("reference request indicates we offered an unknown group creation")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    groupCreationID,
-					"error": err.Error(),
-				}).Fatal("database error querying for group creation")
-			}
-		} else {
-			b.markDeliveredTo(&gc, peer.Address)
-		}
-	}
+	requestedGroupCreationIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
 	for _, groupCreationID := range requestedGroupCreationIDs {
 		var gc groupCreation
@@ -357,30 +251,10 @@ func (b *bounce) getRequestedGroupsPayloads(peer device, rr referenceRequest, or
 	return requestedData
 }
 
-func (b *bounce) getRequestedDevicesPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+func (b *bounce) getRequestedDevicesPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
-	requestedDeviceIDs, deliveredDeviceIDs := getRequestedAndDeliveredUUIDs(originalOffer.Devices, rr.Devices)
-
-	for _, deviceID := range deliveredDeviceIDs {
-		var dev device
-		err := b.database.Preload(clause.Associations).First(&dev, "id = ?", deviceID).Error // TODO: preloading needed here, or elsewhere in these?
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id":   deviceID,
-					"peer": peer.Address,
-				}).Warn("reference request indicates we offered an unknown device")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    deviceID,
-					"error": err.Error(),
-				}).Fatal("database error querying for device")
-			}
-		} else {
-			b.markDeliveredTo(&dev, peer.Address)
-		}
-	}
+	requestedDeviceIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
 	for _, deviceID := range requestedDeviceIDs {
 		var dev device
@@ -405,30 +279,10 @@ func (b *bounce) getRequestedDevicesPayloads(peer device, rr referenceRequest, o
 	return requestedData
 }
 
-func (b *bounce) getRequestedAddUsersPayloads(peer device, rr referenceRequest, originalOffer referenceOffer) sortableBroadcastables {
+func (b *bounce) getRequestedAddUsersPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
-	requestedAddUserIDs, deliveredAddUserIDs := getRequestedAndDeliveredUUIDs(originalOffer.AddUsers, rr.AddUsers)
-
-	for _, addUserID := range deliveredAddUserIDs {
-		var au addUser
-		err := b.database.First(&au, "id = ?", addUserID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id":   addUserID,
-					"peer": peer.Address,
-				}).Warn("reference request indicates we offered an unknown add user")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    addUserID,
-					"error": err.Error(),
-				}).Fatal("database error querying for add user")
-			}
-		} else {
-			b.markDeliveredTo(&au, peer.Address)
-		}
-	}
+	requestedAddUserIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
 	for _, addUserID := range requestedAddUserIDs {
 		var au addUser
@@ -454,79 +308,36 @@ func (b *bounce) getRequestedAddUsersPayloads(peer device, rr referenceRequest, 
 }
 
 //
-// Given two comma-separated lists of UUIDs, one representing the original offer and the other representing what
-// was requested by the peer, parse them and separate them into the valid requested UUIDs and the UUIDs that we
+// Given two lists of UUIDs, one representing the original offer and the other representing what
+// was requested by the peer, separate them into the valid requested UUIDs and the UUIDs that we
 // can assume were already delivered because they were not requested.
 //
-func getRequestedAndDeliveredUUIDs(originalOffer string, requested string) ([]uuid.UUID, []uuid.UUID) {
+func getValidRequestedUUIDs(originalOffer []uuid.UUID, requested []uuid.UUID) []uuid.UUID {
 	requestedSet := []uuid.UUID{}
-	deliveredSet := []uuid.UUID{}
 
 	offeredCache := make(map[uuid.UUID]bool)
-	if len(originalOffer) > 0 {
-		for _, offeredIDString := range strings.Split(originalOffer, ",") {
-			offeredID, err := uuid.Parse(offeredIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": offeredIDString,
-				}).Error("invalid UUID in reference offer generated locally")
-				continue
-			}
-			if _, present := offeredCache[offeredID]; present {
-				log.WithFields(log.Fields{
-					"id": offeredID,
-				}).Warn("duplicate UUID in reference offer generated locally")
-				continue
-			}
-			offeredCache[offeredID] = true
+	for _, offeredID := range originalOffer {
+		if _, present := offeredCache[offeredID]; present {
+			log.WithFields(log.Fields{
+				"id": offeredID,
+			}).Warn("duplicate UUID in reference offer generated locally")
+			continue
 		}
+		offeredCache[offeredID] = true
 	}
 
-	requestedCache := make(map[uuid.UUID]bool)
-	if len(requested) > 0 {
-		for _, requestedIDString := range strings.Split(requested, ",") {
-			// Parse the UUID
-			requestedID, err := uuid.Parse(requestedIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": requestedIDString,
-				}).Warn("invalid UUID in reference request")
-				continue
-			}
-
-			// Detect if there's a duplicate UUID in the request
-			if _, present := requestedCache[requestedID]; present {
-				log.WithFields(log.Fields{
-					"id": requestedID,
-				}).Warn("duplicate UUID in reference request")
-				continue
-			}
-
-			// Add this UUID to the cache
-			requestedCache[requestedID] = true
-
-			// Make sure that this requested UUID was actually offered and skip it if not
-			if _, present := offeredCache[requestedID]; !present {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-					"id":    requestedID,
-				}).Warn("reference request asks for UUID not present in reference offer")
-				continue
-			}
-
-			// Include the requested UUID in the requested set
-			requestedSet = append(requestedSet, requestedID)
+	for _, requestedID := range requested {
+		// Make sure that this requested UUID was actually offered and skip it if not
+		if _, present := offeredCache[requestedID]; !present {
+			log.WithFields(log.Fields{
+				"id": requestedID,
+			}).Warn("reference request asks for UUID not present in reference offer")
+			continue
 		}
+
+		// Include the requested UUID in the requested set
+		requestedSet = append(requestedSet, requestedID)
 	}
 
-	for offeredID, _ := range offeredCache {
-		// Check if this UUID was offered but it was not requested, indicating it has already been delivered
-		if _, present := requestedCache[offeredID]; !present {
-			deliveredSet = append(deliveredSet, offeredID)
-		}
-	}
-
-	return requestedSet, deliveredSet
+	return requestedSet
 }

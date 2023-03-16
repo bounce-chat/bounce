@@ -229,7 +229,5 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 	}
 
 	// Ack the group
-	go b.sendDirectAck(peer, &ack{
-		GroupCreations: gc.ID.String(),
-	})
+	go b.sendDirectAck(peer, frameReference{FrameID: gc.ID, Type: typeGroupCreation})
 }

@@ -46,10 +46,7 @@ func (cu *catchUp) getPayload() []byte {
 	defer cu.payloadMutex.Unlock()
 
 	if len(cu.payload) == 0 {
-		// A stable sort is used because the catch up is originally packed with users
-		// before devices.  Users and devices both always have a timestamp of 0, so
-		// we want to make sure the users stay ahead of the devices.
-		sort.Stable(cu.broadcastables)
+		sort.Sort(cu.broadcastables)
 		for _, br := range cu.broadcastables {
 			cu.Frames = append(cu.Frames, frame{Type: br.getType(), Payload: br.getPayload()})
 		}
@@ -83,9 +80,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 	}
 
 	_, deviceAlreadyExists := b.getDeviceFromAddress(peer)
-	go b.sendDirectAck(peer, &ack{
-		CatchUps: cu.ID.String(),
-	})
+	go b.sendDirectAck(peer, frameReference{FrameID: cu.ID, Type: typeCatchUp})
 
 	handlers := b.getHandlers()
 	for _, fr := range cu.Frames {

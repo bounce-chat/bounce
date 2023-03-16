@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,19 +17,12 @@ import (
 // should have, but that we didn't deliver to it.
 //
 type referenceOffer struct {
-	_msgpack       struct{}  `msgpack:",omitempty"`
-	ID             uuid.UUID `gorm:"type:uuid;primary_key;"`
-	CreatedAt      int64     // Used to delete old reference offers that were not responded to
-	DirectMessages string    // Comma-separated list of DM UUIDs
-	GroupMessages  string
-	UpdateDMs      string
-	Devices        string
-	AddUsers       string
-	GroupCreations string
-	UpdateGroups   string
-	Destination    uuid.UUID `msgpack:"-"`
-	payload        []byte
-	payloadMutex   sync.Mutex
+	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
+	References   []frameReference
+	CreatedAt    int64     `msgpack:"-"` // Used to delete old reference offers that were not responded to
+	destination  uuid.UUID `msgpack:"-"`
+	payload      []byte
+	payloadMutex sync.Mutex
 }
 
 func (ro *referenceOffer) BeforeCreate(tx *gorm.DB) error {
@@ -50,7 +42,7 @@ func (ro *referenceOffer) getScope(_ uuid.UUID) int {
 }
 
 func (ro *referenceOffer) getDestination(_ uuid.UUID) uuid.UUID {
-	return ro.Destination
+	return ro.destination // TODO: just make it nil since it's only ever directly broadcast?
 }
 
 func (ro *referenceOffer) getType() uint16 {
@@ -74,51 +66,21 @@ func (ro *referenceOffer) getPayload() []byte {
 }
 
 func (ro *referenceOffer) shouldDial() bool {
-	if len(ro.DirectMessages) > 0 {
-		return true
+	for _, reference := range ro.References {
+		if reference.Type == typeDirectMessage {
+			return true
+		} else if reference.Type == typeGroupMessage {
+			return true
+		} else if reference.Type == typeDevice {
+			return true
+		} else if reference.Type == typeAddUser {
+			return true
+		} else if reference.Type == typeGroupCreation {
+			return true
+		} else if reference.Type == typeUpdateGroup {
+			return true
+		}
 	}
-	if len(ro.GroupMessages) > 0 {
-		return true
-	}
-	if len(ro.Devices) > 0 {
-		return true
-	}
-	if len(ro.AddUsers) > 0 {
-		return true
-	}
-	if len(ro.GroupCreations) > 0 {
-		return true
-	}
-	if len(ro.UpdateGroups) > 0 {
-		return true
-	}
-	// TODO: changes to my device group, clearing thread histories, etc
-	return false
-}
-
-func (ro *referenceOffer) hasContent() bool {
-	if len(ro.DirectMessages) > 0 {
-		return true
-	}
-	if len(ro.GroupMessages) > 0 {
-		return true
-	}
-	if len(ro.UpdateDMs) > 0 {
-		return true
-	}
-	if len(ro.Devices) > 0 {
-		return true
-	}
-	if len(ro.AddUsers) > 0 {
-		return true
-	}
-	if len(ro.GroupCreations) > 0 {
-		return true
-	}
-	if len(ro.UpdateGroups) > 0 {
-		return true
-	}
-	// TODO: check for any future referenced content
 	return false
 }
 
@@ -141,15 +103,15 @@ func (b *bounce) sendReferences(peerAddress string) {
 		return
 	}
 
-	references := b.getReferenceOfferFor(peerAddress)
-	if references.hasContent() {
-		err := b.database.Create(references).Error
+	referenceOffer := b.getReferenceOfferFor(peerAddress)
+	if len(referenceOffer.References) > 0 {
+		err := b.referenceEngine.database.Create(referenceOffer).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Error("error saving referenceOffer")
 		} else {
-			go b.broadcastUntilDelivered(references)
+			go b.broadcastUntilDelivered(referenceOffer)
 		}
 	}
 }
@@ -160,20 +122,23 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 		return &referenceOffer{}
 	}
 
+	references := []frameReference{}
+	references = append(references, b.getDirectMessagesToOffer(dev)...)
+	references = append(references, b.getGroupMessagesToOffer(dev)...)
+	references = append(references, b.getUpdateDMsToOffer(dev)...)
+	references = append(references, b.getDevicesToOffer(dev)...)
+	references = append(references, b.getAddUsersToOffer(dev)...)
+	references = append(references, b.getGroupCreationsToOffer(dev)...)
+	references = append(references, b.getUpdateGroupsToOffer(dev)...)
+
 	return &referenceOffer{
-		ID:             uuid.New(),
-		Destination:    dev.ID,
-		DirectMessages: b.getDirectMessagesToOffer(dev),
-		GroupMessages:  b.getGroupMessagesToOffer(dev),
-		UpdateDMs:      b.getUpdateDMsToOffer(dev),
-		Devices:        b.getDevicesToOffer(dev),
-		AddUsers:       b.getAddUsersToOffer(dev),
-		GroupCreations: b.getGroupCreationsToOffer(dev),
-		UpdateGroups:   b.getUpdateGroupsToOffer(dev),
+		ID:          uuid.New(),
+		destination: dev.ID,
+		References:  references,
 	}
 }
 
-func (b *bounce) getDirectMessagesToOffer(dev device) string {
+func (b *bounce) getDirectMessagesToOffer(dev device) []frameReference {
 	// All DMs we have sent to or received from this user in the past week
 	var dms []DirectMessage
 	err := b.database.
@@ -195,14 +160,14 @@ func (b *bounce) getDirectMessagesToOffer(dev device) string {
 
 	// Collect IDs from the DMs
 	// TODO: only select IDs in the first place?
-	dmsToOffer := []string{}
+	references := []frameReference{}
 	for _, dm := range dms {
-		dmsToOffer = append(dmsToOffer, dm.ID.String())
+		references = append(references, frameReference{FrameID: dm.ID, Type: typeDirectMessage})
 	}
-	return strings.Join(dmsToOffer, ",")
+	return references
 }
 
-func (b *bounce) getGroupMessagesToOffer(dev device) string {
+func (b *bounce) getGroupMessagesToOffer(dev device) []frameReference {
 	// All group messages that this device's user is a part of that are less than a week old
 	var gms []GroupMessage
 	err := b.database.
@@ -227,16 +192,15 @@ func (b *bounce) getGroupMessagesToOffer(dev device) string {
 	}
 
 	// TODO: only select IDs in the first place?
-	gmsToOffer := []string{}
+	references := []frameReference{}
 	for _, gm := range gms {
-		gmsToOffer = append(gmsToOffer, gm.ID.String())
+		references = append(references, frameReference{FrameID: gm.ID, Type: typeGroupMessage})
 	}
-	return strings.Join(gmsToOffer, ",")
+	return references
 }
 
-func (b *bounce) getUpdateDMsToOffer(dev device) string {
+func (b *bounce) getUpdateDMsToOffer(dev device) []frameReference {
 	var unsentUpdateDMs []updateDM
-	updateDMsToOffer := []string{}
 
 	if b.isSyncDevice(dev) {
 		// Select all update DMs from any DM
@@ -264,24 +228,23 @@ func (b *bounce) getUpdateDMsToOffer(dev device) string {
 		}
 	}
 
+	references := []frameReference{}
 	for _, ud := range unsentUpdateDMs {
 		// Ignore sync scoped update DMs unless this is a sync device
 		if ud.getScope(b.currentUserID()) == scopeSync && !b.isSyncDevice(dev) {
 			continue
 		}
-		updateDMsToOffer = append(updateDMsToOffer, ud.ID.String())
+		references = append(references, frameReference{FrameID: ud.ID, Type: typeUpdateDM})
 	}
 
-	return strings.Join(updateDMsToOffer, ",")
+	return references
 }
 
-func (b *bounce) getDevicesToOffer(dev device) string {
-	offerString := ""
+func (b *bounce) getDevicesToOffer(dev device) []frameReference {
+	var unsentDevices []device
 
 	if b.isSyncDevice(dev) {
 		// Sync devices can learn about any device we know about
-		devicesToOffer := []string{}
-		var unsentDevices []device
 		err := b.database.
 			Select("devices.*").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDevice).
@@ -292,14 +255,9 @@ func (b *bounce) getDevicesToOffer(dev device) string {
 				"error": err.Error(),
 			}).Fatal("database error selecting devices for reference offer")
 		}
-		for _, dev := range unsentDevices {
-			devicesToOffer = append(devicesToOffer, dev.ID.String())
-		}
-		offerString = strings.Join(devicesToOffer, ",")
+
 	} else {
 		// TODO: don't just get our devices, get any "overlap" devices
-		devicesToOffer := []string{}
-		var unsentDevices []device
 		err := b.database.
 			Select("devices.*").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDevice).
@@ -310,21 +268,20 @@ func (b *bounce) getDevicesToOffer(dev device) string {
 				"error": err.Error(),
 			}).Fatal("database error selecting devices for reference offer")
 		}
-		for _, dev := range unsentDevices {
-			devicesToOffer = append(devicesToOffer, dev.ID.String())
-		}
-		offerString = strings.Join(devicesToOffer, ",")
 	}
 
-	return offerString
+	references := []frameReference{}
+	for _, dev := range unsentDevices {
+		references = append(references, frameReference{FrameID: dev.ID, Type: typeDevice})
+	}
+
+	return references
 }
 
-func (b *bounce) getAddUsersToOffer(dev device) string {
-	offerString := ""
+func (b *bounce) getAddUsersToOffer(dev device) []frameReference {
+	var unsentAddUsers []addUser
 
 	if b.isSyncDevice(dev) {
-		addUsersToOffer := []string{}
-		var unsentAddUsers []addUser
 		err := b.database.
 			Select("add_users.*").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeAddUser).
@@ -335,13 +292,7 @@ func (b *bounce) getAddUsersToOffer(dev device) string {
 				"error": err.Error(),
 			}).Fatal("database error selecting users for reference offer")
 		}
-		for _, au := range unsentAddUsers {
-			addUsersToOffer = append(addUsersToOffer, au.ID.String())
-		}
-		offerString = strings.Join(addUsersToOffer, ",")
 	} else {
-		addUsersToOffer := []string{}
-		var unsentAddUsers []addUser
 		err := b.database.
 			Select("add_users.*").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeAddUser).
@@ -352,20 +303,19 @@ func (b *bounce) getAddUsersToOffer(dev device) string {
 				"error": err.Error(),
 			}).Fatal("database error selecting users for reference offer")
 		}
-		for _, au := range unsentAddUsers {
-			addUsersToOffer = append(addUsersToOffer, au.ID.String())
-		}
-		offerString = strings.Join(addUsersToOffer, ",")
-
 	}
 
-	return offerString
+	references := []frameReference{}
+	for _, au := range unsentAddUsers {
+		references = append(references, frameReference{FrameID: au.ID, Type: typeAddUser})
+	}
+
+	return references
 }
 
-func (b *bounce) getGroupCreationsToOffer(dev device) string {
-	groupCreationsToOffer := []string{}
-
+func (b *bounce) getGroupCreationsToOffer(dev device) []frameReference {
 	var unsentGroupCreations []groupCreation
+
 	err := b.database.
 		Preload(clause.Associations).
 		Select("group_creations.*").
@@ -380,17 +330,17 @@ func (b *bounce) getGroupCreationsToOffer(dev device) string {
 		}).Fatal("error selecting unsent group creations in reference offer")
 	}
 
+	references := []frameReference{}
 	for _, gc := range unsentGroupCreations {
-		groupCreationsToOffer = append(groupCreationsToOffer, gc.ID.String())
+		references = append(references, frameReference{FrameID: gc.ID, Type: typeGroupCreation})
 	}
 
-	return strings.Join(groupCreationsToOffer, ",")
+	return references
 }
 
-func (b *bounce) getUpdateGroupsToOffer(dev device) string {
-	updateGroupsToOffer := []string{}
-
+func (b *bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 	var unsentUpdateGroups []updateGroup
+
 	err := b.database.
 		Preload(clause.Associations).
 		Select("update_groups.*").
@@ -404,15 +354,16 @@ func (b *bounce) getUpdateGroupsToOffer(dev device) string {
 		}).Fatal("error selecting unsent update groups in reference offer")
 	}
 
+	references := []frameReference{}
 	for _, ug := range unsentUpdateGroups {
 		// Ignore sync scoped update groups unless this is a sync device
 		if ug.getScope(b.currentUserID()) == scopeSync && !b.isSyncDevice(dev) {
 			continue
 		}
-		updateGroupsToOffer = append(updateGroupsToOffer, ug.ID.String())
+		references = append(references, frameReference{FrameID: ug.ID, Type: typeUpdateGroup})
 	}
 
-	return strings.Join(updateGroupsToOffer, ",")
+	return references
 }
 
 func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
@@ -426,258 +377,186 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 	}
 
 	dev, deviceExists := b.getDeviceFromAddress(peer)
-	rd := b.getRemoteDevice(peer)
 
-	rd.messages <- &referenceRequest{
-		ID:             ro.ID,
-		destination:    dev.ID,
-		DirectMessages: b.getDirectMessagesToRequest(dev, deviceExists, ro),
-		GroupMessages:  b.getGroupMessagesToRequest(dev, deviceExists, ro),
-		UpdateDMs:      b.getUpdateDMsToRequest(dev, deviceExists, ro),
-		Devices:        b.getDevicesToRequest(dev, deviceExists, ro),
-		AddUsers:       b.getAddUsersToRequest(dev, deviceExists, ro),
-		GroupCreations: b.getGroupCreationsToRequest(dev, deviceExists, ro),
-		UpdateGroups:   b.getUpdateGroupsToRequest(dev, deviceExists, ro),
-	}
+	// Create a set of references for all of the offered references that we don't have, ACKing the ones we do have in the process
+	typesToIDs := referencedIDs(ro.References)
+	references := []frameReference{}
+	references = append(references, b.getDirectMessagesToRequest(dev, deviceExists, typesToIDs[typeDirectMessage])...)
+	references = append(references, b.getGroupMessagesToRequest(dev, deviceExists, typesToIDs[typeGroupMessage])...)
+	references = append(references, b.getUpdateDMsToRequest(dev, deviceExists, typesToIDs[typeUpdateDM])...)
+	references = append(references, b.getDevicesToRequest(dev, deviceExists, typesToIDs[typeDevice])...)
+	references = append(references, b.getAddUsersToRequest(dev, deviceExists, typesToIDs[typeAddUser])...)
+	references = append(references, b.getGroupCreationsToRequest(dev, deviceExists, typesToIDs[typeGroupCreation])...)
+	references = append(references, b.getUpdateGroupsToRequest(dev, deviceExists, typesToIDs[typeUpdateGroup])...)
+
+	// Inform the reference engine that this peer has these frames that we don't know about
+	b.loadReferenceOffer(peer, references)
 }
 
-func (b *bounce) getDirectMessagesToRequest(dev device, deviceExists bool, ro referenceOffer) string {
-	requestedDMs := []string{}
+// TODO: experiment with gorm to see if these can be DRY'd:
 
-	if len(ro.DirectMessages) > 0 {
-		for _, dmIDString := range strings.Split(ro.DirectMessages, ",") {
-			dmID, err := uuid.Parse(dmIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": dmIDString,
-				}).Error("invalid UUID in reference offer")
-				continue
-			}
+func (b *bounce) getDirectMessagesToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+	references := []frameReference{}
 
-			var dm DirectMessage
-			err = b.database.First(&dm, "id = ?", dmID).Error
-			if err == nil {
-				if deviceExists && !b.isDeliveredTo(&dm, dev.Address) {
-					b.markDeliveredTo(&dm, dev.Address)
-				}
-			} else if errors.Is(err, gorm.ErrRecordNotFound) {
-				// TODO: want to make sure this can't be used to probe a devices for messages that it might already have from another chat,
-				// to test group membership if a chat message from another group is known
-				requestedDMs = append(requestedDMs, dmID.String())
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("error getting direct message from database")
+	for _, dmID := range offeredIDs {
+		var dm DirectMessage
+		err := b.database.First(&dm, "id = ?", dmID).Error
+		if err == nil {
+			if deviceExists && !b.isDeliveredTo(&dm, dev.Address) {
+				b.markDeliveredTo(&dm, dev.Address)
 			}
+			go b.sendDirectAck(dev.Address, frameReference{FrameID: dmID, Type: typeDirectMessage})
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			references = append(references, frameReference{FrameID: dmID, Type: typeDirectMessage})
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error getting direct message from database")
 		}
 	}
 
-	return strings.Join(requestedDMs, ",")
+	return references
 }
 
-func (b *bounce) getGroupMessagesToRequest(dev device, deviceExists bool, ro referenceOffer) string {
-	requestedGMs := []string{}
+func (b *bounce) getGroupMessagesToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+	references := []frameReference{}
 
-	if len(ro.GroupMessages) > 0 {
-		for _, gmIDString := range strings.Split(ro.GroupMessages, ",") {
-			gmID, err := uuid.Parse(gmIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": gmIDString,
-				}).Error("invalid UUID in reference offer")
-				continue
+	for _, gmID := range offeredIDs {
+		var gm GroupMessage
+		err := b.database.First(&gm, "id = ?", gmID).Error
+		if err == nil {
+			if deviceExists && !b.isDeliveredTo(&gm, dev.Address) {
+				b.markDeliveredTo(&gm, dev.Address)
 			}
-
-			var gm GroupMessage
-			err = b.database.First(&gm, "id = ?", gmID).Error
-			if err == nil {
-				if deviceExists && !b.isDeliveredTo(&gm, dev.Address) {
-					b.markDeliveredTo(&gm, dev.Address)
-				}
-			} else if errors.Is(err, gorm.ErrRecordNotFound) {
-				// TODO: want to make sure this can't be used to probe a devices for messages that it might already have from another chat,
-				// to test group membership if a chat message from another group is known
-				requestedGMs = append(requestedGMs, gmID.String())
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("error getting group message from database")
-			}
+			go b.sendDirectAck(dev.Address, frameReference{FrameID: gmID, Type: typeGroupMessage})
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			references = append(references, frameReference{FrameID: gmID, Type: typeGroupMessage})
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error getting group message from database")
 		}
 	}
 
-	return strings.Join(requestedGMs, ",")
+	return references
 }
 
-func (b *bounce) getUpdateDMsToRequest(dev device, deviceExists bool, ro referenceOffer) string {
-	desiredUpdateDMs := []string{}
+func (b *bounce) getUpdateDMsToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+	references := []frameReference{}
 
-	if len(ro.UpdateDMs) > 0 {
-		for _, udIDString := range strings.Split(ro.UpdateDMs, ",") {
-			udID, err := uuid.Parse(udIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": udIDString,
-				}).Error("invalid ud UUID in reference offer")
-				continue
+	for _, udID := range offeredIDs {
+		var ud updateDM
+		err := b.database.First(&ud, "id = ?", udID).Error
+		if err == nil {
+			if deviceExists && !b.isDeliveredTo(&ud, dev.Address) {
+				b.markDeliveredTo(&ud, dev.Address)
 			}
-
-			var ud updateDM
-			err = b.database.First(&ud, "id = ?", udID).Error
-			if err == nil {
-				if deviceExists && !b.isDeliveredTo(&ud, dev.Address) {
-					b.markDeliveredTo(&ud, dev.Address)
-				}
-			} else if errors.Is(err, gorm.ErrRecordNotFound) {
-				desiredUpdateDMs = append(desiredUpdateDMs, udID.String())
-			} else {
-				log.WithFields(log.Fields{
-					"id":    udID,
-					"error": err.Error(),
-				}).Fatal("database error querying for update DM settings")
-			}
-		}
-
-	}
-
-	return strings.Join(desiredUpdateDMs, ",")
-}
-
-func (b *bounce) getDevicesToRequest(dev device, deviceExists bool, ro referenceOffer) string {
-	desiredDevices := []string{}
-
-	if len(ro.Devices) > 0 {
-		for _, deviceIDString := range strings.Split(ro.Devices, ",") {
-			deviceID, err := uuid.Parse(deviceIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": deviceIDString,
-				}).Error("invalid device UUID in reference offer")
-				continue
-			}
-
-			var existingDev device
-			err = b.database.First(&existingDev, "id = ?", deviceID).Error
-			if err == nil {
-				if deviceExists && !b.isDeliveredTo(&existingDev, dev.Address) {
-					b.markDeliveredTo(&existingDev, dev.Address)
-				}
-			} else if errors.Is(err, gorm.ErrRecordNotFound) {
-				desiredDevices = append(desiredDevices, deviceID.String())
-			} else {
-				log.WithFields(log.Fields{
-					"id":    deviceID,
-					"error": err.Error(),
-				}).Fatal("database error querying for device")
-			}
+			go b.sendDirectAck(dev.Address, frameReference{FrameID: udID, Type: typeUpdateDM})
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			references = append(references, frameReference{FrameID: udID, Type: typeUpdateDM})
+		} else {
+			log.WithFields(log.Fields{
+				"id":    udID,
+				"error": err.Error(),
+			}).Fatal("database error querying for update DM settings")
 		}
 	}
 
-	return strings.Join(desiredDevices, ",")
+	return references
 }
 
-func (b *bounce) getAddUsersToRequest(dev device, deviceExists bool, ro referenceOffer) string {
-	desiredAddUsers := []string{}
+func (b *bounce) getDevicesToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+	references := []frameReference{}
 
-	if len(ro.AddUsers) > 0 {
-		for _, addUserIDString := range strings.Split(ro.AddUsers, ",") {
-			addUserID, err := uuid.Parse(addUserIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": addUserIDString,
-				}).Error("invalid add user UUID in reference offer")
-				continue
+	for _, deviceID := range offeredIDs {
+		var existingDev device
+		err := b.database.First(&existingDev, "id = ?", deviceID).Error
+		if err == nil {
+			if deviceExists && !b.isDeliveredTo(&existingDev, dev.Address) {
+				b.markDeliveredTo(&existingDev, dev.Address)
 			}
-
-			var au addUser
-			err = b.database.First(&au, "id = ?", addUserID).Error
-			if err == nil {
-				if deviceExists && !b.isDeliveredTo(&au, dev.Address) {
-					b.markDeliveredTo(&au, dev.Address)
-				}
-			} else if errors.Is(err, gorm.ErrRecordNotFound) {
-				desiredAddUsers = append(desiredAddUsers, addUserID.String())
-			} else {
-				log.WithFields(log.Fields{
-					"id":    addUserID,
-					"error": err.Error(),
-				}).Fatal("database error querying for add user")
-			}
+			go b.sendDirectAck(dev.Address, frameReference{FrameID: deviceID, Type: typeDevice})
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			references = append(references, frameReference{FrameID: deviceID, Type: typeDevice})
+		} else {
+			log.WithFields(log.Fields{
+				"id":    deviceID,
+				"error": err.Error(),
+			}).Fatal("database error querying for device")
 		}
 	}
 
-	return strings.Join(desiredAddUsers, ",")
+	return references
 }
 
-func (b *bounce) getGroupCreationsToRequest(dev device, deviceExists bool, ro referenceOffer) string {
-	desiredGroupCreations := []string{}
+func (b *bounce) getAddUsersToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+	references := []frameReference{}
 
-	if len(ro.GroupCreations) > 0 {
-		for _, groupCreationIDString := range strings.Split(ro.GroupCreations, ",") {
-			groupCreationID, err := uuid.Parse(groupCreationIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": groupCreationIDString,
-				}).Error("invalid group creation UUID in reference offer")
-				continue
+	for _, addUserID := range offeredIDs {
+		var au addUser
+		err := b.database.First(&au, "id = ?", addUserID).Error
+		if err == nil {
+			if deviceExists && !b.isDeliveredTo(&au, dev.Address) {
+				b.markDeliveredTo(&au, dev.Address)
 			}
-
-			var gc groupCreation
-			err = b.database.First(&gc, "id = ?", groupCreationID).Error
-			if err == nil {
-				if deviceExists && !b.isDeliveredTo(&gc, dev.Address) {
-					b.markDeliveredTo(&gc, dev.Address)
-				}
-			} else if errors.Is(err, gorm.ErrRecordNotFound) {
-				desiredGroupCreations = append(desiredGroupCreations, groupCreationID.String())
-			} else {
-				log.WithFields(log.Fields{
-					"id":    groupCreationID,
-					"error": err.Error(),
-				}).Fatal("database error querying for group creation")
-			}
+			go b.sendDirectAck(dev.Address, frameReference{FrameID: addUserID, Type: typeAddUser})
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			references = append(references, frameReference{FrameID: addUserID, Type: typeAddUser})
+		} else {
+			log.WithFields(log.Fields{
+				"id":    addUserID,
+				"error": err.Error(),
+			}).Fatal("database error querying for add user")
 		}
 	}
 
-	return strings.Join(desiredGroupCreations, ",")
+	return references
 }
 
-func (b *bounce) getUpdateGroupsToRequest(dev device, deviceExists bool, ro referenceOffer) string {
-	desiredUpdateGroups := []string{}
+func (b *bounce) getGroupCreationsToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+	references := []frameReference{}
 
-	if len(ro.UpdateGroups) > 0 {
-		for _, updateGroupIDString := range strings.Split(ro.UpdateGroups, ",") {
-			updateGroupID, err := uuid.Parse(updateGroupIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"string": updateGroupIDString,
-				}).Error("invalid update group UUID in reference offer")
-				continue
+	for _, groupCreationID := range offeredIDs {
+		var gc groupCreation
+		err := b.database.First(&gc, "id = ?", groupCreationID).Error
+		if err == nil {
+			if deviceExists && !b.isDeliveredTo(&gc, dev.Address) {
+				b.markDeliveredTo(&gc, dev.Address)
 			}
-
-			var ug updateGroup
-			err = b.database.First(&ug, "id = ?", updateGroupID).Error
-			if err == nil {
-				if deviceExists && !b.isDeliveredTo(&ug, dev.Address) {
-					b.markDeliveredTo(&ug, dev.Address)
-				}
-			} else if errors.Is(err, gorm.ErrRecordNotFound) {
-				desiredUpdateGroups = append(desiredUpdateGroups, updateGroupID.String())
-			} else {
-				log.WithFields(log.Fields{
-					"id":    updateGroupID,
-					"error": err.Error(),
-				}).Fatal("database error querying for update group")
-			}
+			go b.sendDirectAck(dev.Address, frameReference{FrameID: groupCreationID, Type: typeGroupCreation})
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			references = append(references, frameReference{FrameID: groupCreationID, Type: typeGroupCreation})
+		} else {
+			log.WithFields(log.Fields{
+				"id":    groupCreationID,
+				"error": err.Error(),
+			}).Fatal("database error querying for group creation")
 		}
 	}
 
-	return strings.Join(desiredUpdateGroups, ",")
+	return references
+}
+
+func (b *bounce) getUpdateGroupsToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+	references := []frameReference{}
+
+	for _, updateGroupID := range offeredIDs {
+		var ug updateGroup
+		err := b.database.First(&ug, "id = ?", updateGroupID).Error
+		if err == nil {
+			if deviceExists && !b.isDeliveredTo(&ug, dev.Address) {
+				b.markDeliveredTo(&ug, dev.Address)
+			}
+			go b.sendDirectAck(dev.Address, frameReference{FrameID: updateGroupID, Type: typeUpdateGroup})
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			references = append(references, frameReference{FrameID: updateGroupID, Type: typeUpdateGroup})
+		} else {
+			log.WithFields(log.Fields{
+				"id":    updateGroupID,
+				"error": err.Error(),
+			}).Fatal("database error querying for update group")
+		}
+	}
+
+	return references
 }

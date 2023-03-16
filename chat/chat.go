@@ -28,6 +28,7 @@ type bounce struct {
 	userInterface         UI
 	network               Network
 	devicePool            *devicePool
+	referenceEngine       *referenceEngine
 	userID                uuid.UUID
 	networkIsOnline       bool
 	networkHasBeenOnline  bool
@@ -63,6 +64,7 @@ func Start(network Network, ui UI) {
 
 	log.Debug("opening database")
 	b.openDatabase()
+	b.createReferenceEngine()
 
 	log.Debug("building ui")
 	b.userInterface.Build(
