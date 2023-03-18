@@ -32,6 +32,13 @@ type frameReference struct {
 	Time             int64     `msgpack:"-"`
 }
 
+func (fr *frameReference) BeforeCreate(tx *gorm.DB) error {
+	if fr.ID == uuid.Nil {
+		fr.ID = uuid.New()
+	}
+	return nil
+}
+
 func (b *bounce) openReferenceDatabase() {
 	gormLogger := logger.New(
 		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags), // TODO: https://gist.github.com/bnadland/2e4287b801a47dcfcc94
@@ -43,6 +50,7 @@ func (b *bounce) openReferenceDatabase() {
 	)
 
 	var err error
+	//b.referenceDatabase, err = gorm.Open(sqlite.Open("/home/hayden/.bounce/references.db"), &gorm.Config {  TODO: for testing
 	b.referenceDatabase, err = gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{
 		Logger: gormLogger,
 	})
@@ -61,7 +69,6 @@ func (b *bounce) openReferenceDatabase() {
 	sqliteDB.SetMaxOpenConns(1)
 
 	err = b.referenceDatabase.AutoMigrate(
-		&referenceOffer{},
 		&frameReference{},
 	)
 	if err != nil {
@@ -86,14 +93,6 @@ func (b *bounce) keepReferenceDatabasePruned() {
 
 // If a reference offer was delivered, but a reference request was never received in response, it will only be deleted here
 func (b *bounce) pruneReferenceOffers() {
-	tenMinutesAgo := time.Now().Add(-10 * time.Minute).Unix()
-	err := b.referenceDatabase.Where("created_at < ?", tenMinutesAgo).Delete(referenceOffer{}).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error pruning reference offers")
-	}
-
 	// TODO: delete old offers we never did anything with?
 }
 
@@ -137,7 +136,7 @@ func (b *bounce) loadCatchUp(peer string, cu []frameReference) {
 	for _, fr := range cu {
 		// Get all of the references for each frame in the catch up that are not the peer that sent the catch up
 		references := []frameReference{}
-		err := b.referenceDatabase.Where("id = ? AND type = ? AND peer != ? AND reference_offer_id = ?", fr.ID, fr.Type, peer, uuid.Nil).Find(&references).Error
+		err := b.referenceDatabase.Where("id = ? AND type = ? AND peer != ?", fr.ID, fr.Type, peer).Find(&references).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -150,7 +149,7 @@ func (b *bounce) loadCatchUp(peer string, cu []frameReference) {
 		}
 
 		// Batch delete all reference frames in the database for this frame
-		err = b.referenceDatabase.Where("frame_id = ? AND type = ? AND reference_offer_id = ?", fr.FrameID, fr.Type, uuid.Nil).Delete(&frameReference{}).Error
+		err = b.referenceDatabase.Where("frame_id = ? AND type = ?", fr.FrameID, fr.Type).Delete(&frameReference{}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -167,11 +166,10 @@ func (b *bounce) makeReferenceRequests() {
 	// us that we haven't requested yet, as well as alternative devices for frames that we have requested but have not received a response for in time
 	references := []frameReference{}
 	err := b.referenceDatabase.Model(&frameReference{}).
-		Distinct("frame_id", "type").
+		Group("frame_id").
 		Where(
-			"state = ? AND reference_offer_id = ? AND frame_id NOT IN (?)",
+			"state = ? AND frame_id NOT IN (?)",
 			referenceStateOffered,
-			uuid.Nil,
 			b.referenceDatabase.Select("frame_id").
 				Where(
 					"state = ? AND time > ?",
@@ -199,12 +197,12 @@ func (b *bounce) makeReferenceRequests() {
 	}
 	for peer, frs := range referenceRequests {
 		// broadcast the reference request to the peer
-		go b.sendDirect(peer, &referenceRequest{References: frs})
+		go b.sendDirect(peer, &referenceRequest{References: frs}) // TODO: track ID
 		for _, fr := range frs {
 			// Update the references to indicate the new state and time we made these requests
 			err = b.referenceDatabase.
 				Table("frame_references").
-				Where("frame_id = ? AND type = ? AND peer = ? AND reference_offer_id = ?", fr.FrameID, fr.Type, fr.Peer, uuid.Nil).
+				Where("frame_id = ? AND type = ? AND peer = ?", fr.FrameID, fr.Type, fr.Peer).
 				Updates(map[string]interface{}{
 					"state": referenceStateRequested,
 					"time":  time.Now().Unix(),

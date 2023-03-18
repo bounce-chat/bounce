@@ -73,22 +73,9 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 		return
 	}
 
-	// Find the original offer that we made to this device in order to generate this request
-	var originalOffer referenceOffer
-	err = b.referenceDatabase.Preload(clause.Associations).Where("id = ? AND destination = ?", rr.ID, dev.ID).First(&originalOffer).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"peer":     peer,
-			"offer_id": rr.ID,
-		}).Warn("peer sent a reference request for an offer not in the database, ignoring")
-		return
-	}
-
-	// Mark that the original offer was delivered so that we can stop sending it
-	b.markDeliveredTo(&originalOffer, dev.Address)
-
 	// Everything the device has requested will be packed into a "catch up" message
-	offeredIDs := referencedIDs(originalOffer.References)
+	offerable := b.getReferenceOfferFor(peer)
+	offeredIDs := referencedIDs(offerable.References)
 	requestedIDs := referencedIDs(rr.References)
 	cu := &catchUp{
 		ID:          uuid.New(),
@@ -107,8 +94,6 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	}
 
 	// TODO: broadcast separate catchups for each requested image/audio/file here.  Or rather than a catch up, just broadcast the data.
-
-	b.referenceDatabase.Delete(&originalOffer) // TODO: error check
 }
 
 func (b *bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {

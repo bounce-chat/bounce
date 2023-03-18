@@ -17,33 +17,14 @@ import (
 // should have, but that we didn't deliver to it.
 //
 type referenceOffer struct {
-	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
 	References   []frameReference
-	CreatedAt    int64 `msgpack:"-"` // Used to delete old reference offers that were not responded to
 	destination  uuid.UUID
 	payload      []byte
 	payloadMutex sync.Mutex
 }
 
-func (ro *referenceOffer) AfterDelete(tx *gorm.DB) error {
-	err := tx.Where("reference_offer_id = ?", ro.ID).Delete(&frameReference{}).Error
-	if err != nil {
-		return err
-	}
-
-	return tx.Where("frame_id = ? AND frame_type = ?", ro.ID, typeReferenceOffer).Delete(&deliveryRecord{}).Error
-}
-
-func (ro *referenceOffer) BeforeCreate(tx *gorm.DB) error {
-	if ro.ID == uuid.Nil {
-		log.Fatal("reference offer must have ID assigned before creation")
-	}
-	ro.CreatedAt = time.Now().Unix()
-	return nil
-}
-
 func (ro *referenceOffer) getID() uuid.UUID {
-	return ro.ID
+	return uuid.Nil
 }
 
 func (ro *referenceOffer) getScope(_ uuid.UUID) int {
@@ -114,14 +95,7 @@ func (b *bounce) sendReferences(peerAddress string) {
 
 	referenceOffer := b.getReferenceOfferFor(peerAddress)
 	if len(referenceOffer.References) > 0 {
-		err := b.referenceDatabase.Create(referenceOffer).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error saving referenceOffer")
-		} else {
-			go b.broadcastUntilDelivered(referenceOffer)
-		}
+		go b.broadcastUntilDelivered(referenceOffer)
 	}
 }
 
@@ -141,7 +115,6 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	references = append(references, b.getUpdateGroupsToOffer(dev)...)
 
 	return &referenceOffer{
-		ID:          uuid.New(),
 		destination: dev.ID,
 		References:  references,
 	}
