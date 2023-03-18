@@ -75,7 +75,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 
 	// Find the original offer that we made to this device in order to generate this request
 	var originalOffer referenceOffer
-	err = b.referenceDatabase.Where("id = ? AND destination = ?", rr.ID, dev.ID).First(&originalOffer).Error
+	err = b.referenceDatabase.Preload(clause.Associations).Where("id = ? AND destination = ?", rr.ID, dev.ID).First(&originalOffer).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"peer":     peer,

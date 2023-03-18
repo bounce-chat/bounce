@@ -23,12 +23,13 @@ var referenceStateRequested = 1
 var referenceRetrySeconds = 5
 
 type frameReference struct {
-	ID      uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
-	FrameID uuid.UUID `gorm:"index;uniqueIndex:idx_frame_id_type_peer"`
-	Type    uint16    `gorm:"index;uniqueIndex:idx_frame_id_type_peer"`
-	Peer    string    `gorm:"index;uniqueIndex:idx_frame_id_type_peer" msgpack:"-"`
-	State   int       `msgpack:"-"`
-	Time    int64     `msgpack:"-"`
+	ID               uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
+	ReferenceOfferID uuid.UUID `gorm:"index;uniqueIndex:idx_reference_offer_id_frame_id_type_peer" msgpack:"-"`
+	FrameID          uuid.UUID `gorm:"index;uniqueIndex:idx_reference_offer_id_frame_id_type_peer"`
+	Type             uint16    `gorm:"index;uniqueIndex:idx_reference_offer_id_frame_id_type_peer"`
+	Peer             string    `gorm:"index;uniqueIndex:idx_reference_offer_id_frame_id_type_peer" msgpack:"-"`
+	State            int       `msgpack:"-"`
+	Time             int64     `msgpack:"-"`
 }
 
 func (b *bounce) openReferenceDatabase() {
@@ -136,7 +137,7 @@ func (b *bounce) loadCatchUp(peer string, cu []frameReference) {
 	for _, fr := range cu {
 		// Get all of the references for each frame in the catch up that are not the peer that sent the catch up
 		references := []frameReference{}
-		err := b.referenceDatabase.Where("id = ? AND type = ? AND peer != ?", fr.ID, fr.Type, peer).Find(&references).Error
+		err := b.referenceDatabase.Where("id = ? AND type = ? AND peer != ? AND reference_offer_id = ?", fr.ID, fr.Type, peer, uuid.Nil).Find(&references).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -149,7 +150,7 @@ func (b *bounce) loadCatchUp(peer string, cu []frameReference) {
 		}
 
 		// Batch delete all reference frames in the database for this frame
-		err = b.referenceDatabase.Where("frame_id = ? AND type = ?", fr.FrameID, fr.Type).Delete(&frameReference{}).Error
+		err = b.referenceDatabase.Where("frame_id = ? AND type = ? AND reference_offer_id = ?", fr.FrameID, fr.Type, uuid.Nil).Delete(&frameReference{}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -168,8 +169,9 @@ func (b *bounce) makeReferenceRequests() {
 	err := b.referenceDatabase.Model(&frameReference{}).
 		Distinct("frame_id", "type").
 		Where(
-			"state = ? AND frame_id NOT IN (?)",
+			"state = ? AND reference_offer_id = ? AND frame_id NOT IN (?)",
 			referenceStateOffered,
+			uuid.Nil,
 			b.referenceDatabase.Select("frame_id").
 				Where(
 					"state = ? AND time > ?",
@@ -202,7 +204,7 @@ func (b *bounce) makeReferenceRequests() {
 			// Update the references to indicate the new state and time we made these requests
 			err = b.referenceDatabase.
 				Table("frame_references").
-				Where("frame_id = ? AND type = ? AND peer = ?", fr.FrameID, fr.Type, fr.Peer).
+				Where("frame_id = ? AND type = ? AND peer = ? AND reference_offer_id = ?", fr.FrameID, fr.Type, fr.Peer, uuid.Nil).
 				Updates(map[string]interface{}{
 					"state": referenceStateRequested,
 					"time":  time.Now().Unix(),

@@ -25,6 +25,15 @@ type referenceOffer struct {
 	payloadMutex sync.Mutex
 }
 
+func (ro *referenceOffer) AfterDelete(tx *gorm.DB) error {
+	err := tx.Where("reference_offer_id = ?", ro.ID).Delete(&frameReference{}).Error
+	if err != nil {
+		return err
+	}
+
+	return tx.Where("frame_id = ? AND frame_type = ?", ro.ID, typeReferenceOffer).Delete(&deliveryRecord{}).Error
+}
+
 func (ro *referenceOffer) BeforeCreate(tx *gorm.DB) error {
 	if ro.ID == uuid.Nil {
 		log.Fatal("reference offer must have ID assigned before creation")
