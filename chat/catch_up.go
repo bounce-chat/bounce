@@ -12,6 +12,7 @@ import (
 var catchUpMutex sync.Mutex
 
 type frame struct {
+	ID      uuid.UUID
 	Type    uint16
 	Payload []byte
 }
@@ -48,7 +49,7 @@ func (cu *catchUp) getPayload() []byte {
 	if len(cu.payload) == 0 {
 		sort.Sort(cu.broadcastables)
 		for _, br := range cu.broadcastables {
-			cu.Frames = append(cu.Frames, frame{Type: br.getType(), Payload: br.getPayload()})
+			cu.Frames = append(cu.Frames, frame{ID: br.getID(), Type: br.getType(), Payload: br.getPayload()})
 		}
 
 		bytes, err := msgpack.Marshal(cu)
@@ -80,7 +81,9 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 	}
 
 	_, deviceAlreadyExists := b.getDeviceFromAddress(peer)
-	go b.sendDirectAck(peer, frameReference{FrameID: cu.ID, Type: typeCatchUp})
+	go b.sendAck(peer, typeCatchUp, cu.ID)
+
+	b.loadCatchUp(peer, referencesFromFrames(cu.Frames))
 
 	handlers := b.getHandlers()
 	for _, fr := range cu.Frames {
@@ -127,4 +130,14 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 	//
 	//}
 
+}
+
+func referencesFromFrames(frames []frame) []frameReference {
+	references := []frameReference{}
+
+	for _, frame := range frames {
+		references = append(references, frameReference{FrameID: frame.ID, Type: frame.Type})
+	}
+
+	return references
 }

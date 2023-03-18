@@ -25,10 +25,10 @@ const undeliverableAfter = time.Duration(7 * 24 * time.Hour)
 type bounce struct {
 	configDirectory       string
 	database              *gorm.DB
+	referenceDatabase     *gorm.DB
 	userInterface         UI
 	network               Network
 	devicePool            *devicePool
-	referenceEngine       *referenceEngine
 	userID                uuid.UUID
 	networkIsOnline       bool
 	networkHasBeenOnline  bool
@@ -64,7 +64,7 @@ func Start(network Network, ui UI) {
 
 	log.Debug("opening database")
 	b.openDatabase()
-	b.createReferenceEngine()
+	b.openReferenceDatabase()
 
 	log.Debug("building ui")
 	b.userInterface.Build(

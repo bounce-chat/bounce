@@ -146,7 +146,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	err = b.database.Where("id = ?", ug.ID).First(&existingUG).Error
 	if err == nil {
 		b.markDeliveredTo(&existingUG, peer)
-		go b.sendDirectAck(peer, frameReference{FrameID: ug.ID, Type: typeUpdateGroup})
+		go b.sendAck(peer, typeUpdateGroup, ug.ID)
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
@@ -166,7 +166,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	}
 
 	// Ack it
-	go b.sendDirectAck(peer, frameReference{FrameID: ug.ID, Type: typeUpdateGroup})
+	go b.sendAck(peer, typeUpdateGroup, ug.ID)
 
 	// Mark that the peer that send this update already has it
 	b.markDeliveredTo(&ug, peer)

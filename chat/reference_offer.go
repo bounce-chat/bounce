@@ -19,8 +19,8 @@ import (
 type referenceOffer struct {
 	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
 	References   []frameReference
-	CreatedAt    int64     `msgpack:"-"` // Used to delete old reference offers that were not responded to
-	destination  uuid.UUID `msgpack:"-"`
+	CreatedAt    int64 `msgpack:"-"` // Used to delete old reference offers that were not responded to
+	destination  uuid.UUID
 	payload      []byte
 	payloadMutex sync.Mutex
 }
@@ -105,7 +105,7 @@ func (b *bounce) sendReferences(peerAddress string) {
 
 	referenceOffer := b.getReferenceOfferFor(peerAddress)
 	if len(referenceOffer.References) > 0 {
-		err := b.referenceEngine.database.Create(referenceOffer).Error
+		err := b.referenceDatabase.Create(referenceOffer).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -255,7 +255,6 @@ func (b *bounce) getDevicesToOffer(dev device) []frameReference {
 				"error": err.Error(),
 			}).Fatal("database error selecting devices for reference offer")
 		}
-
 	} else {
 		// TODO: don't just get our devices, get any "overlap" devices
 		err := b.database.
@@ -405,7 +404,7 @@ func (b *bounce) getDirectMessagesToRequest(dev device, deviceExists bool, offer
 			if deviceExists && !b.isDeliveredTo(&dm, dev.Address) {
 				b.markDeliveredTo(&dm, dev.Address)
 			}
-			go b.sendDirectAck(dev.Address, frameReference{FrameID: dmID, Type: typeDirectMessage})
+			go b.sendAck(dev.Address, typeDirectMessage, dmID)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			references = append(references, frameReference{FrameID: dmID, Type: typeDirectMessage})
 		} else {
@@ -428,7 +427,7 @@ func (b *bounce) getGroupMessagesToRequest(dev device, deviceExists bool, offere
 			if deviceExists && !b.isDeliveredTo(&gm, dev.Address) {
 				b.markDeliveredTo(&gm, dev.Address)
 			}
-			go b.sendDirectAck(dev.Address, frameReference{FrameID: gmID, Type: typeGroupMessage})
+			go b.sendAck(dev.Address, typeGroupMessage, gm.ID)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			references = append(references, frameReference{FrameID: gmID, Type: typeGroupMessage})
 		} else {
@@ -451,7 +450,7 @@ func (b *bounce) getUpdateDMsToRequest(dev device, deviceExists bool, offeredIDs
 			if deviceExists && !b.isDeliveredTo(&ud, dev.Address) {
 				b.markDeliveredTo(&ud, dev.Address)
 			}
-			go b.sendDirectAck(dev.Address, frameReference{FrameID: udID, Type: typeUpdateDM})
+			go b.sendAck(dev.Address, typeUpdateDM, udID)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			references = append(references, frameReference{FrameID: udID, Type: typeUpdateDM})
 		} else {
@@ -475,7 +474,7 @@ func (b *bounce) getDevicesToRequest(dev device, deviceExists bool, offeredIDs [
 			if deviceExists && !b.isDeliveredTo(&existingDev, dev.Address) {
 				b.markDeliveredTo(&existingDev, dev.Address)
 			}
-			go b.sendDirectAck(dev.Address, frameReference{FrameID: deviceID, Type: typeDevice})
+			go b.sendAck(dev.Address, typeDevice, deviceID)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			references = append(references, frameReference{FrameID: deviceID, Type: typeDevice})
 		} else {
@@ -499,7 +498,7 @@ func (b *bounce) getAddUsersToRequest(dev device, deviceExists bool, offeredIDs 
 			if deviceExists && !b.isDeliveredTo(&au, dev.Address) {
 				b.markDeliveredTo(&au, dev.Address)
 			}
-			go b.sendDirectAck(dev.Address, frameReference{FrameID: addUserID, Type: typeAddUser})
+			go b.sendAck(dev.Address, typeAddUser, addUserID)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			references = append(references, frameReference{FrameID: addUserID, Type: typeAddUser})
 		} else {
@@ -523,7 +522,7 @@ func (b *bounce) getGroupCreationsToRequest(dev device, deviceExists bool, offer
 			if deviceExists && !b.isDeliveredTo(&gc, dev.Address) {
 				b.markDeliveredTo(&gc, dev.Address)
 			}
-			go b.sendDirectAck(dev.Address, frameReference{FrameID: groupCreationID, Type: typeGroupCreation})
+			go b.sendAck(dev.Address, typeGroupCreation, groupCreationID)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			references = append(references, frameReference{FrameID: groupCreationID, Type: typeGroupCreation})
 		} else {
@@ -547,7 +546,7 @@ func (b *bounce) getUpdateGroupsToRequest(dev device, deviceExists bool, offered
 			if deviceExists && !b.isDeliveredTo(&ug, dev.Address) {
 				b.markDeliveredTo(&ug, dev.Address)
 			}
-			go b.sendDirectAck(dev.Address, frameReference{FrameID: updateGroupID, Type: typeUpdateGroup})
+			go b.sendAck(dev.Address, typeUpdateGroup, updateGroupID)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			references = append(references, frameReference{FrameID: updateGroupID, Type: typeUpdateGroup})
 		} else {

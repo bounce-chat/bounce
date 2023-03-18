@@ -4,6 +4,7 @@ import (
 	"errors"
 	stdlog "log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +14,8 @@ import (
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 )
+
+var referenceRequestMutex sync.Mutex
 
 var referenceStateOffered = 0
 var referenceStateRequested = 1
@@ -28,13 +31,7 @@ type frameReference struct {
 	Time    int64     `msgpack:"-"`
 }
 
-type referenceEngine struct {
-	database *gorm.DB
-}
-
-func (b *bounce) createReferenceEngine() {
-	b.referenceEngine = &referenceEngine{}
-
+func (b *bounce) openReferenceDatabase() {
 	gormLogger := logger.New(
 		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags), // TODO: https://gist.github.com/bnadland/2e4287b801a47dcfcc94
 		logger.Config{
@@ -45,7 +42,7 @@ func (b *bounce) createReferenceEngine() {
 	)
 
 	var err error
-	b.referenceEngine.database, err = gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{
+	b.referenceDatabase, err = gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{
 		Logger: gormLogger,
 	})
 	if err != nil {
@@ -54,7 +51,7 @@ func (b *bounce) createReferenceEngine() {
 		}).Fatal("error opening reference database")
 	}
 
-	sqliteDB, err := b.referenceEngine.database.DB()
+	sqliteDB, err := b.referenceDatabase.DB()
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -62,7 +59,7 @@ func (b *bounce) createReferenceEngine() {
 	}
 	sqliteDB.SetMaxOpenConns(1)
 
-	err = b.referenceEngine.database.AutoMigrate(
+	err = b.referenceDatabase.AutoMigrate(
 		&referenceOffer{},
 		&frameReference{},
 	)
@@ -89,12 +86,14 @@ func (b *bounce) keepReferenceDatabasePruned() {
 // If a reference offer was delivered, but a reference request was never received in response, it will only be deleted here
 func (b *bounce) pruneReferenceOffers() {
 	tenMinutesAgo := time.Now().Add(-10 * time.Minute).Unix()
-	err := b.referenceEngine.database.Where("created_at < ?", tenMinutesAgo).Delete(referenceOffer{}).Error
+	err := b.referenceDatabase.Where("created_at < ?", tenMinutesAgo).Delete(referenceOffer{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error pruning reference offers")
 	}
+
+	// TODO: delete old offers we never did anything with?
 }
 
 //
@@ -109,7 +108,7 @@ func (b *bounce) loadReferenceOffer(peer string, ro []frameReference) {
 		fr.Peer = peer
 		fr.Time = now
 
-		err := b.referenceEngine.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&fr).Error
+		err := b.referenceDatabase.Clauses(clause.OnConflict{DoNothing: true}).Create(&fr).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -118,6 +117,12 @@ func (b *bounce) loadReferenceOffer(peer string, ro []frameReference) {
 	}
 
 	b.makeReferenceRequests()
+	go func() {
+		// If the request we generated from this offer fails, check after the expiration to see if any other
+		// devices have offered the same references
+		time.Sleep(time.Duration(referenceRetrySeconds+1) * time.Second)
+		b.makeReferenceRequests()
+	}()
 }
 
 //
@@ -127,11 +132,11 @@ func (b *bounce) loadReferenceOffer(peer string, ro []frameReference) {
 // could also have this function check to make sure things were actually saved and only ack in that case, or have the catch up handler confirm
 // the save and then only pass the ones that saved to this function
 //
-func (b *bounce) loadCatchUp(peer string, cu []frameReference) { // TODO: loadSuccessfulCatchUps?
+func (b *bounce) loadCatchUp(peer string, cu []frameReference) {
 	for _, fr := range cu {
 		// Get all of the references for each frame in the catch up that are not the peer that sent the catch up
 		references := []frameReference{}
-		err := b.referenceEngine.database.Where("id = ? AND type = ? AND peer != ?", fr.ID, fr.Type, peer).Find(&references).Error
+		err := b.referenceDatabase.Where("id = ? AND type = ? AND peer != ?", fr.ID, fr.Type, peer).Find(&references).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -140,11 +145,11 @@ func (b *bounce) loadCatchUp(peer string, cu []frameReference) { // TODO: loadSu
 
 		// Ack these to any peer that offered it, or that didn't respond to our request
 		for _, unneededReference := range references {
-			b.sendDirectAck(unneededReference.Peer, unneededReference)
+			go b.sendAck(unneededReference.Peer, unneededReference.Type, unneededReference.FrameID)
 		}
 
 		// Batch delete all reference frames in the database for this frame
-		err = b.referenceEngine.database.Where("frame_id = ? AND type = ?", fr.FrameID, fr.Type).Delete(&frameReference{}).Error
+		err = b.referenceDatabase.Where("frame_id = ? AND type = ?", fr.FrameID, fr.Type).Delete(&frameReference{}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -154,15 +159,18 @@ func (b *bounce) loadCatchUp(peer string, cu []frameReference) { // TODO: loadSu
 }
 
 func (b *bounce) makeReferenceRequests() {
+	referenceRequestMutex.Lock()
+	defer referenceRequestMutex.Unlock()
+
 	// Get a unique list of all the frames we need to learn about and a device we can get them from.  This includes all frames that have been offered to
 	// us that we haven't requested yet, as well as alternative devices for frames that we have requested but have not received a response for in time
 	references := []frameReference{}
-	err := b.referenceEngine.database.Model(&frameReference{}).
+	err := b.referenceDatabase.Model(&frameReference{}).
 		Distinct("frame_id", "type").
 		Where(
 			"state = ? AND frame_id NOT IN (?)",
 			referenceStateOffered,
-			b.referenceEngine.database.Select("frame_id").
+			b.referenceDatabase.Select("frame_id").
 				Where(
 					"state = ? AND time > ?",
 					referenceStateRequested,
@@ -185,17 +193,14 @@ func (b *bounce) makeReferenceRequests() {
 	// Prepare reference requests for each device that is in the list of references to request
 	referenceRequests := map[string][]frameReference{}
 	for _, reference := range references {
-		referenceRequests[reference.Peer] = append(referenceRequests[reference.Peer], frameReference{FrameID: reference.FrameID, Type: reference.Type})
+		referenceRequests[reference.Peer] = append(referenceRequests[reference.Peer], reference)
 	}
 	for peer, frs := range referenceRequests {
 		// broadcast the reference request to the peer
-		rd := b.getRemoteDevice(peer)
-		rd.messages <- &referenceRequest{
-			References: frs,
-		}
+		go b.sendDirect(peer, &referenceRequest{References: frs})
 		for _, fr := range frs {
 			// Update the references to indicate the new state and time we made these requests
-			err = b.referenceEngine.database.
+			err = b.referenceDatabase.
 				Table("frame_references").
 				Where("frame_id = ? AND type = ? AND peer = ?", fr.FrameID, fr.Type, fr.Peer).
 				Updates(map[string]interface{}{
@@ -221,7 +226,7 @@ func referencedIDs(references []frameReference) map[uint16][]uuid.UUID {
 		typeAddUser:       []uuid.UUID{},
 		typeGroupCreation: []uuid.UUID{},
 		typeUpdateGroup:   []uuid.UUID{},
-		typeCatchUp:       []uuid.UUID{}, // TODO: needed?
+		typeCatchUp:       []uuid.UUID{},
 	}
 
 	for _, reference := range references {

@@ -92,7 +92,7 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 
 	// If the device already exists, ack it and return
 	if _, deviceExists := b.getDeviceFromAddress(newDevice.Address); deviceExists {
-		b.sendDirectAck(peer, frameReference{FrameID: newDevice.ID, Type: typeDevice})
+		b.sendAck(peer, typeDevice, newDevice.ID)
 		b.markDeliveredTo(&newDevice, peer)
 		return
 	}
@@ -143,7 +143,7 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 	go b.broadcast(&newDevice)
 
 	// ACK it
-	b.sendDirectAck(peer, frameReference{FrameID: newDevice.ID, Type: typeDevice})
+	b.sendAck(peer, typeDevice, newDevice.ID)
 }
 
 func (b *bounce) getDeviceFromAddress(address string) (device, bool) {

@@ -100,6 +100,11 @@ func (b *bounce) broadcast(br broadcastable) {
 	}
 }
 
+func (b *bounce) sendDirect(peer string, br broadcastable) {
+	rd := b.getRemoteDevice(peer)
+	rd.messages <- br
+}
+
 // Can only be used with device-scoped frames
 func (b *bounce) broadcastUntilDelivered(br broadcastable) {
 	giveUpTime := time.Now().Add(5 * time.Minute)

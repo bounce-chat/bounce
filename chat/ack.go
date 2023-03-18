@@ -68,7 +68,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 
 	b.handleAckDirectMessages(peer, ackedIDs[typeDirectMessage])
 	b.handleAckGroupMessages(peer, ackedIDs[typeGroupMessage])
-	b.handleAckCatchUps(peer, ackedIDs[typeCatchUp]) // TODO: needed?
+	b.handleAckCatchUps(peer, ackedIDs[typeCatchUp])
 	b.handleAckUpdateDMs(peer, ackedIDs[typeUpdateDM])
 	b.handleAckDevices(peer, ackedIDs[typeDevice])
 	b.handleAckAddUsers(peer, ackedIDs[typeAddUser])
@@ -76,11 +76,10 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckUpdateGroups(peer, ackedIDs[typeUpdateGroup])
 }
 
-func (b *bounce) sendDirectAck(peer string, fr frameReference) {
-	rd := b.getRemoteDevice(peer)
-	rd.messages <- &ack{
-		References: []frameReference{fr},
-	}
+func (b *bounce) sendAck(peer string, frameType uint16, frameID uuid.UUID) {
+	b.sendDirect(peer, &ack{
+		References: []frameReference{frameReference{Type: frameType, FrameID: frameID}},
+	})
 }
 
 func (b *bounce) handleAckDirectMessages(peer string, ids []uuid.UUID) {

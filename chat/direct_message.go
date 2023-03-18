@@ -194,7 +194,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	b.clearUserTypingIndicator(dm.Source, dm.getDestination(b.currentUserID()))
 
 	// Send an ack to the sender that we got it
-	go b.sendDirectAck(peer, frameReference{FrameID: dm.ID, Type: typeDirectMessage})
+	go b.sendAck(peer, typeDirectMessage, dm.ID)
 
 	// Gossip the message to any online devices that should have it
 	go b.broadcast(&dm) // TODO: only send references if the devices in the pool are less that max connections per pool?
