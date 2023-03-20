@@ -117,7 +117,9 @@ func (b *bounce) getBroadcastScope(br broadcastable) []*remoteDevice {
 	} else if scope == scopeUser {
 		return b.getUserScope(br)
 	} else if scope == scopeDevice {
-		log.Error("cannot broadcast broadcastable with device scope, use sendDirectly instead")
+		log.WithFields(log.Fields{
+			"type": br.getType(),
+		}).Error("cannot broadcast broadcastable with device scope, use sendDirectly instead")
 		return []*remoteDevice{}
 	} else if scope == scopeGroup {
 		return b.getGroupScope(br)

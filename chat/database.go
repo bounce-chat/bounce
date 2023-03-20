@@ -243,10 +243,9 @@ func (b *bounce) pruneDeliveryRecords() {
 	// here well after they are needed.
 	aDayAgo := time.Now().Add(-24 * time.Hour).Unix()
 	err := b.database.Where(
-		"created_at < ? AND frame_type IN (?, ?)",
+		"created_at < ? AND frame_type IN (?)",
 		aDayAgo,
 		typeReferenceOffer,
-		typeCatchUp,
 	).Delete(&deliveryRecord{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{

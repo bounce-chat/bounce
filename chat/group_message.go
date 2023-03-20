@@ -82,7 +82,7 @@ func (gm *GroupMessage) getPayload() []byte {
 }
 
 func (gm *GroupMessage) getTimestamp() int64 {
-	return gm.SavedAt
+	return gm.WrittenAt
 }
 
 func (b *bounce) handleGroupMessage(peer string, payload []byte) {

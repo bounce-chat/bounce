@@ -89,7 +89,7 @@ func (dm *DirectMessage) getPayload() []byte {
 }
 
 func (dm *DirectMessage) getTimestamp() int64 {
-	return dm.SavedAt
+	return dm.WrittenAt
 }
 
 //
