@@ -14,23 +14,9 @@ import (
 // DirectMessages are comma separated for consistency with reference offers, which must do this
 // since SQLite doesn't support slices
 type referenceRequest struct {
-	ID           uuid.UUID
 	References   []frameReference
-	destination  uuid.UUID
 	payload      []byte
 	payloadMutex sync.Mutex
-}
-
-func (rr *referenceRequest) getID() uuid.UUID {
-	return rr.ID
-}
-
-func (rr *referenceRequest) getScope(_ uuid.UUID) int {
-	return scopeDevice
-}
-
-func (rr *referenceRequest) getDestination(_ uuid.UUID) uuid.UUID {
-	return rr.destination
 }
 
 func (rr *referenceRequest) getType() uint16 {
@@ -67,8 +53,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	dev, ok := b.getDeviceFromAddress(peer)
 	if !ok {
 		log.WithFields(log.Fields{
-			"reference_request_id": rr.ID,
-			"peer":                 peer,
+			"peer": peer,
 		}).Warn("got reference request from unknown peer device, ignoring")
 		return
 	}
@@ -78,10 +63,9 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	offeredIDs := referencedIDs(offerable.References)
 	requestedIDs := referencedIDs(rr.References)
 	cu := &catchUp{
-		ID:          uuid.New(),
-		destination: dev.ID,
+		broadcastables: sortableBroadcastables{},
 	}
-	cu.broadcastables = b.getRequestedAddUsersPayloads(dev, requestedIDs[typeAddUser], offeredIDs[typeAddUser])
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedAddUsersPayloads(dev, requestedIDs[typeAddUser], offeredIDs[typeAddUser])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedDevicesPayloads(dev, requestedIDs[typeDevice], offeredIDs[typeDevice])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupCreationPayloads(dev, requestedIDs[typeGroupCreation], offeredIDs[typeGroupCreation])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedDirectMessagePayloads(dev, requestedIDs[typeDirectMessage], offeredIDs[typeDirectMessage])...)
@@ -90,7 +74,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateGroupsPayloads(dev, requestedIDs[typeUpdateGroup], offeredIDs[typeUpdateGroup])...)
 
 	if cu.hasContent() {
-		b.broadcastUntilDelivered(cu)
+		go b.sendDirect(peer, cu)
 	}
 
 	// TODO: broadcast separate catchups for each requested image/audio/file here.  Or rather than a catch up, just broadcast the data.

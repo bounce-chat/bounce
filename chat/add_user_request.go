@@ -68,10 +68,6 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 		return
 	}
 
-	// We'll be responding directly to the remote device without using the
-	// broadcast function since the destination device doesn't yet exist
-	rd := b.getRemoteDevice(peer)
-
 	// Make sure we've got an offer out with this secret
 	var offer addUserOffer
 	err = b.database.First(&offer, "secret = ?", aur.Secret).Error
@@ -80,7 +76,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 			log.WithFields(log.Fields{
 				"peer": peer,
 			}).Warn("peer sent an add user request with an invalid secret")
-			rd.messages <- &addUserRequestRejected{}
+			b.sendDirect(peer, &addUserRequestRejected{})
 			return
 		} else {
 			log.WithFields(log.Fields{
@@ -100,7 +96,8 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 
 	// Enforce the timestamp on the offer
 	if time.Now().Unix() > offer.Timestamp+300 { // TODO: constant
-		rd.messages <- &addUserRequestRejected{}
+		b.sendDirect(peer, &addUserRequestRejected{})
+		return
 	}
 
 	// Unmarshal the user that is requesting to be our friend
@@ -110,7 +107,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling requester user while handing user request")
-		rd.messages <- &addUserRequestRejected{}
+		b.sendDirect(peer, &addUserRequestRejected{})
 		return
 	}
 
@@ -121,7 +118,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 			"user_id": requesterUser.ID,
 			"name":    requesterUser.Name,
 		}).Warn("rejecting friend request from user with invalid device group")
-		rd.messages <- &addUserRequestRejected{}
+		b.sendDirect(peer, &addUserRequestRejected{})
 		return
 	}
 
@@ -134,7 +131,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 	}
 	if !found {
 		log.Warn("add user request came from device that is not part of the requester user's device group")
-		rd.messages <- &addUserRequestRejected{}
+		b.sendDirect(peer, &addUserRequestRejected{})
 		return
 	}
 
@@ -148,7 +145,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 					"new_user":       requesterUser.ID,
 					"exisiting_user": existingDevice.UserID,
 				}).Warn("rejecting add user request with device address collision with separate existing user")
-				rd.messages <- &addUserRequestRejected{}
+				b.sendDirect(peer, &addUserRequestRejected{})
 				return
 			}
 		}
@@ -162,7 +159,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 					"new_user":       requesterUser.ID,
 					"exisiting_user": existingDevice.UserID,
 				}).Warn("rejecting add user with device ID collision with separate existing user")
-				rd.messages <- &addUserRequestRejected{}
+				b.sendDirect(peer, &addUserRequestRejected{})
 				return
 			}
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -185,10 +182,10 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 		}).Fatal("cannot msgpack marshal offer user while handling user request")
 	}
 	requesterUserHash := blake3.Sum256(aur.RequesterUser)
-	rd.messages <- &addUserRequestAccepted{
+	b.sendDirect(peer, &addUserRequestAccepted{
 		OfferUser:      offerBytes,
 		OfferSignature: b.network.Sign(requesterUserHash[:]),
-	}
+	})
 }
 
 func (b *bounce) requestToAddUser(offer string) error {
@@ -219,11 +216,10 @@ func (b *bounce) requestToAddUser(offer string) error {
 			"error": err.Error(),
 		}).Fatal("cannot msgpack marshal requester user while adding friend")
 	}
-	rd := b.getRemoteDevice(address)
-	rd.messages <- &addUserRequest{
+	b.sendDirect(address, &addUserRequest{
 		Secret:        secret,
 		RequesterUser: requesterBytes,
-	}
+	})
 
 	return nil
 }

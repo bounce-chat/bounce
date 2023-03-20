@@ -17,14 +17,14 @@ import (
 // should have, but that we didn't deliver to it.
 //
 type referenceOffer struct {
+	ID           uuid.UUID
 	References   []frameReference
-	destination  uuid.UUID
 	payload      []byte
 	payloadMutex sync.Mutex
 }
 
 func (ro *referenceOffer) getID() uuid.UUID {
-	return uuid.Nil
+	return ro.ID
 }
 
 func (ro *referenceOffer) getScope(_ uuid.UUID) int {
@@ -32,7 +32,7 @@ func (ro *referenceOffer) getScope(_ uuid.UUID) int {
 }
 
 func (ro *referenceOffer) getDestination(_ uuid.UUID) uuid.UUID {
-	return ro.destination // TODO: just make it nil since it's only ever directly broadcast?
+	return uuid.Nil // Reference offers are only sent directly to devices, typical broadcast logic is not used
 }
 
 func (ro *referenceOffer) getType() uint16 {
@@ -74,13 +74,13 @@ func (ro *referenceOffer) shouldDial() bool {
 	return false
 }
 
-func (b *bounce) sendReferences(peerAddress string) {
+func (b *bounce) sendReferences(peer string) {
 	if _, exists := b.currentUser(); !exists {
 		// Our profile hasn't been setup yet, we have nothing to offer
 		return
 	}
 
-	_, exists := b.getDeviceFromAddress(peerAddress)
+	_, exists := b.getDeviceFromAddress(peer)
 	if !exists {
 		// We have nothing to offer a device that we don't know about
 		return
@@ -93,9 +93,34 @@ func (b *bounce) sendReferences(peerAddress string) {
 		return
 	}
 
-	referenceOffer := b.getReferenceOfferFor(peerAddress)
+	referenceOffer := b.getReferenceOfferFor(peer)
 	if len(referenceOffer.References) > 0 {
-		go b.broadcastUntilDelivered(referenceOffer)
+		// Reference offers are often sent when connections are interrupted and sockets might be disconnected
+		// but not yet reporting errors.  It's important to ensure references are delivered, so we broadcast
+		// them until they are ack'd, then delete the delivery record since this isn't a stored frame.
+		giveUpTime := time.Now().Add(1 * time.Minute)
+
+		for {
+			b.sendDirect(peer, referenceOffer)
+			time.Sleep(10 * time.Second)
+
+			if b.isDeliveredTo(referenceOffer, peer) {
+				err := b.database.Where("frame_id = ? AND frame_type = ?", referenceOffer.ID, typeReferenceOffer).Delete(&deliveryRecord{}).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("error deleting reference offer delivery record")
+				}
+				return
+			}
+			if time.Now().After(giveUpTime) {
+				log.WithFields(log.Fields{
+					"id":          referenceOffer.getID(),
+					"destination": peer,
+				}).Warn("gave up attempting to deliver reference offer")
+				return
+			}
+		}
 	}
 }
 
@@ -115,8 +140,8 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	references = append(references, b.getUpdateGroupsToOffer(dev)...)
 
 	return &referenceOffer{
-		destination: dev.ID,
-		References:  references,
+		ID:         uuid.New(),
+		References: references,
 	}
 }
 
@@ -358,6 +383,8 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 	}
 
 	dev, deviceExists := b.getDeviceFromAddress(peer)
+
+	go b.sendAck(peer, typeReferenceOffer, ro.ID)
 
 	// Create a set of references for all of the offered references that we don't have, ACKing the ones we do have in the process
 	typesToIDs := referencedIDs(ro.References)

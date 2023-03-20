@@ -167,9 +167,9 @@ func (b *bounce) connectToUsers() {
 func (b *bounce) sendKeepAlives() {
 	for address, rd := range b.devicePool.devices {
 		if rd.connectedSockets > 0 {
-			dev, ok := b.getDeviceFromAddress(address)
-			if ok {
-				rd.messages <- keepAlive{destination: dev.ID}
+			// Only send keep alives to connections from devices we have an identity for
+			if _, ok := b.getDeviceFromAddress(address); ok {
+				rd.messages <- keepAlive{}
 			}
 		}
 	}

@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -50,6 +49,11 @@ type sortableBroadcastable interface {
 	getTimestamp() int64
 }
 
+type directlySendable interface {
+	getType() uint16
+	getPayload() []byte
+}
+
 type sortableBroadcastables []sortableBroadcastable
 
 func (sbrs sortableBroadcastables) Len() int {
@@ -94,61 +98,15 @@ func (b *bounce) broadcast(br broadcastable) {
 	}).Debug("broadcasting frame")
 	for _, peer := range b.getBroadcastScope(br) {
 		// Async try to write this message to every device that should be written to
-		go func(dst chan broadcastable, msg broadcastable) {
+		go func(dst chan directlySendable, msg broadcastable) {
 			dst <- msg
 		}(peer.messages, br)
 	}
 }
 
-func (b *bounce) sendDirect(peer string, br broadcastable) {
+func (b *bounce) sendDirect(peer string, br directlySendable) {
 	rd := b.getRemoteDevice(peer)
 	rd.messages <- br
-}
-
-// Can only be used with device-scoped frames
-func (b *bounce) broadcastUntilDelivered(br broadcastable) {
-	giveUpTime := time.Now().Add(5 * time.Minute)
-
-	if br.getScope(b.currentUserID()) != scopeDevice {
-		log.WithFields(log.Fields{
-			"frame_id":    br.getID(),
-			"frame_type":  br.getType(),
-			"frame_scope": br.getScope(b.currentUserID()),
-		}).Fatal("cannot use broadcastUntilDelivered on frames that are not device scoped")
-	}
-
-	// Look up the address of the device we're broadcasting to
-	var dev device
-	err := b.database.First(&dev, "id = ?", br.getDestination(b.currentUserID())).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"device_id": br.getDestination(b.currentUserID()),
-			}).Error("cannot broadcast to an unknown device")
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error looking up device")
-		}
-	}
-
-	for {
-		b.broadcast(br)
-		time.Sleep(30 * time.Second) // TODO: derive from message size?
-
-		if b.isDeliveredTo(br, dev.Address) {
-			// we got the request, our offer was delivered
-			return
-		}
-		if time.Now().After(giveUpTime) {
-			log.WithFields(log.Fields{
-				"id":          br.getID(),
-				"destination": br.getDestination(b.currentUserID()),
-			}).Warn("gave up attempting to deliver catch up")
-			return
-		}
-	}
-
 }
 
 func (b *bounce) getBroadcastScope(br broadcastable) []*remoteDevice {
@@ -159,7 +117,8 @@ func (b *bounce) getBroadcastScope(br broadcastable) []*remoteDevice {
 	} else if scope == scopeUser {
 		return b.getUserScope(br)
 	} else if scope == scopeDevice {
-		return b.getDeviceScope(br)
+		log.Error("cannot broadcast broadcastable with device scope, use sendDirectly instead")
+		return []*remoteDevice{}
 	} else if scope == scopeGroup {
 		return b.getGroupScope(br)
 	} else if scope == scopeGlobal {
@@ -239,37 +198,6 @@ func (b *bounce) getUserScope(br broadcastable) []*remoteDevice {
 
 	// Add any sync devices that are online
 	broadcastTargets = append(broadcastTargets, b.getSyncScope(br)...)
-
-	return broadcastTargets
-}
-
-func (b *bounce) getDeviceScope(br broadcastable) []*remoteDevice {
-	destination := br.getDestination(b.currentUserID())
-	broadcastTargets := []*remoteDevice{}
-
-	var target device
-	err := b.database.First(&target, "id = ?", destination).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"scope":        br.getScope(b.currentUserID()),
-				"destinations": destination,
-				"type":         br.getType(),
-			}).Error("device not found when determining broadcast scope for message")
-			return broadcastTargets
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error loading device from database")
-		}
-	}
-	if b.isDeliveredTo(br, target.Address) {
-		return broadcastTargets
-	}
-	rd := b.getRemoteDevice(target.Address)
-	if rd.connectedSockets > 0 {
-		broadcastTargets = append(broadcastTargets, rd)
-	}
 
 	return broadcastTargets
 }

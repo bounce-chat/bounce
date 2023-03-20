@@ -18,24 +18,10 @@ type frame struct {
 }
 
 type catchUp struct {
-	ID             uuid.UUID
 	Frames         []frame
 	broadcastables sortableBroadcastables
-	destination    uuid.UUID
 	payload        []byte
 	payloadMutex   sync.Mutex
-}
-
-func (cu *catchUp) getID() uuid.UUID {
-	return cu.ID
-}
-
-func (cu *catchUp) getScope(_ uuid.UUID) int {
-	return scopeDevice
-}
-
-func (cu *catchUp) getDestination(_ uuid.UUID) uuid.UUID {
-	return cu.destination
 }
 
 func (cu *catchUp) getType() uint16 {
@@ -81,7 +67,6 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 	}
 
 	_, deviceAlreadyExists := b.getDeviceFromAddress(peer)
-	go b.sendAck(peer, typeCatchUp, cu.ID)
 
 	b.loadCatchUp(peer, referencesFromFrames(cu.Frames))
 

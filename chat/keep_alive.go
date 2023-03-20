@@ -1,24 +1,6 @@
 package chat
 
-import (
-	"github.com/google/uuid"
-)
-
-type keepAlive struct {
-	destination uuid.UUID
-}
-
-func (ka keepAlive) getID() uuid.UUID {
-	return uuid.Nil
-}
-
-func (ka keepAlive) getScope(_ uuid.UUID) int {
-	return scopeDevice
-}
-
-func (ka keepAlive) getDestination(_ uuid.UUID) uuid.UUID {
-	return ka.destination
-}
+type keepAlive struct{}
 
 func (ka keepAlive) getType() uint16 {
 	return typeKeepAlive

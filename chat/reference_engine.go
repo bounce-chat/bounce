@@ -119,7 +119,7 @@ func (b *bounce) loadReferenceOffer(peer string, ro []frameReference) {
 	b.makeReferenceRequests()
 	go func() {
 		// If the request we generated from this offer fails, check after the expiration to see if any other
-		// devices have offered the same references
+		// devices have offered the same references or if we should try this peer again
 		time.Sleep(time.Duration(referenceRetrySeconds+1) * time.Second)
 		b.makeReferenceRequests()
 	}()
@@ -197,7 +197,7 @@ func (b *bounce) makeReferenceRequests() {
 	}
 	for peer, frs := range referenceRequests {
 		// broadcast the reference request to the peer
-		go b.sendDirect(peer, &referenceRequest{References: frs}) // TODO: track ID
+		go b.sendDirect(peer, &referenceRequest{References: frs})
 		for _, fr := range frs {
 			// Update the references to indicate the new state and time we made these requests
 			err = b.referenceDatabase.
@@ -219,14 +219,14 @@ func (b *bounce) makeReferenceRequests() {
 // Extract all the IDs in the references by type
 func referencedIDs(references []frameReference) map[uint16][]uuid.UUID {
 	ids := map[uint16][]uuid.UUID{
-		typeDirectMessage: []uuid.UUID{},
-		typeGroupMessage:  []uuid.UUID{},
-		typeUpdateDM:      []uuid.UUID{},
-		typeDevice:        []uuid.UUID{},
-		typeAddUser:       []uuid.UUID{},
-		typeGroupCreation: []uuid.UUID{},
-		typeUpdateGroup:   []uuid.UUID{},
-		typeCatchUp:       []uuid.UUID{},
+		typeReferenceOffer: []uuid.UUID{},
+		typeDirectMessage:  []uuid.UUID{},
+		typeGroupMessage:   []uuid.UUID{},
+		typeUpdateDM:       []uuid.UUID{},
+		typeDevice:         []uuid.UUID{},
+		typeAddUser:        []uuid.UUID{},
+		typeGroupCreation:  []uuid.UUID{},
+		typeUpdateGroup:    []uuid.UUID{},
 	}
 
 	for _, reference := range references {

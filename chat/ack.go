@@ -15,23 +15,9 @@ import (
 // DirectMessages are comma separated for consistency with reference offers, which must do this
 // since SQLite doesn't support slices
 type ack struct {
-	ID           uuid.UUID `msgpack:"-"`
 	References   []frameReference
-	destination  uuid.UUID
 	payload      []byte
 	payloadMutex sync.Mutex
-}
-
-func (a *ack) getID() uuid.UUID {
-	return a.ID
-}
-
-func (a *ack) getScope(_ uuid.UUID) int {
-	return scopeDevice
-}
-
-func (a *ack) getDestination(_ uuid.UUID) uuid.UUID {
-	return a.destination
 }
 
 func (a *ack) getType() uint16 {
@@ -66,9 +52,9 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 
 	ackedIDs := referencedIDs(a.References)
 
+	b.handleAckReferenceOffers(peer, ackedIDs[typeCatchUp])
 	b.handleAckDirectMessages(peer, ackedIDs[typeDirectMessage])
 	b.handleAckGroupMessages(peer, ackedIDs[typeGroupMessage])
-	b.handleAckCatchUps(peer, ackedIDs[typeCatchUp])
 	b.handleAckUpdateDMs(peer, ackedIDs[typeUpdateDM])
 	b.handleAckDevices(peer, ackedIDs[typeDevice])
 	b.handleAckAddUsers(peer, ackedIDs[typeAddUser])
@@ -144,18 +130,18 @@ func (b *bounce) handleAckGroupMessages(peer string, ids []uuid.UUID) {
 	}
 }
 
-func (b *bounce) handleAckCatchUps(peer string, ids []uuid.UUID) {
-	for _, catchUpID := range ids {
+func (b *bounce) handleAckReferenceOffers(peer string, ids []uuid.UUID) {
+	for _, roID := range ids {
 		// Mark this catch up as delivered so we can stop broadcasting it
 		err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
 			Destination: peer,
-			FrameID:     catchUpID,
-			FrameType:   typeCatchUp,
+			FrameID:     roID,
+			FrameType:   typeReferenceOffer,
 		}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("error creating delivery record for catch up")
+			}).Fatal("error creating delivery record for reference offer")
 		}
 	}
 }

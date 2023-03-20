@@ -10,7 +10,7 @@ import (
 
 type remoteDevice struct {
 	connectedSockets       int
-	messages               chan broadcastable
+	messages               chan directlySendable
 	shutdown               chan bool
 	shutdownReceivers      map[uuid.UUID]chan bool
 	shutdownReceiversMutex sync.Mutex
@@ -20,7 +20,7 @@ type remoteDevice struct {
 func newRemoteDevice() *remoteDevice {
 	rd := &remoteDevice{
 		connectedSockets:  0,
-		messages:          make(chan broadcastable),
+		messages:          make(chan directlySendable),
 		shutdown:          make(chan bool),
 		shutdownReceivers: make(map[uuid.UUID]chan bool),
 	}

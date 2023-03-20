@@ -73,11 +73,10 @@ func (b *bounce) requestToSync(data string) error {
 	}
 	b.insertConnectionIntoDevicePool(conn)
 
-	rd := b.getRemoteDevice(address)
-	rd.messages <- &syncDeviceRequest{
+	b.sendDirect(address, &syncDeviceRequest{
 		Signature: b.network.Sign([]byte(address)),
 		Secret:    secret,
-	}
+	})
 	return nil
 }
 
@@ -96,10 +95,6 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 		return
 	}
 
-	// We'll be responding directly to the remote device without using the
-	// broadcast function since the destination device doesn't yet exist
-	rd := b.getRemoteDevice(peer)
-
 	// Make sure we've got an offer out with this secret
 	var offer syncDeviceOffer
 	err = b.database.First(&offer, "secret = ?", sdr.Secret).Error
@@ -108,7 +103,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 			log.WithFields(log.Fields{
 				"peer": peer,
 			}).Warn("peer sent a sync device request with an invalid secret")
-			rd.messages <- &syncDeviceRequestRejected{}
+			b.sendDirect(peer, &syncDeviceRequestRejected{})
 			return
 		} else {
 			log.WithFields(log.Fields{
@@ -133,7 +128,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("peer sent a sync device request with a valid secret but invalid signature")
-		rd.messages <- &syncDeviceRequestRejected{}
+		b.sendDirect(peer, &syncDeviceRequestRejected{})
 		return
 	}
 
@@ -158,9 +153,9 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 		// This is already a known sync device.  The device must be requesting to sync again because something went
 		// wrong on their end during the process.  That's fine, everything about this device has been validated in
 		// the past, so we just send our information over again.
-		rd.messages <- &syncDeviceRequestAccepted{
+		b.sendDirect(peer, &syncDeviceRequestAccepted{
 			Profile: profile,
-		}
+		})
 
 		err = b.database.Where("destination = ?", peer).Delete(&deliveryRecord{}).Error
 		if err != nil {
@@ -196,9 +191,9 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 
 		// Accept this device as a new sync device by responding with our updated profile information
 		// that includes this new device
-		rd.messages <- &syncDeviceRequestAccepted{
+		b.sendDirect(peer, &syncDeviceRequestAccepted{
 			Profile: profile,
-		}
+		})
 
 		// Tell the UI that we've accepted the sync device
 		b.userInterface.NewSyncDeviceAdded()
