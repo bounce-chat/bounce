@@ -72,7 +72,6 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	// Initialize types that require it
 	//
-	log.Debug("initializing types") // TODO: remove after startup bug identified
 	fyneUI.groups = make(map[uuid.UUID]*group)
 	fyneUI.dms = make(map[uuid.UUID]*directMessage)
 	fyneUI.threadWithMessage = make(map[uuid.UUID]thread)
@@ -86,7 +85,6 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	// Define the app
 	//
-	log.Debug("defining the app") // TODO: remove after startup bug identified
 	fyneUI.app = app.NewWithID("chat.bounce")
 	fyneUI.app.SetIcon(newEmbeddedResource("assets/icon.png"))
 	fyneUI.app.Lifecycle().SetOnEnteredForeground(func() { fyneUI.focused = true })
@@ -95,7 +93,6 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	// Define the main window
 	//
-	log.Debug("defining main window") // TODO: remove after startup bug identified
 	fyneUI.mainWindow = fyneUI.app.NewWindow("Bounce")
 	fyneUI.mainWindow.SetMaster()
 	fyneUI.mainWindow.SetCloseIntercept(func() {
@@ -110,58 +107,38 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	// Build all the containers
 	//
-	log.Debug("building containers") // TODO: remove after startup bug identified
 	fyneUI.newGroupNameEntry = widget.NewEntry()
 	fyneUI.newGroupSelectedUsersContainer = container.NewMax()
 	fyneUI.newGroupAllAvailableUsers = container.NewVScroll(container.NewVBox())
 	fyneUI.newGroupSelectedUsers = newUserStore()
 	fyneUI.allUsersDMLinksScroll = container.NewVScroll(container.NewVBox())
-	log.Debug("buildMenu") // TODO: remove after startup bug identified
 	fyneUI.buildMenu()
-	log.Debug("buildNewInstall") // TODO: remove after startup bug identified
 	fyneUI.buildNewInstall()
-	log.Debug("buildNewSyncDevice") // TODO: remove after startup bug identified
 	fyneUI.buildNewSyncDevice()
-	log.Debug("buildAddUser") // TODO: remove after startup bug identified
 	fyneUI.buildAddUser()
-	log.Debug("buildNewProfileCreator") // TODO: remove after startup bug identified
 	fyneUI.buildNewProfileCreator()
-	log.Debug("buildDatabaseLoading") // TODO: remove after startup bug identified
 	fyneUI.buildDatabaseLoading()
-	log.Debug("buildEditProfile") // TODO: remove after startup bug identified
 	fyneUI.buildEditProfile()
-	log.Debug("buildDisplaySyncString") // TODO: remove after startup bug identified
 	fyneUI.buildDisplaySyncString()
-	log.Debug("buildDisplayAddUserString") // TODO: remove after startup bug identified
 	fyneUI.buildDisplayAddUserString()
-	log.Debug("buildSettings") // TODO: remove after startup bug identified
 	fyneUI.buildSettings()
-	log.Debug("buildAbout") // TODO: remove after startup bug identified
 	fyneUI.buildAbout()
-	log.Debug("buildNewGroup") // TODO: remove after startup bug identified
 	fyneUI.buildNewGroup()
-	log.Debug("buildNewDM") // TODO: remove after startup bug identified
 	fyneUI.buildNewDM()
-	log.Debug("buildIntroduceContacts") // TODO: remove after startup bug identified
 	fyneUI.buildIntroduceContacts()
-	log.Debug("buildImportContact") // TODO: remove after startup bug identified
 	fyneUI.buildImportContact()
-	log.Debug("buildMainContainer") // TODO: remove after startup bug identified
 	fyneUI.buildMainContainer()
 
 	//
 	// Hookup callbacks
 	//
-	log.Debug("hooking up callbacks") // TODO: remove after startup bug identified
 	fyneUI.callbacks = callbacks
 
 	//
 	// Default to displaying the loading container
 	//
-	log.Debug("showing main container") // TODO: remove after startup bug identified
 	fyneUI.networkState = networkStateStarting
 	fyneUI.showMainContainer()
-	log.Debug("app built") // TODO: remove after startup bug identified
 }
 
 func (fyneUI *Fyne) Run() {
@@ -187,27 +164,22 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		// TODO: log fatal if anything else is set
 		return
 	} else {
-		log.Debug("setting the profile")                                       // TODO: debugging startup issue
 		fyneUI.profile = &user{id: state.Profile.ID, name: state.Profile.Name} // TODO: use the exported user concept in the UI?
 	}
 
 	for _, u := range state.Users {
-		log.Debug("adding a user") // TODO: debugging startup issue
 		fyneUI.users.add(&user{id: u.ID, name: u.Name})
 	}
 
 	for _, g := range state.Groups {
-		log.Debug("adding a group") // TODO: debugging startup issue
 		fyneUI.NewGroupChat(g)
 	}
 
 	for _, dm := range state.DirectMessages {
-		log.Debug("loading a direct message")    // TODO: debugging startup issue
 		fyneUI.loadDirectMessage(dm, true, true) // TODO: need to handle what's read / unread
 	}
 
 	for _, gm := range state.GroupMessages {
-		log.Debug("loading a group message")    // TODO: debugging startup issue
 		fyneUI.loadGroupMessage(gm, true, true) // TODO: need to handle what's read / unread
 	}
 }

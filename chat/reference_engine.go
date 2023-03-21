@@ -22,6 +22,8 @@ var referenceStateRequested = 1
 
 var referenceRetrySeconds = 5
 
+var ERR_FRAME_REFERNCE_ALREADY_HAS_ID = errors.New("cannot create frame reference with already specified ID")
+
 type frameReference struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
 	ReferenceOfferID uuid.UUID `gorm:"index;uniqueIndex:idx_reference_offer_id_frame_id_type_peer" msgpack:"-"`
@@ -29,13 +31,16 @@ type frameReference struct {
 	Type             uint16    `gorm:"index;uniqueIndex:idx_reference_offer_id_frame_id_type_peer"`
 	Peer             string    `gorm:"index;uniqueIndex:idx_reference_offer_id_frame_id_type_peer" msgpack:"-"`
 	State            int       `msgpack:"-"`
-	Time             int64     `msgpack:"-"`
+	LastAction       int64     `msgpack:"-"`
+	CreatedAt        int64     `msgpack:"-"`
 }
 
 func (fr *frameReference) BeforeCreate(tx *gorm.DB) error {
-	if fr.ID == uuid.Nil {
-		fr.ID = uuid.New()
+	if fr.ID != uuid.Nil {
+		return ERR_FRAME_REFERNCE_ALREADY_HAS_ID
 	}
+	fr.ID = uuid.New()
+	fr.CreatedAt = time.Now().Unix()
 	return nil
 }
 
@@ -85,15 +90,22 @@ func (b *bounce) keepReferenceDatabasePruned() {
 
 	for _ = range databasePruningTicker.C {
 		//b.pruningDatabase.Add(1)
-		b.pruneReferenceOffers()
+		b.pruneFrameReferences()
 		//b.pruningDatabase.Done()
 	}
 
 }
 
-// If a reference offer was delivered, but a reference request was never received in response, it will only be deleted here
-func (b *bounce) pruneReferenceOffers() {
-	// TODO: delete old offers we never did anything with?
+func (b *bounce) pruneFrameReferences() {
+	// Delete any old offers or outgoing requests that are too old to be actionable
+	fiveMinutesAgo := time.Now().Add(-5 * time.Minute).Unix()
+
+	err := b.database.Where("created_at < ?", fiveMinutesAgo).Delete(&frameReference{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error pruning frame references")
+	}
 }
 
 //
@@ -106,7 +118,7 @@ func (b *bounce) loadReferenceOffer(peer string, ro []frameReference) {
 	for _, fr := range ro {
 		fr.State = referenceStateOffered
 		fr.Peer = peer
-		fr.Time = now
+		fr.LastAction = now
 
 		err := b.referenceDatabase.Clauses(clause.OnConflict{DoNothing: true}).Create(&fr).Error
 		if err != nil {

@@ -62,11 +62,9 @@ func Start(network Network, ui UI) {
 	log.RegisterExitHandler(b.shutdown)
 	go b.handleInterrupts()
 
-	log.Debug("opening database")
 	b.openDatabase()
 	b.openReferenceDatabase()
 
-	log.Debug("building ui")
 	b.userInterface.Build(
 		b.configDirectory,
 		UICallbacks{
@@ -98,9 +96,7 @@ func Start(network Network, ui UI) {
 		},
 	)
 
-	log.Debug("building initial state")
 	initialState := b.buildInitialState()
-	log.Debug("loading initial state")
 	b.userInterface.LoadInitialState(initialState) // TODO: this should be in a goroutine so we can display loading until ready, but that causes bugs.  Unclear why.
 
 	go b.network.Start(
