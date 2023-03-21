@@ -118,6 +118,11 @@ func (b *bounce) readFrames(conn net.Conn) { // TODO: move to protocol or someth
 		} else {
 			go func(thisPeer string, thisData []byte) {
 				b.runningHandlers.Add(1)
+				log.WithFields(log.Fields{
+					"peer": peer,
+					"type": frameType,
+					"size": len(thisData),
+				}).Debug("handling a frame")
 				handler(thisPeer, thisData)
 				b.runningHandlers.Done()
 			}(peer, data)

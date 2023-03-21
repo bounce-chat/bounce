@@ -12,8 +12,11 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// DirectMessages are comma separated for consistency with reference offers, which must do this
-// since SQLite doesn't support slices
+//
+// An ack is a frame that contains any number of frame references.  Acks indicate that a peer has a received
+// a frame, and are sent in response to most frames as well as to indicate that frames offered during a
+// reference offer have already been delivered to a device.
+//
 type ack struct {
 	References   []frameReference
 	payload      []byte
@@ -52,9 +55,9 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 
 	ackedIDs := referencedIDs(a.References)
 
-	b.handleAckReferenceOffers(peer, ackedIDs[typeCatchUp])
 	b.handleAckDirectMessages(peer, ackedIDs[typeDirectMessage])
 	b.handleAckGroupMessages(peer, ackedIDs[typeGroupMessage])
+	b.handleAckReferenceOffers(peer, ackedIDs[typeCatchUp])
 	b.handleAckUpdateDMs(peer, ackedIDs[typeUpdateDM])
 	b.handleAckDevices(peer, ackedIDs[typeDevice])
 	b.handleAckAddUsers(peer, ackedIDs[typeAddUser])
@@ -73,17 +76,21 @@ func (b *bounce) handleAckDirectMessages(peer string, ids []uuid.UUID) {
 		var dm DirectMessage
 		err := b.database.First(&dm, "id = ?", dmID).Error
 		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-				"peer":  peer,
-			}).Error("ack of unknown DM from peer")
-			// TODO: could be abuse attempted to waste time hitting the database, perhaps should bail / reset connection
-			continue
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   dmID,
+					"peer": peer,
+				}).Error("ack of unknown direct message from peer")
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error querying for direct message")
+			}
 		}
-		// TODO: confirm the device should be able to see this DM?
 		b.markDeliveredTo(&dm, peer)
 
-		// Now that we know the message has been delivered, if the message expires we start the clock on retention
+		// Now that we know the message has been delivered somewhere, if the message expires we start the clock on retention
 		// by setting the absolute time the message should be delete at as now + the retention time
 		if dm.RetentionSeconds != 0 && dm.DeleteAt == 0 {
 			deleteAt := time.Now().Unix() + dm.RetentionSeconds
@@ -104,14 +111,18 @@ func (b *bounce) handleAckGroupMessages(peer string, ids []uuid.UUID) {
 		var gm GroupMessage
 		err := b.database.First(&gm, "id = ?", gmID).Error
 		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-				"peer":  peer,
-			}).Error("ack of unknown GM from peer")
-			// TODO: could be abuse attempted to waste time hitting the database, perhaps should bail / reset connection
-			continue
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   gmID,
+					"peer": peer,
+				}).Error("ack of unknown group message from peer")
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error querying for group message")
+			}
 		}
-		// TODO: confirm the device should be able to see this DM
 		b.markDeliveredTo(&gm, peer)
 
 		// Now that we know the message has been delivered, if the message expires we start the clock on retention
@@ -132,7 +143,7 @@ func (b *bounce) handleAckGroupMessages(peer string, ids []uuid.UUID) {
 
 func (b *bounce) handleAckReferenceOffers(peer string, ids []uuid.UUID) {
 	for _, roID := range ids {
-		// Mark this catch up as delivered so we can stop broadcasting it
+		// Reference offers are not stored in the database, so we manually create a delivery record
 		err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
 			Destination: peer,
 			FrameID:     roID,
@@ -155,12 +166,12 @@ func (b *bounce) handleAckUpdateDMs(peer string, ids []uuid.UUID) {
 				log.WithFields(log.Fields{
 					"id":   udID,
 					"peer": peer,
-				}).Warn("unknown update DM settings acked")
+				}).Warn("unknown update DM acked")
+				continue
 			} else {
 				log.WithFields(log.Fields{
-					"id":    udID,
 					"error": err.Error(),
-				}).Fatal("database error querying for update DM settings")
+				}).Fatal("database error querying for update DM")
 			}
 		} else {
 			b.markDeliveredTo(&ud, peer)
@@ -178,9 +189,9 @@ func (b *bounce) handleAckDevices(peer string, ids []uuid.UUID) {
 					"id":   deviceID,
 					"peer": peer,
 				}).Warn("unknown device acked")
+				continue
 			} else {
 				log.WithFields(log.Fields{
-					"id":    deviceID,
 					"error": err.Error(),
 				}).Fatal("database error querying for device")
 			}
@@ -200,9 +211,9 @@ func (b *bounce) handleAckAddUsers(peer string, ids []uuid.UUID) {
 					"id":   addUserID,
 					"peer": peer,
 				}).Warn("unknown add user acked")
+				continue
 			} else {
 				log.WithFields(log.Fields{
-					"id":    addUserID,
 					"error": err.Error(),
 				}).Fatal("database error querying for add user")
 			}
@@ -211,7 +222,8 @@ func (b *bounce) handleAckAddUsers(peer string, ids []uuid.UUID) {
 		}
 	}
 
-	// TODO: do a reference flow since we might have just added them?
+	// We might have just learned about who this peer belongs to, check if we need to offer references
+	go b.sendReferences(peer)
 }
 
 func (b *bounce) handleAckGroupCreations(peer string, ids []uuid.UUID) {
@@ -224,9 +236,9 @@ func (b *bounce) handleAckGroupCreations(peer string, ids []uuid.UUID) {
 					"id":   groupCreationID,
 					"peer": peer,
 				}).Warn("unknown group creation acked")
+				continue
 			} else {
 				log.WithFields(log.Fields{
-					"id":    groupCreationID,
 					"error": err.Error(),
 				}).Fatal("database error querying for group creation")
 			}
@@ -246,9 +258,9 @@ func (b *bounce) handleAckUpdateGroups(peer string, ids []uuid.UUID) {
 					"id":   updateGroupID,
 					"peer": peer,
 				}).Warn("unknown update group acked")
+				continue
 			} else {
 				log.WithFields(log.Fields{
-					"id":    updateGroupID,
 					"error": err.Error(),
 				}).Fatal("database error querying for update group")
 			}
