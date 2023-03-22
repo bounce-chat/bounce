@@ -73,7 +73,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMsPayloads(dev, requestedIDs[typeUpdateDM], offeredIDs[typeUpdateDM])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateGroupsPayloads(dev, requestedIDs[typeUpdateGroup], offeredIDs[typeUpdateGroup])...)
 
-	if cu.hasContent() {
+	if len(cu.broadcastables) > 0 {
 		go b.sendDirect(peer, cu)
 	}
 

@@ -9,14 +9,18 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-var catchUpMutex sync.Mutex
-
+//
+// A frame contains the ID, type, and marshalled payload of any other frame
+//
 type frame struct {
 	ID      uuid.UUID
 	Type    uint16
 	Payload []byte
 }
 
+//
+// A catch up is a frame that is used to transport a set of frames that are chronologically ordered
+//
 type catchUp struct {
 	Frames         []frame
 	broadcastables sortableBroadcastables
@@ -49,14 +53,8 @@ func (cu *catchUp) getPayload() []byte {
 	return cu.payload
 }
 
-func (cu *catchUp) hasContent() bool {
-	return len(cu.broadcastables) > 0
-}
-
 func (b *bounce) handleCatchUp(peer string, payload []byte) {
-	catchUpMutex.Lock()
-	defer catchUpMutex.Unlock()
-
+	// Unmarshal the catch up
 	var cu catchUp
 	err := msgpack.Unmarshal(payload, &cu)
 	if err != nil {
@@ -66,10 +64,20 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 		return
 	}
 
+	// Check if we're aware of the peer identity before processing this catch up.  If we don't know
+	// who this device belongs to, we should be able to learn after handling all of the frames inside
+	// it and we'll want to check to make sure that happened.
 	_, deviceAlreadyExists := b.getDeviceFromAddress(peer)
 
-	b.loadCatchUp(peer, referencesFromFrames(cu.Frames))
+	// Send references for these frames into the reference engine so that we know we've received them
+	// and no longer need to request them from any peers
+	references := []frameReference{}
+	for _, frame := range frames {
+		references = append(references, frameReference{FrameID: frame.ID, Type: frame.Type})
+	}
+	b.loadCatchUp(peer, references)
 
+	// Handle reach frame in the catch up using it's handler
 	handlers := b.getHandlers()
 	for _, fr := range cu.Frames {
 		if fr.Type == typeCatchUp {
@@ -88,6 +96,8 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 		handler(peer, fr.Payload)
 	}
 
+	// If we didn't know who this device belonged to at first, check to make sure we know who it belongs to
+	// after handling all of the frames
 	if !deviceAlreadyExists {
 		if _, deviceNowExists := b.getDeviceFromAddress(peer); deviceNowExists {
 			// An unknown device sent a catch up that included frames that prove we should add the device,
@@ -103,26 +113,6 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 	}
 
 	// TODO: make sure that any groups we learned about contain us
-	// SELECT group_id FROM user_groups WHERE user_id != me
-	// SELECT FROM groups JOIN group_users WHERE my_id NOT IN (SELECT ID from USERS where group_users)
-	//var orphanedGroups []string
-	//err := b.database.Table("group_users").
-	//	Select("group_id").
-	//	Where("user_id != ?", b.currentUserID).
-	//	Find(&orphanedGroups).
-	//	Error
-	//if err != nil {
-	//
-	//}
-
-}
-
-func referencesFromFrames(frames []frame) []frameReference {
-	references := []frameReference{}
-
-	for _, frame := range frames {
-		references = append(references, frameReference{FrameID: frame.ID, Type: frame.Type})
-	}
-
-	return references
+	// SELECT DISTINCT groups.* FROM groups JOIN group_users ON groups.id = group_users.group_id WHERE b.currentUserID() NOT IN (SELECT group_users.user_id FROM group_users);
+	// TODO: also need to see if any of the users for this group were learned about from this catch up and should be removed as well
 }
