@@ -35,7 +35,7 @@ type UI interface {
 	SyncDeviceRequestRejected()
 
 	// User management
-	AddUserRequestRejected()
+	AddUserRequestRejected(string)
 	FriendAdded(User)
 
 	// Chats

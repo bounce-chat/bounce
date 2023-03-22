@@ -1,22 +1,12 @@
 package chat
 
-import (
-	"github.com/google/uuid"
-)
-
+//
+// An add user request rejected frame indicates that a recent attempt to add a user was rejected
+// by the offer user for some reason.  The user interface should only allow one of these interactions
+// at a time, but to avoid confusion about which request was rejected, the peer is passed directly
+// to the UI.
+//
 type addUserRequestRejected struct{}
-
-func (aurr *addUserRequestRejected) getID() uuid.UUID {
-	return uuid.Nil
-}
-
-func (aurr *addUserRequestRejected) getScope(_ uuid.UUID) int {
-	return scopeDevice
-}
-
-func (aurr *addUserRequestRejected) getDestination(_ uuid.UUID) uuid.UUID {
-	return uuid.Nil
-}
 
 func (aurr *addUserRequestRejected) getType() uint16 {
 	return typeAddUserRequestRejected
@@ -27,5 +17,5 @@ func (aurr *addUserRequestRejected) getPayload() []byte {
 }
 
 func (b *bounce) handleAddUserRequestRejected(peer string, payload []byte) {
-	b.userInterface.AddUserRequestRejected()
+	b.userInterface.AddUserRequestRejected(peer)
 }

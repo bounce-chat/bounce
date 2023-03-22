@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"github.com/zeebo/blake3"
@@ -15,23 +14,17 @@ import (
 
 var addUserRequestMutex sync.Mutex
 
+var addUserOfferValidForSeconds = int64(300)
+
+//
+// Add user requests are frames sent by a device that has scanned another device's add user offer.  The
+// device sending the request sends that secret that was offered, as well as their marshalled user.
+//
 type addUserRequest struct {
 	Secret        string
 	RequesterUser []byte
 	payload       []byte
 	payloadMutex  sync.Mutex
-}
-
-func (aur *addUserRequest) getID() uuid.UUID {
-	return uuid.Nil
-}
-
-func (aur *addUserRequest) getScope(_ uuid.UUID) int {
-	return scopeDevice
-}
-
-func (aur *addUserRequest) getDestination(myID uuid.UUID) uuid.UUID {
-	return uuid.Nil
 }
 
 func (aur *addUserRequest) getType() uint16 {
@@ -95,7 +88,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 	}
 
 	// Enforce the timestamp on the offer
-	if time.Now().Unix() > offer.Timestamp+300 { // TODO: constant
+	if time.Now().Unix() > offer.Timestamp+addUserOfferValidForSeconds {
 		b.sendDirect(peer, &addUserRequestRejected{})
 		return
 	}
@@ -189,21 +182,22 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 }
 
 func (b *bounce) requestToAddUser(offer string) error {
+	// Parse the offer
 	parts := strings.Split(offer, ":")
 	if len(parts) != 2 {
 		return errors.New("invalid friend request string")
 	}
-
 	address := parts[0]
-	// TODO: Check if valid network address
 	secret := parts[1]
 
+	// Dial the offer device
 	conn, err := b.network.Dial(address)
 	if err != nil {
 		return errors.New("could not connect to device")
 	}
 	b.insertConnectionIntoDevicePool(conn)
 
+	// Get our user and marshal it
 	requesterUser, ok := b.currentUser()
 	if !ok {
 		err := errors.New("cannot add friends when no profile exists")
@@ -216,6 +210,8 @@ func (b *bounce) requestToAddUser(offer string) error {
 			"error": err.Error(),
 		}).Fatal("cannot msgpack marshal requester user while adding friend")
 	}
+
+	// Send the request to the offer device
 	b.sendDirect(address, &addUserRequest{
 		Secret:        secret,
 		RequesterUser: requesterBytes,

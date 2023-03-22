@@ -10,23 +10,16 @@ import (
 	"github.com/zeebo/blake3"
 )
 
+//
+// An add user request accepted frame is sent from the offering device and includes their half of the signatures
+// in an add user.  When this is received the requester user can create their half of the signatures and broadcast
+// a complete add user.
+//
 type addUserRequestAccepted struct {
 	OfferUser      []byte
 	OfferSignature []byte // signature of the requester user by the offer user's device
 	payload        []byte
 	payloadMutex   sync.Mutex
-}
-
-func (aura *addUserRequestAccepted) getID() uuid.UUID {
-	return uuid.Nil
-}
-
-func (aura *addUserRequestAccepted) getScope(_ uuid.UUID) int {
-	return scopeDevice
-}
-
-func (aura *addUserRequestAccepted) getDestination(_ uuid.UUID) uuid.UUID {
-	return uuid.Nil
 }
 
 func (aura *addUserRequestAccepted) getType() uint16 {
@@ -72,7 +65,7 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 
 	// Make sure this profile has a valid device group
 	if !b.hasValidDeviceGroup(offerUser) {
-		log.Error("aura contains offer user with invalid device group")
+		log.Error("add user request accepted contains offer user with invalid device group")
 		return
 	}
 
@@ -97,6 +90,7 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 		return
 	}
 
+	// Create and marshal the new add user
 	offerUserHash := blake3.Sum256(aura.OfferUser)
 	newUser := addUser{
 		ID:                 uuid.New(),
@@ -109,7 +103,6 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 		OfferSignature:     aura.OfferSignature,
 		RequesterSignature: b.network.Sign(offerUserHash[:]),
 	}
-
 	newUserBytes, err := msgpack.Marshal(&newUser)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -117,5 +110,7 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 		}).Error("error marshalling add user")
 		return
 	}
+
+	// Use the add user handler to save and broadcast
 	b.handleAddUser(b.network.Address(), newUserBytes)
 }
