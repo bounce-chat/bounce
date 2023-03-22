@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"sort"
 	"sync"
 
 	"github.com/google/uuid"
@@ -15,7 +16,8 @@ import (
 var handleAddUsersMutex sync.Mutex
 
 //
-// An addUser structure contains proof that two users became friends
+// An addUser frame contains proof that two users became friends, where one of the users is us.  It is created as part
+// of the final step in adding a user over the wire.
 //
 type addUser struct {
 	ID                 uuid.UUID `gorm:"type:uuid;primary_key;"`
@@ -29,6 +31,17 @@ type addUser struct {
 	RequesterSignature []byte
 	payload            []byte
 	payloadMutex       sync.Mutex
+}
+
+func (au *addUser) BeforeCreate(tx *gorm.DB) error {
+	if au.ID == uuid.Nil {
+		log.Fatal("add user must have an ID assigned before save")
+	}
+	return nil
+}
+
+func (au *addUser) AfterDelete(tx *gorm.DB) error {
+	return tx.Where("frame_id = ? AND frame_type = ?", au.ID, typeAddUser).Delete(&deliveryRecord{}).Error
 }
 
 func (au *addUser) getID() uuid.UUID {
@@ -109,7 +122,7 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 		return
 	}
 
-	// Unmarshal the users in side the structure
+	// Unmarshal the users inside the structure
 	var offerUser user
 	err = msgpack.Unmarshal(au.OfferUser, &offerUser)
 	if err != nil {
@@ -168,28 +181,74 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 
 	// Figure out which user is not us
 	var counterparty user
+	var myUser user
 	if offerUser.ID == b.currentUserID() && requesterUser.ID != b.currentUserID() {
 		counterparty = requesterUser
-		// Make sure we signed this counterparty
-		signingDevice, exists := b.getDeviceFromAddress(au.OfferDevice)
-		if !exists || !b.isSyncDevice(signingDevice) {
-			log.Warn("ignoring add user with a counterparty not signed by a sync device")
-			return
-		}
+		myUser = offerUser
 	} else if requesterUser.ID == b.currentUserID() && offerUser.ID != b.currentUserID() {
 		counterparty = offerUser
-		// Make sure we signed this counterparty
-		signingDevice, exists := b.getDeviceFromAddress(au.RequesterDevice)
-		if !exists || !b.isSyncDevice(signingDevice) {
-			log.Warn("ignoring add user with a counterparty not signed by a sync device")
-			return
-		}
+		myUser = requesterUser
 	} else {
-		log.Warn("add user does not contain us and someone else")
+		log.WithFields(log.Fields{
+			"offer_user":     offerUser.ID,
+			"requester_user": requesterUser.ID,
+		}).Warn("add user does not contain us and someone else")
 		return
 	}
 
-	// TODO: we have an opportunity to learn about potential sync devices we don't know about here, but those should be referenced later anyway.  Might be nice to add them here though.
+	// Make sure that this new user has a valid device group
+	if !b.hasValidDeviceGroup(counterparty) {
+		log.Warn("rejecting add user with invalid device group")
+		return
+	}
+	for _, dev := range counterparty.Devices {
+		if dev.UserID != counterparty.ID {
+			log.WithFields(log.Fields{
+				"device_id":       dev.ID,
+				"counterparty_id": counterparty.ID,
+				"device_user":     dev.UserID,
+			}).Warn("rejecting add user with counterparty device that does not belong to counterparty")
+			return
+		}
+	}
+
+	// Make sure that our user has a valid device group
+	if !b.hasValidDeviceGroup(myUser) {
+		log.Warn("rejecting add user with invalid device group")
+		return
+	}
+	for _, dev := range myUser.Devices {
+		if dev.UserID != myUser.ID {
+			log.WithFields(log.Fields{
+				"device_id":   dev.ID,
+				"profile_id":  myUser.ID,
+				"device_user": dev.UserID,
+			}).Warn("rejecting add user with sync device that does not belong to profile")
+			return
+		}
+	}
+
+	// Learn about any of our sync devices that we're not already aware of
+	syncDevices := devices(myUser.Devices)
+	sort.Sort(syncDevices)
+	for _, dev := range syncDevices {
+		_, exists := b.getDeviceFromAddress(dev.Address)
+		if !exists {
+			if b.isValidAddition(myUser, dev) {
+				err = b.database.Create(&dev).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("error saving sync device learned about via add user")
+				}
+			} else {
+				log.WithFields(log.Fields{
+					"id":      dev.ID,
+					"address": dev.Address,
+				}).Warn("rejecting add user with new sync device that is not a valid addition to our device group")
+			}
+		}
+	}
 
 	// Make sure the device that is sending us this makes sense
 	peerDevice, exists := b.getDeviceFromAddress(peer)
@@ -199,20 +258,6 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 			"counterparty_id": counterparty.ID,
 		}).Warn("add user came from unexpected device, ignoring")
 		return
-	}
-
-	// Make sure that this new user has a valid device group
-	if !b.hasValidDeviceGroup(counterparty) {
-		log.Warn("rejecting add user with invalid device group")
-		return
-	}
-
-	// Save the addUser
-	err = b.database.Create(&au).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error saving add user")
 	}
 
 	// Make sure that none of the devices don't already belong to another user
@@ -259,6 +304,14 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 		}).Fatal("database error looking up user")
 	}
 
+	// Save the addUser
+	err = b.database.Create(&au).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error saving add user")
+	}
+
 	// Save the new user
 	if userIsNew {
 		// Save this new user and all of their devices
@@ -282,7 +335,7 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 	}
 
 	// Mark this add user as having been delivered to the peer who sent it to us
-	b.markDeliveredTo(&existingAU, peer)
+	b.markDeliveredTo(&au, peer)
 
 	// Do a reference flow with this peer
 	go b.sendReferences(peer)

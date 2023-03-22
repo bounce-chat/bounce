@@ -24,6 +24,18 @@ type device struct {
 	payloadMutex sync.Mutex
 }
 
+type devices []device
+
+func (ds devices) Len() int {
+	return len(ds)
+}
+func (ds devices) Swap(i, j int) {
+	ds[i], ds[j] = ds[j], ds[i]
+}
+func (ds devices) Less(i, j int) bool {
+	return ds[i].getTimestamp() < ds[j].getTimestamp()
+}
+
 func (d *device) BeforeCreate(tx *gorm.DB) error {
 	if d.ID == uuid.Nil {
 		d.ID = uuid.New()
