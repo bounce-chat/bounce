@@ -184,7 +184,7 @@ func (b *bounce) makeReferenceRequests() {
 			referenceStateOffered,
 			b.referenceDatabase.Select("frame_id").
 				Where(
-					"state = ? AND time > ?",
+					"state = ? AND last_action > ?",
 					referenceStateRequested,
 					time.Now().Unix()-int64(referenceRetrySeconds),
 				).
@@ -216,8 +216,8 @@ func (b *bounce) makeReferenceRequests() {
 				Table("frame_references").
 				Where("frame_id = ? AND type = ? AND peer = ?", fr.FrameID, fr.Type, fr.Peer).
 				Updates(map[string]interface{}{
-					"state": referenceStateRequested,
-					"time":  time.Now().Unix(),
+					"state":       referenceStateRequested,
+					"last_action": time.Now().Unix(),
 				}).Error
 			if err != nil {
 				log.WithFields(log.Fields{

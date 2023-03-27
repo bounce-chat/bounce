@@ -72,8 +72,8 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 	// Send references for these frames into the reference engine so that we know we've received them
 	// and no longer need to request them from any peers
 	references := []frameReference{}
-	for _, frame := range frames {
-		references = append(references, frameReference{FrameID: frame.ID, Type: frame.Type})
+	for _, f := range cu.Frames {
+		references = append(references, frameReference{FrameID: f.ID, Type: f.Type})
 	}
 	b.loadCatchUp(peer, references)
 
@@ -112,7 +112,26 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 		}
 	}
 
-	// TODO: make sure that any groups we learned about contain us
-	// SELECT DISTINCT groups.* FROM groups JOIN group_users ON groups.id = group_users.group_id WHERE b.currentUserID() NOT IN (SELECT group_users.user_id FROM group_users);
-	// TODO: also need to see if any of the users for this group were learned about from this catch up and should be removed as well
+	// Detect and warn about any groups that were added during this catch up that we didn't learn we're a part of
+	var orphanedGroups []group
+	err = b.database.
+		Model(&group{}).
+		Distinct().
+		Select("groups.*").
+		Joins("JOIN group_users ON groups.id = group_users.group_id").
+		Where("? NOT IN (SELECT group_users.user_id FROM group_users)", b.currentUserID()).
+		Find(&orphanedGroups).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error attempting to discover orphaned groups")
+	}
+
+	for _, og := range orphanedGroups {
+		log.WithFields(log.Fields{
+			"peer":     peer,
+			"group_id": og.ID,
+			"users":    og.Users,
+		}).Warn("catch up created orphaned group")
+	}
 }

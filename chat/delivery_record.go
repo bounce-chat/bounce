@@ -30,7 +30,7 @@ func (dr *deliveryRecord) BeforeCreate(tx *gorm.DB) error {
 func (b *bounce) markDeliveredTo(br broadcastable, destination string) {
 	if br.getID() == uuid.Nil {
 		log.Warn("tracking delivery of broadcastable with nil UUID")
-	} // TODO: just to catch bugs, maybe not needed
+	}
 
 	err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
 		Destination: destination,
