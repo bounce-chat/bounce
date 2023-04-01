@@ -12,6 +12,9 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+var referenceOfferMutexLock sync.Mutex
+var referenceOfferMutexes = map[string]*sync.Mutex{}
+
 //
 // A reference offer is a message sent to a newly connected device that provides the UUIDs of any messages that device
 // should have, but that we didn't deliver to it.
@@ -74,7 +77,24 @@ func (ro *referenceOffer) shouldDial() bool {
 	return false
 }
 
+func getReferenceOfferMutexForPeer(peer string) *sync.Mutex {
+	referenceOfferMutexLock.Lock()
+	defer referenceOfferMutexLock.Unlock()
+
+	mutex, ok := referenceOfferMutexes[peer]
+	if !ok {
+		mutex = &sync.Mutex{}
+		referenceOfferMutexes[peer] = mutex
+	}
+
+	return mutex
+}
+
 func (b *bounce) sendReferences(peer string) {
+	mutex := getReferenceOfferMutexForPeer(peer)
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	if _, exists := b.currentUser(); !exists {
 		// Our profile hasn't been setup yet, we have nothing to offer
 		return
@@ -102,6 +122,7 @@ func (b *bounce) sendReferences(peer string) {
 
 		for {
 			b.sendDirect(peer, referenceOffer)
+
 			time.Sleep(10 * time.Second)
 
 			if b.isDeliveredTo(referenceOffer, peer) {

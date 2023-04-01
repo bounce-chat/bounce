@@ -57,7 +57,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 
 	b.handleAckDirectMessages(peer, ackedIDs[typeDirectMessage])
 	b.handleAckGroupMessages(peer, ackedIDs[typeGroupMessage])
-	b.handleAckReferenceOffers(peer, ackedIDs[typeCatchUp])
+	b.handleAckReferenceOffers(peer, ackedIDs[typeReferenceOffer])
 	b.handleAckUpdateDMs(peer, ackedIDs[typeUpdateDM])
 	b.handleAckDevices(peer, ackedIDs[typeDevice])
 	b.handleAckAddUsers(peer, ackedIDs[typeAddUser])
@@ -223,7 +223,9 @@ func (b *bounce) handleAckAddUsers(peer string, ids []uuid.UUID) {
 	}
 
 	// We might have just learned about who this peer belongs to, check if we need to offer references
-	go b.sendReferences(peer)
+	if len(ids) > 0 {
+		go b.sendReferences(peer)
+	}
 }
 
 func (b *bounce) handleAckGroupCreations(peer string, ids []uuid.UUID) {

@@ -25,14 +25,13 @@ var referenceRetrySeconds = 5
 var ERR_FRAME_REFERNCE_ALREADY_HAS_ID = errors.New("cannot create frame reference with already specified ID")
 
 type frameReference struct {
-	ID               uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
-	ReferenceOfferID uuid.UUID `gorm:"index;uniqueIndex:idx_reference_offer_id_frame_id_type_peer" msgpack:"-"`
-	FrameID          uuid.UUID `gorm:"index;uniqueIndex:idx_reference_offer_id_frame_id_type_peer"`
-	Type             uint16    `gorm:"index;uniqueIndex:idx_reference_offer_id_frame_id_type_peer"`
-	Peer             string    `gorm:"index;uniqueIndex:idx_reference_offer_id_frame_id_type_peer" msgpack:"-"`
-	State            int       `msgpack:"-"`
-	LastAction       int64     `msgpack:"-"`
-	CreatedAt        int64     `msgpack:"-"`
+	ID         uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
+	FrameID    uuid.UUID `gorm:"index;uniqueIndex:idx_frame_id_type_peer"`
+	Type       uint16    `gorm:"index;uniqueIndex:idx_frame_id_type_peer"`
+	Peer       string    `gorm:"index;uniqueIndex:idx_frame_id_type_peer" msgpack:"-"`
+	State      int       `msgpack:"-"`
+	LastAction int64     `msgpack:"-"`
+	CreatedAt  int64     `msgpack:"-"`
 }
 
 func (fr *frameReference) BeforeCreate(tx *gorm.DB) error {
@@ -100,7 +99,7 @@ func (b *bounce) pruneFrameReferences() {
 	// Delete any old offers or outgoing requests that are too old to be actionable
 	fiveMinutesAgo := time.Now().Add(-5 * time.Minute).Unix()
 
-	err := b.database.Where("created_at < ?", fiveMinutesAgo).Delete(&frameReference{}).Error
+	err := b.referenceDatabase.Where("created_at < ?", fiveMinutesAgo).Delete(&frameReference{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
