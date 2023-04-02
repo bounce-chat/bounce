@@ -3,7 +3,6 @@ package chat
 import (
 	"sync"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -12,18 +11,6 @@ type syncDeviceRequestAccepted struct {
 	Profile      user
 	payload      []byte
 	payloadMutex sync.Mutex
-}
-
-func (sdra *syncDeviceRequestAccepted) getID() uuid.UUID {
-	return uuid.Nil
-}
-
-func (sdra *syncDeviceRequestAccepted) getScope(_ uuid.UUID) int {
-	return scopeDevice
-}
-
-func (sdra *syncDeviceRequestAccepted) getDestination(_ uuid.UUID) uuid.UUID {
-	return uuid.Nil
 }
 
 func (sdra *syncDeviceRequestAccepted) getType() uint16 {

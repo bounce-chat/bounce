@@ -30,14 +30,6 @@ func (ro *referenceOffer) getID() uuid.UUID {
 	return ro.ID
 }
 
-func (ro *referenceOffer) getScope(_ uuid.UUID) int {
-	return scopeDevice
-}
-
-func (ro *referenceOffer) getDestination(_ uuid.UUID) uuid.UUID {
-	return uuid.Nil // Reference offers are only sent directly to devices, typical broadcast logic is not used
-}
-
 func (ro *referenceOffer) getType() uint16 {
 	return typeReferenceOffer
 }
@@ -136,7 +128,7 @@ func (b *bounce) sendReferences(peer string) {
 			}
 			if time.Now().After(giveUpTime) {
 				log.WithFields(log.Fields{
-					"id":          referenceOffer.getID(),
+					"id":          referenceOffer.ID,
 					"destination": peer,
 				}).Warn("gave up attempting to deliver reference offer")
 				return

@@ -13,8 +13,7 @@ var scopeSync = 0
 var scopeUser = 1
 var scopeGroup = 2
 var scopeGlobal = 3
-var scopeDevice = 4
-var scopeOverlap = 5
+var scopeOverlap = 4
 
 var typeDirectMessage = uint16(0)
 var typeGroupMessage = uint16(1)
@@ -36,22 +35,25 @@ var typeAddUserRequestAccepted = uint16(16)
 var typeAddUserRequestRejected = uint16(17)
 var typeAddUser = uint16(18)
 
-type broadcastable interface {
-	getID() uuid.UUID
-	getScope(myID uuid.UUID) int
-	getDestination(myID uuid.UUID) uuid.UUID
+type sendable interface {
 	getType() uint16
 	getPayload() []byte
+}
+
+type frameable interface {
+	sendable
+	getID() uuid.UUID
+}
+
+type broadcastable interface {
+	frameable
+	getScope(myID uuid.UUID) int
+	getDestination(myID uuid.UUID) uuid.UUID
 }
 
 type sortableBroadcastable interface {
 	broadcastable
 	getTimestamp() int64
-}
-
-type directlySendable interface {
-	getType() uint16
-	getPayload() []byte
 }
 
 type sortableBroadcastables []sortableBroadcastable
@@ -98,13 +100,13 @@ func (b *bounce) broadcast(br broadcastable) {
 	}).Debug("broadcasting frame")
 	for _, peer := range b.getBroadcastScope(br) {
 		// Async try to write this message to every device that should be written to
-		go func(dst chan directlySendable, msg broadcastable) {
+		go func(dst chan sendable, msg broadcastable) {
 			dst <- msg
 		}(peer.messages, br)
 	}
 }
 
-func (b *bounce) sendDirect(peer string, br directlySendable) {
+func (b *bounce) sendDirect(peer string, br sendable) {
 	rd := b.getRemoteDevice(peer)
 	rd.messages <- br
 }
@@ -116,11 +118,6 @@ func (b *bounce) getBroadcastScope(br broadcastable) []*remoteDevice {
 		return b.getSyncScope(br)
 	} else if scope == scopeUser {
 		return b.getUserScope(br)
-	} else if scope == scopeDevice {
-		log.WithFields(log.Fields{
-			"type": br.getType(),
-		}).Error("cannot broadcast broadcastable with device scope, use sendDirectly instead")
-		return []*remoteDevice{}
 	} else if scope == scopeGroup {
 		return b.getGroupScope(br)
 	} else if scope == scopeGlobal {

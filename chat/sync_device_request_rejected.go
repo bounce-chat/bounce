@@ -1,22 +1,6 @@
 package chat
 
-import (
-	"github.com/google/uuid"
-)
-
 type syncDeviceRequestRejected struct{}
-
-func (sdrr *syncDeviceRequestRejected) getID() uuid.UUID {
-	return uuid.Nil
-}
-
-func (sdrr *syncDeviceRequestRejected) getScope(_ uuid.UUID) int {
-	return scopeDevice
-}
-
-func (sdrr *syncDeviceRequestRejected) getDestination(_ uuid.UUID) uuid.UUID {
-	return uuid.Nil
-}
 
 func (sdrr *syncDeviceRequestRejected) getType() uint16 {
 	return typeSyncDeviceRequestRejected

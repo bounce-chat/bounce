@@ -27,15 +27,15 @@ func (dr *deliveryRecord) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (b *bounce) markDeliveredTo(br broadcastable, destination string) {
-	if br.getID() == uuid.Nil {
+func (b *bounce) markDeliveredTo(fr frameable, destination string) {
+	if fr.getID() == uuid.Nil {
 		log.Warn("tracking delivery of broadcastable with nil UUID")
 	}
 
 	err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
 		Destination: destination,
-		FrameID:     br.getID(),
-		FrameType:   br.getType(),
+		FrameID:     fr.getID(),
+		FrameType:   fr.getType(),
 	}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -44,9 +44,9 @@ func (b *bounce) markDeliveredTo(br broadcastable, destination string) {
 	}
 }
 
-func (b *bounce) isDeliveredTo(br broadcastable, destination string) bool {
+func (b *bounce) isDeliveredTo(fr frameable, destination string) bool {
 	var dr deliveryRecord
-	err := b.database.Where("destination = ? AND frame_id = ? AND frame_type = ?", destination, br.getID(), br.getType()).First(&dr).Error
+	err := b.database.Where("destination = ? AND frame_id = ? AND frame_type = ?", destination, fr.getID(), fr.getType()).First(&dr).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return false

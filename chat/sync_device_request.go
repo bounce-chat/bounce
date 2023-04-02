@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
@@ -19,18 +18,6 @@ type syncDeviceRequest struct {
 	Secret       string
 	payload      []byte
 	payloadMutex sync.Mutex
-}
-
-func (sdr *syncDeviceRequest) getID() uuid.UUID {
-	return uuid.Nil
-}
-
-func (sdr *syncDeviceRequest) getScope(_ uuid.UUID) int {
-	return scopeDevice
-}
-
-func (sdr *syncDeviceRequest) getDestination(myID uuid.UUID) uuid.UUID {
-	return uuid.Nil
 }
 
 func (sdr *syncDeviceRequest) getType() uint16 {
