@@ -105,45 +105,46 @@ func (b *bounce) sendReferences(peer string) {
 		return
 	}
 
-	referenceOffer := b.getReferenceOfferFor(peer)
-	if len(referenceOffer.References) > 0 {
-		// Reference offers are often sent when connections are interrupted and sockets might be disconnected
-		// but not yet reporting errors.  It's important to ensure references are delivered, so we broadcast
-		// them until they are ack'd, then delete the delivery record since this isn't a stored frame.
-		giveUpTime := time.Now().Add(1 * time.Minute)
+	// Reference offers are often sent when connections are interrupted and sockets might be disconnected
+	// but not yet reporting errors.  It's important to ensure references are delivered, so we send them
+	// until they are ack'd, then delete the delivery record since this isn't a stored frame.
+	giveUpTime := time.Now().Add(1 * time.Minute)
+	for {
+		// Generate a reference offer, and stop here if there's nothing to offer
+		referenceOffer := b.getReferenceOfferFor(peer)
+		if len(referenceOffer.References) == 0 {
+			return
+		}
 
-		for {
-			// Send this offer to the peer
-			b.sendDirect(peer, referenceOffer)
+		// Send the offer to the peer
+		b.sendDirect(peer, referenceOffer)
 
-			// Wait for an ack before checking if it was delivered
-			time.Sleep(10 * time.Second)
+		// Wait for an ack before checking if it was delivered
+		time.Sleep(10 * time.Second)
 
-			// Manually check the reference database for a delivery record, and delete it and return if found
-			var dr deliveryRecord
-			err := b.referenceDatabase.Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, referenceOffer.ID, typeReferenceOffer).First(&dr).Error
-			if err == nil {
-				err = b.referenceDatabase.Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, referenceOffer.ID, typeReferenceOffer).Delete(&deliveryRecord{}).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Fatal("error deleting reference offer delivery record")
-				}
-				return
-			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		// Manually check the reference database for a delivery record, and delete it and return if found
+		var dr deliveryRecord
+		err := b.referenceDatabase.Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, referenceOffer.ID, typeReferenceOffer).First(&dr).Error
+		if err == nil {
+			err = b.referenceDatabase.Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, referenceOffer.ID, typeReferenceOffer).Delete(&deliveryRecord{}).Error
+			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Fatal("error looking up reference offer delivery record")
+				}).Fatal("error deleting reference offer delivery record")
 			}
+			return
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error looking up reference offer delivery record")
+		}
 
-			// Stop attempting to deliver this offer after a timeout
-			if time.Now().After(giveUpTime) {
-				log.WithFields(log.Fields{
-					"id":          referenceOffer.ID,
-					"destination": peer,
-				}).Warn("gave up attempting to deliver reference offer")
-				return
-			}
+		// Stop attempting to deliver an offer after a timeout
+		if time.Now().After(giveUpTime) {
+			log.WithFields(log.Fields{
+				"destination": peer,
+			}).Warn("gave up attempting to deliver reference offer")
+			return
 		}
 	}
 }
