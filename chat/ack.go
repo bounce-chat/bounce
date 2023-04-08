@@ -143,9 +143,18 @@ func (b *bounce) handleAckGroupMessages(peer string, ids []uuid.UUID) {
 
 func (b *bounce) handleAckReferenceOffers(peer string, ids []uuid.UUID) {
 	for _, roID := range ids {
-		// Reference offers are not stored in the database, there's nothing to look up.  We create a delivery record for
-		// this reference offer by creating an ephemeral reference offer with the ACK'd ID to use in the tracking call
-		b.markDeliveredTo(&referenceOffer{ID: roID}, peer)
+		// Reference offers are not stored in the database, so there's nothing to look up.  We create a delivery record inside the
+		// reference database manually to track delivery
+		err := b.referenceDatabase.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
+			Destination: peer,
+			FrameID:     roID,
+			FrameType:   typeReferenceOffer,
+		}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error creating delivery record for reference offer")
+		}
 	}
 }
 

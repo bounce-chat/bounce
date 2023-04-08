@@ -73,6 +73,7 @@ func (b *bounce) openReferenceDatabase() {
 	sqliteDB.SetMaxOpenConns(1)
 
 	err = b.referenceDatabase.AutoMigrate(
+		&deliveryRecord{},
 		&frameReference{},
 	)
 	if err != nil {

@@ -113,19 +113,30 @@ func (b *bounce) sendReferences(peer string) {
 		giveUpTime := time.Now().Add(1 * time.Minute)
 
 		for {
+			// Send this offer to the peer
 			b.sendDirect(peer, referenceOffer)
 
+			// Wait for an ack before checking if it was delivered
 			time.Sleep(10 * time.Second)
 
-			if b.isDeliveredTo(referenceOffer, peer) {
-				err := b.database.Where("frame_id = ? AND frame_type = ?", referenceOffer.ID, typeReferenceOffer).Delete(&deliveryRecord{}).Error
+			// Manually check the reference database for a delivery record, and delete it and return if found
+			var dr deliveryRecord
+			err := b.referenceDatabase.Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, referenceOffer.ID, typeReferenceOffer).First(&dr).Error
+			if err == nil {
+				err = b.referenceDatabase.Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, referenceOffer.ID, typeReferenceOffer).Delete(&deliveryRecord{}).Error
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
 					}).Fatal("error deleting reference offer delivery record")
 				}
 				return
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error looking up reference offer delivery record")
 			}
+
+			// Stop attempting to deliver this offer after a timeout
 			if time.Now().After(giveUpTime) {
 				log.WithFields(log.Fields{
 					"id":          referenceOffer.ID,

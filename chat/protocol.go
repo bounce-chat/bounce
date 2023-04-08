@@ -40,13 +40,9 @@ type sendable interface {
 	getPayload() []byte
 }
 
-type frameable interface {
+type broadcastable interface {
 	sendable
 	getID() uuid.UUID
-}
-
-type broadcastable interface {
-	frameable
 	getScope(myID uuid.UUID) int
 	getDestination(myID uuid.UUID) uuid.UUID
 }
