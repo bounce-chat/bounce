@@ -13,9 +13,12 @@ import (
 
 var handleDevicesMutex sync.Mutex
 
+//
+// A device represents an instance of bounce
+//
 type device struct {
 	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name         string    `json:"-"` // TODO: exclude from non-sync devices
+	Name         string    `json:"-" msgpack:"-"`
 	UserID       uuid.UUID `json:"-"`
 	Address      string    `gorm:"uniqueIndex"`
 	Timestamp    int64
@@ -24,21 +27,9 @@ type device struct {
 	payloadMutex sync.Mutex
 }
 
-type devices []device
-
-func (ds devices) Len() int {
-	return len(ds)
-}
-func (ds devices) Swap(i, j int) {
-	ds[i], ds[j] = ds[j], ds[i]
-}
-func (ds devices) Less(i, j int) bool {
-	return ds[i].getTimestamp() < ds[j].getTimestamp()
-}
-
 func (d *device) BeforeCreate(tx *gorm.DB) error {
 	if d.ID == uuid.Nil {
-		d.ID = uuid.New()
+		return errors.New("device must have ID set before creation")
 	}
 	return nil
 }
@@ -102,16 +93,16 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 		return
 	}
 
-	// If the device already exists, ack it and return
+	// If the device already exists, track delivery, ack it, and return
 	if _, deviceExists := b.getDeviceFromAddress(newDevice.Address); deviceExists {
-		b.sendAck(peer, typeDevice, newDevice.ID)
 		b.markDeliveredTo(&newDevice, peer)
+		b.sendAck(peer, typeDevice, newDevice.ID)
 		return
 	}
 
 	// Find the user this new device is for
 	var targetUser user
-	err = b.database.Preload(clause.Associations).First(&targetUser, "id = ?", newDevice.UserID).Error
+	err = b.database.Preload("Devices.Signature").Preload(clause.Associations).First(&targetUser, "id = ?", newDevice.UserID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -119,7 +110,7 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 				"device":  newDevice.ID,
 				"address": newDevice.Address,
 				"peer":    peer,
-			}).Warn("rejecting received device because we do have the specified user")
+			}).Warn("rejecting received device because we do not have the specified user")
 			return
 		} else {
 			log.WithFields(log.Fields{
@@ -151,12 +142,16 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 	// Save a delivery record for the peer that sent us this device
 	b.markDeliveredTo(&newDevice, peer)
 
-	// Broadcast to the rest of the peers
+	// Broadcast it
 	go b.broadcast(&newDevice)
 
 	// ACK it
 	b.sendAck(peer, typeDevice, newDevice.ID)
 }
+
+//
+// Helper functions for looking up devices in other parts of the codebase
+//
 
 func (b *bounce) getDeviceFromAddress(address string) (device, bool) {
 	var dev device
@@ -175,4 +170,21 @@ func (b *bounce) getDeviceFromAddress(address string) (device, bool) {
 
 func (b *bounce) isSyncDevice(dev device) bool {
 	return dev.UserID == b.currentUserID()
+}
+
+//
+// When testing if a set of devices are all valid additions to a device group, we need to test adding them
+// in the order they were created, so we implement the sort interface for a slice of devices.
+//
+
+type devices []device
+
+func (ds devices) Len() int {
+	return len(ds)
+}
+func (ds devices) Swap(i, j int) {
+	ds[i], ds[j] = ds[j], ds[i]
+}
+func (ds devices) Less(i, j int) bool {
+	return ds[i].getTimestamp() < ds[j].getTimestamp()
 }

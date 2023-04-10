@@ -145,6 +145,7 @@ func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 		Profile: true,
 		Devices: []device{
 			device{
+				ID:        uuid.New(),
 				Name:      deviceName,
 				Address:   b.network.Address(),
 				Timestamp: time.Now().Unix(),

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
@@ -154,6 +155,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 	} else {
 		// Save this new device in our database
 		newDevice := device{
+			ID:        uuid.New(),
 			UserID:    b.currentUserID(),
 			Address:   peer,
 			Timestamp: time.Now().Unix(),
