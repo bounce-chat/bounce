@@ -13,6 +13,9 @@ import (
 
 var groupMessageMutex sync.Mutex
 
+//
+// A group message is sent from a member of a group to a group
+//
 type GroupMessage struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt          int64     `msgpack:"-"`
@@ -23,20 +26,19 @@ type GroupMessage struct {
 	Undeliverable    bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
 	Source           uuid.UUID
 	Destination      uuid.UUID
-	Text             string // TODO: other things that can be in a message, like a reference to an image, audio, video, or file attachment
-	Signer           string `msgpack:"-"`
-	Payload          []byte `msgpack:"-"` // TODO: rename to marshalled or something
-	Signature        []byte `msgpack:"-"`
+	Text             string
+	Signer           string `msgpack:"-" gorm:"not null"`
+	OriginalPayload  []byte `msgpack:"-" gorm:"not null"`
+	Signature        []byte `msgpack:"-" gorm:"not null"`
 	payload          []byte
 	payloadMutex     sync.Mutex
 }
 
 func (gm *GroupMessage) BeforeCreate(tx *gorm.DB) error {
-	gm.SavedAt = time.Now().Unix()
-	if len(gm.Payload) == 0 || len(gm.Signature) == 0 || len(gm.Signer) == 0 {
-		// TODO: just do a NOT NULL in the schema
-		return errors.New("cannot create a group message without an original signed payload")
+	if gm.ID == uuid.Nil {
+		return errors.New("group message must have an ID assigned before creation")
 	}
+	gm.SavedAt = time.Now().Unix()
 	return nil
 }
 
@@ -66,7 +68,7 @@ func (gm *GroupMessage) getPayload() []byte {
 
 	if len(gm.payload) == 0 {
 		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   gm.Payload,
+			Payload:   gm.OriginalPayload,
 			Signature: gm.Signature,
 			Signer:    gm.Signer,
 		})
@@ -113,16 +115,16 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Fatal("error unmarshalling group message")
 	}
-	gm.Payload = sc.Payload
+	gm.OriginalPayload = sc.Payload
 	gm.Signature = sc.Signature
 	gm.Signer = sc.Signer
 
-	// If we have already seen this message, all we need to do is mark that this peer has the message as well.
+	// If we have already seen this message, all we need to do is mark that this peer has the message and ack it
 	var existingGM GroupMessage
 	err = b.database.Where("id = ?", gm.ID).First(&existingGM).Error
 	if err == nil {
 		b.markDeliveredTo(&existingGM, peer)
-		// TODO: forgotten ack?
+		go b.sendAck(peer, typeGroupMessage, gm.ID)
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
@@ -138,6 +140,11 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 			"written_at": gm.WrittenAt,
 		}).Debug("ignoring a group message that was written before the history was cleared")
 		return
+	}
+
+	// Capture the current message retention setting for this group and store it on the message
+	if gm.RetentionSeconds != 0 {
+		gm.DeleteAt = time.Now().Unix() + gm.RetentionSeconds
 	}
 
 	// Make sure the author is in the group
@@ -179,6 +186,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	// Make sure the user interface isn't still displaying that the user is typing
 	b.clearUserTypingIndicator(gm.Source, gm.Destination)
 
+	// Save the new group message
 	err = b.database.Create(&gm).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -186,8 +194,10 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		}).Fatal("error saving group message")
 	}
 
+	// Ack it
 	go b.sendAck(peer, typeGroupMessage, gm.ID)
 
+	// Broadcast it
 	go b.broadcast(&gm)
 }
 
@@ -196,16 +206,16 @@ func (b *bounce) sendGroupMessage(gm *GroupMessage) uuid.UUID {
 	gm.WrittenAt = time.Now().Unix()
 	gm.Read = true
 	gm.Source = b.currentUserID()
-	gm.RetentionSeconds = 60 * 60 * 24 * 7 // TODO: look up for group
+	gm.RetentionSeconds = b.getGroupRetention(gm.Destination)
 
 	var err error
-	gm.Payload, err = msgpack.Marshal(gm)
+	gm.OriginalPayload, err = msgpack.Marshal(gm)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error marshalling group message")
 	}
-	sc := b.createSignedContainer(gm.Payload)
+	sc := b.createSignedContainer(gm.OriginalPayload)
 	gm.Signature = sc.Signature
 	gm.Signer = sc.Signer
 
@@ -213,7 +223,7 @@ func (b *bounce) sendGroupMessage(gm *GroupMessage) uuid.UUID {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error saving group message") // TODO: this breaks fyne
+		}).Fatal("error saving group message")
 	}
 
 	go b.broadcast(gm)

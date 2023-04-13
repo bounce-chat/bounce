@@ -241,3 +241,28 @@ func (b *bounce) importUser(data []byte) (User, error) {
 		Name: newUser.Profile.Name,
 	}, nil
 }
+
+func (b *bounce) directMessageWrittenBeforeHistoryCleared(userID uuid.UUID, messageWrittenAt int64) bool {
+	// User ID is computed via XOR of my ID with source and destination, if it's a self-DM it would be nil
+	if userID == uuid.Nil {
+		userID = b.currentUserID()
+	}
+
+	var u user
+	err := b.database.Select("clear_before").First(&u, "id = ?", userID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"id":    userID,
+				"error": err.Error(),
+			}).Error("error selecting clear before for unknown user")
+			return false
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting clear before from group")
+		}
+	}
+
+	return messageWrittenAt < u.ClearBefore
+}

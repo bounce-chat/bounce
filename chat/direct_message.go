@@ -119,8 +119,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 		return
 	}
 
-	// If we have already seen this message, all we need to do is mark that this peer has the message as well.  If not, we save the message
-	// in the database.  This step is synchroniszed with a mutex lock since the same message can come in concurrently during gossip.
+	// If we have already seen this message, all we need to do is mark that this peer has the message as well and ack it
 	var existingDM DirectMessage
 	err = b.database.Where("id = ?", dm.ID).First(&existingDM).Error
 	if err == nil {
@@ -131,6 +130,16 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error looking up direct message")
+	}
+
+	// If the message is older than the user's ClearBefore, don't process it
+	if b.directMessageWrittenBeforeHistoryCleared(dm.getDestination(b.currentUserID()), dm.WrittenAt) {
+		log.WithFields(log.Fields{
+			"source":      dm.Source,
+			"destination": dm.Destination,
+			"written_at":  dm.WrittenAt,
+		}).Debug("ignoring a direct message that was written before the history was cleared")
+		return
 	}
 
 	// Capture the current message retention setting for this user and store it on the DM

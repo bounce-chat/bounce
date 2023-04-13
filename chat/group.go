@@ -24,7 +24,7 @@ type group struct {
 	Retention              int64
 	ClearBefore            int64
 	MutedUntil             int64
-	Users                  []user `gorm:"many2many:group_users;"` // TODO: pointer needed?  I don't think so
+	Users                  []user `gorm:"many2many:group_users;"`
 	Admins                 string
 	RestrictUserManagement bool
 	RestrictGroupEdits     bool
@@ -172,7 +172,6 @@ func (b *bounce) getGroupRetention(groupID uuid.UUID) int64 {
 				"id":    groupID,
 				"error": err.Error(),
 			}).Error("error selecting message retention for unknown group")
-			// TODO: return error?
 			return 0
 		} else {
 			log.WithFields(log.Fields{
