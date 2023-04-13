@@ -14,6 +14,9 @@ import (
 
 var directMessageMutex sync.Mutex
 
+//
+// A direct message is a chat message from one user to another
+//
 type DirectMessage struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt          int64     `msgpack:"-"`
@@ -24,14 +27,14 @@ type DirectMessage struct {
 	Undeliverable    bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
 	Source           uuid.UUID
 	Destination      uuid.UUID
-	Text             string // TODO: other things that can be in a message, like a reference to an image, audio, video, or file attachment
+	Text             string
 	payload          []byte
 	payloadMutex     sync.Mutex
 }
 
 func (dm *DirectMessage) BeforeCreate(tx *gorm.DB) error {
 	if dm.ID == uuid.Nil {
-		log.Fatal("direct message must have an ID assigned before save")
+		return errors.New("direct message must have an ID assigned before creation")
 	}
 	dm.SavedAt = time.Now().Unix()
 	return nil
@@ -54,18 +57,7 @@ func (dm *DirectMessage) getScope(_ uuid.UUID) int {
 }
 
 func (dm *DirectMessage) getDestination(myID uuid.UUID) uuid.UUID {
-	if dm.Source == dm.Destination {
-		// A DM to ourselves, only needs to be sent to sync devices,
-		// which doesn't invovle needing to know a destinatinon to
-		// determine scope
-		return uuid.Nil
-	}
-
-	otherParty := dm.Source // TODO: just triple xor?
-	if dm.Source == myID {
-		otherParty = dm.Destination
-	}
-	return otherParty
+	return xor(xor(dm.Source, dm.Destination), myID)
 }
 
 func (dm *DirectMessage) getType() uint16 {
@@ -91,33 +83,6 @@ func (dm *DirectMessage) getPayload() []byte {
 func (dm *DirectMessage) getTimestamp() int64 {
 	return dm.WrittenAt
 }
-
-//
-// UI Handlers
-//
-
-func (b *bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
-	message.ID = uuid.New()
-	message.WrittenAt = time.Now().Unix()
-	message.Read = true
-	message.Source = b.currentUserID()
-	message.RetentionSeconds = b.getDMRetention(message.Destination)
-
-	err := b.database.Create(message).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error saving direct message to the database")
-	}
-
-	b.broadcast(message)
-
-	return message.ID
-}
-
-//
-// Network Handlers
-//
 
 func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	directMessageMutex.Lock()
@@ -160,7 +125,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	err = b.database.Where("id = ?", dm.ID).First(&existingDM).Error
 	if err == nil {
 		b.markDeliveredTo(&existingDM, peer)
-		// TODO: forgotten ack?
+		go b.sendAck(peer, typeDirectMessage, dm.ID)
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
@@ -169,10 +134,6 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	}
 
 	// Capture the current message retention setting for this user and store it on the DM
-	id := dm.Destination
-	if id == b.currentUserID() {
-		id = dm.Source
-	}
 	if dm.RetentionSeconds != 0 {
 		dm.DeleteAt = time.Now().Unix() + dm.RetentionSeconds
 	}
@@ -184,6 +145,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Fatal("error saving incoming direct message")
 	}
+
 	// Save a delivery report for the peer that send this message
 	b.markDeliveredTo(&dm, peer)
 
@@ -197,7 +159,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	go b.sendAck(peer, typeDirectMessage, dm.ID)
 
 	// Gossip the message to any online devices that should have it
-	go b.broadcast(&dm) // TODO: only send references if the devices in the pool are less that max connections per pool?
+	go b.broadcast(&dm)
 }
 
 func (b *bounce) dmOriginAcceptable(dm DirectMessage, dev device) bool {
@@ -233,14 +195,11 @@ func (b *bounce) dmOriginAcceptable(dm DirectMessage, dev device) bool {
 		}
 
 		// Figure out which user ID is not us
-		otherParty := dm.Source // TODO: just do: source ^ destination ^ currentUserID?
-		if dm.Source == b.currentUserID() {
-			otherParty = dm.Destination
-		}
+		otherParty := xor(xor(dm.Source, dm.Destination), b.currentUserID())
 
 		// Make sure that user actually exists
 		var otherUser user
-		err := b.database.Preload(clause.Associations).First(&otherUser, "id = ?", otherParty).Error // TODO: cache?  otherwise each DM is another database read
+		err := b.database.Preload(clause.Associations).First(&otherUser, "id = ?", otherParty).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
@@ -254,21 +213,8 @@ func (b *bounce) dmOriginAcceptable(dm DirectMessage, dev device) bool {
 			}
 		}
 
-		// Reguardless of who the other party is, if the message came from one of our devices it's allowed
-		currentUser, ok := b.currentUser()
-		if !ok {
-			// This doesn't really make sense, but if we're getting DMs that are so far valid
-			// while also not having a profile, we shouldn't allow this
-			log.Error("could not find current user while attempting to validate direct message peer")
-			return false
-		}
-		isFromSyncDevice := false
-		for _, syncDevice := range currentUser.Devices {
-			if syncDevice.Address == dev.Address {
-				isFromSyncDevice = true
-			}
-		}
-		if isFromSyncDevice {
+		// If the message came from one of our devices it's allowed
+		if b.isSyncDevice(dev) {
 			return true
 		}
 
@@ -290,4 +236,23 @@ func (b *bounce) dmOriginAcceptable(dm DirectMessage, dev device) bool {
 		}).Warn("received direct message from a device not in the allowed device set")
 		return false
 	}
+}
+
+func (b *bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
+	message.ID = uuid.New()
+	message.WrittenAt = time.Now().Unix()
+	message.Read = true
+	message.Source = b.currentUserID()
+	message.RetentionSeconds = b.getDMRetention(message.Destination)
+
+	err := b.database.Create(message).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error saving direct message to the database")
+	}
+
+	b.broadcast(message)
+
+	return message.ID
 }
