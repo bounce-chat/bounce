@@ -207,6 +207,10 @@ func (b *bounce) userConnectionDesired(id uuid.UUID) {
 
 }
 
+func (b *bounce) groupConnectionDesired(id uuid.UUID) {
+	// TODO: make sure we're peered with this group
+}
+
 func (b *bounce) tryDialing(address string) { // TODO: move cooldown logic in here?
 	if !b.networkIsOnline {
 		log.WithFields(log.Fields{

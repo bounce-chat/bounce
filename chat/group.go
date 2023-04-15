@@ -125,13 +125,13 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 		Timestamp: creationTime,
 		Data:      groupData,
 	}
-	gc.Payload, err = msgpack.Marshal(gc)
+	gc.OriginalPayload, err = msgpack.Marshal(gc)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error marshalling group creation")
 	}
-	sc := b.createSignedContainer(gc.Payload)
+	sc := b.createSignedContainer(gc.OriginalPayload)
 	gc.Signature = sc.Signature
 	gc.Signer = sc.Signer
 

@@ -12,26 +12,33 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+//
+// A group creation captures the original state of a group.  This is the original source of truth on the structure of a group, and all
+// modifications from this point on are done with updateGroup frames.  The ID of a group is determined by a hash of the original
+// marshalled group that is contained in this structure.  This prevents any modification to the group during broadcast, as future frames
+// are referencing this group via a hash of it's orignal state.
+//
 type groupCreation struct {
-	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Timestamp    int64
-	Data         []byte // Original group structure, msgpacked
-	Signer       string `msgpack:"-"`
-	Payload      []byte `msgpack:"-"` // TODO: rename to marshalled or something
-	Signature    []byte `msgpack:"-"`
-	payload      []byte
-	payloadMutex sync.Mutex
+	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Timestamp       int64
+	Data            []byte `gorm:"not null"` // Original group structure, msgpacked
+	Signer          string `msgpack:"-" gorm:"not null"`
+	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
+	Signature       []byte `msgpack:"-" gorm:"not null"`
+	payload         []byte
+	payloadMutex    sync.Mutex
 }
 
 func (gc *groupCreation) BeforeCreate(tx *gorm.DB) error {
-	// TODO: enforce that the group contained in this structure has the same UUID as the gc, and it isn't nil
-
+	if gc.ID == uuid.Nil {
+		return errors.New("group creation must have an ID assigned before creation")
+	}
 	return nil
 }
 
-// TODO: after delete, cascade delete of all group updates and messages
-// could also use db.Select(clause.Associations).Delete(&group)
-// https://gorm.io/docs/associations.html#Delete-with-Select
+func (gc *groupCreation) AfterDelete(tx *gorm.DB) error {
+	return tx.Where("frame_id = ? AND frame_type = ?", gc.ID, typeGroupCreation).Delete(&deliveryRecord{}).Error
+}
 
 func (gc *groupCreation) getID() uuid.UUID {
 	return gc.ID
@@ -55,7 +62,7 @@ func (gc *groupCreation) getPayload() []byte {
 
 	if len(gc.payload) == 0 {
 		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   gc.Payload,
+			Payload:   gc.OriginalPayload,
 			Signature: gc.Signature,
 			Signer:    gc.Signer,
 		})
@@ -92,7 +99,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Fatal("error unmarshalling group creation")
 	}
-	gc.Payload = sc.Payload
+	gc.OriginalPayload = sc.Payload
 	gc.Signature = sc.Signature
 	gc.Signer = sc.Signer
 
@@ -143,91 +150,91 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 		return
 	}
 
-	// If we already know about this group, ack it and return
+	// If we already know about this group, ack it, mark as delivered, and return
 	var existingGroupCreation groupCreation
-	err = b.database.Where("id = ?", gc.ID).First(&existingGroupCreation).Error // TODO: use count or only select ID or something?
+	err = b.database.Where("id = ?", gc.ID).First(&existingGroupCreation).Error
 	if err == nil {
-		// We already know about this group, just mark it as delivered to the peer
-		// TODO: ack
+		go b.sendAck(peer, typeGroupCreation, gc.ID)
 		b.markDeliveredTo(&gc, peer)
-	} else if errors.Is(err, gorm.ErrRecordNotFound) {
-		// Check that each user has a valid device group
-		for _, u := range g.Users {
-			if !b.hasValidDeviceGroup(u) {
-				log.WithFields(log.Fields{
-					"peer":    peer,
-					"user_id": u.ID,
-				}).Warn("ignoring group that contains user with invalid device group")
-				return
-			}
-		}
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error looking up group creation")
+	}
 
-		// Save all of the structures in this group, creating any new users or devices as needed
-		userIDs := []uuid.UUID{}
-		err = b.database.Transaction(func(tx *gorm.DB) error {
-			for _, u := range g.Users {
-				// TODO: if the users are new, shouldn't we ack them as well?
-				// TODO: can I just save the users and have their devices auto-save without conflict?
-				for _, dev := range u.Devices {
-					err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
-					if err != nil {
-						log.WithFields(log.Fields{
-							"error": err.Error(),
-						}).Error("error saving device that is part of a group")
-						return err
-					}
-				}
-				err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
+	// Check that each user has a valid device group
+	for _, u := range g.Users {
+		if !b.hasValidDeviceGroup(u) {
+			log.WithFields(log.Fields{
+				"peer":    peer,
+				"user_id": u.ID,
+			}).Warn("ignoring group that contains user with invalid device group")
+			return
+		}
+	}
+
+	// Save all of the structures in this group, creating any new users or devices as needed
+	userIDs := []uuid.UUID{}
+	err = b.database.Transaction(func(tx *gorm.DB) error {
+		for _, u := range g.Users {
+			for _, dev := range u.Devices {
+				err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
-					}).Error("error saving user that is part of a group")
+					}).Error("error saving device that is part of a group")
 					return err
 				}
-				userIDs = append(userIDs, u.ID)
 			}
-			err := tx.Create(&gc).Error
+			err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Error("error saving new group creation")
+				}).Error("error saving user that is part of a group")
 				return err
 			}
-			err = tx.Create(&g).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error saving new group")
-				return err
-			}
-
-			return nil
-		})
+			userIDs = append(userIDs, u.ID)
+		}
+		err := tx.Create(&gc).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("error in transaction for saving a new group")
+			}).Error("error saving new group creation")
+			return err
+		}
+		err = tx.Create(&g).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error saving new group")
+			return err
 		}
 
-		// TODO: notify the device pool to connect right away.  groupConnectionDesired()?
-
-		go b.broadcast(&gc)
-
-		// We might be learning about the creation of a group that originally didn't include us, but that we were later added to.
-		// In that case it doesn't make sense to inform the UI about this group until we're added to it.
-		if b.userIsInGroup(b.currentUserID(), g.ID) {
-			b.userInterface.NewGroupChat(Group{
-				ID:      g.ID,
-				Name:    g.Name,
-				UserIDs: userIDs,
-			})
-		}
-	} else {
+		return nil
+	})
+	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error looking up group")
+		}).Fatal("error in transaction for saving a new group")
 	}
 
 	// Ack the group
 	go b.sendAck(peer, typeGroupCreation, gc.ID)
+
+	// Broadcast it
+	go b.broadcast(&gc)
+
+	// We might be learning about the creation of a group that originally didn't include us, but that we were later added to.
+	// In that case it doesn't make sense to inform the UI about this group until we're added to it.
+	if b.userIsInGroup(b.currentUserID(), g.ID) {
+		b.userInterface.NewGroupChat(Group{
+			ID:      g.ID,
+			Name:    g.Name,
+			UserIDs: userIDs,
+		})
+	}
+
+	// Notify the peering engine that we want to be connected to this group right now
+	b.groupConnectionDesired(g.ID)
 }
