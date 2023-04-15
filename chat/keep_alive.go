@@ -1,5 +1,8 @@
 package chat
 
+//
+// Keep alives are used to regularly send a small amount of data down all open connections to test that they are still alive
+//
 type keepAlive struct{}
 
 func (ka keepAlive) getType() uint16 {
