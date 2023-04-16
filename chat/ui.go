@@ -32,7 +32,7 @@ type UI interface {
 
 	NewSyncDeviceAdded()
 	SyncDeviceRequestAccepted(uuid.UUID, string) // TODO: better name for these?
-	SyncDeviceRequestRejected()
+	SyncDeviceRequestRejected(peer string)
 
 	// User management
 	AddUserRequestRejected(string)

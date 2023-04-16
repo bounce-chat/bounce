@@ -78,6 +78,6 @@ func (fyneUI *Fyne) SyncDeviceRequestAccepted(id uuid.UUID, name string) {
 	fyneUI.showMainContainer()
 }
 
-func (fyneUI *Fyne) SyncDeviceRequestRejected() {
+func (fyneUI *Fyne) SyncDeviceRequestRejected(peer string) {
 	dialog.ShowError(errors.New("Sync request rejected, make sure you scan the device quickly"), fyneUI.mainWindow)
 }

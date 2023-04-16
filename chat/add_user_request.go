@@ -12,9 +12,9 @@ import (
 	"gorm.io/gorm"
 )
 
-var addUserRequestMutex sync.Mutex
-
 var addUserOfferValidForSeconds = int64(300)
+
+var addUserRequestMutex sync.Mutex
 
 //
 // Add user requests are frames sent by a device that has scanned another device's add user offer.  The

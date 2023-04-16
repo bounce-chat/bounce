@@ -7,6 +7,11 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
+//
+// A sync device request accepted frame is sent from an offer device to a requester device when it is approving the requester
+// device as a new sync device.  It contains the full profile that the requester device is being added to, this includes the
+// requester device in the device group.
+//
 type syncDeviceRequestAccepted struct {
 	Profile      user
 	payload      []byte
@@ -61,8 +66,21 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte) {
 		log.Error("sdra contains profile with invalid device group")
 		return
 	}
-	// TODO: make sure this device is included in the device group
 
+	// Make sure that our device is in the device group of this new profile
+	localDeviceFound := false
+	for _, dev := range sdra.Profile.Devices {
+		if dev.Address == b.network.Address() {
+			localDeviceFound = true
+		}
+	}
+	if !localDeviceFound {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("rejecting sync device request accepted that does not contain this device in the device group")
+	}
+
+	// Save the new profile
 	err = b.database.Create(&sdra.Profile).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -73,5 +91,6 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte) {
 	// Inform the UI
 	b.userInterface.SyncDeviceRequestAccepted(sdra.Profile.ID, sdra.Profile.Name)
 
+	// Connect to any other sync devices now
 	b.auditPeers()
 }

@@ -12,8 +12,14 @@ import (
 	"gorm.io/gorm"
 )
 
+var syncDeviceOfferValidForSeconds = int64(300)
+
 var syncDeviceRequestMutex sync.Mutex
 
+//
+// A sync device request is our request to join an existing profile.  We do this by sending the secret that was present in an offer,
+// as well as our signature of the address of the device that made the offer.
+//
 type syncDeviceRequest struct {
 	Signature    []byte
 	Secret       string
@@ -39,33 +45,6 @@ func (sdr *syncDeviceRequest) getPayload() []byte {
 		sdr.payload = bytes
 	}
 	return sdr.payload
-}
-
-func (b *bounce) requestToSync(data string) error {
-	if _, exists := b.currentUser(); exists {
-		return errors.New("profile already exists")
-	}
-
-	parts := strings.Split(data, ":")
-	if len(parts) != 2 {
-		return errors.New("invalid sync data")
-	}
-
-	address := parts[0]
-	// TODO: Check if valid network address
-	secret := parts[1]
-
-	conn, err := b.network.Dial(address)
-	if err != nil {
-		return errors.New("could not connect to device")
-	}
-	b.insertConnectionIntoDevicePool(conn)
-
-	b.sendDirect(address, &syncDeviceRequest{
-		Signature: b.network.Sign([]byte(address)),
-		Secret:    secret,
-	})
-	return nil
 }
 
 func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
@@ -100,8 +79,6 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 		}
 	}
 
-	// TODO: enforce timestamp
-
 	// Delete the offer
 	err = b.database.Delete(&offer).Error
 	if err != nil {
@@ -109,6 +86,12 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 			"id":    offer.ID,
 			"error": err.Error(),
 		}).Fatal("database error deleting sync device offer after use")
+	}
+
+	// Enforce the timestamp on the offer
+	if time.Now().Unix() > offer.Timestamp+syncDeviceOfferValidForSeconds {
+		b.sendDirect(peer, &syncDeviceRequestRejected{})
+		return
 	}
 
 	// Validate the signature is the peer signing this device
@@ -140,7 +123,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 	if exists {
 		// This is already a known sync device.  The device must be requesting to sync again because something went
 		// wrong on their end during the process.  That's fine, everything about this device has been validated in
-		// the past, so we just send our information over again.
+		// the past, so we just send our information over again and drop all delivery records in case they lost data.
 		b.sendDirect(peer, &syncDeviceRequestAccepted{
 			Profile: profile,
 		})
@@ -187,11 +170,43 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 		// Tell the UI that we've accepted the sync device
 		b.userInterface.NewSyncDeviceAdded()
 
-		// Tell everyone about the new device
+		// Store that we've told this device about themselves
 		b.markDeliveredTo(&newDevice, peer)
+
+		// Tell everyone about the new device
 		b.broadcast(&newDevice)
 	}
 
 	// Send a reference offer to the new device
 	b.sendReferences(peer)
+}
+
+func (b *bounce) requestToSync(data string) error {
+	// Make sure we don't have a profile before trying to become a sync device for another profile
+	if _, exists := b.currentUser(); exists {
+		return errors.New("profile already exists")
+	}
+
+	// Parse the offer
+	parts := strings.Split(data, ":")
+	if len(parts) != 2 {
+		return errors.New("invalid sync data")
+	}
+	address := parts[0]
+	secret := parts[1]
+
+	// Dial the offer device
+	conn, err := b.network.Dial(address)
+	if err != nil {
+		return errors.New("could not connect to device")
+	}
+	b.insertConnectionIntoDevicePool(conn)
+
+	// Send our request
+	b.sendDirect(address, &syncDeviceRequest{
+		Signature: b.network.Sign([]byte(address)),
+		Secret:    secret,
+	})
+
+	return nil
 }
