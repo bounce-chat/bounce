@@ -22,8 +22,6 @@ var referenceStateRequested = 1
 
 var referenceRetrySeconds = 5
 
-var ERR_FRAME_REFERNCE_ALREADY_HAS_ID = errors.New("cannot create frame reference with already specified ID")
-
 type frameReference struct {
 	ID         uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
 	FrameID    uuid.UUID `gorm:"index;uniqueIndex:idx_frame_id_type_peer"`
@@ -36,7 +34,7 @@ type frameReference struct {
 
 func (fr *frameReference) BeforeCreate(tx *gorm.DB) error {
 	if fr.ID != uuid.Nil {
-		return ERR_FRAME_REFERNCE_ALREADY_HAS_ID
+		return errors.New("cannot create frame reference with already specified ID")
 	}
 	fr.ID = uuid.New()
 	fr.CreatedAt = time.Now().Unix()

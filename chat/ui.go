@@ -28,10 +28,10 @@ type UI interface {
 	// The network is ready
 	NetworkOnline()
 	// Network connection has been lost, go back to displaying a loading message, blocking user interaction
-	NetworkOffline() // TODO: when internet connection is lost, still let the user browse messages
+	NetworkOffline()
 
 	NewSyncDeviceAdded()
-	SyncDeviceRequestAccepted(uuid.UUID, string) // TODO: better name for these?
+	SyncDeviceRequestAccepted(uuid.UUID, string)
 	SyncDeviceRequestRejected(peer string)
 
 	// User management
@@ -59,7 +59,7 @@ type UI interface {
 	NewGroupChat(Group)
 	ReceivedGroupMessage(GroupMessage)
 	RenameGroup(groupID, actorID uuid.UUID, newName string)
-	GroupRetentionChanged(groupID uuid.UUID, actorID uuid.UUID, retention int64)
+	GroupRetentionChanged(groupID uuid.UUID, actorID uuid.UUID, retention int64, timestamp int64)
 	GroupChatHistoryCleared(groupID uuid.UUID, actorID uuid.UUID)
 	GroupMutedUntilChanged(groupID uuid.UUID, mutedUntil int64)
 

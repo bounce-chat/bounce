@@ -150,17 +150,20 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 		return
 	}
 
-	// If we already know about this group, ack it, mark as delivered, and return
-	var existingGroupCreation groupCreation
-	err = b.database.Where("id = ?", gc.ID).First(&existingGroupCreation).Error
-	if err == nil {
-		go b.sendAck(peer, typeGroupCreation, gc.ID)
-		b.markDeliveredTo(&gc, peer)
-		return
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+	// Make sure that one of the devices in this group signed the creation of this group
+	signingDeviceInGroup := false
+	for _, u := range g.Users {
+		for _, dev := range u.Devices {
+			if dev.Address == gc.Signer {
+				signingDeviceInGroup = true
+			}
+		}
+	}
+	if !signingDeviceInGroup {
 		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error looking up group creation")
+			"signing_device": gc.Signer,
+		}).Warn("rejecting group creation not signed by any of the original devices")
+		return
 	}
 
 	// Check that each user has a valid device group
@@ -172,6 +175,19 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 			}).Warn("ignoring group that contains user with invalid device group")
 			return
 		}
+	}
+
+	// If we already know about this group, ack it, mark as delivered, and return
+	var existingGroupCreation groupCreation
+	err = b.database.Where("id = ?", gc.ID).First(&existingGroupCreation).Error
+	if err == nil {
+		go b.sendAck(peer, typeGroupCreation, gc.ID)
+		b.markDeliveredTo(&gc, peer)
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error looking up group creation")
 	}
 
 	// Save all of the structures in this group, creating any new users or devices as needed

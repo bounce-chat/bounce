@@ -22,7 +22,7 @@ var ERR_UPDATE_DM_WITH_UNKNOWN_TYPE = errors.New("update DM has unknown update t
 var updateDMMutex sync.Mutex
 
 //
-// An updateDM frame changes the settings of a direct message thread, such as retention of notification settings.
+// An updateDM frame changes the settings of a direct message thread, such as retention or notification settings.
 // Some settings, like retention, must be observed by both participants of the DM, where others like notification
 // settings are only sent to sync devices.  The data field of the structure contains different data depending on
 // the type of update.
@@ -220,21 +220,8 @@ func (b *bounce) saveAndApplyUpdateDMChangeMutedUntil(u user, ud updateDM) error
 		}).Fatal("database error saving update DM")
 	}
 
-	// Check to make sure there isn't a more recent change we're already aware of
-	var moreRecentUpdates bool
-	err = b.database.Table("update_dms").
-		Select("count(*) >= 1").
-		Where("target = ? AND type = ? AND timestamp > ?", ud.Target, ud.Type, ud.Timestamp).
-		Find(&moreRecentUpdates).
-		Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error checking for more recent update DMs")
-	}
-
 	// Apply the update if it is the most recent one
-	if !moreRecentUpdates {
+	if !b.moreRecentUpdateDM(ud) {
 		mutedUntil := int64(binary.LittleEndian.Uint64(ud.Data))
 
 		err = b.database.Model(&u).Update("muted_until", mutedUntil).Error
@@ -266,21 +253,8 @@ func (b *bounce) saveAndApplyUpdateDMChangeRetention(u user, ud updateDM) error 
 	// Inform the UI
 	b.userInterface.DMRetentionChanged(u.ID, ud.Actor, retention, ud.Timestamp)
 
-	// Check to make sure there isn't a more recent change we're already aware of
-	var moreRecentUpdates bool
-	err = b.database.Table("update_dms").
-		Select("count(*) >= 1").
-		Where("target = ? AND type = ? AND timestamp > ?", ud.Target, ud.Type, ud.Timestamp).
-		Find(&moreRecentUpdates).
-		Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error checking for more recent update DMs")
-	}
-
 	// Apply the update if it is the most recent one
-	if !moreRecentUpdates {
+	if !b.moreRecentUpdateDM(ud) {
 		err = b.database.Model(&u).Update("retention", retention).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -378,6 +352,23 @@ func (b *bounce) clearDMChatHistory(userID uuid.UUID) error {
 		Type:      updateDMTypeSetClearBefore,
 		Data:      payload,
 	})
+}
+
+func (b *bounce) moreRecentUpdateDM(ud updateDM) bool {
+	var moreRecentUpdates bool
+
+	err := b.database.Table("update_dms").
+		Select("count(*) >= 1").
+		Where("target = ? AND type = ? AND timestamp > ?", ud.Target, ud.Type, ud.Timestamp).
+		Find(&moreRecentUpdates).
+		Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error checking for more recent update DMs")
+	}
+
+	return moreRecentUpdates
 }
 
 func (b *bounce) applyAndBroadcastUpdateDM(ud updateDM) error {

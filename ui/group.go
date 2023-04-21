@@ -356,7 +356,7 @@ func (fyneUI *Fyne) RenameGroup(groupID, actorID uuid.UUID, newName string) {
 	fyneUI.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) GroupRetentionChanged(groupID, actorID uuid.UUID, retention int64) {
+func (fyneUI *Fyne) GroupRetentionChanged(groupID, actorID uuid.UUID, retention int64, timestamp int64) {
 	// Find the actor
 	actor, ok := fyneUI.users.get(actorID)
 	actorName := ""
@@ -399,6 +399,7 @@ func (fyneUI *Fyne) GroupRetentionChanged(groupID, actorID uuid.UUID, retention 
 	chatHistory := group.chatHistoryScroll().Content.(*fyne.Container)
 	chatHistory.Objects = append(chatHistory.Objects, changeLabel)
 	group.chatHistoryScroll().Refresh()
+	// TODO: thread this in the correct spot in the thread based on timestamp
 
 	group.button.setLastAction(changeString)
 

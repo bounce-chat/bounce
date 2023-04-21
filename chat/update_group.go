@@ -13,15 +13,12 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-var updateGroupMutex sync.Mutex
-
-// TODO: don't export
-const UPDATE_GROUP_TYPE_CHANGE_NAME = uint16(0)
-const UPDATE_GROUP_TYPE_ADD_USER = uint16(1)
-const UPDATE_GROUP_TYPE_REMOVE_USER = uint16(2)
-const UPDATE_GROUP_TYPE_CHANGE_MUTED_UNTIL = uint16(3)
-const UPDATE_GROUP_TYPE_CHANGE_RETENTION = uint16(4)
-const UPDATE_GROUP_TYPE_SET_CLEAR_BEFORE = uint16(5)
+const updateGroupTypeChangeName = uint16(0)
+const updateGroupTypeAddUser = uint16(1)
+const updateGroupTypeRemoveUser = uint16(2)
+const updateGroupTypeChangeMutedUntil = uint16(3)
+const updateGroupTypeChangeRetention = uint16(4)
+const updateGroupTypeSetClearBefore = uint16(5)
 
 var ERR_UPDATE_GROUP_WITH_UNKNOWN_TYPE = errors.New("update group has unknown update type")
 var ERR_INVALID_GROUP_NAME = errors.New("invalid group name")
@@ -29,28 +26,37 @@ var ERR_MUTED_UNTIL_ONLY_MUTABLE_BY_SELF = errors.New("group muted until setting
 var ERR_USER_NOT_FOUND = errors.New("no user found with that ID")
 var ERR_USER_HAS_INVALID_DEVICE_GROUP = errors.New("user has invalid device group")
 
+var updateGroupMutex sync.Mutex
+
+//
+// An updateGroup frame changes the settings and status of a group, such as permissions, membership, retention, or notification settings.
+// Some settings, like retention and membership, must be observed by all participants of the group, where others like notification are only
+// sent to sync devices.  The data field of the structure contains different data depending on the type of update.
+//
 type updateGroup struct {
-	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Actor        uuid.UUID
-	Target       uuid.UUID
-	Timestamp    int64
-	Type         uint16
-	Data         []byte
-	Signer       string `msgpack:"-"`
-	Payload      []byte `msgpack:"-"` // TODO: rename to marshalled or something
-	Signature    []byte `msgpack:"-"`
-	payload      []byte
-	payloadMutex sync.Mutex
-	// should also have a string method on here for the frontend?  internationalization issues there though
-	//   each type could have it's own structure exported to the frontend for this too
+	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Actor           uuid.UUID
+	Target          uuid.UUID
+	Timestamp       int64
+	Type            uint16
+	Data            []byte
+	Signer          string `msgpack:"-" gorm:"not null"`
+	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
+	Signature       []byte `msgpack:"-" gorm:"not null"`
+	payload         []byte
+	payloadMutex    sync.Mutex
 }
 
 func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
 	if ug.ID == uuid.Nil {
-		log.Fatal("attempt to create update group with nil ID, ID must be set before creation")
+		return errors.New("update group ID must be set before creation")
 	}
 
 	return nil
+}
+
+func (ug *updateGroup) AfterDelete(tx *gorm.DB) error {
+	return tx.Where("frame_id = ? AND frame_type = ?", ug.ID, typeUpdateGroup).Delete(&deliveryRecord{}).Error
 }
 
 func (ug *updateGroup) getID() uuid.UUID {
@@ -58,7 +64,7 @@ func (ug *updateGroup) getID() uuid.UUID {
 }
 
 func (ug *updateGroup) getScope(myID uuid.UUID) int {
-	if ug.Type == UPDATE_GROUP_TYPE_CHANGE_MUTED_UNTIL {
+	if ug.Type == updateGroupTypeChangeMutedUntil {
 		return scopeSync
 	}
 
@@ -66,6 +72,10 @@ func (ug *updateGroup) getScope(myID uuid.UUID) int {
 }
 
 func (ug *updateGroup) getDestination(myID uuid.UUID) uuid.UUID {
+	if ug.Type == updateGroupTypeChangeMutedUntil {
+		return myID
+	}
+
 	return ug.Target
 }
 
@@ -79,7 +89,7 @@ func (ug *updateGroup) getPayload() []byte {
 
 	if len(ug.payload) == 0 {
 		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   ug.Payload,
+			Payload:   ug.OriginalPayload,
 			Signature: ug.Signature,
 			Signer:    ug.Signer,
 		})
@@ -116,7 +126,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Fatal("error unmarshalling update group")
 	}
-	ug.Payload = sc.Payload
+	ug.OriginalPayload = sc.Payload
 	ug.Signature = sc.Signature
 	ug.Signer = sc.Signer
 
@@ -131,7 +141,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		return
 	}
 
-	// Make sure the author is in the group
+	// Make sure the actor is in the group
 	if !b.userIsInGroup(ug.Actor, ug.Target) {
 		log.WithFields(log.Fields{
 			"peer":  peer,
@@ -175,7 +185,6 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	go b.broadcast(&ug)
 }
 
-// TODO: does this need to be mutexed, as opposed to the handler, since both are using it?
 func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 	// Look up the group that we're updating
 	var g group
@@ -193,17 +202,19 @@ func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 		}
 	}
 
+	// Apply the function that handles this type of update
 	switch ug.Type {
-	case UPDATE_GROUP_TYPE_CHANGE_NAME:
+	case updateGroupTypeChangeName:
 		return b.saveAndApplyUpdateGroupChangeName(g, ug)
-	case UPDATE_GROUP_TYPE_ADD_USER:
+	case updateGroupTypeAddUser:
 		return b.saveAndApplyUpdateGroupAddUser(g, ug)
-	case UPDATE_GROUP_TYPE_REMOVE_USER:
-	case UPDATE_GROUP_TYPE_CHANGE_MUTED_UNTIL:
+	case updateGroupTypeRemoveUser:
+		return b.saveAndApplyUpdateGroupRemoveUser(g, ug)
+	case updateGroupTypeChangeMutedUntil:
 		return b.saveAndApplyUpdateGroupChangeMutedUntil(g, ug)
-	case UPDATE_GROUP_TYPE_CHANGE_RETENTION:
+	case updateGroupTypeChangeRetention:
 		return b.saveAndApplyUpdateGroupChangeRetention(g, ug)
-	case UPDATE_GROUP_TYPE_SET_CLEAR_BEFORE:
+	case updateGroupTypeSetClearBefore:
 		return b.saveAndApplyUpdateGroupSetClearBefore(g, ug)
 	default:
 		log.WithFields(log.Fields{
@@ -236,21 +247,8 @@ func (b *bounce) saveAndApplyUpdateGroupChangeName(g group, ug updateGroup) erro
 		}).Fatal("database error saving update group")
 	}
 
-	// Check to make sure there isn't a more recent change we're already aware of
-	var moreRecentUpdates bool
-	err = b.database.Table("update_groups").
-		Select("count(*) >= 1").
-		Where("target = ? AND type = ? AND timestamp > ?", ug.Target, ug.Type, ug.Timestamp).
-		Find(&moreRecentUpdates).
-		Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error checking for more recent update groups")
-	} // TODO: DRY?
-
 	// Apply the update if it is the most recent one
-	if !moreRecentUpdates {
+	if !b.moreRecentUpdateGroup(ug) {
 		err = b.database.Model(&g).Update("name", newName).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -279,24 +277,11 @@ func (b *bounce) saveAndApplyUpdateGroupChangeMutedUntil(g group, ug updateGroup
 		}).Fatal("database error saving update group")
 	}
 
-	// Check to make sure there isn't a more recent change we're already aware of
-	var moreRecentUpdates bool
-	err = b.database.Table("update_groups").
-		Select("count(*) >= 1").
-		Where("target = ? AND type = ? AND timestamp > ?", ug.Target, ug.Type, ug.Timestamp).
-		Find(&moreRecentUpdates).
-		Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error checking for more recent update groups")
-	} // TODO: DRY?
-
 	// Decode the new muted until value
 	mutedUntil := int64(binary.LittleEndian.Uint64(ug.Data))
 
 	// Apply the update if it is the most recent one
-	if !moreRecentUpdates {
+	if !b.moreRecentUpdateGroup(ug) {
 		err = b.database.Model(&g).Update("muted_until", mutedUntil).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -323,43 +308,28 @@ func (b *bounce) saveAndApplyUpdateGroupChangeRetention(g group, ug updateGroup)
 		}).Fatal("database error saving update group")
 	}
 
-	// Check to make sure there isn't a more recent change we're already aware of
-	var moreRecentUpdates bool
-	err = b.database.Table("update_groups").
-		Select("count(*) >= 1").
-		Where("target = ? AND type = ? AND timestamp > ?", ug.Target, ug.Type, ug.Timestamp).
-		Find(&moreRecentUpdates).
-		Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error checking for more recent update groups")
-	} // TODO: DRY?
-
 	// Decode the new retention value
 	retention := int64(binary.LittleEndian.Uint64(ug.Data))
 
+	// Inform the UI
+	b.userInterface.GroupRetentionChanged(g.ID, ug.Actor, retention, ug.Timestamp)
+
 	// Apply the update if it is the most recent one
-	if !moreRecentUpdates {
+	if !b.moreRecentUpdateGroup(ug) {
 		err = b.database.Model(&g).Update("retention", retention).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Fatal("database error updating group retention")
 		}
-
-		// Inform the UI
-		b.userInterface.GroupRetentionChanged(g.ID, ug.Actor, retention)
-
-		// TODO: we should notify the UI even if there are more recent updates once the UI understands how to
-		// insetion sort everything by timestamp
 	}
 
 	return nil
 }
 
 func (b *bounce) saveAndApplyUpdateGroupSetClearBefore(g group, ug updateGroup) error {
-	// TODO: make sure permissions are correct, who can clear chat history?  probably best to match message sending permissions
+	// Make sure the actor has the correct permissions to clear the chat history
+	// TODO
 
 	// Save the update group
 	err := b.database.Create(&ug).Error
@@ -409,7 +379,7 @@ func (b *bounce) saveAndApplyUpdateGroupSetClearBefore(g group, ug updateGroup) 
 func (b *bounce) saveAndApplyUpdateGroupAddUser(g group, ug updateGroup) error {
 	// Unmarshall the new user
 	var u user
-	err := msgpack.Unmarshal(ug.Payload, &u)
+	err := msgpack.Unmarshal(ug.Data, &u)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -418,6 +388,7 @@ func (b *bounce) saveAndApplyUpdateGroupAddUser(g group, ug updateGroup) error {
 	}
 
 	if u.ID == b.currentUserID() {
+		// This update group adds us to the group
 		userIDs := []uuid.UUID{}
 		for _, u := range g.Users {
 			userIDs = append(userIDs, u.ID)
@@ -435,7 +406,6 @@ func (b *bounce) saveAndApplyUpdateGroupAddUser(g group, ug updateGroup) error {
 
 		// Save the user and their devices if we don't have them
 		err = b.database.Transaction(func(tx *gorm.DB) error {
-			// TODO: if the users are new, shouldn't we ack them as well?
 			for _, dev := range u.Devices {
 				err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
 				if err != nil {
@@ -471,13 +441,18 @@ func (b *bounce) saveAndApplyUpdateGroupAddUser(g group, ug updateGroup) error {
 	return nil
 }
 
+func (b *bounce) saveAndApplyUpdateGroupRemoveUser(g group, ug updateGroup) error {
+	// TODO
+	return nil
+}
+
 func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
 	return b.applyAndBroadcastUpdateGroup(updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
-		Type:      UPDATE_GROUP_TYPE_CHANGE_NAME,
+		Type:      updateGroupTypeChangeName,
 		Data:      []byte(newName),
 	})
 }
@@ -491,7 +466,7 @@ func (b *bounce) setGroupMutedUntil(groupID uuid.UUID, mutedUntil int64) error {
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
-		Type:      UPDATE_GROUP_TYPE_CHANGE_MUTED_UNTIL,
+		Type:      updateGroupTypeChangeMutedUntil,
 		Data:      payload,
 	})
 }
@@ -505,7 +480,7 @@ func (b *bounce) setGroupRetention(groupID uuid.UUID, retention int64) error {
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
-		Type:      UPDATE_GROUP_TYPE_CHANGE_RETENTION,
+		Type:      updateGroupTypeChangeRetention,
 		Data:      payload,
 	})
 }
@@ -519,7 +494,7 @@ func (b *bounce) clearGroupChatHistory(groupID uuid.UUID) error {
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
-		Type:      UPDATE_GROUP_TYPE_SET_CLEAR_BEFORE,
+		Type:      updateGroupTypeSetClearBefore,
 		Data:      payload,
 	})
 }
@@ -555,7 +530,7 @@ func (b *bounce) addUserToGroup(groupID, userID uuid.UUID) error {
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
-		Type:      UPDATE_GROUP_TYPE_ADD_USER,
+		Type:      updateGroupTypeAddUser,
 		Data:      newUserBytes,
 	})
 	if err != nil {
@@ -563,6 +538,7 @@ func (b *bounce) addUserToGroup(groupID, userID uuid.UUID) error {
 	}
 
 	// Do a reference flow with this new user to send over all the details of this group
+	b.userConnectionDesired(userID)
 	addresses, err := b.getOnlinePeerAddresses(newUser.ID)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -577,6 +553,11 @@ func (b *bounce) addUserToGroup(groupID, userID uuid.UUID) error {
 	return nil
 }
 
+func (b *bounce) removeUserFromGroup(groupID, userID uuid.UUID) error {
+	// TODO
+	return nil
+}
+
 func (b *bounce) changeGroupNotificationSettings(group uuid.UUID, enabled bool) {
 	log.WithFields(log.Fields{
 		"thread":                group,
@@ -584,16 +565,33 @@ func (b *bounce) changeGroupNotificationSettings(group uuid.UUID, enabled bool) 
 	}).Info("UI wants to change notification settings")
 }
 
+func (b *bounce) moreRecentUpdateGroup(ug updateGroup) bool {
+	var moreRecentUpdates bool
+
+	err := b.database.Table("update_groups").
+		Select("count(*) >= 1").
+		Where("target = ? AND type = ? AND timestamp > ?", ug.Target, ug.Type, ug.Timestamp).
+		Find(&moreRecentUpdates).
+		Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error checking for more recent update groups")
+	}
+
+	return moreRecentUpdates
+}
+
 func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) error {
 	// Create the signed container for this update
 	var err error
-	ug.Payload, err = msgpack.Marshal(&ug)
+	ug.OriginalPayload, err = msgpack.Marshal(&ug)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error marshalling group update")
 	}
-	sc := b.createSignedContainer(ug.Payload)
+	sc := b.createSignedContainer(ug.OriginalPayload)
 	ug.Signature = sc.Signature
 	ug.Signer = sc.Signer
 
