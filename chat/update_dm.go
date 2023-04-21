@@ -13,15 +13,20 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-var updateDMMutex sync.Mutex
-
-// TODO: don't export
-const UPDATE_DM_TYPE_CHANGE_MUTED_UNTIL = uint16(0)
-const UPDATE_DM_TYPE_CHANGE_RETENTION = uint16(1)
-const UPDATE_DM_TYPE_SET_CLEAR_BEFORE = uint16(2)
+const updateDMTypeChangeMutedUntil = uint16(0)
+const updateDMTypeChangeRetention = uint16(1)
+const updateDMTypeSetClearBefore = uint16(2)
 
 var ERR_UPDATE_DM_WITH_UNKNOWN_TYPE = errors.New("update DM has unknown update type")
 
+var updateDMMutex sync.Mutex
+
+//
+// An updateDM frame changes the settings of a direct message thread, such as retention of notification settings.
+// Some settings, like retention, must be observed by both participants of the DM, where others like notification
+// settings are only sent to sync devices.  The data field of the structure contains different data depending on
+// the type of update.
+//
 type updateDM struct {
 	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Actor        uuid.UUID
@@ -35,7 +40,7 @@ type updateDM struct {
 
 func (ud *updateDM) BeforeCreate(tx *gorm.DB) error {
 	if ud.ID == uuid.Nil {
-		log.Fatal("attempt to create update DM with nil ID, ID must be set before creation")
+		return errors.New("update DM ID must be set before creation")
 	}
 
 	return nil
@@ -50,7 +55,7 @@ func (ud *updateDM) getID() uuid.UUID {
 }
 
 func (ud *updateDM) getScope(_ uuid.UUID) int {
-	if ud.Type == UPDATE_DM_TYPE_CHANGE_MUTED_UNTIL {
+	if ud.Type == updateDMTypeChangeMutedUntil {
 		return scopeSync
 	}
 
@@ -58,6 +63,10 @@ func (ud *updateDM) getScope(_ uuid.UUID) int {
 }
 
 func (ud *updateDM) getDestination(myID uuid.UUID) uuid.UUID {
+	if ud.Type == updateDMTypeChangeMutedUntil {
+		return myID
+	}
+
 	return xor(myID, ud.Target)
 }
 
@@ -126,11 +135,12 @@ func (b *bounce) handleUpdateDM(peer string, payload []byte) {
 		return
 	}
 
-	// If we already have this update, we just mark that this peer has it too and return
+	// If we already have this update, we just mark that this peer has it too, ack it, and return
 	var existingUD updateDM
 	err = b.database.Where("id = ?", ud.ID).First(&existingUD).Error
 	if err == nil {
 		b.markDeliveredTo(&existingUD, peer)
+		go b.sendAck(peer, typeUpdateDM, ud.ID)
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
@@ -163,7 +173,6 @@ func (b *bounce) handleUpdateDM(peer string, payload []byte) {
 func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {
 	// Look up the user that we're updating
 	counterpartyID := xor(ud.Target, b.currentUserID())
-	// TODO: if the counterparty ID is nil, then we're updating a self-DM
 	var u user
 	err := b.database.Where("id = ?", counterpartyID).First(&u).Error
 	if err != nil {
@@ -179,12 +188,13 @@ func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {
 		}
 	}
 
+	// Apply the function that handles this type of update
 	switch ud.Type {
-	case UPDATE_DM_TYPE_CHANGE_MUTED_UNTIL:
+	case updateDMTypeChangeMutedUntil:
 		return b.saveAndApplyUpdateDMChangeMutedUntil(u, ud)
-	case UPDATE_DM_TYPE_CHANGE_RETENTION:
+	case updateDMTypeChangeRetention:
 		return b.saveAndApplyUpdateDMChangeRetention(u, ud)
-	case UPDATE_DM_TYPE_SET_CLEAR_BEFORE:
+	case updateDMTypeSetClearBefore:
 		return b.saveAndApplyUpdateDMSetClearBefore(u, ud)
 	default:
 		log.WithFields(log.Fields{
@@ -221,13 +231,12 @@ func (b *bounce) saveAndApplyUpdateDMChangeMutedUntil(u user, ud updateDM) error
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error checking for more recent update DMs")
-	} // TODO: DRY?
-
-	// Decode the new muted until value
-	mutedUntil := int64(binary.LittleEndian.Uint64(ud.Data))
+	}
 
 	// Apply the update if it is the most recent one
 	if !moreRecentUpdates {
+		mutedUntil := int64(binary.LittleEndian.Uint64(ud.Data))
+
 		err = b.database.Model(&u).Update("muted_until", mutedUntil).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -251,6 +260,12 @@ func (b *bounce) saveAndApplyUpdateDMChangeRetention(u user, ud updateDM) error 
 		}).Fatal("database error saving update DM")
 	}
 
+	// Decode the new retention value
+	retention := int64(binary.LittleEndian.Uint64(ud.Data))
+
+	// Inform the UI
+	b.userInterface.DMRetentionChanged(u.ID, ud.Actor, retention, ud.Timestamp)
+
 	// Check to make sure there isn't a more recent change we're already aware of
 	var moreRecentUpdates bool
 	err = b.database.Table("update_dms").
@@ -262,10 +277,7 @@ func (b *bounce) saveAndApplyUpdateDMChangeRetention(u user, ud updateDM) error 
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error checking for more recent update DMs")
-	} // TODO: DRY?
-
-	// Decode the new retention value
-	retention := int64(binary.LittleEndian.Uint64(ud.Data))
+	}
 
 	// Apply the update if it is the most recent one
 	if !moreRecentUpdates {
@@ -275,12 +287,6 @@ func (b *bounce) saveAndApplyUpdateDMChangeRetention(u user, ud updateDM) error 
 				"error": err.Error(),
 			}).Fatal("database error updating user retention")
 		}
-
-		// Inform the UI
-		b.userInterface.DMRetentionChanged(u.ID, ud.Actor, retention)
-
-		// TODO: we should notify the UI even if there are more recent updates once the UI understands how to
-		// insetion sort everything by timestamp
 	}
 
 	return nil
@@ -299,7 +305,7 @@ func (b *bounce) saveAndApplyUpdateDMSetClearBefore(u user, ud updateDM) error {
 	clearBefore := int64(binary.LittleEndian.Uint64(ud.Data))
 
 	dms := []DirectMessage{}
-	err = b.database.Select("id").Where("written_at <= ? AND (direct_messages.destination = ? OR direct_messages.source = ?)", clearBefore, u.ID, u.ID).Find(&dms).Error // TODO: maybe identify these by XOR
+	err = b.database.Select("id").Where("written_at <= ? AND (direct_messages.destination = ? OR direct_messages.source = ?)", clearBefore, u.ID, u.ID).Find(&dms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -341,7 +347,7 @@ func (b *bounce) setDMMutedUntil(userID uuid.UUID, mutedUntil int64) error {
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
-		Type:      UPDATE_DM_TYPE_CHANGE_MUTED_UNTIL,
+		Type:      updateDMTypeChangeMutedUntil,
 		Data:      payload,
 	})
 }
@@ -355,7 +361,7 @@ func (b *bounce) setDMRetention(userID uuid.UUID, retention int64) error {
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
-		Type:      UPDATE_DM_TYPE_CHANGE_RETENTION,
+		Type:      updateDMTypeChangeRetention,
 		Data:      payload,
 	})
 }
@@ -369,7 +375,7 @@ func (b *bounce) clearDMChatHistory(userID uuid.UUID) error {
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
-		Type:      UPDATE_DM_TYPE_SET_CLEAR_BEFORE,
+		Type:      updateDMTypeSetClearBefore,
 		Data:      payload,
 	})
 }
@@ -388,23 +394,4 @@ func (b *bounce) applyAndBroadcastUpdateDM(ud updateDM) error {
 	go b.broadcast(&ud)
 
 	return nil
-}
-
-func xor(uuid1, uuid2 uuid.UUID) uuid.UUID {
-	xored := [16]byte{}
-	for i, b := range uuid1 {
-		xored[i] = b ^ uuid2[i]
-	}
-
-	xorUUID, err := uuid.FromBytes(xored[:])
-	if err != nil {
-		log.WithFields(log.Fields{
-			"uuid1": uuid1,
-			"uuid2": uuid2,
-			"xored": xored,
-			"error": err.Error(),
-		}).Fatal("unable to create UUID from XORed UUIDs")
-	}
-
-	return xorUUID
 }

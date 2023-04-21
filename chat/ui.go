@@ -50,7 +50,7 @@ type UI interface {
 	DMMutedUntilChanged(dm uuid.UUID, mutedUntil int64)
 
 	// The retention settings for a DM have been changed
-	DMRetentionChanged(dm uuid.UUID, actor uuid.UUID, retention int64)
+	DMRetentionChanged(dm uuid.UUID, actor uuid.UUID, retention int64, timestamp int64)
 
 	// Display that a user has deleted all past DMs
 	DMChatHistoryCleared(dm, actor uuid.UUID)

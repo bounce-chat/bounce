@@ -423,7 +423,7 @@ func (fyneUI *Fyne) DMMutedUntilChanged(userID uuid.UUID, mutedUntil int64) {
 	}
 }
 
-func (fyneUI *Fyne) DMRetentionChanged(userID uuid.UUID, actorID uuid.UUID, retention int64) {
+func (fyneUI *Fyne) DMRetentionChanged(userID uuid.UUID, actorID uuid.UUID, retention int64, timestamp int64) {
 	actor, ok := fyneUI.users.get(actorID)
 	actorName := ""
 	if !ok {
@@ -447,6 +447,8 @@ func (fyneUI *Fyne) DMRetentionChanged(userID uuid.UUID, actorID uuid.UUID, rete
 		if height == location {
 			autoscroll = true
 		}
+
+		// TODO: thread this in to the correct location based on the timestamp that gets passed
 
 		changeString := actorName + " updated disappearing messages to " + newRetentionName
 		changeLabel := widget.NewLabel(changeString)

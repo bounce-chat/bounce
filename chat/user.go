@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"runtime"
 	"sync"
 	"time"
 
@@ -30,7 +29,7 @@ type user struct {
 
 func (u *user) BeforeCreate(tx *gorm.DB) error {
 	if u.ID == uuid.Nil {
-		log.Fatal("attempt to create user with nil ID, user ID must be set before creation")
+		return errors.New("user ID must be set before creation")
 	}
 
 	if u.Profile {
@@ -61,32 +60,10 @@ func (b *bounce) currentUser() (user, bool) {
 }
 
 func (b *bounce) currentUserID() uuid.UUID {
-	// Get some of the stack trace
-	// TODO: this is just for debugging and can be removed later
-	caller1 := "unknown"
-	_, file, lineNumber, ok := runtime.Caller(1)
-	if ok {
-		caller1 = fmt.Sprintf("%s:%d", file, lineNumber)
-	}
-	caller2 := "unknown"
-	_, file, lineNumber, ok = runtime.Caller(2)
-	if ok {
-		caller2 = fmt.Sprintf("%s:%d", file, lineNumber)
-	}
-	caller3 := "unknown"
-	_, file, lineNumber, ok = runtime.Caller(3)
-	if ok {
-		caller3 = fmt.Sprintf("%s:%d", file, lineNumber)
-	}
-
 	if b.userID == uuid.Nil {
 		currentUser, ok := b.currentUser()
 		if !ok {
-			log.WithFields(log.Fields{
-				"caller1": caller1,
-				"caller2": caller2,
-				"caller3": caller3,
-			}).Fatal("a current user must exist before currentUserID can be called")
+			log.Fatal("a current user must exist before currentUserID can be called")
 		}
 		b.userID = currentUser.ID
 	}
@@ -265,4 +242,23 @@ func (b *bounce) directMessageWrittenBeforeHistoryCleared(userID uuid.UUID, mess
 	}
 
 	return messageWrittenAt < u.ClearBefore
+}
+
+func xor(uuid1, uuid2 uuid.UUID) uuid.UUID {
+	xored := [16]byte{}
+	for i, b := range uuid1 {
+		xored[i] = b ^ uuid2[i]
+	}
+
+	xorUUID, err := uuid.FromBytes(xored[:])
+	if err != nil {
+		log.WithFields(log.Fields{
+			"uuid1": uuid1,
+			"uuid2": uuid2,
+			"xored": xored,
+			"error": err.Error(),
+		}).Fatal("unable to create UUID from XORed UUIDs")
+	}
+
+	return xorUUID
 }
