@@ -11,8 +11,10 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// DirectMessages are comma separated for consistency with reference offers, which must do this
-// since SQLite doesn't support slices
+//
+// A reference request is sent in response to a reference offer if the offer contained frame references that
+// are needed by the device
+//
 type referenceRequest struct {
 	References   []frameReference
 	payload      []byte
@@ -40,6 +42,7 @@ func (rr *referenceRequest) getPayload() []byte {
 }
 
 func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
+	// Unmarshal the reference request
 	var rr referenceRequest
 	err := msgpack.Unmarshal(payload, &rr)
 	if err != nil {
@@ -49,7 +52,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 		return
 	}
 
-	// get the device from this address
+	// Get the device for this peer
 	dev, ok := b.getDeviceFromAddress(peer)
 	if !ok {
 		log.WithFields(log.Fields{
@@ -58,7 +61,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 		return
 	}
 
-	// Everything the device has requested will be packed into a "catch up" message
+	// Get all of the requested frames and pack them into a catch up frame
 	offerable := b.getReferenceOfferFor(peer)
 	offeredIDs := referencedIDs(offerable.References)
 	requestedIDs := referencedIDs(rr.References)
@@ -73,11 +76,10 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMsPayloads(dev, requestedIDs[typeUpdateDM], offeredIDs[typeUpdateDM])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateGroupsPayloads(dev, requestedIDs[typeUpdateGroup], offeredIDs[typeUpdateGroup])...)
 
+	// Send the catchup if there's anything to send
 	if len(cu.broadcastables) > 0 {
 		go b.sendDirect(peer, cu)
 	}
-
-	// TODO: broadcast separate catchups for each requested image/audio/file here.  Or rather than a catch up, just broadcast the data.
 }
 
 func (b *bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {

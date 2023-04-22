@@ -16,18 +16,15 @@ var referenceOfferMutexLock sync.Mutex
 var referenceOfferMutexes = map[string]*sync.Mutex{}
 
 //
-// A reference offer is a message sent to a newly connected device that provides the UUIDs of any messages that device
-// should have, but that we didn't deliver to it.
+// A reference offer is a message sent to a newly connected device that provides the UUIDs of any frames that device
+// should have, but that we didn't deliver to it.  Reference offers are delivery tracked using acks in order to
+// support re-send logic, so they do have an ID even though they are only ever sent directly.
 //
 type referenceOffer struct {
 	ID           uuid.UUID
 	References   []frameReference
 	payload      []byte
 	payloadMutex sync.Mutex
-}
-
-func (ro *referenceOffer) getID() uuid.UUID {
-	return ro.ID
 }
 
 func (ro *referenceOffer) getType() uint16 {
@@ -191,7 +188,6 @@ func (b *bounce) getDirectMessagesToOffer(dev device) []frameReference {
 	}
 
 	// Collect IDs from the DMs
-	// TODO: only select IDs in the first place?
 	references := []frameReference{}
 	for _, dm := range dms {
 		references = append(references, frameReference{FrameID: dm.ID, Type: typeDirectMessage})
@@ -223,7 +219,6 @@ func (b *bounce) getGroupMessagesToOffer(dev device) []frameReference {
 		}).Fatal("error loading DMs for reference offer")
 	}
 
-	// TODO: only select IDs in the first place?
 	references := []frameReference{}
 	for _, gm := range gms {
 		references = append(references, frameReference{FrameID: gm.ID, Type: typeGroupMessage})
@@ -240,7 +235,7 @@ func (b *bounce) getUpdateDMsToOffer(dev device) []frameReference {
 			Select("update_dms.*").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dms.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateDM).
 			Where("delivery_records.id IS NULL").
-			Find(&unsentUpdateDMs).Error // TODO: only select ID?
+			Find(&unsentUpdateDMs).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -252,7 +247,7 @@ func (b *bounce) getUpdateDMsToOffer(dev device) []frameReference {
 			Select("update_dms.*").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dms.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateDM).
 			Where("update_dms.target = ? AND delivery_records.id IS NULL", xor(dev.UserID, b.currentUserID())).
-			Find(&unsentUpdateDMs).Error // TODO: only select ID?
+			Find(&unsentUpdateDMs).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -281,7 +276,7 @@ func (b *bounce) getDevicesToOffer(dev device) []frameReference {
 			Select("devices.*").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDevice).
 			Where("delivery_records.id IS NULL").
-			Find(&unsentDevices).Error // TODO: only select ID?
+			Find(&unsentDevices).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -293,7 +288,7 @@ func (b *bounce) getDevicesToOffer(dev device) []frameReference {
 			Select("devices.*").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDevice).
 			Where("address != ? AND user_id = ? AND delivery_records.id IS NULL", dev.Address, b.currentUserID()).
-			Find(&unsentDevices).Error // TODO: only select ID?
+			Find(&unsentDevices).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -317,7 +312,7 @@ func (b *bounce) getAddUsersToOffer(dev device) []frameReference {
 			Select("add_users.*").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeAddUser).
 			Where("delivery_records.id IS NULL").
-			Find(&unsentAddUsers).Error // TODO: only select ID?
+			Find(&unsentAddUsers).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -328,7 +323,7 @@ func (b *bounce) getAddUsersToOffer(dev device) []frameReference {
 			Select("add_users.*").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeAddUser).
 			Where("delivery_records.id IS NULL AND add_users.xor = ?", xor(b.currentUserID(), dev.UserID)).
-			Find(&unsentAddUsers).Error // TODO: only select ID?
+			Find(&unsentAddUsers).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -354,7 +349,7 @@ func (b *bounce) getGroupCreationsToOffer(dev device) []frameReference {
 		Joins("JOIN groups ON groups.id = group_creations.id").
 		Joins("JOIN group_users ON groups.id = group_users.group_id JOIN users ON group_users.user_id = users.id").
 		Where("delivery_records.id IS NULL AND group_users.user_id = ?", dev.UserID).
-		Find(&unsentGroupCreations).Error // TODO: only select ID?
+		Find(&unsentGroupCreations).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -378,7 +373,7 @@ func (b *bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
 		Joins("JOIN group_users ON update_groups.target = group_users.group_id JOIN users ON group_users.user_id = users.id"). // TODO: users join needed?
 		Where("delivery_records.id IS NULL AND group_users.user_id = ?", dev.UserID).
-		Find(&unsentUpdateGroups).Error // TODO: only select ID?
+		Find(&unsentUpdateGroups).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -425,8 +420,6 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 	// Inform the reference engine that this peer has these frames that we don't know about
 	b.loadReferenceOffer(peer, references)
 }
-
-// TODO: experiment with gorm to see if these can be DRY'd:
 
 func (b *bounce) getDirectMessagesToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
 	references := []frameReference{}
