@@ -283,11 +283,30 @@ func (b *bounce) getDevicesToOffer(dev device) []frameReference {
 			}).Fatal("database error selecting devices for reference offer")
 		}
 	} else {
-		// TODO: don't just get our devices, get any "overlap" devices
+		// Get any device that belongs to us or them, or any users that share a group with this user
 		err := b.database.
-			Select("devices.*").
+			Distinct("devices.id").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDevice).
-			Where("address != ? AND user_id = ? AND delivery_records.id IS NULL", dev.Address, b.currentUserID()).
+			Where(
+				"address != ? AND (user_id = ? OR user_id = ? OR user_id IN (?)) AND delivery_records.id IS NULL",
+				dev.Address,
+				b.currentUserID(),
+				dev.UserID,
+				b.database.
+					Model(&user{}).
+					Distinct().
+					Select("users.id").
+					Joins("JOIN group_users ON group_users.user_id = users.id").
+					Where(
+						"group_users.group_id IN (?)",
+						b.database.
+							Model(&group{}).
+							Distinct().
+							Select("groups.id").
+							Joins("JOIN group_users ON group_users.group_id = groups.id").
+							Where("user_id = ?", dev.UserID),
+					),
+			).
 			Find(&unsentDevices).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -371,7 +390,7 @@ func (b *bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 		Preload(clause.Associations).
 		Select("update_groups.*").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
-		Joins("JOIN group_users ON update_groups.target = group_users.group_id JOIN users ON group_users.user_id = users.id"). // TODO: users join needed?
+		Joins("JOIN group_users ON update_groups.target = group_users.group_id").
 		Where("delivery_records.id IS NULL AND group_users.user_id = ?", dev.UserID).
 		Find(&unsentUpdateGroups).Error
 	if err != nil {
