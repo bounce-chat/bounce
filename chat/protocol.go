@@ -133,9 +133,8 @@ func (b *bounce) getBroadcastScope(br broadcastable) []*remoteDevice {
 
 func (b *bounce) getSyncScope(br broadcastable) []*remoteDevice {
 	currentUser, exists := b.currentUser()
-
 	if !exists {
-		// TODO: fatal?
+		log.Fatal("cannot broadcast sync scoped frame when no current user exists")
 	}
 
 	broadcastTargets := []*remoteDevice{}
@@ -170,9 +169,9 @@ func (b *bounce) getUserScope(br broadcastable) []*remoteDevice {
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
-				"scope":        br.getScope(b.currentUserID()),
-				"destinations": br.getDestination(b.currentUserID()),
-				"type":         br.getType(),
+				"scope":       br.getScope(b.currentUserID()),
+				"destination": br.getDestination(b.currentUserID()),
+				"type":        br.getType(),
 			}).Error("user not found when determining broadcast scope for message")
 			return broadcastTargets
 		} else {
@@ -221,6 +220,9 @@ func (b *bounce) getGroupScope(br broadcastable) []*remoteDevice {
 	}
 	for _, u := range destinationGroup.Users {
 		for _, dev := range u.Devices {
+			if dev.Address == b.network.Address() {
+				continue
+			}
 			if b.isDeliveredTo(br, dev.Address) {
 				continue
 			}

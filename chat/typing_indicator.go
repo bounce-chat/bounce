@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var indicatorAlreadySeenRetentionSeconds = int64(60)
@@ -17,8 +18,323 @@ var followUpTypingIndicatorUpdateSeconds = 5 * time.Second
 var typingIndicatorDisplayForSeconds = int64(3)
 var ignoreTypingIndicatorsAfterSeconds = int64(3)
 
+// Typing indicators aren't delivery tracked, but we want to prevent broadcast loops by checking if we've already
+// seen them.  This in-memory map stores the ID of a typing indicator, and the time it was seen, so that we can
+// prune these records after some time.
 var typingIndicatorSeen = map[uuid.UUID]int64{}
 var typingIndicatorSeenMutex sync.Mutex
+
+// We onlt want to broadcast a typing indicator for the same thread every so often, so this map stores the last time
+// we broadcast one for each thread
+var typingIndicatorCooldown = map[uuid.UUID]int64{}
+var typingIndicatorCooldownMutex sync.Mutex
+
+// The typing state is a representation of the user interface state of typing indicators.  It is a map from thread ID
+// to a map from user IDs to typing statuses.
+var typingState = map[uuid.UUID]map[uuid.UUID]*typingStatus{}
+var typingStateMutex sync.Mutex
+
+// A typing status contains the state of a user as it relates to a thread: where in the UI we're indicating typing,
+// and the last time we updated the indication status
+type typingStatus struct {
+	lastIndicated      int64
+	uiIndicatingThread bool
+	uiIndicatingButton bool
+}
+
+//
+// A typing indicator is sent when someone is typing into an entry widget in the UI, to communicate to the other members
+// of the thread that a user is currently typing
+//
+type typingIndicator struct {
+	ID              uuid.UUID
+	Thread          uuid.UUID
+	MessageType     uint16
+	Author          uuid.UUID
+	timestamp       int64  // Defined when received and not sent over the wire
+	Signer          string `msgpack:"-"`
+	OriginalPayload []byte `msgpack:"-"`
+	Signature       []byte `msgpack:"-"`
+	payload         []byte
+	payloadMutex    sync.Mutex
+}
+
+func (ti *typingIndicator) getID() uuid.UUID {
+	return ti.ID
+}
+
+func (ti *typingIndicator) getScope(_ uuid.UUID) int {
+	if ti.MessageType == typeDirectMessage {
+		return scopeUser
+	} else if ti.MessageType == typeGroupMessage {
+		return scopeGroup
+	} else {
+		log.WithFields(log.Fields{
+			"type": ti.MessageType,
+		}).Fatal("unknown message type in typing indicator")
+		return scopeSync
+	}
+}
+
+func (ti *typingIndicator) getDestination(myID uuid.UUID) uuid.UUID {
+	if ti.MessageType == typeDirectMessage {
+		return xor(myID, ti.Thread)
+	} else if ti.MessageType == typeGroupMessage {
+		return ti.Thread
+	} else {
+		log.WithFields(log.Fields{
+			"type": ti.MessageType,
+		}).Fatal("unknown message type in typing indicator")
+		return uuid.Nil
+	}
+
+}
+
+func (ti *typingIndicator) getType() uint16 {
+	return typeTypingIndicator
+}
+
+func (ti *typingIndicator) getPayload() []byte {
+	ti.payloadMutex.Lock()
+	defer ti.payloadMutex.Unlock()
+
+	if len(ti.payload) == 0 {
+		bytes, err := msgpack.Marshal(signedContainer{
+			Payload:   ti.OriginalPayload,
+			Signature: ti.Signature,
+			Signer:    ti.Signer,
+		})
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error marshalling typing indicator's signed container")
+		}
+		ti.payload = bytes
+	}
+
+	return ti.payload
+}
+
+func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
+	// Unmarshal and signature verify the typing indicator
+	sc, err := b.unpackSignedContainer(payload)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unpacking signed container for typing indicator")
+		return
+	}
+	var ti typingIndicator
+	err = msgpack.Unmarshal(sc.Payload, &ti)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error unmarshalling typing indicator")
+	}
+	ti.Signer = sc.Signer
+	ti.OriginalPayload = sc.Payload
+	ti.Signature = sc.Signature
+
+	// Do nothing if we've already seen this typing indicator
+	if typingIndicatorAlreadySeen(ti.ID) {
+		return
+	}
+
+	// Make sure that the author of this indicator also signed the message
+	signerDevice, ok := b.getDeviceFromAddress(sc.Signer)
+	if !ok {
+		log.WithFields(log.Fields{
+			"peer":   peer,
+			"signer": sc.Signer,
+		}).Warn("rejecting typing indicator signed by unknown device")
+		return
+	}
+	if signerDevice.UserID != ti.Author {
+		log.WithFields(log.Fields{
+			"peer":   peer,
+			"signer": signerDevice.UserID,
+			"author": ti.Author,
+		}).Warn("rejecting typing indicator not signed by the author")
+		return
+	}
+
+	// Assume a typing indicator we receive was broadcast just now and assign the timestamp to now
+	ti.timestamp = time.Now().Unix()
+
+	// Look up the device that sent this typing indicator
+	peerDevice, ok := b.getDeviceFromAddress(peer)
+	if !ok {
+		log.WithFields(log.Fields{
+			"thread":       ti.Thread,
+			"message_type": ti.MessageType,
+			"timestamp":    ti.timestamp,
+			"author":       ti.Author,
+		}).Warn("received a valid typing indicator from unknown device")
+		return
+	}
+
+	// Verify the typing indicator according to message type
+	if ti.MessageType == typeDirectMessage {
+		// DM typing indicators can only come from sync devices or devices belonging to the other user
+		if !(b.isSyncDevice(peerDevice) || peerDevice.UserID == xor(ti.Thread, b.currentUserID())) {
+			log.WithFields(log.Fields{
+				"thread":       ti.Thread,
+				"message_type": ti.MessageType,
+				"timestamp":    ti.timestamp,
+				"author":       ti.Author,
+			}).Warn("received a valid typing indicator from device outside scope")
+			return
+		}
+	} else if ti.MessageType == typeGroupMessage {
+		// Group typing indicators must come from a user in the group
+		var g group
+		err = b.database.Where("id = ?", ti.Thread).First(&g).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"thread":       ti.Thread,
+					"message_type": ti.MessageType,
+					"timestamp":    ti.timestamp,
+					"author":       ti.Author,
+				}).Warn("received a valid typing indicator for an unknown group")
+				return
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error querying for a group")
+			}
+		}
+
+		if !b.userIsInGroup(ti.Author, ti.Thread) {
+			log.WithFields(log.Fields{
+				"thread":       ti.Thread,
+				"message_type": ti.MessageType,
+				"timestamp":    ti.timestamp,
+				"author":       ti.Author,
+				"peer":         peer,
+				"peer_device":  peerDevice.ID,
+				"peer_user":    peerDevice.UserID,
+			}).Warn("received a valid typing indicator from user outside of group")
+			return
+		}
+	} else {
+		log.WithFields(log.Fields{
+			"thread":       ti.Thread,
+			"message_type": ti.MessageType,
+			"timestamp":    ti.timestamp,
+			"author":       ti.Author,
+		}).Warn("received a typing indicator with unsupported message type")
+		return
+	}
+
+	// Refresh the frontend if needed
+	b.updateTypingState(ti)
+
+	// Since typing indicators don't use delivery tracking, we don't want to use the standard broadcast function.
+	// If we did, the peer we broadcast to would send the frame right back to us, which isn't needed.  Instead,
+	// we copy the scoping and broadcast functions, and use all the scoped devices except for this peer.
+	go b.manuallySendTypingIndicators(&ti, peer)
+}
+
+func (b *bounce) manuallySendTypingIndicators(ti *typingIndicator, excludedPeer string) {
+	scope := ti.getScope(b.currentUserID())
+	destination := ti.getDestination(b.currentUserID())
+	log.WithFields(log.Fields{
+		"type":        typeTypingIndicator,
+		"scope":       scope,
+		"destination": destination,
+	}).Debug("broadcasting frame")
+
+	broadcastTargets := []*remoteDevice{}
+	if scope == scopeUser {
+		// Add their devices
+		var destinationUser user
+		err := b.database.Preload(clause.Associations).First(&destinationUser, "id = ?", destination).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"scope":       scope,
+					"destination": destination,
+					"type":        typeTypingIndicator,
+				}).Error("user not found when determining broadcast scope for typing indicator")
+				return
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error loading user from database")
+			}
+		}
+		for _, dev := range destinationUser.Devices {
+			if dev.Address == excludedPeer {
+				continue
+			}
+			rd := b.getRemoteDevice(dev.Address)
+			if rd.connectedSockets > 0 {
+				broadcastTargets = append(broadcastTargets, rd)
+			}
+		}
+
+		// Add our devices
+		currentUser, exists := b.currentUser()
+		if !exists {
+			log.Fatal("cannot broadcast typing indicator when no current user exists")
+		}
+
+		for _, dev := range currentUser.Devices {
+			if dev.Address == b.network.Address() {
+				continue
+			}
+			if dev.Address == excludedPeer {
+				continue
+			}
+			rd := b.getRemoteDevice(dev.Address)
+			if rd.connectedSockets > 0 {
+				broadcastTargets = append(broadcastTargets, rd)
+			}
+		}
+	} else if scope == scopeGroup {
+		var destinationGroup group
+		err := b.database.Preload("Users.Devices").Preload(clause.Associations).First(&destinationGroup, "id = ?", destination).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"scope":       scope,
+					"destination": destination,
+					"type":        typeTypingIndicator,
+				}).Error("group not found when determining broadcast scope for typing indicator")
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error loading group from database")
+			}
+		}
+		for _, u := range destinationGroup.Users {
+			for _, dev := range u.Devices {
+				if dev.Address == b.network.Address() {
+					continue
+				}
+				if dev.Address == excludedPeer {
+					continue
+				}
+				rd := b.getRemoteDevice(dev.Address)
+				if rd.connectedSockets > 0 {
+					broadcastTargets = append(broadcastTargets, rd)
+				}
+			}
+		}
+	} else {
+		log.WithFields(log.Fields{
+			"scope": scope,
+		}).Fatal("unsupported scope for typing indicators")
+	}
+
+	for _, peer := range broadcastTargets {
+		log.Warn("writing")
+		go func(dst chan sendable, msg broadcastable) {
+			dst <- msg
+		}(peer.messages, ti)
+	}
+}
 
 func typingIndicatorAlreadySeen(id uuid.UUID) bool {
 	typingIndicatorSeenMutex.Lock()
@@ -40,9 +356,6 @@ func typingIndicatorAlreadySeen(id uuid.UUID) bool {
 	}
 }
 
-var typingIndicatorCooldown = map[uuid.UUID]int64{}
-var typingIndicatorCooldownMutex sync.Mutex
-
 func shouldCooldownTypingIndicator(id uuid.UUID) bool {
 	typingIndicatorCooldownMutex.Lock()
 	typingIndicatorCooldownMutex.Unlock()
@@ -59,15 +372,6 @@ func shouldCooldownTypingIndicator(id uuid.UUID) bool {
 		return false
 	}
 }
-
-type typingStatus struct {
-	lastIndicated      int64
-	uiIndicatingThread bool
-	uiIndicatingButton bool
-}
-
-var typingState = map[uuid.UUID]map[uuid.UUID]*typingStatus{}
-var typingStateMutex sync.Mutex
 
 func (b *bounce) updateTypingState(ti typingIndicator) {
 	typingStateMutex.Lock()
@@ -167,172 +471,6 @@ func (b *bounce) clearUserTypingIndicator(userID, threadID uuid.UUID) {
 	b.updateFrontendTypingIndicators()
 }
 
-type typingIndicator struct {
-	ID           uuid.UUID
-	Thread       uuid.UUID
-	MessageType  uint16
-	Author       uuid.UUID
-	timestamp    int64  // Defined when received and not sent over the wire
-	Signer       string `msgpack:"-"`
-	Payload      []byte `msgpack:"-"` // TODO: rename to marshalled or something
-	Signature    []byte `msgpack:"-"`
-	payload      []byte
-	payloadMutex sync.Mutex
-}
-
-func (ti *typingIndicator) getID() uuid.UUID {
-	return ti.ID
-}
-
-func (ti *typingIndicator) getScope(_ uuid.UUID) int {
-	if ti.MessageType == typeDirectMessage {
-		return scopeUser
-	} else if ti.MessageType == typeGroupMessage {
-		return scopeGroup
-	} else {
-		// This shouldn't be possible, but if a malformed
-		// typing indicator is being broadcast, make sure it
-		// is not sent to other users
-		return scopeSync
-	}
-}
-
-func (ti *typingIndicator) getDestination(myID uuid.UUID) uuid.UUID {
-	if ti.MessageType == typeDirectMessage {
-		return xor(myID, ti.Thread)
-	} else if ti.MessageType == typeGroupMessage {
-		return ti.Thread
-	} else {
-		// This shouldn't be possible, but if a malformed
-		// typing indicator is being broadcast, make sure it
-		// is not sent to other users
-		return uuid.Nil
-	}
-
-}
-
-func (ti *typingIndicator) getType() uint16 {
-	return typeTypingIndicator
-}
-
-func (ti *typingIndicator) getPayload() []byte {
-	ti.payloadMutex.Lock()
-	defer ti.payloadMutex.Unlock()
-
-	if len(ti.payload) == 0 {
-		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   ti.Payload,
-			Signature: ti.Signature,
-			Signer:    ti.Signer,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling group message's signed container")
-		}
-		ti.payload = bytes
-	}
-
-	return ti.payload
-}
-
-func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
-	sc, err := b.unpackSignedContainer(payload)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error unpacking signed container for typing indicator")
-		return
-	}
-	var ti typingIndicator
-	err = msgpack.Unmarshal(sc.Payload, &ti)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error unmarshalling typing indicator")
-	}
-	ti.Signer = sc.Signer
-	ti.Payload = sc.Payload
-	ti.Signature = sc.Signature
-
-	if typingIndicatorAlreadySeen(ti.ID) {
-		return
-	}
-
-	// Assume a typing indicator we receive was broadcast just now and assign the timestamp to now
-	ti.timestamp = time.Now().Unix()
-
-	peerDevice, ok := b.getDeviceFromAddress(peer)
-	if !ok {
-		log.WithFields(log.Fields{
-			"thread":       ti.Thread,
-			"message_type": ti.MessageType,
-			"timestamp":    ti.timestamp,
-			"author":       ti.Author,
-		}).Warn("received a valid typing indicator from unknown device")
-		return
-	}
-
-	if ti.MessageType == typeDirectMessage {
-		if !(peerDevice.UserID == b.currentUserID() || peerDevice.UserID == xor(ti.Thread, b.currentUserID())) {
-			log.WithFields(log.Fields{
-				"thread":       ti.Thread,
-				"message_type": ti.MessageType,
-				"timestamp":    ti.timestamp,
-				"author":       ti.Author,
-			}).Warn("received a valid typing indicator from device outside scope")
-			return
-		}
-	} else if ti.MessageType == typeGroupMessage {
-		var g group
-		err = b.database.Where("id = ?", ti.Thread).First(&g).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"thread":       ti.Thread,
-					"message_type": ti.MessageType,
-					"timestamp":    ti.timestamp,
-					"author":       ti.Author,
-				}).Warn("received a valid typing indicator for an unknown group")
-				return
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error querying for a group")
-			}
-		}
-
-		if !b.userIsInGroup(ti.Author, ti.Thread) {
-			log.WithFields(log.Fields{
-				"thread":       ti.Thread,
-				"message_type": ti.MessageType,
-				"timestamp":    ti.timestamp,
-				"author":       ti.Author,
-				"peer":         peer,
-				"peer_device":  peerDevice.ID,
-				"peer_user":    peerDevice.UserID,
-			}).Warn("received a valid typing indicator from user outside of group")
-			return
-		}
-	} else {
-		log.WithFields(log.Fields{
-			"thread":       ti.Thread,
-			"message_type": ti.MessageType,
-			"timestamp":    ti.timestamp,
-			"author":       ti.Author,
-		}).Warn("received a typing indicator with unsupported message type")
-		return
-	}
-
-	b.updateTypingState(ti)
-
-	go b.broadcast(&ti)
-}
-
-//
-// UI Handlers
-//
-
 func (b *bounce) TypingInDirectMessage(userID uuid.UUID) {
 	b.broadcastTypingIndicator(xor(userID, b.currentUserID()), typeDirectMessage)
 }
@@ -354,14 +492,14 @@ func (b *bounce) broadcastTypingIndicator(threadID uuid.UUID, messageType uint16
 	}
 
 	var err error
-	ti.Payload, err = msgpack.Marshal(ti)
+	ti.OriginalPayload, err = msgpack.Marshal(ti)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("unable to marshal typing indicator")
 	}
 
-	sc := b.createSignedContainer(ti.Payload)
+	sc := b.createSignedContainer(ti.OriginalPayload)
 	ti.Signer = sc.Signer
 	ti.Signature = sc.Signature
 
