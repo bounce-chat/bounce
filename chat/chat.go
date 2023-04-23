@@ -59,7 +59,7 @@ func Start(network Network, ui UI) {
 			lastDial: make(map[string]time.Time),
 		},
 	}
-	log.RegisterExitHandler(b.shutdown)
+	log.RegisterExitHandler(b.fatalShutdown)
 	go b.handleInterrupts()
 
 	b.openDatabase()
@@ -194,6 +194,38 @@ func (b *bounce) shutdown() {
 	}
 
 	log.Info("stopped bounce")
+}
+
+//
+// Used by logrus when a fatal error is logged.  We can't cleanly shutdown everything on fatal error, since
+// the shutdown function waits for running handlers to finish executing, and the fatal call might have happened
+// in one of them.  So we just attempt to close the database and delete the PID file before allowing logrus
+// to exit.
+//
+func (b *bounce) fatalShutdown() {
+	// Close the database connection
+	sqliteDB, err := b.database.DB()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error getting underlying database interface from gorm during fatal shutdown")
+	}
+	err = sqliteDB.Close()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error closing database during fatal shutdown")
+	}
+
+	// Delete our PID file
+	pidFile := getConfigDirectory() + "/.pid"
+	err = os.Remove(pidFile)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"path":  pidFile,
+			"error": err.Error(),
+		}).Error("error deleting pid file")
+	}
 }
 
 //

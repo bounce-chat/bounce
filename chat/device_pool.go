@@ -40,7 +40,6 @@ func (dp *devicePool) updateLastDial(address string) {
 }
 
 func (b *bounce) peer() {
-	// TODO: figure out the right way to close this down during shutdown
 	b.auditPeers()
 	ticker := time.NewTicker(30 * time.Second)
 	for _ = range ticker.C {
