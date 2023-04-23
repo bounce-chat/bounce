@@ -83,6 +83,10 @@ func (gm *GroupMessage) getPayload() []byte {
 	return gm.payload
 }
 
+func (gm *GroupMessage) getAuthor() uuid.UUID {
+	return gm.Source
+}
+
 func (gm *GroupMessage) getTimestamp() int64 {
 	return gm.WrittenAt
 }

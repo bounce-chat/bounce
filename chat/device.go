@@ -43,12 +43,7 @@ func (d *device) getID() uuid.UUID {
 }
 
 func (d *device) getScope(myID uuid.UUID) int {
-	if d.UserID == myID {
-		// Tell everyone about my devices
-		return scopeGlobal
-	}
-	//return scopeOverlap // TODO
-	return scopeSync
+	return scopeGlobal
 }
 
 func (d *device) getDestination(myID uuid.UUID) uuid.UUID {
@@ -73,6 +68,10 @@ func (d *device) getPayload() []byte {
 		d.payload = bytes
 	}
 	return d.payload
+}
+
+func (d *device) getAuthor() uuid.UUID {
+	return d.UserID
 }
 
 func (d *device) getTimestamp() int64 {

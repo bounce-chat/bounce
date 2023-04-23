@@ -115,6 +115,10 @@ func (ti *typingIndicator) getPayload() []byte {
 	return ti.payload
 }
 
+func (ti *typingIndicator) getAuthor() uuid.UUID {
+	return ti.Author
+}
+
 func (b *bounce) handleTypingIndicator(peer string, payload []byte) {
 	// Unmarshal and signature verify the typing indicator
 	sc, err := b.unpackSignedContainer(payload)

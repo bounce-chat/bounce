@@ -103,6 +103,10 @@ func (ug *updateGroup) getPayload() []byte {
 	return ug.payload
 }
 
+func (ug *updateGroup) getAuthor() uuid.UUID {
+	return ug.Actor
+}
+
 func (ug *updateGroup) getTimestamp() int64 {
 	return ug.Timestamp
 }

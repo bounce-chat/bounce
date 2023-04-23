@@ -76,6 +76,12 @@ func (au *addUser) getPayload() []byte {
 	return au.payload
 }
 
+func (au *addUser) getAuthor() uuid.UUID {
+	// Since add users will never be broadcast globally, we don't
+	// need to accurately report the author
+	return uuid.Nil
+}
+
 func (au *addUser) getTimestamp() int64 {
 	return au.Timestamp
 }

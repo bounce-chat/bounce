@@ -13,7 +13,6 @@ var scopeSync = 0
 var scopeUser = 1
 var scopeGroup = 2
 var scopeGlobal = 3
-var scopeOverlap = 4
 
 var typeDirectMessage = uint16(0)
 var typeGroupMessage = uint16(1)
@@ -45,6 +44,7 @@ type broadcastable interface {
 	getID() uuid.UUID
 	getScope(myID uuid.UUID) int
 	getDestination(myID uuid.UUID) uuid.UUID
+	getAuthor() uuid.UUID
 }
 
 type sortableBroadcastable interface {
@@ -118,8 +118,6 @@ func (b *bounce) getBroadcastScope(br broadcastable) []*remoteDevice {
 		return b.getGroupScope(br)
 	} else if scope == scopeGlobal {
 		return b.getGlobalScope(br)
-	} else if scope == scopeOverlap {
-		return b.getOverlapScope(br)
 	} else {
 		log.WithFields(log.Fields{
 			"destination": br.getDestination(b.currentUserID()),
@@ -241,26 +239,66 @@ func (b *bounce) getGroupScope(br broadcastable) []*remoteDevice {
 //
 func (b *bounce) getGlobalScope(br broadcastable) []*remoteDevice {
 	broadcastTargets := []*remoteDevice{}
-	for address, dev := range b.devicePool.devices {
-		if _, exists := b.getDeviceFromAddress(address); !exists {
-			// Skip connections in the device pool if we don't have a device saved for them
-			continue
+
+	author := br.getAuthor()
+	if author == b.currentUserID() {
+		// Anything global that we create can be sent to any known devices we're connected to
+		for address, dev := range b.devicePool.devices {
+			if _, exists := b.getDeviceFromAddress(address); !exists {
+				// Skip connections in the device pool if we don't have a device saved for them
+				continue
+			}
+			if b.isDeliveredTo(br, address) {
+				continue
+			}
+			if dev.connectedSockets > 0 {
+				broadcastTargets = append(broadcastTargets, dev)
+			}
 		}
-		if b.isDeliveredTo(br, address) {
-			continue
+	} else {
+		// Anything global that was written by someone else should be sent to our devices, their devices,
+		// and the devices of any users that have a group in common with the author
+		var overlapDevices []device
+		err := b.database.
+			Distinct("id").
+			Where(
+				"(user_id = ? OR user_id = ? OR user_id IN (?))",
+				b.currentUserID(),
+				author,
+				b.database.
+					Model(&user{}).
+					Distinct().
+					Select("users.id").
+					Joins("JOIN group_users ON group_users.user_id = users.id").
+					Where(
+						"group_users.group_id IN (?)",
+						b.database.
+							Model(&group{}).
+							Distinct().
+							Select("groups.id").
+							Joins("JOIN group_users ON group_users.group_id = groups.id").
+							Where("user_id = ?", author),
+					),
+			).
+			Find(&overlapDevices).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting unsent overlap devices during broadcast scoping")
 		}
-		if dev.connectedSockets > 0 {
-			broadcastTargets = append(broadcastTargets, dev)
+		for _, dev := range overlapDevices {
+			if dev.Address == b.network.Address() {
+				continue
+			}
+			if b.isDeliveredTo(br, dev.Address) {
+				continue
+			}
+			rd := b.getRemoteDevice(dev.Address)
+			if rd.connectedSockets > 0 {
+				broadcastTargets = append(broadcastTargets, rd)
+			}
 		}
 	}
-	return broadcastTargets
-}
 
-func (b *bounce) getOverlapScope(br broadcastable) []*remoteDevice { // TODO: better name for this?
-	broadcastTargets := []*remoteDevice{}
-	// So that we can tell third party A something we learned about third party B,
-	// like new devices or profile updates
-	// br.getDestination() describes a user ID, get all of the devices that share any group with the user,
-	// as well as this user's devices and our sync devices
 	return broadcastTargets
 }

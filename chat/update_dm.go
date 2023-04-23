@@ -90,6 +90,10 @@ func (ud *updateDM) getPayload() []byte {
 	return ud.payload
 }
 
+func (ud *updateDM) getAuthor() uuid.UUID {
+	return ud.Actor
+}
+
 func (ud *updateDM) getTimestamp() int64 {
 	return ud.Timestamp
 }

@@ -80,6 +80,10 @@ func (dm *DirectMessage) getPayload() []byte {
 	return dm.payload
 }
 
+func (dm *DirectMessage) getAuthor() uuid.UUID {
+	return dm.Source
+}
+
 func (dm *DirectMessage) getTimestamp() int64 {
 	return dm.WrittenAt
 }

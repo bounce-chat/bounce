@@ -76,6 +76,12 @@ func (gc *groupCreation) getPayload() []byte {
 	return gc.payload
 }
 
+func (gc *groupCreation) getAuthor() uuid.UUID {
+	// Since group creations will never be broadcast globally, we don't
+	// need to accurately report the author
+	return uuid.Nil
+}
+
 func (gc *groupCreation) getTimestamp() int64 {
 	return gc.Timestamp
 }
