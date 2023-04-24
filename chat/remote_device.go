@@ -75,7 +75,7 @@ func frameAllowedWithoutProfile(frameType uint16) bool {
 	return false
 }
 
-func (b *bounce) readFrames(conn net.Conn) { // TODO: move to protocol or something else?
+func (b *bounce) readFrames(conn net.Conn) {
 	handlers := b.getHandlers()
 	peer := conn.RemoteAddr().String()
 	_, profileExists := b.currentUser()
@@ -86,8 +86,6 @@ func (b *bounce) readFrames(conn net.Conn) { // TODO: move to protocol or someth
 			return
 		}
 
-		// If Bounce is shutting down, we no longer want to handle any frames coming
-		// from this connection
 		if b.shutdownStarted {
 			return
 		}

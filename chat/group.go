@@ -28,6 +28,7 @@ type group struct {
 	Admins                 string
 	RestrictUserManagement bool
 	RestrictGroupEdits     bool
+	LastActivity           int64
 	payload                []byte
 	payloadMutex           sync.Mutex
 }
@@ -36,6 +37,7 @@ func (g *group) BeforeCreate(tx *gorm.DB) error {
 	if g.ID == uuid.Nil {
 		log.Fatal("attempt to create group with nil ID, group ID must be set before creation")
 	}
+	g.LastActivity = time.Now().Unix()
 
 	return nil
 }
@@ -238,4 +240,30 @@ func (b *bounce) groupMessageWrittenBeforeHistoryCleared(groupID uuid.UUID, mess
 	}
 
 	return messageWrittenAt < g.ClearBefore
+}
+
+func (b *bounce) updateLastGroupActivity(groupID uuid.UUID, timestamp int64) {
+	var g group
+	err := b.database.Where("id = ?", groupID).First(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("error finding group for last activity update")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Fatal("database error finding group for last activity update")
+		}
+	}
+
+	if timestamp > g.LastActivity {
+		err = b.database.Model(&g).Update("last_activity", timestamp).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Fatal("database error updating group last activity")
+		}
+	}
 }

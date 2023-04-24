@@ -55,8 +55,10 @@ func Start(network Network, ui UI) {
 		userInterface:   ui,
 		network:         network,
 		devicePool: &devicePool{
-			devices:  make(map[string]*remoteDevice),
-			lastDial: make(map[string]time.Time),
+			devices:    make(map[string]*remoteDevice),
+			groupPools: make(map[uuid.UUID][]*remoteDevice),
+			userPools:  make(map[uuid.UUID][]*remoteDevice),
+			lastDial:   make(map[string]time.Time),
 		},
 	}
 	log.RegisterExitHandler(b.fatalShutdown)

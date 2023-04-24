@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -11,11 +12,14 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const dialCooldown = time.Duration(5 * time.Minute) // TODO: should this be much larger?  Specific to the context?
+const desiredConnectionsPerThread = 4
+const dialCooldown = time.Duration(5 * time.Minute)
 
 type devicePool struct {
 	deviceMutex   sync.Mutex
 	devices       map[string]*remoteDevice
+	groupPools    map[uuid.UUID][]*remoteDevice
+	userPools     map[uuid.UUID][]*remoteDevice
 	lastDialMutex sync.Mutex
 	lastDial      map[string]time.Time
 }
@@ -40,11 +44,15 @@ func (dp *devicePool) updateLastDial(address string) {
 }
 
 func (b *bounce) peer() {
-	b.auditPeers()
+	b.makeInitialPeeringConnections()
 	ticker := time.NewTicker(30 * time.Second)
 	for _ = range ticker.C {
 		b.auditPeers()
 	}
+}
+
+func (b *bounce) makeInitialPeeringConnections() {
+	// This is just like auditing peers, except that we are more aggressive trying to dial groups
 }
 
 func (b *bounce) auditPeers() {
@@ -65,6 +73,9 @@ func (b *bounce) auditPeers() {
 
 	// Connect to any users we have pending messages for or who we talk to frequently
 	go b.connectToUsers()
+
+	// Close any extra connections we aren't using
+	go b.closeUnusedConnections()
 }
 
 func (b *bounce) connectToSyncDevices() {
@@ -81,29 +92,51 @@ func (b *bounce) connectToSyncDevices() {
 		}
 		rd := b.getRemoteDevice(dev.Address)
 		if rd.connectedSockets == 0 {
-			lastDial := b.devicePool.getLastDial(dev.Address)
-			if time.Now().After(lastDial.Add(dialCooldown)) {
-				go b.tryDialing(dev.Address)
-			}
+			go b.tryDialing(dev.Address)
 		}
 	}
 }
 
 func (b *bounce) connectToGroups() {
-	var allGroups []group
-	err := b.database.Preload("Users.Devices").Preload(clause.Associations).Find(&allGroups).Error
+	var activeGroups []group
+	aMonthAgo := time.Now().Add(-4 * 7 * 24 * time.Hour)
+	err := b.database.Preload("Users.Devices").Preload(clause.Associations).Where("last_activity > ?", aMonthAgo).Find(&activeGroups).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error loading all groups")
+		}).Fatal("error loading groups to peer with")
 	}
 
-	// Connect to all groups // TODO: that we've talked to recently?
-	for _, g := range allGroups {
+	for _, g := range activeGroups {
+		// Find the number of alive connections and remove any inactive ones from the pool
+		pool, ok := b.devicePool.groupPools[g.ID]
+		if !ok {
+			pool = []*remoteDevice{}
+		}
+		alivePool := []*remoteDevice{}
+		for _, rd := range pool {
+			if rd.connectedSockets > 0 {
+				alivePool = append(alivePool, rd)
+			}
+		}
+		b.devicePool.groupPools[g.ID] = alivePool
+
+		// Collect all the devices associated with this group that are not on dial cooldown
+		groupAddresses := []string{}
 		for _, u := range g.Users {
-			// TODO: naive approach for now, ideally want to choose 4 random
-			// users in the group to connect to
-			b.userConnectionDesired(u.ID)
+			for _, dev := range u.Devices {
+				if !b.shouldCooldownDial(dev.Address) {
+					groupAddresses = append(groupAddresses, dev.Address)
+				}
+			}
+		}
+
+		// Choose a random selection of those devices
+		addressesToDial := chooseN(groupAddresses, desiredConnectionsPerThread-len(alivePool))
+
+		// Attempt to dial them
+		for _, address := range addressesToDial {
+			go b.tryDialing(address)
 		}
 	}
 }
@@ -128,10 +161,7 @@ func (b *bounce) connectToUsers() {
 		for _, dev := range u.Devices {
 			references := b.getReferenceOfferFor(dev.Address)
 			if references.shouldDial() {
-				lastDial := b.devicePool.getLastDial(dev.Address)
-				if time.Now().After(lastDial.Add(dialCooldown)) {
-					go b.tryDialing(dev.Address)
-				}
+				go b.tryDialing(dev.Address)
 			}
 		}
 	}
@@ -161,6 +191,13 @@ func (b *bounce) connectToUsers() {
 	}
 
 	// TODO; connect to all devices for users we added very recently
+}
+
+func (b *bounce) closeUnusedConnections() {
+	// group pools no larger than 4
+	// user pools no larger than 4
+	// no more than 2 sockets per device
+	// if no frames sent in a while, maybe reduce each device to 1 socket
 }
 
 func (b *bounce) sendKeepAlives() {
@@ -197,10 +234,7 @@ func (b *bounce) userConnectionDesired(id uuid.UUID) {
 	}
 	for _, dev := range u.Devices {
 		if b.getRemoteDevice(dev.Address).connectedSockets == 0 { // TODO: we want 2 open if we're actively chatting though
-			lastDial := b.devicePool.getLastDial(dev.Address)
-			if time.Now().After(lastDial.Add(dialCooldown)) {
-				go b.tryDialing(dev.Address)
-			}
+			go b.tryDialing(dev.Address)
 		}
 	}
 
@@ -210,11 +244,17 @@ func (b *bounce) groupConnectionDesired(id uuid.UUID) {
 	// TODO: make sure we're peered with this group
 }
 
-func (b *bounce) tryDialing(address string) { // TODO: move cooldown logic in here?
+func (b *bounce) tryDialing(address string) {
 	if !b.networkIsOnline {
 		log.WithFields(log.Fields{
-			"peer": address,
+			"address": address,
 		}).Debug("ignoring request to dial while network is offline")
+		return
+	}
+	if b.shouldCooldownDial(address) {
+		log.WithFields(log.Fields{
+			"address": address,
+		}).Debug("avoiding dial because of cooldown period")
 		return
 	}
 
@@ -237,28 +277,27 @@ func (b *bounce) tryDialing(address string) { // TODO: move cooldown logic in he
 	}
 }
 
-func (b *bounce) getOnlinePeerAddresses(userID uuid.UUID) ([]string, error) {
-	addresses := []string{}
-
-	var u user
-	err := b.database.Preload(clause.Associations).First(&u, "id = ?", userID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"user_id": userID,
-			}).Error("user not found while looking for online devices")
-			return addresses, err
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up user")
-		}
+func (b *bounce) shouldCooldownDial(address string) bool {
+	lastDial := b.devicePool.getLastDial(address)
+	if time.Now().After(lastDial.Add(dialCooldown)) {
+		return false
 	}
-	for _, dev := range u.Devices {
-		if b.getRemoteDevice(dev.Address).connectedSockets > 0 { // TODO: we want 2 open if we're actively chatting though
-			addresses = append(addresses, dev.Address)
-		}
-	}
+	return true
+}
 
-	return addresses, nil
+func chooseN(set []string, n int) []string {
+	if n < 0 {
+		return []string{}
+	}
+	if len(set) < n {
+		return set
+	}
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	order := r.Perm(len(set))
+	picks := order[0:n]
+	results := []string{}
+	for _, pick := range picks {
+		results = append(results, set[pick])
+	}
+	return results
 }

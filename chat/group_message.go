@@ -198,6 +198,9 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		}).Fatal("error saving group message")
 	}
 
+	// Update the activity timestamp on the group model
+	b.updateLastGroupActivity(gm.Destination, gm.SavedAt)
+
 	// Ack it
 	go b.sendAck(peer, typeGroupMessage, gm.ID)
 

@@ -179,6 +179,9 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		return
 	}
 
+	// Update the activity timestamp on the group model
+	b.updateLastGroupActivity(ug.Target, ug.Timestamp)
+
 	// Ack it
 	go b.sendAck(peer, typeUpdateGroup, ug.ID)
 
@@ -541,18 +544,8 @@ func (b *bounce) addUserToGroup(groupID, userID uuid.UUID) error {
 		return err
 	}
 
-	// Do a reference flow with this new user to send over all the details of this group
+	// Connect to this new user to send the new group and do a reference flow
 	b.userConnectionDesired(userID)
-	addresses, err := b.getOnlinePeerAddresses(newUser.ID)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"user_id": newUser.ID,
-			"error":   err.Error(),
-		}).Error("error looking up online addresses for user")
-	}
-	for _, address := range addresses {
-		b.sendReferences(address)
-	}
 
 	return nil
 }
