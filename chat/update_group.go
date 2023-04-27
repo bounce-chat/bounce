@@ -179,9 +179,6 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		return
 	}
 
-	// Update the activity timestamp on the group model
-	b.updateLastGroupActivity(ug.Target, ug.Timestamp)
-
 	// Ack it
 	go b.sendAck(peer, typeUpdateGroup, ug.ID)
 
@@ -229,6 +226,9 @@ func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 		}).Warn("received update group with unknown type")
 		return ERR_UPDATE_GROUP_WITH_UNKNOWN_TYPE
 	}
+
+	// Update the activity timestamp on the group model
+	b.updateLastGroupActivity(ug.Target, ug.Timestamp)
 
 	return nil
 }

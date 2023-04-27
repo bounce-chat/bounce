@@ -12,54 +12,51 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const desiredConnectionsPerThread = 4
-const dialCooldown = time.Duration(5 * time.Minute)
+const poolTypeUser = 0
+const poolTypeGroup = 1
 
+const connectionsPerDevice = 2
+const connectionsPerThread = 4
+const startupDialsPerThread = 50
+const dialCooldown = time.Duration(1 * time.Minute)
+const failedDialCooldown = time.Duration(30 * time.Minute)
+const auditFrequency = time.Duration(60 * time.Second)
+const keepAliveFrequency = time.Duration(15 * time.Second)
+
+//
+// The device pool is responsible for peering.  It stores all of the remote devices bounce is aware of in the devices field,
+// and these are used when broadcasting to collect a set of devices that are in scope for a frame.  The device pool needs to
+// ensure that connections are made to peer with specific groups and users, and to ensure there's no bifurcation of groups
+// it needs to keep track of if the intention of a connection was to peer with a user or a group that user is in.  To
+// accomplish this, two maps exist in the device pool to keep track of which remote devices were connected to to establish
+// peering with users or groups.
+//
 type devicePool struct {
-	deviceMutex   sync.Mutex
-	devices       map[string]*remoteDevice
-	groupPools    map[uuid.UUID][]*remoteDevice
-	userPools     map[uuid.UUID][]*remoteDevice
-	lastDialMutex sync.Mutex
-	lastDial      map[string]time.Time
-}
-
-func (dp *devicePool) getLastDial(address string) time.Time {
-	dp.lastDialMutex.Lock()
-	defer dp.lastDialMutex.Unlock()
-
-	t, ok := dp.lastDial[address]
-	if !ok {
-		t = time.Time{}
-		dp.lastDial[address] = t
-	}
-	return t
-}
-
-func (dp *devicePool) updateLastDial(address string) {
-	dp.lastDialMutex.Lock()
-	defer dp.lastDialMutex.Unlock()
-
-	dp.lastDial[address] = time.Now()
+	deviceMutex    sync.Mutex
+	devices        map[string]*remoteDevice
+	groupPools     map[uuid.UUID][]*remoteDevice
+	userPools      map[uuid.UUID][]*remoteDevice
+	lastDialMutex  sync.Mutex
+	lastDial       map[string]time.Time
+	lastFailedDial map[string]time.Time
 }
 
 func (b *bounce) peer() {
 	b.makeInitialPeeringConnections()
-	ticker := time.NewTicker(30 * time.Second)
+	go b.sendKeepAlives()
+	ticker := time.NewTicker(auditFrequency)
 	for _ = range ticker.C {
 		b.auditPeers()
 	}
 }
 
 func (b *bounce) makeInitialPeeringConnections() {
-	// This is just like auditing peers, except that we are more aggressive trying to dial groups
+	go b.connectToSyncDevices()
+	go b.connectToGroups(startupDialsPerThread)
+	go b.connectToUsers(startupDialsPerThread)
 }
 
 func (b *bounce) auditPeers() {
-	// Send keep alive packets to each device that appears to have an open socket.  We do this reguardless of
-	// if the network is online in order to detect dead sockets while the network is offline.
-	go b.sendKeepAlives()
-
 	// Skip this audit if the network isn't online
 	if !b.networkIsOnline {
 		return
@@ -69,19 +66,28 @@ func (b *bounce) auditPeers() {
 	go b.connectToSyncDevices()
 
 	// Connect to any groups we have pending messages for or who we talk to frequently
-	go b.connectToGroups()
+	go b.connectToGroups(connectionsPerThread)
 
 	// Connect to any users we have pending messages for or who we talk to frequently
-	go b.connectToUsers()
+	go b.connectToUsers(connectionsPerThread)
 
 	// Close any extra connections we aren't using
 	go b.closeUnusedConnections()
 }
 
+func (b *bounce) sendKeepAlives() {
+	ticker := time.NewTicker(keepAliveFrequency)
+	for _ = range ticker.C {
+		for _, rd := range b.devicePool.devices { // TODO: concurrency safe?
+			if rd.connectedSockets > 0 {
+				rd.messages <- keepAlive{}
+			}
+		}
+	}
+}
+
 func (b *bounce) connectToSyncDevices() {
 	currentUser, exists := b.currentUser()
-
-	// If a profile hasn't been created on this device yet there's no device to sync with
 	if !exists {
 		return
 	}
@@ -91,15 +97,16 @@ func (b *bounce) connectToSyncDevices() {
 			continue
 		}
 		rd := b.getRemoteDevice(dev.Address)
-		if rd.connectedSockets == 0 {
-			go b.tryDialing(dev.Address)
+		if rd.connectedSockets < connectionsPerDevice {
+			go b.tryDialing(dev.Address, poolTypeUser, currentUser.ID)
 		}
 	}
 }
 
-func (b *bounce) connectToGroups() {
+func (b *bounce) connectToGroups(desiredConnections int) {
+	// Find all recently active groups
 	var activeGroups []group
-	aMonthAgo := time.Now().Add(-4 * 7 * 24 * time.Hour)
+	aMonthAgo := time.Now().Add(-4 * 7 * 24 * time.Hour).Unix()
 	err := b.database.Preload("Users.Devices").Preload(clause.Associations).Where("last_activity > ?", aMonthAgo).Find(&activeGroups).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -125,72 +132,82 @@ func (b *bounce) connectToGroups() {
 		groupAddresses := []string{}
 		for _, u := range g.Users {
 			for _, dev := range u.Devices {
-				if !b.shouldCooldownDial(dev.Address) {
+				if !b.shouldCooldownDial(dev.Address) && dev.Address != b.network.Address() {
 					groupAddresses = append(groupAddresses, dev.Address)
 				}
 			}
 		}
 
-		// Choose a random selection of those devices
-		addressesToDial := chooseN(groupAddresses, desiredConnectionsPerThread-len(alivePool))
+		// Choose a random selection of those devices in order to fill the pool
+		addressesToDial := chooseN(groupAddresses, desiredConnections-len(alivePool))
 
 		// Attempt to dial them
 		for _, address := range addressesToDial {
-			go b.tryDialing(address)
+			go b.tryDialing(address, poolTypeGroup, g.ID)
 		}
 	}
 }
 
-func (b *bounce) connectToUsers() {
-	currentUser, exists := b.currentUser()
-
-	if !exists {
-		return
-	}
-
-	// First, ensure that we try to contact any user device we have messages for
-	var allUsers []user
-	err := b.database.Preload(clause.Associations).Where("profile = ?", false).Find(&allUsers).Error
+func (b *bounce) connectToUsers(desiredConnections int) {
+	// Connect to any users we have interacted with recently
+	var activeUsers []user
+	aMonthAgo := time.Now().Add(-4 * 7 * 24 * time.Hour).Unix()
+	err := b.database.Preload(clause.Associations).Where("profile = ? AND last_activity > ?", false, aMonthAgo).Find(&activeUsers).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error loading all non-profile users")
+		}).Fatal("error loading users to peer with")
 	}
 
-	for _, u := range allUsers {
+	for _, u := range activeUsers {
+		// Find the number of alive connections and remove any inactive ones from the pool
+		pool, ok := b.devicePool.userPools[u.ID]
+		if !ok {
+			pool = []*remoteDevice{}
+		}
+		alivePool := []*remoteDevice{}
+		for _, rd := range pool {
+			if rd.connectedSockets > 0 {
+				alivePool = append(alivePool, rd)
+			}
+		}
+		b.devicePool.userPools[u.ID] = alivePool
+
+		// Collect all the devices associated with this user that are not on dial cooldown
+		userAddresses := []string{}
+		for _, dev := range u.Devices {
+			if !b.shouldCooldownDial(dev.Address) && dev.Address != b.network.Address() {
+				userAddresses = append(userAddresses, dev.Address)
+			}
+		}
+
+		// Choose a random selection of those devices in order to fill the pool
+		addressesToDial := chooseN(userAddresses, desiredConnections-len(alivePool))
+
+		// Attempt to dial them
+		for _, address := range addressesToDial {
+			go b.tryDialing(address, poolTypeUser, u.ID)
+		}
+	}
+
+	// Try to connect to any users we have not interacted with recently, but that we have non-group messages for
+	var inactiveUsers []user
+	err = b.database.Preload(clause.Associations).Where("profile = ? AND last_activity < ?", false, aMonthAgo).Find(&inactiveUsers).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error loading inactive users")
+	}
+	for _, u := range activeUsers {
 		for _, dev := range u.Devices {
 			references := b.getReferenceOfferFor(dev.Address)
-			if references.shouldDial() {
-				go b.tryDialing(dev.Address)
+			rd := b.getRemoteDevice(dev.Address)
+			// Dial this inactive user if we have non-global content that isn't just group messages
+			if references.shouldDialUser() && !references.onlyGroupContent() && rd.connectedSockets == 0 {
+				go b.tryDialing(dev.Address, poolTypeUser, u.ID)
 			}
 		}
 	}
-
-	// Connect to any users we have sent messages to in the last 3 days
-	// TODO: unless we're under socket pressure?  in which case order by most recent
-	// TODO: also what about people who have written us?  also connect to them
-	var userIDs []uuid.UUID
-	err = b.database.Model(&DirectMessage{}).
-		Distinct("destination").
-		Where(
-			"source = ? and written_at > ?",
-			currentUser.ID,
-			time.Now().Add(-3*24*time.Hour).Unix(),
-		).Find(&userIDs).Error
-	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up users with recent direct messages")
-		}
-	}
-	for _, id := range userIDs {
-		if id != currentUser.ID {
-			b.userConnectionDesired(id)
-		}
-	}
-
-	// TODO; connect to all devices for users we added very recently
 }
 
 func (b *bounce) closeUnusedConnections() {
@@ -200,17 +217,6 @@ func (b *bounce) closeUnusedConnections() {
 	// if no frames sent in a while, maybe reduce each device to 1 socket
 }
 
-func (b *bounce) sendKeepAlives() {
-	for address, rd := range b.devicePool.devices {
-		if rd.connectedSockets > 0 {
-			// Only send keep alives to connections from devices we have an identity for
-			if _, ok := b.getDeviceFromAddress(address); ok {
-				rd.messages <- keepAlive{}
-			}
-		}
-	}
-}
-
 func (b *bounce) userConnectionDesired(id uuid.UUID) {
 	if id == b.currentUserID() {
 		// We always connect to sync devices, this is probably called because the UI
@@ -218,6 +224,7 @@ func (b *bounce) userConnectionDesired(id uuid.UUID) {
 		return
 	}
 
+	// Look up the user
 	var u user
 	err := b.database.Preload(clause.Associations).First(&u, "id = ?", id).Error
 	if err != nil {
@@ -232,19 +239,94 @@ func (b *bounce) userConnectionDesired(id uuid.UUID) {
 			}).Fatal("database error looking up user")
 		}
 	}
-	for _, dev := range u.Devices {
-		if b.getRemoteDevice(dev.Address).connectedSockets == 0 { // TODO: we want 2 open if we're actively chatting though
-			go b.tryDialing(dev.Address)
+
+	// Find the number of alive connections and remove any inactive ones from the pool
+	pool, ok := b.devicePool.userPools[u.ID]
+	if !ok {
+		pool = []*remoteDevice{}
+	}
+	alivePool := []*remoteDevice{}
+	for _, rd := range pool {
+		if rd.connectedSockets > 0 {
+			alivePool = append(alivePool, rd)
 		}
 	}
+	b.devicePool.userPools[u.ID] = alivePool
 
+	// If we have no connections to this user, try to dial a large number of devices
+	if len(alivePool) == 0 {
+		// Collect all the devices associated with this user that are not on dial cooldown
+		userAddresses := []string{}
+		for _, dev := range u.Devices {
+			if !b.shouldCooldownDial(dev.Address) {
+				userAddresses = append(userAddresses, dev.Address)
+			}
+		}
+
+		// Choose a random selection of those devices in order to fill the pool
+		addressesToDial := chooseN(userAddresses, startupDialsPerThread)
+
+		// Attempt to dial them
+		for _, address := range addressesToDial {
+			go b.tryDialing(address, poolTypeUser, u.ID)
+		}
+	}
 }
 
 func (b *bounce) groupConnectionDesired(id uuid.UUID) {
-	// TODO: make sure we're peered with this group
+	// Look up the group
+	var g group
+	err := b.database.Preload("Users.Devices").Preload(clause.Associations).First(&g, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": id,
+			}).Error("connection desired to unknown group")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up group")
+		}
+	}
+
+	// Find the number of alive connections and remove any inactive ones from the pool
+	pool, ok := b.devicePool.groupPools[g.ID]
+	if !ok {
+		pool = []*remoteDevice{}
+	}
+	alivePool := []*remoteDevice{}
+	for _, rd := range pool {
+		if rd.connectedSockets > 0 {
+			alivePool = append(alivePool, rd)
+		}
+	}
+	b.devicePool.groupPools[g.ID] = alivePool
+
+	// If we have no connections to this group, try to dial a large number of devices
+	if len(alivePool) == 0 {
+		// Collect all the devices associated with this group that are not on dial cooldown
+		groupAddresses := []string{}
+		for _, u := range g.Users {
+			for _, dev := range u.Devices {
+				if !b.shouldCooldownDial(dev.Address) && dev.Address != b.network.Address() {
+					groupAddresses = append(groupAddresses, dev.Address)
+				}
+			}
+		}
+
+		// Choose a random selection of those devices in order to fill the pool
+		addressesToDial := chooseN(groupAddresses, startupDialsPerThread)
+
+		// Attempt to dial them
+		for _, address := range addressesToDial {
+			go b.tryDialing(address, poolTypeGroup, id)
+		}
+
+	}
 }
 
-func (b *bounce) tryDialing(address string) {
+func (b *bounce) tryDialing(address string, poolType int, id uuid.UUID) {
 	if !b.networkIsOnline {
 		log.WithFields(log.Fields{
 			"address": address,
@@ -257,6 +339,9 @@ func (b *bounce) tryDialing(address string) {
 		}).Debug("avoiding dial because of cooldown period")
 		return
 	}
+	if address == b.network.Address() {
+		log.Warn("ignoring request to dial self")
+	}
 
 	b.devicePool.updateLastDial(address)
 	log.WithFields(log.Fields{
@@ -264,6 +349,7 @@ func (b *bounce) tryDialing(address string) {
 	}).Debug("attempting to dial")
 	conn, err := b.network.Dial(address)
 	if err != nil {
+		b.devicePool.updateLastFailedDial(address)
 		log.WithFields(log.Fields{
 			"peer":  address,
 			"error": err.Error(),
@@ -272,14 +358,94 @@ func (b *bounce) tryDialing(address string) {
 		log.WithFields(log.Fields{
 			"peer": address,
 		}).Debug("dialed")
-		// TODO: callback to inform the UI that a user is online?  use a callback?
+		// TODO: callback to inform the UI that a user is online?
 		b.insertConnectionIntoDevicePool(conn)
+		b.insertRemoteDeviceIntoPool(address, poolType, id)
 	}
+}
+
+func (b *bounce) insertRemoteDeviceIntoPool(address string, poolType int, id uuid.UUID) {
+	rd := b.getRemoteDevice(address)
+	if poolType == poolTypeUser {
+		currentPool, ok := b.devicePool.userPools[id]
+		if !ok {
+			b.devicePool.userPools[id] = []*remoteDevice{rd}
+			return
+		}
+		alreadyIn := false
+		for _, existingRD := range currentPool {
+			if existingRD == rd {
+				alreadyIn = true
+			}
+		}
+		if !alreadyIn {
+			b.devicePool.userPools[id] = append(b.devicePool.userPools[id], rd)
+		}
+	} else if poolType == poolTypeGroup {
+		currentPool, ok := b.devicePool.groupPools[id]
+		if !ok {
+			b.devicePool.groupPools[id] = []*remoteDevice{rd}
+			return
+		}
+		alreadyIn := false
+		for _, existingRD := range currentPool {
+			if existingRD == rd {
+				alreadyIn = true
+			}
+		}
+		if !alreadyIn {
+			b.devicePool.groupPools[id] = append(b.devicePool.groupPools[id], rd)
+		}
+	} else {
+		log.WithFields(log.Fields{
+			"pool_type": poolType,
+		}).Fatal("cannot associate connection with unknown pool type")
+	}
+
+}
+
+func (dp *devicePool) getLastDial(address string) time.Time {
+	dp.lastDialMutex.Lock()
+	defer dp.lastDialMutex.Unlock()
+
+	t, ok := dp.lastDial[address]
+	if !ok {
+		t = time.Time{}
+		dp.lastDial[address] = t
+	}
+	return t
+}
+
+func (dp *devicePool) getLastFailedDial(address string) time.Time {
+	dp.lastDialMutex.Lock()
+	defer dp.lastDialMutex.Unlock()
+
+	t, ok := dp.lastFailedDial[address]
+	if !ok {
+		t = time.Time{}
+		dp.lastFailedDial[address] = t
+	}
+	return t
+}
+
+func (dp *devicePool) updateLastDial(address string) {
+	dp.lastDialMutex.Lock()
+	defer dp.lastDialMutex.Unlock()
+
+	dp.lastDial[address] = time.Now()
+}
+
+func (dp *devicePool) updateLastFailedDial(address string) {
+	dp.lastDialMutex.Lock()
+	defer dp.lastDialMutex.Unlock()
+
+	dp.lastFailedDial[address] = time.Now()
 }
 
 func (b *bounce) shouldCooldownDial(address string) bool {
 	lastDial := b.devicePool.getLastDial(address)
-	if time.Now().After(lastDial.Add(dialCooldown)) {
+	lastFailedDial := b.devicePool.getLastFailedDial(address)
+	if time.Now().After(lastDial.Add(dialCooldown)) && time.Now().After(lastFailedDial.Add(failedDialCooldown)) {
 		return false
 	}
 	return true

@@ -47,7 +47,8 @@ func (ro *referenceOffer) getPayload() []byte {
 	return ro.payload
 }
 
-func (ro *referenceOffer) shouldDial() bool {
+// Check if anything in the reference offer is not global scope, or justifies dialing a user
+func (ro *referenceOffer) shouldDialUser() bool {
 	for _, reference := range ro.References {
 		if reference.Type == typeDirectMessage {
 			return true
@@ -64,6 +65,25 @@ func (ro *referenceOffer) shouldDial() bool {
 		}
 	}
 	return false
+}
+
+// Check if a reference offer only contains content destined for a group
+func (ro *referenceOffer) onlyGroupContent() bool {
+	onlyGroupContent := true
+
+	for _, reference := range ro.References {
+		if reference.Type == typeDirectMessage {
+			onlyGroupContent = false
+		} else if reference.Type == typeDevice {
+			onlyGroupContent = false
+		} else if reference.Type == typeAddUser {
+			onlyGroupContent = false
+		} else if reference.Type == typeGroupCreation {
+			onlyGroupContent = false
+		}
+	}
+
+	return onlyGroupContent
 }
 
 func getReferenceOfferMutexForPeer(peer string) *sync.Mutex {

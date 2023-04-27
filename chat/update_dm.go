@@ -207,6 +207,9 @@ func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {
 		return ERR_UPDATE_DM_WITH_UNKNOWN_TYPE
 	}
 
+	// Update the activity timestamp on the user model
+	b.updateLastUserActivity(xor(b.currentUserID(), ud.Target), ud.Timestamp)
+
 	return nil
 }
 

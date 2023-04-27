@@ -159,6 +159,9 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 		}).Fatal("error saving incoming direct message")
 	}
 
+	// Update the activity timestamp on the user model
+	b.updateLastUserActivity(dm.getDestination(b.currentUserID()), dm.SavedAt)
+
 	// Save a delivery report for the peer that send this message
 	b.markDeliveredTo(&dm, peer)
 
@@ -264,6 +267,7 @@ func (b *bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
 			"error": err.Error(),
 		}).Fatal("error saving direct message to the database")
 	}
+	b.updateLastUserActivity(message.getDestination(b.currentUserID()), message.SavedAt)
 
 	b.broadcast(message)
 

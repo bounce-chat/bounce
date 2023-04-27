@@ -232,6 +232,7 @@ func (b *bounce) sendGroupMessage(gm *GroupMessage) uuid.UUID {
 			"error": err.Error(),
 		}).Fatal("error saving group message")
 	}
+	b.updateLastGroupActivity(gm.Destination, gm.SavedAt)
 
 	go b.broadcast(gm)
 

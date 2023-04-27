@@ -21,6 +21,7 @@ type user struct {
 	Retention    int64 `json:"-" msgpack:"-"`
 	ClearBefore  int64 `json:"-" msgpack:"-"`
 	MutedUntil   int64 `json:"-" msgpack:"-"`
+	LastActivity int64 `json:"-" msgpack:"-"`
 	Devices      []device
 	Groups       []group `gorm:"many2many:group_users;" json:"-"`
 	payload      []byte
@@ -40,6 +41,8 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 		}
 		u.MutedUntil = MutedForever
 	}
+
+	u.LastActivity = time.Now().Unix()
 
 	return nil
 }
@@ -242,6 +245,32 @@ func (b *bounce) directMessageWrittenBeforeHistoryCleared(userID uuid.UUID, mess
 	}
 
 	return messageWrittenAt < u.ClearBefore
+}
+
+func (b *bounce) updateLastUserActivity(userID uuid.UUID, timestamp int64) {
+	var u user
+	err := b.database.Where("id = ?", userID).First(&u).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+			}).Error("error finding user for last activity update")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+			}).Fatal("database error finding user for last activity update")
+		}
+	}
+
+	if timestamp > u.LastActivity {
+		err = b.database.Model(&u).Update("last_activity", timestamp).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+			}).Fatal("database error updating user last activity")
+		}
+	}
 }
 
 func xor(uuid1, uuid2 uuid.UUID) uuid.UUID {
