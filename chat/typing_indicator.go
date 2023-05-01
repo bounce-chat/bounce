@@ -63,8 +63,11 @@ func (ti *typingIndicator) getID() uuid.UUID {
 	return ti.ID
 }
 
-func (ti *typingIndicator) getScope(_ uuid.UUID) int {
+func (ti *typingIndicator) getScope(myID uuid.UUID) int {
 	if ti.MessageType == typeDirectMessage {
+		if ti.getDestination(myID) == myID {
+			return scopeSync
+		}
 		return scopeUser
 	} else if ti.MessageType == typeGroupMessage {
 		return scopeGroup
