@@ -115,18 +115,8 @@ func (b *bounce) connectToGroups(desiredConnections int) {
 	}
 
 	for _, g := range activeGroups {
-		// Find the number of alive connections and remove any inactive ones from the pool
-		pool, ok := b.devicePool.groupPools[g.ID]
-		if !ok {
-			pool = []*remoteDevice{}
-		}
-		alivePool := []*remoteDevice{}
-		for _, rd := range pool {
-			if rd.connectedSockets > 0 {
-				alivePool = append(alivePool, rd)
-			}
-		}
-		b.devicePool.groupPools[g.ID] = alivePool
+		// Prune the pool of closed connections
+		b.prunePool(poolTypeGroup, g.ID)
 
 		// Collect all the devices associated with this group that are not on dial cooldown
 		groupAddresses := []string{}
@@ -139,7 +129,7 @@ func (b *bounce) connectToGroups(desiredConnections int) {
 		}
 
 		// Choose a random selection of those devices in order to fill the pool
-		addressesToDial := chooseN(groupAddresses, desiredConnections-len(alivePool))
+		addressesToDial := chooseN(groupAddresses, desiredConnections-len(b.devicePool.groupPools[g.ID]))
 
 		// Attempt to dial them
 		for _, address := range addressesToDial {
@@ -160,18 +150,8 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 	}
 
 	for _, u := range activeUsers {
-		// Find the number of alive connections and remove any inactive ones from the pool
-		pool, ok := b.devicePool.userPools[u.ID]
-		if !ok {
-			pool = []*remoteDevice{}
-		}
-		alivePool := []*remoteDevice{}
-		for _, rd := range pool {
-			if rd.connectedSockets > 0 {
-				alivePool = append(alivePool, rd)
-			}
-		}
-		b.devicePool.userPools[u.ID] = alivePool
+		// Prune the pool of closed connections
+		b.prunePool(poolTypeUser, u.ID)
 
 		// Collect all the devices associated with this user that are not on dial cooldown
 		userAddresses := []string{}
@@ -182,7 +162,7 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 		}
 
 		// Choose a random selection of those devices in order to fill the pool
-		addressesToDial := chooseN(userAddresses, desiredConnections-len(alivePool))
+		addressesToDial := chooseN(userAddresses, desiredConnections-len(b.devicePool.userPools[u.ID]))
 
 		// Attempt to dial them
 		for _, address := range addressesToDial {
@@ -211,10 +191,62 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 }
 
 func (b *bounce) closeUnusedConnections() {
-	// group pools no larger than 4
-	// user pools no larger than 4
-	// no more than 2 sockets per device
-	// if no frames sent in a while, maybe reduce each device to 1 socket
+	// Close any extra connections to any groups
+	for groupID, _ := range b.devicePool.groupPools {
+		// Prune the pool
+		b.prunePool(poolTypeGroup, groupID)
+
+		// If there are more connections than needed, close one at random
+		if len(b.devicePool.groupPools[groupID]) > connectionsPerThread {
+			rand.Seed(time.Now().UnixNano())
+			index := rand.Intn(len(b.devicePool.groupPools[groupID]))
+			b.devicePool.groupPools[groupID][index].shutdown <- true
+			b.devicePool.groupPools[groupID][index].closer.Wait()
+			b.prunePool(poolTypeGroup, groupID)
+		}
+
+	}
+
+	// Close any extra connections to any users
+	myUser, profileExists := b.currentUser()
+	for userID, _ := range b.devicePool.userPools {
+		// Don't close connections to sync devices
+		if profileExists && userID == myUser.ID {
+			continue
+		}
+
+		// Prune the pool
+		b.prunePool(poolTypeUser, userID)
+
+		// If there are more connections than needed, close one at random
+		if len(b.devicePool.userPools[userID]) > connectionsPerThread {
+			rand.Seed(time.Now().UnixNano())
+			index := rand.Intn(len(b.devicePool.userPools[userID]))
+			b.devicePool.userPools[userID][index].shutdown <- true
+			b.devicePool.userPools[userID][index].closer.Wait()
+			b.prunePool(poolTypeUser, userID)
+		}
+
+	}
+
+	// If a device has more sockets open than needed, close one at random
+	for _, rd := range b.devicePool.devices {
+		if rd.connectedSockets > connectionsPerDevice {
+			// Collect the keys
+			keys := []uuid.UUID{}
+			for k, _ := range rd.shutdownReceivers {
+				keys = append(keys, k)
+			}
+
+			// Choose a random key
+			rand.Seed(time.Now().UnixNano())
+			index := rand.Intn(len(keys))
+			key := keys[index]
+
+			// Close that socket
+			rd.shutdownReceivers[key] <- true
+		}
+	}
 }
 
 func (b *bounce) userConnectionDesired(id uuid.UUID) {
@@ -240,21 +272,11 @@ func (b *bounce) userConnectionDesired(id uuid.UUID) {
 		}
 	}
 
-	// Find the number of alive connections and remove any inactive ones from the pool
-	pool, ok := b.devicePool.userPools[u.ID]
-	if !ok {
-		pool = []*remoteDevice{}
-	}
-	alivePool := []*remoteDevice{}
-	for _, rd := range pool {
-		if rd.connectedSockets > 0 {
-			alivePool = append(alivePool, rd)
-		}
-	}
-	b.devicePool.userPools[u.ID] = alivePool
+	// Prune the pool of closed connections
+	b.prunePool(poolTypeUser, u.ID)
 
 	// If we have no connections to this user, try to dial a large number of devices
-	if len(alivePool) == 0 {
+	if len(b.devicePool.userPools[u.ID]) == 0 {
 		// Collect all the devices associated with this user that are not on dial cooldown
 		userAddresses := []string{}
 		for _, dev := range u.Devices {
@@ -290,21 +312,11 @@ func (b *bounce) groupConnectionDesired(id uuid.UUID) {
 		}
 	}
 
-	// Find the number of alive connections and remove any inactive ones from the pool
-	pool, ok := b.devicePool.groupPools[g.ID]
-	if !ok {
-		pool = []*remoteDevice{}
-	}
-	alivePool := []*remoteDevice{}
-	for _, rd := range pool {
-		if rd.connectedSockets > 0 {
-			alivePool = append(alivePool, rd)
-		}
-	}
-	b.devicePool.groupPools[g.ID] = alivePool
+	// Prune the pool of closed connections
+	b.prunePool(poolTypeGroup, g.ID)
 
 	// If we have no connections to this group, try to dial a large number of devices
-	if len(alivePool) == 0 {
+	if len(b.devicePool.groupPools[g.ID]) == 0 {
 		// Collect all the devices associated with this group that are not on dial cooldown
 		groupAddresses := []string{}
 		for _, u := range g.Users {
@@ -402,6 +414,38 @@ func (b *bounce) insertRemoteDeviceIntoPool(address string, poolType int, id uui
 		}).Fatal("cannot associate connection with unknown pool type")
 	}
 
+}
+
+func (b *bounce) prunePool(poolType int, id uuid.UUID) {
+	if poolType == poolTypeUser {
+		_, ok := b.devicePool.userPools[id]
+		if !ok {
+			b.devicePool.userPools[id] = []*remoteDevice{}
+		}
+		alivePool := []*remoteDevice{}
+		for _, rd := range b.devicePool.userPools[id] {
+			if rd.connectedSockets > 0 {
+				alivePool = append(alivePool, rd)
+			}
+		}
+		b.devicePool.userPools[id] = alivePool
+	} else if poolType == poolTypeGroup {
+		_, ok := b.devicePool.groupPools[id]
+		if !ok {
+			b.devicePool.groupPools[id] = []*remoteDevice{}
+		}
+		alivePool := []*remoteDevice{}
+		for _, rd := range b.devicePool.groupPools[id] {
+			if rd.connectedSockets > 0 {
+				alivePool = append(alivePool, rd)
+			}
+		}
+		b.devicePool.groupPools[id] = alivePool
+	} else {
+		log.WithFields(log.Fields{
+			"pool_type": poolType,
+		}).Fatal("cannot prune unknown pool type")
+	}
 }
 
 func (dp *devicePool) getLastDial(address string) time.Time {
