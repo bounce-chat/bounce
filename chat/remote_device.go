@@ -150,7 +150,12 @@ func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 			if err != nil {
 				rd.connectedSockets -= 1
 				// TODO: if we now have 0 connections, let the UI know the user is offline
-				b.sendReferences(conn.RemoteAddr().String())
+
+				// If this socket died during a write, but there are other sockets that might still be alive,
+				// send references for anything that might not have made it through this socket
+				if rd.connectedSockets > 0 {
+					go b.sendReferences(conn.RemoteAddr().String())
+				}
 
 				// We will no longer be reading shutdown signals from the remote device
 				// so we remove our channel from the map

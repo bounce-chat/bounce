@@ -18,7 +18,7 @@ const poolTypeGroup = 1
 const connectionsPerDevice = 2
 const connectionsPerThread = 4
 const startupDialsPerThread = 50
-const dialCooldown = time.Duration(1 * time.Minute)
+const dialCooldown = time.Duration(30 * time.Second)
 const failedDialCooldown = time.Duration(30 * time.Minute)
 const auditFrequency = time.Duration(60 * time.Second)
 const keepAliveFrequency = time.Duration(15 * time.Second)
@@ -32,6 +32,8 @@ const keepAliveFrequency = time.Duration(15 * time.Second)
 // peering with users or groups.
 //
 type devicePool struct {
+	auditing       sync.Mutex
+	inserting      sync.Mutex
 	deviceMutex    sync.Mutex
 	devices        map[string]*remoteDevice
 	groupPools     map[uuid.UUID][]*remoteDevice
@@ -51,38 +53,46 @@ func (b *bounce) peer() {
 }
 
 func (b *bounce) makeInitialPeeringConnections() {
-	go b.connectToSyncDevices()
-	go b.connectToGroups(startupDialsPerThread)
-	go b.connectToUsers(startupDialsPerThread)
+	b.devicePool.auditing.Lock()
+	defer b.devicePool.auditing.Unlock()
+
+	b.connectToSyncDevices()
+	b.connectToGroups(startupDialsPerThread)
+	b.connectToUsers(startupDialsPerThread)
 }
 
 func (b *bounce) auditPeers() {
+	b.devicePool.auditing.Lock()
+	defer b.devicePool.auditing.Unlock()
+
 	// Skip this audit if the network isn't online
 	if !b.networkIsOnline {
 		return
 	}
 
 	// Always try to keep a socket open to every sync device
-	go b.connectToSyncDevices()
+	b.connectToSyncDevices()
 
 	// Connect to any groups we have pending messages for or who we talk to frequently
-	go b.connectToGroups(connectionsPerThread)
+	b.connectToGroups(connectionsPerThread)
 
 	// Connect to any users we have pending messages for or who we talk to frequently
-	go b.connectToUsers(connectionsPerThread)
+	b.connectToUsers(connectionsPerThread)
 
 	// Close any extra connections we aren't using
-	go b.closeUnusedConnections()
+	b.closeUnusedConnections()
 }
 
 func (b *bounce) sendKeepAlives() {
 	ticker := time.NewTicker(keepAliveFrequency)
 	for _ = range ticker.C {
-		for _, rd := range b.devicePool.devices { // TODO: concurrency safe?
+		b.devicePool.auditing.Lock()
+		for _, rd := range b.devicePool.devices {
 			if rd.connectedSockets > 0 {
 				rd.messages <- keepAlive{}
 			}
 		}
+		b.devicePool.auditing.Unlock()
 	}
 }
 
@@ -388,6 +398,9 @@ func (b *bounce) tryDialing(address string, poolType int, id uuid.UUID) {
 }
 
 func (b *bounce) insertRemoteDeviceIntoPool(address string, poolType int, id uuid.UUID) {
+	b.devicePool.inserting.Lock()
+	defer b.devicePool.inserting.Unlock()
+
 	rd := b.getRemoteDevice(address)
 	if poolType == poolTypeUser {
 		currentPool, ok := b.devicePool.userPools[id]

@@ -64,11 +64,6 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 		return
 	}
 
-	// Check if we're aware of the peer identity before processing this catch up.  If we don't know
-	// who this device belongs to, we should be able to learn after handling all of the frames inside
-	// it and we'll want to check to make sure that happened.
-	_, deviceAlreadyExists := b.getDeviceFromAddress(peer)
-
 	// Send references for these frames into the reference engine so that we know we've received them
 	// and no longer need to request them from any peers
 	references := []frameReference{}
@@ -76,6 +71,11 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 		references = append(references, frameReference{FrameID: f.ID, Type: f.Type})
 	}
 	b.loadCatchUp(peer, references)
+
+	// Check if we're aware of the peer identity before processing this catch up.  If we don't know
+	// who this device belongs to, we should be able to learn after handling all of the frames inside
+	// it and we'll want to check to make sure that happened.
+	_, deviceAlreadyExists := b.getDeviceFromAddress(peer)
 
 	// Handle reach frame in the catch up using it's handler
 	handlers := b.getHandlers()
@@ -95,6 +95,10 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 		}
 		handler(peer, fr.Payload)
 	}
+
+	// We might have learned about new devices from this catch up, so we should see if there's anyone else we
+	// now want to dial
+	go b.auditPeers()
 
 	// If we didn't know who this device belonged to at first, check to make sure we know who it belongs to
 	// after handling all of the frames
