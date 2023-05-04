@@ -139,7 +139,7 @@ func (b *bounce) shutdown() {
 	log.Info("closing all remote connections")
 	// TODO: stop the peer audit loop, wait for it to return
 	for _, rd := range b.devicePool.devices {
-		rd.shutdown <- true
+		rd.shutdown()
 	}
 	for _, rd := range b.devicePool.devices {
 		rd.closer.Wait()

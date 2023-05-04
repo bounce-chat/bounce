@@ -29,12 +29,12 @@ func (b *bounce) acceptConnections() {
 		conn, err, fatal := b.network.Accept()
 		if err != nil {
 			if fatal {
-				if !b.shutdownStarted {
+				if b.shutdownStarted {
+					return
+				} else {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
 					}).Fatal("fatal error accepting connection")
-				} else {
-					return
 				}
 			} else {
 				log.WithFields(log.Fields{

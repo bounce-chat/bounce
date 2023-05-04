@@ -198,9 +198,12 @@ func (b *bounce) closeUnusedConnections() {
 
 		// If there are more connections than needed, close one at random
 		if len(b.devicePool.groupPools[groupID]) > connectionsPerThread {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Debug("closing unneeded connection to group")
 			rand.Seed(time.Now().UnixNano())
 			index := rand.Intn(len(b.devicePool.groupPools[groupID]))
-			b.devicePool.groupPools[groupID][index].shutdown <- true
+			b.devicePool.groupPools[groupID][index].shutdown()
 			b.devicePool.groupPools[groupID][index].closer.Wait()
 			b.prunePool(poolTypeGroup, groupID)
 		}
@@ -220,9 +223,12 @@ func (b *bounce) closeUnusedConnections() {
 
 		// If there are more connections than needed, close one at random
 		if len(b.devicePool.userPools[userID]) > connectionsPerThread {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+			}).Debug("closing unneeded connection to user")
 			rand.Seed(time.Now().UnixNano())
 			index := rand.Intn(len(b.devicePool.userPools[userID]))
-			b.devicePool.userPools[userID][index].shutdown <- true
+			b.devicePool.userPools[userID][index].shutdown()
 			b.devicePool.userPools[userID][index].closer.Wait()
 			b.prunePool(poolTypeUser, userID)
 		}
@@ -232,6 +238,11 @@ func (b *bounce) closeUnusedConnections() {
 	// If a device has more sockets open than needed, close one at random
 	for _, rd := range b.devicePool.devices {
 		if rd.connectedSockets > connectionsPerDevice {
+			log.WithFields(log.Fields{
+				"connected_sockets": rd.connectedSockets,
+				"desired_sockets":   connectionsPerDevice,
+			}).Debug("closing a socket to a device")
+
 			// Collect the keys
 			keys := []uuid.UUID{}
 			for k, _ := range rd.shutdownReceivers {

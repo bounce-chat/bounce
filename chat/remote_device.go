@@ -11,30 +11,25 @@ import (
 type remoteDevice struct {
 	connectedSockets       int
 	messages               chan sendable
-	shutdown               chan bool
 	shutdownReceivers      map[uuid.UUID]chan bool
 	shutdownReceiversMutex sync.Mutex
 	closer                 sync.WaitGroup
 }
 
 func newRemoteDevice() *remoteDevice {
-	rd := &remoteDevice{
+	return &remoteDevice{
 		connectedSockets:  0,
 		messages:          make(chan sendable),
-		shutdown:          make(chan bool),
 		shutdownReceivers: make(map[uuid.UUID]chan bool),
 	}
+}
 
-	go func(thisRd *remoteDevice) {
-		<-thisRd.shutdown
-		thisRd.shutdownReceiversMutex.Lock()
-		for _, receiver := range thisRd.shutdownReceivers {
-			receiver <- true
-		}
-		thisRd.shutdownReceiversMutex.Unlock()
-	}(rd)
-
-	return rd
+func (rd *remoteDevice) shutdown() {
+	rd.shutdownReceiversMutex.Lock()
+	for _, receiver := range rd.shutdownReceivers {
+		receiver <- true
+	}
+	rd.shutdownReceiversMutex.Unlock()
 }
 
 func (b *bounce) getRemoteDevice(address string) *remoteDevice {
@@ -50,13 +45,13 @@ func (b *bounce) getRemoteDevice(address string) *remoteDevice {
 }
 
 func (b *bounce) insertConnectionIntoDevicePool(conn net.Conn) {
-	peerAddress := conn.RemoteAddr().String()
-	rd := b.getRemoteDevice(peerAddress)
+	peer := conn.RemoteAddr().String()
+	rd := b.getRemoteDevice(peer)
 
 	go b.readFrames(conn)
 	go b.writeFrames(rd, conn)
 
-	b.sendReferences(peerAddress)
+	b.sendReferences(peer)
 }
 
 func frameAllowedWithoutProfile(frameType uint16) bool {
@@ -144,6 +139,9 @@ func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 	for {
 		select {
 		case <-rd.shutdownReceivers[writerID]:
+			log.WithFields(log.Fields{
+				"peer": conn.RemoteAddr().String(),
+			}).Debug("closing connection")
 			rd.connectedSockets -= 1
 			conn.Close()
 			return
