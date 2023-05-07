@@ -336,7 +336,6 @@ func (b *bounce) manuallySendTypingIndicators(ti *typingIndicator, excludedPeer 
 	}
 
 	for _, peer := range broadcastTargets {
-		log.Warn("writing")
 		go func(dst chan sendable, msg broadcastable) {
 			dst <- msg
 		}(peer.messages, ti)

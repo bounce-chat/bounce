@@ -135,16 +135,27 @@ func (b *bounce) shutdown() {
 	// any errors encountered here must be logged as errors.
 	b.shutdownMutex.Lock()
 
+	// TODO: stop the peer audit loop, wait for it to return?  just lock the audit mutex?
+
 	// Stop all running tasks and close all connections to remote devices
 	log.Info("closing all remote connections")
-	// TODO: stop the peer audit loop, wait for it to return
-	for _, rd := range b.devicePool.devices {
-		rd.shutdown()
-	}
-	for _, rd := range b.devicePool.devices {
-		rd.closer.Wait()
+	connectionsClosed := make(chan bool, 1)
+	go func() {
+		for _, rd := range b.devicePool.devices {
+			rd.shutdown()
+		}
+		for _, rd := range b.devicePool.devices {
+			rd.closer.Wait()
+		}
+		connectionsClosed <- true
+	}()
+	select {
+	case <-connectionsClosed:
+	case <-time.After(2 * time.Second):
+		log.Warn("closing connections took longer than 2 seconds, giving up")
 	}
 
+	// Make sure any network handlers finish running
 	log.Info("waiting for currently running handlers to stop")
 	b.runningHandlers.Wait()
 
@@ -158,8 +169,8 @@ func (b *bounce) shutdown() {
 
 	select {
 	case <-networkShutdown:
-	case <-time.After(5 * time.Second):
-		log.Warn("network shutdown took longer than 5 seconds, giving up")
+	case <-time.After(2 * time.Second):
+		log.Warn("network shutdown took longer than 2 seconds, giving up")
 	}
 
 	// Close the database
