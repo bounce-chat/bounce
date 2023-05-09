@@ -73,7 +73,7 @@ func (b *bounce) sendAck(peer string, frameType uint16, frameID uuid.UUID) {
 
 func (b *bounce) handleAckDirectMessages(peer string, ids []uuid.UUID) {
 	for _, dmID := range ids {
-		var dm DirectMessage
+		var dm directMessage
 		err := b.database.First(&dm, "id = ?", dmID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {

@@ -244,8 +244,11 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 	// Ack the group
 	go b.sendAck(peer, typeGroupCreation, gc.ID)
 
+	// Mark this as delivered to this peer
+	b.markDeliveredTo(&gc, peer)
+
 	// Broadcast it
-	go b.broadcast(&gc)
+	b.broadcast(&gc)
 
 	// We might be learning about the creation of a group that originally didn't include us, but that we were later added to.
 	// In that case it doesn't make sense to inform the UI about this group until we're added to it.

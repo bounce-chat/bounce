@@ -154,7 +154,7 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 		}).Fatal("error saving new group and group creation")
 	}
 
-	go b.broadcast(&gc)
+	b.broadcast(&gc)
 
 	b.userInterface.OpenNewGroupChat(Group{
 		ID:      g.ID,

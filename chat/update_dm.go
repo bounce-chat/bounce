@@ -171,7 +171,7 @@ func (b *bounce) handleUpdateDM(peer string, payload []byte) {
 	b.markDeliveredTo(&ud, peer)
 
 	// Broadcast it
-	go b.broadcast(&ud)
+	b.broadcast(&ud)
 }
 
 func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {
@@ -285,7 +285,7 @@ func (b *bounce) saveAndApplyUpdateDMSetClearBefore(u user, ud updateDM) error {
 	// Decode the new retention value
 	clearBefore := int64(binary.LittleEndian.Uint64(ud.Data))
 
-	dms := []DirectMessage{}
+	dms := []directMessage{}
 	err = b.database.Select("id").Where("written_at <= ? AND (direct_messages.destination = ? OR direct_messages.source = ?)", clearBefore, u.ID, u.ID).Find(&dms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -389,7 +389,7 @@ func (b *bounce) applyAndBroadcastUpdateDM(ud updateDM) error {
 	}
 
 	// Broadcast
-	go b.broadcast(&ud)
+	b.broadcast(&ud)
 
 	return nil
 }

@@ -128,12 +128,12 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 	}
 	entry.customOnSubmitted = func() {
 		message := &chat.DirectMessage{
-			Destination: dm.user.id,
-			Text:        entry.Text,
+			Thread: dm.user.id,
+			Text:   entry.Text,
 		}
 
-		id := fyneUI.callbacks.SendDirectMessage(message) // TODO: store reference to ID?
-		fyneUI.displaySentMessage(dm, id, message.Text)   // TODO: just build the bubble around the actual object?
+		fyneUI.callbacks.SendDirectMessage(message)
+		fyneUI.displaySentMessage(dm, message.ID, message.Text) // TODO: just build the bubble around the actual object?
 
 		entry.Text = ""
 		entry.Refresh()
@@ -167,10 +167,10 @@ func (fyneUI *Fyne) ReceivedDirectMessage(msg chat.DirectMessage) {
 }
 
 func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hideNotification bool) {
-	user, userExists := fyneUI.users.get(msg.Source)
+	user, userExists := fyneUI.users.get(msg.Author)
 	if !userExists {
 		log.WithFields(log.Fields{
-			"user_id": msg.Source,
+			"user_id": msg.Author,
 		}).Error("chat engine sent DM from user unknown to UI")
 		return
 	}
@@ -181,13 +181,12 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 
 	displayName := user.name
 	isOutgoing := false
-	targetDM := msg.Source
+	targetDM := msg.Thread
 	// TODO: this really needs to be cleaned up
-	if msg.Source == fyneUI.profile.id {
+	if msg.Author == fyneUI.profile.id {
 		// We're learning about a DM we sent from another device
 		displayName = "You"
 		isOutgoing = true
-		targetDM = msg.Destination
 		hideNotification = true
 	}
 

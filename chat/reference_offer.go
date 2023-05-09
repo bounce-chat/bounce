@@ -189,7 +189,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 
 func (b *bounce) getDirectMessagesToOffer(dev device) []frameReference {
 	// All DMs we have sent to or received from this user in the past week
-	var dms []DirectMessage
+	var dms []directMessage
 	err := b.database.
 		Select("direct_messages.*").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDirectMessage).
@@ -464,7 +464,7 @@ func (b *bounce) getDirectMessagesToRequest(dev device, deviceExists bool, offer
 	references := []frameReference{}
 
 	for _, dmID := range offeredIDs {
-		var dm DirectMessage
+		var dm directMessage
 		err := b.database.First(&dm, "id = ?", dmID).Error
 		if err == nil {
 			if deviceExists && !b.isDeliveredTo(&dm, dev.Address) {

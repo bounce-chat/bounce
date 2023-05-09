@@ -4,10 +4,38 @@ import (
 	"github.com/google/uuid"
 )
 
+type User struct {
+	ID    uuid.UUID
+	Name  string
+	Image []byte
+}
+
+type DirectMessage struct {
+	ID        uuid.UUID
+	Author    uuid.UUID
+	Thread    uuid.UUID
+	WrittenAt int64
+	Text      string
+}
+
+type Group struct {
+	ID      uuid.UUID
+	Name    string
+	Image   []byte
+	UserIDs []uuid.UUID
+}
+
+type InitialState struct {
+	Profile        *User
+	Users          []User
+	Groups         []Group
+	DirectMessages []DirectMessage
+	GroupMessages  []GroupMessage
+}
+
 //
 // User interfaces for bounce are achieved by implementing the UI interface.
 //
-
 type UI interface {
 	// Create user interface objects
 	Build(configPath string, callbacks UICallbacks)
@@ -74,34 +102,6 @@ type UI interface {
 	// Chat engine updating the delivery status of a message
 }
 
-type InitialState struct {
-	//ProfileSet bool // *User
-	Profile *User
-	//Devices  []Device
-	Users          []User
-	Groups         []Group
-	DirectMessages []DirectMessage
-	GroupMessages  []GroupMessage
-}
-
-type User struct { // TODO: replace with model?
-	ID    uuid.UUID
-	Name  string
-	Image []byte
-}
-
-//type Introduction struct {
-//	Introducer string
-//	User       User
-//}
-
-type Group struct { // TODO: replace with model?
-	ID      uuid.UUID
-	Name    string
-	Image   []byte
-	UserIDs []uuid.UUID
-}
-
 //
 // The chat engine will provide these callbacks to a user interface so that the interface can instruct the chat engine
 //
@@ -115,7 +115,7 @@ type UICallbacks struct {
 	RequestToAddUser    func(string) error
 
 	// The user wants to send a direct message.
-	SendDirectMessage func(*DirectMessage) uuid.UUID
+	SendDirectMessage func(*DirectMessage)
 	// The user wants to send a group  message
 	SendGroupMessage func(*GroupMessage) uuid.UUID
 
@@ -160,7 +160,7 @@ type UICallbacks struct {
 	ImportUser    func(user []byte) (User, error)
 	ExportContact func(name string, expiration int64, oneTime bool) []byte
 
-	// Some user interaction, like opening a DM, indicates that the user might want to send a message to this
+	// Some user interactions, like opening a DM, indicate that the user might want to send a message to this
 	// user soon.  Calling this will cause the chat engine to attempt to dial the user if there isn't already
 	// an open connection, reducing the latency in message delivery should the user decide to send a message.
 	UserConnectionDesired func(uuid.UUID)

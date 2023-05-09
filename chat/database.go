@@ -53,7 +53,7 @@ func (b *bounce) openDatabase() {
 		&device{},
 		&profileExport{},
 		&introductionSignature{},
-		&DirectMessage{}, // TODO: still need to decide if we'll export a simplified one for the UI
+		&directMessage{},
 		&syncDeviceOffer{},
 		&deliveryRecord{},
 		&updateDM{},
@@ -96,7 +96,7 @@ func (b *bounce) pruneDirectMessages(informUI bool) {
 
 	if informUI {
 		// Find messages that should be pruned and delete them from the UI
-		var dms []DirectMessage
+		var dms []directMessage
 		err := b.database.Select("id").Where("delete_at != 0 AND delete_at < ?", now).Find(&dms).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -109,7 +109,7 @@ func (b *bounce) pruneDirectMessages(informUI bool) {
 	}
 
 	// Delete those messages from the database
-	err := b.database.Where("delete_at != 0 AND delete_at < ?", now).Delete(&DirectMessage{}).Error
+	err := b.database.Where("delete_at != 0 AND delete_at < ?", now).Delete(&directMessage{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -117,7 +117,7 @@ func (b *bounce) pruneDirectMessages(informUI bool) {
 	}
 
 	// Find all messages that are undeliverable and inform the UI, marking them for deletion if they don't have indefinite retention
-	var dms []DirectMessage
+	var dms []directMessage
 	err = b.database.
 		Select("direct_messages.id", "direct_messages.retention_seconds").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.frame_type == ?", typeDirectMessage).
@@ -278,7 +278,7 @@ func (b *bounce) buildInitialState() InitialState {
 	}
 
 	groups := []group{}
-	b.database.Preload(clause.Associations).Find(&groups)
+	b.database.Preload(clause.Associations).Find(&groups) // TODO: error check
 	chatGroups := []Group{}
 	for _, g := range groups {
 		userList := []uuid.UUID{}
@@ -292,8 +292,22 @@ func (b *bounce) buildInitialState() InitialState {
 		})
 	}
 
-	dms := []DirectMessage{}
+	dms := []directMessage{}
 	b.database.Order("saved_at asc").Find(&dms) // TODO: error check
+	exportedDMs := []DirectMessage{}
+	for _, dm := range dms {
+		exportedDMs = append(
+			exportedDMs,
+			DirectMessage{
+				ID:        dm.ID,
+				Author:    dm.Author,
+				Thread:    dm.getDestination(b.currentUserID()),
+				WrittenAt: dm.WrittenAt,
+				Text:      dm.Text,
+			},
+		)
+	}
+
 	gms := []GroupMessage{}
 	b.database.Order("saved_at asc").Find(&gms) // TODO: error check
 
@@ -301,7 +315,7 @@ func (b *bounce) buildInitialState() InitialState {
 		Profile:        profile,
 		Users:          chatUsers,
 		Groups:         chatGroups,
-		DirectMessages: dms,
+		DirectMessages: exportedDMs,
 		GroupMessages:  gms,
 	}
 }

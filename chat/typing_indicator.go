@@ -514,5 +514,5 @@ func (b *bounce) broadcastTypingIndicator(threadID uuid.UUID, messageType uint16
 	typingIndicatorSeen[ti.ID] = time.Now().Unix()
 	typingIndicatorSeenMutex.Unlock()
 
-	go b.broadcast(ti)
+	b.broadcast(ti)
 }

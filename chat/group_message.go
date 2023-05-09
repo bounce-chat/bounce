@@ -205,7 +205,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	go b.sendAck(peer, typeGroupMessage, gm.ID)
 
 	// Broadcast it
-	go b.broadcast(&gm)
+	b.broadcast(&gm)
 }
 
 func (b *bounce) sendGroupMessage(gm *GroupMessage) uuid.UUID {
@@ -234,7 +234,7 @@ func (b *bounce) sendGroupMessage(gm *GroupMessage) uuid.UUID {
 	}
 	b.updateLastGroupActivity(gm.Destination, gm.SavedAt)
 
-	go b.broadcast(gm)
+	b.broadcast(gm)
 
 	return gm.ID
 }

@@ -88,7 +88,7 @@ func (b *bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, of
 	requestedDirectMessageIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
 	for _, dmID := range requestedDirectMessageIDs {
-		var dm DirectMessage
+		var dm directMessage
 		err := b.database.Where("id = ?", dmID).First(&dm).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {

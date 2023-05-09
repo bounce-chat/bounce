@@ -17,7 +17,7 @@ var directMessageMutex sync.Mutex
 //
 // A direct message is a chat message from one user to another
 //
-type DirectMessage struct {
+type directMessage struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt          int64     `msgpack:"-"`
 	WrittenAt        int64
@@ -25,14 +25,14 @@ type DirectMessage struct {
 	DeleteAt         int64 `msgpack:"-"` // Absolute time at which the messages expires.  Time it was first acked/received + RetentionSeconds
 	Read             bool  `msgpack:"-"`
 	Undeliverable    bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
-	Source           uuid.UUID
-	Destination      uuid.UUID
+	Author           uuid.UUID
+	Xor              uuid.UUID // XOR of the two users in the DM
 	Text             string
 	payload          []byte
 	payloadMutex     sync.Mutex
 }
 
-func (dm *DirectMessage) BeforeCreate(tx *gorm.DB) error {
+func (dm *directMessage) BeforeCreate(tx *gorm.DB) error {
 	if dm.ID == uuid.Nil {
 		return errors.New("direct message must have an ID assigned before creation")
 	}
@@ -40,31 +40,31 @@ func (dm *DirectMessage) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (dm *DirectMessage) AfterDelete(tx *gorm.DB) error {
+func (dm *directMessage) AfterDelete(tx *gorm.DB) error {
 	return tx.Where("frame_id = ? AND frame_type = ?", dm.ID, typeDirectMessage).Delete(&deliveryRecord{}).Error
 }
 
-func (dm *DirectMessage) getID() uuid.UUID {
+func (dm *directMessage) getID() uuid.UUID {
 	return dm.ID
 }
 
-func (dm *DirectMessage) getScope(_ uuid.UUID) int {
-	if dm.Source == dm.Destination {
+func (dm *directMessage) getScope(_ uuid.UUID) int {
+	if dm.Xor == uuid.Nil {
 		// A DM to ourselves, only needs to be sent to sync devices
 		return scopeSync
 	}
 	return scopeUser
 }
 
-func (dm *DirectMessage) getDestination(myID uuid.UUID) uuid.UUID {
-	return xor(xor(dm.Source, dm.Destination), myID)
+func (dm *directMessage) getDestination(myID uuid.UUID) uuid.UUID {
+	return xor(dm.Xor, myID)
 }
 
-func (dm *DirectMessage) getType() uint16 {
+func (dm *directMessage) getType() uint16 {
 	return typeDirectMessage
 }
 
-func (dm *DirectMessage) getPayload() []byte {
+func (dm *directMessage) getPayload() []byte {
 	dm.payloadMutex.Lock()
 	defer dm.payloadMutex.Unlock()
 
@@ -80,11 +80,11 @@ func (dm *DirectMessage) getPayload() []byte {
 	return dm.payload
 }
 
-func (dm *DirectMessage) getAuthor() uuid.UUID {
-	return dm.Source
+func (dm *directMessage) getAuthor() uuid.UUID {
+	return dm.Author
 }
 
-func (dm *DirectMessage) getTimestamp() int64 {
+func (dm *directMessage) getTimestamp() int64 {
 	return dm.WrittenAt
 }
 
@@ -93,7 +93,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	defer directMessageMutex.Unlock()
 
 	// Unmarshal the payload
-	var dm DirectMessage
+	var dm directMessage
 	err := msgpack.Unmarshal(payload, &dm)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -116,15 +116,15 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	if !b.dmOriginAcceptable(dm, srcDevice) {
 		log.WithFields(log.Fields{
 			"message_id":  dm.ID,
-			"source":      dm.Source,
-			"destination": dm.Destination,
+			"author":      dm.Author,
+			"destination": dm.getDestination(b.currentUserID()),
 			"peer":        peer,
 		}).Warn("ignoring a direct message from an unacceptable peer")
 		return
 	}
 
 	// If we have already seen this message, all we need to do is mark that this peer has the message as well and ack it
-	var existingDM DirectMessage
+	var existingDM directMessage
 	err = b.database.Where("id = ?", dm.ID).First(&existingDM).Error
 	if err == nil {
 		b.markDeliveredTo(&existingDM, peer)
@@ -139,8 +139,8 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	// If the message is older than the user's ClearBefore, don't process it
 	if b.directMessageWrittenBeforeHistoryCleared(dm.getDestination(b.currentUserID()), dm.WrittenAt) {
 		log.WithFields(log.Fields{
-			"source":      dm.Source,
-			"destination": dm.Destination,
+			"author":      dm.Author,
+			"destination": dm.getDestination(b.currentUserID()),
 			"written_at":  dm.WrittenAt,
 		}).Debug("ignoring a direct message that was written before the history was cleared")
 		return
@@ -166,22 +166,28 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	b.markDeliveredTo(&dm, peer)
 
 	// Send the message to the user interface
-	b.userInterface.ReceivedDirectMessage(dm)
+	b.userInterface.ReceivedDirectMessage(DirectMessage{
+		ID:        dm.ID,
+		Author:    dm.Author,
+		Thread:    dm.getDestination(b.currentUserID()),
+		WrittenAt: dm.WrittenAt,
+		Text:      dm.Text,
+	})
 
 	// Make sure the user interface isn't still displaying that the user is typing
-	b.clearUserTypingIndicator(dm.Source, dm.getDestination(b.currentUserID()))
+	b.clearUserTypingIndicator(dm.Author, dm.getDestination(b.currentUserID()))
 
 	// Send an ack to the sender that we got it
 	go b.sendAck(peer, typeDirectMessage, dm.ID)
 
 	// Gossip the message to any online devices that should have it
-	go b.broadcast(&dm)
+	b.broadcast(&dm)
 }
 
-func (b *bounce) dmOriginAcceptable(dm DirectMessage, dev device) bool {
+func (b *bounce) dmOriginAcceptable(dm directMessage, dev device) bool {
 	// If this is a message to ourselves, then the peer must be a device we own
-	if dm.Source == dm.Destination {
-		if dm.Source == b.currentUserID() {
+	if dm.Xor == uuid.Nil {
+		if dm.Author == b.currentUserID() {
 			if dev.UserID == b.currentUserID() {
 				return true
 			} else {
@@ -194,32 +200,19 @@ func (b *bounce) dmOriginAcceptable(dm DirectMessage, dev device) bool {
 			// This is a message from a user to themselves, but that user isn't us
 			log.WithFields(log.Fields{
 				"peer":        dev.Address,
-				"source":      dm.Source,
-				"destination": dm.Destination,
+				"author":      dm.Author,
+				"destination": dm.getDestination(b.currentUserID()),
 			}).Warn("received self direct message not intended for us")
 			return false
 		}
 	} else {
-		// Make sure that at least one of the user IDs is us
-		if !(dm.Source == b.currentUserID() || dm.Destination == b.currentUserID()) {
-			log.WithFields(log.Fields{
-				"peer":        dev.Address,
-				"source":      dm.Source,
-				"destination": dm.Destination,
-			}).Warn("received direct message not intended for us")
-			return false
-		}
-
-		// Figure out which user ID is not us
-		otherParty := xor(xor(dm.Source, dm.Destination), b.currentUserID())
-
 		// Make sure that user actually exists
 		var otherUser user
-		err := b.database.Preload(clause.Associations).First(&otherUser, "id = ?", otherParty).Error
+		err := b.database.Preload(clause.Associations).First(&otherUser, "id = ?", dm.getDestination(b.currentUserID())).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"user_id": otherParty,
+					"user_id": dm.getDestination(b.currentUserID()),
 				}).Error("user not found while validating direct message peer address")
 				return false
 			} else {
@@ -246,30 +239,39 @@ func (b *bounce) dmOriginAcceptable(dm DirectMessage, dev device) bool {
 		// The device that sent this otherwise valid DM was not owned by the indicated counterparty
 		log.WithFields(log.Fields{
 			"message_id":  dm.ID,
-			"source":      dm.Source,
-			"destination": dm.Destination,
+			"author":      dm.Author,
+			"destination": dm.getDestination(b.currentUserID()),
 			"peer":        dev.Address,
 		}).Warn("received direct message from a device not in the allowed device set")
 		return false
 	}
 }
 
-func (b *bounce) sendDirectMessage(message *DirectMessage) uuid.UUID {
-	message.ID = uuid.New()
-	message.WrittenAt = time.Now().Unix()
-	message.Read = true
-	message.Source = b.currentUserID()
-	message.RetentionSeconds = b.getDMRetention(message.Destination)
+func (b *bounce) sendDirectMessage(message *DirectMessage) {
+	if message.ID != uuid.Nil {
+		log.Fatal("direct message ID cannot be set by the UI")
+	}
+	now := time.Now().Unix()
+	dm := &directMessage{
+		ID:               uuid.New(),
+		WrittenAt:        now,
+		Read:             true,
+		Author:           b.currentUserID(),
+		Xor:              xor(b.currentUserID(), message.Thread),
+		RetentionSeconds: b.getDMRetention(message.Thread),
+		Text:             message.Text,
+	}
+	message.ID = dm.ID
+	message.Author = b.currentUserID()
+	message.WrittenAt = now
 
-	err := b.database.Create(message).Error
+	err := b.database.Create(dm).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error saving direct message to the database")
 	}
-	b.updateLastUserActivity(message.getDestination(b.currentUserID()), message.SavedAt)
+	b.updateLastUserActivity(message.Thread, dm.SavedAt)
 
-	b.broadcast(message)
-
-	return message.ID
+	b.broadcast(dm)
 }

@@ -186,7 +186,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	b.markDeliveredTo(&ug, peer)
 
 	// Broadcast it
-	go b.broadcast(&ug)
+	b.broadcast(&ug)
 }
 
 func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
@@ -602,7 +602,7 @@ func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) error {
 	}
 
 	// Broadcast
-	go b.broadcast(&ug)
+	b.broadcast(&ug)
 
 	return nil
 }

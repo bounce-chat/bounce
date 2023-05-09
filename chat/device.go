@@ -142,7 +142,7 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 	b.markDeliveredTo(&newDevice, peer)
 
 	// Broadcast it
-	go b.broadcast(&newDevice)
+	b.broadcast(&newDevice)
 
 	// ACK it
 	b.sendAck(peer, typeDevice, newDevice.ID)

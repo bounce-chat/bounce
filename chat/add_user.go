@@ -350,7 +350,7 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 	go b.auditPeers()
 
 	// Broadcast it
-	go b.broadcast(&au)
+	b.broadcast(&au)
 
 	// Inform the UI that a new friend has been added
 	if userIsNew {
