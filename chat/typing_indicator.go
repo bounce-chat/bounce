@@ -253,7 +253,25 @@ func (b *bounce) manuallySendTypingIndicators(ti *typingIndicator, excludedPeer 
 	}).Debug("broadcasting frame")
 
 	broadcastTargets := []*remoteDevice{}
-	if scope == scopeUser {
+	if scope == scopeSync {
+		currentUser, exists := b.currentUser()
+		if !exists {
+			log.Fatal("cannot broadcast typing indicator when no current user exists")
+		}
+
+		for _, dev := range currentUser.Devices {
+			if dev.Address == b.network.Address() {
+				continue
+			}
+			if dev.Address == excludedPeer {
+				continue
+			}
+			rd := b.getRemoteDevice(dev.Address)
+			if rd.connectedSockets > 0 {
+				broadcastTargets = append(broadcastTargets, rd)
+			}
+		}
+	} else if scope == scopeUser {
 		// Add their devices
 		var destinationUser user
 		err := b.database.Preload(clause.Associations).First(&destinationUser, "id = ?", destination).Error
