@@ -190,21 +190,39 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 func (b *bounce) getDirectMessagesToOffer(dev device) []frameReference {
 	// All DMs we have sent to or received from this user in the past week
 	var dms []directMessage
-	err := b.database.
-		Select("direct_messages.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDirectMessage).
-		Where(
-			"delivery_records.id IS NULL AND direct_messages.written_at >= ? AND (direct_messages.destination = ? OR direct_messages.source = ?)",
-			time.Now().Add(-undeliverableAfter).Unix(),
-			dev.UserID,
-			dev.UserID,
-		).
-		Find(&dms).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"peer":  dev.Address,
-			"error": err.Error(),
-		}).Fatal("error loading DMs for reference offer")
+
+	if b.isSyncDevice(dev) {
+		err := b.database.
+			Select("direct_messages.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDirectMessage).
+			Where(
+				"delivery_records.id IS NULL AND direct_messages.written_at >= ?",
+				time.Now().Add(-undeliverableAfter).Unix(),
+				xor(dev.UserID, b.currentUserID()),
+			).
+			Find(&dms).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"peer":  dev.Address,
+				"error": err.Error(),
+			}).Fatal("error loading DMs for reference offer")
+		}
+	} else {
+		err := b.database.
+			Select("direct_messages.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDirectMessage).
+			Where(
+				"delivery_records.id IS NULL AND direct_messages.written_at >= ? AND direct_messages.xor = ?",
+				time.Now().Add(-undeliverableAfter).Unix(),
+				xor(dev.UserID, b.currentUserID()),
+			).
+			Find(&dms).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"peer":  dev.Address,
+				"error": err.Error(),
+			}).Fatal("error loading DMs for reference offer")
+		}
 	}
 
 	// Collect IDs from the DMs

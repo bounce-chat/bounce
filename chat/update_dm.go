@@ -55,7 +55,7 @@ func (ud *updateDM) getID() uuid.UUID {
 }
 
 func (ud *updateDM) getScope(_ uuid.UUID) int {
-	if ud.Type == updateDMTypeChangeMutedUntil {
+	if ud.Type == updateDMTypeChangeMutedUntil || ud.Target == uuid.Nil {
 		return scopeSync
 	}
 
@@ -285,8 +285,9 @@ func (b *bounce) saveAndApplyUpdateDMSetClearBefore(u user, ud updateDM) error {
 	// Decode the new retention value
 	clearBefore := int64(binary.LittleEndian.Uint64(ud.Data))
 
+	// Find and delete any DMs older than the retention value
 	dms := []directMessage{}
-	err = b.database.Select("id").Where("written_at <= ? AND (direct_messages.destination = ? OR direct_messages.source = ?)", clearBefore, u.ID, u.ID).Find(&dms).Error
+	err = b.database.Select("id").Where("written_at <= ? AND xor = ?", clearBefore, ud.Target).Find(&dms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

@@ -75,7 +75,7 @@ func (fyneUI *Fyne) displaySentMessage(thread thread, id uuid.UUID, message stri
 	thread.chatHistoryScroll().ScrollToBottom()
 	thread.chatHistoryScroll().Refresh() // TODO: needed, or does scrolling do a refresh?
 
-	thread.setLastMessageTime(time.Now().Unix())
+	thread.setLastMessageTime(time.Now().Unix()) // TODO: match what's actually on the object
 	fyneUI.refreshThreadOrder()
 }
 
