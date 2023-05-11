@@ -75,7 +75,7 @@ func (fyneUI *Fyne) displaySentMessage(thread thread, id uuid.UUID, message stri
 	thread.chatHistoryScroll().ScrollToBottom()
 	thread.chatHistoryScroll().Refresh() // TODO: needed, or does scrolling do a refresh?
 
-	thread.setLastMessageTime(time.Now().Unix()) // TODO: match what's actually on the object
+	thread.setLastMessageTime(time.Now().Unix())
 	fyneUI.refreshThreadOrder()
 }
 
@@ -174,10 +174,11 @@ func (fyneUI *Fyne) ShowTypingIndicatorInHistory(userID, threadID uuid.UUID) {
 func (fyneUI *Fyne) ShowTypingIndicatorInButton(userID, threadID uuid.UUID) {
 	thread, ok := fyneUI.getThread(threadID)
 	if !ok {
+		// Someone could be typing into a DM that isn't open on our side yet, this isn't always an error
 		log.WithFields(log.Fields{
 			"thread_id": threadID,
 			"user_id":   userID,
-		}).Error("cannot indicate a user is typing in a button with unknown thread")
+		}).Debug("cannot indicate a user is typing in a button with unknown thread")
 		return
 	}
 
@@ -205,9 +206,10 @@ func (fyneUI *Fyne) HideTypingIndicatorInHistory(userID, threadID uuid.UUID) {
 func (fyneUI *Fyne) HideTypingIndicatorInButton(threadID uuid.UUID) {
 	thread, ok := fyneUI.getThread(threadID)
 	if !ok {
+		// Someone could be typing into a DM that isn't open on our side yet, this isn't always an error
 		log.WithFields(log.Fields{
 			"thread_id": threadID,
-		}).Error("cannot clear typing indicator in a button with unknown thread")
+		}).Debug("cannot clear typing indicator in a button with unknown thread")
 		return
 	}
 

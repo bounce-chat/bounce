@@ -281,7 +281,7 @@ func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hide
 		group.scroll.Refresh()
 	}
 
-	group.lastMessage = time.Now().Unix()
+	group.lastMessage = msg.WrittenAt
 	fyneUI.refreshThreadOrder()
 
 	notificationsEnabled := group.notificationsMutedUntil != chat.MutedForever

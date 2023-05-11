@@ -182,8 +182,6 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	for _, gm := range state.GroupMessages {
 		fyneUI.loadGroupMessage(gm, true, true) // TODO: need to handle what's read / unread
 	}
-
-	fyneUI.refreshThreadOrder()
 }
 
 func (fyneUI *Fyne) NetworkOnline() {

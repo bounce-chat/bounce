@@ -240,7 +240,7 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 		dm.scroll.Refresh()
 	}
 
-	dm.lastMessage = time.Now().Unix()
+	dm.lastMessage = msg.WrittenAt
 	fyneUI.refreshThreadOrder()
 
 	notificationsEnabled := dm.notificationsMutedUntil != chat.MutedForever
