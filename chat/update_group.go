@@ -349,7 +349,7 @@ func (b *bounce) saveAndApplyUpdateGroupSetClearBefore(g group, ug updateGroup) 
 	// Decode the new retention value
 	clearBefore := int64(binary.LittleEndian.Uint64(ug.Data))
 
-	gms := []GroupMessage{}
+	gms := []groupMessage{}
 	err = b.database.Select("id").Where("written_at <= ? AND destination = ?", clearBefore, g.ID).Find(&gms).Error
 	if err != nil {
 		log.WithFields(log.Fields{

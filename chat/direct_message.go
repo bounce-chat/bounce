@@ -251,6 +251,7 @@ func (b *bounce) sendDirectMessage(message *DirectMessage) {
 	if message.ID != uuid.Nil {
 		log.Fatal("direct message ID cannot be set by the UI")
 	}
+
 	now := time.Now().Unix()
 	dm := &directMessage{
 		ID:               uuid.New(),

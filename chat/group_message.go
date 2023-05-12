@@ -16,7 +16,7 @@ var groupMessageMutex sync.Mutex
 //
 // A group message is sent from a member of a group to a group
 //
-type GroupMessage struct {
+type groupMessage struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt          int64     `msgpack:"-"`
 	WrittenAt        int64
@@ -24,7 +24,7 @@ type GroupMessage struct {
 	DeleteAt         int64 `msgpack:"-"` // Absolute time at which the messages expires.  Time it was first acked/received + RetentionSeconds
 	Read             bool  `msgpack:"-"`
 	Undeliverable    bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
-	Source           uuid.UUID
+	Author           uuid.UUID
 	Destination      uuid.UUID
 	Text             string
 	Signer           string `msgpack:"-" gorm:"not null"`
@@ -34,7 +34,7 @@ type GroupMessage struct {
 	payloadMutex     sync.Mutex
 }
 
-func (gm *GroupMessage) BeforeCreate(tx *gorm.DB) error {
+func (gm *groupMessage) BeforeCreate(tx *gorm.DB) error {
 	if gm.ID == uuid.Nil {
 		return errors.New("group message must have an ID assigned before creation")
 	}
@@ -42,27 +42,27 @@ func (gm *GroupMessage) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (gm *GroupMessage) AfterDelete(tx *gorm.DB) error {
+func (gm *groupMessage) AfterDelete(tx *gorm.DB) error {
 	return tx.Where("frame_id = ? AND frame_type = ?", gm.ID, typeGroupMessage).Delete(&deliveryRecord{}).Error
 }
 
-func (gm *GroupMessage) getID() uuid.UUID {
+func (gm *groupMessage) getID() uuid.UUID {
 	return gm.ID
 }
 
-func (gm *GroupMessage) getScope(_ uuid.UUID) int {
+func (gm *groupMessage) getScope(_ uuid.UUID) int {
 	return scopeGroup
 }
 
-func (gm *GroupMessage) getDestination(_ uuid.UUID) uuid.UUID {
+func (gm *groupMessage) getDestination(_ uuid.UUID) uuid.UUID {
 	return gm.Destination
 }
 
-func (gm *GroupMessage) getType() uint16 {
+func (gm *groupMessage) getType() uint16 {
 	return typeGroupMessage
 }
 
-func (gm *GroupMessage) getPayload() []byte {
+func (gm *groupMessage) getPayload() []byte {
 	gm.payloadMutex.Lock()
 	defer gm.payloadMutex.Unlock()
 
@@ -83,11 +83,11 @@ func (gm *GroupMessage) getPayload() []byte {
 	return gm.payload
 }
 
-func (gm *GroupMessage) getAuthor() uuid.UUID {
-	return gm.Source
+func (gm *groupMessage) getAuthor() uuid.UUID {
+	return gm.Author
 }
 
-func (gm *GroupMessage) getTimestamp() int64 {
+func (gm *groupMessage) getTimestamp() int64 {
 	return gm.WrittenAt
 }
 
@@ -112,7 +112,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		}).Error("error unpacking signed container for group message")
 		return
 	}
-	var gm GroupMessage
+	var gm groupMessage
 	err = msgpack.Unmarshal(sc.Payload, &gm)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -124,7 +124,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	gm.Signer = sc.Signer
 
 	// If we have already seen this message, all we need to do is mark that this peer has the message and ack it
-	var existingGM GroupMessage
+	var existingGM groupMessage
 	err = b.database.Where("id = ?", gm.ID).First(&existingGM).Error
 	if err == nil {
 		b.markDeliveredTo(&existingGM, peer)
@@ -139,7 +139,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	// If the message is older than the group's ClearBefore, don't process it
 	if b.groupMessageWrittenBeforeHistoryCleared(gm.Destination, gm.WrittenAt) {
 		log.WithFields(log.Fields{
-			"user":       gm.Source,
+			"user":       gm.Author,
 			"group":      gm.Destination,
 			"written_at": gm.WrittenAt,
 		}).Debug("ignoring a group message that was written before the history was cleared")
@@ -152,21 +152,21 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	}
 
 	// Make sure the author is in the group
-	if !b.userIsInGroup(gm.Source, gm.Destination) {
+	if !b.userIsInGroup(gm.Author, gm.Destination) {
 		log.WithFields(log.Fields{
-			"user":  gm.Source,
+			"user":  gm.Author,
 			"group": gm.Destination,
 		}).Warn("user sent message to a group they are not in, ignoring")
 		return
 	}
 
 	// Make sure the device that signed this message belongs to the author
-	if !b.signedByUser(sc, gm.Source) {
+	if !b.signedByUser(sc, gm.Author) {
 		log.WithFields(log.Fields{
 			"id":     gm.ID,
 			"group":  gm.Destination,
 			"signer": sc.Signer,
-			"author": gm.Source,
+			"author": gm.Author,
 		}).Warn("received group message signed by a different user than the author, ignoring")
 		return
 	}
@@ -185,10 +185,16 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	b.markDeliveredTo(&gm, peer)
 
 	// Inform the UI about the new message
-	b.userInterface.ReceivedGroupMessage(gm)
+	b.userInterface.ReceivedGroupMessage(GroupMessage{
+		ID:        gm.ID,
+		Author:    gm.Author,
+		Thread:    gm.Destination,
+		WrittenAt: gm.WrittenAt,
+		Text:      gm.Text,
+	})
 
 	// Make sure the user interface isn't still displaying that the user is typing
-	b.clearUserTypingIndicator(gm.Source, gm.Destination)
+	b.clearUserTypingIndicator(gm.Author, gm.Destination)
 
 	// Save the new group message
 	err = b.database.Create(&gm).Error
@@ -208,12 +214,24 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	b.broadcast(&gm)
 }
 
-func (b *bounce) sendGroupMessage(gm *GroupMessage) uuid.UUID {
-	gm.ID = uuid.New()
-	gm.WrittenAt = time.Now().Unix()
-	gm.Read = true
-	gm.Source = b.currentUserID()
-	gm.RetentionSeconds = b.getGroupRetention(gm.Destination)
+func (b *bounce) sendGroupMessage(message *GroupMessage) {
+	if message.ID != uuid.Nil {
+		log.Fatal("group message ID cannot be set by the UI")
+	}
+
+	now := time.Now().Unix()
+	gm := &groupMessage{
+		ID:               uuid.New(),
+		WrittenAt:        now,
+		Read:             true,
+		Author:           b.currentUserID(),
+		Destination:      message.Thread,
+		RetentionSeconds: b.getGroupRetention(message.Thread),
+		Text:             message.Text,
+	}
+	message.ID = gm.ID
+	message.Author = b.currentUserID()
+	message.WrittenAt = now
 
 	var err error
 	gm.OriginalPayload, err = msgpack.Marshal(gm)
@@ -235,6 +253,4 @@ func (b *bounce) sendGroupMessage(gm *GroupMessage) uuid.UUID {
 	b.updateLastGroupActivity(gm.Destination, gm.SavedAt)
 
 	b.broadcast(gm)
-
-	return gm.ID
 }

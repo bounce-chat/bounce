@@ -155,12 +155,11 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	}
 	entry.customOnSubmitted = func() {
 		message := &chat.GroupMessage{
-			Destination: group.id,
-			Text:        entry.Text,
+			Thread: group.id,
+			Text:   entry.Text,
 		}
-
-		id := fyneUI.callbacks.SendGroupMessage(message)
-		fyneUI.displaySentMessage(group, id, message.Text)
+		fyneUI.callbacks.SendGroupMessage(message)
+		fyneUI.displaySentMessage(group, message.ID, message.Text)
 
 		entry.Text = ""
 		entry.Refresh()
@@ -209,20 +208,20 @@ func (fyneUI *Fyne) ReceivedGroupMessage(msg chat.GroupMessage) {
 
 func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hideNotification bool) {
 	// Log an error and early return if the group doesn't exist
-	group, exists := fyneUI.groups[msg.Destination]
+	group, exists := fyneUI.groups[msg.Thread]
 	if !exists {
 		log.WithFields(log.Fields{
-			"group_id": msg.Destination,
+			"group_id": msg.Thread,
 		}).Error("group does not exist on message receive, ignoring the message")
 		return
 	}
 
 	chatHistory := group.scroll.Content.(*fyne.Container)
 
-	user, exists := group.users.get(msg.Source)
+	user, exists := group.users.get(msg.Author)
 	if !exists {
 		log.WithFields(log.Fields{
-			"user_id": msg.Source,
+			"user_id": msg.Author,
 		}).Error("group received a message from user ID not in thread")
 		return
 	}
@@ -234,7 +233,7 @@ func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hide
 	displayName := user.name
 	isOutgoing := false
 	// TODO: this really needs to be cleaned up
-	if msg.Source == fyneUI.profile.id {
+	if msg.Author == fyneUI.profile.id {
 		// We're learning about a message we sent from another device
 		displayName = "You"
 		isOutgoing = true

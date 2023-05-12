@@ -59,7 +59,7 @@ func (b *bounce) openDatabase() {
 		&updateDM{},
 		&groupCreation{},
 		&group{},
-		&GroupMessage{},
+		&groupMessage{},
 		&updateGroup{},
 		&addUser{},
 		&addUserOffer{},
@@ -163,7 +163,7 @@ func (b *bounce) pruneGroupMessages(informUI bool) {
 
 	if informUI {
 		// Find messages that should be pruned and delete them from the UI
-		var gms []GroupMessage
+		var gms []groupMessage
 		err := b.database.Select("id").Where("delete_at != 0 AND delete_at < ?", now).Find(&gms).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -176,7 +176,7 @@ func (b *bounce) pruneGroupMessages(informUI bool) {
 	}
 
 	// Delete those messages from the database
-	err := b.database.Where("delete_at != 0 AND delete_at < ?", now).Delete(&GroupMessage{}).Error
+	err := b.database.Where("delete_at != 0 AND delete_at < ?", now).Delete(&groupMessage{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -184,7 +184,7 @@ func (b *bounce) pruneGroupMessages(informUI bool) {
 	}
 
 	// Find all messages that are undeliverable and inform the UI, marking them for deletion if they don't have indefinite retention
-	var gms []GroupMessage
+	var gms []groupMessage
 	err = b.database.
 		Select("group_messages.id", "group_messages.retention_seconds").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_messages.id AND delivery_records.frame_type == ?", typeGroupMessage).
@@ -308,15 +308,28 @@ func (b *bounce) buildInitialState() InitialState {
 		)
 	}
 
-	gms := []GroupMessage{}
+	gms := []groupMessage{}
 	b.database.Order("saved_at asc").Find(&gms) // TODO: error check
+	exportedGMs := []GroupMessage{}
+	for _, gm := range gms {
+		exportedGMs = append(
+			exportedGMs,
+			GroupMessage{
+				ID:        gm.ID,
+				Author:    gm.Author,
+				Thread:    gm.getDestination(b.currentUserID()),
+				WrittenAt: gm.WrittenAt,
+				Text:      gm.Text,
+			},
+		)
+	}
 
 	return InitialState{
 		Profile:        profile,
 		Users:          chatUsers,
 		Groups:         chatGroups,
 		DirectMessages: exportedDMs,
-		GroupMessages:  gms,
+		GroupMessages:  exportedGMs,
 	}
 }
 

@@ -25,13 +25,13 @@ type Group struct {
 	UserIDs []uuid.UUID
 }
 
-//type GroupMessage struct {
-//	ID        uuid.UUID
-//	Author    uuid.UUID
-//	Thread    uuid.UUID
-//	WrittenAt int64
-//	Text      string
-//}
+type GroupMessage struct {
+	ID        uuid.UUID
+	Author    uuid.UUID
+	Thread    uuid.UUID
+	WrittenAt int64
+	Text      string
+}
 
 type InitialState struct {
 	Profile        *User
@@ -125,7 +125,7 @@ type UICallbacks struct {
 	// The user wants to send a direct message.
 	SendDirectMessage func(*DirectMessage)
 	// The user wants to send a group  message
-	SendGroupMessage func(*GroupMessage) uuid.UUID
+	SendGroupMessage func(*GroupMessage)
 
 	// Called every time a character is entered into an entry to inform the chat engine to send a typing indicator
 	TypingInDirectMessage func(userID uuid.UUID)

@@ -116,7 +116,7 @@ func (b *bounce) getRequestedGroupMessagePayloads(peer device, requestedIDs, off
 	requestedGroupMessageIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
 	for _, gmID := range requestedGroupMessageIDs {
-		var gm GroupMessage
+		var gm groupMessage
 		err := b.database.Where("id = ?", gmID).First(&gm).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {

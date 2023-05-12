@@ -235,7 +235,7 @@ func (b *bounce) getDirectMessagesToOffer(dev device) []frameReference {
 
 func (b *bounce) getGroupMessagesToOffer(dev device) []frameReference {
 	// All group messages that this device's user is a part of that are less than a week old
-	var gms []GroupMessage
+	var gms []groupMessage
 	err := b.database.
 		Select("group_messages.*").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeGroupMessage).
@@ -505,7 +505,7 @@ func (b *bounce) getGroupMessagesToRequest(dev device, deviceExists bool, offere
 	references := []frameReference{}
 
 	for _, gmID := range offeredIDs {
-		var gm GroupMessage
+		var gm groupMessage
 		err := b.database.First(&gm, "id = ?", gmID).Error
 		if err == nil {
 			if deviceExists && !b.isDeliveredTo(&gm, dev.Address) {

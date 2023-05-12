@@ -108,7 +108,7 @@ func (b *bounce) handleAckDirectMessages(peer string, ids []uuid.UUID) {
 
 func (b *bounce) handleAckGroupMessages(peer string, ids []uuid.UUID) {
 	for _, gmID := range ids {
-		var gm GroupMessage
+		var gm groupMessage
 		err := b.database.First(&gm, "id = ?", gmID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
