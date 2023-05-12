@@ -20,6 +20,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var torLock sync.Mutex
+
 var handshakeChallengeSize = 32
 var signatureSize = 64
 
@@ -190,6 +192,9 @@ func (bounceTor *TorNetwork) Start(configDirectory string, callbacks chat.Networ
 }
 
 func (bounceTor *TorNetwork) updateOnlineStatus() {
+	torLock.Lock()
+	defer torLock.Unlock()
+
 	if bounceTor.tor == nil {
 		if bounceTor.online {
 			// This shoudn't be possible, but let's handle it anyway
@@ -298,6 +303,9 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 }
 
 func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
+	torLock.Lock()
+	defer torLock.Unlock()
+
 	if bounceTor.tor == nil || bounceTor.onion == nil {
 		// Technically we don't need to wait for the hidden service to be published before we can dial,
 		// but any failures to publish indicate a major problem

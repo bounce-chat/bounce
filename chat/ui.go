@@ -25,6 +25,14 @@ type Group struct {
 	UserIDs []uuid.UUID
 }
 
+//type GroupMessage struct {
+//	ID        uuid.UUID
+//	Author    uuid.UUID
+//	Thread    uuid.UUID
+//	WrittenAt int64
+//	Text      string
+//}
+
 type InitialState struct {
 	Profile        *User
 	Users          []User
@@ -164,4 +172,6 @@ type UICallbacks struct {
 	// user soon.  Calling this will cause the chat engine to attempt to dial the user if there isn't already
 	// an open connection, reducing the latency in message delivery should the user decide to send a message.
 	UserConnectionDesired func(uuid.UUID)
+
+	GroupConnectionDesired func(uuid.UUID)
 }

@@ -169,9 +169,8 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	group.entryBar = container.NewMax(entry)
 
 	group.button = newThreadButton(todoImage(), bounceGroup.Name, func() {
-		// TODO: tell the entine this is happening so that it can make sure
-		// there's a connection open
 		fyneUI.displayThread(group)
+		fyneUI.callbacks.GroupConnectionDesired(group.id)
 	})
 	// Keep the last message time counter up to date
 	go func() {
