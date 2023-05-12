@@ -21,6 +21,8 @@ import (
 )
 
 var torLock sync.Mutex
+var liveness sync.WaitGroup
+var dials sync.WaitGroup
 
 var handshakeChallengeSize = 32
 var signatureSize = 64
@@ -30,6 +32,7 @@ type TorNetwork struct {
 	keyDirectory    string
 	onion           *tor.OnionService
 	tor             *tor.Tor
+	dialer          *tor.Dialer
 	callbacks       chat.NetworkCallbacks
 	publicKey       ed25519.PublicKey
 	privateKey      ed25519.PrivateKey
@@ -180,6 +183,14 @@ func (bounceTor *TorNetwork) Start(configDirectory string, callbacks chat.Networ
 		}).Fatal("failed to create TOR hidden service")
 	}
 
+	// Create a dialer
+	bounceTor.dialer, err = bounceTor.tor.Dialer(context.TODO(), &tor.DialConf{})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error creating dialer")
+	}
+
 	log.WithFields(log.Fields{
 		"id": bounceTor.onion.ID,
 	}).Info("published hidden service")
@@ -193,7 +204,10 @@ func (bounceTor *TorNetwork) Start(configDirectory string, callbacks chat.Networ
 
 func (bounceTor *TorNetwork) updateOnlineStatus() {
 	torLock.Lock()
-	defer torLock.Unlock()
+	dials.Wait()
+	liveness.Add(1)
+	torLock.Unlock()
+	defer liveness.Done()
 
 	if bounceTor.tor == nil {
 		if bounceTor.online {
@@ -303,14 +317,11 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 }
 
 func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
-	defer func() {
-		if r := recover(); r != nil {
-			// https://github.com/cretz/bine/issues/57
-			log.Fatal("recovered a panic while dialing, likely nil pointer deference in bine")
-		}
-	}()
 	torLock.Lock()
-	defer torLock.Unlock()
+	liveness.Wait()
+	dials.Add(1)
+	torLock.Unlock()
+	defer dials.Done()
 
 	if bounceTor.tor == nil || bounceTor.onion == nil {
 		// Technically we don't need to wait for the hidden service to be published before we can dial,
@@ -318,14 +329,7 @@ func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
 		return nil, errors.New("cannot dial while network is not started")
 	}
 
-	dialer, err := bounceTor.tor.Dialer(context.TODO(), &tor.DialConf{}) // TODO: store this so it doesn't need to be recreated all the time?
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error creating dialer")
-	}
-
-	conn, err := dialer.Dial("tcp", address+".onion:80")
+	conn, err := bounceTor.dialer.Dial("tcp", address+".onion:80")
 	if err != nil {
 		return nil, err
 	}

@@ -136,7 +136,11 @@ func (b *bounce) shutdown() {
 	// any errors encountered here must be logged as errors.
 	b.shutdownMutex.Lock()
 
-	// TODO: stop the peer audit loop, wait for it to return?  just lock the audit mutex?
+	// Stop any new attempts to dial
+	log.Info("locking the device pool")
+	b.devicePool.auditing.Lock()
+
+	// TODO: stop accepting connections, stop running new handlers?
 
 	// Stop all running tasks and close all connections to remote devices
 	log.Info("closing all remote connections")
