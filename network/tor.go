@@ -303,6 +303,12 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 }
 
 func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			// https://github.com/cretz/bine/issues/57
+			log.Fatal("recovered a panic while dialing, likely nil pointer deference in bine")
+		}
+	}()
 	torLock.Lock()
 	defer torLock.Unlock()
 
