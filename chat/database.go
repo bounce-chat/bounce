@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"errors"
 	"os"
 	"time"
 
@@ -16,17 +17,18 @@ import (
 )
 
 func (b *bounce) openDatabase() {
-	databaseFile := b.configDirectory + "/bounce.db" //TODO: if needed: ?_busy_timeout=5000
+	databaseFile := b.configDirectory + "/bounce.db"
 
+	// Define a logger for gorm that uses logrus
 	gormLogger := logger.New(
 		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags), // TODO: https://gist.github.com/bnadland/2e4287b801a47dcfcc94
 		logger.Config{
-			//SlowThreshold:             time.Second,
 			LogLevel:                  logger.Error,
 			IgnoreRecordNotFoundError: true,
 		},
 	)
 
+	// Open the database
 	var err error
 	b.database, err = gorm.Open(sqlite.Open(databaseFile), &gorm.Config{
 		Logger: gormLogger,
@@ -37,9 +39,8 @@ func (b *bounce) openDatabase() {
 			"error": err.Error(),
 		}).Fatal("error opening database")
 	}
-	// To prevent database is locked errors
-	// TODO: is this the correct approach?
-	//b.database.Exec("PRAGMA journal_mode=WAL;")
+
+	// Set max connections to 1 to avoid locks
 	sqliteDB, err := b.database.DB()
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -48,6 +49,7 @@ func (b *bounce) openDatabase() {
 	}
 	sqliteDB.SetMaxOpenConns(1)
 
+	// Migrate
 	err = b.database.AutoMigrate(
 		&user{},
 		&device{},
@@ -70,6 +72,7 @@ func (b *bounce) openDatabase() {
 		}).Fatal("error migrating the database")
 	}
 
+	// Prune and kick off pruning loop
 	b.pruneDatabase(false)
 	go b.keepDatabasePruned()
 }
@@ -87,8 +90,6 @@ func (b *bounce) keepDatabasePruned() {
 func (b *bounce) pruneDatabase(informUI bool) {
 	b.pruneDirectMessages(informUI)
 	b.pruneGroupMessages(informUI)
-	b.pruneSyncDeviceOffers()
-	b.pruneDeliveryRecords()
 }
 
 func (b *bounce) pruneDirectMessages(informUI bool) {
@@ -225,50 +226,30 @@ func (b *bounce) pruneGroupMessages(informUI bool) {
 	}
 }
 
-func (b *bounce) pruneSyncDeviceOffers() {
-	fiveMinutesAgo := time.Now().Add(-5 * time.Minute).Unix()
-
-	err := b.database.Where("timestamp < ?", fiveMinutesAgo).Delete(syncDeviceOffer{}).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error pruning old sync device offers")
-	}
-}
-
-func (b *bounce) pruneDeliveryRecords() {
-	// Some objects are not meant to persist to the database, or at least not meant
-	// to persist long.  These objects cannot prune delivery records when they delete
-	// since they are never stored in the database.  To prevent leaks, we prune them
-	// here well after they are needed.
-	aDayAgo := time.Now().Add(-24 * time.Hour).Unix()
-	err := b.database.Where(
-		"created_at < ? AND frame_type IN (?)",
-		aDayAgo,
-		typeReferenceOffer,
-	).Delete(&deliveryRecord{}).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error pruning delivery records")
-	}
-}
-
 func (b *bounce) buildInitialState() InitialState {
+	// Load the profile
 	var profile *User
-	var count int64
-	b.database.Model(&user{}).Where("profile = ?", true).Count(&count)
-	if count > 0 {
-		var dbProfile user
-		b.database.Where("profile = ?", true).First(&dbProfile) // TODO: error check, clean this up
+	var dbProfile user
+	err := b.database.Where("profile = ?", true).First(&dbProfile).Error
+	if err == nil {
 		profile = &User{
 			ID:   dbProfile.ID,
 			Name: dbProfile.Name,
 		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up profile user")
 	}
 
+	// Load all users
 	users := []user{}
-	b.database.Find(&users) // TODO: exclude current profile?  Self DMs are actually useful for sending data between devices, saving things
+	err = b.database.Find(&users).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up all users")
+	}
 	chatUsers := []User{}
 	for _, u := range users {
 		chatUsers = append(chatUsers, User{
@@ -277,8 +258,14 @@ func (b *bounce) buildInitialState() InitialState {
 		})
 	}
 
+	// Load all groups
 	groups := []group{}
-	b.database.Preload(clause.Associations).Find(&groups) // TODO: error check
+	err = b.database.Preload(clause.Associations).Find(&groups).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up all groups")
+	}
 	chatGroups := []Group{}
 	for _, g := range groups {
 		userList := []uuid.UUID{}
@@ -292,8 +279,14 @@ func (b *bounce) buildInitialState() InitialState {
 		})
 	}
 
+	// Load all direct messages
 	dms := []directMessage{}
-	b.database.Order("saved_at asc").Find(&dms) // TODO: error check
+	err = b.database.Order("saved_at asc").Find(&dms).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up all direct messages")
+	}
 	exportedDMs := []DirectMessage{}
 	for _, dm := range dms {
 		exportedDMs = append(
@@ -308,8 +301,14 @@ func (b *bounce) buildInitialState() InitialState {
 		)
 	}
 
+	// Load all group messages
 	gms := []groupMessage{}
-	b.database.Order("saved_at asc").Find(&gms) // TODO: error check
+	err = b.database.Order("saved_at asc").Find(&gms).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up all group messages")
+	}
 	exportedGMs := []GroupMessage{}
 	for _, gm := range gms {
 		exportedGMs = append(
@@ -324,6 +323,7 @@ func (b *bounce) buildInitialState() InitialState {
 		)
 	}
 
+	// Create the initial state for the UI
 	return InitialState{
 		Profile:        profile,
 		Users:          chatUsers,
@@ -331,21 +331,4 @@ func (b *bounce) buildInitialState() InitialState {
 		DirectMessages: exportedDMs,
 		GroupMessages:  exportedGMs,
 	}
-}
-
-type profileExport struct {
-	ID         uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
-	Secret     string
-	Name       string `json:"-"`
-	OneTimeUse bool   `json:"-"`
-	Expiration int64
-	Profile    user `gorm:"-"`
-}
-
-func (profileExport *profileExport) BeforeCreate(tx *gorm.DB) error {
-	if profileExport.ID != uuid.Nil {
-		log.Fatal("unexpected profileExport primary key assigned before create")
-	}
-	profileExport.ID = uuid.New()
-	return nil
 }

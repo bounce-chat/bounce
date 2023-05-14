@@ -134,6 +134,23 @@ func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 	}).Error
 }
 
+type profileExport struct {
+	ID         uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
+	Secret     string
+	Name       string `json:"-"`
+	OneTimeUse bool   `json:"-"`
+	Expiration int64
+	Profile    user `gorm:"-"`
+}
+
+func (profileExport *profileExport) BeforeCreate(tx *gorm.DB) error {
+	if profileExport.ID != uuid.Nil {
+		log.Fatal("unexpected profileExport primary key assigned before create")
+	}
+	profileExport.ID = uuid.New()
+	return nil
+}
+
 func (b *bounce) exportContact(name string, expiration int64, oneTime bool) []byte {
 	myProfile, exists := b.currentUser()
 	if !exists {

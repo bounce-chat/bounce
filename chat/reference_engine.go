@@ -52,7 +52,6 @@ func (b *bounce) openReferenceDatabase() {
 	)
 
 	var err error
-	//b.referenceDatabase, err = gorm.Open(sqlite.Open("/home/hayden/.bounce/references.db"), &gorm.Config {  TODO: for testing
 	b.referenceDatabase, err = gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{
 		Logger: gormLogger,
 	})
@@ -88,22 +87,24 @@ func (b *bounce) keepReferenceDatabasePruned() {
 
 	for _ = range databasePruningTicker.C {
 		//b.pruningDatabase.Add(1)
-		b.pruneFrameReferences()
+		fiveMinutesAgo := time.Now().Add(-5 * time.Minute).Unix()
+
+		err := b.referenceDatabase.Where("created_at < ?", fiveMinutesAgo).Delete(&frameReference{}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error pruning frame references")
+		}
+
+		err = b.referenceDatabase.Where("created_at < ?", fiveMinutesAgo).Delete(&deliveryRecord{}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error pruning delivery records from reference database")
+		}
 		//b.pruningDatabase.Done()
 	}
 
-}
-
-func (b *bounce) pruneFrameReferences() {
-	// Delete any old offers or outgoing requests that are too old to be actionable
-	fiveMinutesAgo := time.Now().Add(-5 * time.Minute).Unix()
-
-	err := b.referenceDatabase.Where("created_at < ?", fiveMinutesAgo).Delete(&frameReference{}).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error pruning frame references")
-	}
 }
 
 //
