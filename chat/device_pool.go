@@ -52,7 +52,7 @@ func (b *bounce) peer() {
 	}
 }
 
-func (b *bounce) makeInitialPeeringConnections() {
+func (b *bounce) makeInitialPeeringConnections() { // This gets called before the network is online right now and probably doesn't make sense
 	b.devicePool.auditing.Lock()
 	defer b.devicePool.auditing.Unlock()
 
@@ -81,6 +81,9 @@ func (b *bounce) auditPeers() {
 
 	// Close any extra connections we aren't using
 	b.closeUnusedConnections()
+
+	// Dial additional sockets for devices we're already connected to if needed
+	b.dialMissingSockets()
 }
 
 func (b *bounce) sendKeepAlives() {
@@ -139,11 +142,18 @@ func (b *bounce) connectToGroups(desiredConnections int) {
 		}
 
 		// Choose a random selection of those devices in order to fill the pool
-		addressesToDial := chooseN(groupAddresses, desiredConnections-len(b.devicePool.groupPools[g.ID]))
+		addressesToDial := chooseN(groupAddresses, desiredConnections-len(b.devicePool.groupPools[g.ID])) // TODO: these checks are racey?  lock the audit loop before inserting an incoming connection?
 
 		// Attempt to dial them
 		for _, address := range addressesToDial {
-			go b.tryDialing(address, poolTypeGroup, g.ID)
+			rd := b.getRemoteDevice(address)
+			if rd.connectedSockets > 0 {
+				// If we're already connected to this device, we can just associate the existing connection with this group
+				b.insertRemoteDeviceIntoPool(address, poolTypeGroup, g.ID)
+			} else {
+				// If we have no connections to this device, try to dial it and associate the connection with the group
+				go b.tryDialing(address, poolTypeGroup, g.ID)
+			}
 		}
 	}
 }
@@ -176,7 +186,13 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 
 		// Attempt to dial them
 		for _, address := range addressesToDial {
-			go b.tryDialing(address, poolTypeUser, u.ID)
+			rd := b.getRemoteDevice(address)
+			if rd.connectedSockets > 0 {
+				// If we're already connected to this device, we can just associate the existing connection with this user
+				b.insertRemoteDeviceIntoPool(address, poolTypeUser, u.ID)
+			} else {
+				go b.tryDialing(address, poolTypeUser, u.ID)
+			}
 		}
 	}
 
@@ -266,6 +282,17 @@ func (b *bounce) closeUnusedConnections() {
 
 			// Close that socket
 			rd.shutdownReceivers[key] <- true
+		}
+	}
+}
+
+func (b *bounce) dialMissingSockets() {
+	for address, rd := range b.devicePool.devices {
+		if rd.connectedSockets > 0 && rd.connectedSockets < connectionsPerDevice {
+			dev, exists := b.getDeviceFromAddress(address)
+			if exists {
+				go b.tryDialing(address, poolTypeUser, dev.UserID)
+			}
 		}
 	}
 }
