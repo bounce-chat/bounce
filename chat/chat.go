@@ -137,7 +137,7 @@ func (b *bounce) shutdown() {
 	b.shutdownMutex.Lock()
 
 	// Stop any new attempts to dial
-	log.Info("locking the device pool")
+	log.Info("waiting for peer auditing to finish")
 	b.devicePool.auditing.Lock()
 
 	// TODO: stop accepting connections, stop running new handlers?

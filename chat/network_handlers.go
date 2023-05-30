@@ -53,12 +53,6 @@ func (b *bounce) acceptConnections() {
 			}).Error("accepted nil connection")
 		} else {
 			go b.insertConnectionIntoDevicePool(conn)
-
-			// Look up the device for this user, if there is one add this to the user's device pool
-			dev, ok := b.getDeviceFromAddress(conn.RemoteAddr().String())
-			if ok {
-				b.insertRemoteDeviceIntoPool(conn.RemoteAddr().String(), poolTypeUser, dev.UserID)
-			}
 		}
 	}
 }

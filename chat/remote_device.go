@@ -45,12 +45,21 @@ func (b *bounce) getRemoteDevice(address string) *remoteDevice {
 }
 
 func (b *bounce) insertConnectionIntoDevicePool(conn net.Conn) {
+	// Get the remote device
 	peer := conn.RemoteAddr().String()
 	rd := b.getRemoteDevice(peer)
 
+	// Read and write frames from this socket
 	go b.readFrames(conn)
 	go b.writeFrames(rd, conn)
 
+	// Associate this device with a user if there is one
+	dev, ok := b.getDeviceFromAddress(conn.RemoteAddr().String())
+	if ok {
+		b.insertRemoteDeviceIntoPool(conn.RemoteAddr().String(), poolTypeUser, dev.UserID)
+	}
+
+	// Do a reference flow
 	b.sendReferences(peer)
 }
 

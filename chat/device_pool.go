@@ -52,7 +52,7 @@ func (b *bounce) peer() {
 	}
 }
 
-func (b *bounce) makeInitialPeeringConnections() { // This gets called before the network is online right now and probably doesn't make sense
+func (b *bounce) makeInitialPeeringConnections() { // TODO: this gets called before the network is online right now and probably doesn't make sense
 	b.devicePool.auditing.Lock()
 	defer b.devicePool.auditing.Unlock()
 
@@ -111,7 +111,7 @@ func (b *bounce) connectToSyncDevices() {
 		}
 		rd := b.getRemoteDevice(dev.Address)
 		if rd.connectedSockets < connectionsPerDevice {
-			go b.tryDialing(dev.Address, poolTypeUser, currentUser.ID)
+			go b.tryDialing(dev.Address)
 		}
 	}
 }
@@ -152,7 +152,7 @@ func (b *bounce) connectToGroups(desiredConnections int) {
 				b.insertRemoteDeviceIntoPool(address, poolTypeGroup, g.ID)
 			} else {
 				// If we have no connections to this device, try to dial it and associate the connection with the group
-				go b.tryDialing(address, poolTypeGroup, g.ID)
+				go b.tryDialingAndAssociateWithGroup(address, g.ID)
 			}
 		}
 	}
@@ -174,25 +174,22 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 		b.prunePool(poolTypeUser, u.ID)
 
 		// Collect all the devices associated with this user that are not on dial cooldown
-		userAddresses := []string{}
+		unconnectedUserAddresses := []string{}
 		for _, dev := range u.Devices {
 			if !b.shouldCooldownDial(dev.Address) && dev.Address != b.network.Address() {
-				userAddresses = append(userAddresses, dev.Address)
+				rd := b.getRemoteDevice(dev.Address)
+				if rd.connectedSockets == 0 {
+					unconnectedUserAddresses = append(unconnectedUserAddresses, dev.Address)
+				}
 			}
 		}
 
 		// Choose a random selection of those devices in order to fill the pool
-		addressesToDial := chooseN(userAddresses, desiredConnections-len(b.devicePool.userPools[u.ID]))
+		addressesToDial := chooseN(unconnectedUserAddresses, desiredConnections-len(b.devicePool.userPools[u.ID]))
 
 		// Attempt to dial them
 		for _, address := range addressesToDial {
-			rd := b.getRemoteDevice(address)
-			if rd.connectedSockets > 0 {
-				// If we're already connected to this device, we can just associate the existing connection with this user
-				b.insertRemoteDeviceIntoPool(address, poolTypeUser, u.ID)
-			} else {
-				go b.tryDialing(address, poolTypeUser, u.ID)
-			}
+			go b.tryDialing(address)
 		}
 	}
 
@@ -210,7 +207,7 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 			rd := b.getRemoteDevice(dev.Address)
 			// Dial this inactive user if we have non-global content that isn't just group messages
 			if references.shouldDialUser() && !references.onlyGroupContent() && rd.connectedSockets == 0 {
-				go b.tryDialing(dev.Address, poolTypeUser, u.ID)
+				go b.tryDialing(dev.Address)
 			}
 		}
 	}
@@ -289,10 +286,7 @@ func (b *bounce) closeUnusedConnections() {
 func (b *bounce) dialMissingSockets() {
 	for address, rd := range b.devicePool.devices {
 		if rd.connectedSockets > 0 && rd.connectedSockets < connectionsPerDevice {
-			dev, exists := b.getDeviceFromAddress(address)
-			if exists {
-				go b.tryDialing(address, poolTypeUser, dev.UserID)
-			}
+			go b.tryDialing(address)
 		}
 	}
 }
@@ -338,7 +332,7 @@ func (b *bounce) userConnectionDesired(id uuid.UUID) {
 
 		// Attempt to dial them
 		for _, address := range addressesToDial {
-			go b.tryDialing(address, poolTypeUser, u.ID)
+			go b.tryDialing(address)
 		}
 	}
 }
@@ -380,24 +374,30 @@ func (b *bounce) groupConnectionDesired(id uuid.UUID) {
 
 		// Attempt to dial them
 		for _, address := range addressesToDial {
-			go b.tryDialing(address, poolTypeGroup, id)
+			go b.tryDialingAndAssociateWithGroup(address, id)
 		}
 
 	}
 }
 
-func (b *bounce) tryDialing(address string, poolType int, id uuid.UUID) {
+func (b *bounce) tryDialingAndAssociateWithGroup(address string, groupID uuid.UUID) {
+	if b.tryDialing(address) {
+		b.insertRemoteDeviceIntoPool(address, poolTypeGroup, groupID)
+	}
+}
+
+func (b *bounce) tryDialing(address string) bool {
 	if !b.networkIsOnline {
 		log.WithFields(log.Fields{
 			"address": address,
 		}).Debug("ignoring request to dial while network is offline")
-		return
+		return false
 	}
 	if b.shouldCooldownDial(address) {
 		log.WithFields(log.Fields{
 			"address": address,
 		}).Debug("avoiding dial because of cooldown period")
-		return
+		return false
 	}
 	if address == b.network.Address() {
 		log.Warn("ignoring request to dial self")
@@ -418,10 +418,12 @@ func (b *bounce) tryDialing(address string, poolType int, id uuid.UUID) {
 		log.WithFields(log.Fields{
 			"peer": address,
 		}).Debug("dialed")
-		// TODO: callback to inform the UI that a user is online?
 		b.insertConnectionIntoDevicePool(conn)
-		b.insertRemoteDeviceIntoPool(address, poolType, id)
+		// TODO: callback to inform the UI that a user is online
+		return true
 	}
+
+	return false
 }
 
 func (b *bounce) insertRemoteDeviceIntoPool(address string, poolType int, id uuid.UUID) {
@@ -464,7 +466,6 @@ func (b *bounce) insertRemoteDeviceIntoPool(address string, poolType int, id uui
 			"pool_type": poolType,
 		}).Fatal("cannot associate connection with unknown pool type")
 	}
-
 }
 
 func (b *bounce) prunePool(poolType int, id uuid.UUID) {
