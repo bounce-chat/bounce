@@ -9,6 +9,7 @@ func (b *bounce) networkOnline() {
 	if !b.networkHasBeenOnline {
 		b.networkHasBeenOnline = true
 		go b.acceptConnections()
+		go b.peer()
 	}
 	b.auditPeers()
 	b.userInterface.NetworkOnline()

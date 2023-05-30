@@ -33,8 +33,7 @@ const keepAliveFrequency = time.Duration(15 * time.Second)
 //
 type devicePool struct {
 	auditing       sync.Mutex
-	inserting      sync.Mutex
-	deviceMutex    sync.Mutex
+	mapMutex       sync.Mutex
 	devices        map[string]*remoteDevice
 	groupPools     map[uuid.UUID][]*remoteDevice
 	userPools      map[uuid.UUID][]*remoteDevice
@@ -52,7 +51,7 @@ func (b *bounce) peer() {
 	}
 }
 
-func (b *bounce) makeInitialPeeringConnections() { // TODO: this gets called before the network is online right now and probably doesn't make sense
+func (b *bounce) makeInitialPeeringConnections() {
 	b.devicePool.auditing.Lock()
 	defer b.devicePool.auditing.Unlock()
 
@@ -89,13 +88,13 @@ func (b *bounce) auditPeers() {
 func (b *bounce) sendKeepAlives() {
 	ticker := time.NewTicker(keepAliveFrequency)
 	for _ = range ticker.C {
-		b.devicePool.auditing.Lock()
+		b.devicePool.mapMutex.Lock()
 		for _, rd := range b.devicePool.devices {
 			if rd.connectedSockets > 0 {
 				rd.messages <- keepAlive{}
 			}
 		}
-		b.devicePool.auditing.Unlock()
+		b.devicePool.mapMutex.Unlock()
 	}
 }
 
@@ -142,7 +141,9 @@ func (b *bounce) connectToGroups(desiredConnections int) {
 		}
 
 		// Choose a random selection of those devices in order to fill the pool
-		addressesToDial := chooseN(groupAddresses, desiredConnections-len(b.devicePool.groupPools[g.ID])) // TODO: these checks are racey?  lock the audit loop before inserting an incoming connection?
+		b.devicePool.mapMutex.Lock()
+		addressesToDial := chooseN(groupAddresses, desiredConnections-len(b.devicePool.groupPools[g.ID]))
+		b.devicePool.mapMutex.Unlock()
 
 		// Attempt to dial them
 		for _, address := range addressesToDial {
@@ -185,7 +186,9 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 		}
 
 		// Choose a random selection of those devices in order to fill the pool
+		b.devicePool.mapMutex.Lock()
 		addressesToDial := chooseN(unconnectedUserAddresses, desiredConnections-len(b.devicePool.userPools[u.ID]))
+		b.devicePool.mapMutex.Unlock()
 
 		// Attempt to dial them
 		for _, address := range addressesToDial {
@@ -214,6 +217,9 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 }
 
 func (b *bounce) closeUnusedConnections() {
+	b.devicePool.mapMutex.Lock()
+	defer b.devicePool.mapMutex.Unlock()
+
 	// Close any extra connections to any groups
 	for groupID, _ := range b.devicePool.groupPools {
 		// Prune the pool
@@ -284,6 +290,9 @@ func (b *bounce) closeUnusedConnections() {
 }
 
 func (b *bounce) dialMissingSockets() {
+	b.devicePool.mapMutex.Lock()
+	defer b.devicePool.mapMutex.Unlock()
+
 	for address, rd := range b.devicePool.devices {
 		if rd.connectedSockets > 0 && rd.connectedSockets < connectionsPerDevice {
 			go b.tryDialing(address)
@@ -318,7 +327,10 @@ func (b *bounce) userConnectionDesired(id uuid.UUID) {
 	b.prunePool(poolTypeUser, u.ID)
 
 	// If we have no connections to this user, try to dial a large number of devices
-	if len(b.devicePool.userPools[u.ID]) == 0 {
+	b.devicePool.mapMutex.Lock()
+	connectedCount := len(b.devicePool.userPools[u.ID])
+	b.devicePool.mapMutex.Unlock()
+	if connectedCount == 0 {
 		// Collect all the devices associated with this user that are not on dial cooldown
 		userAddresses := []string{}
 		for _, dev := range u.Devices {
@@ -358,7 +370,10 @@ func (b *bounce) groupConnectionDesired(id uuid.UUID) {
 	b.prunePool(poolTypeGroup, g.ID)
 
 	// If we have no connections to this group, try to dial a large number of devices
-	if len(b.devicePool.groupPools[g.ID]) == 0 {
+	b.devicePool.mapMutex.Lock()
+	connectedCount := len(b.devicePool.groupPools[g.ID])
+	b.devicePool.mapMutex.Unlock()
+	if connectedCount == 0 {
 		// Collect all the devices associated with this group that are not on dial cooldown
 		groupAddresses := []string{}
 		for _, u := range g.Users {
@@ -427,8 +442,8 @@ func (b *bounce) tryDialing(address string) bool {
 }
 
 func (b *bounce) insertRemoteDeviceIntoPool(address string, poolType int, id uuid.UUID) {
-	b.devicePool.inserting.Lock()
-	defer b.devicePool.inserting.Unlock()
+	b.devicePool.mapMutex.Lock()
+	defer b.devicePool.mapMutex.Unlock()
 
 	rd := b.getRemoteDevice(address)
 	if poolType == poolTypeUser {
@@ -469,6 +484,9 @@ func (b *bounce) insertRemoteDeviceIntoPool(address string, poolType int, id uui
 }
 
 func (b *bounce) prunePool(poolType int, id uuid.UUID) {
+	b.devicePool.mapMutex.Lock()
+	defer b.devicePool.mapMutex.Unlock()
+
 	if poolType == poolTypeUser {
 		_, ok := b.devicePool.userPools[id]
 		if !ok {

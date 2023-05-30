@@ -243,6 +243,7 @@ func (b *bounce) getGlobalScope(br broadcastable) []*remoteDevice {
 	author := br.getAuthor()
 	if author == b.currentUserID() {
 		// Anything global that we create can be sent to any known devices we're connected to
+		b.devicePool.mapMutex.Lock()
 		for address, dev := range b.devicePool.devices {
 			if _, exists := b.getDeviceFromAddress(address); !exists {
 				// Skip connections in the device pool if we don't have a device saved for them
@@ -255,6 +256,7 @@ func (b *bounce) getGlobalScope(br broadcastable) []*remoteDevice {
 				broadcastTargets = append(broadcastTargets, dev)
 			}
 		}
+		b.devicePool.mapMutex.Unlock()
 	} else {
 		// Anything global that was written by someone else should be sent to our devices, their devices,
 		// and the devices of any users that have a group in common with the author

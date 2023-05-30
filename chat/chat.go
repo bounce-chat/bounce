@@ -110,7 +110,6 @@ func Start(network Network, ui UI) {
 			NetworkOffline: b.networkOffline,
 		},
 	)
-	go b.peer()
 
 	// Run the UI and block
 	b.userInterface.Run()
@@ -146,6 +145,9 @@ func (b *bounce) shutdown() {
 	log.Info("closing all remote connections")
 	connectionsClosed := make(chan bool, 1)
 	go func() {
+		b.devicePool.mapMutex.Lock()
+		defer b.devicePool.mapMutex.Unlock()
+
 		for _, rd := range b.devicePool.devices {
 			rd.shutdown()
 		}

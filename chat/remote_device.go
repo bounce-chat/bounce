@@ -33,8 +33,8 @@ func (rd *remoteDevice) shutdown() {
 }
 
 func (b *bounce) getRemoteDevice(address string) *remoteDevice {
-	b.devicePool.deviceMutex.Lock()
-	defer b.devicePool.deviceMutex.Unlock()
+	b.devicePool.mapMutex.Lock()
+	defer b.devicePool.mapMutex.Unlock()
 
 	rd, ok := b.devicePool.devices[address]
 	if !ok {
