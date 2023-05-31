@@ -2,6 +2,7 @@ package ui
 
 import (
 	"sync"
+	"time"
 
 	"github.com/hkparker/bounce/chat"
 
@@ -173,6 +174,12 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 
 	for _, g := range state.Groups {
 		fyneUI.NewGroupChat(g)
+		group, exists := fyneUI.groups[g.ID]
+		if !exists {
+			log.Fatal("group doesn't exist immediately after creation")
+		}
+		group.button.setLastMessageTime(time.Unix(g.LastActivity, 0))
+		group.setLastMessageTime(g.LastActivity)
 	}
 
 	for _, dm := range state.DirectMessages {

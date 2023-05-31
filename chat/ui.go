@@ -19,10 +19,11 @@ type DirectMessage struct {
 }
 
 type Group struct {
-	ID      uuid.UUID
-	Name    string
-	Image   []byte
-	UserIDs []uuid.UUID
+	ID           uuid.UUID
+	Name         string
+	Image        []byte
+	UserIDs      []uuid.UUID
+	LastActivity int64
 }
 
 type GroupMessage struct {

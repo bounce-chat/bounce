@@ -223,6 +223,9 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 
 	dm.button.setLastMessage(displayName, msg.Text)
 	dm.button.setLastMessageTime(time.Unix(msg.WrittenAt, 0))
+	if msg.WrittenAt > dm.getLastMessageTime() {
+		dm.setLastMessageTime(msg.WrittenAt)
+	}
 
 	if fyneUI.isActive(dm) {
 		if autoscroll {

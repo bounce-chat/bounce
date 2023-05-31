@@ -273,9 +273,10 @@ func (b *bounce) buildInitialState() InitialState {
 			userList = append(userList, u.ID)
 		}
 		chatGroups = append(chatGroups, Group{
-			ID:      g.ID,
-			Name:    g.Name,
-			UserIDs: userList,
+			ID:           g.ID,
+			Name:         g.Name,
+			UserIDs:      userList,
+			LastActivity: g.LastActivity,
 		})
 	}
 

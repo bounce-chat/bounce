@@ -262,6 +262,9 @@ func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hide
 
 	group.button.setLastMessage(displayName, msg.Text)
 	group.button.setLastMessageTime(time.Unix(msg.WrittenAt, 0))
+	if msg.WrittenAt > group.getLastMessageTime() {
+		group.setLastMessageTime(msg.WrittenAt)
+	}
 
 	if fyneUI.isActive(group) {
 		if autoscroll {
