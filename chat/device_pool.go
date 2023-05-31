@@ -33,7 +33,8 @@ const keepAliveFrequency = time.Duration(15 * time.Second)
 //
 type devicePool struct {
 	auditing       sync.Mutex
-	mapMutex       sync.Mutex
+	poolMutex      sync.Mutex
+	deviceMutex    sync.Mutex
 	devices        map[string]*remoteDevice
 	groupPools     map[uuid.UUID][]*remoteDevice
 	userPools      map[uuid.UUID][]*remoteDevice
@@ -88,13 +89,13 @@ func (b *bounce) auditPeers() {
 func (b *bounce) sendKeepAlives() {
 	ticker := time.NewTicker(keepAliveFrequency)
 	for _ = range ticker.C {
-		b.devicePool.mapMutex.Lock()
+		b.devicePool.deviceMutex.Lock()
 		for _, rd := range b.devicePool.devices {
 			if rd.connectedSockets > 0 {
 				rd.messages <- keepAlive{}
 			}
 		}
-		b.devicePool.mapMutex.Unlock()
+		b.devicePool.deviceMutex.Unlock()
 	}
 }
 
@@ -128,7 +129,9 @@ func (b *bounce) connectToGroups(desiredConnections int) {
 
 	for _, g := range activeGroups {
 		// Prune the pool of closed connections
+		b.devicePool.poolMutex.Lock()
 		b.prunePool(poolTypeGroup, g.ID)
+		b.devicePool.poolMutex.Unlock()
 
 		// Collect all the devices associated with this group that are not on dial cooldown
 		groupAddresses := []string{}
@@ -141,9 +144,9 @@ func (b *bounce) connectToGroups(desiredConnections int) {
 		}
 
 		// Choose a random selection of those devices in order to fill the pool
-		b.devicePool.mapMutex.Lock()
+		b.devicePool.poolMutex.Lock()
 		addressesToDial := chooseN(groupAddresses, desiredConnections-len(b.devicePool.groupPools[g.ID]))
-		b.devicePool.mapMutex.Unlock()
+		b.devicePool.poolMutex.Unlock()
 
 		// Attempt to dial them
 		for _, address := range addressesToDial {
@@ -172,7 +175,9 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 
 	for _, u := range activeUsers {
 		// Prune the pool of closed connections
+		b.devicePool.poolMutex.Lock()
 		b.prunePool(poolTypeUser, u.ID)
+		b.devicePool.poolMutex.Unlock()
 
 		// Collect all the devices associated with this user that are not on dial cooldown
 		unconnectedUserAddresses := []string{}
@@ -186,9 +191,9 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 		}
 
 		// Choose a random selection of those devices in order to fill the pool
-		b.devicePool.mapMutex.Lock()
+		b.devicePool.poolMutex.Lock()
 		addressesToDial := chooseN(unconnectedUserAddresses, desiredConnections-len(b.devicePool.userPools[u.ID]))
-		b.devicePool.mapMutex.Unlock()
+		b.devicePool.poolMutex.Unlock()
 
 		// Attempt to dial them
 		for _, address := range addressesToDial {
@@ -217,8 +222,7 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 }
 
 func (b *bounce) closeUnusedConnections() {
-	b.devicePool.mapMutex.Lock()
-	defer b.devicePool.mapMutex.Unlock()
+	b.devicePool.poolMutex.Lock()
 
 	// Close any extra connections to any groups
 	for groupID, _ := range b.devicePool.groupPools {
@@ -261,10 +265,11 @@ func (b *bounce) closeUnusedConnections() {
 			b.devicePool.userPools[userID][index].closer.Wait()
 			b.prunePool(poolTypeUser, userID)
 		}
-
 	}
+	b.devicePool.poolMutex.Unlock()
 
 	// If a device has more sockets open than needed, close one at random
+	b.devicePool.deviceMutex.Lock()
 	for _, rd := range b.devicePool.devices {
 		if rd.connectedSockets > connectionsPerDevice {
 			log.WithFields(log.Fields{
@@ -287,11 +292,12 @@ func (b *bounce) closeUnusedConnections() {
 			rd.shutdownReceivers[key] <- true
 		}
 	}
+	b.devicePool.deviceMutex.Unlock()
 }
 
 func (b *bounce) dialMissingSockets() {
-	b.devicePool.mapMutex.Lock()
-	defer b.devicePool.mapMutex.Unlock()
+	b.devicePool.deviceMutex.Lock()
+	defer b.devicePool.deviceMutex.Unlock()
 
 	for address, rd := range b.devicePool.devices {
 		if rd.connectedSockets > 0 && rd.connectedSockets < connectionsPerDevice {
@@ -324,12 +330,14 @@ func (b *bounce) userConnectionDesired(id uuid.UUID) {
 	}
 
 	// Prune the pool of closed connections
+	b.devicePool.poolMutex.Lock()
 	b.prunePool(poolTypeUser, u.ID)
+	b.devicePool.poolMutex.Unlock()
 
 	// If we have no connections to this user, try to dial a large number of devices
-	b.devicePool.mapMutex.Lock()
+	b.devicePool.poolMutex.Lock()
 	connectedCount := len(b.devicePool.userPools[u.ID])
-	b.devicePool.mapMutex.Unlock()
+	b.devicePool.poolMutex.Unlock()
 	if connectedCount == 0 {
 		// Collect all the devices associated with this user that are not on dial cooldown
 		userAddresses := []string{}
@@ -367,12 +375,14 @@ func (b *bounce) groupConnectionDesired(id uuid.UUID) {
 	}
 
 	// Prune the pool of closed connections
+	b.devicePool.poolMutex.Lock()
 	b.prunePool(poolTypeGroup, g.ID)
+	b.devicePool.poolMutex.Unlock()
 
 	// If we have no connections to this group, try to dial a large number of devices
-	b.devicePool.mapMutex.Lock()
+	b.devicePool.poolMutex.Lock()
 	connectedCount := len(b.devicePool.groupPools[g.ID])
-	b.devicePool.mapMutex.Unlock()
+	b.devicePool.poolMutex.Unlock()
 	if connectedCount == 0 {
 		// Collect all the devices associated with this group that are not on dial cooldown
 		groupAddresses := []string{}
@@ -442,8 +452,8 @@ func (b *bounce) tryDialing(address string) bool {
 }
 
 func (b *bounce) insertRemoteDeviceIntoPool(address string, poolType int, id uuid.UUID) {
-	b.devicePool.mapMutex.Lock()
-	defer b.devicePool.mapMutex.Unlock()
+	b.devicePool.poolMutex.Lock()
+	defer b.devicePool.poolMutex.Unlock()
 
 	rd := b.getRemoteDevice(address)
 	if poolType == poolTypeUser {
@@ -484,9 +494,6 @@ func (b *bounce) insertRemoteDeviceIntoPool(address string, poolType int, id uui
 }
 
 func (b *bounce) prunePool(poolType int, id uuid.UUID) {
-	b.devicePool.mapMutex.Lock()
-	defer b.devicePool.mapMutex.Unlock()
-
 	if poolType == poolTypeUser {
 		_, ok := b.devicePool.userPools[id]
 		if !ok {

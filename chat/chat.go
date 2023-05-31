@@ -145,8 +145,8 @@ func (b *bounce) shutdown() {
 	log.Info("closing all remote connections")
 	connectionsClosed := make(chan bool, 1)
 	go func() {
-		b.devicePool.mapMutex.Lock()
-		defer b.devicePool.mapMutex.Unlock()
+		b.devicePool.deviceMutex.Lock()
+		defer b.devicePool.deviceMutex.Unlock()
 
 		for _, rd := range b.devicePool.devices {
 			rd.shutdown()
