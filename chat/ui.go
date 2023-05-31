@@ -104,6 +104,9 @@ type UI interface {
 	HideTypingIndicatorInHistory(userID, threadID uuid.UUID)
 	HideTypingIndicatorInButton(threadID uuid.UUID)
 
+	UserIsOnline(userID uuid.UUID)
+	UserIsOffline(userID uuid.UUID)
+
 	// Profile updates from other devices owned by this user
 	//UpdateMyName()
 

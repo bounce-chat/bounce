@@ -137,6 +137,7 @@ func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 		return
 	}
 	rd.connectedSockets += 1
+	b.updateUserOnlineStatus(conn.RemoteAddr().String())
 	rd.closer.Add(1)
 	defer rd.closer.Done()
 
@@ -152,12 +153,14 @@ func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 				"peer": conn.RemoteAddr().String(),
 			}).Debug("closing connection")
 			rd.connectedSockets -= 1
+			b.updateUserOnlineStatus(conn.RemoteAddr().String())
 			conn.Close()
 			return
 		case br := <-rd.messages:
 			err := writeFrame(conn, br.getType(), br.getPayload())
 			if err != nil {
 				rd.connectedSockets -= 1
+				b.updateUserOnlineStatus(conn.RemoteAddr().String())
 				// TODO: if we now have 0 connections, let the UI know the user is offline
 
 				// If this socket died during a write, but there are other sockets that might still be alive,

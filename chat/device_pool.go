@@ -32,15 +32,17 @@ const keepAliveFrequency = time.Duration(15 * time.Second)
 // peering with users or groups.
 //
 type devicePool struct {
-	auditing       sync.Mutex
-	poolMutex      sync.Mutex
-	deviceMutex    sync.Mutex
-	devices        map[string]*remoteDevice
-	groupPools     map[uuid.UUID][]*remoteDevice
-	userPools      map[uuid.UUID][]*remoteDevice
-	lastDialMutex  sync.Mutex
-	lastDial       map[string]time.Time
-	lastFailedDial map[string]time.Time
+	auditing         sync.Mutex
+	poolMutex        sync.Mutex
+	deviceMutex      sync.Mutex
+	onlineMutex      sync.Mutex
+	devices          map[string]*remoteDevice
+	groupPools       map[uuid.UUID][]*remoteDevice
+	userPools        map[uuid.UUID][]*remoteDevice
+	userOnlineStatus map[uuid.UUID]bool
+	lastDialMutex    sync.Mutex
+	lastDial         map[string]time.Time
+	lastFailedDial   map[string]time.Time
 }
 
 func (b *bounce) peer() {
@@ -444,7 +446,6 @@ func (b *bounce) tryDialing(address string) bool {
 			"peer": address,
 		}).Debug("dialed")
 		b.insertConnectionIntoDevicePool(conn)
-		// TODO: callback to inform the UI that a user is online
 		return true
 	}
 
@@ -570,6 +571,48 @@ func (b *bounce) shouldCooldownDial(address string) bool {
 		return false
 	}
 	return true
+}
+
+func (b *bounce) updateUserOnlineStatus(address string) {
+	b.devicePool.onlineMutex.Lock()
+	defer b.devicePool.onlineMutex.Unlock()
+
+	// Ignore unknown devices
+	dev, exists := b.getDeviceFromAddress(address)
+	if !exists {
+		return
+	}
+	// Ignore if we don't have a profile yet
+	u, exists := b.currentUser()
+	if !exists {
+		return
+	}
+	// Ignore sync devices
+	if dev.UserID == u.ID {
+		return
+	}
+
+	// Get the current state for this user
+	knownOnline, ok := b.devicePool.userOnlineStatus[u.ID]
+	if !ok {
+		b.devicePool.userOnlineStatus[u.ID] = false
+		knownOnline = false
+	}
+
+	// Get the remote device
+	rd := b.getRemoteDevice(address)
+
+	// Check if the user is currently online
+	online := rd.connectedSockets > 0
+
+	// Update the UI and cache is there's a state change
+	if online && !knownOnline {
+		b.devicePool.userOnlineStatus[u.ID] = true
+		b.userInterface.UserIsOnline(u.ID)
+	} else if !online && knownOnline {
+		b.devicePool.userOnlineStatus[u.ID] = false
+		b.userInterface.UserIsOffline(u.ID)
+	}
 }
 
 func chooseN(set []string, n int) []string {
