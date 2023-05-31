@@ -328,6 +328,12 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 			}).Error("error saving new user while handing add user")
 			return
 		}
+
+		// Ack and delivery track these devices
+		for _, dev := range counterparty.Devices {
+			go b.sendAck(peer, typeDevice, dev.ID)
+			b.markDeliveredTo(&dev, peer)
+		}
 	} else {
 		// We already know about this user, just save any devices we might not be aware of
 		for _, dev := range counterparty.Devices {
@@ -337,6 +343,10 @@ func (b *bounce) handleAddUser(peer string, payload []byte) {
 					"error": err.Error(),
 				}).Error("error saving new device belonging to existing user while handling add user")
 			}
+
+			// Ack and delivery track these devices as well
+			go b.sendAck(peer, typeDevice, dev.ID)
+			b.markDeliveredTo(&dev, peer)
 		}
 	}
 

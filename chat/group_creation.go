@@ -241,7 +241,15 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 		}).Fatal("error in transaction for saving a new group")
 	}
 
-	// Ack the group
+	// Ack and delivery track all of the devices included in this group creation
+	for _, u := range g.Users {
+		for _, dev := range u.Devices {
+			go b.sendAck(peer, typeDevice, dev.ID)
+			b.markDeliveredTo(&dev, peer)
+		}
+	}
+
+	// Ack the group creation
 	go b.sendAck(peer, typeGroupCreation, gc.ID)
 
 	// Mark this as delivered to this peer

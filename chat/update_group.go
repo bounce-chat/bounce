@@ -169,7 +169,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	}
 
 	// Apply this update locally
-	err = b.saveAndApplyUpdateGroup(ug)
+	err = b.saveAndApplyUpdateGroup(peer, ug)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"peer":  peer,
@@ -189,7 +189,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	b.broadcast(&ug)
 }
 
-func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
+func (b *bounce) saveAndApplyUpdateGroup(peer string, ug updateGroup) error {
 	// Look up the group that we're updating
 	var g group
 	err := b.database.Where("id = ?", ug.Target).First(&g).Error
@@ -211,7 +211,7 @@ func (b *bounce) saveAndApplyUpdateGroup(ug updateGroup) error {
 	case updateGroupTypeChangeName:
 		return b.saveAndApplyUpdateGroupChangeName(g, ug)
 	case updateGroupTypeAddUser:
-		return b.saveAndApplyUpdateGroupAddUser(g, ug)
+		return b.saveAndApplyUpdateGroupAddUser(peer, g, ug)
 	case updateGroupTypeRemoveUser:
 		return b.saveAndApplyUpdateGroupRemoveUser(g, ug)
 	case updateGroupTypeChangeMutedUntil:
@@ -383,7 +383,7 @@ func (b *bounce) saveAndApplyUpdateGroupSetClearBefore(g group, ug updateGroup) 
 	return nil
 }
 
-func (b *bounce) saveAndApplyUpdateGroupAddUser(g group, ug updateGroup) error {
+func (b *bounce) saveAndApplyUpdateGroupAddUser(peer string, g group, ug updateGroup) error {
 	// Unmarshall the new user
 	var u user
 	err := msgpack.Unmarshal(ug.Data, &u)
@@ -432,6 +432,19 @@ func (b *bounce) saveAndApplyUpdateGroupAddUser(g group, ug updateGroup) error {
 
 			return nil
 		})
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error in transaction creating new user added to group")
+		}
+
+		// Ack and delivery track the user's devices unless we are sending this
+		if peer != b.network.Address() {
+			for _, dev := range u.Devices {
+				go b.sendAck(peer, typeDevice, dev.ID)
+				b.markDeliveredTo(&dev, peer)
+			}
+		}
 
 		// Attempt to make a connection to the user
 		b.userConnectionDesired(u.ID)
@@ -593,7 +606,7 @@ func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) error {
 	ug.Signer = sc.Signer
 
 	// Apply the update locally
-	err = b.saveAndApplyUpdateGroup(ug)
+	err = b.saveAndApplyUpdateGroup(b.network.Address(), ug)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
