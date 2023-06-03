@@ -72,67 +72,49 @@ func (b *bounce) openDatabase() {
 		}).Fatal("error migrating the database")
 	}
 
-	// Prune and kick off pruning loop
-	b.pruneDatabase(false)
-	go b.keepDatabasePruned()
+	// Prune the database
+	b.pruneDirectMessages()
+	b.pruneGroupMessages()
 }
 
-func (b *bounce) keepDatabasePruned() {
-	b.databasePruningTicker = time.NewTicker(10 * time.Second) // TODO: can I get away with this frequency without resource costs?
-
-	for _ = range b.databasePruningTicker.C {
-		b.pruningDatabase.Add(1)
-		b.pruneDatabase(true)
-		b.pruningDatabase.Done()
-	}
-}
-
-func (b *bounce) pruneDatabase(informUI bool) {
-	b.pruneDirectMessages(informUI)
-	b.pruneGroupMessages(informUI)
-}
-
-func (b *bounce) pruneDirectMessages(informUI bool) {
-	now := time.Now().Unix()
-
-	if informUI {
-		// Find messages that should be pruned and delete them from the UI
-		var dms []directMessage
-		err := b.database.Select("id").Where("delete_at != 0 AND delete_at < ?", now).Find(&dms).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error selecting direct messages that are past retention for pruning")
-		}
-		for _, dm := range dms {
-			b.userInterface.DeleteMessage(dm.ID)
-		}
-	}
-
-	// Delete those messages from the database
-	err := b.database.Where("delete_at != 0 AND delete_at < ?", now).Delete(&directMessage{}).Error
+func (b *bounce) pruneDirectMessages() {
+	// Delete messages from the database that are past expiration
+	err := b.database.Where("delete_at != 0 AND delete_at < ?", time.Now().Unix()).Delete(&directMessage{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error batch deleting direct messages past retention")
 	}
 
-	// Find all messages that are undeliverable and inform the UI, marking them for deletion if they don't have indefinite retention
-	var dms []directMessage
+	// Find messages that will expire in the future and create goroutines to delete them when needed
+	var dmsToDeleteLater []directMessage
+	err = b.database.Select("id", "delete_at").Where("delete_at != 0").Find(&dmsToDeleteLater).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting direct messages that will expire")
+	}
+	for _, dm := range dmsToDeleteLater {
+		go b.deleteDirectMessageAt(dm.DeleteAt, dm.ID)
+	}
+
+	// Mark any messages that can no longer be delivered as undeliverable
+	now := time.Now()
+	var undeliverableDMs []directMessage
 	err = b.database.
 		Select("direct_messages.id", "direct_messages.retention_seconds").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.frame_type == ?", typeDirectMessage).
 		Where(
-			"delivery_records.id IS NULL AND direct_messages.written_at < ? AND undeliverable = false",
-			time.Now().Add(-undeliverableAfter).Unix(),
+			"delivery_records.id IS NULL AND direct_messages.written_at <= ? AND undeliverable = false",
+			now.Add(-undeliverableAfter).Unix(),
 		).
-		Find(&dms).Error
+		Find(&undeliverableDMs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error selecting message that are undeliverable while pruning database")
+		}).Fatal("error selecting direct message that are undeliverable while pruning database")
 	}
-	for _, dm := range dms {
+	for _, dm := range undeliverableDMs {
 		err = b.database.Model(&dm).Update("undeliverable", true).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -140,66 +122,89 @@ func (b *bounce) pruneDirectMessages(informUI bool) {
 				"error":      err.Error(),
 			}).Fatal("error updating undeliverable field of undeliverable direct message")
 		}
-		if informUI {
-			b.userInterface.MarkMessageUndeliverable(dm.ID)
-		}
+
+		// Undeliverable messages should be deleted if there's a retention setting on the message.  Since these messages were never ack'd, the delete_at
+		// field was never set and therefore they weren't pruned above, so we delete them based on how long their retention settings are
 		if dm.RetentionSeconds > 0 {
-			deleteAt := time.Now().Unix() + dm.RetentionSeconds
-			err = b.database.Model(&dm).Update("delete_at", deleteAt).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"message_id": dm.ID,
-					"error":      err.Error(),
-				}).Fatal("error updating delete_at of undeliverable direct message with retention")
-			}
-			if informUI {
-				b.userInterface.UpdateMessageDeletionTime(dm.ID, deleteAt)
+			if dm.RetentionSeconds > int64(undeliverableAfter.Seconds()) {
+				// The message retention is longer than the undeliverable window, keep this message around for the difference
+				deleteAt := time.Now().Unix() + dm.RetentionSeconds - int64(undeliverableAfter.Seconds())
+				err = b.database.Model(&dm).Update("delete_at", deleteAt).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"message_id": dm.ID,
+						"error":      err.Error(),
+					}).Fatal("error updating delete_at of undeliverable direct message with retention")
+				}
+				go b.deleteDirectMessageAt(deleteAt, dm.ID)
+			} else {
+				// The message retention is shorter than the undeliverable window, so we delete it now
+				err = b.database.Where("id = ?", dm.ID).Delete(&directMessage{}).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"message_id": dm.ID,
+						"error":      err.Error(),
+					}).Fatal("error deleting undeliverable direct message with retention")
+				}
 			}
 		}
+	}
+
+	// Find all messages that have not been delivered and kick off a goroutine to check if they should be marked undeliverable later
+	var deliverableUndeliveredDMs []directMessage
+	err = b.database.
+		Select("direct_messages.id", "direct_messages.written_at").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.frame_type == ?", typeDirectMessage).
+		Where("delivery_records.id IS NULL AND undeliverable = false").
+		Find(&deliverableUndeliveredDMs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting message that are deliverable while pruning database")
+	}
+	for _, dm := range deliverableUndeliveredDMs {
+		go b.checkIfDirectMessageUndeliverableAt(time.Unix(dm.WrittenAt, 0).Add(undeliverableAfter).Unix(), dm.ID)
 	}
 }
 
-func (b *bounce) pruneGroupMessages(informUI bool) {
-	now := time.Now().Unix()
-
-	if informUI {
-		// Find messages that should be pruned and delete them from the UI
-		var gms []groupMessage
-		err := b.database.Select("id").Where("delete_at != 0 AND delete_at < ?", now).Find(&gms).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error selecting group messages that are past retention for pruning")
-		}
-		for _, gm := range gms {
-			b.userInterface.DeleteMessage(gm.ID)
-		}
-	}
-
-	// Delete those messages from the database
-	err := b.database.Where("delete_at != 0 AND delete_at < ?", now).Delete(&groupMessage{}).Error
+func (b *bounce) pruneGroupMessages() {
+	// Delete messages from the database that are past expiration
+	err := b.database.Where("delete_at != 0 AND delete_at < ?", time.Now().Unix()).Delete(&groupMessage{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error batch deleting group messages past retention")
 	}
 
-	// Find all messages that are undeliverable and inform the UI, marking them for deletion if they don't have indefinite retention
-	var gms []groupMessage
+	// Find messages that will expire in the future and create goroutines to delete them when needed
+	var gmsToDeleteLater []groupMessage
+	err = b.database.Select("id", "delete_at").Where("delete_at != 0").Find(&gmsToDeleteLater).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting group messages that will expire")
+	}
+	for _, gm := range gmsToDeleteLater {
+		go b.deleteGroupMessageAt(gm.DeleteAt, gm.ID)
+	}
+
+	// Mark any messages that can no longer be delivered as undeliverable
+	now := time.Now()
+	var undeliverableGMs []groupMessage
 	err = b.database.
 		Select("group_messages.id", "group_messages.retention_seconds").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_messages.id AND delivery_records.frame_type == ?", typeGroupMessage).
 		Where(
-			"delivery_records.id IS NULL AND group_messages.written_at < ? AND undeliverable = false",
-			time.Now().Add(-undeliverableAfter).Unix(),
+			"delivery_records.id IS NULL AND group_messages.written_at <= ? AND undeliverable = false",
+			now.Add(-undeliverableAfter).Unix(),
 		).
-		Find(&gms).Error
+		Find(&undeliverableGMs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error selecting group message that are undeliverable while pruning database")
 	}
-	for _, gm := range gms {
+	for _, gm := range undeliverableGMs {
 		err = b.database.Model(&gm).Update("undeliverable", true).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -207,22 +212,48 @@ func (b *bounce) pruneGroupMessages(informUI bool) {
 				"error":      err.Error(),
 			}).Fatal("error updating undeliverable field of undeliverable group message")
 		}
-		if informUI {
-			b.userInterface.MarkMessageUndeliverable(gm.ID)
-		}
+
+		// Undeliverable messages should be deleted if there's a retention setting on the message.  Since these messages were never ack'd, the delete_at
+		// field was never set and therefore they weren't pruned above, so we delete them based on how long their retention settings are
 		if gm.RetentionSeconds > 0 {
-			deleteAt := time.Now().Unix() + gm.RetentionSeconds
-			err = b.database.Model(&gm).Update("delete_at", deleteAt).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"message_id": gm.ID,
-					"error":      err.Error(),
-				}).Fatal("error updating delete_at of undeliverable group message with retention")
-			}
-			if informUI {
-				b.userInterface.UpdateMessageDeletionTime(gm.ID, deleteAt)
+			if gm.RetentionSeconds > int64(undeliverableAfter.Seconds()) {
+				// The message retention is longer than the undeliverable window, keep this message around for the difference
+				deleteAt := time.Now().Unix() + gm.RetentionSeconds - int64(undeliverableAfter.Seconds())
+				err = b.database.Model(&gm).Update("delete_at", deleteAt).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"message_id": gm.ID,
+						"error":      err.Error(),
+					}).Fatal("error updating delete_at of undeliverable group message with retention")
+				}
+				go b.deleteGroupMessageAt(deleteAt, gm.ID)
+			} else {
+				// The message retention is shorter than the undeliverable window, so we delete it now
+				err = b.database.Where("id = ?", gm.ID).Delete(&groupMessage{}).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"message_id": gm.ID,
+						"error":      err.Error(),
+					}).Fatal("error deleting undeliverable group message with retention")
+				}
 			}
 		}
+	}
+
+	// Find all messages that have not been delivered and kick off a goroutine to check if they should be marked undeliverable later
+	var deliverableUndeliveredGMs []groupMessage
+	err = b.database.
+		Select("group_messages.id", "group_messages.written_at").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_messages.id AND delivery_records.frame_type == ?", typeGroupMessage).
+		Where("delivery_records.id IS NULL AND undeliverable = false").
+		Find(&deliverableUndeliveredGMs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting message that are deliverable while pruning database")
+	}
+	for _, gm := range deliverableUndeliveredGMs {
+		go b.checkIfGroupMessageUndeliverableAt(time.Unix(gm.WrittenAt, 0).Add(undeliverableAfter).Unix(), gm.ID)
 	}
 }
 
@@ -293,11 +324,13 @@ func (b *bounce) buildInitialState() InitialState {
 		exportedDMs = append(
 			exportedDMs,
 			DirectMessage{
-				ID:        dm.ID,
-				Author:    dm.Author,
-				Thread:    dm.getDestination(b.currentUserID()),
-				WrittenAt: dm.WrittenAt,
-				Text:      dm.Text,
+				ID:            dm.ID,
+				Author:        dm.Author,
+				Thread:        dm.getDestination(b.currentUserID()),
+				WrittenAt:     dm.WrittenAt,
+				Text:          dm.Text,
+				Expires:       dm.DeleteAt,
+				Undeliverable: dm.Undeliverable,
 			},
 		)
 	}
@@ -315,11 +348,13 @@ func (b *bounce) buildInitialState() InitialState {
 		exportedGMs = append(
 			exportedGMs,
 			GroupMessage{
-				ID:        gm.ID,
-				Author:    gm.Author,
-				Thread:    gm.getDestination(b.currentUserID()),
-				WrittenAt: gm.WrittenAt,
-				Text:      gm.Text,
+				ID:            gm.ID,
+				Author:        gm.Author,
+				Thread:        gm.getDestination(b.currentUserID()),
+				WrittenAt:     gm.WrittenAt,
+				Text:          gm.Text,
+				Expires:       gm.DeleteAt,
+				Undeliverable: gm.Undeliverable,
 			},
 		)
 	}

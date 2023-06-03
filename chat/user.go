@@ -35,7 +35,10 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 
 	if u.Profile {
 		var count int64
-		tx.Model(&user{}).Where("profile = ?", true).Count(&count)
+		err := tx.Model(&user{}).Where("profile = ?", true).Count(&count).Error
+		if err != nil {
+			return err
+		}
 		if count > 0 {
 			return errors.New("profile user already exists")
 		}

@@ -11,11 +11,13 @@ type User struct {
 }
 
 type DirectMessage struct {
-	ID        uuid.UUID
-	Author    uuid.UUID
-	Thread    uuid.UUID
-	WrittenAt int64
-	Text      string
+	ID            uuid.UUID
+	Author        uuid.UUID
+	Thread        uuid.UUID
+	WrittenAt     int64
+	Text          string
+	Expires       int64
+	Undeliverable bool
 }
 
 type Group struct {
@@ -27,11 +29,13 @@ type Group struct {
 }
 
 type GroupMessage struct {
-	ID        uuid.UUID
-	Author    uuid.UUID
-	Thread    uuid.UUID
-	WrittenAt int64
-	Text      string
+	ID            uuid.UUID
+	Author        uuid.UUID
+	Thread        uuid.UUID
+	WrittenAt     int64
+	Text          string
+	Expires       int64
+	Undeliverable bool
 }
 
 type InitialState struct {
