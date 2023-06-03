@@ -225,7 +225,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 			}).Error("error saving new group creation")
 			return err
 		}
-		err = tx.Create(&g).Error
+		err = tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&g).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

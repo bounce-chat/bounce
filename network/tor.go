@@ -248,7 +248,7 @@ func (bounceTor *TorNetwork) updateOnlineStatus() {
 				"key":   kv.Key,
 				"value": kv.Val,
 				"empty": kv.ValSetAndEmpty,
-			}).Debug("result from network-liveness check on Tor control port")
+			}).Trace("result from network-liveness check on Tor control port")
 		}
 	}
 
