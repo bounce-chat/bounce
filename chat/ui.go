@@ -38,12 +38,21 @@ type GroupMessage struct {
 	Undeliverable bool
 }
 
+type UpdateGroupRetention struct {
+	ID        uuid.UUID
+	GroupID   uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+	Retention int64
+}
+
 type InitialState struct {
-	Profile        *User
-	Users          []User
-	Groups         []Group
-	DirectMessages []DirectMessage
-	GroupMessages  []GroupMessage
+	Profile               *User
+	Users                 []User
+	Groups                []Group
+	DirectMessages        []DirectMessage
+	GroupMessages         []GroupMessage
+	UpdateGroupRetentions []UpdateGroupRetention
 }
 
 //

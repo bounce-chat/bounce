@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"encoding/binary"
 	"errors"
 	"os"
 	"time"
@@ -359,12 +360,38 @@ func (b *bounce) buildInitialState() InitialState {
 		)
 	}
 
+	// Load all update groups
+	ugs := []updateGroup{}
+	err = b.database.Order("timestamp asc").Find(&ugs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up all update groups")
+	}
+	exportedUpdateGroupRetentions := []UpdateGroupRetention{}
+	for _, ug := range ugs {
+		switch ug.Type {
+		case updateGroupTypeChangeRetention:
+			exportedUpdateGroupRetentions = append(
+				exportedUpdateGroupRetentions,
+				UpdateGroupRetention{
+					ID:        ug.ID,
+					GroupID:   ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+					Retention: int64(binary.LittleEndian.Uint64(ug.Data)),
+				},
+			)
+		}
+	}
+
 	// Create the initial state for the UI
 	return InitialState{
-		Profile:        profile,
-		Users:          chatUsers,
-		Groups:         chatGroups,
-		DirectMessages: exportedDMs,
-		GroupMessages:  exportedGMs,
+		Profile:               profile,
+		Users:                 chatUsers,
+		Groups:                chatGroups,
+		DirectMessages:        exportedDMs,
+		GroupMessages:         exportedGMs,
+		UpdateGroupRetentions: exportedUpdateGroupRetentions,
 	}
 }

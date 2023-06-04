@@ -187,7 +187,34 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	}
 
 	for _, gm := range state.GroupMessages {
-		fyneUI.loadGroupMessage(gm, true, true) // TODO: need to handle what's read / unread
+		group, exists := fyneUI.groups[gm.Thread]
+		if !exists {
+			log.Fatal("group doesn't exist for update group retention")
+		}
+		mti, err := fyneUI.newMessageThreadItem(gm)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		group.items = append(group.items, mti)
+	}
+
+	for _, ugr := range state.UpdateGroupRetentions {
+		group, exists := fyneUI.groups[ugr.GroupID]
+		if !exists {
+			log.Fatal("group doesn't exist for update group retention")
+		}
+		ugrItem, err := fyneUI.newUpdateGroupRetention(ugr)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		group.items = append(group.items, ugrItem)
+
+	}
+
+	// Create widgets for all the thread items we added
+	for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?
+		fyneUI.populateItems(g)
+		g.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
 	}
 }
 

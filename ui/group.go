@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/hkparker/bounce/chat"
@@ -33,6 +35,7 @@ type group struct {
 	entry                     *threadEntry
 	entryBar                  *fyne.Container
 	lastMessage               int64
+	items                     threadItems
 }
 
 func (group *group) getID() uuid.UUID {
@@ -61,6 +64,54 @@ func (group *group) getLastMessageTime() int64 {
 func (group *group) setLastMessageTime(time int64) {
 	group.lastMessage = time
 }
+
+func (fyneUI *Fyne) populateItems(g *group) {
+	sort.Sort(g.items)
+
+	chatHistory := g.chatHistoryScroll().Content.(*fyne.Container)
+	for _, item := range g.items {
+		chatHistory.Objects = append(chatHistory.Objects, item.widget)
+	}
+
+	lastItem := g.items[len(g.items)-1]
+	switch src := lastItem.source.(type) {
+	case chat.GroupMessage:
+		user, exists := g.users.get(src.Author)
+		if !exists {
+			log.WithFields(log.Fields{
+				"user_id": src.Author,
+			}).Fatal("loaded message from user ID not in thread")
+		}
+		displayName := user.name
+		if src.Author == fyneUI.profile.id {
+			displayName = "You"
+		}
+		g.button.setLastMessage(displayName, src.Text)
+	case chat.UpdateGroupRetention:
+		user, exists := g.users.get(src.Actor)
+		if !exists {
+			log.WithFields(log.Fields{
+				"user_id": src.Actor,
+			}).Fatal("loaded g update from user ID not in thread")
+		}
+		actorName := user.name
+		if src.Actor == fyneUI.profile.id {
+			actorName = "You"
+		}
+		changeString := actorName + " changed the g retention to " + strconv.FormatInt(src.Retention, 10)
+		g.button.setLastAction(changeString)
+	default:
+	}
+
+	lastActivity := lastItem.timestamp
+	g.button.setLastMessageTime(time.Unix(lastActivity, 0))
+	g.setLastMessageTime(lastActivity)
+
+	g.chatHistoryScroll().Refresh()
+}
+
+//populateItems: sort the items, for each get the widget and put it in the scroll
+//addItem: append to the end of the items list, append the widget to the scroll, do all of the timestamp update and autoscroll logic
 
 func (fyneUI *Fyne) OpenNewGroupChat(bounceGroup chat.Group) { // TODO: rename "create and open"?
 	fyneUI.NewGroupChat(bounceGroup)
@@ -206,7 +257,7 @@ func (fyneUI *Fyne) ReceivedGroupMessage(msg chat.GroupMessage) {
 	fyneUI.loadGroupMessage(msg, false, false)
 }
 
-func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hideNotification bool) {
+func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hideNotification bool) { // TODO: refactor this and also add new group messages to the thread items list
 	// Log an error and early return if the group doesn't exist
 	group, exists := fyneUI.groups[msg.Thread]
 	if !exists {
