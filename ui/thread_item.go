@@ -51,7 +51,7 @@ func (fyneUI *Fyne) newUpdateGroupRetention(ugr chat.UpdateGroupRetention) (*thr
 	}, nil
 }
 
-func (fyneUI *Fyne) newMessageThreadItem(gm chat.GroupMessage) (*threadItem, error) {
+func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 	group, exists := fyneUI.groups[gm.Thread]
 	if !exists {
 		log.WithFields(log.Fields{

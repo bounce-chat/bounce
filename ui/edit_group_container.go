@@ -113,6 +113,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		}
 		fyneUI.refreshUserSelections(thread)
 		fyneUI.showMainContainer()
+		fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
 	})
 	saveButton.Importance = widget.HighImportance
 	cancelButton := widget.NewButton("Cancel", func() {
@@ -129,6 +130,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		thread.pendingUsers.empty()
 		fyneUI.refreshUserSelections(thread)
 		fyneUI.showMainContainer()
+		fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
 	})
 	actionButtons := container.New(
 		layout.NewBorderLayout(nil, nil, cancelButton, saveButton),
@@ -163,6 +165,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 	// Close the window but save state.  TODO: should it clear state as well?
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		fyneUI.showMainContainer()
+		fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
 	})
 	closeButton.Importance = widget.LowImportance
 

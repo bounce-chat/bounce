@@ -191,7 +191,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		if !exists {
 			log.Fatal("group doesn't exist for update group retention")
 		}
-		mti, err := fyneUI.newMessageThreadItem(gm)
+		mti, err := fyneUI.newGroupMessage(gm)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
