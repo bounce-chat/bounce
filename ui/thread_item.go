@@ -13,12 +13,14 @@ import (
 var errUnknownActorInUpdateGroupRetention = errors.New("unknown actor in update group retention")
 var errUserNotFoundForGroupMessage = errors.New("user not found for group message")
 var errGroupNotFoundForGroupMessage = errors.New("group not found for group message")
+var errUserNotFoundForDirectMessage = errors.New("user not found for group message")
 
 type threadItem struct {
-	id        uuid.UUID
-	source    interface{}
-	widget    fyne.Widget
-	timestamp int64
+	id           uuid.UUID
+	source       interface{}
+	widget       fyne.Widget
+	notification fyne.Notification
+	timestamp    int64
 }
 
 type threadItems []*threadItem
@@ -78,7 +80,32 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 	return &threadItem{
 		id:        gm.ID,
 		source:    gm,
-		widget:    newChatBubble(user.name, gm.ID, gm.Text, outgoing, gm.WrittenAt, profileButton), // TODO: SavedAt
-		timestamp: gm.WrittenAt,                                                                    // TODO: SavedAt
+		widget:    newChatBubble(user.name, gm.ID, gm.Text, outgoing, gm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
+		timestamp: gm.SavedAt,
+	}, nil
+}
+
+func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
+	u, exists := fyneUI.users.get(dm.Author)
+	if !exists {
+		log.WithFields(log.Fields{
+			"user_id": dm.Author,
+		}).Error("received a direct message from user ID not known to UI")
+		return &threadItem{}, errUserNotFoundForDirectMessage
+	}
+	outgoing := dm.Author == fyneUI.profile.id
+	profileButton := widget.NewButtonWithIcon("", newEmbeddedResource("assets/not_found.png"), func() { // TODO: get image from user
+		log.Info("user wants to open the profile of " + u.name)
+		// TODO: display this user's profile
+	})
+	if outgoing {
+		profileButton = nil
+	}
+
+	return &threadItem{
+		id:        dm.ID,
+		source:    dm,
+		widget:    newChatBubble(u.name, dm.ID, dm.Text, outgoing, dm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
+		timestamp: dm.SavedAt,
 	}, nil
 }

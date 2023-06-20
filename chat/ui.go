@@ -15,8 +15,10 @@ type DirectMessage struct {
 	Author        uuid.UUID
 	Thread        uuid.UUID
 	WrittenAt     int64
+	SavedAt       int64
 	Text          string
 	Expires       int64
+	Read          bool
 	Undeliverable bool
 }
 
@@ -33,8 +35,10 @@ type GroupMessage struct {
 	Author        uuid.UUID
 	Thread        uuid.UUID
 	WrittenAt     int64
+	SavedAt       int64
 	Text          string
 	Expires       int64
+	Read          bool
 	Undeliverable bool
 }
 

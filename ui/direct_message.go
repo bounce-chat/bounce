@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,6 +31,7 @@ type directMessage struct {
 	entryBar                  *fyne.Container
 	retentionSelection        *widget.Select
 	lastMessage               int64
+	items                     threadItems
 }
 
 func (dm *directMessage) getID() uuid.UUID {
@@ -57,6 +59,62 @@ func (dm *directMessage) getLastMessageTime() int64 {
 
 func (dm *directMessage) setLastMessageTime(time int64) {
 	dm.lastMessage = time
+}
+
+func (fyneUI *Fyne) populateUserItems(u *directMessage) { // TODO: make this work on threads generically?
+	sort.Sort(u.items)
+
+	chatHistory := u.chatHistoryScroll().Content.(*fyne.Container)
+	for _, item := range u.items {
+		chatHistory.Objects = append(chatHistory.Objects, item.widget) // TODO: g.appendItem()?
+	}
+
+	lastItem := u.items[len(u.items)-1]
+	fyneUI.setLastUserButton(u, lastItem)
+}
+
+func (fyneUI *Fyne) setLastUserButton(u *directMessage, ti *threadItem) {
+	switch src := ti.source.(type) {
+	case chat.DirectMessage:
+		dm, exists := fyneUI.dms[src.Thread]
+		if !exists {
+			log.WithFields(log.Fields{
+				"thread": src.Thread,
+			}).Fatal("loaded direct message in unknown thread")
+		}
+		user, exists := fyneUI.users.get(src.Author)
+		if !exists {
+			log.WithFields(log.Fields{
+				"user_id": src.Author,
+			}).Fatal("loaded message from user ID not known to UI")
+		}
+		displayName := user.name
+		if src.Author == fyneUI.profile.id {
+			displayName = "You"
+		}
+		dm.button.setLastMessage(displayName, src.Text)
+	//case chat.UpdateGroupRetention:
+	//	user, exists := g.users.get(src.Actor)
+	//	if !exists {
+	//		log.WithFields(log.Fields{
+	//			"user_id": src.Actor,
+	//		}).Fatal("loaded group update from user ID not in thread")
+	//	}
+	//	actorName := user.name
+	//	if src.Actor == fyneUI.profile.id {
+	//		actorName = "You"
+	//	}
+	//	changeString := actorName + " changed the group retention to " + strconv.FormatInt(src.Retention, 10)
+	//	g.button.setLastAction(changeString)
+	default:
+		log.Fatal("unsupported type when updating last button")
+	}
+
+	lastActivity := ti.timestamp
+	u.button.setLastMessageTime(time.Unix(lastActivity, 0))
+	u.setLastMessageTime(lastActivity)
+
+	u.chatHistoryScroll().Refresh()
 }
 
 func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wrap around something that takes the internal user object

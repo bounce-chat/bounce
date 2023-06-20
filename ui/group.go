@@ -65,16 +65,20 @@ func (group *group) setLastMessageTime(time int64) {
 	group.lastMessage = time
 }
 
-func (fyneUI *Fyne) populateItems(g *group) {
+func (fyneUI *Fyne) populateGroupItems(g *group) {
 	sort.Sort(g.items)
 
 	chatHistory := g.chatHistoryScroll().Content.(*fyne.Container)
 	for _, item := range g.items {
-		chatHistory.Objects = append(chatHistory.Objects, item.widget)
+		chatHistory.Objects = append(chatHistory.Objects, item.widget) // TODO: g.appendItem()?
 	}
 
 	lastItem := g.items[len(g.items)-1]
-	switch src := lastItem.source.(type) {
+	fyneUI.setLastGroupButton(g, lastItem)
+}
+
+func (fyneUI *Fyne) setLastGroupButton(g *group, ti *threadItem) {
+	switch src := ti.source.(type) {
 	case chat.GroupMessage:
 		user, exists := g.users.get(src.Author)
 		if !exists {
@@ -92,18 +96,19 @@ func (fyneUI *Fyne) populateItems(g *group) {
 		if !exists {
 			log.WithFields(log.Fields{
 				"user_id": src.Actor,
-			}).Fatal("loaded g update from user ID not in thread")
+			}).Fatal("loaded group update from user ID not in thread")
 		}
 		actorName := user.name
 		if src.Actor == fyneUI.profile.id {
 			actorName = "You"
 		}
-		changeString := actorName + " changed the g retention to " + strconv.FormatInt(src.Retention, 10)
+		changeString := actorName + " changed the group retention to " + strconv.FormatInt(src.Retention, 10)
 		g.button.setLastAction(changeString)
 	default:
+		log.Fatal("unsupported type when updating last button")
 	}
 
-	lastActivity := lastItem.timestamp
+	lastActivity := ti.timestamp
 	g.button.setLastMessageTime(time.Unix(lastActivity, 0))
 	g.setLastMessageTime(lastActivity)
 

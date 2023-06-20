@@ -183,7 +183,26 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	}
 
 	for _, dm := range state.DirectMessages {
-		fyneUI.loadDirectMessage(dm, true, true) // TODO: need to handle what's read / unread
+		u, exists := fyneUI.users.get(dm.Thread)
+		if !exists {
+			log.Fatal("dm author not known to UI")
+		}
+		dmThread, exists := fyneUI.dms[dm.Thread]
+		if !exists {
+			fyneUI.NewDirectMessage(chat.User{
+				ID:   dm.Thread,
+				Name: u.name,
+			})
+			dmThread, exists = fyneUI.dms[dm.Thread]
+			if !exists {
+				log.Fatal("dm doesn't exist after creation")
+			}
+		}
+		dmti, err := fyneUI.newDirectMessage(dm)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		dmThread.items = append(dmThread.items, dmti)
 	}
 
 	for _, gm := range state.GroupMessages {
@@ -213,8 +232,12 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 
 	// Create widgets for all the thread items we added
 	for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?
-		fyneUI.populateItems(g)
+		fyneUI.populateGroupItems(g)
 		g.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
+	}
+	for _, u := range fyneUI.dms { // TODO: store groups and DMs in a shared threads slice?
+		fyneUI.populateUserItems(u)
+		u.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
 	}
 }
 

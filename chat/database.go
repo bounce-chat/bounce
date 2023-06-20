@@ -329,8 +329,10 @@ func (b *bounce) buildInitialState() InitialState {
 				Author:        dm.Author,
 				Thread:        dm.getDestination(b.currentUserID()),
 				WrittenAt:     dm.WrittenAt,
+				SavedAt:       dm.SavedAt,
 				Text:          dm.Text,
 				Expires:       dm.DeleteAt,
+				Read:          true, // TODO
 				Undeliverable: dm.Undeliverable,
 			},
 		)
@@ -353,8 +355,10 @@ func (b *bounce) buildInitialState() InitialState {
 				Author:        gm.Author,
 				Thread:        gm.getDestination(b.currentUserID()),
 				WrittenAt:     gm.WrittenAt,
+				SavedAt:       gm.SavedAt,
 				Text:          gm.Text,
 				Expires:       gm.DeleteAt,
+				Read:          true, // TODO
 				Undeliverable: gm.Undeliverable,
 			},
 		)
