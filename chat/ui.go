@@ -58,6 +58,14 @@ type UpdateGroupName struct {
 	Name      string
 }
 
+type UpdateGroupAddUser struct {
+	ID        uuid.UUID
+	GroupID   uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+	User      User
+}
+
 type InitialState struct {
 	Profile               *User
 	Users                 []User
@@ -66,6 +74,7 @@ type InitialState struct {
 	GroupMessages         []GroupMessage
 	UpdateGroupRetentions []UpdateGroupRetention
 	UpdateGroupNames      []UpdateGroupName
+	UpdateGroupAddUsers   []UpdateGroupAddUser
 }
 
 //

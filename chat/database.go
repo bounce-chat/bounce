@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 func (b *bounce) openDatabase() {
@@ -374,6 +375,7 @@ func (b *bounce) buildInitialState() InitialState {
 	}
 	exportedUpdateGroupRetentions := []UpdateGroupRetention{}
 	exportedUpdateGroupNames := []UpdateGroupName{}
+	exportedUpdateGroupAddUsers := []UpdateGroupAddUser{}
 	for _, ug := range ugs {
 		switch ug.Type {
 		case updateGroupTypeChangeName:
@@ -398,6 +400,29 @@ func (b *bounce) buildInitialState() InitialState {
 					Retention: int64(binary.LittleEndian.Uint64(ug.Data)),
 				},
 			)
+		case updateGroupTypeAddUser:
+			var u user
+			err := msgpack.Unmarshal(ug.Data, &u)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    ug.ID,
+					"error": err.Error(),
+				}).Fatal("error unmarshalling user in update group add user in database")
+			}
+
+			exportedUpdateGroupAddUsers = append(
+				exportedUpdateGroupAddUsers,
+				UpdateGroupAddUser{
+					ID:        ug.ID,
+					GroupID:   ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+					User: User{
+						ID:   u.ID,
+						Name: u.Name,
+					},
+				},
+			)
 		}
 	}
 
@@ -410,5 +435,6 @@ func (b *bounce) buildInitialState() InitialState {
 		GroupMessages:         exportedGMs,
 		UpdateGroupRetentions: exportedUpdateGroupRetentions,
 		UpdateGroupNames:      exportedUpdateGroupNames,
+		UpdateGroupAddUsers:   exportedUpdateGroupAddUsers,
 	}
 }

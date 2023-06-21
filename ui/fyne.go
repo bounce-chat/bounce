@@ -241,6 +241,18 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		group.items = append(group.items, ugnItem)
 	}
 
+	for _, ugau := range state.UpdateGroupAddUsers {
+		group, exists := fyneUI.groups[ugau.GroupID]
+		if !exists {
+			log.Fatal("group doesn't exist for update group add user")
+		}
+		ugauItem, err := fyneUI.newUpdateGroupAddUser(ugau)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		group.items = append(group.items, ugauItem)
+	}
+
 	// Create widgets for all the thread items we added
 	for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?
 		fyneUI.populateGroupItems(g)
