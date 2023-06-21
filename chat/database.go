@@ -376,6 +376,7 @@ func (b *bounce) buildInitialState() InitialState {
 	exportedUpdateGroupRetentions := []UpdateGroupRetention{}
 	exportedUpdateGroupNames := []UpdateGroupName{}
 	exportedUpdateGroupAddUsers := []UpdateGroupAddUser{}
+	exportedUpdateGroupClearHistories := []UpdateGroupClearHistory{}
 	for _, ug := range ugs {
 		switch ug.Type {
 		case updateGroupTypeChangeName:
@@ -423,18 +424,30 @@ func (b *bounce) buildInitialState() InitialState {
 					},
 				},
 			)
+		case updateGroupTypeSetClearBefore:
+			exportedUpdateGroupClearHistories = append(
+				exportedUpdateGroupClearHistories,
+				UpdateGroupClearHistory{
+					ID:        ug.ID,
+					GroupID:   ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+					ClearTime: int64(binary.LittleEndian.Uint64(ug.Data)),
+				},
+			)
 		}
 	}
 
 	// Create the initial state for the UI
 	return InitialState{
-		Profile:               profile,
-		Users:                 chatUsers,
-		Groups:                chatGroups,
-		DirectMessages:        exportedDMs,
-		GroupMessages:         exportedGMs,
-		UpdateGroupRetentions: exportedUpdateGroupRetentions,
-		UpdateGroupNames:      exportedUpdateGroupNames,
-		UpdateGroupAddUsers:   exportedUpdateGroupAddUsers,
+		Profile:                   profile,
+		Users:                     chatUsers,
+		Groups:                    chatGroups,
+		DirectMessages:            exportedDMs,
+		GroupMessages:             exportedGMs,
+		UpdateGroupRetentions:     exportedUpdateGroupRetentions,
+		UpdateGroupNames:          exportedUpdateGroupNames,
+		UpdateGroupAddUsers:       exportedUpdateGroupAddUsers,
+		UpdateGroupClearHistories: exportedUpdateGroupClearHistories,
 	}
 }

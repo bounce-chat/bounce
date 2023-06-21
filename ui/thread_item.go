@@ -13,6 +13,7 @@ import (
 var errUnknownActorInUpdateGroupName = errors.New("unknown actor in update group name")
 var errUnknownActorInUpdateGroupRetention = errors.New("unknown actor in update group retention")
 var errUnknownActorInUpdateGroupAddUser = errors.New("unknown actor in update group add user")
+var errUnknownActorInUpdateGroupClearHistory = errors.New("unknown actor in update group clear history")
 var errUserNotFoundForGroupMessage = errors.New("user not found for group message")
 var errGroupNotFoundForGroupMessage = errors.New("group not found for group message")
 var errUserNotFoundForDirectMessage = errors.New("user not found for group message")
@@ -88,6 +89,24 @@ func (fyneUI *Fyne) newUpdateGroupAddUser(ugau chat.UpdateGroupAddUser) (*thread
 		source:    ugau,
 		widget:    changeLabel,
 		timestamp: ugau.Timestamp,
+	}, nil
+}
+
+func (fyneUI *Fyne) newUpdateGroupClearHistory(ugch chat.UpdateGroupClearHistory) (*threadItem, error) {
+	actor, ok := fyneUI.users.get(ugch.Actor)
+	if !ok {
+		return &threadItem{}, errUnknownActorInUpdateGroupClearHistory
+	}
+
+	changeString := actor.name + " cleared the chat history"
+	changeLabel := widget.NewLabel(changeString)
+	changeLabel.Alignment = fyne.TextAlignCenter
+
+	return &threadItem{
+		id:        ugch.ID,
+		source:    ugch,
+		widget:    changeLabel,
+		timestamp: ugch.ClearTime,
 	}, nil
 }
 

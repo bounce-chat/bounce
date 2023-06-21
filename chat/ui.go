@@ -66,15 +66,24 @@ type UpdateGroupAddUser struct {
 	User      User
 }
 
+type UpdateGroupClearHistory struct {
+	ID        uuid.UUID
+	GroupID   uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+	ClearTime int64
+}
+
 type InitialState struct {
-	Profile               *User
-	Users                 []User
-	Groups                []Group
-	DirectMessages        []DirectMessage
-	GroupMessages         []GroupMessage
-	UpdateGroupRetentions []UpdateGroupRetention
-	UpdateGroupNames      []UpdateGroupName
-	UpdateGroupAddUsers   []UpdateGroupAddUser
+	Profile                   *User
+	Users                     []User
+	Groups                    []Group
+	DirectMessages            []DirectMessage
+	GroupMessages             []GroupMessage
+	UpdateGroupRetentions     []UpdateGroupRetention
+	UpdateGroupNames          []UpdateGroupName
+	UpdateGroupAddUsers       []UpdateGroupAddUser
+	UpdateGroupClearHistories []UpdateGroupClearHistory
 }
 
 //
