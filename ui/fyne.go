@@ -227,7 +227,18 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 			log.Fatal(err.Error())
 		}
 		group.items = append(group.items, ugrItem)
+	}
 
+	for _, ugn := range state.UpdateGroupNames {
+		group, exists := fyneUI.groups[ugn.GroupID]
+		if !exists {
+			log.Fatal("group doesn't exist for update group name")
+		}
+		ugnItem, err := fyneUI.newUpdateGroupName(ugn)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		group.items = append(group.items, ugnItem)
 	}
 
 	// Create widgets for all the thread items we added

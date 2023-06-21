@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var errUnknownActorInUpdateGroupName = errors.New("unknown actor in update group name")
 var errUnknownActorInUpdateGroupRetention = errors.New("unknown actor in update group retention")
 var errUserNotFoundForGroupMessage = errors.New("user not found for group message")
 var errGroupNotFoundForGroupMessage = errors.New("group not found for group message")
@@ -33,6 +34,24 @@ func (tis threadItems) Swap(i, j int) {
 }
 func (tis threadItems) Less(i, j int) bool {
 	return tis[i].timestamp < tis[j].timestamp
+}
+
+func (fyneUI *Fyne) newUpdateGroupName(ugn chat.UpdateGroupName) (*threadItem, error) {
+	actor, ok := fyneUI.users.get(ugn.Actor)
+	if !ok {
+		return &threadItem{}, errUnknownActorInUpdateGroupName
+	}
+
+	changeString := actor.name + " changed the group name to " + ugn.Name
+	changeLabel := widget.NewLabel(changeString)
+	changeLabel.Alignment = fyne.TextAlignCenter
+
+	return &threadItem{
+		id:        ugn.ID,
+		source:    ugn,
+		widget:    changeLabel,
+		timestamp: ugn.Timestamp,
+	}, nil
 }
 
 func (fyneUI *Fyne) newUpdateGroupRetention(ugr chat.UpdateGroupRetention) (*threadItem, error) {

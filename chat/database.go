@@ -373,8 +373,20 @@ func (b *bounce) buildInitialState() InitialState {
 		}).Fatal("database error looking up all update groups")
 	}
 	exportedUpdateGroupRetentions := []UpdateGroupRetention{}
+	exportedUpdateGroupNames := []UpdateGroupName{}
 	for _, ug := range ugs {
 		switch ug.Type {
+		case updateGroupTypeChangeName:
+			exportedUpdateGroupNames = append(
+				exportedUpdateGroupNames,
+				UpdateGroupName{
+					ID:        ug.ID,
+					GroupID:   ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+					Name:      string(ug.Data),
+				},
+			)
 		case updateGroupTypeChangeRetention:
 			exportedUpdateGroupRetentions = append(
 				exportedUpdateGroupRetentions,
@@ -397,5 +409,6 @@ func (b *bounce) buildInitialState() InitialState {
 		DirectMessages:        exportedDMs,
 		GroupMessages:         exportedGMs,
 		UpdateGroupRetentions: exportedUpdateGroupRetentions,
+		UpdateGroupNames:      exportedUpdateGroupNames,
 	}
 }
