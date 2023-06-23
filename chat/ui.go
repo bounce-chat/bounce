@@ -22,6 +22,22 @@ type DirectMessage struct {
 	Undeliverable bool
 }
 
+type UpdateDMRetention struct {
+	ID        uuid.UUID
+	Thread    uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+	Retention int64
+}
+
+type UpdateDMClearHistory struct {
+	ID        uuid.UUID
+	Thread    uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+	ClearTime int64
+}
+
 type Group struct {
 	ID           uuid.UUID
 	Name         string
@@ -44,7 +60,7 @@ type GroupMessage struct {
 
 type UpdateGroupRetention struct {
 	ID        uuid.UUID
-	GroupID   uuid.UUID
+	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
 	Retention int64
@@ -52,7 +68,7 @@ type UpdateGroupRetention struct {
 
 type UpdateGroupName struct {
 	ID        uuid.UUID
-	GroupID   uuid.UUID
+	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
 	Name      string
@@ -60,7 +76,7 @@ type UpdateGroupName struct {
 
 type UpdateGroupAddUser struct {
 	ID        uuid.UUID
-	GroupID   uuid.UUID
+	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
 	User      User
@@ -68,7 +84,7 @@ type UpdateGroupAddUser struct {
 
 type UpdateGroupClearHistory struct {
 	ID        uuid.UUID
-	GroupID   uuid.UUID
+	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
 	ClearTime int64
@@ -79,6 +95,8 @@ type InitialState struct {
 	Users                     []User
 	Groups                    []Group
 	DirectMessages            []DirectMessage
+	UpdateDMRetentions        []UpdateDMRetention
+	UpdateDMClearHistories    []UpdateDMClearHistory
 	GroupMessages             []GroupMessage
 	UpdateGroupRetentions     []UpdateGroupRetention
 	UpdateGroupNames          []UpdateGroupName

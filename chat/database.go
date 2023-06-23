@@ -339,6 +339,42 @@ func (b *bounce) buildInitialState() InitialState {
 		)
 	}
 
+	udms := []updateDM{}
+	err = b.database.Order("timestamp asc").Find(&udms).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up all update DMs")
+	}
+	exportedUpdateDMRetentions := []UpdateDMRetention{}
+	exportedUpdateDMClearHistories := []UpdateDMClearHistory{}
+	for _, udm := range udms {
+		switch udm.Type {
+		case updateDMTypeChangeRetention:
+			exportedUpdateDMRetentions = append(
+				exportedUpdateDMRetentions,
+				UpdateDMRetention{
+					ID:        udm.ID,
+					Thread:    xor(udm.Target, b.currentUserID()),
+					Actor:     udm.Actor,
+					Timestamp: udm.Timestamp,
+					Retention: int64(binary.LittleEndian.Uint64(udm.Data)),
+				},
+			)
+		case updateDMTypeSetClearBefore:
+			exportedUpdateDMClearHistories = append(
+				exportedUpdateDMClearHistories,
+				UpdateDMClearHistory{
+					ID:        udm.ID,
+					Thread:    xor(udm.Target, b.currentUserID()),
+					Actor:     udm.Actor,
+					Timestamp: udm.Timestamp,
+					ClearTime: int64(binary.LittleEndian.Uint64(udm.Data)),
+				},
+			)
+		}
+	}
+
 	// Load all group messages
 	gms := []groupMessage{}
 	err = b.database.Order("saved_at asc").Find(&gms).Error
@@ -384,7 +420,7 @@ func (b *bounce) buildInitialState() InitialState {
 				exportedUpdateGroupNames,
 				UpdateGroupName{
 					ID:        ug.ID,
-					GroupID:   ug.Target,
+					Thread:    ug.Target,
 					Actor:     ug.Actor,
 					Timestamp: ug.Timestamp,
 					Name:      string(ug.Data),
@@ -395,7 +431,7 @@ func (b *bounce) buildInitialState() InitialState {
 				exportedUpdateGroupRetentions,
 				UpdateGroupRetention{
 					ID:        ug.ID,
-					GroupID:   ug.Target,
+					Thread:    ug.Target,
 					Actor:     ug.Actor,
 					Timestamp: ug.Timestamp,
 					Retention: int64(binary.LittleEndian.Uint64(ug.Data)),
@@ -415,7 +451,7 @@ func (b *bounce) buildInitialState() InitialState {
 				exportedUpdateGroupAddUsers,
 				UpdateGroupAddUser{
 					ID:        ug.ID,
-					GroupID:   ug.Target,
+					Thread:    ug.Target,
 					Actor:     ug.Actor,
 					Timestamp: ug.Timestamp,
 					User: User{
@@ -429,7 +465,7 @@ func (b *bounce) buildInitialState() InitialState {
 				exportedUpdateGroupClearHistories,
 				UpdateGroupClearHistory{
 					ID:        ug.ID,
-					GroupID:   ug.Target,
+					Thread:    ug.Target,
 					Actor:     ug.Actor,
 					Timestamp: ug.Timestamp,
 					ClearTime: int64(binary.LittleEndian.Uint64(ug.Data)),
@@ -444,6 +480,8 @@ func (b *bounce) buildInitialState() InitialState {
 		Users:                     chatUsers,
 		Groups:                    chatGroups,
 		DirectMessages:            exportedDMs,
+		UpdateDMRetentions:        exportedUpdateDMRetentions,
+		UpdateDMClearHistories:    exportedUpdateDMClearHistories,
 		GroupMessages:             exportedGMs,
 		UpdateGroupRetentions:     exportedUpdateGroupRetentions,
 		UpdateGroupNames:          exportedUpdateGroupNames,

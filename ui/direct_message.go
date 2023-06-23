@@ -74,15 +74,9 @@ func (fyneUI *Fyne) populateUserItems(u *directMessage) { // TODO: make this wor
 	fyneUI.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) setLastUserButton(u *directMessage, ti *threadItem) {
+func (fyneUI *Fyne) setLastUserButton(dm *directMessage, ti *threadItem) {
 	switch src := ti.source.(type) {
 	case chat.DirectMessage:
-		dm, exists := fyneUI.dms[src.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"thread": src.Thread,
-			}).Fatal("loaded direct message in unknown thread")
-		}
 		user, exists := fyneUI.users.get(src.Author)
 		if !exists {
 			log.WithFields(log.Fields{
@@ -94,28 +88,44 @@ func (fyneUI *Fyne) setLastUserButton(u *directMessage, ti *threadItem) {
 			displayName = "You"
 		}
 		dm.button.setLastMessage(displayName, src.Text)
-	//case chat.UpdateGroupRetention:
-	//	user, exists := g.users.get(src.Actor)
-	//	if !exists {
-	//		log.WithFields(log.Fields{
-	//			"user_id": src.Actor,
-	//		}).Fatal("loaded group update from user ID not in thread")
-	//	}
-	//	actorName := user.name
-	//	if src.Actor == fyneUI.profile.id {
-	//		actorName = "You"
-	//	}
-	//	changeString := actorName + " changed the group retention to " + strconv.FormatInt(src.Retention, 10)
-	//	g.button.setLastAction(changeString)
+		dm.setLastMessageTime(src.WrittenAt)
+	case chat.UpdateDMRetention:
+		user, exists := fyneUI.users.get(src.Actor)
+		if !exists {
+			log.WithFields(log.Fields{
+				"user_id": src.Actor,
+			}).Fatal("loaded message from user ID not known to UI")
+		}
+		actorName := user.name
+		if src.Actor == fyneUI.profile.id {
+			actorName = "You"
+		}
+		changeString := actorName + " changed the group retention to " + getRetentionName(src.Retention)
+		dm.button.setLastAction(changeString)
+		dm.setLastMessageTime(src.Timestamp)
+	case chat.UpdateDMClearHistory:
+		user, exists := fyneUI.users.get(src.Actor)
+		if !exists {
+			log.WithFields(log.Fields{
+				"user_id": src.Actor,
+			}).Fatal("loaded message from user ID not known to UI")
+		}
+		actorName := user.name
+		if src.Actor == fyneUI.profile.id {
+			actorName = "You"
+		}
+		changeString := actorName + " cleared the chat history"
+		dm.button.setLastAction(changeString)
+		dm.setLastMessageTime(src.Timestamp)
 	default:
 		log.Fatal("unsupported type when updating last button")
 	}
 
 	lastActivity := ti.timestamp
-	u.button.setLastMessageTime(time.Unix(lastActivity, 0))
-	u.setLastMessageTime(lastActivity)
+	dm.button.setLastMessageTime(time.Unix(lastActivity, 0))
+	dm.setLastMessageTime(lastActivity)
 
-	u.chatHistoryScroll().Refresh()
+	dm.chatHistoryScroll().Refresh()
 }
 
 func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wrap around something that takes the internal user object

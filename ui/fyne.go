@@ -165,7 +165,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		// TODO: log fatal if anything else is set
 		return
 	} else {
-		fyneUI.profile = &user{id: state.Profile.ID, name: state.Profile.Name} // TODO: use the exported user concept in the UI?
+		fyneUI.profile = &user{id: state.Profile.ID, name: state.Profile.Name} // TODO: use the exported user concept in the UI?  Not doing that becuase bindings
 	}
 
 	for _, u := range state.Users {
@@ -205,6 +205,30 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		dmThread.items = append(dmThread.items, dmti)
 	}
 
+	for _, udmr := range state.UpdateDMRetentions {
+		dm, exists := fyneUI.dms[udmr.Thread]
+		if !exists {
+			log.Fatal("dm doesn't exist for update dm retention")
+		}
+		udmrItem, err := fyneUI.newUpdateDMRetention(udmr)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		dm.items = append(dm.items, udmrItem)
+	}
+
+	for _, udmch := range state.UpdateDMClearHistories {
+		dm, exists := fyneUI.dms[udmch.Thread]
+		if !exists {
+			log.Fatal("dm doesn't exist for update dm clear history")
+		}
+		udmchItem, err := fyneUI.newUpdateDMClearHistory(udmch)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		dm.items = append(dm.items, udmchItem)
+	}
+
 	for _, gm := range state.GroupMessages {
 		group, exists := fyneUI.groups[gm.Thread]
 		if !exists {
@@ -218,7 +242,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	}
 
 	for _, ugr := range state.UpdateGroupRetentions {
-		group, exists := fyneUI.groups[ugr.GroupID]
+		group, exists := fyneUI.groups[ugr.Thread]
 		if !exists {
 			log.Fatal("group doesn't exist for update group retention")
 		}
@@ -230,7 +254,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	}
 
 	for _, ugn := range state.UpdateGroupNames {
-		group, exists := fyneUI.groups[ugn.GroupID]
+		group, exists := fyneUI.groups[ugn.Thread]
 		if !exists {
 			log.Fatal("group doesn't exist for update group name")
 		}
@@ -242,7 +266,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	}
 
 	for _, ugau := range state.UpdateGroupAddUsers {
-		group, exists := fyneUI.groups[ugau.GroupID]
+		group, exists := fyneUI.groups[ugau.Thread]
 		if !exists {
 			log.Fatal("group doesn't exist for update group add user")
 		}
@@ -254,7 +278,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	}
 
 	for _, ugch := range state.UpdateGroupClearHistories {
-		group, exists := fyneUI.groups[ugch.GroupID]
+		group, exists := fyneUI.groups[ugch.Thread]
 		if !exists {
 			log.Fatal("group doesn't exist for update group clear history")
 		}

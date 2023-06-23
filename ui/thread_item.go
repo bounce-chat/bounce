@@ -17,6 +17,8 @@ var errUnknownActorInUpdateGroupClearHistory = errors.New("unknown actor in upda
 var errUserNotFoundForGroupMessage = errors.New("user not found for group message")
 var errGroupNotFoundForGroupMessage = errors.New("group not found for group message")
 var errUserNotFoundForDirectMessage = errors.New("user not found for group message")
+var errUnknownActorInUpdateDMRetention = errors.New("unknown actor in update dm retention")
+var errUnknownActorInUpdateDMClearHistory = errors.New("unknown actor in update dm clear history")
 
 type threadItem struct {
 	id           uuid.UUID
@@ -164,5 +166,41 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 		source:    dm,
 		widget:    newChatBubble(u.name, dm.ID, dm.Text, outgoing, dm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
 		timestamp: dm.SavedAt,
+	}, nil
+}
+
+func (fyneUI *Fyne) newUpdateDMRetention(udmr chat.UpdateDMRetention) (*threadItem, error) {
+	actor, ok := fyneUI.users.get(udmr.Actor)
+	if !ok {
+		return &threadItem{}, errUnknownActorInUpdateDMRetention
+	}
+
+	changeString := actor.name + " changed the group retention to " + getRetentionName(udmr.Retention)
+	changeLabel := widget.NewLabel(changeString)
+	changeLabel.Alignment = fyne.TextAlignCenter
+
+	return &threadItem{
+		id:        udmr.ID,
+		source:    udmr,
+		widget:    changeLabel,
+		timestamp: udmr.Timestamp,
+	}, nil
+}
+
+func (fyneUI *Fyne) newUpdateDMClearHistory(udmch chat.UpdateDMClearHistory) (*threadItem, error) {
+	actor, ok := fyneUI.users.get(udmch.Actor)
+	if !ok {
+		return &threadItem{}, errUnknownActorInUpdateDMClearHistory
+	}
+
+	changeString := actor.name + " cleared the chat history"
+	changeLabel := widget.NewLabel(changeString)
+	changeLabel.Alignment = fyne.TextAlignCenter
+
+	return &threadItem{
+		id:        udmch.ID,
+		source:    udmch,
+		widget:    changeLabel,
+		timestamp: udmch.ClearTime,
 	}, nil
 }
