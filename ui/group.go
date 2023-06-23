@@ -2,7 +2,6 @@ package ui
 
 import (
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/hkparker/bounce/chat"
@@ -75,6 +74,7 @@ func (fyneUI *Fyne) populateGroupItems(g *group) {
 
 	lastItem := g.items[len(g.items)-1]
 	fyneUI.setLastGroupButton(g, lastItem)
+	fyneUI.refreshThreadOrder()
 }
 
 func (fyneUI *Fyne) setLastGroupButton(g *group, ti *threadItem) {
@@ -91,6 +91,7 @@ func (fyneUI *Fyne) setLastGroupButton(g *group, ti *threadItem) {
 			displayName = "You"
 		}
 		g.button.setLastMessage(displayName, src.Text)
+		g.setLastMessageTime(src.WrittenAt)
 	case chat.UpdateGroupRetention:
 		user, exists := g.users.get(src.Actor)
 		if !exists {
@@ -102,8 +103,51 @@ func (fyneUI *Fyne) setLastGroupButton(g *group, ti *threadItem) {
 		if src.Actor == fyneUI.profile.id {
 			actorName = "You"
 		}
-		changeString := actorName + " changed the group retention to " + strconv.FormatInt(src.Retention, 10)
+		changeString := actorName + " changed the group retention to " + getRetentionName(src.Retention)
 		g.button.setLastAction(changeString)
+		g.setLastMessageTime(src.Timestamp)
+	case chat.UpdateGroupName:
+		user, exists := g.users.get(src.Actor)
+		if !exists {
+			log.WithFields(log.Fields{
+				"user_id": src.Actor,
+			}).Fatal("loaded group update from user ID not in thread")
+		}
+		actorName := user.name
+		if src.Actor == fyneUI.profile.id {
+			actorName = "You"
+		}
+		changeString := actorName + " changed the group name to " + src.Name
+		g.button.setLastAction(changeString)
+		g.setLastMessageTime(src.Timestamp)
+	case chat.UpdateGroupAddUser:
+		user, exists := g.users.get(src.Actor)
+		if !exists {
+			log.WithFields(log.Fields{
+				"user_id": src.Actor,
+			}).Fatal("loaded group update from user ID not in thread")
+		}
+		actorName := user.name
+		if src.Actor == fyneUI.profile.id {
+			actorName = "You"
+		}
+		changeString := actorName + " added " + src.User.Name + " to the group"
+		g.button.setLastAction(changeString)
+		g.setLastMessageTime(src.Timestamp)
+	case chat.UpdateGroupClearHistory:
+		user, exists := g.users.get(src.Actor)
+		if !exists {
+			log.WithFields(log.Fields{
+				"user_id": src.Actor,
+			}).Fatal("loaded group update from user ID not in thread")
+		}
+		actorName := user.name
+		if src.Actor == fyneUI.profile.id {
+			actorName = "You"
+		}
+		changeString := actorName + " cleared the chat history"
+		g.button.setLastAction(changeString)
+		g.setLastMessageTime(src.ClearTime)
 	default:
 		log.Fatal("unsupported type when updating last button")
 	}

@@ -71,6 +71,7 @@ func (fyneUI *Fyne) populateUserItems(u *directMessage) { // TODO: make this wor
 
 	lastItem := u.items[len(u.items)-1]
 	fyneUI.setLastUserButton(u, lastItem)
+	fyneUI.refreshThreadOrder()
 }
 
 func (fyneUI *Fyne) setLastUserButton(u *directMessage, ti *threadItem) {
