@@ -20,6 +20,10 @@ type group struct {
 	id                        uuid.UUID
 	name                      binding.String
 	users                     *userStore
+	admins                    []uuid.UUID
+	restrictUserManagement    bool
+	restrictGroupEdits        bool
+	restrictPosting           bool
 	pendingUsers              *userStore
 	notificationsMutedUntil   int64
 	editContainer             *fyne.Container
@@ -187,6 +191,10 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		id:                      bounceGroup.ID,
 		name:                    binding.NewString(),
 		users:                   newUserStore(),
+		admins:                  bounceGroup.Admins,
+		restrictUserManagement:  bounceGroup.RestrictUserManagement,
+		restrictGroupEdits:      bounceGroup.RestrictGroupEdits,
+		restrictPosting:         bounceGroup.RestrictPosting,
 		pendingUsers:            newUserStore(),
 		scroll:                  container.NewVScroll(container.NewVBox()),
 		availableNewUsersScroll: container.NewVScroll(container.NewVBox()),

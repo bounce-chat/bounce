@@ -495,11 +495,11 @@ func (b *bounce) clearUserTypingIndicator(userID, threadID uuid.UUID) {
 	b.updateFrontendTypingIndicators()
 }
 
-func (b *bounce) TypingInDirectMessage(userID uuid.UUID) {
+func (b *bounce) typingInDirectMessage(userID uuid.UUID) {
 	b.broadcastTypingIndicator(xor(userID, b.currentUserID()), typeDirectMessage)
 }
 
-func (b *bounce) TypingInGroup(groupID uuid.UUID) {
+func (b *bounce) typingInGroup(groupID uuid.UUID) {
 	b.broadcastTypingIndicator(groupID, typeGroupMessage)
 }
 

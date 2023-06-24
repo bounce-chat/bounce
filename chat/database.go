@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"os"
+	"strings"
 	"time"
 
 	"gorm.io/driver/sqlite"
@@ -305,11 +306,28 @@ func (b *bounce) buildInitialState() InitialState {
 		for _, u := range g.Users {
 			userList = append(userList, u.ID)
 		}
+		adminList := []uuid.UUID{}
+		if len(g.Admins) > 0 {
+			for _, adminIDString := range strings.Split(g.Admins, ",") {
+				adminID, err := uuid.Parse(adminIDString)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":  err.Error(),
+						"admins": g.Admins,
+					}).Fatal("invalid UUID in group admin list")
+				}
+				adminList = append(adminList, adminID)
+			}
+		}
 		chatGroups = append(chatGroups, Group{
-			ID:           g.ID,
-			Name:         g.Name,
-			UserIDs:      userList,
-			LastActivity: g.LastActivity,
+			ID:                     g.ID,
+			Name:                   g.Name,
+			UserIDs:                userList,
+			Admins:                 adminList,
+			LastActivity:           g.LastActivity,
+			RestrictUserManagement: g.RestrictUserManagement,
+			RestrictGroupEdits:     g.RestrictGroupEdits,
+			RestrictPosting:        g.RestrictPosting,
 		})
 	}
 

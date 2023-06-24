@@ -28,6 +28,7 @@ type group struct {
 	Admins                 string
 	RestrictUserManagement bool
 	RestrictGroupEdits     bool
+	RestrictPosting        bool
 	LastActivity           int64
 	payload                []byte
 	payloadMutex           sync.Mutex
@@ -43,7 +44,7 @@ func (g *group) BeforeCreate(tx *gorm.DB) error {
 }
 
 // TODO: after delete, cascade delete of all group updates and messages
-// could also use db.Select(clause.Associations).Delete(&group)
+// could also use db.Select(clause.Associations).Delete(&group), but don't want to delete users
 // https://gorm.io/docs/associations.html#Delete-with-Select
 
 func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
@@ -85,12 +86,14 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 
 	creationTime := time.Now().Unix()
 	g := group{
-		ID:        uuid.Nil,
-		Name:      name,
-		CreatedBy: b.currentUserID(),
-		CreatedAt: creationTime,
-		Retention: 60 * 60 * 24 * 7, // TODO: have the default be a user setting
-		Users:     users,
+		ID:                     uuid.Nil,
+		Name:                   name,
+		CreatedBy:              b.currentUserID(),
+		CreatedAt:              creationTime,
+		Retention:              60 * 60 * 24 * 7, // TODO: have the default be a user setting
+		Users:                  users,
+		Admins:                 b.currentUserID().String(),
+		RestrictUserManagement: true,
 	}
 
 	groupData, err := msgpack.Marshal(g)
@@ -157,9 +160,11 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 	b.broadcast(&gc)
 
 	b.userInterface.OpenNewGroupChat(Group{
-		ID:      g.ID,
-		Name:    g.Name,
-		UserIDs: userIDs,
+		ID:                     g.ID,
+		Name:                   g.Name,
+		UserIDs:                userIDs,
+		Admins:                 []uuid.UUID{b.currentUserID()},
+		RestrictUserManagement: true,
 	})
 
 	return nil
@@ -267,3 +272,12 @@ func (b *bounce) updateLastGroupActivity(groupID uuid.UUID, timestamp int64) {
 		}
 	}
 }
+
+func (b *bounce) isGroupAdmin(groupID, userID uuid.UUID) bool {
+
+	return false
+
+}
+
+// addGroupAdmin()
+// removeGroupAdmin()

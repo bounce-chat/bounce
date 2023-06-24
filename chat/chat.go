@@ -96,8 +96,8 @@ func Start(network Network, ui UI) {
 			GetDMMutedUntil:        b.getDMMutedUntil,
 			SetDMMutedUntil:        b.setDMMutedUntil,
 			ClearDMChatHistory:     b.clearDMChatHistory,
-			TypingInDirectMessage:  b.TypingInDirectMessage,
-			TypingInGroup:          b.TypingInGroup,
+			TypingInDirectMessage:  b.typingInDirectMessage,
+			TypingInGroup:          b.typingInGroup,
 		},
 	)
 

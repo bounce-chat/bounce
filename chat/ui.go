@@ -39,11 +39,15 @@ type UpdateDMClearHistory struct {
 }
 
 type Group struct {
-	ID           uuid.UUID
-	Name         string
-	Image        []byte
-	UserIDs      []uuid.UUID
-	LastActivity int64
+	ID                     uuid.UUID
+	Name                   string
+	Image                  []byte
+	UserIDs                []uuid.UUID
+	Admins                 []uuid.UUID
+	LastActivity           int64
+	RestrictUserManagement bool
+	RestrictGroupEdits     bool
+	RestrictPosting        bool
 }
 
 type GroupMessage struct {
@@ -240,4 +244,6 @@ type UICallbacks struct {
 	UserConnectionDesired func(uuid.UUID)
 
 	GroupConnectionDesired func(uuid.UUID)
+
+	IsGroupAdmin func(groupID, userID uuid.UUID) bool
 }
