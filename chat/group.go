@@ -44,6 +44,10 @@ func (g *group) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+func (g *group) hasAdmins() bool {
+	return len(g.Admins) > 0
+}
+
 // TODO: after delete, cascade delete of all group updates and messages
 // could also use db.Select(clause.Associations).Delete(&group), but don't want to delete users
 // https://gorm.io/docs/associations.html#Delete-with-Select
@@ -209,7 +213,7 @@ func (b *bounce) getGroupMutedUntil(groupID uuid.UUID) (int64, error) {
 	return g.MutedUntil, nil
 }
 
-func (b *bounce) userIsInGroup(userID, groupID uuid.UUID) bool {
+func (b *bounce) userIsInGroup(userID, groupID uuid.UUID) bool { // TODO: reverse arg order for consistency
 	var exists bool
 	err := b.database.Table("group_users").
 		Select("count(*) = 1").

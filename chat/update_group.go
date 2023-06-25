@@ -19,12 +19,17 @@ const updateGroupTypeRemoveUser = uint16(2)
 const updateGroupTypeChangeMutedUntil = uint16(3)
 const updateGroupTypeChangeRetention = uint16(4)
 const updateGroupTypeSetClearBefore = uint16(5)
+const updateGroupTypePromoteAdmin = uint16(6)
+const updateGroupTypeDemoteAdmin = uint16(7)
 
-var ERR_UPDATE_GROUP_WITH_UNKNOWN_TYPE = errors.New("update group has unknown update type")
-var ERR_INVALID_GROUP_NAME = errors.New("invalid group name")
-var ERR_MUTED_UNTIL_ONLY_MUTABLE_BY_SELF = errors.New("group muted until settings can only be modified by current user")
-var ERR_USER_NOT_FOUND = errors.New("no user found with that ID")
-var ERR_USER_HAS_INVALID_DEVICE_GROUP = errors.New("user has invalid device group")
+var errUpdateGroupWithUnknownType = errors.New("update group has unknown update type")
+var errInvalidGroupName = errors.New("invalid group name")
+var errMutedUntilOnlyMutableBySelf = errors.New("group muted until settings can only be modified by current user")
+var errUserNotFound = errors.New("no user found with that ID")
+var errUserHasInvalidDeviceGroup = errors.New("user has invalid device group")
+var errNoPermissionToEditGroup = errors.New("user does not have permission to edit group")
+var errNoPermissionToManageUsers = errors.New("user does not have permission to manage users")
+var errCannotPromoteAdminNotInGroup = errors.New("cannot promote a user that is not a member of a group to admin")
 
 var updateGroupMutex sync.Mutex
 
@@ -220,11 +225,15 @@ func (b *bounce) saveAndApplyUpdateGroup(peer string, ug updateGroup) error {
 		return b.saveAndApplyUpdateGroupChangeRetention(g, ug)
 	case updateGroupTypeSetClearBefore:
 		return b.saveAndApplyUpdateGroupSetClearBefore(g, ug)
+	case updateGroupTypePromoteAdmin:
+		return b.saveAndApplyUpdateGroupPromoteAdmin(g, ug)
+	case updateGroupTypeDemoteAdmin:
+		return b.saveAndApplyUpdateGroupDemoteAdmin(g, ug)
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
 		}).Warn("received update group with unknown type")
-		return ERR_UPDATE_GROUP_WITH_UNKNOWN_TYPE
+		return errUpdateGroupWithUnknownType
 	}
 
 	// Update the activity timestamp on the group model
@@ -240,11 +249,16 @@ func (b *bounce) saveAndApplyUpdateGroupChangeName(g group, ug updateGroup) erro
 		log.WithFields(log.Fields{
 			"name": newName,
 		}).Error("cannot apply update group with invalid name")
-		return ERR_INVALID_GROUP_NAME
+		return errInvalidGroupName
 	}
 
 	// Make sure the user has the permissions needed to change the group name
-	//TODO
+	if g.hasAdmins() && g.RestrictGroupEdits && !b.isGroupAdmin(g.ID, ug.Actor) {
+		log.WithFields(log.Fields{
+			"user_id": ug.Actor,
+		}).Warn("user attempted to change group name without permission")
+		return errNoPermissionToEditGroup
+	}
 
 	// Save the update group
 	err := b.database.Create(&ug).Error
@@ -273,7 +287,7 @@ func (b *bounce) saveAndApplyUpdateGroupChangeName(g group, ug updateGroup) erro
 func (b *bounce) saveAndApplyUpdateGroupChangeMutedUntil(g group, ug updateGroup) error {
 	// Notification settings can only be changed by sync devices
 	if ug.Actor != b.currentUserID() {
-		return ERR_MUTED_UNTIL_ONLY_MUTABLE_BY_SELF
+		return errMutedUntilOnlyMutableBySelf
 	}
 
 	// Save the update group
@@ -305,7 +319,12 @@ func (b *bounce) saveAndApplyUpdateGroupChangeMutedUntil(g group, ug updateGroup
 
 func (b *bounce) saveAndApplyUpdateGroupChangeRetention(g group, ug updateGroup) error {
 	// Make sure the user has the permissions needed to change the group retention
-	//TODO
+	if g.hasAdmins() && g.RestrictGroupEdits && !b.isGroupAdmin(g.ID, ug.Actor) {
+		log.WithFields(log.Fields{
+			"user_id": ug.Actor,
+		}).Warn("user attempted to change group retention without permission")
+		return errNoPermissionToEditGroup
+	}
 
 	// Save the update group
 	err := b.database.Create(&ug).Error
@@ -336,7 +355,12 @@ func (b *bounce) saveAndApplyUpdateGroupChangeRetention(g group, ug updateGroup)
 
 func (b *bounce) saveAndApplyUpdateGroupSetClearBefore(g group, ug updateGroup) error {
 	// Make sure the actor has the correct permissions to clear the chat history
-	// TODO
+	if g.hasAdmins() && g.RestrictGroupEdits && !b.isGroupAdmin(g.ID, ug.Actor) {
+		log.WithFields(log.Fields{
+			"user_id": ug.Actor,
+		}).Warn("user attempted to clear group history without permission")
+		return errNoPermissionToEditGroup
+	}
 
 	// Save the update group
 	err := b.database.Create(&ug).Error
@@ -384,6 +408,14 @@ func (b *bounce) saveAndApplyUpdateGroupSetClearBefore(g group, ug updateGroup) 
 }
 
 func (b *bounce) saveAndApplyUpdateGroupAddUser(peer string, g group, ug updateGroup) error {
+	// Make sure this user has permission to manage group members
+	if g.hasAdmins() && g.RestrictUserManagement && !b.isGroupAdmin(g.ID, ug.Actor) {
+		log.WithFields(log.Fields{
+			"user_id": ug.Actor,
+		}).Warn("user attempted to add user to group without permission")
+		return errNoPermissionToManageUsers
+	}
+
 	// Unmarshall the new user
 	var u user
 	err := msgpack.Unmarshal(ug.Data, &u)
@@ -408,7 +440,7 @@ func (b *bounce) saveAndApplyUpdateGroupAddUser(peer string, g group, ug updateG
 	} else {
 		// Ensure the user is valid
 		if !b.hasValidDeviceGroup(u) {
-			return ERR_USER_HAS_INVALID_DEVICE_GROUP
+			return errUserHasInvalidDeviceGroup
 		}
 
 		// Save the user and their devices if we don't have them
@@ -462,7 +494,93 @@ func (b *bounce) saveAndApplyUpdateGroupAddUser(peer string, g group, ug updateG
 }
 
 func (b *bounce) saveAndApplyUpdateGroupRemoveUser(g group, ug updateGroup) error {
+	// Make sure this user has permission to manage group members
+	if g.hasAdmins() && g.RestrictUserManagement && !b.isGroupAdmin(g.ID, ug.Actor) {
+		log.WithFields(log.Fields{
+			"user_id": ug.Actor,
+		}).Warn("user attempted to add user to group without permission")
+		return errNoPermissionToManageUsers
+	}
+
 	// TODO
+	return nil
+}
+
+func (b *bounce) saveAndApplyUpdateGroupPromoteAdmin(g group, ug updateGroup) error {
+	// Make sure this user has permission to manage group members
+	if g.hasAdmins() && g.RestrictUserManagement && !b.isGroupAdmin(g.ID, ug.Actor) {
+		log.WithFields(log.Fields{
+			"user_id": ug.Actor,
+		}).Warn("user attempted to add user to group without permission")
+		return errNoPermissionToManageUsers
+	}
+
+	// Save the update group
+	err := b.database.Create(&ug).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update group")
+	}
+
+	// Parse the UUID
+	userID, err := uuid.FromBytes(ug.Data)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"actor":   ug.Actor,
+			"user_id": ug.Data,
+		}).Error("update group attempted to promote admin with invalid UUID")
+		return err
+	}
+
+	// Make sure this user is already in the group
+	if !b.userIsInGroup(userID, ug.Target) {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"actor":   ug.Actor,
+			"user_id": userID,
+		}).Error("update group attempted to promote admin that is not in the group")
+		return errCannotPromoteAdminNotInGroup
+	}
+
+	// Add this user as an admin
+	b.addGroupAdmin(ug.Target, userID)
+
+	return nil
+}
+
+func (b *bounce) saveAndApplyUpdateGroupDemoteAdmin(g group, ug updateGroup) error {
+	// Make sure this user has permission to manage group members
+	if g.hasAdmins() && g.RestrictUserManagement && !b.isGroupAdmin(g.ID, ug.Actor) {
+		log.WithFields(log.Fields{
+			"user_id": ug.Actor,
+		}).Warn("user attempted to add user to group without permission")
+		return errNoPermissionToManageUsers
+	}
+
+	// Save the update group
+	err := b.database.Create(&ug).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update group")
+	}
+
+	// Parse the UUID
+	userID, err := uuid.FromBytes(ug.Data)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"actor":   ug.Actor,
+			"user_id": ug.Data,
+		}).Error("update group attempted to promote admin with invalid UUID")
+		return err
+	}
+
+	// Remove this user as an admin
+	b.removeGroupAdmin(ug.Target, userID)
+
 	return nil
 }
 
@@ -528,7 +646,7 @@ func (b *bounce) addUserToGroup(groupID, userID uuid.UUID) error {
 		Where("id = ?", userID).First(&newUser).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ERR_USER_NOT_FOUND
+			return errUserNotFound
 		} else {
 			log.WithFields(log.Fields{
 				"error":   err.Error(),
@@ -565,14 +683,30 @@ func (b *bounce) addUserToGroup(groupID, userID uuid.UUID) error {
 
 func (b *bounce) removeUserFromGroup(groupID, userID uuid.UUID) error {
 	// TODO
+	// TODO: also remove them from admin list if they are an admin
 	return nil
 }
 
-func (b *bounce) changeGroupNotificationSettings(group uuid.UUID, enabled bool) {
-	log.WithFields(log.Fields{
-		"thread":                group,
-		"notifications_enabled": enabled,
-	}).Info("UI wants to change notification settings")
+func (b *bounce) promoteAdmin(groupID, userID uuid.UUID) error {
+	return b.applyAndBroadcastUpdateGroup(updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypePromoteAdmin,
+		Data:      userID[:],
+	})
+}
+
+func (b *bounce) demoteAdmin(groupID, userID uuid.UUID) error {
+	return b.applyAndBroadcastUpdateGroup(updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeDemoteAdmin,
+		Data:      userID[:],
+	})
 }
 
 func (b *bounce) moreRecentUpdateGroup(ug updateGroup) bool {

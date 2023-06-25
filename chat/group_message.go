@@ -184,6 +184,28 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		return
 	}
 
+	// Make sure the user has permission to post
+	var g group
+	err = b.database.Select("admin", "restrict_posting").Where("id = ?", gm.Destination).Find(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": gm.Destination,
+			}).Error("group not found when checking posting permission")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"group_id": gm.Destination,
+			}).Fatal("database error looking up group posting permission")
+		}
+	}
+	if g.hasAdmins() && g.RestrictPosting && !b.isGroupAdmin(gm.Destination, gm.Author) {
+		log.WithFields(log.Fields{
+			"user_id": gm.Author,
+		}).Warn("user attempted to post in a group without permission")
+		return
+	}
+
 	// Mark that the peer that sent this message has it
 	b.markDeliveredTo(&gm, peer)
 

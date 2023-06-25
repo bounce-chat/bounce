@@ -216,7 +216,7 @@ func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {
 func (b *bounce) saveAndApplyUpdateDMChangeMutedUntil(u user, ud updateDM) error {
 	// Notification settings can only be changed by sync devices
 	if ud.Actor != b.currentUserID() {
-		return ERR_MUTED_UNTIL_ONLY_MUTABLE_BY_SELF
+		return errMutedUntilOnlyMutableBySelf
 	}
 
 	// Save the update DM
