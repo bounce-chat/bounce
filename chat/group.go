@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -274,10 +275,182 @@ func (b *bounce) updateLastGroupActivity(groupID uuid.UUID, timestamp int64) {
 }
 
 func (b *bounce) isGroupAdmin(groupID, userID uuid.UUID) bool {
+	var g group
+	err := b.database.Select("admin").Where("id = ?", groupID).Find(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("group not found when checking admin membership")
+			return false
+		} else {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Fatal("database error looking up group admin membership")
+		}
+	}
+
+	if len(g.Admins) == 0 {
+		return false
+	}
+
+	for _, adminIDString := range strings.Split(g.Admins, ",") {
+		adminID, err := uuid.Parse(adminIDString)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+				"admins":   g.Admins,
+			}).Fatal("invalid UUID in group admin list")
+		}
+
+		if adminID == userID {
+			return true
+		}
+	}
 
 	return false
-
 }
 
-// addGroupAdmin()
-// removeGroupAdmin()
+func (b *bounce) addGroupAdmin(groupID, userID uuid.UUID) {
+	var g group
+	err := b.database.Select("admin").Where("id = ?", groupID).Find(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("group not found when checking admin membership")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Fatal("database error looking up group admin membership")
+		}
+	}
+
+	if len(g.Admins) == 0 {
+		err = b.database.Model(&g).Where("id = ?", groupID).Update("admin", userID.String()).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"group_id": groupID,
+				}).Error("group not found when updating admins")
+				return
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error updating group admins")
+			}
+		}
+	} else {
+		admins := []string{}
+		alreadyAnAdmin := false
+		for _, adminIDString := range strings.Split(g.Admins, ",") {
+			adminID, err := uuid.Parse(adminIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": groupID,
+					"admins":   g.Admins,
+				}).Fatal("invalid UUID in group admin list")
+
+			}
+
+			if adminID == userID {
+				alreadyAnAdmin = true
+			}
+
+			admins = append(admins, adminIDString)
+		}
+
+		if !alreadyAnAdmin {
+			admins = append(admins, userID.String())
+		} else {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+				"user_id":  userID,
+			}).Warn("ignoring request to promote user to group admin where user is already an admin")
+			return
+		}
+
+		err = b.database.Model(&g).Where("id = ?", groupID).Update("admin", strings.Join(admins, ",")).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"group_id": groupID,
+				}).Error("group not found when adding admin")
+				return
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error adding group admin")
+			}
+		}
+	}
+}
+
+func (b *bounce) removeGroupAdmin(groupID, userID uuid.UUID) {
+	var g group
+	err := b.database.Select("admin").Where("id = ?", groupID).Find(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("group not found when checking admin membership")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Fatal("database error looking up group admin membership")
+		}
+	}
+
+	if len(g.Admins) == 0 {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"user_id":  userID,
+		}).Warn("attempt to remove user from group admin list when no admins are present")
+		return
+	}
+
+	admins := []string{}
+	removedUser := false
+	for _, adminIDString := range strings.Split(g.Admins, ",") {
+		adminID, err := uuid.Parse(adminIDString)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+				"admins":   g.Admins,
+			}).Fatal("invalid UUID in group admin list")
+
+		}
+
+		if adminID == userID {
+			removedUser = true
+		} else {
+			admins = append(admins, adminIDString)
+		}
+	}
+
+	if removedUser {
+		err = b.database.Model(&g).Where("id = ?", groupID).Update("admin", strings.Join(admins, ",")).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"group_id": groupID,
+				}).Error("group not found when removing admin")
+				return
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error removing group admin")
+			}
+		}
+	} else {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"user_id":  userID,
+		}).Warn("ignoring request to remove admin from group where user is already not an admin")
+	}
+}
