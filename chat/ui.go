@@ -201,37 +201,28 @@ type UICallbacks struct {
 	TypingInDirectMessage func(userID uuid.UUID)
 	TypingInGroup         func(groupID uuid.UUID)
 
-	// Create a new group
-	CreateGroup func(groupName string, userIDs []uuid.UUID) error
-	// The user wants to add another user to a group
-	AddUserToGroup func(groupID, userID uuid.UUID) error
-	// The user wants to rename a group
-	RenameGroup func(groupID uuid.UUID, newName string) error
-	// Set the message retention for a group
-	SetGroupRetention func(groupID uuid.UUID, retention int64) error
-	// Get the current retention settings for a group
-	GetGroupRetention func(groupID uuid.UUID) int64 // TODO: should return an error if the group isn't found?
-	// Erase all history on all devices
-	ClearGroupChatHistory func(groupID uuid.UUID) error
-	// Get the muted until setting for a group
-	GetGroupMutedUntil func(groupID uuid.UUID) (int64, error)
-	// The user wants to change the notification settings for a group
-	SetGroupMutedUntil func(groupID uuid.UUID, mutedUntil int64) error
+	CreateGroup              func(groupName string, userIDs []uuid.UUID) error // Create a new group
+	AddUserToGroup           func(groupID, userID uuid.UUID) error             // The user wants to add another user to a group
+	RenameGroup              func(groupID uuid.UUID, newName string) error     // The user wants to rename a group
+	SetGroupRetention        func(groupID uuid.UUID, retention int64) error    // Set the message retention for a group
+	GetGroupRetention        func(groupID uuid.UUID) int64                     // Get the current retention settings for a group // TODO: should return an error if the group isn't found?
+	ClearGroupChatHistory    func(groupID uuid.UUID) error                     // Erase all history on all devices
+	GetGroupMutedUntil       func(groupID uuid.UUID) (int64, error)            // Get the muted until setting for a group // TODO: replace these getters with state on the frontend?
+	SetGroupMutedUntil       func(groupID uuid.UUID, mutedUntil int64) error   // The user wants to change the notification settings for a group
+	PromoteAdmin             func(groupID, userID uuid.UUID) error             // Make a member of a group an admin
+	DemoteAdmin              func(groupID, userID uuid.UUID) error             // Remove admin permissions from a member of a group
+	RestrictUserManagement   func(groupID uuid.UUID) error                     // Restrict adding and removing users to only admins
+	UnrestrictUserManagement func(groupID uuid.UUID) error                     // Allow anyone to add or remove users
+	RestrictGroupEdits       func(groupID uuid.UUID) error                     // Restrict editing group properties to admin
+	UnrestrictGroupEdits     func(groupID uuid.UUID) error                     // Allow any user to edit group properties
+	RestrictPosting          func(groupID uuid.UUID) error                     // Restrict posting to only admins
+	UnrestrictPosting        func(groupID uuid.UUID) error                     // Allow any user to post
 
-	// Set a temporary mute on a DM by setting the unix timestamp to pause notifications until
-	SetDMMutedUntil func(userID uuid.UUID, mutedUntil int64) error
-
-	// Get the value of a temporary mute on a DM
-	GetDMMutedUntil func(userID uuid.UUID) (mutedUntil int64, err error)
-
-	// Set the message retention settings for a DM
-	SetDMRetention func(userID uuid.UUID, retention int64) error
-
-	// Get the message retention settings for a DM
-	GetDMRetention func(userID uuid.UUID) int64 // TODO: should return an error if the group isn't found?
-
-	// Clear all DM messages on all devices
-	ClearDMChatHistory func(userID uuid.UUID) error
+	SetDMMutedUntil    func(userID uuid.UUID, mutedUntil int64) error       // Set a temporary mute on a DM by setting the unix timestamp to pause notifications until
+	GetDMMutedUntil    func(userID uuid.UUID) (mutedUntil int64, err error) // Get the value of a temporary mute on a DM
+	SetDMRetention     func(userID uuid.UUID, retention int64) error        // Set the message retention settings for a DM
+	GetDMRetention     func(userID uuid.UUID) int64                         // Get the message retention settings for a DM // TODO: should return an error if the group isn't found?
+	ClearDMChatHistory func(userID uuid.UUID) error                         // Clear all DM messages on all devices
 
 	// Setup a new profile on a fresh install
 	SetProfile    func(profileName, deviceName string) (uuid.UUID, error)
@@ -244,6 +235,4 @@ type UICallbacks struct {
 	UserConnectionDesired func(uuid.UUID)
 
 	GroupConnectionDesired func(uuid.UUID)
-
-	IsGroupAdmin func(groupID, userID uuid.UUID) bool
 }
