@@ -15,6 +15,7 @@ type thread interface {
 	getView() *fyne.Container
 	getEntry() *threadEntry
 	chatHistoryScroll() *container.Scroll
+	appendThreadItem(*threadItem)
 	getButton() *threadButton
 	getLastMessageTime() int64
 	setLastMessageTime(int64)
@@ -58,6 +59,34 @@ func (fyneUI *Fyne) refreshThreadOrder() {
 	}
 	fyneUI.threadVBox.Objects = buttons
 	fyneUI.threadVBox.Refresh()
+}
+
+func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
+	autoscroll := false
+	location := t.chatHistoryScroll().Offset.Y
+	height := t.chatHistoryScroll().Content.Size().Height - t.chatHistoryScroll().Size().Height
+	if height == location {
+		autoscroll = true
+	}
+
+	t.appendThreadItem(ti)
+	if ti.setButton != nil {
+		ti.setButton(t.getButton())
+	} else {
+		log.Error("thread item does not support setting button")
+	}
+
+	if autoscroll {
+		if fyneUI.isActive(t) {
+			t.chatHistoryScroll().ScrollToBottom()
+			t.chatHistoryScroll().Refresh()
+		}
+	}
+
+	// TODO: notification
+
+	t.setLastMessageTime(time.Now().Unix())
+	fyneUI.refreshThreadOrder()
 }
 
 func (fyneUI *Fyne) displaySentMessage(thread thread, id uuid.UUID, message string) { // TODO: going to be able to get rid of this if using thread-specific message handlers for displaying outgoing and incoming?

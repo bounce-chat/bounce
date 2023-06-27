@@ -71,6 +71,13 @@ func (group *group) setLastMessageTime(time int64) {
 	group.lastMessage = time
 }
 
+func (group *group) appendThreadItem(ti *threadItem) {
+	group.items = append(group.items, ti)
+	chatHistory := group.chatHistoryScroll().Content.(*fyne.Container)
+	chatHistory.Objects = append(chatHistory.Objects, ti.widget)
+	group.chatHistoryScroll().Refresh()
+}
+
 func (fyneUI *Fyne) amAdmin(g *group) bool {
 	for _, id := range g.admins {
 		if fyneUI.profile.id == id {
@@ -90,90 +97,12 @@ func (fyneUI *Fyne) populateGroupItems(g *group) {
 	}
 
 	lastItem := g.items[len(g.items)-1]
-	fyneUI.setLastGroupButton(g, lastItem)
-	fyneUI.refreshThreadOrder()
-}
-
-func (fyneUI *Fyne) setLastGroupButton(g *group, ti *threadItem) {
-	switch src := ti.source.(type) {
-	case chat.GroupMessage:
-		user, exists := g.users.get(src.Author)
-		if !exists {
-			log.WithFields(log.Fields{
-				"user_id": src.Author,
-			}).Fatal("loaded message from user ID not in thread")
-		}
-		displayName := user.name
-		if src.Author == fyneUI.profile.id {
-			displayName = "You"
-		}
-		g.button.setLastMessage(displayName, src.Text)
-		g.setLastMessageTime(src.WrittenAt)
-	case chat.UpdateGroupRetention:
-		user, exists := g.users.get(src.Actor)
-		if !exists {
-			log.WithFields(log.Fields{
-				"user_id": src.Actor,
-			}).Fatal("loaded group update from user ID not in thread")
-		}
-		actorName := user.name
-		if src.Actor == fyneUI.profile.id {
-			actorName = "You"
-		}
-		changeString := actorName + " changed the group retention to " + getRetentionName(src.Retention)
-		g.button.setLastAction(changeString)
-		g.setLastMessageTime(src.Timestamp)
-	case chat.UpdateGroupName:
-		user, exists := g.users.get(src.Actor)
-		if !exists {
-			log.WithFields(log.Fields{
-				"user_id": src.Actor,
-			}).Fatal("loaded group update from user ID not in thread")
-		}
-		actorName := user.name
-		if src.Actor == fyneUI.profile.id {
-			actorName = "You"
-		}
-		changeString := actorName + " changed the group name to " + src.Name
-		g.button.setLastAction(changeString)
-		g.setLastMessageTime(src.Timestamp)
-	case chat.UpdateGroupAddUser:
-		user, exists := g.users.get(src.Actor)
-		if !exists {
-			log.WithFields(log.Fields{
-				"user_id": src.Actor,
-			}).Fatal("loaded group update from user ID not in thread")
-		}
-		actorName := user.name
-		if src.Actor == fyneUI.profile.id {
-			actorName = "You"
-		}
-		changeString := actorName + " added " + src.User.Name + " to the group"
-		g.button.setLastAction(changeString)
-		g.setLastMessageTime(src.Timestamp)
-	case chat.UpdateGroupClearHistory:
-		user, exists := g.users.get(src.Actor)
-		if !exists {
-			log.WithFields(log.Fields{
-				"user_id": src.Actor,
-			}).Fatal("loaded group update from user ID not in thread")
-		}
-		actorName := user.name
-		if src.Actor == fyneUI.profile.id {
-			actorName = "You"
-		}
-		changeString := actorName + " cleared the chat history"
-		g.button.setLastAction(changeString)
-		g.setLastMessageTime(src.ClearTime)
-	default:
-		log.Fatal("unsupported type when updating last button")
+	if lastItem.setButton != nil {
+		lastItem.setButton(g.getButton())
+	} else {
+		log.Warn("thread item doesn't support setting last button")
 	}
-
-	lastActivity := ti.timestamp
-	g.button.setLastMessageTime(time.Unix(lastActivity, 0))
-	g.setLastMessageTime(lastActivity)
-
-	g.chatHistoryScroll().Refresh()
+	fyneUI.refreshThreadOrder()
 }
 
 //populateItems: sort the items, for each get the widget and put it in the scroll
@@ -617,39 +546,15 @@ func (fyneUI *Fyne) AdminDemoted(groupID, userID uuid.UUID) {
 }
 
 func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagementRestricted) {
-	if group, exists := fyneUI.groups[ugumr.Thread]; exists {
-		group.restrictUserManagementCheck.SetChecked(true)
+	if g, exists := fyneUI.groups[ugumr.Thread]; exists {
+		g.restrictUserManagementCheck.SetChecked(true)
+		// TODO: update the edit container so that non-admins can't do this
+
 		ti, err := fyneUI.newUpdateGroupUserManagementRestricted(ugumr)
 		if err != nil {
 
 		}
-
-		// TODO: DRY
-		autoscroll := false
-		location := group.scroll.Offset.Y
-		height := group.scroll.Content.Size().Height - group.scroll.Size().Height
-		if height == location {
-			autoscroll = true
-		}
-
-		chatHistory := group.chatHistoryScroll().Content.(*fyne.Container)
-		chatHistory.Objects = append(chatHistory.Objects, ti.widget)
-		group.chatHistoryScroll().Refresh()
-
-		//group.button.setLastAction(changeString)
-
-		if autoscroll {
-			if fyneUI.isActive(group) {
-				group.scroll.ScrollToBottom()
-				group.scroll.Refresh()
-			}
-		}
-
-		group.setLastMessageTime(time.Now().Unix())
-		fyneUI.refreshThreadOrder()
-
-		// TODO: add a thread item, button update, etc
-		// TODO: update the edit container so that non-admins can't do this
+		fyneUI.appendThreadItem(g, ti)
 	} else {
 		log.WithFields(log.Fields{
 			"group_id": ugumr.Thread,
