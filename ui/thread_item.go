@@ -19,6 +19,7 @@ var errGroupNotFoundForGroupMessage = errors.New("group not found for group mess
 var errUserNotFoundForDirectMessage = errors.New("user not found for group message")
 var errUnknownActorInUpdateDMRetention = errors.New("unknown actor in update dm retention")
 var errUnknownActorInUpdateDMClearHistory = errors.New("unknown actor in update dm clear history")
+var errUnknownActorInUpdateGroupUserManagementRestricted = errors.New("unknown actor in update group restrict user management")
 
 type threadItem struct {
 	id           uuid.UUID
@@ -202,5 +203,23 @@ func (fyneUI *Fyne) newUpdateDMClearHistory(udmch chat.UpdateDMClearHistory) (*t
 		source:    udmch,
 		widget:    changeLabel,
 		timestamp: udmch.ClearTime,
+	}, nil
+}
+
+func (fyneUI *Fyne) newUpdateGroupUserManagementRestricted(ugumr chat.UpdateGroupUserManagementRestricted) (*threadItem, error) {
+	actor, ok := fyneUI.users.get(ugumr.Actor)
+	if !ok {
+		return &threadItem{}, errUnknownActorInUpdateGroupUserManagementRestricted
+	}
+
+	changeString := actor.name + " unrestricted user management"
+	changeLabel := widget.NewLabel(changeString)
+	changeLabel.Alignment = fyne.TextAlignCenter
+
+	return &threadItem{
+		id:        ugumr.ID,
+		source:    ugumr,
+		widget:    changeLabel,
+		timestamp: ugumr.Timestamp,
 	}, nil
 }

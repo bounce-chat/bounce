@@ -566,6 +566,9 @@ func (b *bounce) saveAndApplyUpdateGroupPromoteAdmin(g group, ug updateGroup) er
 	// Add this user as an admin
 	b.addGroupAdmin(ug.Target, userID)
 
+	// Notify the UI
+	b.userInterface.AdminPromoted(ug.Target, userID)
+
 	return nil
 }
 
@@ -600,6 +603,9 @@ func (b *bounce) saveAndApplyUpdateGroupDemoteAdmin(g group, ug updateGroup) err
 	// Remove this user as an admin
 	b.removeGroupAdmin(ug.Target, userID)
 
+	// Notify the UI
+	b.userInterface.AdminDemoted(ug.Target, userID)
+
 	return nil
 }
 
@@ -626,6 +632,14 @@ func (b *bounce) saveAndApplyUpdateGroupRestrictUserManagement(g group, ug updat
 			}).Fatal("database error restricting user management on group")
 		}
 	}
+
+	// Notify the UI
+	b.userInterface.UserManagementRestricted(UpdateGroupUserManagementRestricted{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+	})
 
 	return nil
 }
@@ -654,6 +668,14 @@ func (b *bounce) saveAndApplyUpdateGroupUnrestrictUserManagement(g group, ug upd
 		}
 	}
 
+	// Notify the UI
+	//b.userInterface.UserManagementUnrestricted(UpdateGroupUserManagementUnrestricted{
+	//	ID:        ug.ID,
+	//	Thread:    ug.Target,
+	//	Actor:     ug.Actor,
+	//	Timestamp: ug.Target,
+	//})
+
 	return nil
 }
 
@@ -680,6 +702,9 @@ func (b *bounce) saveAndApplyUpdateGroupRestrictGroupEdits(g group, ug updateGro
 			}).Fatal("database error restricting edits on group")
 		}
 	}
+
+	// Notify the UI
+	b.userInterface.GroupEditsRestricted(g.ID, ug.Actor)
 
 	return nil
 }
@@ -708,6 +733,9 @@ func (b *bounce) saveAndApplyUpdateGroupUnrestrictGroupEdits(g group, ug updateG
 		}
 	}
 
+	// Notify the UI
+	b.userInterface.GroupEditsUnrestricted(g.ID, ug.Actor)
+
 	return nil
 }
 
@@ -735,6 +763,9 @@ func (b *bounce) saveAndApplyUpdateGroupRestrictPosting(g group, ug updateGroup)
 		}
 	}
 
+	// Notify the UI
+	b.userInterface.PostingRestricted(g.ID, ug.Actor)
+
 	return nil
 }
 
@@ -761,6 +792,9 @@ func (b *bounce) saveAndApplyUpdateGroupUnrestrictPosting(g group, ug updateGrou
 			}).Fatal("database error unrestricting posting")
 		}
 	}
+
+	// Notify the UI
+	b.userInterface.PostingUnrestricted(g.ID, ug.Actor)
 
 	return nil
 }

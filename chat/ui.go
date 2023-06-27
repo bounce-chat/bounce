@@ -94,6 +94,13 @@ type UpdateGroupClearHistory struct {
 	ClearTime int64
 }
 
+type UpdateGroupUserManagementRestricted struct {
+	ID        uuid.UUID
+	Thread    uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+}
+
 type InitialState struct {
 	Profile                   *User
 	Users                     []User
@@ -165,6 +172,14 @@ type UI interface {
 	GroupRetentionChanged(groupID uuid.UUID, actorID uuid.UUID, retention int64, timestamp int64)
 	GroupChatHistoryCleared(groupID uuid.UUID, actorID uuid.UUID)
 	GroupMutedUntilChanged(groupID uuid.UUID, mutedUntil int64)
+	AdminPromoted(groupID, userID uuid.UUID)
+	AdminDemoted(groupID, userID uuid.UUID)
+	UserManagementRestricted(UpdateGroupUserManagementRestricted)
+	UserManagementUnrestricted(groupID, actorID uuid.UUID)
+	GroupEditsRestricted(groupID, actorID uuid.UUID)
+	GroupEditsUnrestricted(groupID, actorID uuid.UUID)
+	PostingRestricted(groupID, actorID uuid.UUID)
+	PostingUnrestricted(groupID, actorID uuid.UUID)
 
 	ShowTypingIndicatorInHistory(userID, threadID uuid.UUID) // TODO: why did I split these?
 	ShowTypingIndicatorInButton(userID, threadID uuid.UUID)

@@ -17,28 +17,31 @@ import (
 )
 
 type group struct {
-	id                        uuid.UUID
-	name                      binding.String
-	users                     *userStore
-	admins                    []uuid.UUID
-	restrictUserManagement    bool
-	restrictGroupEdits        bool
-	restrictPosting           bool
-	pendingUsers              *userStore
-	notificationsMutedUntil   int64
-	editContainer             *fyne.Container
-	retentionSelection        *widget.Select
-	view                      *fyne.Container
-	header                    *fyne.Container
-	button                    *threadButton
-	notificationsEnabledCheck *widget.Check
-	scroll                    *container.Scroll
-	availableNewUsersScroll   *container.Scroll
-	currentUsersContainer     *fyne.Container
-	entry                     *threadEntry
-	entryBar                  *fyne.Container
-	lastMessage               int64
-	items                     threadItems
+	id                          uuid.UUID
+	name                        binding.String
+	users                       *userStore
+	admins                      []uuid.UUID
+	restrictUserManagement      bool
+	restrictGroupEdits          bool
+	restrictPosting             bool
+	pendingUsers                *userStore
+	notificationsMutedUntil     int64
+	editContainer               *fyne.Container
+	retentionSelection          *widget.Select
+	view                        *fyne.Container
+	header                      *fyne.Container
+	button                      *threadButton
+	notificationsEnabledCheck   *widget.Check
+	restrictUserManagementCheck *widget.Check
+	restrictGroupEditsCheck     *widget.Check
+	restrictPostingCheck        *widget.Check
+	scroll                      *container.Scroll
+	availableNewUsersScroll     *container.Scroll
+	currentUsersContainer       *fyne.Container
+	entry                       *threadEntry
+	entryBar                    *fyne.Container
+	lastMessage                 int64
+	items                       threadItems
 }
 
 func (group *group) getID() uuid.UUID {
@@ -66,6 +69,16 @@ func (group *group) getLastMessageTime() int64 {
 
 func (group *group) setLastMessageTime(time int64) {
 	group.lastMessage = time
+}
+
+func (fyneUI *Fyne) amAdmin(g *group) bool {
+	for _, id := range g.admins {
+		if fyneUI.profile.id == id {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (fyneUI *Fyne) populateGroupItems(g *group) {
@@ -231,6 +244,13 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	}
 	enabled := group.notificationsMutedUntil != chat.MutedForever
 	group.notificationsEnabledCheck.SetChecked(enabled)
+
+	group.restrictUserManagementCheck = widget.NewCheck("Restrict User Management", func(_ bool) {})
+	group.restrictGroupEditsCheck = widget.NewCheck("Restrict Group Edits", func(_ bool) {})
+	group.restrictPostingCheck = widget.NewCheck("Restrict Posting", func(_ bool) {})
+	group.restrictUserManagementCheck.SetChecked(group.restrictUserManagement)
+	group.restrictGroupEditsCheck.SetChecked(group.restrictGroupEdits)
+	group.restrictPostingCheck.SetChecked(group.restrictPosting)
 
 	fyneUI.buildEditThreadContainer(group)
 	editButton := widget.NewButton("Edit", func() {
@@ -586,4 +606,73 @@ func (fyneUI *Fyne) GroupMutedUntilChanged(groupID uuid.UUID, mutedUntil int64) 
 			"group_id": groupID,
 		}).Warn("cannot notify messages cleared for group that doesn't exist")
 	}
+}
+
+func (fyneUI *Fyne) AdminPromoted(groupID, userID uuid.UUID) {
+
+}
+
+func (fyneUI *Fyne) AdminDemoted(groupID, userID uuid.UUID) {
+
+}
+
+func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagementRestricted) {
+	if group, exists := fyneUI.groups[ugumr.Thread]; exists {
+		group.restrictUserManagementCheck.SetChecked(true)
+		ti, err := fyneUI.newUpdateGroupUserManagementRestricted(ugumr)
+		if err != nil {
+
+		}
+
+		// TODO: DRY
+		autoscroll := false
+		location := group.scroll.Offset.Y
+		height := group.scroll.Content.Size().Height - group.scroll.Size().Height
+		if height == location {
+			autoscroll = true
+		}
+
+		chatHistory := group.chatHistoryScroll().Content.(*fyne.Container)
+		chatHistory.Objects = append(chatHistory.Objects, ti.widget)
+		group.chatHistoryScroll().Refresh()
+
+		//group.button.setLastAction(changeString)
+
+		if autoscroll {
+			if fyneUI.isActive(group) {
+				group.scroll.ScrollToBottom()
+				group.scroll.Refresh()
+			}
+		}
+
+		group.setLastMessageTime(time.Now().Unix())
+		fyneUI.refreshThreadOrder()
+
+		// TODO: add a thread item, button update, etc
+		// TODO: update the edit container so that non-admins can't do this
+	} else {
+		log.WithFields(log.Fields{
+			"group_id": ugumr.Thread,
+		}).Warn("cannot unrestrict user management for group that doesn't exist")
+	}
+}
+
+func (fyneUI *Fyne) UserManagementUnrestricted(groupID, actorID uuid.UUID) {
+
+}
+
+func (fyneUI *Fyne) GroupEditsRestricted(groupID, actorID uuid.UUID) {
+
+}
+
+func (fyneUI *Fyne) GroupEditsUnrestricted(groupID, actorID uuid.UUID) {
+
+}
+
+func (fyneUI *Fyne) PostingRestricted(groupID, actorID uuid.UUID) {
+
+}
+
+func (fyneUI *Fyne) PostingUnrestricted(groupID, actorID uuid.UUID) {
+
 }

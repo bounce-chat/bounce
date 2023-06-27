@@ -105,6 +105,18 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 				}
 			}
 		}
+
+		// Update the permissions if needed
+		if thread.restrictUserManagementCheck.Checked != thread.restrictUserManagement {
+			fyneUI.callbacks.RestrictUserManagement(thread.id)
+		}
+		if thread.restrictGroupEditsCheck.Checked != thread.restrictGroupEdits {
+			fyneUI.callbacks.RestrictGroupEdits(thread.id)
+		}
+		if thread.restrictPostingCheck.Checked != thread.restrictPosting {
+			fyneUI.callbacks.RestrictPosting(thread.id)
+		}
+
 		// Add the selected users to the group
 		for _, user := range thread.pendingUsers.alphabetized() {
 			thread.users.add(user)
@@ -129,6 +141,9 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		thread.retentionSelection.Selected = getRetentionName(fyneUI.callbacks.GetGroupRetention(thread.id))
 		thread.pendingUsers.empty()
 		fyneUI.refreshUserSelections(thread)
+		thread.restrictUserManagementCheck.SetChecked(thread.restrictUserManagement)
+		thread.restrictGroupEditsCheck.SetChecked(thread.restrictGroupEdits)
+		thread.restrictPostingCheck.SetChecked(thread.restrictPosting)
 		fyneUI.showMainContainer()
 		fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
 	})
@@ -152,8 +167,13 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		widget.NewLabel("Disappearing Messages"),
 		thread.retentionSelection,
 		container.NewHBox(clearHistoryButton),
-		currentUsersListView,
 	)
+	if fyneUI.amAdmin(thread) {
+		topOptionsVBox.Add(thread.restrictUserManagementCheck)
+		topOptionsVBox.Add(thread.restrictGroupEditsCheck)
+		topOptionsVBox.Add(thread.restrictPostingCheck)
+	}
+	topOptionsVBox.Add(currentUsersListView)
 
 	addUsersLabel := widget.NewLabel("Add Users:")
 	allUsersList := container.New(
