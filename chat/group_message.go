@@ -186,7 +186,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 
 	// Make sure the user has permission to post
 	var g group
-	err = b.database.Select("admin", "restrict_posting").Where("id = ?", gm.Destination).Find(&g).Error
+	err = b.database.Select("admins", "restrict_posting").Where("id = ?", gm.Destination).Find(&g).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{

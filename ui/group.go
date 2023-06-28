@@ -41,7 +41,7 @@ type group struct {
 	entry                       *threadEntry
 	entryBar                    *fyne.Container
 	lastMessage                 int64
-	items                       threadItems
+	items                       threadItems // TODO: don't store these here, pass them in on startup
 }
 
 func (group *group) getID() uuid.UUID {
@@ -71,11 +71,8 @@ func (group *group) setLastMessageTime(time int64) {
 	group.lastMessage = time
 }
 
-func (group *group) appendThreadItem(ti *threadItem) {
-	group.items = append(group.items, ti)
-	chatHistory := group.chatHistoryScroll().Content.(*fyne.Container)
-	chatHistory.Objects = append(chatHistory.Objects, ti.widget)
-	group.chatHistoryScroll().Refresh()
+func (group *group) getNotificationsMutedUntil() int64 {
+	return group.notificationsMutedUntil
 }
 
 func (fyneUI *Fyne) amAdmin(g *group) bool {
@@ -260,10 +257,6 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 }
 
 func (fyneUI *Fyne) ReceivedGroupMessage(msg chat.GroupMessage) {
-	fyneUI.loadGroupMessage(msg, false, false)
-}
-
-func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hideNotification bool) { // TODO: refactor this and also add new group messages to the thread items list
 	// Log an error and early return if the group doesn't exist
 	group, exists := fyneUI.groups[msg.Thread]
 	if !exists {
@@ -294,7 +287,6 @@ func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hide
 		// We're learning about a message we sent from another device
 		displayName = "You"
 		isOutgoing = true
-		hideNotification = true
 		profileButton = nil
 	}
 
@@ -329,14 +321,9 @@ func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hide
 			group.scroll.Refresh()
 		}
 	} else {
-		if !hideNotification {
+		if !isOutgoing {
 			group.button.addUnread()
 		}
-	}
-
-	if overrideScroll {
-		group.scroll.ScrollToBottom()
-		group.scroll.Refresh()
 	}
 
 	group.lastMessage = msg.WrittenAt
@@ -349,173 +336,77 @@ func (fyneUI *Fyne) loadGroupMessage(msg chat.GroupMessage, overrideScroll, hide
 	if err != nil {
 		log.Fatal("data bindings are broken")
 	}
-	if notificationsEnabled && !notificationsMuted && !autoscroll && !hideNotification { //TODO: also notify if not focused?
+	if notificationsEnabled && !notificationsMuted && !autoscroll && !isOutgoing { //TODO: also notify if not focused?
 		fyneUI.app.SendNotification(fyne.NewNotification(groupName, "New message from "+user.name))
 	}
 }
 
-func (fyneUI *Fyne) RenameGroup(groupID, actorID uuid.UUID, newName string) {
-	// Find the actor
-	actor, ok := fyneUI.users.get(actorID)
-	actorName := ""
-	if !ok {
-		actorName = "unknown"
-		log.WithFields(log.Fields{
-			"actor_id": actorID,
-		}).Warn("unknown user just updated group name")
-		// TODO: error and return here?
-	} else {
-		actorName = actor.name
-	}
-
-	// Find the group
-	group, exists := fyneUI.groups[groupID]
+func (fyneUI *Fyne) RenameGroup(ugn chat.UpdateGroupName) {
+	g, exists := fyneUI.groups[ugn.Thread]
 	if !exists {
 		log.WithFields(log.Fields{
-			"group_id": groupID,
-		}).Error("cannot update name of unknown group")
+			"group_id": ugn.Thread,
+		}).Error("cannot update name for unknown group")
 		return
 	}
 
+	ti, err := fyneUI.newUpdateGroupName(ugn)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for updating group name")
+		return
+	}
+
+	fyneUI.appendThreadItem(g, ti)
+
 	// Change the group name
-	err := group.name.Set(newName)
+	err = g.name.Set(ugn.Name)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("data bindings are broken")
 	}
-
-	// Calculate if we should autoscroll the new message
-	autoscroll := false
-	location := group.scroll.Offset.Y
-	height := group.scroll.Content.Size().Height - group.scroll.Size().Height
-	if height == location {
-		autoscroll = true
-	}
-
-	// Add a message to the thread indicating the change
-	changeString := actorName + " changed the group name to " + newName
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-	chatHistory := group.chatHistoryScroll().Content.(*fyne.Container)
-	chatHistory.Objects = append(chatHistory.Objects, changeLabel)
-	group.chatHistoryScroll().Refresh()
-
-	group.button.setLastAction(changeString)
-
-	if autoscroll {
-		if fyneUI.isActive(group) {
-			group.scroll.ScrollToBottom()
-			group.scroll.Refresh()
-		}
-	}
-
-	group.setLastMessageTime(time.Now().Unix())
-	fyneUI.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) GroupRetentionChanged(groupID, actorID uuid.UUID, retention int64, timestamp int64) {
-	// Find the actor
-	actor, ok := fyneUI.users.get(actorID)
-	actorName := ""
-	if !ok {
-		actorName = "unknown"
-		log.WithFields(log.Fields{
-			"actor_id": actorID,
-		}).Warn("unknown user just updated group retention")
-		// TODO: error and return here?
-	} else {
-		actorName = actor.name
-	}
-
-	// Find the group
-	group, exists := fyneUI.groups[groupID]
+func (fyneUI *Fyne) GroupRetentionChanged(ugr chat.UpdateGroupRetention) {
+	g, exists := fyneUI.groups[ugr.Thread]
 	if !exists {
 		log.WithFields(log.Fields{
-			"group_id": groupID,
-		}).Error("cannot update retention of unknown group")
+			"group_id": ugr.Thread,
+		}).Error("cannot update retention for unknown group")
 		return
 	}
 
-	// Update the selection
-	newRetentionName := getRetentionName(retention)
-	group.retentionSelection.Selected = newRetentionName
-	group.retentionSelection.Refresh()
-
-	// Calculate if we should autoscroll the new message
-	autoscroll := false
-	location := group.scroll.Offset.Y
-	height := group.scroll.Content.Size().Height - group.scroll.Size().Height
-	if height == location {
-		autoscroll = true
+	ti, err := fyneUI.newUpdateGroupRetention(ugr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for updating group retention")
+		return
 	}
 
-	// Add a message to the thread indicating the change
-	changeString := actorName + " changed the group retention to " + newRetentionName
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-	chatHistory := group.chatHistoryScroll().Content.(*fyne.Container)
-	chatHistory.Objects = append(chatHistory.Objects, changeLabel)
-	group.chatHistoryScroll().Refresh()
-	// TODO: thread this in the correct spot in the thread based on timestamp
-
-	group.button.setLastAction(changeString)
-
-	if autoscroll {
-		if fyneUI.isActive(group) {
-			group.scroll.ScrollToBottom()
-			group.scroll.Refresh()
-		}
-	}
-
-	group.setLastMessageTime(time.Now().Unix())
-	fyneUI.refreshThreadOrder()
-
+	fyneUI.appendThreadItem(g, ti)
 }
 
-func (fyneUI *Fyne) GroupChatHistoryCleared(groupID, actorID uuid.UUID) { // TODO: DRY with the DM version of this?  it can all be applied to threads in general
-	actor, ok := fyneUI.users.get(actorID)
-	actorName := ""
-	if !ok {
-		actorName = "unknown"
+func (fyneUI *Fyne) GroupChatHistoryCleared(ugch chat.UpdateGroupClearHistory) {
+	g, exists := fyneUI.groups[ugch.Thread]
+	if !exists {
 		log.WithFields(log.Fields{
-			"actor_id": actorID,
-		}).Warn("unknown user just updated DM retetion settings")
-	} else {
-		actorName = actor.name
+			"group_id": ugch.Thread,
+		}).Error("cannot clear history for unknown group")
+		return
 	}
 
-	if gm, exists := fyneUI.groups[groupID]; exists {
-		autoscroll := false
-		location := gm.scroll.Offset.Y
-		height := gm.scroll.Content.Size().Height - gm.scroll.Size().Height
-		if height == location {
-			autoscroll = true
-		}
-
-		changeString := actorName + " cleared the chat history"
-		changeLabel := widget.NewLabel(changeString)
-		changeLabel.Alignment = fyne.TextAlignCenter
-		chatHistory := gm.chatHistoryScroll().Content.(*fyne.Container)
-		chatHistory.Objects = append(chatHistory.Objects, changeLabel)
-		gm.chatHistoryScroll().Refresh()
-
-		gm.button.setLastAction(changeString)
-
-		if autoscroll {
-			if fyneUI.isActive(gm) {
-				gm.scroll.ScrollToBottom()
-				gm.scroll.Refresh()
-			}
-		}
-
-		gm.setLastMessageTime(time.Now().Unix())
-		fyneUI.refreshThreadOrder()
-	} else {
+	ti, err := fyneUI.newUpdateGroupClearHistory(ugch)
+	if err != nil {
 		log.WithFields(log.Fields{
-			"group_id": groupID,
-		}).Warn("cannot notify messages cleared for group that doesn't exist")
+			"error": err.Error(),
+		}).Error("error creating thread item for clearing group history")
+		return
 	}
+
+	fyneUI.appendThreadItem(g, ti)
 
 	// TODO: it's possible we cleared messages and there are messages newer than the clear time
 	// that we want to preserve.  In that case, these messages will not have been removed from the
@@ -552,7 +443,9 @@ func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagemen
 
 		ti, err := fyneUI.newUpdateGroupUserManagementRestricted(ugumr)
 		if err != nil {
-
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating thread item for update group user management restricted")
 		}
 		fyneUI.appendThreadItem(g, ti)
 	} else {

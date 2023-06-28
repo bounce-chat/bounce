@@ -297,7 +297,13 @@ func (b *bounce) saveAndApplyUpdateGroupChangeName(g group, ug updateGroup) erro
 		}
 
 		// Inform the UI
-		b.userInterface.RenameGroup(g.ID, ug.Actor, newName)
+		b.userInterface.RenameGroup(UpdateGroupName{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+			Name:      newName,
+		})
 	}
 
 	return nil
@@ -357,7 +363,13 @@ func (b *bounce) saveAndApplyUpdateGroupChangeRetention(g group, ug updateGroup)
 	retention := int64(binary.LittleEndian.Uint64(ug.Data))
 
 	// Inform the UI
-	b.userInterface.GroupRetentionChanged(g.ID, ug.Actor, retention, ug.Timestamp)
+	b.userInterface.GroupRetentionChanged(UpdateGroupRetention{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+		Retention: retention,
+	})
 
 	// Apply the update if it is the most recent one
 	if !b.moreRecentUpdateGroup(ug) {
@@ -409,7 +421,13 @@ func (b *bounce) saveAndApplyUpdateGroupSetClearBefore(g group, ug updateGroup) 
 		}
 		b.userInterface.DeleteMessage(gm.ID)
 	}
-	b.userInterface.GroupChatHistoryCleared(g.ID, ug.Actor)
+	b.userInterface.GroupChatHistoryCleared(UpdateGroupClearHistory{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+		ClearTime: clearBefore,
+	})
 
 	// Update the clear before value on the group if this one is newer
 	if g.ClearBefore < clearBefore {

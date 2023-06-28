@@ -61,11 +61,8 @@ func (dm *directMessage) setLastMessageTime(time int64) {
 	dm.lastMessage = time
 }
 
-func (dm *directMessage) appendThreadItem(ti *threadItem) {
-	dm.items = append(dm.items, ti)
-	chatHistory := dm.chatHistoryScroll().Content.(*fyne.Container)
-	chatHistory.Objects = append(chatHistory.Objects, ti.widget)
-	dm.chatHistoryScroll().Refresh()
+func (dm *directMessage) getNotificationsMutedUntil() int64 {
+	return dm.notificationsMutedUntil
 }
 
 func (fyneUI *Fyne) populateUserItems(u *directMessage) { // TODO: make this work on threads generically?
@@ -189,10 +186,6 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 }
 
 func (fyneUI *Fyne) ReceivedDirectMessage(msg chat.DirectMessage) {
-	fyneUI.loadDirectMessage(msg, false, false)
-}
-
-func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hideNotification bool) {
 	user, userExists := fyneUI.users.get(msg.Author)
 	if !userExists {
 		log.WithFields(log.Fields{
@@ -213,7 +206,6 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 		// We're learning about a DM we sent from another device
 		displayName = "You"
 		isOutgoing = true
-		hideNotification = true
 	}
 
 	dm, dmExists := fyneUI.dms[targetDM]
@@ -259,14 +251,9 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 			dm.scroll.Refresh()
 		}
 	} else {
-		if !hideNotification {
+		if !isOutgoing {
 			dm.button.addUnread()
 		}
-	}
-
-	if overrideScroll {
-		dm.scroll.ScrollToBottom()
-		dm.scroll.Refresh()
 	}
 
 	dm.lastMessage = msg.WrittenAt
@@ -276,7 +263,7 @@ func (fyneUI *Fyne) loadDirectMessage(msg chat.DirectMessage, overrideScroll, hi
 	notificationsMuted := time.Now().Unix() < dm.notificationsMutedUntil
 
 	// TODO: different criteria on mobile probably.  need to clean this up and add context around fyneUI.focused
-	if notificationsEnabled && !notificationsMuted && !autoscroll && !hideNotification {
+	if notificationsEnabled && !notificationsMuted && !autoscroll && !isOutgoing {
 		fyneUI.app.SendNotification(fyne.NewNotification(user.name, msg.Text))
 	}
 }

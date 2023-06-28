@@ -25,9 +25,9 @@ var errUpdateForUnknownGroup = errors.New("group update targets unknown group")
 
 type threadItem struct {
 	id           uuid.UUID
-	source       interface{}
+	source       interface{} // TODO: still needed?
 	widget       fyne.Widget
-	notification fyne.Notification
+	notification *fyne.Notification
 	setButton    func(*threadButton)
 	timestamp    int64
 }
@@ -191,6 +191,7 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		}).Error("group does not exist on message receive, ignoring the message")
 		return &threadItem{}, errGroupNotFoundForGroupMessage
 	}
+
 	user, exists := group.users.get(gm.Author)
 	if !exists {
 		log.WithFields(log.Fields{
@@ -198,19 +199,23 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		}).Error("group received a message from user ID not in thread")
 		return &threadItem{}, errUserNotFoundForGroupMessage
 	}
+
 	outgoing := gm.Author == fyneUI.profile.id
-	profileButton := widget.NewButtonWithIcon("", newEmbeddedResource("assets/not_found.png"), func() { // TODO: get image from user
-		log.Info("user wants to open the profile of " + user.name)
-		// TODO: display this user's profile
-	})
-	if outgoing {
-		profileButton = nil
+	var profileButton *widget.Button
+	var notification *fyne.Notification
+	if !outgoing {
+		notification = fyne.NewNotification(user.name, gm.Text)
+		profileButton = widget.NewButtonWithIcon("", newEmbeddedResource("assets/not_found.png"), func() { // TODO: get image from user
+			log.Info("user wants to open the profile of " + user.name)
+			// TODO: display this user's profile
+		})
 	}
 
 	return &threadItem{
-		id:     gm.ID,
-		source: gm,
-		widget: newChatBubble(user.name, gm.ID, gm.Text, outgoing, gm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's largei
+		id:           gm.ID,
+		source:       gm,
+		widget:       newChatBubble(user.name, gm.ID, gm.Text, outgoing, gm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
+		notification: notification,
 		setButton: func(tb *threadButton) {
 			displayName := user.name
 			if gm.Author == fyneUI.profile.id {
@@ -241,19 +246,23 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 		}).Error("received a direct message from user ID not known to UI")
 		return &threadItem{}, errUserNotFoundForDirectMessage
 	}
+
 	outgoing := dm.Author == fyneUI.profile.id
-	profileButton := widget.NewButtonWithIcon("", newEmbeddedResource("assets/not_found.png"), func() { // TODO: get image from user
-		log.Info("user wants to open the profile of " + u.name)
-		// TODO: display this user's profile
-	})
-	if outgoing {
-		profileButton = nil
+	var profileButton *widget.Button
+	var notification *fyne.Notification
+	if !outgoing {
+		notification = fyne.NewNotification(u.name, dm.Text)
+		profileButton = widget.NewButtonWithIcon("", newEmbeddedResource("assets/not_found.png"), func() { // TODO: get image from user
+			log.Info("user wants to open the profile of " + u.name)
+			// TODO: display this user's profile
+		})
 	}
 
 	return &threadItem{
-		id:     dm.ID,
-		source: dm,
-		widget: newChatBubble(u.name, dm.ID, dm.Text, outgoing, dm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
+		id:           dm.ID,
+		source:       dm,
+		widget:       newChatBubble(u.name, dm.ID, dm.Text, outgoing, dm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
+		notification: notification,
 		setButton: func(tb *threadButton) {
 			displayName := u.name
 			if dm.Author == fyneUI.profile.id {

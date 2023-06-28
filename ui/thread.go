@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"github.com/google/uuid"
+	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -15,10 +16,10 @@ type thread interface {
 	getView() *fyne.Container
 	getEntry() *threadEntry
 	chatHistoryScroll() *container.Scroll
-	appendThreadItem(*threadItem)
 	getButton() *threadButton
 	getLastMessageTime() int64
 	setLastMessageTime(int64)
+	getNotificationsMutedUntil() int64
 }
 
 //
@@ -69,23 +70,29 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 		autoscroll = true
 	}
 
-	t.appendThreadItem(ti)
+	chatHistory := t.chatHistoryScroll().Content.(*fyne.Container)
+	chatHistory.Objects = append(chatHistory.Objects, ti.widget)
+	t.chatHistoryScroll().Refresh()
+
 	if ti.setButton != nil {
 		ti.setButton(t.getButton())
 	} else {
 		log.Error("thread item does not support setting button")
 	}
 
-	if autoscroll {
-		if fyneUI.isActive(t) {
-			t.chatHistoryScroll().ScrollToBottom()
-			t.chatHistoryScroll().Refresh()
-		}
+	if autoscroll && fyneUI.isActive(t) {
+		t.chatHistoryScroll().ScrollToBottom()
+		t.chatHistoryScroll().Refresh()
 	}
 
-	// TODO: notification
+	notificationsEnabled := t.getNotificationsMutedUntil() != chat.MutedForever
+	notificationsMuted := time.Now().Unix() < t.getNotificationsMutedUntil()
 
-	t.setLastMessageTime(time.Now().Unix())
+	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll { //&& !hideNotification { //TODO: when was this used? maybe it can be stored on the thread item? //TODO: also notify if not focused?
+		fyneUI.app.SendNotification(ti.notification)
+	}
+
+	t.setLastMessageTime(ti.timestamp)
 	fyneUI.refreshThreadOrder()
 }
 
