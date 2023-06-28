@@ -25,7 +25,6 @@ var errUpdateForUnknownGroup = errors.New("group update targets unknown group")
 
 type threadItem struct {
 	id           uuid.UUID
-	source       interface{} // TODO: still needed?
 	widget       fyne.Widget
 	notification *fyne.Notification
 	setButton    func(*threadButton)
@@ -68,7 +67,6 @@ func (fyneUI *Fyne) newUpdateGroupName(ugn chat.UpdateGroupName) (*threadItem, e
 
 	return &threadItem{
 		id:     ugn.ID,
-		source: ugn,
 		widget: changeLabel,
 		setButton: func(tb *threadButton) {
 			g.button.setLastAction(changeString)
@@ -104,7 +102,6 @@ func (fyneUI *Fyne) newUpdateGroupRetention(ugr chat.UpdateGroupRetention) (*thr
 
 	return &threadItem{
 		id:     ugr.ID,
-		source: ugr,
 		widget: changeLabel,
 		setButton: func(tb *threadButton) {
 			g.button.setLastAction(changeString)
@@ -140,7 +137,6 @@ func (fyneUI *Fyne) newUpdateGroupAddUser(ugau chat.UpdateGroupAddUser) (*thread
 
 	return &threadItem{
 		id:     ugau.ID,
-		source: ugau,
 		widget: changeLabel,
 		setButton: func(tb *threadButton) {
 			g.button.setLastAction(changeString)
@@ -171,7 +167,6 @@ func (fyneUI *Fyne) newUpdateGroupClearHistory(ugch chat.UpdateGroupClearHistory
 
 	return &threadItem{
 		id:     ugch.ID,
-		source: ugch,
 		widget: changeLabel,
 		setButton: func(tb *threadButton) {
 			g.button.setLastAction(changeString)
@@ -201,20 +196,26 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 	}
 
 	outgoing := gm.Author == fyneUI.profile.id
+	displayName := user.name
 	var profileButton *widget.Button
 	var notification *fyne.Notification
 	if !outgoing {
-		notification = fyne.NewNotification(user.name, gm.Text)
+		groupName, err := group.name.Get()
+		if err != nil {
+			log.Fatal("data bindings are broken")
+		}
+		notification = fyne.NewNotification(groupName, user.name+": "+gm.Text)
 		profileButton = widget.NewButtonWithIcon("", newEmbeddedResource("assets/not_found.png"), func() { // TODO: get image from user
 			log.Info("user wants to open the profile of " + user.name)
 			// TODO: display this user's profile
 		})
+	} else {
+		displayName = "You"
 	}
 
 	return &threadItem{
 		id:           gm.ID,
-		source:       gm,
-		widget:       newChatBubble(user.name, gm.ID, gm.Text, outgoing, gm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
+		widget:       newChatBubble(displayName, gm.ID, gm.Text, outgoing, gm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
 			displayName := user.name
@@ -248,6 +249,7 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 	}
 
 	outgoing := dm.Author == fyneUI.profile.id
+	displayName := u.name
 	var profileButton *widget.Button
 	var notification *fyne.Notification
 	if !outgoing {
@@ -256,12 +258,13 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 			log.Info("user wants to open the profile of " + u.name)
 			// TODO: display this user's profile
 		})
+	} else {
+		displayName = "You"
 	}
 
 	return &threadItem{
 		id:           dm.ID,
-		source:       dm,
-		widget:       newChatBubble(u.name, dm.ID, dm.Text, outgoing, dm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
+		widget:       newChatBubble(displayName, dm.ID, dm.Text, outgoing, dm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
 			displayName := u.name
@@ -301,7 +304,6 @@ func (fyneUI *Fyne) newUpdateDMRetention(udmr chat.UpdateDMRetention) (*threadIt
 
 	return &threadItem{
 		id:     udmr.ID,
-		source: udmr,
 		widget: changeLabel,
 		setButton: func(tb *threadButton) {
 			dmThread.button.setLastAction(changeString)
@@ -333,7 +335,6 @@ func (fyneUI *Fyne) newUpdateDMClearHistory(udmch chat.UpdateDMClearHistory) (*t
 
 	return &threadItem{
 		id:     udmch.ID,
-		source: udmch,
 		widget: changeLabel,
 		setButton: func(tb *threadButton) {
 			dmThread.button.setLastAction(changeString)
@@ -365,7 +366,6 @@ func (fyneUI *Fyne) newUpdateGroupUserManagementRestricted(ugumr chat.UpdateGrou
 
 	return &threadItem{
 		id:     ugumr.ID,
-		source: ugumr,
 		widget: changeLabel,
 		setButton: func(tb *threadButton) {
 			g.button.setLastAction(changeString)

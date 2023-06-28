@@ -213,7 +213,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 			Text:   entry.Text,
 		}
 		fyneUI.callbacks.SendGroupMessage(message)
-		fyneUI.displaySentMessage(group, message.ID, message.Text)
+		fyneUI.displaySentMessage(group, message.ID, message.Text) // TODO: have the chat engine send this back over?
 
 		entry.Text = ""
 		entry.Refresh()
@@ -256,89 +256,32 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	fyneUI.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) ReceivedGroupMessage(msg chat.GroupMessage) {
-	// Log an error and early return if the group doesn't exist
-	group, exists := fyneUI.groups[msg.Thread]
+func (fyneUI *Fyne) ReceivedGroupMessage(gm chat.GroupMessage) {
+	g, exists := fyneUI.groups[gm.Thread]
 	if !exists {
 		log.WithFields(log.Fields{
-			"group_id": msg.Thread,
-		}).Error("group does not exist on message receive, ignoring the message")
+			"group_id": gm.Thread,
+		}).Error("group not found for group message")
 		return
 	}
 
-	chatHistory := group.scroll.Content.(*fyne.Container)
-
-	user, exists := group.users.get(msg.Author)
-	if !exists {
+	ti, err := fyneUI.newGroupMessage(gm)
+	if err != nil {
 		log.WithFields(log.Fields{
-			"user_id": msg.Author,
-		}).Error("group received a message from user ID not in thread")
+			"error": err.Error(),
+		}).Error("error creating thread item for group message")
 		return
 	}
-	profileButton := widget.NewButtonWithIcon("", newEmbeddedResource("assets/not_found.png"), func() { // TODO: get image from user
-		log.Info("user wants to open the profile of " + user.name)
-		// TODO: display this user's profile
-	})
-
-	displayName := user.name
-	isOutgoing := false
-	// TODO: this really needs to be cleaned up
-	if msg.Author == fyneUI.profile.id {
-		// We're learning about a message we sent from another device
-		displayName = "You"
-		isOutgoing = true
-		profileButton = nil
-	}
-
-	messageBox := newChatBubble(displayName, msg.ID, msg.Text, isOutgoing, msg.WrittenAt, profileButton)
 
 	fyneUI.threadWithMessageMutex.Lock()
-	fyneUI.threadWithMessage[msg.ID] = group
+	fyneUI.threadWithMessage[gm.ID] = g
 	fyneUI.threadWithMessageMutex.Unlock()
 
-	// Check if we're already scrolled to the bottom, for auto-scroll reasons
-	autoscroll := false
-	location := group.scroll.Offset.Y
-	height := group.scroll.Content.Size().Height - group.scroll.Size().Height
-	if height == location {
-		autoscroll = true
+	if !fyneUI.isActive(g) && !(gm.Author == fyneUI.profile.id) {
+		g.button.addUnread()
 	}
 
-	// Add the message to the group
-	chatHistory.Objects = append(chatHistory.Objects, messageBox)
-	chatHistory.Refresh()
-	group.scroll.Refresh()
-
-	group.button.setLastMessage(displayName, msg.Text)
-	group.button.setLastMessageTime(time.Unix(msg.WrittenAt, 0))
-	if msg.WrittenAt > group.getLastMessageTime() {
-		group.setLastMessageTime(msg.WrittenAt)
-	}
-
-	if fyneUI.isActive(group) {
-		if autoscroll {
-			group.scroll.ScrollToBottom()
-			group.scroll.Refresh()
-		}
-	} else {
-		if !isOutgoing {
-			group.button.addUnread()
-		}
-	}
-
-	group.lastMessage = msg.WrittenAt
-	fyneUI.refreshThreadOrder()
-
-	notificationsEnabled := group.notificationsMutedUntil != chat.MutedForever
-	notificationsMuted := time.Now().Unix() < group.notificationsMutedUntil
-
-	groupName, err := group.name.Get()
-	if err != nil {
-		log.Fatal("data bindings are broken")
-	}
-	if notificationsEnabled && !notificationsMuted && !autoscroll && !isOutgoing { //TODO: also notify if not focused?
-		fyneUI.app.SendNotification(fyne.NewNotification(groupName, "New message from "+user.name))
-	}
+	fyneUI.appendThreadItem(g, ti)
 }
 
 func (fyneUI *Fyne) RenameGroup(ugn chat.UpdateGroupName) {

@@ -209,15 +209,6 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	// Mark that the peer that sent this message has it
 	b.markDeliveredTo(&gm, peer)
 
-	// Inform the UI about the new message
-	b.userInterface.ReceivedGroupMessage(GroupMessage{
-		ID:        gm.ID,
-		Author:    gm.Author,
-		Thread:    gm.Destination,
-		WrittenAt: gm.WrittenAt,
-		Text:      gm.Text,
-	})
-
 	// Make sure the user interface isn't still displaying that the user is typing
 	b.clearUserTypingIndicator(gm.Author, gm.Destination)
 
@@ -228,6 +219,16 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Fatal("error saving group message")
 	}
+
+	// Inform the UI about the new message
+	b.userInterface.ReceivedGroupMessage(GroupMessage{
+		ID:        gm.ID,
+		Author:    gm.Author,
+		Thread:    gm.Destination,
+		WrittenAt: gm.WrittenAt,
+		SavedAt:   gm.SavedAt,
+		Text:      gm.Text,
+	})
 
 	// Update the activity timestamp on the group model
 	b.updateLastGroupActivity(gm.Destination, gm.SavedAt)

@@ -174,6 +174,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 		Author:    dm.Author,
 		Thread:    dm.getDestination(b.currentUserID()),
 		WrittenAt: dm.WrittenAt,
+		SavedAt:   dm.SavedAt,
 		Text:      dm.Text,
 	})
 
