@@ -155,14 +155,14 @@ type UI interface {
 	MarkMessageUndeliverable(uuid.UUID)
 	UpdateMessageDeletionTime(uuid.UUID, int64)
 
-	ReceivedDirectMessage(DirectMessage)
+	DisplayDirectMessage(DirectMessage)
 	DMMutedUntilChanged(dm uuid.UUID, mutedUntil int64) // The notification settings for a DM have been updated
 	DMRetentionChanged(UpdateDMRetention)               // The retention settings for a DM have been changed
 	DMChatHistoryCleared(UpdateDMClearHistory)          // Display that a user has deleted all past DMs
 
 	OpenNewGroupChat(Group)
 	NewGroupChat(Group)
-	ReceivedGroupMessage(GroupMessage)
+	DisplayGroupMessage(GroupMessage)
 	RenameGroup(UpdateGroupName)
 	GroupRetentionChanged(UpdateGroupRetention)
 	GroupChatHistoryCleared(UpdateGroupClearHistory)
@@ -203,9 +203,9 @@ type UICallbacks struct {
 	RequestToAddUser    func(string) error
 
 	// The user wants to send a direct message.
-	SendDirectMessage func(*DirectMessage)
+	SendDirectMessage func(DirectMessage)
 	// The user wants to send a group  message
-	SendGroupMessage func(*GroupMessage)
+	SendGroupMessage func(GroupMessage)
 
 	// Called every time a character is entered into an entry to inform the chat engine to send a typing indicator
 	TypingInDirectMessage func(userID uuid.UUID)

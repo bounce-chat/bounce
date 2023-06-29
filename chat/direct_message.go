@@ -169,7 +169,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	b.markDeliveredTo(&dm, peer)
 
 	// Send the message to the user interface
-	b.userInterface.ReceivedDirectMessage(DirectMessage{
+	b.userInterface.DisplayDirectMessage(DirectMessage{
 		ID:        dm.ID,
 		Author:    dm.Author,
 		Thread:    dm.getDestination(b.currentUserID()),
@@ -251,7 +251,7 @@ func (b *bounce) dmOriginAcceptable(dm directMessage, dev device) bool {
 	}
 }
 
-func (b *bounce) sendDirectMessage(message *DirectMessage) {
+func (b *bounce) sendDirectMessage(message DirectMessage) {
 	if message.ID != uuid.Nil {
 		log.Fatal("direct message ID cannot be set by the UI")
 	}
@@ -279,6 +279,19 @@ func (b *bounce) sendDirectMessage(message *DirectMessage) {
 	b.updateLastUserActivity(message.Thread, dm.SavedAt)
 
 	go b.checkIfDirectMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), dm.ID)
+
+	b.userInterface.DisplayDirectMessage(DirectMessage{
+		ID:            dm.ID,
+		Author:        dm.Author,
+		Thread:        dm.getDestination(b.currentUserID()),
+		WrittenAt:     dm.WrittenAt,
+		SavedAt:       dm.SavedAt,
+		Text:          dm.Text,
+		Expires:       dm.DeleteAt,
+		Read:          true, // TODO
+		Undeliverable: dm.Undeliverable,
+	})
+
 	b.broadcast(dm)
 }
 

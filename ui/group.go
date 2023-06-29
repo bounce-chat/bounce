@@ -208,12 +208,10 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		fyneUI.callbacks.TypingInGroup(group.id)
 	}
 	entry.customOnSubmitted = func() {
-		message := &chat.GroupMessage{
+		fyneUI.callbacks.SendGroupMessage(chat.GroupMessage{
 			Thread: group.id,
 			Text:   entry.Text,
-		}
-		fyneUI.callbacks.SendGroupMessage(message)
-		fyneUI.displaySentMessage(group, message.ID, message.Text) // TODO: have the chat engine send this back over?
+		})
 
 		entry.Text = ""
 		entry.Refresh()
@@ -256,7 +254,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	fyneUI.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) ReceivedGroupMessage(gm chat.GroupMessage) {
+func (fyneUI *Fyne) DisplayGroupMessage(gm chat.GroupMessage) {
 	g, exists := fyneUI.groups[gm.Thread]
 	if !exists {
 		log.WithFields(log.Fields{

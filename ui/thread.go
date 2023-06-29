@@ -88,30 +88,11 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	notificationsEnabled := t.getNotificationsMutedUntil() != chat.MutedForever
 	notificationsMuted := time.Now().Unix() < t.getNotificationsMutedUntil()
 
-	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll { //&& !hideNotification { //TODO: when was this used? maybe it can be stored on the thread item? //TODO: also notify if not focused?
+	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll { //TODO: also notify if this is false but we're not focused?
 		fyneUI.app.SendNotification(ti.notification)
 	}
 
 	t.setLastMessageTime(ti.timestamp)
-	fyneUI.refreshThreadOrder()
-}
-
-func (fyneUI *Fyne) displaySentMessage(thread thread, id uuid.UUID, message string) { // TODO: going to be able to get rid of this if using thread-specific message handlers for displaying outgoing and incoming?
-	chatHistory := thread.chatHistoryScroll().Content.(*fyne.Container)
-
-	thread.getButton().setLastMessage("You", message)
-	thread.getButton().setLastMessageTime(time.Now())
-
-	chatHistory.Objects = append(chatHistory.Objects, newChatBubble("You", id, message, true, time.Now().Unix(), nil))
-	fyneUI.threadWithMessageMutex.Lock()
-	fyneUI.threadWithMessage[id] = thread
-	fyneUI.threadWithMessageMutex.Unlock()
-
-	thread.chatHistoryScroll().Refresh()
-	thread.chatHistoryScroll().ScrollToBottom()
-	thread.chatHistoryScroll().Refresh() // TODO: needed, or does scrolling do a refresh?
-
-	thread.setLastMessageTime(time.Now().Unix())
 	fyneUI.refreshThreadOrder()
 }
 

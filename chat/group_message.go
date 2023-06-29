@@ -221,7 +221,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	}
 
 	// Inform the UI about the new message
-	b.userInterface.ReceivedGroupMessage(GroupMessage{
+	b.userInterface.DisplayGroupMessage(GroupMessage{
 		ID:        gm.ID,
 		Author:    gm.Author,
 		Thread:    gm.Destination,
@@ -240,7 +240,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	b.broadcast(&gm)
 }
 
-func (b *bounce) sendGroupMessage(message *GroupMessage) {
+func (b *bounce) sendGroupMessage(message GroupMessage) {
 	if message.ID != uuid.Nil {
 		log.Fatal("group message ID cannot be set by the UI")
 	}
@@ -279,6 +279,19 @@ func (b *bounce) sendGroupMessage(message *GroupMessage) {
 	b.updateLastGroupActivity(gm.Destination, gm.SavedAt)
 
 	go b.checkIfGroupMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), gm.ID)
+
+	b.userInterface.DisplayGroupMessage(GroupMessage{
+		ID:            gm.ID,
+		Author:        gm.Author,
+		Thread:        gm.getDestination(b.currentUserID()),
+		WrittenAt:     gm.WrittenAt,
+		SavedAt:       gm.SavedAt,
+		Text:          gm.Text,
+		Expires:       gm.DeleteAt,
+		Read:          true, // TODO
+		Undeliverable: gm.Undeliverable,
+	})
+
 	b.broadcast(gm)
 }
 

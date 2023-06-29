@@ -150,13 +150,10 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 		fyneUI.callbacks.TypingInDirectMessage(dm.user.id)
 	}
 	entry.customOnSubmitted = func() {
-		message := &chat.DirectMessage{
+		fyneUI.callbacks.SendDirectMessage(chat.DirectMessage{
 			Thread: dm.user.id,
 			Text:   entry.Text,
-		}
-
-		fyneUI.callbacks.SendDirectMessage(message)
-		fyneUI.displaySentMessage(dm, message.ID, message.Text) // TODO: just build the bubble around the actual object?
+		})
 
 		entry.Text = ""
 		entry.Refresh()
@@ -185,7 +182,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 	fyneUI.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) ReceivedDirectMessage(dm chat.DirectMessage) {
+func (fyneUI *Fyne) DisplayDirectMessage(dm chat.DirectMessage) {
 	u, exists := fyneUI.users.get(dm.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
