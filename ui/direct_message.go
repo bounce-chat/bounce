@@ -2,7 +2,6 @@ package ui
 
 import (
 	"errors"
-	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,7 +30,6 @@ type directMessage struct {
 	entryBar                  *fyne.Container
 	retentionSelection        *widget.Select
 	lastMessage               int64
-	items                     threadItems
 }
 
 func (dm *directMessage) getID() uuid.UUID {
@@ -63,23 +61,6 @@ func (dm *directMessage) setLastMessageTime(time int64) {
 
 func (dm *directMessage) getNotificationsMutedUntil() int64 {
 	return dm.notificationsMutedUntil
-}
-
-func (fyneUI *Fyne) populateUserItems(u *directMessage) { // TODO: make this work on threads generically?
-	sort.Sort(u.items)
-
-	chatHistory := u.chatHistoryScroll().Content.(*fyne.Container)
-	for _, item := range u.items {
-		chatHistory.Objects = append(chatHistory.Objects, item.widget) // TODO: g.appendItem()?
-	}
-
-	lastItem := u.items[len(u.items)-1]
-	if lastItem.setButton != nil {
-		lastItem.setButton(u.getButton())
-	} else {
-		log.Warn("thread item doesn't support setting last button")
-	}
-	fyneUI.refreshThreadOrder()
 }
 
 func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wrap around something that takes the internal user object

@@ -62,6 +62,23 @@ func (fyneUI *Fyne) refreshThreadOrder() {
 	fyneUI.threadVBox.Refresh()
 }
 
+func (fyneUI *Fyne) populateItems(t thread, items threadItems) {
+	sort.Sort(items)
+
+	chatHistory := t.chatHistoryScroll().Content.(*fyne.Container)
+	for _, item := range items {
+		chatHistory.Objects = append(chatHistory.Objects, item.widget)
+	}
+
+	lastItem := items[len(items)-1]
+	if lastItem.setButton != nil {
+		lastItem.setButton(t.getButton())
+	} else {
+		log.Warn("thread item doesn't support setting last button")
+	}
+	fyneUI.refreshThreadOrder()
+}
+
 func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	autoscroll := false
 	location := t.chatHistoryScroll().Offset.Y

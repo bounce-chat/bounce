@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"sort"
 	"time"
 
 	"github.com/hkparker/bounce/chat"
@@ -41,7 +40,6 @@ type group struct {
 	entry                       *threadEntry
 	entryBar                    *fyne.Container
 	lastMessage                 int64
-	items                       threadItems // TODO: don't store these here, pass them in on startup
 }
 
 func (group *group) getID() uuid.UUID {
@@ -84,26 +82,6 @@ func (fyneUI *Fyne) amAdmin(g *group) bool {
 
 	return false
 }
-
-func (fyneUI *Fyne) populateGroupItems(g *group) {
-	sort.Sort(g.items)
-
-	chatHistory := g.chatHistoryScroll().Content.(*fyne.Container)
-	for _, item := range g.items {
-		chatHistory.Objects = append(chatHistory.Objects, item.widget) // TODO: g.appendItem()?
-	}
-
-	lastItem := g.items[len(g.items)-1]
-	if lastItem.setButton != nil {
-		lastItem.setButton(g.getButton())
-	} else {
-		log.Warn("thread item doesn't support setting last button")
-	}
-	fyneUI.refreshThreadOrder()
-}
-
-//populateItems: sort the items, for each get the widget and put it in the scroll
-//addItem: append to the end of the items list, append the widget to the scroll, do all of the timestamp update and autoscroll logic
 
 func (fyneUI *Fyne) OpenNewGroupChat(bounceGroup chat.Group) { // TODO: rename "create and open"?
 	fyneUI.NewGroupChat(bounceGroup)

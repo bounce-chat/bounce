@@ -182,121 +182,106 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		group.setLastMessageTime(g.LastActivity)
 	}
 
+	dmItems := make(map[uuid.UUID]threadItems)
+	groupItems := make(map[uuid.UUID]threadItems)
+
 	for _, dm := range state.DirectMessages {
-		u, exists := fyneUI.users.get(dm.Thread)
-		if !exists {
-			log.Fatal("dm author not known to UI")
-		}
-		dmThread, exists := fyneUI.dms[dm.Thread]
-		if !exists {
-			fyneUI.NewDirectMessage(chat.User{
-				ID:   dm.Thread,
-				Name: u.name,
-			})
-			dmThread, exists = fyneUI.dms[dm.Thread]
-			if !exists {
-				log.Fatal("dm doesn't exist after creation")
-			}
-		}
+		fyneUI.creatDMIfNeeded(dm.Thread)
 		dmti, err := fyneUI.newDirectMessage(dm)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		dmThread.items = append(dmThread.items, dmti)
+		dmItems[dm.Thread] = append(dmItems[dm.Thread], dmti)
 	}
 
 	for _, udmr := range state.UpdateDMRetentions {
-		dm, exists := fyneUI.dms[udmr.Thread]
-		if !exists {
-			log.Fatal("dm doesn't exist for update dm retention")
-		}
+		fyneUI.creatDMIfNeeded(udmr.Thread)
 		udmrItem, err := fyneUI.newUpdateDMRetention(udmr)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		dm.items = append(dm.items, udmrItem)
+		dmItems[udmr.Thread] = append(dmItems[udmr.Thread], udmrItem)
 	}
 
 	for _, udmch := range state.UpdateDMClearHistories {
-		dm, exists := fyneUI.dms[udmch.Thread]
-		if !exists {
-			log.Fatal("dm doesn't exist for update dm clear history")
-		}
+		fyneUI.creatDMIfNeeded(udmch.Thread)
 		udmchItem, err := fyneUI.newUpdateDMClearHistory(udmch)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		dm.items = append(dm.items, udmchItem)
+		dmItems[udmch.Thread] = append(dmItems[udmch.Thread], udmchItem)
 	}
 
 	for _, gm := range state.GroupMessages {
-		group, exists := fyneUI.groups[gm.Thread]
-		if !exists {
-			log.Fatal("group doesn't exist for update group retention")
-		}
 		mti, err := fyneUI.newGroupMessage(gm)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		group.items = append(group.items, mti)
+		groupItems[gm.Thread] = append(groupItems[gm.Thread], mti)
 	}
 
 	for _, ugr := range state.UpdateGroupRetentions {
-		group, exists := fyneUI.groups[ugr.Thread]
-		if !exists {
-			log.Fatal("group doesn't exist for update group retention")
-		}
 		ugrItem, err := fyneUI.newUpdateGroupRetention(ugr)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		group.items = append(group.items, ugrItem)
+		groupItems[ugr.Thread] = append(groupItems[ugr.Thread], ugrItem)
 	}
 
 	for _, ugn := range state.UpdateGroupNames {
-		group, exists := fyneUI.groups[ugn.Thread]
-		if !exists {
-			log.Fatal("group doesn't exist for update group name")
-		}
 		ugnItem, err := fyneUI.newUpdateGroupName(ugn)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		group.items = append(group.items, ugnItem)
+		groupItems[ugn.Thread] = append(groupItems[ugn.Thread], ugnItem)
 	}
 
 	for _, ugau := range state.UpdateGroupAddUsers {
-		group, exists := fyneUI.groups[ugau.Thread]
-		if !exists {
-			log.Fatal("group doesn't exist for update group add user")
-		}
 		ugauItem, err := fyneUI.newUpdateGroupAddUser(ugau)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		group.items = append(group.items, ugauItem)
+		groupItems[ugau.Thread] = append(groupItems[ugau.Thread], ugauItem)
 	}
 
 	for _, ugch := range state.UpdateGroupClearHistories {
-		group, exists := fyneUI.groups[ugch.Thread]
-		if !exists {
-			log.Fatal("group doesn't exist for update group clear history")
-		}
 		ugchItem, err := fyneUI.newUpdateGroupClearHistory(ugch)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		group.items = append(group.items, ugchItem)
+		groupItems[ugch.Thread] = append(groupItems[ugch.Thread], ugchItem)
 	}
 
 	// Create widgets for all the thread items we added
 	for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?
-		fyneUI.populateGroupItems(g)
-		g.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
+		if items, ok := groupItems[g.id]; ok {
+			fyneUI.populateItems(g, items)
+			g.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
+		}
 	}
 	for _, u := range fyneUI.dms { // TODO: store groups and DMs in a shared threads slice?
-		fyneUI.populateUserItems(u)
-		u.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
+		if items, ok := dmItems[u.user.id]; ok {
+			fyneUI.populateItems(u, items)
+			u.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
+		}
+	}
+}
+
+func (fyneUI *Fyne) creatDMIfNeeded(id uuid.UUID) {
+	u, exists := fyneUI.users.get(id)
+	if !exists {
+		log.Fatal("dm user not known to UI")
+	}
+	_, exists = fyneUI.dms[id]
+	if !exists {
+		fyneUI.NewDirectMessage(chat.User{
+			ID:   id,
+			Name: u.name,
+		})
+		_, exists = fyneUI.dms[id]
+		if !exists {
+			log.Fatal("dm doesn't exist after creation")
+		}
 	}
 }
 
