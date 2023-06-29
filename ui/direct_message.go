@@ -338,49 +338,25 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 
 }
 
-func (fyneUI *Fyne) DMChatHistoryCleared(userID, actorID uuid.UUID) {
-	actor, ok := fyneUI.users.get(actorID)
-	actorName := ""
-	if !ok {
-		actorName = "unknown"
+func (fyneUI *Fyne) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
+	dmThread, exists := fyneUI.dms[udch.Thread]
+	if !exists {
 		log.WithFields(log.Fields{
-			"actor_id": actorID,
-		}).Warn("unknown user just updated DM retetion settings")
-	} else {
-		actorName = actor.name
+			"user_id": udch.Thread,
+		}).Error("cannot clear history for unknown dm thread")
+		return
 	}
 
-	if dm, exists := fyneUI.dms[userID]; exists {
-		autoscroll := false
-		location := dm.scroll.Offset.Y
-		height := dm.scroll.Content.Size().Height - dm.scroll.Size().Height
-		if height == location {
-			autoscroll = true
-		}
-
-		changeString := actorName + " cleared the chat history"
-		changeLabel := widget.NewLabel(changeString)
-		changeLabel.Alignment = fyne.TextAlignCenter
-		chatHistory := dm.chatHistoryScroll().Content.(*fyne.Container)
-		chatHistory.Objects = append(chatHistory.Objects, changeLabel)
-		dm.chatHistoryScroll().Refresh()
-
-		dm.button.setLastAction(changeString)
-
-		if autoscroll {
-			if fyneUI.isActive(dm) {
-				dm.scroll.ScrollToBottom()
-				dm.scroll.Refresh()
-			}
-		}
-
-		dm.setLastMessageTime(time.Now().Unix())
-		fyneUI.refreshThreadOrder()
-	} else {
+	ti, err := fyneUI.newUpdateDMClearHistory(udch)
+	if err != nil {
 		log.WithFields(log.Fields{
-			"user_id": userID,
-		}).Warn("cannot notify messages cleared for DM that doesn't exist")
+			"error": err.Error(),
+		}).Error("error creating thread item for clearing dm history")
+		return
 	}
+
+	// TODO: insertion sort this into the proper place in the thread?
+	fyneUI.appendThreadItem(dmThread, ti)
 }
 
 func (fyneUI *Fyne) DMMutedUntilChanged(userID uuid.UUID, mutedUntil int64) {
@@ -395,54 +371,27 @@ func (fyneUI *Fyne) DMMutedUntilChanged(userID uuid.UUID, mutedUntil int64) {
 	}
 }
 
-func (fyneUI *Fyne) DMRetentionChanged(userID uuid.UUID, actorID uuid.UUID, retention int64, timestamp int64) {
-	actor, ok := fyneUI.users.get(actorID)
-	actorName := ""
-	if !ok {
-		actorName = "unknown"
+func (fyneUI *Fyne) DMRetentionChanged(udr chat.UpdateDMRetention) {
+	dmThread, exists := fyneUI.dms[udr.Thread]
+	if !exists {
 		log.WithFields(log.Fields{
-			"actor_id": actorID,
-		}).Warn("unknown user just updated DM retetion settings")
-	} else {
-		actorName = actor.name
+			"user_id": udr.Thread,
+		}).Error("cannot update retention for unknown dm thread")
+		return
 	}
 
-	if dm, exists := fyneUI.dms[userID]; exists {
-		newRetentionName := getRetentionName(retention)
-		dm.retentionSelection.Selected = newRetentionName
-		dm.retentionSelection.Refresh()
-
-		// Insert a note in this thread that the setting was changed
-		autoscroll := false
-		location := dm.scroll.Offset.Y
-		height := dm.scroll.Content.Size().Height - dm.scroll.Size().Height
-		if height == location {
-			autoscroll = true
-		}
-
-		// TODO: thread this in to the correct location based on the timestamp that gets passed
-
-		changeString := actorName + " updated disappearing messages to " + newRetentionName
-		changeLabel := widget.NewLabel(changeString)
-		changeLabel.Alignment = fyne.TextAlignCenter
-		chatHistory := dm.chatHistoryScroll().Content.(*fyne.Container)
-		chatHistory.Objects = append(chatHistory.Objects, changeLabel)
-		dm.chatHistoryScroll().Refresh()
-
-		dm.button.setLastAction(changeString)
-
-		if autoscroll {
-			if fyneUI.isActive(dm) {
-				dm.scroll.ScrollToBottom()
-				dm.scroll.Refresh()
-			}
-		}
-
-		dm.setLastMessageTime(time.Now().Unix())
-		fyneUI.refreshThreadOrder()
-	} else {
+	ti, err := fyneUI.newUpdateDMRetention(udr)
+	if err != nil {
 		log.WithFields(log.Fields{
-			"user_id": userID,
-		}).Warn("cannot update retention settings for DM that doesn't exist")
+			"error": err.Error(),
+		}).Error("error creating thread item for update dm retention")
+		return
 	}
+
+	newRetentionName := getRetentionName(udr.Retention)
+	dmThread.retentionSelection.Selected = newRetentionName
+	dmThread.retentionSelection.Refresh()
+
+	// TODO: insertion sort this into the proper place in the thread?
+	fyneUI.appendThreadItem(dmThread, ti)
 }

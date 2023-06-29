@@ -151,19 +151,14 @@ type UI interface {
 	// Chats
 	//UserIntroduced(Introduction)
 	UserImported(User) // TODO: still needed?
-	ReceivedDirectMessage(DirectMessage)
 	DeleteMessage(uuid.UUID)
 	MarkMessageUndeliverable(uuid.UUID)
 	UpdateMessageDeletionTime(uuid.UUID, int64)
 
-	// The notification settings for a DM have been updated
-	DMMutedUntilChanged(dm uuid.UUID, mutedUntil int64)
-
-	// The retention settings for a DM have been changed
-	DMRetentionChanged(dm uuid.UUID, actor uuid.UUID, retention int64, timestamp int64)
-
-	// Display that a user has deleted all past DMs
-	DMChatHistoryCleared(dm, actor uuid.UUID)
+	ReceivedDirectMessage(DirectMessage)
+	DMMutedUntilChanged(dm uuid.UUID, mutedUntil int64) // The notification settings for a DM have been updated
+	DMRetentionChanged(UpdateDMRetention)               // The retention settings for a DM have been changed
+	DMChatHistoryCleared(UpdateDMClearHistory)          // Display that a user has deleted all past DMs
 
 	OpenNewGroupChat(Group)
 	NewGroupChat(Group)

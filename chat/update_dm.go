@@ -258,7 +258,13 @@ func (b *bounce) saveAndApplyUpdateDMChangeRetention(u user, ud updateDM) error 
 	retention := int64(binary.LittleEndian.Uint64(ud.Data))
 
 	// Inform the UI
-	b.userInterface.DMRetentionChanged(u.ID, ud.Actor, retention, ud.Timestamp)
+	b.userInterface.DMRetentionChanged(UpdateDMRetention{
+		ID:        ud.ID,
+		Thread:    u.ID,
+		Actor:     ud.Actor,
+		Timestamp: ud.Timestamp,
+		Retention: retention,
+	})
 
 	// Apply the update if it is the most recent one
 	if !b.moreRecentUpdateDM(ud) {
@@ -303,7 +309,13 @@ func (b *bounce) saveAndApplyUpdateDMSetClearBefore(u user, ud updateDM) error {
 		}
 		b.userInterface.DeleteMessage(dm.ID)
 	}
-	b.userInterface.DMChatHistoryCleared(u.ID, ud.Actor)
+	b.userInterface.DMChatHistoryCleared(UpdateDMClearHistory{
+		ID:        ud.ID,
+		Thread:    u.ID,
+		Actor:     ud.Actor,
+		Timestamp: ud.Timestamp,
+		ClearTime: clearBefore,
+	})
 
 	// Update the clear before value on the group if this one is newer
 	if u.ClearBefore < clearBefore {

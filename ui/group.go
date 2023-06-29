@@ -329,6 +329,9 @@ func (fyneUI *Fyne) GroupRetentionChanged(ugr chat.UpdateGroupRetention) {
 		return
 	}
 
+	newRetentionName := getRetentionName(ugr.Retention)
+	g.retentionSelection.Selected = newRetentionName
+	g.retentionSelection.Refresh()
 	fyneUI.appendThreadItem(g, ti)
 }
 
