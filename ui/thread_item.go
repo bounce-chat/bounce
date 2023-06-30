@@ -360,7 +360,7 @@ func (fyneUI *Fyne) newUpdateGroupUserManagementRestricted(ugumr chat.UpdateGrou
 		return &threadItem{}, errUnknownActorInUpdateGroupUserManagementRestricted
 	}
 
-	changeString := actor.name + " unrestricted user management"
+	changeString := actor.name + " restricted user management"
 	changeLabel := widget.NewLabel(changeString)
 	changeLabel.Alignment = fyne.TextAlignCenter
 

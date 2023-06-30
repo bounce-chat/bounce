@@ -350,11 +350,11 @@ func (fyneUI *Fyne) GroupMutedUntilChanged(groupID uuid.UUID, mutedUntil int64) 
 	}
 }
 
-func (fyneUI *Fyne) AdminPromoted(groupID, userID uuid.UUID) {
+func (fyneUI *Fyne) AdminPromoted(ugap chat.UpdateGroupAdminPromoted) {
 
 }
 
-func (fyneUI *Fyne) AdminDemoted(groupID, userID uuid.UUID) {
+func (fyneUI *Fyne) AdminDemoted(ugad chat.UpdateGroupAdminDemoted) {
 
 }
 
@@ -377,22 +377,22 @@ func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagemen
 	}
 }
 
-func (fyneUI *Fyne) UserManagementUnrestricted(groupID, actorID uuid.UUID) {
+func (fyneUI *Fyne) UserManagementUnrestricted(ugumu chat.UpdateGroupUserManagementUnrestricted) {
 
 }
 
-func (fyneUI *Fyne) GroupEditsRestricted(groupID, actorID uuid.UUID) {
+func (fyneUI *Fyne) GroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) {
 
 }
 
-func (fyneUI *Fyne) GroupEditsUnrestricted(groupID, actorID uuid.UUID) {
+func (fyneUI *Fyne) GroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricted) {
 
 }
 
-func (fyneUI *Fyne) PostingRestricted(groupID, actorID uuid.UUID) {
+func (fyneUI *Fyne) PostingRestricted(ugpr chat.UpdateGroupPostingRestricted) {
 
 }
 
-func (fyneUI *Fyne) PostingUnrestricted(groupID, actorID uuid.UUID) {
+func (fyneUI *Fyne) PostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted) {
 
 }

@@ -94,6 +94,22 @@ type UpdateGroupClearHistory struct {
 	ClearTime int64
 }
 
+type UpdateGroupAdminPromoted struct {
+	ID        uuid.UUID
+	Thread    uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+	UserID    uuid.UUID
+}
+
+type UpdateGroupAdminDemoted struct {
+	ID        uuid.UUID
+	Thread    uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+	UserID    uuid.UUID
+}
+
 type UpdateGroupUserManagementRestricted struct {
 	ID        uuid.UUID
 	Thread    uuid.UUID
@@ -101,18 +117,61 @@ type UpdateGroupUserManagementRestricted struct {
 	Timestamp int64
 }
 
+type UpdateGroupUserManagementUnrestricted struct {
+	ID        uuid.UUID
+	Thread    uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+}
+
+type UpdateGroupEditsRestricted struct {
+	ID        uuid.UUID
+	Thread    uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+}
+
+type UpdateGroupEditsUnrestricted struct {
+	ID        uuid.UUID
+	Thread    uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+}
+
+type UpdateGroupPostingRestricted struct {
+	ID        uuid.UUID
+	Thread    uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+}
+
+type UpdateGroupPostingUnrestricted struct {
+	ID        uuid.UUID
+	Thread    uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+}
+
 type InitialState struct {
-	Profile                   *User
-	Users                     []User
-	Groups                    []Group
-	DirectMessages            []DirectMessage
-	UpdateDMRetentions        []UpdateDMRetention
-	UpdateDMClearHistories    []UpdateDMClearHistory
-	GroupMessages             []GroupMessage
-	UpdateGroupRetentions     []UpdateGroupRetention
-	UpdateGroupNames          []UpdateGroupName
-	UpdateGroupAddUsers       []UpdateGroupAddUser
-	UpdateGroupClearHistories []UpdateGroupClearHistory
+	Profile                                *User
+	Users                                  []User
+	Groups                                 []Group
+	DirectMessages                         []DirectMessage
+	UpdateDMRetentions                     []UpdateDMRetention
+	UpdateDMClearHistories                 []UpdateDMClearHistory
+	GroupMessages                          []GroupMessage
+	UpdateGroupRetentions                  []UpdateGroupRetention
+	UpdateGroupNames                       []UpdateGroupName
+	UpdateGroupAddUsers                    []UpdateGroupAddUser
+	UpdateGroupClearHistories              []UpdateGroupClearHistory
+	UpdateGroupAdminPromotions             []UpdateGroupAdminPromoted
+	UpdateGroupAdminDemotions              []UpdateGroupAdminDemoted
+	UpdateGroupUserManagementsRestricted   []UpdateGroupUserManagementRestricted
+	UpdateGroupUserManagementsUnrestricted []UpdateGroupUserManagementUnrestricted
+	UpdateGroupEditsRestricted             []UpdateGroupEditsRestricted
+	UpdateGroupEditsUnrestricted           []UpdateGroupEditsUnrestricted
+	UpdateGroupPostingsRestricted          []UpdateGroupPostingRestricted
+	UpdateGroupPostingsUnrestricted        []UpdateGroupPostingUnrestricted
 }
 
 //
@@ -166,15 +225,15 @@ type UI interface {
 	RenameGroup(UpdateGroupName)
 	GroupRetentionChanged(UpdateGroupRetention)
 	GroupChatHistoryCleared(UpdateGroupClearHistory)
-	GroupMutedUntilChanged(groupID uuid.UUID, mutedUntil int64) // TODO
-	AdminPromoted(groupID, userID uuid.UUID)
-	AdminDemoted(groupID, userID uuid.UUID)
+	GroupMutedUntilChanged(groupID uuid.UUID, mutedUntil int64)
+	AdminPromoted(UpdateGroupAdminPromoted)
+	AdminDemoted(UpdateGroupAdminDemoted)
 	UserManagementRestricted(UpdateGroupUserManagementRestricted)
-	UserManagementUnrestricted(groupID, actorID uuid.UUID)
-	GroupEditsRestricted(groupID, actorID uuid.UUID)
-	GroupEditsUnrestricted(groupID, actorID uuid.UUID)
-	PostingRestricted(groupID, actorID uuid.UUID)
-	PostingUnrestricted(groupID, actorID uuid.UUID)
+	UserManagementUnrestricted(UpdateGroupUserManagementUnrestricted)
+	GroupEditsRestricted(UpdateGroupEditsRestricted)
+	GroupEditsUnrestricted(UpdateGroupEditsUnrestricted)
+	PostingRestricted(UpdateGroupPostingRestricted)
+	PostingUnrestricted(UpdateGroupPostingUnrestricted)
 
 	ShowTypingIndicatorInHistory(userID, threadID uuid.UUID) // TODO: why did I split these?
 	ShowTypingIndicatorInButton(userID, threadID uuid.UUID)

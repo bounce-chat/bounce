@@ -489,6 +489,14 @@ func (b *bounce) buildInitialState() InitialState {
 					ClearTime: int64(binary.LittleEndian.Uint64(ug.Data)),
 				},
 			)
+		case updateGroupTypePromoteAdmin:
+		case updateGroupTypeDemoteAdmin:
+		case updateGroupTypeRestrictUserManagement:
+		case updateGroupTypeUnrestrictUserManagement:
+		case updateGroupTypeRestrictGroupEdits:
+		case updateGroupTypeUnrestrictGroupEdits:
+		case updateGroupTypeRestrictPosting:
+		case updateGroupTypeUnrestrictPosting:
 		}
 	}
 

@@ -585,7 +585,13 @@ func (b *bounce) saveAndApplyUpdateGroupPromoteAdmin(g group, ug updateGroup) er
 	b.addGroupAdmin(ug.Target, userID)
 
 	// Notify the UI
-	b.userInterface.AdminPromoted(ug.Target, userID)
+	b.userInterface.AdminPromoted(UpdateGroupAdminPromoted{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+		UserID:    userID,
+	})
 
 	return nil
 }
@@ -622,7 +628,13 @@ func (b *bounce) saveAndApplyUpdateGroupDemoteAdmin(g group, ug updateGroup) err
 	b.removeGroupAdmin(ug.Target, userID)
 
 	// Notify the UI
-	b.userInterface.AdminDemoted(ug.Target, userID)
+	b.userInterface.AdminDemoted(UpdateGroupAdminDemoted{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+		UserID:    userID,
+	})
 
 	return nil
 }
@@ -687,12 +699,12 @@ func (b *bounce) saveAndApplyUpdateGroupUnrestrictUserManagement(g group, ug upd
 	}
 
 	// Notify the UI
-	//b.userInterface.UserManagementUnrestricted(UpdateGroupUserManagementUnrestricted{
-	//	ID:        ug.ID,
-	//	Thread:    ug.Target,
-	//	Actor:     ug.Actor,
-	//	Timestamp: ug.Target,
-	//})
+	b.userInterface.UserManagementUnrestricted(UpdateGroupUserManagementUnrestricted{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+	})
 
 	return nil
 }
@@ -722,7 +734,12 @@ func (b *bounce) saveAndApplyUpdateGroupRestrictGroupEdits(g group, ug updateGro
 	}
 
 	// Notify the UI
-	b.userInterface.GroupEditsRestricted(g.ID, ug.Actor)
+	b.userInterface.GroupEditsRestricted(UpdateGroupEditsRestricted{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+	})
 
 	return nil
 }
@@ -752,7 +769,12 @@ func (b *bounce) saveAndApplyUpdateGroupUnrestrictGroupEdits(g group, ug updateG
 	}
 
 	// Notify the UI
-	b.userInterface.GroupEditsUnrestricted(g.ID, ug.Actor)
+	b.userInterface.GroupEditsUnrestricted(UpdateGroupEditsUnrestricted{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+	})
 
 	return nil
 }
@@ -782,7 +804,12 @@ func (b *bounce) saveAndApplyUpdateGroupRestrictPosting(g group, ug updateGroup)
 	}
 
 	// Notify the UI
-	b.userInterface.PostingRestricted(g.ID, ug.Actor)
+	b.userInterface.PostingRestricted(UpdateGroupPostingRestricted{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+	})
 
 	return nil
 }
@@ -812,7 +839,12 @@ func (b *bounce) saveAndApplyUpdateGroupUnrestrictPosting(g group, ug updateGrou
 	}
 
 	// Notify the UI
-	b.userInterface.PostingUnrestricted(g.ID, ug.Actor)
+	b.userInterface.PostingUnrestricted(UpdateGroupPostingUnrestricted{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+	})
 
 	return nil
 }
