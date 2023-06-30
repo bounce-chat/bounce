@@ -648,7 +648,14 @@ func (b *bounce) saveAndApplyUpdateGroupRestrictUserManagement(g group, ug updat
 		return errNoPermissionToChangePermissions
 	}
 
-	err := b.database.Model(&g).Update("restrict_user_management", true).Error
+	err := b.database.Create(&ug).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update group")
+	}
+
+	err = b.database.Model(&g).Update("restrict_user_management", true).Error
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -683,7 +690,14 @@ func (b *bounce) saveAndApplyUpdateGroupUnrestrictUserManagement(g group, ug upd
 		return errNoPermissionToChangePermissions
 	}
 
-	err := b.database.Model(&g).Update("restrict_user_management", false).Error
+	err := b.database.Create(&ug).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update group")
+	}
+
+	err = b.database.Model(&g).Update("restrict_user_management", false).Error
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -718,7 +732,14 @@ func (b *bounce) saveAndApplyUpdateGroupRestrictGroupEdits(g group, ug updateGro
 		return errNoPermissionToChangePermissions
 	}
 
-	err := b.database.Model(&g).Update("restrict_group_edits", true).Error
+	err := b.database.Create(&ug).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update group")
+	}
+
+	err = b.database.Model(&g).Update("restrict_group_edits", true).Error
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -753,7 +774,14 @@ func (b *bounce) saveAndApplyUpdateGroupUnrestrictGroupEdits(g group, ug updateG
 		return errNoPermissionToChangePermissions
 	}
 
-	err := b.database.Model(&g).Update("restrict_group_edits", false).Error
+	err := b.database.Create(&ug).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update group")
+	}
+
+	err = b.database.Model(&g).Update("restrict_group_edits", false).Error
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -788,7 +816,14 @@ func (b *bounce) saveAndApplyUpdateGroupRestrictPosting(g group, ug updateGroup)
 		return errNoPermissionToChangePermissions
 	}
 
-	err := b.database.Model(&g).Update("restrict_posting", true).Error
+	err := b.database.Create(&ug).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update group")
+	}
+
+	err = b.database.Model(&g).Update("restrict_posting", true).Error
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -823,7 +858,14 @@ func (b *bounce) saveAndApplyUpdateGroupUnrestrictPosting(g group, ug updateGrou
 		return errNoPermissionToChangePermissions
 	}
 
-	err := b.database.Model(&g).Update("restrict_posting", false).Error
+	err := b.database.Create(&ug).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update group")
+	}
+
+	err = b.database.Model(&g).Update("restrict_posting", false).Error
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{

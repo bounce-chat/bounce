@@ -107,14 +107,23 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		}
 
 		// Update the permissions if needed
-		if thread.restrictUserManagementCheck.Checked != thread.restrictUserManagement {
+		if thread.restrictUserManagementCheck.Checked && !thread.restrictUserManagement {
 			fyneUI.callbacks.RestrictUserManagement(thread.id)
 		}
-		if thread.restrictGroupEditsCheck.Checked != thread.restrictGroupEdits {
+		if !thread.restrictUserManagementCheck.Checked && thread.restrictUserManagement {
+			fyneUI.callbacks.UnrestrictUserManagement(thread.id)
+		}
+		if thread.restrictGroupEditsCheck.Checked && !thread.restrictGroupEdits {
 			fyneUI.callbacks.RestrictGroupEdits(thread.id)
 		}
-		if thread.restrictPostingCheck.Checked != thread.restrictPosting {
+		if !thread.restrictGroupEditsCheck.Checked && thread.restrictGroupEdits {
+			fyneUI.callbacks.UnrestrictGroupEdits(thread.id)
+		}
+		if thread.restrictPostingCheck.Checked && !thread.restrictPosting {
 			fyneUI.callbacks.RestrictPosting(thread.id)
+		}
+		if !thread.restrictPostingCheck.Checked && thread.restrictPosting {
+			fyneUI.callbacks.UnrestrictPosting(thread.id)
 		}
 
 		// Add the selected users to the group

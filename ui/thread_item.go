@@ -20,6 +20,10 @@ var errGroupNotFoundForGroupMessage = errors.New("group not found for group mess
 var errUserNotFoundForDirectMessage = errors.New("user not found for group message")
 var errUnknownActorInUpdateDMRetention = errors.New("unknown actor in update dm retention")
 var errUnknownActorInUpdateDMClearHistory = errors.New("unknown actor in update dm clear history")
+var errUnknownActorInUpdateGroupAdminPromoted = errors.New("unknown actor in update group promote admin")
+var errUnknownUserInUpdateGroupAdminPromoted = errors.New("unknown user in update group promote admin")
+var errUnknownActorInUpdateGroupAdminDemoted = errors.New("unknown actor in update group demote admin")
+var errUnknownUserInUpdateGroupAdminDemoted = errors.New("unknown user in update group demote admin")
 var errUnknownActorInUpdateGroupUserManagementRestricted = errors.New("unknown actor in update group restrict user management")
 var errUnknownActorInUpdateGroupUserManagementUnrestricted = errors.New("unknown actor in update group unrestrict user management")
 var errUnknownActorInUpdateGroupEditsRestricted = errors.New("unknown actor in update group restrict user management")
@@ -166,7 +170,12 @@ func (fyneUI *Fyne) newUpdateGroupClearHistory(ugch chat.UpdateGroupClearHistory
 	if !ok {
 		return &threadItem{}, errUnknownActorInUpdateGroupClearHistory
 	}
-	changeString := actor.name + " cleared the chat history"
+	actorName := actor.name
+	if ugch.Actor == fyneUI.profile.id {
+		actorName = "You"
+	}
+
+	changeString := actorName + " cleared the chat history"
 	changeLabel := widget.NewLabel(changeString)
 	changeLabel.Alignment = fyne.TextAlignCenter
 
@@ -348,6 +357,78 @@ func (fyneUI *Fyne) newUpdateDMClearHistory(udmch chat.UpdateDMClearHistory) (*t
 			dmThread.chatHistoryScroll().Refresh()
 		},
 		timestamp: udmch.ClearTime,
+	}, nil
+}
+
+func (fyneUI *Fyne) newUpdateGroupAdminPromoted(ugap chat.UpdateGroupAdminPromoted) (*threadItem, error) {
+	g, exists := fyneUI.groups[ugap.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugap.Thread,
+		}).Error("group does not exist on message receive, ignoring the message")
+		return &threadItem{}, errUpdateForUnknownGroup
+	}
+
+	actor, ok := fyneUI.users.get(ugap.Actor)
+	if !ok {
+		return &threadItem{}, errUnknownActorInUpdateGroupAdminPromoted
+	}
+
+	newAdmin, ok := fyneUI.users.get(ugap.UserID)
+	if !ok {
+		return &threadItem{}, errUnknownUserInUpdateGroupAdminPromoted
+	}
+
+	changeString := actor.name + " made " + newAdmin.name + " an admin"
+	changeLabel := widget.NewLabel(changeString)
+	changeLabel.Alignment = fyne.TextAlignCenter
+
+	return &threadItem{
+		id:     ugap.ID,
+		widget: changeLabel,
+		setButton: func(tb *threadButton) {
+			g.button.setLastAction(changeString)
+			g.button.setLastMessageTime(time.Unix(ugap.Timestamp, 0))
+			g.setLastMessageTime(ugap.Timestamp)
+			g.chatHistoryScroll().Refresh()
+		},
+		timestamp: ugap.Timestamp,
+	}, nil
+}
+
+func (fyneUI *Fyne) newUpdateGroupAdminDemoted(ugad chat.UpdateGroupAdminDemoted) (*threadItem, error) {
+	g, exists := fyneUI.groups[ugad.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugad.Thread,
+		}).Error("group does not exist on message receive, ignoring the message")
+		return &threadItem{}, errUpdateForUnknownGroup
+	}
+
+	actor, ok := fyneUI.users.get(ugad.Actor)
+	if !ok {
+		return &threadItem{}, errUnknownActorInUpdateGroupAdminDemoted
+	}
+
+	oldAdmin, ok := fyneUI.users.get(ugad.UserID)
+	if !ok {
+		return &threadItem{}, errUnknownUserInUpdateGroupAdminDemoted
+	}
+
+	changeString := actor.name + " removed " + oldAdmin.name + " as an admin"
+	changeLabel := widget.NewLabel(changeString)
+	changeLabel.Alignment = fyne.TextAlignCenter
+
+	return &threadItem{
+		id:     ugad.ID,
+		widget: changeLabel,
+		setButton: func(tb *threadButton) {
+			g.button.setLastAction(changeString)
+			g.button.setLastMessageTime(time.Unix(ugad.Timestamp, 0))
+			g.setLastMessageTime(ugad.Timestamp)
+			g.chatHistoryScroll().Refresh()
+		},
+		timestamp: ugad.Timestamp,
 	}, nil
 }
 

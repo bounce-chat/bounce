@@ -431,6 +431,14 @@ func (b *bounce) buildInitialState() InitialState {
 	exportedUpdateGroupNames := []UpdateGroupName{}
 	exportedUpdateGroupAddUsers := []UpdateGroupAddUser{}
 	exportedUpdateGroupClearHistories := []UpdateGroupClearHistory{}
+	exportedUpdateGroupAdminPromotions := []UpdateGroupAdminPromoted{}
+	exportedUpdateGroupAdminDemotions := []UpdateGroupAdminDemoted{}
+	exportedUpdateGroupUserManagementsRestricted := []UpdateGroupUserManagementRestricted{}
+	exportedUpdateGroupUserManagementsUnrestricted := []UpdateGroupUserManagementUnrestricted{}
+	exportedUpdateGroupEditsRestricted := []UpdateGroupEditsRestricted{}
+	exportedUpdateGroupEditsUnrestricted := []UpdateGroupEditsUnrestricted{}
+	exportedUpdateGroupPostingsRestricted := []UpdateGroupPostingRestricted{}
+	exportedUpdateGroupPostingsUnrestricted := []UpdateGroupPostingUnrestricted{}
 	for _, ug := range ugs {
 		switch ug.Type {
 		case updateGroupTypeChangeName:
@@ -490,28 +498,126 @@ func (b *bounce) buildInitialState() InitialState {
 				},
 			)
 		case updateGroupTypePromoteAdmin:
+			userID, err := uuid.FromBytes(ug.Data)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    ug.Data,
+					"error": err.Error(),
+				}).Fatal("error parsing user ID for admin promotion in database")
+			}
+
+			exportedUpdateGroupAdminPromotions = append(
+				exportedUpdateGroupAdminPromotions,
+				UpdateGroupAdminPromoted{
+					ID:        ug.ID,
+					Thread:    ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+					UserID:    userID,
+				},
+			)
 		case updateGroupTypeDemoteAdmin:
+			userID, err := uuid.FromBytes(ug.Data)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    ug.Data,
+					"error": err.Error(),
+				}).Fatal("error parsing user ID for admin demotion in database")
+			}
+
+			exportedUpdateGroupAdminDemotions = append(
+				exportedUpdateGroupAdminDemotions,
+				UpdateGroupAdminDemoted{
+					ID:        ug.ID,
+					Thread:    ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+					UserID:    userID,
+				},
+			)
 		case updateGroupTypeRestrictUserManagement:
+			exportedUpdateGroupUserManagementsRestricted = append(
+				exportedUpdateGroupUserManagementsRestricted,
+				UpdateGroupUserManagementRestricted{
+					ID:        ug.ID,
+					Thread:    ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+				},
+			)
 		case updateGroupTypeUnrestrictUserManagement:
+			exportedUpdateGroupUserManagementsUnrestricted = append(
+				exportedUpdateGroupUserManagementsUnrestricted,
+				UpdateGroupUserManagementUnrestricted{
+					ID:        ug.ID,
+					Thread:    ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+				},
+			)
 		case updateGroupTypeRestrictGroupEdits:
+			exportedUpdateGroupEditsRestricted = append(
+				exportedUpdateGroupEditsRestricted,
+				UpdateGroupEditsRestricted{
+					ID:        ug.ID,
+					Thread:    ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+				},
+			)
 		case updateGroupTypeUnrestrictGroupEdits:
+			exportedUpdateGroupEditsUnrestricted = append(
+				exportedUpdateGroupEditsUnrestricted,
+				UpdateGroupEditsUnrestricted{
+					ID:        ug.ID,
+					Thread:    ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+				},
+			)
 		case updateGroupTypeRestrictPosting:
+			exportedUpdateGroupPostingsRestricted = append(
+				exportedUpdateGroupPostingsRestricted,
+				UpdateGroupPostingRestricted{
+					ID:        ug.ID,
+					Thread:    ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+				},
+			)
 		case updateGroupTypeUnrestrictPosting:
+			exportedUpdateGroupPostingsUnrestricted = append(
+				exportedUpdateGroupPostingsUnrestricted,
+				UpdateGroupPostingUnrestricted{
+					ID:        ug.ID,
+					Thread:    ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+				},
+			)
 		}
 	}
 
 	// Create the initial state for the UI
 	return InitialState{
-		Profile:                   profile,
-		Users:                     chatUsers,
-		Groups:                    chatGroups,
-		DirectMessages:            exportedDMs,
-		UpdateDMRetentions:        exportedUpdateDMRetentions,
-		UpdateDMClearHistories:    exportedUpdateDMClearHistories,
-		GroupMessages:             exportedGMs,
-		UpdateGroupRetentions:     exportedUpdateGroupRetentions,
-		UpdateGroupNames:          exportedUpdateGroupNames,
-		UpdateGroupAddUsers:       exportedUpdateGroupAddUsers,
-		UpdateGroupClearHistories: exportedUpdateGroupClearHistories,
+		Profile:                                profile,
+		Users:                                  chatUsers,
+		Groups:                                 chatGroups,
+		DirectMessages:                         exportedDMs,
+		UpdateDMRetentions:                     exportedUpdateDMRetentions,
+		UpdateDMClearHistories:                 exportedUpdateDMClearHistories,
+		GroupMessages:                          exportedGMs,
+		UpdateGroupRetentions:                  exportedUpdateGroupRetentions,
+		UpdateGroupNames:                       exportedUpdateGroupNames,
+		UpdateGroupAddUsers:                    exportedUpdateGroupAddUsers,
+		UpdateGroupClearHistories:              exportedUpdateGroupClearHistories,
+		UpdateGroupAdminPromotions:             exportedUpdateGroupAdminPromotions,
+		UpdateGroupAdminDemotions:              exportedUpdateGroupAdminDemotions,
+		UpdateGroupUserManagementsRestricted:   exportedUpdateGroupUserManagementsRestricted,
+		UpdateGroupUserManagementsUnrestricted: exportedUpdateGroupUserManagementsUnrestricted,
+		UpdateGroupEditsRestricted:             exportedUpdateGroupEditsRestricted,
+		UpdateGroupEditsUnrestricted:           exportedUpdateGroupEditsUnrestricted,
+		UpdateGroupPostingsRestricted:          exportedUpdateGroupPostingsRestricted,
+		UpdateGroupPostingsUnrestricted:        exportedUpdateGroupPostingsUnrestricted,
 	}
 }

@@ -351,16 +351,45 @@ func (fyneUI *Fyne) GroupMutedUntilChanged(groupID uuid.UUID, mutedUntil int64) 
 }
 
 func (fyneUI *Fyne) AdminPromoted(ugap chat.UpdateGroupAdminPromoted) {
+	if g, exists := fyneUI.groups[ugap.Thread]; exists {
+		// TODO: set this user as an admin
 
+		ti, err := fyneUI.newUpdateGroupAdminPromoted(ugap)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating thread item for update group admin promoted")
+		}
+		fyneUI.appendThreadItem(g, ti)
+	} else {
+		log.WithFields(log.Fields{
+			"group_id": ugap.Thread,
+		}).Warn("cannot promote admin for group that doesn't exist")
+	}
 }
 
 func (fyneUI *Fyne) AdminDemoted(ugad chat.UpdateGroupAdminDemoted) {
+	if g, exists := fyneUI.groups[ugad.Thread]; exists {
+		// TODO: remove this user as an admin
 
+		ti, err := fyneUI.newUpdateGroupAdminDemoted(ugad)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating thread item for update group admin demoted")
+		}
+		fyneUI.appendThreadItem(g, ti)
+	} else {
+		log.WithFields(log.Fields{
+			"group_id": ugad.Thread,
+		}).Warn("cannot demote admin for group that doesn't exist")
+	}
 }
 
 func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagementRestricted) {
 	if g, exists := fyneUI.groups[ugumr.Thread]; exists {
 		g.restrictUserManagementCheck.SetChecked(true)
+		g.restrictUserManagement = true
 		// TODO: update the edit container so that non-admins can't do this
 
 		ti, err := fyneUI.newUpdateGroupUserManagementRestricted(ugumr)
@@ -380,6 +409,7 @@ func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagemen
 func (fyneUI *Fyne) UserManagementUnrestricted(ugumu chat.UpdateGroupUserManagementUnrestricted) {
 	if g, exists := fyneUI.groups[ugumu.Thread]; exists {
 		g.restrictUserManagementCheck.SetChecked(false)
+		g.restrictUserManagement = false
 		// TODO: update the edit container so that non-admins can do this
 
 		ti, err := fyneUI.newUpdateGroupUserManagementUnrestricted(ugumu)
@@ -399,6 +429,7 @@ func (fyneUI *Fyne) UserManagementUnrestricted(ugumu chat.UpdateGroupUserManagem
 func (fyneUI *Fyne) GroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) {
 	if g, exists := fyneUI.groups[uger.Thread]; exists {
 		g.restrictGroupEditsCheck.SetChecked(true)
+		g.restrictGroupEdits = true
 		// TODO: update the edit container so that non-admins can't do this
 
 		ti, err := fyneUI.newUpdateGroupEditsRestricted(uger)
@@ -418,6 +449,7 @@ func (fyneUI *Fyne) GroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) {
 func (fyneUI *Fyne) GroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricted) {
 	if g, exists := fyneUI.groups[ugeu.Thread]; exists {
 		g.restrictGroupEditsCheck.SetChecked(false)
+		g.restrictGroupEdits = false
 		// TODO: update the edit container so that non-admins can do this
 
 		ti, err := fyneUI.newUpdateGroupEditsUnrestricted(ugeu)
@@ -437,6 +469,7 @@ func (fyneUI *Fyne) GroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricte
 func (fyneUI *Fyne) PostingRestricted(ugpr chat.UpdateGroupPostingRestricted) {
 	if g, exists := fyneUI.groups[ugpr.Thread]; exists {
 		g.restrictPostingCheck.SetChecked(true)
+		g.restrictPosting = true
 		// TODO: update the edit container so that non-admins can't do this
 
 		ti, err := fyneUI.newUpdateGroupPostingRestricted(ugpr)
@@ -456,6 +489,7 @@ func (fyneUI *Fyne) PostingRestricted(ugpr chat.UpdateGroupPostingRestricted) {
 func (fyneUI *Fyne) PostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted) {
 	if g, exists := fyneUI.groups[ugpu.Thread]; exists {
 		g.restrictPostingCheck.SetChecked(false)
+		g.restrictPosting = false
 		// TODO: update the edit container so that non-admins can do this
 
 		ti, err := fyneUI.newUpdateGroupPostingUnrestricted(ugpu)

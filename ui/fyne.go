@@ -252,6 +252,70 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		groupItems[ugch.Thread] = append(groupItems[ugch.Thread], ugchItem)
 	}
 
+	for _, ugap := range state.UpdateGroupAdminPromotions {
+		ugapItem, err := fyneUI.newUpdateGroupAdminPromoted(ugap)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		groupItems[ugap.Thread] = append(groupItems[ugap.Thread], ugapItem)
+	}
+
+	for _, ugad := range state.UpdateGroupAdminDemotions {
+		ugadItem, err := fyneUI.newUpdateGroupAdminDemoted(ugad)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		groupItems[ugad.Thread] = append(groupItems[ugad.Thread], ugadItem)
+	}
+
+	for _, ugumr := range state.UpdateGroupUserManagementsRestricted {
+		ugumrItem, err := fyneUI.newUpdateGroupUserManagementRestricted(ugumr)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		groupItems[ugumr.Thread] = append(groupItems[ugumr.Thread], ugumrItem)
+	}
+
+	for _, ugumu := range state.UpdateGroupUserManagementsUnrestricted {
+		ugumuItem, err := fyneUI.newUpdateGroupUserManagementUnrestricted(ugumu)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		groupItems[ugumu.Thread] = append(groupItems[ugumu.Thread], ugumuItem)
+	}
+
+	for _, uger := range state.UpdateGroupEditsRestricted {
+		ugerItem, err := fyneUI.newUpdateGroupEditsRestricted(uger)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		groupItems[uger.Thread] = append(groupItems[uger.Thread], ugerItem)
+	}
+
+	for _, ugeu := range state.UpdateGroupEditsUnrestricted {
+		ugeuItem, err := fyneUI.newUpdateGroupEditsUnrestricted(ugeu)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		groupItems[ugeu.Thread] = append(groupItems[ugeu.Thread], ugeuItem)
+	}
+
+	for _, ugpr := range state.UpdateGroupPostingsRestricted {
+		ugprItem, err := fyneUI.newUpdateGroupPostingRestricted(ugpr)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		groupItems[ugpr.Thread] = append(groupItems[ugpr.Thread], ugprItem)
+	}
+
+	for _, ugpu := range state.UpdateGroupPostingsUnrestricted {
+		ugpuItem, err := fyneUI.newUpdateGroupPostingUnrestricted(ugpu)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		groupItems[ugpu.Thread] = append(groupItems[ugpu.Thread], ugpuItem)
+	}
+
 	// Create widgets for all the thread items we added
 	for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?
 		if items, ok := groupItems[g.id]; ok {
