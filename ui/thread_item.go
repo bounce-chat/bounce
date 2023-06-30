@@ -21,6 +21,11 @@ var errUserNotFoundForDirectMessage = errors.New("user not found for group messa
 var errUnknownActorInUpdateDMRetention = errors.New("unknown actor in update dm retention")
 var errUnknownActorInUpdateDMClearHistory = errors.New("unknown actor in update dm clear history")
 var errUnknownActorInUpdateGroupUserManagementRestricted = errors.New("unknown actor in update group restrict user management")
+var errUnknownActorInUpdateGroupUserManagementUnrestricted = errors.New("unknown actor in update group unrestrict user management")
+var errUnknownActorInUpdateGroupEditsRestricted = errors.New("unknown actor in update group restrict user management")
+var errUnknownActorInUpdateGroupEditsUnrestricted = errors.New("unknown actor in update group unrestrict user management")
+var errUnknownActorInUpdateGroupPostingRestricted = errors.New("unknown actor in update group restrict posting")
+var errUnknownActorInUpdateGroupPostingUnrestricted = errors.New("unknown actor in update group unrestrict posting")
 var errUpdateForUnknownGroup = errors.New("group update targets unknown group")
 
 type threadItem struct {
@@ -374,5 +379,160 @@ func (fyneUI *Fyne) newUpdateGroupUserManagementRestricted(ugumr chat.UpdateGrou
 			g.chatHistoryScroll().Refresh()
 		},
 		timestamp: ugumr.Timestamp,
+	}, nil
+}
+
+func (fyneUI *Fyne) newUpdateGroupUserManagementUnrestricted(ugumu chat.UpdateGroupUserManagementUnrestricted) (*threadItem, error) {
+	g, exists := fyneUI.groups[ugumu.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugumu.Thread,
+		}).Error("group does not exist on message receive, ignoring the message")
+		return &threadItem{}, errUpdateForUnknownGroup
+	}
+
+	actor, ok := fyneUI.users.get(ugumu.Actor)
+	if !ok {
+		return &threadItem{}, errUnknownActorInUpdateGroupUserManagementUnrestricted
+	}
+
+	changeString := actor.name + " unrestricted user management"
+	changeLabel := widget.NewLabel(changeString)
+	changeLabel.Alignment = fyne.TextAlignCenter
+
+	return &threadItem{
+		id:     ugumu.ID,
+		widget: changeLabel,
+		setButton: func(tb *threadButton) {
+			g.button.setLastAction(changeString)
+			g.button.setLastMessageTime(time.Unix(ugumu.Timestamp, 0))
+			g.setLastMessageTime(ugumu.Timestamp)
+			g.chatHistoryScroll().Refresh()
+		},
+		timestamp: ugumu.Timestamp,
+	}, nil
+}
+
+func (fyneUI *Fyne) newUpdateGroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) (*threadItem, error) {
+	g, exists := fyneUI.groups[uger.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": uger.Thread,
+		}).Error("group does not exist on message receive, ignoring the message")
+		return &threadItem{}, errUpdateForUnknownGroup
+	}
+
+	actor, ok := fyneUI.users.get(uger.Actor)
+	if !ok {
+		return &threadItem{}, errUnknownActorInUpdateGroupEditsRestricted
+	}
+
+	changeString := actor.name + " restricted group edits"
+	changeLabel := widget.NewLabel(changeString)
+	changeLabel.Alignment = fyne.TextAlignCenter
+
+	return &threadItem{
+		id:     uger.ID,
+		widget: changeLabel,
+		setButton: func(tb *threadButton) {
+			g.button.setLastAction(changeString)
+			g.button.setLastMessageTime(time.Unix(uger.Timestamp, 0))
+			g.setLastMessageTime(uger.Timestamp)
+			g.chatHistoryScroll().Refresh()
+		},
+		timestamp: uger.Timestamp,
+	}, nil
+}
+
+func (fyneUI *Fyne) newUpdateGroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricted) (*threadItem, error) {
+	g, exists := fyneUI.groups[ugeu.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugeu.Thread,
+		}).Error("group does not exist on message receive, ignoring the message")
+		return &threadItem{}, errUpdateForUnknownGroup
+	}
+
+	actor, ok := fyneUI.users.get(ugeu.Actor)
+	if !ok {
+		return &threadItem{}, errUnknownActorInUpdateGroupEditsUnrestricted
+	}
+
+	changeString := actor.name + " unrestricted group edits"
+	changeLabel := widget.NewLabel(changeString)
+	changeLabel.Alignment = fyne.TextAlignCenter
+
+	return &threadItem{
+		id:     ugeu.ID,
+		widget: changeLabel,
+		setButton: func(tb *threadButton) {
+			g.button.setLastAction(changeString)
+			g.button.setLastMessageTime(time.Unix(ugeu.Timestamp, 0))
+			g.setLastMessageTime(ugeu.Timestamp)
+			g.chatHistoryScroll().Refresh()
+		},
+		timestamp: ugeu.Timestamp,
+	}, nil
+}
+
+func (fyneUI *Fyne) newUpdateGroupPostingRestricted(ugpr chat.UpdateGroupPostingRestricted) (*threadItem, error) {
+	g, exists := fyneUI.groups[ugpr.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugpr.Thread,
+		}).Error("group does not exist on message receive, ignoring the message")
+		return &threadItem{}, errUpdateForUnknownGroup
+	}
+
+	actor, ok := fyneUI.users.get(ugpr.Actor)
+	if !ok {
+		return &threadItem{}, errUnknownActorInUpdateGroupPostingRestricted
+	}
+
+	changeString := actor.name + " restricted posting"
+	changeLabel := widget.NewLabel(changeString)
+	changeLabel.Alignment = fyne.TextAlignCenter
+
+	return &threadItem{
+		id:     ugpr.ID,
+		widget: changeLabel,
+		setButton: func(tb *threadButton) {
+			g.button.setLastAction(changeString)
+			g.button.setLastMessageTime(time.Unix(ugpr.Timestamp, 0))
+			g.setLastMessageTime(ugpr.Timestamp)
+			g.chatHistoryScroll().Refresh()
+		},
+		timestamp: ugpr.Timestamp,
+	}, nil
+}
+
+func (fyneUI *Fyne) newUpdateGroupPostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted) (*threadItem, error) {
+	g, exists := fyneUI.groups[ugpu.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugpu.Thread,
+		}).Error("group does not exist on message receive, ignoring the message")
+		return &threadItem{}, errUpdateForUnknownGroup
+	}
+
+	actor, ok := fyneUI.users.get(ugpu.Actor)
+	if !ok {
+		return &threadItem{}, errUnknownActorInUpdateGroupPostingUnrestricted
+	}
+
+	changeString := actor.name + " unrestricted posting"
+	changeLabel := widget.NewLabel(changeString)
+	changeLabel.Alignment = fyne.TextAlignCenter
+
+	return &threadItem{
+		id:     ugpu.ID,
+		widget: changeLabel,
+		setButton: func(tb *threadButton) {
+			g.button.setLastAction(changeString)
+			g.button.setLastMessageTime(time.Unix(ugpu.Timestamp, 0))
+			g.setLastMessageTime(ugpu.Timestamp)
+			g.chatHistoryScroll().Refresh()
+		},
+		timestamp: ugpu.Timestamp,
 	}, nil
 }

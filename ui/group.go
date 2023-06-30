@@ -373,26 +373,101 @@ func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagemen
 	} else {
 		log.WithFields(log.Fields{
 			"group_id": ugumr.Thread,
-		}).Warn("cannot unrestrict user management for group that doesn't exist")
+		}).Warn("cannot restrict user management for group that doesn't exist")
 	}
 }
 
 func (fyneUI *Fyne) UserManagementUnrestricted(ugumu chat.UpdateGroupUserManagementUnrestricted) {
+	if g, exists := fyneUI.groups[ugumu.Thread]; exists {
+		g.restrictUserManagementCheck.SetChecked(false)
+		// TODO: update the edit container so that non-admins can do this
 
+		ti, err := fyneUI.newUpdateGroupUserManagementUnrestricted(ugumu)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating thread item for update group user management unrestricted")
+		}
+		fyneUI.appendThreadItem(g, ti)
+	} else {
+		log.WithFields(log.Fields{
+			"group_id": ugumu.Thread,
+		}).Warn("cannot unrestrict user management for group that doesn't exist")
+	}
 }
 
 func (fyneUI *Fyne) GroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) {
+	if g, exists := fyneUI.groups[uger.Thread]; exists {
+		g.restrictGroupEditsCheck.SetChecked(true)
+		// TODO: update the edit container so that non-admins can't do this
 
+		ti, err := fyneUI.newUpdateGroupEditsRestricted(uger)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating thread item for update group edits restricted")
+		}
+		fyneUI.appendThreadItem(g, ti)
+	} else {
+		log.WithFields(log.Fields{
+			"group_id": uger.Thread,
+		}).Warn("cannot restrict edits for group that doesn't exist")
+	}
 }
 
 func (fyneUI *Fyne) GroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricted) {
+	if g, exists := fyneUI.groups[ugeu.Thread]; exists {
+		g.restrictGroupEditsCheck.SetChecked(false)
+		// TODO: update the edit container so that non-admins can do this
 
+		ti, err := fyneUI.newUpdateGroupEditsUnrestricted(ugeu)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating thread item for update group edits unrestricted")
+		}
+		fyneUI.appendThreadItem(g, ti)
+	} else {
+		log.WithFields(log.Fields{
+			"group_id": ugeu.Thread,
+		}).Warn("cannot unrestrict edits for group that doesn't exist")
+	}
 }
 
 func (fyneUI *Fyne) PostingRestricted(ugpr chat.UpdateGroupPostingRestricted) {
+	if g, exists := fyneUI.groups[ugpr.Thread]; exists {
+		g.restrictPostingCheck.SetChecked(true)
+		// TODO: update the edit container so that non-admins can't do this
 
+		ti, err := fyneUI.newUpdateGroupPostingRestricted(ugpr)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating thread item for update group posting restricted")
+		}
+		fyneUI.appendThreadItem(g, ti)
+	} else {
+		log.WithFields(log.Fields{
+			"group_id": ugpr.Thread,
+		}).Warn("cannot restrict posting for group that doesn't exist")
+	}
 }
 
 func (fyneUI *Fyne) PostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted) {
+	if g, exists := fyneUI.groups[ugpu.Thread]; exists {
+		g.restrictPostingCheck.SetChecked(false)
+		// TODO: update the edit container so that non-admins can do this
 
+		ti, err := fyneUI.newUpdateGroupPostingUnrestricted(ugpu)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating thread item for update group posting unrestricted")
+		}
+		fyneUI.appendThreadItem(g, ti)
+	} else {
+		log.WithFields(log.Fields{
+			"group_id": ugpu.Thread,
+		}).Warn("cannot unrestrict posting for group that doesn't exist")
+	}
 }
