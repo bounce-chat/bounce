@@ -11,26 +11,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var errUnknownActorInUpdateGroupName = errors.New("unknown actor in update group name")
-var errUnknownActorInUpdateGroupRetention = errors.New("unknown actor in update group retention")
-var errUnknownActorInUpdateGroupAddUser = errors.New("unknown actor in update group add user")
-var errUnknownActorInUpdateGroupClearHistory = errors.New("unknown actor in update group clear history")
-var errUserNotFoundForGroupMessage = errors.New("user not found for group message")
-var errGroupNotFoundForGroupMessage = errors.New("group not found for group message")
-var errUserNotFoundForDirectMessage = errors.New("user not found for group message")
-var errUnknownActorInUpdateDMRetention = errors.New("unknown actor in update dm retention")
-var errUnknownActorInUpdateDMClearHistory = errors.New("unknown actor in update dm clear history")
-var errUnknownActorInUpdateGroupAdminPromoted = errors.New("unknown actor in update group promote admin")
-var errUnknownUserInUpdateGroupAdminPromoted = errors.New("unknown user in update group promote admin")
-var errUnknownActorInUpdateGroupAdminDemoted = errors.New("unknown actor in update group demote admin")
-var errUnknownUserInUpdateGroupAdminDemoted = errors.New("unknown user in update group demote admin")
-var errUnknownActorInUpdateGroupUserManagementRestricted = errors.New("unknown actor in update group restrict user management")
-var errUnknownActorInUpdateGroupUserManagementUnrestricted = errors.New("unknown actor in update group unrestrict user management")
-var errUnknownActorInUpdateGroupEditsRestricted = errors.New("unknown actor in update group restrict user management")
-var errUnknownActorInUpdateGroupEditsUnrestricted = errors.New("unknown actor in update group unrestrict user management")
-var errUnknownActorInUpdateGroupPostingRestricted = errors.New("unknown actor in update group restrict posting")
-var errUnknownActorInUpdateGroupPostingUnrestricted = errors.New("unknown actor in update group unrestrict posting")
-var errUpdateForUnknownGroup = errors.New("group update targets unknown group")
+var errUnknownThread = errors.New("unknown thread")
+var errUnknownActor = errors.New("unknown actor")
+var errUnknownUser = errors.New("unknown user")
 
 type threadItem struct {
 	id           uuid.UUID
@@ -53,143 +36,45 @@ func (tis threadItems) Less(i, j int) bool {
 }
 
 func (fyneUI *Fyne) newUpdateGroupName(ugn chat.UpdateGroupName) (*threadItem, error) {
-	g, exists := fyneUI.groups[ugn.Thread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"group_id": ugn.Thread,
-		}).Error("group does not exist on message receive, ignoring the message")
-		return &threadItem{}, errUpdateForUnknownGroup
-	}
-
-	actor, ok := fyneUI.users.get(ugn.Actor)
-	if !ok {
-		return &threadItem{}, errUnknownActorInUpdateGroupName
-	}
-	actorName := actor.name
-	if ugn.Actor == fyneUI.profile.id {
-		actorName = "You"
-	}
-
-	changeString := actorName + " changed the group name to " + ugn.Name
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-
-	return &threadItem{
-		id:     ugn.ID,
-		widget: changeLabel,
-		setButton: func(tb *threadButton) {
-			g.button.setLastAction(changeString)
-			g.button.setLastMessageTime(time.Unix(ugn.Timestamp, 0))
-			g.setLastMessageTime(ugn.Timestamp)
-			g.chatHistoryScroll().Refresh()
-		},
-		timestamp: ugn.Timestamp,
-	}, nil
+	return fyneUI.newStatusChange(
+		ugn.ID,
+		ugn.Thread,
+		ugn.Actor,
+		"changed the group name to "+ugn.Name,
+		ugn.Timestamp,
+	)
 }
 
 func (fyneUI *Fyne) newUpdateGroupRetention(ugr chat.UpdateGroupRetention) (*threadItem, error) {
-	g, exists := fyneUI.groups[ugr.Thread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"group_id": ugr.Thread,
-		}).Error("group does not exist on message receive, ignoring the message")
-		return &threadItem{}, errUpdateForUnknownGroup
-	}
-
-	actor, ok := fyneUI.users.get(ugr.Actor)
-	if !ok {
-		return &threadItem{}, errUnknownActorInUpdateGroupRetention
-	}
-	actorName := actor.name
-	if ugr.Actor == fyneUI.profile.id {
-		actorName = "You"
-	}
-
-	changeString := actorName + " changed the group retention to " + getRetentionName(ugr.Retention)
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-
-	return &threadItem{
-		id:     ugr.ID,
-		widget: changeLabel,
-		setButton: func(tb *threadButton) {
-			g.button.setLastAction(changeString)
-			g.button.setLastMessageTime(time.Unix(ugr.Timestamp, 0))
-			g.setLastMessageTime(ugr.Timestamp)
-			g.chatHistoryScroll().Refresh()
-		},
-		timestamp: ugr.Timestamp,
-	}, nil
+	return fyneUI.newStatusChange(
+		ugr.ID,
+		ugr.Thread,
+		ugr.Actor,
+		"changed the message retention to "+getRetentionName(ugr.Retention),
+		ugr.Timestamp,
+	)
 }
 
 func (fyneUI *Fyne) newUpdateGroupAddUser(ugau chat.UpdateGroupAddUser) (*threadItem, error) {
-	g, exists := fyneUI.groups[ugau.Thread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"group_id": ugau.Thread,
-		}).Error("group does not exist on message receive, ignoring the message")
-		return &threadItem{}, errUpdateForUnknownGroup
-	}
-
-	actor, ok := fyneUI.users.get(ugau.Actor)
-	if !ok {
-		return &threadItem{}, errUnknownActorInUpdateGroupAddUser
-	}
-	actorName := actor.name
-	if ugau.Actor == fyneUI.profile.id {
-		actorName = "You"
-	}
-
-	changeString := actorName + " added " + ugau.User.Name + " to the group"
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-
-	return &threadItem{
-		id:     ugau.ID,
-		widget: changeLabel,
-		setButton: func(tb *threadButton) {
-			g.button.setLastAction(changeString)
-			g.button.setLastMessageTime(time.Unix(ugau.Timestamp, 0))
-			g.setLastMessageTime(ugau.Timestamp)
-			g.chatHistoryScroll().Refresh()
-		},
-		timestamp: ugau.Timestamp,
-	}, nil
+	return fyneUI.newStatusChange(
+		ugau.ID,
+		ugau.Thread,
+		ugau.Actor,
+		"added "+ugau.User.Name+" to the group",
+		ugau.Timestamp,
+	)
 }
 
 func (fyneUI *Fyne) newUpdateGroupClearHistory(ugch chat.UpdateGroupClearHistory) (*threadItem, error) {
-	g, exists := fyneUI.groups[ugch.Thread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"group_id": ugch.Thread,
-		}).Error("group does not exist on message receive, ignoring the message")
-		return &threadItem{}, errUpdateForUnknownGroup
-	}
-
-	actor, ok := fyneUI.users.get(ugch.Actor)
-	if !ok {
-		return &threadItem{}, errUnknownActorInUpdateGroupClearHistory
-	}
-	actorName := actor.name
-	if ugch.Actor == fyneUI.profile.id {
-		actorName = "You"
-	}
-
-	changeString := actorName + " cleared the chat history"
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-
-	return &threadItem{
-		id:     ugch.ID,
-		widget: changeLabel,
-		setButton: func(tb *threadButton) {
-			g.button.setLastAction(changeString)
-			g.button.setLastMessageTime(time.Unix(ugch.Timestamp, 0))
-			g.setLastMessageTime(ugch.Timestamp)
-			g.chatHistoryScroll().Refresh()
-		},
-		timestamp: ugch.ClearTime,
-	}, nil
+	ti, err := fyneUI.newStatusChange(
+		ugch.ID,
+		ugch.Thread,
+		ugch.Actor,
+		"cleared the chat history",
+		ugch.Timestamp,
+	)
+	ti.timestamp = ugch.ClearTime
+	return ti, err
 }
 
 func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
@@ -198,7 +83,7 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		log.WithFields(log.Fields{
 			"group_id": gm.Thread,
 		}).Error("group does not exist on message receive, ignoring the message")
-		return &threadItem{}, errGroupNotFoundForGroupMessage
+		return &threadItem{}, errUnknownThread
 	}
 
 	user, exists := group.users.get(gm.Author)
@@ -206,7 +91,7 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		log.WithFields(log.Fields{
 			"user_id": gm.Author,
 		}).Error("group received a message from user ID not in thread")
-		return &threadItem{}, errUserNotFoundForGroupMessage
+		return &threadItem{}, errUnknownUser
 	}
 
 	outgoing := gm.Author == fyneUI.profile.id
@@ -251,7 +136,7 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 		log.WithFields(log.Fields{
 			"user_id": dm.Thread,
 		}).Error("dm thread does not exist on message receive, ignoring the message")
-		return &threadItem{}, errUserNotFoundForDirectMessage
+		return &threadItem{}, errUnknownThread
 	}
 
 	u, exists := fyneUI.users.get(dm.Author)
@@ -259,26 +144,21 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 		log.WithFields(log.Fields{
 			"user_id": dm.Author,
 		}).Error("received a direct message from user ID not known to UI")
-		return &threadItem{}, errUserNotFoundForDirectMessage
+		return &threadItem{}, errUnknownUser
 	}
 
 	outgoing := dm.Author == fyneUI.profile.id
 	displayName := u.name
-	var profileButton *widget.Button
 	var notification *fyne.Notification
 	if !outgoing {
 		notification = fyne.NewNotification(u.name, dm.Text)
-		profileButton = widget.NewButtonWithIcon("", newEmbeddedResource("assets/not_found.png"), func() { // TODO: get image from user
-			log.Info("user wants to open the profile of " + u.name)
-			// TODO: display this user's profile
-		})
 	} else {
 		displayName = "You"
 	}
 
 	return &threadItem{
 		id:           dm.ID,
-		widget:       newChatBubble(displayName, dm.ID, dm.Text, outgoing, dm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
+		widget:       newChatBubble(displayName, dm.ID, dm.Text, outgoing, dm.WrittenAt, nil), // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
 			displayName := u.name
@@ -295,325 +175,148 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 }
 
 func (fyneUI *Fyne) newUpdateDMRetention(udmr chat.UpdateDMRetention) (*threadItem, error) {
-	dmThread, exists := fyneUI.dms[udmr.Thread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"user_id": udmr.Thread,
-		}).Error("dm thread does not exist on update retention")
-		return &threadItem{}, errUserNotFoundForDirectMessage
-	}
-
-	actor, ok := fyneUI.users.get(udmr.Actor)
-	if !ok {
-		return &threadItem{}, errUnknownActorInUpdateDMRetention
-	}
-	actorName := actor.name
-	if udmr.Actor == fyneUI.profile.id {
-		actorName = "You"
-	}
-
-	changeString := actorName + " changed the group retention to " + getRetentionName(udmr.Retention)
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-
-	return &threadItem{
-		id:     udmr.ID,
-		widget: changeLabel,
-		setButton: func(tb *threadButton) {
-			dmThread.button.setLastAction(changeString)
-			dmThread.button.setLastMessageTime(time.Unix(udmr.Timestamp, 0))
-			dmThread.setLastMessageTime(udmr.Timestamp)
-			dmThread.chatHistoryScroll().Refresh()
-		},
-		timestamp: udmr.Timestamp,
-	}, nil
+	return fyneUI.newStatusChange(
+		udmr.ID,
+		udmr.Thread,
+		udmr.Actor,
+		"changed the message retention to "+getRetentionName(udmr.Retention),
+		udmr.Timestamp,
+	)
 }
 
 func (fyneUI *Fyne) newUpdateDMClearHistory(udmch chat.UpdateDMClearHistory) (*threadItem, error) {
-	dmThread, exists := fyneUI.dms[udmch.Thread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"user_id": udmch.Thread,
-		}).Error("dm thread does not exist on clear history")
-		return &threadItem{}, errUserNotFoundForDirectMessage
-	}
-
-	actor, ok := fyneUI.users.get(udmch.Actor)
-	if !ok {
-		return &threadItem{}, errUnknownActorInUpdateDMClearHistory
-	}
-
-	changeString := actor.name + " cleared the chat history"
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-
-	return &threadItem{
-		id:     udmch.ID,
-		widget: changeLabel,
-		setButton: func(tb *threadButton) {
-			dmThread.button.setLastAction(changeString)
-			dmThread.button.setLastMessageTime(time.Unix(udmch.Timestamp, 0))
-			dmThread.setLastMessageTime(udmch.Timestamp)
-			dmThread.chatHistoryScroll().Refresh()
-		},
-		timestamp: udmch.ClearTime,
-	}, nil
+	ti, err := fyneUI.newStatusChange(
+		udmch.ID,
+		udmch.Thread,
+		udmch.Actor,
+		"cleared the chat history",
+		udmch.Timestamp,
+	)
+	ti.timestamp = udmch.ClearTime
+	return ti, err
 }
 
 func (fyneUI *Fyne) newUpdateGroupAdminPromoted(ugap chat.UpdateGroupAdminPromoted) (*threadItem, error) {
-	g, exists := fyneUI.groups[ugap.Thread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"group_id": ugap.Thread,
-		}).Error("group does not exist on message receive, ignoring the message")
-		return &threadItem{}, errUpdateForUnknownGroup
-	}
-
-	actor, ok := fyneUI.users.get(ugap.Actor)
-	if !ok {
-		return &threadItem{}, errUnknownActorInUpdateGroupAdminPromoted
-	}
-
 	newAdmin, ok := fyneUI.users.get(ugap.UserID)
 	if !ok {
-		return &threadItem{}, errUnknownUserInUpdateGroupAdminPromoted
+		return &threadItem{}, errUnknownUser
 	}
 
-	changeString := actor.name + " made " + newAdmin.name + " an admin"
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-
-	return &threadItem{
-		id:     ugap.ID,
-		widget: changeLabel,
-		setButton: func(tb *threadButton) {
-			g.button.setLastAction(changeString)
-			g.button.setLastMessageTime(time.Unix(ugap.Timestamp, 0))
-			g.setLastMessageTime(ugap.Timestamp)
-			g.chatHistoryScroll().Refresh()
-		},
-		timestamp: ugap.Timestamp,
-	}, nil
+	return fyneUI.newStatusChange(
+		ugap.ID,
+		ugap.Thread,
+		ugap.Actor,
+		"made "+newAdmin.name+" an admin",
+		ugap.Timestamp,
+	)
 }
 
 func (fyneUI *Fyne) newUpdateGroupAdminDemoted(ugad chat.UpdateGroupAdminDemoted) (*threadItem, error) {
-	g, exists := fyneUI.groups[ugad.Thread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"group_id": ugad.Thread,
-		}).Error("group does not exist on message receive, ignoring the message")
-		return &threadItem{}, errUpdateForUnknownGroup
-	}
-
-	actor, ok := fyneUI.users.get(ugad.Actor)
-	if !ok {
-		return &threadItem{}, errUnknownActorInUpdateGroupAdminDemoted
-	}
-
 	oldAdmin, ok := fyneUI.users.get(ugad.UserID)
 	if !ok {
-		return &threadItem{}, errUnknownUserInUpdateGroupAdminDemoted
+		return &threadItem{}, errUnknownUser
 	}
 
-	changeString := actor.name + " removed " + oldAdmin.name + " as an admin"
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-
-	return &threadItem{
-		id:     ugad.ID,
-		widget: changeLabel,
-		setButton: func(tb *threadButton) {
-			g.button.setLastAction(changeString)
-			g.button.setLastMessageTime(time.Unix(ugad.Timestamp, 0))
-			g.setLastMessageTime(ugad.Timestamp)
-			g.chatHistoryScroll().Refresh()
-		},
-		timestamp: ugad.Timestamp,
-	}, nil
+	return fyneUI.newStatusChange(
+		ugad.ID,
+		ugad.Thread,
+		ugad.Actor,
+		"removed "+oldAdmin.name+" as an admin",
+		ugad.Timestamp,
+	)
 }
 
 func (fyneUI *Fyne) newUpdateGroupUserManagementRestricted(ugumr chat.UpdateGroupUserManagementRestricted) (*threadItem, error) {
-	g, exists := fyneUI.groups[ugumr.Thread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"group_id": ugumr.Thread,
-		}).Error("group does not exist on message receive, ignoring the message")
-		return &threadItem{}, errUpdateForUnknownGroup
-	}
-
-	actor, ok := fyneUI.users.get(ugumr.Actor)
-	if !ok {
-		return &threadItem{}, errUnknownActorInUpdateGroupUserManagementRestricted
-	}
-
-	changeString := actor.name + " restricted user management"
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-
-	return &threadItem{
-		id:     ugumr.ID,
-		widget: changeLabel,
-		setButton: func(tb *threadButton) {
-			g.button.setLastAction(changeString)
-			g.button.setLastMessageTime(time.Unix(ugumr.Timestamp, 0))
-			g.setLastMessageTime(ugumr.Timestamp)
-			g.chatHistoryScroll().Refresh()
-		},
-		timestamp: ugumr.Timestamp,
-	}, nil
+	return fyneUI.newStatusChange(
+		ugumr.ID,
+		ugumr.Thread,
+		ugumr.Actor,
+		"restricted user management",
+		ugumr.Timestamp,
+	)
 }
 
 func (fyneUI *Fyne) newUpdateGroupUserManagementUnrestricted(ugumu chat.UpdateGroupUserManagementUnrestricted) (*threadItem, error) {
-	g, exists := fyneUI.groups[ugumu.Thread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"group_id": ugumu.Thread,
-		}).Error("group does not exist on message receive, ignoring the message")
-		return &threadItem{}, errUpdateForUnknownGroup
-	}
-
-	actor, ok := fyneUI.users.get(ugumu.Actor)
-	if !ok {
-		return &threadItem{}, errUnknownActorInUpdateGroupUserManagementUnrestricted
-	}
-
-	changeString := actor.name + " unrestricted user management"
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-
-	return &threadItem{
-		id:     ugumu.ID,
-		widget: changeLabel,
-		setButton: func(tb *threadButton) {
-			g.button.setLastAction(changeString)
-			g.button.setLastMessageTime(time.Unix(ugumu.Timestamp, 0))
-			g.setLastMessageTime(ugumu.Timestamp)
-			g.chatHistoryScroll().Refresh()
-		},
-		timestamp: ugumu.Timestamp,
-	}, nil
+	return fyneUI.newStatusChange(
+		ugumu.ID,
+		ugumu.Thread,
+		ugumu.Actor,
+		"unrestricted user management",
+		ugumu.Timestamp,
+	)
 }
 
 func (fyneUI *Fyne) newUpdateGroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) (*threadItem, error) {
-	g, exists := fyneUI.groups[uger.Thread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"group_id": uger.Thread,
-		}).Error("group does not exist on message receive, ignoring the message")
-		return &threadItem{}, errUpdateForUnknownGroup
-	}
-
-	actor, ok := fyneUI.users.get(uger.Actor)
-	if !ok {
-		return &threadItem{}, errUnknownActorInUpdateGroupEditsRestricted
-	}
-
-	changeString := actor.name + " restricted group edits"
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-
-	return &threadItem{
-		id:     uger.ID,
-		widget: changeLabel,
-		setButton: func(tb *threadButton) {
-			g.button.setLastAction(changeString)
-			g.button.setLastMessageTime(time.Unix(uger.Timestamp, 0))
-			g.setLastMessageTime(uger.Timestamp)
-			g.chatHistoryScroll().Refresh()
-		},
-		timestamp: uger.Timestamp,
-	}, nil
+	return fyneUI.newStatusChange(
+		uger.ID,
+		uger.Thread,
+		uger.Actor,
+		"restricted group edits",
+		uger.Timestamp,
+	)
 }
 
 func (fyneUI *Fyne) newUpdateGroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricted) (*threadItem, error) {
-	g, exists := fyneUI.groups[ugeu.Thread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"group_id": ugeu.Thread,
-		}).Error("group does not exist on message receive, ignoring the message")
-		return &threadItem{}, errUpdateForUnknownGroup
-	}
-
-	actor, ok := fyneUI.users.get(ugeu.Actor)
-	if !ok {
-		return &threadItem{}, errUnknownActorInUpdateGroupEditsUnrestricted
-	}
-
-	changeString := actor.name + " unrestricted group edits"
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-
-	return &threadItem{
-		id:     ugeu.ID,
-		widget: changeLabel,
-		setButton: func(tb *threadButton) {
-			g.button.setLastAction(changeString)
-			g.button.setLastMessageTime(time.Unix(ugeu.Timestamp, 0))
-			g.setLastMessageTime(ugeu.Timestamp)
-			g.chatHistoryScroll().Refresh()
-		},
-		timestamp: ugeu.Timestamp,
-	}, nil
+	return fyneUI.newStatusChange(
+		ugeu.ID,
+		ugeu.Thread,
+		ugeu.Actor,
+		"unrestricted group edits",
+		ugeu.Timestamp,
+	)
 }
 
 func (fyneUI *Fyne) newUpdateGroupPostingRestricted(ugpr chat.UpdateGroupPostingRestricted) (*threadItem, error) {
-	g, exists := fyneUI.groups[ugpr.Thread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"group_id": ugpr.Thread,
-		}).Error("group does not exist on message receive, ignoring the message")
-		return &threadItem{}, errUpdateForUnknownGroup
-	}
-
-	actor, ok := fyneUI.users.get(ugpr.Actor)
-	if !ok {
-		return &threadItem{}, errUnknownActorInUpdateGroupPostingRestricted
-	}
-
-	changeString := actor.name + " restricted posting"
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
-
-	return &threadItem{
-		id:     ugpr.ID,
-		widget: changeLabel,
-		setButton: func(tb *threadButton) {
-			g.button.setLastAction(changeString)
-			g.button.setLastMessageTime(time.Unix(ugpr.Timestamp, 0))
-			g.setLastMessageTime(ugpr.Timestamp)
-			g.chatHistoryScroll().Refresh()
-		},
-		timestamp: ugpr.Timestamp,
-	}, nil
+	return fyneUI.newStatusChange(
+		ugpr.ID,
+		ugpr.Thread,
+		ugpr.Actor,
+		"restricted posting",
+		ugpr.Timestamp,
+	)
 }
 
 func (fyneUI *Fyne) newUpdateGroupPostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted) (*threadItem, error) {
-	g, exists := fyneUI.groups[ugpu.Thread]
-	if !exists {
-		log.WithFields(log.Fields{
-			"group_id": ugpu.Thread,
-		}).Error("group does not exist on message receive, ignoring the message")
-		return &threadItem{}, errUpdateForUnknownGroup
-	}
+	return fyneUI.newStatusChange(
+		ugpu.ID,
+		ugpu.Thread,
+		ugpu.Actor,
+		"unrestricted posting",
+		ugpu.Timestamp,
+	)
+}
 
-	actor, ok := fyneUI.users.get(ugpu.Actor)
+func (fyneUI *Fyne) newStatusChange(id, threadID, actorID uuid.UUID, changeString string, timestamp int64) (*threadItem, error) {
+	t, ok := fyneUI.getThread(threadID)
 	if !ok {
-		return &threadItem{}, errUnknownActorInUpdateGroupPostingUnrestricted
+		log.WithFields(log.Fields{
+			"thread_id": threadID,
+		}).Error("thread not found for status change thread item")
+		return &threadItem{}, errUnknownThread
 	}
 
-	changeString := actor.name + " unrestricted posting"
+	actor, ok := fyneUI.users.get(actorID)
+	if !ok {
+		return &threadItem{}, errUnknownActor
+	}
+	actorName := actor.name
+	if actorID == fyneUI.profile.id {
+		actorName = "You"
+	}
+
+	changeString = actorName + " " + changeString
 	changeLabel := widget.NewLabel(changeString)
 	changeLabel.Alignment = fyne.TextAlignCenter
 
 	return &threadItem{
-		id:     ugpu.ID,
+		id:     id,
 		widget: changeLabel,
 		setButton: func(tb *threadButton) {
-			g.button.setLastAction(changeString)
-			g.button.setLastMessageTime(time.Unix(ugpu.Timestamp, 0))
-			g.setLastMessageTime(ugpu.Timestamp)
-			g.chatHistoryScroll().Refresh()
+			t.getButton().setLastAction(changeString)
+			t.getButton().setLastMessageTime(time.Unix(timestamp, 0))
+			t.setLastMessageTime(timestamp)
+			t.chatHistoryScroll().Refresh()
 		},
-		timestamp: ugpu.Timestamp,
+		timestamp: timestamp,
 	}, nil
 }
