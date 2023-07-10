@@ -20,6 +20,7 @@ import (
 type directMessage struct {
 	user                      *user
 	notificationsMutedUntil   int64 // TODO: fyne feature request/PR: support binding int64 for time.Time
+	lastRetentionUpdate       int64
 	editContainer             *fyne.Container
 	view                      *fyne.Container
 	header                    *fyne.Container
@@ -365,11 +366,12 @@ func (fyneUI *Fyne) DMRetentionChanged(udr chat.UpdateDMRetention) {
 		}).Error("error creating thread item for update dm retention")
 		return
 	}
-
-	newRetentionName := getRetentionName(udr.Retention)
-	dmThread.retentionSelection.Selected = newRetentionName
-	dmThread.retentionSelection.Refresh()
-
-	// TODO: insertion sort this into the proper place in the thread?
 	fyneUI.appendThreadItem(dmThread, ti)
+
+	if udr.Timestamp > dmThread.lastRetentionUpdate {
+		dmThread.lastRetentionUpdate = udr.Timestamp
+		newRetentionName := getRetentionName(udr.Retention)
+		dmThread.retentionSelection.Selected = newRetentionName
+		dmThread.retentionSelection.Refresh()
+	}
 }

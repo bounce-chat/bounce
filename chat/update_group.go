@@ -333,11 +333,12 @@ func (b *bounce) saveAndApplyUpdateGroupChangeMutedUntil(g group, ug updateGroup
 		}).Fatal("database error saving update group")
 	}
 
-	// Decode the new muted until value
-	mutedUntil := int64(binary.LittleEndian.Uint64(ug.Data))
-
 	// Apply the update if it is the most recent one
 	if !b.moreRecentUpdateGroup(ug) {
+		// Decode the new muted until value
+		mutedUntil := int64(binary.LittleEndian.Uint64(ug.Data))
+
+		// Update the database
 		err = b.database.Model(&g).Update("muted_until", mutedUntil).Error
 		if err != nil {
 			log.WithFields(log.Fields{
