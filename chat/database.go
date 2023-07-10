@@ -535,66 +535,96 @@ func (b *bounce) buildInitialState() InitialState {
 					UserID:    userID,
 				},
 			)
-		case updateGroupTypeRestrictUserManagement:
-			exportedUpdateGroupUserManagementsRestricted = append(
-				exportedUpdateGroupUserManagementsRestricted,
-				UpdateGroupUserManagementRestricted{
-					ID:        ug.ID,
-					Thread:    ug.Target,
-					Actor:     ug.Actor,
-					Timestamp: ug.Timestamp,
-				},
-			)
-		case updateGroupTypeUnrestrictUserManagement:
-			exportedUpdateGroupUserManagementsUnrestricted = append(
-				exportedUpdateGroupUserManagementsUnrestricted,
-				UpdateGroupUserManagementUnrestricted{
-					ID:        ug.ID,
-					Thread:    ug.Target,
-					Actor:     ug.Actor,
-					Timestamp: ug.Timestamp,
-				},
-			)
-		case updateGroupTypeRestrictGroupEdits:
-			exportedUpdateGroupEditsRestricted = append(
-				exportedUpdateGroupEditsRestricted,
-				UpdateGroupEditsRestricted{
-					ID:        ug.ID,
-					Thread:    ug.Target,
-					Actor:     ug.Actor,
-					Timestamp: ug.Timestamp,
-				},
-			)
-		case updateGroupTypeUnrestrictGroupEdits:
-			exportedUpdateGroupEditsUnrestricted = append(
-				exportedUpdateGroupEditsUnrestricted,
-				UpdateGroupEditsUnrestricted{
-					ID:        ug.ID,
-					Thread:    ug.Target,
-					Actor:     ug.Actor,
-					Timestamp: ug.Timestamp,
-				},
-			)
-		case updateGroupTypeRestrictPosting:
-			exportedUpdateGroupPostingsRestricted = append(
-				exportedUpdateGroupPostingsRestricted,
-				UpdateGroupPostingRestricted{
-					ID:        ug.ID,
-					Thread:    ug.Target,
-					Actor:     ug.Actor,
-					Timestamp: ug.Timestamp,
-				},
-			)
-		case updateGroupTypeUnrestrictPosting:
-			exportedUpdateGroupPostingsUnrestricted = append(
-				exportedUpdateGroupPostingsUnrestricted,
-				UpdateGroupPostingUnrestricted{
-					ID:        ug.ID,
-					Thread:    ug.Target,
-					Actor:     ug.Actor,
-					Timestamp: ug.Timestamp,
-				},
-			)
+		case updateGroupTypeChangeUserManagementPermission:
+			restricted, err := ug.permissionPayloadIsRestricted()
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    ug.ID,
+					"error": err.Error(),
+				}).Fatal("invalid update group permission payload in database")
+			}
+
+			if restricted {
+				exportedUpdateGroupUserManagementsRestricted = append(
+					exportedUpdateGroupUserManagementsRestricted,
+					UpdateGroupUserManagementRestricted{
+						ID:        ug.ID,
+						Thread:    ug.Target,
+						Actor:     ug.Actor,
+						Timestamp: ug.Timestamp,
+					},
+				)
+			} else {
+				exportedUpdateGroupUserManagementsUnrestricted = append(
+					exportedUpdateGroupUserManagementsUnrestricted,
+					UpdateGroupUserManagementUnrestricted{
+						ID:        ug.ID,
+						Thread:    ug.Target,
+						Actor:     ug.Actor,
+						Timestamp: ug.Timestamp,
+					},
+				)
+			}
+		case updateGroupTypeChangeGroupEditsPermission:
+			restricted, err := ug.permissionPayloadIsRestricted()
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    ug.ID,
+					"error": err.Error(),
+				}).Fatal("invalid update group permission payload in database")
+			}
+
+			if restricted {
+				exportedUpdateGroupEditsRestricted = append(
+					exportedUpdateGroupEditsRestricted,
+					UpdateGroupEditsRestricted{
+						ID:        ug.ID,
+						Thread:    ug.Target,
+						Actor:     ug.Actor,
+						Timestamp: ug.Timestamp,
+					},
+				)
+			} else {
+				exportedUpdateGroupEditsUnrestricted = append(
+					exportedUpdateGroupEditsUnrestricted,
+					UpdateGroupEditsUnrestricted{
+						ID:        ug.ID,
+						Thread:    ug.Target,
+						Actor:     ug.Actor,
+						Timestamp: ug.Timestamp,
+					},
+				)
+			}
+		case updateGroupTypeChangePostingPermission:
+			restricted, err := ug.permissionPayloadIsRestricted()
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    ug.ID,
+					"error": err.Error(),
+				}).Fatal("invalid update group permission payload in database")
+			}
+
+			if restricted {
+				exportedUpdateGroupPostingsRestricted = append(
+					exportedUpdateGroupPostingsRestricted,
+					UpdateGroupPostingRestricted{
+						ID:        ug.ID,
+						Thread:    ug.Target,
+						Actor:     ug.Actor,
+						Timestamp: ug.Timestamp,
+					},
+				)
+			} else {
+				exportedUpdateGroupPostingsUnrestricted = append(
+					exportedUpdateGroupPostingsUnrestricted,
+					UpdateGroupPostingUnrestricted{
+						ID:        ug.ID,
+						Thread:    ug.Target,
+						Actor:     ug.Actor,
+						Timestamp: ug.Timestamp,
+					},
+				)
+			}
 		}
 	}
 

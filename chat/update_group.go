@@ -21,12 +21,12 @@ const updateGroupTypeChangeRetention = uint16(4)
 const updateGroupTypeSetClearBefore = uint16(5)
 const updateGroupTypePromoteAdmin = uint16(6)
 const updateGroupTypeDemoteAdmin = uint16(7)
-const updateGroupTypeRestrictUserManagement = uint16(8)
-const updateGroupTypeUnrestrictUserManagement = uint16(9)
-const updateGroupTypeRestrictGroupEdits = uint16(10)
-const updateGroupTypeUnrestrictGroupEdits = uint16(11)
-const updateGroupTypeRestrictPosting = uint16(12)
-const updateGroupTypeUnrestrictPosting = uint16(13)
+const updateGroupTypeChangeUserManagementPermission = uint16(8)
+const updateGroupTypeChangeGroupEditsPermission = uint16(9)
+const updateGroupTypeChangePostingPermission = uint16(10)
+
+const permissionUnrestricted = 0x00
+const permissionRestricted = 0x01
 
 var errUpdateGroupWithUnknownType = errors.New("update group has unknown update type")
 var errInvalidGroupName = errors.New("invalid group name")
@@ -37,6 +37,8 @@ var errNoPermissionToEditGroup = errors.New("user does not have permission to ed
 var errNoPermissionToManageUsers = errors.New("user does not have permission to manage users")
 var errCannotPromoteAdminNotInGroup = errors.New("cannot promote a user that is not a member of a group to admin")
 var errNoPermissionToChangePermissions = errors.New("group permissions can only be modified by admins")
+var errInvalidPermissionPayloadLength = errors.New("permission payload must be one byte")
+var errInvalidPermissionByte = errors.New("invalid permission byte")
 
 var updateGroupMutex sync.Mutex
 
@@ -121,6 +123,20 @@ func (ug *updateGroup) getAuthor() uuid.UUID {
 
 func (ug *updateGroup) getTimestamp() int64 {
 	return ug.Timestamp
+}
+
+func (ug *updateGroup) permissionPayloadIsRestricted() (bool, error) {
+	if len(ug.Data) != 1 {
+		return true, errInvalidPermissionPayloadLength
+	}
+
+	if ug.Data[0] == permissionRestricted {
+		return true, nil
+	} else if ug.Data[0] == permissionUnrestricted {
+		return false, nil
+	}
+
+	return true, errInvalidPermissionByte
 }
 
 func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
@@ -236,18 +252,12 @@ func (b *bounce) saveAndApplyUpdateGroup(peer string, ug updateGroup) error {
 		return b.saveAndApplyUpdateGroupPromoteAdmin(g, ug)
 	case updateGroupTypeDemoteAdmin:
 		return b.saveAndApplyUpdateGroupDemoteAdmin(g, ug)
-	case updateGroupTypeRestrictUserManagement:
-		return b.saveAndApplyUpdateGroupRestrictUserManagement(g, ug)
-	case updateGroupTypeUnrestrictUserManagement:
-		return b.saveAndApplyUpdateGroupUnrestrictUserManagement(g, ug)
-	case updateGroupTypeRestrictGroupEdits:
-		return b.saveAndApplyUpdateGroupRestrictGroupEdits(g, ug)
-	case updateGroupTypeUnrestrictGroupEdits:
-		return b.saveAndApplyUpdateGroupUnrestrictGroupEdits(g, ug)
-	case updateGroupTypeRestrictPosting:
-		return b.saveAndApplyUpdateGroupRestrictPosting(g, ug)
-	case updateGroupTypeUnrestrictPosting:
-		return b.saveAndApplyUpdateGroupUnrestrictPosting(g, ug)
+	case updateGroupTypeChangeUserManagementPermission:
+		return b.saveAndApplyUpdateGroupChangeUserManagementPermission(g, ug)
+	case updateGroupTypeChangeGroupEditsPermission:
+		return b.saveAndApplyUpdateGroupChangeGroupEditsPermission(g, ug)
+	case updateGroupTypeChangePostingPermission:
+		return b.saveAndApplyUpdateGroupChangePostingPermission(g, ug)
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -581,8 +591,23 @@ func (b *bounce) saveAndApplyUpdateGroupPromoteAdmin(g group, ug updateGroup) er
 		return errCannotPromoteAdminNotInGroup
 	}
 
-	// Add this user as an admin
-	b.addGroupAdmin(ug.Target, userID)
+	// Make sure that this is the latest promotion or demotion for this user
+	var moreRecentUpdates bool
+	err = b.database.Table("update_groups").
+		Select("count(*) >= 1").
+		Where("target = ? AND type IN (?, ?) AND timestamp > ? AND data = ?", ug.Target, updateGroupTypePromoteAdmin, updateGroupTypeDemoteAdmin, ug.Timestamp, ug.Data).
+		Find(&moreRecentUpdates).
+		Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error checking for more recent update groups")
+	}
+
+	// Add this user as an admin if this is the latest update
+	if !moreRecentUpdates {
+		b.addGroupAdmin(ug.Target, userID)
+	}
 
 	// Notify the UI
 	b.userInterface.AdminPromoted(UpdateGroupAdminPromoted{
@@ -624,8 +649,23 @@ func (b *bounce) saveAndApplyUpdateGroupDemoteAdmin(g group, ug updateGroup) err
 		return err
 	}
 
-	// Remove this user as an admin
-	b.removeGroupAdmin(ug.Target, userID)
+	// Make sure that this is the latest promotion or demotion for this user
+	var moreRecentUpdates bool
+	err = b.database.Table("update_groups").
+		Select("count(*) >= 1").
+		Where("target = ? AND type IN (?, ?) AND timestamp > ? AND data = ?", ug.Target, updateGroupTypePromoteAdmin, updateGroupTypeDemoteAdmin, ug.Timestamp, ug.Data).
+		Find(&moreRecentUpdates).
+		Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error checking for more recent update groups")
+	}
+
+	// Remove this user as an admin if this is the latest update
+	if !moreRecentUpdates {
+		b.removeGroupAdmin(ug.Target, userID)
+	}
 
 	// Notify the UI
 	b.userInterface.AdminDemoted(UpdateGroupAdminDemoted{
@@ -639,138 +679,107 @@ func (b *bounce) saveAndApplyUpdateGroupDemoteAdmin(g group, ug updateGroup) err
 	return nil
 }
 
-func (b *bounce) saveAndApplyUpdateGroupRestrictUserManagement(g group, ug updateGroup) error {
-	if g.hasAdmins() && !b.isGroupAdmin(g.ID, ug.Actor) {
-		log.WithFields(log.Fields{
-			"user_id":  ug.Actor,
-			"group_id": ug.Target,
-		}).Warn("user who is not an admin attemped to restrict user management")
-		return errNoPermissionToChangePermissions
-	}
-
-	err := b.database.Create(&ug).Error
+func (b *bounce) saveAndApplyUpdateGroupChangeUserManagementPermission(g group, ug updateGroup) error {
+	// Apply the update
+	err := b.saveAndApplyUpdateGroupChangePermission(g, ug, "restrict_user_management")
 	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update group")
+		return err
 	}
 
-	err = b.database.Model(&g).Update("restrict_user_management", true).Error
+	// Inform the UI
+	restricted, err := ug.permissionPayloadIsRestricted()
 	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"group_id": g.ID,
-			}).Error("group not found when restricting user management")
-			return err
-		} else {
-			log.WithFields(log.Fields{
-				"error":    err.Error(),
-				"group_id": g.ID,
-			}).Fatal("database error restricting user management on group")
-		}
+		return nil
 	}
-
-	// Notify the UI
-	b.userInterface.UserManagementRestricted(UpdateGroupUserManagementRestricted{
-		ID:        ug.ID,
-		Thread:    ug.Target,
-		Actor:     ug.Actor,
-		Timestamp: ug.Timestamp,
-	})
+	if restricted {
+		b.userInterface.UserManagementRestricted(UpdateGroupUserManagementRestricted{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+		})
+	} else {
+		b.userInterface.UserManagementUnrestricted(UpdateGroupUserManagementUnrestricted{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+		})
+	}
 
 	return nil
 }
 
-func (b *bounce) saveAndApplyUpdateGroupUnrestrictUserManagement(g group, ug updateGroup) error {
-	if g.hasAdmins() && !b.isGroupAdmin(g.ID, ug.Actor) {
-		log.WithFields(log.Fields{
-			"user_id":  ug.Actor,
-			"group_id": ug.Target,
-		}).Warn("user who is not an admin attemped to unrestrict user management")
-		return errNoPermissionToChangePermissions
-	}
-
-	err := b.database.Create(&ug).Error
+func (b *bounce) saveAndApplyUpdateGroupChangeGroupEditsPermission(g group, ug updateGroup) error {
+	// Apply the update
+	err := b.saveAndApplyUpdateGroupChangePermission(g, ug, "restrict_group_edits")
 	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update group")
+		return err
 	}
 
-	err = b.database.Model(&g).Update("restrict_user_management", false).Error
+	// Inform the UI
+	restricted, err := ug.permissionPayloadIsRestricted()
 	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"group_id": g.ID,
-			}).Error("group not found when unrestricting user management")
-			return err
-		} else {
-			log.WithFields(log.Fields{
-				"error":    err.Error(),
-				"group_id": g.ID,
-			}).Fatal("database error unrestricting user management on group")
-		}
+		return nil
 	}
-
-	// Notify the UI
-	b.userInterface.UserManagementUnrestricted(UpdateGroupUserManagementUnrestricted{
-		ID:        ug.ID,
-		Thread:    ug.Target,
-		Actor:     ug.Actor,
-		Timestamp: ug.Timestamp,
-	})
+	if restricted {
+		b.userInterface.GroupEditsRestricted(UpdateGroupEditsRestricted{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+		})
+	} else {
+		b.userInterface.GroupEditsUnrestricted(UpdateGroupEditsUnrestricted{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+		})
+	}
 
 	return nil
 }
 
-func (b *bounce) saveAndApplyUpdateGroupRestrictGroupEdits(g group, ug updateGroup) error {
-	if g.hasAdmins() && !b.isGroupAdmin(g.ID, ug.Actor) {
-		log.WithFields(log.Fields{
-			"user_id":  ug.Actor,
-			"group_id": ug.Target,
-		}).Warn("user who is not an admin attemped to restrict group edits")
-		return errNoPermissionToChangePermissions
-	}
-
-	err := b.database.Create(&ug).Error
+func (b *bounce) saveAndApplyUpdateGroupChangePostingPermission(g group, ug updateGroup) error {
+	// Apply the update
+	err := b.saveAndApplyUpdateGroupChangePermission(g, ug, "restrict_posting")
 	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update group")
+		return err
 	}
 
-	err = b.database.Model(&g).Update("restrict_group_edits", true).Error
+	// Inform the UI
+	restricted, err := ug.permissionPayloadIsRestricted()
 	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"group_id": g.ID,
-			}).Error("group not found when restricting edits")
-			return err
-		} else {
-			log.WithFields(log.Fields{
-				"error":    err.Error(),
-				"group_id": g.ID,
-			}).Fatal("database error restricting edits on group")
-		}
+		return nil
 	}
-
-	// Notify the UI
-	b.userInterface.GroupEditsRestricted(UpdateGroupEditsRestricted{
-		ID:        ug.ID,
-		Thread:    ug.Target,
-		Actor:     ug.Actor,
-		Timestamp: ug.Timestamp,
-	})
+	if restricted {
+		b.userInterface.PostingRestricted(UpdateGroupPostingRestricted{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+		})
+	} else {
+		b.userInterface.PostingUnrestricted(UpdateGroupPostingUnrestricted{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+		})
+	}
 
 	return nil
 }
 
-func (b *bounce) saveAndApplyUpdateGroupUnrestrictGroupEdits(g group, ug updateGroup) error {
+func (b *bounce) saveAndApplyUpdateGroupChangePermission(g group, ug updateGroup, field string) error {
 	if g.hasAdmins() && !b.isGroupAdmin(g.ID, ug.Actor) {
 		log.WithFields(log.Fields{
 			"user_id":  ug.Actor,
 			"group_id": ug.Target,
-		}).Warn("user who is not an admin attemped to unrestrict group edits")
+			"field":    field,
+			"state":    ug.Data,
+		}).Warn("user who is not an admin attemped to change permission")
 		return errNoPermissionToChangePermissions
 	}
 
@@ -781,112 +790,35 @@ func (b *bounce) saveAndApplyUpdateGroupUnrestrictGroupEdits(g group, ug updateG
 		}).Fatal("database error saving update group")
 	}
 
-	err = b.database.Model(&g).Update("restrict_group_edits", false).Error
-	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"group_id": g.ID,
-			}).Error("group not found when unrestricting edits")
-			return err
-		} else {
+	if !b.moreRecentUpdateGroup(ug) {
+		restricted, err := ug.permissionPayloadIsRestricted()
+		if err != nil {
 			log.WithFields(log.Fields{
 				"error":    err.Error(),
-				"group_id": g.ID,
-			}).Fatal("database error unrestricting edits on group")
-		}
-	}
-
-	// Notify the UI
-	b.userInterface.GroupEditsUnrestricted(UpdateGroupEditsUnrestricted{
-		ID:        ug.ID,
-		Thread:    ug.Target,
-		Actor:     ug.Actor,
-		Timestamp: ug.Timestamp,
-	})
-
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateGroupRestrictPosting(g group, ug updateGroup) error {
-	if g.hasAdmins() && !b.isGroupAdmin(g.ID, ug.Actor) {
-		log.WithFields(log.Fields{
-			"user_id":  ug.Actor,
-			"group_id": ug.Target,
-		}).Warn("user who is not an admin attemped to restrict posting")
-		return errNoPermissionToChangePermissions
-	}
-
-	err := b.database.Create(&ug).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update group")
-	}
-
-	err = b.database.Model(&g).Update("restrict_posting", true).Error
-	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"group_id": g.ID,
-			}).Error("group not found when restricting posting")
+				"user_id":  ug.Actor,
+				"group_id": ug.Target,
+				"field":    field,
+				"state":    ug.Data,
+			}).Error("invalid permission byte on update group")
 			return err
-		} else {
-			log.WithFields(log.Fields{
-				"error":    err.Error(),
-				"group_id": g.ID,
-			}).Fatal("database error restricting posting")
+		}
+
+		err = b.database.Model(&g).Update(field, restricted).Error
+		if err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"group_id": g.ID,
+				}).Error("group not found when restricting user management")
+				return err
+			} else {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": g.ID,
+					"field":    field,
+				}).Fatal("database error updating permission field on group")
+			}
 		}
 	}
-
-	// Notify the UI
-	b.userInterface.PostingRestricted(UpdateGroupPostingRestricted{
-		ID:        ug.ID,
-		Thread:    ug.Target,
-		Actor:     ug.Actor,
-		Timestamp: ug.Timestamp,
-	})
-
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateGroupUnrestrictPosting(g group, ug updateGroup) error {
-	if g.hasAdmins() && !b.isGroupAdmin(g.ID, ug.Actor) {
-		log.WithFields(log.Fields{
-			"user_id":  ug.Actor,
-			"group_id": ug.Target,
-		}).Warn("user who is not an admin attemped to unrestrict posting")
-		return errNoPermissionToChangePermissions
-	}
-
-	err := b.database.Create(&ug).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update group")
-	}
-
-	err = b.database.Model(&g).Update("restrict_posting", false).Error
-	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"group_id": g.ID,
-			}).Error("group not found when unrestricting posting")
-			return err
-		} else {
-			log.WithFields(log.Fields{
-				"error":    err.Error(),
-				"group_id": g.ID,
-			}).Fatal("database error unrestricting posting")
-		}
-	}
-
-	// Notify the UI
-	b.userInterface.PostingUnrestricted(UpdateGroupPostingUnrestricted{
-		ID:        ug.ID,
-		Thread:    ug.Target,
-		Actor:     ug.Actor,
-		Timestamp: ug.Timestamp,
-	})
 
 	return nil
 }
@@ -1022,7 +954,8 @@ func (b *bounce) restrictUserManagement(groupID uuid.UUID) error {
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
-		Type:      updateGroupTypeRestrictUserManagement,
+		Type:      updateGroupTypeChangeUserManagementPermission,
+		Data:      []byte{permissionRestricted},
 	})
 }
 
@@ -1032,7 +965,8 @@ func (b *bounce) unrestrictUserManagement(groupID uuid.UUID) error {
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
-		Type:      updateGroupTypeUnrestrictUserManagement,
+		Type:      updateGroupTypeChangeUserManagementPermission,
+		Data:      []byte{permissionUnrestricted},
 	})
 }
 
@@ -1042,7 +976,8 @@ func (b *bounce) restrictGroupEdits(groupID uuid.UUID) error {
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
-		Type:      updateGroupTypeRestrictGroupEdits,
+		Type:      updateGroupTypeChangeGroupEditsPermission,
+		Data:      []byte{permissionRestricted},
 	})
 }
 
@@ -1052,7 +987,8 @@ func (b *bounce) unrestrictGroupEdits(groupID uuid.UUID) error {
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
-		Type:      updateGroupTypeUnrestrictGroupEdits,
+		Type:      updateGroupTypeChangeGroupEditsPermission,
+		Data:      []byte{permissionUnrestricted},
 	})
 }
 
@@ -1062,7 +998,8 @@ func (b *bounce) restrictPosting(groupID uuid.UUID) error {
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
-		Type:      updateGroupTypeRestrictPosting,
+		Type:      updateGroupTypeChangePostingPermission,
+		Data:      []byte{permissionRestricted},
 	})
 }
 
@@ -1072,7 +1009,8 @@ func (b *bounce) unrestrictPosting(groupID uuid.UUID) error {
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
-		Type:      updateGroupTypeUnrestrictPosting,
+		Type:      updateGroupTypeChangePostingPermission,
+		Data:      []byte{permissionUnrestricted},
 	})
 }
 

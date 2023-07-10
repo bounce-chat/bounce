@@ -305,6 +305,7 @@ func (fyneUI *Fyne) GroupRetentionChanged(ugr chat.UpdateGroupRetention) {
 		return
 	}
 
+	// TODO: only if this update is the newest retention update
 	newRetentionName := getRetentionName(ugr.Retention)
 	g.retentionSelection.Selected = newRetentionName
 	g.retentionSelection.Refresh()
