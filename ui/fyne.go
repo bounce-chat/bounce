@@ -329,6 +329,176 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 			u.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
 		}
 	}
+
+	fyneUI.setInitialTimestamps(state)
+}
+
+func (fyneUI *Fyne) setInitialTimestamps(state chat.InitialState) {
+	userRetentionTimes := make(map[uuid.UUID]int64)
+	groupRetentionTimes := make(map[uuid.UUID]int64)
+	groupUserManagementPermissionTimes := make(map[uuid.UUID]int64)
+	groupEditsPermissionTimes := make(map[uuid.UUID]int64)
+	groupPostingPermissionTimes := make(map[uuid.UUID]int64)
+	groupNameChangeTimes := make(map[uuid.UUID]int64)
+
+	for _, udmr := range state.UpdateDMRetentions {
+		currentTime, ok := userRetentionTimes[udmr.Thread]
+		if !ok {
+			userRetentionTimes[udmr.Thread] = udmr.Timestamp
+		} else {
+			if udmr.Timestamp > currentTime {
+				userRetentionTimes[udmr.Thread] = udmr.Timestamp
+			}
+		}
+	}
+
+	for _, ugr := range state.UpdateGroupRetentions {
+		currentTime, ok := groupRetentionTimes[ugr.Thread]
+		if !ok {
+			groupRetentionTimes[ugr.Thread] = ugr.Timestamp
+		} else {
+			if ugr.Timestamp > currentTime {
+				groupRetentionTimes[ugr.Thread] = ugr.Timestamp
+			}
+		}
+	}
+
+	for _, ugumr := range state.UpdateGroupUserManagementsRestricted {
+		currentTime, ok := groupUserManagementPermissionTimes[ugumr.Thread]
+		if !ok {
+			groupUserManagementPermissionTimes[ugumr.Thread] = ugumr.Timestamp
+		} else {
+			if ugumr.Timestamp > currentTime {
+				groupUserManagementPermissionTimes[ugumr.Thread] = ugumr.Timestamp
+			}
+		}
+	}
+
+	for _, ugumu := range state.UpdateGroupUserManagementsUnrestricted {
+		currentTime, ok := groupUserManagementPermissionTimes[ugumu.Thread]
+		if !ok {
+			groupUserManagementPermissionTimes[ugumu.Thread] = ugumu.Timestamp
+		} else {
+			if ugumu.Timestamp > currentTime {
+				groupUserManagementPermissionTimes[ugumu.Thread] = ugumu.Timestamp
+			}
+		}
+	}
+
+	for _, uger := range state.UpdateGroupEditsRestricted {
+		currentTime, ok := groupEditsPermissionTimes[uger.Thread]
+		if !ok {
+			groupEditsPermissionTimes[uger.Thread] = uger.Timestamp
+		} else {
+			if uger.Timestamp > currentTime {
+				groupEditsPermissionTimes[uger.Thread] = uger.Timestamp
+			}
+		}
+	}
+
+	for _, ugeu := range state.UpdateGroupEditsUnrestricted {
+		currentTime, ok := groupEditsPermissionTimes[ugeu.Thread]
+		if !ok {
+			groupEditsPermissionTimes[ugeu.Thread] = ugeu.Timestamp
+		} else {
+			if ugeu.Timestamp > currentTime {
+				groupEditsPermissionTimes[ugeu.Thread] = ugeu.Timestamp
+			}
+		}
+	}
+
+	for _, ugpr := range state.UpdateGroupPostingsRestricted {
+		currentTime, ok := groupPostingPermissionTimes[ugpr.Thread]
+		if !ok {
+			groupPostingPermissionTimes[ugpr.Thread] = ugpr.Timestamp
+		} else {
+			if ugpr.Timestamp > currentTime {
+				groupPostingPermissionTimes[ugpr.Thread] = ugpr.Timestamp
+			}
+		}
+	}
+
+	for _, ugpu := range state.UpdateGroupPostingsUnrestricted {
+		currentTime, ok := groupPostingPermissionTimes[ugpu.Thread]
+		if !ok {
+			groupPostingPermissionTimes[ugpu.Thread] = ugpu.Timestamp
+		} else {
+			if ugpu.Timestamp > currentTime {
+				groupPostingPermissionTimes[ugpu.Thread] = ugpu.Timestamp
+			}
+		}
+	}
+
+	for _, ugn := range state.UpdateGroupNames {
+		currentTime, ok := groupNameChangeTimes[ugn.Thread]
+		if !ok {
+			groupNameChangeTimes[ugn.Thread] = ugn.Timestamp
+		} else {
+			if ugn.Timestamp > currentTime {
+				groupNameChangeTimes[ugn.Thread] = ugn.Timestamp
+			}
+		}
+	}
+
+	for userID, updateTime := range userRetentionTimes {
+		dmThread, ok := fyneUI.dms[userID]
+		if !ok {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+			}).Fatal("initial state contains retention update for unknown user")
+		}
+		dmThread.lastRetentionUpdate = updateTime
+	}
+
+	for groupID, updateTime := range groupRetentionTimes {
+		g, ok := fyneUI.groups[groupID]
+		if !ok {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Fatal("initial state contains retention update for unknown group")
+		}
+		g.lastRetentionUpdate = updateTime
+	}
+
+	for groupID, updateTime := range groupUserManagementPermissionTimes {
+		g, ok := fyneUI.groups[groupID]
+		if !ok {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Fatal("initial state contains group user management permission update for unknown group")
+		}
+		g.lastUserManagementPermissionUpdate = updateTime
+	}
+
+	for groupID, updateTime := range groupEditsPermissionTimes {
+		g, ok := fyneUI.groups[groupID]
+		if !ok {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Fatal("initial state contains group edits permission update for unknown group")
+		}
+		g.lastGroupEditsPermissionUpdate = updateTime
+	}
+
+	for groupID, updateTime := range groupPostingPermissionTimes {
+		g, ok := fyneUI.groups[groupID]
+		if !ok {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Fatal("initial state contains group posting permission update for unknown group")
+		}
+		g.lastPostingPermissionUpdate = updateTime
+	}
+
+	for groupID, updateTime := range groupNameChangeTimes {
+		g, ok := fyneUI.groups[groupID]
+		if !ok {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Fatal("initial state contains group name change for unknown group")
+		}
+		g.lastNameUpdate = updateTime
+	}
 }
 
 func (fyneUI *Fyne) creatDMIfNeeded(id uuid.UUID) {
@@ -354,7 +524,7 @@ func (fyneUI *Fyne) NetworkOnline() {
 		if _, ok := fyneUI.dms[fyneUI.activeThread]; ok {
 			fyneUI.callbacks.UserConnectionDesired(fyneUI.activeThread)
 		} else if _, ok = fyneUI.groups[fyneUI.activeThread]; ok {
-			//fyneUI.callbacks.GroupConnectionDesired(fyneUI.activeThread)
+			fyneUI.callbacks.GroupConnectionDesired(fyneUI.activeThread)
 		} else {
 			log.WithFields(log.Fields{
 				"thread": fyneUI.activeThread,
