@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"sync"
 	"time"
 
 	"github.com/hkparker/bounce/chat"
@@ -28,6 +29,8 @@ type group struct {
 	lastPostingPermissionUpdate        int64
 	lastNameUpdate                     int64
 	lastRetentionUpdate                int64
+	lastAdminAction                    map[uuid.UUID]int64
+	lastAdminActionMutex               sync.Mutex
 	pendingUsers                       *userStore
 	notificationsMutedUntil            int64
 	editContainer                      *fyne.Container
@@ -47,35 +50,79 @@ type group struct {
 	lastMessage                        int64
 }
 
-func (group *group) getID() uuid.UUID {
-	return group.id
+func (g *group) getID() uuid.UUID {
+	return g.id
 }
 
-func (group *group) getView() *fyne.Container {
-	return group.view
+func (g *group) getView() *fyne.Container {
+	return g.view
 }
-func (group *group) getEntry() *threadEntry {
-	return group.entry
-}
-
-func (group *group) chatHistoryScroll() *container.Scroll {
-	return group.scroll
+func (g *group) getEntry() *threadEntry {
+	return g.entry
 }
 
-func (group *group) getButton() *threadButton {
-	return group.button
+func (g *group) chatHistoryScroll() *container.Scroll {
+	return g.scroll
 }
 
-func (group *group) getLastMessageTime() int64 {
-	return group.lastMessage
+func (g *group) getButton() *threadButton {
+	return g.button
 }
 
-func (group *group) setLastMessageTime(time int64) {
-	group.lastMessage = time
+func (g *group) getLastMessageTime() int64 {
+	return g.lastMessage
 }
 
-func (group *group) getNotificationsMutedUntil() int64 {
-	return group.notificationsMutedUntil
+func (g *group) setLastMessageTime(time int64) {
+	g.lastMessage = time
+}
+
+func (g *group) getNotificationsMutedUntil() int64 {
+	return g.notificationsMutedUntil
+}
+
+func (g *group) getLastAdminAction(userID uuid.UUID) int64 {
+	g.lastAdminActionMutex.Lock()
+	defer g.lastAdminActionMutex.Unlock()
+
+	lastTime, ok := g.lastAdminAction[userID]
+	if !ok {
+		return 0
+	}
+	return lastTime
+}
+
+func (g *group) setLastAdminAction(userID uuid.UUID, timestamp int64) {
+	g.lastAdminActionMutex.Lock()
+	defer g.lastAdminActionMutex.Unlock()
+
+	g.lastAdminAction[userID] = timestamp
+}
+
+func (fyneUI *Fyne) addAdmin(g *group, userID uuid.UUID) {
+	alreadyAdded := false
+	for _, id := range g.admins {
+		if id == userID {
+			alreadyAdded = true
+		}
+	}
+	if !alreadyAdded {
+		g.admins = append(g.admins, userID)
+	}
+
+	//TODO: update the display containers
+}
+
+func (fyneUI *Fyne) removeAdmin(g *group, userID uuid.UUID) {
+	adminsWithoutUser := []uuid.UUID{}
+	for _, id := range g.admins {
+		if id != userID {
+			adminsWithoutUser = append(adminsWithoutUser, id)
+		}
+	}
+	g.admins = adminsWithoutUser
+
+	//TODO: update the display containers
 }
 
 func (fyneUI *Fyne) amAdmin(g *group) bool {
@@ -114,6 +161,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		name:                    binding.NewString(),
 		users:                   newUserStore(),
 		admins:                  bounceGroup.Admins,
+		lastAdminAction:         make(map[uuid.UUID]int64),
 		restrictUserManagement:  bounceGroup.RestrictUserManagement,
 		restrictGroupEdits:      bounceGroup.RestrictGroupEdits,
 		restrictPosting:         bounceGroup.RestrictPosting,
@@ -375,7 +423,10 @@ func (fyneUI *Fyne) AdminPromoted(ugap chat.UpdateGroupAdminPromoted) {
 	}
 	fyneUI.appendThreadItem(g, ti)
 
-	// TODO: set this user as an admin as long as this is the latest update
+	if ugap.Timestamp > g.getLastAdminAction(ugap.UserID) {
+		g.setLastAdminAction(ugap.UserID, ugap.Timestamp)
+		fyneUI.addAdmin(g, ugap.UserID)
+	}
 }
 
 func (fyneUI *Fyne) AdminDemoted(ugad chat.UpdateGroupAdminDemoted) {
@@ -396,7 +447,10 @@ func (fyneUI *Fyne) AdminDemoted(ugad chat.UpdateGroupAdminDemoted) {
 	}
 	fyneUI.appendThreadItem(g, ti)
 
-	// TODO: remove this user as an admin as long as this is the latest update
+	if ugad.Timestamp > g.getLastAdminAction(ugad.UserID) {
+		g.setLastAdminAction(ugad.UserID, ugad.Timestamp)
+		fyneUI.removeAdmin(g, ugad.UserID)
+	}
 }
 
 func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagementRestricted) {
