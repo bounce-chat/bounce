@@ -138,7 +138,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 	})
 	saveButton.Importance = widget.HighImportance
 	cancelButton := widget.NewButton("Cancel", func() {
-		// Reset everything
+		// Reset name
 		currentThreadName, err := thread.name.Get()
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -147,12 +147,31 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		}
 		editThreadNameEntry.Text = currentThreadName
 		editThreadNameEntry.Refresh()
+
+		// Reset retention
 		thread.retentionSelection.Selected = getRetentionName(fyneUI.callbacks.GetGroupRetention(thread.id))
+		thread.retentionSelection.Refresh()
+
+		// Reset notification settings
+		thread.notificationsMutedUntil, err = fyneUI.callbacks.GetGroupMutedUntil(thread.id)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"group_id": thread.id,
+			}).Fatal("cannot find muted until for group")
+		}
+		enabled := thread.notificationsMutedUntil != chat.MutedForever
+		thread.notificationsEnabledCheck.SetChecked(enabled)
+
+		// Reset user editing
 		thread.pendingUsers.empty()
 		fyneUI.refreshUserSelections(thread)
+
+		// Reset permissions
 		thread.restrictUserManagementCheck.SetChecked(thread.restrictUserManagement)
 		thread.restrictGroupEditsCheck.SetChecked(thread.restrictGroupEdits)
 		thread.restrictPostingCheck.SetChecked(thread.restrictPosting)
+
+		// Show main tontainer
 		fyneUI.showMainContainer()
 		fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
 	})

@@ -273,6 +273,22 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	})
 	saveButton.Importance = widget.HighImportance
 	cancelButton := widget.NewButton("Cancel", func() {
+		// Reset retention
+		dm.retentionSelection.Selected = getRetentionName(fyneUI.callbacks.GetDMRetention(dm.user.id))
+		dm.retentionSelection.Refresh()
+
+		// Reset notification settings
+		var err error
+		dm.notificationsMutedUntil, err = fyneUI.callbacks.GetDMMutedUntil(dm.user.id)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"user_id": dm.user.id,
+			}).Fatal("cannot find muted until for DM")
+		}
+		enabled := dm.notificationsMutedUntil != chat.MutedForever
+		dm.notificationsEnabledCheck.SetChecked(enabled)
+
+		// Show main tontainer
 		fyneUI.showMainContainer()
 		fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
 	})
