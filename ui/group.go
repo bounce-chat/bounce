@@ -137,7 +137,7 @@ func (fyneUI *Fyne) addAdmin(g *group, userID uuid.UUID) {
 		g.admins = append(g.admins, userID)
 	}
 
-	//TODO: update the display containers
+	fyneUI.updateVisibleFeatures(g)
 }
 
 func (fyneUI *Fyne) removeAdmin(g *group, userID uuid.UUID) {
@@ -149,7 +149,7 @@ func (fyneUI *Fyne) removeAdmin(g *group, userID uuid.UUID) {
 	}
 	g.admins = adminsWithoutUser
 
-	//TODO: update the display containers
+	fyneUI.updateVisibleFeatures(g)
 }
 
 func (fyneUI *Fyne) amAdmin(g *group) bool {
@@ -224,9 +224,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": group.id,
-		}).Error("cannot find muted until for group")
-		return
-		// TODO: fatal?
+		}).Fatal("cannot find muted until for group")
 	}
 	enabled := group.notificationsMutedUntil != chat.MutedForever
 	group.notificationsEnabledCheck.SetChecked(enabled)
@@ -504,7 +502,7 @@ func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagemen
 		g.lastUserManagementPermissionUpdate = ugumr.Timestamp
 		g.restrictUserManagementCheck.SetChecked(true)
 		g.restrictUserManagement = true
-		// TODO: update the edit container so that non-admins can't do this
+		fyneUI.updateVisibleFeatures(g)
 	}
 }
 
@@ -530,7 +528,7 @@ func (fyneUI *Fyne) UserManagementUnrestricted(ugumu chat.UpdateGroupUserManagem
 		g.lastUserManagementPermissionUpdate = ugumu.Timestamp
 		g.restrictUserManagementCheck.SetChecked(false)
 		g.restrictUserManagement = false
-		// TODO: update the edit container so that non-admins can do this
+		fyneUI.updateVisibleFeatures(g)
 	}
 }
 
@@ -556,7 +554,7 @@ func (fyneUI *Fyne) GroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) {
 		g.lastGroupEditsPermissionUpdate = uger.Timestamp
 		g.restrictGroupEditsCheck.SetChecked(true)
 		g.restrictGroupEdits = true
-		// TODO: update the edit container so that non-admins can't do this
+		fyneUI.updateVisibleFeatures(g)
 	}
 }
 
@@ -582,7 +580,7 @@ func (fyneUI *Fyne) GroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricte
 		g.lastGroupEditsPermissionUpdate = ugeu.Timestamp
 		g.restrictGroupEditsCheck.SetChecked(false)
 		g.restrictGroupEdits = false
-		// TODO: update the edit container so that non-admins can do this
+		fyneUI.updateVisibleFeatures(g)
 	}
 }
 
@@ -608,7 +606,7 @@ func (fyneUI *Fyne) PostingRestricted(ugpr chat.UpdateGroupPostingRestricted) {
 		g.lastPostingPermissionUpdate = ugpr.Timestamp
 		g.restrictPostingCheck.SetChecked(true)
 		g.restrictPosting = true
-		// TODO: update the edit container so that non-admins can't do this
+		fyneUI.updateVisibleFeatures(g)
 	}
 }
 
@@ -633,6 +631,44 @@ func (fyneUI *Fyne) PostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted
 		g.lastPostingPermissionUpdate = ugpu.Timestamp
 		g.restrictPostingCheck.SetChecked(false)
 		g.restrictPosting = false
-		// TODO: update the edit container so that non-admins can do this
+		fyneUI.updateVisibleFeatures(g)
+	}
+}
+
+func (fyneUI *Fyne) updateVisibleFeatures(g *group) {
+	amAdmin := g.isAdmin(fyneUI.profile.id)
+
+	if amAdmin {
+		g.restrictUserManagementCheck.Show()
+		g.restrictGroupEditsCheck.Show()
+		g.restrictPostingCheck.Show()
+
+		// TODO: enable all the admin check boxes
+		// TODO: enable all the remove from group buttons
+	} else {
+		g.restrictUserManagementCheck.Hide()
+		g.restrictGroupEditsCheck.Hide()
+		g.restrictPostingCheck.Hide()
+
+		// TODO: disable all the admin check boxes
+		// TODO: disable all the remove from group buttons
+	}
+
+	if g.restrictUserManagement && !amAdmin {
+		// TODO: hide
+	} else {
+		// TODO: show
+	}
+
+	if g.restrictGroupEdits && !amAdmin {
+		// TODO: hide
+	} else {
+		// TODO: show
+	}
+
+	if g.restrictPosting && !amAdmin {
+		// TODO: hide
+	} else {
+		// TODO: show
 	}
 }
