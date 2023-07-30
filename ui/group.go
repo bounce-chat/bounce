@@ -44,7 +44,10 @@ type group struct {
 	restrictPostingCheck               *widget.Check
 	scroll                             *container.Scroll
 	availableNewUsersScroll            *container.Scroll
+	currentAdminsContainer             *fyne.Container
 	currentUsersContainer              *fyne.Container
+	adminChecks                        map[uuid.UUID]*widget.Check
+	adminChecksMutex                   sync.Mutex
 	entry                              *threadEntry
 	entryBar                           *fyne.Container
 	lastMessage                        int64
@@ -97,6 +100,30 @@ func (g *group) setLastAdminAction(userID uuid.UUID, timestamp int64) {
 	defer g.lastAdminActionMutex.Unlock()
 
 	g.lastAdminAction[userID] = timestamp
+}
+
+func (g *group) isAdmin(userID uuid.UUID) bool {
+	for _, id := range g.admins {
+		if id == userID {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *group) getAdminCheck(userID uuid.UUID) *widget.Check {
+	g.adminChecksMutex.Lock()
+	defer g.adminChecksMutex.Unlock()
+
+	check, ok := g.adminChecks[userID]
+	if ok {
+		return check
+	}
+
+	check = widget.NewCheck("Admin", func(set bool) {})
+	check.SetChecked(g.isAdmin(userID))
+	g.adminChecks[userID] = check
+	return check
 }
 
 func (fyneUI *Fyne) addAdmin(g *group, userID uuid.UUID) {
@@ -169,6 +196,8 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		scroll:                  container.NewVScroll(container.NewVBox()),
 		availableNewUsersScroll: container.NewVScroll(container.NewVBox()),
 		currentUsersContainer:   container.NewMax(),
+		currentAdminsContainer:  container.NewMax(),
+		adminChecks:             make(map[uuid.UUID]*widget.Check),
 		lastMessage:             time.Now().Unix(),
 	}
 	for _, userID := range bounceGroup.UserIDs {

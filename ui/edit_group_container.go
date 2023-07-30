@@ -181,7 +181,14 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		cancelButton,
 	)
 
-	usersLabel := widget.NewLabel("Current Users:")
+	adminsLabel := widget.NewLabel("Admins:")
+	currentAdminsListView := container.New(
+		layout.NewBorderLayout(adminsLabel, nil, nil, nil),
+		adminsLabel,
+		thread.currentAdminsContainer, // TODO: eventually this will get so long it breaks the UI.  Need a better looking scroll wrapper.  https://github.com/fyne-io/fyne/issues/2322
+	)
+
+	usersLabel := widget.NewLabel("Users:")
 	currentUsersListView := container.New(
 		layout.NewBorderLayout(usersLabel, nil, nil, nil),
 		usersLabel,
@@ -201,6 +208,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		topOptionsVBox.Add(thread.restrictGroupEditsCheck)
 		topOptionsVBox.Add(thread.restrictPostingCheck)
 	}
+	topOptionsVBox.Add(currentAdminsListView)
 	topOptionsVBox.Add(currentUsersListView)
 
 	addUsersLabel := widget.NewLabel("Add Users:")
@@ -238,6 +246,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 
 func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 	currentUsersList := container.NewVBox()
+	currentAdminsList := container.NewVBox()
 
 	for _, thisUser := range thread.users.alphabetized() {
 		func(u *user) {
@@ -269,10 +278,24 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 						fyneUI.showMainContainer()
 						fyneUI.displayThread(dm)
 					}),
+					// TODO: check if we can displat these, also they need to be stored on the group for dynamic refresh
 					widget.NewButton("Remove from group", func() {}),
-					widget.NewCheck("Admin", func(set bool) {}),
+					thread.getAdminCheck(u.id),
 				)
 				userDetailsDialog = dialog.NewCustomConfirm(u.name, "Apply", "Cancel", editUserContainer, func(apply bool) {
+					if apply {
+						// Update the admin status if needed
+						if thread.getAdminCheck(u.id).Checked && !thread.isAdmin(u.id) {
+							fyneUI.callbacks.PromoteAdmin(thread.id, u.id)
+							fyneUI.refreshCurrentAndPendingUsers(thread)
+						} else if !thread.getAdminCheck(u.id).Checked && thread.isAdmin(u.id) {
+							fyneUI.callbacks.DemoteAdmin(thread.id, u.id)
+							fyneUI.refreshCurrentAndPendingUsers(thread)
+						}
+					} else {
+						// TODO: reset everything
+					}
+
 					log.WithFields(log.Fields{
 						"apply": apply,
 					}).Info("editing user in group")
@@ -282,10 +305,17 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 			userDetailsButton.Alignment = widget.ButtonAlignLeading
 			userDetailsButton.Importance = widget.LowImportance
 
-			currentUsersList.Objects = append(
-				currentUsersList.Objects,
-				userDetailsButton,
-			)
+			if thread.isAdmin(u.id) {
+				currentAdminsList.Objects = append(
+					currentAdminsList.Objects,
+					userDetailsButton,
+				)
+			} else {
+				currentUsersList.Objects = append(
+					currentUsersList.Objects,
+					userDetailsButton,
+				)
+			}
 		}(thisUser)
 	}
 
@@ -308,6 +338,8 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 		}(thisUser)
 	}
 
+	thread.currentAdminsContainer.Objects = []fyne.CanvasObject{currentAdminsList}
+	thread.currentAdminsContainer.Refresh()
 	thread.currentUsersContainer.Objects = []fyne.CanvasObject{currentUsersList}
 	thread.currentUsersContainer.Refresh()
 }

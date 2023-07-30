@@ -280,7 +280,7 @@ func (b *bounce) updateLastGroupActivity(groupID uuid.UUID, timestamp int64) {
 
 func (b *bounce) isGroupAdmin(groupID, userID uuid.UUID) bool {
 	var g group
-	err := b.database.Select("admin").Where("id = ?", groupID).Find(&g).Error
+	err := b.database.Select("admins").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -318,7 +318,7 @@ func (b *bounce) isGroupAdmin(groupID, userID uuid.UUID) bool {
 
 func (b *bounce) addGroupAdmin(groupID, userID uuid.UUID) {
 	var g group
-	err := b.database.Select("admin").Where("id = ?", groupID).Find(&g).Error
+	err := b.database.Select("admins").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -333,7 +333,7 @@ func (b *bounce) addGroupAdmin(groupID, userID uuid.UUID) {
 	}
 
 	if len(g.Admins) == 0 {
-		err = b.database.Model(&g).Where("id = ?", groupID).Update("admin", userID.String()).Error
+		err = b.database.Model(&g).Where("id = ?", groupID).Update("admins", userID.String()).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
@@ -377,7 +377,7 @@ func (b *bounce) addGroupAdmin(groupID, userID uuid.UUID) {
 			return
 		}
 
-		err = b.database.Model(&g).Where("id = ?", groupID).Update("admin", strings.Join(admins, ",")).Error
+		err = b.database.Model(&g).Where("id = ?", groupID).Update("admins", strings.Join(admins, ",")).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
@@ -395,7 +395,7 @@ func (b *bounce) addGroupAdmin(groupID, userID uuid.UUID) {
 
 func (b *bounce) removeGroupAdmin(groupID, userID uuid.UUID) {
 	var g group
-	err := b.database.Select("admin").Where("id = ?", groupID).Find(&g).Error
+	err := b.database.Select("admins").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -438,7 +438,7 @@ func (b *bounce) removeGroupAdmin(groupID, userID uuid.UUID) {
 	}
 
 	if removedUser {
-		err = b.database.Model(&g).Where("id = ?", groupID).Update("admin", strings.Join(admins, ",")).Error
+		err = b.database.Model(&g).Where("id = ?", groupID).Update("admins", strings.Join(admins, ",")).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
