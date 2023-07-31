@@ -34,7 +34,9 @@ type group struct {
 	pendingUsers                       *userStore
 	notificationsMutedUntil            int64
 	editContainer                      *fyne.Container
+	editThreadNameEntry                *widget.Entry
 	retentionSelection                 *widget.Select
+	clearHistoryButton                 *widget.Button
 	view                               *fyne.Container
 	header                             *fyne.Container
 	button                             *threadButton
@@ -48,6 +50,8 @@ type group struct {
 	currentUsersContainer              *fyne.Container
 	adminChecks                        map[uuid.UUID]*widget.Check
 	adminChecksMutex                   sync.Mutex
+	removeUserButtons                  map[uuid.UUID]*widget.Button
+	removeUserButtonsMutex             sync.Mutex
 	entry                              *threadEntry
 	entryBar                           *fyne.Container
 	lastMessage                        int64
@@ -126,6 +130,24 @@ func (g *group) getAdminCheck(userID uuid.UUID) *widget.Check {
 	return check
 }
 
+func (g *group) getRemoveUserButton(userID uuid.UUID) *widget.Button {
+	g.removeUserButtonsMutex.Lock()
+	defer g.removeUserButtonsMutex.Unlock()
+
+	button, ok := g.removeUserButtons[userID]
+	if ok {
+		return button
+	}
+
+	button = widget.NewButton("Remove from group", func() {
+		// TODO: callback to chat engine to remove the user
+		// close the dialog for this user
+		// refresh the active users
+	})
+	g.removeUserButtons[userID] = button
+	return button
+}
+
 func (fyneUI *Fyne) addAdmin(g *group, userID uuid.UUID) {
 	alreadyAdded := false
 	for _, id := range g.admins {
@@ -137,7 +159,7 @@ func (fyneUI *Fyne) addAdmin(g *group, userID uuid.UUID) {
 		g.admins = append(g.admins, userID)
 	}
 
-	fyneUI.updateVisibleFeatures(g)
+	fyneUI.updateEnabledFeatures(g)
 }
 
 func (fyneUI *Fyne) removeAdmin(g *group, userID uuid.UUID) {
@@ -149,7 +171,7 @@ func (fyneUI *Fyne) removeAdmin(g *group, userID uuid.UUID) {
 	}
 	g.admins = adminsWithoutUser
 
-	fyneUI.updateVisibleFeatures(g)
+	fyneUI.updateEnabledFeatures(g)
 }
 
 func (fyneUI *Fyne) amAdmin(g *group) bool {
@@ -188,6 +210,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		name:                    binding.NewString(),
 		users:                   newUserStore(),
 		admins:                  bounceGroup.Admins,
+		editThreadNameEntry:     widget.NewEntry(),
 		lastAdminAction:         make(map[uuid.UUID]int64),
 		restrictUserManagement:  bounceGroup.RestrictUserManagement,
 		restrictGroupEdits:      bounceGroup.RestrictGroupEdits,
@@ -198,6 +221,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		currentUsersContainer:   container.NewMax(),
 		currentAdminsContainer:  container.NewMax(),
 		adminChecks:             make(map[uuid.UUID]*widget.Check),
+		removeUserButtons:       make(map[uuid.UUID]*widget.Button),
 		lastMessage:             time.Now().Unix(),
 	}
 	for _, userID := range bounceGroup.UserIDs {
@@ -310,6 +334,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	)
 	fyneUI.groups[group.id] = group
 	fyneUI.refreshThreadOrder()
+	fyneUI.updateEnabledFeatures(group)
 }
 
 func (fyneUI *Fyne) DisplayGroupMessage(gm chat.GroupMessage) {
@@ -502,7 +527,7 @@ func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagemen
 		g.lastUserManagementPermissionUpdate = ugumr.Timestamp
 		g.restrictUserManagementCheck.SetChecked(true)
 		g.restrictUserManagement = true
-		fyneUI.updateVisibleFeatures(g)
+		fyneUI.updateEnabledFeatures(g)
 	}
 }
 
@@ -528,7 +553,7 @@ func (fyneUI *Fyne) UserManagementUnrestricted(ugumu chat.UpdateGroupUserManagem
 		g.lastUserManagementPermissionUpdate = ugumu.Timestamp
 		g.restrictUserManagementCheck.SetChecked(false)
 		g.restrictUserManagement = false
-		fyneUI.updateVisibleFeatures(g)
+		fyneUI.updateEnabledFeatures(g)
 	}
 }
 
@@ -554,7 +579,7 @@ func (fyneUI *Fyne) GroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) {
 		g.lastGroupEditsPermissionUpdate = uger.Timestamp
 		g.restrictGroupEditsCheck.SetChecked(true)
 		g.restrictGroupEdits = true
-		fyneUI.updateVisibleFeatures(g)
+		fyneUI.updateEnabledFeatures(g)
 	}
 }
 
@@ -580,7 +605,7 @@ func (fyneUI *Fyne) GroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricte
 		g.lastGroupEditsPermissionUpdate = ugeu.Timestamp
 		g.restrictGroupEditsCheck.SetChecked(false)
 		g.restrictGroupEdits = false
-		fyneUI.updateVisibleFeatures(g)
+		fyneUI.updateEnabledFeatures(g)
 	}
 }
 
@@ -606,7 +631,7 @@ func (fyneUI *Fyne) PostingRestricted(ugpr chat.UpdateGroupPostingRestricted) {
 		g.lastPostingPermissionUpdate = ugpr.Timestamp
 		g.restrictPostingCheck.SetChecked(true)
 		g.restrictPosting = true
-		fyneUI.updateVisibleFeatures(g)
+		fyneUI.updateEnabledFeatures(g)
 	}
 }
 
@@ -631,44 +656,68 @@ func (fyneUI *Fyne) PostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted
 		g.lastPostingPermissionUpdate = ugpu.Timestamp
 		g.restrictPostingCheck.SetChecked(false)
 		g.restrictPosting = false
-		fyneUI.updateVisibleFeatures(g)
+		fyneUI.updateEnabledFeatures(g)
 	}
 }
 
-func (fyneUI *Fyne) updateVisibleFeatures(g *group) {
+func (fyneUI *Fyne) updateEnabledFeatures(g *group) {
 	amAdmin := g.isAdmin(fyneUI.profile.id)
 
 	if amAdmin {
-		g.restrictUserManagementCheck.Show()
-		g.restrictGroupEditsCheck.Show()
-		g.restrictPostingCheck.Show()
+		g.restrictUserManagementCheck.Enable()
+		g.restrictGroupEditsCheck.Enable()
+		g.restrictPostingCheck.Enable()
 
-		// TODO: enable all the admin check boxes
-		// TODO: enable all the remove from group buttons
+		g.adminChecksMutex.Lock()
+		for _, check := range g.adminChecks {
+			check.Enable()
+		}
+		g.adminChecksMutex.Unlock()
 	} else {
-		g.restrictUserManagementCheck.Hide()
-		g.restrictGroupEditsCheck.Hide()
-		g.restrictPostingCheck.Hide()
+		g.restrictUserManagementCheck.Disable()
+		g.restrictGroupEditsCheck.Disable()
+		g.restrictPostingCheck.Disable()
 
-		// TODO: disable all the admin check boxes
-		// TODO: disable all the remove from group buttons
+		if len(g.admins) > 0 {
+			g.adminChecksMutex.Lock()
+			for _, check := range g.adminChecks {
+				check.Disable()
+			}
+			g.adminChecksMutex.Unlock()
+		}
 	}
 
 	if g.restrictUserManagement && !amAdmin {
-		// TODO: hide
+		// TODO: hide add users option
+
+		g.removeUserButtonsMutex.Lock()
+		for _, button := range g.removeUserButtons {
+			button.Disable()
+		}
+		g.removeUserButtonsMutex.Unlock()
 	} else {
-		// TODO: show
+		// TODO: show add users option
+
+		g.removeUserButtonsMutex.Lock()
+		for _, button := range g.removeUserButtons {
+			button.Enable()
+		}
+		g.removeUserButtonsMutex.Unlock()
 	}
 
 	if g.restrictGroupEdits && !amAdmin {
-		// TODO: hide
+		g.editThreadNameEntry.Disable()
+		g.retentionSelection.Disable()
+		g.clearHistoryButton.Disable()
 	} else {
-		// TODO: show
+		g.editThreadNameEntry.Enable()
+		g.retentionSelection.Enable()
+		g.clearHistoryButton.Enable()
 	}
 
 	if g.restrictPosting && !amAdmin {
-		// TODO: hide
+		g.entry.Disable()
 	} else {
-		// TODO: show
+		g.entry.Enable()
 	}
 }

@@ -24,14 +24,14 @@ func (fyneUI *Fyne) showEditThreadContainer(thread *group) {
 }
 
 func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename these to group
-	editThreadNameEntry := widget.NewEntry()
 	currentThreadName, err := thread.name.Get()
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("data bindings are broken")
 	}
-	editThreadNameEntry.Text = currentThreadName
+	thread.editThreadNameEntry.Text = currentThreadName
+
 	thread.name.AddListener(binding.NewDataListener(func() {
 		newName, err := thread.name.Get()
 		if err != nil {
@@ -39,8 +39,8 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 				"error": err.Error(),
 			}).Fatal("data bindings are broken")
 		}
-		editThreadNameEntry.Text = newName
-		editThreadNameEntry.Refresh()
+		thread.editThreadNameEntry.Text = newName
+		thread.editThreadNameEntry.Refresh()
 	}))
 
 	threadIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
@@ -63,7 +63,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		},
 		fyneUI.mainWindow,
 	)
-	clearHistoryButton := widget.NewButton("Clear history", func() {
+	thread.clearHistoryButton = widget.NewButton("Clear history", func() {
 		confirmClearHistory.Show()
 	})
 
@@ -75,7 +75,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 				"error": err.Error(),
 			}).Fatal("data bindings are broken")
 		}
-		newThreadName := editThreadNameEntry.Text
+		newThreadName := thread.editThreadNameEntry.Text
 		if currentThreadName != newThreadName {
 			fyneUI.callbacks.RenameGroup(thread.id, newThreadName) // TODO: error check and display error in dialog, internationalize off exported error types
 		}
@@ -145,8 +145,8 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 				"error": err.Error(),
 			}).Fatal("data bindings are broken")
 		}
-		editThreadNameEntry.Text = currentThreadName
-		editThreadNameEntry.Refresh()
+		thread.editThreadNameEntry.Text = currentThreadName
+		thread.editThreadNameEntry.Refresh()
 
 		// Reset retention
 		thread.retentionSelection.Selected = getRetentionName(fyneUI.callbacks.GetGroupRetention(thread.id))
@@ -197,17 +197,15 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 
 	topOptionsVBox := container.NewVBox(
 		threadIcon,
-		editThreadNameEntry,
+		thread.editThreadNameEntry,
 		thread.notificationsEnabledCheck,
 		widget.NewLabel("Disappearing Messages"),
 		thread.retentionSelection,
-		container.NewHBox(clearHistoryButton),
+		container.NewHBox(thread.clearHistoryButton),
 	)
-	if fyneUI.amAdmin(thread) {
-		topOptionsVBox.Add(thread.restrictUserManagementCheck)
-		topOptionsVBox.Add(thread.restrictGroupEditsCheck)
-		topOptionsVBox.Add(thread.restrictPostingCheck)
-	}
+	topOptionsVBox.Add(thread.restrictUserManagementCheck)
+	topOptionsVBox.Add(thread.restrictGroupEditsCheck)
+	topOptionsVBox.Add(thread.restrictPostingCheck)
 	topOptionsVBox.Add(currentAdminsListView)
 	topOptionsVBox.Add(currentUsersListView)
 
@@ -279,7 +277,7 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 						fyneUI.displayThread(dm)
 					}),
 					// TODO: check if we can displat these, also they need to be stored on the group for dynamic refresh
-					widget.NewButton("Remove from group", func() {}),
+					thread.getRemoveUserButton(u.id),
 					thread.getAdminCheck(u.id),
 				)
 				userDetailsDialog = dialog.NewCustomConfirm(u.name, "Apply", "Cancel", editUserContainer, func(apply bool) {
@@ -293,12 +291,9 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 							fyneUI.refreshCurrentAndPendingUsers(thread)
 						}
 					} else {
-						// TODO: reset everything
+						// Reset everything
+						thread.getAdminCheck(u.id).SetChecked(thread.isAdmin(u.id))
 					}
-
-					log.WithFields(log.Fields{
-						"apply": apply,
-					}).Info("editing user in group")
 				}, fyneUI.mainWindow)
 				userDetailsDialog.Show()
 			})
