@@ -2,7 +2,6 @@ package ui
 
 import (
 	"errors"
-	"image/color"
 
 	"github.com/hkparker/bounce/chat"
 
@@ -209,14 +208,33 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 	topOptionsVBox.Add(currentAdminsListView)
 	topOptionsVBox.Add(currentUsersListView)
 
-	addUsersLabel := widget.NewLabel("Add Users:")
-	allUsersList := container.New(
-		layout.NewBorderLayout(addUsersLabel, nil, nil, nil),
-		addUsersLabel,
-		thread.availableNewUsersScroll,
+	newUserSearchEntry := widget.NewEntry()
+	newUserSelector := container.New(
+		layout.NewBorderLayout(newUserSearchEntry, nil, nil, nil),
+		newUserSearchEntry,
+		container.NewVBox(
+			widget.NewLabel("Users to add:"),
+			thread.pendingUsersContainer,
+			widget.NewLabel("All Users:"),
+			thread.availableNewUsersScroll,
+		),
 	)
+	addUsersDialog := dialog.NewCustomConfirm("Add Users", "Save", "Cancel", newUserSelector, func(apply bool) {
+		if apply {
+			for _, thisUser := range thread.pendingUsers.userList {
+				fyneUI.callbacks.AddUserToGroup(thread.id, thisUser.id)
+			}
+		}
+		thread.pendingUsers.empty()
+		fyneUI.refreshUserSelections(thread)
+		newUserSearchEntry.Text = ""
+		newUserSearchEntry.Refresh()
+	}, fyneUI.mainWindow)
+	thread.addUsersButton = widget.NewButton("Add Users", func() {
+		addUsersDialog.Show()
+	})
 
-	// Close the window but save state.  TODO: should it clear state as well?
+	// Close the window but save state.  TODO: should it clear state as well, and if so, just get rid of this?
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		fyneUI.showMainContainer()
 		fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
@@ -234,7 +252,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 			container.New(
 				layout.NewBorderLayout(topOptionsVBox, nil, nil, nil),
 				topOptionsVBox,
-				allUsersList,
+				container.NewHBox(thread.addUsersButton), // TODO: make it not expand all the way down
 			),
 			closeBar,
 			actionButtons,
@@ -244,6 +262,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 
 func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 	currentUsersList := container.NewVBox()
+	pendingUsersList := container.NewVBox()
 	currentAdminsList := container.NewVBox()
 
 	for _, thisUser := range thread.users.alphabetized() {
@@ -276,7 +295,6 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 						fyneUI.showMainContainer()
 						fyneUI.displayThread(dm)
 					}),
-					// TODO: check if we can displat these, also they need to be stored on the group for dynamic refresh
 					thread.getRemoveUserButton(u.id),
 					thread.getAdminCheck(u.id),
 				)
@@ -322,13 +340,9 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 			})
 			removePendingUserButton.Alignment = widget.ButtonAlignLeading
 			removePendingUserButton.Importance = widget.LowImportance
-			currentUsersList.Objects = append(
-				currentUsersList.Objects,
-				container.New(
-					layout.NewMaxLayout(),
-					&canvas.Rectangle{FillColor: color.NRGBA{0, 0, 0x40, 0x40}},
-					removePendingUserButton,
-				),
+			pendingUsersList.Objects = append(
+				pendingUsersList.Objects,
+				removePendingUserButton,
 			)
 		}(thisUser)
 	}
@@ -337,6 +351,8 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 	thread.currentAdminsContainer.Refresh()
 	thread.currentUsersContainer.Objects = []fyne.CanvasObject{currentUsersList}
 	thread.currentUsersContainer.Refresh()
+	thread.pendingUsersContainer.Objects = []fyne.CanvasObject{pendingUsersList}
+	thread.pendingUsersContainer.Refresh()
 }
 
 func (fyneUI *Fyne) refreshAvailableNewUsers(thread *group) {
@@ -350,6 +366,9 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(thread *group) {
 		if _, exists := thread.pendingUsers.get(thisUser.id); exists {
 			continue
 		}
+
+		// TODO: filter by what's in the search entry, or make searching a feature in the user store and pull from that
+
 		// This weirdness is so that the iteration over user works with the dynamically created buttons
 		// TODO: make sure I'm not making this mistake anywhere else
 		func(u *user) {

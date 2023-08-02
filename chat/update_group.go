@@ -538,6 +538,9 @@ func (b *bounce) saveAndApplyUpdateGroupAddUser(peer string, g group, ug updateG
 		}).Fatal("database error adding user to group")
 	}
 
+	// Inform the UI
+	//TODO
+
 	return nil
 }
 

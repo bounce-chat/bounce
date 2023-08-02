@@ -37,6 +37,7 @@ type group struct {
 	editThreadNameEntry                *widget.Entry
 	retentionSelection                 *widget.Select
 	clearHistoryButton                 *widget.Button
+	addUsersButton                     *widget.Button
 	view                               *fyne.Container
 	header                             *fyne.Container
 	button                             *threadButton
@@ -48,6 +49,7 @@ type group struct {
 	availableNewUsersScroll            *container.Scroll
 	currentAdminsContainer             *fyne.Container
 	currentUsersContainer              *fyne.Container
+	pendingUsersContainer              *fyne.Container
 	adminChecks                        map[uuid.UUID]*widget.Check
 	adminChecksMutex                   sync.Mutex
 	removeUserButtons                  map[uuid.UUID]*widget.Button
@@ -218,8 +220,9 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		pendingUsers:            newUserStore(),
 		scroll:                  container.NewVScroll(container.NewVBox()),
 		availableNewUsersScroll: container.NewVScroll(container.NewVBox()),
-		currentUsersContainer:   container.NewMax(),
 		currentAdminsContainer:  container.NewMax(),
+		currentUsersContainer:   container.NewMax(),
+		pendingUsersContainer:   container.NewMax(),
 		adminChecks:             make(map[uuid.UUID]*widget.Check),
 		removeUserButtons:       make(map[uuid.UUID]*widget.Button),
 		lastMessage:             time.Now().Unix(),
@@ -688,7 +691,7 @@ func (fyneUI *Fyne) updateEnabledFeatures(g *group) {
 	}
 
 	if g.restrictUserManagement && !amAdmin {
-		// TODO: hide add users option
+		g.addUsersButton.Disable()
 
 		g.removeUserButtonsMutex.Lock()
 		for _, button := range g.removeUserButtons {
@@ -696,7 +699,7 @@ func (fyneUI *Fyne) updateEnabledFeatures(g *group) {
 		}
 		g.removeUserButtonsMutex.Unlock()
 	} else {
-		// TODO: show add users option
+		g.addUsersButton.Enable()
 
 		g.removeUserButtonsMutex.Lock()
 		for _, button := range g.removeUserButtons {
