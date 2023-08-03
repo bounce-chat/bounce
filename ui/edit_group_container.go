@@ -262,52 +262,7 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 	for _, thisUser := range thread.users.alphabetized() {
 		func(u *user) {
 			userDetailsButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() {
-				// TODO: tell the chat engine to start dialing this user in case we open a DM with them?
-				var userDetailsDialog dialog.Dialog
-
-				editUserContainer := container.NewVBox(
-					widget.NewLabel(u.name),
-					widget.NewButton("Direct Message", func() {
-						// Close the dialog
-						if userDetailsDialog == nil {
-							log.Fatal("userDetailsDialog used before assignment, this should be impossible")
-						}
-						userDetailsDialog.Hide()
-
-						// Show the DM
-						dm, dmExists := fyneUI.dms[u.id]
-						if !dmExists {
-							fyneUI.NewDirectMessage(chat.User{
-								ID:   u.id,
-								Name: u.name,
-							})
-							dm, dmExists = fyneUI.dms[u.id]
-							if !dmExists {
-								log.Fatal("DM doesn't exist immediately after creation")
-							}
-						}
-						fyneUI.showMainContainer()
-						fyneUI.displayThread(dm)
-					}),
-					fyneUI.getRemoveUserButton(thread, u.id),
-					thread.getAdminCheck(u.id),
-				)
-				userDetailsDialog = dialog.NewCustomConfirm(u.name, "Apply", "Cancel", editUserContainer, func(apply bool) {
-					if apply {
-						// Update the admin status if needed
-						if thread.getAdminCheck(u.id).Checked && !thread.isAdmin(u.id) {
-							fyneUI.callbacks.PromoteAdmin(thread.id, u.id)
-							fyneUI.refreshCurrentAndPendingUsers(thread)
-						} else if !thread.getAdminCheck(u.id).Checked && thread.isAdmin(u.id) {
-							fyneUI.callbacks.DemoteAdmin(thread.id, u.id)
-							fyneUI.refreshCurrentAndPendingUsers(thread)
-						}
-					} else {
-						// Reset everything
-						thread.getAdminCheck(u.id).SetChecked(thread.isAdmin(u.id))
-					}
-				}, fyneUI.mainWindow)
-				userDetailsDialog.Show()
+				fyneUI.getEditUserDialog(thread, u.id).Show()
 			})
 			userDetailsButton.Alignment = widget.ButtonAlignLeading
 			userDetailsButton.Importance = widget.LowImportance

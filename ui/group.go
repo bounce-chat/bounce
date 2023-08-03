@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
@@ -54,6 +55,8 @@ type group struct {
 	adminChecksMutex                   sync.Mutex
 	removeUserButtons                  map[uuid.UUID]*widget.Button
 	removeUserButtonsMutex             sync.Mutex
+	editUserDialogs                    map[uuid.UUID]dialog.Dialog
+	editUserDialogsMutex               sync.Mutex
 	entry                              *threadEntry
 	entryBar                           *fyne.Container
 	lastMessage                        int64
@@ -141,11 +144,91 @@ func (fyneUI *Fyne) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Butt
 		return button
 	}
 
+	confirmRemoveUser := dialog.NewConfirm(
+		"Remove user?",
+		"Are you sure you want to remove this user from the group?",
+		func(confirmed bool) {
+			if confirmed {
+				fyneUI.callbacks.RemoveUser(g.id, userID)
+				fyneUI.getEditUserDialog(g, userID).Hide()
+			}
+		},
+		fyneUI.mainWindow,
+	)
+
 	button = widget.NewButton("Remove from group", func() {
-		fyneUI.callbacks.RemoveUser(g.id, userID)
+		confirmRemoveUser.Show()
 	})
 	g.removeUserButtons[userID] = button
 	return button
+}
+
+func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) dialog.Dialog {
+	g.editUserDialogsMutex.Lock()
+	g.editUserDialogsMutex.Unlock()
+
+	d, ok := g.editUserDialogs[userID]
+	if ok {
+		return d
+	}
+
+	u, ok := g.users.get(userID)
+	if !ok {
+		log.WithFields(log.Fields{
+			"group_id": g.id,
+			"user_id":  userID,
+		}).Fatal("cannot create edit user dialog for user not in group")
+	}
+
+	var userDetailsDialog dialog.Dialog
+
+	editUserContainer := container.NewVBox(
+		widget.NewLabel(u.name),
+		widget.NewButton("Direct Message", func() {
+			// Close the dialog
+			if userDetailsDialog == nil {
+				log.Fatal("userDetailsDialog used before assignment, this should be impossible")
+			}
+			userDetailsDialog.Hide()
+
+			// Show the DM
+			dm, dmExists := fyneUI.dms[u.id]
+			if !dmExists {
+				fyneUI.NewDirectMessage(chat.User{
+					ID:   u.id,
+					Name: u.name,
+				})
+				dm, dmExists = fyneUI.dms[u.id]
+				if !dmExists {
+					log.Fatal("DM doesn't exist immediately after creation")
+				}
+			}
+			fyneUI.showMainContainer()
+			fyneUI.callbacks.UserConnectionDesired(u.id)
+			fyneUI.displayThread(dm)
+		}),
+		fyneUI.getRemoveUserButton(g, u.id),
+		g.getAdminCheck(u.id),
+	)
+	userDetailsDialog = dialog.NewCustomConfirm(u.name, "Apply", "Cancel", editUserContainer, func(apply bool) {
+		if apply {
+			// Update the admin status if needed
+			if g.getAdminCheck(u.id).Checked && !g.isAdmin(u.id) {
+				fyneUI.callbacks.PromoteAdmin(g.id, u.id)
+				fyneUI.refreshCurrentAndPendingUsers(g)
+			} else if !g.getAdminCheck(u.id).Checked && g.isAdmin(u.id) {
+				fyneUI.callbacks.DemoteAdmin(g.id, u.id)
+				fyneUI.refreshCurrentAndPendingUsers(g)
+			}
+		} else {
+			// Reset everything
+			g.getAdminCheck(u.id).SetChecked(g.isAdmin(u.id))
+		}
+	}, fyneUI.mainWindow)
+
+	g.editUserDialogs[userID] = userDetailsDialog
+
+	return userDetailsDialog
 }
 
 func (fyneUI *Fyne) addAdmin(g *group, userID uuid.UUID) {
@@ -223,6 +306,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		pendingUsersContainer:   container.NewMax(),
 		adminChecks:             make(map[uuid.UUID]*widget.Check),
 		removeUserButtons:       make(map[uuid.UUID]*widget.Button),
+		editUserDialogs:         make(map[uuid.UUID]dialog.Dialog),
 		lastMessage:             time.Now().Unix(),
 	}
 	for _, userID := range bounceGroup.UserIDs {
@@ -417,8 +501,6 @@ func (fyneUI *Fyne) RemoveUser(ugru chat.UpdateGroupRemoveUser) {
 	}
 
 	fyneUI.appendThreadItem(g, ti)
-
-	// close the dialog for this user TODO: here?
 }
 
 func (fyneUI *Fyne) RenameGroup(ugn chat.UpdateGroupName) {
