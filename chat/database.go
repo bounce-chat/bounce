@@ -430,6 +430,7 @@ func (b *bounce) buildInitialState() InitialState {
 	exportedUpdateGroupRetentions := []UpdateGroupRetention{}
 	exportedUpdateGroupNames := []UpdateGroupName{}
 	exportedUpdateGroupAddUsers := []UpdateGroupAddUser{}
+	exportedUpdateGroupRemoveUsers := []UpdateGroupRemoveUser{}
 	exportedUpdateGroupClearHistories := []UpdateGroupClearHistory{}
 	exportedUpdateGroupAdminPromotions := []UpdateGroupAdminPromoted{}
 	exportedUpdateGroupAdminDemotions := []UpdateGroupAdminDemoted{}
@@ -484,6 +485,24 @@ func (b *bounce) buildInitialState() InitialState {
 						ID:   u.ID,
 						Name: u.Name,
 					},
+				},
+			)
+		case updateGroupTypeRemoveUser:
+			userID, err := uuid.FromBytes(ug.Data)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    ug.Data,
+					"error": err.Error(),
+				}).Fatal("error parsing user ID for remove user in database")
+			}
+			exportedUpdateGroupRemoveUsers = append(
+				exportedUpdateGroupRemoveUsers,
+				UpdateGroupRemoveUser{
+					ID:        ug.ID,
+					Thread:    ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+					UserID:    userID,
 				},
 			)
 		case updateGroupTypeSetClearBefore:
@@ -640,6 +659,7 @@ func (b *bounce) buildInitialState() InitialState {
 		UpdateGroupRetentions:                  exportedUpdateGroupRetentions,
 		UpdateGroupNames:                       exportedUpdateGroupNames,
 		UpdateGroupAddUsers:                    exportedUpdateGroupAddUsers,
+		UpdateGroupRemoveUsers:                 exportedUpdateGroupRemoveUsers,
 		UpdateGroupClearHistories:              exportedUpdateGroupClearHistories,
 		UpdateGroupAdminPromotions:             exportedUpdateGroupAdminPromotions,
 		UpdateGroupAdminDemotions:              exportedUpdateGroupAdminDemotions,

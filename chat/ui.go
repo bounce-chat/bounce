@@ -171,6 +171,7 @@ type InitialState struct {
 	UpdateGroupRetentions                  []UpdateGroupRetention
 	UpdateGroupNames                       []UpdateGroupName
 	UpdateGroupAddUsers                    []UpdateGroupAddUser
+	UpdateGroupRemoveUsers                 []UpdateGroupRemoveUser
 	UpdateGroupClearHistories              []UpdateGroupClearHistory
 	UpdateGroupAdminPromotions             []UpdateGroupAdminPromoted
 	UpdateGroupAdminDemotions              []UpdateGroupAdminDemoted

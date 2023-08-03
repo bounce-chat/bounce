@@ -244,6 +244,14 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		groupItems[ugau.Thread] = append(groupItems[ugau.Thread], ugauItem)
 	}
 
+	for _, ugru := range state.UpdateGroupRemoveUsers {
+		ugruItem, err := fyneUI.newUpdateGroupRemoveUser(ugru)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		groupItems[ugru.Thread] = append(groupItems[ugru.Thread], ugruItem)
+	}
+
 	for _, ugch := range state.UpdateGroupClearHistories {
 		ugchItem, err := fyneUI.newUpdateGroupClearHistory(ugch)
 		if err != nil {

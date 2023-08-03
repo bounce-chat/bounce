@@ -464,9 +464,17 @@ func (b *bounce) saveAndApplyUpdateGroupAddUser(peer string, g group, ug updateG
 		return errNoPermissionToManageUsers
 	}
 
+	// Save the update group
+	err := b.database.Create(&ug).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update group")
+	}
+
 	// Unmarshall the new user
 	var u user
-	err := msgpack.Unmarshal(ug.Data, &u)
+	err = msgpack.Unmarshal(ug.Data, &u)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -561,6 +569,14 @@ func (b *bounce) saveAndApplyUpdateGroupRemoveUser(g group, ug updateGroup) erro
 			"user_id": ug.Actor,
 		}).Warn("user attempted to remove user from group without permission")
 		return errNoPermissionToManageUsers
+	}
+
+	// Save the update group
+	err := b.database.Create(&ug).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update group")
 	}
 
 	// Parse the user ID
