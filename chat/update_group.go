@@ -563,7 +563,114 @@ func (b *bounce) saveAndApplyUpdateGroupRemoveUser(g group, ug updateGroup) erro
 		return errNoPermissionToManageUsers
 	}
 
-	// TODO
+	// Parse the user ID
+	userID, err := uuid.FromBytes(ug.Data)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"actor":   ug.Actor,
+			"user_id": ug.Data,
+		}).Error("update group attempted to remove user with invalid UUID")
+		return err
+	}
+
+	// Remove this user from the group
+	err = b.database.Exec("DELETE FROM group_users WHERE group_id = ? AND user_id = ?", ug.Target, userID).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": ug.Target,
+			"user_id":  userID,
+		}).Fatal("database error removing user from group")
+	}
+
+	// Remove them from admin list if they are an admin
+	if b.isGroupAdmin(ug.Target, userID) {
+		b.removeGroupAdmin(ug.Target, userID)
+	}
+
+	// Get the user
+	var u user
+	err = b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": ug.Target,
+				"user_id":  userID,
+			}).Error("user not found when attempting to remove user from group")
+			return err
+		} else {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Fatal("database error looking up user")
+		}
+	}
+
+	// Delete all delivery records for this user for items in this group
+	for _, dev := range u.Devices {
+		// Delete the delivery records for each group message
+		gms := []groupMessage{}
+		err = b.database.Where("destination = ?", ug.Target).Find(&gms).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": ug.Target,
+			}).Fatal("database error looking up all group messages for a group")
+		}
+		for _, gm := range gms {
+			err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeGroupMessage, gm.ID).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":      err.Error(),
+					"group_id":   ug.Target,
+					"message_id": gm.ID,
+					"device":     dev.Address,
+				}).Fatal("database error deleting group message delivery record for user being removed")
+			}
+		}
+
+		// Delete the delivery records for each update group
+		ugs := []updateGroup{}
+		err = b.database.Where("target = ?", ug.Target).Find(&ugs).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": ug.Target,
+			}).Fatal("database error looking up all updates for a group")
+		}
+		for _, ugToDelete := range ugs {
+			err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeUpdateGroup, ugToDelete.ID).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":           err.Error(),
+					"group_id":        ug.Target,
+					"update_group_id": ugToDelete.ID,
+					"device":          dev.Address,
+				}).Fatal("database error deleting update group delivery record for user being removed")
+			}
+		}
+
+		// Delete the delivery records for the original group creation
+		err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeGroupCreation, ug.Target).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": ug.Target,
+				"device":   dev.Address,
+			}).Fatal("database error deleting group creation delivery record for user being removed")
+		}
+	}
+
+	b.userInterface.RemoveUser(
+		UpdateGroupRemoveUser{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+			UserID:    userID,
+		})
+
 	return nil
 }
 
@@ -890,7 +997,7 @@ func (b *bounce) clearGroupChatHistory(groupID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) addUserToGroup(groupID, userID uuid.UUID) error {
+func (b *bounce) addUser(groupID, userID uuid.UUID) error {
 	// Look up the user to add with all associations
 	var newUser user
 	err := b.database.
@@ -934,10 +1041,15 @@ func (b *bounce) addUserToGroup(groupID, userID uuid.UUID) error {
 	return nil
 }
 
-func (b *bounce) removeUserFromGroup(groupID, userID uuid.UUID) error {
-	// TODO
-	// TODO: also remove them from admin list if they are an admin
-	return nil
+func (b *bounce) removeUser(groupID, userID uuid.UUID) error {
+	return b.applyAndBroadcastUpdateGroup(updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeRemoveUser,
+		Data:      userID[:],
+	})
 }
 
 func (b *bounce) promoteAdmin(groupID, userID uuid.UUID) error {

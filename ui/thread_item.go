@@ -65,6 +65,21 @@ func (fyneUI *Fyne) newUpdateGroupAddUser(ugau chat.UpdateGroupAddUser) (*thread
 	)
 }
 
+func (fyneUI *Fyne) newUpdateGroupRemoveUser(ugru chat.UpdateGroupRemoveUser) (*threadItem, error) {
+	removedUser, ok := fyneUI.users.get(ugru.UserID)
+	if !ok {
+		return &threadItem{}, errUnknownUser
+	}
+
+	return fyneUI.newStatusChange(
+		ugru.ID,
+		ugru.Thread,
+		ugru.Actor,
+		"removed "+removedUser.name+" from the group",
+		ugru.Timestamp,
+	)
+}
+
 func (fyneUI *Fyne) newUpdateGroupClearHistory(ugch chat.UpdateGroupClearHistory) (*threadItem, error) {
 	ti, err := fyneUI.newStatusChange(
 		ugch.ID,

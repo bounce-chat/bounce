@@ -132,7 +132,7 @@ func (g *group) getAdminCheck(userID uuid.UUID) *widget.Check {
 	return check
 }
 
-func (g *group) getRemoveUserButton(userID uuid.UUID) *widget.Button {
+func (fyneUI *Fyne) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Button {
 	g.removeUserButtonsMutex.Lock()
 	defer g.removeUserButtonsMutex.Unlock()
 
@@ -142,9 +142,7 @@ func (g *group) getRemoveUserButton(userID uuid.UUID) *widget.Button {
 	}
 
 	button = widget.NewButton("Remove from group", func() {
-		// TODO: callback to chat engine to remove the user
-		// close the dialog for this user
-		// refresh the active users
+		fyneUI.callbacks.RemoveUser(g.id, userID)
 	})
 	g.removeUserButtons[userID] = button
 	return button
@@ -395,6 +393,32 @@ func (fyneUI *Fyne) AddUser(ugau chat.UpdateGroupAddUser) {
 	fyneUI.refreshUserSelections(g)
 
 	fyneUI.appendThreadItem(g, ti)
+}
+
+func (fyneUI *Fyne) RemoveUser(ugru chat.UpdateGroupRemoveUser) {
+	g, exists := fyneUI.groups[ugru.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugru.Thread,
+		}).Error("cannot remove user from unknown group")
+		return
+	}
+
+	g.users.remove(ugru.UserID)
+	fyneUI.removeAdmin(g, ugru.UserID)
+	fyneUI.refreshUserSelections(g)
+
+	ti, err := fyneUI.newUpdateGroupRemoveUser(ugru)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for removing user to group")
+		return
+	}
+
+	fyneUI.appendThreadItem(g, ti)
+
+	// close the dialog for this user TODO: here?
 }
 
 func (fyneUI *Fyne) RenameGroup(ugn chat.UpdateGroupName) {

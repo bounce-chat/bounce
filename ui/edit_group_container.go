@@ -125,13 +125,6 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 			fyneUI.callbacks.UnrestrictPosting(thread.id)
 		}
 
-		// Add the selected users to the group
-		for _, user := range thread.pendingUsers.alphabetized() {
-			thread.users.add(user)
-			thread.pendingUsers.remove(user.id)
-			fyneUI.callbacks.AddUserToGroup(thread.id, user.id)
-		}
-		fyneUI.refreshUserSelections(thread)
 		fyneUI.showMainContainer()
 		fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
 	})
@@ -222,7 +215,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 	addUsersDialog := dialog.NewCustomConfirm("Add Users", "Save", "Cancel", newUserSelector, func(apply bool) {
 		if apply {
 			for _, thisUser := range thread.pendingUsers.userList {
-				fyneUI.callbacks.AddUserToGroup(thread.id, thisUser.id)
+				fyneUI.callbacks.AddUser(thread.id, thisUser.id)
 			}
 		} else {
 			thread.pendingUsers.empty()
@@ -296,7 +289,7 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 						fyneUI.showMainContainer()
 						fyneUI.displayThread(dm)
 					}),
-					thread.getRemoveUserButton(u.id),
+					fyneUI.getRemoveUserButton(thread, u.id),
 					thread.getAdminCheck(u.id),
 				)
 				userDetailsDialog = dialog.NewCustomConfirm(u.name, "Apply", "Cancel", editUserContainer, func(apply bool) {

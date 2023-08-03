@@ -86,6 +86,14 @@ type UpdateGroupAddUser struct {
 	User      User
 }
 
+type UpdateGroupRemoveUser struct {
+	ID        uuid.UUID
+	Thread    uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+	UserID    uuid.UUID
+}
+
 type UpdateGroupClearHistory struct {
 	ID        uuid.UUID
 	Thread    uuid.UUID
@@ -223,6 +231,7 @@ type UI interface {
 	NewGroupChat(Group)
 	DisplayGroupMessage(GroupMessage)
 	AddUser(UpdateGroupAddUser)
+	RemoveUser(UpdateGroupRemoveUser)
 	RenameGroup(UpdateGroupName)
 	GroupRetentionChanged(UpdateGroupRetention)
 	GroupChatHistoryCleared(UpdateGroupClearHistory)
@@ -272,7 +281,8 @@ type UICallbacks struct {
 	TypingInGroup         func(groupID uuid.UUID)
 
 	CreateGroup              func(groupName string, userIDs []uuid.UUID) error // Create a new group
-	AddUserToGroup           func(groupID, userID uuid.UUID) error             // The user wants to add another user to a group
+	AddUser                  func(groupID, userID uuid.UUID) error             // The user wants to add another user to a group
+	RemoveUser               func(groupID, userID uuid.UUID) error             // User wants to remove a user from a group
 	RenameGroup              func(groupID uuid.UUID, newName string) error     // The user wants to rename a group
 	SetGroupRetention        func(groupID uuid.UUID, retention int64) error    // Set the message retention for a group
 	GetGroupRetention        func(groupID uuid.UUID) int64                     // Get the current retention settings for a group // TODO: should return an error if the group isn't found?
