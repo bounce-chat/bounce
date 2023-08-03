@@ -539,7 +539,17 @@ func (b *bounce) saveAndApplyUpdateGroupAddUser(peer string, g group, ug updateG
 	}
 
 	// Inform the UI
-	//TODO
+	b.userInterface.AddUser(
+		UpdateGroupAddUser{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+			User: User{
+				ID:   u.ID,
+				Name: u.Name,
+			},
+		})
 
 	return nil
 }
@@ -549,7 +559,7 @@ func (b *bounce) saveAndApplyUpdateGroupRemoveUser(g group, ug updateGroup) erro
 	if g.hasAdmins() && g.RestrictUserManagement && !b.isGroupAdmin(g.ID, ug.Actor) {
 		log.WithFields(log.Fields{
 			"user_id": ug.Actor,
-		}).Warn("user attempted to add user to group without permission")
+		}).Warn("user attempted to remove user from group without permission")
 		return errNoPermissionToManageUsers
 	}
 

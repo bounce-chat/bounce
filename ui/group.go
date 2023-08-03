@@ -368,6 +368,35 @@ func (fyneUI *Fyne) DisplayGroupMessage(gm chat.GroupMessage) {
 	fyneUI.appendThreadItem(g, ti)
 }
 
+func (fyneUI *Fyne) AddUser(ugau chat.UpdateGroupAddUser) {
+	g, exists := fyneUI.groups[ugau.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugau.Thread,
+		}).Error("group not found for update group add user")
+		return
+	}
+
+	ti, err := fyneUI.newUpdateGroupAddUser(ugau)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for adding user to group")
+		return
+	}
+
+	u := &user{
+		id:   ugau.User.ID,
+		name: ugau.User.Name,
+	}
+	fyneUI.users.add(u)
+	g.users.add(u)
+	g.pendingUsers.remove(u.id)
+	fyneUI.refreshUserSelections(g)
+
+	fyneUI.appendThreadItem(g, ti)
+}
+
 func (fyneUI *Fyne) RenameGroup(ugn chat.UpdateGroupName) {
 	g, exists := fyneUI.groups[ugn.Thread]
 	if !exists {

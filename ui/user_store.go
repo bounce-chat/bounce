@@ -23,6 +23,11 @@ func (store *userStore) add(u *user) {
 	store.Lock()
 	defer store.Unlock()
 
+	_, exists := store.userMap[u.id]
+	if exists {
+		return
+	}
+
 	store.userMap[u.id] = u
 	smaller := 0
 	for _, existingUser := range store.userList {

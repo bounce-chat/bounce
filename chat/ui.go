@@ -222,6 +222,7 @@ type UI interface {
 	OpenNewGroupChat(Group)
 	NewGroupChat(Group)
 	DisplayGroupMessage(GroupMessage)
+	AddUser(UpdateGroupAddUser)
 	RenameGroup(UpdateGroupName)
 	GroupRetentionChanged(UpdateGroupRetention)
 	GroupChatHistoryCleared(UpdateGroupClearHistory)

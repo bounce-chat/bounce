@@ -224,9 +224,10 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 			for _, thisUser := range thread.pendingUsers.userList {
 				fyneUI.callbacks.AddUserToGroup(thread.id, thisUser.id)
 			}
+		} else {
+			thread.pendingUsers.empty()
+			fyneUI.refreshUserSelections(thread)
 		}
-		thread.pendingUsers.empty()
-		fyneUI.refreshUserSelections(thread)
 		newUserSearchEntry.Text = ""
 		newUserSearchEntry.Refresh()
 	}, fyneUI.mainWindow)
@@ -252,7 +253,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 			container.New(
 				layout.NewBorderLayout(topOptionsVBox, nil, nil, nil),
 				topOptionsVBox,
-				container.NewHBox(thread.addUsersButton), // TODO: make it not expand all the way down
+				container.NewVBox(container.NewHBox(thread.addUsersButton)), // TODO: make it not expand all the way down
 			),
 			closeBar,
 			actionButtons,
