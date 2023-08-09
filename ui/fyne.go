@@ -29,6 +29,7 @@ type Fyne struct {
 	app                            fyne.App
 	mainWindow                     fyne.Window
 	mainContainer                  *fyne.Container
+	defaultContainer               *fyne.Container
 	newInstall                     *fyne.Container
 	newSyncDevice                  *fyne.Container
 	addUser                        *fyne.Container

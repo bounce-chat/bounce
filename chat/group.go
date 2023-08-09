@@ -44,13 +44,29 @@ func (g *group) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+func (g *group) AfterDelete(tx *gorm.DB) error {
+	err := tx.Where("id = ?", g.ID).Delete(&groupCreation{}).Error
+	if err != nil {
+		return err
+	}
+	err = tx.Where("destination = ?", g.ID).Delete(&groupMessage{}).Error
+	if err != nil {
+		return err
+	}
+	err = tx.Where("target = ?", g.ID).Delete(&updateGroup{}).Error
+	if err != nil {
+		return err
+	}
+	err = tx.Exec("DELETE FROM group_users WHERE group_id = ?", g.ID).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (g *group) hasAdmins() bool {
 	return len(g.Admins) > 0
 }
-
-// TODO: after delete, cascade delete of all group updates and messages
-// could also use db.Select(clause.Associations).Delete(&group), but don't want to delete users
-// https://gorm.io/docs/associations.html#Delete-with-Select
 
 func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 	if name == "" {

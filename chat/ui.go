@@ -91,7 +91,7 @@ type UpdateGroupRemoveUser struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	UserID    uuid.UUID
+	User      uuid.UUID
 }
 
 type UpdateGroupClearHistory struct {
@@ -158,6 +158,11 @@ type UpdateGroupPostingUnrestricted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+}
+
+type RemovedFromGroup struct {
+	Group uuid.UUID
+	Actor uuid.UUID
 }
 
 type InitialState struct {
@@ -233,6 +238,7 @@ type UI interface {
 	DisplayGroupMessage(GroupMessage)
 	AddUser(UpdateGroupAddUser)
 	RemoveUser(UpdateGroupRemoveUser)
+	RemovedFromGroup(RemovedFromGroup)
 	RenameGroup(UpdateGroupName)
 	GroupRetentionChanged(UpdateGroupRetention)
 	GroupChatHistoryCleared(UpdateGroupClearHistory)

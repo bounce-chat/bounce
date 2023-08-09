@@ -255,9 +255,6 @@ func (b *bounce) sendGroupMessage(message GroupMessage) {
 		RetentionSeconds: b.getGroupRetention(message.Thread),
 		Text:             message.Text,
 	}
-	message.ID = gm.ID
-	message.Author = b.currentUserID()
-	message.WrittenAt = now.Unix()
 
 	var err error
 	gm.OriginalPayload, err = msgpack.Marshal(gm)

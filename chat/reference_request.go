@@ -75,6 +75,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupMessagePayloads(dev, requestedIDs[typeGroupMessage], offeredIDs[typeGroupMessage])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMsPayloads(dev, requestedIDs[typeUpdateDM], offeredIDs[typeUpdateDM])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateGroupsPayloads(dev, requestedIDs[typeUpdateGroup], offeredIDs[typeUpdateGroup])...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedRemoveFromGroupsPayloads(dev, requestedIDs[typeRemoveFromGroup], offeredIDs[typeRemoveFromGroup])...)
 
 	// Send the catchup if there's anything to send
 	if len(cu.broadcastables) > 0 {
@@ -272,6 +273,34 @@ func (b *bounce) getRequestedAddUsersPayloads(peer device, requestedIDs, offered
 			}
 		} else {
 			requestedData = append(requestedData, &au)
+		}
+	}
+
+	return requestedData
+}
+
+func (b *bounce) getRequestedRemoveFromGroupsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+	requestedData := sortableBroadcastables{}
+
+	requestedRemoveFromGroupsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
+
+	for _, rfgID := range requestedRemoveFromGroupsIDs {
+		var rfg removeFromGroup
+		err := b.database.First(&rfg, "id = ?", rfgID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   rfgID,
+					"peer": peer.Address,
+				}).Warn("reference request asks for an unknown remove from group")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    rfgID,
+					"error": err.Error(),
+				}).Fatal("database error querying for remove from group")
+			}
+		} else {
+			requestedData = append(requestedData, &rfg)
 		}
 	}
 

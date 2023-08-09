@@ -68,6 +68,8 @@ func (b *bounce) openDatabase() {
 		&updateGroup{},
 		&addUser{},
 		&addUserOffer{},
+		&removeFromGroup{},
+		&customScope{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -502,7 +504,7 @@ func (b *bounce) buildInitialState() InitialState {
 					Thread:    ug.Target,
 					Actor:     ug.Actor,
 					Timestamp: ug.Timestamp,
-					UserID:    userID,
+					User:      userID,
 				},
 			)
 		case updateGroupTypeSetClearBefore:

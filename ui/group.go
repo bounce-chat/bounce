@@ -488,8 +488,8 @@ func (fyneUI *Fyne) RemoveUser(ugru chat.UpdateGroupRemoveUser) {
 		return
 	}
 
-	g.users.remove(ugru.UserID)
-	fyneUI.removeAdmin(g, ugru.UserID)
+	g.users.remove(ugru.User)
+	fyneUI.removeAdmin(g, ugru.User)
 	fyneUI.refreshUserSelections(g)
 
 	ti, err := fyneUI.newUpdateGroupRemoveUser(ugru)
@@ -501,6 +501,39 @@ func (fyneUI *Fyne) RemoveUser(ugru chat.UpdateGroupRemoveUser) {
 	}
 
 	fyneUI.appendThreadItem(g, ti)
+}
+
+func (fyneUI *Fyne) RemovedFromGroup(rfg chat.RemovedFromGroup) {
+	if fyneUI.activeThread == rfg.Group {
+		fyneUI.chatContainer = fyneUI.defaultContainer
+	}
+	if rfg.Actor != fyneUI.profile.id {
+		var actorName string
+		actor, ok := fyneUI.users.get(rfg.Actor)
+		if ok {
+			actorName = actor.name
+		} else {
+			log.WithFields(log.Fields{
+				"actor": rfg.Actor,
+				"group": rfg.Group,
+			}).Error("unknown user removed us from a group")
+			actorName = "unknown user"
+		}
+		g, ok := fyneUI.groups[rfg.Group]
+		if !ok {
+			log.WithFields(log.Fields{
+				"group": rfg.Group,
+			}).Error("removed from unknown group")
+			return
+		}
+		groupName, err := g.name.Get()
+		if err != nil {
+			log.Fatal("data bindings are broken")
+		}
+		dialog.ShowInformation("Removed From Group", actorName+" removed you from "+groupName, fyneUI.mainWindow)
+	}
+	delete(fyneUI.groups, rfg.Group)
+	fyneUI.refreshThreadOrder()
 }
 
 func (fyneUI *Fyne) RenameGroup(ugn chat.UpdateGroupName) {

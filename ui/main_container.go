@@ -40,7 +40,7 @@ func (fyneUI *Fyne) showMainContainer() {
 	}
 }
 
-func (fyneUI *Fyne) buildMainContainer() {
+func (fyneUI *Fyne) buildDefaultContainer() {
 	//
 	// Logo and welcome message / instructions to be shown before a thread is selected
 	//
@@ -63,12 +63,17 @@ func (fyneUI *Fyne) buildMainContainer() {
 	fyneUI.threadVBox = container.NewVBox()
 	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
 
-	fyneUI.mainContainer = container.New(
+	fyneUI.defaultContainer = container.New(
 		layout.NewBorderLayout(fyneUI.networkOfflineWarning, nil, threads, nil),
 		fyneUI.networkOfflineWarning,
 		threads,
 		fyneUI.chatContainer,
 	)
+}
+
+func (fyneUI *Fyne) buildMainContainer() {
+	fyneUI.buildDefaultContainer()
+	fyneUI.mainContainer = fyneUI.defaultContainer
 }
 
 func (fyneUI *Fyne) buildDatabaseLoading() {

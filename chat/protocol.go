@@ -13,6 +13,7 @@ var scopeSync = 0
 var scopeUser = 1
 var scopeGroup = 2
 var scopeGlobal = 3
+var scopeCustom = 4
 
 var typeDirectMessage = uint16(0)
 var typeGroupMessage = uint16(1)
@@ -33,6 +34,7 @@ var typeAddUserRequest = uint16(15)
 var typeAddUserRequestAccepted = uint16(16)
 var typeAddUserRequestRejected = uint16(17)
 var typeAddUser = uint16(18)
+var typeRemoveFromGroup = uint16(19)
 
 type sendable interface {
 	getType() uint16
@@ -85,6 +87,7 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 		typeAddUserRequestAccepted:    b.handleAddUserRequestAccepted,
 		typeAddUserRequestRejected:    b.handleAddUserRequestRejected,
 		typeAddUser:                   b.handleAddUser,
+		typeRemoveFromGroup:           b.handleRemoveFromGroup,
 	}
 }
 
@@ -118,6 +121,8 @@ func (b *bounce) getBroadcastScope(br broadcastable) []*remoteDevice {
 		return b.getGroupScope(br)
 	} else if scope == scopeGlobal {
 		return b.getGlobalScope(br)
+	} else if scope == scopeCustom {
+		return b.getCustomScope(br)
 	} else {
 		log.WithFields(log.Fields{
 			"destination": br.getDestination(b.currentUserID()),
@@ -299,6 +304,41 @@ func (b *bounce) getGlobalScope(br broadcastable) []*remoteDevice {
 			if rd.connectedSockets > 0 {
 				broadcastTargets = append(broadcastTargets, rd)
 			}
+		}
+	}
+
+	return broadcastTargets
+}
+
+func (b *bounce) getCustomScope(br broadcastable) []*remoteDevice {
+	broadcastTargets := []*remoteDevice{}
+
+	var cs customScope
+	err := b.database.Where("id = ?", br.getDestination(b.currentUserID())).First(&cs).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"type":  br.getType(),
+				"id":    br.getID(),
+				"scope": br.getDestination(b.currentUserID()),
+			}).Error("cannot broadcast to unknown custom scope")
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up custom scope")
+		}
+	}
+
+	for _, addr := range cs.addresses() {
+		if addr == b.network.Address() {
+			continue
+		}
+		if b.isDeliveredTo(br, addr) {
+			continue
+		}
+		rd := b.getRemoteDevice(addr)
+		if rd.connectedSockets > 0 {
+			broadcastTargets = append(broadcastTargets, rd)
 		}
 	}
 
