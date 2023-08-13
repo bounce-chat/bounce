@@ -11,15 +11,26 @@ import (
 )
 
 type customScope struct {
-	ID        uuid.UUID
-	Addresses string
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Addresses string    `gorm:"not null"`
 }
 
-//TODO: before create
+func (cs *customScope) BeforeCreate(tx *gorm.DB) error {
+	if cs.ID == uuid.Nil {
+		return errors.New("custom scope must have an ID assigned before creation")
+	}
+	return nil
+}
 
 func (cs *customScope) addresses() []string {
-	// TODO: split
-	return []string{}
+	if len(cs.Addresses) == 0 {
+		log.WithFields(log.Fields{
+			"id": cs.ID,
+		}).Error("custom scope has no addresses")
+		return []string{}
+	}
+
+	return strings.Split(cs.Addresses, ",")
 }
 
 func (b *bounce) createCustomScopeFromGroup(groupID uuid.UUID) (uuid.UUID, error) {

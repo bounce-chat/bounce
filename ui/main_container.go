@@ -40,7 +40,7 @@ func (fyneUI *Fyne) showMainContainer() {
 	}
 }
 
-func (fyneUI *Fyne) buildDefaultContainer() {
+func (fyneUI *Fyne) buildMainContainer() {
 	//
 	// Logo and welcome message / instructions to be shown before a thread is selected
 	//
@@ -50,7 +50,7 @@ func (fyneUI *Fyne) buildDefaultContainer() {
 	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
 	logo.SetMinSize(fyne.NewSize(228, 167))
 
-	fyneUI.chatContainer = container.NewMax(
+	fyneUI.defaultContainer = container.NewMax(
 		container.New(
 			layout.NewCenterLayout(),
 			container.NewVBox(
@@ -59,21 +59,18 @@ func (fyneUI *Fyne) buildDefaultContainer() {
 			),
 		),
 	)
+	fyneUI.chatContainer = fyneUI.defaultContainer
 
 	fyneUI.threadVBox = container.NewVBox()
 	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
 
-	fyneUI.defaultContainer = container.New(
+	fyneUI.mainContainer = container.New(
 		layout.NewBorderLayout(fyneUI.networkOfflineWarning, nil, threads, nil),
 		fyneUI.networkOfflineWarning,
 		threads,
 		fyneUI.chatContainer,
 	)
-}
 
-func (fyneUI *Fyne) buildMainContainer() {
-	fyneUI.buildDefaultContainer()
-	fyneUI.mainContainer = fyneUI.defaultContainer
 }
 
 func (fyneUI *Fyne) buildDatabaseLoading() {
