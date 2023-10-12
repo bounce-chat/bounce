@@ -205,8 +205,8 @@ func (b *bounce) handleRemoveFromGroup(peer string, payload []byte) {
 	b.broadcast(&rfg)
 }
 
-func (b *bounce) removeFromGroup(groupID, userID uuid.UUID) error {
-	// Create a remove from group frame and signed container
+func (b *bounce) removeUser(groupID, userID uuid.UUID) error {
+	// Create a remove from group frame
 	rfg := &removeFromGroup{
 		ID:        uuid.New(),
 		GroupID:   groupID,
@@ -214,6 +214,18 @@ func (b *bounce) removeFromGroup(groupID, userID uuid.UUID) error {
 		ActorID:   b.currentUserID(),
 		Timestamp: time.Now().Unix(),
 	}
+
+	// Create an update group to inform the UI
+	ug := updateGroup{
+		ID:        rfg.ID,
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: rfg.Timestamp,
+		Type:      updateGroupTypeRemoveUser,
+		Data:      userID[:],
+	}
+
+	// If we're being removed from the group, custom scope these frames
 	if userID == b.currentUserID() {
 		cs, err := b.createCustomScopeFromGroup(groupID)
 		if err != nil {
@@ -222,7 +234,10 @@ func (b *bounce) removeFromGroup(groupID, userID uuid.UUID) error {
 			}).Fatal("error creating custom scope for group")
 		}
 		rfg.CustomScope = cs
+		ug.CustomScope = cs
 	}
+
+	// Sign the remove from group
 	var err error
 	rfg.OriginalPayload, err = msgpack.Marshal(rfg)
 	if err != nil {
@@ -250,6 +265,10 @@ func (b *bounce) removeFromGroup(groupID, userID uuid.UUID) error {
 
 	// Broadcast
 	go b.broadcast(rfg)
+	err = b.applyAndBroadcastUpdateGroup(ug)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

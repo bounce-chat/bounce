@@ -54,9 +54,10 @@ type updateGroup struct {
 	Timestamp       int64
 	Type            uint16
 	Data            []byte
-	Signer          string `msgpack:"-" gorm:"not null"`
-	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
-	Signature       []byte `msgpack:"-" gorm:"not null"`
+	CustomScope     uuid.UUID `msgpack:"-"`
+	Signer          string    `msgpack:"-" gorm:"not null"`
+	OriginalPayload []byte    `msgpack:"-" gorm:"not null"`
+	Signature       []byte    `msgpack:"-" gorm:"not null"`
 	payload         []byte
 	payloadMutex    sync.Mutex
 }
@@ -70,6 +71,13 @@ func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (ug *updateGroup) AfterDelete(tx *gorm.DB) error {
+	if ug.CustomScope != uuid.Nil {
+		err := tx.Where("id = ?", ug.CustomScope).Delete(&customScope{}).Error
+		if err != nil {
+			return err
+		}
+	}
+
 	return tx.Where("frame_id = ? AND frame_type = ?", ug.ID, typeUpdateGroup).Delete(&deliveryRecord{}).Error
 }
 
@@ -80,6 +88,10 @@ func (ug *updateGroup) getID() uuid.UUID {
 func (ug *updateGroup) getScope(myID uuid.UUID) int {
 	if ug.Type == updateGroupTypeChangeMutedUntil {
 		return scopeSync
+	}
+
+	if ug.CustomScope != uuid.Nil {
+		return scopeCustom
 	}
 
 	return scopeGroup
@@ -968,22 +980,6 @@ func (b *bounce) addUser(groupID, userID uuid.UUID) error {
 	b.userConnectionDesired(userID)
 
 	return nil
-}
-
-func (b *bounce) removeUser(groupID, userID uuid.UUID) error {
-	err := b.removeFromGroup(groupID, userID)
-	if err != nil {
-		return err
-	}
-
-	return b.applyAndBroadcastUpdateGroup(updateGroup{
-		ID:        uuid.New(),
-		Actor:     b.currentUserID(),
-		Target:    groupID,
-		Timestamp: time.Now().Unix(),
-		Type:      updateGroupTypeRemoveUser,
-		Data:      userID[:],
-	})
 }
 
 func (b *bounce) promoteAdmin(groupID, userID uuid.UUID) error {
