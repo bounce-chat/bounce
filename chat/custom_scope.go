@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -12,10 +13,12 @@ import (
 
 type customScope struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Addresses string    `gorm:"not null"`
+	CreatedAt int64
+	Addresses string `gorm:"not null"`
 }
 
 func (cs *customScope) BeforeCreate(tx *gorm.DB) error {
+	cs.CreatedAt = time.Now().Unix()
 	if cs.ID == uuid.Nil {
 		return errors.New("custom scope must have an ID assigned before creation")
 	}

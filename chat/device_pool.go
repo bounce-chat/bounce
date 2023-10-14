@@ -61,6 +61,7 @@ func (b *bounce) makeInitialPeeringConnections() {
 	b.connectToSyncDevices()
 	b.connectToGroups(startupDialsPerThread)
 	b.connectToUsers(startupDialsPerThread)
+	b.connectToCustomScopes(startupDialsPerThread)
 }
 
 func (b *bounce) auditPeers() {
@@ -80,6 +81,9 @@ func (b *bounce) auditPeers() {
 
 	// Connect to any users we have pending messages for or who we talk to frequently
 	b.connectToUsers(connectionsPerThread)
+
+	// Connect to any devices that we have frames for from a deleted group
+	b.connectToCustomScopes(connectionsPerThread)
 
 	// Close any extra connections we aren't using
 	b.closeUnusedConnections()
@@ -218,6 +222,51 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 			// Dial this inactive user if we have non-global content that isn't just group messages
 			if references.shouldDialUser() && !references.onlyGroupContent() && rd.connectedSockets == 0 {
 				go b.tryDialing(dev.Address)
+			}
+		}
+	}
+}
+
+func (b *bounce) connectToCustomScopes(desiredConnections int) {
+	// treat each custom scope like a group, use the same logic otherwise
+	// Connect to all gustom scopes
+	var customScopes []customScope
+	threeMonthsAgo := time.Now().Add(-3 * 4 * 7 * 24 * time.Hour).Unix()
+	err := b.database.Where("created_at > ?", threeMonthsAgo).Find(&customScopes).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error loading custom scopes to peer with")
+	}
+
+	for _, cs := range customScopes {
+		// Prune the pool of closed connections
+		b.devicePool.poolMutex.Lock()
+		b.prunePool(poolTypeGroup, cs.ID)
+		b.devicePool.poolMutex.Unlock()
+
+		// Collect all the devices associated with this custom scope that are not on dial cooldown
+		scopeAddresses := []string{}
+		for _, address := range cs.addresses() {
+			if !b.shouldCooldownDial(address) && address != b.network.Address() {
+				scopeAddresses = append(scopeAddresses, address)
+			}
+		}
+
+		// Choose a random selection of those devices in order to fill the pool
+		b.devicePool.poolMutex.Lock()
+		addressesToDial := chooseN(scopeAddresses, desiredConnections-len(b.devicePool.groupPools[cs.ID]))
+		b.devicePool.poolMutex.Unlock()
+
+		// Attempt to dial them
+		for _, address := range addressesToDial {
+			rd := b.getRemoteDevice(address)
+			if rd.connectedSockets > 0 {
+				// If we're already connected to this device, we can just associate the existing connection with this group
+				b.insertRemoteDeviceIntoPool(address, poolTypeGroup, cs.ID)
+			} else {
+				// If we have no connections to this device, try to dial it and associate the connection with the group
+				go b.tryDialingAndAssociateWithGroup(address, cs.ID)
 			}
 		}
 	}
