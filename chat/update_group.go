@@ -553,9 +553,17 @@ func (b *bounce) saveAndApplyUpdateGroupAddUser(peer string, g group, ug updateG
 	// Associate the user with the group
 	err = b.database.Exec("INSERT INTO group_users VALUES(?, ?)", ug.Target, u.ID).Error
 	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error adding user to group")
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			log.WithFields(log.Fields{
+				"id":       ug.ID,
+				"user_id":  u.ID,
+				"group_id": ug.Target,
+			}).Warn("attempted to add a user to a group that the user is already a part of")
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error adding user to group")
+		}
 	}
 
 	// Inform the UI
