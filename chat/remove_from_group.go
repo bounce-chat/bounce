@@ -41,7 +41,7 @@ func (rfg *removeFromGroup) BeforeCreate(tx *gorm.DB) error {
 
 func (rfg *removeFromGroup) AfterDelete(tx *gorm.DB) error {
 	if rfg.CustomScope != uuid.Nil {
-		err := tx.Where("id = ?", rfg.CustomScope).Delete(&customScope{}).Error
+		err := deleteCustomScopeIfLastUse(tx, rfg.CustomScope)
 		if err != nil {
 			return err
 		}

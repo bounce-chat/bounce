@@ -72,7 +72,7 @@ func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
 
 func (ug *updateGroup) AfterDelete(tx *gorm.DB) error {
 	if ug.CustomScope != uuid.Nil {
-		err := tx.Where("id = ?", ug.CustomScope).Delete(&customScope{}).Error
+		err := deleteCustomScopeIfLastUse(tx, ug.CustomScope)
 		if err != nil {
 			return err
 		}

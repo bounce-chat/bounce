@@ -61,11 +61,11 @@ func (b *bounce) createCustomScopeFromGroup(groupID uuid.UUID) (uuid.UUID, error
 	}
 
 	cs := &customScope{
-		ID:        uuid.New(),
+		ID:        g.ID,
 		Addresses: strings.Join(addresses, ","),
 	}
 
-	err = b.database.Create(cs).Error
+	err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(cs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -73,4 +73,33 @@ func (b *bounce) createCustomScopeFromGroup(groupID uuid.UUID) (uuid.UUID, error
 	}
 
 	return cs.ID, nil
+}
+
+//
+// CHeck if any of the frames that use custom scoping are depending on this custom scope, and if there's only
+// one or zero frames using it, delete it
+//
+func deleteCustomScopeIfLastUse(tx *gorm.DB, id uuid.UUID) error {
+	var rfgCount int64
+	err := tx.Model(&removeFromGroup{}).Where("custom_scope = ?", id).Count(&rfgCount).Error
+	if err != nil {
+		return err
+	}
+
+	var ugCount int64
+	err = tx.Model(&updateGroup{}).Where("custom_scope = ?", id).Count(&ugCount).Error
+	if err != nil {
+		return err
+	}
+
+	dependants := rfgCount + ugCount
+
+	if dependants <= 1 {
+		err := tx.Where("id = ?", id).Delete(&customScope{}).Error
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
