@@ -470,7 +470,17 @@ func (b *bounce) getRemoveFromGroupsToOffer(dev device) []frameReference {
 		Distinct("remove_from_groups.id").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == remove_from_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeRemoveFromGroup).
 		Joins("JOIN group_users ON remove_from_groups.group_id = group_users.group_id").
-		Where("delivery_records.id IS NULL AND (group_users.user_id = ? OR remove_from_groups.user_id = ?)", dev.UserID, dev.UserID).
+		Where(
+			"delivery_records.id IS NULL AND (group_users.user_id = ? OR remove_from_groups.user_id = ?) AND (remove_from_groups.custom_scope == ? OR remove_from_groups.custom_scope IN (?))",
+			dev.UserID,
+			dev.UserID,
+			uuid.Nil,
+			b.database.
+				Model(&customScope{}).
+				Distinct().
+				Select("id").
+				Where("addresses LIKE ?", "%"+dev.Address+"%"),
+		).
 		Find(&unsentRemoveFromGroups).Error
 	if err != nil {
 		log.WithFields(log.Fields{
