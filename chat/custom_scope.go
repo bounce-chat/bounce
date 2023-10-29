@@ -103,3 +103,29 @@ func deleteCustomScopeIfLastUse(tx *gorm.DB, id uuid.UUID) error {
 
 	return nil
 }
+
+//
+// This function is called when we've been re-added to a group we were previously removed from and we want to
+// undo the custom scoping of past frames
+//
+func (b *bounce) rescopeIfReAddedToGroup(groupID uuid.UUID) error {
+	// Remove custom scopes from updateGroups for this group
+	err := b.database.Model(&updateGroup{}).Where("custom_scope = ?", groupID).Update("custom_scope", uuid.Nil.String()).Error
+	if err != nil {
+		return err
+	}
+
+	// Delete any old removeFromGroup for this group
+	err = b.database.Where("custom_scope = ?", groupID).Delete(&removeFromGroup{}).Error
+	if err != nil {
+		return err
+	}
+
+	// Delete the custom scope
+	err = b.database.Where("id = ?", groupID).Delete(&customScope{}).Error
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

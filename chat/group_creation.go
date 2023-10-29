@@ -258,6 +258,15 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 	// Broadcast it
 	b.broadcast(&gc)
 
+	// If we're being re-added to this group, clean up any custom scopes from our past removal
+	err = b.rescopeIfReAddedToGroup(g.ID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"group_id": g.ID,
+			"error":    err.Error(),
+		}).Error("error cleaning up custom scopes when re-added to group")
+	}
+
 	// We might be learning about the creation of a group that originally didn't include us, but that we were later added to.
 	// In that case it doesn't make sense to inform the UI about this group until we're added to it.
 	if b.userIsInGroup(b.currentUserID(), g.ID) {
