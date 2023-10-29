@@ -14,7 +14,7 @@ import (
 type customScope struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	CreatedAt int64
-	Addresses string `gorm:"not null"`
+	Addresses string `gorm:"not null"` // not associating with the actual devices in case we want to delete them
 }
 
 func (cs *customScope) BeforeCreate(tx *gorm.DB) error {
