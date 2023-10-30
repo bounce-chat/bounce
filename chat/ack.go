@@ -288,6 +288,42 @@ func (b *bounce) handleAckUpdateGroups(peer string, ids []uuid.UUID) {
 			}
 		} else {
 			b.markDeliveredTo(&ug, peer)
+
+			// If this updateGroup is custom scoped and we've delivered it to all recipients we can delete it
+			if ug.CustomScope != uuid.Nil {
+				var cs customScope
+				err = b.database.First(&cs, "id = ?", ug.CustomScope).Error
+				if err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						log.WithFields(log.Fields{
+							"id":   ug.ID,
+							"peer": peer,
+						}).Warn("update group missing custom scope")
+						continue
+					} else {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Fatal("database error querying for custom scope")
+					}
+				}
+
+				allDelivered := true
+				for _, addr := range cs.addresses() {
+					if !b.isDeliveredTo(&ug, addr) {
+						allDelivered = false
+					}
+				}
+
+				if allDelivered {
+					err = b.database.Delete(&ug).Error
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Fatal("database error deleting update group")
+					}
+				}
+
+			}
 		}
 	}
 }
