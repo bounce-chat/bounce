@@ -81,6 +81,7 @@ func (b *bounce) openDatabase() {
 	// Prune the database
 	b.pruneDirectMessages()
 	b.pruneGroupMessages()
+	b.pruneUndeliverableCustomScopes()
 }
 
 func (b *bounce) pruneDirectMessages() {
@@ -260,6 +261,26 @@ func (b *bounce) pruneGroupMessages() {
 	}
 	for _, gm := range deliverableUndeliveredGMs {
 		go b.checkIfGroupMessageUndeliverableAt(time.Unix(gm.WrittenAt, 0).Add(undeliverableAfter).Unix(), gm.ID)
+	}
+}
+
+func (b *bounce) pruneUndeliverableCustomScopes() {
+	deleteBefore := time.Now().Unix() - int64(undeliverableAfter.Seconds())
+
+	// Prune remove from groups
+	err := b.database.Where("custom_scope != ? AND timestamp < ?", uuid.Nil, deleteBefore).Delete(&removeFromGroup{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error pruning remove from groups")
+	}
+
+	// Prune update groups
+	err = b.database.Where("custom_scope != ? AND timestamp < ?", uuid.Nil, deleteBefore).Delete(&updateGroup{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error pruning update groups")
 	}
 }
 
