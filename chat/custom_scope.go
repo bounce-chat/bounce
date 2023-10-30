@@ -38,7 +38,7 @@ func (cs *customScope) addresses() []string {
 
 func (b *bounce) createCustomScopeFromGroup(groupID uuid.UUID) (uuid.UUID, error) {
 	var g group
-	err := b.database.Preload("Devices").Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
+	err := b.database.Preload("Users.Devices").Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
