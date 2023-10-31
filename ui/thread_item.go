@@ -15,6 +15,11 @@ var errUnknownThread = errors.New("unknown thread")
 var errUnknownActor = errors.New("unknown actor")
 var errUnknownUser = errors.New("unknown user")
 
+var deletedUser = &user{
+	id:   uuid.Nil,
+	name: "-deleted-",
+}
+
 type threadItem struct {
 	id           uuid.UUID
 	widget       fyne.Widget
@@ -111,12 +116,10 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		return &threadItem{}, errUnknownThread
 	}
 
-	user, exists := group.users.get(gm.Author)
+	user, exists := fyneUI.users.get(gm.Author)
 	if !exists {
-		log.WithFields(log.Fields{
-			"user_id": gm.Author,
-		}).Error("group received a message from user ID not in thread")
-		return &threadItem{}, errUnknownUser
+		user = deletedUser
+		// TODO: make sure to make this unique with a text color for deleted users
 	}
 
 	outgoing := gm.Author == fyneUI.profile.id
