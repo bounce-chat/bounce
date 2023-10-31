@@ -267,7 +267,7 @@ func (b *bounce) getGlobalScope(br broadcastable) []*remoteDevice {
 		// and the devices of any users that have a group in common with the author
 		var overlapDevices []device
 		err := b.database.
-			Distinct("id").
+			Distinct().
 			Where(
 				"(user_id = ? OR user_id = ? OR user_id IN (?))",
 				b.currentUserID(),

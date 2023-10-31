@@ -551,19 +551,11 @@ func (b *bounce) saveAndApplyUpdateGroupAddUser(peer string, g group, ug updateG
 	}
 
 	// Associate the user with the group
-	err = b.database.Exec("INSERT INTO group_users VALUES(?, ?)", ug.Target, u.ID).Error
+	err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Exec("INSERT INTO group_users VALUES(?, ?)", ug.Target, u.ID).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrDuplicatedKey) {
-			log.WithFields(log.Fields{
-				"id":       ug.ID,
-				"user_id":  u.ID,
-				"group_id": ug.Target,
-			}).Warn("attempted to add a user to a group that the user is already a part of")
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error adding user to group")
-		}
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error adding user to group")
 	}
 
 	// Inform the UI
@@ -984,8 +976,13 @@ func (b *bounce) addUser(groupID, userID uuid.UUID) error {
 		return err
 	}
 
-	// Connect to this new user to send the new group and do a reference flow
+	// Connect to this new user to send the new group
 	b.userConnectionDesired(userID)
+
+	// Do a reference flow with any devices we're currently connected to
+	for _, dev := range newUser.Devices {
+		go b.sendReferences(dev.Address)
+	}
 
 	return nil
 }

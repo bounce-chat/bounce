@@ -300,6 +300,10 @@ func (b *bounce) getRequestedRemoveFromGroupsPayloads(peer device, requestedIDs,
 				}).Fatal("database error querying for remove from group")
 			}
 		} else {
+			// If we offered a remove from group, but the user has since been added to the group, don't actually send it
+			if b.userIsInGroup(rfg.UserID, rfg.GroupID) {
+				continue
+			}
 			requestedData = append(requestedData, &rfg)
 		}
 	}

@@ -124,6 +124,12 @@ func (b *bounce) sendReferences(peer string) {
 		return
 	}
 
+	rd := b.getRemoteDevice(peer)
+	if rd.connectedSockets < 1 {
+		// Can't send references to a device we're not connected to
+		return
+	}
+
 	// Reference offers are often sent when connections are interrupted and sockets might be disconnected
 	// but not yet reporting errors.  It's important to ensure references are delivered, so we send them
 	// until they are ack'd, then delete the delivery record since this isn't a stored frame.
@@ -467,7 +473,7 @@ func (b *bounce) getRemoveFromGroupsToOffer(dev device) []frameReference {
 	err := b.database.
 		Preload(clause.Associations).
 		Select("remove_from_groups.*").
-		Distinct("remove_from_groups.id").
+		Distinct().
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == remove_from_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeRemoveFromGroup).
 		Joins("JOIN group_users ON remove_from_groups.group_id = group_users.group_id").
 		Where(
@@ -491,7 +497,7 @@ func (b *bounce) getRemoveFromGroupsToOffer(dev device) []frameReference {
 	references := []frameReference{}
 	for _, rfg := range unsentRemoveFromGroups {
 		// If this user is a member of this group right now, they were re-added, and so we don't want to send this frame
-		if dev.UserID == rfg.UserID && b.userIsInGroup(rfg.GroupID, rfg.UserID) {
+		if b.userIsInGroup(rfg.UserID, rfg.GroupID) {
 			continue
 		}
 		references = append(references, frameReference{FrameID: rfg.ID, Type: typeRemoveFromGroup})
