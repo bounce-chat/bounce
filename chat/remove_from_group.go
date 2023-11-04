@@ -284,6 +284,32 @@ func (b *bounce) removeUser(groupID, userID uuid.UUID) error {
 		return err
 	}
 
+	// If we're not removing ourselves and are therefore using a group scope, since we're already removed the user from the group,
+	// we need to directly broadcast this rfg to the user's online devices
+	if userID != b.currentUserID() {
+		var u user
+		err := b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"user_id": userID,
+				}).Error("user not found for direct remove from group broadcast")
+				return err
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error looking up user")
+			}
+		}
+
+		for _, dev := range u.Devices {
+			rd := b.getRemoteDevice(dev.Address)
+			if rd.connectedSockets > 0 {
+				go b.sendDirect(dev.Address, rfg)
+			}
+		}
+	}
+
 	return nil
 }
 

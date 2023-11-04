@@ -281,10 +281,6 @@ func (fyneUI *Fyne) OpenNewGroupChat(bounceGroup chat.Group) { // TODO: rename "
 
 func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	if _, exists := fyneUI.groups[bounceGroup.ID]; exists {
-		log.WithFields(log.Fields{
-			"id":   bounceGroup.ID,
-			"name": bounceGroup.Name,
-		}).Warn("requested to create a group that already exists, ignored")
 		return
 	}
 
@@ -505,7 +501,8 @@ func (fyneUI *Fyne) RemoveUser(ugru chat.UpdateGroupRemoveUser) {
 
 func (fyneUI *Fyne) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 	if fyneUI.activeThread == rfg.Group {
-		fyneUI.chatContainer = fyneUI.defaultContainer
+		fyneUI.chatContainer.Objects = []fyne.CanvasObject{fyneUI.defaultContainer}
+		fyneUI.chatContainer.Refresh()
 	}
 	if rfg.Actor != fyneUI.profile.id {
 		var actorName string

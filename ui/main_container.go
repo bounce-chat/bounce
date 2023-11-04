@@ -59,7 +59,8 @@ func (fyneUI *Fyne) buildMainContainer() {
 			),
 		),
 	)
-	fyneUI.chatContainer = fyneUI.defaultContainer
+	fyneUI.chatContainer = container.NewMax()
+	fyneUI.chatContainer.Objects = []fyne.CanvasObject{fyneUI.defaultContainer}
 
 	fyneUI.threadVBox = container.NewVBox()
 	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
