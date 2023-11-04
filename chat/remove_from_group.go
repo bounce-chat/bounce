@@ -147,6 +147,20 @@ func (b *bounce) handleRemoveFromGroup(peer string, payload []byte) {
 		}).Fatal("database error looking up remove from group")
 	}
 
+	// If we're being removed from a group we don't know about, we've already applied this and can ack and return
+	var g group
+	err = b.database.First(&g, "id = ?", rfg.GroupID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			go b.sendAck(peer, typeRemoveFromGroup, rfg.ID)
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up group")
+		}
+	}
+
 	// Ensure that the actor is in the group that is being affected
 	if !b.userIsInGroup(rfg.ActorID, rfg.GroupID) {
 		log.WithFields(log.Fields{

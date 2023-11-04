@@ -189,6 +189,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	if !b.userIsInGroup(ug.Actor, ug.Target) {
 		log.WithFields(log.Fields{
 			"peer":  peer,
+			"id":    ug.ID,
 			"actor": ug.Actor,
 			"group": ug.Target,
 		}).Warn("device sent an update for a group where the actor is not a part of the group, ignoring")
@@ -550,19 +551,21 @@ func (b *bounce) saveAndApplyUpdateGroupAddUser(peer string, g group, ug updateG
 		b.userConnectionDesired(u.ID)
 	}
 
-	// Associate the user with the group
-	err = b.database.Exec("INSERT INTO group_users VALUES(?, ?)", ug.Target, u.ID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrDuplicatedKey) {
-			log.WithFields(log.Fields{
-				"id":       ug.ID,
-				"user_id":  u.ID,
-				"group_id": ug.Target,
-			}).Warn("attempted to add a user to a group that the user is already a part of")
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error adding user to group")
+	// Associate the user with the group if needed
+	if !b.userIsInGroup(u.ID, ug.Target) {
+		err = b.database.Exec("INSERT INTO group_users VALUES(?, ?)", ug.Target, u.ID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrDuplicatedKey) {
+				log.WithFields(log.Fields{
+					"id":       ug.ID,
+					"user_id":  u.ID,
+					"group_id": ug.Target,
+				}).Warn("attempted to add a user to a group that the user is already a part of")
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error adding user to group")
+			}
 		}
 	}
 
