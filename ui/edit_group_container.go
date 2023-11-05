@@ -215,7 +215,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 	addUsersDialog := dialog.NewCustomConfirm("Add Users", "Save", "Cancel", newUserSelector, func(apply bool) {
 		if apply {
 			for _, thisUser := range thread.pendingUsers.userList {
-				fyneUI.callbacks.AddUser(thread.id, thisUser.id)
+				go fyneUI.callbacks.AddUser(thread.id, thisUser.id) // TODO: dialog error if there is one
 			}
 		} else {
 			thread.pendingUsers.empty()

@@ -362,28 +362,32 @@ func (b *bounce) applyRemoveFromGroup(rfg *removeFromGroup) error {
 	}
 
 	// If this frame removes us from a group, all we need to do is delete the group,
-	// which will cascade cleaning everything else up
+	// which will cascade cleaning everything else up, otherwise we disassociate this
+	// use from the group
 	if rfg.UserID == b.currentUserID() {
 		b.userInterface.RemovedFromGroup(RemovedFromGroup{
 			Group: g.ID,
 			Actor: rfg.ActorID,
 		})
-		return b.database.Delete(&g).Error
-	}
+		err = b.database.Delete(&g).Error
+		if err != nil {
+			return err
+		}
+	} else {
+		// Remove this user from the group
+		err = b.database.Exec("DELETE FROM group_users WHERE group_id = ? AND user_id = ?", rfg.GroupID, rfg.UserID).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": rfg.GroupID,
+				"user_id":  rfg.UserID,
+			}).Fatal("database error removing user from group")
+		}
 
-	// Remove this user from the group
-	err = b.database.Exec("DELETE FROM group_users WHERE group_id = ? AND user_id = ?", rfg.GroupID, rfg.UserID).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error":    err.Error(),
-			"group_id": rfg.GroupID,
-			"user_id":  rfg.UserID,
-		}).Fatal("database error removing user from group")
-	}
-
-	// Remove them from admin list if they are an admin
-	if b.isGroupAdmin(rfg.GroupID, rfg.UserID) {
-		b.removeGroupAdmin(rfg.GroupID, rfg.UserID)
+		// Remove them from admin list if they are an admin
+		if b.isGroupAdmin(rfg.GroupID, rfg.UserID) {
+			b.removeGroupAdmin(rfg.GroupID, rfg.UserID)
+		}
 	}
 
 	// Get the user
