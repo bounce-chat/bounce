@@ -69,10 +69,16 @@ func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 
 	// TODO: round the corners when possible: https://github.com/fyne-io/fyne/issues/1090
 	// Incoming messages have a grey background and justify to the left
-	background := &canvas.Rectangle{FillColor: color.NRGBA{0x20, 0x20, 0x20, 0xff}}
+	background := &canvas.Rectangle{
+		FillColor:    color.NRGBA{0x20, 0x20, 0x20, 0xff},
+		CornerRadius: 15,
+	}
 	if bubble.outgoing {
 		// Sent messages have a blue background and justify to the right
-		background = &canvas.Rectangle{FillColor: color.NRGBA{0, 0x23, 0x75, 0xff}}
+		background = &canvas.Rectangle{
+			FillColor:    color.NRGBA{0, 0x23, 0x75, 0xff},
+			CornerRadius: 15,
+		}
 	}
 
 	renderer := &bubbleRenderer{
@@ -194,7 +200,7 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 		xOffset = availableWidth - maximumTextWidth
 	}
 	// Lastly, there's going to be padding on the justified side of the bubble.  Reduce the offset for that.
-	xOffset -= renderer.horizontalPaddingSideOfBackground * 2
+	xOffset -= renderer.horizontalPaddingSideOfBackground * 4
 
 	//
 	// For incoming messages that contain an icon, we need to scoot the whole bubble out a bit so that we can place an icon on the side
