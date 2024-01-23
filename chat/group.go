@@ -26,7 +26,7 @@ type group struct {
 	ClearBefore            int64
 	MutedUntil             int64
 	Users                  []user `gorm:"many2many:group_users;"`
-	Admins                 string
+	Admins                 string `gorm:"not null"`
 	RestrictUserManagement bool
 	RestrictGroupEdits     bool
 	RestrictPosting        bool
@@ -244,7 +244,7 @@ func (b *bounce) userIsInGroup(userID, groupID uuid.UUID) bool { // TODO: revers
 	return exists
 }
 
-func (b *bounce) validGroupName(name string) bool {
+func validGroupName(name string) bool {
 	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= 512
 }
 

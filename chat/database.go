@@ -71,6 +71,7 @@ func (b *bounce) openDatabase() {
 		&addUserOffer{},
 		&removeFromGroup{},
 		&customScope{},
+		&confirmation{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -445,7 +446,7 @@ func (b *bounce) buildInitialState() InitialState {
 
 	// Load all update groups
 	ugs := []updateGroup{}
-	err = b.database.Order("timestamp asc").Find(&ugs).Error
+	err = b.database.Where("applied = true").Order("timestamp asc").Find(&ugs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

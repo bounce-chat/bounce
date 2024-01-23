@@ -269,13 +269,13 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 
 	// We might be learning about the creation of a group that originally didn't include us, but that we were later added to.
 	// In that case it doesn't make sense to inform the UI about this group until we're added to it.
-	if b.userIsInGroup(b.currentUserID(), g.ID) {
-		b.userInterface.NewGroupChat(Group{
-			ID:      g.ID,
-			Name:    g.Name,
-			UserIDs: userIDs,
-		})
-	}
+	//if b.userIsInGroup(b.currentUserID(), g.ID) {
+	b.userInterface.NewGroupChat(Group{
+		ID:      g.ID,
+		Name:    g.Name,
+		UserIDs: userIDs, // TODO: admins
+	})
+	//}
 
 	// Notify the peering engine that we want to be connected to this group right now
 	b.groupConnectionDesired(g.ID)

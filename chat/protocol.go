@@ -35,6 +35,7 @@ var typeAddUserRequestAccepted = uint16(16)
 var typeAddUserRequestRejected = uint16(17)
 var typeAddUser = uint16(18)
 var typeRemoveFromGroup = uint16(19)
+var typeConfirmation = uint16(20)
 
 type sendable interface {
 	getType() uint16
@@ -88,6 +89,7 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte) {
 		typeAddUserRequestRejected:    b.handleAddUserRequestRejected,
 		typeAddUser:                   b.handleAddUser,
 		typeRemoveFromGroup:           b.handleRemoveFromGroup,
+		typeConfirmation:              b.handleConfirmation,
 	}
 }
 

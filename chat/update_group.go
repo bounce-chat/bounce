@@ -55,9 +55,11 @@ type updateGroup struct {
 	Type            uint16
 	Data            []byte
 	CustomScope     uuid.UUID `msgpack:"-"`
-	Signer          string    `msgpack:"-" gorm:"not null"`
-	OriginalPayload []byte    `msgpack:"-" gorm:"not null"`
-	Signature       []byte    `msgpack:"-" gorm:"not null"`
+	Confirmations   []confirmation
+	Applied         bool   `msgpack:"-"`
+	Signer          string `msgpack:"-" gorm:"not null"`
+	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
+	Signature       []byte `msgpack:"-" gorm:"not null"`
 	payload         []byte
 	payloadMutex    sync.Mutex
 }
@@ -79,6 +81,8 @@ func (ug *updateGroup) AfterDelete(tx *gorm.DB) error {
 	}
 
 	return tx.Where("frame_id = ? AND frame_type = ?", ug.ID, typeUpdateGroup).Delete(&deliveryRecord{}).Error
+
+	// TODO: delete any confirmations
 }
 
 func (ug *updateGroup) getID() uuid.UUID {
@@ -135,6 +139,15 @@ func (ug *updateGroup) getAuthor() uuid.UUID {
 
 func (ug *updateGroup) getTimestamp() int64 {
 	return ug.Timestamp
+}
+
+func (ug *updateGroup) confirmingUsers() int {
+	users := make(map[uuid.UUID]bool)
+	for _, c := range ug.Confirmations {
+		users[c.Author] = true
+	}
+
+	return len(users)
 }
 
 func (ug *updateGroup) permissionPayloadIsRestricted() (bool, error) {
@@ -287,7 +300,7 @@ func (b *bounce) saveAndApplyUpdateGroup(peer string, ug updateGroup) error {
 func (b *bounce) saveAndApplyUpdateGroupChangeName(g group, ug updateGroup) error {
 	// Make sure the name is valid
 	newName := string(ug.Data)
-	if !b.validGroupName(newName) {
+	if !validGroupName(newName) {
 		log.WithFields(log.Fields{
 			"name": newName,
 		}).Error("cannot apply update group with invalid name")
