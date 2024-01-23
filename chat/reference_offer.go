@@ -62,8 +62,6 @@ func (ro *referenceOffer) shouldDialUser() bool {
 			return true
 		} else if reference.Type == typeUpdateGroup {
 			return true
-		} else if reference.Type == typeRemoveFromGroup {
-			return true
 		}
 	}
 	return false
@@ -188,7 +186,6 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	references = append(references, b.getAddUsersToOffer(dev)...)
 	references = append(references, b.getGroupCreationsToOffer(dev)...)
 	references = append(references, b.getUpdateGroupsToOffer(dev)...)
-	references = append(references, b.getRemoveFromGroupsToOffer(dev)...)
 
 	return &referenceOffer{
 		ID:         uuid.New(),
@@ -467,45 +464,6 @@ func (b *bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) getRemoveFromGroupsToOffer(dev device) []frameReference {
-	var unsentRemoveFromGroups []removeFromGroup
-
-	err := b.database.
-		Preload(clause.Associations).
-		Select("remove_from_groups.*").
-		Distinct().
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == remove_from_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeRemoveFromGroup).
-		Joins("JOIN group_users ON remove_from_groups.group_id = group_users.group_id").
-		Where(
-			"delivery_records.id IS NULL AND (group_users.user_id = ? OR remove_from_groups.user_id = ?) AND (remove_from_groups.custom_scope == ? OR remove_from_groups.custom_scope IN (?))",
-			dev.UserID,
-			dev.UserID,
-			uuid.Nil,
-			b.database.
-				Model(&customScope{}).
-				Distinct().
-				Select("id").
-				Where("addresses LIKE ?", "%"+dev.Address+"%"),
-		).
-		Find(&unsentRemoveFromGroups).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error selecting unsent remove from groups in reference offer")
-	}
-
-	references := []frameReference{}
-	for _, rfg := range unsentRemoveFromGroups {
-		// If this user is a member of this group right now, they were re-added, and so we don't want to send this frame
-		if b.userIsInGroup(rfg.UserID, rfg.GroupID) {
-			continue
-		}
-		references = append(references, frameReference{FrameID: rfg.ID, Type: typeRemoveFromGroup})
-	}
-
-	return references
-}
-
 func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 	var ro referenceOffer
 	err := msgpack.Unmarshal(payload, &ro)
@@ -530,7 +488,6 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 	references = append(references, b.getAddUsersToRequest(dev, deviceExists, typesToIDs[typeAddUser])...)
 	references = append(references, b.getGroupCreationsToRequest(dev, deviceExists, typesToIDs[typeGroupCreation])...)
 	references = append(references, b.getUpdateGroupsToRequest(dev, deviceExists, typesToIDs[typeUpdateGroup])...)
-	references = append(references, b.getRemoveFromGroupsToRequest(dev, deviceExists, typesToIDs[typeRemoveFromGroup])...)
 
 	// Inform the reference engine that this peer has these frames that we don't know about
 	b.loadReferenceOffer(peer, references)
@@ -696,30 +653,6 @@ func (b *bounce) getUpdateGroupsToRequest(dev device, deviceExists bool, offered
 				"id":    updateGroupID,
 				"error": err.Error(),
 			}).Fatal("database error querying for update group")
-		}
-	}
-
-	return references
-}
-
-func (b *bounce) getRemoveFromGroupsToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
-	references := []frameReference{}
-
-	for _, removeFromGroupID := range offeredIDs {
-		var rfg removeFromGroup
-		err := b.database.First(&rfg, "id = ?", removeFromGroupID).Error
-		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&rfg, dev.Address) {
-				b.markDeliveredTo(&rfg, dev.Address)
-			}
-			go b.sendAck(dev.Address, typeRemoveFromGroup, removeFromGroupID)
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, frameReference{FrameID: removeFromGroupID, Type: typeRemoveFromGroup})
-		} else {
-			log.WithFields(log.Fields{
-				"id":    removeFromGroupID,
-				"error": err.Error(),
-			}).Fatal("database error querying for remove from group")
 		}
 	}
 

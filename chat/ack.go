@@ -63,7 +63,6 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckAddUsers(peer, ackedIDs[typeAddUser])
 	b.handleAckGroupCreations(peer, ackedIDs[typeGroupCreation])
 	b.handleAckUpdateGroups(peer, ackedIDs[typeUpdateGroup])
-	b.handleAckRemoveFromGroups(peer, ackedIDs[typeRemoveFromGroup])
 }
 
 func (b *bounce) sendAck(peer string, frameType uint16, frameID uuid.UUID) {
@@ -323,64 +322,6 @@ func (b *bounce) handleAckUpdateGroups(peer string, ids []uuid.UUID) {
 					}
 				}
 
-			}
-		}
-	}
-}
-
-func (b *bounce) handleAckRemoveFromGroups(peer string, ids []uuid.UUID) {
-	for _, removeFromGroupID := range ids {
-		var rfg removeFromGroup
-		err := b.database.First(&rfg, "id = ?", removeFromGroupID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id":   removeFromGroupID,
-					"peer": peer,
-				}).Warn("unknown remove from group acked")
-				continue
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error querying for remove from group")
-			}
-		} else {
-			b.markDeliveredTo(&rfg, peer)
-
-			// If this device removes us from a group, and we've delivered it to every member of that group,
-			// we can delete the frame and corresponding custom scope
-			if rfg.UserID == b.currentUserID() {
-				var cs customScope
-				err = b.database.First(&cs, "id = ?", rfg.CustomScope).Error
-				if err != nil {
-					if errors.Is(err, gorm.ErrRecordNotFound) {
-						log.WithFields(log.Fields{
-							"id":   removeFromGroupID,
-							"peer": peer,
-						}).Warn("remove from group missing custom scope")
-						continue
-					} else {
-						log.WithFields(log.Fields{
-							"error": err.Error(),
-						}).Fatal("database error querying for custom scope")
-					}
-				}
-
-				allDelivered := true
-				for _, addr := range cs.addresses() {
-					if !b.isDeliveredTo(&rfg, addr) {
-						allDelivered = false
-					}
-				}
-
-				if allDelivered {
-					err = b.database.Delete(&rfg).Error
-					if err != nil {
-						log.WithFields(log.Fields{
-							"error": err.Error(),
-						}).Fatal("database error deleting remove from group")
-					}
-				}
 			}
 		}
 	}

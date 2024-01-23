@@ -237,6 +237,7 @@ func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
 					conflictConfirmed := (float64(conflict.confirmingUsers()) / float64(len(newTop.users))) > 0.5
 					if conflictConfirmed {
 						// If the conflict was confirmed as well, then the conflict wins because it's older, and we ignore this change
+						cs.restore()
 						break
 					} else {
 						// If the conflict is not confirmed then we exclude it, and attempt to re-add everything that happened since the conflict was removed
@@ -255,6 +256,8 @@ func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
 }
 
 func (b *bounce) updateGroupConsensus(groupID uuid.UUID) {
+	// TODO: mutex
+
 	// Create the initial group state from the group creation and use that to start history
 	initialState, err := b.createInitialGroupState(groupID)
 	if err != nil {
@@ -653,6 +656,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				if err != nil {
 					return err
 				}
+				b.sendConfirmation(gs.ug)
 			}
 		}
 
@@ -698,7 +702,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		if !finalState.isMember(b.currentUserID()) {
 			b.userInterface.RemovedFromGroup(RemovedFromGroup{
 				Group: g.ID,
-				Actor: finalState.ug.Actor, // TODO: final update group might not be the one that removed us
+				Actor: finalState.ug.Actor, // TODO: final update group might not be the one that removed us, scroll through history to find the most recent ug that removes us
 			})
 			return tx.Delete(&g).Error
 		}
@@ -864,19 +868,6 @@ func (b *bounce) informUIUpdateGroupAddUser(ug updateGroup) {
 		}).Error("error unmarshalling user")
 		return
 	}
-
-	// Create the group in the UI if we're just being added to it
-	//if u.ID == b.currentUserID() {
-	//	userIDs := []uuid.UUID{}
-	//	for _, u := range g.Users {
-	//		userIDs = append(userIDs, u.ID)
-	//	}
-	//	b.userInterface.NewGroupChat(Group{
-	//		ID:      g.ID,
-	//		Name:    g.Name,
-	//		UserIDs: userIDs, // TODO: admins?
-	//	})
-	//}
 
 	b.userInterface.AddUser(
 		UpdateGroupAddUser{
@@ -1057,6 +1048,8 @@ func (b *bounce) handleUpdateGroupSideEffects(tx *gorm.DB, ug updateGroup) error
 	switch ug.Type {
 	case updateGroupTypeAddUser:
 		return b.createNewUserIfNeeded(tx, ug)
+	case updateGroupTypeRemoveUser:
+		return b.clearDeliveryRecordsForRemovedUser(tx, ug)
 	case updateGroupTypeSetClearBefore:
 		return b.pruneMessagesBeforeClear(tx, ug)
 	}
@@ -1101,6 +1094,80 @@ func (b *bounce) createNewUserIfNeeded(tx *gorm.DB, ug updateGroup) error {
 
 		// Attempt to make a connection to the user
 		b.userConnectionDesired(u.ID)
+	}
+
+	return nil
+}
+
+func (b *bounce) clearDeliveryRecordsForRemovedUser(tx *gorm.DB, ug updateGroup) error {
+	// Parse the user ID
+	userID, err := uuid.FromBytes(ug.Data)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"actor":   ug.Actor,
+			"user_id": ug.Data,
+		}).Error("update group attempted to remove user with invalid UUID")
+		return err
+	}
+
+	// Get the user
+	var u user
+	err = b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": ug.Target,
+				"user_id":  userID,
+			}).Error("user not found when attempting to remove user from group")
+			return err
+		} else {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Fatal("database error looking up user")
+		}
+	}
+
+	// Delete all delivery records for this user for items in this group
+	for _, dev := range u.Devices {
+		// Delete the delivery records for each group message
+		gms := []groupMessage{}
+		err = tx.Where("destination = ?", ug.Target).Find(&gms).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": ug.Target,
+			}).Fatal("database error looking up all group messages for a group")
+		}
+		for _, gm := range gms {
+			err = tx.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeGroupMessage, gm.ID).Error
+			if err != nil {
+				return err
+			}
+		}
+
+		// Delete the delivery records for each update group
+		ugs := []updateGroup{}
+		err = tx.Where("target = ?", ug.Target).Find(&ugs).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": ug.Target,
+			}).Fatal("database error looking up all updates for a group")
+		}
+		for _, ugToDelete := range ugs {
+			err = tx.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeUpdateGroup, ugToDelete.ID).Error
+			if err != nil {
+				return err
+			}
+		}
+
+		// Delete the delivery records for the original group creation
+		err = tx.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeGroupCreation, ug.Target).Error
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

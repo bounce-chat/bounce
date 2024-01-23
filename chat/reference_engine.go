@@ -230,15 +230,14 @@ func (b *bounce) makeReferenceRequests() {
 // Extract all the IDs in the references by type
 func referencedIDs(references []frameReference) map[uint16][]uuid.UUID {
 	ids := map[uint16][]uuid.UUID{
-		typeReferenceOffer:  []uuid.UUID{},
-		typeDirectMessage:   []uuid.UUID{},
-		typeGroupMessage:    []uuid.UUID{},
-		typeUpdateDM:        []uuid.UUID{},
-		typeDevice:          []uuid.UUID{},
-		typeAddUser:         []uuid.UUID{},
-		typeGroupCreation:   []uuid.UUID{},
-		typeUpdateGroup:     []uuid.UUID{},
-		typeRemoveFromGroup: []uuid.UUID{},
+		typeReferenceOffer: []uuid.UUID{},
+		typeDirectMessage:  []uuid.UUID{},
+		typeGroupMessage:   []uuid.UUID{},
+		typeUpdateDM:       []uuid.UUID{},
+		typeDevice:         []uuid.UUID{},
+		typeAddUser:        []uuid.UUID{},
+		typeGroupCreation:  []uuid.UUID{},
+		typeUpdateGroup:    []uuid.UUID{},
 	}
 
 	for _, reference := range references {

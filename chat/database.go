@@ -69,7 +69,6 @@ func (b *bounce) openDatabase() {
 		&updateGroup{},
 		&addUser{},
 		&addUserOffer{},
-		&removeFromGroup{},
 		&customScope{},
 		&confirmation{},
 	)
@@ -268,16 +267,8 @@ func (b *bounce) pruneGroupMessages() {
 func (b *bounce) pruneUndeliverableCustomScopes() {
 	deleteBefore := time.Now().Unix() - int64(undeliverableAfter.Seconds())
 
-	// Prune remove from groups
-	err := b.database.Where("custom_scope != ? AND timestamp < ?", uuid.Nil, deleteBefore).Delete(&removeFromGroup{}).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error pruning remove from groups")
-	}
-
 	// Prune update groups
-	err = b.database.Where("custom_scope != ? AND timestamp < ?", uuid.Nil, deleteBefore).Delete(&updateGroup{}).Error
+	err := b.database.Where("custom_scope != ? AND timestamp < ?", uuid.Nil, deleteBefore).Delete(&updateGroup{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

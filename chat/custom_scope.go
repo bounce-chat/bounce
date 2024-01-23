@@ -80,21 +80,13 @@ func (b *bounce) createCustomScopeFromGroup(groupID uuid.UUID) (uuid.UUID, error
 // one or zero frames using it, delete it
 //
 func deleteCustomScopeIfLastUse(tx *gorm.DB, id uuid.UUID) error {
-	var rfgCount int64
-	err := tx.Model(&removeFromGroup{}).Where("custom_scope = ?", id).Count(&rfgCount).Error
-	if err != nil {
-		return err
-	}
-
 	var ugCount int64
-	err = tx.Model(&updateGroup{}).Where("custom_scope = ?", id).Count(&ugCount).Error
+	err := tx.Model(&updateGroup{}).Where("custom_scope = ?", id).Count(&ugCount).Error
 	if err != nil {
 		return err
 	}
 
-	dependants := rfgCount + ugCount
-
-	if dependants <= 1 {
+	if ugCount <= 1 {
 		err := tx.Where("id = ?", id).Delete(&customScope{}).Error
 		if err != nil {
 			return err
@@ -111,12 +103,6 @@ func deleteCustomScopeIfLastUse(tx *gorm.DB, id uuid.UUID) error {
 func (b *bounce) rescopeIfReAddedToGroup(groupID uuid.UUID) error {
 	// Remove custom scopes from updateGroups for this group
 	err := b.database.Model(&updateGroup{}).Where("custom_scope = ?", groupID).Update("custom_scope", uuid.Nil.String()).Error
-	if err != nil {
-		return err
-	}
-
-	// Delete any old removeFromGroup for this group
-	err = b.database.Where("custom_scope = ?", groupID).Delete(&removeFromGroup{}).Error
 	if err != nil {
 		return err
 	}

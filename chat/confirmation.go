@@ -3,12 +3,15 @@ package chat
 import (
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
 )
+
+var confirmationMutex sync.Mutex
 
 //
 // A confirmation is a signature of an update group from a device which is broadcast to the entire group.
@@ -32,6 +35,10 @@ func (c *confirmation) BeforeCreate(tx *gorm.DB) error {
 		return errors.New("confirmation must have an ID assigned before creation")
 	}
 	return nil
+}
+
+func (c *confirmation) AfterDelete(tx *gorm.DB) error {
+	return tx.Where("frame_id = ? AND frame_type = ?", c.ID, typeConfirmation).Delete(&confirmation{}).Error
 }
 
 func (c *confirmation) getID() uuid.UUID {
@@ -75,5 +82,130 @@ func (c *confirmation) getTimestamp() int64 {
 }
 
 func (b *bounce) handleConfirmation(peer string, payload []byte) {
+	confirmationMutex.Lock()
+	defer confirmationMutex.Unlock()
 
+	// Unmarshal the confirmation
+	var c confirmation
+	err := msgpack.Unmarshal(payload, &c)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling confirmation")
+		return
+	}
+
+	// Check if we already have this confirmation
+	var existingConfirmation confirmation
+	err = b.database.Where("id = ?", c.ID).First(&existingConfirmation).Error
+	if err == nil {
+		b.markDeliveredTo(&existingConfirmation, peer)
+		go b.sendAck(peer, typeConfirmation, c.ID)
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up confirmation")
+	}
+
+	// Validate the signature
+	valid := b.network.VerifySignature(c.SigningDevice, c.UpdateGroupID[:], c.Signature)
+	if !valid {
+		log.WithFields(log.Fields{
+			"update_group_id": c.UpdateGroupID,
+			"confirmation_id": c.ID,
+			"signing_device":  c.SigningDevice,
+		}).Warn("ignoring confirmation with invalid signautre")
+		return
+	}
+
+	// Look up the update group that is being signed
+	var ug updateGroup
+	err = b.database.Where("id = ?", c.UpdateGroupID).First(&ug).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"update_group_id": c.UpdateGroupID,
+				"confirmation_id": c.ID,
+			}).Warn("ignoring confirmation for unknown update group")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up update group")
+		}
+	}
+	c.Destination = ug.Target
+
+	// Look up and assign the user who signed this confirmation
+	dev, ok := b.getDeviceFromAddress(c.SigningDevice)
+	if !ok {
+		log.WithFields(log.Fields{
+			"update_group_id": c.UpdateGroupID,
+			"confirmation_id": c.ID,
+			"signing_device":  c.SigningDevice,
+		}).Warn("ignoring confirmation from unknown device")
+		return
+	}
+	c.Author = dev.UserID
+
+	// TODO: make sure that the user was a member at the time they signed this update group.  build the canonical stack with this confirmation, find the gs in that stack, make sure they are a member at that time, delete if not
+	// TODO: or, is all that matters that they are a member now?  since you can go back and sign earlier things after you were added to a group?
+	// TODO; we do want to respect confirmations from devices that aren't part of the group now, but were part of it when they signed the ug
+
+	// Save it
+	err = b.database.Create(&c).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving confirmation")
+	}
+
+	// Ack it
+	go b.sendAck(peer, typeConfirmation, c.ID)
+
+	// Mark as delivered to this peer
+	b.markDeliveredTo(&c, peer)
+
+	// Broadcast it
+	b.broadcast(&c)
+
+	// Update group consensus
+	b.updateGroupConsensus(c.Destination)
+}
+
+func (b *bounce) sendConfirmation(ug updateGroup) {
+	// Check if we already confirmed this update
+	var existingConfirmation confirmation
+	err := b.database.Where("signing_device = ? AND update_group_id = ?", b.network.Address(), ug.ID).First(&existingConfirmation).Error
+	if err == nil {
+		// We already signed this update group
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up confirmation")
+	}
+
+	// Create a confirmation
+	c := confirmation{
+		ID:            uuid.New(),
+		UpdateGroupID: ug.ID,
+		Destination:   ug.Target,
+		Author:        b.currentUserID(),
+		SigningDevice: b.network.Address(),
+		Signature:     b.network.Sign(ug.ID[:]),
+		Timestamp:     time.Now().Unix(),
+	}
+
+	// Save it
+	err = b.database.Create(&c).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving confirmation")
+	}
+
+	// Broadcast it
+	b.broadcast(&c)
 }

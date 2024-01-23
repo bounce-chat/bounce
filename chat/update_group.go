@@ -33,12 +33,13 @@ var errInvalidGroupName = errors.New("invalid group name")
 var errMutedUntilOnlyMutableBySelf = errors.New("group muted until settings can only be modified by current user")
 var errUserNotFound = errors.New("no user found with that ID")
 var errUserHasInvalidDeviceGroup = errors.New("user has invalid device group")
-var errNoPermissionToEditGroup = errors.New("user does not have permission to edit group")
+var errNoPermissionToEditGroup = errors.New("user does not have permission to edit group") // TODO: unneeded?
 var errNoPermissionToManageUsers = errors.New("user does not have permission to manage users")
 var errCannotPromoteAdminNotInGroup = errors.New("cannot promote a user that is not a member of a group to admin")
-var errNoPermissionToChangePermissions = errors.New("group permissions can only be modified by admins")
+var errNoPermissionToChangePermissions = errors.New("group permissions can only be modified by admins") // TODO: unneeded?
 var errInvalidPermissionPayloadLength = errors.New("permission payload must be one byte")
 var errInvalidPermissionByte = errors.New("invalid permission byte")
+var errUpdateNotApplied = errors.New("update could not be applied")
 
 var updateGroupMutex sync.Mutex
 
@@ -198,17 +199,6 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		return
 	}
 
-	// Make sure the actor is in the group
-	if !b.userIsInGroup(ug.Actor, ug.Target) {
-		log.WithFields(log.Fields{
-			"peer":  peer,
-			"id":    ug.ID,
-			"actor": ug.Actor,
-			"group": ug.Target,
-		}).Warn("device sent an update for a group where the actor is not a part of the group, ignoring")
-		return
-	}
-
 	// If we already have this update, we just mark that this peer has it too and return
 	var existingUG updateGroup
 	err = b.database.Where("id = ?", ug.ID).First(&existingUG).Error
@@ -222,403 +212,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		}).Fatal("database error looking up update group")
 	}
 
-	// Apply this update locally
-	err = b.saveAndApplyUpdateGroup(peer, ug)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"peer":  peer,
-			"type":  ug.Type,
-			"error": err.Error(),
-		}).Error("error applying update group")
-		return
-	}
-
-	// Ack it
-	go b.sendAck(peer, typeUpdateGroup, ug.ID)
-
-	// Mark that the peer that send this update already has it
-	b.markDeliveredTo(&ug, peer)
-
-	// Broadcast it
-	b.broadcast(&ug)
-}
-
-func (b *bounce) saveAndApplyUpdateGroup(peer string, ug updateGroup) error {
-	// Look up the group that we're updating
-	var g group
-	err := b.database.Where("id = ?", ug.Target).First(&g).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"group": ug.Target,
-			}).Error("update group specifies group not found in database")
-			return err
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up group")
-		}
-	}
-
-	// Apply the function that handles this type of update
-	switch ug.Type {
-	case updateGroupTypeChangeName:
-		return b.saveAndApplyUpdateGroupChangeName(g, ug)
-	case updateGroupTypeAddUser:
-		return b.saveAndApplyUpdateGroupAddUser(peer, g, ug)
-	case updateGroupTypeRemoveUser:
-		return b.saveAndApplyUpdateGroupRemoveUser(g, ug)
-	case updateGroupTypeChangeMutedUntil:
-		return b.saveAndApplyUpdateGroupChangeMutedUntil(g, ug)
-	case updateGroupTypeChangeRetention:
-		return b.saveAndApplyUpdateGroupChangeRetention(g, ug)
-	case updateGroupTypeSetClearBefore:
-		return b.saveAndApplyUpdateGroupSetClearBefore(g, ug)
-	case updateGroupTypePromoteAdmin:
-		return b.saveAndApplyUpdateGroupPromoteAdmin(g, ug)
-	case updateGroupTypeDemoteAdmin:
-		return b.saveAndApplyUpdateGroupDemoteAdmin(g, ug)
-	case updateGroupTypeChangeUserManagementPermission:
-		return b.saveAndApplyUpdateGroupChangeUserManagementPermission(g, ug)
-	case updateGroupTypeChangeGroupEditsPermission:
-		return b.saveAndApplyUpdateGroupChangeGroupEditsPermission(g, ug)
-	case updateGroupTypeChangePostingPermission:
-		return b.saveAndApplyUpdateGroupChangePostingPermission(g, ug)
-	default:
-		log.WithFields(log.Fields{
-			"type": ug.Type,
-		}).Warn("received update group with unknown type")
-		return errUpdateGroupWithUnknownType
-	}
-
-	// Update the activity timestamp on the group model
-	b.updateLastGroupActivity(ug.Target, ug.Timestamp)
-
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateGroupChangeName(g group, ug updateGroup) error {
-	// Make sure the name is valid
-	newName := string(ug.Data)
-	if !validGroupName(newName) {
-		log.WithFields(log.Fields{
-			"name": newName,
-		}).Error("cannot apply update group with invalid name")
-		return errInvalidGroupName
-	}
-
-	// Make sure the user has the permissions needed to change the group name
-	if g.hasAdmins() && g.RestrictGroupEdits && !b.isGroupAdmin(g.ID, ug.Actor) {
-		log.WithFields(log.Fields{
-			"user_id": ug.Actor,
-		}).Warn("user attempted to change group name without permission")
-		return errNoPermissionToEditGroup
-	}
-
-	// Save the update group
-	err := b.database.Create(&ug).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update group")
-	}
-
-	// Apply the update if it is the most recent one
-	if !b.moreRecentUpdateGroup(ug) {
-		err = b.database.Model(&g).Update("name", newName).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error updating group name")
-		}
-
-		// Inform the UI
-		b.userInterface.RenameGroup(UpdateGroupName{
-			ID:        ug.ID,
-			Thread:    ug.Target,
-			Actor:     ug.Actor,
-			Timestamp: ug.Timestamp,
-			Name:      newName,
-		})
-	}
-
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateGroupChangeMutedUntil(g group, ug updateGroup) error {
-	// Notification settings can only be changed by sync devices
-	if ug.Actor != b.currentUserID() {
-		return errMutedUntilOnlyMutableBySelf
-	}
-
-	// Save the update group
-	err := b.database.Create(&ug).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update group")
-	}
-
-	// Apply the update if it is the most recent one
-	if !b.moreRecentUpdateGroup(ug) {
-		// Decode the new muted until value
-		mutedUntil := int64(binary.LittleEndian.Uint64(ug.Data))
-
-		// Update the database
-		err = b.database.Model(&g).Update("muted_until", mutedUntil).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error updating group muted until")
-		}
-
-		// Inform the UI
-		b.userInterface.GroupMutedUntilChanged(g.ID, mutedUntil)
-	}
-
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateGroupChangeRetention(g group, ug updateGroup) error {
-	// Make sure the user has the permissions needed to change the group retention
-	if g.hasAdmins() && g.RestrictGroupEdits && !b.isGroupAdmin(g.ID, ug.Actor) {
-		log.WithFields(log.Fields{
-			"user_id": ug.Actor,
-		}).Warn("user attempted to change group retention without permission")
-		return errNoPermissionToEditGroup
-	}
-
-	// Save the update group
-	err := b.database.Create(&ug).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update group")
-	}
-
-	// Decode the new retention value
-	retention := int64(binary.LittleEndian.Uint64(ug.Data))
-
-	// Inform the UI
-	b.userInterface.GroupRetentionChanged(UpdateGroupRetention{
-		ID:        ug.ID,
-		Thread:    ug.Target,
-		Actor:     ug.Actor,
-		Timestamp: ug.Timestamp,
-		Retention: retention,
-	})
-
-	// Apply the update if it is the most recent one
-	if !b.moreRecentUpdateGroup(ug) {
-		err = b.database.Model(&g).Update("retention", retention).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error updating group retention")
-		}
-	}
-
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateGroupSetClearBefore(g group, ug updateGroup) error {
-	// Make sure the actor has the correct permissions to clear the chat history
-	if g.hasAdmins() && g.RestrictGroupEdits && !b.isGroupAdmin(g.ID, ug.Actor) {
-		log.WithFields(log.Fields{
-			"user_id": ug.Actor,
-		}).Warn("user attempted to clear group history without permission")
-		return errNoPermissionToEditGroup
-	}
-
-	// Save the update group
-	err := b.database.Create(&ug).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update group")
-	}
-
-	// Decode the new retention value
-	clearBefore := int64(binary.LittleEndian.Uint64(ug.Data))
-
-	gms := []groupMessage{}
-	err = b.database.Select("id").Where("written_at <= ? AND destination = ?", clearBefore, g.ID).Find(&gms).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error selecting group messages to delete while clearing chat history")
-	}
-	for _, gm := range gms {
-		err := b.database.Delete(&gm).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-				"id":    gm.ID,
-			}).Fatal("error deleting group message while clearing chat history")
-		}
-		b.userInterface.DeleteMessage(gm.ID)
-	}
-	b.userInterface.GroupChatHistoryCleared(UpdateGroupClearHistory{
-		ID:        ug.ID,
-		Thread:    ug.Target,
-		Actor:     ug.Actor,
-		Timestamp: ug.Timestamp,
-		ClearTime: clearBefore,
-	})
-
-	// Update the clear before value on the group if this one is newer
-	if g.ClearBefore < clearBefore {
-		err := b.database.Model(&g).Update("clear_before", clearBefore).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":        err.Error(),
-				"group_id":     g.ID,
-				"clear_before": clearBefore,
-			}).Fatal("database error updating group clear before")
-		}
-	}
-
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateGroupAddUser(peer string, g group, ug updateGroup) error {
-	// Make sure this user has permission to manage group members
-	if g.hasAdmins() && g.RestrictUserManagement && !b.isGroupAdmin(g.ID, ug.Actor) {
-		log.WithFields(log.Fields{
-			"user_id": ug.Actor,
-		}).Warn("user attempted to add user to group without permission")
-		return errNoPermissionToManageUsers
-	}
-
-	// Save the update group
-	err := b.database.Create(&ug).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update group")
-	}
-
-	// Unmarshall the new user
-	var u user
-	err = msgpack.Unmarshal(ug.Data, &u)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error unmarshalling user")
-		return err
-	}
-
-	if u.ID == b.currentUserID() {
-		// This update group adds us to the group
-		userIDs := []uuid.UUID{}
-		for _, u := range g.Users {
-			userIDs = append(userIDs, u.ID)
-		}
-		b.userInterface.NewGroupChat(Group{
-			ID:      g.ID,
-			Name:    g.Name,
-			UserIDs: userIDs,
-		})
-	} else {
-		// Ensure the user is valid
-		if !b.hasValidDeviceGroup(u) {
-			return errUserHasInvalidDeviceGroup
-		}
-
-		// Save the user and their devices if we don't have them
-		err = b.database.Transaction(func(tx *gorm.DB) error {
-			for _, dev := range u.Devices {
-				err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Error("error saving device that belongs to a user being added to a group")
-					return err
-				}
-			}
-			err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error saving user that is being added to a group")
-				return err
-			}
-
-			return nil
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error in transaction creating new user added to group")
-		}
-
-		// Ack and delivery track the user's devices unless we are sending this
-		if peer != b.network.Address() {
-			for _, dev := range u.Devices {
-				go b.sendAck(peer, typeDevice, dev.ID)
-				b.markDeliveredTo(&dev, peer)
-			}
-		}
-
-		// Attempt to make a connection to the user
-		b.userConnectionDesired(u.ID)
-	}
-
-	// Associate the user with the group if needed
-	if !b.userIsInGroup(u.ID, ug.Target) {
-		err = b.database.Exec("INSERT INTO group_users VALUES(?, ?)", ug.Target, u.ID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrDuplicatedKey) {
-				log.WithFields(log.Fields{
-					"id":       ug.ID,
-					"user_id":  u.ID,
-					"group_id": ug.Target,
-				}).Warn("attempted to add a user to a group that the user is already a part of")
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error adding user to group")
-			}
-		}
-	}
-
-	// Inform the UI
-	b.userInterface.AddUser(
-		UpdateGroupAddUser{
-			ID:        ug.ID,
-			Thread:    ug.Target,
-			Actor:     ug.Actor,
-			Timestamp: ug.Timestamp,
-			User: User{
-				ID:   u.ID,
-				Name: u.Name,
-			},
-		})
-
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateGroupRemoveUser(g group, ug updateGroup) error {
-	// Make sure this user has permission to manage group members
-	if g.hasAdmins() && g.RestrictUserManagement && !b.isGroupAdmin(g.ID, ug.Actor) {
-		log.WithFields(log.Fields{
-			"user_id": ug.Actor,
-		}).Warn("user attempted to remove user from group without permission")
-		return errNoPermissionToManageUsers
-	}
-
-	// Parse the user ID
-	userID, err := uuid.FromBytes(ug.Data)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error":   err.Error(),
-			"actor":   ug.Actor,
-			"user_id": ug.Data,
-		}).Error("update group attempted to remove user with invalid UUID")
-		return err
-	}
-
-	// Save the update group
+	// Save this update
 	err = b.database.Create(&ug).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -626,287 +220,36 @@ func (b *bounce) saveAndApplyUpdateGroupRemoveUser(g group, ug updateGroup) erro
 		}).Fatal("database error saving update group")
 	}
 
-	// Notify the UI
-	b.userInterface.RemoveUser(
-		UpdateGroupRemoveUser{
-			ID:        ug.ID,
-			Thread:    ug.Target,
-			Actor:     ug.Actor,
-			Timestamp: ug.Timestamp,
-			User:      userID,
-		})
+	// Update the group state
+	b.updateGroupConsensus(ug.Target)
 
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateGroupPromoteAdmin(g group, ug updateGroup) error {
-	// Make sure this user has permission to manage group members
-	if g.hasAdmins() && g.RestrictUserManagement && !b.isGroupAdmin(g.ID, ug.Actor) {
-		log.WithFields(log.Fields{
-			"user_id": ug.Actor,
-		}).Warn("user attempted to add user to group without permission")
-		return errNoPermissionToManageUsers
-	}
-
-	// Save the update group
-	err := b.database.Create(&ug).Error
+	// Check if this update was applied while evaluating group consensus and broadcast / ack if so
+	err = b.database.Select("applied").First(&ug, "id = ?", ug.ID).Error
 	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update group")
-	}
-
-	// Parse the UUID
-	userID, err := uuid.FromBytes(ug.Data)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error":   err.Error(),
-			"actor":   ug.Actor,
-			"user_id": ug.Data,
-		}).Error("update group attempted to promote admin with invalid UUID")
-		return err
-	}
-
-	// Make sure this user is already in the group
-	if !b.userIsInGroup(userID, ug.Target) {
-		log.WithFields(log.Fields{
-			"error":   err.Error(),
-			"actor":   ug.Actor,
-			"user_id": userID,
-		}).Error("update group attempted to promote admin that is not in the group")
-		return errCannotPromoteAdminNotInGroup
-	}
-
-	// Make sure that this is the latest promotion or demotion for this user
-	var moreRecentUpdates bool
-	err = b.database.Table("update_groups").
-		Select("count(*) >= 1").
-		Where("target = ? AND type IN (?, ?) AND timestamp > ? AND data = ?", ug.Target, updateGroupTypePromoteAdmin, updateGroupTypeDemoteAdmin, ug.Timestamp, ug.Data).
-		Find(&moreRecentUpdates).
-		Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error checking for more recent update groups")
-	}
-
-	// Add this user as an admin if this is the latest update
-	if !moreRecentUpdates {
-		b.addGroupAdmin(ug.Target, userID)
-	}
-
-	// Notify the UI
-	b.userInterface.AdminPromoted(UpdateGroupAdminPromoted{
-		ID:        ug.ID,
-		Thread:    ug.Target,
-		Actor:     ug.Actor,
-		Timestamp: ug.Timestamp,
-		UserID:    userID,
-	})
-
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateGroupDemoteAdmin(g group, ug updateGroup) error {
-	// Make sure this user has permission to manage group members
-	if g.hasAdmins() && g.RestrictUserManagement && !b.isGroupAdmin(g.ID, ug.Actor) {
-		log.WithFields(log.Fields{
-			"user_id": ug.Actor,
-		}).Warn("user attempted to add user to group without permission")
-		return errNoPermissionToManageUsers
-	}
-
-	// Save the update group
-	err := b.database.Create(&ug).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update group")
-	}
-
-	// Parse the UUID
-	userID, err := uuid.FromBytes(ug.Data)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error":   err.Error(),
-			"actor":   ug.Actor,
-			"user_id": ug.Data,
-		}).Error("update group attempted to promote admin with invalid UUID")
-		return err
-	}
-
-	// Make sure that this is the latest promotion or demotion for this user
-	var moreRecentUpdates bool
-	err = b.database.Table("update_groups").
-		Select("count(*) >= 1").
-		Where("target = ? AND type IN (?, ?) AND timestamp > ? AND data = ?", ug.Target, updateGroupTypePromoteAdmin, updateGroupTypeDemoteAdmin, ug.Timestamp, ug.Data).
-		Find(&moreRecentUpdates).
-		Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error checking for more recent update groups")
-	}
-
-	// Remove this user as an admin if this is the latest update
-	if !moreRecentUpdates {
-		b.removeGroupAdmin(ug.Target, userID)
-	}
-
-	// Notify the UI
-	b.userInterface.AdminDemoted(UpdateGroupAdminDemoted{
-		ID:        ug.ID,
-		Thread:    ug.Target,
-		Actor:     ug.Actor,
-		Timestamp: ug.Timestamp,
-		UserID:    userID,
-	})
-
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateGroupChangeUserManagementPermission(g group, ug updateGroup) error {
-	// Apply the update
-	err := b.saveAndApplyUpdateGroupChangePermission(g, ug, "restrict_user_management")
-	if err != nil {
-		return err
-	}
-
-	// Inform the UI
-	restricted, err := ug.permissionPayloadIsRestricted()
-	if err != nil {
-		return nil
-	}
-	if restricted {
-		b.userInterface.UserManagementRestricted(UpdateGroupUserManagementRestricted{
-			ID:        ug.ID,
-			Thread:    ug.Target,
-			Actor:     ug.Actor,
-			Timestamp: ug.Timestamp,
-		})
-	} else {
-		b.userInterface.UserManagementUnrestricted(UpdateGroupUserManagementUnrestricted{
-			ID:        ug.ID,
-			Thread:    ug.Target,
-			Actor:     ug.Actor,
-			Timestamp: ug.Timestamp,
-		})
-	}
-
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateGroupChangeGroupEditsPermission(g group, ug updateGroup) error {
-	// Apply the update
-	err := b.saveAndApplyUpdateGroupChangePermission(g, ug, "restrict_group_edits")
-	if err != nil {
-		return err
-	}
-
-	// Inform the UI
-	restricted, err := ug.permissionPayloadIsRestricted()
-	if err != nil {
-		return nil
-	}
-	if restricted {
-		b.userInterface.GroupEditsRestricted(UpdateGroupEditsRestricted{
-			ID:        ug.ID,
-			Thread:    ug.Target,
-			Actor:     ug.Actor,
-			Timestamp: ug.Timestamp,
-		})
-	} else {
-		b.userInterface.GroupEditsUnrestricted(UpdateGroupEditsUnrestricted{
-			ID:        ug.ID,
-			Thread:    ug.Target,
-			Actor:     ug.Actor,
-			Timestamp: ug.Timestamp,
-		})
-	}
-
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateGroupChangePostingPermission(g group, ug updateGroup) error {
-	// Apply the update
-	err := b.saveAndApplyUpdateGroupChangePermission(g, ug, "restrict_posting")
-	if err != nil {
-		return err
-	}
-
-	// Inform the UI
-	restricted, err := ug.permissionPayloadIsRestricted()
-	if err != nil {
-		return nil
-	}
-	if restricted {
-		b.userInterface.PostingRestricted(UpdateGroupPostingRestricted{
-			ID:        ug.ID,
-			Thread:    ug.Target,
-			Actor:     ug.Actor,
-			Timestamp: ug.Timestamp,
-		})
-	} else {
-		b.userInterface.PostingUnrestricted(UpdateGroupPostingUnrestricted{
-			ID:        ug.ID,
-			Thread:    ug.Target,
-			Actor:     ug.Actor,
-			Timestamp: ug.Timestamp,
-		})
-	}
-
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateGroupChangePermission(g group, ug updateGroup, field string) error {
-	if g.hasAdmins() && !b.isGroupAdmin(g.ID, ug.Actor) {
-		log.WithFields(log.Fields{
-			"user_id":  ug.Actor,
-			"group_id": ug.Target,
-			"field":    field,
-			"state":    ug.Data,
-		}).Warn("user who is not an admin attemped to change permission")
-		return errNoPermissionToChangePermissions
-	}
-
-	err := b.database.Create(&ug).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update group")
-	}
-
-	if !b.moreRecentUpdateGroup(ug) {
-		restricted, err := ug.permissionPayloadIsRestricted()
-		if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
-				"error":    err.Error(),
-				"user_id":  ug.Actor,
-				"group_id": ug.Target,
-				"field":    field,
-				"state":    ug.Data,
-			}).Error("invalid permission byte on update group")
-			return err
-		}
-
-		err = b.database.Model(&g).Update(field, restricted).Error
-		if err != nil {
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"group_id": g.ID,
-				}).Error("group not found when restricting user management")
-				return err
-			} else {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": g.ID,
-					"field":    field,
-				}).Fatal("database error updating permission field on group")
-			}
+				"update_group_id": ug.ID,
+				"error":           err.Error(),
+			}).Error("update group not found after save")
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up update group")
 		}
 	}
+	if ug.Applied {
+		// Update group activity
+		b.updateLastGroupActivity(ug.Target, ug.Timestamp)
 
-	return nil
+		// Ack it
+		go b.sendAck(peer, typeUpdateGroup, ug.ID)
+
+		// Mark that the peer that send this update already has it
+		b.markDeliveredTo(&ug, peer)
+
+		// Broadcast it
+		b.broadcast(&ug)
+	}
 }
 
 func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
@@ -1011,6 +354,62 @@ func (b *bounce) addUser(groupID, userID uuid.UUID) error {
 	return nil
 }
 
+func (b *bounce) removeUser(groupID, userID uuid.UUID) error {
+	// Create an update group
+	ug := updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeRemoveUser,
+		Data:      userID[:],
+	}
+
+	// If we're being removed from the group, custom scope these frames
+	if userID == b.currentUserID() {
+		cs, err := b.createCustomScopeFromGroup(groupID)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error creating custom scope for group")
+		}
+		ug.CustomScope = cs
+	}
+
+	err := b.applyAndBroadcastUpdateGroup(ug)
+	if err != nil {
+		return err
+	}
+
+	// If we're not removing ourselves and are therefore using a group scope, since we're already removed the user from the group,
+	// we need to directly broadcast this rfg to the user's online devices
+	if userID != b.currentUserID() {
+		var u user
+		err := b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"user_id": userID,
+				}).Error("user not found for direct remove from group broadcast")
+				return err
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error looking up user")
+			}
+		}
+
+		for _, dev := range u.Devices {
+			rd := b.getRemoteDevice(dev.Address)
+			if rd.connectedSockets > 0 {
+				go b.sendDirect(dev.Address, &ug)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (b *bounce) promoteAdmin(groupID, userID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(updateGroup{
 		ID:        uuid.New(),
@@ -1099,24 +498,9 @@ func (b *bounce) unrestrictPosting(groupID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) moreRecentUpdateGroup(ug updateGroup) bool {
-	var moreRecentUpdates bool
-
-	err := b.database.Table("update_groups").
-		Select("count(*) >= 1").
-		Where("target = ? AND type = ? AND timestamp > ?", ug.Target, ug.Type, ug.Timestamp).
-		Find(&moreRecentUpdates).
-		Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error checking for more recent update groups")
-	}
-
-	return moreRecentUpdates
-}
-
 func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) error {
+	//TODO: have the permission function be more granular in return, use it here by greating a state from the group itself
+
 	// Create the signed container for this update
 	var err error
 	ug.OriginalPayload, err = msgpack.Marshal(&ug)
@@ -1129,17 +513,40 @@ func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) error {
 	ug.Signature = sc.Signature
 	ug.Signer = sc.Signer
 
-	// Apply the update locally
-	err = b.saveAndApplyUpdateGroup(b.network.Address(), ug)
+	// Save this update
+	err = b.database.Create(&ug).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error applying update group")
-		return err
+		}).Fatal("database error saving update group")
 	}
 
-	// Broadcast
-	b.broadcast(&ug)
+	// Update the group state
+	b.updateGroupConsensus(ug.Target)
+
+	// Check if this update was applied while evaluating group consensus and broadcast / ack if so
+	err = b.database.Select("applied").First(&ug, "id = ?", ug.ID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"update_group_id": ug.ID,
+				"error":           err.Error(),
+			}).Error("update group not found after save")
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up update group")
+		}
+	}
+	if ug.Applied {
+		// Update group activity
+		b.updateLastGroupActivity(ug.Target, ug.Timestamp)
+
+		// Broadcast it
+		b.broadcast(&ug)
+	} else {
+		return errUpdateNotApplied
+	}
 
 	return nil
 }
