@@ -504,7 +504,7 @@ func (b *bounce) unrestrictPosting(groupID uuid.UUID) error {
 func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) error {
 	// Find the group we're updating
 	var g group
-	err := b.database.Where("id = ?", ug.Target).First(&g).Error
+	err := b.database.Preload(clause.Associations).Where("id = ?", ug.Target).First(&g).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
