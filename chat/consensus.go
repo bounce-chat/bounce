@@ -201,7 +201,7 @@ func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
 		cs.push(ug)
 	} else {
 		// If this change is not allowed, check if it is confirmed
-		confirmed := (float64(ug.confirmingUsers()) / float64(len(lastState.users))) > 0.5
+		confirmed := (float64(ug.confirmingUsers(cs.myID)) / float64(len(lastState.users))) > 0.5
 
 		if confirmed {
 			// If this change is not allowed and is confirmed, pop through history until the conflicting change is identified
@@ -237,7 +237,7 @@ func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
 					conflict := recheck[0]
 
 					// Check if this conflict was confirmed
-					conflictConfirmed := (float64(conflict.confirmingUsers()) / float64(len(newTop.users))) > 0.5
+					conflictConfirmed := (float64(conflict.confirmingUsers(cs.myID)) / float64(len(newTop.users))) > 0.5
 					if conflictConfirmed {
 						// If the conflict was confirmed as well, then the conflict wins because it's older, and we ignore this change
 						cs.restore()
@@ -715,7 +715,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				if err != nil {
 					return err
 				}
-				if gs.isMember(b.currentUserID()) {
+				if gs.isMember(b.currentUserID()) && gs.ug.Actor != b.currentUserID() {
 					b.sendConfirmation(gs.ug)
 				}
 			}

@@ -144,11 +144,12 @@ func (ug *updateGroup) getTimestamp() int64 {
 	return ug.Timestamp
 }
 
-func (ug *updateGroup) confirmingUsers() int {
+func (ug *updateGroup) confirmingUsers(myID uuid.UUID) int {
 	users := make(map[uuid.UUID]bool)
 	for _, c := range ug.Confirmations {
 		users[c.Author] = true
 	}
+	users[myID] = true
 
 	return len(users)
 }
