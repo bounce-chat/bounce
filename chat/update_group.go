@@ -33,13 +33,15 @@ var errInvalidGroupName = errors.New("invalid group name")
 var errMutedUntilOnlyMutableBySelf = errors.New("group muted until settings can only be modified by current user")
 var errUserNotFound = errors.New("no user found with that ID")
 var errUserHasInvalidDeviceGroup = errors.New("user has invalid device group")
-var errNoPermissionToEditGroup = errors.New("user does not have permission to edit group") // TODO: unneeded?
+var errNoPermissionToEditGroup = errors.New("user does not have permission to edit group")
 var errNoPermissionToManageUsers = errors.New("user does not have permission to manage users")
 var errCannotPromoteAdminNotInGroup = errors.New("cannot promote a user that is not a member of a group to admin")
-var errNoPermissionToChangePermissions = errors.New("group permissions can only be modified by admins") // TODO: unneeded?
 var errInvalidPermissionPayloadLength = errors.New("permission payload must be one byte")
 var errInvalidPermissionByte = errors.New("invalid permission byte")
 var errUpdateNotApplied = errors.New("update could not be applied")
+var errGroupNotFound = errors.New("group not found")
+var errUserNotInGroup = errors.New("user is not in group")
+var errAdminRequired = errors.New("this action can only be performed by admins")
 
 var updateGroupMutex sync.Mutex
 
@@ -499,10 +501,28 @@ func (b *bounce) unrestrictPosting(groupID uuid.UUID) error {
 }
 
 func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) error {
-	//TODO: have the permission function be more granular in return, use it here by greating a state from the group itself
+	// Find the group we're updating
+	var g group
+	err := b.database.Where("id = ?", ug.Target).First(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": ug.Target,
+			}).Error("error looking up group for update")
+			return errGroupNotFound
+		} else {
+			log.WithFields(log.Fields{
+				"group_id": ug.Target,
+			}).Fatal("database error looking up group")
+		}
+	}
+
+	// Check to make sure we have permission to do this update right now
+	if err = stateChangeAllowed(g.state(), ug, b.currentUserID()); err != nil {
+		return err
+	}
 
 	// Create the signed container for this update
-	var err error
 	ug.OriginalPayload, err = msgpack.Marshal(&ug)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -544,6 +564,8 @@ func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) error {
 
 		// Broadcast it
 		b.broadcast(&ug)
+
+		// TODO: confirm it?  should confirmations be implicit from the authors of updates?
 	} else {
 		return errUpdateNotApplied
 	}

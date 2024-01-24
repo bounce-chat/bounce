@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -11,6 +12,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+var groupConsensusMutex sync.Mutex
 
 var errStackEmpty = errors.New("stack is empty")
 
@@ -193,7 +196,7 @@ func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
 	}
 
 	// Check if this user has permission to perform this change
-	if stateChangeAllowed(lastState, ug, cs.myID) {
+	if err = stateChangeAllowed(lastState, ug, cs.myID); err == nil {
 		// If it is allowed, apply it
 		cs.push(ug)
 	} else {
@@ -229,7 +232,7 @@ func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
 					}).Fatal("error getting top of group state history stack")
 
 				}
-				if stateChangeAllowed(newTop, ug, cs.myID) {
+				if err = stateChangeAllowed(newTop, ug, cs.myID); err == nil {
 					// If this chnage is now allwed, then the conflict was the last thing we removed from the stack
 					conflict := recheck[0]
 
@@ -255,9 +258,7 @@ func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
 	}
 }
 
-func (b *bounce) updateGroupConsensus(groupID uuid.UUID) {
-	// TODO: mutex
-
+func (b *bounce) buildCanonicalHistoryStack(groupID uuid.UUID) (*canonicalStack, []updateGroup) {
 	// Create the initial group state from the group creation and use that to start history
 	initialState, err := b.createInitialGroupState(groupID)
 	if err != nil {
@@ -265,7 +266,7 @@ func (b *bounce) updateGroupConsensus(groupID uuid.UUID) {
 			"group_id": groupID,
 			"error":    err.Error(),
 		}).Error("error creating initial state while updating group consensus")
-		return
+		return &canonicalStack{}, []updateGroup{}
 	}
 	cs := newCanonicalStack(initialState, b.currentUserID())
 
@@ -284,8 +285,29 @@ func (b *bounce) updateGroupConsensus(groupID uuid.UUID) {
 		cs.insertUpdateGroupIntoStack(ug)
 	}
 
+	return cs, ugs
+}
+
+func (b *bounce) updateGroupConsensus(groupID uuid.UUID) {
+	groupConsensusMutex.Lock()
+	defer groupConsensusMutex.Unlock()
+
+	cs, ugs := b.buildCanonicalHistoryStack(groupID)
+
 	// Track what has been applied and rolled back, inform the UI, and set the group state in the database
 	b.setRollbacksApplicationsAndGroupState(groupID, cs, ugs)
+}
+
+func (b *bounce) isMemberOfGroupForUpdate(userID, groupID, ugID uuid.UUID) bool {
+	cs, _ := b.buildCanonicalHistoryStack(groupID)
+
+	for _, gs := range cs.history {
+		if gs.ug.ID == ugID {
+			return gs.isMember(userID)
+		}
+	}
+
+	return false
 }
 
 func (b *bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) {
@@ -369,82 +391,119 @@ func changeIsNOP(lastState groupState, ug updateGroup) bool {
 	return updatedGroupState.equals(lastState)
 }
 
-func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) bool {
+func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 	if !gs.isMember(ug.Actor) {
-		return false
+		return errUserNotInGroup
 	}
 
 	switch ug.Type {
 	case updateGroupTypeChangeName:
 		if gs.editingRestricted {
 			if gs.isAdmin(ug.Actor) {
-				return true
+				return nil
+			} else {
+				return errNoPermissionToEditGroup
 			}
 		} else {
-			return true
+			return nil
 		}
 	case updateGroupTypeAddUser:
 		if gs.userManagementRestricted {
 			if gs.isAdmin(ug.Actor) {
-				return true
+				return nil
+			} else {
+				return errNoPermissionToManageUsers
 			}
 		} else {
-			return true
+			return nil
 		}
 	case updateGroupTypeRemoveUser:
 		if gs.userManagementRestricted {
 			if gs.isAdmin(ug.Actor) {
-				return true
+				return nil
+			} else {
+				return errNoPermissionToManageUsers
 			}
 		} else {
-			return true
+			return nil
 		}
 	case updateGroupTypeChangeMutedUntil:
-		return myID == ug.Actor
+		if myID == ug.Actor {
+			return nil
+		} else {
+			return errMutedUntilOnlyMutableBySelf
+		}
 	case updateGroupTypeChangeRetention:
 		if gs.editingRestricted {
 			if gs.isAdmin(ug.Actor) {
-				return true
+				return nil
+			} else {
+				return errNoPermissionToEditGroup
 			}
 		} else {
-			return true
+			return nil
 		}
 	case updateGroupTypeSetClearBefore:
 		if gs.editingRestricted {
 			if gs.isAdmin(ug.Actor) {
-				return true
+				return nil
+			} else {
+				return errNoPermissionToEditGroup
 			}
 		} else {
-			return true
+			return nil
 		}
 	case updateGroupTypePromoteAdmin:
 		if gs.isAdmin(ug.Actor) {
-			return true
+			userID, err := uuid.FromBytes(ug.Data)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":   err.Error(),
+					"actor":   ug.Actor,
+					"user_id": ug.Data,
+				}).Error("update group attempted to promote admin with invalid UUID")
+				return err
+			}
+			if gs.isMember(userID) {
+				return nil
+			} else {
+				return errCannotPromoteAdminNotInGroup
+			}
+		} else {
+			return errAdminRequired
 		}
 	case updateGroupTypeDemoteAdmin:
 		if gs.isAdmin(ug.Actor) {
-			return true
+			return nil
+		} else {
+			return errAdminRequired
 		}
 	case updateGroupTypeChangeUserManagementPermission:
 		if gs.isAdmin(ug.Actor) {
-			return true
+			return nil
+		} else {
+			return errAdminRequired
 		}
 	case updateGroupTypeChangeGroupEditsPermission:
 		if gs.isAdmin(ug.Actor) {
-			return true
+			return nil
+		} else {
+			return errAdminRequired
 		}
 	case updateGroupTypeChangePostingPermission:
 		if gs.isAdmin(ug.Actor) {
-			return true
+			return nil
+		} else {
+			return errAdminRequired
 		}
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
 		}).Warn("cannot apply update group with unknown type")
-		return false
+		return errUpdateGroupWithUnknownType
 	}
 
-	return false
+	return errUpdateGroupWithUnknownType
 }
 
 func applyUpdateGroupToState(gs groupState, ug updateGroup) (groupState, error) {
@@ -656,7 +715,9 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				if err != nil {
 					return err
 				}
-				b.sendConfirmation(gs.ug)
+				if gs.isMember(b.currentUserID()) {
+					b.sendConfirmation(gs.ug)
+				}
 			}
 		}
 

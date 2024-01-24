@@ -68,6 +68,39 @@ func (g *group) hasAdmins() bool {
 	return len(g.Admins) > 0
 }
 
+func (g *group) state() groupState {
+	gs := groupState{
+		name:                     g.Name,
+		mutedUntil:               g.MutedUntil,
+		retention:                g.Retention,
+		clearBefore:              g.ClearBefore,
+		postingRestricted:        g.RestrictPosting,
+		editingRestricted:        g.RestrictGroupEdits,
+		userManagementRestricted: g.RestrictUserManagement,
+	}
+
+	for _, u := range g.Users {
+		gs.users = append(gs.users, u.ID)
+	}
+
+	if len(g.Admins) != 0 { // TODO: still allowed?
+		for _, adminIDString := range strings.Split(g.Admins, ",") {
+			adminID, err := uuid.Parse(adminIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": g.ID,
+					"admins":   g.Admins,
+				}).Fatal("invalid UUID in group admin list")
+			}
+
+			gs.admins = append(gs.admins, adminID)
+		}
+	}
+
+	return gs
+}
+
 func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 	if name == "" {
 		return errors.New("group must be named")

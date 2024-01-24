@@ -149,9 +149,14 @@ func (b *bounce) handleConfirmation(peer string, payload []byte) {
 	}
 	c.Author = dev.UserID
 
-	// TODO: make sure that the user was a member at the time they signed this update group.  build the canonical stack with this confirmation, find the gs in that stack, make sure they are a member at that time, delete if not
-	// TODO: or, is all that matters that they are a member now?  since you can go back and sign earlier things after you were added to a group?
-	// TODO; we do want to respect confirmations from devices that aren't part of the group now, but were part of it when they signed the ug
+	// Make sure the user signing this confirmation was a member of the group for this update
+	if !b.isMemberOfGroupForUpdate(c.Author, ug.Target, ug.ID) {
+		log.WithFields(log.Fields{
+			"update_group_id": c.UpdateGroupID,
+			"confirmation_id": c.ID,
+			"author":          c.Author,
+		}).Warn("ignoring confirmation signed by user who was not a member of the group during the update")
+	}
 
 	// Save it
 	err = b.database.Create(&c).Error
