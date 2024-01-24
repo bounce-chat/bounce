@@ -188,7 +188,15 @@ func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
 		return
 	}
 
-	// TODO: enforce time ordering
+	// Enforce time ordering on everything after the group creation
+	if len(cs.history) > 1 {
+		if ug.Timestamp < lastState.ug.Timestamp {
+			log.WithFields(log.Fields{
+				"previous": lastState.ug.ID,
+				"current":  ug.ID,
+			}).Fatal("out of order update group inserted into canonical history")
+		}
+	}
 
 	// Ignore this update if it changes nothing
 	if changeIsNOP(lastState, ug) {
@@ -761,10 +769,33 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 
 		// If the final state involves us being removed from the group, delete the group
 		if !finalState.isMember(b.currentUserID()) {
+			// Find the most recent update group that removed us
+			removalActor := uuid.UUID{}
+			for i := len(cs.history) - 1; i >= 0; i-- {
+				ug := cs.history[i].ug
+				if ug.Type == updateGroupTypeRemoveUser {
+					targetUser, err := uuid.FromBytes(ug.Data)
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error":           err.Error(),
+							"update_group_id": ug.ID,
+						}).Error("update group attempts to remove user with invalid UUID")
+						continue
+					}
+					if targetUser == b.currentUserID() {
+						removalActor = ug.Actor
+						break
+					}
+				}
+			}
+
+			// Inform the UI
 			b.userInterface.RemovedFromGroup(RemovedFromGroup{
 				Group: g.ID,
-				Actor: finalState.ug.Actor, // TODO: final update group might not be the one that removed us, scroll through history to find the most recent ug that removes us
+				Actor: removalActor,
 			})
+
+			// Delete the group
 			return tx.Delete(&g).Error
 		}
 
