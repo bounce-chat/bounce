@@ -280,7 +280,7 @@ func (b *bounce) buildCanonicalHistoryStack(groupID uuid.UUID) (*canonicalStack,
 
 	// Get all update groups for this group
 	var ugs []updateGroup
-	err = b.database.Preload(clause.Associations).Where("group_id = ?", groupID).Order("timestamp asc").Find(&ugs).Error
+	err = b.database.Preload(clause.Associations).Where("target = ?", groupID).Order("timestamp asc").Find(&ugs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
@@ -303,7 +303,13 @@ func (b *bounce) updateGroupConsensus(groupID uuid.UUID) {
 	cs, ugs := b.buildCanonicalHistoryStack(groupID)
 
 	// Track what has been applied and rolled back, inform the UI, and set the group state in the database
-	b.setRollbacksApplicationsAndGroupState(groupID, cs, ugs)
+	err := b.setRollbacksApplicationsAndGroupState(groupID, cs, ugs)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"error":    err.Error(),
+		}).Error("error setting group state")
+	}
 }
 
 func (b *bounce) isMemberOfGroupForUpdate(userID, groupID, ugID uuid.UUID) bool {
@@ -706,199 +712,199 @@ func applyUpdateGroupChangePostingPermissionToState(gs groupState, ug updateGrou
 	return gs, nil
 }
 
-func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *canonicalStack, ugs []updateGroup) {
-	err := b.database.Transaction(func(tx *gorm.DB) error {
-		// Find any canonical update groups that have not been applied and make them as applied and inform them UI
-		canonical := make(map[uuid.UUID]bool)
-		for _, gs := range cs.history[1:] {
-			canonical[gs.ug.ID] = true
-			if !gs.ug.Applied {
-				err := tx.Model(&gs.ug).Update("applied", true).Error
-				if err != nil {
-					return err
-				}
-
-				b.applyUpdateGroupInUI(gs.ug)
-				err = b.handleUpdateGroupSideEffects(tx, gs.ug)
-				if err != nil {
-					return err
-				}
-				if gs.isMember(b.currentUserID()) && gs.ug.Actor != b.currentUserID() {
-					b.sendConfirmation(gs.ug)
-				}
-			}
-		}
-
-		// Find any non-canonical update groups that have been applied and mark them as not applied roll them back in the UI
-		for _, ug := range ugs {
-			if _, ok := canonical[ug.ID]; !ok {
-				if ug.Applied {
-					err := tx.Model(&ug).Update("applied", false).Error
-					if err != nil {
-						return err
-					}
-					b.rollbackUpdateGroupInUI(ug)
-				}
-			}
-		}
-
-		// Set the final state in the database
-		finalState, err := cs.top()
-		if err != nil {
+func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *canonicalStack, ugs []updateGroup) error {
+	// Find the group
+	var g group
+	err := b.database.Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("no final state available when updating group consensus state")
+				"group_id": groupID,
+			}).Error("group not found while setting state")
+			return err
+		} else {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+				"error":    err.Error(),
+			}).Fatal("database error looking up group")
 		}
+	}
 
-		// Find the group
-		var g group
-		err = tx.Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"group_id": groupID,
-				}).Error("group not found while setting state")
+	// Find any canonical update groups that have not been applied and make them as applied and inform them UI
+	canonical := make(map[uuid.UUID]bool)
+	for _, gs := range cs.history[1:] {
+		canonical[gs.ug.ID] = true
+		if !gs.ug.Applied {
+			err := b.database.Model(&gs.ug).Update("applied", true).Error
+			if err != nil {
 				return err
-			} else {
-				log.WithFields(log.Fields{
-					"group_id": groupID,
-					"error":    err.Error(),
-				}).Fatal("database error looking up group")
-			}
-		}
-
-		// If the final state involves us being removed from the group, delete the group
-		if !finalState.isMember(b.currentUserID()) {
-			// Find the most recent update group that removed us
-			removalActor := uuid.UUID{}
-			for i := len(cs.history) - 1; i >= 0; i-- {
-				ug := cs.history[i].ug
-				if ug.Type == updateGroupTypeRemoveUser {
-					targetUser, err := uuid.FromBytes(ug.Data)
-					if err != nil {
-						log.WithFields(log.Fields{
-							"error":           err.Error(),
-							"update_group_id": ug.ID,
-						}).Error("update group attempts to remove user with invalid UUID")
-						continue
-					}
-					if targetUser == b.currentUserID() {
-						removalActor = ug.Actor
-						break
-					}
-				}
 			}
 
-			// Inform the UI
-			b.userInterface.RemovedFromGroup(RemovedFromGroup{
-				Group: g.ID,
-				Actor: removalActor,
-			})
+			b.applyUpdateGroupInUI(gs.ug)
+			err = b.handleUpdateGroupSideEffects(gs.ug)
+			if err != nil {
+				return err
+			}
+			if gs.isMember(b.currentUserID()) && gs.ug.Actor != b.currentUserID() {
+				b.sendConfirmation(gs.ug)
+			}
+		}
+	}
 
-			// Delete the group
-			return tx.Delete(&g).Error
-		}
-
-		// Set fields
-		if g.Name != finalState.name {
-			err := tx.Model(&g).Update("name", finalState.name).Error
-			if err != nil {
-				return err
-			}
-		}
-		if g.Retention != finalState.retention {
-			err := tx.Model(&g).Update("retention", finalState.retention).Error
-			if err != nil {
-				return err
-			}
-		}
-		if g.ClearBefore != finalState.clearBefore {
-			err := tx.Model(&g).Update("clear_before", finalState.clearBefore).Error
-			if err != nil {
-				return err
-			}
-		}
-		if g.MutedUntil != finalState.mutedUntil {
-			err := tx.Model(&g).Update("muted_until", finalState.mutedUntil).Error
-			if err != nil {
-				return err
-			}
-		}
-		if g.RestrictUserManagement != finalState.userManagementRestricted {
-			err := tx.Model(&g).Update("restrict_user_management", finalState.userManagementRestricted).Error
-			if err != nil {
-				return err
-			}
-		}
-		if g.RestrictGroupEdits != finalState.editingRestricted {
-			err := tx.Model(&g).Update("restrict_group_edits", finalState.editingRestricted).Error
-			if err != nil {
-				return err
-			}
-		}
-		if g.RestrictPosting != finalState.postingRestricted {
-			err := tx.Model(&g).Update("restrict_posting", finalState.postingRestricted).Error
-			if err != nil {
-				return err
-			}
-		}
-
-		// Set group members
-		for _, u := range g.Users {
-			if !finalState.isMember(u.ID) {
-				err = b.database.Exec("DELETE FROM group_users WHERE group_id = ? AND user_id = ?", g.ID, u.ID).Error
+	// Find any non-canonical update groups that have been applied and mark them as not applied roll them back in the UI
+	for _, ug := range ugs {
+		if _, ok := canonical[ug.ID]; !ok {
+			if ug.Applied {
+				err := b.database.Model(&ug).Update("applied", false).Error
 				if err != nil {
 					return err
 				}
+				b.rollbackUpdateGroupInUI(ug)
 			}
 		}
-		for _, userID := range finalState.users {
-			if !b.userIsInGroup(userID, g.ID) {
-				err = tx.Exec("INSERT INTO group_users VALUES(?, ?)", g.ID, userID).Error
-				if err != nil {
-					if !errors.Is(err, gorm.ErrDuplicatedKey) {
-						return err
-					}
-				}
-			}
-		}
+	}
 
-		// Set group admins
-		admins := []uuid.UUID{}
-		if len(g.Admins) > 0 {
-			for _, adminIDString := range strings.Split(g.Admins, ",") {
-				adminID, err := uuid.Parse(adminIDString)
+	// Set the final state in the database
+	finalState, err := cs.top()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("no final state available when updating group consensus state")
+	}
+
+	// If the final state involves us being removed from the group, delete the group
+	if !finalState.isMember(b.currentUserID()) {
+		// Find the most recent update group that removed us
+		removalActor := uuid.UUID{}
+		for i := len(cs.history) - 1; i >= 0; i-- {
+			ug := cs.history[i].ug
+			if ug.Type == updateGroupTypeRemoveUser {
+				targetUser, err := uuid.FromBytes(ug.Data)
 				if err != nil {
 					log.WithFields(log.Fields{
-						"error":    err.Error(),
-						"group_id": groupID,
-						"admins":   g.Admins,
-					}).Fatal("invalid UUID in group admin list")
-
+						"error":           err.Error(),
+						"update_group_id": ug.ID,
+					}).Error("update group attempts to remove user with invalid UUID")
+					continue
 				}
-				admins = append(admins, adminID)
-			}
-		}
-		for _, adminID := range admins {
-			if !finalState.isAdmin(adminID) {
-				b.removeGroupAdmin(g.ID, adminID) // TODO: not in transaction
-			}
-		}
-		for _, adminID := range finalState.admins {
-			if !b.isGroupAdmin(g.ID, adminID) {
-				b.addGroupAdmin(g.ID, adminID) // TODO: not in transaction
+				if targetUser == b.currentUserID() {
+					removalActor = ug.Actor
+					break
+				}
 			}
 		}
 
-		return nil
-	}).Error
+		// Inform the UI
+		b.userInterface.RemovedFromGroup(RemovedFromGroup{
+			Group: g.ID,
+			Actor: removalActor,
+		})
+
+		// Delete the group
+		return b.database.Delete(&g).Error
+	}
+
+	// Set fields
+	if g.Name != finalState.name {
+		err := b.database.Model(&g).Select("name").Update("name", finalState.name).Error
+		if err != nil {
+			return err
+		}
+	}
+	if g.Retention != finalState.retention {
+		err := b.database.Model(&g).Select("retention").Update("retention", finalState.retention).Error
+		if err != nil {
+			return err
+		}
+	}
+	if g.ClearBefore != finalState.clearBefore {
+		err := b.database.Model(&g).Select("clear_before").Update("clear_before", finalState.clearBefore).Error
+		if err != nil {
+			return err
+		}
+	}
+	if g.MutedUntil != finalState.mutedUntil {
+		err := b.database.Model(&g).Select("muted_until").Update("muted_until", finalState.mutedUntil).Error
+		if err != nil {
+			return err
+		}
+	}
+	if g.RestrictUserManagement != finalState.userManagementRestricted {
+		err := b.database.Model(&g).Select("restrict_user_management").Update("restrict_user_management", finalState.userManagementRestricted).Error
+		if err != nil {
+			return err
+		}
+	}
+	if g.RestrictGroupEdits != finalState.editingRestricted {
+		err := b.database.Model(&g).Select("restrict_group_edits").Update("restrict_group_edits", finalState.editingRestricted).Error
+		if err != nil {
+			return err
+		}
+	}
+	if g.RestrictPosting != finalState.postingRestricted {
+		err := b.database.Model(&g).Select("restrict_posting").Update("restrict_posting", finalState.postingRestricted).Error
+		if err != nil {
+			return err
+		}
+	}
+
+	// Set group members
+	for _, u := range g.Users {
+		if !finalState.isMember(u.ID) {
+			err = b.database.Exec("DELETE FROM group_users WHERE group_id = ? AND user_id = ?", g.ID, u.ID).Error
+			if err != nil {
+				return err
+			}
+		}
+	}
+	for _, userID := range finalState.users {
+		if !b.userIsInGroup(userID, g.ID) {
+			err = b.database.Exec("INSERT INTO group_users VALUES(?, ?)", g.ID, userID).Error
+			if err != nil {
+				if !errors.Is(err, gorm.ErrDuplicatedKey) {
+					return err
+				}
+			}
+		}
+	}
+
+	// Set group admins
+	admins := []uuid.UUID{}
+	if len(g.Admins) > 0 {
+		for _, adminIDString := range strings.Split(g.Admins, ",") {
+			adminID, err := uuid.Parse(adminIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": groupID,
+					"admins":   g.Admins,
+				}).Fatal("invalid UUID in group admin list")
+
+			}
+			admins = append(admins, adminID)
+		}
+	}
+	for _, adminID := range admins {
+		if !finalState.isAdmin(adminID) {
+			b.removeGroupAdmin(g.ID, adminID)
+		}
+	}
+	for _, adminID := range finalState.admins {
+		if !b.isGroupAdmin(g.ID, adminID) {
+			b.addGroupAdmin(g.ID, adminID)
+		}
+	}
+
+	return nil
 
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
-			"error":    err(),
+			"error":    err.Error(),
 		}).Error("error setting group state")
 	}
+
+	return nil
 }
 
 func (b *bounce) applyUpdateGroupInUI(ug updateGroup) {
@@ -1136,20 +1142,20 @@ func (b *bounce) rollbackUpdateGroupInUI(ug updateGroup) {
 	// TODO: tell the UI to delete this update
 }
 
-func (b *bounce) handleUpdateGroupSideEffects(tx *gorm.DB, ug updateGroup) error {
+func (b *bounce) handleUpdateGroupSideEffects(ug updateGroup) error {
 	switch ug.Type {
 	case updateGroupTypeAddUser:
-		return b.createNewUserIfNeeded(tx, ug)
+		return b.createNewUserIfNeeded(ug)
 	case updateGroupTypeRemoveUser:
-		return b.clearDeliveryRecordsForRemovedUser(tx, ug)
+		return b.clearDeliveryRecordsForRemovedUser(ug)
 	case updateGroupTypeSetClearBefore:
-		return b.pruneMessagesBeforeClear(tx, ug)
+		return b.pruneMessagesBeforeClear(ug)
 	}
 
 	return nil
 }
 
-func (b *bounce) createNewUserIfNeeded(tx *gorm.DB, ug updateGroup) error {
+func (b *bounce) createNewUserIfNeeded(ug updateGroup) error {
 	// Unmarshall the new user
 	var u user
 	err := msgpack.Unmarshal(ug.Data, &u)
@@ -1168,7 +1174,7 @@ func (b *bounce) createNewUserIfNeeded(tx *gorm.DB, ug updateGroup) error {
 
 		// Save the user and their devices if we don't have them
 		for _, dev := range u.Devices {
-			err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
+			err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -1176,7 +1182,7 @@ func (b *bounce) createNewUserIfNeeded(tx *gorm.DB, ug updateGroup) error {
 				return err
 			}
 		}
-		err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
+		err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -1191,7 +1197,7 @@ func (b *bounce) createNewUserIfNeeded(tx *gorm.DB, ug updateGroup) error {
 	return nil
 }
 
-func (b *bounce) clearDeliveryRecordsForRemovedUser(tx *gorm.DB, ug updateGroup) error {
+func (b *bounce) clearDeliveryRecordsForRemovedUser(ug updateGroup) error {
 	// Parse the user ID
 	userID, err := uuid.FromBytes(ug.Data)
 	if err != nil {
@@ -1225,7 +1231,7 @@ func (b *bounce) clearDeliveryRecordsForRemovedUser(tx *gorm.DB, ug updateGroup)
 	for _, dev := range u.Devices {
 		// Delete the delivery records for each group message
 		gms := []groupMessage{}
-		err = tx.Where("destination = ?", ug.Target).Find(&gms).Error
+		err = b.database.Where("destination = ?", ug.Target).Find(&gms).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":    err.Error(),
@@ -1233,7 +1239,7 @@ func (b *bounce) clearDeliveryRecordsForRemovedUser(tx *gorm.DB, ug updateGroup)
 			}).Fatal("database error looking up all group messages for a group")
 		}
 		for _, gm := range gms {
-			err = tx.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeGroupMessage, gm.ID).Error
+			err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeGroupMessage, gm.ID).Error
 			if err != nil {
 				return err
 			}
@@ -1241,7 +1247,7 @@ func (b *bounce) clearDeliveryRecordsForRemovedUser(tx *gorm.DB, ug updateGroup)
 
 		// Delete the delivery records for each update group
 		ugs := []updateGroup{}
-		err = tx.Where("target = ?", ug.Target).Find(&ugs).Error
+		err = b.database.Where("target = ?", ug.Target).Find(&ugs).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":    err.Error(),
@@ -1249,14 +1255,14 @@ func (b *bounce) clearDeliveryRecordsForRemovedUser(tx *gorm.DB, ug updateGroup)
 			}).Fatal("database error looking up all updates for a group")
 		}
 		for _, ugToDelete := range ugs {
-			err = tx.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeUpdateGroup, ugToDelete.ID).Error
+			err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeUpdateGroup, ugToDelete.ID).Error
 			if err != nil {
 				return err
 			}
 		}
 
 		// Delete the delivery records for the original group creation
-		err = tx.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeGroupCreation, ug.Target).Error
+		err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeGroupCreation, ug.Target).Error
 		if err != nil {
 			return err
 		}
@@ -1265,11 +1271,11 @@ func (b *bounce) clearDeliveryRecordsForRemovedUser(tx *gorm.DB, ug updateGroup)
 	return nil
 }
 
-func (b *bounce) pruneMessagesBeforeClear(tx *gorm.DB, ug updateGroup) error {
+func (b *bounce) pruneMessagesBeforeClear(ug updateGroup) error {
 	clearBefore := int64(binary.LittleEndian.Uint64(ug.Data))
 
 	gms := []groupMessage{}
-	err := tx.Select("id").Where("written_at <= ? AND destination = ?", clearBefore, ug.Target).Find(&gms).Error
+	err := b.database.Select("id").Where("written_at <= ? AND destination = ?", clearBefore, ug.Target).Find(&gms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
