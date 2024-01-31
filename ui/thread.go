@@ -180,7 +180,7 @@ func (fyneUI *Fyne) DeleteItem(id uuid.UUID) {
 		log.WithFields(log.Fields{
 			"message_id": id,
 			"thread_id":  thread.getID(),
-		}).Warn("attempt to expire message that was not in thread despite being in threadWithItem map")
+		}).Warn("attempt to delete thread item that was not in thread despite being in threadWithItem map")
 	}
 }
 

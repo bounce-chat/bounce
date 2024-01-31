@@ -12,7 +12,7 @@ type statusChange struct {
 	label *widget.Label
 }
 
-func newStatusChange(str string) *statusChange {
+func newStatusChange(id uuid.UUID, str string) *statusChange {
 	baseLabel := widget.NewLabel(str)
 	baseLabel.Alignment = fyne.TextAlignCenter
 

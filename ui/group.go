@@ -442,6 +442,7 @@ func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
 	g.restrictPosting = bounceGroup.RestrictPosting
 
 	fyneUI.updateEnabledFeatures(g)
+	fyneUI.refreshUserSelections(g)
 }
 
 func (fyneUI *Fyne) DisplayGroupMessage(gm chat.GroupMessage) {

@@ -333,7 +333,7 @@ func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, c
 	}
 
 	changeString = actorName + " " + changeString
-	changeLabel := newStatusChange(changeString)
+	changeLabel := newStatusChange(id, changeString)
 
 	return &threadItem{
 		id:     id,
