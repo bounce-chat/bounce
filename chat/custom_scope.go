@@ -36,7 +36,7 @@ func (cs *customScope) addresses() []string {
 	return strings.Split(cs.Addresses, ",")
 }
 
-func (b *bounce) createCustomScopeFromGroup(groupID uuid.UUID) (uuid.UUID, error) {
+func (b *bounce) createCustomScopeFromGroup(groupID uuid.UUID) error {
 	var g group
 	err := b.database.Preload("Users.Devices").Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
 	if err != nil {
@@ -44,7 +44,7 @@ func (b *bounce) createCustomScopeFromGroup(groupID uuid.UUID) (uuid.UUID, error
 			log.WithFields(log.Fields{
 				"group_id": groupID,
 			}).Error("cannot create custom scope for unknown group")
-			return uuid.Nil, err
+			return err
 		} else {
 			log.WithFields(log.Fields{
 				"group_id": groupID,
@@ -72,7 +72,7 @@ func (b *bounce) createCustomScopeFromGroup(groupID uuid.UUID) (uuid.UUID, error
 		}).Fatal("error creating custom scope")
 	}
 
-	return cs.ID, nil
+	return nil
 }
 
 //

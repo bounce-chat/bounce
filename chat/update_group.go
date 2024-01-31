@@ -223,6 +223,33 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		}).Fatal("database error saving update group")
 	}
 
+	if ug.Type == updateGroupTypeAddUser {
+		var newUser user
+		err := msgpack.Unmarshal(ug.Data, &newUser)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error unmarshalling new user in update group")
+			return
+		}
+		if newUser.ID == b.currentUserID() {
+			var g group
+			err = b.database.First(&g, "id = ?", ug.Target).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					// If we're handling an update group that adds us to a group we're not aware of,
+					// we're going to get the group information from the reference flow, so we don't
+					// need to try applying it now
+					return
+				} else {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("database error looking up group")
+				}
+			}
+		}
+	}
+
 	// Update the group state
 	b.updateGroupConsensus(ug.Target)
 
@@ -366,17 +393,6 @@ func (b *bounce) removeUser(groupID, userID uuid.UUID) error {
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeRemoveUser,
 		Data:      userID[:],
-	}
-
-	// If we're being removed from the group, custom scope these frames
-	if userID == b.currentUserID() {
-		cs, err := b.createCustomScopeFromGroup(groupID)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error creating custom scope for group")
-		}
-		ug.CustomScope = cs
 	}
 
 	err := b.applyAndBroadcastUpdateGroup(ug)

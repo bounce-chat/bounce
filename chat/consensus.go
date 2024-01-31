@@ -788,7 +788,26 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 					continue
 				}
 				if targetUser == b.currentUserID() {
+					// Set the actor who removed us from the group
 					removalActor = ug.Actor
+
+					// Attach a custom scope to this update group
+					err = b.createCustomScopeFromGroup(ug.Target)
+					if err == nil {
+						err = b.database.Model(&ug).Select("custom_scope").Update("custom_scope", ug.Target).Error
+						if err != nil {
+							log.WithFields(log.Fields{
+								"update_group_id": ug.ID,
+								"error":           err.Error(),
+							}).Fatal("error updating custom scope on update group")
+						}
+					} else {
+						log.WithFields(log.Fields{
+							"update_group_id": ug.ID,
+							"error":           err.Error(),
+						}).Error("error creating custom scope for update group")
+					}
+
 					break
 				}
 			}

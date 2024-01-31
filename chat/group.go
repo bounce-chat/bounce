@@ -53,7 +53,7 @@ func (g *group) AfterDelete(tx *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	err = tx.Where("target = ?", g.ID).Delete(&updateGroup{}).Error
+	err = tx.Where("target = ? AND custom_scope IS null", g.ID).Delete(&updateGroup{}).Error
 	if err != nil {
 		return err
 	}
