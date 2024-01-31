@@ -87,13 +87,33 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 		autoscroll = true
 	}
 
+	// Insert statusChange thread items into their correct location in time, insert everything else
+	// at the bottom regaurdless of timestamp
 	chatHistory := t.chatHistoryScroll().Content.(*fyne.Container)
-
-	// TODO: if the thread item widget is a status change
-	// TODO: insertion sort
-	// TODO: else
-	chatHistory.Objects = append(chatHistory.Objects, ti.widget)
-
+	if _, ok := ti.widget.(*statusChange); ok {
+		if len(chatHistory.Objects) == 0 {
+			chatHistory.Objects = append(chatHistory.Objects, ti.widget)
+		} else {
+			for i := len(chatHistory.Objects) - 1; i >= 0; i-- {
+				var compareTime int64
+				compare := chatHistory.Objects[i]
+				switch cast := compare.(type) {
+				case *chatBubble:
+					compareTime = cast.timestamp
+				case *statusChange:
+					compareTime = cast.timestamp
+				default:
+					log.Warn("cannot compare timestamp with unknown thread item type")
+					continue
+				}
+				if ti.timestamp > compareTime {
+					chatHistory.Objects = append(chatHistory.Objects[:i], append([]fyne.CanvasObject{ti.widget}, chatHistory.Objects[i:]...)...)
+				}
+			}
+		}
+	} else {
+		chatHistory.Objects = append(chatHistory.Objects, ti.widget)
+	}
 	t.chatHistoryScroll().Refresh()
 
 	fyneUI.threadWithItemMutex.Lock()

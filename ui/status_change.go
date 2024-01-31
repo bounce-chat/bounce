@@ -8,17 +8,19 @@ import (
 
 type statusChange struct {
 	widget.BaseWidget
-	id    uuid.UUID
-	label *widget.Label
+	id        uuid.UUID
+	timestamp int64
+	label     *widget.Label
 }
 
-func newStatusChange(id uuid.UUID, str string) *statusChange {
+func newStatusChange(id uuid.UUID, timestamp int64, str string) *statusChange {
 	baseLabel := widget.NewLabel(str)
 	baseLabel.Alignment = fyne.TextAlignCenter
 
 	st := &statusChange{
-		id:    id,
-		label: baseLabel,
+		id:        id,
+		timestamp: timestamp,
+		label:     baseLabel,
 	}
 
 	st.ExtendBaseWidget(st)
