@@ -268,8 +268,10 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		}
 	}
 	if ug.Applied {
-		// Update group activity
-		b.updateLastGroupActivity(ug.Target, ug.Timestamp)
+		// Update group activity if we're still in the group
+		if b.userIsInGroup(b.currentUserID(), ug.Target) {
+			b.updateLastGroupActivity(ug.Target, ug.Timestamp)
+		}
 
 		// Ack it
 		go b.sendAck(peer, typeUpdateGroup, ug.ID)
