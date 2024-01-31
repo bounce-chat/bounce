@@ -735,7 +735,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 	for _, gs := range cs.history[1:] {
 		canonical[gs.ug.ID] = true
 		if !gs.ug.Applied {
-			err := b.database.Model(&gs.ug).Update("applied", true).Error
+			err := b.database.Model(&gs.ug).Select("applied").Update("applied", true).Error
 			if err != nil {
 				return err
 			}
@@ -755,7 +755,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 	for _, ug := range ugs {
 		if _, ok := canonical[ug.ID]; !ok {
 			if ug.Applied {
-				err := b.database.Model(&ug).Update("applied", false).Error
+				err := b.database.Model(&ug).Select("applied").Update("applied", false).Error
 				if err != nil {
 					return err
 				}

@@ -256,7 +256,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 }
 
 func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
-	return b.applyAndBroadcastUpdateGroup(updateGroup{
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -270,7 +270,7 @@ func (b *bounce) setGroupMutedUntil(groupID uuid.UUID, mutedUntil int64) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(mutedUntil))
 
-	return b.applyAndBroadcastUpdateGroup(updateGroup{
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -284,7 +284,7 @@ func (b *bounce) setGroupRetention(groupID uuid.UUID, retention int64) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(retention))
 
-	return b.applyAndBroadcastUpdateGroup(updateGroup{
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -298,7 +298,7 @@ func (b *bounce) clearGroupChatHistory(groupID uuid.UUID) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(time.Now().Unix()))
 
-	return b.applyAndBroadcastUpdateGroup(updateGroup{
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -334,7 +334,7 @@ func (b *bounce) addUser(groupID, userID uuid.UUID) error {
 			"error":   err.Error(),
 		}).Fatal("error marshalling user while adding user to group")
 	}
-	err = b.applyAndBroadcastUpdateGroup(updateGroup{
+	err = b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -359,7 +359,7 @@ func (b *bounce) addUser(groupID, userID uuid.UUID) error {
 
 func (b *bounce) removeUser(groupID, userID uuid.UUID) error {
 	// Create an update group
-	ug := updateGroup{
+	ug := &updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -405,7 +405,7 @@ func (b *bounce) removeUser(groupID, userID uuid.UUID) error {
 		for _, dev := range u.Devices {
 			rd := b.getRemoteDevice(dev.Address)
 			if rd.connectedSockets > 0 {
-				go b.sendDirect(dev.Address, &ug)
+				go b.sendDirect(dev.Address, ug)
 			}
 		}
 	}
@@ -414,7 +414,7 @@ func (b *bounce) removeUser(groupID, userID uuid.UUID) error {
 }
 
 func (b *bounce) promoteAdmin(groupID, userID uuid.UUID) error {
-	return b.applyAndBroadcastUpdateGroup(updateGroup{
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -425,7 +425,7 @@ func (b *bounce) promoteAdmin(groupID, userID uuid.UUID) error {
 }
 
 func (b *bounce) demoteAdmin(groupID, userID uuid.UUID) error {
-	return b.applyAndBroadcastUpdateGroup(updateGroup{
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -436,7 +436,7 @@ func (b *bounce) demoteAdmin(groupID, userID uuid.UUID) error {
 }
 
 func (b *bounce) restrictUserManagement(groupID uuid.UUID) error {
-	return b.applyAndBroadcastUpdateGroup(updateGroup{
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -447,7 +447,7 @@ func (b *bounce) restrictUserManagement(groupID uuid.UUID) error {
 }
 
 func (b *bounce) unrestrictUserManagement(groupID uuid.UUID) error {
-	return b.applyAndBroadcastUpdateGroup(updateGroup{
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -458,7 +458,7 @@ func (b *bounce) unrestrictUserManagement(groupID uuid.UUID) error {
 }
 
 func (b *bounce) restrictGroupEdits(groupID uuid.UUID) error {
-	return b.applyAndBroadcastUpdateGroup(updateGroup{
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -469,7 +469,7 @@ func (b *bounce) restrictGroupEdits(groupID uuid.UUID) error {
 }
 
 func (b *bounce) unrestrictGroupEdits(groupID uuid.UUID) error {
-	return b.applyAndBroadcastUpdateGroup(updateGroup{
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -480,7 +480,7 @@ func (b *bounce) unrestrictGroupEdits(groupID uuid.UUID) error {
 }
 
 func (b *bounce) restrictPosting(groupID uuid.UUID) error {
-	return b.applyAndBroadcastUpdateGroup(updateGroup{
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -491,7 +491,7 @@ func (b *bounce) restrictPosting(groupID uuid.UUID) error {
 }
 
 func (b *bounce) unrestrictPosting(groupID uuid.UUID) error {
-	return b.applyAndBroadcastUpdateGroup(updateGroup{
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -501,7 +501,7 @@ func (b *bounce) unrestrictPosting(groupID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) error {
+func (b *bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
 	// Find the group we're updating
 	var g group
 	err := b.database.Preload(clause.Associations).Where("id = ?", ug.Target).First(&g).Error
@@ -519,12 +519,12 @@ func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) error {
 	}
 
 	// Check to make sure we have permission to do this update right now
-	if err = stateChangeAllowed(g.state(), ug, b.currentUserID()); err != nil {
+	if err = stateChangeAllowed(g.state(), *ug, b.currentUserID()); err != nil {
 		return err
 	}
 
 	// Create the signed container for this update
-	ug.OriginalPayload, err = msgpack.Marshal(&ug)
+	ug.OriginalPayload, err = msgpack.Marshal(ug)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -535,7 +535,7 @@ func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) error {
 	ug.Signer = sc.Signer
 
 	// Save this update
-	err = b.database.Create(&ug).Error
+	err = b.database.Create(ug).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -546,7 +546,7 @@ func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) error {
 	b.updateGroupConsensus(ug.Target)
 
 	// Check if this update was applied while evaluating group consensus and broadcast / ack if so
-	err = b.database.Select("applied").First(&ug, "id = ?", ug.ID).Error
+	err = b.database.First(ug, "id = ?", ug.ID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -564,9 +564,7 @@ func (b *bounce) applyAndBroadcastUpdateGroup(ug updateGroup) error {
 		b.updateLastGroupActivity(ug.Target, ug.Timestamp)
 
 		// Broadcast it
-		b.broadcast(&ug)
-
-		// TODO: confirm it?  should confirmations be implicit from the authors of updates?
+		b.broadcast(ug)
 	} else {
 		return errUpdateNotApplied
 	}
