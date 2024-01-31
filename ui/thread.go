@@ -88,7 +88,12 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	}
 
 	chatHistory := t.chatHistoryScroll().Content.(*fyne.Container)
+
+	// TODO: if the thread item widget is a status change
+	// TODO: insertion sort
+	// TODO: else
 	chatHistory.Objects = append(chatHistory.Objects, ti.widget)
+
 	t.chatHistoryScroll().Refresh()
 
 	fyneUI.threadWithItemMutex.Lock()

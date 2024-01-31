@@ -973,6 +973,7 @@ func (b *bounce) informUIUpdateGroupAddUser(ug updateGroup) {
 		return
 	}
 
+	// Notify the UI
 	b.userInterface.AddUser(
 		UpdateGroupAddUser{
 			ID:        ug.ID,
