@@ -44,6 +44,7 @@ type Group struct {
 	Image                  []byte
 	UserIDs                []uuid.UUID
 	Admins                 []uuid.UUID
+	Retention              int64
 	LastActivity           int64
 	RestrictUserManagement bool
 	RestrictGroupEdits     bool
@@ -224,7 +225,7 @@ type UI interface {
 	// Chats
 	//UserIntroduced(Introduction)
 	UserImported(User) // TODO: still needed?
-	DeleteMessage(uuid.UUID)
+	DeleteItem(uuid.UUID)
 	MarkMessageUndeliverable(uuid.UUID)
 	UpdateMessageDeletionTime(uuid.UUID, int64)
 
@@ -235,6 +236,7 @@ type UI interface {
 
 	OpenNewGroupChat(Group)
 	NewGroupChat(Group)
+	SetGroupState(Group)
 	DisplayGroupMessage(GroupMessage)
 	AddUser(UpdateGroupAddUser)
 	RemoveUser(UpdateGroupRemoveUser)
@@ -242,7 +244,7 @@ type UI interface {
 	RenameGroup(UpdateGroupName)
 	GroupRetentionChanged(UpdateGroupRetention)
 	GroupChatHistoryCleared(UpdateGroupClearHistory)
-	GroupMutedUntilChanged(groupID uuid.UUID, mutedUntil int64)
+	//GroupMutedUntilChanged(groupID uuid.UUID, mutedUntil int64)
 	AdminPromoted(UpdateGroupAdminPromoted)
 	AdminDemoted(UpdateGroupAdminDemoted)
 	UserManagementRestricted(UpdateGroupUserManagementRestricted)

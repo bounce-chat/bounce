@@ -18,48 +18,42 @@ import (
 )
 
 type group struct {
-	id                                 uuid.UUID
-	name                               binding.String
-	users                              *userStore
-	admins                             []uuid.UUID
-	restrictUserManagement             bool
-	restrictGroupEdits                 bool
-	restrictPosting                    bool
-	lastUserManagementPermissionUpdate int64
-	lastGroupEditsPermissionUpdate     int64
-	lastPostingPermissionUpdate        int64
-	lastNameUpdate                     int64
-	lastRetentionUpdate                int64
-	lastAdminAction                    map[uuid.UUID]int64
-	lastAdminActionMutex               sync.Mutex
-	pendingUsers                       *userStore
-	notificationsMutedUntil            int64
-	editContainer                      *fyne.Container
-	editThreadNameEntry                *widget.Entry
-	retentionSelection                 *widget.Select
-	clearHistoryButton                 *widget.Button
-	addUsersButton                     *widget.Button
-	view                               *fyne.Container
-	header                             *fyne.Container
-	button                             *threadButton
-	notificationsEnabledCheck          *widget.Check
-	restrictUserManagementCheck        *widget.Check
-	restrictGroupEditsCheck            *widget.Check
-	restrictPostingCheck               *widget.Check
-	scroll                             *container.Scroll
-	availableNewUsersScroll            *container.Scroll
-	currentAdminsContainer             *fyne.Container
-	currentUsersContainer              *fyne.Container
-	pendingUsersContainer              *fyne.Container
-	adminChecks                        map[uuid.UUID]*widget.Check
-	adminChecksMutex                   sync.Mutex
-	removeUserButtons                  map[uuid.UUID]*widget.Button
-	removeUserButtonsMutex             sync.Mutex
-	editUserDialogs                    map[uuid.UUID]dialog.Dialog
-	editUserDialogsMutex               sync.Mutex
-	entry                              *threadEntry
-	entryBar                           *fyne.Container
-	lastMessage                        int64
+	id                          uuid.UUID
+	name                        binding.String
+	users                       *userStore
+	admins                      []uuid.UUID
+	restrictUserManagement      bool
+	restrictGroupEdits          bool
+	restrictPosting             bool
+	lastAdminActionMutex        sync.Mutex
+	pendingUsers                *userStore
+	notificationsMutedUntil     int64
+	editContainer               *fyne.Container
+	editThreadNameEntry         *widget.Entry
+	retentionSelection          *widget.Select
+	clearHistoryButton          *widget.Button
+	addUsersButton              *widget.Button
+	view                        *fyne.Container
+	header                      *fyne.Container
+	button                      *threadButton
+	notificationsEnabledCheck   *widget.Check
+	restrictUserManagementCheck *widget.Check
+	restrictGroupEditsCheck     *widget.Check
+	restrictPostingCheck        *widget.Check
+	scroll                      *container.Scroll
+	availableNewUsersScroll     *container.Scroll
+	currentAdminsContainer      *fyne.Container
+	currentUsersContainer       *fyne.Container
+	pendingUsersContainer       *fyne.Container
+	adminChecks                 map[uuid.UUID]*widget.Check
+	adminChecksMutex            sync.Mutex
+	removeUserButtons           map[uuid.UUID]*widget.Button
+	removeUserButtonsMutex      sync.Mutex
+	editUserDialogs             map[uuid.UUID]dialog.Dialog
+	editUserDialogsMutex        sync.Mutex
+	entry                       *threadEntry
+	entryBar                    *fyne.Container
+	lastMessage                 int64
 }
 
 func (g *group) getID() uuid.UUID {
@@ -91,24 +85,6 @@ func (g *group) setLastMessageTime(time int64) {
 
 func (g *group) getNotificationsMutedUntil() int64 {
 	return g.notificationsMutedUntil
-}
-
-func (g *group) getLastAdminAction(userID uuid.UUID) int64 {
-	g.lastAdminActionMutex.Lock()
-	defer g.lastAdminActionMutex.Unlock()
-
-	lastTime, ok := g.lastAdminAction[userID]
-	if !ok {
-		return 0
-	}
-	return lastTime
-}
-
-func (g *group) setLastAdminAction(userID uuid.UUID, timestamp int64) {
-	g.lastAdminActionMutex.Lock()
-	defer g.lastAdminActionMutex.Unlock()
-
-	g.lastAdminAction[userID] = timestamp
 }
 
 func (g *group) isAdmin(userID uuid.UUID) bool {
@@ -290,7 +266,6 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		users:                   newUserStore(),
 		admins:                  bounceGroup.Admins,
 		editThreadNameEntry:     widget.NewEntry(),
-		lastAdminAction:         make(map[uuid.UUID]int64),
 		restrictUserManagement:  bounceGroup.RestrictUserManagement,
 		restrictGroupEdits:      bounceGroup.RestrictGroupEdits,
 		restrictPosting:         bounceGroup.RestrictPosting,
@@ -418,6 +393,57 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	fyneUI.updateEnabledFeatures(group)
 }
 
+func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
+	g, exists := fyneUI.groups[bounceGroup.ID]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": bounceGroup.ID,
+		}).Warn("cannot set state on unknown group")
+		return
+	}
+
+	err := g.name.Set(bounceGroup.Name)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("data bindings are broken")
+	}
+
+	// TODO: set the image
+
+	g.users.empty()
+	for _, userID := range bounceGroup.UserIDs {
+		u, ok := fyneUI.users.get(userID)
+		if !ok {
+			log.WithFields(log.Fields{
+				"group_id": g.id,
+				"user_id":  u.id,
+			}).Warn("cannot set unknown user as group member")
+			continue
+		}
+		func(thisUser *user) {
+			g.users.add(thisUser)
+			g.pendingUsers.remove(u.id)
+		}(u)
+	}
+
+	g.admins = bounceGroup.Admins
+
+	g.retentionSelection.Selected = getRetentionName(bounceGroup.Retention)
+	g.retentionSelection.Refresh()
+
+	g.restrictUserManagementCheck.SetChecked(bounceGroup.RestrictUserManagement)
+	g.restrictUserManagement = bounceGroup.RestrictUserManagement
+
+	g.restrictGroupEditsCheck.SetChecked(bounceGroup.RestrictGroupEdits)
+	g.restrictGroupEdits = bounceGroup.RestrictGroupEdits
+
+	g.restrictPostingCheck.SetChecked(bounceGroup.RestrictPosting)
+	g.restrictPosting = bounceGroup.RestrictPosting
+
+	fyneUI.updateEnabledFeatures(g)
+}
+
 func (fyneUI *Fyne) DisplayGroupMessage(gm chat.GroupMessage) {
 	g, exists := fyneUI.groups[gm.Thread]
 	if !exists {
@@ -434,10 +460,6 @@ func (fyneUI *Fyne) DisplayGroupMessage(gm chat.GroupMessage) {
 		}).Error("error creating thread item for group message")
 		return
 	}
-
-	fyneUI.threadWithMessageMutex.Lock()
-	fyneUI.threadWithMessage[gm.ID] = g
-	fyneUI.threadWithMessageMutex.Unlock()
 
 	if !fyneUI.isActive(g) && !(gm.Author == fyneUI.profile.id) {
 		g.button.addUnread()
@@ -467,10 +489,7 @@ func (fyneUI *Fyne) AddUser(ugau chat.UpdateGroupAddUser) {
 		id:   ugau.User.ID,
 		name: ugau.User.Name,
 	}
-	fyneUI.users.add(u)
-	g.users.add(u)
-	g.pendingUsers.remove(u.id)
-	fyneUI.refreshUserSelections(g)
+	fyneUI.users.add(u) // TODO: this is needed since it isn't in the group state, should it be?
 
 	fyneUI.appendThreadItem(g, ti)
 }
@@ -483,10 +502,6 @@ func (fyneUI *Fyne) RemoveUser(ugru chat.UpdateGroupRemoveUser) {
 		}).Error("cannot remove user from unknown group")
 		return
 	}
-
-	g.users.remove(ugru.User)
-	fyneUI.removeAdmin(g, ugru.User)
-	fyneUI.refreshUserSelections(g)
 
 	ti, err := fyneUI.newUpdateGroupRemoveUser(ugru)
 	if err != nil {
@@ -550,16 +565,6 @@ func (fyneUI *Fyne) RenameGroup(ugn chat.UpdateGroupName) {
 		return
 	}
 	fyneUI.appendThreadItem(g, ti)
-
-	if ugn.Timestamp > g.lastNameUpdate {
-		g.lastNameUpdate = ugn.Timestamp
-		err = g.name.Set(ugn.Name)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("data bindings are broken")
-		}
-	}
 }
 
 func (fyneUI *Fyne) GroupRetentionChanged(ugr chat.UpdateGroupRetention) {
@@ -579,12 +584,6 @@ func (fyneUI *Fyne) GroupRetentionChanged(ugr chat.UpdateGroupRetention) {
 		return
 	}
 	fyneUI.appendThreadItem(g, ti)
-
-	if ugr.Timestamp > g.lastRetentionUpdate {
-		g.lastRetentionUpdate = ugr.Timestamp
-		g.retentionSelection.Selected = getRetentionName(ugr.Retention)
-		g.retentionSelection.Refresh()
-	}
 }
 
 func (fyneUI *Fyne) GroupChatHistoryCleared(ugch chat.UpdateGroupClearHistory) {
@@ -613,18 +612,6 @@ func (fyneUI *Fyne) GroupChatHistoryCleared(ugch chat.UpdateGroupClearHistory) {
 	// once that's done we can insertion sort these in.
 }
 
-func (fyneUI *Fyne) GroupMutedUntilChanged(groupID uuid.UUID, mutedUntil int64) {
-	if group, exists := fyneUI.groups[groupID]; exists {
-		group.notificationsMutedUntil = mutedUntil
-		enabled := mutedUntil != chat.MutedForever
-		group.notificationsEnabledCheck.SetChecked(enabled)
-	} else {
-		log.WithFields(log.Fields{
-			"group_id": groupID,
-		}).Warn("cannot notify messages cleared for group that doesn't exist")
-	}
-}
-
 func (fyneUI *Fyne) AdminPromoted(ugap chat.UpdateGroupAdminPromoted) {
 	g, exists := fyneUI.groups[ugap.Thread]
 	if !exists {
@@ -642,11 +629,6 @@ func (fyneUI *Fyne) AdminPromoted(ugap chat.UpdateGroupAdminPromoted) {
 		return
 	}
 	fyneUI.appendThreadItem(g, ti)
-
-	if ugap.Timestamp > g.getLastAdminAction(ugap.UserID) {
-		g.setLastAdminAction(ugap.UserID, ugap.Timestamp)
-		fyneUI.addAdmin(g, ugap.UserID)
-	}
 }
 
 func (fyneUI *Fyne) AdminDemoted(ugad chat.UpdateGroupAdminDemoted) {
@@ -666,11 +648,6 @@ func (fyneUI *Fyne) AdminDemoted(ugad chat.UpdateGroupAdminDemoted) {
 		return
 	}
 	fyneUI.appendThreadItem(g, ti)
-
-	if ugad.Timestamp > g.getLastAdminAction(ugad.UserID) {
-		g.setLastAdminAction(ugad.UserID, ugad.Timestamp)
-		fyneUI.removeAdmin(g, ugad.UserID)
-	}
 }
 
 func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagementRestricted) {
@@ -690,13 +667,6 @@ func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagemen
 		return
 	}
 	fyneUI.appendThreadItem(g, ti)
-
-	if ugumr.Timestamp > g.lastUserManagementPermissionUpdate {
-		g.lastUserManagementPermissionUpdate = ugumr.Timestamp
-		g.restrictUserManagementCheck.SetChecked(true)
-		g.restrictUserManagement = true
-		fyneUI.updateEnabledFeatures(g)
-	}
 }
 
 func (fyneUI *Fyne) UserManagementUnrestricted(ugumu chat.UpdateGroupUserManagementUnrestricted) {
@@ -716,13 +686,6 @@ func (fyneUI *Fyne) UserManagementUnrestricted(ugumu chat.UpdateGroupUserManagem
 		return
 	}
 	fyneUI.appendThreadItem(g, ti)
-
-	if ugumu.Timestamp > g.lastUserManagementPermissionUpdate {
-		g.lastUserManagementPermissionUpdate = ugumu.Timestamp
-		g.restrictUserManagementCheck.SetChecked(false)
-		g.restrictUserManagement = false
-		fyneUI.updateEnabledFeatures(g)
-	}
 }
 
 func (fyneUI *Fyne) GroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) {
@@ -742,13 +705,6 @@ func (fyneUI *Fyne) GroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) {
 		return
 	}
 	fyneUI.appendThreadItem(g, ti)
-
-	if uger.Timestamp > g.lastGroupEditsPermissionUpdate {
-		g.lastGroupEditsPermissionUpdate = uger.Timestamp
-		g.restrictGroupEditsCheck.SetChecked(true)
-		g.restrictGroupEdits = true
-		fyneUI.updateEnabledFeatures(g)
-	}
 }
 
 func (fyneUI *Fyne) GroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricted) {
@@ -768,13 +724,6 @@ func (fyneUI *Fyne) GroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricte
 		return
 	}
 	fyneUI.appendThreadItem(g, ti)
-
-	if ugeu.Timestamp > g.lastGroupEditsPermissionUpdate {
-		g.lastGroupEditsPermissionUpdate = ugeu.Timestamp
-		g.restrictGroupEditsCheck.SetChecked(false)
-		g.restrictGroupEdits = false
-		fyneUI.updateEnabledFeatures(g)
-	}
 }
 
 func (fyneUI *Fyne) PostingRestricted(ugpr chat.UpdateGroupPostingRestricted) {
@@ -794,13 +743,6 @@ func (fyneUI *Fyne) PostingRestricted(ugpr chat.UpdateGroupPostingRestricted) {
 		return
 	}
 	fyneUI.appendThreadItem(g, ti)
-
-	if ugpr.Timestamp > g.lastPostingPermissionUpdate {
-		g.lastPostingPermissionUpdate = ugpr.Timestamp
-		g.restrictPostingCheck.SetChecked(true)
-		g.restrictPosting = true
-		fyneUI.updateEnabledFeatures(g)
-	}
 }
 
 func (fyneUI *Fyne) PostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted) {
@@ -819,13 +761,6 @@ func (fyneUI *Fyne) PostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted
 		}).Error("error creating thread item for update group posting unrestricted")
 	}
 	fyneUI.appendThreadItem(g, ti)
-
-	if ugpu.Timestamp > g.lastPostingPermissionUpdate {
-		g.lastPostingPermissionUpdate = ugpu.Timestamp
-		g.restrictPostingCheck.SetChecked(false)
-		g.restrictPosting = false
-		fyneUI.updateEnabledFeatures(g)
-	}
 }
 
 func (fyneUI *Fyne) updateEnabledFeatures(g *group) {

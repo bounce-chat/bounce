@@ -91,6 +91,10 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	chatHistory.Objects = append(chatHistory.Objects, ti.widget)
 	t.chatHistoryScroll().Refresh()
 
+	fyneUI.threadWithItemMutex.Lock()
+	fyneUI.threadWithItem[ti.id] = t
+	fyneUI.threadWithItemMutex.Unlock()
+
 	if ti.setButton != nil {
 		ti.setButton(t.getButton())
 	} else {
@@ -131,10 +135,10 @@ func (fyneUI *Fyne) UpdateMessageDeletionTime(id uuid.UUID, timestamp int64) {
 //
 // Silently drop a message from the chat history because it is past retention
 //
-func (fyneUI *Fyne) DeleteMessage(id uuid.UUID) {
-	fyneUI.threadWithMessageMutex.Lock()
-	thread, ok := fyneUI.threadWithMessage[id]
-	fyneUI.threadWithMessageMutex.Unlock()
+func (fyneUI *Fyne) DeleteItem(id uuid.UUID) {
+	fyneUI.threadWithItemMutex.Lock()
+	thread, ok := fyneUI.threadWithItem[id]
+	fyneUI.threadWithItemMutex.Unlock()
 	if !ok {
 		log.WithFields(log.Fields{
 			"message_id": id,
@@ -146,29 +150,37 @@ func (fyneUI *Fyne) DeleteMessage(id uuid.UUID) {
 	found := false
 	location := 0
 	for i, obj := range chatHistory.Objects {
-		bubble, ok := obj.(*chatBubble)
-		if !ok {
+		switch cast := obj.(type) {
+		case *chatBubble:
+			if cast.id == id {
+				found = true
+				location = i
+				break
+			}
+		case *statusChange:
+			if cast.id == id {
+				found = true
+				location = i
+				break
+			}
+		default:
 			continue
-		}
-		if bubble.id == id {
-			found = true
-			location = i
-			break
 		}
 	}
 
 	if found {
 		// TODO: is there an error here if the message that is being deleted is the last message in the slice?
+		// TODO: race condition here when mutating the slice directly?  mutex all changes to a thread's slice?
 		chatHistory.Objects = append(chatHistory.Objects[:location], chatHistory.Objects[location+1:]...) // TODO: may be cheaper to use copy to shift slice
 		thread.chatHistoryScroll().Refresh()
-		fyneUI.threadWithMessageMutex.Lock()
-		delete(fyneUI.threadWithMessage, id)
-		fyneUI.threadWithMessageMutex.Unlock()
+		fyneUI.threadWithItemMutex.Lock()
+		delete(fyneUI.threadWithItem, id)
+		fyneUI.threadWithItemMutex.Unlock()
 	} else {
 		log.WithFields(log.Fields{
 			"message_id": id,
 			"thread_id":  thread.getID(),
-		}).Warn("attempt to expire message that was not in thread despite being in threadWithMessage map")
+		}).Warn("attempt to expire message that was not in thread despite being in threadWithItem map")
 	}
 }
 

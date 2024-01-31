@@ -307,7 +307,7 @@ func (b *bounce) saveAndApplyUpdateDMSetClearBefore(u user, ud updateDM) error {
 				"id":    dm.ID,
 			}).Fatal("error deleting direct message while clearing chat history")
 		}
-		b.userInterface.DeleteMessage(dm.ID)
+		b.userInterface.DeleteItem(dm.ID)
 	}
 	b.userInterface.DMChatHistoryCleared(UpdateDMClearHistory{
 		ID:        ud.ID,

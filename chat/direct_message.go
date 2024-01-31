@@ -312,7 +312,7 @@ func (b *bounce) deleteDirectMessageAt(timestamp int64, id uuid.UUID) {
 	}
 
 	// Delete from the UI
-	b.userInterface.DeleteMessage(id)
+	b.userInterface.DeleteItem(id)
 }
 
 func (b *bounce) checkIfDirectMessageUndeliverableAt(timestamp int64, id uuid.UUID) {
@@ -400,7 +400,7 @@ func (b *bounce) checkIfDirectMessageUndeliverableAt(timestamp int64, id uuid.UU
 						"error":      err.Error(),
 					}).Fatal("error deleting undeliverable direct message with retention")
 				}
-				b.userInterface.DeleteMessage(dm.ID)
+				b.userInterface.DeleteItem(dm.ID)
 			}
 		}
 	}

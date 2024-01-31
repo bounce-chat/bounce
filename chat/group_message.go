@@ -309,7 +309,7 @@ func (b *bounce) deleteGroupMessageAt(timestamp int64, id uuid.UUID) {
 	}
 
 	// Delete from the UI
-	b.userInterface.DeleteMessage(id)
+	b.userInterface.DeleteItem(id)
 }
 
 func (b *bounce) checkIfGroupMessageUndeliverableAt(timestamp int64, id uuid.UUID) {
@@ -397,7 +397,7 @@ func (b *bounce) checkIfGroupMessageUndeliverableAt(timestamp int64, id uuid.UUI
 						"error":      err.Error(),
 					}).Fatal("error deleting undeliverable group message with retention")
 				}
-				b.userInterface.DeleteMessage(gm.ID)
+				b.userInterface.DeleteItem(gm.ID)
 			}
 		}
 	}

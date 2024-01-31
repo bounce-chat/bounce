@@ -759,7 +759,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				if err != nil {
 					return err
 				}
-				b.rollbackUpdateGroupInUI(ug)
+				b.userInterface.DeleteItem(ug.ID)
 			}
 		}
 	}
@@ -857,7 +857,9 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 			}
 		}
 	}
+	finalUsers := []uuid.UUID{}
 	for _, userID := range finalState.users {
+		finalUsers = append(finalUsers, userID)
 		if !b.userIsInGroup(userID, g.ID) {
 			err = b.database.Exec("INSERT INTO group_users VALUES(?, ?)", g.ID, userID).Error
 			if err != nil {
@@ -889,20 +891,26 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 			b.removeGroupAdmin(g.ID, adminID)
 		}
 	}
+	finalAdmins := []uuid.UUID{}
 	for _, adminID := range finalState.admins {
+		finalAdmins = append(finalAdmins, adminID)
 		if !b.isGroupAdmin(g.ID, adminID) {
 			b.addGroupAdmin(g.ID, adminID)
 		}
 	}
 
-	return nil
-
-	if err != nil {
-		log.WithFields(log.Fields{
-			"group_id": groupID,
-			"error":    err.Error(),
-		}).Error("error setting group state")
-	}
+	b.userInterface.SetGroupState(Group{
+		ID:   g.ID,
+		Name: g.Name,
+		//Image: []byte{},
+		UserIDs:                finalUsers,
+		Admins:                 finalAdmins,
+		Retention:              g.Retention,
+		LastActivity:           g.LastActivity,
+		RestrictUserManagement: g.RestrictUserManagement,
+		RestrictGroupEdits:     g.RestrictGroupEdits,
+		RestrictPosting:        g.RestrictPosting,
+	})
 
 	return nil
 }
@@ -915,8 +923,6 @@ func (b *bounce) applyUpdateGroupInUI(ug updateGroup) {
 		b.informUIUpdateGroupAddUser(ug)
 	case updateGroupTypeRemoveUser:
 		b.informUIUpdateGroupRemoveUser(ug)
-	case updateGroupTypeChangeMutedUntil:
-		b.informUIUpdateGroupChangeMutedUntil(ug)
 	case updateGroupTypeChangeRetention:
 		b.informUIUpdateGroupChangeRetention(ug)
 	case updateGroupTypeSetClearBefore:
@@ -1001,11 +1007,6 @@ func (b *bounce) informUIUpdateGroupRemoveUser(ug updateGroup) {
 			Timestamp: ug.Timestamp,
 			User:      userID,
 		})
-}
-
-func (b *bounce) informUIUpdateGroupChangeMutedUntil(ug updateGroup) {
-	mutedUntil := int64(binary.LittleEndian.Uint64(ug.Data))
-	b.userInterface.GroupMutedUntilChanged(ug.Target, mutedUntil)
 }
 
 func (b *bounce) informUIUpdateGroupChangeRetention(ug updateGroup) {
@@ -1136,10 +1137,6 @@ func (b *bounce) informUIUpdateGroupChangePostingPermission(ug updateGroup) {
 			Timestamp: ug.Timestamp,
 		})
 	}
-}
-
-func (b *bounce) rollbackUpdateGroupInUI(ug updateGroup) {
-	// TODO: tell the UI to delete this update
 }
 
 func (b *bounce) handleUpdateGroupSideEffects(ug updateGroup) error {
@@ -1289,7 +1286,7 @@ func (b *bounce) pruneMessagesBeforeClear(ug updateGroup) error {
 				"id":    gm.ID,
 			}).Fatal("error deleting group message while clearing chat history")
 		}
-		b.userInterface.DeleteMessage(gm.ID)
+		b.userInterface.DeleteItem(gm.ID)
 	}
 
 	return nil

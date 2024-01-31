@@ -41,7 +41,7 @@ func (tis threadItems) Less(i, j int) bool {
 }
 
 func (fyneUI *Fyne) newUpdateGroupName(ugn chat.UpdateGroupName) (*threadItem, error) {
-	return fyneUI.newStatusChange(
+	return fyneUI.newStatusChangeThreadItem(
 		ugn.ID,
 		ugn.Thread,
 		ugn.Actor,
@@ -51,7 +51,7 @@ func (fyneUI *Fyne) newUpdateGroupName(ugn chat.UpdateGroupName) (*threadItem, e
 }
 
 func (fyneUI *Fyne) newUpdateGroupRetention(ugr chat.UpdateGroupRetention) (*threadItem, error) {
-	return fyneUI.newStatusChange(
+	return fyneUI.newStatusChangeThreadItem(
 		ugr.ID,
 		ugr.Thread,
 		ugr.Actor,
@@ -61,7 +61,7 @@ func (fyneUI *Fyne) newUpdateGroupRetention(ugr chat.UpdateGroupRetention) (*thr
 }
 
 func (fyneUI *Fyne) newUpdateGroupAddUser(ugau chat.UpdateGroupAddUser) (*threadItem, error) {
-	return fyneUI.newStatusChange(
+	return fyneUI.newStatusChangeThreadItem(
 		ugau.ID,
 		ugau.Thread,
 		ugau.Actor,
@@ -77,7 +77,7 @@ func (fyneUI *Fyne) newUpdateGroupRemoveUser(ugru chat.UpdateGroupRemoveUser) (*
 	}
 
 	if ugru.User == ugru.Actor {
-		return fyneUI.newStatusChange(
+		return fyneUI.newStatusChangeThreadItem(
 			ugru.ID,
 			ugru.Thread,
 			ugru.Actor,
@@ -86,7 +86,7 @@ func (fyneUI *Fyne) newUpdateGroupRemoveUser(ugru chat.UpdateGroupRemoveUser) (*
 		)
 	}
 
-	return fyneUI.newStatusChange(
+	return fyneUI.newStatusChangeThreadItem(
 		ugru.ID,
 		ugru.Thread,
 		ugru.Actor,
@@ -96,7 +96,7 @@ func (fyneUI *Fyne) newUpdateGroupRemoveUser(ugru chat.UpdateGroupRemoveUser) (*
 }
 
 func (fyneUI *Fyne) newUpdateGroupClearHistory(ugch chat.UpdateGroupClearHistory) (*threadItem, error) {
-	ti, err := fyneUI.newStatusChange(
+	ti, err := fyneUI.newStatusChangeThreadItem(
 		ugch.ID,
 		ugch.Thread,
 		ugch.Actor,
@@ -203,7 +203,7 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 }
 
 func (fyneUI *Fyne) newUpdateDMRetention(udmr chat.UpdateDMRetention) (*threadItem, error) {
-	return fyneUI.newStatusChange(
+	return fyneUI.newStatusChangeThreadItem(
 		udmr.ID,
 		udmr.Thread,
 		udmr.Actor,
@@ -213,7 +213,7 @@ func (fyneUI *Fyne) newUpdateDMRetention(udmr chat.UpdateDMRetention) (*threadIt
 }
 
 func (fyneUI *Fyne) newUpdateDMClearHistory(udmch chat.UpdateDMClearHistory) (*threadItem, error) {
-	ti, err := fyneUI.newStatusChange(
+	ti, err := fyneUI.newStatusChangeThreadItem(
 		udmch.ID,
 		udmch.Thread,
 		udmch.Actor,
@@ -230,7 +230,7 @@ func (fyneUI *Fyne) newUpdateGroupAdminPromoted(ugap chat.UpdateGroupAdminPromot
 		return &threadItem{}, errUnknownUser
 	}
 
-	return fyneUI.newStatusChange(
+	return fyneUI.newStatusChangeThreadItem(
 		ugap.ID,
 		ugap.Thread,
 		ugap.Actor,
@@ -245,7 +245,7 @@ func (fyneUI *Fyne) newUpdateGroupAdminDemoted(ugad chat.UpdateGroupAdminDemoted
 		return &threadItem{}, errUnknownUser
 	}
 
-	return fyneUI.newStatusChange(
+	return fyneUI.newStatusChangeThreadItem(
 		ugad.ID,
 		ugad.Thread,
 		ugad.Actor,
@@ -255,7 +255,7 @@ func (fyneUI *Fyne) newUpdateGroupAdminDemoted(ugad chat.UpdateGroupAdminDemoted
 }
 
 func (fyneUI *Fyne) newUpdateGroupUserManagementRestricted(ugumr chat.UpdateGroupUserManagementRestricted) (*threadItem, error) {
-	return fyneUI.newStatusChange(
+	return fyneUI.newStatusChangeThreadItem(
 		ugumr.ID,
 		ugumr.Thread,
 		ugumr.Actor,
@@ -265,7 +265,7 @@ func (fyneUI *Fyne) newUpdateGroupUserManagementRestricted(ugumr chat.UpdateGrou
 }
 
 func (fyneUI *Fyne) newUpdateGroupUserManagementUnrestricted(ugumu chat.UpdateGroupUserManagementUnrestricted) (*threadItem, error) {
-	return fyneUI.newStatusChange(
+	return fyneUI.newStatusChangeThreadItem(
 		ugumu.ID,
 		ugumu.Thread,
 		ugumu.Actor,
@@ -275,7 +275,7 @@ func (fyneUI *Fyne) newUpdateGroupUserManagementUnrestricted(ugumu chat.UpdateGr
 }
 
 func (fyneUI *Fyne) newUpdateGroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) (*threadItem, error) {
-	return fyneUI.newStatusChange(
+	return fyneUI.newStatusChangeThreadItem(
 		uger.ID,
 		uger.Thread,
 		uger.Actor,
@@ -285,7 +285,7 @@ func (fyneUI *Fyne) newUpdateGroupEditsRestricted(uger chat.UpdateGroupEditsRest
 }
 
 func (fyneUI *Fyne) newUpdateGroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricted) (*threadItem, error) {
-	return fyneUI.newStatusChange(
+	return fyneUI.newStatusChangeThreadItem(
 		ugeu.ID,
 		ugeu.Thread,
 		ugeu.Actor,
@@ -295,7 +295,7 @@ func (fyneUI *Fyne) newUpdateGroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUn
 }
 
 func (fyneUI *Fyne) newUpdateGroupPostingRestricted(ugpr chat.UpdateGroupPostingRestricted) (*threadItem, error) {
-	return fyneUI.newStatusChange(
+	return fyneUI.newStatusChangeThreadItem(
 		ugpr.ID,
 		ugpr.Thread,
 		ugpr.Actor,
@@ -305,7 +305,7 @@ func (fyneUI *Fyne) newUpdateGroupPostingRestricted(ugpr chat.UpdateGroupPosting
 }
 
 func (fyneUI *Fyne) newUpdateGroupPostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted) (*threadItem, error) {
-	return fyneUI.newStatusChange(
+	return fyneUI.newStatusChangeThreadItem(
 		ugpu.ID,
 		ugpu.Thread,
 		ugpu.Actor,
@@ -314,7 +314,7 @@ func (fyneUI *Fyne) newUpdateGroupPostingUnrestricted(ugpu chat.UpdateGroupPosti
 	)
 }
 
-func (fyneUI *Fyne) newStatusChange(id, threadID, actorID uuid.UUID, changeString string, timestamp int64) (*threadItem, error) {
+func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, changeString string, timestamp int64) (*threadItem, error) {
 	t, ok := fyneUI.getThread(threadID)
 	if !ok {
 		log.WithFields(log.Fields{
@@ -333,8 +333,7 @@ func (fyneUI *Fyne) newStatusChange(id, threadID, actorID uuid.UUID, changeStrin
 	}
 
 	changeString = actorName + " " + changeString
-	changeLabel := widget.NewLabel(changeString)
-	changeLabel.Alignment = fyne.TextAlignCenter
+	changeLabel := newStatusChange(changeString)
 
 	return &threadItem{
 		id:     id,

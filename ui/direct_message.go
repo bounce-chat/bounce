@@ -193,10 +193,6 @@ func (fyneUI *Fyne) DisplayDirectMessage(dm chat.DirectMessage) {
 		return
 	}
 
-	fyneUI.threadWithMessageMutex.Lock()
-	fyneUI.threadWithMessage[dm.ID] = dmThread
-	fyneUI.threadWithMessageMutex.Unlock()
-
 	if !fyneUI.isActive(dmThread) && !(dm.Author == fyneUI.profile.id) {
 		dmThread.button.addUnread()
 	}
