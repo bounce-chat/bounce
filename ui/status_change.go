@@ -17,6 +17,7 @@ func newStatusChange(id uuid.UUID, str string) *statusChange {
 	baseLabel.Alignment = fyne.TextAlignCenter
 
 	st := &statusChange{
+		id:    id,
 		label: baseLabel,
 	}
 
