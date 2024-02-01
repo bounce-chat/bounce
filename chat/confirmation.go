@@ -38,7 +38,7 @@ func (c *confirmation) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (c *confirmation) AfterDelete(tx *gorm.DB) error {
-	return tx.Where("frame_id = ? AND frame_type = ?", c.ID, typeConfirmation).Delete(&confirmation{}).Error
+	return tx.Where("frame_id = ? AND frame_type = ?", c.ID, typeConfirmation).Delete(&deliveryRecord{}).Error
 }
 
 func (c *confirmation) getID() uuid.UUID {

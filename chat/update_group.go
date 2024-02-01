@@ -77,7 +77,7 @@ func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
 
 func (ug *updateGroup) AfterDelete(tx *gorm.DB) error {
 	if ug.CustomScope != uuid.Nil {
-		err := deleteCustomScopeIfLastUse(tx, ug.CustomScope)
+		err := deleteCustomScopeIfLastUse(tx, ug.CustomScope) // TODO: move to startup because read in transaction?
 		if err != nil {
 			return err
 		}
