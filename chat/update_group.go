@@ -83,9 +83,12 @@ func (ug *updateGroup) AfterDelete(tx *gorm.DB) error {
 		}
 	}
 
-	return tx.Where("frame_id = ? AND frame_type = ?", ug.ID, typeUpdateGroup).Delete(&deliveryRecord{}).Error
+	err := tx.Where("update_group_id = ?", ug.ID).Delete(&confirmation{}).Error
+	if err != nil {
+		return err
+	}
 
-	// TODO: delete any confirmations
+	return tx.Where("frame_id = ? AND frame_type = ?", ug.ID, typeUpdateGroup).Delete(&deliveryRecord{}).Error
 }
 
 func (ug *updateGroup) getID() uuid.UUID {
@@ -254,7 +257,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	b.updateGroupConsensus(ug.Target)
 
 	// Check if this update was applied while evaluating group consensus and broadcast / ack if so
-	err = b.database.Select("applied").First(&ug, "id = ?", ug.ID).Error
+	err = b.database.First(&ug, "id = ?", ug.ID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
