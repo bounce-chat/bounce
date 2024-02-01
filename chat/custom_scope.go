@@ -76,27 +76,6 @@ func (b *bounce) createCustomScopeFromGroup(groupID uuid.UUID) error {
 }
 
 //
-// CHeck if any of the frames that use custom scoping are depending on this custom scope, and if there's only
-// one or zero frames using it, delete it
-//
-func deleteCustomScopeIfLastUse(tx *gorm.DB, id uuid.UUID) error {
-	var ugCount int64
-	err := tx.Model(&updateGroup{}).Where("custom_scope = ?", id).Count(&ugCount).Error
-	if err != nil {
-		return err
-	}
-
-	if ugCount <= 1 {
-		err := tx.Where("id = ?", id).Delete(&customScope{}).Error
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-//
 // This function is called when we've been re-added to a group we were previously removed from and we want to
 // undo the custom scoping of past frames
 //
