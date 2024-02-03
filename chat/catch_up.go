@@ -350,7 +350,7 @@ func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
 		}
 
 		databaseUgs := []updateGroup{}
-		err := b.database.Preload(clause.Associations).Where("target = ?", groupID).Order("timestamp asc").Find(&ugs).Error
+		err := b.database.Preload(clause.Associations).Where("target = ?", groupID).Order("timestamp asc").Find(&databaseUgs).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"group_id": groupID,
