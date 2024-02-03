@@ -120,7 +120,8 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error unmarshalling group message")
+		}).Error("error unmarshalling group message")
+		return
 	}
 	gm.OriginalPayload = sc.Payload
 	gm.Signature = sc.Signature

@@ -188,7 +188,8 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error unmarshalling update group")
+		}).Error("error unmarshalling update group")
+		return
 	}
 	ug.OriginalPayload = sc.Payload
 	ug.Signature = sc.Signature

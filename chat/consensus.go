@@ -194,7 +194,8 @@ func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
 			log.WithFields(log.Fields{
 				"previous": lastState.ug.ID,
 				"current":  ug.ID,
-			}).Fatal("out of order update group inserted into canonical history")
+			}).Error("out of order update group inserted into canonical history")
+			return
 		}
 	}
 

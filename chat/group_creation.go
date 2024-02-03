@@ -103,7 +103,8 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error unmarshalling group creation")
+		}).Error("error unmarshalling group creation")
+		return
 	}
 	gc.OriginalPayload = sc.Payload
 	gc.Signature = sc.Signature

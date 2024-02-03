@@ -173,7 +173,7 @@ func (b *bounce) getRequestedUpdateGroupsPayloads(peer device, requestedIDs, off
 
 	for _, ugID := range requestedUpdateGroupsIDs {
 		var ug updateGroup
-		err := b.database.First(&ug, "id = ?", ugID).Error
+		err := b.database.Preload(clause.Associations).First(&ug, "id = ?", ugID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
