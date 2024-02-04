@@ -245,6 +245,7 @@ func (b *bounce) handleUpdateGroupIfApplied(peer string, ug updateGroup) {
 }
 
 func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
+	log.Warn("identifying NOP groups")
 	nopGroups := map[uuid.UUID]bool{}
 	stacks := map[uuid.UUID]*canonicalStack{}
 	ugs := map[uuid.UUID][]updateGroup{}
@@ -314,9 +315,14 @@ func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
 				}
 			}
 
+			log.WithFields(log.Fields{
+				"group_id": g.ID,
+			}).Warn("built stack for group creation in catch up")
 			stacks[g.ID] = newCanonicalStack(initialState, b.currentUserID())
 		}
+	}
 
+	for _, fr := range frames {
 		if fr.Type == typeUpdateGroup {
 			sc, err := b.unpackSignedContainer(fr.Payload)
 			if err != nil {
@@ -334,6 +340,17 @@ func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
 				continue
 			}
 			ugs[ug.Target] = append(ugs[ug.Target], ug)
+
+			if _, present := stacks[ug.Target]; !present {
+				var gc groupCreation
+				err = b.database.Where("id = ?", ug.Target).First(&gc).Error
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"group_id": ug.Target,
+					}).Warn("marking group as NOP because there's no gc in catch up or database")
+					nopGroups[ug.Target] = true
+				}
+			}
 		}
 	}
 
@@ -357,6 +374,11 @@ func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
 				"error":    err.Error(),
 			}).Fatal("database error selecting all update groups")
 		}
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"offered":  len(allUgs),
+			"database": len(databaseUgs),
+		}).Warn("merging database and offered ugs for gc in catch up")
 		for _, ug := range databaseUgs {
 			if _, present := offeredIDs[ug.ID]; !present {
 				allUgs = append(allUgs, ug)
@@ -371,6 +393,9 @@ func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
 		}
 		finalState, err := cs.top()
 		if !finalState.isMember(b.currentUserID()) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Warn("marking NOP group because we aren't in the final state")
 			nopGroups[groupID] = true
 		}
 	}
@@ -396,6 +421,10 @@ func (b *bounce) isNopGroupFrame(nopGroups map[uuid.UUID]bool, fr frame) bool {
 			return false
 		}
 		_, present := nopGroups[gc.ID]
+		log.WithFields(log.Fields{
+			"present": present,
+			"id":      gc.ID,
+		}).Warn("checking if group creation is NOP")
 		return present
 	}
 
@@ -416,6 +445,10 @@ func (b *bounce) isNopGroupFrame(nopGroups map[uuid.UUID]bool, fr frame) bool {
 			return false
 		}
 		_, present := nopGroups[ug.Target]
+		log.WithFields(log.Fields{
+			"present": present,
+			"id":      ug.Target,
+		}).Warn("checking if update group is NOP")
 		return present
 
 	}
@@ -437,6 +470,10 @@ func (b *bounce) isNopGroupFrame(nopGroups map[uuid.UUID]bool, fr frame) bool {
 			return false
 		}
 		_, present := nopGroups[gm.Destination]
+		log.WithFields(log.Fields{
+			"present": present,
+			"id":      gm.Destination,
+		}).Warn("checking if group message is NOP")
 		return present
 
 	}

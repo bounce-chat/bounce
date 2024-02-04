@@ -793,6 +793,9 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 					removalActor = ug.Actor
 
 					// Attach a custom scope to this update group
+					log.WithFields(log.Fields{
+						"id": ug.ID,
+					}).Warn("adding custom scope to update group")
 					err = b.createCustomScopeFromGroup(ug.Target)
 					if err == nil {
 						err = b.database.Model(&ug).Select("custom_scope").Update("custom_scope", ug.Target).Error
