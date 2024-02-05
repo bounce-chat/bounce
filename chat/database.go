@@ -437,7 +437,7 @@ func (b *bounce) buildInitialState() InitialState {
 
 	// Load all update groups
 	ugs := []updateGroup{}
-	err = b.database.Where("applied = true").Order("timestamp asc").Find(&ugs).Error
+	err = b.database.Where("applied = true AND custom_scope = ?", uuid.Nil).Order("timestamp asc").Find(&ugs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
