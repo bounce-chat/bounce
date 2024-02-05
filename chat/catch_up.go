@@ -277,9 +277,9 @@ func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
 				continue
 			}
 
-			if _, present := stacks[g.ID]; present {
+			if _, present := stacks[gc.ID]; present {
 				log.WithFields(log.Fields{
-					"group_id": g.ID,
+					"group_id": gc.ID,
 				}).Warn("catch up contains multiple group creations for same group")
 				continue
 			}
@@ -306,7 +306,7 @@ func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
 					if err != nil {
 						log.WithFields(log.Fields{
 							"error":    err.Error(),
-							"group_id": g.ID,
+							"group_id": gc.ID,
 							"admins":   g.Admins,
 						}).Fatal("invalid UUID in group admin list")
 					}
@@ -316,9 +316,9 @@ func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
 			}
 
 			log.WithFields(log.Fields{
-				"group_id": g.ID,
+				"group_id": gc.ID,
 			}).Warn("built stack for group creation in catch up")
-			stacks[g.ID] = newCanonicalStack(initialState, b.currentUserID())
+			stacks[gc.ID] = newCanonicalStack(initialState, b.currentUserID())
 		}
 	}
 
