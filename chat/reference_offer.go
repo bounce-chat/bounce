@@ -62,6 +62,8 @@ func (ro *referenceOffer) shouldDialUser() bool {
 			return true
 		} else if reference.Type == typeUpdateGroup {
 			return true
+		} else if reference.Type == typeConfirmation {
+			return true
 		}
 	}
 	return false
@@ -186,6 +188,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	references = append(references, b.getAddUsersToOffer(dev)...)
 	references = append(references, b.getGroupCreationsToOffer(dev)...)
 	references = append(references, b.getUpdateGroupsToOffer(dev)...)
+	references = append(references, b.getConfirmationsToOffer(dev)...)
 
 	return &referenceOffer{
 		ID:         uuid.New(),
@@ -464,6 +467,30 @@ func (b *bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 	return references
 }
 
+func (b *bounce) getConfirmationsToOffer(dev device) []frameReference {
+	var unsentConfirmations []confirmation
+	err := b.database.
+		Preload(clause.Associations).
+		Select("confirmations.*").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == confirmations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeConfirmation).
+		Joins("JOIN update_groups ON update_groups.id == confirmations.update_group_id").
+		Joins("JOIN group_users ON update_groups.target == group_users.group_id").
+		Where("delivery_records.id IS NULL AND group_users.user_id = ?", dev.UserID).
+		Find(&unsentConfirmations).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting unsent confirmations in reference offer")
+	}
+
+	references := []frameReference{}
+	for _, c := range unsentConfirmations {
+		references = append(references, frameReference{FrameID: c.ID, Type: typeConfirmation})
+	}
+
+	return references
+}
+
 func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 	var ro referenceOffer
 	err := msgpack.Unmarshal(payload, &ro)
@@ -488,6 +515,7 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 	references = append(references, b.getAddUsersToRequest(dev, deviceExists, typesToIDs[typeAddUser])...)
 	references = append(references, b.getGroupCreationsToRequest(dev, deviceExists, typesToIDs[typeGroupCreation])...)
 	references = append(references, b.getUpdateGroupsToRequest(dev, deviceExists, typesToIDs[typeUpdateGroup])...)
+	references = append(references, b.getConfirmationsToRequest(dev, deviceExists, typesToIDs[typeConfirmation])...)
 
 	// Inform the reference engine that this peer has these frames that we don't know about
 	b.loadReferenceOffer(peer, references)
@@ -653,6 +681,30 @@ func (b *bounce) getUpdateGroupsToRequest(dev device, deviceExists bool, offered
 				"id":    updateGroupID,
 				"error": err.Error(),
 			}).Fatal("database error querying for update group")
+		}
+	}
+
+	return references
+}
+
+func (b *bounce) getConfirmationsToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+	references := []frameReference{}
+
+	for _, confirmationID := range offeredIDs {
+		var c confirmation
+		err := b.database.First(&c, "id = ?", confirmationID).Error
+		if err == nil {
+			if deviceExists && !b.isDeliveredTo(&c, dev.Address) {
+				b.markDeliveredTo(&c, dev.Address)
+			}
+			go b.sendAck(dev.Address, typeConfirmation, confirmationID)
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			references = append(references, frameReference{FrameID: confirmationID, Type: typeConfirmation})
+		} else {
+			log.WithFields(log.Fields{
+				"id":    confirmationID,
+				"error": err.Error(),
+			}).Fatal("database error querying for confirmation")
 		}
 	}
 

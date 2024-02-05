@@ -75,6 +75,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte) {
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupMessagePayloads(dev, requestedIDs[typeGroupMessage], offeredIDs[typeGroupMessage])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMsPayloads(dev, requestedIDs[typeUpdateDM], offeredIDs[typeUpdateDM])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateGroupsPayloads(dev, requestedIDs[typeUpdateGroup], offeredIDs[typeUpdateGroup])...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedConfirmationsPayloads(dev, requestedIDs[typeConfirmation], offeredIDs[typeConfirmation], getValidRequestedUUIDs(offeredIDs[typeUpdateGroup], requestedIDs[typeUpdateGroup]))...) // TODO: just use the get valid function before this call everywhere?
 
 	// Send the catchup if there's anything to send
 	if len(cu.broadcastables) > 0 {
@@ -273,6 +274,43 @@ func (b *bounce) getRequestedAddUsersPayloads(peer device, requestedIDs, offered
 		} else {
 			requestedData = append(requestedData, &au)
 		}
+	}
+
+	return requestedData
+}
+
+func (b *bounce) getRequestedConfirmationsPayloads(peer device, requestedIDs, offeredIDs, ugsToDeliver []uuid.UUID) sortableBroadcastables {
+	requestedData := sortableBroadcastables{}
+
+	includedInUG := map[uuid.UUID]bool{}
+	for _, id := range ugsToDeliver {
+		includedInUG[id] = true
+	}
+
+	requestedConfirmationIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
+
+	for _, confirmationID := range requestedConfirmationIDs {
+		var c confirmation
+		err := b.database.First(&c, "id = ?", confirmationID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   confirmationID,
+					"peer": peer.Address,
+				}).Warn("reference request asks for unknown confirmation we offered")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    confirmationID,
+					"error": err.Error(),
+				}).Fatal("database error querying for confirmation")
+			}
+		} else {
+			if _, present := includedInUG[c.UpdateGroupID]; present {
+				continue
+			}
+			requestedData = append(requestedData, &c)
+		}
+
 	}
 
 	return requestedData
