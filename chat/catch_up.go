@@ -245,7 +245,6 @@ func (b *bounce) handleUpdateGroupIfApplied(peer string, ug updateGroup) {
 }
 
 func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
-	log.Warn("identifying NOP groups")
 	nopGroups := map[uuid.UUID]bool{}
 	stacks := map[uuid.UUID]*canonicalStack{}
 	ugs := map[uuid.UUID][]updateGroup{}
