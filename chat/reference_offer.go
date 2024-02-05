@@ -436,7 +436,7 @@ func (b *bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
 		Joins("JOIN group_users ON update_groups.target = group_users.group_id").
 		Where(
-			"delivery_records.id IS NULL AND group_users.user_id = ? AND applied = true AND (update_groups.custom_scope == ? OR update_groups.custom_scope IN (?))",
+			"delivery_records.id IS NULL AND applied = true AND ((group_users.user_id = ? AND update_groups.custom_scope == ?) OR update_groups.custom_scope IN (?))",
 			dev.UserID,
 			uuid.Nil,
 			b.database.
