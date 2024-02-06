@@ -156,6 +156,7 @@ func (b *bounce) handleConfirmation(peer string, payload []byte) {
 			"confirmation_id": c.ID,
 			"author":          c.Author,
 		}).Warn("ignoring confirmation signed by user who was not a member of the group during the update")
+		return
 	}
 
 	// Save it

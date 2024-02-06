@@ -85,8 +85,9 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 
 	nopGroups := b.identifyNOPGroups(cu.Frames)
 
-	// Keep track of update groups that are new
+	// Keep track of update groups that are new, and which groups will need a consensus update
 	ugs := []updateGroup{}
+	groupsToUpdateConsensus := map[uuid.UUID]bool{}
 
 	// Handle reach frame in the catch up using it's handler
 	handlers := b.getHandlers()
@@ -107,6 +108,17 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 			newAndValid, ug := b.validateAndSaveUpdateGroup(peer, fr.Payload)
 			if newAndValid {
 				ugs = append(ugs, ug)
+				groupsToUpdateConsensus[ug.Target] = true
+			}
+			continue
+		}
+
+		// Save confirmations without updating group consensus so that all consensus updates can be done after
+		// the catch up is processed for efficiency reasons
+		if fr.Type == typeConfirmation {
+			targetGroupID, shouldUpdate := b.saveConfirmationWithoutConsensusUpdate(peer, fr.Payload)
+			if shouldUpdate {
+				groupsToUpdateConsensus[targetGroupID] = true
 			}
 			continue
 		}
@@ -123,11 +135,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 	}
 
 	// Update all group consensus states for groups that had an update group in this catch up
-	ugGroups := map[uuid.UUID]bool{}
-	for _, ug := range ugs {
-		ugGroups[ug.Target] = true
-	}
-	for groupID, _ := range ugGroups {
+	for groupID, _ := range groupsToUpdateConsensus {
 		b.updateGroupConsensus(groupID)
 	}
 	for _, ug := range ugs {
@@ -242,6 +250,104 @@ func (b *bounce) handleUpdateGroupIfApplied(peer string, ug updateGroup) {
 		// Broadcast it
 		b.broadcast(&ug)
 	}
+}
+
+func (b *bounce) saveConfirmationWithoutConsensusUpdate(peer string, payload []byte) (uuid.UUID, bool) {
+	confirmationMutex.Lock()
+	defer confirmationMutex.Unlock()
+
+	// Unmarshal the confirmation
+	var c confirmation
+	err := msgpack.Unmarshal(payload, &c)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling confirmation")
+		return uuid.Nil, false
+	}
+
+	// Check if we already have this confirmation
+	var existingConfirmation confirmation
+	err = b.database.Where("id = ?", c.ID).First(&existingConfirmation).Error
+	if err == nil {
+		b.markDeliveredTo(&existingConfirmation, peer)
+		go b.sendAck(peer, typeConfirmation, c.ID)
+		return uuid.Nil, false
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up confirmation")
+	}
+
+	// Validate the signature
+	valid := b.network.VerifySignature(c.SigningDevice, c.UpdateGroupID[:], c.Signature)
+	if !valid {
+		log.WithFields(log.Fields{
+			"update_group_id": c.UpdateGroupID,
+			"confirmation_id": c.ID,
+			"signing_device":  c.SigningDevice,
+		}).Warn("ignoring confirmation with invalid signautre")
+		return uuid.Nil, false
+	}
+
+	// Look up the update group that is being signed
+	var ug updateGroup
+	err = b.database.Where("id = ?", c.UpdateGroupID).First(&ug).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"update_group_id": c.UpdateGroupID,
+				"confirmation_id": c.ID,
+			}).Warn("ignoring confirmation for unknown update group")
+			return uuid.Nil, false
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up update group")
+		}
+	}
+	c.Destination = ug.Target
+
+	// Look up and assign the user who signed this confirmation
+	dev, ok := b.getDeviceFromAddress(c.SigningDevice)
+	if !ok {
+		log.WithFields(log.Fields{
+			"update_group_id": c.UpdateGroupID,
+			"confirmation_id": c.ID,
+			"signing_device":  c.SigningDevice,
+		}).Warn("ignoring confirmation from unknown device")
+		return uuid.Nil, false
+	}
+	c.Author = dev.UserID
+
+	// Make sure the user signing this confirmation was a member of the group for this update
+	if !b.isMemberOfGroupForUpdate(c.Author, ug.Target, ug.ID) {
+		log.WithFields(log.Fields{
+			"update_group_id": c.UpdateGroupID,
+			"confirmation_id": c.ID,
+			"author":          c.Author,
+		}).Warn("ignoring confirmation signed by user who was not a member of the group during the update")
+		return uuid.Nil, false
+	}
+
+	// Save it
+	err = b.database.Create(&c).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving confirmation")
+	}
+
+	// Ack it
+	go b.sendAck(peer, typeConfirmation, c.ID)
+
+	// Mark as delivered to this peer
+	b.markDeliveredTo(&c, peer)
+
+	// Broadcast it
+	b.broadcast(&c)
+
+	return ug.Target, true
 }
 
 func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
