@@ -714,6 +714,13 @@ func applyUpdateGroupChangePostingPermissionToState(gs groupState, ug updateGrou
 }
 
 func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *canonicalStack, ugs []updateGroup) error {
+	if len(cs.history) == 0 {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+		}).Error("cannot update group state with empty history stack")
+		return errStackEmpty
+	}
+
 	// Find the group
 	var g group
 	err := b.database.Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
@@ -945,6 +952,8 @@ func (b *bounce) applyUpdateGroupInUI(ug updateGroup) {
 		b.informUIUpdateGroupRemoveUser(ug)
 	case updateGroupTypeChangeRetention:
 		b.informUIUpdateGroupChangeRetention(ug)
+	case updateGroupTypeChangeMutedUntil:
+		return
 	case updateGroupTypeSetClearBefore:
 		b.informUIUpdateGroupSetClearBefore(ug)
 	case updateGroupTypePromoteAdmin:
