@@ -63,6 +63,7 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckAddUsers(peer, ackedIDs[typeAddUser])
 	b.handleAckGroupCreations(peer, ackedIDs[typeGroupCreation])
 	b.handleAckUpdateGroups(peer, ackedIDs[typeUpdateGroup])
+	b.handleAckConfirmations(peer, ackedIDs[typeConfirmation])
 }
 
 func (b *bounce) sendAck(peer string, frameType uint16, frameID uuid.UUID) {
@@ -323,6 +324,28 @@ func (b *bounce) handleAckUpdateGroups(peer string, ids []uuid.UUID) {
 				}
 
 			}
+		}
+	}
+}
+
+func (b *bounce) handleAckConfirmations(peer string, ids []uuid.UUID) {
+	for _, confirmationID := range ids {
+		var c confirmation
+		err := b.database.First(&c, "id = ?", confirmationID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   confirmationID,
+					"peer": peer,
+				}).Warn("unknown confirmation acked")
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error querying for confirmation")
+			}
+		} else {
+			b.markDeliveredTo(&c, peer)
 		}
 	}
 }
