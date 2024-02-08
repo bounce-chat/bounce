@@ -259,6 +259,28 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	// Update the group state
 	b.updateGroupConsensus(ug.Target)
 
+	// Reload the update group to update the applied and custom scope fields
+	err = b.database.First(&ug, "id = ?", ug.ID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"update_group_id": ug.ID,
+				"error":           err.Error(),
+			}).Error("update group not found after save")
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up update group")
+		}
+	}
+
+	// Update group activity if we're still in the group
+	if ug.Applied {
+		if b.userIsInGroup(b.currentUserID(), ug.Target) {
+			b.updateLastGroupActivity(ug.Target, ug.Timestamp)
+		}
+	}
+
 	// Ack it
 	go b.sendAck(peer, typeUpdateGroup, ug.ID)
 
@@ -302,27 +324,6 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 					go b.sendDirect(dev.Address, &ug)
 				}
 			}
-		}
-	}
-
-	// Check if this update was applied while evaluating group consensus and broadcast / ack if so
-	err = b.database.First(&ug, "id = ?", ug.ID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"update_group_id": ug.ID,
-				"error":           err.Error(),
-			}).Error("update group not found after save")
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up update group")
-		}
-	}
-	if ug.Applied {
-		// Update group activity if we're still in the group
-		if b.userIsInGroup(b.currentUserID(), ug.Target) {
-			b.updateLastGroupActivity(ug.Target, ug.Timestamp)
 		}
 	}
 }
@@ -622,7 +623,9 @@ func (b *bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
 	}
 	if ug.Applied {
 		// Update group activity
-		b.updateLastGroupActivity(ug.Target, ug.Timestamp)
+		if b.userIsInGroup(b.currentUserID(), ug.Target) {
+			b.updateLastGroupActivity(ug.Target, ug.Timestamp)
+		}
 
 		// Broadcast it
 		b.broadcast(ug)
