@@ -259,6 +259,52 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	// Update the group state
 	b.updateGroupConsensus(ug.Target)
 
+	// Ack it
+	go b.sendAck(peer, typeUpdateGroup, ug.ID)
+
+	// Mark that the peer that send this update already has it
+	b.markDeliveredTo(&ug, peer)
+
+	// Broadcast it
+	b.broadcast(&ug)
+
+	// If we removed a user we should also broadcast to that user, who is not longer in the group scope
+	if ug.Type == updateGroupTypeRemoveUser {
+		userID, err := uuid.FromBytes(ug.Data)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"actor":   ug.Actor,
+				"user_id": ug.Data,
+			}).Error("update group attempted to remove user with invalid UUID")
+			return
+		}
+
+		if userID != b.currentUserID() {
+			var u user
+			err := b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"user_id": userID,
+					}).Error("user not found for direct remove from group broadcast")
+					return
+				} else {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("error looking up user")
+				}
+			}
+
+			for _, dev := range u.Devices {
+				rd := b.getRemoteDevice(dev.Address)
+				if rd.connectedSockets > 0 {
+					go b.sendDirect(dev.Address, &ug)
+				}
+			}
+		}
+	}
+
 	// Check if this update was applied while evaluating group consensus and broadcast / ack if so
 	err = b.database.First(&ug, "id = ?", ug.ID).Error
 	if err != nil {
@@ -278,15 +324,6 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		if b.userIsInGroup(b.currentUserID(), ug.Target) {
 			b.updateLastGroupActivity(ug.Target, ug.Timestamp)
 		}
-
-		// Ack it
-		go b.sendAck(peer, typeUpdateGroup, ug.ID)
-
-		// Mark that the peer that send this update already has it
-		b.markDeliveredTo(&ug, peer)
-
-		// Broadcast it
-		b.broadcast(&ug)
 	}
 }
 
