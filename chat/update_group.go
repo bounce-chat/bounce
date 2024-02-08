@@ -279,6 +279,23 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		if b.userIsInGroup(b.currentUserID(), ug.Target) {
 			b.updateLastGroupActivity(ug.Target, ug.Timestamp)
 		}
+
+		if ug.Type == updateGroupTypeAddUser {
+			var newUser user
+			err := msgpack.Unmarshal(ug.Data, &newUser)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error unmarshalling user")
+				return
+			}
+
+			b.userConnectionDesired(newUser.ID)
+
+			for _, dev := range newUser.Devices {
+				go b.sendReferences(dev.Address)
+			}
+		}
 	}
 
 	// Ack it

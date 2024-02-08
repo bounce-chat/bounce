@@ -81,7 +81,7 @@ func (b *bounce) createCustomScopeFromGroup(groupID uuid.UUID) error {
 //
 func (b *bounce) rescopeIfReAddedToGroup(groupID uuid.UUID) error {
 	// Remove custom scopes from updateGroups for this group
-	err := b.database.Model(&updateGroup{}).Where("custom_scope = ?", groupID).Update("custom_scope", uuid.Nil.String()).Error
+	err := b.database.Model(&updateGroup{}).Where("custom_scope = ?", groupID).Updates(map[string]interface{}{"custom_scope": uuid.Nil, "applied": false}).Error
 	if err != nil {
 		return err
 	}
