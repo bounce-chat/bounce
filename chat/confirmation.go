@@ -149,8 +149,9 @@ func (b *bounce) handleConfirmation(peer string, payload []byte) {
 	}
 	c.Author = dev.UserID
 
-	// Make sure the user signing this confirmation was a member of the group for this update
-	if !b.isMemberOfGroupForUpdate(c.Author, ug.Target, ug.ID) {
+	// Make sure the user signing this confirmation was a member of the group for this update, unless the update group in question
+	// has a custom scope, in which case this update removed us from the group
+	if ug.CustomScope == uuid.Nil && !b.isMemberOfGroupForUpdate(c.Author, ug.Target, ug.ID) {
 		log.WithFields(log.Fields{
 			"update_group_id": c.UpdateGroupID,
 			"confirmation_id": c.ID,
@@ -176,8 +177,10 @@ func (b *bounce) handleConfirmation(peer string, payload []byte) {
 	// Broadcast it
 	b.broadcast(&c)
 
-	// Update group consensus
-	b.updateGroupConsensus(c.Destination)
+	// Update group consensus unless this confirms the update group that removed us
+	if ug.CustomScope == uuid.Nil {
+		b.updateGroupConsensus(c.Destination)
+	}
 }
 
 func (b *bounce) sendConfirmation(ug updateGroup) {

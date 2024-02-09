@@ -210,9 +210,9 @@ func (b *bounce) getGroupScope(br broadcastable) []*remoteDevice {
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
-				"scope":        br.getScope(b.currentUserID()),
-				"destinations": br.getDestination(b.currentUserID()),
-				"type":         br.getType(),
+				"scope":       br.getScope(b.currentUserID()),
+				"destination": br.getDestination(b.currentUserID()),
+				"type":        br.getType(),
 			}).Error("group not found when determining broadcast scope for message")
 			return broadcastTargets
 		} else {

@@ -81,7 +81,7 @@ func (fyneUI *Fyne) newUpdateGroupRemoveUser(ugru chat.UpdateGroupRemoveUser) (*
 			ugru.ID,
 			ugru.Thread,
 			ugru.Actor,
-			removedUser.name+" left the group",
+			"left the group",
 			ugru.Timestamp,
 		)
 	}

@@ -191,14 +191,9 @@ func (b *bounce) makeReferenceRequests() {
 		).
 		Find(&references).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// We have nothing to ask for right now
-			return
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error getting frame references from reference database")
-		}
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error getting frame references from reference database")
 	}
 
 	// Prepare reference requests for each device that is in the list of references to request
