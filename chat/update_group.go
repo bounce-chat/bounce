@@ -43,8 +43,6 @@ var errGroupNotFound = errors.New("group not found")
 var errUserNotInGroup = errors.New("user is not in group")
 var errAdminRequired = errors.New("this action can only be performed by admins")
 
-var updateGroupMutex sync.Mutex
-
 //
 // An updateGroup frame changes the settings and status of a group, such as permissions, membership, retention, or notification settings.
 // Some settings, like retention and membership, must be observed by all participants of the group, where others like notification are only
@@ -173,9 +171,9 @@ func (ug *updateGroup) permissionPayloadIsRestricted() (bool, error) {
 	return true, errInvalidPermissionByte
 }
 
-func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
-	updateGroupMutex.Lock()
-	defer updateGroupMutex.Unlock()
+func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) broadcastable {
+	groupMutex.Lock()
+	defer groupMutex.Unlock()
 
 	// Unpack the signed container
 	sc, err := b.unpackSignedContainer(payload)
@@ -183,7 +181,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unpacking signed container for update group")
-		return
+		return nil
 	}
 	var ug updateGroup
 	err = msgpack.Unmarshal(sc.Payload, &ug)
@@ -191,7 +189,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling update group")
-		return
+		return nil
 	}
 	ug.OriginalPayload = sc.Payload
 	ug.Signature = sc.Signature
@@ -205,16 +203,14 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 			"signing_device": sc.Signer,
 			"group":          ug.Target,
 		}).Warn("ignoring group update that was not signed by the supposed actor")
-		return
+		return nil
 	}
 
 	// If we already have this update, we just mark that this peer has it too and return
 	var existingUG updateGroup
 	err = b.database.Where("id = ?", ug.ID).First(&existingUG).Error
 	if err == nil {
-		b.markDeliveredTo(&existingUG, peer)
-		go b.sendAck(peer, typeUpdateGroup, ug.ID)
-		return
+		return &existingUG
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -236,7 +232,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Error("error unmarshalling new user in update group")
-			return
+			return nil
 		}
 		if newUser.ID == b.currentUserID() {
 			var g group
@@ -246,7 +242,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 					// If we're handling an update group that adds us to a group we're not aware of,
 					// we're going to get the group information from the reference flow, so we don't
 					// need to try applying it now
-					return
+					return &ug
 				} else {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
@@ -257,92 +253,11 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte) {
 	}
 
 	// Update the group state
-	b.updateGroupConsensus(ug.Target)
-
-	// Reload the update group to update the applied and custom scope fields
-	err = b.database.First(&ug, "id = ?", ug.ID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"update_group_id": ug.ID,
-				"error":           err.Error(),
-			}).Error("update group not found after save")
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up update group")
-		}
+	if !catchUp {
+		b.updateGroupConsensus(ug.Target)
 	}
 
-	// Update group activity if we're still in the group
-	if ug.Applied {
-		if b.userIsInGroup(b.currentUserID(), ug.Target) {
-			b.updateLastGroupActivity(ug.Target, ug.Timestamp)
-		}
-
-		if ug.Type == updateGroupTypeAddUser {
-			var newUser user
-			err := msgpack.Unmarshal(ug.Data, &newUser)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error unmarshalling user")
-				return
-			}
-
-			b.userConnectionDesired(newUser.ID)
-
-			for _, dev := range newUser.Devices {
-				go b.sendReferences(dev.Address)
-			}
-		}
-	}
-
-	// Ack it
-	go b.sendAck(peer, typeUpdateGroup, ug.ID)
-
-	// Mark that the peer that send this update already has it
-	b.markDeliveredTo(&ug, peer)
-
-	// Broadcast it
-	b.broadcast(&ug)
-
-	// If we removed a user we should also broadcast to that user, who is not longer in the group scope
-	if ug.Type == updateGroupTypeRemoveUser {
-		userID, err := uuid.FromBytes(ug.Data)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":   err.Error(),
-				"actor":   ug.Actor,
-				"user_id": ug.Data,
-			}).Error("update group attempted to remove user with invalid UUID")
-			return
-		}
-
-		if userID != b.currentUserID() {
-			var u user
-			err := b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					log.WithFields(log.Fields{
-						"user_id": userID,
-					}).Error("user not found for direct remove from group broadcast")
-					return
-				} else {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Fatal("error looking up user")
-				}
-			}
-
-			for _, dev := range u.Devices {
-				rd := b.getRemoteDevice(dev.Address)
-				if rd.connectedSockets > 0 {
-					go b.sendDirect(dev.Address, &ug)
-				}
-			}
-		}
-	}
+	return &ug
 }
 
 func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {

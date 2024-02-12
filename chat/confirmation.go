@@ -81,7 +81,7 @@ func (c *confirmation) getTimestamp() int64 {
 	return c.Timestamp
 }
 
-func (b *bounce) handleConfirmation(peer string, payload []byte) {
+func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) broadcastable {
 	confirmationMutex.Lock()
 	defer confirmationMutex.Unlock()
 
@@ -92,16 +92,14 @@ func (b *bounce) handleConfirmation(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling confirmation")
-		return
+		return nil
 	}
 
 	// Check if we already have this confirmation
 	var existingConfirmation confirmation
 	err = b.database.Where("id = ?", c.ID).First(&existingConfirmation).Error
 	if err == nil {
-		b.markDeliveredTo(&existingConfirmation, peer)
-		go b.sendAck(peer, typeConfirmation, c.ID)
-		return
+		return &existingConfirmation
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -115,8 +113,8 @@ func (b *bounce) handleConfirmation(peer string, payload []byte) {
 			"update_group_id": c.UpdateGroupID,
 			"confirmation_id": c.ID,
 			"signing_device":  c.SigningDevice,
-		}).Warn("ignoring confirmation with invalid signautre")
-		return
+		}).Warn("ignoring confirmation with invalid signature")
+		return nil
 	}
 
 	// Look up the update group that is being signed
@@ -128,7 +126,7 @@ func (b *bounce) handleConfirmation(peer string, payload []byte) {
 				"update_group_id": c.UpdateGroupID,
 				"confirmation_id": c.ID,
 			}).Warn("ignoring confirmation for unknown update group")
-			return
+			return nil
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -145,7 +143,7 @@ func (b *bounce) handleConfirmation(peer string, payload []byte) {
 			"confirmation_id": c.ID,
 			"signing_device":  c.SigningDevice,
 		}).Warn("ignoring confirmation from unknown device")
-		return
+		return nil
 	}
 	c.Author = dev.UserID
 
@@ -157,7 +155,7 @@ func (b *bounce) handleConfirmation(peer string, payload []byte) {
 			"confirmation_id": c.ID,
 			"author":          c.Author,
 		}).Warn("ignoring confirmation signed by user who was not a member of the group during the update")
-		return
+		return nil
 	}
 
 	// Save it
@@ -174,13 +172,17 @@ func (b *bounce) handleConfirmation(peer string, payload []byte) {
 	// Mark as delivered to this peer
 	b.markDeliveredTo(&c, peer)
 
-	// Broadcast it
-	b.broadcast(&c)
+	if !catchUp {
+		// Broadcast it
+		b.broadcast(&c)
 
-	// Update group consensus unless this confirms the update group that removed us
-	if ug.CustomScope == uuid.Nil {
-		b.updateGroupConsensus(c.Destination)
+		// Update group consensus unless this confirms the update group that removed us
+		if ug.CustomScope == uuid.Nil {
+			b.updateGroupConsensus(c.Destination)
+		}
 	}
+
+	return &c
 }
 
 func (b *bounce) sendConfirmation(ug updateGroup) {

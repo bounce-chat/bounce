@@ -13,6 +13,17 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+var allowedCatchUpFrames = map[uint16]bool{
+	typeDirectMessage: true,
+	typeGroupMessage:  true,
+	typeUpdateDM:      true,
+	typeDevice:        true,
+	typeAddUser:       true,
+	typeGroupCreation: true,
+	typeUpdateGroup:   true,
+	typeConfirmation:  true,
+}
+
 //
 // A frame contains the ID, type, and marshalled payload of any other frame
 //
@@ -57,7 +68,7 @@ func (cu *catchUp) getPayload() []byte {
 	return cu.payload
 }
 
-func (b *bounce) handleCatchUp(peer string, payload []byte) {
+func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastable {
 	// Unmarshal the catch up
 	var cu catchUp
 	err := msgpack.Unmarshal(payload, &cu)
@@ -65,7 +76,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling catch up")
-		return
+		return nil
 	}
 
 	// Send references for these frames into the reference engine so that we know we've received them
@@ -76,50 +87,36 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 	}
 	b.loadCatchUp(peer, references)
 
-	// TODO: make sure that everything is sorted?
-
 	// Check if we're aware of the peer identity before processing this catch up.  If we don't know
 	// who this device belongs to, we should be able to learn after handling all of the frames inside
 	// it and we'll want to check to make sure that happened.
 	_, deviceAlreadyExists := b.getDeviceFromAddress(peer)
 
+	// Determine if we're going to learn about any groups that we aren't a member of, so we can ignore
+	// frames for any of those groups
 	nopGroups := b.identifyNOPGroups(cu.Frames)
 
-	// Keep track of update groups that are new, and which groups will need a consensus update
-	ugs := []updateGroup{}
+	// Keep track of which groups will need a consensus update
 	groupsToUpdateConsensus := map[uuid.UUID]bool{}
+
+	// Keep track of devices we need to reference after this
+	devicesToReference := map[string]bool{}
 
 	// Handle reach frame in the catch up using it's handler
 	handlers := b.getHandlers()
+	lastTimestamp := int64(0)
 	for _, fr := range cu.Frames {
-		if fr.Type == typeCatchUp {
-			log.Warn("refusing to processes recursive catch up")
-			return
+		// Check if this type of frame is allowed in a catch up
+		if _, present := allowedCatchUpFrames[fr.Type]; !present {
+			log.WithFields(log.Fields{
+				"frame_type": fr.Type,
+				"peer":       peer,
+			}).Warn("refusing to process catch up that contains frame not allowed in catch ups")
+			return nil
 		}
 
 		// Ignore frames for groups that we will not be a part of after this catch up
 		if b.isNopGroupFrame(nopGroups, fr) {
-			continue
-		}
-
-		// Update groups should not be applied in order during a catch up in case the user is removed
-		// from and re-added to the same group within the catch up
-		if fr.Type == typeUpdateGroup {
-			newAndValid, ug := b.validateAndSaveUpdateGroup(peer, fr.Payload)
-			if newAndValid {
-				ugs = append(ugs, ug)
-				groupsToUpdateConsensus[ug.Target] = true
-			}
-			continue
-		}
-
-		// Save confirmations without updating group consensus so that all consensus updates can be done after
-		// the catch up is processed for efficiency reasons
-		if fr.Type == typeConfirmation {
-			targetGroupID, shouldUpdate := b.saveConfirmationWithoutConsensusUpdate(peer, fr.Payload)
-			if shouldUpdate {
-				groupsToUpdateConsensus[targetGroupID] = true
-			}
 			continue
 		}
 
@@ -131,15 +128,48 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 			}).Warn("peer sent a catch up frame type that doesn't have a handler")
 			continue
 		}
-		handler(peer, fr.Payload)
+		br := handler(peer, fr.Payload, true)
+		if br == nil {
+			log.WithFields(log.Fields{
+				"id":   fr.ID,
+				"type": fr.Type,
+			}).Warn("handler for frame in catch up did not return broadcastable")
+			continue
+		}
+		b.markDeliveredTo(br, peer)
+		go b.sendAck(peer, br.getType(), br.getID())
+
+		// Make sure this catch up is in order
+		if br.getTimestamp() < lastTimestamp {
+			log.WithFields(log.Fields{
+				"last_timestamp":    lastTimestamp,
+				"current_timestamp": br.getTimestamp(),
+				"type":              br.getType(),
+				"id":                br.getID(),
+			}).Error("refusing to process out-of-order catch up")
+		}
+		lastTimestamp = br.getTimestamp()
+
+		// Keep track of any device we would broadcast this to so that we can reference them
+		destinations := b.getBroadcastScope(br)
+		for _, dev := range destinations {
+			devicesToReference[dev] = true
+		}
+
+		// If this frame impacts group consensus, take note of the group for a consensus check after the catch up
+		if fr.Type == typeUpdateGroup || fr.Type == typeGroupCreation || fr.Type == typeConfirmation {
+			groupsToUpdateConsensus[br.getDestination(b.currentUserID())] = true
+		}
 	}
 
 	// Update all group consensus states for groups that had an update group in this catch up
 	for groupID, _ := range groupsToUpdateConsensus {
 		b.updateGroupConsensus(groupID)
 	}
-	for _, ug := range ugs {
-		b.handleUpdateGroupIfApplied(peer, ug)
+
+	// Send references to any device we would have broadcast to
+	for address, _ := range devicesToReference {
+		go b.sendReferences(address)
 	}
 
 	// We might have learned about new devices from this catch up, so we should see if there's anyone else we
@@ -161,248 +191,8 @@ func (b *bounce) handleCatchUp(peer string, payload []byte) {
 			}).Warn("catch up from unknown device did not result in learning device identity")
 		}
 	}
-}
 
-func (b *bounce) validateAndSaveUpdateGroup(peer string, payload []byte) (bool, updateGroup) {
-	updateGroupMutex.Lock()
-	defer updateGroupMutex.Unlock()
-
-	// Unpack the signed container
-	sc, err := b.unpackSignedContainer(payload)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error unpacking signed container for update group")
-		return false, updateGroup{}
-	}
-	var ug updateGroup
-	err = msgpack.Unmarshal(sc.Payload, &ug)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error unmarshalling update group")
-	}
-	ug.OriginalPayload = sc.Payload
-	ug.Signature = sc.Signature
-	ug.Signer = sc.Signer
-
-	// Make sure that the user that created this signed container is the actor
-	if !b.signedByUser(sc, ug.Actor) {
-		log.WithFields(log.Fields{
-			"peer":           peer,
-			"actor":          ug.Actor,
-			"signing_device": sc.Signer,
-			"group":          ug.Target,
-		}).Warn("ignoring group update that was not signed by the supposed actor")
-		return false, updateGroup{}
-	}
-
-	// If we already have this update, we just mark that this peer has it too and return
-	var existingUG updateGroup
-	err = b.database.Where("id = ?", ug.ID).First(&existingUG).Error
-	if err == nil {
-		b.markDeliveredTo(&existingUG, peer)
-		go b.sendAck(peer, typeUpdateGroup, ug.ID)
-		return false, updateGroup{}
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error looking up update group")
-	}
-
-	// Save this update
-	err = b.database.Create(&ug).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update group")
-	}
-
-	return true, ug
-}
-
-func (b *bounce) handleUpdateGroupIfApplied(peer string, ug updateGroup) {
-	err := b.database.First(&ug, "id = ?", ug.ID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"update_group_id": ug.ID,
-				"error":           err.Error(),
-			}).Error("update group not found after catch up")
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up update group")
-		}
-	}
-
-	// Update group activity if we're still in the group
-	if ug.Applied {
-		if b.userIsInGroup(b.currentUserID(), ug.Target) {
-			b.updateLastGroupActivity(ug.Target, ug.Timestamp)
-		}
-
-		if ug.Type == updateGroupTypeAddUser {
-			var newUser user
-			err := msgpack.Unmarshal(ug.Data, &newUser)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error unmarshalling user")
-				return
-			}
-
-			b.userConnectionDesired(newUser.ID)
-
-			for _, dev := range newUser.Devices {
-				go b.sendReferences(dev.Address)
-			}
-		}
-	}
-
-	// Ack it
-	go b.sendAck(peer, typeUpdateGroup, ug.ID)
-
-	// Mark that the peer that send this update already has it
-	b.markDeliveredTo(&ug, peer)
-
-	// Broadcast it
-	b.broadcast(&ug)
-
-	// If we removed a user we should also broadcast to that user, who is not longer in the group scope
-	if ug.Type == updateGroupTypeRemoveUser {
-		userID, err := uuid.FromBytes(ug.Data)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":   err.Error(),
-				"actor":   ug.Actor,
-				"user_id": ug.Data,
-			}).Error("update group attempted to remove user with invalid UUID")
-			return
-		}
-
-		if userID != b.currentUserID() {
-			var u user
-			err := b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					log.WithFields(log.Fields{
-						"user_id": userID,
-					}).Error("user not found for direct remove from group broadcast")
-					return
-				} else {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Fatal("error looking up user")
-				}
-			}
-
-			for _, dev := range u.Devices {
-				rd := b.getRemoteDevice(dev.Address)
-				if rd.connectedSockets > 0 {
-					go b.sendDirect(dev.Address, &ug)
-				}
-			}
-		}
-	}
-}
-
-func (b *bounce) saveConfirmationWithoutConsensusUpdate(peer string, payload []byte) (uuid.UUID, bool) {
-	confirmationMutex.Lock()
-	defer confirmationMutex.Unlock()
-
-	// Unmarshal the confirmation
-	var c confirmation
-	err := msgpack.Unmarshal(payload, &c)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error unmarshalling confirmation")
-		return uuid.Nil, false
-	}
-
-	// Check if we already have this confirmation
-	var existingConfirmation confirmation
-	err = b.database.Where("id = ?", c.ID).First(&existingConfirmation).Error
-	if err == nil {
-		b.markDeliveredTo(&existingConfirmation, peer)
-		go b.sendAck(peer, typeConfirmation, c.ID)
-		return uuid.Nil, false
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error looking up confirmation")
-	}
-
-	// Validate the signature
-	valid := b.network.VerifySignature(c.SigningDevice, c.UpdateGroupID[:], c.Signature)
-	if !valid {
-		log.WithFields(log.Fields{
-			"update_group_id": c.UpdateGroupID,
-			"confirmation_id": c.ID,
-			"signing_device":  c.SigningDevice,
-		}).Warn("ignoring confirmation with invalid signautre")
-		return uuid.Nil, false
-	}
-
-	// Look up the update group that is being signed
-	var ug updateGroup
-	err = b.database.Where("id = ?", c.UpdateGroupID).First(&ug).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"update_group_id": c.UpdateGroupID,
-				"confirmation_id": c.ID,
-			}).Warn("ignoring confirmation for unknown update group")
-			return uuid.Nil, false
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up update group")
-		}
-	}
-	c.Destination = ug.Target
-
-	// Look up and assign the user who signed this confirmation
-	dev, ok := b.getDeviceFromAddress(c.SigningDevice)
-	if !ok {
-		log.WithFields(log.Fields{
-			"update_group_id": c.UpdateGroupID,
-			"confirmation_id": c.ID,
-			"signing_device":  c.SigningDevice,
-		}).Warn("ignoring confirmation from unknown device")
-		return uuid.Nil, false
-	}
-	c.Author = dev.UserID
-
-	// Make sure the user signing this confirmation was a member of the group for this update
-	if !b.isMemberOfGroupForUpdate(c.Author, ug.Target, ug.ID) {
-		log.WithFields(log.Fields{
-			"update_group_id": c.UpdateGroupID,
-			"confirmation_id": c.ID,
-			"author":          c.Author,
-		}).Warn("ignoring confirmation signed by user who was not a member of the group during the update")
-		return uuid.Nil, false
-	}
-
-	// Save it
-	err = b.database.Create(&c).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving confirmation")
-	}
-
-	// Ack it
-	go b.sendAck(peer, typeConfirmation, c.ID)
-
-	// Mark as delivered to this peer
-	b.markDeliveredTo(&c, peer)
-
-	// Broadcast it
-	b.broadcast(&c)
-
-	return ug.Target, true
+	return nil
 }
 
 func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {

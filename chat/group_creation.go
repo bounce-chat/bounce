@@ -86,7 +86,7 @@ func (gc *groupCreation) getTimestamp() int64 {
 	return gc.Timestamp
 }
 
-func (b *bounce) handleGroupCreation(peer string, payload []byte) {
+func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) broadcastable {
 	groupMutex.Lock()
 	defer groupMutex.Unlock()
 
@@ -96,7 +96,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unpacking signed container for group creation")
-		return
+		return nil
 	}
 	var gc groupCreation
 	err = msgpack.Unmarshal(sc.Payload, &gc)
@@ -104,7 +104,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling group creation")
-		return
+		return nil
 	}
 	gc.OriginalPayload = sc.Payload
 	gc.Signature = sc.Signature
@@ -133,6 +133,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 			"group_creation_id": gc.ID,
 			"group_hash_id":     groupID,
 		}).Error("rejecting group creation with ID that does not match hash of group data")
+		return nil
 	}
 
 	// Unmarshall the group
@@ -142,7 +143,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling group")
-		return
+		return nil
 	}
 
 	// Assign the group ID as the group creation ID
@@ -154,23 +155,34 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 			"timestamp":        gc.Timestamp,
 			"group_created_at": g.CreatedAt,
 		}).Error("rejection group creation with timestamp mismatch")
-		return
+		return nil
 	}
 
-	// Make sure that one of the devices in this group signed the creation of this group
+	// Make sure that one of the devices in this group signed the creation of this group, and check if we're in the group
 	signingDeviceInGroup := false
+	weAreInGroup := false
 	for _, u := range g.Users {
 		for _, dev := range u.Devices {
 			if dev.Address == gc.Signer {
 				signingDeviceInGroup = true
 			}
 		}
+		if u.ID == b.currentUserID() {
+			weAreInGroup = true
+		}
 	}
 	if !signingDeviceInGroup {
 		log.WithFields(log.Fields{
 			"signing_device": gc.Signer,
 		}).Warn("rejecting group creation not signed by any of the original devices")
-		return
+		return nil
+	}
+	if !catchUp && !weAreInGroup {
+		// Group creations that define a group that does not include us can only be learned about within a catchup
+		log.WithFields(log.Fields{
+			"group_id": g.ID,
+		}).Warn("ignoring group creation that does not include us")
+		return nil
 	}
 
 	// Check that each user has a valid device group
@@ -180,7 +192,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 				"peer":    peer,
 				"user_id": u.ID,
 			}).Warn("ignoring group that contains user with invalid device group")
-			return
+			return nil
 		}
 	}
 
@@ -188,9 +200,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 	var existingGroupCreation groupCreation
 	err = b.database.Where("id = ?", gc.ID).First(&existingGroupCreation).Error
 	if err == nil {
-		go b.sendAck(peer, typeGroupCreation, gc.ID)
-		b.markDeliveredTo(&gc, peer)
-		return
+		return &existingGroupCreation
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -250,15 +260,6 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 		}
 	}
 
-	// Ack the group creation
-	go b.sendAck(peer, typeGroupCreation, gc.ID)
-
-	// Mark this as delivered to this peer
-	b.markDeliveredTo(&gc, peer)
-
-	// Broadcast it
-	b.broadcast(&gc)
-
 	// If we're being re-added to this group, clean up any custom scopes from our past removal
 	err = b.rescopeIfReAddedToGroup(g.ID)
 	if err != nil {
@@ -268,16 +269,15 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte) {
 		}).Error("error cleaning up custom scopes when re-added to group")
 	}
 
-	// We might be learning about the creation of a group that originally didn't include us, but that we were later added to.
-	// In that case it doesn't make sense to inform the UI about this group until we're added to it.
-	//if b.userIsInGroup(b.currentUserID(), g.ID) {
+	// Inform the UI of the new group
 	b.userInterface.NewGroupChat(Group{
 		ID:      g.ID,
 		Name:    g.Name,
 		UserIDs: userIDs, // TODO: admins
 	})
-	//}
 
 	// Notify the peering engine that we want to be connected to this group right now
 	b.groupConnectionDesired(g.ID)
+
+	return &gc
 }

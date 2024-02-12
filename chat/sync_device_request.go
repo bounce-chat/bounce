@@ -47,7 +47,7 @@ func (sdr *syncDeviceRequest) getPayload() []byte {
 	return sdr.payload
 }
 
-func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
+func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bool) broadcastable {
 	// Mutex lock prcessing to enure an offer can only be used once
 	syncDeviceRequestMutex.Lock()
 	defer syncDeviceRequestMutex.Unlock()
@@ -59,7 +59,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling sync device request")
-		return
+		return nil
 	}
 
 	// Make sure we've got an offer out with this secret
@@ -71,7 +71,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 				"peer": peer,
 			}).Warn("peer sent a sync device request with an invalid secret")
 			b.sendDirect(peer, &syncDeviceRequestRejected{})
-			return
+			return nil
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -91,7 +91,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 	// Enforce the timestamp on the offer
 	if time.Now().Unix() > offer.Timestamp+syncDeviceOfferValidForSeconds {
 		b.sendDirect(peer, &syncDeviceRequestRejected{})
-		return
+		return nil
 	}
 
 	// Validate the signature is the peer signing this device
@@ -100,14 +100,14 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 			"peer": peer,
 		}).Warn("peer sent a sync device request with a valid secret but invalid signature")
 		b.sendDirect(peer, &syncDeviceRequestRejected{})
-		return
+		return nil
 	}
 
 	// Look up our user
 	profile, exists := b.currentUser()
 	if !exists {
 		log.Error("cannot accept new sync device when no profile exists")
-		return
+		return nil
 	}
 
 	// Make sure we don't already know this device belongs to another user
@@ -117,7 +117,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 			"peer": peer,
 			"user": dev.UserID,
 		}).Warn("a peer that is known to belong to another user sent a valid sync device request, ignoring")
-		return
+		return nil
 	}
 
 	if exists {
@@ -179,6 +179,8 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte) {
 
 	// Send a reference offer to the new device
 	b.sendReferences(peer)
+
+	return nil
 }
 
 func (b *bounce) requestToSync(data string) error {

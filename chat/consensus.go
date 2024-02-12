@@ -433,6 +433,18 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 			return nil
 		}
 	case updateGroupTypeRemoveUser:
+		userID, err := uuid.FromBytes(ug.Data)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"actor":   ug.Actor,
+				"user_id": ug.Data,
+			}).Error("update group attempted to remove user with invalid UUID")
+			return err
+		}
+		if ug.Actor == userID {
+			return nil
+		}
 		if gs.userManagementRestricted {
 			if gs.isAdmin(ug.Actor) {
 				return nil
@@ -753,8 +765,11 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 			if err != nil {
 				return err
 			}
-			if gs.isMember(b.currentUserID()) && gs.ug.Actor != b.currentUserID() {
-				b.sendConfirmation(gs.ug)
+			if gs.isMember(b.currentUserID()) {
+				b.updateLastGroupActivity(gs.ug.Target, gs.ug.Timestamp)
+				if gs.ug.Actor != b.currentUserID() {
+					b.sendConfirmation(gs.ug)
+				}
 			}
 		}
 	}
@@ -1254,8 +1269,14 @@ func (b *bounce) clearDeliveryRecordsForRemovedUser(ug updateGroup) error {
 		}
 	}
 
-	// Delete all delivery records for this user for items in this group
+	// Delete all delivery records for this user for items in this group, and send the removal directly
 	for _, dev := range u.Devices {
+		// Send the update group that removes this user directly to any of the user's online devices
+		rd := b.getRemoteDevice(dev.Address)
+		if rd.connectedSockets > 0 {
+			go b.sendDirect(dev.Address, &ug)
+		}
+
 		// Delete the delivery records for each group message
 		gms := []groupMessage{}
 		err = b.database.Where("destination = ?", ug.Target).Find(&gms).Error

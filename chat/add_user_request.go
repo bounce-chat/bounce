@@ -47,7 +47,7 @@ func (aur *addUserRequest) getPayload() []byte {
 	return aur.payload
 }
 
-func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
+func (b *bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broadcastable {
 	addUserRequestMutex.Lock()
 	defer addUserRequestMutex.Unlock()
 
@@ -58,7 +58,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling add user request")
-		return
+		return nil
 	}
 
 	// Make sure we've got an offer out with this secret
@@ -70,7 +70,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 				"peer": peer,
 			}).Warn("peer sent an add user request with an invalid secret")
 			b.sendDirect(peer, &addUserRequestRejected{})
-			return
+			return nil
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -90,7 +90,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 	// Enforce the timestamp on the offer
 	if time.Now().Unix() > offer.Timestamp+addUserOfferValidForSeconds {
 		b.sendDirect(peer, &addUserRequestRejected{})
-		return
+		return nil
 	}
 
 	// Unmarshal the user that is requesting to be our friend
@@ -101,7 +101,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 			"error": err.Error(),
 		}).Error("error unmarshalling requester user while handing user request")
 		b.sendDirect(peer, &addUserRequestRejected{})
-		return
+		return nil
 	}
 
 	// Validate that this new friend has a valid device group
@@ -112,7 +112,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 			"name":    requesterUser.Name,
 		}).Warn("rejecting friend request from user with invalid device group")
 		b.sendDirect(peer, &addUserRequestRejected{})
-		return
+		return nil
 	}
 
 	// Make sure that the peer that sent us this is part of the requester user's device group
@@ -125,7 +125,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 	if !found {
 		log.Warn("add user request came from device that is not part of the requester user's device group")
 		b.sendDirect(peer, &addUserRequestRejected{})
-		return
+		return nil
 	}
 
 	// Make sure that we don't have any of these devices already associated with another user
@@ -139,7 +139,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 					"exisiting_user": existingDevice.UserID,
 				}).Warn("rejecting add user request with device address collision with separate existing user")
 				b.sendDirect(peer, &addUserRequestRejected{})
-				return
+				return nil
 			}
 		}
 		// Primary keys cannot collise
@@ -153,7 +153,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 					"exisiting_user": existingDevice.UserID,
 				}).Warn("rejecting add user with device ID collision with separate existing user")
 				b.sendDirect(peer, &addUserRequestRejected{})
-				return
+				return nil
 			}
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -166,7 +166,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 	offerUser, ok := b.currentUser()
 	if !ok {
 		log.Error("cannot handle add user request when no profile exists")
-		return
+		return nil
 	}
 	offerBytes, err := msgpack.Marshal(offerUser)
 	if err != nil {
@@ -179,6 +179,8 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte) {
 		OfferUser:      offerBytes,
 		OfferSignature: b.network.Sign(requesterUserHash[:]),
 	})
+
+	return nil
 }
 
 func (b *bounce) requestToAddUser(offer string) error {

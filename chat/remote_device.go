@@ -125,7 +125,12 @@ func (b *bounce) readFrames(conn net.Conn) {
 					"type": frameType,
 					"size": len(thisData),
 				}).Debug("handling a frame")
-				handler(thisPeer, thisData)
+				br := handler(thisPeer, thisData, false)
+				if br != nil {
+					b.markDeliveredTo(br, thisPeer)
+					go b.sendAck(thisPeer, br.getType(), br.getID())
+					b.broadcast(br)
+				}
 				b.runningHandlers.Done()
 			}(peer, data)
 		}

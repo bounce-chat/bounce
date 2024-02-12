@@ -91,7 +91,7 @@ func (dm *directMessage) getTimestamp() int64 {
 	return dm.WrittenAt
 }
 
-func (b *bounce) handleDirectMessage(peer string, payload []byte) {
+func (b *bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) broadcastable {
 	directMessageMutex.Lock()
 	defer directMessageMutex.Unlock()
 
@@ -102,7 +102,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling direct message")
-		return
+		return nil
 	}
 
 	// Look up the device that sent it
@@ -111,7 +111,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("ignoring a direct message sent from an unknown device")
-		return
+		return nil
 	}
 
 	// Make sure that the peer we received this DM from makes sense, it must either be from a device belonging to the
@@ -123,16 +123,14 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 			"destination": dm.getDestination(b.currentUserID()),
 			"peer":        peer,
 		}).Warn("ignoring a direct message from an unacceptable peer")
-		return
+		return nil
 	}
 
 	// If we have already seen this message, all we need to do is mark that this peer has the message as well and ack it
 	var existingDM directMessage
 	err = b.database.Where("id = ?", dm.ID).First(&existingDM).Error
 	if err == nil {
-		b.markDeliveredTo(&existingDM, peer)
-		go b.sendAck(peer, typeDirectMessage, dm.ID)
-		return
+		return &existingDM
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -146,7 +144,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 			"destination": dm.getDestination(b.currentUserID()),
 			"written_at":  dm.WrittenAt,
 		}).Debug("ignoring a direct message that was written before the history was cleared")
-		return
+		return nil
 	}
 
 	// Capture the current message retention setting for this user and store it on the DM
@@ -165,9 +163,6 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	// Update the activity timestamp on the user model
 	b.updateLastUserActivity(dm.getDestination(b.currentUserID()), dm.SavedAt)
 
-	// Save a delivery report for the peer that send this message
-	b.markDeliveredTo(&dm, peer)
-
 	// Send the message to the user interface
 	b.userInterface.DisplayDirectMessage(DirectMessage{
 		ID:        dm.ID,
@@ -181,11 +176,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte) {
 	// Make sure the user interface isn't still displaying that the user is typing
 	b.clearUserTypingIndicator(dm.Author, dm.getDestination(b.currentUserID()))
 
-	// Send an ack to the sender that we got it
-	go b.sendAck(peer, typeDirectMessage, dm.ID)
-
-	// Gossip the message to any online devices that should have it
-	b.broadcast(&dm)
+	return &dm
 }
 
 func (b *bounce) dmOriginAcceptable(dm directMessage, dev device) bool {

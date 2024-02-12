@@ -491,14 +491,14 @@ func (b *bounce) getConfirmationsToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
+func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) broadcastable {
 	var ro referenceOffer
 	err := msgpack.Unmarshal(payload, &ro)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling reference offer")
-		return
+		return nil
 	}
 
 	dev, deviceExists := b.getDeviceFromAddress(peer)
@@ -519,6 +519,8 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte) {
 
 	// Inform the reference engine that this peer has these frames that we don't know about
 	b.loadReferenceOffer(peer, references)
+
+	return nil
 }
 
 func (b *bounce) getDirectMessagesToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {

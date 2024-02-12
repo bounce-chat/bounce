@@ -98,7 +98,7 @@ func (ud *updateDM) getTimestamp() int64 {
 	return ud.Timestamp
 }
 
-func (b *bounce) handleUpdateDM(peer string, payload []byte) {
+func (b *bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broadcastable {
 	updateDMMutex.Lock()
 	defer updateDMMutex.Unlock()
 
@@ -109,7 +109,7 @@ func (b *bounce) handleUpdateDM(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling update DM settings")
-		return
+		return nil
 	}
 
 	// Find the user this applies to
@@ -121,7 +121,7 @@ func (b *bounce) handleUpdateDM(peer string, payload []byte) {
 			log.WithFields(log.Fields{
 				"user_id": counterparty,
 			}).Error("cannot update DM settings for unknown user")
-			return
+			return nil
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -136,16 +136,14 @@ func (b *bounce) handleUpdateDM(peer string, payload []byte) {
 			"peer":        peer,
 			"target_user": counterparty,
 		}).Warn("rejecting update DM settings from out of scope device")
-		return
+		return nil
 	}
 
 	// If we already have this update, we just mark that this peer has it too, ack it, and return
 	var existingUD updateDM
 	err = b.database.Where("id = ?", ud.ID).First(&existingUD).Error
 	if err == nil {
-		b.markDeliveredTo(&existingUD, peer)
-		go b.sendAck(peer, typeUpdateDM, ud.ID)
-		return
+		return &existingUD
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -161,17 +159,10 @@ func (b *bounce) handleUpdateDM(peer string, payload []byte) {
 			"type":   ud.Type,
 			"error":  err.Error(),
 		}).Error("error applying update DM")
-		return
+		return nil
 	}
 
-	// Ack it
-	go b.sendAck(peer, typeUpdateDM, ud.ID)
-
-	// Mark that the peer that send this update already has it
-	b.markDeliveredTo(&ud, peer)
-
-	// Broadcast it
-	b.broadcast(&ud)
+	return &ud
 }
 
 func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {

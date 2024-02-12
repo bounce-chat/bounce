@@ -78,7 +78,7 @@ func (d *device) getTimestamp() int64 {
 	return d.Timestamp
 }
 
-func (b *bounce) handleDevice(peer string, payload []byte) {
+func (b *bounce) handleDevice(peer string, payload []byte, catchUp bool) broadcastable {
 	handleDevicesMutex.Lock()
 	defer handleDevicesMutex.Unlock()
 
@@ -89,14 +89,18 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling device")
-		return
+		return nil
 	}
 
 	// If the device already exists, track delivery, ack it, and return
-	if _, deviceExists := b.getDeviceFromAddress(newDevice.Address); deviceExists {
-		b.markDeliveredTo(&newDevice, peer)
-		b.sendAck(peer, typeDevice, newDevice.ID)
-		return
+	var existingDevice device
+	err = b.database.Preload(clause.Associations).Where("address = ?", newDevice.Address).First(&existingDevice).Error
+	if err == nil {
+		return &existingDevice
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up device")
 	}
 
 	// Find the user this new device is for
@@ -110,7 +114,7 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 				"address": newDevice.Address,
 				"peer":    peer,
 			}).Warn("rejecting received device because we do not have the specified user")
-			return
+			return nil
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -127,7 +131,7 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 			"address": newDevice.Address,
 			"peer":    peer,
 		}).Warn("rejecting received device because it would result in an invalid device group")
-		return
+		return nil
 	}
 
 	// Save it
@@ -138,14 +142,7 @@ func (b *bounce) handleDevice(peer string, payload []byte) {
 		}).Fatal("error saving new device")
 	}
 
-	// Save a delivery record for the peer that sent us this device
-	b.markDeliveredTo(&newDevice, peer)
-
-	// Broadcast it
-	b.broadcast(&newDevice)
-
-	// ACK it
-	b.sendAck(peer, typeDevice, newDevice.ID)
+	return &newDevice
 }
 
 //

@@ -11,8 +11,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var groupMessageMutex sync.Mutex
-
 var gmDeliveryNotificationMutex sync.Mutex
 var gmDeliveryNotifications = map[uuid.UUID]chan bool{}
 
@@ -94,9 +92,9 @@ func (gm *groupMessage) getTimestamp() int64 {
 	return gm.WrittenAt
 }
 
-func (b *bounce) handleGroupMessage(peer string, payload []byte) {
-	groupMessageMutex.Lock()
-	defer groupMessageMutex.Unlock()
+func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) broadcastable {
+	groupMutex.Lock()
+	defer groupMutex.Unlock()
 
 	// Look up the device that sent it
 	srcDevice, exists := b.getDeviceFromAddress(peer)
@@ -104,7 +102,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("ignoring a group message sent from an unknown device")
-		return
+		return nil
 	}
 
 	// Verify and unpack the signed container
@@ -113,7 +111,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unpacking signed container for group message")
-		return
+		return nil
 	}
 	var gm groupMessage
 	err = msgpack.Unmarshal(sc.Payload, &gm)
@@ -121,7 +119,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling group message")
-		return
+		return nil
 	}
 	gm.OriginalPayload = sc.Payload
 	gm.Signature = sc.Signature
@@ -131,9 +129,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	var existingGM groupMessage
 	err = b.database.Where("id = ?", gm.ID).First(&existingGM).Error
 	if err == nil {
-		b.markDeliveredTo(&existingGM, peer)
-		go b.sendAck(peer, typeGroupMessage, gm.ID)
-		return
+		return &existingGM
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -147,7 +143,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 			"group":      gm.Destination,
 			"written_at": gm.WrittenAt,
 		}).Debug("ignoring a group message that was written before the history was cleared")
-		return
+		return nil
 	}
 
 	// Capture the current message retention setting for this group and store it on the message
@@ -161,7 +157,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 			"user":  gm.Author,
 			"group": gm.Destination,
 		}).Warn("user sent message to a group they are not in, ignoring")
-		return
+		return nil
 	}
 
 	// Make sure the device that signed this message belongs to the author
@@ -172,7 +168,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 			"signer": sc.Signer,
 			"author": gm.Author,
 		}).Warn("received group message signed by a different user than the author, ignoring")
-		return
+		return nil
 	}
 
 	// Make sure the peer that delivered this message is part of the group
@@ -182,7 +178,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 			"device": srcDevice.ID,
 			"group":  gm.Destination,
 		}).Warn("device sent a message for a group that the device's user is not a part of, ignoring")
-		return
+		return nil
 	}
 
 	// Make sure the user has permission to post
@@ -193,7 +189,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 			log.WithFields(log.Fields{
 				"group_id": gm.Destination,
 			}).Error("group not found when checking posting permission")
-			return
+			return nil
 		} else {
 			log.WithFields(log.Fields{
 				"group_id": gm.Destination,
@@ -204,11 +200,8 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"user_id": gm.Author,
 		}).Warn("user attempted to post in a group without permission")
-		return
+		return nil
 	}
-
-	// Mark that the peer that sent this message has it
-	b.markDeliveredTo(&gm, peer)
 
 	// Make sure the user interface isn't still displaying that the user is typing
 	b.clearUserTypingIndicator(gm.Author, gm.Destination)
@@ -234,11 +227,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte) {
 	// Update the activity timestamp on the group model
 	b.updateLastGroupActivity(gm.Destination, gm.SavedAt)
 
-	// Ack it
-	go b.sendAck(peer, typeGroupMessage, gm.ID)
-
-	// Broadcast it
-	b.broadcast(&gm)
+	return &gm
 }
 
 func (b *bounce) sendGroupMessage(message GroupMessage) {

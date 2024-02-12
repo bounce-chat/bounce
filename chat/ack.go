@@ -43,14 +43,14 @@ func (a *ack) getPayload() []byte {
 	return a.payload
 }
 
-func (b *bounce) handleAck(peer string, payload []byte) {
+func (b *bounce) handleAck(peer string, payload []byte, _ bool) broadcastable {
 	var a ack
 	err := msgpack.Unmarshal(payload, &a)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling ack")
-		return
+		return nil
 	}
 
 	ackedIDs := referencedIDs(a.References)
@@ -64,6 +64,8 @@ func (b *bounce) handleAck(peer string, payload []byte) {
 	b.handleAckGroupCreations(peer, ackedIDs[typeGroupCreation])
 	b.handleAckUpdateGroups(peer, ackedIDs[typeUpdateGroup])
 	b.handleAckConfirmations(peer, ackedIDs[typeConfirmation])
+
+	return nil
 }
 
 func (b *bounce) sendAck(peer string, frameType uint16, frameID uuid.UUID) {

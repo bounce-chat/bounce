@@ -42,7 +42,7 @@ func (aura *addUserRequestAccepted) getPayload() []byte {
 	return aura.payload
 }
 
-func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
+func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte, catchUp bool) broadcastable {
 	// Unmarshal the payload
 	var aura addUserRequestAccepted
 	err := msgpack.Unmarshal(payload, &aura)
@@ -50,7 +50,7 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling add user request accepted")
-		return
+		return nil
 	}
 
 	// Unmarshal the offer user
@@ -60,20 +60,20 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling offer user while handling add user request accepted")
-		return
+		return nil
 	}
 
 	// Make sure this profile has a valid device group
 	if !b.hasValidDeviceGroup(offerUser) {
 		log.Error("add user request accepted contains offer user with invalid device group")
-		return
+		return nil
 	}
 
 	// Re-generate our user that was originally sent in the request
 	requesterUser, ok := b.currentUser()
 	if !ok {
 		log.Error("cannot handle add user request accepted when no profile exists")
-		return
+		return nil
 	}
 	requesterBytes, err := msgpack.Marshal(requesterUser)
 	if err != nil {
@@ -87,7 +87,7 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 	ok = b.network.VerifySignature(peer, requesterUserHash[:], aura.OfferSignature)
 	if !ok {
 		log.Warn("ignoring add user request accepted that contains invalid offer signature")
-		return
+		return nil
 	}
 
 	// Create and marshal the new add user
@@ -108,9 +108,16 @@ func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error marshalling add user")
-		return
+		return nil
 	}
 
 	// Use the add user handler to save and broadcast
-	b.handleAddUser(b.network.Address(), newUserBytes)
+	au := b.handleAddUser(b.network.Address(), newUserBytes, false)
+	if au == nil {
+		log.Error("failed to create add user frame from add user request accepted")
+	} else {
+		b.broadcast(au)
+	}
+
+	return nil
 }
