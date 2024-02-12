@@ -133,7 +133,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 			log.WithFields(log.Fields{
 				"id":   fr.ID,
 				"type": fr.Type,
-			}).Warn("handler for frame in catch up did not return broadcastable")
+			}).Debug("handler for frame in catch up did not return broadcastable")
 			continue
 		}
 		b.markDeliveredTo(br, peer)

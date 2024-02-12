@@ -242,7 +242,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 					// If we're handling an update group that adds us to a group we're not aware of,
 					// we're going to get the group information from the reference flow, so we don't
 					// need to try applying it now
-					return &ug
+					return nil
 				} else {
 					log.WithFields(log.Fields{
 						"error": err.Error(),

@@ -167,6 +167,7 @@ func (b *bounce) getUserScope(br broadcastable) []string {
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
+				"frame_id":    br.getID(),
 				"scope":       br.getScope(b.currentUserID()),
 				"destination": br.getDestination(b.currentUserID()),
 				"type":        br.getType(),
@@ -202,6 +203,7 @@ func (b *bounce) getGroupScope(br broadcastable) []string {
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
+				"frame_id":    br.getID(),
 				"scope":       br.getScope(b.currentUserID()),
 				"destination": br.getDestination(b.currentUserID()),
 				"type":        br.getType(),
@@ -307,9 +309,10 @@ func (b *bounce) getCustomScope(br broadcastable) []string {
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
-				"type":  br.getType(),
-				"id":    br.getID(),
-				"scope": br.getDestination(b.currentUserID()),
+				"frame_id": br.getID(),
+				"type":     br.getType(),
+				"id":       br.getID(),
+				"scope":    br.getDestination(b.currentUserID()),
 			}).Error("cannot broadcast to unknown custom scope")
 		} else {
 			log.WithFields(log.Fields{
