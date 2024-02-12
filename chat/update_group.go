@@ -290,6 +290,21 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 						go b.sendDirect(dev.Address, &ug)
 					}
 				}
+			} else {
+				// Reload the update group before returning it to ensure the custom scope is set before broadcast
+				err = b.database.First(&ug, "id = ?", ug.ID).Error
+				if err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						log.WithFields(log.Fields{
+							"update_group_id": ug.ID,
+							"error":           err.Error(),
+						}).Error("update group not found after save")
+					} else {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Fatal("database error looking up update group")
+					}
+				}
 			}
 		}
 	}
