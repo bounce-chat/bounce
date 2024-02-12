@@ -252,9 +252,46 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 		}
 	}
 
-	// Update the group state
 	if !catchUp {
+		// Update the group state
 		b.updateGroupConsensus(ug.Target)
+
+		// If this is a remove user frame, make sure to send it to the devices of the user who was removed
+		if ug.Type == updateGroupTypeRemoveUser {
+			userID, err := uuid.FromBytes(ug.Data)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":   err.Error(),
+					"actor":   ug.Actor,
+					"user_id": ug.Data,
+				}).Error("update group attempted to remove user with invalid UUID")
+				return nil
+			}
+
+			if userID != b.currentUserID() {
+				var u user
+				err := b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error
+				if err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						log.WithFields(log.Fields{
+							"user_id": userID,
+						}).Error("user not found for direct remove from group broadcast")
+						return nil
+					} else {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Fatal("error looking up user")
+					}
+				}
+
+				for _, dev := range u.Devices {
+					rd := b.getRemoteDevice(dev.Address)
+					if rd.connectedSockets > 0 {
+						go b.sendDirect(dev.Address, &ug)
+					}
+				}
+			}
+		}
 	}
 
 	return &ug
@@ -554,11 +591,6 @@ func (b *bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
 		}
 	}
 	if ug.Applied {
-		// Update group activity
-		if b.userIsInGroup(b.currentUserID(), ug.Target) {
-			b.updateLastGroupActivity(ug.Target, ug.Timestamp)
-		}
-
 		// Broadcast it
 		b.broadcast(ug)
 	} else {

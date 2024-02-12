@@ -1271,12 +1271,6 @@ func (b *bounce) clearDeliveryRecordsForRemovedUser(ug updateGroup) error {
 
 	// Delete all delivery records for this user for items in this group, and send the removal directly
 	for _, dev := range u.Devices {
-		// Send the update group that removes this user directly to any of the user's online devices
-		rd := b.getRemoteDevice(dev.Address)
-		if rd.connectedSockets > 0 {
-			go b.sendDirect(dev.Address, &ug)
-		}
-
 		// Delete the delivery records for each group message
 		gms := []groupMessage{}
 		err = b.database.Where("destination = ?", ug.Target).Find(&gms).Error
