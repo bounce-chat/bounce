@@ -169,9 +169,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 
 	// Send references to any device we would have broadcast to
 	for address, _ := range devicesToReference {
-		if address != peer {
-			go b.sendReferences(address)
-		}
+		go b.sendReferences(address)
 	}
 
 	// We might have learned about new devices from this catch up, so we should see if there's anyone else we

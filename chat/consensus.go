@@ -733,9 +733,16 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		return errStackEmpty
 	}
 
+	finalState, err := cs.top()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("no final state available when updating group consensus state")
+	}
+
 	// Find the group
 	var g group
-	err := b.database.Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
+	err = b.database.Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -752,6 +759,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 
 	// Find any canonical update groups that have not been applied and make them as applied and inform them UI
 	canonical := make(map[uuid.UUID]bool)
+	everInGroup := make(map[uuid.UUID]bool)
 	for _, gs := range cs.history[1:] {
 		canonical[gs.ug.ID] = true
 		if !gs.ug.Applied {
@@ -761,15 +769,29 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 			}
 
 			b.applyUpdateGroupInUI(gs.ug)
-			err = b.handleUpdateGroupSideEffects(gs.ug)
-			if err != nil {
-				return err
+
+			if gs.ug.Type == updateGroupTypeAddUser {
+				var newUser user
+				err := msgpack.Unmarshal(gs.ug.Data, &newUser)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("update group add user container invalid user data")
+					return err
+				}
+				if finalState.isMember(newUser.ID) {
+					b.createNewUserIfNeeded(newUser)
+				}
 			}
+
 			if gs.isMember(b.currentUserID()) {
 				b.updateLastGroupActivity(gs.ug.Target, gs.ug.Timestamp)
 				if gs.ug.Actor != b.currentUserID() {
 					b.sendConfirmation(gs.ug)
 				}
+			}
+			for _, member := range gs.users {
+				everInGroup[member] = true
 			}
 		}
 	}
@@ -787,13 +809,15 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		}
 	}
 
-	// Set the final state in the database
-	finalState, err := cs.top()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("no final state available when updating group consensus state")
+	// Clear delivery records for users that were removed in the final state
+	for userID, _ := range everInGroup {
+		if !finalState.isMember(userID) {
+			b.clearGroupDeliveryRecordsForUser(userID, groupID)
+		}
 	}
+
+	// Prune cleared messages
+	b.pruneMessagesBeforeClear(finalState.clearBefore, groupID)
 
 	// If the final state involves us being removed from the group, delete the group
 	if !finalState.isMember(b.currentUserID()) {
@@ -1184,34 +1208,14 @@ func (b *bounce) informUIUpdateGroupChangePostingPermission(ug updateGroup) {
 	}
 }
 
-func (b *bounce) handleUpdateGroupSideEffects(ug updateGroup) error {
-	switch ug.Type {
-	case updateGroupTypeAddUser:
-		return b.createNewUserIfNeeded(ug)
-	case updateGroupTypeRemoveUser:
-		return b.clearDeliveryRecordsForRemovedUser(ug)
-	case updateGroupTypeSetClearBefore:
-		return b.pruneMessagesBeforeClear(ug)
-	}
-
-	return nil
-}
-
-func (b *bounce) createNewUserIfNeeded(ug updateGroup) error {
-	// Unmarshall the new user
-	var u user
-	err := msgpack.Unmarshal(ug.Data, &u)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error unmarshalling user")
-		return err
-	}
-
+func (b *bounce) createNewUserIfNeeded(u user) {
 	if u.ID != b.currentUserID() {
 		// Ensure the user is valid
 		if !b.hasValidDeviceGroup(u) {
-			return errUserHasInvalidDeviceGroup
+			log.WithFields(log.Fields{
+				"user_id": u.ID,
+			}).Warn("refusing to save user with invalid device group")
+			return
 		}
 
 		// Save the user and their devices if we don't have them
@@ -1220,47 +1224,32 @@ func (b *bounce) createNewUserIfNeeded(ug updateGroup) error {
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Error("error saving device that belongs to a user being added to a group")
-				return err
+				}).Fatal("error saving device that belongs to a user being added to a group")
 			}
 		}
 		err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("error saving user that is being added to a group")
-			return err
+			}).Fatal("error saving user that is being added to a group")
 		}
 
 		// Attempt to make a connection to the user
 		b.userConnectionDesired(u.ID)
 	}
-
-	return nil
 }
 
-func (b *bounce) clearDeliveryRecordsForRemovedUser(ug updateGroup) error {
-	// Parse the user ID
-	userID, err := uuid.FromBytes(ug.Data)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error":   err.Error(),
-			"actor":   ug.Actor,
-			"user_id": ug.Data,
-		}).Error("update group attempted to remove user with invalid UUID")
-		return err
-	}
-
+func (b *bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {
 	// Get the user
 	var u user
-	err = b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error
+	err := b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
-				"group_id": ug.Target,
+				"group_id": groupID,
 				"user_id":  userID,
-			}).Error("user not found when attempting to remove user from group")
-			return err
+			}).Error("user not found when attempting to delete delivery records for group user was removed from")
+			return
 		} else {
 			log.WithFields(log.Fields{
 				"error":   err.Error(),
@@ -1273,51 +1262,59 @@ func (b *bounce) clearDeliveryRecordsForRemovedUser(ug updateGroup) error {
 	for _, dev := range u.Devices {
 		// Delete the delivery records for each group message
 		gms := []groupMessage{}
-		err = b.database.Where("destination = ?", ug.Target).Find(&gms).Error
+		err = b.database.Select("id").Where("destination = ?", groupID).Find(&gms).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":    err.Error(),
-				"group_id": ug.Target,
+				"group_id": groupID,
 			}).Fatal("database error looking up all group messages for a group")
 		}
 		for _, gm := range gms {
 			err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeGroupMessage, gm.ID).Error
 			if err != nil {
-				return err
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"user_id":  userID,
+					"group_id": groupID,
+				}).Fatal("database error deleting delivery records")
 			}
 		}
 
 		// Delete the delivery records for each update group
 		ugs := []updateGroup{}
-		err = b.database.Where("target = ?", ug.Target).Find(&ugs).Error
+		err = b.database.Select("id").Where("target = ?", groupID).Find(&ugs).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":    err.Error(),
-				"group_id": ug.Target,
+				"group_id": groupID,
 			}).Fatal("database error looking up all updates for a group")
 		}
 		for _, ugToDelete := range ugs {
 			err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeUpdateGroup, ugToDelete.ID).Error
 			if err != nil {
-				return err
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"user_id":  userID,
+					"group_id": groupID,
+				}).Fatal("database error deleting delivery records")
 			}
 		}
 
 		// Delete the delivery records for the original group creation
-		err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeGroupCreation, ug.Target).Error
+		err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeGroupCreation, groupID).Error
 		if err != nil {
-			return err
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"user_id":  userID,
+				"group_id": groupID,
+			}).Fatal("database error deleting delivery records")
 		}
 	}
-
-	return nil
 }
 
-func (b *bounce) pruneMessagesBeforeClear(ug updateGroup) error {
-	clearBefore := int64(binary.LittleEndian.Uint64(ug.Data))
-
+func (b *bounce) pruneMessagesBeforeClear(clearBefore int64, groupID uuid.UUID) {
 	gms := []groupMessage{}
-	err := b.database.Select("id").Where("written_at <= ? AND destination = ?", clearBefore, ug.Target).Find(&gms).Error
+	err := b.database.Select("id").Where("written_at <= ? AND destination = ?", clearBefore, groupID).Find(&gms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -1333,6 +1330,4 @@ func (b *bounce) pruneMessagesBeforeClear(ug updateGroup) error {
 		}
 		b.userInterface.DeleteItem(gm.ID)
 	}
-
-	return nil
 }
