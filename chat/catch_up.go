@@ -147,6 +147,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 				"type":              br.getType(),
 				"id":                br.getID(),
 			}).Error("refusing to process out-of-order catch up")
+			return nil
 		}
 		lastTimestamp = br.getTimestamp()
 
