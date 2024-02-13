@@ -790,9 +790,9 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 					b.sendConfirmation(gs.ug)
 				}
 			}
-			for _, member := range gs.users {
-				everInGroup[member] = true
-			}
+		}
+		for _, member := range gs.users {
+			everInGroup[member] = true
 		}
 	}
 
