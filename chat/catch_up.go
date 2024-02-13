@@ -162,16 +162,16 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		}
 	}
 
+	// Update all group consensus states for groups that had an update group in this catch up
+	for groupID, _ := range groupsToUpdateConsensus {
+		b.updateGroupConsensus(groupID)
+	}
+
 	// Send references to any device we would have broadcast to
 	for address, _ := range devicesToReference {
 		if address != peer {
 			go b.sendReferences(address)
 		}
-	}
-
-	// Update all group consensus states for groups that had an update group in this catch up
-	for groupID, _ := range groupsToUpdateConsensus {
-		b.updateGroupConsensus(groupID)
 	}
 
 	// We might have learned about new devices from this catch up, so we should see if there's anyone else we

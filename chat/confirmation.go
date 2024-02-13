@@ -166,16 +166,7 @@ func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 		}).Fatal("database error saving confirmation")
 	}
 
-	// Ack it
-	go b.sendAck(peer, typeConfirmation, c.ID)
-
-	// Mark as delivered to this peer
-	b.markDeliveredTo(&c, peer)
-
 	if !catchUp {
-		// Broadcast it
-		b.broadcast(&c)
-
 		// Update group consensus unless this confirms the update group that removed us
 		if ug.CustomScope == uuid.Nil {
 			b.updateGroupConsensus(c.Destination)
