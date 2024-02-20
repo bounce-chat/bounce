@@ -23,6 +23,7 @@ type confirmation struct {
 	UpdateGroupID uuid.UUID
 	Destination   uuid.UUID `msgpack:"-"`
 	Author        uuid.UUID `msgpack:"-"`
+	CustomScope   uuid.UUID `msgpack:"-"`
 	SigningDevice string
 	Signature     []byte
 	Timestamp     int64
@@ -46,6 +47,10 @@ func (c *confirmation) getID() uuid.UUID {
 }
 
 func (c *confirmation) getScope(_ uuid.UUID) int {
+	if c.CustomScope != uuid.Nil {
+		return scopeCustom
+	}
+
 	return scopeGroup
 }
 
@@ -134,6 +139,7 @@ func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 		}
 	}
 	c.Destination = ug.Target
+	c.CustomScope = ug.CustomScope
 
 	// Look up and assign the user who signed this confirmation
 	dev, ok := b.getDeviceFromAddress(c.SigningDevice)

@@ -86,6 +86,12 @@ func (b *bounce) rescopeIfReAddedToGroup(groupID uuid.UUID) error {
 		return err
 	}
 
+	// Remove custom scopes from confirmations for this group
+	err = b.database.Model(&confirmation{}).Where("custom_scope = ?", groupID).Updates(map[string]interface{}{"custom_scope": uuid.Nil}).Error
+	if err != nil {
+		return err
+	}
+
 	// Delete the custom scope
 	err = b.database.Where("id = ?", groupID).Delete(&customScope{}).Error
 	if err != nil {

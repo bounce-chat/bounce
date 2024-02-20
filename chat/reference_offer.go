@@ -474,8 +474,17 @@ func (b *bounce) getConfirmationsToOffer(dev device) []frameReference {
 		Select("confirmations.*").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == confirmations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeConfirmation).
 		Joins("JOIN update_groups ON update_groups.id == confirmations.update_group_id").
-		Joins("JOIN group_users ON update_groups.target == group_users.group_id").
-		Where("delivery_records.id IS NULL AND group_users.user_id = ?", dev.UserID).
+		Joins("LEFT JOIN group_users ON update_groups.target == group_users.group_id").
+		Where(
+			"delivery_records.id IS NULL AND ((group_users.user_id = ? AND confirmations.custom_scope == ?) OR confirmations.custom_scope IN (?))",
+			dev.UserID,
+			uuid.Nil,
+			b.database.
+				Model(&customScope{}).
+				Distinct().
+				Select("id").
+				Where("addresses LIKE ?", "%"+dev.Address+"%"),
+		).
 		Find(&unsentConfirmations).Error
 	if err != nil {
 		log.WithFields(log.Fields{
