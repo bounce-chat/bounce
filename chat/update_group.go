@@ -171,6 +171,48 @@ func (ug *updateGroup) permissionPayloadIsRestricted() (bool, error) {
 	return true, errInvalidPermissionByte
 }
 
+func (ug *updateGroup) validPayloadFormat() bool {
+	switch ug.Type {
+	case updateGroupTypeChangeName:
+		return validGroupName(string(ug.Data))
+	case updateGroupTypeAddUser:
+		var u user
+		err := msgpack.Unmarshal(ug.Data, &u)
+		return err == nil
+	case updateGroupTypeRemoveUser:
+		_, err := uuid.FromBytes(ug.Data)
+		return err == nil
+	case updateGroupTypeChangeRetention:
+		return true
+	case updateGroupTypeChangeMutedUntil:
+		return true
+	case updateGroupTypeSetClearBefore:
+		return true
+	case updateGroupTypePromoteAdmin:
+		_, err := uuid.FromBytes(ug.Data)
+		return err == nil
+	case updateGroupTypeDemoteAdmin:
+		_, err := uuid.FromBytes(ug.Data)
+		return err == nil
+	case updateGroupTypeChangeUserManagementPermission:
+		_, err := ug.permissionPayloadIsRestricted()
+		return err == nil
+	case updateGroupTypeChangeGroupEditsPermission:
+		_, err := ug.permissionPayloadIsRestricted()
+		return err == nil
+	case updateGroupTypeChangePostingPermission:
+		_, err := ug.permissionPayloadIsRestricted()
+		return err == nil
+	default:
+		log.WithFields(log.Fields{
+			"type": ug.Type,
+		}).Warn("cannot validate payload format for update group with unknown type")
+		return false
+	}
+
+	return false
+}
+
 func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) broadcastable {
 	groupMutex.Lock()
 	defer groupMutex.Unlock()
@@ -215,6 +257,15 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error looking up update group")
+	}
+
+	// Make sure the payload of this update is valid for its type
+	if !ug.validPayloadFormat() {
+		log.WithFields(log.Fields{
+			"id":   ug.ID,
+			"peer": peer,
+		}).Warn("ignoring update group with invalid data")
+		return nil
 	}
 
 	// Save this update

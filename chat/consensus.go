@@ -179,6 +179,13 @@ func (cs *canonicalStack) restore() {
 // Given an update group, add it into the history stack if it should be applied, detecting and removing any conflicts in the process
 //
 func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
+	// Make sure the payload of this update is valid for its type
+	if !ug.validPayloadFormat() {
+		log.WithFields(log.Fields{
+			"id": ug.ID,
+		}).Error("ignoring update group with invalid data")
+	}
+
 	// Get the current state of history
 	lastState, err := cs.top()
 	if err != nil {
