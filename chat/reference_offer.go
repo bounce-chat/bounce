@@ -517,34 +517,66 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	// Create a set of references for all of the offered references that we don't have, ACKing the ones we do have in the process
 	typesToIDs := referencedIDs(ro.References)
 	references := []frameReference{}
-	references = append(references, b.getDirectMessagesToRequest(dev, deviceExists, typesToIDs[typeDirectMessage])...)
-	references = append(references, b.getGroupMessagesToRequest(dev, deviceExists, typesToIDs[typeGroupMessage])...)
-	references = append(references, b.getUpdateDMsToRequest(dev, deviceExists, typesToIDs[typeUpdateDM])...)
-	references = append(references, b.getDevicesToRequest(dev, deviceExists, typesToIDs[typeDevice])...)
-	references = append(references, b.getAddUsersToRequest(dev, deviceExists, typesToIDs[typeAddUser])...)
-	references = append(references, b.getGroupCreationsToRequest(dev, deviceExists, typesToIDs[typeGroupCreation])...)
-	references = append(references, b.getUpdateGroupsToRequest(dev, deviceExists, typesToIDs[typeUpdateGroup])...)
-	references = append(references, b.getConfirmationsToRequest(dev, deviceExists, typesToIDs[typeConfirmation])...)
+	acks := []frameReference{}
+
+	dmRefs, dmAcks := b.getDirectMessagesToRequestAndAck(dev, deviceExists, typesToIDs[typeDirectMessage])
+	references = append(references, dmRefs...)
+	acks = append(acks, dmAcks...)
+
+	gmRefs, gmAcks := b.getGroupMessagesToRequestAndAck(dev, deviceExists, typesToIDs[typeGroupMessage])
+	references = append(references, gmRefs...)
+	acks = append(acks, gmAcks...)
+
+	udRefs, udAcks := b.getUpdateDMsToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateDM])
+	references = append(references, udRefs...)
+	acks = append(acks, udAcks...)
+
+	dRefs, dAcks := b.getDevicesToRequestAndAck(dev, deviceExists, typesToIDs[typeDevice])
+	references = append(references, dRefs...)
+	acks = append(acks, dAcks...)
+
+	auRefs, auAcks := b.getAddUsersToRequestAndAck(dev, deviceExists, typesToIDs[typeAddUser])
+	references = append(references, auRefs...)
+	acks = append(acks, auAcks...)
+
+	gcRefs, gcAcks := b.getGroupCreationsToRequestAndAck(dev, deviceExists, typesToIDs[typeGroupCreation])
+	references = append(references, gcRefs...)
+	acks = append(acks, gcAcks...)
+
+	ugRefs, ugAcks := b.getUpdateGroupsToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateGroup])
+	references = append(references, ugRefs...)
+	acks = append(acks, ugAcks...)
+
+	cRefs, cAcks := b.getConfirmationsToRequestAndAck(dev, deviceExists, typesToIDs[typeConfirmation])
+	references = append(references, cRefs...)
+	acks = append(acks, cAcks...)
 
 	// Inform the reference engine that this peer has these frames that we don't know about
 	b.loadReferenceOffer(peer, references)
 
+	// Send an ack for everything we already have in the database
+	go b.sendDirect(peer, &ack{
+		References: acks,
+	})
+
 	return nil
 }
 
-func (b *bounce) getDirectMessagesToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+func (b *bounce) getDirectMessagesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
+	acks := []frameReference{}
 
 	for _, dmID := range offeredIDs {
+		ref := frameReference{FrameID: dmID, Type: typeDirectMessage}
 		var dm directMessage
 		err := b.database.First(&dm, "id = ?", dmID).Error
 		if err == nil {
 			if deviceExists && !b.isDeliveredTo(&dm, dev.Address) {
 				b.markDeliveredTo(&dm, dev.Address)
 			}
-			go b.sendAck(dev.Address, typeDirectMessage, dmID)
+			acks = append(acks, ref)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, frameReference{FrameID: dmID, Type: typeDirectMessage})
+			references = append(references, ref)
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -552,22 +584,24 @@ func (b *bounce) getDirectMessagesToRequest(dev device, deviceExists bool, offer
 		}
 	}
 
-	return references
+	return references, acks
 }
 
-func (b *bounce) getGroupMessagesToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+func (b *bounce) getGroupMessagesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
+	acks := []frameReference{}
 
 	for _, gmID := range offeredIDs {
+		ref := frameReference{FrameID: gmID, Type: typeGroupMessage}
 		var gm groupMessage
 		err := b.database.First(&gm, "id = ?", gmID).Error
 		if err == nil {
 			if deviceExists && !b.isDeliveredTo(&gm, dev.Address) {
 				b.markDeliveredTo(&gm, dev.Address)
 			}
-			go b.sendAck(dev.Address, typeGroupMessage, gm.ID)
+			acks = append(acks, ref)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, frameReference{FrameID: gmID, Type: typeGroupMessage})
+			references = append(references, ref)
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -575,22 +609,24 @@ func (b *bounce) getGroupMessagesToRequest(dev device, deviceExists bool, offere
 		}
 	}
 
-	return references
+	return references, acks
 }
 
-func (b *bounce) getUpdateDMsToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+func (b *bounce) getUpdateDMsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
+	acks := []frameReference{}
 
 	for _, udID := range offeredIDs {
+		ref := frameReference{FrameID: udID, Type: typeUpdateDM}
 		var ud updateDM
 		err := b.database.First(&ud, "id = ?", udID).Error
 		if err == nil {
 			if deviceExists && !b.isDeliveredTo(&ud, dev.Address) {
 				b.markDeliveredTo(&ud, dev.Address)
 			}
-			go b.sendAck(dev.Address, typeUpdateDM, udID)
+			acks = append(acks, ref)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, frameReference{FrameID: udID, Type: typeUpdateDM})
+			references = append(references, ref)
 		} else {
 			log.WithFields(log.Fields{
 				"id":    udID,
@@ -599,22 +635,24 @@ func (b *bounce) getUpdateDMsToRequest(dev device, deviceExists bool, offeredIDs
 		}
 	}
 
-	return references
+	return references, acks
 }
 
-func (b *bounce) getDevicesToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+func (b *bounce) getDevicesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
+	acks := []frameReference{}
 
 	for _, deviceID := range offeredIDs {
+		ref := frameReference{FrameID: deviceID, Type: typeDevice}
 		var existingDev device
 		err := b.database.First(&existingDev, "id = ?", deviceID).Error
 		if err == nil {
 			if deviceExists && !b.isDeliveredTo(&existingDev, dev.Address) {
 				b.markDeliveredTo(&existingDev, dev.Address)
 			}
-			go b.sendAck(dev.Address, typeDevice, deviceID)
+			acks = append(acks, ref)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, frameReference{FrameID: deviceID, Type: typeDevice})
+			references = append(references, ref)
 		} else {
 			log.WithFields(log.Fields{
 				"id":    deviceID,
@@ -623,22 +661,24 @@ func (b *bounce) getDevicesToRequest(dev device, deviceExists bool, offeredIDs [
 		}
 	}
 
-	return references
+	return references, acks
 }
 
-func (b *bounce) getAddUsersToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+func (b *bounce) getAddUsersToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
+	acks := []frameReference{}
 
 	for _, addUserID := range offeredIDs {
+		ref := frameReference{FrameID: addUserID, Type: typeAddUser}
 		var au addUser
 		err := b.database.First(&au, "id = ?", addUserID).Error
 		if err == nil {
 			if deviceExists && !b.isDeliveredTo(&au, dev.Address) {
 				b.markDeliveredTo(&au, dev.Address)
 			}
-			go b.sendAck(dev.Address, typeAddUser, addUserID)
+			acks = append(acks, ref)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, frameReference{FrameID: addUserID, Type: typeAddUser})
+			references = append(references, ref)
 		} else {
 			log.WithFields(log.Fields{
 				"id":    addUserID,
@@ -647,22 +687,24 @@ func (b *bounce) getAddUsersToRequest(dev device, deviceExists bool, offeredIDs 
 		}
 	}
 
-	return references
+	return references, acks
 }
 
-func (b *bounce) getGroupCreationsToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+func (b *bounce) getGroupCreationsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
+	acks := []frameReference{}
 
 	for _, groupCreationID := range offeredIDs {
+		ref := frameReference{FrameID: groupCreationID, Type: typeGroupCreation}
 		var gc groupCreation
 		err := b.database.First(&gc, "id = ?", groupCreationID).Error
 		if err == nil {
 			if deviceExists && !b.isDeliveredTo(&gc, dev.Address) {
 				b.markDeliveredTo(&gc, dev.Address)
 			}
-			go b.sendAck(dev.Address, typeGroupCreation, groupCreationID)
+			acks = append(acks, ref)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, frameReference{FrameID: groupCreationID, Type: typeGroupCreation})
+			references = append(references, ref)
 		} else {
 			log.WithFields(log.Fields{
 				"id":    groupCreationID,
@@ -671,22 +713,24 @@ func (b *bounce) getGroupCreationsToRequest(dev device, deviceExists bool, offer
 		}
 	}
 
-	return references
+	return references, acks
 }
 
-func (b *bounce) getUpdateGroupsToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+func (b *bounce) getUpdateGroupsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
+	acks := []frameReference{}
 
 	for _, updateGroupID := range offeredIDs {
+		ref := frameReference{FrameID: updateGroupID, Type: typeUpdateGroup}
 		var ug updateGroup
 		err := b.database.First(&ug, "id = ?", updateGroupID).Error
 		if err == nil {
 			if deviceExists && !b.isDeliveredTo(&ug, dev.Address) {
 				b.markDeliveredTo(&ug, dev.Address)
 			}
-			go b.sendAck(dev.Address, typeUpdateGroup, updateGroupID)
+			acks = append(acks, ref)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, frameReference{FrameID: updateGroupID, Type: typeUpdateGroup})
+			references = append(references, ref)
 		} else {
 			log.WithFields(log.Fields{
 				"id":    updateGroupID,
@@ -695,22 +739,24 @@ func (b *bounce) getUpdateGroupsToRequest(dev device, deviceExists bool, offered
 		}
 	}
 
-	return references
+	return references, acks
 }
 
-func (b *bounce) getConfirmationsToRequest(dev device, deviceExists bool, offeredIDs []uuid.UUID) []frameReference {
+func (b *bounce) getConfirmationsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
+	acks := []frameReference{}
 
 	for _, confirmationID := range offeredIDs {
+		ref := frameReference{FrameID: confirmationID, Type: typeConfirmation}
 		var c confirmation
 		err := b.database.First(&c, "id = ?", confirmationID).Error
 		if err == nil {
 			if deviceExists && !b.isDeliveredTo(&c, dev.Address) {
 				b.markDeliveredTo(&c, dev.Address)
 			}
-			go b.sendAck(dev.Address, typeConfirmation, confirmationID)
+			acks = append(acks, ref)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, frameReference{FrameID: confirmationID, Type: typeConfirmation})
+			references = append(references, ref)
 		} else {
 			log.WithFields(log.Fields{
 				"id":    confirmationID,
@@ -719,5 +765,5 @@ func (b *bounce) getConfirmationsToRequest(dev device, deviceExists bool, offere
 		}
 	}
 
-	return references
+	return references, acks
 }
