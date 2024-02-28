@@ -11,8 +11,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var confirmationMutex sync.Mutex
-
 //
 // A confirmation is a signature of an update group from a device which is broadcast to the entire group.
 // This is used to establish which update groups are to be applied to a group in the case of a conflict
@@ -87,8 +85,8 @@ func (c *confirmation) getTimestamp() int64 {
 }
 
 func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) broadcastable {
-	confirmationMutex.Lock()
-	defer confirmationMutex.Unlock()
+	groupMutex.Lock()
+	defer groupMutex.Unlock()
 
 	// Unmarshal the confirmation
 	var c confirmation
