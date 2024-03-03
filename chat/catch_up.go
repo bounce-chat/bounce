@@ -13,6 +13,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+var catchUpMutex sync.Mutex
+
 var allowedCatchUpFrames = map[uint16]bool{
 	typeDirectMessage: true,
 	typeGroupMessage:  true,
@@ -79,14 +81,6 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		return nil
 	}
 
-	// Send references for these frames into the reference engine so that we know we've received them
-	// and no longer need to request them from any peers
-	references := []frameReference{}
-	for _, f := range cu.Frames {
-		references = append(references, frameReference{FrameID: f.ID, Type: f.Type})
-	}
-	b.loadCatchUp(peer, references)
-
 	// Check if we're aware of the peer identity before processing this catch up.  If we don't know
 	// who this device belongs to, we should be able to learn after handling all of the frames inside
 	// it and we'll want to check to make sure that happened.
@@ -108,6 +102,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 	// Handle reach frame in the catch up using it's handler
 	handlers := b.getHandlers()
 	lastTimestamp := int64(0)
+	catchUpMutex.Lock()
 	for _, fr := range cu.Frames {
 		// Check if this type of frame is allowed in a catch up
 		if _, present := allowedCatchUpFrames[fr.Type]; !present {
@@ -165,6 +160,10 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 			groupsToUpdateConsensus[br.getDestination(b.currentUserID())] = true
 		}
 	}
+	catchUpMutex.Unlock()
+
+	// Inform the reference engine of all the frames we handled
+	b.loadCatchUp(peer, a.References)
 
 	// Ack all of the handled frames
 	go b.sendDirect(peer, a)

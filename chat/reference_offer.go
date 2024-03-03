@@ -175,6 +175,11 @@ func (b *bounce) sendReferences(peer string) {
 }
 
 func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
+	// Make sure we don't generate references while we're in the middle of handling a catch up,
+	// in order to not generate incomplete references of update group histories
+	catchUpMutex.Lock()
+	defer catchUpMutex.Unlock()
+
 	dev, ok := b.getDeviceFromAddress(address)
 	if !ok {
 		return &referenceOffer{}

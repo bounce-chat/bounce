@@ -137,13 +137,10 @@ func (b *bounce) loadReferenceOffer(peer string, ro []frameReference) {
 }
 
 //
-// tell everyone we have these now (except the device that sent them, they will be ack'd by the handlers).  delete all records for it.
-// TODO: if someone sends us a catch up with malformed payloads, we'll ack them to the other devices that might have the correct payloads
-// if we do this.  ok?  Alternatively we could continuously make offers, but that's more expensive
-// could also have this function check to make sure things were actually saved and only ack in that case, or have the catch up handler confirm
-// the save and then only pass the ones that saved to this function
+// Inform any devies that offered us a frame that we just handled that we no longer need that frame, and remove those references from the database
 //
 func (b *bounce) loadCatchUp(peer string, cu []frameReference) {
+	acks := map[string][]frameReference{}
 	for _, fr := range cu {
 		// Get all of the references for each frame in the catch up that are not the peer that sent the catch up
 		references := []frameReference{}
@@ -156,7 +153,7 @@ func (b *bounce) loadCatchUp(peer string, cu []frameReference) {
 
 		// Ack these to any peer that offered it, or that didn't respond to our request
 		for _, unneededReference := range references {
-			go b.sendAck(unneededReference.Peer, unneededReference.Type, unneededReference.FrameID)
+			acks[unneededReference.Peer] = append(acks[unneededReference.Peer], frameReference{ID: unneededReference.FrameID, Type: unneededReference.Type})
 		}
 
 		// Batch delete all reference frames in the database for this frame
@@ -166,6 +163,10 @@ func (b *bounce) loadCatchUp(peer string, cu []frameReference) {
 				"error": err.Error(),
 			}).Fatal("error deleting frame reference from reference database")
 		}
+	}
+
+	for peer, refs := range acks {
+		go b.sendDirect(peer, &ack{References: refs})
 	}
 }
 
