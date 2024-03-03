@@ -102,6 +102,9 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 	// Keep track of devices we need to reference after this
 	devicesToReference := map[string]bool{}
 
+	// Collect all the processed frames into a single ack
+	a := &ack{}
+
 	// Handle reach frame in the catch up using it's handler
 	handlers := b.getHandlers()
 	lastTimestamp := int64(0)
@@ -137,7 +140,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 			continue
 		}
 		b.markDeliveredTo(br, peer)
-		go b.sendAck(peer, br.getType(), br.getID())
+		a.References = append(a.References, frameReference{FrameID: br.getID(), Type: br.getType()})
 
 		// Make sure this catch up is in order
 		if br.getTimestamp() < lastTimestamp {
@@ -162,6 +165,9 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 			groupsToUpdateConsensus[br.getDestination(b.currentUserID())] = true
 		}
 	}
+
+	// Ack all of the handled frames
+	go b.sendDirect(peer, a)
 
 	// Update all group consensus states for groups that had an update group in this catch up
 	for groupID, _ := range groupsToUpdateConsensus {
