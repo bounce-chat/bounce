@@ -642,9 +642,9 @@ func (b *bounce) updateUserOnlineStatus(address string) {
 	}
 
 	// Get the current state for this user
-	knownOnline, ok := b.devicePool.userOnlineStatus[u.ID]
+	knownOnline, ok := b.devicePool.userOnlineStatus[dev.UserID]
 	if !ok {
-		b.devicePool.userOnlineStatus[u.ID] = false
+		b.devicePool.userOnlineStatus[dev.UserID] = false
 		knownOnline = false
 	}
 
@@ -656,11 +656,11 @@ func (b *bounce) updateUserOnlineStatus(address string) {
 
 	// Update the UI and cache is there's a state change
 	if online && !knownOnline {
-		b.devicePool.userOnlineStatus[u.ID] = true
-		b.userInterface.UserIsOnline(u.ID)
+		b.devicePool.userOnlineStatus[dev.UserID] = true
+		b.userInterface.UserIsOnline(dev.UserID)
 	} else if !online && knownOnline {
-		b.devicePool.userOnlineStatus[u.ID] = false
-		b.userInterface.UserIsOffline(u.ID)
+		b.devicePool.userOnlineStatus[dev.UserID] = false
+		b.userInterface.UserIsOffline(dev.UserID)
 	}
 }
 
