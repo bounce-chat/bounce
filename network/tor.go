@@ -224,7 +224,7 @@ func (bounceTor *TorNetwork) updateOnlineStatus() {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error calling network-liveness on tor control port")
+		}).Fatal("error calling network-liveness on tor control port")
 	} else {
 		for _, kv := range response {
 			if kv.Key == "network-liveness" {

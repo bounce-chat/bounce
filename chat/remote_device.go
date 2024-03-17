@@ -164,6 +164,10 @@ func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 		case br := <-rd.messages:
 			err := writeFrame(conn, br.getType(), br.getPayload())
 			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"peer":  conn.RemoteAddr().String(),
+				}).Debug("error writing frame")
 				rd.connectedSockets -= 1
 				b.updateUserOnlineStatus(conn.RemoteAddr().String())
 				// TODO: if we now have 0 connections, let the UI know the user is offline
