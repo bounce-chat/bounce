@@ -136,6 +136,10 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		}
 		b.markDeliveredTo(br, peer)
 		a.References = append(a.References, frameReference{FrameID: br.getID(), Type: br.getType()})
+		log.WithFields(log.Fields{
+			"id":   br.getID(),
+			"type": br.getType(),
+		}).Debug("handling frame inside a catch up")
 
 		// Make sure this catch up is in order
 		if br.getTimestamp() < lastTimestamp {

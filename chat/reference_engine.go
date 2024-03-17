@@ -112,6 +112,10 @@ func (b *bounce) keepReferenceDatabasePruned() {
 // that we do have we ack while handing the offer
 //
 func (b *bounce) loadReferenceOffer(peer string, ro []frameReference) {
+	log.WithFields(log.Fields{
+		"peer": peer,
+		"len":  len(ro),
+	}).Debug("reference engine learning about a reference offer")
 	now := time.Now().Unix()
 
 	for _, fr := range ro {
@@ -140,6 +144,10 @@ func (b *bounce) loadReferenceOffer(peer string, ro []frameReference) {
 // Inform any devies that offered us a frame that we just handled that we no longer need that frame, and remove those references from the database
 //
 func (b *bounce) loadCatchUp(peer string, cu []frameReference) {
+	log.WithFields(log.Fields{
+		"peer": peer,
+		"len":  len(cu),
+	}).Debug("reference engine learning about a catch up")
 	acks := map[string][]frameReference{}
 	for _, fr := range cu {
 		// Get all of the references for each frame in the catch up that are not the peer that sent the catch up
@@ -203,6 +211,10 @@ func (b *bounce) makeReferenceRequests() {
 		referenceRequests[reference.Peer] = append(referenceRequests[reference.Peer], reference)
 	}
 	for peer, frs := range referenceRequests {
+		log.WithFields(log.Fields{
+			"peer": peer,
+			"len":  len(frs),
+		}).Debug("making a reference request")
 		// broadcast the reference request to the peer
 		go b.sendDirect(peer, &referenceRequest{References: frs})
 		for _, fr := range frs {
