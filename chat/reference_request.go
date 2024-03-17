@@ -77,6 +77,13 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte, _ bool) bro
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateGroupsPayloads(dev, requestedIDs[typeUpdateGroup], offeredIDs[typeUpdateGroup])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedConfirmationsPayloads(dev, requestedIDs[typeConfirmation], offeredIDs[typeConfirmation], getValidRequestedUUIDs(offeredIDs[typeUpdateGroup], requestedIDs[typeUpdateGroup]))...)
 
+	log.WithFields(log.Fields{
+		"peer":          peer,
+		"offerable":     len(offerable.References),
+		"requested":     len(rr.References),
+		"catch_up_size": len(cu.broadcastables),
+	}).Debug("handling a reference request")
+
 	// Send the catchup if there's anything to send
 	if len(cu.broadcastables) > 0 {
 		go b.sendDirect(peer, cu)
