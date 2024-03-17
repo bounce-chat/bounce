@@ -139,6 +139,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		log.WithFields(log.Fields{
 			"id":   br.getID(),
 			"type": br.getType(),
+			"peer": peer,
 		}).Debug("handling frame inside a catch up")
 
 		// Make sure this catch up is in order

@@ -506,6 +506,11 @@ func (b *bounce) getConfirmationsToOffer(dev device) []frameReference {
 }
 
 func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) broadcastable {
+	// Make sure we aren't still handling a catch up while determining what we need to request
+	catchUpMutex.Lock()
+	defer catchUpMutex.Unlock()
+
+	// Unpack the offer
 	var ro referenceOffer
 	err := msgpack.Unmarshal(payload, &ro)
 	if err != nil {
