@@ -522,6 +522,7 @@ func (fyneUI *Fyne) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 	if fyneUI.activeThread == rfg.Group {
 		fyneUI.chatContainer.Objects = []fyne.CanvasObject{fyneUI.defaultContainer}
 		fyneUI.chatContainer.Refresh()
+		fyneUI.activeThread = uuid.Nil
 	}
 	if rfg.Actor != fyneUI.profile.id {
 		var actorName string

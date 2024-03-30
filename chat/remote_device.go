@@ -167,10 +167,10 @@ func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 					"peer":  conn.RemoteAddr().String(),
+					"type":  br.getType(),
 				}).Debug("error writing frame")
 				rd.connectedSockets -= 1
 				b.updateUserOnlineStatus(conn.RemoteAddr().String())
-				// TODO: if we now have 0 connections, let the UI know the user is offline
 
 				// If this socket died during a write, but there are other sockets that might still be alive,
 				// send references for anything that might not have made it through this socket

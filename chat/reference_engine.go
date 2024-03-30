@@ -186,9 +186,8 @@ func (b *bounce) makeReferenceRequests() {
 	// us that we haven't requested yet, as well as alternative devices for frames that we have requested but have not received a response for in time
 	references := []frameReference{}
 	err := b.referenceDatabase.Model(&frameReference{}).
-		Group("frame_id").
 		Where(
-			"state = ? AND frame_id NOT IN (?)",
+			"(state = ? AND frame_id NOT IN (?)) OR (state = ? AND last_action < ?)",
 			referenceStateOffered,
 			b.referenceDatabase.Select("frame_id").
 				Where(
@@ -197,6 +196,8 @@ func (b *bounce) makeReferenceRequests() {
 					time.Now().Unix()-int64(referenceRetrySeconds),
 				).
 				Table("frame_references"),
+			referenceStateRequested,
+			time.Now().Unix()-int64(referenceRetrySeconds),
 		).
 		Find(&references).Error
 	if err != nil {
