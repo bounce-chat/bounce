@@ -20,6 +20,7 @@ var referenceRequestMutex sync.Mutex
 var referenceStateOffered = 0
 var referenceStateRequested = 1
 
+// TODO: might make sense to dynamically retry depending on size of offer
 var referenceRetrySeconds = 5
 
 type frameReference struct {
@@ -112,6 +113,8 @@ func (b *bounce) keepReferenceDatabasePruned() {
 // that we do have we ack while handing the offer
 //
 func (b *bounce) loadReferenceOffer(peer string, ro []frameReference) {
+	referenceRequestMutex.Lock()
+
 	log.WithFields(log.Fields{
 		"peer": peer,
 		"len":  len(ro),
@@ -132,11 +135,15 @@ func (b *bounce) loadReferenceOffer(peer string, ro []frameReference) {
 	}
 
 	b.makeReferenceRequests()
+	referenceRequestMutex.Unlock()
+
 	go func() {
 		// If the request we generated from this offer fails, check after the expiration to see if any other
 		// devices have offered the same references or if we should try this peer again
 		time.Sleep(time.Duration(referenceRetrySeconds+1) * time.Second)
+		referenceRequestMutex.Lock()
 		b.makeReferenceRequests()
+		referenceRequestMutex.Unlock()
 	}()
 }
 
@@ -179,13 +186,13 @@ func (b *bounce) loadCatchUp(peer string, cu []frameReference) {
 }
 
 func (b *bounce) makeReferenceRequests() {
-	referenceRequestMutex.Lock()
-	defer referenceRequestMutex.Unlock()
+	// Make sure we aren't handling a catch up while checking what we still need to request
+	catchUpMutex.Lock()
 
 	// Get a unique list of all the frames we need to learn about and a device we can get them from.  This includes all frames that have been offered to
 	// us that we haven't requested yet, as well as alternative devices for frames that we have requested but have not received a response for in time
 	references := []frameReference{}
-	err := b.referenceDatabase.Model(&frameReference{}).
+	err := b.referenceDatabase.
 		Where(
 			"(state = ? AND frame_id NOT IN (?)) OR (state = ? AND last_action < ?)",
 			referenceStateOffered,
@@ -205,6 +212,7 @@ func (b *bounce) makeReferenceRequests() {
 			"error": err.Error(),
 		}).Fatal("error getting frame references from reference database")
 	}
+	catchUpMutex.Unlock()
 
 	// Prepare reference requests for each device that is in the list of references to request
 	referenceRequests := map[string][]frameReference{}

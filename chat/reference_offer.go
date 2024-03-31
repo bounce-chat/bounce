@@ -506,10 +506,6 @@ func (b *bounce) getConfirmationsToOffer(dev device) []frameReference {
 }
 
 func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) broadcastable {
-	// Make sure we aren't still handling a catch up while determining what we need to request
-	catchUpMutex.Lock()
-	defer catchUpMutex.Unlock()
-
 	// Unpack the offer
 	var ro referenceOffer
 	err := msgpack.Unmarshal(payload, &ro)
@@ -523,6 +519,9 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	dev, deviceExists := b.getDeviceFromAddress(peer)
 
 	go b.sendAck(peer, typeReferenceOffer, ro.ID)
+
+	// Make sure we aren't still handling a catch up while determining what we need to request
+	catchUpMutex.Lock()
 
 	// Create a set of references for all of the offered references that we don't have, ACKing the ones we do have in the process
 	typesToIDs := referencedIDs(ro.References)
@@ -560,6 +559,9 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	cRefs, cAcks := b.getConfirmationsToRequestAndAck(dev, deviceExists, typesToIDs[typeConfirmation])
 	references = append(references, cRefs...)
 	acks = append(acks, cAcks...)
+
+	// Unlock the catch up mutex
+	catchUpMutex.Unlock()
 
 	// Inform the reference engine that this peer has these frames that we don't know about
 	b.loadReferenceOffer(peer, references)

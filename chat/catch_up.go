@@ -165,10 +165,11 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 			groupsToUpdateConsensus[br.getDestination(b.currentUserID())] = true
 		}
 	}
-	catchUpMutex.Unlock()
-
 	// Inform the reference engine of all the frames we handled
 	b.loadCatchUp(peer, a.References)
+
+	// Unlock the mutex for catchup handling
+	catchUpMutex.Unlock()
 
 	// Ack all of the handled frames
 	go b.sendDirect(peer, a)
