@@ -105,18 +105,7 @@ func (b *bounce) broadcast(br broadcastable) {
 
 func (b *bounce) sendDirect(peer string, br sendable) {
 	rd := b.getRemoteDevice(peer)
-
-	if br.getType() == typeCatchUp {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Debug("attempting to send catch up to messages channel for peer")
-	}
 	rd.messages <- br
-	if br.getType() == typeCatchUp {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Debug("finished sending catch up to messages channel for peer")
-	}
 }
 
 func (b *bounce) getBroadcastScope(br broadcastable) []string {
