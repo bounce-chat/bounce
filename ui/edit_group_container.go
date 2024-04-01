@@ -62,8 +62,23 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		},
 		fyneUI.mainWindow,
 	)
-	thread.clearHistoryButton = widget.NewButton("Clear history", func() {
+	thread.clearHistoryButton = widget.NewButton("Clear History", func() {
 		confirmClearHistory.Show()
+	})
+
+	confirmDeleteGroup := dialog.NewConfirm(
+		"Delete this group?",
+		"Are you sure you want to permanently delete this group for all members?",
+		func(confirmed bool) {
+			if confirmed {
+				fyneUI.callbacks.DeleteGroup(thread.id)
+				fyneUI.showMainContainer()
+			}
+		},
+		fyneUI.mainWindow,
+	)
+	thread.deleteGroupButton = widget.NewButton("Delete Group", func() {
+		confirmDeleteGroup.Show()
 	})
 
 	saveButton := widget.NewButton("Save", func() {
@@ -194,6 +209,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		widget.NewLabel("Disappearing Messages"),
 		thread.retentionSelection,
 		container.NewHBox(thread.clearHistoryButton),
+		container.NewHBox(thread.deleteGroupButton),
 	)
 	topOptionsVBox.Add(thread.restrictUserManagementCheck)
 	topOptionsVBox.Add(thread.restrictGroupEditsCheck)

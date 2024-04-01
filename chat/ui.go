@@ -166,6 +166,11 @@ type RemovedFromGroup struct {
 	Actor uuid.UUID
 }
 
+type GroupDeleted struct {
+	Group uuid.UUID
+	Actor uuid.UUID
+}
+
 type InitialState struct {
 	Profile                                *User
 	Users                                  []User
@@ -241,6 +246,7 @@ type UI interface {
 	AddUser(UpdateGroupAddUser)
 	RemoveUser(UpdateGroupRemoveUser)
 	RemovedFromGroup(RemovedFromGroup)
+	GroupDeleted(GroupDeleted)
 	RenameGroup(UpdateGroupName)
 	GroupRetentionChanged(UpdateGroupRetention)
 	GroupChatHistoryCleared(UpdateGroupClearHistory)
@@ -306,6 +312,7 @@ type UICallbacks struct {
 	UnrestrictGroupEdits     func(groupID uuid.UUID) error                     // Allow any user to edit group properties
 	RestrictPosting          func(groupID uuid.UUID) error                     // Restrict posting to only admins
 	UnrestrictPosting        func(groupID uuid.UUID) error                     // Allow any user to post
+	DeleteGroup              func(groupID uuid.UUID) error                     // Delete a group
 
 	SetDMMutedUntil    func(userID uuid.UUID, mutedUntil int64) error       // Set a temporary mute on a DM by setting the unix timestamp to pause notifications until
 	GetDMMutedUntil    func(userID uuid.UUID) (mutedUntil int64, err error) // Get the value of a temporary mute on a DM

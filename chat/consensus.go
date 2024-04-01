@@ -27,6 +27,7 @@ type groupState struct {
 	postingRestricted        bool
 	editingRestricted        bool
 	userManagementRestricted bool
+	deleted                  bool
 	ug                       updateGroup
 }
 
@@ -56,6 +57,10 @@ func (gs groupState) equals(otherState groupState) bool {
 	}
 
 	if gs.userManagementRestricted != otherState.userManagementRestricted {
+		return false
+	}
+
+	if gs.deleted != otherState.deleted {
 		return false
 	}
 
@@ -206,6 +211,11 @@ func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
 		}
 	}
 
+	// Stop allowing any new changes once a group has been deleted
+	if lastState.deleted {
+		return
+	}
+
 	// Ignore this update if it changes nothing
 	if changeIsNOP(lastState, ug) {
 		return
@@ -340,6 +350,7 @@ func (b *bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 		postingRestricted:        true,
 		editingRestricted:        true,
 		userManagementRestricted: true,
+		deleted:                  false,
 	}
 
 	// Look up the group creation and unpack the original group
@@ -530,6 +541,12 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 		} else {
 			return errAdminRequired
 		}
+	case updateGroupTypeDelete:
+		if gs.isAdmin(ug.Actor) {
+			return nil
+		} else {
+			return errAdminRequired
+		}
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -566,6 +583,8 @@ func applyUpdateGroupToState(gs groupState, ug updateGroup) (groupState, error) 
 		return applyUpdateGroupChangeGroupEditsPermissionToState(gs, ug)
 	case updateGroupTypeChangePostingPermission:
 		return applyUpdateGroupChangePostingPermissionToState(gs, ug)
+	case updateGroupTypeDelete:
+		return applyUpdateGroupDeleteToState(gs, ug)
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -732,6 +751,12 @@ func applyUpdateGroupChangePostingPermissionToState(gs groupState, ug updateGrou
 	return gs, nil
 }
 
+func applyUpdateGroupDeleteToState(gs groupState, ug updateGroup) (groupState, error) {
+	gs.deleted = true
+
+	return gs, nil
+}
+
 func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *canonicalStack, ugs []updateGroup) error {
 	if len(cs.history) == 0 {
 		log.WithFields(log.Fields{
@@ -762,6 +787,86 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				"error":    err.Error(),
 			}).Fatal("database error looking up group")
 		}
+	}
+
+	// If the final state is that the group is deleted, delete the group
+	if finalState.deleted {
+		// Attach a custom scope to this update group
+		err = b.createCustomScopeFromGroup(g.ID)
+		if err == nil {
+			err = b.database.Model(&finalState.ug).Select("custom_scope").Update("custom_scope", g.ID).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"update_group_id": finalState.ug.ID,
+					"error":           err.Error(),
+				}).Fatal("error updating custom scope on update group")
+			}
+		} else {
+			log.WithFields(log.Fields{
+				"update_group_id": finalState.ug.ID,
+				"error":           err.Error(),
+			}).Error("error creating custom scope for update group")
+		}
+
+		// Inform the UI
+		b.userInterface.GroupDeleted(GroupDeleted{
+			Group: g.ID,
+			Actor: finalState.ug.Actor,
+		})
+
+		// Delete the group
+		return b.database.Delete(&g).Error
+	}
+
+	// If the final state involves us being removed from the group, delete the group
+	if !finalState.isMember(b.currentUserID()) {
+		// Find the most recent update group that removed us
+		removalActor := uuid.UUID{}
+		for i := len(cs.history) - 1; i >= 0; i-- {
+			ug := cs.history[i].ug
+			if ug.Type == updateGroupTypeRemoveUser {
+				targetUser, err := uuid.FromBytes(ug.Data)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":           err.Error(),
+						"update_group_id": ug.ID,
+					}).Error("update group attempts to remove user with invalid UUID")
+					continue
+				}
+				if targetUser == b.currentUserID() {
+					// Set the actor who removed us from the group
+					removalActor = ug.Actor
+
+					// Attach a custom scope to this update group
+					err = b.createCustomScopeFromGroup(ug.Target)
+					if err == nil {
+						err = b.database.Model(&ug).Select("custom_scope").Update("custom_scope", ug.Target).Error
+						if err != nil {
+							log.WithFields(log.Fields{
+								"update_group_id": ug.ID,
+								"error":           err.Error(),
+							}).Fatal("error updating custom scope on update group")
+						}
+					} else {
+						log.WithFields(log.Fields{
+							"update_group_id": ug.ID,
+							"error":           err.Error(),
+						}).Error("error creating custom scope for update group")
+					}
+
+					break
+				}
+			}
+		}
+
+		// Inform the UI
+		b.userInterface.RemovedFromGroup(RemovedFromGroup{
+			Group: g.ID,
+			Actor: removalActor,
+		})
+
+		// Delete the group
+		return b.database.Delete(&g).Error
 	}
 
 	// Find any canonical update groups that have not been applied and make them as applied and inform them UI
@@ -825,57 +930,6 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 
 	// Prune cleared messages
 	b.pruneMessagesBeforeClear(finalState.clearBefore, groupID)
-
-	// If the final state involves us being removed from the group, delete the group
-	if !finalState.isMember(b.currentUserID()) {
-		// Find the most recent update group that removed us
-		removalActor := uuid.UUID{}
-		for i := len(cs.history) - 1; i >= 0; i-- {
-			ug := cs.history[i].ug
-			if ug.Type == updateGroupTypeRemoveUser {
-				targetUser, err := uuid.FromBytes(ug.Data)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error":           err.Error(),
-						"update_group_id": ug.ID,
-					}).Error("update group attempts to remove user with invalid UUID")
-					continue
-				}
-				if targetUser == b.currentUserID() {
-					// Set the actor who removed us from the group
-					removalActor = ug.Actor
-
-					// Attach a custom scope to this update group
-					err = b.createCustomScopeFromGroup(ug.Target)
-					if err == nil {
-						err = b.database.Model(&ug).Select("custom_scope").Update("custom_scope", ug.Target).Error
-						if err != nil {
-							log.WithFields(log.Fields{
-								"update_group_id": ug.ID,
-								"error":           err.Error(),
-							}).Fatal("error updating custom scope on update group")
-						}
-					} else {
-						log.WithFields(log.Fields{
-							"update_group_id": ug.ID,
-							"error":           err.Error(),
-						}).Error("error creating custom scope for update group")
-					}
-
-					break
-				}
-			}
-		}
-
-		// Inform the UI
-		b.userInterface.RemovedFromGroup(RemovedFromGroup{
-			Group: g.ID,
-			Actor: removalActor,
-		})
-
-		// Delete the group
-		return b.database.Delete(&g).Error
-	}
 
 	// Set fields
 	if g.Name != finalState.name {
@@ -1012,6 +1066,8 @@ func (b *bounce) applyUpdateGroupInUI(ug updateGroup) {
 		b.informUIUpdateGroupChangeGroupEditsPermission(ug)
 	case updateGroupTypeChangePostingPermission:
 		b.informUIUpdateGroupChangePostingPermission(ug)
+	case updateGroupTypeDelete:
+		return
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,

@@ -32,6 +32,7 @@ type group struct {
 	editThreadNameEntry         *widget.Entry
 	retentionSelection          *widget.Select
 	clearHistoryButton          *widget.Button
+	deleteGroupButton           *widget.Button
 	addUsersButton              *widget.Button
 	view                        *fyne.Container
 	header                      *fyne.Container
@@ -553,6 +554,48 @@ func (fyneUI *Fyne) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 	fyneUI.refreshThreadOrder()
 }
 
+func (fyneUI *Fyne) GroupDeleted(gd chat.GroupDeleted) {
+	if fyneUI.activeThread == gd.Group {
+		fyneUI.chatContainer.Objects = []fyne.CanvasObject{fyneUI.defaultContainer}
+		fyneUI.chatContainer.Refresh()
+		fyneUI.activeThread = uuid.Nil
+	}
+
+	if gd.Actor != fyneUI.profile.id {
+		var actorName string
+		if gd.Actor == fyneUI.profile.id {
+			actorName = "You"
+		} else {
+			actor, ok := fyneUI.users.get(gd.Actor)
+			if ok {
+				actorName = actor.name
+			} else {
+				log.WithFields(log.Fields{
+					"actor": gd.Actor,
+					"group": gd.Group,
+				}).Error("unknown user deleted group")
+				actorName = "unknown user"
+			}
+		}
+
+		g, ok := fyneUI.groups[gd.Group]
+		if !ok {
+			log.WithFields(log.Fields{
+				"group": gd.Group,
+			}).Error("unknown group deleted")
+			return
+		}
+		groupName, err := g.name.Get()
+		if err != nil {
+			log.Fatal("data bindings are broken")
+		}
+		dialog.ShowInformation("Group Deleted", actorName+" deleted the group \""+groupName+"\"", fyneUI.mainWindow)
+	}
+
+	delete(fyneUI.groups, gd.Group)
+	fyneUI.refreshThreadOrder()
+}
+
 func (fyneUI *Fyne) RenameGroup(ugn chat.UpdateGroupName) {
 	g, exists := fyneUI.groups[ugn.Thread]
 	if !exists {
@@ -775,6 +818,7 @@ func (fyneUI *Fyne) updateEnabledFeatures(g *group) {
 		g.restrictUserManagementCheck.Enable()
 		g.restrictGroupEditsCheck.Enable()
 		g.restrictPostingCheck.Enable()
+		g.deleteGroupButton.Enable()
 
 		g.adminChecksMutex.Lock()
 		for _, check := range g.adminChecks {
@@ -785,6 +829,7 @@ func (fyneUI *Fyne) updateEnabledFeatures(g *group) {
 		g.restrictUserManagementCheck.Disable()
 		g.restrictGroupEditsCheck.Disable()
 		g.restrictPostingCheck.Disable()
+		g.deleteGroupButton.Disable()
 
 		if len(g.admins) > 0 {
 			g.adminChecksMutex.Lock()

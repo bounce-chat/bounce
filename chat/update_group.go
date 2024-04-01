@@ -24,6 +24,7 @@ const updateGroupTypeDemoteAdmin = uint16(7)
 const updateGroupTypeChangeUserManagementPermission = uint16(8)
 const updateGroupTypeChangeGroupEditsPermission = uint16(9)
 const updateGroupTypeChangePostingPermission = uint16(10)
+const updateGroupTypeDelete = uint16(11)
 
 const permissionUnrestricted = 0x00
 const permissionRestricted = 0x01
@@ -203,6 +204,8 @@ func (ug *updateGroup) validPayloadFormat() bool {
 	case updateGroupTypeChangePostingPermission:
 		_, err := ug.permissionPayloadIsRestricted()
 		return err == nil
+	case updateGroupTypeDelete:
+		return len(ug.Data) == 0
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -508,6 +511,16 @@ func (b *bounce) removeUser(groupID, userID uuid.UUID) error {
 	}
 
 	return nil
+}
+
+func (b *bounce) deleteGroup(groupID uuid.UUID) error {
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeDelete,
+	})
 }
 
 func (b *bounce) promoteAdmin(groupID, userID uuid.UUID) error {
