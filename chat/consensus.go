@@ -789,6 +789,45 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		}
 	}
 
+	// Find any canonical update groups that have not been applied and make them as applied and inform them UI
+	canonical := make(map[uuid.UUID]bool)
+	everInGroup := make(map[uuid.UUID]bool)
+	for _, gs := range cs.history[1:] {
+		canonical[gs.ug.ID] = true
+		if !gs.ug.Applied {
+			err := b.database.Model(&gs.ug).Select("applied").Update("applied", true).Error
+			if err != nil {
+				return err
+			}
+
+			b.applyUpdateGroupInUI(gs.ug)
+
+			if gs.ug.Type == updateGroupTypeAddUser {
+				var newUser user
+				err := msgpack.Unmarshal(gs.ug.Data, &newUser)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("update group add user container invalid user data")
+					return err
+				}
+				if finalState.isMember(newUser.ID) {
+					b.createNewUserIfNeeded(newUser)
+				}
+			}
+
+			if gs.isMember(b.currentUserID()) {
+				b.updateLastGroupActivity(gs.ug.Target, gs.ug.Timestamp)
+				if gs.ug.Actor != b.currentUserID() {
+					b.sendConfirmation(gs.ug)
+				}
+			}
+		}
+		for _, member := range gs.users {
+			everInGroup[member] = true
+		}
+	}
+
 	// If the final state is that the group is deleted, delete the group
 	if finalState.deleted {
 		// Attach a custom scope to this update group
@@ -867,45 +906,6 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 
 		// Delete the group
 		return b.database.Delete(&g).Error
-	}
-
-	// Find any canonical update groups that have not been applied and make them as applied and inform them UI
-	canonical := make(map[uuid.UUID]bool)
-	everInGroup := make(map[uuid.UUID]bool)
-	for _, gs := range cs.history[1:] {
-		canonical[gs.ug.ID] = true
-		if !gs.ug.Applied {
-			err := b.database.Model(&gs.ug).Select("applied").Update("applied", true).Error
-			if err != nil {
-				return err
-			}
-
-			b.applyUpdateGroupInUI(gs.ug)
-
-			if gs.ug.Type == updateGroupTypeAddUser {
-				var newUser user
-				err := msgpack.Unmarshal(gs.ug.Data, &newUser)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Error("update group add user container invalid user data")
-					return err
-				}
-				if finalState.isMember(newUser.ID) {
-					b.createNewUserIfNeeded(newUser)
-				}
-			}
-
-			if gs.isMember(b.currentUserID()) {
-				b.updateLastGroupActivity(gs.ug.Target, gs.ug.Timestamp)
-				if gs.ug.Actor != b.currentUserID() {
-					b.sendConfirmation(gs.ug)
-				}
-			}
-		}
-		for _, member := range gs.users {
-			everInGroup[member] = true
-		}
 	}
 
 	// Find any non-canonical update groups that have been applied and mark them as not applied roll them back in the UI
