@@ -1085,6 +1085,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		UserIDs:                finalUsers,
 		Admins:                 finalAdmins,
 		Retention:              g.Retention,
+		MutedUntil:             g.MutedUntil,
 		LastActivity:           g.LastActivity,
 		RestrictUserManagement: g.RestrictUserManagement,
 		RestrictGroupEdits:     g.RestrictGroupEdits,

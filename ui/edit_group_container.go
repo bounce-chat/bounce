@@ -17,52 +17,51 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (fyneUI *Fyne) showEditThreadContainer(thread *group) {
-	fyneUI.mainWindow.SetContent(thread.editContainer)
-	thread.editContainer.Show()
+func (fyneUI *Fyne) showEditThreadContainer(g *group) {
+	fyneUI.mainWindow.SetContent(g.editContainer)
+	g.editContainer.Show()
 }
 
-func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename these to group
-	currentThreadName, err := thread.name.Get()
+func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
+	currentThreadName, err := g.name.Get()
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("data bindings are broken")
 	}
-	thread.editThreadNameEntry.Text = currentThreadName
+	g.editThreadNameEntry.Text = currentThreadName
 
-	thread.name.AddListener(binding.NewDataListener(func() {
-		newName, err := thread.name.Get()
+	g.name.AddListener(binding.NewDataListener(func() {
+		newName, err := g.name.Get()
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Fatal("data bindings are broken")
 		}
-		thread.editThreadNameEntry.Text = newName
-		thread.editThreadNameEntry.Refresh()
+		g.editThreadNameEntry.Text = newName
+		g.editThreadNameEntry.Refresh()
 	}))
 
-	threadIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-	threadIcon.FillMode = canvas.ImageFillContain
-	threadIcon.SetMinSize(fyne.NewSize(64, 64))
+	groupIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
+	groupIcon.FillMode = canvas.ImageFillContain
+	groupIcon.SetMinSize(fyne.NewSize(64, 64))
 
-	thread.retentionSelection = widget.NewSelect(retentionSelections, nil)
-	retention := fyneUI.callbacks.GetGroupRetention(thread.id)
-	thread.retentionSelection.Selected = getRetentionName(retention)
+	g.retentionSelection = widget.NewSelect(retentionSelections, nil)
+	g.retentionSelection.Selected = getRetentionName(g.retention)
 
 	confirmClearHistory := dialog.NewConfirm(
 		"Clear all message history?",
 		"Are you sure you want to permanently delete all chat history on all devices?",
 		func(confirmed bool) {
 			if confirmed {
-				fyneUI.callbacks.ClearGroupChatHistory(thread.id)
+				fyneUI.callbacks.ClearGroupChatHistory(g.id)
 				fyneUI.showMainContainer()
-				fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
+				fyneUI.mainWindow.Canvas().Focus(g.getEntry())
 			}
 		},
 		fyneUI.mainWindow,
 	)
-	thread.clearHistoryButton = widget.NewButton("Clear History", func() {
+	g.clearHistoryButton = widget.NewButton("Clear History", func() {
 		confirmClearHistory.Show()
 	})
 
@@ -71,49 +70,48 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		"Are you sure you want to permanently delete this group for all members?",
 		func(confirmed bool) {
 			if confirmed {
-				fyneUI.callbacks.DeleteGroup(thread.id)
+				fyneUI.callbacks.DeleteGroup(g.id)
 				fyneUI.showMainContainer()
 			}
 		},
 		fyneUI.mainWindow,
 	)
-	thread.deleteGroupButton = widget.NewButton("Delete Group", func() {
+	g.deleteGroupButton = widget.NewButton("Delete Group", func() {
 		confirmDeleteGroup.Show()
 	})
 
 	saveButton := widget.NewButton("Save", func() {
-		// Update the thread name if it was changed
-		currentThreadName, err := thread.name.Get()
+		// Update the g name if it was changed
+		currentThreadName, err := g.name.Get()
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Fatal("data bindings are broken")
 		}
-		newThreadName := thread.editThreadNameEntry.Text
+		newThreadName := g.editThreadNameEntry.Text
 		if currentThreadName != newThreadName {
-			fyneUI.callbacks.RenameGroup(thread.id, newThreadName) // TODO: error check and display error in dialog, internationalize off exported error types
+			fyneUI.callbacks.RenameGroup(g.id, newThreadName) // TODO: error check and display error in dialog, internationalize off exported error types
 		}
 
 		// Update the notification settings if they have changes
-		if thread.notificationsEnabledCheck.Checked != (thread.notificationsMutedUntil != chat.MutedForever) {
+		if g.notificationsEnabledCheck.Checked != (g.notificationsMutedUntil != chat.MutedForever) {
 			mutedUntil := int64(0)
-			if !thread.notificationsEnabledCheck.Checked {
+			if !g.notificationsEnabledCheck.Checked {
 				mutedUntil = chat.MutedForever
 			}
-			err := fyneUI.callbacks.SetGroupMutedUntil(thread.id, mutedUntil)
+			err := fyneUI.callbacks.SetGroupMutedUntil(g.id, mutedUntil)
 			if err != nil {
 				dialog.ShowError(errors.New("error updating group mute settings: "+err.Error()), fyneUI.mainWindow)
 			}
 		}
 		// Update the retention if it changed
-		currentRetention := fyneUI.callbacks.GetGroupRetention(thread.id)
-		selectedRetentionString := thread.retentionSelection.Selected
+		selectedRetentionString := g.retentionSelection.Selected
 		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
 		if !ok {
 			dialog.ShowError(errors.New("invalid retention selection: "+selectedRetentionString), fyneUI.mainWindow)
 		} else {
-			if currentRetention != selectedRetentionValue {
-				err = fyneUI.callbacks.SetGroupRetention(thread.id, selectedRetentionValue)
+			if g.retention != selectedRetentionValue {
+				err = fyneUI.callbacks.SetGroupRetention(g.id, selectedRetentionValue)
 				if err != nil {
 					dialog.ShowError(errors.New("error setting new retention value: "+err.Error()), fyneUI.mainWindow)
 				}
@@ -121,66 +119,60 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		}
 
 		// Update the permissions if needed
-		if thread.restrictUserManagementCheck.Checked && !thread.restrictUserManagement {
-			fyneUI.callbacks.RestrictUserManagement(thread.id)
+		if g.restrictUserManagementCheck.Checked && !g.restrictUserManagement {
+			fyneUI.callbacks.RestrictUserManagement(g.id)
 		}
-		if !thread.restrictUserManagementCheck.Checked && thread.restrictUserManagement {
-			fyneUI.callbacks.UnrestrictUserManagement(thread.id)
+		if !g.restrictUserManagementCheck.Checked && g.restrictUserManagement {
+			fyneUI.callbacks.UnrestrictUserManagement(g.id)
 		}
-		if thread.restrictGroupEditsCheck.Checked && !thread.restrictGroupEdits {
-			fyneUI.callbacks.RestrictGroupEdits(thread.id)
+		if g.restrictGroupEditsCheck.Checked && !g.restrictGroupEdits {
+			fyneUI.callbacks.RestrictGroupEdits(g.id)
 		}
-		if !thread.restrictGroupEditsCheck.Checked && thread.restrictGroupEdits {
-			fyneUI.callbacks.UnrestrictGroupEdits(thread.id)
+		if !g.restrictGroupEditsCheck.Checked && g.restrictGroupEdits {
+			fyneUI.callbacks.UnrestrictGroupEdits(g.id)
 		}
-		if thread.restrictPostingCheck.Checked && !thread.restrictPosting {
-			fyneUI.callbacks.RestrictPosting(thread.id)
+		if g.restrictPostingCheck.Checked && !g.restrictPosting {
+			fyneUI.callbacks.RestrictPosting(g.id)
 		}
-		if !thread.restrictPostingCheck.Checked && thread.restrictPosting {
-			fyneUI.callbacks.UnrestrictPosting(thread.id)
+		if !g.restrictPostingCheck.Checked && g.restrictPosting {
+			fyneUI.callbacks.UnrestrictPosting(g.id)
 		}
 
 		fyneUI.showMainContainer()
-		fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
+		fyneUI.mainWindow.Canvas().Focus(g.getEntry())
 	})
 	saveButton.Importance = widget.HighImportance
 	cancelButton := widget.NewButton("Cancel", func() {
 		// Reset name
-		currentThreadName, err := thread.name.Get()
+		currentThreadName, err := g.name.Get()
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Fatal("data bindings are broken")
 		}
-		thread.editThreadNameEntry.Text = currentThreadName
-		thread.editThreadNameEntry.Refresh()
+		g.editThreadNameEntry.Text = currentThreadName
+		g.editThreadNameEntry.Refresh()
 
 		// Reset retention
-		thread.retentionSelection.Selected = getRetentionName(fyneUI.callbacks.GetGroupRetention(thread.id))
-		thread.retentionSelection.Refresh()
+		g.retentionSelection.Selected = getRetentionName(g.retention)
+		g.retentionSelection.Refresh()
 
 		// Reset notification settings
-		thread.notificationsMutedUntil, err = fyneUI.callbacks.GetGroupMutedUntil(thread.id)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"group_id": thread.id,
-			}).Fatal("cannot find muted until for group")
-		}
-		enabled := thread.notificationsMutedUntil != chat.MutedForever
-		thread.notificationsEnabledCheck.SetChecked(enabled)
+		enabled := g.notificationsMutedUntil != chat.MutedForever
+		g.notificationsEnabledCheck.SetChecked(enabled)
 
 		// Reset user editing
-		thread.pendingUsers.empty()
-		fyneUI.refreshUserSelections(thread)
+		g.pendingUsers.empty()
+		fyneUI.refreshUserSelections(g)
 
 		// Reset permissions
-		thread.restrictUserManagementCheck.SetChecked(thread.restrictUserManagement)
-		thread.restrictGroupEditsCheck.SetChecked(thread.restrictGroupEdits)
-		thread.restrictPostingCheck.SetChecked(thread.restrictPosting)
+		g.restrictUserManagementCheck.SetChecked(g.restrictUserManagement)
+		g.restrictGroupEditsCheck.SetChecked(g.restrictGroupEdits)
+		g.restrictPostingCheck.SetChecked(g.restrictPosting)
 
 		// Show main tontainer
 		fyneUI.showMainContainer()
-		fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
+		fyneUI.mainWindow.Canvas().Focus(g.getEntry())
 	})
 	actionButtons := container.New(
 		layout.NewBorderLayout(nil, nil, cancelButton, saveButton),
@@ -192,28 +184,28 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 	currentAdminsListView := container.New(
 		layout.NewBorderLayout(adminsLabel, nil, nil, nil),
 		adminsLabel,
-		thread.currentAdminsContainer, // TODO: eventually this will get so long it breaks the UI.  Need a better looking scroll wrapper.  https://github.com/fyne-io/fyne/issues/2322
+		g.currentAdminsContainer, // TODO: eventually this will get so long it breaks the UI.  Need a better looking scroll wrapper.  https://github.com/fyne-io/fyne/issues/2322
 	)
 
 	usersLabel := widget.NewLabel("Users:")
 	currentUsersListView := container.New(
 		layout.NewBorderLayout(usersLabel, nil, nil, nil),
 		usersLabel,
-		thread.currentUsersContainer, // TODO: eventually this will get so long it breaks the UI.  Need a better looking scroll wrapper.  https://github.com/fyne-io/fyne/issues/2322
+		g.currentUsersContainer, // TODO: eventually this will get so long it breaks the UI.  Need a better looking scroll wrapper.  https://github.com/fyne-io/fyne/issues/2322
 	)
 
 	topOptionsVBox := container.NewVBox(
-		threadIcon,
-		thread.editThreadNameEntry,
-		thread.notificationsEnabledCheck,
+		groupIcon,
+		g.editThreadNameEntry,
+		g.notificationsEnabledCheck,
 		widget.NewLabel("Disappearing Messages"),
-		thread.retentionSelection,
-		container.NewHBox(thread.clearHistoryButton),
-		container.NewHBox(thread.deleteGroupButton),
+		g.retentionSelection,
+		container.NewHBox(g.clearHistoryButton),
+		container.NewHBox(g.deleteGroupButton),
 	)
-	topOptionsVBox.Add(thread.restrictUserManagementCheck)
-	topOptionsVBox.Add(thread.restrictGroupEditsCheck)
-	topOptionsVBox.Add(thread.restrictPostingCheck)
+	topOptionsVBox.Add(g.restrictUserManagementCheck)
+	topOptionsVBox.Add(g.restrictGroupEditsCheck)
+	topOptionsVBox.Add(g.restrictPostingCheck)
 	topOptionsVBox.Add(currentAdminsListView)
 	topOptionsVBox.Add(currentUsersListView)
 
@@ -223,31 +215,31 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		newUserSearchEntry,
 		container.NewVBox(
 			widget.NewLabel("Users to add:"),
-			thread.pendingUsersContainer,
+			g.pendingUsersContainer,
 			widget.NewLabel("All Users:"),
-			thread.availableNewUsersScroll,
+			g.availableNewUsersScroll,
 		),
 	)
 	addUsersDialog := dialog.NewCustomConfirm("Add Users", "Save", "Cancel", newUserSelector, func(apply bool) {
 		if apply {
-			for _, thisUser := range thread.pendingUsers.userList {
-				go fyneUI.callbacks.AddUser(thread.id, thisUser.id) // TODO: dialog error if there is one
+			for _, thisUser := range g.pendingUsers.userList {
+				go fyneUI.callbacks.AddUser(g.id, thisUser.id) // TODO: dialog error if there is one
 			}
 		} else {
-			thread.pendingUsers.empty()
-			fyneUI.refreshUserSelections(thread)
+			g.pendingUsers.empty()
+			fyneUI.refreshUserSelections(g)
 		}
 		newUserSearchEntry.Text = ""
 		newUserSearchEntry.Refresh()
 	}, fyneUI.mainWindow)
-	thread.addUsersButton = widget.NewButton("Add Users", func() {
+	g.addUsersButton = widget.NewButton("Add Users", func() {
 		addUsersDialog.Show()
 	})
 
 	// Close the window but save state.  TODO: should it clear state as well, and if so, just get rid of this?
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		fyneUI.showMainContainer()
-		fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
+		fyneUI.mainWindow.Canvas().Focus(g.getEntry())
 	})
 	closeButton.Importance = widget.LowImportance
 
@@ -256,13 +248,13 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 		closeButton,
 	)
 
-	thread.editContainer = container.NewMax(
+	g.editContainer = container.NewMax(
 		container.New(
 			layout.NewBorderLayout(closeBar, actionButtons, nil, nil),
 			container.New(
 				layout.NewBorderLayout(topOptionsVBox, nil, nil, nil),
 				topOptionsVBox,
-				container.NewVBox(container.NewHBox(thread.addUsersButton)), // TODO: make it not expand all the way down
+				container.NewVBox(container.NewHBox(g.addUsersButton)), // TODO: make it not expand all the way down
 			),
 			closeBar,
 			actionButtons,
@@ -270,20 +262,20 @@ func (fyneUI *Fyne) buildEditThreadContainer(thread *group) { // TODO: rename th
 	)
 }
 
-func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
+func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 	currentUsersList := container.NewVBox()
 	pendingUsersList := container.NewVBox()
 	currentAdminsList := container.NewVBox()
 
-	for _, thisUser := range thread.users.alphabetized() {
+	for _, thisUser := range g.users.alphabetized() {
 		func(u *user) {
 			userDetailsButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() {
-				fyneUI.getEditUserDialog(thread, u.id).Show()
+				fyneUI.getEditUserDialog(g, u.id).Show()
 			})
 			userDetailsButton.Alignment = widget.ButtonAlignLeading
 			userDetailsButton.Importance = widget.LowImportance
 
-			if thread.isAdmin(u.id) {
+			if g.isAdmin(u.id) {
 				currentAdminsList.Objects = append(
 					currentAdminsList.Objects,
 					userDetailsButton,
@@ -297,11 +289,11 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 		}(thisUser)
 	}
 
-	for _, thisUser := range thread.pendingUsers.alphabetized() {
+	for _, thisUser := range g.pendingUsers.alphabetized() {
 		func(u *user) {
 			removePendingUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
-				thread.pendingUsers.remove(u.id)
-				fyneUI.refreshUserSelections(thread)
+				g.pendingUsers.remove(u.id)
+				fyneUI.refreshUserSelections(g)
 			})
 			removePendingUserButton.Alignment = widget.ButtonAlignLeading
 			removePendingUserButton.Importance = widget.LowImportance
@@ -312,23 +304,23 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(thread *group) {
 		}(thisUser)
 	}
 
-	thread.currentAdminsContainer.Objects = []fyne.CanvasObject{currentAdminsList}
-	thread.currentAdminsContainer.Refresh()
-	thread.currentUsersContainer.Objects = []fyne.CanvasObject{currentUsersList}
-	thread.currentUsersContainer.Refresh()
-	thread.pendingUsersContainer.Objects = []fyne.CanvasObject{pendingUsersList}
-	thread.pendingUsersContainer.Refresh()
+	g.currentAdminsContainer.Objects = []fyne.CanvasObject{currentAdminsList}
+	g.currentAdminsContainer.Refresh()
+	g.currentUsersContainer.Objects = []fyne.CanvasObject{currentUsersList}
+	g.currentUsersContainer.Refresh()
+	g.pendingUsersContainer.Objects = []fyne.CanvasObject{pendingUsersList}
+	g.pendingUsersContainer.Refresh()
 }
 
-func (fyneUI *Fyne) refreshAvailableNewUsers(thread *group) {
+func (fyneUI *Fyne) refreshAvailableNewUsers(g *group) {
 	allUsersListBox := container.NewVBox()
 	for _, thisUser := range fyneUI.users.alphabetized() {
-		// Exclude users already in the thread
-		if _, exists := thread.users.get(thisUser.id); exists {
+		// Exclude users already in the group
+		if _, exists := g.users.get(thisUser.id); exists {
 			continue
 		}
 		// Exclude users that are pending addition to the group
-		if _, exists := thread.pendingUsers.get(thisUser.id); exists {
+		if _, exists := g.pendingUsers.get(thisUser.id); exists {
 			continue
 		}
 
@@ -338,8 +330,8 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(thread *group) {
 		// TODO: make sure I'm not making this mistake anywhere else
 		func(u *user) {
 			addUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
-				thread.pendingUsers.add(u)
-				fyneUI.refreshUserSelections(thread)
+				g.pendingUsers.add(u)
+				fyneUI.refreshUserSelections(g)
 			})
 			addUserButton.Alignment = widget.ButtonAlignLeading
 			addUserButton.Importance = widget.LowImportance
@@ -349,11 +341,11 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(thread *group) {
 			)
 		}(thisUser)
 	}
-	thread.availableNewUsersScroll.Content = allUsersListBox
-	thread.availableNewUsersScroll.Refresh()
+	g.availableNewUsersScroll.Content = allUsersListBox
+	g.availableNewUsersScroll.Refresh()
 }
 
-func (fyneUI *Fyne) refreshUserSelections(group *group) {
-	fyneUI.refreshCurrentAndPendingUsers(group)
-	fyneUI.refreshAvailableNewUsers(group)
+func (fyneUI *Fyne) refreshUserSelections(g *group) {
+	fyneUI.refreshCurrentAndPendingUsers(g)
+	fyneUI.refreshAvailableNewUsers(g)
 }

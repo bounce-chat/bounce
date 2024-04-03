@@ -22,6 +22,7 @@ type group struct {
 	name                        binding.String
 	users                       *userStore
 	admins                      []uuid.UUID
+	retention                   int64
 	restrictUserManagement      bool
 	restrictGroupEdits          bool
 	restrictPosting             bool
@@ -269,10 +270,12 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		name:                    binding.NewString(),
 		users:                   newUserStore(),
 		admins:                  bounceGroup.Admins,
+		retention:               bounceGroup.Retention,
 		editThreadNameEntry:     widget.NewEntry(),
 		restrictUserManagement:  bounceGroup.RestrictUserManagement,
 		restrictGroupEdits:      bounceGroup.RestrictGroupEdits,
 		restrictPosting:         bounceGroup.RestrictPosting,
+		notificationsMutedUntil: bounceGroup.MutedUntil,
 		pendingUsers:            newUserStore(),
 		scroll:                  container.NewVScroll(container.NewVBox()),
 		availableNewUsersScroll: container.NewVScroll(container.NewVBox()),
@@ -304,12 +307,6 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	}
 
 	group.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(_ bool) {})
-	group.notificationsMutedUntil, err = fyneUI.callbacks.GetGroupMutedUntil(group.id)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"group_id": group.id,
-		}).Fatal("cannot find muted until for group")
-	}
 	enabled := group.notificationsMutedUntil != chat.MutedForever
 	group.notificationsEnabledCheck.SetChecked(enabled)
 
@@ -435,6 +432,9 @@ func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
 	}
 
 	g.admins = bounceGroup.Admins
+
+	g.retention = bounceGroup.Retention
+	g.notificationsMutedUntil = bounceGroup.MutedUntil
 
 	g.retentionSelection.Selected = getRetentionName(bounceGroup.Retention)
 	g.retentionSelection.Refresh()
