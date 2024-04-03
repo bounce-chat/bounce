@@ -115,6 +115,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 
 		// Ignore frames for groups that we will not be a part of after this catch up
 		if b.isNopGroupFrame(nopGroups, fr) {
+			go b.sendAck(peer, fr.Type, fr.ID)
 			continue
 		}
 
