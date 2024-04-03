@@ -847,6 +847,58 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 			}).Error("error creating custom scope for update group")
 		}
 
+		// Determing if the actor who deleted this group was ever not an admin and collect any updates about their admin status
+		alwaysAnAdmin := true
+		ugsWithAdminStatusSideEffects := []updateGroup{}
+		for _, gs := range cs.history {
+			if !gs.isAdmin(finalState.ug.Actor) {
+				alwaysAnAdmin = false
+			}
+
+			if gs.ug.Type == updateGroupTypeAddUser || gs.ug.Type == updateGroupTypeRemoveUser || gs.ug.Type == updateGroupTypePromoteAdmin || gs.ug.Type == updateGroupTypeDemoteAdmin {
+				ugsWithAdminStatusSideEffects = append(ugsWithAdminStatusSideEffects, gs.ug)
+			}
+		}
+
+		// If this actor was ever not an admin, we need to preserve the history
+		if !alwaysAnAdmin {
+			// Find the custom scope we just cleared
+			var cs customScope
+			err = b.database.First(&cs, "id = ?", groupID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"id": groupID,
+					}).Warn("cannot find custom scope that was just created")
+				} else {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("database error querying for custom scope")
+				}
+			} else {
+				addrs := cs.addresses()
+
+				for _, ug := range ugsWithAdminStatusSideEffects {
+					allDelivered := true
+					for _, addr := range addrs {
+						if !b.isDeliveredTo(&ug, addr) {
+							allDelivered = false
+						}
+					}
+
+					if !allDelivered {
+						err = b.database.Model(&ug).Select("custom_scope").Update("custom_scope", groupID).Error
+						if err != nil {
+							log.WithFields(log.Fields{
+								"update_group_id": ug.ID,
+								"error":           err.Error(),
+							}).Fatal("error updating custom scope on update group")
+						}
+					}
+				}
+			}
+		}
+
 		// Inform the UI
 		b.userInterface.GroupDeleted(GroupDeleted{
 			Group: g.ID,
