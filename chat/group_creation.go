@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -270,10 +271,29 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 	}
 
 	// Inform the UI of the new group
+	adminUUIDs := []uuid.UUID{}
+	for _, adminIDString := range strings.Split(g.Admins, ",") {
+		adminID, err := uuid.Parse(adminIDString)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": g.ID,
+				"admins":   g.Admins,
+			}).Fatal("invalid UUID in group admin list")
+		}
+
+		adminUUIDs = append(adminUUIDs, adminID)
+	}
 	b.userInterface.NewGroupChat(Group{
-		ID:      g.ID,
-		Name:    g.Name,
-		UserIDs: userIDs, // TODO: admins
+		ID:                     g.ID,
+		Name:                   g.Name,
+		UserIDs:                userIDs,
+		Admins:                 adminUUIDs,
+		Retention:              g.Retention,
+		LastActivity:           g.LastActivity,
+		RestrictUserManagement: g.RestrictUserManagement,
+		RestrictGroupEdits:     g.RestrictGroupEdits,
+		RestrictPosting:        g.RestrictPosting,
 	})
 
 	// Notify the peering engine that we want to be connected to this group right now

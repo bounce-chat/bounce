@@ -357,6 +357,9 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 
 		entry.Text = ""
 		entry.Refresh()
+
+		group.chatHistoryScroll().ScrollToBottom()
+		group.chatHistoryScroll().Refresh()
 	}
 
 	group.entryBar = container.NewMax(entry)

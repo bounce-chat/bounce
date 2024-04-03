@@ -148,6 +148,7 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 		Users:                  users,
 		Admins:                 b.currentUserID().String(),
 		RestrictUserManagement: true,
+		LastActivity:           time.Now().Unix(),
 	}
 
 	groupData, err := msgpack.Marshal(g)

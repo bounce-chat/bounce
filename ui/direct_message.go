@@ -139,6 +139,9 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 
 		entry.Text = ""
 		entry.Refresh()
+
+		dm.chatHistoryScroll().ScrollToBottom()
+		dm.chatHistoryScroll().Refresh()
 	}
 	dm.entryBar = container.NewMax(entry)
 
