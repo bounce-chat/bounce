@@ -1039,7 +1039,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 	finalUsers := []uuid.UUID{}
 	for _, userID := range finalState.users {
 		finalUsers = append(finalUsers, userID)
-		if !b.userIsInGroup(userID, g.ID) {
+		if !b.userIsInGroup(g.ID, userID) {
 			err = b.database.Exec("INSERT INTO group_users VALUES(?, ?)", g.ID, userID).Error
 			if err != nil {
 				if !errors.Is(err, gorm.ErrDuplicatedKey) {

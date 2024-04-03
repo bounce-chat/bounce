@@ -216,7 +216,7 @@ func (b *bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool
 			}
 		}
 
-		if !b.userIsInGroup(ti.Author, ti.Thread) {
+		if !b.userIsInGroup(ti.Thread, ti.Author) {
 			log.WithFields(log.Fields{
 				"thread":       ti.Thread,
 				"message_type": ti.MessageType,

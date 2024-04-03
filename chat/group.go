@@ -263,7 +263,7 @@ func (b *bounce) getGroupMutedUntil(groupID uuid.UUID) (int64, error) {
 	return g.MutedUntil, nil
 }
 
-func (b *bounce) userIsInGroup(userID, groupID uuid.UUID) bool { // TODO: reverse arg order for consistency
+func (b *bounce) userIsInGroup(groupID, userID uuid.UUID) bool {
 	var exists bool
 	err := b.database.Table("group_users").
 		Select("count(*) = 1").

@@ -152,7 +152,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 	}
 
 	// Make sure the author is in the group
-	if !b.userIsInGroup(gm.Author, gm.Destination) {
+	if !b.userIsInGroup(gm.Destination, gm.Author) {
 		log.WithFields(log.Fields{
 			"user":  gm.Author,
 			"group": gm.Destination,
@@ -172,7 +172,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 	}
 
 	// Make sure the peer that delivered this message is part of the group
-	if !b.userIsInGroup(srcDevice.UserID, gm.Destination) {
+	if !b.userIsInGroup(gm.Destination, srcDevice.UserID) {
 		log.WithFields(log.Fields{
 			"user":   srcDevice.UserID,
 			"device": srcDevice.ID,
