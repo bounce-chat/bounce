@@ -434,10 +434,13 @@ func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
 	g.admins = bounceGroup.Admins
 
 	g.retention = bounceGroup.Retention
-	g.notificationsMutedUntil = bounceGroup.MutedUntil
-
 	g.retentionSelection.Selected = getRetentionName(bounceGroup.Retention)
 	g.retentionSelection.Refresh()
+
+	g.notificationsMutedUntil = bounceGroup.MutedUntil
+	enabled := g.notificationsMutedUntil != chat.MutedForever
+	g.notificationsEnabledCheck.SetChecked(enabled)
+	g.notificationsEnabledCheck.Refresh()
 
 	g.restrictUserManagementCheck.SetChecked(bounceGroup.RestrictUserManagement)
 	g.restrictUserManagement = bounceGroup.RestrictUserManagement

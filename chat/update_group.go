@@ -109,10 +109,6 @@ func (ug *updateGroup) getScope(myID uuid.UUID) int {
 }
 
 func (ug *updateGroup) getDestination(myID uuid.UUID) uuid.UUID {
-	if ug.Type == updateGroupTypeChangeMutedUntil {
-		return myID
-	}
-
 	return ug.Target
 }
 
