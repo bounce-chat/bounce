@@ -56,7 +56,9 @@ func (b *bounce) createCustomScopeFromGroup(groupID uuid.UUID) error {
 	addresses := []string{}
 	for _, u := range g.Users {
 		for _, dev := range u.Devices {
-			addresses = append(addresses, dev.Address)
+			if dev.Address != b.network.Address() {
+				addresses = append(addresses, dev.Address)
+			}
 		}
 	}
 
