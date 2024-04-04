@@ -48,7 +48,7 @@ type Group struct {
 	ID                     uuid.UUID
 	Name                   string
 	Image                  []byte
-	UserIDs                []uuid.UUID
+	Users                  []User
 	Admins                 []uuid.UUID
 	Retention              int64
 	MutedUntil             int64

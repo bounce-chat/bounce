@@ -107,6 +107,7 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 	}
 
 	users := []user{}
+	uiUsers := []User{}
 	userListContainsProfile := false
 	for _, userID := range userIDs {
 		var u user
@@ -125,6 +126,7 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 			}
 		}
 		users = append(users, u)
+		uiUsers = append(uiUsers, User{ID: u.ID, Name: u.Name})
 		if u.ID == b.currentUserID() {
 			userListContainsProfile = true
 		}
@@ -135,6 +137,7 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 			log.Fatal("cannot create new group when no profile exists")
 		}
 		users = append(users, profile)
+		uiUsers = append(uiUsers, User{ID: profile.ID, Name: profile.Name})
 		userIDs = append(userIDs, profile.ID)
 	}
 
@@ -217,7 +220,7 @@ func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
 	b.userInterface.OpenNewGroupChat(Group{
 		ID:                     g.ID,
 		Name:                   g.Name,
-		UserIDs:                userIDs,
+		Users:                  uiUsers,
 		Admins:                 []uuid.UUID{b.currentUserID()},
 		RestrictUserManagement: true,
 	})

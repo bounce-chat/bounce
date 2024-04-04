@@ -1036,9 +1036,25 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 			}
 		}
 	}
-	finalUsers := []uuid.UUID{}
+	finalUsers := []User{}
 	for _, userID := range finalState.users {
-		finalUsers = append(finalUsers, userID)
+		var u user
+		err = b.database.Select("name").First(&u, "id = ?", userID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"error":   err.Error(),
+					"user_id": userID,
+				}).Error("group final state contains user not in database")
+				return err
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up user")
+			}
+		}
+		finalUsers = append(finalUsers, User{ID: userID, Name: u.Name})
+
 		if !b.userIsInGroup(g.ID, userID) {
 			err = b.database.Exec("INSERT INTO group_users VALUES(?, ?)", g.ID, userID).Error
 			if err != nil {
@@ -1082,7 +1098,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		ID:   g.ID,
 		Name: g.Name,
 		//Image: []byte{},
-		UserIDs:                finalUsers,
+		Users:                  finalUsers,
 		Admins:                 finalAdmins,
 		Retention:              g.Retention,
 		MutedUntil:             g.MutedUntil,

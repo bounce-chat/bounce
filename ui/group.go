@@ -297,15 +297,14 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		editUserDialogs:         make(map[uuid.UUID]dialog.Dialog),
 		lastMessage:             time.Now().Unix(),
 	}
-	for _, userID := range bounceGroup.UserIDs {
-		user, exists := fyneUI.users.get(userID)
+	for _, bu := range bounceGroup.Users {
+		u, exists := fyneUI.users.get(bu.ID)
 		if !exists {
-			log.WithFields(log.Fields{
-				"user_id": userID,
-			}).Error("attempted to create group with user unknown to UI")
-			return
+			u := &user{id: bu.ID, name: bu.Name}
+			fyneUI.users.add(u)
+			group.users.add(u)
 		} else {
-			group.users.add(user)
+			group.users.add(u)
 		}
 	}
 
@@ -426,14 +425,12 @@ func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
 	// TODO: set the image
 
 	g.users.empty()
-	for _, userID := range bounceGroup.UserIDs {
-		u, ok := fyneUI.users.get(userID)
+	for _, bu := range bounceGroup.Users {
+		u, ok := fyneUI.users.get(bu.ID)
 		if !ok {
-			log.WithFields(log.Fields{
-				"group_id": g.id,
-				"user_id":  u.id,
-			}).Warn("cannot set unknown user as group member")
-			continue
+			u = &user{id: bu.ID, name: bu.Name}
+			fyneUI.users.add(u)
+			g.users.add(u)
 		}
 		func(thisUser *user) {
 			g.users.add(thisUser)

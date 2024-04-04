@@ -209,7 +209,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 	}
 
 	// Save all of the structures in this group, creating any new users or devices as needed
-	userIDs := []uuid.UUID{}
+	uiUsers := []User{}
 	err = b.database.Transaction(func(tx *gorm.DB) error {
 		for _, u := range g.Users {
 			for _, dev := range u.Devices {
@@ -228,7 +228,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 				}).Error("error saving user that is part of a group")
 				return err
 			}
-			userIDs = append(userIDs, u.ID)
+			uiUsers = append(uiUsers, User{ID: u.ID, Name: u.Name})
 		}
 		err := tx.Create(&gc).Error
 		if err != nil {
@@ -287,7 +287,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 	b.userInterface.NewGroupChat(Group{
 		ID:                     g.ID,
 		Name:                   g.Name,
-		UserIDs:                userIDs,
+		Users:                  uiUsers,
 		Admins:                 adminUUIDs,
 		Retention:              g.Retention,
 		MutedUntil:             g.MutedUntil,

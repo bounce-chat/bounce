@@ -322,9 +322,9 @@ func (b *bounce) buildInitialState() InitialState {
 	}
 	chatGroups := []Group{}
 	for _, g := range groups {
-		userList := []uuid.UUID{}
+		userList := []User{}
 		for _, u := range g.Users {
-			userList = append(userList, u.ID)
+			userList = append(userList, User{ID: u.ID, Name: u.Name})
 		}
 		adminList := []uuid.UUID{}
 		if len(g.Admins) > 0 {
@@ -342,8 +342,9 @@ func (b *bounce) buildInitialState() InitialState {
 		chatGroups = append(chatGroups, Group{
 			ID:                     g.ID,
 			Name:                   g.Name,
-			UserIDs:                userList,
+			Users:                  userList,
 			Admins:                 adminList,
+			Retention:              g.Retention,
 			LastActivity:           g.LastActivity,
 			RestrictUserManagement: g.RestrictUserManagement,
 			RestrictGroupEdits:     g.RestrictGroupEdits,
