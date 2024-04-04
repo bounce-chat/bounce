@@ -20,7 +20,7 @@ import (
 type directMessage struct {
 	user                      *user
 	notificationsMutedUntil   int64 // TODO: fyne feature request/PR: support binding int64 for time.Time
-	lastRetentionUpdate       int64
+	retention                 int64
 	editContainer             *fyne.Container
 	view                      *fyne.Container
 	header                    *fyne.Container
@@ -64,7 +64,7 @@ func (dm *directMessage) getNotificationsMutedUntil() int64 {
 	return dm.notificationsMutedUntil
 }
 
-func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wrap around something that takes the internal user object
+func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	user, exists := fyneUI.users.get(bounceUser.ID)
 	if !exists {
 		log.WithFields(log.Fields{
@@ -82,14 +82,16 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) { // TODO: Should wra
 	}
 
 	dm := &directMessage{
-		user:        user,
-		scroll:      container.NewVScroll(container.NewVBox()),
-		lastMessage: time.Now().Unix(),
+		user:                    user,
+		notificationsMutedUntil: bounceUser.State.MutedUntil,
+		retention:               bounceUser.State.Retention,
+		scroll:                  container.NewVScroll(container.NewVBox()),
+		lastMessage:             time.Now().Unix(),
 	}
 
 	dm.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(_ bool) {})
 	var err error
-	dm.notificationsMutedUntil, err = fyneUI.callbacks.GetDMMutedUntil(dm.user.id)
+	dm.notificationsMutedUntil = bounceUser.State.MutedUntil
 	if err != nil {
 		log.WithFields(log.Fields{
 			"user_id": dm.user.id,
@@ -219,8 +221,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	// Selection for message retention
 	//
 	dm.retentionSelection = widget.NewSelect(retentionSelections, nil)
-	retention := fyneUI.callbacks.GetDMRetention(dm.user.id)
-	dm.retentionSelection.Selected = getRetentionName(retention)
+	dm.retentionSelection.Selected = getRetentionName(dm.retention)
 
 	//
 	// Button to clear all message history, with confirm dialog
@@ -256,13 +257,12 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 			fyneUI.callbacks.SetDMMutedUntil(dm.user.id, mutedUntil)
 		}
 		// Update message retention if the selection doesn't line up with what we have for this user
-		currentRetention := fyneUI.callbacks.GetDMRetention(dm.user.id)
 		selectedRetentionString := dm.retentionSelection.Selected
 		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
 		if !ok {
 			dialog.ShowError(errors.New("invalid retention selection: "+selectedRetentionString), fyneUI.mainWindow)
 		} else {
-			if currentRetention != selectedRetentionValue {
+			if dm.retention != selectedRetentionValue {
 				fyneUI.callbacks.SetDMRetention(dm.user.id, selectedRetentionValue) // TODO: this should return an error if the user ID is nonsense
 			}
 		}
@@ -273,17 +273,10 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	saveButton.Importance = widget.HighImportance
 	cancelButton := widget.NewButton("Cancel", func() {
 		// Reset retention
-		dm.retentionSelection.Selected = getRetentionName(fyneUI.callbacks.GetDMRetention(dm.user.id))
+		dm.retentionSelection.Selected = getRetentionName(dm.retention)
 		dm.retentionSelection.Refresh()
 
 		// Reset notification settings
-		var err error
-		dm.notificationsMutedUntil, err = fyneUI.callbacks.GetDMMutedUntil(dm.user.id)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"user_id": dm.user.id,
-			}).Fatal("cannot find muted until for DM")
-		}
 		enabled := dm.notificationsMutedUntil != chat.MutedForever
 		dm.notificationsEnabledCheck.SetChecked(enabled)
 
@@ -332,6 +325,29 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 
 }
 
+func (fyneUI *Fyne) SetDMState(userID uuid.UUID, state chat.DMState) {
+	// Find the thread
+	dm, exists := fyneUI.dms[userID]
+	if !exists {
+		log.WithFields(log.Fields{
+			"user_id": userID,
+		}).Error("cannot set state of unknown dm")
+		return
+	}
+
+	// Update retention
+	dm.retention = state.Retention
+	newRetentionName := getRetentionName(dm.retention)
+	dm.retentionSelection.Selected = newRetentionName
+	dm.retentionSelection.Refresh()
+
+	// Update muted until
+	dm.notificationsMutedUntil = state.MutedUntil
+	enabled := dm.notificationsMutedUntil != chat.MutedForever
+	dm.notificationsEnabledCheck.SetChecked(enabled)
+	dm.notificationsEnabledCheck.Refresh()
+}
+
 func (fyneUI *Fyne) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
 	dmThread, exists := fyneUI.dms[udch.Thread]
 	if !exists {
@@ -349,20 +365,7 @@ func (fyneUI *Fyne) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
 		return
 	}
 
-	// TODO: insertion sort this into the proper place in the thread?
 	fyneUI.appendThreadItem(dmThread, ti)
-}
-
-func (fyneUI *Fyne) DMMutedUntilChanged(userID uuid.UUID, mutedUntil int64) {
-	if dm, exists := fyneUI.dms[userID]; exists {
-		dm.notificationsMutedUntil = mutedUntil
-		enabled := mutedUntil != chat.MutedForever
-		dm.notificationsEnabledCheck.SetChecked(enabled)
-	} else {
-		log.WithFields(log.Fields{
-			"user_id": userID,
-		}).Warn("cannot notify messages cleared for user that doesn't exist")
-	}
 }
 
 func (fyneUI *Fyne) DMRetentionChanged(udr chat.UpdateDMRetention) {
@@ -381,12 +384,6 @@ func (fyneUI *Fyne) DMRetentionChanged(udr chat.UpdateDMRetention) {
 		}).Error("error creating thread item for update dm retention")
 		return
 	}
-	fyneUI.appendThreadItem(dmThread, ti)
 
-	if udr.Timestamp > dmThread.lastRetentionUpdate {
-		dmThread.lastRetentionUpdate = udr.Timestamp
-		newRetentionName := getRetentionName(udr.Retention)
-		dmThread.retentionSelection.Selected = newRetentionName
-		dmThread.retentionSelection.Refresh()
-	}
+	fyneUI.appendThreadItem(dmThread, ti)
 }

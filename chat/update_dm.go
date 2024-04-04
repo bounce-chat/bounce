@@ -63,10 +63,6 @@ func (ud *updateDM) getScope(_ uuid.UUID) int {
 }
 
 func (ud *updateDM) getDestination(myID uuid.UUID) uuid.UUID {
-	if ud.Type == updateDMTypeChangeMutedUntil {
-		return myID
-	}
-
 	return xor(myID, ud.Target)
 }
 
@@ -139,6 +135,17 @@ func (b *bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 		return nil
 	}
 
+	// Updates to muting the thread are sync scoped and must come from a sync device
+	if ud.Type == updateDMTypeChangeMutedUntil {
+		if srcDevice.UserID != b.currentUserID() {
+			log.WithFields(log.Fields{
+				"peer":        peer,
+				"target_user": counterparty,
+			}).Warn("rejecting update DM for muting a thread that is not sent by sync device")
+			return nil
+		}
+	}
+
 	// If we already have this update, we just mark that this peer has it too, ack it, and return
 	var existingUD updateDM
 	err = b.database.Where("id = ?", ud.ID).First(&existingUD).Error
@@ -165,11 +172,82 @@ func (b *bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 	return &ud
 }
 
+func (b *bounce) updateDMState(userID uuid.UUID) {
+	// Set the initial values for the DM
+	retention := int64(0)
+	mutedUntil := int64(0)
+	clearBefore := int64(0)
+
+	// Find all updates
+	uds := []updateDM{}
+	err := b.database.Where("target =  ?", xor(userID, b.currentUserID())).Order("timestamp asc").Find(&uds).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up updateDMs")
+	}
+
+	// Update the DM fields in the orders of the updates
+	for _, ud := range uds {
+		switch ud.Type {
+		case updateDMTypeChangeMutedUntil:
+			mutedUntil = int64(binary.LittleEndian.Uint64(ud.Data))
+		case updateDMTypeChangeRetention:
+			retention = int64(binary.LittleEndian.Uint64(ud.Data))
+		case updateDMTypeSetClearBefore:
+			clearBefore = int64(binary.LittleEndian.Uint64(ud.Data))
+		default:
+			log.WithFields(log.Fields{
+				"type": ud.Type,
+			}).Warn("ignoring update DM with unknown type")
+		}
+	}
+
+	// Set the values in the database
+	err = b.database.Model(&user{}).Where("id = ?", userID).Updates(map[string]interface{}{"retention": retention, "muted_until": mutedUntil, "clear_before": clearBefore}).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+				"error":   err.Error(),
+			}).Error("user not found when updating DM fields")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error updating user fields")
+		}
+	}
+
+	// Inform the UI of the current state
+	b.userInterface.SetDMState(
+		userID,
+		DMState{
+			Retention:  retention,
+			MutedUntil: mutedUntil,
+		},
+	)
+}
+
 func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {
+	if ud.Type == updateDMTypeChangeMutedUntil {
+		if ud.Actor != b.currentUserID() {
+			return errMutedUntilOnlyMutableBySelf
+		}
+	}
+
+	// Save the update DM
+	err := b.database.Create(&ud).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update DM")
+	}
+
 	// Look up the user that we're updating
 	counterpartyID := xor(ud.Target, b.currentUserID())
 	var u user
-	err := b.database.Where("id = ?", counterpartyID).First(&u).Error
+	err = b.database.Where("id = ?", counterpartyID).First(&u).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -186,11 +264,11 @@ func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {
 	// Apply the function that handles this type of update
 	switch ud.Type {
 	case updateDMTypeChangeMutedUntil:
-		return b.saveAndApplyUpdateDMChangeMutedUntil(u, ud)
+		// nothing to show in thread
 	case updateDMTypeChangeRetention:
-		return b.saveAndApplyUpdateDMChangeRetention(u, ud)
+		return b.informUIUpdateDMChangeRetention(u, ud)
 	case updateDMTypeSetClearBefore:
-		return b.saveAndApplyUpdateDMSetClearBefore(u, ud)
+		return b.informUIUpdateDMSetClearBefore(u, ud)
 	default:
 		log.WithFields(log.Fields{
 			"type": ud.Type,
@@ -201,50 +279,13 @@ func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {
 	// Update the activity timestamp on the user model
 	b.updateLastUserActivity(xor(b.currentUserID(), ud.Target), ud.Timestamp)
 
-	return nil
-}
-
-func (b *bounce) saveAndApplyUpdateDMChangeMutedUntil(u user, ud updateDM) error {
-	// Notification settings can only be changed by sync devices
-	if ud.Actor != b.currentUserID() {
-		return errMutedUntilOnlyMutableBySelf
-	}
-
-	// Save the update DM
-	err := b.database.Create(&ud).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update DM")
-	}
-
-	// Apply the update if it is the most recent one
-	if !b.moreRecentUpdateDM(ud) {
-		mutedUntil := int64(binary.LittleEndian.Uint64(ud.Data))
-
-		err = b.database.Model(&u).Update("muted_until", mutedUntil).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error updating user muted until")
-		}
-
-		// Inform the UI
-		b.userInterface.DMMutedUntilChanged(u.ID, mutedUntil)
-	}
+	// Update the database and UI
+	b.updateDMState(counterpartyID)
 
 	return nil
 }
 
-func (b *bounce) saveAndApplyUpdateDMChangeRetention(u user, ud updateDM) error {
-	// Save the update DM
-	err := b.database.Create(&ud).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update DM")
-	}
-
+func (b *bounce) informUIUpdateDMChangeRetention(u user, ud updateDM) error {
 	// Decode the new retention value
 	retention := int64(binary.LittleEndian.Uint64(ud.Data))
 
@@ -257,34 +298,16 @@ func (b *bounce) saveAndApplyUpdateDMChangeRetention(u user, ud updateDM) error 
 		Retention: retention,
 	})
 
-	// Apply the update if it is the most recent one
-	if !b.moreRecentUpdateDM(ud) {
-		err = b.database.Model(&u).Update("retention", retention).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error updating user retention")
-		}
-	}
-
 	return nil
 }
 
-func (b *bounce) saveAndApplyUpdateDMSetClearBefore(u user, ud updateDM) error {
-	// Save the update DM
-	err := b.database.Create(&ud).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error saving update DM")
-	}
-
+func (b *bounce) informUIUpdateDMSetClearBefore(u user, ud updateDM) error {
 	// Decode the new retention value
 	clearBefore := int64(binary.LittleEndian.Uint64(ud.Data))
 
 	// Find and delete any DMs older than the retention value
 	dms := []directMessage{}
-	err = b.database.Select("id").Where("written_at <= ? AND xor = ?", clearBefore, ud.Target).Find(&dms).Error
+	err := b.database.Select("id").Where("written_at <= ? AND xor = ?", clearBefore, ud.Target).Find(&dms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -307,18 +330,6 @@ func (b *bounce) saveAndApplyUpdateDMSetClearBefore(u user, ud updateDM) error {
 		Timestamp: ud.Timestamp,
 		ClearTime: clearBefore,
 	})
-
-	// Update the clear before value on the group if this one is newer
-	if u.ClearBefore < clearBefore {
-		err := b.database.Model(&u).Update("clear_before", clearBefore).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":        err.Error(),
-				"user_id":      u.ID,
-				"clear_before": clearBefore,
-			}).Fatal("database error updating user clear before")
-		}
-	}
 
 	return nil
 }
@@ -363,23 +374,6 @@ func (b *bounce) clearDMChatHistory(userID uuid.UUID) error {
 		Type:      updateDMTypeSetClearBefore,
 		Data:      payload,
 	})
-}
-
-func (b *bounce) moreRecentUpdateDM(ud updateDM) bool {
-	var moreRecentUpdates bool
-
-	err := b.database.Table("update_dms").
-		Select("count(*) >= 1").
-		Where("target = ? AND type = ? AND timestamp > ?", ud.Target, ud.Type, ud.Timestamp).
-		Find(&moreRecentUpdates).
-		Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error checking for more recent update DMs")
-	}
-
-	return moreRecentUpdates
 }
 
 func (b *bounce) applyAndBroadcastUpdateDM(ud updateDM) error {

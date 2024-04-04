@@ -8,6 +8,12 @@ type User struct {
 	ID    uuid.UUID
 	Name  string
 	Image []byte
+	State DMState
+}
+
+type DMState struct {
+	Retention  int64
+	MutedUntil int64
 }
 
 type DirectMessage struct {
@@ -236,9 +242,9 @@ type UI interface {
 	UpdateMessageDeletionTime(uuid.UUID, int64)
 
 	DisplayDirectMessage(DirectMessage)
-	DMMutedUntilChanged(dm uuid.UUID, mutedUntil int64) // The notification settings for a DM have been updated
-	DMRetentionChanged(UpdateDMRetention)               // The retention settings for a DM have been changed
-	DMChatHistoryCleared(UpdateDMClearHistory)          // Display that a user has deleted all past DMs
+	SetDMState(uuid.UUID, DMState)
+	DMRetentionChanged(UpdateDMRetention)      // The retention settings for a DM have been changed
+	DMChatHistoryCleared(UpdateDMClearHistory) // Display that a user has deleted all past DMs
 
 	OpenNewGroupChat(Group)
 	NewGroupChat(Group)
@@ -251,7 +257,6 @@ type UI interface {
 	RenameGroup(UpdateGroupName)
 	GroupRetentionChanged(UpdateGroupRetention)
 	GroupChatHistoryCleared(UpdateGroupClearHistory)
-	//GroupMutedUntilChanged(groupID uuid.UUID, mutedUntil int64)
 	AdminPromoted(UpdateGroupAdminPromoted)
 	AdminDemoted(UpdateGroupAdminDemoted)
 	UserManagementRestricted(UpdateGroupUserManagementRestricted)
@@ -313,11 +318,9 @@ type UICallbacks struct {
 	UnrestrictPosting        func(groupID uuid.UUID) error                     // Allow any user to post
 	DeleteGroup              func(groupID uuid.UUID) error                     // Delete a group
 
-	SetDMMutedUntil    func(userID uuid.UUID, mutedUntil int64) error       // Set a temporary mute on a DM by setting the unix timestamp to pause notifications until
-	GetDMMutedUntil    func(userID uuid.UUID) (mutedUntil int64, err error) // Get the value of a temporary mute on a DM // TODO: remove like in groups
-	SetDMRetention     func(userID uuid.UUID, retention int64) error        // Set the message retention settings for a DM
-	GetDMRetention     func(userID uuid.UUID) int64                         // Get the message retention settings for a DM // TODO: remove like in groups
-	ClearDMChatHistory func(userID uuid.UUID) error                         // Clear all DM messages on all devices
+	SetDMMutedUntil    func(userID uuid.UUID, mutedUntil int64) error // Set a temporary mute on a DM by setting the unix timestamp to pause notifications until
+	SetDMRetention     func(userID uuid.UUID, retention int64) error  // Set the message retention settings for a DM
+	ClearDMChatHistory func(userID uuid.UUID) error                   // Clear all DM messages on all devices
 
 	// Setup a new profile on a fresh install
 	SetProfile    func(profileName, deviceName string) (uuid.UUID, error)

@@ -305,6 +305,10 @@ func (b *bounce) buildInitialState() InitialState {
 		chatUsers = append(chatUsers, User{
 			ID:   u.ID,
 			Name: u.Name,
+			State: DMState{
+				Retention:  u.Retention,
+				MutedUntil: u.MutedUntil,
+			},
 		})
 	}
 

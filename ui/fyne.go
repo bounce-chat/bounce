@@ -169,8 +169,10 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		fyneUI.profile = &user{id: state.Profile.ID, name: state.Profile.Name} // TODO: use the exported user concept in the UI?  Not doing that becuase bindings
 	}
 
+	initialDMStates := map[uuid.UUID]chat.DMState{}
 	for _, u := range state.Users {
 		fyneUI.users.add(&user{id: u.ID, name: u.Name})
+		initialDMStates[u.ID] = u.State
 	}
 
 	for _, g := range state.Groups {
@@ -187,7 +189,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	groupItems := make(map[uuid.UUID]threadItems)
 
 	for _, dm := range state.DirectMessages {
-		fyneUI.creatDMIfNeeded(dm.Thread)
+		fyneUI.creatDMIfNeeded(dm.Thread, initialDMStates)
 		dmti, err := fyneUI.newDirectMessage(dm)
 		if err != nil {
 			log.Fatal(err.Error())
@@ -196,7 +198,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	}
 
 	for _, udmr := range state.UpdateDMRetentions {
-		fyneUI.creatDMIfNeeded(udmr.Thread)
+		fyneUI.creatDMIfNeeded(udmr.Thread, initialDMStates)
 		udmrItem, err := fyneUI.newUpdateDMRetention(udmr)
 		if err != nil {
 			log.Fatal(err.Error())
@@ -205,7 +207,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	}
 
 	for _, udmch := range state.UpdateDMClearHistories {
-		fyneUI.creatDMIfNeeded(udmch.Thread)
+		fyneUI.creatDMIfNeeded(udmch.Thread, initialDMStates)
 		udmchItem, err := fyneUI.newUpdateDMClearHistory(udmch)
 		if err != nil {
 			log.Fatal(err.Error())
@@ -338,45 +340,22 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 			u.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
 		}
 	}
-
-	fyneUI.setInitialTimestamps(state)
 }
 
-func (fyneUI *Fyne) setInitialTimestamps(state chat.InitialState) {
-	userRetentionTimes := make(map[uuid.UUID]int64)
-
-	for _, udmr := range state.UpdateDMRetentions {
-		currentTime, ok := userRetentionTimes[udmr.Thread]
-		if !ok {
-			userRetentionTimes[udmr.Thread] = udmr.Timestamp
-		} else {
-			if udmr.Timestamp > currentTime {
-				userRetentionTimes[udmr.Thread] = udmr.Timestamp
-			}
-		}
-	}
-
-	for userID, updateTime := range userRetentionTimes {
-		dmThread, ok := fyneUI.dms[userID]
-		if !ok {
-			log.WithFields(log.Fields{
-				"user_id": userID,
-			}).Fatal("initial state contains retention update for unknown user")
-		}
-		dmThread.lastRetentionUpdate = updateTime
-	}
-}
-
-func (fyneUI *Fyne) creatDMIfNeeded(id uuid.UUID) {
+func (fyneUI *Fyne) creatDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]chat.DMState) {
 	u, exists := fyneUI.users.get(id)
 	if !exists {
 		log.Fatal("dm user not known to UI")
 	}
+
+	initialState, _ := initialStates[id]
+
 	_, exists = fyneUI.dms[id]
 	if !exists {
 		fyneUI.NewDirectMessage(chat.User{
-			ID:   id,
-			Name: u.name,
+			ID:    id,
+			Name:  u.name,
+			State: initialState,
 		})
 		_, exists = fyneUI.dms[id]
 		if !exists {
