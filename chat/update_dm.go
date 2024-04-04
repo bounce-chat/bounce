@@ -266,9 +266,15 @@ func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {
 	case updateDMTypeChangeMutedUntil:
 		// nothing to show in thread
 	case updateDMTypeChangeRetention:
-		return b.informUIUpdateDMChangeRetention(u, ud)
+		err = b.informUIUpdateDMChangeRetention(u, ud)
+		if err != nil {
+			return err
+		}
 	case updateDMTypeSetClearBefore:
-		return b.informUIUpdateDMSetClearBefore(u, ud)
+		err = b.informUIUpdateDMSetClearBefore(u, ud)
+		if err != nil {
+			return err
+		}
 	default:
 		log.WithFields(log.Fields{
 			"type": ud.Type,
