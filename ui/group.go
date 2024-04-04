@@ -33,6 +33,7 @@ type group struct {
 	editThreadNameEntry         *widget.Entry
 	retentionSelection          *widget.Select
 	clearHistoryButton          *widget.Button
+	leaveGroupButton            *widget.Button
 	deleteGroupButton           *widget.Button
 	addUsersButton              *widget.Button
 	view                        *fyne.Container
@@ -117,14 +118,23 @@ func (fyneUI *Fyne) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Butt
 	g.removeUserButtonsMutex.Lock()
 	defer g.removeUserButtonsMutex.Unlock()
 
+	buttonText := "Remove From Group"
+	dialogHeader := "Remove User?"
+	dialogPrompt := "Are you sure you want to remove this user from the group?"
+	if userID == fyneUI.profile.id {
+		buttonText = "Leave Group"
+		dialogHeader = "Leave Group?"
+		dialogPrompt = "Are you sure you want to leave this group?"
+	}
+
 	button, ok := g.removeUserButtons[userID]
 	if ok {
 		return button
 	}
 
 	confirmRemoveUser := dialog.NewConfirm(
-		"Remove user?",
-		"Are you sure you want to remove this user from the group?",
+		dialogHeader,
+		dialogPrompt,
 		func(confirmed bool) {
 			if confirmed {
 				fyneUI.callbacks.RemoveUser(g.id, userID)
@@ -137,7 +147,7 @@ func (fyneUI *Fyne) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Butt
 		fyneUI.mainWindow,
 	)
 
-	button = widget.NewButton("Remove from group", func() {
+	button = widget.NewButton(buttonText, func() {
 		confirmRemoveUser.Show()
 	})
 	g.removeUserButtons[userID] = button

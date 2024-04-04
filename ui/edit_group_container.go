@@ -65,6 +65,21 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		confirmClearHistory.Show()
 	})
 
+	confirmLeaveGroup := dialog.NewConfirm(
+		"Leave Group?",
+		"Are you sure you want to leave this group?",
+		func(confirmed bool) {
+			if confirmed {
+				fyneUI.callbacks.RemoveUser(g.id, fyneUI.profile.id)
+				fyneUI.showMainContainer()
+			}
+		},
+		fyneUI.mainWindow,
+	)
+	g.leaveGroupButton = widget.NewButton("Leave Group", func() {
+		confirmLeaveGroup.Show()
+	})
+
 	confirmDeleteGroup := dialog.NewConfirm(
 		"Delete this group?",
 		"Are you sure you want to permanently delete this group for all members?",
@@ -201,6 +216,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		widget.NewLabel("Disappearing Messages"),
 		g.retentionSelection,
 		container.NewHBox(g.clearHistoryButton),
+		container.NewHBox(g.leaveGroupButton),
 		container.NewHBox(g.deleteGroupButton),
 	)
 	topOptionsVBox.Add(g.restrictUserManagementCheck)
