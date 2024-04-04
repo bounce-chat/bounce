@@ -65,10 +65,13 @@ func (fyneUI *Fyne) refreshThreadOrder() {
 func (fyneUI *Fyne) populateItems(t thread, items threadItems) {
 	sort.Sort(items)
 
+	fyneUI.threadWithItemMutex.Lock()
 	chatHistory := t.chatHistoryScroll().Content.(*fyne.Container)
 	for _, item := range items {
+		fyneUI.threadWithItem[item.id] = t
 		chatHistory.Objects = append(chatHistory.Objects, item.widget)
 	}
+	fyneUI.threadWithItemMutex.Unlock()
 
 	lastItem := items[len(items)-1]
 	if lastItem.setButton != nil {
