@@ -206,10 +206,8 @@ func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) dialog.Dialog 
 			// Update the admin status if needed
 			if g.getAdminCheck(u.id).Checked && !g.isAdmin(u.id) {
 				fyneUI.callbacks.PromoteAdmin(g.id, u.id)
-				fyneUI.refreshCurrentAndPendingUsers(g)
 			} else if !g.getAdminCheck(u.id).Checked && g.isAdmin(u.id) {
 				fyneUI.callbacks.DemoteAdmin(g.id, u.id)
-				fyneUI.refreshCurrentAndPendingUsers(g)
 			}
 		} else {
 			// Reset everything
@@ -439,6 +437,11 @@ func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
 	}
 
 	g.admins = bounceGroup.Admins
+
+	for _, u := range g.users.userList {
+		g.getAdminCheck(u.id).SetChecked(g.isAdmin(u.id))
+		g.getAdminCheck(u.id).Refresh()
+	}
 
 	g.retention = bounceGroup.Retention
 	g.retentionSelection.Selected = getRetentionName(bounceGroup.Retention)
