@@ -307,6 +307,21 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 		// Update the group state
 		b.updateGroupConsensus(ug.Target)
 
+		// Reload the update in case a custom scope was added
+		err = b.database.First(&ug, "id = ?", ug.ID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"update_group_id": ug.ID,
+					"error":           err.Error(),
+				}).Error("update group not found after save in handler")
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up update group")
+			}
+		}
+
 		// If this is a remove user frame, make sure to send it to the devices of the user who was removed
 		if ug.Type == updateGroupTypeRemoveUser {
 			userID, err := uuid.FromBytes(ug.Data)
