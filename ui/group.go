@@ -141,10 +141,11 @@ func (fyneUI *Fyne) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Butt
 				err := fyneUI.callbacks.RemoveUser(g.id, userID)
 				if err != nil {
 					dialog.ShowError(errors.New("error removing user: "+err.Error()), fyneUI.mainWindow)
-				}
-				fyneUI.getEditUserDialog(g, userID).Hide()
-				if fyneUI.profile.id == userID {
-					fyneUI.showMainContainer()
+				} else {
+					fyneUI.getEditUserDialog(g, userID).Hide()
+					if fyneUI.profile.id == userID {
+						fyneUI.showMainContainer()
+					}
 				}
 			}
 		},
