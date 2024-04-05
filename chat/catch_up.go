@@ -202,7 +202,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		err = b.database.Table("group_users").
 			Select("user_id").
 			Where("group_id = ?", groupID).
-			Find(&originalUserIDs).
+			Find(&updatedUserIDs).
 			Error
 		if err != nil {
 			log.WithFields(log.Fields{
