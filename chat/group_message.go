@@ -196,7 +196,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 			}).Fatal("database error looking up group posting permission")
 		}
 	}
-	if g.hasAdmins() && g.RestrictPosting && !b.isGroupAdmin(gm.Destination, gm.Author) {
+	if g.RestrictPosting && !b.isGroupAdmin(gm.Destination, gm.Author) {
 		log.WithFields(log.Fields{
 			"user_id": gm.Author,
 		}).Warn("user attempted to post in a group without permission")

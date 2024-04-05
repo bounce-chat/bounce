@@ -394,19 +394,17 @@ func (b *bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 	}
 
 	// Set the values for the original admins
-	if len(g.Admins) != 0 { // TODO: still allowed?
-		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := uuid.Parse(adminIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": groupID,
-					"admins":   g.Admins,
-				}).Fatal("invalid UUID in group admin list")
-			}
-
-			gs.admins = append(gs.admins, adminID)
+	for _, adminIDString := range strings.Split(g.Admins, ",") {
+		adminID, err := uuid.Parse(adminIDString)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+				"admins":   g.Admins,
+			}).Fatal("invalid UUID in group admin list")
 		}
+
+		gs.admins = append(gs.admins, adminID)
 	}
 
 	// Return the state
@@ -459,6 +457,9 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 				"user_id": ug.Data,
 			}).Error("update group attempted to remove user with invalid UUID")
 			return err
+		}
+		if len(gs.admins) == 1 && gs.admins[0] == userID {
+			return errCannotRemoveLastAdmin
 		}
 		if ug.Actor == userID {
 			return nil
@@ -518,7 +519,19 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 			return errAdminRequired
 		}
 	case updateGroupTypeDemoteAdmin:
+		userID, err := uuid.FromBytes(ug.Data)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"actor":   ug.Actor,
+				"user_id": ug.Data,
+			}).Error("update group attempted to demote admin with invalid UUID")
+			return err
+		}
 		if gs.isAdmin(ug.Actor) {
+			if len(gs.admins) == 1 && gs.admins[0] == userID {
+				return errCannotRemoveLastAdmin
+			}
 			return nil
 		} else {
 			return errAdminRequired
@@ -650,6 +663,10 @@ func applyUpdateGroupRemoveUserToState(gs groupState, ug updateGroup) (groupStat
 		}
 	}
 
+	if len(adminsWithoutUser) == 0 {
+		return gs, errCannotRemoveLastAdmin
+	}
+
 	gs.users = membersWithoutUser
 	gs.admins = adminsWithoutUser
 
@@ -713,6 +730,11 @@ func applyUpdateGroupDemoteAdminToState(gs groupState, ug updateGroup) (groupSta
 			adminsWithoutUser = append(adminsWithoutUser, id)
 		}
 	}
+
+	if len(adminsWithoutUser) == 0 {
+		return gs, errCannotRemoveLastAdmin
+	}
+
 	gs.admins = adminsWithoutUser
 
 	return gs, nil
@@ -1067,19 +1089,17 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 
 	// Set group admins
 	admins := []uuid.UUID{}
-	if len(g.Admins) > 0 {
-		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := uuid.Parse(adminIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": groupID,
-					"admins":   g.Admins,
-				}).Fatal("invalid UUID in group admin list")
+	for _, adminIDString := range strings.Split(g.Admins, ",") {
+		adminID, err := uuid.Parse(adminIDString)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+				"admins":   g.Admins,
+			}).Fatal("invalid UUID in group admin list")
 
-			}
-			admins = append(admins, adminID)
 		}
+		admins = append(admins, adminID)
 	}
 	for _, adminID := range admins {
 		if !finalState.isAdmin(adminID) {

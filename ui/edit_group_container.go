@@ -54,7 +54,10 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		"Are you sure you want to permanently delete all chat history on all devices?",
 		func(confirmed bool) {
 			if confirmed {
-				fyneUI.callbacks.ClearGroupChatHistory(g.id)
+				err := fyneUI.callbacks.ClearGroupChatHistory(g.id)
+				if err != nil {
+					dialog.ShowError(errors.New("error clearing chat history: "+err.Error()), fyneUI.mainWindow)
+				}
 				fyneUI.showMainContainer()
 				fyneUI.mainWindow.Canvas().Focus(g.getEntry())
 			}
@@ -70,7 +73,10 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		"Are you sure you want to leave this group?",
 		func(confirmed bool) {
 			if confirmed {
-				fyneUI.callbacks.RemoveUser(g.id, fyneUI.profile.id)
+				err := fyneUI.callbacks.RemoveUser(g.id, fyneUI.profile.id)
+				if err != nil {
+					dialog.ShowError(errors.New("error leaving group: "+err.Error()), fyneUI.mainWindow)
+				}
 				fyneUI.showMainContainer()
 			}
 		},
@@ -85,7 +91,10 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		"Are you sure you want to permanently delete this group for all members?",
 		func(confirmed bool) {
 			if confirmed {
-				fyneUI.callbacks.DeleteGroup(g.id)
+				err := fyneUI.callbacks.DeleteGroup(g.id)
+				if err != nil {
+					dialog.ShowError(errors.New("error deleting group: "+err.Error()), fyneUI.mainWindow)
+				}
 				fyneUI.showMainContainer()
 			}
 		},
@@ -105,7 +114,10 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		}
 		newThreadName := g.editThreadNameEntry.Text
 		if currentThreadName != newThreadName {
-			fyneUI.callbacks.RenameGroup(g.id, newThreadName) // TODO: error check and display error in dialog, internationalize off exported error types
+			err := fyneUI.callbacks.RenameGroup(g.id, newThreadName)
+			if err != nil {
+				dialog.ShowError(errors.New("error renaming group: "+err.Error()), fyneUI.mainWindow)
+			}
 		}
 
 		// Update the notification settings if they have changes
@@ -135,22 +147,40 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 
 		// Update the permissions if needed
 		if g.restrictUserManagementCheck.Checked && !g.restrictUserManagement {
-			fyneUI.callbacks.RestrictUserManagement(g.id)
+			err := fyneUI.callbacks.RestrictUserManagement(g.id)
+			if err != nil {
+				dialog.ShowError(errors.New("error restricting user management: "+err.Error()), fyneUI.mainWindow)
+			}
 		}
 		if !g.restrictUserManagementCheck.Checked && g.restrictUserManagement {
-			fyneUI.callbacks.UnrestrictUserManagement(g.id)
+			err := fyneUI.callbacks.UnrestrictUserManagement(g.id)
+			if err != nil {
+				dialog.ShowError(errors.New("error unrestricting user management: "+err.Error()), fyneUI.mainWindow)
+			}
 		}
 		if g.restrictGroupEditsCheck.Checked && !g.restrictGroupEdits {
-			fyneUI.callbacks.RestrictGroupEdits(g.id)
+			err := fyneUI.callbacks.RestrictGroupEdits(g.id)
+			if err != nil {
+				dialog.ShowError(errors.New("error restricting group edits: "+err.Error()), fyneUI.mainWindow)
+			}
 		}
 		if !g.restrictGroupEditsCheck.Checked && g.restrictGroupEdits {
-			fyneUI.callbacks.UnrestrictGroupEdits(g.id)
+			err := fyneUI.callbacks.UnrestrictGroupEdits(g.id)
+			if err != nil {
+				dialog.ShowError(errors.New("error unrestricting group edits: "+err.Error()), fyneUI.mainWindow)
+			}
 		}
 		if g.restrictPostingCheck.Checked && !g.restrictPosting {
-			fyneUI.callbacks.RestrictPosting(g.id)
+			err := fyneUI.callbacks.RestrictPosting(g.id)
+			if err != nil {
+				dialog.ShowError(errors.New("error restricting posting: "+err.Error()), fyneUI.mainWindow)
+			}
 		}
 		if !g.restrictPostingCheck.Checked && g.restrictPosting {
-			fyneUI.callbacks.UnrestrictPosting(g.id)
+			err := fyneUI.callbacks.UnrestrictPosting(g.id)
+			if err != nil {
+				dialog.ShowError(errors.New("error unrestricting posting: "+err.Error()), fyneUI.mainWindow)
+			}
 		}
 
 		fyneUI.showMainContainer()
@@ -239,7 +269,10 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 	addUsersDialog := dialog.NewCustomConfirm("Add Users", "Save", "Cancel", newUserSelector, func(apply bool) {
 		if apply {
 			for _, thisUser := range g.pendingUsers.userList {
-				go fyneUI.callbacks.AddUser(g.id, thisUser.id) // TODO: dialog error if there is one
+				err := fyneUI.callbacks.AddUser(g.id, thisUser.id)
+				if err != nil {
+					dialog.ShowError(errors.New("error adding user: "+err.Error()), fyneUI.mainWindow)
+				}
 			}
 		} else {
 			g.pendingUsers.empty()

@@ -315,19 +315,17 @@ func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
 				initialState.users = append(initialState.users, u.ID)
 			}
 
-			if len(g.Admins) != 0 { // TODO: still allowed?
-				for _, adminIDString := range strings.Split(g.Admins, ",") {
-					adminID, err := uuid.Parse(adminIDString)
-					if err != nil {
-						log.WithFields(log.Fields{
-							"error":    err.Error(),
-							"group_id": gc.ID,
-							"admins":   g.Admins,
-						}).Fatal("invalid UUID in group admin list")
-					}
-
-					initialState.admins = append(initialState.admins, adminID)
+			for _, adminIDString := range strings.Split(g.Admins, ",") {
+				adminID, err := uuid.Parse(adminIDString)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":    err.Error(),
+						"group_id": gc.ID,
+						"admins":   g.Admins,
+					}).Fatal("invalid UUID in group admin list")
 				}
+
+				initialState.admins = append(initialState.admins, adminID)
 			}
 
 			stacks[gc.ID] = newCanonicalStack(initialState, b.currentUserID())

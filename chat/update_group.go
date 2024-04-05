@@ -43,6 +43,7 @@ var errUpdateNotApplied = errors.New("update could not be applied")
 var errGroupNotFound = errors.New("group not found")
 var errUserNotInGroup = errors.New("user is not in group")
 var errAdminRequired = errors.New("this action can only be performed by admins")
+var errCannotRemoveLastAdmin = errors.New("cannot remove the last admin from a group")
 
 //
 // An updateGroup frame changes the settings and status of a group, such as permissions, membership, retention, or notification settings.
@@ -363,6 +364,10 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 }
 
 func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
+	if !validGroupName(newName) {
+		return errInvalidGroupName
+	}
+
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),

@@ -327,17 +327,15 @@ func (b *bounce) buildInitialState() InitialState {
 			userList = append(userList, User{ID: u.ID, Name: u.Name})
 		}
 		adminList := []uuid.UUID{}
-		if len(g.Admins) > 0 {
-			for _, adminIDString := range strings.Split(g.Admins, ",") {
-				adminID, err := uuid.Parse(adminIDString)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error":  err.Error(),
-						"admins": g.Admins,
-					}).Fatal("invalid UUID in group admin list")
-				}
-				adminList = append(adminList, adminID)
+		for _, adminIDString := range strings.Split(g.Admins, ",") {
+			adminID, err := uuid.Parse(adminIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"admins": g.Admins,
+				}).Fatal("invalid UUID in group admin list")
 			}
+			adminList = append(adminList, adminID)
 		}
 		chatGroups = append(chatGroups, Group{
 			ID:                     g.ID,

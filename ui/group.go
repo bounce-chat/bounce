@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -137,7 +138,10 @@ func (fyneUI *Fyne) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Butt
 		dialogPrompt,
 		func(confirmed bool) {
 			if confirmed {
-				fyneUI.callbacks.RemoveUser(g.id, userID)
+				err := fyneUI.callbacks.RemoveUser(g.id, userID)
+				if err != nil {
+					dialog.ShowError(errors.New("error removing user: "+err.Error()), fyneUI.mainWindow)
+				}
 				fyneUI.getEditUserDialog(g, userID).Hide()
 				if fyneUI.profile.id == userID {
 					fyneUI.showMainContainer()
@@ -205,9 +209,17 @@ func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) dialog.Dialog 
 		if apply {
 			// Update the admin status if needed
 			if g.getAdminCheck(u.id).Checked && !g.isAdmin(u.id) {
-				fyneUI.callbacks.PromoteAdmin(g.id, u.id)
+				err := fyneUI.callbacks.PromoteAdmin(g.id, u.id)
+				if err != nil {
+					dialog.ShowError(errors.New("error promoting admin: "+err.Error()), fyneUI.mainWindow)
+					g.getAdminCheck(u.id).SetChecked(false)
+				}
 			} else if !g.getAdminCheck(u.id).Checked && g.isAdmin(u.id) {
-				fyneUI.callbacks.DemoteAdmin(g.id, u.id)
+				err := fyneUI.callbacks.DemoteAdmin(g.id, u.id)
+				if err != nil {
+					dialog.ShowError(errors.New("error demoting admin: "+err.Error()), fyneUI.mainWindow)
+					g.getAdminCheck(u.id).SetChecked(true)
+				}
 			}
 		} else {
 			// Reset everything
