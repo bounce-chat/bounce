@@ -177,7 +177,59 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 
 	// Update all group consensus states for groups that had an update group in this catch up
 	for groupID, _ := range groupsToUpdateConsensus {
+		// Get the user IDs for this group
+		originalIDmap := make(map[uuid.UUID]bool)
+		var originalUserIDs []uuid.UUID
+		err := b.database.Table("group_users").
+			Select("user_id").
+			Where("group_id = ?", groupID).
+			Find(&originalUserIDs).
+			Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error getting user IDs in group")
+		}
+		for _, id := range originalUserIDs {
+			originalIDmap[id] = true
+		}
+
+		// Update the group consensis
 		b.updateGroupConsensus(groupID)
+
+		// Get the user IDs for this group again, send references to any new users
+		var updatedUserIDs []uuid.UUID
+		err = b.database.Table("group_users").
+			Select("user_id").
+			Where("group_id = ?", groupID).
+			Find(&originalUserIDs).
+			Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error getting user IDs in group")
+		}
+		for _, id := range updatedUserIDs {
+			if _, present := originalIDmap[id]; !present {
+				if id == b.currentUserID() {
+					continue
+				}
+				var addresses []string
+				err := b.database.Table("devices").
+					Select("address").
+					Where("user_id = ?", id).
+					Find(&addresses).
+					Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("database error getting addresses from devices")
+				}
+				for _, address := range addresses {
+					go b.sendReferences(address)
+				}
+			}
+		}
 	}
 
 	// Send references to any device we would have broadcast to
