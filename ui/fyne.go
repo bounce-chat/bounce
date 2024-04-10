@@ -50,6 +50,7 @@ type Fyne struct {
 	newGroupSelectedUsersContainer        *container.Scroll
 	newGroupPendingUsersList              *container.Scroll
 	newGroupAllAvailableUsers             *container.Scroll
+	newGroupUserSearchEntry               *widget.Entry
 	newGroupSelectedUsers                 *userStore
 	newGroupPendingUsers                  *userStore
 	newGroupPendingAdmins                 map[uuid.UUID]bool
@@ -179,6 +180,17 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		fyneUI.users.add(&user{id: u.ID, name: u.Name})
 		initialDMStates[u.ID] = u.State
 	}
+	fyneUI.users.add(&user{id: uuid.New(), name: "A"})
+	fyneUI.users.add(&user{id: uuid.New(), name: "B"})
+	fyneUI.users.add(&user{id: uuid.New(), name: "C"})
+	fyneUI.users.add(&user{id: uuid.New(), name: "D"})
+	fyneUI.users.add(&user{id: uuid.New(), name: "E"})
+	fyneUI.users.add(&user{id: uuid.New(), name: "F"})
+	fyneUI.users.add(&user{id: uuid.New(), name: "G"})
+	fyneUI.users.add(&user{id: uuid.New(), name: "Az"})
+	fyneUI.users.add(&user{id: uuid.New(), name: "Bxc"})
+	fyneUI.users.add(&user{id: uuid.New(), name: "Cqwerty"})
+	fyneUI.users.add(&user{id: uuid.New(), name: "Dgggggg"})
 
 	for _, g := range state.Groups {
 		fyneUI.NewGroupChat(g)

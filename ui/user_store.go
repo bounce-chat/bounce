@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -10,12 +11,14 @@ type userStore struct {
 	sync.Mutex
 	userMap  map[uuid.UUID]*user
 	userList []*user
+	ngrams   map[string][]*user
 }
 
 func newUserStore() *userStore {
 	return &userStore{
 		userMap:  make(map[uuid.UUID]*user),
 		userList: []*user{},
+		ngrams:   make(map[string][]*user),
 	}
 }
 
@@ -38,6 +41,12 @@ func (store *userStore) add(u *user) {
 	smaller_users := store.userList[:smaller]
 	larger_users := store.userList[smaller:]
 	store.userList = append(smaller_users, append([]*user{u}, larger_users...)...)
+
+	grams := makeNgrams(strings.ToLower(u.name))
+	for _, gram := range grams {
+		store.ngrams[gram] = append(store.ngrams[gram], u)
+	}
+
 }
 
 func (store *userStore) remove(id uuid.UUID) {
@@ -52,6 +61,8 @@ func (store *userStore) remove(id uuid.UUID) {
 		}
 	}
 	store.userList = newList
+
+	// TODO: remove from ngrams
 }
 
 func (store *userStore) alphabetized() []*user {
@@ -75,4 +86,36 @@ func (store *userStore) empty() {
 
 	store.userMap = make(map[uuid.UUID]*user)
 	store.userList = []*user{}
+}
+
+func (store *userStore) search(str string) []*user {
+	store.Lock()
+	defer store.Unlock()
+
+	if str == "" {
+		return store.userList
+	}
+	results, ok := store.ngrams[strings.ToLower(str)]
+	if !ok {
+		return []*user{}
+	}
+	return results
+}
+
+func makeNgrams(str string) []string {
+	strLen := len(str)
+	ngrams := []string{}
+	alreadyPresent := map[string]bool{}
+
+	for i := 1; i <= strLen; i++ {
+		for n := 0; n+i <= strLen; n++ {
+			gram := str[n : n+i]
+			if _, present := alreadyPresent[gram]; !present {
+				ngrams = append(ngrams, gram)
+				alreadyPresent[gram] = true
+			}
+		}
+	}
+
+	return ngrams
 }

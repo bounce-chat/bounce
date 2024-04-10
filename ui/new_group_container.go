@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
+	log "github.com/sirupsen/logrus"
 )
 
 func (fyneUI *Fyne) showNewGroup() {
@@ -30,13 +31,16 @@ func (fyneUI *Fyne) clearNewGroupSelectors() {
 	fyneUI.newGroupNameEntry.Text = ""
 	fyneUI.newGroupNameEntry.Refresh()
 
+	fyneUI.newGroupUserSearchEntry.Text = ""
+	fyneUI.newGroupUserSearchEntry.Refresh()
+
 	fyneUI.newGroupPendingAdmins = map[uuid.UUID]bool{
 		fyneUI.profile.id: true,
 	}
 	fyneUI.newGroupSelectedUsers.empty()
 	fyneUI.newGroupPendingUsers.empty()
 	fyneUI.newGroupPendingUsers.add(fyneUI.profile)
-	fyneUI.refreshNewGroupUserSelections()
+	fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
 
 	fyneUI.newGroupRetentionSelection.Selected = getRetentionName(int64(time.Duration(24 * time.Hour * 7 * 4).Seconds())) // TODO: get default from database
 	fyneUI.newGroupUserManagementRestrictedCheck.SetChecked(true)                                                         // TODO: get default from database
@@ -44,14 +48,15 @@ func (fyneUI *Fyne) clearNewGroupSelectors() {
 	fyneUI.newGroupPostingRestrictedCheck.SetChecked(false)                                                               // TODO: get default from database
 }
 
-func (fyneUI *Fyne) refreshNewGroupUserSelections() {
+func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 	// Add the currently selected users to the display
 	currentUsersList := container.NewVBox()
 	for _, thisUser := range fyneUI.newGroupSelectedUsers.alphabetized() {
 		func(u *user) {
 			removePendingUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
 				fyneUI.newGroupSelectedUsers.remove(u.id)
-				fyneUI.refreshNewGroupUserSelections()
+				log.Info("refreshing with search: " + fyneUI.newGroupNameEntry.Text)
+				fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
 			})
 			removePendingUserButton.Alignment = widget.ButtonAlignLeading
 			removePendingUserButton.Importance = widget.LowImportance
@@ -74,7 +79,7 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections() {
 
 	// Update the available user to exclude these pending users
 	allUsersListBox := container.NewVBox()
-	for _, thisUser := range fyneUI.users.alphabetized() {
+	for _, thisUser := range allAvailableUsers {
 		// Exclude users that are pending addition to the group
 		if _, exists := fyneUI.newGroupSelectedUsers.get(thisUser.id); exists {
 			continue
@@ -86,7 +91,7 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections() {
 		func(u *user) {
 			addUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
 				fyneUI.newGroupSelectedUsers.add(u)
-				fyneUI.refreshNewGroupUserSelections()
+				fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
 			})
 			addUserButton.Alignment = widget.ButtonAlignLeading
 			addUserButton.Importance = widget.LowImportance
@@ -137,7 +142,7 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections() {
 				widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 					delete(fyneUI.newGroupPendingAdmins, u.id)
 					fyneUI.newGroupPendingUsers.remove(u.id)
-					fyneUI.refreshNewGroupUserSelections()
+					fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
 				}),
 			)
 			pendingUserRow := container.New(
@@ -172,10 +177,13 @@ func (fyneUI *Fyne) buildNewGroup() {
 	fyneUI.newGroupPendingUsers = newUserStore()
 	fyneUI.newGroupPendingAdmins = map[uuid.UUID]bool{}
 
-	newUserSearchEntry := widget.NewEntry() // TODO: on keypress, filter the available users
+	fyneUI.newGroupUserSearchEntry = widget.NewEntry()
+	fyneUI.newGroupUserSearchEntry.OnChanged = func(str string) {
+		fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(str))
+	}
 	newUserSelector := container.New(
-		layout.NewBorderLayout(newUserSearchEntry, nil, nil, nil),
-		newUserSearchEntry,
+		layout.NewBorderLayout(fyneUI.newGroupUserSearchEntry, nil, nil, nil),
+		fyneUI.newGroupUserSearchEntry,
 		container.NewVBox(
 			widget.NewLabel("Users to add:"),
 			fyneUI.newGroupSelectedUsersContainer,
@@ -190,7 +198,7 @@ func (fyneUI *Fyne) buildNewGroup() {
 			}
 		}
 		fyneUI.newGroupSelectedUsers.empty()
-		fyneUI.refreshNewGroupUserSelections()
+		fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
 	}, fyneUI.mainWindow)
 
 	fyneUI.newGroupNameEntry = widget.NewEntry()
