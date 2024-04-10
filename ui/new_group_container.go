@@ -218,7 +218,7 @@ func (fyneUI *Fyne) buildNewGroup() {
 		}
 
 		users := []chat.User{}
-		for _, user := range fyneUI.newGroupSelectedUsers.alphabetized() {
+		for _, user := range fyneUI.newGroupPendingUsers.alphabetized() {
 			users = append(users, chat.User{ID: user.id})
 		}
 

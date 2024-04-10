@@ -133,6 +133,9 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 			}
 		}
 		users = append(users, u)
+		if _, present := userMap[u.ID]; present {
+			return errors.New("cannot create group with duplicate users")
+		}
 		userMap[u.ID] = true
 		uiUsers = append(uiUsers, User{ID: u.ID, Name: u.Name})
 		if u.ID == b.currentUserID() {
@@ -147,10 +150,17 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 		return errors.New("cannot create a group with no admins")
 	}
 
+	adminStrings := []string{}
+	adminMap := map[uuid.UUID]bool{}
 	for _, adminID := range proposedGroup.Admins {
 		if _, present := userMap[adminID]; !present {
 			return errors.New("cannot create a group with an admin that is not also a member")
 		}
+		adminStrings = append(adminStrings, adminID.String())
+		if _, present := adminMap[adminID]; present {
+			return errors.New("cannot create group with duplicate admins")
+		}
+		adminMap[adminID] = true
 	}
 
 	if proposedGroup.LastActivity != 0 {
@@ -169,7 +179,7 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 		CreatedAt:              creationTime,
 		Retention:              proposedGroup.Retention,
 		Users:                  users,
-		Admins:                 b.currentUserID().String(),
+		Admins:                 strings.Join(adminStrings, ","),
 		RestrictUserManagement: true,
 		LastActivity:           time.Now().Unix(),
 	}
