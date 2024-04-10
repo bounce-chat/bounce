@@ -45,6 +45,7 @@ type group struct {
 	restrictGroupEditsCheck     *widget.Check
 	restrictPostingCheck        *widget.Check
 	scroll                      *container.Scroll
+	newUserSearchEntry          *widget.Entry
 	availableNewUsersScroll     *container.Scroll
 	currentUsersContainer       *container.Scroll
 	pendingUsersContainer       *container.Scroll

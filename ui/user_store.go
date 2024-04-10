@@ -62,7 +62,17 @@ func (store *userStore) remove(id uuid.UUID) {
 	}
 	store.userList = newList
 
-	// TODO: remove from ngrams
+	prunedNgrams := map[string][]*user{}
+	for gram, users := range store.ngrams {
+		usersWithoutThisUser := []*user{}
+		for _, u := range users {
+			if u.id != id {
+				usersWithoutThisUser = append(usersWithoutThisUser, u)
+			}
+		}
+		prunedNgrams[gram] = usersWithoutThisUser
+	}
+	store.ngrams = prunedNgrams
 }
 
 func (store *userStore) alphabetized() []*user {

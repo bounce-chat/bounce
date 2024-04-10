@@ -198,6 +198,8 @@ func (fyneUI *Fyne) buildNewGroup() {
 			}
 		}
 		fyneUI.newGroupSelectedUsers.empty()
+		fyneUI.newGroupUserSearchEntry.Text = ""
+		fyneUI.newGroupUserSearchEntry.Refresh()
 		fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
 	}, fyneUI.mainWindow)
 

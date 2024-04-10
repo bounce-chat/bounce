@@ -250,10 +250,13 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		currentUsersListView,
 	)
 
-	newUserSearchEntry := widget.NewEntry()
+	g.newUserSearchEntry = widget.NewEntry()
+	g.newUserSearchEntry.OnChanged = func(str string) {
+		fyneUI.refreshAvailableNewUsers(g, fyneUI.users.search(str))
+	}
 	newUserSelector := container.New(
-		layout.NewBorderLayout(newUserSearchEntry, nil, nil, nil),
-		newUserSearchEntry,
+		layout.NewBorderLayout(g.newUserSearchEntry, nil, nil, nil),
+		g.newUserSearchEntry,
 		container.NewVBox(
 			widget.NewLabel("Users to add:"),
 			g.pendingUsersContainer,
@@ -273,8 +276,9 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			g.pendingUsers.empty()
 			fyneUI.refreshUserSelections(g)
 		}
-		newUserSearchEntry.Text = ""
-		newUserSearchEntry.Refresh()
+		g.newUserSearchEntry.Text = ""
+		g.newUserSearchEntry.Refresh()
+		fyneUI.refreshAvailableNewUsers(g, fyneUI.users.search(g.newUserSearchEntry.Text))
 	}, fyneUI.mainWindow)
 	g.addUsersButton = widget.NewButton("Add Users", func() {
 		addUsersDialog.Show()
@@ -394,9 +398,9 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 	g.pendingUsersContainer.Refresh()
 }
 
-func (fyneUI *Fyne) refreshAvailableNewUsers(g *group) {
+func (fyneUI *Fyne) refreshAvailableNewUsers(g *group, allAvailableUsers []*user) {
 	allUsersListBox := container.NewVBox()
-	for _, thisUser := range fyneUI.users.alphabetized() {
+	for _, thisUser := range allAvailableUsers {
 		// Exclude users already in the group
 		if _, exists := g.users.get(thisUser.id); exists {
 			continue
@@ -435,5 +439,5 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(g *group) {
 
 func (fyneUI *Fyne) refreshUserSelections(g *group) {
 	fyneUI.refreshCurrentAndPendingUsers(g)
-	fyneUI.refreshAvailableNewUsers(g)
+	fyneUI.refreshAvailableNewUsers(g, fyneUI.users.search(g.newUserSearchEntry.Text))
 }
