@@ -128,7 +128,8 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections() {
 				}
 			})
 			if _, present := fyneUI.newGroupPendingAdmins[u.id]; present {
-				adminCheck.SetChecked(true)
+				adminCheck.Checked = true
+				adminCheck.Refresh()
 			}
 
 			optionButtons := container.NewHBox(
@@ -151,13 +152,22 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections() {
 			)
 		}(thisUser)
 	}
-	fyneUI.newGroupPendingUsersList.Objects = []fyne.CanvasObject{pendingUsersList}
+	fyneUI.newGroupPendingUsersList.Content = pendingUsersList
+	pendingUserHeight := float32(0)
+	for i, obj := range pendingUsersList.Objects {
+		if i == 6 {
+			break
+		}
+		pendingUserHeight += obj.MinSize().Height
+	}
+	fyneUI.newGroupPendingUsersList.SetMinSize(fyne.Size{Height: pendingUserHeight})
+	fyneUI.newGroupPendingUsersList.Refresh()
 }
 
 func (fyneUI *Fyne) buildNewGroup() {
 	fyneUI.newGroupSelectedUsersContainer = container.NewVScroll(container.NewVBox())
 	fyneUI.newGroupAllAvailableUsers = container.NewVScroll(container.NewVBox())
-	fyneUI.newGroupPendingUsersList = container.NewMax()
+	fyneUI.newGroupPendingUsersList = container.NewVScroll(container.NewVBox())
 	fyneUI.newGroupSelectedUsers = newUserStore()
 	fyneUI.newGroupPendingUsers = newUserStore()
 	fyneUI.newGroupPendingAdmins = map[uuid.UUID]bool{}

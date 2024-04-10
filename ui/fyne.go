@@ -46,9 +46,9 @@ type Fyne struct {
 	importContact                         *fyne.Container
 	threadVBox                            *fyne.Container
 	chatContainer                         *fyne.Container
-	newGroupSelectedUsersContainer        *container.Scroll
 	newGroupNameEntry                     *widget.Entry
-	newGroupPendingUsersList              *fyne.Container
+	newGroupSelectedUsersContainer        *container.Scroll
+	newGroupPendingUsersList              *container.Scroll
 	newGroupAllAvailableUsers             *container.Scroll
 	newGroupSelectedUsers                 *userStore
 	newGroupPendingUsers                  *userStore
