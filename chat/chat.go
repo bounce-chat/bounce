@@ -144,9 +144,16 @@ func (b *bounce) shutdown() {
 
 	// Stop any new attempts to dial
 	log.Info("waiting for peer auditing to finish")
-	b.devicePool.auditing.Lock()
-
-	// TODO: stop accepting connections, stop running new handlers?
+	devicePoolAuditingFinished := make(chan bool, 1)
+	go func() {
+		b.devicePool.auditing.Lock()
+		devicePoolAuditingFinished <- true
+	}()
+	select {
+	case <-devicePoolAuditingFinished:
+	case <-time.After(2 * time.Second):
+		log.Warn("waiting for the device pool to finish auditing took more than 2 seconds, giving up")
+	}
 
 	// Stop all running tasks and close all connections to remote devices
 	log.Info("closing all remote connections")
@@ -180,7 +187,6 @@ func (b *bounce) shutdown() {
 		b.network.Shutdown()
 		networkShutdown <- true
 	}()
-
 	select {
 	case <-networkShutdown:
 	case <-time.After(2 * time.Second):
