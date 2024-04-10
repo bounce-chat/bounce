@@ -301,22 +301,22 @@ type UICallbacks struct {
 	TypingInDirectMessage func(userID uuid.UUID)
 	TypingInGroup         func(groupID uuid.UUID)
 
-	CreateGroup              func(groupName string, userIDs []uuid.UUID) error // Create a new group
-	AddUser                  func(groupID, userID uuid.UUID) error             // The user wants to add another user to a group
-	RemoveUser               func(groupID, userID uuid.UUID) error             // User wants to remove a user from a group
-	RenameGroup              func(groupID uuid.UUID, newName string) error     // The user wants to rename a group
-	SetGroupRetention        func(groupID uuid.UUID, retention int64) error    // Set the message retention for a group
-	ClearGroupChatHistory    func(groupID uuid.UUID) error                     // Erase all history on all devices
-	SetGroupMutedUntil       func(groupID uuid.UUID, mutedUntil int64) error   // The user wants to change the notification settings for a group
-	PromoteAdmin             func(groupID, userID uuid.UUID) error             // Make a member of a group an admin
-	DemoteAdmin              func(groupID, userID uuid.UUID) error             // Remove admin permissions from a member of a group
-	RestrictUserManagement   func(groupID uuid.UUID) error                     // Restrict adding and removing users to only admins
-	UnrestrictUserManagement func(groupID uuid.UUID) error                     // Allow anyone to add or remove users
-	RestrictGroupEdits       func(groupID uuid.UUID) error                     // Restrict editing group properties to admin
-	UnrestrictGroupEdits     func(groupID uuid.UUID) error                     // Allow any user to edit group properties
-	RestrictPosting          func(groupID uuid.UUID) error                     // Restrict posting to only admins
-	UnrestrictPosting        func(groupID uuid.UUID) error                     // Allow any user to post
-	DeleteGroup              func(groupID uuid.UUID) error                     // Delete a group
+	CreateGroup              func(Group) error                               // Create a new group
+	AddUser                  func(groupID, userID uuid.UUID) error           // The user wants to add another user to a group
+	RemoveUser               func(groupID, userID uuid.UUID) error           // User wants to remove a user from a group
+	RenameGroup              func(groupID uuid.UUID, newName string) error   // The user wants to rename a group
+	SetGroupRetention        func(groupID uuid.UUID, retention int64) error  // Set the message retention for a group
+	ClearGroupChatHistory    func(groupID uuid.UUID) error                   // Erase all history on all devices
+	SetGroupMutedUntil       func(groupID uuid.UUID, mutedUntil int64) error // The user wants to change the notification settings for a group
+	PromoteAdmin             func(groupID, userID uuid.UUID) error           // Make a member of a group an admin
+	DemoteAdmin              func(groupID, userID uuid.UUID) error           // Remove admin permissions from a member of a group
+	RestrictUserManagement   func(groupID uuid.UUID) error                   // Restrict adding and removing users to only admins
+	UnrestrictUserManagement func(groupID uuid.UUID) error                   // Allow anyone to add or remove users
+	RestrictGroupEdits       func(groupID uuid.UUID) error                   // Restrict editing group properties to admin
+	UnrestrictGroupEdits     func(groupID uuid.UUID) error                   // Allow any user to edit group properties
+	RestrictPosting          func(groupID uuid.UUID) error                   // Restrict posting to only admins
+	UnrestrictPosting        func(groupID uuid.UUID) error                   // Allow any user to post
+	DeleteGroup              func(groupID uuid.UUID) error                   // Delete a group
 
 	SetDMMutedUntil    func(userID uuid.UUID, mutedUntil int64) error // Set a temporary mute on a DM by setting the unix timestamp to pause notifications until
 	SetDMRetention     func(userID uuid.UUID, retention int64) error  // Set the message retention settings for a DM

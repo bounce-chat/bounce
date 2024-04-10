@@ -248,12 +248,12 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		container.NewHBox(g.clearHistoryButton),
 		container.NewHBox(g.leaveGroupButton),
 		container.NewHBox(g.deleteGroupButton),
+		g.restrictUserManagementCheck,
+		g.restrictGroupEditsCheck,
+		g.restrictPostingCheck,
+		currentAdminsListView,
+		currentUsersListView,
 	)
-	topOptionsVBox.Add(g.restrictUserManagementCheck)
-	topOptionsVBox.Add(g.restrictGroupEditsCheck)
-	topOptionsVBox.Add(g.restrictPostingCheck)
-	topOptionsVBox.Add(currentAdminsListView)
-	topOptionsVBox.Add(currentUsersListView)
 
 	newUserSearchEntry := widget.NewEntry()
 	newUserSelector := container.New(

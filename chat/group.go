@@ -12,6 +12,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var groupMutex sync.Mutex
@@ -95,53 +96,78 @@ func (g *group) state() groupState {
 	return gs
 }
 
-func (b *bounce) createGroup(name string, userIDs []uuid.UUID) error {
-	if name == "" {
-		return errors.New("group must be named")
+func (b *bounce) createGroup(proposedGroup Group) error {
+	if proposedGroup.ID != uuid.Nil {
+		return errors.New("group UUID cannot be set from the UI")
+	}
+
+	if proposedGroup.Name == "" {
+		return errors.New("cannot create group without name")
+	}
+	if !validGroupName(proposedGroup.Name) {
+		return errInvalidGroupName
+	}
+
+	if len(proposedGroup.Users) == 0 {
+		return errors.New("cannot create a group without any users")
 	}
 
 	users := []user{}
+	userMap := map[uuid.UUID]bool{}
 	uiUsers := []User{}
 	userListContainsProfile := false
-	for _, userID := range userIDs {
+	for _, proposedUser := range proposedGroup.Users {
 		var u user
-		err := b.database.Where("id = ?", userID).First(&u).Error
+		err := b.database.Preload("Devices.Signature").Preload(clause.Associations).Where("id = ?", proposedUser.ID).First(&u).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"user_id": userID,
+					"user_id": proposedUser.ID,
 				}).Error("attempt to create a group with user ID that doesn't exist in the database")
 				return errors.New("cannot create group with unknown user")
 			} else {
 				log.WithFields(log.Fields{
-					"user_id": userID,
+					"user_id": proposedUser.ID,
 					"error":   err.Error(),
 				}).Fatal("error looking up user")
 			}
 		}
 		users = append(users, u)
+		userMap[u.ID] = true
 		uiUsers = append(uiUsers, User{ID: u.ID, Name: u.Name})
 		if u.ID == b.currentUserID() {
 			userListContainsProfile = true
 		}
 	}
 	if !userListContainsProfile {
-		profile, exists := b.currentUser()
-		if !exists {
-			log.Fatal("cannot create new group when no profile exists")
+		return errors.New("cannot create a new group without being a member")
+	}
+
+	if len(proposedGroup.Admins) == 0 {
+		return errors.New("cannot create a group with no admins")
+	}
+
+	for _, adminID := range proposedGroup.Admins {
+		if _, present := userMap[adminID]; !present {
+			return errors.New("cannot create a group with an admin that is not also a member")
 		}
-		users = append(users, profile)
-		uiUsers = append(uiUsers, User{ID: profile.ID, Name: profile.Name})
-		userIDs = append(userIDs, profile.ID)
+	}
+
+	if proposedGroup.LastActivity != 0 {
+		return errors.New("last activity for group cannot be set by the UI during group creation")
+	}
+
+	if proposedGroup.MutedUntil != 0 {
+		return errors.New("notification muting for group cannot be set by the UI during group creation")
 	}
 
 	creationTime := time.Now().Unix()
 	g := group{
 		ID:                     uuid.Nil,
-		Name:                   name,
+		Name:                   proposedGroup.Name,
 		CreatedBy:              b.currentUserID(),
 		CreatedAt:              creationTime,
-		Retention:              60 * 60 * 24 * 7, // TODO: have the default be a user setting
+		Retention:              proposedGroup.Retention,
 		Users:                  users,
 		Admins:                 b.currentUserID().String(),
 		RestrictUserManagement: true,

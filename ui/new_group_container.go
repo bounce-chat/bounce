@@ -2,7 +2,7 @@ package ui
 
 import (
 	"errors"
-	"image/color"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
+	"github.com/hkparker/bounce/chat"
 )
 
 func (fyneUI *Fyne) showNewGroup() {
@@ -23,37 +24,24 @@ func (fyneUI *Fyne) showNewGroup() {
 func (fyneUI *Fyne) clearNewGroupSelectors() {
 	fyneUI.newGroupCreateButton.Enable()
 	fyneUI.newGroupNameEntry.Enable()
+
+	// TODO: reset the image
+
 	fyneUI.newGroupNameEntry.Text = ""
 	fyneUI.newGroupNameEntry.Refresh()
 
-	// Empty the currently selected users
-	fyneUI.newGroupSelectedUsersContainer.Objects = []fyne.CanvasObject{}
-	fyneUI.newGroupSelectedUsersContainer.Refresh()
-
-	// Refresh the list of available users to all users that aren't us
-	allUsersListBox := container.NewVBox()
-	for _, thisUser := range fyneUI.users.alphabetized() {
-		// Don't include our user in the list of users for a chat
-		if thisUser.id == fyneUI.profile.id {
-			continue
-		}
-
-		// Anonymous function to cope the looped user
-		func(u *user) {
-			addUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
-				fyneUI.newGroupSelectedUsers.add(u)
-				fyneUI.refreshNewGroupUserSelections()
-			})
-			addUserButton.Alignment = widget.ButtonAlignLeading
-			addUserButton.Importance = widget.LowImportance
-			allUsersListBox.Objects = append(
-				allUsersListBox.Objects,
-				addUserButton,
-			)
-		}(thisUser)
+	fyneUI.newGroupPendingAdmins = map[uuid.UUID]bool{
+		fyneUI.profile.id: true,
 	}
-	fyneUI.newGroupAllAvailableUsers.Content = allUsersListBox
-	fyneUI.newGroupAllAvailableUsers.Refresh()
+	fyneUI.newGroupSelectedUsers.empty()
+	fyneUI.newGroupPendingUsers.empty()
+	fyneUI.newGroupPendingUsers.add(fyneUI.profile)
+	fyneUI.refreshNewGroupUserSelections()
+
+	fyneUI.newGroupRetentionSelection.Selected = getRetentionName(int64(time.Duration(24 * time.Hour * 7 * 4).Seconds())) // TODO: get default from database
+	fyneUI.newGroupUserManagementRestrictedCheck.SetChecked(true)                                                         // TODO: get default from database
+	fyneUI.newGroupGroupEditsRestrictedCheck.SetChecked(false)                                                            // TODO: get default from database
+	fyneUI.newGroupPostingRestrictedCheck.SetChecked(false)                                                               // TODO: get default from database
 }
 
 func (fyneUI *Fyne) refreshNewGroupUserSelections() {
@@ -69,15 +57,19 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections() {
 			removePendingUserButton.Importance = widget.LowImportance
 			currentUsersList.Objects = append(
 				currentUsersList.Objects,
-				container.New(
-					layout.NewMaxLayout(),
-					&canvas.Rectangle{FillColor: color.NRGBA{0, 0, 0x40, 0x40}},
-					removePendingUserButton,
-				),
+				removePendingUserButton,
 			)
 		}(thisUser)
 	}
-	fyneUI.newGroupSelectedUsersContainer.Objects = []fyne.CanvasObject{currentUsersList}
+	fyneUI.newGroupSelectedUsersContainer.Content = currentUsersList
+	selectedUserHeight := float32(0)
+	for i, obj := range currentUsersList.Objects {
+		if i == 3 {
+			break
+		}
+		selectedUserHeight += obj.MinSize().Height
+	}
+	fyneUI.newGroupSelectedUsersContainer.SetMinSize(fyne.Size{Height: selectedUserHeight})
 	fyneUI.newGroupSelectedUsersContainer.Refresh()
 
 	// Update the available user to exclude these pending users
@@ -87,8 +79,7 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections() {
 		if _, exists := fyneUI.newGroupSelectedUsers.get(thisUser.id); exists {
 			continue
 		}
-		// Exclude our users
-		if thisUser.id == fyneUI.profile.id {
+		if _, exists := fyneUI.newGroupPendingUsers.get(thisUser.id); exists {
 			continue
 		}
 
@@ -106,10 +97,106 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections() {
 		}(thisUser)
 	}
 	fyneUI.newGroupAllAvailableUsers.Content = allUsersListBox
+	availableUserHeight := float32(0)
+	for i, obj := range allUsersListBox.Objects {
+		if i == 3 {
+			break
+		}
+		availableUserHeight += obj.MinSize().Height
+	}
+	fyneUI.newGroupAllAvailableUsers.SetMinSize(fyne.Size{Height: availableUserHeight})
 	fyneUI.newGroupAllAvailableUsers.Refresh()
+
+	// Refresh the users that have been selected for the new group
+	pendingUsersList := container.NewVBox()
+	for _, thisUser := range fyneUI.newGroupPendingUsers.alphabetized() {
+		func(u *user) {
+			userIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
+			userIcon.FillMode = canvas.ImageFillContain
+			userIcon.SetMinSize(fyne.NewSquareSize(theme.IconInlineSize()))
+			userName := widget.NewLabel(u.name)
+			userDetails := container.NewHBox(
+				userIcon,
+				userName,
+			)
+
+			adminCheck := widget.NewCheck("Admin", func(checked bool) {
+				if checked {
+					fyneUI.newGroupPendingAdmins[u.id] = true
+				} else {
+					delete(fyneUI.newGroupPendingAdmins, u.id)
+				}
+			})
+			if _, present := fyneUI.newGroupPendingAdmins[u.id]; present {
+				adminCheck.SetChecked(true)
+			}
+
+			optionButtons := container.NewHBox(
+				adminCheck,
+				widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+					delete(fyneUI.newGroupPendingAdmins, u.id)
+					fyneUI.newGroupPendingUsers.remove(u.id)
+					fyneUI.refreshNewGroupUserSelections()
+				}),
+			)
+			pendingUserRow := container.New(
+				layout.NewBorderLayout(nil, nil, userDetails, optionButtons),
+				userDetails,
+				optionButtons,
+			)
+
+			pendingUsersList.Objects = append(
+				pendingUsersList.Objects,
+				pendingUserRow,
+			)
+		}(thisUser)
+	}
+	fyneUI.newGroupPendingUsersList.Objects = []fyne.CanvasObject{pendingUsersList}
 }
 
 func (fyneUI *Fyne) buildNewGroup() {
+	fyneUI.newGroupSelectedUsersContainer = container.NewVScroll(container.NewVBox())
+	fyneUI.newGroupAllAvailableUsers = container.NewVScroll(container.NewVBox())
+	fyneUI.newGroupPendingUsersList = container.NewMax()
+	fyneUI.newGroupSelectedUsers = newUserStore()
+	fyneUI.newGroupPendingUsers = newUserStore()
+	fyneUI.newGroupPendingAdmins = map[uuid.UUID]bool{}
+
+	newUserSearchEntry := widget.NewEntry() // TODO: on keypress, filter the available users
+	newUserSelector := container.New(
+		layout.NewBorderLayout(newUserSearchEntry, nil, nil, nil),
+		newUserSearchEntry,
+		container.NewVBox(
+			widget.NewLabel("Users to add:"),
+			fyneUI.newGroupSelectedUsersContainer,
+			widget.NewLabel("All Users:"),
+			fyneUI.newGroupAllAvailableUsers,
+		),
+	)
+	addUsersDialog := dialog.NewCustomConfirm("Add Users", "Save", "Cancel", newUserSelector, func(apply bool) {
+		if apply {
+			for _, u := range fyneUI.newGroupSelectedUsers.userList {
+				fyneUI.newGroupPendingUsers.add(u)
+			}
+		}
+		fyneUI.newGroupSelectedUsers.empty()
+		fyneUI.refreshNewGroupUserSelections()
+	}, fyneUI.mainWindow)
+
+	fyneUI.newGroupNameEntry = widget.NewEntry()
+
+	fyneUI.newGroupAddUsersButton = widget.NewButton("Add Users", func() {
+		addUsersDialog.Show()
+	})
+	fyneUI.newGroupRetentionSelection = widget.NewSelect(retentionSelections, nil)
+	fyneUI.newGroupRetentionSelection.Selected = getRetentionName(int64(time.Duration(24 * time.Hour * 7 * 4).Seconds())) // TODO: get default from database
+	fyneUI.newGroupUserManagementRestrictedCheck = widget.NewCheck("Restrict User Management", func(_ bool) {})
+	fyneUI.newGroupUserManagementRestrictedCheck.SetChecked(true) // TODO: get default from database
+	fyneUI.newGroupGroupEditsRestrictedCheck = widget.NewCheck("Restrict Group Edits", func(_ bool) {})
+	fyneUI.newGroupGroupEditsRestrictedCheck.SetChecked(false) // TODO: get default from database
+	fyneUI.newGroupPostingRestrictedCheck = widget.NewCheck("Restrict Posting", func(_ bool) {})
+	fyneUI.newGroupPostingRestrictedCheck.SetChecked(false) // TODO: get default from database
+
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		fyneUI.showMainContainer()
 	})
@@ -123,18 +210,35 @@ func (fyneUI *Fyne) buildNewGroup() {
 	fyneUI.newGroupCreateButton = widget.NewButton("Create", func() {
 		fyneUI.newGroupCreateButton.Disable()
 		fyneUI.newGroupNameEntry.Disable()
-		if fyneUI.newGroupNameEntry.Text == "" || len(fyneUI.newGroupSelectedUsers.alphabetized()) == 0 {
-			fyneUI.newGroupCreateButton.Enable()
-			fyneUI.newGroupNameEntry.Enable()
-			dialog.ShowError(errors.New("New groups must have a name and at least one user"), fyneUI.mainWindow)
-			return
+
+		selectedRetentionString := fyneUI.newGroupRetentionSelection.Selected
+		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
+		if !ok {
+			dialog.ShowError(errors.New("invalid retention selection: "+selectedRetentionString), fyneUI.mainWindow)
 		}
 
-		users := []uuid.UUID{}
+		users := []chat.User{}
 		for _, user := range fyneUI.newGroupSelectedUsers.alphabetized() {
-			users = append(users, user.id)
+			users = append(users, chat.User{ID: user.id})
 		}
-		err := fyneUI.callbacks.CreateGroup(fyneUI.newGroupNameEntry.Text, users)
+
+		admins := []uuid.UUID{}
+		for k, _ := range fyneUI.newGroupPendingAdmins {
+			admins = append(admins, k)
+		}
+
+		newGroup := chat.Group{
+			Name: fyneUI.newGroupNameEntry.Text,
+			//Image:
+			Users:                  users,
+			Admins:                 admins,
+			Retention:              selectedRetentionValue,
+			RestrictUserManagement: fyneUI.newGroupUserManagementRestrictedCheck.Checked,
+			RestrictGroupEdits:     fyneUI.newGroupGroupEditsRestrictedCheck.Checked,
+			RestrictPosting:        fyneUI.newGroupPostingRestrictedCheck.Checked,
+		}
+
+		err := fyneUI.callbacks.CreateGroup(newGroup)
 		if err != nil {
 			fyneUI.newGroupCreateButton.Enable()
 			fyneUI.newGroupNameEntry.Enable()
@@ -151,17 +255,31 @@ func (fyneUI *Fyne) buildNewGroup() {
 		cancelButton,
 	)
 
+	groupIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
+	groupIcon.FillMode = canvas.ImageFillContain
+	groupIcon.SetMinSize(fyne.NewSize(64, 64))
 	fyneUI.newGroup = container.New(
 		layout.NewBorderLayout(closeBar, actionButtons, nil, nil),
 		closeBar,
 		actionButtons,
-		container.New(
-			layout.NewBorderLayout(fyneUI.newGroupNameEntry, nil, nil, nil),
+		container.NewVBox(
+			groupIcon,
 			fyneUI.newGroupNameEntry,
-			container.New(
-				layout.NewBorderLayout(fyneUI.newGroupSelectedUsersContainer, nil, nil, nil),
-				fyneUI.newGroupSelectedUsersContainer,
-				fyneUI.newGroupAllAvailableUsers,
+			widget.NewLabel("Users:"),
+			fyneUI.newGroupPendingUsersList,
+			container.NewHBox(fyneUI.newGroupAddUsersButton),
+			widget.NewAccordion(
+				&widget.AccordionItem{
+					Title: "Advanced Options",
+					Detail: container.NewVBox(
+						widget.NewLabel("Disappearing Messages"),
+						fyneUI.newGroupRetentionSelection,
+						widget.NewLabel("Permissions"),
+						fyneUI.newGroupUserManagementRestrictedCheck,
+						fyneUI.newGroupGroupEditsRestrictedCheck,
+						fyneUI.newGroupPostingRestrictedCheck,
+					),
+				},
 			),
 		),
 	)
