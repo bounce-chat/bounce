@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 
+	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 
 	"fyne.io/fyne/v2"
@@ -225,18 +226,11 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		cancelButton,
 	)
 
-	adminsLabel := widget.NewLabel("Admins:")
-	currentAdminsListView := container.New(
-		layout.NewBorderLayout(adminsLabel, nil, nil, nil),
-		adminsLabel,
-		g.currentAdminsContainer, // TODO: eventually this will get so long it breaks the UI.  Need a better looking scroll wrapper.  https://github.com/fyne-io/fyne/issues/2322
-	)
-
 	usersLabel := widget.NewLabel("Users:")
 	currentUsersListView := container.New(
 		layout.NewBorderLayout(usersLabel, nil, nil, nil),
 		usersLabel,
-		g.currentUsersContainer, // TODO: eventually this will get so long it breaks the UI.  Need a better looking scroll wrapper.  https://github.com/fyne-io/fyne/issues/2322
+		g.currentUsersContainer,
 	)
 
 	topOptionsVBox := container.NewVBox(
@@ -245,13 +239,14 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		g.notificationsEnabledCheck,
 		widget.NewLabel("Disappearing Messages"),
 		g.retentionSelection,
-		container.NewHBox(g.clearHistoryButton),
-		container.NewHBox(g.leaveGroupButton),
-		container.NewHBox(g.deleteGroupButton),
+		container.NewHBox(
+			container.NewHBox(g.clearHistoryButton),
+			container.NewHBox(g.leaveGroupButton),
+			container.NewHBox(g.deleteGroupButton),
+		),
 		g.restrictUserManagementCheck,
 		g.restrictGroupEditsCheck,
 		g.restrictPostingCheck,
-		currentAdminsListView,
 		currentUsersListView,
 	)
 
@@ -303,7 +298,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			container.New(
 				layout.NewBorderLayout(topOptionsVBox, nil, nil, nil),
 				topOptionsVBox,
-				container.NewVBox(container.NewHBox(g.addUsersButton)), // TODO: make it not expand all the way down
+				container.NewVBox(container.NewHBox(g.addUsersButton)),
 			),
 			closeBar,
 			actionButtons,
@@ -313,10 +308,27 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 
 func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 	currentUsersList := container.NewVBox()
-	pendingUsersList := container.NewVBox()
-	currentAdminsList := container.NewVBox()
-
+	adminMap := map[uuid.UUID]bool{}
+	for _, adminID := range g.admins {
+		adminMap[adminID] = true
+	}
+	adminSorted := []*user{}
 	for _, thisUser := range g.users.alphabetized() {
+		func(u *user) {
+			if _, present := adminMap[u.id]; present {
+				adminSorted = append(adminSorted, u)
+			}
+		}(thisUser)
+	}
+	for _, thisUser := range g.users.alphabetized() {
+		func(u *user) {
+			if _, present := adminMap[u.id]; !present {
+				adminSorted = append(adminSorted, u)
+			}
+		}(thisUser)
+	}
+
+	for _, thisUser := range adminSorted {
 		func(u *user) {
 			userDetailsButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() {
 				fyneUI.getEditUserDialog(g, u.id).Show()
@@ -325,9 +337,16 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 			userDetailsButton.Importance = widget.LowImportance
 
 			if g.isAdmin(u.id) {
-				currentAdminsList.Objects = append(
-					currentAdminsList.Objects,
+				adminLabel := widget.NewLabel("Admin")
+				userDetailsRow := container.New(
+					layout.NewBorderLayout(nil, nil, nil, adminLabel),
+					adminLabel,
 					userDetailsButton,
+				)
+
+				currentUsersList.Objects = append(
+					currentUsersList.Objects,
+					userDetailsRow,
 				)
 			} else {
 				currentUsersList.Objects = append(
@@ -337,7 +356,18 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 			}
 		}(thisUser)
 	}
+	g.currentUsersContainer.Content = currentUsersList
+	currentUserHeight := float32(0)
+	for i, obj := range currentUsersList.Objects {
+		if i == 6 {
+			break
+		}
+		currentUserHeight += obj.MinSize().Height
+	}
+	g.currentUsersContainer.SetMinSize(fyne.Size{Height: currentUserHeight})
+	g.currentUsersContainer.Refresh()
 
+	pendingUsersList := container.NewVBox()
 	for _, thisUser := range g.pendingUsers.alphabetized() {
 		func(u *user) {
 			removePendingUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
@@ -352,12 +382,15 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 			)
 		}(thisUser)
 	}
-
-	g.currentAdminsContainer.Objects = []fyne.CanvasObject{currentAdminsList}
-	g.currentAdminsContainer.Refresh()
-	g.currentUsersContainer.Objects = []fyne.CanvasObject{currentUsersList}
-	g.currentUsersContainer.Refresh()
-	g.pendingUsersContainer.Objects = []fyne.CanvasObject{pendingUsersList}
+	g.pendingUsersContainer.Content = pendingUsersList
+	pendingUserHeight := float32(0)
+	for i, obj := range pendingUsersList.Objects {
+		if i == 3 {
+			break
+		}
+		pendingUserHeight += obj.MinSize().Height
+	}
+	g.pendingUsersContainer.SetMinSize(fyne.Size{Height: pendingUserHeight})
 	g.pendingUsersContainer.Refresh()
 }
 
@@ -375,8 +408,6 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(g *group) {
 
 		// TODO: filter by what's in the search entry, or make searching a feature in the user store and pull from that
 
-		// This weirdness is so that the iteration over user works with the dynamically created buttons
-		// TODO: make sure I'm not making this mistake anywhere else
 		func(u *user) {
 			addUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
 				g.pendingUsers.add(u)
@@ -391,6 +422,14 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(g *group) {
 		}(thisUser)
 	}
 	g.availableNewUsersScroll.Content = allUsersListBox
+	availableUserHeight := float32(0)
+	for i, obj := range allUsersListBox.Objects {
+		if i == 3 {
+			break
+		}
+		availableUserHeight += obj.MinSize().Height
+	}
+	g.availableNewUsersScroll.SetMinSize(fyne.Size{Height: availableUserHeight})
 	g.availableNewUsersScroll.Refresh()
 }
 

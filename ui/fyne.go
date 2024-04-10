@@ -179,13 +179,6 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		fyneUI.users.add(&user{id: u.ID, name: u.Name})
 		initialDMStates[u.ID] = u.State
 	}
-	fyneUI.users.add(&user{id: uuid.New(), name: "A"})
-	fyneUI.users.add(&user{id: uuid.New(), name: "B"})
-	fyneUI.users.add(&user{id: uuid.New(), name: "C"})
-	fyneUI.users.add(&user{id: uuid.New(), name: "D"})
-	fyneUI.users.add(&user{id: uuid.New(), name: "E"})
-	fyneUI.users.add(&user{id: uuid.New(), name: "F"})
-	fyneUI.users.add(&user{id: uuid.New(), name: "G"})
 
 	for _, g := range state.Groups {
 		fyneUI.NewGroupChat(g)

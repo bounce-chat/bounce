@@ -46,9 +46,8 @@ type group struct {
 	restrictPostingCheck        *widget.Check
 	scroll                      *container.Scroll
 	availableNewUsersScroll     *container.Scroll
-	currentAdminsContainer      *fyne.Container
-	currentUsersContainer       *fyne.Container
-	pendingUsersContainer       *fyne.Container
+	currentUsersContainer       *container.Scroll
+	pendingUsersContainer       *container.Scroll
 	adminChecks                 map[uuid.UUID]*widget.Check
 	adminChecksMutex            sync.Mutex
 	removeUserButtons           map[uuid.UUID]*widget.Button
@@ -300,9 +299,8 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		pendingUsers:            newUserStore(),
 		scroll:                  container.NewVScroll(container.NewVBox()),
 		availableNewUsersScroll: container.NewVScroll(container.NewVBox()),
-		currentAdminsContainer:  container.NewMax(),
-		currentUsersContainer:   container.NewMax(),
-		pendingUsersContainer:   container.NewMax(),
+		currentUsersContainer:   container.NewVScroll(container.NewVBox()),
+		pendingUsersContainer:   container.NewVScroll(container.NewVBox()),
 		adminChecks:             make(map[uuid.UUID]*widget.Check),
 		removeUserButtons:       make(map[uuid.UUID]*widget.Button),
 		editUserDialogs:         make(map[uuid.UUID]dialog.Dialog),
