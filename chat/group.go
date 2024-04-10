@@ -180,7 +180,9 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 		Retention:              proposedGroup.Retention,
 		Users:                  users,
 		Admins:                 strings.Join(adminStrings, ","),
-		RestrictUserManagement: true,
+		RestrictUserManagement: proposedGroup.RestrictUserManagement,
+		RestrictGroupEdits:     proposedGroup.RestrictGroupEdits,
+		RestrictPosting:        proposedGroup.RestrictPosting,
 		LastActivity:           time.Now().Unix(),
 	}
 
@@ -250,9 +252,12 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 	b.userInterface.OpenNewGroupChat(Group{
 		ID:                     g.ID,
 		Name:                   g.Name,
+		Retention:              proposedGroup.Retention,
 		Users:                  uiUsers,
-		Admins:                 []uuid.UUID{b.currentUserID()},
-		RestrictUserManagement: true,
+		Admins:                 proposedGroup.Admins,
+		RestrictUserManagement: proposedGroup.RestrictUserManagement,
+		RestrictGroupEdits:     proposedGroup.RestrictGroupEdits,
+		RestrictPosting:        proposedGroup.RestrictPosting,
 	})
 
 	return nil
