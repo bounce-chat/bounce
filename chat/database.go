@@ -342,6 +342,8 @@ func (b *bounce) buildInitialState() InitialState {
 			Name:                   g.Name,
 			Users:                  userList,
 			Admins:                 adminList,
+			CreatedBy:              g.CreatedBy,
+			CreatedAt:              g.CreatedAt,
 			Retention:              g.Retention,
 			LastActivity:           g.LastActivity,
 			RestrictUserManagement: g.RestrictUserManagement,

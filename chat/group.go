@@ -255,6 +255,8 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 		Retention:              proposedGroup.Retention,
 		Users:                  uiUsers,
 		Admins:                 proposedGroup.Admins,
+		CreatedBy:              g.CreatedBy,
+		CreatedAt:              g.CreatedAt,
 		RestrictUserManagement: proposedGroup.RestrictUserManagement,
 		RestrictGroupEdits:     proposedGroup.RestrictGroupEdits,
 		RestrictPosting:        proposedGroup.RestrictPosting,

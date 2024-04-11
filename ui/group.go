@@ -384,6 +384,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		fyneUI.displayThread(group)
 		fyneUI.callbacks.GroupConnectionDesired(group.id)
 	})
+
 	// Keep the last message time counter up to date
 	go func() {
 		for {
@@ -414,6 +415,15 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	fyneUI.groups[group.id] = group
 	fyneUI.refreshThreadOrder()
 	fyneUI.updateEnabledFeatures(group)
+
+	ti, err := fyneUI.newGroupCreated(group.id, group.id, bounceGroup.CreatedBy, bounceGroup.CreatedAt)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"group": group.id,
+		}).Warn("error created thread item for group creation")
+	}
+	fyneUI.appendThreadItem(group, ti)
 }
 
 func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {

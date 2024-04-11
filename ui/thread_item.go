@@ -314,6 +314,16 @@ func (fyneUI *Fyne) newUpdateGroupPostingUnrestricted(ugpu chat.UpdateGroupPosti
 	)
 }
 
+func (fyneUI *Fyne) newGroupCreated(id, groupID, actorID uuid.UUID, timestamp int64) (*threadItem, error) {
+	return fyneUI.newStatusChangeThreadItem(
+		id,
+		groupID,
+		actorID,
+		"created the group",
+		timestamp,
+	)
+}
+
 func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, changeString string, timestamp int64) (*threadItem, error) {
 	t, ok := fyneUI.getThread(threadID)
 	if !ok {

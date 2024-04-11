@@ -53,6 +53,8 @@ type Group struct {
 	Retention              int64
 	MutedUntil             int64
 	LastActivity           int64
+	CreatedBy              uuid.UUID
+	CreatedAt              int64
 	RestrictUserManagement bool
 	RestrictGroupEdits     bool
 	RestrictPosting        bool

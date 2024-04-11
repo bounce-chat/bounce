@@ -289,6 +289,8 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		Name:                   g.Name,
 		Users:                  uiUsers,
 		Admins:                 adminUUIDs,
+		CreatedBy:              g.CreatedBy,
+		CreatedAt:              g.CreatedAt,
 		Retention:              g.Retention,
 		MutedUntil:             g.MutedUntil,
 		LastActivity:           g.LastActivity,
