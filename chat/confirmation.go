@@ -89,8 +89,8 @@ func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 	defer groupMutex.Unlock()
 
 	// Unmarshal the confirmation
-	var c *confirmation
-	err := msgpack.Unmarshal(payload, c)
+	var c confirmation
+	err := msgpack.Unmarshal(payload, &c)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -163,7 +163,7 @@ func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 	}
 
 	// Save it
-	err = b.database.Create(c).Error
+	err = b.database.Create(&c).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -177,7 +177,7 @@ func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 		}
 	}
 
-	return c
+	return &c
 }
 
 func (b *bounce) sendConfirmation(ug updateGroup) {
