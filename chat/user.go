@@ -94,25 +94,6 @@ func (b *bounce) getDMRetention(id uuid.UUID) int64 {
 	return u.Retention
 }
 
-func (b *bounce) getDMMutedUntil(userID uuid.UUID) (int64, error) {
-	var u user
-	err := b.database.Select("muted_until").First(&u, "id = ?", userID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"user_id": u,
-			}).Warn("cannot query muted until settings for user not found in database")
-			return 0, err
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up user muted until")
-		}
-	}
-
-	return u.MutedUntil, nil
-}
-
 func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 	newID := uuid.New()
 

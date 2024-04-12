@@ -811,7 +811,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		}
 	}
 
-	// Find any canonical update groups that have not been applied and make them as applied and inform them UI
+	// Find any canonical update groups that have not been applied and make them as applied and inform the UI if needed
 	canonical := make(map[uuid.UUID]bool)
 	everInGroup := make(map[uuid.UUID]bool)
 	for _, gs := range cs.history[1:] {
@@ -822,7 +822,9 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				return err
 			}
 
-			b.applyUpdateGroupInUI(gs.ug)
+			if !finalState.deleted && finalState.isMember(b.currentUserID()) {
+				b.applyUpdateGroupInUI(gs.ug)
+			}
 
 			if gs.ug.Type == updateGroupTypeAddUser {
 				var newUser user
@@ -838,10 +840,13 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				}
 			}
 
+			// If we were a member of the group for this update, and we are still in the group and it is not deleted, broadcast a confirmation
 			if gs.isMember(b.currentUserID()) {
 				b.updateLastGroupActivity(gs.ug.Target, gs.ug.Timestamp)
 				if gs.ug.Actor != b.currentUserID() {
-					b.sendConfirmation(gs.ug)
+					if !finalState.deleted && finalState.isMember(b.currentUserID()) {
+						b.sendConfirmation(gs.ug)
+					}
 				}
 			}
 		}

@@ -195,7 +195,9 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		}
 
 		// Update the group consensis
+		groupMutex.Lock()
 		b.updateGroupConsensus(groupID)
+		groupMutex.Unlock()
 
 		// Get the user IDs for this group again, send references to any new users
 		var updatedUserIDs []uuid.UUID
