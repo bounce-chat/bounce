@@ -107,20 +107,22 @@ func (b *bounce) addBlockedGroup(groupID uuid.UUID) {
 
 	blocked := []string{}
 	alreadyBlocked := false
-	for _, blockedIDString := range strings.Split(joinedBlockedGroups, ",") {
-		blockedID, err := uuid.Parse(blockedIDString)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":          err.Error(),
-				"user_id":        b.currentUserID(),
-				"blocked_groups": joinedBlockedGroups,
-			}).Fatal("invalid UUID in blocked groups list")
+	if len(joinedBlockedGroups) > 0 {
+		for _, blockedIDString := range strings.Split(joinedBlockedGroups, ",") {
+			blockedID, err := uuid.Parse(blockedIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":          err.Error(),
+					"user_id":        b.currentUserID(),
+					"blocked_groups": joinedBlockedGroups,
+				}).Fatal("invalid UUID in blocked groups list")
 
+			}
+			if blockedID == groupID {
+				alreadyBlocked = true
+			}
+			blocked = append(blocked, blockedIDString)
 		}
-		if blockedID == groupID {
-			alreadyBlocked = true
-		}
-		blocked = append(blocked, blockedIDString)
 	}
 	if !alreadyBlocked {
 		blocked = append(blocked, groupID.String())
@@ -145,17 +147,19 @@ func (b *bounce) blockedGroups() []uuid.UUID {
 		}).Fatal("error selecting profile user blocked groups")
 	}
 
-	for _, blockedIDString := range strings.Split(joinedBlockedGroups, ",") {
-		blockedID, err := uuid.Parse(blockedIDString)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":          err.Error(),
-				"user_id":        b.currentUserID(),
-				"blocked_groups": joinedBlockedGroups,
-			}).Fatal("invalid UUID in blocked groups list")
+	if len(joinedBlockedGroups) > 0 {
+		for _, blockedIDString := range strings.Split(joinedBlockedGroups, ",") {
+			blockedID, err := uuid.Parse(blockedIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":          err.Error(),
+					"user_id":        b.currentUserID(),
+					"blocked_groups": joinedBlockedGroups,
+				}).Fatal("invalid UUID in blocked groups list")
 
+			}
+			blocked = append(blocked, blockedID)
 		}
-		blocked = append(blocked, blockedID)
 	}
 
 	return blocked
