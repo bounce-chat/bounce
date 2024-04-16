@@ -128,7 +128,7 @@ func (b *bounce) addBlockedGroup(groupID uuid.UUID) {
 		blocked = append(blocked, groupID.String())
 	}
 
-	err = b.database.Model(&profileSettings{}).Select("blocked_groups").Update("blocked_groups", strings.Join(blocked, ",")).Where("user_id = ?", b.currentUserID()).Error
+	err = b.database.Model(&profileSettings{}).Select("blocked_groups").Where("user_id = ?", b.currentUserID()).Update("blocked_groups", strings.Join(blocked, ",")).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

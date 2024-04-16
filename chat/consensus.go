@@ -1001,6 +1001,45 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		return b.database.Delete(&g).Error
 	}
 
+	// If we blocked this group, save that on user, custom scope our block update, and delete the group
+	if finalState.isBlocked(b.currentUserID()) {
+		// Add this group to our list of blocked groups
+		b.addBlockedGroup(g.ID)
+
+		// Find our block update and custom scope it
+		for i := len(cs.history) - 1; i >= 0; i-- {
+			ug := cs.history[i].ug
+			if ug.Type == updateGroupTypeBlock && ug.Actor == b.currentUserID() {
+				err = b.createCustomScopeFromGroup(ug.Target)
+				if err == nil {
+					err = b.database.Model(&ug).Select("custom_scope").Update("custom_scope", ug.Target).Error
+					if err != nil {
+						log.WithFields(log.Fields{
+							"update_group_id": ug.ID,
+							"error":           err.Error(),
+						}).Fatal("error updating custom scope on update group")
+					}
+				} else {
+					log.WithFields(log.Fields{
+						"update_group_id": ug.ID,
+						"error":           err.Error(),
+					}).Error("error creating custom scope for update group")
+				}
+
+				break
+			}
+		}
+
+		// Inform the UI
+		b.userInterface.GroupDeleted(GroupDeleted{
+			Group: g.ID,
+			Actor: b.currentUserID(),
+		})
+
+		// Delete the group
+		return b.database.Delete(&g).Error
+	}
+
 	// If the final state involves us being removed from the group, delete the group
 	if !finalState.isMember(b.currentUserID()) {
 		// Find the most recent update group that removed us
@@ -1046,45 +1085,6 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		b.userInterface.RemovedFromGroup(RemovedFromGroup{
 			Group: g.ID,
 			Actor: removalActor,
-		})
-
-		// Delete the group
-		return b.database.Delete(&g).Error
-	}
-
-	// If we blocked this group, save that on user, custom scope our block update, and delete the group
-	if finalState.isBlocked(b.currentUserID()) {
-		// Add this group to our list of blocked groups
-		b.addBlockedGroup(g.ID)
-
-		// Find our block update and custom scope it
-		for i := len(cs.history) - 1; i >= 0; i-- {
-			ug := cs.history[i].ug
-			if ug.Type == updateGroupTypeBlock && ug.Actor == b.currentUserID() {
-				err = b.createCustomScopeFromGroup(ug.Target)
-				if err == nil {
-					err = b.database.Model(&ug).Select("custom_scope").Update("custom_scope", ug.Target).Error
-					if err != nil {
-						log.WithFields(log.Fields{
-							"update_group_id": ug.ID,
-							"error":           err.Error(),
-						}).Fatal("error updating custom scope on update group")
-					}
-				} else {
-					log.WithFields(log.Fields{
-						"update_group_id": ug.ID,
-						"error":           err.Error(),
-					}).Error("error creating custom scope for update group")
-				}
-
-				break
-			}
-		}
-
-		// Inform the UI
-		b.userInterface.GroupDeleted(GroupDeleted{
-			Group: g.ID,
-			Actor: b.currentUserID(),
 		})
 
 		// Delete the group
