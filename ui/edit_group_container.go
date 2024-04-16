@@ -105,6 +105,24 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		confirmDeleteGroup.Show()
 	})
 
+	confirmBlockGroup := dialog.NewConfirm(
+		"Block this group?",
+		"Are you sure you want to block this group?  You will never be able to join this group again.",
+		func(confirmed bool) {
+			if confirmed {
+				err := fyneUI.callbacks.BlockGroup(g.id)
+				if err != nil {
+					dialog.ShowError(errors.New("error blocking group: "+err.Error()), fyneUI.mainWindow)
+				}
+				fyneUI.showMainContainer()
+			}
+		},
+		fyneUI.mainWindow,
+	)
+	g.blockGroupButton = widget.NewButton("Block Group", func() {
+		confirmBlockGroup.Show()
+	})
+
 	saveButton := widget.NewButton("Save", func() {
 		// Update the g name if it was changed
 		currentThreadName, err := g.name.Get()
@@ -243,6 +261,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			container.NewHBox(g.clearHistoryButton),
 			container.NewHBox(g.leaveGroupButton),
 			container.NewHBox(g.deleteGroupButton),
+			container.NewHBox(g.blockGroupButton),
 		),
 		g.restrictUserManagementCheck,
 		g.restrictGroupEditsCheck,
@@ -399,6 +418,11 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 }
 
 func (fyneUI *Fyne) refreshAvailableNewUsers(g *group, allAvailableUsers []*user) {
+	blockedUsersMap := map[uuid.UUID]bool{}
+	for _, id := range g.blockedUsers {
+		blockedUsersMap[id] = true
+	}
+
 	allUsersListBox := container.NewVBox()
 	for _, thisUser := range allAvailableUsers {
 		// Exclude users already in the group
@@ -410,7 +434,10 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(g *group, allAvailableUsers []*user
 			continue
 		}
 
-		// TODO: filter by what's in the search entry, or make searching a feature in the user store and pull from that
+		// Hide blocked users
+		if _, exists := blockedUsersMap[thisUser.id]; exists {
+			continue
+		}
 
 		func(u *user) {
 			addUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon

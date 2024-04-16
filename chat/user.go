@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,34 +16,23 @@ import (
 )
 
 type user struct {
-	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name         string
-	Profile      bool  `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
-	Retention    int64 `json:"-" msgpack:"-"`
-	ClearBefore  int64 `json:"-" msgpack:"-"`
-	MutedUntil   int64 `json:"-" msgpack:"-"`
-	LastActivity int64 `json:"-" msgpack:"-"`
-	Devices      []device
-	Groups       []group `gorm:"many2many:group_users;" json:"-"`
-	payload      []byte
-	payloadMutex sync.Mutex
+	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name            string
+	Profile         bool  `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
+	Retention       int64 `json:"-" msgpack:"-"`
+	ClearBefore     int64 `json:"-" msgpack:"-"`
+	MutedUntil      int64 `json:"-" msgpack:"-"`
+	LastActivity    int64 `json:"-" msgpack:"-"`
+	Devices         []device
+	Groups          []group          `gorm:"many2many:group_users;" json:"-" msgpack"-"`
+	ProfileSettings *profileSettings `json:"-" msgpack:"-"`
+	payload         []byte
+	payloadMutex    sync.Mutex
 }
 
 func (u *user) BeforeCreate(tx *gorm.DB) error {
 	if u.ID == uuid.Nil {
 		return errors.New("user ID must be set before creation")
-	}
-
-	if u.Profile {
-		var count int64
-		err := tx.Model(&user{}).Where("profile = ?", true).Count(&count).Error
-		if err != nil {
-			return err
-		}
-		if count > 0 {
-			return errors.New("profile user already exists")
-		}
-		u.MutedUntil = MutedForever
 	}
 
 	u.LastActivity = time.Now().Unix()
@@ -62,6 +52,18 @@ func (b *bounce) currentUser() (user, bool) {
 			}).Fatal("error loading current user")
 		}
 	}
+
+	// TODO: temp migration to create profile settings
+	if currentUser.ProfileSettings == nil {
+		err := b.database.Create(&profileSettings{ID: uuid.New(), UserID: currentUser.ID}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error creating profile settings")
+		}
+	}
+	// TODO: delete the above
+
 	return currentUser, true
 }
 
@@ -94,6 +96,71 @@ func (b *bounce) getDMRetention(id uuid.UUID) int64 {
 	return u.Retention
 }
 
+func (b *bounce) addBlockedGroup(groupID uuid.UUID) {
+	var joinedBlockedGroups string
+	err := b.database.Model(&profileSettings{}).Select("blocked_groups").Where("user_id = ?", b.currentUserID()).First(&joinedBlockedGroups).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting profile user blocked groups")
+	}
+
+	blocked := []string{}
+	alreadyBlocked := false
+	for _, blockedIDString := range strings.Split(joinedBlockedGroups, ",") {
+		blockedID, err := uuid.Parse(blockedIDString)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":          err.Error(),
+				"user_id":        b.currentUserID(),
+				"blocked_groups": joinedBlockedGroups,
+			}).Fatal("invalid UUID in blocked groups list")
+
+		}
+		if blockedID == groupID {
+			alreadyBlocked = true
+		}
+		blocked = append(blocked, blockedIDString)
+	}
+	if !alreadyBlocked {
+		blocked = append(blocked, groupID.String())
+	}
+
+	err = b.database.Model(&profileSettings{}).Select("blocked_groups").Update("blocked_groups", strings.Join(blocked, ",")).Where("user_id = ?", b.currentUserID()).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error updating blocked groups list")
+	}
+}
+
+func (b *bounce) blockedGroups() []uuid.UUID {
+	blocked := []uuid.UUID{}
+
+	var joinedBlockedGroups string
+	err := b.database.Model(&profileSettings{}).Select("blocked_groups").Where("user_id = ?", b.currentUserID()).First(&joinedBlockedGroups).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting profile user blocked groups")
+	}
+
+	for _, blockedIDString := range strings.Split(joinedBlockedGroups, ",") {
+		blockedID, err := uuid.Parse(blockedIDString)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":          err.Error(),
+				"user_id":        b.currentUserID(),
+				"blocked_groups": joinedBlockedGroups,
+			}).Fatal("invalid UUID in blocked groups list")
+
+		}
+		blocked = append(blocked, blockedID)
+	}
+
+	return blocked
+}
+
 func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 	newID := uuid.New()
 
@@ -115,6 +182,7 @@ func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 				Timestamp: time.Now().Unix(),
 			},
 		},
+		ProfileSettings: &profileSettings{},
 	}).Error
 }
 

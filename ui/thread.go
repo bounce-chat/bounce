@@ -140,7 +140,7 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 		t.chatHistoryScroll().Refresh()
 	}
 
-	notificationsEnabled := t.getNotificationsMutedUntil() != chat.MutedForever
+	notificationsEnabled := (t.getNotificationsMutedUntil() != chat.MutedForever) && !(t.getID() == fyneUI.profile.id)
 	notificationsMuted := time.Now().Unix() < t.getNotificationsMutedUntil()
 
 	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll { //TODO: also notify if this is false but we're not focused?

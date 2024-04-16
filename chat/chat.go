@@ -94,6 +94,7 @@ func Start(network Network, ui UI) {
 			RestrictPosting:          b.restrictPosting,
 			UnrestrictPosting:        b.unrestrictPosting,
 			DeleteGroup:              b.deleteGroup,
+			BlockGroup:               b.blockGroup,
 			SetProfile:               b.setProfile,
 			ImportUser:               b.importUser,
 			ExportContact:            b.exportContact,

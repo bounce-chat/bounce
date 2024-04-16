@@ -111,6 +111,13 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 	gc.Signature = sc.Signature
 	gc.Signer = sc.Signer
 
+	// Ignore group creations for blocked groups
+	for _, blockedGroup := range b.blockedGroups() {
+		if gc.ID == blockedGroup {
+			return nil
+		}
+	}
+
 	// Make sure the ID of this group creation matches the hash of the group data
 	hasher := blake3.New()
 	written, _ := hasher.Write(gc.Data)

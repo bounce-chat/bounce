@@ -50,6 +50,7 @@ type Group struct {
 	Image                  []byte
 	Users                  []User
 	Admins                 []uuid.UUID
+	BlockedUsers           []uuid.UUID
 	Retention              int64
 	MutedUntil             int64
 	LastActivity           int64
@@ -180,6 +181,13 @@ type GroupDeleted struct {
 	Actor uuid.UUID
 }
 
+type UserBlockedGroup struct {
+	ID        uuid.UUID
+	Thread    uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+}
+
 type InitialState struct {
 	Profile                                *User
 	Users                                  []User
@@ -256,6 +264,7 @@ type UI interface {
 	RemoveUser(UpdateGroupRemoveUser)
 	RemovedFromGroup(RemovedFromGroup)
 	GroupDeleted(GroupDeleted)
+	UserBlockedGroup(UserBlockedGroup)
 	RenameGroup(UpdateGroupName)
 	GroupRetentionChanged(UpdateGroupRetention)
 	GroupChatHistoryCleared(UpdateGroupClearHistory)
@@ -268,7 +277,7 @@ type UI interface {
 	PostingRestricted(UpdateGroupPostingRestricted)
 	PostingUnrestricted(UpdateGroupPostingUnrestricted)
 
-	ShowTypingIndicatorInHistory(userID, threadID uuid.UUID) // TODO: why did I split these?
+	ShowTypingIndicatorInHistory(userID, threadID uuid.UUID)
 	ShowTypingIndicatorInButton(userID, threadID uuid.UUID)
 	HideTypingIndicatorInHistory(userID, threadID uuid.UUID)
 	HideTypingIndicatorInButton(threadID uuid.UUID)
@@ -319,6 +328,7 @@ type UICallbacks struct {
 	RestrictPosting          func(groupID uuid.UUID) error                   // Restrict posting to only admins
 	UnrestrictPosting        func(groupID uuid.UUID) error                   // Allow any user to post
 	DeleteGroup              func(groupID uuid.UUID) error                   // Delete a group
+	BlockGroup               func(groupID uuid.UUID) error                   // Block a group
 
 	SetDMMutedUntil    func(userID uuid.UUID, mutedUntil int64) error // Set a temporary mute on a DM by setting the unix timestamp to pause notifications until
 	SetDMRetention     func(userID uuid.UUID, retention int64) error  // Set the message retention settings for a DM

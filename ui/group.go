@@ -23,6 +23,7 @@ type group struct {
 	name                        binding.String
 	users                       *userStore
 	admins                      []uuid.UUID
+	blockedUsers                []uuid.UUID
 	retention                   int64
 	restrictUserManagement      bool
 	restrictGroupEdits          bool
@@ -36,6 +37,7 @@ type group struct {
 	clearHistoryButton          *widget.Button
 	leaveGroupButton            *widget.Button
 	deleteGroupButton           *widget.Button
+	blockGroupButton            *widget.Button
 	addUsersButton              *widget.Button
 	view                        *fyne.Container
 	header                      *fyne.Container
@@ -291,6 +293,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		name:                    binding.NewString(),
 		users:                   newUserStore(),
 		admins:                  bounceGroup.Admins,
+		blockedUsers:            bounceGroup.BlockedUsers,
 		retention:               bounceGroup.Retention,
 		editThreadNameEntry:     widget.NewEntry(),
 		restrictUserManagement:  bounceGroup.RestrictUserManagement,
@@ -464,6 +467,8 @@ func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
 		g.getAdminCheck(u.id).SetChecked(g.isAdmin(u.id))
 		g.getAdminCheck(u.id).Refresh()
 	}
+
+	g.blockedUsers = bounceGroup.BlockedUsers
 
 	g.retention = bounceGroup.Retention
 	g.retentionSelection.Selected = getRetentionName(bounceGroup.Retention)
@@ -845,6 +850,24 @@ func (fyneUI *Fyne) PostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error creating thread item for update group posting unrestricted")
+	}
+	fyneUI.appendThreadItem(g, ti)
+}
+
+func (fyneUI *Fyne) UserBlockedGroup(ubg chat.UserBlockedGroup) {
+	g, exists := fyneUI.groups[ubg.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ubg.Thread,
+		}).Error("cannot display block for group that doesn't exist")
+		return
+	}
+
+	ti, err := fyneUI.newUpdateGroupUserBlocked(ubg)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for user blocked group")
 	}
 	fyneUI.appendThreadItem(g, ti)
 }

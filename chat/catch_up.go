@@ -195,9 +195,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		}
 
 		// Update the group consensis
-		groupMutex.Lock()
 		b.updateGroupConsensus(groupID)
-		groupMutex.Unlock()
 
 		// Get the user IDs for this group again, send references to any new users
 		var updatedUserIDs []uuid.UUID
@@ -363,7 +361,7 @@ func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
 		}
 	}
 
-	// Insert the update groups from this set of frames, as well as upadte groups from the database, into the history stack and
+	// Insert the update groups from this set of frames, as well as update groups from the database, into the history stack and
 	// determine if we are a member of this group in the end or if this is a NOP group
 	for groupID, cs := range stacks {
 		offeredIDs := map[uuid.UUID]bool{}
@@ -399,6 +397,11 @@ func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
 		if !finalState.isMember(b.currentUserID()) {
 			nopGroups[groupID] = true
 		}
+	}
+
+	// Add all blocked groups to the list of NOP groups
+	for _, blockedGroup := range b.blockedGroups() {
+		nopGroups[blockedGroup] = true
 	}
 
 	return nopGroups

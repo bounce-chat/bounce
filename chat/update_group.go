@@ -25,6 +25,7 @@ const updateGroupTypeChangeUserManagementPermission = uint16(8)
 const updateGroupTypeChangeGroupEditsPermission = uint16(9)
 const updateGroupTypeChangePostingPermission = uint16(10)
 const updateGroupTypeDelete = uint16(11)
+const updateGroupTypeBlock = uint16(12)
 
 const permissionUnrestricted = 0x00
 const permissionRestricted = 0x01
@@ -203,6 +204,8 @@ func (ug *updateGroup) validPayloadFormat() bool {
 		return err == nil
 	case updateGroupTypeDelete:
 		return len(ug.Data) == 0
+	case updateGroupTypeBlock:
+		return len(ug.Data) == 0
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -236,6 +239,13 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 	ug.OriginalPayload = sc.Payload
 	ug.Signature = sc.Signature
 	ug.Signer = sc.Signer
+
+	// Ignore update groups for blocked groups
+	for _, blockedGroup := range b.blockedGroups() {
+		if ug.Target == blockedGroup {
+			return nil
+		}
+	}
 
 	// Make sure that the user that created this signed container is the actor
 	if !b.signedByUser(sc, ug.Actor) {
@@ -351,6 +361,51 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 				}
 
 				for _, dev := range u.Devices {
+					if dev.Address == peer {
+						continue
+					}
+					rd := b.getRemoteDevice(dev.Address)
+					if rd.connectedSockets > 0 {
+						go b.sendDirect(dev.Address, &ug)
+					}
+				}
+			} else {
+				// Reload the update group before returning it to ensure the custom scope is set before broadcast
+				err = b.database.First(&ug, "id = ?", ug.ID).Error
+				if err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						log.WithFields(log.Fields{
+							"update_group_id": ug.ID,
+							"error":           err.Error(),
+						}).Error("update group not found after save")
+					} else {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Fatal("database error looking up update group")
+					}
+				}
+			}
+		} else if ug.Type == updateGroupTypeBlock {
+			if ug.Actor != b.currentUserID() {
+				var u user
+				err := b.database.Preload(clause.Associations).Where("id = ?", ug.Actor).First(&u).Error
+				if err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						log.WithFields(log.Fields{
+							"user_id": ug.Actor,
+						}).Error("user not found for direct update group block broadcast")
+						return nil
+					} else {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Fatal("error looking up user")
+					}
+				}
+
+				for _, dev := range u.Devices {
+					if dev.Address == peer {
+						continue
+					}
 					rd := b.getRemoteDevice(dev.Address)
 					if rd.connectedSockets > 0 {
 						go b.sendDirect(dev.Address, &ug)
@@ -624,6 +679,16 @@ func (b *bounce) unrestrictPosting(groupID uuid.UUID) error {
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeChangePostingPermission,
 		Data:      []byte{permissionUnrestricted},
+	})
+}
+
+func (b *bounce) blockGroup(groupID uuid.UUID) error {
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeBlock,
 	})
 }
 

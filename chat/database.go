@@ -71,6 +71,7 @@ func (b *bounce) openDatabase() {
 		&addUserOffer{},
 		&customScope{},
 		&confirmation{},
+		&profileSettings{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -337,11 +338,25 @@ func (b *bounce) buildInitialState() InitialState {
 			}
 			adminList = append(adminList, adminID)
 		}
+		blockedList := []uuid.UUID{}
+		if len(g.BlockedUsers) > 0 {
+			for _, blockedIDString := range strings.Split(g.BlockedUsers, ",") {
+				blockedID, err := uuid.Parse(blockedIDString)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":         err.Error(),
+						"blocked_users": g.BlockedUsers,
+					}).Fatal("invalid UUID in group block list")
+				}
+				blockedList = append(blockedList, blockedID)
+			}
+		}
 		chatGroups = append(chatGroups, Group{
 			ID:                     g.ID,
 			Name:                   g.Name,
 			Users:                  userList,
 			Admins:                 adminList,
+			BlockedUsers:           blockedList,
 			CreatedBy:              g.CreatedBy,
 			CreatedAt:              g.CreatedAt,
 			Retention:              g.Retention,

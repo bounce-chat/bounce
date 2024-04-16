@@ -28,6 +28,7 @@ type group struct {
 	MutedUntil             int64
 	Users                  []user `gorm:"many2many:group_users;"`
 	Admins                 string `gorm:"not null"`
+	BlockedUsers           string
 	RestrictUserManagement bool
 	RestrictGroupEdits     bool
 	RestrictPosting        bool
@@ -91,6 +92,21 @@ func (g *group) state() groupState {
 		}
 
 		gs.admins = append(gs.admins, adminID)
+	}
+
+	if len(g.BlockedUsers) > 0 {
+		for _, blockedIDString := range strings.Split(g.BlockedUsers, ",") {
+			blockedID, err := uuid.Parse(blockedIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":         err.Error(),
+					"group_id":      g.ID,
+					"blocked_users": g.BlockedUsers,
+				}).Fatal("invalid UUID in group blocked list")
+			}
+
+			gs.blockedUsers = append(gs.blockedUsers, blockedID)
+		}
 	}
 
 	return gs
@@ -360,6 +376,7 @@ func (b *bounce) isGroupAdmin(groupID, userID uuid.UUID) bool {
 			return false
 		} else {
 			log.WithFields(log.Fields{
+				"error":    err.Error(),
 				"group_id": groupID,
 			}).Fatal("database error looking up group admin membership")
 		}
@@ -394,6 +411,7 @@ func (b *bounce) addGroupAdmin(groupID, userID uuid.UUID) {
 			return
 		} else {
 			log.WithFields(log.Fields{
+				"error":    err.Error(),
 				"group_id": groupID,
 			}).Fatal("database error looking up group admin membership")
 		}
@@ -506,5 +524,107 @@ func (b *bounce) removeGroupAdmin(groupID, userID uuid.UUID) {
 			"group_id": groupID,
 			"user_id":  userID,
 		}).Warn("ignoring request to remove admin from group where user is already not an admin")
+	}
+}
+
+func (b *bounce) isBlockedFromGroup(groupID, userID uuid.UUID) bool {
+	var g group
+	err := b.database.Select("blocked_users").Where("id = ?", groupID).Find(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("group not found when checking blocked users")
+			return false
+		} else {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+			}).Fatal("database error looking up blocked users")
+		}
+	}
+
+	if len(g.BlockedUsers) > 0 {
+		for _, blockedIDString := range strings.Split(g.BlockedUsers, ",") {
+			blockedID, err := uuid.Parse(blockedIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":         err.Error(),
+					"group_id":      groupID,
+					"blocked_users": g.BlockedUsers,
+				}).Fatal("invalid UUID in group blocked users list")
+			}
+
+			if blockedID == userID {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (b *bounce) blockUserFromGroup(groupID, userID uuid.UUID) {
+	var g group
+	err := b.database.Select("blocked_users").Where("id = ?", groupID).Find(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("group not found when getting blocked users")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+			}).Fatal("database error looking up group blocked users")
+		}
+	}
+
+	blocked := []string{}
+	alreadyBlocked := false
+	if len(g.BlockedUsers) > 0 {
+		for _, blockedIDString := range strings.Split(g.BlockedUsers, ",") {
+			blockedID, err := uuid.Parse(blockedIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":         err.Error(),
+					"group_id":      groupID,
+					"blocked_users": g.BlockedUsers,
+				}).Error("invalid UUID in group blocked users list")
+				continue
+			}
+
+			if blockedID == userID {
+				alreadyBlocked = true
+			}
+
+			blocked = append(blocked, blockedIDString)
+		}
+	}
+
+	if !alreadyBlocked {
+		blocked = append(blocked, userID.String())
+	} else {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"user_id":  userID,
+		}).Warn("ignoring request to block user that is already blocked")
+		return
+	}
+
+	err = b.database.Model(&g).Where("id = ?", groupID).Update("blocked_users", strings.Join(blocked, ",")).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("group not found when blocking user")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+			}).Fatal("database error adding blocked user")
+		}
 	}
 }

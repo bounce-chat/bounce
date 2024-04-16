@@ -21,6 +21,7 @@ type groupState struct {
 	name                     string
 	users                    []uuid.UUID
 	admins                   []uuid.UUID
+	blockedUsers             []uuid.UUID
 	mutedUntil               int64
 	retention                int64
 	clearBefore              int64
@@ -96,6 +97,22 @@ func (gs groupState) equals(otherState groupState) bool {
 		}
 	}
 
+	if len(gs.blockedUsers) != len(otherState.blockedUsers) {
+		return false
+	}
+
+	for _, userID := range gs.blockedUsers {
+		if !otherState.isBlocked(userID) {
+			return false
+		}
+	}
+
+	for _, userID := range otherState.blockedUsers {
+		if !gs.isBlocked(userID) {
+			return false
+		}
+	}
+
 	return true
 }
 
@@ -110,6 +127,15 @@ func (gs groupState) isAdmin(userID uuid.UUID) bool {
 
 func (gs groupState) isMember(userID uuid.UUID) bool {
 	for _, memberID := range gs.users {
+		if memberID == userID {
+			return true
+		}
+	}
+	return false
+}
+
+func (gs groupState) isBlocked(userID uuid.UUID) bool {
+	for _, memberID := range gs.blockedUsers {
 		if memberID == userID {
 			return true
 		}
@@ -211,8 +237,8 @@ func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
 		}
 	}
 
-	// Stop allowing any new changes once a group has been deleted
-	if lastState.deleted {
+	// Stop allowing any new changes once a group has been deleted or we've blocked it
+	if lastState.deleted || lastState.isBlocked(cs.myID) {
 		return
 	}
 
@@ -347,6 +373,7 @@ func (b *bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 	gs := groupState{
 		users:                    []uuid.UUID{},
 		admins:                   []uuid.UUID{},
+		blockedUsers:             []uuid.UUID{},
 		postingRestricted:        true,
 		editingRestricted:        true,
 		userManagementRestricted: true,
@@ -560,6 +587,13 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 		} else {
 			return errAdminRequired
 		}
+	case updateGroupTypeBlock:
+		if gs.isAdmin(ug.Actor) {
+			if len(gs.admins) == 1 && gs.admins[0] == ug.Actor {
+				return errCannotRemoveLastAdmin
+			}
+		}
+		return nil
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -598,6 +632,8 @@ func applyUpdateGroupToState(gs groupState, ug updateGroup) (groupState, error) 
 		return applyUpdateGroupChangePostingPermissionToState(gs, ug)
 	case updateGroupTypeDelete:
 		return applyUpdateGroupDeleteToState(gs, ug)
+	case updateGroupTypeBlock:
+		return applyUpdateGroupBlockToState(gs, ug)
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -779,6 +815,35 @@ func applyUpdateGroupDeleteToState(gs groupState, ug updateGroup) (groupState, e
 	return gs, nil
 }
 
+func applyUpdateGroupBlockToState(gs groupState, ug updateGroup) (groupState, error) {
+	if !gs.isBlocked(ug.Actor) {
+		gs.blockedUsers = append(gs.blockedUsers, ug.Actor)
+	}
+
+	membersWithoutUser := []uuid.UUID{}
+	for _, id := range gs.users {
+		if id != ug.Actor {
+			membersWithoutUser = append(membersWithoutUser, id)
+		}
+	}
+
+	adminsWithoutUser := []uuid.UUID{}
+	for _, id := range gs.admins {
+		if id != ug.Actor {
+			adminsWithoutUser = append(adminsWithoutUser, id)
+		}
+	}
+
+	if len(adminsWithoutUser) == 0 {
+		return gs, errCannotRemoveLastAdmin
+	}
+
+	gs.users = membersWithoutUser
+	gs.admins = adminsWithoutUser
+
+	return gs, nil
+}
+
 func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *canonicalStack, ugs []updateGroup) error {
 	if len(cs.history) == 0 {
 		log.WithFields(log.Fields{
@@ -822,7 +887,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				return err
 			}
 
-			if !finalState.deleted && finalState.isMember(b.currentUserID()) {
+			if !finalState.deleted && finalState.isMember(b.currentUserID()) && !finalState.isBlocked(b.currentUserID()) {
 				b.applyUpdateGroupInUI(gs.ug)
 			}
 
@@ -844,7 +909,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 			if gs.isMember(b.currentUserID()) {
 				b.updateLastGroupActivity(gs.ug.Target, gs.ug.Timestamp)
 				if gs.ug.Actor != b.currentUserID() {
-					if !finalState.deleted && finalState.isMember(b.currentUserID()) {
+					if !finalState.deleted && finalState.isMember(b.currentUserID()) && !finalState.isBlocked(b.currentUserID()) {
 						b.sendConfirmation(gs.ug)
 					}
 				}
@@ -987,6 +1052,45 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		return b.database.Delete(&g).Error
 	}
 
+	// If we blocked this group, save that on user, custom scope our block update, and delete the group
+	if finalState.isBlocked(b.currentUserID()) {
+		// Add this group to our list of blocked groups
+		b.addBlockedGroup(g.ID)
+
+		// Find our block update and custom scope it
+		for i := len(cs.history) - 1; i >= 0; i-- {
+			ug := cs.history[i].ug
+			if ug.Type == updateGroupTypeBlock && ug.Actor == b.currentUserID() {
+				err = b.createCustomScopeFromGroup(ug.Target)
+				if err == nil {
+					err = b.database.Model(&ug).Select("custom_scope").Update("custom_scope", ug.Target).Error
+					if err != nil {
+						log.WithFields(log.Fields{
+							"update_group_id": ug.ID,
+							"error":           err.Error(),
+						}).Fatal("error updating custom scope on update group")
+					}
+				} else {
+					log.WithFields(log.Fields{
+						"update_group_id": ug.ID,
+						"error":           err.Error(),
+					}).Error("error creating custom scope for update group")
+				}
+
+				break
+			}
+		}
+
+		// Inform the UI
+		b.userInterface.GroupDeleted(GroupDeleted{
+			Group: g.ID,
+			Actor: b.currentUserID(),
+		})
+
+		// Delete the group
+		return b.database.Delete(&g).Error
+	}
+
 	// Find any non-canonical update groups that have been applied and mark them as not applied roll them back in the UI
 	for _, ug := range ugs {
 		if _, ok := canonical[ug.ID]; !ok {
@@ -1111,11 +1215,16 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 			b.removeGroupAdmin(g.ID, adminID)
 		}
 	}
-	finalAdmins := []uuid.UUID{}
 	for _, adminID := range finalState.admins {
-		finalAdmins = append(finalAdmins, adminID)
 		if !b.isGroupAdmin(g.ID, adminID) {
 			b.addGroupAdmin(g.ID, adminID)
+		}
+	}
+
+	// Set blocked users
+	for _, blockedID := range finalState.blockedUsers {
+		if !b.isBlockedFromGroup(g.ID, blockedID) {
+			b.blockUserFromGroup(g.ID, blockedID)
 		}
 	}
 
@@ -1124,7 +1233,8 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		Name: g.Name,
 		//Image: []byte{},
 		Users:                  finalUsers,
-		Admins:                 finalAdmins,
+		Admins:                 finalState.admins,
+		BlockedUsers:           finalState.blockedUsers,
 		Retention:              g.Retention,
 		MutedUntil:             g.MutedUntil,
 		LastActivity:           g.LastActivity,
@@ -1162,6 +1272,8 @@ func (b *bounce) applyUpdateGroupInUI(ug updateGroup) {
 		b.informUIUpdateGroupChangePostingPermission(ug)
 	case updateGroupTypeDelete:
 		return
+	case updateGroupTypeBlock:
+		b.informUIUpdateGroupBlock(ug)
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -1363,6 +1475,15 @@ func (b *bounce) informUIUpdateGroupChangePostingPermission(ug updateGroup) {
 			Timestamp: ug.Timestamp,
 		})
 	}
+}
+
+func (b *bounce) informUIUpdateGroupBlock(ug updateGroup) {
+	b.userInterface.UserBlockedGroup(UserBlockedGroup{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+	})
 }
 
 func (b *bounce) createNewUserIfNeeded(u user) {

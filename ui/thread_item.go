@@ -314,6 +314,16 @@ func (fyneUI *Fyne) newUpdateGroupPostingUnrestricted(ugpu chat.UpdateGroupPosti
 	)
 }
 
+func (fyneUI *Fyne) newUpdateGroupUserBlocked(ubg chat.UserBlockedGroup) (*threadItem, error) {
+	return fyneUI.newStatusChangeThreadItem(
+		ubg.ID,
+		ubg.Thread,
+		ubg.Actor,
+		"blocked the group",
+		ubg.Timestamp,
+	)
+}
+
 func (fyneUI *Fyne) newGroupCreated(id, groupID, actorID uuid.UUID, timestamp int64) (*threadItem, error) {
 	return fyneUI.newStatusChangeThreadItem(
 		id,
