@@ -355,6 +355,18 @@ func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
 				var gc groupCreation
 				err = b.database.Where("id = ?", ug.Target).First(&gc).Error
 				if errors.Is(err, gorm.ErrRecordNotFound) {
+					// Add groups we've blocked to our block list even if we don't know about the group
+					if ug.Type == updateGroupTypeBlock && ug.Actor == b.currentUserID() {
+						if !b.signedByUser(sc, ug.Actor) {
+							log.WithFields(log.Fields{
+								"actor":          ug.Actor,
+								"signing_device": sc.Signer,
+								"group":          ug.Target,
+							}).Warn("ignoring group update that was not signed by the supposed actor")
+							continue
+						}
+						b.addBlockedGroup(ug.Target)
+					}
 					nopGroups[ug.Target] = true
 				}
 			}

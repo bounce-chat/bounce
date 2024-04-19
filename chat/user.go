@@ -53,17 +53,6 @@ func (b *bounce) currentUser() (user, bool) {
 		}
 	}
 
-	// TODO: temp migration to create profile settings
-	if currentUser.ProfileSettings == nil {
-		err := b.database.Create(&profileSettings{ID: uuid.New(), UserID: currentUser.ID}).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error creating profile settings")
-		}
-	}
-	// TODO: delete the above
-
 	return currentUser, true
 }
 
