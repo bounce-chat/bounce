@@ -1,16 +1,12 @@
 package chat
 
 import (
-	"errors"
 	"sort"
-	"strings"
 	"sync"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var catchUpMutex sync.Mutex
@@ -86,10 +82,6 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 	// it and we'll want to check to make sure that happened.
 	_, deviceAlreadyExists := b.getDeviceFromAddress(peer)
 
-	// Determine if we're going to learn about any groups that we aren't a member of, so we can ignore
-	// frames for any of those groups
-	nopGroups := b.identifyNOPGroups(cu.Frames)
-
 	// Keep track of which groups will need a consensus update
 	groupsToUpdateConsensus := map[uuid.UUID]bool{}
 
@@ -111,12 +103,6 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 				"peer":       peer,
 			}).Warn("refusing to process catch up that contains frame not allowed in catch ups")
 			return nil
-		}
-
-		// Ignore frames for groups that we will not be a part of after this catch up
-		if b.isNopGroupFrame(nopGroups, fr) {
-			a.References = append(a.References, frameReference{FrameID: fr.ID, Type: fr.Type})
-			continue
 		}
 
 		handler, ok := handlers[fr.Type]
@@ -258,229 +244,4 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 	}
 
 	return nil
-}
-
-func (b *bounce) identifyNOPGroups(frames []frame) map[uuid.UUID]bool {
-	nopGroups := map[uuid.UUID]bool{}
-	stacks := map[uuid.UUID]*canonicalStack{}
-	ugs := map[uuid.UUID][]updateGroup{}
-
-	// Create canonical history stacks for each group creation in this set of frames, and collect the update groups by group ID
-	for _, fr := range frames {
-		if fr.Type == typeGroupCreation {
-			sc, err := b.unpackSignedContainer(fr.Payload)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error unpacking signed container for group creation")
-				continue
-			}
-			var gc groupCreation
-			err = msgpack.Unmarshal(sc.Payload, &gc)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error unmarshalling group creation")
-				continue
-			}
-			var g group
-			err = msgpack.Unmarshal(gc.Data, &g)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error unmarshalling group")
-				continue
-			}
-
-			if _, present := stacks[gc.ID]; present {
-				log.WithFields(log.Fields{
-					"group_id": gc.ID,
-				}).Warn("catch up contains multiple group creations for same group")
-				continue
-			}
-
-			initialState := groupState{
-				name:                     g.Name,
-				mutedUntil:               g.MutedUntil,
-				retention:                g.Retention,
-				clearBefore:              g.ClearBefore,
-				users:                    []uuid.UUID{},
-				admins:                   []uuid.UUID{},
-				postingRestricted:        g.RestrictPosting,
-				editingRestricted:        g.RestrictGroupEdits,
-				userManagementRestricted: g.RestrictUserManagement,
-			}
-
-			for _, u := range g.Users {
-				initialState.users = append(initialState.users, u.ID)
-			}
-
-			for _, adminIDString := range strings.Split(g.Admins, ",") {
-				adminID, err := uuid.Parse(adminIDString)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error":    err.Error(),
-						"group_id": gc.ID,
-						"admins":   g.Admins,
-					}).Fatal("invalid UUID in group admin list")
-				}
-
-				initialState.admins = append(initialState.admins, adminID)
-			}
-
-			stacks[gc.ID] = newCanonicalStack(initialState, b.currentUserID())
-		}
-	}
-
-	for _, fr := range frames {
-		if fr.Type == typeUpdateGroup {
-			sc, err := b.unpackSignedContainer(fr.Payload)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error unpacking signed container for update group")
-				continue
-			}
-			var ug updateGroup
-			err = msgpack.Unmarshal(sc.Payload, &ug)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error unmarshalling update group")
-				continue
-			}
-			ugs[ug.Target] = append(ugs[ug.Target], ug)
-
-			if _, present := stacks[ug.Target]; !present {
-				var gc groupCreation
-				err = b.database.Where("id = ?", ug.Target).First(&gc).Error
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					// Add groups we've blocked to our block list even if we don't know about the group
-					if ug.Type == updateGroupTypeBlock && ug.Actor == b.currentUserID() {
-						if !b.signedByUser(sc, ug.Actor) {
-							log.WithFields(log.Fields{
-								"actor":          ug.Actor,
-								"signing_device": sc.Signer,
-								"group":          ug.Target,
-							}).Warn("ignoring group update that was not signed by the supposed actor")
-							continue
-						}
-						b.addBlockedGroup(ug.Target)
-					}
-					nopGroups[ug.Target] = true
-				}
-			}
-		}
-	}
-
-	// Insert the update groups from this set of frames, as well as update groups from the database, into the history stack and
-	// determine if we are a member of this group in the end or if this is a NOP group
-	for groupID, cs := range stacks {
-		offeredIDs := map[uuid.UUID]bool{}
-		allUgs, ok := ugs[groupID]
-		if !ok {
-			continue
-		}
-		for _, ug := range allUgs {
-			offeredIDs[ug.ID] = true
-		}
-
-		databaseUgs := []updateGroup{}
-		err := b.database.Preload(clause.Associations).Where("target = ?", groupID).Order("timestamp asc").Find(&databaseUgs).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"group_id": groupID,
-				"error":    err.Error(),
-			}).Fatal("database error selecting all update groups")
-		}
-		for _, ug := range databaseUgs {
-			if _, present := offeredIDs[ug.ID]; !present {
-				allUgs = append(allUgs, ug)
-			}
-		}
-
-		sort.Slice(allUgs, func(i, j int) bool {
-			return allUgs[i].Timestamp < allUgs[j].Timestamp
-		})
-		for _, ug := range allUgs {
-			cs.insertUpdateGroupIntoStack(ug)
-		}
-		finalState, err := cs.top()
-		if !finalState.isMember(b.currentUserID()) {
-			nopGroups[groupID] = true
-		}
-	}
-
-	// Add all blocked groups to the list of NOP groups
-	for _, blockedGroup := range b.blockedGroups() {
-		nopGroups[blockedGroup] = true
-	}
-
-	return nopGroups
-}
-
-func (b *bounce) isNopGroupFrame(nopGroups map[uuid.UUID]bool, fr frame) bool {
-	if fr.Type == typeGroupCreation {
-		sc, err := b.unpackSignedContainer(fr.Payload)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error unpacking signed container for group creation")
-			return false
-		}
-		var gc groupCreation
-		err = msgpack.Unmarshal(sc.Payload, &gc)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error unmarshalling group creation")
-			return false
-		}
-		_, present := nopGroups[gc.ID]
-		return present
-	}
-
-	if fr.Type == typeUpdateGroup {
-		sc, err := b.unpackSignedContainer(fr.Payload)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error unpacking signed container for update group")
-			return false
-		}
-		var ug updateGroup
-		err = msgpack.Unmarshal(sc.Payload, &ug)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error unmarshalling update group")
-			return false
-		}
-		_, present := nopGroups[ug.Target]
-		return present
-
-	}
-
-	if fr.Type == typeGroupMessage {
-		sc, err := b.unpackSignedContainer(fr.Payload)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error unpacking signed container for group message")
-			return false
-		}
-		var gm groupMessage
-		err = msgpack.Unmarshal(sc.Payload, &gm)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error unmarshalling group message")
-			return false
-		}
-		_, present := nopGroups[gm.Destination]
-		return present
-
-	}
-
-	return false
 }

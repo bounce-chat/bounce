@@ -24,7 +24,7 @@ type user struct {
 	MutedUntil      int64 `json:"-" msgpack:"-"`
 	LastActivity    int64 `json:"-" msgpack:"-"`
 	Devices         []device
-	Groups          []group          `gorm:"many2many:group_users;" json:"-" msgpack"-"`
+	Groups          []group          `gorm:"many2many:group_users;" json:"-" msgpack:"-"`
 	ProfileSettings *profileSettings `json:"-" msgpack:"-"`
 	payload         []byte
 	payloadMutex    sync.Mutex

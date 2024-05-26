@@ -344,15 +344,63 @@ func (b *bounce) updateGroupConsensus(groupID uuid.UUID) {
 	groupConsensusMutex.Lock()
 	defer groupConsensusMutex.Unlock()
 
+	//
+	// Try to look up the group.  If we can't find the group, check if we have any update groups anyway.  These
+	// update groups might exist because they apply to a group that was deleted, blocked, or that we left before
+	// this device ever learned about the groups existance.  In that case, we want to apply the block, and keep
+	// these updates around for any other sync devices that need them.
+	//
+	var g group
+	err := b.database.Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			b.applyUpdateGroupsForNonexistentGroup(groupID)
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+				"error":    err.Error(),
+			}).Fatal("database error looking up group")
+		}
+	}
+
 	cs, ugs := b.buildCanonicalHistoryStack(groupID)
 
 	// Track what has been applied and rolled back, inform the UI, and set the group state in the database
-	err := b.setRollbacksApplicationsAndGroupState(groupID, cs, ugs)
+	err = b.setRollbacksApplicationsAndGroupState(g, cs, ugs)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
 			"error":    err.Error(),
 		}).Error("error setting group state")
+	}
+}
+
+func (b *bounce) applyUpdateGroupsForNonexistentGroup(groupID uuid.UUID) {
+	// Find all update groups for this group
+	var ugs []updateGroup
+	err := b.database.Preload(clause.Associations).Where("target = ?", groupID).Order("timestamp asc").Find(&ugs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"error":    err.Error(),
+		}).Fatal("database error selecting all update groups")
+	}
+
+	for _, ug := range ugs {
+		// Even if we have never seen a group before, if we blocked it on another device, add it to the block list on this device
+		if ug.Type == updateGroupTypeBlock && ug.Actor == b.currentUserID() {
+			if !ug.Applied {
+				b.addBlockedGroup(ug.Target)
+				err = b.database.Model(&ug).Select("applied").Update("applied", true).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"id":    ug.ID,
+						"error": err.Error(),
+					}).Error("error setting applied on update group that blocks group")
+				}
+			}
+		}
 	}
 }
 
@@ -436,8 +484,6 @@ func (b *bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 
 	// Return the state
 	return gs, nil
-
-	// TODO: alternatively, the last valid set state works here
 }
 
 func changeIsNOP(lastState groupState, ug updateGroup) bool {
@@ -844,10 +890,10 @@ func applyUpdateGroupBlockToState(gs groupState, ug updateGroup) (groupState, er
 	return gs, nil
 }
 
-func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *canonicalStack, ugs []updateGroup) error {
+func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalStack, ugs []updateGroup) error {
 	if len(cs.history) == 0 {
 		log.WithFields(log.Fields{
-			"group_id": groupID,
+			"group_id": g.ID,
 		}).Error("cannot update group state with empty history stack")
 		return errStackEmpty
 	}
@@ -857,23 +903,6 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("no final state available when updating group consensus state")
-	}
-
-	// Find the group
-	var g group
-	err = b.database.Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"group_id": groupID,
-			}).Error("group not found while setting state")
-			return err
-		} else {
-			log.WithFields(log.Fields{
-				"group_id": groupID,
-				"error":    err.Error(),
-			}).Fatal("database error looking up group")
-		}
 	}
 
 	// Find any canonical update groups that have not been applied and make them as applied and inform the UI if needed
@@ -887,7 +916,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				return err
 			}
 
-			if !finalState.deleted && finalState.isMember(b.currentUserID()) && !finalState.isBlocked(b.currentUserID()) {
+			if !finalState.deleted && finalState.isMember(b.currentUserID()) {
 				b.applyUpdateGroupInUI(gs.ug)
 			}
 
@@ -909,8 +938,10 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 			if gs.isMember(b.currentUserID()) {
 				b.updateLastGroupActivity(gs.ug.Target, gs.ug.Timestamp)
 				if gs.ug.Actor != b.currentUserID() {
-					if !finalState.deleted && finalState.isMember(b.currentUserID()) && !finalState.isBlocked(b.currentUserID()) {
-						b.sendConfirmation(gs.ug)
+					if gs.isMember(b.currentUserID()) {
+						if !(gs.ug.Type == updateGroupTypeBlock) {
+							b.sendConfirmation(gs.ug)
+						}
 					}
 				}
 			}
@@ -956,11 +987,11 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		if !alwaysAnAdmin {
 			// Find the custom scope we just cleared
 			var cs customScope
-			err = b.database.First(&cs, "id = ?", groupID).Error
+			err = b.database.First(&cs, "id = ?", g.ID).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					log.WithFields(log.Fields{
-						"id": groupID,
+						"id": g.ID,
 					}).Warn("cannot find custom scope that was just created")
 				} else {
 					log.WithFields(log.Fields{
@@ -979,7 +1010,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 					}
 
 					if !allDelivered {
-						err = b.database.Model(&ug).Select("custom_scope").Update("custom_scope", groupID).Error
+						err = b.database.Model(&ug).Select("custom_scope").Update("custom_scope", g.ID).Error
 						if err != nil {
 							log.WithFields(log.Fields{
 								"update_group_id": ug.ID,
@@ -1107,52 +1138,56 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 	// Clear delivery records for users that were removed in the final state
 	for userID, _ := range everInGroup {
 		if !finalState.isMember(userID) {
-			b.clearGroupDeliveryRecordsForUser(userID, groupID)
+			b.clearGroupDeliveryRecordsForUser(userID, g.ID)
 		}
 	}
 
+	return b.setGroupStateInDatabase(g, finalState)
+}
+
+func (b *bounce) setGroupStateInDatabase(g group, gs groupState) error {
 	// Prune cleared messages
-	b.pruneMessagesBeforeClear(finalState.clearBefore, groupID)
+	b.pruneMessagesBeforeClear(gs.clearBefore, g.ID)
 
 	// Set fields
-	if g.Name != finalState.name {
-		err := b.database.Model(&g).Select("name").Update("name", finalState.name).Error
+	if g.Name != gs.name {
+		err := b.database.Model(&g).Select("name").Update("name", gs.name).Error
 		if err != nil {
 			return err
 		}
 	}
-	if g.Retention != finalState.retention {
-		err := b.database.Model(&g).Select("retention").Update("retention", finalState.retention).Error
+	if g.Retention != gs.retention {
+		err := b.database.Model(&g).Select("retention").Update("retention", gs.retention).Error
 		if err != nil {
 			return err
 		}
 	}
-	if g.ClearBefore != finalState.clearBefore {
-		err := b.database.Model(&g).Select("clear_before").Update("clear_before", finalState.clearBefore).Error
+	if g.ClearBefore != gs.clearBefore {
+		err := b.database.Model(&g).Select("clear_before").Update("clear_before", gs.clearBefore).Error
 		if err != nil {
 			return err
 		}
 	}
-	if g.MutedUntil != finalState.mutedUntil {
-		err := b.database.Model(&g).Select("muted_until").Update("muted_until", finalState.mutedUntil).Error
+	if g.MutedUntil != gs.mutedUntil {
+		err := b.database.Model(&g).Select("muted_until").Update("muted_until", gs.mutedUntil).Error
 		if err != nil {
 			return err
 		}
 	}
-	if g.RestrictUserManagement != finalState.userManagementRestricted {
-		err := b.database.Model(&g).Select("restrict_user_management").Update("restrict_user_management", finalState.userManagementRestricted).Error
+	if g.RestrictUserManagement != gs.userManagementRestricted {
+		err := b.database.Model(&g).Select("restrict_user_management").Update("restrict_user_management", gs.userManagementRestricted).Error
 		if err != nil {
 			return err
 		}
 	}
-	if g.RestrictGroupEdits != finalState.editingRestricted {
-		err := b.database.Model(&g).Select("restrict_group_edits").Update("restrict_group_edits", finalState.editingRestricted).Error
+	if g.RestrictGroupEdits != gs.editingRestricted {
+		err := b.database.Model(&g).Select("restrict_group_edits").Update("restrict_group_edits", gs.editingRestricted).Error
 		if err != nil {
 			return err
 		}
 	}
-	if g.RestrictPosting != finalState.postingRestricted {
-		err := b.database.Model(&g).Select("restrict_posting").Update("restrict_posting", finalState.postingRestricted).Error
+	if g.RestrictPosting != gs.postingRestricted {
+		err := b.database.Model(&g).Select("restrict_posting").Update("restrict_posting", gs.postingRestricted).Error
 		if err != nil {
 			return err
 		}
@@ -1160,17 +1195,17 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 
 	// Set group members
 	for _, u := range g.Users {
-		if !finalState.isMember(u.ID) {
-			err = b.database.Exec("DELETE FROM group_users WHERE group_id = ? AND user_id = ?", g.ID, u.ID).Error
+		if !gs.isMember(u.ID) {
+			err := b.database.Exec("DELETE FROM group_users WHERE group_id = ? AND user_id = ?", g.ID, u.ID).Error
 			if err != nil {
 				return err
 			}
 		}
 	}
 	finalUsers := []User{}
-	for _, userID := range finalState.users {
+	for _, userID := range gs.users {
 		var u user
-		err = b.database.Select("name").First(&u, "id = ?", userID).Error
+		err := b.database.Select("name").First(&u, "id = ?", userID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
@@ -1203,7 +1238,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":    err.Error(),
-				"group_id": groupID,
+				"group_id": g.ID,
 				"admins":   g.Admins,
 			}).Fatal("invalid UUID in group admin list")
 
@@ -1211,18 +1246,18 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		admins = append(admins, adminID)
 	}
 	for _, adminID := range admins {
-		if !finalState.isAdmin(adminID) {
+		if !gs.isAdmin(adminID) {
 			b.removeGroupAdmin(g.ID, adminID)
 		}
 	}
-	for _, adminID := range finalState.admins {
+	for _, adminID := range gs.admins {
 		if !b.isGroupAdmin(g.ID, adminID) {
 			b.addGroupAdmin(g.ID, adminID)
 		}
 	}
 
 	// Set blocked users
-	for _, blockedID := range finalState.blockedUsers {
+	for _, blockedID := range gs.blockedUsers {
 		if !b.isBlockedFromGroup(g.ID, blockedID) {
 			b.blockUserFromGroup(g.ID, blockedID)
 		}
@@ -1233,8 +1268,8 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		Name: g.Name,
 		//Image: []byte{},
 		Users:                  finalUsers,
-		Admins:                 finalState.admins,
-		BlockedUsers:           finalState.blockedUsers,
+		Admins:                 gs.admins,
+		BlockedUsers:           gs.blockedUsers,
 		Retention:              g.Retention,
 		MutedUntil:             g.MutedUntil,
 		LastActivity:           g.LastActivity,

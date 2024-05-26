@@ -438,28 +438,118 @@ func (b *bounce) getGroupCreationsToOffer(dev device) []frameReference {
 func (b *bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 	var unsentUpdateGroups []updateGroup
 
+	if b.isSyncDevice(dev) {
+		err := b.database.
+			Preload(clause.Associations).
+			Select("update_groups.id").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
+			Where("delivery_records.id IS NULL").
+			Find(&unsentUpdateGroups).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting unsent update groups in reference offer")
+		}
+	} else {
+		err := b.database.
+			Preload(clause.Associations).
+			Select("update_groups.id").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
+			Joins("LEFT JOIN group_users ON update_groups.target = group_users.group_id").
+			Where(
+				"delivery_records.id IS NULL AND ((group_users.user_id = ? AND update_groups.custom_scope == ?) OR update_groups.custom_scope IN (?))",
+				dev.UserID,
+				uuid.Nil,
+				b.database.
+					Model(&customScope{}).
+					Distinct().
+					Select("id").
+					Where("addresses LIKE ?", "%"+dev.Address+"%"),
+			).
+			Find(&unsentUpdateGroups).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting unsent update groups in reference offer")
+		}
+	}
+
+	// Find all the groups this user has ever left or been kicked from
+	groupsUserLeft := []uuid.UUID{}
 	err := b.database.
-		Preload(clause.Associations).
-		Select("update_groups.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
-		Joins("LEFT JOIN group_users ON update_groups.target = group_users.group_id").
+		Model(&updateGroup{}).
+		Distinct().
+		Select("target").
 		Where(
-			"delivery_records.id IS NULL AND applied = true AND ((group_users.user_id = ? AND update_groups.custom_scope == ?) OR update_groups.custom_scope IN (?))",
-			dev.UserID,
-			uuid.Nil,
-			b.database.
-				Model(&customScope{}).
-				Distinct().
-				Select("id").
-				Where("addresses LIKE ?", "%"+dev.Address+"%"),
+			"type = ? AND data = ?",
+			updateGroupTypeRemoveUser,
+			dev.UserID[:],
 		).
-		Find(&unsentUpdateGroups).Error
+		Find(&groupsUserLeft).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error selecting unsent update groups in reference offer")
+		}).Fatal("error finding groups a user has left")
+
+	}
+	for _, groupID := range groupsUserLeft {
+		// Make sure they were not re-added to the group
+		if b.userIsInGroup(groupID, dev.UserID) {
+			continue
+		}
+
+		// Find the timestamp of their latest departure
+		var lastRemoval int64
+		row := b.database.Table("update_groups").Where("type = ? AND data = ?", updateGroupTypeRemoveUser, dev.UserID[:]).Select("MAX(timestamp)").Row()
+		err := row.Scan(&lastRemoval)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error parsing timestamp of users last departure from group")
+		}
+
+		// Find all the undelivered update groups up until their last departure
+		var ugs []updateGroup
+		err = b.database.
+			Select("update_groups.id").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
+			Where(
+				"delivery_records.id IS NULL AND update_groups.target = ? AND update_groups.timestamp <= ?",
+				groupID,
+				lastRemoval,
+			).Find(&ugs).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error getting update groups for departed user")
+		}
+
+		// Include these update groups in the reference offer if they have not already been delivered
+		for _, ug := range ugs {
+			unsentUpdateGroups = append(unsentUpdateGroups, ug)
+		}
 	}
 
+	// Find all the groups this user has blocked, where we haven't delivered the block to this device
+	var ugs []updateGroup
+	err = b.database.
+		Select("update_groups.id").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
+		Where(
+			"delivery_records.id IS NULL AND update_groups.actor = ? AND update_groups.type = ?",
+			dev.UserID,
+			updateGroupTypeBlock,
+		).Find(&ugs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error getting update group blocks for user")
+	}
+	for _, ug := range ugs {
+		unsentUpdateGroups = append(unsentUpdateGroups, ug)
+	}
+
+	// Collect all these update groups into a set of references
 	references := []frameReference{}
 	for _, ug := range unsentUpdateGroups {
 		// Ignore sync scoped update groups unless this is a sync device

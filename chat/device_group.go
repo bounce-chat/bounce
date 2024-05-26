@@ -37,7 +37,7 @@ func (b *bounce) isValidAddition(u user, dev device) bool {
 }
 
 //
-// CHeck if the devices belonging to this user constitute a valid device group
+// Check if the devices belonging to this user constitute a valid device group
 //
 func (b *bounce) hasValidDeviceGroup(u user) bool {
 	dg := &deviceGroup{}

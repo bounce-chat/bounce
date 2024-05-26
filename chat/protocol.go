@@ -204,11 +204,10 @@ func (b *bounce) getGroupScope(br broadcastable) []string {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"frame_id":    br.getID(),
-				"scope":       br.getScope(b.currentUserID()),
-				"destination": br.getDestination(b.currentUserID()),
 				"type":        br.getType(),
-			}).Error("group not found when determining broadcast scope for message")
-			return broadcastTargets
+				"destination": br.getDestination(b.currentUserID()),
+			}).Debug("group not found when broadcasting group scoped message, using sync scope instead")
+			return b.getSyncScope(br)
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

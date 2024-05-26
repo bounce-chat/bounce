@@ -286,33 +286,6 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 		}).Fatal("database error saving update group")
 	}
 
-	if ug.Type == updateGroupTypeAddUser {
-		var newUser user
-		err := msgpack.Unmarshal(ug.Data, &newUser)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error unmarshalling new user in update group")
-			return nil
-		}
-		if newUser.ID == b.currentUserID() {
-			var g group
-			err = b.database.First(&g, "id = ?", ug.Target).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					// If we're handling an update group that adds us to a group we're not aware of,
-					// we're going to get the group information from the reference flow, so we don't
-					// need to try applying it now
-					return nil
-				} else {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Fatal("database error looking up group")
-				}
-			}
-		}
-	}
-
 	if !catchUp {
 		// Update the group state
 		b.updateGroupConsensus(ug.Target)
@@ -369,21 +342,6 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 						go b.sendDirect(dev.Address, &ug)
 					}
 				}
-			} else {
-				// Reload the update group before returning it to ensure the custom scope is set before broadcast
-				err = b.database.First(&ug, "id = ?", ug.ID).Error
-				if err != nil {
-					if errors.Is(err, gorm.ErrRecordNotFound) {
-						log.WithFields(log.Fields{
-							"update_group_id": ug.ID,
-							"error":           err.Error(),
-						}).Error("update group not found after save")
-					} else {
-						log.WithFields(log.Fields{
-							"error": err.Error(),
-						}).Fatal("database error looking up update group")
-					}
-				}
 			}
 		} else if ug.Type == updateGroupTypeBlock {
 			if ug.Actor != b.currentUserID() {
@@ -409,21 +367,6 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 					rd := b.getRemoteDevice(dev.Address)
 					if rd.connectedSockets > 0 {
 						go b.sendDirect(dev.Address, &ug)
-					}
-				}
-			} else {
-				// Reload the update group before returning it to ensure the custom scope is set before broadcast
-				err = b.database.First(&ug, "id = ?", ug.ID).Error
-				if err != nil {
-					if errors.Is(err, gorm.ErrRecordNotFound) {
-						log.WithFields(log.Fields{
-							"update_group_id": ug.ID,
-							"error":           err.Error(),
-						}).Error("update group not found after save")
-					} else {
-						log.WithFields(log.Fields{
-							"error": err.Error(),
-						}).Fatal("database error looking up update group")
 					}
 				}
 			}
