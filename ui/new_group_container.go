@@ -261,10 +261,10 @@ func (fyneUI *Fyne) buildNewGroup() {
 
 		err := fyneUI.callbacks.CreateGroup(newGroup)
 		if err != nil {
-			fyneUI.newGroupCreateButton.Enable()
-			fyneUI.newGroupNameEntry.Enable()
 			dialog.ShowError(errors.New("Error creating group: "+err.Error()), fyneUI.mainWindow)
 		}
+		fyneUI.newGroupCreateButton.Enable()
+		fyneUI.newGroupNameEntry.Enable()
 	})
 	fyneUI.newGroupCreateButton.Importance = widget.HighImportance
 	cancelButton := widget.NewButton("Cancel", func() {

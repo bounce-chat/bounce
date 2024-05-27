@@ -131,7 +131,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	entry := newThreadEntry(5)
 	dm.entry = entry
 	entry.OnChanged = func(_ string) {
-		fyneUI.callbacks.TypingInDirectMessage(dm.user.id)
+		go fyneUI.callbacks.TypingInDirectMessage(dm.user.id)
 	}
 	entry.customOnSubmitted = func() {
 		fyneUI.callbacks.SendDirectMessage(chat.DirectMessage{

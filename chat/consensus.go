@@ -1603,6 +1603,27 @@ func (b *bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {
 			}).Fatal("database error looking up all updates for a group")
 		}
 		for _, ugToDelete := range ugs {
+			// Find any confirmations for this update group
+			var confirmations []confirmation
+			err = b.database.Select("id").Where("update_group_id = ?", ugToDelete.ID).Find(&confirmations).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": groupID,
+				}).Fatal("database error looking up all confirmations for an update group")
+			}
+			for _, c := range confirmations {
+				err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeConfirmation, c.ID).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":    err.Error(),
+						"user_id":  userID,
+						"group_id": groupID,
+					}).Fatal("database error deleting delivery records")
+				}
+			}
+
+			// Delete the delivery records for the update group
 			err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeUpdateGroup, ugToDelete.ID).Error
 			if err != nil {
 				log.WithFields(log.Fields{
