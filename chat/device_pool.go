@@ -340,7 +340,15 @@ func (b *bounce) closeUnusedConnections() {
 			key := keys[index]
 
 			// Close that socket
-			rd.shutdownReceivers[key] <- true
+			select {
+			case rd.shutdownReceivers[key] <- true:
+			default:
+				log.WithFields(log.Fields{
+					"connected_sockets": rd.connectedSockets,
+					"desired_sockets":   connectionsPerDevice,
+				}).Warn("failed to close socket on remote device")
+			}
+
 		}
 	}
 	b.devicePool.deviceMutex.Unlock()
