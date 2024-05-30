@@ -1179,7 +1179,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 	// for any devices that applied the deletion
 	var failedDelete updateGroup
 	err = b.database.
-		Select("id").
+		Select("id", "MAX(timestamp)").
 		Where("target = ? AND type = ? AND applied = false", g.ID, updateGroupTypeDelete).
 		Find(&failedDelete).
 		Error
