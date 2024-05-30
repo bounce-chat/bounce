@@ -18,23 +18,24 @@ import (
 var groupMutex sync.Mutex
 
 type group struct {
-	ID                     uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name                   string
-	Image                  []byte
-	CreatedBy              uuid.UUID
-	CreatedAt              int64
-	Retention              int64
-	ClearBefore            int64
-	MutedUntil             int64
-	Users                  []user `gorm:"many2many:group_users;"`
-	Admins                 string `gorm:"not null"`
-	BlockedUsers           string
-	RestrictUserManagement bool
-	RestrictGroupEdits     bool
-	RestrictPosting        bool
-	LastActivity           int64
-	payload                []byte
-	payloadMutex           sync.Mutex
+	ID                        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name                      string
+	Image                     []byte
+	CreatedBy                 uuid.UUID
+	CreatedAt                 int64
+	Retention                 int64
+	ClearBefore               int64
+	MutedUntil                int64
+	Users                     []user `gorm:"many2many:group_users;"`
+	Admins                    string `gorm:"not null"`
+	BlockedUsers              string
+	RestrictUserManagement    bool
+	RestrictGroupEdits        bool
+	RestrictPosting           bool
+	LastActivity              int64
+	DeliveryRecordsClearedFor uuid.UUID `msgpack:"-"`
+	payload                   []byte
+	payloadMutex              sync.Mutex
 }
 
 func (g *group) BeforeCreate(tx *gorm.DB) error {

@@ -28,7 +28,7 @@ type groupState struct {
 	postingRestricted        bool
 	editingRestricted        bool
 	userManagementRestricted bool
-	deleted                  bool
+	deletedBy                uuid.UUID
 	ug                       updateGroup
 }
 
@@ -61,7 +61,7 @@ func (gs groupState) equals(otherState groupState) bool {
 		return false
 	}
 
-	if gs.deleted != otherState.deleted {
+	if gs.deletedBy != otherState.deletedBy {
 		return false
 	}
 
@@ -237,8 +237,8 @@ func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
 		}
 	}
 
-	// Stop allowing any new changes once a group has been deleted or we've blocked it
-	if lastState.deleted || lastState.isBlocked(cs.myID) {
+	// Stop allowing any new changes once a group has been blocked
+	if lastState.isBlocked(cs.myID) {
 		return
 	}
 
@@ -425,7 +425,7 @@ func (b *bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 		postingRestricted:        true,
 		editingRestricted:        true,
 		userManagementRestricted: true,
-		deleted:                  false,
+		deletedBy:                uuid.Nil,
 	}
 
 	// Look up the group creation and unpack the original group
@@ -537,6 +537,9 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 		if ug.Actor == userID {
 			return nil
 		}
+		if gs.deletedBy == userID {
+			return errCannotDemoteAdminWhoDeletedGroup
+		}
 		if gs.userManagementRestricted {
 			if gs.isAdmin(ug.Actor) {
 				return nil
@@ -601,6 +604,9 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 			}).Error("update group attempted to demote admin with invalid UUID")
 			return err
 		}
+		if gs.deletedBy == userID {
+			return errCannotDemoteAdminWhoDeletedGroup
+		}
 		if gs.isAdmin(ug.Actor) {
 			if len(gs.admins) == 1 && gs.admins[0] == userID {
 				return errCannotRemoveLastAdmin
@@ -628,6 +634,9 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 			return errAdminRequired
 		}
 	case updateGroupTypeDelete:
+		if gs.deletedBy != uuid.Nil {
+			return errAlreadyDeleted
+		}
 		if gs.isAdmin(ug.Actor) {
 			return nil
 		} else {
@@ -752,6 +761,10 @@ func applyUpdateGroupRemoveUserToState(gs groupState, ug updateGroup) (groupStat
 	gs.users = membersWithoutUser
 	gs.admins = adminsWithoutUser
 
+	if gs.deletedBy == userID {
+		gs.deletedBy = uuid.Nil
+	}
+
 	return gs, nil
 }
 
@@ -819,6 +832,10 @@ func applyUpdateGroupDemoteAdminToState(gs groupState, ug updateGroup) (groupSta
 
 	gs.admins = adminsWithoutUser
 
+	if gs.deletedBy == userID {
+		gs.deletedBy = uuid.Nil
+	}
+
 	return gs, nil
 }
 
@@ -856,7 +873,7 @@ func applyUpdateGroupChangePostingPermissionToState(gs groupState, ug updateGrou
 }
 
 func applyUpdateGroupDeleteToState(gs groupState, ug updateGroup) (groupState, error) {
-	gs.deleted = true
+	gs.deletedBy = ug.Actor
 
 	return gs, nil
 }
@@ -916,7 +933,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 				return err
 			}
 
-			if !finalState.deleted && finalState.isMember(b.currentUserID()) {
+			if finalState.deletedBy == uuid.Nil && finalState.isMember(b.currentUserID()) {
 				b.applyUpdateGroupInUI(gs.ug)
 			}
 
@@ -952,20 +969,36 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 	}
 
 	// If the final state is that the group is deleted, delete the group
-	if finalState.deleted {
+	if finalState.deletedBy != uuid.Nil {
+		// Find the update group that deleted this group, or use gs.deletedWithi
+		deleteUgID := uuid.Nil
+		for i := len(cs.history) - 1; i >= 0; i-- {
+			ug := cs.history[i].ug
+			if ug.Type == updateGroupTypeDelete {
+				deleteUgID = ug.ID
+				break
+			}
+		}
+		if deleteUgID == uuid.Nil {
+			log.WithFields(log.Fields{
+				"deleted_by": finalState.deletedBy,
+			}).Error("error locating deletion update group in canonical stack")
+			return errors.New("unable to find delete update in canonical history")
+		}
+
 		// Attach a custom scope to this update group
 		err = b.createCustomScopeFromGroup(g.ID)
 		if err == nil {
-			err = b.database.Model(&finalState.ug).Select("custom_scope").Update("custom_scope", g.ID).Error
+			err = b.database.Model(&updateGroup{}).Where("id = ?", deleteUgID).Select("custom_scope").Update("custom_scope", g.ID).Error
 			if err != nil {
 				log.WithFields(log.Fields{
-					"update_group_id": finalState.ug.ID,
+					"update_group_id": deleteUgID,
 					"error":           err.Error(),
 				}).Fatal("error updating custom scope on update group")
 			}
 		} else {
 			log.WithFields(log.Fields{
-				"update_group_id": finalState.ug.ID,
+				"update_group_id": deleteUgID,
 				"error":           err.Error(),
 			}).Error("error creating custom scope for update group")
 		}
@@ -974,7 +1007,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		alwaysAnAdmin := true
 		ugsWithAdminStatusSideEffects := []updateGroup{}
 		for _, gs := range cs.history {
-			if !gs.isAdmin(finalState.ug.Actor) {
+			if !gs.isAdmin(finalState.deletedBy) {
 				alwaysAnAdmin = false
 			}
 
@@ -1139,6 +1172,17 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 	for userID, _ := range everInGroup {
 		if !finalState.isMember(userID) {
 			b.clearGroupDeliveryRecordsForUser(userID, g.ID)
+		}
+	}
+
+	// If there was a failed attempt to delete the group, clear all delivery records once in order to restore the group
+	// for any devices that applied the deletion
+	for i := len(cs.history) - 1; i >= 0; i-- {
+		ug := cs.history[i].ug
+		if ug.Type == updateGroupTypeDelete {
+			b.clearDeliveryRecordsForFailedDelete(g.ID, ug.ID)
+			b.referenceAllOnlineDevicesInGroup(g.ID)
+			break
 		}
 	}
 
@@ -1663,5 +1707,113 @@ func (b *bounce) pruneMessagesBeforeClear(clearBefore int64, groupID uuid.UUID) 
 			}).Fatal("error deleting group message while clearing chat history")
 		}
 		b.userInterface.DeleteItem(gm.ID)
+	}
+}
+
+func (b *bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID uuid.UUID) {
+	// Check if we've already cleared delivery records as a result of this update group
+	var lastClear uuid.UUID
+	err := b.database.Select("delivery_records_cleared_for").Where("id = ?", groupID).Find(&lastClear).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+		}).Error("error finding group while clearing delivery records after failed delete")
+		return
+	}
+
+	if lastClear != updateGroupID {
+		// Store on the group that we've cleared delivery records as a result of this update group
+		err = b.database.Model(&group{}).Where("id = ?", groupID).Select("delivery_records_cleared_for").Update("delivery_records_cleared_for", updateGroupID).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("error updating delivery records cleared for field on group")
+			return
+		}
+
+		// Clear all delivery records for this group's group creation
+		err = b.database.Exec("DELETE FROM delivery_records WHERE frame_type = ? AND frame_id = ?", typeGroupCreation, groupID).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+			}).Fatal("database error deleting delivery records")
+		}
+
+		// Clear all delivery records for all update groups in this group
+		var ugs []updateGroup
+		err = b.database.Select("id").Where("target = ?", groupID).Find(&ugs).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+			}).Fatal("database error getting all update groups")
+		}
+		for _, ug := range ugs {
+			err = b.database.Exec("DELETE FROM delivery_records WHERE frame_type = ? AND frame_id = ?", typeUpdateGroup, ug.ID).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": groupID,
+				}).Fatal("database error deleting delivery records")
+
+			}
+		}
+
+		// Clear all delivery records for all group messages in this group
+		var gms []groupMessage
+		err = b.database.Select("id").Where("target = ?", groupID).Find(&gms).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+			}).Fatal("database error getting all group messages")
+		}
+		for _, gm := range gms {
+			err = b.database.Exec("DELETE FROM delivery_records WHERE frame_type = ? AND frame_id = ?", typeGroupMessage, gm.ID).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": groupID,
+				}).Fatal("database error deleting delivery records")
+
+			}
+		}
+	}
+}
+
+func (b *bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
+	// Get all the user IDs in this group
+	var userIDs []uuid.UUID
+	err := b.database.Table("group_users").
+		Select("user_id").
+		Where("group_id = ?", groupID).
+		Find(&userIDs).
+		Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error getting user IDs in group")
+	}
+
+	// Get all the addresses for all these users devices, excluding this device
+	var addresses []string
+	err = b.database.Table("devices").
+		Select("address").
+		Where("address != ? AND user_id IN (?)", b.network.Address(), userIDs).
+		Find(&addresses).
+		Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error getting user IDs in group")
+	}
+
+	// Send references to any online devices
+	for _, addr := range addresses {
+		rd := b.getRemoteDevice(addr)
+		if rd.connectedSockets > 1 {
+			go b.sendReferences(addr)
+		}
 	}
 }
