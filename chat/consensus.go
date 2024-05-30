@@ -1769,7 +1769,7 @@ func (b *bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID uuid
 
 		// Clear all delivery records for all group messages in this group
 		var gms []groupMessage
-		err = b.database.Select("id").Where("target = ?", groupID).Find(&gms).Error
+		err = b.database.Select("id").Where("destination = ?", groupID).Find(&gms).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":    err.Error(),
