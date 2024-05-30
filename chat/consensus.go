@@ -1177,7 +1177,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 
 	// If there was a failed attempt to delete the group, clear all delivery records once in order to restore the group
 	// for any devices that applied the deletion
-	var failedDelete = updateGroup{}
+	var failedDelete updateGroup
 	err = b.database.
 		Select("id").
 		Where("target = ? AND type = ? AND applied = false", g.ID, updateGroupTypeDelete).
@@ -1718,16 +1718,17 @@ func (b *bounce) pruneMessagesBeforeClear(clearBefore int64, groupID uuid.UUID) 
 
 func (b *bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID uuid.UUID) {
 	// Check if we've already cleared delivery records as a result of this update group
-	var lastClear uuid.UUID
-	err := b.database.Select("delivery_records_cleared_for").Where("id = ?", groupID).Find(&lastClear).Error
+	var g group
+	err := b.database.Select("delivery_records_cleared_for").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
 		log.WithFields(log.Fields{
+			"error":    err.Error(),
 			"group_id": groupID,
 		}).Error("error finding group while clearing delivery records after failed delete")
 		return
 	}
 
-	if lastClear != updateGroupID {
+	if g.DeliveryRecordsClearedFor != updateGroupID {
 		// Store on the group that we've cleared delivery records as a result of this update group
 		err = b.database.Model(&group{}).Where("id = ?", groupID).Select("delivery_records_cleared_for").Update("delivery_records_cleared_for", updateGroupID).Error
 		if err != nil {
