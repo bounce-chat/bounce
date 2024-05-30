@@ -1177,13 +1177,19 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 
 	// If there was a failed attempt to delete the group, clear all delivery records once in order to restore the group
 	// for any devices that applied the deletion
-	for i := len(cs.history) - 1; i >= 0; i-- {
-		ug := cs.history[i].ug
-		if ug.Type == updateGroupTypeDelete {
-			b.clearDeliveryRecordsForFailedDelete(g.ID, ug.ID)
-			b.referenceAllOnlineDevicesInGroup(g.ID)
-			break
-		}
+	var failedDelete = updateGroup{}
+	err = b.database.
+		Select("id").
+		Where("target = ? AND type = ? AND applied = false", g.ID, updateGroupTypeDelete).
+		Find(&failedDelete).
+		Error
+	if err == nil {
+		b.clearDeliveryRecordsForFailedDelete(g.ID, failedDelete.ID)
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"group_id": g.ID,
+			"error":    err.Error(),
+		}).Fatal("database error looking for unapplied update group delete")
 	}
 
 	return b.setGroupStateInDatabase(g, finalState)
@@ -1779,6 +1785,8 @@ func (b *bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID uuid
 
 			}
 		}
+
+		b.referenceAllOnlineDevicesInGroup(groupID)
 	}
 }
 
