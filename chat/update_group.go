@@ -308,17 +308,25 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 		}
 
 		// If this is a remove user frame, make sure to send it to the devices of the user who was removed
-		if ug.Type == updateGroupTypeRemoveUser {
-			userID, err := uuid.FromBytes(ug.Data)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":   err.Error(),
-					"actor":   ug.Actor,
-					"user_id": ug.Data,
-				}).Error("update group attempted to remove user with invalid UUID")
-				return nil
+		if ug.Type == updateGroupTypeRemoveUser || ug.Type == updateGroupTypeBlock {
+			// Find the user ID that's being removed or is blocking the group
+			userID := uuid.Nil
+			switch ug.Type {
+			case updateGroupTypeRemoveUser:
+				userID, err = uuid.FromBytes(ug.Data)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":   err.Error(),
+						"actor":   ug.Actor,
+						"user_id": ug.Data,
+					}).Error("update group attempted to remove user with invalid UUID")
+					return nil
+				}
+			case updateGroupTypeBlock:
+				userID = ug.Actor
 			}
 
+			// Broadcast directly to that user's devices since they are no longer in the group scope
 			if userID != b.currentUserID() {
 				var u user
 				err := b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error
@@ -327,33 +335,6 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 						log.WithFields(log.Fields{
 							"user_id": userID,
 						}).Error("user not found for direct remove from group broadcast")
-						return nil
-					} else {
-						log.WithFields(log.Fields{
-							"error": err.Error(),
-						}).Fatal("error looking up user")
-					}
-				}
-
-				for _, dev := range u.Devices {
-					if dev.Address == peer {
-						continue
-					}
-					rd := b.getRemoteDevice(dev.Address)
-					if rd.connectedSockets > 0 {
-						go b.sendDirect(dev.Address, &ug)
-					}
-				}
-			}
-		} else if ug.Type == updateGroupTypeBlock {
-			if ug.Actor != b.currentUserID() {
-				var u user
-				err := b.database.Preload(clause.Associations).Where("id = ?", ug.Actor).First(&u).Error
-				if err != nil {
-					if errors.Is(err, gorm.ErrRecordNotFound) {
-						log.WithFields(log.Fields{
-							"user_id": ug.Actor,
-						}).Error("user not found for direct update group block broadcast")
 						return nil
 					} else {
 						log.WithFields(log.Fields{
