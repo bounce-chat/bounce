@@ -68,15 +68,13 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	user, exists := fyneUI.users.get(bounceUser.ID)
 	if !exists {
 		log.WithFields(log.Fields{
-			"user_id":   bounceUser.ID,
-			"user_name": bounceUser.Name,
+			"user_id": bounceUser.ID,
 		}).Error("cannot create DM with user unknown to the UI")
 		return
 	}
 	if _, exists := fyneUI.dms[bounceUser.ID]; exists {
 		log.WithFields(log.Fields{
-			"user_id":   bounceUser.ID,
-			"user_name": bounceUser.Name,
+			"user_id": bounceUser.ID,
 		}).Error("attempt to create a DM that already exists, ignoring")
 		return
 	}
@@ -110,7 +108,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	userIconCanvas.FillMode = canvas.ImageFillContain
 	userIconCanvas.SetMinSize(fyne.NewSize(32, 32))
 
-	userLabelText := widget.NewLabel(user.name)
+	userLabelText := widget.NewLabelWithData(user.name)
 	userLabel := container.NewHBox(
 		userIconCanvas,
 		userLabelText,
@@ -182,7 +180,7 @@ func (fyneUI *Fyne) DisplayDirectMessage(dm chat.DirectMessage) {
 	if !exists {
 		fyneUI.NewDirectMessage(chat.User{
 			ID:   dm.Thread,
-			Name: u.name,
+			Name: u.getName(),
 		})
 		dmThread, exists = fyneUI.dms[dm.Thread]
 		if !exists {
@@ -215,7 +213,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	threadIcon.FillMode = canvas.ImageFillContain
 	threadIcon.SetMinSize(fyne.NewSize(64, 64))
 
-	username := widget.NewLabel(dm.user.name)
+	username := widget.NewLabelWithData(dm.user.name)
 
 	//
 	// Selection for message retention

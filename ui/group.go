@@ -181,7 +181,7 @@ func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) dialog.Dialog 
 	var userDetailsDialog dialog.Dialog
 
 	editUserContainer := container.NewVBox(
-		widget.NewLabel(u.name),
+		widget.NewLabelWithData(u.name),
 		widget.NewButton("Direct Message", func() {
 			// Close the dialog
 			if userDetailsDialog == nil {
@@ -194,7 +194,7 @@ func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) dialog.Dialog 
 			if !dmExists {
 				fyneUI.NewDirectMessage(chat.User{
 					ID:   u.id,
-					Name: u.name,
+					Name: u.getName(),
 				})
 				dm, dmExists = fyneUI.dms[u.id]
 				if !dmExists {
@@ -208,7 +208,7 @@ func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) dialog.Dialog 
 		fyneUI.getRemoveUserButton(g, u.id),
 		g.getAdminCheck(u.id),
 	)
-	userDetailsDialog = dialog.NewCustomConfirm(u.name, "Apply", "Cancel", editUserContainer, func(apply bool) {
+	userDetailsDialog = dialog.NewCustomConfirm(u.getName(), "Apply", "Cancel", editUserContainer, func(apply bool) { // TODO: add listener to update name when it changes
 		if apply {
 			// Update the admin status if needed
 			if g.getAdminCheck(u.id).Checked && !g.isAdmin(u.id) {
@@ -313,7 +313,8 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	for _, bu := range bounceGroup.Users {
 		u, exists := fyneUI.users.get(bu.ID)
 		if !exists {
-			u := &user{id: bu.ID, name: bu.Name}
+			u := &user{id: bu.ID, name: binding.NewString()}
+			u.name.Set(bu.Name)
 			fyneUI.users.add(u)
 			group.users.add(u)
 		} else {
@@ -383,7 +384,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 
 	group.entryBar = container.NewMax(entry)
 
-	group.button = newThreadButton(todoImage(), bounceGroup.Name, func() {
+	group.button = newThreadButton(todoImage(), group.name, func() {
 		fyneUI.displayThread(group)
 		fyneUI.callbacks.GroupConnectionDesired(group.id)
 	})
@@ -451,7 +452,8 @@ func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
 	for _, bu := range bounceGroup.Users {
 		u, ok := fyneUI.users.get(bu.ID)
 		if !ok {
-			u = &user{id: bu.ID, name: bu.Name}
+			u = &user{id: bu.ID, name: binding.NewString()}
+			u.name.Set(bu.Name)
 			fyneUI.users.add(u)
 			g.users.add(u)
 		}
@@ -535,8 +537,9 @@ func (fyneUI *Fyne) AddUser(ugau chat.UpdateGroupAddUser) {
 
 	u := &user{
 		id:   ugau.User.ID,
-		name: ugau.User.Name,
+		name: binding.NewString(),
 	}
+	u.name.Set(ugau.User.Name)
 	fyneUI.users.add(u) // TODO: this is needed since it isn't in the group state, should it be?
 
 	fyneUI.appendThreadItem(g, ti)
@@ -572,7 +575,7 @@ func (fyneUI *Fyne) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 		var actorName string
 		actor, ok := fyneUI.users.get(rfg.Actor)
 		if ok {
-			actorName = actor.name
+			actorName = actor.getName()
 		} else {
 			log.WithFields(log.Fields{
 				"actor": rfg.Actor,
@@ -611,7 +614,7 @@ func (fyneUI *Fyne) GroupDeleted(gd chat.GroupDeleted) {
 		} else {
 			actor, ok := fyneUI.users.get(gd.Actor)
 			if ok {
-				actorName = actor.name
+				actorName = actor.getName()
 			} else {
 				log.WithFields(log.Fields{
 					"actor": gd.Actor,

@@ -54,7 +54,8 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 	currentUsersList := container.NewVBox()
 	for _, thisUser := range fyneUI.newGroupSelectedUsers.alphabetized() {
 		func(u *user) {
-			removePendingUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
+			// TODO: add listening to update button name with binding
+			removePendingUserButton := widget.NewButtonWithIcon(u.getName(), newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
 				fyneUI.newGroupSelectedUsers.remove(u.id)
 				log.Info("refreshing with search: " + fyneUI.newGroupNameEntry.Text)
 				fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
@@ -91,7 +92,8 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 		}
 
 		func(u *user) {
-			addUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
+			// TODO: add listener to update button name with binding
+			addUserButton := widget.NewButtonWithIcon(u.getName(), newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
 				fyneUI.newGroupSelectedUsers.add(u)
 				fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
 			})
@@ -122,7 +124,7 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 			userIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
 			userIcon.FillMode = canvas.ImageFillContain
 			userIcon.SetMinSize(fyne.NewSquareSize(theme.IconInlineSize()))
-			userName := widget.NewLabel(u.name)
+			userName := widget.NewLabelWithData(u.name)
 			userDetails := container.NewHBox(
 				userIcon,
 				userName,

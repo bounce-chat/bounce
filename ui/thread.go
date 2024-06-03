@@ -271,7 +271,7 @@ func (fyneUI *Fyne) ShowTypingIndicatorInButton(userID, threadID uuid.UUID) {
 		return
 	}
 
-	name := u.name
+	name := u.getName()
 	if u.id == fyneUI.profile.id {
 		name = "You"
 	}

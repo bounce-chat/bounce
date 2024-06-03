@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
@@ -14,11 +15,6 @@ import (
 var errUnknownThread = errors.New("unknown thread")
 var errUnknownActor = errors.New("unknown actor")
 var errUnknownUser = errors.New("unknown user")
-
-var deletedUser = &user{
-	id:   uuid.Nil,
-	name: "-deleted-",
-}
 
 type threadItem struct {
 	id           uuid.UUID
@@ -90,7 +86,7 @@ func (fyneUI *Fyne) newUpdateGroupRemoveUser(ugru chat.UpdateGroupRemoveUser) (*
 		ugru.ID,
 		ugru.Thread,
 		ugru.Actor,
-		"removed "+removedUser.name+" from the group",
+		"removed "+removedUser.getName()+" from the group", // TODO: bind username:
 		ugru.Timestamp,
 	)
 }
@@ -118,7 +114,7 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 
 	user, exists := fyneUI.users.get(gm.Author)
 	if !exists {
-		user = deletedUser
+		user = fyneUI.deletedUser
 		// TODO: make sure to make this unique with a text color for deleted users
 	}
 
@@ -131,13 +127,14 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		if err != nil {
 			log.Fatal("data bindings are broken")
 		}
-		notification = fyne.NewNotification(groupName, user.name+": "+gm.Text)
+		notification = fyne.NewNotification(groupName, user.getName()+": "+gm.Text)
 		profileButton = widget.NewButtonWithIcon("", newEmbeddedResource("assets/not_found.png"), func() { // TODO: get image from user
-			log.Info("user wants to open the profile of " + user.name)
+			log.Info("user wants to open the profile of " + user.getName())
 			// TODO: display this user's profile
 		})
 	} else {
-		displayName = "You"
+		displayName = binding.NewString()
+		displayName.Set("You")
 	}
 
 	return &threadItem{
@@ -145,7 +142,7 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		widget:       newChatBubble(displayName, gm.ID, gm.Text, outgoing, gm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
-			displayName := user.name
+			displayName := user.getName() // TODO: bind last message button text?
 			if gm.Author == fyneUI.profile.id {
 				displayName = "You"
 			}
@@ -179,9 +176,10 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 	displayName := u.name
 	var notification *fyne.Notification
 	if !outgoing {
-		notification = fyne.NewNotification(u.name, dm.Text)
+		notification = fyne.NewNotification(u.getName(), dm.Text)
 	} else {
-		displayName = "You"
+		displayName = binding.NewString()
+		displayName.Set("You")
 	}
 
 	return &threadItem{
@@ -189,7 +187,7 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 		widget:       newChatBubble(displayName, dm.ID, dm.Text, outgoing, dm.WrittenAt, nil), // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
-			displayName := u.name
+			displayName := u.getName()
 			if dm.Author == fyneUI.profile.id {
 				displayName = "You"
 			}
@@ -234,7 +232,7 @@ func (fyneUI *Fyne) newUpdateGroupAdminPromoted(ugap chat.UpdateGroupAdminPromot
 		ugap.ID,
 		ugap.Thread,
 		ugap.Actor,
-		"made "+newAdmin.name+" an admin",
+		"made "+newAdmin.getName()+" an admin", // TODO: bind?
 		ugap.Timestamp,
 	)
 }
@@ -249,7 +247,7 @@ func (fyneUI *Fyne) newUpdateGroupAdminDemoted(ugad chat.UpdateGroupAdminDemoted
 		ugad.ID,
 		ugad.Thread,
 		ugad.Actor,
-		"removed "+oldAdmin.name+" as an admin",
+		"removed "+oldAdmin.getName()+" as an admin", // TODO: bind?
 		ugad.Timestamp,
 	)
 }
@@ -334,6 +332,29 @@ func (fyneUI *Fyne) newGroupCreated(id, groupID, actorID uuid.UUID, timestamp in
 	)
 }
 
+func (fyneUI *Fyne) userChangedName(id, userID uuid.UUID, oldName, newName string, timestamp int64) (*threadItem, error) {
+	user, ok := fyneUI.users.get(userID)
+	if !ok {
+		return &threadItem{}, errUnknownActor
+	}
+
+	action := " changed their name to "
+	if user.id == fyneUI.profile.id {
+		oldName = "You"
+		action = " changed your name to "
+	}
+
+	changeString := oldName + action + newName
+	changeLabel := newStatusChange(id, timestamp, changeString)
+
+	return &threadItem{
+		id:        id,
+		widget:    changeLabel,
+		setButton: func(tb *threadButton) {},
+		timestamp: timestamp,
+	}, nil
+}
+
 func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, changeString string, timestamp int64) (*threadItem, error) {
 	t, ok := fyneUI.getThread(threadID)
 	if !ok {
@@ -347,7 +368,7 @@ func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, c
 	if !ok {
 		return &threadItem{}, errUnknownActor
 	}
-	actorName := actor.name
+	actorName := actor.getName() // TODO: bind
 	if actorID == fyneUI.profile.id {
 		actorName = "You"
 	}

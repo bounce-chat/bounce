@@ -9,6 +9,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -40,10 +41,19 @@ type threadButton struct {
 	clicked                   func()
 }
 
-func newThreadButton(image *canvas.Image, name string, clicked func()) *threadButton {
+func newThreadButton(image *canvas.Image, name binding.String, clicked func()) *threadButton {
 	if clicked == nil {
 		log.Fatal("threadButton widgets must be defined with a clicked callback")
 	}
+
+	nameString, err := name.Get()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("data bindings broken for user name")
+
+	}
+	// TODO: add a listener to update the rich text below when the name changed
 
 	tb := &threadButton{
 		threadImage: image,
@@ -51,7 +61,7 @@ func newThreadButton(image *canvas.Image, name string, clicked func()) *threadBu
 			Style: widget.RichTextStyle{
 				SizeName: theme.SizeNameSubHeadingText,
 			},
-			Text: name,
+			Text: nameString,
 		}),
 		lastMessage: widget.NewRichText(
 			&widget.TextSegment{

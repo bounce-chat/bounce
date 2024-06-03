@@ -46,6 +46,9 @@ var expirationIncrements = map[string]int64{
 }
 
 func (fyneUI *Fyne) showEditProfile() {
+	fyneUI.profileNameEntry.Text = fyneUI.profile.getName()
+	fyneUI.profileNameEntry.Refresh()
+
 	fyneUI.mainWindow.SetContent(fyneUI.editProfile)
 	fyneUI.editProfile.Show()
 }
@@ -60,16 +63,14 @@ func (fyneUI *Fyne) buildEditProfile() {
 	profileIcon.FillMode = canvas.ImageFillContain
 	profileIcon.SetMinSize(fyne.NewSize(64, 64))
 
-	profileNameEntry := widget.NewEntry()
-	currentProfileName := "Get the name from the database" //thread.name.Get() // TODO: load from DB but bind in UI
-	//if err != nil {
-	//	log.WithFields(log.Fields{
-	//		"error": err.Error(),
-	//	}).Fatal("data bindings are broken")
-	//}
-	profileNameEntry.Text = currentProfileName
+	fyneUI.profileNameEntry = widget.NewEntry()
 
-	saveProfileButton := widget.NewButton("Update", func() {})
+	saveProfileButton := widget.NewButton("Update", func() {
+		err := fyneUI.callbacks.UpdateProfileName(fyneUI.profileNameEntry.Text)
+		if err != nil {
+			dialog.ShowError(errors.New("error updating name: "+err.Error()), fyneUI.mainWindow)
+		}
+	})
 	saveProfileButton.Importance = widget.HighImportance
 
 	saveProfileButtonBar := container.New(
@@ -79,7 +80,7 @@ func (fyneUI *Fyne) buildEditProfile() {
 
 	profileOptions := container.NewVBox(
 		profileIcon,
-		profileNameEntry,
+		fyneUI.profileNameEntry,
 		saveProfileButtonBar,
 	)
 

@@ -7,6 +7,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
@@ -17,13 +18,13 @@ type chatBubble struct {
 	widget.BaseWidget
 	id        uuid.UUID
 	timestamp int64
-	username  string // TODO: needs to update when user changes name.  user.name should be a binding.String and should add a listener
+	username  binding.String
 	message   *widget.Label
 	icon      *widget.Button
 	outgoing  bool
 }
 
-func newChatBubble(username string, id uuid.UUID, message string, outgoing bool, timestamp int64, icon *widget.Button) *chatBubble { // TODO: export chat.Message for this?
+func newChatBubble(username binding.String, id uuid.UUID, message string, outgoing bool, timestamp int64, icon *widget.Button) *chatBubble { // TODO: export chat.Message for this?
 	if icon != nil && outgoing {
 		log.Warn("outgoing chat bubbles can't have icons")
 	}
@@ -61,7 +62,11 @@ func newChatBubble(username string, id uuid.UUID, message string, outgoing bool,
 
 func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 	bubble.ExtendBaseWidget(bubble)
-	usernameText := canvas.NewText(bubble.username, theme.ForegroundColor()) // TODO: users should have unique colors derived from ID
+	username, err := bubble.username.Get()
+	if err != nil {
+		log.Fatal("data bindings broken")
+	}
+	usernameText := canvas.NewText(username, theme.ForegroundColor()) // TODO: users should have unique colors derived from ID
 	usernameText.TextStyle.Bold = true
 
 	timestampText := canvas.NewText(time.Unix(bubble.timestamp, 0).Format("1/2 15:04"), theme.ForegroundColor())
@@ -312,7 +317,14 @@ func (renderer *bubbleRenderer) MinSize() (size fyne.Size) {
 }
 
 func (renderer *bubbleRenderer) Refresh() {
-	renderer.username.Text = renderer.bubble.username
+	usernameText, err := renderer.bubble.username.Get()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("data bindings are broken")
+	}
+
+	renderer.username.Text = usernameText
 	renderer.message = renderer.bubble.message
 	renderer.longestLine = longestLine(renderer.message.Text)
 	//r.updateIconAndText()

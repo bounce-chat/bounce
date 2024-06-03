@@ -353,7 +353,8 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 
 	for _, thisUser := range adminSorted {
 		func(u *user) {
-			userDetailsButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() {
+			// TODO: setup listener to update the button text below
+			userDetailsButton := widget.NewButtonWithIcon(u.getName(), newEmbeddedResource("assets/not_found.png"), func() {
 				fyneUI.getEditUserDialog(g, u.id).Show()
 			})
 			userDetailsButton.Alignment = widget.ButtonAlignLeading
@@ -393,7 +394,8 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 	pendingUsersList := container.NewVBox()
 	for _, thisUser := range g.pendingUsers.alphabetized() {
 		func(u *user) {
-			removePendingUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
+			// TODO: setup listener to update the button text below
+			removePendingUserButton := widget.NewButtonWithIcon(u.getName(), newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
 				g.pendingUsers.remove(u.id)
 				fyneUI.refreshUserSelections(g)
 			})
@@ -440,7 +442,8 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(g *group, allAvailableUsers []*user
 		}
 
 		func(u *user) {
-			addUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
+			// TODO: setup listener to update the button text below
+			addUserButton := widget.NewButtonWithIcon(u.getName(), newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
 				g.pendingUsers.add(u)
 				fyneUI.refreshUserSelections(g)
 			})

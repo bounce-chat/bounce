@@ -43,12 +43,13 @@ func (fyneUI *Fyne) refreshAllUsersDMLinks() {
 	usersBox := container.NewVBox()
 	for _, thisUser := range fyneUI.users.alphabetized() {
 		func(u *user) {
-			addUserButton := widget.NewButtonWithIcon(u.name, newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
+			// TODO: add listener on user's name to update button text
+			addUserButton := widget.NewButtonWithIcon(u.getName(), newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
 				dm, dmExists := fyneUI.dms[u.id]
 				if !dmExists {
 					fyneUI.NewDirectMessage(chat.User{
 						ID:   u.id,
-						Name: u.name,
+						Name: u.getName(),
 					})
 					dm, dmExists = fyneUI.dms[u.id]
 					if !dmExists {

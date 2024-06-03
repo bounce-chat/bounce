@@ -72,6 +72,7 @@ func (b *bounce) openDatabase() {
 		&customScope{},
 		&confirmation{},
 		&profileSettings{},
+		&updateUser{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{

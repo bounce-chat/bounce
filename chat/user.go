@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -333,6 +334,10 @@ func (b *bounce) updateLastUserActivity(userID uuid.UUID, timestamp int64) {
 			}).Fatal("database error updating user last activity")
 		}
 	}
+}
+
+func validUserName(name string) bool {
+	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= 512
 }
 
 func xor(uuid1, uuid2 uuid.UUID) uuid.UUID {

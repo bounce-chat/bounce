@@ -85,6 +85,9 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 	// Keep track of which groups will need a consensus update
 	groupsToUpdateConsensus := map[uuid.UUID]bool{}
 
+	// Keep track of which users are getting updated
+	usersToUpdate := map[uuid.UUID]bool{}
+
 	// Keep track of devices we need to reference after this
 	devicesToReference := map[string]bool{}
 
@@ -151,6 +154,10 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		if fr.Type == typeUpdateGroup || fr.Type == typeGroupCreation || fr.Type == typeConfirmation {
 			groupsToUpdateConsensus[br.getDestination(b.currentUserID())] = true
 		}
+
+		if fr.Type == typeUpdateUser {
+			usersToUpdate[br.getAuthor()] = true
+		}
 	}
 	// Inform the reference engine of all the frames we handled
 	b.loadCatchUp(peer, a.References)
@@ -216,6 +223,11 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 				}
 			}
 		}
+	}
+
+	// Update user states for all users with an update user frame in this catch up
+	for userID, _ := range usersToUpdate {
+		b.updateUserState(userID)
 	}
 
 	// Send references to any device we would have broadcast to

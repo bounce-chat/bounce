@@ -46,6 +46,7 @@ type Fyne struct {
 	importContact                         *fyne.Container
 	threadVBox                            *fyne.Container
 	chatContainer                         *fyne.Container
+	profileNameEntry                      *widget.Entry
 	newGroupNameEntry                     *widget.Entry
 	newGroupSelectedUsersContainer        *container.Scroll
 	newGroupPendingUsersList              *container.Scroll
@@ -73,6 +74,7 @@ type Fyne struct {
 	addUserString                         binding.String
 	profile                               *user
 	users                                 *userStore
+	deletedUser                           *user
 	initialStateSet                       bool
 	focused                               bool
 	networkState                          int
@@ -93,6 +95,8 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.addUserString = binding.NewString()
 	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}) // TODO: red rich text
 	fyneUI.networkOfflineWarning.Show()
+	fyneUI.deletedUser = &user{id: uuid.Nil, name: binding.NewString()}
+	fyneUI.deletedUser.name.Set("-deleted-")
 
 	//
 	// Define the app
@@ -172,12 +176,15 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		// TODO: log fatal if anything else is set
 		return
 	} else {
-		fyneUI.profile = &user{id: state.Profile.ID, name: state.Profile.Name} // TODO: use the exported user concept in the UI?  Not doing that becuase bindings
+		fyneUI.profile = &user{id: state.Profile.ID, name: binding.NewString()}
+		fyneUI.profile.name.Set(state.Profile.Name)
 	}
 
 	initialDMStates := map[uuid.UUID]chat.DMState{}
 	for _, u := range state.Users {
-		fyneUI.users.add(&user{id: u.ID, name: u.Name})
+		uiUser := &user{id: u.ID, name: binding.NewString()}
+		uiUser.name.Set(u.Name)
+		fyneUI.users.add(uiUser)
 		initialDMStates[u.ID] = u.State
 	}
 
@@ -360,7 +367,7 @@ func (fyneUI *Fyne) creatDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]ch
 	if !exists {
 		fyneUI.NewDirectMessage(chat.User{
 			ID:    id,
-			Name:  u.name,
+			Name:  u.getName(),
 			State: initialState,
 		})
 		_, exists = fyneUI.dms[id]
@@ -393,6 +400,8 @@ func (fyneUI *Fyne) NetworkOffline() {
 }
 
 func (fyneUI *Fyne) UserImported(u chat.User) {
-	fyneUI.users.add(&user{id: u.ID, name: u.Name})
+	newUser := &user{id: u.ID, name: binding.NewString()}
+	newUser.name.Set(u.Name)
+	fyneUI.users.add(newUser)
 	fyneUI.NewDirectMessage(u)
 }

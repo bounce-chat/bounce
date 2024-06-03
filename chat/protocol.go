@@ -35,6 +35,7 @@ var typeAddUserRequestAccepted = uint16(16)
 var typeAddUserRequestRejected = uint16(17)
 var typeAddUser = uint16(18)
 var typeConfirmation = uint16(19)
+var typeUpdateUser = uint16(20)
 
 type sendable interface {
 	getType() uint16
@@ -84,6 +85,7 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte, bool) broadcastab
 		typeAddUserRequestRejected:    b.handleAddUserRequestRejected,
 		typeAddUser:                   b.handleAddUser,
 		typeConfirmation:              b.handleConfirmation,
+		typeUpdateUser:                b.handleUpdateUser,
 	}
 }
 

@@ -188,6 +188,13 @@ type UserBlockedGroup struct {
 	Timestamp int64
 }
 
+type UpdateUserUpdateName struct {
+	ID        uuid.UUID
+	User      uuid.UUID
+	Name      string
+	Timestamp int64
+}
+
 type InitialState struct {
 	Profile                                *User
 	Users                                  []User
@@ -256,6 +263,9 @@ type UI interface {
 	DMRetentionChanged(UpdateDMRetention)      // The retention settings for a DM have been changed
 	DMChatHistoryCleared(UpdateDMClearHistory) // Display that a user has deleted all past DMs
 
+	SetUserName(uuid.UUID, string)
+	UserNameUpdated(UpdateUserUpdateName)
+
 	OpenNewGroupChat(Group)
 	NewGroupChat(Group)
 	SetGroupState(Group)
@@ -307,6 +317,8 @@ type UICallbacks struct {
 	SendDirectMessage func(DirectMessage)
 	// The user wants to send a group  message
 	SendGroupMessage func(GroupMessage)
+
+	UpdateProfileName func(string) error
 
 	// Called every time a character is entered into an entry to inform the chat engine to send a typing indicator
 	TypingInDirectMessage func(userID uuid.UUID)

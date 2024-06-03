@@ -105,6 +105,7 @@ func Start(network Network, ui UI) {
 			ClearDMChatHistory:       b.clearDMChatHistory,
 			TypingInDirectMessage:    b.typingInDirectMessage,
 			TypingInGroup:            b.typingInGroup,
+			UpdateProfileName:        b.updateProfileName,
 		},
 	)
 
