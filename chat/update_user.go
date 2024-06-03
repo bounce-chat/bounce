@@ -232,7 +232,7 @@ func (b *bounce) updateUserState(userID uuid.UUID) {
 
 	if u.Name != newName {
 		// Update the database field for the name
-		err := b.database.Where("id = ?", userID).Updates(map[string]interface{}{"name": newName}).Error
+		err := b.database.Table("users").Where("id = ?", userID).Updates(map[string]interface{}{"name": newName}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":   err.Error(),
