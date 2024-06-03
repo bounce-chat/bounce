@@ -256,7 +256,19 @@ func (b *bounce) updateProfileName(newName string) error {
 }
 
 func (b *bounce) applyAndBroadcastUpdateUser(uu updateUser) error {
-	err := b.saveAndDisplayUpdateUser(uu)
+	// Create the signed container for this update
+	var err error
+	uu.OriginalPayload, err = msgpack.Marshal(&uu)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling group update")
+	}
+	sc := b.createSignedContainer(uu.OriginalPayload)
+	uu.Signature = sc.Signature
+	uu.Signer = sc.Signer
+
+	err = b.saveAndDisplayUpdateUser(uu)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"id":    uu.ID,
