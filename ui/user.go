@@ -34,6 +34,7 @@ func (fyneUI *Fyne) SetUserName(userID uuid.UUID, name string) {
 
 	u.name.Set(name)
 	fyneUI.profileNameEntry.Text = name
+	fyneUI.profileNameEntry.Refresh()
 }
 
 func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
@@ -65,7 +66,7 @@ func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 					"error": err.Error(),
 				}).Error("error creating thread item for user name change")
 			} else {
-				fyneUI.appendThreadItem(dm, ti)
+				fyneUI.appendThreadItem(g, ti)
 			}
 		}
 	}
