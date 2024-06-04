@@ -77,7 +77,7 @@ func (fyneUI *Fyne) populateItems(t thread, items threadItems) {
 	if lastItem.setButton != nil {
 		lastItem.setButton(t.getButton())
 	} else {
-		log.Warn("thread item doesn't support setting last button")
+		log.Warn("thread item doesn't support setting last button") // TODO: iterate until you find the last thing that supports a button
 	}
 	fyneUI.refreshThreadOrder()
 }

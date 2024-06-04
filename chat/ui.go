@@ -216,6 +216,7 @@ type InitialState struct {
 	UpdateGroupEditsUnrestricted           []UpdateGroupEditsUnrestricted
 	UpdateGroupPostingsRestricted          []UpdateGroupPostingRestricted
 	UpdateGroupPostingsUnrestricted        []UpdateGroupPostingUnrestricted
+	UpdateUserUpdateNames                  []UpdateUserUpdateName
 }
 
 //

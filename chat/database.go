@@ -684,6 +684,36 @@ func (b *bounce) buildInitialState() InitialState {
 		}
 	}
 
+	// Load all update groups
+	uus := []updateUser{}
+	err = b.database.Order("timestamp asc").Find(&uus).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up all update users")
+	}
+	exportedUpdateUserUpdateNames := []UpdateUserUpdateName{}
+	for _, uu := range uus {
+		switch uu.Type {
+		case updateUserTypeUpdateName:
+			exportedUpdateUserUpdateNames = append(
+				exportedUpdateUserUpdateNames,
+				UpdateUserUpdateName{
+					ID:        uu.ID,
+					User:      uu.Target,
+					Name:      string(uu.Data),
+					Timestamp: uu.Timestamp,
+				},
+			)
+		default:
+			log.WithFields(log.Fields{
+				"id":      uu.ID,
+				"type":    uu.Type,
+				"user_id": uu.Target,
+			}).Warn("unsupported update user type")
+		}
+	}
+
 	// Create the initial state for the UI
 	return InitialState{
 		Profile:                                profile,
@@ -706,5 +736,6 @@ func (b *bounce) buildInitialState() InitialState {
 		UpdateGroupEditsUnrestricted:           exportedUpdateGroupEditsUnrestricted,
 		UpdateGroupPostingsRestricted:          exportedUpdateGroupPostingsRestricted,
 		UpdateGroupPostingsUnrestricted:        exportedUpdateGroupPostingsUnrestricted,
+		UpdateUserUpdateNames:                  exportedUpdateUserUpdateNames,
 	}
 }

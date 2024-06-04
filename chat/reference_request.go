@@ -76,6 +76,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte, _ bool) bro
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupCreationPayloads(dev, requestedIDs[typeGroupCreation], offeredIDs[typeGroupCreation])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateGroupsPayloads(dev, requestedIDs[typeUpdateGroup], offeredIDs[typeUpdateGroup])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedConfirmationsPayloads(dev, requestedIDs[typeConfirmation], offeredIDs[typeConfirmation], getValidRequestedUUIDs(offeredIDs[typeUpdateGroup], requestedIDs[typeUpdateGroup]))...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateUsersPayloads(dev, requestedIDs[typeUpdateUser], offeredIDs[typeUpdateUser])...)
 
 	// Send the catchup if there's anything to send
 	if len(cu.broadcastables) > 0 {
@@ -313,6 +314,34 @@ func (b *bounce) getRequestedConfirmationsPayloads(peer device, requestedIDs, of
 			requestedData = append(requestedData, &c)
 		}
 
+	}
+
+	return requestedData
+}
+
+func (b *bounce) getRequestedUpdateUsersPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+	requestedData := sortableBroadcastables{}
+
+	requestedUpdateUserIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
+
+	for _, updateUserID := range requestedUpdateUserIDs {
+		var uu updateUser
+		err := b.database.First(&uu, "id = ?", updateUserID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   updateUserID,
+					"peer": peer.Address,
+				}).Warn("reference request asks for unknown update user we offered")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    updateUserID,
+					"error": err.Error(),
+				}).Fatal("database error querying for update user")
+			}
+		} else {
+			requestedData = append(requestedData, &uu)
+		}
 	}
 
 	return requestedData

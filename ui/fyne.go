@@ -340,6 +340,10 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		groupItems[ugpu.Thread] = append(groupItems[ugpu.Thread], ugpuItem)
 	}
 
+	//for _, uuun := range state.UpdateUserUpdateNames {
+	//
+	//}
+
 	// Create widgets for all the thread items we added
 	for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?
 		if items, ok := groupItems[g.id]; ok {

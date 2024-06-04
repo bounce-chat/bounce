@@ -194,6 +194,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	references = append(references, b.getGroupCreationsToOffer(dev)...)
 	references = append(references, b.getUpdateGroupsToOffer(dev)...)
 	references = append(references, b.getConfirmationsToOffer(dev)...)
+	references = append(references, b.getUpdateUsersToOffer(dev)...)
 
 	return &referenceOffer{
 		ID:         uuid.New(),
@@ -596,6 +597,42 @@ func (b *bounce) getConfirmationsToOffer(dev device) []frameReference {
 	return references
 }
 
+func (b *bounce) getUpdateUsersToOffer(dev device) []frameReference {
+	var unsentUpdateUsers []updateUser
+	err := b.database.
+		Distinct("update_users.id").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == confirmations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeConfirmation).
+		Where(
+			`delivery_records.id IS NULL AND (
+				update_users.target = ? OR
+				update_users.target = ? OR
+				? IN (
+					SELECT DISTINCT user_id FROM group_users WHERE group_id IN
+						(
+							SELECT group_id FROM group_users WHERE user_id = ?
+						)
+					)
+			)`,
+			b.currentUserID(),
+			dev.UserID,
+			dev.UserID,
+			b.currentUserID(),
+		).
+		Find(&unsentUpdateUsers).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error selecting unsent update users in reference offer")
+	}
+
+	references := []frameReference{}
+	for _, uu := range unsentUpdateUsers {
+		references = append(references, frameReference{FrameID: uu.ID, Type: typeUpdateUser})
+	}
+
+	return references
+}
+
 func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) broadcastable {
 	// Unpack the offer
 	var ro referenceOffer
@@ -650,6 +687,10 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	cRefs, cAcks := b.getConfirmationsToRequestAndAck(dev, deviceExists, typesToIDs[typeConfirmation])
 	references = append(references, cRefs...)
 	acks = append(acks, cAcks...)
+
+	uuRefs, uuAcks := b.getUpdateUsersToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateUser])
+	references = append(references, uuRefs...)
+	acks = append(acks, uuAcks...)
 
 	// Unlock the catch up mutex
 	catchUpMutex.Unlock()
@@ -865,6 +906,32 @@ func (b *bounce) getConfirmationsToRequestAndAck(dev device, deviceExists bool, 
 				"id":    confirmationID,
 				"error": err.Error(),
 			}).Fatal("database error querying for confirmation")
+		}
+	}
+
+	return references, acks
+}
+
+func (b *bounce) getUpdateUsersToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+	references := []frameReference{}
+	acks := []frameReference{}
+
+	for _, updateUserID := range offeredIDs {
+		ref := frameReference{FrameID: updateUserID, Type: typeUpdateUser}
+		var uu updateUser
+		err := b.database.First(&uu, "id = ?", updateUserID).Error
+		if err == nil {
+			if deviceExists && !b.isDeliveredTo(&uu, dev.Address) {
+				b.markDeliveredTo(&uu, dev.Address)
+			}
+			acks = append(acks, ref)
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			references = append(references, ref)
+		} else {
+			log.WithFields(log.Fields{
+				"id":    updateUserID,
+				"error": err.Error(),
+			}).Fatal("database error querying for update user")
 		}
 	}
 
