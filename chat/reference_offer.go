@@ -601,7 +601,7 @@ func (b *bounce) getUpdateUsersToOffer(dev device) []frameReference {
 	var unsentUpdateUsers []updateUser
 	err := b.database.
 		Distinct("update_users.id").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == confirmations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeConfirmation).
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeConfirmation).
 		Where(
 			`delivery_records.id IS NULL AND (
 				update_users.target = ? OR
