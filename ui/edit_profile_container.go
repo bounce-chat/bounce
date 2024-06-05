@@ -69,6 +69,8 @@ func (fyneUI *Fyne) buildEditProfile() {
 		err := fyneUI.callbacks.UpdateProfileName(fyneUI.profileNameEntry.Text)
 		if err != nil {
 			dialog.ShowError(errors.New("error updating name: "+err.Error()), fyneUI.mainWindow)
+		} else {
+			fyneUI.showMainContainer()
 		}
 	})
 	saveProfileButton.Importance = widget.HighImportance
