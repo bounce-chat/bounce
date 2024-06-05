@@ -702,6 +702,7 @@ func (b *bounce) buildInitialState() InitialState {
 					ID:        uu.ID,
 					User:      uu.Target,
 					Name:      string(uu.Data),
+					OldName:   string(uu.PreviousData),
 					Timestamp: uu.Timestamp,
 				},
 			)

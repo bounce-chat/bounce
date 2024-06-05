@@ -340,9 +340,42 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		groupItems[ugpu.Thread] = append(groupItems[ugpu.Thread], ugpuItem)
 	}
 
-	//for _, uuun := range state.UpdateUserUpdateNames {
-	//
-	//}
+	for _, uuun := range state.UpdateUserUpdateNames {
+		if uuun.User == fyneUI.profile.id {
+			for dmID, _ := range fyneUI.dms {
+				uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+				if err != nil {
+					log.Fatal(err.Error())
+				} else {
+					dmItems[dmID] = append(dmItems[dmID], uuunItem)
+				}
+			}
+			for gID, _ := range fyneUI.groups {
+				uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+				if err != nil {
+					log.Fatal(err.Error())
+				} else {
+					groupItems[gID] = append(groupItems[gID], uuunItem)
+				}
+			}
+		} else {
+			uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			dmItems[uuun.User] = append(dmItems[uuun.User], uuunItem)
+
+			for _, g := range fyneUI.groups {
+				if g.users.contains(uuun.User) {
+					uuunGroupItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+					if err != nil {
+						log.Fatal(err.Error())
+					}
+					groupItems[g.id] = append(groupItems[g.id], uuunGroupItem)
+				}
+			}
+		}
+	}
 
 	// Create widgets for all the thread items we added
 	for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?

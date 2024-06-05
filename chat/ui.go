@@ -191,6 +191,7 @@ type UserBlockedGroup struct {
 type UpdateUserUpdateName struct {
 	ID        uuid.UUID
 	User      uuid.UUID
+	OldName   string
 	Name      string
 	Timestamp int64
 }

@@ -23,6 +23,7 @@ type updateUser struct {
 	Target          uuid.UUID
 	Type            uint16
 	Data            []byte
+	PreviousData    []byte `msgpack:"-"` // Used to store the old name during a name change
 	Timestamp       int64
 	Signer          string `msgpack:"-" gorm:"not null"`
 	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
@@ -154,6 +155,13 @@ func (b *bounce) saveAndDisplayUpdateUser(uu updateUser) error {
 		return err
 	}
 
+	// Store the last used name on the update
+	oldName, err := b.previousName(uu)
+	if err != nil {
+		return err
+	}
+	uu.PreviousData = []byte(oldName)
+
 	// Save this update
 	err = b.database.Create(&uu).Error
 	if err != nil {
@@ -175,6 +183,42 @@ func (b *bounce) saveAndDisplayUpdateUser(uu updateUser) error {
 	}
 
 	return nil
+}
+
+func (b *bounce) previousName(uu updateUser) (string, error) {
+	// Find the newest update name that isn't this one
+	var previousUU updateUser
+	err := b.database.Select("data", "MAX(timestamp)").Where("type = ? AND timestamp < ?", updateUserTypeUpdateName, uu.Timestamp).First(&previousUU).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// This user has no earlier name updates, have the current user name be the old name
+			var u user
+			err = b.database.Select("name").Where("id = ?", uu.Target).First(&u).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"user_id": uu.Target,
+						"error":   err.Error(),
+					}).Error("user not found when attempting to determine previous name for user name change")
+					return "", err
+				} else {
+					log.WithFields(log.Fields{
+						"user_id": uu.Target,
+						"error":   err.Error(),
+					}).Fatal("database error looking up user")
+				}
+			}
+			return u.Name, nil
+		} else {
+			log.WithFields(log.Fields{
+				"user_id": uu.Target,
+				"error":   err.Error(),
+			}).Fatal("database error looking up update user")
+
+		}
+	}
+
+	return string(previousUU.Data), nil
 }
 
 func (b *bounce) informUIUpdateUserUpdateName(uu updateUser) {
@@ -246,6 +290,14 @@ func (b *bounce) updateUserState(userID uuid.UUID) {
 }
 
 func (b *bounce) updateProfileName(newName string) error {
+	currentUser, ok := b.currentUser()
+	if !ok {
+		return errUserNotFound
+	}
+	if currentUser.Name == newName {
+		return nil
+	}
+
 	return b.applyAndBroadcastUpdateUser(updateUser{
 		ID:        uuid.New(),
 		Target:    b.currentUserID(),

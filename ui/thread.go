@@ -73,11 +73,14 @@ func (fyneUI *Fyne) populateItems(t thread, items threadItems) {
 	}
 	fyneUI.threadWithItemMutex.Unlock()
 
-	lastItem := items[len(items)-1]
-	if lastItem.setButton != nil {
-		lastItem.setButton(t.getButton())
-	} else {
-		log.Warn("thread item doesn't support setting last button") // TODO: iterate until you find the last thing that supports a button
+	for i := len(items) - 1; i >= 0; i-- {
+		lastItem := items[i]
+		if lastItem.setButton == nil {
+			continue
+		} else {
+			lastItem.setButton(t.getButton())
+			break
+		}
 	}
 	fyneUI.refreshThreadOrder()
 }
@@ -131,8 +134,6 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 
 	if ti.setButton != nil {
 		ti.setButton(t.getButton())
-	} else {
-		log.Error("thread item does not support setting button")
 	}
 
 	if autoscroll && fyneUI.isActive(t) {
@@ -147,8 +148,10 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 		fyneUI.app.SendNotification(ti.notification)
 	}
 
-	t.setLastMessageTime(ti.timestamp)
-	fyneUI.refreshThreadOrder()
+	if !ti.dontBumpThread {
+		t.setLastMessageTime(ti.timestamp)
+		fyneUI.refreshThreadOrder()
+	}
 }
 
 func (fyneUI *Fyne) MarkMessageUndeliverable(id uuid.UUID) {

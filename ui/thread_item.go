@@ -17,11 +17,12 @@ var errUnknownActor = errors.New("unknown actor")
 var errUnknownUser = errors.New("unknown user")
 
 type threadItem struct {
-	id           uuid.UUID
-	widget       fyne.Widget
-	notification *fyne.Notification
-	setButton    func(*threadButton)
-	timestamp    int64
+	id             uuid.UUID
+	widget         fyne.Widget
+	notification   *fyne.Notification
+	setButton      func(*threadButton)
+	timestamp      int64
+	dontBumpThread bool
 }
 
 type threadItems []*threadItem
@@ -348,10 +349,11 @@ func (fyneUI *Fyne) userChangedName(id, userID uuid.UUID, oldName, newName strin
 	changeLabel := newStatusChange(id, timestamp, changeString)
 
 	return &threadItem{
-		id:        id,
-		widget:    changeLabel,
-		setButton: func(tb *threadButton) {},
-		timestamp: timestamp,
+		id:             id,
+		widget:         changeLabel,
+		setButton:      nil,
+		timestamp:      timestamp,
+		dontBumpThread: true,
 	}, nil
 }
 
