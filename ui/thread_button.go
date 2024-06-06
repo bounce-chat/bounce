@@ -144,6 +144,7 @@ func newThreadButton(image *canvas.Image, name binding.String, clicked func()) *
 		}
 		tb.threadName.Segments[0].(*widget.TextSegment).Text = nameStr
 		tb.threadName.Refresh()
+		tb.Refresh()
 	}))
 
 	tb.typingAnimation = &fyne.Animation{

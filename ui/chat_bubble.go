@@ -84,7 +84,6 @@ func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 	timestampText := canvas.NewText(time.Unix(bubble.timestamp, 0).Format("1/2 15:04"), theme.ForegroundColor())
 	timestampText.TextSize = theme.TextSize() * 0.6
 
-	// TODO: round the corners when possible: https://github.com/fyne-io/fyne/issues/1090
 	// Incoming messages have a grey background and justify to the left
 	background := &canvas.Rectangle{
 		FillColor:    color.NRGBA{0x20, 0x20, 0x20, 0xff},
