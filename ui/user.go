@@ -33,10 +33,6 @@ func (fyneUI *Fyne) SetUserName(userID uuid.UUID, name string) {
 	}
 
 	u.name.Set(name)
-	if userID == fyneUI.profile.id {
-		fyneUI.profileNameEntry.Text = name
-		fyneUI.profileNameEntry.Refresh()
-	}
 }
 
 func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {

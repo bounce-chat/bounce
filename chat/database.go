@@ -296,7 +296,7 @@ func (b *bounce) buildInitialState() InitialState {
 
 	// Load all users
 	users := []user{}
-	err = b.database.Find(&users).Error
+	err = b.database.Where("profile = ?", false).Find(&users).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

@@ -226,6 +226,7 @@ func (b *bounce) informUIUpdateUserUpdateName(uu updateUser) {
 		ID:        uu.ID,
 		User:      uu.Target,
 		Name:      string(uu.Data),
+		OldName:   string(uu.PreviousData),
 		Timestamp: uu.Timestamp,
 	})
 }

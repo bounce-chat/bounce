@@ -178,6 +178,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	} else {
 		fyneUI.profile = &user{id: state.Profile.ID, name: binding.NewString()}
 		fyneUI.profile.name.Set(state.Profile.Name)
+		fyneUI.users.add(fyneUI.profile)
 	}
 
 	initialDMStates := map[uuid.UUID]chat.DMState{}
