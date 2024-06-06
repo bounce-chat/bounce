@@ -188,7 +188,7 @@ func (b *bounce) saveAndDisplayUpdateUser(uu updateUser) error {
 func (b *bounce) previousName(uu updateUser) (string, error) {
 	// Find the newest update name that isn't this one
 	var previousUU updateUser
-	err := b.database.Select("data", "MAX(timestamp)").Where("type = ? AND timestamp < ?", updateUserTypeUpdateName, uu.Timestamp).First(&previousUU).Error
+	err := b.database.Select("data", "MAX(timestamp)").Where("target = ? AND type = ? AND timestamp < ?", uu.Target, updateUserTypeUpdateName, uu.Timestamp).First(&previousUU).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// This user has no earlier name updates, have the current user name be the old name
