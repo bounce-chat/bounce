@@ -4,6 +4,7 @@ import (
 	"strings"
 	"sync"
 
+	"fyne.io/fyne/v2/data/binding"
 	"github.com/google/uuid"
 )
 
@@ -47,6 +48,12 @@ func (store *userStore) add(u *user) {
 		store.ngrams[gram] = append(store.ngrams[gram], u)
 	}
 
+	// When a use changes their name, remove and re-add them in order to
+	// re-sort the list and re-generate ngrams
+	u.name.AddListener(binding.NewDataListener(func() {
+		store.remove(u.id)
+		store.add(u)
+	}))
 }
 
 func (store *userStore) contains(userID uuid.UUID) bool {

@@ -18,13 +18,13 @@ type chatBubble struct {
 	widget.BaseWidget
 	id        uuid.UUID
 	timestamp int64
-	username  binding.String
+	username  string
 	message   *widget.Label
 	icon      *widget.Button
 	outgoing  bool
 }
 
-func newChatBubble(username binding.String, id uuid.UUID, message string, outgoing bool, timestamp int64, icon *widget.Button) *chatBubble { // TODO: export chat.Message for this?
+func newChatBubble(name binding.String, id uuid.UUID, message string, outgoing bool, timestamp int64, icon *widget.Button) *chatBubble { // TODO: export chat.Message for this?
 	if icon != nil && outgoing {
 		log.Warn("outgoing chat bubbles can't have icons")
 	}
@@ -47,6 +47,10 @@ func newChatBubble(username binding.String, id uuid.UUID, message string, outgoi
 		}
 	}
 
+	username, err := name.Get()
+	if err != nil {
+		log.Fatal("data bindings broken")
+	}
 	bubble := &chatBubble{
 		id:        id,
 		username:  username,
@@ -56,17 +60,25 @@ func newChatBubble(username binding.String, id uuid.UUID, message string, outgoi
 		timestamp: timestamp,
 	}
 
+	name.AddListener(binding.NewDataListener(func() {
+		nameStr, err := name.Get()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error getting data binding")
+		}
+		bubble.username = nameStr
+		bubble.Refresh()
+	}))
+
 	bubble.ExtendBaseWidget(bubble)
 	return bubble
 }
 
 func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 	bubble.ExtendBaseWidget(bubble)
-	username, err := bubble.username.Get()
-	if err != nil {
-		log.Fatal("data bindings broken")
-	}
-	usernameText := canvas.NewText(username, theme.ForegroundColor()) // TODO: users should have unique colors derived from ID
+
+	usernameText := canvas.NewText(bubble.username, theme.ForegroundColor()) // TODO: users should have unique colors derived from ID
 	usernameText.TextStyle.Bold = true
 
 	timestampText := canvas.NewText(time.Unix(bubble.timestamp, 0).Format("1/2 15:04"), theme.ForegroundColor())
@@ -317,14 +329,7 @@ func (renderer *bubbleRenderer) MinSize() (size fyne.Size) {
 }
 
 func (renderer *bubbleRenderer) Refresh() {
-	usernameText, err := renderer.bubble.username.Get()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("data bindings are broken")
-	}
-
-	renderer.username.Text = usernameText
+	renderer.username.Text = renderer.bubble.username
 	renderer.message = renderer.bubble.message
 	renderer.longestLine = longestLine(renderer.message.Text)
 	//r.updateIconAndText()
