@@ -53,7 +53,6 @@ func newThreadButton(image *canvas.Image, name binding.String, clicked func()) *
 		}).Fatal("data bindings broken for user name")
 
 	}
-	// TODO: add a listener to update the rich text below when the name changed
 
 	tb := &threadButton{
 		threadImage: image,
@@ -134,6 +133,18 @@ func newThreadButton(image *canvas.Image, name binding.String, clicked func()) *
 		}),
 		clicked: clicked,
 	}
+
+	// Bind the name and update the thread button when the name changes
+	name.AddListener(binding.NewDataListener(func() {
+		nameStr, err := name.Get()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error getting data binding")
+		}
+		tb.threadName.Segments[0].(*widget.TextSegment).Text = nameStr
+		tb.threadName.Refresh()
+	}))
 
 	tb.typingAnimation = &fyne.Animation{
 		AutoReverse: false,
