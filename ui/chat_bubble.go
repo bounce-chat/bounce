@@ -16,12 +16,14 @@ import (
 
 type chatBubble struct {
 	widget.BaseWidget
-	id        uuid.UUID
-	timestamp int64
-	username  string
-	message   *widget.Label
-	icon      *widget.Button
-	outgoing  bool
+	id            uuid.UUID
+	timestamp     int64
+	outgoing      bool
+	timestampText *canvas.Text
+	username      *canvas.Text
+	message       *widget.Label
+	icon          *widget.Button
+	background    *canvas.Rectangle
 }
 
 func newChatBubble(name binding.String, id uuid.UUID, message string, outgoing bool, timestamp int64, icon *widget.Button) *chatBubble { // TODO: export chat.Message for this?
@@ -47,17 +49,38 @@ func newChatBubble(name binding.String, id uuid.UUID, message string, outgoing b
 		}
 	}
 
-	username, err := name.Get()
+	usernameText, err := name.Get()
 	if err != nil {
 		log.Fatal("data bindings broken")
 	}
+	username := canvas.NewText(usernameText, theme.ForegroundColor()) // TODO: users should have unique colors derived from ID
+	username.TextStyle.Bold = true
+
+	timestampText := canvas.NewText(time.Unix(timestamp, 0).Format("1/2 15:04"), theme.ForegroundColor())
+	timestampText.TextSize = theme.TextSize() * 0.6
+
+	// Incoming messages have a grey background and justify to the left
+	background := &canvas.Rectangle{
+		FillColor:    color.NRGBA{0x20, 0x20, 0x20, 0xff},
+		CornerRadius: 15,
+	}
+	if outgoing {
+		// Sent messages have a blue background and justify to the right
+		background = &canvas.Rectangle{
+			FillColor:    color.NRGBA{0, 0x23, 0x75, 0xff},
+			CornerRadius: 15,
+		}
+	}
+
 	bubble := &chatBubble{
-		id:        id,
-		username:  username,
-		message:   messageLabel,
-		icon:      icon,
-		outgoing:  outgoing,
-		timestamp: timestamp,
+		id:            id,
+		username:      username,
+		message:       messageLabel,
+		icon:          icon,
+		outgoing:      outgoing,
+		timestamp:     timestamp,
+		timestampText: timestampText,
+		background:    background,
 	}
 
 	name.AddListener(binding.NewDataListener(func() {
@@ -67,7 +90,8 @@ func newChatBubble(name binding.String, id uuid.UUID, message string, outgoing b
 				"error": err.Error(),
 			}).Fatal("error getting data binding")
 		}
-		bubble.username = nameStr
+		bubble.username.Text = nameStr
+		bubble.username.Refresh()
 		bubble.Refresh()
 	}))
 
@@ -78,38 +102,18 @@ func newChatBubble(name binding.String, id uuid.UUID, message string, outgoing b
 func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 	bubble.ExtendBaseWidget(bubble)
 
-	usernameText := canvas.NewText(bubble.username, theme.ForegroundColor()) // TODO: users should have unique colors derived from ID
-	usernameText.TextStyle.Bold = true
-
-	timestampText := canvas.NewText(time.Unix(bubble.timestamp, 0).Format("1/2 15:04"), theme.ForegroundColor())
-	timestampText.TextSize = theme.TextSize() * 0.6
-
-	// Incoming messages have a grey background and justify to the left
-	background := &canvas.Rectangle{
-		FillColor:    color.NRGBA{0x20, 0x20, 0x20, 0xff},
-		CornerRadius: 15,
-	}
-	if bubble.outgoing {
-		// Sent messages have a blue background and justify to the right
-		background = &canvas.Rectangle{
-			FillColor:    color.NRGBA{0, 0x23, 0x75, 0xff},
-			CornerRadius: 15,
-		}
-	}
-
 	renderer := &bubbleRenderer{
-		background:  background,
+		background:  bubble.background,
 		bubble:      bubble,
-		username:    usernameText,
 		message:     bubble.message,
 		icon:        bubble.icon,
-		timestamp:   timestampText,
+		timestamp:   bubble.timestampText,
 		longestLine: longestLine(bubble.message.Text), // We have to know the longest line for width calculation, more on that later
 		objects: []fyne.CanvasObject{
-			background,
-			usernameText,
+			bubble.background,
+			bubble.username,
 			bubble.message,
-			timestampText,
+			bubble.timestampText,
 		},
 		verticalPaddingAboveBackground:      theme.Padding(),
 		verticalPaddingAboveUsername:        theme.Padding() * 2,
@@ -131,7 +135,6 @@ func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 }
 
 type bubbleRenderer struct {
-	username    *canvas.Text
 	message     *widget.Label
 	timestamp   *canvas.Text
 	icon        *widget.Button
@@ -153,7 +156,7 @@ type bubbleRenderer struct {
 }
 
 func (renderer *bubbleRenderer) Layout(size fyne.Size) {
-	usernameSize := renderer.username.MinSize()
+	usernameSize := renderer.bubble.username.MinSize()
 	timestampSize := renderer.timestamp.MinSize()
 
 	allVerticalPadding := renderer.verticalPaddingAboveBackground +
@@ -191,7 +194,7 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	// We need to figure out which text in the bubble is going to be the widest so we can size the colored background accordingly
 	// We do this by measuring all the text we're going to print in the bubble, and comparing them and their padding
 	takenTimestampWidth := fyne.MeasureText(renderer.timestamp.Text, renderer.timestamp.TextSize, renderer.timestamp.TextStyle).Width + renderer.horizontalPaddingSideOfText*2
-	takenUsernameWidth := fyne.MeasureText(renderer.username.Text, renderer.username.TextSize, renderer.username.TextStyle).Width + renderer.horizontalPaddingSideOfText*2
+	takenUsernameWidth := fyne.MeasureText(renderer.bubble.username.Text, renderer.bubble.username.TextSize, renderer.bubble.username.TextStyle).Width + renderer.horizontalPaddingSideOfText*2
 	// For multi-line messages, we measure the longest line.  Note: this measurment doesn't account for line wrapping, so we
 	// will have to detect when it's going to wrap and make some additional adjustments based on that.
 	takenMessageWidth := fyne.MeasureText(renderer.longestLine, theme.TextSize(), renderer.message.TextStyle).Width + renderer.horizontalPaddingSideOfText*2 // Can't get the TextSize of a label, use theme.TextSize()
@@ -248,7 +251,7 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 
 	// Put the username on the top of the bubble
 	usernameX := renderer.horizontalPaddingSideOfBackground + renderer.horizontalPaddingSideOfText
-	renderer.username.Move(fyne.Position{
+	renderer.bubble.username.Move(fyne.Position{
 		X: xOffset + usernameX,
 		Y: renderer.verticalPaddingAboveBackground + renderer.verticalPaddingAboveUsername,
 	})
@@ -310,7 +313,7 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 }
 
 func (renderer *bubbleRenderer) MinSize() (size fyne.Size) {
-	usernameSize := renderer.username.MinSize()
+	usernameSize := renderer.bubble.username.MinSize()
 	messageSize := renderer.message.MinSize()
 	timestampSize := renderer.timestamp.MinSize()
 
@@ -328,7 +331,7 @@ func (renderer *bubbleRenderer) MinSize() (size fyne.Size) {
 }
 
 func (renderer *bubbleRenderer) Refresh() {
-	renderer.username.Text = renderer.bubble.username
+	//renderer.username.Text = renderer.bubble.username
 	renderer.message = renderer.bubble.message
 	renderer.longestLine = longestLine(renderer.message.Text)
 	//r.updateIconAndText()
