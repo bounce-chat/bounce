@@ -48,6 +48,7 @@ var expirationIncrements = map[string]int64{
 func (fyneUI *Fyne) showEditProfile() {
 	fyneUI.profileNameEntry.Text = fyneUI.profile.getName()
 	fyneUI.profileNameEntry.Refresh()
+	fyneUI.profileNameEntry.FocusLost()
 
 	fyneUI.mainWindow.SetContent(fyneUI.editProfile)
 	fyneUI.editProfile.Show()
