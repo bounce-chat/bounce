@@ -75,8 +75,8 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 			break
 		}
 		selectedUserHeight += obj.MinSize().Height
-		selectedUserHeight += theme.Padding() * float32(i+1)
 	}
+	selectedUserHeight += theme.Padding() * float32(len(currentUsersList.Objects)+1)
 	fyneUI.newGroupSelectedUsersContainer.SetMinSize(fyne.Size{Height: selectedUserHeight})
 	fyneUI.newGroupSelectedUsersContainer.Refresh()
 
@@ -112,8 +112,8 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 			break
 		}
 		availableUserHeight += obj.MinSize().Height
-		availableUserHeight += theme.Padding() * float32(i+1)
 	}
+	availableUserHeight += theme.Padding() * float32(len(allUsersListBox.Objects)+1)
 	fyneUI.newGroupAllAvailableUsers.SetMinSize(fyne.Size{Height: availableUserHeight})
 	fyneUI.newGroupAllAvailableUsers.Refresh()
 
@@ -169,8 +169,8 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 			break
 		}
 		pendingUserHeight += obj.MinSize().Height
-		pendingUserHeight += theme.Padding() * float32(i+1)
 	}
+	pendingUserHeight += theme.Padding() * float32(len(pendingUsersList.Objects)+1)
 	fyneUI.newGroupPendingUsersList.SetMinSize(fyne.Size{Height: pendingUserHeight})
 	fyneUI.newGroupPendingUsersList.Refresh()
 }

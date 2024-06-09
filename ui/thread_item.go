@@ -357,7 +357,7 @@ func (fyneUI *Fyne) userChangedName(id, userID uuid.UUID, oldName, newName strin
 	}, nil
 }
 
-func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, changeString string, timestamp int64) (*threadItem, error) {
+func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, action string, timestamp int64) (*threadItem, error) {
 	t, ok := fyneUI.getThread(threadID)
 	if !ok {
 		log.WithFields(log.Fields{
@@ -370,19 +370,19 @@ func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, c
 	if !ok {
 		return &threadItem{}, errUnknownActor
 	}
-	actorName := actor.getName() // TODO: bind
+	actorName := actor.getName()
 	if actorID == fyneUI.profile.id {
 		actorName = "You"
 	}
 
-	changeString = actorName + " " + changeString
+	changeString := actorName + " " + action
 	changeLabel := newStatusChange(id, timestamp, changeString)
 
 	return &threadItem{
 		id:     id,
 		widget: changeLabel,
 		setButton: func(tb *threadButton) {
-			t.getButton().setLastAction(changeString)
+			t.getButton().setLastAction(changeString) // TODO: possible to bind actor's name?
 			t.getButton().setLastMessageTime(time.Unix(timestamp, 0))
 			t.setLastMessageTime(timestamp)
 			t.chatHistoryScroll().Refresh()

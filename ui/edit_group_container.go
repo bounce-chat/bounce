@@ -388,6 +388,7 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 		}
 		currentUserHeight += obj.MinSize().Height
 	}
+	currentUserHeight += theme.Padding() * float32(len(currentUsersList.Objects)+1)
 	g.currentUsersContainer.SetMinSize(fyne.Size{Height: currentUserHeight})
 	g.currentUsersContainer.Refresh()
 
@@ -415,6 +416,7 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 		}
 		pendingUserHeight += obj.MinSize().Height
 	}
+	pendingUserHeight += theme.Padding() * float32(len(pendingUsersList.Objects)+1)
 	g.pendingUsersContainer.SetMinSize(fyne.Size{Height: pendingUserHeight})
 	g.pendingUsersContainer.Refresh()
 }
@@ -463,6 +465,7 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(g *group, allAvailableUsers []*user
 		}
 		availableUserHeight += obj.MinSize().Height
 	}
+	availableUserHeight += theme.Padding() * float32(len(allUsersListBox.Objects)+1)
 	g.availableNewUsersScroll.SetMinSize(fyne.Size{Height: availableUserHeight})
 	g.availableNewUsersScroll.Refresh()
 }
