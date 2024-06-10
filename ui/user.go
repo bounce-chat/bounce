@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"strings"
+	"unicode/utf8"
+
 	"fyne.io/fyne/v2/data/binding"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
@@ -8,8 +11,24 @@ import (
 )
 
 type user struct {
-	id   uuid.UUID
-	name binding.String
+	id       uuid.UUID
+	name     binding.String
+	initials binding.String
+}
+
+func makeUser(id uuid.UUID, name string) *user {
+	u := &user{
+		id:       id,
+		name:     binding.NewString(),
+		initials: binding.NewString(),
+	}
+
+	u.name.AddListener(binding.NewDataListener(func() {
+		u.setInitials()
+	}))
+	u.name.Set(name)
+
+	return u
 }
 
 func (u user) getName() string {
@@ -21,6 +40,42 @@ func (u user) getName() string {
 		}).Fatal("data bindings broken for user name")
 	}
 	return str
+}
+
+func (u user) setInitials() {
+	name := u.getName()
+	parts := strings.Split(name, " ")
+	if len(parts) == 1 {
+		r, n := utf8.DecodeRuneInString(parts[0])
+		if r == utf8.RuneError {
+			log.WithFields(log.Fields{
+				"rune_error": r,
+				"size":       n,
+			}).Error("error setting user initals")
+			return
+		}
+		u.initials.Set(string(r))
+	} else {
+		firstRune, n := utf8.DecodeRuneInString(parts[0])
+		if firstRune == utf8.RuneError {
+			log.WithFields(log.Fields{
+				"rune_error": firstRune,
+				"size":       n,
+			}).Error("error setting user initals")
+			return
+		}
+
+		lastRune, n := utf8.DecodeRuneInString(parts[len(parts)-1])
+		if lastRune == utf8.RuneError {
+			log.WithFields(log.Fields{
+				"rune_error": lastRune,
+				"size":       n,
+			}).Error("error setting user initals")
+			return
+		}
+
+		u.initials.Set(string(firstRune) + string(lastRune))
+	}
 }
 
 func (fyneUI *Fyne) SetUserName(userID uuid.UUID, name string) {

@@ -95,8 +95,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.addUserString = binding.NewString()
 	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}) // TODO: red rich text
 	fyneUI.networkOfflineWarning.Show()
-	fyneUI.deletedUser = &user{id: uuid.Nil, name: binding.NewString()}
-	fyneUI.deletedUser.name.Set("-deleted-")
+	fyneUI.deletedUser = makeUser(uuid.Nil, "-deleted-")
 
 	//
 	// Define the app
@@ -176,15 +175,13 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		// TODO: log fatal if anything else is set
 		return
 	} else {
-		fyneUI.profile = &user{id: state.Profile.ID, name: binding.NewString()}
-		fyneUI.profile.name.Set(state.Profile.Name)
+		fyneUI.profile = makeUser(state.Profile.ID, state.Profile.Name)
 		fyneUI.users.add(fyneUI.profile)
 	}
 
 	initialDMStates := map[uuid.UUID]chat.DMState{}
 	for _, u := range state.Users {
-		uiUser := &user{id: u.ID, name: binding.NewString()}
-		uiUser.name.Set(u.Name)
+		uiUser := makeUser(u.ID, u.Name)
 		fyneUI.users.add(uiUser)
 		initialDMStates[u.ID] = u.State
 	}
@@ -438,8 +435,7 @@ func (fyneUI *Fyne) NetworkOffline() {
 }
 
 func (fyneUI *Fyne) UserImported(u chat.User) {
-	newUser := &user{id: u.ID, name: binding.NewString()}
-	newUser.name.Set(u.Name)
+	newUser := makeUser(u.ID, u.Name)
 	fyneUI.users.add(newUser)
 	fyneUI.NewDirectMessage(u)
 }

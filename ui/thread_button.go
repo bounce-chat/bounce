@@ -19,7 +19,7 @@ var threadButtonHeight = float32(64)
 type threadButton struct {
 	widget.BaseWidget
 	// TODO: mutex everything that changes this?
-	threadImage               *canvas.Image
+	threadImage               fyne.CanvasObject
 	threadName                *widget.RichText
 	lastMessage               *widget.RichText
 	currentlyTypingUser       *widget.RichText
@@ -41,7 +41,7 @@ type threadButton struct {
 	clicked                   func()
 }
 
-func newThreadButton(image *canvas.Image, name binding.String, clicked func()) *threadButton {
+func newThreadButton(image fyne.CanvasObject, name binding.String, clicked func()) *threadButton {
 	if clicked == nil {
 		log.Fatal("threadButton widgets must be defined with a clicked callback")
 	}

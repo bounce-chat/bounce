@@ -4,36 +4,7 @@ import (
 	"image"
 	"image/color"
 	"math"
-
-	"fyne.io/fyne/v2/canvas"
 )
-
-func todoImage() *canvas.Image {
-	return canvas.NewImageFromImage(makeCircle(&im{
-		rect: image.Rect(0, 0, 512, 512),
-	}))
-}
-
-type im struct {
-	rect image.Rectangle
-}
-
-func (i *im) ColorModel() color.Model {
-	return color.RGBAModel
-}
-
-func (i *im) Bounds() image.Rectangle {
-	return i.rect
-}
-
-func (i *im) At(x, y int) color.Color {
-	return color.RGBA{
-		R: 0xaa,
-		G: 0xbb,
-		B: 0xcc,
-		A: 0xff,
-	}
-}
 
 type circle struct {
 	original image.Image

@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
@@ -72,8 +71,7 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 }
 
 func (fyneUI *Fyne) SyncDeviceRequestAccepted(id uuid.UUID, name string) {
-	profile := &user{id: id, name: binding.NewString()}
-	profile.name.Set(name)
+	profile := makeUser(id, name)
 	fyneUI.profile = profile
 	fyneUI.users.add(profile)
 	fyneUI.initialStateSet = true

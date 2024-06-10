@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/hkparker/bounce/chat"
 
@@ -21,6 +22,7 @@ import (
 type group struct {
 	id                          uuid.UUID
 	name                        binding.String
+	initial                     binding.String
 	users                       *userStore
 	admins                      []uuid.UUID
 	blockedUsers                []uuid.UUID
@@ -115,6 +117,22 @@ func (g *group) getAdminCheck(userID uuid.UUID) *widget.Check {
 	check.SetChecked(g.isAdmin(userID))
 	g.adminChecks[userID] = check
 	return check
+}
+
+func (g *group) setInitial() {
+	name, err := g.name.Get()
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	r, n := utf8.DecodeRuneInString(name)
+	if r == utf8.RuneError {
+		log.WithFields(log.Fields{
+			"rune_error": r,
+			"size":       n,
+		}).Error("error setting group inital")
+		return
+	}
+	g.initial.Set(string(r))
 }
 
 func (fyneUI *Fyne) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Button {
@@ -291,6 +309,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	group := &group{
 		id:                      bounceGroup.ID,
 		name:                    binding.NewString(),
+		initial:                 binding.NewString(),
 		users:                   newUserStore(),
 		admins:                  bounceGroup.Admins,
 		blockedUsers:            bounceGroup.BlockedUsers,
@@ -313,8 +332,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	for _, bu := range bounceGroup.Users {
 		u, exists := fyneUI.users.get(bu.ID)
 		if !exists {
-			u := &user{id: bu.ID, name: binding.NewString()}
-			u.name.Set(bu.Name)
+			u := makeUser(bu.ID, bu.Name)
 			fyneUI.users.add(u)
 			group.users.add(u)
 		} else {
@@ -328,6 +346,10 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 			"error": err.Error(),
 		}).Fatal("data bindings are broken")
 	}
+	group.setInitial()
+	group.name.AddListener(binding.NewDataListener(func() {
+		group.setInitial()
+	}))
 
 	group.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(_ bool) {})
 	enabled := group.notificationsMutedUntil != chat.MutedForever
@@ -384,7 +406,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 
 	group.entryBar = container.NewMax(entry)
 
-	group.button = newThreadButton(todoImage(), group.name, func() {
+	group.button = newThreadButton(newDefaultImage(group.id, group.initial, 64, nil), group.name, func() {
 		fyneUI.displayThread(group)
 		fyneUI.callbacks.GroupConnectionDesired(group.id)
 	})
@@ -452,8 +474,7 @@ func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
 	for _, bu := range bounceGroup.Users {
 		u, ok := fyneUI.users.get(bu.ID)
 		if !ok {
-			u = &user{id: bu.ID, name: binding.NewString()}
-			u.name.Set(bu.Name)
+			u := makeUser(bu.ID, bu.Name)
 			fyneUI.users.add(u)
 			g.users.add(u)
 		}
@@ -535,11 +556,7 @@ func (fyneUI *Fyne) AddUser(ugau chat.UpdateGroupAddUser) {
 		return
 	}
 
-	u := &user{
-		id:   ugau.User.ID,
-		name: binding.NewString(),
-	}
-	u.name.Set(ugau.User.Name)
+	u := makeUser(ugau.User.ID, ugau.User.Name)
 	fyneUI.users.add(u) // TODO: this is needed since it isn't in the group state, should it be?
 
 	fyneUI.appendThreadItem(g, ti)

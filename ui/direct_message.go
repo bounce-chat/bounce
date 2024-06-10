@@ -145,7 +145,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	}
 	dm.entryBar = container.NewMax(entry)
 
-	dm.button = newThreadButton(todoImage(), user.name, func() {
+	dm.button = newThreadButton(newDefaultImage(user.id, user.initials, 64, nil), user.name, func() {
 		fyneUI.displayThread(dm)
 		fyneUI.callbacks.UserConnectionDesired(user.id)
 	})

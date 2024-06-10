@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -51,9 +50,8 @@ func (fyneUI *Fyne) buildDisplayAddUserString() {
 }
 
 func (fyneUI *Fyne) FriendAdded(u chat.User) {
-	nameBinding := binding.NewString()
-	nameBinding.Set(u.Name)
-	fyneUI.users.add(&user{id: u.ID, name: nameBinding})
+	newUser := makeUser(u.ID, u.Name)
+	fyneUI.users.add(newUser)
 	fyneUI.showMainContainer() // TODO: only if still shoing the add user container, and actually go to the last screen
 	dialog.ShowInformation("New contact added", u.Name+" was added as a friend", fyneUI.mainWindow)
 }

@@ -6,7 +6,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
@@ -169,11 +168,7 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 			dialog.ShowError(errors.New("Error saving profile: "+err.Error()), fyneUI.mainWindow)
 			return
 		}
-		profile := &user{
-			id:   id,
-			name: binding.NewString(),
-		}
-		profile.name.Set(profileNameEntry.Text)
+		profile := makeUser(id, profileNameEntry.Text)
 		fyneUI.users.add(profile)
 		fyneUI.profile = profile
 		fyneUI.showMainContainer()
