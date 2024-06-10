@@ -7,7 +7,6 @@ import (
 	"github.com/hkparker/bounce/chat"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
@@ -43,9 +42,9 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		g.editThreadNameEntry.Refresh()
 	}))
 
-	groupIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-	groupIcon.FillMode = canvas.ImageFillContain
-	groupIcon.SetMinSize(fyne.NewSize(64, 64))
+	groupIcon := newDefaultImage(g.id, g.initial, 128, func() {
+		log.Info("open image replacement selector for group, if permissions allow")
+	})
 
 	g.retentionSelection = widget.NewSelect(retentionSelections, nil)
 	g.retentionSelection.Selected = getRetentionName(g.retention)
@@ -252,7 +251,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 	)
 
 	topOptionsVBox := container.NewVBox(
-		groupIcon,
+		container.NewCenter(groupIcon),
 		g.editThreadNameEntry,
 		g.notificationsEnabledCheck,
 		widget.NewLabel("Disappearing Messages"),

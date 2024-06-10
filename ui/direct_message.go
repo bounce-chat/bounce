@@ -8,7 +8,6 @@ import (
 	"github.com/hkparker/bounce/chat"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -104,9 +103,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	editButton := widget.NewButton("Edit", func() {
 		fyneUI.showEditDMContainer(dm)
 	})
-	userIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-	userIconCanvas.FillMode = canvas.ImageFillContain
-	userIconCanvas.SetMinSize(fyne.NewSize(32, 32))
+	userIconCanvas := newDefaultImage(user.id, user.initials, 32, nil) // TODO: get size from theme
 
 	userLabelText := widget.NewLabelWithData(user.name)
 	userLabel := container.NewHBox(
@@ -211,9 +208,7 @@ func (fyneUI *Fyne) showEditDMContainer(dm *directMessage) {
 }
 
 func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
-	threadIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-	threadIcon.FillMode = canvas.ImageFillContain
-	threadIcon.SetMinSize(fyne.NewSize(64, 64))
+	threadIcon := newDefaultImage(dm.user.id, dm.user.initials, 128, nil)
 
 	username := widget.NewLabelWithData(dm.user.name)
 
@@ -290,8 +285,8 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		cancelButton,
 	)
 	topOptionsVBox := container.NewVBox(
-		threadIcon,
-		username,
+		container.NewCenter(threadIcon),
+		container.NewCenter(username),
 		dm.notificationsEnabledCheck,
 		widget.NewLabel("Disappearing Messages"),
 		dm.retentionSelection,

@@ -9,7 +9,6 @@ import (
 	"github.com/hkparker/bounce/chat"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
@@ -367,10 +366,8 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		fyneUI.refreshUserSelections(group)
 		fyneUI.showEditThreadContainer(group)
 	})
-	groupIconCanvas := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-	groupIconCanvas.FillMode = canvas.ImageFillContain
-	groupIconCanvas.SetMinSize(fyne.NewSize(32, 32))
 
+	groupIconCanvas := newDefaultImage(group.id, group.initial, 32, nil) // TODO: get size from theme
 	groupLabelText := widget.NewLabel(bounceGroup.Name)
 	groupLabel := container.NewHBox(
 		groupIconCanvas,

@@ -121,9 +121,7 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 	pendingUsersList := container.NewVBox()
 	for _, thisUser := range fyneUI.newGroupPendingUsers.alphabetized() {
 		func(u *user) {
-			userIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-			userIcon.FillMode = canvas.ImageFillContain
-			userIcon.SetMinSize(fyne.NewSquareSize(theme.IconInlineSize()))
+			userIcon := newDefaultImage(u.id, u.initials, theme.IconInlineSize()*2, nil)
 			userName := widget.NewLabelWithData(u.name)
 			userDetails := container.NewHBox(
 				userIcon,

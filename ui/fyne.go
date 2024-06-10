@@ -47,6 +47,8 @@ type Fyne struct {
 	threadVBox                            *fyne.Container
 	chatContainer                         *fyne.Container
 	profileNameEntry                      *widget.Entry
+	profileIcon                           *fyne.Container
+	profileOptions                        *fyne.Container
 	newGroupNameEntry                     *widget.Entry
 	newGroupSelectedUsersContainer        *container.Scroll
 	newGroupPendingUsersList              *container.Scroll

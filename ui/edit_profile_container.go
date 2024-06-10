@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -46,10 +45,16 @@ var expirationIncrements = map[string]int64{
 }
 
 func (fyneUI *Fyne) showEditProfile() {
+	fyneUI.profileIcon.Objects = []fyne.CanvasObject{newDefaultImage(fyneUI.profile.id, fyneUI.profile.initials, 64, func() {
+		log.Info("user wants to change their profile picture")
+	})}
+	fyneUI.profileIcon.Refresh()
+
 	fyneUI.profileNameEntry.Text = fyneUI.profile.getName()
 	fyneUI.profileNameEntry.Refresh()
 	fyneUI.profileNameEntry.FocusLost()
 
+	fyneUI.profileOptions.Refresh()
 	fyneUI.mainWindow.SetContent(fyneUI.editProfile)
 	fyneUI.editProfile.Show()
 }
@@ -60,10 +65,11 @@ func (fyneUI *Fyne) buildEditProfile() {
 	//
 
 	// TODO: click to change profile image
-	profileIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-	profileIcon.FillMode = canvas.ImageFillContain
-	profileIcon.SetMinSize(fyne.NewSize(64, 64))
+	//profileIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
+	//profileIcon.FillMode = canvas.ImageFillContain
+	//profileIcon.SetMinSize(fyne.NewSize(64, 64))
 
+	fyneUI.profileIcon = container.NewCenter()
 	fyneUI.profileNameEntry = widget.NewEntry()
 
 	saveProfileButton := widget.NewButton("Update", func() {
@@ -81,8 +87,8 @@ func (fyneUI *Fyne) buildEditProfile() {
 		saveProfileButton,
 	)
 
-	profileOptions := container.NewVBox(
-		profileIcon,
+	fyneUI.profileOptions = container.NewVBox(
+		fyneUI.profileIcon,
 		fyneUI.profileNameEntry,
 		saveProfileButtonBar,
 	)
@@ -211,7 +217,7 @@ func (fyneUI *Fyne) buildEditProfile() {
 		closeButton,
 	)
 	nonScrollingContainers := container.NewVBox(
-		profileOptions,
+		fyneUI.profileOptions,
 		devicesLabel,
 		devicesContainer,
 		contactExportsLabel,
