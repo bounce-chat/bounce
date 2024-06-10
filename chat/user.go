@@ -337,6 +337,10 @@ func (b *bounce) updateLastUserActivity(userID uuid.UUID, timestamp int64) {
 }
 
 func validUserName(name string) bool {
+	if name == "" {
+		return false
+	}
+
 	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= 512
 }
 

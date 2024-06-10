@@ -317,6 +317,10 @@ func (b *bounce) userIsInGroup(groupID, userID uuid.UUID) bool {
 }
 
 func validGroupName(name string) bool {
+	if name == "" {
+		return false
+	}
+
 	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= 512
 }
 
