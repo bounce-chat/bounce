@@ -6,7 +6,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/data/binding"
-	"fyne.io/fyne/v2/widget"
+	"fyne.io/fyne/v2/theme"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
@@ -121,7 +121,7 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 
 	outgoing := gm.Author == fyneUI.profile.id
 	displayName := user.name
-	var profileButton *widget.Button
+	var profileButton fyne.CanvasObject
 	var notification *fyne.Notification
 	if !outgoing {
 		groupName, err := group.name.Get()
@@ -129,9 +129,9 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			log.Fatal("data bindings are broken")
 		}
 		notification = fyne.NewNotification(groupName, user.getName()+": "+gm.Text)
-		profileButton = widget.NewButtonWithIcon("", newEmbeddedResource("assets/not_found.png"), func() { // TODO: get image from user
+		profileButton = newDefaultImage(user.id, user.initials, theme.IconInlineSize(), func() {
+			// TODO: not clickable for some reason
 			log.Info("user wants to open the profile of " + user.getName())
-			// TODO: display this user's profile
 		})
 	} else {
 		displayName = binding.NewString()

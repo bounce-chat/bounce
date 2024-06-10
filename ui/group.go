@@ -406,10 +406,11 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 
 	group.entryBar = container.NewMax(entry)
 
-	group.button = newThreadButton(newDefaultImage(group.id, group.initial, 64, nil), group.name, func() {
+	openThread := func() {
 		fyneUI.displayThread(group)
 		fyneUI.callbacks.GroupConnectionDesired(group.id)
-	})
+	}
+	group.button = newThreadButton(newDefaultImage(group.id, group.initial, 64, openThread), group.name, openThread)
 
 	// Keep the last message time counter up to date
 	go func() {

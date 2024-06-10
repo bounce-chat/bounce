@@ -22,11 +22,11 @@ type chatBubble struct {
 	timestampText *canvas.Text
 	username      *canvas.Text
 	message       *widget.Label
-	icon          *widget.Button
+	icon          fyne.CanvasObject
 	background    *canvas.Rectangle
 }
 
-func newChatBubble(name binding.String, id uuid.UUID, message string, outgoing bool, timestamp int64, icon *widget.Button) *chatBubble { // TODO: export chat.Message for this?
+func newChatBubble(name binding.String, id uuid.UUID, message string, outgoing bool, timestamp int64, icon fyne.CanvasObject) *chatBubble { // TODO: export chat.Message for this?
 	if icon != nil && outgoing {
 		log.Warn("outgoing chat bubbles can't have icons")
 	}
@@ -38,16 +38,6 @@ func newChatBubble(name binding.String, id uuid.UUID, message string, outgoing b
 	// that I don't want.
 	messageLabel := widget.NewLabel(message)
 	messageLabel.Wrapping = fyne.TextWrapWord
-
-	// Make sure this button has an icon and does not have text
-	if icon != nil {
-		if icon.Text != "" {
-			log.Fatal("cannot create a chatBubble with a profile button containing text")
-		}
-		if icon.Icon == nil {
-			log.Fatal("chatBubble with a profile button must contain an icon")
-		}
-	}
 
 	usernameText, err := name.Get()
 	if err != nil {
@@ -114,6 +104,7 @@ func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 			bubble.username,
 			bubble.message,
 			bubble.timestampText,
+			bubble.icon,
 		},
 		verticalPaddingAboveBackground:      theme.Padding(),
 		verticalPaddingAboveUsername:        theme.Padding() * 2,
@@ -137,7 +128,7 @@ func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 type bubbleRenderer struct {
 	message     *widget.Label
 	timestamp   *canvas.Text
-	icon        *widget.Button
+	icon        fyne.CanvasObject
 	longestLine string
 	background  *canvas.Rectangle
 	bubble      *chatBubble
@@ -297,9 +288,9 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 			renderer.verticalPaddingAboveTimestamp +
 			timestampSize.Height +
 			renderer.verticalPaddingAboveBackgroundEnd -
-			theme.IconInlineSize()/2
+			theme.IconInlineSize()
 		renderer.icon.Move(fyne.Position{
-			X: theme.IconInlineSize()/2 + renderer.horizontalPaddingSideOfIcon, // For some reason renderer.icon.Size() is 0 so I can't use that, but I know buttons use theme.IconInlineSize()
+			X: renderer.horizontalPaddingSideOfIcon,
 			Y: iconY,
 		})
 	}

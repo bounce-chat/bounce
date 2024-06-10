@@ -52,11 +52,11 @@ type defaultImage struct {
 	clicked         func()
 }
 
-//func (di *defaultImage) Tapped(*fyne.PointEvent) {
-//	if di.clicked != nil {
-//		di.clicked()
-//	}
-//}
+func (di *defaultImage) Tapped(*fyne.PointEvent) {
+	if di.clicked != nil {
+		di.clicked()
+	}
+}
 
 func (di *defaultImage) CreateRenderer() fyne.WidgetRenderer {
 	di.ExtendBaseWidget(di)

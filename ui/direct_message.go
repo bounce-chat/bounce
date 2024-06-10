@@ -145,10 +145,12 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	}
 	dm.entryBar = container.NewMax(entry)
 
-	dm.button = newThreadButton(newDefaultImage(user.id, user.initials, 64, nil), user.name, func() {
+	openThread := func() {
 		fyneUI.displayThread(dm)
 		fyneUI.callbacks.UserConnectionDesired(user.id)
-	})
+	}
+	dm.button = newThreadButton(newDefaultImage(user.id, user.initials, 64, openThread), user.name, openThread)
+
 	// Keep the last message time counter up to date
 	go func() {
 		for {
