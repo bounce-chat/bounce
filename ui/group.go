@@ -198,7 +198,7 @@ func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) dialog.Dialog 
 	var userDetailsDialog dialog.Dialog
 
 	editUserContainer := container.NewVBox(
-		widget.NewLabelWithData(u.name),
+		container.NewCenter(newDefaultImage(u.id, u.initials, 64, nil)), // TODO: get size from theme
 		widget.NewButton("Direct Message", func() {
 			// Close the dialog
 			if userDetailsDialog == nil {
