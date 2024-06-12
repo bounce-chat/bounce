@@ -9,12 +9,13 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 func newDefaultImage(id uuid.UUID, text binding.String, size float32, clicked func()) *defaultImage {
 	str, err := text.Get()
 	if err != nil {
-
+		log.Fatal("data bindings are broken")
 	}
 
 	di := &defaultImage{
@@ -72,9 +73,9 @@ type defaultImageRenderer struct {
 	di *defaultImage
 }
 
-func (dir defaultImageRenderer) Destroy() {}
+func (dir *defaultImageRenderer) Destroy() {}
 
-func (dir defaultImageRenderer) Layout(size fyne.Size) {
+func (dir *defaultImageRenderer) Layout(size fyne.Size) {
 	textSize := dir.di.foregroundText.MinSize()
 
 	leftoverWidth := dir.di.size - textSize.Width
@@ -88,18 +89,18 @@ func (dir defaultImageRenderer) Layout(size fyne.Size) {
 	dir.di.backgroundColor.Resize(fyne.Size{Width: dir.di.size, Height: dir.di.size})
 }
 
-func (dir defaultImageRenderer) MinSize() fyne.Size {
+func (dir *defaultImageRenderer) MinSize() fyne.Size {
 	return fyne.Size{Width: dir.di.size, Height: dir.di.size}
 }
 
-func (dir defaultImageRenderer) Objects() []fyne.CanvasObject {
+func (dir *defaultImageRenderer) Objects() []fyne.CanvasObject {
 	return []fyne.CanvasObject{
 		dir.di.backgroundColor,
 		dir.di.foregroundText,
 	}
 }
 
-func (dir defaultImageRenderer) Refresh() {}
+func (dir *defaultImageRenderer) Refresh() {}
 
 //
 // A color rectange is a single color in a rectangle image

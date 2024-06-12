@@ -45,7 +45,7 @@ var expirationIncrements = map[string]int64{
 }
 
 func (fyneUI *Fyne) showEditProfile() {
-	fyneUI.profileIcon.Objects = []fyne.CanvasObject{newDefaultImage(fyneUI.profile.id, fyneUI.profile.initials, 64, func() {
+	fyneUI.profileIcon.Objects = []fyne.CanvasObject{newDefaultImage(fyneUI.profile.id, fyneUI.profile.initials, 128, func() {
 		log.Info("user wants to change their profile picture")
 	})}
 	fyneUI.profileIcon.Refresh()

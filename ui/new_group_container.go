@@ -13,7 +13,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
-	log "github.com/sirupsen/logrus"
 )
 
 func (fyneUI *Fyne) showNewGroup() {
@@ -55,13 +54,15 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 	for _, thisUser := range fyneUI.newGroupSelectedUsers.alphabetized() {
 		func(u *user) {
 			// TODO: add listening to update button name with binding
-			removePendingUserButton := widget.NewButtonWithIcon(u.getName(), newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
-				fyneUI.newGroupSelectedUsers.remove(u.id)
-				log.Info("refreshing with search: " + fyneUI.newGroupNameEntry.Text)
-				fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
-			})
-			removePendingUserButton.Alignment = widget.ButtonAlignLeading
-			removePendingUserButton.Importance = widget.LowImportance
+			removePendingUserButton := newUserButton(
+				newDefaultImage(u.id, u.initials, theme.IconInlineSize(), nil),
+				u.getName(),
+				false,
+				func() {
+					fyneUI.newGroupSelectedUsers.remove(u.id)
+					fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
+				},
+			)
 			currentUsersList.Objects = append(
 				currentUsersList.Objects,
 				removePendingUserButton,
@@ -93,12 +94,15 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 
 		func(u *user) {
 			// TODO: add listener to update button name with binding
-			addUserButton := widget.NewButtonWithIcon(u.getName(), newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
-				fyneUI.newGroupSelectedUsers.add(u)
-				fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
-			})
-			addUserButton.Alignment = widget.ButtonAlignLeading
-			addUserButton.Importance = widget.LowImportance
+			addUserButton := newUserButton(
+				newDefaultImage(u.id, u.initials, theme.IconInlineSize(), nil),
+				u.getName(),
+				false,
+				func() {
+					fyneUI.newGroupSelectedUsers.add(u)
+					fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
+				},
+			)
 			allUsersListBox.Objects = append(
 				allUsersListBox.Objects,
 				addUserButton,
