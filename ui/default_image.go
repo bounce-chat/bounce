@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -40,6 +41,10 @@ func newDefaultImage(id uuid.UUID, text binding.String, size float32, clicked fu
 		di.foregroundText.Refresh()
 		di.Refresh()
 	}))
+
+	if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
+		di.foregroundText.Color = color.RGBA{0xff, 0xff, 0xff, 0xff}
+	}
 
 	di.ExtendBaseWidget(di)
 	return di

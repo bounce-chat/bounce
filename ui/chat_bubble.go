@@ -49,16 +49,21 @@ func newChatBubble(name binding.String, id uuid.UUID, message string, outgoing b
 	timestampText := canvas.NewText(time.Unix(timestamp, 0).Format("1/2 15:04"), theme.ForegroundColor())
 	timestampText.TextSize = theme.TextSize() * 0.6
 
-	// Incoming messages have a grey background and justify to the left
+	// Incoming messages have a grey background, outgoing messages have a blue background
 	background := &canvas.Rectangle{
-		FillColor:    color.NRGBA{0x20, 0x20, 0x20, 0xff},
 		CornerRadius: 15,
 	}
-	if outgoing {
-		// Sent messages have a blue background and justify to the right
-		background = &canvas.Rectangle{
-			FillColor:    color.NRGBA{0, 0x23, 0x75, 0xff},
-			CornerRadius: 15,
+	if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
+		if outgoing {
+			background.FillColor = color.NRGBA{0xb5, 0xd0, 0xff, 0xff}
+		} else {
+			background.FillColor = color.NRGBA{0xdd, 0xdd, 0xdd, 0xff}
+		}
+	} else {
+		if outgoing {
+			background.FillColor = color.NRGBA{0, 0x23, 0x75, 0xff}
+		} else {
+			background.FillColor = color.NRGBA{0x20, 0x20, 0x20, 0xff}
 		}
 	}
 
