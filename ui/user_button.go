@@ -14,7 +14,7 @@ import (
 var minWidthOfLongNameInUserButton = float32(128)
 
 func newUserButton(icon *defaultImage, name string, admin bool, clicked func()) *userButton {
-	// TODO: get the icon from the user
+	// TODO: create the icon here by getting it from the user?
 
 	ub := &userButton{
 		icon:       icon,

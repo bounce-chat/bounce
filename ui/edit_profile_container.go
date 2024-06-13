@@ -63,12 +63,6 @@ func (fyneUI *Fyne) buildEditProfile() {
 	//
 	// Personal details section
 	//
-
-	// TODO: click to change profile image
-	//profileIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-	//profileIcon.FillMode = canvas.ImageFillContain
-	//profileIcon.SetMinSize(fyne.NewSize(64, 64))
-
 	fyneUI.profileIcon = container.NewCenter()
 	fyneUI.profileNameEntry = widget.NewEntry()
 
