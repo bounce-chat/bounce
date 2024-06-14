@@ -230,6 +230,11 @@ func (fyneUI *Fyne) displayThread(thread thread) {
 	fyneUI.chatContainer.Refresh()
 	thread.getButton().Refresh()
 	fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
+
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.mainWindow.SetContent(fyneUI.chatContainer)
+		fyneUI.chatContainer.Show()
+	}
 }
 
 func (fyneUI *Fyne) isActive(thread thread) bool {

@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"sync"
 	"syscall"
@@ -370,17 +371,22 @@ func ensureOnlyOneInstance() {
 }
 
 func getConfigDirectory() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"at":    "configDirectory",
-			"error": err.Error(),
-		}).Fatal("error getting home directory")
+	var configDirectory string
+	if runtime.GOOS == "android" {
+		// TODO: use /data/data/chat.bounce/ ?
+		configDirectory = "/sdcard/Android/data/chat.bounce/"
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"at":    "configDirectory",
+				"error": err.Error(),
+			}).Fatal("error getting home directory")
+		}
+		configDirectory = home + "/.bounce"
 	}
 
-	configDirectory := home + "/.bounce"
-
-	err = os.MkdirAll(configDirectory, 0700)
+	err := os.MkdirAll(configDirectory, 0700)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"path":  configDirectory,

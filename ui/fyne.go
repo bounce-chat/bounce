@@ -46,6 +46,7 @@ type Fyne struct {
 	importContact                         *fyne.Container
 	threadVBox                            *fyne.Container
 	chatContainer                         *fyne.Container
+	mobileMenu                            *fyne.Container
 	profileNameEntry                      *widget.Entry
 	profileIcon                           *fyne.Container
 	profileOptions                        *fyne.Container
@@ -141,6 +142,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.buildIntroduceContacts()
 	fyneUI.buildImportContact()
 	fyneUI.buildMainContainer()
+	fyneUI.buildMobileMenu()
 
 	//
 	// Hookup callbacks

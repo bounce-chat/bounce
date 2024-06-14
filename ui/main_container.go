@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	log "github.com/sirupsen/logrus"
 )
@@ -65,13 +66,24 @@ func (fyneUI *Fyne) buildMainContainer() {
 	fyneUI.threadVBox = container.NewVBox()
 	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
 
-	fyneUI.mainContainer = container.New(
-		layout.NewBorderLayout(fyneUI.networkOfflineWarning, nil, threads, nil),
-		fyneUI.networkOfflineWarning,
-		threads,
-		fyneUI.chatContainer,
-	)
-
+	if fyne.CurrentDevice().IsMobile() {
+		settingsMenu := container.NewHBox(widget.NewButtonWithIcon("", theme.MenuIcon(), func() {
+			fyneUI.showMobileMenu()
+		}))
+		fyneUI.mainContainer = container.New(
+			layout.NewBorderLayout(fyneUI.networkOfflineWarning, settingsMenu, nil, nil),
+			fyneUI.networkOfflineWarning,
+			settingsMenu,
+			container.NewVScroll(fyneUI.threadVBox),
+		)
+	} else {
+		fyneUI.mainContainer = container.New(
+			layout.NewBorderLayout(fyneUI.networkOfflineWarning, nil, threads, nil),
+			fyneUI.networkOfflineWarning,
+			threads,
+			fyneUI.chatContainer,
+		)
+	}
 }
 
 func (fyneUI *Fyne) buildDatabaseLoading() {

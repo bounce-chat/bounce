@@ -2,6 +2,9 @@ package ui
 
 import (
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/widget"
 )
 
 func (fyneUI *Fyne) buildMenu() {
@@ -49,4 +52,29 @@ func (fyneUI *Fyne) buildMenu() {
 			}),
 		),
 	)
+}
+
+func (fyneUI *Fyne) showMobileMenu() {
+	fyneUI.mainWindow.SetContent(fyneUI.mobileMenu)
+	fyneUI.mobileMenu.Show()
+}
+
+func (fyneUI *Fyne) buildMobileMenu() {
+	logo := canvas.NewImageFromResource(newEmbeddedResource("assets/logo.png"))
+	logo.FillMode = canvas.ImageFillContain
+	logo.SetMinSize(fyne.NewSize(228, 167))
+
+	fyneUI.mobileMenu = container.NewVBox(
+		logo,
+		widget.NewButton("My Profile", func() { fyneUI.showEditProfile() }),
+		widget.NewButton("Settings", func() { fyneUI.showSettings() }),
+		widget.NewButton("New Group", func() { fyneUI.showNewGroup() }),
+		widget.NewButton("New DM", func() { fyneUI.showNewDM() }),
+		widget.NewButton("Share Contact", func() { fyneUI.showDisplayAddUserString() }),
+		widget.NewButton("Add Contact", func() { fyneUI.showAddUser() }),
+		widget.NewButton("Import Contact", func() { fyneUI.showImportContact() }),
+		widget.NewButton("About", func() { fyneUI.showAbout() }),
+		widget.NewButton("Close", func() { fyneUI.showMainContainer() }),
+	)
+
 }

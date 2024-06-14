@@ -81,6 +81,7 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	}
 
 	// Save the new profile
+	sdra.Profile.ProfileSettings = &profileSettings{}
 	err = b.database.Create(&sdra.Profile).Error
 	if err != nil {
 		log.WithFields(log.Fields{

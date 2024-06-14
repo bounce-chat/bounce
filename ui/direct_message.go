@@ -106,10 +106,26 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	userIconCanvas := newDefaultImage(user.id, user.initials, 32, nil) // TODO: get size from theme
 
 	userLabelText := widget.NewLabelWithData(user.name)
-	userLabel := container.NewHBox(
-		userIconCanvas,
-		userLabelText,
-	)
+
+	var userLabel *fyne.Container
+	if fyne.CurrentDevice().IsMobile() {
+		backButton := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
+			fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
+			fyneUI.mainContainer.Show()
+		})
+		backButton.Importance = widget.LowImportance
+
+		userLabel = container.NewHBox(
+			backButton,
+			userIconCanvas,
+			userLabelText,
+		)
+	} else {
+		userLabel = container.NewHBox(
+			userIconCanvas,
+			userLabelText,
+		)
+	}
 
 	//userLabelText.Bind(user.name) // TODO: user objects should have bindings as names and take updates from the chat engine
 	userLabelText.TextStyle = fyne.TextStyle{Bold: true}

@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -369,10 +370,25 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 
 	groupIconCanvas := newDefaultImage(group.id, group.initial, 32, nil) // TODO: get size from theme
 	groupLabelText := widget.NewLabel(bounceGroup.Name)
-	groupLabel := container.NewHBox(
-		groupIconCanvas,
-		groupLabelText,
-	)
+
+	var groupLabel *fyne.Container
+	if fyne.CurrentDevice().IsMobile() {
+		backButton := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
+			fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
+			fyneUI.mainContainer.Show()
+		})
+		backButton.Importance = widget.LowImportance
+		groupLabel = container.NewHBox(
+			backButton,
+			groupIconCanvas,
+			groupLabelText,
+		)
+	} else {
+		groupLabel = container.NewHBox(
+			groupIconCanvas,
+			groupLabelText,
+		)
+	}
 
 	groupLabelText.Bind(group.name)
 	groupLabelText.TextStyle = fyne.TextStyle{Bold: true}
