@@ -2,14 +2,18 @@ package ui
 
 import (
 	"errors"
+	"strings"
+	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -143,11 +147,39 @@ func (fyneUI *Fyne) buildNewInstall() {
 }
 
 func (fyneUI *Fyne) buildNewProfileCreator() {
-	userIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png")) // TODO: click to change this
-	userIcon.FillMode = canvas.ImageFillContain
-	userIcon.SetMinSize(fyne.NewSize(64, 64))
-
 	profileNameEntry := widget.NewEntry()
+	userIconName := binding.NewString()
+
+	profileNameEntry.OnChanged = func(str string) {
+		parts := strings.Split(str, " ")
+		if len(parts) == 1 {
+			r, _ := utf8.DecodeRuneInString(parts[0])
+			if r == utf8.RuneError {
+				userIconName.Set("")
+				return
+			}
+
+			userIconName.Set(string(r))
+		} else {
+			firstRune, _ := utf8.DecodeRuneInString(parts[0])
+			if firstRune == utf8.RuneError {
+				userIconName.Set("")
+				return
+			}
+
+			lastRune, _ := utf8.DecodeRuneInString(parts[len(parts)-1])
+			if lastRune == utf8.RuneError {
+				userIconName.Set(string(firstRune))
+				return
+			}
+
+			userIconName.Set(string(firstRune) + string(lastRune))
+		}
+	}
+	userIcon := newDefaultImage(uuid.Nil, userIconName, 128, func() {
+		log.Info("user wants to select the image for a new profile")
+	})
+
 	deviceNameEntry := widget.NewEntry()
 	profileForm := widget.NewForm(
 		&widget.FormItem{
@@ -162,7 +194,7 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 	)
 
 	profileDetails := container.NewVBox(
-		userIcon,
+		container.NewCenter(userIcon),
 		profileForm,
 	)
 

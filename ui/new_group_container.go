@@ -3,16 +3,18 @@ package ui
 import (
 	"errors"
 	"time"
+	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
+	log "github.com/sirupsen/logrus"
 )
 
 func (fyneUI *Fyne) showNewGroup() {
@@ -283,15 +285,25 @@ func (fyneUI *Fyne) buildNewGroup() {
 		cancelButton,
 	)
 
-	groupIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/not_found.png"))
-	groupIcon.FillMode = canvas.ImageFillContain
-	groupIcon.SetMinSize(fyne.NewSize(64, 64))
+	groupIconName := binding.NewString()
+	fyneUI.newGroupNameEntry.OnChanged = func(str string) {
+		r, _ := utf8.DecodeRuneInString(str)
+		if r == utf8.RuneError {
+			groupIconName.Set("")
+		} else {
+			groupIconName.Set(string(r))
+		}
+	}
+	groupIcon := newDefaultImage(uuid.Nil, groupIconName, 128, func() {
+		log.Info("user wants to select the image for a new group")
+	})
+
 	fyneUI.newGroup = container.New(
 		layout.NewBorderLayout(closeBar, actionButtons, nil, nil),
 		closeBar,
 		actionButtons,
 		container.NewVBox(
-			groupIcon,
+			container.NewCenter(groupIcon),
 			fyneUI.newGroupNameEntry,
 			widget.NewLabel("Users:"),
 			fyneUI.newGroupPendingUsersList,
