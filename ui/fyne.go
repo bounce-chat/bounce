@@ -50,6 +50,7 @@ type Fyne struct {
 	profileNameEntry                      *widget.Entry
 	profileIcon                           *fyne.Container
 	profileOptions                        *fyne.Container
+	newDMUserSearchEntry                  *widget.Entry
 	newGroupNameEntry                     *widget.Entry
 	newGroupSelectedUsersContainer        *container.Scroll
 	newGroupPendingUsersList              *container.Scroll
@@ -125,7 +126,6 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	// Build all the containers
 	//
-	fyneUI.allUsersDMLinksScroll = container.NewVScroll(container.NewVBox())
 	fyneUI.buildMenu()
 	fyneUI.buildNewInstall()
 	fyneUI.buildNewSyncDevice()

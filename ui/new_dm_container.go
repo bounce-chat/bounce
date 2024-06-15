@@ -11,12 +11,17 @@ import (
 )
 
 func (fyneUI *Fyne) showNewDM() {
+	fyneUI.newDMUserSearchEntry.Text = ""
+	fyneUI.newDMUserSearchEntry.Refresh()
 	fyneUI.refreshAllUsersDMLinks()
 	fyneUI.mainWindow.SetContent(fyneUI.newDM)
 	fyneUI.newDM.Show()
+	fyneUI.mainWindow.Canvas().Focus(fyneUI.newDMUserSearchEntry)
 }
 
 func (fyneUI *Fyne) buildNewDM() {
+	fyneUI.allUsersDMLinksScroll = container.NewVScroll(container.NewVBox())
+
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		fyneUI.showMainContainer()
 	})
@@ -27,13 +32,16 @@ func (fyneUI *Fyne) buildNewDM() {
 		closeButton,
 	)
 
-	label := widget.NewLabel("Select a user to message:")
+	fyneUI.newDMUserSearchEntry = widget.NewEntry()
+	fyneUI.newDMUserSearchEntry.OnChanged = func(str string) {
+		fyneUI.refreshAllUsersDMLinks()
+	}
 	fyneUI.newDM = container.New(
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.New(
-			layout.NewBorderLayout(label, nil, nil, nil),
-			label,
+			layout.NewBorderLayout(fyneUI.newDMUserSearchEntry, nil, nil, nil),
+			fyneUI.newDMUserSearchEntry,
 			fyneUI.allUsersDMLinksScroll,
 		),
 	)
@@ -41,29 +49,31 @@ func (fyneUI *Fyne) buildNewDM() {
 
 func (fyneUI *Fyne) refreshAllUsersDMLinks() {
 	usersBox := container.NewVBox()
-	for _, thisUser := range fyneUI.users.alphabetized() {
+	for _, thisUser := range fyneUI.users.search(fyneUI.newDMUserSearchEntry.Text) {
 		func(u *user) {
-			// TODO: add listener on user's name to update button text
-			addUserButton := widget.NewButtonWithIcon(u.getName(), newEmbeddedResource("assets/not_found.png"), func() { // TODO: use the user's icon
-				dm, dmExists := fyneUI.dms[u.id]
-				if !dmExists {
-					fyneUI.NewDirectMessage(chat.User{
-						ID:   u.id,
-						Name: u.getName(),
-					})
-					dm, dmExists = fyneUI.dms[u.id]
+			openDMButton := newUserButton(
+				newDefaultImage(u.id, u.initials, theme.IconInlineSize()*2, nil),
+				u.getName(),
+				false,
+				func() {
+					dm, dmExists := fyneUI.dms[u.id]
 					if !dmExists {
-						log.Fatal("DM doesn't exist immediately after creation")
+						fyneUI.NewDirectMessage(chat.User{
+							ID:   u.id,
+							Name: u.getName(),
+						})
+						dm, dmExists = fyneUI.dms[u.id]
+						if !dmExists {
+							log.Fatal("DM doesn't exist immediately after creation")
+						}
 					}
-				}
-				fyneUI.showMainContainer()
-				fyneUI.displayThread(dm)
-			})
-			addUserButton.Alignment = widget.ButtonAlignLeading
-			addUserButton.Importance = widget.LowImportance
+					fyneUI.showMainContainer()
+					fyneUI.displayThread(dm)
+				},
+			)
 			usersBox.Objects = append(
 				usersBox.Objects,
-				addUserButton,
+				openDMButton,
 			)
 		}(thisUser)
 	}
