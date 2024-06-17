@@ -341,7 +341,11 @@ func validUserName(name string) bool {
 		return false
 	}
 
-	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= 512
+	if name != strings.TrimSpace(name) {
+		return false
+	}
+
+	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= 128
 }
 
 func xor(uuid1, uuid2 uuid.UUID) uuid.UUID {

@@ -321,7 +321,11 @@ func validGroupName(name string) bool {
 		return false
 	}
 
-	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= 512
+	if name != strings.TrimSpace(name) {
+		return false
+	}
+
+	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= 128
 }
 
 func (b *bounce) groupMessageWrittenBeforeHistoryCleared(groupID uuid.UUID, messageWrittenAt int64) bool {

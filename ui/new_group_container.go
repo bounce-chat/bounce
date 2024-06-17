@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -258,7 +259,7 @@ func (fyneUI *Fyne) buildNewGroup() {
 		}
 
 		newGroup := chat.Group{
-			Name: fyneUI.newGroupNameEntry.Text,
+			Name: strings.TrimSpace(fyneUI.newGroupNameEntry.Text),
 			//Image:
 			Users:                  users,
 			Admins:                 admins,
@@ -287,6 +288,15 @@ func (fyneUI *Fyne) buildNewGroup() {
 
 	groupIconName := binding.NewString()
 	fyneUI.newGroupNameEntry.OnChanged = func(str string) {
+		// TODO: on change, make sure to delete any leading whitespace, and stop if character count is >128
+		str, trimmed := trimLeadingSpace(str)
+		fyneUI.newGroupNameEntry.Text = str
+		if trimmed != 0 {
+			fyneUI.newGroupNameEntry.CursorRow = 0
+			fyneUI.newGroupNameEntry.CursorColumn = 0
+		}
+		fyneUI.newGroupNameEntry.Refresh()
+
 		r, _ := utf8.DecodeRuneInString(str)
 		if r == utf8.RuneError {
 			groupIconName.Set("")
