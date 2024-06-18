@@ -11,19 +11,28 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var minWidthOfLongActionInStatusChange = float32(256)
+
 type statusChange struct {
 	widget.BaseWidget
-	id        uuid.UUID
-	timestamp int64
-	action    *canvas.Text
-	time      *canvas.Text
+	id           uuid.UUID
+	timestamp    int64
+	actionString string
+	fullAction   *canvas.Text
+	action       *canvas.Text
+	time         *canvas.Text
 }
 
 func newStatusChange(id uuid.UUID, timestamp int64, str string) *statusChange {
 	st := &statusChange{
-		id:        id,
-		timestamp: timestamp,
+		id:           id,
+		timestamp:    timestamp,
+		actionString: str,
 		action: &canvas.Text{
+			Text:     str,
+			TextSize: theme.TextSize(),
+		},
+		fullAction: &canvas.Text{
 			Text:     str,
 			TextSize: theme.TextSize(),
 		},
@@ -55,7 +64,32 @@ type statusChangeRenderer struct {
 func (str *statusChangeRenderer) Destroy() {}
 
 func (str *statusChangeRenderer) Layout(size fyne.Size) {
+	if str.MinSize().Width > size.Width {
+		log.WithFields(log.Fields{
+			"size":     size,
+			"min_size": str.MinSize(),
+		}).Warn("refusing to layout into size smaller than minsize")
+		return
+	}
+	widthAvailableForAction := size.Width - theme.Padding() - str.st.time.MinSize().Width
+	fullActionWidth := str.st.fullAction.MinSize().Width
 	totalWidth := str.MinSize().Width
+	if fullActionWidth > widthAvailableForAction {
+		percentAvailable := widthAvailableForAction / fullActionWidth
+		numberOfCharactersThatCanFit := int(percentAvailable * float32(len(str.st.actionString)))
+		truncatedText := str.st.actionString[0:numberOfCharactersThatCanFit]
+		if len(truncatedText) > 3 {
+			truncatedText = truncatedText[0:len(truncatedText)-4] + "..."
+		}
+		str.st.action.Text = truncatedText
+		str.st.action.Refresh()
+		totalWidth = size.Width
+	} else {
+		str.st.action.Text = str.st.actionString
+		str.st.action.Refresh()
+		totalWidth = str.st.fullAction.MinSize().Width + theme.Padding() + str.st.time.MinSize().Width
+	}
+
 	leftoverWidth := size.Width - totalWidth
 	if leftoverWidth < 0 {
 		log.WithFields(log.Fields{
@@ -78,8 +112,14 @@ func (str *statusChangeRenderer) Layout(size fyne.Size) {
 }
 
 func (str *statusChangeRenderer) MinSize() fyne.Size {
+	fullActionWidth := str.st.fullAction.MinSize().Width
+	actionWidth := fullActionWidth
+	if fullActionWidth > minWidthOfLongActionInStatusChange {
+		actionWidth = minWidthOfLongActionInStatusChange
+	}
+
 	return fyne.Size{
-		Width:  str.st.action.MinSize().Width + theme.Padding() + str.st.time.MinSize().Width,
+		Width:  actionWidth + theme.Padding() + str.st.time.MinSize().Width,
 		Height: str.st.action.MinSize().Height + theme.Padding()*2,
 	}
 }

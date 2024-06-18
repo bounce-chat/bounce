@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"image/color"
 
 	"fyne.io/fyne/v2"
@@ -9,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	log "github.com/sirupsen/logrus"
 )
 
 var minWidthOfLongNameInUserButton = float32(128)
@@ -133,7 +133,10 @@ func (ubr *userButtonRenderer) Destroy() {}
 
 func (ubr *userButtonRenderer) Layout(size fyne.Size) {
 	if ubr.MinSize().Width > size.Width {
-		fmt.Println("refusing to layout into size smaller than minsize")
+		log.WithFields(log.Fields{
+			"size":     size,
+			"min_size": ubr.MinSize(),
+		}).Warn("refusing to layout into size smaller than minsize")
 		return
 	}
 	widthAvailableForName := size.Width - ubr.ub.icon.MinSize().Width - theme.Padding() - theme.Padding()*5 - ubr.ub.admin.MinSize().Width
