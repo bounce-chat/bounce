@@ -27,7 +27,6 @@ type directMessage struct {
 	notificationsEnabledCheck *widget.Check
 	scroll                    *container.Scroll
 	entry                     *threadEntry
-	entryBar                  *fyne.Container
 	retentionSelection        *widget.Select
 	lastMessage               int64
 }
@@ -129,11 +128,10 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 
 	//userLabelText.Bind(user.name) // TODO: user objects should have bindings as names and take updates from the chat engine
 	userLabelText.TextStyle = fyne.TextStyle{Bold: true}
-	dmButtons := container.NewMax(editButton)
 	dm.header = container.New(
-		layout.NewBorderLayout(nil, nil, userLabel, dmButtons),
+		layout.NewBorderLayout(nil, nil, userLabel, editButton),
 		userLabel,
-		dmButtons,
+		editButton,
 	)
 
 	//
@@ -156,7 +154,6 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 		dm.chatHistoryScroll().ScrollToBottom()
 		dm.chatHistoryScroll().Refresh()
 	}
-	dm.entryBar = container.NewMax(entry)
 
 	openThread := func() {
 		fyneUI.displayThread(dm)
@@ -173,9 +170,9 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	}()
 
 	dm.view = container.New(
-		layout.NewBorderLayout(dm.header, dm.entryBar, nil, nil),
+		layout.NewBorderLayout(dm.header, dm.entry, nil, nil),
 		dm.header,
-		dm.entryBar,
+		dm.entry,
 		dm.scroll,
 	)
 	fyneUI.dms[bounceUser.ID] = dm

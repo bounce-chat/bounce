@@ -60,7 +60,6 @@ type group struct {
 	editUserDialogs             map[uuid.UUID]dialog.Dialog
 	editUserDialogsMutex        sync.Mutex
 	entry                       *threadEntry
-	entryBar                    *fyne.Container
 	lastMessage                 int64
 }
 
@@ -411,11 +410,10 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 
 	groupLabelText.Bind(group.name)
 	groupLabelText.TextStyle = fyne.TextStyle{Bold: true}
-	groupButtons := container.NewMax(editButton)
 	group.header = container.New(
-		layout.NewBorderLayout(nil, nil, groupLabel, groupButtons),
+		layout.NewBorderLayout(nil, nil, groupLabel, editButton),
 		groupLabel,
-		groupButtons,
+		editButton,
 	)
 
 	entry := newThreadEntry(5)
@@ -435,8 +433,6 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		group.chatHistoryScroll().ScrollToBottom()
 		group.chatHistoryScroll().Refresh()
 	}
-
-	group.entryBar = container.NewMax(entry)
 
 	openThread := func() {
 		fyneUI.displayThread(group)
@@ -466,9 +462,9 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	}))
 
 	group.view = container.New(
-		layout.NewBorderLayout(group.header, group.entryBar, nil, nil),
+		layout.NewBorderLayout(group.header, group.entry, nil, nil),
 		group.header,
-		group.entryBar,
+		group.entry,
 		group.scroll,
 	)
 	fyneUI.groups[group.id] = group
