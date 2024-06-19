@@ -16,6 +16,7 @@ import (
 )
 
 const MutedForever = int64(-1)
+const MaximumNameLength = 128
 
 //
 // This constant defines the amount of time a message can exist without a successful delivery

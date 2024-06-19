@@ -351,6 +351,25 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		group.setInitial()
 	}))
 
+	group.editThreadNameEntry.OnChanged = func(str string) {
+		// Remove any leading whitespace
+		str, trimmed := trimLeadingSpace(str)
+		group.editThreadNameEntry.Text = str
+		if trimmed != 0 {
+			group.editThreadNameEntry.CursorRow = 0
+			group.editThreadNameEntry.CursorColumn = 0
+		}
+
+		// Enforce length limit
+		if utf8.RuneCountInString(str) > chat.MaximumNameLength {
+			runes := []rune(str)
+			truncated := runes[0:chat.MaximumNameLength]
+			group.editThreadNameEntry.Text = string(truncated)
+
+		}
+		group.editThreadNameEntry.Refresh()
+	}
+
 	group.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(_ bool) {})
 	enabled := group.notificationsMutedUntil != chat.MutedForever
 	group.notificationsEnabledCheck.SetChecked(enabled)

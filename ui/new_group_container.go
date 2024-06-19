@@ -288,15 +288,24 @@ func (fyneUI *Fyne) buildNewGroup() {
 
 	groupIconName := binding.NewString()
 	fyneUI.newGroupNameEntry.OnChanged = func(str string) {
-		// TODO: on change, make sure to delete any leading whitespace, and stop if character count is >128
+		// Remove any leading whitespace
 		str, trimmed := trimLeadingSpace(str)
 		fyneUI.newGroupNameEntry.Text = str
 		if trimmed != 0 {
 			fyneUI.newGroupNameEntry.CursorRow = 0
 			fyneUI.newGroupNameEntry.CursorColumn = 0
 		}
+
+		// Enforce length limit
+		if utf8.RuneCountInString(str) > chat.MaximumNameLength {
+			runes := []rune(str)
+			truncated := runes[0:chat.MaximumNameLength]
+			fyneUI.newGroupNameEntry.Text = string(truncated)
+
+		}
 		fyneUI.newGroupNameEntry.Refresh()
 
+		// Set the group icon
 		r, _ := utf8.DecodeRuneInString(str)
 		if r == utf8.RuneError {
 			groupIconName.Set("")

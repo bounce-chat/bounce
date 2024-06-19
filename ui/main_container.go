@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
+	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -151,6 +152,24 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 	userIconName := binding.NewString()
 
 	profileNameEntry.OnChanged = func(str string) {
+		// Remove any leading whitespace
+		str, trimmed := trimLeadingSpace(str)
+		profileNameEntry.Text = str
+		if trimmed != 0 {
+			profileNameEntry.CursorRow = 0
+			profileNameEntry.CursorColumn = 0
+		}
+
+		// Enforce length limit
+		if utf8.RuneCountInString(str) > chat.MaximumNameLength {
+			runes := []rune(str)
+			truncated := runes[0:chat.MaximumNameLength]
+			profileNameEntry.Text = string(truncated)
+
+		}
+		profileNameEntry.Refresh()
+
+		// Set the user icon
 		parts := strings.Split(str, " ")
 		if len(parts) == 1 {
 			r, _ := utf8.DecodeRuneInString(parts[0])

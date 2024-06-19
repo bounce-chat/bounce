@@ -345,7 +345,7 @@ func validUserName(name string) bool {
 		return false
 	}
 
-	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= 128
+	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= MaximumNameLength
 }
 
 func xor(uuid1, uuid2 uuid.UUID) uuid.UUID {

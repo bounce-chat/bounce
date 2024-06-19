@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 	"time"
+	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -10,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -65,6 +67,24 @@ func (fyneUI *Fyne) buildEditProfile() {
 	//
 	fyneUI.profileIcon = container.NewCenter()
 	fyneUI.profileNameEntry = widget.NewEntry()
+	fyneUI.profileNameEntry.OnChanged = func(str string) {
+		// Remove any leading whitespace
+		str, trimmed := trimLeadingSpace(str)
+		fyneUI.profileNameEntry.Text = str
+		if trimmed != 0 {
+			fyneUI.profileNameEntry.CursorRow = 0
+			fyneUI.profileNameEntry.CursorColumn = 0
+		}
+
+		// Enforce length limit
+		if utf8.RuneCountInString(str) > chat.MaximumNameLength {
+			runes := []rune(str)
+			truncated := runes[0:chat.MaximumNameLength]
+			fyneUI.profileNameEntry.Text = string(truncated)
+
+		}
+		fyneUI.profileNameEntry.Refresh()
+	}
 
 	saveProfileButton := widget.NewButton("Update", func() {
 		err := fyneUI.callbacks.UpdateProfileName(fyneUI.profileNameEntry.Text)
