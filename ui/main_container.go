@@ -72,14 +72,47 @@ func (fyneUI *Fyne) buildMainContainer() {
 	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
 
 	if fyne.CurrentDevice().IsMobile() {
-		settingsMenu := container.NewHBox(widget.NewButtonWithIcon("", theme.MenuIcon(), func() {
+		icon := canvas.NewImageFromResource(newEmbeddedResource("assets/icon.png"))
+		icon.FillMode = canvas.ImageFillContain
+		icon.SetMinSize(fyne.NewSize(theme.TextHeadingSize(), theme.TextHeadingSize()))
+
+		threadSearch := widget.NewButtonWithIcon("", theme.SearchIcon(), func() {
+			// TODO: replace the top bar with a search entry for n-gram search of thread names, switch back to
+			// icon, title, and search icon when entry loses focus
+		})
+		threadSearch.Importance = widget.LowImportance
+
+		settings := widget.NewButtonWithIcon("", theme.MenuIcon(), func() {
 			fyneUI.showMobileMenu()
-		}))
+		})
+		settings.Importance = widget.LowImportance
+
+		topButtons := container.NewHBox(
+			threadSearch,
+			settings,
+		)
+		logoSearchAndMenu := container.New(
+			layout.NewBorderLayout(nil, nil, nil, topButtons),
+			topButtons,
+			container.NewHBox(
+				icon,
+				widget.NewRichText(&widget.TextSegment{
+					Style: widget.RichTextStyle{
+						SizeName: theme.SizeNameHeadingText,
+					},
+					Text: "Bounce",
+				}),
+			),
+		)
+
 		fyneUI.mainContainer = container.New(
-			layout.NewBorderLayout(fyneUI.networkOfflineWarning, settingsMenu, nil, nil),
+			layout.NewBorderLayout(fyneUI.networkOfflineWarning, nil, nil, nil),
 			fyneUI.networkOfflineWarning,
-			settingsMenu,
-			container.NewVScroll(fyneUI.threadVBox),
+			container.New(
+				layout.NewBorderLayout(logoSearchAndMenu, nil, nil, nil),
+				logoSearchAndMenu,
+				container.NewVScroll(fyneUI.threadVBox),
+			),
 		)
 	} else {
 		fyneUI.mainContainer = container.New(
