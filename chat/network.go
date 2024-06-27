@@ -8,11 +8,14 @@ import (
 // Any overlay network that can satisfy this interface can host Bounce
 //
 type Network interface {
+	// Load the network keys from the config directory
+	Load(configDirectory string)
+
 	// Start is the main entry point to a network provider.  It is responsible for connecting to the overlay network and
 	// maintain a connection between network failures, and can block until Shutdown().  After Start() is called, the
 	// network must continue to run, even between failures in the device's internet connection.  Start() is only called
 	// once, and the callbacks are only used to update user interface indications of network status.
-	Start(configDirectory string, callbacks NetworkCallbacks)
+	Start(callbacks NetworkCallbacks)
 
 	// Get the address of this device.  This must work even if the network has not been started or is offline, by generating
 	// the address from the stored private key.

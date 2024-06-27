@@ -57,12 +57,13 @@ func Start(network Network, ui UI) {
 		userInterface:   ui,
 		network:         network,
 		devicePool: &devicePool{
-			devices:          make(map[string]*remoteDevice),
-			groupPools:       make(map[uuid.UUID][]*remoteDevice),
-			userPools:        make(map[uuid.UUID][]*remoteDevice),
-			userOnlineStatus: make(map[uuid.UUID]bool),
-			lastDial:         make(map[string]time.Time),
-			lastFailedDial:   make(map[string]time.Time),
+			devices:            make(map[string]*remoteDevice),
+			groupPools:         make(map[uuid.UUID][]*remoteDevice),
+			userPools:          make(map[uuid.UUID][]*remoteDevice),
+			userOnlineStatus:   make(map[uuid.UUID]bool),
+			deviceOnlineStatus: make(map[uuid.UUID]bool),
+			lastDial:           make(map[string]time.Time),
+			lastFailedDial:     make(map[string]time.Time),
 		},
 	}
 	log.RegisterExitHandler(b.fatalShutdown)
@@ -111,11 +112,11 @@ func Start(network Network, ui UI) {
 		},
 	)
 
+	b.network.Load(b.configDirectory)
 	initialState := b.buildInitialState()
 	b.userInterface.LoadInitialState(initialState) // TODO: this should be in a goroutine so we can display loading until ready, but that causes bugs.  Unclear why.
 
 	go b.network.Start(
-		b.configDirectory,
 		NetworkCallbacks{
 			NetworkOnline:  b.networkOnline,
 			NetworkOffline: b.networkOffline,
@@ -288,6 +289,11 @@ func (b *bounce) handleInterrupts() {
 }
 
 func ensureOnlyOneInstance() {
+	// Let mobile operating systems handle this problem
+	if runtime.GOOS == "android" || runtime.GOOS == "ios" {
+		return
+	}
+
 	pidFile := getConfigDirectory() + "/.pid"
 
 	// If there's no PID file, make one and return

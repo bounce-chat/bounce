@@ -169,6 +169,14 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 
 		// Tell the UI that we've accepted the sync device
 		b.userInterface.NewSyncDeviceAdded()
+		b.userInterface.DeviceAdded(Device{
+			ID: newDevice.ID,
+			//Name:      dev.Name, // TODO: support setting name from initial setup?
+			Address:   newDevice.Address,
+			CreatedAt: newDevice.Timestamp,
+			Local:     false,
+			Online:    true,
+		})
 
 		// Store that we've told this device about themselves
 		b.markDeliveredTo(&newDevice, peer)

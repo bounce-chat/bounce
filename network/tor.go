@@ -141,14 +141,17 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 	return keypair.PublicKey(), keypair.PrivateKey()
 }
 
-func (bounceTor *TorNetwork) Start(configDirectory string, callbacks chat.NetworkCallbacks) {
+func (bounceTor *TorNetwork) Load(configDirectory string) {
+	bounceTor.loadConfig(configDirectory)
+}
+
+func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
 	defer func() {
 		if r := recover(); r != nil {
 			// https://github.com/cretz/bine/issues/57
 			log.Fatal("recovered a panic while starting Tor, this happens due to a nil-pointer derefernce in bine when Tor is shut down while publishing a hidden service")
 		}
 	}()
-	bounceTor.loadConfig(configDirectory)
 	bounceTor.callbacks = callbacks
 	log.Info("connecting to the Tor network")
 

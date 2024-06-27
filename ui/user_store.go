@@ -127,9 +127,9 @@ func (store *userStore) addWithoutLocking(u *user) {
 			smaller++
 		}
 	}
-	smaller_users := store.userList[:smaller]
-	larger_users := store.userList[smaller:]
-	store.userList = append(smaller_users, append([]*user{u}, larger_users...)...)
+	smallerUsers := store.userList[:smaller]
+	largerUsers := store.userList[smaller:]
+	store.userList = append(smallerUsers, append([]*user{u}, largerUsers...)...)
 
 	grams := makeNgrams(strings.ToLower(u.getName()))
 	for _, gram := range grams {

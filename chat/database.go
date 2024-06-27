@@ -279,14 +279,28 @@ func (b *bounce) pruneUndeliverableCustomScopes() {
 }
 
 func (b *bounce) buildInitialState() InitialState {
-	// Load the profile
+	// Load the profile and sync devices
 	var profile *User
+	syncDevices := []Device{}
 	var dbProfile user
-	err := b.database.Where("profile = ?", true).First(&dbProfile).Error
+	err := b.database.Preload(clause.Associations).Where("profile = ?", true).First(&dbProfile).Error
 	if err == nil {
 		profile = &User{
 			ID:   dbProfile.ID,
 			Name: dbProfile.Name,
+		}
+		for _, dev := range dbProfile.Devices {
+			syncDevices = append(
+				syncDevices,
+				Device{
+					ID:        dev.ID,
+					Name:      dev.Name,
+					Address:   dev.Address,
+					CreatedAt: dev.Timestamp,
+					Local:     dev.Address == b.network.Address(),
+					Online:    false,
+				},
+			)
 		}
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
@@ -718,6 +732,7 @@ func (b *bounce) buildInitialState() InitialState {
 	// Create the initial state for the UI
 	return InitialState{
 		Profile:                                profile,
+		SyncDevices:                            syncDevices,
 		Users:                                  chatUsers,
 		Groups:                                 chatGroups,
 		DirectMessages:                         exportedDMs,

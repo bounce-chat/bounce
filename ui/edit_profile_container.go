@@ -56,9 +56,52 @@ func (fyneUI *Fyne) showEditProfile() {
 	fyneUI.profileNameEntry.Refresh()
 	fyneUI.profileNameEntry.FocusLost()
 
+	//fyneUI.updateDeviceStatus() // TODO: remove and add to build if we always do it whenever needed elsewhere
+
 	fyneUI.profileOptions.Refresh()
 	fyneUI.mainWindow.SetContent(fyneUI.editProfile)
 	fyneUI.editProfile.Show()
+}
+
+func (fyneUI *Fyne) updateDeviceStatus() {
+	currentDevicesList := container.NewVBox()
+	for _, dev := range fyneUI.devices.all() {
+		state := deviceStatusOffline
+		if dev.Online {
+			state = deviceStatusOnline
+		}
+		if dev.Local {
+			state = deviceStatusLocal
+		}
+
+		currentDevicesList.Objects = append(
+			currentDevicesList.Objects,
+			newDeviceButton(
+				dev.Name,
+				dev.Address,
+				state,
+				false,
+				false,
+				func() {
+					// TODO: display edit device
+				},
+			),
+		)
+	}
+	fyneUI.currentDevices.Content = currentDevicesList
+
+	currentDevicesHeight := float32(0)
+	for i, obj := range currentDevicesList.Objects {
+		if i == 3 {
+			break
+		}
+		currentDevicesHeight += obj.MinSize().Height
+	}
+	currentDevicesHeight += theme.Padding() * float32(len(currentDevicesList.Objects)+1)
+	fyneUI.currentDevices.SetMinSize(fyne.Size{Height: currentDevicesHeight})
+
+	fyneUI.currentDevices.Refresh()
+	fyneUI.editProfile.Refresh()
 }
 
 func (fyneUI *Fyne) buildEditProfile() {
@@ -114,7 +157,7 @@ func (fyneUI *Fyne) buildEditProfile() {
 	devicesLabel := widget.NewLabel("Devices")
 	devicesLabel.TextStyle = fyne.TextStyle{Bold: true}
 
-	currentDevices := widget.NewLabel("viewing devices not implemented")
+	fyneUI.currentDevices = container.NewVScroll(container.NewVBox())
 
 	addDeviceButton := widget.NewButton("Add Device", func() {
 		fyneUI.showDisplaySyncString()
@@ -126,7 +169,7 @@ func (fyneUI *Fyne) buildEditProfile() {
 	)
 
 	devicesContainer := container.NewVBox(
-		currentDevices,
+		fyneUI.currentDevices,
 		addDeviceButtonBar,
 	)
 

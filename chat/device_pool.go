@@ -32,17 +32,18 @@ const keepAliveFrequency = time.Duration(15 * time.Second)
 // peering with users or groups.
 //
 type devicePool struct {
-	auditing         sync.Mutex
-	poolMutex        sync.Mutex
-	deviceMutex      sync.Mutex
-	onlineMutex      sync.Mutex
-	devices          map[string]*remoteDevice
-	groupPools       map[uuid.UUID][]*remoteDevice
-	userPools        map[uuid.UUID][]*remoteDevice
-	userOnlineStatus map[uuid.UUID]bool
-	lastDialMutex    sync.Mutex
-	lastDial         map[string]time.Time
-	lastFailedDial   map[string]time.Time
+	auditing           sync.Mutex
+	poolMutex          sync.Mutex
+	deviceMutex        sync.Mutex
+	onlineMutex        sync.Mutex
+	devices            map[string]*remoteDevice
+	groupPools         map[uuid.UUID][]*remoteDevice
+	userPools          map[uuid.UUID][]*remoteDevice
+	userOnlineStatus   map[uuid.UUID]bool
+	deviceOnlineStatus map[uuid.UUID]bool
+	lastDialMutex      sync.Mutex
+	lastDial           map[string]time.Time
+	lastFailedDial     map[string]time.Time
 }
 
 func (b *bounce) peer() {
@@ -644,17 +645,6 @@ func (b *bounce) updateUserOnlineStatus(address string) {
 	if !exists {
 		return
 	}
-	// Ignore sync devices
-	if dev.UserID == u.ID {
-		return
-	}
-
-	// Get the current state for this user
-	knownOnline, ok := b.devicePool.userOnlineStatus[dev.UserID]
-	if !ok {
-		b.devicePool.userOnlineStatus[dev.UserID] = false
-		knownOnline = false
-	}
 
 	// Get the remote device
 	rd := b.getRemoteDevice(address)
@@ -662,13 +652,39 @@ func (b *bounce) updateUserOnlineStatus(address string) {
 	// Check if the user is currently online
 	online := rd.connectedSockets > 0
 
-	// Update the UI and cache is there's a state change
-	if online && !knownOnline {
-		b.devicePool.userOnlineStatus[dev.UserID] = true
-		b.userInterface.UserIsOnline(dev.UserID)
-	} else if !online && knownOnline {
-		b.devicePool.userOnlineStatus[dev.UserID] = false
-		b.userInterface.UserIsOffline(dev.UserID)
+	// Track sync devices on a per-device basis
+	if dev.UserID == u.ID {
+		// Get the current state for this device
+		knownOnline, ok := b.devicePool.deviceOnlineStatus[dev.ID]
+		if !ok {
+			b.devicePool.deviceOnlineStatus[dev.ID] = false
+			knownOnline = false
+		}
+
+		// Update the UI and cache if there's a state change
+		if online && !knownOnline {
+			b.devicePool.deviceOnlineStatus[dev.ID] = true
+			b.userInterface.DeviceOnline(dev.ID)
+		} else if !online && knownOnline {
+			b.devicePool.deviceOnlineStatus[dev.ID] = false
+			b.userInterface.DeviceOffline(dev.ID)
+		}
+	} else {
+		// Get the current state for this user
+		knownOnline, ok := b.devicePool.userOnlineStatus[dev.UserID]
+		if !ok {
+			b.devicePool.userOnlineStatus[dev.UserID] = false
+			knownOnline = false
+		}
+
+		// Update the UI and cache if there's a state change
+		if online && !knownOnline {
+			b.devicePool.userOnlineStatus[dev.UserID] = true
+			b.userInterface.UserIsOnline(dev.UserID)
+		} else if !online && knownOnline {
+			b.devicePool.userOnlineStatus[dev.UserID] = false
+			b.userInterface.UserIsOffline(dev.UserID)
+		}
 	}
 }
 

@@ -11,6 +11,15 @@ type User struct {
 	State DMState
 }
 
+type Device struct {
+	ID        uuid.UUID
+	Name      string
+	Address   string
+	CreatedAt int64
+	Local     bool
+	Online    bool
+}
+
 type DMState struct {
 	Retention  int64
 	MutedUntil int64
@@ -198,6 +207,7 @@ type UpdateUserUpdateName struct {
 
 type InitialState struct {
 	Profile                                *User
+	SyncDevices                            []Device
 	Users                                  []User
 	Groups                                 []Group
 	DirectMessages                         []DirectMessage
@@ -301,6 +311,13 @@ type UI interface {
 	//UpdateMyName()
 
 	// Chat engine updating the delivery status of a message
+
+	// Sync device events
+	DeviceOnline(uuid.UUID)
+	DeviceOffline(uuid.UUID)
+	DeviceAdded(Device)
+	DeviceRevoked(uuid.UUID)
+	DeviceRenamed(uuid.UUID, string)
 }
 
 //

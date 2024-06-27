@@ -78,6 +78,8 @@ type Fyne struct {
 	addUserString                         binding.String
 	profile                               *user
 	users                                 *userStore
+	devices                               *deviceStore
+	currentDevices                        *container.Scroll
 	deletedUser                           *user
 	initialStateSet                       bool
 	focused                               bool
@@ -94,6 +96,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.dms = make(map[uuid.UUID]*directMessage)
 	fyneUI.threadWithItem = make(map[uuid.UUID]thread)
 	fyneUI.users = newUserStore()
+	fyneUI.devices = newDeviceStore()
 	fyneUI.focused = true
 	fyneUI.syncString = binding.NewString()
 	fyneUI.addUserString = binding.NewString()
@@ -182,6 +185,18 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		fyneUI.profile = makeUser(state.Profile.ID, state.Profile.Name)
 		fyneUI.users.add(fyneUI.profile)
 	}
+
+	for _, dev := range state.SyncDevices {
+		fyneUI.devices.add(&chat.Device{
+			ID:        dev.ID,
+			Name:      dev.Name,
+			Address:   dev.Address,
+			CreatedAt: dev.CreatedAt,
+			Local:     dev.Local,
+			Online:    dev.Online,
+		})
+	}
+	fyneUI.updateDeviceStatus()
 
 	initialDMStates := map[uuid.UUID]chat.DMState{}
 	for _, u := range state.Users {
