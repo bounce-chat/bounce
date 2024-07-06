@@ -361,6 +361,9 @@ type UICallbacks struct {
 	DeleteGroup              func(groupID uuid.UUID) error                   // Delete a group
 	BlockGroup               func(groupID uuid.UUID) error                   // Block a group
 
+	RenameDevice func(deviceID uuid.UUID, name string) error
+	RevokeDevice func(deviceID uuid.UUID) error
+
 	SetDMMutedUntil    func(userID uuid.UUID, mutedUntil int64) error // Set a temporary mute on a DM by setting the unix timestamp to pause notifications until
 	SetDMRetention     func(userID uuid.UUID, retention int64) error  // Set the message retention settings for a DM
 	ClearDMChatHistory func(userID uuid.UUID) error                   // Clear all DM messages on all devices

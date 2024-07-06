@@ -56,8 +56,6 @@ func (fyneUI *Fyne) showEditProfile() {
 	fyneUI.profileNameEntry.Refresh()
 	fyneUI.profileNameEntry.FocusLost()
 
-	//fyneUI.updateDeviceStatus() // TODO: remove and add to build if we always do it whenever needed elsewhere
-
 	fyneUI.profileOptions.Refresh()
 	fyneUI.mainWindow.SetContent(fyneUI.editProfile)
 	fyneUI.editProfile.Show()
@@ -74,6 +72,58 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 			state = deviceStatusLocal
 		}
 
+		shortName := dev.Name
+		if shortName == "" {
+			shortName = dev.Address[0:8] + "..."
+		}
+
+		nameLabel := widget.NewLabel("Name:")
+		nameEntry := widget.NewEntry() // TODO: validate string?
+		if dev.Name != "" {
+			nameEntry.SetText(dev.Name)
+		}
+
+		createdAtLabel := widget.NewLabel("Created:")
+		createdAtString := time.Unix(dev.CreatedAt, 0).Format("1/2 2006")
+
+		var editDeviceDialog dialog.Dialog
+		confirmRevokeDialog := dialog.NewConfirm(
+			"Revoke Device?",
+			"Are you sure you want to permanently revoke this device?",
+			func(confirmed bool) {
+				if confirmed {
+					fyneUI.callbacks.RevokeDevice(dev.ID)
+					editDeviceDialog.Hide()
+				}
+			},
+			fyneUI.mainWindow,
+		)
+		revokeButton := widget.NewButton("Revoke", func() {
+			confirmRevokeDialog.Show()
+		})
+		revokeButton.Importance = widget.DangerImportance
+
+		editDeviceContainer := container.NewVBox(
+			container.New(
+				layout.NewBorderLayout(nil, nil, nameLabel, nil),
+				nameLabel,
+				nameEntry,
+			),
+			container.New(
+				layout.NewBorderLayout(nil, nil, createdAtLabel, nil),
+				createdAtLabel,
+				widget.NewLabel(createdAtString),
+			),
+			revokeButton,
+		)
+		editDeviceDialog = dialog.NewCustomConfirm(shortName, "Apply", "Cancel", editDeviceContainer, func(apply bool) {
+			if apply {
+				if dev.Name != nameEntry.Text {
+					fyneUI.callbacks.RenameDevice(dev.ID, nameEntry.Text)
+				}
+			}
+		}, fyneUI.mainWindow)
+
 		currentDevicesList.Objects = append(
 			currentDevicesList.Objects,
 			newDeviceButton(
@@ -83,7 +133,7 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 				false,
 				false,
 				func() {
-					// TODO: display edit device
+					editDeviceDialog.Show()
 				},
 			),
 		)

@@ -22,6 +22,7 @@ type device struct {
 	UserID       uuid.UUID `json:"-"`
 	Address      string    `gorm:"uniqueIndex"`
 	Timestamp    int64
+	RevokedAt    int64
 	Signature    *introductionSignature `json:",omitempty" gorm:"constraint:OnDelete:CASCADE;"`
 	payload      []byte
 	payloadMutex sync.Mutex

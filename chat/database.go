@@ -73,6 +73,7 @@ func (b *bounce) openDatabase() {
 		&confirmation{},
 		&profileSettings{},
 		&updateUser{},
+		&updateDevice{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
