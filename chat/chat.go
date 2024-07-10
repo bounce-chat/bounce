@@ -109,6 +109,8 @@ func Start(network Network, ui UI) {
 			TypingInDirectMessage:    b.typingInDirectMessage,
 			TypingInGroup:            b.typingInGroup,
 			UpdateProfileName:        b.updateProfileName,
+			RevokeDevice:             b.revokeDevice,
+			RenameDevice:             b.renameDevice,
 		},
 	)
 
