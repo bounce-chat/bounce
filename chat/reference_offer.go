@@ -111,6 +111,12 @@ func (b *bounce) sendReferences(peer string) {
 		return
 	}
 
+	rd := b.getRemoteDevice(peer)
+	if rd.connectedSockets < 1 {
+		// Can't send references to a device we're not connected to
+		return
+	}
+
 	_, exists := b.getDeviceFromAddress(peer)
 	if !exists {
 		// We have nothing to offer a device that we don't know about
@@ -121,12 +127,6 @@ func (b *bounce) sendReferences(peer string) {
 	if !exists {
 		// Our own devices doesn't exist yet, we're probably going to be added as a new sync
 		// device now.  In the meantime there's nothing to do.
-		return
-	}
-
-	rd := b.getRemoteDevice(peer)
-	if rd.connectedSockets < 1 {
-		// Can't send references to a device we're not connected to
 		return
 	}
 

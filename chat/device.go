@@ -2,7 +2,9 @@ package chat
 
 import (
 	"errors"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -182,6 +184,18 @@ func (b *bounce) getDeviceFromAddress(address string) (device, bool) {
 
 func (b *bounce) isSyncDevice(dev device) bool {
 	return dev.UserID == b.currentUserID()
+}
+
+func validDeviceName(name string) bool {
+	if name == "" {
+		return false
+	}
+
+	if name != strings.TrimSpace(name) {
+		return false
+	}
+
+	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= MaximumNameLength
 }
 
 //

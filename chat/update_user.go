@@ -315,7 +315,7 @@ func (b *bounce) applyAndBroadcastUpdateUser(uu updateUser) error {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error marshalling group update")
+		}).Fatal("error marshalling update user")
 	}
 	sc := b.createSignedContainer(uu.OriginalPayload)
 	uu.Signature = sc.Signature
