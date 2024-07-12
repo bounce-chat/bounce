@@ -381,10 +381,11 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	group.restrictPostingCheck.SetChecked(group.restrictPosting)
 
 	fyneUI.buildEditThreadContainer(group)
-	editButton := widget.NewButton("Edit", func() {
+	editButton := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
 		fyneUI.refreshUserSelections(group)
 		fyneUI.showEditThreadContainer(group)
 	})
+	editButton.Importance = widget.LowImportance
 
 	groupIconCanvas := newDefaultImage(group.id, group.initial, 32, nil) // TODO: get size from theme
 	groupLabelText := widget.NewLabel(bounceGroup.Name)

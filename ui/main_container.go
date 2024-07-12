@@ -82,7 +82,7 @@ func (fyneUI *Fyne) buildMainContainer() {
 		})
 		threadSearch.Importance = widget.LowImportance
 
-		settings := widget.NewButtonWithIcon("", theme.MenuIcon(), func() {
+		settings := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
 			fyneUI.showMobileMenu()
 		})
 		settings.Importance = widget.LowImportance

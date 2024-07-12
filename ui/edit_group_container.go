@@ -205,7 +205,8 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		fyneUI.mainWindow.Canvas().Focus(g.getEntry())
 	})
 	saveButton.Importance = widget.HighImportance
-	cancelButton := widget.NewButton("Cancel", func() {
+
+	cancelChanges := func() {
 		// Reset name
 		currentThreadName, err := g.name.Get()
 		if err != nil {
@@ -234,9 +235,15 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		g.restrictPostingCheck.SetChecked(g.restrictPosting)
 
 		// Show main tontainer
-		fyneUI.showMainContainer()
-		fyneUI.mainWindow.Canvas().Focus(g.getEntry())
-	})
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.displayThread(g)
+		} else {
+			fyneUI.showMainContainer()
+			fyneUI.mainWindow.Canvas().Focus(g.getEntry())
+		}
+	}
+	cancelButton := widget.NewButton("Cancel", cancelChanges)
+
 	actionButtons := container.New(
 		layout.NewBorderLayout(nil, nil, cancelButton, saveButton),
 		saveButton,
@@ -302,11 +309,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		addUsersDialog.Show()
 	})
 
-	// Close the window but save state.  TODO: should it clear state as well, and if so, just get rid of this?
-	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		fyneUI.showMainContainer()
-		fyneUI.mainWindow.Canvas().Focus(g.getEntry())
-	})
+	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), cancelChanges)
 	closeButton.Importance = widget.LowImportance
 
 	closeBar := container.New(

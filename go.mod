@@ -3,7 +3,7 @@ module github.com/hkparker/bounce
 go 1.16
 
 require (
-	fyne.io/fyne/v2 v2.4.5
+	fyne.io/fyne/v2 v2.5.0-rc1
 	github.com/cretz/bine v0.2.0
 	github.com/fredbi/uri v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect

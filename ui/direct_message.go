@@ -99,9 +99,11 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	dm.notificationsEnabledCheck.SetChecked(enabled)
 
 	fyneUI.buildEditDMContainer(dm)
-	editButton := widget.NewButton("Edit", func() {
+	editButton := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
 		fyneUI.showEditDMContainer(dm)
 	})
+	editButton.Importance = widget.LowImportance
+
 	userIconCanvas := newDefaultImage(user.id, user.initials, 32, nil) // TODO: get size from theme
 
 	userLabelText := widget.NewLabelWithData(user.name)
@@ -279,7 +281,8 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
 	})
 	saveButton.Importance = widget.HighImportance
-	cancelButton := widget.NewButton("Cancel", func() {
+
+	cancelChanges := func() {
 		// Reset retention
 		dm.retentionSelection.Selected = getRetentionName(dm.retention)
 		dm.retentionSelection.Refresh()
@@ -289,9 +292,15 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		dm.notificationsEnabledCheck.SetChecked(enabled)
 
 		// Show main tontainer
-		fyneUI.showMainContainer()
-		fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
-	})
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.displayThread(dm)
+		} else {
+			fyneUI.showMainContainer()
+			fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
+		}
+	}
+	cancelButton := widget.NewButton("Cancel", cancelChanges)
+
 	actionButtons := container.New(
 		layout.NewBorderLayout(nil, nil, cancelButton, saveButton),
 		saveButton,
@@ -307,10 +316,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	)
 
 	// Close the window but save state.  TODO: should it clear state as well?
-	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		fyneUI.showMainContainer()
-		fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
-	})
+	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), cancelChanges)
 	closeButton.Importance = widget.LowImportance
 
 	closeBar := container.New(
