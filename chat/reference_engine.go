@@ -257,6 +257,7 @@ func referencedIDs(references []frameReference) map[uint16][]uuid.UUID {
 		typeUpdateGroup:    []uuid.UUID{},
 		typeConfirmation:   []uuid.UUID{},
 		typeUpdateUser:     []uuid.UUID{},
+		typeUpdateDevice:   []uuid.UUID{},
 	}
 
 	for _, reference := range references {

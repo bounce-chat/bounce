@@ -64,6 +64,8 @@ func (ro *referenceOffer) shouldDialUser() bool {
 			return true
 		} else if reference.Type == typeConfirmation {
 			return true
+		} else if reference.Type == typeUpdateDevice {
+			return true
 		}
 	}
 	return false
@@ -81,6 +83,10 @@ func (ro *referenceOffer) onlyGroupContent() bool {
 		} else if reference.Type == typeAddUser {
 			onlyGroupContent = false
 		} else if reference.Type == typeGroupCreation {
+			onlyGroupContent = false
+		} else if reference.Type == typeUpdateUser {
+			onlyGroupContent = false
+		} else if reference.Type == typeUpdateDevice {
 			onlyGroupContent = false
 		}
 	}
@@ -195,6 +201,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	references = append(references, b.getUpdateGroupsToOffer(dev)...)
 	references = append(references, b.getConfirmationsToOffer(dev)...)
 	references = append(references, b.getUpdateUsersToOffer(dev)...)
+	references = append(references, b.getUpdateDevicesToOffer(dev)...)
 
 	return &referenceOffer{
 		ID:         uuid.New(),
@@ -341,7 +348,7 @@ func (b *bounce) getDevicesToOffer(dev device) []frameReference {
 			Distinct("devices.id").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDevice).
 			Where(
-				"address != ? AND (user_id = ? OR user_id = ? OR user_id IN (?)) AND delivery_records.id IS NULL",
+				"devices.address != ? AND (devices.user_id = ? OR devices.user_id = ? OR devices.user_id IN (?)) AND delivery_records.id IS NULL",
 				dev.Address,
 				b.currentUserID(),
 				dev.UserID,
@@ -599,35 +606,107 @@ func (b *bounce) getConfirmationsToOffer(dev device) []frameReference {
 
 func (b *bounce) getUpdateUsersToOffer(dev device) []frameReference {
 	var unsentUpdateUsers []updateUser
-	err := b.database.
-		Distinct("update_users.id").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeConfirmation).
-		Where(
-			`delivery_records.id IS NULL AND (
-				update_users.target = ? OR
-				update_users.target = ? OR
-				? IN (
-					SELECT DISTINCT user_id FROM group_users WHERE group_id IN
-						(
-							SELECT group_id FROM group_users WHERE user_id = ?
-						)
-					)
-			)`,
-			b.currentUserID(),
-			dev.UserID,
-			dev.UserID,
-			b.currentUserID(),
-		).
-		Find(&unsentUpdateUsers).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error selecting unsent update users in reference offer")
+
+	if b.isSyncDevice(dev) {
+		err := b.database.
+			Distinct("update_users.id").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateUser).
+			Where("delivery_records.id IS NULL").
+			Find(&unsentUpdateUsers).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting unsent update users in reference offer")
+		}
+	} else {
+		err := b.database.
+			Distinct("update_users.id").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateUser).
+			Where(
+				"(update_users.target = ? OR update_users.target = ? OR update_users.target IN (?)) AND delivery_records.id IS NULL",
+				dev.UserID,
+				b.currentUserID(),
+				b.database.
+					Model(&user{}).
+					Distinct().
+					Select("users.id").
+					Joins("JOIN group_users ON group_users.user_id = users.id").
+					Where(
+						"group_users.group_id IN (?)",
+						b.database.
+							Model(&group{}).
+							Distinct().
+							Select("groups.id").
+							Joins("JOIN group_users ON group_users.group_id = groups.id").
+							Where("user_id = ?", dev.UserID),
+					),
+			).
+			Find(&unsentUpdateUsers).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting unsent update devices in reference offer")
+		}
 	}
 
 	references := []frameReference{}
 	for _, uu := range unsentUpdateUsers {
 		references = append(references, frameReference{FrameID: uu.ID, Type: typeUpdateUser})
+	}
+
+	return references
+}
+
+func (b *bounce) getUpdateDevicesToOffer(dev device) []frameReference {
+	var unsentUpdateDevices []updateDevice
+
+	if b.isSyncDevice(dev) {
+		err := b.database.
+			Distinct("update_devices.id").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateDevice).
+			Where("delivery_records.id IS NULL").
+			Find(&unsentUpdateDevices).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting unsent update devices in reference offer")
+		}
+	} else {
+		// Only get updates that revoke a device, using overlap scope
+		err := b.database.
+			Distinct("update_devices.id").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateDevice).
+			Where(
+				"update_devices.type = ? AND (update_devices.author = ? OR update_devices.author = ? OR update_devices.author IN (?)) AND delivery_records.id IS NULL",
+				updateDeviceTypeRevoke,
+				dev.UserID,
+				b.currentUserID(),
+				b.database.
+					Model(&user{}).
+					Distinct().
+					Select("users.id").
+					Joins("JOIN group_users ON group_users.user_id = users.id").
+					Where(
+						"group_users.group_id IN (?)",
+						b.database.
+							Model(&group{}).
+							Distinct().
+							Select("groups.id").
+							Joins("JOIN group_users ON group_users.group_id = groups.id").
+							Where("user_id = ?", dev.UserID),
+					),
+			).
+			Find(&unsentUpdateDevices).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting unsent update devices in reference offer")
+		}
+	}
+
+	references := []frameReference{}
+	for _, ud := range unsentUpdateDevices {
+		references = append(references, frameReference{FrameID: ud.ID, Type: typeUpdateDevice})
 	}
 
 	return references
@@ -664,9 +743,9 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	references = append(references, gmRefs...)
 	acks = append(acks, gmAcks...)
 
-	udRefs, udAcks := b.getUpdateDMsToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateDM])
-	references = append(references, udRefs...)
-	acks = append(acks, udAcks...)
+	udmRefs, udmAcks := b.getUpdateDMsToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateDM])
+	references = append(references, udmRefs...)
+	acks = append(acks, udmAcks...)
 
 	dRefs, dAcks := b.getDevicesToRequestAndAck(dev, deviceExists, typesToIDs[typeDevice])
 	references = append(references, dRefs...)
@@ -691,6 +770,10 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	uuRefs, uuAcks := b.getUpdateUsersToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateUser])
 	references = append(references, uuRefs...)
 	acks = append(acks, uuAcks...)
+
+	udRefs, udAcks := b.getUpdateDevicesToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateDevice])
+	references = append(references, udRefs...)
+	acks = append(acks, udAcks...)
 
 	// Unlock the catch up mutex
 	catchUpMutex.Unlock()
@@ -932,6 +1015,32 @@ func (b *bounce) getUpdateUsersToRequestAndAck(dev device, deviceExists bool, of
 				"id":    updateUserID,
 				"error": err.Error(),
 			}).Fatal("database error querying for update user")
+		}
+	}
+
+	return references, acks
+}
+
+func (b *bounce) getUpdateDevicesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+	references := []frameReference{}
+	acks := []frameReference{}
+
+	for _, updateDeviceID := range offeredIDs {
+		ref := frameReference{FrameID: updateDeviceID, Type: typeUpdateDevice}
+		var ud updateDevice
+		err := b.database.First(&ud, "id = ?", updateDeviceID).Error
+		if err == nil {
+			if deviceExists && !b.isDeliveredTo(&ud, dev.Address) {
+				b.markDeliveredTo(&ud, dev.Address)
+			}
+			acks = append(acks, ref)
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			references = append(references, ref)
+		} else {
+			log.WithFields(log.Fields{
+				"id":    updateDeviceID,
+				"error": err.Error(),
+			}).Fatal("database error querying for update device")
 		}
 	}
 

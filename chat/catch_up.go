@@ -21,6 +21,7 @@ var allowedCatchUpFrames = map[uint16]bool{
 	typeUpdateGroup:   true,
 	typeConfirmation:  true,
 	typeUpdateUser:    true,
+	typeUpdateDevice:  true,
 }
 
 //
