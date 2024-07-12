@@ -61,6 +61,8 @@ type group struct {
 	editUserDialogsMutex        sync.Mutex
 	entry                       *threadEntry
 	lastMessage                 int64
+	//mobileScrollHeight             float32
+	//mobileScrollHeightWithKeyboard float32
 }
 
 func (g *group) getID() uuid.UUID {
@@ -434,10 +436,38 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		group.chatHistoryScroll().ScrollToBottom()
 		group.chatHistoryScroll().Refresh()
 	}
+	entry.customOnFocusChanged = func(focused bool) {
+		if fyne.CurrentDevice().IsMobile() {
+			// TODO: get the scroll to adjust with they keyboard, currently not working
+			if focused {
+				group.chatHistoryScroll().ScrollToBottom()
+				group.chatHistoryScroll().Refresh()
+
+				// Get the new height, now that they keyboard is displayed
+				//group.mobileScrollHeightWithKeyboard = group.chatHistoryScroll().Size().Height
+
+				// See how much we need to scroll down
+				//diff := group.mobileScrollHeightWithKeyboard - group.mobileScrollHeight
+
+				// Scroll down by that difference to keep the scroll in alignment with the keyboard
+				//if diff > 0 {
+				//	group.chatHistoryScroll().Offset.Y += diff
+				//	group.chatHistoryScroll().Refresh()
+				//} else {
+				//	log.WithFields(log.Fields{
+				//		"offset": group.chatHistoryScroll().Offset,
+				//	}).Warn("negative diff when adjusting scroll after mobile keyboard appears")
+				//}
+			} else {
+				// TODO: scroll up by that same difference, unless we're already scrolled to the bottom
+			}
+		}
+	}
 
 	openThread := func() {
 		fyneUI.displayThread(group)
 		fyneUI.callbacks.GroupConnectionDesired(group.id)
+		//group.mobileScrollHeight = group.chatHistoryScroll().Size().Height
 	}
 	group.button = newThreadButton(newDefaultImage(group.id, group.initial, 64, openThread), group.name, openThread)
 

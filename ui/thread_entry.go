@@ -11,13 +11,14 @@ import (
 
 type threadEntry struct {
 	widget.Entry
-	customOnSubmitted func()
-	selectKeyDown     bool
-	selecting         bool
-	selectRow         int
-	selectColumn      int
-	sizingLabel       *widget.Label
-	maxHeightLabel    *widget.Label
+	customOnSubmitted    func()
+	customOnFocusChanged func(bool)
+	selectKeyDown        bool
+	selecting            bool
+	selectRow            int
+	selectColumn         int
+	sizingLabel          *widget.Label
+	maxHeightLabel       *widget.Label
 }
 
 func newThreadEntry(maxRows int) *threadEntry {
@@ -99,7 +100,17 @@ func (e *threadEntry) KeyUp(key *fyne.KeyEvent) {
 	e.Entry.KeyUp(key)
 }
 
+func (e *threadEntry) FocusGained() {
+	if e.customOnFocusChanged != nil {
+		e.customOnFocusChanged(true)
+	}
+	e.Entry.FocusGained()
+}
+
 func (e *threadEntry) FocusLost() {
+	if e.customOnFocusChanged != nil {
+		e.customOnFocusChanged(false)
+	}
 	e.selectKeyDown = false
 	e.Entry.FocusLost()
 }

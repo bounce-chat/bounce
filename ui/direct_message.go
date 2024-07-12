@@ -156,6 +156,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 		dm.chatHistoryScroll().ScrollToBottom()
 		dm.chatHistoryScroll().Refresh()
 	}
+	// TODO: set entry.customOnFocusChanged once mobile scrolling after keyboard pops up is figured out
 
 	openThread := func() {
 		fyneUI.displayThread(dm)
@@ -315,7 +316,6 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		container.NewHBox(clearHistoryButton),
 	)
 
-	// Close the window but save state.  TODO: should it clear state as well?
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), cancelChanges)
 	closeButton.Importance = widget.LowImportance
 
