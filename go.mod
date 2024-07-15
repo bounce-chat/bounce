@@ -3,7 +3,7 @@ module github.com/hkparker/bounce
 go 1.16
 
 require (
-	fyne.io/fyne/v2 v2.5.0-rc1
+	fyne.io/fyne/v2 v2.5.0
 	github.com/cretz/bine v0.2.0
 	github.com/fredbi/uri v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
@@ -16,17 +16,18 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
 	github.com/hkparker/go-libtor v0.0.0-20221215221725-0e61cb383f30
-	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
+	github.com/rymdport/portal v0.2.3 // indirect
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1
-	github.com/yuin/goldmark v1.7.1 // indirect
+	github.com/yuin/goldmark v1.7.4 // indirect
 	github.com/zeebo/blake3 v0.2.3
-	golang.org/x/mobile v0.0.0-20240520174638-fa72addaaa1b // indirect
+	golang.org/x/mobile v0.0.0-20240707233753-b765e5d5218f // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
-	gorm.io/driver/sqlite v1.5.5
-	gorm.io/gorm v1.25.10
+	gorm.io/driver/sqlite v1.5.6
+	gorm.io/gorm v1.25.11
 	honnef.co/go/js/dom v0.0.0-20231112215516-51f43a291193 // indirect
 )
