@@ -101,16 +101,16 @@ func (e *threadEntry) KeyUp(key *fyne.KeyEvent) {
 }
 
 func (e *threadEntry) FocusGained() {
+	e.Entry.FocusGained()
 	if e.customOnFocusChanged != nil {
 		e.customOnFocusChanged(true)
 	}
-	e.Entry.FocusGained()
 }
 
 func (e *threadEntry) FocusLost() {
+	e.selectKeyDown = false
+	e.Entry.FocusLost()
 	if e.customOnFocusChanged != nil {
 		e.customOnFocusChanged(false)
 	}
-	e.selectKeyDown = false
-	e.Entry.FocusLost()
 }

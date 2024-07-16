@@ -438,6 +438,11 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	}
 	entry.customOnFocusChanged = func(focused bool) {
 		if fyne.CurrentDevice().IsMobile() {
+			//log.WithFields(log.Fields{
+			//	"height":  group.chatHistoryScroll().Size().Height,
+			//	"offset":  group.chatHistoryScroll().Offset,
+			//	"focused": focused,
+			//}).Warn("focus changed on thread entry")
 			// TODO: get the scroll to adjust with they keyboard, currently not working
 			if focused {
 				group.chatHistoryScroll().ScrollToBottom()
