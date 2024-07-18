@@ -156,7 +156,6 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 		dm.chatHistoryScroll().ScrollToBottom()
 		dm.chatHistoryScroll().Refresh()
 	}
-	// TODO: set entry.customOnFocusChanged once mobile scrolling after keyboard pops up is figured out
 
 	openThread := func() {
 		fyneUI.displayThread(dm)
@@ -176,7 +175,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 		layout.NewBorderLayout(dm.header, dm.entry, nil, nil),
 		dm.header,
 		dm.entry,
-		dm.scroll,
+		container.New(&autoscollLayout{}, dm.scroll),
 	)
 	fyneUI.dms[bounceUser.ID] = dm
 	fyneUI.refreshThreadOrder()
