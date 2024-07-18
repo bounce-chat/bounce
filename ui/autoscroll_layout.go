@@ -33,7 +33,14 @@ func (mal *autoscollLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) 
 			s.Offset.Y += diff
 			s.Refresh()
 		} else {
-			// TODO: adjust for growing containers
+			diff := size.Height - mal.lastHeight
+
+			if s.Content.Size().Height-mal.lastHeight == s.Offset.Y+diff {
+				s.ScrollToBottom()
+			} else {
+				s.Offset.Y -= diff
+				s.Refresh()
+			}
 		}
 	}
 
