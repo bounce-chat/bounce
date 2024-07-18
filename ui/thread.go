@@ -229,11 +229,12 @@ func (fyneUI *Fyne) displayThread(thread thread) {
 	fyneUI.chatContainer.Objects = []fyne.CanvasObject{thread.getView()}
 	fyneUI.chatContainer.Refresh()
 	thread.getButton().Refresh()
-	fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
 
 	if fyne.CurrentDevice().IsMobile() {
 		fyneUI.mainWindow.SetContent(fyneUI.chatContainer)
 		fyneUI.chatContainer.Show()
+	} else {
+		fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
 	}
 }
 
