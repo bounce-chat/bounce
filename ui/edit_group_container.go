@@ -18,6 +18,9 @@ import (
 )
 
 func (fyneUI *Fyne) showEditThreadContainer(g *group) {
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeGroupSettings, context: g.id})
+	}
 	fyneUI.mainWindow.SetContent(g.editContainer)
 	g.editContainer.Show()
 }

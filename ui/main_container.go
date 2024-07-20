@@ -40,6 +40,7 @@ func (fyneUI *Fyne) showMainContainer() {
 			}).Fatal("unconfigured user interface is in unknown setup step")
 		}
 	} else {
+		fyneUI.viewStack = []view{view{viewType: viewTypeAllThreads}}
 		fyneUI.mainWindow.SetMainMenu(fyneUI.mainMenu)
 		fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
 		fyneUI.mainContainer.Show()

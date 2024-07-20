@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/driver/mobile"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -85,6 +86,7 @@ type Fyne struct {
 	focused                               bool
 	networkState                          int
 	setupStep                             int
+	viewStack                             []view
 	callbacks                             chat.UICallbacks
 }
 
@@ -103,6 +105,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}) // TODO: red rich text
 	fyneUI.networkOfflineWarning.Show()
 	fyneUI.deletedUser = makeUser(uuid.Nil, "-deleted-")
+	fyneUI.viewStack = []view{}
 
 	//
 	// Define the app
@@ -124,6 +127,12 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 		fyneUI.Quit()
 	})
 	fyneUI.mainWindow.Resize(fyne.Size{Height: 600, Width: 800})
+	fyneUI.mainWindow.Canvas().SetOnTypedKey(func(ev *fyne.KeyEvent) {
+		if fyne.CurrentDevice().IsMobile() && ev.Name == mobile.KeyBack {
+			fyneUI.mobileBack()
+		}
+	})
+
 	fyneUI.mainWindow.Show()
 
 	//

@@ -160,6 +160,9 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	openThread := func() {
 		fyneUI.displayThread(dm)
 		fyneUI.callbacks.UserConnectionDesired(user.id)
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
+		}
 	}
 	dm.button = newThreadButton(newDefaultImage(user.id, user.initials, 64, openThread), user.name, openThread)
 
@@ -218,6 +221,9 @@ func (fyneUI *Fyne) DisplayDirectMessage(dm chat.DirectMessage) {
 }
 
 func (fyneUI *Fyne) showEditDMContainer(dm *directMessage) {
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeDMSettings, context: dm.user.id})
+	}
 	fyneUI.mainWindow.SetContent(dm.editContainer)
 	dm.editContainer.Show()
 }

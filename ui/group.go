@@ -440,6 +440,9 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	openThread := func() {
 		fyneUI.displayThread(group)
 		fyneUI.callbacks.GroupConnectionDesired(group.id)
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeThread, context: group.id})
+		}
 	}
 	group.button = newThreadButton(newDefaultImage(group.id, group.initial, 64, openThread), group.name, openThread)
 
