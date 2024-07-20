@@ -95,11 +95,18 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 					if confirmed {
 						fyneUI.callbacks.RevokeDevice(dev.ID)
 						editDeviceDialog.Hide()
+						fyneUI.activeDialog = nil
+						fyneUI.activeDialogCleanup = nil
+					} else {
+						fyneUI.activeDialog = editDeviceDialog
+						fyneUI.activeDialogCleanup = nil
 					}
 				},
 				fyneUI.mainWindow,
 			)
 			revokeButton := widget.NewButton("Revoke", func() {
+				fyneUI.activeDialog = confirmRevokeDialog
+				fyneUI.activeDialogCleanup = nil
 				confirmRevokeDialog.Show()
 			})
 			revokeButton.Importance = widget.DangerImportance
@@ -123,6 +130,8 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 						fyneUI.callbacks.RenameDevice(dev.ID, nameEntry.Text)
 					}
 				}
+				fyneUI.activeDialog = nil
+				fyneUI.activeDialogCleanup = nil
 			}, fyneUI.mainWindow)
 
 			return editDeviceDialog, state
@@ -137,6 +146,8 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 				false,
 				false,
 				func() {
+					fyneUI.activeDialog = editDeviceDialog
+					fyneUI.activeDialogCleanup = nil
 					editDeviceDialog.Show()
 				},
 			),

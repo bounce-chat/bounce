@@ -307,8 +307,18 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		g.newUserSearchEntry.Text = ""
 		g.newUserSearchEntry.Refresh()
 		fyneUI.refreshAvailableNewUsers(g, fyneUI.users.search(g.newUserSearchEntry.Text))
+		fyneUI.activeDialog = nil
+		fyneUI.activeDialogCleanup = nil
 	}, fyneUI.mainWindow)
 	g.addUsersButton = widget.NewButton("Add Users", func() {
+		fyneUI.activeDialog = addUsersDialog
+		fyneUI.activeDialogCleanup = func() {
+			g.pendingUsers.empty()
+			fyneUI.refreshUserSelections(g)
+			g.newUserSearchEntry.Text = ""
+			g.newUserSearchEntry.Refresh()
+			fyneUI.refreshAvailableNewUsers(g, fyneUI.users.search(g.newUserSearchEntry.Text))
+		}
 		addUsersDialog.Show()
 	})
 

@@ -167,11 +167,13 @@ func (fyneUI *Fyne) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Butt
 					}
 				}
 			}
+			fyneUI.activeDialog = nil
 		},
 		fyneUI.mainWindow,
 	)
 
 	button = widget.NewButton(buttonText, func() {
+		fyneUI.activeDialog = confirmRemoveUser
 		confirmRemoveUser.Show()
 	})
 	g.removeUserButtons[userID] = button
@@ -245,6 +247,8 @@ func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) dialog.Dialog 
 			// Reset everything
 			g.getAdminCheck(u.id).SetChecked(g.isAdmin(u.id))
 		}
+		fyneUI.activeDialog = nil
+		fyneUI.activeDialogCleanup = nil
 	}, fyneUI.mainWindow)
 
 	g.editUserDialogs[userID] = userDetailsDialog

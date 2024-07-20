@@ -212,11 +212,20 @@ func (fyneUI *Fyne) buildNewGroup() {
 		fyneUI.newGroupUserSearchEntry.Text = ""
 		fyneUI.newGroupUserSearchEntry.Refresh()
 		fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
+		fyneUI.activeDialog = nil
+		fyneUI.activeDialogCleanup = nil
 	}, fyneUI.mainWindow)
 
 	fyneUI.newGroupNameEntry = widget.NewEntry()
 
 	fyneUI.newGroupAddUsersButton = widget.NewButton("Add Users", func() {
+		fyneUI.activeDialog = addUsersDialog
+		fyneUI.activeDialogCleanup = func() {
+			fyneUI.newGroupSelectedUsers.empty()
+			fyneUI.newGroupUserSearchEntry.Text = ""
+			fyneUI.newGroupUserSearchEntry.Refresh()
+			fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
+		}
 		addUsersDialog.Show()
 	})
 	fyneUI.newGroupRetentionSelection = widget.NewSelect(retentionSelections, nil)

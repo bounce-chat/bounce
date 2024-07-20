@@ -17,17 +17,32 @@ type view struct {
 }
 
 func (fyneUI *Fyne) mobileBack() {
-	// TODO: if there's an open dialog, close it
+	// If there is an open dialog, the back button should close it, and reset any changes
+	if fyneUI.activeDialog != nil {
+		fyneUI.activeDialog.Hide()
+		fyneUI.activeDialog = nil
+		if fyneUI.activeDialogCleanup != nil {
+			fyneUI.activeDialogCleanup()
+			fyneUI.activeDialogCleanup = nil
+		}
+		return
+	}
 
+	// If there's only one view left in the history, we're at the beginning and should close the app
 	if len(fyneUI.viewStack) == 1 {
 		if drv, ok := fyneUI.app.Driver().(mobile.Driver); ok {
 			drv.(mobile.Driver).GoBack()
 		}
 		return
 	}
+
+	// Grab the view that occured before the current one as the one we want to display
 	displayView := fyneUI.viewStack[len(fyneUI.viewStack)-2]
+
+	// Remove the current view from history
 	fyneUI.viewStack = fyneUI.viewStack[0 : len(fyneUI.viewStack)-1]
 
+	// Set the UI to the view we want to display
 	switch displayView.viewType {
 	case viewTypeAllThreads:
 		fyneUI.mainWindow.SetContent(fyneUI.mainContainer)

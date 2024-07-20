@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/mobile"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
@@ -87,6 +88,8 @@ type Fyne struct {
 	networkState                          int
 	setupStep                             int
 	viewStack                             []view
+	activeDialog                          dialog.Dialog
+	activeDialogCleanup                   func()
 	callbacks                             chat.UICallbacks
 }
 
