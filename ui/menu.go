@@ -45,7 +45,7 @@ func (fyneUI *Fyne) buildMenu() {
 				fyneUI.showAddUser()
 			}),
 			fyne.NewMenuItem("Introduce", func() {
-				fyneUI.showIntroduceContacts()
+				//fyneUI.showIntroduceContacts()
 			}),
 			fyne.NewMenuItem("Import", func() {
 				fyneUI.showImportContact()
@@ -55,6 +55,7 @@ func (fyneUI *Fyne) buildMenu() {
 }
 
 func (fyneUI *Fyne) showMobileMenu() {
+	fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeMenu})
 	fyneUI.mainWindow.SetContent(fyneUI.mobileMenu)
 	fyneUI.mobileMenu.Show()
 }
@@ -74,7 +75,7 @@ func (fyneUI *Fyne) buildMobileMenu() {
 		widget.NewButton("Add Contact", func() { fyneUI.showAddUser() }),
 		widget.NewButton("Import Contact", func() { fyneUI.showImportContact() }),
 		widget.NewButton("About", func() { fyneUI.showAbout() }),
-		widget.NewButton("Close", func() { fyneUI.showMainContainer() }),
+		widget.NewButton("Close", func() { fyneUI.mobileBack() }),
 	)
 
 }

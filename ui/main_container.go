@@ -30,10 +30,14 @@ func (fyneUI *Fyne) showMainContainer() {
 			fyneUI.mainWindow.SetMainMenu(nil)
 			fyneUI.mainWindow.SetContent(fyneUI.newInstall)
 			fyneUI.newInstall.Show()
+			fyneUI.viewStack = []view{view{viewType: viewTypeNewInstall}}
 		} else if fyneUI.setupStep == setupStepProfile {
 			fyneUI.mainWindow.SetMainMenu(nil)
 			fyneUI.mainWindow.SetContent(fyneUI.newProfileCreator)
 			fyneUI.newProfileCreator.Show()
+			if fyne.CurrentDevice().IsMobile() {
+				fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeProfileCreator})
+			}
 		} else {
 			log.WithFields(log.Fields{
 				"step": fyneUI.setupStep,

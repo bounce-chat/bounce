@@ -3,6 +3,7 @@ package ui
 import (
 	"github.com/hkparker/bounce/chat"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -11,6 +12,9 @@ import (
 )
 
 func (fyneUI *Fyne) showNewDM() {
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeNewDM})
+	}
 	fyneUI.newDMUserSearchEntry.Text = ""
 	fyneUI.newDMUserSearchEntry.Refresh()
 	fyneUI.refreshAllUsersDMLinks()
@@ -23,7 +27,11 @@ func (fyneUI *Fyne) buildNewDM() {
 	fyneUI.allUsersDMLinksScroll = container.NewVScroll(container.NewVBox())
 
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		fyneUI.showMainContainer()
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.mobileBack()
+		} else {
+			fyneUI.showMainContainer()
+		}
 	})
 	closeButton.Importance = widget.LowImportance
 

@@ -204,8 +204,12 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			}
 		}
 
-		fyneUI.showMainContainer()
-		fyneUI.mainWindow.Canvas().Focus(g.getEntry())
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.mobileBack()
+		} else {
+			fyneUI.showMainContainer()
+			fyneUI.mainWindow.Canvas().Focus(g.getEntry())
+		}
 	})
 	saveButton.Importance = widget.HighImportance
 
@@ -239,7 +243,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 
 		// Show main tontainer
 		if fyne.CurrentDevice().IsMobile() {
-			fyneUI.displayThread(g)
+			fyneUI.mobileBack()
 		} else {
 			fyneUI.showMainContainer()
 			fyneUI.mainWindow.Canvas().Focus(g.getEntry())

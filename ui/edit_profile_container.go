@@ -47,6 +47,9 @@ var expirationIncrements = map[string]int64{
 }
 
 func (fyneUI *Fyne) showEditProfile() {
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeEditProfile})
+	}
 	fyneUI.profileIcon.Objects = []fyne.CanvasObject{newDefaultImage(fyneUI.profile.id, fyneUI.profile.initials, 128, func() {
 		log.Info("user wants to change their profile picture")
 	})}
@@ -330,7 +333,11 @@ func (fyneUI *Fyne) buildEditProfile() {
 	//
 
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		fyneUI.showMainContainer()
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.mobileBack()
+		} else {
+			fyneUI.showMainContainer()
+		}
 	})
 	closeButton.Importance = widget.LowImportance
 

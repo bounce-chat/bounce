@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -10,6 +11,9 @@ import (
 )
 
 func (fyneUI *Fyne) showDisplaySyncString() {
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeDisplaySyncString})
+	}
 	err := fyneUI.syncString.Set(fyneUI.callbacks.GetNewSyncString())
 	if err != nil {
 		log.Fatal("data bindings are broken")
@@ -19,14 +23,17 @@ func (fyneUI *Fyne) showDisplaySyncString() {
 
 	fyneUI.mainWindow.SetContent(fyneUI.displaySyncString)
 	fyneUI.displaySyncString.Show()
-
 }
 
 func (fyneUI *Fyne) buildDisplaySyncString() {
 	title := widget.NewLabel("Scan or paste this on the new device:")
 
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		fyneUI.showMainContainer()
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.mobileBack()
+		} else {
+			fyneUI.showMainContainer()
+		}
 	})
 	closeButton.Importance = widget.LowImportance
 

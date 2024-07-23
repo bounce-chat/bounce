@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -11,14 +12,21 @@ import (
 )
 
 func (fyneUI *Fyne) showNewSyncDevice() {
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeNewSyncDevice})
+	}
 	fyneUI.mainWindow.SetContent(fyneUI.newSyncDevice)
 	fyneUI.newSyncDevice.Show()
 }
 
 func (fyneUI *Fyne) buildNewSyncDevice() {
 	backButton := widget.NewButton("Back", func() {
-		fyneUI.mainWindow.SetContent(fyneUI.newInstall)
-		fyneUI.newInstall.Show()
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.mobileBack()
+		} else {
+			fyneUI.mainWindow.SetContent(fyneUI.newInstall)
+			fyneUI.newInstall.Show()
+		}
 	})
 	actionButtons := container.New(
 		layout.NewBorderLayout(nil, nil, backButton, nil),

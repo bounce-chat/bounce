@@ -10,6 +10,9 @@ import (
 )
 
 func (fyneUI *Fyne) showAbout() {
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeAbout})
+	}
 	fyneUI.mainWindow.SetContent(fyneUI.about)
 	fyneUI.about.Show()
 }
@@ -22,7 +25,11 @@ func (fyneUI *Fyne) buildAbout() {
 	logo.SetMinSize(fyne.NewSize(228, 167))
 
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		fyneUI.showMainContainer()
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.mobileBack()
+		} else {
+			fyneUI.showMainContainer()
+		}
 	})
 	closeButton.Importance = widget.LowImportance
 

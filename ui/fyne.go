@@ -154,7 +154,6 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.buildAbout()
 	fyneUI.buildNewGroup()
 	fyneUI.buildNewDM()
-	fyneUI.buildIntroduceContacts()
 	fyneUI.buildImportContact()
 	fyneUI.buildMainContainer()
 	fyneUI.buildMobileMenu()

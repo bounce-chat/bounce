@@ -111,8 +111,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	var userLabel *fyne.Container
 	if fyne.CurrentDevice().IsMobile() {
 		backButton := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
-			fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
-			fyneUI.mainContainer.Show()
+			fyneUI.mobileBack()
 		})
 		backButton.Importance = widget.LowImportance
 
@@ -248,7 +247,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		func(confirmed bool) {
 			if confirmed {
 				fyneUI.callbacks.ClearDMChatHistory(dm.user.id)
-				fyneUI.showMainContainer()
+				fyneUI.showMainContainer() // TODO: mobile
 				fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
 			}
 		},
@@ -299,7 +298,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 
 		// Show main tontainer
 		if fyne.CurrentDevice().IsMobile() {
-			fyneUI.displayThread(dm)
+			fyneUI.mobileBack()
 		} else {
 			fyneUI.showMainContainer()
 			fyneUI.mainWindow.Canvas().Focus(dm.getEntry())

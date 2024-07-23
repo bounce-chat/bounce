@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -8,13 +9,20 @@ import (
 )
 
 func (fyneUI *Fyne) showSettings() {
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeSettings})
+	}
 	fyneUI.mainWindow.SetContent(fyneUI.settings)
 	fyneUI.settings.Show()
 }
 
 func (fyneUI *Fyne) buildSettings() {
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		fyneUI.showMainContainer()
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.mobileBack()
+		} else {
+			fyneUI.showMainContainer()
+		}
 	})
 	closeButton.Importance = widget.LowImportance
 

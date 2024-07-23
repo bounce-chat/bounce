@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -11,13 +12,20 @@ import (
 )
 
 func (fyneUI *Fyne) showAddUser() {
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeAddUser})
+	}
 	fyneUI.mainWindow.SetContent(fyneUI.addUser)
 	fyneUI.addUser.Show()
 }
 
 func (fyneUI *Fyne) buildAddUser() {
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		fyneUI.showMainContainer()
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.mobileBack()
+		} else {
+			fyneUI.showMainContainer()
+		}
 	})
 	closeButton.Importance = widget.LowImportance
 

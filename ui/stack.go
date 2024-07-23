@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/mobile"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -10,6 +11,19 @@ const viewTypeAllThreads = 0
 const viewTypeThread = 1
 const viewTypeDMSettings = 2
 const viewTypeGroupSettings = 3
+const viewTypeSettings = 4
+const viewTypeNewSyncDevice = 5
+const viewTypeNewInstall = 6
+const viewTypeProfileCreator = 7
+const viewTypeNewGroup = 8
+const viewTypeNewDM = 9
+const viewTypeMenu = 10
+const viewTypeImportContact = 11
+const viewTypeDisplaySyncString = 12
+const viewTypeDisplayAddUserString = 13
+const viewTypeAddUser = 14
+const viewTypeAbout = 15
+const viewTypeEditProfile = 16
 
 type view struct {
 	viewType int
@@ -58,6 +72,71 @@ func (fyneUI *Fyne) mobileBack() {
 		} else {
 			fyneUI.displayThread(t)
 		}
+	case viewTypeSettings:
+		fyneUI.mainWindow.SetContent(fyneUI.settings)
+		fyneUI.settings.Show()
+	case viewTypeNewSyncDevice:
+		fyneUI.mainWindow.SetContent(fyneUI.newSyncDevice)
+		fyneUI.newSyncDevice.Show()
+	case viewTypeNewInstall:
+		fyneUI.mainWindow.SetContent(fyneUI.newInstall)
+		fyneUI.newInstall.Show()
+	case viewTypeProfileCreator:
+		fyneUI.mainWindow.SetContent(fyneUI.newProfileCreator)
+		fyneUI.newProfileCreator.Show()
+	case viewTypeNewGroup:
+		fyneUI.clearNewGroupSelectors()
+		fyneUI.mainWindow.SetContent(fyneUI.newGroup)
+		fyneUI.newGroup.Show()
+	case viewTypeNewDM:
+		fyneUI.newDMUserSearchEntry.Text = ""
+		fyneUI.newDMUserSearchEntry.Refresh()
+		fyneUI.refreshAllUsersDMLinks()
+		fyneUI.mainWindow.SetContent(fyneUI.newDM)
+		fyneUI.newDM.Show()
+	case viewTypeMenu:
+		fyneUI.mainWindow.SetContent(fyneUI.mobileMenu)
+		fyneUI.mobileMenu.Show()
+	case viewTypeImportContact:
+		fyneUI.mainWindow.SetContent(fyneUI.importContact)
+		fyneUI.importContact.Show()
+	case viewTypeDisplaySyncString:
+		err := fyneUI.syncString.Set(fyneUI.callbacks.GetNewSyncString())
+		if err != nil {
+			log.Fatal("data bindings are broken")
+		}
+		// TODO: update the QR code data
+		fyneUI.mainWindow.SetContent(fyneUI.displaySyncString)
+		fyneUI.displaySyncString.Show()
+	case viewTypeDisplayAddUserString:
+		err := fyneUI.addUserString.Set(fyneUI.callbacks.GetNewAddUserString())
+		if err != nil {
+			log.Fatal("data bindings are broken")
+		}
+
+		// TODO: update the QR code data
+
+		fyneUI.mainWindow.SetContent(fyneUI.displayAddUserString)
+		fyneUI.displayAddUserString.Show()
+	case viewTypeAddUser:
+		fyneUI.mainWindow.SetContent(fyneUI.addUser)
+		fyneUI.addUser.Show()
+	case viewTypeAbout:
+		fyneUI.mainWindow.SetContent(fyneUI.about)
+		fyneUI.about.Show()
+	case viewTypeEditProfile:
+		fyneUI.profileIcon.Objects = []fyne.CanvasObject{newDefaultImage(fyneUI.profile.id, fyneUI.profile.initials, 128, func() {
+			log.Info("user wants to change their profile picture")
+		})}
+		fyneUI.profileIcon.Refresh()
+
+		fyneUI.profileNameEntry.Text = fyneUI.profile.getName()
+		fyneUI.profileNameEntry.Refresh()
+		fyneUI.profileNameEntry.FocusLost()
+
+		fyneUI.profileOptions.Refresh()
+		fyneUI.mainWindow.SetContent(fyneUI.editProfile)
+		fyneUI.editProfile.Show()
 	default:
 		log.WithFields(log.Fields{
 			"type": displayView.viewType,

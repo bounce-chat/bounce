@@ -14,13 +14,20 @@ import (
 )
 
 func (fyneUI *Fyne) showImportContact() {
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeImportContact})
+	}
 	fyneUI.mainWindow.SetContent(fyneUI.importContact)
 	fyneUI.importContact.Show()
 }
 
 func (fyneUI *Fyne) buildImportContact() {
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		fyneUI.showMainContainer()
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.mobileBack()
+		} else {
+			fyneUI.showMainContainer()
+		}
 	})
 	closeButton.Importance = widget.LowImportance
 

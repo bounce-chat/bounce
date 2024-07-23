@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -11,6 +12,9 @@ import (
 )
 
 func (fyneUI *Fyne) showDisplayAddUserString() {
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeDisplayAddUserString})
+	}
 	err := fyneUI.addUserString.Set(fyneUI.callbacks.GetNewAddUserString())
 	if err != nil {
 		log.Fatal("data bindings are broken")
@@ -20,14 +24,17 @@ func (fyneUI *Fyne) showDisplayAddUserString() {
 
 	fyneUI.mainWindow.SetContent(fyneUI.displayAddUserString)
 	fyneUI.displayAddUserString.Show()
-
 }
 
 func (fyneUI *Fyne) buildDisplayAddUserString() {
 	title := widget.NewLabel("Scan or paste this on your friend's device:")
 
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		fyneUI.showMainContainer()
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.mobileBack()
+		} else {
+			fyneUI.showMainContainer()
+		}
 	})
 	closeButton.Importance = widget.LowImportance
 

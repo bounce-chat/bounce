@@ -399,8 +399,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	var groupLabel *fyne.Container
 	if fyne.CurrentDevice().IsMobile() {
 		backButton := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
-			fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
-			fyneUI.mainContainer.Show()
+			fyneUI.mobileBack()
 		})
 		backButton.Importance = widget.LowImportance
 		groupLabel = container.NewHBox(

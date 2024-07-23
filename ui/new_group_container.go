@@ -19,6 +19,9 @@ import (
 )
 
 func (fyneUI *Fyne) showNewGroup() {
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeNewGroup})
+	}
 	fyneUI.clearNewGroupSelectors()
 	fyneUI.mainWindow.SetContent(fyneUI.newGroup)
 	fyneUI.newGroup.Show()
@@ -238,7 +241,11 @@ func (fyneUI *Fyne) buildNewGroup() {
 	fyneUI.newGroupPostingRestrictedCheck.SetChecked(false) // TODO: get default from database
 
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		fyneUI.showMainContainer()
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.mobileBack()
+		} else {
+			fyneUI.showMainContainer()
+		}
 	})
 	closeButton.Importance = widget.LowImportance
 
@@ -287,7 +294,11 @@ func (fyneUI *Fyne) buildNewGroup() {
 	})
 	fyneUI.newGroupCreateButton.Importance = widget.HighImportance
 	cancelButton := widget.NewButton("Cancel", func() {
-		fyneUI.showMainContainer()
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.mobileBack()
+		} else {
+			fyneUI.showMainContainer()
+		}
 	})
 	actionButtons := container.New(
 		layout.NewBorderLayout(nil, nil, cancelButton, fyneUI.newGroupCreateButton),
