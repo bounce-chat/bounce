@@ -144,6 +144,9 @@ func (b *bounce) getSyncScope(br broadcastable) []string {
 
 	broadcastTargets := []string{}
 	for _, dev := range currentUser.Devices {
+		if dev.RevokedAt != 0 {
+			continue
+		}
 		if dev.Address == b.network.Address() {
 			continue
 		}
@@ -184,6 +187,9 @@ func (b *bounce) getUserScope(br broadcastable) []string {
 		}
 	}
 	for _, dev := range destinationUser.Devices {
+		if dev.RevokedAt != 0 {
+			continue
+		}
 		if b.isDeliveredTo(br, dev.Address) {
 			continue
 		}
@@ -220,6 +226,9 @@ func (b *bounce) getGroupScope(br broadcastable) []string {
 	}
 	for _, u := range destinationGroup.Users {
 		for _, dev := range u.Devices {
+			if dev.RevokedAt != 0 {
+				continue
+			}
 			if dev.Address == b.network.Address() {
 				continue
 			}
@@ -242,7 +251,7 @@ func (b *bounce) getGlobalScope(br broadcastable) []string {
 	author := br.getAuthor()
 	if author == b.currentUserID() {
 		allAddresses := []string{}
-		err := b.database.Model(&device{}).Select("address").Find(&allAddresses).Error
+		err := b.database.Model(&device{}).Select("address").Not("revoked_at = 0").Find(&allAddresses).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -291,6 +300,9 @@ func (b *bounce) getGlobalScope(br broadcastable) []string {
 			}).Fatal("error selecting unsent overlap devices during broadcast scoping")
 		}
 		for _, dev := range overlapDevices {
+			if dev.RevokedAt != 0 {
+				continue
+			}
 			if dev.Address == b.network.Address() {
 				continue
 			}
@@ -325,6 +337,9 @@ func (b *bounce) getCustomScope(br broadcastable) []string {
 	}
 
 	for _, addr := range cs.addresses() {
+		if _, revoked := b.devicePool.revokedDevices[addr]; revoked {
+			continue
+		}
 		if addr == b.network.Address() {
 			continue
 		}

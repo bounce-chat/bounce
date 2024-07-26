@@ -64,6 +64,7 @@ func Start(network Network, ui UI) {
 			deviceOnlineStatus: make(map[uuid.UUID]bool),
 			lastDial:           make(map[string]time.Time),
 			lastFailedDial:     make(map[string]time.Time),
+			revokedDevices:     make(map[string]bool),
 		},
 	}
 	log.RegisterExitHandler(b.fatalShutdown)

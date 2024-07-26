@@ -2,6 +2,9 @@ package chat
 
 import (
 	"errors"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -54,7 +57,9 @@ func (ud *updateDevice) getScope(myID uuid.UUID) int {
 }
 
 func (ud *updateDevice) getDestination(myID uuid.UUID) uuid.UUID {
-	return ud.Target // TODO
+	// Destination is only required for user and group scopes, so we
+	// do not need to provide one for this frame
+	return uuid.Nil
 }
 
 func (ud *updateDevice) getType() uint16 {
@@ -150,6 +155,16 @@ func (b *bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 	}
 	ud.Author = d.UserID
 
+	// Make sure the user that signed this update owns the device
+	if !b.signedByUser(sc, d.UserID) {
+		log.WithFields(log.Fields{
+			"id":     ud.ID,
+			"target": ud.Target,
+			"signer": ud.Signer,
+		}).Warn("ignoring update device not signed by user who owns device")
+		return nil
+	}
+
 	// If we already have this update, we just mark that this peer has it too and return
 	var existingUD updateDevice
 	err = b.database.Where("id = ?", ud.ID).First(&existingUD).Error
@@ -169,10 +184,7 @@ func (b *bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 		}).Fatal("database error saving update device")
 	}
 
-	// If we're not in a catchup, set the state now
-	//if !catchUp {
 	b.updateDeviceState(ud.Target)
-	//}
 
 	return &ud
 }
@@ -198,7 +210,7 @@ func (b *bounce) updateDeviceState(deviceID uuid.UUID) {
 	revokedAt := d.RevokedAt
 
 	var uds []updateDevice
-	err = b.database.Where("target = ?", deviceID).Find(&uds).Error
+	err = b.database.Where("target = ?", deviceID).Order("timestamp asc").Find(&uds).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"device_id": deviceID,
@@ -206,12 +218,27 @@ func (b *bounce) updateDeviceState(deviceID uuid.UUID) {
 		}).Fatal("database error looking up update devices")
 	}
 
+	var revokeFrame updateDevice
+	sendDirect := false
 	for _, ud := range uds {
 		switch ud.Type {
 		case updateDeviceTypeUpdateName:
 			name = string(ud.Data)
 		case updateDeviceTypeRevoke:
-			revokedAt = ud.Timestamp
+			if revokedAt == 0 {
+				sendDirect = true
+				revokeFrame = ud
+				revokedAt = ud.Timestamp
+			} else {
+				if ud.Timestamp == 0 {
+					// Once the revokedAt has been set to a non-zero value, it cannot be zero again
+					continue
+				} else if ud.Timestamp < revokedAt {
+					sendDirect = true
+					revokeFrame = ud
+					revokedAt = ud.Timestamp
+				}
+			}
 		}
 	}
 
@@ -228,22 +255,154 @@ func (b *bounce) updateDeviceState(deviceID uuid.UUID) {
 	}
 
 	if revokedAt != 0 && (d.RevokedAt == 0 || revokedAt < d.RevokedAt) {
-		err := b.database.Table("devices").Where("id = ?", deviceID).Updates(map[string]interface{}{"revoked_at": revokedAt}).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":     err.Error(),
-				"device_id": deviceID,
-			}).Fatal("database error updating device revoked at")
+		if d.Address == b.network.Address() {
+			// This device has been revoked, remove all files and close the app
+			log.Info("this device has been revoked, cleaning up data and exiting")
+			configDirectory := getConfigDirectory()
+			dir, err := ioutil.ReadDir(configDirectory)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"path":  configDirectory,
+				}).Error("error reading directory")
+			}
+			for _, d := range dir {
+				err = os.RemoveAll(filepath.Join(configDirectory, d.Name()))
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+						"path":  filepath.Join(configDirectory, d.Name()),
+					}).Error("error removing file")
+				}
+			}
+			os.Exit(0)
+		} else {
+			err := b.database.Table("devices").Where("id = ?", deviceID).Updates(map[string]interface{}{"revoked_at": revokedAt}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":     err.Error(),
+					"device_id": deviceID,
+				}).Fatal("database error updating device revoked at")
+			}
+			b.devicePool.revokedDevices[d.Address] = true
+
+			b.revokeUnauthorizedDeviceActions(d.Address, revokedAt)
+
+			if d.UserID == b.currentUserID() {
+				b.userInterface.DeviceRevoked(deviceID)
+			}
+
+			if sendDirect {
+				rd := b.getRemoteDevice(d.Address)
+				if rd.connectedSockets > 0 {
+					rd.messages <- &revokeFrame
+				}
+			}
 		}
-
-		b.revokeUnauthorizedDeviceActions(d.Address, revokedAt)
-
-		b.userInterface.DeviceRevoked(deviceID)
 	}
 }
 
 func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64) {
-	// TODO: find any group creations, group messages, update users, or update groups, that came from this device after the revoked at timestamp, and reverse them
+	// Find any group creations signed by this device after it was revoked and delete those groups
+	var unauthorizedGroupCreations []groupCreation
+	err := b.database.Where("signer = ? AND timestamp > ?", address, revokedAt).Find(&unauthorizedGroupCreations).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up unauthorized group creations")
+	}
+	for _, gc := range unauthorizedGroupCreations {
+		err = b.database.Delete(&group{}, gc.ID).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    gc.ID,
+				"error": err.Error(),
+			}).Fatal("error deleting unauthorized group")
+		}
+	}
+
+	// Find any group messages signed by this device after it was revoked and delete those messages
+	var unauthorizedGroupMessages []groupMessage
+	err = b.database.Where("signer = ? AND written_at > ?", address, revokedAt).Find(&unauthorizedGroupMessages).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error looking up unauthorized group messages")
+	}
+	for _, gm := range unauthorizedGroupMessages {
+		err := b.database.Where("id = ?", gm.ID).Delete(&groupMessage{}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    gm.ID,
+				"error": err.Error(),
+			}).Fatal("error deleting unauthorized group message")
+		}
+		b.userInterface.DeleteItem(gm.ID)
+	}
+
+	// Find any update groups signed by this device after it was revoked and delete them, then re-do group consensus
+	var unauthorizedUpdateGroups []updateGroup
+	err = b.database.Where("signer = ? AND timestamp > ?", address, revokedAt).Find(&unauthorizedUpdateGroups).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error looking up unauthorized update groups")
+	}
+	groupsToUpdate := map[uuid.UUID]bool{}
+	for _, ug := range unauthorizedUpdateGroups {
+		groupsToUpdate[ug.Target] = true
+		err = b.database.Delete(&ug).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    ug.ID,
+				"error": err.Error(),
+			}).Fatal("error deleting unauthorized update group")
+		}
+	}
+	for target, _ := range groupsToUpdate {
+		b.updateGroupConsensus(target)
+	}
+
+	// Find any update users signed by this device after it was revoked, then reset the user state
+	var unauthorizedUpdateUsers []updateUser
+	err = b.database.Where("signer = ? AND timestamp > ?", address, revokedAt).Find(&unauthorizedUpdateUsers).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error looking up unauthorized update users")
+	}
+	usersToUpdate := map[uuid.UUID]bool{}
+	for _, uu := range unauthorizedUpdateUsers {
+		usersToUpdate[uu.Target] = true
+		err = b.database.Delete(&uu).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    uu.ID,
+				"error": err.Error(),
+			}).Fatal("error deleting unauthorized update user")
+		}
+	}
+	for target, _ := range usersToUpdate {
+		b.updateUserState(target)
+	}
+
+	// Find any devices that were added by this device after it was revoked and delete them
+	var unauthorizedDevices []device
+	err = b.database.Preload("Devices.Signature").Where("devices.timestamp > ? AND introduction_signatures.preexisting_device = ?", revokedAt, address).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up unauthorized devices")
+	}
+	for _, dev := range unauthorizedDevices {
+		err = b.database.Delete(&dev).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    dev.ID,
+				"error": err.Error(),
+			}).Fatal("database error deleting unauthorized devices")
+		}
+	}
 }
 
 func (b *bounce) renameDevice(deviceID uuid.UUID, name string) error {

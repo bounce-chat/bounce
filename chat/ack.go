@@ -313,6 +313,9 @@ func (b *bounce) handleAckUpdateGroups(peer string, ids []uuid.UUID) {
 
 				allDelivered := true
 				for _, addr := range cs.addresses() {
+					if _, revoked := b.devicePool.revokedDevices[addr]; revoked {
+						continue
+					}
 					if !b.isDeliveredTo(&ug, addr) {
 						allDelivered = false
 					}

@@ -113,9 +113,7 @@ func (fyneUI *Fyne) mobileBack() {
 		if err != nil {
 			log.Fatal("data bindings are broken")
 		}
-
 		// TODO: update the QR code data
-
 		fyneUI.mainWindow.SetContent(fyneUI.displayAddUserString)
 		fyneUI.displayAddUserString.Show()
 	case viewTypeAddUser:

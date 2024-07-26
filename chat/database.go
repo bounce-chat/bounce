@@ -291,6 +291,9 @@ func (b *bounce) buildInitialState() InitialState {
 			Name: dbProfile.Name,
 		}
 		for _, dev := range dbProfile.Devices {
+			if dev.RevokedAt != 0 {
+				continue
+			}
 			syncDevices = append(
 				syncDevices,
 				Device{

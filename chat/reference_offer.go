@@ -210,6 +210,10 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 }
 
 func (b *bounce) getDirectMessagesToOffer(dev device) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		return []frameReference{}
+	}
+
 	// All DMs we have sent to or received from this user in the past week
 	var dms []directMessage
 
@@ -256,6 +260,10 @@ func (b *bounce) getDirectMessagesToOffer(dev device) []frameReference {
 }
 
 func (b *bounce) getGroupMessagesToOffer(dev device) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		return []frameReference{}
+	}
+
 	// All group messages that this device's user is a part of that are less than a week old
 	var gms []groupMessage
 	err := b.database.
@@ -287,6 +295,10 @@ func (b *bounce) getGroupMessagesToOffer(dev device) []frameReference {
 }
 
 func (b *bounce) getUpdateDMsToOffer(dev device) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		return []frameReference{}
+	}
+
 	var unsentUpdateDMs []updateDM
 
 	if b.isSyncDevice(dev) {
@@ -328,6 +340,10 @@ func (b *bounce) getUpdateDMsToOffer(dev device) []frameReference {
 }
 
 func (b *bounce) getDevicesToOffer(dev device) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		return []frameReference{}
+	}
+
 	var unsentDevices []device
 
 	if b.isSyncDevice(dev) {
@@ -384,6 +400,10 @@ func (b *bounce) getDevicesToOffer(dev device) []frameReference {
 }
 
 func (b *bounce) getAddUsersToOffer(dev device) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		return []frameReference{}
+	}
+
 	var unsentAddUsers []addUser
 
 	if b.isSyncDevice(dev) {
@@ -419,6 +439,10 @@ func (b *bounce) getAddUsersToOffer(dev device) []frameReference {
 }
 
 func (b *bounce) getGroupCreationsToOffer(dev device) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		return []frameReference{}
+	}
+
 	var unsentGroupCreations []groupCreation
 
 	err := b.database.
@@ -444,6 +468,10 @@ func (b *bounce) getGroupCreationsToOffer(dev device) []frameReference {
 }
 
 func (b *bounce) getUpdateGroupsToOffer(dev device) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		return []frameReference{}
+	}
+
 	var unsentUpdateGroups []updateGroup
 
 	if b.isSyncDevice(dev) {
@@ -572,6 +600,10 @@ func (b *bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 }
 
 func (b *bounce) getConfirmationsToOffer(dev device) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		return []frameReference{}
+	}
+
 	var unsentConfirmations []confirmation
 	err := b.database.
 		Preload(clause.Associations).
@@ -605,6 +637,10 @@ func (b *bounce) getConfirmationsToOffer(dev device) []frameReference {
 }
 
 func (b *bounce) getUpdateUsersToOffer(dev device) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		return []frameReference{}
+	}
+
 	var unsentUpdateUsers []updateUser
 
 	if b.isSyncDevice(dev) {
@@ -658,6 +694,22 @@ func (b *bounce) getUpdateUsersToOffer(dev device) []frameReference {
 }
 
 func (b *bounce) getUpdateDevicesToOffer(dev device) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		var revoke updateDevice
+		err := b.database.Where("target = ? AND type = ?", dev.ID, updateDeviceTypeRevoke).First(&revoke).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"peer":  dev.Address,
+				"error": err.Error(),
+			}).Error("error finding revoke update for revoked device")
+			return []frameReference{}
+		}
+		return []frameReference{frameReference{
+			FrameID: revoke.ID,
+			Type:    typeUpdateDevice,
+		}}
+	}
+
 	var unsentUpdateDevices []updateDevice
 
 	if b.isSyncDevice(dev) {
@@ -713,6 +765,10 @@ func (b *bounce) getUpdateDevicesToOffer(dev device) []frameReference {
 }
 
 func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) broadcastable {
+	if _, revoked := b.devicePool.revokedDevices[peer]; revoked {
+		return nil
+	}
+
 	// Unpack the offer
 	var ro referenceOffer
 	err := msgpack.Unmarshal(payload, &ro)

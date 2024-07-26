@@ -60,6 +60,20 @@ func (b *bounce) hasValidDeviceGroup(u user) bool {
 				},
 			)
 			signers[dev.Signature.PreexistingDevice] = true
+
+			// Make sure no devices were added by revoked devices
+			var preexistingDevice device
+			err := b.database.Select("revoked_at").Where("address = ?", dev.Signature.PreexistingDevice).First(&preexistingDevice).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":   err.Error(),
+					"address": dev.Signature.PreexistingDevice,
+				}).Error("error getting preexisting device")
+				return false
+			}
+			if preexistingDevice.RevokedAt != 0 && preexistingDevice.RevokedAt < dev.Timestamp {
+				return false
+			}
 		} else {
 			if originalDevice != "" {
 				// Can't have more than one device that was never signed
