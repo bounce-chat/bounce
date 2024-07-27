@@ -100,7 +100,7 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 				Address:   dev.Address,
 				CreatedAt: dev.Timestamp,
 				Local:     dev.Address == b.network.Address(),
-				Online:    false,
+				Online:    dev.Address == peer,
 			},
 		)
 	}

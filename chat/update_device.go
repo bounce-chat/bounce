@@ -21,6 +21,9 @@ var updateDeviceTypeRevoke = uint16(1)
 
 var errInvalidDeviceName = errors.New("invalid name")
 var errUnsupportedUpdateDeviceType = errors.New("unsupported update device type")
+var errCannotRevokeAnotherUsersDevice = errors.New("cannot revoke device owned by another user")
+var errDeviceAlreadyRevoked = errors.New("device has already been revoked")
+var errCannotRevokeLastDevice = errors.New("cannot revoke last device")
 
 type updateDevice struct {
 	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
@@ -419,7 +422,35 @@ func (b *bounce) renameDevice(deviceID uuid.UUID, name string) error {
 }
 
 func (b *bounce) revokeDevice(deviceID uuid.UUID) error {
-	// TODO: make sure not already revoked
+	var dev device
+	err := b.database.First("id = ?", deviceID, &dev).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		} else {
+			log.WithFields(log.Fields{
+				"id":    deviceID,
+				"error": err.Error(),
+			}).Fatal("database error looking up device to revoke")
+		}
+	}
+
+	if dev.UserID != b.currentUserID() {
+		return errCannotRevokeAnotherUsersDevice
+	}
+
+	if dev.RevokedAt != 0 {
+		return errDeviceAlreadyRevoked
+	}
+
+	profile, ok := b.currentUser()
+	if !ok {
+		log.Fatal("cannot revoke devices when no profile exists")
+	}
+
+	if len(profile.Devices) == 1 {
+		return errCannotRevokeLastDevice
+	}
 
 	ud := updateDevice{
 		ID:        uuid.New(),
