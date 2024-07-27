@@ -423,7 +423,7 @@ func (b *bounce) renameDevice(deviceID uuid.UUID, name string) error {
 
 func (b *bounce) revokeDevice(deviceID uuid.UUID) error {
 	var dev device
-	err := b.database.First("id = ?", deviceID, &dev).Error
+	err := b.database.First(&dev, "id = ?", deviceID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
