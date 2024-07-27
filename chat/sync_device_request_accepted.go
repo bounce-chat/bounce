@@ -89,8 +89,24 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 		}).Fatal("error saving new sync profile")
 	}
 
+	// Collect the sync devices for the UI
+	var devices []Device
+	for _, dev := range sdra.Profile.Devices {
+		devices = append(
+			devices,
+			Device{
+				ID:        dev.ID,
+				Name:      dev.Name,
+				Address:   dev.Address,
+				CreatedAt: dev.Timestamp,
+				Local:     dev.Address == b.network.Address(),
+				Online:    false,
+			},
+		)
+	}
+
 	// Inform the UI
-	b.userInterface.SyncDeviceRequestAccepted(sdra.Profile.ID, sdra.Profile.Name)
+	b.userInterface.SyncDeviceRequestAccepted(sdra.Profile.ID, sdra.Profile.Name, devices)
 
 	// Connect to any other sync devices now
 	b.auditPeers()

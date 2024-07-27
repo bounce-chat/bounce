@@ -184,24 +184,9 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 }
 
 func (fyneUI *Fyne) DisplayDirectMessage(dm chat.DirectMessage) {
-	u, exists := fyneUI.users.get(dm.Thread)
-	if !exists {
-		log.WithFields(log.Fields{
-			"user_id": dm.Thread,
-		}).Error("chat engine sent DM from user unknown to UI")
-		return
-	}
-
-	dmThread, exists := fyneUI.dms[dm.Thread]
-	if !exists {
-		fyneUI.NewDirectMessage(chat.User{
-			ID:   dm.Thread,
-			Name: u.getName(),
-		})
-		dmThread, exists = fyneUI.dms[dm.Thread]
-		if !exists {
-			log.Fatal("DM doesn't exist immediately after creation")
-		}
+	dmThread, err := fyneUI.getOrCreateDM(dm.Thread)
+	if err != nil {
+		log.Fatal("DM doesn't exist immediately after creation")
 	}
 
 	ti, err := fyneUI.newDirectMessage(dm)
@@ -367,9 +352,10 @@ func (fyneUI *Fyne) SetDMState(userID uuid.UUID, state chat.DMState) {
 }
 
 func (fyneUI *Fyne) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
-	dmThread, exists := fyneUI.dms[udch.Thread]
-	if !exists {
+	dmThread, err := fyneUI.getOrCreateDM(udch.Thread)
+	if err != nil {
 		log.WithFields(log.Fields{
+			"error":   err.Error(),
 			"user_id": udch.Thread,
 		}).Error("cannot clear history for unknown dm thread")
 		return
@@ -387,9 +373,10 @@ func (fyneUI *Fyne) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
 }
 
 func (fyneUI *Fyne) DMRetentionChanged(udr chat.UpdateDMRetention) {
-	dmThread, exists := fyneUI.dms[udr.Thread]
-	if !exists {
+	dmThread, err := fyneUI.getOrCreateDM(udr.Thread)
+	if err != nil {
 		log.WithFields(log.Fields{
+			"error":   err.Error(),
 			"user_id": udr.Thread,
 		}).Error("cannot update retention for unknown dm thread")
 		return
@@ -404,4 +391,28 @@ func (fyneUI *Fyne) DMRetentionChanged(udr chat.UpdateDMRetention) {
 	}
 
 	fyneUI.appendThreadItem(dmThread, ti)
+}
+
+func (fyneUI *Fyne) getOrCreateDM(id uuid.UUID) (*directMessage, error) {
+	var dm *directMessage
+
+	var dmExists bool
+	dm, dmExists = fyneUI.dms[id]
+	if !dmExists {
+		u, userExists := fyneUI.users.get(id)
+		if !userExists {
+			return dm, errUnknownUser
+		}
+
+		fyneUI.NewDirectMessage(chat.User{
+			ID:   u.id,
+			Name: u.getName(),
+		})
+		dm, dmExists = fyneUI.dms[id]
+		if !dmExists {
+			return dm, errors.New("direct message not found after creation")
+		}
+	}
+
+	return dm, nil
 }

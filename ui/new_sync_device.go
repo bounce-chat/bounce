@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
+	"github.com/hkparker/bounce/chat"
 )
 
 func (fyneUI *Fyne) showNewSyncDevice() {
@@ -78,11 +79,16 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 	)
 }
 
-func (fyneUI *Fyne) SyncDeviceRequestAccepted(id uuid.UUID, name string) {
+func (fyneUI *Fyne) SyncDeviceRequestAccepted(id uuid.UUID, name string, devices []chat.Device) {
 	profile := makeUser(id, name)
 	fyneUI.profile = profile
 	fyneUI.users.add(profile)
+	for i, _ := range devices {
+		dev := devices[i]
+		fyneUI.devices.add(&dev)
+	}
 	fyneUI.initialStateSet = true
+	fyneUI.updateDeviceStatus()
 	fyneUI.showMainContainer()
 }
 

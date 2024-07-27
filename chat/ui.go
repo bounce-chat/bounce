@@ -256,7 +256,7 @@ type UI interface {
 	NetworkOffline()
 
 	NewSyncDeviceAdded()
-	SyncDeviceRequestAccepted(uuid.UUID, string)
+	SyncDeviceRequestAccepted(uuid.UUID, string, []Device)
 	SyncDeviceRequestRejected(peer string)
 
 	// User management
