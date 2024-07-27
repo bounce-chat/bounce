@@ -186,7 +186,16 @@ func (b *bounce) shutdown() {
 
 	// Make sure any network handlers finish running
 	log.Info("waiting for currently running handlers to stop")
-	b.runningHandlers.Wait()
+	handlersStopped := make(chan bool, 1)
+	go func() {
+		b.runningHandlers.Wait()
+		handlersStopped <- true
+	}()
+	select {
+	case <-handlersStopped:
+	case <-time.After(2 * time.Second):
+		log.Warn("running handlers took more then 2 seconds to stop, giving up")
+	}
 
 	// Shutdown the network
 	log.Info("stopping the network")

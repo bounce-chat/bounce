@@ -48,6 +48,11 @@ func (b *bounce) hasValidDeviceGroup(u user) bool {
 		return false
 	}
 
+	revokedTimes := map[string]int64{}
+	for _, dev := range u.Devices {
+		revokedTimes[dev.Address] = dev.RevokedAt
+	}
+
 	for _, dev := range u.Devices {
 		if dev.Signature != nil {
 			dg.signatures = append(
@@ -62,16 +67,17 @@ func (b *bounce) hasValidDeviceGroup(u user) bool {
 			signers[dev.Signature.PreexistingDevice] = true
 
 			// Make sure no devices were added by revoked devices
-			var preexistingDevice device
-			err := b.database.Select("revoked_at").Where("address = ?", dev.Signature.PreexistingDevice).First(&preexistingDevice).Error
-			if err != nil {
+			signerRevokedTime, ok := revokedTimes[dev.Signature.PreexistingDevice]
+			if !ok {
 				log.WithFields(log.Fields{
-					"error":   err.Error(),
-					"address": dev.Signature.PreexistingDevice,
-				}).Error("error getting preexisting device")
+					"signer": dev.Signature.PreexistingDevice,
+				}).Warn("no revoked time for device that added another device to a device group")
 				return false
 			}
-			if preexistingDevice.RevokedAt != 0 && preexistingDevice.RevokedAt < dev.Timestamp {
+			if signerRevokedTime != 0 && signerRevokedTime < dev.Timestamp {
+				log.WithFields(log.Fields{
+					"user": u.ID,
+				}).Warn("a device group is invalid because a device was added by another device that had already been revoked")
 				return false
 			}
 		} else {
