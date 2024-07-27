@@ -131,6 +131,9 @@ func (b *bounce) connectToSyncDevices() {
 		if dev.Address == b.network.Address() {
 			continue
 		}
+		if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+			continue
+		}
 		rd := b.getRemoteDevice(dev.Address)
 		if rd.connectedSockets < connectionsPerDevice {
 			go b.tryDialing(dev.Address)
