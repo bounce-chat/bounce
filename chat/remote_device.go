@@ -92,7 +92,7 @@ func (b *bounce) readFrames(conn net.Conn) {
 
 		if _, revoked := b.devicePool.revokedDevices[peer]; revoked {
 			// Drop all frames from revoked devices unless they are reference requests or keep alives
-			if !(frameType == typeReferenceRequest || frameType == typeKeepAlive) {
+			if !(frameType == typeReferenceRequest || frameType == typeKeepAlive || frameType == typeAck) {
 				return
 			}
 		}
@@ -171,7 +171,7 @@ func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 		case br := <-rd.messages:
 			if _, revoked := b.devicePool.revokedDevices[conn.RemoteAddr().String()]; revoked {
 				// Only send revoked devices frames that are used to tell them they are revoked, and keep alives
-				if !(br.getType() == typeReferenceOffer || br.getType() == typeCatchUp || br.getType() == typeUpdateDevice || br.getType() == typeKeepAlive) {
+				if !(br.getType() == typeReferenceOffer || br.getType() == typeCatchUp || br.getType() == typeUpdateDevice || br.getType() == typeKeepAlive || br.getType() == typeAck) {
 					log.WithFields(log.Fields{
 						"type": br.getType(),
 						"peer": conn.RemoteAddr().String(),
