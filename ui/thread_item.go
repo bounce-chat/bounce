@@ -148,8 +148,8 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 				displayName = "You"
 			}
 			group.button.setLastMessage(displayName, gm.Text)
-			group.button.setLastMessageTime(time.Unix(gm.SavedAt, 0))
-			group.setLastMessageTime(gm.SavedAt)
+			group.button.setLastMessageTime(time.Unix(gm.WrittenAt, 0))
+			group.setLastMessageTime(gm.WrittenAt)
 			group.chatHistoryScroll().Refresh()
 		},
 		timestamp: gm.WrittenAt, // TODO: SavedAt would be more consistent across restarts but causes inconsistencies when re-adding to a group, as it gets reset
@@ -193,8 +193,8 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 				displayName = "You"
 			}
 			dmThread.button.setLastMessage(displayName, dm.Text)
-			dmThread.button.setLastMessageTime(time.Unix(dm.SavedAt, 0))
-			dmThread.setLastMessageTime(dm.SavedAt)
+			dmThread.button.setLastMessageTime(time.Unix(dm.WrittenAt, 0))
+			dmThread.setLastMessageTime(dm.WrittenAt)
 			dmThread.chatHistoryScroll().Refresh()
 		},
 		timestamp: dm.WrittenAt, // TODO: SavedAt would be more consistent across restarts but causes inconsistencies when re-adding to a group, as it gets reset
