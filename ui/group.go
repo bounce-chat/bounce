@@ -674,7 +674,7 @@ func (fyneUI *Fyne) GroupDeleted(gd chat.GroupDeleted) {
 				log.WithFields(log.Fields{
 					"actor": gd.Actor,
 					"group": gd.Group,
-				}).Error("unknown user deleted group")
+				}).Warn("unknown user deleted group")
 				actorName = "unknown user"
 			}
 		}

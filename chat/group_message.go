@@ -125,6 +125,30 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 	gm.Signature = sc.Signature
 	gm.Signer = sc.Signer
 
+	// Make sure the signing device was not revoked before creating this
+	var signerDevice device
+	err = b.database.Select("revoked_at").Where("address = ?", gm.Signer).First(&signerDevice).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"address": gm.Signer,
+			}).Error("signer device not found for group message")
+			return nil
+		} else {
+			log.WithFields(log.Fields{
+				"address": gm.Signer,
+				"error":   err.Error(),
+			}).Fatal("database error looking up signing device")
+		}
+	}
+	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < gm.WrittenAt {
+		log.WithFields(log.Fields{
+			"id":     gm.ID,
+			"signer": gm.Signer,
+		}).Warn("ignoring group message signed by revoked device")
+		return nil
+	}
+
 	// If we have already seen this message, all we need to do is mark that this peer has the message and ack it
 	var existingGM groupMessage
 	err = b.database.Where("id = ?", gm.ID).First(&existingGM).Error

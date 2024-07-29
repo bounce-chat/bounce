@@ -260,6 +260,30 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 		return nil
 	}
 
+	// Make sure the signing device was not revoked before creating this
+	var signerDevice device
+	err = b.database.Select("revoked_at").Where("address = ?", ug.Signer).First(&signerDevice).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"address": ug.Signer,
+			}).Error("signer device not found for update group")
+			return nil
+		} else {
+			log.WithFields(log.Fields{
+				"address": ug.Signer,
+				"error":   err.Error(),
+			}).Fatal("database error looking up signing device")
+		}
+	}
+	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < ug.Timestamp {
+		log.WithFields(log.Fields{
+			"id":     ug.ID,
+			"signer": ug.Signer,
+		}).Warn("ignoring update group signed by revoked device")
+		return nil
+	}
+
 	// If we already have this update, we just mark that this peer has it too and return
 	var existingUG updateGroup
 	err = b.database.Where("id = ?", ug.ID).First(&existingUG).Error

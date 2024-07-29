@@ -119,6 +119,30 @@ func (b *bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) bro
 	uu.Signature = sc.Signature
 	uu.Signer = sc.Signer
 
+	// Make sure the signing device was not revoked before creating this
+	var signerDevice device
+	err = b.database.Select("revoked_at").Where("address = ?", uu.Signer).First(&signerDevice).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"address": uu.Signer,
+			}).Error("signer device not found for update user")
+			return nil
+		} else {
+			log.WithFields(log.Fields{
+				"address": uu.Signer,
+				"error":   err.Error(),
+			}).Fatal("database error looking up signing device")
+		}
+	}
+	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < uu.Timestamp {
+		log.WithFields(log.Fields{
+			"id":     uu.ID,
+			"signer": uu.Signer,
+		}).Warn("ignoring update user signed by revoked device")
+		return nil
+	}
+
 	// If we already have this update, we just mark that this peer has it too and return
 	var existingUU updateUser
 	err = b.database.Where("id = ?", uu.ID).First(&existingUU).Error

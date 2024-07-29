@@ -168,6 +168,30 @@ func (b *bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 		return nil
 	}
 
+	// Make sure the signing device was not revoked before creating this
+	var signerDevice device
+	err = b.database.Select("revoked_at").Where("address = ?", ud.Signer).First(&signerDevice).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"address": ud.Signer,
+			}).Error("signer device not found for update device")
+			return nil
+		} else {
+			log.WithFields(log.Fields{
+				"address": ud.Signer,
+				"error":   err.Error(),
+			}).Fatal("database error looking up signing device")
+		}
+	}
+	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < ud.Timestamp {
+		log.WithFields(log.Fields{
+			"id":     ud.ID,
+			"signer": ud.Signer,
+		}).Warn("ignoring update device signed by revoked device")
+		return nil
+	}
+
 	// If we already have this update, we just mark that this peer has it too and return
 	var existingUD updateDevice
 	err = b.database.Where("id = ?", ud.ID).First(&existingUD).Error
@@ -322,6 +346,10 @@ func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 				"error": err.Error(),
 			}).Fatal("error deleting unauthorized group")
 		}
+		b.userInterface.GroupDeleted(GroupDeleted{
+			Group: gc.ID,
+			Actor: uuid.Nil,
+		})
 	}
 
 	// Find any group messages signed by this device after it was revoked and delete those messages
@@ -361,6 +389,7 @@ func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 				"error": err.Error(),
 			}).Fatal("error deleting unauthorized update group")
 		}
+		b.userInterface.DeleteItem(ug.ID)
 	}
 	for target, _ := range groupsToUpdate {
 		b.updateGroupConsensus(target)
@@ -384,6 +413,7 @@ func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 				"error": err.Error(),
 			}).Fatal("error deleting unauthorized update user")
 		}
+		b.userInterface.DeleteItem(uu.ID)
 	}
 	for target, _ := range usersToUpdate {
 		b.updateUserState(target)

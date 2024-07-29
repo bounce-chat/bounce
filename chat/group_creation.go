@@ -118,6 +118,30 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		}
 	}
 
+	// Make sure the signing device was not revoked before creating this
+	var signerDevice device
+	err = b.database.Select("revoked_at").Where("address = ?", gc.Signer).First(&signerDevice).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"address": gc.Signer,
+			}).Error("signer device not found for group creation")
+			return nil
+		} else {
+			log.WithFields(log.Fields{
+				"address": gc.Signer,
+				"error":   err.Error(),
+			}).Fatal("database error looking up signing device")
+		}
+	}
+	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < gc.Timestamp {
+		log.WithFields(log.Fields{
+			"id":     gc.ID,
+			"signer": gc.Signer,
+		}).Warn("ignoring group creation signed by revoked device")
+		return nil
+	}
+
 	// Make sure the ID of this group creation matches the hash of the group data
 	hasher := blake3.New()
 	written, _ := hasher.Write(gc.Data)
