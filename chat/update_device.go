@@ -189,6 +189,7 @@ func (b *bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 			"id":     ud.ID,
 			"signer": ud.Signer,
 		}).Warn("ignoring update device signed by revoked device")
+		go b.sendAck(peer, typeUpdateDevice, ud.ID)
 		return nil
 	}
 

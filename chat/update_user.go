@@ -140,6 +140,7 @@ func (b *bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) bro
 			"id":     uu.ID,
 			"signer": uu.Signer,
 		}).Warn("ignoring update user signed by revoked device")
+		go b.sendAck(peer, typeUpdateUser, uu.ID)
 		return nil
 	}
 

@@ -245,6 +245,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 	// Ignore update groups for blocked groups
 	for _, blockedGroup := range b.blockedGroups() {
 		if ug.Target == blockedGroup {
+			go b.sendAck(peer, typeUpdateGroup, ug.ID)
 			return nil
 		}
 	}
@@ -281,6 +282,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 			"id":     ug.ID,
 			"signer": ug.Signer,
 		}).Warn("ignoring update group signed by revoked device")
+		go b.sendAck(peer, typeUpdateGroup, ug.ID)
 		return nil
 	}
 

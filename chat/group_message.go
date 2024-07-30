@@ -146,6 +146,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 			"id":     gm.ID,
 			"signer": gm.Signer,
 		}).Warn("ignoring group message signed by revoked device")
+		go b.sendAck(peer, typeGroupMessage, gm.ID)
 		return nil
 	}
 

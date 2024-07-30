@@ -139,6 +139,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 			"id":     gc.ID,
 			"signer": gc.Signer,
 		}).Warn("ignoring group creation signed by revoked device")
+		go b.sendAck(peer, typeGroupCreation, gc.ID)
 		return nil
 	}
 
