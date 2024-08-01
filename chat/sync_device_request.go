@@ -16,6 +16,8 @@ var syncDeviceOfferValidForSeconds = int64(300)
 
 var syncDeviceRequestMutex sync.Mutex
 
+var waitingForInitialSyncFrom string
+
 //
 // A sync device request is our request to join an existing profile.  We do this by sending the secret that was present in an offer,
 // as well as our signature of the address of the device that made the offer.
@@ -164,14 +166,14 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 		// Accept this device as a new sync device by responding with our updated profile information
 		// that includes this new device
 		b.sendDirect(peer, &syncDeviceRequestAccepted{
-			Profile: profile,
+			Profile:    profile,
+			References: b.hasAnyReferencesFor(peer),
 		})
 
 		// Tell the UI that we've accepted the sync device
 		b.userInterface.NewSyncDeviceAdded()
 		b.userInterface.DeviceAdded(Device{
-			ID: newDevice.ID,
-			//Name:      dev.Name, // TODO: support setting name from initial setup?
+			ID:        newDevice.ID,
 			Address:   newDevice.Address,
 			CreatedAt: newDevice.Timestamp,
 			Local:     false,

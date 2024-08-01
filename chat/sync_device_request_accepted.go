@@ -14,7 +14,8 @@ import (
 //
 type syncDeviceRequestAccepted struct {
 	Profile      user
-	payload      []byte
+	References   bool
+	payload      []byte // TODO: just send the actual offer in here?
 	payloadMutex sync.Mutex
 }
 
@@ -106,10 +107,15 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	}
 
 	// Inform the UI
-	b.userInterface.SyncDeviceRequestAccepted(sdra.Profile.ID, sdra.Profile.Name, devices)
+	b.userInterface.SyncDeviceRequestAccepted(sdra.Profile.ID, sdra.Profile.Name, devices, sdra.References)
 
 	// Connect to any other sync devices now
 	b.auditPeers()
+
+	// Mark that we're now waiting for a catch up for this device
+	if sdra.References {
+		waitingForInitialSyncFrom = peer
+	}
 
 	return nil
 }

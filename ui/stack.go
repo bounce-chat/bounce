@@ -24,6 +24,7 @@ const viewTypeDisplayAddUserString = 13
 const viewTypeAddUser = 14
 const viewTypeAbout = 15
 const viewTypeEditProfile = 16
+const viewTypeNameNewDevice = 17
 
 type view struct {
 	viewType int
@@ -135,6 +136,9 @@ func (fyneUI *Fyne) mobileBack() {
 		fyneUI.profileOptions.Refresh()
 		fyneUI.mainWindow.SetContent(fyneUI.editProfile)
 		fyneUI.editProfile.Show()
+	case viewTypeNameNewDevice:
+		fyneUI.mainWindow.SetContent(fyneUI.nameNewDevice)
+		fyneUI.nameNewDevice.Show()
 	default:
 		log.WithFields(log.Fields{
 			"type": displayView.viewType,

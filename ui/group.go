@@ -649,7 +649,9 @@ func (fyneUI *Fyne) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 		if err != nil {
 			log.Fatal("data bindings are broken")
 		}
-		dialog.ShowInformation("Removed From Group", actorName+" removed you from "+groupName, fyneUI.mainWindow)
+		if !fyneUI.initialSyncIncomplete {
+			dialog.ShowInformation("Removed From Group", actorName+" removed you from "+groupName, fyneUI.mainWindow)
+		}
 	}
 	delete(fyneUI.groups, rfg.Group)
 	fyneUI.refreshThreadOrder()
@@ -690,7 +692,9 @@ func (fyneUI *Fyne) GroupDeleted(gd chat.GroupDeleted) {
 		if err != nil {
 			log.Fatal("data bindings are broken")
 		}
-		dialog.ShowInformation("Group Deleted", actorName+" deleted the group \""+groupName+"\"", fyneUI.mainWindow)
+		if !fyneUI.initialSyncIncomplete {
+			dialog.ShowInformation("Group Deleted", actorName+" deleted the group \""+groupName+"\"", fyneUI.mainWindow)
+		}
 	}
 
 	delete(fyneUI.groups, gd.Group)

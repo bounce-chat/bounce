@@ -34,6 +34,7 @@ type Fyne struct {
 	defaultContainer                      *fyne.Container
 	newInstall                            *fyne.Container
 	newSyncDevice                         *fyne.Container
+	nameNewDevice                         *fyne.Container
 	addUser                               *fyne.Container
 	newProfileCreator                     *fyne.Container
 	databaseLoading                       *fyne.Container
@@ -49,6 +50,7 @@ type Fyne struct {
 	threadVBox                            *fyne.Container
 	chatContainer                         *fyne.Container
 	mobileMenu                            *fyne.Container
+	newSyncDeviceWidgets                  *newSyncDeviceWidgets
 	profileNameEntry                      *widget.Entry
 	profileIcon                           *fyne.Container
 	profileOptions                        *fyne.Container
@@ -84,6 +86,7 @@ type Fyne struct {
 	currentDevices                        *container.Scroll
 	deletedUser                           *user
 	initialStateSet                       bool
+	initialSyncIncomplete                 bool
 	focused                               bool
 	networkState                          int
 	setupStep                             int
@@ -142,8 +145,10 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	// Build all the containers
 	//
 	fyneUI.buildMenu()
+	fyneUI.buildNewSyncDeviceWidgets()
 	fyneUI.buildNewInstall()
 	fyneUI.buildNewSyncDevice()
+	fyneUI.buildNameNewDevice()
 	fyneUI.buildAddUser()
 	fyneUI.buildNewProfileCreator()
 	fyneUI.buildDatabaseLoading()

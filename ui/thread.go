@@ -144,7 +144,7 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	notificationsEnabled := (t.getNotificationsMutedUntil() != chat.MutedForever) && !(t.getID() == fyneUI.profile.id)
 	notificationsMuted := time.Now().Unix() < t.getNotificationsMutedUntil()
 
-	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll { //TODO: also notify if this is false but we're not focused?
+	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll && !fyneUI.initialSyncIncomplete { //TODO: also notify if this is false but we're not focused?
 		fyneUI.app.SendNotification(ti.notification)
 	}
 

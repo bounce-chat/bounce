@@ -180,6 +180,62 @@ func (b *bounce) sendReferences(peer string) {
 	}
 }
 
+func (b *bounce) hasAnyReferencesFor(address string) bool {
+	// Make sure we don't generate references while we're in the middle of handling a catch up,
+	// in order to not generate incomplete references of update group histories
+	catchUpMutex.Lock()
+	defer catchUpMutex.Unlock()
+
+	dev, ok := b.getDeviceFromAddress(address)
+	if !ok {
+		return false
+	}
+
+	references := []frameReference{}
+	references = append(references, b.getDirectMessagesToOffer(dev)...)
+	if len(references) > 0 {
+		return true
+	}
+	references = append(references, b.getGroupMessagesToOffer(dev)...)
+	if len(references) > 0 {
+		return true
+	}
+	references = append(references, b.getUpdateDMsToOffer(dev)...)
+	if len(references) > 0 {
+		return true
+	}
+	references = append(references, b.getDevicesToOffer(dev)...)
+	if len(references) > 0 {
+		return true
+	}
+	references = append(references, b.getAddUsersToOffer(dev)...)
+	if len(references) > 0 {
+		return true
+	}
+	references = append(references, b.getGroupCreationsToOffer(dev)...)
+	if len(references) > 0 {
+		return true
+	}
+	references = append(references, b.getUpdateGroupsToOffer(dev)...)
+	if len(references) > 0 {
+		return true
+	}
+	references = append(references, b.getConfirmationsToOffer(dev)...)
+	if len(references) > 0 {
+		return true
+	}
+	references = append(references, b.getUpdateUsersToOffer(dev)...)
+	if len(references) > 0 {
+		return true
+	}
+	references = append(references, b.getUpdateDevicesToOffer(dev)...)
+	if len(references) > 0 {
+		return true
+	}
+
+	return false
+}
+
 func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	// Make sure we don't generate references while we're in the middle of handling a catch up,
 	// in order to not generate incomplete references of update group histories

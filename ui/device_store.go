@@ -12,6 +12,7 @@ type deviceStore struct {
 	sync.Mutex
 	devices map[uuid.UUID]*chat.Device
 	ordered []*chat.Device
+	local   *chat.Device
 }
 
 func newDeviceStore() *deviceStore {
@@ -41,6 +42,10 @@ func (ds *deviceStore) add(d *chat.Device) {
 	smallerDevices := ds.ordered[:smaller]
 	largerDevices := ds.ordered[smaller:]
 	ds.ordered = append(smallerDevices, append([]*chat.Device{d}, largerDevices...)...)
+
+	if d.Local {
+		ds.local = d
+	}
 }
 
 func (ds *deviceStore) remove(id uuid.UUID) {

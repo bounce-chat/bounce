@@ -69,6 +69,10 @@ func (cu *catchUp) getPayload() []byte {
 }
 
 func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastable {
+	if waitingForInitialSyncFrom == peer {
+		b.userInterface.InitialSyncStarting()
+	}
+
 	// Unmarshal the catch up
 	var cu catchUp
 	err := msgpack.Unmarshal(payload, &cu)
@@ -100,7 +104,8 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 	handlers := b.getHandlers()
 	lastTimestamp := int64(0)
 	catchUpMutex.Lock()
-	for _, fr := range cu.Frames {
+	frameCount := len(cu.Frames)
+	for i, fr := range cu.Frames {
 		// Check if this type of frame is allowed in a catch up
 		if _, present := allowedCatchUpFrames[fr.Type]; !present {
 			log.WithFields(log.Fields{
@@ -159,6 +164,10 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 
 		if fr.Type == typeUpdateUser {
 			usersToUpdate[br.getAuthor()] = true
+		}
+
+		if waitingForInitialSyncFrom == peer {
+			b.userInterface.InitialSyncProgress(float64(i) / float64(frameCount))
 		}
 	}
 	// Inform the reference engine of all the frames we handled
@@ -255,6 +264,11 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 				"frame_count": len(cu.Frames),
 			}).Warn("catch up from unknown device did not result in learning device identity")
 		}
+	}
+
+	if waitingForInitialSyncFrom == peer {
+		waitingForInitialSyncFrom = ""
+		b.userInterface.InitialSyncComplete()
 	}
 
 	return nil

@@ -25,7 +25,9 @@ func (fyneUI *Fyne) showNewGroup() {
 	fyneUI.clearNewGroupSelectors()
 	fyneUI.mainWindow.SetContent(fyneUI.newGroup)
 	fyneUI.newGroup.Show()
-	fyneUI.mainWindow.Canvas().Focus(fyneUI.newGroupNameEntry)
+	if !fyne.CurrentDevice().IsMobile() {
+		fyneUI.mainWindow.Canvas().Focus(fyneUI.newGroupNameEntry)
+	}
 }
 
 func (fyneUI *Fyne) clearNewGroupSelectors() {

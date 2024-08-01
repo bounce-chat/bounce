@@ -157,7 +157,6 @@ func (fyneUI *Fyne) buildNewInstall() {
 
 	header := container.NewVBox(
 		container.NewCenter(logo),
-		//container.NewCenter(widget.NewLabel("Welcome to Bounce!")),
 	)
 
 	// TODO: make these buttons nice custom clickable widgets with images
@@ -167,8 +166,8 @@ func (fyneUI *Fyne) buildNewInstall() {
 		fyneUI.newProfileCreator.Show()
 	})
 	selectSyncDevice := widget.NewButton("Add this device to an existing profile", func() {
-		// TODO: display the page to select a file then wait for confirmation, bulid this:
-		fyneUI.mainWindow.SetContent(fyneUI.newSyncDevice)
+		//fyneUI.mainWindow.SetContent(fyneUI.newSyncDevice)
+		fyneUI.mainWindow.SetContent(fyneUI.nameNewDevice)
 		fyneUI.newSyncDevice.Show()
 	})
 
