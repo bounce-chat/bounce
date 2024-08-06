@@ -77,6 +77,7 @@ func (fyneUI *Fyne) mobileBack() {
 		fyneUI.mainWindow.SetContent(fyneUI.settings)
 		fyneUI.settings.Show()
 	case viewTypeNewSyncDevice:
+		fyneUI.newSyncDeviceWidgets.syncStringInput.Show()
 		fyneUI.mainWindow.SetContent(fyneUI.newSyncDevice)
 		fyneUI.newSyncDevice.Show()
 	case viewTypeNewInstall:

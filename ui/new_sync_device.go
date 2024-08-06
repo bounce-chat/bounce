@@ -23,6 +23,8 @@ type newSyncDeviceWidgets struct {
 	infiniteProgressBar *widget.ProgressBarInfinite
 	backButton          *widget.Button
 	deviceNameEntry     *widget.Entry
+	syncStringEntry     *widget.Entry
+	syncStringInput     *fyne.Container
 }
 
 func (fyneUI *Fyne) buildNewSyncDeviceWidgets() {
@@ -47,7 +49,12 @@ func (fyneUI *Fyne) buildNewSyncDeviceWidgets() {
 			}
 		}),
 		deviceNameEntry: widget.NewEntry(),
+		syncStringEntry: widget.NewEntry(),
 	}
+	fyneUI.newSyncDeviceWidgets.syncStringInput = container.NewVBox(
+		widget.NewLabel("Paste in the string to pair this device with an exiting profile"),
+		fyneUI.newSyncDeviceWidgets.syncStringEntry, // TODO: add button
+	)
 }
 
 func (fyneUI *Fyne) showNameNewDevice() {
@@ -114,6 +121,7 @@ func (fyneUI *Fyne) buildNameNewDevice() {
 }
 
 func (fyneUI *Fyne) showNewSyncDevice() {
+	fyneUI.newSyncDeviceWidgets.syncStringInput.Show()
 	if fyne.CurrentDevice().IsMobile() {
 		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeNewSyncDevice})
 	}
@@ -129,6 +137,7 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 	logo.SetMinSize(fyne.NewSize(228, 167))
 	header := container.NewVBox(
 		container.NewCenter(logo),
+		fyneUI.newSyncDeviceWidgets.syncStringInput,
 	)
 
 	actionButtons := container.New(
@@ -140,8 +149,8 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 	fyneUI.newSyncDeviceWidgets.infiniteProgressBar.Hide()
 	fyneUI.newSyncDeviceWidgets.progressBar.Hide()
 
-	syncStringEntry := widget.NewEntry()
-	syncStringEntry.OnSubmitted = func(str string) {
+	fyneUI.newSyncDeviceWidgets.syncStringEntry.OnSubmitted = func(str string) {
+		fyneUI.newSyncDeviceWidgets.syncStringInput.Hide()
 		fyneUI.newSyncDeviceWidgets.backButton.Disable()
 		fyneUI.initialSyncIncomplete = true
 		// TODO: change logo to loading version
@@ -169,10 +178,11 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 			fyneUI.newSyncDeviceWidgets.infiniteProgressBar.Hide()
 			fyneUI.newSyncDeviceWidgets.currentStep.Text = ""
 			fyneUI.newSyncDeviceWidgets.currentStep.Hide()
-			syncStringEntry.Text = ""
-			syncStringEntry.Refresh()
+			fyneUI.newSyncDeviceWidgets.syncStringEntry.Text = ""
+			fyneUI.newSyncDeviceWidgets.syncStringEntry.Refresh()
 			dialog.ShowError(errors.New("Error sending sync request: "+err.Error()), fyneUI.mainWindow)
 			fyneUI.newSyncDeviceWidgets.backButton.Enable()
+			fyneUI.newSyncDeviceWidgets.syncStringInput.Show()
 		} else {
 			fyneUI.newSyncDeviceWidgets.currentStep.Text = "Waiting for sync response..."
 			fyneUI.newSyncDeviceWidgets.currentStep.Refresh()
@@ -183,11 +193,11 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 		layout.NewBorderLayout(header, actionButtons, nil, nil),
 		header,
 		actionButtons,
-		container.NewVBox( // TODO: center pad on desktop, not mobile
-			widget.NewLabel("Paste in the string to pair this device with an exiting profile"),
-			syncStringEntry, // TODO: add button
-			container.NewCenter(fyneUI.newSyncDeviceWidgets.currentStep),
-			fyneUI.newSyncDeviceWidgets.progressBars,
+		container.NewCenter( // TODO: set the min width properly with custon padded center layout, set more padding on desktop
+			container.NewVBox(
+				container.NewCenter(fyneUI.newSyncDeviceWidgets.currentStep),
+				fyneUI.newSyncDeviceWidgets.progressBars,
+			),
 		),
 	)
 }
@@ -216,6 +226,7 @@ func (fyneUI *Fyne) SyncDeviceRequestRejected(peer string) {
 	fyneUI.newSyncDeviceWidgets.infiniteProgressBar.Hide()
 	fyneUI.newSyncDeviceWidgets.progressBar.Hide()
 	fyneUI.newSyncDeviceWidgets.backButton.Enable()
+	fyneUI.newSyncDeviceWidgets.syncStringInput.Show()
 }
 
 func (fyneUI *Fyne) InitialSyncStarting() {
