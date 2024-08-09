@@ -51,9 +51,22 @@ func (fyneUI *Fyne) buildNewSyncDeviceWidgets() {
 		deviceNameEntry: widget.NewEntry(),
 		syncStringEntry: widget.NewEntry(),
 	}
+	fyneUI.newSyncDeviceWidgets.currentStep.Alignment = fyne.TextAlignCenter
+
+	syncStringEntryLabel := widget.NewLabel("Paste in the string to pair this device with an exiting profile")
+	syncStringEntryLabel.Alignment = fyne.TextAlignCenter
+
+	syncButton := widget.NewButton("Sync", func() {
+		fyneUI.newSyncDeviceWidgets.syncStringEntry.OnSubmitted(fyneUI.newSyncDeviceWidgets.syncStringEntry.Text)
+	})
+	syncButton.Importance = widget.HighImportance
 	fyneUI.newSyncDeviceWidgets.syncStringInput = container.NewVBox(
-		widget.NewLabel("Paste in the string to pair this device with an exiting profile"),
-		fyneUI.newSyncDeviceWidgets.syncStringEntry, // TODO: add button
+		syncStringEntryLabel,
+		container.New(
+			layout.NewBorderLayout(nil, nil, nil, syncButton),
+			syncButton,
+			fyneUI.newSyncDeviceWidgets.syncStringEntry, // TODO: add button
+		),
 	)
 }
 
@@ -72,11 +85,19 @@ func (fyneUI *Fyne) buildNameNewDevice() {
 	// TODO: choose reasonable values here
 	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
 	logo.SetMinSize(fyne.NewSize(228, 167))
+
+	nameLabel := widget.NewLabel("Give this new device a name")
+	nameLabel.Alignment = fyne.TextAlignCenter
 	header := container.NewVBox(
 		container.NewCenter(logo),
+		container.New(
+			newPaddedCenterLayout(),
+			container.NewVBox(
+				nameLabel,
+				fyneUI.newSyncDeviceWidgets.deviceNameEntry,
+			),
+		),
 	)
-
-	nameLabel := widget.NewLabel("Give this new device a name:")
 
 	hostname, err := os.Hostname()
 	if err == nil {
@@ -110,13 +131,6 @@ func (fyneUI *Fyne) buildNameNewDevice() {
 		layout.NewBorderLayout(header, actionButtons, nil, nil),
 		header,
 		actionButtons,
-		container.NewVBox(
-			container.New(
-				layout.NewBorderLayout(nil, nil, nameLabel, nil),
-				nameLabel,
-				fyneUI.newSyncDeviceWidgets.deviceNameEntry,
-			),
-		),
 	)
 }
 
@@ -137,7 +151,10 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 	logo.SetMinSize(fyne.NewSize(228, 167))
 	header := container.NewVBox(
 		container.NewCenter(logo),
-		fyneUI.newSyncDeviceWidgets.syncStringInput,
+		container.New(
+			newPaddedCenterLayout(),
+			fyneUI.newSyncDeviceWidgets.syncStringInput,
+		),
 	)
 
 	actionButtons := container.New(
@@ -193,7 +210,8 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 		layout.NewBorderLayout(header, actionButtons, nil, nil),
 		header,
 		actionButtons,
-		container.NewCenter( // TODO: set the min width properly with custon padded center layout, set more padding on desktop
+		container.New(
+			newPaddedCenterLayout(),
 			container.NewVBox(
 				container.NewCenter(fyneUI.newSyncDeviceWidgets.currentStep),
 				fyneUI.newSyncDeviceWidgets.progressBars,
