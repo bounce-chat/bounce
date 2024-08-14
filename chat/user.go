@@ -164,6 +164,7 @@ func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 		return newID, errors.New("profile already exists on this device")
 	}
 
+	// Create the user
 	return newID, b.database.Create(&user{
 		ID:      newID,
 		Name:    profileName,
@@ -178,6 +179,8 @@ func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 		},
 		ProfileSettings: &profileSettings{},
 	}).Error
+
+	// TODO: set the device name with an updateDevice, and populate device state in the UI
 }
 
 type profileExport struct {

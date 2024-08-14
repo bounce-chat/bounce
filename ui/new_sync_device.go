@@ -3,7 +3,9 @@ package ui
 import (
 	"errors"
 	"os"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -65,9 +67,27 @@ func (fyneUI *Fyne) buildNewSyncDeviceWidgets() {
 		container.New(
 			layout.NewBorderLayout(nil, nil, nil, syncButton),
 			syncButton,
-			fyneUI.newSyncDeviceWidgets.syncStringEntry, // TODO: add button
+			fyneUI.newSyncDeviceWidgets.syncStringEntry,
 		),
 	)
+
+	fyneUI.newSyncDeviceWidgets.deviceNameEntry.OnChanged = func(str string) {
+		// Remove any leading whitespace
+		str, trimmed := trimLeadingSpace(str)
+		fyneUI.newSyncDeviceWidgets.deviceNameEntry.Text = str
+		if trimmed != 0 {
+			fyneUI.newSyncDeviceWidgets.deviceNameEntry.CursorRow = 0
+			fyneUI.newSyncDeviceWidgets.deviceNameEntry.CursorColumn = 0
+		}
+
+		// Enforce length limit
+		if utf8.RuneCountInString(str) > chat.MaximumNameLength {
+			runes := []rune(str)
+			truncated := runes[0:chat.MaximumNameLength]
+			fyneUI.newSyncDeviceWidgets.deviceNameEntry.Text = string(truncated)
+		}
+		fyneUI.newSyncDeviceWidgets.deviceNameEntry.Refresh()
+	}
 }
 
 func (fyneUI *Fyne) showNameNewDevice() {
@@ -267,7 +287,7 @@ func (fyneUI *Fyne) InitialSyncComplete() {
 		if fyneUI.devices.local == nil {
 			log.Error("local device is nil after initial sync")
 		} else {
-			err := fyneUI.callbacks.RenameDevice(fyneUI.devices.local.ID, newDeviceName)
+			err := fyneUI.callbacks.RenameDevice(fyneUI.devices.local.ID, strings.TrimSpace(newDeviceName))
 			if err != nil {
 				dialog.ShowError(errors.New("Error setting new device name: "+err.Error()), fyneUI.mainWindow)
 			}

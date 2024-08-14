@@ -187,10 +187,6 @@ func (b *bounce) isSyncDevice(dev device) bool {
 }
 
 func validDeviceName(name string) bool {
-	if name == "" {
-		return false
-	}
-
 	if name != strings.TrimSpace(name) {
 		return false
 	}

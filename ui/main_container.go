@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"unicode/utf8"
 
@@ -202,7 +203,6 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 			runes := []rune(str)
 			truncated := runes[0:chat.MaximumNameLength]
 			profileNameEntry.Text = string(truncated)
-
 		}
 		profileNameEntry.Refresh()
 
@@ -237,6 +237,28 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 	})
 
 	deviceNameEntry := widget.NewEntry()
+	hostname, err := os.Hostname()
+	if err == nil {
+		deviceNameEntry.PlaceHolder = hostname
+	}
+	deviceNameEntry.OnChanged = func(str string) {
+		// Remove any leading whitespace
+		str, trimmed := trimLeadingSpace(str)
+		deviceNameEntry.Text = str
+		if trimmed != 0 {
+			deviceNameEntry.CursorRow = 0
+			deviceNameEntry.CursorColumn = 0
+		}
+
+		// Enforce length limit
+		if utf8.RuneCountInString(str) > chat.MaximumNameLength {
+			runes := []rune(str)
+			truncated := runes[0:chat.MaximumNameLength]
+			deviceNameEntry.Text = string(truncated)
+		}
+		deviceNameEntry.Refresh()
+	}
+
 	profileForm := widget.NewForm(
 		&widget.FormItem{
 			Text:   "Your Name:",

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -82,7 +83,24 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 			}
 
 			nameLabel := widget.NewLabel("Name:")
-			nameEntry := widget.NewEntry() // TODO: validate string?
+			nameEntry := widget.NewEntry()
+			nameEntry.OnChanged = func(str string) {
+				// Remove any leading whitespace
+				str, trimmed := trimLeadingSpace(str)
+				nameEntry.Text = str
+				if trimmed != 0 {
+					nameEntry.CursorRow = 0
+					nameEntry.CursorColumn = 0
+				}
+
+				// Enforce length limit
+				if utf8.RuneCountInString(str) > chat.MaximumNameLength {
+					runes := []rune(str)
+					truncated := runes[0:chat.MaximumNameLength]
+					nameEntry.Text = string(truncated)
+				}
+				nameEntry.Refresh()
+			}
 			if dev.Name != "" {
 				nameEntry.SetText(dev.Name)
 			}
@@ -130,7 +148,7 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 			editDeviceDialog = dialog.NewCustomConfirm(shortName, "Apply", "Cancel", editDeviceContainer, func(apply bool) {
 				if apply {
 					if dev.Name != nameEntry.Text {
-						fyneUI.callbacks.RenameDevice(dev.ID, nameEntry.Text)
+						fyneUI.callbacks.RenameDevice(dev.ID, strings.TrimSpace(nameEntry.Text))
 					}
 				}
 				fyneUI.activeDialog = nil
