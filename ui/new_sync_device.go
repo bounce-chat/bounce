@@ -111,7 +111,7 @@ func (fyneUI *Fyne) buildNameNewDevice() {
 	header := container.NewVBox(
 		container.NewCenter(logo),
 		container.New(
-			newPaddedCenterLayout(),
+			newPaddedCenterLayout(nil),
 			container.NewVBox(
 				nameLabel,
 				fyneUI.newSyncDeviceWidgets.deviceNameEntry,
@@ -172,7 +172,7 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 	header := container.NewVBox(
 		container.NewCenter(logo),
 		container.New(
-			newPaddedCenterLayout(),
+			newPaddedCenterLayout(nil),
 			fyneUI.newSyncDeviceWidgets.syncStringInput,
 		),
 	)
@@ -231,7 +231,7 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 		header,
 		actionButtons,
 		container.New(
-			newPaddedCenterLayout(),
+			newPaddedCenterLayout(logo),
 			container.NewVBox(
 				container.NewCenter(fyneUI.newSyncDeviceWidgets.currentStep),
 				fyneUI.newSyncDeviceWidgets.progressBars,

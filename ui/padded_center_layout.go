@@ -6,11 +6,13 @@ import (
 )
 
 type paddedCenterLayout struct {
+	topOffset   fyne.CanvasObject
 	sidePadding float32
 }
 
-func newPaddedCenterLayout() fyne.Layout {
+func newPaddedCenterLayout(topOffset fyne.CanvasObject) fyne.Layout {
 	return &paddedCenterLayout{
+		topOffset:   topOffset,
 		sidePadding: 0.3,
 	}
 }
@@ -30,8 +32,15 @@ func (pcl *paddedCenterLayout) Layout(objects []fyne.CanvasObject, size fyne.Siz
 		if childMin.Width < childWidth {
 			childMin.Width = childWidth
 		}
+		height := float32(size.Height-childMin.Height) / 2
+		if pcl.topOffset != nil {
+			height -= pcl.topOffset.Size().Height
+			if height < 0 {
+				height = 0
+			}
+		}
 		child.Resize(childMin)
-		child.Move(fyne.NewPos(float32(size.Width-childMin.Width)/2, float32(size.Height-childMin.Height)/2))
+		child.Move(fyne.NewPos(float32(size.Width-childMin.Width)/2, height))
 	}
 }
 
