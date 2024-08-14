@@ -164,23 +164,33 @@ func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 		return newID, errors.New("profile already exists on this device")
 	}
 
-	// Create the user
-	return newID, b.database.Create(&user{
+	d := device{
+		ID:        uuid.New(),
+		Address:   b.network.Address(),
+		Timestamp: time.Now().Unix(),
+	}
+	u := &user{
 		ID:      newID,
 		Name:    profileName,
 		Profile: true,
 		Devices: []device{
-			device{
-				ID:        uuid.New(),
-				Name:      deviceName,
-				Address:   b.network.Address(),
-				Timestamp: time.Now().Unix(),
-			},
+			d,
 		},
 		ProfileSettings: &profileSettings{},
-	}).Error
+	}
+	err := b.database.Create(u).Error
+	if err != nil {
+		return newID, err
+	}
 
-	// TODO: set the device name with an updateDevice, and populate device state in the UI
+	b.userInterface.DeviceAdded(Device{
+		ID:        d.ID,
+		Address:   d.Address,
+		CreatedAt: d.Timestamp,
+		Local:     true,
+	})
+	err = b.renameDevice(d.ID, deviceName)
+	return newID, err
 }
 
 type profileExport struct {

@@ -114,10 +114,17 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 				"Are you sure you want to permanently revoke this device?",
 				func(confirmed bool) {
 					if confirmed {
-						fyneUI.callbacks.RevokeDevice(dev.ID)
-						editDeviceDialog.Hide()
-						fyneUI.activeDialog = nil
-						fyneUI.activeDialogCleanup = nil
+						err := fyneUI.callbacks.RevokeDevice(dev.ID)
+						if err == nil {
+							editDeviceDialog.Hide()
+							fyneUI.activeDialog = nil
+							fyneUI.activeDialogCleanup = nil
+						} else {
+							errDialog := dialog.NewError(err, fyneUI.mainWindow)
+							errDialog.Show()
+							fyneUI.activeDialog = errDialog
+							fyneUI.activeDialogCleanup = nil
+						}
 					} else {
 						fyneUI.activeDialog = editDeviceDialog
 						fyneUI.activeDialogCleanup = nil
