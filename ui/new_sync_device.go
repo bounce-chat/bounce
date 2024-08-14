@@ -193,7 +193,7 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 		// TODO: change logo to loading version
 
 		fyneUI.newSyncDeviceWidgets.currentStep.Show()
-		if fyneUI.networkState == networkStateOffline {
+		if fyneUI.networkState == networkStateStarting || fyneUI.networkState == networkStateOffline {
 			fyneUI.newSyncDeviceWidgets.currentStep.Text = "Waiting for network..."
 			fyneUI.newSyncDeviceWidgets.currentStep.Refresh()
 			fyneUI.newSyncDeviceWidgets.infiniteProgressBar.Show()

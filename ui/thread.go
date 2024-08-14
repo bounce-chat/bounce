@@ -93,11 +93,25 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 		autoscroll = true
 	}
 
+	chatHistory := t.chatHistoryScroll().Content.(*fyne.Container)
+	currentHead := int64(0)
+	if len(chatHistory.Objects) > 0 {
+		compare := chatHistory.Objects[len(chatHistory.Objects)-1]
+		switch cast := compare.(type) {
+		case *chatBubble:
+			currentHead = cast.timestamp
+		case *statusChange:
+			currentHead = cast.timestamp
+		default:
+			log.Warn("cannot compare timestamp with unknown thread item type")
+		}
+	}
+	appendingToEnd := ti.timestamp > currentHead
+
 	// Insert statusChange thread items into their correct location in time, insert everything else
 	// at the bottom regaurdless of timestamp
-	chatHistory := t.chatHistoryScroll().Content.(*fyne.Container)
 	if _, ok := ti.widget.(*statusChange); ok {
-		if len(chatHistory.Objects) == 0 {
+		if len(chatHistory.Objects) == 0 || appendingToEnd {
 			chatHistory.Objects = append(chatHistory.Objects, ti.widget)
 		} else {
 			for i := len(chatHistory.Objects); i >= 0; i-- {
@@ -132,11 +146,11 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	fyneUI.threadWithItem[ti.id] = t
 	fyneUI.threadWithItemMutex.Unlock()
 
-	if ti.setButton != nil {
+	if ti.setButton != nil && appendingToEnd {
 		ti.setButton(t.getButton())
 	}
 
-	if autoscroll && fyneUI.isActive(t) {
+	if autoscroll && fyneUI.isActive(t) && appendingToEnd {
 		t.chatHistoryScroll().ScrollToBottom()
 		t.chatHistoryScroll().Refresh()
 	}
@@ -148,7 +162,7 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 		fyneUI.app.SendNotification(ti.notification)
 	}
 
-	if !ti.dontBumpThread {
+	if !ti.dontBumpThread && appendingToEnd {
 		t.setLastMessageTime(ti.timestamp)
 		fyneUI.refreshThreadOrder()
 	}

@@ -93,17 +93,19 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	// Collect the sync devices for the UI
 	var devices []Device
 	for _, dev := range sdra.Profile.Devices {
-		devices = append(
-			devices,
-			Device{
-				ID:        dev.ID,
-				Name:      dev.Name,
-				Address:   dev.Address,
-				CreatedAt: dev.Timestamp,
-				Local:     dev.Address == b.network.Address(),
-				Online:    dev.Address == peer,
-			},
-		)
+		if dev.RevokedAt == 0 {
+			devices = append(
+				devices,
+				Device{
+					ID:        dev.ID,
+					Name:      dev.Name,
+					Address:   dev.Address,
+					CreatedAt: dev.Timestamp,
+					Local:     dev.Address == b.network.Address(),
+					Online:    dev.Address == peer,
+				},
+			)
+		}
 	}
 
 	// Inform the UI
