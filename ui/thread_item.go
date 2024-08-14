@@ -140,7 +140,7 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 
 	return &threadItem{
 		id:           gm.ID,
-		widget:       newChatBubble(displayName, gm.ID, gm.Text, outgoing, gm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
+		widget:       newChatBubble(displayName, gm.Author, gm.ID, gm.Text, outgoing, false, gm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
 			displayName := user.getName() // TODO: bind last message button text?
@@ -185,7 +185,7 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 
 	return &threadItem{
 		id:           dm.ID,
-		widget:       newChatBubble(displayName, dm.ID, dm.Text, outgoing, dm.WrittenAt, nil), // TODO: add SavedAt and show a difference if it's large
+		widget:       newChatBubble(displayName, dm.Author, dm.ID, dm.Text, outgoing, true, dm.WrittenAt, nil), // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
 			displayName := u.getName()

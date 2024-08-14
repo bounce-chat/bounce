@@ -19,6 +19,7 @@ type chatBubble struct {
 	id            uuid.UUID
 	timestamp     int64
 	outgoing      bool
+	direct        bool
 	timestampText *canvas.Text
 	username      *canvas.Text
 	message       *widget.Label
@@ -26,7 +27,7 @@ type chatBubble struct {
 	background    *canvas.Rectangle
 }
 
-func newChatBubble(name binding.String, id uuid.UUID, message string, outgoing bool, timestamp int64, icon fyne.CanvasObject) *chatBubble { // TODO: export chat.Message for this?
+func newChatBubble(name binding.String, authorID, id uuid.UUID, message string, outgoing, direct bool, timestamp int64, icon fyne.CanvasObject) *chatBubble { // TODO: export chat.Message for this?
 	if icon != nil && outgoing {
 		log.Warn("outgoing chat bubbles can't have icons")
 	}
@@ -43,8 +44,11 @@ func newChatBubble(name binding.String, id uuid.UUID, message string, outgoing b
 	if err != nil {
 		log.Fatal("data bindings broken")
 	}
-	username := canvas.NewText(usernameText, theme.ForegroundColor()) // TODO: users should have unique colors derived from ID
+	username := canvas.NewText(usernameText, uuidToColor(authorID))
 	username.TextStyle.Bold = true
+	if outgoing || direct {
+		username.Hide()
+	}
 
 	timestampText := canvas.NewText(time.Unix(timestamp, 0).Format("1/2 15:04"), theme.ForegroundColor())
 	timestampText.TextSize = theme.TextSize() * 0.6
@@ -73,6 +77,7 @@ func newChatBubble(name binding.String, id uuid.UUID, message string, outgoing b
 		message:       messageLabel,
 		icon:          icon,
 		outgoing:      outgoing,
+		direct:        direct,
 		timestamp:     timestamp,
 		timestampText: timestampText,
 		background:    background,
@@ -156,11 +161,13 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	timestampSize := renderer.timestamp.MinSize()
 
 	allVerticalPadding := renderer.verticalPaddingAboveBackground +
-		renderer.verticalPaddingAboveUsername +
 		renderer.verticalPaddingAboveMessage +
 		renderer.verticalPaddingAboveTimestamp +
 		renderer.verticalPaddingAboveBackgroundEnd +
 		renderer.verticalPaddingAboveEnd
+	if !renderer.bubble.outgoing && !renderer.bubble.direct {
+		allVerticalPadding += renderer.verticalPaddingAboveUsername
+	}
 
 	// We multiply the things that are on both sides by 2
 	allHorizontalPadding := renderer.horizontalPaddingSideOfBackground*2 +
@@ -233,13 +240,16 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	//
 
 	// Determine the size of the chat bubble
-	backgroundHeight := renderer.verticalPaddingAboveUsername +
-		usernameSize.Height +
-		renderer.verticalPaddingAboveMessage +
+	backgroundHeight := renderer.verticalPaddingAboveMessage +
 		messageSize.Height +
 		renderer.verticalPaddingAboveTimestamp +
 		timestampSize.Height +
 		renderer.verticalPaddingAboveBackgroundEnd
+
+	if !renderer.bubble.outgoing && !renderer.bubble.direct {
+		backgroundHeight += renderer.verticalPaddingAboveUsername + usernameSize.Height
+	}
+
 	renderer.background.Resize(fyne.Size{
 		Height: backgroundHeight,
 		Width:  maximumTextWidth + renderer.horizontalPaddingSideOfBackground*2,
@@ -258,9 +268,11 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 		renderer.horizontalPaddingSideOfText -
 		theme.Padding() // subtract theme.Padding() to compensate for widget.Label's built-in padding, TODO: remove if/when using canvas.Text
 	messageY := renderer.verticalPaddingAboveBackground +
-		renderer.verticalPaddingAboveUsername +
-		usernameSize.Height +
 		renderer.verticalPaddingAboveMessage
+
+	if !renderer.bubble.outgoing && !renderer.bubble.direct {
+		messageY += renderer.verticalPaddingAboveUsername + usernameSize.Height
+	}
 	renderer.message.Move(fyne.Position{
 		X: messageX,
 		Y: messageY,
@@ -274,11 +286,13 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 		timestampX = xOffset + renderer.horizontalPaddingSideOfBackground + renderer.horizontalPaddingSideOfText/2
 	}
 	timestampY := renderer.verticalPaddingAboveBackground +
-		renderer.verticalPaddingAboveUsername +
-		usernameSize.Height +
 		renderer.verticalPaddingAboveMessage +
 		messageSize.Height +
 		renderer.verticalPaddingAboveTimestamp
+	if !renderer.bubble.outgoing && !renderer.bubble.direct {
+		timestampY += renderer.verticalPaddingAboveUsername +
+			usernameSize.Height
+	}
 	renderer.timestamp.Move(fyne.Position{
 		X: timestampX,
 		Y: timestampY,
@@ -286,14 +300,18 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 
 	// If an icon was supplied, place it at the bottom left of the message bubble
 	if renderer.icon != nil {
-		iconY := renderer.verticalPaddingAboveUsername +
-			usernameSize.Height +
-			renderer.verticalPaddingAboveMessage +
+		iconY := renderer.verticalPaddingAboveMessage +
 			messageSize.Height +
 			renderer.verticalPaddingAboveTimestamp +
 			timestampSize.Height +
 			renderer.verticalPaddingAboveBackgroundEnd -
 			theme.IconInlineSize()
+
+		if !renderer.bubble.outgoing && !renderer.bubble.direct {
+			iconY += renderer.verticalPaddingAboveUsername +
+				usernameSize.Height
+		}
+
 		renderer.icon.Move(fyne.Position{
 			X: renderer.horizontalPaddingSideOfIcon,
 			Y: iconY,
@@ -314,16 +332,25 @@ func (renderer *bubbleRenderer) MinSize() (size fyne.Size) {
 	timestampSize := renderer.timestamp.MinSize()
 
 	allVerticalPadding := renderer.verticalPaddingAboveBackground +
-		renderer.verticalPaddingAboveUsername +
 		renderer.verticalPaddingAboveMessage +
 		renderer.verticalPaddingAboveTimestamp +
 		renderer.verticalPaddingAboveBackgroundEnd +
 		renderer.verticalPaddingAboveEnd
 
-	return fyne.Size{
-		Width:  renderer.horizontalPaddingSideOfBackground*2 + renderer.horizontalPaddingSideOfText*2 + messageSize.Width,
-		Height: allVerticalPadding + usernameSize.Height + messageSize.Height + timestampSize.Height,
+	if !renderer.bubble.outgoing && !renderer.bubble.direct {
+		allVerticalPadding += renderer.verticalPaddingAboveUsername
 	}
+
+	minSize := fyne.Size{
+		Width:  renderer.horizontalPaddingSideOfBackground*2 + renderer.horizontalPaddingSideOfText*2 + messageSize.Width,
+		Height: allVerticalPadding + messageSize.Height + timestampSize.Height,
+	}
+
+	if !renderer.bubble.outgoing && !renderer.bubble.direct {
+		minSize.Height += usernameSize.Height
+	}
+
+	return minSize
 }
 
 func (renderer *bubbleRenderer) Refresh() {
