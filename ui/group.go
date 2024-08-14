@@ -33,6 +33,7 @@ type group struct {
 	lastAdminActionMutex        sync.Mutex
 	pendingUsers                *userStore
 	notificationsMutedUntil     int64
+	createdAt                   int64
 	editContainer               *fyne.Container
 	editThreadNameEntry         *widget.Entry
 	retentionSelection          *widget.Select
@@ -317,6 +318,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		admins:                  bounceGroup.Admins,
 		blockedUsers:            bounceGroup.BlockedUsers,
 		retention:               bounceGroup.Retention,
+		createdAt:               bounceGroup.CreatedAt,
 		editThreadNameEntry:     widget.NewEntry(),
 		restrictUserManagement:  bounceGroup.RestrictUserManagement,
 		restrictGroupEdits:      bounceGroup.RestrictGroupEdits,

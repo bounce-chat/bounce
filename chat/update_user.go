@@ -239,7 +239,6 @@ func (b *bounce) previousName(uu updateUser) (string, error) {
 				"user_id": uu.Target,
 				"error":   err.Error(),
 			}).Fatal("database error looking up update user")
-
 		}
 	}
 

@@ -375,7 +375,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 
 	for _, uuun := range state.UpdateUserUpdateNames {
 		if uuun.User == fyneUI.profile.id {
-			for dmID, _ := range fyneUI.dms {
+			for dmID, _ := range fyneUI.dms { // TODO: don't add to DMs before the DMs should exist
 				uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 				if err != nil {
 					log.Fatal(err.Error())
@@ -383,12 +383,15 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 					dmItems[dmID] = append(dmItems[dmID], uuunItem)
 				}
 			}
-			for gID, _ := range fyneUI.groups {
+			for _, g := range fyneUI.groups {
+				if uuun.Timestamp < g.createdAt {
+					continue
+				}
 				uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 				if err != nil {
 					log.Fatal(err.Error())
 				} else {
-					groupItems[gID] = append(groupItems[gID], uuunItem)
+					groupItems[g.id] = append(groupItems[g.id], uuunItem)
 				}
 			}
 		} else {
@@ -399,6 +402,9 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 			dmItems[uuun.User] = append(dmItems[uuun.User], uuunItem)
 
 			for _, g := range fyneUI.groups {
+				if uuun.Timestamp < g.createdAt {
+					continue
+				}
 				if g.users.contains(uuun.User) {
 					uuunGroupItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 					if err != nil {
