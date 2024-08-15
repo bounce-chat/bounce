@@ -277,11 +277,7 @@ func (b *bounce) getDirectMessagesToOffer(dev device) []frameReference {
 		err := b.database.
 			Select("direct_messages.*").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDirectMessage).
-			Where(
-				"delivery_records.id IS NULL AND direct_messages.written_at >= ?",
-				time.Now().Add(-undeliverableAfter).Unix(),
-				xor(dev.UserID, b.currentUserID()),
-			).
+			Where("delivery_records.id IS NULL").
 			Find(&dms).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -320,6 +316,11 @@ func (b *bounce) getGroupMessagesToOffer(dev device) []frameReference {
 		return []frameReference{}
 	}
 
+	oldestAllowedMessage := int64(0)
+	if !b.isSyncDevice(dev) {
+		oldestAllowedMessage = time.Now().Add(-undeliverableAfter).Unix()
+	}
+
 	// All group messages that this device's user is a part of that are less than a week old
 	var gms []groupMessage
 	err := b.database.
@@ -327,7 +328,7 @@ func (b *bounce) getGroupMessagesToOffer(dev device) []frameReference {
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeGroupMessage).
 		Where(
 			"delivery_records.id IS NULL AND group_messages.written_at >= ? AND group_messages.destination IN (?)",
-			time.Now().Add(-undeliverableAfter).Unix(),
+			oldestAllowedMessage,
 			b.database.
 				Model(&group{}).
 				Distinct().
