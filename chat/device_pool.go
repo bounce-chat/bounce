@@ -352,7 +352,7 @@ func (b *bounce) closeUnusedConnections() {
 
 	// If a device has more sockets open than needed, close one at random
 	b.devicePool.deviceMutex.Lock()
-	for _, rd := range b.devicePool.devices {
+	for addr, rd := range b.devicePool.devices {
 		if rd.connectedSockets > connectionsPerDevice {
 			log.WithFields(log.Fields{
 				"connected_sockets": rd.connectedSockets,
@@ -375,6 +375,7 @@ func (b *bounce) closeUnusedConnections() {
 			case rd.shutdownReceivers[key] <- true:
 			default:
 				log.WithFields(log.Fields{
+					"address":           addr,
 					"connected_sockets": rd.connectedSockets,
 					"desired_sockets":   connectionsPerDevice,
 				}).Warn("failed to close socket on remote device")

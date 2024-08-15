@@ -86,6 +86,7 @@ func (fyneUI *Fyne) populateItems(t thread, items threadItems) {
 }
 
 func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
+	// Determine if we are already scrolled down to the bottom of this thread before appending
 	autoscroll := false
 	location := t.chatHistoryScroll().Offset.Y
 	height := t.chatHistoryScroll().Content.Size().Height - t.chatHistoryScroll().Size().Height
@@ -93,6 +94,7 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 		autoscroll = true
 	}
 
+	// Determine if the thread item we are adding will be the latest item in the thread
 	chatHistory := t.chatHistoryScroll().Content.(*fyne.Container)
 	currentHead := int64(0)
 	if len(chatHistory.Objects) > 0 {
@@ -139,29 +141,32 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	} else {
 		chatHistory.Objects = append(chatHistory.Objects, ti.widget)
 	}
-
 	t.chatHistoryScroll().Refresh()
 
+	// Keep track of which threads have which items
 	fyneUI.threadWithItemMutex.Lock()
 	fyneUI.threadWithItem[ti.id] = t
 	fyneUI.threadWithItemMutex.Unlock()
 
-	if ti.setButton != nil && appendingToEnd {
+	// Update the thread button if this is the latest message
+	if ti.setButton != nil && ti.timestamp > t.getLastMessageTime() {
 		ti.setButton(t.getButton())
 	}
 
+	// Keep the thread scrolled down, if it is open and was already scrolled down
 	if autoscroll && fyneUI.isActive(t) && appendingToEnd {
 		t.chatHistoryScroll().ScrollToBottom()
 		t.chatHistoryScroll().Refresh()
 	}
 
+	// Send a notification if required
 	notificationsEnabled := (t.getNotificationsMutedUntil() != chat.MutedForever) && !(t.getID() == fyneUI.profile.id)
 	notificationsMuted := time.Now().Unix() < t.getNotificationsMutedUntil()
-
 	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll && !fyneUI.initialSyncIncomplete { //TODO: also notify if this is false but we're not focused?
 		fyneUI.app.SendNotification(ti.notification)
 	}
 
+	// Update the latest time of this thread and update the thread order
 	if !ti.dontBumpThread && appendingToEnd {
 		t.setLastMessageTime(ti.timestamp)
 		fyneUI.refreshThreadOrder()
