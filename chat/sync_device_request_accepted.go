@@ -105,6 +105,8 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 					Online:    dev.Address == peer,
 				},
 			)
+		} else {
+			b.devicePool.revokedDevices[dev.Address] = true
 		}
 	}
 

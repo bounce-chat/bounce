@@ -105,6 +105,10 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 	lastTimestamp := int64(0)
 	catchUpMutex.Lock()
 	frameCount := len(cu.Frames)
+	progressMod := 1
+	if frameCount > 1000 {
+		progressMod = int(frameCount / 1000)
+	}
 	for i, fr := range cu.Frames {
 		// Check if this type of frame is allowed in a catch up
 		if _, present := allowedCatchUpFrames[fr.Type]; !present {
@@ -167,7 +171,9 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		}
 
 		if waitingForInitialSyncFrom == peer {
-			b.userInterface.InitialSyncProgress(float64(i) / float64(frameCount))
+			if i%progressMod == 0 {
+				b.userInterface.InitialSyncProgress(float64(i) / float64(frameCount))
+			}
 		}
 	}
 	// Inform the reference engine of all the frames we handled
