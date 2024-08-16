@@ -223,7 +223,7 @@ func (fyneUI *Fyne) buildEditProfile() {
 	}
 
 	saveProfileButton := widget.NewButton("Update", func() {
-		err := fyneUI.callbacks.UpdateProfileName(fyneUI.profileNameEntry.Text)
+		err := fyneUI.callbacks.UpdateProfileName(strings.TrimSpace(fyneUI.profileNameEntry.Text))
 		if err != nil {
 			dialog.ShowError(errors.New("error updating name: "+err.Error()), fyneUI.mainWindow)
 		} else {

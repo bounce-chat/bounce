@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
@@ -135,7 +136,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		}
 		newThreadName := g.editThreadNameEntry.Text
 		if currentThreadName != newThreadName {
-			err := fyneUI.callbacks.RenameGroup(g.id, newThreadName)
+			err := fyneUI.callbacks.RenameGroup(g.id, strings.TrimSpace(newThreadName))
 			if err != nil {
 				dialog.ShowError(errors.New("error renaming group: "+err.Error()), fyneUI.mainWindow)
 			}
