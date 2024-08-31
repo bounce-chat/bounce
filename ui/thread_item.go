@@ -16,9 +16,42 @@ var errUnknownThread = errors.New("unknown thread")
 var errUnknownActor = errors.New("unknown actor")
 var errUnknownUser = errors.New("unknown user")
 
+type threadable interface {
+	populateTemplate(fyne.CanvasObject)
+}
+
+type chatBubbleData struct {
+	id            uuid.UUID
+	author        uuid.UUID
+	displayName   binding.String
+	text          string
+	outgoing      bool
+	direct        bool
+	writtenAt     int64
+	profileButton fyne.CanvasObject
+}
+
+func (cbd *chatBubbleData) populateTemplate(obj fyne.CanvasObject) {
+	obj.(*fyne.Container).Objects[0].(*chatBubble).setData(cbd.displayName, cbd.author, cbd.id, cbd.text, cbd.outgoing, cbd.direct, cbd.writtenAt, cbd.profileButton)
+	obj.(*fyne.Container).Objects[0].(*chatBubble).Show()
+	obj.(*fyne.Container).Objects[1].(*statusChange).Hide()
+}
+
+type statusChangeData struct {
+	id           uuid.UUID
+	timestamp    int64
+	changeString string
+}
+
+func (scd *statusChangeData) populateTemplate(obj fyne.CanvasObject) {
+	obj.(*fyne.Container).Objects[1].(*statusChange).setData(scd.id, scd.timestamp, scd.changeString)
+	obj.(*fyne.Container).Objects[1].(*statusChange).Show()
+	obj.(*fyne.Container).Objects[0].(*chatBubble).Hide()
+}
+
 type threadItem struct {
 	id             uuid.UUID
-	widget         fyne.Widget
+	widgetData     threadable
 	notification   *fyne.Notification
 	setButton      func(*threadButton)
 	timestamp      int64
@@ -139,8 +172,17 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 	}
 
 	return &threadItem{
-		id:           gm.ID,
-		widget:       newChatBubble(displayName, gm.Author, gm.ID, gm.Text, outgoing, false, gm.WrittenAt, profileButton), // TODO: add SavedAt and show a difference if it's large
+		id: gm.ID,
+		widgetData: &chatBubbleData{
+			id:            gm.ID,
+			author:        gm.Author,
+			displayName:   displayName,
+			text:          gm.Text,
+			outgoing:      outgoing,
+			direct:        false,
+			writtenAt:     gm.WrittenAt,
+			profileButton: profileButton,
+		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
 			displayName := user.getName() // TODO: bind last message button text?
@@ -184,8 +226,17 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 	}
 
 	return &threadItem{
-		id:           dm.ID,
-		widget:       newChatBubble(displayName, dm.Author, dm.ID, dm.Text, outgoing, true, dm.WrittenAt, nil), // TODO: add SavedAt and show a difference if it's large
+		id: dm.ID,
+		widgetData: &chatBubbleData{
+			id:            dm.ID,
+			author:        dm.Author,
+			displayName:   displayName,
+			text:          dm.Text,
+			outgoing:      outgoing,
+			direct:        true,
+			writtenAt:     dm.WrittenAt,
+			profileButton: nil,
+		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
 			displayName := u.getName()
@@ -346,11 +397,14 @@ func (fyneUI *Fyne) userChangedName(id, userID uuid.UUID, oldName, newName strin
 	}
 
 	changeString := oldName + action + newName
-	changeLabel := newStatusChange(id, timestamp, changeString)
 
 	return &threadItem{
-		id:             id,
-		widget:         changeLabel,
+		id: id,
+		widgetData: &statusChangeData{
+			id:           id,
+			timestamp:    timestamp,
+			changeString: changeString,
+		},
 		setButton:      nil,
 		timestamp:      timestamp,
 		dontBumpThread: true,
@@ -376,11 +430,14 @@ func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, a
 	}
 
 	changeString := actorName + " " + action
-	changeLabel := newStatusChange(id, timestamp, changeString)
 
 	return &threadItem{
-		id:     id,
-		widget: changeLabel,
+		id: id,
+		widgetData: &statusChangeData{
+			id:           id,
+			timestamp:    timestamp,
+			changeString: changeString,
+		},
 		setButton: func(tb *threadButton) {
 			t.getButton().setLastAction(changeString) // TODO: possible to bind actor's name?
 			t.getButton().setLastMessageTime(time.Unix(timestamp, 0))

@@ -34,6 +34,7 @@ type group struct {
 	pendingUsers                *userStore
 	notificationsMutedUntil     int64
 	createdAt                   int64
+	items                       []threadable
 	editContainer               *fyne.Container
 	editThreadNameEntry         *widget.Entry
 	retentionSelection          *widget.Select
@@ -49,7 +50,7 @@ type group struct {
 	restrictUserManagementCheck *widget.Check
 	restrictGroupEditsCheck     *widget.Check
 	restrictPostingCheck        *widget.Check
-	scroll                      *container.Scroll
+	scroll                      *widget.List
 	newUserSearchEntry          *widget.Entry
 	availableNewUsersScroll     *container.Scroll
 	currentUsersContainer       *container.Scroll
@@ -75,8 +76,17 @@ func (g *group) getEntry() *threadEntry {
 	return g.entry
 }
 
-func (g *group) chatHistoryScroll() *container.Scroll {
+func (g *group) chatHistoryScroll() *widget.List {
 	return g.scroll
+}
+
+func (g *group) getItems() []threadable {
+	return g.items
+}
+
+func (g *group) setItems(items []threadable) {
+	g.items = items
+	g.scroll.Refresh()
 }
 
 func (g *group) getButton() *threadButton {
@@ -310,6 +320,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		return
 	}
 
+	// TODO: appendThreadItem should add to this threadItems, and set the height of anything that changed
 	group := &group{
 		id:                      bounceGroup.ID,
 		name:                    binding.NewString(),
@@ -325,7 +336,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		restrictPosting:         bounceGroup.RestrictPosting,
 		notificationsMutedUntil: bounceGroup.MutedUntil,
 		pendingUsers:            newUserStore(),
-		scroll:                  container.NewVScroll(container.NewVBox()),
+		items:                   []threadable{},
 		availableNewUsersScroll: container.NewVScroll(container.NewVBox()),
 		currentUsersContainer:   container.NewVScroll(container.NewVBox()),
 		pendingUsersContainer:   container.NewVScroll(container.NewVBox()),
@@ -334,7 +345,21 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		editUserDialogs:         make(map[uuid.UUID]dialog.Dialog),
 		lastMessage:             time.Now().Unix(),
 	}
-	// TODO: if mobile, wrap the scroll
+	group.scroll = widget.NewList(
+		func() int {
+			return len(group.items)
+		},
+		func() fyne.CanvasObject {
+			return container.NewStack(
+				newChatBubbleTemplate(),
+				newStatusChangeTemplate(),
+			)
+		},
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			item := group.items[id]
+			item.populateTemplate(obj)
+		},
+	)
 
 	for _, bu := range bounceGroup.Users {
 		u, exists := fyneUI.users.get(bu.ID)

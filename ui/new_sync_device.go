@@ -8,7 +8,6 @@ import (
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -100,16 +99,10 @@ func (fyneUI *Fyne) showNameNewDevice() {
 }
 
 func (fyneUI *Fyne) buildNameNewDevice() {
-	logo := canvas.NewImageFromResource(newEmbeddedResource("assets/logo.png"))
-	logo.FillMode = canvas.ImageFillContain
-	// TODO: choose reasonable values here
-	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
-	logo.SetMinSize(fyne.NewSize(228, 167))
-
 	nameLabel := widget.NewLabel("Give this new device a name")
 	nameLabel.Alignment = fyne.TextAlignCenter
 	header := container.NewVBox(
-		container.NewCenter(logo),
+		container.NewCenter(makeLogo(228, 167)), // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
 		container.New(
 			newPaddedCenterLayout(nil),
 			container.NewVBox(
@@ -164,11 +157,7 @@ func (fyneUI *Fyne) showNewSyncDevice() {
 }
 
 func (fyneUI *Fyne) buildNewSyncDevice() {
-	logo := canvas.NewImageFromResource(newEmbeddedResource("assets/logo.png"))
-	logo.FillMode = canvas.ImageFillContain
-	// TODO: choose reasonable values here
-	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
-	logo.SetMinSize(fyne.NewSize(228, 167))
+	logo := makeLogo(228, 167) // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
 	header := container.NewVBox(
 		container.NewCenter(logo),
 		container.New(

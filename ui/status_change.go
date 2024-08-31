@@ -23,21 +23,21 @@ type statusChange struct {
 	time         *canvas.Text
 }
 
-func newStatusChange(id uuid.UUID, timestamp int64, str string) *statusChange {
+func newStatusChangeTemplate() *statusChange {
 	st := &statusChange{
-		id:           id,
-		timestamp:    timestamp,
-		actionString: str,
+		id:           uuid.Nil,
+		timestamp:    0,
+		actionString: "",
 		action: &canvas.Text{
-			Text:     str,
+			Text:     "",
 			TextSize: theme.TextSize(),
 		},
 		fullAction: &canvas.Text{
-			Text:     str,
+			Text:     "",
 			TextSize: theme.TextSize(),
 		},
 		time: &canvas.Text{
-			Text:     time.Unix(timestamp, 0).Format("1/2 15:04"),
+			Text:     "",
 			TextSize: theme.TextSize() * 0.6,
 		},
 	}
@@ -45,6 +45,18 @@ func newStatusChange(id uuid.UUID, timestamp int64, str string) *statusChange {
 	st.ExtendBaseWidget(st)
 
 	return st
+}
+
+func (st *statusChange) setData(id uuid.UUID, timestamp int64, str string) {
+	st.id = id
+	st.timestamp = timestamp
+	st.actionString = str
+	st.action.Text = str
+	st.action.Refresh()
+	st.fullAction.Text = str
+	st.fullAction.Refresh()
+	st.time.Text = time.Unix(timestamp, 0).Format("1/2 15:04")
+	st.time.Refresh()
 }
 
 func (st *statusChange) CreateRenderer() fyne.WidgetRenderer {

@@ -27,60 +27,87 @@ type chatBubble struct {
 	background    *canvas.Rectangle
 }
 
-func newChatBubble(name binding.String, authorID, id uuid.UUID, message string, outgoing, direct bool, timestamp int64, icon fyne.CanvasObject) *chatBubble { // TODO: export chat.Message for this?
-	if icon != nil && outgoing {
-		log.Warn("outgoing chat bubbles can't have icons")
-	}
+func newChatBubbleTemplate() *chatBubble {
+	//if icon != nil && outgoing {
+	//	log.Warn("outgoing chat bubbles can't have icons")
+	//}
 
 	// TODO: I'm just using a widget.Label because it comes with wrapping out of the box, and all the wrapping code
 	// isn't exported and non-trivial to copy out.  A canvas.Text would probably be better as I would have more
 	// control over the presentation of the font and could hopefully enable click and drag selection for copying
 	// text, but how to do this remains an open question.  Also, using a label comes with padding out of the box
 	// that I don't want.
-	messageLabel := widget.NewLabel(message)
+
+	messageLabel := widget.NewLabel("")
 	messageLabel.Wrapping = fyne.TextWrapWord
 
-	usernameText, err := name.Get()
-	if err != nil {
-		log.Fatal("data bindings broken")
-	}
-	username := canvas.NewText(usernameText, uuidToColor(authorID))
+	username := canvas.NewText("", &color.RGBA{})
 	username.TextStyle.Bold = true
-	if outgoing || direct {
-		username.Hide()
-	}
 
-	timestampText := canvas.NewText(time.Unix(timestamp, 0).Format("1/2 15:04"), theme.ForegroundColor())
+	timestampText := canvas.NewText("", theme.ForegroundColor())
 	timestampText.TextSize = theme.TextSize() * 0.6
 
 	// Incoming messages have a grey background, outgoing messages have a blue background
 	background := &canvas.Rectangle{
 		CornerRadius: 15,
 	}
+
+	bubble := &chatBubble{
+		id:            uuid.Nil,
+		username:      username,
+		message:       messageLabel,
+		icon:          nil,
+		outgoing:      false,
+		direct:        false,
+		timestamp:     0,
+		timestampText: timestampText,
+		background:    background,
+	}
+
+	bubble.ExtendBaseWidget(bubble)
+	return bubble
+}
+
+func (bubble *chatBubble) setData(name binding.String, authorID, id uuid.UUID, message string, outgoing, direct bool, timestamp int64, icon fyne.CanvasObject) { // TODO: export chat.Message for this?
+	bubble.id = id
+
+	usernameText, err := name.Get()
+	if err != nil {
+		log.Fatal("data bindings broken")
+	}
+	bubble.username.Text = usernameText
+	bubble.username.Color = uuidToColor(authorID)
+	if outgoing || direct {
+		bubble.username.Hide()
+	}
+
+	bubble.message.Text = message
+	bubble.message.Refresh()
+
+	bubble.timestamp = timestamp
+	bubble.timestampText.Text = time.Unix(timestamp, 0).Format("1/2 15:04")
+
+	bubble.outgoing = outgoing
+	bubble.direct = direct
+	bubble.icon = icon
+	//if icon != nil {
+	//	bubble.icon.Show()
+	//	bubble.icon.Refresh()
+	//	bubble.Refresh()
+	//}
+
 	if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
 		if outgoing {
-			background.FillColor = color.NRGBA{0xb5, 0xd0, 0xff, 0xff}
+			bubble.background.FillColor = color.NRGBA{0xb5, 0xd0, 0xff, 0xff}
 		} else {
-			background.FillColor = color.NRGBA{0xdd, 0xdd, 0xdd, 0xff}
+			bubble.background.FillColor = color.NRGBA{0xdd, 0xdd, 0xdd, 0xff}
 		}
 	} else {
 		if outgoing {
-			background.FillColor = color.NRGBA{0, 0x23, 0x75, 0xff}
+			bubble.background.FillColor = color.NRGBA{0, 0x23, 0x75, 0xff}
 		} else {
-			background.FillColor = color.NRGBA{0x20, 0x20, 0x20, 0xff}
+			bubble.background.FillColor = color.NRGBA{0x20, 0x20, 0x20, 0xff}
 		}
-	}
-
-	bubble := &chatBubble{
-		id:            id,
-		username:      username,
-		message:       messageLabel,
-		icon:          icon,
-		outgoing:      outgoing,
-		direct:        direct,
-		timestamp:     timestamp,
-		timestampText: timestampText,
-		background:    background,
 	}
 
 	name.AddListener(binding.NewDataListener(func() {
@@ -94,9 +121,6 @@ func newChatBubble(name binding.String, authorID, id uuid.UUID, message string, 
 		bubble.username.Refresh()
 		bubble.Refresh()
 	}))
-
-	bubble.ExtendBaseWidget(bubble)
-	return bubble
 }
 
 func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {

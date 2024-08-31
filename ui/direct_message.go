@@ -25,7 +25,8 @@ type directMessage struct {
 	header                    *fyne.Container
 	button                    *threadButton
 	notificationsEnabledCheck *widget.Check
-	scroll                    *container.Scroll
+	scroll                    *widget.List
+	items                     []threadable
 	entry                     *threadEntry
 	retentionSelection        *widget.Select
 	lastMessage               int64
@@ -42,8 +43,16 @@ func (dm *directMessage) getEntry() *threadEntry {
 	return dm.entry
 }
 
-func (dm *directMessage) chatHistoryScroll() *container.Scroll {
+func (dm *directMessage) chatHistoryScroll() *widget.List {
 	return dm.scroll
+}
+
+func (dm *directMessage) getItems() []threadable {
+	return dm.items
+}
+
+func (dm *directMessage) setItems(items []threadable) {
+	dm.items = items
 }
 
 func (dm *directMessage) getButton() *threadButton {
@@ -81,9 +90,24 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 		user:                    user,
 		notificationsMutedUntil: bounceUser.State.MutedUntil,
 		retention:               bounceUser.State.Retention,
-		scroll:                  container.NewVScroll(container.NewVBox()),
+		items:                   []threadable{},
 		lastMessage:             time.Now().Unix(),
 	}
+	dm.scroll = widget.NewList(
+		func() int {
+			return len(dm.items)
+		},
+		func() fyne.CanvasObject {
+			return container.NewStack(
+				newChatBubbleTemplate(),
+				newStatusChangeTemplate(),
+			)
+		},
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			item := dm.items[id]
+			item.populateTemplate(obj)
+		},
+	) // TODO: appendThreadItem should add to this threadItems, and set the height of anything that changed
 
 	dm.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(_ bool) {})
 	var err error

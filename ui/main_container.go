@@ -56,17 +56,11 @@ func (fyneUI *Fyne) buildMainContainer() {
 	//
 	// Logo and welcome message / instructions to be shown before a thread is selected
 	//
-	logo := canvas.NewImageFromResource(newEmbeddedResource("assets/logo.png"))
-	logo.FillMode = canvas.ImageFillContain
-	// TODO: choose reasonable values here
-	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
-	logo.SetMinSize(fyne.NewSize(228, 167))
-
 	fyneUI.defaultContainer = container.NewMax(
 		container.New(
 			layout.NewCenterLayout(),
 			container.NewVBox(
-				logo,
+				makeLogo(228, 167), // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
 				widget.NewLabel("Select a thread on the left to get started"),
 			),
 		),
@@ -131,17 +125,11 @@ func (fyneUI *Fyne) buildMainContainer() {
 }
 
 func (fyneUI *Fyne) buildDatabaseLoading() {
-	logo := canvas.NewImageFromResource(newEmbeddedResource("assets/logo.png"))
-	logo.FillMode = canvas.ImageFillContain
-	// TODO: choose reasonable values here
-	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
-	logo.SetMinSize(fyne.NewSize(228, 167))
-
 	fyneUI.databaseLoading = container.NewMax(
 		container.New(
 			layout.NewCenterLayout(),
 			container.NewVBox(
-				logo,
+				makeLogo(228, 167),                         // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
 				widget.NewLabel("Loading the database..."), // TODO: just make this generic
 				widget.NewProgressBarInfinite(),
 			),
@@ -150,14 +138,8 @@ func (fyneUI *Fyne) buildDatabaseLoading() {
 }
 
 func (fyneUI *Fyne) buildNewInstall() {
-	logo := canvas.NewImageFromResource(newEmbeddedResource("assets/logo.png"))
-	logo.FillMode = canvas.ImageFillContain
-	// TODO: choose reasonable values here
-	// https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
-	logo.SetMinSize(fyne.NewSize(228, 167))
-
 	header := container.NewVBox(
-		container.NewCenter(logo),
+		container.NewCenter(makeLogo(228, 167)), // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
 	)
 
 	// TODO: make these buttons nice custom clickable widgets with images
@@ -312,4 +294,16 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 		actionButtons,
 		container.NewMax(profileDetails),
 	)
+}
+
+func makeLogo(width, height float32) *canvas.Image {
+	var logo *canvas.Image
+	if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
+		logo = canvas.NewImageFromResource(newEmbeddedResource("assets/logo.png"))
+	} else {
+		logo = canvas.NewImageFromResource(newEmbeddedResource("assets/logo_dark.png"))
+	}
+	logo.FillMode = canvas.ImageFillContain
+	logo.SetMinSize(fyne.NewSize(width, height))
+	return logo
 }

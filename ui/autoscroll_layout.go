@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -21,28 +20,31 @@ func (mal *autoscollLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) 
 	embedded.Move(fyne.Position{0, 0})
 	embedded.Resize(size)
 
-	s, ok := embedded.(*container.Scroll)
-	if !ok {
-		log.Fatal("cannot create autoscollLayout with anything other than container.Scroll")
-	}
+	//s, ok := embedded.(*container.Scroll)
+	//s, ok := embedded.(*widget.List)
+	//if !ok {
+	//	log.Fatal("cannot create autoscollLayout with anything other than container.Scroll")
+	//}
 
-	if mal.lastHeight != 0 {
-		if size.Height < mal.lastHeight {
-			diff := mal.lastHeight - size.Height
+	/*
+		if mal.lastHeight != 0 {
+			if size.Height < mal.lastHeight {
+				diff := mal.lastHeight - size.Height
 
-			s.Offset.Y += diff
-			s.Refresh()
-		} else {
-			diff := size.Height - mal.lastHeight
-
-			if s.Content.Size().Height-mal.lastHeight == s.Offset.Y+diff {
-				s.ScrollToBottom()
-			} else {
-				s.Offset.Y -= diff
+				s.Offset.Y += diff
 				s.Refresh()
+			} else {
+				diff := size.Height - mal.lastHeight
+
+				if s.Content.Size().Height-mal.lastHeight == s.Offset.Y+diff {
+					s.ScrollToBottom()
+				} else {
+					s.Offset.Y -= diff
+					s.Refresh()
+				}
 			}
 		}
-	}
+	*/
 
 	mal.lastHeight = size.Height
 }
