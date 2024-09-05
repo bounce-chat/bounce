@@ -51,10 +51,27 @@ func (st *statusChange) setData(id uuid.UUID, timestamp int64, str string) {
 	st.id = id
 	st.timestamp = timestamp
 	st.actionString = str
-	st.action.Text = str
-	st.action.Refresh()
 	st.fullAction.Text = str
 	st.fullAction.Refresh()
+
+	if st.Size().Width > 0 {
+		widthAvailableForAction := st.Size().Width - theme.Padding() - st.time.MinSize().Width
+		fullActionWidth := st.fullAction.MinSize().Width
+		if fullActionWidth > widthAvailableForAction {
+			percentAvailable := widthAvailableForAction / fullActionWidth
+			numberOfCharactersThatCanFit := int(percentAvailable * float32(len(st.actionString)))
+			truncatedText := st.actionString[0:numberOfCharactersThatCanFit]
+			if len(truncatedText) > 3 {
+				truncatedText = truncatedText[0:len(truncatedText)-4] + "..."
+			}
+			st.action.Text = truncatedText
+			st.action.Refresh()
+		} else {
+			st.action.Text = st.actionString
+			st.action.Refresh()
+		}
+	}
+
 	st.time.Text = time.Unix(timestamp, 0).Format("1/2 15:04")
 	st.time.Refresh()
 }

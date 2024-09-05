@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
@@ -15,7 +14,7 @@ type thread interface {
 	getID() uuid.UUID
 	getView() *fyne.Container
 	getEntry() *threadEntry
-	chatHistoryScroll() *widget.List
+	chatHistoryScroll() *List
 	getItems() []threadable
 	setItems([]threadable)
 	getButton() *threadButton
@@ -93,10 +92,12 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	// Determine if we are already scrolled down to the bottom of this thread before appending
 	autoscroll := false
 	//location := t.chatHistoryScroll().Offset.Y
-	//height := t.chatHistoryScroll().Content.Size().Height - t.chatHistoryScroll().Size().Height // TODO: export the offset with a custom list
-	//if height == location {
-	//	autoscroll = true
-	//}
+	location := t.chatHistoryScroll().GetScrollOffset()
+	//height := t.chatHistoryScroll().Content.Size().Height - t.chatHistoryScroll().Size().Height
+	height := t.chatHistoryScroll().contentHeight() - t.chatHistoryScroll().Size().Height
+	if height == location {
+		autoscroll = true
+	}
 
 	// Determine if the thread item we are adding will be the latest item in the thread
 	threadItems := t.getItems()

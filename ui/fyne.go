@@ -420,12 +420,16 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?
 		if items, ok := groupItems[g.id]; ok {
 			fyneUI.populateItems(g, items)
+			//g.chatHistoryScroll().recomputeContentHeight(g.chatHistoryScroll().Size())
+			g.chatHistoryScroll().recomputeContentHeight(fyneUI.chatContainer.Size())
 			g.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
 		}
 	}
 	for _, u := range fyneUI.dms { // TODO: store groups and DMs in a shared threads slice?
 		if items, ok := dmItems[u.user.id]; ok {
 			fyneUI.populateItems(u, items)
+			//u.chatHistoryScroll().recomputeContentHeight(u.chatHistoryScroll().Size())
+			u.chatHistoryScroll().recomputeContentHeight(fyneUI.chatContainer.Size())
 			u.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
 		}
 	}

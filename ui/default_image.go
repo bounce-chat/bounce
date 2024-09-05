@@ -35,7 +35,7 @@ func newDefaultImage(id uuid.UUID, text binding.String, size float32, clicked fu
 	text.AddListener(binding.NewDataListener(func() {
 		str, err := text.Get()
 		if err != nil {
-
+			log.Fatal("data bindings are broken")
 		}
 		di.foregroundText.Text = str
 		di.foregroundText.Refresh()

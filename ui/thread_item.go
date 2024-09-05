@@ -6,7 +6,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/data/binding"
-	"fyne.io/fyne/v2/theme"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
@@ -21,18 +20,19 @@ type threadable interface {
 }
 
 type chatBubbleData struct {
-	id            uuid.UUID
-	author        uuid.UUID
-	displayName   binding.String
-	text          string
-	outgoing      bool
-	direct        bool
-	writtenAt     int64
-	profileButton fyne.CanvasObject
+	id          uuid.UUID
+	author      uuid.UUID
+	displayName binding.String
+	initials    binding.String
+	text        string
+	outgoing    bool
+	direct      bool
+	writtenAt   int64
+	//profileButton fyne.CanvasObject
 }
 
 func (cbd *chatBubbleData) populateTemplate(obj fyne.CanvasObject) {
-	obj.(*fyne.Container).Objects[0].(*chatBubble).setData(cbd.displayName, cbd.author, cbd.id, cbd.text, cbd.outgoing, cbd.direct, cbd.writtenAt, cbd.profileButton)
+	obj.(*fyne.Container).Objects[0].(*chatBubble).setData(cbd.displayName, cbd.initials, cbd.author, cbd.id, cbd.text, cbd.outgoing, cbd.direct, cbd.writtenAt)
 	obj.(*fyne.Container).Objects[0].(*chatBubble).Show()
 	obj.(*fyne.Container).Objects[1].(*statusChange).Hide()
 }
@@ -154,7 +154,7 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 
 	outgoing := gm.Author == fyneUI.profile.id
 	displayName := user.name
-	var profileButton fyne.CanvasObject
+	//var profileButton fyne.CanvasObject
 	var notification *fyne.Notification
 	if !outgoing {
 		groupName, err := group.name.Get()
@@ -162,10 +162,10 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			log.Fatal("data bindings are broken")
 		}
 		notification = fyne.NewNotification(groupName, user.getName()+": "+gm.Text)
-		profileButton = newDefaultImage(user.id, user.initials, theme.IconInlineSize(), func() {
-			// TODO: not clickable for some reason
-			log.Info("user wants to open the profile of " + user.getName())
-		})
+		//profileButton = newDefaultImage(user.id, user.initials, theme.IconInlineSize(), func() {
+		//	// TODO: not clickable for some reason
+		//	log.Info("user wants to open the profile of " + user.getName())
+		//})
 	} else {
 		displayName = binding.NewString()
 		displayName.Set("You")
@@ -174,14 +174,15 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 	return &threadItem{
 		id: gm.ID,
 		widgetData: &chatBubbleData{
-			id:            gm.ID,
-			author:        gm.Author,
-			displayName:   displayName,
-			text:          gm.Text,
-			outgoing:      outgoing,
-			direct:        false,
-			writtenAt:     gm.WrittenAt,
-			profileButton: profileButton,
+			id:          gm.ID,
+			author:      gm.Author,
+			displayName: displayName,
+			initials:    user.initials,
+			text:        gm.Text,
+			outgoing:    outgoing,
+			direct:      false,
+			writtenAt:   gm.WrittenAt,
+			//profileButton: profileButton,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
@@ -228,14 +229,15 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 	return &threadItem{
 		id: dm.ID,
 		widgetData: &chatBubbleData{
-			id:            dm.ID,
-			author:        dm.Author,
-			displayName:   displayName,
-			text:          dm.Text,
-			outgoing:      outgoing,
-			direct:        true,
-			writtenAt:     dm.WrittenAt,
-			profileButton: nil,
+			id:          dm.ID,
+			author:      dm.Author,
+			displayName: displayName,
+			initials:    u.initials,
+			text:        dm.Text,
+			outgoing:    outgoing,
+			direct:      true,
+			writtenAt:   dm.WrittenAt,
+			//profileButton: nil,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {

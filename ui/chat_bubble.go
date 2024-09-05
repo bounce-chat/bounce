@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image"
 	"image/color"
 	"strings"
 	"time"
@@ -23,15 +24,11 @@ type chatBubble struct {
 	timestampText *canvas.Text
 	username      *canvas.Text
 	message       *widget.Label
-	icon          fyne.CanvasObject
+	icon          *defaultImage
 	background    *canvas.Rectangle
 }
 
 func newChatBubbleTemplate() *chatBubble {
-	//if icon != nil && outgoing {
-	//	log.Warn("outgoing chat bubbles can't have icons")
-	//}
-
 	// TODO: I'm just using a widget.Label because it comes with wrapping out of the box, and all the wrapping code
 	// isn't exported and non-trivial to copy out.  A canvas.Text would probably be better as I would have more
 	// control over the presentation of the font and could hopefully enable click and drag selection for copying
@@ -53,10 +50,19 @@ func newChatBubbleTemplate() *chatBubble {
 	}
 
 	bubble := &chatBubble{
-		id:            uuid.Nil,
-		username:      username,
-		message:       messageLabel,
-		icon:          nil,
+		id:       uuid.Nil,
+		username: username,
+		message:  messageLabel,
+		icon: &defaultImage{
+			size: theme.IconInlineSize(),
+			foregroundText: &canvas.Text{
+				Text:     "",
+				TextSize: theme.IconInlineSize() / 2,
+			},
+			backgroundColor: canvas.NewImageFromImage(makeCircle(&colorRectangle{
+				rect: image.Rect(0, 0, int(theme.IconInlineSize())*8, int(theme.IconInlineSize())*8),
+			})),
+		},
 		outgoing:      false,
 		direct:        false,
 		timestamp:     0,
@@ -68,7 +74,7 @@ func newChatBubbleTemplate() *chatBubble {
 	return bubble
 }
 
-func (bubble *chatBubble) setData(name binding.String, authorID, id uuid.UUID, message string, outgoing, direct bool, timestamp int64, icon fyne.CanvasObject) { // TODO: export chat.Message for this?
+func (bubble *chatBubble) setData(name, initials binding.String, authorID, id uuid.UUID, message string, outgoing, direct bool, timestamp int64) { // TODO: export chat.Message for this?
 	bubble.id = id
 
 	usernameText, err := name.Get()
@@ -79,7 +85,10 @@ func (bubble *chatBubble) setData(name binding.String, authorID, id uuid.UUID, m
 	bubble.username.Color = uuidToColor(authorID)
 	if outgoing || direct {
 		bubble.username.Hide()
+	} else {
+		bubble.username.Show()
 	}
+	bubble.username.Refresh()
 
 	bubble.message.Text = message
 	bubble.message.Refresh()
@@ -89,12 +98,31 @@ func (bubble *chatBubble) setData(name binding.String, authorID, id uuid.UUID, m
 
 	bubble.outgoing = outgoing
 	bubble.direct = direct
-	bubble.icon = icon
-	//if icon != nil {
-	//	bubble.icon.Show()
-	//	bubble.icon.Refresh()
-	//	bubble.Refresh()
-	//}
+
+	if !outgoing && !direct {
+		iconText, err := initials.Get()
+		if err != nil {
+			log.Fatal("data bindings broken")
+		}
+		bubble.icon.foregroundText.Text = iconText
+		bubble.icon.backgroundColor = canvas.NewImageFromImage(makeCircle(&colorRectangle{
+			rect:  image.Rect(0, 0, int(theme.IconInlineSize())*8, int(theme.IconInlineSize())*8),
+			color: uuidToColor(authorID), // TODO: access this color without recreating the whole thing?
+		}))
+		if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
+			bubble.icon.foregroundText.Color = color.RGBA{0xff, 0xff, 0xff, 0xff}
+		}
+		bubble.icon.clicked = func() { // TODO: not clickable
+			log.WithFields(log.Fields{
+				"id":   authorID,
+				"name": usernameText,
+			}).Info("user wants to open profile via icon")
+		}
+		bubble.icon.Show()
+		bubble.icon.Refresh()
+	} else {
+		bubble.icon.Hide()
+	}
 
 	if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
 		if outgoing {
@@ -152,9 +180,9 @@ func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 		horizontalPaddingMinimumOnOtherSize: theme.Padding() * 7,
 	}
 
-	if bubble.icon != nil {
-		renderer.objects = append(renderer.objects, bubble.icon)
-	}
+	//if bubble.icon != nil {
+	//	renderer.objects = append(renderer.objects, bubble.icon)
+	//}
 
 	return renderer
 }

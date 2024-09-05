@@ -22,10 +22,6 @@ import (
 // ListItemID uniquely identifies an item within a list.
 type ListItemID = int
 
-// Declare conformity with interfaces.
-var _ fyne.Widget = (*List)(nil)
-var _ fyne.Focusable = (*List)(nil)
-
 // List is a widget that pools list items for performance and
 // lays the items out in a vertical direction inside of a scroller.
 // By default, List requires that all items are the same size, but specific
@@ -35,21 +31,13 @@ var _ fyne.Focusable = (*List)(nil)
 type List struct {
 	widget.BaseWidget
 
-	Length       func() int                                  `json:"-"`
-	CreateItem   func() fyne.CanvasObject                    `json:"-"`
-	UpdateItem   func(id ListItemID, item fyne.CanvasObject) `json:"-"`
-	OnSelected   func(id ListItemID)                         `json:"-"`
-	OnUnselected func(id ListItemID)                         `json:"-"`
-
-	// HideSeparators hides the separators between list rows
-	//
-	// Since: 2.5
-	HideSeparators bool
+	Length     func() int                                  `json:"-"`
+	CreateItem func() fyne.CanvasObject                    `json:"-"`
+	UpdateItem func(id ListItemID, item fyne.CanvasObject) `json:"-"`
 
 	currentFocus  ListItemID
 	focused       bool
 	scroller      *container.Scroll
-	selected      []ListItemID
 	itemMin       fyne.Size
 	itemHeights   map[ListItemID]float32
 	offsetY       float32
@@ -66,11 +54,6 @@ func NewList(length func() int, createItem func() fyne.CanvasObject, updateItem 
 	list := &List{Length: length, CreateItem: createItem, UpdateItem: updateItem}
 	list.ExtendBaseWidget(list)
 	return list
-}
-
-func (l *List) super() fyne.Widget {
-	// TODO: expose the one in base widget
-	return nil
 }
 
 // CreateRenderer is a private method to Fyne which links this widget to its renderer.
@@ -188,34 +171,9 @@ func (l *List) Resize(s fyne.Size) {
 		return
 	}
 
+	//log.WithFields(log.Fields{"offset": l.scroller.Offset}).Warn("scroller offset at resize")
 	l.offsetUpdated(l.scroller.Offset)
 	l.scroller.Content.(*fyne.Container).Layout.(*listLayout).updateList(false)
-}
-
-// Select add the item identified by the given ID to the selection.
-func (l *List) Select(id ListItemID) {
-	if len(l.selected) > 0 && id == l.selected[0] {
-		return
-	}
-	length := 0
-	if f := l.Length; f != nil {
-		length = f()
-	}
-	if id < 0 || id >= length {
-		return
-	}
-	old := l.selected
-	l.selected = []ListItemID{id}
-	defer func() {
-		if f := l.OnUnselected; f != nil && len(old) > 0 {
-			f(old[0])
-		}
-		if f := l.OnSelected; f != nil {
-			f(id)
-		}
-	}()
-	l.scrollTo(id)
-	l.Refresh()
 }
 
 // ScrollTo scrolls to the item represented by id
@@ -290,8 +248,8 @@ func (l *List) GetScrollOffset() float32 {
 // Implements: fyne.Focusable
 func (l *List) TypedKey(event *fyne.KeyEvent) {
 	switch event.Name {
-	case fyne.KeySpace:
-		l.Select(l.currentFocus)
+	//case fyne.KeySpace:
+	//l.Select(l.currentFocus)
 	case fyne.KeyDown:
 		if f := l.Length; f != nil && l.currentFocus >= f()-1 {
 			return
@@ -316,37 +274,6 @@ func (l *List) TypedKey(event *fyne.KeyEvent) {
 // Implements: fyne.Focusable
 func (l *List) TypedRune(_ rune) {
 	// intentionally left blank
-}
-
-// Unselect removes the item identified by the given ID from the selection.
-func (l *List) Unselect(id ListItemID) {
-	if len(l.selected) == 0 || l.selected[0] != id {
-		return
-	}
-
-	l.selected = nil
-	l.Refresh()
-	if f := l.OnUnselected; f != nil {
-		f(id)
-	}
-}
-
-// UnselectAll removes all items from the selection.
-//
-// Since: 2.1
-func (l *List) UnselectAll() {
-	if len(l.selected) == 0 {
-		return
-	}
-
-	selected := l.selected
-	l.selected = nil
-	l.Refresh()
-	if f := l.OnUnselected; f != nil {
-		for _, id := range selected {
-			f(id)
-		}
-	}
 }
 
 func (l *List) contentMinSize() fyne.Size {
@@ -375,6 +302,25 @@ func (l *List) contentMinSize() fyne.Size {
 	height += float32(items-totalCustom) * templateHeight
 
 	return fyne.NewSize(l.itemMin.Width, height+separatorThickness*float32(items-1))
+}
+
+//func (l *List) scrollerHeight() float32 {
+//	return l.scroller.Size().Height
+//}
+func (l *List) contentHeight() float32 {
+	if l.scroller == nil {
+		return 0
+	}
+	return l.scroller.Content.(*fyne.Container).Size().Height
+}
+
+func (l *List) recomputeContentHeight(currentSize fyne.Size) {
+	sizer := l.CreateItem()
+	for i := 0; i < l.Length(); i++ {
+		l.UpdateItem(i, sizer)
+		sizer.Resize(currentSize)
+		l.SetItemHeight(i, sizer.MinSize().Height)
+	}
 }
 
 // fills l.visibleRowHeights and also returns offY and minRow
@@ -468,30 +414,30 @@ func (l *listRenderer) Refresh() {
 	if f := l.list.CreateItem; f != nil {
 		item := createItemAndApplyThemeScope(f, l.list)
 		l.list.itemMin = item.MinSize()
+		//minSize := item.MinSize()
+		//minSize.Height = 0 //27
+		//l.list.itemMin = minSize
 	}
 	l.Layout(l.list.Size())
 	l.scroller.Refresh()
 	layout := l.layout.Layout.(*listLayout)
 	layout.updateList(false)
 
-	for _, s := range layout.separators {
-		s.Refresh()
-	}
-	canvas.Refresh(l.list.super())
-}
+	//for _, s := range layout.separators {
+	//	s.Refresh()
+	//}
 
-// Declare conformity with interfaces.
-var _ fyne.Widget = (*listItem)(nil)
-var _ fyne.Tappable = (*listItem)(nil)
-var _ desktop.Hoverable = (*listItem)(nil)
+	//canvas.Refresh(l.list.super())
+	canvas.Refresh(l.list)
+}
 
 type listItem struct {
 	widget.BaseWidget
 
-	onTapped          func()
-	background        *canvas.Rectangle
-	child             fyne.CanvasObject
-	hovered, selected bool
+	onTapped func()
+	//background *canvas.Rectangle
+	child fyne.CanvasObject
+	//hovered, selected bool
 }
 
 func newListItem(child fyne.CanvasObject, tapped func()) *listItem {
@@ -504,22 +450,18 @@ func newListItem(child fyne.CanvasObject, tapped func()) *listItem {
 	return li
 }
 
-func (li *listItem) super() fyne.Widget {
-	// TODO: expose the one in base widget
-	return nil
-}
-
 // CreateRenderer is a private method to Fyne which links this widget to its renderer.
 func (li *listItem) CreateRenderer() fyne.WidgetRenderer {
 	li.ExtendBaseWidget(li)
-	th := li.Theme()
-	v := fyne.CurrentApp().Settings().ThemeVariant()
+	//th := li.Theme()
+	//v := fyne.CurrentApp().Settings().ThemeVariant()
 
-	li.background = canvas.NewRectangle(th.Color(theme.ColorNameHover, v))
-	li.background.CornerRadius = th.Size(theme.SizeNameSelectionRadius)
-	li.background.Hide()
+	//li.background = canvas.NewRectangle(th.Color(theme.ColorNameHover, v))
+	//li.background.CornerRadius = th.Size(theme.SizeNameSelectionRadius)
+	//li.background.Hide()
 
-	objects := []fyne.CanvasObject{li.background, li.child}
+	//objects := []fyne.canvasobject{li.background, li.child}
+	objects := []fyne.CanvasObject{li.child}
 
 	return &listItemRenderer{NewBaseRenderer(objects), li}
 }
@@ -531,25 +473,24 @@ func (li *listItem) MinSize() fyne.Size {
 }
 
 // MouseIn is called when a desktop pointer enters the widget.
-func (li *listItem) MouseIn(*desktop.MouseEvent) {
-	li.hovered = true
-	li.Refresh()
-}
+//func (li *listItem) MouseIn(*desktop.MouseEvent) {
+//	li.hovered = true
+//	li.Refresh()
+//}
 
 // MouseMoved is called when a desktop pointer hovers over the widget.
 func (li *listItem) MouseMoved(*desktop.MouseEvent) {
 }
 
 // MouseOut is called when a desktop pointer exits the widget.
-func (li *listItem) MouseOut() {
-	li.hovered = false
-	li.Refresh()
-}
+//func (li *listItem) MouseOut() {
+//	li.hovered = false
+//	li.Refresh()
+//}
 
 // Tapped is called when a pointer tapped event is captured and triggers any tap handler.
 func (li *listItem) Tapped(*fyne.PointEvent) {
 	if li.onTapped != nil {
-		li.selected = true
 		li.Refresh()
 		li.onTapped()
 	}
@@ -572,30 +513,25 @@ func (li *listItemRenderer) MinSize() fyne.Size {
 
 // Layout the components of the listItem widget.
 func (li *listItemRenderer) Layout(size fyne.Size) {
-	li.item.background.Resize(size)
+	//li.item.background.Resize(size)
 	li.item.child.Resize(size)
 }
 
 func (li *listItemRenderer) Refresh() {
-	th := li.item.Theme()
-	v := fyne.CurrentApp().Settings().ThemeVariant()
+	//th := li.item.Theme()
+	//v := fyne.CurrentApp().Settings().ThemeVariant()
 
-	li.item.background.CornerRadius = th.Size(theme.SizeNameSelectionRadius)
-	if li.item.selected {
-		li.item.background.FillColor = th.Color(theme.ColorNameSelection, v)
-		li.item.background.Show()
-	} else if li.item.hovered {
-		li.item.background.FillColor = th.Color(theme.ColorNameHover, v)
-		li.item.background.Show()
-	} else {
-		li.item.background.Hide()
-	}
-	li.item.background.Refresh()
-	canvas.Refresh(li.item.super())
+	//li.item.background.CornerRadius = th.Size(theme.SizeNameSelectionRadius)
+	//if li.item.hovered {
+	//	li.item.background.FillColor = th.Color(theme.ColorNameHover, v)
+	//	li.item.background.Show()
+	//} else {
+	//	li.item.background.Hide()
+	//}
+	//li.item.background.Refresh()
+	//canvas.Refresh(li.item.super())
+	canvas.Refresh(li.item)
 }
-
-// Declare conformity with Layout interface.
-var _ fyne.Layout = (*listLayout)(nil)
 
 type listItemAndID struct {
 	item *listItem
@@ -603,9 +539,9 @@ type listItemAndID struct {
 }
 
 type listLayout struct {
-	list       *List
-	separators []fyne.CanvasObject
-	children   []fyne.CanvasObject
+	list *List
+	//separators []fyne.CanvasObject
+	children []fyne.CanvasObject
 
 	itemPool          syncPool
 	visible           []listItemAndID
@@ -648,40 +584,23 @@ func (l *listLayout) offsetUpdated(pos fyne.Position) {
 	if l.list.offsetY == pos.Y {
 		return
 	}
+
 	l.list.offsetY = pos.Y
 	l.updateList(true)
 }
 
 func (l *listLayout) setupListItem(li *listItem, id ListItemID, focus bool) {
-	previousIndicator := li.selected
-	li.selected = false
-	for _, s := range l.list.selected {
-		if id == s {
-			li.selected = true
-			break
-		}
-	}
-	if focus {
-		li.hovered = true
-		li.Refresh()
-	} else if previousIndicator != li.selected || li.hovered {
-		li.hovered = false
-		li.Refresh()
-	}
+	//if focus {
+	//	li.hovered = true
+	//	li.Refresh()
+	//}
 	if f := l.list.UpdateItem; f != nil {
 		f(id, li.child)
-	}
-	li.onTapped = func() {
-		if !fyne.CurrentDevice().IsMobile() {
-			canvas := fyne.CurrentApp().Driver().CanvasForObject(l.list)
-			if canvas != nil {
-				canvas.Focus(l.list)
-			}
-
-			l.list.currentFocus = id
-		}
-
-		l.list.Select(id)
+		//log.WithFields(log.Fields{
+		//	"id":     id,
+		//	"height": li.child.MinSize().Height,
+		//}).Warn("setting up item")
+		l.list.SetItemHeight(id, li.child.MinSize().Height) // TODO: does this work?  kinda, but scrolling up gets weird
 	}
 }
 
@@ -747,13 +666,11 @@ func (l *listLayout) updateList(newOnly bool) {
 		}
 	}
 
-	l.updateSeparators()
-
 	c := l.list.scroller.Content.(*fyne.Container)
 	oldObjLen := len(c.Objects)
 	c.Objects = c.Objects[:0]
 	c.Objects = append(c.Objects, l.children...)
-	c.Objects = append(c.Objects, l.separators...)
+	//c.Objects = append(c.Objects, l.separators...)
 	l.nilOldSliceData(c.Objects, len(c.Objects), oldObjLen)
 
 	// make a local deep copy of l.visible since rest of this function is unlocked
@@ -786,44 +703,6 @@ func (l *listLayout) updateList(newOnly bool) {
 	*visiblePtr = visible
 	l.slicePool.Put(wasVisiblePtr)
 	l.slicePool.Put(visiblePtr)
-}
-
-func (l *listLayout) updateSeparators() {
-	/*
-		if l.list.HideSeparators {
-			l.separators = nil
-			return
-		}
-		if lenChildren := len(l.children); lenChildren > 1 {
-			if lenSep := len(l.separators); lenSep > lenChildren {
-				l.separators = l.separators[:lenChildren]
-			} else {
-				for i := lenSep; i < lenChildren; i++ {
-
-					sep := NewSeparator()
-					if cache.OverrideThemeMatchingScope(sep, l.list) {
-						sep.Refresh()
-					}
-
-					l.separators = append(l.separators, sep)
-				}
-			}
-		} else {
-			l.separators = nil
-		}
-
-		th := l.list.Theme()
-		separatorThickness := th.Size(theme.SizeNameSeparatorThickness)
-		dividerOff := (th.Size(theme.SizeNamePadding) + separatorThickness) / 2
-		for i, child := range l.children {
-			if i == 0 {
-				continue
-			}
-			l.separators[i].Move(fyne.NewPos(0, child.Position().Y-dividerOff))
-			l.separators[i].Resize(fyne.NewSize(l.list.Size().Width, separatorThickness))
-			l.separators[i].Show()
-		}
-	*/
 }
 
 // invariant: visible is in ascending order of IDs
@@ -864,7 +743,7 @@ func createItemAndApplyThemeScope(f func() fyne.CanvasObject, scope fyne.Widget)
 	return item
 }
 
-type BaseRenderer struct {
+type BaseRenderer struct { // TODO: promote these?
 	objects []fyne.CanvasObject
 }
 
@@ -890,167 +769,6 @@ func (r *BaseRenderer) Objects() []fyne.CanvasObject {
 func (r *BaseRenderer) SetObjects(objects []fyne.CanvasObject) {
 	r.objects = objects
 }
-
-/*
-type BaseWidget struct {
-	size     async.Size
-	position async.Position
-	Hidden   bool
-
-	//impl         atomic.Pointer[fyne.Widget] //TODO: syntax?
-	propertyLock sync.RWMutex
-	themeCache   fyne.Theme
-}
-
-// ExtendBaseWidget is used by an extending widget to make use of BaseWidget functionality.
-func (w *BaseWidget) ExtendBaseWidget(wid fyne.Widget) {
-	impl := w.super()
-	if impl != nil {
-		return
-	}
-
-	w.impl.Store(&wid)
-}
-
-// Size gets the current size of this widget.
-func (w *BaseWidget) Size() fyne.Size {
-	return w.size.Load()
-}
-
-// Resize sets a new size for a widget.
-// Note this should not be used if the widget is being managed by a Layout within a Container.
-func (w *BaseWidget) Resize(size fyne.Size) {
-	if size == w.Size() {
-		return
-	}
-
-	w.size.Store(size)
-
-	impl := w.super()
-	if impl == nil {
-		return
-	}
-	cache.Renderer(impl).Layout(size)
-}
-
-// Position gets the current position of this widget, relative to its parent.
-func (w *BaseWidget) Position() fyne.Position {
-	return w.position.Load()
-}
-
-// Move the widget to a new position, relative to its parent.
-// Note this should not be used if the widget is being managed by a Layout within a Container.
-func (w *BaseWidget) Move(pos fyne.Position) {
-	w.position.Store(pos)
-	internalWidget.Repaint(w.super())
-}
-
-// MinSize for the widget - it should never be resized below this value.
-func (w *BaseWidget) MinSize() fyne.Size {
-	impl := w.super()
-
-	r := cache.Renderer(impl)
-	if r == nil {
-		return fyne.Size{}
-	}
-
-	return r.MinSize()
-}
-
-// Visible returns whether or not this widget should be visible.
-// Note that this may not mean it is currently visible if a parent has been hidden.
-func (w *BaseWidget) Visible() bool {
-	w.propertyLock.RLock()
-	defer w.propertyLock.RUnlock()
-
-	return !w.Hidden
-}
-
-// Show this widget so it becomes visible
-func (w *BaseWidget) Show() {
-	if w.Visible() {
-		return
-	}
-
-	w.propertyLock.Lock()
-	w.Hidden = false
-	w.propertyLock.Unlock()
-
-	impl := w.super()
-	if impl == nil {
-		return
-	}
-	impl.Refresh()
-}
-
-// Hide this widget so it is no longer visible
-func (w *BaseWidget) Hide() {
-	if !w.Visible() {
-		return
-	}
-
-	w.propertyLock.Lock()
-	w.Hidden = true
-	w.propertyLock.Unlock()
-
-	impl := w.super()
-	if impl == nil {
-		return
-	}
-	canvas.Refresh(impl)
-}
-
-// Refresh causes this widget to be redrawn in it's current state
-func (w *BaseWidget) Refresh() {
-	impl := w.super()
-	if impl == nil {
-		return
-	}
-
-	w.propertyLock.Lock()
-	w.themeCache = nil
-	w.propertyLock.Unlock()
-
-	render := cache.Renderer(impl)
-	render.Refresh()
-}
-
-// Theme returns a cached Theme instance for this widget (or its extending widget).
-// This will be the app theme in most cases, or a widget specific theme if it is inside a ThemeOverride container.
-//
-// Since: 2.5
-func (w *BaseWidget) Theme() fyne.Theme {
-	w.propertyLock.RLock()
-	defer w.propertyLock.RUnlock()
-	return w.themeWithLock()
-}
-
-func (w *BaseWidget) themeWithLock() fyne.Theme {
-	cached := w.themeCache
-	if cached == nil {
-		cached = cache.WidgetTheme(w.super())
-		// don't cache the default as it may change
-		if cached == nil {
-			return theme.Current()
-		}
-
-		w.themeCache = cached
-	}
-
-	return cached
-}
-
-// super will return the actual object that this represents.
-// If extended then this is the extending widget, otherwise it is nil.
-func (w *BaseWidget) super() fyne.Widget {
-	impl := w.impl.Load()
-	if impl == nil {
-		return nil
-	}
-
-	return *impl
-}
-*/
 
 type syncPool struct {
 	sync.Pool

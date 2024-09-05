@@ -25,7 +25,7 @@ type directMessage struct {
 	header                    *fyne.Container
 	button                    *threadButton
 	notificationsEnabledCheck *widget.Check
-	scroll                    *widget.List
+	scroll                    *List
 	items                     []threadable
 	entry                     *threadEntry
 	retentionSelection        *widget.Select
@@ -43,7 +43,7 @@ func (dm *directMessage) getEntry() *threadEntry {
 	return dm.entry
 }
 
-func (dm *directMessage) chatHistoryScroll() *widget.List {
+func (dm *directMessage) chatHistoryScroll() *List {
 	return dm.scroll
 }
 
@@ -93,7 +93,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 		items:                   []threadable{},
 		lastMessage:             time.Now().Unix(),
 	}
-	dm.scroll = widget.NewList(
+	dm.scroll = NewList(
 		func() int {
 			return len(dm.items)
 		},

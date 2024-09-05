@@ -50,7 +50,7 @@ type group struct {
 	restrictUserManagementCheck *widget.Check
 	restrictGroupEditsCheck     *widget.Check
 	restrictPostingCheck        *widget.Check
-	scroll                      *widget.List
+	scroll                      *List
 	newUserSearchEntry          *widget.Entry
 	availableNewUsersScroll     *container.Scroll
 	currentUsersContainer       *container.Scroll
@@ -76,7 +76,7 @@ func (g *group) getEntry() *threadEntry {
 	return g.entry
 }
 
-func (g *group) chatHistoryScroll() *widget.List {
+func (g *group) chatHistoryScroll() *List {
 	return g.scroll
 }
 
@@ -345,7 +345,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		editUserDialogs:         make(map[uuid.UUID]dialog.Dialog),
 		lastMessage:             time.Now().Unix(),
 	}
-	group.scroll = widget.NewList(
+	group.scroll = NewList(
 		func() int {
 			return len(group.items)
 		},
