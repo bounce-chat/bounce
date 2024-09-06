@@ -420,24 +420,33 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?
 		if items, ok := groupItems[g.id]; ok {
 			fyneUI.populateItems(g, items)
-			//g.chatHistoryScroll().recomputeContentHeight(g.chatHistoryScroll().Size())
-			//if fyne.CurrentDevice().IsMobile() {
-			//	g.chatHistoryScroll().recomputeContentHeight(fyneUI.mainWindow.Canvas().Size())
-			//} else {
-			g.chatHistoryScroll().setItemHeights(fyneUI.chatContainer.Size())
-			//}
+			//g.chatHistoryScroll().setItemHeights(g.chatHistoryScroll().Size())
+			if fyne.CurrentDevice().IsMobile() {
+				g.chatHistoryScroll().setItemHeights(fyneUI.mainWindow.Canvas().Size())
+			} else {
+				g.chatHistoryScroll().setItemHeights(fyne.Size{
+					Width:  fyneUI.mainWindow.Canvas().Size().Width - threadButtonHeight*5,
+					Height: fyneUI.mainWindow.Canvas().Size().Height,
+				})
+				//g.chatHistoryScroll().setItemHeights(fyneUI.chatContainer.Size())
+			}
 			g.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
 		}
 	}
 	for _, u := range fyneUI.dms { // TODO: store groups and DMs in a shared threads slice?
 		if items, ok := dmItems[u.user.id]; ok {
 			fyneUI.populateItems(u, items)
-			//u.chatHistoryScroll().recomputeContentHeight(u.chatHistoryScroll().Size())
-			//if fyne.CurrentDevice().IsMobile() {
-			//	u.chatHistoryScroll().recomputeContentHeight(fyneUI.mainWindow.Canvas().Size())
-			//} else {
-			u.chatHistoryScroll().setItemHeights(fyneUI.chatContainer.Size())
-			//}
+			//u.chatHistoryScroll().setItemHeights(u.chatHistoryScroll().Size())
+			if fyne.CurrentDevice().IsMobile() {
+				u.chatHistoryScroll().setItemHeights(fyneUI.mainWindow.Canvas().Size())
+			} else {
+				//u.chatHistoryScroll().setItemHeights(fyneUI.mainWindow.Canvas().Size())
+				//u.chatHistoryScroll().setItemHeights(fyneUI.chatContainer.Size())
+				u.chatHistoryScroll().setItemHeights(fyne.Size{
+					Width:  fyneUI.mainWindow.Canvas().Size().Width - threadButtonHeight*5,
+					Height: fyneUI.mainWindow.Canvas().Size().Height,
+				})
+			}
 			u.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
 		}
 	}

@@ -149,7 +149,7 @@ func (l *List) scrollTo(id ListItemID) {
 				height = h
 			}
 
-			y += height + separatorThickness
+			y += height // + separatorThickness
 			lastItemHeight = height
 		}
 	}
@@ -310,7 +310,15 @@ func (l *List) setItemHeights(currentSize fyne.Size) {
 	sizer := l.CreateItem()
 	for i := 0; i < l.Length(); i++ {
 		l.UpdateItem(i, sizer)
-		//sizer.Resize(currentSize)
+		sizer.Resize(currentSize)
+		//log.WithFields(log.Fields{
+		//	"currentSize.Width":    currentSize.Width,
+		//	"currentSize.Height":   currentSize.Height,
+		//	"sizer.Widht":          sizer.Size().Width,
+		//	"sizer.Height":         sizer.Size().Height,
+		//	"sizer.MinSize.Height": sizer.MinSize().Height,
+		//	"sizer.MinSize.Width":  sizer.MinSize().Width,
+		//}).Warn("size check")
 		l.SetItemHeight(i, sizer.MinSize().Height)
 	}
 }
