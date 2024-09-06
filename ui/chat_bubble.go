@@ -282,7 +282,7 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	if !renderer.bubble.outgoing {
 		// Outgoing messages are right justified, so we undo the offset calculation, but we scoot out a bit if we need to fit an icon in
 		xOffset = 0
-		if renderer.icon != nil {
+		if renderer.icon.Visible() {
 			xOffset += theme.IconInlineSize() + renderer.horizontalPaddingSideOfIcon
 		}
 	}
@@ -351,7 +351,7 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	})
 
 	// If an icon was supplied, place it at the bottom left of the message bubble
-	if renderer.icon != nil {
+	if renderer.icon.Visible() {
 		iconY := renderer.verticalPaddingAboveMessage +
 			messageSize.Height +
 			renderer.verticalPaddingAboveTimestamp +
