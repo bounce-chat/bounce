@@ -421,7 +421,11 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		if items, ok := groupItems[g.id]; ok {
 			fyneUI.populateItems(g, items)
 			//g.chatHistoryScroll().recomputeContentHeight(g.chatHistoryScroll().Size())
-			g.chatHistoryScroll().recomputeContentHeight(fyneUI.chatContainer.Size())
+			//if fyne.CurrentDevice().IsMobile() {
+			//	g.chatHistoryScroll().recomputeContentHeight(fyneUI.mainWindow.Canvas().Size())
+			//} else {
+			g.chatHistoryScroll().setItemHeights(fyneUI.chatContainer.Size())
+			//}
 			g.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
 		}
 	}
@@ -429,7 +433,11 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		if items, ok := dmItems[u.user.id]; ok {
 			fyneUI.populateItems(u, items)
 			//u.chatHistoryScroll().recomputeContentHeight(u.chatHistoryScroll().Size())
-			u.chatHistoryScroll().recomputeContentHeight(fyneUI.chatContainer.Size())
+			//if fyne.CurrentDevice().IsMobile() {
+			//	u.chatHistoryScroll().recomputeContentHeight(fyneUI.mainWindow.Canvas().Size())
+			//} else {
+			u.chatHistoryScroll().setItemHeights(fyneUI.chatContainer.Size())
+			//}
 			u.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
 		}
 	}

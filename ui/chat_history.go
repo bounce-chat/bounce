@@ -14,8 +14,6 @@ import (
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 
-	//"fyne.io/fyne/v2/internal/cache"
-	//"fyne.io/fyne/v2/internal/widget"
 	"fyne.io/fyne/v2/theme"
 )
 
@@ -171,7 +169,6 @@ func (l *List) Resize(s fyne.Size) {
 		return
 	}
 
-	//log.WithFields(log.Fields{"offset": l.scroller.Offset}).Warn("scroller offset at resize")
 	l.offsetUpdated(l.scroller.Offset)
 	l.scroller.Content.(*fyne.Container).Layout.(*listLayout).updateList(false)
 }
@@ -248,8 +245,6 @@ func (l *List) GetScrollOffset() float32 {
 // Implements: fyne.Focusable
 func (l *List) TypedKey(event *fyne.KeyEvent) {
 	switch event.Name {
-	//case fyne.KeySpace:
-	//l.Select(l.currentFocus)
 	case fyne.KeyDown:
 		if f := l.Length; f != nil && l.currentFocus >= f()-1 {
 			return
@@ -304,9 +299,6 @@ func (l *List) contentMinSize() fyne.Size {
 	return fyne.NewSize(l.itemMin.Width, height+separatorThickness*float32(items-1))
 }
 
-//func (l *List) scrollerHeight() float32 {
-//	return l.scroller.Size().Height
-//}
 func (l *List) contentHeight() float32 {
 	if l.scroller == nil {
 		return 0
@@ -314,11 +306,11 @@ func (l *List) contentHeight() float32 {
 	return l.scroller.Content.(*fyne.Container).Size().Height
 }
 
-func (l *List) recomputeContentHeight(currentSize fyne.Size) {
+func (l *List) setItemHeights(currentSize fyne.Size) {
 	sizer := l.CreateItem()
 	for i := 0; i < l.Length(); i++ {
 		l.UpdateItem(i, sizer)
-		sizer.Resize(currentSize)
+		//sizer.Resize(currentSize)
 		l.SetItemHeight(i, sizer.MinSize().Height)
 	}
 }
@@ -414,20 +406,12 @@ func (l *listRenderer) Refresh() {
 	if f := l.list.CreateItem; f != nil {
 		item := createItemAndApplyThemeScope(f, l.list)
 		l.list.itemMin = item.MinSize()
-		//minSize := item.MinSize()
-		//minSize.Height = 0 //27
-		//l.list.itemMin = minSize
 	}
 	l.Layout(l.list.Size())
 	l.scroller.Refresh()
 	layout := l.layout.Layout.(*listLayout)
 	layout.updateList(false)
 
-	//for _, s := range layout.separators {
-	//	s.Refresh()
-	//}
-
-	//canvas.Refresh(l.list.super())
 	canvas.Refresh(l.list)
 }
 
@@ -435,9 +419,7 @@ type listItem struct {
 	widget.BaseWidget
 
 	onTapped func()
-	//background *canvas.Rectangle
-	child fyne.CanvasObject
-	//hovered, selected bool
+	child    fyne.CanvasObject
 }
 
 func newListItem(child fyne.CanvasObject, tapped func()) *listItem {
@@ -453,14 +435,7 @@ func newListItem(child fyne.CanvasObject, tapped func()) *listItem {
 // CreateRenderer is a private method to Fyne which links this widget to its renderer.
 func (li *listItem) CreateRenderer() fyne.WidgetRenderer {
 	li.ExtendBaseWidget(li)
-	//th := li.Theme()
-	//v := fyne.CurrentApp().Settings().ThemeVariant()
 
-	//li.background = canvas.NewRectangle(th.Color(theme.ColorNameHover, v))
-	//li.background.CornerRadius = th.Size(theme.SizeNameSelectionRadius)
-	//li.background.Hide()
-
-	//objects := []fyne.canvasobject{li.background, li.child}
 	objects := []fyne.CanvasObject{li.child}
 
 	return &listItemRenderer{NewBaseRenderer(objects), li}
@@ -472,21 +447,9 @@ func (li *listItem) MinSize() fyne.Size {
 	return li.BaseWidget.MinSize()
 }
 
-// MouseIn is called when a desktop pointer enters the widget.
-//func (li *listItem) MouseIn(*desktop.MouseEvent) {
-//	li.hovered = true
-//	li.Refresh()
-//}
-
 // MouseMoved is called when a desktop pointer hovers over the widget.
 func (li *listItem) MouseMoved(*desktop.MouseEvent) {
 }
-
-// MouseOut is called when a desktop pointer exits the widget.
-//func (li *listItem) MouseOut() {
-//	li.hovered = false
-//	li.Refresh()
-//}
 
 // Tapped is called when a pointer tapped event is captured and triggers any tap handler.
 func (li *listItem) Tapped(*fyne.PointEvent) {
@@ -518,18 +481,6 @@ func (li *listItemRenderer) Layout(size fyne.Size) {
 }
 
 func (li *listItemRenderer) Refresh() {
-	//th := li.item.Theme()
-	//v := fyne.CurrentApp().Settings().ThemeVariant()
-
-	//li.item.background.CornerRadius = th.Size(theme.SizeNameSelectionRadius)
-	//if li.item.hovered {
-	//	li.item.background.FillColor = th.Color(theme.ColorNameHover, v)
-	//	li.item.background.Show()
-	//} else {
-	//	li.item.background.Hide()
-	//}
-	//li.item.background.Refresh()
-	//canvas.Refresh(li.item.super())
 	canvas.Refresh(li.item)
 }
 
@@ -539,8 +490,7 @@ type listItemAndID struct {
 }
 
 type listLayout struct {
-	list *List
-	//separators []fyne.CanvasObject
+	list     *List
 	children []fyne.CanvasObject
 
 	itemPool          syncPool
@@ -590,17 +540,9 @@ func (l *listLayout) offsetUpdated(pos fyne.Position) {
 }
 
 func (l *listLayout) setupListItem(li *listItem, id ListItemID, focus bool) {
-	//if focus {
-	//	li.hovered = true
-	//	li.Refresh()
-	//}
 	if f := l.list.UpdateItem; f != nil {
 		f(id, li.child)
-		//log.WithFields(log.Fields{
-		//	"id":     id,
-		//	"height": li.child.MinSize().Height,
-		//}).Warn("setting up item")
-		l.list.SetItemHeight(id, li.child.MinSize().Height) // TODO: does this work?  kinda, but scrolling up gets weird
+		l.list.SetItemHeight(id, li.child.MinSize().Height)
 	}
 }
 
@@ -670,7 +612,6 @@ func (l *listLayout) updateList(newOnly bool) {
 	oldObjLen := len(c.Objects)
 	c.Objects = c.Objects[:0]
 	c.Objects = append(c.Objects, l.children...)
-	//c.Objects = append(c.Objects, l.separators...)
 	l.nilOldSliceData(c.Objects, len(c.Objects), oldObjLen)
 
 	// make a local deep copy of l.visible since rest of this function is unlocked

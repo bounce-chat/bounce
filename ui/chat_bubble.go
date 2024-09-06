@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"math"
 	"strings"
 	"time"
 
@@ -138,17 +139,17 @@ func (bubble *chatBubble) setData(name, initials binding.String, authorID, id uu
 		}
 	}
 
-	name.AddListener(binding.NewDataListener(func() {
-		nameStr, err := name.Get()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error getting data binding")
-		}
-		bubble.username.Text = nameStr
-		bubble.username.Refresh()
-		bubble.Refresh()
-	}))
+	//name.AddListener(binding.NewDataListener(func() {
+	//	nameStr, err := name.Get()
+	//	if err != nil {
+	//		log.WithFields(log.Fields{
+	//			"error": err.Error(),
+	//		}).Fatal("error getting data binding")
+	//	}
+	//	bubble.username.Text = nameStr
+	//	bubble.username.Refresh()
+	//	bubble.Refresh()
+	//}))
 }
 
 func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
@@ -179,10 +180,6 @@ func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 		horizontalPaddingSideOfIcon:         theme.Padding() * 2,
 		horizontalPaddingMinimumOnOtherSize: theme.Padding() * 7,
 	}
-
-	//if bubble.icon != nil {
-	//	renderer.objects = append(renderer.objects, bubble.icon)
-	//}
 
 	return renderer
 }
@@ -272,6 +269,9 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 	if maximumTextWidth+allHorizontalPadding < availableWidth {
 		// We're not going to wrap, we can use up all the space that isn't the text with padding
 		xOffset = availableWidth - maximumTextWidth
+	} else {
+		// TODO: unclear why this is required
+		xOffset += 30
 	}
 	// Lastly, there's going to be padding on the justified side of the bubble.  Reduce the offset for that.
 	xOffset -= renderer.horizontalPaddingSideOfBackground * 4
@@ -304,7 +304,7 @@ func (renderer *bubbleRenderer) Layout(size fyne.Size) {
 
 	renderer.background.Resize(fyne.Size{
 		Height: backgroundHeight,
-		Width:  maximumTextWidth + renderer.horizontalPaddingSideOfBackground*2,
+		Width:  float32(math.Min(float64(maximumTextWidth), float64(renderer.message.Size().Width))) + renderer.horizontalPaddingSideOfBackground*2,
 	}) // TODO: look into using a subtractive size like the oginal message sizer
 
 	// Put the username on the top of the bubble
