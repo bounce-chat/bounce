@@ -24,6 +24,9 @@ const networkStateOffline = 2
 const setupStepInit = 0
 const setupStepProfile = 1
 
+const defaultHeight = float32(600)
+const defaultWidth = float32(800)
+
 //
 // An implementation of the Bounce chat.UI interface using Fyne
 //
@@ -132,7 +135,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 		// TODO: maybe we actually want to use this to display a closing message and wait for the network to go offline
 		fyneUI.Quit()
 	})
-	fyneUI.mainWindow.Resize(fyne.Size{Height: 600, Width: 800})
+	fyneUI.mainWindow.Resize(fyne.Size{Height: defaultHeight, Width: defaultWidth})
 	fyneUI.mainWindow.Canvas().SetOnTypedKey(func(ev *fyne.KeyEvent) {
 		if fyne.CurrentDevice().IsMobile() && ev.Name == mobile.KeyBack {
 			fyneUI.mobileBack()
@@ -420,35 +423,30 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?
 		if items, ok := groupItems[g.id]; ok {
 			fyneUI.populateItems(g, items)
-			//g.chatHistoryScroll().setItemHeights(g.chatHistoryScroll().Size())
-			if fyne.CurrentDevice().IsMobile() {
-				g.chatHistoryScroll().setItemHeights(fyneUI.mainWindow.Canvas().Size())
-			} else {
-				g.chatHistoryScroll().setItemHeights(fyne.Size{
-					Width:  fyneUI.mainWindow.Canvas().Size().Width - threadButtonHeight*5,
-					Height: fyneUI.mainWindow.Canvas().Size().Height,
-				})
-				//g.chatHistoryScroll().setItemHeights(fyneUI.chatContainer.Size())
-			}
+			g.chatHistoryScroll().setItemHeights(fyneUI.chatContainerSizeAtStartup())
 			g.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
 		}
 	}
 	for _, u := range fyneUI.dms { // TODO: store groups and DMs in a shared threads slice?
 		if items, ok := dmItems[u.user.id]; ok {
 			fyneUI.populateItems(u, items)
-			//u.chatHistoryScroll().setItemHeights(u.chatHistoryScroll().Size())
-			if fyne.CurrentDevice().IsMobile() {
-				u.chatHistoryScroll().setItemHeights(fyneUI.mainWindow.Canvas().Size())
-			} else {
-				//u.chatHistoryScroll().setItemHeights(fyneUI.mainWindow.Canvas().Size())
-				//u.chatHistoryScroll().setItemHeights(fyneUI.chatContainer.Size())
-				u.chatHistoryScroll().setItemHeights(fyne.Size{
-					Width:  fyneUI.mainWindow.Canvas().Size().Width - threadButtonHeight*5,
-					Height: fyneUI.mainWindow.Canvas().Size().Height,
-				})
-			}
+			u.chatHistoryScroll().setItemHeights(fyneUI.chatContainerSizeAtStartup())
 			u.chatHistoryScroll().ScrollToBottom() // TODO: only scroll to the first unread message
 		}
+	}
+}
+
+func (fyneUI *Fyne) chatContainerSizeAtStartup() fyne.Size {
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.mainWindow.Canvas().Size()
+	}
+
+	// Exclude thread buttons from width
+	width := defaultWidth - threadButtonHeight*5
+
+	return fyne.Size{
+		Width:  width,
+		Height: defaultHeight,
 	}
 }
 
