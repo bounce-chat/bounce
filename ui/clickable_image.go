@@ -1,0 +1,130 @@
+package ui
+
+import (
+	"image/color"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/widget"
+)
+
+type clickableImage struct {
+	widget.BaseWidget
+	image      *canvas.Image
+	text       *canvas.Text
+	hovered    bool
+	background *canvas.Rectangle
+	clicked    func()
+}
+
+func newClickableImage(text string, resource fyne.Resource, width, height float32, onClicked func()) *clickableImage {
+	img := canvas.NewImageFromResource(resource)
+	img.FillMode = canvas.ImageFillContain
+	img.SetMinSize(fyne.NewSize(width, height))
+
+	ci := &clickableImage{
+		image: img,
+		text: &canvas.Text{
+			Alignment: fyne.TextAlignCenter,
+			Text:      text,
+			TextSize:  theme.TextHeadingSize(),
+		},
+		clicked: onClicked,
+	}
+
+	ci.background = canvas.NewRectangle(color.Transparent)
+	ci.background.CornerRadius = theme.InputRadiusSize()
+
+	ci.ExtendBaseWidget(ci)
+
+	return ci
+}
+
+func (ci *clickableImage) Tapped(*fyne.PointEvent) {
+	if ci.clicked != nil {
+		ci.clicked()
+	}
+}
+
+func (ci *clickableImage) MouseIn(*desktop.MouseEvent) {
+	ci.hovered = true
+
+	ci.applyTheme()
+}
+
+func (ci *clickableImage) MouseMoved(*desktop.MouseEvent) {
+}
+
+func (ci *clickableImage) MouseOut() {
+	ci.hovered = false
+
+	ci.applyTheme()
+}
+
+func (ci *clickableImage) applyTheme() {
+	ci.background.FillColor = ci.buttonColor()
+	ci.background.CornerRadius = theme.InputRadiusSize()
+	ci.background.Refresh()
+	ci.Refresh()
+}
+
+func (ci *clickableImage) buttonColor() color.Color {
+	if ci.hovered {
+		bg := theme.ButtonColor()
+		return blendColor(bg, theme.HoverColor())
+	}
+	return color.Transparent
+}
+
+func (ci *clickableImage) CreateRenderer() fyne.WidgetRenderer {
+	ci.ExtendBaseWidget(ci)
+
+	cir := &clickableImageRenderer{
+		ci: ci,
+	}
+
+	return cir
+}
+
+type clickableImageRenderer struct {
+	ci *clickableImage
+}
+
+func (cir *clickableImageRenderer) Destroy() {}
+
+func (cir *clickableImageRenderer) Layout(size fyne.Size) {
+	cir.ci.background.Resize(size)
+	cir.ci.image.Resize(cir.ci.image.MinSize())
+	cir.ci.image.Move(fyne.Position{
+		X: size.Width/2 - cir.ci.image.MinSize().Width/2,
+		Y: size.Height/2 - cir.ci.image.MinSize().Height/2 - cir.ci.text.MinSize().Height/2,
+	})
+	cir.ci.text.Move(fyne.Position{
+		X: size.Width / 2,
+		Y: cir.ci.image.MinSize().Height + (size.Height-cir.ci.image.MinSize().Height)/2 + theme.Padding() - cir.ci.text.MinSize().Height/2,
+	})
+}
+
+func (cir *clickableImageRenderer) MinSize() fyne.Size {
+	minWidth := cir.ci.image.MinSize().Width
+	textWidth := cir.ci.image.MinSize().Width
+	if textWidth > minWidth {
+		minWidth = textWidth
+	}
+	return fyne.Size{
+		Width:  minWidth,
+		Height: theme.Padding() + cir.ci.image.MinSize().Height + theme.Padding() + cir.ci.text.MinSize().Height + theme.Padding(),
+	}
+}
+
+func (cir *clickableImageRenderer) Objects() []fyne.CanvasObject {
+	return []fyne.CanvasObject{
+		cir.ci.background,
+		cir.ci.image,
+		cir.ci.text,
+	}
+}
+
+func (cir *clickableImageRenderer) Refresh() {}
