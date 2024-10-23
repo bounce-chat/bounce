@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"runtime"
 	"sync"
 	"time"
 
@@ -176,6 +177,55 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	fyneUI.networkState = networkStateStarting
 	fyneUI.showMainContainer()
+	fyneUI.askToIgnoreBatteryOptimizations()
+}
+
+func (fyneUI *Fyne) askToIgnoreBatteryOptimizations() {
+	// TODO: this doesn't help background the app until engine is running in a service and not an activity
+	if runtime.GOOS == "android" {
+		if !batteryOptimizationsIgnored() {
+			var batteryDialog dialog.Dialog
+
+			batteryText := widget.NewRichTextWithText("Bounce can only notify you of new messages if it's running in the background.  Click \"Allow\" to be prompted to add Bounce to Android's list of allowed background apps.")
+			batteryText.Wrapping = fyne.TextWrapWord
+			batteryAllow := widget.NewButton("Allow", func() {
+				batteryDialog.Hide()
+				fyneUI.activeDialog = nil
+				fyneUI.activeDialogCleanup = nil
+				requestIgnoreBatteryOptimizations()
+			})
+			batteryAllow.Importance = widget.HighImportance
+			batteryLater := widget.NewButton("Later", func() {
+				batteryDialog.Hide()
+				fyneUI.activeDialog = nil
+				fyneUI.activeDialogCleanup = nil
+			})
+			batteryLater.Importance = widget.LowImportance
+			batteryNever := widget.NewButton("Never", func() {
+				batteryDialog.Hide()
+				fyneUI.activeDialog = nil
+				fyneUI.activeDialogCleanup = nil
+				// TODO: confirm dialog and save a setting to never show this again
+			})
+			batteryNever.Importance = widget.LowImportance
+
+			batteryContent := container.NewVBox(
+				batteryText,
+				batteryAllow,
+				batteryLater,
+				batteryNever,
+			)
+
+			batteryDialog = dialog.NewCustomWithoutButtons(
+				"Allow Backgrounding",
+				batteryContent,
+				fyneUI.mainWindow,
+			)
+			fyneUI.activeDialog = batteryDialog
+			fyneUI.activeDialogCleanup = nil
+			batteryDialog.Show()
+		}
+	}
 }
 
 func (fyneUI *Fyne) Run() {
