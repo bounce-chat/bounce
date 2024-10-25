@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
+	log "github.com/sirupsen/logrus"
 
 	"fyne.io/fyne/v2/theme"
 )
@@ -132,6 +133,7 @@ func (l *List) SetItemHeight(id ListItemID, height float32) {
 	}
 }
 
+/*
 func (l *List) scrollTo(id ListItemID) {
 	if l.scroller == nil {
 		return
@@ -140,7 +142,7 @@ func (l *List) scrollTo(id ListItemID) {
 	separatorThickness := l.Theme().Size(theme.SizeNamePadding)
 	y := float32(0)
 	lastItemHeight := l.itemMin.Height
-	if l.itemHeights == nil || len(l.itemHeights) == 0 {
+	if len(l.itemHeights) == 0 {
 		y = (float32(id) * l.itemMin.Height) + (float32(id) * separatorThickness)
 	} else {
 		for i := 0; i < id; i++ {
@@ -149,7 +151,7 @@ func (l *List) scrollTo(id ListItemID) {
 				height = h
 			}
 
-			y += height // + separatorThickness
+			y += height + separatorThickness
 			lastItemHeight = height
 		}
 	}
@@ -158,6 +160,34 @@ func (l *List) scrollTo(id ListItemID) {
 		l.scroller.Offset.Y = y
 	} else if y+l.itemMin.Height > l.scroller.Offset.Y+l.scroller.Size().Height {
 		l.scroller.Offset.Y = y + lastItemHeight - l.scroller.Size().Height
+	}
+	l.offsetUpdated(l.scroller.Offset)
+}
+*/
+
+func (l *List) scrollTo(id ListItemID) {
+	if l.scroller == nil {
+		return
+	}
+
+	y := float32(0)
+	separatorThickness := l.Theme().Size(theme.SizeNamePadding)
+	lastItemHeight := float32(0)
+	for i := 0; i < id; i++ {
+		if height, ok := l.itemHeights[i]; ok {
+			y += height + separatorThickness
+			lastItemHeight = height
+		} else {
+			log.WithFields(log.Fields{
+				"id": i,
+			}).Warn("item height not set for chat history item")
+		}
+	}
+
+	if y < l.scroller.Offset.Y+l.scroller.Size().Height {
+		l.scroller.Offset.Y = y + lastItemHeight - l.scroller.Size().Height
+	} else {
+		l.scroller.Offset.Y = l.contentHeight() - l.scroller.Size().Height
 	}
 	l.offsetUpdated(l.scroller.Offset)
 }
@@ -170,7 +200,7 @@ func (l *List) Resize(s fyne.Size) {
 	}
 
 	l.offsetUpdated(l.scroller.Offset)
-	l.scroller.Content.(*fyne.Container).Layout.(*listLayout).updateList(false)
+	l.scroller.Content.(*fyne.Container).Layout.(*listLayout).updateList(true)
 }
 
 // ScrollTo scrolls to the item represented by id

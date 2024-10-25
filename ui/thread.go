@@ -146,7 +146,6 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	} else {
 		threadItems = append(threadItems, ti.widgetData)
 	}
-	// TODO: set heights
 	t.setItems(threadItems)
 
 	// Keep track of which threads have which items
@@ -162,7 +161,6 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	// Keep the thread scrolled down, if it is open and was already scrolled down
 	if autoscroll && fyneUI.isActive(t) && appendingToEnd {
 		t.chatHistoryScroll().ScrollToBottom()
-		t.chatHistoryScroll().Refresh()
 	}
 
 	// Send a notification if required

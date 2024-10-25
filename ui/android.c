@@ -1,4 +1,3 @@
-
 //go:build android
 
 #include <jni.h>
