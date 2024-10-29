@@ -177,7 +177,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 		entry.Refresh()
 
 		dm.chatHistoryScroll().ScrollToBottom()
-		dm.chatHistoryScroll().Refresh()
+		fyneUI.chatContainer.Refresh()
 	}
 
 	openThread := func() {

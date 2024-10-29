@@ -91,9 +91,7 @@ func (fyneUI *Fyne) populateItems(t thread, items threadItems) {
 func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	// Determine if we are already scrolled down to the bottom of this thread before appending
 	autoscroll := false
-	//location := t.chatHistoryScroll().Offset.Y
 	location := t.chatHistoryScroll().GetScrollOffset()
-	//height := t.chatHistoryScroll().Content.Size().Height - t.chatHistoryScroll().Size().Height
 	height := t.chatHistoryScroll().contentHeight() - t.chatHistoryScroll().Size().Height
 	if height == location {
 		autoscroll = true
@@ -160,7 +158,9 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 
 	// Keep the thread scrolled down, if it is open and was already scrolled down
 	if autoscroll && fyneUI.isActive(t) && appendingToEnd {
+		//t.chatHistoryScroll().Refresh()
 		t.chatHistoryScroll().ScrollToBottom()
+		//fyneUI.chatContainer.Refresh()
 	}
 
 	// Send a notification if required

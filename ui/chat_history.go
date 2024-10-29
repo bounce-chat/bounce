@@ -133,59 +133,44 @@ func (l *List) SetItemHeight(id ListItemID, height float32) {
 	}
 }
 
-/*
-func (l *List) scrollTo(id ListItemID) {
-	if l.scroller == nil {
-		return
-	}
-
-	separatorThickness := l.Theme().Size(theme.SizeNamePadding)
-	y := float32(0)
-	lastItemHeight := l.itemMin.Height
-	if len(l.itemHeights) == 0 {
-		y = (float32(id) * l.itemMin.Height) + (float32(id) * separatorThickness)
-	} else {
-		for i := 0; i < id; i++ {
-			height := l.itemMin.Height
-			if h, ok := l.itemHeights[i]; ok {
-				height = h
-			}
-
-			y += height + separatorThickness
-			lastItemHeight = height
-		}
-	}
-
-	if y < l.scroller.Offset.Y {
-		l.scroller.Offset.Y = y
-	} else if y+l.itemMin.Height > l.scroller.Offset.Y+l.scroller.Size().Height {
-		l.scroller.Offset.Y = y + lastItemHeight - l.scroller.Size().Height
-	}
-	l.offsetUpdated(l.scroller.Offset)
-}
-*/
-
-func (l *List) scrollTo(id ListItemID) {
-	if l.scroller == nil {
-		return
-	}
-
+func (l *List) offsetFor(id ListItemID) float32 {
 	y := float32(0)
 	separatorThickness := l.Theme().Size(theme.SizeNamePadding)
-	lastItemHeight := float32(0)
-	for i := 0; i < id; i++ {
+	for i := 0; i <= id; i++ {
 		if height, ok := l.itemHeights[i]; ok {
 			y += height + separatorThickness
-			lastItemHeight = height
 		} else {
 			log.WithFields(log.Fields{
 				"id": i,
-			}).Warn("item height not set for chat history item")
+			}).Warn("item height not set for chat history item in offsetFor")
 		}
 	}
+	y -= separatorThickness
 
-	if y < l.scroller.Offset.Y+l.scroller.Size().Height {
-		l.scroller.Offset.Y = y + lastItemHeight - l.scroller.Size().Height
+	return y - l.scroller.Size().Height
+}
+
+func (l *List) scrollTo(id ListItemID) {
+	if l.scroller == nil {
+		return
+	}
+
+	//y := float32(0)
+	//separatorThickness := l.Theme().Size(theme.SizeNamePadding)
+	//for i := 0; i <= id; i++ {
+	//	if height, ok := l.itemHeights[i]; ok {
+	//		y += height + separatorThickness
+	//	} else {
+	//		continue
+	//	}
+	//}
+	//y -= separatorThickness
+
+	//if y < l.scroller.Offset.Y+l.scroller.Size().Height {
+	y := l.offsetFor(id)
+	if y < l.scroller.Offset.Y {
+		l.scroller.Offset.Y = y
+		//l.scroller.Offset.Y = y - l.scroller.Size().Height
 	} else {
 		l.scroller.Offset.Y = l.contentHeight() - l.scroller.Size().Height
 	}
@@ -656,10 +641,24 @@ func (l *listLayout) updateList(newOnly bool) {
 			if _, ok := l.searchVisible(wasVisible, vis.id); !ok {
 				l.setupListItem(vis.item, vis.id, l.list.focused && l.list.currentFocus == vis.id)
 			}
+			//TODO: if unread
+			//offset := l.list.GetScrollOffset()
+			//if offset >= l.list.offsetFor(vis.id) {
+			//	log.WithFields(log.Fields{
+			//		"id": vis.id,
+			//	}).Warn("read message")
+			//}
 		}
 	} else {
 		for _, vis := range visible {
 			l.setupListItem(vis.item, vis.id, l.list.focused && l.list.currentFocus == vis.id)
+			//TODO: if unread
+			//offset := l.list.GetScrollOffset()
+			//if offset >= l.list.offsetFor(vis.id) {
+			//	log.WithFields(log.Fields{
+			//		"id": vis.id,
+			//	}).Warn("read message")
+			//}
 		}
 	}
 

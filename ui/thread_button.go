@@ -3,6 +3,7 @@ package ui
 import (
 	"image/color"
 	"strconv"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -211,7 +212,7 @@ func (tb *threadButton) setLastMessage(name, text string) { // TODO: will need t
 	tb.lastMessage.Segments[0].(*widget.TextSegment).Text = name + ": "
 	tb.lastMessage.Segments[0].(*widget.TextSegment).Style.TextStyle.Italic = false
 	tb.lastMessage.Segments[0].(*widget.TextSegment).Style.TextStyle.Bold = true
-	tb.lastMessage.Segments[1].(*widget.TextSegment).Text = text
+	tb.lastMessage.Segments[1].(*widget.TextSegment).Text = strings.ReplaceAll(text, "\n", " ") // TODO: use non-platform-scpeific newlines
 	tb.lastMessage.Refresh()
 }
 

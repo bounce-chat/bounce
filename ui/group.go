@@ -464,7 +464,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		entry.Refresh()
 
 		group.chatHistoryScroll().ScrollToBottom()
-		group.chatHistoryScroll().Refresh()
+		fyneUI.chatContainer.Refresh()
 	}
 
 	openThread := func() {
