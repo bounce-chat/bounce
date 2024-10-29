@@ -158,9 +158,7 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 
 	// Keep the thread scrolled down, if it is open and was already scrolled down
 	if autoscroll && fyneUI.isActive(t) && appendingToEnd {
-		//t.chatHistoryScroll().Refresh()
 		t.chatHistoryScroll().ScrollToBottom()
-		//fyneUI.chatContainer.Refresh()
 	}
 
 	// Send a notification if required

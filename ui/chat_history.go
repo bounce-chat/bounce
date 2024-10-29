@@ -13,7 +13,6 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
-	log "github.com/sirupsen/logrus"
 
 	"fyne.io/fyne/v2/theme"
 )
@@ -140,9 +139,8 @@ func (l *List) offsetFor(id ListItemID) float32 {
 		if height, ok := l.itemHeights[i]; ok {
 			y += height + separatorThickness
 		} else {
-			log.WithFields(log.Fields{
-				"id": i,
-			}).Warn("item height not set for chat history item in offsetFor")
+			height = l.calculateAndSetItemHeight(id)
+			y += height + separatorThickness
 		}
 	}
 	y -= separatorThickness
@@ -155,22 +153,9 @@ func (l *List) scrollTo(id ListItemID) {
 		return
 	}
 
-	//y := float32(0)
-	//separatorThickness := l.Theme().Size(theme.SizeNamePadding)
-	//for i := 0; i <= id; i++ {
-	//	if height, ok := l.itemHeights[i]; ok {
-	//		y += height + separatorThickness
-	//	} else {
-	//		continue
-	//	}
-	//}
-	//y -= separatorThickness
-
-	//if y < l.scroller.Offset.Y+l.scroller.Size().Height {
 	y := l.offsetFor(id)
 	if y < l.scroller.Offset.Y {
 		l.scroller.Offset.Y = y
-		//l.scroller.Offset.Y = y - l.scroller.Size().Height
 	} else {
 		l.scroller.Offset.Y = l.contentHeight() - l.scroller.Size().Height
 	}
@@ -328,6 +313,15 @@ func (l *List) setItemHeights(currentSize fyne.Size) {
 		sizer.Resize(currentSize)
 		l.SetItemHeight(i, sizer.MinSize().Height)
 	}
+}
+
+func (l *List) calculateAndSetItemHeight(id int) float32 {
+	sizer := l.CreateItem()
+	l.UpdateItem(id, sizer)
+	sizer.Resize(l.Size())
+	height := sizer.MinSize().Height
+	l.SetItemHeight(id, height)
+	return height
 }
 
 // fills l.visibleRowHeights and also returns offY and minRow
