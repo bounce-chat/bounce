@@ -20,7 +20,7 @@ func (mal *autoscollLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) 
 	embedded.Move(fyne.Position{0, 0})
 	embedded.Resize(size)
 
-	s, ok := embedded.(*List)
+	s, ok := embedded.(*chatHistory)
 	if !ok {
 		log.Fatal("cannot create autoscollLayout with anything other than container.Scroll")
 	}

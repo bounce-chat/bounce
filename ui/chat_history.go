@@ -13,6 +13,8 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
+	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 
 	"fyne.io/fyne/v2/theme"
 )
@@ -20,20 +22,18 @@ import (
 // ListItemID uniquely identifies an item within a list.
 type ListItemID = int
 
-// List is a widget that pools list items for performance and
-// lays the items out in a vertical direction inside of a scroller.
-// By default, List requires that all items are the same size, but specific
-// rows can have their heights set with SetItemHeight.
-//
-// Since: 1.4
-type List struct {
+type chatHistory struct {
 	widget.BaseWidget
+
+	items      []threadable
+	ids        []uuid.UUID
+	itemsMutex sync.Mutex
 
 	Length     func() int                                  `json:"-"`
 	CreateItem func() fyne.CanvasObject                    `json:"-"`
 	UpdateItem func(id ListItemID, item fyne.CanvasObject) `json:"-"`
 
-	currentFocus  ListItemID
+	currentFocus  ListItemID // TODO: still used?
 	focused       bool
 	scroller      *container.Scroll
 	itemMin       fyne.Size
@@ -41,73 +41,212 @@ type List struct {
 	offsetY       float32
 	offsetUpdated func(fyne.Position)
 
+	readCallback func(uuid.UUID)
+	readTracking map[uuid.UUID]bool
+
 	propertyLock sync.RWMutex // TODO: expose the one in BaseWidget?
 }
 
-// NewList creates and returns a list widget for displaying items in
-// a vertical layout with scrolling and caching for performance.
-//
-// Since: 1.4
-func NewList(length func() int, createItem func() fyne.CanvasObject, updateItem func(ListItemID, fyne.CanvasObject)) *List {
-	list := &List{Length: length, CreateItem: createItem, UpdateItem: updateItem}
-	list.ExtendBaseWidget(list)
-	return list
+func newChatHistory(readCallback func(uuid.UUID)) *chatHistory {
+	if readCallback == nil {
+		log.Fatal("cannot create chat history widget without read callback")
+	}
+
+	ch := &chatHistory{
+		items:        []threadable{},
+		readCallback: readCallback,
+	}
+	ch.Length = func() int {
+		return len(ch.items)
+	}
+	ch.CreateItem = func() fyne.CanvasObject {
+		return container.NewStack(
+			newChatBubbleTemplate(),
+			newStatusChangeTemplate(),
+		)
+	}
+	ch.UpdateItem = func(id widget.ListItemID, obj fyne.CanvasObject) {
+		item := ch.items[id]
+		item.populateTemplate(obj)
+	}
+	ch.ExtendBaseWidget(ch)
+	return ch
+}
+
+func (ch *chatHistory) setItems(items []threadable) {
+	ch.itemsMutex.Lock()
+	defer ch.itemsMutex.Unlock()
+
+	ch.items = items
+	ch.Refresh()
+
+	ids := []uuid.UUID{}
+	for _, item := range items {
+		ids = append(ids, item.getID())
+	}
+	ch.ids = ids
+}
+
+func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
+	ch.itemsMutex.Lock()
+	defer ch.itemsMutex.Unlock()
+
+	// Insert statusChange thread items into their correct location in time, insert everything else
+	// at the bottom regaurdless of timestamp
+	if _, ok := ti.widgetData.(*statusChangeData); ok {
+		if len(ch.items) == 0 || appendingToEnd {
+			ch.items = append(ch.items, ti.widgetData)
+			ch.ids = append(ch.ids, ti.id)
+		} else {
+			for i := len(ch.items); i >= 0; i-- {
+				if i == 0 {
+					ch.items = append([]threadable{ti.widgetData}, ch.items...)
+					ch.ids = append([]uuid.UUID{ti.id}, ch.ids...)
+					break
+				}
+				var compareTime int64
+				compare := ch.items[i-1]
+				switch cast := compare.(type) {
+				case *chatBubbleData:
+					compareTime = cast.writtenAt
+				case *statusChangeData:
+					compareTime = cast.timestamp
+				default:
+					log.Warn("cannot compare timestamp with unknown thread item type")
+					continue
+				}
+				if ti.timestamp > compareTime {
+					ch.items = append(ch.items[:i], append([]threadable{ti.widgetData}, ch.items[i:]...)...)
+					ch.ids = append(ch.ids[:i], append([]uuid.UUID{ti.id}, ch.ids[i:]...)...)
+					break
+				}
+			}
+		}
+	} else {
+		ch.items = append(ch.items, ti.widgetData)
+		ch.ids = append(ch.ids, ti.id)
+	}
+}
+
+func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
+	ch.itemsMutex.Lock()
+	defer ch.itemsMutex.Unlock()
+
+	found := false
+	location := 0
+	for i, obj := range ch.items {
+		switch cast := obj.(type) {
+		case *chatBubbleData:
+			if cast.id == id {
+				found = true
+				location = i
+				break
+			}
+		case *statusChangeData:
+			if cast.id == id {
+				found = true
+				location = i
+				break
+			}
+		default:
+			continue
+		}
+	}
+
+	ch.items = append(ch.items[:location], ch.items[location+1:]...)
+	ch.ids = append(ch.ids[:location], ch.ids[location+1:]...)
+
+	ch.Refresh()
+
+	return found
+}
+
+func (ch *chatHistory) headTimestamp() int64 {
+	ch.itemsMutex.Lock()
+	defer ch.itemsMutex.Unlock()
+
+	currentHead := int64(0)
+	if len(ch.items) > 0 {
+		compare := ch.items[len(ch.items)-1]
+		switch cast := compare.(type) {
+		case *chatBubbleData:
+			currentHead = cast.writtenAt
+		case *statusChangeData:
+			currentHead = cast.timestamp
+		default:
+			log.Warn("cannot compare timestamp with unknown thread item type")
+		}
+	}
+
+	return currentHead
+}
+
+func (ch *chatHistory) read(index int) {
+	ch.itemsMutex.Lock()
+	defer ch.itemsMutex.Unlock()
+
+	id := ch.ids[index]
+	if _, ok := ch.readTracking[id]; !ok {
+		ch.readTracking[id] = true // TODO: populate with initial data
+		go ch.readCallback(id)
+	}
+}
+
+func (ch *chatHistory) scrollToLastRead() {
+	for i, item := range ch.items {
+		if item.isRead() {
+			if i == 0 {
+				ch.ScrollToTop()
+			}
+			ch.ScrollTo(i - 1)
+		}
+	}
 }
 
 // CreateRenderer is a private method to Fyne which links this widget to its renderer.
-func (l *List) CreateRenderer() fyne.WidgetRenderer {
-	l.ExtendBaseWidget(l)
+func (ch *chatHistory) CreateRenderer() fyne.WidgetRenderer {
+	ch.ExtendBaseWidget(ch)
 
-	if f := l.CreateItem; f != nil && l.itemMin.IsZero() {
-		item := createItemAndApplyThemeScope(f, l)
+	if f := ch.CreateItem; f != nil && ch.itemMin.IsZero() {
+		item := createItemAndApplyThemeScope(f, ch)
 
-		l.itemMin = item.MinSize()
+		ch.itemMin = item.MinSize()
 	}
 
-	layout := &fyne.Container{Layout: newListLayout(l)}
-	l.scroller = container.NewVScroll(layout)
+	layout := &fyne.Container{Layout: newListLayout(ch)}
+	ch.scroller = container.NewVScroll(layout)
 	layout.Resize(layout.MinSize())
-	objects := []fyne.CanvasObject{l.scroller}
-	return newListRenderer(objects, l, l.scroller, layout)
+	objects := []fyne.CanvasObject{ch.scroller}
+	return newListRenderer(objects, ch, ch.scroller, layout)
 }
 
-// FocusGained is called after this List has gained focus.
-//
-// Implements: fyne.Focusable
-func (l *List) FocusGained() {
-	l.focused = true
-	l.scrollTo(l.currentFocus)
-	l.RefreshItem(l.currentFocus)
+func (ch *chatHistory) FocusGained() {
+	ch.focused = true
+	ch.scrollTo(ch.currentFocus)
+	ch.RefreshItem(ch.currentFocus)
 }
 
-// FocusLost is called after this List has lost focus.
-//
-// Implements: fyne.Focusable
-func (l *List) FocusLost() {
-	l.focused = false
-	l.RefreshItem(l.currentFocus)
+func (ch *chatHistory) FocusLost() {
+	ch.focused = false
+	ch.RefreshItem(ch.currentFocus)
 }
 
-// MinSize returns the size that this widget should not shrink below.
-func (l *List) MinSize() fyne.Size {
-	l.ExtendBaseWidget(l)
-	return l.BaseWidget.MinSize()
+func (ch *chatHistory) MinSize() fyne.Size {
+	ch.ExtendBaseWidget(ch)
+	return ch.BaseWidget.MinSize()
 }
 
-// RefreshItem refreshes a single item, specified by the item ID passed in.
-//
-// Since: 2.4
-func (l *List) RefreshItem(id ListItemID) {
-	if l.scroller == nil {
+func (ch *chatHistory) RefreshItem(id ListItemID) {
+	if ch.scroller == nil {
 		return
 	}
-	l.BaseWidget.Refresh()
-	lo := l.scroller.Content.(*fyne.Container).Layout.(*listLayout)
+	ch.BaseWidget.Refresh()
+	lo := ch.scroller.Content.(*fyne.Container).Layout.(*listLayout)
 	lo.renderLock.RLock() // ensures we are not changing visible info in render code during the search
 	item, ok := lo.searchVisible(lo.visible, id)
 	lo.renderLock.RUnlock()
 	if ok {
-		lo.setupListItem(item, id, l.focused && l.currentFocus == id)
+		lo.setupListItem(item, id, ch.focused && ch.currentFocus == id)
 	}
 }
 
@@ -116,179 +255,157 @@ func (l *List) RefreshItem(id ListItemID) {
 // to the internal content height not including the divider size.
 //
 // Since: 2.3
-func (l *List) SetItemHeight(id ListItemID, height float32) {
-	l.propertyLock.Lock()
+func (ch *chatHistory) SetItemHeight(id ListItemID, height float32) {
+	ch.propertyLock.Lock()
 
-	if l.itemHeights == nil {
-		l.itemHeights = make(map[ListItemID]float32)
+	if ch.itemHeights == nil {
+		ch.itemHeights = make(map[ListItemID]float32)
 	}
 
-	refresh := l.itemHeights[id] != height
-	l.itemHeights[id] = height
-	l.propertyLock.Unlock()
+	refresh := ch.itemHeights[id] != height
+	ch.itemHeights[id] = height
+	ch.propertyLock.Unlock()
 
 	if refresh {
-		l.RefreshItem(id)
+		ch.RefreshItem(id)
 	}
 }
 
-func (l *List) offsetFor(id ListItemID) float32 {
+func (ch *chatHistory) offsetFor(id ListItemID) float32 {
 	y := float32(0)
-	separatorThickness := l.Theme().Size(theme.SizeNamePadding)
+	separatorThickness := ch.Theme().Size(theme.SizeNamePadding)
 	for i := 0; i <= id; i++ {
-		if height, ok := l.itemHeights[i]; ok {
+		if height, ok := ch.itemHeights[i]; ok {
 			y += height + separatorThickness
 		} else {
-			height = l.calculateAndSetItemHeight(id)
+			height = ch.calculateAndSetItemHeight(id)
 			y += height + separatorThickness
 		}
 	}
 	y -= separatorThickness
 
-	return y - l.scroller.Size().Height
+	return y - ch.scroller.Size().Height
 }
 
-func (l *List) scrollTo(id ListItemID) {
-	if l.scroller == nil {
+func (ch *chatHistory) scrollTo(id ListItemID) {
+	if ch.scroller == nil {
 		return
 	}
 
-	y := l.offsetFor(id)
-	if y < l.scroller.Offset.Y {
-		l.scroller.Offset.Y = y
+	y := ch.offsetFor(id)
+	if y < ch.scroller.Offset.Y {
+		ch.scroller.Offset.Y = y
 	} else {
-		l.scroller.Offset.Y = l.contentHeight() - l.scroller.Size().Height
+		ch.scroller.Offset.Y = ch.contentHeight() - ch.scroller.Size().Height
 	}
-	l.offsetUpdated(l.scroller.Offset)
+	ch.offsetUpdated(ch.scroller.Offset)
 }
 
-// Resize is called when this list should change size. We refresh to ensure invisible items are drawn.
-func (l *List) Resize(s fyne.Size) {
-	l.BaseWidget.Resize(s)
-	if l.scroller == nil {
+func (ch *chatHistory) Resize(s fyne.Size) {
+	ch.BaseWidget.Resize(s)
+	if ch.scroller == nil {
 		return
 	}
 
-	l.offsetUpdated(l.scroller.Offset)
-	l.scroller.Content.(*fyne.Container).Layout.(*listLayout).updateList(true)
+	ch.offsetUpdated(ch.scroller.Offset)
+	ch.scroller.Content.(*fyne.Container).Layout.(*listLayout).updateList(true)
 }
 
-// ScrollTo scrolls to the item represented by id
-//
-// Since: 2.1
-func (l *List) ScrollTo(id ListItemID) {
+func (ch *chatHistory) ScrollTo(id ListItemID) {
 	length := 0
-	if f := l.Length; f != nil {
+	if f := ch.Length; f != nil {
 		length = f()
 	}
 	if id < 0 || id >= length {
 		return
 	}
-	l.scrollTo(id)
-	l.Refresh()
+	ch.scrollTo(id)
+	ch.Refresh()
 }
 
-// ScrollToBottom scrolls to the end of the list
-//
-// Since: 2.1
-func (l *List) ScrollToBottom() {
+func (ch *chatHistory) ScrollToBottom() {
 	length := 0
-	if f := l.Length; f != nil {
+	if f := ch.Length; f != nil {
 		length = f()
 	}
 	if length > 0 {
 		length--
 	}
-	l.scrollTo(length)
-	l.Refresh()
+	ch.scrollTo(length)
+	ch.Refresh()
 }
 
-// ScrollToTop scrolls to the start of the list
-//
-// Since: 2.1
-func (l *List) ScrollToTop() {
-	l.scrollTo(0)
-	l.Refresh()
+func (ch *chatHistory) ScrollToTop() {
+	ch.scrollTo(0)
+	ch.Refresh()
 }
 
-// ScrollToOffset scrolls the list to the given offset position.
-//
-// Since: 2.5
-func (l *List) ScrollToOffset(offset float32) {
-	if l.scroller == nil {
+func (ch *chatHistory) ScrollToOffset(offset float32) {
+	if ch.scroller == nil {
 		return
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	contentHeight := l.contentMinSize().Height
-	if l.Size().Height >= contentHeight {
+	contentHeight := ch.contentMinSize().Height
+	if ch.Size().Height >= contentHeight {
 		return // content fully visible - no need to scroll
 	}
 	if offset > contentHeight {
 		offset = contentHeight
 	}
-	l.scroller.Offset.Y = offset
-	l.offsetUpdated(l.scroller.Offset)
-	l.Refresh()
+	ch.scroller.Offset.Y = offset
+	ch.offsetUpdated(ch.scroller.Offset)
+	ch.Refresh()
 }
 
-// GetScrollOffset returns the current scroll offset position
-//
-// Since: 2.5
-func (l *List) GetScrollOffset() float32 {
-	return l.offsetY
+func (ch *chatHistory) GetScrollOffset() float32 {
+	return ch.offsetY
 }
 
-// TypedKey is called if a key event happens while this List is focused.
-//
-// Implements: fyne.Focusable
-func (l *List) TypedKey(event *fyne.KeyEvent) {
+func (ch *chatHistory) TypedKey(event *fyne.KeyEvent) {
 	switch event.Name {
 	case fyne.KeyDown:
-		if f := l.Length; f != nil && l.currentFocus >= f()-1 {
+		if f := ch.Length; f != nil && ch.currentFocus >= f()-1 {
 			return
 		}
-		l.RefreshItem(l.currentFocus)
-		l.currentFocus++
-		l.scrollTo(l.currentFocus)
-		l.RefreshItem(l.currentFocus)
+		ch.RefreshItem(ch.currentFocus)
+		ch.currentFocus++
+		ch.scrollTo(ch.currentFocus)
+		ch.RefreshItem(ch.currentFocus)
 	case fyne.KeyUp:
-		if l.currentFocus <= 0 {
+		if ch.currentFocus <= 0 {
 			return
 		}
-		l.RefreshItem(l.currentFocus)
-		l.currentFocus--
-		l.scrollTo(l.currentFocus)
-		l.RefreshItem(l.currentFocus)
+		ch.RefreshItem(ch.currentFocus)
+		ch.currentFocus--
+		ch.scrollTo(ch.currentFocus)
+		ch.RefreshItem(ch.currentFocus)
 	}
 }
 
-// TypedRune is called if a text event happens while this List is focused.
-//
-// Implements: fyne.Focusable
-func (l *List) TypedRune(_ rune) {
+func (ch *chatHistory) TypedRune(_ rune) {
 	// intentionally left blank
 }
 
-func (l *List) contentMinSize() fyne.Size {
-	separatorThickness := l.Theme().Size(theme.SizeNamePadding)
-	l.propertyLock.Lock()
-	defer l.propertyLock.Unlock()
-	if l.Length == nil {
+func (ch *chatHistory) contentMinSize() fyne.Size { // TODO: is this the same as offsetFor(len(data)-1)?
+	separatorThickness := ch.Theme().Size(theme.SizeNamePadding)
+	ch.propertyLock.Lock()
+	defer ch.propertyLock.Unlock()
+	if ch.Length == nil {
 		return fyne.NewSize(0, 0)
 	}
-	items := l.Length()
+	items := ch.Length()
 
-	if l.itemHeights == nil || len(l.itemHeights) == 0 {
-		return fyne.NewSize(l.itemMin.Width,
-			(l.itemMin.Height+separatorThickness)*float32(items)-separatorThickness)
+	if ch.itemHeights == nil || len(ch.itemHeights) == 0 {
+		return fyne.NewSize(ch.itemMin.Width,
+			(ch.itemMin.Height+separatorThickness)*float32(items)-separatorThickness)
 	}
 
 	height := float32(0)
 	totalCustom := 0
-	templateHeight := l.itemMin.Height
-	for id, itemHeight := range l.itemHeights {
+	templateHeight := ch.itemMin.Height
+	for id, itemHeight := range ch.itemHeights {
 		if id < items {
 			totalCustom++
 			height += itemHeight
@@ -296,31 +413,31 @@ func (l *List) contentMinSize() fyne.Size {
 	}
 	height += float32(items-totalCustom) * templateHeight
 
-	return fyne.NewSize(l.itemMin.Width, height+separatorThickness*float32(items-1))
+	return fyne.NewSize(ch.itemMin.Width, height+separatorThickness*float32(items-1))
 }
 
-func (l *List) contentHeight() float32 {
-	if l.scroller == nil {
+func (ch *chatHistory) contentHeight() float32 {
+	if ch.scroller == nil {
 		return 0
 	}
-	return l.scroller.Content.(*fyne.Container).Size().Height
+	return ch.scroller.Content.(*fyne.Container).Size().Height
 }
 
-func (l *List) setItemHeights(currentSize fyne.Size) {
-	sizer := l.CreateItem()
-	for i := 0; i < l.Length(); i++ {
-		l.UpdateItem(i, sizer)
+func (ch *chatHistory) setItemHeights(currentSize fyne.Size) {
+	sizer := ch.CreateItem()
+	for i := 0; i < ch.Length(); i++ {
+		ch.UpdateItem(i, sizer)
 		sizer.Resize(currentSize)
-		l.SetItemHeight(i, sizer.MinSize().Height)
+		ch.SetItemHeight(i, sizer.MinSize().Height)
 	}
 }
 
-func (l *List) calculateAndSetItemHeight(id int) float32 {
-	sizer := l.CreateItem()
-	l.UpdateItem(id, sizer)
-	sizer.Resize(l.Size())
+func (ch *chatHistory) calculateAndSetItemHeight(id int) float32 {
+	sizer := ch.CreateItem()
+	ch.UpdateItem(id, sizer)
+	sizer.Resize(ch.Size())
 	height := sizer.MinSize().Height
-	l.SetItemHeight(id, height)
+	ch.SetItemHeight(id, height)
 	return height
 }
 
@@ -392,14 +509,14 @@ var _ fyne.WidgetRenderer = (*listRenderer)(nil)
 type listRenderer struct {
 	BaseRenderer
 
-	list     *List
+	list     *chatHistory
 	scroller *container.Scroll
 	layout   *fyne.Container
 }
 
-func newListRenderer(objects []fyne.CanvasObject, l *List, scroller *container.Scroll, layout *fyne.Container) *listRenderer {
-	lr := &listRenderer{BaseRenderer: NewBaseRenderer(objects), list: l, scroller: scroller, layout: layout}
-	lr.scroller.OnScrolled = l.offsetUpdated
+func newListRenderer(objects []fyne.CanvasObject, ch *chatHistory, scroller *container.Scroll, layout *fyne.Container) *listRenderer {
+	lr := &listRenderer{BaseRenderer: NewBaseRenderer(objects), list: ch, scroller: scroller, layout: layout}
+	lr.scroller.OnScrolled = ch.offsetUpdated
 	return lr
 }
 
@@ -499,7 +616,7 @@ type listItemAndID struct {
 }
 
 type listLayout struct {
-	list     *List
+	list     *chatHistory
 	children []fyne.CanvasObject
 
 	itemPool          syncPool
@@ -509,13 +626,13 @@ type listLayout struct {
 	renderLock        sync.RWMutex
 }
 
-func newListLayout(list *List) fyne.Layout {
-	l := &listLayout{list: list}
+func newListLayout(ch *chatHistory) fyne.Layout {
+	l := &listLayout{list: ch}
 	l.slicePool.New = func() any {
 		s := make([]listItemAndID, 0)
 		return &s
 	}
-	list.offsetUpdated = l.offsetUpdated
+	ch.offsetUpdated = l.offsetUpdated
 	return l
 }
 

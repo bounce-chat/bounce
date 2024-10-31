@@ -34,7 +34,6 @@ type group struct {
 	pendingUsers                *userStore
 	notificationsMutedUntil     int64
 	createdAt                   int64
-	items                       []threadable
 	editContainer               *fyne.Container
 	editThreadNameEntry         *widget.Entry
 	retentionSelection          *widget.Select
@@ -50,7 +49,7 @@ type group struct {
 	restrictUserManagementCheck *widget.Check
 	restrictGroupEditsCheck     *widget.Check
 	restrictPostingCheck        *widget.Check
-	scroll                      *List
+	scroll                      *chatHistory //*List // TODO: rename to history
 	newUserSearchEntry          *widget.Entry
 	availableNewUsersScroll     *container.Scroll
 	currentUsersContainer       *container.Scroll
@@ -76,17 +75,8 @@ func (g *group) getEntry() *threadEntry {
 	return g.entry
 }
 
-func (g *group) chatHistoryScroll() *List {
+func (g *group) chatHistoryScroll() *chatHistory {
 	return g.scroll
-}
-
-func (g *group) getItems() []threadable {
-	return g.items
-}
-
-func (g *group) setItems(items []threadable) {
-	g.items = items
-	g.scroll.Refresh()
 }
 
 func (g *group) getButton() *threadButton {
@@ -336,7 +326,6 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		restrictPosting:         bounceGroup.RestrictPosting,
 		notificationsMutedUntil: bounceGroup.MutedUntil,
 		pendingUsers:            newUserStore(),
-		items:                   []threadable{},
 		availableNewUsersScroll: container.NewVScroll(container.NewVBox()),
 		currentUsersContainer:   container.NewVScroll(container.NewVBox()),
 		pendingUsersContainer:   container.NewVScroll(container.NewVBox()),
@@ -345,21 +334,22 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		editUserDialogs:         make(map[uuid.UUID]dialog.Dialog),
 		lastMessage:             time.Now().Unix(),
 	}
-	group.scroll = NewList(
-		func() int {
-			return len(group.items)
-		},
-		func() fyne.CanvasObject {
-			return container.NewStack(
-				newChatBubbleTemplate(),
-				newStatusChangeTemplate(),
-			)
-		},
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			item := group.items[id]
-			item.populateTemplate(obj)
-		},
-	)
+	group.scroll = newChatHistory(func(uuid.UUID) {}) // TODO: pass the callback
+	//NewList(
+	//	func() int {
+	//		return len(group.items)
+	//	},
+	//	func() fyne.CanvasObject {
+	//		return container.NewStack(
+	//			newChatBubbleTemplate(),
+	//			newStatusChangeTemplate(),
+	//		)
+	//	},
+	//	func(id widget.ListItemID, obj fyne.CanvasObject) {
+	//		item := group.items[id]
+	//		item.populateTemplate(obj)
+	//	},
+	//)
 
 	for _, bu := range bounceGroup.Users {
 		u, exists := fyneUI.users.get(bu.ID)

@@ -16,6 +16,8 @@ var errUnknownActor = errors.New("unknown actor")
 var errUnknownUser = errors.New("unknown user")
 
 type threadable interface {
+	getID() uuid.UUID
+	isRead() bool
 	populateTemplate(fyne.CanvasObject)
 }
 
@@ -28,7 +30,16 @@ type chatBubbleData struct {
 	outgoing    bool
 	direct      bool
 	writtenAt   int64
+	read        bool
 	//profileButton fyne.CanvasObject
+}
+
+func (cbd *chatBubbleData) getID() uuid.UUID {
+	return cbd.id
+}
+
+func (cbd *chatBubbleData) isRead() bool {
+	return cbd.read
 }
 
 func (cbd *chatBubbleData) populateTemplate(obj fyne.CanvasObject) {
@@ -42,6 +53,15 @@ type statusChangeData struct {
 	id           uuid.UUID
 	timestamp    int64
 	changeString string
+	read         bool
+}
+
+func (scd *statusChangeData) getID() uuid.UUID {
+	return scd.id
+}
+
+func (scd *statusChangeData) isRead() bool {
+	return scd.read
 }
 
 func (scd *statusChangeData) populateTemplate(obj fyne.CanvasObject) {

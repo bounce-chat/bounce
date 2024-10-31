@@ -14,9 +14,7 @@ type thread interface {
 	getID() uuid.UUID
 	getView() *fyne.Container
 	getEntry() *threadEntry
-	chatHistoryScroll() *List
-	getItems() []threadable
-	setItems([]threadable)
+	chatHistoryScroll() *chatHistory
 	getButton() *threadButton
 	getLastMessageTime() int64
 	setLastMessageTime(int64)
@@ -71,9 +69,8 @@ func (fyneUI *Fyne) populateItems(t thread, items threadItems) {
 	for _, item := range items {
 		fyneUI.threadWithItem[item.id] = t
 		widgetData = append(widgetData, item.widgetData)
-		//t.appendItemAtEnd(item.widgetData) // TODO: try to avoid needed interface implementations
 	}
-	t.setItems(widgetData)
+	t.chatHistoryScroll().setItems(widgetData)
 	fyneUI.threadWithItemMutex.Unlock()
 
 	for i := len(items) - 1; i >= 0; i-- {
@@ -98,53 +95,10 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	}
 
 	// Determine if the thread item we are adding will be the latest item in the thread
-	threadItems := t.getItems()
-	currentHead := int64(0)
-	if len(threadItems) > 0 {
-		compare := threadItems[len(threadItems)-1]
-		switch cast := compare.(type) {
-		case *chatBubbleData:
-			currentHead = cast.writtenAt
-		case *statusChangeData:
-			currentHead = cast.timestamp
-		default:
-			log.Warn("cannot compare timestamp with unknown thread item type")
-		}
-	}
-	appendingToEnd := ti.timestamp > currentHead
+	appendingToEnd := ti.timestamp > t.chatHistoryScroll().headTimestamp()
 
-	// Insert statusChange thread items into their correct location in time, insert everything else
-	// at the bottom regaurdless of timestamp
-	if _, ok := ti.widgetData.(*statusChangeData); ok {
-		if len(threadItems) == 0 || appendingToEnd {
-			threadItems = append(threadItems, ti.widgetData)
-		} else {
-			for i := len(threadItems); i >= 0; i-- {
-				if i == 0 {
-					threadItems = append([]threadable{ti.widgetData}, threadItems...)
-					break
-				}
-				var compareTime int64
-				compare := threadItems[i-1]
-				switch cast := compare.(type) {
-				case *chatBubbleData:
-					compareTime = cast.writtenAt
-				case *statusChangeData:
-					compareTime = cast.timestamp
-				default:
-					log.Warn("cannot compare timestamp with unknown thread item type")
-					continue
-				}
-				if ti.timestamp > compareTime {
-					threadItems = append(threadItems[:i], append([]threadable{ti.widgetData}, threadItems[i:]...)...)
-					break
-				}
-			}
-		}
-	} else {
-		threadItems = append(threadItems, ti.widgetData)
-	}
-	t.setItems(threadItems)
+	// Add this thread item to the chat history
+	t.chatHistoryScroll().insertItem(ti, appendingToEnd)
 
 	// Keep track of which threads have which items
 	fyneUI.threadWithItemMutex.Lock()
@@ -203,39 +157,10 @@ func (fyneUI *Fyne) DeleteItem(id uuid.UUID) {
 		}).Warn("attempt to expire message that was not found in any thread")
 		return
 	}
-	//chatHistory := thread.chatHistoryScroll().Content.(*fyne.Container)
-	threadItems := thread.getItems()
 
-	found := false
-	location := 0
-	for i, obj := range threadItems { //chatHistory.Objects {
-		switch cast := obj.(type) {
-		case *chatBubbleData:
-			if cast.id == id {
-				found = true
-				location = i
-				break
-			}
-		case *statusChangeData:
-			if cast.id == id {
-				found = true
-				location = i
-				break
-			}
-		default:
-			continue
-		}
-	}
+	deleted := thread.chatHistoryScroll().deleteItem(id)
 
-	if found {
-		// TODO: is there an error here if the message that is being deleted is the last message in the slice?
-		// TODO: race condition here when mutating the slice directly?  mutex all changes to a thread's slice?
-		thread.setItems(append(threadItems[:location], threadItems[location+1:]...))
-		//chatHistory.Objects = append(chatHistory.Objects[:location], chatHistory.Objects[location+1:]...) // TODO: may be cheaper to use copy to shift slice
-
-		// TODO: set heights
-
-		thread.chatHistoryScroll().Refresh()
+	if deleted {
 		fyneUI.threadWithItemMutex.Lock()
 		delete(fyneUI.threadWithItem, id)
 		fyneUI.threadWithItemMutex.Unlock()
