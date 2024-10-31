@@ -275,6 +275,9 @@ func (ch *chatHistory) SetItemHeight(id ListItemID, height float32) {
 }
 
 func (ch *chatHistory) offsetFor(id ListItemID) float32 {
+	ch.propertyLock.Lock()
+	defer ch.propertyLock.Unlock()
+
 	y := float32(0)
 	separatorThickness := ch.Theme().Size(theme.SizeNamePadding)
 	for i := 0; i <= id; i++ {
