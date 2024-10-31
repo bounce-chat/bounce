@@ -83,22 +83,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 		retention:               bounceUser.State.Retention,
 		lastMessage:             time.Now().Unix(),
 	}
-	dm.scroll = newChatHistory(func(uuid.UUID) {}) // TODO: pass read callback
-	//NewList(
-	//	func() int {
-	//		return len(dm.items)
-	//	},
-	//	func() fyne.CanvasObject {
-	//		return container.NewStack(
-	//			newChatBubbleTemplate(),
-	//			newStatusChangeTemplate(),
-	//		)
-	//	},
-	//	func(id widget.ListItemID, obj fyne.CanvasObject) {
-	//		item := dm.items[id]
-	//		item.populateTemplate(obj)
-	//	},
-	//) // TODO: appendThreadItem should add to this threadItems, and set the height of anything that changed
+	dm.scroll = newChatHistory(fyneUI.callbacks.MarkRead)
 
 	dm.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(_ bool) {})
 	var err error

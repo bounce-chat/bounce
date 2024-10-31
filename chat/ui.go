@@ -323,6 +323,14 @@ type UI interface {
 	DeviceRenamed(uuid.UUID, string)
 }
 
+// Frames that support being marked as read
+const TypeDirectMessage = "DirectMessage"
+const TypeUpdateDM = "UpdateDM"
+const TypeGroupMessage = "GroupMessage"
+const TypeUpdateGroup = "UpdateGroup"
+const TypeGroupCreation = "GroupCreation"
+const TypeUpdateUser = "UpdateUser"
+
 //
 // The chat engine will provide these callbacks to a user interface so that the interface can instruct the chat engine
 //
@@ -382,4 +390,6 @@ type UICallbacks struct {
 	UserConnectionDesired func(uuid.UUID)
 
 	GroupConnectionDesired func(uuid.UUID)
+
+	MarkRead func(uuid.UUID, string)
 }

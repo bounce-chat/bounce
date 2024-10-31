@@ -18,11 +18,13 @@ var errUnknownUser = errors.New("unknown user")
 type threadable interface {
 	getID() uuid.UUID
 	isRead() bool
+	getType() string
 	populateTemplate(fyne.CanvasObject)
 }
 
 type chatBubbleData struct {
 	id          uuid.UUID
+	frameType   string
 	author      uuid.UUID
 	displayName binding.String
 	initials    binding.String
@@ -42,6 +44,10 @@ func (cbd *chatBubbleData) isRead() bool {
 	return cbd.read
 }
 
+func (cbd *chatBubbleData) getType() string {
+	return cbd.frameType
+}
+
 func (cbd *chatBubbleData) populateTemplate(obj fyne.CanvasObject) {
 	obj.(*fyne.Container).Objects[0].(*chatBubble).setData(cbd.displayName, cbd.initials, cbd.author, cbd.id, cbd.text, cbd.outgoing, cbd.direct, cbd.writtenAt)
 	obj.(*fyne.Container).Objects[0].(*chatBubble).Refresh()
@@ -51,6 +57,7 @@ func (cbd *chatBubbleData) populateTemplate(obj fyne.CanvasObject) {
 
 type statusChangeData struct {
 	id           uuid.UUID
+	frameType    string
 	timestamp    int64
 	changeString string
 	read         bool
@@ -62,6 +69,10 @@ func (scd *statusChangeData) getID() uuid.UUID {
 
 func (scd *statusChangeData) isRead() bool {
 	return scd.read
+}
+
+func (scd *statusChangeData) getType() string {
+	return scd.frameType
 }
 
 func (scd *statusChangeData) populateTemplate(obj fyne.CanvasObject) {
@@ -97,6 +108,7 @@ func (fyneUI *Fyne) newUpdateGroupName(ugn chat.UpdateGroupName) (*threadItem, e
 		ugn.ID,
 		ugn.Thread,
 		ugn.Actor,
+		chat.TypeUpdateGroup,
 		"changed the group name to "+ugn.Name,
 		ugn.Timestamp,
 	)
@@ -107,6 +119,7 @@ func (fyneUI *Fyne) newUpdateGroupRetention(ugr chat.UpdateGroupRetention) (*thr
 		ugr.ID,
 		ugr.Thread,
 		ugr.Actor,
+		chat.TypeUpdateGroup,
 		"changed the message retention to "+getRetentionName(ugr.Retention),
 		ugr.Timestamp,
 	)
@@ -117,6 +130,7 @@ func (fyneUI *Fyne) newUpdateGroupAddUser(ugau chat.UpdateGroupAddUser) (*thread
 		ugau.ID,
 		ugau.Thread,
 		ugau.Actor,
+		chat.TypeUpdateGroup,
 		"added "+ugau.User.Name+" to the group",
 		ugau.Timestamp,
 	)
@@ -133,6 +147,7 @@ func (fyneUI *Fyne) newUpdateGroupRemoveUser(ugru chat.UpdateGroupRemoveUser) (*
 			ugru.ID,
 			ugru.Thread,
 			ugru.Actor,
+			chat.TypeUpdateGroup,
 			"left the group",
 			ugru.Timestamp,
 		)
@@ -142,6 +157,7 @@ func (fyneUI *Fyne) newUpdateGroupRemoveUser(ugru chat.UpdateGroupRemoveUser) (*
 		ugru.ID,
 		ugru.Thread,
 		ugru.Actor,
+		chat.TypeUpdateGroup,
 		"removed "+removedUser.getName()+" from the group", // TODO: bind username:
 		ugru.Timestamp,
 	)
@@ -152,6 +168,7 @@ func (fyneUI *Fyne) newUpdateGroupClearHistory(ugch chat.UpdateGroupClearHistory
 		ugch.ID,
 		ugch.Thread,
 		ugch.Actor,
+		chat.TypeUpdateGroup,
 		"cleared the chat history",
 		ugch.Timestamp,
 	)
@@ -192,6 +209,7 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		id: gm.ID,
 		widgetData: &chatBubbleData{
 			id:          gm.ID,
+			frameType:   chat.TypeGroupMessage,
 			author:      gm.Author,
 			displayName: displayName,
 			initials:    user.initials,
@@ -246,6 +264,7 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 		id: dm.ID,
 		widgetData: &chatBubbleData{
 			id:          dm.ID,
+			frameType:   chat.TypeDirectMessage,
 			author:      dm.Author,
 			displayName: displayName,
 			initials:    u.initials,
@@ -274,6 +293,7 @@ func (fyneUI *Fyne) newUpdateDMRetention(udmr chat.UpdateDMRetention) (*threadIt
 		udmr.ID,
 		udmr.Thread,
 		udmr.Actor,
+		chat.TypeUpdateDM,
 		"changed the message retention to "+getRetentionName(udmr.Retention),
 		udmr.Timestamp,
 	)
@@ -284,6 +304,7 @@ func (fyneUI *Fyne) newUpdateDMClearHistory(udmch chat.UpdateDMClearHistory) (*t
 		udmch.ID,
 		udmch.Thread,
 		udmch.Actor,
+		chat.TypeUpdateDM,
 		"cleared the chat history",
 		udmch.Timestamp,
 	)
@@ -301,6 +322,7 @@ func (fyneUI *Fyne) newUpdateGroupAdminPromoted(ugap chat.UpdateGroupAdminPromot
 		ugap.ID,
 		ugap.Thread,
 		ugap.Actor,
+		chat.TypeUpdateGroup,
 		"made "+newAdmin.getName()+" an admin", // TODO: bind?
 		ugap.Timestamp,
 	)
@@ -316,6 +338,7 @@ func (fyneUI *Fyne) newUpdateGroupAdminDemoted(ugad chat.UpdateGroupAdminDemoted
 		ugad.ID,
 		ugad.Thread,
 		ugad.Actor,
+		chat.TypeUpdateGroup,
 		"removed "+oldAdmin.getName()+" as an admin", // TODO: bind?
 		ugad.Timestamp,
 	)
@@ -326,6 +349,7 @@ func (fyneUI *Fyne) newUpdateGroupUserManagementRestricted(ugumr chat.UpdateGrou
 		ugumr.ID,
 		ugumr.Thread,
 		ugumr.Actor,
+		chat.TypeUpdateGroup,
 		"restricted user management",
 		ugumr.Timestamp,
 	)
@@ -336,6 +360,7 @@ func (fyneUI *Fyne) newUpdateGroupUserManagementUnrestricted(ugumu chat.UpdateGr
 		ugumu.ID,
 		ugumu.Thread,
 		ugumu.Actor,
+		chat.TypeUpdateGroup,
 		"unrestricted user management",
 		ugumu.Timestamp,
 	)
@@ -346,6 +371,7 @@ func (fyneUI *Fyne) newUpdateGroupEditsRestricted(uger chat.UpdateGroupEditsRest
 		uger.ID,
 		uger.Thread,
 		uger.Actor,
+		chat.TypeUpdateGroup,
 		"restricted group edits",
 		uger.Timestamp,
 	)
@@ -356,6 +382,7 @@ func (fyneUI *Fyne) newUpdateGroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUn
 		ugeu.ID,
 		ugeu.Thread,
 		ugeu.Actor,
+		chat.TypeUpdateGroup,
 		"unrestricted group edits",
 		ugeu.Timestamp,
 	)
@@ -366,6 +393,7 @@ func (fyneUI *Fyne) newUpdateGroupPostingRestricted(ugpr chat.UpdateGroupPosting
 		ugpr.ID,
 		ugpr.Thread,
 		ugpr.Actor,
+		chat.TypeUpdateGroup,
 		"restricted posting",
 		ugpr.Timestamp,
 	)
@@ -376,6 +404,7 @@ func (fyneUI *Fyne) newUpdateGroupPostingUnrestricted(ugpu chat.UpdateGroupPosti
 		ugpu.ID,
 		ugpu.Thread,
 		ugpu.Actor,
+		chat.TypeUpdateGroup,
 		"unrestricted posting",
 		ugpu.Timestamp,
 	)
@@ -386,6 +415,7 @@ func (fyneUI *Fyne) newUpdateGroupUserBlocked(ubg chat.UserBlockedGroup) (*threa
 		ubg.ID,
 		ubg.Thread,
 		ubg.Actor,
+		chat.TypeUpdateGroup,
 		"blocked the group",
 		ubg.Timestamp,
 	)
@@ -396,6 +426,7 @@ func (fyneUI *Fyne) newGroupCreated(id, groupID, actorID uuid.UUID, timestamp in
 		id,
 		groupID,
 		actorID,
+		chat.TypeGroupCreation,
 		"created the group",
 		timestamp,
 	)
@@ -419,6 +450,7 @@ func (fyneUI *Fyne) userChangedName(id, userID uuid.UUID, oldName, newName strin
 		id: id,
 		widgetData: &statusChangeData{
 			id:           id,
+			frameType:    chat.TypeUpdateUser,
 			timestamp:    timestamp,
 			changeString: changeString,
 		},
@@ -428,7 +460,7 @@ func (fyneUI *Fyne) userChangedName(id, userID uuid.UUID, oldName, newName strin
 	}, nil
 }
 
-func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, action string, timestamp int64) (*threadItem, error) {
+func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, frameType, action string, timestamp int64) (*threadItem, error) {
 	t, ok := fyneUI.getThread(threadID)
 	if !ok {
 		log.WithFields(log.Fields{
@@ -452,6 +484,7 @@ func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, a
 		id: id,
 		widgetData: &statusChangeData{
 			id:           id,
+			frameType:    frameType,
 			timestamp:    timestamp,
 			changeString: changeString,
 		},

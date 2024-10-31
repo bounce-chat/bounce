@@ -334,22 +334,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		editUserDialogs:         make(map[uuid.UUID]dialog.Dialog),
 		lastMessage:             time.Now().Unix(),
 	}
-	group.scroll = newChatHistory(func(uuid.UUID) {}) // TODO: pass the callback
-	//NewList(
-	//	func() int {
-	//		return len(group.items)
-	//	},
-	//	func() fyne.CanvasObject {
-	//		return container.NewStack(
-	//			newChatBubbleTemplate(),
-	//			newStatusChangeTemplate(),
-	//		)
-	//	},
-	//	func(id widget.ListItemID, obj fyne.CanvasObject) {
-	//		item := group.items[id]
-	//		item.populateTemplate(obj)
-	//	},
-	//)
+	group.scroll = newChatHistory(fyneUI.callbacks.MarkRead)
 
 	for _, bu := range bounceGroup.Users {
 		u, exists := fyneUI.users.get(bu.ID)

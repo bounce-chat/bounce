@@ -41,13 +41,13 @@ type chatHistory struct {
 	offsetY       float32
 	offsetUpdated func(fyne.Position)
 
-	readCallback func(uuid.UUID)
+	readCallback func(uuid.UUID, string)
 	readTracking map[uuid.UUID]bool
 
 	propertyLock sync.RWMutex // TODO: expose the one in BaseWidget?
 }
 
-func newChatHistory(readCallback func(uuid.UUID)) *chatHistory {
+func newChatHistory(readCallback func(uuid.UUID, string)) *chatHistory {
 	if readCallback == nil {
 		log.Fatal("cannot create chat history widget without read callback")
 	}
@@ -55,6 +55,7 @@ func newChatHistory(readCallback func(uuid.UUID)) *chatHistory {
 	ch := &chatHistory{
 		items:        []threadable{},
 		readCallback: readCallback,
+		readTracking: make(map[uuid.UUID]bool),
 	}
 	ch.Length = func() int {
 		return len(ch.items)
@@ -188,7 +189,9 @@ func (ch *chatHistory) read(index int) {
 	id := ch.ids[index]
 	if _, ok := ch.readTracking[id]; !ok {
 		ch.readTracking[id] = true // TODO: populate with initial data
-		go ch.readCallback(id)
+
+		item := ch.items[index]
+		go ch.readCallback(id, item.getType())
 	}
 }
 
@@ -752,24 +755,20 @@ func (l *listLayout) updateList(newOnly bool) {
 			if _, ok := l.searchVisible(wasVisible, vis.id); !ok {
 				l.setupListItem(vis.item, vis.id, l.list.focused && l.list.currentFocus == vis.id)
 			}
-			//TODO: if unread
-			//offset := l.list.GetScrollOffset()
-			//if offset >= l.list.offsetFor(vis.id) {
-			//	log.WithFields(log.Fields{
-			//		"id": vis.id,
-			//	}).Warn("read message")
-			//}
+
+			offset := l.list.GetScrollOffset()
+			if offset >= l.list.offsetFor(vis.id) {
+				l.list.read(vis.id)
+			}
 		}
 	} else {
 		for _, vis := range visible {
 			l.setupListItem(vis.item, vis.id, l.list.focused && l.list.currentFocus == vis.id)
-			//TODO: if unread
-			//offset := l.list.GetScrollOffset()
-			//if offset >= l.list.offsetFor(vis.id) {
-			//	log.WithFields(log.Fields{
-			//		"id": vis.id,
-			//	}).Warn("read message")
-			//}
+
+			offset := l.list.GetScrollOffset()
+			if offset >= l.list.offsetFor(vis.id) {
+				l.list.read(vis.id)
+			}
 		}
 	}
 
