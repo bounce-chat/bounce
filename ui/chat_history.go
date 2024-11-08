@@ -83,6 +83,9 @@ func (ch *chatHistory) setItems(items []threadable) {
 
 	ids := []uuid.UUID{}
 	for _, item := range items {
+		if item.isRead() {
+			ch.readTracking[item.getID()] = true
+		}
 		ids = append(ids, item.getID())
 	}
 	ch.ids = ids
@@ -197,11 +200,13 @@ func (ch *chatHistory) read(index int) {
 
 func (ch *chatHistory) scrollToLastRead() {
 	for i, item := range ch.items {
-		if item.isRead() {
+		if !item.isRead() {
 			if i == 0 {
 				ch.ScrollToTop()
+			} else {
+				ch.ScrollTo(i - 1)
 			}
-			ch.ScrollTo(i - 1)
+			break
 		}
 	}
 }
@@ -275,13 +280,13 @@ func (ch *chatHistory) SetItemHeight(id ListItemID, height float32) {
 }
 
 func (ch *chatHistory) offsetFor(id ListItemID) float32 {
-	ch.propertyLock.Lock()
-	defer ch.propertyLock.Unlock()
-
 	y := float32(0)
 	separatorThickness := ch.Theme().Size(theme.SizeNamePadding)
 	for i := 0; i <= id; i++ {
-		if height, ok := ch.itemHeights[i]; ok {
+		ch.propertyLock.Lock()
+		height, ok := ch.itemHeights[i]
+		ch.propertyLock.Unlock()
+		if ok {
 			y += height + separatorThickness
 		} else {
 			height = ch.calculateAndSetItemHeight(id)
@@ -299,11 +304,11 @@ func (ch *chatHistory) scrollTo(id ListItemID) {
 	}
 
 	y := ch.offsetFor(id)
-	if y < ch.scroller.Offset.Y {
-		ch.scroller.Offset.Y = y
-	} else {
-		ch.scroller.Offset.Y = ch.contentHeight() - ch.scroller.Size().Height
-	}
+	//if y < ch.scroller.Offset.Y {
+	ch.scroller.Offset.Y = y
+	//} else {
+	//	ch.scroller.Offset.Y = ch.contentHeight() - ch.scroller.Size().Height
+	//}
 	ch.offsetUpdated(ch.scroller.Offset)
 }
 

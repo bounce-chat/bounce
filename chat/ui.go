@@ -328,7 +328,7 @@ const TypeDirectMessage = "DirectMessage"
 const TypeUpdateDM = "UpdateDM"
 const TypeGroupMessage = "GroupMessage"
 const TypeUpdateGroup = "UpdateGroup"
-const TypeGroupCreation = "GroupCreation"
+const TypeGroupCreation = "GroupCreation" // TODO: include this?
 const TypeUpdateUser = "UpdateUser"
 
 //

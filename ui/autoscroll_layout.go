@@ -34,7 +34,7 @@ func (mal *autoscollLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) 
 			diff := size.Height - mal.lastHeight
 
 			if s.contentHeight()-mal.lastHeight == s.GetScrollOffset()+diff {
-				s.ScrollToBottom()
+				//s.ScrollToBottom()
 			} else {
 				s.ScrollToOffset(s.GetScrollOffset() - diff)
 			}

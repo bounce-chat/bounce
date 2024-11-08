@@ -71,6 +71,7 @@ func (fyneUI *Fyne) populateItems(t thread, items threadItems) {
 		widgetData = append(widgetData, item.widgetData)
 	}
 	t.chatHistoryScroll().setItems(widgetData)
+
 	fyneUI.threadWithItemMutex.Unlock()
 
 	for i := len(items) - 1; i >= 0; i-- {

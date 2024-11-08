@@ -406,7 +406,7 @@ func (b *bounce) buildInitialState() InitialState {
 				SavedAt:       dm.SavedAt,
 				Text:          dm.Text,
 				Expires:       dm.DeleteAt,
-				Read:          true, // TODO
+				Read:          dm.Read,
 				Undeliverable: dm.Undeliverable,
 			},
 		)
@@ -468,7 +468,7 @@ func (b *bounce) buildInitialState() InitialState {
 				SavedAt:       gm.SavedAt,
 				Text:          gm.Text,
 				Expires:       gm.DeleteAt,
-				Read:          true, // TODO
+				Read:          gm.Read,
 				Undeliverable: gm.Undeliverable,
 			},
 		)

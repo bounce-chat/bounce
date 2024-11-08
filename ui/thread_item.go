@@ -217,6 +217,7 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			outgoing:    outgoing,
 			direct:      false,
 			writtenAt:   gm.WrittenAt,
+			read:        gm.Read,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
