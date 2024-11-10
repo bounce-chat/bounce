@@ -191,7 +191,7 @@ func (ch *chatHistory) read(index int) {
 
 	id := ch.ids[index]
 	if _, ok := ch.readTracking[id]; !ok {
-		ch.readTracking[id] = true // TODO: populate with initial data
+		ch.readTracking[id] = true
 
 		item := ch.items[index]
 		go ch.readCallback(id, item.getType())
@@ -206,9 +206,10 @@ func (ch *chatHistory) scrollToLastRead() {
 			} else {
 				ch.ScrollTo(i - 1)
 			}
-			break
+			return
 		}
 	}
+	ch.ScrollToBottom()
 }
 
 // CreateRenderer is a private method to Fyne which links this widget to its renderer.
@@ -258,11 +259,6 @@ func (ch *chatHistory) RefreshItem(id ListItemID) {
 	}
 }
 
-// SetItemHeight supports changing the height of the specified list item. Items normally take the height of the template
-// returned from the CreateItem callback. The height parameter uses the same units as a fyne.Size type and refers
-// to the internal content height not including the divider size.
-//
-// Since: 2.3
 func (ch *chatHistory) SetItemHeight(id ListItemID, height float32) {
 	ch.propertyLock.Lock()
 
@@ -289,7 +285,7 @@ func (ch *chatHistory) offsetFor(id ListItemID) float32 {
 		if ok {
 			y += height + separatorThickness
 		} else {
-			height = ch.calculateAndSetItemHeight(id)
+			height = ch.calculateAndSetItemHeight(i)
 			y += height + separatorThickness
 		}
 	}
@@ -303,12 +299,7 @@ func (ch *chatHistory) scrollTo(id ListItemID) {
 		return
 	}
 
-	y := ch.offsetFor(id)
-	//if y < ch.scroller.Offset.Y {
-	ch.scroller.Offset.Y = y
-	//} else {
-	//	ch.scroller.Offset.Y = ch.contentHeight() - ch.scroller.Size().Height
-	//}
+	ch.scroller.Offset.Y = ch.offsetFor(id)
 	ch.offsetUpdated(ch.scroller.Offset)
 }
 
