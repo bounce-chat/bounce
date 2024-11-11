@@ -205,6 +205,10 @@ func (ch *chatHistory) scrollToLastRead() {
 				ch.ScrollToTop()
 			} else {
 				ch.ScrollTo(i - 1)
+				// TODO: scroller height not set at launch, scroll such that new messages aren't shown
+				//ch.scroller.Offset.Y = ch.offsetFor(i-1) - ch.scroller.Size().Height
+				//ch.offsetUpdated(ch.scroller.Offset)
+				//ch.Refresh()
 			}
 			return
 		}
