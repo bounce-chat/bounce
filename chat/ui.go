@@ -42,6 +42,7 @@ type UpdateDMRetention struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 	Retention int64
 }
 
@@ -50,6 +51,7 @@ type UpdateDMClearHistory struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 	ClearTime int64
 }
 
@@ -87,6 +89,7 @@ type UpdateGroupRetention struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 	Retention int64
 }
 
@@ -95,6 +98,7 @@ type UpdateGroupName struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 	Name      string
 }
 
@@ -103,6 +107,7 @@ type UpdateGroupAddUser struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 	User      User
 }
 
@@ -111,6 +116,7 @@ type UpdateGroupRemoveUser struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 	User      uuid.UUID
 }
 
@@ -119,6 +125,7 @@ type UpdateGroupClearHistory struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 	ClearTime int64
 }
 
@@ -127,6 +134,7 @@ type UpdateGroupAdminPromoted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 	UserID    uuid.UUID
 }
 
@@ -135,6 +143,7 @@ type UpdateGroupAdminDemoted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 	UserID    uuid.UUID
 }
 
@@ -143,6 +152,7 @@ type UpdateGroupUserManagementRestricted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 }
 
 type UpdateGroupUserManagementUnrestricted struct {
@@ -150,6 +160,7 @@ type UpdateGroupUserManagementUnrestricted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 }
 
 type UpdateGroupEditsRestricted struct {
@@ -157,6 +168,7 @@ type UpdateGroupEditsRestricted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 }
 
 type UpdateGroupEditsUnrestricted struct {
@@ -164,6 +176,7 @@ type UpdateGroupEditsUnrestricted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 }
 
 type UpdateGroupPostingRestricted struct {
@@ -171,6 +184,7 @@ type UpdateGroupPostingRestricted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 }
 
 type UpdateGroupPostingUnrestricted struct {
@@ -178,6 +192,7 @@ type UpdateGroupPostingUnrestricted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 }
 
 type RemovedFromGroup struct {
@@ -195,6 +210,7 @@ type UserBlockedGroup struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
+	Read      bool
 }
 
 type UpdateUserUpdateName struct {

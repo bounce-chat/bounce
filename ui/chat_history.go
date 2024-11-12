@@ -41,21 +41,23 @@ type chatHistory struct {
 	offsetY       float32
 	offsetUpdated func(fyne.Position)
 
-	readCallback func(uuid.UUID, string)
-	readTracking map[uuid.UUID]bool
+	readCallback        func(uuid.UUID, string)
+	unreadCountCallback func(int)
+	readTracking        map[uuid.UUID]bool
 
 	propertyLock sync.RWMutex // TODO: expose the one in BaseWidget?
 }
 
-func newChatHistory(readCallback func(uuid.UUID, string)) *chatHistory {
+func newChatHistory(readCallback func(uuid.UUID, string), unreadCountCallback func(int)) *chatHistory {
 	if readCallback == nil {
 		log.Fatal("cannot create chat history widget without read callback")
 	}
 
 	ch := &chatHistory{
-		items:        []threadable{},
-		readCallback: readCallback,
-		readTracking: make(map[uuid.UUID]bool),
+		items:               []threadable{},
+		readCallback:        readCallback,
+		unreadCountCallback: unreadCountCallback,
+		readTracking:        make(map[uuid.UUID]bool),
 	}
 	ch.Length = func() int {
 		return len(ch.items)
@@ -194,8 +196,21 @@ func (ch *chatHistory) read(index int) {
 		ch.readTracking[id] = true
 
 		item := ch.items[index]
+		item.markRead()
 		go ch.readCallback(id, item.getType())
 	}
+
+	ch.updateUnreadCounter()
+}
+
+func (ch *chatHistory) updateUnreadCounter() {
+	unread := 0
+	for _, item := range ch.items {
+		if !item.isRead() && item.countsAsUnread() {
+			unread += 1
+		}
+	}
+	ch.unreadCountCallback(unread)
 }
 
 func (ch *chatHistory) scrollToLastRead() {
@@ -205,10 +220,6 @@ func (ch *chatHistory) scrollToLastRead() {
 				ch.ScrollToTop()
 			} else {
 				ch.ScrollTo(i - 1)
-				// TODO: scroller height not set at launch, scroll such that new messages aren't shown
-				//ch.scroller.Offset.Y = ch.offsetFor(i-1) - ch.scroller.Size().Height
-				//ch.offsetUpdated(ch.scroller.Offset)
-				//ch.Refresh()
 			}
 			return
 		}

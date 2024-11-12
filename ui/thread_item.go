@@ -18,6 +18,8 @@ var errUnknownUser = errors.New("unknown user")
 type threadable interface {
 	getID() uuid.UUID
 	isRead() bool
+	markRead()
+	countsAsUnread() bool
 	getType() string
 	populateTemplate(fyne.CanvasObject)
 }
@@ -42,6 +44,14 @@ func (cbd *chatBubbleData) getID() uuid.UUID {
 
 func (cbd *chatBubbleData) isRead() bool {
 	return cbd.read
+}
+
+func (cbd *chatBubbleData) markRead() {
+	cbd.read = true
+}
+
+func (cbd *chatBubbleData) countsAsUnread() bool {
+	return true
 }
 
 func (cbd *chatBubbleData) getType() string {
@@ -69,6 +79,14 @@ func (scd *statusChangeData) getID() uuid.UUID {
 
 func (scd *statusChangeData) isRead() bool {
 	return scd.read
+}
+
+func (scd *statusChangeData) markRead() {
+	scd.read = true
+}
+
+func (scd *statusChangeData) countsAsUnread() bool {
+	return false
 }
 
 func (scd *statusChangeData) getType() string {
@@ -111,6 +129,7 @@ func (fyneUI *Fyne) newUpdateGroupName(ugn chat.UpdateGroupName) (*threadItem, e
 		chat.TypeUpdateGroup,
 		"changed the group name to "+ugn.Name,
 		ugn.Timestamp,
+		ugn.Read,
 	)
 }
 
@@ -122,6 +141,7 @@ func (fyneUI *Fyne) newUpdateGroupRetention(ugr chat.UpdateGroupRetention) (*thr
 		chat.TypeUpdateGroup,
 		"changed the message retention to "+getRetentionName(ugr.Retention),
 		ugr.Timestamp,
+		ugr.Read,
 	)
 }
 
@@ -133,6 +153,7 @@ func (fyneUI *Fyne) newUpdateGroupAddUser(ugau chat.UpdateGroupAddUser) (*thread
 		chat.TypeUpdateGroup,
 		"added "+ugau.User.Name+" to the group",
 		ugau.Timestamp,
+		ugau.Read,
 	)
 }
 
@@ -150,6 +171,7 @@ func (fyneUI *Fyne) newUpdateGroupRemoveUser(ugru chat.UpdateGroupRemoveUser) (*
 			chat.TypeUpdateGroup,
 			"left the group",
 			ugru.Timestamp,
+			ugru.Read,
 		)
 	}
 
@@ -160,6 +182,7 @@ func (fyneUI *Fyne) newUpdateGroupRemoveUser(ugru chat.UpdateGroupRemoveUser) (*
 		chat.TypeUpdateGroup,
 		"removed "+removedUser.getName()+" from the group", // TODO: bind username:
 		ugru.Timestamp,
+		ugru.Read,
 	)
 }
 
@@ -171,6 +194,7 @@ func (fyneUI *Fyne) newUpdateGroupClearHistory(ugch chat.UpdateGroupClearHistory
 		chat.TypeUpdateGroup,
 		"cleared the chat history",
 		ugch.Timestamp,
+		ugch.Read,
 	)
 	ti.timestamp = ugch.ClearTime
 	return ti, err
@@ -273,6 +297,7 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 			outgoing:    outgoing,
 			direct:      true,
 			writtenAt:   dm.WrittenAt,
+			read:        dm.Read,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
@@ -297,6 +322,7 @@ func (fyneUI *Fyne) newUpdateDMRetention(udmr chat.UpdateDMRetention) (*threadIt
 		chat.TypeUpdateDM,
 		"changed the message retention to "+getRetentionName(udmr.Retention),
 		udmr.Timestamp,
+		udmr.Read,
 	)
 }
 
@@ -308,6 +334,7 @@ func (fyneUI *Fyne) newUpdateDMClearHistory(udmch chat.UpdateDMClearHistory) (*t
 		chat.TypeUpdateDM,
 		"cleared the chat history",
 		udmch.Timestamp,
+		udmch.Read,
 	)
 	ti.timestamp = udmch.ClearTime
 	return ti, err
@@ -326,6 +353,7 @@ func (fyneUI *Fyne) newUpdateGroupAdminPromoted(ugap chat.UpdateGroupAdminPromot
 		chat.TypeUpdateGroup,
 		"made "+newAdmin.getName()+" an admin", // TODO: bind?
 		ugap.Timestamp,
+		ugap.Read,
 	)
 }
 
@@ -342,6 +370,7 @@ func (fyneUI *Fyne) newUpdateGroupAdminDemoted(ugad chat.UpdateGroupAdminDemoted
 		chat.TypeUpdateGroup,
 		"removed "+oldAdmin.getName()+" as an admin", // TODO: bind?
 		ugad.Timestamp,
+		ugad.Read,
 	)
 }
 
@@ -353,6 +382,7 @@ func (fyneUI *Fyne) newUpdateGroupUserManagementRestricted(ugumr chat.UpdateGrou
 		chat.TypeUpdateGroup,
 		"restricted user management",
 		ugumr.Timestamp,
+		ugumr.Read,
 	)
 }
 
@@ -364,6 +394,7 @@ func (fyneUI *Fyne) newUpdateGroupUserManagementUnrestricted(ugumu chat.UpdateGr
 		chat.TypeUpdateGroup,
 		"unrestricted user management",
 		ugumu.Timestamp,
+		ugumu.Read,
 	)
 }
 
@@ -375,6 +406,7 @@ func (fyneUI *Fyne) newUpdateGroupEditsRestricted(uger chat.UpdateGroupEditsRest
 		chat.TypeUpdateGroup,
 		"restricted group edits",
 		uger.Timestamp,
+		uger.Read,
 	)
 }
 
@@ -386,6 +418,7 @@ func (fyneUI *Fyne) newUpdateGroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUn
 		chat.TypeUpdateGroup,
 		"unrestricted group edits",
 		ugeu.Timestamp,
+		ugeu.Read,
 	)
 }
 
@@ -397,6 +430,7 @@ func (fyneUI *Fyne) newUpdateGroupPostingRestricted(ugpr chat.UpdateGroupPosting
 		chat.TypeUpdateGroup,
 		"restricted posting",
 		ugpr.Timestamp,
+		ugpr.Read,
 	)
 }
 
@@ -408,6 +442,7 @@ func (fyneUI *Fyne) newUpdateGroupPostingUnrestricted(ugpu chat.UpdateGroupPosti
 		chat.TypeUpdateGroup,
 		"unrestricted posting",
 		ugpu.Timestamp,
+		ugpu.Read,
 	)
 }
 
@@ -419,6 +454,7 @@ func (fyneUI *Fyne) newUpdateGroupUserBlocked(ubg chat.UserBlockedGroup) (*threa
 		chat.TypeUpdateGroup,
 		"blocked the group",
 		ubg.Timestamp,
+		ubg.Read,
 	)
 }
 
@@ -430,6 +466,7 @@ func (fyneUI *Fyne) newGroupCreated(id, groupID, actorID uuid.UUID, timestamp in
 		chat.TypeGroupCreation,
 		"created the group",
 		timestamp,
+		true,
 	)
 }
 
@@ -454,6 +491,7 @@ func (fyneUI *Fyne) userChangedName(id, userID uuid.UUID, oldName, newName strin
 			frameType:    chat.TypeUpdateUser,
 			timestamp:    timestamp,
 			changeString: changeString,
+			read:         true,
 		},
 		setButton:      nil,
 		timestamp:      timestamp,
@@ -461,7 +499,7 @@ func (fyneUI *Fyne) userChangedName(id, userID uuid.UUID, oldName, newName strin
 	}, nil
 }
 
-func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, frameType, action string, timestamp int64) (*threadItem, error) {
+func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, frameType, action string, timestamp int64, read bool) (*threadItem, error) {
 	t, ok := fyneUI.getThread(threadID)
 	if !ok {
 		log.WithFields(log.Fields{
@@ -488,6 +526,7 @@ func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, f
 			frameType:    frameType,
 			timestamp:    timestamp,
 			changeString: changeString,
+			read:         read,
 		},
 		setButton: func(tb *threadButton) {
 			t.getButton().setLastAction(changeString) // TODO: possible to bind actor's name?

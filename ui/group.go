@@ -334,7 +334,6 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		editUserDialogs:         make(map[uuid.UUID]dialog.Dialog),
 		lastMessage:             time.Now().Unix(),
 	}
-	group.scroll = newChatHistory(fyneUI.callbacks.MarkRead)
 
 	for _, bu := range bounceGroup.Users {
 		u, exists := fyneUI.users.get(bu.ID)
@@ -450,6 +449,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		}
 	}
 	group.button = newThreadButton(newDefaultImage(group.id, group.initial, 64, openThread), group.name, openThread)
+	group.scroll = newChatHistory(fyneUI.callbacks.MarkRead, group.button.setUnreadCount)
 
 	// Keep the last message time counter up to date
 	go func() {

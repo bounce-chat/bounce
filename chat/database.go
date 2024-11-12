@@ -431,6 +431,7 @@ func (b *bounce) buildInitialState() InitialState {
 					Thread:    xor(udm.Target, b.currentUserID()),
 					Actor:     udm.Actor,
 					Timestamp: udm.Timestamp,
+					Read:      udm.Read,
 					Retention: int64(binary.LittleEndian.Uint64(udm.Data)),
 				},
 			)
@@ -442,6 +443,7 @@ func (b *bounce) buildInitialState() InitialState {
 					Thread:    xor(udm.Target, b.currentUserID()),
 					Actor:     udm.Actor,
 					Timestamp: udm.Timestamp,
+					Read:      udm.Read,
 					ClearTime: int64(binary.LittleEndian.Uint64(udm.Data)),
 				},
 			)
@@ -505,6 +507,7 @@ func (b *bounce) buildInitialState() InitialState {
 					Thread:    ug.Target,
 					Actor:     ug.Actor,
 					Timestamp: ug.Timestamp,
+					Read:      ug.Read,
 					Name:      string(ug.Data),
 				},
 			)
@@ -516,6 +519,7 @@ func (b *bounce) buildInitialState() InitialState {
 					Thread:    ug.Target,
 					Actor:     ug.Actor,
 					Timestamp: ug.Timestamp,
+					Read:      ug.Read,
 					Retention: int64(binary.LittleEndian.Uint64(ug.Data)),
 				},
 			)
@@ -536,6 +540,7 @@ func (b *bounce) buildInitialState() InitialState {
 					Thread:    ug.Target,
 					Actor:     ug.Actor,
 					Timestamp: ug.Timestamp,
+					Read:      ug.Read,
 					User: User{
 						ID:   u.ID,
 						Name: u.Name,
@@ -557,6 +562,7 @@ func (b *bounce) buildInitialState() InitialState {
 					Thread:    ug.Target,
 					Actor:     ug.Actor,
 					Timestamp: ug.Timestamp,
+					Read:      ug.Read,
 					User:      userID,
 				},
 			)
@@ -568,6 +574,7 @@ func (b *bounce) buildInitialState() InitialState {
 					Thread:    ug.Target,
 					Actor:     ug.Actor,
 					Timestamp: ug.Timestamp,
+					Read:      ug.Read,
 					ClearTime: int64(binary.LittleEndian.Uint64(ug.Data)),
 				},
 			)
@@ -587,6 +594,7 @@ func (b *bounce) buildInitialState() InitialState {
 					Thread:    ug.Target,
 					Actor:     ug.Actor,
 					Timestamp: ug.Timestamp,
+					Read:      ug.Read,
 					UserID:    userID,
 				},
 			)
@@ -606,6 +614,7 @@ func (b *bounce) buildInitialState() InitialState {
 					Thread:    ug.Target,
 					Actor:     ug.Actor,
 					Timestamp: ug.Timestamp,
+					Read:      ug.Read,
 					UserID:    userID,
 				},
 			)
@@ -626,6 +635,7 @@ func (b *bounce) buildInitialState() InitialState {
 						Thread:    ug.Target,
 						Actor:     ug.Actor,
 						Timestamp: ug.Timestamp,
+						Read:      ug.Read,
 					},
 				)
 			} else {
@@ -636,6 +646,7 @@ func (b *bounce) buildInitialState() InitialState {
 						Thread:    ug.Target,
 						Actor:     ug.Actor,
 						Timestamp: ug.Timestamp,
+						Read:      ug.Read,
 					},
 				)
 			}
@@ -656,6 +667,7 @@ func (b *bounce) buildInitialState() InitialState {
 						Thread:    ug.Target,
 						Actor:     ug.Actor,
 						Timestamp: ug.Timestamp,
+						Read:      ug.Read,
 					},
 				)
 			} else {
@@ -666,6 +678,7 @@ func (b *bounce) buildInitialState() InitialState {
 						Thread:    ug.Target,
 						Actor:     ug.Actor,
 						Timestamp: ug.Timestamp,
+						Read:      ug.Read,
 					},
 				)
 			}
@@ -686,6 +699,7 @@ func (b *bounce) buildInitialState() InitialState {
 						Thread:    ug.Target,
 						Actor:     ug.Actor,
 						Timestamp: ug.Timestamp,
+						Read:      ug.Read,
 					},
 				)
 			} else {
@@ -696,6 +710,7 @@ func (b *bounce) buildInitialState() InitialState {
 						Thread:    ug.Target,
 						Actor:     ug.Actor,
 						Timestamp: ug.Timestamp,
+						Read:      ug.Read,
 					},
 				)
 			}
