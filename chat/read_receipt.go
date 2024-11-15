@@ -2,107 +2,104 @@ package chat
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
-func (b *bounce) markRead(id uuid.UUID, frameType string) {
-	log.WithFields(log.Fields{"id": id, "type": frameType}).Warn("read message")
+type readReceipt struct {
+	ID              uuid.UUID
+	Actor           uuid.UUID
+	Scope           int // TODO: re-create on device?
+	TargetID        uuid.UUID
+	TargetType      uint16
+	Timestamp       int64
+	Signer          string `msgpack:"-" gorm:"not null"`
+	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
+	Signature       []byte `msgpack:"-" gorm:"not null"`
+	payload         []byte
+	payloadMutex    sync.Mutex
+}
 
+func (b *bounce) sendReadReceipt(id uuid.UUID, frameType string) {
 	switch frameType {
 	case TypeGroupMessage:
 		// Find the group this message is in
-		var gm groupMessage
-		err := b.database.Select("destination").First(&gm, "id = ?", id).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": id,
-				}).Error("group message not found while marking as read")
-				return
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-					"id":    id,
-				}).Fatal("database error looking up group message")
-			}
-		}
-
-		// Mark this message as read
-		err = b.database.Table("group_messages").Where("id = ?", id).Updates(map[string]interface{}{"read": true}).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": id,
-				}).Error("group message not found while marking as read")
-				return
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-					"id":    id,
-				}).Fatal("database error marking group message as read")
-			}
-		}
-
-		// TODO: call into the UI to update the thread item / chat bubble?
-
-		// TODO: look up the group, check if we're doing read receipts on it, broadcast if so
+		//var gm groupMessage
+		//err := b.database.Select("destination").First(&gm, "id = ?", id).Error
+		//if err != nil {
+		//	if errors.Is(err, gorm.ErrRecordNotFound) {
+		//		log.WithFields(log.Fields{
+		//			"id": id,
+		//		}).Error("group message not found while marking as read")
+		//		return
+		//	} else {
+		//		log.WithFields(log.Fields{
+		//			"error": err.Error(),
+		//			"id":    id,
+		//		}).Fatal("database error looking up group message")
+		//	}
+		//}
 	case TypeDirectMessage:
-		err := b.database.Table("direct_messages").Where("id = ?", id).Updates(map[string]interface{}{"read": true}).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": id,
-				}).Error("direct message not found while marking as read")
-				return
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-					"id":    id,
-				}).Fatal("database error marking direct message as read")
-			}
-		}
-
-		// TODO: send read receipt if enabled
 	case TypeUpdateGroup:
-		// Mark this update group as read
-		err := b.database.Table("update_groups").Where("id = ?", id).Updates(map[string]interface{}{"read": true}).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": id,
-				}).Error("update group not found while marking as read")
-				return
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-					"id":    id,
-				}).Fatal("database error marking update group as read")
-			}
-		}
+		//readReceipt{
+		//	ID:         uuid.New(),
+		//	Actor:      b.currentUserID(),
+		//	Scope:      scopeSync,
+		//	TargetID:   id,
+		//	TargetType: typeUpdateGroup,
+		//	Timestamp:  time.Now().Unix(),
+		//}
 	case TypeUpdateDM:
-		err := b.database.Table("update_dms").Where("id = ?", id).Updates(map[string]interface{}{"read": true}).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": id,
-				}).Error("update dm not found while marking as read")
-				return
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-					"id":    id,
-				}).Fatal("database error marking update dm as read")
-			}
-		}
-		//case TypeUpdateUser:
 	}
 
-	// TODO: mark read on the frame
-	// TODO: make read on any earlier frames of the same type
-	// TODO: send read receipts if enabled
+}
 
-	// TODO: tell sync devices that a message was read
+func (b *bounce) handleReadReceipt(peer string, data []byte, catchUp bool) {
+	// TODO: mark it as read if the Actor is us, update the chat bubble if it's someone else
+}
+
+func (b *bounce) markRead(id uuid.UUID, frameType string) {
+	tableName := ""
+	switch frameType {
+	case TypeGroupMessage:
+		tableName = "group_messages"
+	case TypeDirectMessage:
+		tableName = "direct_messages"
+	case TypeUpdateGroup:
+		tableName = "update_groups"
+	case TypeUpdateDM:
+		tableName = "update_dms"
+	default:
+		log.WithFields(log.Fields{
+			"id":         id,
+			"frame_type": frameType,
+		}).Error("unsupported frame type for marking as read")
+		return
+	}
+
+	err := b.database.Table(tableName).Where("id = ?", id).Updates(map[string]interface{}{"read": true}).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"id":         id,
+				"frame_type": frameType,
+			}).Error("item not found while marking as read")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error":      err.Error(),
+				"id":         id,
+				"frame_type": frameType,
+			}).Fatal("database error marking item as read")
+		}
+	}
+
+	b.sendReadReceipt(id, frameType)
+
+	// TODO: make read on any earlier frames of the same type?
+	//       for each type of frame, if destination lines up timestamp is before x,
+	//       mark as read?
 }
