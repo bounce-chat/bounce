@@ -61,7 +61,7 @@ func (fyneUI *Fyne) refreshThreadOrder() {
 	fyneUI.threadVBox.Refresh()
 }
 
-func (fyneUI *Fyne) populateItems(t thread, items threadItems) {
+func (fyneUI *Fyne) populateInitialItems(t thread, items threadItems) {
 	sort.Sort(items)
 
 	fyneUI.threadWithItemMutex.Lock()
@@ -83,7 +83,10 @@ func (fyneUI *Fyne) populateItems(t thread, items threadItems) {
 			break
 		}
 	}
-	fyneUI.refreshThreadOrder()
+
+	t.chatHistoryScroll().setItemHeights(fyneUI.chatContainerSizeAtStartup())
+	t.chatHistoryScroll().scrollToLastRead()
+	t.chatHistoryScroll().updateUnreadCounter()
 }
 
 func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {

@@ -472,20 +472,15 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	// Create widgets for all the thread items we added
 	for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?
 		if items, ok := groupItems[g.id]; ok {
-			fyneUI.populateItems(g, items)
-			g.chatHistoryScroll().setItemHeights(fyneUI.chatContainerSizeAtStartup())
-			g.chatHistoryScroll().scrollToLastRead()
-			g.chatHistoryScroll().updateUnreadCounter()
+			fyneUI.populateInitialItems(g, items)
 		}
 	}
 	for _, u := range fyneUI.dms { // TODO: store groups and DMs in a shared threads slice?
 		if items, ok := dmItems[u.user.id]; ok {
-			fyneUI.populateItems(u, items)
-			u.chatHistoryScroll().setItemHeights(fyneUI.chatContainerSizeAtStartup())
-			u.chatHistoryScroll().scrollToLastRead()
-			u.chatHistoryScroll().updateUnreadCounter()
+			fyneUI.populateInitialItems(u, items)
 		}
 	}
+	fyneUI.refreshThreadOrder()
 }
 
 func (fyneUI *Fyne) chatContainerSizeAtStartup() fyne.Size {

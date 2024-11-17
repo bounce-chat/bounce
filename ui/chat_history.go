@@ -4,7 +4,6 @@ package ui
 // remove unused features and behaviors, and support other callbacks and behaviors
 
 import (
-	"math"
 	"sort"
 	"sync"
 
@@ -27,17 +26,18 @@ type chatHistory struct {
 
 	items      []threadable
 	ids        []uuid.UUID
+	heights    []float32
 	itemsMutex sync.Mutex
 
 	Length     func() int                                  `json:"-"`
 	CreateItem func() fyne.CanvasObject                    `json:"-"`
 	UpdateItem func(id ListItemID, item fyne.CanvasObject) `json:"-"`
 
-	currentFocus  ListItemID // TODO: still used?
-	focused       bool
+	currentFocus ListItemID // TODO: still used?
+	focused      bool       // TODO: still used?
+	itemMin      fyne.Size  // TODO: still used?
+
 	scroller      *container.Scroll
-	itemMin       fyne.Size
-	itemHeights   map[ListItemID]float32
 	offsetY       float32
 	offsetUpdated func(fyne.Position)
 
@@ -55,6 +55,8 @@ func newChatHistory(readCallback func(uuid.UUID, string), unreadCountCallback fu
 
 	ch := &chatHistory{
 		items:               []threadable{},
+		ids:                 []uuid.UUID{},
+		heights:             []float32{},
 		readCallback:        readCallback,
 		unreadCountCallback: unreadCountCallback,
 		readTracking:        make(map[uuid.UUID]bool),
@@ -108,6 +110,7 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 				if i == 0 {
 					ch.items = append([]threadable{ti.widgetData}, ch.items...)
 					ch.ids = append([]uuid.UUID{ti.id}, ch.ids...)
+					ch.heights = append([]float32{0}, ch.heights...)
 					break
 				}
 				var compareTime int64
@@ -124,6 +127,7 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 				if ti.timestamp > compareTime {
 					ch.items = append(ch.items[:i], append([]threadable{ti.widgetData}, ch.items[i:]...)...)
 					ch.ids = append(ch.ids[:i], append([]uuid.UUID{ti.id}, ch.ids[i:]...)...)
+					ch.heights = append(ch.heights[:i], append([]float32{0}, ch.heights[i:]...)...)
 					break
 				}
 			}
@@ -161,6 +165,7 @@ func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
 
 	ch.items = append(ch.items[:location], ch.items[location+1:]...)
 	ch.ids = append(ch.ids[:location], ch.ids[location+1:]...)
+	ch.heights = append(ch.heights[:location], ch.heights[location+1:]...)
 
 	ch.Refresh()
 
@@ -277,12 +282,13 @@ func (ch *chatHistory) RefreshItem(id ListItemID) {
 func (ch *chatHistory) SetItemHeight(id ListItemID, height float32) {
 	ch.propertyLock.Lock()
 
-	if ch.itemHeights == nil {
-		ch.itemHeights = make(map[ListItemID]float32)
+	if !(len(ch.heights) > id) {
+		missing := id + 1 - len(ch.heights)
+		ch.heights = append(ch.heights, make([]float32, missing)...)
 	}
+	refresh := ch.heights[id] != height
+	ch.heights[id] = height
 
-	refresh := ch.itemHeights[id] != height
-	ch.itemHeights[id] = height
 	ch.propertyLock.Unlock()
 
 	if refresh {
@@ -290,13 +296,24 @@ func (ch *chatHistory) SetItemHeight(id ListItemID, height float32) {
 	}
 }
 
+func (ch *chatHistory) getItemHeight(id ListItemID) (float32, bool) {
+	if !(len(ch.heights) > id) {
+		return 0, false
+	}
+	if ch.heights[id] == 0 {
+		return 0, false
+	}
+	return ch.heights[id], true
+}
+
 func (ch *chatHistory) offsetFor(id ListItemID) float32 {
 	y := float32(0)
 	separatorThickness := ch.Theme().Size(theme.SizeNamePadding)
 	for i := 0; i <= id; i++ {
 		ch.propertyLock.Lock()
-		height, ok := ch.itemHeights[i]
+		height, ok := ch.getItemHeight(i)
 		ch.propertyLock.Unlock()
+
 		if ok {
 			y += height + separatorThickness
 		} else {
@@ -414,15 +431,10 @@ func (ch *chatHistory) contentMinSize() fyne.Size { // TODO: is this the same as
 	}
 	items := ch.Length()
 
-	if ch.itemHeights == nil || len(ch.itemHeights) == 0 {
-		return fyne.NewSize(ch.itemMin.Width,
-			(ch.itemMin.Height+separatorThickness)*float32(items)-separatorThickness)
-	}
-
 	height := float32(0)
 	totalCustom := 0
 	templateHeight := ch.itemMin.Height
-	for id, itemHeight := range ch.itemHeights {
+	for id, itemHeight := range ch.heights {
 		if id < items {
 			totalCustom++
 			height += itemHeight
@@ -470,34 +482,9 @@ func (l *listLayout) calculateVisibleRowHeights(itemHeight float32, length int, 
 
 	padding := th.Size(theme.SizeNamePadding)
 
-	if len(l.list.itemHeights) == 0 {
-		paddedItemHeight := itemHeight + padding
-
-		offY = float32(math.Floor(float64(l.list.offsetY/paddedItemHeight))) * paddedItemHeight
-		minRow = int(math.Floor(float64(offY / paddedItemHeight)))
-		maxRow := int(math.Ceil(float64((offY + l.list.scroller.Size().Height) / paddedItemHeight)))
-
-		if minRow > length-1 {
-			minRow = length - 1
-		}
-		if minRow < 0 {
-			minRow = 0
-			offY = 0
-		}
-
-		if maxRow > length-1 {
-			maxRow = length - 1
-		}
-
-		for i := 0; i <= maxRow-minRow; i++ {
-			l.visibleRowHeights = append(l.visibleRowHeights, itemHeight)
-		}
-		return
-	}
-
 	for i := 0; i < length; i++ {
 		height := itemHeight
-		if h, ok := l.list.itemHeights[i]; ok {
+		if h, ok := l.list.getItemHeight(i); ok {
 			height = h
 		}
 
