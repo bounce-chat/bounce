@@ -33,6 +33,8 @@ type group struct {
 	RestrictGroupEdits        bool
 	RestrictPosting           bool
 	LastActivity              int64
+	ReadReceiptsOverridden    bool
+	ReadReceiptsEnabled       bool
 	DeliveryRecordsClearedFor uuid.UUID `msgpack:"-"`
 	payload                   []byte
 	payloadMutex              sync.Mutex
