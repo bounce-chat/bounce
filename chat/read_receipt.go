@@ -298,6 +298,9 @@ func (b *bounce) sendReadReceipt(id uuid.UUID, frameType string) error {
 	}
 	destination, _, scope, err := b.getReadReceiptDestinationAuthorAndScope(id, frameType)
 	if err != nil {
+		if errors.Is(err, errUnknownReadReceiptTargetType) {
+			return nil
+		}
 		return err
 	}
 	rr := readReceipt{
