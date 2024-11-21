@@ -145,6 +145,12 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 
 	fyneUI.mainWindow.Show()
 
+	// https://github.com/fyne-io/fyne/issues/4964
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		fyneUI.mainWindow.Resize(fyne.NewSize(defaultWidth, defaultHeight-1))
+	}()
+
 	//
 	// Build all the containers
 	//

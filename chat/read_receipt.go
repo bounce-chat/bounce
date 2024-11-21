@@ -11,19 +11,39 @@ import (
 	"gorm.io/gorm"
 )
 
+var readReceiptTargetTypeString = map[uint16]string{
+	typeGroupMessage:  TypeGroupMessage,
+	typeDirectMessage: TypeDirectMessage,
+	typeUpdateGroup:   TypeUpdateGroup,
+	typeUpdateDM:      TypeUpdateDM,
+	typeGroupCreation: TypeGroupCreation,
+	typeUpdateUser:    TypeUpdateUser,
+}
+
+var readReceiptTargetTypeInt = map[string]uint16{
+	TypeGroupMessage:  typeGroupMessage,
+	TypeDirectMessage: typeDirectMessage,
+	TypeUpdateGroup:   typeUpdateGroup,
+	TypeUpdateDM:      typeUpdateDM,
+	TypeGroupCreation: typeGroupCreation,
+	TypeUpdateUser:    typeUpdateUser,
+}
+
+var errUnknownReadReceiptTargetType = errors.New("unknown target type for read receipt")
+
 var readReceiptMutex sync.Mutex
 
 type readReceipt struct {
 	ID              uuid.UUID
 	Actor           uuid.UUID
-	Destination     uuid.UUID //TODO: exclude from frame?
+	Destination     uuid.UUID `msgpack:"-"`
+	Scope           int       `msgpack:"-"`
 	Target          uuid.UUID
 	TargetType      uint16
 	Timestamp       int64
 	Signer          string `msgpack:"-" gorm:"not null"`
 	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
 	Signature       []byte `msgpack:"-" gorm:"not null"`
-	Scope           int    `msgpack:"-"`
 	payload         []byte
 	payloadMutex    sync.Mutex
 }
@@ -130,7 +150,21 @@ func (b *bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 	}
 
 	// Assign the scope based on if read receipts are enabled
-	_, scope := b.getReadReceiptDestinationAndScope(rr.Target, readReceiptTargetTypeString(rr.TargetType))
+	targetTypeString, ok := readReceiptTargetTypeString[rr.TargetType]
+	if !ok {
+		log.WithFields(log.Fields{
+			"error": errUnknownReadReceiptTargetType.Error(),
+		}).Error("error parsing read receipt")
+		return nil
+	}
+	destination, author, scope, err := b.getReadReceiptDestinationAuthorAndScope(rr.Target, targetTypeString)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error parsing read receipt")
+		return nil
+	}
+	rr.Destination = destination
 	rr.Scope = scope
 
 	// Save to database
@@ -141,61 +175,21 @@ func (b *bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 		}).Fatal("database error saving read receipt")
 	}
 
+	// Update the database and UI
 	if rr.Actor == b.currentUserID() {
-		b.markReadInDatabase(rr.Target, readReceiptTargetTypeString(rr.TargetType))
-		// TODO: update the UI
-	} else {
+		b.markReadInDatabase(rr.Target, targetTypeString)
+		// We read something
+		// TODO: update the UI for scroll location reasons
+	} else if author == b.currentUserID() {
+		// Someone else read something we wrote
+		// update the UI for chat bubble reasons
 		// TODO: update the UI only if they have them enabled
 	}
 
 	return &rr
 }
 
-func readReceiptTargetTypeString(tt uint16) string { // TODO: return error
-	switch tt {
-	case typeGroupMessage:
-		return TypeGroupMessage
-	case typeDirectMessage:
-		return TypeDirectMessage
-	case typeUpdateGroup:
-		return TypeUpdateGroup
-	case typeUpdateDM:
-		return TypeUpdateDM
-	case typeGroupCreation:
-		return TypeGroupCreation
-	case typeUpdateUser:
-		return TypeUpdateUser
-	}
-
-	log.WithFields(log.Fields{
-		"type": tt,
-	}).Error("unknown target type for read receipts")
-	return ""
-}
-
-func readReceiptTargetTypeInt(tt string) uint16 { // TODO: return error
-	switch tt {
-	case TypeGroupMessage:
-		return typeGroupMessage
-	case TypeDirectMessage:
-		return typeDirectMessage
-	case TypeUpdateGroup:
-		return typeUpdateGroup
-	case TypeUpdateDM:
-		return typeUpdateDM
-	case TypeGroupCreation:
-		return typeGroupCreation
-	case TypeUpdateUser:
-		return typeUpdateUser
-	}
-
-	log.WithFields(log.Fields{
-		"type": tt,
-	}).Error("unknown target type for read receipts")
-	return 0
-}
-
-func (b *bounce) getReadReceiptDestinationAndScope(id uuid.UUID, frameType string) (uuid.UUID, int) {
+func (b *bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType string) (uuid.UUID, uuid.UUID, int, error) {
 	var defaultSendReadReceipts bool
 	err := b.database.Model(&profileSettings{}).Select("default_send_read_receipts").Where("user_id = ?", b.currentUserID()).First(&defaultSendReadReceipts).Error
 	if err != nil {
@@ -208,13 +202,13 @@ func (b *bounce) getReadReceiptDestinationAndScope(id uuid.UUID, frameType strin
 	case TypeGroupMessage:
 		// Find the group message
 		var gm groupMessage
-		err := b.database.Select("destination").First(&gm, "id = ?", id).Error
+		err := b.database.Select("destination", "author").First(&gm, "id = ?", id).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
 					"id": id,
 				}).Error("group message not found while marking as read")
-				return uuid.Nil, scopeSync
+				return uuid.Nil, uuid.Nil, scopeSync, err
 			} else {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -231,7 +225,7 @@ func (b *bounce) getReadReceiptDestinationAndScope(id uuid.UUID, frameType strin
 				log.WithFields(log.Fields{
 					"id": gm.Destination,
 				}).Error("group not found while marking as read")
-				return uuid.Nil, scopeSync
+				return uuid.Nil, uuid.Nil, scopeSync, err
 			} else {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -241,38 +235,81 @@ func (b *bounce) getReadReceiptDestinationAndScope(id uuid.UUID, frameType strin
 		}
 
 		if (g.ReadReceiptsOverridden && g.ReadReceiptsEnabled) || (!g.ReadReceiptsOverridden && defaultSendReadReceipts) {
-			return gm.Destination, scopeGroup // TODO: only ever use read receipts to inform the authors of messages?
+			return gm.Destination, gm.Author, scopeGroup, nil
 		} else {
-			return gm.Destination, scopeSync
+			return gm.Destination, gm.Author, scopeSync, nil
 		}
 	case TypeDirectMessage:
+		// Find the direct message
+		var dm directMessage
+		err := b.database.Select("xor", "author").First(&dm, "id = ?", id).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id": id,
+				}).Error("group message not found while marking as read")
+				return uuid.Nil, uuid.Nil, scopeSync, err
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"id":    id,
+				}).Fatal("database error looking up group message")
+			}
+		}
+
+		// Find the user
+		userID := xor(dm.Xor, b.currentUserID())
+		var u user
+		err = b.database.Select("read_receipts_overridden", "read_receipts_enabled").First(&u, "id = ?", userID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id": userID,
+				}).Error("user not found while marking as read")
+				return uuid.Nil, uuid.Nil, scopeSync, err
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"id":    userID,
+				}).Fatal("database error looking up user")
+			}
+		}
+
+		if (u.ReadReceiptsOverridden && u.ReadReceiptsEnabled) || (!u.ReadReceiptsOverridden && defaultSendReadReceipts) {
+			return userID, dm.Author, scopeUser, nil
+		} else {
+			return userID, dm.Author, scopeSync, nil
+		}
 	case TypeUpdateGroup:
 		// Currently not sending these, but could send and display in the future
 	case TypeUpdateDM:
 		// Currently not sending these, but could send and display in the future
 	}
 
-	log.WithFields(log.Fields{
-		"type": frameType,
-	}).Error("unsupported frame type for read receipt destination and scope")
-	return uuid.Nil, scopeSync
+	return uuid.Nil, uuid.Nil, scopeSync, errUnknownReadReceiptTargetType
 }
 
-func (b *bounce) sendReadReceipt(id uuid.UUID, frameType string) {
-	destination, scope := b.getReadReceiptDestinationAndScope(id, frameType)
+func (b *bounce) sendReadReceipt(id uuid.UUID, frameType string) error {
+	// Create read receipt
+	targetTypeInt, ok := readReceiptTargetTypeInt[frameType]
+	if !ok {
+		return errUnknownReadReceiptTargetType
+	}
+	destination, _, scope, err := b.getReadReceiptDestinationAuthorAndScope(id, frameType)
+	if err != nil {
+		return err
+	}
 	rr := readReceipt{
 		ID:          uuid.New(),
 		Actor:       b.currentUserID(),
 		Destination: destination,
 		Scope:       scope,
 		Target:      id,
-		TargetType:  readReceiptTargetTypeInt(frameType),
+		TargetType:  targetTypeInt,
 		Timestamp:   time.Now().Unix(),
 	}
-	// TODO: err check
 
 	// Sign it
-	var err error
 	rr.OriginalPayload, err = msgpack.Marshal(rr)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -293,9 +330,11 @@ func (b *bounce) sendReadReceipt(id uuid.UUID, frameType string) {
 
 	// Broadcast
 	go b.broadcast(&rr)
+
+	return nil
 }
 
-func (b *bounce) markReadInDatabase(id uuid.UUID, frameType string) {
+func (b *bounce) markReadInDatabase(id uuid.UUID, frameType string) error {
 	tableName := ""
 	switch frameType {
 	case TypeGroupMessage:
@@ -307,11 +346,7 @@ func (b *bounce) markReadInDatabase(id uuid.UUID, frameType string) {
 	case TypeUpdateDM:
 		tableName = "update_dms"
 	default:
-		log.WithFields(log.Fields{
-			"id":         id,
-			"frame_type": frameType,
-		}).Error("unsupported frame type for marking as read")
-		return
+		return errUnknownReadReceiptTargetType
 	}
 
 	err := b.database.Table(tableName).Where("id = ?", id).Updates(map[string]interface{}{"read": true}).Error
@@ -321,7 +356,7 @@ func (b *bounce) markReadInDatabase(id uuid.UUID, frameType string) {
 				"id":         id,
 				"frame_type": frameType,
 			}).Error("item not found while marking as read")
-			return
+			return err
 		} else {
 			log.WithFields(log.Fields{
 				"error":      err.Error(),
@@ -333,9 +368,27 @@ func (b *bounce) markReadInDatabase(id uuid.UUID, frameType string) {
 
 	// TODO: make read on any earlier frames of the same type in this thread?
 	//       for each type of frame, if destination lines up and timestamp is before x, mark as read?
+
+	return nil
 }
 
 func (b *bounce) markRead(id uuid.UUID, frameType string) {
-	b.markReadInDatabase(id, frameType)
-	b.sendReadReceipt(id, frameType)
+	err := b.markReadInDatabase(id, frameType)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"id":         id,
+			"frame_type": frameType,
+			"error":      err.Error(),
+		}).Error("error marking frame as read in database")
+		return
+	}
+
+	err = b.sendReadReceipt(id, frameType)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"id":         id,
+			"frame_type": frameType,
+			"error":      err.Error(),
+		}).Error("error sending read receipt for frame")
+	}
 }

@@ -337,6 +337,8 @@ type UI interface {
 	DeviceAdded(Device)
 	DeviceRevoked(uuid.UUID)
 	DeviceRenamed(uuid.UUID, string)
+
+	//MessageRead()
 }
 
 // Frames that support being marked as read
