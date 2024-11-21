@@ -81,6 +81,10 @@ func (b *bounce) openDatabase() {
 			"error": err.Error(),
 		}).Fatal("error migrating the database")
 	}
+	err = b.database.Table("profile_settings").Where("default_send_read_receipts IS NULL").Update("default_send_read_receipts", true).Error
+	if err != nil {
+		log.WithFields(log.Fields{"error": err.Error()}).Fatal("error migrating profile settings")
+	}
 
 	// Prune the database
 	b.pruneDirectMessages()

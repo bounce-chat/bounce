@@ -9,6 +9,6 @@ type profileSettings struct {
 	NetworkPublicKey            []byte
 	BlockedGroups               string
 	DefaultGroupRetention       int64
-	DefaultSendReadReceipts     bool
-	DefaultSendTypingIndicators bool
+	DefaultSendReadReceipts     bool `gorm:"default:true"`
+	DefaultSendTypingIndicators bool `gorm:"default:true"`
 }
