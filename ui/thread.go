@@ -148,6 +148,27 @@ func (fyneUI *Fyne) UpdateMessageDeletionTime(id uuid.UUID, timestamp int64) {
 	// TODO
 }
 
+func (fyneUI *Fyne) MessageRead(id uuid.UUID) {
+	fyneUI.threadWithItemMutex.Lock()
+	thread, ok := fyneUI.threadWithItem[id]
+	fyneUI.threadWithItemMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"message_id": id,
+		}).Warn("attempt to mark message as read that was not found in any thread")
+		return
+	}
+
+	thread.chatHistoryScroll().markRead(id)
+}
+
+func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
+	log.WithFields(log.Fields{
+		"message_id": rr.Target,
+	}).Info("UI wants to mark message as read")
+	//TODO
+}
+
 //
 // Silently drop a message from the chat history because it is past retention
 //

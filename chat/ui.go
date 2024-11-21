@@ -221,6 +221,13 @@ type UpdateUserUpdateName struct {
 	Timestamp int64
 }
 
+type ReadReceipt struct {
+	ID     uuid.UUID
+	Actor  uuid.UUID
+	Target uuid.UUID
+	//TargetType string
+}
+
 type InitialState struct {
 	Profile                                *User
 	SyncDevices                            []Device
@@ -338,7 +345,8 @@ type UI interface {
 	DeviceRevoked(uuid.UUID)
 	DeviceRenamed(uuid.UUID, string)
 
-	//MessageRead()
+	MessageRead(uuid.UUID)           // We read a message on another device
+	ReceivedReadReceipt(ReadReceipt) // Someone else read a message of ours
 }
 
 // Frames that support being marked as read

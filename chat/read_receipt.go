@@ -178,12 +178,13 @@ func (b *bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 	// Update the database and UI
 	if rr.Actor == b.currentUserID() {
 		b.markReadInDatabase(rr.Target, targetTypeString)
-		// We read something
-		// TODO: update the UI for scroll location reasons
+		b.userInterface.MessageRead(rr.Target)
 	} else if author == b.currentUserID() {
-		// Someone else read something we wrote
-		// update the UI for chat bubble reasons
-		// TODO: update the UI only if they have them enabled
+		b.userInterface.ReceivedReadReceipt(ReadReceipt{
+			ID:     rr.ID,
+			Actor:  rr.Actor,
+			Target: rr.Target,
+		})
 	}
 
 	return &rr
