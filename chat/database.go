@@ -401,6 +401,24 @@ func (b *bounce) buildInitialState() InitialState {
 	}
 	exportedDMs := []DirectMessage{}
 	for _, dm := range dms {
+		var rrs []readReceipt
+		err = b.database.Where("target = ?", dm.ID).Find(&rrs).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error looking up read receipts")
+		}
+		readReceipts := []ReadReceipt{}
+		for _, rr := range rrs {
+			readReceipts = append(
+				readReceipts,
+				ReadReceipt{
+					ID:     rr.ID,
+					Actor:  rr.Actor,
+					Target: rr.Target,
+				},
+			)
+		}
 		exportedDMs = append(
 			exportedDMs,
 			DirectMessage{
@@ -413,6 +431,7 @@ func (b *bounce) buildInitialState() InitialState {
 				Expires:       dm.DeleteAt,
 				Read:          dm.Read,
 				Undeliverable: dm.Undeliverable,
+				ReadReceipts:  readReceipts,
 			},
 		)
 	}
@@ -465,6 +484,25 @@ func (b *bounce) buildInitialState() InitialState {
 	}
 	exportedGMs := []GroupMessage{}
 	for _, gm := range gms {
+		// TODO: get polymorphism working
+		var rrs []readReceipt
+		err = b.database.Where("target = ?", gm.ID).Find(&rrs).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error looking up read receipts")
+		}
+		readReceipts := []ReadReceipt{}
+		for _, rr := range rrs {
+			readReceipts = append(
+				readReceipts,
+				ReadReceipt{
+					ID:     rr.ID,
+					Actor:  rr.Actor,
+					Target: rr.Target,
+				},
+			)
+		}
 		exportedGMs = append(
 			exportedGMs,
 			GroupMessage{
@@ -477,6 +515,7 @@ func (b *bounce) buildInitialState() InitialState {
 				Expires:       gm.DeleteAt,
 				Read:          gm.Read,
 				Undeliverable: gm.Undeliverable,
+				ReadReceipts:  readReceipts,
 			},
 		)
 	}

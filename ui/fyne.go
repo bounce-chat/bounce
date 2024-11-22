@@ -147,7 +147,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 
 	// https://github.com/fyne-io/fyne/issues/4964
 	go func() {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(150 * time.Millisecond)
 		fyneUI.mainWindow.Resize(fyne.NewSize(defaultWidth, defaultHeight-1))
 	}()
 

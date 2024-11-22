@@ -35,6 +35,7 @@ type DirectMessage struct {
 	Expires       int64
 	Read          bool
 	Undeliverable bool
+	ReadReceipts  []ReadReceipt
 }
 
 type UpdateDMRetention struct {
@@ -82,6 +83,7 @@ type GroupMessage struct {
 	Expires       int64
 	Read          bool
 	Undeliverable bool
+	ReadReceipts  []ReadReceipt
 }
 
 type UpdateGroupRetention struct {

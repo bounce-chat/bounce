@@ -28,11 +28,12 @@ type groupMessage struct {
 	Author           uuid.UUID
 	Destination      uuid.UUID
 	Text             string
-	Signer           string `msgpack:"-" gorm:"not null"`
-	OriginalPayload  []byte `msgpack:"-" gorm:"not null"`
-	Signature        []byte `msgpack:"-" gorm:"not null"`
-	payload          []byte
-	payloadMutex     sync.Mutex
+	//ReadReceipts    []readReceipt `msgpack:"-" gorm:"polymorphicType:TargetTable;polymorphicId:Target"`
+	Signer          string `msgpack:"-" gorm:"not null"`
+	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
+	Signature       []byte `msgpack:"-" gorm:"not null"`
+	payload         []byte
+	payloadMutex    sync.Mutex
 }
 
 func (gm *groupMessage) BeforeCreate(tx *gorm.DB) error {
