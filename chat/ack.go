@@ -66,6 +66,7 @@ func (b *bounce) handleAck(peer string, payload []byte, _ bool) broadcastable {
 	b.handleAckConfirmations(peer, ackedIDs[typeConfirmation])
 	b.handleAckUpdateUsers(peer, ackedIDs[typeUpdateUser])
 	b.handleAckUpdateDevices(peer, ackedIDs[typeUpdateDevice])
+	b.handleAckReadReceipts(peer, ackedIDs[typeReadReceipt])
 
 	return nil
 }
@@ -397,6 +398,28 @@ func (b *bounce) handleAckUpdateDevices(peer string, ids []uuid.UUID) {
 			}
 		} else {
 			b.markDeliveredTo(&ud, peer)
+		}
+	}
+}
+
+func (b *bounce) handleAckReadReceipts(peer string, ids []uuid.UUID) {
+	for _, readReceiptID := range ids {
+		var rr readReceipt
+		err := b.database.First(&rr, "id = ?", readReceiptID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   readReceiptID,
+					"peer": peer,
+				}).Warn("unknown read receipt acked")
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error querying for read receipt")
+			}
+		} else {
+			b.markDeliveredTo(&rr, peer)
 		}
 	}
 }

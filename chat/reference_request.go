@@ -78,6 +78,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte, _ bool) bro
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedConfirmationsPayloads(dev, requestedIDs[typeConfirmation], offeredIDs[typeConfirmation], getValidRequestedUUIDs(offeredIDs[typeUpdateGroup], requestedIDs[typeUpdateGroup]))...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateUsersPayloads(dev, requestedIDs[typeUpdateUser], offeredIDs[typeUpdateUser])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDevicesPayloads(dev, requestedIDs[typeUpdateDevice], offeredIDs[typeUpdateDevice])...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedReadReceiptPayloads(dev, requestedIDs[typeReadReceipt], offeredIDs[typeReadReceipt])...)
 
 	// Send the catchup if there's anything to send
 	if len(cu.broadcastables) > 0 {
@@ -370,6 +371,34 @@ func (b *bounce) getRequestedUpdateDevicesPayloads(peer device, requestedIDs, of
 			}
 		} else {
 			requestedData = append(requestedData, &ud)
+		}
+	}
+
+	return requestedData
+}
+
+func (b *bounce) getRequestedReadReceiptPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+	requestedData := sortableBroadcastables{}
+
+	requestedReadReceiptIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
+
+	for _, readReceiptID := range requestedReadReceiptIDs {
+		var rr readReceipt
+		err := b.database.First(&rr, "id = ?", readReceiptID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   readReceiptID,
+					"peer": peer.Address,
+				}).Warn("reference request asks for unknown read receipt we offered")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    readReceiptID,
+					"error": err.Error(),
+				}).Fatal("database error querying for read receipt")
+			}
+		} else {
+			requestedData = append(requestedData, &rr)
 		}
 	}
 

@@ -66,6 +66,8 @@ func (ro *referenceOffer) shouldDialUser() bool {
 			return true
 		} else if reference.Type == typeUpdateDevice {
 			return true
+		} else if reference.Type == typeReadReceipt {
+			return true
 		}
 	}
 	return false
@@ -232,6 +234,10 @@ func (b *bounce) hasAnyReferencesFor(address string) bool {
 	if len(references) > 0 {
 		return true
 	}
+	references = append(references, b.getReadReceiptsToOffer(dev)...)
+	if len(references) > 0 {
+		return true
+	}
 
 	return false
 }
@@ -258,6 +264,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	references = append(references, b.getConfirmationsToOffer(dev)...)
 	references = append(references, b.getUpdateUsersToOffer(dev)...)
 	references = append(references, b.getUpdateDevicesToOffer(dev)...)
+	references = append(references, b.getReadReceiptsToOffer(dev)...)
 
 	return &referenceOffer{
 		ID:         uuid.New(),
@@ -821,6 +828,57 @@ func (b *bounce) getUpdateDevicesToOffer(dev device) []frameReference {
 	return references
 }
 
+func (b *bounce) getReadReceiptsToOffer(dev device) []frameReference {
+	var unsentReadReceipts []readReceipt
+
+	if b.isSyncDevice(dev) {
+		err := b.database.
+			Distinct("read_receipts.id").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == read_receipts.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeReadReceipt).
+			Where("delivery_records.id IS NULL").
+			Find(&unsentReadReceipts).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting unsent read receipts in reference offer")
+		}
+	} else {
+		// read receipts where
+		//	target type is direct message and destination is this device's user
+		//	target type is group message and destination is any group this user is in
+		//	either way, scope is not sync
+		err := b.database.
+			Distinct("read_receipts.id").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == read_receipts.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeReadReceipt).
+			Where(
+				"((read_receipts.target_type == ? AND read_receipts.destination = ?) OR (read_receipts.target_type = ? AND destination IN (?))) AND read_receipts.scope != ? AND delivery_records.id IS NULL",
+				typeDirectMessage,
+				dev.UserID,
+				typeGroupMessage,
+				b.database.
+					Model(&group{}).
+					Distinct().
+					Select("groups.id").
+					Joins("JOIN group_users ON group_users.group_id = groups.id").
+					Where("user_id = ?", dev.UserID),
+				scopeSync,
+			).
+			Find(&unsentReadReceipts).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting unsent update devices in reference offer")
+		}
+	}
+
+	references := []frameReference{}
+	for _, rr := range unsentReadReceipts {
+		references = append(references, frameReference{FrameID: rr.ID, Type: typeReadReceipt})
+	}
+
+	return references
+}
+
 func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) broadcastable {
 	if _, revoked := b.devicePool.revokedDevices[peer]; revoked {
 		return nil
@@ -887,6 +945,10 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	udRefs, udAcks := b.getUpdateDevicesToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateDevice])
 	references = append(references, udRefs...)
 	acks = append(acks, udAcks...)
+
+	rrRefs, rrAcks := b.getReadReceiptsToRequestAndAck(dev, deviceExists, typesToIDs[typeReadReceipt])
+	references = append(references, rrRefs...)
+	acks = append(acks, rrAcks...)
 
 	// Unlock the catch up mutex
 	catchUpMutex.Unlock()
@@ -1154,6 +1216,32 @@ func (b *bounce) getUpdateDevicesToRequestAndAck(dev device, deviceExists bool, 
 				"id":    updateDeviceID,
 				"error": err.Error(),
 			}).Fatal("database error querying for update device")
+		}
+	}
+
+	return references, acks
+}
+
+func (b *bounce) getReadReceiptsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+	references := []frameReference{}
+	acks := []frameReference{}
+
+	for _, readReceiptID := range offeredIDs {
+		ref := frameReference{FrameID: readReceiptID, Type: typeReadReceipt}
+		var rr readReceipt
+		err := b.database.First(&rr, "id = ?", readReceiptID).Error
+		if err == nil {
+			if deviceExists && !b.isDeliveredTo(&rr, dev.Address) {
+				b.markDeliveredTo(&rr, dev.Address)
+			}
+			acks = append(acks, ref)
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			references = append(references, ref)
+		} else {
+			log.WithFields(log.Fields{
+				"id":    readReceiptID,
+				"error": err.Error(),
+			}).Fatal("database error querying for read receipt")
 		}
 	}
 
