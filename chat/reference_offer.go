@@ -851,7 +851,7 @@ func (b *bounce) getReadReceiptsToOffer(dev device) []frameReference {
 			Distinct("read_receipts.id").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == read_receipts.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeReadReceipt).
 			Where(
-				"((read_receipts.target_type == ? AND read_receipts.destination = ?) OR (read_receipts.target_type = ? AND destination IN (?))) AND read_receipts.scope != ? AND delivery_records.id IS NULL",
+				"((read_receipts.target_type == ? AND read_receipts.destination = ?) OR (read_receipts.target_type = ? AND read_receipts.destination IN (?))) AND read_receipts.scope != ? AND delivery_records.id IS NULL",
 				typeDirectMessage,
 				dev.UserID,
 				typeGroupMessage,
