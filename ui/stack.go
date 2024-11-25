@@ -74,8 +74,8 @@ func (fyneUI *Fyne) mobileBack() {
 			fyneUI.displayThread(t)
 		}
 	case viewTypeSettings:
-		fyneUI.mainWindow.SetContent(fyneUI.settings)
-		fyneUI.settings.Show()
+		fyneUI.mainWindow.SetContent(fyneUI.settingsContainer)
+		fyneUI.settingsContainer.Show()
 	case viewTypeNewSyncDevice:
 		fyneUI.newSyncDeviceWidgets.syncStringInput.Show()
 		fyneUI.mainWindow.SetContent(fyneUI.newSyncDevice)

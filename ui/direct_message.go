@@ -223,6 +223,10 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	dm.retentionSelection = widget.NewSelect(retentionSelections, nil)
 	dm.retentionSelection.Selected = getRetentionName(dm.retention)
 
+	// Overrides for read receipts and typing indicators
+	readReceiptSelection := widget.NewSelect([]string{"Default (On)", "On", "Off"}, nil)
+	typingIndicatorSelection := widget.NewSelect([]string{"Default (On)", "On", "Off"}, nil)
+
 	//
 	// Button to clear all message history, with confirm dialog
 	//
@@ -296,14 +300,6 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		saveButton,
 		cancelButton,
 	)
-	topOptionsVBox := container.NewVBox(
-		container.NewCenter(threadIcon),
-		container.NewCenter(username),
-		dm.notificationsEnabledCheck,
-		widget.NewLabel("Disappearing Messages"),
-		dm.retentionSelection,
-		container.NewHBox(clearHistoryButton),
-	)
 
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), cancelChanges)
 	closeButton.Importance = widget.LowImportance
@@ -313,13 +309,31 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		closeButton,
 	)
 
-	// TODO: add option to introduce this contact to someone
+	editDMFeatures := container.NewVBox(
+		container.NewCenter(threadIcon),
+		container.NewCenter(username),
+		dm.notificationsEnabledCheck,
+		widget.NewLabel("Disappearing Messages"),
+		dm.retentionSelection,
+		container.NewHBox(clearHistoryButton),
+		widget.NewAccordion(
+			&widget.AccordionItem{
+				Title: "Advanced Options",
+				Detail: container.NewVBox(
+					widget.NewLabel("Read Receipts"),
+					readReceiptSelection,
+					widget.NewLabel("Typing Indicators"),
+					typingIndicatorSelection,
+				),
+			},
+		),
+	)
 	dm.editContainer = container.NewMax(
 		container.New(
 			layout.NewBorderLayout(closeBar, actionButtons, nil, nil),
 			container.New(
-				layout.NewBorderLayout(topOptionsVBox, nil, nil, nil),
-				topOptionsVBox,
+				layout.NewBorderLayout(editDMFeatures, nil, nil, nil),
+				editDMFeatures,
 			),
 			closeBar,
 			actionButtons,

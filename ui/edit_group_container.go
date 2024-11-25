@@ -53,6 +53,9 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 	g.retentionSelection = widget.NewSelect(retentionSelections, nil)
 	g.retentionSelection.Selected = getRetentionName(g.retention)
 
+	readReceiptSelection := widget.NewSelect([]string{"Default (On)", "On", "Off"}, nil)
+	typingIndicatorSelection := widget.NewSelect([]string{"Default (On)", "On", "Off"}, nil)
+
 	confirmClearHistory := dialog.NewConfirm(
 		"Clear all message history?",
 		"Are you sure you want to permanently delete all chat history on all devices?",
@@ -265,24 +268,6 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		g.currentUsersContainer,
 	)
 
-	topOptionsVBox := container.NewVBox(
-		container.NewCenter(groupIcon),
-		g.editThreadNameEntry,
-		g.notificationsEnabledCheck,
-		widget.NewLabel("Disappearing Messages"),
-		g.retentionSelection,
-		container.NewHBox(
-			container.NewHBox(g.clearHistoryButton),
-			container.NewHBox(g.leaveGroupButton),
-			container.NewHBox(g.deleteGroupButton),
-			container.NewHBox(g.blockGroupButton),
-		),
-		g.restrictUserManagementCheck,
-		g.restrictGroupEditsCheck,
-		g.restrictPostingCheck,
-		currentUsersListView,
-	)
-
 	g.newUserSearchEntry = widget.NewEntry()
 	g.newUserSearchEntry.OnChanged = func(str string) {
 		fyneUI.refreshAvailableNewUsers(g, fyneUI.users.search(str))
@@ -335,13 +320,42 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		closeButton,
 	)
 
+	editGroupFeatures := container.NewVBox(
+		container.NewCenter(groupIcon),
+		g.editThreadNameEntry,
+		g.notificationsEnabledCheck,
+		widget.NewLabel("Disappearing Messages"),
+		g.retentionSelection,
+		container.NewHBox(
+			container.NewHBox(g.clearHistoryButton),
+			container.NewHBox(g.leaveGroupButton),
+			container.NewHBox(g.deleteGroupButton),
+			container.NewHBox(g.blockGroupButton),
+		),
+		g.restrictUserManagementCheck,
+		g.restrictGroupEditsCheck,
+		g.restrictPostingCheck,
+		currentUsersListView,
+		container.NewHBox(g.addUsersButton),
+		widget.NewAccordion(
+			&widget.AccordionItem{
+				Title: "Advanced Options",
+				Detail: container.NewVBox(
+					widget.NewLabel("Read Receipts"),
+					readReceiptSelection,
+					widget.NewLabel("Typing Indicators"),
+					typingIndicatorSelection,
+				),
+			},
+		),
+	)
+
 	g.editContainer = container.NewMax(
 		container.New(
 			layout.NewBorderLayout(closeBar, actionButtons, nil, nil),
 			container.New(
-				layout.NewBorderLayout(topOptionsVBox, nil, nil, nil),
-				topOptionsVBox,
-				container.NewVBox(container.NewHBox(g.addUsersButton)),
+				layout.NewBorderLayout(editGroupFeatures, nil, nil, nil),
+				editGroupFeatures,
 			),
 			closeBar,
 			actionButtons,

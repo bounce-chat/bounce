@@ -178,7 +178,12 @@ func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 		Devices: []device{
 			d,
 		},
-		ProfileSettings: &profileSettings{},
+		ProfileSettings: &profileSettings{
+			DefaultGroupRetention:           int64(time.Duration(24 * time.Hour * 7 * 4).Seconds()),
+			DefaultSendReadReceipts:         true,
+			DefaultSendTypingIndicators:     true,
+			NeverAskForBatteryOptimizations: false,
+		},
 	}
 	err := b.database.Create(u).Error
 	if err != nil {

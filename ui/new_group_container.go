@@ -3,7 +3,6 @@ package ui
 import (
 	"errors"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
@@ -50,10 +49,10 @@ func (fyneUI *Fyne) clearNewGroupSelectors() {
 	fyneUI.newGroupPendingUsers.add(fyneUI.profile)
 	fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
 
-	fyneUI.newGroupRetentionSelection.Selected = getRetentionName(int64(time.Duration(24 * time.Hour * 7 * 4).Seconds())) // TODO: get default from database
-	fyneUI.newGroupUserManagementRestrictedCheck.SetChecked(true)                                                         // TODO: get default from database
-	fyneUI.newGroupGroupEditsRestrictedCheck.SetChecked(false)                                                            // TODO: get default from database
-	fyneUI.newGroupPostingRestrictedCheck.SetChecked(false)                                                               // TODO: get default from database
+	fyneUI.newGroupRetentionSelection.Selected = getRetentionName(fyneUI.settings.DefaultGroupRetention)
+	fyneUI.newGroupUserManagementRestrictedCheck.SetChecked(true) // TODO: get default from database
+	fyneUI.newGroupGroupEditsRestrictedCheck.SetChecked(false)    // TODO: get default from database
+	fyneUI.newGroupPostingRestrictedCheck.SetChecked(false)       // TODO: get default from database
 }
 
 func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
@@ -234,7 +233,7 @@ func (fyneUI *Fyne) buildNewGroup() {
 		addUsersDialog.Show()
 	})
 	fyneUI.newGroupRetentionSelection = widget.NewSelect(retentionSelections, nil)
-	fyneUI.newGroupRetentionSelection.Selected = getRetentionName(int64(time.Duration(24 * time.Hour * 7 * 4).Seconds())) // TODO: get default from database
+	fyneUI.newGroupRetentionSelection.Selected = getRetentionName(fyneUI.settings.DefaultGroupRetention)
 	fyneUI.newGroupUserManagementRestrictedCheck = widget.NewCheck("Restrict User Management", func(_ bool) {})
 	fyneUI.newGroupUserManagementRestrictedCheck.SetChecked(true) // TODO: get default from database
 	fyneUI.newGroupGroupEditsRestrictedCheck = widget.NewCheck("Restrict Group Edits", func(_ bool) {})

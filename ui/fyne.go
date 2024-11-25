@@ -45,7 +45,7 @@ type Fyne struct {
 	editProfile                           *fyne.Container
 	displaySyncString                     *fyne.Container
 	displayAddUserString                  *fyne.Container
-	settings                              *fyne.Container
+	settingsContainer                     *fyne.Container
 	about                                 *fyne.Container
 	newGroup                              *fyne.Container
 	newDM                                 *fyne.Container
@@ -85,6 +85,8 @@ type Fyne struct {
 	syncString                            binding.String
 	addUserString                         binding.String
 	profile                               *user
+	settings                              chat.Settings
+	settingsWidgets                       *settingsWidgets
 	users                                 *userStore
 	devices                               *deviceStore
 	currentDevices                        *container.Scroll
@@ -187,7 +189,10 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 }
 
 func (fyneUI *Fyne) askToIgnoreBatteryOptimizations() {
-	// TODO: this doesn't help background the app until engine is running in a service and not an activity
+	if fyneUI.settings.NeverAskForBatteryOptimizations {
+		return
+	}
+
 	if runtime.GOOS == "android" {
 		if !batteryOptimizationsIgnored() {
 			var batteryDialog dialog.Dialog
@@ -211,7 +216,7 @@ func (fyneUI *Fyne) askToIgnoreBatteryOptimizations() {
 				batteryDialog.Hide()
 				fyneUI.activeDialog = nil
 				fyneUI.activeDialogCleanup = nil
-				// TODO: confirm dialog and save a setting to never show this again
+				fyneUI.callbacks.NeverAskForBatteryOptimizations()
 			})
 			batteryNever.Importance = widget.LowImportance
 
@@ -260,6 +265,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		fyneUI.profile = makeUser(state.Profile.ID, state.Profile.Name)
 		fyneUI.users.add(fyneUI.profile)
 	}
+	fyneUI.settings = state.Settings
 
 	for _, dev := range state.SyncDevices {
 		fyneUI.devices.add(&chat.Device{

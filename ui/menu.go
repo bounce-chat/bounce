@@ -31,9 +31,9 @@ func (fyneUI *Fyne) buildMenu() {
 			fyne.NewMenuItem("New DM", func() {
 				fyneUI.showNewDM()
 			}),
-			fyne.NewMenuItem("New Workspace", func() {
-				//fyneUI.showNewWorkspace()
-			}),
+			//fyne.NewMenuItem("New Workspace", func() {
+			//	fyneUI.showNewWorkspace()
+			//}),
 		),
 		fyne.NewMenu(
 			"Contacts",
@@ -43,9 +43,9 @@ func (fyneUI *Fyne) buildMenu() {
 			fyne.NewMenuItem("Add", func() {
 				fyneUI.showAddUser()
 			}),
-			fyne.NewMenuItem("Introduce", func() {
-				//fyneUI.showIntroduceContacts()
-			}),
+			//fyne.NewMenuItem("Introduce", func() {
+			//	fyneUI.showIntroduceContacts()
+			//}),
 			fyne.NewMenuItem("Import", func() {
 				fyneUI.showImportContact()
 			}),

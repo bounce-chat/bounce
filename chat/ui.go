@@ -11,6 +11,13 @@ type User struct {
 	State DMState
 }
 
+type Settings struct {
+	DefaultGroupRetention           int64
+	DefaultSendReadReceipts         bool
+	DefaultSendTypingIndicators     bool
+	NeverAskForBatteryOptimizations bool
+}
+
 type Device struct {
 	ID        uuid.UUID
 	Name      string
@@ -232,6 +239,7 @@ type ReadReceipt struct {
 
 type InitialState struct {
 	Profile                                *User
+	Settings                               Settings
 	SyncDevices                            []Device
 	Users                                  []User
 	Groups                                 []Group
@@ -335,11 +343,6 @@ type UI interface {
 	UserIsOnline(userID uuid.UUID)
 	UserIsOffline(userID uuid.UUID)
 
-	// Profile updates from other devices owned by this user
-	//UpdateMyName()
-
-	// Chat engine updating the delivery status of a message
-
 	// Sync device events
 	DeviceOnline(uuid.UUID)
 	DeviceOffline(uuid.UUID)
@@ -420,4 +423,6 @@ type UICallbacks struct {
 	GroupConnectionDesired func(uuid.UUID)
 
 	MarkRead func(uuid.UUID, string)
+
+	NeverAskForBatteryOptimizations func()
 }

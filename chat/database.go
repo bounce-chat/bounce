@@ -287,6 +287,7 @@ func (b *bounce) pruneUndeliverableCustomScopes() {
 func (b *bounce) buildInitialState() InitialState {
 	// Load the profile and sync devices
 	var profile *User
+	var settings Settings
 	syncDevices := []Device{}
 	var dbProfile user
 	err := b.database.Preload(clause.Associations).Where("profile = ?", true).First(&dbProfile).Error
@@ -295,6 +296,10 @@ func (b *bounce) buildInitialState() InitialState {
 			ID:   dbProfile.ID,
 			Name: dbProfile.Name,
 		}
+		settings.DefaultGroupRetention = dbProfile.ProfileSettings.DefaultGroupRetention
+		settings.DefaultSendReadReceipts = dbProfile.ProfileSettings.DefaultSendReadReceipts
+		settings.DefaultSendTypingIndicators = dbProfile.ProfileSettings.DefaultSendTypingIndicators
+		settings.NeverAskForBatteryOptimizations = dbProfile.ProfileSettings.NeverAskForBatteryOptimizations
 		for _, dev := range dbProfile.Devices {
 			if dev.RevokedAt != 0 {
 				continue
@@ -795,6 +800,7 @@ func (b *bounce) buildInitialState() InitialState {
 	// Create the initial state for the UI
 	return InitialState{
 		Profile:                                profile,
+		Settings:                               settings,
 		SyncDevices:                            syncDevices,
 		Users:                                  chatUsers,
 		Groups:                                 chatGroups,
