@@ -183,6 +183,9 @@ func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 			DefaultSendReadReceipts:         true,
 			DefaultSendTypingIndicators:     true,
 			NeverAskForBatteryOptimizations: false,
+			NewGroupRestrictUserManagement:  true,
+			NewGroupRestrictGroupEdits:      false,
+			NewGroupRestrictPosting:         false,
 		},
 	}
 	err := b.database.Create(u).Error

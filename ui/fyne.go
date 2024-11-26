@@ -104,6 +104,11 @@ type Fyne struct {
 
 func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
+	// Hookup callbacks
+	//
+	fyneUI.callbacks = callbacks
+
+	//
 	// Initialize types that require it
 	//
 	fyneUI.groups = make(map[uuid.UUID]*group)
@@ -174,11 +179,6 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.buildImportContact()
 	fyneUI.buildMainContainer()
 	fyneUI.buildMobileMenu()
-
-	//
-	// Hookup callbacks
-	//
-	fyneUI.callbacks = callbacks
 
 	//
 	// Default to displaying the loading container

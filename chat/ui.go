@@ -16,6 +16,9 @@ type Settings struct {
 	DefaultSendReadReceipts         bool
 	DefaultSendTypingIndicators     bool
 	NeverAskForBatteryOptimizations bool
+	NewGroupRestrictUserManagement  bool
+	NewGroupRestrictGroupEdits      bool
+	NewGroupRestrictPosting         bool
 }
 
 type Device struct {
@@ -352,6 +355,14 @@ type UI interface {
 
 	MessageRead(uuid.UUID)           // We read a message on another device
 	ReceivedReadReceipt(ReadReceipt) // Someone else read a message of ours
+
+	DefaultReadReceiptSettingSet(bool)
+	DefaultTypingIndicatorSettingSet(bool)
+
+	DefaultGroupRetentionSettingSet(int64)
+	NewGroupRestrictUserManagementSettingSet(bool)
+	NewGroupRestrictGroupEditsSettingSet(bool)
+	NewGroupRestrictPostingSettingSet(bool)
 }
 
 // Frames that support being marked as read
@@ -424,5 +435,11 @@ type UICallbacks struct {
 
 	MarkRead func(uuid.UUID, string)
 
-	NeverAskForBatteryOptimizations func()
+	NeverAskForBatteryOptimizations   func()
+	SetReadReceiptsByDefault          func(bool)
+	SetTypingIndicatorsByDefault      func(bool)
+	SetNewGroupRetention              func(int64)
+	SetNewGroupRestrictUserManagement func(bool)
+	SetNewGroupRestrictGroupEdits     func(bool)
+	SetNewGroupRestrictPosting        func(bool)
 }

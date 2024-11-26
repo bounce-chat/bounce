@@ -18,6 +18,17 @@ type settingsWidgets struct {
 }
 
 func (fyneUI *Fyne) showSettings() {
+	fyneUI.settingsWidgets.sendReadReceiptsByDefault.Checked = fyneUI.settings.DefaultSendReadReceipts
+	fyneUI.settingsWidgets.sendReadReceiptsByDefault.Refresh()
+	fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Checked = fyneUI.settings.DefaultSendTypingIndicators
+	fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
+	fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Checked = fyneUI.settings.NewGroupRestrictUserManagement
+	fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Refresh()
+	fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Checked = fyneUI.settings.NewGroupRestrictGroupEdits
+	fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Refresh()
+	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Checked = fyneUI.settings.NewGroupRestrictPosting
+	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Refresh()
+
 	if fyne.CurrentDevice().IsMobile() {
 		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeSettings})
 	}
@@ -47,12 +58,12 @@ func (fyneUI *Fyne) buildSettings() {
 	)
 
 	fyneUI.settingsWidgets = &settingsWidgets{
-		sendReadReceiptsByDefault:             widget.NewCheck("Send Read Receipts By Default", func(set bool) {}),
-		sendTypingIndicatorsByDefault:         widget.NewCheck("Send Typing Indicators By Default", func(set bool) {}),
+		sendReadReceiptsByDefault:             widget.NewCheck("Send Read Receipts By Default", fyneUI.callbacks.SetReadReceiptsByDefault),
+		sendTypingIndicatorsByDefault:         widget.NewCheck("Send Typing Indicators By Default", fyneUI.callbacks.SetTypingIndicatorsByDefault),
 		defaultNewGroupRetention:              widget.NewSelect([]string{}, nil),
-		defaultNewGroupRestrictUserManagement: widget.NewCheck("Restrict User Management", func(set bool) {}),
-		defaultNewGroupRestrictGroupEdits:     widget.NewCheck("Restrict Group Edits", func(set bool) {}),
-		defaultNewGroupRestrictPosting:        widget.NewCheck("Restrict Posting", func(set bool) {}),
+		defaultNewGroupRestrictUserManagement: widget.NewCheck("Restrict User Management", fyneUI.callbacks.SetNewGroupRestrictUserManagement),
+		defaultNewGroupRestrictGroupEdits:     widget.NewCheck("Restrict Group Edits", fyneUI.callbacks.SetNewGroupRestrictGroupEdits),
+		defaultNewGroupRestrictPosting:        widget.NewCheck("Restrict Posting", fyneUI.callbacks.SetNewGroupRestrictPosting),
 	}
 
 	fyneUI.settingsContainer = container.New(
@@ -64,7 +75,10 @@ func (fyneUI *Fyne) buildSettings() {
 			fyneUI.settingsWidgets.sendReadReceiptsByDefault,
 			fyneUI.settingsWidgets.sendTypingIndicatorsByDefault,
 			groupSettingsLabel,
-			widget.NewLabel("Retention"),
+			container.NewHBox(
+				widget.NewLabel("Retention"),
+				fyneUI.settingsWidgets.defaultNewGroupRetention,
+			),
 			fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement,
 			fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits,
 			fyneUI.settingsWidgets.defaultNewGroupRestrictPosting,
@@ -72,12 +86,38 @@ func (fyneUI *Fyne) buildSettings() {
 	)
 }
 
-/*
 func (fyneUI *Fyne) DefaultReadReceiptSettingSet(value bool) {
 	fyneUI.settings.DefaultSendReadReceipts = value
-	// update the check
+	fyneUI.settingsWidgets.sendReadReceiptsByDefault.Checked = value
+	fyneUI.settingsWidgets.sendReadReceiptsByDefault.Refresh()
 }
 
 func (fyneUI *Fyne) DefaultTypingIndicatorSettingSet(value bool) {
+	fyneUI.settings.DefaultSendTypingIndicators = value
+	fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Checked = value
+	fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
 }
-*/
+
+func (fyneUI *Fyne) DefaultGroupRetentionSettingSet(value int64) {
+	//fyneUI.settings. = value
+	//fyneUI.settingsWidgets..Selected =
+	//fyneUI.settingsWidgets..Refresh()
+}
+
+func (fyneUI *Fyne) NewGroupRestrictUserManagementSettingSet(value bool) {
+	fyneUI.settings.NewGroupRestrictUserManagement = value
+	fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Checked = value
+	fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Refresh()
+}
+
+func (fyneUI *Fyne) NewGroupRestrictGroupEditsSettingSet(value bool) {
+	fyneUI.settings.NewGroupRestrictGroupEdits = value
+	fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Checked = value
+	fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Refresh()
+}
+
+func (fyneUI *Fyne) NewGroupRestrictPostingSettingSet(value bool) {
+	fyneUI.settings.NewGroupRestrictPosting = value
+	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Checked = value
+	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Refresh()
+}

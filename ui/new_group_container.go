@@ -50,9 +50,9 @@ func (fyneUI *Fyne) clearNewGroupSelectors() {
 	fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
 
 	fyneUI.newGroupRetentionSelection.Selected = getRetentionName(fyneUI.settings.DefaultGroupRetention)
-	fyneUI.newGroupUserManagementRestrictedCheck.SetChecked(true) // TODO: get default from database
-	fyneUI.newGroupGroupEditsRestrictedCheck.SetChecked(false)    // TODO: get default from database
-	fyneUI.newGroupPostingRestrictedCheck.SetChecked(false)       // TODO: get default from database
+	fyneUI.newGroupUserManagementRestrictedCheck.SetChecked(fyneUI.settings.NewGroupRestrictUserManagement)
+	fyneUI.newGroupGroupEditsRestrictedCheck.SetChecked(fyneUI.settings.NewGroupRestrictGroupEdits)
+	fyneUI.newGroupPostingRestrictedCheck.SetChecked(fyneUI.settings.NewGroupRestrictPosting)
 }
 
 func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
@@ -235,11 +235,11 @@ func (fyneUI *Fyne) buildNewGroup() {
 	fyneUI.newGroupRetentionSelection = widget.NewSelect(retentionSelections, nil)
 	fyneUI.newGroupRetentionSelection.Selected = getRetentionName(fyneUI.settings.DefaultGroupRetention)
 	fyneUI.newGroupUserManagementRestrictedCheck = widget.NewCheck("Restrict User Management", func(_ bool) {})
-	fyneUI.newGroupUserManagementRestrictedCheck.SetChecked(true) // TODO: get default from database
+	fyneUI.newGroupUserManagementRestrictedCheck.SetChecked(fyneUI.settings.NewGroupRestrictUserManagement)
 	fyneUI.newGroupGroupEditsRestrictedCheck = widget.NewCheck("Restrict Group Edits", func(_ bool) {})
-	fyneUI.newGroupGroupEditsRestrictedCheck.SetChecked(false) // TODO: get default from database
+	fyneUI.newGroupGroupEditsRestrictedCheck.SetChecked(fyneUI.settings.NewGroupRestrictGroupEdits)
 	fyneUI.newGroupPostingRestrictedCheck = widget.NewCheck("Restrict Posting", func(_ bool) {})
-	fyneUI.newGroupPostingRestrictedCheck.SetChecked(false) // TODO: get default from database
+	fyneUI.newGroupPostingRestrictedCheck.SetChecked(fyneUI.settings.NewGroupRestrictPosting)
 
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		if fyne.CurrentDevice().IsMobile() {

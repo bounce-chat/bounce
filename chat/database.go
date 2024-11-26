@@ -81,7 +81,25 @@ func (b *bounce) openDatabase() {
 			"error": err.Error(),
 		}).Fatal("error migrating the database")
 	}
+
+	// Set bool values that are nulled
 	err = b.database.Table("profile_settings").Where("default_send_read_receipts IS NULL").Update("default_send_read_receipts", true).Error
+	if err != nil {
+		log.WithFields(log.Fields{"error": err.Error()}).Fatal("error migrating profile settings")
+	}
+	err = b.database.Table("profile_settings").Where("default_send_typing_indicators IS NULL").Update("default_send_typing_indicators", true).Error
+	if err != nil {
+		log.WithFields(log.Fields{"error": err.Error()}).Fatal("error migrating profile settings")
+	}
+	err = b.database.Table("profile_settings").Where("new_group_restrict_user_management IS NULL").Update("new_group_restrict_user_management", true).Error
+	if err != nil {
+		log.WithFields(log.Fields{"error": err.Error()}).Fatal("error migrating profile settings")
+	}
+	err = b.database.Table("profile_settings").Where("new_group_restrict_group_edits IS NULL").Update("new_group_restrict_group_edits", false).Error
+	if err != nil {
+		log.WithFields(log.Fields{"error": err.Error()}).Fatal("error migrating profile settings")
+	}
+	err = b.database.Table("profile_settings").Where("new_group_restrict_posting IS NULL").Update("new_group_restrict_posting", false).Error
 	if err != nil {
 		log.WithFields(log.Fields{"error": err.Error()}).Fatal("error migrating profile settings")
 	}
@@ -300,6 +318,9 @@ func (b *bounce) buildInitialState() InitialState {
 		settings.DefaultSendReadReceipts = dbProfile.ProfileSettings.DefaultSendReadReceipts
 		settings.DefaultSendTypingIndicators = dbProfile.ProfileSettings.DefaultSendTypingIndicators
 		settings.NeverAskForBatteryOptimizations = dbProfile.ProfileSettings.NeverAskForBatteryOptimizations
+		settings.NewGroupRestrictUserManagement = dbProfile.ProfileSettings.NewGroupRestrictUserManagement
+		settings.NewGroupRestrictGroupEdits = dbProfile.ProfileSettings.NewGroupRestrictGroupEdits
+		settings.NewGroupRestrictPosting = dbProfile.ProfileSettings.NewGroupRestrictPosting
 		for _, dev := range dbProfile.Devices {
 			if dev.RevokedAt != 0 {
 				continue

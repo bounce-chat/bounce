@@ -198,13 +198,9 @@ func (fyneUI *Fyne) DeleteItem(id uuid.UUID) {
 }
 
 func (fyneUI *Fyne) displayThread(thread thread) {
-	// TODO: for now, until we can actually track read status of each message
-	thread.getButton().clearUnreadCount()
-
 	fyneUI.activeThread = thread.getID()
 	fyneUI.chatContainer.Objects = []fyne.CanvasObject{thread.getView()}
 	fyneUI.chatContainer.Refresh()
-	thread.getButton().Refresh()
 
 	if fyne.CurrentDevice().IsMobile() {
 		fyneUI.mainWindow.SetContent(fyneUI.chatContainer)
