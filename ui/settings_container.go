@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	log "github.com/sirupsen/logrus"
 )
 
 type settingsWidgets struct {
@@ -22,6 +23,8 @@ func (fyneUI *Fyne) showSettings() {
 	fyneUI.settingsWidgets.sendReadReceiptsByDefault.Refresh()
 	fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Checked = fyneUI.settings.DefaultSendTypingIndicators
 	fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
+	fyneUI.settingsWidgets.defaultNewGroupRetention.Selected = getRetentionName(fyneUI.settings.DefaultGroupRetention)
+	fyneUI.settingsWidgets.defaultNewGroupRetention.Refresh()
 	fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Checked = fyneUI.settings.NewGroupRestrictUserManagement
 	fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Refresh()
 	fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Checked = fyneUI.settings.NewGroupRestrictGroupEdits
@@ -60,7 +63,7 @@ func (fyneUI *Fyne) buildSettings() {
 	fyneUI.settingsWidgets = &settingsWidgets{
 		sendReadReceiptsByDefault:             widget.NewCheck("Send Read Receipts By Default", fyneUI.callbacks.SetReadReceiptsByDefault),
 		sendTypingIndicatorsByDefault:         widget.NewCheck("Send Typing Indicators By Default", fyneUI.callbacks.SetTypingIndicatorsByDefault),
-		defaultNewGroupRetention:              widget.NewSelect([]string{}, nil),
+		defaultNewGroupRetention:              widget.NewSelect(retentionSelections, fyneUI.sendDefaultRetentionSelection),
 		defaultNewGroupRestrictUserManagement: widget.NewCheck("Restrict User Management", fyneUI.callbacks.SetNewGroupRestrictUserManagement),
 		defaultNewGroupRestrictGroupEdits:     widget.NewCheck("Restrict Group Edits", fyneUI.callbacks.SetNewGroupRestrictGroupEdits),
 		defaultNewGroupRestrictPosting:        widget.NewCheck("Restrict Posting", fyneUI.callbacks.SetNewGroupRestrictPosting),
@@ -70,7 +73,7 @@ func (fyneUI *Fyne) buildSettings() {
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.NewVScroll(container.NewVBox(
-			container.NewCenter(makeLogo(228, 167)), // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
+			container.NewCenter(makeLogo(247, 75)),
 			globalSettingsLabel,
 			fyneUI.settingsWidgets.sendReadReceiptsByDefault,
 			fyneUI.settingsWidgets.sendTypingIndicatorsByDefault,
@@ -86,6 +89,17 @@ func (fyneUI *Fyne) buildSettings() {
 	)
 }
 
+func (fyneUI *Fyne) sendDefaultRetentionSelection(selection string) {
+	value, ok := retentionValues[selection]
+	if !ok {
+		log.WithFields(log.Fields{
+			"selection": selection,
+		}).Error("unsupported retention selection")
+		return
+	}
+	fyneUI.callbacks.SetNewGroupRetention(value)
+}
+
 func (fyneUI *Fyne) DefaultReadReceiptSettingSet(value bool) {
 	fyneUI.settings.DefaultSendReadReceipts = value
 	fyneUI.settingsWidgets.sendReadReceiptsByDefault.Checked = value
@@ -99,9 +113,9 @@ func (fyneUI *Fyne) DefaultTypingIndicatorSettingSet(value bool) {
 }
 
 func (fyneUI *Fyne) DefaultGroupRetentionSettingSet(value int64) {
-	//fyneUI.settings. = value
-	//fyneUI.settingsWidgets..Selected =
-	//fyneUI.settingsWidgets..Refresh()
+	fyneUI.settings.DefaultGroupRetention = value
+	fyneUI.settingsWidgets.defaultNewGroupRetention.Selected = getRetentionName(value)
+	fyneUI.settingsWidgets.defaultNewGroupRetention.Refresh()
 }
 
 func (fyneUI *Fyne) NewGroupRestrictUserManagementSettingSet(value bool) {
