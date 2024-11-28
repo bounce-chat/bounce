@@ -120,6 +120,8 @@ func Start(network Network, ui UI) {
 			SetNewGroupRestrictUserManagement: b.setNewGroupRestrictUserManagement,
 			SetNewGroupRestrictGroupEdits:     b.setNewGroupRestrictGroupEdits,
 			SetNewGroupRestrictPosting:        b.setNewGroupRestrictPosting,
+			SetGroupReadReceiptSettings:       b.setGroupReadReceiptSettings,
+			SetGroupTypingIndicatorSettings:   b.setGroupTypingIndicatorSettings,
 		},
 	)
 

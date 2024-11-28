@@ -53,7 +53,8 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 	g.retentionSelection = widget.NewSelect(retentionSelections, nil)
 	g.retentionSelection.Selected = getRetentionName(g.retention)
 
-	readReceiptSelection := widget.NewSelect([]string{"Default (On)", "On", "Off"}, nil)
+	g.readReceiptOverrideSelection = widget.NewSelect(fyneUI.readReceiptOverrideSelectionOptions(), nil)
+	fyneUI.refreshReadReceiptSettingSelection(g)
 	typingIndicatorSelection := widget.NewSelect([]string{"Default (On)", "On", "Off"}, nil)
 
 	confirmClearHistory := dialog.NewConfirm(
@@ -156,6 +157,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 				dialog.ShowError(errors.New("error updating group mute settings: "+err.Error()), fyneUI.mainWindow)
 			}
 		}
+
 		// Update the retention if it changed
 		selectedRetentionString := g.retentionSelection.Selected
 		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
@@ -208,6 +210,25 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			}
 		}
 
+		//Update the read receipt and typing indicator overrides if needed
+		defaultSelected := g.readReceiptOverrideSelection.Selected == defaultOn || g.readReceiptOverrideSelection.Selected == defaultOff
+		switchedDefault := (defaultSelected && g.overrideReadReceiptSetting) || (!defaultSelected && !g.overrideReadReceiptSetting)
+		switchedEnabled := (g.readReceiptOverrideSelection.Selected == off && g.readReceiptsEnabled) || (g.readReceiptOverrideSelection.Selected == on && !g.readReceiptsEnabled)
+		if switchedDefault || switchedEnabled {
+			if defaultSelected {
+				fyneUI.callbacks.SetGroupReadReceiptSettings(g.id, false, true)
+			} else if g.readReceiptOverrideSelection.Selected == on {
+				fyneUI.callbacks.SetGroupReadReceiptSettings(g.id, true, true)
+			} else if g.readReceiptOverrideSelection.Selected == off {
+				fyneUI.callbacks.SetGroupReadReceiptSettings(g.id, true, false)
+			} else {
+				log.WithFields(log.Fields{
+					"group_id":  g.id,
+					"selection": g.readReceiptOverrideSelection.Selected,
+				}).Error("invalid selection for read receipt override")
+			}
+		}
+
 		if fyne.CurrentDevice().IsMobile() {
 			fyneUI.mobileBack()
 		} else {
@@ -244,6 +265,9 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		g.restrictUserManagementCheck.SetChecked(g.restrictUserManagement)
 		g.restrictGroupEditsCheck.SetChecked(g.restrictGroupEdits)
 		g.restrictPostingCheck.SetChecked(g.restrictPosting)
+
+		// Reset the read receipt and typing indicator overrides
+		fyneUI.refreshReadReceiptSettingSelection(g)
 
 		// Show main tontainer
 		if fyne.CurrentDevice().IsMobile() {
@@ -342,7 +366,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 				Title: "Advanced Options",
 				Detail: container.NewVBox(
 					widget.NewLabel("Read Receipts"),
-					readReceiptSelection,
+					g.readReceiptOverrideSelection,
 					widget.NewLabel("Typing Indicators"),
 					typingIndicatorSelection,
 				),

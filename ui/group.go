@@ -20,48 +20,53 @@ import (
 )
 
 type group struct {
-	id                          uuid.UUID
-	name                        binding.String
-	initial                     binding.String
-	users                       *userStore
-	admins                      []uuid.UUID
-	blockedUsers                []uuid.UUID
-	retention                   int64
-	restrictUserManagement      bool
-	restrictGroupEdits          bool
-	restrictPosting             bool
-	lastAdminActionMutex        sync.Mutex
-	pendingUsers                *userStore
-	notificationsMutedUntil     int64
-	createdAt                   int64
-	editContainer               *fyne.Container
-	editThreadNameEntry         *widget.Entry
-	retentionSelection          *widget.Select
-	clearHistoryButton          *widget.Button
-	leaveGroupButton            *widget.Button
-	deleteGroupButton           *widget.Button
-	blockGroupButton            *widget.Button
-	addUsersButton              *widget.Button
-	view                        *fyne.Container
-	header                      *fyne.Container
-	button                      *threadButton
-	notificationsEnabledCheck   *widget.Check
-	restrictUserManagementCheck *widget.Check
-	restrictGroupEditsCheck     *widget.Check
-	restrictPostingCheck        *widget.Check
-	scroll                      *chatHistory //*List // TODO: rename to history
-	newUserSearchEntry          *widget.Entry
-	availableNewUsersScroll     *container.Scroll
-	currentUsersContainer       *container.Scroll
-	pendingUsersContainer       *container.Scroll
-	adminChecks                 map[uuid.UUID]*widget.Check
-	adminChecksMutex            sync.Mutex
-	removeUserButtons           map[uuid.UUID]*widget.Button
-	removeUserButtonsMutex      sync.Mutex
-	editUserDialogs             map[uuid.UUID]dialog.Dialog
-	editUserDialogsMutex        sync.Mutex
-	entry                       *threadEntry
-	lastMessage                 int64
+	id                             uuid.UUID
+	name                           binding.String
+	initial                        binding.String
+	users                          *userStore
+	admins                         []uuid.UUID
+	blockedUsers                   []uuid.UUID
+	retention                      int64
+	restrictUserManagement         bool
+	restrictGroupEdits             bool
+	restrictPosting                bool
+	overrideReadReceiptSetting     bool
+	readReceiptsEnabled            bool
+	overrideTypingIndicatorSetting bool
+	typingIndicatorsEnabled        bool
+	lastAdminActionMutex           sync.Mutex
+	pendingUsers                   *userStore
+	notificationsMutedUntil        int64
+	createdAt                      int64
+	editContainer                  *fyne.Container
+	editThreadNameEntry            *widget.Entry
+	retentionSelection             *widget.Select
+	clearHistoryButton             *widget.Button
+	leaveGroupButton               *widget.Button
+	deleteGroupButton              *widget.Button
+	blockGroupButton               *widget.Button
+	addUsersButton                 *widget.Button
+	view                           *fyne.Container
+	header                         *fyne.Container
+	button                         *threadButton
+	notificationsEnabledCheck      *widget.Check
+	restrictUserManagementCheck    *widget.Check
+	restrictGroupEditsCheck        *widget.Check
+	restrictPostingCheck           *widget.Check
+	readReceiptOverrideSelection   *widget.Select
+	scroll                         *chatHistory //*List // TODO: rename to history
+	newUserSearchEntry             *widget.Entry
+	availableNewUsersScroll        *container.Scroll
+	currentUsersContainer          *container.Scroll
+	pendingUsersContainer          *container.Scroll
+	adminChecks                    map[uuid.UUID]*widget.Check
+	adminChecksMutex               sync.Mutex
+	removeUserButtons              map[uuid.UUID]*widget.Button
+	removeUserButtonsMutex         sync.Mutex
+	editUserDialogs                map[uuid.UUID]dialog.Dialog
+	editUserDialogsMutex           sync.Mutex
+	entry                          *threadEntry
+	lastMessage                    int64
 }
 
 func (g *group) getID() uuid.UUID {
@@ -133,6 +138,45 @@ func (g *group) setInitial() {
 		return
 	}
 	g.initial.Set(string(r))
+}
+
+func (fyneUI *Fyne) refreshReadReceiptSettingSelection(g *group) {
+	options := fyneUI.readReceiptOverrideSelectionOptions()
+	g.readReceiptOverrideSelection.Options = options
+	if !g.overrideReadReceiptSetting {
+		g.readReceiptOverrideSelection.Selected = options[0]
+	} else {
+		if g.readReceiptsEnabled {
+			g.readReceiptOverrideSelection.Selected = options[1]
+		} else {
+			g.readReceiptOverrideSelection.Selected = options[2]
+		}
+	}
+	g.readReceiptOverrideSelection.Refresh()
+}
+
+func (fyneUI *Fyne) GroupReadReceiptSettingsSet(groupID uuid.UUID, override, enabled bool) {
+	g, exists := fyneUI.groups[groupID]
+	if !exists {
+		log.WithFields(log.Fields{
+			"groupID": groupID,
+		}).Error("cannot set read receipt override settings for unknown group")
+		return
+	}
+	g.overrideReadReceiptSetting = override
+	g.readReceiptsEnabled = enabled
+}
+
+func (fyneUI *Fyne) GroupTypingIndicatorSettingsSet(groupID uuid.UUID, override, enabled bool) {
+	g, exists := fyneUI.groups[groupID]
+	if !exists {
+		log.WithFields(log.Fields{
+			"groupID": groupID,
+		}).Error("cannot set typing indicator override settings for unknown group")
+		return
+	}
+	g.overrideTypingIndicatorSetting = override
+	g.typingIndicatorsEnabled = enabled
 }
 
 func (fyneUI *Fyne) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Button {
@@ -312,27 +356,31 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 
 	// TODO: appendThreadItem should add to this threadItems, and set the height of anything that changed
 	group := &group{
-		id:                      bounceGroup.ID,
-		name:                    binding.NewString(),
-		initial:                 binding.NewString(),
-		users:                   newUserStore(),
-		admins:                  bounceGroup.Admins,
-		blockedUsers:            bounceGroup.BlockedUsers,
-		retention:               bounceGroup.Retention,
-		createdAt:               bounceGroup.CreatedAt,
-		editThreadNameEntry:     widget.NewEntry(),
-		restrictUserManagement:  bounceGroup.RestrictUserManagement,
-		restrictGroupEdits:      bounceGroup.RestrictGroupEdits,
-		restrictPosting:         bounceGroup.RestrictPosting,
-		notificationsMutedUntil: bounceGroup.MutedUntil,
-		pendingUsers:            newUserStore(),
-		availableNewUsersScroll: container.NewVScroll(container.NewVBox()),
-		currentUsersContainer:   container.NewVScroll(container.NewVBox()),
-		pendingUsersContainer:   container.NewVScroll(container.NewVBox()),
-		adminChecks:             make(map[uuid.UUID]*widget.Check),
-		removeUserButtons:       make(map[uuid.UUID]*widget.Button),
-		editUserDialogs:         make(map[uuid.UUID]dialog.Dialog),
-		lastMessage:             time.Now().Unix(),
+		id:                             bounceGroup.ID,
+		name:                           binding.NewString(),
+		initial:                        binding.NewString(),
+		users:                          newUserStore(),
+		admins:                         bounceGroup.Admins,
+		blockedUsers:                   bounceGroup.BlockedUsers,
+		retention:                      bounceGroup.Retention,
+		overrideReadReceiptSetting:     bounceGroup.OverrideReadReceiptSetting,
+		readReceiptsEnabled:            bounceGroup.ReadReceiptsEnabled,
+		overrideTypingIndicatorSetting: bounceGroup.OverrideTypingIndicatorSetting,
+		typingIndicatorsEnabled:        bounceGroup.TypingIndicatorsEnabled,
+		createdAt:                      bounceGroup.CreatedAt,
+		editThreadNameEntry:            widget.NewEntry(),
+		restrictUserManagement:         bounceGroup.RestrictUserManagement,
+		restrictGroupEdits:             bounceGroup.RestrictGroupEdits,
+		restrictPosting:                bounceGroup.RestrictPosting,
+		notificationsMutedUntil:        bounceGroup.MutedUntil,
+		pendingUsers:                   newUserStore(),
+		availableNewUsersScroll:        container.NewVScroll(container.NewVBox()),
+		currentUsersContainer:          container.NewVScroll(container.NewVBox()),
+		pendingUsersContainer:          container.NewVScroll(container.NewVBox()),
+		adminChecks:                    make(map[uuid.UUID]*widget.Check),
+		removeUserButtons:              make(map[uuid.UUID]*widget.Button),
+		editUserDialogs:                make(map[uuid.UUID]dialog.Dialog),
+		lastMessage:                    time.Now().Unix(),
 	}
 
 	for _, bu := range bounceGroup.Users {

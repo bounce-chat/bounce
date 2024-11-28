@@ -9,6 +9,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var defaultOn = "Default (On)"
+var defaultOff = "Default (Off)"
+var on = "On"
+var off = "Off"
+
 type settingsWidgets struct {
 	sendReadReceiptsByDefault             *widget.Check
 	sendTypingIndicatorsByDefault         *widget.Check
@@ -104,17 +109,23 @@ func (fyneUI *Fyne) DefaultReadReceiptSettingSet(value bool) {
 	fyneUI.settings.DefaultSendReadReceipts = value
 	fyneUI.settingsWidgets.sendReadReceiptsByDefault.Checked = value
 	fyneUI.settingsWidgets.sendReadReceiptsByDefault.Refresh()
+	for _, g := range fyneUI.groups {
+		fyneUI.refreshReadReceiptSettingSelection(g)
+	}
+	// TODO: users too
 }
 
 func (fyneUI *Fyne) DefaultTypingIndicatorSettingSet(value bool) {
 	fyneUI.settings.DefaultSendTypingIndicators = value
 	fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Checked = value
 	fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
+	// TODO: update group and user selections
 }
 
 func (fyneUI *Fyne) DefaultGroupRetentionSettingSet(value int64) {
 	fyneUI.settings.DefaultGroupRetention = value
 	fyneUI.settingsWidgets.defaultNewGroupRetention.Selected = getRetentionName(value)
+	// TODO: every thread's selection options need to update to reflect what the default value is now
 	fyneUI.settingsWidgets.defaultNewGroupRetention.Refresh()
 }
 
@@ -134,4 +145,26 @@ func (fyneUI *Fyne) NewGroupRestrictPostingSettingSet(value bool) {
 	fyneUI.settings.NewGroupRestrictPosting = value
 	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Checked = value
 	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Refresh()
+}
+
+func (fyneUI *Fyne) readReceiptOverrideSelectionOptions() []string {
+	strings := []string{}
+	if fyneUI.settings.DefaultSendReadReceipts {
+		strings = append(strings, defaultOn)
+	} else {
+		strings = append(strings, defaultOff)
+	}
+	strings = append(strings, []string{on, off}...)
+	return strings
+}
+
+func (fyneUI *Fyne) typingIndicatorOverrideSelectionOptions() []string {
+	strings := []string{}
+	if fyneUI.settings.DefaultSendTypingIndicators {
+		strings = append(strings, defaultOn)
+	} else {
+		strings = append(strings, defaultOff)
+	}
+	strings = append(strings, []string{on, off}...)
+	return strings
 }

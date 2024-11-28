@@ -18,26 +18,28 @@ import (
 var groupMutex sync.Mutex
 
 type group struct {
-	ID                        uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name                      string
-	Image                     []byte
-	CreatedBy                 uuid.UUID
-	CreatedAt                 int64
-	Retention                 int64
-	ClearBefore               int64
-	MutedUntil                int64
-	Users                     []user `gorm:"many2many:group_users;"`
-	Admins                    string `gorm:"not null"`
-	BlockedUsers              string
-	RestrictUserManagement    bool
-	RestrictGroupEdits        bool
-	RestrictPosting           bool
-	LastActivity              int64
-	ReadReceiptsOverridden    bool
-	ReadReceiptsEnabled       bool
-	DeliveryRecordsClearedFor uuid.UUID `msgpack:"-"`
-	payload                   []byte
-	payloadMutex              sync.Mutex
+	ID                         uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name                       string
+	Image                      []byte
+	CreatedBy                  uuid.UUID
+	CreatedAt                  int64
+	Retention                  int64
+	ClearBefore                int64
+	MutedUntil                 int64
+	Users                      []user `gorm:"many2many:group_users;"`
+	Admins                     string `gorm:"not null"`
+	BlockedUsers               string
+	RestrictUserManagement     bool
+	RestrictGroupEdits         bool
+	RestrictPosting            bool
+	LastActivity               int64
+	ReadReceiptsOverridden     bool      `msgpack:"-"`
+	ReadReceiptsEnabled        bool      `msgpack:"-"`
+	TypingIndicatorsOverridden bool      `msgpack:"-"`
+	TypingIndicatorsEnabled    bool      `msgpack:"-"`
+	DeliveryRecordsClearedFor  uuid.UUID `msgpack:"-"`
+	payload                    []byte
+	payloadMutex               sync.Mutex
 }
 
 func (g *group) BeforeCreate(tx *gorm.DB) error {
@@ -282,6 +284,48 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 	})
 
 	return nil
+}
+
+func (b *bounce) setGroupReadReceiptSettings(groupID uuid.UUID, override bool, enabled bool) {
+	err := b.database.Table("groups").Where("id = ?", groupID).Update("read_receipts_overridden", override).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"error":    err.Error(),
+		}).Error("error updating group read receipt settings")
+		return
+	}
+	err = b.database.Table("groups").Where("id = ?", groupID).Update("read_receipts_enabled", enabled).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"error":    err.Error(),
+		}).Error("error updating group read receipt settings")
+	}
+	if err == nil {
+		b.userInterface.GroupReadReceiptSettingsSet(groupID, override, enabled)
+	}
+}
+
+func (b *bounce) setGroupTypingIndicatorSettings(groupID uuid.UUID, override bool, enabled bool) {
+	err := b.database.Table("groups").Where("id = ?", groupID).Update("typing_indicators_overridden", override).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"error":    err.Error(),
+		}).Error("error updating group typing indicator settings")
+		return
+	}
+	err = b.database.Table("groups").Where("id = ?", groupID).Update("typing_indicators_enabled", enabled).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"error":    err.Error(),
+		}).Error("error updating group typing indicator settings")
+	}
+	if err == nil {
+		b.userInterface.GroupTypingIndicatorSettingsSet(groupID, override, enabled)
+	}
 }
 
 func (b *bounce) getGroupRetention(groupID uuid.UUID) int64 {

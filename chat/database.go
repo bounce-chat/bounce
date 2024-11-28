@@ -402,18 +402,22 @@ func (b *bounce) buildInitialState() InitialState {
 			}
 		}
 		chatGroups = append(chatGroups, Group{
-			ID:                     g.ID,
-			Name:                   g.Name,
-			Users:                  userList,
-			Admins:                 adminList,
-			BlockedUsers:           blockedList,
-			CreatedBy:              g.CreatedBy,
-			CreatedAt:              g.CreatedAt,
-			Retention:              g.Retention,
-			LastActivity:           g.LastActivity,
-			RestrictUserManagement: g.RestrictUserManagement,
-			RestrictGroupEdits:     g.RestrictGroupEdits,
-			RestrictPosting:        g.RestrictPosting,
+			ID:                             g.ID,
+			Name:                           g.Name,
+			Users:                          userList,
+			Admins:                         adminList,
+			BlockedUsers:                   blockedList,
+			CreatedBy:                      g.CreatedBy,
+			CreatedAt:                      g.CreatedAt,
+			Retention:                      g.Retention,
+			LastActivity:                   g.LastActivity,
+			RestrictUserManagement:         g.RestrictUserManagement,
+			RestrictGroupEdits:             g.RestrictGroupEdits,
+			RestrictPosting:                g.RestrictPosting,
+			OverrideReadReceiptSetting:     g.ReadReceiptsOverridden,
+			ReadReceiptsEnabled:            g.ReadReceiptsEnabled,
+			OverrideTypingIndicatorSetting: g.TypingIndicatorsOverridden,
+			TypingIndicatorsEnabled:        g.TypingIndicatorsEnabled,
 		})
 	}
 

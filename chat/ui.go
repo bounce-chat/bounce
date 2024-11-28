@@ -67,20 +67,24 @@ type UpdateDMClearHistory struct {
 }
 
 type Group struct {
-	ID                     uuid.UUID
-	Name                   string
-	Image                  []byte
-	Users                  []User
-	Admins                 []uuid.UUID
-	BlockedUsers           []uuid.UUID
-	Retention              int64
-	MutedUntil             int64
-	LastActivity           int64
-	CreatedBy              uuid.UUID
-	CreatedAt              int64
-	RestrictUserManagement bool
-	RestrictGroupEdits     bool
-	RestrictPosting        bool
+	ID                             uuid.UUID
+	Name                           string
+	Image                          []byte
+	Users                          []User
+	Admins                         []uuid.UUID
+	BlockedUsers                   []uuid.UUID
+	Retention                      int64
+	MutedUntil                     int64
+	LastActivity                   int64
+	CreatedBy                      uuid.UUID
+	CreatedAt                      int64
+	RestrictUserManagement         bool
+	RestrictGroupEdits             bool
+	RestrictPosting                bool
+	OverrideReadReceiptSetting     bool
+	ReadReceiptsEnabled            bool
+	OverrideTypingIndicatorSetting bool
+	TypingIndicatorsEnabled        bool
 }
 
 type GroupMessage struct {
@@ -363,6 +367,9 @@ type UI interface {
 	NewGroupRestrictUserManagementSettingSet(bool)
 	NewGroupRestrictGroupEditsSettingSet(bool)
 	NewGroupRestrictPostingSettingSet(bool)
+
+	GroupReadReceiptSettingsSet(uuid.UUID, bool, bool)
+	GroupTypingIndicatorSettingsSet(uuid.UUID, bool, bool)
 }
 
 // Frames that support being marked as read
@@ -442,4 +449,7 @@ type UICallbacks struct {
 	SetNewGroupRestrictUserManagement func(bool)
 	SetNewGroupRestrictGroupEdits     func(bool)
 	SetNewGroupRestrictPosting        func(bool)
+
+	SetGroupReadReceiptSettings     func(groupID uuid.UUID, override bool, enabled bool)
+	SetGroupTypingIndicatorSettings func(groupID uuid.UUID, override bool, enabled bool)
 }

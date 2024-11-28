@@ -276,3 +276,6 @@ func (fyneUI *Fyne) HideTypingIndicatorInButton(threadID uuid.UUID) {
 
 	thread.getButton().stopTyping()
 }
+
+func (fyneUI *Fyne) refreshThreadReadReceiptSettingsSelections() {
+}

@@ -17,20 +17,22 @@ import (
 )
 
 type user struct {
-	ID                     uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name                   string
-	Profile                bool  `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
-	Retention              int64 `json:"-" msgpack:"-"`
-	ClearBefore            int64 `json:"-" msgpack:"-"`
-	MutedUntil             int64 `json:"-" msgpack:"-"`
-	LastActivity           int64 `json:"-" msgpack:"-"`
-	ReadReceiptsOverridden bool  `json:"-" msgpack:"-"`
-	ReadReceiptsEnabled    bool  `json:"-" msgpack:"-"`
-	Devices                []device
-	Groups                 []group          `gorm:"many2many:group_users;" json:"-" msgpack:"-"`
-	ProfileSettings        *profileSettings `json:"-" msgpack:"-"`
-	payload                []byte
-	payloadMutex           sync.Mutex
+	ID                         uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name                       string
+	Profile                    bool  `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
+	Retention                  int64 `json:"-" msgpack:"-"`
+	ClearBefore                int64 `json:"-" msgpack:"-"`
+	MutedUntil                 int64 `json:"-" msgpack:"-"`
+	LastActivity               int64 `json:"-" msgpack:"-"`
+	ReadReceiptsOverridden     bool  `json:"-" msgpack:"-"`
+	ReadReceiptsEnabled        bool  `json:"-" msgpack:"-"`
+	TypingIndicatorsOverridden bool  `json:"-" msgpack:"-"`
+	TypingIndicatorsEnabled    bool  `json:"-" msgpack:"-"`
+	Devices                    []device
+	Groups                     []group          `gorm:"many2many:group_users;" json:"-" msgpack:"-"`
+	ProfileSettings            *profileSettings `json:"-" msgpack:"-"`
+	payload                    []byte
+	payloadMutex               sync.Mutex
 }
 
 func (u *user) BeforeCreate(tx *gorm.DB) error {
