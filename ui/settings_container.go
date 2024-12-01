@@ -112,20 +112,22 @@ func (fyneUI *Fyne) DefaultReadReceiptSettingSet(value bool) {
 	for _, g := range fyneUI.groups {
 		fyneUI.refreshReadReceiptSettingSelection(g)
 	}
-	// TODO: users too
+	// TODO: refresh user selections too
 }
 
 func (fyneUI *Fyne) DefaultTypingIndicatorSettingSet(value bool) {
 	fyneUI.settings.DefaultSendTypingIndicators = value
 	fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Checked = value
 	fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
-	// TODO: update group and user selections
+	for _, g := range fyneUI.groups {
+		fyneUI.refreshTypingIndicatorSettingSelection(g)
+	}
+	// TODO: refresh user selections too
 }
 
 func (fyneUI *Fyne) DefaultGroupRetentionSettingSet(value int64) {
 	fyneUI.settings.DefaultGroupRetention = value
 	fyneUI.settingsWidgets.defaultNewGroupRetention.Selected = getRetentionName(value)
-	// TODO: every thread's selection options need to update to reflect what the default value is now
 	fyneUI.settingsWidgets.defaultNewGroupRetention.Refresh()
 }
 

@@ -20,53 +20,54 @@ import (
 )
 
 type group struct {
-	id                             uuid.UUID
-	name                           binding.String
-	initial                        binding.String
-	users                          *userStore
-	admins                         []uuid.UUID
-	blockedUsers                   []uuid.UUID
-	retention                      int64
-	restrictUserManagement         bool
-	restrictGroupEdits             bool
-	restrictPosting                bool
-	overrideReadReceiptSetting     bool
-	readReceiptsEnabled            bool
-	overrideTypingIndicatorSetting bool
-	typingIndicatorsEnabled        bool
-	lastAdminActionMutex           sync.Mutex
-	pendingUsers                   *userStore
-	notificationsMutedUntil        int64
-	createdAt                      int64
-	editContainer                  *fyne.Container
-	editThreadNameEntry            *widget.Entry
-	retentionSelection             *widget.Select
-	clearHistoryButton             *widget.Button
-	leaveGroupButton               *widget.Button
-	deleteGroupButton              *widget.Button
-	blockGroupButton               *widget.Button
-	addUsersButton                 *widget.Button
-	view                           *fyne.Container
-	header                         *fyne.Container
-	button                         *threadButton
-	notificationsEnabledCheck      *widget.Check
-	restrictUserManagementCheck    *widget.Check
-	restrictGroupEditsCheck        *widget.Check
-	restrictPostingCheck           *widget.Check
-	readReceiptOverrideSelection   *widget.Select
-	scroll                         *chatHistory //*List // TODO: rename to history
-	newUserSearchEntry             *widget.Entry
-	availableNewUsersScroll        *container.Scroll
-	currentUsersContainer          *container.Scroll
-	pendingUsersContainer          *container.Scroll
-	adminChecks                    map[uuid.UUID]*widget.Check
-	adminChecksMutex               sync.Mutex
-	removeUserButtons              map[uuid.UUID]*widget.Button
-	removeUserButtonsMutex         sync.Mutex
-	editUserDialogs                map[uuid.UUID]dialog.Dialog
-	editUserDialogsMutex           sync.Mutex
-	entry                          *threadEntry
-	lastMessage                    int64
+	id                               uuid.UUID
+	name                             binding.String
+	initial                          binding.String
+	users                            *userStore
+	admins                           []uuid.UUID
+	blockedUsers                     []uuid.UUID
+	retention                        int64
+	restrictUserManagement           bool
+	restrictGroupEdits               bool
+	restrictPosting                  bool
+	overrideReadReceiptSetting       bool
+	readReceiptsEnabled              bool
+	overrideTypingIndicatorSetting   bool
+	typingIndicatorsEnabled          bool
+	lastAdminActionMutex             sync.Mutex
+	pendingUsers                     *userStore
+	notificationsMutedUntil          int64
+	createdAt                        int64
+	editContainer                    *fyne.Container
+	editThreadNameEntry              *widget.Entry
+	retentionSelection               *widget.Select
+	clearHistoryButton               *widget.Button
+	leaveGroupButton                 *widget.Button
+	deleteGroupButton                *widget.Button
+	blockGroupButton                 *widget.Button
+	addUsersButton                   *widget.Button
+	view                             *fyne.Container
+	header                           *fyne.Container
+	button                           *threadButton
+	notificationsEnabledCheck        *widget.Check
+	restrictUserManagementCheck      *widget.Check
+	restrictGroupEditsCheck          *widget.Check
+	restrictPostingCheck             *widget.Check
+	readReceiptOverrideSelection     *widget.Select
+	typingIndicatorOverrideSelection *widget.Select
+	scroll                           *chatHistory //*List // TODO: rename to history
+	newUserSearchEntry               *widget.Entry
+	availableNewUsersScroll          *container.Scroll
+	currentUsersContainer            *container.Scroll
+	pendingUsersContainer            *container.Scroll
+	adminChecks                      map[uuid.UUID]*widget.Check
+	adminChecksMutex                 sync.Mutex
+	removeUserButtons                map[uuid.UUID]*widget.Button
+	removeUserButtonsMutex           sync.Mutex
+	editUserDialogs                  map[uuid.UUID]dialog.Dialog
+	editUserDialogsMutex             sync.Mutex
+	entry                            *threadEntry
+	lastMessage                      int64
 }
 
 func (g *group) getID() uuid.UUID {
@@ -153,6 +154,21 @@ func (fyneUI *Fyne) refreshReadReceiptSettingSelection(g *group) {
 		}
 	}
 	g.readReceiptOverrideSelection.Refresh()
+}
+
+func (fyneUI *Fyne) refreshTypingIndicatorSettingSelection(g *group) {
+	options := fyneUI.typingIndicatorOverrideSelectionOptions()
+	g.typingIndicatorOverrideSelection.Options = options
+	if !g.overrideTypingIndicatorSetting {
+		g.typingIndicatorOverrideSelection.Selected = options[0]
+	} else {
+		if g.typingIndicatorsEnabled {
+			g.typingIndicatorOverrideSelection.Selected = options[1]
+		} else {
+			g.typingIndicatorOverrideSelection.Selected = options[2]
+		}
+	}
+	g.typingIndicatorOverrideSelection.Refresh()
 }
 
 func (fyneUI *Fyne) GroupReadReceiptSettingsSet(groupID uuid.UUID, override, enabled bool) {

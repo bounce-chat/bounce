@@ -55,7 +55,8 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 
 	g.readReceiptOverrideSelection = widget.NewSelect(fyneUI.readReceiptOverrideSelectionOptions(), nil)
 	fyneUI.refreshReadReceiptSettingSelection(g)
-	typingIndicatorSelection := widget.NewSelect([]string{"Default (On)", "On", "Off"}, nil)
+	g.typingIndicatorOverrideSelection = widget.NewSelect(fyneUI.typingIndicatorOverrideSelectionOptions(), nil)
+	fyneUI.refreshTypingIndicatorSettingSelection(g)
 
 	confirmClearHistory := dialog.NewConfirm(
 		"Clear all message history?",
@@ -210,12 +211,12 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			}
 		}
 
-		//Update the read receipt and typing indicator overrides if needed
-		defaultSelected := g.readReceiptOverrideSelection.Selected == defaultOn || g.readReceiptOverrideSelection.Selected == defaultOff
-		switchedDefault := (defaultSelected && g.overrideReadReceiptSetting) || (!defaultSelected && !g.overrideReadReceiptSetting)
-		switchedEnabled := (g.readReceiptOverrideSelection.Selected == off && g.readReceiptsEnabled) || (g.readReceiptOverrideSelection.Selected == on && !g.readReceiptsEnabled)
-		if switchedDefault || switchedEnabled {
-			if defaultSelected {
+		// Update the read receipt override if needed
+		defaultReadReceiptSelected := g.readReceiptOverrideSelection.Selected == defaultOn || g.readReceiptOverrideSelection.Selected == defaultOff
+		switchedReadReceiptDefault := (defaultReadReceiptSelected && g.overrideReadReceiptSetting) || (!defaultReadReceiptSelected && !g.overrideReadReceiptSetting)
+		switchedReadReceiptEnabled := (g.readReceiptOverrideSelection.Selected == off && g.readReceiptsEnabled) || (g.readReceiptOverrideSelection.Selected == on && !g.readReceiptsEnabled)
+		if switchedReadReceiptDefault || switchedReadReceiptEnabled {
+			if defaultReadReceiptSelected {
 				fyneUI.callbacks.SetGroupReadReceiptSettings(g.id, false, true)
 			} else if g.readReceiptOverrideSelection.Selected == on {
 				fyneUI.callbacks.SetGroupReadReceiptSettings(g.id, true, true)
@@ -226,6 +227,25 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 					"group_id":  g.id,
 					"selection": g.readReceiptOverrideSelection.Selected,
 				}).Error("invalid selection for read receipt override")
+			}
+		}
+
+		// Update the typing indicator override if needed
+		defaultTypingIndicatorSelected := g.typingIndicatorOverrideSelection.Selected == defaultOn || g.typingIndicatorOverrideSelection.Selected == defaultOff
+		switchedTypingIndicatorDefault := (defaultTypingIndicatorSelected && g.overrideTypingIndicatorSetting) || (!defaultTypingIndicatorSelected && !g.overrideTypingIndicatorSetting)
+		switchedTypingIndicatorEnabled := (g.typingIndicatorOverrideSelection.Selected == off && g.typingIndicatorsEnabled) || (g.typingIndicatorOverrideSelection.Selected == on && !g.typingIndicatorsEnabled)
+		if switchedTypingIndicatorDefault || switchedTypingIndicatorEnabled {
+			if defaultTypingIndicatorSelected {
+				fyneUI.callbacks.SetGroupTypingIndicatorSettings(g.id, false, true)
+			} else if g.typingIndicatorOverrideSelection.Selected == on {
+				fyneUI.callbacks.SetGroupTypingIndicatorSettings(g.id, true, true)
+			} else if g.typingIndicatorOverrideSelection.Selected == off {
+				fyneUI.callbacks.SetGroupTypingIndicatorSettings(g.id, true, false)
+			} else {
+				log.WithFields(log.Fields{
+					"group_id":  g.id,
+					"selection": g.typingIndicatorOverrideSelection.Selected,
+				}).Error("invalid selection for typing indicator override")
 			}
 		}
 
@@ -268,6 +288,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 
 		// Reset the read receipt and typing indicator overrides
 		fyneUI.refreshReadReceiptSettingSelection(g)
+		fyneUI.refreshTypingIndicatorSettingSelection(g)
 
 		// Show main tontainer
 		if fyne.CurrentDevice().IsMobile() {
@@ -368,7 +389,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 					widget.NewLabel("Read Receipts"),
 					g.readReceiptOverrideSelection,
 					widget.NewLabel("Typing Indicators"),
-					typingIndicatorSelection,
+					g.typingIndicatorOverrideSelection,
 				),
 			},
 		),
