@@ -438,10 +438,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	dm.editContainer = container.NewMax(
 		container.New(
 			layout.NewBorderLayout(closeBar, actionButtons, nil, nil),
-			container.New(
-				layout.NewBorderLayout(editDMFeatures, nil, nil, nil),
-				editDMFeatures,
-			),
+			container.NewVScroll(editDMFeatures),
 			closeBar,
 			actionButtons,
 		),

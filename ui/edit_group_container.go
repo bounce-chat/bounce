@@ -398,10 +398,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 	g.editContainer = container.NewMax(
 		container.New(
 			layout.NewBorderLayout(closeBar, actionButtons, nil, nil),
-			container.New(
-				layout.NewBorderLayout(editGroupFeatures, nil, nil, nil),
-				editGroupFeatures,
-			),
+			container.NewVScroll(editGroupFeatures),
 			closeBar,
 			actionButtons,
 		),
