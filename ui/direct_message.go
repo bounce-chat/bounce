@@ -17,18 +17,24 @@ import (
 )
 
 type directMessage struct {
-	user                      *user
-	notificationsMutedUntil   int64 // TODO: fyne feature request/PR: support binding int64 for time.Time
-	retention                 int64
-	editContainer             *fyne.Container
-	view                      *fyne.Container
-	header                    *fyne.Container
-	button                    *threadButton
-	notificationsEnabledCheck *widget.Check
-	scroll                    *chatHistory //List // TODO: rename to history
-	entry                     *threadEntry
-	retentionSelection        *widget.Select
-	lastMessage               int64
+	user                             *user
+	notificationsMutedUntil          int64 // TODO: fyne feature request/PR: support binding int64 for time.Time
+	retention                        int64
+	overrideReadReceiptSetting       bool
+	readReceiptsEnabled              bool
+	overrideTypingIndicatorSetting   bool
+	typingIndicatorsEnabled          bool
+	editContainer                    *fyne.Container
+	view                             *fyne.Container
+	header                           *fyne.Container
+	button                           *threadButton
+	notificationsEnabledCheck        *widget.Check
+	readReceiptOverrideSelection     *widget.Select
+	typingIndicatorOverrideSelection *widget.Select
+	scroll                           *chatHistory //List // TODO: rename to history
+	entry                            *threadEntry
+	retentionSelection               *widget.Select
+	lastMessage                      int64
 }
 
 func (dm *directMessage) getID() uuid.UUID {
@@ -62,6 +68,57 @@ func (dm *directMessage) getNotificationsMutedUntil() int64 {
 	return dm.notificationsMutedUntil
 }
 
+func (dm *directMessage) refreshReadReceiptSettingSelection(options []string) {
+	dm.readReceiptOverrideSelection.Options = options
+	if !dm.overrideReadReceiptSetting {
+		dm.readReceiptOverrideSelection.Selected = options[0]
+	} else {
+		if dm.readReceiptsEnabled {
+			dm.readReceiptOverrideSelection.Selected = options[1]
+		} else {
+			dm.readReceiptOverrideSelection.Selected = options[2]
+		}
+	}
+	dm.readReceiptOverrideSelection.Refresh()
+}
+
+func (dm *directMessage) refreshTypingIndicatorSettingSelection(options []string) {
+	dm.typingIndicatorOverrideSelection.Options = options
+	if !dm.overrideTypingIndicatorSetting {
+		dm.typingIndicatorOverrideSelection.Selected = options[0]
+	} else {
+		if dm.typingIndicatorsEnabled {
+			dm.typingIndicatorOverrideSelection.Selected = options[1]
+		} else {
+			dm.typingIndicatorOverrideSelection.Selected = options[2]
+		}
+	}
+	dm.typingIndicatorOverrideSelection.Refresh()
+}
+
+func (fyneUI *Fyne) DMReadReceiptSettingsSet(userID uuid.UUID, override, enabled bool) {
+	dm, exists := fyneUI.dms[userID]
+	if !exists {
+		log.WithFields(log.Fields{
+			"userID": userID,
+		}).Error("cannot set read receipt override settings for unknown direct message")
+		return
+	}
+	dm.overrideReadReceiptSetting = override
+	dm.readReceiptsEnabled = enabled
+}
+func (fyneUI *Fyne) DMTypingIndicatorSettingsSet(userID uuid.UUID, override, enabled bool) {
+	dm, exists := fyneUI.dms[userID]
+	if !exists {
+		log.WithFields(log.Fields{
+			"userID": userID,
+		}).Error("cannot set typing indicator override settings for unknown direct message")
+		return
+	}
+	dm.overrideTypingIndicatorSetting = override
+	dm.typingIndicatorsEnabled = enabled
+}
+
 func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	user, exists := fyneUI.users.get(bounceUser.ID)
 	if !exists {
@@ -78,10 +135,14 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	}
 
 	dm := &directMessage{
-		user:                    user,
-		notificationsMutedUntil: bounceUser.State.MutedUntil,
-		retention:               bounceUser.State.Retention,
-		lastMessage:             time.Now().Unix(),
+		user:                           user,
+		notificationsMutedUntil:        bounceUser.State.MutedUntil,
+		retention:                      bounceUser.State.Retention,
+		lastMessage:                    time.Now().Unix(),
+		overrideReadReceiptSetting:     bounceUser.State.OverrideReadReceiptSetting,
+		readReceiptsEnabled:            bounceUser.State.ReadReceiptsEnabled,
+		overrideTypingIndicatorSetting: bounceUser.State.OverrideTypingIndicatorSetting,
+		typingIndicatorsEnabled:        bounceUser.State.TypingIndicatorsEnabled,
 	}
 
 	dm.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(_ bool) {})
@@ -224,8 +285,10 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	dm.retentionSelection.Selected = getRetentionName(dm.retention)
 
 	// Overrides for read receipts and typing indicators
-	readReceiptSelection := widget.NewSelect([]string{"Default (On)", "On", "Off"}, nil)
-	typingIndicatorSelection := widget.NewSelect([]string{"Default (On)", "On", "Off"}, nil)
+	dm.readReceiptOverrideSelection = widget.NewSelect(fyneUI.readReceiptOverrideSelectionOptions(), nil)
+	dm.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+	dm.typingIndicatorOverrideSelection = widget.NewSelect(fyneUI.typingIndicatorOverrideSelectionOptions(), nil)
+	dm.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
 
 	//
 	// Button to clear all message history, with confirm dialog
@@ -260,6 +323,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 			}
 			fyneUI.callbacks.SetDMMutedUntil(dm.user.id, mutedUntil)
 		}
+
 		// Update message retention if the selection doesn't line up with what we have for this user
 		selectedRetentionString := dm.retentionSelection.Selected
 		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
@@ -270,6 +334,45 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 				fyneUI.callbacks.SetDMRetention(dm.user.id, selectedRetentionValue) // TODO: this should return an error if the user ID is nonsense
 			}
 		}
+
+		// Update the read receipt override if needed
+		defaultReadReceiptSelected := dm.readReceiptOverrideSelection.Selected == defaultOn || dm.readReceiptOverrideSelection.Selected == defaultOff
+		switchedReadReceiptDefault := (defaultReadReceiptSelected && dm.overrideReadReceiptSetting) || (!defaultReadReceiptSelected && !dm.overrideReadReceiptSetting)
+		switchedReadReceiptEnabled := (dm.readReceiptOverrideSelection.Selected == off && dm.readReceiptsEnabled) || (dm.readReceiptOverrideSelection.Selected == on && !dm.readReceiptsEnabled)
+		if switchedReadReceiptDefault || switchedReadReceiptEnabled {
+			if defaultReadReceiptSelected {
+				fyneUI.callbacks.SetDMReadReceiptSettings(dm.user.id, false, true)
+			} else if dm.readReceiptOverrideSelection.Selected == on {
+				fyneUI.callbacks.SetDMReadReceiptSettings(dm.user.id, true, true)
+			} else if dm.readReceiptOverrideSelection.Selected == off {
+				fyneUI.callbacks.SetDMReadReceiptSettings(dm.user.id, true, false)
+			} else {
+				log.WithFields(log.Fields{
+					"user_id":   dm.user.id,
+					"selection": dm.readReceiptOverrideSelection.Selected,
+				}).Error("invalid selection for read receipt override")
+			}
+		}
+
+		// Update the typing indicator override if needed
+		defaultTypingIndicatorSelected := dm.typingIndicatorOverrideSelection.Selected == defaultOn || dm.typingIndicatorOverrideSelection.Selected == defaultOff
+		switchedTypingIndicatorDefault := (defaultTypingIndicatorSelected && dm.overrideTypingIndicatorSetting) || (!defaultTypingIndicatorSelected && !dm.overrideTypingIndicatorSetting)
+		switchedTypingIndicatorEnabled := (dm.typingIndicatorOverrideSelection.Selected == off && dm.typingIndicatorsEnabled) || (dm.typingIndicatorOverrideSelection.Selected == on && !dm.typingIndicatorsEnabled)
+		if switchedTypingIndicatorDefault || switchedTypingIndicatorEnabled {
+			if defaultTypingIndicatorSelected {
+				fyneUI.callbacks.SetDMTypingIndicatorSettings(dm.user.id, false, true)
+			} else if dm.typingIndicatorOverrideSelection.Selected == on {
+				fyneUI.callbacks.SetDMTypingIndicatorSettings(dm.user.id, true, true)
+			} else if dm.typingIndicatorOverrideSelection.Selected == off {
+				fyneUI.callbacks.SetDMTypingIndicatorSettings(dm.user.id, true, false)
+			} else {
+				log.WithFields(log.Fields{
+					"user_id":   dm.user.id,
+					"selection": dm.typingIndicatorOverrideSelection.Selected,
+				}).Error("invalid selection for typing indicator override")
+			}
+		}
+
 		// Go back to the thread after settings updates are done
 		fyneUI.showMainContainer()
 		fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
@@ -284,6 +387,10 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		// Reset notification settings
 		enabled := dm.notificationsMutedUntil != chat.MutedForever
 		dm.notificationsEnabledCheck.SetChecked(enabled)
+
+		// Reset the read receipt and typing indicator overrides
+		dm.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+		dm.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
 
 		// Show main tontainer
 		if fyne.CurrentDevice().IsMobile() {
@@ -321,9 +428,9 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 				Title: "Advanced Options",
 				Detail: container.NewVBox(
 					widget.NewLabel("Read Receipts"),
-					readReceiptSelection,
+					dm.readReceiptOverrideSelection,
 					widget.NewLabel("Typing Indicators"),
-					typingIndicatorSelection,
+					dm.typingIndicatorOverrideSelection,
 				),
 			},
 		),

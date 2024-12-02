@@ -357,8 +357,12 @@ func (b *bounce) buildInitialState() InitialState {
 			ID:   u.ID,
 			Name: u.Name,
 			State: DMState{
-				Retention:  u.Retention,
-				MutedUntil: u.MutedUntil,
+				Retention:                      u.Retention,
+				MutedUntil:                     u.MutedUntil,
+				OverrideReadReceiptSetting:     u.ReadReceiptsOverridden,
+				ReadReceiptsEnabled:            u.ReadReceiptsEnabled,
+				OverrideTypingIndicatorSetting: u.TypingIndicatorsOverridden,
+				TypingIndicatorsEnabled:        u.TypingIndicatorsEnabled,
 			},
 		})
 	}

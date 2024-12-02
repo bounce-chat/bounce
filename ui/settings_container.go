@@ -110,9 +110,11 @@ func (fyneUI *Fyne) DefaultReadReceiptSettingSet(value bool) {
 	fyneUI.settingsWidgets.sendReadReceiptsByDefault.Checked = value
 	fyneUI.settingsWidgets.sendReadReceiptsByDefault.Refresh()
 	for _, g := range fyneUI.groups {
-		fyneUI.refreshReadReceiptSettingSelection(g)
+		g.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
 	}
-	// TODO: refresh user selections too
+	for _, dm := range fyneUI.dms {
+		dm.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+	}
 }
 
 func (fyneUI *Fyne) DefaultTypingIndicatorSettingSet(value bool) {
@@ -120,9 +122,11 @@ func (fyneUI *Fyne) DefaultTypingIndicatorSettingSet(value bool) {
 	fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Checked = value
 	fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
 	for _, g := range fyneUI.groups {
-		fyneUI.refreshTypingIndicatorSettingSelection(g)
+		g.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
 	}
-	// TODO: refresh user selections too
+	for _, dm := range fyneUI.dms {
+		dm.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
+	}
 }
 
 func (fyneUI *Fyne) DefaultGroupRetentionSettingSet(value int64) {

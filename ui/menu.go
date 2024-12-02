@@ -31,7 +31,7 @@ func (fyneUI *Fyne) buildMenu() {
 			fyne.NewMenuItem("New DM", func() {
 				fyneUI.showNewDM()
 			}),
-			//fyne.NewMenuItem("New Workspace", func() {
+			//fyne.NewMenuItem("Manage Workspaces", func() {
 			//	fyneUI.showNewWorkspace()
 			//}),
 		),

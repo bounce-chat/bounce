@@ -122,6 +122,8 @@ func Start(network Network, ui UI) {
 			SetNewGroupRestrictPosting:        b.setNewGroupRestrictPosting,
 			SetGroupReadReceiptSettings:       b.setGroupReadReceiptSettings,
 			SetGroupTypingIndicatorSettings:   b.setGroupTypingIndicatorSettings,
+			SetDMReadReceiptSettings:          b.setDMReadReceiptSettings,
+			SetDMTypingIndicatorSettings:      b.setDMTypingIndicatorSettings,
 		},
 	)
 

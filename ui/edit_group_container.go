@@ -54,9 +54,9 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 	g.retentionSelection.Selected = getRetentionName(g.retention)
 
 	g.readReceiptOverrideSelection = widget.NewSelect(fyneUI.readReceiptOverrideSelectionOptions(), nil)
-	fyneUI.refreshReadReceiptSettingSelection(g)
+	g.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
 	g.typingIndicatorOverrideSelection = widget.NewSelect(fyneUI.typingIndicatorOverrideSelectionOptions(), nil)
-	fyneUI.refreshTypingIndicatorSettingSelection(g)
+	g.refreshTypingIndicatorSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
 
 	confirmClearHistory := dialog.NewConfirm(
 		"Clear all message history?",
@@ -287,8 +287,8 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		g.restrictPostingCheck.SetChecked(g.restrictPosting)
 
 		// Reset the read receipt and typing indicator overrides
-		fyneUI.refreshReadReceiptSettingSelection(g)
-		fyneUI.refreshTypingIndicatorSettingSelection(g)
+		g.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+		g.refreshTypingIndicatorSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
 
 		// Show main tontainer
 		if fyne.CurrentDevice().IsMobile() {

@@ -31,8 +31,12 @@ type Device struct {
 }
 
 type DMState struct {
-	Retention  int64
-	MutedUntil int64
+	Retention                      int64
+	MutedUntil                     int64
+	OverrideReadReceiptSetting     bool
+	ReadReceiptsEnabled            bool
+	OverrideTypingIndicatorSetting bool
+	TypingIndicatorsEnabled        bool
 }
 
 type DirectMessage struct {
@@ -370,6 +374,8 @@ type UI interface {
 
 	GroupReadReceiptSettingsSet(uuid.UUID, bool, bool)
 	GroupTypingIndicatorSettingsSet(uuid.UUID, bool, bool)
+	DMReadReceiptSettingsSet(uuid.UUID, bool, bool)
+	DMTypingIndicatorSettingsSet(uuid.UUID, bool, bool)
 }
 
 // Frames that support being marked as read
@@ -452,4 +458,6 @@ type UICallbacks struct {
 
 	SetGroupReadReceiptSettings     func(groupID uuid.UUID, override bool, enabled bool)
 	SetGroupTypingIndicatorSettings func(groupID uuid.UUID, override bool, enabled bool)
+	SetDMReadReceiptSettings        func(groupID uuid.UUID, override bool, enabled bool)
+	SetDMTypingIndicatorSettings    func(groupID uuid.UUID, override bool, enabled bool)
 }

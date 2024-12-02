@@ -141,8 +141,7 @@ func (g *group) setInitial() {
 	g.initial.Set(string(r))
 }
 
-func (fyneUI *Fyne) refreshReadReceiptSettingSelection(g *group) {
-	options := fyneUI.readReceiptOverrideSelectionOptions()
+func (g *group) refreshReadReceiptSettingSelection(options []string) {
 	g.readReceiptOverrideSelection.Options = options
 	if !g.overrideReadReceiptSetting {
 		g.readReceiptOverrideSelection.Selected = options[0]
@@ -156,8 +155,7 @@ func (fyneUI *Fyne) refreshReadReceiptSettingSelection(g *group) {
 	g.readReceiptOverrideSelection.Refresh()
 }
 
-func (fyneUI *Fyne) refreshTypingIndicatorSettingSelection(g *group) {
-	options := fyneUI.typingIndicatorOverrideSelectionOptions()
+func (g *group) refreshTypingIndicatorSettingSelection(options []string) {
 	g.typingIndicatorOverrideSelection.Options = options
 	if !g.overrideTypingIndicatorSetting {
 		g.typingIndicatorOverrideSelection.Selected = options[0]
