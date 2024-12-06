@@ -17,16 +17,22 @@ const updateDMTypeChangeMutedUntil = uint16(0)
 const updateDMTypeChangeRetention = uint16(1)
 const updateDMTypeSetClearBefore = uint16(2)
 const updateDMTypeSetReadReceipts = uint16(3)
+const updateDMTypeSetTypingIndicators = uint16(4)
 
 var errUpdateDMWithUnknownType = errors.New("update DM has unknown update type")
 var errInvalidPayloadLength = errors.New("invalid payload length")
-var errInvalidReadReceiptOverriddenValue = errors.New("invalid value for read receipt overridden byte")
-var errInvalidReadReceiptEnabledValue = errors.New("invalid value for read receipt enabled byte")
+var errInvalidOverriddenValue = errors.New("invalid value for overridden byte")
+var errInvalidEnabledValue = errors.New("invalid value for enabled byte")
+var errSyncScopedMessageFromNonSyncSource = errors.New("sync scoped frame can only come from sync device")
 
 const readReceiptsDefaultValue = 0x00
 const readReceiptsOverriddenValue = 0x01
 const readReceiptsEnabledValue = 0x00
 const readReceiptsDisabledValue = 0x01
+const typingIndicatorsDefaultValue = 0x00
+const typingIndicatorsOverriddenValue = 0x01
+const typingIndicatorsEnabledValue = 0x00
+const typingIndicatorsDisabledValue = 0x01
 
 var updateDMMutex sync.Mutex
 
@@ -65,7 +71,7 @@ func (ud *updateDM) getID() uuid.UUID {
 }
 
 func (ud *updateDM) getScope(_ uuid.UUID) int {
-	if ud.Type == updateDMTypeChangeMutedUntil || ud.Type == updateDMTypeSetReadReceipts || ud.Target == uuid.Nil {
+	if ud.Type == updateDMTypeChangeMutedUntil || ud.Type == updateDMTypeSetReadReceipts || ud.Type == updateDMTypeSetTypingIndicators || ud.Target == uuid.Nil {
 		return scopeSync
 	}
 
@@ -105,17 +111,29 @@ func (ud *updateDM) getTimestamp() int64 {
 }
 
 func (ud *updateDM) validPayload() error {
-	if ud.Type == updateDMTypeSetReadReceipts {
+	switch ud.Type {
+	case updateDMTypeSetReadReceipts:
 		if len(ud.Data) != 2 {
 			return errInvalidPayloadLength
 		}
 		if !(ud.Data[0] == readReceiptsDefaultValue || ud.Data[0] == readReceiptsOverriddenValue) {
-			return errInvalidReadReceiptOverriddenValue
+			return errInvalidOverriddenValue
 		}
 		if !(ud.Data[0] == readReceiptsEnabledValue || ud.Data[0] == readReceiptsDisabledValue) {
-			return errInvalidReadReceiptEnabledValue
+			return errInvalidEnabledValue
+		}
+	case updateDMTypeSetTypingIndicators:
+		if len(ud.Data) != 2 {
+			return errInvalidPayloadLength
+		}
+		if !(ud.Data[0] == typingIndicatorsDefaultValue || ud.Data[0] == typingIndicatorsOverriddenValue) {
+			return errInvalidOverriddenValue
+		}
+		if !(ud.Data[0] == typingIndicatorsEnabledValue || ud.Data[0] == typingIndicatorsDisabledValue) {
+			return errInvalidEnabledValue
 		}
 	}
+
 	return nil
 }
 
@@ -204,6 +222,8 @@ func (b *bounce) updateDMState(userID uuid.UUID) {
 	clearBefore := int64(0)
 	readReceiptsOverridden := false
 	readReceiptsEnabled := true
+	typingIndicatorsOverridden := false
+	typingIndicatorsEnabled := true
 
 	// Find all updates
 	uds := []updateDM{}
@@ -235,6 +255,9 @@ func (b *bounce) updateDMState(userID uuid.UUID) {
 		case updateDMTypeSetReadReceipts:
 			readReceiptsOverridden = ud.Data[0] == readReceiptsOverriddenValue
 			readReceiptsEnabled = ud.Data[1] == readReceiptsEnabledValue
+		case updateDMTypeSetTypingIndicators:
+			typingIndicatorsOverridden = ud.Data[0] == typingIndicatorsOverriddenValue
+			typingIndicatorsEnabled = ud.Data[1] == typingIndicatorsEnabledValue
 		default:
 			log.WithFields(log.Fields{
 				"type": ud.Type,
@@ -244,11 +267,13 @@ func (b *bounce) updateDMState(userID uuid.UUID) {
 
 	// Set the values in the database
 	err = b.database.Model(&user{}).Where("id = ?", userID).Updates(map[string]interface{}{
-		"retention":                retention,
-		"muted_until":              mutedUntil,
-		"clear_before":             clearBefore,
-		"read_receipts_overridden": readReceiptsOverridden,
-		"read_receipts_enabled":    readReceiptsEnabled,
+		"retention":                    retention,
+		"muted_until":                  mutedUntil,
+		"clear_before":                 clearBefore,
+		"read_receipts_overridden":     readReceiptsOverridden,
+		"read_receipts_enabled":        readReceiptsEnabled,
+		"typing_indicators_overridden": typingIndicatorsOverridden,
+		"typing_indicators_enabled":    typingIndicatorsEnabled,
 	}).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -268,10 +293,12 @@ func (b *bounce) updateDMState(userID uuid.UUID) {
 	b.userInterface.SetDMState(
 		userID,
 		DMState{
-			Retention:                  retention,
-			MutedUntil:                 mutedUntil,
-			OverrideReadReceiptSetting: readReceiptsOverridden,
-			ReadReceiptsEnabled:        readReceiptsEnabled,
+			Retention:                      retention,
+			MutedUntil:                     mutedUntil,
+			OverrideReadReceiptSetting:     readReceiptsOverridden,
+			ReadReceiptsEnabled:            readReceiptsEnabled,
+			OverrideTypingIndicatorSetting: typingIndicatorsOverridden,
+			TypingIndicatorsEnabled:        typingIndicatorsEnabled,
 		},
 	)
 }
@@ -330,6 +357,8 @@ func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {
 			return err
 		}
 	case updateDMTypeSetReadReceipts:
+		// No UI status changes for read receipt settings
+	case updateDMTypeSetTypingIndicators:
 		// No UI status changes for read receipt settings
 	default:
 		log.WithFields(log.Fields{
@@ -460,6 +489,30 @@ func (b *bounce) setDMReadReceiptSettings(userID uuid.UUID, override bool, enabl
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
 		Type:      updateDMTypeSetReadReceipts,
+		Data:      payload,
+	})
+}
+
+func (b *bounce) setDMTypingIndicatorSettings(userID uuid.UUID, override bool, enabled bool) error {
+	payload := []byte{}
+	if override {
+		payload = append(payload, typingIndicatorsOverriddenValue)
+	} else {
+		payload = append(payload, typingIndicatorsDefaultValue)
+
+	}
+	if enabled {
+		payload = append(payload, typingIndicatorsEnabledValue)
+	} else {
+		payload = append(payload, typingIndicatorsDisabledValue)
+	}
+
+	return b.applyAndBroadcastUpdateDM(updateDM{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    xor(userID, b.currentUserID()),
+		Timestamp: time.Now().Unix(),
+		Type:      updateDMTypeSetTypingIndicators,
 		Data:      payload,
 	})
 }

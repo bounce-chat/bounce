@@ -310,27 +310,6 @@ func (b *bounce) importUser(data []byte) (User, error) {
 	}, nil
 }
 
-func (b *bounce) setDMTypingIndicatorSettings(userID uuid.UUID, override bool, enabled bool) {
-	err := b.database.Table("users").Where("id = ?", userID).Update("typing_indicators_overridden", override).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"user_id": userID,
-			"error":   err.Error(),
-		}).Error("error updating user typing indicator settings")
-		return
-	}
-	err = b.database.Table("users").Where("id = ?", userID).Update("typing_indicators_enabled", enabled).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"user_id": userID,
-			"error":   err.Error(),
-		}).Error("error updating user typing indicator settings")
-	}
-	if err == nil {
-		b.userInterface.DMTypingIndicatorSettingsSet(userID, override, enabled)
-	}
-}
-
 func (b *bounce) directMessageWrittenBeforeHistoryCleared(userID uuid.UUID, messageWrittenAt int64) bool {
 	// User ID is computed via XOR of my ID with source and destination, if it's a self-DM it would be nil
 	if userID == uuid.Nil {
