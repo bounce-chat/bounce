@@ -33,6 +33,7 @@ const permissionRestricted = 0x01
 var errUpdateGroupWithUnknownType = errors.New("update group has unknown update type")
 var errInvalidGroupName = errors.New("invalid group name")
 var errMutedUntilOnlyMutableBySelf = errors.New("group muted until settings can only be modified by current user")
+var errSyncScopedMessageFromNonSyncSource = errors.New("sync scoped frame can only come from sync device")
 var errUserNotFound = errors.New("no user found with that ID")
 var errUserHasInvalidDeviceGroup = errors.New("user has invalid device group")
 var errNoPermissionToEditGroup = errors.New("user does not have permission to edit group")

@@ -310,27 +310,6 @@ func (b *bounce) importUser(data []byte) (User, error) {
 	}, nil
 }
 
-func (b *bounce) setDMReadReceiptSettings(userID uuid.UUID, override bool, enabled bool) {
-	err := b.database.Table("users").Where("id = ?", userID).Update("read_receipts_overridden", override).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"user_id": userID,
-			"error":   err.Error(),
-		}).Error("error updating user read receipt settings")
-		return
-	}
-	err = b.database.Table("users").Where("id = ?", userID).Update("read_receipts_enabled", enabled).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"user_id": userID,
-			"error":   err.Error(),
-		}).Error("error updating user read receipt settings")
-	}
-	if err == nil {
-		b.userInterface.DMReadReceiptSettingsSet(userID, override, enabled)
-	}
-}
-
 func (b *bounce) setDMTypingIndicatorSettings(userID uuid.UUID, override bool, enabled bool) {
 	err := b.database.Table("users").Where("id = ?", userID).Update("typing_indicators_overridden", override).Error
 	if err != nil {

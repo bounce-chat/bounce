@@ -97,16 +97,17 @@ func (dm *directMessage) refreshTypingIndicatorSettingSelection(options []string
 }
 
 func (fyneUI *Fyne) DMReadReceiptSettingsSet(userID uuid.UUID, override, enabled bool) {
-	dm, exists := fyneUI.dms[userID]
-	if !exists {
-		log.WithFields(log.Fields{
-			"userID": userID,
-		}).Error("cannot set read receipt override settings for unknown direct message")
-		return
-	}
-	dm.overrideReadReceiptSetting = override
-	dm.readReceiptsEnabled = enabled
+	//	dm, exists := fyneUI.dms[userID]
+	//	if !exists {
+	//		log.WithFields(log.Fields{
+	//			"userID": userID,
+	//		}).Error("cannot set read receipt override settings for unknown direct message")
+	//		return
+	//	}
+	//	dm.overrideReadReceiptSetting = override
+	//	dm.readReceiptsEnabled = enabled
 }
+
 func (fyneUI *Fyne) DMTypingIndicatorSettingsSet(userID uuid.UUID, override, enabled bool) {
 	dm, exists := fyneUI.dms[userID]
 	if !exists {
@@ -443,7 +444,6 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 			actionButtons,
 		),
 	)
-
 }
 
 func (fyneUI *Fyne) SetDMState(userID uuid.UUID, state chat.DMState) {
@@ -467,6 +467,11 @@ func (fyneUI *Fyne) SetDMState(userID uuid.UUID, state chat.DMState) {
 	enabled := dm.notificationsMutedUntil != chat.MutedForever
 	dm.notificationsEnabledCheck.SetChecked(enabled)
 	dm.notificationsEnabledCheck.Refresh()
+
+	// Update read receipt and typign indicator selectinos
+	dm.overrideReadReceiptSetting = state.OverrideReadReceiptSetting
+	dm.readReceiptsEnabled = state.ReadReceiptsEnabled
+	dm.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
 }
 
 func (fyneUI *Fyne) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {

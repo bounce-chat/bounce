@@ -16,8 +16,17 @@ import (
 const updateDMTypeChangeMutedUntil = uint16(0)
 const updateDMTypeChangeRetention = uint16(1)
 const updateDMTypeSetClearBefore = uint16(2)
+const updateDMTypeSetReadReceipts = uint16(3)
 
-var ERR_UPDATE_DM_WITH_UNKNOWN_TYPE = errors.New("update DM has unknown update type")
+var errUpdateDMWithUnknownType = errors.New("update DM has unknown update type")
+var errInvalidPayloadLength = errors.New("invalid payload length")
+var errInvalidReadReceiptOverriddenValue = errors.New("invalid value for read receipt overridden byte")
+var errInvalidReadReceiptEnabledValue = errors.New("invalid value for read receipt enabled byte")
+
+const readReceiptsDefaultValue = 0x00
+const readReceiptsOverriddenValue = 0x01
+const readReceiptsEnabledValue = 0x00
+const readReceiptsDisabledValue = 0x01
 
 var updateDMMutex sync.Mutex
 
@@ -56,7 +65,7 @@ func (ud *updateDM) getID() uuid.UUID {
 }
 
 func (ud *updateDM) getScope(_ uuid.UUID) int {
-	if ud.Type == updateDMTypeChangeMutedUntil || ud.Target == uuid.Nil {
+	if ud.Type == updateDMTypeChangeMutedUntil || ud.Type == updateDMTypeSetReadReceipts || ud.Target == uuid.Nil {
 		return scopeSync
 	}
 
@@ -93,6 +102,21 @@ func (ud *updateDM) getAuthor() uuid.UUID {
 
 func (ud *updateDM) getTimestamp() int64 {
 	return ud.Timestamp
+}
+
+func (ud *updateDM) validPayload() error {
+	if ud.Type == updateDMTypeSetReadReceipts {
+		if len(ud.Data) != 2 {
+			return errInvalidPayloadLength
+		}
+		if !(ud.Data[0] == readReceiptsDefaultValue || ud.Data[0] == readReceiptsOverriddenValue) {
+			return errInvalidReadReceiptOverriddenValue
+		}
+		if !(ud.Data[0] == readReceiptsEnabledValue || ud.Data[0] == readReceiptsDisabledValue) {
+			return errInvalidReadReceiptEnabledValue
+		}
+	}
+	return nil
 }
 
 func (b *bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broadcastable {
@@ -136,8 +160,8 @@ func (b *bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 		return nil
 	}
 
-	// Updates to muting the thread are sync scoped and must come from a sync device
-	if ud.Type == updateDMTypeChangeMutedUntil {
+	// Sync scoped messages must come from a sync device
+	if ud.getScope(b.currentUserID()) == scopeSync {
 		if srcDevice.UserID != b.currentUserID() {
 			log.WithFields(log.Fields{
 				"peer":        peer,
@@ -178,6 +202,8 @@ func (b *bounce) updateDMState(userID uuid.UUID) {
 	retention := int64(0)
 	mutedUntil := int64(0)
 	clearBefore := int64(0)
+	readReceiptsOverridden := false
+	readReceiptsEnabled := true
 
 	// Find all updates
 	uds := []updateDM{}
@@ -190,6 +216,15 @@ func (b *bounce) updateDMState(userID uuid.UUID) {
 
 	// Update the DM fields in the orders of the updates
 	for _, ud := range uds {
+		err := ud.validPayload()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    ud.ID,
+				"error": err.Error(),
+			}).Error("skipping update DM with invalid payload")
+			continue
+		}
+
 		switch ud.Type {
 		case updateDMTypeChangeMutedUntil:
 			mutedUntil = int64(binary.LittleEndian.Uint64(ud.Data))
@@ -197,6 +232,9 @@ func (b *bounce) updateDMState(userID uuid.UUID) {
 			retention = int64(binary.LittleEndian.Uint64(ud.Data))
 		case updateDMTypeSetClearBefore:
 			clearBefore = int64(binary.LittleEndian.Uint64(ud.Data))
+		case updateDMTypeSetReadReceipts:
+			readReceiptsOverridden = ud.Data[0] == readReceiptsOverriddenValue
+			readReceiptsEnabled = ud.Data[1] == readReceiptsEnabledValue
 		default:
 			log.WithFields(log.Fields{
 				"type": ud.Type,
@@ -205,7 +243,13 @@ func (b *bounce) updateDMState(userID uuid.UUID) {
 	}
 
 	// Set the values in the database
-	err = b.database.Model(&user{}).Where("id = ?", userID).Updates(map[string]interface{}{"retention": retention, "muted_until": mutedUntil, "clear_before": clearBefore}).Error
+	err = b.database.Model(&user{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"retention":                retention,
+		"muted_until":              mutedUntil,
+		"clear_before":             clearBefore,
+		"read_receipts_overridden": readReceiptsOverridden,
+		"read_receipts_enabled":    readReceiptsEnabled,
+	}).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -224,21 +268,30 @@ func (b *bounce) updateDMState(userID uuid.UUID) {
 	b.userInterface.SetDMState(
 		userID,
 		DMState{
-			Retention:  retention,
-			MutedUntil: mutedUntil,
+			Retention:                  retention,
+			MutedUntil:                 mutedUntil,
+			OverrideReadReceiptSetting: readReceiptsOverridden,
+			ReadReceiptsEnabled:        readReceiptsEnabled,
 		},
 	)
 }
 
 func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {
-	if ud.Type == updateDMTypeChangeMutedUntil {
+	// Only sync devices can change sync scoped messages
+	if ud.getScope(b.currentUserID()) == scopeSync {
 		if ud.Actor != b.currentUserID() {
-			return errMutedUntilOnlyMutableBySelf
+			return errSyncScopedMessageFromNonSyncSource
 		}
 	}
 
+	// Validate payload
+	err := ud.validPayload()
+	if err != nil {
+		return err
+	}
+
 	// Save the update DM
-	err := b.database.Create(&ud).Error
+	err = b.database.Create(&ud).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -276,15 +329,19 @@ func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {
 		if err != nil {
 			return err
 		}
+	case updateDMTypeSetReadReceipts:
+		// No UI status changes for read receipt settings
 	default:
 		log.WithFields(log.Fields{
 			"type": ud.Type,
 		}).Warn("received update DM with unknown type")
-		return ERR_UPDATE_DM_WITH_UNKNOWN_TYPE
+		return errUpdateDMWithUnknownType
 	}
 
 	// Update the activity timestamp on the user model
-	b.updateLastUserActivity(xor(b.currentUserID(), ud.Target), ud.Timestamp)
+	if ud.getScope(b.currentUserID()) != scopeSync {
+		b.updateLastUserActivity(xor(b.currentUserID(), ud.Target), ud.Timestamp)
+	}
 
 	// Update the database and UI
 	b.updateDMState(counterpartyID)
@@ -379,6 +436,30 @@ func (b *bounce) clearDMChatHistory(userID uuid.UUID) error {
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
 		Type:      updateDMTypeSetClearBefore,
+		Data:      payload,
+	})
+}
+
+func (b *bounce) setDMReadReceiptSettings(userID uuid.UUID, override bool, enabled bool) error {
+	payload := []byte{}
+	if override {
+		payload = append(payload, readReceiptsOverriddenValue)
+	} else {
+		payload = append(payload, readReceiptsDefaultValue)
+
+	}
+	if enabled {
+		payload = append(payload, readReceiptsEnabledValue)
+	} else {
+		payload = append(payload, readReceiptsDisabledValue)
+	}
+
+	return b.applyAndBroadcastUpdateDM(updateDM{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    xor(userID, b.currentUserID()),
+		Timestamp: time.Now().Unix(),
+		Type:      updateDMTypeSetReadReceipts,
 		Data:      payload,
 	})
 }
