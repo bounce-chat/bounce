@@ -67,6 +67,7 @@ func (b *bounce) handleAck(peer string, payload []byte, _ bool) broadcastable {
 	b.handleAckUpdateUsers(peer, ackedIDs[typeUpdateUser])
 	b.handleAckUpdateDevices(peer, ackedIDs[typeUpdateDevice])
 	b.handleAckReadReceipts(peer, ackedIDs[typeReadReceipt])
+	b.handleAckUpdateSettings(peer, ackedIDs[typeUpdateSettings])
 
 	return nil
 }
@@ -420,6 +421,28 @@ func (b *bounce) handleAckReadReceipts(peer string, ids []uuid.UUID) {
 			}
 		} else {
 			b.markDeliveredTo(&rr, peer)
+		}
+	}
+}
+
+func (b *bounce) handleAckUpdateSettings(peer string, ids []uuid.UUID) {
+	for _, updateSettingsID := range ids {
+		var us updateSettings
+		err := b.database.First(&us, "id = ?", updateSettingsID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   updateSettingsID,
+					"peer": peer,
+				}).Warn("unknown update settings acked")
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error querying for update settings")
+			}
+		} else {
+			b.markDeliveredTo(&us, peer)
 		}
 	}
 }

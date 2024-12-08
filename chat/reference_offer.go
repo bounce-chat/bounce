@@ -68,6 +68,8 @@ func (ro *referenceOffer) shouldDialUser() bool {
 			return true
 		} else if reference.Type == typeReadReceipt {
 			return true
+		} else if reference.Type == typeUpdateSettings {
+			return true
 		}
 	}
 	return false
@@ -75,25 +77,25 @@ func (ro *referenceOffer) shouldDialUser() bool {
 
 // Check if a reference offer only contains content destined for a group
 func (ro *referenceOffer) onlyGroupContent() bool {
-	onlyGroupContent := true
-
 	for _, reference := range ro.References {
 		if reference.Type == typeDirectMessage {
-			onlyGroupContent = false
+			return false
 		} else if reference.Type == typeDevice {
-			onlyGroupContent = false
+			return false
 		} else if reference.Type == typeAddUser {
-			onlyGroupContent = false
+			return false
 		} else if reference.Type == typeGroupCreation {
-			onlyGroupContent = false
+			return false
 		} else if reference.Type == typeUpdateUser {
-			onlyGroupContent = false
+			return false
 		} else if reference.Type == typeUpdateDevice {
-			onlyGroupContent = false
+			return false
+		} else if reference.Type == typeUpdateSettings {
+			return false
 		}
 	}
 
-	return onlyGroupContent
+	return true
 }
 
 func getReferenceOfferMutexForPeer(peer string) *sync.Mutex {
@@ -238,6 +240,10 @@ func (b *bounce) hasAnyReferencesFor(address string) bool {
 	if len(references) > 0 {
 		return true
 	}
+	references = append(references, b.getUpdateSettingsToOffer(dev)...)
+	if len(references) > 0 {
+		return true
+	}
 
 	return false
 }
@@ -265,6 +271,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	references = append(references, b.getUpdateUsersToOffer(dev)...)
 	references = append(references, b.getUpdateDevicesToOffer(dev)...)
 	references = append(references, b.getReadReceiptsToOffer(dev)...)
+	references = append(references, b.getUpdateSettingsToOffer(dev)...)
 
 	return &referenceOffer{
 		ID:         uuid.New(),
@@ -829,6 +836,10 @@ func (b *bounce) getUpdateDevicesToOffer(dev device) []frameReference {
 }
 
 func (b *bounce) getReadReceiptsToOffer(dev device) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		return []frameReference{}
+	}
+
 	var unsentReadReceipts []readReceipt
 
 	if b.isSyncDevice(dev) {
@@ -874,6 +885,36 @@ func (b *bounce) getReadReceiptsToOffer(dev device) []frameReference {
 	references := []frameReference{}
 	for _, rr := range unsentReadReceipts {
 		references = append(references, frameReference{FrameID: rr.ID, Type: typeReadReceipt})
+	}
+
+	return references
+}
+
+func (b *bounce) getUpdateSettingsToOffer(dev device) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		return []frameReference{}
+	}
+
+	if !b.isSyncDevice(dev) {
+		return []frameReference{}
+	}
+
+	// Select all update setting that have not been delivered
+	var unsentUpdateSettings []updateSettings
+	err := b.database.
+		Select("update_settings.*").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dms.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateSettings).
+		Where("delivery_records.id IS NULL").
+		Find(&unsentUpdateSettings).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error selecting update settings for reference offer")
+	}
+
+	references := []frameReference{}
+	for _, ud := range unsentUpdateSettings {
+		references = append(references, frameReference{FrameID: ud.ID, Type: typeUpdateSettings})
 	}
 
 	return references
@@ -949,6 +990,10 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	rrRefs, rrAcks := b.getReadReceiptsToRequestAndAck(dev, deviceExists, typesToIDs[typeReadReceipt])
 	references = append(references, rrRefs...)
 	acks = append(acks, rrAcks...)
+
+	usRefs, usAcks := b.getUpdateSettingsToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateSettings])
+	references = append(references, usRefs...)
+	acks = append(acks, usAcks...)
 
 	// Unlock the catch up mutex
 	catchUpMutex.Unlock()
@@ -1242,6 +1287,32 @@ func (b *bounce) getReadReceiptsToRequestAndAck(dev device, deviceExists bool, o
 				"id":    readReceiptID,
 				"error": err.Error(),
 			}).Fatal("database error querying for read receipt")
+		}
+	}
+
+	return references, acks
+}
+
+func (b *bounce) getUpdateSettingsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+	references := []frameReference{}
+	acks := []frameReference{}
+
+	for _, updateSettingsID := range offeredIDs {
+		ref := frameReference{FrameID: updateSettingsID, Type: typeUpdateSettings}
+		var us updateSettings
+		err := b.database.First(&us, "id = ?", updateSettingsID).Error
+		if err == nil {
+			if deviceExists && !b.isDeliveredTo(&us, dev.Address) {
+				b.markDeliveredTo(&us, dev.Address)
+			}
+			acks = append(acks, ref)
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			references = append(references, ref)
+		} else {
+			log.WithFields(log.Fields{
+				"id":    updateSettingsID,
+				"error": err.Error(),
+			}).Fatal("database error querying for update settings")
 		}
 	}
 

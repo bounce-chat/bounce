@@ -138,6 +138,15 @@ func (b *bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 	updateSettingsMutex.Lock()
 	defer updateSettingsMutex.Unlock()
 
+	// Make sure this came from a sync device
+	srcDevice, exists := b.getDeviceFromAddress(peer)
+	if !exists || !(srcDevice.UserID == b.currentUserID()) {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("rejecting update settings from out of scope device")
+		return nil
+	}
+
 	// Unmarshall it
 	var us updateSettings
 	err := msgpack.Unmarshal(payload, &us)
@@ -145,15 +154,6 @@ func (b *bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling update ettings")
-		return nil
-	}
-
-	// Make sure this came from a sync device
-	srcDevice, exists := b.getDeviceFromAddress(peer)
-	if !exists || !(srcDevice.UserID == b.currentUserID()) {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("rejecting update settings from out of scope device")
 		return nil
 	}
 
