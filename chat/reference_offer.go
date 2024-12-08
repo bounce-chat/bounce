@@ -903,7 +903,7 @@ func (b *bounce) getUpdateSettingsToOffer(dev device) []frameReference {
 	var unsentUpdateSettings []updateSettings
 	err := b.database.
 		Select("update_settings.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dms.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateSettings).
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_settings.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateSettings).
 		Where("delivery_records.id IS NULL").
 		Find(&unsentUpdateSettings).Error
 	if err != nil {
