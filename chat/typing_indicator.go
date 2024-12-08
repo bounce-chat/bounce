@@ -32,6 +32,7 @@ var typingIndicatorCooldownMutex sync.Mutex
 // The typing state is a representation of the user interface state of typing indicators.  It is a map from thread ID
 // to a map from user IDs to typing statuses.
 var typingState = map[uuid.UUID]map[uuid.UUID]*typingStatus{}
+var threadTypes = map[uuid.UUID]uint16{}
 var typingStateMutex sync.Mutex
 
 // A typing status contains the state of a user as it relates to a thread: where in the UI we're indicating typing,
@@ -90,7 +91,6 @@ func (ti *typingIndicator) getDestination(myID uuid.UUID) uuid.UUID {
 		}).Fatal("unknown message type in typing indicator")
 		return uuid.Nil
 	}
-
 }
 
 func (ti *typingIndicator) getType() uint16 {
@@ -412,6 +412,7 @@ func (b *bounce) updateTypingState(ti typingIndicator) {
 	}
 
 	if _, ok := typingState[threadID]; !ok {
+		threadTypes[threadID] = ti.MessageType
 		typingState[threadID] = map[uuid.UUID]*typingStatus{}
 	}
 	users := typingState[threadID]
@@ -444,7 +445,9 @@ func (b *bounce) updateFrontendTypingIndicators() {
 			}
 			if !status.uiIndicatingThread && status.lastIndicated > time.Now().Unix()-typingIndicatorDisplayForSeconds {
 				status.uiIndicatingThread = true
-				b.userInterface.ShowTypingIndicatorInHistory(u, thread)
+				if b.typingIndicatorsEnabledForThread(thread) {
+					b.userInterface.ShowTypingIndicatorInHistory(u, thread)
+				}
 			}
 
 			if status.uiIndicatingThread {
@@ -469,7 +472,9 @@ func (b *bounce) updateFrontendTypingIndicators() {
 			}
 
 			if !users[maxUserID].uiIndicatingButton {
-				b.userInterface.ShowTypingIndicatorInButton(maxUserID, thread)
+				if b.typingIndicatorsEnabledForThread(thread) {
+					b.userInterface.ShowTypingIndicatorInButton(maxUserID, thread)
+				}
 				users[maxUserID].uiIndicatingButton = true
 			}
 
@@ -501,11 +506,115 @@ func (b *bounce) clearUserTypingIndicator(userID, threadID uuid.UUID) {
 	b.updateFrontendTypingIndicators()
 }
 
+func (b *bounce) typingIndicatorsEnabledForThread(threadID uuid.UUID) bool {
+	t, ok := threadTypes[threadID]
+	if !ok {
+		log.WithFields(log.Fields{
+			"thread_id": threadID,
+		}).Warn("unknown thread type for typing indicators")
+		return false
+	}
+
+	if t == typeGroupMessage {
+		return b.typingIndicatorsEnabledForGroup(threadID)
+	} else if t == typeDirectMessage {
+		return b.typingIndicatorsEnabledForUser(xor(threadID, b.currentUserID()))
+	}
+
+	log.WithFields(log.Fields{
+		"thread_id": threadID,
+		"type":      t,
+	}).Warn("unknown thread type for typing indicators")
+	return false
+}
+
+func (b *bounce) typingIndicatorsEnabledForUser(userID uuid.UUID) bool {
+	var u user
+	err := b.database.Select("typing_indicators_overridden", "typing_indicators_enabled").First(&u, "id = ?", userID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Error("user not found looking up typing indicator settings")
+			return false
+		} else {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Fatal("database error looking up user typing indicator settings")
+		}
+	}
+	if u.TypingIndicatorsOverridden {
+		return u.TypingIndicatorsEnabled
+	}
+
+	var defaultSendTypingIndicators bool
+	err = b.database.Model(&profileSettings{}).Select("default_send_typing_indicators").Where("user_id = ?", b.currentUserID()).First(&defaultSendTypingIndicators).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("profile settings not found looking up typing indicator settings")
+			return false
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up default typing indicator settings")
+		}
+	}
+	return defaultSendTypingIndicators
+}
+
 func (b *bounce) typingInDirectMessage(userID uuid.UUID) {
+	if !b.typingIndicatorsEnabledForUser(userID) {
+		return
+	}
 	b.broadcastTypingIndicator(xor(userID, b.currentUserID()), typeDirectMessage)
 }
 
+func (b *bounce) typingIndicatorsEnabledForGroup(groupID uuid.UUID) bool {
+	var g group
+	err := b.database.Select("typing_indicators_overridden", "typing_indicators_enabled").First(&g, "id = ?", groupID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+			}).Error("group not found looking up typing indicator settings")
+			return false
+		} else {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+			}).Fatal("database error looking up group typing indicator settings")
+		}
+	}
+	if g.TypingIndicatorsOverridden {
+		return g.TypingIndicatorsEnabled
+	}
+
+	var defaultSendTypingIndicators bool
+	err = b.database.Model(&profileSettings{}).Select("default_send_typing_indicators").Where("user_id = ?", b.currentUserID()).First(&defaultSendTypingIndicators).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("profile settings not found looking up typing indicator settings")
+			return false
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up default typing indicator settings")
+		}
+	}
+	return defaultSendTypingIndicators
+}
+
 func (b *bounce) typingInGroup(groupID uuid.UUID) {
+	if !b.typingIndicatorsEnabledForGroup(groupID) {
+		return
+	}
 	b.broadcastTypingIndicator(groupID, typeGroupMessage)
 }
 

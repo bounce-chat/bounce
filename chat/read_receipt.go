@@ -182,11 +182,13 @@ func (b *bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 		b.markReadInDatabase(rr.Target, targetTypeString)
 		b.userInterface.MessageRead(rr.Target)
 	} else if author == b.currentUserID() {
-		b.userInterface.ReceivedReadReceipt(ReadReceipt{
-			ID:     rr.ID,
-			Actor:  rr.Actor,
-			Target: rr.Target,
-		})
+		if rr.Scope != scopeSync {
+			b.userInterface.ReceivedReadReceipt(ReadReceipt{
+				ID:     rr.ID,
+				Actor:  rr.Actor,
+				Target: rr.Target,
+			})
+		}
 	}
 
 	return &rr
