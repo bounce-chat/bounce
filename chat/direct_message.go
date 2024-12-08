@@ -44,7 +44,11 @@ func (dm *directMessage) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (dm *directMessage) AfterDelete(tx *gorm.DB) error {
-	return tx.Where("frame_id = ? AND frame_type = ?", dm.ID, typeDirectMessage).Delete(&deliveryRecord{}).Error
+	err := tx.Where("frame_id = ? AND frame_type = ?", dm.ID, typeDirectMessage).Delete(&deliveryRecord{}).Error
+	if err != nil {
+		return err
+	}
+	return tx.Where("target = ? AND target_type = ?", dm.ID, typeDirectMessage).Delete(&readReceipt{}).Error
 }
 
 func (dm *directMessage) getID() uuid.UUID {

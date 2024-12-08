@@ -163,6 +163,7 @@ func (b *bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error parsing read receipt")
+		go b.sendAck(peer, typeReadReceipt, rr.ID)
 		return nil
 	}
 	rr.Destination = destination

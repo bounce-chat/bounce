@@ -45,7 +45,11 @@ func (gm *groupMessage) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (gm *groupMessage) AfterDelete(tx *gorm.DB) error {
-	return tx.Where("frame_id = ? AND frame_type = ?", gm.ID, typeGroupMessage).Delete(&deliveryRecord{}).Error
+	err := tx.Where("frame_id = ? AND frame_type = ?", gm.ID, typeGroupMessage).Delete(&deliveryRecord{}).Error
+	if err != nil {
+		return err
+	}
+	return tx.Where("target = ? AND target_type = ?", gm.ID, typeGroupMessage).Delete(&readReceipt{}).Error
 }
 
 func (gm *groupMessage) getID() uuid.UUID {
