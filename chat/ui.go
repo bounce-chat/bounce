@@ -364,13 +364,7 @@ type UI interface {
 	MessageRead(uuid.UUID)           // We read a message on another device
 	ReceivedReadReceipt(ReadReceipt) // Someone else read a message of ours
 
-	DefaultReadReceiptSettingSet(bool)
-	DefaultTypingIndicatorSettingSet(bool)
-
-	DefaultGroupRetentionSettingSet(int64)
-	NewGroupRestrictUserManagementSettingSet(bool)
-	NewGroupRestrictGroupEditsSettingSet(bool)
-	NewGroupRestrictPostingSettingSet(bool)
+	SetSettings(Settings)
 }
 
 // Frames that support being marked as read

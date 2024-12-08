@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -94,7 +95,7 @@ func (fyneUI *Fyne) buildSettings() {
 	)
 }
 
-func (fyneUI *Fyne) sendDefaultRetentionSelection(selection string) {
+func (fyneUI *Fyne) sendDefaultRetentionSelection(selection string) { // TODO: rename to group, different setting for user
 	value, ok := retentionValues[selection]
 	if !ok {
 		log.WithFields(log.Fields{
@@ -105,51 +106,47 @@ func (fyneUI *Fyne) sendDefaultRetentionSelection(selection string) {
 	fyneUI.callbacks.SetNewGroupRetention(value)
 }
 
-func (fyneUI *Fyne) DefaultReadReceiptSettingSet(value bool) {
-	fyneUI.settings.DefaultSendReadReceipts = value
-	fyneUI.settingsWidgets.sendReadReceiptsByDefault.Checked = value
-	fyneUI.settingsWidgets.sendReadReceiptsByDefault.Refresh()
-	for _, g := range fyneUI.groups {
-		g.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
-	}
-	for _, dm := range fyneUI.dms {
-		dm.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
-	}
-}
-
-func (fyneUI *Fyne) DefaultTypingIndicatorSettingSet(value bool) {
-	fyneUI.settings.DefaultSendTypingIndicators = value
-	fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Checked = value
-	fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
-	for _, g := range fyneUI.groups {
-		g.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
-	}
-	for _, dm := range fyneUI.dms {
-		dm.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
-	}
-}
-
-func (fyneUI *Fyne) DefaultGroupRetentionSettingSet(value int64) {
-	fyneUI.settings.DefaultGroupRetention = value
-	fyneUI.settingsWidgets.defaultNewGroupRetention.Selected = getRetentionName(value)
+func (fyneUI *Fyne) SetSettings(settings chat.Settings) {
+	fyneUI.settings.DefaultGroupRetention = settings.DefaultGroupRetention // TODO: can just set the whole struct when not mingling local settings into this struct
+	fyneUI.settingsWidgets.defaultNewGroupRetention.Selected = getRetentionName(settings.DefaultGroupRetention)
 	fyneUI.settingsWidgets.defaultNewGroupRetention.Refresh()
-}
 
-func (fyneUI *Fyne) NewGroupRestrictUserManagementSettingSet(value bool) {
-	fyneUI.settings.NewGroupRestrictUserManagement = value
-	fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Checked = value
+	updateReadReceipts := fyneUI.settings.DefaultSendReadReceipts != settings.DefaultSendReadReceipts
+	if updateReadReceipts {
+		fyneUI.settings.DefaultSendReadReceipts = settings.DefaultSendReadReceipts
+		fyneUI.settingsWidgets.sendReadReceiptsByDefault.Checked = settings.DefaultSendReadReceipts
+		fyneUI.settingsWidgets.sendReadReceiptsByDefault.Refresh()
+		for _, g := range fyneUI.groups {
+			g.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+		}
+		for _, dm := range fyneUI.dms {
+			dm.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+		}
+	}
+
+	updateTypingIndicators := fyneUI.settings.DefaultSendTypingIndicators != settings.DefaultSendTypingIndicators
+	if updateTypingIndicators {
+		fyneUI.settings.DefaultSendTypingIndicators = settings.DefaultSendTypingIndicators
+		fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Checked = settings.DefaultSendTypingIndicators
+		fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
+		for _, g := range fyneUI.groups {
+			g.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
+		}
+		for _, dm := range fyneUI.dms {
+			dm.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
+		}
+	}
+
+	fyneUI.settings.NewGroupRestrictUserManagement = settings.NewGroupRestrictUserManagement
+	fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Checked = settings.NewGroupRestrictUserManagement
 	fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Refresh()
-}
 
-func (fyneUI *Fyne) NewGroupRestrictGroupEditsSettingSet(value bool) {
-	fyneUI.settings.NewGroupRestrictGroupEdits = value
-	fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Checked = value
+	fyneUI.settings.NewGroupRestrictGroupEdits = settings.NewGroupRestrictGroupEdits
+	fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Checked = settings.NewGroupRestrictGroupEdits
 	fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Refresh()
-}
 
-func (fyneUI *Fyne) NewGroupRestrictPostingSettingSet(value bool) {
-	fyneUI.settings.NewGroupRestrictPosting = value
-	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Checked = value
+	fyneUI.settings.NewGroupRestrictPosting = settings.NewGroupRestrictPosting
+	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Checked = settings.NewGroupRestrictPosting
 	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Refresh()
 }
 

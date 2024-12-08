@@ -38,6 +38,7 @@ var typeConfirmation = uint16(19)
 var typeUpdateUser = uint16(20)
 var typeUpdateDevice = uint16(21)
 var typeReadReceipt = uint16(22)
+var typeUpdateSettings = uint16(23)
 
 type sendable interface {
 	getType() uint16
@@ -90,6 +91,7 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte, bool) broadcastab
 		typeUpdateUser:                b.handleUpdateUser,
 		typeUpdateDevice:              b.handleUpdateDevice,
 		typeReadReceipt:               b.handleReadReceipt,
+		typeUpdateSettings:            b.handleUpdateSettings,
 	}
 }
 

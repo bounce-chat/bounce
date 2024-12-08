@@ -75,6 +75,7 @@ func (b *bounce) openDatabase() {
 		&updateUser{},
 		&updateDevice{},
 		&readReceipt{},
+		&updateSettings{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{

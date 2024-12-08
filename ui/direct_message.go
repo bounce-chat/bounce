@@ -337,7 +337,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		// Set values if needed
 		if switchedReadReceiptDefault || switchedReadReceiptEnabled {
 			if defaultReadReceiptSelected {
-				fyneUI.callbacks.SetDMReadReceiptSettings(dm.user.id, false, true)
+				fyneUI.callbacks.SetDMReadReceiptSettings(dm.user.id, false, true) // TODO: error check all of these
 			} else if readReceiptSelection == on {
 				fyneUI.callbacks.SetDMReadReceiptSettings(dm.user.id, true, true)
 			} else if readReceiptSelection == off {
