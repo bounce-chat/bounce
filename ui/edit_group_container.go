@@ -211,40 +211,42 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			}
 		}
 
-		// Update the read receipt override if needed
-		defaultReadReceiptSelected := g.readReceiptOverrideSelection.Selected == defaultOn || g.readReceiptOverrideSelection.Selected == defaultOff
+		// Capture read receipt selection state
+		readReceiptSelection := g.readReceiptOverrideSelection.Selected
+		defaultReadReceiptSelected := readReceiptSelection == defaultOn || readReceiptSelection == defaultOff
 		switchedReadReceiptDefault := (defaultReadReceiptSelected && g.overrideReadReceiptSetting) || (!defaultReadReceiptSelected && !g.overrideReadReceiptSetting)
-		switchedReadReceiptEnabled := (g.readReceiptOverrideSelection.Selected == off && g.readReceiptsEnabled) || (g.readReceiptOverrideSelection.Selected == on && !g.readReceiptsEnabled)
+		switchedReadReceiptEnabled := (readReceiptSelection == off && g.readReceiptsEnabled) || (readReceiptSelection == on && !g.readReceiptsEnabled)
+		// Capture typing indicator selection state
+		typingIndicatorSelection := g.typingIndicatorOverrideSelection.Selected
+		defaultTypingIndicatorSelected := typingIndicatorSelection == defaultOn || typingIndicatorSelection == defaultOff
+		switchedTypingIndicatorDefault := (defaultTypingIndicatorSelected && g.overrideTypingIndicatorSetting) || (!defaultTypingIndicatorSelected && !g.overrideTypingIndicatorSetting)
+		switchedTypingIndicatorEnabled := (typingIndicatorSelection == off && g.typingIndicatorsEnabled) || (typingIndicatorSelection == on && !g.typingIndicatorsEnabled)
+		// Set values if needed
 		if switchedReadReceiptDefault || switchedReadReceiptEnabled {
 			if defaultReadReceiptSelected {
 				fyneUI.callbacks.SetGroupReadReceiptSettings(g.id, false, true)
-			} else if g.readReceiptOverrideSelection.Selected == on {
+			} else if readReceiptSelection == on {
 				fyneUI.callbacks.SetGroupReadReceiptSettings(g.id, true, true)
-			} else if g.readReceiptOverrideSelection.Selected == off {
+			} else if readReceiptSelection == off {
 				fyneUI.callbacks.SetGroupReadReceiptSettings(g.id, true, false)
 			} else {
 				log.WithFields(log.Fields{
 					"group_id":  g.id,
-					"selection": g.readReceiptOverrideSelection.Selected,
+					"selection": readReceiptSelection,
 				}).Error("invalid selection for read receipt override")
 			}
 		}
-
-		// Update the typing indicator override if needed
-		defaultTypingIndicatorSelected := g.typingIndicatorOverrideSelection.Selected == defaultOn || g.typingIndicatorOverrideSelection.Selected == defaultOff
-		switchedTypingIndicatorDefault := (defaultTypingIndicatorSelected && g.overrideTypingIndicatorSetting) || (!defaultTypingIndicatorSelected && !g.overrideTypingIndicatorSetting)
-		switchedTypingIndicatorEnabled := (g.typingIndicatorOverrideSelection.Selected == off && g.typingIndicatorsEnabled) || (g.typingIndicatorOverrideSelection.Selected == on && !g.typingIndicatorsEnabled)
 		if switchedTypingIndicatorDefault || switchedTypingIndicatorEnabled {
 			if defaultTypingIndicatorSelected {
 				fyneUI.callbacks.SetGroupTypingIndicatorSettings(g.id, false, true)
-			} else if g.typingIndicatorOverrideSelection.Selected == on {
+			} else if typingIndicatorSelection == on {
 				fyneUI.callbacks.SetGroupTypingIndicatorSettings(g.id, true, true)
-			} else if g.typingIndicatorOverrideSelection.Selected == off {
+			} else if typingIndicatorSelection == off {
 				fyneUI.callbacks.SetGroupTypingIndicatorSettings(g.id, true, false)
 			} else {
 				log.WithFields(log.Fields{
 					"group_id":  g.id,
-					"selection": g.typingIndicatorOverrideSelection.Selected,
+					"selection": typingIndicatorSelection,
 				}).Error("invalid selection for typing indicator override")
 			}
 		}

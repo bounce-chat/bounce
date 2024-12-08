@@ -371,9 +371,6 @@ type UI interface {
 	NewGroupRestrictUserManagementSettingSet(bool)
 	NewGroupRestrictGroupEditsSettingSet(bool)
 	NewGroupRestrictPostingSettingSet(bool)
-
-	GroupReadReceiptSettingsSet(uuid.UUID, bool, bool)
-	GroupTypingIndicatorSettingsSet(uuid.UUID, bool, bool)
 }
 
 // Frames that support being marked as read
@@ -454,8 +451,8 @@ type UICallbacks struct {
 	SetNewGroupRestrictGroupEdits     func(bool)
 	SetNewGroupRestrictPosting        func(bool)
 
-	SetGroupReadReceiptSettings     func(groupID uuid.UUID, override bool, enabled bool)
-	SetGroupTypingIndicatorSettings func(groupID uuid.UUID, override bool, enabled bool)
+	SetGroupReadReceiptSettings     func(groupID uuid.UUID, override bool, enabled bool) error
+	SetGroupTypingIndicatorSettings func(groupID uuid.UUID, override bool, enabled bool) error
 	SetDMReadReceiptSettings        func(groupID uuid.UUID, override bool, enabled bool) error
 	SetDMTypingIndicatorSettings    func(groupID uuid.UUID, override bool, enabled bool) error
 }

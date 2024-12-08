@@ -119,7 +119,7 @@ func (ud *updateDM) validPayload() error {
 		if !(ud.Data[0] == readReceiptsDefaultValue || ud.Data[0] == readReceiptsOverriddenValue) {
 			return errInvalidOverriddenValue
 		}
-		if !(ud.Data[0] == readReceiptsEnabledValue || ud.Data[0] == readReceiptsDisabledValue) {
+		if !(ud.Data[1] == readReceiptsEnabledValue || ud.Data[1] == readReceiptsDisabledValue) {
 			return errInvalidEnabledValue
 		}
 	case updateDMTypeSetTypingIndicators:
@@ -129,7 +129,7 @@ func (ud *updateDM) validPayload() error {
 		if !(ud.Data[0] == typingIndicatorsDefaultValue || ud.Data[0] == typingIndicatorsOverriddenValue) {
 			return errInvalidOverriddenValue
 		}
-		if !(ud.Data[0] == typingIndicatorsEnabledValue || ud.Data[0] == typingIndicatorsDisabledValue) {
+		if !(ud.Data[1] == typingIndicatorsEnabledValue || ud.Data[1] == typingIndicatorsDisabledValue) {
 			return errInvalidEnabledValue
 		}
 	}

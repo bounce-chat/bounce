@@ -286,48 +286,6 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 	return nil
 }
 
-func (b *bounce) setGroupReadReceiptSettings(groupID uuid.UUID, override bool, enabled bool) {
-	err := b.database.Table("groups").Where("id = ?", groupID).Update("read_receipts_overridden", override).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"group_id": groupID,
-			"error":    err.Error(),
-		}).Error("error updating group read receipt settings")
-		return
-	}
-	err = b.database.Table("groups").Where("id = ?", groupID).Update("read_receipts_enabled", enabled).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"group_id": groupID,
-			"error":    err.Error(),
-		}).Error("error updating group read receipt settings")
-	}
-	if err == nil {
-		b.userInterface.GroupReadReceiptSettingsSet(groupID, override, enabled)
-	}
-}
-
-func (b *bounce) setGroupTypingIndicatorSettings(groupID uuid.UUID, override bool, enabled bool) {
-	err := b.database.Table("groups").Where("id = ?", groupID).Update("typing_indicators_overridden", override).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"group_id": groupID,
-			"error":    err.Error(),
-		}).Error("error updating group typing indicator settings")
-		return
-	}
-	err = b.database.Table("groups").Where("id = ?", groupID).Update("typing_indicators_enabled", enabled).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"group_id": groupID,
-			"error":    err.Error(),
-		}).Error("error updating group typing indicator settings")
-	}
-	if err == nil {
-		b.userInterface.GroupTypingIndicatorSettingsSet(groupID, override, enabled)
-	}
-}
-
 func (b *bounce) getGroupRetention(groupID uuid.UUID) int64 {
 	var g group
 	err := b.database.Select("retention").First(&g, "id = ?", groupID).Error

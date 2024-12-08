@@ -18,18 +18,22 @@ var groupConsensusMutex sync.Mutex
 var errStackEmpty = errors.New("stack is empty")
 
 type groupState struct {
-	name                     string
-	users                    []uuid.UUID
-	admins                   []uuid.UUID
-	blockedUsers             []uuid.UUID
-	mutedUntil               int64
-	retention                int64
-	clearBefore              int64
-	postingRestricted        bool
-	editingRestricted        bool
-	userManagementRestricted bool
-	deletedBy                uuid.UUID
-	ug                       updateGroup
+	name                       string
+	users                      []uuid.UUID
+	admins                     []uuid.UUID
+	blockedUsers               []uuid.UUID
+	mutedUntil                 int64
+	retention                  int64
+	clearBefore                int64
+	postingRestricted          bool
+	editingRestricted          bool
+	userManagementRestricted   bool
+	readReceiptsOverridden     bool
+	readReceiptsEnabled        bool
+	typingIndicatorsOverridden bool
+	typingIndicatorsEnabled    bool
+	deletedBy                  uuid.UUID
+	ug                         updateGroup
 }
 
 func (gs groupState) equals(otherState groupState) bool {
@@ -111,6 +115,22 @@ func (gs groupState) equals(otherState groupState) bool {
 		if !gs.isBlocked(userID) {
 			return false
 		}
+	}
+
+	if gs.readReceiptsOverridden != otherState.readReceiptsOverridden {
+		return false
+	}
+
+	if gs.readReceiptsEnabled != otherState.readReceiptsEnabled {
+		return false
+	}
+
+	if gs.typingIndicatorsOverridden != otherState.typingIndicatorsOverridden {
+		return false
+	}
+
+	if gs.typingIndicatorsEnabled != otherState.typingIndicatorsEnabled {
+		return false
 	}
 
 	return true
@@ -419,13 +439,17 @@ func (b *bounce) isMemberOfGroupForUpdate(userID, groupID, ugID uuid.UUID) bool 
 func (b *bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) {
 	// Create the group state
 	gs := groupState{
-		users:                    []uuid.UUID{},
-		admins:                   []uuid.UUID{},
-		blockedUsers:             []uuid.UUID{},
-		postingRestricted:        true,
-		editingRestricted:        true,
-		userManagementRestricted: true,
-		deletedBy:                uuid.Nil,
+		users:                      []uuid.UUID{},
+		admins:                     []uuid.UUID{},
+		blockedUsers:               []uuid.UUID{},
+		postingRestricted:          true,
+		editingRestricted:          true,
+		userManagementRestricted:   true,
+		deletedBy:                  uuid.Nil,
+		readReceiptsOverridden:     false,
+		readReceiptsEnabled:        true,
+		typingIndicatorsOverridden: false,
+		typingIndicatorsEnabled:    true,
 	}
 
 	// Look up the group creation and unpack the original group
@@ -649,6 +673,18 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 			}
 		}
 		return nil
+	case updateGroupTypeSetReadReceiptSettings:
+		if myID == ug.Actor {
+			return nil
+		} else {
+			return errReadReceiptOnlyMutableBySelf
+		}
+	case updateGroupTypeSetTypingIndicatorSettings:
+		if myID == ug.Actor {
+			return nil
+		} else {
+			return errTypingIndicatorOnlyMutableBySelf
+		}
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -689,6 +725,10 @@ func applyUpdateGroupToState(gs groupState, ug updateGroup) (groupState, error) 
 		return applyUpdateGroupDeleteToState(gs, ug)
 	case updateGroupTypeBlock:
 		return applyUpdateGroupBlockToState(gs, ug)
+	case updateGroupTypeSetReadReceiptSettings:
+		return applyUpdateGroupSetReadReceiptsToState(gs, ug)
+	case updateGroupTypeSetTypingIndicatorSettings:
+		return applyUpdateGroupSetTypingIndicatorsToState(gs, ug)
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -903,6 +943,28 @@ func applyUpdateGroupBlockToState(gs groupState, ug updateGroup) (groupState, er
 
 	gs.users = membersWithoutUser
 	gs.admins = adminsWithoutUser
+
+	return gs, nil
+}
+
+func applyUpdateGroupSetReadReceiptsToState(gs groupState, ug updateGroup) (groupState, error) {
+	if len(ug.Data) != 2 {
+		return gs, errInvalidPayloadLength
+	}
+
+	gs.readReceiptsOverridden = ug.Data[0] == readReceiptsOverriddenValue
+	gs.readReceiptsEnabled = ug.Data[1] == readReceiptsEnabledValue
+
+	return gs, nil
+}
+
+func applyUpdateGroupSetTypingIndicatorsToState(gs groupState, ug updateGroup) (groupState, error) {
+	if len(ug.Data) != 2 {
+		return gs, errInvalidPayloadLength
+	}
+
+	gs.typingIndicatorsOverridden = ug.Data[0] == typingIndicatorsOverriddenValue
+	gs.typingIndicatorsEnabled = ug.Data[1] == typingIndicatorsEnabledValue
 
 	return gs, nil
 }
@@ -1316,19 +1378,49 @@ func (b *bounce) setGroupStateInDatabase(g group, gs groupState) error {
 		}
 	}
 
+	// Set the read receipt and typing indicator overrides
+	if g.ReadReceiptsOverridden != gs.readReceiptsOverridden {
+		err := b.database.Model(&g).Select("read_receipts_overridden").Update("read_receipts_overridden", gs.readReceiptsOverridden).Error
+		if err != nil {
+			return err
+		}
+	}
+	if g.ReadReceiptsEnabled != gs.readReceiptsEnabled {
+		err := b.database.Model(&g).Select("read_receipts_enabled").Update("read_receipts_enabled", gs.readReceiptsEnabled).Error
+		if err != nil {
+			return err
+		}
+	}
+	if g.TypingIndicatorsOverridden != gs.typingIndicatorsOverridden {
+		err := b.database.Model(&g).Select("typing_indicators_overridden").Update("typing_indicators_overridden", gs.typingIndicatorsOverridden).Error
+		if err != nil {
+			return err
+		}
+	}
+	if g.TypingIndicatorsEnabled != gs.typingIndicatorsEnabled {
+		err := b.database.Model(&g).Select("typing_indicators_enabled").Update("typing_indicators_enabled", gs.typingIndicatorsEnabled).Error
+		if err != nil {
+			return err
+		}
+	}
+
 	b.userInterface.SetGroupState(Group{
 		ID:   g.ID,
 		Name: g.Name,
 		//Image: []byte{},
-		Users:                  finalUsers,
-		Admins:                 gs.admins,
-		BlockedUsers:           gs.blockedUsers,
-		Retention:              g.Retention,
-		MutedUntil:             g.MutedUntil,
-		LastActivity:           g.LastActivity,
-		RestrictUserManagement: g.RestrictUserManagement,
-		RestrictGroupEdits:     g.RestrictGroupEdits,
-		RestrictPosting:        g.RestrictPosting,
+		Users:                          finalUsers,
+		Admins:                         gs.admins,
+		BlockedUsers:                   gs.blockedUsers,
+		Retention:                      g.Retention,
+		MutedUntil:                     g.MutedUntil,
+		LastActivity:                   g.LastActivity,
+		RestrictUserManagement:         g.RestrictUserManagement,
+		RestrictGroupEdits:             g.RestrictGroupEdits,
+		RestrictPosting:                g.RestrictPosting,
+		OverrideReadReceiptSetting:     g.ReadReceiptsOverridden,
+		ReadReceiptsEnabled:            g.ReadReceiptsEnabled,
+		OverrideTypingIndicatorSetting: g.TypingIndicatorsOverridden,
+		TypingIndicatorsEnabled:        g.TypingIndicatorsEnabled,
 	})
 
 	return nil
@@ -1362,6 +1454,10 @@ func (b *bounce) applyUpdateGroupInUI(ug updateGroup) {
 		return
 	case updateGroupTypeBlock:
 		b.informUIUpdateGroupBlock(ug)
+	case updateGroupTypeSetReadReceiptSettings:
+		return
+	case updateGroupTypeSetTypingIndicatorSettings:
+		return
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,

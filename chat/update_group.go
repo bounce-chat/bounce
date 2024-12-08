@@ -26,6 +26,8 @@ const updateGroupTypeChangeGroupEditsPermission = uint16(9)
 const updateGroupTypeChangePostingPermission = uint16(10)
 const updateGroupTypeDelete = uint16(11)
 const updateGroupTypeBlock = uint16(12)
+const updateGroupTypeSetReadReceiptSettings = uint16(13)
+const updateGroupTypeSetTypingIndicatorSettings = uint16(14)
 
 const permissionUnrestricted = 0x00
 const permissionRestricted = 0x01
@@ -33,6 +35,8 @@ const permissionRestricted = 0x01
 var errUpdateGroupWithUnknownType = errors.New("update group has unknown update type")
 var errInvalidGroupName = errors.New("invalid group name")
 var errMutedUntilOnlyMutableBySelf = errors.New("group muted until settings can only be modified by current user")
+var errReadReceiptOnlyMutableBySelf = errors.New("group read receipt settings can only be modified by current user")
+var errTypingIndicatorOnlyMutableBySelf = errors.New("group typing indicator settings can only be modified by current user")
 var errUserNotFound = errors.New("no user found with that ID")
 var errUserHasInvalidDeviceGroup = errors.New("user has invalid device group")
 var errNoPermissionToEditGroup = errors.New("user does not have permission to edit group")
@@ -102,7 +106,7 @@ func (ug *updateGroup) getID() uuid.UUID {
 }
 
 func (ug *updateGroup) getScope(myID uuid.UUID) int {
-	if ug.Type == updateGroupTypeChangeMutedUntil {
+	if ug.Type == updateGroupTypeChangeMutedUntil || ug.Type == updateGroupTypeSetReadReceiptSettings || ug.Type == updateGroupTypeSetTypingIndicatorSettings {
 		return scopeSync
 	}
 
@@ -209,6 +213,28 @@ func (ug *updateGroup) validPayloadFormat() bool {
 		return len(ug.Data) == 0
 	case updateGroupTypeBlock:
 		return len(ug.Data) == 0
+	case updateGroupTypeSetReadReceiptSettings:
+		if len(ug.Data) != 2 {
+			return false
+		}
+		if !(ug.Data[0] == readReceiptsDefaultValue || ug.Data[0] == readReceiptsOverriddenValue) {
+			return false
+		}
+		if !(ug.Data[1] == readReceiptsEnabledValue || ug.Data[1] == readReceiptsDisabledValue) {
+			return false
+		}
+		return true
+	case updateGroupTypeSetTypingIndicatorSettings:
+		if len(ug.Data) != 2 {
+			return false
+		}
+		if !(ug.Data[0] == typingIndicatorsDefaultValue || ug.Data[0] == typingIndicatorsOverriddenValue) {
+			return false
+		}
+		if !(ug.Data[1] == typingIndicatorsEnabledValue || ug.Data[1] == typingIndicatorsDisabledValue) {
+			return false
+		}
+		return true
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -642,6 +668,54 @@ func (b *bounce) blockGroup(groupID uuid.UUID) error {
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeBlock,
+	})
+}
+
+func (b *bounce) setGroupReadReceiptSettings(groupID uuid.UUID, override bool, enabled bool) error {
+	payload := []byte{}
+	if override {
+		payload = append(payload, readReceiptsOverriddenValue)
+	} else {
+		payload = append(payload, readReceiptsDefaultValue)
+
+	}
+	if enabled {
+		payload = append(payload, readReceiptsEnabledValue)
+	} else {
+		payload = append(payload, readReceiptsDisabledValue)
+	}
+
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeSetReadReceiptSettings,
+		Data:      payload,
+	})
+}
+
+func (b *bounce) setGroupTypingIndicatorSettings(groupID uuid.UUID, override bool, enabled bool) error {
+	payload := []byte{}
+	if override {
+		payload = append(payload, typingIndicatorsOverriddenValue)
+	} else {
+		payload = append(payload, typingIndicatorsDefaultValue)
+
+	}
+	if enabled {
+		payload = append(payload, typingIndicatorsEnabledValue)
+	} else {
+		payload = append(payload, typingIndicatorsDisabledValue)
+	}
+
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeSetTypingIndicatorSettings,
+		Data:      payload,
 	})
 }
 

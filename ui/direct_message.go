@@ -324,40 +324,42 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 			}
 		}
 
-		// Update the read receipt override if needed
-		defaultReadReceiptSelected := dm.readReceiptOverrideSelection.Selected == defaultOn || dm.readReceiptOverrideSelection.Selected == defaultOff
+		// Capture read receipt selection state
+		readReceiptSelection := dm.readReceiptOverrideSelection.Selected
+		defaultReadReceiptSelected := readReceiptSelection == defaultOn || readReceiptSelection == defaultOff
 		switchedReadReceiptDefault := (defaultReadReceiptSelected && dm.overrideReadReceiptSetting) || (!defaultReadReceiptSelected && !dm.overrideReadReceiptSetting)
-		switchedReadReceiptEnabled := (dm.readReceiptOverrideSelection.Selected == off && dm.readReceiptsEnabled) || (dm.readReceiptOverrideSelection.Selected == on && !dm.readReceiptsEnabled)
+		switchedReadReceiptEnabled := (readReceiptSelection == off && dm.readReceiptsEnabled) || (readReceiptSelection == on && !dm.readReceiptsEnabled)
+		// Capture typing indicator selection state
+		typingIndicatorSelection := dm.typingIndicatorOverrideSelection.Selected
+		defaultTypingIndicatorSelected := typingIndicatorSelection == defaultOn || typingIndicatorSelection == defaultOff
+		switchedTypingIndicatorDefault := (defaultTypingIndicatorSelected && dm.overrideTypingIndicatorSetting) || (!defaultTypingIndicatorSelected && !dm.overrideTypingIndicatorSetting)
+		switchedTypingIndicatorEnabled := (typingIndicatorSelection == off && dm.typingIndicatorsEnabled) || (typingIndicatorSelection == on && !dm.typingIndicatorsEnabled)
+		// Set values if needed
 		if switchedReadReceiptDefault || switchedReadReceiptEnabled {
 			if defaultReadReceiptSelected {
 				fyneUI.callbacks.SetDMReadReceiptSettings(dm.user.id, false, true)
-			} else if dm.readReceiptOverrideSelection.Selected == on {
+			} else if readReceiptSelection == on {
 				fyneUI.callbacks.SetDMReadReceiptSettings(dm.user.id, true, true)
-			} else if dm.readReceiptOverrideSelection.Selected == off {
+			} else if readReceiptSelection == off {
 				fyneUI.callbacks.SetDMReadReceiptSettings(dm.user.id, true, false)
 			} else {
 				log.WithFields(log.Fields{
 					"user_id":   dm.user.id,
-					"selection": dm.readReceiptOverrideSelection.Selected,
+					"selection": readReceiptSelection,
 				}).Error("invalid selection for read receipt override")
 			}
 		}
-
-		// Update the typing indicator override if needed
-		defaultTypingIndicatorSelected := dm.typingIndicatorOverrideSelection.Selected == defaultOn || dm.typingIndicatorOverrideSelection.Selected == defaultOff
-		switchedTypingIndicatorDefault := (defaultTypingIndicatorSelected && dm.overrideTypingIndicatorSetting) || (!defaultTypingIndicatorSelected && !dm.overrideTypingIndicatorSetting)
-		switchedTypingIndicatorEnabled := (dm.typingIndicatorOverrideSelection.Selected == off && dm.typingIndicatorsEnabled) || (dm.typingIndicatorOverrideSelection.Selected == on && !dm.typingIndicatorsEnabled)
 		if switchedTypingIndicatorDefault || switchedTypingIndicatorEnabled {
 			if defaultTypingIndicatorSelected {
 				fyneUI.callbacks.SetDMTypingIndicatorSettings(dm.user.id, false, true)
-			} else if dm.typingIndicatorOverrideSelection.Selected == on {
+			} else if typingIndicatorSelection == on {
 				fyneUI.callbacks.SetDMTypingIndicatorSettings(dm.user.id, true, true)
-			} else if dm.typingIndicatorOverrideSelection.Selected == off {
+			} else if typingIndicatorSelection == off {
 				fyneUI.callbacks.SetDMTypingIndicatorSettings(dm.user.id, true, false)
 			} else {
 				log.WithFields(log.Fields{
 					"user_id":   dm.user.id,
-					"selection": dm.typingIndicatorOverrideSelection.Selected,
+					"selection": typingIndicatorSelection,
 				}).Error("invalid selection for typing indicator override")
 			}
 		}

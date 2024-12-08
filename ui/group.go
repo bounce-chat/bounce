@@ -169,30 +169,6 @@ func (g *group) refreshTypingIndicatorSettingSelection(options []string) {
 	g.typingIndicatorOverrideSelection.Refresh()
 }
 
-func (fyneUI *Fyne) GroupReadReceiptSettingsSet(groupID uuid.UUID, override, enabled bool) {
-	g, exists := fyneUI.groups[groupID]
-	if !exists {
-		log.WithFields(log.Fields{
-			"groupID": groupID,
-		}).Error("cannot set read receipt override settings for unknown group")
-		return
-	}
-	g.overrideReadReceiptSetting = override
-	g.readReceiptsEnabled = enabled
-}
-
-func (fyneUI *Fyne) GroupTypingIndicatorSettingsSet(groupID uuid.UUID, override, enabled bool) {
-	g, exists := fyneUI.groups[groupID]
-	if !exists {
-		log.WithFields(log.Fields{
-			"groupID": groupID,
-		}).Error("cannot set typing indicator override settings for unknown group")
-		return
-	}
-	g.overrideTypingIndicatorSetting = override
-	g.typingIndicatorsEnabled = enabled
-}
-
 func (fyneUI *Fyne) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Button {
 	g.removeUserButtonsMutex.Lock()
 	defer g.removeUserButtonsMutex.Unlock()
@@ -615,6 +591,14 @@ func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
 
 	fyneUI.updateEnabledFeatures(g)
 	fyneUI.refreshUserSelections(g)
+
+	g.overrideReadReceiptSetting = bounceGroup.OverrideReadReceiptSetting
+	g.readReceiptsEnabled = bounceGroup.ReadReceiptsEnabled
+	g.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+	g.overrideTypingIndicatorSetting = bounceGroup.OverrideTypingIndicatorSetting
+	g.typingIndicatorsEnabled = bounceGroup.TypingIndicatorsEnabled
+	g.refreshTypingIndicatorSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+
 }
 
 func (fyneUI *Fyne) DisplayGroupMessage(gm chat.GroupMessage) {
