@@ -597,7 +597,7 @@ func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
 	g.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
 	g.overrideTypingIndicatorSetting = bounceGroup.OverrideTypingIndicatorSetting
 	g.typingIndicatorsEnabled = bounceGroup.TypingIndicatorsEnabled
-	g.refreshTypingIndicatorSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+	g.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
 
 }
 
