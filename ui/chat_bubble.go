@@ -19,7 +19,7 @@ import (
 
 var iconSize = float32(12)
 var bufferSize = float32(30)
-var unmergedVerticalBuffer = float32(4)
+var unmergedVerticalBuffer = float32(2)
 
 var mergeModeStandalone = 0
 var mergeModeTop = 1
@@ -72,6 +72,9 @@ type chatBubble struct {
 func newChatBubbleTemplate() *chatBubble {
 	message := widget.NewRichText(&widget.TextSegment{
 		Text: "",
+		Style: widget.RichTextStyle{
+			SizeName: theme.SizeNameText,
+		},
 	})
 	message.Wrapping = fyne.TextWrapWord
 
@@ -172,7 +175,7 @@ func (cb *chatBubble) setData(m message) {
 		}
 	} else {
 		if m.outgoing {
-			cb.background.FillColor = color.NRGBA{0, 0x23, 0x75, 0xff}
+			cb.background.FillColor = color.NRGBA{0, 0x2c, 0x94, 0xff}
 		} else {
 			cb.background.FillColor = color.NRGBA{0x20, 0x20, 0x20, 0xff}
 		}
@@ -211,12 +214,13 @@ func (cb *chatBubble) setData(m message) {
 
 	cb.maxMessageWidth = fyne.MeasureText(
 		longestLine(cb.message.Segments[0].(*widget.TextSegment).Text),
-		theme.TextSize(), // TODO: using theme.TextSize(), get it from the rich text instead?
+		//theme.TextSize(),
+		theme.Size(cb.message.Segments[0].(*widget.TextSegment).Style.SizeName),
 		cb.message.Segments[0].(*widget.TextSegment).Style.TextStyle,
 	).Width
 	usernameWidth := fyne.MeasureText(
 		m.username,
-		theme.TextSize(), // TODO: using theme.TextSize(), get it from the rich text instead?
+		cb.username.TextSize,
 		cb.username.TextStyle,
 	).Width
 	cb.maxTextWidth = cb.maxMessageWidth
@@ -353,7 +357,7 @@ func (cbr *chatBubbleRenderer) iconSize() float32 {
 }
 
 func (cbr *chatBubbleRenderer) Refresh() {
-	//cbr.Layout(cbr.cb.Size())
+	cbr.Layout(cbr.cb.Size())
 }
 
 func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
