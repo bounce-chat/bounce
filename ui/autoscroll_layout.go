@@ -22,7 +22,7 @@ func (asl *autoscollLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) 
 
 	s, ok := embedded.(*chatHistory)
 	if !ok {
-		log.Fatal("cannot create autoscollLayout with anything other than container.Scroll")
+		log.Fatal("cannot create autoscollLayout with anything other than chatHisotry")
 	}
 
 	if asl.lastHeight != 0 {
@@ -40,6 +40,7 @@ func (asl *autoscollLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) 
 	}
 
 	asl.lastHeight = size.Height
+	s.Refresh()
 }
 
 func (asl *autoscollLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {

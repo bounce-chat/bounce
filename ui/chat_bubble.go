@@ -4,56 +4,124 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
+var iconSize = float32(12)
+var bufferSize = float32(30)
+var unmergedVerticalBuffer = float32(4)
+
+var mergeModeStandalone = 0
+var mergeModeTop = 1
+var mergeModeMiddle = 2
+var mergeModeBottom = 3
+
+var statePending = 0
+var stateSynced = 1
+var stateDelivered = 2
+var stateRead = 3
+var stateError = 4
+
+type message struct {
+	id           uuid.UUID
+	text         string
+	authorID     uuid.UUID
+	username     string
+	initials     string
+	timestamp    int64
+	disappearsAt int64
+	outgoing     bool
+	direct       bool
+	state        int
+	mergeMode    int
+}
+
 type chatBubble struct {
 	widget.BaseWidget
-	id            uuid.UUID
-	timestamp     int64
-	outgoing      bool
-	direct        bool
-	timestampText *canvas.Text
-	username      *canvas.Text
-	message       *widget.Label
-	icon          *defaultImage
-	background    *canvas.Rectangle
+	id               uuid.UUID
+	outgoing         bool
+	writtenAt        int64
+	mergeMode        int
+	username         *canvas.Text
+	message          *widget.RichText
+	icon             *defaultImage
+	background       *canvas.Rectangle
+	decorations      *fyne.Container
+	timestamp        *canvas.Text
+	disappearingIcon *canvas.Image
+	statusIcons      *fyne.Container
+	pending          *canvas.Image
+	synced           *canvas.Image
+	delivered        *canvas.Image
+	read             *canvas.Image
+	errorIcon        *canvas.Image
+	maxTextWidth     float32
+	maxMessageWidth  float32
 }
 
 func newChatBubbleTemplate() *chatBubble {
-	// TODO: I'm just using a widget.Label because it comes with wrapping out of the box, and all the wrapping code
-	// isn't exported and non-trivial to copy out.  A canvas.Text would probably be better as I would have more
-	// control over the presentation of the font and could hopefully enable click and drag selection for copying
-	// text, but how to do this remains an open question.  Also, using a label comes with padding out of the box
-	// that I don't want.
+	message := widget.NewRichText(&widget.TextSegment{
+		Text: "",
+	})
+	message.Wrapping = fyne.TextWrapWord
 
-	messageLabel := widget.NewLabel("")
-	messageLabel.Wrapping = fyne.TextWrapWord
-
+	// TODO: use rich text with color to get truncation https://github.com/fyne-io/fyne/issues/5306
+	//username := widget.NewRichText(&widget.TextSegment{
+	//	Text: "",
+	//})
+	//username.Truncation = fyne.TextTruncateEllipsis
+	//username.Segments[0].(*widget.TextSegment).Style.TextStyle.Bold = true
 	username := canvas.NewText("", &color.RGBA{})
 	username.TextStyle.Bold = true
+	username.Hide()
 
-	timestampText := canvas.NewText("", theme.ForegroundColor())
-	timestampText.TextSize = theme.TextSize() * 0.6
+	timestamp := canvas.NewText("", theme.ForegroundColor()) // TODO: match opactity to icons
+	timestamp.TextSize = theme.TextSize() * 0.6
 
-	// Incoming messages have a grey background, outgoing messages have a blue background
-	background := &canvas.Rectangle{
-		CornerRadius: 15,
-	}
+	disappearingIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/disappears.png"))
+	disappearingIcon.FillMode = canvas.ImageFillContain
+	disappearingIcon.SetMinSize(fyne.Size{iconSize, iconSize})
+	disappearingIcon.Hide()
 
-	bubble := &chatBubble{
-		id:       uuid.Nil,
+	pending := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/pending.png"))
+	pending.FillMode = canvas.ImageFillContain
+	pending.SetMinSize(fyne.Size{iconSize, iconSize})
+	pending.Hide()
+
+	synced := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/synced.png"))
+	synced.FillMode = canvas.ImageFillContain
+	synced.SetMinSize(fyne.Size{iconSize, iconSize})
+	synced.Hide()
+
+	delivered := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/delivered.png"))
+	delivered.FillMode = canvas.ImageFillContain
+	delivered.SetMinSize(fyne.Size{iconSize, iconSize})
+	delivered.Hide()
+
+	read := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/read.png"))
+	//read.Translucency = 0.4 // https://github.com/fyne-io/fyne/issues/1977
+	read.FillMode = canvas.ImageFillContain
+	read.SetMinSize(fyne.Size{iconSize, iconSize})
+	read.Hide()
+
+	errorIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/error.png"))
+	errorIcon.FillMode = canvas.ImageFillContain
+	errorIcon.SetMinSize(fyne.Size{iconSize, iconSize})
+	errorIcon.Hide()
+
+	cb := &chatBubble{
+		message:  message,
 		username: username,
-		message:  messageLabel,
 		icon: &defaultImage{
 			size: theme.IconInlineSize(),
 			foregroundText: &canvas.Text{
@@ -64,369 +132,352 @@ func newChatBubbleTemplate() *chatBubble {
 				rect: image.Rect(0, 0, int(theme.IconInlineSize())*8, int(theme.IconInlineSize())*8),
 			})),
 		},
-		outgoing:      false,
-		direct:        false,
-		timestamp:     0,
-		timestampText: timestampText,
-		background:    background,
+		background: &canvas.Rectangle{
+			CornerRadius: 15,
+		},
+		timestamp:        timestamp,
+		disappearingIcon: disappearingIcon,
+		statusIcons: container.NewStack(
+			pending,
+			synced,
+			delivered,
+			read,
+			errorIcon,
+		),
+		pending:   pending,
+		synced:    synced,
+		delivered: delivered,
+		read:      read,
+		errorIcon: errorIcon,
 	}
+	cb.decorations = container.NewHBox(
+		cb.timestamp,
+		cb.disappearingIcon,
+		cb.statusIcons,
+	)
 
-	bubble.ExtendBaseWidget(bubble)
-	return bubble
+	cb.ExtendBaseWidget(cb)
+	return cb
 }
 
-func (bubble *chatBubble) setData(name, initials binding.String, authorID, id uuid.UUID, message string, outgoing, direct bool, timestamp int64) { // TODO: export chat.Message for this?
-	bubble.id = id
-
-	usernameText, err := name.Get()
-	if err != nil {
-		log.Fatal("data bindings broken")
-	}
-	bubble.username.Text = usernameText
-	bubble.username.Color = uuidToColor(authorID)
-	if outgoing || direct {
-		bubble.username.Hide()
-	} else {
-		bubble.username.Show()
-	}
-	bubble.username.Refresh()
-
-	bubble.message.Text = message
-	bubble.message.Refresh()
-
-	bubble.timestamp = timestamp
-	bubble.timestampText.Text = time.Unix(timestamp, 0).Format("1/2 15:04")
-
-	bubble.outgoing = outgoing
-	bubble.direct = direct
-
-	if !outgoing && !direct {
-		iconText, err := initials.Get()
-		if err != nil {
-			log.Fatal("data bindings broken")
-		}
-		bubble.icon.foregroundText.Text = iconText
-		bubble.icon.backgroundColor = canvas.NewImageFromImage(makeCircle(&colorRectangle{
-			rect:  image.Rect(0, 0, int(theme.IconInlineSize())*8, int(theme.IconInlineSize())*8),
-			color: uuidToColor(authorID), // TODO: access this color without recreating the whole thing?
-		}))
-		if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
-			bubble.icon.foregroundText.Color = color.RGBA{0xff, 0xff, 0xff, 0xff}
-		}
-		bubble.icon.clicked = func() { // TODO: not clickable
-			log.WithFields(log.Fields{
-				"id":   authorID,
-				"name": usernameText,
-			}).Info("user wants to open profile via icon")
-		}
-		bubble.icon.Show()
-		bubble.icon.Refresh()
-	} else {
-		bubble.icon.Hide()
-	}
+func (cb *chatBubble) setData(m message) {
+	cb.id = m.id
+	cb.mergeMode = m.mergeMode
 
 	if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
-		if outgoing {
-			bubble.background.FillColor = color.NRGBA{0xb5, 0xd0, 0xff, 0xff}
+		if m.outgoing {
+			cb.background.FillColor = color.NRGBA{0xb5, 0xd0, 0xff, 0xff}
 		} else {
-			bubble.background.FillColor = color.NRGBA{0xdd, 0xdd, 0xdd, 0xff}
+			cb.background.FillColor = color.NRGBA{0xdd, 0xdd, 0xdd, 0xff}
 		}
 	} else {
-		if outgoing {
-			bubble.background.FillColor = color.NRGBA{0, 0x23, 0x75, 0xff}
+		if m.outgoing {
+			cb.background.FillColor = color.NRGBA{0, 0x23, 0x75, 0xff}
 		} else {
-			bubble.background.FillColor = color.NRGBA{0x20, 0x20, 0x20, 0xff}
+			cb.background.FillColor = color.NRGBA{0x20, 0x20, 0x20, 0xff}
 		}
 	}
 
-	//name.AddListener(binding.NewDataListener(func() {
-	//	nameStr, err := name.Get()
-	//	if err != nil {
-	//		log.WithFields(log.Fields{
-	//			"error": err.Error(),
-	//		}).Fatal("error getting data binding")
-	//	}
-	//	bubble.username.Text = nameStr
-	//	bubble.username.Refresh()
-	//	bubble.Refresh()
-	//}))
-}
+	if !m.direct && !m.outgoing {
+		cb.username.Text = m.username
+		cb.username.Color = uuidToColor(m.authorID)
+		cb.username.Refresh()
+		cb.username.Show()
 
-func (bubble *chatBubble) CreateRenderer() fyne.WidgetRenderer {
-	bubble.ExtendBaseWidget(bubble)
-
-	renderer := &bubbleRenderer{
-		background:  bubble.background,
-		bubble:      bubble,
-		message:     bubble.message,
-		icon:        bubble.icon,
-		timestamp:   bubble.timestampText,
-		longestLine: longestLine(bubble.message.Text), // We have to know the longest line for width calculation, more on that later
-		objects: []fyne.CanvasObject{
-			bubble.background,
-			bubble.username,
-			bubble.message,
-			bubble.timestampText,
-			bubble.icon,
-		},
-		verticalPaddingAboveBackground:      theme.Padding(),
-		verticalPaddingAboveUsername:        theme.Padding() * 2,
-		verticalPaddingAboveMessage:         theme.Padding() * 2,
-		verticalPaddingAboveTimestamp:       theme.Padding() * 2,
-		verticalPaddingAboveBackgroundEnd:   theme.Padding() * 2,
-		verticalPaddingAboveEnd:             theme.Padding(),
-		horizontalPaddingSideOfBackground:   theme.Padding() * 2,
-		horizontalPaddingSideOfText:         theme.Padding() * 2,
-		horizontalPaddingSideOfIcon:         theme.Padding() * 2,
-		horizontalPaddingMinimumOnOtherSize: theme.Padding() * 7,
-	}
-
-	return renderer
-}
-
-type bubbleRenderer struct {
-	message     *widget.Label
-	timestamp   *canvas.Text
-	icon        fyne.CanvasObject
-	longestLine string
-	background  *canvas.Rectangle
-	bubble      *chatBubble
-	objects     []fyne.CanvasObject
-	// Easier to read the Layout math by using these variable names
-	verticalPaddingAboveBackground      float32
-	verticalPaddingAboveUsername        float32
-	verticalPaddingAboveMessage         float32
-	verticalPaddingAboveTimestamp       float32
-	verticalPaddingAboveBackgroundEnd   float32
-	verticalPaddingAboveEnd             float32
-	horizontalPaddingSideOfBackground   float32
-	horizontalPaddingSideOfText         float32
-	horizontalPaddingSideOfIcon         float32
-	horizontalPaddingMinimumOnOtherSize float32
-}
-
-func (renderer *bubbleRenderer) Layout(size fyne.Size) {
-	usernameSize := renderer.bubble.username.MinSize()
-	timestampSize := renderer.timestamp.MinSize()
-
-	allVerticalPadding := renderer.verticalPaddingAboveBackground +
-		renderer.verticalPaddingAboveMessage +
-		renderer.verticalPaddingAboveTimestamp +
-		renderer.verticalPaddingAboveBackgroundEnd +
-		renderer.verticalPaddingAboveEnd
-	if !renderer.bubble.outgoing && !renderer.bubble.direct {
-		allVerticalPadding += renderer.verticalPaddingAboveUsername
-	}
-
-	// We multiply the things that are on both sides by 2
-	allHorizontalPadding := renderer.horizontalPaddingSideOfBackground*2 +
-		renderer.horizontalPaddingSideOfText*2 +
-		renderer.horizontalPaddingMinimumOnOtherSize
-
-	// Resize the message label into how big of space we're actually going to give it.  That's the total
-	// size that we're being asked to layout in, minus the space in our widget used for padding and other
-	// items like the username and timestamp text
-	renderer.message.Resize(
-		size.Subtract(fyne.Size{
-			Width:  allHorizontalPadding,
-			Height: allVerticalPadding + usernameSize.Height + timestampSize.Height,
-		}),
-	)
-	messageSize := renderer.message.MinSize()
-
-	//
-	// Now we take some measurments for how much of the available space we want to use for the bubble vs how much
-	// we need to reserve for space on the non-justified side, and calculate offsets we're going to use later
-	//
-
-	// Our xOffset is far how to scoot everything to the right when we're right justified, or how much we're going to scoot things right to fit an icon when we're left justified
-	xOffset := renderer.horizontalPaddingMinimumOnOtherSize
-	// Creating this variable just so things below are a little more readable
-	availableWidth := size.Width
-	// We need to figure out which text in the bubble is going to be the widest so we can size the colored background accordingly
-	// We do this by measuring all the text we're going to print in the bubble, and comparing them and their padding
-	takenTimestampWidth := fyne.MeasureText(renderer.timestamp.Text, renderer.timestamp.TextSize, renderer.timestamp.TextStyle).Width + renderer.horizontalPaddingSideOfText*2
-	takenUsernameWidth := fyne.MeasureText(renderer.bubble.username.Text, renderer.bubble.username.TextSize, renderer.bubble.username.TextStyle).Width + renderer.horizontalPaddingSideOfText*2
-	// For multi-line messages, we measure the longest line.  Note: this measurment doesn't account for line wrapping, so we
-	// will have to detect when it's going to wrap and make some additional adjustments based on that.
-	takenMessageWidth := fyne.MeasureText(renderer.longestLine, theme.TextSize(), renderer.message.TextStyle).Width + renderer.horizontalPaddingSideOfText*2 // Can't get the TextSize of a label, use theme.TextSize()
-
-	// We start by assuming the timestamp is the widest text in the bubble, then replace that definition if anything else is wider.
-	// It is importatnt to remember in that this variable includes padding built in
-	maximumTextWidth := takenTimestampWidth
-	if takenUsernameWidth > maximumTextWidth {
-		maximumTextWidth = takenUsernameWidth
-	}
-	if takenMessageWidth > maximumTextWidth {
-		maximumTextWidth = takenMessageWidth
-	}
-
-	//
-	// Now, if we're not going to wrap the text then we can expand the xOffset to fill in the remaining space.
-	// We determine this by checking if the maximum text width is going to be larger than what we have available.
-	// If not, we increase the xOffset to make up the difference
-	//
-	if maximumTextWidth+allHorizontalPadding < availableWidth {
-		// We're not going to wrap, we can use up all the space that isn't the text with padding
-		xOffset = availableWidth - maximumTextWidth
+		cb.icon.foregroundText.Text = m.initials
+		cb.icon.backgroundColor = canvas.NewImageFromImage(makeCircle(&colorRectangle{
+			rect:  image.Rect(0, 0, int(theme.IconInlineSize())*8, int(theme.IconInlineSize())*8),
+			color: uuidToColor(m.authorID), // TODO: access this color without recreating the whole thing?
+		}))
+		if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
+			cb.icon.foregroundText.Color = color.RGBA{0xff, 0xff, 0xff, 0xff}
+		}
+		cb.icon.clicked = func() {
+			// TODO: bug: not clickable
+			log.WithFields(log.Fields{
+				"id":   m.authorID,
+				"name": m.username,
+			}).Info("user wants to open profile via icon")
+		}
+		cb.icon.Show()
+		cb.icon.Refresh()
 	} else {
-		// TODO: unclear why this is required
-		xOffset += 30
-	}
-	// Lastly, there's going to be padding on the justified side of the bubble.  Reduce the offset for that.
-	xOffset -= renderer.horizontalPaddingSideOfBackground * 4
-
-	//
-	// For incoming messages that contain an icon, we need to scoot the whole bubble out a bit so that we can place an icon on the side
-	//
-	if !renderer.bubble.outgoing {
-		// Outgoing messages are right justified, so we undo the offset calculation, but we scoot out a bit if we need to fit an icon in
-		xOffset = 0
-		if renderer.icon.Visible() {
-			xOffset += theme.IconInlineSize() + renderer.horizontalPaddingSideOfIcon
-		}
+		cb.icon.Hide()
+		cb.username.Hide()
 	}
 
-	//
-	// Now, make the correct size bubble and place all the objects where they belong, adding the xOffset where needed for right justification
-	//
+	cb.message.Segments[0].(*widget.TextSegment).Text = m.text
+	cb.message.Refresh()
 
-	// Determine the size of the chat bubble
-	backgroundHeight := renderer.verticalPaddingAboveMessage +
-		messageSize.Height +
-		renderer.verticalPaddingAboveTimestamp +
-		timestampSize.Height +
-		renderer.verticalPaddingAboveBackgroundEnd
-
-	if !renderer.bubble.outgoing && !renderer.bubble.direct {
-		backgroundHeight += renderer.verticalPaddingAboveUsername + usernameSize.Height
+	cb.maxMessageWidth = fyne.MeasureText(
+		longestLine(cb.message.Segments[0].(*widget.TextSegment).Text),
+		theme.TextSize(), // TODO: using theme.TextSize(), get it from the rich text instead?
+		cb.message.Segments[0].(*widget.TextSegment).Style.TextStyle,
+	).Width
+	usernameWidth := fyne.MeasureText(
+		m.username,
+		theme.TextSize(), // TODO: using theme.TextSize(), get it from the rich text instead?
+		cb.username.TextStyle,
+	).Width
+	cb.maxTextWidth = cb.maxMessageWidth
+	if usernameWidth > cb.maxMessageWidth {
+		cb.maxTextWidth = usernameWidth + theme.Padding()*4
 	}
 
-	renderer.background.Resize(fyne.Size{
-		Height: backgroundHeight,
-		Width:  float32(math.Min(float64(maximumTextWidth), float64(renderer.message.Size().Width))) + renderer.horizontalPaddingSideOfBackground*2,
-	}) // TODO: look into using a subtractive size like the oginal message sizer
+	cb.outgoing = m.outgoing
 
-	// Put the username on the top of the bubble
-	usernameX := renderer.horizontalPaddingSideOfBackground + renderer.horizontalPaddingSideOfText
-	renderer.bubble.username.Move(fyne.Position{
-		X: xOffset + usernameX,
-		Y: renderer.verticalPaddingAboveBackground + renderer.verticalPaddingAboveUsername,
-	})
+	cb.writtenAt = m.timestamp
+	cb.updateDisplayTime()
 
-	// Put the message underneith the username
-	messageX := xOffset +
-		renderer.horizontalPaddingSideOfBackground +
-		renderer.horizontalPaddingSideOfText -
-		theme.Padding() // subtract theme.Padding() to compensate for widget.Label's built-in padding, TODO: remove if/when using canvas.Text
-	messageY := renderer.verticalPaddingAboveBackground +
-		renderer.verticalPaddingAboveMessage
-
-	if !renderer.bubble.outgoing && !renderer.bubble.direct {
-		messageY += renderer.verticalPaddingAboveUsername + usernameSize.Height
+	if m.disappearsAt != 0 {
+		cb.disappearingIcon.Show()
 	}
-	renderer.message.Move(fyne.Position{
-		X: messageX,
-		Y: messageY,
-	})
 
-	// Put the timestamp at the bottom left or bottom right depending on justification, half way less indented than the message
-	timestampX := float32(0)
-	if renderer.bubble.outgoing {
-		timestampX = availableWidth - renderer.horizontalPaddingSideOfBackground - renderer.horizontalPaddingSideOfText/2 - timestampSize.Width
+	if !m.outgoing {
+		cb.statusIcons.Hide()
 	} else {
-		timestampX = xOffset + renderer.horizontalPaddingSideOfBackground + renderer.horizontalPaddingSideOfText/2
-	}
-	timestampY := renderer.verticalPaddingAboveBackground +
-		renderer.verticalPaddingAboveMessage +
-		messageSize.Height +
-		renderer.verticalPaddingAboveTimestamp
-	if !renderer.bubble.outgoing && !renderer.bubble.direct {
-		timestampY += renderer.verticalPaddingAboveUsername +
-			usernameSize.Height
-	}
-	renderer.timestamp.Move(fyne.Position{
-		X: timestampX,
-		Y: timestampY,
-	})
-
-	// If an icon was supplied, place it at the bottom left of the message bubble
-	if renderer.icon.Visible() {
-		iconY := renderer.verticalPaddingAboveMessage +
-			messageSize.Height +
-			renderer.verticalPaddingAboveTimestamp +
-			timestampSize.Height +
-			renderer.verticalPaddingAboveBackgroundEnd -
-			theme.IconInlineSize()
-
-		if !renderer.bubble.outgoing && !renderer.bubble.direct {
-			iconY += renderer.verticalPaddingAboveUsername +
-				usernameSize.Height
+		switch m.state {
+		case statePending:
+			cb.pending.Show()
+			cb.synced.Hide()
+			cb.delivered.Hide()
+			cb.read.Hide()
+			cb.errorIcon.Hide()
+		case stateSynced:
+			cb.pending.Hide()
+			cb.synced.Show()
+			cb.delivered.Hide()
+			cb.read.Hide()
+			cb.errorIcon.Hide()
+		case stateDelivered:
+			cb.pending.Hide()
+			cb.synced.Hide()
+			cb.delivered.Show()
+			cb.read.Hide()
+			cb.errorIcon.Hide()
+		case stateRead:
+			cb.pending.Hide()
+			cb.synced.Hide()
+			cb.delivered.Hide()
+			cb.read.Show()
+			cb.errorIcon.Hide()
+		case stateError:
+			cb.pending.Hide()
+			cb.synced.Hide()
+			cb.delivered.Hide()
+			cb.read.Hide()
+			cb.errorIcon.Show()
 		}
-
-		renderer.icon.Move(fyne.Position{
-			X: renderer.horizontalPaddingSideOfIcon,
-			Y: iconY,
-		})
+		cb.statusIcons.Show()
+		cb.statusIcons.Refresh()
 	}
 
-	// Place the background
-	bubbleX := renderer.horizontalPaddingSideOfBackground
-	renderer.background.Move(fyne.Position{
-		X: xOffset + bubbleX,
-		Y: renderer.verticalPaddingAboveBackground,
-	})
+	switch m.mergeMode {
+	case mergeModeTop:
+		if !m.outgoing {
+			cb.icon.Hide()
+			cb.decorations.Hide()
+		}
+	case mergeModeMiddle:
+		if !m.outgoing {
+			cb.icon.Hide()
+			cb.decorations.Hide()
+			cb.username.Hide()
+		}
+	case mergeModeBottom:
+		if !m.outgoing {
+			cb.username.Hide()
+		}
+	}
 }
 
-func (renderer *bubbleRenderer) MinSize() (size fyne.Size) {
-	usernameSize := renderer.bubble.username.MinSize()
-	messageSize := renderer.message.MinSize()
-	timestampSize := renderer.timestamp.MinSize()
-
-	allVerticalPadding := renderer.verticalPaddingAboveBackground +
-		renderer.verticalPaddingAboveMessage +
-		renderer.verticalPaddingAboveTimestamp +
-		renderer.verticalPaddingAboveBackgroundEnd +
-		renderer.verticalPaddingAboveEnd
-
-	if !renderer.bubble.outgoing && !renderer.bubble.direct {
-		allVerticalPadding += renderer.verticalPaddingAboveUsername
+func (cb *chatBubble) updateDisplayTime() {
+	now := time.Now()
+	diff := now.Unix() - cb.writtenAt
+	if diff >= 0 && diff < 60 {
+		cb.timestamp.Text = "Now"
+		return
 	}
 
-	minSize := fyne.Size{
-		Width:  renderer.horizontalPaddingSideOfBackground*2 + renderer.horizontalPaddingSideOfText*2 + messageSize.Width,
-		Height: allVerticalPadding + messageSize.Height + timestampSize.Height,
+	writtenAtTime := time.Unix(cb.writtenAt, 0)
+	timestring := ""
+	if writtenAtTime.Year() != now.Year() {
+		timestring = strconv.Itoa(writtenAtTime.Year())
+	}
+	if writtenAtTime.Month() != now.Month() {
+		if len(timestring) != 0 {
+			timestring = timestring + " "
+		}
+		timestring = timestring + writtenAtTime.Format("Jan 2")
+	} else if writtenAtTime.Day() != now.Day() {
+		if len(timestring) != 0 {
+			timestring = timestring + " "
+		}
+		timestring = timestring + writtenAtTime.Weekday().String()[0:3] + " " + writtenAtTime.Format("2")
 	}
 
-	if !renderer.bubble.outgoing && !renderer.bubble.direct {
-		minSize.Height += usernameSize.Height
+	if len(timestring) != 0 {
+		timestring = timestring + " "
+	}
+	timestring = timestring + writtenAtTime.Format(time.Kitchen)
+
+	cb.timestamp.Text = timestring
+}
+
+func (cb *chatBubble) CreateRenderer() fyne.WidgetRenderer {
+	cb.ExtendBaseWidget(cb)
+
+	return &chatBubbleRenderer{
+		cb: cb,
+	}
+}
+
+type chatBubbleRenderer struct {
+	cb                   *chatBubble
+	decorationsOnNewLine bool
+}
+
+func (cbr *chatBubbleRenderer) shiftForIcon() bool {
+	if cbr.cb.icon.Visible() {
+		return true
+	}
+
+	if !cbr.cb.outgoing && (cbr.cb.mergeMode == mergeModeTop || cbr.cb.mergeMode == mergeModeMiddle) {
+		return true
+	}
+	return false
+}
+
+func (cbr *chatBubbleRenderer) iconSize() float32 {
+	return theme.IconInlineSize()
+}
+
+func (cbr *chatBubbleRenderer) Refresh() {
+	//cbr.Layout(cbr.cb.Size())
+}
+
+func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
+	top := float32(0)
+	bottom := size.Height
+	switch cbr.cb.mergeMode {
+	case mergeModeStandalone:
+		top += unmergedVerticalBuffer
+		size.Height -= unmergedVerticalBuffer * 2
+		bottom -= unmergedVerticalBuffer
+	case mergeModeTop:
+		top += unmergedVerticalBuffer
+		size.Height -= unmergedVerticalBuffer
+	case mergeModeBottom:
+		size.Height -= unmergedVerticalBuffer
+		bottom -= unmergedVerticalBuffer
+	}
+
+	leftBorder := float32(0)
+	rightBorder := size.Width
+
+	decorationsWidth := cbr.cb.decorations.MinSize().Width + theme.Padding()
+
+	if cbr.cb.outgoing {
+		leftBorder += bufferSize
+	} else {
+		rightBorder -= bufferSize
+		if cbr.shiftForIcon() {
+			leftBorder += cbr.iconSize()
+		}
+	}
+
+	usedWidth := cbr.cb.maxTextWidth
+	if cbr.shiftForIcon() {
+		usedWidth += theme.Padding() + cbr.iconSize()
+	}
+	if cbr.cb.decorations.Visible() {
+		//fits := guessIfDecoratorFits(
+		//	cbr.cb.message.Segments[0].(*widget.TextSegment).Text,
+		//	cbr.cb.message.Segments[0].(*widget.TextSegment).Style.TextStyle,
+		//	size.Width,
+		//	cbr.cb.decorations.MinSize().Width,
+		//)
+		//fits := cbr.cb.maxMessageWidth+decorationsWidth+theme.Padding()*3+bufferSize < size.Width
+		fits := usedWidth+decorationsWidth+theme.Padding()*3+bufferSize < size.Width
+		cbr.decorationsOnNewLine = !fits
+		if !cbr.decorationsOnNewLine {
+			messageAndDecorations := cbr.cb.maxMessageWidth + decorationsWidth + theme.Padding()*3
+			if messageAndDecorations > usedWidth {
+				usedWidth = messageAndDecorations
+			}
+		}
+	}
+
+	width := rightBorder - leftBorder
+	if usedWidth < width {
+		width = usedWidth
+		if cbr.cb.outgoing {
+			rightBorder = size.Width
+			leftBorder = size.Width - width
+		} else {
+			rightBorder = leftBorder + width
+		}
+	}
+
+	cbr.cb.background.Resize(fyne.Size{Height: size.Height, Width: width})
+	cbr.cb.background.Move(fyne.Position{leftBorder, top})
+
+	messageTop := top
+	if cbr.cb.username.Visible() {
+		cbr.cb.username.Resize(cbr.cb.username.MinSize())
+		cbr.cb.username.Move(fyne.Position{leftBorder + theme.Padding()*2, top + theme.Padding()})
+		messageTop += cbr.cb.username.MinSize().Height
+	}
+
+	if cbr.cb.decorations.Visible() {
+		cbr.cb.decorations.Resize(cbr.cb.decorations.MinSize())
+		cbr.cb.decorations.Move(fyne.Position{rightBorder - decorationsWidth, bottom - cbr.cb.decorations.MinSize().Height - theme.Padding()})
+	}
+
+	cbr.cb.message.Resize(fyne.Size{Height: size.Height, Width: width})
+	cbr.cb.message.Move(fyne.Position{leftBorder, messageTop})
+
+	if cbr.cb.icon.Visible() {
+		cbr.cb.icon.Move(fyne.Position{0, bottom - cbr.iconSize()})
+	}
+}
+
+func (cbr *chatBubbleRenderer) MinSize() fyne.Size {
+	minSize := cbr.cb.message.MinSize()
+
+	if !cbr.decorationsOnNewLine {
+		minSize.Width += cbr.cb.decorations.MinSize().Width + theme.Padding()
+	} else {
+		minSize.Height += cbr.cb.decorations.MinSize().Height + theme.Padding()
+	}
+
+	if cbr.cb.username.Visible() {
+		minSize.Height += cbr.cb.username.MinSize().Height
+	}
+
+	switch cbr.cb.mergeMode {
+	case mergeModeStandalone:
+		minSize.Height += unmergedVerticalBuffer * 2
+	case mergeModeTop:
+		minSize.Height += unmergedVerticalBuffer
+	case mergeModeBottom:
+		minSize.Height += unmergedVerticalBuffer
 	}
 
 	return minSize
 }
 
-func (renderer *bubbleRenderer) Refresh() {
-	//renderer.username.Text = renderer.bubble.username
-	renderer.message = renderer.bubble.message
-	renderer.longestLine = longestLine(renderer.message.Text)
-	//r.updateIconAndText()
-	//r.applyTheme() // TODO: got these from the button example, do I need to build equivalents?
-	//r.background.Refresh()
-	renderer.Layout(renderer.bubble.Size())
-	//canvas.Refresh(renderer.bubble.super())
+func (cbr *chatBubbleRenderer) Objects() []fyne.CanvasObject {
+	return []fyne.CanvasObject{
+		cbr.cb.background,
+		cbr.cb.decorations,
+		cbr.cb.username,
+		cbr.cb.message,
+		cbr.cb.icon,
+	}
 }
 
-func (renderer *bubbleRenderer) Destroy() {
-	// TODO: do I need to do something here?
-}
-
-func (renderer *bubbleRenderer) Objects() []fyne.CanvasObject {
-	return renderer.objects
-}
-
-func (renderer *bubbleRenderer) padding() float32 {
-	return theme.Padding() * 2
-}
+func (cbr *chatBubbleRenderer) Destroy() {}
 
 func longestLine(message string) string {
 	lines := strings.Split(message, "\n") // TODO: is '\n' too OS specific?  Maybe do this https://stackoverflow.com/a/49963413
@@ -437,4 +488,22 @@ func longestLine(message string) string {
 		}
 	}
 	return longest
+}
+
+func guessIfDecoratorFits(text string, style fyne.TextStyle, availableWidth, decoratorWidth float32) bool {
+	lines := strings.Split(text, "\n") // TODO: is '\n' too OS specific?  Maybe do this https://stackoverflow.com/a/49963413
+	lastLine := lines[len(lines)-1]
+
+	lastTextLength := fyne.MeasureText(
+		lastLine,
+		theme.TextSize(), // TODO: using theme.TextSize(), get it from the rich text instead?
+		style,            //cb.message.Segments[0].(*widget.TextSegment).Style.TextStyle,
+	).Width
+
+	if lastTextLength+decoratorWidth+theme.Padding()*3+bufferSize < availableWidth {
+		return true
+	} else if lastTextLength < availableWidth {
+		return false
+	}
+	return availableWidth-bufferSize-(float32(math.Mod(float64(lastTextLength), float64(availableWidth)))) > decoratorWidth
 }

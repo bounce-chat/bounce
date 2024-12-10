@@ -34,6 +34,7 @@ type chatBubbleData struct {
 	outgoing    bool
 	direct      bool
 	writtenAt   int64
+	expires     int64
 	read        bool
 	//profileButton fyne.CanvasObject
 }
@@ -59,7 +60,22 @@ func (cbd *chatBubbleData) getType() string {
 }
 
 func (cbd *chatBubbleData) populateTemplate(obj fyne.CanvasObject) {
-	obj.(*fyne.Container).Objects[0].(*chatBubble).setData(cbd.displayName, cbd.initials, cbd.author, cbd.id, cbd.text, cbd.outgoing, cbd.direct, cbd.writtenAt)
+	username, _ := cbd.displayName.Get()
+	initials, _ := cbd.initials.Get()
+	m := message{
+		id:           cbd.id,
+		text:         cbd.text,
+		authorID:     cbd.author,
+		username:     username,
+		initials:     initials,
+		timestamp:    cbd.writtenAt,
+		disappearsAt: cbd.expires,
+		outgoing:     cbd.outgoing,
+		direct:       cbd.direct,
+		state:        statePending,
+		mergeMode:    mergeModeStandalone,
+	}
+	obj.(*fyne.Container).Objects[0].(*chatBubble).setData(m) // TODO: just pass cbd?
 	obj.(*fyne.Container).Objects[0].(*chatBubble).Refresh()
 	obj.(*fyne.Container).Objects[0].(*chatBubble).Show()
 	obj.(*fyne.Container).Objects[1].(*statusChange).Hide()
@@ -241,6 +257,7 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			outgoing:    outgoing,
 			direct:      false,
 			writtenAt:   gm.WrittenAt,
+			expires:     gm.Expires,
 			read:        gm.Read,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
@@ -297,6 +314,7 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 			outgoing:    outgoing,
 			direct:      true,
 			writtenAt:   dm.WrittenAt,
+			expires:     dm.Expires,
 			read:        dm.Read,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
