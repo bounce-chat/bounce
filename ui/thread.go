@@ -2,6 +2,7 @@ package ui
 
 import (
 	"sort"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -9,6 +10,9 @@ import (
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
+
+var messages = map[uuid.UUID]threadable{} // TODO: put on fyne, not package level?
+var messagesMutex sync.Mutex
 
 type thread interface {
 	getID() uuid.UUID
@@ -137,7 +141,28 @@ func (fyneUI *Fyne) MarkMessageUndeliverable(id uuid.UUID) {
 	log.WithFields(log.Fields{
 		"message_id": id,
 	}).Info("chat engine wants to mark a message as undeliverable")
-	// TODO
+	messagesMutex.Lock()
+	item, ok := messages[id]
+	messagesMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"id": id,
+		}).Warn("item not found during attempt to mark item as undeliverable")
+	}
+
+	item.setState(stateError)
+
+	fyneUI.threadWithItemMutex.Lock()
+	thread, ok := fyneUI.threadWithItem[id]
+	fyneUI.threadWithItemMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"message_id": id,
+		}).Warn("attempt to mark message as undeliverable that was not found in any thread")
+		return
+	}
+
+	thread.chatHistoryScroll().Refresh()
 }
 
 func (fyneUI *Fyne) UpdateMessageDeletionTime(id uuid.UUID, timestamp int64) {
@@ -149,22 +174,43 @@ func (fyneUI *Fyne) UpdateMessageDeletionTime(id uuid.UUID, timestamp int64) {
 }
 
 func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
-	fyneUI.threadWithItemMutex.Lock()
-	thread, ok := fyneUI.threadWithItem[id]
-	fyneUI.threadWithItemMutex.Unlock()
+	messagesMutex.Lock()
+	item, ok := messages[id]
+	messagesMutex.Unlock()
 	if !ok {
 		log.WithFields(log.Fields{
-			"message_id": id,
-		}).Warn("attempt to mark message as read that was not found in any thread")
-		return
+			"id": id,
+		}).Warn("item not found during attempt to mark item as seen")
 	}
 
-	thread.chatHistoryScroll().markSeen(id)
+	item.markSeen()
 }
 
 func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
+	messagesMutex.Lock()
+	item, ok := messages[messageID]
+	messagesMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"id": messageID,
+		}).Warn("item not found during attempt to mark item as delivered")
+	}
+
+	currentState := item.getState()
+	if currentState == stateRead || currentState == stateDelivered {
+		return
+	}
+	if userID == fyneUI.profile.id {
+		if currentState == statePending {
+			item.setState(stateSynced)
+		}
+
+	} else {
+		item.setState(stateDelivered)
+	}
+
 	fyneUI.threadWithItemMutex.Lock()
-	thread, ok := fyneUI.threadWithItem[messageID]
+	ch, ok := fyneUI.threadWithItem[messageID]
 	fyneUI.threadWithItemMutex.Unlock()
 	if !ok {
 		log.WithFields(log.Fields{
@@ -172,11 +218,24 @@ func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
 		}).Warn("attempt to mark message as delivered that was not found in any thread")
 		return
 	}
-
-	thread.chatHistoryScroll().markDeliveredTo(messageID, userID, fyneUI.profile.id)
+	ch.chatHistoryScroll().Refresh()
 }
 
 func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
+	if rr.Actor == fyneUI.profile.id {
+		return
+	}
+	messagesMutex.Lock()
+	item, ok := messages[rr.Target]
+	messagesMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"id": rr.Target,
+		}).Warn("item not found during attempt to mark item as read")
+	}
+
+	item.setState(stateRead)
+
 	fyneUI.threadWithItemMutex.Lock()
 	thread, ok := fyneUI.threadWithItem[rr.Target]
 	fyneUI.threadWithItemMutex.Unlock()
@@ -187,7 +246,7 @@ func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
 		return
 	}
 
-	thread.chatHistoryScroll().markReadBy(rr.Target, rr.Actor, fyneUI.profile.id)
+	thread.chatHistoryScroll().Refresh()
 }
 
 //

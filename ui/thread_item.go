@@ -36,7 +36,7 @@ type chatBubbleData struct {
 	outgoing    bool
 	direct      bool
 	writtenAt   int64
-	expires     int64
+	expires     int64 // TODO: deleteAt
 	seen        bool
 	state       int
 	//profileButton fyne.CanvasObject
@@ -265,6 +265,9 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 	}
 
 	state := statePending
+	if gm.Undeliverable {
+		state = stateError
+	}
 	for _, id := range gm.DeliveredTo {
 		if id == fyneUI.profile.id {
 			if state == statePending {
@@ -339,6 +342,9 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 	}
 
 	state := statePending
+	if dm.Undeliverable {
+		state = stateError
+	}
 	for _, id := range dm.DeliveredTo {
 		if id == fyneUI.profile.id {
 			if state == statePending {

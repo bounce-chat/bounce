@@ -18,9 +18,6 @@ import (
 	"fyne.io/fyne/v2/theme"
 )
 
-var messages = map[uuid.UUID]threadable{} // TODO: put on fyne, not package level?
-var messagesMutex sync.Mutex
-
 // ListItemID uniquely identifies an item within a list.
 type ListItemID = int
 
@@ -206,61 +203,6 @@ func (ch *chatHistory) headTimestamp() int64 {
 	}
 
 	return currentHead
-}
-
-func (ch *chatHistory) markSeen(targetID uuid.UUID) {
-	messagesMutex.Lock()
-	item, ok := messages[targetID]
-	messagesMutex.Unlock()
-	if !ok {
-		log.WithFields(log.Fields{
-			"id": targetID,
-		}).Warn("item not found during attempt to mark item as seen")
-	}
-
-	item.markSeen()
-}
-
-func (ch *chatHistory) markDeliveredTo(targetID, recipientID, myID uuid.UUID) {
-	messagesMutex.Lock()
-	item, ok := messages[targetID]
-	messagesMutex.Unlock()
-	if !ok {
-		log.WithFields(log.Fields{
-			"id": targetID,
-		}).Warn("item not found during attempt to mark item as delivered")
-	}
-
-	currentState := item.getState()
-	if currentState == stateRead || currentState == stateDelivered {
-		return
-	}
-	if recipientID == myID {
-		if currentState == statePending {
-			item.setState(stateSynced)
-		}
-
-	} else {
-		item.setState(stateDelivered)
-	}
-	ch.Refresh()
-}
-
-func (ch *chatHistory) markReadBy(targetID, recipientID, myID uuid.UUID) {
-	if recipientID == myID {
-		return
-	}
-	messagesMutex.Lock()
-	item, ok := messages[targetID]
-	messagesMutex.Unlock()
-	if !ok {
-		log.WithFields(log.Fields{
-			"id": targetID,
-		}).Warn("item not found during attempt to mark item as read")
-	}
-
-	item.setState(stateRead)
-	ch.Refresh()
 }
 
 func (ch *chatHistory) seen(index int) {
