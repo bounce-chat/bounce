@@ -192,7 +192,7 @@ func (ch *chatHistory) headTimestamp() int64 {
 	return currentHead
 }
 
-func (ch *chatHistory) markRead(targetID uuid.UUID) {
+func (ch *chatHistory) markRead(targetID uuid.UUID) { // TODO: markSeen
 	index := 0
 	found := false
 	for i, id := range ch.ids {
@@ -215,6 +215,74 @@ func (ch *chatHistory) markRead(targetID uuid.UUID) {
 	}
 	item := ch.items[index]
 	item.markRead()
+}
+
+func (ch *chatHistory) markDeliveredTo(targetID, recipientID, myID uuid.UUID) {
+	index := 0
+	found := false
+	for i, id := range ch.ids {
+		if id == targetID {
+			index = i
+			found = true
+		}
+	}
+	if !found {
+		log.WithFields(log.Fields{
+			"id": targetID,
+		}).Warn("item not found during attempt to mark item as delivered")
+		return
+	}
+	if !(len(ch.items) > index) {
+		log.WithFields(log.Fields{
+			"id": targetID,
+		}).Warn("attempted to mark item as delivered that has index higher than number of items")
+		return
+	}
+	item := ch.items[index]
+
+	currentState := item.getState()
+	if currentState == stateRead || currentState == stateDelivered {
+		return
+	}
+	if recipientID == myID {
+		if currentState == statePending {
+			item.setState(stateSynced)
+		}
+
+	} else {
+		item.setState(stateDelivered)
+	}
+	ch.Refresh()
+}
+
+func (ch *chatHistory) markReadBy(targetID, recipientID, myID uuid.UUID) {
+	if recipientID == myID {
+		return
+	}
+
+	index := 0
+	found := false
+	for i, id := range ch.ids {
+		if id == targetID {
+			index = i
+			found = true
+		}
+	}
+	if !found {
+		log.WithFields(log.Fields{
+			"id": targetID,
+		}).Warn("item not found during attempt to mark item as read")
+		return
+	}
+	if !(len(ch.items) > index) {
+		log.WithFields(log.Fields{
+			"id": targetID,
+		}).Warn("attempted to mark item as read that has index higher than number of items")
+		return
+	}
+	item := ch.items[index]
+	item.setState(stateRead)
+	ch.Refresh()
 }
 
 func (ch *chatHistory) read(index int) {

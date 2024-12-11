@@ -97,6 +97,15 @@ func (b *bounce) handleAckDirectMessages(peer string, ids []uuid.UUID) {
 		}
 		b.markDeliveredTo(&dm, peer)
 
+		dev, ok := b.getDeviceFromAddress(peer)
+		if ok {
+			b.userInterface.MessageDelivered(dmID, dev.UserID)
+		} else {
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Warn("direct message acked by unknown peer")
+		}
+
 		// If we're waiting to check if this message becomes undeliverable, we can stop that now
 		dmDeliveryNotificationMutex.Lock()
 		notifier, ok := dmDeliveryNotifications[dmID]
@@ -140,6 +149,15 @@ func (b *bounce) handleAckGroupMessages(peer string, ids []uuid.UUID) {
 			}
 		}
 		b.markDeliveredTo(&gm, peer)
+
+		dev, ok := b.getDeviceFromAddress(peer)
+		if ok {
+			b.userInterface.MessageDelivered(gmID, dev.UserID)
+		} else {
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Warn("group message acked by unknown peer")
+		}
 
 		// If we're waiting to check if this message becomes undeliverable, we can stop that now
 		gmDeliveryNotificationMutex.Lock()

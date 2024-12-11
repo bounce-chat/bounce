@@ -50,6 +50,7 @@ type DirectMessage struct {
 	Read          bool
 	Undeliverable bool
 	ReadReceipts  []ReadReceipt
+	DeliveredTo   []uuid.UUID
 }
 
 type UpdateDMRetention struct {
@@ -102,6 +103,7 @@ type GroupMessage struct {
 	Read          bool
 	Undeliverable bool
 	ReadReceipts  []ReadReceipt
+	DeliveredTo   []uuid.UUID
 }
 
 type UpdateGroupRetention struct {
@@ -365,6 +367,8 @@ type UI interface {
 	ReceivedReadReceipt(ReadReceipt) // Someone else read a message of ours
 
 	SetSettings(Settings)
+
+	MessageDelivered(messageID, userID uuid.UUID)
 }
 
 // Frames that support being marked as read

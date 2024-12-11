@@ -162,11 +162,32 @@ func (fyneUI *Fyne) MessageRead(id uuid.UUID) {
 	thread.chatHistoryScroll().markRead(id)
 }
 
+func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
+	fyneUI.threadWithItemMutex.Lock()
+	thread, ok := fyneUI.threadWithItem[messageID]
+	fyneUI.threadWithItemMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"message_id": messageID,
+		}).Warn("attempt to mark message as delivered that was not found in any thread")
+		return
+	}
+
+	thread.chatHistoryScroll().markDeliveredTo(messageID, userID, fyneUI.profile.id)
+}
+
 func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
-	log.WithFields(log.Fields{
-		"message_id": rr.Target,
-	}).Info("UI wants to mark message as read")
-	//TODO
+	fyneUI.threadWithItemMutex.Lock()
+	thread, ok := fyneUI.threadWithItem[rr.Target]
+	fyneUI.threadWithItemMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"message_id": rr.Target,
+		}).Warn("attempt to mark message as read that was not found in any thread")
+		return
+	}
+
+	thread.chatHistoryScroll().markReadBy(rr.Target, rr.Actor, fyneUI.profile.id)
 }
 
 //

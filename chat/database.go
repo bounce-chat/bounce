@@ -437,7 +437,7 @@ func (b *bounce) buildInitialState() InitialState {
 	exportedDMs := []DirectMessage{}
 	for _, dm := range dms {
 		var rrs []readReceipt
-		err = b.database.Where("target = ?", dm.ID).Find(&rrs).Error
+		err = b.database.Where("target = ? AND actor != ?", dm.ID, b.currentUserID()).Find(&rrs).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -454,6 +454,24 @@ func (b *bounce) buildInitialState() InitialState {
 				},
 			)
 		}
+		deliveredTo := []uuid.UUID{}
+		var drs []deliveryRecord
+		err = b.database.Where("frame_id = ? AND frame_type = ?", dm.ID, typeDirectMessage).Find(&drs).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error looking up delivery records")
+		}
+		recipients := map[uuid.UUID]bool{}
+		for _, dr := range drs {
+			dev, ok := b.getDeviceFromAddress(dr.Destination)
+			if ok {
+				recipients[dev.UserID] = true
+			}
+		}
+		for recipient, _ := range recipients {
+			deliveredTo = append(deliveredTo, recipient)
+		}
 		exportedDMs = append(
 			exportedDMs,
 			DirectMessage{
@@ -467,6 +485,7 @@ func (b *bounce) buildInitialState() InitialState {
 				Read:          dm.Read,
 				Undeliverable: dm.Undeliverable,
 				ReadReceipts:  readReceipts,
+				DeliveredTo:   deliveredTo,
 			},
 		)
 	}
@@ -521,7 +540,7 @@ func (b *bounce) buildInitialState() InitialState {
 	for _, gm := range gms {
 		// TODO: get polymorphism working
 		var rrs []readReceipt
-		err = b.database.Where("target = ?", gm.ID).Find(&rrs).Error
+		err = b.database.Where("target = ? AND actor != ?", gm.ID, b.currentUserID()).Find(&rrs).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -538,6 +557,24 @@ func (b *bounce) buildInitialState() InitialState {
 				},
 			)
 		}
+		deliveredTo := []uuid.UUID{}
+		var drs []deliveryRecord
+		err = b.database.Where("frame_id = ? AND frame_type = ?", gm.ID, typeGroupMessage).Find(&drs).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error looking up delivery records")
+		}
+		recipients := map[uuid.UUID]bool{}
+		for _, dr := range drs {
+			dev, ok := b.getDeviceFromAddress(dr.Destination)
+			if ok {
+				recipients[dev.UserID] = true
+			}
+		}
+		for recipient, _ := range recipients {
+			deliveredTo = append(deliveredTo, recipient)
+		}
 		exportedGMs = append(
 			exportedGMs,
 			GroupMessage{
@@ -551,6 +588,7 @@ func (b *bounce) buildInitialState() InitialState {
 				Read:          gm.Read,
 				Undeliverable: gm.Undeliverable,
 				ReadReceipts:  readReceipts,
+				DeliveredTo:   deliveredTo,
 			},
 		)
 	}

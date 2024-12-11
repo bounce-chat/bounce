@@ -21,6 +21,8 @@ type threadable interface {
 	markRead()
 	countsAsUnread() bool
 	getType() string
+	getState() int
+	setState(int)
 	populateTemplate(fyne.CanvasObject)
 }
 
@@ -36,6 +38,7 @@ type chatBubbleData struct {
 	writtenAt   int64
 	expires     int64
 	read        bool
+	state       int
 	//profileButton fyne.CanvasObject
 }
 
@@ -59,6 +62,14 @@ func (cbd *chatBubbleData) getType() string {
 	return cbd.frameType
 }
 
+func (cbd *chatBubbleData) getState() int {
+	return cbd.state
+}
+
+func (cbd *chatBubbleData) setState(state int) {
+	cbd.state = state
+}
+
 func (cbd *chatBubbleData) populateTemplate(obj fyne.CanvasObject) {
 	username, _ := cbd.displayName.Get()
 	initials, _ := cbd.initials.Get()
@@ -72,10 +83,10 @@ func (cbd *chatBubbleData) populateTemplate(obj fyne.CanvasObject) {
 		disappearsAt: cbd.expires,
 		outgoing:     cbd.outgoing,
 		direct:       cbd.direct,
-		state:        statePending,
+		state:        cbd.state,
 		mergeMode:    mergeModeStandalone,
 	}
-	obj.(*fyne.Container).Objects[0].(*chatBubble).setData(m) // TODO: just pass cbd?
+	obj.(*fyne.Container).Objects[0].(*chatBubble).setData(m) // TODO: just pass cbd
 	obj.(*fyne.Container).Objects[0].(*chatBubble).Refresh()
 	obj.(*fyne.Container).Objects[0].(*chatBubble).Show()
 	obj.(*fyne.Container).Objects[1].(*statusChange).Hide()
@@ -107,6 +118,14 @@ func (scd *statusChangeData) countsAsUnread() bool {
 
 func (scd *statusChangeData) getType() string {
 	return scd.frameType
+}
+
+func (scd *statusChangeData) getState() int {
+	return statePending //TODO
+}
+
+func (scd *statusChangeData) setState(state int) {
+	return
 }
 
 func (scd *statusChangeData) populateTemplate(obj fyne.CanvasObject) {
@@ -245,6 +264,22 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		displayName.Set("You")
 	}
 
+	state := statePending
+	for _, id := range gm.DeliveredTo {
+		if id == fyneUI.profile.id {
+			if state == statePending {
+				state = stateSynced
+			}
+		} else {
+			state = stateDelivered
+		}
+	}
+	for _, rr := range gm.ReadReceipts {
+		if rr.Actor != fyneUI.profile.id {
+			state = stateRead
+			break
+		}
+	}
 	return &threadItem{
 		id: gm.ID,
 		widgetData: &chatBubbleData{
@@ -259,6 +294,7 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			writtenAt:   gm.WrittenAt,
 			expires:     gm.Expires,
 			read:        gm.Read,
+			state:       state,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
@@ -302,6 +338,22 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 		displayName.Set("You")
 	}
 
+	state := statePending
+	for _, id := range dm.DeliveredTo {
+		if id == fyneUI.profile.id {
+			if state == statePending {
+				state = stateSynced
+			}
+		} else {
+			state = stateDelivered
+		}
+	}
+	for _, rr := range dm.ReadReceipts {
+		if rr.Actor != fyneUI.profile.id {
+			state = stateRead
+			break
+		}
+	}
 	return &threadItem{
 		id: dm.ID,
 		widgetData: &chatBubbleData{
@@ -316,6 +368,7 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 			writtenAt:   dm.WrittenAt,
 			expires:     dm.Expires,
 			read:        dm.Read,
+			state:       state,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
