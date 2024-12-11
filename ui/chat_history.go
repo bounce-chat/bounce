@@ -18,6 +18,9 @@ import (
 	"fyne.io/fyne/v2/theme"
 )
 
+var messages = map[uuid.UUID]threadable{} // TODO: put on fyne, not package level?
+var messagesMutex sync.Mutex
+
 // ListItemID uniquely identifies an item within a list.
 type ListItemID = int
 
@@ -79,6 +82,9 @@ func newChatHistory(readCallback func(uuid.UUID, string), unreadCountCallback fu
 }
 
 func (ch *chatHistory) setItems(items []threadable) {
+	messagesMutex.Lock()
+	defer messagesMutex.Unlock()
+
 	ch.itemsMutex.Lock()
 	defer ch.itemsMutex.Unlock()
 
@@ -91,6 +97,8 @@ func (ch *chatHistory) setItems(items []threadable) {
 			ch.readTracking[item.getID()] = true
 		}
 		ids = append(ids, item.getID())
+
+		messages[item.getID()] = item
 	}
 	ch.ids = ids
 }
@@ -136,6 +144,10 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 		ch.items = append(ch.items, ti.widgetData)
 		ch.ids = append(ch.ids, ti.id)
 	}
+
+	messagesMutex.Lock()
+	messages[ti.widgetData.getID()] = ti.widgetData
+	messagesMutex.Unlock()
 }
 
 func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
@@ -169,6 +181,10 @@ func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
 
 	ch.Refresh()
 
+	messagesMutex.Lock()
+	delete(messages, id)
+	messagesMutex.Unlock()
+
 	return found
 }
 
@@ -193,52 +209,27 @@ func (ch *chatHistory) headTimestamp() int64 {
 }
 
 func (ch *chatHistory) markRead(targetID uuid.UUID) { // TODO: markSeen
-	index := 0
-	found := false
-	for i, id := range ch.ids {
-		if id == targetID {
-			index = i
-			found = true
-		}
-	}
-	if !found {
+	messagesMutex.Lock()
+	item, ok := messages[targetID]
+	messagesMutex.Unlock()
+	if !ok {
 		log.WithFields(log.Fields{
 			"id": targetID,
-		}).Warn("item not found during attempt to mark item as read")
-		return
+		}).Warn("item not found during attempt to mark item as seen")
 	}
-	if !(len(ch.items) > index) {
-		log.WithFields(log.Fields{
-			"id": targetID,
-		}).Warn("attempted to mark item as read that has index higher than number of items")
-		return
-	}
-	item := ch.items[index]
+
 	item.markRead()
 }
 
 func (ch *chatHistory) markDeliveredTo(targetID, recipientID, myID uuid.UUID) {
-	index := 0
-	found := false
-	for i, id := range ch.ids {
-		if id == targetID {
-			index = i
-			found = true
-		}
-	}
-	if !found {
+	messagesMutex.Lock()
+	item, ok := messages[targetID]
+	messagesMutex.Unlock()
+	if !ok {
 		log.WithFields(log.Fields{
 			"id": targetID,
 		}).Warn("item not found during attempt to mark item as delivered")
-		return
 	}
-	if !(len(ch.items) > index) {
-		log.WithFields(log.Fields{
-			"id": targetID,
-		}).Warn("attempted to mark item as delivered that has index higher than number of items")
-		return
-	}
-	item := ch.items[index]
 
 	currentState := item.getState()
 	if currentState == stateRead || currentState == stateDelivered {
@@ -259,28 +250,15 @@ func (ch *chatHistory) markReadBy(targetID, recipientID, myID uuid.UUID) {
 	if recipientID == myID {
 		return
 	}
-
-	index := 0
-	found := false
-	for i, id := range ch.ids {
-		if id == targetID {
-			index = i
-			found = true
-		}
-	}
-	if !found {
+	messagesMutex.Lock()
+	item, ok := messages[targetID]
+	messagesMutex.Unlock()
+	if !ok {
 		log.WithFields(log.Fields{
 			"id": targetID,
 		}).Warn("item not found during attempt to mark item as read")
-		return
 	}
-	if !(len(ch.items) > index) {
-		log.WithFields(log.Fields{
-			"id": targetID,
-		}).Warn("attempted to mark item as read that has index higher than number of items")
-		return
-	}
-	item := ch.items[index]
+
 	item.setState(stateRead)
 	ch.Refresh()
 }
