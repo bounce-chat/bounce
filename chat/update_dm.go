@@ -47,7 +47,7 @@ type updateDM struct {
 	Actor        uuid.UUID
 	Target       uuid.UUID // XOR of two users in the DM
 	Timestamp    int64
-	Read         bool `msgpack:"-"`
+	Seen         bool `msgpack:"-"`
 	Type         uint16
 	Data         []byte
 	payload      []byte

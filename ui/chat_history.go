@@ -46,7 +46,7 @@ type chatHistory struct {
 
 	readCallback        func(uuid.UUID, string)
 	unreadCountCallback func(int)
-	readTracking        map[uuid.UUID]bool
+	seenTracking        map[uuid.UUID]bool
 
 	propertyLock sync.RWMutex // TODO: expose the one in BaseWidget?
 }
@@ -62,7 +62,7 @@ func newChatHistory(readCallback func(uuid.UUID, string), unreadCountCallback fu
 		heights:             []float32{},
 		readCallback:        readCallback,
 		unreadCountCallback: unreadCountCallback,
-		readTracking:        make(map[uuid.UUID]bool),
+		seenTracking:        make(map[uuid.UUID]bool),
 	}
 	ch.Length = func() int {
 		return len(ch.items)
@@ -93,8 +93,8 @@ func (ch *chatHistory) setItems(items []threadable) {
 
 	ids := []uuid.UUID{}
 	for _, item := range items {
-		if item.isRead() {
-			ch.readTracking[item.getID()] = true
+		if item.isSeen() {
+			ch.seenTracking[item.getID()] = true
 		}
 		ids = append(ids, item.getID())
 
@@ -208,7 +208,7 @@ func (ch *chatHistory) headTimestamp() int64 {
 	return currentHead
 }
 
-func (ch *chatHistory) markRead(targetID uuid.UUID) { // TODO: markSeen
+func (ch *chatHistory) markSeen(targetID uuid.UUID) {
 	messagesMutex.Lock()
 	item, ok := messages[targetID]
 	messagesMutex.Unlock()
@@ -218,7 +218,7 @@ func (ch *chatHistory) markRead(targetID uuid.UUID) { // TODO: markSeen
 		}).Warn("item not found during attempt to mark item as seen")
 	}
 
-	item.markRead()
+	item.markSeen()
 }
 
 func (ch *chatHistory) markDeliveredTo(targetID, recipientID, myID uuid.UUID) {
@@ -263,16 +263,16 @@ func (ch *chatHistory) markReadBy(targetID, recipientID, myID uuid.UUID) {
 	ch.Refresh()
 }
 
-func (ch *chatHistory) read(index int) {
+func (ch *chatHistory) seen(index int) {
 	ch.itemsMutex.Lock()
 	defer ch.itemsMutex.Unlock()
 
 	id := ch.ids[index]
-	if _, ok := ch.readTracking[id]; !ok {
-		ch.readTracking[id] = true
+	if _, ok := ch.seenTracking[id]; !ok {
+		ch.seenTracking[id] = true
 
 		item := ch.items[index]
-		item.markRead()
+		item.markSeen()
 		go ch.readCallback(id, item.getType())
 	}
 
@@ -282,7 +282,7 @@ func (ch *chatHistory) read(index int) {
 func (ch *chatHistory) updateUnreadCounter() {
 	unread := 0
 	for _, item := range ch.items {
-		if !item.isRead() && item.countsAsUnread() {
+		if !item.isSeen() && item.countsAsUnread() {
 			unread += 1
 		}
 	}
@@ -291,7 +291,7 @@ func (ch *chatHistory) updateUnreadCounter() {
 
 func (ch *chatHistory) scrollToLastRead() {
 	for i, item := range ch.items {
-		if !item.isRead() {
+		if !item.isSeen() {
 			if i == 0 {
 				ch.ScrollToTop()
 			} else {
@@ -830,7 +830,7 @@ func (l *listLayout) updateList(newOnly bool) {
 
 			offset := l.list.GetScrollOffset()
 			if offset >= l.list.offsetFor(vis.id) {
-				l.list.read(vis.id)
+				l.list.seen(vis.id)
 			}
 		}
 	} else {
@@ -839,7 +839,7 @@ func (l *listLayout) updateList(newOnly bool) {
 
 			offset := l.list.GetScrollOffset()
 			if offset >= l.list.offsetFor(vis.id) {
-				l.list.read(vis.id)
+				l.list.seen(vis.id)
 			}
 		}
 	}

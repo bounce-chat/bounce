@@ -47,7 +47,7 @@ type DirectMessage struct {
 	SavedAt       int64
 	Text          string
 	Expires       int64
-	Read          bool
+	Seen          bool
 	Undeliverable bool
 	ReadReceipts  []ReadReceipt
 	DeliveredTo   []uuid.UUID
@@ -58,7 +58,7 @@ type UpdateDMRetention struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 	Retention int64
 }
 
@@ -67,7 +67,7 @@ type UpdateDMClearHistory struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 	ClearTime int64
 }
 
@@ -100,7 +100,7 @@ type GroupMessage struct {
 	SavedAt       int64
 	Text          string
 	Expires       int64
-	Read          bool
+	Seen          bool
 	Undeliverable bool
 	ReadReceipts  []ReadReceipt
 	DeliveredTo   []uuid.UUID
@@ -111,7 +111,7 @@ type UpdateGroupRetention struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 	Retention int64
 }
 
@@ -120,7 +120,7 @@ type UpdateGroupName struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 	Name      string
 }
 
@@ -129,7 +129,7 @@ type UpdateGroupAddUser struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 	User      User
 }
 
@@ -138,7 +138,7 @@ type UpdateGroupRemoveUser struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 	User      uuid.UUID
 }
 
@@ -147,7 +147,7 @@ type UpdateGroupClearHistory struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 	ClearTime int64
 }
 
@@ -156,7 +156,7 @@ type UpdateGroupAdminPromoted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 	UserID    uuid.UUID
 }
 
@@ -165,7 +165,7 @@ type UpdateGroupAdminDemoted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 	UserID    uuid.UUID
 }
 
@@ -174,7 +174,7 @@ type UpdateGroupUserManagementRestricted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 }
 
 type UpdateGroupUserManagementUnrestricted struct {
@@ -182,7 +182,7 @@ type UpdateGroupUserManagementUnrestricted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 }
 
 type UpdateGroupEditsRestricted struct {
@@ -190,7 +190,7 @@ type UpdateGroupEditsRestricted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 }
 
 type UpdateGroupEditsUnrestricted struct {
@@ -198,7 +198,7 @@ type UpdateGroupEditsUnrestricted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 }
 
 type UpdateGroupPostingRestricted struct {
@@ -206,7 +206,7 @@ type UpdateGroupPostingRestricted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 }
 
 type UpdateGroupPostingUnrestricted struct {
@@ -214,7 +214,7 @@ type UpdateGroupPostingUnrestricted struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 }
 
 type RemovedFromGroup struct {
@@ -232,7 +232,7 @@ type UserBlockedGroup struct {
 	Thread    uuid.UUID
 	Actor     uuid.UUID
 	Timestamp int64
-	Read      bool
+	Seen      bool
 }
 
 type UpdateUserUpdateName struct {
@@ -363,7 +363,7 @@ type UI interface {
 	DeviceRevoked(uuid.UUID)
 	DeviceRenamed(uuid.UUID, string)
 
-	MessageRead(uuid.UUID)           // We read a message on another device
+	MessageSeen(uuid.UUID)           // We read a message on another device
 	ReceivedReadReceipt(ReadReceipt) // Someone else read a message of ours
 
 	SetSettings(Settings)
@@ -439,7 +439,7 @@ type UICallbacks struct {
 
 	GroupConnectionDesired func(uuid.UUID)
 
-	MarkRead func(uuid.UUID, string)
+	MarkSeen func(uuid.UUID, string)
 
 	NeverAskForBatteryOptimizations   func()
 	SetReadReceiptsByDefault          func(bool)

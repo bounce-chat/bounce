@@ -67,7 +67,7 @@ type updateGroup struct {
 	CustomScope     uuid.UUID `msgpack:"-"`
 	Confirmations   []confirmation
 	Applied         bool   `msgpack:"-"`
-	Read            bool   `msgpack:"-"`
+	Seen            bool   `msgpack:"-"`
 	Signer          string `msgpack:"-" gorm:"not null"`
 	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
 	Signature       []byte `msgpack:"-" gorm:"not null"`

@@ -112,7 +112,7 @@ func Start(network Network, ui UI) {
 			UpdateProfileName:                 b.updateProfileName,
 			RevokeDevice:                      b.revokeDevice,
 			RenameDevice:                      b.renameDevice,
-			MarkRead:                          b.markRead,
+			MarkSeen:                          b.markSeen,
 			NeverAskForBatteryOptimizations:   b.neverAskForBatteryOptimizations,
 			SetReadReceiptsByDefault:          b.setReadReceiptsByDefault,
 			SetTypingIndicatorsByDefault:      b.setTypingIndicatorsByDefault,

@@ -26,7 +26,7 @@ type directMessage struct {
 	WrittenAt        int64
 	RetentionSeconds int64 // Number of seconds to retain this message, captures the retention setting from the author's perspective at the time the message was written
 	DeleteAt         int64 `msgpack:"-"` // Absolute time at which the messages expires.  Time it was first acked/received + RetentionSeconds
-	Read             bool  `msgpack:"-"`
+	Seen             bool  `msgpack:"-"`
 	Undeliverable    bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
 	Author           uuid.UUID
 	Xor              uuid.UUID // XOR of the two users in the DM
@@ -255,7 +255,7 @@ func (b *bounce) sendDirectMessage(message DirectMessage) {
 	dm := &directMessage{
 		ID:               uuid.New(),
 		WrittenAt:        now.Unix(),
-		Read:             true,
+		Seen:             true,
 		Author:           b.currentUserID(),
 		Xor:              xor(b.currentUserID(), message.Thread),
 		RetentionSeconds: b.getDMRetention(message.Thread),
@@ -283,7 +283,7 @@ func (b *bounce) sendDirectMessage(message DirectMessage) {
 		SavedAt:       dm.SavedAt,
 		Text:          dm.Text,
 		Expires:       dm.DeleteAt,
-		Read:          true, // TODO
+		Seen:          dm.Seen,
 		Undeliverable: dm.Undeliverable,
 	})
 

@@ -23,7 +23,7 @@ type groupMessage struct {
 	WrittenAt        int64
 	RetentionSeconds int64 // Number of seconds to retain this message, captures the retention setting from the author's perspective at the time the message was written
 	DeleteAt         int64 `msgpack:"-"` // Absolute time at which the messages expires.  Time it was first acked/received + RetentionSeconds
-	Read             bool  `msgpack:"-"`
+	Seen             bool  `msgpack:"-"`
 	Undeliverable    bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
 	Author           uuid.UUID
 	Destination      uuid.UUID
@@ -269,7 +269,7 @@ func (b *bounce) sendGroupMessage(message GroupMessage) {
 	gm := &groupMessage{
 		ID:               uuid.New(),
 		WrittenAt:        now.Unix(),
-		Read:             true,
+		Seen:             true,
 		Author:           b.currentUserID(),
 		Destination:      message.Thread,
 		RetentionSeconds: b.getGroupRetention(message.Thread),
@@ -305,7 +305,7 @@ func (b *bounce) sendGroupMessage(message GroupMessage) {
 		SavedAt:       gm.SavedAt,
 		Text:          gm.Text,
 		Expires:       gm.DeleteAt,
-		Read:          true, // TODO
+		Seen:          gm.Seen,
 		Undeliverable: gm.Undeliverable,
 	})
 

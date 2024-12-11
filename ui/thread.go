@@ -148,7 +148,7 @@ func (fyneUI *Fyne) UpdateMessageDeletionTime(id uuid.UUID, timestamp int64) {
 	// TODO
 }
 
-func (fyneUI *Fyne) MessageRead(id uuid.UUID) {
+func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
 	fyneUI.threadWithItemMutex.Lock()
 	thread, ok := fyneUI.threadWithItem[id]
 	fyneUI.threadWithItemMutex.Unlock()
@@ -159,7 +159,7 @@ func (fyneUI *Fyne) MessageRead(id uuid.UUID) {
 		return
 	}
 
-	thread.chatHistoryScroll().markRead(id)
+	thread.chatHistoryScroll().markSeen(id)
 }
 
 func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {

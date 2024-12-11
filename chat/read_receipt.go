@@ -179,8 +179,8 @@ func (b *bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 
 	// Update the database and UI
 	if rr.Actor == b.currentUserID() {
-		b.markReadInDatabase(rr.Target, targetTypeString)
-		b.userInterface.MessageRead(rr.Target)
+		b.markSeenInDatabase(rr.Target, targetTypeString)
+		b.userInterface.MessageSeen(rr.Target)
 	} else if author == b.currentUserID() {
 		if rr.Scope != scopeSync {
 			b.userInterface.ReceivedReadReceipt(ReadReceipt{
@@ -281,7 +281,11 @@ func (b *bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 		}
 
 		if (u.ReadReceiptsOverridden && u.ReadReceiptsEnabled) || (!u.ReadReceiptsOverridden && defaultSendReadReceipts) {
-			return userID, dm.Author, scopeUser, nil
+			if userID == b.currentUserID() {
+				return userID, dm.Author, scopeSync, nil
+			} else {
+				return userID, dm.Author, scopeUser, nil
+			}
 		} else {
 			return userID, dm.Author, scopeSync, nil
 		}
@@ -342,7 +346,7 @@ func (b *bounce) sendReadReceipt(id uuid.UUID, frameType string) error {
 	return nil
 }
 
-func (b *bounce) markReadInDatabase(id uuid.UUID, frameType string) error {
+func (b *bounce) markSeenInDatabase(id uuid.UUID, frameType string) error {
 	tableName := ""
 	switch frameType {
 	case TypeGroupMessage:
@@ -357,20 +361,20 @@ func (b *bounce) markReadInDatabase(id uuid.UUID, frameType string) error {
 		return errUnknownReadReceiptTargetType
 	}
 
-	err := b.database.Table(tableName).Where("id = ?", id).Updates(map[string]interface{}{"read": true}).Error
+	err := b.database.Table(tableName).Where("id = ?", id).Updates(map[string]interface{}{"seen": true}).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"id":         id,
 				"frame_type": frameType,
-			}).Error("item not found while marking as read")
+			}).Error("item not found while marking as seen")
 			return err
 		} else {
 			log.WithFields(log.Fields{
 				"error":      err.Error(),
 				"id":         id,
 				"frame_type": frameType,
-			}).Fatal("database error marking item as read")
+			}).Fatal("database error marking item as seen")
 		}
 	}
 
@@ -380,8 +384,8 @@ func (b *bounce) markReadInDatabase(id uuid.UUID, frameType string) error {
 	return nil
 }
 
-func (b *bounce) markRead(id uuid.UUID, frameType string) {
-	err := b.markReadInDatabase(id, frameType)
+func (b *bounce) markSeen(id uuid.UUID, frameType string) {
+	err := b.markSeenInDatabase(id, frameType)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"id":         id,
