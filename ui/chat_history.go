@@ -132,7 +132,9 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 				if ti.timestamp > compareTime {
 					ch.items = append(ch.items[:i], append([]threadable{ti.widgetData}, ch.items[i:]...)...)
 					ch.ids = append(ch.ids[:i], append([]uuid.UUID{ti.id}, ch.ids[i:]...)...)
-					ch.heights = append(ch.heights[:i], append([]float32{0}, ch.heights[i:]...)...)
+					if len(ch.heights) >= len(ch.items)-1 {
+						ch.heights = append(ch.heights[:i], append([]float32{0}, ch.heights[i:]...)...)
+					}
 					break
 				}
 			}

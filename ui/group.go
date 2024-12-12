@@ -344,7 +344,6 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		return
 	}
 
-	// TODO: appendThreadItem should add to this threadItems, and set the height of anything that changed
 	group := &group{
 		id:                             bounceGroup.ID,
 		name:                           binding.NewString(),
