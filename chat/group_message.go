@@ -18,16 +18,15 @@ var gmDeliveryNotifications = map[uuid.UUID]chan bool{}
 // A group message is sent from a member of a group to a group
 //
 type groupMessage struct {
-	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
-	SavedAt          int64     `msgpack:"-"`
-	WrittenAt        int64
-	RetentionSeconds int64 // Number of seconds to retain this message, captures the retention setting from the author's perspective at the time the message was written
-	DeleteAt         int64 `msgpack:"-"` // Absolute time at which the messages expires.  Time it was first acked/received + RetentionSeconds
-	Seen             bool  `msgpack:"-"`
-	Undeliverable    bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
-	Author           uuid.UUID
-	Destination      uuid.UUID
-	Text             string
+	ID            uuid.UUID `gorm:"type:uuid;primary_key;"`
+	SavedAt       int64     `msgpack:"-"`
+	WrittenAt     int64
+	DeleteAt      int64 `msgpack:"-"`
+	Seen          bool  `msgpack:"-"`
+	Undeliverable bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
+	Author        uuid.UUID
+	Destination   uuid.UUID
+	Text          string
 	//ReadReceipts    []readReceipt `msgpack:"-" gorm:"polymorphicType:TargetTable;polymorphicId:Target"`
 	Signer          string `msgpack:"-" gorm:"not null"`
 	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
@@ -176,11 +175,6 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 		return nil
 	}
 
-	// Capture the current message retention setting for this group and store it on the message
-	if gm.RetentionSeconds != 0 {
-		gm.DeleteAt = time.Now().Unix() + gm.RetentionSeconds
-	}
-
 	// Make sure the author is in the group
 	if !b.userIsInGroup(gm.Destination, gm.Author) {
 		log.WithFields(log.Fields{
@@ -266,14 +260,19 @@ func (b *bounce) sendGroupMessage(message GroupMessage) {
 	}
 
 	now := time.Now()
+	deleteAt := int64(0)
+	retentionSeconds := b.getGroupRetention(message.Thread)
+	if retentionSeconds > 0 {
+		deleteAt = now.Unix() + retentionSeconds
+	}
 	gm := &groupMessage{
-		ID:               uuid.New(),
-		WrittenAt:        now.Unix(),
-		Seen:             true,
-		Author:           b.currentUserID(),
-		Destination:      message.Thread,
-		RetentionSeconds: b.getGroupRetention(message.Thread),
-		Text:             message.Text,
+		ID:          uuid.New(),
+		WrittenAt:   now.Unix(),
+		Seen:        true,
+		Author:      b.currentUserID(),
+		Destination: message.Thread,
+		DeleteAt:    deleteAt,
+		Text:        message.Text,
 	}
 
 	var err error
@@ -367,7 +366,7 @@ func (b *bounce) checkIfGroupMessageUndeliverableAt(timestamp int64, id uuid.UUI
 		}).Fatal("error counting delivery records for group message")
 	}
 
-	// If it hasn't been delivered, mark it as undeliverable and schedule deletion if there's a retention setting
+	// If it hasn't been delivered, mark it as undeliverable
 	if count == 0 {
 		// Find the DM
 		var gm groupMessage
@@ -393,32 +392,5 @@ func (b *bounce) checkIfGroupMessageUndeliverableAt(timestamp int64, id uuid.UUI
 			}).Fatal("error updating undeliverable field of undeliverable group message")
 		}
 		b.userInterface.MarkMessageUndeliverable(gm.ID)
-
-		// Check if this message also has a retention setting
-		if gm.RetentionSeconds > 0 {
-			if gm.RetentionSeconds > int64(undeliverableAfter.Seconds()) {
-				// This message has a retention setting that is longer than the delivery window
-				deleteAt := time.Now().Unix() + gm.RetentionSeconds - int64(undeliverableAfter.Seconds())
-				err = b.database.Model(&gm).Update("delete_at", deleteAt).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"message_id": gm.ID,
-						"error":      err.Error(),
-					}).Fatal("error updating delete_at of undeliverable group message with retention")
-				}
-				go b.deleteGroupMessageAt(deleteAt, gm.ID)
-				b.userInterface.UpdateMessageDeletionTime(gm.ID, deleteAt)
-			} else {
-				// This message has a retention setting that is shorter than the delivery window, we can delete it now
-				err = b.database.Where("id = ?", gm.ID).Delete(&groupMessage{}).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"message_id": gm.ID,
-						"error":      err.Error(),
-					}).Fatal("error deleting undeliverable group message with retention")
-				}
-				b.userInterface.DeleteItem(gm.ID)
-			}
-		}
 	}
 }

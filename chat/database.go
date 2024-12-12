@@ -156,32 +156,6 @@ func (b *bounce) pruneDirectMessages() {
 				"error":      err.Error(),
 			}).Fatal("error updating undeliverable field of undeliverable direct message")
 		}
-
-		// Undeliverable messages should be deleted if there's a retention setting on the message.  Since these messages were never ack'd, the delete_at
-		// field was never set and therefore they weren't pruned above, so we delete them based on how long their retention settings are
-		if dm.RetentionSeconds > 0 {
-			if dm.RetentionSeconds > int64(undeliverableAfter.Seconds()) {
-				// The message retention is longer than the undeliverable window, keep this message around for the difference
-				deleteAt := time.Now().Unix() + dm.RetentionSeconds - int64(undeliverableAfter.Seconds())
-				err = b.database.Model(&dm).Update("delete_at", deleteAt).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"message_id": dm.ID,
-						"error":      err.Error(),
-					}).Fatal("error updating delete_at of undeliverable direct message with retention")
-				}
-				go b.deleteDirectMessageAt(deleteAt, dm.ID)
-			} else {
-				// The message retention is shorter than the undeliverable window, so we delete it now
-				err = b.database.Where("id = ?", dm.ID).Delete(&directMessage{}).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"message_id": dm.ID,
-						"error":      err.Error(),
-					}).Fatal("error deleting undeliverable direct message with retention")
-				}
-			}
-		}
 	}
 
 	// Find all messages that have not been delivered and kick off a goroutine to check if they should be marked undeliverable later
@@ -245,32 +219,6 @@ func (b *bounce) pruneGroupMessages() {
 				"message_id": gm.ID,
 				"error":      err.Error(),
 			}).Fatal("error updating undeliverable field of undeliverable group message")
-		}
-
-		// Undeliverable messages should be deleted if there's a retention setting on the message.  Since these messages were never ack'd, the delete_at
-		// field was never set and therefore they weren't pruned above, so we delete them based on how long their retention settings are
-		if gm.RetentionSeconds > 0 {
-			if gm.RetentionSeconds > int64(undeliverableAfter.Seconds()) {
-				// The message retention is longer than the undeliverable window, keep this message around for the difference
-				deleteAt := time.Now().Unix() + gm.RetentionSeconds - int64(undeliverableAfter.Seconds())
-				err = b.database.Model(&gm).Update("delete_at", deleteAt).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"message_id": gm.ID,
-						"error":      err.Error(),
-					}).Fatal("error updating delete_at of undeliverable group message with retention")
-				}
-				go b.deleteGroupMessageAt(deleteAt, gm.ID)
-			} else {
-				// The message retention is shorter than the undeliverable window, so we delete it now
-				err = b.database.Where("id = ?", gm.ID).Delete(&groupMessage{}).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"message_id": gm.ID,
-						"error":      err.Error(),
-					}).Fatal("error deleting undeliverable group message with retention")
-				}
-			}
 		}
 	}
 

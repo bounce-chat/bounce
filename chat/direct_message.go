@@ -21,18 +21,17 @@ var dmDeliveryNotifications = map[uuid.UUID]chan bool{}
 // A direct message is a chat message from one user to another
 //
 type directMessage struct {
-	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
-	SavedAt          int64     `msgpack:"-"`
-	WrittenAt        int64
-	RetentionSeconds int64 // Number of seconds to retain this message, captures the retention setting from the author's perspective at the time the message was written
-	DeleteAt         int64 `msgpack:"-"` // Absolute time at which the messages expires.  Time it was first acked/received + RetentionSeconds
-	Seen             bool  `msgpack:"-"`
-	Undeliverable    bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
-	Author           uuid.UUID
-	Xor              uuid.UUID // XOR of the two users in the DM
-	Text             string
-	payload          []byte
-	payloadMutex     sync.Mutex
+	ID            uuid.UUID `gorm:"type:uuid;primary_key;"`
+	SavedAt       int64     `msgpack:"-"`
+	WrittenAt     int64
+	DeleteAt      int64 `msgpack:"-"`
+	Seen          bool  `msgpack:"-"`
+	Undeliverable bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
+	Author        uuid.UUID
+	Xor           uuid.UUID // XOR of the two users in the DM
+	Text          string
+	payload       []byte
+	payloadMutex  sync.Mutex
 }
 
 func (dm *directMessage) BeforeCreate(tx *gorm.DB) error {
@@ -151,11 +150,6 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		return nil
 	}
 
-	// Capture the current message retention setting for this user and store it on the DM
-	if dm.RetentionSeconds != 0 {
-		dm.DeleteAt = time.Now().Unix() + dm.RetentionSeconds
-	}
-
 	// Save the new message
 	err = b.database.Create(&dm).Error
 	if err != nil {
@@ -252,14 +246,19 @@ func (b *bounce) sendDirectMessage(message DirectMessage) {
 	}
 
 	now := time.Now()
+	deleteAt := int64(0)
+	retentionSeconds := b.getGroupRetention(message.Thread)
+	if retentionSeconds > 0 {
+		deleteAt = now.Unix() + retentionSeconds
+	}
 	dm := &directMessage{
-		ID:               uuid.New(),
-		WrittenAt:        now.Unix(),
-		Seen:             true,
-		Author:           b.currentUserID(),
-		Xor:              xor(b.currentUserID(), message.Thread),
-		RetentionSeconds: b.getDMRetention(message.Thread),
-		Text:             message.Text,
+		ID:        uuid.New(),
+		WrittenAt: now.Unix(),
+		Seen:      true,
+		Author:    b.currentUserID(),
+		Xor:       xor(b.currentUserID(), message.Thread),
+		DeleteAt:  deleteAt,
+		Text:      message.Text,
 	}
 	message.ID = dm.ID
 	message.Author = b.currentUserID()
@@ -345,7 +344,7 @@ func (b *bounce) checkIfDirectMessageUndeliverableAt(timestamp int64, id uuid.UU
 		}).Fatal("error counting delivery records for direct message")
 	}
 
-	// If it hasn't been delivered, mark it as undeliverable and schedule deletion if there's a retention setting
+	// If it hasn't been delivered, mark it as undeliverable
 	if count == 0 {
 		// Find the DM
 		var dm directMessage
@@ -371,32 +370,5 @@ func (b *bounce) checkIfDirectMessageUndeliverableAt(timestamp int64, id uuid.UU
 			}).Fatal("error updating undeliverable field of undeliverable direct message")
 		}
 		b.userInterface.MarkMessageUndeliverable(dm.ID)
-
-		// Check if this message also has a retention setting
-		if dm.RetentionSeconds > 0 {
-			if dm.RetentionSeconds > int64(undeliverableAfter.Seconds()) {
-				// This message has a retention setting that is longer than the delivery window
-				deleteAt := time.Now().Unix() + dm.RetentionSeconds - int64(undeliverableAfter.Seconds())
-				err = b.database.Model(&dm).Update("delete_at", deleteAt).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"message_id": dm.ID,
-						"error":      err.Error(),
-					}).Fatal("error updating delete_at of undeliverable direct message with retention")
-				}
-				go b.deleteDirectMessageAt(deleteAt, dm.ID)
-				b.userInterface.UpdateMessageDeletionTime(dm.ID, deleteAt)
-			} else {
-				// This message has a retention setting that is shorter than the delivery window, we can delete it now
-				err = b.database.Where("id = ?", dm.ID).Delete(&directMessage{}).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"message_id": dm.ID,
-						"error":      err.Error(),
-					}).Fatal("error deleting undeliverable direct message with retention")
-				}
-				b.userInterface.DeleteItem(dm.ID)
-			}
-		}
 	}
 }

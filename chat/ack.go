@@ -3,7 +3,6 @@ package chat
 import (
 	"errors"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -113,21 +112,6 @@ func (b *bounce) handleAckDirectMessages(peer string, ids []uuid.UUID) {
 			notifier <- true
 		}
 		dmDeliveryNotificationMutex.Unlock()
-
-		// Now that we know the message has been delivered somewhere, if the message expires we start the clock on retention
-		// by setting the absolute time the message should be delete at as now + the retention time
-		if dm.RetentionSeconds != 0 && dm.DeleteAt == 0 {
-			deleteAt := time.Now().Unix() + dm.RetentionSeconds
-			err := b.database.Model(&dm).Update("delete_at", deleteAt).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"message_id": dm.ID,
-					"error":      err.Error(),
-				}).Fatal("error updating delete_at of acked direct message")
-			}
-			b.userInterface.UpdateMessageDeletionTime(dm.ID, deleteAt)
-			go b.deleteDirectMessageAt(deleteAt, dm.ID)
-		}
 	}
 }
 
@@ -166,21 +150,6 @@ func (b *bounce) handleAckGroupMessages(peer string, ids []uuid.UUID) {
 			notifier <- true
 		}
 		gmDeliveryNotificationMutex.Unlock()
-
-		// Now that we know the message has been delivered, if the message expires we start the clock on retention
-		// by setting the absolute time the message should be delete at as now + the retention time
-		if gm.RetentionSeconds != 0 && gm.DeleteAt == 0 {
-			deleteAt := time.Now().Unix() + gm.RetentionSeconds
-			err := b.database.Model(&gm).Update("delete_at", deleteAt).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"message_id": gm.ID,
-					"error":      err.Error(),
-				}).Fatal("error updating delete_at of acked group message")
-			}
-			b.userInterface.UpdateMessageDeletionTime(gm.ID, deleteAt)
-			go b.deleteGroupMessageAt(deleteAt, gm.ID)
-		}
 	}
 }
 

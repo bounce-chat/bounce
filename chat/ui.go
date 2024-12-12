@@ -317,7 +317,6 @@ type UI interface {
 	UserImported(User) // TODO: still needed?
 	DeleteItem(uuid.UUID)
 	MarkMessageUndeliverable(uuid.UUID)
-	UpdateMessageDeletionTime(uuid.UUID, int64)
 
 	DisplayDirectMessage(DirectMessage)
 	SetDMState(uuid.UUID, DMState)

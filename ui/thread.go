@@ -165,14 +165,6 @@ func (fyneUI *Fyne) MarkMessageUndeliverable(id uuid.UUID) {
 	thread.chatHistoryScroll().Refresh()
 }
 
-func (fyneUI *Fyne) UpdateMessageDeletionTime(id uuid.UUID, timestamp int64) {
-	log.WithFields(log.Fields{
-		"message_id": id,
-		"delete_at":  timestamp,
-	}).Info("chat engine wants to update the delete time of a message")
-	// TODO
-}
-
 func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
 	messagesMutex.Lock()
 	item, ok := messages[id]

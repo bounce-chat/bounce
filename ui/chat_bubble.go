@@ -221,6 +221,8 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 
 	if m.expiresAt != 0 {
 		cb.disappearingIcon.Show()
+	} else {
+		cb.disappearingIcon.Hide()
 	}
 
 	if !m.outgoing {
