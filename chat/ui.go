@@ -45,8 +45,8 @@ type DirectMessage struct {
 	Thread        uuid.UUID
 	WrittenAt     int64
 	SavedAt       int64
+	ExpiresAt     int64
 	Text          string
-	Expires       int64
 	Seen          bool
 	Undeliverable bool
 	ReadReceipts  []ReadReceipt
@@ -98,8 +98,8 @@ type GroupMessage struct {
 	Thread        uuid.UUID
 	WrittenAt     int64
 	SavedAt       int64
+	ExpiresAt     int64
 	Text          string
-	Expires       int64
 	Seen          bool
 	Undeliverable bool
 	ReadReceipts  []ReadReceipt

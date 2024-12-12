@@ -21,9 +21,9 @@ type groupMessage struct {
 	ID            uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt       int64     `msgpack:"-"`
 	WrittenAt     int64
-	DeleteAt      int64 `msgpack:"-"`
-	Seen          bool  `msgpack:"-"`
-	Undeliverable bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
+	DeleteAt      int64
+	Seen          bool `msgpack:"-"`
+	Undeliverable bool `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
 	Author        uuid.UUID
 	Destination   uuid.UUID
 	Text          string
@@ -245,6 +245,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 		Thread:    gm.Destination,
 		WrittenAt: gm.WrittenAt,
 		SavedAt:   gm.SavedAt,
+		ExpiresAt: gm.DeleteAt,
 		Text:      gm.Text,
 	})
 
@@ -302,8 +303,8 @@ func (b *bounce) sendGroupMessage(message GroupMessage) {
 		Thread:        gm.getDestination(b.currentUserID()),
 		WrittenAt:     gm.WrittenAt,
 		SavedAt:       gm.SavedAt,
+		ExpiresAt:     gm.DeleteAt,
 		Text:          gm.Text,
-		Expires:       gm.DeleteAt,
 		Seen:          gm.Seen,
 		Undeliverable: gm.Undeliverable,
 	})

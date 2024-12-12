@@ -24,9 +24,9 @@ type directMessage struct {
 	ID            uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt       int64     `msgpack:"-"`
 	WrittenAt     int64
-	DeleteAt      int64 `msgpack:"-"`
-	Seen          bool  `msgpack:"-"`
-	Undeliverable bool  `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
+	DeleteAt      int64
+	Seen          bool `msgpack:"-"`
+	Undeliverable bool `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
 	Author        uuid.UUID
 	Xor           uuid.UUID // XOR of the two users in the DM
 	Text          string
@@ -168,6 +168,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		Thread:    dm.getDestination(b.currentUserID()),
 		WrittenAt: dm.WrittenAt,
 		SavedAt:   dm.SavedAt,
+		ExpiresAt: dm.DeleteAt,
 		Text:      dm.Text,
 	})
 
@@ -280,8 +281,8 @@ func (b *bounce) sendDirectMessage(message DirectMessage) {
 		Thread:        dm.getDestination(b.currentUserID()),
 		WrittenAt:     dm.WrittenAt,
 		SavedAt:       dm.SavedAt,
+		ExpiresAt:     dm.DeleteAt,
 		Text:          dm.Text,
-		Expires:       dm.DeleteAt,
 		Seen:          dm.Seen,
 		Undeliverable: dm.Undeliverable,
 	})

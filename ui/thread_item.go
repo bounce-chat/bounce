@@ -280,7 +280,7 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			outgoing:  outgoing,
 			direct:    false,
 			writtenAt: gm.WrittenAt,
-			expiresAt: gm.Expires,
+			expiresAt: gm.ExpiresAt,
 			seen:      gm.Seen,
 			state:     state,
 			mergeMode: mergeModeStandalone, //TODO
@@ -358,7 +358,7 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 			outgoing:  outgoing,
 			direct:    true,
 			writtenAt: dm.WrittenAt,
-			expiresAt: dm.Expires,
+			expiresAt: dm.ExpiresAt,
 			seen:      dm.Seen,
 			state:     state,
 			mergeMode: mergeModeStandalone, //TODO
