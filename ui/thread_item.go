@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/data/binding"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
@@ -27,18 +26,19 @@ type threadable interface {
 }
 
 type chatBubbleData struct {
-	id          uuid.UUID
-	frameType   string
-	author      uuid.UUID
-	displayName binding.String
-	initials    binding.String
-	text        string
-	outgoing    bool
-	direct      bool
-	writtenAt   int64
-	expires     int64 // TODO: deleteAt
-	seen        bool
-	state       int
+	id        uuid.UUID
+	frameType string
+	author    uuid.UUID
+	username  string
+	initials  string
+	text      string
+	outgoing  bool
+	direct    bool
+	writtenAt int64
+	expiresAt int64
+	seen      bool
+	state     int
+	mergeMode int
 	//profileButton fyne.CanvasObject
 }
 
@@ -71,22 +71,7 @@ func (cbd *chatBubbleData) setState(state int) {
 }
 
 func (cbd *chatBubbleData) populateTemplate(obj fyne.CanvasObject) {
-	username, _ := cbd.displayName.Get()
-	initials, _ := cbd.initials.Get()
-	m := message{
-		id:           cbd.id,
-		text:         cbd.text,
-		authorID:     cbd.author,
-		username:     username,
-		initials:     initials,
-		timestamp:    cbd.writtenAt,
-		disappearsAt: cbd.expires,
-		outgoing:     cbd.outgoing,
-		direct:       cbd.direct,
-		state:        cbd.state,
-		mergeMode:    mergeModeStandalone,
-	}
-	obj.(*fyne.Container).Objects[0].(*chatBubble).setData(m) // TODO: just pass cbd
+	obj.(*fyne.Container).Objects[0].(*chatBubble).setData(cbd) // TODO: just pass cbd
 	obj.(*fyne.Container).Objects[0].(*chatBubble).Refresh()
 	obj.(*fyne.Container).Objects[0].(*chatBubble).Show()
 	obj.(*fyne.Container).Objects[1].(*statusChange).Hide()
@@ -244,24 +229,24 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		return &threadItem{}, errUnknownThread
 	}
 
-	user, exists := fyneUI.users.get(gm.Author)
+	u, exists := fyneUI.users.get(gm.Author)
 	if !exists {
-		user = fyneUI.deletedUser
+		u = fyneUI.deletedUser
 		// TODO: make sure to make this unique with a text color for deleted users
 	}
 
 	outgoing := gm.Author == fyneUI.profile.id
-	displayName := user.name
+	username := u.getName()
+	initials := u.getInitials()
 	var notification *fyne.Notification
 	if !outgoing {
 		groupName, err := group.name.Get()
 		if err != nil {
 			log.Fatal("data bindings are broken")
 		}
-		notification = fyne.NewNotification(groupName, user.getName()+": "+gm.Text)
+		notification = fyne.NewNotification(groupName, u.getName()+": "+gm.Text)
 	} else {
-		displayName = binding.NewString()
-		displayName.Set("You")
+		username = "You"
 	}
 
 	state := statePending
@@ -286,22 +271,23 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 	return &threadItem{
 		id: gm.ID,
 		widgetData: &chatBubbleData{
-			id:          gm.ID,
-			frameType:   chat.TypeGroupMessage,
-			author:      gm.Author,
-			displayName: displayName,
-			initials:    user.initials,
-			text:        gm.Text,
-			outgoing:    outgoing,
-			direct:      false,
-			writtenAt:   gm.WrittenAt,
-			expires:     gm.Expires,
-			seen:        gm.Seen,
-			state:       state,
+			id:        gm.ID,
+			frameType: chat.TypeGroupMessage,
+			author:    gm.Author,
+			username:  username,
+			initials:  initials,
+			text:      gm.Text,
+			outgoing:  outgoing,
+			direct:    false,
+			writtenAt: gm.WrittenAt,
+			expiresAt: gm.Expires,
+			seen:      gm.Seen,
+			state:     state,
+			mergeMode: mergeModeStandalone, //TODO
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
-			displayName := user.getName() // TODO: bind last message button text?
+			displayName := u.getName() // TODO: bind last message button text?
 			if gm.Author == fyneUI.profile.id {
 				displayName = "You"
 			}
@@ -332,13 +318,13 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 	}
 
 	outgoing := dm.Author == fyneUI.profile.id
-	displayName := u.name
+	username := u.getName()
+	initials := u.getInitials()
 	var notification *fyne.Notification
 	if !outgoing {
 		notification = fyne.NewNotification(u.getName(), dm.Text)
 	} else {
-		displayName = binding.NewString()
-		displayName.Set("You")
+		username = "You"
 	}
 
 	state := statePending
@@ -363,18 +349,19 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 	return &threadItem{
 		id: dm.ID,
 		widgetData: &chatBubbleData{
-			id:          dm.ID,
-			frameType:   chat.TypeDirectMessage,
-			author:      dm.Author,
-			displayName: displayName,
-			initials:    u.initials,
-			text:        dm.Text,
-			outgoing:    outgoing,
-			direct:      true,
-			writtenAt:   dm.WrittenAt,
-			expires:     dm.Expires,
-			seen:        dm.Seen,
-			state:       state,
+			id:        dm.ID,
+			frameType: chat.TypeDirectMessage,
+			author:    dm.Author,
+			username:  username,
+			initials:  initials,
+			text:      dm.Text,
+			outgoing:  outgoing,
+			direct:    true,
+			writtenAt: dm.WrittenAt,
+			expiresAt: dm.Expires,
+			seen:      dm.Seen,
+			state:     state,
+			mergeMode: mergeModeStandalone, //TODO
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {

@@ -249,9 +249,6 @@ func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
 	thread.chatHistoryScroll().Refresh()
 }
 
-//
-// Silently drop a message from the chat history because it is past retention
-//
 func (fyneUI *Fyne) DeleteItem(id uuid.UUID) {
 	fyneUI.threadWithItemMutex.Lock()
 	thread, ok := fyneUI.threadWithItem[id]

@@ -32,20 +32,6 @@ var stateDelivered = 2
 var stateRead = 3
 var stateError = 4
 
-type message struct {
-	id           uuid.UUID
-	text         string
-	authorID     uuid.UUID
-	username     string
-	initials     string
-	timestamp    int64
-	disappearsAt int64
-	outgoing     bool
-	direct       bool
-	state        int
-	mergeMode    int
-}
-
 type chatBubble struct {
 	widget.BaseWidget
 	id               uuid.UUID
@@ -163,7 +149,7 @@ func newChatBubbleTemplate() *chatBubble {
 	return cb
 }
 
-func (cb *chatBubble) setData(m message) {
+func (cb *chatBubble) setData(m *chatBubbleData) {
 	cb.id = m.id
 	cb.mergeMode = m.mergeMode
 
@@ -183,14 +169,14 @@ func (cb *chatBubble) setData(m message) {
 
 	if !m.direct && !m.outgoing {
 		cb.username.Text = m.username
-		cb.username.Color = uuidToColor(m.authorID)
+		cb.username.Color = uuidToColor(m.author)
 		cb.username.Refresh()
 		cb.username.Show()
 
 		cb.icon.foregroundText.Text = m.initials
 		cb.icon.backgroundColor = canvas.NewImageFromImage(makeCircle(&colorRectangle{
 			rect:  image.Rect(0, 0, int(theme.IconInlineSize())*8, int(theme.IconInlineSize())*8),
-			color: uuidToColor(m.authorID), // TODO: access this color without recreating the whole thing?
+			color: uuidToColor(m.author), // TODO: access this color without recreating the whole thing?
 		}))
 		if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
 			cb.icon.foregroundText.Color = color.RGBA{0xff, 0xff, 0xff, 0xff}
@@ -198,7 +184,7 @@ func (cb *chatBubble) setData(m message) {
 		cb.icon.clicked = func() {
 			// TODO: bug: not clickable
 			log.WithFields(log.Fields{
-				"id":   m.authorID,
+				"id":   m.author,
 				"name": m.username,
 			}).Info("user wants to open profile via icon")
 		}
@@ -230,10 +216,10 @@ func (cb *chatBubble) setData(m message) {
 
 	cb.outgoing = m.outgoing
 
-	cb.writtenAt = m.timestamp
+	cb.writtenAt = m.writtenAt
 	cb.updateDisplayTime()
 
-	if m.disappearsAt != 0 {
+	if m.expiresAt != 0 {
 		cb.disappearingIcon.Show()
 	}
 

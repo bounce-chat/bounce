@@ -42,6 +42,17 @@ func (u user) getName() string {
 	return str
 }
 
+func (u user) getInitials() string {
+	str, err := u.initials.Get()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"user_id": u.id,
+			"error":   err.Error(),
+		}).Fatal("data bindings broken for user initials")
+	}
+	return str
+}
+
 func (u user) setInitials() {
 	name := u.getName()
 	parts := strings.Split(name, " ")
