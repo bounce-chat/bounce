@@ -213,7 +213,7 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
 	}
 
 	if neighbors {
-		if checkUp {
+		if mergeUp {
 			above := ch.items[index-1]
 			aboveCBD, ok := above.(*chatBubbleData)
 			if !ok {
@@ -238,7 +238,7 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
 			}
 		}
 
-		if checkDown {
+		if mergeDown {
 			below := ch.items[index+1]
 			belowCBD, ok := below.(*chatBubbleData)
 			if !ok {

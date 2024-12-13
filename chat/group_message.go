@@ -247,7 +247,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 		SavedAt:   gm.SavedAt,
 		ExpiresAt: gm.DeleteAt,
 		Text:      gm.Text,
-	})
+	}) // TODO: load read receipts that got here first?
 
 	// Update the activity timestamp on the group model
 	b.updateLastGroupActivity(gm.Destination, gm.SavedAt)
