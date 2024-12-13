@@ -4,9 +4,7 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"strconv"
 	"strings"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -291,36 +289,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 }
 
 func (cb *chatBubble) updateDisplayTime() {
-	now := time.Now()
-	diff := now.Unix() - cb.writtenAt
-	if diff >= 0 && diff < 60 {
-		cb.timestamp.Text = "Now"
-		return
-	}
-
-	writtenAtTime := time.Unix(cb.writtenAt, 0)
-	timestring := ""
-	if writtenAtTime.Year() != now.Year() {
-		timestring = strconv.Itoa(writtenAtTime.Year())
-	}
-	if writtenAtTime.Month() != now.Month() {
-		if len(timestring) != 0 {
-			timestring = timestring + " "
-		}
-		timestring = timestring + writtenAtTime.Format("Jan 2")
-	} else if writtenAtTime.Day() != now.Day() {
-		if len(timestring) != 0 {
-			timestring = timestring + " "
-		}
-		timestring = timestring + writtenAtTime.Weekday().String()[0:3] + " " + writtenAtTime.Format("2")
-	}
-
-	if len(timestring) != 0 {
-		timestring = timestring + " "
-	}
-	timestring = timestring + writtenAtTime.Format(time.Kitchen)
-
-	cb.timestamp.Text = timestring
+	cb.timestamp.Text = timestampString(cb.writtenAt)
 }
 
 func (cb *chatBubble) CreateRenderer() fyne.WidgetRenderer {

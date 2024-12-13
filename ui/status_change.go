@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"time"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/theme"
@@ -72,7 +70,7 @@ func (st *statusChange) setData(id uuid.UUID, timestamp int64, str string) {
 		}
 	}
 
-	st.time.Text = time.Unix(timestamp, 0).Format("1/2 15:04")
+	st.time.Text = timestampString(timestamp)
 	st.time.Refresh()
 }
 
