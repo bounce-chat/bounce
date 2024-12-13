@@ -22,6 +22,8 @@ type threadable interface {
 	getType() string
 	getState() int
 	setState(int)
+	getAuthor() uuid.UUID
+	getTimestamp() int64
 	populateTemplate(fyne.CanvasObject)
 }
 
@@ -66,6 +68,14 @@ func (cbd *chatBubbleData) getState() int {
 	return cbd.state
 }
 
+func (cbd *chatBubbleData) getAuthor() uuid.UUID {
+	return cbd.author
+}
+
+func (cbd *chatBubbleData) getTimestamp() int64 {
+	return cbd.writtenAt
+}
+
 func (cbd *chatBubbleData) setState(state int) {
 	cbd.state = state
 }
@@ -80,6 +90,7 @@ func (cbd *chatBubbleData) populateTemplate(obj fyne.CanvasObject) {
 type statusChangeData struct {
 	id           uuid.UUID
 	frameType    string
+	author       uuid.UUID
 	timestamp    int64
 	changeString string
 	seen         bool
@@ -111,6 +122,14 @@ func (scd *statusChangeData) getState() int {
 
 func (scd *statusChangeData) setState(state int) {
 	return
+}
+
+func (scd *statusChangeData) getAuthor() uuid.UUID {
+	return scd.author
+}
+
+func (scd *statusChangeData) getTimestamp() int64 {
+	return scd.timestamp
 }
 
 func (scd *statusChangeData) populateTemplate(obj fyne.CanvasObject) {
@@ -553,6 +572,7 @@ func (fyneUI *Fyne) userChangedName(id, userID uuid.UUID, oldName, newName strin
 		widgetData: &statusChangeData{
 			id:           id,
 			frameType:    chat.TypeUpdateUser,
+			author:       userID,
 			timestamp:    timestamp,
 			changeString: changeString,
 			seen:         true,
@@ -588,6 +608,7 @@ func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, f
 		widgetData: &statusChangeData{
 			id:           id,
 			frameType:    frameType,
+			author:       actorID,
 			timestamp:    timestamp,
 			changeString: changeString,
 			seen:         seen,

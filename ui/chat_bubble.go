@@ -19,7 +19,7 @@ import (
 
 var iconSize = float32(12)
 var bufferSize = float32(30)
-var unmergedVerticalBuffer = float32(2)
+var unmergedVerticalBuffer = float32(4)
 
 var mergeModeStandalone = 0
 var mergeModeTop = 1
@@ -200,7 +200,6 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 
 	cb.maxMessageWidth = fyne.MeasureText(
 		longestLine(cb.message.Segments[0].(*widget.TextSegment).Text),
-		//theme.TextSize(),
 		theme.Size(cb.message.Segments[0].(*widget.TextSegment).Style.SizeName),
 		cb.message.Segments[0].(*widget.TextSegment).Style.TextStyle,
 	).Width
@@ -209,10 +208,6 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 		cb.username.TextSize,
 		cb.username.TextStyle,
 	).Width
-	cb.maxTextWidth = cb.maxMessageWidth
-	if usernameWidth > cb.maxMessageWidth {
-		cb.maxTextWidth = usernameWidth + theme.Padding()*4
-	}
 
 	cb.outgoing = m.outgoing
 
@@ -269,17 +264,29 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 		if !m.outgoing {
 			cb.icon.Hide()
 			cb.decorations.Hide()
+		} else {
+			cb.decorations.Show()
 		}
 	case mergeModeMiddle:
 		if !m.outgoing {
 			cb.icon.Hide()
 			cb.decorations.Hide()
 			cb.username.Hide()
+		} else {
+			cb.decorations.Show()
 		}
 	case mergeModeBottom:
 		if !m.outgoing {
 			cb.username.Hide()
 		}
+		cb.decorations.Show()
+	case mergeModeStandalone:
+		cb.decorations.Show()
+	}
+
+	cb.maxTextWidth = cb.maxMessageWidth
+	if cb.username.Visible() && usernameWidth > cb.maxMessageWidth {
+		cb.maxTextWidth = usernameWidth
 	}
 }
 

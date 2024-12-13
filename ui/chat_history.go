@@ -13,10 +13,13 @@ import (
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
+	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
 
 	"fyne.io/fyne/v2/theme"
 )
+
+const mergeSeconds = 300
 
 // ListItemID uniquely identifies an item within a list.
 type ListItemID = int
@@ -89,13 +92,15 @@ func (ch *chatHistory) setItems(items []threadable) {
 	ch.Refresh()
 
 	ids := []uuid.UUID{}
-	for _, item := range items {
+	for i, item := range items {
 		if item.isSeen() {
 			ch.seenTracking[item.getID()] = true
 		}
 		ids = append(ids, item.getID())
 
 		messages[item.getID()] = item
+
+		ch.setMergeMode(i, false)
 	}
 	ch.ids = ids
 }
@@ -116,25 +121,17 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 					ch.items = append([]threadable{ti.widgetData}, ch.items...)
 					ch.ids = append([]uuid.UUID{ti.id}, ch.ids...)
 					ch.heights = append([]float32{0}, ch.heights...)
+					ch.setMergeMode(0, true)
 					break
 				}
-				var compareTime int64
 				compare := ch.items[i-1]
-				switch cast := compare.(type) {
-				case *chatBubbleData:
-					compareTime = cast.writtenAt
-				case *statusChangeData:
-					compareTime = cast.timestamp
-				default:
-					log.Warn("cannot compare timestamp with unknown thread item type")
-					continue
-				}
-				if ti.timestamp > compareTime {
+				if ti.timestamp > compare.getTimestamp() {
 					ch.items = append(ch.items[:i], append([]threadable{ti.widgetData}, ch.items[i:]...)...)
 					ch.ids = append(ch.ids[:i], append([]uuid.UUID{ti.id}, ch.ids[i:]...)...)
 					if len(ch.heights) >= len(ch.items)-1 {
 						ch.heights = append(ch.heights[:i], append([]float32{0}, ch.heights[i:]...)...)
 					}
+					ch.setMergeMode(i, true)
 					break
 				}
 			}
@@ -142,11 +139,126 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 	} else {
 		ch.items = append(ch.items, ti.widgetData)
 		ch.ids = append(ch.ids, ti.id)
+		ch.setMergeMode(len(ch.items)-1, true)
 	}
 
 	messagesMutex.Lock()
 	messages[ti.widgetData.getID()] = ti.widgetData
 	messagesMutex.Unlock()
+}
+
+func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
+	mergeUp := false
+	mergeDown := false
+
+	checkUp := true
+	checkDown := true
+
+	if len(ch.items)-1 < index {
+		log.WithFields(log.Fields{
+			"index": index,
+		}).Warn("out of bounds index while setting merge mode")
+		return
+	}
+	if len(ch.items)-1 == index {
+		checkDown = false
+	}
+	if index == 0 {
+		checkUp = false
+	}
+
+	item := ch.items[index]
+	myType := item.getType()
+	if !(myType == chat.TypeGroupMessage || myType == chat.TypeDirectMessage) {
+		return
+	}
+	myAuthor := item.getAuthor()
+	myTimestamp := item.getTimestamp()
+
+	if checkUp {
+		above := ch.items[index-1]
+		aboveType := above.getType()
+		aboveAuthor := above.getAuthor()
+		aboveTimestamp := above.getTimestamp()
+		if (aboveType == chat.TypeGroupMessage || aboveType == chat.TypeDirectMessage) && aboveAuthor == myAuthor && aboveTimestamp > myTimestamp-mergeSeconds {
+			mergeUp = true
+		}
+	}
+
+	if checkDown {
+		below := ch.items[index+1]
+		belowType := below.getType()
+		belowAuthor := below.getAuthor()
+		belowTimestamp := below.getTimestamp()
+		if (belowType == chat.TypeGroupMessage || belowType == chat.TypeDirectMessage) && belowAuthor == myAuthor && belowTimestamp < myTimestamp+mergeSeconds {
+			mergeDown = true
+		}
+	}
+
+	cbd, ok := item.(*chatBubbleData)
+	if !ok {
+		log.WithFields(log.Fields{
+			"index": index,
+		}).Warn("threadable message does not have type chatBubbleData while setting mergeMode")
+		return
+	}
+	if mergeUp && mergeDown {
+		cbd.mergeMode = mergeModeMiddle
+	} else if mergeUp && !mergeDown {
+		cbd.mergeMode = mergeModeBottom
+	} else if !mergeUp && mergeDown {
+		cbd.mergeMode = mergeModeTop
+	} else if !mergeUp && !mergeDown {
+		cbd.mergeMode = mergeModeStandalone
+	}
+
+	if neighbors {
+		if checkUp {
+			above := ch.items[index-1]
+			aboveCBD, ok := above.(*chatBubbleData)
+			if !ok {
+				log.WithFields(log.Fields{
+					"index": index - 1,
+				}).Warn("could not cast chat message into chatBubbleData")
+				return
+			}
+			switch cbd.mergeMode {
+			case mergeModeTop:
+				if aboveCBD.mergeMode == mergeModeMiddle || aboveCBD.mergeMode == mergeModeTop {
+					ch.setMergeMode(index-1, true)
+				}
+			case mergeModeMiddle, mergeModeBottom:
+				if !(aboveCBD.mergeMode == mergeModeMiddle || aboveCBD.mergeMode == mergeModeTop) {
+					ch.setMergeMode(index-1, true)
+				}
+			case mergeModeStandalone:
+				if !(aboveCBD.mergeMode == mergeModeBottom || aboveCBD.mergeMode == mergeModeStandalone) {
+					ch.setMergeMode(index-1, true)
+				}
+			}
+		}
+
+		if checkDown {
+			below := ch.items[index+1]
+			belowCBD, ok := below.(*chatBubbleData)
+			if !ok {
+				log.WithFields(log.Fields{
+					"index": index + 1,
+				}).Warn("could not cast chat message into chatBubbleData")
+			}
+
+			switch cbd.mergeMode {
+			case mergeModeTop, mergeModeMiddle:
+				if !(belowCBD.mergeMode == mergeModeMiddle || belowCBD.mergeMode == mergeModeBottom) {
+					ch.setMergeMode(index+1, true)
+				}
+			case mergeModeBottom, mergeModeStandalone:
+				if !(belowCBD.mergeMode == mergeModeTop || belowCBD.mergeMode == mergeModeStandalone) {
+					ch.setMergeMode(index+1, true)
+				}
+			}
+		}
+	}
 }
 
 func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
