@@ -97,6 +97,8 @@ func (dm *directMessage) getTimestamp() int64 {
 func (b *bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) broadcastable {
 	directMessageMutex.Lock()
 	defer directMessageMutex.Unlock()
+	readReceiptMutex.Lock()
+	defer readReceiptMutex.Unlock()
 
 	// Unmarshal the payload
 	var dm directMessage
@@ -171,9 +173,13 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		ExpiresAt: dm.DeleteAt,
 		Text:      dm.Text,
 	})
+	b.userInterface.MessageDelivered(dm.ID, srcDevice.UserID)
 
 	// Make sure the user interface isn't still displaying that the user is typing
 	b.clearUserTypingIndicator(dm.Author, dm.getDestination(b.currentUserID()))
+
+	// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI
+	b.processEarlyReadReceipts(dm.ID, typeDirectMessage)
 
 	return &dm
 }

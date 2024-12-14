@@ -99,6 +99,8 @@ func (gm *groupMessage) getTimestamp() int64 {
 func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) broadcastable {
 	groupMutex.Lock()
 	defer groupMutex.Unlock()
+	readReceiptMutex.Lock()
+	defer readReceiptMutex.Unlock()
 
 	// Look up the device that sent it
 	srcDevice, exists := b.getDeviceFromAddress(peer)
@@ -247,10 +249,14 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 		SavedAt:   gm.SavedAt,
 		ExpiresAt: gm.DeleteAt,
 		Text:      gm.Text,
-	}) // TODO: load read receipts that got here first?
+	})
+	b.userInterface.MessageDelivered(gm.ID, srcDevice.UserID)
 
 	// Update the activity timestamp on the group model
 	b.updateLastGroupActivity(gm.Destination, gm.SavedAt)
+
+	// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI
+	b.processEarlyReadReceipts(gm.ID, typeGroupMessage)
 
 	return &gm
 }

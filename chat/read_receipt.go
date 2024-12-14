@@ -159,38 +159,117 @@ func (b *bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 		return nil
 	}
 	destination, author, scope, err := b.getReadReceiptDestinationAuthorAndScope(rr.Target, targetTypeString)
-	if err != nil {
+	if err == nil {
+		rr.Destination = destination
+		rr.Scope = scope
+
+		// Save to database
+		err = b.database.Create(&rr).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error saving read receipt")
+		}
+
+		// Update the database and UI
+		if rr.Actor == b.currentUserID() {
+			b.markSeenInDatabase(rr.Target, targetTypeString)
+			b.userInterface.MessageSeen(rr.Target)
+		} else if author == b.currentUserID() {
+			if rr.Scope != scopeSync {
+				b.userInterface.ReceivedReadReceipt(ReadReceipt{
+					ID:     rr.ID,
+					Actor:  rr.Actor,
+					Target: rr.Target,
+				})
+			}
+		}
+
+		return &rr
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		// A read receipt may have arrived before the message, just save it and ack but don't broadcast,
+		// additional details will be saved on this read receipt when the message arrives
+		err = b.database.Create(&rr).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error saving read receipt")
+		}
+		go b.sendAck(peer, typeReadReceipt, rr.ID)
+
+		return nil
+	} else {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error parsing read receipt")
 		return nil
 	}
-	rr.Destination = destination
-	rr.Scope = scope
+}
 
-	// Save to database
-	err = b.database.Create(&rr).Error
+func (b *bounce) processEarlyReadReceipts(messageID uuid.UUID, messageType uint16) {
+	// Find any read receipts for this message that came early, add missing data, and send to the UI
+	var rrs []readReceipt
+	err := b.database.Where("target = ? AND target_type = ?", messageID, messageType).Find(&rrs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("database error saving read receipt")
+		}).Fatal("error looking up read receipts")
 	}
+	for _, rr := range rrs {
+		targetTypeString, ok := readReceiptTargetTypeString[rr.TargetType]
+		if !ok {
+			log.WithFields(log.Fields{
+				"error": errUnknownReadReceiptTargetType.Error(),
+			}).Error("error parsing read receipt that arrived before message")
 
-	// Update the database and UI
-	if rr.Actor == b.currentUserID() {
-		b.markSeenInDatabase(rr.Target, targetTypeString)
-		b.userInterface.MessageSeen(rr.Target)
-	} else if author == b.currentUserID() {
-		if rr.Scope != scopeSync {
-			b.userInterface.ReceivedReadReceipt(ReadReceipt{
-				ID:     rr.ID,
-				Actor:  rr.Actor,
-				Target: rr.Target,
-			})
+			continue
 		}
-	}
+		destination, author, scope, err := b.getReadReceiptDestinationAuthorAndScope(rr.Target, targetTypeString)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"id":    rr.ID,
+			}).Error("error getting read receipt data while processing read receipt that arrived before message")
 
-	return &rr
+			continue
+		}
+		rr.Destination = destination
+		rr.Scope = scope
+		err = b.database.Table("read_receipts").Where("id = ?", rr.ID).Updates(map[string]interface{}{
+			"destination": destination,
+			"scope":       scope,
+		}).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"id":    rr.ID,
+				}).Error("read receipt not found for update")
+
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"id":    rr.ID,
+				}).Fatal("database error updating read receipt")
+			}
+		}
+
+		if rr.Actor == b.currentUserID() {
+			b.markSeenInDatabase(rr.Target, targetTypeString)
+			b.userInterface.MessageSeen(rr.Target)
+		} else if author == b.currentUserID() {
+			if rr.Scope != scopeSync {
+				b.userInterface.ReceivedReadReceipt(ReadReceipt{
+					ID:     rr.ID,
+					Actor:  rr.Actor,
+					Target: rr.Target,
+				})
+			}
+		}
+
+		b.broadcast(&rr)
+	}
 }
 
 func (b *bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType string) (uuid.UUID, uuid.UUID, int, error) {
@@ -211,7 +290,7 @@ func (b *bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
 					"id": id,
-				}).Error("group message not found while marking as read")
+				}).Debug("group message not found while marking as read")
 				return uuid.Nil, uuid.Nil, scopeSync, err
 			} else {
 				log.WithFields(log.Fields{
@@ -251,7 +330,7 @@ func (b *bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
 					"id": id,
-				}).Error("group message not found while marking as read")
+				}).Debug("group message not found while marking as read")
 				return uuid.Nil, uuid.Nil, scopeSync, err
 			} else {
 				log.WithFields(log.Fields{
