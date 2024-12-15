@@ -326,6 +326,7 @@ func (cbr *chatBubbleRenderer) iconSize() float32 {
 }
 
 func (cbr *chatBubbleRenderer) Refresh() {
+	cbr.cb.updateDisplayTime()
 	cbr.Layout(cbr.cb.Size())
 }
 

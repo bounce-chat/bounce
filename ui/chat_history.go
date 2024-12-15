@@ -6,6 +6,7 @@ package ui
 import (
 	"sort"
 	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -19,6 +20,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 )
 
+const timestampRefreshSeconds = 30
 const mergeSeconds = 300
 
 // ListItemID uniquely identifies an item within a list.
@@ -77,6 +79,15 @@ func newChatHistory(readCallback func(uuid.UUID, string), unreadCountCallback fu
 		item := ch.items[id]
 		item.populateTemplate(obj)
 	}
+
+	// Keep chat bubble timestamps up to date by periodically refreshing
+	go func() {
+		for {
+			time.Sleep(timestampRefreshSeconds * time.Second)
+			ch.Refresh()
+		}
+	}()
+
 	ch.ExtendBaseWidget(ch)
 	return ch
 }
