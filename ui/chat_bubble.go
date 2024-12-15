@@ -72,36 +72,41 @@ func newChatBubbleTemplate() *chatBubble {
 	username.TextStyle.Bold = true
 	username.Hide()
 
-	timestamp := canvas.NewText("", theme.ForegroundColor()) // TODO: match opactity to icons
+	timestamp := canvas.NewText("", theme.ForegroundColor()) // TODO: match opactity to icons?
 	timestamp.TextSize = theme.TextSize() * 0.6
 
 	disappearingIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/disappears.png"))
+	//disappearingIcon.Translucency = 0.4
 	disappearingIcon.FillMode = canvas.ImageFillContain
 	disappearingIcon.SetMinSize(fyne.Size{iconSize, iconSize})
 	disappearingIcon.Hide()
 
 	pending := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/pending.png"))
+	//pending.Translucency = 0.4
 	pending.FillMode = canvas.ImageFillContain
 	pending.SetMinSize(fyne.Size{iconSize, iconSize})
 	pending.Hide()
 
 	synced := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/synced.png"))
+	//synced.Translucency = 0.4
 	synced.FillMode = canvas.ImageFillContain
 	synced.SetMinSize(fyne.Size{iconSize, iconSize})
 	synced.Hide()
 
 	delivered := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/delivered.png"))
+	//delivered.Translucency = 0.4
 	delivered.FillMode = canvas.ImageFillContain
 	delivered.SetMinSize(fyne.Size{iconSize, iconSize})
 	delivered.Hide()
 
 	read := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/read.png"))
-	//read.Translucency = 0.4 // https://github.com/fyne-io/fyne/issues/1977
+	//read.Translucency = 0.5
 	read.FillMode = canvas.ImageFillContain
 	read.SetMinSize(fyne.Size{iconSize, iconSize})
 	read.Hide()
 
 	errorIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/error.png"))
+	//errorIcon.Translucency = 0.4
 	errorIcon.FillMode = canvas.ImageFillContain
 	errorIcon.SetMinSize(fyne.Size{iconSize, iconSize})
 	errorIcon.Hide()

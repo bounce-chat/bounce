@@ -365,10 +365,15 @@ func timestampString(timestamp int64) string {
 		}
 		timestring = timestring + timestampTime.Format("Jan 2")
 	} else if timestampTime.Day() != now.Day() {
-		if len(timestring) != 0 {
-			timestring = timestring + " "
+		if timestampTime.Before(now.Add(time.Duration(-24 * time.Hour))) {
+			if len(timestring) != 0 {
+				timestring = timestring + " "
+			}
+			timestring = timestring + timestampTime.Weekday().String()[0:3]
+			if timestampTime.Before(now.Add(time.Duration(-7 * 24 * time.Hour))) {
+				timestring = timestring + " " + timestampTime.Format("2")
+			}
 		}
-		timestring = timestring + timestampTime.Weekday().String()[0:3] + " " + timestampTime.Format("2")
 	}
 
 	if len(timestring) != 0 {
