@@ -310,7 +310,7 @@ type UI interface {
 
 	// User management
 	AddUserRequestRejected(string)
-	FriendAdded(User)
+	FriendAdded(User) // TODO: rename
 
 	// Chats
 	//UserIntroduced(Introduction)

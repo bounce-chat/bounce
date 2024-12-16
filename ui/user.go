@@ -25,6 +25,8 @@ func makeUser(id uuid.UUID, name string) *user {
 
 	u.name.AddListener(binding.NewDataListener(func() {
 		u.setInitials()
+
+		// TODO: for all chatBubbleDatas, set the name and initials, refresh all relevant chat historyies
 	}))
 	u.name.Set(name)
 

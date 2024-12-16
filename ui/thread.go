@@ -243,6 +243,10 @@ func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
 }
 
 func (fyneUI *Fyne) DeleteItem(id uuid.UUID) {
+	messagesMutex.Lock()
+	delete(messages, id)
+	messagesMutex.Unlock()
+
 	fyneUI.threadWithItemMutex.Lock()
 	thread, ok := fyneUI.threadWithItem[id]
 	fyneUI.threadWithItemMutex.Unlock()

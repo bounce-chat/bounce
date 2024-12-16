@@ -444,8 +444,8 @@ func (b *bounce) updateFrontendTypingIndicators() {
 				b.userInterface.HideTypingIndicatorInHistory(u, thread)
 			}
 			if !status.uiIndicatingThread && status.lastIndicated > time.Now().Unix()-typingIndicatorDisplayForSeconds {
-				status.uiIndicatingThread = true
 				if b.typingIndicatorsEnabledForThread(thread) {
+					status.uiIndicatingThread = true
 					b.userInterface.ShowTypingIndicatorInHistory(u, thread)
 				}
 			}
@@ -473,9 +473,9 @@ func (b *bounce) updateFrontendTypingIndicators() {
 
 			if !users[maxUserID].uiIndicatingButton {
 				if b.typingIndicatorsEnabledForThread(thread) {
+					users[maxUserID].uiIndicatingButton = true
 					b.userInterface.ShowTypingIndicatorInButton(maxUserID, thread)
 				}
-				users[maxUserID].uiIndicatingButton = true
 			}
 
 			for id, status := range indicatingUsers {
@@ -487,15 +487,20 @@ func (b *bounce) updateFrontendTypingIndicators() {
 	}
 }
 
-func (b *bounce) clearUserTypingIndicator(userID, threadID uuid.UUID) {
+func (b *bounce) clearUserTypingIndicator(userID, threadID uuid.UUID, threadType uint16) {
 	typingStateMutex.Lock()
-	if _, ok := typingState[threadID]; !ok {
+
+	_, ok := threadTypes[threadID]
+	if !ok {
+		threadTypes[threadID] = threadType
+	}
+
+	if _, ok = typingState[threadID]; !ok {
 		typingState[threadID] = map[uuid.UUID]*typingStatus{}
 	}
 	users := typingState[threadID]
 
 	var status *typingStatus
-	var ok bool
 	if status, ok = users[userID]; !ok {
 		status = &typingStatus{}
 	}
