@@ -314,6 +314,11 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			group.button.setLastMessageTime(time.Unix(gm.WrittenAt, 0))
 			group.setLastMessageTime(gm.WrittenAt)
 			group.chatHistoryScroll().Refresh()
+			if outgoing {
+				tb.showLastMessageState(state)
+			} else {
+				tb.hideLastMessageState()
+			}
 		},
 		timestamp: gm.WrittenAt, // TODO: SavedAt would be more consistent across restarts but causes inconsistencies when re-adding to a group, as it gets reset
 	}, nil
@@ -392,6 +397,11 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 			dmThread.button.setLastMessageTime(time.Unix(dm.WrittenAt, 0))
 			dmThread.setLastMessageTime(dm.WrittenAt)
 			dmThread.chatHistoryScroll().Refresh()
+			if outgoing {
+				tb.showLastMessageState(state)
+			} else {
+				tb.hideLastMessageState()
+			}
 		},
 		timestamp: dm.WrittenAt, // TODO: SavedAt would be more consistent across restarts but causes inconsistencies when re-adding to a group, as it gets reset
 	}, nil

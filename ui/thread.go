@@ -115,7 +115,7 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	fyneUI.threadWithItemMutex.Unlock()
 
 	// Update the thread button if this is the latest message
-	if ti.setButton != nil && ti.timestamp > t.getLastMessageTime() {
+	if ti.setButton != nil && ti.timestamp > t.getLastMessageTime() { // TODO: same as appendingToEnd?
 		ti.setButton(t.getButton())
 	}
 
@@ -189,21 +189,8 @@ func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
 		}).Warn("item not found during attempt to mark item as delivered")
 	}
 
-	currentState := item.getState()
-	if currentState == stateRead || currentState == stateDelivered {
-		return
-	}
-	if userID == fyneUI.profile.id {
-		if currentState == statePending {
-			item.setState(stateSynced)
-		}
-
-	} else {
-		item.setState(stateDelivered)
-	}
-
 	fyneUI.threadWithItemMutex.Lock()
-	ch, ok := fyneUI.threadWithItem[messageID]
+	t, ok := fyneUI.threadWithItem[messageID]
 	fyneUI.threadWithItemMutex.Unlock()
 	if !ok {
 		log.WithFields(log.Fields{
@@ -211,13 +198,34 @@ func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
 		}).Warn("attempt to mark message as delivered that was not found in any thread")
 		return
 	}
-	ch.chatHistoryScroll().Refresh()
+
+	currentState := item.getState()
+	if currentState == stateRead || currentState == stateDelivered {
+		return
+	}
+	if userID == fyneUI.profile.id {
+		if currentState == statePending {
+			item.setState(stateSynced)
+			if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
+				t.getButton().showLastMessageState(stateSynced)
+			}
+		}
+
+	} else {
+		item.setState(stateDelivered)
+		if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
+			t.getButton().showLastMessageState(stateDelivered)
+		}
+	}
+
+	t.chatHistoryScroll().Refresh()
 }
 
 func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
 	if rr.Actor == fyneUI.profile.id {
 		return
 	}
+
 	messagesMutex.Lock()
 	item, ok := messages[rr.Target]
 	messagesMutex.Unlock()
@@ -227,10 +235,8 @@ func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
 		}).Warn("item not found during attempt to mark item as read")
 	}
 
-	item.setState(stateRead)
-
 	fyneUI.threadWithItemMutex.Lock()
-	thread, ok := fyneUI.threadWithItem[rr.Target]
+	t, ok := fyneUI.threadWithItem[rr.Target]
 	fyneUI.threadWithItemMutex.Unlock()
 	if !ok {
 		log.WithFields(log.Fields{
@@ -239,7 +245,12 @@ func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
 		return
 	}
 
-	thread.chatHistoryScroll().Refresh()
+	item.setState(stateRead)
+	if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(rr.Target) {
+		t.getButton().showLastMessageState(stateRead)
+	}
+
+	t.chatHistoryScroll().Refresh()
 }
 
 func (fyneUI *Fyne) DeleteItem(id uuid.UUID) {

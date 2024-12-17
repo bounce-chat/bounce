@@ -10,6 +10,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -38,6 +39,12 @@ type threadButton struct {
 	unreadCounterText         *widget.RichText
 	lastMessageTimeText       *widget.RichText
 	lastMessageTime           time.Time
+	statusIcons               *fyne.Container
+	pending                   *canvas.Image
+	synced                    *canvas.Image
+	delivered                 *canvas.Image
+	read                      *canvas.Image
+	errorIcon                 *canvas.Image
 	unreadCount               int
 	clicked                   func()
 }
@@ -54,6 +61,35 @@ func newThreadButton(image fyne.CanvasObject, name binding.String, clicked func(
 		}).Fatal("data bindings broken for user name")
 
 	}
+
+	pending := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/pending.png"))
+	pending.FillMode = canvas.ImageFillContain
+	pending.SetMinSize(fyne.Size{iconSize, iconSize})
+	pending.Hide()
+
+	synced := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/synced.png"))
+	synced.FillMode = canvas.ImageFillContain
+	synced.Translucency = 0.4
+	synced.SetMinSize(fyne.Size{iconSize, iconSize})
+	synced.Hide()
+
+	delivered := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/delivered.png"))
+	delivered.FillMode = canvas.ImageFillContain
+	delivered.Translucency = 0.4
+	delivered.SetMinSize(fyne.Size{iconSize, iconSize})
+	delivered.Hide()
+
+	read := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/read.png"))
+	read.FillMode = canvas.ImageFillContain
+	read.Translucency = 0.4
+	read.SetMinSize(fyne.Size{iconSize, iconSize})
+	read.Hide()
+
+	errorIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/error.png"))
+	errorIcon.FillMode = canvas.ImageFillContain
+	errorIcon.Translucency = 0.4
+	errorIcon.SetMinSize(fyne.Size{iconSize, iconSize})
+	errorIcon.Hide()
 
 	tb := &threadButton{
 		threadImage: image,
@@ -132,7 +168,19 @@ func newThreadButton(image fyne.CanvasObject, name binding.String, clicked func(
 			},
 			Text: "",
 		}),
-		clicked: clicked,
+		statusIcons: container.NewStack(
+			pending,
+			synced,
+			delivered,
+			read,
+			errorIcon,
+		),
+		pending:   pending,
+		synced:    synced,
+		delivered: delivered,
+		read:      read,
+		errorIcon: errorIcon,
+		clicked:   clicked,
 	}
 
 	// Bind the name and update the thread button when the name changes
@@ -231,6 +279,52 @@ func (tb *threadButton) clearLastMessage() {
 	tb.lastMessage.Refresh()
 }
 
+func (tb *threadButton) showLastMessageState(state int) {
+	switch state {
+	case statePending:
+		tb.pending.Show()
+		tb.synced.Hide()
+		tb.delivered.Hide()
+		tb.read.Hide()
+		tb.errorIcon.Hide()
+	case stateSynced:
+		tb.pending.Hide()
+		tb.synced.Show()
+		tb.delivered.Hide()
+		tb.read.Hide()
+		tb.errorIcon.Hide()
+	case stateDelivered:
+		tb.pending.Hide()
+		tb.synced.Hide()
+		tb.delivered.Show()
+		tb.read.Hide()
+		tb.errorIcon.Hide()
+	case stateRead:
+		tb.pending.Hide()
+		tb.synced.Hide()
+		tb.delivered.Hide()
+		tb.read.Show()
+		tb.errorIcon.Hide()
+	case stateError:
+		tb.pending.Hide()
+		tb.synced.Hide()
+		tb.delivered.Hide()
+		tb.read.Hide()
+		tb.errorIcon.Show()
+	}
+	tb.statusIcons.Show()
+	tb.statusIcons.Refresh()
+
+	tb.unreadCounterTextFadeOut.Show()
+	tb.unreadCounterBackground.Show()
+	tb.Refresh()
+}
+
+func (tb *threadButton) hideLastMessageState() {
+	tb.statusIcons.Hide()
+	tb.Refresh()
+}
+
 // TODO: renderer should keep this up to date as the time passes
 func (tb *threadButton) setLastMessageTime(timestamp time.Time) {
 	tb.lastMessageTime = timestamp
@@ -290,10 +384,13 @@ func (tb *threadButton) displayCorrectUnreadCount() {
 
 	if tb.unreadCount == 0 {
 		tb.unreadCounterText.Hide()
-		tb.unreadCounterTextFadeOut.Hide()
-		tb.unreadCounterBackground.Hide()
+		if !tb.statusIcons.Visible() {
+			tb.unreadCounterTextFadeOut.Hide()
+			tb.unreadCounterBackground.Hide()
+		}
 		tb.unreadCounterCircle.Hide()
 	} else {
+		tb.statusIcons.Hide()
 		unreadCountDisplay := strconv.Itoa(tb.unreadCount)
 		if tb.unreadCount > 999 {
 			unreadCountDisplay = "999+"
@@ -391,25 +488,48 @@ func (tbr *threadButtonRenderer) Layout(size fyne.Size) {
 		X: size.Width - threadButtonHeight/4,
 		Y: threadButtonHeight / 2,
 	})
-	tbr.threadButton.unreadCounterTextFadeOut.Resize(fyne.Size{Width: threadButtonHeight / 4, Height: threadButtonHeight / 2})
-	tbr.threadButton.unreadCounterTextFadeOut.Move(fyne.Position{
-		X: size.Width - threadButtonHeight/2 - threadButtonHeight/4,
-		Y: threadButtonHeight / 2,
-	})
-	tbr.threadButton.unreadCounterBackground.Resize(fyne.Size{Width: (threadButtonHeight / 2) + theme.Padding(), Height: threadButtonHeight / 2})
-	tbr.threadButton.unreadCounterBackground.Move(fyne.Position{
-		X: size.Width - threadButtonHeight/2,
-		Y: threadButtonHeight / 2,
-	})
-	tbr.threadButton.unreadCounterCircle.Resize(fyne.Size{Width: threadButtonHeight / 2, Height: threadButtonHeight / 2})
-	tbr.threadButton.unreadCounterCircle.Move(fyne.Position{
-		X: size.Width - threadButtonHeight/2,
-		Y: threadButtonHeight / 2,
-	})
-	tbr.threadButton.unreadCounterText.Move(fyne.Position{
-		X: size.Width - threadButtonHeight/4,
-		Y: threadButtonHeight / 2,
-	})
+
+	if tbr.threadButton.statusIcons.Visible() {
+		tbr.threadButton.statusIcons.Resize(fyne.Size{Width: theme.IconInlineSize(), Height: theme.IconInlineSize()})
+		tbr.threadButton.statusIcons.Move(fyne.Position{
+			X: size.Width - theme.IconInlineSize() - theme.Padding(),
+			Y: size.Height - theme.IconInlineSize() - theme.Padding(),
+		})
+
+		tbr.threadButton.unreadCounterTextFadeOut.Resize(fyne.Size{Width: theme.IconInlineSize(), Height: theme.IconInlineSize()})
+		tbr.threadButton.unreadCounterTextFadeOut.Move(fyne.Position{
+			X: size.Width - theme.IconInlineSize() - theme.IconInlineSize(),
+			Y: size.Height - theme.IconInlineSize() - theme.Padding(),
+		})
+		tbr.threadButton.unreadCounterBackground.Resize(fyne.Size{Width: theme.IconInlineSize(), Height: theme.IconInlineSize()})
+		tbr.threadButton.unreadCounterBackground.Move(fyne.Position{
+			X: size.Width - theme.IconInlineSize(),
+			Y: size.Height - theme.IconInlineSize() - theme.Padding(),
+		})
+	}
+
+	if tbr.threadButton.unreadCounterText.Visible() {
+		tbr.threadButton.unreadCounterCircle.Resize(fyne.Size{Width: threadButtonHeight / 2, Height: threadButtonHeight / 2})
+		tbr.threadButton.unreadCounterCircle.Move(fyne.Position{
+			X: size.Width - threadButtonHeight/2,
+			Y: threadButtonHeight / 2,
+		})
+		tbr.threadButton.unreadCounterText.Move(fyne.Position{
+			X: size.Width - threadButtonHeight/4,
+			Y: threadButtonHeight / 2,
+		})
+		tbr.threadButton.unreadCounterTextFadeOut.Resize(fyne.Size{Width: threadButtonHeight / 4, Height: threadButtonHeight / 2})
+		tbr.threadButton.unreadCounterTextFadeOut.Move(fyne.Position{
+			X: size.Width - threadButtonHeight/2 - threadButtonHeight/4,
+			Y: threadButtonHeight / 2,
+		})
+		tbr.threadButton.unreadCounterBackground.Resize(fyne.Size{Width: (threadButtonHeight / 2) + theme.Padding(), Height: threadButtonHeight / 2})
+		tbr.threadButton.unreadCounterBackground.Move(fyne.Position{
+			X: size.Width - threadButtonHeight/2,
+			Y: threadButtonHeight / 2,
+		})
+	}
+
 	tbr.threadButton.lastMessageTimeText.Move(fyne.Position{
 		X: size.Width - tbr.threadButton.lastMessageTimeText.MinSize().Width + theme.Padding(),
 		Y: 0,
@@ -448,6 +568,7 @@ func (tbr *threadButtonRenderer) Objects() []fyne.CanvasObject {
 		tbr.threadButton.unreadCounterCircle,
 		tbr.threadButton.unreadCounterText,
 		tbr.threadButton.lastMessageTimeText,
+		tbr.threadButton.statusIcons,
 	}
 }
 
