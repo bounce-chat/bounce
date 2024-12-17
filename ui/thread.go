@@ -350,7 +350,7 @@ func (fyneUI *Fyne) HideTypingIndicatorInHistory(userID, threadID uuid.UUID) {
 }
 
 func (fyneUI *Fyne) HideTypingIndicatorInButton(threadID uuid.UUID) {
-	thread, ok := fyneUI.getThread(threadID)
+	t, ok := fyneUI.getThread(threadID)
 	if !ok {
 		// Someone could be typing into a DM that isn't open on our side yet, this isn't always an error
 		log.WithFields(log.Fields{
@@ -359,7 +359,11 @@ func (fyneUI *Fyne) HideTypingIndicatorInButton(threadID uuid.UUID) {
 		return
 	}
 
-	thread.getButton().stopTyping()
+	if t.chatHistoryScroll().isLastAuthor(fyneUI.profile.id) {
+		t.getButton().showCurrentStatusIcon()
+	}
+
+	t.getButton().stopTyping()
 }
 
 func timestampString(timestamp int64) string {

@@ -317,12 +317,16 @@ func (tb *threadButton) showLastMessageState(state int) {
 
 	tb.unreadCounterTextFadeOut.Show()
 	tb.unreadCounterBackground.Show()
-	tb.Refresh()
 }
 
 func (tb *threadButton) hideLastMessageState() {
 	tb.statusIcons.Hide()
-	tb.Refresh()
+}
+
+func (tb *threadButton) showCurrentStatusIcon() {
+	tb.unreadCounterTextFadeOut.Show()
+	tb.unreadCounterBackground.Show()
+	tb.statusIcons.Show()
 }
 
 // TODO: renderer should keep this up to date as the time passes
@@ -407,6 +411,7 @@ func (tb *threadButton) displayCorrectUnreadCount() {
 
 func (tb *threadButton) startTyping(name string) {
 	tb.lastMessage.Hide()
+	tb.statusIcons.Hide()
 	tb.currentlyTypingUser.Segments[0].(*widget.TextSegment).Text = name + ": "
 	tb.currentlyTypingUser.Refresh()
 	tb.currentlyTypingUser.Show()

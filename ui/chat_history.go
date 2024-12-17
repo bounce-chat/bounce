@@ -170,6 +170,18 @@ func (ch *chatHistory) isLastItem(id uuid.UUID) bool {
 	return item.getID() == id
 }
 
+func (ch *chatHistory) isLastAuthor(id uuid.UUID) bool {
+	ch.itemsMutex.Lock()
+	defer ch.itemsMutex.Unlock()
+
+	if len(ch.items) == 0 {
+		return false
+	}
+
+	item := ch.items[len(ch.items)-1]
+	return item.getAuthor() == id
+}
+
 func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
 	mergeUp := false
 	mergeDown := false
