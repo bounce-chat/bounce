@@ -34,6 +34,7 @@ type chatBubble struct {
 	widget.BaseWidget
 	id               uuid.UUID
 	outgoing         bool
+	direct           bool
 	writtenAt        int64
 	mergeMode        int
 	username         *canvas.Text
@@ -155,6 +156,7 @@ func newChatBubbleTemplate() *chatBubble {
 func (cb *chatBubble) setData(m *chatBubbleData) {
 	cb.id = m.id
 	cb.mergeMode = m.mergeMode
+	cb.direct = m.direct
 
 	if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
 		if m.outgoing {
@@ -266,18 +268,18 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	case mergeModeTop:
 		if !m.outgoing {
 			cb.icon.Hide()
-			cb.decorations.Hide()
 		} else {
 			cb.decorations.Show()
 		}
+		cb.decorations.Hide()
 	case mergeModeMiddle:
 		if !m.outgoing {
 			cb.icon.Hide()
-			cb.decorations.Hide()
 			cb.username.Hide()
 		} else {
 			cb.decorations.Show()
 		}
+		cb.decorations.Hide()
 	case mergeModeBottom:
 		if !m.outgoing {
 			cb.username.Hide()
@@ -315,7 +317,7 @@ func (cbr *chatBubbleRenderer) shiftForIcon() bool {
 		return true
 	}
 
-	if !cbr.cb.outgoing && (cbr.cb.mergeMode == mergeModeTop || cbr.cb.mergeMode == mergeModeMiddle) {
+	if !cbr.cb.outgoing && !cbr.cb.direct && (cbr.cb.mergeMode == mergeModeTop || cbr.cb.mergeMode == mergeModeMiddle) {
 		return true
 	}
 	return false
@@ -360,7 +362,7 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 		}
 	}
 
-	usedWidth := cbr.cb.maxTextWidth
+	usedWidth := cbr.cb.maxTextWidth + theme.Padding()*4
 	if cbr.shiftForIcon() {
 		usedWidth += theme.Padding() + cbr.iconSize()
 	}
@@ -374,10 +376,17 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 		//fits := cbr.cb.maxMessageWidth+decorationsWidth+theme.Padding()*3+bufferSize < size.Width
 		fits := usedWidth+decorationsWidth+theme.Padding()*3+bufferSize < size.Width
 		cbr.decorationsOnNewLine = !fits
+		//if cbr.cb.outgoing && cbr.cb.mergeMode == mergeModeBottom { // TODO: always new line for decorations on last outgoing message, if it looks better
+		//	cbr.decorationsOnNewLine = true
+		//}
 		if !cbr.decorationsOnNewLine {
 			messageAndDecorations := cbr.cb.maxMessageWidth + decorationsWidth + theme.Padding()*3
 			if messageAndDecorations > usedWidth {
 				usedWidth = messageAndDecorations
+			}
+		} else {
+			if decorationsWidth > cbr.cb.maxTextWidth {
+				usedWidth = decorationsWidth + theme.Padding()*2
 			}
 		}
 	}
@@ -419,10 +428,12 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 func (cbr *chatBubbleRenderer) MinSize() fyne.Size {
 	minSize := cbr.cb.message.MinSize()
 
-	if !cbr.decorationsOnNewLine {
-		minSize.Width += cbr.cb.decorations.MinSize().Width + theme.Padding()
-	} else {
-		minSize.Height += cbr.cb.decorations.MinSize().Height + theme.Padding()
+	if cbr.cb.decorations.Visible() {
+		if !cbr.decorationsOnNewLine {
+			minSize.Width += cbr.cb.decorations.MinSize().Width + theme.Padding()
+		} else {
+			minSize.Height += cbr.cb.decorations.MinSize().Height + theme.Padding()
+		}
 	}
 
 	if cbr.cb.username.Visible() {

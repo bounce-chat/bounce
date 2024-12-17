@@ -254,7 +254,7 @@ func (b *bounce) sendDirectMessage(message DirectMessage) {
 
 	now := time.Now()
 	deleteAt := int64(0)
-	retentionSeconds := b.getGroupRetention(message.Thread)
+	retentionSeconds := b.getDMRetention(message.Thread)
 	if retentionSeconds > 0 {
 		deleteAt = now.Unix() + retentionSeconds
 	}

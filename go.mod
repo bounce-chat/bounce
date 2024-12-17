@@ -5,7 +5,7 @@ go 1.22.0
 toolchain go1.23.4
 
 require (
-	fyne.io/fyne/v2 v2.5.3-rc7.0.20241216165619-7fea2ebbbb96
+	fyne.io/fyne/v2 v2.5.3-rc6.0.20241217150634-307be7da1778
 	github.com/cretz/bine v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
