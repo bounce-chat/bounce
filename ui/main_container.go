@@ -142,13 +142,13 @@ func (fyneUI *Fyne) buildNewInstall() {
 		container.NewCenter(makeLogo(228, 167)), // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
 	)
 
-	selectNewProfile := newClickableImage("Create a new profile", newEmbeddedResource("assets/new_profile.png"), 200, 200, func() {
+	selectNewProfile := newClickableImage("Create a new profile", newEmbeddedResource("assets/new_profile.png"), 200, 200, true, func() {
 		fyneUI.setupStep = setupStepProfile
 		fyneUI.mainWindow.SetContent(fyneUI.newProfileCreator)
 		fyneUI.newProfileCreator.Show()
 	})
 
-	selectSyncDevice := newClickableImage("Add device to profile", newEmbeddedResource("assets/add_to_profile.png"), 200, 200, func() {
+	selectSyncDevice := newClickableImage("Add device to profile", newEmbeddedResource("assets/add_to_profile.png"), 200, 200, true, func() {
 		fyneUI.mainWindow.SetContent(fyneUI.nameNewDevice)
 		fyneUI.nameNewDevice.Show()
 	})

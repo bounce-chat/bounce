@@ -20,6 +20,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 )
 
+const jumpToBottomIconSize = 46
 const timestampRefreshSeconds = 30
 const mergeSeconds = 300
 
@@ -33,6 +34,8 @@ type chatHistory struct {
 	ids        []uuid.UUID
 	heights    []float32
 	itemsMutex sync.Mutex
+
+	jumpToBottomIcon *clickableImage
 
 	Length     func() int                                  `json:"-"`
 	CreateItem func() fyne.CanvasObject                    `json:"-"`
@@ -79,6 +82,19 @@ func newChatHistory(readCallback func(uuid.UUID, string), unreadCountCallback fu
 		item := ch.items[id]
 		item.populateTemplate(obj)
 	}
+
+	ch.jumpToBottomIcon = newClickableImage(
+		"",
+		newEmbeddedResource("assets/icons/thread/jump_to_bottom.png"),
+		jumpToBottomIconSize,
+		jumpToBottomIconSize,
+		false,
+		func() {
+			ch.ScrollToBottom()
+			// TODO: mark all as read
+		},
+	)
+	ch.jumpToBottomIcon.Hide()
 
 	// Keep chat bubble timestamps up to date by periodically refreshing
 	go func() {
@@ -407,7 +423,7 @@ func (ch *chatHistory) CreateRenderer() fyne.WidgetRenderer {
 	layout := &fyne.Container{Layout: newListLayout(ch)}
 	ch.scroller = container.NewVScroll(layout)
 	layout.Resize(layout.MinSize())
-	objects := []fyne.CanvasObject{ch.scroller}
+	objects := []fyne.CanvasObject{ch.scroller, ch.jumpToBottomIcon}
 	return newListRenderer(objects, ch, ch.scroller, layout)
 }
 
@@ -688,6 +704,11 @@ func newListRenderer(objects []fyne.CanvasObject, ch *chatHistory, scroller *con
 
 func (l *listRenderer) Layout(size fyne.Size) {
 	l.scroller.Resize(size)
+	l.list.jumpToBottomIcon.Resize(fyne.Size{jumpToBottomIconSize, jumpToBottomIconSize})
+	l.list.jumpToBottomIcon.Move(fyne.Position{
+		X: size.Width - jumpToBottomIconSize - theme.Padding()*3,
+		Y: size.Height - jumpToBottomIconSize - theme.Padding()*3,
+	})
 }
 
 func (l *listRenderer) MinSize() fyne.Size {
@@ -829,6 +850,14 @@ func (l *listLayout) offsetUpdated(pos fyne.Position) {
 
 	l.list.offsetY = pos.Y
 	l.updateList(true)
+
+	if pos.Y < l.list.contentHeight()-l.list.scroller.Size().Height*2.5 {
+		l.list.jumpToBottomIcon.Show()
+	} else {
+		l.list.jumpToBottomIcon.Hide()
+	}
+
+	// TODO: if hitting the bottom, mark all as read
 }
 
 func (l *listLayout) setupListItem(li *listItem, id ListItemID, focus bool) {

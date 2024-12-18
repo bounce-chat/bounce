@@ -12,14 +12,15 @@ import (
 
 type clickableImage struct {
 	widget.BaseWidget
-	image      *canvas.Image
-	text       *canvas.Text
-	hovered    bool
-	background *canvas.Rectangle
-	clicked    func()
+	image        *canvas.Image
+	text         *canvas.Text
+	animateHover bool
+	hovered      bool
+	background   *canvas.Rectangle
+	clicked      func()
 }
 
-func newClickableImage(text string, resource fyne.Resource, width, height float32, onClicked func()) *clickableImage {
+func newClickableImage(text string, resource fyne.Resource, width, height float32, animateHover bool, onClicked func()) *clickableImage {
 	img := canvas.NewImageFromResource(resource)
 	img.FillMode = canvas.ImageFillContain
 	img.SetMinSize(fyne.NewSize(width, height))
@@ -31,7 +32,12 @@ func newClickableImage(text string, resource fyne.Resource, width, height float3
 			Text:      text,
 			TextSize:  theme.TextHeadingSize(),
 		},
-		clicked: onClicked,
+		animateHover: animateHover,
+		clicked:      onClicked,
+	}
+
+	if text == "" {
+		ci.text.Hide()
 	}
 
 	ci.background = canvas.NewRectangle(color.Transparent)
@@ -49,6 +55,9 @@ func (ci *clickableImage) Tapped(*fyne.PointEvent) {
 }
 
 func (ci *clickableImage) MouseIn(*desktop.MouseEvent) {
+	if !ci.animateHover {
+		return
+	}
 	ci.hovered = true
 
 	ci.applyTheme()
@@ -58,6 +67,9 @@ func (ci *clickableImage) MouseMoved(*desktop.MouseEvent) {
 }
 
 func (ci *clickableImage) MouseOut() {
+	if !ci.animateHover {
+		return
+	}
 	ci.hovered = false
 
 	ci.applyTheme()
@@ -97,14 +109,23 @@ func (cir *clickableImageRenderer) Destroy() {}
 func (cir *clickableImageRenderer) Layout(size fyne.Size) {
 	cir.ci.background.Resize(size)
 	cir.ci.image.Resize(cir.ci.image.MinSize())
+
+	y := size.Height/2 - cir.ci.image.MinSize().Height/2
+
+	if cir.ci.text.Visible() {
+		y -= cir.ci.text.MinSize().Height / 2
+	}
 	cir.ci.image.Move(fyne.Position{
 		X: size.Width/2 - cir.ci.image.MinSize().Width/2,
-		Y: size.Height/2 - cir.ci.image.MinSize().Height/2 - cir.ci.text.MinSize().Height/2,
+		Y: y,
 	})
-	cir.ci.text.Move(fyne.Position{
-		X: size.Width / 2,
-		Y: cir.ci.image.MinSize().Height + (size.Height-cir.ci.image.MinSize().Height)/2 + theme.Padding() - cir.ci.text.MinSize().Height/2,
-	})
+
+	if cir.ci.text.Visible() {
+		cir.ci.text.Move(fyne.Position{
+			X: size.Width / 2,
+			Y: cir.ci.image.MinSize().Height + (size.Height-cir.ci.image.MinSize().Height)/2 + theme.Padding() - cir.ci.text.MinSize().Height/2,
+		})
+	}
 }
 
 func (cir *clickableImageRenderer) MinSize() fyne.Size {
@@ -113,9 +134,15 @@ func (cir *clickableImageRenderer) MinSize() fyne.Size {
 	if textWidth > minWidth {
 		minWidth = textWidth
 	}
+
+	height := theme.Padding() + cir.ci.image.MinSize().Height + theme.Padding()
+	if cir.ci.text.Visible() {
+		height += theme.Padding() + cir.ci.text.MinSize().Height
+	}
+
 	return fyne.Size{
 		Width:  minWidth,
-		Height: theme.Padding() + cir.ci.image.MinSize().Height + theme.Padding() + cir.ci.text.MinSize().Height + theme.Padding(),
+		Height: height,
 	}
 }
 

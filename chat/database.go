@@ -136,7 +136,7 @@ func (b *bounce) pruneDirectMessages() {
 	now := time.Now()
 	var undeliverableDMs []directMessage
 	err = b.database.
-		Select("direct_messages.id", "direct_messages.retention_seconds").
+		Select("direct_messages.id").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.frame_type == ?", typeDirectMessage).
 		Where(
 			"delivery_records.id IS NULL AND direct_messages.written_at <= ? AND undeliverable = false",
@@ -200,7 +200,7 @@ func (b *bounce) pruneGroupMessages() {
 	now := time.Now()
 	var undeliverableGMs []groupMessage
 	err = b.database.
-		Select("group_messages.id", "group_messages.retention_seconds").
+		Select("group_messages.id").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_messages.id AND delivery_records.frame_type == ?", typeGroupMessage).
 		Where(
 			"delivery_records.id IS NULL AND group_messages.written_at <= ? AND undeliverable = false",
