@@ -523,7 +523,7 @@ func (b *bounce) typingIndicatorsEnabledForThread(threadID uuid.UUID) bool {
 	if t == typeGroupMessage {
 		return b.typingIndicatorsEnabledForGroup(threadID)
 	} else if t == typeDirectMessage {
-		return b.typingIndicatorsEnabledForUser(xor(threadID, b.currentUserID()))
+		return b.typingIndicatorsEnabledForUser(threadID)
 	}
 
 	log.WithFields(log.Fields{
