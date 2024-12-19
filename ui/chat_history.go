@@ -30,6 +30,8 @@ type ListItemID = int
 type chatHistory struct {
 	widget.BaseWidget
 
+	id uuid.UUID
+
 	items      []threadable
 	ids        []uuid.UUID
 	heights    []float32
@@ -49,25 +51,29 @@ type chatHistory struct {
 	offsetY       float32
 	offsetUpdated func(fyne.Position)
 
-	readCallback        func(uuid.UUID, string)
-	unreadCountCallback func(int)
-	seenTracking        map[uuid.UUID]bool
+	readCallback          func(uuid.UUID, string)
+	unreadCountCallback   func(int)
+	markAllAsReadCallback func(uuid.UUID)
+	seenTracking          map[uuid.UUID]bool
+	markAllAsReadMutex    sync.Mutex
 
 	propertyLock sync.RWMutex // TODO: expose the one in BaseWidget?
 }
 
-func newChatHistory(readCallback func(uuid.UUID, string), unreadCountCallback func(int)) *chatHistory {
+func newChatHistory(threadID uuid.UUID, readCallback func(uuid.UUID, string), unreadCountCallback func(int), markAllAsReadCallback func(uuid.UUID)) *chatHistory {
 	if readCallback == nil {
 		log.Fatal("cannot create chat history widget without read callback")
 	}
 
 	ch := &chatHistory{
-		items:               []threadable{},
-		ids:                 []uuid.UUID{},
-		heights:             []float32{},
-		readCallback:        readCallback,
-		unreadCountCallback: unreadCountCallback,
-		seenTracking:        make(map[uuid.UUID]bool),
+		id:                    threadID,
+		items:                 []threadable{},
+		ids:                   []uuid.UUID{},
+		heights:               []float32{},
+		readCallback:          readCallback,
+		unreadCountCallback:   unreadCountCallback,
+		markAllAsReadCallback: markAllAsReadCallback,
+		seenTracking:          make(map[uuid.UUID]bool),
 	}
 	ch.Length = func() int {
 		return len(ch.items)
@@ -91,7 +97,9 @@ func newChatHistory(readCallback func(uuid.UUID, string), unreadCountCallback fu
 		false,
 		func() {
 			ch.ScrollToBottom()
-			// TODO: mark all as read
+			ch.markAllAsReadMutex.Lock()
+			ch.markAllAsReadCallback(ch.id)
+			ch.markAllAsReadMutex.Unlock()
 		},
 	)
 	ch.jumpToBottomIcon.Hide()
@@ -386,14 +394,19 @@ func (ch *chatHistory) seen(index int) {
 	ch.updateUnreadCounter()
 }
 
-func (ch *chatHistory) updateUnreadCounter() {
+func (ch *chatHistory) countUnread() int {
+	// TODO: store in the message store for efficiency
 	unread := 0
 	for _, item := range ch.items {
 		if !item.isSeen() && item.countsAsUnread() {
 			unread += 1
 		}
 	}
-	ch.unreadCountCallback(unread)
+	return unread
+}
+
+func (ch *chatHistory) updateUnreadCounter() {
+	ch.unreadCountCallback(ch.countUnread())
 }
 
 func (ch *chatHistory) scrollToLastRead() {
@@ -857,7 +870,15 @@ func (l *listLayout) offsetUpdated(pos fyne.Position) {
 		l.list.jumpToBottomIcon.Hide()
 	}
 
-	// TODO: if hitting the bottom, mark all as read
+	if pos.Y == l.list.contentHeight()-l.list.scroller.Size().Height {
+		if l.list.countUnread() != 0 {
+			l.list.markAllAsReadMutex.Lock()
+			if l.list.countUnread() > 0 {
+				l.list.markAllAsReadCallback(l.list.id)
+			}
+			l.list.markAllAsReadMutex.Unlock()
+		}
+	}
 }
 
 func (l *listLayout) setupListItem(li *listItem, id ListItemID, focus bool) {

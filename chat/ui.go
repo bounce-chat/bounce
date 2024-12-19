@@ -438,7 +438,9 @@ type UICallbacks struct {
 
 	GroupConnectionDesired func(uuid.UUID)
 
-	MarkSeen func(uuid.UUID, string)
+	MarkAsRead                  func(messageID uuid.UUID, frameType string)
+	MarkAllGroupMessagesAsRead  func(groupID uuid.UUID)
+	MarkAllDirectMessagesAsRead func(userID uuid.UUID)
 
 	NeverAskForBatteryOptimizations   func()
 	SetReadReceiptsByDefault          func(bool)

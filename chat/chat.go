@@ -112,7 +112,7 @@ func Start(network Network, ui UI) {
 			UpdateProfileName:                 b.updateProfileName,
 			RevokeDevice:                      b.revokeDevice,
 			RenameDevice:                      b.renameDevice,
-			MarkSeen:                          b.markSeen,
+			MarkAsRead:                        b.markAsRead,
 			NeverAskForBatteryOptimizations:   b.neverAskForBatteryOptimizations,
 			SetReadReceiptsByDefault:          b.setReadReceiptsByDefault,
 			SetTypingIndicatorsByDefault:      b.setTypingIndicatorsByDefault,
@@ -124,6 +124,8 @@ func Start(network Network, ui UI) {
 			SetGroupTypingIndicatorSettings:   b.setGroupTypingIndicatorSettings,
 			SetDMReadReceiptSettings:          b.setDMReadReceiptSettings,
 			SetDMTypingIndicatorSettings:      b.setDMTypingIndicatorSettings,
+			MarkAllGroupMessagesAsRead:        b.markAllGroupMessagesAsRead,
+			MarkAllDirectMessagesAsRead:       b.markAllDirectMessagesAsRead,
 		},
 	)
 

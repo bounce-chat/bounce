@@ -462,7 +462,7 @@ func (b *bounce) markSeenInDatabase(id uuid.UUID, frameType string) error {
 	return nil
 }
 
-func (b *bounce) markSeen(id uuid.UUID, frameType string) {
+func (b *bounce) markAsRead(id uuid.UUID, frameType string) {
 	err := b.markSeenInDatabase(id, frameType)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -480,5 +480,71 @@ func (b *bounce) markSeen(id uuid.UUID, frameType string) {
 			"frame_type": frameType,
 			"error":      err.Error(),
 		}).Error("error sending read receipt for frame")
+	}
+}
+
+func (b *bounce) markAllGroupMessagesAsRead(groupID uuid.UUID) {
+	var gms []groupMessage
+	err := b.database.Select("id").Where("destination = ? AND seen = ?", groupID, false).Find(&gms).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"error":    err.Error(),
+		}).Fatal("database error selecting unseen group messages")
+	}
+	if len(gms) == 0 {
+		return
+	}
+
+	err = b.database.Table("group_messages").Where("destination = ? AND seen = ?", groupID, false).Updates(map[string]interface{}{"seen": true}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"error":    err.Error(),
+		}).Fatal("database error marking all group messages as seen")
+	}
+
+	for _, gm := range gms {
+		err = b.sendReadReceipt(gm.ID, TypeGroupMessage)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":         gm.ID,
+				"frame_type": TypeGroupMessage,
+				"error":      err.Error(),
+			}).Error("error sending read receipt")
+		}
+	}
+}
+
+func (b *bounce) markAllDirectMessagesAsRead(userID uuid.UUID) {
+	var dms []directMessage
+	err := b.database.Select("id").Where("xor = ? AND seen = ?", xor(userID, b.currentUserID()), false).Find(&dms).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"user_id": userID,
+			"error":   err.Error(),
+		}).Fatal("database error selecting unseen direct messages")
+	}
+	if len(dms) == 0 {
+		return
+	}
+
+	err = b.database.Table("direct_messages").Where("xor = ? AND seen = ?", xor(userID, b.currentUserID()), false).Updates(map[string]interface{}{"seen": true}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"user_id": userID,
+			"error":   err.Error(),
+		}).Fatal("database error marking all direct messages as seen")
+	}
+
+	for _, dm := range dms {
+		err = b.sendReadReceipt(dm.ID, TypeDirectMessage)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":         dm.ID,
+				"frame_type": TypeDirectMessage,
+				"error":      err.Error(),
+			}).Error("error sending read receipt")
+		}
 	}
 }
