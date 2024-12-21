@@ -148,4 +148,9 @@ func (fyneUI *Fyne) mobileBack() {
 			drv.(mobile.Driver).GoBack()
 		}
 	}
+
+	// If we're not looking at a thread, unset the active thread
+	if displayView.viewType != viewTypeThread {
+		fyneUI.activeThread = uuid.Nil
+	}
 }
