@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -12,6 +13,9 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
+
+var colorCache = map[uuid.UUID]color.RGBA{}
+var colorCacheMutex sync.Mutex
 
 func newDefaultImage(id uuid.UUID, text binding.String, size float32, clicked func()) *defaultImage {
 	str, err := text.Get()
@@ -132,10 +136,21 @@ func (cr *colorRectangle) At(x, y int) color.Color {
 // Deterministically generate a color from a UUID
 //
 func uuidToColor(id uuid.UUID) color.RGBA {
-	return color.RGBA{
+	colorCacheMutex.Lock()
+	defer colorCacheMutex.Unlock()
+
+	c, ok := colorCache[id]
+	if ok {
+		return c
+	}
+
+	c = color.RGBA{
 		R: id[0] % 0xcc,
 		G: id[1] % 0xcc,
 		B: id[2] % 0xcc,
 		A: 0xff,
 	}
+	colorCache[id] = c
+
+	return c
 }
