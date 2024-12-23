@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"encoding/binary"
 	"image"
 	"image/color"
+	"math"
 	"sync"
 
 	"fyne.io/fyne/v2"
@@ -144,13 +146,53 @@ func uuidToColor(id uuid.UUID) color.RGBA {
 		return c
 	}
 
+	h := float64(binary.BigEndian.Uint16(id[0:2]) % 360)
+	s := (float64(id[3]%10 + 65)) / 100
+	v := 0.8
+	r, g, b := hsvToRGB(h, s, v)
+
 	c = color.RGBA{
-		R: id[0] % 0xcc,
-		G: id[1] % 0xcc,
-		B: id[2] % 0xcc,
+		R: r,
+		G: g,
+		B: b,
 		A: 0xff,
 	}
 	colorCache[id] = c
 
 	return c
+}
+
+func hsvToRGB(h, s, v float64) (uint8, uint8, uint8) {
+	c := v * s
+	x := c * (1 - math.Abs(math.Mod(float64(h/60), 2)-1))
+	m := v - c
+
+	rPrime := float64(0)
+	gPrime := float64(0)
+	bPrime := float64(0)
+	if h < 60 {
+		rPrime = c
+		gPrime = x
+	} else if h < 120 {
+		rPrime = x
+		gPrime = c
+	} else if h < 180 {
+		gPrime = c
+		bPrime = x
+	} else if h < 240 {
+		gPrime = x
+		bPrime = c
+	} else if h < 300 {
+		rPrime = x
+		bPrime = c
+	} else {
+		rPrime = c
+		bPrime = x
+	}
+
+	r := (rPrime + m) * 255
+	g := (gPrime + m) * 255
+	b := (bPrime + m) * 255
+
+	return uint8(r), uint8(g), uint8(b)
 }
