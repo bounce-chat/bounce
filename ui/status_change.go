@@ -158,4 +158,10 @@ func (str *statusChangeRenderer) Objects() []fyne.CanvasObject {
 	}
 }
 
-func (str *statusChangeRenderer) Refresh() {}
+func (str *statusChangeRenderer) Refresh() {
+	str.st.action.Color = theme.Color(theme.ColorNameForeground)
+	str.st.time.Color = theme.Color(theme.ColorNameForeground)
+	for _, obj := range str.Objects() {
+		obj.Refresh()
+	}
+}

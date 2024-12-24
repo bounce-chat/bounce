@@ -73,7 +73,7 @@ func newChatBubbleTemplate() *chatBubble {
 	username.TextStyle.Bold = true
 	username.Hide()
 
-	timestamp := canvas.NewText("", &color.NRGBA{0xff, 0xff, 0xff, 0xcc})
+	timestamp := canvas.NewText("", theme.Color(theme.ColorNameForeground))
 	timestamp.TextSize = theme.TextSize() * 0.6
 
 	disappearingIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/disappears.png"))
@@ -158,19 +158,11 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	cb.mergeMode = m.mergeMode
 	cb.direct = m.direct
 
-	if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
-		if m.outgoing {
-			cb.background.FillColor = color.NRGBA{0xb5, 0xd0, 0xff, 0xff}
-		} else {
-			cb.background.FillColor = color.NRGBA{0xdd, 0xdd, 0xdd, 0xff}
-		}
-	} else {
-		if m.outgoing {
-			cb.background.FillColor = color.NRGBA{0, 0x2c, 0x94, 0xff}
-		} else {
-			cb.background.FillColor = color.NRGBA{0x20, 0x20, 0x20, 0xff}
-		}
+	colorName := colorNameIncomingChatBubble
+	if m.outgoing {
+		colorName = colorNameOutgoingChatBubble
 	}
+	cb.background.FillColor = theme.Color(colorName)
 
 	if !m.direct && !m.outgoing {
 		cb.username.Text = m.username
@@ -183,9 +175,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 			rect:  image.Rect(0, 0, int(theme.IconInlineSize())*8, int(theme.IconInlineSize())*8),
 			color: uuidToColor(m.author), // TODO: access this color without recreating the whole thing?
 		}))
-		if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
-			cb.icon.foregroundText.Color = color.RGBA{0xff, 0xff, 0xff, 0xff}
-		}
+		cb.icon.foregroundText.Color = color.RGBA{0xff, 0xff, 0xff, 0xff}
 		cb.icon.clicked = func() {
 			// TODO: bug: not clickable
 			log.WithFields(log.Fields{

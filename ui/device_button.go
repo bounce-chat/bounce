@@ -28,33 +28,18 @@ func newDeviceButton(name, address string, deviceStatus int, encrypted, hosted b
 		displayName = address
 	}
 
-	statusColor := color.RGBA{}
-	if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
-		switch deviceStatus {
-		case deviceStatusLocal:
-			statusColor = color.RGBA{0x38, 0x2a, 0xf7, 0xff}
-		case deviceStatusOffline:
-			statusColor = color.RGBA{0xaa, 0xaa, 0xaa, 0xff}
-		case deviceStatusOnline:
-			statusColor = color.RGBA{0x2d, 0xc2, 0x39, 0xff}
-		default:
-			log.WithFields(log.Fields{
-				"status": deviceStatus,
-			}).Error("unsupported device status while creating device button")
-		}
-	} else {
-		switch deviceStatus {
-		case deviceStatusLocal:
-			statusColor = color.RGBA{0x38, 0x2a, 0xf7, 0xff}
-		case deviceStatusOffline:
-			statusColor = color.RGBA{0xaa, 0xaa, 0xaa, 0xff}
-		case deviceStatusOnline:
-			statusColor = color.RGBA{0x2d, 0xc2, 0x39, 0xff}
-		default:
-			log.WithFields(log.Fields{
-				"status": deviceStatus,
-			}).Error("unsupported device status while creating device button")
-		}
+	var statusColor color.Color
+	switch deviceStatus {
+	case deviceStatusLocal:
+		statusColor = theme.Color(colorNameDeviceLocal)
+	case deviceStatusOffline:
+		statusColor = theme.Color(colorNameDeviceOffline)
+	case deviceStatusOnline:
+		statusColor = theme.Color(colorNameDeviceOnline)
+	default:
+		log.WithFields(log.Fields{
+			"status": deviceStatus,
+		}).Error("unsupported device status while creating device button")
 	}
 
 	size := theme.IconInlineSize()
@@ -246,4 +231,8 @@ func (dbr *deviceButtonRenderer) Objects() []fyne.CanvasObject {
 	}
 }
 
-func (dbr *deviceButtonRenderer) Refresh() {}
+func (dbr *deviceButtonRenderer) Refresh() {
+	for _, obj := range dbr.Objects() {
+		obj.Refresh()
+	}
+}

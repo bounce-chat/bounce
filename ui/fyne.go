@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/mobile"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -131,6 +132,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.app.SetIcon(newEmbeddedResource("assets/icon.png"))
 	fyneUI.app.Lifecycle().SetOnEnteredForeground(func() { fyneUI.focused = true })
 	fyneUI.app.Lifecycle().SetOnExitedForeground(func() { fyneUI.focused = false })
+	fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
 
 	//
 	// Define the main window

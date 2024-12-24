@@ -75,6 +75,26 @@ func (fyneUI *Fyne) buildSettings() {
 		defaultNewGroupRestrictPosting:        widget.NewCheck("Restrict Posting", fyneUI.callbacks.SetNewGroupRestrictPosting),
 	}
 
+	themeSettingsLabel := widget.NewLabel("Theme")
+	themeSettingsLabel.TextStyle = fyne.TextStyle{Bold: true}
+	darkModeCheck := widget.NewCheck("Dark Mode", func(checked bool) {
+		if checked {
+			fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
+		} else {
+			fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
+		}
+		//TODO: should not need to do these refreshes after setting the theme:
+		fyneUI.mainContainer.Refresh()
+		for _, t := range fyneUI.groups {
+			t.chatHistoryScroll().Refresh()
+		}
+		for _, t := range fyneUI.dms {
+			t.chatHistoryScroll().Refresh()
+		}
+		fyneUI.threadVBox.Refresh()
+	})
+	darkModeCheck.Checked = true
+
 	fyneUI.settingsContainer = container.New(
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
@@ -91,6 +111,8 @@ func (fyneUI *Fyne) buildSettings() {
 			fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement,
 			fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits,
 			fyneUI.settingsWidgets.defaultNewGroupRestrictPosting,
+			themeSettingsLabel,
+			darkModeCheck,
 		)),
 	)
 }

@@ -129,26 +129,26 @@ func newThreadButton(image fyne.CanvasObject, name binding.String, clicked func(
 		thirdTypingDot:  canvas.NewCircle(color.RGBA{R: 0x96, G: 0x96, B: 0x96, A: 0xff}),
 		threadNameFadeOut: canvas.NewLinearGradient(
 			color.RGBA{},
-			theme.BackgroundColor(),
+			theme.Color(theme.ColorNameBackground),
 			270,
 		),
-		lastMessageTimeBackground: canvas.NewRectangle(theme.BackgroundColor()),
+		lastMessageTimeBackground: canvas.NewRectangle(theme.Color(theme.ColorNameBackground)),
 		lastMessageTimeFadeOut: canvas.NewLinearGradient(
 			color.RGBA{},
-			theme.BackgroundColor(),
+			theme.Color(theme.ColorNameBackground),
 			270,
 		),
 		defaultTextFadeOut: canvas.NewLinearGradient(
 			color.RGBA{},
-			theme.BackgroundColor(),
+			theme.Color(theme.ColorNameBackground),
 			270,
 		),
 		unreadCounterTextFadeOut: canvas.NewLinearGradient(
 			color.RGBA{},
-			theme.BackgroundColor(),
+			theme.Color(theme.ColorNameBackground),
 			270,
 		),
-		unreadCounterBackground: canvas.NewRectangle(theme.BackgroundColor()),
+		unreadCounterBackground: canvas.NewRectangle(theme.Color(theme.ColorNameBackground)),
 		unreadCounterCircle: canvas.NewCircle(color.RGBA{
 			R: 0x21,
 			G: 0x7e,
@@ -222,7 +222,7 @@ func newThreadButton(image fyne.CanvasObject, name binding.String, clicked func(
 
 func (tb *threadButton) Tapped(*fyne.PointEvent) {
 	if tb.clicked != nil {
-		tb.clicked() // TODO: pass tb do the callback for any reason?
+		tb.clicked()
 	} else {
 		log.Fatal("threadButton widgets must have a clickable callback")
 	}
@@ -329,13 +329,12 @@ func (tb *threadButton) showCurrentStatusIcon() {
 	tb.statusIcons.Show()
 }
 
-// TODO: renderer should keep this up to date as the time passes
 func (tb *threadButton) setLastMessageTime(timestamp time.Time) {
 	tb.lastMessageTime = timestamp
 	tb.updateLastMessageTimeText()
 }
 
-func (tb *threadButton) updateLastMessageTimeText() {
+func (tb *threadButton) updateLastMessageTimeText() { //TODO: use the same time string as thread items?
 	elapsed := time.Since(tb.lastMessageTime)
 	displayTime := ""
 
@@ -578,6 +577,25 @@ func (tbr *threadButtonRenderer) Objects() []fyne.CanvasObject {
 }
 
 func (tbr *threadButtonRenderer) Refresh() {
-	//tbr.Layout(tbr.threadButton.Size()) // TODO: needed?  doesn't seem like it
-	//tbr.WidgetRenderer.Refresh() // TODO: needed?
+	tbr.threadButton.threadNameFadeOut.EndColor = theme.Color(theme.ColorNameBackground)
+	tbr.threadButton.threadNameFadeOut.Refresh()
+
+	tbr.threadButton.lastMessageTimeBackground.FillColor = theme.Color(theme.ColorNameBackground)
+	tbr.threadButton.lastMessageTimeBackground.Refresh()
+
+	tbr.threadButton.lastMessageTimeFadeOut.EndColor = theme.Color(theme.ColorNameBackground)
+	tbr.threadButton.lastMessageTimeFadeOut.Refresh()
+
+	tbr.threadButton.defaultTextFadeOut.EndColor = theme.Color(theme.ColorNameBackground)
+	tbr.threadButton.defaultTextFadeOut.Refresh()
+
+	tbr.threadButton.unreadCounterTextFadeOut.EndColor = theme.Color(theme.ColorNameBackground)
+	tbr.threadButton.unreadCounterTextFadeOut.Refresh()
+
+	tbr.threadButton.unreadCounterBackground.FillColor = theme.Color(theme.ColorNameBackground)
+	tbr.threadButton.unreadCounterBackground.Refresh()
+
+	for _, obj := range tbr.Objects() {
+		obj.Refresh()
+	}
 }

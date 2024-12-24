@@ -296,12 +296,7 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 }
 
 func makeLogo(width, height float32) *canvas.Image {
-	var logo *canvas.Image
-	if fyne.CurrentApp().Settings().ThemeVariant() == theme.VariantLight {
-		logo = canvas.NewImageFromResource(newEmbeddedResource("assets/logo.png"))
-	} else {
-		logo = canvas.NewImageFromResource(newEmbeddedResource("assets/logo_dark.png"))
-	}
+	logo := canvas.NewImageFromResource(theme.Icon(iconNameLogo))
 	logo.FillMode = canvas.ImageFillContain
 	logo.SetMinSize(fyne.NewSize(width, height))
 	return logo
