@@ -329,6 +329,10 @@ func validGroupName(name string) bool {
 		return false
 	}
 
+	if strings.Contains(name, "\n") {
+		return false
+	}
+
 	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= MaximumNameLength
 }
 
