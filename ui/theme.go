@@ -5,6 +5,8 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/theme"
+	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 var colorNameOutgoingChatBubble = fyne.ThemeColorName("outgoingChatBubble")
@@ -22,6 +24,22 @@ type forcedVariant struct {
 }
 
 func (f *forcedVariant) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
+	// UUID tags
+	if len(name) > 5 && name[0:5] == "uuid:" {
+		trimmed := string(name[5:len(name)])
+		id, err := uuid.Parse(trimmed)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"name":    name,
+				"trimmed": trimmed,
+				"error":   err.Error(),
+			}).Warn("invlid UUID color name")
+			return color.RGBA{0xff, 0xff, 0xff, 0xff}
+		}
+		return uuidToColor(id)
+	}
+
+	// Custom names
 	switch name {
 	case colorNameOutgoingChatBubble:
 		if f.variant == theme.VariantDark {
@@ -50,6 +68,7 @@ func (f *forcedVariant) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) col
 		return color.RGBA{0x2d, 0xc2, 0x39, 0xff}
 	}
 
+	// Default to the default theme
 	return f.Theme.Color(name, f.variant)
 }
 

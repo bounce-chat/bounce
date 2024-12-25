@@ -37,7 +37,7 @@ type chatBubble struct {
 	direct           bool
 	writtenAt        int64
 	mergeMode        int
-	username         *canvas.Text
+	username         *widget.RichText
 	message          *widget.RichText
 	icon             *defaultImage
 	background       *canvas.Rectangle
@@ -69,8 +69,18 @@ func newChatBubbleTemplate() *chatBubble {
 	//})
 	//username.Truncation = fyne.TextTruncateEllipsis
 	//username.Segments[0].(*widget.TextSegment).Style.TextStyle.Bold = true
-	username := canvas.NewText("", &color.RGBA{})
-	username.TextStyle.Bold = true
+	username := widget.NewRichText(
+		&widget.TextSegment{
+			Text: "",
+			Style: widget.RichTextStyle{
+				TextStyle: fyne.TextStyle{
+					Bold: true,
+				},
+				SizeName: theme.SizeNameText,
+			},
+		},
+	)
+	username.Truncation = fyne.TextTruncateEllipsis
 	username.Hide()
 
 	timestamp := canvas.NewText("", theme.Color(theme.ColorNameForeground))
@@ -165,8 +175,8 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	cb.background.FillColor = theme.Color(colorName)
 
 	if !m.direct && !m.outgoing {
-		cb.username.Text = m.username
-		cb.username.Color = uuidToColor(m.author)
+		cb.username.Segments[0].(*widget.TextSegment).Text = m.username
+		cb.username.Segments[0].(*widget.TextSegment).Style.ColorName = fyne.ThemeColorName("uuid:" + m.author.String())
 		cb.username.Refresh()
 		cb.username.Show()
 
@@ -200,8 +210,8 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	).Width
 	usernameWidth := fyne.MeasureText(
 		m.username,
-		cb.username.TextSize,
-		cb.username.TextStyle,
+		theme.Size(cb.username.Segments[0].(*widget.TextSegment).Style.SizeName),
+		cb.username.Segments[0].(*widget.TextSegment).Style.TextStyle,
 	).Width
 
 	cb.outgoing = m.outgoing
@@ -397,8 +407,8 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 
 	messageTop := top
 	if cbr.cb.username.Visible() {
-		cbr.cb.username.Resize(cbr.cb.username.MinSize())
-		cbr.cb.username.Move(fyne.Position{leftBorder + theme.Padding()*2, top + theme.Padding()})
+		cbr.cb.username.Resize(fyne.Size{Height: size.Height, Width: width - theme.Padding()*2})
+		cbr.cb.username.Move(fyne.Position{leftBorder, top + theme.Padding()})
 		messageTop += cbr.cb.username.MinSize().Height
 	}
 
