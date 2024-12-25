@@ -107,7 +107,11 @@ func (dir *defaultImageRenderer) Objects() []fyne.CanvasObject {
 	}
 }
 
-func (dir *defaultImageRenderer) Refresh() {}
+func (dir *defaultImageRenderer) Refresh() {
+	for _, obj := range dir.Objects() {
+		obj.Refresh()
+	}
+}
 
 //
 // A color rectange is a single color in a rectangle image

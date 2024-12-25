@@ -154,4 +154,8 @@ func (cir *clickableImageRenderer) Objects() []fyne.CanvasObject {
 	}
 }
 
-func (cir *clickableImageRenderer) Refresh() {}
+func (cir *clickableImageRenderer) Refresh() {
+	for _, obj := range cir.Objects() {
+		obj.Refresh()
+	}
+}

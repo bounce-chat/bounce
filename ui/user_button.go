@@ -200,4 +200,8 @@ func (ubr *userButtonRenderer) Objects() []fyne.CanvasObject {
 	}
 }
 
-func (ubr *userButtonRenderer) Refresh() {}
+func (ubr *userButtonRenderer) Refresh() {
+	for _, obj := range ubr.Objects() {
+		obj.Refresh()
+	}
+}
