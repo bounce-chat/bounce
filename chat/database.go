@@ -486,7 +486,6 @@ func (b *bounce) buildInitialState() InitialState {
 	}
 	exportedGMs := []GroupMessage{}
 	for _, gm := range gms {
-		// TODO: get polymorphism working
 		var rrs []readReceipt
 		err = b.database.Where("target = ? AND actor != ?", gm.ID, b.currentUserID()).Find(&rrs).Error
 		if err != nil {

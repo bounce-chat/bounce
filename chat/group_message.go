@@ -18,16 +18,15 @@ var gmDeliveryNotifications = map[uuid.UUID]chan bool{}
 // A group message is sent from a member of a group to a group
 //
 type groupMessage struct {
-	ID            uuid.UUID `gorm:"type:uuid;primary_key;"`
-	SavedAt       int64     `msgpack:"-"`
-	WrittenAt     int64
-	DeleteAt      int64
-	Seen          bool `msgpack:"-"`
-	Undeliverable bool `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
-	Author        uuid.UUID
-	Destination   uuid.UUID
-	Text          string
-	//ReadReceipts    []readReceipt `msgpack:"-" gorm:"polymorphicType:TargetTable;polymorphicId:Target"`
+	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
+	SavedAt         int64     `msgpack:"-"`
+	WrittenAt       int64
+	DeleteAt        int64
+	Seen            bool `msgpack:"-"`
+	Undeliverable   bool `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
+	Author          uuid.UUID
+	Destination     uuid.UUID
+	Text            string
 	Signer          string `msgpack:"-" gorm:"not null"`
 	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
 	Signature       []byte `msgpack:"-" gorm:"not null"`

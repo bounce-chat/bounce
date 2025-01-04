@@ -34,13 +34,12 @@ var errUnknownReadReceiptTargetType = errors.New("unknown target type for read r
 var readReceiptMutex sync.Mutex
 
 type readReceipt struct {
-	ID          uuid.UUID
-	Actor       uuid.UUID
-	Destination uuid.UUID `msgpack:"-"`
-	Scope       int       `msgpack:"-"`
-	Target      uuid.UUID
-	TargetType  uint16
-	//TargetTable string `msgpack:"-"`
+	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Actor           uuid.UUID
+	Destination     uuid.UUID `msgpack:"-"`
+	Scope           int       `msgpack:"-"`
+	Target          uuid.UUID
+	TargetType      uint16
 	Timestamp       int64
 	Signer          string `msgpack:"-" gorm:"not null"`
 	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
