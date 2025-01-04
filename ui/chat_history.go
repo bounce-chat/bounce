@@ -57,10 +57,12 @@ type chatHistory struct {
 	seenTracking          map[uuid.UUID]bool
 	markAllAsReadMutex    sync.Mutex
 
+	windowFocused func() bool
+
 	propertyLock sync.RWMutex // TODO: expose the one in BaseWidget?
 }
 
-func newChatHistory(threadID uuid.UUID, readCallback func(uuid.UUID, string), unreadCountCallback func(int), markAllAsReadCallback func(uuid.UUID)) *chatHistory {
+func newChatHistory(threadID uuid.UUID, readCallback func(uuid.UUID, string), unreadCountCallback func(int), markAllAsReadCallback func(uuid.UUID), windowFocused func() bool) *chatHistory {
 	if readCallback == nil {
 		log.Fatal("cannot create chat history widget without read callback")
 	}
@@ -74,6 +76,7 @@ func newChatHistory(threadID uuid.UUID, readCallback func(uuid.UUID, string), un
 		unreadCountCallback:   unreadCountCallback,
 		markAllAsReadCallback: markAllAsReadCallback,
 		seenTracking:          make(map[uuid.UUID]bool),
+		windowFocused:         windowFocused,
 	}
 	ch.Length = func() int {
 		return len(ch.items)
@@ -388,7 +391,9 @@ func (ch *chatHistory) seen(index int) {
 
 		item := ch.items[index]
 		item.markSeen()
-		go ch.readCallback(id, item.getType())
+		if ch.windowFocused() {
+			go ch.readCallback(id, item.getType())
+		}
 	}
 
 	ch.updateUnreadCounter()

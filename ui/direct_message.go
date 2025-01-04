@@ -213,7 +213,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 		}
 	}
 	dm.button = newThreadButton(newDefaultImage(user.id, user.initials, 64, openThread), user.name, openThread)
-	dm.scroll = newChatHistory(dm.user.id, fyneUI.callbacks.MarkAsRead, dm.button.setUnreadCount, fyneUI.callbacks.MarkAllDirectMessagesAsRead)
+	dm.scroll = newChatHistory(dm.user.id, fyneUI.callbacks.MarkAsRead, dm.button.setUnreadCount, fyneUI.callbacks.MarkAllDirectMessagesAsRead, func() bool { return fyneUI.focused })
 
 	// Keep the last message time counter up to date
 	go func() {

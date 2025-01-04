@@ -120,7 +120,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.focused = true
 	fyneUI.syncString = binding.NewString()
 	fyneUI.addUserString = binding.NewString()
-	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}) // TODO: red rich text
+	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	fyneUI.networkOfflineWarning.Show()
 	fyneUI.deletedUser = makeUser(uuid.Nil, "-deleted-")
 	fyneUI.viewStack = []view{}

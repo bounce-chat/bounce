@@ -486,7 +486,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		}
 	}
 	group.button = newThreadButton(newDefaultImage(group.id, group.initial, 64, openThread), group.name, openThread)
-	group.scroll = newChatHistory(group.id, fyneUI.callbacks.MarkAsRead, group.button.setUnreadCount, fyneUI.callbacks.MarkAllGroupMessagesAsRead)
+	group.scroll = newChatHistory(group.id, fyneUI.callbacks.MarkAsRead, group.button.setUnreadCount, fyneUI.callbacks.MarkAllGroupMessagesAsRead, func() bool { return fyneUI.focused })
 
 	// Keep the last message time counter up to date
 	go func() {
