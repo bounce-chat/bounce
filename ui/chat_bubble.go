@@ -363,9 +363,6 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 	}
 
 	usedWidth := cbr.cb.maxTextWidth + theme.Padding()*4
-	if cbr.shiftForIcon() {
-		usedWidth += theme.Padding() + cbr.iconSize()
-	}
 	if cbr.cb.decorations.Visible() {
 		//fits := guessIfDecoratorFits(
 		//	cbr.cb.message.Segments[0].(*widget.TextSegment).Text,
@@ -407,7 +404,7 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 
 	messageTop := top
 	if cbr.cb.username.Visible() {
-		cbr.cb.username.Resize(fyne.Size{Height: size.Height, Width: width - theme.Padding()*2})
+		cbr.cb.username.Resize(fyne.Size{Height: size.Height, Width: width + theme.Padding()*2})
 		cbr.cb.username.Move(fyne.Position{leftBorder, top + theme.Padding()})
 		messageTop += cbr.cb.username.MinSize().Height
 	}
