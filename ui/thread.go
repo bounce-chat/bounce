@@ -12,7 +12,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var messages = map[uuid.UUID]threadable{} // TODO: put on fyne, not package level?
+var openedThreads = map[uuid.UUID]bool{}
+var openedThreadMutex sync.Mutex
+
+var messages = map[uuid.UUID]threadable{} // TODO: put on fyne, not package level?  Either way, to be replaced by messageStore
 var messagesMutex sync.Mutex
 
 type thread interface {
@@ -177,6 +180,25 @@ func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
 	}
 
 	item.markSeen()
+
+	fyneUI.threadWithItemMutex.Lock()
+	t, ok := fyneUI.threadWithItem[id]
+	fyneUI.threadWithItemMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"message_id": id,
+		}).Warn("marked message as seen that was not found in any thread")
+		return
+	}
+
+	t.chatHistoryScroll().updateUnreadCounter()
+
+	openedThreadMutex.Lock()
+	_, opened := openedThreads[t.getID()]
+	openedThreadMutex.Unlock()
+	if opened {
+		t.chatHistoryScroll().scrollToLastRead()
+	}
 }
 
 func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
@@ -286,6 +308,10 @@ func (fyneUI *Fyne) displayThread(thread thread) {
 	fyneUI.activeThread = thread.getID()
 	fyneUI.chatContainer.Objects = []fyne.CanvasObject{thread.getView()}
 	fyneUI.chatContainer.Refresh()
+
+	openedThreadMutex.Lock()
+	openedThreads[thread.getID()] = true
+	openedThreadMutex.Unlock()
 
 	if fyne.CurrentDevice().IsMobile() {
 		fyneUI.mainWindow.SetContent(fyneUI.chatContainer)
