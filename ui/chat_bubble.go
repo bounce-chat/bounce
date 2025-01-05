@@ -3,7 +3,7 @@ package ui
 import (
 	"image"
 	"image/color"
-	"math"
+	"regexp"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -30,6 +30,8 @@ var stateDelivered = 2
 var stateRead = 3
 var stateError = 4
 
+var wordWrapRE = regexp.MustCompile(`\s*\S+`)
+
 type chatBubble struct {
 	widget.BaseWidget
 	id               uuid.UUID
@@ -50,6 +52,8 @@ type chatBubble struct {
 	delivered        *canvas.Image
 	read             *canvas.Image
 	errorIcon        *canvas.Image
+	chunks           []string
+	chunkLengths     []float32
 	maxTextWidth     float32
 	maxMessageWidth  float32
 }
@@ -293,6 +297,23 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	if cb.username.Visible() && usernameWidth > cb.maxMessageWidth {
 		cb.maxTextWidth = usernameWidth
 	}
+
+	// Chunk out text for word wrapping calculations used to see if decorations need a new line
+	lines := strings.Split(m.text, "\n")
+	lastLine := lines[len(lines)-1]
+	cb.chunks = wordWrapRE.FindAllString(lastLine, -1)
+
+	cb.chunkLengths = []float32{}
+	for _, c := range cb.chunks {
+		cb.chunkLengths = append(
+			cb.chunkLengths,
+			fyne.MeasureText(
+				c,
+				theme.Size(cb.message.Segments[0].(*widget.TextSegment).Style.SizeName),
+				cb.message.Segments[0].(*widget.TextSegment).Style.TextStyle,
+			).Width,
+		)
+	}
 }
 
 func (cb *chatBubble) updateDisplayTime() {
@@ -364,14 +385,10 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 
 	usedWidth := cbr.cb.maxTextWidth + theme.Padding()*4
 	if cbr.cb.decorations.Visible() {
-		//fits := guessIfDecoratorFits(
-		//	cbr.cb.message.Segments[0].(*widget.TextSegment).Text,
-		//	cbr.cb.message.Segments[0].(*widget.TextSegment).Style.TextStyle,
-		//	size.Width,
-		//	cbr.cb.decorations.MinSize().Width,
-		//)
-		//fits := cbr.cb.maxMessageWidth+decorationsWidth+theme.Padding()*3+bufferSize < size.Width
-		fits := usedWidth+decorationsWidth+theme.Padding()*3+bufferSize < size.Width
+		fits := cbr.cb.guessIfDecoratorFits(
+			rightBorder-leftBorder-theme.Padding()*4,
+			cbr.cb.decorations.MinSize().Width,
+		)
 		cbr.decorationsOnNewLine = !fits
 		//if cbr.cb.outgoing && cbr.cb.mergeMode == mergeModeBottom { // TODO: always new line for decorations on last outgoing message, if it looks better
 		//	cbr.decorationsOnNewLine = true
@@ -472,20 +489,20 @@ func longestLine(message string) string {
 	return longest
 }
 
-func guessIfDecoratorFits(text string, style fyne.TextStyle, availableWidth, decoratorWidth float32) bool {
-	lines := strings.Split(text, "\n") // TODO: is '\n' too OS specific?  Maybe do this https://stackoverflow.com/a/49963413
-	lastLine := lines[len(lines)-1]
-
-	lastTextLength := fyne.MeasureText(
-		lastLine,
-		theme.TextSize(), // TODO: using theme.TextSize(), get it from the rich text instead?
-		style,            //cb.message.Segments[0].(*widget.TextSegment).Style.TextStyle,
-	).Width
-
-	if lastTextLength+decoratorWidth+theme.Padding()*3+bufferSize < availableWidth {
-		return true
-	} else if lastTextLength < availableWidth {
-		return false
+func (cb *chatBubble) guessIfDecoratorFits(availableWidth, decoratorWidth float32) bool {
+	currentWrap := float32(0)
+	for i, l := range cb.chunkLengths {
+		if currentWrap+l > availableWidth {
+			firstWord, _ := trimLeadingSpace(cb.chunks[i])
+			currentWrap = fyne.MeasureText(
+				firstWord,
+				theme.Size(cb.message.Segments[0].(*widget.TextSegment).Style.SizeName),
+				cb.message.Segments[0].(*widget.TextSegment).Style.TextStyle,
+			).Width
+		} else {
+			currentWrap += l
+		}
 	}
-	return availableWidth-bufferSize-(float32(math.Mod(float64(lastTextLength), float64(availableWidth)))) > decoratorWidth
+
+	return currentWrap+decoratorWidth < availableWidth
 }
