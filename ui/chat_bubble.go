@@ -349,6 +349,7 @@ func (cbr *chatBubbleRenderer) iconSize() float32 {
 }
 
 func (cbr *chatBubbleRenderer) Refresh() {
+	cbr.cb.timestamp.Color = theme.Color(theme.ColorNameForeground)
 	cbr.cb.updateDisplayTime()
 	cbr.Layout(cbr.cb.Size())
 }

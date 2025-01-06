@@ -6,39 +6,36 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 )
-
-var minWidthOfLongActionInStatusChange = float32(256)
 
 type statusChange struct {
 	widget.BaseWidget
-	id           uuid.UUID
-	timestamp    int64
-	actionString string
-	fullAction   *canvas.Text
-	action       *canvas.Text
-	time         *canvas.Text
+	id         uuid.UUID
+	timestamp  int64
+	action     *widget.RichText
+	actionSize fyne.Size
+	time       *canvas.Text
 }
 
 func newStatusChangeTemplate() *statusChange {
 	st := &statusChange{
-		id:           uuid.Nil,
-		timestamp:    0,
-		actionString: "",
-		action: &canvas.Text{
-			Text:     "",
-			TextSize: theme.TextSize(),
-		},
-		fullAction: &canvas.Text{
-			Text:     "",
-			TextSize: theme.TextSize(),
-		},
+		id:        uuid.Nil,
+		timestamp: 0,
+		action: widget.NewRichText(
+			&widget.TextSegment{
+				Text: "",
+				Style: widget.RichTextStyle{
+					SizeName: theme.SizeNameText,
+				},
+			},
+		),
 		time: &canvas.Text{
 			Text:     "",
 			TextSize: theme.TextSize() * 0.6,
 		},
 	}
+
+	st.action.Truncation = fyne.TextTruncateEllipsis
 
 	st.ExtendBaseWidget(st)
 
@@ -48,28 +45,13 @@ func newStatusChangeTemplate() *statusChange {
 func (st *statusChange) setData(id uuid.UUID, timestamp int64, str string) {
 	st.id = id
 	st.timestamp = timestamp
-	st.actionString = str
-	st.fullAction.Text = str
-	st.fullAction.Refresh()
-
-	if st.Size().Width > 0 {
-		widthAvailableForAction := st.Size().Width - theme.Padding() - st.time.MinSize().Width
-		fullActionWidth := st.fullAction.MinSize().Width
-		if fullActionWidth > widthAvailableForAction {
-			percentAvailable := widthAvailableForAction / fullActionWidth
-			numberOfCharactersThatCanFit := int(percentAvailable * float32(len(st.actionString)))
-			truncatedText := st.actionString[0:numberOfCharactersThatCanFit]
-			if len(truncatedText) > 3 {
-				truncatedText = truncatedText[0:len(truncatedText)-4] + "..."
-			}
-			st.action.Text = truncatedText
-			st.action.Refresh()
-		} else {
-			st.action.Text = st.actionString
-			st.action.Refresh()
-		}
-	}
-
+	st.action.Segments[0].(*widget.TextSegment).Text = str
+	st.actionSize = fyne.MeasureText(
+		str,
+		theme.Size(st.action.Segments[0].(*widget.TextSegment).Style.SizeName),
+		st.action.Segments[0].(*widget.TextSegment).Style.TextStyle,
+	)
+	st.actionSize.Width += theme.Padding() * 2
 	st.time.Text = timestampString(timestamp)
 	st.time.Refresh()
 }
@@ -91,63 +73,38 @@ type statusChangeRenderer struct {
 func (str *statusChangeRenderer) Destroy() {}
 
 func (str *statusChangeRenderer) Layout(size fyne.Size) {
-	if str.MinSize().Width > size.Width {
-		log.WithFields(log.Fields{
-			"size":     size,
-			"min_size": str.MinSize(),
-		}).Warn("refusing to layout into size smaller than minsize")
-		return
-	}
-	widthAvailableForAction := size.Width - theme.Padding() - str.st.time.MinSize().Width
-	fullActionWidth := str.st.fullAction.MinSize().Width
-	totalWidth := str.MinSize().Width
-	if fullActionWidth > widthAvailableForAction {
-		percentAvailable := widthAvailableForAction / fullActionWidth
-		numberOfCharactersThatCanFit := int(percentAvailable * float32(len(str.st.actionString)))
-		truncatedText := str.st.actionString[0:numberOfCharactersThatCanFit]
-		if len(truncatedText) > 3 {
-			truncatedText = truncatedText[0:len(truncatedText)-4] + "..."
-		}
-		str.st.action.Text = truncatedText
-		str.st.action.Refresh()
-		totalWidth = size.Width
+	str.st.action.Resize(fyne.Size{
+		Height: size.Height,
+		Width:  size.Width - theme.Padding()*2 - str.st.time.MinSize().Width,
+	})
+
+	if size.Width < str.st.actionSize.Width+theme.Padding()*2+str.st.time.MinSize().Width {
+		str.st.action.Move(fyne.Position{
+			X: 0,
+			Y: 0,
+		})
+
+		str.st.time.Move(fyne.Position{
+			X: size.Width - str.st.time.MinSize().Width,
+			Y: str.st.actionSize.Height + theme.Padding()*2 - str.st.time.MinSize().Height,
+		})
 	} else {
-		str.st.action.Text = str.st.actionString
-		str.st.action.Refresh()
-		totalWidth = str.st.fullAction.MinSize().Width + theme.Padding() + str.st.time.MinSize().Width
+		str.st.action.Move(fyne.Position{
+			X: (size.Width-str.st.actionSize.Width)/2 - theme.Padding() - str.st.time.MinSize().Width/2,
+			Y: 0,
+		})
+
+		str.st.time.Move(fyne.Position{
+			X: (size.Width-str.st.time.MinSize().Width)/2 + theme.Padding() + str.st.actionSize.Width/2,
+			Y: str.st.actionSize.Height + theme.Padding()*2 - str.st.time.MinSize().Height,
+		})
 	}
-
-	leftoverWidth := size.Width - totalWidth
-	if leftoverWidth < 0 {
-		log.WithFields(log.Fields{
-			"id": str.st.id,
-		}).Debug("refusing to layout status change in space smaller than minsize")
-		return
-	}
-	offset := leftoverWidth / 2
-
-	leftoverActionHeight := size.Height - str.st.action.MinSize().Height
-	str.st.action.Move(fyne.Position{
-		X: offset,
-		Y: theme.Padding() + leftoverActionHeight/2,
-	})
-
-	str.st.time.Move(fyne.Position{
-		X: offset + str.st.action.MinSize().Width + theme.Padding(),
-		Y: size.Height - str.st.time.MinSize().Height,
-	})
 }
 
 func (str *statusChangeRenderer) MinSize() fyne.Size {
-	fullActionWidth := str.st.fullAction.MinSize().Width
-	actionWidth := fullActionWidth
-	if fullActionWidth > minWidthOfLongActionInStatusChange {
-		actionWidth = minWidthOfLongActionInStatusChange
-	}
-
 	return fyne.Size{
-		Width:  actionWidth + theme.Padding() + str.st.time.MinSize().Width,
-		Height: str.st.action.MinSize().Height + theme.Padding()*2,
+		Width:  str.st.action.MinSize().Width + theme.Padding()*2 + str.st.time.MinSize().Width,
+		Height: str.st.actionSize.Height + theme.Padding()*2,
 	}
 }
 
@@ -159,8 +116,8 @@ func (str *statusChangeRenderer) Objects() []fyne.CanvasObject {
 }
 
 func (str *statusChangeRenderer) Refresh() {
-	str.st.action.Color = theme.Color(theme.ColorNameForeground)
 	str.st.time.Color = theme.Color(theme.ColorNameForeground)
+	str.st.time.Text = timestampString(str.st.timestamp)
 	for _, obj := range str.Objects() {
 		obj.Refresh()
 	}
