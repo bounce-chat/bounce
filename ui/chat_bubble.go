@@ -372,27 +372,23 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 	leftBorder := float32(0)
 	rightBorder := size.Width
 
-	decorationsWidth := cbr.cb.decorations.MinSize().Width + theme.Padding()
-
 	if cbr.cb.outgoing {
 		leftBorder += bufferSize
 	} else {
 		rightBorder -= bufferSize
 		if cbr.shiftForIcon() {
-			leftBorder += cbr.iconSize()
+			leftBorder += cbr.iconSize() + theme.Padding()
 		}
 	}
 
 	usedWidth := cbr.cb.maxTextWidth + theme.Padding()*4
+	decorationsWidth := cbr.cb.decorations.MinSize().Width + theme.Padding()
 	if cbr.cb.decorations.Visible() {
 		fits := cbr.cb.guessIfDecoratorFits(
 			rightBorder-leftBorder-theme.Padding()*4,
 			cbr.cb.decorations.MinSize().Width,
 		)
 		cbr.decorationsOnNewLine = !fits
-		//if cbr.cb.outgoing && cbr.cb.mergeMode == mergeModeBottom { // TODO: always new line for decorations on last outgoing message, if it looks better
-		//	cbr.decorationsOnNewLine = true
-		//}
 		if !cbr.decorationsOnNewLine {
 			messageAndDecorations := cbr.cb.maxMessageWidth + decorationsWidth + theme.Padding()*3
 			if messageAndDecorations > usedWidth {
@@ -414,6 +410,10 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 		} else {
 			rightBorder = leftBorder + width
 		}
+	}
+	if cbr.cb.outgoing {
+		rightBorder -= theme.Padding()
+		leftBorder -= theme.Padding()
 	}
 
 	cbr.cb.background.Resize(fyne.Size{Height: size.Height, Width: width})

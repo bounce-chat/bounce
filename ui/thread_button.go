@@ -64,6 +64,7 @@ func newThreadButton(image fyne.CanvasObject, name binding.String, clicked func(
 
 	pending := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/pending.png"))
 	pending.FillMode = canvas.ImageFillContain
+	pending.Translucency = 0.4
 	pending.SetMinSize(fyne.Size{iconSize, iconSize})
 	pending.Hide()
 
