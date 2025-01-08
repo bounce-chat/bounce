@@ -434,6 +434,8 @@ func (b *bounce) markSeenInDatabase(id uuid.UUID, frameType string) error {
 		tableName = "update_groups"
 	case TypeUpdateDM:
 		tableName = "update_dms"
+	case TypeUpdateUser:
+		tableName = "update_users"
 	default:
 		return errUnknownReadReceiptTargetType
 	}

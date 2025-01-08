@@ -25,6 +25,7 @@ type updateUser struct {
 	Data            []byte
 	PreviousData    []byte `msgpack:"-"` // Used to store the old name during a name change
 	Timestamp       int64
+	Seen            bool   `msgpack:"-"`
 	Signer          string `msgpack:"-" gorm:"not null"`
 	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
 	Signature       []byte `msgpack:"-" gorm:"not null"`

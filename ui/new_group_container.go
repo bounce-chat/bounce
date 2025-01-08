@@ -133,7 +133,7 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 	for _, thisUser := range fyneUI.newGroupPendingUsers.alphabetized() {
 		func(u *user) {
 			userIcon := newDefaultImage(u.id, u.initials, theme.IconInlineSize()*2, nil)
-			userName := widget.NewLabelWithData(u.name)
+			userName := widget.NewLabelWithData(u.name) // TODO: use RichText, and not and HBox, to support truncation
 			userDetails := container.NewHBox(
 				userIcon,
 				userName,

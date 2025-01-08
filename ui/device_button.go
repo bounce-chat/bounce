@@ -203,10 +203,10 @@ func (dbr *deviceButtonRenderer) Layout(size fyne.Size) {
 	})
 
 	featuresSize := dbr.db.features.MinSize()
-	leftoverAdminHeight := size.Height - featuresSize.Height
+	leftoverFeaturesHeight := size.Height - featuresSize.Height
 	dbr.db.features.Move(fyne.Position{
 		X: size.Width - theme.Padding() - featuresSize.Width,
-		Y: leftoverAdminHeight / 2,
+		Y: leftoverFeaturesHeight / 2,
 	})
 }
 
