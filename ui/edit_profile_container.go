@@ -77,7 +77,7 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 				state = deviceStatusLocal
 			}
 
-			shortName := dev.Name
+			shortName := dev.Name // TODO: truncate if it's too long
 			if shortName == "" {
 				shortName = dev.Address[0:8] + "..."
 			}

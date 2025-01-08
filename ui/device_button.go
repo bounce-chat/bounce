@@ -16,8 +16,6 @@ var deviceStatusLocal = 0
 var deviceStatusOffline = 1
 var deviceStatusOnline = 2
 
-var minWidthOfLongNameInDeviceButton = float32(128)
-
 func newDeviceButton(name, address string, deviceStatus int, encrypted, hosted bool, clicked func()) *deviceButton {
 	// TODO: create the icon here by getting it from the user?
 
@@ -48,20 +46,19 @@ func newDeviceButton(name, address string, deviceStatus int, encrypted, hosted b
 			rect:  image.Rect(0, 0, int(size)*8, int(size)*8),
 			color: statusColor,
 		})),
-		size:       size,
-		nameString: displayName,
-		name: &canvas.Text{
-			Text:     displayName,
-			TextSize: theme.TextSize(),
-		},
-		fullName: &canvas.Text{
-			Text:     displayName,
-			TextSize: theme.TextSize(),
-		},
+		size: size,
+		name: widget.NewRichText(
+			&widget.TextSegment{
+				Text: displayName,
+				Style: widget.RichTextStyle{
+					SizeName: theme.SizeNameText,
+				},
+			},
+		),
 		clicked: clicked,
 	}
 	if !displayNameSet {
-		db.name.TextStyle = fyne.TextStyle{
+		db.name.Segments[0].(*widget.TextSegment).Style.TextStyle = fyne.TextStyle{
 			Italic: true,
 		}
 	}
@@ -81,6 +78,7 @@ func newDeviceButton(name, address string, deviceStatus int, encrypted, hosted b
 		db.features.Text = "encrypted"
 	}
 
+	db.name.Truncation = fyne.TextTruncateEllipsis
 	db.background = canvas.NewRectangle(color.Transparent)
 	db.background.CornerRadius = theme.InputRadiusSize()
 
@@ -92,9 +90,7 @@ type deviceButton struct {
 	widget.BaseWidget
 	icon       fyne.CanvasObject
 	size       float32
-	nameString string
-	name       *canvas.Text
-	fullName   *canvas.Text
+	name       *widget.RichText
 	features   *canvas.Text
 	background *canvas.Rectangle
 	hovered    bool
@@ -107,18 +103,15 @@ func (db *deviceButton) Tapped(*fyne.PointEvent) {
 	}
 }
 
-// MouseIn is called when a desktop pointer enters the widget
 func (db *deviceButton) MouseIn(*desktop.MouseEvent) {
 	db.hovered = true
 
 	db.applyTheme()
 }
 
-// MouseMoved is called when a desktop pointer hovers over the widget
 func (db *deviceButton) MouseMoved(*desktop.MouseEvent) {
 }
 
-// MouseOut is called when a desktop pointer exits the widget
 func (db *deviceButton) MouseOut() {
 	db.hovered = false
 
@@ -157,52 +150,33 @@ type deviceButtonRenderer struct {
 func (dbr *deviceButtonRenderer) Destroy() {}
 
 func (dbr *deviceButtonRenderer) Layout(size fyne.Size) {
-	if dbr.MinSize().Width > size.Width {
-		log.WithFields(log.Fields{
-			"size":     size,
-			"min_size": dbr.MinSize(),
-		}).Warn("refusing to layout into size smaller than minsize")
-		return
-	}
-	widthAvailableForName := size.Width - dbr.db.icon.MinSize().Width - theme.Padding() - theme.Padding()*5 - dbr.db.features.MinSize().Width
-	fullNameWidth := dbr.db.fullName.MinSize().Width
-	if fullNameWidth > widthAvailableForName {
-		percentAvailable := widthAvailableForName / fullNameWidth
-		numberOfCharactersThatCanFit := int(percentAvailable * float32(len(dbr.db.nameString)))
-		truncatedText := dbr.db.nameString[0:numberOfCharactersThatCanFit]
-		if len(truncatedText) > 3 {
-			truncatedText = truncatedText[0:len(truncatedText)-4] + "..."
-		}
-		dbr.db.name.Text = truncatedText
-		dbr.db.name.Refresh()
-	} else {
-		dbr.db.name.Text = dbr.db.nameString
-		dbr.db.name.Refresh()
-	}
-
 	dbr.db.background.Resize(size)
 
 	iconSize := fyne.Size{
 		Width:  dbr.db.size,
 		Height: dbr.db.size,
 	}
-	dbr.db.icon.Resize(iconSize)
+	nameSize := dbr.db.name.MinSize()
+	featuresSize := dbr.db.features.MinSize()
 
-	//iconSize := dbr.db.icon.MinSize()
+	dbr.db.icon.Resize(iconSize)
+	dbr.db.name.Resize(fyne.Size{
+		Height: size.Height,
+		Width:  size.Width - theme.Padding() - iconSize.Width - featuresSize.Width - theme.Padding(),
+	})
+
 	leftoverIconHeight := size.Height - iconSize.Height
 	dbr.db.icon.Move(fyne.Position{
-		X: 0,
+		X: theme.Padding(),
 		Y: leftoverIconHeight / 2,
 	})
 
-	nameSize := dbr.db.name.MinSize()
 	leftoverNameHeight := size.Height - nameSize.Height
 	dbr.db.name.Move(fyne.Position{
-		X: iconSize.Width + theme.Padding(),
+		X: theme.Padding() + iconSize.Width + theme.Padding(),
 		Y: leftoverNameHeight / 2,
 	})
 
-	featuresSize := dbr.db.features.MinSize()
 	leftoverFeaturesHeight := size.Height - featuresSize.Height
 	dbr.db.features.Move(fyne.Position{
 		X: size.Width - theme.Padding() - featuresSize.Width,
@@ -211,14 +185,9 @@ func (dbr *deviceButtonRenderer) Layout(size fyne.Size) {
 }
 
 func (dbr *deviceButtonRenderer) MinSize() fyne.Size {
-	fullNameWidth := dbr.db.fullName.MinSize().Width
-	minNameWidth := fullNameWidth
-	if fullNameWidth > minWidthOfLongNameInDeviceButton {
-		minNameWidth = minWidthOfLongNameInDeviceButton
-	}
 	return fyne.Size{
-		Width:  dbr.db.size + theme.Padding() + minNameWidth + theme.Padding()*5 + dbr.db.features.MinSize().Width,
-		Height: dbr.db.size,
+		Width:  theme.Padding() + dbr.db.size + theme.Padding() + dbr.db.name.MinSize().Width + theme.Padding()*5 + dbr.db.features.MinSize().Width,
+		Height: dbr.db.name.MinSize().Height,
 	}
 }
 
