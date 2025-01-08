@@ -100,6 +100,13 @@ func newChatHistory(threadID uuid.UUID, readCallback func(uuid.UUID, string), un
 		false,
 		func() {
 			ch.ScrollToBottom()
+			ch.unreadCountCallback(0)
+			ch.itemsMutex.Lock()
+			for index, id := range ch.ids {
+				ch.items[index].markSeen()
+				ch.seenTracking[id] = true
+			}
+			ch.itemsMutex.Unlock()
 			ch.markAllAsReadMutex.Lock()
 			ch.markAllAsReadCallback(ch.id)
 			ch.markAllAsReadMutex.Unlock()
@@ -593,6 +600,17 @@ func (ch *chatHistory) GetScrollOffset() float32 {
 	return ch.offsetY
 }
 
+func (ch *chatHistory) displayJumpToBottomIfNeeded() {
+	if ch.scroller == nil {
+		return
+	}
+	if ch.offsetY < ch.contentHeight()-ch.scroller.Size().Height*2.5 {
+		ch.jumpToBottomIcon.Show()
+	} else {
+		ch.jumpToBottomIcon.Hide()
+	}
+}
+
 func (ch *chatHistory) TypedKey(event *fyne.KeyEvent) {
 	switch event.Name {
 	case fyne.KeyDown:
@@ -869,17 +887,20 @@ func (l *listLayout) offsetUpdated(pos fyne.Position) {
 	l.list.offsetY = pos.Y
 	l.updateList(true)
 
-	if pos.Y < l.list.contentHeight()-l.list.scroller.Size().Height*2.5 {
-		l.list.jumpToBottomIcon.Show()
-	} else {
-		l.list.jumpToBottomIcon.Hide()
-	}
+	l.list.displayJumpToBottomIfNeeded()
 
 	if pos.Y == l.list.contentHeight()-l.list.scroller.Size().Height {
-		if l.list.countUnread() != 0 {
+		if l.list.countUnread() > 0 {
 			l.list.markAllAsReadMutex.Lock()
 			if l.list.countUnread() > 0 {
 				l.list.markAllAsReadCallback(l.list.id)
+				l.list.unreadCountCallback(0)
+				l.list.itemsMutex.Lock()
+				for index, id := range l.list.ids {
+					l.list.items[index].markSeen()
+					l.list.seenTracking[id] = true
+				}
+				l.list.itemsMutex.Unlock()
 			}
 			l.list.markAllAsReadMutex.Unlock()
 		}

@@ -281,6 +281,10 @@ func (tb *threadButton) clearLastMessage() {
 }
 
 func (tb *threadButton) showLastMessageState(state int) {
+	if tb.unreadCount > 0 {
+		return
+	}
+
 	switch state {
 	case statePending:
 		tb.pending.Show()
