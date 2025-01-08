@@ -385,19 +385,18 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 	usedWidth := cbr.cb.maxTextWidth + theme.Padding()*4
 	decorationsWidth := cbr.cb.decorations.MinSize().Width + theme.Padding()
 	if cbr.cb.decorations.Visible() {
-		fits := cbr.cb.guessIfDecoratorFits(
+		cbr.decorationsOnNewLine = cbr.cb.decoratorNeedsNewLine(
 			rightBorder-leftBorder-theme.Padding()*4,
 			cbr.cb.decorations.MinSize().Width,
 		)
-		cbr.decorationsOnNewLine = !fits
-		if !cbr.decorationsOnNewLine {
+		if cbr.decorationsOnNewLine {
+			if decorationsWidth > cbr.cb.maxTextWidth {
+				usedWidth = decorationsWidth + theme.Padding()*2
+			}
+		} else {
 			messageAndDecorations := cbr.cb.maxMessageWidth + decorationsWidth + theme.Padding()*3
 			if messageAndDecorations > usedWidth {
 				usedWidth = messageAndDecorations
-			}
-		} else {
-			if decorationsWidth > cbr.cb.maxTextWidth {
-				usedWidth = decorationsWidth + theme.Padding()*2
 			}
 		}
 	}
@@ -490,7 +489,7 @@ func longestLine(message string) string {
 	return longest
 }
 
-func (cb *chatBubble) guessIfDecoratorFits(availableWidth, decoratorWidth float32) bool {
+func (cb *chatBubble) decoratorNeedsNewLine(availableWidth, decoratorWidth float32) bool {
 	currentWrap := float32(0)
 	for i, l := range cb.chunkLengths {
 		if currentWrap+l > availableWidth {
@@ -505,5 +504,5 @@ func (cb *chatBubble) guessIfDecoratorFits(availableWidth, decoratorWidth float3
 		}
 	}
 
-	return currentWrap+decoratorWidth < availableWidth
+	return currentWrap+decoratorWidth > availableWidth
 }
