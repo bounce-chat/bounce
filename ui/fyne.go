@@ -90,6 +90,7 @@ type Fyne struct {
 	settingsWidgets                       *settingsWidgets
 	users                                 *userStore
 	devices                               *deviceStore
+	messages                              *messageStore
 	currentDevices                        *container.Scroll
 	deletedUser                           *user
 	initialStateSet                       bool
@@ -117,6 +118,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.threadWithItem = make(map[uuid.UUID]thread)
 	fyneUI.users = newUserStore()
 	fyneUI.devices = newDeviceStore()
+	fyneUI.messages = newMessageStore()
 	fyneUI.focused = true
 	fyneUI.syncString = binding.NewString()
 	fyneUI.addUserString = binding.NewString()

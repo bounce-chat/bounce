@@ -228,6 +228,10 @@ func (fyneUI *Fyne) buildEditProfile() {
 			dialog.ShowError(errors.New("error updating name: "+err.Error()), fyneUI.mainWindow)
 		} else {
 			fyneUI.showMainContainer()
+			t, ok := fyneUI.getThread(fyneUI.activeThread)
+			if ok {
+				fyneUI.mainWindow.Canvas().Focus(t.getEntry())
+			}
 		}
 	})
 	saveProfileButton.Importance = widget.HighImportance

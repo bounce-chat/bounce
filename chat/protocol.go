@@ -255,7 +255,7 @@ func (b *bounce) getGlobalScope(br broadcastable) []string {
 	author := br.getAuthor()
 	if author == b.currentUserID() {
 		allAddresses := []string{}
-		err := b.database.Model(&device{}).Select("address").Not("revoked_at = 0").Find(&allAddresses).Error
+		err := b.database.Model(&device{}).Select("address").Where("revoked_at IS NULL OR revoked_at = 0").Find(&allAddresses).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

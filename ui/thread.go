@@ -15,9 +15,6 @@ import (
 var openedThreads = map[uuid.UUID]bool{}
 var openedThreadMutex sync.Mutex
 
-var messages = map[uuid.UUID]threadable{} // TODO: put on fyne, not package level?  Either way, to be replaced by messageStore
-var messagesMutex sync.Mutex
-
 type thread interface {
 	getID() uuid.UUID
 	getView() *fyne.Container
@@ -144,12 +141,7 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 }
 
 func (fyneUI *Fyne) MarkMessageUndeliverable(id uuid.UUID) {
-	log.WithFields(log.Fields{
-		"message_id": id,
-	}).Info("chat engine wants to mark a message as undeliverable")
-	messagesMutex.Lock()
-	item, ok := messages[id]
-	messagesMutex.Unlock()
+	item, ok := fyneUI.messages.get(id)
 	if !ok {
 		log.WithFields(log.Fields{
 			"id": id,
@@ -172,9 +164,7 @@ func (fyneUI *Fyne) MarkMessageUndeliverable(id uuid.UUID) {
 }
 
 func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
-	messagesMutex.Lock()
-	item, ok := messages[id]
-	messagesMutex.Unlock()
+	item, ok := fyneUI.messages.get(id)
 	if !ok {
 		log.WithFields(log.Fields{
 			"id": id,
@@ -204,9 +194,7 @@ func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
 }
 
 func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
-	messagesMutex.Lock()
-	item, ok := messages[messageID]
-	messagesMutex.Unlock()
+	item, ok := fyneUI.messages.get(messageID)
 	if !ok {
 		log.WithFields(log.Fields{
 			"id": messageID,
@@ -250,9 +238,7 @@ func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
 		return
 	}
 
-	messagesMutex.Lock()
-	item, ok := messages[rr.Target]
-	messagesMutex.Unlock()
+	item, ok := fyneUI.messages.get(rr.Target)
 	if !ok {
 		log.WithFields(log.Fields{
 			"id": rr.Target,
@@ -278,9 +264,7 @@ func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
 }
 
 func (fyneUI *Fyne) DeleteItem(id uuid.UUID) {
-	messagesMutex.Lock()
-	delete(messages, id)
-	messagesMutex.Unlock()
+	fyneUI.messages.remove(id)
 
 	fyneUI.threadWithItemMutex.Lock()
 	thread, ok := fyneUI.threadWithItem[id]

@@ -25,8 +25,6 @@ func makeUser(id uuid.UUID, name string) *user {
 
 	u.name.AddListener(binding.NewDataListener(func() {
 		u.setInitials()
-
-		// TODO: for all chatBubbleDatas, set the name and initials, refresh all relevant chat historyies
 	}))
 	u.name.Set(name)
 
@@ -101,6 +99,17 @@ func (fyneUI *Fyne) SetUserName(userID uuid.UUID, name string) {
 	}
 
 	u.name.Set(name)
+
+	fyneUI.messages.renameUser(userID, u.getName(), u.getInitials())
+	dm, ok := fyneUI.dms[userID]
+	if ok {
+		dm.chatHistoryScroll().Refresh()
+	}
+	for _, g := range fyneUI.groups {
+		if g.users.contains(userID) {
+			g.chatHistoryScroll().Refresh()
+		}
+	}
 }
 
 func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {

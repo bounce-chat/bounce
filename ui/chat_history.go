@@ -30,7 +30,8 @@ type ListItemID = int
 type chatHistory struct {
 	widget.BaseWidget
 
-	id uuid.UUID
+	id       uuid.UUID
+	messages *messageStore
 
 	items      []threadable
 	ids        []uuid.UUID
@@ -62,13 +63,14 @@ type chatHistory struct {
 	propertyLock sync.RWMutex // TODO: expose the one in BaseWidget?
 }
 
-func newChatHistory(threadID uuid.UUID, readCallback func(uuid.UUID, string), unreadCountCallback func(int), markAllAsReadCallback func(uuid.UUID), windowFocused func() bool) *chatHistory {
+func newChatHistory(threadID uuid.UUID, messageStore *messageStore, readCallback func(uuid.UUID, string), unreadCountCallback func(int), markAllAsReadCallback func(uuid.UUID), windowFocused func() bool) *chatHistory {
 	if readCallback == nil {
 		log.Fatal("cannot create chat history widget without read callback")
 	}
 
 	ch := &chatHistory{
 		id:                    threadID,
+		messages:              messageStore,
 		items:                 []threadable{},
 		ids:                   []uuid.UUID{},
 		heights:               []float32{},
@@ -127,9 +129,6 @@ func newChatHistory(threadID uuid.UUID, readCallback func(uuid.UUID, string), un
 }
 
 func (ch *chatHistory) setItems(items []threadable) {
-	messagesMutex.Lock()
-	defer messagesMutex.Unlock()
-
 	ch.itemsMutex.Lock()
 	defer ch.itemsMutex.Unlock()
 
@@ -143,7 +142,7 @@ func (ch *chatHistory) setItems(items []threadable) {
 		}
 		ids = append(ids, item.getID())
 
-		messages[item.getID()] = item
+		ch.messages.insert(item)
 
 		ch.setMergeMode(i, false)
 	}
@@ -187,9 +186,7 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 		ch.setMergeMode(len(ch.items)-1, true)
 	}
 
-	messagesMutex.Lock()
-	messages[ti.widgetData.getID()] = ti.widgetData
-	messagesMutex.Unlock()
+	ch.messages.insert(ti.widgetData)
 }
 
 func (ch *chatHistory) isLastItem(id uuid.UUID) bool {
@@ -361,9 +358,7 @@ func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
 
 	ch.Refresh()
 
-	messagesMutex.Lock()
-	delete(messages, id)
-	messagesMutex.Unlock()
+	ch.messages.remove(id)
 
 	return found
 }
