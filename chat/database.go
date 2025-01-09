@@ -109,6 +109,7 @@ func (b *bounce) openDatabase() {
 	b.pruneDirectMessages()
 	b.pruneGroupMessages()
 	b.pruneUndeliverableCustomScopes()
+	b.populateRevokedDevices()
 }
 
 func (b *bounce) pruneDirectMessages() {

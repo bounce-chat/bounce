@@ -48,7 +48,6 @@ type devicePool struct {
 }
 
 func (b *bounce) peer() {
-	b.populateRevokedDevices()
 	b.makeInitialPeeringConnections()
 	go b.sendKeepAlives()
 	ticker := time.NewTicker(auditFrequency)
