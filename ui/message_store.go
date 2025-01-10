@@ -1,28 +1,64 @@
 package ui
 
 import (
+	"io/ioutil"
+	"os"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 type cachedData struct {
-	height    float32
-	mergeMode int
+	Width     float32
+	Height    float32
+	Merges    bool
+	MergeMode int
 }
 
 type messageStore struct {
 	sync.Mutex
-	messages         map[uuid.UUID]threadable // TODO: store the thread items?  new widget with height?
+	messages         map[uuid.UUID]threadable
 	messagesByAuthor map[uuid.UUID]map[uuid.UUID]threadable
-	//threadWithMessage map[uuid.UUID]*chatHistory
+	cache            map[uuid.UUID]cachedData
+	cacheFile        string
 }
 
-func newMessageStore() *messageStore {
-	return &messageStore{
+func newMessageStore(configDirectory string) *messageStore {
+	cache := map[uuid.UUID]cachedData{}
+	cacheFile := configDirectory + "/messageStore.cache"
+	data, err := ioutil.ReadFile(cacheFile)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error opening message store cache file")
+		}
+	} else {
+		err := msgpack.Unmarshal(data, &cache)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("message store cache does not contain valid data")
+		}
+	}
+
+	ms := &messageStore{
 		messages:         make(map[uuid.UUID]threadable),
 		messagesByAuthor: make(map[uuid.UUID]map[uuid.UUID]threadable),
+		cache:            cache,
+		cacheFile:        cacheFile,
 	}
+
+	go func() {
+		for range time.NewTicker(time.Minute).C {
+			ms.writeCache()
+		}
+	}()
+
+	return ms
 }
 
 func (ms *messageStore) insert(t threadable) {
@@ -78,8 +114,46 @@ func (ms *messageStore) renameUser(userID uuid.UUID, name, initials string) {
 		case *chatBubbleData:
 			item.username = name
 			item.initials = initials
-		case *statusChangeData:
-			// TODO: anything to do here?
+		}
+	}
+}
+
+func (ms *messageStore) queryCache(id uuid.UUID) (cachedData, bool) {
+	ms.Lock()
+	cd, ok := ms.cache[id]
+	ms.Unlock()
+
+	return cd, ok
+}
+
+func (ms *messageStore) cacheData(id uuid.UUID, cd cachedData) {
+	ms.Lock()
+	defer ms.Unlock()
+
+	ms.cache[id] = cd
+}
+
+func (ms *messageStore) writeCache() {
+	ms.Lock()
+	defer ms.Unlock()
+
+	for id, _ := range ms.cache {
+		if _, ok := ms.messages[id]; !ok {
+			delete(ms.cache, id)
+		}
+	}
+
+	data, err := msgpack.Marshal(ms.cache)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshaling message store cache")
+	} else {
+		err = os.WriteFile(ms.cacheFile, data, 0600)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error writing message store cache")
 		}
 	}
 }

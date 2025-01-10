@@ -118,7 +118,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.threadWithItem = make(map[uuid.UUID]thread)
 	fyneUI.users = newUserStore()
 	fyneUI.devices = newDeviceStore()
-	fyneUI.messages = newMessageStore()
+	fyneUI.messages = newMessageStore(configDirectory)
 	fyneUI.focused = true
 	fyneUI.syncString = binding.NewString()
 	fyneUI.addUserString = binding.NewString()
@@ -491,6 +491,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 	}
 	fyneUI.refreshThreadOrder()
+	go fyneUI.messages.writeCache()
 }
 
 func (fyneUI *Fyne) chatContainerSizeAtStartup() fyne.Size {

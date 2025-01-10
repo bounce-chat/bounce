@@ -70,7 +70,6 @@ func Start(network Network, ui UI) {
 	log.RegisterExitHandler(b.fatalShutdown)
 	go b.handleInterrupts()
 
-	b.openDatabase()
 	b.openReferenceDatabase()
 
 	b.userInterface.Build(
@@ -130,8 +129,11 @@ func Start(network Network, ui UI) {
 	)
 
 	b.network.Load(b.configDirectory)
-	initialState := b.buildInitialState()
-	b.userInterface.LoadInitialState(initialState) // TODO: this should be in a goroutine so we can display loading until ready, but that causes bugs.  Unclear why.
+	go func() {
+		b.openDatabase()
+		initialState := b.buildInitialState()
+		b.userInterface.LoadInitialState(initialState)
+	}()
 
 	go b.network.Start(
 		NetworkCallbacks{
@@ -407,7 +409,7 @@ func getConfigDirectory() string {
 	var configDirectory string
 	if runtime.GOOS == "android" {
 		// TODO: use /data/data/chat.bounce/ ?
-		configDirectory = "/sdcard/Android/data/chat.bounce/"
+		configDirectory = "/sdcard/Android/data/chat.bounce"
 	} else {
 		home, err := os.UserHomeDir()
 		if err != nil {

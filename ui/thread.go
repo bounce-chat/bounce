@@ -75,7 +75,7 @@ func (fyneUI *Fyne) populateInitialItems(t thread, items threadItems) {
 		fyneUI.threadWithItem[item.id] = t
 		widgetData = append(widgetData, item.widgetData)
 	}
-	t.chatHistoryScroll().setItems(widgetData)
+	t.chatHistoryScroll().setItems(widgetData, fyneUI.chatContainerSizeAtStartup())
 
 	fyneUI.threadWithItemMutex.Unlock()
 
@@ -89,7 +89,6 @@ func (fyneUI *Fyne) populateInitialItems(t thread, items threadItems) {
 		}
 	}
 
-	t.chatHistoryScroll().setItemHeights(fyneUI.chatContainerSizeAtStartup())
 	t.chatHistoryScroll().scrollToLastRead()
 	t.chatHistoryScroll().updateUnreadCounter()
 }

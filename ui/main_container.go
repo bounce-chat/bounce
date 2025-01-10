@@ -14,6 +14,8 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	//xwidget "fyne.io/x/fyne/widget"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
@@ -125,13 +127,28 @@ func (fyneUI *Fyne) buildMainContainer() {
 }
 
 func (fyneUI *Fyne) buildDatabaseLoading() {
+	//animation, err := xwidget.NewAnimatedGifFromResource(newEmbeddedResource("assets/icon-animated.gif"))
+	//if err != nil {
+	//	log.WithFields(log.Fields{
+	//		"error": err.Error(),
+	//	}).Fatal("error creating gif")
+	//}
+	//animation.SetMinSize(fyne.NewSize(200, 200))
+	//animation.Start()
+
+	progress := widget.NewProgressBarInfinite()
+	progress.Start()
+
+	loading := widget.NewLabel("loading...")
+	loading.Alignment = fyne.TextAlignCenter
+
 	fyneUI.databaseLoading = container.NewMax(
 		container.New(
 			layout.NewCenterLayout(),
 			container.NewVBox(
-				makeLogo(228, 167),                         // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
-				widget.NewLabel("Loading the database..."), // TODO: just make this generic
-				widget.NewProgressBarInfinite(),
+				makeLogo(228, 167), // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
+				progress,
+				loading,
 			),
 		),
 	)
