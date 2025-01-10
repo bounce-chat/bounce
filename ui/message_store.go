@@ -53,7 +53,7 @@ func newMessageStore(configDirectory string) *messageStore {
 	}
 
 	go func() {
-		for range time.NewTicker(time.Minute).C {
+		for range time.NewTicker(10 * time.Minute).C {
 			ms.writeCache()
 		}
 	}()
