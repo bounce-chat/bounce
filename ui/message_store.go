@@ -126,10 +126,31 @@ func (ms *messageStore) queryCache(id uuid.UUID) (cachedData, bool) {
 	return cd, ok
 }
 
-func (ms *messageStore) cacheData(id uuid.UUID, cd cachedData) {
+func (ms *messageStore) cacheHeight(id uuid.UUID, width, height float32) {
 	ms.Lock()
 	defer ms.Unlock()
 
+	cd, ok := ms.cache[id]
+	if !ok {
+		cd = cachedData{}
+	}
+
+	cd.Width = width
+	cd.Height = height
+	ms.cache[id] = cd
+}
+
+func (ms *messageStore) cacheMergeMode(id uuid.UUID, mergeMode int) {
+	ms.Lock()
+	defer ms.Unlock()
+
+	cd, ok := ms.cache[id]
+	if !ok {
+		cd = cachedData{}
+	}
+
+	cd.Merges = true
+	cd.MergeMode = mergeMode
 	ms.cache[id] = cd
 }
 

@@ -145,7 +145,7 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 		ids = append(ids, item.getID())
 
 		cd, ok := ch.messages.queryCache(item.getID())
-		if ok && cd.Width == initialSize.Width {
+		if ok && cd.Width == initialSize.Width && cd.Height != 0 {
 			ch.SetItemHeight(i, cd.Height)
 			if cd.Merges {
 				cbd, ok := item.(*chatBubbleData)
@@ -163,18 +163,9 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 			sizer.Resize(initialSize)
 			height := sizer.MinSize().Height
 			ch.SetItemHeight(i, height)
+			ch.messages.cacheHeight(item.getID(), initialSize.Width, height)
 
-			mergeMode, merges := ch.setMergeMode(i, false)
-
-			ch.messages.cacheData(
-				item.getID(),
-				cachedData{
-					Width:     initialSize.Width,
-					Height:    height,
-					MergeMode: mergeMode,
-					Merges:    merges,
-				},
-			)
+			ch.setMergeMode(i, false)
 		}
 	}
 
@@ -245,7 +236,7 @@ func (ch *chatHistory) isLastAuthor(id uuid.UUID) bool {
 	return item.getAuthor() == id
 }
 
-func (ch *chatHistory) setMergeMode(index int, neighbors bool) (int, bool) {
+func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
 	mergeUp := false
 	mergeDown := false
 
@@ -256,7 +247,7 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) (int, bool) {
 		log.WithFields(log.Fields{
 			"index": index,
 		}).Warn("out of bounds index while setting merge mode")
-		return 0, false
+		return
 	}
 	if len(ch.items)-1 == index {
 		checkDown = false
@@ -268,7 +259,7 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) (int, bool) {
 	item := ch.items[index]
 	myType := item.getType()
 	if !(myType == chat.TypeGroupMessage || myType == chat.TypeDirectMessage) {
-		return 0, false
+		return
 	}
 	myAuthor := item.getAuthor()
 	myTimestamp := item.getTimestamp()
@@ -298,7 +289,7 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) (int, bool) {
 		log.WithFields(log.Fields{
 			"index": index,
 		}).Warn("threadable message does not have type chatBubbleData while setting mergeMode")
-		return 0, false
+		return
 	}
 	if mergeUp && mergeDown {
 		cbd.mergeMode = mergeModeMiddle
@@ -309,6 +300,7 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) (int, bool) {
 	} else if !mergeUp && !mergeDown {
 		cbd.mergeMode = mergeModeStandalone
 	}
+	ch.messages.cacheMergeMode(cbd.id, cbd.mergeMode)
 
 	if neighbors {
 		if mergeUp {
@@ -318,7 +310,7 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) (int, bool) {
 				log.WithFields(log.Fields{
 					"index": index - 1,
 				}).Warn("could not cast chat message into chatBubbleData")
-				return 0, false
+				return
 			}
 			switch cbd.mergeMode {
 			case mergeModeTop:
@@ -343,7 +335,7 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) (int, bool) {
 				log.WithFields(log.Fields{
 					"index": index + 1,
 				}).Warn("could not cast chat message into chatBubbleData")
-				return 0, false
+				return
 			}
 
 			switch cbd.mergeMode {
@@ -358,8 +350,6 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) (int, bool) {
 			}
 		}
 	}
-
-	return cbd.mergeMode, true
 }
 
 func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
@@ -702,6 +692,9 @@ func (ch *chatHistory) calculateAndSetItemHeight(id int) float32 {
 	sizer.Resize(ch.Size())
 	height := sizer.MinSize().Height
 	ch.SetItemHeight(id, height)
+	if len(ch.ids) > id {
+		ch.messages.cacheHeight(ch.ids[id], ch.Size().Width, height)
+	}
 	return height
 }
 
@@ -932,6 +925,9 @@ func (l *listLayout) setupListItem(li *listItem, id ListItemID, focus bool) {
 	if f := l.list.UpdateItem; f != nil {
 		f(id, li.child)
 		l.list.SetItemHeight(id, li.child.MinSize().Height)
+		if len(l.list.ids) > id {
+			l.list.messages.cacheHeight(l.list.ids[id], l.list.Size().Width, li.child.MinSize().Height)
+		}
 	}
 }
 
