@@ -67,12 +67,6 @@ func newChatBubbleTemplate() *chatBubble {
 	})
 	message.Wrapping = fyne.TextWrapWord
 
-	// TODO: use rich text with color to get truncation https://github.com/fyne-io/fyne/issues/5306
-	//username := widget.NewRichText(&widget.TextSegment{
-	//	Text: "",
-	//})
-	//username.Truncation = fyne.TextTruncateEllipsis
-	//username.Segments[0].(*widget.TextSegment).Style.TextStyle.Bold = true
 	username := widget.NewRichText(
 		&widget.TextSegment{
 			Text: "",
@@ -422,8 +416,8 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 	messageTop := top
 	if cbr.cb.username.Visible() {
 		cbr.cb.username.Resize(fyne.Size{Height: size.Height, Width: width + theme.Padding()*2})
-		cbr.cb.username.Move(fyne.Position{leftBorder, top + theme.Padding()})
-		messageTop += cbr.cb.username.MinSize().Height
+		cbr.cb.username.Move(fyne.Position{leftBorder, top}) // - theme.Padding()})
+		messageTop += cbr.cb.username.MinSize().Height       //- theme.Padding()*2
 	}
 
 	if cbr.cb.decorations.Visible() {
@@ -493,6 +487,9 @@ func (cb *chatBubble) decoratorNeedsNewLine(availableWidth, decoratorWidth float
 	currentWrap := float32(0)
 	for i, l := range cb.chunkLengths {
 		if currentWrap+l > availableWidth {
+			if len(cb.chunks) <= i { // TODO: locking issue with chatHistory replacing the widget?
+				return true
+			}
 			firstWord, _ := trimLeadingSpace(cb.chunks[i])
 			currentWrap = fyne.MeasureText(
 				firstWord,

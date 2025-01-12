@@ -38,6 +38,8 @@ type chatHistory struct {
 	heights    []float32
 	itemsMutex sync.Mutex
 
+	unread int
+
 	jumpToBottomIcon *clickableImage
 
 	Length     func() int                                  `json:"-"`
@@ -102,7 +104,8 @@ func newChatHistory(threadID uuid.UUID, messageStore *messageStore, readCallback
 		false,
 		func() {
 			ch.ScrollToBottom()
-			ch.unreadCountCallback(0)
+			ch.unread = 0
+			ch.updateUnreadCounter()
 			ch.itemsMutex.Lock()
 			for index, id := range ch.ids {
 				ch.items[index].markSeen()
@@ -133,16 +136,19 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 	defer ch.itemsMutex.Unlock()
 
 	ch.items = items
-	ch.Refresh()
 
-	sizer := ch.CreateItem()
-	ids := []uuid.UUID{}
+	ch.ids = []uuid.UUID{}
 	for i, item := range items {
+		ch.ids = append(ch.ids, item.getID())
 		ch.messages.insert(item)
+
 		if item.isSeen() {
 			ch.seenTracking[item.getID()] = true
 		}
-		ids = append(ids, item.getID())
+
+		if item.countsAsUnread() && !item.isSeen() {
+			ch.unread += 1
+		}
 
 		cd, ok := ch.messages.queryCache(item.getID())
 		if ok && cd.Width == initialSize.Width && cd.Height != 0 {
@@ -159,17 +165,12 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 				}
 			}
 		} else {
-			ch.UpdateItem(i, sizer)
-			sizer.Resize(initialSize)
-			height := sizer.MinSize().Height
-			ch.SetItemHeight(i, height)
-			ch.messages.cacheHeight(item.getID(), initialSize.Width, height)
-
+			ch.calculateAndSetItemHeight(i, initialSize)
 			ch.setMergeMode(i, false)
 		}
 	}
 
-	ch.ids = ids
+	ch.Refresh()
 }
 
 func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
@@ -207,6 +208,10 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 		ch.items = append(ch.items, ti.widgetData)
 		ch.ids = append(ch.ids, ti.id)
 		ch.setMergeMode(len(ch.items)-1, true)
+	}
+
+	if ti.widgetData.countsAsUnread() {
+		ch.unread += 1
 	}
 
 	ch.messages.insert(ti.widgetData)
@@ -418,6 +423,9 @@ func (ch *chatHistory) seen(index int) {
 
 		item := ch.items[index]
 		item.markSeen()
+		if item.countsAsUnread() {
+			ch.unread -= 1
+		}
 		if ch.windowFocused() {
 			go ch.readCallback(id, item.getType())
 		}
@@ -426,19 +434,8 @@ func (ch *chatHistory) seen(index int) {
 	ch.updateUnreadCounter()
 }
 
-func (ch *chatHistory) countUnread() int {
-	// TODO: store in the message store for efficiency
-	unread := 0
-	for _, item := range ch.items {
-		if !item.isSeen() && item.countsAsUnread() {
-			unread += 1
-		}
-	}
-	return unread
-}
-
 func (ch *chatHistory) updateUnreadCounter() {
-	ch.unreadCountCallback(ch.countUnread())
+	ch.unreadCountCallback(ch.unread)
 }
 
 func (ch *chatHistory) scrollToLastRead() {
@@ -540,7 +537,7 @@ func (ch *chatHistory) offsetFor(id ListItemID) float32 {
 		if ok {
 			y += height + separatorThickness
 		} else {
-			height = ch.calculateAndSetItemHeight(i)
+			height = ch.calculateAndSetItemHeight(i, ch.Size())
 			y += height + separatorThickness
 		}
 	}
@@ -686,10 +683,10 @@ func (ch *chatHistory) contentHeight() float32 {
 	return ch.scroller.Content.(*fyne.Container).Size().Height
 }
 
-func (ch *chatHistory) calculateAndSetItemHeight(id int) float32 {
+func (ch *chatHistory) calculateAndSetItemHeight(id int, containerSize fyne.Size) float32 {
 	sizer := ch.CreateItem()
 	ch.UpdateItem(id, sizer)
-	sizer.Resize(ch.Size())
+	sizer.Resize(containerSize)
 	height := sizer.MinSize().Height
 	ch.SetItemHeight(id, height)
 	if len(ch.ids) > id {
@@ -904,11 +901,12 @@ func (l *listLayout) offsetUpdated(pos fyne.Position) {
 	l.list.displayJumpToBottomIfNeeded()
 
 	if pos.Y == l.list.contentHeight()-l.list.scroller.Size().Height {
-		if l.list.countUnread() > 0 {
+		if l.list.unread > 0 {
 			l.list.markAllAsReadMutex.Lock()
-			if l.list.countUnread() > 0 {
+			if l.list.unread > 0 {
 				l.list.markAllAsReadCallback(l.list.id)
-				l.list.unreadCountCallback(0)
+				l.list.unread = 0
+				l.list.updateUnreadCounter()
 				l.list.itemsMutex.Lock()
 				for index, id := range l.list.ids {
 					l.list.items[index].markSeen()
