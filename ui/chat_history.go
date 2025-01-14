@@ -688,7 +688,7 @@ func (ch *chatHistory) calculateAndSetItemHeight(id int, containerSize fyne.Size
 	height := sizer.MinSize().Height
 	ch.SetItemHeight(id, height)
 	if len(ch.ids) > id {
-		ch.messages.cacheHeight(ch.ids[id], ch.Size().Width, height)
+		ch.messages.cacheHeight(ch.ids[id], containerSize.Width, height)
 	}
 	return height
 }
