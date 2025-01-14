@@ -138,7 +138,7 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 	ch.items = items
 
 	ch.ids = []uuid.UUID{}
-	for _, item := range items {
+	for i, item := range items {
 		ch.ids = append(ch.ids, item.getID())
 		ch.messages.insert(item)
 
@@ -150,38 +150,27 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 			ch.unread += 1
 		}
 
-		/*
-			cd, ok := ch.messages.queryCache(item.getID())
-			if ok && cd.Width == initialSize.Width && cd.Height != 0 {
-				ch.SetItemHeight(i, cd.Height)
-				if cd.Merges {
-					cbd, ok := item.(*chatBubbleData)
-					if !ok {
-						log.WithFields(log.Fields{
-							"id": item.getID(),
-						}).Warn("cached mergable item is not chat bubble data")
-						continue
-					} else {
-						cbd.mergeMode = cd.MergeMode
-					}
+		cd, ok := ch.messages.queryCache(item.getID())
+		if ok && cd.Width == initialSize.Width && cd.Height != 0 {
+			ch.SetItemHeight(i, cd.Height)
+			if cd.Merges {
+				cbd, ok := item.(*chatBubbleData)
+				if !ok {
+					log.WithFields(log.Fields{
+						"id": item.getID(),
+					}).Warn("cached mergable item is not chat bubble data")
+					continue
+				} else {
+					cbd.mergeMode = cd.MergeMode
 				}
-			} else {
-				ch.calculateAndSetItemHeight(i, initialSize)
-				ch.setMergeMode(i, false)
 			}
-		*/
+		} else {
+			ch.setMergeMode(i, false)
+			ch.calculateAndSetItemHeight(i, initialSize)
+		}
 	}
 
-	//ch.Refresh()
-}
-
-func (ch *chatHistory) setItemHeights(currentSize fyne.Size) {
-	sizer := ch.CreateItem()
-	for i := 0; i < ch.Length(); i++ {
-		ch.UpdateItem(i, sizer)
-		sizer.Resize(currentSize)
-		ch.SetItemHeight(i, sizer.MinSize().Height)
-	}
+	ch.Refresh()
 }
 
 func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
@@ -556,7 +545,7 @@ func (ch *chatHistory) offsetFor(id ListItemID) float32 {
 
 	h := ch.scroller.Size().Height
 	if h == 0 {
-		h = 446.76562
+		h = defaultChatHistoryHeight
 	}
 
 	return y - h

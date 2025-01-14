@@ -26,8 +26,10 @@ const networkStateOffline = 2
 const setupStepInit = 0
 const setupStepProfile = 1
 
-const defaultHeight = float32(600)
-const defaultWidth = float32(800)
+const defaultHeight = float32(700)
+const defaultWidth = float32(900)
+const defaultChatHistoryHeight = float32(545.7656)
+const defaultChatHistoryWidth = float32(565)
 
 //
 // An implementation of the Bounce chat.UI interface using Fyne
@@ -499,12 +501,9 @@ func (fyneUI *Fyne) chatContainerSizeAtStartup() fyne.Size {
 		fyneUI.mainWindow.Canvas().Size()
 	}
 
-	// Exclude thread buttons from width
-	width := defaultWidth - threadButtonHeight*5
-
 	return fyne.Size{
-		Width:  width,
-		Height: defaultHeight,
+		Width:  defaultChatHistoryWidth,
+		Height: defaultChatHistoryHeight,
 	}
 }
 

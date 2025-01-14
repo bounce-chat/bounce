@@ -89,7 +89,6 @@ func (fyneUI *Fyne) populateInitialItems(t thread, items threadItems) {
 		}
 	}
 
-	t.chatHistoryScroll().setItemHeights(fyneUI.chatContainerSizeAtStartup())
 	t.chatHistoryScroll().scrollToLastRead()
 	t.chatHistoryScroll().updateUnreadCounter()
 }
