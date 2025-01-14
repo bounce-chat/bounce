@@ -138,7 +138,7 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 	ch.items = items
 
 	ch.ids = []uuid.UUID{}
-	for i, item := range items {
+	for _, item := range items {
 		ch.ids = append(ch.ids, item.getID())
 		ch.messages.insert(item)
 
@@ -150,27 +150,38 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 			ch.unread += 1
 		}
 
-		cd, ok := ch.messages.queryCache(item.getID())
-		if ok && cd.Width == initialSize.Width && cd.Height != 0 {
-			ch.SetItemHeight(i, cd.Height)
-			if cd.Merges {
-				cbd, ok := item.(*chatBubbleData)
-				if !ok {
-					log.WithFields(log.Fields{
-						"id": item.getID(),
-					}).Warn("cached mergable item is not chat bubble data")
-					continue
-				} else {
-					cbd.mergeMode = cd.MergeMode
+		/*
+			cd, ok := ch.messages.queryCache(item.getID())
+			if ok && cd.Width == initialSize.Width && cd.Height != 0 {
+				ch.SetItemHeight(i, cd.Height)
+				if cd.Merges {
+					cbd, ok := item.(*chatBubbleData)
+					if !ok {
+						log.WithFields(log.Fields{
+							"id": item.getID(),
+						}).Warn("cached mergable item is not chat bubble data")
+						continue
+					} else {
+						cbd.mergeMode = cd.MergeMode
+					}
 				}
+			} else {
+				ch.calculateAndSetItemHeight(i, initialSize)
+				ch.setMergeMode(i, false)
 			}
-		} else {
-			ch.calculateAndSetItemHeight(i, initialSize)
-			ch.setMergeMode(i, false)
-		}
+		*/
 	}
 
-	ch.Refresh()
+	//ch.Refresh()
+}
+
+func (ch *chatHistory) setItemHeights(currentSize fyne.Size) {
+	sizer := ch.CreateItem()
+	for i := 0; i < ch.Length(); i++ {
+		ch.UpdateItem(i, sizer)
+		sizer.Resize(currentSize)
+		ch.SetItemHeight(i, sizer.MinSize().Height)
+	}
 }
 
 func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
@@ -543,7 +554,12 @@ func (ch *chatHistory) offsetFor(id ListItemID) float32 {
 	}
 	y -= separatorThickness
 
-	return y - ch.scroller.Size().Height
+	h := ch.scroller.Size().Height
+	if h == 0 {
+		h = 446.76562
+	}
+
+	return y - h
 }
 
 func (ch *chatHistory) scrollTo(id ListItemID) {
@@ -653,27 +669,20 @@ func (ch *chatHistory) TypedRune(_ rune) {
 	// intentionally left blank
 }
 
-func (ch *chatHistory) contentMinSize() fyne.Size { // TODO: is this the same as offsetFor(len(data)-1)?
-	separatorThickness := ch.Theme().Size(theme.SizeNamePadding)
-	ch.propertyLock.Lock()
-	defer ch.propertyLock.Unlock()
-	if ch.Length == nil {
-		return fyne.NewSize(0, 0)
-	}
-	items := ch.Length()
+func (ch *chatHistory) contentMinSize() fyne.Size {
+	//ch.propertyLock.Lock()
+	//defer ch.propertyLock.Unlock()
 
-	height := float32(0)
-	totalCustom := 0
-	templateHeight := ch.itemMin.Height
-	for id, itemHeight := range ch.heights {
-		if id < items {
-			totalCustom++
-			height += itemHeight
-		}
-	}
-	height += float32(items-totalCustom) * templateHeight
+	//height := float32(0)
+	//for _, itemHeight := range ch.heights {
+	//	height += itemHeight
+	//}
 
-	return fyne.NewSize(ch.itemMin.Width, height+separatorThickness*float32(items-1))
+	//return fyne.NewSize(ch.itemMin.Width, height+theme.Padding()*float32(len(ch.items)-1))
+	return fyne.NewSize(
+		0,
+		ch.offsetFor(len(ch.items)-1)+ch.scroller.Size().Height,
+	)
 }
 
 func (ch *chatHistory) contentHeight() float32 {
