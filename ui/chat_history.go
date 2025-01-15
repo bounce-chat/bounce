@@ -668,9 +668,13 @@ func (ch *chatHistory) contentMinSize() fyne.Size {
 	//}
 
 	//return fyne.NewSize(ch.itemMin.Width, height+theme.Padding()*float32(len(ch.items)-1))
+	scrollerHeight := ch.scroller.Size().Height
+	if scrollerHeight == 0 {
+		scrollerHeight = defaultChatHistoryHeight
+	}
 	return fyne.NewSize(
 		0,
-		ch.offsetFor(len(ch.items)-1)+ch.scroller.Size().Height,
+		ch.offsetFor(len(ch.items)-1)+scrollerHeight,
 	)
 }
 
