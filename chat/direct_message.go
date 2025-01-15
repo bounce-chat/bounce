@@ -152,6 +152,9 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		return nil
 	}
 
+	// If we wrote this message, assume we've seen it
+	dm.Seen = dm.Author == b.currentUserID()
+
 	// Save the new message
 	err = b.database.Create(&dm).Error
 	if err != nil {
@@ -171,6 +174,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		WrittenAt: dm.WrittenAt,
 		SavedAt:   dm.SavedAt,
 		ExpiresAt: dm.DeleteAt,
+		Seen:      dm.Seen,
 		Text:      dm.Text,
 	})
 	b.userInterface.MessageDelivered(dm.ID, srcDevice.UserID)

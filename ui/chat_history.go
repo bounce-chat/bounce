@@ -210,7 +210,7 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 		ch.setMergeMode(len(ch.items)-1, true)
 	}
 
-	if ti.widgetData.countsAsUnread() {
+	if ti.widgetData.countsAsUnread() && !ti.widgetData.isSeen() {
 		ch.unread += 1
 	}
 

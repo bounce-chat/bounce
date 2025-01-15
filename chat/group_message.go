@@ -231,6 +231,9 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 	// Make sure the user interface isn't still displaying that the user is typing
 	b.clearUserTypingIndicator(gm.Author, gm.Destination, typeGroupMessage)
 
+	// If we wrote this message, assume we've seen it
+	gm.Seen = gm.Author == b.currentUserID()
+
 	// Save the new group message
 	err = b.database.Create(&gm).Error
 	if err != nil {
@@ -247,6 +250,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 		WrittenAt: gm.WrittenAt,
 		SavedAt:   gm.SavedAt,
 		ExpiresAt: gm.DeleteAt,
+		Seen:      gm.Seen,
 		Text:      gm.Text,
 	})
 	b.userInterface.MessageDelivered(gm.ID, srcDevice.UserID)

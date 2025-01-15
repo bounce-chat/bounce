@@ -381,13 +381,17 @@ func (b *bounce) sendReadReceipt(id uuid.UUID, frameType string) error {
 	if !ok {
 		return errUnknownReadReceiptTargetType
 	}
-	destination, _, scope, err := b.getReadReceiptDestinationAuthorAndScope(id, frameType)
+	destination, author, scope, err := b.getReadReceiptDestinationAuthorAndScope(id, frameType)
 	if err != nil {
 		if errors.Is(err, errUnknownReadReceiptTargetType) {
 			return nil
 		}
 		return err
 	}
+	if author == b.currentUserID() {
+		return nil
+	}
+
 	rr := readReceipt{
 		ID:          uuid.New(),
 		Actor:       b.currentUserID(),
@@ -457,9 +461,6 @@ func (b *bounce) markSeenInDatabase(id uuid.UUID, frameType string) error {
 		}
 	}
 
-	// TODO: make read on any earlier frames of the same type in this thread?
-	//       for each type of frame, if destination lines up and timestamp is before x, mark as read?
-
 	return nil
 }
 
@@ -505,16 +506,18 @@ func (b *bounce) markAllGroupMessagesAsRead(groupID uuid.UUID) {
 		}).Fatal("database error marking all group messages as seen")
 	}
 
-	for _, gm := range gms {
-		err = b.sendReadReceipt(gm.ID, TypeGroupMessage)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"id":         gm.ID,
-				"frame_type": TypeGroupMessage,
-				"error":      err.Error(),
-			}).Error("error sending read receipt")
+	go func() {
+		for _, gm := range gms {
+			err = b.sendReadReceipt(gm.ID, TypeGroupMessage)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":         gm.ID,
+					"frame_type": TypeGroupMessage,
+					"error":      err.Error(),
+				}).Error("error sending read receipt")
+			}
 		}
-	}
+	}()
 }
 
 func (b *bounce) markAllDirectMessagesAsRead(userID uuid.UUID) {
@@ -538,14 +541,16 @@ func (b *bounce) markAllDirectMessagesAsRead(userID uuid.UUID) {
 		}).Fatal("database error marking all direct messages as seen")
 	}
 
-	for _, dm := range dms {
-		err = b.sendReadReceipt(dm.ID, TypeDirectMessage)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"id":         dm.ID,
-				"frame_type": TypeDirectMessage,
-				"error":      err.Error(),
-			}).Error("error sending read receipt")
+	go func() {
+		for _, dm := range dms {
+			err = b.sendReadReceipt(dm.ID, TypeDirectMessage)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":         dm.ID,
+					"frame_type": TypeDirectMessage,
+					"error":      err.Error(),
+				}).Error("error sending read receipt")
+			}
 		}
-	}
+	}()
 }
