@@ -158,22 +158,6 @@ func (b *bounce) pruneDirectMessages() {
 			}).Fatal("error updating undeliverable field of undeliverable direct message")
 		}
 	}
-
-	// Find all messages that have not been delivered and kick off a goroutine to check if they should be marked undeliverable later
-	var deliverableUndeliveredDMs []directMessage
-	err = b.database.
-		Select("direct_messages.id", "direct_messages.written_at").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.frame_type == ?", typeDirectMessage).
-		Where("delivery_records.id IS NULL AND undeliverable = false").
-		Find(&deliverableUndeliveredDMs).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error selecting message that are deliverable while pruning database")
-	}
-	for _, dm := range deliverableUndeliveredDMs {
-		go b.checkIfDirectMessageUndeliverableAt(time.Unix(dm.WrittenAt, 0).Add(undeliverableAfter).Unix(), dm.ID)
-	}
 }
 
 func (b *bounce) pruneGroupMessages() {
@@ -221,22 +205,6 @@ func (b *bounce) pruneGroupMessages() {
 				"error":      err.Error(),
 			}).Fatal("error updating undeliverable field of undeliverable group message")
 		}
-	}
-
-	// Find all messages that have not been delivered and kick off a goroutine to check if they should be marked undeliverable later
-	var deliverableUndeliveredGMs []groupMessage
-	err = b.database.
-		Select("group_messages.id", "group_messages.written_at").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_messages.id AND delivery_records.frame_type == ?", typeGroupMessage).
-		Where("delivery_records.id IS NULL AND undeliverable = false").
-		Find(&deliverableUndeliveredGMs).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error selecting message that are deliverable while pruning database")
-	}
-	for _, gm := range deliverableUndeliveredGMs {
-		go b.checkIfGroupMessageUndeliverableAt(time.Unix(gm.WrittenAt, 0).Add(undeliverableAfter).Unix(), gm.ID)
 	}
 }
 
@@ -383,43 +351,56 @@ func (b *bounce) buildInitialState() InitialState {
 			"error": err.Error(),
 		}).Fatal("database error looking up all direct messages")
 	}
-	exportedDMs := []DirectMessage{}
-	for _, dm := range dms {
-		var rrs []readReceipt
-		err = b.database.Where("target = ? AND actor != ?", dm.ID, b.currentUserID()).Find(&rrs).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error looking up read receipts")
-		}
-		readReceipts := []ReadReceipt{}
-		for _, rr := range rrs {
-			readReceipts = append(
-				readReceipts,
-				ReadReceipt{
-					ID:     rr.ID,
-					Actor:  rr.Actor,
-					Target: rr.Target,
-				},
+
+	dmRRs := []readReceipt{}
+	dmRRmap := map[uuid.UUID][]ReadReceipt{}
+	err = b.database.Where("target_type = ?", typeDirectMessage).Find(&dmRRs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error looking up read receipts")
+	}
+	for _, rr := range dmRRs {
+		dmRRmap[rr.Target] = append(
+			dmRRmap[rr.Target],
+			ReadReceipt{
+				ID:     rr.ID,
+				Actor:  rr.Actor,
+				Target: rr.Target,
+			},
+		)
+	}
+
+	dmDRs := []deliveryRecord{}
+	dmDRmap := map[uuid.UUID][]uuid.UUID{}
+	err = b.database.Where("frame_type = ?", typeDirectMessage).Find(&dmDRs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error looking up delivery records")
+	}
+	for _, dr := range dmDRs {
+		dev, ok := b.getDeviceFromAddress(dr.Destination)
+		if ok {
+			dmDRmap[dr.FrameID] = append(
+				dmDRmap[dr.FrameID],
+				dev.UserID,
 			)
 		}
-		deliveredTo := []uuid.UUID{}
-		var drs []deliveryRecord
-		err = b.database.Where("frame_id = ? AND frame_type = ?", dm.ID, typeDirectMessage).Find(&drs).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error looking up delivery records")
+	}
+
+	exportedDMs := []DirectMessage{}
+	for _, dm := range dms {
+		readReceipts, ok := dmRRmap[dm.ID]
+		if !ok {
+			readReceipts = []ReadReceipt{}
 		}
-		recipients := map[uuid.UUID]bool{}
-		for _, dr := range drs {
-			dev, ok := b.getDeviceFromAddress(dr.Destination)
-			if ok {
-				recipients[dev.UserID] = true
+		deliveredTo, ok := dmDRmap[dm.ID]
+		if !ok {
+			deliveredTo = []uuid.UUID{}
+			if !dm.Undeliverable {
+				go b.checkIfDirectMessageUndeliverableAt(time.Unix(dm.WrittenAt, 0).Add(undeliverableAfter).Unix(), dm.ID)
 			}
-		}
-		for recipient, _ := range recipients {
-			deliveredTo = append(deliveredTo, recipient)
 		}
 		exportedDMs = append(
 			exportedDMs,
@@ -485,43 +466,56 @@ func (b *bounce) buildInitialState() InitialState {
 			"error": err.Error(),
 		}).Fatal("database error looking up all group messages")
 	}
-	exportedGMs := []GroupMessage{}
-	for _, gm := range gms {
-		var rrs []readReceipt
-		err = b.database.Where("target = ? AND actor != ?", gm.ID, b.currentUserID()).Find(&rrs).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error looking up read receipts")
-		}
-		readReceipts := []ReadReceipt{}
-		for _, rr := range rrs {
-			readReceipts = append(
-				readReceipts,
-				ReadReceipt{
-					ID:     rr.ID,
-					Actor:  rr.Actor,
-					Target: rr.Target,
-				},
+
+	gmRRs := []readReceipt{}
+	gmRRmap := map[uuid.UUID][]ReadReceipt{}
+	err = b.database.Where("target_type = ?", typeGroupMessage).Find(&gmRRs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error looking up read receipts")
+	}
+	for _, rr := range gmRRs {
+		gmRRmap[rr.Target] = append(
+			gmRRmap[rr.Target],
+			ReadReceipt{
+				ID:     rr.ID,
+				Actor:  rr.Actor,
+				Target: rr.Target,
+			},
+		)
+	}
+
+	gmDRs := []deliveryRecord{}
+	gmDRmap := map[uuid.UUID][]uuid.UUID{}
+	err = b.database.Where("frame_type = ?", typeGroupMessage).Find(&gmDRs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error looking up delivery records")
+	}
+	for _, dr := range gmDRs {
+		dev, ok := b.getDeviceFromAddress(dr.Destination)
+		if ok {
+			gmDRmap[dr.FrameID] = append(
+				gmDRmap[dr.FrameID],
+				dev.UserID,
 			)
 		}
-		deliveredTo := []uuid.UUID{}
-		var drs []deliveryRecord
-		err = b.database.Where("frame_id = ? AND frame_type = ?", gm.ID, typeGroupMessage).Find(&drs).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error looking up delivery records")
+	}
+
+	exportedGMs := []GroupMessage{}
+	for _, gm := range gms {
+		readReceipts, ok := gmRRmap[gm.ID]
+		if !ok {
+			readReceipts = []ReadReceipt{}
 		}
-		recipients := map[uuid.UUID]bool{}
-		for _, dr := range drs {
-			dev, ok := b.getDeviceFromAddress(dr.Destination)
-			if ok {
-				recipients[dev.UserID] = true
+		deliveredTo, ok := gmDRmap[gm.ID]
+		if !ok {
+			deliveredTo = []uuid.UUID{}
+			if !gm.Undeliverable {
+				go b.checkIfGroupMessageUndeliverableAt(time.Unix(gm.WrittenAt, 0).Add(undeliverableAfter).Unix(), gm.ID)
 			}
-		}
-		for recipient, _ := range recipients {
-			deliveredTo = append(deliveredTo, recipient)
 		}
 		exportedGMs = append(
 			exportedGMs,

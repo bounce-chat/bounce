@@ -663,15 +663,6 @@ func (ch *chatHistory) TypedRune(_ rune) {
 }
 
 func (ch *chatHistory) contentMinSize() fyne.Size {
-	//ch.propertyLock.Lock()
-	//defer ch.propertyLock.Unlock()
-
-	//height := float32(0)
-	//for _, itemHeight := range ch.heights {
-	//	height += itemHeight
-	//}
-
-	//return fyne.NewSize(ch.itemMin.Width, height+theme.Padding()*float32(len(ch.items)-1))
 	scrollerHeight := ch.scroller.Size().Height
 	if scrollerHeight == 0 {
 		scrollerHeight = defaultChatHistoryHeight
@@ -842,7 +833,6 @@ func (li *listItemRenderer) MinSize() fyne.Size {
 
 // Layout the components of the listItem widget.
 func (li *listItemRenderer) Layout(size fyne.Size) {
-	//li.item.background.Resize(size)
 	li.item.child.Resize(size)
 }
 
@@ -1075,9 +1065,6 @@ func (l *listLayout) nilOldVisibleSliceData(objs []listItemAndID, len, oldLen in
 
 func createItemAndApplyThemeScope(f func() fyne.CanvasObject, scope fyne.Widget) fyne.CanvasObject {
 	item := f()
-	//if !cache.OverrideThemeMatchingScope(item, scope) {
-	//	return item
-	//}
 
 	item.Refresh()
 	return item
