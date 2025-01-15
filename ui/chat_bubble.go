@@ -416,8 +416,8 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 	messageTop := top
 	if cbr.cb.username.Visible() {
 		cbr.cb.username.Resize(fyne.Size{Height: size.Height, Width: width + theme.Padding()*2})
-		cbr.cb.username.Move(fyne.Position{leftBorder, top}) // - theme.Padding()})
-		messageTop += cbr.cb.username.MinSize().Height       //- theme.Padding()*2
+		cbr.cb.username.Move(fyne.Position{leftBorder, top - theme.Padding()})
+		messageTop += cbr.cb.username.MinSize().Height - theme.Padding()*2
 	}
 
 	if cbr.cb.decorations.Visible() {
@@ -445,7 +445,7 @@ func (cbr *chatBubbleRenderer) MinSize() fyne.Size {
 	}
 
 	if cbr.cb.username.Visible() {
-		minSize.Height += cbr.cb.username.MinSize().Height
+		minSize.Height += cbr.cb.username.MinSize().Height - theme.Padding()*2
 	}
 
 	switch cbr.cb.mergeMode {
