@@ -170,8 +170,6 @@ func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
 		}).Warn("item not found during attempt to mark item as seen")
 	}
 
-	item.markSeen()
-
 	fyneUI.threadWithItemMutex.Lock()
 	t, ok := fyneUI.threadWithItem[id]
 	fyneUI.threadWithItemMutex.Unlock()
@@ -182,12 +180,18 @@ func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
 		return
 	}
 
-	t.chatHistoryScroll().updateUnreadCounter()
+	if !item.isSeen() {
+		item.markSeen()
+		if item.countsAsUnread() {
+			t.chatHistoryScroll().unread -= 1
+			t.chatHistoryScroll().updateUnreadCounter()
+		}
+	}
 
 	openedThreadMutex.Lock()
 	_, opened := openedThreads[t.getID()]
 	openedThreadMutex.Unlock()
-	if opened {
+	if !opened {
 		t.chatHistoryScroll().scrollToLastRead()
 	}
 }

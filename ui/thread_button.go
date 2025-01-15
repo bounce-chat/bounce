@@ -498,25 +498,6 @@ func (tbr *threadButtonRenderer) Layout(size fyne.Size) {
 		Y: threadButtonHeight / 2,
 	})
 
-	if tbr.threadButton.statusIcons.Visible() {
-		tbr.threadButton.statusIcons.Resize(fyne.Size{Width: theme.IconInlineSize(), Height: theme.IconInlineSize()})
-		tbr.threadButton.statusIcons.Move(fyne.Position{
-			X: size.Width - theme.IconInlineSize() - theme.Padding(),
-			Y: size.Height - theme.IconInlineSize() - theme.Padding(),
-		})
-
-		tbr.threadButton.unreadCounterTextFadeOut.Resize(fyne.Size{Width: theme.IconInlineSize(), Height: theme.IconInlineSize()})
-		tbr.threadButton.unreadCounterTextFadeOut.Move(fyne.Position{
-			X: size.Width - theme.IconInlineSize() - theme.IconInlineSize(),
-			Y: size.Height - theme.IconInlineSize() - theme.Padding(),
-		})
-		tbr.threadButton.unreadCounterBackground.Resize(fyne.Size{Width: theme.IconInlineSize(), Height: theme.IconInlineSize()})
-		tbr.threadButton.unreadCounterBackground.Move(fyne.Position{
-			X: size.Width - theme.IconInlineSize(),
-			Y: size.Height - theme.IconInlineSize() - theme.Padding(),
-		})
-	}
-
 	if tbr.threadButton.unreadCounterText.Visible() {
 		tbr.threadButton.unreadCounterCircle.Resize(fyne.Size{Width: threadButtonHeight / 2, Height: threadButtonHeight / 2})
 		tbr.threadButton.unreadCounterCircle.Move(fyne.Position{
@@ -536,6 +517,27 @@ func (tbr *threadButtonRenderer) Layout(size fyne.Size) {
 		tbr.threadButton.unreadCounterBackground.Move(fyne.Position{
 			X: size.Width - threadButtonHeight/2,
 			Y: threadButtonHeight / 2,
+		})
+
+		tbr.threadButton.statusIcons.Hide()
+	}
+
+	if tbr.threadButton.statusIcons.Visible() {
+		tbr.threadButton.statusIcons.Resize(fyne.Size{Width: theme.IconInlineSize(), Height: theme.IconInlineSize()})
+		tbr.threadButton.statusIcons.Move(fyne.Position{
+			X: size.Width - theme.IconInlineSize() - theme.Padding(),
+			Y: size.Height - theme.IconInlineSize() - theme.Padding(),
+		})
+
+		tbr.threadButton.unreadCounterTextFadeOut.Resize(fyne.Size{Width: theme.IconInlineSize(), Height: theme.IconInlineSize()})
+		tbr.threadButton.unreadCounterTextFadeOut.Move(fyne.Position{
+			X: size.Width - theme.IconInlineSize() - theme.IconInlineSize(),
+			Y: size.Height - theme.IconInlineSize() - theme.Padding(),
+		})
+		tbr.threadButton.unreadCounterBackground.Resize(fyne.Size{Width: theme.IconInlineSize(), Height: theme.IconInlineSize()})
+		tbr.threadButton.unreadCounterBackground.Move(fyne.Position{
+			X: size.Width - theme.IconInlineSize(),
+			Y: size.Height - theme.IconInlineSize() - theme.Padding(),
 		})
 	}
 
