@@ -1,8 +1,5 @@
 package ui
 
-// The chat history widget is based on the Fyne widget.List, with modifications to support variable-sized widgets,
-// remove unused features and behaviors, and support other callbacks and behaviors
-
 import (
 	"sort"
 	"sync"
@@ -24,11 +21,11 @@ const jumpToBottomIconSize = 46
 const timestampRefreshSeconds = 30
 const mergeSeconds = 300
 
-// ListItemID uniquely identifies an item within a list.
 type ListItemID = int
 
 type chatHistory struct {
 	widget.BaseWidget
+	sync.Mutex
 
 	id       uuid.UUID
 	messages *messageStore
@@ -46,23 +43,16 @@ type chatHistory struct {
 	CreateItem func() fyne.CanvasObject                    `json:"-"`
 	UpdateItem func(id ListItemID, item fyne.CanvasObject) `json:"-"`
 
-	currentFocus ListItemID // TODO: still used?
-	focused      bool       // TODO: still used?
-	itemMin      fyne.Size  // TODO: still used?
-
 	scroller      *container.Scroll
 	offsetY       float32
 	offsetUpdated func(fyne.Position)
 
+	windowFocused         func() bool
 	readCallback          func(uuid.UUID, string)
 	unreadCountCallback   func(int)
 	markAllAsReadCallback func(uuid.UUID)
 	seenTracking          map[uuid.UUID]bool
 	markAllAsReadMutex    sync.Mutex
-
-	windowFocused func() bool
-
-	propertyLock sync.RWMutex // TODO: expose the one in BaseWidget?
 }
 
 func newChatHistory(threadID uuid.UUID, messageStore *messageStore, readCallback func(uuid.UUID, string), unreadCountCallback func(int), markAllAsReadCallback func(uuid.UUID), windowFocused func() bool) *chatHistory {
@@ -456,28 +446,11 @@ func (ch *chatHistory) scrollToLastRead() {
 func (ch *chatHistory) CreateRenderer() fyne.WidgetRenderer {
 	ch.ExtendBaseWidget(ch)
 
-	if f := ch.CreateItem; f != nil && ch.itemMin.IsZero() {
-		item := createItemAndApplyThemeScope(f, ch)
-
-		ch.itemMin = item.MinSize()
-	}
-
 	layout := &fyne.Container{Layout: newListLayout(ch)}
 	ch.scroller = container.NewVScroll(layout)
 	layout.Resize(layout.MinSize())
 	objects := []fyne.CanvasObject{ch.scroller, ch.jumpToBottomIcon}
 	return newListRenderer(objects, ch, ch.scroller, layout)
-}
-
-func (ch *chatHistory) FocusGained() {
-	ch.focused = true
-	ch.scrollTo(ch.currentFocus)
-	ch.RefreshItem(ch.currentFocus)
-}
-
-func (ch *chatHistory) FocusLost() {
-	ch.focused = false
-	ch.RefreshItem(ch.currentFocus)
 }
 
 func (ch *chatHistory) MinSize() fyne.Size {
@@ -495,12 +468,12 @@ func (ch *chatHistory) RefreshItem(id ListItemID) {
 	item, ok := lo.searchVisible(lo.visible, id)
 	lo.renderLock.RUnlock()
 	if ok {
-		lo.setupListItem(item, id, ch.focused && ch.currentFocus == id)
+		lo.setupListItem(item, id)
 	}
 }
 
 func (ch *chatHistory) SetItemHeight(id ListItemID, height float32) {
-	ch.propertyLock.Lock()
+	ch.Lock()
 
 	if !(len(ch.heights) > id) {
 		missing := id + 1 - len(ch.heights)
@@ -509,7 +482,7 @@ func (ch *chatHistory) SetItemHeight(id ListItemID, height float32) {
 	refresh := ch.heights[id] != height
 	ch.heights[id] = height
 
-	ch.propertyLock.Unlock()
+	ch.Unlock()
 
 	if refresh {
 		ch.RefreshItem(id)
@@ -530,9 +503,9 @@ func (ch *chatHistory) offsetFor(id ListItemID) float32 {
 	y := float32(0)
 	separatorThickness := ch.Theme().Size(theme.SizeNamePadding)
 	for i := 0; i <= id; i++ {
-		ch.propertyLock.Lock()
+		ch.Lock()
 		height, ok := ch.getItemHeight(i)
-		ch.propertyLock.Unlock()
+		ch.Unlock()
 
 		if ok {
 			y += height + separatorThickness
@@ -637,31 +610,6 @@ func (ch *chatHistory) displayJumpToBottomIfNeeded() {
 	}
 }
 
-func (ch *chatHistory) TypedKey(event *fyne.KeyEvent) {
-	switch event.Name {
-	case fyne.KeyDown:
-		if f := ch.Length; f != nil && ch.currentFocus >= f()-1 {
-			return
-		}
-		ch.RefreshItem(ch.currentFocus)
-		ch.currentFocus++
-		ch.scrollTo(ch.currentFocus)
-		ch.RefreshItem(ch.currentFocus)
-	case fyne.KeyUp:
-		if ch.currentFocus <= 0 {
-			return
-		}
-		ch.RefreshItem(ch.currentFocus)
-		ch.currentFocus--
-		ch.scrollTo(ch.currentFocus)
-		ch.RefreshItem(ch.currentFocus)
-	}
-}
-
-func (ch *chatHistory) TypedRune(_ rune) {
-	// intentionally left blank
-}
-
 func (ch *chatHistory) contentMinSize() fyne.Size {
 	scrollerHeight := ch.scroller.Size().Height
 	if scrollerHeight == 0 {
@@ -693,7 +641,7 @@ func (ch *chatHistory) calculateAndSetItemHeight(id int, containerSize fyne.Size
 }
 
 // fills l.visibleRowHeights and also returns offY and minRow
-func (l *listLayout) calculateVisibleRowHeights(itemHeight float32, length int, th fyne.Theme) (offY float32, minRow int) {
+func (l *listLayout) calculateVisibleRowHeights(length int, th fyne.Theme) (offY float32, minRow int) {
 	rowOffset := float32(0)
 	isVisible := false
 	l.visibleRowHeights = l.visibleRowHeights[:0]
@@ -705,9 +653,11 @@ func (l *listLayout) calculateVisibleRowHeights(itemHeight float32, length int, 
 	padding := th.Size(theme.SizeNamePadding)
 
 	for i := 0; i < length; i++ {
-		height := itemHeight
+		var height float32
 		if h, ok := l.list.getItemHeight(i); ok {
 			height = h
+		} else {
+			height = l.list.calculateAndSetItemHeight(i, l.list.Size())
 		}
 
 		if rowOffset <= l.list.offsetY-height-padding {
@@ -756,14 +706,10 @@ func (l *listRenderer) Layout(size fyne.Size) {
 }
 
 func (l *listRenderer) MinSize() fyne.Size {
-	return l.scroller.MinSize().Max(l.list.itemMin)
+	return l.scroller.MinSize()
 }
 
 func (l *listRenderer) Refresh() {
-	if f := l.list.CreateItem; f != nil {
-		item := createItemAndApplyThemeScope(f, l.list)
-		l.list.itemMin = item.MinSize()
-	}
 	l.Layout(l.list.Size())
 	l.scroller.Refresh()
 	layout := l.layout.Layout.(*listLayout)
@@ -851,7 +797,7 @@ type listLayout struct {
 
 	itemPool          syncPool
 	visible           []listItemAndID
-	slicePool         sync.Pool // *[]itemAndID
+	slicePool         sync.Pool
 	visibleRowHeights []float32
 	renderLock        sync.RWMutex
 }
@@ -915,7 +861,7 @@ func (l *listLayout) offsetUpdated(pos fyne.Position) {
 	}
 }
 
-func (l *listLayout) setupListItem(li *listItem, id ListItemID, focus bool) {
+func (l *listLayout) setupListItem(li *listItem, id ListItemID) {
 	if f := l.list.UpdateItem; f != nil {
 		f(id, li.child)
 		l.list.SetItemHeight(id, li.child.MinSize().Height)
@@ -944,9 +890,9 @@ func (l *listLayout) updateList(newOnly bool) {
 	wasVisible := (*wasVisiblePtr)[:0]
 	wasVisible = append(wasVisible, l.visible...)
 
-	l.list.propertyLock.Lock()
-	offY, minRow := l.calculateVisibleRowHeights(l.list.itemMin.Height, length, th)
-	l.list.propertyLock.Unlock()
+	l.list.Lock()
+	offY, minRow := l.calculateVisibleRowHeights(length, th)
+	l.list.Unlock()
 	if len(l.visibleRowHeights) == 0 && length > 0 { // we can't show anything until we have some dimensions
 		l.renderLock.Unlock() // user code should not be locked
 		return
@@ -1003,7 +949,7 @@ func (l *listLayout) updateList(newOnly bool) {
 	if newOnly {
 		for _, vis := range visible {
 			if _, ok := l.searchVisible(wasVisible, vis.id); !ok {
-				l.setupListItem(vis.item, vis.id, l.list.focused && l.list.currentFocus == vis.id)
+				l.setupListItem(vis.item, vis.id)
 			}
 
 			offset := l.list.GetScrollOffset()
@@ -1013,7 +959,7 @@ func (l *listLayout) updateList(newOnly bool) {
 		}
 	} else {
 		for _, vis := range visible {
-			l.setupListItem(vis.item, vis.id, l.list.focused && l.list.currentFocus == vis.id)
+			l.setupListItem(vis.item, vis.id)
 
 			offset := l.list.GetScrollOffset()
 			if offset >= l.list.offsetFor(vis.id) {
