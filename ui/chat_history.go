@@ -544,7 +544,7 @@ func (ch *chatHistory) offsetFor(id ListItemID) float32 {
 	y -= separatorThickness
 
 	h := ch.scroller.Size().Height
-	if h == 0 {
+	if h == 0 && !fyne.CurrentDevice().IsMobile() {
 		h = defaultChatHistoryHeight
 	}
 
