@@ -21,8 +21,6 @@ const jumpToBottomIconSize = 46
 const timestampRefreshSeconds = 30
 const mergeSeconds = 300
 
-type ListItemID = int
-
 type chatHistory struct {
 	widget.BaseWidget
 	sync.Mutex
@@ -39,9 +37,9 @@ type chatHistory struct {
 
 	jumpToBottomIcon *clickableImage
 
-	Length     func() int                                  `json:"-"`
-	CreateItem func() fyne.CanvasObject                    `json:"-"`
-	UpdateItem func(id ListItemID, item fyne.CanvasObject) `json:"-"`
+	Length     func() int                              `json:"-"`
+	CreateItem func() fyne.CanvasObject                `json:"-"`
+	UpdateItem func(index int, item fyne.CanvasObject) `json:"-"`
 
 	scroller      *container.Scroll
 	offsetY       float32
@@ -81,8 +79,8 @@ func newChatHistory(threadID uuid.UUID, messageStore *messageStore, readCallback
 			newStatusChangeTemplate(),
 		)
 	}
-	ch.UpdateItem = func(id widget.ListItemID, obj fyne.CanvasObject) {
-		item := ch.items[id]
+	ch.UpdateItem = func(index int, obj fyne.CanvasObject) {
+		item := ch.items[index]
 		item.populateTemplate(obj)
 	}
 
@@ -458,51 +456,51 @@ func (ch *chatHistory) MinSize() fyne.Size {
 	return ch.BaseWidget.MinSize()
 }
 
-func (ch *chatHistory) RefreshItem(id ListItemID) {
+func (ch *chatHistory) RefreshItem(index int) {
 	if ch.scroller == nil {
 		return
 	}
 	ch.BaseWidget.Refresh()
 	lo := ch.scroller.Content.(*fyne.Container).Layout.(*listLayout)
 	lo.renderLock.RLock() // ensures we are not changing visible info in render code during the search
-	item, ok := lo.searchVisible(lo.visible, id)
+	item, ok := lo.searchVisible(lo.visible, index)
 	lo.renderLock.RUnlock()
 	if ok {
-		lo.setupListItem(item, id)
+		lo.setupListItem(item, index)
 	}
 }
 
-func (ch *chatHistory) SetItemHeight(id ListItemID, height float32) {
+func (ch *chatHistory) SetItemHeight(index int, height float32) {
 	ch.Lock()
 
-	if !(len(ch.heights) > id) {
-		missing := id + 1 - len(ch.heights)
+	if !(len(ch.heights) > index) {
+		missing := index + 1 - len(ch.heights)
 		ch.heights = append(ch.heights, make([]float32, missing)...)
 	}
-	refresh := ch.heights[id] != height
-	ch.heights[id] = height
+	refresh := ch.heights[index] != height
+	ch.heights[index] = height
 
 	ch.Unlock()
 
 	if refresh {
-		ch.RefreshItem(id)
+		ch.RefreshItem(index)
 	}
 }
 
-func (ch *chatHistory) getItemHeight(id ListItemID) (float32, bool) {
-	if !(len(ch.heights) > id) {
+func (ch *chatHistory) getItemHeight(index int) (float32, bool) {
+	if !(len(ch.heights) > index) {
 		return 0, false
 	}
-	if ch.heights[id] == 0 {
+	if ch.heights[index] == 0 {
 		return 0, false
 	}
-	return ch.heights[id], true
+	return ch.heights[index], true
 }
 
-func (ch *chatHistory) offsetFor(id ListItemID) float32 {
+func (ch *chatHistory) offsetFor(index int) float32 {
 	y := float32(0)
 	separatorThickness := ch.Theme().Size(theme.SizeNamePadding)
-	for i := 0; i <= id; i++ {
+	for i := 0; i <= index; i++ {
 		ch.Lock()
 		height, ok := ch.getItemHeight(i)
 		ch.Unlock()
@@ -524,12 +522,12 @@ func (ch *chatHistory) offsetFor(id ListItemID) float32 {
 	return y - h
 }
 
-func (ch *chatHistory) scrollTo(id ListItemID) {
+func (ch *chatHistory) scrollTo(index int) {
 	if ch.scroller == nil {
 		return
 	}
 
-	ch.scroller.Offset.Y = ch.offsetFor(id)
+	ch.scroller.Offset.Y = ch.offsetFor(index)
 	ch.offsetUpdated(ch.scroller.Offset)
 }
 
@@ -543,7 +541,7 @@ func (ch *chatHistory) Resize(s fyne.Size) {
 	ch.scroller.Content.(*fyne.Container).Layout.(*listLayout).updateList(true)
 }
 
-func (ch *chatHistory) ScrollTo(id ListItemID) {
+func (ch *chatHistory) ScrollTo(id int) {
 	length := 0
 	if f := ch.Length; f != nil {
 		length = f()
@@ -787,8 +785,8 @@ func (li *listItemRenderer) Refresh() {
 }
 
 type listItemAndID struct {
-	item *listItem
-	id   ListItemID
+	item  *listItem
+	index int
 }
 
 type listLayout struct {
@@ -861,12 +859,12 @@ func (l *listLayout) offsetUpdated(pos fyne.Position) {
 	}
 }
 
-func (l *listLayout) setupListItem(li *listItem, id ListItemID) {
+func (l *listLayout) setupListItem(li *listItem, index int) {
 	if f := l.list.UpdateItem; f != nil {
-		f(id, li.child)
-		l.list.SetItemHeight(id, li.child.MinSize().Height)
-		if len(l.list.ids) > id {
-			l.list.messages.cacheHeight(l.list.ids[id], l.list.Size().Width, li.child.MinSize().Height)
+		f(index, li.child)
+		l.list.SetItemHeight(index, li.child.MinSize().Height)
+		if len(l.list.ids) > index {
+			l.list.messages.cacheHeight(l.list.ids[index], l.list.Size().Width, li.child.MinSize().Height)
 		}
 	}
 }
@@ -921,14 +919,14 @@ func (l *listLayout) updateList(newOnly bool) {
 		c.Resize(size)
 
 		y += itemHeight + separatorThickness
-		l.visible = append(l.visible, listItemAndID{id: row, item: c})
+		l.visible = append(l.visible, listItemAndID{index: row, item: c})
 		l.children = append(l.children, c)
 	}
 	l.nilOldSliceData(l.children, len(l.children), oldChildrenLen)
 	l.nilOldVisibleSliceData(l.visible, len(l.visible), oldVisibleLen)
 
 	for _, wasVis := range wasVisible {
-		if _, ok := l.searchVisible(l.visible, wasVis.id); !ok {
+		if _, ok := l.searchVisible(l.visible, wasVis.index); !ok {
 			l.itemPool.Release(wasVis.item)
 		}
 	}
@@ -948,22 +946,22 @@ func (l *listLayout) updateList(newOnly bool) {
 
 	if newOnly {
 		for _, vis := range visible {
-			if _, ok := l.searchVisible(wasVisible, vis.id); !ok {
-				l.setupListItem(vis.item, vis.id)
+			if _, ok := l.searchVisible(wasVisible, vis.index); !ok {
+				l.setupListItem(vis.item, vis.index)
 			}
 
 			offset := l.list.GetScrollOffset()
-			if offset >= l.list.offsetFor(vis.id) {
-				l.list.seen(vis.id)
+			if offset >= l.list.offsetFor(vis.index) {
+				l.list.seen(vis.index)
 			}
 		}
 	} else {
 		for _, vis := range visible {
-			l.setupListItem(vis.item, vis.id)
+			l.setupListItem(vis.item, vis.index)
 
 			offset := l.list.GetScrollOffset()
-			if offset >= l.list.offsetFor(vis.id) {
-				l.list.seen(vis.id)
+			if offset >= l.list.offsetFor(vis.index) {
+				l.list.seen(vis.index)
 			}
 		}
 	}
@@ -982,10 +980,10 @@ func (l *listLayout) updateList(newOnly bool) {
 }
 
 // invariant: visible is in ascending order of IDs
-func (l *listLayout) searchVisible(visible []listItemAndID, id ListItemID) (*listItem, bool) {
+func (l *listLayout) searchVisible(visible []listItemAndID, index int) (*listItem, bool) {
 	ln := len(visible)
-	idx := sort.Search(ln, func(i int) bool { return visible[i].id >= id })
-	if idx < ln && visible[idx].id == id {
+	idx := sort.Search(ln, func(i int) bool { return visible[i].index >= index })
+	if idx < ln && visible[idx].index == index {
 		return visible[idx].item, true
 	}
 	return nil, false
