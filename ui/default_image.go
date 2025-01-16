@@ -25,6 +25,7 @@ func newDefaultImage(id uuid.UUID, text binding.String, size float32, clicked fu
 	}
 
 	di := &defaultImage{
+		id:   id,
 		size: size,
 		foregroundText: &canvas.Text{
 			Text:     str,
@@ -54,6 +55,7 @@ func newDefaultImage(id uuid.UUID, text binding.String, size float32, clicked fu
 
 type defaultImage struct {
 	widget.BaseWidget
+	id              uuid.UUID
 	size            float32
 	foregroundText  *canvas.Text
 	backgroundColor *canvas.Image

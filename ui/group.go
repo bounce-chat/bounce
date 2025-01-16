@@ -66,6 +66,7 @@ type group struct {
 	removeUserButtonsMutex           sync.Mutex
 	editUserDialogs                  map[uuid.UUID]dialog.Dialog
 	editUserDialogsMutex             sync.Mutex
+	typingIndicators                 *typingIndicators
 	entry                            *threadEntry
 	lastMessage                      int64
 }
@@ -87,6 +88,10 @@ func (g *group) chatHistoryScroll() *chatHistory {
 
 func (g *group) getButton() *threadButton {
 	return g.button
+}
+
+func (g *group) getTypingIndicators() *typingIndicators {
+	return g.typingIndicators
 }
 
 func (g *group) getLastMessageTime() int64 {
@@ -516,10 +521,16 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		button.threadName.Refresh()
 	}))
 
-	group.view = container.New(
-		layout.NewBorderLayout(group.header, group.entry, nil, nil),
-		group.header,
+	group.typingIndicators = newTypingIndicators()
+	group.typingIndicators.Hide()
+	footer := container.NewVBox(
+		group.typingIndicators,
 		group.entry,
+	)
+	group.view = container.New(
+		layout.NewBorderLayout(group.header, footer, nil, nil),
+		group.header,
+		footer,
 		container.New(&autoscollLayout{}, group.scroll),
 	)
 	fyneUI.groups[group.id] = group

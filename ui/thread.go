@@ -21,6 +21,7 @@ type thread interface {
 	getEntry() *threadEntry
 	chatHistoryScroll() *chatHistory
 	getButton() *threadButton
+	getTypingIndicators() *typingIndicators
 	getLastMessageTime() int64
 	setLastMessageTime(int64)
 	getNotificationsMutedUntil() int64
@@ -329,7 +330,25 @@ func (fyneUI *Fyne) getThread(id uuid.UUID) (thread, bool) {
 }
 
 func (fyneUI *Fyne) ShowTypingIndicatorInHistory(userID, threadID uuid.UUID) {
-	// TODO: show in the chat history that the user is typing
+	t, ok := fyneUI.getThread(threadID)
+	if !ok {
+		log.WithFields(log.Fields{
+			"thread_id": threadID,
+		}).Warn("thread not found showing typing indicators")
+		return
+	}
+
+	u, ok := fyneUI.users.get(userID)
+	if !ok {
+		log.WithFields(log.Fields{
+			"thread_id": threadID,
+			"userID":    userID,
+		}).Warn("user not found showing typing indicators")
+		return
+	}
+
+	t.getTypingIndicators().showUser(u)
+	t.getView().Refresh()
 }
 
 func (fyneUI *Fyne) ShowTypingIndicatorInButton(userID, threadID uuid.UUID) {
@@ -361,7 +380,16 @@ func (fyneUI *Fyne) ShowTypingIndicatorInButton(userID, threadID uuid.UUID) {
 }
 
 func (fyneUI *Fyne) HideTypingIndicatorInHistory(userID, threadID uuid.UUID) {
-	// TODO: remove the indicator that a user is typing from the chat history
+	t, ok := fyneUI.getThread(threadID)
+	if !ok {
+		log.WithFields(log.Fields{
+			"thread_id": threadID,
+		}).Warn("thread not found hiding typing indicators")
+		return
+	}
+
+	t.getTypingIndicators().hideUser(userID)
+	t.getView().Refresh()
 }
 
 func (fyneUI *Fyne) HideTypingIndicatorInButton(threadID uuid.UUID) {

@@ -28,6 +28,7 @@ type directMessage struct {
 	view                             *fyne.Container
 	header                           *fyne.Container
 	button                           *threadButton
+	typingIndicators                 *typingIndicators
 	notificationsEnabledCheck        *widget.Check
 	readReceiptOverrideSelection     *widget.Select
 	typingIndicatorOverrideSelection *widget.Select
@@ -54,6 +55,10 @@ func (dm *directMessage) chatHistoryScroll() *chatHistory {
 
 func (dm *directMessage) getButton() *threadButton {
 	return dm.button
+}
+
+func (dm *directMessage) getTypingIndicators() *typingIndicators {
+	return dm.typingIndicators
 }
 
 func (dm *directMessage) getLastMessageTime() int64 {
@@ -230,10 +235,17 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 		}
 	}()
 
-	dm.view = container.New(
-		layout.NewBorderLayout(dm.header, dm.entry, nil, nil),
-		dm.header,
+	dm.typingIndicators = newTypingIndicators()
+	dm.typingIndicators.Hide()
+	footer := container.NewVBox(
+		dm.typingIndicators,
 		dm.entry,
+	)
+
+	dm.view = container.New(
+		layout.NewBorderLayout(dm.header, footer, nil, nil),
+		dm.header,
+		footer,
 		container.New(&autoscollLayout{}, dm.scroll),
 	)
 	fyneUI.dms[bounceUser.ID] = dm
