@@ -62,7 +62,7 @@ func (u user) setInitials() {
 			log.WithFields(log.Fields{
 				"rune_error": r,
 				"size":       n,
-			}).Error("error setting user initals")
+			}).Error("error setting user initials")
 			return
 		}
 		u.initials.Set(string(r))
@@ -72,7 +72,7 @@ func (u user) setInitials() {
 			log.WithFields(log.Fields{
 				"rune_error": firstRune,
 				"size":       n,
-			}).Error("error setting user initals")
+			}).Error("error setting user initials")
 			return
 		}
 
@@ -81,7 +81,7 @@ func (u user) setInitials() {
 			log.WithFields(log.Fields{
 				"rune_error": lastRune,
 				"size":       n,
-			}).Error("error setting user initals")
+			}).Error("error setting user initials")
 			return
 		}
 
