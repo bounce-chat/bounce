@@ -205,6 +205,42 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 	ch.messages.insert(ti.widgetData)
 }
 
+func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
+	ch.itemsMutex.Lock()
+	defer ch.itemsMutex.Unlock()
+
+	found := false
+	location := 0
+	for i, obj := range ch.items {
+		switch cast := obj.(type) {
+		case *chatBubbleData:
+			if cast.id == id {
+				found = true
+				location = i
+				break
+			}
+		case *statusChangeData:
+			if cast.id == id {
+				found = true
+				location = i
+				break
+			}
+		default:
+			continue
+		}
+	}
+
+	ch.items = append(ch.items[:location], ch.items[location+1:]...)
+	ch.ids = append(ch.ids[:location], ch.ids[location+1:]...)
+	ch.heights = append(ch.heights[:location], ch.heights[location+1:]...)
+
+	ch.Refresh()
+
+	ch.messages.remove(id)
+
+	return found
+}
+
 func (ch *chatHistory) isLastItem(id uuid.UUID) bool {
 	ch.itemsMutex.Lock()
 	defer ch.itemsMutex.Unlock()
@@ -345,42 +381,6 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
 	}
 }
 
-func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
-	ch.itemsMutex.Lock()
-	defer ch.itemsMutex.Unlock()
-
-	found := false
-	location := 0
-	for i, obj := range ch.items {
-		switch cast := obj.(type) {
-		case *chatBubbleData:
-			if cast.id == id {
-				found = true
-				location = i
-				break
-			}
-		case *statusChangeData:
-			if cast.id == id {
-				found = true
-				location = i
-				break
-			}
-		default:
-			continue
-		}
-	}
-
-	ch.items = append(ch.items[:location], ch.items[location+1:]...)
-	ch.ids = append(ch.ids[:location], ch.ids[location+1:]...)
-	ch.heights = append(ch.heights[:location], ch.heights[location+1:]...)
-
-	ch.Refresh()
-
-	ch.messages.remove(id)
-
-	return found
-}
-
 func (ch *chatHistory) headTimestamp() int64 {
 	ch.itemsMutex.Lock()
 	defer ch.itemsMutex.Unlock()
@@ -424,31 +424,6 @@ func (ch *chatHistory) seen(index int) {
 
 func (ch *chatHistory) updateUnreadCounter() {
 	ch.unreadCountCallback(ch.unread)
-}
-
-func (ch *chatHistory) scrollToLastRead() {
-	for i, item := range ch.items {
-		if !item.isSeen() {
-			if i == 0 {
-				ch.ScrollToTop()
-			} else {
-				ch.ScrollTo(i - 1)
-			}
-			return
-		}
-	}
-	ch.ScrollToBottom()
-}
-
-// CreateRenderer is a private method to Fyne which links this widget to its renderer.
-func (ch *chatHistory) CreateRenderer() fyne.WidgetRenderer {
-	ch.ExtendBaseWidget(ch)
-
-	layout := &fyne.Container{Layout: newListLayout(ch)}
-	ch.scroller = container.NewVScroll(layout)
-	layout.Resize(layout.MinSize())
-	objects := []fyne.CanvasObject{ch.scroller, ch.jumpToBottomIcon}
-	return newListRenderer(objects, ch, ch.scroller, layout)
 }
 
 func (ch *chatHistory) MinSize() fyne.Size {
@@ -570,6 +545,20 @@ func (ch *chatHistory) ScrollToTop() {
 	ch.Refresh()
 }
 
+func (ch *chatHistory) scrollToLastRead() {
+	for i, item := range ch.items {
+		if !item.isSeen() {
+			if i == 0 {
+				ch.ScrollToTop()
+			} else {
+				ch.ScrollTo(i - 1)
+			}
+			return
+		}
+	}
+	ch.ScrollToBottom()
+}
+
 func (ch *chatHistory) ScrollToOffset(offset float32) {
 	if ch.scroller == nil {
 		return
@@ -579,7 +568,7 @@ func (ch *chatHistory) ScrollToOffset(offset float32) {
 	}
 	contentHeight := ch.contentMinSize().Height
 	if ch.Size().Height >= contentHeight {
-		return // content fully visible - no need to scroll
+		return
 	}
 	if offset > contentHeight {
 		offset = contentHeight
@@ -638,82 +627,52 @@ func (ch *chatHistory) calculateAndSetItemHeight(id int, containerSize fyne.Size
 	return height
 }
 
-// fills l.visibleRowHeights and also returns offY and minRow
-func (l *listLayout) calculateVisibleRowHeights(length int, th fyne.Theme) (offY float32, minRow int) {
-	rowOffset := float32(0)
-	isVisible := false
-	l.visibleRowHeights = l.visibleRowHeights[:0]
+func (ch *chatHistory) CreateRenderer() fyne.WidgetRenderer {
+	ch.ExtendBaseWidget(ch)
 
-	if l.list.scroller.Size().Height <= 0 {
-		return
-	}
-
-	padding := th.Size(theme.SizeNamePadding)
-
-	for i := 0; i < length; i++ {
-		var height float32
-		if h, ok := l.list.getItemHeight(i); ok {
-			height = h
-		} else {
-			height = l.list.calculateAndSetItemHeight(i, l.list.Size())
-		}
-
-		if rowOffset <= l.list.offsetY-height-padding {
-			// before scroll
-		} else if rowOffset <= l.list.offsetY {
-			minRow = i
-			offY = rowOffset
-			isVisible = true
-		}
-		if rowOffset >= l.list.offsetY+l.list.scroller.Size().Height {
-			break
-		}
-
-		rowOffset += height + padding
-		if isVisible {
-			l.visibleRowHeights = append(l.visibleRowHeights, height)
-		}
-	}
-	return
+	layout := &fyne.Container{Layout: newListLayout(ch)}
+	ch.scroller = container.NewVScroll(layout)
+	layout.Resize(layout.MinSize())
+	objects := []fyne.CanvasObject{ch.scroller, ch.jumpToBottomIcon}
+	return newChatHistoryRenderer(objects, ch, ch.scroller, layout)
 }
 
-// Declare conformity with WidgetRenderer interface.
-var _ fyne.WidgetRenderer = (*listRenderer)(nil)
-
-type listRenderer struct {
+type chatHistoryRenderer struct {
 	BaseRenderer
 
-	list     *chatHistory
+	ch       *chatHistory
 	scroller *container.Scroll
 	layout   *fyne.Container
 }
 
-func newListRenderer(objects []fyne.CanvasObject, ch *chatHistory, scroller *container.Scroll, layout *fyne.Container) *listRenderer {
-	lr := &listRenderer{BaseRenderer: NewBaseRenderer(objects), list: ch, scroller: scroller, layout: layout}
-	lr.scroller.OnScrolled = ch.offsetUpdated
-	return lr
+func newChatHistoryRenderer(objects []fyne.CanvasObject, ch *chatHistory, scroller *container.Scroll, layout *fyne.Container) *chatHistoryRenderer {
+	chr := &chatHistoryRenderer{BaseRenderer: NewBaseRenderer(objects), ch: ch, scroller: scroller, layout: layout}
+	chr.scroller.OnScrolled = ch.offsetUpdated
+	return chr
 }
 
-func (l *listRenderer) Layout(size fyne.Size) {
-	l.scroller.Resize(size)
-	l.list.jumpToBottomIcon.Resize(fyne.Size{jumpToBottomIconSize, jumpToBottomIconSize})
-	l.list.jumpToBottomIcon.Move(fyne.Position{
-		X: size.Width - jumpToBottomIconSize - theme.Padding()*3,
-		Y: size.Height - jumpToBottomIconSize - theme.Padding()*3,
-	})
+func (chr *chatHistoryRenderer) Layout(size fyne.Size) {
+	chr.scroller.Resize(size)
+	if chr.ch.jumpToBottomIcon.Visible() {
+		chr.ch.jumpToBottomIcon.Resize(fyne.Size{jumpToBottomIconSize, jumpToBottomIconSize})
+		chr.ch.jumpToBottomIcon.Move(fyne.Position{
+			X: size.Width - jumpToBottomIconSize - theme.Padding()*3,
+			Y: size.Height - jumpToBottomIconSize - theme.Padding()*3,
+		})
+	}
 }
 
-func (l *listRenderer) MinSize() fyne.Size {
-	return l.scroller.MinSize()
+func (chr *chatHistoryRenderer) MinSize() fyne.Size {
+	return chr.scroller.MinSize()
 }
 
-func (l *listRenderer) Refresh() {
-	l.Layout(l.list.Size())
-	l.scroller.Refresh()
-	layout := l.layout.Layout.(*listLayout)
+func (chr *chatHistoryRenderer) Refresh() {
+	chr.Layout(chr.ch.Size())
+	chr.scroller.Refresh()
+	layout := chr.layout.Layout.(*listLayout)
 	layout.updateList(false)
 
-	canvas.Refresh(l.list)
+	canvas.Refresh(chr.ch)
 }
 
 type listItem struct {
@@ -808,6 +767,44 @@ func newListLayout(ch *chatHistory) fyne.Layout {
 	}
 	ch.offsetUpdated = l.offsetUpdated
 	return l
+}
+
+func (l *listLayout) calculateVisibleRowHeights(length int, th fyne.Theme) (offY float32, minRow int) {
+	rowOffset := float32(0)
+	isVisible := false
+	l.visibleRowHeights = l.visibleRowHeights[:0]
+
+	if l.list.scroller.Size().Height <= 0 {
+		return
+	}
+
+	padding := th.Size(theme.SizeNamePadding)
+
+	for i := 0; i < length; i++ {
+		var height float32
+		if h, ok := l.list.getItemHeight(i); ok {
+			height = h
+		} else {
+			height = l.list.calculateAndSetItemHeight(i, l.list.Size())
+		}
+
+		if rowOffset <= l.list.offsetY-height-padding {
+			// before scroll
+		} else if rowOffset <= l.list.offsetY {
+			minRow = i
+			offY = rowOffset
+			isVisible = true
+		}
+		if rowOffset >= l.list.offsetY+l.list.scroller.Size().Height {
+			break
+		}
+
+		rowOffset += height + padding
+		if isVisible {
+			l.visibleRowHeights = append(l.visibleRowHeights, height)
+		}
+	}
+	return
 }
 
 func (l *listLayout) Layout([]fyne.CanvasObject, fyne.Size) {
@@ -1014,7 +1011,7 @@ func createItemAndApplyThemeScope(f func() fyne.CanvasObject, scope fyne.Widget)
 	return item
 }
 
-type BaseRenderer struct { // TODO: promote these?
+type BaseRenderer struct {
 	objects []fyne.CanvasObject
 }
 
