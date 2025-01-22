@@ -632,27 +632,24 @@ func (ch *chatHistory) CreateRenderer() fyne.WidgetRenderer {
 
 	layout := &fyne.Container{Layout: newListLayout(ch)}
 	ch.scroller = container.NewVScroll(layout)
+	ch.scroller.OnScrolled = ch.offsetUpdated
 	layout.Resize(layout.MinSize())
-	objects := []fyne.CanvasObject{ch.scroller, ch.jumpToBottomIcon}
-	return newChatHistoryRenderer(objects, ch, ch.scroller, layout)
+	return newChatHistoryRenderer(ch, layout)
 }
 
 type chatHistoryRenderer struct {
-	BaseRenderer
-
-	ch       *chatHistory
-	scroller *container.Scroll
-	layout   *fyne.Container
+	ch     *chatHistory
+	layout *fyne.Container
 }
 
-func newChatHistoryRenderer(objects []fyne.CanvasObject, ch *chatHistory, scroller *container.Scroll, layout *fyne.Container) *chatHistoryRenderer {
-	chr := &chatHistoryRenderer{BaseRenderer: NewBaseRenderer(objects), ch: ch, scroller: scroller, layout: layout}
-	chr.scroller.OnScrolled = ch.offsetUpdated
+func newChatHistoryRenderer(ch *chatHistory, layout *fyne.Container) *chatHistoryRenderer {
+	chr := &chatHistoryRenderer{ch: ch, layout: layout}
+
 	return chr
 }
 
 func (chr *chatHistoryRenderer) Layout(size fyne.Size) {
-	chr.scroller.Resize(size)
+	chr.ch.scroller.Resize(size)
 	if chr.ch.jumpToBottomIcon.Visible() {
 		chr.ch.jumpToBottomIcon.Resize(fyne.Size{jumpToBottomIconSize, jumpToBottomIconSize})
 		chr.ch.jumpToBottomIcon.Move(fyne.Position{
@@ -663,16 +660,26 @@ func (chr *chatHistoryRenderer) Layout(size fyne.Size) {
 }
 
 func (chr *chatHistoryRenderer) MinSize() fyne.Size {
-	return chr.scroller.MinSize()
+	return chr.ch.scroller.MinSize()
 }
 
 func (chr *chatHistoryRenderer) Refresh() {
 	chr.Layout(chr.ch.Size())
-	chr.scroller.Refresh()
+	chr.ch.scroller.Refresh()
 	layout := chr.layout.Layout.(*listLayout)
 	layout.updateList(false)
 
 	canvas.Refresh(chr.ch)
+}
+
+func (chr *chatHistoryRenderer) Destroy() {
+}
+
+func (chr chatHistoryRenderer) Objects() []fyne.CanvasObject {
+	return []fyne.CanvasObject{
+		chr.ch.scroller,
+		chr.ch.jumpToBottomIcon,
+	}
 }
 
 type listItem struct {
@@ -692,7 +699,6 @@ func newListItem(child fyne.CanvasObject, tapped func()) *listItem {
 	return li
 }
 
-// CreateRenderer is a private method to Fyne which links this widget to its renderer.
 func (li *listItem) CreateRenderer() fyne.WidgetRenderer {
 	li.ExtendBaseWidget(li)
 
@@ -701,17 +707,14 @@ func (li *listItem) CreateRenderer() fyne.WidgetRenderer {
 	return &listItemRenderer{NewBaseRenderer(objects), li}
 }
 
-// MinSize returns the size that this widget should not shrink below.
 func (li *listItem) MinSize() fyne.Size {
 	li.ExtendBaseWidget(li)
 	return li.BaseWidget.MinSize()
 }
 
-// MouseMoved is called when a desktop pointer hovers over the widget.
 func (li *listItem) MouseMoved(*desktop.MouseEvent) {
 }
 
-// Tapped is called when a pointer tapped event is captured and triggers any tap handler.
 func (li *listItem) Tapped(*fyne.PointEvent) {
 	if li.onTapped != nil {
 		li.Refresh()
@@ -719,22 +722,16 @@ func (li *listItem) Tapped(*fyne.PointEvent) {
 	}
 }
 
-// Declare conformity with the WidgetRenderer interface.
-var _ fyne.WidgetRenderer = (*listItemRenderer)(nil)
-
 type listItemRenderer struct {
 	BaseRenderer
 
 	item *listItem
 }
 
-// MinSize calculates the minimum size of a listItem.
-// This is based on the size of the status indicator and the size of the child object.
 func (li *listItemRenderer) MinSize() fyne.Size {
 	return li.item.child.MinSize()
 }
 
-// Layout the components of the listItem widget.
 func (li *listItemRenderer) Layout(size fyne.Size) {
 	li.item.child.Resize(size)
 }
