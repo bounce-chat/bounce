@@ -8,7 +8,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
@@ -682,66 +681,8 @@ func (chr chatHistoryRenderer) Objects() []fyne.CanvasObject {
 	}
 }
 
-type listItem struct {
-	widget.BaseWidget
-
-	onTapped func()
-	child    fyne.CanvasObject
-}
-
-func newListItem(child fyne.CanvasObject, tapped func()) *listItem {
-	li := &listItem{
-		child:    child,
-		onTapped: tapped,
-	}
-
-	li.ExtendBaseWidget(li)
-	return li
-}
-
-func (li *listItem) CreateRenderer() fyne.WidgetRenderer {
-	li.ExtendBaseWidget(li)
-
-	objects := []fyne.CanvasObject{li.child}
-
-	return &listItemRenderer{NewBaseRenderer(objects), li}
-}
-
-func (li *listItem) MinSize() fyne.Size {
-	li.ExtendBaseWidget(li)
-	return li.BaseWidget.MinSize()
-}
-
-func (li *listItem) MouseMoved(*desktop.MouseEvent) {
-}
-
-func (li *listItem) Tapped(*fyne.PointEvent) {
-	if li.onTapped != nil {
-		li.Refresh()
-		li.onTapped()
-	}
-}
-
-type listItemRenderer struct {
-	BaseRenderer
-
-	item *listItem
-}
-
-func (li *listItemRenderer) MinSize() fyne.Size {
-	return li.item.child.MinSize()
-}
-
-func (li *listItemRenderer) Layout(size fyne.Size) {
-	li.item.child.Resize(size)
-}
-
-func (li *listItemRenderer) Refresh() {
-	canvas.Refresh(li.item)
-}
-
 type listItemAndID struct {
-	item  *listItem
+	item  fyne.CanvasObject
 	index int
 }
 
@@ -812,16 +753,14 @@ func (l *listLayout) MinSize([]fyne.CanvasObject) fyne.Size {
 	return l.list.contentMinSize()
 }
 
-func (l *listLayout) getItem() *listItem {
+func (l *listLayout) getItem() fyne.CanvasObject {
 	item := l.itemPool.Obtain()
 	if item == nil {
 		if f := l.list.CreateItem; f != nil {
-			item2 := createItemAndApplyThemeScope(f, l.list)
-
-			item = newListItem(item2, nil)
+			item = f()
 		}
 	}
-	return item.(*listItem)
+	return item
 }
 
 func (l *listLayout) offsetUpdated(pos fyne.Position) {
@@ -853,12 +792,12 @@ func (l *listLayout) offsetUpdated(pos fyne.Position) {
 	}
 }
 
-func (l *listLayout) setupListItem(li *listItem, index int) {
+func (l *listLayout) setupListItem(li fyne.CanvasObject, index int) {
 	if f := l.list.UpdateItem; f != nil {
-		f(index, li.child)
-		l.list.SetItemHeight(index, li.child.MinSize().Height)
+		f(index, li)
+		l.list.SetItemHeight(index, li.MinSize().Height)
 		if len(l.list.ids) > index {
-			l.list.messages.cacheHeight(l.list.ids[index], l.list.Size().Width, li.child.MinSize().Height)
+			l.list.messages.cacheHeight(l.list.ids[index], l.list.Size().Width, li.MinSize().Height)
 		}
 	}
 }
@@ -974,7 +913,7 @@ func (l *listLayout) updateList(newOnly bool) {
 }
 
 // invariant: visible is in ascending order of IDs
-func (l *listLayout) searchVisible(visible []listItemAndID, index int) (*listItem, bool) {
+func (l *listLayout) searchVisible(visible []listItemAndID, index int) (fyne.CanvasObject, bool) {
 	ln := len(visible)
 	idx := sort.Search(ln, func(i int) bool { return visible[i].index >= index })
 	if idx < ln && visible[idx].index == index {
@@ -999,40 +938,6 @@ func (l *listLayout) nilOldVisibleSliceData(objs []listItemAndID, len, oldLen in
 			objs[i].item = nil
 		}
 	}
-}
-
-func createItemAndApplyThemeScope(f func() fyne.CanvasObject, scope fyne.Widget) fyne.CanvasObject {
-	item := f()
-
-	item.Refresh()
-	return item
-}
-
-type BaseRenderer struct {
-	objects []fyne.CanvasObject
-}
-
-// NewBaseRenderer creates a new BaseRenderer.
-func NewBaseRenderer(objects []fyne.CanvasObject) BaseRenderer {
-	return BaseRenderer{objects}
-}
-
-// Destroy does nothing in the base implementation.
-//
-// Implements: fyne.WidgetRenderer
-func (r *BaseRenderer) Destroy() {
-}
-
-// Objects returns the objects that should be rendered.
-//
-// Implements: fyne.WidgetRenderer
-func (r *BaseRenderer) Objects() []fyne.CanvasObject {
-	return r.objects
-}
-
-// SetObjects updates the objects of the renderer.
-func (r *BaseRenderer) SetObjects(objects []fyne.CanvasObject) {
-	r.objects = objects
 }
 
 type syncPool struct {
