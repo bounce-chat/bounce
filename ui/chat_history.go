@@ -27,10 +27,9 @@ type chatHistory struct {
 	id       uuid.UUID
 	messages *messageStore
 
-	items      []threadable
-	ids        []uuid.UUID
-	heights    []float32
-	itemsMutex sync.Mutex
+	items   []threadable
+	ids     []uuid.UUID
+	heights []float32
 
 	unread int
 
@@ -49,7 +48,6 @@ type chatHistory struct {
 	unreadCountCallback   func(int)
 	markAllAsReadCallback func(uuid.UUID)
 	seenTracking          map[uuid.UUID]bool
-	markAllAsReadMutex    sync.Mutex
 }
 
 func newChatHistory(threadID uuid.UUID, messageStore *messageStore, readCallback func(uuid.UUID, string), unreadCountCallback func(int), markAllAsReadCallback func(uuid.UUID), windowFocused func() bool) *chatHistory {
@@ -93,15 +91,13 @@ func newChatHistory(threadID uuid.UUID, messageStore *messageStore, readCallback
 			ch.ScrollToBottom()
 			ch.unread = 0
 			ch.updateUnreadCounter()
-			ch.itemsMutex.Lock()
+			ch.Lock()
 			for index, id := range ch.ids {
 				ch.items[index].markSeen()
 				ch.seenTracking[id] = true
 			}
-			ch.itemsMutex.Unlock()
-			ch.markAllAsReadMutex.Lock()
 			ch.markAllAsReadCallback(ch.id)
-			ch.markAllAsReadMutex.Unlock()
+			ch.Unlock()
 		},
 	)
 	ch.jumpToBottomIcon.Hide()
@@ -119,9 +115,6 @@ func newChatHistory(threadID uuid.UUID, messageStore *messageStore, readCallback
 }
 
 func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
-	ch.itemsMutex.Lock()
-	defer ch.itemsMutex.Unlock()
-
 	ch.items = items
 
 	ch.ids = []uuid.UUID{}
@@ -161,8 +154,8 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 }
 
 func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
-	ch.itemsMutex.Lock()
-	defer ch.itemsMutex.Unlock()
+	ch.Lock()
+	defer ch.Unlock()
 
 	// Insert statusChange thread items into their correct location in time, insert everything else
 	// at the bottom regaurdless of timestamp
@@ -205,8 +198,8 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 }
 
 func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
-	ch.itemsMutex.Lock()
-	defer ch.itemsMutex.Unlock()
+	ch.Lock()
+	defer ch.Unlock()
 
 	found := false
 	location := 0
@@ -241,8 +234,8 @@ func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
 }
 
 func (ch *chatHistory) isLastItem(id uuid.UUID) bool {
-	ch.itemsMutex.Lock()
-	defer ch.itemsMutex.Unlock()
+	ch.Lock()
+	defer ch.Unlock()
 
 	if len(ch.items) == 0 {
 		return false
@@ -253,8 +246,8 @@ func (ch *chatHistory) isLastItem(id uuid.UUID) bool {
 }
 
 func (ch *chatHistory) isLastAuthor(id uuid.UUID) bool {
-	ch.itemsMutex.Lock()
-	defer ch.itemsMutex.Unlock()
+	ch.Lock()
+	defer ch.Unlock()
 
 	if len(ch.items) == 0 {
 		return false
@@ -381,8 +374,8 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
 }
 
 func (ch *chatHistory) headTimestamp() int64 {
-	ch.itemsMutex.Lock()
-	defer ch.itemsMutex.Unlock()
+	ch.Lock()
+	defer ch.Unlock()
 
 	currentHead := int64(0)
 	if len(ch.items) > 0 {
@@ -401,8 +394,8 @@ func (ch *chatHistory) headTimestamp() int64 {
 }
 
 func (ch *chatHistory) seen(index int) {
-	ch.itemsMutex.Lock()
-	defer ch.itemsMutex.Unlock()
+	ch.Lock()
+	defer ch.Unlock()
 
 	id := ch.ids[index]
 	if _, ok := ch.seenTracking[id]; !ok {
@@ -775,19 +768,18 @@ func (l *listLayout) offsetUpdated(pos fyne.Position) {
 
 	if pos.Y == l.list.contentHeight()-l.list.scroller.Size().Height {
 		if l.list.unread > 0 {
-			l.list.markAllAsReadMutex.Lock()
+			l.list.Lock()
 			if l.list.unread > 0 {
 				l.list.markAllAsReadCallback(l.list.id)
 				l.list.unread = 0
 				l.list.updateUnreadCounter()
-				l.list.itemsMutex.Lock()
+
 				for index, id := range l.list.ids {
 					l.list.items[index].markSeen()
 					l.list.seenTracking[id] = true
 				}
-				l.list.itemsMutex.Unlock()
 			}
-			l.list.markAllAsReadMutex.Unlock()
+			l.list.Unlock()
 		}
 	}
 }
