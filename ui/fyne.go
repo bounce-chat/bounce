@@ -496,9 +496,9 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	go fyneUI.messages.writeCache()
 }
 
-func (fyneUI *Fyne) chatContainerSizeAtStartup() fyne.Size {
+func chatContainerSizeAtStartup() fyne.Size {
 	if fyne.CurrentDevice().IsMobile() {
-		fyneUI.mainWindow.Canvas().Size()
+		return fyne.CurrentApp().Driver().AllWindows()[0].Canvas().Size()
 	}
 
 	return fyne.Size{

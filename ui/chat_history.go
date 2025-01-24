@@ -483,7 +483,7 @@ func (ch *chatHistory) offsetFor(index int) float32 {
 
 	h := ch.scroller.Size().Height
 	if h == 0 && !fyne.CurrentDevice().IsMobile() {
-		h = defaultChatHistoryHeight
+		h = chatContainerSizeAtStartup().Height
 	}
 
 	return y - h
@@ -580,7 +580,7 @@ func (ch *chatHistory) displayJumpToBottomIfNeeded() {
 	}
 	scrollerHeight := ch.scroller.Size().Height
 	if scrollerHeight == 0 {
-		scrollerHeight = defaultChatHistoryHeight
+		scrollerHeight = chatContainerSizeAtStartup().Height
 	}
 	if ch.offsetY < ch.contentHeight()-scrollerHeight*2.5 {
 		ch.jumpToBottomIcon.Show()
@@ -592,7 +592,7 @@ func (ch *chatHistory) displayJumpToBottomIfNeeded() {
 func (ch *chatHistory) contentMinSize() fyne.Size {
 	scrollerHeight := ch.scroller.Size().Height
 	if scrollerHeight == 0 {
-		scrollerHeight = defaultChatHistoryHeight
+		scrollerHeight = chatContainerSizeAtStartup().Height
 	}
 	return fyne.NewSize(
 		0,
