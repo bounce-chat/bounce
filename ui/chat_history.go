@@ -428,12 +428,12 @@ func (ch *chatHistory) RefreshItem(index int) {
 		return
 	}
 	ch.BaseWidget.Refresh()
-	lo := ch.scroller.Content.(*fyne.Container).Layout.(*listLayout)
+	lo := ch.scroller.Content.(*fyne.Container).Layout.(*chatHistoryLayout)
 	lo.renderLock.RLock() // ensures we are not changing visible info in render code during the search
 	item, ok := lo.searchVisible(lo.visible, index)
 	lo.renderLock.RUnlock()
 	if ok {
-		lo.setupListItem(item, index)
+		lo.setupItem(item, index)
 	}
 }
 
@@ -505,7 +505,7 @@ func (ch *chatHistory) Resize(s fyne.Size) {
 	}
 
 	ch.offsetUpdated(ch.scroller.Offset)
-	ch.scroller.Content.(*fyne.Container).Layout.(*listLayout).updateList(true)
+	ch.scroller.Content.(*fyne.Container).Layout.(*chatHistoryLayout).updateList(true)
 }
 
 func (ch *chatHistory) ScrollTo(id int) {
@@ -658,7 +658,7 @@ func (chr *chatHistoryRenderer) MinSize() fyne.Size {
 func (chr *chatHistoryRenderer) Refresh() {
 	chr.Layout(chr.ch.Size())
 	chr.ch.scroller.Refresh()
-	layout := chr.layout.Layout.(*listLayout)
+	layout := chr.layout.Layout.(*chatHistoryLayout)
 	layout.updateList(false)
 
 	canvas.Refresh(chr.ch)
@@ -674,38 +674,38 @@ func (chr chatHistoryRenderer) Objects() []fyne.CanvasObject {
 	}
 }
 
-type listItemAndID struct {
+type itemAndIndex struct {
 	item  fyne.CanvasObject
 	index int
 }
 
-type listLayout struct {
-	list     *chatHistory
+type chatHistoryLayout struct {
+	ch       *chatHistory
 	children []fyne.CanvasObject
+	visible  []itemAndIndex
 
-	itemPool          syncPool
-	visible           []listItemAndID
+	itemPool          sync.Pool
 	slicePool         sync.Pool
 	visibleRowHeights []float32
 	renderLock        sync.RWMutex
 }
 
 func newListLayout(ch *chatHistory) fyne.Layout {
-	l := &listLayout{list: ch}
+	l := &chatHistoryLayout{ch: ch}
 	l.slicePool.New = func() any {
-		s := make([]listItemAndID, 0)
+		s := make([]itemAndIndex, 0)
 		return &s
 	}
 	ch.offsetUpdated = l.offsetUpdated
 	return l
 }
 
-func (l *listLayout) calculateVisibleRowHeights(length int, th fyne.Theme) (offY float32, minRow int) {
+func (chl *chatHistoryLayout) calculateVisibleRowHeights(length int, th fyne.Theme) (offY float32, minRow int) {
 	rowOffset := float32(0)
 	isVisible := false
-	l.visibleRowHeights = l.visibleRowHeights[:0]
+	chl.visibleRowHeights = chl.visibleRowHeights[:0]
 
-	if l.list.scroller.Size().Height <= 0 {
+	if chl.ch.scroller.Size().Height <= 0 {
 		return
 	}
 
@@ -713,127 +713,131 @@ func (l *listLayout) calculateVisibleRowHeights(length int, th fyne.Theme) (offY
 
 	for i := 0; i < length; i++ {
 		var height float32
-		if h, ok := l.list.getItemHeight(i); ok {
+		if h, ok := chl.ch.getItemHeight(i); ok {
 			height = h
 		} else {
-			height = l.list.calculateAndSetItemHeight(i, l.list.Size())
+			height = chl.ch.calculateAndSetItemHeight(i, chl.ch.Size())
 		}
 
-		if rowOffset <= l.list.offsetY-height-padding {
+		if rowOffset <= chl.ch.offsetY-height-padding {
 			// before scroll
-		} else if rowOffset <= l.list.offsetY {
+		} else if rowOffset <= chl.ch.offsetY {
 			minRow = i
 			offY = rowOffset
 			isVisible = true
 		}
-		if rowOffset >= l.list.offsetY+l.list.scroller.Size().Height {
+		if rowOffset >= chl.ch.offsetY+chl.ch.scroller.Size().Height {
 			break
 		}
 
 		rowOffset += height + padding
 		if isVisible {
-			l.visibleRowHeights = append(l.visibleRowHeights, height)
+			chl.visibleRowHeights = append(chl.visibleRowHeights, height)
 		}
 	}
 	return
 }
 
-func (l *listLayout) Layout([]fyne.CanvasObject, fyne.Size) {
-	l.updateList(true)
+func (chl *chatHistoryLayout) Layout([]fyne.CanvasObject, fyne.Size) {
+	chl.updateList(true)
 }
 
-func (l *listLayout) MinSize([]fyne.CanvasObject) fyne.Size {
-	return l.list.contentMinSize()
+func (chl *chatHistoryLayout) MinSize([]fyne.CanvasObject) fyne.Size {
+	return chl.ch.contentMinSize()
 }
 
-func (l *listLayout) getItem() fyne.CanvasObject {
-	item := l.itemPool.Obtain()
+func (chl *chatHistoryLayout) getItem() fyne.CanvasObject {
+	var item fyne.CanvasObject
+	o := chl.itemPool.Get()
+	if o != nil {
+		item = o.(fyne.CanvasObject)
+	}
 	if item == nil {
-		if f := l.list.CreateItem; f != nil {
+		if f := chl.ch.CreateItem; f != nil {
 			item = f()
 		}
 	}
 	return item
 }
 
-func (l *listLayout) offsetUpdated(pos fyne.Position) {
-	if l.list.offsetY == pos.Y {
+func (chl *chatHistoryLayout) offsetUpdated(pos fyne.Position) {
+	if chl.ch.offsetY == pos.Y {
 		return
 	}
 
-	l.list.offsetY = pos.Y
-	l.updateList(true)
+	chl.ch.offsetY = pos.Y
+	chl.updateList(true)
 
-	l.list.displayJumpToBottomIfNeeded()
+	chl.ch.displayJumpToBottomIfNeeded()
 
-	if pos.Y == l.list.contentHeight()-l.list.scroller.Size().Height {
-		if l.list.unread > 0 {
-			l.list.Lock()
-			if l.list.unread > 0 {
-				l.list.markAllAsReadCallback(l.list.id)
-				l.list.unread = 0
-				l.list.updateUnreadCounter()
+	if pos.Y == chl.ch.contentHeight()-chl.ch.scroller.Size().Height {
+		if chl.ch.unread > 0 {
+			chl.ch.Lock()
+			if chl.ch.unread > 0 {
+				chl.ch.markAllAsReadCallback(chl.ch.id)
+				chl.ch.unread = 0
+				chl.ch.updateUnreadCounter()
 
-				for index, id := range l.list.ids {
-					l.list.items[index].markSeen()
-					l.list.seenTracking[id] = true
+				for index, id := range chl.ch.ids {
+					chl.ch.items[index].markSeen()
+					chl.ch.seenTracking[id] = true
 				}
 			}
-			l.list.Unlock()
+			chl.ch.Unlock()
 		}
 	}
 }
 
-func (l *listLayout) setupListItem(li fyne.CanvasObject, index int) {
-	if f := l.list.UpdateItem; f != nil {
-		f(index, li)
-		l.list.SetItemHeight(index, li.MinSize().Height)
-		if len(l.list.ids) > index {
-			l.list.messages.cacheHeight(l.list.ids[index], l.list.Size().Width, li.MinSize().Height)
+func (chl *chatHistoryLayout) setupItem(item fyne.CanvasObject, index int) {
+	if f := chl.ch.UpdateItem; f != nil {
+		f(index, item)
+		chl.ch.SetItemHeight(index, item.MinSize().Height)
+		if len(chl.ch.ids) > index {
+			chl.ch.messages.cacheHeight(chl.ch.ids[index], chl.ch.Size().Width, item.MinSize().Height)
 		}
 	}
 }
 
-func (l *listLayout) updateList(newOnly bool) {
-	th := l.list.Theme()
+func (chl *chatHistoryLayout) updateList(newOnly bool) {
+	th := chl.ch.Theme()
 	separatorThickness := th.Size(theme.SizeNamePadding)
-	l.renderLock.Lock()
-	width := l.list.Size().Width
+	chl.renderLock.Lock()
+	width := chl.ch.Size().Width
 	length := 0
-	if f := l.list.Length; f != nil {
+	if f := chl.ch.Length; f != nil {
 		length = f()
 	}
-	if l.list.UpdateItem == nil {
+	if chl.ch.UpdateItem == nil {
 		fyne.LogError("Missing UpdateCell callback required for List", nil)
 	}
 
 	// Keep pointer reference for copying slice header when returning to the pool
 	// https://blog.mike.norgate.xyz/unlocking-go-slice-performance-navigating-sync-pool-for-enhanced-efficiency-7cb63b0b453e
-	wasVisiblePtr := l.slicePool.Get().(*[]listItemAndID)
+	wasVisiblePtr := chl.slicePool.Get().(*[]itemAndIndex)
 	wasVisible := (*wasVisiblePtr)[:0]
-	wasVisible = append(wasVisible, l.visible...)
+	wasVisible = append(wasVisible, chl.visible...)
 
-	l.list.Lock()
-	offY, minRow := l.calculateVisibleRowHeights(length, th)
-	l.list.Unlock()
-	if len(l.visibleRowHeights) == 0 && length > 0 { // we can't show anything until we have some dimensions
-		l.renderLock.Unlock() // user code should not be locked
+	chl.ch.Lock()
+	offY, minRow := chl.calculateVisibleRowHeights(length, th)
+	chl.ch.Unlock()
+	if len(chl.visibleRowHeights) == 0 && length > 0 { // we can't show anything until we have some dimensions
+		chl.renderLock.Unlock() // user code should not be locked
 		return
 	}
 
-	oldVisibleLen := len(l.visible)
-	l.visible = l.visible[:0]
-	oldChildrenLen := len(l.children)
-	l.children = l.children[:0]
+	oldVisibleLen := len(chl.visible)
+	chl.visible = chl.visible[:0]
+	oldChildrenLen := len(chl.children)
+	chl.children = chl.children[:0]
 
 	y := offY
-	for index, itemHeight := range l.visibleRowHeights {
+	for index, itemHeight := range chl.visibleRowHeights {
 		row := index + minRow
 		size := fyne.NewSize(width, itemHeight)
 
-		c, ok := l.searchVisible(wasVisible, row)
+		c, ok := chl.searchVisible(wasVisible, row)
 		if !ok {
-			c = l.getItem()
+			c = chl.getItem()
 			if c == nil {
 				continue
 			}
@@ -844,49 +848,49 @@ func (l *listLayout) updateList(newOnly bool) {
 		c.Resize(size)
 
 		y += itemHeight + separatorThickness
-		l.visible = append(l.visible, listItemAndID{index: row, item: c})
-		l.children = append(l.children, c)
+		chl.visible = append(chl.visible, itemAndIndex{index: row, item: c})
+		chl.children = append(chl.children, c)
 	}
-	l.nilOldSliceData(l.children, len(l.children), oldChildrenLen)
-	l.nilOldVisibleSliceData(l.visible, len(l.visible), oldVisibleLen)
+	chl.nilOldSliceData(chl.children, len(chl.children), oldChildrenLen)
+	chl.nilOldVisibleSliceData(chl.visible, len(chl.visible), oldVisibleLen)
 
 	for _, wasVis := range wasVisible {
-		if _, ok := l.searchVisible(l.visible, wasVis.index); !ok {
-			l.itemPool.Release(wasVis.item)
+		if _, ok := chl.searchVisible(chl.visible, wasVis.index); !ok {
+			chl.itemPool.Put(wasVis.item)
 		}
 	}
 
-	c := l.list.scroller.Content.(*fyne.Container)
+	c := chl.ch.scroller.Content.(*fyne.Container)
 	oldObjLen := len(c.Objects)
 	c.Objects = c.Objects[:0]
-	c.Objects = append(c.Objects, l.children...)
-	l.nilOldSliceData(c.Objects, len(c.Objects), oldObjLen)
+	c.Objects = append(c.Objects, chl.children...)
+	chl.nilOldSliceData(c.Objects, len(c.Objects), oldObjLen)
 
-	// make a local deep copy of l.visible since rest of this function is unlocked
-	// and cannot safely access l.visible
-	visiblePtr := l.slicePool.Get().(*[]listItemAndID)
+	// make a local deep copy of chl.visible since rest of this function is unlocked
+	// and cannot safely access chl.visible
+	visiblePtr := chl.slicePool.Get().(*[]itemAndIndex)
 	visible := (*visiblePtr)[:0]
-	visible = append(visible, l.visible...)
-	l.renderLock.Unlock() // user code should not be locked
+	visible = append(visible, chl.visible...)
+	chl.renderLock.Unlock() // user code should not be locked
 
 	if newOnly {
 		for _, vis := range visible {
-			if _, ok := l.searchVisible(wasVisible, vis.index); !ok {
-				l.setupListItem(vis.item, vis.index)
+			if _, ok := chl.searchVisible(wasVisible, vis.index); !ok {
+				chl.setupItem(vis.item, vis.index)
 			}
 
-			offset := l.list.GetScrollOffset()
-			if offset >= l.list.offsetFor(vis.index) {
-				l.list.seen(vis.index)
+			offset := chl.ch.GetScrollOffset()
+			if offset >= chl.ch.offsetFor(vis.index) {
+				chl.ch.seen(vis.index)
 			}
 		}
 	} else {
 		for _, vis := range visible {
-			l.setupListItem(vis.item, vis.index)
+			chl.setupItem(vis.item, vis.index)
 
-			offset := l.list.GetScrollOffset()
-			if offset >= l.list.offsetFor(vis.index) {
-				l.list.seen(vis.index)
+			offset := chl.ch.GetScrollOffset()
+			if offset >= chl.ch.offsetFor(vis.index) {
+				chl.ch.seen(vis.index)
 			}
 		}
 	}
@@ -900,12 +904,12 @@ func (l *listLayout) updateList(newOnly bool) {
 	}
 	*wasVisiblePtr = wasVisible // Copy the stack header over to the heap
 	*visiblePtr = visible
-	l.slicePool.Put(wasVisiblePtr)
-	l.slicePool.Put(visiblePtr)
+	chl.slicePool.Put(wasVisiblePtr)
+	chl.slicePool.Put(visiblePtr)
 }
 
 // invariant: visible is in ascending order of IDs
-func (l *listLayout) searchVisible(visible []listItemAndID, index int) (fyne.CanvasObject, bool) {
+func (chl *chatHistoryLayout) searchVisible(visible []itemAndIndex, index int) (fyne.CanvasObject, bool) {
 	ln := len(visible)
 	idx := sort.Search(ln, func(i int) bool { return visible[i].index >= index })
 	if idx < ln && visible[idx].index == index {
@@ -914,7 +918,7 @@ func (l *listLayout) searchVisible(visible []listItemAndID, index int) (fyne.Can
 	return nil, false
 }
 
-func (l *listLayout) nilOldSliceData(objs []fyne.CanvasObject, len, oldLen int) {
+func (chl *chatHistoryLayout) nilOldSliceData(objs []fyne.CanvasObject, len, oldLen int) {
 	if oldLen > len {
 		objs = objs[:oldLen] // gain view into old data
 		for i := len; i < oldLen; i++ {
@@ -923,29 +927,11 @@ func (l *listLayout) nilOldSliceData(objs []fyne.CanvasObject, len, oldLen int) 
 	}
 }
 
-func (l *listLayout) nilOldVisibleSliceData(objs []listItemAndID, len, oldLen int) {
+func (chl *chatHistoryLayout) nilOldVisibleSliceData(objs []itemAndIndex, len, oldLen int) {
 	if oldLen > len {
 		objs = objs[:oldLen] // gain view into old data
 		for i := len; i < oldLen; i++ {
 			objs[i].item = nil
 		}
 	}
-}
-
-type syncPool struct {
-	sync.Pool
-}
-
-// Obtain returns an item from the pool for use
-func (p *syncPool) Obtain() (item fyne.CanvasObject) {
-	o := p.Get()
-	if o != nil {
-		item = o.(fyne.CanvasObject)
-	}
-	return
-}
-
-// Release adds an item into the pool to be used later
-func (p *syncPool) Release(item fyne.CanvasObject) {
-	p.Put(item)
 }
