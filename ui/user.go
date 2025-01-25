@@ -23,10 +23,10 @@ func makeUser(id uuid.UUID, name string) *user {
 		initials: binding.NewString(),
 	}
 
+	u.name.Set(name)
 	u.name.AddListener(binding.NewDataListener(func() {
 		u.setInitials()
 	}))
-	u.name.Set(name)
 
 	return u
 }
