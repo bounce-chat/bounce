@@ -394,7 +394,6 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 			"error": err.Error(),
 		}).Fatal("data bindings are broken")
 	}
-	group.setInitial()
 	group.name.AddListener(binding.NewDataListener(func() {
 		group.setInitial()
 	}))
@@ -507,19 +506,6 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 			group.button.updateLastMessageTimeText()
 		}
 	}()
-
-	// Make sure chaning the name of the group also updates the thread button
-	group.name.AddListener(binding.NewDataListener(func() {
-		newName, err := group.name.Get()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("data bindings are broken")
-		}
-		button := group.getButton()
-		button.threadName.Segments[0].(*widget.TextSegment).Text = newName
-		button.threadName.Refresh()
-	}))
 
 	group.typingIndicators = newTypingIndicators()
 	group.typingIndicators.Hide()

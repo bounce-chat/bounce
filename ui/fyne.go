@@ -108,6 +108,15 @@ type Fyne struct {
 
 func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
+	// Define the app
+	//
+	fyneUI.app = app.NewWithID("chat.bounce")
+	fyneUI.app.SetIcon(newEmbeddedResource("assets/icon.png"))
+	fyneUI.app.Lifecycle().SetOnEnteredForeground(func() { fyneUI.focused = true })
+	fyneUI.app.Lifecycle().SetOnExitedForeground(func() { fyneUI.focused = false })
+	fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
+
+	//
 	// Hookup callbacks
 	//
 	fyneUI.callbacks = callbacks
@@ -130,15 +139,6 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.viewStack = []view{}
 
 	//
-	// Define the app
-	//
-	fyneUI.app = app.NewWithID("chat.bounce")
-	fyneUI.app.SetIcon(newEmbeddedResource("assets/icon.png"))
-	fyneUI.app.Lifecycle().SetOnEnteredForeground(func() { fyneUI.focused = true })
-	fyneUI.app.Lifecycle().SetOnExitedForeground(func() { fyneUI.focused = false })
-	fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
-
-	//
 	// Define the main window
 	//
 	fyneUI.mainWindow = fyneUI.app.NewWindow("Bounce")
@@ -155,8 +155,6 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 			fyneUI.mobileBack()
 		}
 	})
-
-	fyneUI.mainWindow.Show()
 
 	//
 	// Build all the containers
@@ -185,6 +183,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	//
 	fyneUI.networkState = networkStateStarting
 	fyneUI.showMainContainer()
+	fyneUI.mainWindow.Show()
 	fyneUI.askToIgnoreBatteryOptimizations()
 }
 
@@ -248,6 +247,7 @@ func (fyneUI *Fyne) Quit() {
 }
 
 func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
+	//fyne.Do(func() {
 	if fyneUI.initialStateSet {
 		log.Fatal("the initial state of the UI can only be loaded once")
 	}
@@ -493,6 +493,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 	}
 	fyneUI.refreshThreadOrder()
+	//})
 	go fyneUI.messages.writeCache()
 }
 

@@ -24,13 +24,9 @@ func newUserStore() *userStore {
 }
 
 func (store *userStore) add(u *user) {
-	store.Lock()
-	defer store.Unlock()
-
-	store.addWithoutLocking(u)
-
 	// When a use changes their name, remove and re-add them in order to
-	// re-sort the list and re-generate ngrams
+	// re-sort the list and re-generate ngrams.  This function is called
+	// right away, so we can use it for adding to the user store as well.
 	u.name.AddListener(binding.NewDataListener(func() {
 		store.Lock()
 		store.removeWithoutLocking(u.id)
