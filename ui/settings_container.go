@@ -92,6 +92,7 @@ func (fyneUI *Fyne) buildSettings() {
 			t.chatHistoryScroll().Refresh()
 		}
 		fyneUI.threadVBox.Refresh()
+		fyneUI.about.Refresh()
 	})
 	darkModeCheck.Checked = true
 

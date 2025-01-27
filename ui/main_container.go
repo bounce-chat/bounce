@@ -312,9 +312,9 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 	)
 }
 
-func makeLogo(width, height float32) *canvas.Image {
-	logo := canvas.NewImageFromResource(theme.Icon(iconNameLogo))
-	logo.FillMode = canvas.ImageFillContain
-	logo.SetMinSize(fyne.NewSize(width, height))
-	return logo
+func makeLogo(width, height float32) *themedImage {
+	dark := newEmbeddedResource("assets/logo_dark.png")
+	light := newEmbeddedResource("assets/logo.png")
+
+	return newThemedImage(dark, light, width, height)
 }
