@@ -116,6 +116,7 @@ func newChatHistory(threadID uuid.UUID, messageStore *messageStore, readCallback
 
 func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 	ch.items = items
+	sizer := ch.CreateItem()
 
 	ch.ids = []uuid.UUID{}
 	for i, item := range items {
@@ -146,7 +147,12 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 			}
 		} else {
 			ch.setMergeMode(i, false)
-			ch.calculateAndSetItemHeight(i, initialSize)
+
+			ch.UpdateItem(i, sizer)
+			sizer.Resize(initialSize)
+			height := sizer.MinSize().Height
+			ch.SetItemHeight(i, height)
+			ch.messages.cacheHeight(item.getID(), initialSize.Width, height)
 		}
 	}
 
