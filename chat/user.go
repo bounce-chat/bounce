@@ -31,6 +31,7 @@ type user struct {
 	Devices                    []device
 	Groups                     []group          `gorm:"many2many:group_users;" json:"-" msgpack:"-"`
 	ProfileSettings            *profileSettings `json:"-" msgpack:"-"`
+	LocalSettings              *localSettings   `json:"-" msgpack:"-"`
 	payload                    []byte
 	payloadMutex               sync.Mutex
 }
@@ -181,13 +182,16 @@ func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 			d,
 		},
 		ProfileSettings: &profileSettings{
-			DefaultGroupRetention:           int64(time.Duration(24 * time.Hour * 7 * 4).Seconds()),
-			DefaultSendReadReceipts:         true,
-			DefaultSendTypingIndicators:     true,
+			DefaultGroupRetention:          int64(time.Duration(24 * time.Hour * 7 * 4).Seconds()),
+			DefaultSendReadReceipts:        true,
+			DefaultSendTypingIndicators:    true,
+			NewGroupRestrictUserManagement: true,
+			NewGroupRestrictGroupEdits:     false,
+			NewGroupRestrictPosting:        false,
+		},
+		LocalSettings: &localSettings{
+			DarkMode:                        true,
 			NeverAskForBatteryOptimizations: false,
-			NewGroupRestrictUserManagement:  true,
-			NewGroupRestrictGroupEdits:      false,
-			NewGroupRestrictPosting:         false,
 		},
 	}
 	err := b.database.Create(u).Error

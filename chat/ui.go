@@ -12,13 +12,17 @@ type User struct {
 }
 
 type Settings struct {
-	DefaultGroupRetention           int64
-	DefaultSendReadReceipts         bool
-	DefaultSendTypingIndicators     bool
+	DefaultGroupRetention          int64
+	DefaultSendReadReceipts        bool
+	DefaultSendTypingIndicators    bool
+	NewGroupRestrictUserManagement bool
+	NewGroupRestrictGroupEdits     bool
+	NewGroupRestrictPosting        bool
+}
+
+type LocalSettings struct {
 	NeverAskForBatteryOptimizations bool
-	NewGroupRestrictUserManagement  bool
-	NewGroupRestrictGroupEdits      bool
-	NewGroupRestrictPosting         bool
+	DarkMode                        bool
 }
 
 type Device struct {
@@ -253,6 +257,7 @@ type ReadReceipt struct {
 type InitialState struct {
 	Profile                                *User
 	Settings                               Settings
+	LocalSettings                          LocalSettings
 	SyncDevices                            []Device
 	Users                                  []User
 	Groups                                 []Group
@@ -368,6 +373,8 @@ type UI interface {
 	SetSettings(Settings)
 
 	MessageDelivered(messageID, userID uuid.UUID)
+
+	SetDarkMode(value bool)
 }
 
 // Frames that support being marked as read
@@ -454,4 +461,6 @@ type UICallbacks struct {
 	SetGroupTypingIndicatorSettings func(groupID uuid.UUID, override bool, enabled bool) error
 	SetDMReadReceiptSettings        func(groupID uuid.UUID, override bool, enabled bool) error
 	SetDMTypingIndicatorSettings    func(groupID uuid.UUID, override bool, enabled bool) error
+
+	SetDarkMode func(bool)
 }

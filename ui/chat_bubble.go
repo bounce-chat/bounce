@@ -45,13 +45,13 @@ type chatBubble struct {
 	background       *canvas.Rectangle
 	decorations      *fyne.Container
 	timestamp        *canvas.Text
-	disappearingIcon *canvas.Image
+	disappearingIcon *themedImage
 	statusIcons      *fyne.Container
-	pending          *canvas.Image
-	synced           *canvas.Image
-	delivered        *canvas.Image
-	read             *canvas.Image
-	errorIcon        *canvas.Image
+	pending          *themedImage
+	synced           *themedImage
+	delivered        *themedImage
+	read             *themedImage
+	errorIcon        *themedImage
 	chunks           []string
 	chunkLengths     []float32
 	maxTextWidth     float32
@@ -84,40 +84,58 @@ func newChatBubbleTemplate() *chatBubble {
 	timestamp := canvas.NewText("", theme.Color(theme.ColorNameForeground))
 	timestamp.TextSize = theme.TextSize() * 0.6
 
-	disappearingIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/disappears.png"))
-	disappearingIcon.Translucency = 0.3
-	disappearingIcon.FillMode = canvas.ImageFillContain
-	disappearingIcon.SetMinSize(fyne.Size{iconSize, iconSize})
+	disappearingIcon := newThemedImage(
+		newEmbeddedResource("assets/icons/chat_bubble/white/png/disappears.png"),
+		newEmbeddedResource("assets/icons/chat_bubble/black/png/disappears.png"),
+		iconSize,
+		iconSize,
+	)
+	disappearingIcon.image.Translucency = 0.3
 	disappearingIcon.Hide()
 
-	pending := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/pending.png"))
-	pending.Translucency = 0.3
-	pending.FillMode = canvas.ImageFillContain
-	pending.SetMinSize(fyne.Size{iconSize, iconSize})
+	pending := newThemedImage(
+		newEmbeddedResource("assets/icons/chat_bubble/white/png/pending.png"),
+		newEmbeddedResource("assets/icons/chat_bubble/black/png/pending.png"),
+		iconSize,
+		iconSize,
+	)
+	pending.image.Translucency = 0.3
 	pending.Hide()
 
-	synced := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/synced.png"))
-	synced.Translucency = 0.3
-	synced.FillMode = canvas.ImageFillContain
-	synced.SetMinSize(fyne.Size{iconSize, iconSize})
+	synced := newThemedImage(
+		newEmbeddedResource("assets/icons/chat_bubble/white/png/synced.png"),
+		newEmbeddedResource("assets/icons/chat_bubble/black/png/synced.png"),
+		iconSize,
+		iconSize,
+	)
+	synced.image.Translucency = 0.3
 	synced.Hide()
 
-	delivered := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/delivered.png"))
-	delivered.Translucency = 0.3
-	delivered.FillMode = canvas.ImageFillContain
-	delivered.SetMinSize(fyne.Size{iconSize, iconSize})
+	delivered := newThemedImage(
+		newEmbeddedResource("assets/icons/chat_bubble/white/png/delivered.png"),
+		newEmbeddedResource("assets/icons/chat_bubble/black/png/delivered.png"),
+		iconSize,
+		iconSize,
+	)
+	delivered.image.Translucency = 0.3
 	delivered.Hide()
 
-	read := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/read.png"))
-	read.Translucency = 0.5
-	read.FillMode = canvas.ImageFillContain
-	read.SetMinSize(fyne.Size{iconSize, iconSize})
+	read := newThemedImage(
+		newEmbeddedResource("assets/icons/chat_bubble/white/png/read.png"),
+		newEmbeddedResource("assets/icons/chat_bubble/black/png/read.png"),
+		iconSize,
+		iconSize,
+	)
+	read.image.Translucency = 0.5
 	read.Hide()
 
-	errorIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/error.png"))
-	errorIcon.Translucency = 0.3
-	errorIcon.FillMode = canvas.ImageFillContain
-	errorIcon.SetMinSize(fyne.Size{iconSize, iconSize})
+	errorIcon := newThemedImage(
+		newEmbeddedResource("assets/icons/chat_bubble/white/png/error.png"),
+		newEmbeddedResource("assets/icons/chat_bubble/black/png/error.png"),
+		iconSize,
+		iconSize,
+	)
+	errorIcon.image.Translucency = 0.3
 	errorIcon.Hide()
 
 	cb := &chatBubble{

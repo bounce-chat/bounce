@@ -89,6 +89,7 @@ type Fyne struct {
 	addUserString                         binding.String
 	profile                               *user
 	settings                              chat.Settings
+	localSettings                         chat.LocalSettings
 	settingsWidgets                       *settingsWidgets
 	users                                 *userStore
 	devices                               *deviceStore
@@ -184,11 +185,10 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.networkState = networkStateStarting
 	fyneUI.showMainContainer()
 	fyneUI.mainWindow.Show()
-	fyneUI.askToIgnoreBatteryOptimizations()
 }
 
 func (fyneUI *Fyne) askToIgnoreBatteryOptimizations() {
-	if fyneUI.settings.NeverAskForBatteryOptimizations {
+	if fyneUI.localSettings.NeverAskForBatteryOptimizations {
 		return
 	}
 
@@ -261,11 +261,19 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		// the app can be used.
 		// TODO: log fatal if anything else is set
 		return
-	} else {
-		fyneUI.profile = makeUser(state.Profile.ID, state.Profile.Name)
-		fyneUI.users.add(fyneUI.profile)
 	}
+
+	fyneUI.profile = makeUser(state.Profile.ID, state.Profile.Name)
+	fyneUI.users.add(fyneUI.profile)
 	fyneUI.settings = state.Settings
+	fyneUI.localSettings = state.LocalSettings
+	fyneUI.askToIgnoreBatteryOptimizations()
+
+	if fyneUI.localSettings.DarkMode {
+		fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
+	} else {
+		fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
+	}
 
 	for _, dev := range state.SyncDevices {
 		fyneUI.devices.add(&chat.Device{

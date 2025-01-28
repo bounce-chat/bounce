@@ -125,6 +125,7 @@ func Start(network Network, ui UI) {
 			SetDMTypingIndicatorSettings:      b.setDMTypingIndicatorSettings,
 			MarkAllGroupMessagesAsRead:        b.markAllGroupMessagesAsRead,
 			MarkAllDirectMessagesAsRead:       b.markAllDirectMessagesAsRead,
+			SetDarkMode:                       b.setDarkMode,
 		},
 	)
 

@@ -76,6 +76,7 @@ func (b *bounce) openDatabase() {
 		&updateDevice{},
 		&readReceipt{},
 		&updateSettings{},
+		&localSettings{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -224,10 +225,27 @@ func (b *bounce) buildInitialState() InitialState {
 	// Load the profile and sync devices
 	var profile *User
 	var settings Settings
+	var lSettings LocalSettings
 	syncDevices := []Device{}
 	var dbProfile user
 	err := b.database.Preload(clause.Associations).Where("profile = ?", true).First(&dbProfile).Error
 	if err == nil {
+		if dbProfile.LocalSettings == nil { // TODO: temporary migration not needed for new installs
+			ls := &localSettings{
+				ID:                              uuid.New(),
+				UserID:                          dbProfile.ID,
+				NeverAskForBatteryOptimizations: false,
+				DarkMode:                        true,
+			}
+			dbProfile.LocalSettings = ls
+			err = b.database.Create(ls).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error creating local settings")
+			}
+		}
+
 		profile = &User{
 			ID:   dbProfile.ID,
 			Name: dbProfile.Name,
@@ -235,10 +253,11 @@ func (b *bounce) buildInitialState() InitialState {
 		settings.DefaultGroupRetention = dbProfile.ProfileSettings.DefaultGroupRetention
 		settings.DefaultSendReadReceipts = dbProfile.ProfileSettings.DefaultSendReadReceipts
 		settings.DefaultSendTypingIndicators = dbProfile.ProfileSettings.DefaultSendTypingIndicators
-		settings.NeverAskForBatteryOptimizations = dbProfile.ProfileSettings.NeverAskForBatteryOptimizations
 		settings.NewGroupRestrictUserManagement = dbProfile.ProfileSettings.NewGroupRestrictUserManagement
 		settings.NewGroupRestrictGroupEdits = dbProfile.ProfileSettings.NewGroupRestrictGroupEdits
 		settings.NewGroupRestrictPosting = dbProfile.ProfileSettings.NewGroupRestrictPosting
+		lSettings.NeverAskForBatteryOptimizations = dbProfile.LocalSettings.NeverAskForBatteryOptimizations
+		lSettings.DarkMode = dbProfile.LocalSettings.DarkMode
 		for _, dev := range dbProfile.Devices {
 			if dev.RevokedAt != 0 {
 				continue
@@ -811,6 +830,7 @@ func (b *bounce) buildInitialState() InitialState {
 	return InitialState{
 		Profile:                                profile,
 		Settings:                               settings,
+		LocalSettings:                          lSettings,
 		SyncDevices:                            syncDevices,
 		Users:                                  chatUsers,
 		Groups:                                 chatGroups,

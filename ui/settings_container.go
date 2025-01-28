@@ -22,6 +22,7 @@ type settingsWidgets struct {
 	defaultNewGroupRestrictUserManagement *widget.Check
 	defaultNewGroupRestrictGroupEdits     *widget.Check
 	defaultNewGroupRestrictPosting        *widget.Check
+	darkMode                              *widget.Check
 }
 
 func (fyneUI *Fyne) showSettings() {
@@ -37,6 +38,8 @@ func (fyneUI *Fyne) showSettings() {
 	fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Refresh()
 	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Checked = fyneUI.settings.NewGroupRestrictPosting
 	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Refresh()
+	fyneUI.settingsWidgets.darkMode.Checked = fyneUI.localSettings.DarkMode
+	fyneUI.settingsWidgets.darkMode.Refresh()
 
 	if fyne.CurrentDevice().IsMobile() {
 		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeSettings})
@@ -51,6 +54,9 @@ func (fyneUI *Fyne) buildSettings() {
 
 	groupSettingsLabel := widget.NewLabel("New Group Defaults")
 	groupSettingsLabel.TextStyle = fyne.TextStyle{Bold: true}
+
+	themeSettingsLabel := widget.NewLabel("Theme")
+	themeSettingsLabel.TextStyle = fyne.TextStyle{Bold: true}
 
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		if fyne.CurrentDevice().IsMobile() {
@@ -73,28 +79,25 @@ func (fyneUI *Fyne) buildSettings() {
 		defaultNewGroupRestrictUserManagement: widget.NewCheck("Restrict User Management", fyneUI.callbacks.SetNewGroupRestrictUserManagement),
 		defaultNewGroupRestrictGroupEdits:     widget.NewCheck("Restrict Group Edits", fyneUI.callbacks.SetNewGroupRestrictGroupEdits),
 		defaultNewGroupRestrictPosting:        widget.NewCheck("Restrict Posting", fyneUI.callbacks.SetNewGroupRestrictPosting),
+		darkMode: widget.NewCheck("Dark Mode", func(checked bool) {
+			if checked {
+				fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
+			} else {
+				fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
+			}
+			fyneUI.callbacks.SetDarkMode(checked)
+			//TODO: should not need to do these refreshes after setting the theme:
+			fyneUI.mainContainer.Refresh()
+			for _, t := range fyneUI.groups {
+				t.chatHistoryScroll().Refresh()
+			}
+			for _, t := range fyneUI.dms {
+				t.chatHistoryScroll().Refresh()
+			}
+			fyneUI.threadVBox.Refresh()
+			fyneUI.about.Refresh()
+		}),
 	}
-
-	themeSettingsLabel := widget.NewLabel("Theme")
-	themeSettingsLabel.TextStyle = fyne.TextStyle{Bold: true}
-	darkModeCheck := widget.NewCheck("Dark Mode", func(checked bool) {
-		if checked {
-			fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
-		} else {
-			fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
-		}
-		//TODO: should not need to do these refreshes after setting the theme:
-		fyneUI.mainContainer.Refresh()
-		for _, t := range fyneUI.groups {
-			t.chatHistoryScroll().Refresh()
-		}
-		for _, t := range fyneUI.dms {
-			t.chatHistoryScroll().Refresh()
-		}
-		fyneUI.threadVBox.Refresh()
-		fyneUI.about.Refresh()
-	})
-	darkModeCheck.Checked = true
 
 	fyneUI.settingsContainer = container.New(
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
@@ -113,7 +116,7 @@ func (fyneUI *Fyne) buildSettings() {
 			fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits,
 			fyneUI.settingsWidgets.defaultNewGroupRestrictPosting,
 			themeSettingsLabel,
-			darkModeCheck,
+			fyneUI.settingsWidgets.darkMode,
 		)),
 	)
 }
@@ -130,13 +133,15 @@ func (fyneUI *Fyne) sendDefaultRetentionSelection(selection string) { // TODO: r
 }
 
 func (fyneUI *Fyne) SetSettings(settings chat.Settings) {
-	fyneUI.settings.DefaultGroupRetention = settings.DefaultGroupRetention // TODO: can just set the whole struct when not mingling local settings into this struct
+	updateReadReceipts := fyneUI.settings.DefaultSendReadReceipts != settings.DefaultSendReadReceipts
+	updateTypingIndicators := fyneUI.settings.DefaultSendTypingIndicators != settings.DefaultSendTypingIndicators
+
+	fyneUI.settings = settings
+
 	fyneUI.settingsWidgets.defaultNewGroupRetention.Selected = getRetentionName(settings.DefaultGroupRetention)
 	fyneUI.settingsWidgets.defaultNewGroupRetention.Refresh()
 
-	updateReadReceipts := fyneUI.settings.DefaultSendReadReceipts != settings.DefaultSendReadReceipts
 	if updateReadReceipts {
-		fyneUI.settings.DefaultSendReadReceipts = settings.DefaultSendReadReceipts
 		fyneUI.settingsWidgets.sendReadReceiptsByDefault.Checked = settings.DefaultSendReadReceipts
 		fyneUI.settingsWidgets.sendReadReceiptsByDefault.Refresh()
 		for _, g := range fyneUI.groups {
@@ -147,9 +152,7 @@ func (fyneUI *Fyne) SetSettings(settings chat.Settings) {
 		}
 	}
 
-	updateTypingIndicators := fyneUI.settings.DefaultSendTypingIndicators != settings.DefaultSendTypingIndicators
 	if updateTypingIndicators {
-		fyneUI.settings.DefaultSendTypingIndicators = settings.DefaultSendTypingIndicators
 		fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Checked = settings.DefaultSendTypingIndicators
 		fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
 		for _, g := range fyneUI.groups {
@@ -160,17 +163,20 @@ func (fyneUI *Fyne) SetSettings(settings chat.Settings) {
 		}
 	}
 
-	fyneUI.settings.NewGroupRestrictUserManagement = settings.NewGroupRestrictUserManagement
 	fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Checked = settings.NewGroupRestrictUserManagement
 	fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Refresh()
 
-	fyneUI.settings.NewGroupRestrictGroupEdits = settings.NewGroupRestrictGroupEdits
 	fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Checked = settings.NewGroupRestrictGroupEdits
 	fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Refresh()
 
-	fyneUI.settings.NewGroupRestrictPosting = settings.NewGroupRestrictPosting
 	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Checked = settings.NewGroupRestrictPosting
 	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Refresh()
+}
+
+func (fyneUI *Fyne) SetDarkMode(value bool) {
+	fyneUI.localSettings.DarkMode = value
+	fyneUI.settingsWidgets.darkMode.Checked = value
+	fyneUI.settingsWidgets.darkMode.Refresh()
 }
 
 func (fyneUI *Fyne) readReceiptOverrideSelectionOptions() []string {

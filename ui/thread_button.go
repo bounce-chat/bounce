@@ -40,11 +40,11 @@ type threadButton struct {
 	lastMessageTimeText       *widget.RichText
 	lastMessageTime           time.Time
 	statusIcons               *fyne.Container
-	pending                   *canvas.Image
-	synced                    *canvas.Image
-	delivered                 *canvas.Image
-	read                      *canvas.Image
-	errorIcon                 *canvas.Image
+	pending                   *themedImage
+	synced                    *themedImage
+	delivered                 *themedImage
+	read                      *themedImage
+	errorIcon                 *themedImage
 	unreadCount               int
 	clicked                   func()
 }
@@ -62,34 +62,49 @@ func newThreadButton(image fyne.CanvasObject, name binding.String, clicked func(
 
 	}
 
-	pending := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/pending.png"))
-	pending.FillMode = canvas.ImageFillContain
-	pending.Translucency = 0.4
-	pending.SetMinSize(fyne.Size{iconSize, iconSize})
+	pending := newThemedImage(
+		newEmbeddedResource("assets/icons/chat_bubble/white/png/pending.png"),
+		newEmbeddedResource("assets/icons/chat_bubble/black/png/pending.png"),
+		iconSize,
+		iconSize,
+	)
+	pending.image.Translucency = 0.4
 	pending.Hide()
 
-	synced := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/synced.png"))
-	synced.FillMode = canvas.ImageFillContain
-	synced.Translucency = 0.4
-	synced.SetMinSize(fyne.Size{iconSize, iconSize})
+	synced := newThemedImage(
+		newEmbeddedResource("assets/icons/chat_bubble/white/png/synced.png"),
+		newEmbeddedResource("assets/icons/chat_bubble/black/png/synced.png"),
+		iconSize,
+		iconSize,
+	)
+	synced.image.Translucency = 0.4
 	synced.Hide()
 
-	delivered := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/delivered.png"))
-	delivered.FillMode = canvas.ImageFillContain
-	delivered.Translucency = 0.4
-	delivered.SetMinSize(fyne.Size{iconSize, iconSize})
+	delivered := newThemedImage(
+		newEmbeddedResource("assets/icons/chat_bubble/white/png/delivered.png"),
+		newEmbeddedResource("assets/icons/chat_bubble/black/png/delivered.png"),
+		iconSize,
+		iconSize,
+	)
+	delivered.image.Translucency = 0.4
 	delivered.Hide()
 
-	read := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/read.png"))
-	read.FillMode = canvas.ImageFillContain
-	read.Translucency = 0.4
-	read.SetMinSize(fyne.Size{iconSize, iconSize})
+	read := newThemedImage(
+		newEmbeddedResource("assets/icons/chat_bubble/white/png/read.png"),
+		newEmbeddedResource("assets/icons/chat_bubble/black/png/read.png"),
+		iconSize,
+		iconSize,
+	)
+	read.image.Translucency = 0.4
 	read.Hide()
 
-	errorIcon := canvas.NewImageFromResource(newEmbeddedResource("assets/icons/chat_bubble/white/png/error.png"))
-	errorIcon.FillMode = canvas.ImageFillContain
-	errorIcon.Translucency = 0.4
-	errorIcon.SetMinSize(fyne.Size{iconSize, iconSize})
+	errorIcon := newThemedImage(
+		newEmbeddedResource("assets/icons/chat_bubble/white/png/error.png"),
+		newEmbeddedResource("assets/icons/chat_bubble/black/png/error.png"),
+		iconSize,
+		iconSize,
+	)
+	errorIcon.image.Translucency = 0.4
 	errorIcon.Hide()
 
 	tb := &threadButton{

@@ -24,6 +24,7 @@ func newThemedImage(dark, light fyne.Resource, width, height float32) *themedIma
 	}
 
 	ti.image.FillMode = canvas.ImageFillContain
+	ti.image.Resize(fyne.NewSize(width, height))
 	ti.image.SetMinSize(fyne.NewSize(width, height))
 	ti.Refresh()
 
@@ -39,8 +40,10 @@ func (ti *themedImage) Refresh() {
 		return
 	}
 	if fv.variant == theme.VariantDark {
+		ti.image.ScaleMode = canvas.ImageScaleSmooth
 		ti.image.Resource = ti.dark
 	} else {
+		ti.image.ScaleMode = canvas.ImageScalePixels
 		ti.image.Resource = ti.light
 	}
 
