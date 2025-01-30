@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -35,7 +36,7 @@ type bounce struct {
 	userID                uuid.UUID
 	networkIsOnline       bool
 	networkHasBeenOnline  bool
-	shutdownStarted       bool
+	shutdownStarted       atomic.Bool
 	databasePruningTicker *time.Ticker
 	pruningDatabase       sync.WaitGroup
 	runningHandlers       sync.WaitGroup
@@ -153,7 +154,7 @@ func Start(network Network, ui UI) {
 // Gracefully stop all Bounce.  Used when a fatal error is encountered or the user interface is closed
 //
 func (b *bounce) shutdown() {
-	b.shutdownStarted = true
+	b.shutdownStarted.Store(true)
 
 	// Logrus is going to call in here on a fatal error, then os.Exit.  If multiple fatal logs occur, which
 	// is likely as the shutdown process is going to cause other fatal errors, the first one will spend some

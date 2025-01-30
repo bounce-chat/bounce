@@ -1920,7 +1920,7 @@ func (b *bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
 	// Send references to any online devices
 	for _, addr := range addresses {
 		rd := b.getRemoteDevice(addr)
-		if rd.connectedSockets > 1 {
+		if rd.connectedSockets.Load() > 1 {
 			go b.sendReferences(addr)
 		}
 	}

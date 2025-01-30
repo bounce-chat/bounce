@@ -401,7 +401,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 						continue
 					}
 					rd := b.getRemoteDevice(dev.Address)
-					if rd.connectedSockets > 0 {
+					if rd.connectedSockets.Load() > 0 {
 						go b.sendDirect(dev.Address, &ug)
 					}
 				}
@@ -554,7 +554,7 @@ func (b *bounce) removeUser(groupID, userID uuid.UUID) error {
 
 		for _, dev := range u.Devices {
 			rd := b.getRemoteDevice(dev.Address)
-			if rd.connectedSockets > 0 {
+			if rd.connectedSockets.Load() > 0 {
 				go b.sendDirect(dev.Address, ug)
 			}
 		}

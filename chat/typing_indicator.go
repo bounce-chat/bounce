@@ -273,7 +273,7 @@ func (b *bounce) manuallySendTypingIndicators(ti *typingIndicator, excludedPeer 
 				continue
 			}
 			rd := b.getRemoteDevice(dev.Address)
-			if rd.connectedSockets > 0 {
+			if rd.connectedSockets.Load() > 0 {
 				broadcastTargets = append(broadcastTargets, rd)
 			}
 		}
@@ -300,7 +300,7 @@ func (b *bounce) manuallySendTypingIndicators(ti *typingIndicator, excludedPeer 
 				continue
 			}
 			rd := b.getRemoteDevice(dev.Address)
-			if rd.connectedSockets > 0 {
+			if rd.connectedSockets.Load() > 0 {
 				broadcastTargets = append(broadcastTargets, rd)
 			}
 		}
@@ -319,7 +319,7 @@ func (b *bounce) manuallySendTypingIndicators(ti *typingIndicator, excludedPeer 
 				continue
 			}
 			rd := b.getRemoteDevice(dev.Address)
-			if rd.connectedSockets > 0 {
+			if rd.connectedSockets.Load() > 0 {
 				broadcastTargets = append(broadcastTargets, rd)
 			}
 		}
@@ -348,7 +348,7 @@ func (b *bounce) manuallySendTypingIndicators(ti *typingIndicator, excludedPeer 
 					continue
 				}
 				rd := b.getRemoteDevice(dev.Address)
-				if rd.connectedSockets > 0 {
+				if rd.connectedSockets.Load() > 0 {
 					broadcastTargets = append(broadcastTargets, rd)
 				}
 			}

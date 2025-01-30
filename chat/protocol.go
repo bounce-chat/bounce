@@ -103,7 +103,7 @@ func (b *bounce) broadcast(br broadcastable) {
 	}).Debug("broadcasting frame")
 	for _, peer := range b.getBroadcastScope(br) {
 		rd := b.getRemoteDevice(peer)
-		if rd.connectedSockets > 0 {
+		if rd.connectedSockets.Load() > 0 {
 			go func(dst chan sendable, msg broadcastable) {
 				dst <- msg
 			}(rd.messages, br)

@@ -30,7 +30,7 @@ func (b *bounce) acceptConnections() {
 		conn, err, fatal := b.network.Accept()
 		if err != nil {
 			if fatal {
-				if b.shutdownStarted {
+				if b.shutdownStarted.Load() {
 					return
 				} else {
 					log.WithFields(log.Fields{

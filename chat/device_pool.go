@@ -112,7 +112,7 @@ func (b *bounce) sendKeepAlives() {
 	for _ = range ticker.C {
 		b.devicePool.deviceMutex.Lock()
 		for _, rd := range b.devicePool.devices {
-			if rd.connectedSockets > 0 {
+			if rd.connectedSockets.Load() > 0 {
 				rd.messages <- keepAlive{}
 			}
 		}
@@ -134,7 +134,7 @@ func (b *bounce) connectToSyncDevices() {
 			continue
 		}
 		rd := b.getRemoteDevice(dev.Address)
-		if rd.connectedSockets < connectionsPerDevice {
+		if rd.connectedSockets.Load() < connectionsPerDevice {
 			go b.tryDialing(dev.Address)
 		}
 	}
@@ -178,7 +178,7 @@ func (b *bounce) connectToGroups(desiredConnections int) {
 		// Attempt to dial them
 		for _, address := range addressesToDial {
 			rd := b.getRemoteDevice(address)
-			if rd.connectedSockets > 0 {
+			if rd.connectedSockets.Load() > 0 {
 				// If we're already connected to this device, we can just associate the existing connection with this group
 				b.insertRemoteDeviceIntoPool(address, poolTypeGroup, g.ID)
 			} else {
@@ -214,7 +214,7 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 			}
 			if !b.shouldCooldownDial(dev.Address) && dev.Address != b.network.Address() {
 				rd := b.getRemoteDevice(dev.Address)
-				if rd.connectedSockets == 0 {
+				if rd.connectedSockets.Load() == 0 {
 					unconnectedUserAddresses = append(unconnectedUserAddresses, dev.Address)
 				}
 			}
@@ -247,7 +247,7 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 			references := b.getReferenceOfferFor(dev.Address)
 			rd := b.getRemoteDevice(dev.Address)
 			// Dial this inactive user if we have non-global content that isn't just group messages
-			if references.shouldDialUser() && !references.onlyGroupContent() && rd.connectedSockets == 0 {
+			if references.shouldDialUser() && !references.onlyGroupContent() && rd.connectedSockets.Load() == 0 {
 				go b.tryDialing(dev.Address)
 			}
 		}
@@ -291,7 +291,7 @@ func (b *bounce) connectToCustomScopes(desiredConnections int) {
 		// Attempt to dial them
 		for _, address := range addressesToDial {
 			rd := b.getRemoteDevice(address)
-			if rd.connectedSockets > 0 {
+			if rd.connectedSockets.Load() > 0 {
 				// If we're already connected to this device, we can just associate the existing connection with this group
 				b.insertRemoteDeviceIntoPool(address, poolTypeGroup, cs.ID)
 			} else {
@@ -352,7 +352,7 @@ func (b *bounce) closeUnusedConnections() {
 	// If a device has more sockets open than needed, close one at random
 	b.devicePool.deviceMutex.Lock()
 	for addr, rd := range b.devicePool.devices {
-		if rd.connectedSockets > connectionsPerDevice {
+		if rd.connectedSockets.Load() > connectionsPerDevice {
 			log.WithFields(log.Fields{
 				"connected_sockets": rd.connectedSockets,
 				"desired_sockets":   connectionsPerDevice,
@@ -393,7 +393,7 @@ func (b *bounce) dialMissingSockets() {
 		if _, revoked := b.devicePool.revokedDevices[address]; revoked {
 			continue
 		}
-		if rd.connectedSockets > 0 && rd.connectedSockets < connectionsPerDevice {
+		if rd.connectedSockets.Load() > 0 && rd.connectedSockets.Load() < connectionsPerDevice {
 			go b.tryDialing(address)
 		}
 	}
@@ -599,7 +599,7 @@ func (b *bounce) prunePool(poolType int, id uuid.UUID) {
 		}
 		alivePool := []*remoteDevice{}
 		for _, rd := range b.devicePool.userPools[id] {
-			if rd.connectedSockets > 0 {
+			if rd.connectedSockets.Load() > 0 {
 				alivePool = append(alivePool, rd)
 			}
 		}
@@ -611,7 +611,7 @@ func (b *bounce) prunePool(poolType int, id uuid.UUID) {
 		}
 		alivePool := []*remoteDevice{}
 		for _, rd := range b.devicePool.groupPools[id] {
-			if rd.connectedSockets > 0 {
+			if rd.connectedSockets.Load() > 0 {
 				alivePool = append(alivePool, rd)
 			}
 		}
@@ -689,7 +689,7 @@ func (b *bounce) updateUserOnlineStatus(address string) {
 	rd := b.getRemoteDevice(address)
 
 	// Check if the user is currently online
-	online := rd.connectedSockets > 0
+	online := rd.connectedSockets.Load() > 0
 
 	// Track sync devices on a per-device basis
 	if dev.UserID == u.ID {

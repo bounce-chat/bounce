@@ -3,13 +3,14 @@ package chat
 import (
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 type remoteDevice struct {
-	connectedSockets       int //atomic.Uint64
+	connectedSockets       atomic.Int64
 	messages               chan sendable
 	shutdownReceivers      map[uuid.UUID]chan bool
 	shutdownReceiversMutex sync.Mutex
@@ -18,7 +19,7 @@ type remoteDevice struct {
 
 func newRemoteDevice() *remoteDevice {
 	return &remoteDevice{
-		connectedSockets:  0, //atomic.Uint64{},
+		connectedSockets:  atomic.Int64{},
 		messages:          make(chan sendable),
 		shutdownReceivers: make(map[uuid.UUID]chan bool),
 	}
@@ -97,7 +98,7 @@ func (b *bounce) readFrames(conn net.Conn) {
 			}
 		}
 
-		if b.shutdownStarted {
+		if b.shutdownStarted.Load() {
 			return
 		}
 
@@ -145,10 +146,10 @@ func (b *bounce) readFrames(conn net.Conn) {
 }
 
 func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
-	if b.shutdownStarted {
+	if b.shutdownStarted.Load() {
 		return
 	}
-	rd.connectedSockets += 1
+	rd.connectedSockets.Add(1)
 	b.updateUserOnlineStatus(conn.RemoteAddr().String())
 	rd.closer.Add(1)
 	defer rd.closer.Done()
@@ -165,7 +166,7 @@ func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 			log.WithFields(log.Fields{
 				"peer": conn.RemoteAddr().String(),
 			}).Debug("closing connection")
-			rd.connectedSockets -= 1
+			rd.connectedSockets.Add(-1)
 			b.updateUserOnlineStatus(conn.RemoteAddr().String())
 			conn.Close()
 			return
@@ -188,12 +189,12 @@ func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 					"peer":  conn.RemoteAddr().String(),
 					"type":  br.getType(),
 				}).Debug("error writing frame")
-				rd.connectedSockets -= 1
+				rd.connectedSockets.Add(-1)
 				b.updateUserOnlineStatus(conn.RemoteAddr().String())
 
 				// If this socket died during a write, but there are other sockets that might still be alive,
 				// send references for anything that might not have made it through this socket
-				if rd.connectedSockets > 0 {
+				if rd.connectedSockets.Load() > 0 {
 					go b.sendReferences(conn.RemoteAddr().String())
 				}
 

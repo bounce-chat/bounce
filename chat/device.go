@@ -148,7 +148,7 @@ func (b *bounce) handleDevice(peer string, payload []byte, catchUp bool) broadca
 	// Inform the UI if this is a new sync device
 	if newDevice.UserID == b.currentUserID() {
 		rd := b.getRemoteDevice(newDevice.Address)
-		online := rd.connectedSockets > 0
+		online := rd.connectedSockets.Load() > 0
 
 		b.userInterface.DeviceAdded(Device{
 			ID:        newDevice.ID,
