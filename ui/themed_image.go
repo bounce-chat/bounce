@@ -43,7 +43,9 @@ func (ti *themedImage) Refresh() {
 		ti.image.ScaleMode = canvas.ImageScaleSmooth
 		ti.image.Resource = ti.dark
 	} else {
-		ti.image.ScaleMode = canvas.ImageScalePixels
+		if ti.image.Translucency > 0 {
+			ti.image.ScaleMode = canvas.ImageScalePixels
+		}
 		ti.image.Resource = ti.light
 	}
 
