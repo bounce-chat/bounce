@@ -305,7 +305,7 @@ func (b *bounce) importUser(data []byte) (User, error) {
 	b.setDMRetention(newUser.Profile.ID, defaultMessageRetention)
 
 	// Try to connect to the user we just imported
-	b.userConnectionDesired(newUser.ID)
+	b.userConnectionDesired(newUser.Profile.ID)
 
 	// Return a UI representation of the user to the frontend
 	return User{

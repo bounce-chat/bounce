@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+	"testing"
 	"time"
 
 	"github.com/google/uuid"
@@ -70,8 +71,6 @@ func Start(network Network, ui UI) {
 	log.RegisterExitHandler(b.fatalShutdown)
 	go b.handleInterrupts()
 
-	b.openReferenceDatabase()
-
 	b.userInterface.Build(
 		b.configDirectory,
 		UICallbacks{
@@ -129,19 +128,19 @@ func Start(network Network, ui UI) {
 		},
 	)
 
-	b.network.Load(b.configDirectory)
 	go func() {
+		b.network.Load(b.configDirectory)
 		b.openDatabase()
+		b.openReferenceDatabase()
+		go b.network.Start(
+			NetworkCallbacks{
+				NetworkOnline:  b.networkOnline,
+				NetworkOffline: b.networkOffline,
+			},
+		)
 		initialState := b.buildInitialState()
 		b.userInterface.LoadInitialState(initialState)
 	}()
-
-	go b.network.Start(
-		NetworkCallbacks{
-			NetworkOnline:  b.networkOnline,
-			NetworkOffline: b.networkOffline,
-		},
-	)
 
 	// Run the UI and block
 	b.userInterface.Run()
@@ -408,7 +407,9 @@ func ensureOnlyOneInstance() {
 
 func getConfigDirectory() string {
 	var configDirectory string
-	if runtime.GOOS == "android" {
+	if testing.Testing() {
+		configDirectory = os.TempDir() + "/bounce-test-" + uuid.New().String()
+	} else if runtime.GOOS == "android" {
 		// TODO: use /data/data/chat.bounce/ ?
 		configDirectory = "/sdcard/Android/data/chat.bounce"
 	} else {

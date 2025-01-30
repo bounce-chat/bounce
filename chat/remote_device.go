@@ -9,7 +9,7 @@ import (
 )
 
 type remoteDevice struct {
-	connectedSockets       int
+	connectedSockets       int //atomic.Uint64
 	messages               chan sendable
 	shutdownReceivers      map[uuid.UUID]chan bool
 	shutdownReceiversMutex sync.Mutex
@@ -18,7 +18,7 @@ type remoteDevice struct {
 
 func newRemoteDevice() *remoteDevice {
 	return &remoteDevice{
-		connectedSockets:  0,
+		connectedSockets:  0, //atomic.Uint64{},
 		messages:          make(chan sendable),
 		shutdownReceivers: make(map[uuid.UUID]chan bool),
 	}
@@ -155,12 +155,13 @@ func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 
 	writerID := uuid.New()
 	rd.shutdownReceiversMutex.Lock()
-	rd.shutdownReceivers[writerID] = make(chan bool)
+	shutdownReceiver := make(chan bool)
+	rd.shutdownReceivers[writerID] = shutdownReceiver
 	rd.shutdownReceiversMutex.Unlock()
 
 	for {
 		select {
-		case <-rd.shutdownReceivers[writerID]:
+		case <-shutdownReceiver:
 			log.WithFields(log.Fields{
 				"peer": conn.RemoteAddr().String(),
 			}).Debug("closing connection")

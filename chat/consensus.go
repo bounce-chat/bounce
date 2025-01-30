@@ -996,7 +996,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 			}
 
 			if finalState.deletedBy == uuid.Nil && finalState.isMember(b.currentUserID()) {
-				b.applyUpdateGroupInUI(gs.ug)
+				defer b.applyUpdateGroupInUI(gs.ug)
 			}
 
 			if gs.ug.Type == updateGroupTypeAddUser {

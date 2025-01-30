@@ -53,7 +53,7 @@ func (b *bounce) openReferenceDatabase() {
 	)
 
 	var err error
-	b.referenceDatabase, err = gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{
+	b.referenceDatabase, err = gorm.Open(sqlite.Open("file::memory:"), &gorm.Config{
 		Logger: gormLogger,
 	})
 	if err != nil {
