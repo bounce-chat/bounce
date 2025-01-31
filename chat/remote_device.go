@@ -167,7 +167,9 @@ func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 				"peer": conn.RemoteAddr().String(),
 			}).Debug("closing connection")
 			rd.connectedSockets.Add(-1)
-			b.updateUserOnlineStatus(conn.RemoteAddr().String())
+			if !b.shutdownStarted.Load() {
+				b.updateUserOnlineStatus(conn.RemoteAddr().String())
+			}
 			conn.Close()
 			return
 		case br := <-rd.messages:
