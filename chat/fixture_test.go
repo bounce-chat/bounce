@@ -207,7 +207,23 @@ func await(b *bounce, function string, args ...interface{}) {
 	waiter := make(chan bool)
 	ui.waiting[function] = waiter
 	ui.Unlock()
+
 	<-waiter
+}
+
+// TODO: get this off the wire to avoid sleeps
+func awaitDelivery(t *testing.T, b *bounce, frameType uint16, frameID uuid.UUID) {
+	for range 20 {
+		var dr deliveryRecord
+		err := b.database.First(&dr, "frame_type = ? AND frame_id = ?", frameType, frameID).Error
+		if err == nil {
+			return
+		}
+
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	t.Fatal("timeout waiting for ack")
 }
 
 func (t *testUI) Build(configPath string, callbacks UICallbacks) {
@@ -247,7 +263,9 @@ func (t *testUI) OpenNewGroupChat(Group)                                      {}
 func (t *testUI) NewGroupChat(g Group) {
 	t.called <- call{function: "NewGroupChat", args: []interface{}{g}}
 }
-func (t *testUI) SetGroupState(Group)               {}
+func (t *testUI) SetGroupState(g Group) {
+	t.called <- call{function: "SetGroupState", args: []interface{}{g}}
+}
 func (t *testUI) DisplayGroupMessage(GroupMessage)  {}
 func (t *testUI) AddUser(UpdateGroupAddUser)        {}
 func (t *testUI) RemoveUser(UpdateGroupRemoveUser)  {}
