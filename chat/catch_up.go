@@ -210,6 +210,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		b.updateGroupConsensus(groupID)
 
 		// Get the user IDs for this group again, send references to any new users
+		// TODO: or any removed users?
 		var updatedUserIDs []uuid.UUID
 		err = b.database.Table("group_users").
 			Select("user_id").

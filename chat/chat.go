@@ -33,6 +33,7 @@ type bounce struct {
 	userInterface         UI
 	network               Network
 	devicePool            *devicePool
+	consensusStore        *consensusStore
 	userID                uuid.UUID
 	networkIsOnline       bool
 	networkHasBeenOnline  bool
@@ -132,6 +133,7 @@ func Start(network Network, ui UI) {
 	go func() {
 		b.network.Load(b.configDirectory)
 		b.openDatabase()
+		b.createConsensusStore()
 		b.openReferenceDatabase()
 		go b.network.Start(
 			NetworkCallbacks{

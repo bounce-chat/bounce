@@ -268,6 +268,8 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 		}).Fatal("error saving new group and group creation")
 	}
 
+	b.addGroupToConsensusStore(g.ID)
+
 	b.broadcast(&gc)
 
 	b.userInterface.OpenNewGroupChat(Group{

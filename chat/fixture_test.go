@@ -212,10 +212,10 @@ func await(b *bounce, function string, args ...interface{}) {
 }
 
 // TODO: get this off the wire to avoid sleeps
-func awaitDelivery(t *testing.T, b *bounce, frameType uint16, frameID uuid.UUID) {
+func awaitDeliveryTo(t *testing.T, b *bounce, frameType uint16, frameID uuid.UUID, destination string) {
 	for range 20 {
 		var dr deliveryRecord
-		err := b.database.First(&dr, "frame_type = ? AND frame_id = ?", frameType, frameID).Error
+		err := b.database.First(&dr, "frame_type = ? AND frame_id = ? AND destination = ?", frameType, frameID, destination).Error
 		if err == nil {
 			return
 		}
@@ -224,6 +224,11 @@ func awaitDelivery(t *testing.T, b *bounce, frameType uint16, frameID uuid.UUID)
 	}
 
 	t.Fatal("timeout waiting for ack")
+}
+
+func firstAddress(b *bounce) string {
+	u, _ := b.currentUser()
+	return u.Devices[0].Address
 }
 
 func (t *testUI) Build(configPath string, callbacks UICallbacks) {
@@ -394,6 +399,7 @@ func newBounce() *bounce {
 
 	b.network.Load(b.configDirectory)
 	b.openDatabase()
+	b.createConsensusStore()
 	initialState := b.buildInitialState()
 	b.userInterface.LoadInitialState(initialState)
 
@@ -459,7 +465,7 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *bounce, groupID uuid.UU
 	groupID = g.ID
 
 	t.Cleanup(func() {
-		me.shutdown() // TODO: needed to avoid database errors with -cover but timing out connection closing and handler checks
+		me.shutdown()
 		alice.shutdown()
 		bob.shutdown()
 		os.RemoveAll(me.configDirectory)

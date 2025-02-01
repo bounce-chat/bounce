@@ -207,21 +207,24 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 	}
 
 	// Make sure the user has permission to post
-	var g group
-	err = b.database.Select("admins", "restrict_posting").Where("id = ?", gm.Destination).Find(&g).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"group_id": gm.Destination,
-			}).Error("group not found when checking posting permission")
-			return nil
-		} else {
-			log.WithFields(log.Fields{
-				"group_id": gm.Destination,
-			}).Fatal("database error looking up group posting permission")
+	/*
+		var g group
+		err = b.database.Select("admins", "restrict_posting").Where("id = ?", gm.Destination).Find(&g).Error // TODO: use the consensusStore for this, and probably all other checks for group state across the app
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"group_id": gm.Destination,
+				}).Error("group not found when checking posting permission")
+				return nil
+			} else {
+				log.WithFields(log.Fields{
+					"group_id": gm.Destination,
+				}).Fatal("database error looking up group posting permission")
+			}
 		}
-	}
-	if g.RestrictPosting && !b.isGroupAdmin(gm.Destination, gm.Author) {
+		if g.RestrictPosting && !b.isGroupAdmin(gm.Destination, gm.Author) {
+	*/
+	if b.consensusStore.postingRestricted(gm.Destination) && !b.isGroupAdmin(gm.Destination, gm.Author) {
 		log.WithFields(log.Fields{
 			"user_id": gm.Author,
 		}).Warn("user attempted to post in a group without permission")
