@@ -337,6 +337,9 @@ func newBounce() *bounce {
 			lastFailedDial:     make(map[string]time.Time),
 			revokedDevices:     make(map[string]bool),
 		},
+		consensusStore: &consensusStore{
+			groups: make(map[uuid.UUID]*canonicalStack),
+		},
 	}
 	b.openReferenceDatabase()
 
@@ -399,7 +402,6 @@ func newBounce() *bounce {
 
 	b.network.Load(b.configDirectory)
 	b.openDatabase()
-	b.createConsensusStore()
 	initialState := b.buildInitialState()
 	b.userInterface.LoadInitialState(initialState)
 

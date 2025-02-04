@@ -229,7 +229,26 @@ func (cs *canonicalStack) restore() {
 //
 // Given an update group, add it into the history stack if it should be applied, detecting and removing any conflicts in the process
 //
-func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
+func (b *bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) {
+	// Don't allow updated that were signed by a device after it was revoked
+	var dev device
+	err := b.database.First(&dev, "address = ?", ug.Signer).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"update_group_id": ug.ID,
+				"address":         ug.Signer,
+			}).Error("cannot find signing device for update group")
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up device")
+		}
+	}
+	if dev.RevokedAt > 0 && dev.RevokedAt < ug.Timestamp {
+		return
+	}
+
 	// Make sure the payload of this update is valid for its type
 	if !ug.validPayloadFormat() {
 		log.WithFields(log.Fields{
@@ -317,7 +336,7 @@ func (cs *canonicalStack) insertUpdateGroupIntoStack(ug updateGroup) {
 					} else {
 						// If the conflict is not confirmed then we exclude it, and attempt to re-add everything that happened since the conflict was removed
 						for _, rc := range recheck[1:] {
-							cs.insertUpdateGroupIntoStack(rc)
+							b.insertUpdateGroupIntoStack(cs, rc)
 						}
 						break
 					}
@@ -354,46 +373,10 @@ func (b *bounce) buildCanonicalHistoryStack(groupID uuid.UUID) (*canonicalStack,
 
 	// For each update group, attempt to add it to history
 	for _, ug := range ugs {
-		cs.insertUpdateGroupIntoStack(ug)
+		b.insertUpdateGroupIntoStack(cs, ug)
 	}
 
 	return cs, ugs
-}
-
-func (b *bounce) updateGroupConsensus(groupID uuid.UUID) {
-	groupConsensusMutex.Lock()
-	defer groupConsensusMutex.Unlock()
-
-	//
-	// Try to look up the group.  If we can't find the group, check if we have any update groups anyway.  These
-	// update groups might exist because they apply to a group that was deleted, blocked, or that we left before
-	// this device ever learned about the groups existance.  In that case, we want to apply the block, and keep
-	// these updates around for any other sync devices that need them.
-	//
-	var g group
-	err := b.database.Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			b.applyUpdateGroupsForNonexistentGroup(groupID)
-			return
-		} else {
-			log.WithFields(log.Fields{
-				"group_id": groupID,
-				"error":    err.Error(),
-			}).Fatal("database error looking up group")
-		}
-	}
-
-	cs, ugs := b.buildCanonicalHistoryStack(groupID)
-
-	// Track what has been applied and rolled back, inform the UI, and set the group state in the database
-	err = b.setRollbacksApplicationsAndGroupState(g, cs, ugs)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"group_id": groupID,
-			"error":    err.Error(),
-		}).Error("error setting group state")
-	}
 }
 
 func (b *bounce) applyUpdateGroupsForNonexistentGroup(groupID uuid.UUID) {
@@ -1030,7 +1013,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 
 	// If the final state is that the group is deleted, delete the group
 	if finalState.deletedBy != uuid.Nil {
-		// Find the update group that deleted this group, or use gs.deletedWithi
+		// Find the update group that deleted this group, or use gs.deletedWith
 		deleteUgID := uuid.Nil
 		for i := len(cs.history) - 1; i >= 0; i-- {
 			ug := cs.history[i].ug
@@ -1078,7 +1061,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 
 		// If this actor was ever not an admin, we need to preserve the history
 		if !alwaysAnAdmin {
-			// Find the custom scope we just cleared
+			// Find the custom scope we just created
 			var cs customScope
 			err = b.database.First(&cs, "id = ?", g.ID).Error
 			if err != nil {

@@ -152,3 +152,66 @@ func TestMessagesAreValidIfInCatchUpThatGivesPermission(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, alicePost.Text, delivered.Text)
 }
+
+func TestMessagesAreInvalidIfInCatchUpThatRemovesPermission(t *testing.T) {
+	b, alice, _, groupID := createUsersAndGroups(t)
+
+	// Create an update group to unrestrict posting
+	restriction := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeChangePostingPermission,
+		Data:      []byte{permissionRestricted},
+	}
+	var err error
+	restriction.OriginalPayload, err = msgpack.Marshal(restriction)
+	assert.NoError(t, err)
+	sc := b.createSignedContainer(restriction.OriginalPayload)
+	restriction.Signature = sc.Signature
+	restriction.Signer = sc.Signer
+
+	// Create a post from a non-admin
+	alicePost := &groupMessage{
+		ID:          uuid.New(),
+		WrittenAt:   time.Now().Unix(),
+		Author:      alice.currentUserID(),
+		Destination: groupID,
+		Text:        "I am not allowed to post now",
+	}
+	alicePost.OriginalPayload, err = msgpack.Marshal(alicePost)
+	assert.NoError(t, err)
+	sc = alice.createSignedContainer(alicePost.OriginalPayload)
+	alicePost.Signature = sc.Signature
+	alicePost.Signer = sc.Signer
+
+	// Create a catch up with both
+	cu := catchUp{
+		Frames: []frame{
+			frame{
+				ID:      restriction.ID,
+				Type:    typeUpdateGroup,
+				Payload: restriction.getPayload(),
+			},
+			frame{
+				ID:      alicePost.ID,
+				Type:    typeGroupMessage,
+				Payload: alicePost.getPayload(),
+			},
+		},
+	}
+	cuPayload, err := msgpack.Marshal(cu)
+	assert.NoError(t, err)
+
+	// Handle the permission granting and message in the catch up handler
+	var aliceDev device
+	err = alice.database.First(&aliceDev, "user_id = ?", alice.currentUserID()).Error
+	assert.NoError(t, err)
+	b.handleCatchUp(aliceDev.Address, cuPayload, false)
+
+	// Make sure the message was saved
+	var delivered groupMessage
+	err = b.database.First(&delivered, "id = ?", alicePost.ID).Error
+	assert.Error(t, err)
+}

@@ -207,7 +207,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		}
 
 		// Update the group consensis
-		b.updateGroupConsensus(groupID)
+		b.writeGroupConsensus(groupID)
 
 		// Get the user IDs for this group again, send references to any new users
 		// TODO: or any removed users?

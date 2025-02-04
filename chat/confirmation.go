@@ -170,13 +170,17 @@ func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 		}).Fatal("database error saving confirmation")
 	}
 
-	if !catchUp {
-		// Update group consensus unless this confirms the update group that removed us
-		if ug.CustomScope == uuid.Nil {
-			b.updateGroupConsensus(c.Destination)
-		}
-	}
+	// Custom scoped updates remove us from a group, no need to update consensus there
+	if ug.CustomScope == uuid.Nil {
+		// Update the group state without commiting to the database or sending to the UI
+		b.reloadGroupConsensusSince(ug.Target, ug.Timestamp)
 
+		if !catchUp {
+			// Update the group state in the database and UI
+			b.writeGroupConsensus(ug.Target)
+		}
+
+	}
 	return &c
 }
 

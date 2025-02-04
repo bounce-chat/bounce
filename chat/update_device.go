@@ -212,12 +212,12 @@ func (b *bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 		}).Fatal("database error saving update device")
 	}
 
-	b.updateDeviceState(ud.Target)
+	b.updateDeviceState(ud.Target, catchUp)
 
 	return &ud
 }
 
-func (b *bounce) updateDeviceState(deviceID uuid.UUID) {
+func (b *bounce) updateDeviceState(deviceID uuid.UUID, catchUp bool) {
 	var d device
 	err := b.database.Where("id = ?", deviceID).First(&d).Error
 	if err != nil {
@@ -314,7 +314,7 @@ func (b *bounce) updateDeviceState(deviceID uuid.UUID) {
 			}
 			b.devicePool.revokedDevices[d.Address] = true
 
-			b.revokeUnauthorizedDeviceActions(d.Address, revokedAt)
+			b.revokeUnauthorizedDeviceActions(d.Address, revokedAt, catchUp)
 
 			if d.UserID == b.currentUserID() {
 				b.userInterface.DeviceRevoked(deviceID)
@@ -330,7 +330,7 @@ func (b *bounce) updateDeviceState(deviceID uuid.UUID) {
 	}
 }
 
-func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64) {
+func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64, catchUp bool) {
 	// Find any group creations signed by this device after it was revoked and delete those groups
 	var unauthorizedGroupCreations []groupCreation
 	err := b.database.Where("signer = ? AND timestamp > ?", address, revokedAt).Find(&unauthorizedGroupCreations).Error
@@ -383,17 +383,13 @@ func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 	groupsToUpdate := map[uuid.UUID]bool{}
 	for _, ug := range unauthorizedUpdateGroups {
 		groupsToUpdate[ug.Target] = true
-		err = b.database.Delete(&ug).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"id":    ug.ID,
-				"error": err.Error(),
-			}).Fatal("error deleting unauthorized update group")
-		}
-		b.userInterface.DeleteItem(ug.ID)
 	}
 	for target, _ := range groupsToUpdate {
-		b.updateGroupConsensus(target)
+		b.reloadGroupConsensusSince(target, revokedAt)
+
+		if !catchUp {
+			b.writeGroupConsensus(target)
+		}
 	}
 
 	// Find any update users signed by this device after it was revoked, then reset the user state
@@ -522,7 +518,7 @@ func (b *bounce) applyAndBroadcastUpdateDevice(ud updateDevice) error {
 		return err
 	}
 
-	b.updateDeviceState(ud.Target)
+	b.updateDeviceState(ud.Target, false)
 
 	b.broadcast(&ud)
 

@@ -69,6 +69,9 @@ func Start(network Network, ui UI) {
 			lastFailedDial:     make(map[string]time.Time),
 			revokedDevices:     make(map[string]bool),
 		},
+		consensusStore: &consensusStore{
+			groups: make(map[uuid.UUID]*canonicalStack),
+		},
 	}
 	log.RegisterExitHandler(b.fatalShutdown)
 	go b.handleInterrupts()
@@ -133,7 +136,6 @@ func Start(network Network, ui UI) {
 	go func() {
 		b.network.Load(b.configDirectory)
 		b.openDatabase()
-		b.createConsensusStore()
 		b.openReferenceDatabase()
 		go b.network.Start(
 			NetworkCallbacks{

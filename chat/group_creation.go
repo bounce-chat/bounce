@@ -286,7 +286,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 	}
 
 	// Start tracking this group's state in the consensus store
-	b.addGroupToConsensusStore(g.ID)
+	b.reloadGroupConsensus(g.ID)
 
 	// Ack and delivery track all of the devices included in this group creation
 	for _, u := range g.Users {

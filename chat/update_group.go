@@ -341,12 +341,12 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 		}).Fatal("database error saving update group")
 	}
 
-	// Add this to the group consensus
-	b.consensusStore.add(ug)
+	// Update the group state without commiting to the database or sending to the UI
+	b.reloadGroupConsensusSince(ug.Target, ug.Timestamp)
 
 	if !catchUp {
-		// Update the group state
-		b.updateGroupConsensus(ug.Target) //b.writeGroupConsensus(ug.Target)
+		// Update the group state in the database and UI
+		b.writeGroupConsensus(ug.Target)
 
 		// Reload the update in case a custom scope was added
 		err = b.database.First(&ug, "id = ?", ug.ID).Error
@@ -764,7 +764,8 @@ func (b *bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
 	}
 
 	// Update the group state
-	b.updateGroupConsensus(ug.Target)
+	b.reloadGroupConsensusSince(ug.Target, ug.Timestamp)
+	b.writeGroupConsensus(ug.Target)
 
 	// Check if this update was applied while evaluating group consensus and broadcast / ack if so
 	err = b.database.First(ug, "id = ?", ug.ID).Error

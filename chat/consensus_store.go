@@ -16,33 +16,7 @@ type consensusStore struct {
 	groups map[uuid.UUID]*canonicalStack
 }
 
-func (b *bounce) createConsensusStore() {
-	if b.consensusStore != nil {
-		log.Fatal("cannot create consensus store more than once")
-	}
-
-	cs := &consensusStore{
-		groups: make(map[uuid.UUID]*canonicalStack),
-	}
-	cs.Lock()
-	defer cs.Unlock()
-
-	var groups []group
-	err := b.database.Select("id").Find(&groups).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error getting all groups")
-	}
-	for _, g := range groups {
-		stack, _ := b.buildCanonicalHistoryStack(g.ID)
-		cs.groups[g.ID] = stack
-	}
-
-	b.consensusStore = cs
-}
-
-func (b *bounce) addGroupToConsensusStore(groupID uuid.UUID) {
+func (b *bounce) reloadGroupConsensus(groupID uuid.UUID) {
 	b.consensusStore.Lock()
 	defer b.consensusStore.Unlock()
 
@@ -50,70 +24,47 @@ func (b *bounce) addGroupToConsensusStore(groupID uuid.UUID) {
 	b.consensusStore.groups[groupID] = stack
 }
 
-func (cs *consensusStore) postingRestricted(groupID uuid.UUID) bool {
-	cs.Lock()
-	defer cs.Unlock()
-
-	stack, ok := cs.groups[groupID]
-	if !ok {
-		log.WithFields(log.Fields{
-			"group_id": groupID,
-		}).Error("canonical stack not found for group")
-		return true
+func (b *bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) {
+	// Reload everything if timestamp is 0
+	if ts == 0 {
+		b.reloadGroupConsensus(groupID)
+		return
 	}
 
-	gs, err := stack.top()
+	// Find the stack, reload everything if we don't have a stack yet
+	b.consensusStore.Lock()
+	stack, ok := b.consensusStore.groups[groupID]
+	if !ok {
+		b.consensusStore.Unlock()
+		b.reloadGroupConsensus(groupID)
+		return
+	}
+	defer b.consensusStore.Unlock()
+
+	// Remove updates that are at or older than timestamp from the stack
+	untouchedState := []groupState{}
+	for _, gs := range stack.history {
+		if gs.ug.Timestamp < ts {
+			untouchedState = append(untouchedState, gs)
+		} else {
+			break
+		}
+	}
+	stack.history = untouchedState
+
+	// Load all updates that are timestamp or newer from the database
+	var ugs []updateGroup
+	err := b.database.Preload(clause.Associations).Where("target = ? AND timestamp >= ?", groupID, ts).Order("timestamp asc").Find(&ugs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
 			"error":    err.Error(),
-		}).Error("error getting top of stack for group history while looking up posting restrictions")
-		return true
+		}).Fatal("database error selecting new update groups during partial reload")
 	}
 
-	return gs.postingRestricted
-}
-
-func (cs *consensusStore) add(ug updateGroup) {
-	cs.Lock()
-	defer cs.Unlock()
-
-	stack, ok := cs.groups[ug.Target]
-	if !ok {
-		log.WithFields(log.Fields{
-			"update_group_id": ug.ID,
-			"group_id":        ug.Target,
-		}).Error("cannot add update group for group not in consensus store")
-		return
-	}
-
-	newerUgs := []updateGroup{}
-	for {
-		top, err := stack.top()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":           err.Error(),
-				"update_group_id": ug.ID,
-			}).Error("error getting top of stack when adding update group")
-			return
-		}
-		if top.ug.Timestamp <= ug.Timestamp {
-			break
-		}
-		newer, err := stack.pop()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":           err.Error(),
-				"update_group_id": ug.ID,
-			}).Error("error popping history stack when adding update group")
-			return
-		}
-		newerUgs = append([]updateGroup{newer}, newerUgs...)
-	}
-
-	ugsToAdd := append([]updateGroup{ug}, newerUgs...)
-	for _, update := range ugsToAdd {
-		stack.insertUpdateGroupIntoStack(update)
+	// Add all updates from the database to the stack
+	for _, ug := range ugs {
+		b.insertUpdateGroupIntoStack(stack, ug)
 	}
 }
 
@@ -137,9 +88,47 @@ func (b *bounce) writeGroupConsensus(groupID uuid.UUID) error {
 
 	stack := b.consensusStore.groups[groupID]
 	ugs := []updateGroup{}
-	for _, gs := range stack.history {
-		ugs = append(ugs, gs.ug)
+	err = b.database.Find(&ugs, "target = ?", groupID).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"error":    err.Error(),
+		}).Fatal("database error looking up update groups")
 	}
 
-	return b.setRollbacksApplicationsAndGroupState(g, stack, ugs)
+	err = b.setRollbacksApplicationsAndGroupState(g, stack, ugs)
+	return err
+}
+
+func (b *bounce) currentGroupState(groupID uuid.UUID) (groupState, error) {
+	b.consensusStore.Lock()
+	stack, ok := b.consensusStore.groups[groupID]
+	b.consensusStore.Unlock()
+	if !ok {
+		b.reloadGroupConsensus(groupID)
+		b.consensusStore.Lock()
+		stack, ok = b.consensusStore.groups[groupID]
+		b.consensusStore.Unlock()
+		if !ok {
+			return groupState{}, errors.New("group consensus state doesn't exist after creation")
+		}
+	}
+
+	top, err := stack.top() //TODO: lock?
+	if err != nil {
+		return groupState{}, err
+	}
+
+	return top, nil
+}
+
+func (b *bounce) postingRestricted(groupID uuid.UUID) bool {
+	state, err := b.currentGroupState(groupID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+		}).Error("error getting current group state when checking if posting is restricted, defaulting to true")
+		return true
+	}
+	return state.postingRestricted
 }
