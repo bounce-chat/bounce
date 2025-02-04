@@ -155,6 +155,17 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 		return nil
 	}
 
+	// Make sure the device that signed this message belongs to the author
+	if !b.signedByUser(sc, gm.Author) {
+		log.WithFields(log.Fields{
+			"id":     gm.ID,
+			"group":  gm.Destination,
+			"signer": sc.Signer,
+			"author": gm.Author,
+		}).Warn("received group message signed by a different user than the author, ignoring")
+		return nil
+	}
+
 	// If we have already seen this message, all we need to do is mark that this peer has the message and ack it
 	var existingGM groupMessage
 	err = b.database.Where("id = ?", gm.ID).First(&existingGM).Error
@@ -164,6 +175,25 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error looking up group message")
+	}
+
+	// Get the current state of the group
+	gs, err := b.currentGroupState(gm.Destination)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"group_id": gm.Destination,
+			"error":    err.Error(),
+		}).Error("error getting group state while handling group message")
+		return nil
+	}
+
+	// Make sure the author is in the group
+	if !gs.isMember(gm.Author) {
+		log.WithFields(log.Fields{
+			"user":  gm.Author,
+			"group": gm.Destination,
+		}).Warn("user sent message to a group they are not in, ignoring")
+		return nil
 	}
 
 	// If the message is older than the group's ClearBefore, don't process it
@@ -176,28 +206,8 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 		return nil
 	}
 
-	// Make sure the author is in the group
-	if !b.userIsInGroup(gm.Destination, gm.Author) {
-		log.WithFields(log.Fields{
-			"user":  gm.Author,
-			"group": gm.Destination,
-		}).Warn("user sent message to a group they are not in, ignoring")
-		return nil
-	}
-
-	// Make sure the device that signed this message belongs to the author
-	if !b.signedByUser(sc, gm.Author) {
-		log.WithFields(log.Fields{
-			"id":     gm.ID,
-			"group":  gm.Destination,
-			"signer": sc.Signer,
-			"author": gm.Author,
-		}).Warn("received group message signed by a different user than the author, ignoring")
-		return nil
-	}
-
 	// Make sure the peer that delivered this message is part of the group
-	if !b.userIsInGroup(gm.Destination, srcDevice.UserID) {
+	if !gs.isMember(srcDevice.UserID) {
 		log.WithFields(log.Fields{
 			"user":   srcDevice.UserID,
 			"device": srcDevice.ID,
@@ -207,7 +217,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 	}
 
 	// Make sure the user has permission to post
-	if b.postingRestricted(gm.Destination) && !b.isGroupAdmin(gm.Destination, gm.Author) {
+	if gs.postingRestricted && !gs.isAdmin(gm.Author) {
 		log.WithFields(log.Fields{
 			"user_id": gm.Author,
 		}).Warn("user attempted to post in a group without permission")

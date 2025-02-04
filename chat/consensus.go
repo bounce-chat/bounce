@@ -408,7 +408,7 @@ func (b *bounce) applyUpdateGroupsForNonexistentGroup(groupID uuid.UUID) {
 }
 
 func (b *bounce) isMemberOfGroupForUpdate(userID, groupID, ugID uuid.UUID) bool {
-	cs, _ := b.buildCanonicalHistoryStack(groupID)
+	cs, _ := b.buildCanonicalHistoryStack(groupID) // TODO: get from the consensus store
 
 	for _, gs := range cs.history {
 		if gs.ug.ID == ugID {

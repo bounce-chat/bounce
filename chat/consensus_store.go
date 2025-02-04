@@ -34,12 +34,11 @@ func (b *bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) {
 	// Find the stack, reload everything if we don't have a stack yet
 	b.consensusStore.Lock()
 	stack, ok := b.consensusStore.groups[groupID]
+	b.consensusStore.Unlock()
 	if !ok {
-		b.consensusStore.Unlock()
 		b.reloadGroupConsensus(groupID)
 		return
 	}
-	defer b.consensusStore.Unlock()
 
 	// Remove updates that are at or older than timestamp from the stack
 	untouchedState := []groupState{}
@@ -69,9 +68,6 @@ func (b *bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) {
 }
 
 func (b *bounce) writeGroupConsensus(groupID uuid.UUID) error {
-	b.consensusStore.Lock()
-	defer b.consensusStore.Unlock()
-
 	var g group
 	err := b.database.Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
 	if err != nil {
@@ -86,7 +82,9 @@ func (b *bounce) writeGroupConsensus(groupID uuid.UUID) error {
 		}
 	}
 
+	b.consensusStore.Lock()
 	stack := b.consensusStore.groups[groupID]
+	b.consensusStore.Unlock()
 	ugs := []updateGroup{}
 	err = b.database.Find(&ugs, "target = ?", groupID).Error
 	if err != nil {
@@ -120,15 +118,4 @@ func (b *bounce) currentGroupState(groupID uuid.UUID) (groupState, error) {
 	}
 
 	return top, nil
-}
-
-func (b *bounce) postingRestricted(groupID uuid.UUID) bool {
-	state, err := b.currentGroupState(groupID)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"group_id": groupID,
-		}).Error("error getting current group state when checking if posting is restricted, defaulting to true")
-		return true
-	}
-	return state.postingRestricted
 }
