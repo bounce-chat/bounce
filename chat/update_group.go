@@ -790,3 +790,247 @@ func (b *bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
 
 	return nil
 }
+
+func (b *bounce) informUIOfUpdateGroup(ug updateGroup) {
+	switch ug.Type {
+	case updateGroupTypeChangeName:
+		b.informUIUpdateGroupChangeName(ug)
+	case updateGroupTypeAddUser:
+		b.informUIUpdateGroupAddUser(ug)
+	case updateGroupTypeRemoveUser:
+		b.informUIUpdateGroupRemoveUser(ug)
+	case updateGroupTypeChangeRetention:
+		b.informUIUpdateGroupChangeRetention(ug)
+	case updateGroupTypeChangeMutedUntil:
+		return
+	case updateGroupTypeSetClearBefore:
+		b.informUIUpdateGroupSetClearBefore(ug)
+	case updateGroupTypePromoteAdmin:
+		b.informUIUpdateGroupPromoteAdmin(ug)
+	case updateGroupTypeDemoteAdmin:
+		b.informUIUpdateGroupDemoteAdmin(ug)
+	case updateGroupTypeChangeUserManagementPermission:
+		b.informUIUpdateGroupChangeUserManagementPermission(ug)
+	case updateGroupTypeChangeGroupEditsPermission:
+		b.informUIUpdateGroupChangeGroupEditsPermission(ug)
+	case updateGroupTypeChangePostingPermission:
+		b.informUIUpdateGroupChangePostingPermission(ug)
+	case updateGroupTypeDelete:
+		return
+	case updateGroupTypeBlock:
+		b.informUIUpdateGroupBlock(ug)
+	case updateGroupTypeSetReadReceiptSettings:
+		return
+	case updateGroupTypeSetTypingIndicatorSettings:
+		return
+	default:
+		log.WithFields(log.Fields{
+			"type": ug.Type,
+		}).Warn("cannot inform UI of update group with unknown type")
+	}
+}
+
+func (b *bounce) informUIUpdateGroupChangeName(ug updateGroup) {
+	newName := string(ug.Data)
+	if !validGroupName(newName) {
+		log.WithFields(log.Fields{
+			"name": newName,
+		}).Error("cannot inform UI of update group with invalid name")
+		return
+	}
+
+	b.userInterface.RenameGroup(UpdateGroupName{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+		Name:      newName,
+	})
+}
+
+func (b *bounce) informUIUpdateGroupAddUser(ug updateGroup) {
+	// Unmarshall the new user
+	var u user
+	err := msgpack.Unmarshal(ug.Data, &u)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling user")
+		return
+	}
+
+	// Notify the UI
+	b.userInterface.AddUser(
+		UpdateGroupAddUser{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+			User: User{
+				ID:   u.ID,
+				Name: u.Name,
+			},
+		})
+}
+
+func (b *bounce) informUIUpdateGroupRemoveUser(ug updateGroup) {
+	// Parse the user ID
+	userID, err := uuid.FromBytes(ug.Data)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"actor":   ug.Actor,
+			"user_id": ug.Data,
+		}).Error("update group attempted to remove user with invalid UUID")
+		return
+	}
+
+	// Notify the UI
+	b.userInterface.RemoveUser(
+		UpdateGroupRemoveUser{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+			User:      userID,
+		})
+}
+
+func (b *bounce) informUIUpdateGroupChangeRetention(ug updateGroup) {
+	b.userInterface.GroupRetentionChanged(UpdateGroupRetention{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+		Retention: int64(binary.LittleEndian.Uint64(ug.Data)),
+	})
+}
+
+func (b *bounce) informUIUpdateGroupSetClearBefore(ug updateGroup) {
+	b.userInterface.GroupChatHistoryCleared(UpdateGroupClearHistory{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+		ClearTime: int64(binary.LittleEndian.Uint64(ug.Data)),
+	})
+}
+
+func (b *bounce) informUIUpdateGroupPromoteAdmin(ug updateGroup) {
+	// Parse the UUID
+	userID, err := uuid.FromBytes(ug.Data)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"actor":   ug.Actor,
+			"user_id": ug.Data,
+		}).Error("update group attempted to promote admin with invalid UUID")
+		return
+	}
+
+	// Notify the UI
+	b.userInterface.AdminPromoted(UpdateGroupAdminPromoted{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+		UserID:    userID,
+	})
+}
+
+func (b *bounce) informUIUpdateGroupDemoteAdmin(ug updateGroup) {
+	// Parse the UUID
+	userID, err := uuid.FromBytes(ug.Data)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"actor":   ug.Actor,
+			"user_id": ug.Data,
+		}).Error("update group attempted to promote admin with invalid UUID")
+		return
+	}
+
+	// Notify the UI
+	b.userInterface.AdminDemoted(UpdateGroupAdminDemoted{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+		UserID:    userID,
+	})
+}
+
+func (b *bounce) informUIUpdateGroupChangeUserManagementPermission(ug updateGroup) {
+	restricted, err := ug.permissionPayloadIsRestricted()
+	if err != nil {
+		return
+	}
+	if restricted {
+		b.userInterface.UserManagementRestricted(UpdateGroupUserManagementRestricted{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+		})
+	} else {
+		b.userInterface.UserManagementUnrestricted(UpdateGroupUserManagementUnrestricted{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+		})
+	}
+}
+
+func (b *bounce) informUIUpdateGroupChangeGroupEditsPermission(ug updateGroup) {
+	restricted, err := ug.permissionPayloadIsRestricted()
+	if err != nil {
+		return
+	}
+	if restricted {
+		b.userInterface.GroupEditsRestricted(UpdateGroupEditsRestricted{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+		})
+	} else {
+		b.userInterface.GroupEditsUnrestricted(UpdateGroupEditsUnrestricted{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+		})
+	}
+}
+
+func (b *bounce) informUIUpdateGroupChangePostingPermission(ug updateGroup) {
+	restricted, err := ug.permissionPayloadIsRestricted()
+	if err != nil {
+		return
+	}
+	if restricted {
+		b.userInterface.PostingRestricted(UpdateGroupPostingRestricted{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+		})
+	} else {
+		b.userInterface.PostingUnrestricted(UpdateGroupPostingUnrestricted{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+		})
+	}
+}
+
+func (b *bounce) informUIUpdateGroupBlock(ug updateGroup) {
+	b.userInterface.UserBlockedGroup(UserBlockedGroup{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+	})
+}

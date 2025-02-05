@@ -265,9 +265,18 @@ func (b *bounce) sendGroupMessage(message GroupMessage) {
 		log.Fatal("group message ID cannot be set by the UI")
 	}
 
+	gs, err := b.currentGroupState(message.Thread)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"group_id": message.Thread,
+			"error":    err.Error(),
+		}).Error("error getting group state while sending group message")
+		return
+	}
+
 	now := time.Now()
 	deleteAt := int64(0)
-	retentionSeconds := b.getGroupRetention(message.Thread)
+	retentionSeconds := gs.retention
 	if retentionSeconds > 0 {
 		deleteAt = now.Unix() + retentionSeconds
 	}
@@ -281,7 +290,6 @@ func (b *bounce) sendGroupMessage(message GroupMessage) {
 		Text:        message.Text,
 	}
 
-	var err error
 	gm.OriginalPayload, err = msgpack.Marshal(gm)
 	if err != nil {
 		log.WithFields(log.Fields{

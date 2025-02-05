@@ -153,13 +153,30 @@ func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 
 	// Make sure the user signing this confirmation was a member of the group for this update, unless the update group in question
 	// has a custom scope, in which case this update removed us from the group
-	if ug.CustomScope == uuid.Nil && !b.isMemberOfGroupForUpdate(c.Author, ug.Target, ug.ID) {
-		log.WithFields(log.Fields{
-			"update_group_id": c.UpdateGroupID,
-			"confirmation_id": c.ID,
-			"author":          c.Author,
-		}).Warn("ignoring confirmation signed by user who was not a member of the group during the update")
-		return nil
+	if ug.CustomScope == uuid.Nil {
+		isMemberOfGroupForUpdate := false
+		cs, err := b.currentGroupStack(ug.Target)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"group_id": ug.Target,
+				"error":    err.Error(),
+			}).Error("error getting canonical group history while handling confirmation")
+			return nil
+		}
+		for _, gs := range cs.history {
+			if gs.ug.ID == ug.ID {
+				isMemberOfGroupForUpdate = gs.isMember(c.Author)
+				break
+			}
+		}
+		if !isMemberOfGroupForUpdate {
+			log.WithFields(log.Fields{
+				"update_group_id": c.UpdateGroupID,
+				"confirmation_id": c.ID,
+				"author":          c.Author,
+			}).Warn("ignoring confirmation signed by user who was not a member of the group during the update")
+			return nil
+		}
 	}
 
 	// Save it

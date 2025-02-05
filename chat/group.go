@@ -288,26 +288,7 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 	return nil
 }
 
-func (b *bounce) getGroupRetention(groupID uuid.UUID) int64 {
-	var g group
-	err := b.database.Select("retention").First(&g, "id = ?", groupID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"id":    groupID,
-				"error": err.Error(),
-			}).Error("error selecting message retention for unknown group")
-			return 0
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error selecting message retention from group")
-		}
-	}
-	return g.Retention
-}
-
-func (b *bounce) userIsInGroup(groupID, userID uuid.UUID) bool {
+func (b *bounce) userIsInGroup(groupID, userID uuid.UUID) bool { // TODO: replace with current group state where possible
 	var exists bool
 	err := b.database.Table("group_users").
 		Select("count(*) = 1").
