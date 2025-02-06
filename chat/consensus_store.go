@@ -100,6 +100,7 @@ func (b *bounce) writeGroupConsensus(groupID uuid.UUID) error {
 	b.consensusStore.Lock()
 	defer b.consensusStore.Unlock()
 
+	// Try to find the group, if there is no group, apply any blocking updates for that group
 	var g group
 	err := b.database.Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
 	if err != nil {
@@ -137,7 +138,13 @@ func (b *bounce) writeGroupConsensus(groupID uuid.UUID) error {
 		}
 	}
 
-	stack := b.consensusStore.groups[groupID]
+	// Get the canonical history stack
+	stack, ok := b.consensusStore.groups[groupID]
+	if !ok {
+		return errors.New("cannot write group consensus for group without a history stack")
+	}
+
+	// Get all update groups for this group
 	var ugs []updateGroup
 	err = b.database.Find(&ugs, "target = ?", groupID).Error
 	if err != nil {
@@ -147,8 +154,8 @@ func (b *bounce) writeGroupConsensus(groupID uuid.UUID) error {
 		}).Fatal("database error looking up update groups")
 	}
 
-	err = b.setRollbacksApplicationsAndGroupState(g, stack, ugs)
-	return err
+	// Apply the group state to the database and UI, marking updates in the database as applied or not where needed
+	return b.setRollbacksApplicationsAndGroupState(g, stack, ugs)
 }
 
 func (b *bounce) currentGroupStack(groupID uuid.UUID) (*canonicalStack, error) {
@@ -184,18 +191,12 @@ func (b *bounce) currentGroupState(groupID uuid.UUID) (groupState, error) {
 }
 
 func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalStack, ugs []updateGroup) error {
-	if len(cs.history) == 0 {
-		log.WithFields(log.Fields{
-			"group_id": g.ID,
-		}).Error("cannot update group state with empty history stack")
-		return errStackEmpty
-	}
-
 	finalState, err := cs.top()
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("no final state available when updating group consensus state")
+		}).Error("no final state available when updating group consensus state")
+		return err
 	}
 
 	// Find any canonical update groups that have not been applied and make them as applied and inform the UI if needed
@@ -210,6 +211,8 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 			}
 
 			if finalState.deletedBy == uuid.Nil && finalState.isMember(b.currentUserID()) {
+				// Defer is used to the the UI calls occur after the state has been set, for tests that trigger
+				// checks based on when UI calls complete.
 				defer b.informUIOfUpdateGroup(gs.ug)
 			}
 
@@ -858,7 +861,8 @@ func (b *bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID uuid
 	}
 }
 
-func (b *bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) { // TODO: get members from current group state?
+func (b *bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
+	// TODO: get members from current group state?  locking will cause a deadlock and isn't needed because this is inside writeGroupState
 	// Get all the user IDs in this group
 	var userIDs []uuid.UUID
 	err := b.database.Table("group_users").

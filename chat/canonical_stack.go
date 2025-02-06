@@ -73,9 +73,7 @@ func (cs *canonicalStack) restore() {
 	cs.history = cs.historyStash
 }
 
-//
 // Given an update group, add it into the history stack if it should be applied, detecting and removing any conflicts in the process
-//
 func (b *bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) {
 	// Don't allow updated that were signed by a device after it was revoked
 	var dev device
