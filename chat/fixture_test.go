@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -14,9 +15,15 @@ import (
 	"github.com/cretz/bine/torutil/ed25519"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 var hosts = map[string]*testnet{}
+
+var networkTracking sync.Mutex
+var networkWaiting = map[string]chan bool{}
+var broadcast = map[string][]frameReference{}
+var acked = map[string][]frameReference{}
 
 type testnet struct {
 	publicKey  ed25519.PublicKey
@@ -57,7 +64,36 @@ func (t *testnet) Dial(address string) (net.Conn, error) {
 		return nil, errors.New("address not found in testnet")
 	}
 
-	dialerUnderlying, listenerUnderlying := net.Pipe()
+	dialerUnderlying, dialerIntercept := net.Pipe()
+	listenerUnderlying, listenerIntercept := net.Pipe()
+
+	go func() {
+		for {
+			frameType, payload, err := readFrame(dialerIntercept)
+			if err != nil {
+				return
+			}
+			err = writeFrame(listenerIntercept, frameType, payload)
+			if err != nil {
+				return
+			}
+			written(t.Address(), address, frameType, payload)
+		}
+	}()
+	go func() {
+		for {
+			frameType, payload, err := readFrame(listenerIntercept)
+			if err != nil {
+				return
+			}
+			err = writeFrame(dialerIntercept, frameType, payload)
+			if err != nil {
+				return
+			}
+			written(address, t.Address(), frameType, payload)
+		}
+	}()
+
 	dialer := &testnetConnection{
 		underlying: dialerUnderlying,
 		localAddress: &testnetAddress{
@@ -148,6 +184,124 @@ func (ta *testnetAddress) String() string {
 	return ta.address
 }
 
+func written(from, to string, frameType uint16, payload []byte) {
+	//id, track, err := getID(frameType, payload)
+	//if err != nil {
+	//	log.Error(err.Error())
+	//	return
+	//}
+
+	//if track {
+	//	flow := from + to
+	//	frameReference{
+	//		Type:    frameType,
+	//		FrameID: id,
+	//	}
+	//	broadcast[flow] = append(broadcast[flow], frameReference)
+	//	// TODO write any waiters expecting this reference on this flow
+	//}
+
+	//if frameType == typeCatchUp {
+	//	// TODO: recurse
+	//}
+
+	if frameType == typeAck {
+		var a ack
+		err := msgpack.Unmarshal(payload, &a)
+		if err != nil {
+			log.Error(err.Error())
+			return
+		}
+		for _, ref := range a.References {
+			flow := from + to
+			networkTracking.Lock()
+			acked[flow] = append(acked[flow], ref)
+			signature := flow + strconv.Itoa(int(ref.Type)) + ref.FrameID.String()
+			if waiter, ok := networkWaiting[signature]; ok {
+				waiter <- true
+				delete(networkWaiting, signature)
+			}
+			networkTracking.Unlock()
+		}
+	}
+}
+
+func awaitAck(t *testing.T, to, from *bounce, frameType uint16, frameID uuid.UUID) {
+	flow := from.network.Address() + to.network.Address()
+	networkTracking.Lock()
+	refs := acked[flow]
+	for _, ref := range refs {
+		if ref.FrameID == frameID && ref.Type == frameType {
+			networkTracking.Unlock()
+			return
+		}
+	}
+
+	signature := flow + strconv.Itoa(int(frameType)) + frameID.String()
+	if _, ok := networkWaiting[signature]; ok {
+		log.Fatal("already awaiting " + signature)
+	}
+
+	waiter := make(chan bool)
+	networkWaiting[signature] = waiter
+	networkTracking.Unlock()
+
+	select {
+	case <-waiter:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for network")
+	}
+}
+
+/*
+func getID(frameType uint16, payload []byte) (uuid.UUID, bool, error) {
+	switch frameType {
+	case typeDirectMessage:
+		var dm directMessage
+		err := msgpack.Unmarshal(payload, &dm)
+		if err != nil {
+			return uuid.Nil, true, err
+		}
+		return dm.getID(), true, nil
+	case typeGroupMessage:
+		var gm groupMessage
+		err := msgpack.Unmarshal(payload, &gm)
+		if err != nil {
+			return uuid.Nil, true, err
+		}
+		return gm.getID(), true, nil
+	case typeReferenceOffer:
+		return uuid.Nil, false, nil
+	case typeReferenceRequest:
+		return uuid.Nil, false, nil
+	case typeCatchUp:
+		return uuid.Nil, false, nil
+	case typeAck:
+		return uuid.Nil, false, nil
+	case typeKeepAlive:
+		return uuid.Nil, false, nil
+	case typeSyncDeviceRequest:
+	case typeSyncDeviceRequestRejected:
+	case typeSyncDeviceRequestAccepted:
+	case typeDevice:
+	case typeUpdateDM:
+	case typeGroupCreation:
+	case typeUpdateGroup:
+	case typeTypingIndicator:
+	case typeAddUserRequest:
+	case typeAddUserRequestAccepted:
+	case typeAddUserRequestRejected:
+	case typeAddUser:
+	case typeConfirmation:
+	case typeUpdateUser:
+	case typeUpdateDevice:
+	case typeReadReceipt:
+	case typeUpdateSettings:
+	}
+	return uuid.Nil, false, errors.New("unknown frame type")
+}
+*/
+
 type call struct {
 	function string
 	args     []interface{}
@@ -188,7 +342,7 @@ func newTestUI() *testUI {
 	return ui
 }
 
-func await(b *bounce, function string, args ...interface{}) {
+func await(t *testing.T, b *bounce, function string, args ...interface{}) {
 	ui := b.userInterface.(*testUI)
 
 	ui.Lock()
@@ -208,22 +362,11 @@ func await(b *bounce, function string, args ...interface{}) {
 	ui.waiting[function] = waiter
 	ui.Unlock()
 
-	<-waiter
-}
-
-// TODO: get this off the wire to avoid sleeps
-func awaitDeliveryTo(t *testing.T, b *bounce, frameType uint16, frameID uuid.UUID, destination string) {
-	for range 20 {
-		var dr deliveryRecord
-		err := b.database.First(&dr, "frame_type = ? AND frame_id = ? AND destination = ?", frameType, frameID, destination).Error
-		if err == nil {
-			return
-		}
-
-		time.Sleep(50 * time.Millisecond)
+	select {
+	case <-waiter:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for UI")
 	}
-
-	t.Fatal("timeout waiting for ack")
 }
 
 func firstAddress(b *bounce) string {
@@ -459,8 +602,8 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *bounce, groupID uuid.UU
 		},
 		Admins: []uuid.UUID{me.currentUserID()},
 	})
-	await(alice, "NewGroupChat")
-	await(bob, "NewGroupChat")
+	await(t, alice, "NewGroupChat")
+	await(t, bob, "NewGroupChat")
 
 	var g group
 	me.database.First(&g)

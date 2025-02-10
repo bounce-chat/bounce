@@ -21,12 +21,12 @@ func TestCanRenameGroupAndConfirm(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, newName, g.Name)
 
-	await(alice, "RenameGroup")
+	await(t, alice, "RenameGroup")
 	err = alice.database.First(&g, "id = ?", groupID).Error
 	assert.NoError(t, err)
 	assert.Equal(t, newName, g.Name)
 
-	await(bob, "RenameGroup")
+	await(t, bob, "RenameGroup")
 	err = bob.database.First(&g, "id = ?", groupID).Error
 	assert.NoError(t, err)
 	assert.Equal(t, newName, g.Name)
@@ -47,21 +47,21 @@ func TestCanRenameGroupAndConfirm(t *testing.T) {
 	assert.NoError(t, err)
 
 	// I see three confirmations
-	awaitDeliveryTo(t, alice, typeConfirmation, ac.ID, firstAddress(b))
-	awaitDeliveryTo(t, bob, typeConfirmation, bc.ID, firstAddress(b))
+	awaitAck(t, alice, b, typeConfirmation, ac.ID)
+	awaitAck(t, bob, b, typeConfirmation, bc.ID)
 	err = b.database.Preload(clause.Associations).First(&ug, "target = ?", groupID).Error
 	assert.NoError(t, err)
 	assert.Equal(t, 3, ug.confirmingUsers())
 
 	// Alice sees three confirmations
-	awaitDeliveryTo(t, bob, typeConfirmation, bc.ID, firstAddress(alice))
+	awaitAck(t, bob, alice, typeConfirmation, bc.ID)
 	var aug updateGroup
 	err = alice.database.Preload(clause.Associations).First(&aug, "target = ?", groupID).Error
 	assert.NoError(t, err)
 	assert.Equal(t, 3, aug.confirmingUsers())
 
 	// Bob sees three confirmations
-	awaitDeliveryTo(t, alice, typeConfirmation, ac.ID, firstAddress(bob))
+	awaitAck(t, alice, bob, typeConfirmation, ac.ID)
 	var bug updateGroup
 	err = bob.database.Preload(clause.Associations).First(&bug, "target = ?", groupID).Error
 	assert.NoError(t, err)

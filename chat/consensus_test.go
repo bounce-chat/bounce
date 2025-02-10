@@ -20,17 +20,17 @@ func TestMessagesAreValidIfCatchUpGivesPermission(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Make sure that Alice and Bob's confirmations have been handeled so that we make no further updates to the group state
-	awaitDeliveryTo(t, b, typeUpdateGroup, restriction.ID, firstAddress(alice))
+	awaitAck(t, b, alice, typeUpdateGroup, restriction.ID)
 	var aliceConfirmation confirmation
 	err = alice.database.First(&aliceConfirmation, "update_group_id = ? AND author = ?", restriction.ID, alice.currentUserID()).Error
 	assert.NoError(t, err)
-	awaitDeliveryTo(t, alice, typeConfirmation, aliceConfirmation.ID, firstAddress(bob))
+	awaitAck(t, alice, bob, typeConfirmation, aliceConfirmation.ID)
 
-	awaitDeliveryTo(t, b, typeUpdateGroup, restriction.ID, firstAddress(bob))
+	awaitAck(t, b, bob, typeUpdateGroup, restriction.ID)
 	var bobConfirmation confirmation
 	err = bob.database.First(&bobConfirmation, "update_group_id = ? AND author = ?", restriction.ID, bob.currentUserID()).Error
 	assert.NoError(t, err)
-	awaitDeliveryTo(t, bob, typeConfirmation, bobConfirmation.ID, firstAddress(alice))
+	awaitAck(t, bob, alice, typeConfirmation, bobConfirmation.ID)
 
 	// Create an update group to unrestrict posting
 	unrestriction := &updateGroup{
@@ -166,17 +166,17 @@ func TestMessagesAreValidIfUserBecomesAdminWhenRequired(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Make sure that Alice and Bob's confirmations have been handeled so that we make no further updates to the group state
-	awaitDeliveryTo(t, b, typeUpdateGroup, restriction.ID, firstAddress(alice))
+	awaitAck(t, b, alice, typeUpdateGroup, restriction.ID)
 	var aliceConfirmation confirmation
 	err = alice.database.First(&aliceConfirmation, "update_group_id = ? AND author = ?", restriction.ID, alice.currentUserID()).Error
 	assert.NoError(t, err)
-	awaitDeliveryTo(t, alice, typeConfirmation, aliceConfirmation.ID, firstAddress(bob))
+	awaitAck(t, alice, bob, typeConfirmation, aliceConfirmation.ID)
 
-	awaitDeliveryTo(t, b, typeUpdateGroup, restriction.ID, firstAddress(bob))
+	awaitAck(t, b, bob, typeUpdateGroup, restriction.ID)
 	var bobConfirmation confirmation
 	err = bob.database.First(&bobConfirmation, "update_group_id = ? AND author = ?", restriction.ID, bob.currentUserID()).Error
 	assert.NoError(t, err)
-	awaitDeliveryTo(t, bob, typeConfirmation, bobConfirmation.ID, firstAddress(alice))
+	awaitAck(t, bob, alice, typeConfirmation, bobConfirmation.ID)
 
 	// Confirm that Alice is not an admin
 	aliceID := alice.currentUserID()
@@ -255,20 +255,20 @@ func TestMessagesAreInvalidIfUserLoosesAdminWhenRequired(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Make sure restriiction is applied
-	awaitDeliveryTo(t, b, typeUpdateGroup, restriction.ID, firstAddress(alice))
+	awaitAck(t, b, alice, typeUpdateGroup, restriction.ID)
 	var aliceConfirmationRestriction confirmation
 	err = alice.database.First(&aliceConfirmationRestriction, "update_group_id = ? AND author = ?", restriction.ID, alice.currentUserID()).Error
 	assert.NoError(t, err)
-	awaitDeliveryTo(t, alice, typeConfirmation, aliceConfirmationRestriction.ID, firstAddress(bob))
+	awaitAck(t, alice, bob, typeConfirmation, aliceConfirmationRestriction.ID)
 	gs, err := alice.currentGroupState(groupID)
 	assert.NoError(t, err)
 	assert.True(t, gs.postingRestricted)
 
-	awaitDeliveryTo(t, b, typeUpdateGroup, restriction.ID, firstAddress(bob))
+	awaitAck(t, b, bob, typeUpdateGroup, restriction.ID)
 	var bobConfirmationRestriction confirmation
 	err = bob.database.First(&bobConfirmationRestriction, "update_group_id = ? AND author = ?", restriction.ID, bob.currentUserID()).Error
 	assert.NoError(t, err)
-	awaitDeliveryTo(t, bob, typeConfirmation, bobConfirmationRestriction.ID, firstAddress(alice))
+	awaitAck(t, bob, alice, typeConfirmation, bobConfirmationRestriction.ID)
 	gs, err = bob.currentGroupState(groupID)
 	assert.NoError(t, err)
 	assert.True(t, gs.postingRestricted)
@@ -286,20 +286,20 @@ func TestMessagesAreInvalidIfUserLoosesAdminWhenRequired(t *testing.T) {
 	assert.True(t, gs.postingRestricted)
 
 	// Make sure that Alice and Bob's confirmations have been handeled so that we make no further updates to the group state
-	awaitDeliveryTo(t, b, typeUpdateGroup, promotion.ID, firstAddress(alice))
+	awaitAck(t, b, alice, typeUpdateGroup, promotion.ID)
 	var aliceConfirmationPromotion confirmation
 	err = alice.database.First(&aliceConfirmationPromotion, "update_group_id = ? AND author = ?", promotion.ID, alice.currentUserID()).Error
 	assert.NoError(t, err)
-	awaitDeliveryTo(t, alice, typeConfirmation, aliceConfirmationPromotion.ID, firstAddress(bob))
+	awaitAck(t, alice, bob, typeConfirmation, aliceConfirmationPromotion.ID)
 	//gs, err = alice.currentGroupState(groupID)
 	//assert.NoError(t, err)
 	//assert.True(t, gs.isAdmin(aliceID)) // TODO: why flaky?
 
-	awaitDeliveryTo(t, b, typeUpdateGroup, promotion.ID, firstAddress(bob))
+	awaitAck(t, b, bob, typeUpdateGroup, promotion.ID)
 	var bobConfirmationPromotion confirmation
 	err = bob.database.First(&bobConfirmationPromotion, "update_group_id = ? AND author = ?", promotion.ID, bob.currentUserID()).Error
 	assert.NoError(t, err)
-	awaitDeliveryTo(t, bob, typeConfirmation, bobConfirmationPromotion.ID, firstAddress(alice))
+	awaitAck(t, bob, alice, typeConfirmation, bobConfirmationPromotion.ID)
 	//gs, err = bob.currentGroupState(groupID)
 	//assert.NoError(t, err)
 	//assert.True(t, gs.isAdmin(aliceID))
