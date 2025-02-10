@@ -197,7 +197,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 	}
 
 	// If the message is older than the group's ClearBefore, don't process it
-	if b.groupMessageWrittenBeforeHistoryCleared(gm.Destination, gm.WrittenAt) {
+	if gm.WrittenAt < gs.clearBefore {
 		log.WithFields(log.Fields{
 			"user":       gm.Author,
 			"group":      gm.Destination,

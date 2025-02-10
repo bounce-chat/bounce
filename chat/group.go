@@ -319,26 +319,6 @@ func validGroupName(name string) bool {
 	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= MaximumNameLength
 }
 
-func (b *bounce) groupMessageWrittenBeforeHistoryCleared(groupID uuid.UUID, messageWrittenAt int64) bool {
-	var g group
-	err := b.database.Select("clear_before").First(&g, "id = ?", groupID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"id":    groupID,
-				"error": err.Error(),
-			}).Error("error selecting clear before for unknown group")
-			return false
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error selecting clear before from group")
-		}
-	}
-
-	return messageWrittenAt < g.ClearBefore
-}
-
 func (b *bounce) updateLastGroupActivity(groupID uuid.UUID, timestamp int64) {
 	var g group
 	err := b.database.Where("id = ?", groupID).First(&g).Error

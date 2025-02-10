@@ -39,6 +39,18 @@ func (cs *canonicalStack) push(ug updateGroup) error {
 		return err
 	}
 
+	if !top.isBlocked(cs.myID) && updatedGroupState.isBlocked(cs.myID) {
+		updatedGroupState.blockedBy = &ug
+	}
+
+	if updatedGroupState.isMember(cs.myID) {
+		updatedGroupState.removedBy = nil
+	} else {
+		if top.isMember(cs.myID) {
+			updatedGroupState.removedBy = &ug
+		}
+	}
+
 	cs.history = append(cs.history, updatedGroupState)
 
 	return nil
@@ -122,7 +134,7 @@ func (b *bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 	}
 
 	// Stop allowing any new changes once a group has been blocked
-	if lastState.isBlocked(cs.myID) {
+	if lastState.blockedBy != nil {
 		return
 	}
 

@@ -26,7 +26,9 @@ type groupState struct {
 	readReceiptsEnabled        bool
 	typingIndicatorsOverridden bool
 	typingIndicatorsEnabled    bool
-	deletedBy                  uuid.UUID
+	deletedBy                  *updateGroup
+	removedBy                  *updateGroup
+	blockedBy                  *updateGroup
 	ug                         updateGroup
 }
 
@@ -39,7 +41,6 @@ func (b *bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 		postingRestricted:          true,
 		editingRestricted:          true,
 		userManagementRestricted:   true,
-		deletedBy:                  uuid.Nil,
 		readReceiptsOverridden:     false,
 		readReceiptsEnabled:        true,
 		typingIndicatorsOverridden: false,
@@ -282,7 +283,7 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 		if ug.Actor == userID {
 			return nil
 		}
-		if gs.deletedBy == userID {
+		if gs.deletedBy != nil && gs.deletedBy.Actor == userID {
 			return errCannotDemoteAdminWhoDeletedGroup
 		}
 		if gs.userManagementRestricted {
@@ -349,7 +350,7 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 			}).Error("update group attempted to demote admin with invalid UUID")
 			return err
 		}
-		if gs.deletedBy == userID {
+		if gs.deletedBy != nil && gs.deletedBy.Actor == userID {
 			return errCannotDemoteAdminWhoDeletedGroup
 		}
 		if gs.isAdmin(ug.Actor) {
@@ -379,7 +380,7 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 			return errAdminRequired
 		}
 	case updateGroupTypeDelete:
-		if gs.deletedBy != uuid.Nil {
+		if gs.deletedBy != nil {
 			return errAlreadyDeleted
 		}
 		if gs.isAdmin(ug.Actor) {
@@ -522,8 +523,8 @@ func applyUpdateGroupRemoveUserToState(gs groupState, ug updateGroup) (groupStat
 	gs.users = membersWithoutUser
 	gs.admins = adminsWithoutUser
 
-	if gs.deletedBy == userID {
-		gs.deletedBy = uuid.Nil
+	if gs.deletedBy != nil && gs.deletedBy.Actor == userID {
+		gs.deletedBy = nil
 	}
 
 	return gs, nil
@@ -593,8 +594,8 @@ func applyUpdateGroupDemoteAdminToState(gs groupState, ug updateGroup) (groupSta
 
 	gs.admins = adminsWithoutUser
 
-	if gs.deletedBy == userID {
-		gs.deletedBy = uuid.Nil
+	if gs.deletedBy != nil && gs.deletedBy.Actor == userID {
+		gs.deletedBy = nil
 	}
 
 	return gs, nil
@@ -634,7 +635,7 @@ func applyUpdateGroupChangePostingPermissionToState(gs groupState, ug updateGrou
 }
 
 func applyUpdateGroupDeleteToState(gs groupState, ug updateGroup) (groupState, error) {
-	gs.deletedBy = ug.Actor
+	gs.deletedBy = &ug
 
 	return gs, nil
 }
