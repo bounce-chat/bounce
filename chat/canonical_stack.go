@@ -189,13 +189,15 @@ func (b *bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 					if conflictConfirmed {
 						// If the conflict was confirmed as well, then the conflict wins because it's older, and we ignore this change
 						cs.restore()
-						break
+						return
 					} else {
 						// If the conflict is not confirmed then we exclude it, and attempt to re-add everything that happened since the conflict was removed
 						for _, rc := range recheck[1:] {
 							b.insertUpdateGroupIntoStack(cs, rc)
 						}
-						break
+						// Now that we've removed the conflict and correct the history since, we can try to add our update again
+						b.insertUpdateGroupIntoStack(cs, ug)
+						return
 					}
 				}
 			}

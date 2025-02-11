@@ -374,7 +374,7 @@ func firstAddress(b *bounce) string {
 	return u.Devices[0].Address
 }
 
-func (t *testUI) Build(configPath string, callbacks UICallbacks) {
+func (t *testUI) Build(configPath string, callbacks UICallbacks, darkMode bool) {
 	t.callbacks = callbacks
 }
 
@@ -541,6 +541,7 @@ func newBounce() *bounce {
 			MarkAllDirectMessagesAsRead:       b.markAllDirectMessagesAsRead,
 			SetDarkMode:                       b.setDarkMode,
 		},
+		true,
 	)
 
 	b.network.Load(b.configDirectory)

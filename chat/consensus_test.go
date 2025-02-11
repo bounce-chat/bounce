@@ -362,3 +362,264 @@ func TestMessagesAreInvalidIfUserLoosesAdminWhenRequired(t *testing.T) {
 	err = b.database.First(&delivered, "id = ?", alicePost.ID).Error
 	assert.Error(t, err)
 }
+
+func TestAddingConflictToHistoryStackIsIgnored(t *testing.T) {
+	b, alice, bob, groupID := createUsersAndGroups(t)
+
+	// Restrict edits to admins only
+	err := b.restrictGroupEdits(groupID)
+	assert.NoError(t, err)
+	var restriction updateGroup
+	err = b.database.Select("id").First(&restriction, "target = ?", groupID).Error
+	assert.NoError(t, err)
+
+	// Make sure that Alice and Bob's confirmations have been handeled so that we make no further updates to the group state
+	awaitAck(t, b, alice, typeUpdateGroup, restriction.ID)
+	var aliceConfirmation confirmation
+	err = alice.database.First(&aliceConfirmation, "update_group_id = ? AND author = ?", restriction.ID, alice.currentUserID()).Error
+	assert.NoError(t, err)
+	awaitAck(t, alice, bob, typeConfirmation, aliceConfirmation.ID)
+
+	awaitAck(t, b, bob, typeUpdateGroup, restriction.ID)
+	var bobConfirmation confirmation
+	err = bob.database.First(&bobConfirmation, "update_group_id = ? AND author = ?", restriction.ID, bob.currentUserID()).Error
+	assert.NoError(t, err)
+	awaitAck(t, bob, alice, typeConfirmation, bobConfirmation.ID)
+
+	// Make sure history only has the group creation at the beginning and the restriction on edits
+	stack, err := b.currentGroupStack(groupID)
+	assert.NoError(t, err)
+	b.consensusStore.Lock()
+	stackLen := len(stack.history)
+	b.consensusStore.Unlock()
+	assert.Equal(t, 2, stackLen)
+
+	// Try to insert an update group that isn't allowed
+	unauthorizedEdit := updateGroup{
+		ID:        uuid.New(),
+		Actor:     alice.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeChangeName,
+		Data:      []byte("New Name"),
+	}
+	unauthorizedEdit.OriginalPayload, err = msgpack.Marshal(unauthorizedEdit)
+	assert.NoError(t, err)
+	sc := b.createSignedContainer(unauthorizedEdit.OriginalPayload)
+	unauthorizedEdit.Signature = sc.Signature
+	unauthorizedEdit.Signer = sc.Signer
+	b.insertUpdateGroupIntoStack(stack, unauthorizedEdit)
+
+	// Ensure the size of the history stack didn't change
+	stack, err = b.currentGroupStack(groupID)
+	assert.NoError(t, err)
+	b.consensusStore.Lock()
+	stackLen = len(stack.history)
+	b.consensusStore.Unlock()
+	assert.Equal(t, 2, stackLen)
+}
+
+func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
+	b, alice, bob, groupID := createUsersAndGroups(t)
+
+	// Make sure history only has the group creation at the beginning and the restriction on edits
+	stack, err := b.currentGroupStack(groupID)
+	assert.NoError(t, err)
+	b.consensusStore.Lock()
+	stackLen := len(stack.history)
+	b.consensusStore.Unlock()
+	assert.Equal(t, 1, stackLen)
+
+	// Create an update group that restricts edits and insert
+	restrictEdits := updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeChangeGroupEditsPermission,
+		Data:      []byte{permissionRestricted},
+	}
+	restrictEdits.OriginalPayload, err = msgpack.Marshal(restrictEdits)
+	assert.NoError(t, err)
+	sc := b.createSignedContainer(restrictEdits.OriginalPayload)
+	restrictEdits.Signature = sc.Signature
+	restrictEdits.Signer = sc.Signer
+	assert.NoError(t, b.database.Create(&restrictEdits).Error)
+
+	// Create the update in the database and reload the stack, see that it was added to history
+	b.reloadGroupConsensus(groupID)
+	stack, err = b.currentGroupStack(groupID)
+	assert.NoError(t, err)
+	b.consensusStore.Lock()
+	stackLen = len(stack.history)
+	b.consensusStore.Unlock()
+	assert.Equal(t, 2, stackLen)
+
+	// Create an edit from Alice that happens later
+	unauthorizedEdit := updateGroup{
+		ID:        uuid.New(),
+		Actor:     alice.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix() + 2,
+		Type:      updateGroupTypeChangeName,
+		Data:      []byte("New Name"),
+	}
+	unauthorizedEdit.OriginalPayload, err = msgpack.Marshal(unauthorizedEdit)
+	assert.NoError(t, err)
+	sc = b.createSignedContainer(unauthorizedEdit.OriginalPayload)
+	unauthorizedEdit.Signature = sc.Signature
+	unauthorizedEdit.Signer = sc.Signer
+	assert.NoError(t, b.database.Create(&unauthorizedEdit).Error)
+
+	// Add confirmations to this later update
+	myConfirmation := confirmation{
+		ID:            uuid.New(),
+		UpdateGroupID: unauthorizedEdit.ID,
+		Destination:   groupID,
+		Author:        b.currentUserID(),
+		SigningDevice: b.network.Address(),
+		Signature:     b.network.Sign(unauthorizedEdit.ID[:]),
+		Timestamp:     time.Now().Unix() + 2,
+	}
+	assert.NoError(t, b.database.Create(&myConfirmation).Error)
+
+	bobConfirmation := confirmation{
+		ID:            uuid.New(),
+		UpdateGroupID: unauthorizedEdit.ID,
+		Destination:   groupID,
+		Author:        bob.currentUserID(),
+		SigningDevice: bob.network.Address(),
+		Signature:     bob.network.Sign(unauthorizedEdit.ID[:]),
+		Timestamp:     time.Now().Unix() + 2,
+	}
+	assert.NoError(t, b.database.Create(&bobConfirmation).Error)
+
+	// Reload the stack, ensure there are the same number of changes
+	b.reloadGroupConsensus(groupID)
+	stack, err = b.currentGroupStack(groupID)
+	assert.NoError(t, err)
+	b.consensusStore.Lock()
+	stackLen = len(stack.history)
+	b.consensusStore.Unlock()
+	assert.Equal(t, 2, stackLen)
+
+	// Get the final state and check that the name edit applied and the restriction did not
+	gs, err := stack.top()
+	assert.NoError(t, err)
+	assert.Equal(t, "New Name", gs.name)
+	assert.Equal(t, false, gs.editingRestricted)
+}
+
+func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
+	b, alice, bob, groupID := createUsersAndGroups(t)
+
+	// Make sure history only has the group creation at the beginning and the restriction on edits
+	stack, err := b.currentGroupStack(groupID)
+	assert.NoError(t, err)
+	b.consensusStore.Lock()
+	stackLen := len(stack.history)
+	b.consensusStore.Unlock()
+	assert.Equal(t, 1, stackLen)
+
+	// Create an update group that restricts edits and insert
+	restrictEdits := updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeChangeGroupEditsPermission,
+		Data:      []byte{permissionRestricted},
+	}
+	restrictEdits.OriginalPayload, err = msgpack.Marshal(restrictEdits)
+	assert.NoError(t, err)
+	sc := b.createSignedContainer(restrictEdits.OriginalPayload)
+	restrictEdits.Signature = sc.Signature
+	restrictEdits.Signer = sc.Signer
+	assert.NoError(t, b.database.Create(&restrictEdits).Error)
+
+	// Create the update in the database and reload the stack, see that it was added to history
+	b.reloadGroupConsensus(groupID)
+	stack, err = b.currentGroupStack(groupID)
+	assert.NoError(t, err)
+	b.consensusStore.Lock()
+	stackLen = len(stack.history)
+	b.consensusStore.Unlock()
+	assert.Equal(t, 2, stackLen)
+
+	// Add confirmations for it
+	aliceConfirmation := confirmation{
+		ID:            uuid.New(),
+		UpdateGroupID: restrictEdits.ID,
+		Destination:   groupID,
+		Author:        alice.currentUserID(),
+		SigningDevice: alice.network.Address(),
+		Signature:     alice.network.Sign(restrictEdits.ID[:]),
+		Timestamp:     time.Now().Unix(),
+	}
+	assert.NoError(t, b.database.Create(&aliceConfirmation).Error)
+
+	bobConfirmation := confirmation{
+		ID:            uuid.New(),
+		UpdateGroupID: restrictEdits.ID,
+		Destination:   groupID,
+		Author:        bob.currentUserID(),
+		SigningDevice: bob.network.Address(),
+		Signature:     bob.network.Sign(restrictEdits.ID[:]),
+		Timestamp:     time.Now().Unix(),
+	}
+	assert.NoError(t, b.database.Create(&bobConfirmation).Error)
+
+	// Create an edit from Alice that happens later
+	unauthorizedEdit := updateGroup{
+		ID:        uuid.New(),
+		Actor:     alice.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix() + 2,
+		Type:      updateGroupTypeChangeName,
+		Data:      []byte("New Name"),
+	}
+	unauthorizedEdit.OriginalPayload, err = msgpack.Marshal(unauthorizedEdit)
+	assert.NoError(t, err)
+	sc = b.createSignedContainer(unauthorizedEdit.OriginalPayload)
+	unauthorizedEdit.Signature = sc.Signature
+	unauthorizedEdit.Signer = sc.Signer
+	assert.NoError(t, b.database.Create(&unauthorizedEdit).Error)
+
+	// Add confirmations to this later update
+	myConfirmation := confirmation{
+		ID:            uuid.New(),
+		UpdateGroupID: unauthorizedEdit.ID,
+		Destination:   groupID,
+		Author:        b.currentUserID(),
+		SigningDevice: b.network.Address(),
+		Signature:     b.network.Sign(unauthorizedEdit.ID[:]),
+		Timestamp:     time.Now().Unix() + 2,
+	}
+	assert.NoError(t, b.database.Create(&myConfirmation).Error)
+
+	bobConfirmation = confirmation{
+		ID:            uuid.New(),
+		UpdateGroupID: unauthorizedEdit.ID,
+		Destination:   groupID,
+		Author:        bob.currentUserID(),
+		SigningDevice: bob.network.Address(),
+		Signature:     bob.network.Sign(unauthorizedEdit.ID[:]),
+		Timestamp:     time.Now().Unix() + 2,
+	}
+	assert.NoError(t, b.database.Create(&bobConfirmation).Error)
+
+	// Reload the stack, ensure there are the same number of changes
+	b.reloadGroupConsensus(groupID)
+	stack, err = b.currentGroupStack(groupID)
+	assert.NoError(t, err)
+	b.consensusStore.Lock()
+	stackLen = len(stack.history)
+	b.consensusStore.Unlock()
+	assert.Equal(t, 2, stackLen)
+
+	// Get the final state and check that the name edit applied and the restriction did not
+	gs, err := stack.top()
+	assert.NoError(t, err)
+	assert.Equal(t, "Test Group", gs.name)
+	assert.Equal(t, true, gs.editingRestricted)
+}
