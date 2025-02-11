@@ -286,7 +286,7 @@ type InitialState struct {
 //
 type UI interface {
 	// Create user interface objects
-	Build(configPath string, callbacks UICallbacks)
+	Build(configPath string, callbacks UICallbacks, darkMode bool)
 
 	// Load the initial state
 	LoadInitialState(InitialState)

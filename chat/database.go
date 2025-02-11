@@ -106,10 +106,7 @@ func (b *bounce) openDatabase() {
 		log.WithFields(log.Fields{"error": err.Error()}).Fatal("error migrating profile settings")
 	}
 
-	// Prune the database
-	b.pruneDirectMessages()
-	b.pruneGroupMessages()
-	b.pruneUndeliverableCustomScopes()
+	// Load revoked devices into the in-memory map
 	b.populateRevokedDevices()
 }
 
@@ -222,6 +219,11 @@ func (b *bounce) pruneUndeliverableCustomScopes() {
 }
 
 func (b *bounce) buildInitialState() InitialState {
+	// Prune the database
+	b.pruneDirectMessages()
+	b.pruneGroupMessages()
+	b.pruneUndeliverableCustomScopes()
+
 	// Load the profile and sync devices
 	var profile *User
 	var settings Settings

@@ -76,6 +76,7 @@ func Start(network Network, ui UI) {
 	log.RegisterExitHandler(b.fatalShutdown)
 	go b.handleInterrupts()
 
+	b.openDatabase()
 	b.userInterface.Build(
 		b.configDirectory,
 		UICallbacks{
@@ -131,11 +132,11 @@ func Start(network Network, ui UI) {
 			MarkAllDirectMessagesAsRead:       b.markAllDirectMessagesAsRead,
 			SetDarkMode:                       b.setDarkMode,
 		},
+		b.darkMode(),
 	)
 
 	go func() {
 		b.network.Load(b.configDirectory)
-		b.openDatabase()
 		b.openReferenceDatabase()
 		go b.network.Start(
 			NetworkCallbacks{

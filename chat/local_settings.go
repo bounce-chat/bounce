@@ -34,3 +34,16 @@ func (b *bounce) setDarkMode(value bool) {
 
 	b.userInterface.SetDarkMode(value)
 }
+
+func (b *bounce) darkMode() bool {
+	currentUser, ok := b.currentUser()
+	if !ok {
+		return true
+	}
+	var ls localSettings
+	err := b.database.First(&ls, "user_id = ?", currentUser.ID).Error
+	if err != nil {
+		return true
+	}
+	return ls.DarkMode
+}

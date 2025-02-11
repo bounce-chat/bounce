@@ -107,7 +107,7 @@ type Fyne struct {
 	callbacks                             chat.UICallbacks
 }
 
-func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
+func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks, darkMode bool) {
 	//
 	// Define the app
 	//
@@ -115,7 +115,11 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks) {
 	fyneUI.app.SetIcon(newEmbeddedResource("assets/icon.png"))
 	fyneUI.app.Lifecycle().SetOnEnteredForeground(func() { fyneUI.focused = true })
 	fyneUI.app.Lifecycle().SetOnExitedForeground(func() { fyneUI.focused = false })
-	fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
+	if darkMode {
+		fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
+	} else {
+		fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
+	}
 
 	//
 	// Hookup callbacks
@@ -268,12 +272,6 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	fyneUI.settings = state.Settings
 	fyneUI.localSettings = state.LocalSettings
 	fyneUI.askToIgnoreBatteryOptimizations()
-
-	if fyneUI.localSettings.DarkMode {
-		fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
-	} else {
-		fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
-	}
 
 	for _, dev := range state.SyncDevices {
 		fyneUI.devices.add(&chat.Device{
