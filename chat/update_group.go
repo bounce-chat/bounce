@@ -341,6 +341,10 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 		}).Fatal("database error saving update group")
 	}
 
+	// If there are confirmations for this update group already in the database, make sure their author
+	// was allowed to confirm the update and set the broadcast info for the confirmation
+	b.processEarlyConfirmations(ug)
+
 	// Update the group state without commiting to the database or sending to the UI
 	b.reloadGroupConsensusSince(ug.Target, ug.Timestamp)
 
@@ -413,6 +417,57 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 	}
 
 	return &ug
+}
+
+func (b *bounce) processEarlyConfirmations(ug updateGroup) {
+	var confirmations []confirmation
+	err := b.database.Find(&confirmations, "update_group_id = ?", ug.ID).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error finding all confirmations")
+	}
+	for _, c := range confirmations {
+		isMemberOfGroupForUpdate := false
+		cs, err := b.currentGroupStack(ug.Target)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"group_id": ug.Target,
+				"error":    err.Error(),
+			}).Error("error getting canonical group history while processing early confirmations")
+			continue
+		}
+		for _, gs := range cs.history {
+			if gs.ug.ID == ug.ID {
+				isMemberOfGroupForUpdate = gs.isMember(c.Author)
+				break
+			}
+		}
+		if !isMemberOfGroupForUpdate {
+			log.WithFields(log.Fields{
+				"update_group_id": c.UpdateGroupID,
+				"confirmation_id": c.ID,
+				"author":          c.Author,
+			}).Warn("ignoring confirmation signed by user who was not a member of the group during the update")
+			continue
+		}
+
+		err = b.database.Model(&confirmation{}).
+			Where("id = ?", c.ID).
+			Select("destination", "custom_scope").
+			Updates(map[string]interface{}{
+				"destination":  ug.Target,
+				"custom_scope": ug.CustomScope,
+			}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"confirmation_id": c.ID,
+				"error":           err.Error(),
+			}).Fatal("error updating confirmation destination and custom scope")
+		}
+
+		go b.broadcast(&c)
+	}
 }
 
 func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {

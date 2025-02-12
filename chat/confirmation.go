@@ -120,25 +120,6 @@ func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 		return nil
 	}
 
-	// Look up the update group that is being signed
-	var ug updateGroup
-	err = b.database.Where("id = ?", c.UpdateGroupID).First(&ug).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"update_group_id": c.UpdateGroupID,
-				"confirmation_id": c.ID,
-			}).Warn("ignoring confirmation for unknown update group")
-			return nil
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up update group")
-		}
-	}
-	c.Destination = ug.Target
-	c.CustomScope = ug.CustomScope
-
 	// Look up and assign the user who signed this confirmation
 	dev, ok := b.getDeviceFromAddress(c.SigningDevice)
 	if !ok {
@@ -150,6 +131,29 @@ func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 		return nil
 	}
 	c.Author = dev.UserID
+
+	// Look up the update group that is being signed
+	var ug updateGroup
+	err = b.database.Where("id = ?", c.UpdateGroupID).First(&ug).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// We have a confirmation for an update group that we don't have yet, save the confirmation
+			// so that it can be taken into account whenever the update group shows up
+			err = b.database.Create(&c).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error saving confirmation")
+			}
+			return nil
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up update group")
+		}
+	}
+	c.Destination = ug.Target
+	c.CustomScope = ug.CustomScope
 
 	// Make sure the user signing this confirmation was a member of the group for this update, unless the update group in question
 	// has a custom scope, in which case this update removed us from the group
