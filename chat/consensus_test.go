@@ -647,20 +647,24 @@ func TestUpdatesWithCustomScopesGetDeletedWhenAllDelivered(t *testing.T) {
 	assert.NoError(t, alice.database.First(&removal, "id = ?", removal.ID).Error)
 	assert.False(t, removal.CustomScope == uuid.Nil)
 
-	// Broadcast, await the ack from both other members
-	alice.broadcast(removal)
-	awaitAck(t, alice, b, typeUpdateGroup, removal.ID)
-	awaitAck(t, alice, bob, typeUpdateGroup, removal.ID)
+	// Create an ack for this update
+	a := &ack{
+		References: []frameReference{
+			frameReference{
+				FrameID: removal.ID,
+				Type:    typeUpdateGroup,
+			},
+		},
+	}
 
-	// TODO: this test depends on waiting for the ack handlers to finish.  About
-	// 1/50th of the time, the handlers haven't started by the time the wait group
-	// is waited on, and the test fails.  Sleeping makes this test not flaky, however
-	// ideally there would be a way to hook into those handlers completing
-	time.Sleep(10 * time.Millisecond)
-	alice.runningHandlers.Wait()
-
-	// Ensure that my update and the custom scope were deleted from the database
-	assert.Error(t, alice.database.First(&removal, "id = ?", removal.ID).Error)
+	// With one user acking, the update and custom scope should still exist
+	alice.handleAck(b.network.Address(), a.getPayload(), false)
+	assert.NoError(t, alice.database.First(&removal, "id = ?", removal.ID).Error)
 	var cs customScope
+	assert.NoError(t, alice.database.First(&cs, "id = ?", groupID).Error)
+
+	// After both users ack, the update and custom scope should be deleted
+	alice.handleAck(bob.network.Address(), a.getPayload(), false)
+	assert.Error(t, alice.database.First(&removal, "id = ?", removal.ID).Error)
 	assert.Error(t, alice.database.First(&cs, "id = ?", groupID).Error)
 }
