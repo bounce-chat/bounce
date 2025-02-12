@@ -364,7 +364,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 	// If the final state involves us being removed from the group, delete the group
 	if finalState.removedBy != nil {
 		// Attach a custom scope to this update group
-		err = b.createCustomScopeFromGroup(g.ID) //ug.Target)
+		err = b.createCustomScopeFromGroup(g.ID)
 		if err == nil {
 			err = b.database.Model(&updateGroup{}).Where("id = ?", finalState.removedBy.ID).Select("custom_scope").Update("custom_scope", g.ID).Error
 			if err != nil {

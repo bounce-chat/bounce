@@ -2,8 +2,11 @@ package chat
 
 import (
 	"testing"
+	"time"
 
 	"github.com/alecthomas/assert/v2"
+	"github.com/google/uuid"
+	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm/clause"
 )
 
@@ -66,4 +69,50 @@ func TestCanRenameGroupAndConfirm(t *testing.T) {
 	err = bob.database.Preload(clause.Associations).First(&bug, "target = ?", groupID).Error
 	assert.NoError(t, err)
 	assert.Equal(t, 3, bug.confirmingUsers())
+}
+
+func TestEarlyConfirmationWorks(t *testing.T) {
+	b, alice, _, groupID := createUsersAndGroups(t)
+
+	// Make an arbitrary update group
+	restrictEdits := updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeChangeGroupEditsPermission,
+		Data:      []byte{permissionRestricted},
+	}
+	var err error
+	restrictEdits.OriginalPayload, err = msgpack.Marshal(restrictEdits)
+	assert.NoError(t, err)
+	sc := b.createSignedContainer(restrictEdits.OriginalPayload)
+	restrictEdits.Signature = sc.Signature
+	restrictEdits.Signer = sc.Signer
+
+	// Create a confirmation from Alice
+	aliceConfirmation := confirmation{
+		ID:            uuid.New(),
+		UpdateGroupID: restrictEdits.ID,
+		Destination:   groupID,
+		Author:        alice.currentUserID(),
+		SigningDevice: alice.network.Address(),
+		Signature:     alice.network.Sign(restrictEdits.ID[:]),
+		Timestamp:     time.Now().Unix(),
+	}
+
+	// Handle the confirmation, ensure it gets saved
+	fr := b.handleConfirmation(alice.network.Address(), aliceConfirmation.getPayload(), false)
+	assert.True(t, fr == nil)
+	var c confirmation
+	assert.NoError(t, b.database.First(&c, "id = ?", aliceConfirmation.ID).Error)
+
+	// Handle the update group and ensure that it gets saved
+	fr = b.handleUpdateGroup(alice.network.Address(), restrictEdits.getPayload(), false)
+	assert.False(t, fr == nil)
+
+	// Load the update from the database and see that it already has a confirmation
+	var ug updateGroup
+	assert.NoError(t, b.database.Preload(clause.Associations).First(&ug, "id = ?", restrictEdits.ID).Error)
+	assert.Equal(t, 2, ug.confirmingUsers())
 }

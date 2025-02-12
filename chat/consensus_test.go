@@ -7,7 +7,6 @@ import (
 	"github.com/alecthomas/assert/v2"
 	"github.com/google/uuid"
 	"github.com/vmihailenco/msgpack/v5"
-	"gorm.io/gorm/clause"
 )
 
 func TestMessagesAreValidIfCatchUpGivesPermission(t *testing.T) {
@@ -622,48 +621,46 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 	assert.Equal(t, true, gs.editingRestricted)
 }
 
-func TestEarlyConfirmationWorks(t *testing.T) {
-	b, alice, _, groupID := createUsersAndGroups(t)
+func TestUpdatesWithCustomScopesGetDeletedWhenAllDelivered(t *testing.T) {
+	b, alice, bob, groupID := createUsersAndGroups(t)
 
-	// Make an arbitrary update group
-	restrictEdits := updateGroup{
+	// Create an update to remove myself from the group, ensure that is gets custom scoped
+	myID := alice.currentUserID()
+	removal := &updateGroup{
 		ID:        uuid.New(),
-		Actor:     b.currentUserID(),
+		Actor:     alice.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
-		Type:      updateGroupTypeChangeGroupEditsPermission,
-		Data:      []byte{permissionRestricted},
+		Type:      updateGroupTypeRemoveUser,
+		Data:      myID[:],
 	}
 	var err error
-	restrictEdits.OriginalPayload, err = msgpack.Marshal(restrictEdits)
+	removal.OriginalPayload, err = msgpack.Marshal(removal)
 	assert.NoError(t, err)
-	sc := b.createSignedContainer(restrictEdits.OriginalPayload)
-	restrictEdits.Signature = sc.Signature
-	restrictEdits.Signer = sc.Signer
+	sc := alice.createSignedContainer(removal.OriginalPayload)
+	removal.Signature = sc.Signature
+	removal.Signer = sc.Signer
 
-	// Create a confirmation from Alice
-	aliceConfirmation := confirmation{
-		ID:            uuid.New(),
-		UpdateGroupID: restrictEdits.ID,
-		Destination:   groupID,
-		Author:        alice.currentUserID(),
-		SigningDevice: alice.network.Address(),
-		Signature:     alice.network.Sign(restrictEdits.ID[:]),
-		Timestamp:     time.Now().Unix(),
-	}
+	assert.NoError(t, alice.database.Create(&removal).Error)
+	alice.reloadGroupConsensus(groupID)
+	alice.writeGroupConsensus(groupID)
+	assert.NoError(t, alice.database.First(&removal, "id = ?", removal.ID).Error)
+	assert.False(t, removal.CustomScope == uuid.Nil)
 
-	// Handle the confirmation, ensure it gets saved
-	fr := b.handleConfirmation(alice.network.Address(), aliceConfirmation.getPayload(), false)
-	assert.True(t, fr == nil)
-	var c confirmation
-	assert.NoError(t, b.database.First(&c, "id = ?", aliceConfirmation.ID).Error)
+	// Broadcast, await the ack from both other members
+	alice.broadcast(removal)
+	awaitAck(t, alice, b, typeUpdateGroup, removal.ID)
+	awaitAck(t, alice, bob, typeUpdateGroup, removal.ID)
 
-	// Handle the update group and ensure that it gets saved
-	fr = b.handleUpdateGroup(alice.network.Address(), restrictEdits.getPayload(), false)
-	assert.False(t, fr == nil)
+	// TODO: this test depends on waiting for the ack handlers to finish.  About
+	// 1/50th of the time, the handlers haven't started by the time the wait group
+	// is waited on, and the test fails.  Sleeping makes this test not flaky, however
+	// ideally there would be a way to hook into those handlers completing
+	time.Sleep(10 * time.Millisecond)
+	alice.runningHandlers.Wait()
 
-	// Load the update from the database and see that it already has a confirmation
-	var ug updateGroup
-	assert.NoError(t, b.database.Preload(clause.Associations).First(&ug, "id = ?", restrictEdits.ID).Error)
-	assert.Equal(t, 2, ug.confirmingUsers())
+	// Ensure that my update and the custom scope were deleted from the database
+	assert.Error(t, alice.database.First(&removal, "id = ?", removal.ID).Error)
+	var cs customScope
+	assert.Error(t, alice.database.First(&cs, "id = ?", groupID).Error)
 }
