@@ -753,4 +753,9 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 	assert.True(t, removal.CustomScope == uuid.Nil)
 	var cs customScope
 	assert.Error(t, alice.database.First(&cs, "id = ?", groupID).Error)
+
+	// Make sure all of the group history is re-shown to the UI
+	await(t, alice, "NewGroupChat")
+	await(t, alice, "RemoveUser")
+	await(t, alice, "AddUser")
 }

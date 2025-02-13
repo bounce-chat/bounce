@@ -414,9 +414,13 @@ func (t *testUI) NewGroupChat(g Group) {
 func (t *testUI) SetGroupState(g Group) {
 	t.called <- call{function: "SetGroupState", args: []interface{}{g}}
 }
-func (t *testUI) DisplayGroupMessage(GroupMessage)  {}
-func (t *testUI) AddUser(UpdateGroupAddUser)        {}
-func (t *testUI) RemoveUser(UpdateGroupRemoveUser)  {}
+func (t *testUI) DisplayGroupMessage(GroupMessage) {}
+func (t *testUI) AddUser(ugau UpdateGroupAddUser) {
+	t.called <- call{function: "AddUser", args: []interface{}{ugau}}
+}
+func (t *testUI) RemoveUser(ugru UpdateGroupRemoveUser) {
+	t.called <- call{function: "RemoveUser", args: []interface{}{ugru}}
+}
 func (t *testUI) RemovedFromGroup(RemovedFromGroup) {}
 func (t *testUI) GroupDeleted(GroupDeleted)         {}
 func (t *testUI) UserBlockedGroup(UserBlockedGroup) {}
@@ -618,6 +622,10 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *bounce, groupID uuid.UU
 		os.RemoveAll(alice.configDirectory)
 		os.RemoveAll(bob.configDirectory)
 	})
+
+	me.userInterface.(*testUI).calls = []call{}
+	alice.userInterface.(*testUI).calls = []call{}
+	bob.userInterface.(*testUI).calls = []call{}
 
 	return
 }
