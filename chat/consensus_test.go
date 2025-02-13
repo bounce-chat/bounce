@@ -7,6 +7,7 @@ import (
 	"github.com/alecthomas/assert/v2"
 	"github.com/google/uuid"
 	"github.com/vmihailenco/msgpack/v5"
+	"gorm.io/gorm/clause"
 )
 
 func TestMessagesAreValidIfCatchUpGivesPermission(t *testing.T) {
@@ -624,7 +625,7 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 func TestUpdatesWithCustomScopesGetDeletedWhenAllDelivered(t *testing.T) {
 	b, alice, bob, groupID := createUsersAndGroups(t)
 
-	// Create an update to remove myself from the group, ensure that is gets custom scoped
+	// Create an update for Alice to remove herself from the group, ensure that is gets custom scoped
 	myID := alice.currentUserID()
 	removal := &updateGroup{
 		ID:        uuid.New(),
@@ -666,5 +667,90 @@ func TestUpdatesWithCustomScopesGetDeletedWhenAllDelivered(t *testing.T) {
 	// After both users ack, the update and custom scope should be deleted
 	alice.handleAck(bob.network.Address(), a.getPayload(), false)
 	assert.Error(t, alice.database.First(&removal, "id = ?", removal.ID).Error)
+	assert.Error(t, alice.database.First(&cs, "id = ?", groupID).Error)
+}
+
+func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
+	b, alice, _, groupID := createUsersAndGroups(t)
+
+	// Create an update to remove myself from the group, ensure that is gets custom scoped
+	myID := alice.currentUserID()
+	removal := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     alice.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeRemoveUser,
+		Data:      myID[:],
+	}
+	var err error
+	removal.OriginalPayload, err = msgpack.Marshal(removal)
+	assert.NoError(t, err)
+	sc := alice.createSignedContainer(removal.OriginalPayload)
+	removal.Signature = sc.Signature
+	removal.Signer = sc.Signer
+
+	assert.NoError(t, alice.database.Create(&removal).Error)
+	alice.reloadGroupConsensus(groupID)
+	alice.writeGroupConsensus(groupID)
+	assert.NoError(t, alice.database.First(&removal, "id = ?", removal.ID).Error)
+	assert.False(t, removal.CustomScope == uuid.Nil)
+
+	// Create an update adding alice back to the group
+	var newUser user
+	err = alice.database.
+		Preload("Devices.Signature").
+		Preload(clause.Associations).
+		Where("profile = ?", true).First(&newUser).Error
+	assert.NoError(t, err)
+	newUserBytes, err := msgpack.Marshal(newUser)
+	assert.NoError(t, err)
+	add := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeAddUser,
+		Data:      newUserBytes,
+	}
+	add.OriginalPayload, err = msgpack.Marshal(add)
+	assert.NoError(t, err)
+	sc = b.createSignedContainer(add.OriginalPayload)
+	add.Signature = sc.Signature
+	add.Signer = sc.Signer
+
+	// Re-add Alice to the group via a catch up that contains all of the group history and an add frame
+	var gc groupCreation
+	assert.NoError(t, b.database.First(&gc, "id = ?", groupID).Error)
+	cu := &catchUp{
+		Frames: []frame{
+			frame{
+				ID:      gc.ID,
+				Type:    typeGroupCreation,
+				Payload: gc.getPayload(),
+			},
+			frame{
+				ID:      removal.ID,
+				Type:    typeUpdateGroup,
+				Payload: removal.getPayload(),
+			},
+			frame{
+				ID:      add.ID,
+				Type:    typeUpdateGroup,
+				Payload: add.getPayload(),
+			},
+		},
+	}
+	alice.handleCatchUp(b.network.Address(), cu.getPayload(), false)
+
+	// Make sure Alice is now a member of the group again
+	state, err := alice.currentGroupState(groupID)
+	assert.NoError(t, err)
+	assert.True(t, state.isMember(alice.currentUserID()))
+
+	// Ensure the custom scope has been removed from Alice's removal frame
+	assert.NoError(t, alice.database.First(&removal, "id = ?", removal.ID).Error)
+	assert.True(t, removal.CustomScope == uuid.Nil)
+	var cs customScope
 	assert.Error(t, alice.database.First(&cs, "id = ?", groupID).Error)
 }
