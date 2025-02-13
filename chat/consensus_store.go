@@ -50,6 +50,41 @@ func (b *bounce) currentGroupState(groupID uuid.UUID) (groupState, error) {
 	return top, nil
 }
 
+func (b *bounce) userInGroupForUpdate(userID uuid.UUID, ug updateGroup) bool {
+	b.consensusStore.Lock()
+	defer b.consensusStore.Unlock()
+
+	stack, ok := b.consensusStore.groups[ug.Target]
+	if !ok {
+		log.WithFields(log.Fields{
+			"user_id":         userID,
+			"group_id":        ug.Target,
+			"update_group_id": ug.ID,
+		}).Error("consensus history not found for group when checking if user was present during update")
+		return false
+	}
+
+	found := false
+	isMemberOfGroupForUpdate := false
+	for _, gs := range stack.history {
+		if gs.ug.ID == ug.ID {
+			found = true
+			isMemberOfGroupForUpdate = gs.isMember(userID)
+			break
+		}
+	}
+
+	if !found {
+		log.WithFields(log.Fields{
+			"user_id":         userID,
+			"group_id":        ug.Target,
+			"update_group_id": ug.ID,
+		}).Error("update group not found in history when checking if user was present for update")
+		return false
+	}
+	return isMemberOfGroupForUpdate
+}
+
 func (b *bounce) reloadGroupConsensus(groupID uuid.UUID) {
 	b.consensusStore.Lock()
 	defer b.consensusStore.Unlock()
@@ -233,10 +268,10 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 			// If we were a member of the group for this update, and we are still in the group and it is not deleted, broadcast a confirmation
 			if gs.isMember(b.currentUserID()) {
 				b.updateLastGroupActivity(gs.ug.Target, gs.ug.Timestamp)
-				if gs.ug.Actor != b.currentUserID() {
-					if !(gs.ug.Type == updateGroupTypeBlock) {
-						b.sendConfirmation(gs.ug)
-					}
+				if gs.ug.Actor != b.currentUserID() && gs.ug.Type != updateGroupTypeBlock {
+					// We only want confirmations to be send to devices that are in the group in the final group state, so we
+					// defer the call to sending confirmations so that it happens after the database has been updated
+					defer b.sendConfirmation(gs.ug)
 				}
 			}
 		}

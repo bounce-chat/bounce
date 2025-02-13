@@ -341,12 +341,12 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 		}).Fatal("database error saving update group")
 	}
 
+	// Update the group state without commiting to the database or sending to the UI
+	b.reloadGroupConsensusSince(ug.Target, ug.Timestamp)
+
 	// If there are confirmations for this update group already in the database, make sure their author
 	// was allowed to confirm the update and set the broadcast info for the confirmation
 	b.processEarlyConfirmations(ug)
-
-	// Update the group state without commiting to the database or sending to the UI
-	b.reloadGroupConsensusSince(ug.Target, ug.Timestamp)
 
 	if !catchUp {
 		// Update the group state in the database and UI
@@ -428,22 +428,7 @@ func (b *bounce) processEarlyConfirmations(ug updateGroup) {
 		}).Fatal("error finding all confirmations")
 	}
 	for _, c := range confirmations {
-		isMemberOfGroupForUpdate := false
-		cs, err := b.currentGroupStack(ug.Target)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"group_id": ug.Target,
-				"error":    err.Error(),
-			}).Error("error getting canonical group history while processing early confirmations")
-			continue
-		}
-		for _, gs := range cs.history {
-			if gs.ug.ID == ug.ID {
-				isMemberOfGroupForUpdate = gs.isMember(c.Author)
-				break
-			}
-		}
-		if !isMemberOfGroupForUpdate {
+		if !b.userInGroupForUpdate(c.Author, ug) {
 			log.WithFields(log.Fields{
 				"update_group_id": c.UpdateGroupID,
 				"confirmation_id": c.ID,

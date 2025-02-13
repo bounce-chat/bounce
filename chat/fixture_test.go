@@ -3,8 +3,10 @@ package chat
 import (
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
 	"sync"
 	"testing"
@@ -249,7 +251,12 @@ func awaitAck(t *testing.T, to, from *bounce, frameType uint16, frameID uuid.UUI
 	select {
 	case <-waiter:
 	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for network")
+		details := ""
+		_, file, no, ok := runtime.Caller(1)
+		if ok {
+			details = fmt.Sprintf(", from %s:%d", file, no)
+		}
+		t.Fatal("timeout waiting for network" + details)
 	}
 }
 
@@ -623,9 +630,15 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *bounce, groupID uuid.UU
 		os.RemoveAll(bob.configDirectory)
 	})
 
+	me.userInterface.(*testUI).Lock()
 	me.userInterface.(*testUI).calls = []call{}
+	me.userInterface.(*testUI).Unlock()
+	alice.userInterface.(*testUI).Lock()
 	alice.userInterface.(*testUI).calls = []call{}
+	alice.userInterface.(*testUI).Unlock()
+	bob.userInterface.(*testUI).Lock()
 	bob.userInterface.(*testUI).calls = []call{}
+	bob.userInterface.(*testUI).Unlock()
 
 	return
 }

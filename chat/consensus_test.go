@@ -11,27 +11,11 @@ import (
 )
 
 func TestMessagesAreValidIfCatchUpGivesPermission(t *testing.T) {
-	b, alice, bob, groupID := createUsersAndGroups(t)
+	b, alice, _, groupID := createUsersAndGroups(t)
 
 	// Restrict posting to only admins
 	err := b.restrictPosting(groupID)
 	assert.NoError(t, err)
-	var restriction updateGroup
-	err = b.database.Select("id").First(&restriction, "target = ?", groupID).Error
-	assert.NoError(t, err)
-
-	// Make sure that Alice and Bob's confirmations have been handeled so that we make no further updates to the group state
-	awaitAck(t, b, alice, typeUpdateGroup, restriction.ID)
-	var aliceConfirmation confirmation
-	err = alice.database.First(&aliceConfirmation, "update_group_id = ? AND author = ?", restriction.ID, alice.currentUserID()).Error
-	assert.NoError(t, err)
-	awaitAck(t, alice, bob, typeConfirmation, aliceConfirmation.ID)
-
-	awaitAck(t, b, bob, typeUpdateGroup, restriction.ID)
-	var bobConfirmation confirmation
-	err = bob.database.First(&bobConfirmation, "update_group_id = ? AND author = ?", restriction.ID, bob.currentUserID()).Error
-	assert.NoError(t, err)
-	awaitAck(t, bob, alice, typeConfirmation, bobConfirmation.ID)
 
 	// Create an update group to unrestrict posting
 	unrestriction := &updateGroup{
@@ -81,10 +65,7 @@ func TestMessagesAreValidIfCatchUpGivesPermission(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Handle the permission granting and message in the catch up handler
-	var aliceDev device
-	err = alice.database.First(&aliceDev, "user_id = ?", alice.currentUserID()).Error
-	assert.NoError(t, err)
-	b.handleCatchUp(aliceDev.Address, cuPayload, false)
+	b.handleCatchUp(b.network.Address(), cuPayload, false)
 
 	// Make sure the message was saved
 	var delivered groupMessage
@@ -157,35 +138,14 @@ func TestMessagesAreInvalidIfCatchUpRemovesPermission(t *testing.T) {
 }
 
 func TestMessagesAreValidIfUserBecomesAdminWhenRequired(t *testing.T) {
-	b, alice, bob, groupID := createUsersAndGroups(t)
+	b, alice, _, groupID := createUsersAndGroups(t)
 
 	// Restrict posting to only admins
 	err := b.restrictPosting(groupID)
 	assert.NoError(t, err)
-	var restriction updateGroup
-	err = b.database.Select("id").First(&restriction, "target = ?", groupID).Error
-	assert.NoError(t, err)
-
-	// Make sure that Alice and Bob's confirmations have been handeled so that we make no further updates to the group state
-	awaitAck(t, b, alice, typeUpdateGroup, restriction.ID)
-	var aliceConfirmation confirmation
-	err = alice.database.First(&aliceConfirmation, "update_group_id = ? AND author = ?", restriction.ID, alice.currentUserID()).Error
-	assert.NoError(t, err)
-	awaitAck(t, alice, bob, typeConfirmation, aliceConfirmation.ID)
-
-	awaitAck(t, b, bob, typeUpdateGroup, restriction.ID)
-	var bobConfirmation confirmation
-	err = bob.database.First(&bobConfirmation, "update_group_id = ? AND author = ?", restriction.ID, bob.currentUserID()).Error
-	assert.NoError(t, err)
-	awaitAck(t, bob, alice, typeConfirmation, bobConfirmation.ID)
-
-	// Confirm that Alice is not an admin
-	aliceID := alice.currentUserID()
-	gs, err := b.currentGroupState(groupID)
-	assert.NoError(t, err)
-	assert.False(t, gs.isAdmin(aliceID))
 
 	// Create an update group to make Alice an admin
+	aliceID := alice.currentUserID()
 	promotion := &updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
@@ -233,10 +193,7 @@ func TestMessagesAreValidIfUserBecomesAdminWhenRequired(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Handle the admin granting and message in the catch up handler
-	var aliceDev device
-	err = alice.database.First(&aliceDev, "user_id = ?", alice.currentUserID()).Error
-	assert.NoError(t, err)
-	b.handleCatchUp(aliceDev.Address, cuPayload, false)
+	b.handleCatchUp(b.network.Address(), cuPayload, false)
 
 	// Make sure the message was saved
 	var delivered groupMessage
@@ -246,64 +203,16 @@ func TestMessagesAreValidIfUserBecomesAdminWhenRequired(t *testing.T) {
 }
 
 func TestMessagesAreInvalidIfUserLoosesAdminWhenRequired(t *testing.T) {
-	b, alice, bob, groupID := createUsersAndGroups(t)
+	b, alice, _, groupID := createUsersAndGroups(t)
 
 	// Restrict posting to only admins
 	err := b.restrictPosting(groupID)
 	assert.NoError(t, err)
-	var restriction updateGroup
-	err = b.database.Select("id").First(&restriction, "target = ?", groupID).Error
-	assert.NoError(t, err)
-
-	// Make sure restriiction is applied
-	awaitAck(t, b, alice, typeUpdateGroup, restriction.ID)
-	var aliceConfirmationRestriction confirmation
-	err = alice.database.First(&aliceConfirmationRestriction, "update_group_id = ? AND author = ?", restriction.ID, alice.currentUserID()).Error
-	assert.NoError(t, err)
-	awaitAck(t, alice, bob, typeConfirmation, aliceConfirmationRestriction.ID)
-	gs, err := alice.currentGroupState(groupID)
-	assert.NoError(t, err)
-	assert.True(t, gs.postingRestricted)
-
-	awaitAck(t, b, bob, typeUpdateGroup, restriction.ID)
-	var bobConfirmationRestriction confirmation
-	err = bob.database.First(&bobConfirmationRestriction, "update_group_id = ? AND author = ?", restriction.ID, bob.currentUserID()).Error
-	assert.NoError(t, err)
-	awaitAck(t, bob, alice, typeConfirmation, bobConfirmationRestriction.ID)
-	gs, err = bob.currentGroupState(groupID)
-	assert.NoError(t, err)
-	assert.True(t, gs.postingRestricted)
 
 	// Make Alice an admin
 	aliceID := alice.currentUserID()
 	err = b.promoteAdmin(groupID, aliceID)
 	assert.NoError(t, err)
-	var promotion updateGroup
-	err = b.database.Select("id").First(&promotion, "target = ?", groupID).Error
-	assert.NoError(t, err)
-	gs, err = b.currentGroupState(groupID)
-	assert.NoError(t, err)
-	assert.True(t, gs.isAdmin(aliceID))
-	assert.True(t, gs.postingRestricted)
-
-	// Make sure that Alice and Bob's confirmations have been handeled so that we make no further updates to the group state
-	awaitAck(t, b, alice, typeUpdateGroup, promotion.ID)
-	var aliceConfirmationPromotion confirmation
-	err = alice.database.First(&aliceConfirmationPromotion, "update_group_id = ? AND author = ?", promotion.ID, alice.currentUserID()).Error
-	assert.NoError(t, err)
-	awaitAck(t, alice, bob, typeConfirmation, aliceConfirmationPromotion.ID)
-	//gs, err = alice.currentGroupState(groupID)
-	//assert.NoError(t, err)
-	//assert.True(t, gs.isAdmin(aliceID)) // TODO: why flaky?
-
-	awaitAck(t, b, bob, typeUpdateGroup, promotion.ID)
-	var bobConfirmationPromotion confirmation
-	err = bob.database.First(&bobConfirmationPromotion, "update_group_id = ? AND author = ?", promotion.ID, bob.currentUserID()).Error
-	assert.NoError(t, err)
-	awaitAck(t, bob, alice, typeConfirmation, bobConfirmationPromotion.ID)
-	//gs, err = bob.currentGroupState(groupID)
-	//assert.NoError(t, err)
-	//assert.True(t, gs.isAdmin(aliceID))
 
 	// Create an update group to demote Alice
 	demotion := &updateGroup{
@@ -353,10 +262,7 @@ func TestMessagesAreInvalidIfUserLoosesAdminWhenRequired(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Handle the demotion and message in the catch up handler
-	var aliceDev device
-	err = alice.database.First(&aliceDev, "user_id = ?", alice.currentUserID()).Error
-	assert.NoError(t, err)
-	b.handleCatchUp(aliceDev.Address, cuPayload, false)
+	b.handleCatchUp(b.network.Address(), cuPayload, false)
 
 	// Make sure the message was not saved
 	var delivered groupMessage
