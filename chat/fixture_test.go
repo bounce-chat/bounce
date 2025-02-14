@@ -244,7 +244,7 @@ func awaitAck(t *testing.T, to, from *bounce, frameType uint16, frameID uuid.UUI
 		log.Fatal("already awaiting " + signature)
 	}
 
-	waiter := make(chan bool)
+	waiter := make(chan bool, 1)
 	networkWaiting[signature] = waiter
 	networkTracking.Unlock()
 
