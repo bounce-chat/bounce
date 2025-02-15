@@ -146,6 +146,7 @@ func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 				}).Fatal("database error saving confirmation")
 			}
 			// We can't broadcast it yet without a destination, but we do manually ack to the peer that send it
+			b.markDeliveredTo(&c, peer)
 			go b.sendAck(peer, typeConfirmation, c.ID)
 			return nil
 		} else {
