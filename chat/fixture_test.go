@@ -372,7 +372,12 @@ func await(t *testing.T, b *bounce, function string, args ...interface{}) {
 	select {
 	case <-waiter:
 	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for UI")
+		details := ""
+		_, file, no, ok := runtime.Caller(1)
+		if ok {
+			details = fmt.Sprintf(", from %s:%d", file, no)
+		}
+		t.Fatal("timeout waiting for UI" + details)
 	}
 }
 
