@@ -160,6 +160,17 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks, da
 			fyneUI.mobileBack()
 		}
 	})
+	//if desk, ok := fyneUI.app.(desktop.App); ok { // TODO: closing panics, probably related to https://github.com/fyne-io/fyne/issues/1731
+	//	m := fyne.NewMenu("Bounce",             //                                       and https://github.com/fyne-io/fyne/issues/2314
+	//		fyne.NewMenuItem("Show", func() {
+	//			fyneUI.mainWindow.Show()
+	//		}),
+	//	)
+	//	desk.SetSystemTrayMenu(m)
+	//	fyneUI.mainWindow.SetCloseIntercept(func() {
+	//		fyneUI.mainWindow.Hide()
+	//	})
+	//}
 
 	//
 	// Build all the containers
