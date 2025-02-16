@@ -102,7 +102,7 @@ func (b *bounce) reloadGroupConsensus(groupID uuid.UUID) {
 
 	// Get all update groups for this group
 	var ugs []updateGroup
-	err = b.database.Preload(clause.Associations).Where("target = ?", groupID).Order("timestamp asc").Find(&ugs).Error
+	err = b.database.Preload(clause.Associations).Where("target = ?", groupID).Order("timestamp asc").Find(&ugs).Order("id").Find(&ugs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
@@ -149,7 +149,7 @@ func (b *bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) {
 
 	// Load all updates that are timestamp or newer from the database
 	var ugs []updateGroup
-	err := b.database.Preload(clause.Associations).Where("target = ? AND timestamp >= ?", groupID, ts).Order("timestamp asc").Find(&ugs).Error
+	err := b.database.Preload(clause.Associations).Where("target = ? AND timestamp >= ?", groupID, ts).Order("timestamp asc").Find(&ugs).Order("id").Find(&ugs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
