@@ -351,6 +351,8 @@ type UI interface {
 	GroupEditsUnrestricted(UpdateGroupEditsUnrestricted)
 	PostingRestricted(UpdateGroupPostingRestricted)
 	PostingUnrestricted(UpdateGroupPostingUnrestricted)
+	PauseGroupNotifications(uuid.UUID)
+	ResumeGroupNotifications(uuid.UUID)
 
 	ShowTypingIndicatorInHistory(userID, threadID uuid.UUID)
 	ShowTypingIndicatorInButton(userID, threadID uuid.UUID)

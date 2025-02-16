@@ -93,6 +93,11 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 	// Keep track of which groups will need a consensus update
 	groupsToUpdateConsensus := map[uuid.UUID]bool{}
 
+	// Keep track of all the group creations we see and pause notifications until the end of the catch up.
+	// This is so that we aren't notified about the entire history of a group when we get added to it.  We
+	// need to unpause these group notifications after, so we keep track of those groups here
+	unpause := map[uuid.UUID]bool{}
+
 	// Keep track of which users are getting updated
 	usersToUpdate := map[uuid.UUID]bool{}
 
@@ -166,6 +171,12 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		// If this frame impacts group consensus, take note of the group for a consensus check after the catch up
 		if fr.Type == typeUpdateGroup || fr.Type == typeGroupCreation || fr.Type == typeConfirmation {
 			groupsToUpdateConsensus[br.getDestination(b.currentUserID())] = true
+		}
+
+		if fr.Type == typeGroupCreation {
+			groupID := br.getDestination(b.currentUserID())
+			b.userInterface.PauseGroupNotifications(groupID)
+			unpause[groupID] = true
 		}
 
 		if fr.Type == typeUpdateUser {
@@ -243,6 +254,10 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 				}
 			}
 		}
+	}
+
+	for groupID, _ := range unpause {
+		b.userInterface.ResumeGroupNotifications(groupID)
 	}
 
 	// Update user states for all users with an update user frame in this catch up

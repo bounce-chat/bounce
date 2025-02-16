@@ -449,6 +449,8 @@ func (t *testUI) GroupEditsRestricted(UpdateGroupEditsRestricted)               
 func (t *testUI) GroupEditsUnrestricted(UpdateGroupEditsUnrestricted)              {}
 func (t *testUI) PostingRestricted(UpdateGroupPostingRestricted)                   {}
 func (t *testUI) PostingUnrestricted(UpdateGroupPostingUnrestricted)               {}
+func (t *testUI) PauseGroupNotifications(groupID uuid.UUID)                        {}
+func (t *testUI) ResumeGroupNotifications(groupID uuid.UUID)                       {}
 func (t *testUI) ShowTypingIndicatorInHistory(userID, threadID uuid.UUID)          {}
 func (t *testUI) ShowTypingIndicatorInButton(userID, threadID uuid.UUID)           {}
 func (t *testUI) HideTypingIndicatorInHistory(userID, threadID uuid.UUID)          {}

@@ -84,6 +84,8 @@ type Fyne struct {
 	dms                                   map[uuid.UUID]*directMessage
 	threadWithItem                        map[uuid.UUID]thread
 	threadWithItemMutex                   sync.Mutex
+	pausedGroupNotifications              map[uuid.UUID]bool
+	pausedGroupNotificationsMutex         sync.Mutex
 	activeThread                          uuid.UUID
 	syncString                            binding.String
 	addUserString                         binding.String
@@ -132,6 +134,7 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks, da
 	fyneUI.groups = make(map[uuid.UUID]*group)
 	fyneUI.dms = make(map[uuid.UUID]*directMessage)
 	fyneUI.threadWithItem = make(map[uuid.UUID]thread)
+	fyneUI.pausedGroupNotifications = make(map[uuid.UUID]bool)
 	fyneUI.users = newUserStore()
 	fyneUI.devices = newDeviceStore()
 	fyneUI.messages = newMessageStore(configDirectory)

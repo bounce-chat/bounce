@@ -1048,3 +1048,25 @@ func (fyneUI *Fyne) updateEnabledFeatures(g *group) {
 		g.entry.Enable()
 	}
 }
+
+func (fyneUI *Fyne) PauseGroupNotifications(groupID uuid.UUID) {
+	fyneUI.pausedGroupNotificationsMutex.Lock()
+	defer fyneUI.pausedGroupNotificationsMutex.Unlock()
+
+	fyneUI.pausedGroupNotifications[groupID] = true
+}
+
+func (fyneUI *Fyne) ResumeGroupNotifications(groupID uuid.UUID) {
+	fyneUI.pausedGroupNotificationsMutex.Lock()
+	defer fyneUI.pausedGroupNotificationsMutex.Unlock()
+
+	delete(fyneUI.pausedGroupNotifications, groupID)
+}
+
+func (fyneUI *Fyne) groupNotificationsPaused(groupID uuid.UUID) bool {
+	fyneUI.pausedGroupNotificationsMutex.Lock()
+	defer fyneUI.pausedGroupNotificationsMutex.Unlock()
+
+	_, ok := fyneUI.pausedGroupNotifications[groupID]
+	return ok
+}
