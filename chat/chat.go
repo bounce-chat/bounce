@@ -259,9 +259,6 @@ func (b *bounce) shutdown() {
 		}
 	}
 
-	// Close the user interface if it isn't already closed
-	b.userInterface.Quit()
-
 	// Delete our PID file
 	pidFile := getConfigDirectory() + "/.pid"
 	err := os.Remove(pidFile)

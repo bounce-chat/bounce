@@ -23,7 +23,12 @@ func (b *bounce) networkOffline() {
 func (b *bounce) acceptConnections() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Fatal("recovered a panic while accepting a connection, this can occur when the network returns a non-fatal Accept error but the next attempt causes a panic in the network provider")
+			errString := "recovered a panic while accepting a connection, this can occur when the network returns a non-fatal Accept error but the next attempt causes a panic in the network provider"
+			if b.shutdownStarted.Load() {
+				log.Error(errString)
+			} else {
+				log.Fatal(errString)
+			}
 		}
 	}()
 	for {
