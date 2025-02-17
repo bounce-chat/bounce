@@ -3,6 +3,7 @@ package chat
 import (
 	"sync"
 
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -14,8 +15,9 @@ import (
 //
 type syncDeviceRequestAccepted struct {
 	Profile      user
-	References   bool
-	payload      []byte // TODO: just send the actual offer in here?
+	Settings     *profileSettings
+	References   bool // TODO: just send the actual offer in here?
+	payload      []byte
 	payloadMutex sync.Mutex
 }
 
@@ -82,7 +84,8 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	}
 
 	// Save the new profile
-	sdra.Profile.ProfileSettings = &profileSettings{}
+	sdra.Settings.ID = uuid.New()
+	sdra.Profile.ProfileSettings = sdra.Settings
 	err = b.database.Create(&sdra.Profile).Error
 	if err != nil {
 		log.WithFields(log.Fields{

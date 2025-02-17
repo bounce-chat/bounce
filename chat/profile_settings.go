@@ -5,7 +5,7 @@ import (
 )
 
 type profileSettings struct {
-	ID                             uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID                             uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
 	UserID                         uuid.UUID
 	BlockedGroups                  string
 	DefaultGroupRetention          int64

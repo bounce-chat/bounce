@@ -126,10 +126,6 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 		// This is already a known sync device.  The device must be requesting to sync again because something went
 		// wrong on their end during the process.  That's fine, everything about this device has been validated in
 		// the past, so we just send our information over again and drop all delivery records in case they lost data.
-		b.sendDirect(peer, &syncDeviceRequestAccepted{
-			Profile: profile,
-		})
-
 		err = b.database.Where("destination = ?", peer).Delete(&deliveryRecord{}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -137,6 +133,12 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 				"error": err.Error(),
 			}).Error("error deleting old delivery records for sync device that is re-syncing")
 		}
+
+		b.sendDirect(peer, &syncDeviceRequestAccepted{
+			Profile:    profile,
+			Settings:   profile.ProfileSettings,
+			References: b.hasAnyReferencesFor(peer),
+		})
 	} else {
 		// Save this new device in our database
 		newDevice := device{
@@ -167,6 +169,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 		// that includes this new device
 		b.sendDirect(peer, &syncDeviceRequestAccepted{
 			Profile:    profile,
+			Settings:   profile.ProfileSettings,
 			References: b.hasAnyReferencesFor(peer),
 		})
 
