@@ -636,12 +636,19 @@ func (ch *chatHistory) CreateRenderer() fyne.WidgetRenderer {
 }
 
 type chatHistoryRenderer struct {
+	//cachedWidth  float32
+	//cachedHeight float32
 	ch     *chatHistory
 	layout *fyne.Container
 }
 
 func newChatHistoryRenderer(ch *chatHistory, layout *fyne.Container) *chatHistoryRenderer {
-	chr := &chatHistoryRenderer{ch: ch, layout: layout}
+	chr := &chatHistoryRenderer{
+		//cachedWidth:  float32(fyne.CurrentApp().Preferences().Float("chat-width")),
+		//cachedHeight: float32(fyne.CurrentApp().Preferences().Float("chat-height")),
+		ch:     ch,
+		layout: layout,
+	}
 
 	return chr
 }
@@ -662,6 +669,18 @@ func (chr *chatHistoryRenderer) MinSize() fyne.Size {
 }
 
 func (chr *chatHistoryRenderer) Refresh() {
+	//size := chr.ch.Size()
+	//if (size.Width != 0 && size.Height != 0) && (chr.cachedWidth != size.Width || chr.cachedHeight != size.Height) {
+	//	fyne.CurrentApp().Preferences().SetFloat("chat-width", float64(size.Width))
+	//	fyne.CurrentApp().Preferences().SetFloat("chat-height", float64(size.Height))
+	//	chr.cachedWidth = size.Width
+	//	chr.cachedHeight = size.Height
+	//	log.WithFields(log.Fields{
+	//		"chat-width":  size.Width,
+	//		"chat-height": size.Height,
+	//	}).Warn("saving real size")
+	//}
+
 	chr.Layout(chr.ch.Size())
 	chr.ch.scroller.Refresh()
 	layout := chr.layout.Layout.(*chatHistoryLayout)

@@ -152,20 +152,17 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks, da
 	fyneUI.mainWindow = fyneUI.app.NewWindow("Bounce")
 	fyneUI.mainWindow.SetMaster()
 	//fyneUI.mainWindow.SetOnClosed(func() {
-	//	// TODO: https://github.com/fyne-io/fyne/issues/5393#issuecomment-2663857095
 	//	if !fyne.CurrentDevice().IsMobile() {
 	//		fyneUI.app.Preferences().SetBool("size-set", true)
 	//		fyneUI.app.Preferences().SetBool("fullscreen", fyneUI.mainWindow.FullScreen())
 	//		mainSize := fyneUI.mainWindow.Canvas().Size()
+	//		mainSize.Width -= 2 // The window appears to always be 2px less wide than the canvas size
 	//		fyneUI.app.Preferences().SetFloat("main-width", float64(mainSize.Width))
 	//		fyneUI.app.Preferences().SetFloat("main-height", float64(mainSize.Height))
-	//		chatSize := fyneUI.chatContainer.Size()
-	//		fyneUI.app.Preferences().SetFloat("chat-width", float64(chatSize.Width))
-	//		fyneUI.app.Preferences().SetFloat("chat-height", float64(chatSize.Height))
 	//		log.WithFields(log.Fields{
-	//			"chat-width":  chatSize.Width,
-	//			"chat-height": chatSize.Height,
-	//		}).Warn("cached the chat container size at close")
+	//			"w": mainSize.Width,
+	//			"h": mainSize.Height,
+	//		}).Warn("closing, saving sizes")
 	//	}
 	//})
 	fyneUI.mainWindow.SetCloseIntercept(func() {
@@ -180,6 +177,10 @@ func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks, da
 	//		} else {
 	//			w := float32(fyneUI.app.Preferences().Float("main-width"))
 	//			h := float32(fyneUI.app.Preferences().Float("main-height"))
+	//			log.WithFields(log.Fields{
+	//				"w": w,
+	//				"h": h,
+	//			}).Warn("starting up, sizes")
 	//			fyneUI.mainWindow.Resize(fyne.Size{Height: h, Width: w})
 	//		}
 	//	} else {

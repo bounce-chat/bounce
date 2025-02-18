@@ -55,9 +55,7 @@ func (fyneUI *Fyne) showMainContainer() {
 }
 
 func (fyneUI *Fyne) buildMainContainer() {
-	//
 	// Logo and welcome message / instructions to be shown before a thread is selected
-	//
 	fyneUI.defaultContainer = container.NewMax(
 		container.New(
 			layout.NewCenterLayout(),
@@ -69,57 +67,70 @@ func (fyneUI *Fyne) buildMainContainer() {
 	)
 	fyneUI.chatContainer = container.NewMax()
 	fyneUI.chatContainer.Objects = []fyne.CanvasObject{fyneUI.defaultContainer}
-
 	fyneUI.threadVBox = container.NewVBox()
-	threads := container.NewHBox(container.NewVScroll(fyneUI.threadVBox), widget.NewSeparator())
+
+	threadSearch := widget.NewButtonWithIcon("", theme.SearchIcon(), func() {
+		// TODO: replace the top bar with a search entry for n-gram search of thread names, switch back to
+		// icon, title, and search icon when entry loses focus
+	})
+	threadSearch.Importance = widget.LowImportance
+
+	topButtons := container.NewHBox(threadSearch)
+
+	icon := canvas.NewImageFromResource(newEmbeddedResource("assets/icon.png"))
+	icon.FillMode = canvas.ImageFillContain
+	icon.SetMinSize(fyne.NewSize(theme.TextHeadingSize(), theme.TextHeadingSize()))
 
 	if fyne.CurrentDevice().IsMobile() {
-		icon := canvas.NewImageFromResource(newEmbeddedResource("assets/icon.png"))
-		icon.FillMode = canvas.ImageFillContain
-		icon.SetMinSize(fyne.NewSize(theme.TextHeadingSize(), theme.TextHeadingSize()))
+		logoWithText := container.NewHBox(
+			icon,
+			widget.NewRichText(&widget.TextSegment{
+				Style: widget.RichTextStyle{
+					SizeName: theme.SizeNameHeadingText,
+				},
+				Text: "Bounce",
+			}),
+		)
 
-		threadSearch := widget.NewButtonWithIcon("", theme.SearchIcon(), func() {
-			// TODO: replace the top bar with a search entry for n-gram search of thread names, switch back to
-			// icon, title, and search icon when entry loses focus
-		})
-		threadSearch.Importance = widget.LowImportance
+		logoSearchAndMenu := container.New(
+			layout.NewBorderLayout(nil, nil, logoWithText, topButtons),
+			logoWithText,
+			topButtons,
+			fyneUI.networkOfflineWarning,
+		)
 
 		settings := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
 			fyneUI.showMobileMenu()
 		})
 		settings.Importance = widget.LowImportance
+		topButtons.Objects = append(topButtons.Objects, settings)
 
-		topButtons := container.NewHBox(
-			threadSearch,
-			settings,
+		fyneUI.mainContainer = container.New(
+			layout.NewBorderLayout(logoSearchAndMenu, nil, nil, nil),
+			logoSearchAndMenu,
+			container.NewVScroll(fyneUI.threadVBox),
 		)
+	} else {
 		logoSearchAndMenu := container.New(
 			layout.NewBorderLayout(nil, nil, nil, topButtons),
 			topButtons,
-			container.NewHBox(
+			container.New(
+				layout.NewBorderLayout(nil, nil, icon, nil),
 				icon,
-				widget.NewRichText(&widget.TextSegment{
-					Style: widget.RichTextStyle{
-						SizeName: theme.SizeNameHeadingText,
-					},
-					Text: "Bounce",
-				}),
+				fyneUI.networkOfflineWarning,
 			),
 		)
 
-		fyneUI.mainContainer = container.New(
-			layout.NewBorderLayout(fyneUI.networkOfflineWarning, nil, nil, nil),
-			fyneUI.networkOfflineWarning,
+		threads := container.NewHBox(
 			container.New(
-				layout.NewBorderLayout(logoSearchAndMenu, nil, nil, nil),
+				layout.NewBorderLayout(nil, logoSearchAndMenu, nil, nil),
 				logoSearchAndMenu,
 				container.NewVScroll(fyneUI.threadVBox),
 			),
+			widget.NewSeparator(),
 		)
-	} else {
 		fyneUI.mainContainer = container.New(
-			layout.NewBorderLayout(fyneUI.networkOfflineWarning, nil, threads, nil),
-			fyneUI.networkOfflineWarning,
+			layout.NewBorderLayout(nil, nil, threads, nil),
 			threads,
 			fyneUI.chatContainer,
 		)

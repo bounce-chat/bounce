@@ -279,6 +279,9 @@ func (b *bounce) shutdown() {
 // to exit.
 //
 func (b *bounce) fatalShutdown() {
+	// Close the UI
+	b.userInterface.Quit()
+
 	// Close the database connection
 	sqliteDB, err := b.database.DB()
 	if err != nil {
