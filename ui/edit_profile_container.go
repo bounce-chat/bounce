@@ -105,6 +105,11 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 				nameEntry.SetText(dev.Name)
 			}
 
+			addressLabel := widget.NewLabel("Address:")
+			addressEntry := widget.NewEntry()
+			addressEntry.SetText(dev.Address)
+			addressEntry.Disable()
+
 			lastSeenLabel := widget.NewLabel("Last Seen:")
 			var lastSeenString string
 			if !dev.Local {
@@ -156,6 +161,11 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 					layout.NewBorderLayout(nil, nil, nameLabel, nil),
 					nameLabel,
 					nameEntry,
+				),
+				container.New(
+					layout.NewBorderLayout(nil, nil, addressLabel, nil),
+					addressLabel,
+					addressEntry,
 				),
 			)
 			if !dev.Local {
