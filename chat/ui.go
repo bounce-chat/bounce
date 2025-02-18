@@ -29,6 +29,7 @@ type Device struct {
 	ID        uuid.UUID
 	Name      string
 	Address   string
+	LastSeen  int64
 	CreatedAt int64
 	Local     bool
 	Online    bool
@@ -368,6 +369,7 @@ type UI interface {
 	DeviceAdded(Device)
 	DeviceRevoked(uuid.UUID)
 	DeviceRenamed(uuid.UUID, string)
+	DeviceLastSeen(uuid.UUID, int64)
 
 	MessageSeen(uuid.UUID)           // We read a message on another device
 	ReceivedReadReceipt(ReadReceipt) // Someone else read a message of ours

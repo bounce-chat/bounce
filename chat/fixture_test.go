@@ -462,6 +462,7 @@ func (t *testUI) DeviceOffline(uuid.UUID)                                       
 func (t *testUI) DeviceAdded(Device)                                               {}
 func (t *testUI) DeviceRevoked(uuid.UUID)                                          {}
 func (t *testUI) DeviceRenamed(uuid.UUID, string)                                  {}
+func (t *testUI) DeviceLastSeen(uuid.UUID, int64)                                  {}
 func (t *testUI) MessageSeen(uuid.UUID)                                            {}
 func (t *testUI) ReceivedReadReceipt(ReadReceipt)                                  {}
 func (t *testUI) SetSettings(Settings)                                             {}

@@ -29,3 +29,8 @@ func (fyneUI *Fyne) DeviceRenamed(id uuid.UUID, name string) {
 	fyneUI.devices.rename(id, name)
 	fyneUI.updateDeviceStatus()
 }
+
+func (fyneUI *Fyne) DeviceLastSeen(id uuid.UUID, timestamp int64) {
+	fyneUI.devices.updateLastSeen(id, timestamp)
+	fyneUI.updateDeviceStatus()
+}

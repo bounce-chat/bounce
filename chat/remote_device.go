@@ -4,6 +4,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -84,6 +85,7 @@ func (b *bounce) readFrames(conn net.Conn) {
 	handlers := b.getHandlers()
 	peer := conn.RemoteAddr().String()
 	_, profileExists := b.currentUser()
+	dev, deviceExists := b.getDeviceFromAddress(peer)
 
 	for {
 		frameType, data, err := readFrame(conn) // TODO: just read the header first, make sure we want to read the rest in the context of the device (untrusted devices can't send large messages, etc)
@@ -115,6 +117,23 @@ func (b *bounce) readFrames(conn net.Conn) {
 				}).Warn("peer sent a frame that cannot be handeled when no profile exists")
 				continue
 			}
+		}
+
+		// Re-check if we're aware of this device if needed
+		if !deviceExists {
+			dev, deviceExists = b.getDeviceFromAddress(peer)
+		}
+		if deviceExists {
+			lastSeen := time.Now().Unix()
+			err := b.database.Table("devices").Where("id = ?", dev.ID).Updates(map[string]interface{}{"last_seen": lastSeen}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"device_id": dev.ID,
+					"error":     err.Error(),
+				}).Error("error updating last time device was seen")
+			}
+
+			b.userInterface.DeviceLastSeen(dev.ID, lastSeen)
 		}
 
 		handler, ok := handlers[frameType]

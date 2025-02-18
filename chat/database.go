@@ -271,6 +271,7 @@ func (b *bounce) buildInitialState() InitialState {
 					Name:      dev.Name,
 					Address:   dev.Address,
 					CreatedAt: dev.Timestamp,
+					LastSeen:  dev.LastSeen,
 					Local:     dev.Address == b.network.Address(),
 					Online:    false,
 				},

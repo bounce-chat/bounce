@@ -316,15 +316,9 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 	fyneUI.localSettings = state.LocalSettings
 	fyneUI.askToIgnoreBatteryOptimizations()
 
-	for _, dev := range state.SyncDevices {
-		fyneUI.devices.add(&chat.Device{
-			ID:        dev.ID,
-			Name:      dev.Name,
-			Address:   dev.Address,
-			CreatedAt: dev.CreatedAt,
-			Local:     dev.Local,
-			Online:    dev.Online,
-		})
+	for i, _ := range state.SyncDevices {
+		dev := state.SyncDevices[i]
+		fyneUI.devices.add(&dev)
 	}
 	fyneUI.updateDeviceStatus()
 

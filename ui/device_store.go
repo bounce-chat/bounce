@@ -133,3 +133,18 @@ func (ds *deviceStore) rename(id uuid.UUID, name string) {
 
 	d.Name = name
 }
+
+func (ds *deviceStore) updateLastSeen(id uuid.UUID, timestamp int64) {
+	ds.Lock()
+	defer ds.Unlock()
+
+	d, ok := ds.devices[id]
+	if !ok {
+		log.WithFields(log.Fields{
+			"id": id,
+		}).Warn("device not found in device store while setting last seen time")
+		return
+	}
+
+	d.LastSeen = timestamp
+}

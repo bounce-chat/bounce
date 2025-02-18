@@ -146,6 +146,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 			UserID:    b.currentUserID(),
 			Address:   peer,
 			Timestamp: time.Now().Unix(),
+			LastSeen:  time.Now().Unix(),
 			Signature: &introductionSignature{
 				PreexistingDevice:            b.network.Address(),
 				SignatureOfNewDevice:         b.network.Sign([]byte(peer)),

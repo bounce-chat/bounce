@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -24,6 +25,7 @@ type device struct {
 	UserID       uuid.UUID `json:"-"`
 	Address      string    `gorm:"uniqueIndex"`
 	Timestamp    int64
+	LastSeen     int64 `json:"-" msgpack:"-"`
 	RevokedAt    int64
 	Signature    *introductionSignature `json:",omitempty" gorm:"constraint:OnDelete:CASCADE;"`
 	payload      []byte
@@ -149,12 +151,17 @@ func (b *bounce) handleDevice(peer string, payload []byte, catchUp bool) broadca
 	if newDevice.UserID == b.currentUserID() {
 		rd := b.getRemoteDevice(newDevice.Address)
 		online := rd.connectedSockets.Load() > 0
+		var lastSeen int64
+		if peer == newDevice.Address {
+			lastSeen = time.Now().Unix()
+		}
 
 		b.userInterface.DeviceAdded(Device{
 			ID:        newDevice.ID,
 			Name:      newDevice.Name,
 			Address:   newDevice.Address,
 			CreatedAt: newDevice.Timestamp,
+			LastSeen:  lastSeen,
 			Local:     false,
 			Online:    online,
 		})

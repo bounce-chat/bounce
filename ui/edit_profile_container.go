@@ -105,6 +105,18 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 				nameEntry.SetText(dev.Name)
 			}
 
+			lastSeenLabel := widget.NewLabel("Last Seen:")
+			var lastSeenString string
+			if !dev.Local {
+				if dev.Online {
+					lastSeenString = "now"
+				} else if dev.LastSeen == 0 {
+					lastSeenString = "never"
+				} else {
+					lastSeenString = time.Unix(dev.LastSeen, 0).Format("1/2 2006 3:04PM")
+				}
+			}
+
 			createdAtLabel := widget.NewLabel("Created:")
 			createdAtString := time.Unix(dev.CreatedAt, 0).Format("1/2 2006")
 
@@ -145,13 +157,27 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 					nameLabel,
 					nameEntry,
 				),
+			)
+			if !dev.Local {
+				editDeviceContainer.Add(
+					container.New(
+						layout.NewBorderLayout(nil, nil, lastSeenLabel, nil),
+						lastSeenLabel,
+						widget.NewLabel(lastSeenString),
+					),
+				)
+			}
+			editDeviceContainer.Add(
 				container.New(
 					layout.NewBorderLayout(nil, nil, createdAtLabel, nil),
 					createdAtLabel,
 					widget.NewLabel(createdAtString),
 				),
+			)
+			editDeviceContainer.Add(
 				revokeButton,
 			)
+
 			editDeviceDialog = dialog.NewCustomConfirm(shortName, "Apply", "Cancel", editDeviceContainer, func(apply bool) {
 				if apply {
 					if dev.Name != nameEntry.Text {
