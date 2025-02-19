@@ -50,43 +50,6 @@ func (b *bounce) currentGroupState(groupID uuid.UUID) (groupState, error) {
 	return top, nil
 }
 
-/*
-func (b *bounce) userInGroupForUpdate(userID uuid.UUID, ug updateGroup) bool {
-	stack, err := b.currentGroupStack(ug.Target)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"user_id":         userID,
-			"group_id":        ug.Target,
-			"update_group_id": ug.ID,
-		}).Error("consensus history not found for group when checking if user was present during update")
-		return false
-	}
-
-	found := false
-	isMemberOfGroupForUpdate := false
-
-	b.consensusStore.Lock()
-	for _, gs := range stack.history {
-		if gs.ug.ID == ug.ID {
-			found = true
-			isMemberOfGroupForUpdate = gs.isMember(userID)
-			break
-		}
-	}
-	b.consensusStore.Unlock()
-
-	if !found {
-		log.WithFields(log.Fields{
-			"user_id":         userID,
-			"group_id":        ug.Target,
-			"update_group_id": ug.ID,
-		}).Error("update group not found in history when checking if user was present for update")
-		return false
-	}
-	return isMemberOfGroupForUpdate
-}
-*/
-
 func (b *bounce) reloadGroupConsensus(groupID uuid.UUID) {
 	b.consensusStore.Lock()
 	defer b.consensusStore.Unlock()
@@ -238,12 +201,19 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		return err
 	}
 
+	applied := map[uuid.UUID]bool{}
+	for _, ug := range ugs {
+		if ug.Applied {
+			applied[ug.ID] = true
+		}
+	}
+
 	// Find any canonical update groups that have not been applied and make them as applied and inform the UI if needed
 	canonical := make(map[uuid.UUID]bool)
 	everInGroup := make(map[uuid.UUID]bool)
 	for _, gs := range cs.history[1:] {
 		canonical[gs.ug.ID] = true
-		if !gs.ug.Applied {
+		if _, ok := applied[gs.ug.ID]; !ok {
 			err := b.database.Model(&gs.ug).Select("applied").Update("applied", true).Error
 			if err != nil {
 				return err
