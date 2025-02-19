@@ -51,11 +51,8 @@ func (b *bounce) currentGroupState(groupID uuid.UUID) (groupState, error) {
 }
 
 func (b *bounce) userInGroupForUpdate(userID uuid.UUID, ug updateGroup) bool {
-	b.consensusStore.Lock()
-	defer b.consensusStore.Unlock()
-
-	stack, ok := b.consensusStore.groups[ug.Target]
-	if !ok {
+	stack, err := b.currentGroupStack(ug.Target)
+	if err != nil {
 		log.WithFields(log.Fields{
 			"user_id":         userID,
 			"group_id":        ug.Target,
@@ -66,6 +63,8 @@ func (b *bounce) userInGroupForUpdate(userID uuid.UUID, ug updateGroup) bool {
 
 	found := false
 	isMemberOfGroupForUpdate := false
+
+	b.consensusStore.Lock()
 	for _, gs := range stack.history {
 		if gs.ug.ID == ug.ID {
 			found = true
@@ -73,6 +72,7 @@ func (b *bounce) userInGroupForUpdate(userID uuid.UUID, ug updateGroup) bool {
 			break
 		}
 	}
+	b.consensusStore.Unlock()
 
 	if !found {
 		log.WithFields(log.Fields{
