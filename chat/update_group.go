@@ -153,10 +153,22 @@ func (ug *updateGroup) getTimestamp() int64 {
 	return ug.Timestamp
 }
 
-func (ug *updateGroup) confirmingUsers() int {
+func (ug *updateGroup) confirmingUsers(possibleUsers []uuid.UUID) int {
+	possible := map[uuid.UUID]bool{}
+	for _, id := range possibleUsers {
+		possible[id] = true
+	}
+
 	users := make(map[uuid.UUID]bool)
 	for _, c := range ug.Confirmations {
-		users[c.Author] = true
+		if possible[c.Author] {
+			users[c.Author] = true
+		} else {
+			log.WithFields(log.Fields{
+				"update_group_id": ug.ID,
+				"offending_user":  c.Author,
+			}).Warn("update group has a confirmation that wasn't created by a possible user")
+		}
 	}
 	users[ug.getAuthor()] = true
 
@@ -428,15 +440,6 @@ func (b *bounce) processEarlyConfirmations(ug updateGroup) {
 		}).Fatal("error finding all confirmations")
 	}
 	for _, c := range confirmations {
-		if !b.userInGroupForUpdate(c.Author, ug) {
-			log.WithFields(log.Fields{
-				"update_group_id": c.UpdateGroupID,
-				"confirmation_id": c.ID,
-				"author":          c.Author,
-			}).Warn("ignoring confirmation signed by user who was not a member of the group during the update")
-			continue
-		}
-
 		err = b.database.Model(&confirmation{}).
 			Where("id = ?", c.ID).
 			Select("destination", "custom_scope").

@@ -50,6 +50,7 @@ func (b *bounce) currentGroupState(groupID uuid.UUID) (groupState, error) {
 	return top, nil
 }
 
+/*
 func (b *bounce) userInGroupForUpdate(userID uuid.UUID, ug updateGroup) bool {
 	stack, err := b.currentGroupStack(ug.Target)
 	if err != nil {
@@ -84,6 +85,7 @@ func (b *bounce) userInGroupForUpdate(userID uuid.UUID, ug updateGroup) bool {
 	}
 	return isMemberOfGroupForUpdate
 }
+*/
 
 func (b *bounce) reloadGroupConsensus(groupID uuid.UUID) {
 	b.consensusStore.Lock()
@@ -121,10 +123,10 @@ func (b *bounce) reloadGroupConsensus(groupID uuid.UUID) {
 
 func (b *bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) {
 	b.consensusStore.Lock()
-	defer b.consensusStore.Unlock()
 
 	// Reload everything if timestamp is 0
 	if ts == 0 {
+		b.consensusStore.Unlock()
 		b.reloadGroupConsensus(groupID)
 		return
 	}
@@ -132,9 +134,11 @@ func (b *bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) {
 	// Find the stack, reload everything if we don't have a stack yet
 	stack, ok := b.consensusStore.groups[groupID]
 	if !ok {
+		b.consensusStore.Unlock()
 		b.reloadGroupConsensus(groupID)
 		return
 	}
+	defer b.consensusStore.Unlock()
 
 	// Remove updates that are at or older than timestamp from the stack
 	untouchedState := []groupState{}

@@ -12,6 +12,7 @@ import (
 
 func TestCanRenameGroupAndConfirm(t *testing.T) {
 	b, alice, bob, groupID := createUsersAndGroups(t)
+	userIDs := []uuid.UUID{b.currentUserID(), alice.currentUserID(), bob.currentUserID()}
 
 	newName := "New Name"
 	b.renameGroup(groupID, newName)
@@ -54,25 +55,26 @@ func TestCanRenameGroupAndConfirm(t *testing.T) {
 	awaitAck(t, bob, b, typeConfirmation, bc.ID)
 	err = b.database.Preload(clause.Associations).First(&ug, "target = ?", groupID).Error
 	assert.NoError(t, err)
-	assert.Equal(t, 3, ug.confirmingUsers())
+	assert.Equal(t, 3, ug.confirmingUsers(userIDs))
 
 	// Alice sees three confirmations
 	awaitAck(t, bob, alice, typeConfirmation, bc.ID)
 	var aug updateGroup
 	err = alice.database.Preload(clause.Associations).First(&aug, "target = ?", groupID).Error
 	assert.NoError(t, err)
-	assert.Equal(t, 3, aug.confirmingUsers())
+	assert.Equal(t, 3, aug.confirmingUsers(userIDs))
 
 	// Bob sees three confirmations
 	awaitAck(t, alice, bob, typeConfirmation, ac.ID)
 	var bug updateGroup
 	err = bob.database.Preload(clause.Associations).First(&bug, "target = ?", groupID).Error
 	assert.NoError(t, err)
-	assert.Equal(t, 3, bug.confirmingUsers())
+	assert.Equal(t, 3, bug.confirmingUsers(userIDs))
 }
 
 func TestEarlyConfirmationWorks(t *testing.T) {
-	b, alice, _, groupID := createUsersAndGroups(t)
+	b, alice, bob, groupID := createUsersAndGroups(t)
+	userIDs := []uuid.UUID{b.currentUserID(), alice.currentUserID(), bob.currentUserID()}
 
 	// Make an arbitrary update group
 	restrictEdits := updateGroup{
@@ -114,5 +116,5 @@ func TestEarlyConfirmationWorks(t *testing.T) {
 	// Load the update from the database and see that it already has a confirmation
 	var ug updateGroup
 	assert.NoError(t, b.database.Preload(clause.Associations).First(&ug, "id = ?", restrictEdits.ID).Error)
-	assert.Equal(t, 2, ug.confirmingUsers())
+	assert.Equal(t, 2, ug.confirmingUsers(userIDs))
 }

@@ -205,7 +205,6 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 
 func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
 	ch.Lock()
-	defer ch.Unlock()
 
 	found := false
 	location := 0
@@ -231,6 +230,8 @@ func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
 	ch.items = append(ch.items[:location], ch.items[location+1:]...)
 	ch.ids = append(ch.ids[:location], ch.ids[location+1:]...)
 	ch.heights = append(ch.heights[:location], ch.heights[location+1:]...)
+
+	ch.Unlock()
 
 	ch.Refresh()
 

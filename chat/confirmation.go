@@ -158,17 +158,6 @@ func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 	c.Destination = ug.Target
 	c.CustomScope = ug.CustomScope
 
-	// Make sure the user signing this confirmation was a member of the group for this update, unless the update group in question
-	// has a custom scope, in which case this update removed us from the group
-	if ug.CustomScope == uuid.Nil && !b.userInGroupForUpdate(c.Author, ug) {
-		log.WithFields(log.Fields{
-			"update_group_id": c.UpdateGroupID,
-			"confirmation_id": c.ID,
-			"author":          c.Author,
-		}).Warn("ignoring confirmation signed by user who was not a member of the group during the update")
-		return nil
-	}
-
 	// Save it
 	err = b.database.Create(&c).Error
 	if err != nil {
