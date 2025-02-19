@@ -84,7 +84,7 @@ func frameAllowedWithoutProfile(frameType uint16) bool {
 func (b *bounce) readFrames(conn net.Conn) {
 	handlers := b.getHandlers()
 	peer := conn.RemoteAddr().String()
-	_, profileExists := b.currentUser()
+	profile, profileExists := b.currentUser()
 	dev, deviceExists := b.getDeviceFromAddress(peer)
 
 	for {
@@ -107,7 +107,7 @@ func (b *bounce) readFrames(conn net.Conn) {
 		// Make sure that we can handle this type of frame without a profile if we don't have one
 		if !profileExists {
 			// Re-check if we have a profile if needed, just in case one was setup between the last frame and this frame
-			_, profileExists = b.currentUser()
+			profile, profileExists = b.currentUser()
 		}
 		if !profileExists {
 			if !frameAllowedWithoutProfile(frameType) {
@@ -123,7 +123,7 @@ func (b *bounce) readFrames(conn net.Conn) {
 		if !deviceExists {
 			dev, deviceExists = b.getDeviceFromAddress(peer)
 		}
-		if deviceExists {
+		if deviceExists && profileExists {
 			lastSeen := time.Now().Unix()
 			err := b.database.Table("devices").Where("id = ?", dev.ID).Updates(map[string]interface{}{"last_seen": lastSeen}).Error
 			if err != nil {
@@ -132,8 +132,9 @@ func (b *bounce) readFrames(conn net.Conn) {
 					"error":     err.Error(),
 				}).Error("error updating last time device was seen")
 			}
-
-			b.userInterface.DeviceLastSeen(dev.ID, lastSeen)
+			if dev.UserID == profile.ID {
+				b.userInterface.DeviceLastSeen(dev.ID, lastSeen)
+			}
 		}
 
 		handler, ok := handlers[frameType]
