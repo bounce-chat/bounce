@@ -999,7 +999,9 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	catchUpMutex.Unlock()
 
 	// Inform the reference engine that this peer has these frames that we don't know about
-	b.loadReferenceOffer(peer, references)
+	if len(references) > 0 {
+		b.loadReferenceOffer(peer, references)
+	}
 
 	// Send an ack for everything we already have in the database
 	go b.sendDirect(peer, &ack{
