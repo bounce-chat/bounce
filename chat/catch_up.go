@@ -101,8 +101,17 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 	// Keep track of which users are getting updated
 	usersToUpdate := map[uuid.UUID]bool{}
 
+	// Keep track of which DMs are getting updated
+	dmsToUpdate := map[uuid.UUID]bool{}
+
 	// Keep track of devices we need to reference after this
 	devicesToReference := map[string]bool{}
+
+	// Keep track of if our settings update
+	settingsUpdated := false
+
+	// Keep track of devices that are getting updates
+	devicesToUpdate := map[uuid.UUID]bool{}
 
 	// Collect all the processed frames into a single ack
 	a := &ack{}
@@ -168,19 +177,25 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 			devicesToReference[dev] = true
 		}
 
-		// If this frame impacts group consensus, take note of the group for a consensus check after the catch up
-		if fr.Type == typeUpdateGroup || fr.Type == typeGroupCreation || fr.Type == typeConfirmation {
+		// Track any follow up actions we need to take on these frames after the catchup compeltes
+		switch fr.Type {
+		case typeUpdateGroup:
 			groupsToUpdateConsensus[br.getDestination(b.currentUserID())] = true
-		}
-
-		if fr.Type == typeGroupCreation {
+		case typeConfirmation:
+			groupsToUpdateConsensus[br.getDestination(b.currentUserID())] = true
+		case typeGroupCreation:
+			groupsToUpdateConsensus[br.getDestination(b.currentUserID())] = true
 			groupID := br.getDestination(b.currentUserID())
 			b.userInterface.PauseGroupNotifications(groupID)
 			unpause[groupID] = true
-		}
-
-		if fr.Type == typeUpdateUser {
+		case typeUpdateUser:
 			usersToUpdate[br.getAuthor()] = true
+		case typeUpdateDM:
+			dmsToUpdate[br.getDestination(b.currentUserID())] = true
+		case typeUpdateSettings:
+			settingsUpdated = true
+		case typeUpdateDevice:
+			devicesToUpdate[br.getDestination(b.currentUserID())] = true
 		}
 
 		if waitingForInitialSyncFrom == peer {
@@ -260,9 +275,20 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		b.userInterface.ResumeGroupNotifications(groupID)
 	}
 
-	// Update user states for all users with an update user frame in this catch up
 	for userID, _ := range usersToUpdate {
 		b.updateUserState(userID)
+	}
+
+	for userID, _ := range dmsToUpdate {
+		b.updateDMState(userID)
+	}
+
+	if settingsUpdated {
+		b.updateSettingsState()
+	}
+
+	for deviceID, _ := range devicesToUpdate {
+		b.updateDeviceState(deviceID)
 	}
 
 	// Send references to any device we would have broadcast to

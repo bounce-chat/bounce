@@ -169,7 +169,7 @@ func (b *bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 	}
 
 	// Apply this update locally
-	err = b.saveAndApplyUpdateSettings(us)
+	err = b.saveAndDisplayUpdateSettings(us)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"device": srcDevice.ID,
@@ -179,10 +179,15 @@ func (b *bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 		return nil
 	}
 
+	// Update the database state if we're not in a catch up
+	if !catchUp {
+		b.updateSettingsState()
+	}
+
 	return &us
 }
 
-func (b *bounce) saveAndApplyUpdateSettings(us updateSettings) error {
+func (b *bounce) saveAndDisplayUpdateSettings(us updateSettings) error {
 	// Validate payload
 	err := us.validPayload()
 	if err != nil {
@@ -196,9 +201,6 @@ func (b *bounce) saveAndApplyUpdateSettings(us updateSettings) error {
 			"error": err.Error(),
 		}).Fatal("database error saving update settings")
 	}
-
-	// Update the database and UI
-	b.updateSettingsState()
 
 	return nil
 }
@@ -380,14 +382,17 @@ func (b *bounce) setNewGroupRestrictPosting(value bool) {
 }
 
 func (b *bounce) applyAndBroadcastUpdateSettings(us updateSettings) error {
-	// Apply the update locally
-	err := b.saveAndApplyUpdateSettings(us)
+	// Save the update to the database
+	err := b.saveAndDisplayUpdateSettings(us)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error applying update settings")
 		return err
 	}
+
+	// Set the database and UI states
+	b.updateSettingsState()
 
 	// Broadcast
 	b.broadcast(&us)

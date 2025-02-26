@@ -201,7 +201,7 @@ func (b *bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 	}
 
 	// Apply this update locally
-	err = b.saveAndApplyUpdateDM(ud)
+	err = b.saveAndDisplayUpdateDM(ud)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"user":   xor(ud.Target, b.currentUserID()),
@@ -210,6 +210,11 @@ func (b *bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 			"error":  err.Error(),
 		}).Error("error applying update DM")
 		return nil
+	}
+
+	// If we're not in a catchup, set the state now
+	if !catchUp {
+		b.updateDMState(xor(ud.Target, b.currentUserID()))
 	}
 
 	return &ud
@@ -303,7 +308,7 @@ func (b *bounce) updateDMState(userID uuid.UUID) {
 	)
 }
 
-func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {
+func (b *bounce) saveAndDisplayUpdateDM(ud updateDM) error {
 	// Only sync devices can change sync scoped messages
 	if ud.getScope(b.currentUserID()) == scopeSync {
 		if ud.Actor != b.currentUserID() {
@@ -371,9 +376,6 @@ func (b *bounce) saveAndApplyUpdateDM(ud updateDM) error {
 	if ud.getScope(b.currentUserID()) != scopeSync {
 		b.updateLastUserActivity(xor(b.currentUserID(), ud.Target), ud.Timestamp)
 	}
-
-	// Update the database and UI
-	b.updateDMState(counterpartyID)
 
 	return nil
 }
@@ -518,14 +520,17 @@ func (b *bounce) setDMTypingIndicatorSettings(userID uuid.UUID, override bool, e
 }
 
 func (b *bounce) applyAndBroadcastUpdateDM(ud updateDM) error {
-	// Apply the update locally
-	err := b.saveAndApplyUpdateDM(ud)
+	// Save and display the update the UI
+	err := b.saveAndDisplayUpdateDM(ud)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error applying update DM")
 		return err
 	}
+
+	// Update the database
+	b.updateDMState(xor(ud.Target, b.currentUserID()))
 
 	// Broadcast
 	b.broadcast(&ud)

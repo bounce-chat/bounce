@@ -60,9 +60,10 @@ func (ud *updateDevice) getScope(myID uuid.UUID) int {
 }
 
 func (ud *updateDevice) getDestination(myID uuid.UUID) uuid.UUID {
-	// Destination is only required for user and group scopes, so we
-	// do not need to provide one for this frame
-	return uuid.Nil
+	// Destination is not needed in sync or global scoped frames, and
+	// a device ID is not a valid destination, however we use this to
+	// track which devices need to be updated during a catch up.
+	return ud.Target
 }
 
 func (ud *updateDevice) getType() uint16 {
@@ -212,12 +213,15 @@ func (b *bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 		}).Fatal("database error saving update device")
 	}
 
-	b.updateDeviceState(ud.Target, catchUp)
+	// If we're not in a catchup, set the state now
+	if !catchUp {
+		b.updateDeviceState(ud.Target)
+	}
 
 	return &ud
 }
 
-func (b *bounce) updateDeviceState(deviceID uuid.UUID, catchUp bool) {
+func (b *bounce) updateDeviceState(deviceID uuid.UUID) {
 	var d device
 	err := b.database.Where("id = ?", deviceID).First(&d).Error
 	if err != nil {
@@ -314,7 +318,7 @@ func (b *bounce) updateDeviceState(deviceID uuid.UUID, catchUp bool) {
 			}
 			b.devicePool.revokedDevices[d.Address] = true
 
-			b.revokeUnauthorizedDeviceActions(d.Address, revokedAt, catchUp)
+			b.revokeUnauthorizedDeviceActions(d.Address, revokedAt)
 
 			if d.UserID == b.currentUserID() {
 				b.userInterface.DeviceRevoked(deviceID)
@@ -330,7 +334,7 @@ func (b *bounce) updateDeviceState(deviceID uuid.UUID, catchUp bool) {
 	}
 }
 
-func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64, catchUp bool) {
+func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64) {
 	// Find any group creations signed by this device after it was revoked and delete those groups
 	var unauthorizedGroupCreations []groupCreation
 	err := b.database.Where("signer = ? AND timestamp > ?", address, revokedAt).Find(&unauthorizedGroupCreations).Error
@@ -386,10 +390,7 @@ func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 	}
 	for target, _ := range groupsToUpdate {
 		b.reloadGroupConsensusSince(target, revokedAt)
-
-		if !catchUp {
-			b.writeGroupConsensus(target)
-		}
+		b.writeGroupConsensus(target)
 	}
 
 	// Find any update users signed by this device after it was revoked, then reset the user state
@@ -518,7 +519,7 @@ func (b *bounce) applyAndBroadcastUpdateDevice(ud updateDevice) error {
 		return err
 	}
 
-	b.updateDeviceState(ud.Target, false)
+	b.updateDeviceState(ud.Target)
 
 	b.broadcast(&ud)
 
