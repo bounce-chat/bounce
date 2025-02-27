@@ -66,7 +66,7 @@ type group struct {
 	removeUserButtonsMutex           sync.Mutex
 	editUserDialogs                  map[uuid.UUID]dialog.Dialog
 	editUserDialogsMutex             sync.Mutex
-	typingIndicators                 *typingIndicators
+	typingIndicator                  *typingIndicator
 	entry                            *threadEntry
 	lastMessage                      int64
 }
@@ -90,8 +90,8 @@ func (g *group) getButton() *threadButton {
 	return g.button
 }
 
-func (g *group) getTypingIndicators() *typingIndicators {
-	return g.typingIndicators
+func (g *group) getTypingIndicator() *typingIndicator {
+	return g.typingIndicator
 }
 
 func (g *group) getLastMessageTime() int64 {
@@ -507,10 +507,10 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		}
 	}()
 
-	group.typingIndicators = newTypingIndicators()
-	group.typingIndicators.Hide()
+	group.typingIndicator = newTypingIndicator()
+	group.typingIndicator.Hide()
 	footer := container.NewVBox(
-		group.typingIndicators,
+		group.typingIndicator,
 		group.entry,
 	)
 	group.view = container.New(

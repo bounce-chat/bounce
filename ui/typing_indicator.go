@@ -14,7 +14,7 @@ import (
 var maxTypingUsers = 8
 var dotSize = float32(8)
 
-type typingIndicators struct {
+type typingIndicator struct {
 	widget.BaseWidget
 
 	icons           []*defaultImage
@@ -24,8 +24,8 @@ type typingIndicators struct {
 	thirdTypingDot  *canvas.Circle
 }
 
-func newTypingIndicators() *typingIndicators {
-	ti := &typingIndicators{
+func newTypingIndicator() *typingIndicator {
+	ti := &typingIndicator{
 		icons:           []*defaultImage{},
 		firstTypingDot:  canvas.NewCircle(color.RGBA{R: 0x96, G: 0x96, B: 0x96, A: 0xff}),
 		secondTypingDot: canvas.NewCircle(color.RGBA{R: 0x96, G: 0x96, B: 0x96, A: 0xff}),
@@ -45,7 +45,7 @@ func newTypingIndicators() *typingIndicators {
 	return ti
 }
 
-func (ti *typingIndicators) updateTypingAnimation(state float32) {
+func (ti *typingIndicator) updateTypingAnimation(state float32) {
 	dull := color.RGBA{R: 0x96, G: 0x96, B: 0x96, A: 0xff}
 	bright := color.RGBA{R: 0xe3, G: 0xe3, B: 0xe3, A: 0xff}
 
@@ -73,7 +73,7 @@ func (ti *typingIndicators) updateTypingAnimation(state float32) {
 	}
 }
 
-func (ti *typingIndicators) showUser(u *user) {
+func (ti *typingIndicator) showUser(u *user) {
 	for _, di := range ti.icons {
 		if di.id == u.id {
 			return
@@ -91,7 +91,7 @@ func (ti *typingIndicators) showUser(u *user) {
 	}
 }
 
-func (ti *typingIndicators) hideUser(userID uuid.UUID) {
+func (ti *typingIndicator) hideUser(userID uuid.UUID) {
 	iconsWithoutUser := []*defaultImage{}
 
 	for _, di := range ti.icons {
@@ -108,23 +108,23 @@ func (ti *typingIndicators) hideUser(userID uuid.UUID) {
 	}
 }
 
-func (ti *typingIndicators) CreateRenderer() fyne.WidgetRenderer {
+func (ti *typingIndicator) CreateRenderer() fyne.WidgetRenderer {
 	ti.ExtendBaseWidget(ti)
 
-	tir := &typingIndicatorsRenderer{
+	tir := &typingIndicatorRenderer{
 		ti: ti,
 	}
 
 	return tir
 }
 
-type typingIndicatorsRenderer struct {
-	ti *typingIndicators
+type typingIndicatorRenderer struct {
+	ti *typingIndicator
 }
 
-func (tir *typingIndicatorsRenderer) Destroy() {}
+func (tir *typingIndicatorRenderer) Destroy() {}
 
-func (tir *typingIndicatorsRenderer) Layout(size fyne.Size) {
+func (tir *typingIndicatorRenderer) Layout(size fyne.Size) {
 	animationLeft := float32(0)
 	for i, icon := range tir.ti.icons {
 		if i+1 >= maxTypingUsers {
@@ -172,7 +172,7 @@ func (tir *typingIndicatorsRenderer) Layout(size fyne.Size) {
 	})
 }
 
-func (tir *typingIndicatorsRenderer) MinSize() fyne.Size {
+func (tir *typingIndicatorRenderer) MinSize() fyne.Size {
 	width := theme.IconInlineSize()*float32(len(tir.ti.icons)) + dotSize*3 + theme.Padding()*3
 	if len(tir.ti.icons) > 1 {
 		width -= theme.IconInlineSize() / 2
@@ -184,7 +184,7 @@ func (tir *typingIndicatorsRenderer) MinSize() fyne.Size {
 	}
 }
 
-func (tir *typingIndicatorsRenderer) Objects() []fyne.CanvasObject {
+func (tir *typingIndicatorRenderer) Objects() []fyne.CanvasObject {
 	objs := []fyne.CanvasObject{}
 	for _, icon := range tir.ti.icons {
 		objs = append(objs, icon)
@@ -195,7 +195,7 @@ func (tir *typingIndicatorsRenderer) Objects() []fyne.CanvasObject {
 	return objs
 }
 
-func (tir *typingIndicatorsRenderer) Refresh() {
+func (tir *typingIndicatorRenderer) Refresh() {
 	for _, obj := range tir.Objects() {
 		obj.Refresh()
 	}

@@ -28,7 +28,7 @@ type directMessage struct {
 	view                             *fyne.Container
 	header                           *fyne.Container
 	button                           *threadButton
-	typingIndicators                 *typingIndicators
+	typingIndicator                  *typingIndicator
 	notificationsEnabledCheck        *widget.Check
 	readReceiptOverrideSelection     *widget.Select
 	typingIndicatorOverrideSelection *widget.Select
@@ -57,8 +57,8 @@ func (dm *directMessage) getButton() *threadButton {
 	return dm.button
 }
 
-func (dm *directMessage) getTypingIndicators() *typingIndicators {
-	return dm.typingIndicators
+func (dm *directMessage) getTypingIndicator() *typingIndicator {
+	return dm.typingIndicator
 }
 
 func (dm *directMessage) getLastMessageTime() int64 {
@@ -235,10 +235,10 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 		}
 	}()
 
-	dm.typingIndicators = newTypingIndicators()
-	dm.typingIndicators.Hide()
+	dm.typingIndicator = newTypingIndicator()
+	dm.typingIndicator.Hide()
 	footer := container.NewVBox(
-		dm.typingIndicators,
+		dm.typingIndicator,
 		dm.entry,
 	)
 

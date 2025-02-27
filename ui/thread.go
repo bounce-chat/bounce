@@ -21,7 +21,7 @@ type thread interface {
 	getEntry() *threadEntry
 	chatHistoryScroll() *chatHistory
 	getButton() *threadButton
-	getTypingIndicators() *typingIndicators
+	getTypingIndicator() *typingIndicator
 	getLastMessageTime() int64
 	setLastMessageTime(int64)
 	getNotificationsMutedUntil() int64
@@ -347,7 +347,7 @@ func (fyneUI *Fyne) ShowTypingIndicatorInHistory(userID, threadID uuid.UUID) {
 		return
 	}
 
-	t.getTypingIndicators().showUser(u)
+	t.getTypingIndicator().showUser(u)
 	t.getView().Refresh()
 }
 
@@ -388,7 +388,7 @@ func (fyneUI *Fyne) HideTypingIndicatorInHistory(userID, threadID uuid.UUID) {
 		return
 	}
 
-	t.getTypingIndicators().hideUser(userID)
+	t.getTypingIndicator().hideUser(userID)
 	t.getView().Refresh()
 }
 
