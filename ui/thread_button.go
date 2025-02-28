@@ -24,11 +24,7 @@ type threadButton struct {
 	threadImage               fyne.CanvasObject
 	threadName                *widget.RichText
 	lastMessage               *widget.RichText
-	currentlyTypingUser       *widget.RichText
-	typingAnimation           *fyne.Animation
-	firstTypingDot            *canvas.Circle
-	secondTypingDot           *canvas.Circle
-	thirdTypingDot            *canvas.Circle
+	typingIndicator           *typingIndicator
 	threadNameFadeOut         *canvas.LinearGradient
 	lastMessageTimeBackground *canvas.Rectangle
 	lastMessageTimeFadeOut    *canvas.LinearGradient
@@ -129,20 +125,7 @@ func newThreadButton(image fyne.CanvasObject, name binding.String, clicked func(
 				Text: "",
 			},
 		),
-		currentlyTypingUser: widget.NewRichText(
-			&widget.TextSegment{
-				Style: widget.RichTextStyle{
-					Inline: true,
-					TextStyle: fyne.TextStyle{
-						Bold: true,
-					},
-				},
-				Text: "",
-			},
-		),
-		firstTypingDot:  canvas.NewCircle(color.RGBA{R: 0x96, G: 0x96, B: 0x96, A: 0xff}),
-		secondTypingDot: canvas.NewCircle(color.RGBA{R: 0x96, G: 0x96, B: 0x96, A: 0xff}),
-		thirdTypingDot:  canvas.NewCircle(color.RGBA{R: 0x96, G: 0x96, B: 0x96, A: 0xff}),
+		typingIndicator: newTypingIndicator(typingIndicatorModeText),
 		threadNameFadeOut: canvas.NewLinearGradient(
 			color.RGBA{},
 			theme.Color(theme.ColorNameBackground),
@@ -212,18 +195,7 @@ func newThreadButton(image fyne.CanvasObject, name binding.String, clicked func(
 		tb.Refresh()
 	}))
 
-	tb.typingAnimation = &fyne.Animation{
-		AutoReverse: false,
-		Curve:       fyne.AnimationLinear,
-		Duration:    1800 * time.Millisecond,
-		RepeatCount: fyne.AnimationRepeatForever,
-		Tick:        tb.updateTypingAnimation,
-	}
-
-	tb.firstTypingDot.Hide()
-	tb.secondTypingDot.Hide()
-	tb.thirdTypingDot.Hide()
-	tb.currentlyTypingUser.Hide()
+	tb.typingIndicator.Hide()
 	tb.lastMessageTimeBackground.Hide()
 	tb.lastMessageTimeFadeOut.Hide()
 	tb.unreadCounterTextFadeOut.Hide()
@@ -241,34 +213,6 @@ func (tb *threadButton) Tapped(*fyne.PointEvent) {
 		tb.clicked()
 	} else {
 		log.Fatal("threadButton widgets must have a clickable callback")
-	}
-}
-
-func (tb *threadButton) updateTypingAnimation(state float32) {
-	dull := color.RGBA{R: 0x96, G: 0x96, B: 0x96, A: 0xff}
-	bright := color.RGBA{R: 0xe3, G: 0xe3, B: 0xe3, A: 0xff}
-
-	if state < 0.333 {
-		tb.firstTypingDot.FillColor = bright
-		tb.secondTypingDot.FillColor = dull
-		tb.thirdTypingDot.FillColor = dull
-		tb.firstTypingDot.Refresh()
-		tb.secondTypingDot.Refresh()
-		tb.thirdTypingDot.Refresh()
-	} else if state < 0.666 {
-		tb.firstTypingDot.FillColor = dull
-		tb.secondTypingDot.FillColor = bright
-		tb.thirdTypingDot.FillColor = dull
-		tb.firstTypingDot.Refresh()
-		tb.secondTypingDot.Refresh()
-		tb.thirdTypingDot.Refresh()
-	} else {
-		tb.firstTypingDot.FillColor = dull
-		tb.secondTypingDot.FillColor = dull
-		tb.thirdTypingDot.FillColor = bright
-		tb.firstTypingDot.Refresh()
-		tb.secondTypingDot.Refresh()
-		tb.thirdTypingDot.Refresh()
 	}
 }
 
@@ -347,6 +291,8 @@ func (tb *threadButton) showCurrentStatusIcon() {
 	tb.unreadCounterTextFadeOut.Show()
 	tb.unreadCounterBackground.Show()
 	tb.statusIcons.Show()
+
+	tb.Refresh()
 }
 
 func (tb *threadButton) setLastMessageTime(timestamp time.Time) {
@@ -428,27 +374,6 @@ func (tb *threadButton) displayCorrectUnreadCount() {
 	}
 }
 
-func (tb *threadButton) startTyping(name string) {
-	tb.lastMessage.Hide()
-	tb.statusIcons.Hide()
-	tb.currentlyTypingUser.Segments[0].(*widget.TextSegment).Text = name + ": "
-	tb.currentlyTypingUser.Refresh()
-	tb.currentlyTypingUser.Show()
-	tb.firstTypingDot.Show()
-	tb.secondTypingDot.Show()
-	tb.thirdTypingDot.Show()
-	tb.typingAnimation.Start()
-}
-
-func (tb *threadButton) stopTyping() {
-	tb.firstTypingDot.Hide()
-	tb.secondTypingDot.Hide()
-	tb.thirdTypingDot.Hide()
-	tb.typingAnimation.Stop()
-	tb.currentlyTypingUser.Hide()
-	tb.lastMessage.Show()
-}
-
 //func (tb *threadButton) Hide() {} // TODO: need to call into base widget here?
 
 //func (tb *threadButton) MinSize() {} // TODO: needed?
@@ -479,28 +404,15 @@ func (tbr *threadButtonRenderer) Layout(size fyne.Size) {
 		X: threadButtonHeight,
 		Y: 0 - theme.Padding()*2,
 	})
+
+	tbr.threadButton.typingIndicator.Resize(tbr.threadButton.typingIndicator.MinSize())
+	tbr.threadButton.typingIndicator.Move(fyne.Position{
+		X: threadButtonHeight,
+		Y: threadButtonHeight - tbr.threadButton.typingIndicator.MinSize().Height + theme.Padding(),
+	})
 	tbr.threadButton.lastMessage.Move(fyne.Position{
 		X: threadButtonHeight,
 		Y: threadButtonHeight - tbr.threadButton.lastMessage.MinSize().Height + theme.Padding(),
-	})
-	tbr.threadButton.currentlyTypingUser.Move(fyne.Position{
-		X: threadButtonHeight,
-		Y: threadButtonHeight - tbr.threadButton.currentlyTypingUser.MinSize().Height + theme.Padding(),
-	})
-	tbr.threadButton.firstTypingDot.Resize(fyne.Size{Width: threadButtonHeight / 8, Height: threadButtonHeight / 8})
-	tbr.threadButton.firstTypingDot.Move(fyne.Position{
-		X: threadButtonHeight + tbr.threadButton.currentlyTypingUser.MinSize().Width - theme.Padding(),
-		Y: threadButtonHeight - threadButtonHeight/4,
-	})
-	tbr.threadButton.secondTypingDot.Resize(fyne.Size{Width: threadButtonHeight / 8, Height: threadButtonHeight / 8})
-	tbr.threadButton.secondTypingDot.Move(fyne.Position{
-		X: threadButtonHeight + tbr.threadButton.currentlyTypingUser.MinSize().Width - theme.Padding() + threadButtonHeight/8 + theme.Padding(),
-		Y: threadButtonHeight - threadButtonHeight/4,
-	})
-	tbr.threadButton.thirdTypingDot.Resize(fyne.Size{Width: threadButtonHeight / 8, Height: threadButtonHeight / 8})
-	tbr.threadButton.thirdTypingDot.Move(fyne.Position{
-		X: threadButtonHeight + tbr.threadButton.currentlyTypingUser.MinSize().Width - theme.Padding() + threadButtonHeight/8 + theme.Padding() + threadButtonHeight/8 + theme.Padding(),
-		Y: threadButtonHeight - threadButtonHeight/4,
 	})
 	tbr.threadButton.threadNameFadeOut.Resize(fyne.Size{Width: (threadButtonHeight / 4) + theme.Padding(), Height: threadButtonHeight / 2})
 	tbr.threadButton.threadNameFadeOut.Move(fyne.Position{
@@ -581,10 +493,7 @@ func (tbr *threadButtonRenderer) Objects() []fyne.CanvasObject {
 		tbr.threadButton.threadImage,
 		tbr.threadButton.threadName,
 		tbr.threadButton.lastMessage,
-		tbr.threadButton.currentlyTypingUser,
-		tbr.threadButton.firstTypingDot,
-		tbr.threadButton.secondTypingDot,
-		tbr.threadButton.thirdTypingDot,
+		tbr.threadButton.typingIndicator,
 		tbr.threadButton.threadNameFadeOut,
 		tbr.threadButton.lastMessageTimeBackground,
 		tbr.threadButton.lastMessageTimeFadeOut,
@@ -619,5 +528,13 @@ func (tbr *threadButtonRenderer) Refresh() {
 
 	for _, obj := range tbr.Objects() {
 		obj.Refresh()
+	}
+
+	if tbr.threadButton.typingIndicator.Visible() {
+		tbr.threadButton.lastMessage.Hide()
+		tbr.threadButton.statusIcons.Hide()
+	} else {
+		tbr.threadButton.lastMessage.Show()
+		// TODO: show the status icon?
 	}
 }

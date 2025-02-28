@@ -507,7 +507,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		}
 	}()
 
-	group.typingIndicator = newTypingIndicator()
+	group.typingIndicator = newTypingIndicator(typingIndicatorModeIcons)
 	group.typingIndicator.Hide()
 	footer := container.NewVBox(
 		group.typingIndicator,

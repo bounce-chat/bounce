@@ -235,7 +235,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 		}
 	}()
 
-	dm.typingIndicator = newTypingIndicator()
+	dm.typingIndicator = newTypingIndicator(typingIndicatorModeIcons)
 	dm.typingIndicator.Hide()
 	footer := container.NewVBox(
 		dm.typingIndicator,

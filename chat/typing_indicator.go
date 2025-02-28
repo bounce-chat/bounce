@@ -38,9 +38,8 @@ var typingStateMutex sync.Mutex
 // A typing status contains the state of a user as it relates to a thread: where in the UI we're indicating typing,
 // and the last time we updated the indication status
 type typingStatus struct {
-	lastIndicated      int64
-	uiIndicatingThread bool
-	uiIndicatingButton bool
+	lastIndicated int64
+	uiIndicating  bool
 }
 
 //
@@ -439,49 +438,19 @@ func (b *bounce) updateFrontendTypingIndicators() {
 		indicatingUsers := map[uuid.UUID]*typingStatus{}
 
 		for u, status := range users {
-			if status.uiIndicatingThread && status.lastIndicated < time.Now().Unix()-typingIndicatorDisplayForSeconds {
-				status.uiIndicatingThread = false
-				b.userInterface.HideTypingIndicatorInHistory(u, thread)
+			if status.uiIndicating && status.lastIndicated < time.Now().Unix()-typingIndicatorDisplayForSeconds {
+				status.uiIndicating = false
+				b.userInterface.HideTypingIndicator(u, thread)
 			}
-			if !status.uiIndicatingThread && status.lastIndicated > time.Now().Unix()-typingIndicatorDisplayForSeconds {
+			if !status.uiIndicating && status.lastIndicated > time.Now().Unix()-typingIndicatorDisplayForSeconds {
 				if b.typingIndicatorsEnabledForThread(thread) {
-					status.uiIndicatingThread = true
-					b.userInterface.ShowTypingIndicatorInHistory(u, thread)
+					status.uiIndicating = true
+					b.userInterface.ShowTypingIndicator(u, thread)
 				}
 			}
 
-			if status.uiIndicatingThread {
+			if status.uiIndicating {
 				indicatingUsers[u] = status
-			}
-		}
-
-		if len(indicatingUsers) == 0 {
-			b.userInterface.HideTypingIndicatorInButton(thread)
-			for _, status := range users {
-				status.uiIndicatingButton = false
-			}
-		} else {
-			maxUserID := uuid.Nil
-			maxUserTimestamp := int64(0)
-
-			for id, status := range indicatingUsers {
-				if status.lastIndicated > maxUserTimestamp {
-					maxUserTimestamp = status.lastIndicated
-					maxUserID = id
-				}
-			}
-
-			if !users[maxUserID].uiIndicatingButton {
-				if b.typingIndicatorsEnabledForThread(thread) {
-					users[maxUserID].uiIndicatingButton = true
-					b.userInterface.ShowTypingIndicatorInButton(maxUserID, thread)
-				}
-			}
-
-			for id, status := range indicatingUsers {
-				if id != maxUserID {
-					status.uiIndicatingButton = false
-				}
 			}
 		}
 	}

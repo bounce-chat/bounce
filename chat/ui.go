@@ -355,10 +355,8 @@ type UI interface {
 	PauseGroupNotifications(uuid.UUID)
 	ResumeGroupNotifications(uuid.UUID)
 
-	ShowTypingIndicatorInHistory(userID, threadID uuid.UUID)
-	ShowTypingIndicatorInButton(userID, threadID uuid.UUID)
-	HideTypingIndicatorInHistory(userID, threadID uuid.UUID)
-	HideTypingIndicatorInButton(threadID uuid.UUID)
+	ShowTypingIndicator(userID, threadID uuid.UUID)
+	HideTypingIndicator(userID, threadID uuid.UUID)
 
 	UserIsOnline(userID uuid.UUID)
 	UserIsOffline(userID uuid.UUID)

@@ -329,7 +329,7 @@ func (fyneUI *Fyne) getThread(id uuid.UUID) (thread, bool) {
 	return nil, false
 }
 
-func (fyneUI *Fyne) ShowTypingIndicatorInHistory(userID, threadID uuid.UUID) {
+func (fyneUI *Fyne) ShowTypingIndicator(userID, threadID uuid.UUID) {
 	t, ok := fyneUI.getThread(threadID)
 	if !ok {
 		log.WithFields(log.Fields{
@@ -349,37 +349,12 @@ func (fyneUI *Fyne) ShowTypingIndicatorInHistory(userID, threadID uuid.UUID) {
 
 	t.getTypingIndicator().showUser(u)
 	t.getView().Refresh()
+
+	t.getButton().typingIndicator.showUser(u)
+	t.getButton().Refresh()
 }
 
-func (fyneUI *Fyne) ShowTypingIndicatorInButton(userID, threadID uuid.UUID) {
-	thread, ok := fyneUI.getThread(threadID)
-	if !ok {
-		// Someone could be typing into a DM that isn't open on our side yet, this isn't always an error
-		log.WithFields(log.Fields{
-			"thread_id": threadID,
-			"user_id":   userID,
-		}).Debug("cannot indicate a user is typing in a button with unknown thread")
-		return
-	}
-
-	u, ok := fyneUI.users.get(userID)
-	if !ok {
-		log.WithFields(log.Fields{
-			"thread_id": threadID,
-			"user_id":   userID,
-		}).Error("cannot indicate a user is typing in a button with unknown user")
-		return
-	}
-
-	name := u.getName()
-	if u.id == fyneUI.profile.id {
-		name = "You"
-	}
-
-	thread.getButton().startTyping(name)
-}
-
-func (fyneUI *Fyne) HideTypingIndicatorInHistory(userID, threadID uuid.UUID) {
+func (fyneUI *Fyne) HideTypingIndicator(userID, threadID uuid.UUID) {
 	t, ok := fyneUI.getThread(threadID)
 	if !ok {
 		log.WithFields(log.Fields{
@@ -390,23 +365,13 @@ func (fyneUI *Fyne) HideTypingIndicatorInHistory(userID, threadID uuid.UUID) {
 
 	t.getTypingIndicator().hideUser(userID)
 	t.getView().Refresh()
-}
 
-func (fyneUI *Fyne) HideTypingIndicatorInButton(threadID uuid.UUID) {
-	t, ok := fyneUI.getThread(threadID)
-	if !ok {
-		// Someone could be typing into a DM that isn't open on our side yet, this isn't always an error
-		log.WithFields(log.Fields{
-			"thread_id": threadID,
-		}).Debug("cannot clear typing indicator in a button with unknown thread")
-		return
+	button := t.getButton()
+	button.typingIndicator.hideUser(userID)
+	if len(button.typingIndicator.users) == 0 && t.chatHistoryScroll().isLastAuthor(fyneUI.profile.id) {
+		button.showCurrentStatusIcon()
 	}
-
-	if t.chatHistoryScroll().isLastAuthor(fyneUI.profile.id) {
-		t.getButton().showCurrentStatusIcon()
-	}
-
-	t.getButton().stopTyping()
+	button.Refresh()
 }
 
 func timestampString(timestamp int64) string {
