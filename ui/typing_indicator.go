@@ -188,12 +188,12 @@ func (tir *typingIndicatorRenderer) Layout(size fyne.Size) {
 			animationLeft = left + theme.IconInlineSize() + theme.Padding()
 		}
 	} else {
-		// TODO: resize it to the available space and truncate
+		// TODO: resize it to the available space and truncate the username
 		tir.ti.currentlyTypingUser.Move(fyne.Position{
 			X: 0,
-			Y: size.Height/2 - tir.ti.currentlyTypingUser.MinSize().Height/2, //  theme.Padding(), // TODO
+			Y: size.Height/2 - tir.ti.currentlyTypingUser.MinSize().Height/2,
 		})
-		animationLeft = tir.ti.currentlyTypingUser.MinSize().Width + theme.Padding()*2
+		animationLeft = tir.ti.currentlyTypingUser.MinSize().Width
 	}
 
 	tir.ti.firstTypingDot.Resize(fyne.Size{Width: dotSize, Height: dotSize})
