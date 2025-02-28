@@ -24,6 +24,7 @@ type threadButton struct {
 	threadImage               fyne.CanvasObject
 	threadName                *widget.RichText
 	lastMessage               *widget.RichText
+	lastMessageHasStatus      bool
 	typingIndicator           *typingIndicator
 	threadNameFadeOut         *canvas.LinearGradient
 	lastMessageTimeBackground *canvas.Rectangle
@@ -216,7 +217,8 @@ func (tb *threadButton) Tapped(*fyne.PointEvent) {
 	}
 }
 
-func (tb *threadButton) setLastMessage(name, text string) { // TODO: will need to detect when a user's name changes and they are the last message and update it here, or reference by UUID
+func (tb *threadButton) setLastMessage(name, text string, status bool) { // TODO: will need to detect when a user's name changes and they are the last message and update it here, or reference by UUID
+	tb.lastMessageHasStatus = status
 	tb.lastMessage.Segments[0].(*widget.TextSegment).Text = name + ": "
 	tb.lastMessage.Segments[0].(*widget.TextSegment).Style.TextStyle.Italic = false
 	tb.lastMessage.Segments[0].(*widget.TextSegment).Style.TextStyle.Bold = true
@@ -224,7 +226,8 @@ func (tb *threadButton) setLastMessage(name, text string) { // TODO: will need t
 	tb.lastMessage.Refresh()
 }
 
-func (tb *threadButton) setLastAction(text string) {
+func (tb *threadButton) setLastAction(text string, status bool) {
+	tb.lastMessageHasStatus = status
 	tb.lastMessage.Segments[0].(*widget.TextSegment).Text = text
 	tb.lastMessage.Segments[0].(*widget.TextSegment).Style.TextStyle.Italic = true
 	tb.lastMessage.Segments[0].(*widget.TextSegment).Style.TextStyle.Bold = false
@@ -285,14 +288,6 @@ func (tb *threadButton) showLastMessageState(state int) {
 
 func (tb *threadButton) hideLastMessageState() {
 	tb.statusIcons.Hide()
-}
-
-func (tb *threadButton) showCurrentStatusIcon() {
-	tb.unreadCounterTextFadeOut.Show()
-	tb.unreadCounterBackground.Show()
-	tb.statusIcons.Show()
-
-	tb.Refresh()
 }
 
 func (tb *threadButton) setLastMessageTime(timestamp time.Time) {
@@ -535,6 +530,10 @@ func (tbr *threadButtonRenderer) Refresh() {
 		tbr.threadButton.statusIcons.Hide()
 	} else {
 		tbr.threadButton.lastMessage.Show()
-		// TODO: show the status icon?
+		if tbr.threadButton.lastMessageHasStatus {
+			tbr.threadButton.unreadCounterTextFadeOut.Show()
+			tbr.threadButton.unreadCounterBackground.Show()
+			tbr.threadButton.statusIcons.Show()
+		}
 	}
 }

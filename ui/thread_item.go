@@ -307,10 +307,11 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		notification: notification,
 		setButton: func(tb *threadButton) {
 			displayName := u.getName() // TODO: bind last message button text?
-			if gm.Author == fyneUI.profile.id {
+			mine := gm.Author == fyneUI.profile.id
+			if mine {
 				displayName = "You"
 			}
-			group.button.setLastMessage(displayName, gm.Text)
+			group.button.setLastMessage(displayName, gm.Text, mine)
 			group.button.setLastMessageTime(time.Unix(gm.WrittenAt, 0))
 			group.setLastMessageTime(gm.WrittenAt)
 			group.chatHistoryScroll().Refresh()
@@ -390,10 +391,11 @@ func (fyneUI *Fyne) newDirectMessage(dm chat.DirectMessage) (*threadItem, error)
 		notification: notification,
 		setButton: func(tb *threadButton) {
 			displayName := u.getName()
-			if dm.Author == fyneUI.profile.id {
+			mine := dm.Author == fyneUI.profile.id
+			if mine {
 				displayName = "You"
 			}
-			dmThread.button.setLastMessage(displayName, dm.Text)
+			dmThread.button.setLastMessage(displayName, dm.Text, mine)
 			dmThread.button.setLastMessageTime(time.Unix(dm.WrittenAt, 0))
 			dmThread.setLastMessageTime(dm.WrittenAt)
 			dmThread.chatHistoryScroll().Refresh()
@@ -624,7 +626,7 @@ func (fyneUI *Fyne) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, f
 			seen:         seen,
 		},
 		setButton: func(tb *threadButton) {
-			t.getButton().setLastAction(changeString) // TODO: possible to bind actor's name?
+			t.getButton().setLastAction(changeString, false) // TODO: possible to bind actor's name?
 			t.getButton().setLastMessageTime(time.Unix(timestamp, 0))
 			t.setLastMessageTime(timestamp)
 			t.chatHistoryScroll().Refresh()

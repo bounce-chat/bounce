@@ -368,9 +368,6 @@ func (fyneUI *Fyne) HideTypingIndicator(userID, threadID uuid.UUID) {
 
 	button := t.getButton()
 	button.typingIndicator.hideUser(userID)
-	if len(button.typingIndicator.users) == 0 && t.chatHistoryScroll().isLastAuthor(fyneUI.profile.id) {
-		button.showCurrentStatusIcon()
-	}
 	button.Refresh()
 }
 
