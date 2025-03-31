@@ -301,20 +301,39 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	//
 	// Button to clear all message history, with confirm dialog
 	//
+	returnToThread := false
+	var showError error
 	confirmClearHistory := dialog.NewConfirm(
 		"Clear all message history?",
 		"Are you sure you want to permanently delete all chat history on all devices?",
 		func(confirmed bool) {
+			returnToThread = confirmed
+			showError = nil
 			if confirmed {
-				fyneUI.callbacks.ClearDMChatHistory(dm.user.id)
-				fyneUI.showMainContainer() // TODO: mobile
-				fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
+				err := fyneUI.callbacks.ClearDMChatHistory(dm.user.id)
+				if err != nil {
+					showError = errors.New("error clearing chat history: " + err.Error())
+					returnToThread = false
+				}
 			}
 		},
 		fyneUI.mainWindow,
 	)
+	dialogCleanup := func() {
+		if returnToThread {
+			if fyne.CurrentDevice().IsMobile() {
+				fyneUI.mobileBack()
+			} else {
+				fyneUI.showMainContainer()
+			}
+			fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
+		}
+		if showError != nil {
+			fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)
+		}
+	}
 	clearHistoryButton := widget.NewButton("Clear history", func() {
-		confirmClearHistory.Show()
+		fyneUI.showDialog(confirmClearHistory, dialogCleanup)
 	})
 
 	//
@@ -336,7 +355,8 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		selectedRetentionString := dm.retentionSelection.Selected
 		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
 		if !ok {
-			dialog.ShowError(errors.New("invalid retention selection: "+selectedRetentionString), fyneUI.mainWindow)
+			fyneUI.showDialog(dialog.NewError(errors.New("invalid retention selection: "+selectedRetentionString), fyneUI.mainWindow), nil)
+			return
 		} else {
 			if dm.retention != selectedRetentionValue {
 				fyneUI.callbacks.SetDMRetention(dm.user.id, selectedRetentionValue) // TODO: this should return an error if the user ID is nonsense

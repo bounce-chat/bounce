@@ -287,16 +287,16 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 
 	saveButton := widget.NewButton("Save", func() {
 		if profileNameEntry.Text == "" {
-			dialog.ShowError(errors.New("Profile name must be set"), fyneUI.mainWindow)
+			fyneUI.showDialog(dialog.NewError(errors.New("Profile name must be set"), fyneUI.mainWindow), nil)
 			return
 		}
 		if deviceNameEntry.Text == "" {
-			dialog.ShowError(errors.New("Device name must be set"), fyneUI.mainWindow)
+			fyneUI.showDialog(dialog.NewError(errors.New("Device name must be set"), fyneUI.mainWindow), nil)
 			return
 		}
 		id, err := fyneUI.callbacks.SetProfile(profileNameEntry.Text, deviceNameEntry.Text) // TODO: send profile image bytes if set
 		if err != nil {
-			dialog.ShowError(errors.New("Error saving profile: "+err.Error()), fyneUI.mainWindow)
+			fyneUI.showDialog(dialog.NewError(errors.New("Error saving profile: "+err.Error()), fyneUI.mainWindow), nil)
 			return
 		}
 		profile := makeUser(id, profileNameEntry.Text)

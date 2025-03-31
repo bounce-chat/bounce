@@ -206,31 +206,24 @@ func (fyneUI *Fyne) buildNewGroup() {
 			fyneUI.newGroupAllAvailableUsers,
 		),
 	)
+	addUsersDialogCleanup := func() {
+		fyneUI.newGroupSelectedUsers.empty()
+		fyneUI.newGroupUserSearchEntry.Text = ""
+		fyneUI.newGroupUserSearchEntry.Refresh()
+		fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(""))
+	}
 	addUsersDialog := dialog.NewCustomConfirm("Add Users", "Save", "Cancel", newUserSelector, func(apply bool) {
 		if apply {
 			for _, u := range fyneUI.newGroupSelectedUsers.userList {
 				fyneUI.newGroupPendingUsers.add(u)
 			}
 		}
-		fyneUI.newGroupSelectedUsers.empty()
-		fyneUI.newGroupUserSearchEntry.Text = ""
-		fyneUI.newGroupUserSearchEntry.Refresh()
-		fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
-		fyneUI.activeDialog = nil
-		fyneUI.activeDialogCleanup = nil
 	}, fyneUI.mainWindow)
 
 	fyneUI.newGroupNameEntry = widget.NewEntry()
 
 	fyneUI.newGroupAddUsersButton = widget.NewButton("Add Users", func() {
-		fyneUI.activeDialog = addUsersDialog
-		fyneUI.activeDialogCleanup = func() {
-			fyneUI.newGroupSelectedUsers.empty()
-			fyneUI.newGroupUserSearchEntry.Text = ""
-			fyneUI.newGroupUserSearchEntry.Refresh()
-			fyneUI.refreshNewGroupUserSelections(fyneUI.users.search(fyneUI.newGroupUserSearchEntry.Text))
-		}
-		addUsersDialog.Show()
+		fyneUI.showDialog(addUsersDialog, addUsersDialogCleanup)
 	})
 	fyneUI.newGroupRetentionSelection = widget.NewSelect(retentionSelections, nil)
 	fyneUI.newGroupRetentionSelection.Selected = getRetentionName(fyneUI.settings.DefaultGroupRetention)
@@ -262,7 +255,7 @@ func (fyneUI *Fyne) buildNewGroup() {
 		selectedRetentionString := fyneUI.newGroupRetentionSelection.Selected
 		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
 		if !ok {
-			dialog.ShowError(errors.New("invalid retention selection: "+selectedRetentionString), fyneUI.mainWindow)
+			fyneUI.showDialog(dialog.NewError(errors.New("invalid retention selection: "+selectedRetentionString), fyneUI.mainWindow), nil)
 		}
 
 		users := []chat.User{}
@@ -288,7 +281,7 @@ func (fyneUI *Fyne) buildNewGroup() {
 
 		err := fyneUI.callbacks.CreateGroup(newGroup)
 		if err != nil {
-			dialog.ShowError(errors.New("Error creating group: "+err.Error()), fyneUI.mainWindow)
+			fyneUI.showDialog(dialog.NewError(errors.New("Error creating group: "+err.Error()), fyneUI.mainWindow), nil)
 		}
 		fyneUI.newGroupCreateButton.Enable()
 		fyneUI.newGroupNameEntry.Enable()

@@ -36,7 +36,18 @@ func (fyneUI *Fyne) buildImportContact() {
 		closeButton,
 	)
 
+	var showError error
+	var showInformation dialog.Dialog
+	dialogCleanup := func() {
+		if showError != nil {
+			fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)
+		} else if showInformation != nil {
+			fyneUI.showDialog(showInformation, nil)
+		}
+	}
 	fileSelector := dialog.NewFileOpen(func(handler fyne.URIReadCloser, err error) {
+		showError = nil
+		showInformation = nil
 		// TODO: handle the passed error
 		if handler == nil {
 			// Selection canceled
@@ -44,16 +55,18 @@ func (fyneUI *Fyne) buildImportContact() {
 		}
 		data, err := io.ReadAll(handler)
 		if err != nil {
-			dialog.ShowError(errors.New("error reading file: "+err.Error()), fyneUI.mainWindow)
 			// TODO: log
+			showError = errors.New("error reading file: " + err.Error())
+			return
 		}
 		newUser, err := fyneUI.callbacks.ImportUser(data)
 		if err != nil {
-			dialog.ShowError(errors.New("error importing contact: "+err.Error()), fyneUI.mainWindow)
+			showError = errors.New("error importing contact: " + err.Error())
+			return
 		} else {
 			// TODO: add this user to the store as a pending user, waiting on confirmation
 			//fyneUI.users.add(&user{id: newUser.ID, name: newUser.Name}) // TODO: user store should use exported type
-			dialog.ShowInformation("Success", fmt.Sprintf("%s has been imported", newUser.Name), fyneUI.mainWindow)
+			showInformation = dialog.NewInformation("Success", fmt.Sprintf("%s has been imported", newUser.Name), fyneUI.mainWindow)
 			// TODO: offer to delete file?
 		}
 	}, fyneUI.mainWindow)
@@ -62,7 +75,7 @@ func (fyneUI *Fyne) buildImportContact() {
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.NewCenter(
-			widget.NewButton("Click here to select a contact file", func() { fileSelector.Show() }),
+			widget.NewButton("Click here to select a contact file", func() { fyneUI.showDialog(fileSelector, dialogCleanup) }),
 		),
 	)
 }

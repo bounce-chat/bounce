@@ -64,7 +64,7 @@ type group struct {
 	adminChecksMutex                 sync.Mutex
 	removeUserButtons                map[uuid.UUID]*widget.Button
 	removeUserButtonsMutex           sync.Mutex
-	editUserDialogs                  map[uuid.UUID]dialog.Dialog
+	editUserDialogs                  map[uuid.UUID]dialogWithCallback
 	editUserDialogsMutex             sync.Mutex
 	typingIndicator                  *typingIndicator
 	entry                            *threadEntry
@@ -187,6 +187,30 @@ func (fyneUI *Fyne) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Butt
 		dialogPrompt = "Are you sure you want to leave this group?"
 	}
 
+	closeEdit := false
+	returnToThread := false
+	var showError error
+	confirmDialogCleanup := func() {
+		if closeEdit {
+			if fyne.CurrentDevice().IsMobile() {
+				fyneUI.mobileBack()
+			} else {
+				d, _ := fyneUI.getEditUserDialog(g, userID)
+				d.Hide()
+			}
+		}
+		if returnToThread {
+			if fyne.CurrentDevice().IsMobile() {
+				fyneUI.mobileBack()
+			} else {
+				fyneUI.showMainContainer()
+			}
+		}
+		if showError != nil {
+			fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)
+		}
+	}
+
 	button, ok := g.removeUserButtons[userID]
 	if ok {
 		return button
@@ -196,37 +220,31 @@ func (fyneUI *Fyne) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Butt
 		dialogHeader,
 		dialogPrompt,
 		func(confirmed bool) {
+			closeEdit = confirmed
 			if confirmed {
+				returnToThread = fyneUI.profile.id == userID
 				err := fyneUI.callbacks.RemoveUser(g.id, userID)
 				if err != nil {
-					dialog.ShowError(errors.New("error removing user: "+err.Error()), fyneUI.mainWindow)
-				} else {
-					fyneUI.getEditUserDialog(g, userID).Hide()
-					if fyneUI.profile.id == userID {
-						fyneUI.showMainContainer()
-					}
+					showError = errors.New("error removing user: " + err.Error())
+					returnToThread = false
 				}
 			}
-			fyneUI.activeDialog = nil
 		},
 		fyneUI.mainWindow,
 	)
 
-	button = widget.NewButton(buttonText, func() {
-		fyneUI.activeDialog = confirmRemoveUser
-		confirmRemoveUser.Show()
-	})
+	button = widget.NewButton(buttonText, func() { fyneUI.showDialog(confirmRemoveUser, confirmDialogCleanup) })
 	g.removeUserButtons[userID] = button
 	return button
 }
 
-func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) dialog.Dialog {
+func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) (dialog.Dialog, func()) {
 	g.editUserDialogsMutex.Lock()
 	g.editUserDialogsMutex.Unlock()
 
 	d, ok := g.editUserDialogs[userID]
 	if ok {
-		return d
+		return d.dialog, d.callback
 	}
 
 	u, ok := g.users.get(userID)
@@ -242,13 +260,6 @@ func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) dialog.Dialog 
 	editUserContainer := container.NewVBox(
 		container.NewCenter(newDefaultImage(u.id, u.initials, 64, nil)), // TODO: get size from theme
 		widget.NewButton("Direct Message", func() {
-			// Close the dialog
-			if userDetailsDialog == nil {
-				log.Fatal("userDetailsDialog used before assignment, this should be impossible")
-			}
-			userDetailsDialog.Hide()
-
-			// Show the DM
 			dm, dmExists := fyneUI.dms[u.id]
 			if !dmExists {
 				fyneUI.NewDirectMessage(chat.User{
@@ -260,40 +271,52 @@ func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) dialog.Dialog 
 					log.Fatal("DM doesn't exist immediately after creation")
 				}
 			}
-			fyneUI.showMainContainer()
-			fyneUI.callbacks.UserConnectionDesired(u.id)
+
+			if fyne.CurrentDevice().IsMobile() {
+				fyneUI.mobileBack() // Close the edit user dialog
+				fyneUI.mobileBack() // Exit the edit group page
+				fyneUI.mobileBack() // Exit the group
+			} else {
+				if userDetailsDialog == nil {
+					log.Fatal("userDetailsDialog used before assignment, this should be impossible")
+				}
+				userDetailsDialog.Hide()
+				fyneUI.showMainContainer()
+			}
 			fyneUI.displayThread(dm)
+			fyneUI.callbacks.UserConnectionDesired(u.id)
 		}),
 		fyneUI.getRemoveUserButton(g, u.id),
 		g.getAdminCheck(u.id),
 	)
+
+	var showError error
+	dialogCleanup := func() {
+		if showError != nil {
+			fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)
+		}
+	}
 	userDetailsDialog = dialog.NewCustomConfirm(u.getName(), "Apply", "Cancel", editUserContainer, func(apply bool) { // TODO: add listener to update name when it changes
+		showError = nil
 		if apply {
-			// Update the admin status if needed
 			if g.getAdminCheck(u.id).Checked && !g.isAdmin(u.id) {
 				err := fyneUI.callbacks.PromoteAdmin(g.id, u.id)
 				if err != nil {
-					dialog.ShowError(errors.New("error promoting admin: "+err.Error()), fyneUI.mainWindow)
-					g.getAdminCheck(u.id).SetChecked(false)
+					showError = errors.New("error promoting admin: " + err.Error())
 				}
 			} else if !g.getAdminCheck(u.id).Checked && g.isAdmin(u.id) {
 				err := fyneUI.callbacks.DemoteAdmin(g.id, u.id)
 				if err != nil {
-					dialog.ShowError(errors.New("error demoting admin: "+err.Error()), fyneUI.mainWindow)
-					g.getAdminCheck(u.id).SetChecked(true)
+					showError = errors.New("error demoting admin: " + err.Error())
 				}
 			}
-		} else {
-			// Reset everything
-			g.getAdminCheck(u.id).SetChecked(g.isAdmin(u.id))
 		}
-		fyneUI.activeDialog = nil
-		fyneUI.activeDialogCleanup = nil
+		g.getAdminCheck(u.id).SetChecked(g.isAdmin(u.id))
 	}, fyneUI.mainWindow)
 
-	g.editUserDialogs[userID] = userDetailsDialog
+	g.editUserDialogs[userID] = dialogWithCallback{dialog: userDetailsDialog, callback: dialogCleanup}
 
-	return userDetailsDialog
+	return userDetailsDialog, dialogCleanup
 }
 
 func (fyneUI *Fyne) addAdmin(g *group, userID uuid.UUID) {
@@ -373,7 +396,7 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 		pendingUsersContainer:          container.NewVScroll(container.NewVBox()),
 		adminChecks:                    make(map[uuid.UUID]*widget.Check),
 		removeUserButtons:              make(map[uuid.UUID]*widget.Button),
-		editUserDialogs:                make(map[uuid.UUID]dialog.Dialog),
+		editUserDialogs:                make(map[uuid.UUID]dialogWithCallback),
 		lastMessage:                    time.Now().Unix(),
 	}
 
@@ -526,9 +549,10 @@ func (fyneUI *Fyne) NewGroupChat(bounceGroup chat.Group) {
 	ti, err := fyneUI.newGroupCreated(group.id, group.id, bounceGroup.CreatedBy, bounceGroup.CreatedAt)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"error": err.Error(),
-			"group": group.id,
-		}).Warn("error created thread item for group creation")
+			"error":      err.Error(),
+			"group":      group.id,
+			"created_by": bounceGroup.CreatedBy,
+		}).Warn("error creating thread item for group creation")
 	}
 	fyneUI.appendThreadItem(group, ti)
 }
@@ -701,7 +725,7 @@ func (fyneUI *Fyne) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 			log.Fatal("data bindings are broken")
 		}
 		if !fyneUI.initialSyncIncomplete {
-			dialog.ShowInformation("Removed From Group", actorName+" removed you from "+groupName, fyneUI.mainWindow)
+			fyneUI.showDialog(dialog.NewInformation("Removed From Group", actorName+" removed you from "+groupName, fyneUI.mainWindow), nil)
 		}
 	}
 	delete(fyneUI.groups, rfg.Group)
@@ -744,7 +768,7 @@ func (fyneUI *Fyne) GroupDeleted(gd chat.GroupDeleted) {
 			log.Fatal("data bindings are broken")
 		}
 		if !fyneUI.initialSyncIncomplete {
-			dialog.ShowInformation("Group Deleted", actorName+" deleted the group \""+groupName+"\"", fyneUI.mainWindow)
+			fyneUI.showDialog(dialog.NewInformation("Group Deleted", actorName+" deleted the group \""+groupName+"\"", fyneUI.mainWindow), nil)
 		}
 	}
 

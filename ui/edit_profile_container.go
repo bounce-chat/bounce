@@ -68,7 +68,7 @@ func (fyneUI *Fyne) showEditProfile() {
 func (fyneUI *Fyne) updateDeviceStatus() {
 	currentDevicesList := container.NewVBox()
 	for _, dev := range fyneUI.devices.all() {
-		editDeviceDialog, state := func(dev chat.Device) (dialog.Dialog, int) {
+		editDeviceDialog, editDeviceCleanup, state := func(dev chat.Device) (dialog.Dialog, func(), int) {
 			state := deviceStatusOffline
 			if dev.Online {
 				state = deviceStatusOnline
@@ -126,33 +126,35 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 			createdAtString := time.Unix(dev.CreatedAt, 0).Format("1/2 2006")
 
 			var editDeviceDialog dialog.Dialog
+			var showError error
+			var hideEditDialog bool
+			confirmRevokeCleanup := func() {
+				if hideEditDialog {
+					if fyne.CurrentDevice().IsMobile() {
+						fyneUI.mobileBack()
+					} else {
+						editDeviceDialog.Hide()
+					}
+				}
+				if showError != nil {
+					fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)
+				}
+			}
 			confirmRevokeDialog := dialog.NewConfirm(
 				"Revoke Device?",
 				"Are you sure you want to permanently revoke this device?",
 				func(confirmed bool) {
+					showError = nil
+					hideEditDialog = confirmed
 					if confirmed {
-						err := fyneUI.callbacks.RevokeDevice(dev.ID)
-						if err == nil {
-							editDeviceDialog.Hide()
-							fyneUI.activeDialog = nil
-							fyneUI.activeDialogCleanup = nil
-						} else {
-							errDialog := dialog.NewError(err, fyneUI.mainWindow)
-							errDialog.Show()
-							fyneUI.activeDialog = errDialog
-							fyneUI.activeDialogCleanup = nil
-						}
-					} else {
-						fyneUI.activeDialog = editDeviceDialog
-						fyneUI.activeDialogCleanup = nil
+						showError = fyneUI.callbacks.RevokeDevice(dev.ID)
+						hideEditDialog = false
 					}
 				},
 				fyneUI.mainWindow,
 			)
 			revokeButton := widget.NewButton("Revoke", func() {
-				fyneUI.activeDialog = confirmRevokeDialog
-				fyneUI.activeDialogCleanup = nil
-				confirmRevokeDialog.Show()
+				fyneUI.showDialog(confirmRevokeDialog, confirmRevokeCleanup)
 			})
 			revokeButton.Importance = widget.DangerImportance
 
@@ -188,17 +190,26 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 				revokeButton,
 			)
 
+			var applied bool
+			editDeviceCleanup := func() {
+				if !applied {
+					nameEntry.Text = dev.Name
+				}
+				if showError != nil {
+					fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)
+				}
+			}
 			editDeviceDialog = dialog.NewCustomConfirm(shortName, "Apply", "Cancel", editDeviceContainer, func(apply bool) {
+				applied = apply
+				showError = nil
 				if apply {
 					if dev.Name != nameEntry.Text {
-						fyneUI.callbacks.RenameDevice(dev.ID, strings.TrimSpace(nameEntry.Text))
+						showError = fyneUI.callbacks.RenameDevice(dev.ID, strings.TrimSpace(nameEntry.Text))
 					}
 				}
-				fyneUI.activeDialog = nil
-				fyneUI.activeDialogCleanup = nil
 			}, fyneUI.mainWindow)
 
-			return editDeviceDialog, state
+			return editDeviceDialog, editDeviceCleanup, state
 		}(*dev)
 
 		currentDevicesList.Objects = append(
@@ -210,9 +221,7 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 				false,
 				false,
 				func() {
-					fyneUI.activeDialog = editDeviceDialog
-					fyneUI.activeDialogCleanup = nil
-					editDeviceDialog.Show()
+					fyneUI.showDialog(editDeviceDialog, editDeviceCleanup)
 				},
 			),
 		)
@@ -261,7 +270,7 @@ func (fyneUI *Fyne) buildEditProfile() {
 	saveProfileButton := widget.NewButton("Update", func() {
 		err := fyneUI.callbacks.UpdateProfileName(strings.TrimSpace(fyneUI.profileNameEntry.Text))
 		if err != nil {
-			dialog.ShowError(errors.New("error updating name: "+err.Error()), fyneUI.mainWindow)
+			fyneUI.showDialog(dialog.NewError(errors.New("error updating name: "+err.Error()), fyneUI.mainWindow), nil)
 		} else {
 			fyneUI.showMainContainer()
 			t, ok := fyneUI.getThread(fyneUI.activeThread)
@@ -344,9 +353,21 @@ func (fyneUI *Fyne) buildEditProfile() {
 	)
 	exportContactForm.SubmitText = "Export"
 
+	var showError error
+	var showInformation dialog.Dialog
+	selectorCleanup := func() {
+		if showInformation != nil {
+			fyneUI.showDialog(showInformation, nil)
+		}
+		if showError != nil {
+			fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)
+		}
+	}
 	fileSelector := dialog.NewFileSave(func(handler fyne.URIWriteCloser, err error) {
+		showError = nil
+		showInformation = nil
 		if err != nil {
-			dialog.ShowError(errors.New("error opening file: "+err.Error()), fyneUI.mainWindow)
+			showError = errors.New("error opening file: " + err.Error())
 			return
 		}
 		if handler == nil {
@@ -367,25 +388,25 @@ func (fyneUI *Fyne) buildEditProfile() {
 		profileData := fyneUI.callbacks.ExportContact(exportNameEntry.Text, expiration, oneTimeUse.Checked)
 		_, err = handler.Write(profileData)
 		if err != nil {
-			dialog.ShowError(errors.New("error writing file: "+err.Error()), fyneUI.mainWindow)
+			showError = errors.New("error writing file: " + err.Error())
 			return
 		}
 		err = handler.Close()
 		if err != nil {
-			dialog.ShowError(errors.New("error closing file: "+err.Error()), fyneUI.mainWindow)
+			showError = errors.New("error closing file: " + err.Error())
 			return
 		}
 
-		dialog.ShowInformation("Success", "Contact export written to "+handler.URI().Name(), fyneUI.mainWindow)
+		showInformation = dialog.NewInformation("Success", "Contact export written to "+handler.URI().Name(), fyneUI.mainWindow)
 	}, fyneUI.mainWindow)
 
 	exportContactForm.OnSubmit = func() {
 		if exportNameEntry.Text == "" {
-			dialog.ShowError(errors.New("Please select a name for this export"), fyneUI.mainWindow)
+			fyneUI.showDialog(dialog.NewError(errors.New("Please select a name for this export"), fyneUI.mainWindow), nil)
 			return
 		}
 		fileSelector.SetFileName("profile.bounce") // TODO: set the user's current profile name
-		fileSelector.Show()
+		fyneUI.showDialog(fileSelector, selectorCleanup)
 	}
 
 	exportContactMenu := container.NewVBox(

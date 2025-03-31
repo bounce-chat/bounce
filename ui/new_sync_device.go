@@ -206,7 +206,7 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 			fyneUI.newSyncDeviceWidgets.currentStep.Hide()
 			fyneUI.newSyncDeviceWidgets.syncStringEntry.Text = ""
 			fyneUI.newSyncDeviceWidgets.syncStringEntry.Refresh()
-			dialog.ShowError(errors.New("Error sending sync request: "+err.Error()), fyneUI.mainWindow)
+			fyneUI.showDialog(dialog.NewError(errors.New("Error sending sync request: "+err.Error()), fyneUI.mainWindow), nil)
 			fyneUI.newSyncDeviceWidgets.backButton.Enable()
 			fyneUI.newSyncDeviceWidgets.syncStringInput.Show()
 		} else {
@@ -246,7 +246,7 @@ func (fyneUI *Fyne) SyncDeviceRequestAccepted(id uuid.UUID, name string, devices
 }
 
 func (fyneUI *Fyne) SyncDeviceRequestRejected(peer string) {
-	dialog.ShowError(errors.New("Sync request rejected, make sure you scan the device quickly"), fyneUI.mainWindow)
+	fyneUI.showDialog(dialog.NewError(errors.New("Sync request rejected, make sure you scan the device quickly"), fyneUI.mainWindow), nil)
 	fyneUI.newSyncDeviceWidgets.currentStep.Text = ""
 	fyneUI.newSyncDeviceWidgets.currentStep.Refresh()
 	fyneUI.newSyncDeviceWidgets.currentStep.Hide()
@@ -278,7 +278,7 @@ func (fyneUI *Fyne) InitialSyncComplete() {
 		} else {
 			err := fyneUI.callbacks.RenameDevice(fyneUI.devices.local.ID, strings.TrimSpace(newDeviceName))
 			if err != nil {
-				dialog.ShowError(errors.New("Error setting new device name: "+err.Error()), fyneUI.mainWindow)
+				fyneUI.showDialog(dialog.NewError(errors.New("Error setting new device name: "+err.Error()), fyneUI.mainWindow), nil)
 			}
 		}
 	}

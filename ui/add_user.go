@@ -60,7 +60,7 @@ func (fyneUI *Fyne) buildAddUser() {
 			sendingStep.Hide()
 			userStringEntry.Text = ""
 			userStringEntry.Refresh()
-			dialog.ShowError(errors.New("Error sending friend request: "+err.Error()), fyneUI.mainWindow)
+			fyneUI.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), fyneUI.mainWindow), nil)
 		} else {
 			sendingRequestProgress.Stop()
 			receivingStep.Show()
@@ -80,5 +80,5 @@ func (fyneUI *Fyne) buildAddUser() {
 }
 
 func (fyneUI *Fyne) AddUserRequestRejected(peer string) {
-	dialog.ShowError(errors.New("Friend request rejected, make sure you scan the device quickly"), fyneUI.mainWindow)
+	fyneUI.showDialog(dialog.NewError(errors.New("Friend request rejected, make sure you scan the device quickly"), fyneUI.mainWindow), nil)
 }

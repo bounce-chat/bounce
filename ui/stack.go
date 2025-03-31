@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/mobile"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -25,28 +26,36 @@ const viewTypeAddUser = 14
 const viewTypeAbout = 15
 const viewTypeEditProfile = 16
 const viewTypeNameNewDevice = 17
+const viewTypeDialog = 18
 
 type view struct {
 	viewType int
 	context  uuid.UUID
+	dialog   dialog.Dialog
+}
+
+type dialogWithCallback struct {
+	dialog   dialog.Dialog
+	callback func()
 }
 
 func (fyneUI *Fyne) mobileBack() {
-	// If there is an open dialog, the back button should close it, and reset any changes
-	if fyneUI.activeDialog != nil {
-		fyneUI.activeDialog.Hide()
-		fyneUI.activeDialog = nil
-		if fyneUI.activeDialogCleanup != nil {
-			fyneUI.activeDialogCleanup()
-			fyneUI.activeDialogCleanup = nil
-		}
-		return
-	}
-
 	// If there's only one view left in the history, we're at the beginning and should close the app
 	if len(fyneUI.viewStack) == 1 {
 		if drv, ok := fyneUI.app.Driver().(mobile.Driver); ok {
 			drv.(mobile.Driver).GoBack()
+		}
+		return
+	}
+
+	// If the current view is a dialog, hide that dialog and run any cleanup tasks required
+	currentView := fyneUI.viewStack[len(fyneUI.viewStack)-1]
+	if currentView.viewType == viewTypeDialog {
+		if currentView.dialog != nil {
+			// view stack is popped and cleanup is ran in dialog closed callback
+			currentView.dialog.Hide()
+		} else {
+			log.Warn("view type dialog in view stack is missing dialog")
 		}
 		return
 	}
@@ -152,5 +161,26 @@ func (fyneUI *Fyne) mobileBack() {
 	// If we're not looking at a thread, unset the active thread
 	if displayView.viewType != viewTypeThread {
 		fyneUI.activeThread = uuid.Nil
+	}
+}
+
+func (fyneUI *Fyne) showDialog(d dialog.Dialog, cleanup func()) {
+	d.SetOnClosed(func() {
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.viewStack = fyneUI.viewStack[0 : len(fyneUI.viewStack)-1]
+		}
+		if cleanup != nil {
+			cleanup()
+		}
+	})
+	d.Show()
+	if fyne.CurrentDevice().IsMobile() {
+		fyneUI.viewStack = append(
+			fyneUI.viewStack,
+			view{
+				viewType: viewTypeDialog,
+				dialog:   d,
+			},
+		)
 	}
 }

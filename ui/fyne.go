@@ -104,8 +104,6 @@ type Fyne struct {
 	networkState                          int
 	setupStep                             int
 	viewStack                             []view
-	activeDialog                          dialog.Dialog
-	activeDialogCleanup                   func()
 	callbacks                             chat.UICallbacks
 }
 
@@ -246,22 +244,16 @@ func (fyneUI *Fyne) askToIgnoreBatteryOptimizations() {
 			batteryText := widget.NewRichTextWithText("Bounce can only notify you of new messages if it's running in the background.  Click \"Allow\" to be prompted to add Bounce to Android's list of allowed background apps.")
 			batteryText.Wrapping = fyne.TextWrapWord
 			batteryAllow := widget.NewButton("Allow", func() {
-				batteryDialog.Hide()
-				fyneUI.activeDialog = nil
-				fyneUI.activeDialogCleanup = nil
+				fyneUI.mobileBack()
 				requestIgnoreBatteryOptimizations()
 			})
 			batteryAllow.Importance = widget.HighImportance
 			batteryLater := widget.NewButton("Later", func() {
-				batteryDialog.Hide()
-				fyneUI.activeDialog = nil
-				fyneUI.activeDialogCleanup = nil
+				fyneUI.mobileBack()
 			})
 			batteryLater.Importance = widget.LowImportance
 			batteryNever := widget.NewButton("Never", func() {
-				batteryDialog.Hide()
-				fyneUI.activeDialog = nil
-				fyneUI.activeDialogCleanup = nil
+				fyneUI.mobileBack()
 				fyneUI.callbacks.NeverAskForBatteryOptimizations()
 			})
 			batteryNever.Importance = widget.LowImportance
@@ -278,9 +270,7 @@ func (fyneUI *Fyne) askToIgnoreBatteryOptimizations() {
 				batteryContent,
 				fyneUI.mainWindow,
 			)
-			fyneUI.activeDialog = batteryDialog
-			fyneUI.activeDialogCleanup = nil
-			batteryDialog.Show()
+			fyneUI.showDialog(batteryDialog, nil)
 		}
 	}
 }
@@ -596,6 +586,7 @@ func (fyneUI *Fyne) NetworkOnline() {
 			}).Error("active thread is not a known user or group")
 		}
 	}
+	//fyne.Do(func() { fyneUI.networkOfflineWarning.Hide() })
 	fyneUI.networkOfflineWarning.Hide()
 	fyneUI.networkState = networkStateOnline
 }
