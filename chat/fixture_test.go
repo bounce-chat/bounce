@@ -451,10 +451,8 @@ func (t *testUI) PostingRestricted(UpdateGroupPostingRestricted)                
 func (t *testUI) PostingUnrestricted(UpdateGroupPostingUnrestricted)               {}
 func (t *testUI) PauseGroupNotifications(groupID uuid.UUID)                        {}
 func (t *testUI) ResumeGroupNotifications(groupID uuid.UUID)                       {}
-func (t *testUI) ShowTypingIndicatorInHistory(userID, threadID uuid.UUID)          {}
-func (t *testUI) ShowTypingIndicatorInButton(userID, threadID uuid.UUID)           {}
-func (t *testUI) HideTypingIndicatorInHistory(userID, threadID uuid.UUID)          {}
-func (t *testUI) HideTypingIndicatorInButton(threadID uuid.UUID)                   {}
+func (t *testUI) ShowTypingIndicator(userID, threadID uuid.UUID)                   {}
+func (t *testUI) HideTypingIndicator(userID, threadID uuid.UUID)                   {}
 func (t *testUI) UserIsOnline(userID uuid.UUID)                                    {}
 func (t *testUI) UserIsOffline(userID uuid.UUID)                                   {}
 func (t *testUI) DeviceOnline(uuid.UUID)                                           {}

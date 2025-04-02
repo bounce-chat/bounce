@@ -28,6 +28,8 @@ const viewTypeEditProfile = 16
 const viewTypeNameNewDevice = 17
 const viewTypeDialog = 18
 
+var hookedDialogs = make(map[dialog.Dialog]bool)
+
 type view struct {
 	viewType int
 	context  uuid.UUID
@@ -54,6 +56,7 @@ func (fyneUI *Fyne) mobileBack() {
 		if currentView.dialog != nil {
 			// view stack is popped and cleanup is ran in dialog closed callback
 			currentView.dialog.Hide()
+			return
 		} else {
 			log.Warn("view type dialog in view stack is missing dialog")
 		}
@@ -165,14 +168,21 @@ func (fyneUI *Fyne) mobileBack() {
 }
 
 func (fyneUI *Fyne) showDialog(d dialog.Dialog, cleanup func()) {
-	d.SetOnClosed(func() {
-		if fyne.CurrentDevice().IsMobile() {
-			fyneUI.viewStack = fyneUI.viewStack[0 : len(fyneUI.viewStack)-1]
-		}
-		if cleanup != nil {
-			cleanup()
-		}
-	})
+	if _, hooked := hookedDialogs[d]; !hooked {
+		d.SetOnClosed(func() {
+			if fyne.CurrentDevice().IsMobile() {
+				if len(fyneUI.viewStack) == 1 {
+					log.Warn("view stack has one member when hiding dialog")
+					return
+				}
+				fyneUI.viewStack = fyneUI.viewStack[0 : len(fyneUI.viewStack)-1]
+			}
+			if cleanup != nil {
+				cleanup()
+			}
+		})
+		hookedDialogs[d] = true
+	}
 	d.Show()
 	if fyne.CurrentDevice().IsMobile() {
 		fyneUI.viewStack = append(

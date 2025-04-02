@@ -3,7 +3,7 @@ module github.com/hkparker/bounce
 go 1.23
 
 require (
-	fyne.io/fyne/v2 v2.6.0-beta1.0.20250330210720-ecaa745b72dc
+	fyne.io/fyne/v2 v2.6.0-rc1.0.20250401122120-2121762e400c
 	github.com/alecthomas/assert/v2 v2.11.0
 	github.com/cretz/bine v0.2.0
 	github.com/google/uuid v1.6.0
@@ -26,7 +26,7 @@ require (
 	github.com/fyne-io/gl-js v0.1.0 // indirect
 	github.com/fyne-io/glfw-js v0.2.0 // indirect
 	github.com/fyne-io/image v0.1.1 // indirect
-	github.com/fyne-io/oksvg v0.0.0-20250329173316-7ddb0d1149d1 // indirect
+	github.com/fyne-io/oksvg v0.1.0 // indirect
 	github.com/go-gl/gl v0.0.0-20231021071112-07e5d0ea2e71 // indirect
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20240506104042-037f3cc74f2a // indirect
 	github.com/go-text/render v0.2.0 // indirect
@@ -51,9 +51,9 @@ require (
 	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect
-	golang.org/x/crypto v0.31.0 // indirect
+	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/image v0.24.0 // indirect
-	golang.org/x/net v0.32.0 // indirect
+	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

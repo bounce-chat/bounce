@@ -148,7 +148,9 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 					hideEditDialog = confirmed
 					if confirmed {
 						showError = fyneUI.callbacks.RevokeDevice(dev.ID)
-						hideEditDialog = false
+						if showError != nil {
+							hideEditDialog = false
+						}
 					}
 				},
 				fyneUI.mainWindow,
