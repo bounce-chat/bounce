@@ -130,11 +130,7 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 			var hideEditDialog bool
 			confirmRevokeCleanup := func() {
 				if hideEditDialog {
-					if fyne.CurrentDevice().IsMobile() {
-						fyneUI.mobileBack()
-					} else {
-						editDeviceDialog.Hide()
-					}
+					editDeviceDialog.Hide()
 				}
 				if showError != nil {
 					fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)

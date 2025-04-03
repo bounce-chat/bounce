@@ -244,16 +244,16 @@ func (fyneUI *Fyne) askToIgnoreBatteryOptimizations() {
 			batteryText := widget.NewRichTextWithText("Bounce can only notify you of new messages if it's running in the background.  Click \"Allow\" to be prompted to add Bounce to Android's list of allowed background apps.")
 			batteryText.Wrapping = fyne.TextWrapWord
 			batteryAllow := widget.NewButton("Allow", func() {
-				fyneUI.mobileBack()
+				batteryDialog.Hide()
 				requestIgnoreBatteryOptimizations()
 			})
 			batteryAllow.Importance = widget.HighImportance
 			batteryLater := widget.NewButton("Later", func() {
-				fyneUI.mobileBack()
+				batteryDialog.Hide()
 			})
 			batteryLater.Importance = widget.LowImportance
 			batteryNever := widget.NewButton("Never", func() {
-				fyneUI.mobileBack()
+				batteryDialog.Hide()
 				fyneUI.callbacks.NeverAskForBatteryOptimizations()
 			})
 			batteryNever.Importance = widget.LowImportance

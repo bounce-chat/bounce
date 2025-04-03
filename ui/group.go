@@ -192,12 +192,8 @@ func (fyneUI *Fyne) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Butt
 	var showError error
 	confirmDialogCleanup := func() {
 		if closeEdit {
-			if fyne.CurrentDevice().IsMobile() {
-				fyneUI.mobileBack()
-			} else {
-				d, _ := fyneUI.getEditUserDialog(g, userID)
-				d.Hide()
-			}
+			d, _ := fyneUI.getEditUserDialog(g, userID)
+			d.Hide()
 		}
 		if returnToThread {
 			if fyne.CurrentDevice().IsMobile() {
@@ -273,9 +269,9 @@ func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) (dialog.Dialog
 			}
 
 			if fyne.CurrentDevice().IsMobile() {
-				fyneUI.mobileBack() // Close the edit user dialog
-				fyneUI.mobileBack() // Exit the edit group page
-				fyneUI.mobileBack() // Exit the group
+				userDetailsDialog.Hide() // Close the edit user dialog
+				fyneUI.mobileBack()      // Exit the edit group page
+				fyneUI.mobileBack()      // Exit the group
 			} else {
 				if userDetailsDialog == nil {
 					log.Fatal("userDetailsDialog used before assignment, this should be impossible")
