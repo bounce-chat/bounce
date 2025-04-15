@@ -1,5 +1,3 @@
-fyne.io/fyne/v2 v2.6.0-rc2 h1:khreEwgchrCbuJBhn54yYSn38wWWHpy+VH03vt7IcYY=
-fyne.io/fyne/v2 v2.6.0-rc2/go.mod h1:YZt7SksjvrSNJCwbWFV32WON3mE1Sr7L41D29qMZ/lU=
 fyne.io/fyne/v2 v2.6.0 h1:Rywo9yKYN4qvNuvkRuLF+zxhJYWbIFM+m4N4KV4p1pQ=
 fyne.io/fyne/v2 v2.6.0/go.mod h1:YZt7SksjvrSNJCwbWFV32WON3mE1Sr7L41D29qMZ/lU=
 fyne.io/systray v1.11.0 h1:D9HISlxSkx+jHSniMBR6fCFOUjk1x/OOOJLa9lJYAKg=

@@ -502,22 +502,11 @@ func (ch *chatHistory) ScrollTo(id int) {
 func (ch *chatHistory) ScrollToBottom() {
 	ch.scroller.ScrollToBottom()
 	ch.offsetUpdated(ch.scroller.Offset)
-	//length := 0
-	//if f := ch.Length; f != nil {
-	//	length = f()
-	//}
-	//if length > 0 {
-	//	length--
-	//}
-	//ch.scrollTo(length)
-	//ch.Refresh()
 }
 
 func (ch *chatHistory) ScrollToTop() {
 	ch.scroller.ScrollToTop()
 	ch.offsetUpdated(ch.scroller.Offset)
-	//ch.scrollTo(0)
-	//ch.Refresh()
 }
 
 func (ch *chatHistory) scrollToLastRead() {
@@ -548,7 +537,6 @@ func (ch *chatHistory) ScrollToOffset(offset float32) {
 	if offset > contentHeight {
 		offset = contentHeight
 	}
-	//ch.scroller.Offset.Y = offset
 	ch.scroller.ScrollToOffset(fyne.NewPos(0, offset))
 	ch.offsetUpdated(ch.scroller.Offset)
 	ch.Refresh()

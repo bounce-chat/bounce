@@ -455,10 +455,8 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 
 	fyneUI.buildEditThreadContainer(group)
 	editButton := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
-		fyne.Do(func() {
-			fyneUI.refreshUserSelections(group)
-			fyneUI.showEditThreadContainer(group)
-		})
+		fyneUI.refreshUserSelections(group)
+		fyneUI.showEditThreadContainer(group)
 	})
 	editButton.Importance = widget.LowImportance
 
