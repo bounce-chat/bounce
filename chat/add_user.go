@@ -356,7 +356,7 @@ func (b *bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 
 	// Inform the UI that a new friend has been added
 	if userIsNew {
-		b.userInterface.FriendAdded(User{
+		b.userInterface.UserAdded(User{
 			ID:   counterparty.ID,
 			Name: counterparty.Name,
 		})

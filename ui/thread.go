@@ -141,157 +141,167 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 }
 
 func (fyneUI *Fyne) MarkMessageUndeliverable(id uuid.UUID) {
-	item, ok := fyneUI.messages.get(id)
-	if !ok {
-		log.WithFields(log.Fields{
-			"id": id,
-		}).Warn("item not found during attempt to mark item as undeliverable")
-	}
+	fyne.Do(func() {
+		item, ok := fyneUI.messages.get(id)
+		if !ok {
+			log.WithFields(log.Fields{
+				"id": id,
+			}).Warn("item not found during attempt to mark item as undeliverable")
+		}
 
-	item.setState(stateError)
+		item.setState(stateError)
 
-	fyneUI.threadWithItemMutex.Lock()
-	thread, ok := fyneUI.threadWithItem[id]
-	fyneUI.threadWithItemMutex.Unlock()
-	if !ok {
-		log.WithFields(log.Fields{
-			"message_id": id,
-		}).Warn("attempt to mark message as undeliverable that was not found in any thread")
-		return
-	}
+		fyneUI.threadWithItemMutex.Lock()
+		thread, ok := fyneUI.threadWithItem[id]
+		fyneUI.threadWithItemMutex.Unlock()
+		if !ok {
+			log.WithFields(log.Fields{
+				"message_id": id,
+			}).Warn("attempt to mark message as undeliverable that was not found in any thread")
+			return
+		}
 
-	thread.chatHistoryScroll().Refresh()
+		thread.chatHistoryScroll().Refresh()
+	})
 }
 
 func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
-	item, ok := fyneUI.messages.get(id)
-	if !ok {
-		log.WithFields(log.Fields{
-			"id": id,
-		}).Warn("item not found during attempt to mark item as seen")
-	}
-
-	fyneUI.threadWithItemMutex.Lock()
-	t, ok := fyneUI.threadWithItem[id]
-	fyneUI.threadWithItemMutex.Unlock()
-	if !ok {
-		log.WithFields(log.Fields{
-			"message_id": id,
-		}).Warn("marked message as seen that was not found in any thread")
-		return
-	}
-
-	if !item.isSeen() {
-		item.markSeen()
-		if item.countsAsUnread() {
-			t.chatHistoryScroll().unread -= 1
-			t.chatHistoryScroll().updateUnreadCounter()
+	fyne.Do(func() {
+		item, ok := fyneUI.messages.get(id)
+		if !ok {
+			log.WithFields(log.Fields{
+				"id": id,
+			}).Warn("item not found during attempt to mark item as seen")
 		}
-	}
 
-	openedThreadMutex.Lock()
-	_, opened := openedThreads[t.getID()]
-	openedThreadMutex.Unlock()
-	if !opened {
-		t.chatHistoryScroll().scrollToLastRead()
-	}
-}
+		fyneUI.threadWithItemMutex.Lock()
+		t, ok := fyneUI.threadWithItem[id]
+		fyneUI.threadWithItemMutex.Unlock()
+		if !ok {
+			log.WithFields(log.Fields{
+				"message_id": id,
+			}).Warn("marked message as seen that was not found in any thread")
+			return
+		}
 
-func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
-	item, ok := fyneUI.messages.get(messageID)
-	if !ok {
-		log.WithFields(log.Fields{
-			"id": messageID,
-		}).Warn("item not found during attempt to mark item as delivered")
-	}
-
-	fyneUI.threadWithItemMutex.Lock()
-	t, ok := fyneUI.threadWithItem[messageID]
-	fyneUI.threadWithItemMutex.Unlock()
-	if !ok {
-		log.WithFields(log.Fields{
-			"message_id": messageID,
-		}).Warn("attempt to mark message as delivered that was not found in any thread")
-		return
-	}
-
-	currentState := item.getState()
-	if currentState == stateRead || currentState == stateDelivered {
-		return
-	}
-	if userID == fyneUI.profile.id {
-		if currentState == statePending {
-			item.setState(stateSynced)
-			if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
-				t.getButton().showLastMessageState(stateSynced)
+		if !item.isSeen() {
+			item.markSeen()
+			if item.countsAsUnread() {
+				t.chatHistoryScroll().unread -= 1
+				t.chatHistoryScroll().updateUnreadCounter()
 			}
 		}
 
-	} else {
-		item.setState(stateDelivered)
-		if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
-			t.getButton().showLastMessageState(stateDelivered)
+		openedThreadMutex.Lock()
+		_, opened := openedThreads[t.getID()]
+		openedThreadMutex.Unlock()
+		if !opened {
+			t.chatHistoryScroll().scrollToLastRead()
 		}
-	}
+	})
+}
 
-	t.chatHistoryScroll().Refresh()
+func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
+	fyne.Do(func() {
+		item, ok := fyneUI.messages.get(messageID)
+		if !ok {
+			log.WithFields(log.Fields{
+				"id": messageID,
+			}).Warn("item not found during attempt to mark item as delivered")
+		}
+
+		fyneUI.threadWithItemMutex.Lock()
+		t, ok := fyneUI.threadWithItem[messageID]
+		fyneUI.threadWithItemMutex.Unlock()
+		if !ok {
+			log.WithFields(log.Fields{
+				"message_id": messageID,
+			}).Warn("attempt to mark message as delivered that was not found in any thread")
+			return
+		}
+
+		currentState := item.getState()
+		if currentState == stateRead || currentState == stateDelivered {
+			return
+		}
+		if userID == fyneUI.profile.id {
+			if currentState == statePending {
+				item.setState(stateSynced)
+				if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
+					t.getButton().showLastMessageState(stateSynced)
+				}
+			}
+
+		} else {
+			item.setState(stateDelivered)
+			if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
+				t.getButton().showLastMessageState(stateDelivered)
+			}
+		}
+
+		t.chatHistoryScroll().Refresh()
+	})
 }
 
 func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
-	if rr.Actor == fyneUI.profile.id {
-		return
-	}
+	fyne.Do(func() {
+		if rr.Actor == fyneUI.profile.id {
+			return
+		}
 
-	item, ok := fyneUI.messages.get(rr.Target)
-	if !ok {
-		log.WithFields(log.Fields{
-			"id": rr.Target,
-		}).Warn("item not found during attempt to mark item as read")
-	}
+		item, ok := fyneUI.messages.get(rr.Target)
+		if !ok {
+			log.WithFields(log.Fields{
+				"id": rr.Target,
+			}).Warn("item not found during attempt to mark item as read")
+		}
 
-	fyneUI.threadWithItemMutex.Lock()
-	t, ok := fyneUI.threadWithItem[rr.Target]
-	fyneUI.threadWithItemMutex.Unlock()
-	if !ok {
-		log.WithFields(log.Fields{
-			"message_id": rr.Target,
-		}).Warn("attempt to mark message as read that was not found in any thread")
-		return
-	}
+		fyneUI.threadWithItemMutex.Lock()
+		t, ok := fyneUI.threadWithItem[rr.Target]
+		fyneUI.threadWithItemMutex.Unlock()
+		if !ok {
+			log.WithFields(log.Fields{
+				"message_id": rr.Target,
+			}).Warn("attempt to mark message as read that was not found in any thread")
+			return
+		}
 
-	item.setState(stateRead)
-	if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(rr.Target) {
-		t.getButton().showLastMessageState(stateRead)
-	}
+		item.setState(stateRead)
+		if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(rr.Target) {
+			t.getButton().showLastMessageState(stateRead)
+		}
 
-	t.chatHistoryScroll().Refresh()
+		t.chatHistoryScroll().Refresh()
+	})
 }
 
 func (fyneUI *Fyne) DeleteItem(id uuid.UUID) {
-	fyneUI.messages.remove(id)
+	fyne.Do(func() {
+		fyneUI.messages.remove(id)
 
-	fyneUI.threadWithItemMutex.Lock()
-	thread, ok := fyneUI.threadWithItem[id]
-	fyneUI.threadWithItemMutex.Unlock()
-	if !ok {
-		log.WithFields(log.Fields{
-			"message_id": id,
-		}).Warn("attempt to expire message that was not found in any thread")
-		return
-	}
-
-	deleted := thread.chatHistoryScroll().deleteItem(id)
-
-	if deleted {
 		fyneUI.threadWithItemMutex.Lock()
-		delete(fyneUI.threadWithItem, id)
+		thread, ok := fyneUI.threadWithItem[id]
 		fyneUI.threadWithItemMutex.Unlock()
-	} else {
-		log.WithFields(log.Fields{
-			"message_id": id,
-			"thread_id":  thread.getID(),
-		}).Warn("attempt to delete thread item that was not in thread despite being in threadWithItem map")
-	}
+		if !ok {
+			log.WithFields(log.Fields{
+				"message_id": id,
+			}).Warn("attempt to expire message that was not found in any thread")
+			return
+		}
+
+		deleted := thread.chatHistoryScroll().deleteItem(id)
+
+		if deleted {
+			fyneUI.threadWithItemMutex.Lock()
+			delete(fyneUI.threadWithItem, id)
+			fyneUI.threadWithItemMutex.Unlock()
+		} else {
+			log.WithFields(log.Fields{
+				"message_id": id,
+				"thread_id":  thread.getID(),
+			}).Warn("attempt to delete thread item that was not in thread despite being in threadWithItem map")
+		}
+	})
 }
 
 func (fyneUI *Fyne) displayThread(thread thread) {
@@ -316,6 +326,8 @@ func (fyneUI *Fyne) isActive(thread thread) bool {
 }
 
 func (fyneUI *Fyne) getThread(id uuid.UUID) (thread, bool) {
+	// TODO: lock
+
 	groupThread, ok := fyneUI.groups[id]
 	if ok {
 		return groupThread, true
@@ -330,45 +342,49 @@ func (fyneUI *Fyne) getThread(id uuid.UUID) (thread, bool) {
 }
 
 func (fyneUI *Fyne) ShowTypingIndicator(userID, threadID uuid.UUID) {
-	t, ok := fyneUI.getThread(threadID)
-	if !ok {
-		log.WithFields(log.Fields{
-			"thread_id": threadID,
-		}).Warn("thread not found showing typing indicators")
-		return
-	}
+	fyne.Do(func() {
+		t, ok := fyneUI.getThread(threadID)
+		if !ok {
+			log.WithFields(log.Fields{
+				"thread_id": threadID,
+			}).Warn("thread not found showing typing indicators")
+			return
+		}
 
-	u, ok := fyneUI.users.get(userID)
-	if !ok {
-		log.WithFields(log.Fields{
-			"thread_id": threadID,
-			"userID":    userID,
-		}).Warn("user not found showing typing indicators")
-		return
-	}
+		u, ok := fyneUI.users.get(userID)
+		if !ok {
+			log.WithFields(log.Fields{
+				"thread_id": threadID,
+				"userID":    userID,
+			}).Warn("user not found showing typing indicators")
+			return
+		}
 
-	t.getTypingIndicator().showUser(u)
-	t.getView().Refresh()
+		t.getTypingIndicator().showUser(u)
+		t.getView().Refresh()
 
-	t.getButton().typingIndicator.showUser(u)
-	t.getButton().Refresh()
+		t.getButton().typingIndicator.showUser(u)
+		t.getButton().Refresh()
+	})
 }
 
 func (fyneUI *Fyne) HideTypingIndicator(userID, threadID uuid.UUID) {
-	t, ok := fyneUI.getThread(threadID)
-	if !ok {
-		log.WithFields(log.Fields{
-			"thread_id": threadID,
-		}).Warn("thread not found hiding typing indicators")
-		return
-	}
+	fyne.Do(func() {
+		t, ok := fyneUI.getThread(threadID)
+		if !ok {
+			log.WithFields(log.Fields{
+				"thread_id": threadID,
+			}).Warn("thread not found hiding typing indicators")
+			return
+		}
 
-	t.getTypingIndicator().hideUser(userID)
-	t.getView().Refresh()
+		t.getTypingIndicator().hideUser(userID)
+		t.getView().Refresh()
 
-	button := t.getButton()
-	button.typingIndicator.hideUser(userID)
-	button.Refresh()
+		button := t.getButton()
+		button.typingIndicator.hideUser(userID)
+		button.Refresh()
+	})
 }
 
 func timestampString(timestamp int64) string {

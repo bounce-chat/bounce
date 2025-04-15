@@ -286,27 +286,17 @@ type InitialState struct {
 // User interfaces for bounce are achieved by implementing the UI interface.
 //
 type UI interface {
-	// Create user interface objects
+	// App lifecycle
 	Build(configPath string, callbacks UICallbacks, darkMode bool)
-
-	// Load the initial state
 	LoadInitialState(InitialState)
-
-	// Run displays the user interface and blocks.  A network loading message should be displayed first until NetworkOnline() is called.
 	Run()
-
-	// Application is closing due to a fatal error, show down the user interface
 	Quit()
 
-	//
-	// The following functions can be called at any time
-	//
-
-	// The network is ready
+	// Network state
 	NetworkOnline()
-	// Network connection has been lost, go back to displaying a loading message, blocking user interaction
 	NetworkOffline()
 
+	// Device pairing
 	NewSyncDeviceAdded()
 	SyncDeviceRequestAccepted(uuid.UUID, string, []Device, bool)
 	SyncDeviceRequestRejected(peer string)
@@ -314,24 +304,26 @@ type UI interface {
 	InitialSyncProgress(float64)
 	InitialSyncComplete()
 
+	// Device management
+	DeviceOnline(uuid.UUID)
+	DeviceOffline(uuid.UUID)
+	DeviceAdded(Device)
+	DeviceRevoked(uuid.UUID)
+	DeviceRenamed(uuid.UUID, string)
+	DeviceLastSeen(uuid.UUID, int64)
+
 	// User management
 	AddUserRequestRejected(string)
-	FriendAdded(User) // TODO: rename
+	UserAdded(User)
+	UserImported(User) // TODO: replace with async add user?
 
-	// Chats
-	//UserIntroduced(Introduction)
-	UserImported(User) // TODO: still needed?
-	DeleteItem(uuid.UUID)
-	MarkMessageUndeliverable(uuid.UUID)
-
+	// Direct messages
 	DisplayDirectMessage(DirectMessage)
 	SetDMState(uuid.UUID, DMState)
 	DMRetentionChanged(UpdateDMRetention)      // The retention settings for a DM have been changed
 	DMChatHistoryCleared(UpdateDMClearHistory) // Display that a user has deleted all past DMs
 
-	SetUserName(uuid.UUID, string)
-	UserNameUpdated(UpdateUserUpdateName)
-
+	// Group chats
 	OpenNewGroupChat(Group)
 	NewGroupChat(Group)
 	SetGroupState(Group)
@@ -340,7 +332,6 @@ type UI interface {
 	RemoveUser(UpdateGroupRemoveUser)
 	RemovedFromGroup(RemovedFromGroup)
 	GroupDeleted(GroupDeleted)
-	UserBlockedGroup(UserBlockedGroup)
 	RenameGroup(UpdateGroupName)
 	GroupRetentionChanged(UpdateGroupRetention)
 	GroupChatHistoryCleared(UpdateGroupClearHistory)
@@ -352,30 +343,27 @@ type UI interface {
 	GroupEditsUnrestricted(UpdateGroupEditsUnrestricted)
 	PostingRestricted(UpdateGroupPostingRestricted)
 	PostingUnrestricted(UpdateGroupPostingUnrestricted)
+	UserBlockedGroup(UserBlockedGroup)
 	PauseGroupNotifications(uuid.UUID)
 	ResumeGroupNotifications(uuid.UUID)
 
+	// Generic thread items
+	DeleteItem(uuid.UUID)
+	MessageDelivered(messageID, userID uuid.UUID)
+	MarkMessageUndeliverable(uuid.UUID)
+	MessageSeen(uuid.UUID)           // We read a message on another device
+	ReceivedReadReceipt(ReadReceipt) // Someone else read a message of ours
 	ShowTypingIndicator(userID, threadID uuid.UUID)
 	HideTypingIndicator(userID, threadID uuid.UUID)
 
-	UserIsOnline(userID uuid.UUID)
-	UserIsOffline(userID uuid.UUID)
+	// User settings and status
+	SetUserName(uuid.UUID, string)
+	UserNameUpdated(UpdateUserUpdateName)
+	UserOnline(userID uuid.UUID)
+	UserOffline(userID uuid.UUID)
 
-	// Sync device events
-	DeviceOnline(uuid.UUID)
-	DeviceOffline(uuid.UUID)
-	DeviceAdded(Device)
-	DeviceRevoked(uuid.UUID)
-	DeviceRenamed(uuid.UUID, string)
-	DeviceLastSeen(uuid.UUID, int64)
-
-	MessageSeen(uuid.UUID)           // We read a message on another device
-	ReceivedReadReceipt(ReadReceipt) // Someone else read a message of ours
-
+	// Settings
 	SetSettings(Settings)
-
-	MessageDelivered(messageID, userID uuid.UUID)
-
 	SetDarkMode(value bool)
 }
 

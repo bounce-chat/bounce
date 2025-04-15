@@ -114,6 +114,10 @@ func (fyneUI *Fyne) DMTypingIndicatorSettingsSet(userID uuid.UUID, override, ena
 }
 
 func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
+	fyne.DoAndWait(func() { fyneUI.buildNewDirectMessage(bounceUser) })
+}
+
+func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 	user, exists := fyneUI.users.get(bounceUser.ID)
 	if !exists {
 		log.WithFields(log.Fields{
@@ -231,7 +235,7 @@ func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
 	go func() {
 		for {
 			time.Sleep(1 * time.Minute)
-			dm.button.updateLastMessageTimeText()
+			fyne.DoAndWait(func() { dm.button.updateLastMessageTimeText() })
 		}
 	}()
 
@@ -258,19 +262,21 @@ func (fyneUI *Fyne) DisplayDirectMessage(dm chat.DirectMessage) {
 		log.Fatal("DM doesn't exist immediately after creation")
 	}
 
-	ti, err := fyneUI.newDirectMessage(dm)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error creating thread item for direct message")
-		return
-	}
+	fyne.Do(func() {
+		ti, err := fyneUI.newDirectMessage(dm)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating thread item for direct message")
+			return
+		}
 
-	if !fyneUI.isActive(dmThread) && !(dm.Author == fyneUI.profile.id) {
-		dmThread.button.addUnread()
-	}
+		if !fyneUI.isActive(dmThread) && !(dm.Author == fyneUI.profile.id) {
+			dmThread.button.addUnread()
+		}
 
-	fyneUI.appendThreadItem(dmThread, ti)
+		fyneUI.appendThreadItem(dmThread, ti)
+	})
 }
 
 func (fyneUI *Fyne) showEditDMContainer(dm *directMessage) {
@@ -485,25 +491,27 @@ func (fyneUI *Fyne) SetDMState(userID uuid.UUID, state chat.DMState) {
 		return
 	}
 
-	// Update retention
-	dm.retention = state.Retention
-	newRetentionName := getRetentionName(dm.retention)
-	dm.retentionSelection.Selected = newRetentionName
-	dm.retentionSelection.Refresh()
+	fyne.Do(func() {
+		// Update retention
+		dm.retention = state.Retention
+		newRetentionName := getRetentionName(dm.retention)
+		dm.retentionSelection.Selected = newRetentionName
+		dm.retentionSelection.Refresh()
 
-	// Update muted until
-	dm.notificationsMutedUntil = state.MutedUntil
-	enabled := dm.notificationsMutedUntil != chat.MutedForever
-	dm.notificationsEnabledCheck.SetChecked(enabled)
-	dm.notificationsEnabledCheck.Refresh()
+		// Update muted until
+		dm.notificationsMutedUntil = state.MutedUntil
+		enabled := dm.notificationsMutedUntil != chat.MutedForever
+		dm.notificationsEnabledCheck.SetChecked(enabled)
+		dm.notificationsEnabledCheck.Refresh()
 
-	// Update read receipt and typign indicator selections
-	dm.overrideReadReceiptSetting = state.OverrideReadReceiptSetting
-	dm.readReceiptsEnabled = state.ReadReceiptsEnabled
-	dm.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
-	dm.overrideTypingIndicatorSetting = state.OverrideTypingIndicatorSetting
-	dm.typingIndicatorsEnabled = state.TypingIndicatorsEnabled
-	dm.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
+		// Update read receipt and typign indicator selections
+		dm.overrideReadReceiptSetting = state.OverrideReadReceiptSetting
+		dm.readReceiptsEnabled = state.ReadReceiptsEnabled
+		dm.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+		dm.overrideTypingIndicatorSetting = state.OverrideTypingIndicatorSetting
+		dm.typingIndicatorsEnabled = state.TypingIndicatorsEnabled
+		dm.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
+	})
 }
 
 func (fyneUI *Fyne) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
@@ -516,15 +524,17 @@ func (fyneUI *Fyne) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
 		return
 	}
 
-	ti, err := fyneUI.newUpdateDMClearHistory(udch)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error creating thread item for clearing dm history")
-		return
-	}
+	fyne.Do(func() {
+		ti, err := fyneUI.newUpdateDMClearHistory(udch)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating thread item for clearing dm history")
+			return
+		}
 
-	fyneUI.appendThreadItem(dmThread, ti)
+		fyneUI.appendThreadItem(dmThread, ti)
+	})
 }
 
 func (fyneUI *Fyne) DMRetentionChanged(udr chat.UpdateDMRetention) {
@@ -537,15 +547,17 @@ func (fyneUI *Fyne) DMRetentionChanged(udr chat.UpdateDMRetention) {
 		return
 	}
 
-	ti, err := fyneUI.newUpdateDMRetention(udr)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error creating thread item for update dm retention")
-		return
-	}
+	fyne.Do(func() {
+		ti, err := fyneUI.newUpdateDMRetention(udr)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating thread item for update dm retention")
+			return
+		}
 
-	fyneUI.appendThreadItem(dmThread, ti)
+		fyneUI.appendThreadItem(dmThread, ti)
+	})
 }
 
 func (fyneUI *Fyne) getOrCreateDM(id uuid.UUID) (*directMessage, error) {
@@ -559,9 +571,11 @@ func (fyneUI *Fyne) getOrCreateDM(id uuid.UUID) (*directMessage, error) {
 			return dm, errUnknownUser
 		}
 
-		fyneUI.NewDirectMessage(chat.User{
-			ID:   u.id,
-			Name: u.getName(),
+		fyne.DoAndWait(func() {
+			fyneUI.NewDirectMessage(chat.User{
+				ID:   u.id,
+				Name: u.getName(),
+			})
 		})
 		dm, dmExists = fyneUI.dms[id]
 		if !dmExists {

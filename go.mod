@@ -3,7 +3,7 @@ module github.com/hkparker/bounce
 go 1.23
 
 require (
-	fyne.io/fyne/v2 v2.6.0-rc2
+	fyne.io/fyne/v2 v2.6.0
 	github.com/alecthomas/assert/v2 v2.11.0
 	github.com/cretz/bine v0.2.0
 	github.com/google/uuid v1.6.0

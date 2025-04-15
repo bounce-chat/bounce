@@ -230,56 +230,66 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 }
 
 func (fyneUI *Fyne) SyncDeviceRequestAccepted(id uuid.UUID, name string, devices []chat.Device, references bool) {
-	profile := makeUser(id, name)
-	fyneUI.profile = profile
-	fyneUI.users.add(profile)
-	for i, _ := range devices {
-		dev := devices[i]
-		fyneUI.devices.add(&dev)
-	}
-	fyneUI.initialStateSet = true
-	fyneUI.updateDeviceStatus()
+	fyne.Do(func() {
+		profile := makeUser(id, name)
+		fyneUI.profile = profile
+		fyneUI.users.add(profile)
+		for i, _ := range devices {
+			dev := devices[i]
+			fyneUI.devices.add(&dev)
+		}
+		fyneUI.initialStateSet = true
+		fyneUI.updateDeviceStatus()
 
-	if !references {
-		fyneUI.showMainContainer()
-	}
+		if !references {
+			fyneUI.showMainContainer()
+		}
+	})
 }
 
 func (fyneUI *Fyne) SyncDeviceRequestRejected(peer string) {
-	fyneUI.showDialog(dialog.NewError(errors.New("Sync request rejected, make sure you scan the device quickly"), fyneUI.mainWindow), nil)
-	fyneUI.newSyncDeviceWidgets.currentStep.Text = ""
-	fyneUI.newSyncDeviceWidgets.currentStep.Refresh()
-	fyneUI.newSyncDeviceWidgets.currentStep.Hide()
-	fyneUI.newSyncDeviceWidgets.infiniteProgressBar.Hide()
-	fyneUI.newSyncDeviceWidgets.progressBar.Hide()
-	fyneUI.newSyncDeviceWidgets.backButton.Enable()
-	fyneUI.newSyncDeviceWidgets.syncStringInput.Show()
+	fyne.Do(func() {
+		fyneUI.showDialog(dialog.NewError(errors.New("Sync request rejected, make sure you scan the device quickly"), fyneUI.mainWindow), nil)
+		fyneUI.newSyncDeviceWidgets.currentStep.Text = ""
+		fyneUI.newSyncDeviceWidgets.currentStep.Refresh()
+		fyneUI.newSyncDeviceWidgets.currentStep.Hide()
+		fyneUI.newSyncDeviceWidgets.infiniteProgressBar.Hide()
+		fyneUI.newSyncDeviceWidgets.progressBar.Hide()
+		fyneUI.newSyncDeviceWidgets.backButton.Enable()
+		fyneUI.newSyncDeviceWidgets.syncStringInput.Show()
+	})
 }
 
 func (fyneUI *Fyne) InitialSyncStarting() {
-	fyneUI.newSyncDeviceWidgets.currentStep.Text = "Importing data..."
-	fyneUI.newSyncDeviceWidgets.currentStep.Refresh()
-	fyneUI.newSyncDeviceWidgets.infiniteProgressBar.Hide()
-	fyneUI.newSyncDeviceWidgets.progressBar.Show()
+	fyne.Do(func() {
+		fyneUI.newSyncDeviceWidgets.currentStep.Text = "Importing data..."
+		fyneUI.newSyncDeviceWidgets.currentStep.Refresh()
+		fyneUI.newSyncDeviceWidgets.infiniteProgressBar.Hide()
+		fyneUI.newSyncDeviceWidgets.progressBar.Show()
+	})
 }
 
 func (fyneUI *Fyne) InitialSyncProgress(p float64) {
-	fyneUI.newSyncDeviceWidgets.progressBar.SetValue(p)
+	fyne.Do(func() {
+		fyneUI.newSyncDeviceWidgets.progressBar.SetValue(p)
+	})
 }
 
 func (fyneUI *Fyne) InitialSyncComplete() {
-	fyneUI.initialSyncIncomplete = false // Allow notifications and dialogs
-	fyneUI.showMainContainer()
+	fyne.Do(func() {
+		fyneUI.initialSyncIncomplete = false // Allow notifications and dialogs
+		fyneUI.showMainContainer()
 
-	newDeviceName := fyneUI.newSyncDeviceWidgets.deviceNameEntry.Text
-	if newDeviceName != "" {
-		if fyneUI.devices.local == nil {
-			log.Error("local device is nil after initial sync")
-		} else {
-			err := fyneUI.callbacks.RenameDevice(fyneUI.devices.local.ID, strings.TrimSpace(newDeviceName))
-			if err != nil {
-				fyneUI.showDialog(dialog.NewError(errors.New("Error setting new device name: "+err.Error()), fyneUI.mainWindow), nil)
+		newDeviceName := fyneUI.newSyncDeviceWidgets.deviceNameEntry.Text
+		if newDeviceName != "" {
+			if fyneUI.devices.local == nil {
+				log.Error("local device is nil after initial sync")
+			} else {
+				err := fyneUI.callbacks.RenameDevice(fyneUI.devices.local.ID, strings.TrimSpace(newDeviceName))
+				if err != nil {
+					fyneUI.showDialog(dialog.NewError(errors.New("Error setting new device name: "+err.Error()), fyneUI.mainWindow), nil)
+				}
 			}
 		}
-	}
+	})
 }

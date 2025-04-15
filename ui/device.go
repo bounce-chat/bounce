@@ -1,36 +1,37 @@
 package ui
 
 import (
+	"fyne.io/fyne/v2"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 )
 
 func (fyneUI *Fyne) DeviceOnline(id uuid.UUID) {
 	fyneUI.devices.online(id)
-	fyneUI.updateDeviceStatus()
+	fyne.Do(func() { fyneUI.updateDeviceStatus() })
 }
 
 func (fyneUI *Fyne) DeviceOffline(id uuid.UUID) {
 	fyneUI.devices.offline(id)
-	fyneUI.updateDeviceStatus()
+	fyne.Do(func() { fyneUI.updateDeviceStatus() })
 }
 
 func (fyneUI *Fyne) DeviceAdded(d chat.Device) {
 	fyneUI.devices.add(&d)
-	fyneUI.updateDeviceStatus()
+	fyne.Do(func() { fyneUI.updateDeviceStatus() })
 }
 
 func (fyneUI *Fyne) DeviceRevoked(id uuid.UUID) {
 	fyneUI.devices.remove(id)
-	fyneUI.updateDeviceStatus()
+	fyne.Do(func() { fyneUI.updateDeviceStatus() })
 }
 
 func (fyneUI *Fyne) DeviceRenamed(id uuid.UUID, name string) {
 	fyneUI.devices.rename(id, name)
-	fyneUI.updateDeviceStatus()
+	fyne.Do(func() { fyneUI.updateDeviceStatus() })
 }
 
 func (fyneUI *Fyne) DeviceLastSeen(id uuid.UUID, timestamp int64) {
 	fyneUI.devices.updateLastSeen(id, timestamp)
-	fyneUI.updateDeviceStatus()
+	fyne.Do(func() { fyneUI.updateDeviceStatus() })
 }

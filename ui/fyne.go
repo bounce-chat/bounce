@@ -284,249 +284,249 @@ func (fyneUI *Fyne) Quit() {
 }
 
 func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
-	//fyne.Do(func() {
-	if fyneUI.initialStateSet {
-		log.Fatal("the initial state of the UI can only be loaded once")
-	}
-	// Refresh the state of the main view after the state is loaded
-	fyneUI.initialStateSet = true
-	defer fyneUI.showMainContainer()
-
-	if state.Profile == nil {
-		// This is a brand new installation.  Tell the user interface it must have the
-		// user create a profile or sync this device to an existing device group before
-		// the app can be used.
-		// TODO: log fatal if anything else is set
-		return
-	}
-
-	fyneUI.profile = makeUser(state.Profile.ID, state.Profile.Name)
-	fyneUI.users.add(fyneUI.profile)
-	fyneUI.settings = state.Settings
-	fyneUI.localSettings = state.LocalSettings
-	fyneUI.askToIgnoreBatteryOptimizations()
-
-	for i, _ := range state.SyncDevices {
-		dev := state.SyncDevices[i]
-		fyneUI.devices.add(&dev)
-	}
-	fyneUI.updateDeviceStatus()
-
-	initialDMStates := map[uuid.UUID]chat.DMState{}
-	for _, u := range state.Users {
-		uiUser := makeUser(u.ID, u.Name)
-		fyneUI.users.add(uiUser)
-		initialDMStates[u.ID] = u.State
-	}
-
-	for _, g := range state.Groups {
-		fyneUI.NewGroupChat(g)
-		group, exists := fyneUI.groups[g.ID]
-		if !exists {
-			log.Fatal("group doesn't exist immediately after creation")
+	fyne.DoAndWait(func() {
+		if fyneUI.initialStateSet {
+			log.Fatal("the initial state of the UI can only be loaded once")
 		}
-		group.button.setLastMessageTime(time.Unix(g.LastActivity, 0))
-		group.setLastMessageTime(g.LastActivity)
-	}
+		// Refresh the state of the main view after the state is loaded
+		fyneUI.initialStateSet = true
+		defer fyneUI.showMainContainer()
 
-	dmItems := make(map[uuid.UUID]threadItems)
-	groupItems := make(map[uuid.UUID]threadItems)
-
-	for _, dm := range state.DirectMessages {
-		fyneUI.creatDMIfNeeded(dm.Thread, initialDMStates)
-		dmti, err := fyneUI.newDirectMessage(dm)
-		if err != nil {
-			log.Fatal(err.Error())
+		if state.Profile == nil {
+			// This is a brand new installation.  Tell the user interface it must have the
+			// user create a profile or sync this device to an existing device group before
+			// the app can be used.
+			// TODO: log fatal if anything else is set
+			return
 		}
-		dmItems[dm.Thread] = append(dmItems[dm.Thread], dmti)
-	}
 
-	for _, udmr := range state.UpdateDMRetentions {
-		fyneUI.creatDMIfNeeded(udmr.Thread, initialDMStates)
-		udmrItem, err := fyneUI.newUpdateDMRetention(udmr)
-		if err != nil {
-			log.Fatal(err.Error())
+		fyneUI.profile = makeUser(state.Profile.ID, state.Profile.Name)
+		fyneUI.users.add(fyneUI.profile)
+		fyneUI.settings = state.Settings
+		fyneUI.localSettings = state.LocalSettings
+		fyneUI.askToIgnoreBatteryOptimizations()
+
+		for i, _ := range state.SyncDevices {
+			dev := state.SyncDevices[i]
+			fyneUI.devices.add(&dev)
 		}
-		dmItems[udmr.Thread] = append(dmItems[udmr.Thread], udmrItem)
-	}
+		fyneUI.updateDeviceStatus()
 
-	for _, udmch := range state.UpdateDMClearHistories {
-		fyneUI.creatDMIfNeeded(udmch.Thread, initialDMStates)
-		udmchItem, err := fyneUI.newUpdateDMClearHistory(udmch)
-		if err != nil {
-			log.Fatal(err.Error())
+		initialDMStates := map[uuid.UUID]chat.DMState{}
+		for _, u := range state.Users {
+			uiUser := makeUser(u.ID, u.Name)
+			fyneUI.users.add(uiUser)
+			initialDMStates[u.ID] = u.State
 		}
-		dmItems[udmch.Thread] = append(dmItems[udmch.Thread], udmchItem)
-	}
 
-	for _, gm := range state.GroupMessages {
-		mti, err := fyneUI.newGroupMessage(gm)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		groupItems[gm.Thread] = append(groupItems[gm.Thread], mti)
-	}
-
-	for _, ugr := range state.UpdateGroupRetentions {
-		ugrItem, err := fyneUI.newUpdateGroupRetention(ugr)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		groupItems[ugr.Thread] = append(groupItems[ugr.Thread], ugrItem)
-	}
-
-	for _, ugn := range state.UpdateGroupNames {
-		ugnItem, err := fyneUI.newUpdateGroupName(ugn)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		groupItems[ugn.Thread] = append(groupItems[ugn.Thread], ugnItem)
-	}
-
-	for _, ugau := range state.UpdateGroupAddUsers {
-		ugauItem, err := fyneUI.newUpdateGroupAddUser(ugau)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		groupItems[ugau.Thread] = append(groupItems[ugau.Thread], ugauItem)
-	}
-
-	for _, ugru := range state.UpdateGroupRemoveUsers {
-		ugruItem, err := fyneUI.newUpdateGroupRemoveUser(ugru)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		groupItems[ugru.Thread] = append(groupItems[ugru.Thread], ugruItem)
-	}
-
-	for _, ugch := range state.UpdateGroupClearHistories {
-		ugchItem, err := fyneUI.newUpdateGroupClearHistory(ugch)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		groupItems[ugch.Thread] = append(groupItems[ugch.Thread], ugchItem)
-	}
-
-	for _, ugap := range state.UpdateGroupAdminPromotions {
-		ugapItem, err := fyneUI.newUpdateGroupAdminPromoted(ugap)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		groupItems[ugap.Thread] = append(groupItems[ugap.Thread], ugapItem)
-	}
-
-	for _, ugad := range state.UpdateGroupAdminDemotions {
-		ugadItem, err := fyneUI.newUpdateGroupAdminDemoted(ugad)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		groupItems[ugad.Thread] = append(groupItems[ugad.Thread], ugadItem)
-	}
-
-	for _, ugumr := range state.UpdateGroupUserManagementsRestricted {
-		ugumrItem, err := fyneUI.newUpdateGroupUserManagementRestricted(ugumr)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		groupItems[ugumr.Thread] = append(groupItems[ugumr.Thread], ugumrItem)
-	}
-
-	for _, ugumu := range state.UpdateGroupUserManagementsUnrestricted {
-		ugumuItem, err := fyneUI.newUpdateGroupUserManagementUnrestricted(ugumu)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		groupItems[ugumu.Thread] = append(groupItems[ugumu.Thread], ugumuItem)
-	}
-
-	for _, uger := range state.UpdateGroupEditsRestricted {
-		ugerItem, err := fyneUI.newUpdateGroupEditsRestricted(uger)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		groupItems[uger.Thread] = append(groupItems[uger.Thread], ugerItem)
-	}
-
-	for _, ugeu := range state.UpdateGroupEditsUnrestricted {
-		ugeuItem, err := fyneUI.newUpdateGroupEditsUnrestricted(ugeu)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		groupItems[ugeu.Thread] = append(groupItems[ugeu.Thread], ugeuItem)
-	}
-
-	for _, ugpr := range state.UpdateGroupPostingsRestricted {
-		ugprItem, err := fyneUI.newUpdateGroupPostingRestricted(ugpr)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		groupItems[ugpr.Thread] = append(groupItems[ugpr.Thread], ugprItem)
-	}
-
-	for _, ugpu := range state.UpdateGroupPostingsUnrestricted {
-		ugpuItem, err := fyneUI.newUpdateGroupPostingUnrestricted(ugpu)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		groupItems[ugpu.Thread] = append(groupItems[ugpu.Thread], ugpuItem)
-	}
-
-	for _, uuun := range state.UpdateUserUpdateNames {
-		if uuun.User == fyneUI.profile.id {
-			for dmID, _ := range fyneUI.dms { // TODO: don't add to DMs before the DMs should exist
-				uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
-				if err != nil {
-					log.Fatal(err.Error())
-				} else {
-					dmItems[dmID] = append(dmItems[dmID], uuunItem)
-				}
+		for _, g := range state.Groups {
+			fyneUI.buildNewGroupChat(g)
+			group, exists := fyneUI.groups[g.ID]
+			if !exists {
+				log.Fatal("group doesn't exist immediately after creation")
 			}
-			for _, g := range fyneUI.groups {
-				if uuun.Timestamp < g.createdAt {
-					continue
-				}
-				uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
-				if err != nil {
-					log.Fatal(err.Error())
-				} else {
-					groupItems[g.id] = append(groupItems[g.id], uuunItem)
-				}
-			}
-		} else {
-			uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+			group.button.setLastMessageTime(time.Unix(g.LastActivity, 0))
+			group.setLastMessageTime(g.LastActivity)
+		}
+
+		dmItems := make(map[uuid.UUID]threadItems)
+		groupItems := make(map[uuid.UUID]threadItems)
+
+		for _, dm := range state.DirectMessages {
+			fyneUI.creatDMIfNeeded(dm.Thread, initialDMStates)
+			dmti, err := fyneUI.newDirectMessage(dm)
 			if err != nil {
 				log.Fatal(err.Error())
 			}
-			dmItems[uuun.User] = append(dmItems[uuun.User], uuunItem)
+			dmItems[dm.Thread] = append(dmItems[dm.Thread], dmti)
+		}
 
-			for _, g := range fyneUI.groups {
-				if uuun.Timestamp < g.createdAt {
-					continue
-				}
-				if g.users.contains(uuun.User) {
-					uuunGroupItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+		for _, udmr := range state.UpdateDMRetentions {
+			fyneUI.creatDMIfNeeded(udmr.Thread, initialDMStates)
+			udmrItem, err := fyneUI.newUpdateDMRetention(udmr)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			dmItems[udmr.Thread] = append(dmItems[udmr.Thread], udmrItem)
+		}
+
+		for _, udmch := range state.UpdateDMClearHistories {
+			fyneUI.creatDMIfNeeded(udmch.Thread, initialDMStates)
+			udmchItem, err := fyneUI.newUpdateDMClearHistory(udmch)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			dmItems[udmch.Thread] = append(dmItems[udmch.Thread], udmchItem)
+		}
+
+		for _, gm := range state.GroupMessages {
+			mti, err := fyneUI.newGroupMessage(gm)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			groupItems[gm.Thread] = append(groupItems[gm.Thread], mti)
+		}
+
+		for _, ugr := range state.UpdateGroupRetentions {
+			ugrItem, err := fyneUI.newUpdateGroupRetention(ugr)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			groupItems[ugr.Thread] = append(groupItems[ugr.Thread], ugrItem)
+		}
+
+		for _, ugn := range state.UpdateGroupNames {
+			ugnItem, err := fyneUI.newUpdateGroupName(ugn)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			groupItems[ugn.Thread] = append(groupItems[ugn.Thread], ugnItem)
+		}
+
+		for _, ugau := range state.UpdateGroupAddUsers {
+			ugauItem, err := fyneUI.newUpdateGroupAddUser(ugau)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			groupItems[ugau.Thread] = append(groupItems[ugau.Thread], ugauItem)
+		}
+
+		for _, ugru := range state.UpdateGroupRemoveUsers {
+			ugruItem, err := fyneUI.newUpdateGroupRemoveUser(ugru)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			groupItems[ugru.Thread] = append(groupItems[ugru.Thread], ugruItem)
+		}
+
+		for _, ugch := range state.UpdateGroupClearHistories {
+			ugchItem, err := fyneUI.newUpdateGroupClearHistory(ugch)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			groupItems[ugch.Thread] = append(groupItems[ugch.Thread], ugchItem)
+		}
+
+		for _, ugap := range state.UpdateGroupAdminPromotions {
+			ugapItem, err := fyneUI.newUpdateGroupAdminPromoted(ugap)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			groupItems[ugap.Thread] = append(groupItems[ugap.Thread], ugapItem)
+		}
+
+		for _, ugad := range state.UpdateGroupAdminDemotions {
+			ugadItem, err := fyneUI.newUpdateGroupAdminDemoted(ugad)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			groupItems[ugad.Thread] = append(groupItems[ugad.Thread], ugadItem)
+		}
+
+		for _, ugumr := range state.UpdateGroupUserManagementsRestricted {
+			ugumrItem, err := fyneUI.newUpdateGroupUserManagementRestricted(ugumr)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			groupItems[ugumr.Thread] = append(groupItems[ugumr.Thread], ugumrItem)
+		}
+
+		for _, ugumu := range state.UpdateGroupUserManagementsUnrestricted {
+			ugumuItem, err := fyneUI.newUpdateGroupUserManagementUnrestricted(ugumu)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			groupItems[ugumu.Thread] = append(groupItems[ugumu.Thread], ugumuItem)
+		}
+
+		for _, uger := range state.UpdateGroupEditsRestricted {
+			ugerItem, err := fyneUI.newUpdateGroupEditsRestricted(uger)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			groupItems[uger.Thread] = append(groupItems[uger.Thread], ugerItem)
+		}
+
+		for _, ugeu := range state.UpdateGroupEditsUnrestricted {
+			ugeuItem, err := fyneUI.newUpdateGroupEditsUnrestricted(ugeu)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			groupItems[ugeu.Thread] = append(groupItems[ugeu.Thread], ugeuItem)
+		}
+
+		for _, ugpr := range state.UpdateGroupPostingsRestricted {
+			ugprItem, err := fyneUI.newUpdateGroupPostingRestricted(ugpr)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			groupItems[ugpr.Thread] = append(groupItems[ugpr.Thread], ugprItem)
+		}
+
+		for _, ugpu := range state.UpdateGroupPostingsUnrestricted {
+			ugpuItem, err := fyneUI.newUpdateGroupPostingUnrestricted(ugpu)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			groupItems[ugpu.Thread] = append(groupItems[ugpu.Thread], ugpuItem)
+		}
+
+		for _, uuun := range state.UpdateUserUpdateNames {
+			if uuun.User == fyneUI.profile.id {
+				for dmID, _ := range fyneUI.dms { // TODO: don't add to DMs before the DMs should exist
+					uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 					if err != nil {
 						log.Fatal(err.Error())
+					} else {
+						dmItems[dmID] = append(dmItems[dmID], uuunItem)
 					}
-					groupItems[g.id] = append(groupItems[g.id], uuunGroupItem)
+				}
+				for _, g := range fyneUI.groups {
+					if uuun.Timestamp < g.createdAt {
+						continue
+					}
+					uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+					if err != nil {
+						log.Fatal(err.Error())
+					} else {
+						groupItems[g.id] = append(groupItems[g.id], uuunItem)
+					}
+				}
+			} else {
+				uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+				if err != nil {
+					log.Fatal(err.Error())
+				}
+				dmItems[uuun.User] = append(dmItems[uuun.User], uuunItem)
+
+				for _, g := range fyneUI.groups {
+					if uuun.Timestamp < g.createdAt {
+						continue
+					}
+					if g.users.contains(uuun.User) {
+						uuunGroupItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+						if err != nil {
+							log.Fatal(err.Error())
+						}
+						groupItems[g.id] = append(groupItems[g.id], uuunGroupItem)
+					}
 				}
 			}
 		}
-	}
 
-	// Create widgets for all the thread items we added
-	for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?
-		if items, ok := groupItems[g.id]; ok {
-			fyneUI.populateInitialItems(g, items)
+		// Create widgets for all the thread items we added
+		for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?
+			if items, ok := groupItems[g.id]; ok {
+				fyneUI.populateInitialItems(g, items)
+			}
 		}
-	}
-	for _, u := range fyneUI.dms { // TODO: store groups and DMs in a shared threads slice?
-		if items, ok := dmItems[u.user.id]; ok {
-			fyneUI.populateInitialItems(u, items)
+		for _, u := range fyneUI.dms { // TODO: store groups and DMs in a shared threads slice?
+			if items, ok := dmItems[u.user.id]; ok {
+				fyneUI.populateInitialItems(u, items)
+			}
 		}
-	}
-	fyneUI.refreshThreadOrder()
-	//})
+		fyneUI.refreshThreadOrder()
+	})
 	go fyneUI.messages.writeCache()
 }
 
@@ -562,7 +562,7 @@ func (fyneUI *Fyne) creatDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]ch
 
 	_, exists = fyneUI.dms[id]
 	if !exists {
-		fyneUI.NewDirectMessage(chat.User{
+		fyneUI.buildNewDirectMessage(chat.User{
 			ID:    id,
 			Name:  u.getName(),
 			State: initialState,
@@ -576,7 +576,7 @@ func (fyneUI *Fyne) creatDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]ch
 
 func (fyneUI *Fyne) NetworkOnline() {
 	if fyneUI.activeThread != uuid.Nil {
-		if _, ok := fyneUI.dms[fyneUI.activeThread]; ok {
+		if _, ok := fyneUI.dms[fyneUI.activeThread]; ok { // TODO: group and dm maps are not concurrency safe
 			fyneUI.callbacks.UserConnectionDesired(fyneUI.activeThread)
 		} else if _, ok = fyneUI.groups[fyneUI.activeThread]; ok {
 			fyneUI.callbacks.GroupConnectionDesired(fyneUI.activeThread)
@@ -586,19 +586,20 @@ func (fyneUI *Fyne) NetworkOnline() {
 			}).Error("active thread is not a known user or group")
 		}
 	}
-	//fyne.Do(func() { fyneUI.networkOfflineWarning.Hide() })
-	fyneUI.networkOfflineWarning.Hide()
+	fyne.Do(func() { fyneUI.networkOfflineWarning.Hide() })
 	fyneUI.networkState = networkStateOnline
 }
 
 func (fyneUI *Fyne) NetworkOffline() {
 	fyneUI.networkState = networkStateOffline
-	fyneUI.networkOfflineWarning.SetText("network connection lost, reconnecting...")
-	fyneUI.networkOfflineWarning.Show()
+	fyne.Do(func() {
+		fyneUI.networkOfflineWarning.SetText("network connection lost, reconnecting...")
+		fyneUI.networkOfflineWarning.Show()
+	})
 }
 
 func (fyneUI *Fyne) UserImported(u chat.User) {
 	newUser := makeUser(u.ID, u.Name)
 	fyneUI.users.add(newUser)
-	fyneUI.NewDirectMessage(u)
+	fyne.Do(func() { fyneUI.NewDirectMessage(u) })
 }

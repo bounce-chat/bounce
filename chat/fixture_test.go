@@ -409,7 +409,7 @@ func (t *testUI) InitialSyncStarting()                                        {}
 func (t *testUI) InitialSyncProgress(float64)                                 {}
 func (t *testUI) InitialSyncComplete()                                        {}
 func (t *testUI) AddUserRequestRejected(string)                               {}
-func (t *testUI) FriendAdded(User)                                            {}
+func (t *testUI) UserAdded(User)                                              {}
 func (t *testUI) UserImported(User)                                           {}
 func (t *testUI) DeleteItem(uuid.UUID)                                        {}
 func (t *testUI) MarkMessageUndeliverable(uuid.UUID)                          {}
@@ -453,8 +453,8 @@ func (t *testUI) PauseGroupNotifications(groupID uuid.UUID)                     
 func (t *testUI) ResumeGroupNotifications(groupID uuid.UUID)                       {}
 func (t *testUI) ShowTypingIndicator(userID, threadID uuid.UUID)                   {}
 func (t *testUI) HideTypingIndicator(userID, threadID uuid.UUID)                   {}
-func (t *testUI) UserIsOnline(userID uuid.UUID)                                    {}
-func (t *testUI) UserIsOffline(userID uuid.UUID)                                   {}
+func (t *testUI) UserOnline(userID uuid.UUID)                                      {}
+func (t *testUI) UserOffline(userID uuid.UUID)                                     {}
 func (t *testUI) DeviceOnline(uuid.UUID)                                           {}
 func (t *testUI) DeviceOffline(uuid.UUID)                                          {}
 func (t *testUI) DeviceAdded(Device)                                               {}

@@ -364,6 +364,10 @@ func (cbr *chatBubbleRenderer) Refresh() {
 	cbr.cb.timestamp.Color = theme.Color(theme.ColorNameForeground)
 	cbr.cb.updateDisplayTime()
 	cbr.Layout(cbr.cb.Size())
+
+	for _, obj := range cbr.Objects() {
+		obj.Refresh()
+	}
 }
 
 func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {

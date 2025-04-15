@@ -86,16 +86,6 @@ func (fyneUI *Fyne) buildSettings() {
 				fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
 			}
 			fyneUI.callbacks.SetDarkMode(checked)
-			//TODO: should not need to do these refreshes after setting the theme:
-			fyneUI.mainContainer.Refresh()
-			for _, t := range fyneUI.groups {
-				t.chatHistoryScroll().Refresh()
-			}
-			for _, t := range fyneUI.dms {
-				t.chatHistoryScroll().Refresh()
-			}
-			fyneUI.threadVBox.Refresh()
-			fyneUI.about.Refresh()
 		}),
 	}
 
@@ -133,50 +123,54 @@ func (fyneUI *Fyne) sendDefaultRetentionSelection(selection string) { // TODO: r
 }
 
 func (fyneUI *Fyne) SetSettings(settings chat.Settings) {
-	updateReadReceipts := fyneUI.settings.DefaultSendReadReceipts != settings.DefaultSendReadReceipts
-	updateTypingIndicators := fyneUI.settings.DefaultSendTypingIndicators != settings.DefaultSendTypingIndicators
+	fyne.Do(func() {
+		updateReadReceipts := fyneUI.settings.DefaultSendReadReceipts != settings.DefaultSendReadReceipts
+		updateTypingIndicators := fyneUI.settings.DefaultSendTypingIndicators != settings.DefaultSendTypingIndicators
 
-	fyneUI.settings = settings
+		fyneUI.settings = settings
 
-	fyneUI.settingsWidgets.defaultNewGroupRetention.Selected = getRetentionName(settings.DefaultGroupRetention)
-	fyneUI.settingsWidgets.defaultNewGroupRetention.Refresh()
+		fyneUI.settingsWidgets.defaultNewGroupRetention.Selected = getRetentionName(settings.DefaultGroupRetention)
+		fyneUI.settingsWidgets.defaultNewGroupRetention.Refresh()
 
-	if updateReadReceipts {
-		fyneUI.settingsWidgets.sendReadReceiptsByDefault.Checked = settings.DefaultSendReadReceipts
-		fyneUI.settingsWidgets.sendReadReceiptsByDefault.Refresh()
-		for _, g := range fyneUI.groups {
-			g.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+		if updateReadReceipts {
+			fyneUI.settingsWidgets.sendReadReceiptsByDefault.Checked = settings.DefaultSendReadReceipts
+			fyneUI.settingsWidgets.sendReadReceiptsByDefault.Refresh()
+			for _, g := range fyneUI.groups {
+				g.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+			}
+			for _, dm := range fyneUI.dms {
+				dm.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+			}
 		}
-		for _, dm := range fyneUI.dms {
-			dm.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+
+		if updateTypingIndicators {
+			fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Checked = settings.DefaultSendTypingIndicators
+			fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
+			for _, g := range fyneUI.groups {
+				g.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
+			}
+			for _, dm := range fyneUI.dms {
+				dm.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
+			}
 		}
-	}
 
-	if updateTypingIndicators {
-		fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Checked = settings.DefaultSendTypingIndicators
-		fyneUI.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
-		for _, g := range fyneUI.groups {
-			g.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
-		}
-		for _, dm := range fyneUI.dms {
-			dm.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
-		}
-	}
+		fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Checked = settings.NewGroupRestrictUserManagement
+		fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Refresh()
 
-	fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Checked = settings.NewGroupRestrictUserManagement
-	fyneUI.settingsWidgets.defaultNewGroupRestrictUserManagement.Refresh()
+		fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Checked = settings.NewGroupRestrictGroupEdits
+		fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Refresh()
 
-	fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Checked = settings.NewGroupRestrictGroupEdits
-	fyneUI.settingsWidgets.defaultNewGroupRestrictGroupEdits.Refresh()
-
-	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Checked = settings.NewGroupRestrictPosting
-	fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Refresh()
+		fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Checked = settings.NewGroupRestrictPosting
+		fyneUI.settingsWidgets.defaultNewGroupRestrictPosting.Refresh()
+	})
 }
 
 func (fyneUI *Fyne) SetDarkMode(value bool) {
-	fyneUI.localSettings.DarkMode = value
-	fyneUI.settingsWidgets.darkMode.Checked = value
-	fyneUI.settingsWidgets.darkMode.Refresh()
+	fyne.Do(func() {
+		fyneUI.localSettings.DarkMode = value
+		fyneUI.settingsWidgets.darkMode.Checked = value
+		fyneUI.settingsWidgets.darkMode.Refresh()
+	})
 }
 
 func (fyneUI *Fyne) readReceiptOverrideSelectionOptions() []string {

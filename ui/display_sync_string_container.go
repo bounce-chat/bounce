@@ -56,5 +56,7 @@ func (fyneUI *Fyne) buildDisplaySyncString() {
 }
 
 func (fyneUI *Fyne) NewSyncDeviceAdded() {
-	fyneUI.showDialog(dialog.NewInformation("New sync device", "A new device has been paired to your profile", fyneUI.mainWindow), nil)
+	fyne.Do(func() {
+		fyneUI.showDialog(dialog.NewInformation("New sync device", "A new device has been paired to your profile", fyneUI.mainWindow), nil)
+	})
 }
