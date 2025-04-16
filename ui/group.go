@@ -508,13 +508,11 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 	}
 
 	openThread := func() {
-		fyne.Do(func() {
-			fyneUI.displayThread(group)
-			fyneUI.callbacks.GroupConnectionDesired(group.id)
-			if fyne.CurrentDevice().IsMobile() {
-				fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeThread, context: group.id})
-			}
-		})
+		fyneUI.displayThread(group)
+		fyneUI.callbacks.GroupConnectionDesired(group.id)
+		if fyne.CurrentDevice().IsMobile() {
+			fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeThread, context: group.id})
+		}
 	}
 	group.button = newThreadButton(newDefaultImage(group.id, group.initial, 64, openThread), group.name, openThread)
 	group.scroll = newChatHistory(
@@ -634,23 +632,23 @@ func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
 }
 
 func (fyneUI *Fyne) DisplayGroupMessage(gm chat.GroupMessage) {
+	g, exists := fyneUI.groups[gm.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": gm.Thread,
+		}).Error("group not found for group message")
+		return
+	}
+
+	ti, err := fyneUI.newGroupMessage(gm)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for group message")
+		return
+	}
+
 	fyne.Do(func() {
-		g, exists := fyneUI.groups[gm.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": gm.Thread,
-			}).Error("group not found for group message")
-			return
-		}
-
-		ti, err := fyneUI.newGroupMessage(gm)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for group message")
-			return
-		}
-
 		if !fyneUI.isActive(g) && !(gm.Author == fyneUI.profile.id) {
 			g.button.addUnread()
 		}
@@ -660,50 +658,46 @@ func (fyneUI *Fyne) DisplayGroupMessage(gm chat.GroupMessage) {
 }
 
 func (fyneUI *Fyne) AddUser(ugau chat.UpdateGroupAddUser) {
-	fyne.Do(func() {
-		g, exists := fyneUI.groups[ugau.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": ugau.Thread,
-			}).Error("group not found for update group add user")
-			return
-		}
+	g, exists := fyneUI.groups[ugau.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugau.Thread,
+		}).Error("group not found for update group add user")
+		return
+	}
 
-		ti, err := fyneUI.newUpdateGroupAddUser(ugau)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for adding user to group")
-			return
-		}
+	ti, err := fyneUI.newUpdateGroupAddUser(ugau)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for adding user to group")
+		return
+	}
 
-		u := makeUser(ugau.User.ID, ugau.User.Name)
-		fyneUI.users.add(u) // TODO: this is needed since it isn't in the group state, should it be?
+	u := makeUser(ugau.User.ID, ugau.User.Name)
+	fyneUI.users.add(u) // TODO: this is needed since it isn't in the group state, should it be?
 
-		fyneUI.appendThreadItem(g, ti)
-	})
+	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) RemoveUser(ugru chat.UpdateGroupRemoveUser) {
-	fyne.Do(func() {
-		g, exists := fyneUI.groups[ugru.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": ugru.Thread,
-			}).Error("cannot remove user from unknown group")
-			return
-		}
+	g, exists := fyneUI.groups[ugru.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugru.Thread,
+		}).Error("cannot remove user from unknown group")
+		return
+	}
 
-		ti, err := fyneUI.newUpdateGroupRemoveUser(ugru)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for removing user to group")
-			return
-		}
+	ti, err := fyneUI.newUpdateGroupRemoveUser(ugru)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for removing user to group")
+		return
+	}
 
-		fyneUI.appendThreadItem(g, ti)
-	})
+	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) RemovedFromGroup(rfg chat.RemovedFromGroup) {
@@ -792,260 +786,248 @@ func (fyneUI *Fyne) GroupDeleted(gd chat.GroupDeleted) {
 }
 
 func (fyneUI *Fyne) RenameGroup(ugn chat.UpdateGroupName) {
-	fyne.Do(func() {
-		g, exists := fyneUI.groups[ugn.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": ugn.Thread,
-			}).Error("cannot update name for unknown group")
-			return
-		}
+	g, exists := fyneUI.groups[ugn.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugn.Thread,
+		}).Error("cannot update name for unknown group")
+		return
+	}
 
-		ti, err := fyneUI.newUpdateGroupName(ugn)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for updating group name")
-			return
-		}
-		fyneUI.appendThreadItem(g, ti)
-	})
+	ti, err := fyneUI.newUpdateGroupName(ugn)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for updating group name")
+		return
+	}
+
+	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) GroupRetentionChanged(ugr chat.UpdateGroupRetention) {
-	fyne.Do(func() {
-		g, exists := fyneUI.groups[ugr.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": ugr.Thread,
-			}).Error("cannot update retention for unknown group")
-			return
-		}
+	g, exists := fyneUI.groups[ugr.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugr.Thread,
+		}).Error("cannot update retention for unknown group")
+		return
+	}
 
-		ti, err := fyneUI.newUpdateGroupRetention(ugr)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for updating group retention")
-			return
-		}
-		fyneUI.appendThreadItem(g, ti)
-	})
+	ti, err := fyneUI.newUpdateGroupRetention(ugr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for updating group retention")
+		return
+	}
+
+	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) GroupChatHistoryCleared(ugch chat.UpdateGroupClearHistory) {
-	fyne.Do(func() {
-		g, exists := fyneUI.groups[ugch.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": ugch.Thread,
-			}).Error("cannot clear history for unknown group")
-			return
-		}
+	g, exists := fyneUI.groups[ugch.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugch.Thread,
+		}).Error("cannot clear history for unknown group")
+		return
+	}
 
-		ti, err := fyneUI.newUpdateGroupClearHistory(ugch)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for clearing group history")
-			return
-		}
-		fyneUI.appendThreadItem(g, ti)
+	ti, err := fyneUI.newUpdateGroupClearHistory(ugch)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for clearing group history")
+		return
+	}
 
-		// TODO: it's possible we cleared messages and there are messages newer than the clear time
-		// that we want to preserve.  In that case, these messages will not have been removed from the
-		// history scroll, and we should insert the message about the clearing above them, so it makes
-		// sense.  This will require we know the timestamp of the clearing update in the frontend,
-		// in fact everything that goes into a thread should follow an interface that has timestamps.
-		// once that's done we can insertion sort these in.
-	})
+	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+
+	// TODO: it's possible we cleared messages and there are messages newer than the clear time
+	// that we want to preserve.  In that case, these messages will not have been removed from the
+	// history scroll, and we should insert the message about the clearing above them, so it makes
+	// sense.  This will require we know the timestamp of the clearing update in the frontend,
+	// in fact everything that goes into a thread should follow an interface that has timestamps.
+	// once that's done we can insertion sort these in.
 }
 
 func (fyneUI *Fyne) AdminPromoted(ugap chat.UpdateGroupAdminPromoted) {
-	fyne.Do(func() {
-		g, exists := fyneUI.groups[ugap.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": ugap.Thread,
-			}).Error("cannot promote admin for group that doesn't exist")
-			return
-		}
+	g, exists := fyneUI.groups[ugap.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugap.Thread,
+		}).Error("cannot promote admin for group that doesn't exist")
+		return
+	}
 
-		ti, err := fyneUI.newUpdateGroupAdminPromoted(ugap)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for update group admin promoted")
-			return
-		}
-		fyneUI.appendThreadItem(g, ti)
-	})
+	ti, err := fyneUI.newUpdateGroupAdminPromoted(ugap)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for update group admin promoted")
+		return
+	}
+
+	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) AdminDemoted(ugad chat.UpdateGroupAdminDemoted) {
-	fyne.Do(func() {
-		g, exists := fyneUI.groups[ugad.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": ugad.Thread,
-			}).Error("cannot demote admin for group that doesn't exist")
-			return
-		}
+	g, exists := fyneUI.groups[ugad.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugad.Thread,
+		}).Error("cannot demote admin for group that doesn't exist")
+		return
+	}
 
-		ti, err := fyneUI.newUpdateGroupAdminDemoted(ugad)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for update group admin demoted")
-			return
-		}
-		fyneUI.appendThreadItem(g, ti)
-	})
+	ti, err := fyneUI.newUpdateGroupAdminDemoted(ugad)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for update group admin demoted")
+		return
+	}
+
+	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagementRestricted) {
-	fyne.Do(func() {
-		g, exists := fyneUI.groups[ugumr.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": ugumr.Thread,
-			}).Error("cannot restrict user management for group that doesn't exist")
-			return
-		}
+	g, exists := fyneUI.groups[ugumr.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugumr.Thread,
+		}).Error("cannot restrict user management for group that doesn't exist")
+		return
+	}
 
-		ti, err := fyneUI.newUpdateGroupUserManagementRestricted(ugumr)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for update group user management restricted")
-			return
-		}
-		fyneUI.appendThreadItem(g, ti)
-	})
+	ti, err := fyneUI.newUpdateGroupUserManagementRestricted(ugumr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for update group user management restricted")
+		return
+	}
+
+	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) UserManagementUnrestricted(ugumu chat.UpdateGroupUserManagementUnrestricted) {
-	fyne.Do(func() {
-		g, exists := fyneUI.groups[ugumu.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": ugumu.Thread,
-			}).Error("cannot unrestrict user management for group that doesn't exist")
-			return
-		}
+	g, exists := fyneUI.groups[ugumu.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugumu.Thread,
+		}).Error("cannot unrestrict user management for group that doesn't exist")
+		return
+	}
 
-		ti, err := fyneUI.newUpdateGroupUserManagementUnrestricted(ugumu)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for update group user management unrestricted")
-			return
-		}
-		fyneUI.appendThreadItem(g, ti)
-	})
+	ti, err := fyneUI.newUpdateGroupUserManagementUnrestricted(ugumu)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for update group user management unrestricted")
+		return
+	}
+
+	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) GroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) {
-	fyne.Do(func() {
-		g, exists := fyneUI.groups[uger.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": uger.Thread,
-			}).Error("cannot restrict edits for group that doesn't exist")
-			return
-		}
+	g, exists := fyneUI.groups[uger.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": uger.Thread,
+		}).Error("cannot restrict edits for group that doesn't exist")
+		return
+	}
 
-		ti, err := fyneUI.newUpdateGroupEditsRestricted(uger)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for update group edits restricted")
-			return
-		}
-		fyneUI.appendThreadItem(g, ti)
-	})
+	ti, err := fyneUI.newUpdateGroupEditsRestricted(uger)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for update group edits restricted")
+		return
+	}
+
+	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) GroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricted) {
-	fyne.Do(func() {
-		g, exists := fyneUI.groups[ugeu.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": ugeu.Thread,
-			}).Error("cannot unrestrict edits for group that doesn't exist")
-			return
-		}
+	g, exists := fyneUI.groups[ugeu.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugeu.Thread,
+		}).Error("cannot unrestrict edits for group that doesn't exist")
+		return
+	}
 
-		ti, err := fyneUI.newUpdateGroupEditsUnrestricted(ugeu)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for update group edits unrestricted")
-			return
-		}
-		fyneUI.appendThreadItem(g, ti)
-	})
+	ti, err := fyneUI.newUpdateGroupEditsUnrestricted(ugeu)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for update group edits unrestricted")
+		return
+
+	}
+	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) PostingRestricted(ugpr chat.UpdateGroupPostingRestricted) {
-	fyne.Do(func() {
-		g, exists := fyneUI.groups[ugpr.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": ugpr.Thread,
-			}).Error("cannot restrict posting for group that doesn't exist")
-			return
-		}
+	g, exists := fyneUI.groups[ugpr.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugpr.Thread,
+		}).Error("cannot restrict posting for group that doesn't exist")
+		return
+	}
 
-		ti, err := fyneUI.newUpdateGroupPostingRestricted(ugpr)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for update group posting restricted")
-			return
-		}
-		fyneUI.appendThreadItem(g, ti)
-	})
+	ti, err := fyneUI.newUpdateGroupPostingRestricted(ugpr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for update group posting restricted")
+		return
+	}
+
+	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) PostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted) {
-	fyne.Do(func() {
-		g, exists := fyneUI.groups[ugpu.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": ugpu.Thread,
-			}).Error("cannot unrestrict posting for group that doesn't exist")
-			return
-		}
+	g, exists := fyneUI.groups[ugpu.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugpu.Thread,
+		}).Error("cannot unrestrict posting for group that doesn't exist")
+		return
+	}
 
-		ti, err := fyneUI.newUpdateGroupPostingUnrestricted(ugpu)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for update group posting unrestricted")
-		}
-		fyneUI.appendThreadItem(g, ti)
-	})
+	ti, err := fyneUI.newUpdateGroupPostingUnrestricted(ugpu)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for update group posting unrestricted")
+	}
+
+	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) UserBlockedGroup(ubg chat.UserBlockedGroup) {
-	fyne.Do(func() {
-		g, exists := fyneUI.groups[ubg.Thread]
-		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": ubg.Thread,
-			}).Error("cannot display block for group that doesn't exist")
-			return
-		}
+	g, exists := fyneUI.groups[ubg.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ubg.Thread,
+		}).Error("cannot display block for group that doesn't exist")
+		return
+	}
 
-		ti, err := fyneUI.newUpdateGroupUserBlocked(ubg)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for user blocked group")
-		}
-		fyneUI.appendThreadItem(g, ti)
-	})
+	ti, err := fyneUI.newUpdateGroupUserBlocked(ubg)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for user blocked group")
+	}
+
+	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) updateEnabledFeatures(g *group) {
@@ -1113,21 +1095,17 @@ func (fyneUI *Fyne) updateEnabledFeatures(g *group) {
 }
 
 func (fyneUI *Fyne) PauseGroupNotifications(groupID uuid.UUID) {
-	fyne.Do(func() {
-		fyneUI.pausedGroupNotificationsMutex.Lock()
-		defer fyneUI.pausedGroupNotificationsMutex.Unlock()
+	fyneUI.pausedGroupNotificationsMutex.Lock()
+	defer fyneUI.pausedGroupNotificationsMutex.Unlock()
 
-		fyneUI.pausedGroupNotifications[groupID] = true
-	})
+	fyneUI.pausedGroupNotifications[groupID] = true
 }
 
 func (fyneUI *Fyne) ResumeGroupNotifications(groupID uuid.UUID) {
-	fyne.Do(func() {
-		fyneUI.pausedGroupNotificationsMutex.Lock()
-		defer fyneUI.pausedGroupNotificationsMutex.Unlock()
+	fyneUI.pausedGroupNotificationsMutex.Lock()
+	defer fyneUI.pausedGroupNotificationsMutex.Unlock()
 
-		delete(fyneUI.pausedGroupNotifications, groupID)
-	})
+	delete(fyneUI.pausedGroupNotifications, groupID)
 }
 
 func (fyneUI *Fyne) groupNotificationsPaused(groupID uuid.UUID) bool {

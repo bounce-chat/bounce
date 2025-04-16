@@ -92,80 +92,76 @@ func (u user) setInitials() {
 }
 
 func (fyneUI *Fyne) SetUserName(userID uuid.UUID, name string) {
-	fyne.Do(func() {
-		u, ok := fyneUI.users.get(userID)
-		if !ok {
-			log.WithFields(log.Fields{
-				"user_id": userID,
-			}).Error("cannot set name of unknown user")
-			return
-		}
+	u, ok := fyneUI.users.get(userID)
+	if !ok {
+		log.WithFields(log.Fields{
+			"user_id": userID,
+		}).Error("cannot set name of unknown user")
+		return
+	}
 
-		u.name.Set(name)
+	u.name.Set(name)
 
-		fyneUI.messages.renameUser(userID, u.getName(), u.getInitials())
-		dm, ok := fyneUI.dms[userID]
-		if ok {
-			dm.chatHistoryScroll().Refresh()
+	fyneUI.messages.renameUser(userID, u.getName(), u.getInitials())
+	dm, ok := fyneUI.dms[userID]
+	if ok {
+		fyne.Do(func() { dm.chatHistoryScroll().Refresh() })
+	}
+	for _, g := range fyneUI.groups {
+		if g.users.contains(userID) {
+			fyne.Do(func() { g.chatHistoryScroll().Refresh() })
 		}
-		for _, g := range fyneUI.groups {
-			if g.users.contains(userID) {
-				g.chatHistoryScroll().Refresh()
-			}
-		}
-	})
+	}
 }
 
 func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
-	fyne.Do(func() {
-		if uuun.User == fyneUI.profile.id {
-			for _, dm := range fyneUI.dms {
-				ti, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Error("error creating thread item for user name change")
-				} else {
-					fyneUI.appendThreadItem(dm, ti)
-				}
+	if uuun.User == fyneUI.profile.id {
+		for _, dm := range fyneUI.dms {
+			ti, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error creating thread item for user name change")
+			} else {
+				fyne.Do(func() { fyneUI.appendThreadItem(dm, ti) })
 			}
-			for _, g := range fyneUI.groups {
-				ti, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Error("error creating thread item for user name change")
-				} else {
-					fyneUI.appendThreadItem(g, ti)
-				}
+		}
+		for _, g := range fyneUI.groups {
+			ti, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error creating thread item for user name change")
+			} else {
+				fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 			}
-		} else {
-			dm, ok := fyneUI.dms[uuun.User]
-			if ok {
-				ti, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Error("error creating thread item for user name change")
-				} else {
-					fyneUI.appendThreadItem(dm, ti)
-				}
+		}
+	} else {
+		dm, ok := fyneUI.dms[uuun.User]
+		if ok {
+			ti, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error creating thread item for user name change")
+			} else {
+				fyne.Do(func() { fyneUI.appendThreadItem(dm, ti) })
 			}
+		}
 
-			for _, g := range fyneUI.groups {
-				if g.users.contains(uuun.User) {
-					ti, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
-					if err != nil {
-						log.WithFields(log.Fields{
-							"error": err.Error(),
-						}).Error("error creating thread item for user name change")
-					} else {
-						fyneUI.appendThreadItem(g, ti)
-					}
+		for _, g := range fyneUI.groups {
+			if g.users.contains(uuun.User) {
+				ti, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error creating thread item for user name change")
+				} else {
+					fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 				}
 			}
 		}
-	})
+	}
 }
 
 func (fyneUI *Fyne) UserOnline(userID uuid.UUID) {

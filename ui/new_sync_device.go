@@ -230,21 +230,19 @@ func (fyneUI *Fyne) buildNewSyncDevice() {
 }
 
 func (fyneUI *Fyne) SyncDeviceRequestAccepted(id uuid.UUID, name string, devices []chat.Device, references bool) {
-	fyne.Do(func() {
-		profile := makeUser(id, name)
-		fyneUI.profile = profile
-		fyneUI.users.add(profile)
-		for i, _ := range devices {
-			dev := devices[i]
-			fyneUI.devices.add(&dev)
-		}
-		fyneUI.initialStateSet = true
-		fyneUI.updateDeviceStatus()
+	profile := makeUser(id, name)
+	fyneUI.profile = profile
+	fyneUI.users.add(profile)
+	for i, _ := range devices {
+		dev := devices[i]
+		fyneUI.devices.add(&dev)
+	}
+	fyneUI.initialStateSet = true
+	fyneUI.updateDeviceStatus()
 
-		if !references {
-			fyneUI.showMainContainer()
-		}
-	})
+	if !references {
+		fyne.Do(func() { fyneUI.showMainContainer() })
+	}
 }
 
 func (fyneUI *Fyne) SyncDeviceRequestRejected(peer string) {
@@ -276,20 +274,24 @@ func (fyneUI *Fyne) InitialSyncProgress(p float64) {
 }
 
 func (fyneUI *Fyne) InitialSyncComplete() {
-	fyne.Do(func() {
+	var newDeviceName string
+	fyne.DoAndWait(func() {
 		fyneUI.initialSyncIncomplete = false // Allow notifications and dialogs
 		fyneUI.showMainContainer()
 
-		newDeviceName := fyneUI.newSyncDeviceWidgets.deviceNameEntry.Text
-		if newDeviceName != "" {
-			if fyneUI.devices.local == nil {
-				log.Error("local device is nil after initial sync")
-			} else {
-				err := fyneUI.callbacks.RenameDevice(fyneUI.devices.local.ID, strings.TrimSpace(newDeviceName))
-				if err != nil {
+		newDeviceName = fyneUI.newSyncDeviceWidgets.deviceNameEntry.Text
+	})
+
+	if newDeviceName != "" {
+		if fyneUI.devices.local == nil {
+			log.Error("local device is nil after initial sync")
+		} else {
+			err := fyneUI.callbacks.RenameDevice(fyneUI.devices.local.ID, strings.TrimSpace(newDeviceName))
+			if err != nil {
+				fyne.Do(func() {
 					fyneUI.showDialog(dialog.NewError(errors.New("Error setting new device name: "+err.Error()), fyneUI.mainWindow), nil)
-				}
+				})
 			}
 		}
-	})
+	}
 }

@@ -235,7 +235,7 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 	go func() {
 		for {
 			time.Sleep(1 * time.Minute)
-			fyne.DoAndWait(func() { dm.button.updateLastMessageTimeText() })
+			fyne.Do(func() { dm.button.updateLastMessageTimeText() })
 		}
 	}()
 
@@ -262,21 +262,20 @@ func (fyneUI *Fyne) DisplayDirectMessage(dm chat.DirectMessage) {
 		log.Fatal("DM doesn't exist immediately after creation")
 	}
 
-	fyne.Do(func() {
-		ti, err := fyneUI.newDirectMessage(dm)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for direct message")
-			return
-		}
+	ti, err := fyneUI.newDirectMessage(dm)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for direct message")
+		return
+	}
 
-		if !fyneUI.isActive(dmThread) && !(dm.Author == fyneUI.profile.id) {
-			dmThread.button.addUnread()
-		}
+	if !fyneUI.isActive(dmThread) && !(dm.Author == fyneUI.profile.id) {
+		fyne.Do(func() { dmThread.button.addUnread() })
+	}
 
-		fyneUI.appendThreadItem(dmThread, ti)
-	})
+	fyne.Do(func() { fyneUI.appendThreadItem(dmThread, ti) })
+
 }
 
 func (fyneUI *Fyne) showEditDMContainer(dm *directMessage) {
@@ -524,17 +523,15 @@ func (fyneUI *Fyne) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
 		return
 	}
 
-	fyne.Do(func() {
-		ti, err := fyneUI.newUpdateDMClearHistory(udch)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for clearing dm history")
-			return
-		}
+	ti, err := fyneUI.newUpdateDMClearHistory(udch)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for clearing dm history")
+		return
+	}
 
-		fyneUI.appendThreadItem(dmThread, ti)
-	})
+	fyne.Do(func() { fyneUI.appendThreadItem(dmThread, ti) })
 }
 
 func (fyneUI *Fyne) DMRetentionChanged(udr chat.UpdateDMRetention) {
@@ -547,17 +544,15 @@ func (fyneUI *Fyne) DMRetentionChanged(udr chat.UpdateDMRetention) {
 		return
 	}
 
-	fyne.Do(func() {
-		ti, err := fyneUI.newUpdateDMRetention(udr)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating thread item for update dm retention")
-			return
-		}
+	ti, err := fyneUI.newUpdateDMRetention(udr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for update dm retention")
+		return
+	}
 
-		fyneUI.appendThreadItem(dmThread, ti)
-	})
+	fyne.Do(func() { fyneUI.appendThreadItem(dmThread, ti) })
 }
 
 func (fyneUI *Fyne) getOrCreateDM(id uuid.UUID) (*directMessage, error) {
