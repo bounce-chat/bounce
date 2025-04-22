@@ -75,7 +75,14 @@ func (fyneUI *Fyne) refreshAllUsersDMLinks() {
 							log.Fatal("DM doesn't exist immediately after creation")
 						}
 					}
-					fyneUI.showMainContainer()
+					if fyne.CurrentDevice().IsMobile() {
+						fyneUI.mobileBack() // Close new DM view
+						fyneUI.mobileBack() // Close menu
+						fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
+					} else {
+						fyneUI.showMainContainer()
+					}
+					fyneUI.callbacks.UserConnectionDesired(dm.user.id)
 					fyneUI.displayThread(dm)
 				},
 			)

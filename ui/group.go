@@ -272,6 +272,7 @@ func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) (dialog.Dialog
 				userDetailsDialog.Hide() // Close the edit user dialog
 				fyneUI.mobileBack()      // Exit the edit group page
 				fyneUI.mobileBack()      // Exit the group
+				fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
 			} else {
 				if userDetailsDialog == nil {
 					log.Fatal("userDetailsDialog used before assignment, this should be impossible")
@@ -729,9 +730,13 @@ func (fyneUI *Fyne) RemoveUser(ugru chat.UpdateGroupRemoveUser) {
 func (fyneUI *Fyne) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 	fyne.DoAndWait(func() {
 		if fyneUI.activeThread == rfg.Group {
-			fyneUI.chatContainer.Objects = []fyne.CanvasObject{fyneUI.defaultContainer}
-			fyneUI.chatContainer.Refresh()
-			fyneUI.activeThread = uuid.Nil
+			if fyne.CurrentDevice().IsMobile() {
+				fyneUI.showMainContainer()
+			} else {
+				fyneUI.chatContainer.Objects = []fyne.CanvasObject{fyneUI.defaultContainer}
+				fyneUI.chatContainer.Refresh()
+				fyneUI.activeThread = uuid.Nil
+			}
 		}
 		if rfg.Actor != fyneUI.profile.id {
 			var actorName string
@@ -768,9 +773,13 @@ func (fyneUI *Fyne) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 func (fyneUI *Fyne) GroupDeleted(gd chat.GroupDeleted) {
 	fyne.DoAndWait(func() {
 		if fyneUI.activeThread == gd.Group {
-			fyneUI.chatContainer.Objects = []fyne.CanvasObject{fyneUI.defaultContainer}
-			fyneUI.chatContainer.Refresh()
-			fyneUI.activeThread = uuid.Nil
+			if fyne.CurrentDevice().IsMobile() {
+				fyneUI.showMainContainer()
+			} else {
+				fyneUI.chatContainer.Objects = []fyne.CanvasObject{fyneUI.defaultContainer}
+				fyneUI.chatContainer.Refresh()
+				fyneUI.activeThread = uuid.Nil
+			}
 		}
 
 		if gd.Actor != fyneUI.profile.id {
