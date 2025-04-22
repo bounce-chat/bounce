@@ -105,11 +105,11 @@ func (fyneUI *Fyne) SetUserName(userID uuid.UUID, name string) {
 	fyneUI.messages.renameUser(userID, u.getName(), u.getInitials())
 	dm, ok := fyneUI.dms[userID]
 	if ok {
-		fyne.Do(func() { dm.chatHistoryScroll().Refresh() })
+		fyne.DoAndWait(func() { dm.chatHistoryScroll().Refresh() })
 	}
 	for _, g := range fyneUI.groups {
 		if g.users.contains(userID) {
-			fyne.Do(func() { g.chatHistoryScroll().Refresh() })
+			fyne.DoAndWait(func() { g.chatHistoryScroll().Refresh() })
 		}
 	}
 }
@@ -123,7 +123,7 @@ func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 					"error": err.Error(),
 				}).Error("error creating thread item for user name change")
 			} else {
-				fyne.Do(func() { fyneUI.appendThreadItem(dm, ti) })
+				fyne.DoAndWait(func() { fyneUI.appendThreadItem(dm, ti) })
 			}
 		}
 		for _, g := range fyneUI.groups {
@@ -133,7 +133,7 @@ func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 					"error": err.Error(),
 				}).Error("error creating thread item for user name change")
 			} else {
-				fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+				fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 			}
 		}
 	} else {
@@ -145,7 +145,7 @@ func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 					"error": err.Error(),
 				}).Error("error creating thread item for user name change")
 			} else {
-				fyne.Do(func() { fyneUI.appendThreadItem(dm, ti) })
+				fyne.DoAndWait(func() { fyneUI.appendThreadItem(dm, ti) })
 			}
 		}
 
@@ -157,7 +157,7 @@ func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 						"error": err.Error(),
 					}).Error("error creating thread item for user name change")
 				} else {
-					fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+					fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 				}
 			}
 		}
@@ -165,7 +165,7 @@ func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 }
 
 func (fyneUI *Fyne) UserOnline(userID uuid.UUID) {
-	fyne.Do(func() {
+	fyne.DoAndWait(func() {
 		log.WithFields(log.Fields{
 			"user_id": userID,
 		}).Info("user is online")
@@ -173,7 +173,7 @@ func (fyneUI *Fyne) UserOnline(userID uuid.UUID) {
 }
 
 func (fyneUI *Fyne) UserOffline(userID uuid.UUID) {
-	fyne.Do(func() {
+	fyne.DoAndWait(func() {
 		log.WithFields(log.Fields{
 			"user_id": userID,
 		}).Info("user is offline")

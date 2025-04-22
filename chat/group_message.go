@@ -310,7 +310,7 @@ func (b *bounce) sendGroupMessage(message GroupMessage) {
 
 	go b.checkIfGroupMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), gm.ID)
 
-	b.userInterface.DisplayGroupMessage(GroupMessage{
+	go b.userInterface.DisplaySentGroupMessage(GroupMessage{
 		ID:            gm.ID,
 		Author:        gm.Author,
 		Thread:        gm.getDestination(b.currentUserID()),

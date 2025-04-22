@@ -272,7 +272,7 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 
 	b.broadcast(&gc)
 
-	b.userInterface.OpenNewGroupChat(Group{
+	go b.userInterface.OpenNewGroupChat(Group{
 		ID:                     g.ID,
 		Name:                   g.Name,
 		Retention:              proposedGroup.Retention,

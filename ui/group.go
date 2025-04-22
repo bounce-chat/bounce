@@ -499,12 +499,6 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 			Thread: group.id,
 			Text:   entry.Text,
 		})
-
-		entry.Text = ""
-		entry.Refresh()
-
-		group.chatHistoryScroll().ScrollToBottom()
-		fyneUI.chatContainer.Refresh()
 	}
 
 	openThread := func() {
@@ -560,7 +554,7 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 }
 
 func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
-	fyne.Do(func() {
+	fyne.DoAndWait(func() {
 		g, exists := fyneUI.groups[bounceGroup.ID]
 		if !exists {
 			log.WithFields(log.Fields{
@@ -648,12 +642,44 @@ func (fyneUI *Fyne) DisplayGroupMessage(gm chat.GroupMessage) {
 		return
 	}
 
+	fyne.DoAndWait(func() {
+		if !fyneUI.isActive(g) && !(gm.Author == fyneUI.profile.id) {
+			g.button.addUnread()
+		}
+
+		fyneUI.appendThreadItem(g, ti)
+	})
+}
+
+func (fyneUI *Fyne) DisplaySentGroupMessage(gm chat.GroupMessage) {
+	g, exists := fyneUI.groups[gm.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": gm.Thread,
+		}).Error("group not found for group message")
+		return
+	}
+
+	ti, err := fyneUI.newGroupMessage(gm)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for group message")
+		return
+	}
+
 	fyne.Do(func() {
 		if !fyneUI.isActive(g) && !(gm.Author == fyneUI.profile.id) {
 			g.button.addUnread()
 		}
 
 		fyneUI.appendThreadItem(g, ti)
+
+		g.entry.Text = ""
+		g.entry.Refresh()
+
+		g.chatHistoryScroll().ScrollToBottom()
+		fyneUI.chatContainer.Refresh()
 	})
 }
 
@@ -677,7 +703,7 @@ func (fyneUI *Fyne) AddUser(ugau chat.UpdateGroupAddUser) {
 	u := makeUser(ugau.User.ID, ugau.User.Name)
 	fyneUI.users.add(u) // TODO: this is needed since it isn't in the group state, should it be?
 
-	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) RemoveUser(ugru chat.UpdateGroupRemoveUser) {
@@ -697,11 +723,11 @@ func (fyneUI *Fyne) RemoveUser(ugru chat.UpdateGroupRemoveUser) {
 		return
 	}
 
-	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) RemovedFromGroup(rfg chat.RemovedFromGroup) {
-	fyne.Do(func() {
+	fyne.DoAndWait(func() {
 		if fyneUI.activeThread == rfg.Group {
 			fyneUI.chatContainer.Objects = []fyne.CanvasObject{fyneUI.defaultContainer}
 			fyneUI.chatContainer.Refresh()
@@ -740,7 +766,7 @@ func (fyneUI *Fyne) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 }
 
 func (fyneUI *Fyne) GroupDeleted(gd chat.GroupDeleted) {
-	fyne.Do(func() {
+	fyne.DoAndWait(func() {
 		if fyneUI.activeThread == gd.Group {
 			fyneUI.chatContainer.Objects = []fyne.CanvasObject{fyneUI.defaultContainer}
 			fyneUI.chatContainer.Refresh()
@@ -802,7 +828,7 @@ func (fyneUI *Fyne) RenameGroup(ugn chat.UpdateGroupName) {
 		return
 	}
 
-	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) GroupRetentionChanged(ugr chat.UpdateGroupRetention) {
@@ -822,7 +848,7 @@ func (fyneUI *Fyne) GroupRetentionChanged(ugr chat.UpdateGroupRetention) {
 		return
 	}
 
-	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) GroupChatHistoryCleared(ugch chat.UpdateGroupClearHistory) {
@@ -842,7 +868,7 @@ func (fyneUI *Fyne) GroupChatHistoryCleared(ugch chat.UpdateGroupClearHistory) {
 		return
 	}
 
-	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 
 	// TODO: it's possible we cleared messages and there are messages newer than the clear time
 	// that we want to preserve.  In that case, these messages will not have been removed from the
@@ -869,7 +895,7 @@ func (fyneUI *Fyne) AdminPromoted(ugap chat.UpdateGroupAdminPromoted) {
 		return
 	}
 
-	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) AdminDemoted(ugad chat.UpdateGroupAdminDemoted) {
@@ -889,7 +915,7 @@ func (fyneUI *Fyne) AdminDemoted(ugad chat.UpdateGroupAdminDemoted) {
 		return
 	}
 
-	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagementRestricted) {
@@ -909,7 +935,7 @@ func (fyneUI *Fyne) UserManagementRestricted(ugumr chat.UpdateGroupUserManagemen
 		return
 	}
 
-	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) UserManagementUnrestricted(ugumu chat.UpdateGroupUserManagementUnrestricted) {
@@ -929,7 +955,7 @@ func (fyneUI *Fyne) UserManagementUnrestricted(ugumu chat.UpdateGroupUserManagem
 		return
 	}
 
-	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) GroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) {
@@ -949,7 +975,7 @@ func (fyneUI *Fyne) GroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) {
 		return
 	}
 
-	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) GroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricted) {
@@ -969,7 +995,7 @@ func (fyneUI *Fyne) GroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricte
 		return
 
 	}
-	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) PostingRestricted(ugpr chat.UpdateGroupPostingRestricted) {
@@ -989,7 +1015,7 @@ func (fyneUI *Fyne) PostingRestricted(ugpr chat.UpdateGroupPostingRestricted) {
 		return
 	}
 
-	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) PostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted) {
@@ -1008,7 +1034,7 @@ func (fyneUI *Fyne) PostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted
 		}).Error("error creating thread item for update group posting unrestricted")
 	}
 
-	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) UserBlockedGroup(ubg chat.UserBlockedGroup) {
@@ -1027,7 +1053,7 @@ func (fyneUI *Fyne) UserBlockedGroup(ubg chat.UserBlockedGroup) {
 		}).Error("error creating thread item for user blocked group")
 	}
 
-	fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
 func (fyneUI *Fyne) updateEnabledFeatures(g *group) {

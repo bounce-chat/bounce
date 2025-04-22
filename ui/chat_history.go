@@ -87,15 +87,13 @@ func newChatHistory(threadID uuid.UUID, messageStore *messageStore, readCallback
 		jumpToBottomIconSize,
 		false,
 		func() {
-			fyne.Do(func() {
-				ch.ScrollToBottom()
-				ch.unread = 0
-				ch.updateUnreadCounter()
-				for index, id := range ch.ids {
-					ch.items[index].markSeen()
-					ch.seenTracking[id] = true
-				}
-			})
+			ch.ScrollToBottom()
+			ch.unread = 0
+			ch.updateUnreadCounter()
+			for index, id := range ch.ids {
+				ch.items[index].markSeen()
+				ch.seenTracking[id] = true
+			}
 			ch.markAllAsReadCallback(ch.id)
 		},
 	)
@@ -105,7 +103,7 @@ func newChatHistory(threadID uuid.UUID, messageStore *messageStore, readCallback
 	go func() {
 		for {
 			time.Sleep(timestampRefreshSeconds * time.Second)
-			fyne.Do(func() { ch.Refresh() })
+			fyne.DoAndWait(func() { ch.Refresh() })
 		}
 	}()
 

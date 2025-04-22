@@ -61,7 +61,7 @@ func (fyneUI *Fyne) UserAdded(u chat.User) {
 	fyneUI.users.add(newUser)
 	//fyneUI.showMainContainer() // TODO: only if still showing the add user container, and actually go to the last screen
 	if !fyneUI.initialSyncIncomplete {
-		fyne.Do(func() {
+		fyne.DoAndWait(func() {
 			fyneUI.showDialog(dialog.NewInformation("New contact added", u.Name+" was added as a friend", fyneUI.mainWindow), nil)
 		})
 	}

@@ -519,7 +519,7 @@ func (b *bounce) applyAndBroadcastUpdateDevice(ud updateDevice) error {
 		return err
 	}
 
-	b.updateDeviceState(ud.Target)
+	go b.updateDeviceState(ud.Target)
 
 	b.broadcast(&ud)
 

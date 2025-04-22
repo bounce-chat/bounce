@@ -319,6 +319,7 @@ type UI interface {
 
 	// Direct messages
 	DisplayDirectMessage(DirectMessage)
+	DisplaySentDirectMessage(DirectMessage)
 	SetDMState(uuid.UUID, DMState)
 	DMRetentionChanged(UpdateDMRetention)      // The retention settings for a DM have been changed
 	DMChatHistoryCleared(UpdateDMClearHistory) // Display that a user has deleted all past DMs
@@ -328,6 +329,7 @@ type UI interface {
 	NewGroupChat(Group)
 	SetGroupState(Group)
 	DisplayGroupMessage(GroupMessage)
+	DisplaySentGroupMessage(GroupMessage)
 	AddUser(UpdateGroupAddUser)
 	RemoveUser(UpdateGroupRemoveUser)
 	RemovedFromGroup(RemovedFromGroup)
@@ -398,30 +400,34 @@ type UICallbacks struct {
 	TypingInDirectMessage func(userID uuid.UUID)
 	TypingInGroup         func(groupID uuid.UUID)
 
-	CreateGroup              func(Group) error                               // Create a new group
-	AddUser                  func(groupID, userID uuid.UUID) error           // The user wants to add another user to a group
-	RemoveUser               func(groupID, userID uuid.UUID) error           // User wants to remove a user from a group
-	RenameGroup              func(groupID uuid.UUID, newName string) error   // The user wants to rename a group
-	SetGroupRetention        func(groupID uuid.UUID, retention int64) error  // Set the message retention for a group
-	ClearGroupChatHistory    func(groupID uuid.UUID) error                   // Erase all history on all devices
-	SetGroupMutedUntil       func(groupID uuid.UUID, mutedUntil int64) error // The user wants to change the notification settings for a group
-	PromoteAdmin             func(groupID, userID uuid.UUID) error           // Make a member of a group an admin
-	DemoteAdmin              func(groupID, userID uuid.UUID) error           // Remove admin permissions from a member of a group
-	RestrictUserManagement   func(groupID uuid.UUID) error                   // Restrict adding and removing users to only admins
-	UnrestrictUserManagement func(groupID uuid.UUID) error                   // Allow anyone to add or remove users
-	RestrictGroupEdits       func(groupID uuid.UUID) error                   // Restrict editing group properties to admin
-	UnrestrictGroupEdits     func(groupID uuid.UUID) error                   // Allow any user to edit group properties
-	RestrictPosting          func(groupID uuid.UUID) error                   // Restrict posting to only admins
-	UnrestrictPosting        func(groupID uuid.UUID) error                   // Allow any user to post
-	DeleteGroup              func(groupID uuid.UUID) error                   // Delete a group
-	BlockGroup               func(groupID uuid.UUID) error                   // Block a group
+	CreateGroup                     func(Group) error                               // Create a new group
+	AddUser                         func(groupID, userID uuid.UUID) error           // The user wants to add another user to a group
+	RemoveUser                      func(groupID, userID uuid.UUID) error           // User wants to remove a user from a group
+	RenameGroup                     func(groupID uuid.UUID, newName string) error   // The user wants to rename a group
+	SetGroupRetention               func(groupID uuid.UUID, retention int64) error  // Set the message retention for a group
+	ClearGroupChatHistory           func(groupID uuid.UUID) error                   // Erase all history on all devices
+	SetGroupMutedUntil              func(groupID uuid.UUID, mutedUntil int64) error // The user wants to change the notification settings for a group
+	PromoteAdmin                    func(groupID, userID uuid.UUID) error           // Make a member of a group an admin
+	DemoteAdmin                     func(groupID, userID uuid.UUID) error           // Remove admin permissions from a member of a group
+	RestrictUserManagement          func(groupID uuid.UUID) error                   // Restrict adding and removing users to only admins
+	UnrestrictUserManagement        func(groupID uuid.UUID) error                   // Allow anyone to add or remove users
+	RestrictGroupEdits              func(groupID uuid.UUID) error                   // Restrict editing group properties to admin
+	UnrestrictGroupEdits            func(groupID uuid.UUID) error                   // Allow any user to edit group properties
+	RestrictPosting                 func(groupID uuid.UUID) error                   // Restrict posting to only admins
+	UnrestrictPosting               func(groupID uuid.UUID) error                   // Allow any user to post
+	DeleteGroup                     func(groupID uuid.UUID) error                   // Delete a group
+	BlockGroup                      func(groupID uuid.UUID) error                   // Block a group
+	SetGroupReadReceiptSettings     func(groupID uuid.UUID, override bool, enabled bool) error
+	SetGroupTypingIndicatorSettings func(groupID uuid.UUID, override bool, enabled bool) error
 
 	RenameDevice func(deviceID uuid.UUID, name string) error
 	RevokeDevice func(deviceID uuid.UUID) error
 
-	SetDMMutedUntil    func(userID uuid.UUID, mutedUntil int64) error // Set a temporary mute on a DM by setting the unix timestamp to pause notifications until
-	SetDMRetention     func(userID uuid.UUID, retention int64) error  // Set the message retention settings for a DM
-	ClearDMChatHistory func(userID uuid.UUID) error                   // Clear all DM messages on all devices
+	SetDMMutedUntil              func(userID uuid.UUID, mutedUntil int64) error // Set a temporary mute on a DM by setting the unix timestamp to pause notifications until
+	SetDMRetention               func(userID uuid.UUID, retention int64) error  // Set the message retention settings for a DM
+	ClearDMChatHistory           func(userID uuid.UUID) error                   // Clear all DM messages on all devices
+	SetDMReadReceiptSettings     func(groupID uuid.UUID, override bool, enabled bool) error
+	SetDMTypingIndicatorSettings func(groupID uuid.UUID, override bool, enabled bool) error
 
 	// Setup a new profile on a fresh install
 	SetProfile    func(profileName, deviceName string) (uuid.UUID, error)
@@ -431,8 +437,7 @@ type UICallbacks struct {
 	// Some user interactions, like opening a DM, indicate that the user might want to send a message to this
 	// user soon.  Calling this will cause the chat engine to attempt to dial the user if there isn't already
 	// an open connection, reducing the latency in message delivery should the user decide to send a message.
-	UserConnectionDesired func(uuid.UUID)
-
+	UserConnectionDesired  func(uuid.UUID)
 	GroupConnectionDesired func(uuid.UUID)
 
 	MarkAsRead                  func(messageID uuid.UUID, frameType string)
@@ -446,11 +451,6 @@ type UICallbacks struct {
 	SetNewGroupRestrictUserManagement func(bool)
 	SetNewGroupRestrictGroupEdits     func(bool)
 	SetNewGroupRestrictPosting        func(bool)
-
-	SetGroupReadReceiptSettings     func(groupID uuid.UUID, override bool, enabled bool) error
-	SetGroupTypingIndicatorSettings func(groupID uuid.UUID, override bool, enabled bool) error
-	SetDMReadReceiptSettings        func(groupID uuid.UUID, override bool, enabled bool) error
-	SetDMTypingIndicatorSettings    func(groupID uuid.UUID, override bool, enabled bool) error
 
 	SetDarkMode func(bool)
 }

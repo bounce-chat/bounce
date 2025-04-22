@@ -520,20 +520,23 @@ func (b *bounce) setDMTypingIndicatorSettings(userID uuid.UUID, override bool, e
 }
 
 func (b *bounce) applyAndBroadcastUpdateDM(ud updateDM) error {
-	// Save and display the update the UI
-	err := b.saveAndDisplayUpdateDM(ud)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error applying update DM")
-		return err
-	}
+	// Called in a goroutine since the UI can't be called back from main
+	go func() {
+		// Save and display the update the UI
+		err := b.saveAndDisplayUpdateDM(ud)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error applying update DM")
+			return
+		}
 
-	// Update the database
-	b.updateDMState(xor(ud.Target, b.currentUserID()))
+		// Update the database
+		b.updateDMState(xor(ud.Target, b.currentUserID()))
 
-	// Broadcast
-	b.broadcast(&ud)
+		// Broadcast
+		b.broadcast(&ud)
+	}()
 
 	return nil
 }

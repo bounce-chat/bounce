@@ -160,7 +160,7 @@ func (fyneUI *Fyne) MarkMessageUndeliverable(id uuid.UUID) {
 		return
 	}
 
-	fyne.Do(func() { thread.chatHistoryScroll().Refresh() })
+	fyne.DoAndWait(func() { thread.chatHistoryScroll().Refresh() })
 }
 
 func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
@@ -184,7 +184,7 @@ func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
 	if !item.isSeen() {
 		item.markSeen()
 		if item.countsAsUnread() {
-			fyne.Do(func() {
+			fyne.DoAndWait(func() {
 				t.chatHistoryScroll().unread -= 1
 				t.chatHistoryScroll().updateUnreadCounter()
 			})
@@ -195,7 +195,7 @@ func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
 	_, opened := openedThreads[t.getID()]
 	openedThreadMutex.Unlock()
 	if !opened {
-		fyne.Do(func() { t.chatHistoryScroll().scrollToLastRead() })
+		fyne.DoAndWait(func() { t.chatHistoryScroll().scrollToLastRead() })
 	}
 
 }
@@ -226,18 +226,18 @@ func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
 		if currentState == statePending {
 			item.setState(stateSynced)
 			if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
-				fyne.Do(func() { t.getButton().showLastMessageState(stateSynced) })
+				fyne.DoAndWait(func() { t.getButton().showLastMessageState(stateSynced) })
 			}
 		}
 
 	} else {
 		item.setState(stateDelivered)
 		if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
-			fyne.Do(func() { t.getButton().showLastMessageState(stateDelivered) })
+			fyne.DoAndWait(func() { t.getButton().showLastMessageState(stateDelivered) })
 		}
 	}
 
-	fyne.Do(func() { t.chatHistoryScroll().Refresh() })
+	fyne.DoAndWait(func() { t.chatHistoryScroll().Refresh() })
 
 }
 
@@ -265,7 +265,7 @@ func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
 
 	item.setState(stateRead)
 
-	fyne.Do(func() {
+	fyne.DoAndWait(func() {
 		if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(rr.Target) {
 			t.getButton().showLastMessageState(stateRead)
 		}
@@ -287,7 +287,7 @@ func (fyneUI *Fyne) DeleteItem(id uuid.UUID) {
 		return
 	}
 
-	fyne.Do(func() {
+	fyne.DoAndWait(func() {
 		deleted := thread.chatHistoryScroll().deleteItem(id)
 
 		if deleted {
@@ -358,7 +358,7 @@ func (fyneUI *Fyne) ShowTypingIndicator(userID, threadID uuid.UUID) {
 		return
 	}
 
-	fyne.Do(func() {
+	fyne.DoAndWait(func() {
 		t.getTypingIndicator().showUser(u)
 		t.getView().Refresh()
 
@@ -376,7 +376,7 @@ func (fyneUI *Fyne) HideTypingIndicator(userID, threadID uuid.UUID) {
 		return
 	}
 
-	fyne.Do(func() {
+	fyne.DoAndWait(func() {
 		t.getTypingIndicator().hideUser(userID)
 		t.getView().Refresh()
 

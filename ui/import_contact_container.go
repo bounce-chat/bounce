@@ -7,6 +7,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -69,6 +70,9 @@ func (fyneUI *Fyne) buildImportContact() {
 			showInformation = dialog.NewInformation("Success", fmt.Sprintf("%s has been imported", newUser.Name), fyneUI.mainWindow)
 			// TODO: offer to delete file?
 		}
+		uName := binding.NewString()
+		uName.Set(newUser.Name)
+		fyneUI.users.add(&user{id: newUser.ID, name: uName})
 	}, fyneUI.mainWindow)
 
 	fyneUI.importContact = container.New( // TODO: scan QR code, have the engine respond will full contact details if QR secret is sent within 30 mins

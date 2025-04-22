@@ -285,7 +285,7 @@ func (b *bounce) sendDirectMessage(message DirectMessage) {
 
 	go b.checkIfDirectMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), dm.ID)
 
-	b.userInterface.DisplayDirectMessage(DirectMessage{
+	go b.userInterface.DisplaySentDirectMessage(DirectMessage{
 		ID:            dm.ID,
 		Author:        dm.Author,
 		Thread:        dm.getDestination(b.currentUserID()),

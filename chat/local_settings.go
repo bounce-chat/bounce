@@ -32,7 +32,7 @@ func (b *bounce) setDarkMode(value bool) {
 		}).Error("error setting dark mode in local settings")
 	}
 
-	b.userInterface.SetDarkMode(value)
+	go b.userInterface.SetDarkMode(value)
 }
 
 func (b *bounce) darkMode() bool {

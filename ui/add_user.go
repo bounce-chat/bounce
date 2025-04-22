@@ -80,7 +80,7 @@ func (fyneUI *Fyne) buildAddUser() {
 }
 
 func (fyneUI *Fyne) AddUserRequestRejected(peer string) {
-	fyne.Do(func() {
+	fyne.DoAndWait(func() {
 		fyneUI.showDialog(dialog.NewError(errors.New("Friend request rejected, make sure you scan the device quickly"), fyneUI.mainWindow), nil)
 	})
 }

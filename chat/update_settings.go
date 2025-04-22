@@ -169,7 +169,7 @@ func (b *bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 	}
 
 	// Apply this update locally
-	err = b.saveAndDisplayUpdateSettings(us)
+	err = b.saveUpdateSettings(us)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"device": srcDevice.ID,
@@ -187,7 +187,7 @@ func (b *bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 	return &us
 }
 
-func (b *bounce) saveAndDisplayUpdateSettings(us updateSettings) error {
+func (b *bounce) saveUpdateSettings(us updateSettings) error {
 	// Validate payload
 	err := us.validPayload()
 	if err != nil {
@@ -277,7 +277,7 @@ func (b *bounce) updateSettingsState() {
 	}
 
 	// Inform the UI of the current state
-	b.userInterface.SetSettings(
+	go b.userInterface.SetSettings(
 		Settings{
 			DefaultGroupRetention:          defaultGroupRetention,
 			DefaultSendReadReceipts:        defaultSendReadReceipts,
@@ -383,7 +383,7 @@ func (b *bounce) setNewGroupRestrictPosting(value bool) {
 
 func (b *bounce) applyAndBroadcastUpdateSettings(us updateSettings) error {
 	// Save the update to the database
-	err := b.saveAndDisplayUpdateSettings(us)
+	err := b.saveUpdateSettings(us)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

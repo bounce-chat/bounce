@@ -79,14 +79,7 @@ func (fyneUI *Fyne) buildSettings() {
 		defaultNewGroupRestrictUserManagement: widget.NewCheck("Restrict User Management", fyneUI.callbacks.SetNewGroupRestrictUserManagement),
 		defaultNewGroupRestrictGroupEdits:     widget.NewCheck("Restrict Group Edits", fyneUI.callbacks.SetNewGroupRestrictGroupEdits),
 		defaultNewGroupRestrictPosting:        widget.NewCheck("Restrict Posting", fyneUI.callbacks.SetNewGroupRestrictPosting),
-		darkMode: widget.NewCheck("Dark Mode", func(checked bool) {
-			if checked {
-				fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
-			} else {
-				fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
-			}
-			fyneUI.callbacks.SetDarkMode(checked)
-		}),
+		darkMode:                              widget.NewCheck("Dark Mode", fyneUI.callbacks.SetDarkMode),
 	}
 
 	fyneUI.settingsContainer = container.New(
@@ -123,7 +116,7 @@ func (fyneUI *Fyne) sendDefaultRetentionSelection(selection string) { // TODO: r
 }
 
 func (fyneUI *Fyne) SetSettings(settings chat.Settings) {
-	fyne.Do(func() {
+	fyne.DoAndWait(func() {
 		updateReadReceipts := fyneUI.settings.DefaultSendReadReceipts != settings.DefaultSendReadReceipts
 		updateTypingIndicators := fyneUI.settings.DefaultSendTypingIndicators != settings.DefaultSendTypingIndicators
 
@@ -166,7 +159,12 @@ func (fyneUI *Fyne) SetSettings(settings chat.Settings) {
 }
 
 func (fyneUI *Fyne) SetDarkMode(value bool) {
-	fyne.Do(func() {
+	fyne.DoAndWait(func() {
+		if value {
+			fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
+		} else {
+			fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
+		}
 		fyneUI.localSettings.DarkMode = value
 		fyneUI.settingsWidgets.darkMode.Checked = value
 		fyneUI.settingsWidgets.darkMode.Refresh()

@@ -292,7 +292,7 @@ func (tb *threadButton) hideLastMessageState() {
 
 func (tb *threadButton) setLastMessageTime(timestamp time.Time) {
 	tb.lastMessageTime = timestamp
-	fyne.Do(func() { tb.updateLastMessageTimeText() })
+	tb.updateLastMessageTimeText()
 }
 
 func (tb *threadButton) updateLastMessageTimeText() { //TODO: use the same time string as thread items?

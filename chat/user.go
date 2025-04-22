@@ -199,7 +199,7 @@ func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 		return newID, err
 	}
 
-	b.userInterface.DeviceAdded(Device{
+	go b.userInterface.DeviceAdded(Device{
 		ID:        d.ID,
 		Address:   d.Address,
 		CreatedAt: d.Timestamp,

@@ -336,7 +336,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 			fyneUI.creatDMIfNeeded(dm.Thread, initialDMStates)
 			dmti, err := fyneUI.newDirectMessage(dm)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			dmItems[dm.Thread] = append(dmItems[dm.Thread], dmti)
 		}
@@ -345,7 +345,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 			fyneUI.creatDMIfNeeded(udmr.Thread, initialDMStates)
 			udmrItem, err := fyneUI.newUpdateDMRetention(udmr)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			dmItems[udmr.Thread] = append(dmItems[udmr.Thread], udmrItem)
 		}
@@ -354,7 +354,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 			fyneUI.creatDMIfNeeded(udmch.Thread, initialDMStates)
 			udmchItem, err := fyneUI.newUpdateDMClearHistory(udmch)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			dmItems[udmch.Thread] = append(dmItems[udmch.Thread], udmchItem)
 		}
@@ -362,7 +362,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, gm := range state.GroupMessages {
 			mti, err := fyneUI.newGroupMessage(gm)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			groupItems[gm.Thread] = append(groupItems[gm.Thread], mti)
 		}
@@ -370,7 +370,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, ugr := range state.UpdateGroupRetentions {
 			ugrItem, err := fyneUI.newUpdateGroupRetention(ugr)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			groupItems[ugr.Thread] = append(groupItems[ugr.Thread], ugrItem)
 		}
@@ -378,7 +378,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, ugn := range state.UpdateGroupNames {
 			ugnItem, err := fyneUI.newUpdateGroupName(ugn)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			groupItems[ugn.Thread] = append(groupItems[ugn.Thread], ugnItem)
 		}
@@ -386,7 +386,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, ugau := range state.UpdateGroupAddUsers {
 			ugauItem, err := fyneUI.newUpdateGroupAddUser(ugau)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			groupItems[ugau.Thread] = append(groupItems[ugau.Thread], ugauItem)
 		}
@@ -394,7 +394,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, ugru := range state.UpdateGroupRemoveUsers {
 			ugruItem, err := fyneUI.newUpdateGroupRemoveUser(ugru)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			groupItems[ugru.Thread] = append(groupItems[ugru.Thread], ugruItem)
 		}
@@ -402,7 +402,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, ugch := range state.UpdateGroupClearHistories {
 			ugchItem, err := fyneUI.newUpdateGroupClearHistory(ugch)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			groupItems[ugch.Thread] = append(groupItems[ugch.Thread], ugchItem)
 		}
@@ -410,7 +410,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, ugap := range state.UpdateGroupAdminPromotions {
 			ugapItem, err := fyneUI.newUpdateGroupAdminPromoted(ugap)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			groupItems[ugap.Thread] = append(groupItems[ugap.Thread], ugapItem)
 		}
@@ -418,7 +418,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, ugad := range state.UpdateGroupAdminDemotions {
 			ugadItem, err := fyneUI.newUpdateGroupAdminDemoted(ugad)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			groupItems[ugad.Thread] = append(groupItems[ugad.Thread], ugadItem)
 		}
@@ -426,7 +426,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, ugumr := range state.UpdateGroupUserManagementsRestricted {
 			ugumrItem, err := fyneUI.newUpdateGroupUserManagementRestricted(ugumr)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			groupItems[ugumr.Thread] = append(groupItems[ugumr.Thread], ugumrItem)
 		}
@@ -434,7 +434,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, ugumu := range state.UpdateGroupUserManagementsUnrestricted {
 			ugumuItem, err := fyneUI.newUpdateGroupUserManagementUnrestricted(ugumu)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			groupItems[ugumu.Thread] = append(groupItems[ugumu.Thread], ugumuItem)
 		}
@@ -442,7 +442,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, uger := range state.UpdateGroupEditsRestricted {
 			ugerItem, err := fyneUI.newUpdateGroupEditsRestricted(uger)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			groupItems[uger.Thread] = append(groupItems[uger.Thread], ugerItem)
 		}
@@ -450,7 +450,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, ugeu := range state.UpdateGroupEditsUnrestricted {
 			ugeuItem, err := fyneUI.newUpdateGroupEditsUnrestricted(ugeu)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			groupItems[ugeu.Thread] = append(groupItems[ugeu.Thread], ugeuItem)
 		}
@@ -458,7 +458,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, ugpr := range state.UpdateGroupPostingsRestricted {
 			ugprItem, err := fyneUI.newUpdateGroupPostingRestricted(ugpr)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			groupItems[ugpr.Thread] = append(groupItems[ugpr.Thread], ugprItem)
 		}
@@ -466,7 +466,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, ugpu := range state.UpdateGroupPostingsUnrestricted {
 			ugpuItem, err := fyneUI.newUpdateGroupPostingUnrestricted(ugpu)
 			if err != nil {
-				log.Fatal(err.Error())
+				log.Error(err.Error())
 			}
 			groupItems[ugpu.Thread] = append(groupItems[ugpu.Thread], ugpuItem)
 		}
@@ -476,7 +476,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 				for dmID, _ := range fyneUI.dms { // TODO: don't add to DMs before the DMs should exist
 					uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 					if err != nil {
-						log.Fatal(err.Error())
+						log.Error(err.Error())
 					} else {
 						dmItems[dmID] = append(dmItems[dmID], uuunItem)
 					}
@@ -487,7 +487,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 					}
 					uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 					if err != nil {
-						log.Fatal(err.Error())
+						log.Error(err.Error())
 					} else {
 						groupItems[g.id] = append(groupItems[g.id], uuunItem)
 					}
@@ -495,7 +495,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 			} else {
 				uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 				if err != nil {
-					log.Fatal(err.Error())
+					log.Error(err.Error())
 				}
 				dmItems[uuun.User] = append(dmItems[uuun.User], uuunItem)
 
@@ -506,7 +506,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 					if g.users.contains(uuun.User) {
 						uuunGroupItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 						if err != nil {
-							log.Fatal(err.Error())
+							log.Error(err.Error())
 						}
 						groupItems[g.id] = append(groupItems[g.id], uuunGroupItem)
 					}
@@ -586,13 +586,13 @@ func (fyneUI *Fyne) NetworkOnline() {
 			}).Error("active thread is not a known user or group")
 		}
 	}
-	fyne.Do(func() { fyneUI.networkOfflineWarning.Hide() })
+	fyne.DoAndWait(func() { fyneUI.networkOfflineWarning.Hide() })
 	fyneUI.networkState = networkStateOnline
 }
 
 func (fyneUI *Fyne) NetworkOffline() {
 	fyneUI.networkState = networkStateOffline
-	fyne.Do(func() {
+	fyne.DoAndWait(func() {
 		fyneUI.networkOfflineWarning.SetText("network connection lost, reconnecting...")
 		fyneUI.networkOfflineWarning.Show()
 	})
@@ -601,5 +601,5 @@ func (fyneUI *Fyne) NetworkOffline() {
 func (fyneUI *Fyne) UserImported(u chat.User) {
 	newUser := makeUser(u.ID, u.Name)
 	fyneUI.users.add(newUser)
-	fyne.Do(func() { fyneUI.NewDirectMessage(u) })
+	fyne.DoAndWait(func() { fyneUI.NewDirectMessage(u) })
 }
