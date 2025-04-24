@@ -556,6 +556,7 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 		}).Warn("error creating thread item for group creation")
 	}
 	fyneUI.appendThreadItem(group, ti)
+	ti.setButton(group.button)
 }
 
 func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
