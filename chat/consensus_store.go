@@ -222,7 +222,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 			if finalState.deletedBy == nil && finalState.isMember(b.currentUserID()) {
 				// Defer is used to the the UI calls occur after the state has been set, for tests that trigger
 				// checks based on when UI calls complete.
-				defer b.informUIOfUpdateGroup(gs.ug)
+				defer func() { go b.informUIOfUpdateGroup(gs.ug) }()
 			}
 
 			if gs.ug.Type == updateGroupTypeAddUser {
@@ -277,7 +277,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		}
 
 		// Inform the UI
-		b.userInterface.GroupDeleted(GroupDeleted{
+		go b.userInterface.GroupDeleted(GroupDeleted{
 			Group: g.ID,
 			Actor: b.currentUserID(),
 		})
@@ -361,7 +361,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		}
 
 		// Inform the UI
-		b.userInterface.GroupDeleted(GroupDeleted{
+		go b.userInterface.GroupDeleted(GroupDeleted{
 			Group: g.ID,
 			Actor: finalState.ug.Actor,
 		})
@@ -390,7 +390,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		}
 
 		// Inform the UI
-		b.userInterface.RemovedFromGroup(RemovedFromGroup{
+		go b.userInterface.RemovedFromGroup(RemovedFromGroup{
 			Group: g.ID,
 			Actor: finalState.removedBy.Actor,
 		})
@@ -407,7 +407,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 				if err != nil {
 					return err
 				}
-				b.userInterface.DeleteItem(ug.ID)
+				go b.userInterface.DeleteItem(ug.ID)
 			}
 		}
 	}
@@ -583,7 +583,7 @@ func (b *bounce) setGroupStateInDatabase(g group, gs groupState) error {
 		}
 	}
 
-	b.userInterface.SetGroupState(Group{
+	go b.userInterface.SetGroupState(Group{
 		ID:   g.ID,
 		Name: g.Name,
 		//Image: []byte{},
@@ -746,7 +746,7 @@ func (b *bounce) pruneMessagesBeforeClear(clearBefore int64, groupID uuid.UUID) 
 				"id":    gm.ID,
 			}).Fatal("error deleting group message while clearing chat history")
 		}
-		b.userInterface.DeleteItem(gm.ID)
+		go b.userInterface.DeleteItem(gm.ID)
 	}
 }
 
