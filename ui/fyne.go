@@ -312,6 +312,9 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 		fyneUI.updateDeviceStatus()
 
+		dmItems := make(map[uuid.UUID]threadItems)
+		groupItems := make(map[uuid.UUID]threadItems)
+
 		initialDMStates := map[uuid.UUID]chat.DMState{}
 		for _, u := range state.Users {
 			uiUser := makeUser(u.ID, u.Name)
@@ -327,10 +330,17 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 			}
 			group.button.setLastMessageTime(time.Unix(g.LastActivity, 0))
 			group.setLastMessageTime(g.LastActivity)
-		}
 
-		dmItems := make(map[uuid.UUID]threadItems)
-		groupItems := make(map[uuid.UUID]threadItems)
+			gcTi, err := fyneUI.newGroupCreated(g.ID, g.ID, g.CreatedBy, g.CreatedAt)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":      err.Error(),
+					"group":      g.ID,
+					"created_by": g.CreatedBy,
+				}).Warn("error creating thread item for group creation while loading initial state")
+			}
+			groupItems[g.ID] = append(groupItems[g.ID], gcTi)
+		}
 
 		for _, dm := range state.DirectMessages {
 			fyneUI.creatDMIfNeeded(dm.Thread, initialDMStates)
