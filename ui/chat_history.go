@@ -24,6 +24,7 @@ type chatHistory struct {
 	widget.BaseWidget
 
 	id       uuid.UUID
+	myID     uuid.UUID
 	messages *messageStore
 
 	items   []threadable
@@ -49,13 +50,14 @@ type chatHistory struct {
 	seenTracking          map[uuid.UUID]bool
 }
 
-func newChatHistory(threadID uuid.UUID, messageStore *messageStore, readCallback func(uuid.UUID, string), unreadCountCallback func(int), markAllAsReadCallback func(uuid.UUID), windowFocused func() bool) *chatHistory {
+func newChatHistory(threadID, myID uuid.UUID, messageStore *messageStore, readCallback func(uuid.UUID, string), unreadCountCallback func(int), markAllAsReadCallback func(uuid.UUID), windowFocused func() bool) *chatHistory {
 	if readCallback == nil {
 		log.Fatal("cannot create chat history widget without read callback")
 	}
 
 	ch := &chatHistory{
 		id:                    threadID,
+		myID:                  myID,
 		messages:              messageStore,
 		items:                 []threadable{},
 		ids:                   []uuid.UUID{},
@@ -124,7 +126,7 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 			ch.seenTracking[item.getID()] = true
 		}
 
-		if item.countsAsUnread() && !item.isSeen() {
+		if item.countsAsUnread() && !item.isSeen() && !(item.getAuthor() == ch.myID) {
 			ch.unread += 1
 		}
 
@@ -153,6 +155,7 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 		}
 	}
 
+	ch.updateUnreadCounter()
 	ch.Refresh()
 }
 
@@ -190,9 +193,10 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 		ch.setMergeMode(len(ch.items)-1, true)
 	}
 
-	if ti.widgetData.countsAsUnread() && !ti.widgetData.isSeen() {
+	if ti.widgetData.countsAsUnread() && !ti.widgetData.isSeen() && !(ti.widgetData.getAuthor() == ch.myID) {
 		ch.unread += 1
 	}
+	ch.updateUnreadCounter()
 
 	ch.messages.insert(ti.widgetData)
 }
@@ -509,6 +513,9 @@ func (ch *chatHistory) ScrollToTop() {
 
 func (ch *chatHistory) scrollToLastRead() {
 	for i, item := range ch.items {
+		if !item.countsAsUnread() {
+			continue
+		}
 		if !item.isSeen() {
 			if i == 0 {
 				ch.ScrollToTop()
@@ -756,15 +763,13 @@ func (chl *chatHistoryLayout) offsetUpdated(pos fyne.Position) {
 
 	if pos.Y == chl.ch.contentHeight()-chl.ch.scroller.Size().Height {
 		if chl.ch.unread > 0 {
-			if chl.ch.unread > 0 {
-				chl.ch.markAllAsReadCallback(chl.ch.id)
-				chl.ch.unread = 0
-				chl.ch.updateUnreadCounter()
+			chl.ch.markAllAsReadCallback(chl.ch.id)
+			chl.ch.unread = 0
+			chl.ch.updateUnreadCounter()
 
-				for index, id := range chl.ch.ids {
-					chl.ch.items[index].markSeen()
-					chl.ch.seenTracking[id] = true
-				}
+			for index, id := range chl.ch.ids {
+				chl.ch.items[index].markSeen()
+				chl.ch.seenTracking[id] = true
 			}
 		}
 	}

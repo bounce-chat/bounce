@@ -218,6 +218,7 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 	dm.button = newThreadButton(newDefaultImage(user.id, user.initials, 64, openThread), user.name, openThread)
 	dm.scroll = newChatHistory(
 		dm.user.id,
+		fyneUI.profile.id,
 		fyneUI.messages,
 		fyneUI.callbacks.MarkAsRead,
 		dm.button.setUnreadCount,
@@ -268,10 +269,6 @@ func (fyneUI *Fyne) DisplayDirectMessage(dm chat.DirectMessage) {
 	}
 
 	fyne.DoAndWait(func() {
-		if !fyneUI.isActive(dmThread) && !(dm.Author == fyneUI.profile.id) {
-			dmThread.button.addUnread()
-		}
-
 		fyneUI.appendThreadItem(dmThread, ti)
 	})
 }
@@ -291,10 +288,6 @@ func (fyneUI *Fyne) DisplaySentDirectMessage(dm chat.DirectMessage) {
 	}
 
 	fyne.Do(func() {
-		if !fyneUI.isActive(dmThread) && !(dm.Author == fyneUI.profile.id) {
-			dmThread.button.addUnread()
-		}
-
 		fyneUI.appendThreadItem(dmThread, ti)
 
 		dmThread.entry.Text = ""

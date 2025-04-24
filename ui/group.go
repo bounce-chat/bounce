@@ -512,6 +512,7 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 	group.button = newThreadButton(newDefaultImage(group.id, group.initial, 64, openThread), group.name, openThread)
 	group.scroll = newChatHistory(
 		group.id,
+		fyneUI.profile.id,
 		fyneUI.messages,
 		fyneUI.callbacks.MarkAsRead,
 		group.button.setUnreadCount,
@@ -647,10 +648,6 @@ func (fyneUI *Fyne) DisplayGroupMessage(gm chat.GroupMessage) {
 	}
 
 	fyne.DoAndWait(func() {
-		if !fyneUI.isActive(g) && !(gm.Author == fyneUI.profile.id) {
-			g.button.addUnread()
-		}
-
 		fyneUI.appendThreadItem(g, ti)
 	})
 }
@@ -673,10 +670,6 @@ func (fyneUI *Fyne) DisplaySentGroupMessage(gm chat.GroupMessage) {
 	}
 
 	fyne.Do(func() {
-		if !fyneUI.isActive(g) && !(gm.Author == fyneUI.profile.id) {
-			g.button.addUnread()
-		}
-
 		fyneUI.appendThreadItem(g, ti)
 
 		g.entry.Text = ""

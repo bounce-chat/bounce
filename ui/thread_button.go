@@ -321,23 +321,8 @@ func (tb *threadButton) updateLastMessageTimeText() { //TODO: use the same time 
 	tb.lastMessageTimeText.Refresh()
 }
 
-func (tb *threadButton) addUnread() {
-	tb.unreadCount += 1
-	tb.displayCorrectUnreadCount()
-}
-
-func (tb *threadButton) removeUnread() {
-	tb.unreadCount -= 1
-	tb.displayCorrectUnreadCount()
-}
-
 func (tb *threadButton) setUnreadCount(n int) {
 	tb.unreadCount = n
-	tb.displayCorrectUnreadCount()
-}
-
-func (tb *threadButton) clearUnreadCount() {
-	tb.unreadCount = 0
 	tb.displayCorrectUnreadCount()
 }
 
