@@ -354,7 +354,7 @@ func (b *bounce) closeUnusedConnections() {
 	for addr, rd := range b.devicePool.devices {
 		if rd.connectedSockets.Load() > connectionsPerDevice {
 			log.WithFields(log.Fields{
-				"connected_sockets": rd.connectedSockets,
+				"connected_sockets": rd.connectedSockets.Load(),
 				"desired_sockets":   connectionsPerDevice,
 			}).Debug("closing a socket to a device")
 
@@ -375,7 +375,7 @@ func (b *bounce) closeUnusedConnections() {
 			default:
 				log.WithFields(log.Fields{
 					"address":           addr,
-					"connected_sockets": rd.connectedSockets,
+					"connected_sockets": rd.connectedSockets.Load(),
 					"desired_sockets":   connectionsPerDevice,
 				}).Warn("failed to close socket on remote device")
 			}

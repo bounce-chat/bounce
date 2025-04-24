@@ -187,6 +187,7 @@ func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
 			fyne.DoAndWait(func() {
 				t.chatHistoryScroll().unread -= 1
 				t.chatHistoryScroll().updateUnreadCounter()
+				t.chatHistoryScroll().Refresh()
 			})
 		}
 	}
@@ -226,14 +227,20 @@ func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
 		if currentState == statePending {
 			item.setState(stateSynced)
 			if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
-				fyne.DoAndWait(func() { t.getButton().showLastMessageState(stateSynced) })
+				fyne.DoAndWait(func() {
+					t.getButton().showLastMessageState(stateSynced)
+					t.chatHistoryScroll().Refresh()
+				})
 			}
 		}
 
 	} else {
 		item.setState(stateDelivered)
 		if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
-			fyne.DoAndWait(func() { t.getButton().showLastMessageState(stateDelivered) })
+			fyne.DoAndWait(func() {
+				t.getButton().showLastMessageState(stateDelivered)
+				t.chatHistoryScroll().Refresh()
+			})
 		}
 	}
 
