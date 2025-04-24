@@ -552,7 +552,7 @@ func (ch *chatHistory) displayJumpToBottomIfNeeded() {
 	if scrollerHeight == 0 {
 		scrollerHeight = chatContainerSizeAtStartup().Height
 	}
-	if ch.offsetY < ch.contentHeight()-scrollerHeight*2.5 {
+	if ch.contentHeight() > scrollerHeight*2.5 && ch.offsetY < ch.contentHeight()-scrollerHeight*2.5 {
 		ch.jumpToBottomIcon.Show()
 	} else {
 		ch.jumpToBottomIcon.Hide()

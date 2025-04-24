@@ -515,7 +515,10 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 		fyneUI.messages,
 		fyneUI.callbacks.MarkAsRead,
 		group.button.setUnreadCount,
-		fyneUI.callbacks.MarkAllGroupMessagesAsRead,
+		func(id uuid.UUID) {
+			fyneUI.callbacks.MarkAllGroupMessagesAsRead(id)
+			fyneUI.mainWindow.Canvas().Focus(group.entry)
+		},
 		func() bool { return fyneUI.focused },
 	)
 

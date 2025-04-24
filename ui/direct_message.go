@@ -221,7 +221,10 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 		fyneUI.messages,
 		fyneUI.callbacks.MarkAsRead,
 		dm.button.setUnreadCount,
-		fyneUI.callbacks.MarkAllDirectMessagesAsRead,
+		func(id uuid.UUID) {
+			fyneUI.callbacks.MarkAllDirectMessagesAsRead(id)
+			fyneUI.mainWindow.Canvas().Focus(dm.entry)
+		},
 		func() bool { return fyneUI.focused },
 	)
 
