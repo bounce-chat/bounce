@@ -229,6 +229,7 @@ func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
 			if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
 				fyne.DoAndWait(func() {
 					t.getButton().showLastMessageState(stateSynced)
+					t.chatHistoryScroll().RefreshLastItem()
 					t.chatHistoryScroll().Refresh()
 				})
 			}
@@ -239,13 +240,11 @@ func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
 		if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
 			fyne.DoAndWait(func() {
 				t.getButton().showLastMessageState(stateDelivered)
+				t.chatHistoryScroll().RefreshLastItem()
 				t.chatHistoryScroll().Refresh()
 			})
 		}
 	}
-
-	fyne.DoAndWait(func() { t.chatHistoryScroll().Refresh() })
-
 }
 
 func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
@@ -277,6 +276,7 @@ func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
 			t.getButton().showLastMessageState(stateRead)
 		}
 
+		t.chatHistoryScroll().RefreshLastItem()
 		t.chatHistoryScroll().Refresh()
 	})
 }

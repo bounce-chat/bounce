@@ -412,6 +412,10 @@ func (ch *chatHistory) MinSize() fyne.Size {
 	return ch.BaseWidget.MinSize()
 }
 
+func (ch *chatHistory) RefreshLastItem() {
+	ch.RefreshItem(len(ch.items) - 1)
+}
+
 func (ch *chatHistory) RefreshItem(index int) {
 	if ch.scroller == nil {
 		return
