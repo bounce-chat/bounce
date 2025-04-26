@@ -105,7 +105,7 @@ func newChatHistory(threadID, myID uuid.UUID, messageStore *messageStore, readCa
 	go func() {
 		for {
 			time.Sleep(timestampRefreshSeconds * time.Second)
-			fyne.DoAndWait(func() { ch.Refresh() })
+			fyne.Do(func() { ch.Refresh() })
 		}
 	}()
 
@@ -680,18 +680,23 @@ type itemAndIndex struct {
 }
 
 type chatHistoryLayout struct {
-	ch         *chatHistory
-	children   []fyne.CanvasObject
-	visible    []itemAndIndex
-	wasVisible []itemAndIndex
+	ch       *chatHistory
+	children []fyne.CanvasObject
+	visible  []itemAndIndex
 
 	itemPool          sync.Pool
+	slicePool         sync.Pool
 	visibleRowHeights []float32
 }
 
 func newListLayout(ch *chatHistory) fyne.Layout {
 	l := &chatHistoryLayout{ch: ch}
+	l.slicePool.New = func() any {
+		s := make([]itemAndIndex, 0)
+		return &s
+	}
 	ch.offsetUpdated = l.offsetUpdated
+
 	return l
 }
 
@@ -801,15 +806,19 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 		fyne.LogError("Missing UpdateCell callback required for List", nil)
 	}
 
-	// l.wasVisible now represents the currently visible items, while
-	// l.visible will be updated to represent what is visible *after* the update
-	chl.wasVisible = append(chl.wasVisible, chl.visible...)
-	chl.visible = chl.visible[:0]
+	// Keep pointer reference for copying slice header when returning to the pool
+	// https://blog.mike.norgate.xyz/unlocking-go-slice-performance-navigating-sync-pool-for-enhanced-efficiency-7cb63b0b453e
+	wasVisiblePtr := chl.slicePool.Get().(*[]itemAndIndex)
+	wasVisible := (*wasVisiblePtr)[:0]
+	wasVisible = append(wasVisible, chl.visible...)
 
 	offY, minRow := chl.calculateVisibleRowHeights(length, th)
 	if len(chl.visibleRowHeights) == 0 && length > 0 { // we can't show anything until we have some dimensions
 		return
 	}
+
+	oldVisibleLen := len(chl.visible)
+	chl.visible = chl.visible[:0]
 
 	oldChildrenLen := len(chl.children)
 	chl.children = chl.children[:0]
@@ -819,7 +828,7 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 		row := index + minRow
 		size := fyne.NewSize(width, itemHeight)
 
-		c, ok := chl.searchVisible(chl.wasVisible, row)
+		c, ok := chl.searchVisible(wasVisible, row)
 		if !ok {
 			c = chl.getItem()
 			if c == nil {
@@ -836,8 +845,9 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 		chl.children = append(chl.children, c)
 	}
 	chl.nilOldSliceData(chl.children, len(chl.children), oldChildrenLen)
+	chl.nilOldVisibleSliceData(chl.visible, len(chl.visible), oldVisibleLen)
 
-	for _, wasVis := range chl.wasVisible {
+	for _, wasVis := range wasVisible {
 		if _, ok := chl.searchVisible(chl.visible, wasVis.index); !ok {
 			chl.itemPool.Put(wasVis.item)
 		}
@@ -849,9 +859,15 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 	c.Objects = append(c.Objects, chl.children...)
 	chl.nilOldSliceData(c.Objects, len(c.Objects), oldObjLen)
 
+	// make a local deep copy of chl.visible since rest of this function is unlocked
+	// and cannot safely access chl.visible
+	visiblePtr := chl.slicePool.Get().(*[]itemAndIndex)
+	visible := (*visiblePtr)[:0]
+	visible = append(visible, chl.visible...)
+
 	if newOnly {
 		for _, vis := range chl.visible {
-			if _, ok := chl.searchVisible(chl.wasVisible, vis.index); !ok {
+			if _, ok := chl.searchVisible(wasVisible, vis.index); !ok {
 				chl.setupItem(vis.item, vis.index)
 			}
 
@@ -861,7 +877,7 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 			}
 		}
 	} else {
-		for _, vis := range chl.visible {
+		for _, vis := range visible {
 			chl.setupItem(vis.item, vis.index)
 
 			offset := chl.ch.GetScrollOffset()
@@ -877,10 +893,13 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 
 	// we don't need wasVisible now until next call to update
 	// nil out all references before truncating slice
-	for i := 0; i < len(chl.wasVisible); i++ {
-		chl.wasVisible[i].item = nil
+	for i := 0; i < len(wasVisible); i++ {
+		wasVisible[i].item = nil
 	}
-	chl.wasVisible = chl.wasVisible[:0]
+	*wasVisiblePtr = wasVisible // Copy the stack header over to the heap
+	*visiblePtr = visible
+	chl.slicePool.Put(wasVisiblePtr)
+	chl.slicePool.Put(visiblePtr)
 }
 
 // invariant: visible is in ascending order of IDs
@@ -898,6 +917,15 @@ func (chl *chatHistoryLayout) nilOldSliceData(objs []fyne.CanvasObject, len, old
 		objs = objs[:oldLen] // gain view into old data
 		for i := len; i < oldLen; i++ {
 			objs[i] = nil
+		}
+	}
+}
+
+func (chl *chatHistoryLayout) nilOldVisibleSliceData(objs []itemAndIndex, len, oldLen int) {
+	if oldLen > len {
+		objs = objs[:oldLen] // gain view into old data
+		for i := len; i < oldLen; i++ {
+			objs[i].item = nil
 		}
 	}
 }
