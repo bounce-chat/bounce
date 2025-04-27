@@ -105,13 +105,23 @@ func (fyneUI *Fyne) SetUserName(userID uuid.UUID, name string) {
 	fyneUI.messages.renameUser(userID, u.getName(), u.getInitials())
 	dm, ok := fyneUI.dms[userID]
 	if ok {
-		fyne.DoAndWait(func() { dm.chatHistoryScroll().Refresh() })
+		fyne.Do(func() { dm.chatHistoryScroll().Refresh() })
 	}
 	for _, g := range fyneUI.groups {
 		if g.users.contains(userID) {
-			fyne.DoAndWait(func() { g.chatHistoryScroll().Refresh() })
+			fyne.Do(func() { g.chatHistoryScroll().Refresh() })
 		}
 	}
+
+	// Re-add user to any user stores they are in, in order to regenerate ngram search tokens
+	allUserStoresMutex.Lock()
+	for _, us := range allUserStores {
+		if us.contains(userID) {
+			us.remove(userID)
+			us.add(u)
+		}
+	}
+	allUserStoresMutex.Unlock()
 }
 
 func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {

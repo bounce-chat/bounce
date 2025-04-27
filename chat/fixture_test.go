@@ -414,6 +414,7 @@ func (t *testUI) UserImported(User)                                           {}
 func (t *testUI) DeleteItem(uuid.UUID)                                        {}
 func (t *testUI) MarkMessageUndeliverable(uuid.UUID)                          {}
 func (t *testUI) DisplayDirectMessage(DirectMessage)                          {}
+func (t *testUI) DisplaySentDirectMessage(DirectMessage)                      {}
 func (t *testUI) SetDMState(uuid.UUID, DMState)                               {}
 func (t *testUI) DMRetentionChanged(UpdateDMRetention)                        {}
 func (t *testUI) DMChatHistoryCleared(UpdateDMClearHistory)                   {}
@@ -426,7 +427,8 @@ func (t *testUI) NewGroupChat(g Group) {
 func (t *testUI) SetGroupState(g Group) {
 	t.called <- call{function: "SetGroupState", args: []interface{}{g}}
 }
-func (t *testUI) DisplayGroupMessage(GroupMessage) {}
+func (t *testUI) DisplaySentGroupMessage(GroupMessage) {}
+func (t *testUI) DisplayGroupMessage(GroupMessage)     {}
 func (t *testUI) AddUser(ugau UpdateGroupAddUser) {
 	t.called <- call{function: "AddUser", args: []interface{}{ugau}}
 }

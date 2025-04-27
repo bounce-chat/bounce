@@ -7,6 +7,9 @@ import (
 	"github.com/google/uuid"
 )
 
+var allUserStores = []*userStore{}
+var allUserStoresMutex sync.Mutex
+
 type userStore struct {
 	sync.Mutex
 	userMap  map[uuid.UUID]*user
@@ -15,26 +18,43 @@ type userStore struct {
 }
 
 func newUserStore() *userStore {
-	return &userStore{
+	us := &userStore{
 		userMap:  make(map[uuid.UUID]*user),
 		userList: []*user{},
 		ngrams:   make(map[string][]*user),
 	}
+
+	allUserStoresMutex.Lock()
+	allUserStores = append(allUserStores, us)
+	allUserStoresMutex.Unlock()
+
+	return us
 }
 
 func (store *userStore) add(u *user) {
-	// When a use changes their name, remove and re-add them in order to
-	// re-sort the list and re-generate ngrams.  This function is called
-	// right away, so we can use it for adding to the user store as well.i
-
-	// TODO: this means they will be re-added after they've been removed, if their name changes?
-	// Also, this breaks new group user selection
-	//u.name.AddListener(binding.NewDataListener(func() {
-	//}))
 	store.Lock()
-	//store.removeWithoutLocking(u.id)
-	store.addWithoutLocking(u)
-	store.Unlock()
+	defer store.Unlock()
+
+	_, exists := store.userMap[u.id]
+	if exists {
+		return
+	}
+
+	store.userMap[u.id] = u
+	smaller := 0
+	for _, existingUser := range store.userList {
+		if existingUser.getName() < u.getName() {
+			smaller++
+		}
+	}
+	smallerUsers := store.userList[:smaller]
+	largerUsers := store.userList[smaller:]
+	store.userList = append(smallerUsers, append([]*user{u}, largerUsers...)...)
+
+	grams := makeNgrams(strings.ToLower(u.getName()))
+	for _, gram := range grams {
+		store.ngrams[gram] = append(store.ngrams[gram], u)
+	}
 }
 
 func (store *userStore) contains(userID uuid.UUID) bool {
@@ -49,7 +69,26 @@ func (store *userStore) remove(id uuid.UUID) {
 	store.Lock()
 	defer store.Unlock()
 
-	store.removeWithoutLocking(id)
+	delete(store.userMap, id)
+	newList := []*user{}
+	for _, u := range store.userList {
+		if u.id != id {
+			newList = append(newList, u)
+		}
+	}
+	store.userList = newList
+
+	prunedNgrams := map[string][]*user{}
+	for gram, users := range store.ngrams {
+		usersWithoutThisUser := []*user{}
+		for _, u := range users {
+			if u.id != id {
+				usersWithoutThisUser = append(usersWithoutThisUser, u)
+			}
+		}
+		prunedNgrams[gram] = usersWithoutThisUser
+	}
+	store.ngrams = prunedNgrams
 }
 
 func (store *userStore) alphabetized() []*user {
@@ -87,52 +126,6 @@ func (store *userStore) search(str string) []*user {
 		return []*user{}
 	}
 	return results
-}
-
-func (store *userStore) removeWithoutLocking(id uuid.UUID) {
-	delete(store.userMap, id)
-	newList := []*user{}
-	for _, u := range store.userList {
-		if u.id != id {
-			newList = append(newList, u)
-		}
-	}
-	store.userList = newList
-
-	prunedNgrams := map[string][]*user{}
-	for gram, users := range store.ngrams {
-		usersWithoutThisUser := []*user{}
-		for _, u := range users {
-			if u.id != id {
-				usersWithoutThisUser = append(usersWithoutThisUser, u)
-			}
-		}
-		prunedNgrams[gram] = usersWithoutThisUser
-	}
-	store.ngrams = prunedNgrams
-}
-
-func (store *userStore) addWithoutLocking(u *user) {
-	_, exists := store.userMap[u.id]
-	if exists {
-		return
-	}
-
-	store.userMap[u.id] = u
-	smaller := 0
-	for _, existingUser := range store.userList {
-		if existingUser.getName() < u.getName() {
-			smaller++
-		}
-	}
-	smallerUsers := store.userList[:smaller]
-	largerUsers := store.userList[smaller:]
-	store.userList = append(smallerUsers, append([]*user{u}, largerUsers...)...)
-
-	grams := makeNgrams(strings.ToLower(u.getName()))
-	for _, gram := range grams {
-		store.ngrams[gram] = append(store.ngrams[gram], u)
-	}
 }
 
 func makeNgrams(str string) []string {
