@@ -133,7 +133,7 @@ func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 					"error": err.Error(),
 				}).Error("error creating thread item for user name change")
 			} else {
-				fyne.DoAndWait(func() { fyneUI.appendThreadItem(dm, ti) })
+				fyne.Do(func() { fyneUI.appendThreadItem(dm, ti) })
 			}
 		}
 		for _, g := range fyneUI.groups {
@@ -143,7 +143,7 @@ func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 					"error": err.Error(),
 				}).Error("error creating thread item for user name change")
 			} else {
-				fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
+				fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 			}
 		}
 	} else {
@@ -155,7 +155,7 @@ func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 					"error": err.Error(),
 				}).Error("error creating thread item for user name change")
 			} else {
-				fyne.DoAndWait(func() { fyneUI.appendThreadItem(dm, ti) })
+				fyne.Do(func() { fyneUI.appendThreadItem(dm, ti) })
 			}
 		}
 
@@ -167,7 +167,7 @@ func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 						"error": err.Error(),
 					}).Error("error creating thread item for user name change")
 				} else {
-					fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
+					fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
 				}
 			}
 		}

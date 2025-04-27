@@ -657,7 +657,9 @@ func (chr *chatHistoryRenderer) Refresh() {
 	//}
 
 	chr.Layout(chr.ch.Size())
-	chr.ch.scroller.Refresh()
+	for _, obj := range chr.Objects() {
+		obj.Refresh()
+	}
 	layout := chr.layout.Layout.(*chatHistoryLayout)
 	layout.updateList(false)
 
@@ -866,7 +868,7 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 	visible = append(visible, chl.visible...)
 
 	if newOnly {
-		for _, vis := range chl.visible {
+		for _, vis := range visible {
 			if _, ok := chl.searchVisible(wasVisible, vis.index); !ok {
 				chl.setupItem(vis.item, vis.index)
 			}
@@ -891,11 +893,14 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 		}
 	}
 
-	// we don't need wasVisible now until next call to update
-	// nil out all references before truncating slice
+	// nil out all references before returning slices to pool
 	for i := 0; i < len(wasVisible); i++ {
 		wasVisible[i].item = nil
 	}
+	for i := 0; i < len(visible); i++ {
+		visible[i].item = nil
+	}
+
 	*wasVisiblePtr = wasVisible // Copy the stack header over to the heap
 	*visiblePtr = visible
 	chl.slicePool.Put(wasVisiblePtr)

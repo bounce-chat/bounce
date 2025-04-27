@@ -247,7 +247,7 @@ func (b *bounce) previousName(uu updateUser) (string, error) {
 }
 
 func (b *bounce) informUIUpdateUserUpdateName(uu updateUser) {
-	b.userInterface.UserNameUpdated(UpdateUserUpdateName{
+	go b.userInterface.UserNameUpdated(UpdateUserUpdateName{
 		ID:        uu.ID,
 		User:      uu.Target,
 		Name:      string(uu.Data),
@@ -311,7 +311,7 @@ func (b *bounce) updateUserState(userID uuid.UUID) {
 		}
 
 		// Inform the UI
-		b.userInterface.SetUserName(userID, newName) // TODO: set the whole user state in one call once images are supported?
+		go b.userInterface.SetUserName(userID, newName) // TODO: set the whole user state in one call once images are supported?
 	}
 }
 
