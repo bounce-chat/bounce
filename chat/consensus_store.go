@@ -584,9 +584,9 @@ func (b *bounce) setGroupStateInDatabase(g group, gs groupState) error {
 	}
 
 	go b.userInterface.SetGroupState(Group{
-		ID:   g.ID,
-		Name: g.Name,
-		//Image: []byte{},
+		ID:                             g.ID,
+		Name:                           g.Name,
+		Images:                         gs.images,
 		Users:                          finalUsers,
 		Admins:                         gs.admins,
 		BlockedUsers:                   gs.blockedUsers,

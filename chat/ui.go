@@ -79,7 +79,7 @@ type UpdateDMClearHistory struct {
 type Group struct {
 	ID                             uuid.UUID
 	Name                           string
-	Image                          []byte
+	Images                         []uuid.UUID
 	Users                          []User
 	Admins                         []uuid.UUID
 	BlockedUsers                   []uuid.UUID
@@ -404,6 +404,7 @@ type UICallbacks struct {
 	AddUser                         func(groupID, userID uuid.UUID) error           // The user wants to add another user to a group
 	RemoveUser                      func(groupID, userID uuid.UUID) error           // User wants to remove a user from a group
 	RenameGroup                     func(groupID uuid.UUID, newName string) error   // The user wants to rename a group
+	SetGroupImage                   func(groupID uuid.UUID, image []byte) error     // Set the group image
 	SetGroupRetention               func(groupID uuid.UUID, retention int64) error  // Set the message retention for a group
 	ClearGroupChatHistory           func(groupID uuid.UUID) error                   // Erase all history on all devices
 	SetGroupMutedUntil              func(groupID uuid.UUID, mutedUntil int64) error // The user wants to change the notification settings for a group

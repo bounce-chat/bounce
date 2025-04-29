@@ -77,6 +77,7 @@ func (b *bounce) openDatabase() {
 		&readReceipt{},
 		&updateSettings{},
 		&localSettings{},
+		//&file{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -317,6 +318,19 @@ func (b *bounce) buildInitialState() InitialState {
 	}
 	chatGroups := []Group{}
 	for _, g := range groups {
+		imageHistory := []uuid.UUID{}
+		if len(g.Images) > 0 {
+			for _, imageIDString := range strings.Split(g.Images, ",") {
+				imageID, err := uuid.Parse(imageIDString)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":  err.Error(),
+						"images": g.Images,
+					}).Fatal("invalid UUID in group images list")
+				}
+				imageHistory = append(imageHistory, imageID)
+			}
+		}
 		userList := []User{}
 		for _, u := range g.Users {
 			userList = append(userList, User{ID: u.ID, Name: u.Name})
@@ -348,6 +362,7 @@ func (b *bounce) buildInitialState() InitialState {
 		chatGroups = append(chatGroups, Group{
 			ID:                             g.ID,
 			Name:                           g.Name,
+			Images:                         imageHistory,
 			Users:                          userList,
 			Admins:                         adminList,
 			BlockedUsers:                   blockedList,

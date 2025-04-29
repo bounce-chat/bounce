@@ -13,6 +13,7 @@ import (
 
 type groupState struct {
 	name                       string
+	images                     []uuid.UUID
 	users                      []uuid.UUID
 	admins                     []uuid.UUID
 	blockedUsers               []uuid.UUID
@@ -36,6 +37,7 @@ func (b *bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 	// Create the group state
 	gs := groupState{
 		users:                      []uuid.UUID{},
+		images:                     []uuid.UUID{},
 		admins:                     []uuid.UUID{},
 		blockedUsers:               []uuid.UUID{},
 		postingRestricted:          true,
@@ -82,6 +84,19 @@ func (b *bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 	gs.editingRestricted = g.RestrictGroupEdits
 	gs.userManagementRestricted = g.RestrictUserManagement
 
+	// Get the original image, if there was one
+	if len(g.Images) != 0 {
+		imageID, err := uuid.Parse(g.Images)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+				"images":   g.Images,
+			}).Fatal("invalid UUID in group creation group image")
+		}
+		gs.images = []uuid.UUID{imageID}
+	}
+
 	// Set the values for the original members
 	for _, u := range g.Users {
 		gs.users = append(gs.users, u.ID)
@@ -108,6 +123,17 @@ func (b *bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 func (gs groupState) equals(otherState groupState) bool {
 	if gs.name != otherState.name {
 		return false
+	}
+
+	if len(gs.images) != len(otherState.images) {
+		return false
+	} else {
+		for i, img := range gs.images {
+			otherImg := otherState.images[i]
+			if img != otherImg {
+				return false
+			}
+		}
 	}
 
 	if gs.mutedUntil != otherState.mutedUntil {
@@ -248,6 +274,16 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 
 	switch ug.Type {
 	case updateGroupTypeChangeName:
+		if gs.editingRestricted {
+			if gs.isAdmin(ug.Actor) {
+				return nil
+			} else {
+				return errNoPermissionToEditGroup
+			}
+		} else {
+			return nil
+		}
+	case updateGroupTypeSetImage:
 		if gs.editingRestricted {
 			if gs.isAdmin(ug.Actor) {
 				return nil
@@ -423,6 +459,8 @@ func applyUpdateGroupToState(gs groupState, ug updateGroup) (groupState, error) 
 	switch ug.Type {
 	case updateGroupTypeChangeName:
 		return applyUpdateGroupChangeNameToState(gs, ug)
+	case updateGroupTypeSetImage:
+		return applyUpdateGroupSetImageToState(gs, ug)
 	case updateGroupTypeAddUser:
 		return applyUpdateGroupAddUserToState(gs, ug)
 	case updateGroupTypeRemoveUser:
@@ -470,6 +508,22 @@ func applyUpdateGroupChangeNameToState(gs groupState, ug updateGroup) (groupStat
 		return gs, errInvalidGroupName
 	}
 	gs.name = newName
+
+	return gs, nil
+}
+
+func applyUpdateGroupSetImageToState(gs groupState, ug updateGroup) (groupState, error) {
+	fileID, err := uuid.FromBytes(ug.Data)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"actor": ug.Actor,
+			"image": ug.Data,
+		}).Error("update group attempted to set image with invalid UUID")
+		return gs, err
+	}
+
+	gs.images = append(gs.images, fileID)
 
 	return gs, nil
 }

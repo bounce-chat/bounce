@@ -20,7 +20,7 @@ var groupMutex sync.Mutex
 type group struct {
 	ID                         uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name                       string
-	Image                      []byte
+	Images                     string
 	CreatedBy                  uuid.UUID
 	CreatedAt                  int64
 	Retention                  int64
@@ -171,6 +171,14 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 		return errors.New("cannot create a group with no admins")
 	}
 
+	if len(proposedGroup.Images) > 1 {
+		return errors.New("cannot create a group with more than one past image")
+	}
+	imagesStrings := []string{}
+	for _, imageID := range proposedGroup.Images {
+		imagesStrings = append(imagesStrings, imageID.String())
+	}
+
 	adminStrings := []string{}
 	adminMap := map[uuid.UUID]bool{}
 	for _, adminID := range proposedGroup.Admins {
@@ -196,6 +204,7 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 	g := group{
 		ID:                     uuid.Nil,
 		Name:                   proposedGroup.Name,
+		Images:                 strings.Join(imagesStrings, ","),
 		CreatedBy:              b.currentUserID(),
 		CreatedAt:              creationTime,
 		Retention:              proposedGroup.Retention,
@@ -275,6 +284,7 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 	go b.userInterface.OpenNewGroupChat(Group{
 		ID:                     g.ID,
 		Name:                   g.Name,
+		Images:                 proposedGroup.Images,
 		Retention:              proposedGroup.Retention,
 		Users:                  uiUsers,
 		Admins:                 proposedGroup.Admins,

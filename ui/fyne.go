@@ -280,7 +280,7 @@ func (fyneUI *Fyne) Run() {
 }
 
 func (fyneUI *Fyne) Quit() {
-	fyneUI.app.Quit()
+	fyne.Do(func() { fyneUI.app.Quit() })
 }
 
 func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {

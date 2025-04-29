@@ -90,6 +90,7 @@ func Start(network Network, ui UI) {
 			AddUser:                           b.addUser,
 			RemoveUser:                        b.removeUser,
 			RenameGroup:                       b.renameGroup,
+			SetGroupImage:                     b.setGroupImage,
 			SetGroupRetention:                 b.setGroupRetention,
 			ClearGroupChatHistory:             b.clearGroupChatHistory,
 			SetGroupMutedUntil:                b.setGroupMutedUntil,

@@ -28,6 +28,7 @@ const updateGroupTypeDelete = uint16(11)
 const updateGroupTypeBlock = uint16(12)
 const updateGroupTypeSetReadReceiptSettings = uint16(13)
 const updateGroupTypeSetTypingIndicatorSettings = uint16(14)
+const updateGroupTypeSetImage = uint16(15)
 
 const permissionUnrestricted = 0x00
 const permissionRestricted = 0x01
@@ -51,6 +52,7 @@ var errAdminRequired = errors.New("this action can only be performed by admins")
 var errCannotRemoveLastAdmin = errors.New("cannot remove the last admin from a group")
 var errCannotDemoteAdminWhoDeletedGroup = errors.New("admins who deleted group cannot be demoted")
 var errAlreadyDeleted = errors.New("group already deleted")
+var errInvalidImage = errors.New("invalid image data")
 
 //
 // An updateGroup frame changes the settings and status of a group, such as permissions, membership, retention, or notification settings.
@@ -193,6 +195,9 @@ func (ug *updateGroup) validPayloadFormat() bool {
 	switch ug.Type {
 	case updateGroupTypeChangeName:
 		return validGroupName(string(ug.Data))
+	case updateGroupTypeSetImage:
+		_, err := uuid.FromBytes(ug.Data)
+		return err == nil
 	case updateGroupTypeAddUser:
 		var u user
 		err := msgpack.Unmarshal(ug.Data, &u)
@@ -470,6 +475,26 @@ func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeChangeName,
 		Data:      []byte(newName),
+	})
+}
+
+func (b *bounce) setGroupImage(groupID uuid.UUID, image []byte) error {
+	if !validImage(image) {
+		return errInvalidImage
+	}
+
+	fileID, err := b.storeFile(image)
+	if err != nil {
+		return err
+	}
+
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeSetImage,
+		Data:      fileID[:],
 	})
 }
 
