@@ -483,7 +483,7 @@ func (b *bounce) setGroupImage(groupID uuid.UUID, image []byte) error {
 		return errInvalidImage
 	}
 
-	fileID, err := b.storeFile(image)
+	fileID, err := b.distributeFile(image, scopeGroup, groupID)
 	if err != nil {
 		return err
 	}

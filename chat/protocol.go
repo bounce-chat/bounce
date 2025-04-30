@@ -39,6 +39,10 @@ var typeUpdateUser = uint16(20)
 var typeUpdateDevice = uint16(21)
 var typeReadReceipt = uint16(22)
 var typeUpdateSettings = uint16(23)
+var typeFile = uint16(24)
+var typeChunk = uint16(25)
+var typeChunkOffer = uint16(26)
+var typeChunkRequest = uint16(27)
 
 type sendable interface {
 	getType() uint16
@@ -92,6 +96,10 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte, bool) broadcastab
 		typeUpdateDevice:              b.handleUpdateDevice,
 		typeReadReceipt:               b.handleReadReceipt,
 		typeUpdateSettings:            b.handleUpdateSettings,
+		typeFile:                      b.handleFile,
+		typeChunk:                     b.handleChunk,
+		typeChunkOffer:                b.handleChunkOffer,
+		typeChunkRequest:              b.handleChunkRequest,
 	}
 }
 
