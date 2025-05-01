@@ -78,6 +78,8 @@ func (b *bounce) openDatabase() {
 		&updateSettings{},
 		&localSettings{},
 		&file{},
+		&chunk{},
+		&chunkOffer{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{

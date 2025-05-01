@@ -2,6 +2,7 @@ package chat
 
 import (
 	"encoding/hex"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -10,6 +11,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"github.com/zeebo/blake3"
+	"gorm.io/gorm"
 )
 
 //const embeddedFileLimit = 1024 * 1024 * 10 // 10MiB
@@ -17,6 +19,8 @@ import (
 //var ErrFileTooBig = errors.New("file is too large")
 
 const fileChunkSize = 1024 * 1024 * 10 // 10MiB
+
+var fileMutex sync.Mutex
 
 type file struct {
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
@@ -27,6 +31,7 @@ type file struct {
 	Size        int
 	//Wanted    bool `msgpack:"-"`
 	//Completed bool `msgpack:"-"`
+	//Type      int
 	Timestamp       int64
 	BlurHash        string
 	HashList        string
@@ -84,8 +89,88 @@ func (f *file) getTimestamp() int64 {
 }
 
 func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcastable {
-	// TODO
-	return nil
+	fileMutex.Lock()
+	defer fileMutex.Unlock()
+
+	// TODO: make sure we know about the device?
+
+	// Verify and unpack the signed container
+	sc, err := b.unpackSignedContainer(payload)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unpacking signed container for file")
+		return nil
+	}
+	var f file
+	err = msgpack.Unmarshal(sc.Payload, &f)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling file")
+		return nil
+	}
+	f.OriginalPayload = sc.Payload
+	f.Signature = sc.Signature
+	f.Signer = sc.Signer
+
+	// TODO: make sure this wasn't created by a revoked device?
+
+	// Make sure the device that signed this message belongs to the author
+	if !b.signedByUser(sc, f.Author) {
+		log.WithFields(log.Fields{
+			"id":     f.ID,
+			"group":  f.Destination,
+			"signer": sc.Signer,
+			"author": f.Author,
+		}).Warn("received file signed by a different user than the author, ignoring")
+		return nil
+	}
+
+	// If we have already seen this file, all we need to do is mark that this peer has the file and ack it
+	var existingFile file
+	err = b.database.Where("id = ?", f.ID).First(&existingFile).Error
+	if err == nil {
+		return &existingFile
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up file")
+	}
+
+	// Validate the file
+	if len(f.HashList) == 0 {
+		log.WithFields(log.Fields{
+			"id":   f.ID,
+			"peer": peer,
+		}).Error("ignoring file with no hashes")
+		return nil
+	}
+
+	// TODO: check that the purpose makes sense?  i.e. it's for a group image and the author is a member, etc
+
+	// Create the empty chunks of the file
+	for i, chunkHash := range strings.Split(f.HashList, ",") {
+		chunkID, err := uuid.FromBytes([]byte(chunkHash)[:16])
+		if err != nil {
+			log.Fatal("cannot make uuid from bytes for chunk")
+		}
+		f.Chunks = append(f.Chunks, chunk{
+			ID:    chunkID,
+			Hash:  chunkHash,
+			Index: i,
+		})
+	}
+
+	// Save the file
+	err = b.database.Create(&f).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error saving file")
+	}
+
+	return &f
 }
 
 type chunkOffer struct {
@@ -150,7 +235,9 @@ func (co *chunkOffer) getTimestamp() int64 {
 }
 
 func (b *bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) broadcastable {
-	// TODO
+	// if we already have this chunk, do not save this offer and return, acking and continuing to broadcast it
+	// save the offer
+	// if we do not have the chunk and want the chunk, send a chunk request TODO: or, sync with other requets for this same chunk that might be happening
 	return nil
 }
 
@@ -181,15 +268,18 @@ func (cr *chunkRequest) getPayload() []byte {
 }
 
 func (b *bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) broadcastable {
-	// TODO
+	// see if we have the chunk
+	// make sure this peer is allowed to have the chunk
+	// directly send the chunk to this peer
 	return nil
 }
 
 type chunk struct {
-	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
-	FileID       uuid.UUID //`msgpack:"-"`
-	Hash         string
-	Size         int
+	ID           uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
+	FileID       uuid.UUID `msgpack:"-"`
+	Hash         string    `msgpack:"-"`
+	Index        int       `msgpack:"-"`
+	Size         int       `msgpack:"-"`
 	Data         []byte
 	payload      []byte
 	payloadMutex sync.Mutex
@@ -216,7 +306,41 @@ func (c *chunk) getPayload() []byte {
 }
 
 func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcastable {
-	// TODO
+	// Unmarshal the chunk
+	var c chunk
+	err := msgpack.Unmarshal(payload, &c)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling chunk")
+		return nil
+	}
+
+	// Hash the data
+	hash := blake3.Sum256(c.Data)
+
+	// Find any chunks in the database that have this hash and are empty
+	var emptyChunk chunk
+	err = b.database.Where("hash = ? AND LENGTH(data) == ?", hashString(hash), 0).First(&emptyChunk).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// We already have this chunk data, or someone sent a chunk we didn't ask for
+			return nil
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up chunk")
+		}
+	}
+
+	// Update the data in the empty chunk
+	err = b.database.Model(&emptyChunk).Update("data", c.Data).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("database error updating chunk data")
+	}
+
 	return nil
 }
 
@@ -280,9 +404,13 @@ func splitChunks(data []byte) ([]chunk, string) {
 
 func makeChunk(data []byte) chunk {
 	hash := blake3.Sum256(data)
+	chunkID, err := uuid.FromBytes(hash[:16])
+	if err != nil {
+		log.Fatal("cannot make uuid from bytes for chunk")
+	}
 
 	return chunk{
-		ID:   uuid.New(),
+		ID:   chunkID,
 		Hash: hashString(hash),
 		Size: len(data),
 		Data: data,
