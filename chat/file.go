@@ -18,7 +18,7 @@ import (
 
 //var ErrFileTooBig = errors.New("file is too large")
 
-const fileChunkSize = 1024 * 1024 * 10 // 10MiB
+const fileChunkSize = 1024 * 1024 // 1MiB
 
 var fileMutex sync.Mutex
 
@@ -29,6 +29,7 @@ type file struct {
 	Author      uuid.UUID
 	Hash        string
 	Size        int
+	ChunkSize   int
 	//Wanted    bool `msgpack:"-"`
 	//Completed bool `msgpack:"-"`
 	//Type      int
@@ -179,7 +180,6 @@ type chunkOffer struct {
 	Destination     uuid.UUID
 	Author          uuid.UUID
 	Hash            string
-	Size            int
 	Location        string
 	Timestamp       int64
 	Signer          string `msgpack:"-" gorm:"not null"`
@@ -235,9 +235,42 @@ func (co *chunkOffer) getTimestamp() int64 {
 }
 
 func (b *bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) broadcastable {
-	// if we already have this chunk, do not save this offer and return, acking and continuing to broadcast it
-	// save the offer
-	// if we do not have the chunk and want the chunk, send a chunk request TODO: or, sync with other requets for this same chunk that might be happening
+	var co chunkOffer
+	err := msgpack.Unmarshal(payload, &co)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling chunk offer")
+		return nil
+	}
+
+	err = b.database.Create(&co).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving chunk offer")
+	}
+
+	var c chunk
+	err = b.database.First(&c, "hash = ?", co.Hash).Error
+	if err == nil {
+		if c.Downloaded {
+			return &co
+		}
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"hash": co.Hash,
+			"peer": peer,
+		}).Warn("received chunk offer for unknown chunk")
+		return &co
+	} else {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up chunk")
+	}
+
+	b.makeChunkRequests()
+
 	return nil
 }
 
@@ -268,9 +301,67 @@ func (cr *chunkRequest) getPayload() []byte {
 }
 
 func (b *bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) broadcastable {
-	// see if we have the chunk
-	// make sure this peer is allowed to have the chunk
-	// directly send the chunk to this peer
+	// Unmarshal the request
+	var cr chunkRequest
+	err := msgpack.Unmarshal(payload, &cr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling chunk request")
+		return nil
+	}
+
+	// Find the chunk that is being requested
+	var c chunk
+	err = b.database.First(&c, "hash = ?", cr.Hash).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"peer": peer,
+			"hash": cr.Hash,
+		}).Warn("peer sent request for unknown file chunk")
+		return nil
+	} else if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up chunk")
+	}
+
+	// Find the file that this chunk is a part of
+	var f file
+	err = b.database.First(&f, "id = ?", c.FileID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"peer": peer,
+			"id":   c.FileID,
+		}).Warn("peer sent request for chunk that is not part of a file")
+		return nil
+	} else if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up file")
+	}
+
+	// Make sure this peer is allowed to have this file
+	allowed := b.getBroadcastScope(&f)
+	found := false
+	for _, addr := range allowed {
+		if addr == peer {
+			found = true
+			break
+		}
+	}
+	if !found {
+		log.WithFields(log.Fields{
+			"peer":    peer,
+			"file_id": c.FileID,
+			"hash":    cr.Hash,
+		}).Warn("peer requested valid chunk they are not allowed to have")
+		return nil
+	}
+
+	// Directly send the chunk to this peer
+	b.sendDirect(peer, &c)
+
 	return nil
 }
 
@@ -279,7 +370,7 @@ type chunk struct {
 	FileID       uuid.UUID `msgpack:"-"`
 	Hash         string    `msgpack:"-"`
 	Index        int       `msgpack:"-"`
-	Size         int       `msgpack:"-"`
+	Downloaded   bool      `msgpack:"-"`
 	Data         []byte
 	payload      []byte
 	payloadMutex sync.Mutex
@@ -333,8 +424,16 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 		}
 	}
 
-	// Update the data in the empty chunk
+	// Update the data in the empty chunk TODO: if this file is going to be stored on disk, write it there
 	err = b.database.Model(&emptyChunk).Update("data", c.Data).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("database error updating chunk data")
+	}
+
+	// Update the download status
+	err = b.database.Model(&emptyChunk).Update("downloaded", true).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -344,7 +443,14 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 	return nil
 }
 
-func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID) (uuid.UUID, error) {
+func (b *bounce) makeChunkRequests() {
+	// TODO: for each file we want and don't have, for each chunk that we don't have
+	// TODO: if we requested the chunk less than N seconds ago from someone, skip
+	// TODO: if we requested it more than N seconds and it didn't work and we have an alternative, use the alternative
+	// TODO: if there are no alternatives, request again
+}
+
+func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID) (uuid.UUID, error) { // TODO: different function for files on disk?
 	fileID := uuid.New()
 	hash := blake3.Sum256(data)
 
@@ -358,6 +464,7 @@ func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID) (
 		ID:          fileID,
 		Hash:        hashString(hash),
 		Size:        len(data),
+		ChunkSize:   fileChunkSize,
 		Scope:       scope,
 		Destination: destination,
 		Timestamp:   time.Now().Unix(),
@@ -372,9 +479,38 @@ func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID) (
 
 	b.broadcast(f)
 
-	// TODO: send chunkOffers to everyone who is in scope
-	//for _, c := range f.Chunks {
-	//}
+	for _, c := range f.Chunks {
+		// Create the chunk offer
+		co := &chunkOffer{
+			ID:          uuid.New(),
+			Scope:       scope,
+			Destination: destination,
+			Author:      b.currentUserID(),
+			Hash:        c.Hash,
+			Location:    b.network.Address(),
+			Timestamp:   time.Now().Unix(),
+		}
+
+		// Sign it
+		co.OriginalPayload, err = msgpack.Marshal(co)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error marshalling chunk offer")
+		}
+		sc := b.createSignedContainer(co.OriginalPayload)
+		co.Signature = sc.Signature
+		co.Signer = sc.Signer
+
+		// Save and broadcast it
+		err = b.database.Create(co).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error saving new chunk offer")
+		}
+		b.broadcast(co)
+	}
 
 	return fileID, nil
 }
@@ -383,9 +519,10 @@ func splitChunks(data []byte) ([]chunk, string) {
 	chunks := []chunk{}
 	hashes := []string{}
 
+	index := 0
 	for {
 		if len(data) < fileChunkSize {
-			c := makeChunk(data)
+			c := makeChunk(index, data)
 			chunks = append(chunks, c)
 			hashes = append(hashes, c.Hash)
 			break
@@ -394,15 +531,17 @@ func splitChunks(data []byte) ([]chunk, string) {
 		chunkData := data[:fileChunkSize]
 		data = data[fileChunkSize:]
 
-		c := makeChunk(chunkData)
+		c := makeChunk(index, chunkData)
 		chunks = append(chunks, c)
 		hashes = append(hashes, c.Hash)
+
+		index += 1
 	}
 
 	return chunks, strings.Join(hashes, ",")
 }
 
-func makeChunk(data []byte) chunk {
+func makeChunk(index int, data []byte) chunk {
 	hash := blake3.Sum256(data)
 	chunkID, err := uuid.FromBytes(hash[:16])
 	if err != nil {
@@ -410,10 +549,10 @@ func makeChunk(data []byte) chunk {
 	}
 
 	return chunk{
-		ID:   chunkID,
-		Hash: hashString(hash),
-		Size: len(data),
-		Data: data,
+		ID:    chunkID,
+		Hash:  hashString(hash),
+		Index: index,
+		Data:  data,
 	}
 }
 
