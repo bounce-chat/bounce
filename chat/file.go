@@ -12,6 +12,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 //const embeddedFileLimit = 1024 * 1024 * 10 // 10MiB
@@ -30,8 +31,8 @@ type file struct {
 	Hash        string
 	Size        int
 	ChunkSize   int
-	//Wanted    bool `msgpack:"-"`
-	//Completed bool `msgpack:"-"`
+	Wanted      bool `msgpack:"-"`
+	Downloaded  bool `msgpack:"-"`
 	//Type      int
 	Timestamp       int64
 	BlurHash        string
@@ -94,6 +95,8 @@ func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 	defer fileMutex.Unlock()
 
 	// TODO: make sure we know about the device?
+
+	// TODO: default to not downloading it until something in the UI tells us to?
 
 	// Verify and unpack the signed container
 	sc, err := b.unpackSignedContainer(payload)
@@ -301,6 +304,8 @@ func (cr *chunkRequest) getPayload() []byte {
 }
 
 func (b *bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) broadcastable {
+	// TODO: make sure we aren't currently writing this data to this peer already
+
 	// Unmarshal the request
 	var cr chunkRequest
 	err := msgpack.Unmarshal(payload, &cr)
@@ -411,8 +416,8 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 	hash := blake3.Sum256(c.Data)
 
 	// Find any chunks in the database that have this hash and are empty
-	var emptyChunk chunk
-	err = b.database.Where("hash = ? AND LENGTH(data) == ?", hashString(hash), 0).First(&emptyChunk).Error
+	var targetChunk chunk
+	err = b.database.Where("hash = ? AND LENGTH(data) == ?", hashString(hash), 0).First(&targetChunk).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// We already have this chunk data, or someone sent a chunk we didn't ask for
@@ -425,7 +430,7 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 	}
 
 	// Update the data in the empty chunk TODO: if this file is going to be stored on disk, write it there
-	err = b.database.Model(&emptyChunk).Update("data", c.Data).Error
+	err = b.database.Model(&targetChunk).Update("data", c.Data).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -433,21 +438,59 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 	}
 
 	// Update the download status
-	err = b.database.Model(&emptyChunk).Update("downloaded", true).Error
+	err = b.database.Model(&targetChunk).Update("downloaded", true).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("database error updating chunk data")
 	}
 
+	// Mark the file as downloaded if this was the last chunk to get
+	var otherEmptyChunks []chunk
+	err = b.database.Where("file_id = ? AND downloaded = ?", targetChunk.FileID, false).Find(&otherEmptyChunks).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error checking for remaining empty chunks")
+	}
+	if len(otherEmptyChunks) == 0 {
+		err = b.database.Table("files").Where("id = ?", targetChunk.FileID).Update("downloaded", true).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error setting file as downloaded")
+		}
+	}
+
 	return nil
 }
 
 func (b *bounce) makeChunkRequests() {
-	// TODO: for each file we want and don't have, for each chunk that we don't have
-	// TODO: if we requested the chunk less than N seconds ago from someone, skip
-	// TODO: if we requested it more than N seconds and it didn't work and we have an alternative, use the alternative
-	// TODO: if there are no alternatives, request again
+	// TODO: mutex
+
+	var unfinishedFiles []file
+	err := b.database.Preload(clause.Associations).Where("wanted = ? AND downloaded = ?", true, false).Find(&unfinishedFiles).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up unfinished files")
+	}
+
+	for _, f := range unfinishedFiles {
+		for _, c := range f.Chunks {
+			if c.Downloaded {
+				continue
+			}
+			// TODO: select offers where my action time was <10s ago.  if no error than continue (we already requested this chunk just now)
+			// TODO: select offers I've never used before
+			// TODO: if there are ones I've never used before, request from one of them at random, end
+			// TODO: if not and I've already tried them all, request from one at random again, end
+
+			// TODO: if there were multiple offers that were possible (i.e. there was a valid way to retry) then kick this function off again in 11s just in case
+
+			// TODO: want to spread the load out across multiple hosts as much as possible
+		}
+	}
 }
 
 func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID) (uuid.UUID, error) { // TODO: different function for files on disk?
@@ -472,7 +515,17 @@ func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID) (
 		HashList:    hashList,
 		Chunks:      chunks,
 	}
-	err := b.database.Create(f).Error
+	var err error
+	f.OriginalPayload, err = msgpack.Marshal(f)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling file")
+	}
+	sc := b.createSignedContainer(f.OriginalPayload)
+	f.Signature = sc.Signature
+	f.Signer = sc.Signer
+	err = b.database.Create(f).Error
 	if err != nil {
 		return uuid.Nil, err
 	}
