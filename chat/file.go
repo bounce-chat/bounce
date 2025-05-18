@@ -3,6 +3,7 @@ package chat
 import (
 	"encoding/hex"
 	"errors"
+	"math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -15,11 +16,14 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-//const embeddedFileLimit = 1024 * 1024 * 10 // 10MiB
+var lastChunkTimeMutex sync.Mutex
+var lastChunkTime = map[string]int64{}
 
+//const embeddedFileLimit = 1024 * 1024 * 10 // 10MiB
 //var ErrFileTooBig = errors.New("file is too large")
 
-const fileChunkSize = 1024 * 1024 // 1MiB
+const fileChunkSize = 1024 * 1024      // 1MiB
+const expectedChunkDeliverySeconds = 1 // 100KiB/s
 
 var fileMutex sync.Mutex
 
@@ -185,6 +189,7 @@ type chunkOffer struct {
 	Hash            string
 	Location        string
 	Timestamp       int64
+	LastRequestTime int64  `msgpack:"-"`
 	Signer          string `msgpack:"-" gorm:"not null"`
 	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
 	Signature       []byte `msgpack:"-" gorm:"not null"`
@@ -402,6 +407,11 @@ func (c *chunk) getPayload() []byte {
 }
 
 func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcastable {
+	// Track the last time this peer sent a chunk
+	lastChunkTimeMutex.Lock()
+	lastChunkTime[peer] = time.Now().Unix()
+	lastChunkTimeMutex.Unlock()
+
 	// Unmarshal the chunk
 	var c chunk
 	err := msgpack.Unmarshal(payload, &c)
@@ -476,19 +486,82 @@ func (b *bounce) makeChunkRequests() {
 		}).Fatal("database error looking up unfinished files")
 	}
 
+	activePeers := []string{}
+	lastChunkTimeMutex.Lock()
+	for peer, t := range lastChunkTime {
+		if t > time.Now().Unix()-expectedChunkDeliverySeconds {
+			activePeers = append(activePeers, peer)
+		}
+	}
+	lastChunkTimeMutex.Unlock()
+
 	for _, f := range unfinishedFiles {
 		for _, c := range f.Chunks {
 			if c.Downloaded {
 				continue
 			}
-			// TODO: select offers where my action time was <10s ago.  if no error than continue (we already requested this chunk just now)
-			// TODO: select offers I've never used before
-			// TODO: if there are ones I've never used before, request from one of them at random, end
-			// TODO: if not and I've already tried them all, request from one at random again, end
 
-			// TODO: if there were multiple offers that were possible (i.e. there was a valid way to retry) then kick this function off again in 11s just in case
+			// Find all the offers where we just requested this chunk a few seconds ago, or where we have requested this chunk before from a peer that is
+			// actively delivering chunks right now.  If either exists, we don't need to make any additional requests for this chunk.
+			// TODO: reset what we have requested if the peer reconnects?  check if last connection time > last request time, and re-issue then?
+			activeOffers := []chunkOffer{}
+			err = b.database.Where("hash = ? AND (last_request_time > ? OR location IN (?))", c.Hash, time.Now().Unix()-expectedChunkDeliverySeconds, activePeers).Find(&activeOffers).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up actively used chunk offers")
+			}
+			if len(activeOffers) > 0 {
+				continue
+			}
 
-			// TODO: want to spread the load out across multiple hosts as much as possible
+			// If there are no actively used offers for this chunk we choose a new offer to try, one that hasn't been tried before
+			unusedOffers := []chunkOffer{}
+			err = b.database.Where("hash = ? AND last_request_time = ?", c.Hash, 0).Find(&unusedOffers).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up unused chunk offers")
+			}
+			availableUnusedLocations := []string{}
+			for _, offer := range unusedOffers {
+				rd := b.getRemoteDevice(offer.Location)
+				if rd.connectedSockets.Load() > 0 {
+					availableUnusedLocations = append(availableUnusedLocations, offer.Location)
+				}
+			}
+			if len(availableUnusedLocations) > 0 {
+				r := rand.New(rand.NewSource(time.Now().UnixNano()))
+				location := availableUnusedLocations[r.Intn(len(availableUnusedLocations))]
+
+				go b.sendDirect(location, &chunkRequest{Hash: c.Hash})
+				continue
+			}
+
+			// Lastly, if our only option is to re-request the chunk from a peer that we have already tried, we try again
+			previouslyTriedOffers := []chunkOffer{}
+			err = b.database.Where("hash = ? AND last_request_time != ?", c.Hash, 0).Find(&previouslyTriedOffers).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up previously tried chunk offers")
+			}
+			availableRetryLocations := []string{}
+			for _, offer := range previouslyTriedOffers {
+				rd := b.getRemoteDevice(offer.Location)
+				if rd.connectedSockets.Load() > 0 {
+					availableRetryLocations = append(availableRetryLocations, offer.Location)
+				}
+			}
+			if len(availableRetryLocations) > 0 {
+				r := rand.New(rand.NewSource(time.Now().UnixNano()))
+				location := availableRetryLocations[r.Intn(len(availableRetryLocations))]
+
+				go b.sendDirect(location, &chunkRequest{Hash: c.Hash})
+			}
+
+			// TODO: if there were multiple offers that were possible (i.e. there was a valid way to retry) then kick this function off again in 11s just in case?
+			// TODO: want to spread the load out across multiple hosts as much as possible?  prioritize higher bandwidth connections?
 		}
 	}
 }
