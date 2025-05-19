@@ -16,16 +16,21 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-var lastChunkTimeMutex sync.Mutex
 var lastChunkTime = map[string]int64{}
+var lastChunkTimeMutex sync.Mutex
+var writingChunk = map[string]bool{}
+var writingChunkMutex sync.Mutex
 
 //const embeddedFileLimit = 1024 * 1024 * 10 // 10MiB
-//var ErrFileTooBig = errors.New("file is too large")
-
 const fileChunkSize = 1024 * 1024      // 1MiB
 const expectedChunkDeliverySeconds = 1 // 100KiB/s
 
 var fileMutex sync.Mutex
+var chunkOfferMutex sync.Mutex
+var chunkMutex sync.Mutex
+var chunkRequestMutex sync.Mutex
+
+//var ErrFileTooBig = errors.New("file is too large")
 
 type file struct {
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
@@ -243,6 +248,9 @@ func (co *chunkOffer) getTimestamp() int64 {
 }
 
 func (b *bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) broadcastable {
+	chunkOfferMutex.Lock()
+	defer chunkOfferMutex.Unlock()
+
 	var co chunkOffer
 	err := msgpack.Unmarshal(payload, &co)
 	if err != nil {
@@ -309,8 +317,6 @@ func (cr *chunkRequest) getPayload() []byte {
 }
 
 func (b *bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) broadcastable {
-	// TODO: make sure we aren't currently writing this data to this peer already
-
 	// Unmarshal the request
 	var cr chunkRequest
 	err := msgpack.Unmarshal(payload, &cr)
@@ -319,6 +325,21 @@ func (b *bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 			"error": err.Error(),
 		}).Error("error unmarshalling chunk request")
 		return nil
+	}
+
+	// Make sure we aren't currently writing or queued to write this data to this peer already
+	writingChunkMutex.Lock()
+	if _, alreadyWriting := writingChunk[peer+cr.Hash]; alreadyWriting {
+		writingChunkMutex.Unlock()
+		return nil
+	} else {
+		writingChunk[peer+cr.Hash] = true
+		writingChunkMutex.Unlock()
+		defer func() {
+			writingChunkMutex.Lock()
+			delete(writingChunk, peer+cr.Hash)
+			writingChunkMutex.Unlock()
+		}()
 	}
 
 	// Find the chunk that is being requested
@@ -407,6 +428,9 @@ func (c *chunk) getPayload() []byte {
 }
 
 func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcastable {
+	chunkMutex.Lock()
+	defer chunkMutex.Unlock()
+
 	// Track the last time this peer sent a chunk
 	lastChunkTimeMutex.Lock()
 	lastChunkTime[peer] = time.Now().Unix()
@@ -476,7 +500,8 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 }
 
 func (b *bounce) makeChunkRequests() {
-	// TODO: mutex
+	chunkRequestMutex.Lock()
+	defer chunkRequestMutex.Unlock()
 
 	var unfinishedFiles []file
 	err := b.database.Preload(clause.Associations).Where("wanted = ? AND downloaded = ?", true, false).Find(&unfinishedFiles).Error
@@ -495,6 +520,7 @@ func (b *bounce) makeChunkRequests() {
 	}
 	lastChunkTimeMutex.Unlock()
 
+	recheck := false
 	for _, f := range unfinishedFiles {
 		for _, c := range f.Chunks {
 			if c.Downloaded {
@@ -503,7 +529,6 @@ func (b *bounce) makeChunkRequests() {
 
 			// Find all the offers where we just requested this chunk a few seconds ago, or where we have requested this chunk before from a peer that is
 			// actively delivering chunks right now.  If either exists, we don't need to make any additional requests for this chunk.
-			// TODO: reset what we have requested if the peer reconnects?  check if last connection time > last request time, and re-issue then?
 			activeOffers := []chunkOffer{}
 			err = b.database.Where("hash = ? AND (last_request_time > ? OR location IN (?))", c.Hash, time.Now().Unix()-expectedChunkDeliverySeconds, activePeers).Find(&activeOffers).Error
 			if err != nil {
@@ -535,6 +560,7 @@ func (b *bounce) makeChunkRequests() {
 				location := availableUnusedLocations[r.Intn(len(availableUnusedLocations))]
 
 				go b.sendDirect(location, &chunkRequest{Hash: c.Hash})
+				recheck = true
 				continue
 			}
 
@@ -558,11 +584,16 @@ func (b *bounce) makeChunkRequests() {
 				location := availableRetryLocations[r.Intn(len(availableRetryLocations))]
 
 				go b.sendDirect(location, &chunkRequest{Hash: c.Hash})
+				recheck = true
 			}
-
-			// TODO: if there were multiple offers that were possible (i.e. there was a valid way to retry) then kick this function off again in 11s just in case?
-			// TODO: want to spread the load out across multiple hosts as much as possible?  prioritize higher bandwidth connections?
 		}
+	}
+
+	if recheck {
+		go func() {
+			time.Sleep(expectedChunkDeliverySeconds + 1*time.Second)
+			b.makeChunkRequests()
+		}()
 	}
 }
 

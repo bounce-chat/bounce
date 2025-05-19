@@ -891,6 +891,8 @@ func (b *bounce) informUIOfUpdateGroup(ug updateGroup) {
 		return
 	case updateGroupTypeSetTypingIndicatorSettings:
 		return
+	case updateGroupTypeSetImage:
+		// TODO: show a status change
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
