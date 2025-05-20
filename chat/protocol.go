@@ -97,9 +97,9 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte, bool) broadcastab
 		typeReadReceipt:               b.handleReadReceipt,
 		typeUpdateSettings:            b.handleUpdateSettings,
 		typeFile:                      b.handleFile,
-		typeChunk:                     b.handleChunk,
 		typeChunkOffer:                b.handleChunkOffer,
 		typeChunkRequest:              b.handleChunkRequest,
+		typeChunk:                     b.handleChunk,
 	}
 }
 

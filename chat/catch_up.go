@@ -24,6 +24,8 @@ var allowedCatchUpFrames = map[uint16]bool{
 	typeUpdateDevice:   true,
 	typeReadReceipt:    true,
 	typeUpdateSettings: true,
+	typeFile:           true,
+	typeChunkOffer:     true,
 }
 
 //

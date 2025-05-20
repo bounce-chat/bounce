@@ -260,6 +260,8 @@ func referencedIDs(references []frameReference) map[uint16][]uuid.UUID {
 		typeUpdateDevice:   []uuid.UUID{},
 		typeReadReceipt:    []uuid.UUID{},
 		typeUpdateSettings: []uuid.UUID{},
+		typeFile:           []uuid.UUID{},
+		typeChunkOffer:     []uuid.UUID{},
 	}
 
 	for _, reference := range references {

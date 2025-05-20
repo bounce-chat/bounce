@@ -70,6 +70,10 @@ func (ro *referenceOffer) shouldDialUser() bool {
 			return true
 		} else if reference.Type == typeUpdateSettings {
 			return true
+		} else if reference.Type == typeFile {
+			return true
+		} else if reference.Type == typeChunkOffer {
+			return true
 		}
 	}
 	return false
@@ -78,19 +82,7 @@ func (ro *referenceOffer) shouldDialUser() bool {
 // Check if a reference offer only contains content destined for a group
 func (ro *referenceOffer) onlyGroupContent() bool {
 	for _, reference := range ro.References {
-		if reference.Type == typeDirectMessage {
-			return false
-		} else if reference.Type == typeDevice {
-			return false
-		} else if reference.Type == typeAddUser {
-			return false
-		} else if reference.Type == typeGroupCreation {
-			return false
-		} else if reference.Type == typeUpdateUser {
-			return false
-		} else if reference.Type == typeUpdateDevice {
-			return false
-		} else if reference.Type == typeUpdateSettings {
+		if !(reference.Type == typeGroupMessage || reference.Type == typeUpdateGroup) {
 			return false
 		}
 	}
@@ -244,6 +236,14 @@ func (b *bounce) hasAnyReferencesFor(address string) bool {
 	if len(references) > 0 {
 		return true
 	}
+	references = append(references, b.getFilesToOffer(dev)...)
+	if len(references) > 0 {
+		return true
+	}
+	references = append(references, b.getChunkOffersToOffer(dev)...)
+	if len(references) > 0 {
+		return true
+	}
 
 	return false
 }
@@ -272,6 +272,8 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	references = append(references, b.getUpdateDevicesToOffer(dev)...)
 	references = append(references, b.getReadReceiptsToOffer(dev)...)
 	references = append(references, b.getUpdateSettingsToOffer(dev)...)
+	references = append(references, b.getFilesToOffer(dev)...)
+	references = append(references, b.getChunkOffersToOffer(dev)...)
 
 	return &referenceOffer{
 		ID:         uuid.New(),
@@ -920,6 +922,156 @@ func (b *bounce) getUpdateSettingsToOffer(dev device) []frameReference {
 	return references
 }
 
+func (b *bounce) getFilesToOffer(dev device) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		return []frameReference{}
+	}
+
+	var unsentFiles []file
+
+	if !b.isSyncDevice(dev) {
+		// If this is a sync device, send all unsent files
+		err := b.database.
+			Select("files.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == files.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeFile).
+			Where("delivery_records.id IS NULL").
+			Find(&unsentFiles).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting files for reference offer")
+		}
+	} else {
+		// If this is not a sync device, get all files where
+		// 	scope is not sync AND
+		// 	scope is user and the destination is this device's user OR
+		// 	scope is group and the destination is a group that this device's user is in OR
+		// 	scope is global and the author is me OR
+		// 	scope is global and the author is someone who shares a group with this device
+		err := b.database.
+			Distinct("files.id").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == files.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeFile).
+			Where(
+				"((files.scope == ? AND files.destination = ?) OR (files.scope = ? AND files.destination IN (?)) OR (files.scope == ? AND (files.author == ? OR files.author == ? OR files.author IN (?)))) AND files.scope != ? AND delivery_records.id IS NULL",
+				scopeUser,
+				dev.UserID,
+				scopeGroup,
+				b.database.
+					Model(&group{}).
+					Distinct().
+					Select("groups.id").
+					Joins("JOIN group_users ON group_users.group_id = groups.id").
+					Where("user_id = ?", dev.UserID),
+				scopeGlobal,
+				b.currentUserID(),
+				dev.UserID,
+				b.database.
+					Model(&user{}).
+					Distinct().
+					Select("users.id").
+					Joins("JOIN group_users ON group_users.user_id = users.id").
+					Where(
+						"group_users.group_id IN (?)",
+						b.database.
+							Model(&group{}).
+							Distinct().
+							Select("groups.id").
+							Joins("JOIN group_users ON group_users.group_id = groups.id").
+							Where("user_id = ?", dev.UserID),
+					),
+				scopeSync,
+			).
+			Find(&unsentFiles).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting files for reference offer")
+		}
+	}
+
+	references := []frameReference{}
+	for _, f := range unsentFiles {
+		references = append(references, frameReference{FrameID: f.ID, Type: typeFile})
+	}
+
+	return references
+}
+
+func (b *bounce) getChunkOffersToOffer(dev device) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		return []frameReference{}
+	}
+
+	var unsentChunkOffers []chunkOffer
+
+	if !b.isSyncDevice(dev) {
+		// If this is a sync device, send all unsent chunk offers
+		err := b.database.
+			Select("chunk_offers.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == chunk_offers.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeChunkOffer).
+			Where("delivery_records.id IS NULL").
+			Find(&unsentChunkOffers).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting chunk offers for reference offer")
+		}
+	} else {
+		// If this is not a sync device, get all chunk offers where
+		// 	scope is not sync AND
+		// 	scope is user and the destination is this device's user OR
+		// 	scope is group and the destination is a group that this device's user is in OR
+		// 	scope is global and the author is me OR
+		// 	scope is global and the author is someone who shares a group with this device
+		err := b.database.
+			Distinct("chunk_offers.id").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == chunk_offers.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeChunkOffer).
+			Where(
+				"((chunk_offers.scope == ? AND chunk_offers.destination = ?) OR (chunk_offers.scope = ? AND chunk_offers.destination IN (?)) OR (chunk_offers.scope == ? AND (chunk_offers.author == ? OR chunk_offers.author == ? OR chunk_offers.author IN (?)))) AND chunk_offers.scope != ? AND delivery_records.id IS NULL",
+				scopeUser,
+				dev.UserID,
+				scopeGroup,
+				b.database.
+					Model(&group{}).
+					Distinct().
+					Select("groups.id").
+					Joins("JOIN group_users ON group_users.group_id = groups.id").
+					Where("user_id = ?", dev.UserID),
+				scopeGlobal,
+				b.currentUserID(),
+				dev.UserID,
+				b.database.
+					Model(&user{}).
+					Distinct().
+					Select("users.id").
+					Joins("JOIN group_users ON group_users.user_id = users.id").
+					Where(
+						"group_users.group_id IN (?)",
+						b.database.
+							Model(&group{}).
+							Distinct().
+							Select("groups.id").
+							Joins("JOIN group_users ON group_users.group_id = groups.id").
+							Where("user_id = ?", dev.UserID),
+					),
+				scopeSync,
+			).
+			Find(&unsentChunkOffers).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting chunk offers for reference offer")
+		}
+	}
+
+	references := []frameReference{}
+	for _, co := range unsentChunkOffers {
+		references = append(references, frameReference{FrameID: co.ID, Type: typeChunkOffer})
+	}
+
+	return references
+}
+
 func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) broadcastable {
 	if _, revoked := b.devicePool.revokedDevices[peer]; revoked {
 		return nil
@@ -994,6 +1146,14 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	usRefs, usAcks := b.getUpdateSettingsToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateSettings])
 	references = append(references, usRefs...)
 	acks = append(acks, usAcks...)
+
+	fRefs, fAcks := b.getFilesToRequestAndAck(dev, deviceExists, typesToIDs[typeFile])
+	references = append(references, fRefs...)
+	acks = append(acks, fAcks...)
+
+	coRefs, coAcks := b.getChunkOffersToRequestAndAck(dev, deviceExists, typesToIDs[typeChunkOffer])
+	references = append(references, coRefs...)
+	acks = append(acks, coAcks...)
 
 	// Unlock the catch up mutex
 	catchUpMutex.Unlock()
@@ -1315,6 +1475,57 @@ func (b *bounce) getUpdateSettingsToRequestAndAck(dev device, deviceExists bool,
 				"id":    updateSettingsID,
 				"error": err.Error(),
 			}).Fatal("database error querying for update settings")
+		}
+	}
+
+	return references, acks
+}
+
+func (b *bounce) getFilesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+	references := []frameReference{}
+	acks := []frameReference{}
+
+	for _, fileID := range offeredIDs {
+		ref := frameReference{FrameID: fileID, Type: typeFile}
+		var f file
+		err := b.database.First(&f, "id = ?", fileID).Error
+		if err == nil {
+			if deviceExists && !b.isDeliveredTo(&f, dev.Address) {
+				b.markDeliveredTo(&f, dev.Address)
+			}
+			acks = append(acks, ref)
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			references = append(references, ref)
+		} else {
+			log.WithFields(log.Fields{
+				"id":    fileID,
+				"error": err.Error(),
+			}).Fatal("database error querying for file")
+		}
+	}
+
+	return references, acks
+}
+
+func (b *bounce) getChunkOffersToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+	references := []frameReference{}
+	acks := []frameReference{}
+	for _, chunkOfferID := range offeredIDs {
+		ref := frameReference{FrameID: chunkOfferID, Type: typeChunkOffer}
+		var co chunkOffer
+		err := b.database.First(&co, "id = ?", chunkOfferID).Error
+		if err == nil {
+			if deviceExists && !b.isDeliveredTo(&co, dev.Address) {
+				b.markDeliveredTo(&co, dev.Address)
+			}
+			acks = append(acks, ref)
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			references = append(references, ref)
+		} else {
+			log.WithFields(log.Fields{
+				"id":    chunkOfferID,
+				"error": err.Error(),
+			}).Fatal("database error querying for chunk offer")
 		}
 	}
 

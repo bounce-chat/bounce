@@ -80,6 +80,8 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte, _ bool) bro
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDevicesPayloads(dev, requestedIDs[typeUpdateDevice], offeredIDs[typeUpdateDevice])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedReadReceiptPayloads(dev, requestedIDs[typeReadReceipt], offeredIDs[typeReadReceipt])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateSettingsPayloads(dev, requestedIDs[typeUpdateSettings], offeredIDs[typeUpdateSettings])...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedFilePayloads(dev, requestedIDs[typeFile], offeredIDs[typeFile])...)
+	cu.broadcastables = append(cu.broadcastables, b.getRequestedChunkOfferPayloads(dev, requestedIDs[typeChunkOffer], offeredIDs[typeChunkOffer])...)
 
 	// Send the catchup if there's anything to send
 	if len(cu.broadcastables) > 0 {
@@ -428,6 +430,62 @@ func (b *bounce) getRequestedUpdateSettingsPayloads(peer device, requestedIDs, o
 			}
 		} else {
 			requestedData = append(requestedData, &us)
+		}
+	}
+
+	return requestedData
+}
+
+func (b *bounce) getRequestedFilePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+	requestedData := sortableBroadcastables{}
+
+	requestedFileIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
+
+	for _, fileID := range requestedFileIDs {
+		var f file
+		err := b.database.First(&f, "id = ?", fileID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   fileID,
+					"peer": peer.Address,
+				}).Warn("reference request asks for unknown file we offered")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    fileID,
+					"error": err.Error(),
+				}).Fatal("database error querying for file")
+			}
+		} else {
+			requestedData = append(requestedData, &f)
+		}
+	}
+
+	return requestedData
+}
+
+func (b *bounce) getRequestedChunkOfferPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+	requestedData := sortableBroadcastables{}
+
+	requestedChunkOfferIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
+
+	for _, chunkOfferID := range requestedChunkOfferIDs {
+		var co chunkOffer
+		err := b.database.First(&co, "id = ?", chunkOfferID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   chunkOfferID,
+					"peer": peer.Address,
+				}).Warn("reference request asks for unknown chunk offer we offered")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    chunkOfferID,
+					"error": err.Error(),
+				}).Fatal("database error querying for chunk offer")
+			}
+		} else {
+			requestedData = append(requestedData, &co)
 		}
 	}
 

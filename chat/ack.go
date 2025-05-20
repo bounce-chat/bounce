@@ -67,6 +67,8 @@ func (b *bounce) handleAck(peer string, payload []byte, _ bool) broadcastable {
 	b.handleAckUpdateDevices(peer, ackedIDs[typeUpdateDevice])
 	b.handleAckReadReceipts(peer, ackedIDs[typeReadReceipt])
 	b.handleAckUpdateSettings(peer, ackedIDs[typeUpdateSettings])
+	b.handleAckFiles(peer, ackedIDs[typeFile])
+	b.handleAckChunkOffers(peer, ackedIDs[typeChunkOffer])
 
 	return nil
 }
@@ -430,6 +432,50 @@ func (b *bounce) handleAckUpdateSettings(peer string, ids []uuid.UUID) {
 			}
 		} else {
 			b.markDeliveredTo(&us, peer)
+		}
+	}
+}
+
+func (b *bounce) handleAckFiles(peer string, ids []uuid.UUID) {
+	for _, fileID := range ids {
+		var f file
+		err := b.database.First(&f, "id = ?", fileID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   fileID,
+					"peer": peer,
+				}).Warn("unknown file acked")
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error querying for file")
+			}
+		} else {
+			b.markDeliveredTo(&f, peer)
+		}
+	}
+}
+
+func (b *bounce) handleAckChunkOffers(peer string, ids []uuid.UUID) {
+	for _, chunkOfferID := range ids {
+		var co chunkOffer
+		err := b.database.First(&co, "id = ?", chunkOfferID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id":   chunkOfferID,
+					"peer": peer,
+				}).Warn("unknown chunk offer acked")
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error querying for chunk offer")
+			}
+		} else {
+			b.markDeliveredTo(&co, peer)
 		}
 	}
 }
