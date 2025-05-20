@@ -892,7 +892,7 @@ func (b *bounce) informUIOfUpdateGroup(ug updateGroup) {
 	case updateGroupTypeSetTypingIndicatorSettings:
 		return
 	case updateGroupTypeSetImage:
-		// TODO: show a status change
+		b.informUIUpdateGroupSetImage(ug)
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -1098,6 +1098,15 @@ func (b *bounce) informUIUpdateGroupChangePostingPermission(ug updateGroup) {
 
 func (b *bounce) informUIUpdateGroupBlock(ug updateGroup) {
 	b.userInterface.UserBlockedGroup(UserBlockedGroup{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+	})
+}
+
+func (b *bounce) informUIUpdateGroupSetImage(ug updateGroup) {
+	b.userInterface.UserChangedGroupImage(UpdateGroupUserChangedGroupImage{
 		ID:        ug.ID,
 		Thread:    ug.Target,
 		Actor:     ug.Actor,

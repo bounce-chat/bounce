@@ -672,6 +672,31 @@ func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID) (
 	return fileID, nil
 }
 
+/*
+func (b *bounce) pruneChunks(fileID uuid.UUID) {
+	var orphanedChunks []chunk
+	err := b.database.
+		Select("chunks.id").
+		Joins("LEFT JOIN files ON chunks.file_id == files.id").
+		Where("files.id IS NULL").
+		Find(&orphanedChunks).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error finding orphaned chunks")
+	}
+
+	if len(orphanedChunks) > 0 {
+		err = b.database.Delete(&orphanedChunks).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error deleting orphaned chunks")
+		}
+	}
+}
+*/
+
 func splitChunks(data []byte) ([]chunk, string) {
 	chunks := []chunk{}
 	hashes := []string{}

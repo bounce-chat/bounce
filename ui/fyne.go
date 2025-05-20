@@ -481,6 +481,22 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 			groupItems[ugpu.Thread] = append(groupItems[ugpu.Thread], ugpuItem)
 		}
 
+		for _, ubg := range state.UpdateGroupUserBlockedGroups {
+			ubgItem, err := fyneUI.newUpdateGroupUserBlocked(ubg)
+			if err != nil {
+				log.Error(err.Error())
+			}
+			groupItems[ubg.Thread] = append(groupItems[ubg.Thread], ubgItem)
+		}
+
+		for _, ugci := range state.UpdateGroupUserChangedGroupImages {
+			ugciItem, err := fyneUI.newUpdateGroupUserChangedGroupImage(ugci)
+			if err != nil {
+				log.Error(err.Error())
+			}
+			groupItems[ugci.Thread] = append(groupItems[ugci.Thread], ugciItem)
+		}
+
 		for _, uuun := range state.UpdateUserUpdateNames {
 			if uuun.User == fyneUI.profile.id {
 				for dmID, _ := range fyneUI.dms { // TODO: don't add to DMs before the DMs should exist

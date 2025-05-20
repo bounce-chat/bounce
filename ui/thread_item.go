@@ -553,6 +553,18 @@ func (fyneUI *Fyne) newUpdateGroupUserBlocked(ubg chat.UserBlockedGroup) (*threa
 	)
 }
 
+func (fyneUI *Fyne) newUpdateGroupUserChangedGroupImage(ugci chat.UpdateGroupUserChangedGroupImage) (*threadItem, error) {
+	return fyneUI.newStatusChangeThreadItem(
+		ugci.ID,
+		ugci.Thread,
+		ugci.Actor,
+		chat.TypeUpdateGroup,
+		"changed the group image",
+		ugci.Timestamp,
+		ugci.Seen,
+	)
+}
+
 func (fyneUI *Fyne) newGroupCreated(id, groupID, actorID uuid.UUID, timestamp int64) (*threadItem, error) {
 	return fyneUI.newStatusChangeThreadItem(
 		id,

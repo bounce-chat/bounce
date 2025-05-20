@@ -946,8 +946,8 @@ func (b *bounce) getFilesToOffer(dev device) []frameReference {
 		// 	scope is not sync AND
 		// 	scope is user and the destination is this device's user OR
 		// 	scope is group and the destination is a group that this device's user is in OR
-		// 	scope is global and the author is me OR
-		// 	scope is global and the author is someone who shares a group with this device
+		// 	scope is global and the author is me or this device's user OR
+		// 	scope is global and the author is someone who shares a group with this device's user
 		err := b.database.
 			Distinct("files.id").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == files.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeFile).
@@ -1021,8 +1021,8 @@ func (b *bounce) getChunkOffersToOffer(dev device) []frameReference {
 		// 	scope is not sync AND
 		// 	scope is user and the destination is this device's user OR
 		// 	scope is group and the destination is a group that this device's user is in OR
-		// 	scope is global and the author is me OR
-		// 	scope is global and the author is someone who shares a group with this device
+		// 	scope is global and the author is me or this device's user OR
+		// 	scope is global and the author is someone who shares a group with this device's user
 		err := b.database.
 			Distinct("chunk_offers.id").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == chunk_offers.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeChunkOffer).

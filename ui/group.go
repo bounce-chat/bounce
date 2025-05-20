@@ -1062,6 +1062,25 @@ func (fyneUI *Fyne) UserBlockedGroup(ubg chat.UserBlockedGroup) {
 	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
 }
 
+func (fyneUI *Fyne) UserChangedGroupImage(ugci chat.UpdateGroupUserChangedGroupImage) {
+	g, exists := fyneUI.groups[ugci.Thread]
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugci.Thread,
+		}).Error("cannot display block for group that doesn't exist")
+		return
+	}
+
+	ti, err := fyneUI.newUpdateGroupUserChangedGroupImage(ugci)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for user changed group image")
+	}
+
+	fyne.DoAndWait(func() { fyneUI.appendThreadItem(g, ti) })
+}
+
 func (fyneUI *Fyne) updateEnabledFeatures(g *group) {
 	amAdmin := g.isAdmin(fyneUI.profile.id)
 

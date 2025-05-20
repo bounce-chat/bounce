@@ -595,6 +595,8 @@ func (b *bounce) buildInitialState() InitialState {
 	exportedUpdateGroupEditsUnrestricted := []UpdateGroupEditsUnrestricted{}
 	exportedUpdateGroupPostingsRestricted := []UpdateGroupPostingRestricted{}
 	exportedUpdateGroupPostingsUnrestricted := []UpdateGroupPostingUnrestricted{}
+	exportedUpdateGroupUserBlockedGroups := []UserBlockedGroup{}
+	exportedUpdateGroupUserChangedGroupImages := []UpdateGroupUserChangedGroupImage{}
 	for _, ug := range ugs {
 		switch ug.Type {
 		case updateGroupTypeChangeName:
@@ -812,6 +814,27 @@ func (b *bounce) buildInitialState() InitialState {
 					},
 				)
 			}
+
+		case updateGroupTypeBlock:
+			exportedUpdateGroupUserBlockedGroups = append(
+				exportedUpdateGroupUserBlockedGroups,
+				UserBlockedGroup{
+					ID:        ug.ID,
+					Thread:    ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+				},
+			)
+		case updateGroupTypeSetImage:
+			exportedUpdateGroupUserChangedGroupImages = append(
+				exportedUpdateGroupUserChangedGroupImages,
+				UpdateGroupUserChangedGroupImage{
+					ID:        ug.ID,
+					Thread:    ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+				},
+			)
 		}
 	}
 
@@ -871,6 +894,8 @@ func (b *bounce) buildInitialState() InitialState {
 		UpdateGroupEditsUnrestricted:           exportedUpdateGroupEditsUnrestricted,
 		UpdateGroupPostingsRestricted:          exportedUpdateGroupPostingsRestricted,
 		UpdateGroupPostingsUnrestricted:        exportedUpdateGroupPostingsUnrestricted,
+		UpdateGroupUserBlockedGroups:           exportedUpdateGroupUserBlockedGroups,
+		UpdateGroupUserChangedGroupImages:      exportedUpdateGroupUserChangedGroupImages,
 		UpdateUserUpdateNames:                  exportedUpdateUserUpdateNames,
 	}
 }
