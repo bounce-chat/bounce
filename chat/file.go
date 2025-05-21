@@ -256,14 +256,24 @@ func (b *bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) bro
 	chunkOfferMutex.Lock()
 	defer chunkOfferMutex.Unlock()
 
+	sc, err := b.unpackSignedContainer(payload)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unpacking signed container for chunk offer")
+		return nil
+	}
 	var co chunkOffer
-	err := msgpack.Unmarshal(payload, &co)
+	err = msgpack.Unmarshal(sc.Payload, &co)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling chunk offer")
 		return nil
 	}
+	co.OriginalPayload = sc.Payload
+	co.Signature = sc.Signature
+	co.Signer = sc.Signer
 
 	err = b.database.Create(&co).Error
 	if err != nil {
