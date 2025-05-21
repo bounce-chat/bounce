@@ -378,6 +378,9 @@ type UI interface {
 	// Settings
 	SetSettings(Settings)
 	SetDarkMode(value bool)
+
+	// File management
+	FileCompleted(uuid.UUID)
 }
 
 // Frames that support being marked as read

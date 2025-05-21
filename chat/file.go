@@ -178,12 +178,15 @@ func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 	}
 
 	// Save the file
+	f.Wanted = true // TODO: don't start downloads for large files that are part of a message until the user hits the download icon
 	err = b.database.Create(&f).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error saving file")
 	}
+
+	b.makeChunkRequests()
 
 	return &f
 }
@@ -496,7 +499,7 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 				"error": err.Error(),
 			}).Fatal("database error setting file as downloaded")
 		}
-		// TODO: inform the UI that a file has finished
+		b.userInterface.FileCompleted(targetChunk.FileID)
 	}
 
 	return nil
