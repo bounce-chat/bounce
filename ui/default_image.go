@@ -121,11 +121,19 @@ func (dir *defaultImageRenderer) Refresh() {
 			originalImage := res.Content()
 			goImg, _, err := image.Decode(bytes.NewReader(originalImage))
 			if err != nil {
+				log.WithFields(log.Fields{
+					"error":   err.Error(),
+					"file_id": id,
+				}).Warn("error decoding image")
 				continue
 			}
 			dir.di.backgroundColor = canvas.NewImageFromImage(makeCircle(goImg))
 			dir.di.foregroundText.Hide()
 			break
+		} else {
+			log.WithFields(log.Fields{
+				"file_id": id,
+			}).Warn("image resource has no content")
 		}
 	}
 

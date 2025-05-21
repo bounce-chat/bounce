@@ -466,7 +466,7 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 
 	// Find any chunks in the database that have this hash and are empty
 	var targetChunk chunk
-	err = b.database.Where("hash = ? AND LENGTH(data) == ?", hashString(hash), 0).First(&targetChunk).Error
+	err = b.database.Where("hash = ? AND downloaded = ?", hashString(hash), false).First(&targetChunk).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// We already have this chunk data, or someone sent a chunk we didn't ask for
@@ -495,6 +495,7 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 	}
 
 	// Mark the file as downloaded if this was the last chunk to get
+	// TODO: need to check every file that uses this chunk
 	var otherEmptyChunks []chunk
 	err = b.database.Where("file_id = ? AND downloaded = ?", targetChunk.FileID, false).Find(&otherEmptyChunks).Error
 	if err != nil {
