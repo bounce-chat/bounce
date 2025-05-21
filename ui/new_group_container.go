@@ -62,7 +62,7 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 		func(u *user) {
 			// TODO: add listening to update button name with binding
 			removePendingUserButton := newUserButton(
-				newDefaultImage(u.id, u.initials, theme.IconInlineSize(), nil),
+				newDefaultImage(u.id, u.initials, theme.IconInlineSize(), fyneUI.callbacks.GetFileData, nil),
 				u.getName(),
 				false,
 				func() {
@@ -102,7 +102,7 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 		func(u *user) {
 			// TODO: add listener to update button name with binding
 			addUserButton := newUserButton(
-				newDefaultImage(u.id, u.initials, theme.IconInlineSize(), nil),
+				newDefaultImage(u.id, u.initials, theme.IconInlineSize(), fyneUI.callbacks.GetFileData, nil),
 				u.getName(),
 				false,
 				func() {
@@ -132,7 +132,7 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 	pendingUsersList := container.NewVBox()
 	for _, thisUser := range fyneUI.newGroupPendingUsers.alphabetized() {
 		func(u *user) {
-			userIcon := newDefaultImage(u.id, u.initials, theme.IconInlineSize()*2, nil)
+			userIcon := newDefaultImage(u.id, u.initials, theme.IconInlineSize()*2, fyneUI.callbacks.GetFileData, nil)
 			userName := widget.NewLabelWithData(u.name) // TODO: use RichText, and not and HBox, to support truncation
 			userDetails := container.NewHBox(
 				userIcon,
@@ -327,7 +327,7 @@ func (fyneUI *Fyne) buildNewGroup() {
 			groupIconName.Set(string(r))
 		}
 	}
-	groupIcon := newDefaultImage(uuid.Nil, groupIconName, 128, func() {
+	groupIcon := newDefaultImage(uuid.Nil, groupIconName, 128, fyneUI.callbacks.GetFileData, func() {
 		log.Info("user wants to select the image for a new group")
 	})
 

@@ -137,7 +137,7 @@ func (fyneUI *Fyne) mobileBack() {
 		fyneUI.mainWindow.SetContent(fyneUI.about)
 		fyneUI.about.Show()
 	case viewTypeEditProfile:
-		fyneUI.profileIcon.Objects = []fyne.CanvasObject{newDefaultImage(fyneUI.profile.id, fyneUI.profile.initials, 128, func() {
+		fyneUI.profileIcon.Objects = []fyne.CanvasObject{newDefaultImage(fyneUI.profile.id, fyneUI.profile.initials, 128, fyneUI.callbacks.GetFileData, func() {
 			log.Info("user wants to change their profile picture")
 		})}
 		fyneUI.profileIcon.Refresh()

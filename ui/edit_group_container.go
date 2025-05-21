@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"io"
 	"strings"
 
 	"github.com/google/uuid"
@@ -46,9 +47,35 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		g.editThreadNameEntry.Refresh()
 	}))
 
-	groupIcon := newDefaultImage(g.id, g.initial, 128, func() {
-		log.Info("open image replacement selector for group, if permissions allow")
+	g.editIcon = newDefaultImage(g.id, g.initial, 128, fyneUI.callbacks.GetFileData, func() {
+		fyneUI.showDialog(dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if reader == nil {
+				return
+			}
+
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Debug("error selecting new group image")
+				return
+			}
+
+			data, err := io.ReadAll(reader)
+			reader.Close()
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Debug("error reading new group image")
+				return
+			}
+
+			// TODO: make sure data is a valid image, allow for editing, etc
+
+			fyneUI.callbacks.SetGroupImage(g.id, data)
+		}, fyneUI.mainWindow), nil)
 	})
+	g.editIcon.images = g.images
+	g.editIcon.Refresh()
 
 	g.retentionSelection = widget.NewSelect(retentionSelections, nil)
 	g.retentionSelection.Selected = getRetentionName(g.retention)
@@ -402,7 +429,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 	)
 
 	editGroupFeatures := container.NewVBox(
-		container.NewCenter(groupIcon),
+		container.NewCenter(g.editIcon),
 		g.editThreadNameEntry,
 		g.notificationsEnabledCheck,
 		widget.NewLabel("Disappearing Messages"),
@@ -467,7 +494,7 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 		func(u *user) {
 			// TODO: setup listener to update the button text below
 			userDetailsButton := newUserButton(
-				newDefaultImage(u.id, u.initials, theme.IconInlineSize()*2, nil),
+				newDefaultImage(u.id, u.initials, theme.IconInlineSize()*2, fyneUI.callbacks.GetFileData, nil),
 				u.getName(),
 				g.isAdmin(u.id),
 				func() {
@@ -499,7 +526,7 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 		func(u *user) {
 			// TODO: setup listener to update the button text below
 			removePendingUserButton := newUserButton(
-				newDefaultImage(u.id, u.initials, theme.IconInlineSize(), nil),
+				newDefaultImage(u.id, u.initials, theme.IconInlineSize(), fyneUI.callbacks.GetFileData, nil),
 				u.getName(),
 				false,
 				func() {
@@ -551,7 +578,7 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(g *group, allAvailableUsers []*user
 		func(u *user) {
 			// TODO: setup listener to update the button text below
 			addUserButton := newUserButton(
-				newDefaultImage(u.id, u.initials, theme.IconInlineSize(), nil),
+				newDefaultImage(u.id, u.initials, theme.IconInlineSize(), fyneUI.callbacks.GetFileData, nil),
 				u.getName(),
 				false,
 				func() {

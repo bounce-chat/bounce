@@ -525,6 +525,16 @@ func (b *bounce) setGroupStateInDatabase(g group, gs groupState) error {
 		}
 	}
 
+	// Set the image history
+	imageIDStrings := []string{}
+	for _, imageID := range gs.images {
+		imageIDStrings = append(imageIDStrings, imageID.String())
+	}
+	err := b.database.Model(&g).Select("images").Update("images", strings.Join(imageIDStrings, ",")).Error
+	if err != nil {
+		return err
+	}
+
 	// Set group admins
 	admins := []uuid.UUID{}
 	for _, adminIDString := range strings.Split(g.Admins, ",") {

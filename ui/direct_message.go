@@ -162,7 +162,7 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 	})
 	editButton.Importance = widget.LowImportance
 
-	userIconCanvas := newDefaultImage(user.id, user.initials, 32, nil) // TODO: get size from theme
+	userIconCanvas := newDefaultImage(user.id, user.initials, 32, fyneUI.callbacks.GetFileData, nil) // TODO: get size from theme
 
 	userLabelText := widget.NewLabelWithData(user.name)
 
@@ -215,7 +215,7 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 			fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
 		}
 	}
-	dm.button = newThreadButton(newDefaultImage(user.id, user.initials, 64, openThread), user.name, openThread)
+	dm.button = newThreadButton(newDefaultImage(user.id, user.initials, 64, fyneUI.callbacks.GetFileData, openThread), user.name, openThread)
 	dm.scroll = newChatHistory(
 		dm.user.id,
 		fyneUI.profile.id,
@@ -237,7 +237,7 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 		}
 	}()
 
-	dm.typingIndicator = newTypingIndicator(typingIndicatorModeIcons)
+	dm.typingIndicator = newTypingIndicator(typingIndicatorModeIcons, fyneUI.callbacks.GetFileData)
 	dm.typingIndicator.Hide()
 	footer := container.NewVBox(
 		dm.typingIndicator,
@@ -307,7 +307,7 @@ func (fyneUI *Fyne) showEditDMContainer(dm *directMessage) {
 }
 
 func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
-	threadIcon := newDefaultImage(dm.user.id, dm.user.initials, 128, nil)
+	threadIcon := newDefaultImage(dm.user.id, dm.user.initials, 128, fyneUI.callbacks.GetFileData, nil)
 
 	username := widget.NewLabelWithData(dm.user.name)
 

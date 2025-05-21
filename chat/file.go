@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"math/rand"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,7 @@ var chunkMutex sync.Mutex
 var chunkRequestMutex sync.Mutex
 
 //var ErrFileTooBig = errors.New("file is too large")
+var errFileNotFound = errors.New("file not found")
 
 type file struct {
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
@@ -494,6 +496,7 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 				"error": err.Error(),
 			}).Fatal("database error setting file as downloaded")
 		}
+		// TODO: inform the UI that a file has finished
 	}
 
 	return nil
@@ -612,6 +615,8 @@ func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID) (
 		Hash:        hashString(hash),
 		Size:        len(data),
 		ChunkSize:   fileChunkSize,
+		Wanted:      true,
+		Downloaded:  true,
 		Scope:       scope,
 		Destination: destination,
 		Timestamp:   time.Now().Unix(),
@@ -670,6 +675,29 @@ func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID) (
 	}
 
 	return fileID, nil
+}
+
+func (b *bounce) getFileData(fileID uuid.UUID) ([]byte, error) {
+	var f file
+	err := b.database.Preload(clause.Associations).Where("id = ? AND downloaded = ?", fileID, true).First(&f).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return []byte{}, errFileNotFound
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up file")
+		}
+	}
+
+	sort.Slice(f.Chunks, func(i, j int) bool { return f.Chunks[i].Index < f.Chunks[j].Index })
+
+	data := []byte{}
+	for _, c := range f.Chunks {
+		data = append(data, c.Data...)
+	}
+
+	return data, nil
 }
 
 /*

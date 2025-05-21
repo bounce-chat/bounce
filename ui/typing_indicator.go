@@ -23,6 +23,7 @@ type typingIndicator struct {
 	mode                int
 	users               []*user
 	icons               []*defaultImage
+	fileGetter          func(uuid.UUID) ([]byte, error)
 	currentlyTypingUser *widget.RichText
 	typingAnimation     *fyne.Animation
 	firstTypingDot      *canvas.Circle
@@ -30,7 +31,7 @@ type typingIndicator struct {
 	thirdTypingDot      *canvas.Circle
 }
 
-func newTypingIndicator(mode int) *typingIndicator {
+func newTypingIndicator(mode int, fileGetter func(uuid.UUID) ([]byte, error)) *typingIndicator {
 	ti := &typingIndicator{
 		mode:  mode,
 		icons: []*defaultImage{},
@@ -100,7 +101,7 @@ func (ti *typingIndicator) showUser(u *user) {
 
 	ti.icons = append(
 		ti.icons,
-		newDefaultImage(u.id, u.initials, theme.IconInlineSize(), nil),
+		newDefaultImage(u.id, u.initials, theme.IconInlineSize(), ti.fileGetter, nil),
 	)
 	ti.users = append(
 		ti.users,

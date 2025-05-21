@@ -109,6 +109,7 @@ func Start(network Network, ui UI) {
 			ExportContact:                     b.exportContact,
 			UserConnectionDesired:             b.userConnectionDesired,
 			GroupConnectionDesired:            b.groupConnectionDesired,
+			GetFileData:                       b.getFileData,
 			SetDMRetention:                    b.setDMRetention,
 			SetDMMutedUntil:                   b.setDMMutedUntil,
 			ClearDMChatHistory:                b.clearDMChatHistory,

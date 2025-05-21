@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"encoding/binary"
 	"image"
 	"image/color"
@@ -18,7 +19,7 @@ import (
 var colorCache = map[uuid.UUID]color.RGBA{}
 var colorCacheMutex sync.Mutex
 
-func newDefaultImage(id uuid.UUID, text binding.String, size float32, clicked func()) *defaultImage {
+func newDefaultImage(id uuid.UUID, text binding.String, size float32, fileGetter func(uuid.UUID) ([]byte, error), clicked func()) *defaultImage {
 	str, err := text.Get()
 	if err != nil {
 		log.Fatal("data bindings are broken")
@@ -36,7 +37,8 @@ func newDefaultImage(id uuid.UUID, text binding.String, size float32, clicked fu
 			rect:  image.Rect(0, 0, int(size)*8, int(size)*8),
 			color: uuidToColor(id),
 		})),
-		clicked: clicked,
+		fileGetter: fileGetter,
+		clicked:    clicked,
 	}
 
 	text.AddListener(binding.NewDataListener(func() {
@@ -59,6 +61,8 @@ type defaultImage struct {
 	size            float32
 	foregroundText  *canvas.Text
 	backgroundColor *canvas.Image
+	images          []uuid.UUID
+	fileGetter      func(uuid.UUID) ([]byte, error)
 	clicked         func()
 }
 
@@ -110,6 +114,21 @@ func (dir *defaultImageRenderer) Objects() []fyne.CanvasObject {
 }
 
 func (dir *defaultImageRenderer) Refresh() {
+	for i := len(dir.di.images) - 1; i >= 0; i-- {
+		id := dir.di.images[i]
+		res := newDatabaseResource(id, dir.di.fileGetter)
+		if len(res.Content()) > 0 {
+			originalImage := res.Content()
+			goImg, _, err := image.Decode(bytes.NewReader(originalImage))
+			if err != nil {
+				continue
+			}
+			dir.di.backgroundColor = canvas.NewImageFromImage(makeCircle(goImg))
+			dir.di.foregroundText.Hide()
+			break
+		}
+	}
+
 	for _, obj := range dir.Objects() {
 		obj.Refresh()
 	}

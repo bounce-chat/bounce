@@ -452,6 +452,8 @@ type UICallbacks struct {
 	UserConnectionDesired  func(uuid.UUID)
 	GroupConnectionDesired func(uuid.UUID)
 
+	GetFileData func(uuid.UUID) ([]byte, error)
+
 	MarkAsRead                  func(messageID uuid.UUID, frameType string)
 	MarkAllGroupMessagesAsRead  func(groupID uuid.UUID)
 	MarkAllDirectMessagesAsRead func(userID uuid.UUID)

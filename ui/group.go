@@ -23,6 +23,7 @@ type group struct {
 	id                               uuid.UUID
 	name                             binding.String
 	initial                          binding.String
+	images                           []uuid.UUID
 	users                            *userStore
 	admins                           []uuid.UUID
 	blockedUsers                     []uuid.UUID
@@ -38,6 +39,8 @@ type group struct {
 	pendingUsers                     *userStore
 	notificationsMutedUntil          int64
 	createdAt                        int64
+	editIcon                         *defaultImage
+	headerIcon                       *defaultImage
 	editContainer                    *fyne.Container
 	editThreadNameEntry              *widget.Entry
 	retentionSelection               *widget.Select
@@ -254,7 +257,7 @@ func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) (dialog.Dialog
 	var userDetailsDialog dialog.Dialog
 
 	editUserContainer := container.NewVBox(
-		container.NewCenter(newDefaultImage(u.id, u.initials, 64, nil)), // TODO: get size from theme
+		container.NewCenter(newDefaultImage(u.id, u.initials, 64, fyneUI.callbacks.GetFileData, nil)), // TODO: get size from theme
 		widget.NewButton("Direct Message", func() {
 			dm, dmExists := fyneUI.dms[u.id]
 			if !dmExists {
@@ -379,6 +382,7 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 		id:                             bounceGroup.ID,
 		name:                           binding.NewString(),
 		initial:                        binding.NewString(),
+		images:                         bounceGroup.Images,
 		users:                          newUserStore(),
 		admins:                         bounceGroup.Admins,
 		blockedUsers:                   bounceGroup.BlockedUsers,
@@ -461,7 +465,9 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 	})
 	editButton.Importance = widget.LowImportance
 
-	groupIconCanvas := newDefaultImage(group.id, group.initial, 32, nil) // TODO: get size from theme
+	group.headerIcon = newDefaultImage(group.id, group.initial, 32, fyneUI.callbacks.GetFileData, nil) // TODO: get size from theme
+	group.headerIcon.images = bounceGroup.Images
+	group.headerIcon.Refresh()
 	groupLabelText := widget.NewLabel(bounceGroup.Name)
 
 	var groupLabel *fyne.Container
@@ -472,12 +478,12 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 		backButton.Importance = widget.LowImportance
 		groupLabel = container.NewHBox(
 			backButton,
-			groupIconCanvas,
+			group.headerIcon,
 			groupLabelText,
 		)
 	} else {
 		groupLabel = container.NewHBox(
-			groupIconCanvas,
+			group.headerIcon,
 			groupLabelText,
 		)
 	}
@@ -509,7 +515,9 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 			fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeThread, context: group.id})
 		}
 	}
-	group.button = newThreadButton(newDefaultImage(group.id, group.initial, 64, openThread), group.name, openThread)
+	group.button = newThreadButton(newDefaultImage(group.id, group.initial, 64, fyneUI.callbacks.GetFileData, openThread), group.name, openThread)
+	group.button.threadImage.images = group.images
+	group.button.threadImage.Refresh()
 	group.scroll = newChatHistory(
 		group.id,
 		fyneUI.profile.id,
@@ -531,7 +539,7 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 		}
 	}()
 
-	group.typingIndicator = newTypingIndicator(typingIndicatorModeIcons)
+	group.typingIndicator = newTypingIndicator(typingIndicatorModeIcons, fyneUI.callbacks.GetFileData)
 	group.typingIndicator.Hide()
 	footer := container.NewVBox(
 		group.typingIndicator,
@@ -576,7 +584,13 @@ func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
 			}).Fatal("data bindings are broken")
 		}
 
-		// TODO: set the image
+		g.images = bounceGroup.Images
+		g.editIcon.images = g.images
+		g.editIcon.Refresh()
+		g.headerIcon.images = bounceGroup.Images
+		g.headerIcon.Refresh()
+		g.button.threadImage.images = g.images
+		g.button.threadImage.Refresh()
 
 		g.users.empty()
 		for _, bu := range bounceGroup.Users {

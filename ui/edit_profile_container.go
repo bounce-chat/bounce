@@ -51,7 +51,7 @@ func (fyneUI *Fyne) showEditProfile() {
 	if fyne.CurrentDevice().IsMobile() {
 		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeEditProfile})
 	}
-	fyneUI.profileIcon.Objects = []fyne.CanvasObject{newDefaultImage(fyneUI.profile.id, fyneUI.profile.initials, 128, func() {
+	fyneUI.profileIcon.Objects = []fyne.CanvasObject{newDefaultImage(fyneUI.profile.id, fyneUI.profile.initials, 128, fyneUI.callbacks.GetFileData, func() {
 		log.Info("user wants to change their profile picture")
 	})}
 	fyneUI.profileIcon.Refresh()
