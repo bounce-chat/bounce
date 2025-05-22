@@ -48,7 +48,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 	}))
 
 	g.editIcon = newDefaultImage(g.id, g.initial, 128, fyneUI.callbacks.GetFileData, func() {
-		fyneUI.showDialog(dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
 			}
@@ -72,7 +72,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			// TODO: make sure data is a valid image, allow for editing, etc
 
 			fyneUI.callbacks.SetGroupImage(g.id, data)
-		}, fyneUI.mainWindow), nil)
+		}, fyneUI.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 	g.editIcon.images = g.images
 	g.editIcon.Refresh()

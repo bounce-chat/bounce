@@ -171,7 +171,7 @@ func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 			log.Fatal("cannot make uuid from bytes for chunk")
 		}
 		f.Chunks = append(f.Chunks, chunk{
-			ID:    chunkID,
+			ID:    chunkID, //xor(f.ID, chunkID),
 			Hash:  chunkHash,
 			Index: i,
 		})
@@ -373,6 +373,7 @@ func (b *bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 	}
 
 	// Find the file that this chunk is a part of
+	// TODO: if multiple chunks share this hash, we need to know if the user can get the any of the files that use those chunks
 	var f file
 	err = b.database.First(&f, "id = ?", c.FileID).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -388,22 +389,24 @@ func (b *bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 	}
 
 	// Make sure this peer is allowed to have this file
-	allowed := b.getBroadcastScope(&f)
-	found := false
-	for _, addr := range allowed {
-		if addr == peer {
-			found = true
-			break
+	/*
+		allowed := b.getBroadcastScope(&f)
+		found := false
+		for _, addr := range allowed {
+			if addr == peer {
+				found = true
+				break
+			}
 		}
-	}
-	if !found {
-		log.WithFields(log.Fields{
-			"peer":    peer,
-			"file_id": c.FileID,
-			"hash":    cr.Hash,
-		}).Warn("peer requested valid chunk they are not allowed to have")
-		return nil
-	}
+		if !found {
+			log.WithFields(log.Fields{
+				"peer":    peer,
+				"file_id": c.FileID,
+				"hash":    cr.Hash,
+			}).Warn("peer requested valid chunk they are not allowed to have")
+			return nil
+		}
+	*/
 
 	// Directly send the chunk to this peer
 	b.sendDirect(peer, &c)
@@ -466,7 +469,7 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 
 	// Find any chunks in the database that have this hash and are empty
 	var targetChunk chunk
-	err = b.database.Where("hash = ? AND downloaded = ?", hashString(hash), false).First(&targetChunk).Error
+	err = b.database.Where("hash = ? AND downloaded = ?", hashString(hash), false).First(&targetChunk).Error // TODO: find all
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// We already have this chunk data, or someone sent a chunk we didn't ask for

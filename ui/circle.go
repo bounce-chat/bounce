@@ -3,40 +3,65 @@ package ui
 import (
 	"image"
 	"image/color"
-	"math"
+	"image/draw"
 )
 
 type circle struct {
-	original image.Image
+	center image.Point
+	radius int
 }
 
 func (c *circle) ColorModel() color.Model {
-	return c.original.ColorModel()
+	return color.AlphaModel
 }
 
 func (c *circle) Bounds() image.Rectangle {
-	return c.original.Bounds()
+	return image.Rect(
+		c.center.X-c.radius,
+		c.center.Y-c.radius,
+		c.center.X+c.radius,
+		c.center.Y+c.radius,
+	)
 }
 
 func (c *circle) At(x, y int) color.Color {
-	bounds := c.original.Bounds()
-	radius := float64(0)
-	if bounds.Dx() > bounds.Dy() {
-		radius = float64(bounds.Dy()) / float64(2)
-	} else {
-		radius = float64(bounds.Dx()) / float64(2)
+	dx := float64(x - c.center.X)
+	dy := float64(y - c.center.Y)
+	radius := float64(c.radius)
+
+	if dx*dx+dy*dy < radius*radius {
+		return color.Alpha{255}
 	}
-	centerX := bounds.Dx() / 2
-	centerY := bounds.Dy() / 2
-	distance := math.Sqrt(math.Pow(float64(x-centerX), 2) + math.Pow(float64(y-centerY), 2))
-	if distance > radius {
-		return color.RGBA{} // TODO: match the mode
-	}
-	return c.original.At(x, y)
+	return color.Alpha{0}
 }
 
-func makeCircle(original image.Image) image.Image {
-	return &circle{
-		original: original,
+func makeCircle(src image.Image) image.Image {
+	cropped := image.NewRGBA(src.Bounds())
+
+	radius := 0
+	if src.Bounds().Dx() > src.Bounds().Dy() {
+		radius = src.Bounds().Dy() / 2
+	} else {
+		radius = src.Bounds().Dx() / 2
 	}
+
+	center := image.Point{
+		X: src.Bounds().Dx() / 2,
+		Y: src.Bounds().Dy() / 2,
+	}
+
+	draw.DrawMask(
+		cropped,
+		cropped.Bounds(),
+		src,
+		image.ZP,
+		&circle{
+			center: center,
+			radius: radius,
+		},
+		image.ZP,
+		draw.Over,
+	)
+
+	return cropped
 }

@@ -39,6 +39,7 @@ func newDefaultImage(id uuid.UUID, text binding.String, size float32, fileGetter
 		})),
 		fileGetter: fileGetter,
 		clicked:    clicked,
+		imageCache: make(map[uuid.UUID]*canvas.Image),
 	}
 
 	text.AddListener(binding.NewDataListener(func() {
@@ -64,6 +65,7 @@ type defaultImage struct {
 	images          []uuid.UUID
 	fileGetter      func(uuid.UUID) ([]byte, error)
 	clicked         func()
+	imageCache      map[uuid.UUID]*canvas.Image
 }
 
 func (di *defaultImage) Tapped(*fyne.PointEvent) {
@@ -116,25 +118,39 @@ func (dir *defaultImageRenderer) Objects() []fyne.CanvasObject {
 func (dir *defaultImageRenderer) Refresh() {
 	for i := len(dir.di.images) - 1; i >= 0; i-- {
 		id := dir.di.images[i]
-		res := newDatabaseResource(id, dir.di.fileGetter)
-		if len(res.Content()) > 0 {
-			originalImage := res.Content()
-			goImg, _, err := image.Decode(bytes.NewReader(originalImage))
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":   err.Error(),
-					"file_id": id,
-				}).Warn("error decoding image")
-				continue
-			}
-			dir.di.backgroundColor = canvas.NewImageFromImage(makeCircle(goImg))
-			dir.di.foregroundText.Hide()
+
+		if cachedImage, ok := dir.di.imageCache[id]; ok {
+			dir.di.backgroundColor = cachedImage
 			break
-		} else {
+		}
+
+		originalImage, err := dir.di.fileGetter(id)
+		if err != nil {
 			log.WithFields(log.Fields{
 				"file_id": id,
-			}).Warn("image resource has no content")
+				"error":   err.Error(),
+			}).Debug("error loading image")
+			continue
 		}
+		if len(originalImage) == 0 {
+			log.WithFields(log.Fields{
+				"file_id": id,
+			}).Warn("image file has no content")
+			continue
+		}
+
+		goImg, _, err := image.Decode(bytes.NewReader(originalImage))
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"file_id": id,
+			}).Warn("error decoding image")
+			continue
+		}
+		dir.di.backgroundColor = canvas.NewImageFromImage(makeCircle(goImg))
+		dir.di.imageCache[id] = dir.di.backgroundColor
+		dir.di.foregroundText.Hide()
+		break
 	}
 
 	for _, obj := range dir.Objects() {

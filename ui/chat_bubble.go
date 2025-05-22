@@ -148,7 +148,8 @@ func newChatBubbleTemplate() *chatBubble {
 				TextSize: theme.IconInlineSize() / 2,
 			},
 			backgroundColor: canvas.NewImageFromImage(makeCircle(&colorRectangle{
-				rect: image.Rect(0, 0, int(theme.IconInlineSize())*8, int(theme.IconInlineSize())*8),
+				rect:  image.Rect(0, 0, int(theme.IconInlineSize())*8, int(theme.IconInlineSize())*8),
+				color: uuidToColor(uuid.Nil),
 			})),
 		},
 		background: &canvas.Rectangle{
