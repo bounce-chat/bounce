@@ -109,7 +109,7 @@ func (b *bounce) broadcast(br broadcastable) {
 		"scope":       br.getScope(b.currentUserID()),
 		"destination": br.getDestination(b.currentUserID()),
 	}).Debug("broadcasting frame")
-	for _, peer := range b.getBroadcastScope(br) {
+	for _, peer := range b.getBroadcastScope(br, true) {
 		rd := b.getRemoteDevice(peer)
 		if rd.connectedSockets.Load() > 0 {
 			go func(dst chan sendable, msg broadcastable) {
@@ -124,19 +124,19 @@ func (b *bounce) sendDirect(peer string, br sendable) {
 	rd.messages <- br
 }
 
-func (b *bounce) getBroadcastScope(br broadcastable) []string {
+func (b *bounce) getBroadcastScope(br broadcastable, excludeDelivered bool) []string {
 	scope := br.getScope(b.currentUserID())
 
 	if scope == scopeSync {
-		return b.getSyncScope(br)
+		return b.getSyncScope(br, excludeDelivered)
 	} else if scope == scopeUser {
-		return b.getUserScope(br)
+		return b.getUserScope(br, excludeDelivered)
 	} else if scope == scopeGroup {
-		return b.getGroupScope(br)
+		return b.getGroupScope(br, excludeDelivered)
 	} else if scope == scopeGlobal {
-		return b.getGlobalScope(br)
+		return b.getGlobalScope(br, excludeDelivered)
 	} else if scope == scopeCustom {
-		return b.getCustomScope(br)
+		return b.getCustomScope(br, excludeDelivered)
 	} else {
 		log.WithFields(log.Fields{
 			"destination": br.getDestination(b.currentUserID()),
@@ -148,7 +148,7 @@ func (b *bounce) getBroadcastScope(br broadcastable) []string {
 	return []string{}
 }
 
-func (b *bounce) getSyncScope(br broadcastable) []string {
+func (b *bounce) getSyncScope(br broadcastable, excludeDelivered bool) []string {
 	currentUser, exists := b.currentUser()
 	if !exists {
 		log.Fatal("cannot broadcast sync scoped frame when no current user exists")
@@ -170,14 +170,14 @@ func (b *bounce) getSyncScope(br broadcastable) []string {
 	return broadcastTargets
 }
 
-func (b *bounce) getUserScope(br broadcastable) []string {
+func (b *bounce) getUserScope(br broadcastable, excludeDelivered bool) []string {
 	broadcastTargets := []string{}
 
 	if b.currentUserID() == br.getDestination(b.currentUserID()) {
 		log.WithFields(log.Fields{
 			"type": br.getType(),
 		}).Warn("a user-scoped message has a sync destination, using sync scope")
-		return b.getSyncScope(br)
+		return b.getSyncScope(br, excludeDelivered)
 	}
 
 	// Add any devices that are owned by the destination user that are online
@@ -202,14 +202,14 @@ func (b *bounce) getUserScope(br broadcastable) []string {
 		if dev.RevokedAt != 0 {
 			continue
 		}
-		if b.isDeliveredTo(br, dev.Address) {
+		if excludeDelivered && b.isDeliveredTo(br, dev.Address) {
 			continue
 		}
 		broadcastTargets = append(broadcastTargets, dev.Address)
 	}
 
 	// Add any sync devices that are online
-	broadcastTargets = append(broadcastTargets, b.getSyncScope(br)...)
+	broadcastTargets = append(broadcastTargets, b.getSyncScope(br, excludeDelivered)...)
 
 	return broadcastTargets
 }
@@ -217,7 +217,7 @@ func (b *bounce) getUserScope(br broadcastable) []string {
 //
 // Get any devices that we are connected to that belong to any members of a group, including ourself
 //
-func (b *bounce) getGroupScope(br broadcastable) []string {
+func (b *bounce) getGroupScope(br broadcastable, excludeDelivered bool) []string {
 	broadcastTargets := []string{}
 
 	var destinationGroup group
@@ -229,7 +229,7 @@ func (b *bounce) getGroupScope(br broadcastable) []string {
 				"type":        br.getType(),
 				"destination": br.getDestination(b.currentUserID()),
 			}).Debug("group not found when broadcasting group scoped message, using sync scope instead")
-			return b.getSyncScope(br)
+			return b.getSyncScope(br, excludeDelivered)
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -244,7 +244,7 @@ func (b *bounce) getGroupScope(br broadcastable) []string {
 			if dev.Address == b.network.Address() {
 				continue
 			}
-			if b.isDeliveredTo(br, dev.Address) {
+			if excludeDelivered && b.isDeliveredTo(br, dev.Address) {
 				continue
 			}
 			broadcastTargets = append(broadcastTargets, dev.Address)
@@ -257,7 +257,7 @@ func (b *bounce) getGroupScope(br broadcastable) []string {
 //
 // Send a message to any device that we're connected to right now
 //
-func (b *bounce) getGlobalScope(br broadcastable) []string {
+func (b *bounce) getGlobalScope(br broadcastable, excludeDelivered bool) []string {
 	broadcastTargets := []string{}
 
 	author := br.getAuthor()
@@ -318,7 +318,7 @@ func (b *bounce) getGlobalScope(br broadcastable) []string {
 			if dev.Address == b.network.Address() {
 				continue
 			}
-			if b.isDeliveredTo(br, dev.Address) {
+			if excludeDelivered && b.isDeliveredTo(br, dev.Address) {
 				continue
 			}
 			broadcastTargets = append(broadcastTargets, dev.Address)
@@ -328,7 +328,7 @@ func (b *bounce) getGlobalScope(br broadcastable) []string {
 	return broadcastTargets
 }
 
-func (b *bounce) getCustomScope(br broadcastable) []string {
+func (b *bounce) getCustomScope(br broadcastable, excludeDelivered bool) []string {
 	broadcastTargets := []string{}
 
 	var cs customScope
@@ -355,7 +355,7 @@ func (b *bounce) getCustomScope(br broadcastable) []string {
 		if addr == b.network.Address() {
 			continue
 		}
-		if b.isDeliveredTo(br, addr) {
+		if excludeDelivered && b.isDeliveredTo(br, addr) {
 			continue
 		}
 		broadcastTargets = append(broadcastTargets, addr)

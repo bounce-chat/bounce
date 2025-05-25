@@ -44,9 +44,9 @@ type file struct {
 	ChunkSize   int
 	Wanted      bool `msgpack:"-"`
 	Downloaded  bool `msgpack:"-"`
+	Timestamp   int64
 	//Type      int
-	Timestamp       int64
-	BlurHash        string
+	//BlurHash        string
 	HashList        string
 	Chunks          []chunk `msgpack:"-"`
 	Signer          string  `msgpack:"-" gorm:"not null"`
@@ -54,6 +54,18 @@ type file struct {
 	Signature       []byte  `msgpack:"-" gorm:"not null"`
 	payload         []byte
 	payloadMutex    sync.Mutex
+}
+
+func (f *file) AfterDelete(tx *gorm.DB) error {
+	err := tx.Where("file_id = ?", f.ID).Delete(&chunk{}).Error
+	if err != nil {
+		return err
+	}
+	err = tx.Where("file_id = ?", f.ID).Delete(&chunkOffer{}).Error
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (f *file) getID() uuid.UUID {
@@ -107,8 +119,6 @@ func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 
 	// TODO: make sure we know about the device?
 
-	// TODO: default to not downloading it until something in the UI tells us to?
-
 	// Verify and unpack the signed container
 	sc, err := b.unpackSignedContainer(payload)
 	if err != nil {
@@ -129,6 +139,7 @@ func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 	f.Signature = sc.Signature
 	f.Signer = sc.Signer
 
+	// TODO: make sure the signer is the author
 	// TODO: make sure this wasn't created by a revoked device?
 
 	// Make sure the device that signed this message belongs to the author
@@ -170,8 +181,9 @@ func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 		if err != nil {
 			log.Fatal("cannot make uuid from bytes for chunk")
 		}
+		// TODO: if this data is already on disk in another chunk, copy it into this chunk
 		f.Chunks = append(f.Chunks, chunk{
-			ID:    chunkID, //xor(f.ID, chunkID),
+			ID:    xor(f.ID, chunkID),
 			Hash:  chunkHash,
 			Index: i,
 		})
@@ -193,12 +205,13 @@ func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 
 type chunkOffer struct {
 	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Scope           int
-	Destination     uuid.UUID
 	Author          uuid.UUID
+	FileID          uuid.UUID
 	Hash            string
 	Location        string
 	Timestamp       int64
+	Scope           int
+	Destination     uuid.UUID
 	LastRequestTime int64  `msgpack:"-"`
 	Signer          string `msgpack:"-" gorm:"not null"`
 	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
@@ -256,6 +269,7 @@ func (b *bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) bro
 	chunkOfferMutex.Lock()
 	defer chunkOfferMutex.Unlock()
 
+	// Unpack the offer
 	sc, err := b.unpackSignedContainer(payload)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -275,6 +289,21 @@ func (b *bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) bro
 	co.Signature = sc.Signature
 	co.Signer = sc.Signer
 
+	// TODO: make sure the author signed this and owns the location
+	// TODO: if the file exists, make sure the scope and destinations line up?
+
+	// Check if we already have this offer
+	var existingChunkOffer chunkOffer
+	err = b.database.Where("id = ?", co.ID).First(&existingChunkOffer).Error
+	if err == nil {
+		return &existingChunkOffer
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up chunk offer")
+	}
+
+	// Save the offer
 	err = b.database.Create(&co).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -282,27 +311,32 @@ func (b *bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) bro
 		}).Fatal("database error saving chunk offer")
 	}
 
-	var c chunk
-	err = b.database.First(&c, "hash = ?", co.Hash).Error
-	if err == nil {
-		if c.Downloaded {
-			return &co
-		}
-	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+	// Find all chunks that have this hash, make requests if we're missing any of them
+	var chunks []chunk
+	err = b.database.Select("id", "downloaded").Where("hash = ?", co.Hash).Find(&chunks).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up chunks")
+	}
+	if len(chunks) == 0 {
 		log.WithFields(log.Fields{
 			"hash": co.Hash,
 			"peer": peer,
-		}).Warn("received chunk offer for unknown chunk")
+		}).Warn("received chunk offer for hash that we do not need")
 		return &co
-	} else {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error looking up chunk")
 	}
-
-	b.makeChunkRequests()
-
-	return nil
+	allDownloaded := true
+	for _, c := range chunks {
+		if !c.Downloaded {
+			allDownloaded = false
+			break
+		}
+	}
+	if !allDownloaded {
+		b.makeChunkRequests()
+	}
+	return &co
 }
 
 type chunkRequest struct {
@@ -357,7 +391,7 @@ func (b *bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 		}()
 	}
 
-	// Find the chunk that is being requested
+	// Find the chunk data that is being requested
 	var c chunk
 	err = b.database.First(&c, "hash = ?", cr.Hash).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -372,46 +406,55 @@ func (b *bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 		}).Fatal("database error looking up chunk")
 	}
 
-	// Find the file that this chunk is a part of
-	// TODO: if multiple chunks share this hash, we need to know if the user can get the any of the files that use those chunks
-	var f file
-	err = b.database.First(&f, "id = ?", c.FileID).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	// Make sure a file with this chunk should be sent to the user
+	if b.peerCanHaveChunk(peer, cr.Hash) {
+		b.sendDirect(peer, &c)
+	} else {
 		log.WithFields(log.Fields{
-			"peer": peer,
-			"id":   c.FileID,
-		}).Warn("peer sent request for chunk that is not part of a file")
-		return nil
-	} else if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error looking up file")
+			"peer":    peer,
+			"file_id": c.FileID,
+			"hash":    cr.Hash,
+		}).Warn("peer requested valid chunk they are not allowed to have")
 	}
 
-	// Make sure this peer is allowed to have this file
-	/*
-		allowed := b.getBroadcastScope(&f)
-		found := false
-		for _, addr := range allowed {
-			if addr == peer {
-				found = true
-				break
+	return nil
+}
+
+func (b *bounce) peerCanHaveChunk(peer, hash string) bool {
+	// Get all the files that have a chunk with this hash
+	var chunks []chunk
+	err := b.database.Select("file_id").Where("hash = ?", hash).Find(chunks).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up chunks")
+	}
+
+	for _, c := range chunks {
+		var f file
+		err = b.database.First(&f, "id = ?", c.FileID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"file_id": c.FileID,
+				}).Warn("chunk belongs to file that does not exist")
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up file")
 			}
 		}
-		if !found {
-			log.WithFields(log.Fields{
-				"peer":    peer,
-				"file_id": c.FileID,
-				"hash":    cr.Hash,
-			}).Warn("peer requested valid chunk they are not allowed to have")
-			return nil
+
+		addrs := b.getBroadcastScope(&f, false)
+		for _, addr := range addrs {
+			if addr == peer {
+				return true
+			}
 		}
-	*/
+	}
 
-	// Directly send the chunk to this peer
-	b.sendDirect(peer, &c)
-
-	return nil
+	return false
 }
 
 type chunk struct {
@@ -449,6 +492,8 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 	chunkMutex.Lock()
 	defer chunkMutex.Unlock()
 
+	// TODO: lock the chunk request mutex as well?
+
 	// Track the last time this peer sent a chunk
 	lastChunkTimeMutex.Lock()
 	lastChunkTime[peer] = time.Now().Unix()
@@ -468,52 +513,50 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 	hash := blake3.Sum256(c.Data)
 
 	// Find any chunks in the database that have this hash and are empty
-	var targetChunk chunk
-	err = b.database.Where("hash = ? AND downloaded = ?", hashString(hash), false).First(&targetChunk).Error // TODO: find all
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// We already have this chunk data, or someone sent a chunk we didn't ask for
-			return nil
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up chunk")
-		}
-	}
-
-	// Update the data in the empty chunk TODO: if this file is going to be stored on disk, write it there
-	err = b.database.Model(&targetChunk).Update("data", c.Data).Error
+	var targetChunks []chunk
+	err = b.database.Where("hash = ? AND downloaded = ?", hashString(hash), false).Find(&targetChunks).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("database error updating chunk data")
+		}).Fatal("database error looking up chunks")
 	}
-
-	// Update the download status
-	err = b.database.Model(&targetChunk).Update("downloaded", true).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("database error updating chunk data")
-	}
-
-	// Mark the file as downloaded if this was the last chunk to get
-	// TODO: need to check every file that uses this chunk
-	var otherEmptyChunks []chunk
-	err = b.database.Where("file_id = ? AND downloaded = ?", targetChunk.FileID, false).Find(&otherEmptyChunks).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error checking for remaining empty chunks")
-	}
-	if len(otherEmptyChunks) == 0 {
-		err = b.database.Table("files").Where("id = ?", targetChunk.FileID).Update("downloaded", true).Error
+	for _, targetChunk := range targetChunks {
+		// Update the data in the empty chunk
+		err = b.database.Model(&targetChunk).Update("data", c.Data).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("database error setting file as downloaded")
+			}).Error("database error updating chunk data")
 		}
-		b.userInterface.FileCompleted(targetChunk.FileID)
+
+		// Update the download status
+		err = b.database.Model(&targetChunk).Update("downloaded", true).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("database error updating chunk data")
+		}
+
+		// Mark the file as downloaded if this was the last chunk to get
+		var otherEmptyChunks []chunk
+		err = b.database.Where("file_id = ? AND downloaded = ?", targetChunk.FileID, false).Find(&otherEmptyChunks).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error checking for remaining empty chunks")
+		}
+		if len(otherEmptyChunks) == 0 {
+			err = b.database.Table("files").Where("id = ?", targetChunk.FileID).Update("downloaded", true).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error setting file as downloaded")
+			}
+			b.userInterface.FileCompleted(targetChunk.FileID)
+		}
+
+		// Offer this chunk
+		b.offerChunk(c)
 	}
 
 	return nil
@@ -546,7 +589,6 @@ func (b *bounce) makeChunkRequests() {
 			if c.Downloaded {
 				continue
 			}
-
 			// Find all the offers where we just requested this chunk a few seconds ago, or where we have requested this chunk before from a peer that is
 			// actively delivering chunks right now.  If either exists, we don't need to make any additional requests for this chunk.
 			activeOffers := []chunkOffer{}
@@ -621,11 +663,11 @@ func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID) (
 	fileID := uuid.New()
 	hash := blake3.Sum256(data)
 
-	if validImage(data) {
-		// TODO: add blurhash
-	}
+	//if validImage(data) {
+	//	// TODO: add blurhash
+	//}
 
-	chunks, hashList := splitChunks(data)
+	chunks, hashList := splitChunks(fileID, data)
 
 	f := &file{
 		ID:          fileID,
@@ -659,39 +701,62 @@ func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID) (
 	b.broadcast(f)
 
 	for _, c := range f.Chunks {
-		// Create the chunk offer
-		co := &chunkOffer{
-			ID:          uuid.New(),
-			Scope:       scope,
-			Destination: destination,
-			Author:      b.currentUserID(),
-			Hash:        c.Hash,
-			Location:    b.network.Address(),
-			Timestamp:   time.Now().Unix(),
-		}
-
-		// Sign it
-		co.OriginalPayload, err = msgpack.Marshal(co)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling chunk offer")
-		}
-		sc := b.createSignedContainer(co.OriginalPayload)
-		co.Signature = sc.Signature
-		co.Signer = sc.Signer
-
-		// Save and broadcast it
-		err = b.database.Create(co).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error saving new chunk offer")
-		}
-		b.broadcast(co)
+		b.offerChunk(c)
 	}
 
 	return fileID, nil
+}
+
+func (b *bounce) offerChunk(c chunk) {
+	// Get the scope and destination from the chunk's file
+	var f file
+	err := b.database.Select("scope", "destination").Where("id = ?", c.FileID).First(&f).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"chunk_id": c.ID,
+				"hash":     c.Hash,
+				"file_id":  c.FileID,
+			}).Error("file not found when trying to offer chunk, cannot attach scope and destination to offer")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up file")
+		}
+	}
+
+	// Create the chunk offer
+	co := &chunkOffer{
+		ID:          uuid.New(),
+		Author:      b.currentUserID(),
+		FileID:      c.FileID,
+		Hash:        c.Hash,
+		Location:    b.network.Address(),
+		Timestamp:   time.Now().Unix(),
+		Scope:       f.Scope,
+		Destination: f.Destination,
+	}
+
+	// Sign it
+	co.OriginalPayload, err = msgpack.Marshal(co)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling chunk offer")
+	}
+	sc := b.createSignedContainer(co.OriginalPayload)
+	co.Signature = sc.Signature
+	co.Signer = sc.Signer
+
+	// Save and broadcast it
+	err = b.database.Create(co).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error saving new chunk offer")
+	}
+	b.broadcast(co)
 }
 
 func (b *bounce) getFileData(fileID uuid.UUID) ([]byte, error) {
@@ -717,39 +782,14 @@ func (b *bounce) getFileData(fileID uuid.UUID) ([]byte, error) {
 	return data, nil
 }
 
-/*
-func (b *bounce) pruneChunks(fileID uuid.UUID) {
-	var orphanedChunks []chunk
-	err := b.database.
-		Select("chunks.id").
-		Joins("LEFT JOIN files ON chunks.file_id == files.id").
-		Where("files.id IS NULL").
-		Find(&orphanedChunks).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error finding orphaned chunks")
-	}
-
-	if len(orphanedChunks) > 0 {
-		err = b.database.Delete(&orphanedChunks).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error deleting orphaned chunks")
-		}
-	}
-}
-*/
-
-func splitChunks(data []byte) ([]chunk, string) {
+func splitChunks(fileID uuid.UUID, data []byte) ([]chunk, string) {
 	chunks := []chunk{}
 	hashes := []string{}
 
 	index := 0
 	for {
 		if len(data) < fileChunkSize {
-			c := makeChunk(index, data)
+			c := makeChunk(fileID, index, data)
 			chunks = append(chunks, c)
 			hashes = append(hashes, c.Hash)
 			break
@@ -758,7 +798,7 @@ func splitChunks(data []byte) ([]chunk, string) {
 		chunkData := data[:fileChunkSize]
 		data = data[fileChunkSize:]
 
-		c := makeChunk(index, chunkData)
+		c := makeChunk(fileID, index, chunkData)
 		chunks = append(chunks, c)
 		hashes = append(hashes, c.Hash)
 
@@ -768,7 +808,7 @@ func splitChunks(data []byte) ([]chunk, string) {
 	return chunks, strings.Join(hashes, ",")
 }
 
-func makeChunk(index int, data []byte) chunk {
+func makeChunk(fileID uuid.UUID, index int, data []byte) chunk {
 	hash := blake3.Sum256(data)
 	chunkID, err := uuid.FromBytes(hash[:16])
 	if err != nil {
@@ -776,7 +816,7 @@ func makeChunk(index int, data []byte) chunk {
 	}
 
 	return chunk{
-		ID:    chunkID,
+		ID:    xor(fileID, chunkID),
 		Hash:  hashString(hash),
 		Index: index,
 		Data:  data,

@@ -174,7 +174,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		lastTimestamp = br.getTimestamp()
 
 		// Keep track of any device we would broadcast this to so that we can reference them
-		destinations := b.getBroadcastScope(br)
+		destinations := b.getBroadcastScope(br, true)
 		for _, dev := range destinations {
 			devicesToReference[dev] = true
 		}
