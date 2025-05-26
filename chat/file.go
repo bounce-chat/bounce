@@ -423,7 +423,7 @@ func (b *bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 func (b *bounce) peerCanHaveChunk(peer, hash string) bool {
 	// Get all the files that have a chunk with this hash
 	var chunks []chunk
-	err := b.database.Select("file_id").Where("hash = ?", hash).Find(chunks).Error
+	err := b.database.Select("file_id").Where("hash = ?", hash).Find(&chunks).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
