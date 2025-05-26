@@ -633,8 +633,10 @@ func (fyneUI *Fyne) UserImported(u chat.User) {
 func (fyneUI *Fyne) FileCompleted(fileID uuid.UUID) {
 	// TODO: check if anything is waiting for this file and refresh it
 	for _, g := range fyneUI.groups {
-		g.editIcon.Refresh()
-		g.headerIcon.Refresh()
-		g.button.threadImage.Refresh()
+		fyne.Do(func() {
+			g.editIcon.Refresh()
+			g.headerIcon.Refresh()
+			g.button.threadImage.Refresh()
+		})
 	}
 }

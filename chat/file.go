@@ -556,7 +556,7 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 		}
 
 		// Offer this chunk
-		b.offerChunk(c)
+		b.offerChunk(targetChunk)
 	}
 
 	return nil
