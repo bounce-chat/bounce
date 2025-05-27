@@ -1,7 +1,9 @@
 package chat
 
 import (
+	"bytes"
 	"errors"
+	"image"
 	"strings"
 	"sync"
 	"time"
@@ -65,6 +67,10 @@ func (g *group) AfterDelete(tx *gorm.DB) error {
 		return err
 	}
 	err = tx.Exec("DELETE FROM group_users WHERE group_id = ?", g.ID).Error
+	if err != nil {
+		return err
+	}
+	err = tx.Where("type = ? AND destination =?", fileTypeGroupImage, g.ID).Delete(&file{}).Error
 	if err != nil {
 		return err
 	}
@@ -327,6 +333,11 @@ func validGroupName(name string) bool {
 	}
 
 	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= MaximumNameLength
+}
+
+func validGroupImage(data []byte) bool {
+	_, _, err := image.Decode(bytes.NewReader(data))
+	return err == nil
 }
 
 func (b *bounce) updateLastGroupActivity(groupID uuid.UUID, timestamp int64) {

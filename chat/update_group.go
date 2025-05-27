@@ -479,11 +479,11 @@ func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
 }
 
 func (b *bounce) setGroupImage(groupID uuid.UUID, image []byte) error {
-	if !validImage(image) {
+	if !validGroupImage(image) {
 		return errInvalidImage
 	}
 
-	fileID, err := b.distributeFile(image, scopeGroup, groupID)
+	fileID, err := b.distributeFile(image, scopeGroup, groupID, fileTypeGroupImage, groupID)
 	if err != nil {
 		return err
 	}

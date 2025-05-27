@@ -321,6 +321,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 	if waitingForInitialSyncFrom == peer {
 		waitingForInitialSyncFrom = ""
 		b.userInterface.InitialSyncComplete()
+		b.makeChunkRequests()
 	}
 
 	return nil

@@ -22,32 +22,37 @@ var lastChunkTimeMutex sync.Mutex
 var writingChunk = map[string]bool{}
 var writingChunkMutex sync.Mutex
 
-//const embeddedFileLimit = 1024 * 1024 * 10 // 10MiB
-const fileChunkSize = 1024 * 1024      // 1MiB
-const expectedChunkDeliverySeconds = 1 // 100KiB/s
+const embeddedFileLimit = 1024 * 1024 * 20 // 20MiB
+const fileChunkSize = 1024 * 1024          // 1MiB
+const expectedChunkDeliverySeconds = 1     // 100KiB/s
+
+const fileTypeGroupImage = 0
+const fileTypeUserImage = 1
+const fileTypeMessageAttachment = 2
 
 var fileMutex sync.Mutex
 var chunkOfferMutex sync.Mutex
 var chunkMutex sync.Mutex
 var chunkRequestMutex sync.Mutex
 
-//var ErrFileTooBig = errors.New("file is too large")
+var ErrFileTooBig = errors.New("file is too large")
 var errFileNotFound = errors.New("file not found")
 
 type file struct {
-	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Scope       int
-	Destination uuid.UUID
-	Author      uuid.UUID
-	Hash        string
-	Size        int
-	ChunkSize   int
-	Wanted      bool `msgpack:"-"`
-	Downloaded  bool `msgpack:"-"`
-	Timestamp   int64
-	//Type      int
-	//BlurHash        string
+	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name            string
+	Type            int
+	AttachedTo      uuid.UUID
+	Hash            string
+	Size            int
+	ChunkSize       int
 	HashList        string
+	Wanted          bool `msgpack:"-"`
+	Downloaded      bool `msgpack:"-"`
+	Scope           int
+	Destination     uuid.UUID
+	Author          uuid.UUID
+	Timestamp       int64
 	Chunks          []chunk `msgpack:"-"`
 	Signer          string  `msgpack:"-" gorm:"not null"`
 	OriginalPayload []byte  `msgpack:"-" gorm:"not null"`
@@ -117,7 +122,14 @@ func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 	fileMutex.Lock()
 	defer fileMutex.Unlock()
 
-	// TODO: make sure we know about the device?
+	// Look up the device that sent it
+	_, exists := b.getDeviceFromAddress(peer)
+	if !exists {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("ignoring a file sent from an unknown device")
+		return nil
+	}
 
 	// Verify and unpack the signed container
 	sc, err := b.unpackSignedContainer(payload)
@@ -139,8 +151,15 @@ func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 	f.Signature = sc.Signature
 	f.Signer = sc.Signer
 
-	// TODO: make sure the signer is the author
-	// TODO: make sure this wasn't created by a revoked device?
+	// Make sure that the user that created this signed container is the actor
+	if !b.signedByUser(sc, f.Author) {
+		log.WithFields(log.Fields{
+			"peer":           peer,
+			"author":         f.Author,
+			"signing_device": sc.Signer,
+		}).Warn("ignoring file that was not signed by the supposed author")
+		return nil
+	}
 
 	// Make sure the device that signed this message belongs to the author
 	if !b.signedByUser(sc, f.Author) {
@@ -150,6 +169,31 @@ func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 			"signer": sc.Signer,
 			"author": f.Author,
 		}).Warn("received file signed by a different user than the author, ignoring")
+		return nil
+	}
+
+	// Make sure the signing device was not revoked before creating this
+	var signerDevice device
+	err = b.database.Select("revoked_at").Where("address = ?", f.Signer).First(&signerDevice).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"address": f.Signer,
+			}).Error("signer device not found for file")
+			return nil
+		} else {
+			log.WithFields(log.Fields{
+				"address": f.Signer,
+				"error":   err.Error(),
+			}).Fatal("database error looking up signing device")
+		}
+	}
+	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < f.Timestamp {
+		log.WithFields(log.Fields{
+			"id":     f.ID,
+			"signer": f.Signer,
+		}).Warn("ignoring file signed by revoked device")
+		go b.sendAck(peer, typeFile, f.ID)
 		return nil
 	}
 
@@ -173,24 +217,38 @@ func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 		return nil
 	}
 
-	// TODO: check that the purpose makes sense?  i.e. it's for a group image and the author is a member, etc
-
 	// Create the empty chunks of the file
 	for i, chunkHash := range strings.Split(f.HashList, ",") {
 		chunkID, err := uuid.FromBytes([]byte(chunkHash)[:16])
 		if err != nil {
 			log.Fatal("cannot make uuid from bytes for chunk")
 		}
-		// TODO: if this data is already on disk in another chunk, copy it into this chunk
-		f.Chunks = append(f.Chunks, chunk{
+		c := chunk{
 			ID:    xor(f.ID, chunkID),
 			Hash:  chunkHash,
 			Index: i,
-		})
+		}
+
+		// If a chunk with the same data already exists in the database, copy the data over and mark this one as downloaded
+		var preexistingChunk chunk
+		err = b.database.Where("hash =? AND downloaded = ?", chunkHash, true).First(&preexistingChunk).Error
+		if err == nil {
+			c.Data = preexistingChunk.Data
+			c.Downloaded = true
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking for preexisting chunk when creating file")
+		}
+
+		f.Chunks = append(f.Chunks, c)
 	}
 
-	// Save the file
-	f.Wanted = true // TODO: don't start downloads for large files that are part of a message until the user hits the download icon
+	// We don't want to auto-download message attachments from threads that aren't regularly read
+	if f.Type == fileTypeGroupImage {
+		f.Wanted = true
+	}
+
 	err = b.database.Create(&f).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -289,8 +347,15 @@ func (b *bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) bro
 	co.Signature = sc.Signature
 	co.Signer = sc.Signer
 
-	// TODO: make sure the author signed this and owns the location
-	// TODO: if the file exists, make sure the scope and destinations line up?
+	// Make sure that the user that created this signed container is the actor
+	if !b.signedByUser(sc, co.Author) {
+		log.WithFields(log.Fields{
+			"peer":           peer,
+			"author":         co.Author,
+			"signing_device": sc.Signer,
+		}).Warn("ignoring chunk offer that was not signed by the supposed author")
+		return nil
+	}
 
 	// Check if we already have this offer
 	var existingChunkOffer chunkOffer
@@ -320,10 +385,8 @@ func (b *bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) bro
 		}).Fatal("database error looking up chunks")
 	}
 	if len(chunks) == 0 {
-		log.WithFields(log.Fields{
-			"hash": co.Hash,
-			"peer": peer,
-		}).Warn("received chunk offer for hash that we do not need")
+		// Sometimes chunk offers come in on the wire before the files do, so we might
+		// get offers before we know about the files they are for
 		return &co
 	}
 	allDownloaded := true
@@ -491,8 +554,8 @@ func (c *chunk) getPayload() []byte {
 func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcastable {
 	chunkMutex.Lock()
 	defer chunkMutex.Unlock()
-
-	// TODO: lock the chunk request mutex as well?
+	chunkRequestMutex.Lock()
+	defer chunkRequestMutex.Unlock()
 
 	// Track the last time this peer sent a chunk
 	lastChunkTimeMutex.Lock()
@@ -659,18 +722,20 @@ func (b *bounce) makeChunkRequests() {
 	}
 }
 
-func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID) (uuid.UUID, error) { // TODO: different function for files on disk?
+func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID, fileType int, attachment uuid.UUID) (uuid.UUID, error) {
+	if len(data) > embeddedFileLimit {
+		return uuid.Nil, ErrFileTooBig
+	}
+
 	fileID := uuid.New()
 	hash := blake3.Sum256(data)
-
-	//if validImage(data) {
-	//	// TODO: add blurhash
-	//}
 
 	chunks, hashList := splitChunks(fileID, data)
 
 	f := &file{
 		ID:          fileID,
+		Type:        fileType,
+		AttachedTo:  attachment,
 		Hash:        hashString(hash),
 		Size:        len(data),
 		ChunkSize:   fileChunkSize,
@@ -825,9 +890,4 @@ func makeChunk(fileID uuid.UUID, index int, data []byte) chunk {
 
 func hashString(hash [32]byte) string {
 	return hex.EncodeToString(hash[:])
-}
-
-func validImage(data []byte) bool {
-	// TODO
-	return true
 }
