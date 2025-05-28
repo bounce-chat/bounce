@@ -259,8 +259,8 @@ func (fyneUI *Fyne) clearNewGroupSelectors() {
 	fyneUI.newGroupWidgets.createButton.Enable()
 	fyneUI.newGroupWidgets.nameEntry.Enable()
 
-	fyneUI.newGroupWidgets.icon.images = []uuid.UUID{}
 	fyneUI.newGroupWidgets.iconData = []byte{}
+	fyneUI.newGroupWidgets.icon.images = []uuid.UUID{}
 	fyneUI.newGroupWidgets.icon.Refresh()
 
 	fyneUI.newGroupWidgets.nameEntry.Text = ""

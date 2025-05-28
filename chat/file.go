@@ -249,6 +249,18 @@ func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 		f.Wanted = true
 	}
 
+	// If all of the chunks already existed, this file might already be downloaded
+	allDownloaded := true
+	for _, c := range f.Chunks {
+		if !c.Downloaded {
+			allDownloaded = false
+			break
+		}
+	}
+	if allDownloaded {
+		f.Downloaded = true
+	}
+
 	err = b.database.Create(&f).Error
 	if err != nil {
 		log.WithFields(log.Fields{
