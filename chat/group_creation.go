@@ -285,9 +285,6 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		}).Fatal("error in transaction for saving a new group")
 	}
 
-	// Start tracking this group's state in the consensus store
-	b.reloadGroupConsensus(g.ID)
-
 	// Ack and delivery track all of the devices included in this group creation
 	for _, u := range g.Users {
 		for _, dev := range u.Devices {
@@ -352,6 +349,9 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 
 	// Notify the peering engine that we want to be connected to this group right now
 	b.groupConnectionDesired(g.ID)
+
+	// Start tracking this group's state in the consensus store
+	b.reloadGroupConsensus(g.ID)
 
 	return &gc
 }

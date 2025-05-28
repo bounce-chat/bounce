@@ -21,6 +21,7 @@ import (
 type newGroupWidgets struct {
 	icon                          *defaultImage
 	iconData                      []byte
+	iconName                      binding.String
 	nameEntry                     *widget.Entry
 	selectedUsersContainer        *container.Scroll
 	pendingUsersList              *container.Scroll
@@ -156,7 +157,7 @@ func (fyneUI *Fyne) buildNewGroup() {
 		cancelButton,
 	)
 
-	groupIconName := binding.NewString()
+	fyneUI.newGroupWidgets.iconName = binding.NewString()
 	fyneUI.newGroupWidgets.nameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
 		str, trimmed := trimLeadingSpace(str)
@@ -178,15 +179,15 @@ func (fyneUI *Fyne) buildNewGroup() {
 		// Set the group icon
 		r, _ := utf8.DecodeRuneInString(str)
 		if r == utf8.RuneError {
-			groupIconName.Set("")
+			fyneUI.newGroupWidgets.iconName.Set("")
 		} else {
-			groupIconName.Set(string(r))
+			fyneUI.newGroupWidgets.iconName.Set(string(r))
 		}
 	}
 	fileGetter := func(_ uuid.UUID) ([]byte, error) {
 		return fyneUI.newGroupWidgets.iconData, nil
 	}
-	fyneUI.newGroupWidgets.icon = newDefaultImage(uuid.Nil, groupIconName, 128, fileGetter, func() {
+	fyneUI.newGroupWidgets.icon = newDefaultImage(uuid.Nil, fyneUI.newGroupWidgets.iconName, 128, fileGetter, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
@@ -259,6 +260,7 @@ func (fyneUI *Fyne) clearNewGroupSelectors() {
 	fyneUI.newGroupWidgets.createButton.Enable()
 	fyneUI.newGroupWidgets.nameEntry.Enable()
 
+	fyneUI.newGroupWidgets.iconName.Set("")
 	fyneUI.newGroupWidgets.iconData = []byte{}
 	fyneUI.newGroupWidgets.icon.images = []uuid.UUID{}
 	fyneUI.newGroupWidgets.icon.Refresh()
