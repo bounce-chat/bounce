@@ -414,7 +414,7 @@ type UICallbacks struct {
 	TypingInDirectMessage func(userID uuid.UUID)
 	TypingInGroup         func(groupID uuid.UUID)
 
-	CreateGroup                     func(Group) error                               // Create a new group
+	CreateGroup                     func(g Group, image []byte) error               // Create a new group
 	AddUser                         func(groupID, userID uuid.UUID) error           // The user wants to add another user to a group
 	RemoveUser                      func(groupID, userID uuid.UUID) error           // User wants to remove a user from a group
 	RenameGroup                     func(groupID uuid.UUID, newName string) error   // The user wants to rename a group

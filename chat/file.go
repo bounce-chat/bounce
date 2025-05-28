@@ -723,11 +723,15 @@ func (b *bounce) makeChunkRequests() {
 }
 
 func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID, fileType int, attachment uuid.UUID) (uuid.UUID, error) {
+	id := uuid.New()
+	return id, b.distributeFileByID(id, data, scope, destination, fileType, attachment)
+}
+
+func (b *bounce) distributeFileByID(fileID uuid.UUID, data []byte, scope int, destination uuid.UUID, fileType int, attachment uuid.UUID) error {
 	if len(data) > embeddedFileLimit {
-		return uuid.Nil, ErrFileTooBig
+		return ErrFileTooBig
 	}
 
-	fileID := uuid.New()
 	hash := blake3.Sum256(data)
 
 	chunks, hashList := splitChunks(fileID, data)
@@ -760,7 +764,7 @@ func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID, f
 	f.Signer = sc.Signer
 	err = b.database.Create(f).Error
 	if err != nil {
-		return uuid.Nil, err
+		return err
 	}
 
 	b.broadcast(f)
@@ -769,7 +773,7 @@ func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID, f
 		b.offerChunk(c)
 	}
 
-	return fileID, nil
+	return nil
 }
 
 func (b *bounce) offerChunk(c chunk) {

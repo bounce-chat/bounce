@@ -123,7 +123,7 @@ func (g *group) state() groupState {
 	return gs
 }
 
-func (b *bounce) createGroup(proposedGroup Group) error {
+func (b *bounce) createGroup(proposedGroup Group, iconData []byte) error {
 	if proposedGroup.ID != uuid.Nil {
 		return errors.New("group UUID cannot be set from the UI")
 	}
@@ -177,14 +177,6 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 		return errors.New("cannot create a group with no admins")
 	}
 
-	if len(proposedGroup.Images) > 1 {
-		return errors.New("cannot create a group with more than one past image")
-	}
-	imagesStrings := []string{}
-	for _, imageID := range proposedGroup.Images {
-		imagesStrings = append(imagesStrings, imageID.String())
-	}
-
 	adminStrings := []string{}
 	adminMap := map[uuid.UUID]bool{}
 	for _, adminID := range proposedGroup.Admins {
@@ -206,11 +198,15 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 		return errors.New("notification muting for group cannot be set by the UI during group creation")
 	}
 
+	iconID := uuid.Nil
+	if len(iconData) > 0 {
+		iconID = uuid.New()
+	}
+
 	creationTime := time.Now().Unix()
 	g := group{
 		ID:                     uuid.Nil,
 		Name:                   proposedGroup.Name,
-		Images:                 strings.Join(imagesStrings, ","),
 		CreatedBy:              b.currentUserID(),
 		CreatedAt:              creationTime,
 		Retention:              proposedGroup.Retention,
@@ -220,6 +216,11 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 		RestrictGroupEdits:     proposedGroup.RestrictGroupEdits,
 		RestrictPosting:        proposedGroup.RestrictPosting,
 		LastActivity:           time.Now().Unix(),
+	}
+	if len(iconData) > 0 {
+		g.Images = iconID.String()
+	} else {
+		g.Images = ""
 	}
 
 	groupData, err := msgpack.Marshal(g)
@@ -250,6 +251,13 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 		}).Fatal("cannot create UUID from hash of group data")
 	}
 	g.ID = groupID
+
+	if len(iconData) > 0 {
+		err := b.distributeFileByID(iconID, iconData, scopeGroup, groupID, fileTypeGroupImage, groupID)
+		if err != nil {
+			return errors.New("error distributing new group image: " + err.Error())
+		}
+	}
 
 	gc := groupCreation{
 		ID:        groupID,
@@ -287,10 +295,9 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 
 	b.broadcast(&gc)
 
-	go b.userInterface.OpenNewGroupChat(Group{
+	uiGroup := Group{
 		ID:                     g.ID,
 		Name:                   g.Name,
-		Images:                 proposedGroup.Images,
 		Retention:              proposedGroup.Retention,
 		Users:                  uiUsers,
 		Admins:                 proposedGroup.Admins,
@@ -299,7 +306,12 @@ func (b *bounce) createGroup(proposedGroup Group) error {
 		RestrictUserManagement: proposedGroup.RestrictUserManagement,
 		RestrictGroupEdits:     proposedGroup.RestrictGroupEdits,
 		RestrictPosting:        proposedGroup.RestrictPosting,
-	})
+	}
+	if len(iconData) > 0 {
+		uiGroup.Images = []uuid.UUID{iconID}
+	}
+
+	go b.userInterface.OpenNewGroupChat(uiGroup)
 
 	return nil
 }

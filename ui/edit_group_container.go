@@ -70,6 +70,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			}
 
 			// TODO: make sure data is a valid image, allow for editing, etc
+			// TODO: don't actualy set it until they hit save?
 
 			fyneUI.callbacks.SetGroupImage(g.id, data)
 		}, fyneUI.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent

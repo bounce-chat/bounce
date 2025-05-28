@@ -319,9 +319,25 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 
 		adminUUIDs = append(adminUUIDs, adminID)
 	}
+	imageUUIDs := []uuid.UUID{}
+	if len(g.Images) > 0 {
+		for _, imageIDString := range strings.Split(g.Images, ",") {
+			imageID, err := uuid.Parse(imageIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": g.ID,
+					"images":   g.Images,
+				}).Fatal("invalid UUID in group image list")
+			}
+
+			imageUUIDs = append(imageUUIDs, imageID)
+		}
+	}
 	b.userInterface.NewGroupChat(Group{
 		ID:                     g.ID,
 		Name:                   g.Name,
+		Images:                 imageUUIDs,
 		Users:                  uiUsers,
 		Admins:                 adminUUIDs,
 		CreatedBy:              g.CreatedBy,
