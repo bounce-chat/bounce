@@ -36,8 +36,6 @@ func (c *circle) At(x, y int) color.Color {
 }
 
 func makeCircle(src image.Image) image.Image {
-	cropped := image.NewRGBA(src.Bounds())
-
 	radius := 0
 	if src.Bounds().Dx() > src.Bounds().Dy() {
 		radius = src.Bounds().Dy() / 2
@@ -50,16 +48,20 @@ func makeCircle(src image.Image) image.Image {
 		Y: src.Bounds().Dy() / 2,
 	}
 
+	c := &circle{
+		center: center,
+		radius: radius,
+	}
+
+	cropped := image.NewRGBA(c.Bounds())
+
 	draw.DrawMask(
 		cropped,
-		cropped.Bounds(),
+		src.Bounds(),
 		src,
-		image.ZP,
-		&circle{
-			center: center,
-			radius: radius,
-		},
-		image.ZP,
+		image.Point{},
+		c,
+		image.Point{},
 		draw.Over,
 	)
 
