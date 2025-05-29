@@ -290,19 +290,20 @@ func (fyneUI *Fyne) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 	return &threadItem{
 		id: gm.ID,
 		widgetData: &chatBubbleData{
-			id:        gm.ID,
-			frameType: chat.TypeGroupMessage,
-			author:    gm.Author,
-			username:  username,
-			initials:  initials,
-			text:      gm.Text,
-			outgoing:  outgoing,
-			direct:    false,
-			writtenAt: gm.WrittenAt,
-			expiresAt: gm.ExpiresAt,
-			seen:      gm.Seen,
-			state:     state,
-			mergeMode: mergeModeStandalone, //TODO
+			id:         gm.ID,
+			frameType:  chat.TypeGroupMessage,
+			author:     gm.Author,
+			iconImages: u.images,
+			username:   username,
+			initials:   initials,
+			text:       gm.Text,
+			outgoing:   outgoing,
+			direct:     false,
+			writtenAt:  gm.WrittenAt,
+			expiresAt:  gm.ExpiresAt,
+			seen:       gm.Seen,
+			state:      state,
+			mergeMode:  mergeModeStandalone, //TODO
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {

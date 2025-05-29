@@ -305,6 +305,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		initialDMStates := map[uuid.UUID]chat.DMState{}
 		for _, u := range state.Users {
 			uiUser := makeUser(u.ID, u.Name)
+			uiUser.images = u.Images
 			fyneUI.users.add(uiUser)
 			initialDMStates[u.ID] = u.State
 		}
@@ -667,6 +668,14 @@ func (fyneUI *Fyne) FileCompleted(fileID uuid.UUID) {
 			g.editIcon.Refresh()
 			g.headerIcon.Refresh()
 			g.button.threadImage.Refresh()
+		})
+	}
+
+	for _, dm := range fyneUI.dms {
+		fyne.Do(func() {
+			dm.editIcon.Refresh()
+			dm.headerIcon.Refresh()
+			dm.button.threadImage.Refresh()
 		})
 	}
 }

@@ -33,8 +33,9 @@ type typingIndicator struct {
 
 func newTypingIndicator(mode int, fileGetter func(uuid.UUID) ([]byte, error)) *typingIndicator {
 	ti := &typingIndicator{
-		mode:  mode,
-		icons: []*defaultImage{},
+		mode:       mode,
+		icons:      []*defaultImage{},
+		fileGetter: fileGetter,
 		currentlyTypingUser: widget.NewRichText(
 			&widget.TextSegment{
 				Style: widget.RichTextStyle{
@@ -99,9 +100,11 @@ func (ti *typingIndicator) showUser(u *user) {
 		}
 	}
 
+	userIcon := newDefaultImage(u.id, u.initials, theme.IconInlineSize(), ti.fileGetter, nil)
+	userIcon.images = u.images
 	ti.icons = append(
 		ti.icons,
-		newDefaultImage(u.id, u.initials, theme.IconInlineSize(), ti.fileGetter, nil),
+		userIcon,
 	)
 	ti.users = append(
 		ti.users,
