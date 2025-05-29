@@ -162,7 +162,7 @@ func (b *bounce) getSyncScope(br broadcastable, excludeDelivered bool) []string 
 		if dev.Address == b.network.Address() {
 			continue
 		}
-		if b.isDeliveredTo(br, dev.Address) {
+		if excludeDelivered && b.isDeliveredTo(br, dev.Address) {
 			continue
 		}
 		broadcastTargets = append(broadcastTargets, dev.Address)
@@ -275,7 +275,7 @@ func (b *bounce) getGlobalScope(br broadcastable, excludeDelivered bool) []strin
 				// Skip connections in the device pool if we don't have a device saved for them
 				continue
 			}
-			if b.isDeliveredTo(br, address) {
+			if excludeDelivered && b.isDeliveredTo(br, address) {
 				continue
 			}
 			broadcastTargets = append(broadcastTargets, address)
