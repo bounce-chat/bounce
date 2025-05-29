@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"io"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,12 +19,15 @@ import (
 
 type directMessage struct {
 	user                             *user
+	images                           []uuid.UUID
 	notificationsMutedUntil          int64 // TODO: fyne feature request/PR: support binding int64 for time.Time
 	retention                        int64
 	overrideReadReceiptSetting       bool
 	readReceiptsEnabled              bool
 	overrideTypingIndicatorSetting   bool
 	typingIndicatorsEnabled          bool
+	editIcon                         *defaultImage
+	headerIcon                       *defaultImage
 	editContainer                    *fyne.Container
 	view                             *fyne.Container
 	header                           *fyne.Container
@@ -162,7 +166,7 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 	})
 	editButton.Importance = widget.LowImportance
 
-	userIconCanvas := newDefaultImage(user.id, user.initials, 32, fyneUI.callbacks.GetFileData, nil) // TODO: get size from theme
+	dm.headerIcon = newDefaultImage(user.id, user.initials, 32, fyneUI.callbacks.GetFileData, nil) // TODO: get size from theme
 
 	userLabelText := widget.NewLabelWithData(user.name)
 
@@ -175,12 +179,12 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 
 		userLabel = container.NewHBox(
 			backButton,
-			userIconCanvas,
+			dm.headerIcon,
 			userLabelText,
 		)
 	} else {
 		userLabel = container.NewHBox(
-			userIconCanvas,
+			dm.headerIcon,
 			userLabelText,
 		)
 	}
@@ -307,7 +311,38 @@ func (fyneUI *Fyne) showEditDMContainer(dm *directMessage) {
 }
 
 func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
-	threadIcon := newDefaultImage(dm.user.id, dm.user.initials, 128, fyneUI.callbacks.GetFileData, nil)
+	var selectImage func()
+	if dm.user.id == fyneUI.profile.id {
+		selectImage = func() {
+			dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+				if reader == nil {
+					return
+				}
+
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Debug("error selecting new profile image")
+					return
+				}
+
+				data, err := io.ReadAll(reader)
+				reader.Close()
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Debug("error reading new profile image")
+					return
+				}
+
+				// TODO: make sure data is a valid image, allow for editing, etc
+				// TODO: don't actualy set it until they hit save?
+
+				fyneUI.callbacks.UpdateProfileImage(data)
+			}, fyneUI.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
+		}
+	}
+	dm.editIcon = newDefaultImage(dm.user.id, dm.user.initials, 128, fyneUI.callbacks.GetFileData, selectImage)
 
 	username := widget.NewLabelWithData(dm.user.name)
 
@@ -472,7 +507,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	)
 
 	editDMFeatures := container.NewVBox(
-		container.NewCenter(threadIcon),
+		container.NewCenter(dm.editIcon),
 		container.NewCenter(username),
 		dm.notificationsEnabledCheck,
 		widget.NewLabel("Disappearing Messages"),

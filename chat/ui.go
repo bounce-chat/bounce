@@ -5,10 +5,10 @@ import (
 )
 
 type User struct {
-	ID    uuid.UUID
-	Name  string
-	Image []byte
-	State DMState
+	ID     uuid.UUID
+	Name   string
+	Images []uuid.UUID
+	State  DMState
 }
 
 type Settings struct {
@@ -256,6 +256,12 @@ type UpdateUserUpdateName struct {
 	Timestamp int64
 }
 
+type UpdateUserUpdateImage struct {
+	ID        uuid.UUID
+	User      uuid.UUID
+	Timestamp int64
+}
+
 type ReadReceipt struct {
 	ID     uuid.UUID
 	Actor  uuid.UUID
@@ -370,8 +376,9 @@ type UI interface {
 	HideTypingIndicator(userID, threadID uuid.UUID)
 
 	// User settings and status
-	SetUserName(uuid.UUID, string)
+	SetUserState(User)
 	UserNameUpdated(UpdateUserUpdateName)
+	UserImageUpdated(UpdateUserUpdateImage)
 	UserOnline(userID uuid.UUID)
 	UserOffline(userID uuid.UUID)
 
@@ -408,7 +415,8 @@ type UICallbacks struct {
 	// The user wants to send a group  message
 	SendGroupMessage func(GroupMessage)
 
-	UpdateProfileName func(string) error
+	UpdateProfileName  func(string) error
+	UpdateProfileImage func([]byte) error
 
 	// Called every time a character is entered into an entry to inform the chat engine to send a typing indicator
 	TypingInDirectMessage func(userID uuid.UUID)

@@ -28,20 +28,20 @@ type threadable interface {
 }
 
 type chatBubbleData struct {
-	id        uuid.UUID
-	frameType string
-	author    uuid.UUID
-	username  string
-	initials  string
-	text      string
-	outgoing  bool
-	direct    bool
-	writtenAt int64
-	expiresAt int64
-	seen      bool
-	state     int
-	mergeMode int
-	//profileButton fyne.CanvasObject
+	id         uuid.UUID
+	frameType  string
+	author     uuid.UUID
+	iconImages []uuid.UUID
+	username   string
+	initials   string
+	text       string
+	outgoing   bool
+	direct     bool
+	writtenAt  int64
+	expiresAt  int64
+	seen       bool
+	state      int
+	mergeMode  int
 }
 
 func (cbd *chatBubbleData) getID() uuid.UUID {
@@ -590,6 +590,33 @@ func (fyneUI *Fyne) userChangedName(id, userID uuid.UUID, oldName, newName strin
 	}
 
 	changeString := oldName + action + newName
+
+	return &threadItem{
+		id: id,
+		widgetData: &statusChangeData{
+			id:           id,
+			frameType:    chat.TypeUpdateUser,
+			author:       userID,
+			timestamp:    timestamp,
+			changeString: changeString,
+			seen:         true,
+		},
+		setButton:      nil,
+		timestamp:      timestamp,
+		dontBumpThread: true,
+	}, nil
+}
+
+func (fyneUI *Fyne) userChangedImage(id, userID uuid.UUID, timestamp int64) (*threadItem, error) {
+	user, ok := fyneUI.users.get(userID)
+	if !ok {
+		return &threadItem{}, errUnknownActor
+	}
+
+	changeString := user.getName() + " changed their profile image"
+	if user.id == fyneUI.profile.id {
+		changeString = "You changed your profile image"
+	}
 
 	return &threadItem{
 		id: id,

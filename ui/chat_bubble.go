@@ -203,6 +203,8 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 			color: uuidToColor(m.author), // TODO: access this color without recreating the whole thing?
 		}))
 		cb.icon.foregroundText.Color = color.RGBA{0xff, 0xff, 0xff, 0xff}
+		cb.icon.id = m.author
+		cb.icon.images = m.iconImages
 		cb.icon.clicked = func() {
 			// TODO: bug: not clickable
 			log.WithFields(log.Fields{

@@ -1,9 +1,7 @@
 package chat
 
 import (
-	"bytes"
 	"errors"
-	"image"
 	"strings"
 	"sync"
 	"time"
@@ -345,11 +343,6 @@ func validGroupName(name string) bool {
 	}
 
 	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= MaximumNameLength
-}
-
-func validGroupImage(data []byte) bool {
-	_, _, err := image.Decode(bytes.NewReader(data))
-	return err == nil
 }
 
 func (b *bounce) updateLastGroupActivity(groupID uuid.UUID, timestamp int64) {

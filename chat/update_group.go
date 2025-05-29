@@ -52,7 +52,6 @@ var errAdminRequired = errors.New("this action can only be performed by admins")
 var errCannotRemoveLastAdmin = errors.New("cannot remove the last admin from a group")
 var errCannotDemoteAdminWhoDeletedGroup = errors.New("admins who deleted group cannot be demoted")
 var errAlreadyDeleted = errors.New("group already deleted")
-var errInvalidImage = errors.New("invalid image data")
 
 //
 // An updateGroup frame changes the settings and status of a group, such as permissions, membership, retention, or notification settings.
@@ -479,7 +478,7 @@ func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
 }
 
 func (b *bounce) setGroupImage(groupID uuid.UUID, image []byte) error {
-	if !validGroupImage(image) {
+	if !validImage(image) {
 		return errInvalidImage
 	}
 

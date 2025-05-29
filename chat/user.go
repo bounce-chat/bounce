@@ -19,6 +19,7 @@ import (
 type user struct {
 	ID                         uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name                       string
+	Images                     string
 	Profile                    bool  `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
 	Retention                  int64 `json:"-" msgpack:"-"`
 	ClearBefore                int64 `json:"-" msgpack:"-"`

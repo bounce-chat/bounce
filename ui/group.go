@@ -585,11 +585,11 @@ func (fyneUI *Fyne) SetGroupState(bounceGroup chat.Group) {
 		}
 
 		g.images = bounceGroup.Images
-		g.editIcon.images = g.images
+		g.editIcon.images = bounceGroup.Images
 		g.editIcon.Refresh()
 		g.headerIcon.images = bounceGroup.Images
 		g.headerIcon.Refresh()
-		g.button.threadImage.images = g.images
+		g.button.threadImage.images = bounceGroup.Images
 		g.button.threadImage.Refresh()
 
 		g.users.empty()

@@ -116,6 +116,7 @@ func Start(network Network, ui UI) {
 			TypingInDirectMessage:             b.typingInDirectMessage,
 			TypingInGroup:                     b.typingInGroup,
 			UpdateProfileName:                 b.updateProfileName,
+			UpdateProfileImage:                b.updateProfileImage,
 			RevokeDevice:                      b.revokeDevice,
 			RenameDevice:                      b.renameDevice,
 			MarkAsRead:                        b.markAsRead,

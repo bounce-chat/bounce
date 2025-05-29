@@ -155,7 +155,7 @@ func (dir *defaultImageRenderer) Refresh() {
 
 	if len(dir.di.images) == 0 {
 		dir.di.foregroundText.Show()
-		dir.di.backgroundColor = canvas.NewImageFromImage(makeCircle(&colorRectangle{
+		dir.di.backgroundColor = canvas.NewImageFromImage(makeCircle(&colorRectangle{ // TODO: wrong color sometimes?
 			rect:  image.Rect(0, 0, int(dir.di.size)*8, int(dir.di.size)*8),
 			color: uuidToColor(dir.di.id),
 		}))

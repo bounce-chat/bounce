@@ -118,6 +118,23 @@ func (ms *messageStore) renameUser(userID uuid.UUID, name, initials string) {
 	}
 }
 
+func (ms *messageStore) updateUserImage(userID uuid.UUID, images []uuid.UUID) {
+	ms.Lock()
+	defer ms.Unlock()
+
+	messages, ok := ms.messagesByAuthor[userID]
+	if !ok {
+		return
+	}
+
+	for _, m := range messages {
+		switch item := m.(type) {
+		case *chatBubbleData:
+			item.iconImages = images
+		}
+	}
+}
+
 func (ms *messageStore) queryCache(id uuid.UUID) (cachedData, bool) {
 	ms.Lock()
 	cd, ok := ms.cache[id]

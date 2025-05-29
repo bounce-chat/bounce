@@ -1,8 +1,10 @@
 package chat
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
+	"image"
 	"math/rand"
 	"sort"
 	"strings"
@@ -37,6 +39,7 @@ var chunkRequestMutex sync.Mutex
 
 var ErrFileTooBig = errors.New("file is too large")
 var errFileNotFound = errors.New("file not found")
+var errInvalidImage = errors.New("invalid image data")
 
 type file struct {
 	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
@@ -245,7 +248,7 @@ func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 	}
 
 	// We don't want to auto-download message attachments from threads that aren't regularly read
-	if f.Type == fileTypeGroupImage {
+	if f.Type == fileTypeGroupImage || f.Type == fileTypeUserImage {
 		f.Wanted = true
 	}
 
@@ -906,4 +909,9 @@ func makeChunk(fileID uuid.UUID, index int, data []byte) chunk {
 
 func hashString(hash [32]byte) string {
 	return hex.EncodeToString(hash[:])
+}
+
+func validImage(data []byte) bool {
+	_, _, err := image.Decode(bytes.NewReader(data))
+	return err == nil
 }

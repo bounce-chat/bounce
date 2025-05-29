@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 var updateUserMutex sync.Mutex
 
 var updateUserTypeUpdateName = uint16(0)
+var updateUserTypeUpdateImage = uint16(1)
 
 var errInvalidUserName = errors.New("invalid name")
 var errUnsupportedUpdateUserType = errors.New("unsupported update user type")
@@ -91,6 +93,9 @@ func (uu *updateUser) validPayload() error {
 		if !validUserName(string(uu.Data)) {
 			return errInvalidUserName
 		}
+	case updateUserTypeUpdateImage:
+		_, err := uuid.FromBytes(uu.Data)
+		return err
 	}
 
 	return nil
@@ -145,6 +150,16 @@ func (b *bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) bro
 		return nil
 	}
 
+	// Make sure this update was signed by the user who it applies to
+	if !b.signedByUser(sc, uu.Target) {
+		log.WithFields(log.Fields{
+			"target": uu.Target,
+			"signer": uu.Signer,
+			"peer":   peer,
+		}).Warn("ignoring update user not signed by the user it targets")
+		return nil
+	}
+
 	// If we already have this update, we just mark that this peer has it too and return
 	var existingUU updateUser
 	err = b.database.Where("id = ?", uu.ID).First(&existingUU).Error
@@ -181,12 +196,14 @@ func (b *bounce) saveAndDisplayUpdateUser(uu updateUser) error {
 		return err
 	}
 
-	// Store the last used name on the update
-	oldName, err := b.previousName(uu)
-	if err != nil {
-		return err
+	// Store the last used name on the update if this update changes the name
+	if uu.Type == updateUserTypeUpdateName {
+		oldName, err := b.previousName(uu)
+		if err != nil {
+			return err
+		}
+		uu.PreviousData = []byte(oldName)
 	}
-	uu.PreviousData = []byte(oldName)
 
 	// Save this update
 	err = b.database.Create(&uu).Error
@@ -200,6 +217,8 @@ func (b *bounce) saveAndDisplayUpdateUser(uu updateUser) error {
 	switch uu.Type {
 	case updateUserTypeUpdateName:
 		b.informUIUpdateUserUpdateName(uu)
+	case updateUserTypeUpdateImage:
+		b.informUIUpdateUserUpdateImage(uu)
 	default:
 		log.WithFields(log.Fields{
 			"id":   uu.ID,
@@ -256,6 +275,14 @@ func (b *bounce) informUIUpdateUserUpdateName(uu updateUser) {
 	})
 }
 
+func (b *bounce) informUIUpdateUserUpdateImage(uu updateUser) {
+	go b.userInterface.UserImageUpdated(UpdateUserUpdateImage{
+		ID:        uu.ID,
+		User:      uu.Target,
+		Timestamp: uu.Timestamp,
+	})
+}
+
 func (b *bounce) updateUserState(userID uuid.UUID) {
 	// Get the user and assign default states
 	var u user
@@ -275,6 +302,7 @@ func (b *bounce) updateUserState(userID uuid.UUID) {
 		}
 	}
 	newName := u.Name
+	images := []string{}
 
 	// Get all update users for this user
 	var uus []updateUser
@@ -287,10 +315,21 @@ func (b *bounce) updateUserState(userID uuid.UUID) {
 	}
 
 	// Iterate through them to get the final user state
+	imageIDs := []uuid.UUID{}
 	for _, uu := range uus {
 		switch uu.Type {
 		case updateUserTypeUpdateName:
 			newName = string(uu.Data)
+		case updateUserTypeUpdateImage:
+			imageID, err := uuid.FromBytes(uu.Data)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("update user container image with invalid UUID")
+			} else {
+				images = append(images, imageID.String())
+				imageIDs = append(imageIDs, imageID)
+			}
 		default:
 			log.WithFields(log.Fields{
 				"id":      uu.ID,
@@ -301,7 +340,6 @@ func (b *bounce) updateUserState(userID uuid.UUID) {
 	}
 
 	if u.Name != newName {
-		// Update the database field for the name
 		err := b.database.Table("users").Where("id = ?", userID).Updates(map[string]interface{}{"name": newName}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -310,9 +348,51 @@ func (b *bounce) updateUserState(userID uuid.UUID) {
 			}).Fatal("database error updating user name")
 		}
 
-		// Inform the UI
-		go b.userInterface.SetUserName(userID, newName) // TODO: set the whole user state in one call once images are supported?
+		u.Name = newName
 	}
+
+	newImages := strings.Join(images, ",")
+	if u.Images != newImages {
+		err := b.database.Table("users").Where("id = ?", userID).Updates(map[string]interface{}{"images": newImages}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Fatal("database error updating user images")
+		}
+
+		u.Images = newImages
+	}
+
+	go b.userInterface.SetUserState(User{
+		ID:     u.ID,
+		Name:   u.Name,
+		Images: imageIDs,
+	})
+}
+
+func (b *bounce) updateProfileImage(newImage []byte) error {
+	currentUser, ok := b.currentUser()
+	if !ok {
+		return errUserNotFound
+	}
+
+	if !validImage(newImage) {
+		return errInvalidImage
+	}
+
+	newImageID, err := b.distributeFile(newImage, scopeGlobal, currentUser.ID, fileTypeUserImage, currentUser.ID)
+	if err != nil {
+		return err
+	}
+
+	return b.applyAndBroadcastUpdateUser(updateUser{
+		ID:        uuid.New(),
+		Target:    b.currentUserID(),
+		Timestamp: time.Now().Unix(),
+		Type:      updateUserTypeUpdateImage,
+		Data:      newImageID[:],
+	})
 }
 
 func (b *bounce) updateProfileName(newName string) error {
