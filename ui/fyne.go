@@ -287,6 +287,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		fyneUI.profile = makeUser(state.Profile.ID, state.Profile.Name)
+		fyneUI.profile.images = state.Profile.Images
 		fyneUI.users.add(fyneUI.profile)
 		fyneUI.settings = state.Settings
 		fyneUI.localSettings = state.LocalSettings
@@ -329,7 +330,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, dm := range state.DirectMessages {
-			fyneUI.creatDMIfNeeded(dm.Thread, initialDMStates)
+			fyneUI.createDMIfNeeded(dm.Thread, initialDMStates)
 			dmti, err := fyneUI.newDirectMessage(dm)
 			if err != nil {
 				log.Error(err.Error())
@@ -338,7 +339,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, udmr := range state.UpdateDMRetentions {
-			fyneUI.creatDMIfNeeded(udmr.Thread, initialDMStates)
+			fyneUI.createDMIfNeeded(udmr.Thread, initialDMStates)
 			udmrItem, err := fyneUI.newUpdateDMRetention(udmr)
 			if err != nil {
 				log.Error(err.Error())
@@ -347,7 +348,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, udmch := range state.UpdateDMClearHistories {
-			fyneUI.creatDMIfNeeded(udmch.Thread, initialDMStates)
+			fyneUI.createDMIfNeeded(udmch.Thread, initialDMStates)
 			udmchItem, err := fyneUI.newUpdateDMClearHistory(udmch)
 			if err != nil {
 				log.Error(err.Error())
@@ -525,6 +526,48 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 				}
 			}
 		}
+		for _, uuui := range state.UpdateUserUpdateImages {
+			if uuui.User == fyneUI.profile.id {
+				for dmID, _ := range fyneUI.dms { // TODO: don't add to DMs before the DMs should exist
+					uuuiItem, err := fyneUI.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+					if err != nil {
+						log.Error(err.Error())
+					} else {
+						dmItems[dmID] = append(dmItems[dmID], uuuiItem)
+					}
+				}
+				for _, g := range fyneUI.groups {
+					if uuui.Timestamp < g.createdAt {
+						continue
+					}
+					uuuiItem, err := fyneUI.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+					if err != nil {
+						log.Error(err.Error())
+					} else {
+						groupItems[g.id] = append(groupItems[g.id], uuuiItem)
+					}
+				}
+			} else {
+				uuuiItem, err := fyneUI.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+				if err != nil {
+					log.Error(err.Error())
+				}
+				dmItems[uuui.User] = append(dmItems[uuui.User], uuuiItem)
+
+				for _, g := range fyneUI.groups {
+					if uuui.Timestamp < g.createdAt {
+						continue
+					}
+					if g.users.contains(uuui.User) {
+						uuuiGroupItem, err := fyneUI.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+						if err != nil {
+							log.Error(err.Error())
+						}
+						groupItems[g.id] = append(groupItems[g.id], uuuiGroupItem)
+					}
+				}
+			}
+		}
 
 		// Create widgets for all the thread items we added
 		for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?
@@ -564,7 +607,7 @@ func chatContainerSizeAtStartup() fyne.Size {
 	}
 }
 
-func (fyneUI *Fyne) creatDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]chat.DMState) {
+func (fyneUI *Fyne) createDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]chat.DMState) {
 	u, exists := fyneUI.users.get(id)
 	if !exists {
 		log.Fatal("dm user not known to UI")
@@ -575,9 +618,10 @@ func (fyneUI *Fyne) creatDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]ch
 	_, exists = fyneUI.dms[id]
 	if !exists {
 		fyneUI.buildNewDirectMessage(chat.User{
-			ID:    id,
-			Name:  u.getName(),
-			State: initialState,
+			ID:     id,
+			Name:   u.getName(),
+			Images: u.images,
+			State:  initialState,
 		})
 		_, exists = fyneUI.dms[id]
 		if !exists {

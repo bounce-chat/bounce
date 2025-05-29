@@ -296,6 +296,7 @@ type InitialState struct {
 	UpdateGroupUserBlockedGroups           []UserBlockedGroup // TODO: make name consistent?
 	UpdateGroupUserChangedGroupImages      []UpdateGroupUserChangedGroupImage
 	UpdateUserUpdateNames                  []UpdateUserUpdateName
+	UpdateUserUpdateImages                 []UpdateUserUpdateImage
 }
 
 //

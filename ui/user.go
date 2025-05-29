@@ -15,6 +15,7 @@ type user struct {
 	id       uuid.UUID
 	name     binding.String
 	initials binding.String
+	images   []uuid.UUID
 }
 
 func makeUser(id uuid.UUID, name string) *user {
@@ -133,13 +134,20 @@ func (fyneUI *Fyne) SetUserState(chatUser chat.User) {
 		return
 	}
 
-	dm.images = chatUser.Images
+	dm.user.images = chatUser.Images
 	dm.editIcon.images = chatUser.Images
-	dm.editIcon.Refresh()
 	dm.headerIcon.images = chatUser.Images
-	dm.headerIcon.Refresh()
 	dm.button.threadImage.images = chatUser.Images
-	dm.button.threadImage.Refresh()
+	fyne.Do(func() {
+		dm.editIcon.Refresh()
+		dm.headerIcon.Refresh()
+		dm.button.threadImage.Refresh()
+	})
+
+	if chatUser.ID == fyneUI.profile.id {
+		fyneUI.profileIcon.Objects[0].(*defaultImage).images = fyneUI.profile.images
+		fyne.Do(func() { fyneUI.profileIcon.Refresh() })
+	}
 
 	// Update the chat bubbles that have an icon
 	fyneUI.messages.updateUserImage(chatUser.ID, chatUser.Images)

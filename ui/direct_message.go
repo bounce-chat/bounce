@@ -19,7 +19,6 @@ import (
 
 type directMessage struct {
 	user                             *user
-	images                           []uuid.UUID
 	notificationsMutedUntil          int64 // TODO: fyne feature request/PR: support binding int64 for time.Time
 	retention                        int64
 	overrideReadReceiptSetting       bool
@@ -167,6 +166,8 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 	editButton.Importance = widget.LowImportance
 
 	dm.headerIcon = newDefaultImage(user.id, user.initials, 32, fyneUI.callbacks.GetFileData, nil) // TODO: get size from theme
+	dm.headerIcon.images = bounceUser.Images
+	dm.headerIcon.Refresh()
 
 	userLabelText := widget.NewLabelWithData(user.name)
 
@@ -220,6 +221,8 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 		}
 	}
 	dm.button = newThreadButton(newDefaultImage(user.id, user.initials, 64, fyneUI.callbacks.GetFileData, openThread), user.name, openThread)
+	dm.button.threadImage.images = bounceUser.Images
+	dm.button.Refresh()
 	dm.scroll = newChatHistory(
 		dm.user.id,
 		fyneUI.profile.id,
@@ -343,6 +346,8 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		}
 	}
 	dm.editIcon = newDefaultImage(dm.user.id, dm.user.initials, 128, fyneUI.callbacks.GetFileData, selectImage)
+	dm.editIcon.images = dm.user.images
+	dm.editIcon.Refresh()
 
 	username := widget.NewLabelWithData(dm.user.name)
 

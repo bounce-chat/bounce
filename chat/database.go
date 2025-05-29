@@ -251,9 +251,24 @@ func (b *bounce) buildInitialState() InitialState {
 			}
 		}
 
+		imageHistory := []uuid.UUID{}
+		if len(dbProfile.Images) > 0 {
+			for _, imageIDString := range strings.Split(dbProfile.Images, ",") {
+				imageID, err := uuid.Parse(imageIDString)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":  err.Error(),
+						"images": dbProfile.Images,
+					}).Fatal("invalid UUID in user images list")
+				}
+				imageHistory = append(imageHistory, imageID)
+			}
+		}
+
 		profile = &User{
-			ID:   dbProfile.ID,
-			Name: dbProfile.Name,
+			ID:     dbProfile.ID,
+			Name:   dbProfile.Name,
+			Images: imageHistory,
 		}
 		settings.DefaultGroupRetention = dbProfile.ProfileSettings.DefaultGroupRetention
 		settings.DefaultSendReadReceipts = dbProfile.ProfileSettings.DefaultSendReadReceipts
@@ -296,9 +311,23 @@ func (b *bounce) buildInitialState() InitialState {
 	}
 	chatUsers := []User{}
 	for _, u := range users {
+		imageHistory := []uuid.UUID{}
+		if len(u.Images) > 0 {
+			for _, imageIDString := range strings.Split(u.Images, ",") {
+				imageID, err := uuid.Parse(imageIDString)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":  err.Error(),
+						"images": u.Images,
+					}).Fatal("invalid UUID in user images list")
+				}
+				imageHistory = append(imageHistory, imageID)
+			}
+		}
 		chatUsers = append(chatUsers, User{
-			ID:   u.ID,
-			Name: u.Name,
+			ID:     u.ID,
+			Name:   u.Name,
+			Images: imageHistory,
 			State: DMState{
 				Retention:                      u.Retention,
 				MutedUntil:                     u.MutedUntil,
@@ -847,6 +876,7 @@ func (b *bounce) buildInitialState() InitialState {
 		}).Fatal("database error looking up all update users")
 	}
 	exportedUpdateUserUpdateNames := []UpdateUserUpdateName{}
+	exportedUpdateUserUpdateImages := []UpdateUserUpdateImage{}
 	for _, uu := range uus {
 		switch uu.Type {
 		case updateUserTypeUpdateName:
@@ -857,6 +887,15 @@ func (b *bounce) buildInitialState() InitialState {
 					User:      uu.Target,
 					Name:      string(uu.Data),
 					OldName:   string(uu.PreviousData),
+					Timestamp: uu.Timestamp,
+				},
+			)
+		case updateUserTypeUpdateImage:
+			exportedUpdateUserUpdateImages = append(
+				exportedUpdateUserUpdateImages,
+				UpdateUserUpdateImage{
+					ID:        uu.ID,
+					User:      uu.Target,
 					Timestamp: uu.Timestamp,
 				},
 			)
@@ -897,5 +936,6 @@ func (b *bounce) buildInitialState() InitialState {
 		UpdateGroupUserBlockedGroups:           exportedUpdateGroupUserBlockedGroups,
 		UpdateGroupUserChangedGroupImages:      exportedUpdateGroupUserChangedGroupImages,
 		UpdateUserUpdateNames:                  exportedUpdateUserUpdateNames,
+		UpdateUserUpdateImages:                 exportedUpdateUserUpdateImages,
 	}
 }
