@@ -126,24 +126,6 @@ func (fyneUI *Fyne) SetUserState(chatUser chat.User) {
 	allUserStoresMutex.Unlock()
 
 	// Set the images
-	dm, exists := fyneUI.dms[chatUser.ID]
-	if !exists {
-		log.WithFields(log.Fields{
-			"user_id": chatUser.ID,
-		}).Warn("cannot set state on unknown DM")
-		return
-	}
-
-	dm.user.images = chatUser.Images
-	dm.editIcon.images = chatUser.Images
-	dm.headerIcon.images = chatUser.Images
-	dm.button.threadImage.images = chatUser.Images
-	fyne.Do(func() {
-		dm.editIcon.Refresh()
-		dm.headerIcon.Refresh()
-		dm.button.threadImage.Refresh()
-	})
-
 	if chatUser.ID == fyneUI.profile.id {
 		fyneUI.profileIcon.Objects[0].(*defaultImage).images = fyneUI.profile.images
 		fyne.Do(func() { fyneUI.profileIcon.Refresh() })
@@ -158,6 +140,22 @@ func (fyneUI *Fyne) SetUserState(chatUser chat.User) {
 			}
 		}
 	}
+
+	// Update the images if there is a DM open
+	dm, exists := fyneUI.dms[chatUser.ID]
+	if !exists {
+		return
+	}
+
+	dm.user.images = chatUser.Images
+	dm.editIcon.images = chatUser.Images
+	dm.headerIcon.images = chatUser.Images
+	dm.button.threadImage.images = chatUser.Images
+	fyne.Do(func() {
+		dm.editIcon.Refresh()
+		dm.headerIcon.Refresh()
+		dm.button.threadImage.Refresh()
+	})
 }
 
 func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {

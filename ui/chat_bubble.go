@@ -152,6 +152,7 @@ func newChatBubbleTemplate(fileGetter func(uuid.UUID) ([]byte, error)) *chatBubb
 				color: uuidToColor(uuid.Nil),
 			})),
 			fileGetter: fileGetter,
+			imageCache: make(map[uuid.UUID]*canvas.Image),
 		},
 		background: &canvas.Rectangle{
 			CornerRadius: 15,
