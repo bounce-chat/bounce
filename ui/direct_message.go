@@ -234,6 +234,7 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 			fyneUI.mainWindow.Canvas().Focus(dm.entry)
 		},
 		func() bool { return fyneUI.focused },
+		fyneUI.callbacks.GetFileData,
 	)
 
 	// Keep the last message time counter up to date

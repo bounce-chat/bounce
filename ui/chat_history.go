@@ -50,7 +50,7 @@ type chatHistory struct {
 	seenTracking          map[uuid.UUID]bool
 }
 
-func newChatHistory(threadID, myID uuid.UUID, messageStore *messageStore, readCallback func(uuid.UUID, string), unreadCountCallback func(int), markAllAsReadCallback func(uuid.UUID), windowFocused func() bool) *chatHistory {
+func newChatHistory(threadID, myID uuid.UUID, messageStore *messageStore, readCallback func(uuid.UUID, string), unreadCountCallback func(int), markAllAsReadCallback func(uuid.UUID), windowFocused func() bool, fileGetter func(uuid.UUID) ([]byte, error)) *chatHistory {
 	if readCallback == nil {
 		log.Fatal("cannot create chat history widget without read callback")
 	}
@@ -73,7 +73,7 @@ func newChatHistory(threadID, myID uuid.UUID, messageStore *messageStore, readCa
 	}
 	ch.CreateItem = func() fyne.CanvasObject {
 		return container.NewStack(
-			newChatBubbleTemplate(),
+			newChatBubbleTemplate(fileGetter),
 			newStatusChangeTemplate(),
 		)
 	}

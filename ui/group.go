@@ -529,6 +529,7 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 			fyneUI.mainWindow.Canvas().Focus(group.entry)
 		},
 		func() bool { return fyneUI.focused },
+		fyneUI.callbacks.GetFileData,
 	)
 
 	// Keep the last message time counter up to date

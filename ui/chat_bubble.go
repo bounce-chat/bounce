@@ -58,7 +58,7 @@ type chatBubble struct {
 	maxMessageWidth  float32
 }
 
-func newChatBubbleTemplate() *chatBubble {
+func newChatBubbleTemplate(fileGetter func(uuid.UUID) ([]byte, error)) *chatBubble {
 	message := widget.NewRichText(&widget.TextSegment{
 		Text: "",
 		Style: widget.RichTextStyle{
@@ -151,6 +151,7 @@ func newChatBubbleTemplate() *chatBubble {
 				rect:  image.Rect(0, 0, int(theme.IconInlineSize())*8, int(theme.IconInlineSize())*8),
 				color: uuidToColor(uuid.Nil),
 			})),
+			fileGetter: fileGetter,
 		},
 		background: &canvas.Rectangle{
 			CornerRadius: 15,
