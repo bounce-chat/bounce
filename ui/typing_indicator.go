@@ -100,7 +100,7 @@ func (ti *typingIndicator) showUser(u *user) {
 		}
 	}
 
-	userIcon := newDefaultImage(u.id, u.initials, theme.IconInlineSize(), ti.fileGetter, nil)
+	userIcon := newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), ti.fileGetter, nil)
 	userIcon.images = u.images
 	ti.icons = append(
 		ti.icons,

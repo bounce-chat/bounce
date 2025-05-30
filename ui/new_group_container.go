@@ -187,7 +187,7 @@ func (fyneUI *Fyne) buildNewGroup() {
 	fileGetter := func(_ uuid.UUID) ([]byte, error) {
 		return fyneUI.newGroupWidgets.iconData, nil
 	}
-	fyneUI.newGroupWidgets.icon = newDefaultImage(uuid.Nil, fyneUI.newGroupWidgets.iconName, 128, fileGetter, func() {
+	fyneUI.newGroupWidgets.icon = newDefaultImage(uuid.Nil, []uuid.UUID{}, fyneUI.newGroupWidgets.iconName, 128, fileGetter, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
@@ -292,7 +292,7 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 		func(u *user) {
 			// TODO: add listening to update button name with binding
 			removePendingUserButton := newUserButton(
-				newDefaultImage(u.id, u.initials, theme.IconInlineSize(), fyneUI.callbacks.GetFileData, nil),
+				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), fyneUI.callbacks.GetFileData, nil),
 				u.getName(),
 				false,
 				func() {
@@ -332,7 +332,7 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 		func(u *user) {
 			// TODO: add listener to update button name with binding
 			addUserButton := newUserButton(
-				newDefaultImage(u.id, u.initials, theme.IconInlineSize(), fyneUI.callbacks.GetFileData, nil),
+				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), fyneUI.callbacks.GetFileData, nil),
 				u.getName(),
 				false,
 				func() {
@@ -362,7 +362,7 @@ func (fyneUI *Fyne) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 	pendingUsersList := container.NewVBox()
 	for _, thisUser := range fyneUI.newGroupWidgets.pendingUsers.alphabetized() {
 		func(u *user) {
-			userIcon := newDefaultImage(u.id, u.initials, theme.IconInlineSize()*2, fyneUI.callbacks.GetFileData, nil)
+			userIcon := newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, fyneUI.callbacks.GetFileData, nil)
 			userName := widget.NewLabelWithData(u.name) // TODO: use RichText, and not and HBox, to support truncation
 			userDetails := container.NewHBox(
 				userIcon,

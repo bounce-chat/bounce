@@ -19,7 +19,7 @@ import (
 var colorCache = map[uuid.UUID]color.RGBA{}
 var colorCacheMutex sync.Mutex
 
-func newDefaultImage(id uuid.UUID, text binding.String, size float32, fileGetter func(uuid.UUID) ([]byte, error), clicked func()) *defaultImage {
+func newDefaultImage(id uuid.UUID, images []uuid.UUID, text binding.String, size float32, fileGetter func(uuid.UUID) ([]byte, error), clicked func()) *defaultImage {
 	str, err := text.Get()
 	if err != nil {
 		log.Fatal("data bindings are broken")
@@ -33,14 +33,12 @@ func newDefaultImage(id uuid.UUID, text binding.String, size float32, fileGetter
 			TextSize: size / 2,
 			Color:    color.RGBA{0xff, 0xff, 0xff, 0xff},
 		},
-		backgroundColor: canvas.NewImageFromImage(makeCircle(&colorRectangle{
-			rect:  image.Rect(0, 0, int(size)*8, int(size)*8),
-			color: uuidToColor(id),
-		})),
 		fileGetter: fileGetter,
 		clicked:    clicked,
+		images:     images,
 		imageCache: make(map[uuid.UUID]*canvas.Image),
 	}
+	di.setBackground()
 
 	text.AddListener(binding.NewDataListener(func() {
 		str, err := text.Get()
@@ -84,6 +82,53 @@ func (di *defaultImage) CreateRenderer() fyne.WidgetRenderer {
 	return dir
 }
 
+func (di *defaultImage) setBackground() {
+	for i := len(di.images) - 1; i >= 0; i-- {
+		id := di.images[i]
+
+		if cachedImage, ok := di.imageCache[id]; ok {
+			di.backgroundColor = cachedImage
+			break
+		}
+
+		originalImage, err := di.fileGetter(id)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"file_id": id,
+				"error":   err.Error(),
+			}).Debug("error loading image")
+			continue
+		}
+		if len(originalImage) == 0 {
+			log.WithFields(log.Fields{
+				"file_id": id,
+			}).Warn("image file has no content")
+			continue
+		}
+
+		goImg, _, err := image.Decode(bytes.NewReader(originalImage))
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"file_id": id,
+			}).Warn("error decoding image")
+			continue
+		}
+		di.backgroundColor = canvas.NewImageFromImage(makeCircle(goImg))
+		di.imageCache[id] = di.backgroundColor
+		di.foregroundText.Hide()
+		break
+	}
+
+	if len(di.images) == 0 {
+		di.foregroundText.Show()
+		di.backgroundColor = canvas.NewImageFromImage(makeCircle(&colorRectangle{
+			rect:  image.Rect(0, 0, int(di.size)*8, int(di.size)*8),
+			color: uuidToColor(di.id),
+		}))
+	}
+}
+
 type defaultImageRenderer struct {
 	di *defaultImage
 }
@@ -116,50 +161,7 @@ func (dir *defaultImageRenderer) Objects() []fyne.CanvasObject {
 }
 
 func (dir *defaultImageRenderer) Refresh() {
-	for i := len(dir.di.images) - 1; i >= 0; i-- {
-		id := dir.di.images[i]
-
-		if cachedImage, ok := dir.di.imageCache[id]; ok {
-			dir.di.backgroundColor = cachedImage
-			break
-		}
-
-		originalImage, err := dir.di.fileGetter(id)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"file_id": id,
-				"error":   err.Error(),
-			}).Debug("error loading image")
-			continue
-		}
-		if len(originalImage) == 0 {
-			log.WithFields(log.Fields{
-				"file_id": id,
-			}).Warn("image file has no content")
-			continue
-		}
-
-		goImg, _, err := image.Decode(bytes.NewReader(originalImage))
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":   err.Error(),
-				"file_id": id,
-			}).Warn("error decoding image")
-			continue
-		}
-		dir.di.backgroundColor = canvas.NewImageFromImage(makeCircle(goImg))
-		dir.di.imageCache[id] = dir.di.backgroundColor
-		dir.di.foregroundText.Hide()
-		break
-	}
-
-	if len(dir.di.images) == 0 {
-		dir.di.foregroundText.Show()
-		dir.di.backgroundColor = canvas.NewImageFromImage(makeCircle(&colorRectangle{ // TODO: wrong color sometimes?
-			rect:  image.Rect(0, 0, int(dir.di.size)*8, int(dir.di.size)*8),
-			color: uuidToColor(dir.di.id),
-		}))
-	}
+	dir.di.setBackground()
 
 	for _, obj := range dir.Objects() {
 		obj.Refresh()

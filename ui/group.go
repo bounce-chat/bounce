@@ -257,7 +257,7 @@ func (fyneUI *Fyne) getEditUserDialog(g *group, userID uuid.UUID) (dialog.Dialog
 	var userDetailsDialog dialog.Dialog
 
 	editUserContainer := container.NewVBox(
-		container.NewCenter(newDefaultImage(u.id, u.initials, 64, fyneUI.callbacks.GetFileData, nil)), // TODO: get size from theme
+		container.NewCenter(newDefaultImage(u.id, u.images, u.initials, 64, fyneUI.callbacks.GetFileData, nil)), // TODO: get size from theme
 		widget.NewButton("Direct Message", func() {
 			dm, dmExists := fyneUI.dms[u.id]
 			if !dmExists {
@@ -465,9 +465,7 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 	})
 	editButton.Importance = widget.LowImportance
 
-	group.headerIcon = newDefaultImage(group.id, group.initial, 32, fyneUI.callbacks.GetFileData, nil) // TODO: get size from theme
-	group.headerIcon.images = bounceGroup.Images
-	group.headerIcon.Refresh()
+	group.headerIcon = newDefaultImage(group.id, bounceGroup.Images, group.initial, 32, fyneUI.callbacks.GetFileData, nil) // TODO: get size from theme
 	groupLabelText := widget.NewLabel(bounceGroup.Name)
 
 	var groupLabel *fyne.Container
@@ -515,9 +513,7 @@ func (fyneUI *Fyne) buildNewGroupChat(bounceGroup chat.Group) {
 			fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeThread, context: group.id})
 		}
 	}
-	group.button = newThreadButton(newDefaultImage(group.id, group.initial, 64, fyneUI.callbacks.GetFileData, openThread), group.name, openThread)
-	group.button.threadImage.images = group.images
-	group.button.threadImage.Refresh()
+	group.button = newThreadButton(newDefaultImage(group.id, group.images, group.initial, 64, fyneUI.callbacks.GetFileData, openThread), group.name, openThread)
 	group.scroll = newChatHistory(
 		group.id,
 		fyneUI.profile.id,

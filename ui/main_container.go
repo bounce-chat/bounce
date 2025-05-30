@@ -241,7 +241,7 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 			userIconName.Set(string(firstRune) + string(lastRune))
 		}
 	}
-	userIcon := newDefaultImage(uuid.Nil, userIconName, 128, fyneUI.callbacks.GetFileData, func() {
+	userIcon := newDefaultImage(uuid.Nil, []uuid.UUID{}, userIconName, 128, fyneUI.callbacks.GetFileData, func() {
 		log.Info("user wants to select the image for a new profile")
 	})
 

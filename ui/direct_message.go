@@ -165,9 +165,7 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 	})
 	editButton.Importance = widget.LowImportance
 
-	dm.headerIcon = newDefaultImage(user.id, user.initials, 32, fyneUI.callbacks.GetFileData, nil) // TODO: get size from theme
-	dm.headerIcon.images = bounceUser.Images
-	dm.headerIcon.Refresh()
+	dm.headerIcon = newDefaultImage(user.id, bounceUser.Images, user.initials, 32, fyneUI.callbacks.GetFileData, nil) // TODO: get size from theme
 
 	userLabelText := widget.NewLabelWithData(user.name)
 
@@ -220,8 +218,7 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 			fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
 		}
 	}
-	dm.button = newThreadButton(newDefaultImage(user.id, user.initials, 64, fyneUI.callbacks.GetFileData, openThread), user.name, openThread)
-	dm.button.threadImage.images = bounceUser.Images
+	dm.button = newThreadButton(newDefaultImage(user.id, bounceUser.Images, user.initials, 64, fyneUI.callbacks.GetFileData, openThread), user.name, openThread)
 	dm.button.Refresh()
 	dm.scroll = newChatHistory(
 		dm.user.id,
@@ -346,9 +343,7 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 			}, fyneUI.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
 		}
 	}
-	dm.editIcon = newDefaultImage(dm.user.id, dm.user.initials, 128, fyneUI.callbacks.GetFileData, selectImage)
-	dm.editIcon.images = dm.user.images
-	dm.editIcon.Refresh()
+	dm.editIcon = newDefaultImage(dm.user.id, dm.user.images, dm.user.initials, 128, fyneUI.callbacks.GetFileData, selectImage)
 
 	username := widget.NewLabelWithData(dm.user.name)
 

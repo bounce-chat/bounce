@@ -53,7 +53,7 @@ func (fyneUI *Fyne) showEditProfile() {
 		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeEditProfile})
 	}
 
-	profileImage := newDefaultImage(fyneUI.profile.id, fyneUI.profile.initials, 128, fyneUI.callbacks.GetFileData, func() {
+	profileImage := newDefaultImage(fyneUI.profile.id, fyneUI.profile.images, fyneUI.profile.initials, 128, fyneUI.callbacks.GetFileData, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
@@ -81,7 +81,6 @@ func (fyneUI *Fyne) showEditProfile() {
 			fyneUI.callbacks.UpdateProfileImage(data)
 		}, fyneUI.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
-	profileImage.images = fyneUI.profile.images
 	fyneUI.profileIcon.Objects = []fyne.CanvasObject{profileImage}
 	fyneUI.profileIcon.Refresh()
 

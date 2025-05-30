@@ -47,7 +47,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		g.editThreadNameEntry.Refresh()
 	}))
 
-	g.editIcon = newDefaultImage(g.id, g.initial, 128, fyneUI.callbacks.GetFileData, func() {
+	g.editIcon = newDefaultImage(g.id, g.images, g.initial, 128, fyneUI.callbacks.GetFileData, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
@@ -75,8 +75,6 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			fyneUI.callbacks.SetGroupImage(g.id, data)
 		}, fyneUI.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
-	g.editIcon.images = g.images
-	g.editIcon.Refresh()
 
 	g.retentionSelection = widget.NewSelect(retentionSelections, nil)
 	g.retentionSelection.Selected = getRetentionName(g.retention)
@@ -495,7 +493,7 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 		func(u *user) {
 			// TODO: setup listener to update the button text below
 			userDetailsButton := newUserButton(
-				newDefaultImage(u.id, u.initials, theme.IconInlineSize()*2, fyneUI.callbacks.GetFileData, nil),
+				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, fyneUI.callbacks.GetFileData, nil),
 				u.getName(),
 				g.isAdmin(u.id),
 				func() {
@@ -527,7 +525,7 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 		func(u *user) {
 			// TODO: setup listener to update the button text below
 			removePendingUserButton := newUserButton(
-				newDefaultImage(u.id, u.initials, theme.IconInlineSize(), fyneUI.callbacks.GetFileData, nil),
+				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), fyneUI.callbacks.GetFileData, nil),
 				u.getName(),
 				false,
 				func() {
@@ -579,7 +577,7 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(g *group, allAvailableUsers []*user
 		func(u *user) {
 			// TODO: setup listener to update the button text below
 			addUserButton := newUserButton(
-				newDefaultImage(u.id, u.initials, theme.IconInlineSize(), fyneUI.callbacks.GetFileData, nil),
+				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), fyneUI.callbacks.GetFileData, nil),
 				u.getName(),
 				false,
 				func() {

@@ -149,7 +149,7 @@ func newChatBubbleTemplate(fileGetter func(uuid.UUID) ([]byte, error)) *chatBubb
 			},
 			backgroundColor: canvas.NewImageFromImage(makeCircle(&colorRectangle{
 				rect:  image.Rect(0, 0, int(theme.IconInlineSize())*8, int(theme.IconInlineSize())*8),
-				color: uuidToColor(uuid.Nil),
+				color: color.Black,
 			})),
 			fileGetter: fileGetter,
 			imageCache: make(map[uuid.UUID]*canvas.Image),
@@ -200,10 +200,6 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 		cb.username.Show()
 
 		cb.icon.foregroundText.Text = m.initials
-		cb.icon.backgroundColor = canvas.NewImageFromImage(makeCircle(&colorRectangle{
-			rect:  image.Rect(0, 0, int(theme.IconInlineSize())*8, int(theme.IconInlineSize())*8),
-			color: uuidToColor(m.author), // TODO: access this color without recreating the whole thing?
-		}))
 		cb.icon.foregroundText.Color = color.RGBA{0xff, 0xff, 0xff, 0xff}
 		cb.icon.id = m.author
 		cb.icon.images = m.iconImages
@@ -214,8 +210,9 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 				"name": m.username,
 			}).Info("user wants to open profile via icon")
 		}
-		cb.icon.Show()
+		cb.icon.setBackground()
 		cb.icon.Refresh()
+		cb.icon.Show()
 	} else {
 		cb.icon.Hide()
 		cb.username.Hide()

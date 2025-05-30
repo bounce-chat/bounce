@@ -60,7 +60,7 @@ func (fyneUI *Fyne) refreshAllUsersDMLinks() {
 	for _, thisUser := range fyneUI.users.search(fyneUI.newDMUserSearchEntry.Text) {
 		func(u *user) {
 			openDMButton := newUserButton(
-				newDefaultImage(u.id, u.initials, theme.IconInlineSize()*2, fyneUI.callbacks.GetFileData, nil),
+				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, fyneUI.callbacks.GetFileData, nil),
 				u.getName(),
 				false,
 				func() {
