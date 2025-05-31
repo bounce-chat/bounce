@@ -700,6 +700,14 @@ func (b *bounce) makeChunkRequests() {
 				location := availableUnusedLocations[r.Intn(len(availableUnusedLocations))]
 
 				go b.sendDirect(location, &chunkRequest{Hash: c.Hash})
+				err = b.database.Table("chunk_offers").Where("hash = ? AND location = ?", c.Hash, location).Update("last_request_time", time.Now().Unix()).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+						"hash":  c.Hash,
+						"peer":  location,
+					}).Fatal("database error updating last request time on chunk")
+				}
 				recheck = true
 				continue
 			}
@@ -724,6 +732,14 @@ func (b *bounce) makeChunkRequests() {
 				location := availableRetryLocations[r.Intn(len(availableRetryLocations))]
 
 				go b.sendDirect(location, &chunkRequest{Hash: c.Hash})
+				err = b.database.Table("chunk_offers").Where("hash = ? AND location = ?", c.Hash, location).Update("last_request_time", time.Now().Unix()).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+						"hash":  c.Hash,
+						"peer":  location,
+					}).Fatal("database error updating last request time on chunk")
+				}
 				recheck = true
 			}
 		}
