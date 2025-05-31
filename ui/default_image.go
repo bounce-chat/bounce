@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"strconv"
 	"sync"
 
 	"fyne.io/fyne/v2"
@@ -18,6 +19,9 @@ import (
 
 var colorCache = map[uuid.UUID]color.RGBA{}
 var colorCacheMutex sync.Mutex
+
+var imageCache = map[string]*canvas.Image{}
+var imageCacheMutex sync.Mutex
 
 func newDefaultImage(id uuid.UUID, images []uuid.UUID, text binding.String, size float32, fileGetter func(uuid.UUID) ([]byte, error), clicked func()) *defaultImage {
 	str, err := text.Get()
@@ -86,8 +90,13 @@ func (di *defaultImage) setBackground() {
 	for i := len(di.images) - 1; i >= 0; i-- {
 		id := di.images[i]
 
-		if cachedImage, ok := di.imageCache[id]; ok {
+		imageCacheMutex.Lock()
+		cacheKey := id.String() + strconv.FormatFloat(float64(di.size), 'f', -1, 32)
+		cachedImage, ok := imageCache[cacheKey]
+		imageCacheMutex.Unlock()
+		if ok {
 			di.backgroundColor = cachedImage
+			di.foregroundText.Hide()
 			break
 		}
 
@@ -115,7 +124,9 @@ func (di *defaultImage) setBackground() {
 			continue
 		}
 		di.backgroundColor = canvas.NewImageFromImage(makeCircle(goImg))
-		di.imageCache[id] = di.backgroundColor
+		imageCacheMutex.Lock()
+		imageCache[cacheKey] = di.backgroundColor
+		imageCacheMutex.Unlock()
 		di.foregroundText.Hide()
 		break
 	}
