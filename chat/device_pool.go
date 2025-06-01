@@ -113,7 +113,7 @@ func (b *bounce) sendKeepAlives() {
 		b.devicePool.deviceMutex.Lock()
 		for _, rd := range b.devicePool.devices {
 			if rd.connectedSockets.Load() > 0 {
-				rd.messages <- keepAlive{}
+				go func() { rd.messages <- keepAlive{} }()
 			}
 		}
 		b.devicePool.deviceMutex.Unlock()
