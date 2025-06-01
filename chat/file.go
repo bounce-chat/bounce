@@ -26,7 +26,7 @@ var writingChunkMutex sync.Mutex
 
 const embeddedFileLimit = 1024 * 1024 * 20 // 20MiB
 const fileChunkSize = 1024 * 1024          // 1MiB
-const expectedChunkDeliverySeconds = 1     // 100KiB/s
+const expectedChunkDeliverySeconds = 10    // 100KiB/s
 
 const fileTypeGroupImage = 0
 const fileTypeUserImage = 1
