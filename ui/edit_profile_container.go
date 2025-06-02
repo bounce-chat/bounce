@@ -9,10 +9,12 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
@@ -53,35 +55,13 @@ func (fyneUI *Fyne) showEditProfile() {
 		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeEditProfile})
 	}
 
-	profileImage := newDefaultImage(fyneUI.profile.id, fyneUI.profile.images, fyneUI.profile.initials, 128, fyneUI.callbacks.GetFileData, func() {
-		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-			if reader == nil {
-				return
-			}
-
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Debug("error selecting new profile image")
-				return
-			}
-
-			data, err := io.ReadAll(reader)
-			reader.Close()
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Debug("error reading new profile image")
-				return
-			}
-
-			// TODO: make sure data is a valid image, allow for editing, etc
-			// TODO: don't actualy set it until they hit save?
-
-			fyneUI.callbacks.UpdateProfileImage(data)
-		}, fyneUI.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
-	})
-	fyneUI.profileIcon.Objects = []fyne.CanvasObject{profileImage}
+	fyneUI.profileIcon.id = fyneUI.profile.id
+	fyneUI.profileIcon.images = fyneUI.profile.images
+	initials, err := fyneUI.profile.initials.Get()
+	if err != nil {
+		log.Fatal("data bindings are broken")
+	}
+	fyneUI.profileIcon.foregroundText.Text = initials
 	fyneUI.profileIcon.Refresh()
 
 	fyneUI.profileNameEntry.Text = fyneUI.profile.getName()
@@ -272,7 +252,35 @@ func (fyneUI *Fyne) buildEditProfile() {
 	//
 	// Personal details section
 	//
-	fyneUI.profileIcon = container.NewCenter()
+	fyneUI.profileIcon = newDefaultImage(uuid.Nil, []uuid.UUID{}, binding.NewString(), 128, fyneUI.callbacks.GetFileData, func() {
+		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if reader == nil {
+				return
+			}
+
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Debug("error selecting new profile image")
+				return
+			}
+
+			data, err := io.ReadAll(reader)
+			reader.Close()
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Debug("error reading new profile image")
+				return
+			}
+
+			// TODO: make sure data is a valid image, allow for editing, etc
+			// TODO: don't actualy set it until they hit save?
+
+			fyneUI.callbacks.UpdateProfileImage(data)
+		}, fyneUI.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
+	})
+
 	fyneUI.profileNameEntry = widget.NewEntry()
 	fyneUI.profileNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
@@ -313,7 +321,7 @@ func (fyneUI *Fyne) buildEditProfile() {
 	)
 
 	fyneUI.profileOptions = container.NewVBox(
-		fyneUI.profileIcon,
+		container.NewCenter(fyneUI.profileIcon),
 		fyneUI.profileNameEntry,
 		saveProfileButtonBar,
 	)

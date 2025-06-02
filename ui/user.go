@@ -126,9 +126,12 @@ func (fyneUI *Fyne) SetUserState(chatUser chat.User) {
 	allUserStoresMutex.Unlock()
 
 	// Set the images
+	u.images = chatUser.Images
 	if chatUser.ID == fyneUI.profile.id {
-		fyneUI.profileIcon.Objects[0].(*defaultImage).images = fyneUI.profile.images
-		fyne.Do(func() { fyneUI.profileIcon.Refresh() })
+		fyneUI.profileIcon.images = fyneUI.profile.images
+		fyne.Do(func() {
+			fyneUI.profileIcon.Refresh()
+		})
 	}
 
 	// Update the chat bubbles that have an icon

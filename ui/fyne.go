@@ -60,7 +60,7 @@ type Fyne struct {
 	newGroupWidgets               *newGroupWidgets
 	newSyncDeviceWidgets          *newSyncDeviceWidgets
 	profileNameEntry              *widget.Entry
-	profileIcon                   *fyne.Container
+	profileIcon                   *defaultImage
 	profileOptions                *fyne.Container
 	newDMUserSearchEntry          *widget.Entry
 	mainMenu                      *fyne.MainMenu
