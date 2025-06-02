@@ -352,6 +352,8 @@ func (tb *threadButton) displayCorrectUnreadCount() {
 		tb.unreadCounterBackground.Show()
 		tb.unreadCounterCircle.Show()
 	}
+
+	tb.Refresh()
 }
 
 //func (tb *threadButton) Hide() {} // TODO: need to call into base widget here?

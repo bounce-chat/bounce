@@ -392,7 +392,7 @@ func (ch *chatHistory) seen(index int) {
 
 		item := ch.items[index]
 		item.markSeen()
-		if item.countsAsUnread() {
+		if item.countsAsUnread() && !(item.getAuthor() == ch.myID) {
 			ch.unread -= 1
 		}
 		if ch.windowFocused() {
@@ -410,10 +410,6 @@ func (ch *chatHistory) updateUnreadCounter() {
 func (ch *chatHistory) MinSize() fyne.Size {
 	ch.ExtendBaseWidget(ch)
 	return ch.BaseWidget.MinSize()
-}
-
-func (ch *chatHistory) RefreshLastItem() {
-	ch.RefreshItem(len(ch.items) - 1)
 }
 
 func (ch *chatHistory) RefreshItem(index int) {
@@ -603,26 +599,24 @@ func (ch *chatHistory) calculateAndSetItemHeight(id int, containerSize fyne.Size
 func (ch *chatHistory) CreateRenderer() fyne.WidgetRenderer {
 	ch.ExtendBaseWidget(ch)
 
-	layout := &fyne.Container{Layout: newListLayout(ch)}
+	layout := &fyne.Container{Layout: newChatHistoryLayout(ch)}
 	ch.scroller = container.NewVScroll(layout)
 	ch.scroller.OnScrolled = ch.offsetUpdated
 	layout.Resize(layout.MinSize())
-	return newChatHistoryRenderer(ch, layout)
+	return newChatHistoryRenderer(ch)
 }
 
 type chatHistoryRenderer struct {
 	//cachedWidth  float32
 	//cachedHeight float32
-	ch     *chatHistory
-	layout *fyne.Container
+	ch *chatHistory
 }
 
-func newChatHistoryRenderer(ch *chatHistory, layout *fyne.Container) *chatHistoryRenderer {
+func newChatHistoryRenderer(ch *chatHistory) *chatHistoryRenderer {
 	chr := &chatHistoryRenderer{
 		//cachedWidth:  float32(fyne.CurrentApp().Preferences().Float("chat-width")),
 		//cachedHeight: float32(fyne.CurrentApp().Preferences().Float("chat-height")),
-		ch:     ch,
-		layout: layout,
+		ch: ch,
 	}
 
 	return chr
@@ -660,7 +654,8 @@ func (chr *chatHistoryRenderer) Refresh() {
 	for _, obj := range chr.Objects() {
 		obj.Refresh()
 	}
-	layout := chr.layout.Layout.(*chatHistoryLayout)
+
+	layout := chr.ch.scroller.Content.(*fyne.Container).Layout.(*chatHistoryLayout)
 	layout.updateList(false)
 
 	canvas.Refresh(chr.ch)
@@ -691,7 +686,7 @@ type chatHistoryLayout struct {
 	visibleRowHeights []float32
 }
 
-func newListLayout(ch *chatHistory) fyne.Layout {
+func newChatHistoryLayout(ch *chatHistory) fyne.Layout {
 	l := &chatHistoryLayout{ch: ch}
 	l.slicePool.New = func() any {
 		s := make([]itemAndIndex, 0)
