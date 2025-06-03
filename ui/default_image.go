@@ -97,7 +97,7 @@ func (di *defaultImage) setBackground() {
 		if ok {
 			di.backgroundColor = cachedImage
 			di.foregroundText.Hide()
-			break
+			return
 		}
 
 		originalImage, err := di.fileGetter(id)
