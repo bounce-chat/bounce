@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"io"
 	"os"
 	"strings"
 	"unicode/utf8"
@@ -241,8 +242,39 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 			userIconName.Set(string(firstRune) + string(lastRune))
 		}
 	}
-	userIcon := newDefaultImage(uuid.Nil, []uuid.UUID{}, userIconName, 128, fyneUI.callbacks.GetFileData, func() {
-		log.Info("user wants to select the image for a new profile")
+
+	fyneUI.newProfileImageData = []byte{}
+	fileGetter := func(_ uuid.UUID) ([]byte, error) {
+		return fyneUI.newProfileImageData, nil
+	}
+	fyneUI.newProfileImage = newDefaultImage(uuid.Nil, []uuid.UUID{}, userIconName, 128, fileGetter, func() {
+		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if reader == nil {
+				return
+			}
+
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Debug("error selecting image for new group")
+				return
+			}
+
+			data, err := io.ReadAll(reader)
+			reader.Close()
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Debug("error reading new group image")
+				return
+			}
+
+			// TODO: make sure data is a valid image, allow for editing, etc
+
+			fyneUI.newProfileImageData = data
+			fyneUI.newProfileImage.images = []uuid.UUID{uuid.New()}
+			fyneUI.newProfileImage.Refresh()
+		}, fyneUI.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 
 	deviceNameEntry := widget.NewEntry()
@@ -281,7 +313,7 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 	)
 
 	profileDetails := container.NewVBox(
-		container.NewCenter(userIcon),
+		container.NewCenter(fyneUI.newProfileImage),
 		profileForm,
 	)
 
@@ -294,7 +326,7 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 			fyneUI.showDialog(dialog.NewError(errors.New("Device name must be set"), fyneUI.mainWindow), nil)
 			return
 		}
-		id, err := fyneUI.callbacks.SetProfile(profileNameEntry.Text, deviceNameEntry.Text) // TODO: send profile image bytes if set
+		id, imageID, err := fyneUI.callbacks.SetProfile(profileNameEntry.Text, fyneUI.newProfileImageData, deviceNameEntry.Text)
 		if err != nil {
 			fyneUI.showDialog(dialog.NewError(errors.New("Error saving profile: "+err.Error()), fyneUI.mainWindow), nil)
 			return
@@ -302,10 +334,23 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 		profile := makeUser(id, profileNameEntry.Text)
 		fyneUI.users.add(profile)
 		fyneUI.profile = profile
+		if imageID != uuid.Nil {
+			fyneUI.profile.images = []uuid.UUID{imageID}
+			fyneUI.profileIcon.images = fyneUI.profile.images
+			fyneUI.profileIcon.Refresh()
+		}
 		fyneUI.showMainContainer()
 	})
 	saveButton.Importance = widget.HighImportance
 	backButton := widget.NewButton("Back", func() {
+		profileNameEntry.Text = ""
+		profileNameEntry.Refresh()
+		userIconName.Set("")
+		deviceNameEntry.Text = ""
+		deviceNameEntry.Refresh()
+		fyneUI.newProfileImageData = []byte{}
+		fyneUI.newProfileImage.images = []uuid.UUID{}
+		fyneUI.newProfileImage.Refresh()
 		fyneUI.setupStep = setupStepInit
 		fyneUI.mainWindow.SetContent(fyneUI.newInstall)
 		fyneUI.newInstall.Show()

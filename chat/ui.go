@@ -454,7 +454,7 @@ type UICallbacks struct {
 	SetDMTypingIndicatorSettings func(groupID uuid.UUID, override bool, enabled bool) error
 
 	// Setup a new profile on a fresh install
-	SetProfile    func(profileName, deviceName string) (uuid.UUID, error)
+	SetProfile    func(profileName string, profileImage []byte, deviceName string) (uuid.UUID, uuid.UUID, error)
 	ImportUser    func(user []byte) (User, error)
 	ExportContact func(name string, expiration int64, oneTime bool) []byte
 

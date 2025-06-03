@@ -161,13 +161,17 @@ func (b *bounce) blockedGroups() []uuid.UUID {
 	return blocked
 }
 
-func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
+func (b *bounce) setProfile(profileName string, image []byte, deviceName string) (uuid.UUID, uuid.UUID, error) {
 	newID := uuid.New()
+	iconID := uuid.Nil
+	if len(image) > 0 {
+		iconID = uuid.New()
+	}
 
 	var count int64
 	b.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count > 0 {
-		return newID, errors.New("profile already exists on this device")
+		return newID, iconID, errors.New("profile already exists on this device")
 	}
 
 	d := device{
@@ -175,6 +179,7 @@ func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 		Address:   b.network.Address(),
 		Timestamp: time.Now().Unix(),
 	}
+
 	u := &user{
 		ID:      newID,
 		Name:    profileName,
@@ -195,9 +200,22 @@ func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 			NeverAskForBatteryOptimizations: false,
 		},
 	}
+	if len(image) > 0 {
+		u.Images = iconID.String()
+	} else {
+		u.Images = ""
+	}
 	err := b.database.Create(u).Error
 	if err != nil {
-		return newID, err
+		return newID, iconID, err
+	}
+	if len(image) > 0 {
+		err := b.distributeFileByID(iconID, image, scopeGlobal, u.ID, fileTypeUserImage, u.ID)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Warn("error creating file for new profile image")
+		}
 	}
 
 	go b.userInterface.DeviceAdded(Device{
@@ -207,7 +225,7 @@ func (b *bounce) setProfile(profileName, deviceName string) (uuid.UUID, error) {
 		Local:     true,
 	})
 	err = b.renameDevice(d.ID, deviceName)
-	return newID, err
+	return newID, iconID, err
 }
 
 type profileExport struct {

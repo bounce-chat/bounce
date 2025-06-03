@@ -59,6 +59,8 @@ type Fyne struct {
 	mobileMenu                    *fyne.Container
 	newGroupWidgets               *newGroupWidgets
 	newSyncDeviceWidgets          *newSyncDeviceWidgets
+	newProfileImage               *defaultImage
+	newProfileImageData           []byte
 	profileNameEntry              *widget.Entry
 	profileIcon                   *defaultImage
 	profileOptions                *fyne.Container
