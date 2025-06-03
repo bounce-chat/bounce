@@ -128,16 +128,14 @@ func (di *defaultImage) setBackground() {
 		imageCache[cacheKey] = di.backgroundColor
 		imageCacheMutex.Unlock()
 		di.foregroundText.Hide()
-		break
+		return
 	}
 
-	if len(di.images) == 0 {
-		di.foregroundText.Show()
-		di.backgroundColor = canvas.NewImageFromImage(makeCircle(&colorRectangle{
-			rect:  image.Rect(0, 0, int(di.size)*8, int(di.size)*8),
-			color: uuidToColor(di.id),
-		}))
-	}
+	di.foregroundText.Show()
+	di.backgroundColor = canvas.NewImageFromImage(makeCircle(&colorRectangle{
+		rect:  image.Rect(0, 0, int(di.size)*8, int(di.size)*8),
+		color: uuidToColor(di.id),
+	}))
 }
 
 type defaultImageRenderer struct {
