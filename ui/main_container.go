@@ -52,6 +52,20 @@ func (fyneUI *Fyne) showMainContainer() {
 		fyneUI.mainWindow.SetMainMenu(fyneUI.mainMenu)
 		fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
 		fyneUI.mainContainer.Show()
+		if !fyne.CurrentDevice().IsMobile() {
+			for _, t := range fyneUI.groups {
+				if t.chatHistoryScroll().Size().Height == 0 {
+					t.chatHistoryScroll().Resize(chatContainerSizeAtStartup())
+					t.chatHistoryScroll().scrollToLastRead()
+				}
+			}
+			for _, t := range fyneUI.dms {
+				if t.chatHistoryScroll().Size().Height == 0 {
+					t.chatHistoryScroll().Resize(chatContainerSizeAtStartup())
+					t.chatHistoryScroll().scrollToLastRead()
+				}
+			}
+		}
 	}
 }
 

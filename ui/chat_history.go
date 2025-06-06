@@ -471,12 +471,7 @@ func (ch *chatHistory) offsetFor(index int) float32 {
 }
 
 func (ch *chatHistory) scrollTo(index int) {
-	if ch.scroller == nil {
-		return
-	}
-
-	ch.scroller.Offset.Y = ch.offsetFor(index)
-	ch.offsetUpdated(ch.scroller.Offset)
+	ch.ScrollToOffset(ch.offsetFor(index))
 }
 
 func (ch *chatHistory) Resize(s fyne.Size) {

@@ -28,8 +28,8 @@ const setupStepProfile = 1
 
 const defaultHeight = float32(700)
 const defaultWidth = float32(900)
-const defaultChatHistoryHeight = float32(545.7656)
-const defaultChatHistoryWidth = float32(565)
+const defaultChatHistoryHeight = float32(585.84375)
+const defaultChatHistoryWidth = float32(566)
 
 //
 // An implementation of the Bounce chat.UI interface using Fyne
