@@ -13,6 +13,6 @@ func (ka keepAlive) getPayload() []byte {
 	return []byte("keep-alive")
 }
 
-func (b *bounce) handleKeepAlive(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleKeepAlive(peer string, payload []byte, catchUp bool) broadcastable {
 	return nil
 }

@@ -50,32 +50,32 @@ var expirationIncrements = map[string]int64{
 	expirationOneWeek.display: expirationOneWeek.unixIncrement,
 }
 
-func (fyneUI *Fyne) showEditProfile() {
+func (ui *ui) showEditProfile() {
 	if fyne.CurrentDevice().IsMobile() {
-		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeEditProfile})
+		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeEditProfile})
 	}
 
-	fyneUI.profileIcon.id = fyneUI.profile.id
-	fyneUI.profileIcon.images = fyneUI.profile.images
-	initials, err := fyneUI.profile.initials.Get()
+	ui.profileIcon.id = ui.profile.id
+	ui.profileIcon.images = ui.profile.images
+	initials, err := ui.profile.initials.Get()
 	if err != nil {
 		log.Fatal("data bindings are broken")
 	}
-	fyneUI.profileIcon.foregroundText.Text = initials
-	fyneUI.profileIcon.Refresh()
+	ui.profileIcon.foregroundText.Text = initials
+	ui.profileIcon.Refresh()
 
-	fyneUI.profileNameEntry.Text = fyneUI.profile.getName()
-	fyneUI.profileNameEntry.Refresh()
-	fyneUI.profileNameEntry.FocusLost()
+	ui.profileNameEntry.Text = ui.profile.getName()
+	ui.profileNameEntry.Refresh()
+	ui.profileNameEntry.FocusLost()
 
-	fyneUI.profileOptions.Refresh()
-	fyneUI.mainWindow.SetContent(fyneUI.editProfile)
-	fyneUI.editProfile.Show()
+	ui.profileOptions.Refresh()
+	ui.mainWindow.SetContent(ui.editProfile)
+	ui.editProfile.Show()
 }
 
-func (fyneUI *Fyne) updateDeviceStatus() {
+func (ui *ui) updateDeviceStatus() {
 	currentDevicesList := container.NewVBox()
-	for _, dev := range fyneUI.devices.all() {
+	for _, dev := range ui.devices.all() {
 		editDeviceDialog, editDeviceCleanup, state := func(dev chat.Device) (dialog.Dialog, func(), int) {
 			state := deviceStatusOffline
 			if dev.Online {
@@ -141,7 +141,7 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 					editDeviceDialog.Hide()
 				}
 				if showError != nil {
-					fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)
+					ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
 				}
 			}
 			confirmRevokeDialog := dialog.NewConfirm(
@@ -151,16 +151,16 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 					showError = nil
 					hideEditDialog = confirmed
 					if confirmed {
-						showError = fyneUI.callbacks.RevokeDevice(dev.ID)
+						showError = ui.bounce.RevokeDevice(dev.ID)
 						if showError != nil {
 							hideEditDialog = false
 						}
 					}
 				},
-				fyneUI.mainWindow,
+				ui.mainWindow,
 			)
 			revokeButton := widget.NewButton("Revoke", func() {
-				fyneUI.showDialog(confirmRevokeDialog, confirmRevokeCleanup)
+				ui.showDialog(confirmRevokeDialog, confirmRevokeCleanup)
 			})
 			revokeButton.Importance = widget.DangerImportance
 
@@ -202,7 +202,7 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 					nameEntry.Text = dev.Name
 				}
 				if showError != nil {
-					fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)
+					ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
 				}
 			}
 			editDeviceDialog = dialog.NewCustomConfirm(shortName, "Apply", "Cancel", editDeviceContainer, func(apply bool) {
@@ -210,10 +210,10 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 				showError = nil
 				if apply {
 					if dev.Name != nameEntry.Text {
-						showError = fyneUI.callbacks.RenameDevice(dev.ID, strings.TrimSpace(nameEntry.Text))
+						showError = ui.bounce.RenameDevice(dev.ID, strings.TrimSpace(nameEntry.Text))
 					}
 				}
-			}, fyneUI.mainWindow)
+			}, ui.mainWindow)
 
 			return editDeviceDialog, editDeviceCleanup, state
 		}(*dev)
@@ -227,12 +227,12 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 				false,
 				false,
 				func() {
-					fyneUI.showDialog(editDeviceDialog, editDeviceCleanup)
+					ui.showDialog(editDeviceDialog, editDeviceCleanup)
 				},
 			),
 		)
 	}
-	fyneUI.currentDevices.Content = currentDevicesList
+	ui.currentDevices.Content = currentDevicesList
 
 	currentDevicesHeight := float32(0)
 	for i, obj := range currentDevicesList.Objects {
@@ -242,17 +242,17 @@ func (fyneUI *Fyne) updateDeviceStatus() {
 		currentDevicesHeight += obj.MinSize().Height
 	}
 	currentDevicesHeight += theme.Padding() * float32(len(currentDevicesList.Objects)+1)
-	fyneUI.currentDevices.SetMinSize(fyne.Size{Height: currentDevicesHeight})
+	ui.currentDevices.SetMinSize(fyne.Size{Height: currentDevicesHeight})
 
-	fyneUI.currentDevices.Refresh()
-	fyneUI.editProfile.Refresh()
+	ui.currentDevices.Refresh()
+	ui.editProfile.Refresh()
 }
 
-func (fyneUI *Fyne) buildEditProfile() {
+func (ui *ui) buildEditProfile() {
 	//
 	// Personal details section
 	//
-	fyneUI.profileIcon = newDefaultImage(uuid.Nil, []uuid.UUID{}, binding.NewString(), 128, fyneUI.callbacks.GetFileData, func() {
+	ui.profileIcon = newDefaultImage(uuid.Nil, []uuid.UUID{}, binding.NewString(), 128, ui.bounce.GetFileData, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
@@ -277,39 +277,39 @@ func (fyneUI *Fyne) buildEditProfile() {
 			// TODO: make sure data is a valid image, allow for editing, etc
 			// TODO: don't actualy set it until they hit save?
 
-			fyneUI.callbacks.UpdateProfileImage(data)
-		}, fyneUI.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
+			ui.bounce.UpdateProfileImage(data)
+		}, ui.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 
-	fyneUI.profileNameEntry = widget.NewEntry()
-	fyneUI.profileNameEntry.OnChanged = func(str string) {
+	ui.profileNameEntry = widget.NewEntry()
+	ui.profileNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
 		str, trimmed := trimLeadingSpace(str)
-		fyneUI.profileNameEntry.Text = str
+		ui.profileNameEntry.Text = str
 		if trimmed != 0 {
-			fyneUI.profileNameEntry.CursorRow = 0
-			fyneUI.profileNameEntry.CursorColumn = 0
+			ui.profileNameEntry.CursorRow = 0
+			ui.profileNameEntry.CursorColumn = 0
 		}
 
 		// Enforce length limit
 		if utf8.RuneCountInString(str) > chat.MaximumNameLength {
 			runes := []rune(str)
 			truncated := runes[0:chat.MaximumNameLength]
-			fyneUI.profileNameEntry.Text = string(truncated)
+			ui.profileNameEntry.Text = string(truncated)
 
 		}
-		fyneUI.profileNameEntry.Refresh()
+		ui.profileNameEntry.Refresh()
 	}
 
 	saveProfileButton := widget.NewButton("Update", func() {
-		err := fyneUI.callbacks.UpdateProfileName(strings.TrimSpace(fyneUI.profileNameEntry.Text))
+		err := ui.bounce.UpdateProfileName(strings.TrimSpace(ui.profileNameEntry.Text))
 		if err != nil {
-			fyneUI.showDialog(dialog.NewError(errors.New("error updating name: "+err.Error()), fyneUI.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("error updating name: "+err.Error()), ui.mainWindow), nil)
 		} else {
-			fyneUI.showMainContainer()
-			t, ok := fyneUI.getThread(fyneUI.activeThread)
+			ui.showMainContainer()
+			t, ok := ui.getThread(ui.activeThread)
 			if ok {
-				fyneUI.mainWindow.Canvas().Focus(t.getEntry())
+				ui.mainWindow.Canvas().Focus(t.getEntry())
 			}
 		}
 	})
@@ -320,9 +320,9 @@ func (fyneUI *Fyne) buildEditProfile() {
 		saveProfileButton,
 	)
 
-	fyneUI.profileOptions = container.NewVBox(
-		container.NewCenter(fyneUI.profileIcon),
-		fyneUI.profileNameEntry,
+	ui.profileOptions = container.NewVBox(
+		container.NewCenter(ui.profileIcon),
+		ui.profileNameEntry,
 		saveProfileButtonBar,
 	)
 
@@ -333,10 +333,10 @@ func (fyneUI *Fyne) buildEditProfile() {
 	devicesLabel := widget.NewLabel("Devices")
 	devicesLabel.TextStyle = fyne.TextStyle{Bold: true}
 
-	fyneUI.currentDevices = container.NewVScroll(container.NewVBox())
+	ui.currentDevices = container.NewVScroll(container.NewVBox())
 
 	addDeviceButton := widget.NewButton("Add Device", func() {
-		fyneUI.showDisplaySyncString()
+		ui.showDisplaySyncString()
 	})
 	addDeviceButton.Importance = widget.HighImportance
 	addDeviceButtonBar := container.New(
@@ -345,7 +345,7 @@ func (fyneUI *Fyne) buildEditProfile() {
 	)
 
 	devicesContainer := container.NewVBox(
-		fyneUI.currentDevices,
+		ui.currentDevices,
 		addDeviceButtonBar,
 	)
 
@@ -391,10 +391,10 @@ func (fyneUI *Fyne) buildEditProfile() {
 	var showInformation dialog.Dialog
 	selectorCleanup := func() {
 		if showInformation != nil {
-			fyneUI.showDialog(showInformation, nil)
+			ui.showDialog(showInformation, nil)
 		}
 		if showError != nil {
-			fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)
+			ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
 		}
 	}
 	fileSelector := dialog.NewFileSave(func(handler fyne.URIWriteCloser, err error) {
@@ -419,7 +419,7 @@ func (fyneUI *Fyne) buildEditProfile() {
 			expiration = time.Now().Unix() + increment
 		}
 
-		profileData := fyneUI.callbacks.ExportContact(exportNameEntry.Text, expiration, oneTimeUse.Checked)
+		profileData := ui.bounce.ExportContact(exportNameEntry.Text, expiration, oneTimeUse.Checked)
 		_, err = handler.Write(profileData)
 		if err != nil {
 			showError = errors.New("error writing file: " + err.Error())
@@ -431,16 +431,16 @@ func (fyneUI *Fyne) buildEditProfile() {
 			return
 		}
 
-		showInformation = dialog.NewInformation("Success", "Contact export written to "+handler.URI().Name(), fyneUI.mainWindow)
-	}, fyneUI.mainWindow)
+		showInformation = dialog.NewInformation("Success", "Contact export written to "+handler.URI().Name(), ui.mainWindow)
+	}, ui.mainWindow)
 
 	exportContactForm.OnSubmit = func() {
 		if exportNameEntry.Text == "" {
-			fyneUI.showDialog(dialog.NewError(errors.New("Please select a name for this export"), fyneUI.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("Please select a name for this export"), ui.mainWindow), nil)
 			return
 		}
 		fileSelector.SetFileName("profile.bounce") // TODO: set the user's current profile name
-		fyneUI.showDialog(fileSelector, selectorCleanup)
+		ui.showDialog(fileSelector, selectorCleanup)
 	}
 
 	exportContactMenu := container.NewVBox(
@@ -454,9 +454,9 @@ func (fyneUI *Fyne) buildEditProfile() {
 
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		if fyne.CurrentDevice().IsMobile() {
-			fyneUI.mobileBack()
+			ui.mobileBack()
 		} else {
-			fyneUI.showMainContainer()
+			ui.showMainContainer()
 		}
 	})
 	closeButton.Importance = widget.LowImportance
@@ -466,12 +466,12 @@ func (fyneUI *Fyne) buildEditProfile() {
 		closeButton,
 	)
 	nonScrollingContainers := container.NewVBox(
-		fyneUI.profileOptions,
+		ui.profileOptions,
 		devicesLabel,
 		devicesContainer,
 		contactExportsLabel,
 	)
-	fyneUI.editProfile = container.New(
+	ui.editProfile = container.New(
 		layout.NewBorderLayout(closeBar, exportContactMenu, nil, nil),
 		closeBar,
 		exportContactMenu,

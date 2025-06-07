@@ -47,7 +47,7 @@ func (aur *addUserRequest) getPayload() []byte {
 	return aur.payload
 }
 
-func (b *bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broadcastable {
+func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broadcastable {
 	addUserRequestMutex.Lock()
 	defer addUserRequestMutex.Unlock()
 
@@ -183,7 +183,7 @@ func (b *bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broad
 	return nil
 }
 
-func (b *bounce) requestToAddUser(offer string) error {
+func (b *Bounce) RequestToAddUser(offer string) error {
 	// Parse the offer
 	parts := strings.Split(offer, ":")
 	if len(parts) != 2 {

@@ -228,7 +228,7 @@ func written(from, to string, frameType uint16, payload []byte) {
 	}
 }
 
-func awaitAck(t *testing.T, to, from *bounce, frameType uint16, frameID uuid.UUID) {
+func awaitAck(t *testing.T, to, from *Bounce, frameType uint16, frameID uuid.UUID) {
 	flow := from.network.Address() + to.network.Address()
 	networkTracking.Lock()
 	refs := acked[flow]
@@ -317,11 +317,11 @@ type call struct {
 type testUI struct {
 	sync.Mutex
 
-	callbacks UICallbacks
-	closer    chan bool
-	called    chan call
-	calls     []call
-	waiting   map[string]chan bool
+	bounce  *Bounce
+	closer  chan bool
+	called  chan call
+	calls   []call
+	waiting map[string]chan bool
 }
 
 func newTestUI() *testUI {
@@ -349,8 +349,8 @@ func newTestUI() *testUI {
 	return ui
 }
 
-func await(t *testing.T, b *bounce, function string, args ...interface{}) {
-	ui := b.userInterface.(*testUI)
+func await(t *testing.T, b *Bounce, function string, args ...interface{}) {
+	ui := b.ui.(*testUI)
 
 	ui.Lock()
 	for _, c := range ui.calls {
@@ -381,13 +381,9 @@ func await(t *testing.T, b *bounce, function string, args ...interface{}) {
 	}
 }
 
-func firstAddress(b *bounce) string {
+func firstAddress(b *Bounce) string {
 	u, _ := b.currentUser()
 	return u.Devices[0].Address
-}
-
-func (t *testUI) Build(configPath string, callbacks UICallbacks, darkMode bool) {
-	t.callbacks = callbacks
 }
 
 func (t *testUI) LoadInitialState(InitialState) {}
@@ -468,146 +464,45 @@ func (t *testUI) ReceivedReadReceipt(ReadReceipt)                               
 func (t *testUI) SetSettings(Settings)                                             {}
 func (t *testUI) MessageDelivered(messageID, userID uuid.UUID)                     {}
 func (t *testUI) SetDarkMode(value bool)                                           {}
+func (t *testUI) SetUserState(User)                                                {}
+func (t *testUI) FileCompleted(uuid.UUID)                                          {}
+func (t *testUI) UserChangedGroupImage(UpdateGroupUserChangedGroupImage)           {}
+func (t *testUI) UserImageUpdated(UpdateUserUpdateImage)                           {}
 
-func newBounceUI() UI {
+func newBounce() *Bounce {
 	ui := newTestUI()
 	network := newTestnet()
+	configDirectory := os.TempDir() + "/bounce-test-" + uuid.New().String()
+	os.MkdirAll(configDirectory, 0700)
 
-	go Start(
-		network,
-		ui,
-	)
-
-	return ui
+	return Open(ui, network, configDirectory)
 }
 
-func newBounce() *bounce {
-	ui := newTestUI()
-	network := newTestnet()
-
-	b := &bounce{
-		configDirectory: getConfigDirectory(),
-		userInterface:   ui,
-		network:         network,
-		devicePool: &devicePool{
-			devices:            make(map[string]*remoteDevice),
-			groupPools:         make(map[uuid.UUID][]*remoteDevice),
-			userPools:          make(map[uuid.UUID][]*remoteDevice),
-			userOnlineStatus:   make(map[uuid.UUID]bool),
-			deviceOnlineStatus: make(map[uuid.UUID]bool),
-			lastDial:           make(map[string]time.Time),
-			lastFailedDial:     make(map[string]time.Time),
-			revokedDevices:     make(map[string]bool),
-		},
-		consensusStore: &consensusStore{
-			groups: make(map[uuid.UUID]*canonicalStack),
-		},
-	}
-	b.openReferenceDatabase()
-
-	b.userInterface.Build(
-		b.configDirectory,
-		UICallbacks{
-			GetNewSyncString:                  b.getNewSyncString,
-			RequestToSync:                     b.requestToSync,
-			GetNewAddUserString:               b.getNewAddUserString,
-			RequestToAddUser:                  b.requestToAddUser,
-			SendDirectMessage:                 b.sendDirectMessage,
-			CreateGroup:                       b.createGroup,
-			SendGroupMessage:                  b.sendGroupMessage,
-			AddUser:                           b.addUser,
-			RemoveUser:                        b.removeUser,
-			RenameGroup:                       b.renameGroup,
-			SetGroupRetention:                 b.setGroupRetention,
-			ClearGroupChatHistory:             b.clearGroupChatHistory,
-			SetGroupMutedUntil:                b.setGroupMutedUntil,
-			PromoteAdmin:                      b.promoteAdmin,
-			DemoteAdmin:                       b.demoteAdmin,
-			RestrictUserManagement:            b.restrictUserManagement,
-			UnrestrictUserManagement:          b.unrestrictUserManagement,
-			RestrictGroupEdits:                b.restrictGroupEdits,
-			UnrestrictGroupEdits:              b.unrestrictGroupEdits,
-			RestrictPosting:                   b.restrictPosting,
-			UnrestrictPosting:                 b.unrestrictPosting,
-			DeleteGroup:                       b.deleteGroup,
-			BlockGroup:                        b.blockGroup,
-			SetProfile:                        b.setProfile,
-			ImportUser:                        b.importUser,
-			ExportContact:                     b.exportContact,
-			UserConnectionDesired:             b.userConnectionDesired,
-			GroupConnectionDesired:            b.groupConnectionDesired,
-			SetDMRetention:                    b.setDMRetention,
-			SetDMMutedUntil:                   b.setDMMutedUntil,
-			ClearDMChatHistory:                b.clearDMChatHistory,
-			TypingInDirectMessage:             b.typingInDirectMessage,
-			TypingInGroup:                     b.typingInGroup,
-			UpdateProfileName:                 b.updateProfileName,
-			RevokeDevice:                      b.revokeDevice,
-			RenameDevice:                      b.renameDevice,
-			MarkAsRead:                        b.markAsRead,
-			NeverAskForBatteryOptimizations:   b.neverAskForBatteryOptimizations,
-			SetReadReceiptsByDefault:          b.setReadReceiptsByDefault,
-			SetTypingIndicatorsByDefault:      b.setTypingIndicatorsByDefault,
-			SetNewGroupRetention:              b.setNewGroupRetention,
-			SetNewGroupRestrictUserManagement: b.setNewGroupRestrictUserManagement,
-			SetNewGroupRestrictGroupEdits:     b.setNewGroupRestrictGroupEdits,
-			SetNewGroupRestrictPosting:        b.setNewGroupRestrictPosting,
-			SetGroupReadReceiptSettings:       b.setGroupReadReceiptSettings,
-			SetGroupTypingIndicatorSettings:   b.setGroupTypingIndicatorSettings,
-			SetDMReadReceiptSettings:          b.setDMReadReceiptSettings,
-			SetDMTypingIndicatorSettings:      b.setDMTypingIndicatorSettings,
-			MarkAllGroupMessagesAsRead:        b.markAllGroupMessagesAsRead,
-			MarkAllDirectMessagesAsRead:       b.markAllDirectMessagesAsRead,
-			SetDarkMode:                       b.setDarkMode,
-		},
-		true,
-	)
-
-	b.network.Load(b.configDirectory)
-	b.openDatabase()
-	initialState := b.buildInitialState()
-	b.userInterface.LoadInitialState(initialState)
-
-	go b.network.Start(
-		NetworkCallbacks{
-			NetworkOnline:  b.networkOnline,
-			NetworkOffline: b.networkOffline,
-		},
-	)
-
-	go func() {
-		b.userInterface.Run()
-		b.shutdown()
-	}()
-
-	return b
-}
-
-func createUsersAndGroups(t *testing.T) (me, alice, bob *bounce, groupID uuid.UUID) {
+func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UUID) {
 	me = newBounce()
-	me.setProfile("Me", "test")
-	meExport := me.exportContact("export", time.Now().Unix()+100, false)
+	me.SetProfile("Me", []byte{}, "test")
+	meExport := me.ExportContact("export", time.Now().Unix()+100, false)
 
 	alice = newBounce()
-	alice.setProfile("Alice", "test")
-	aliceExport := alice.exportContact("export", time.Now().Unix()+100, false)
+	alice.SetProfile("Alice", []byte{}, "test")
+	aliceExport := alice.ExportContact("export", time.Now().Unix()+100, false)
 
 	bob = newBounce()
-	bob.setProfile("Bob", "test")
-	bobExport := bob.exportContact("export", time.Now().Unix()+100, false)
+	bob.SetProfile("Bob", []byte{}, "test")
+	bobExport := bob.ExportContact("export", time.Now().Unix()+100, false)
 
-	me.importUser(aliceExport)
-	me.importUser(bobExport)
-	alice.importUser(meExport)
-	alice.importUser(bobExport)
-	bob.importUser(meExport)
-	bob.importUser(aliceExport)
+	me.ImportUser(aliceExport)
+	me.ImportUser(bobExport)
+	alice.ImportUser(meExport)
+	alice.ImportUser(bobExport)
+	bob.ImportUser(meExport)
+	bob.ImportUser(aliceExport)
 
 	assert.NotEqual(t, uuid.Nil, me.currentUserID())
 	assert.NotEqual(t, uuid.Nil, alice.currentUserID())
 	assert.NotEqual(t, uuid.Nil, bob.currentUserID())
 
-	me.createGroup(Group{
+	me.CreateGroup(Group{
 		Name: "Test Group",
 		Users: []User{
 			User{
@@ -621,7 +516,7 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *bounce, groupID uuid.UU
 			},
 		},
 		Admins: []uuid.UUID{me.currentUserID()},
-	})
+	}, []byte{})
 	await(t, alice, "NewGroupChat")
 	await(t, bob, "NewGroupChat")
 
@@ -630,23 +525,23 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *bounce, groupID uuid.UU
 	groupID = g.ID
 
 	t.Cleanup(func() {
-		me.shutdown()
-		alice.shutdown()
-		bob.shutdown()
+		me.Shutdown()
+		alice.Shutdown()
+		bob.Shutdown()
 		os.RemoveAll(me.configDirectory)
 		os.RemoveAll(alice.configDirectory)
 		os.RemoveAll(bob.configDirectory)
 	})
 
-	me.userInterface.(*testUI).Lock()
-	me.userInterface.(*testUI).calls = []call{}
-	me.userInterface.(*testUI).Unlock()
-	alice.userInterface.(*testUI).Lock()
-	alice.userInterface.(*testUI).calls = []call{}
-	alice.userInterface.(*testUI).Unlock()
-	bob.userInterface.(*testUI).Lock()
-	bob.userInterface.(*testUI).calls = []call{}
-	bob.userInterface.(*testUI).Unlock()
+	me.ui.(*testUI).Lock()
+	me.ui.(*testUI).calls = []call{}
+	me.ui.(*testUI).Unlock()
+	alice.ui.(*testUI).Lock()
+	alice.ui.(*testUI).calls = []call{}
+	alice.ui.(*testUI).Unlock()
+	bob.ui.(*testUI).Lock()
+	bob.ui.(*testUI).calls = []call{}
+	bob.ui.(*testUI).Unlock()
 
 	return
 }

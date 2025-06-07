@@ -49,7 +49,7 @@ func (sdr *syncDeviceRequest) getPayload() []byte {
 	return sdr.payload
 }
 
-func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bool) broadcastable {
 	// Mutex lock prcessing to enure an offer can only be used once
 	syncDeviceRequestMutex.Lock()
 	defer syncDeviceRequestMutex.Unlock()
@@ -175,8 +175,8 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 		})
 
 		// Tell the UI that we've accepted the sync device
-		b.userInterface.NewSyncDeviceAdded()
-		b.userInterface.DeviceAdded(Device{
+		b.ui.NewSyncDeviceAdded()
+		b.ui.DeviceAdded(Device{
 			ID:        newDevice.ID,
 			Address:   newDevice.Address,
 			CreatedAt: newDevice.Timestamp,
@@ -197,7 +197,7 @@ func (b *bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 	return nil
 }
 
-func (b *bounce) requestToSync(data string) error {
+func (b *Bounce) RequestToSync(data string) error {
 	// Make sure we don't have a profile before trying to become a sync device for another profile
 	if _, exists := b.currentUser(); exists {
 		return errors.New("profile already exists")

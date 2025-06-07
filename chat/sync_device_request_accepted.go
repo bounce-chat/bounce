@@ -42,7 +42,7 @@ func (sdra *syncDeviceRequestAccepted) getPayload() []byte {
 	return sdra.payload
 }
 
-func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, catchUp bool) broadcastable {
 	// Unmarshal the payload
 	var sdra syncDeviceRequestAccepted
 	err := msgpack.Unmarshal(payload, &sdra)
@@ -116,7 +116,7 @@ func (b *bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	}
 
 	// Inform the UI
-	b.userInterface.SyncDeviceRequestAccepted(sdra.Profile.ID, sdra.Profile.Name, devices, sdra.References)
+	b.ui.SyncDeviceRequestAccepted(sdra.Profile.ID, sdra.Profile.Name, devices, sdra.References)
 
 	// Connect to any other sync devices now
 	b.auditPeers()

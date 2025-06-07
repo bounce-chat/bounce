@@ -47,7 +47,7 @@ type devicePool struct {
 	revokedDevices     map[string]bool
 }
 
-func (b *bounce) peer() {
+func (b *Bounce) peer() {
 	b.makeInitialPeeringConnections()
 	go b.sendKeepAlives()
 	ticker := time.NewTicker(auditFrequency)
@@ -56,7 +56,7 @@ func (b *bounce) peer() {
 	}
 }
 
-func (b *bounce) populateRevokedDevices() {
+func (b *Bounce) populateRevokedDevices() {
 	var revokedDevices []device
 	err := b.database.Not("revoked_at = 0").Find(&revokedDevices).Error
 	if err != nil {
@@ -69,7 +69,7 @@ func (b *bounce) populateRevokedDevices() {
 	}
 }
 
-func (b *bounce) makeInitialPeeringConnections() {
+func (b *Bounce) makeInitialPeeringConnections() {
 	b.devicePool.auditing.Lock()
 	defer b.devicePool.auditing.Unlock()
 
@@ -79,7 +79,7 @@ func (b *bounce) makeInitialPeeringConnections() {
 	b.connectToCustomScopes(startupDialsPerThread)
 }
 
-func (b *bounce) auditPeers() {
+func (b *Bounce) auditPeers() {
 	b.devicePool.auditing.Lock()
 	defer b.devicePool.auditing.Unlock()
 
@@ -107,7 +107,7 @@ func (b *bounce) auditPeers() {
 	b.dialMissingSockets()
 }
 
-func (b *bounce) sendKeepAlives() {
+func (b *Bounce) sendKeepAlives() {
 	ticker := time.NewTicker(keepAliveFrequency)
 	for _ = range ticker.C {
 		b.devicePool.deviceMutex.Lock()
@@ -120,7 +120,7 @@ func (b *bounce) sendKeepAlives() {
 	}
 }
 
-func (b *bounce) connectToSyncDevices() {
+func (b *Bounce) connectToSyncDevices() {
 	currentUser, exists := b.currentUser()
 	if !exists {
 		return
@@ -140,7 +140,7 @@ func (b *bounce) connectToSyncDevices() {
 	}
 }
 
-func (b *bounce) connectToGroups(desiredConnections int) {
+func (b *Bounce) connectToGroups(desiredConnections int) {
 	// Find all recently active groups
 	var activeGroups []group
 	aMonthAgo := time.Now().Add(-4 * 7 * 24 * time.Hour).Unix()
@@ -189,7 +189,7 @@ func (b *bounce) connectToGroups(desiredConnections int) {
 	}
 }
 
-func (b *bounce) connectToUsers(desiredConnections int) {
+func (b *Bounce) connectToUsers(desiredConnections int) {
 	// Connect to any users we have interacted with recently
 	var activeUsers []user
 	aMonthAgo := time.Now().Add(-4 * 7 * 24 * time.Hour).Unix()
@@ -254,7 +254,7 @@ func (b *bounce) connectToUsers(desiredConnections int) {
 	}
 }
 
-func (b *bounce) connectToCustomScopes(desiredConnections int) {
+func (b *Bounce) connectToCustomScopes(desiredConnections int) {
 	// treat each custom scope like a group, use the same logic otherwise
 	// Connect to all gustom scopes
 	var customScopes []customScope
@@ -302,7 +302,7 @@ func (b *bounce) connectToCustomScopes(desiredConnections int) {
 	}
 }
 
-func (b *bounce) closeUnusedConnections() {
+func (b *Bounce) closeUnusedConnections() {
 	b.devicePool.poolMutex.Lock()
 
 	// Close any extra connections to any groups
@@ -385,7 +385,7 @@ func (b *bounce) closeUnusedConnections() {
 	b.devicePool.deviceMutex.Unlock()
 }
 
-func (b *bounce) dialMissingSockets() {
+func (b *Bounce) dialMissingSockets() {
 	b.devicePool.deviceMutex.Lock()
 	defer b.devicePool.deviceMutex.Unlock()
 
@@ -399,7 +399,7 @@ func (b *bounce) dialMissingSockets() {
 	}
 }
 
-func (b *bounce) userConnectionDesired(id uuid.UUID) {
+func (b *Bounce) UserConnectionDesired(id uuid.UUID) {
 	if id == b.currentUserID() {
 		// We always connect to sync devices, this is probably called because the UI
 		// opened a thread to ourselves, we can ignore
@@ -453,7 +453,7 @@ func (b *bounce) userConnectionDesired(id uuid.UUID) {
 	}
 }
 
-func (b *bounce) groupConnectionDesired(id uuid.UUID) {
+func (b *Bounce) GroupConnectionDesired(id uuid.UUID) {
 	// Look up the group
 	var g group
 	err := b.database.Preload("Users.Devices").Preload(clause.Associations).First(&g, "id = ?", id).Error
@@ -504,13 +504,13 @@ func (b *bounce) groupConnectionDesired(id uuid.UUID) {
 	}
 }
 
-func (b *bounce) tryDialingAndAssociateWithGroup(address string, groupID uuid.UUID) {
+func (b *Bounce) tryDialingAndAssociateWithGroup(address string, groupID uuid.UUID) {
 	if b.tryDialing(address) {
 		b.insertRemoteDeviceIntoPool(address, poolTypeGroup, groupID)
 	}
 }
 
-func (b *bounce) tryDialing(address string) bool {
+func (b *Bounce) tryDialing(address string) bool {
 	if !b.networkIsOnline {
 		log.WithFields(log.Fields{
 			"address": address,
@@ -549,7 +549,7 @@ func (b *bounce) tryDialing(address string) bool {
 	return false
 }
 
-func (b *bounce) insertRemoteDeviceIntoPool(address string, poolType int, id uuid.UUID) {
+func (b *Bounce) insertRemoteDeviceIntoPool(address string, poolType int, id uuid.UUID) {
 	b.devicePool.poolMutex.Lock()
 	defer b.devicePool.poolMutex.Unlock()
 
@@ -591,7 +591,7 @@ func (b *bounce) insertRemoteDeviceIntoPool(address string, poolType int, id uui
 	}
 }
 
-func (b *bounce) prunePool(poolType int, id uuid.UUID) {
+func (b *Bounce) prunePool(poolType int, id uuid.UUID) {
 	if poolType == poolTypeUser {
 		_, ok := b.devicePool.userPools[id]
 		if !ok {
@@ -661,7 +661,7 @@ func (dp *devicePool) updateLastFailedDial(address string) {
 	dp.lastFailedDial[address] = time.Now()
 }
 
-func (b *bounce) shouldCooldownDial(address string) bool {
+func (b *Bounce) shouldCooldownDial(address string) bool {
 	lastDial := b.devicePool.getLastDial(address)
 	lastFailedDial := b.devicePool.getLastFailedDial(address)
 	if time.Now().After(lastDial.Add(dialCooldown)) && time.Now().After(lastFailedDial.Add(failedDialCooldown)) {
@@ -670,7 +670,7 @@ func (b *bounce) shouldCooldownDial(address string) bool {
 	return true
 }
 
-func (b *bounce) updateUserOnlineStatus(address string) {
+func (b *Bounce) updateUserOnlineStatus(address string) {
 	b.devicePool.onlineMutex.Lock()
 	defer b.devicePool.onlineMutex.Unlock()
 
@@ -703,10 +703,10 @@ func (b *bounce) updateUserOnlineStatus(address string) {
 		// Update the UI and cache if there's a state change
 		if online && !knownOnline {
 			b.devicePool.deviceOnlineStatus[dev.ID] = true
-			b.userInterface.DeviceOnline(dev.ID)
+			b.ui.DeviceOnline(dev.ID)
 		} else if !online && knownOnline {
 			b.devicePool.deviceOnlineStatus[dev.ID] = false
-			b.userInterface.DeviceOffline(dev.ID)
+			b.ui.DeviceOffline(dev.ID)
 		}
 	} else {
 		// Get the current state for this user
@@ -719,10 +719,10 @@ func (b *bounce) updateUserOnlineStatus(address string) {
 		// Update the UI and cache if there's a state change
 		if online && !knownOnline {
 			b.devicePool.userOnlineStatus[dev.UserID] = true
-			b.userInterface.UserOnline(dev.UserID)
+			b.ui.UserOnline(dev.UserID)
 		} else if !online && knownOnline {
 			b.devicePool.userOnlineStatus[dev.UserID] = false
-			b.userInterface.UserOffline(dev.UserID)
+			b.ui.UserOffline(dev.UserID)
 		}
 	}
 }

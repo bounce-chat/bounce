@@ -104,7 +104,7 @@ func (rr *readReceipt) getTimestamp() int64 {
 	return rr.Timestamp
 }
 
-func (b *bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) broadcastable {
 	readReceiptMutex.Lock()
 	defer readReceiptMutex.Unlock()
 
@@ -173,10 +173,10 @@ func (b *bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 		// Update the database and UI
 		if rr.Actor == b.currentUserID() {
 			b.markSeenInDatabase(rr.Target, targetTypeString)
-			b.userInterface.MessageSeen(rr.Target)
+			b.ui.MessageSeen(rr.Target)
 		} else if author == b.currentUserID() {
 			if rr.Scope != scopeSync {
-				b.userInterface.ReceivedReadReceipt(ReadReceipt{
+				b.ui.ReceivedReadReceipt(ReadReceipt{
 					ID:     rr.ID,
 					Actor:  rr.Actor,
 					Target: rr.Target,
@@ -205,7 +205,7 @@ func (b *bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 	}
 }
 
-func (b *bounce) processEarlyReadReceipts(messageID uuid.UUID, messageType uint16) {
+func (b *Bounce) processEarlyReadReceipts(messageID uuid.UUID, messageType uint16) {
 	// Find any read receipts for this message that came early, add missing data, and send to the UI
 	var rrs []readReceipt
 	err := b.database.Where("target = ? AND target_type = ?", messageID, messageType).Find(&rrs).Error
@@ -256,10 +256,10 @@ func (b *bounce) processEarlyReadReceipts(messageID uuid.UUID, messageType uint1
 
 		if rr.Actor == b.currentUserID() {
 			b.markSeenInDatabase(rr.Target, targetTypeString)
-			b.userInterface.MessageSeen(rr.Target)
+			b.ui.MessageSeen(rr.Target)
 		} else if author == b.currentUserID() {
 			if rr.Scope != scopeSync {
-				b.userInterface.ReceivedReadReceipt(ReadReceipt{
+				b.ui.ReceivedReadReceipt(ReadReceipt{
 					ID:     rr.ID,
 					Actor:  rr.Actor,
 					Target: rr.Target,
@@ -271,7 +271,7 @@ func (b *bounce) processEarlyReadReceipts(messageID uuid.UUID, messageType uint1
 	}
 }
 
-func (b *bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType string) (uuid.UUID, uuid.UUID, int, error) {
+func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType string) (uuid.UUID, uuid.UUID, int, error) {
 	var defaultSendReadReceipts bool
 	err := b.database.Model(&profileSettings{}).Select("default_send_read_receipts").Where("user_id = ?", b.currentUserID()).First(&defaultSendReadReceipts).Error
 	if err != nil {
@@ -375,7 +375,7 @@ func (b *bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 	return uuid.Nil, uuid.Nil, scopeSync, errUnknownReadReceiptTargetType
 }
 
-func (b *bounce) sendReadReceipt(id uuid.UUID, frameType string) error {
+func (b *Bounce) sendReadReceipt(id uuid.UUID, frameType string) error {
 	// Create read receipt
 	targetTypeInt, ok := readReceiptTargetTypeInt[frameType]
 	if !ok {
@@ -427,7 +427,7 @@ func (b *bounce) sendReadReceipt(id uuid.UUID, frameType string) error {
 	return nil
 }
 
-func (b *bounce) markSeenInDatabase(id uuid.UUID, frameType string) error {
+func (b *Bounce) markSeenInDatabase(id uuid.UUID, frameType string) error {
 	tableName := ""
 	switch frameType {
 	case TypeGroupMessage:
@@ -467,7 +467,7 @@ func (b *bounce) markSeenInDatabase(id uuid.UUID, frameType string) error {
 	return nil
 }
 
-func (b *bounce) markAsRead(id uuid.UUID, frameType string) {
+func (b *Bounce) MarkAsRead(id uuid.UUID, frameType string) {
 	err := b.markSeenInDatabase(id, frameType)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -488,7 +488,7 @@ func (b *bounce) markAsRead(id uuid.UUID, frameType string) {
 	}
 }
 
-func (b *bounce) markAllGroupMessagesAsRead(groupID uuid.UUID) {
+func (b *Bounce) MarkAllGroupMessagesAsRead(groupID uuid.UUID) {
 	var gms []groupMessage
 	err := b.database.Select("id").Where("destination = ? AND seen = ?", groupID, false).Find(&gms).Error
 	if err != nil {
@@ -523,7 +523,7 @@ func (b *bounce) markAllGroupMessagesAsRead(groupID uuid.UUID) {
 	}()
 }
 
-func (b *bounce) markAllDirectMessagesAsRead(userID uuid.UUID) {
+func (b *Bounce) MarkAllDirectMessagesAsRead(userID uuid.UUID) {
 	var dms []directMessage
 	err := b.database.Select("id").Where("xor = ? AND seen = ?", xor(userID, b.currentUserID()), false).Find(&dms).Error
 	if err != nil {

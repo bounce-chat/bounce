@@ -28,7 +28,7 @@ type newSyncDeviceWidgets struct {
 	syncStringInput     *fyne.Container
 }
 
-func (fyneUI *Fyne) buildNewSyncDeviceWidgets() {
+func (ui *ui) buildNewSyncDeviceWidgets() {
 	progressBar := widget.NewProgressBar()
 	infiniteProgressBar := widget.NewProgressBarInfinite()
 	progressBars := container.NewStack(
@@ -36,69 +36,69 @@ func (fyneUI *Fyne) buildNewSyncDeviceWidgets() {
 		progressBar,
 	)
 
-	fyneUI.newSyncDeviceWidgets = &newSyncDeviceWidgets{
+	ui.newSyncDeviceWidgets = &newSyncDeviceWidgets{
 		currentStep:         widget.NewLabel(""),
 		progressBars:        progressBars,
 		progressBar:         progressBar,
 		infiniteProgressBar: infiniteProgressBar,
 		backButton: widget.NewButton("Back", func() {
 			if fyne.CurrentDevice().IsMobile() {
-				fyneUI.mobileBack()
+				ui.mobileBack()
 			} else {
-				fyneUI.mainWindow.SetContent(fyneUI.nameNewDevice)
-				fyneUI.nameNewDevice.Show()
+				ui.mainWindow.SetContent(ui.nameNewDevice)
+				ui.nameNewDevice.Show()
 			}
 		}),
 		deviceNameEntry: widget.NewEntry(),
 		syncStringEntry: widget.NewEntry(),
 	}
-	fyneUI.newSyncDeviceWidgets.currentStep.Alignment = fyne.TextAlignCenter
+	ui.newSyncDeviceWidgets.currentStep.Alignment = fyne.TextAlignCenter
 
 	syncStringEntryLabel := widget.NewLabel("Paste in the string to pair this device with an exiting profile")
 	syncStringEntryLabel.Alignment = fyne.TextAlignCenter
 
 	syncButton := widget.NewButton("Sync", func() {
-		fyneUI.newSyncDeviceWidgets.syncStringEntry.OnSubmitted(fyneUI.newSyncDeviceWidgets.syncStringEntry.Text)
+		ui.newSyncDeviceWidgets.syncStringEntry.OnSubmitted(ui.newSyncDeviceWidgets.syncStringEntry.Text)
 	})
 	syncButton.Importance = widget.HighImportance
-	fyneUI.newSyncDeviceWidgets.syncStringInput = container.NewVBox(
+	ui.newSyncDeviceWidgets.syncStringInput = container.NewVBox(
 		syncStringEntryLabel,
 		container.New(
 			layout.NewBorderLayout(nil, nil, nil, syncButton),
 			syncButton,
-			fyneUI.newSyncDeviceWidgets.syncStringEntry,
+			ui.newSyncDeviceWidgets.syncStringEntry,
 		),
 	)
 
-	fyneUI.newSyncDeviceWidgets.deviceNameEntry.OnChanged = func(str string) {
+	ui.newSyncDeviceWidgets.deviceNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
 		str, trimmed := trimLeadingSpace(str)
-		fyneUI.newSyncDeviceWidgets.deviceNameEntry.Text = str
+		ui.newSyncDeviceWidgets.deviceNameEntry.Text = str
 		if trimmed != 0 {
-			fyneUI.newSyncDeviceWidgets.deviceNameEntry.CursorRow = 0
-			fyneUI.newSyncDeviceWidgets.deviceNameEntry.CursorColumn = 0
+			ui.newSyncDeviceWidgets.deviceNameEntry.CursorRow = 0
+			ui.newSyncDeviceWidgets.deviceNameEntry.CursorColumn = 0
 		}
 
 		// Enforce length limit
 		if utf8.RuneCountInString(str) > chat.MaximumNameLength {
 			runes := []rune(str)
 			truncated := runes[0:chat.MaximumNameLength]
-			fyneUI.newSyncDeviceWidgets.deviceNameEntry.Text = string(truncated)
+			ui.newSyncDeviceWidgets.deviceNameEntry.Text = string(truncated)
 		}
-		fyneUI.newSyncDeviceWidgets.deviceNameEntry.Refresh()
+		ui.newSyncDeviceWidgets.deviceNameEntry.Refresh()
 	}
 }
 
-func (fyneUI *Fyne) showNameNewDevice() {
+func (ui *ui) showNameNewDevice() {
 	if fyne.CurrentDevice().IsMobile() {
-		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeNameNewDevice})
+		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeNameNewDevice})
 	}
-	fyneUI.mainWindow.SetContent(fyneUI.nameNewDevice)
-	fyneUI.nameNewDevice.Show()
-	fyneUI.mainWindow.Canvas().Focus(fyneUI.newSyncDeviceWidgets.deviceNameEntry)
+	ui.mainWindow.SetContent(ui.nameNewDevice)
+	ui.nameNewDevice.Show()
+	ui.mainWindow.Canvas().Focus(ui.newSyncDeviceWidgets.deviceNameEntry)
 }
 
-func (fyneUI *Fyne) buildNameNewDevice() {
+func (ui *ui) buildNameNewDevice() {
 	nameLabel := widget.NewLabel("Give this new device a name")
 	nameLabel.Alignment = fyne.TextAlignCenter
 	header := container.NewVBox(
@@ -107,30 +107,30 @@ func (fyneUI *Fyne) buildNameNewDevice() {
 			newPaddedCenterLayout(nil),
 			container.NewVBox(
 				nameLabel,
-				fyneUI.newSyncDeviceWidgets.deviceNameEntry,
+				ui.newSyncDeviceWidgets.deviceNameEntry,
 			),
 		),
 	)
 
 	hostname, err := os.Hostname()
 	if err == nil {
-		fyneUI.newSyncDeviceWidgets.deviceNameEntry.PlaceHolder = hostname
+		ui.newSyncDeviceWidgets.deviceNameEntry.PlaceHolder = hostname
 	}
-	fyneUI.newSyncDeviceWidgets.deviceNameEntry.OnSubmitted = func(_ string) {
-		fyneUI.showNewSyncDevice()
+	ui.newSyncDeviceWidgets.deviceNameEntry.OnSubmitted = func(_ string) {
+		ui.showNewSyncDevice()
 	}
 
 	backButton := widget.NewButton("Back", func() {
 		if fyne.CurrentDevice().IsMobile() {
-			fyneUI.mobileBack()
+			ui.mobileBack()
 		} else {
-			fyneUI.mainWindow.SetContent(fyneUI.newInstall)
-			fyneUI.newInstall.Show()
+			ui.mainWindow.SetContent(ui.newInstall)
+			ui.newInstall.Show()
 		}
 	})
 
 	nextButton := widget.NewButton("Next", func() {
-		fyneUI.showNewSyncDevice()
+		ui.showNewSyncDevice()
 	})
 	nextButton.Importance = widget.HighImportance
 
@@ -140,156 +140,154 @@ func (fyneUI *Fyne) buildNameNewDevice() {
 		nextButton,
 	)
 
-	fyneUI.nameNewDevice = container.New(
+	ui.nameNewDevice = container.New(
 		layout.NewBorderLayout(header, actionButtons, nil, nil),
 		header,
 		actionButtons,
 	)
 }
 
-func (fyneUI *Fyne) showNewSyncDevice() {
-	fyneUI.newSyncDeviceWidgets.syncStringInput.Show()
+func (ui *ui) showNewSyncDevice() {
+	ui.newSyncDeviceWidgets.syncStringInput.Show()
 	if fyne.CurrentDevice().IsMobile() {
-		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeNewSyncDevice})
+		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeNewSyncDevice})
 	}
-	fyneUI.mainWindow.SetContent(fyneUI.newSyncDevice)
-	fyneUI.newSyncDevice.Show()
+	ui.mainWindow.SetContent(ui.newSyncDevice)
+	ui.newSyncDevice.Show()
 }
 
-func (fyneUI *Fyne) buildNewSyncDevice() {
+func (ui *ui) buildNewSyncDevice() {
 	logo := makeLogo(228, 167) // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
 	header := container.NewVBox(
 		container.NewCenter(logo),
 		container.New(
 			newPaddedCenterLayout(nil),
-			fyneUI.newSyncDeviceWidgets.syncStringInput,
+			ui.newSyncDeviceWidgets.syncStringInput,
 		),
 	)
 
 	actionButtons := container.New(
-		layout.NewBorderLayout(nil, nil, fyneUI.newSyncDeviceWidgets.backButton, nil),
-		fyneUI.newSyncDeviceWidgets.backButton,
+		layout.NewBorderLayout(nil, nil, ui.newSyncDeviceWidgets.backButton, nil),
+		ui.newSyncDeviceWidgets.backButton,
 	)
 
-	fyneUI.newSyncDeviceWidgets.currentStep.Hide()
-	fyneUI.newSyncDeviceWidgets.infiniteProgressBar.Hide()
-	fyneUI.newSyncDeviceWidgets.progressBar.Hide()
+	ui.newSyncDeviceWidgets.currentStep.Hide()
+	ui.newSyncDeviceWidgets.infiniteProgressBar.Hide()
+	ui.newSyncDeviceWidgets.progressBar.Hide()
 
-	fyneUI.newSyncDeviceWidgets.syncStringEntry.OnSubmitted = func(str string) {
-		fyneUI.newSyncDeviceWidgets.syncStringInput.Hide()
-		fyneUI.newSyncDeviceWidgets.backButton.Disable()
-		fyneUI.initialSyncIncomplete = true
+	ui.newSyncDeviceWidgets.syncStringEntry.OnSubmitted = func(str string) {
+		ui.newSyncDeviceWidgets.syncStringInput.Hide()
+		ui.newSyncDeviceWidgets.backButton.Disable()
+		ui.initialSyncIncomplete = true
 		// TODO: change logo to loading version
 
-		fyneUI.newSyncDeviceWidgets.currentStep.Show()
-		if fyneUI.networkState == networkStateStarting || fyneUI.networkState == networkStateOffline {
-			fyneUI.newSyncDeviceWidgets.currentStep.Text = "Waiting for network..."
-			fyneUI.newSyncDeviceWidgets.currentStep.Refresh()
-			fyneUI.newSyncDeviceWidgets.infiniteProgressBar.Show()
+		ui.newSyncDeviceWidgets.currentStep.Show()
+		if ui.networkState == networkStateStarting || ui.networkState == networkStateOffline {
+			ui.newSyncDeviceWidgets.currentStep.Text = "Waiting for network..."
+			ui.newSyncDeviceWidgets.currentStep.Refresh()
+			ui.newSyncDeviceWidgets.infiniteProgressBar.Show()
 			for {
 				time.Sleep(500 * time.Millisecond) // TODO: use a callback for this?
-				if fyneUI.networkState == networkStateOnline {
+				if ui.networkState == networkStateOnline {
 					break
 				}
 			}
 		}
 
-		fyneUI.newSyncDeviceWidgets.currentStep.Text = "Sending sync request..."
-		fyneUI.newSyncDeviceWidgets.currentStep.Refresh()
-		fyneUI.newSyncDeviceWidgets.infiniteProgressBar.Show()
+		ui.newSyncDeviceWidgets.currentStep.Text = "Sending sync request..."
+		ui.newSyncDeviceWidgets.currentStep.Refresh()
+		ui.newSyncDeviceWidgets.infiniteProgressBar.Show()
 
-		err := fyneUI.callbacks.RequestToSync(str)
+		err := ui.bounce.RequestToSync(str)
 		if err != nil {
-			fyneUI.initialSyncIncomplete = false
-			fyneUI.newSyncDeviceWidgets.infiniteProgressBar.Hide()
-			fyneUI.newSyncDeviceWidgets.currentStep.Text = ""
-			fyneUI.newSyncDeviceWidgets.currentStep.Hide()
-			fyneUI.newSyncDeviceWidgets.syncStringEntry.Text = ""
-			fyneUI.newSyncDeviceWidgets.syncStringEntry.Refresh()
-			fyneUI.showDialog(dialog.NewError(errors.New("Error sending sync request: "+err.Error()), fyneUI.mainWindow), nil)
-			fyneUI.newSyncDeviceWidgets.backButton.Enable()
-			fyneUI.newSyncDeviceWidgets.syncStringInput.Show()
+			ui.initialSyncIncomplete = false
+			ui.newSyncDeviceWidgets.infiniteProgressBar.Hide()
+			ui.newSyncDeviceWidgets.currentStep.Text = ""
+			ui.newSyncDeviceWidgets.currentStep.Hide()
+			ui.newSyncDeviceWidgets.syncStringEntry.Text = ""
+			ui.newSyncDeviceWidgets.syncStringEntry.Refresh()
+			ui.showDialog(dialog.NewError(errors.New("Error sending sync request: "+err.Error()), ui.mainWindow), nil)
+			ui.newSyncDeviceWidgets.backButton.Enable()
+			ui.newSyncDeviceWidgets.syncStringInput.Show()
 		} else {
-			fyneUI.newSyncDeviceWidgets.currentStep.Text = "Waiting for sync response..."
-			fyneUI.newSyncDeviceWidgets.currentStep.Refresh()
+			ui.newSyncDeviceWidgets.currentStep.Text = "Waiting for sync response..."
+			ui.newSyncDeviceWidgets.currentStep.Refresh()
 		}
 	}
 
-	fyneUI.newSyncDevice = container.New(
+	ui.newSyncDevice = container.New(
 		layout.NewBorderLayout(header, actionButtons, nil, nil),
 		header,
 		actionButtons,
 		container.New(
 			newPaddedCenterLayout(logo),
 			container.NewVBox(
-				container.NewCenter(fyneUI.newSyncDeviceWidgets.currentStep),
-				fyneUI.newSyncDeviceWidgets.progressBars,
+				container.NewCenter(ui.newSyncDeviceWidgets.currentStep),
+				ui.newSyncDeviceWidgets.progressBars,
 			),
 		),
 	)
 }
 
-func (fyneUI *Fyne) SyncDeviceRequestAccepted(id uuid.UUID, name string, devices []chat.Device, references bool) {
+func (ui *ui) SyncDeviceRequestAccepted(id uuid.UUID, name string, devices []chat.Device, references bool) {
 	profile := makeUser(id, name)
-	fyneUI.profile = profile
-	fyneUI.users.add(profile)
+	ui.profile = profile
+	ui.users.add(profile)
 	for i, _ := range devices {
 		dev := devices[i]
-		fyneUI.devices.add(&dev)
+		ui.devices.add(&dev)
 	}
-	fyneUI.initialStateSet = true
-	fyneUI.updateDeviceStatus()
+	ui.initialStateSet = true
+	ui.updateDeviceStatus()
 
 	if !references {
-		fyne.DoAndWait(func() { fyneUI.showMainContainer() })
+		fyne.DoAndWait(func() { ui.showMainContainer() })
 	}
 }
 
-func (fyneUI *Fyne) SyncDeviceRequestRejected(peer string) {
+func (ui *ui) SyncDeviceRequestRejected(peer string) {
 	fyne.DoAndWait(func() {
-		fyneUI.showDialog(dialog.NewError(errors.New("Sync request rejected, make sure you scan the device quickly"), fyneUI.mainWindow), nil)
-		fyneUI.newSyncDeviceWidgets.currentStep.Text = ""
-		fyneUI.newSyncDeviceWidgets.currentStep.Refresh()
-		fyneUI.newSyncDeviceWidgets.currentStep.Hide()
-		fyneUI.newSyncDeviceWidgets.infiniteProgressBar.Hide()
-		fyneUI.newSyncDeviceWidgets.progressBar.Hide()
-		fyneUI.newSyncDeviceWidgets.backButton.Enable()
-		fyneUI.newSyncDeviceWidgets.syncStringInput.Show()
+		ui.showDialog(dialog.NewError(errors.New("Sync request rejected, make sure you scan the device quickly"), ui.mainWindow), nil)
+		ui.newSyncDeviceWidgets.currentStep.Text = ""
+		ui.newSyncDeviceWidgets.currentStep.Refresh()
+		ui.newSyncDeviceWidgets.currentStep.Hide()
+		ui.newSyncDeviceWidgets.infiniteProgressBar.Hide()
+		ui.newSyncDeviceWidgets.progressBar.Hide()
+		ui.newSyncDeviceWidgets.backButton.Enable()
+		ui.newSyncDeviceWidgets.syncStringInput.Show()
 	})
 }
 
-func (fyneUI *Fyne) InitialSyncStarting() {
+func (ui *ui) InitialSyncStarting() {
 	fyne.DoAndWait(func() {
-		fyneUI.newSyncDeviceWidgets.currentStep.Text = "Importing data..."
-		fyneUI.newSyncDeviceWidgets.currentStep.Refresh()
-		fyneUI.newSyncDeviceWidgets.infiniteProgressBar.Hide()
-		fyneUI.newSyncDeviceWidgets.progressBar.Show()
+		ui.newSyncDeviceWidgets.currentStep.Text = "Importing data..."
+		ui.newSyncDeviceWidgets.currentStep.Refresh()
+		ui.newSyncDeviceWidgets.infiniteProgressBar.Hide()
+		ui.newSyncDeviceWidgets.progressBar.Show()
 	})
 }
 
-func (fyneUI *Fyne) InitialSyncProgress(p float64) {
-	fyne.DoAndWait(func() {
-		fyneUI.newSyncDeviceWidgets.progressBar.SetValue(p)
-	})
+func (ui *ui) InitialSyncProgress(p float64) {
+	fyne.DoAndWait(func() { ui.newSyncDeviceWidgets.progressBar.SetValue(p) })
 }
 
-func (fyneUI *Fyne) InitialSyncComplete() {
+func (ui *ui) InitialSyncComplete() {
 	var newDeviceName string
 	fyne.DoAndWait(func() {
-		fyneUI.initialSyncIncomplete = false // Allow notifications and dialogs
-		fyneUI.showMainContainer()
+		ui.initialSyncIncomplete = false // Allow notifications and dialogs
+		ui.showMainContainer()
 
-		newDeviceName = fyneUI.newSyncDeviceWidgets.deviceNameEntry.Text
+		newDeviceName = ui.newSyncDeviceWidgets.deviceNameEntry.Text
 	})
 
 	if newDeviceName != "" {
-		if fyneUI.devices.local == nil {
+		if ui.devices.local == nil {
 			log.Error("local device is nil after initial sync")
 		} else {
-			err := fyneUI.callbacks.RenameDevice(fyneUI.devices.local.ID, strings.TrimSpace(newDeviceName))
+			err := ui.bounce.RenameDevice(ui.devices.local.ID, strings.TrimSpace(newDeviceName))
 			if err != nil {
 				fyne.DoAndWait(func() {
-					fyneUI.showDialog(dialog.NewError(errors.New("Error setting new device name: "+err.Error()), fyneUI.mainWindow), nil)
+					ui.showDialog(dialog.NewError(errors.New("Error setting new device name: "+err.Error()), ui.mainWindow), nil)
 				})
 			}
 		}

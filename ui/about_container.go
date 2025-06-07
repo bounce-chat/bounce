@@ -8,20 +8,20 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-func (fyneUI *Fyne) showAbout() {
+func (ui *ui) showAbout() {
 	if fyne.CurrentDevice().IsMobile() {
-		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeAbout})
+		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeAbout})
 	}
-	fyneUI.mainWindow.SetContent(fyneUI.about)
-	fyneUI.about.Show()
+	ui.mainWindow.SetContent(ui.about)
+	ui.about.Show()
 }
 
-func (fyneUI *Fyne) buildAbout() {
+func (ui *ui) buildAbout() {
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		if fyne.CurrentDevice().IsMobile() {
-			fyneUI.mobileBack()
+			ui.mobileBack()
 		} else {
-			fyneUI.showMainContainer()
+			ui.showMainContainer()
 		}
 	})
 	closeButton.Importance = widget.LowImportance
@@ -31,7 +31,7 @@ func (fyneUI *Fyne) buildAbout() {
 		closeButton,
 	)
 
-	fyneUI.about = container.New(
+	ui.about = container.New(
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.NewCenter(

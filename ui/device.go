@@ -6,32 +6,32 @@ import (
 	"github.com/hkparker/bounce/chat"
 )
 
-func (fyneUI *Fyne) DeviceOnline(id uuid.UUID) {
-	fyneUI.devices.online(id)
-	fyne.DoAndWait(func() { fyneUI.updateDeviceStatus() })
+func (ui *ui) DeviceOnline(id uuid.UUID) {
+	ui.devices.online(id)
+	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 }
 
-func (fyneUI *Fyne) DeviceOffline(id uuid.UUID) {
-	fyneUI.devices.offline(id)
-	fyne.DoAndWait(func() { fyneUI.updateDeviceStatus() })
+func (ui *ui) DeviceOffline(id uuid.UUID) {
+	ui.devices.offline(id)
+	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 }
 
-func (fyneUI *Fyne) DeviceAdded(d chat.Device) {
-	fyneUI.devices.add(&d)
-	fyne.DoAndWait(func() { fyneUI.updateDeviceStatus() })
+func (ui *ui) DeviceAdded(d chat.Device) {
+	ui.devices.add(&d)
+	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 }
 
-func (fyneUI *Fyne) DeviceRevoked(id uuid.UUID) {
-	fyneUI.devices.remove(id)
-	fyne.DoAndWait(func() { fyneUI.updateDeviceStatus() })
+func (ui *ui) DeviceRevoked(id uuid.UUID) {
+	ui.devices.remove(id)
+	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 }
 
-func (fyneUI *Fyne) DeviceRenamed(id uuid.UUID, name string) {
-	fyneUI.devices.rename(id, name)
-	fyne.DoAndWait(func() { fyneUI.updateDeviceStatus() })
+func (ui *ui) DeviceRenamed(id uuid.UUID, name string) {
+	ui.devices.rename(id, name)
+	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 }
 
-func (fyneUI *Fyne) DeviceLastSeen(id uuid.UUID, timestamp int64) {
-	fyneUI.devices.updateLastSeen(id, timestamp)
-	fyne.DoAndWait(func() { fyneUI.updateDeviceStatus() })
+func (ui *ui) DeviceLastSeen(id uuid.UUID, timestamp int64) {
+	ui.devices.updateLastSeen(id, timestamp)
+	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 }

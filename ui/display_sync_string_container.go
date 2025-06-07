@@ -10,29 +10,29 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (fyneUI *Fyne) showDisplaySyncString() {
+func (ui *ui) showDisplaySyncString() {
 	if fyne.CurrentDevice().IsMobile() {
-		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeDisplaySyncString})
+		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeDisplaySyncString})
 	}
-	err := fyneUI.syncString.Set(fyneUI.callbacks.GetNewSyncString())
+	err := ui.syncString.Set(ui.bounce.GetNewSyncString())
 	if err != nil {
 		log.Fatal("data bindings are broken")
 	}
 
 	// TODO: update the QR code data
 
-	fyneUI.mainWindow.SetContent(fyneUI.displaySyncString)
-	fyneUI.displaySyncString.Show()
+	ui.mainWindow.SetContent(ui.displaySyncString)
+	ui.displaySyncString.Show()
 }
 
-func (fyneUI *Fyne) buildDisplaySyncString() {
+func (ui *ui) buildDisplaySyncString() {
 	title := widget.NewLabel("Scan or paste this on the new device:")
 
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		if fyne.CurrentDevice().IsMobile() {
-			fyneUI.mobileBack()
+			ui.mobileBack()
 		} else {
-			fyneUI.showMainContainer()
+			ui.showMainContainer()
 		}
 	})
 	closeButton.Importance = widget.LowImportance
@@ -42,21 +42,21 @@ func (fyneUI *Fyne) buildDisplaySyncString() {
 		closeButton,
 	)
 
-	fyneUI.displaySyncString = container.New(
+	ui.displaySyncString = container.New(
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.New(
 			layout.NewBorderLayout(title, nil, nil, nil),
 			title,
 			container.NewVBox(
-				widget.NewEntryWithData(fyneUI.syncString),
+				widget.NewEntryWithData(ui.syncString),
 			),
 		),
 	)
 }
 
-func (fyneUI *Fyne) NewSyncDeviceAdded() {
+func (ui *ui) NewSyncDeviceAdded() {
 	fyne.DoAndWait(func() {
-		fyneUI.showDialog(dialog.NewInformation("New sync device", "A new device has been paired to your profile", fyneUI.mainWindow), nil)
+		ui.showDialog(dialog.NewInformation("New sync device", "A new device has been paired to your profile", ui.mainWindow), nil)
 	})
 }

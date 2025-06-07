@@ -121,7 +121,7 @@ func (g *group) state() groupState {
 	return gs
 }
 
-func (b *bounce) createGroup(proposedGroup Group, iconData []byte) error {
+func (b *Bounce) CreateGroup(proposedGroup Group, iconData []byte) error {
 	if proposedGroup.ID != uuid.Nil {
 		return errors.New("group UUID cannot be set from the UI")
 	}
@@ -309,12 +309,12 @@ func (b *bounce) createGroup(proposedGroup Group, iconData []byte) error {
 		uiGroup.Images = []uuid.UUID{iconID}
 	}
 
-	go b.userInterface.OpenNewGroupChat(uiGroup)
+	go b.ui.OpenNewGroupChat(uiGroup)
 
 	return nil
 }
 
-func (b *bounce) userIsInGroup(groupID, userID uuid.UUID) bool { // TODO: replace with current group state where possible
+func (b *Bounce) userIsInGroup(groupID, userID uuid.UUID) bool { // TODO: replace with current group state where possible
 	var exists bool
 	err := b.database.Table("group_users").
 		Select("count(*) = 1").
@@ -345,7 +345,7 @@ func validGroupName(name string) bool {
 	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= MaximumNameLength
 }
 
-func (b *bounce) updateLastGroupActivity(groupID uuid.UUID, timestamp int64) {
+func (b *Bounce) updateLastGroupActivity(groupID uuid.UUID, timestamp int64) {
 	var g group
 	err := b.database.Where("id = ?", groupID).First(&g).Error
 	if err != nil {
@@ -371,7 +371,7 @@ func (b *bounce) updateLastGroupActivity(groupID uuid.UUID, timestamp int64) {
 	}
 }
 
-func (b *bounce) isGroupAdmin(groupID, userID uuid.UUID) bool {
+func (b *Bounce) isGroupAdmin(groupID, userID uuid.UUID) bool {
 	var g group
 	err := b.database.Select("admins").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
@@ -406,7 +406,7 @@ func (b *bounce) isGroupAdmin(groupID, userID uuid.UUID) bool {
 	return false
 }
 
-func (b *bounce) addGroupAdmin(groupID, userID uuid.UUID) {
+func (b *Bounce) addGroupAdmin(groupID, userID uuid.UUID) {
 	var g group
 	err := b.database.Select("admins").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
@@ -468,7 +468,7 @@ func (b *bounce) addGroupAdmin(groupID, userID uuid.UUID) {
 	}
 }
 
-func (b *bounce) removeGroupAdmin(groupID, userID uuid.UUID) {
+func (b *Bounce) removeGroupAdmin(groupID, userID uuid.UUID) {
 	var g group
 	err := b.database.Select("admins").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
@@ -533,7 +533,7 @@ func (b *bounce) removeGroupAdmin(groupID, userID uuid.UUID) {
 	}
 }
 
-func (b *bounce) isBlockedFromGroup(groupID, userID uuid.UUID) bool {
+func (b *Bounce) isBlockedFromGroup(groupID, userID uuid.UUID) bool {
 	var g group
 	err := b.database.Select("blocked_users").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
@@ -570,7 +570,7 @@ func (b *bounce) isBlockedFromGroup(groupID, userID uuid.UUID) bool {
 	return false
 }
 
-func (b *bounce) blockUserFromGroup(groupID, userID uuid.UUID) {
+func (b *Bounce) blockUserFromGroup(groupID, userID uuid.UUID) {
 	var g group
 	err := b.database.Select("blocked_users").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {

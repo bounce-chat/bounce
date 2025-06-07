@@ -47,7 +47,7 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (b *bounce) currentUser() (user, bool) {
+func (b *Bounce) currentUser() (user, bool) {
 	var currentUser user
 	err := b.database.Preload("Devices.Signature").Preload(clause.Associations).Where("profile = ?", true).First(&currentUser).Error
 	if err != nil {
@@ -63,7 +63,7 @@ func (b *bounce) currentUser() (user, bool) {
 	return currentUser, true
 }
 
-func (b *bounce) currentUserID() uuid.UUID {
+func (b *Bounce) currentUserID() uuid.UUID {
 	if b.userID == uuid.Nil {
 		currentUser, ok := b.currentUser()
 		if !ok {
@@ -74,7 +74,7 @@ func (b *bounce) currentUserID() uuid.UUID {
 	return b.userID
 }
 
-func (b *bounce) getDMRetention(id uuid.UUID) int64 {
+func (b *Bounce) getDMRetention(id uuid.UUID) int64 {
 	var u user
 	err := b.database.Select("retention").First(&u, "id = ?", id).Error
 	if err != nil {
@@ -92,7 +92,7 @@ func (b *bounce) getDMRetention(id uuid.UUID) int64 {
 	return u.Retention
 }
 
-func (b *bounce) addBlockedGroup(groupID uuid.UUID) {
+func (b *Bounce) addBlockedGroup(groupID uuid.UUID) {
 	var joinedBlockedGroups string
 	err := b.database.Model(&profileSettings{}).Select("blocked_groups").Where("user_id = ?", b.currentUserID()).First(&joinedBlockedGroups).Error
 	if err != nil {
@@ -132,7 +132,7 @@ func (b *bounce) addBlockedGroup(groupID uuid.UUID) {
 	}
 }
 
-func (b *bounce) blockedGroups() []uuid.UUID {
+func (b *Bounce) blockedGroups() []uuid.UUID {
 	blocked := []uuid.UUID{}
 
 	var joinedBlockedGroups string
@@ -161,7 +161,7 @@ func (b *bounce) blockedGroups() []uuid.UUID {
 	return blocked
 }
 
-func (b *bounce) setProfile(profileName string, image []byte, deviceName string) (uuid.UUID, uuid.UUID, error) {
+func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string) (uuid.UUID, uuid.UUID, error) {
 	newID := uuid.New()
 	iconID := uuid.Nil
 	if len(image) > 0 {
@@ -218,13 +218,13 @@ func (b *bounce) setProfile(profileName string, image []byte, deviceName string)
 		}
 	}
 
-	go b.userInterface.DeviceAdded(Device{
+	go b.ui.DeviceAdded(Device{
 		ID:        d.ID,
 		Address:   d.Address,
 		CreatedAt: d.Timestamp,
 		Local:     true,
 	})
-	err = b.renameDevice(d.ID, deviceName)
+	err = b.RenameDevice(d.ID, deviceName)
 	return newID, iconID, err
 }
 
@@ -245,7 +245,7 @@ func (profileExport *profileExport) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (b *bounce) exportContact(name string, expiration int64, oneTime bool) []byte {
+func (b *Bounce) ExportContact(name string, expiration int64, oneTime bool) []byte {
 	myProfile, exists := b.currentUser()
 	if !exists {
 		log.Fatal("cannot export contact when no profile exists")
@@ -279,7 +279,7 @@ func (b *bounce) exportContact(name string, expiration int64, oneTime bool) []by
 	return bytes
 }
 
-func (b *bounce) importUser(data []byte) (User, error) {
+func (b *Bounce) ImportUser(data []byte) (User, error) {
 	newUser := profileExport{}
 	err := json.Unmarshal(data, &newUser)
 	if err != nil {
@@ -317,14 +317,14 @@ func (b *bounce) importUser(data []byte) (User, error) {
 	//b.broadcast(&newUser.Profile)
 
 	// Set the defaul local DM settings
-	b.setDMMutedUntil(newUser.Profile.ID, int64(0)) // TODO: make this default a setting on our profile
+	b.SetDMMutedUntil(newUser.Profile.ID, int64(0)) // TODO: make this default a setting on our profile
 
 	// Set the default DM settings
 	defaultMessageRetention := int64(7 * 24 * 60 * 60) // TODO: make this a setting on our profile
-	b.setDMRetention(newUser.Profile.ID, defaultMessageRetention)
+	b.SetDMRetention(newUser.Profile.ID, defaultMessageRetention)
 
 	// Try to connect to the user we just imported
-	b.userConnectionDesired(newUser.Profile.ID)
+	b.UserConnectionDesired(newUser.Profile.ID)
 
 	// Return a UI representation of the user to the frontend
 	return User{
@@ -333,7 +333,7 @@ func (b *bounce) importUser(data []byte) (User, error) {
 	}, nil
 }
 
-func (b *bounce) directMessageWrittenBeforeHistoryCleared(userID uuid.UUID, messageWrittenAt int64) bool {
+func (b *Bounce) directMessageWrittenBeforeHistoryCleared(userID uuid.UUID, messageWrittenAt int64) bool {
 	// User ID is computed via XOR of my ID with source and destination, if it's a self-DM it would be nil
 	if userID == uuid.Nil {
 		userID = b.currentUserID()
@@ -358,7 +358,7 @@ func (b *bounce) directMessageWrittenBeforeHistoryCleared(userID uuid.UUID, mess
 	return messageWrittenAt < u.ClearBefore
 }
 
-func (b *bounce) updateLastUserActivity(userID uuid.UUID, timestamp int64) {
+func (b *Bounce) updateLastUserActivity(userID uuid.UUID, timestamp int64) {
 	var u user
 	err := b.database.Where("id = ?", userID).First(&u).Error
 	if err != nil {

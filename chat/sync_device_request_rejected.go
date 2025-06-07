@@ -15,8 +15,8 @@ func (sdrr *syncDeviceRequestRejected) getPayload() []byte {
 	return []byte{}
 }
 
-func (b *bounce) handleSyncDeviceRequestRejected(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleSyncDeviceRequestRejected(peer string, payload []byte, catchUp bool) broadcastable {
 	waitingForInitialSyncFrom = ""
-	b.userInterface.SyncDeviceRequestRejected(peer)
+	b.ui.SyncDeviceRequestRejected(peer)
 	return nil
 }

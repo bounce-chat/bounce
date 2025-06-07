@@ -17,7 +17,7 @@ type signedContainer struct {
 	Signature []byte
 }
 
-func (b *bounce) createSignedContainer(payload []byte) *signedContainer {
+func (b *Bounce) createSignedContainer(payload []byte) *signedContainer {
 	hash := blake3.Sum256(payload)
 	return &signedContainer{
 		Signer:    b.network.Address(),
@@ -26,12 +26,12 @@ func (b *bounce) createSignedContainer(payload []byte) *signedContainer {
 	}
 }
 
-func (b *bounce) validSignedContainer(sc signedContainer) bool {
+func (b *Bounce) validSignedContainer(sc signedContainer) bool {
 	hash := blake3.Sum256(sc.Payload)
 	return b.network.VerifySignature(sc.Signer, hash[:], sc.Signature)
 }
 
-func (b *bounce) signedByUser(sc *signedContainer, userID uuid.UUID) bool {
+func (b *Bounce) signedByUser(sc *signedContainer, userID uuid.UUID) bool {
 	signerDevice, exists := b.getDeviceFromAddress(sc.Signer)
 	if !exists {
 		log.WithFields(log.Fields{
@@ -50,7 +50,7 @@ func (b *bounce) signedByUser(sc *signedContainer, userID uuid.UUID) bool {
 	return true
 }
 
-func (b *bounce) unpackSignedContainer(payload []byte) (*signedContainer, error) {
+func (b *Bounce) unpackSignedContainer(payload []byte) (*signedContainer, error) {
 	var sc signedContainer
 	err := msgpack.Unmarshal(payload, &sc)
 	if err != nil {

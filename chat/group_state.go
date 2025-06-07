@@ -33,7 +33,7 @@ type groupState struct {
 	ug                         updateGroup
 }
 
-func (b *bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) {
+func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) {
 	// Create the group state
 	gs := groupState{
 		users:                      []uuid.UUID{},

@@ -19,7 +19,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-func (b *bounce) openDatabase() {
+func (b *Bounce) openDatabase() {
 	databaseFile := b.configDirectory + "/bounce.db"
 
 	// Define a logger for gorm that uses logrus
@@ -113,7 +113,7 @@ func (b *bounce) openDatabase() {
 	b.populateRevokedDevices()
 }
 
-func (b *bounce) pruneDirectMessages() {
+func (b *Bounce) pruneDirectMessages() {
 	// Delete messages from the database that are past expiration
 	err := b.database.Where("delete_at != 0 AND delete_at < ?", time.Now().Unix()).Delete(&directMessage{}).Error
 	if err != nil {
@@ -161,7 +161,7 @@ func (b *bounce) pruneDirectMessages() {
 	}
 }
 
-func (b *bounce) pruneGroupMessages() {
+func (b *Bounce) pruneGroupMessages() {
 	// Delete messages from the database that are past expiration
 	err := b.database.Where("delete_at != 0 AND delete_at < ?", time.Now().Unix()).Delete(&groupMessage{}).Error
 	if err != nil {
@@ -209,7 +209,7 @@ func (b *bounce) pruneGroupMessages() {
 	}
 }
 
-func (b *bounce) pruneUndeliverableCustomScopes() {
+func (b *Bounce) pruneUndeliverableCustomScopes() {
 	deleteBefore := time.Now().Unix() - int64(undeliverableAfter.Seconds())
 
 	// Prune update groups
@@ -221,7 +221,7 @@ func (b *bounce) pruneUndeliverableCustomScopes() {
 	}
 }
 
-func (b *bounce) buildInitialState() InitialState {
+func (b *Bounce) GetInitialState() InitialState {
 	// Prune the database
 	b.pruneDirectMessages()
 	b.pruneGroupMessages()

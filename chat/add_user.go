@@ -86,7 +86,7 @@ func (au *addUser) getTimestamp() int64 {
 	return au.Timestamp
 }
 
-func (b *bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastable {
+func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastable {
 	handleAddUsersMutex.Lock()
 	defer handleAddUsersMutex.Unlock()
 
@@ -356,7 +356,7 @@ func (b *bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 
 	// Inform the UI that a new friend has been added
 	if userIsNew {
-		b.userInterface.UserAdded(User{
+		b.ui.UserAdded(User{
 			ID:   counterparty.ID,
 			Name: counterparty.Name,
 		})

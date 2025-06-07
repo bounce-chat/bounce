@@ -11,20 +11,20 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-func (fyneUI *Fyne) showAddUser() {
+func (ui *ui) showAddUser() {
 	if fyne.CurrentDevice().IsMobile() {
-		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeAddUser})
+		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeAddUser})
 	}
-	fyneUI.mainWindow.SetContent(fyneUI.addUser)
-	fyneUI.addUser.Show()
+	ui.mainWindow.SetContent(ui.addUser)
+	ui.addUser.Show()
 }
 
-func (fyneUI *Fyne) buildAddUser() {
+func (ui *ui) buildAddUser() {
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		if fyne.CurrentDevice().IsMobile() {
-			fyneUI.mobileBack()
+			ui.mobileBack()
 		} else {
-			fyneUI.showMainContainer()
+			ui.showMainContainer()
 		}
 	})
 	closeButton.Importance = widget.LowImportance
@@ -55,19 +55,19 @@ func (fyneUI *Fyne) buildAddUser() {
 	userStringEntry := widget.NewEntry()
 	userStringEntry.OnSubmitted = func(str string) {
 		sendingStep.Show()
-		err := fyneUI.callbacks.RequestToAddUser(str)
+		err := ui.bounce.RequestToAddUser(str)
 		if err != nil {
 			sendingStep.Hide()
 			userStringEntry.Text = ""
 			userStringEntry.Refresh()
-			fyneUI.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), fyneUI.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), ui.mainWindow), nil)
 		} else {
 			sendingRequestProgress.Stop()
 			receivingStep.Show()
 		}
 	}
 
-	fyneUI.addUser = container.New(
+	ui.addUser = container.New(
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.NewVBox(
@@ -79,8 +79,8 @@ func (fyneUI *Fyne) buildAddUser() {
 	)
 }
 
-func (fyneUI *Fyne) AddUserRequestRejected(peer string) {
+func (ui *ui) AddUserRequestRejected(peer string) {
 	fyne.DoAndWait(func() {
-		fyneUI.showDialog(dialog.NewError(errors.New("Friend request rejected, make sure you scan the device quickly"), fyneUI.mainWindow), nil)
+		ui.showDialog(dialog.NewError(errors.New("Friend request rejected, make sure you scan the device quickly"), ui.mainWindow), nil)
 	})
 }

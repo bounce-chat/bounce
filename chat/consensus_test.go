@@ -14,7 +14,7 @@ func TestMessagesAreValidIfCatchUpGivesPermission(t *testing.T) {
 	b, alice, _, groupID := createUsersAndGroups(t)
 
 	// Restrict posting to only admins
-	err := b.restrictPosting(groupID)
+	err := b.RestrictPosting(groupID)
 	assert.NoError(t, err)
 
 	// Create an update group to unrestrict posting
@@ -141,7 +141,7 @@ func TestMessagesAreValidIfUserBecomesAdminWhenRequired(t *testing.T) {
 	b, alice, _, groupID := createUsersAndGroups(t)
 
 	// Restrict posting to only admins
-	err := b.restrictPosting(groupID)
+	err := b.RestrictPosting(groupID)
 	assert.NoError(t, err)
 
 	// Create an update group to make Alice an admin
@@ -206,12 +206,12 @@ func TestMessagesAreInvalidIfUserLoosesAdminWhenRequired(t *testing.T) {
 	b, alice, _, groupID := createUsersAndGroups(t)
 
 	// Restrict posting to only admins
-	err := b.restrictPosting(groupID)
+	err := b.RestrictPosting(groupID)
 	assert.NoError(t, err)
 
 	// Make Alice an admin
 	aliceID := alice.currentUserID()
-	err = b.promoteAdmin(groupID, aliceID)
+	err = b.PromoteGroupAdmin(groupID, aliceID)
 	assert.NoError(t, err)
 
 	// Create an update group to demote Alice

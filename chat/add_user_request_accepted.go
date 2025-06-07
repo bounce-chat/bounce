@@ -42,7 +42,7 @@ func (aura *addUserRequestAccepted) getPayload() []byte {
 	return aura.payload
 }
 
-func (b *bounce) handleAddUserRequestAccepted(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catchUp bool) broadcastable {
 	// Unmarshal the payload
 	var aura addUserRequestAccepted
 	err := msgpack.Unmarshal(payload, &aura)

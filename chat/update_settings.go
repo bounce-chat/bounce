@@ -134,7 +134,7 @@ func (us *updateSettings) validPayload() error {
 	return nil
 }
 
-func (b *bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool) broadcastable {
 	updateSettingsMutex.Lock()
 	defer updateSettingsMutex.Unlock()
 
@@ -187,7 +187,7 @@ func (b *bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 	return &us
 }
 
-func (b *bounce) saveUpdateSettings(us updateSettings) error {
+func (b *Bounce) saveUpdateSettings(us updateSettings) error {
 	// Validate payload
 	err := us.validPayload()
 	if err != nil {
@@ -205,7 +205,7 @@ func (b *bounce) saveUpdateSettings(us updateSettings) error {
 	return nil
 }
 
-func (b *bounce) updateSettingsState() {
+func (b *Bounce) updateSettingsState() {
 	// Set initial values
 	defaultGroupRetention := int64(time.Duration(24 * time.Hour * 7 * 4).Seconds())
 	defaultSendReadReceipts := true
@@ -277,7 +277,7 @@ func (b *bounce) updateSettingsState() {
 	}
 
 	// Inform the UI of the current state
-	go b.userInterface.SetSettings(
+	go b.ui.SetSettings(
 		Settings{
 			DefaultGroupRetention:          defaultGroupRetention,
 			DefaultSendReadReceipts:        defaultSendReadReceipts,
@@ -289,7 +289,7 @@ func (b *bounce) updateSettingsState() {
 	)
 }
 
-func (b *bounce) setNewGroupRetention(value int64) {
+func (b *Bounce) SetNewGroupRetention(value int64) {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(value))
 
@@ -301,7 +301,7 @@ func (b *bounce) setNewGroupRetention(value int64) {
 	})
 }
 
-func (b *bounce) setReadReceiptsByDefault(value bool) {
+func (b *Bounce) SetReadReceiptsByDefault(value bool) {
 	payload := []byte{}
 	if value {
 		payload = append(payload, enabled)
@@ -317,7 +317,7 @@ func (b *bounce) setReadReceiptsByDefault(value bool) {
 	})
 }
 
-func (b *bounce) setTypingIndicatorsByDefault(value bool) {
+func (b *Bounce) SetTypingIndicatorsByDefault(value bool) {
 	payload := []byte{}
 	if value {
 		payload = append(payload, enabled)
@@ -333,7 +333,7 @@ func (b *bounce) setTypingIndicatorsByDefault(value bool) {
 	})
 }
 
-func (b *bounce) setNewGroupRestrictUserManagement(value bool) {
+func (b *Bounce) SetNewGroupRestrictUserManagement(value bool) {
 	payload := []byte{}
 	if value {
 		payload = append(payload, enabled)
@@ -349,7 +349,7 @@ func (b *bounce) setNewGroupRestrictUserManagement(value bool) {
 	})
 }
 
-func (b *bounce) setNewGroupRestrictGroupEdits(value bool) {
+func (b *Bounce) SetNewGroupRestrictGroupEdits(value bool) {
 	payload := []byte{}
 	if value {
 		payload = append(payload, enabled)
@@ -365,7 +365,7 @@ func (b *bounce) setNewGroupRestrictGroupEdits(value bool) {
 	})
 }
 
-func (b *bounce) setNewGroupRestrictPosting(value bool) {
+func (b *Bounce) SetNewGroupRestrictPosting(value bool) {
 	payload := []byte{}
 	if value {
 		payload = append(payload, enabled)
@@ -381,7 +381,7 @@ func (b *bounce) setNewGroupRestrictPosting(value bool) {
 	})
 }
 
-func (b *bounce) applyAndBroadcastUpdateSettings(us updateSettings) error {
+func (b *Bounce) applyAndBroadcastUpdateSettings(us updateSettings) error {
 	// Save the update to the database
 	err := b.saveUpdateSettings(us)
 	if err != nil {

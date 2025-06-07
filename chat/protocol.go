@@ -70,7 +70,7 @@ func (sbrs sortableBroadcastables) Less(i, j int) bool {
 	return sbrs[i].getTimestamp() < sbrs[j].getTimestamp()
 }
 
-func (b *bounce) getHandlers() map[uint16]func(string, []byte, bool) broadcastable {
+func (b *Bounce) getHandlers() map[uint16]func(string, []byte, bool) broadcastable {
 	return map[uint16]func(string, []byte, bool) broadcastable{
 		typeDirectMessage:             b.handleDirectMessage,
 		typeGroupMessage:              b.handleGroupMessage,
@@ -103,7 +103,7 @@ func (b *bounce) getHandlers() map[uint16]func(string, []byte, bool) broadcastab
 	}
 }
 
-func (b *bounce) broadcast(br broadcastable) {
+func (b *Bounce) broadcast(br broadcastable) {
 	log.WithFields(log.Fields{
 		"type":        br.getType(),
 		"scope":       br.getScope(b.currentUserID()),
@@ -119,12 +119,12 @@ func (b *bounce) broadcast(br broadcastable) {
 	}
 }
 
-func (b *bounce) sendDirect(peer string, br sendable) {
+func (b *Bounce) sendDirect(peer string, br sendable) {
 	rd := b.getRemoteDevice(peer)
 	rd.messages <- br
 }
 
-func (b *bounce) getBroadcastScope(br broadcastable, excludeDelivered bool) []string {
+func (b *Bounce) getBroadcastScope(br broadcastable, excludeDelivered bool) []string {
 	scope := br.getScope(b.currentUserID())
 
 	if scope == scopeSync {
@@ -148,7 +148,7 @@ func (b *bounce) getBroadcastScope(br broadcastable, excludeDelivered bool) []st
 	return []string{}
 }
 
-func (b *bounce) getSyncScope(br broadcastable, excludeDelivered bool) []string {
+func (b *Bounce) getSyncScope(br broadcastable, excludeDelivered bool) []string {
 	currentUser, exists := b.currentUser()
 	if !exists {
 		log.Fatal("cannot broadcast sync scoped frame when no current user exists")
@@ -170,7 +170,7 @@ func (b *bounce) getSyncScope(br broadcastable, excludeDelivered bool) []string 
 	return broadcastTargets
 }
 
-func (b *bounce) getUserScope(br broadcastable, excludeDelivered bool) []string {
+func (b *Bounce) getUserScope(br broadcastable, excludeDelivered bool) []string {
 	broadcastTargets := []string{}
 
 	if b.currentUserID() == br.getDestination(b.currentUserID()) {
@@ -217,7 +217,7 @@ func (b *bounce) getUserScope(br broadcastable, excludeDelivered bool) []string 
 //
 // Get any devices that we are connected to that belong to any members of a group, including ourself
 //
-func (b *bounce) getGroupScope(br broadcastable, excludeDelivered bool) []string {
+func (b *Bounce) getGroupScope(br broadcastable, excludeDelivered bool) []string {
 	broadcastTargets := []string{}
 
 	var destinationGroup group
@@ -257,7 +257,7 @@ func (b *bounce) getGroupScope(br broadcastable, excludeDelivered bool) []string
 //
 // Send a message to any device that we're connected to right now
 //
-func (b *bounce) getGlobalScope(br broadcastable, excludeDelivered bool) []string {
+func (b *Bounce) getGlobalScope(br broadcastable, excludeDelivered bool) []string {
 	broadcastTargets := []string{}
 
 	author := br.getAuthor()
@@ -328,7 +328,7 @@ func (b *bounce) getGlobalScope(br broadcastable, excludeDelivered bool) []strin
 	return broadcastTargets
 }
 
-func (b *bounce) getCustomScope(br broadcastable, excludeDelivered bool) []string {
+func (b *Bounce) getCustomScope(br broadcastable, excludeDelivered bool) []string {
 	broadcastTargets := []string{}
 
 	var cs customScope

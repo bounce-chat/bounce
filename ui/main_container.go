@@ -22,56 +22,42 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (fyneUI *Fyne) showMainContainer() {
-	if !fyneUI.initialStateSet { // TODO: rename?
-		fyneUI.mainWindow.SetMainMenu(nil)
-		fyneUI.mainWindow.SetContent(fyneUI.databaseLoading)
-		fyneUI.databaseLoading.Show()
-	} else if fyneUI.profile == nil {
+func (ui *ui) showMainContainer() {
+	if !ui.initialStateSet { // TODO: rename?
+		ui.mainWindow.SetMainMenu(nil)
+		ui.mainWindow.SetContent(ui.databaseLoading)
+		ui.databaseLoading.Show()
+	} else if ui.profile == nil {
 		// The database has been loaded but this is a new install with no profile setup.
 		// Display the screen that the user is on for walking through new device setup.
-		if fyneUI.setupStep == setupStepInit {
-			fyneUI.mainWindow.SetMainMenu(nil)
-			fyneUI.mainWindow.SetContent(fyneUI.newInstall)
-			fyneUI.newInstall.Show()
-			fyneUI.viewStack = []view{view{viewType: viewTypeNewInstall}}
-		} else if fyneUI.setupStep == setupStepProfile {
-			fyneUI.mainWindow.SetMainMenu(nil)
-			fyneUI.mainWindow.SetContent(fyneUI.newProfileCreator)
-			fyneUI.newProfileCreator.Show()
+		if ui.setupStep == setupStepInit {
+			ui.mainWindow.SetMainMenu(nil)
+			ui.mainWindow.SetContent(ui.newInstall)
+			ui.newInstall.Show()
+			ui.viewStack = []view{view{viewType: viewTypeNewInstall}}
+		} else if ui.setupStep == setupStepProfile {
+			ui.mainWindow.SetMainMenu(nil)
+			ui.mainWindow.SetContent(ui.newProfileCreator)
+			ui.newProfileCreator.Show()
 			if fyne.CurrentDevice().IsMobile() {
-				fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeProfileCreator})
+				ui.viewStack = append(ui.viewStack, view{viewType: viewTypeProfileCreator})
 			}
 		} else {
 			log.WithFields(log.Fields{
-				"step": fyneUI.setupStep,
+				"step": ui.setupStep,
 			}).Fatal("unconfigured user interface is in unknown setup step")
 		}
 	} else {
-		fyneUI.viewStack = []view{view{viewType: viewTypeAllThreads}}
-		fyneUI.mainWindow.SetMainMenu(fyneUI.mainMenu)
-		fyneUI.mainWindow.SetContent(fyneUI.mainContainer)
-		fyneUI.mainContainer.Show()
-		if !fyne.CurrentDevice().IsMobile() {
-			for _, t := range fyneUI.groups {
-				if t.chatHistoryScroll().Size().Height == 0 {
-					t.chatHistoryScroll().Resize(chatContainerSizeAtStartup())
-					t.chatHistoryScroll().scrollToLastRead()
-				}
-			}
-			for _, t := range fyneUI.dms {
-				if t.chatHistoryScroll().Size().Height == 0 {
-					t.chatHistoryScroll().Resize(chatContainerSizeAtStartup())
-					t.chatHistoryScroll().scrollToLastRead()
-				}
-			}
-		}
+		ui.viewStack = []view{view{viewType: viewTypeAllThreads}}
+		ui.mainWindow.SetMainMenu(ui.mainMenu)
+		ui.mainWindow.SetContent(ui.mainContainer)
+		ui.mainContainer.Show()
 	}
 }
 
-func (fyneUI *Fyne) buildMainContainer() {
+func (ui *ui) buildMainContainer() {
 	// Logo and welcome message / instructions to be shown before a thread is selected
-	fyneUI.defaultContainer = container.NewMax(
+	ui.defaultContainer = container.NewMax(
 		container.New(
 			layout.NewCenterLayout(),
 			container.NewVBox(
@@ -80,9 +66,9 @@ func (fyneUI *Fyne) buildMainContainer() {
 			),
 		),
 	)
-	fyneUI.chatContainer = container.NewMax()
-	fyneUI.chatContainer.Objects = []fyne.CanvasObject{fyneUI.defaultContainer}
-	fyneUI.threadVBox = container.NewVBox()
+	ui.chatContainer = container.NewMax()
+	ui.chatContainer.Objects = []fyne.CanvasObject{ui.defaultContainer}
+	ui.threadVBox = container.NewVBox()
 
 	threadSearch := widget.NewButtonWithIcon("", theme.SearchIcon(), func() {
 		// TODO: replace the top bar with a search entry for n-gram search of thread names, switch back to
@@ -111,19 +97,19 @@ func (fyneUI *Fyne) buildMainContainer() {
 			layout.NewBorderLayout(nil, nil, logoWithText, topButtons),
 			logoWithText,
 			topButtons,
-			fyneUI.networkOfflineWarning,
+			ui.networkOfflineWarning,
 		)
 
 		settings := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
-			fyneUI.showMobileMenu()
+			ui.showMobileMenu()
 		})
 		settings.Importance = widget.LowImportance
 		topButtons.Objects = append(topButtons.Objects, settings)
 
-		fyneUI.mainContainer = container.New(
+		ui.mainContainer = container.New(
 			layout.NewBorderLayout(logoSearchAndMenu, nil, nil, nil),
 			logoSearchAndMenu,
-			container.NewVScroll(fyneUI.threadVBox),
+			container.NewVScroll(ui.threadVBox),
 		)
 	} else {
 		logoSearchAndMenu := container.New(
@@ -132,7 +118,7 @@ func (fyneUI *Fyne) buildMainContainer() {
 			container.New(
 				layout.NewBorderLayout(nil, nil, icon, nil),
 				icon,
-				fyneUI.networkOfflineWarning,
+				ui.networkOfflineWarning,
 			),
 		)
 
@@ -140,19 +126,19 @@ func (fyneUI *Fyne) buildMainContainer() {
 			container.New(
 				layout.NewBorderLayout(nil, logoSearchAndMenu, nil, nil),
 				logoSearchAndMenu,
-				container.NewVScroll(fyneUI.threadVBox),
+				container.NewVScroll(ui.threadVBox),
 			),
 			widget.NewSeparator(),
 		)
-		fyneUI.mainContainer = container.New(
+		ui.mainContainer = container.New(
 			layout.NewBorderLayout(nil, nil, threads, nil),
 			threads,
-			fyneUI.chatContainer,
+			ui.chatContainer,
 		)
 	}
 }
 
-func (fyneUI *Fyne) buildDatabaseLoading() {
+func (ui *ui) buildDatabaseLoading() {
 	//animation, err := xwidget.NewAnimatedGifFromResource(newEmbeddedResource("assets/icon-animated.gif"))
 	//if err != nil {
 	//	log.WithFields(log.Fields{
@@ -162,38 +148,38 @@ func (fyneUI *Fyne) buildDatabaseLoading() {
 	//animation.SetMinSize(fyne.NewSize(200, 200))
 	//animation.Start()
 
-	progress := widget.NewProgressBarInfinite()
-	progress.Start()
+	//progress := widget.NewProgressBarInfinite()
+	//progress.Start()
 
 	loading := widget.NewLabel("loading...")
 	loading.Alignment = fyne.TextAlignCenter
 
-	fyneUI.databaseLoading = container.NewMax(
+	ui.databaseLoading = container.NewMax(
 		container.New(
 			layout.NewCenterLayout(),
 			container.NewVBox(
 				makeLogo(228, 167), // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
-				progress,
+				//progress,
 				loading,
 			),
 		),
 	)
 }
 
-func (fyneUI *Fyne) buildNewInstall() {
+func (ui *ui) buildNewInstall() {
 	header := container.NewVBox(
 		container.NewCenter(makeLogo(228, 167)), // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
 	)
 
 	selectNewProfile := newClickableImage("Create a new profile", newEmbeddedResource("assets/new_profile.png"), 200, 200, true, func() {
-		fyneUI.setupStep = setupStepProfile
-		fyneUI.mainWindow.SetContent(fyneUI.newProfileCreator)
-		fyneUI.newProfileCreator.Show()
+		ui.setupStep = setupStepProfile
+		ui.mainWindow.SetContent(ui.newProfileCreator)
+		ui.newProfileCreator.Show()
 	})
 
 	selectSyncDevice := newClickableImage("Add device to profile", newEmbeddedResource("assets/add_to_profile.png"), 200, 200, true, func() {
-		fyneUI.mainWindow.SetContent(fyneUI.nameNewDevice)
-		fyneUI.nameNewDevice.Show()
+		ui.mainWindow.SetContent(ui.nameNewDevice)
+		ui.nameNewDevice.Show()
 	})
 
 	content := container.NewGridWithColumns(
@@ -202,14 +188,14 @@ func (fyneUI *Fyne) buildNewInstall() {
 		selectSyncDevice,
 	)
 
-	fyneUI.newInstall = container.New(
+	ui.newInstall = container.New(
 		layout.NewBorderLayout(header, nil, nil, nil),
 		header,
 		content,
 	)
 }
 
-func (fyneUI *Fyne) buildNewProfileCreator() {
+func (ui *ui) buildNewProfileCreator() {
 	profileNameEntry := widget.NewEntry()
 	userIconName := binding.NewString()
 
@@ -257,11 +243,11 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 		}
 	}
 
-	fyneUI.newProfileImageData = []byte{}
+	ui.newProfileImageData = []byte{}
 	fileGetter := func(_ uuid.UUID) ([]byte, error) {
-		return fyneUI.newProfileImageData, nil
+		return ui.newProfileImageData, nil
 	}
-	fyneUI.newProfileImage = newDefaultImage(uuid.Nil, []uuid.UUID{}, userIconName, 128, fileGetter, func() {
+	ui.newProfileImage = newDefaultImage(uuid.Nil, []uuid.UUID{}, userIconName, 128, fileGetter, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
@@ -285,10 +271,10 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 
 			// TODO: make sure data is a valid image, allow for editing, etc
 
-			fyneUI.newProfileImageData = data
-			fyneUI.newProfileImage.images = []uuid.UUID{uuid.New()}
-			fyneUI.newProfileImage.Refresh()
-		}, fyneUI.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
+			ui.newProfileImageData = data
+			ui.newProfileImage.images = []uuid.UUID{uuid.New()}
+			ui.newProfileImage.Refresh()
+		}, ui.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 
 	deviceNameEntry := widget.NewEntry()
@@ -327,33 +313,33 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 	)
 
 	profileDetails := container.NewVBox(
-		container.NewCenter(fyneUI.newProfileImage),
+		container.NewCenter(ui.newProfileImage),
 		profileForm,
 	)
 
 	saveButton := widget.NewButton("Save", func() {
 		if profileNameEntry.Text == "" {
-			fyneUI.showDialog(dialog.NewError(errors.New("Profile name must be set"), fyneUI.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("Profile name must be set"), ui.mainWindow), nil)
 			return
 		}
 		if deviceNameEntry.Text == "" {
-			fyneUI.showDialog(dialog.NewError(errors.New("Device name must be set"), fyneUI.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("Device name must be set"), ui.mainWindow), nil)
 			return
 		}
-		id, imageID, err := fyneUI.callbacks.SetProfile(profileNameEntry.Text, fyneUI.newProfileImageData, deviceNameEntry.Text)
+		id, imageID, err := ui.bounce.SetProfile(profileNameEntry.Text, ui.newProfileImageData, deviceNameEntry.Text)
 		if err != nil {
-			fyneUI.showDialog(dialog.NewError(errors.New("Error saving profile: "+err.Error()), fyneUI.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("Error saving profile: "+err.Error()), ui.mainWindow), nil)
 			return
 		}
 		profile := makeUser(id, profileNameEntry.Text)
-		fyneUI.users.add(profile)
-		fyneUI.profile = profile
+		ui.users.add(profile)
+		ui.profile = profile
 		if imageID != uuid.Nil {
-			fyneUI.profile.images = []uuid.UUID{imageID}
-			fyneUI.profileIcon.images = fyneUI.profile.images
-			fyneUI.profileIcon.Refresh()
+			ui.profile.images = []uuid.UUID{imageID}
+			ui.profileIcon.images = ui.profile.images
+			ui.profileIcon.Refresh()
 		}
-		fyneUI.showMainContainer()
+		ui.showMainContainer()
 	})
 	saveButton.Importance = widget.HighImportance
 	backButton := widget.NewButton("Back", func() {
@@ -362,12 +348,12 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 		userIconName.Set("")
 		deviceNameEntry.Text = ""
 		deviceNameEntry.Refresh()
-		fyneUI.newProfileImageData = []byte{}
-		fyneUI.newProfileImage.images = []uuid.UUID{}
-		fyneUI.newProfileImage.Refresh()
-		fyneUI.setupStep = setupStepInit
-		fyneUI.mainWindow.SetContent(fyneUI.newInstall)
-		fyneUI.newInstall.Show()
+		ui.newProfileImageData = []byte{}
+		ui.newProfileImage.images = []uuid.UUID{}
+		ui.newProfileImage.Refresh()
+		ui.setupStep = setupStepInit
+		ui.mainWindow.SetContent(ui.newInstall)
+		ui.newInstall.Show()
 	})
 	actionButtons := container.New(
 		layout.NewBorderLayout(nil, nil, backButton, saveButton),
@@ -375,7 +361,7 @@ func (fyneUI *Fyne) buildNewProfileCreator() {
 		backButton,
 	)
 
-	fyneUI.newProfileCreator = container.New(
+	ui.newProfileCreator = container.New(
 		layout.NewBorderLayout(nil, actionButtons, nil, nil),
 		actionButtons,
 		container.NewMax(profileDetails),

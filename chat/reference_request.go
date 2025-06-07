@@ -41,7 +41,7 @@ func (rr *referenceRequest) getPayload() []byte {
 	return rr.payload
 }
 
-func (b *bounce) handleReferenceRequest(peer string, payload []byte, _ bool) broadcastable {
+func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) broadcastable {
 	// Unmarshal the reference request
 	var rr referenceRequest
 	err := msgpack.Unmarshal(payload, &rr)
@@ -91,7 +91,7 @@ func (b *bounce) handleReferenceRequest(peer string, payload []byte, _ bool) bro
 	return nil
 }
 
-func (b *bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+func (b *Bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
 	requestedDirectMessageIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -119,7 +119,7 @@ func (b *bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, of
 	return requestedData
 }
 
-func (b *bounce) getRequestedGroupMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+func (b *Bounce) getRequestedGroupMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
 	requestedGroupMessageIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -147,7 +147,7 @@ func (b *bounce) getRequestedGroupMessagePayloads(peer device, requestedIDs, off
 	return requestedData
 }
 
-func (b *bounce) getRequestedUpdateDMsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+func (b *Bounce) getRequestedUpdateDMsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
 	requestedUpdateDMsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -175,7 +175,7 @@ func (b *bounce) getRequestedUpdateDMsPayloads(peer device, requestedIDs, offere
 	return requestedData
 }
 
-func (b *bounce) getRequestedUpdateGroupsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+func (b *Bounce) getRequestedUpdateGroupsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
 	requestedUpdateGroupsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -203,7 +203,7 @@ func (b *bounce) getRequestedUpdateGroupsPayloads(peer device, requestedIDs, off
 	return requestedData
 }
 
-func (b *bounce) getRequestedGroupCreationPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+func (b *Bounce) getRequestedGroupCreationPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
 	requestedGroupCreationIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -231,7 +231,7 @@ func (b *bounce) getRequestedGroupCreationPayloads(peer device, requestedIDs, of
 	return requestedData
 }
 
-func (b *bounce) getRequestedDevicesPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+func (b *Bounce) getRequestedDevicesPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
 	requestedDeviceIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -259,7 +259,7 @@ func (b *bounce) getRequestedDevicesPayloads(peer device, requestedIDs, offeredI
 	return requestedData
 }
 
-func (b *bounce) getRequestedAddUsersPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+func (b *Bounce) getRequestedAddUsersPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
 	requestedAddUserIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -287,7 +287,7 @@ func (b *bounce) getRequestedAddUsersPayloads(peer device, requestedIDs, offered
 	return requestedData
 }
 
-func (b *bounce) getRequestedConfirmationsPayloads(peer device, requestedIDs, offeredIDs, ugsToDeliver []uuid.UUID) sortableBroadcastables {
+func (b *Bounce) getRequestedConfirmationsPayloads(peer device, requestedIDs, offeredIDs, ugsToDeliver []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
 	includedInUG := map[uuid.UUID]bool{}
@@ -324,7 +324,7 @@ func (b *bounce) getRequestedConfirmationsPayloads(peer device, requestedIDs, of
 	return requestedData
 }
 
-func (b *bounce) getRequestedUpdateUsersPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+func (b *Bounce) getRequestedUpdateUsersPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
 	requestedUpdateUserIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -352,7 +352,7 @@ func (b *bounce) getRequestedUpdateUsersPayloads(peer device, requestedIDs, offe
 	return requestedData
 }
 
-func (b *bounce) getRequestedUpdateDevicesPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+func (b *Bounce) getRequestedUpdateDevicesPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
 	requestedUpdateDevicesIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -380,7 +380,7 @@ func (b *bounce) getRequestedUpdateDevicesPayloads(peer device, requestedIDs, of
 	return requestedData
 }
 
-func (b *bounce) getRequestedReadReceiptPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+func (b *Bounce) getRequestedReadReceiptPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
 	requestedReadReceiptIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -408,7 +408,7 @@ func (b *bounce) getRequestedReadReceiptPayloads(peer device, requestedIDs, offe
 	return requestedData
 }
 
-func (b *bounce) getRequestedUpdateSettingsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+func (b *Bounce) getRequestedUpdateSettingsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
 	requestedUpdateSettingsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -436,7 +436,7 @@ func (b *bounce) getRequestedUpdateSettingsPayloads(peer device, requestedIDs, o
 	return requestedData
 }
 
-func (b *bounce) getRequestedFilePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+func (b *Bounce) getRequestedFilePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
 	requestedFileIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -464,7 +464,7 @@ func (b *bounce) getRequestedFilePayloads(peer device, requestedIDs, offeredIDs 
 	return requestedData
 }
 
-func (b *bounce) getRequestedChunkOfferPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
+func (b *Bounce) getRequestedChunkOfferPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
 	requestedData := sortableBroadcastables{}
 
 	requestedChunkOfferIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)

@@ -87,7 +87,7 @@ func (gc *groupCreation) getTimestamp() int64 {
 	return gc.Timestamp
 }
 
-func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) broadcastable {
 	groupMutex.Lock()
 	defer groupMutex.Unlock()
 
@@ -331,7 +331,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 			imageUUIDs = append(imageUUIDs, imageID)
 		}
 	}
-	b.userInterface.NewGroupChat(Group{
+	b.ui.NewGroupChat(Group{
 		ID:                     g.ID,
 		Name:                   g.Name,
 		Images:                 imageUUIDs,
@@ -348,7 +348,7 @@ func (b *bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 	})
 
 	// Notify the peering engine that we want to be connected to this group right now
-	b.groupConnectionDesired(g.ID)
+	b.GroupConnectionDesired(g.ID)
 
 	// Start tracking this group's state in the consensus store
 	b.reloadGroupConsensus(g.ID)

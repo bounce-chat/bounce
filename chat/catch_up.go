@@ -72,9 +72,9 @@ func (cu *catchUp) getPayload() []byte {
 	return cu.payload
 }
 
-func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastable {
+func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastable {
 	if waitingForInitialSyncFrom == peer {
-		b.userInterface.InitialSyncStarting()
+		b.ui.InitialSyncStarting()
 	}
 
 	// Unmarshal the catch up
@@ -188,7 +188,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		case typeGroupCreation:
 			groupsToUpdateConsensus[br.getDestination(b.currentUserID())] = true
 			groupID := br.getDestination(b.currentUserID())
-			b.userInterface.PauseGroupNotifications(groupID)
+			b.ui.PauseGroupNotifications(groupID)
 			unpause[groupID] = true
 		case typeUpdateUser:
 			usersToUpdate[br.getAuthor()] = true
@@ -202,7 +202,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 
 		if waitingForInitialSyncFrom == peer {
 			if i%progressMod == 0 {
-				b.userInterface.InitialSyncProgress(float64(i) / float64(frameCount))
+				b.ui.InitialSyncProgress(float64(i) / float64(frameCount))
 			}
 		}
 	}
@@ -274,7 +274,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 	}
 
 	for groupID, _ := range unpause {
-		b.userInterface.ResumeGroupNotifications(groupID)
+		b.ui.ResumeGroupNotifications(groupID)
 	}
 
 	for userID, _ := range usersToUpdate {
@@ -320,7 +320,7 @@ func (b *bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 
 	if waitingForInitialSyncFrom == peer {
 		waitingForInitialSyncFrom = ""
-		b.userInterface.InitialSyncComplete()
+		b.ui.InitialSyncComplete()
 		b.makeChunkRequests()
 	}
 

@@ -92,8 +92,8 @@ func (u user) setInitials() {
 	}
 }
 
-func (fyneUI *Fyne) SetUserState(chatUser chat.User) {
-	u, ok := fyneUI.users.get(chatUser.ID)
+func (ui *ui) SetUserState(chatUser chat.User) {
+	u, ok := ui.users.get(chatUser.ID)
 	if !ok {
 		log.WithFields(log.Fields{
 			"user_id": chatUser.ID,
@@ -104,14 +104,14 @@ func (fyneUI *Fyne) SetUserState(chatUser chat.User) {
 	// Rename the user
 	u.name.Set(chatUser.Name)
 
-	fyneUI.messages.renameUser(chatUser.ID, u.getName(), u.getInitials())
-	dm, ok := fyneUI.dms[chatUser.ID]
+	ui.messages.renameUser(chatUser.ID, u.getName(), u.getInitials())
+	dm, ok := ui.dms[chatUser.ID]
 	if ok {
-		fyne.Do(func() { dm.chatHistoryScroll().Refresh() })
+		fyne.DoAndWait(func() { dm.chatHistoryScroll().Refresh() })
 	}
-	for _, g := range fyneUI.groups {
+	for _, g := range ui.groups {
 		if g.users.contains(chatUser.ID) {
-			fyne.Do(func() { g.chatHistoryScroll().Refresh() })
+			fyne.DoAndWait(func() { g.chatHistoryScroll().Refresh() })
 		}
 	}
 
@@ -127,25 +127,25 @@ func (fyneUI *Fyne) SetUserState(chatUser chat.User) {
 
 	// Set the images
 	u.images = chatUser.Images
-	if chatUser.ID == fyneUI.profile.id {
-		fyneUI.profileIcon.images = fyneUI.profile.images
-		fyne.Do(func() {
-			fyneUI.profileIcon.Refresh()
+	if chatUser.ID == ui.profile.id {
+		ui.profileIcon.images = ui.profile.images
+		fyne.DoAndWait(func() {
+			ui.profileIcon.Refresh()
 		})
 	}
 
 	// Update the chat bubbles that have an icon
-	fyneUI.messages.updateUserImage(chatUser.ID, chatUser.Images)
-	if chatUser.ID != fyneUI.profile.id {
-		for _, g := range fyneUI.groups {
+	ui.messages.updateUserImage(chatUser.ID, chatUser.Images)
+	if chatUser.ID != ui.profile.id {
+		for _, g := range ui.groups {
 			if g.users.contains(chatUser.ID) {
-				fyne.Do(func() { g.chatHistoryScroll().Refresh() })
+				fyne.DoAndWait(func() { g.chatHistoryScroll().Refresh() })
 			}
 		}
 	}
 
 	// Update the images if there is a DM open
-	dm, exists := fyneUI.dms[chatUser.ID]
+	dm, exists := ui.dms[chatUser.ID]
 	if !exists {
 		return
 	}
@@ -154,114 +154,114 @@ func (fyneUI *Fyne) SetUserState(chatUser chat.User) {
 	dm.editIcon.images = chatUser.Images
 	dm.headerIcon.images = chatUser.Images
 	dm.button.threadImage.images = chatUser.Images
-	fyne.Do(func() {
+	fyne.DoAndWait(func() {
 		dm.editIcon.Refresh()
 		dm.headerIcon.Refresh()
 		dm.button.threadImage.Refresh()
 	})
 }
 
-func (fyneUI *Fyne) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
-	if uuun.User == fyneUI.profile.id {
-		for _, dm := range fyneUI.dms {
-			ti, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+func (ui *ui) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
+	if uuun.User == ui.profile.id {
+		for _, dm := range ui.dms {
+			ti, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("error creating thread item for user name change")
 			} else {
-				fyne.Do(func() { fyneUI.appendThreadItem(dm, ti) })
+				fyne.DoAndWait(func() { ui.appendThreadItem(dm, ti) })
 			}
 		}
-		for _, g := range fyneUI.groups {
-			ti, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+		for _, g := range ui.groups {
+			ti, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("error creating thread item for user name change")
 			} else {
-				fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+				fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
 			}
 		}
 	} else {
-		dm, ok := fyneUI.dms[uuun.User]
+		dm, ok := ui.dms[uuun.User]
 		if ok {
-			ti, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+			ti, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("error creating thread item for user name change")
 			} else {
-				fyne.Do(func() { fyneUI.appendThreadItem(dm, ti) })
+				fyne.DoAndWait(func() { ui.appendThreadItem(dm, ti) })
 			}
 		}
 
-		for _, g := range fyneUI.groups {
+		for _, g := range ui.groups {
 			if g.users.contains(uuun.User) {
-				ti, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+				ti, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
 					}).Error("error creating thread item for user name change")
 				} else {
-					fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+					fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
 				}
 			}
 		}
 	}
 }
 
-func (fyneUI *Fyne) UserImageUpdated(uuui chat.UpdateUserUpdateImage) {
-	if uuui.User == fyneUI.profile.id {
-		for _, dm := range fyneUI.dms {
-			ti, err := fyneUI.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+func (ui *ui) UserImageUpdated(uuui chat.UpdateUserUpdateImage) {
+	if uuui.User == ui.profile.id {
+		for _, dm := range ui.dms {
+			ti, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("error creating thread item for user image change")
 			} else {
-				fyne.Do(func() { fyneUI.appendThreadItem(dm, ti) })
+				fyne.DoAndWait(func() { ui.appendThreadItem(dm, ti) })
 			}
 		}
-		for _, g := range fyneUI.groups {
-			ti, err := fyneUI.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+		for _, g := range ui.groups {
+			ti, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("error creating thread item for user image change")
 			} else {
-				fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+				fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
 			}
 		}
 	} else {
-		dm, ok := fyneUI.dms[uuui.User]
+		dm, ok := ui.dms[uuui.User]
 		if ok {
-			ti, err := fyneUI.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+			ti, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("error creating thread item for user image change")
 			} else {
-				fyne.Do(func() { fyneUI.appendThreadItem(dm, ti) })
+				fyne.DoAndWait(func() { ui.appendThreadItem(dm, ti) })
 			}
 		}
 
-		for _, g := range fyneUI.groups {
+		for _, g := range ui.groups {
 			if g.users.contains(uuui.User) {
-				ti, err := fyneUI.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+				ti, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
 					}).Error("error creating thread item for user image change")
 				} else {
-					fyne.Do(func() { fyneUI.appendThreadItem(g, ti) })
+					fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
 				}
 			}
 		}
 	}
 }
 
-func (fyneUI *Fyne) UserOnline(userID uuid.UUID) {
+func (ui *ui) UserOnline(userID uuid.UUID) {
 	fyne.DoAndWait(func() {
 		log.WithFields(log.Fields{
 			"user_id": userID,
@@ -269,7 +269,7 @@ func (fyneUI *Fyne) UserOnline(userID uuid.UUID) {
 	})
 }
 
-func (fyneUI *Fyne) UserOffline(userID uuid.UUID) {
+func (ui *ui) UserOffline(userID uuid.UUID) {
 	fyne.DoAndWait(func() {
 		log.WithFields(log.Fields{
 			"user_id": userID,

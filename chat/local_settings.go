@@ -15,7 +15,7 @@ type localSettings struct {
 	NeverAskForBatteryOptimizations bool
 }
 
-func (b *bounce) neverAskForBatteryOptimizations() {
+func (b *Bounce) NeverAskForBatteryOptimizations() {
 	err := b.database.Table("local_settings").Where("user_id = ?", b.currentUserID()).Update("never_ask_for_battery_optimizations", true).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -24,7 +24,7 @@ func (b *bounce) neverAskForBatteryOptimizations() {
 	}
 }
 
-func (b *bounce) setDarkMode(value bool) {
+func (b *Bounce) SetDarkMode(value bool) {
 	err := b.database.Table("local_settings").Where("user_id = ?", b.currentUserID()).Update("dark_mode", value).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -32,10 +32,10 @@ func (b *bounce) setDarkMode(value bool) {
 		}).Error("error setting dark mode in local settings")
 	}
 
-	go b.userInterface.SetDarkMode(value)
+	go b.ui.SetDarkMode(value)
 }
 
-func (b *bounce) darkMode() bool {
+func (b *Bounce) DarkMode() bool {
 	currentUser, ok := b.currentUser()
 	if !ok {
 		return true

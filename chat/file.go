@@ -121,7 +121,7 @@ func (f *file) getTimestamp() int64 {
 	return f.Timestamp
 }
 
-func (b *bounce) handleFile(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcastable {
 	fileMutex.Lock()
 	defer fileMutex.Unlock()
 
@@ -338,7 +338,7 @@ func (co *chunkOffer) getTimestamp() int64 {
 	return co.Timestamp
 }
 
-func (b *bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) broadcastable {
 	chunkOfferMutex.Lock()
 	defer chunkOfferMutex.Unlock()
 
@@ -443,7 +443,7 @@ func (cr *chunkRequest) getPayload() []byte {
 	return cr.payload
 }
 
-func (b *bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) broadcastable {
 	// Unmarshal the request
 	var cr chunkRequest
 	err := msgpack.Unmarshal(payload, &cr)
@@ -498,7 +498,7 @@ func (b *bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 	return nil
 }
 
-func (b *bounce) peerCanHaveChunk(peer, hash string) bool {
+func (b *Bounce) peerCanHaveChunk(peer, hash string) bool {
 	// Get all the files that have a chunk with this hash
 	var chunks []chunk
 	err := b.database.Select("file_id").Where("hash = ?", hash).Find(&chunks).Error
@@ -566,7 +566,7 @@ func (c *chunk) getPayload() []byte {
 	return c.payload
 }
 
-func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcastable {
 	chunkMutex.Lock()
 	defer chunkMutex.Unlock()
 	chunkRequestMutex.Lock()
@@ -630,7 +630,7 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 					"error": err.Error(),
 				}).Fatal("database error setting file as downloaded")
 			}
-			b.userInterface.FileCompleted(targetChunk.FileID)
+			b.ui.FileCompleted(targetChunk.FileID)
 		}
 
 		// Offer this chunk
@@ -640,7 +640,7 @@ func (b *bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 	return nil
 }
 
-func (b *bounce) makeChunkRequests() {
+func (b *Bounce) makeChunkRequests() {
 	chunkRequestMutex.Lock()
 	defer chunkRequestMutex.Unlock()
 
@@ -753,12 +753,12 @@ func (b *bounce) makeChunkRequests() {
 	}
 }
 
-func (b *bounce) distributeFile(data []byte, scope int, destination uuid.UUID, fileType int, attachment uuid.UUID) (uuid.UUID, error) {
+func (b *Bounce) distributeFile(data []byte, scope int, destination uuid.UUID, fileType int, attachment uuid.UUID) (uuid.UUID, error) {
 	id := uuid.New()
 	return id, b.distributeFileByID(id, data, scope, destination, fileType, attachment)
 }
 
-func (b *bounce) distributeFileByID(fileID uuid.UUID, data []byte, scope int, destination uuid.UUID, fileType int, attachment uuid.UUID) error {
+func (b *Bounce) distributeFileByID(fileID uuid.UUID, data []byte, scope int, destination uuid.UUID, fileType int, attachment uuid.UUID) error {
 	if len(data) > embeddedFileLimit {
 		return ErrFileTooBig
 	}
@@ -807,7 +807,7 @@ func (b *bounce) distributeFileByID(fileID uuid.UUID, data []byte, scope int, de
 	return nil
 }
 
-func (b *bounce) offerChunk(c chunk) {
+func (b *Bounce) offerChunk(c chunk) {
 	// Get the scope and destination from the chunk's file
 	var f file
 	err := b.database.Select("scope", "destination").Where("id = ?", c.FileID).First(&f).Error
@@ -859,7 +859,7 @@ func (b *bounce) offerChunk(c chunk) {
 	b.broadcast(co)
 }
 
-func (b *bounce) getFileData(fileID uuid.UUID) ([]byte, error) {
+func (b *Bounce) GetFileData(fileID uuid.UUID) ([]byte, error) {
 	var f file
 	err := b.database.Preload(clause.Associations).Where("id = ? AND downloaded = ?", fileID, true).First(&f).Error
 	if err != nil {

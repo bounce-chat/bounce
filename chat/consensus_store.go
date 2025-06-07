@@ -18,7 +18,7 @@ type consensusStore struct {
 	groups map[uuid.UUID]*canonicalStack
 }
 
-func (b *bounce) currentGroupStack(groupID uuid.UUID) (*canonicalStack, error) {
+func (b *Bounce) currentGroupStack(groupID uuid.UUID) (*canonicalStack, error) {
 	b.consensusStore.Lock()
 	stack, ok := b.consensusStore.groups[groupID]
 	b.consensusStore.Unlock()
@@ -34,7 +34,7 @@ func (b *bounce) currentGroupStack(groupID uuid.UUID) (*canonicalStack, error) {
 	return stack, nil
 }
 
-func (b *bounce) currentGroupState(groupID uuid.UUID) (groupState, error) {
+func (b *Bounce) currentGroupState(groupID uuid.UUID) (groupState, error) {
 	stack, err := b.currentGroupStack(groupID)
 	if err != nil {
 		return groupState{}, err
@@ -50,7 +50,7 @@ func (b *bounce) currentGroupState(groupID uuid.UUID) (groupState, error) {
 	return top, nil
 }
 
-func (b *bounce) reloadGroupConsensus(groupID uuid.UUID) {
+func (b *Bounce) reloadGroupConsensus(groupID uuid.UUID) {
 	b.consensusStore.Lock()
 	defer b.consensusStore.Unlock()
 
@@ -84,7 +84,7 @@ func (b *bounce) reloadGroupConsensus(groupID uuid.UUID) {
 	b.consensusStore.groups[groupID] = cs
 }
 
-func (b *bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) {
+func (b *Bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) {
 	b.consensusStore.Lock()
 
 	// Reload everything if timestamp is 0
@@ -130,7 +130,7 @@ func (b *bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) {
 	}
 }
 
-func (b *bounce) writeGroupConsensus(groupID uuid.UUID) error {
+func (b *Bounce) writeGroupConsensus(groupID uuid.UUID) error {
 	b.consensusStore.Lock()
 	defer b.consensusStore.Unlock()
 
@@ -192,7 +192,7 @@ func (b *bounce) writeGroupConsensus(groupID uuid.UUID) error {
 	return b.setRollbacksApplicationsAndGroupState(g, stack, ugs)
 }
 
-func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalStack, ugs []updateGroup) error {
+func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalStack, ugs []updateGroup) error {
 	finalState, err := cs.top()
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -277,7 +277,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		}
 
 		// Inform the UI
-		go b.userInterface.GroupDeleted(GroupDeleted{
+		go b.ui.GroupDeleted(GroupDeleted{
 			Group: g.ID,
 			Actor: b.currentUserID(),
 		})
@@ -361,7 +361,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		}
 
 		// Inform the UI
-		go b.userInterface.GroupDeleted(GroupDeleted{
+		go b.ui.GroupDeleted(GroupDeleted{
 			Group: g.ID,
 			Actor: finalState.ug.Actor,
 		})
@@ -390,7 +390,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		}
 
 		// Inform the UI
-		go b.userInterface.RemovedFromGroup(RemovedFromGroup{
+		go b.ui.RemovedFromGroup(RemovedFromGroup{
 			Group: g.ID,
 			Actor: finalState.removedBy.Actor,
 		})
@@ -407,7 +407,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 				if err != nil {
 					return err
 				}
-				go b.userInterface.DeleteItem(ug.ID)
+				go b.ui.DeleteItem(ug.ID)
 			}
 		}
 	}
@@ -439,7 +439,7 @@ func (b *bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 	return b.setGroupStateInDatabase(g, finalState)
 }
 
-func (b *bounce) setGroupStateInDatabase(g group, gs groupState) error {
+func (b *Bounce) setGroupStateInDatabase(g group, gs groupState) error {
 	// Prune cleared messages
 	b.pruneMessagesBeforeClear(gs.clearBefore, g.ID)
 
@@ -593,7 +593,7 @@ func (b *bounce) setGroupStateInDatabase(g group, gs groupState) error {
 		}
 	}
 
-	go b.userInterface.SetGroupState(Group{
+	go b.ui.SetGroupState(Group{
 		ID:                             g.ID,
 		Name:                           g.Name,
 		Images:                         gs.images,
@@ -615,7 +615,7 @@ func (b *bounce) setGroupStateInDatabase(g group, gs groupState) error {
 	return nil
 }
 
-func (b *bounce) createNewUserIfNeeded(u user) {
+func (b *Bounce) createNewUserIfNeeded(u user) {
 	if u.ID != b.currentUserID() {
 		// Ensure the user is valid
 		if !b.hasValidDeviceGroup(u) {
@@ -642,11 +642,11 @@ func (b *bounce) createNewUserIfNeeded(u user) {
 		}
 
 		// Attempt to make a connection to the user
-		b.userConnectionDesired(u.ID)
+		b.UserConnectionDesired(u.ID)
 	}
 }
 
-func (b *bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {
+func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {
 	// Get the user
 	var u user
 	err := b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error
@@ -740,7 +740,7 @@ func (b *bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {
 	}
 }
 
-func (b *bounce) pruneMessagesBeforeClear(clearBefore int64, groupID uuid.UUID) {
+func (b *Bounce) pruneMessagesBeforeClear(clearBefore int64, groupID uuid.UUID) {
 	gms := []groupMessage{}
 	err := b.database.Select("id").Where("written_at <= ? AND destination = ?", clearBefore, groupID).Find(&gms).Error
 	if err != nil {
@@ -756,11 +756,11 @@ func (b *bounce) pruneMessagesBeforeClear(clearBefore int64, groupID uuid.UUID) 
 				"id":    gm.ID,
 			}).Fatal("error deleting group message while clearing chat history")
 		}
-		go b.userInterface.DeleteItem(gm.ID)
+		go b.ui.DeleteItem(gm.ID)
 	}
 }
 
-func (b *bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID uuid.UUID) {
+func (b *Bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID uuid.UUID) {
 	// Check if we've already cleared delivery records as a result of this update group
 	var g group
 	err := b.database.Select("delivery_records_cleared_for").Where("id = ?", groupID).Find(&g).Error
@@ -835,7 +835,7 @@ func (b *bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID uuid
 	}
 }
 
-func (b *bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
+func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
 	// Get all the user IDs in this group
 	//var userIDs []uuid.UUID
 	//err := b.database.Table("group_users").

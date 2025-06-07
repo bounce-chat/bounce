@@ -104,8 +104,8 @@ func (dm *directMessage) refreshTypingIndicatorSettingSelection(options []string
 	dm.typingIndicatorOverrideSelection.Refresh()
 }
 
-func (fyneUI *Fyne) DMTypingIndicatorSettingsSet(userID uuid.UUID, override, enabled bool) {
-	dm, exists := fyneUI.dms[userID]
+func (ui *ui) DMTypingIndicatorSettingsSet(userID uuid.UUID, override, enabled bool) {
+	dm, exists := ui.dms[userID]
 	if !exists {
 		log.WithFields(log.Fields{
 			"userID": userID,
@@ -116,19 +116,19 @@ func (fyneUI *Fyne) DMTypingIndicatorSettingsSet(userID uuid.UUID, override, ena
 	dm.typingIndicatorsEnabled = enabled
 }
 
-func (fyneUI *Fyne) NewDirectMessage(bounceUser chat.User) {
-	fyne.DoAndWait(func() { fyneUI.buildNewDirectMessage(bounceUser) })
+func (ui *ui) NewDirectMessage(bounceUser chat.User) {
+	fyne.DoAndWait(func() { ui.buildNewDirectMessage(bounceUser) })
 }
 
-func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
-	user, exists := fyneUI.users.get(bounceUser.ID)
+func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
+	user, exists := ui.users.get(bounceUser.ID)
 	if !exists {
 		log.WithFields(log.Fields{
 			"user_id": bounceUser.ID,
 		}).Error("cannot create DM with user unknown to the UI")
 		return
 	}
-	if _, exists := fyneUI.dms[bounceUser.ID]; exists {
+	if _, exists := ui.dms[bounceUser.ID]; exists {
 		log.WithFields(log.Fields{
 			"user_id": bounceUser.ID,
 		}).Error("attempt to create a DM that already exists, ignoring")
@@ -159,20 +159,20 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 	enabled := dm.notificationsMutedUntil != chat.MutedForever
 	dm.notificationsEnabledCheck.SetChecked(enabled)
 
-	fyneUI.buildEditDMContainer(dm)
+	ui.buildEditDMContainer(dm)
 	editButton := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
-		fyneUI.showEditDMContainer(dm)
+		ui.showEditDMContainer(dm)
 	})
 	editButton.Importance = widget.LowImportance
 
-	dm.headerIcon = newDefaultImage(user.id, bounceUser.Images, user.initials, 32, fyneUI.callbacks.GetFileData, nil) // TODO: get size from theme
+	dm.headerIcon = newDefaultImage(user.id, bounceUser.Images, user.initials, 32, ui.bounce.GetFileData, nil) // TODO: get size from theme
 
 	userLabelText := widget.NewLabelWithData(user.name)
 
 	var userLabel *fyne.Container
 	if fyne.CurrentDevice().IsMobile() {
 		backButton := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
-			fyneUI.mobileBack()
+			ui.mobileBack()
 		})
 		backButton.Importance = widget.LowImportance
 
@@ -202,47 +202,47 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 	entry := newThreadEntry(5)
 	dm.entry = entry
 	entry.OnChanged = func(_ string) {
-		go fyneUI.callbacks.TypingInDirectMessage(dm.user.id)
+		go ui.bounce.TypingInDirectMessage(dm.user.id)
 	}
 	entry.customOnSubmitted = func() {
-		fyneUI.callbacks.SendDirectMessage(chat.DirectMessage{
+		ui.bounce.SendDirectMessage(chat.DirectMessage{
 			Thread: dm.user.id,
 			Text:   entry.Text,
 		})
 	}
 
 	openThread := func() {
-		fyneUI.displayThread(dm)
-		fyneUI.callbacks.UserConnectionDesired(user.id)
+		ui.displayThread(dm)
+		ui.bounce.UserConnectionDesired(user.id)
 		if fyne.CurrentDevice().IsMobile() {
-			fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
+			ui.viewStack = append(ui.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
 		}
 	}
-	dm.button = newThreadButton(newDefaultImage(user.id, bounceUser.Images, user.initials, 64, fyneUI.callbacks.GetFileData, openThread), user.name, openThread)
+	dm.button = newThreadButton(newDefaultImage(user.id, bounceUser.Images, user.initials, 64, ui.bounce.GetFileData, openThread), user.name, openThread)
 	dm.button.Refresh()
 	dm.scroll = newChatHistory(
 		dm.user.id,
-		fyneUI.profile.id,
-		fyneUI.messages,
-		fyneUI.callbacks.MarkAsRead,
+		ui.profile.id,
+		ui.messages,
+		ui.bounce.MarkAsRead,
 		dm.button.setUnreadCount,
 		func(id uuid.UUID) {
-			fyneUI.callbacks.MarkAllDirectMessagesAsRead(id)
-			fyneUI.mainWindow.Canvas().Focus(dm.entry)
+			ui.bounce.MarkAllDirectMessagesAsRead(id)
+			ui.mainWindow.Canvas().Focus(dm.entry)
 		},
-		func() bool { return fyneUI.focused },
-		fyneUI.callbacks.GetFileData,
+		func() bool { return ui.focused },
+		ui.bounce.GetFileData,
 	)
 
 	// Keep the last message time counter up to date
 	go func() {
 		for {
 			time.Sleep(1 * time.Minute)
-			fyne.DoAndWait(func() { dm.button.updateLastMessageTimeText() })
+			fyne.Do(func() { dm.button.updateLastMessageTimeText() })
 		}
 	}()
 
-	dm.typingIndicator = newTypingIndicator(typingIndicatorModeIcons, fyneUI.callbacks.GetFileData)
+	dm.typingIndicator = newTypingIndicator(typingIndicatorModeIcons, ui.bounce.GetFileData)
 	dm.typingIndicator.Hide()
 	footer := container.NewVBox(
 		dm.typingIndicator,
@@ -255,17 +255,34 @@ func (fyneUI *Fyne) buildNewDirectMessage(bounceUser chat.User) {
 		footer,
 		container.New(&autoscollLayout{}, dm.scroll),
 	)
-	fyneUI.dms[bounceUser.ID] = dm
-	fyneUI.refreshThreadOrder()
+	ui.dms[bounceUser.ID] = dm
+	ui.refreshThreadOrder()
 }
 
-func (fyneUI *Fyne) DisplayDirectMessage(dm chat.DirectMessage) {
-	dmThread, err := fyneUI.getOrCreateDM(dm.Thread)
+func (ui *ui) DisplayDirectMessage(dm chat.DirectMessage) {
+	dmThread, err := ui.getOrCreateDM(dm.Thread)
 	if err != nil {
 		log.Fatal("DM doesn't exist immediately after creation")
 	}
 
-	ti, err := fyneUI.newDirectMessage(dm)
+	ti, err := ui.newDirectMessage(dm)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for direct message")
+		return
+	}
+
+	fyne.DoAndWait(func() { ui.appendThreadItem(dmThread, ti) })
+}
+
+func (ui *ui) DisplaySentDirectMessage(dm chat.DirectMessage) {
+	dmThread, err := ui.getOrCreateDM(dm.Thread)
+	if err != nil {
+		log.Fatal("DM doesn't exist immediately after creation")
+	}
+
+	ti, err := ui.newDirectMessage(dm)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -274,46 +291,27 @@ func (fyneUI *Fyne) DisplayDirectMessage(dm chat.DirectMessage) {
 	}
 
 	fyne.DoAndWait(func() {
-		fyneUI.appendThreadItem(dmThread, ti)
-	})
-}
-
-func (fyneUI *Fyne) DisplaySentDirectMessage(dm chat.DirectMessage) {
-	dmThread, err := fyneUI.getOrCreateDM(dm.Thread)
-	if err != nil {
-		log.Fatal("DM doesn't exist immediately after creation")
-	}
-
-	ti, err := fyneUI.newDirectMessage(dm)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error creating thread item for direct message")
-		return
-	}
-
-	fyne.Do(func() {
-		fyneUI.appendThreadItem(dmThread, ti)
+		ui.appendThreadItem(dmThread, ti)
 
 		dmThread.entry.Text = ""
 		dmThread.entry.Refresh()
 
 		dmThread.chatHistoryScroll().ScrollToBottom()
-		fyneUI.chatContainer.Refresh()
+		ui.chatContainer.Refresh()
 	})
 }
 
-func (fyneUI *Fyne) showEditDMContainer(dm *directMessage) {
+func (ui *ui) showEditDMContainer(dm *directMessage) {
 	if fyne.CurrentDevice().IsMobile() {
-		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeDMSettings, context: dm.user.id})
+		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeDMSettings, context: dm.user.id})
 	}
-	fyneUI.mainWindow.SetContent(dm.editContainer)
+	ui.mainWindow.SetContent(dm.editContainer)
 	dm.editContainer.Show()
 }
 
-func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
+func (ui *ui) buildEditDMContainer(dm *directMessage) {
 	var selectImage func()
-	if dm.user.id == fyneUI.profile.id {
+	if dm.user.id == ui.profile.id {
 		selectImage = func() {
 			dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 				if reader == nil {
@@ -339,11 +337,11 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 				// TODO: make sure data is a valid image, allow for editing, etc
 				// TODO: don't actualy set it until they hit save?
 
-				fyneUI.callbacks.UpdateProfileImage(data)
-			}, fyneUI.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
+				ui.bounce.UpdateProfileImage(data)
+			}, ui.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
 		}
 	}
-	dm.editIcon = newDefaultImage(dm.user.id, dm.user.images, dm.user.initials, 128, fyneUI.callbacks.GetFileData, selectImage)
+	dm.editIcon = newDefaultImage(dm.user.id, dm.user.images, dm.user.initials, 128, ui.bounce.GetFileData, selectImage)
 
 	username := widget.NewLabelWithData(dm.user.name)
 
@@ -354,10 +352,10 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	dm.retentionSelection.Selected = getRetentionName(dm.retention)
 
 	// Overrides for read receipts and typing indicators
-	dm.readReceiptOverrideSelection = widget.NewSelect(fyneUI.readReceiptOverrideSelectionOptions(), nil)
-	dm.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
-	dm.typingIndicatorOverrideSelection = widget.NewSelect(fyneUI.typingIndicatorOverrideSelectionOptions(), nil)
-	dm.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
+	dm.readReceiptOverrideSelection = widget.NewSelect(ui.readReceiptOverrideSelectionOptions(), nil)
+	dm.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
+	dm.typingIndicatorOverrideSelection = widget.NewSelect(ui.typingIndicatorOverrideSelectionOptions(), nil)
+	dm.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
 
 	//
 	// Button to clear all message history, with confirm dialog
@@ -371,30 +369,30 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 			returnToThread = confirmed
 			showError = nil
 			if confirmed {
-				err := fyneUI.callbacks.ClearDMChatHistory(dm.user.id)
+				err := ui.bounce.ClearDMChatHistory(dm.user.id)
 				if err != nil {
 					showError = errors.New("error clearing chat history: " + err.Error())
 					returnToThread = false
 				}
 			}
 		},
-		fyneUI.mainWindow,
+		ui.mainWindow,
 	)
 	dialogCleanup := func() {
 		if returnToThread {
 			if fyne.CurrentDevice().IsMobile() {
-				fyneUI.mobileBack()
+				ui.mobileBack()
 			} else {
-				fyneUI.showMainContainer()
+				ui.showMainContainer()
 			}
-			fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
+			ui.mainWindow.Canvas().Focus(dm.getEntry())
 		}
 		if showError != nil {
-			fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)
+			ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
 		}
 	}
 	clearHistoryButton := widget.NewButton("Clear history", func() {
-		fyneUI.showDialog(confirmClearHistory, dialogCleanup)
+		ui.showDialog(confirmClearHistory, dialogCleanup)
 	})
 
 	//
@@ -409,18 +407,18 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 			if !dm.notificationsEnabledCheck.Checked {
 				mutedUntil = chat.MutedForever
 			}
-			fyneUI.callbacks.SetDMMutedUntil(dm.user.id, mutedUntil)
+			ui.bounce.SetDMMutedUntil(dm.user.id, mutedUntil)
 		}
 
 		// Update message retention if the selection doesn't line up with what we have for this user
 		selectedRetentionString := dm.retentionSelection.Selected
 		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
 		if !ok {
-			fyneUI.showDialog(dialog.NewError(errors.New("invalid retention selection: "+selectedRetentionString), fyneUI.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("invalid retention selection: "+selectedRetentionString), ui.mainWindow), nil)
 			return
 		} else {
 			if dm.retention != selectedRetentionValue {
-				fyneUI.callbacks.SetDMRetention(dm.user.id, selectedRetentionValue) // TODO: this should return an error if the user ID is nonsense
+				ui.bounce.SetDMRetention(dm.user.id, selectedRetentionValue) // TODO: this should return an error if the user ID is nonsense
 			}
 		}
 
@@ -437,11 +435,11 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		// Set values if needed
 		if switchedReadReceiptDefault || switchedReadReceiptEnabled {
 			if defaultReadReceiptSelected {
-				fyneUI.callbacks.SetDMReadReceiptSettings(dm.user.id, false, true) // TODO: error check all of these
+				ui.bounce.SetDMReadReceiptSettings(dm.user.id, false, true) // TODO: error check all of these
 			} else if readReceiptSelection == on {
-				fyneUI.callbacks.SetDMReadReceiptSettings(dm.user.id, true, true)
+				ui.bounce.SetDMReadReceiptSettings(dm.user.id, true, true)
 			} else if readReceiptSelection == off {
-				fyneUI.callbacks.SetDMReadReceiptSettings(dm.user.id, true, false)
+				ui.bounce.SetDMReadReceiptSettings(dm.user.id, true, false)
 			} else {
 				log.WithFields(log.Fields{
 					"user_id":   dm.user.id,
@@ -451,11 +449,11 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		}
 		if switchedTypingIndicatorDefault || switchedTypingIndicatorEnabled {
 			if defaultTypingIndicatorSelected {
-				fyneUI.callbacks.SetDMTypingIndicatorSettings(dm.user.id, false, true)
+				ui.bounce.SetDMTypingIndicatorSettings(dm.user.id, false, true)
 			} else if typingIndicatorSelection == on {
-				fyneUI.callbacks.SetDMTypingIndicatorSettings(dm.user.id, true, true)
+				ui.bounce.SetDMTypingIndicatorSettings(dm.user.id, true, true)
 			} else if typingIndicatorSelection == off {
-				fyneUI.callbacks.SetDMTypingIndicatorSettings(dm.user.id, true, false)
+				ui.bounce.SetDMTypingIndicatorSettings(dm.user.id, true, false)
 			} else {
 				log.WithFields(log.Fields{
 					"user_id":   dm.user.id,
@@ -465,8 +463,8 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		}
 
 		// Go back to the thread after settings updates are done
-		fyneUI.showMainContainer()
-		fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
+		ui.showMainContainer()
+		ui.mainWindow.Canvas().Focus(dm.getEntry())
 	})
 	saveButton.Importance = widget.HighImportance
 
@@ -480,15 +478,15 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 		dm.notificationsEnabledCheck.SetChecked(enabled)
 
 		// Reset the read receipt and typing indicator overrides
-		dm.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
-		dm.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
+		dm.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
+		dm.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
 
 		// Show main tontainer
 		if fyne.CurrentDevice().IsMobile() {
-			fyneUI.mobileBack()
+			ui.mobileBack()
 		} else {
-			fyneUI.showMainContainer()
-			fyneUI.mainWindow.Canvas().Focus(dm.getEntry())
+			ui.showMainContainer()
+			ui.mainWindow.Canvas().Focus(dm.getEntry())
 		}
 	}
 	cancelButton := widget.NewButton("Cancel", cancelChanges)
@@ -536,9 +534,9 @@ func (fyneUI *Fyne) buildEditDMContainer(dm *directMessage) {
 	)
 }
 
-func (fyneUI *Fyne) SetDMState(userID uuid.UUID, state chat.DMState) {
+func (ui *ui) SetDMState(userID uuid.UUID, state chat.DMState) {
 	// Find the thread
-	dm, exists := fyneUI.dms[userID]
+	dm, exists := ui.dms[userID]
 	if !exists {
 		log.WithFields(log.Fields{
 			"user_id": userID,
@@ -562,15 +560,15 @@ func (fyneUI *Fyne) SetDMState(userID uuid.UUID, state chat.DMState) {
 		// Update read receipt and typign indicator selections
 		dm.overrideReadReceiptSetting = state.OverrideReadReceiptSetting
 		dm.readReceiptsEnabled = state.ReadReceiptsEnabled
-		dm.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+		dm.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
 		dm.overrideTypingIndicatorSetting = state.OverrideTypingIndicatorSetting
 		dm.typingIndicatorsEnabled = state.TypingIndicatorsEnabled
-		dm.refreshTypingIndicatorSettingSelection(fyneUI.typingIndicatorOverrideSelectionOptions())
+		dm.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
 	})
 }
 
-func (fyneUI *Fyne) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
-	dmThread, err := fyneUI.getOrCreateDM(udch.Thread)
+func (ui *ui) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
+	dmThread, err := ui.getOrCreateDM(udch.Thread)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
@@ -579,7 +577,7 @@ func (fyneUI *Fyne) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
 		return
 	}
 
-	ti, err := fyneUI.newUpdateDMClearHistory(udch)
+	ti, err := ui.newUpdateDMClearHistory(udch)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -587,11 +585,11 @@ func (fyneUI *Fyne) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
 		return
 	}
 
-	fyne.DoAndWait(func() { fyneUI.appendThreadItem(dmThread, ti) })
+	fyne.DoAndWait(func() { ui.appendThreadItem(dmThread, ti) })
 }
 
-func (fyneUI *Fyne) DMRetentionChanged(udr chat.UpdateDMRetention) {
-	dmThread, err := fyneUI.getOrCreateDM(udr.Thread)
+func (ui *ui) DMRetentionChanged(udr chat.UpdateDMRetention) {
+	dmThread, err := ui.getOrCreateDM(udr.Thread)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
@@ -600,7 +598,7 @@ func (fyneUI *Fyne) DMRetentionChanged(udr chat.UpdateDMRetention) {
 		return
 	}
 
-	ti, err := fyneUI.newUpdateDMRetention(udr)
+	ti, err := ui.newUpdateDMRetention(udr)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -608,27 +606,27 @@ func (fyneUI *Fyne) DMRetentionChanged(udr chat.UpdateDMRetention) {
 		return
 	}
 
-	fyne.DoAndWait(func() { fyneUI.appendThreadItem(dmThread, ti) })
+	fyne.DoAndWait(func() { ui.appendThreadItem(dmThread, ti) })
 }
 
-func (fyneUI *Fyne) getOrCreateDM(id uuid.UUID) (*directMessage, error) {
+func (ui *ui) getOrCreateDM(id uuid.UUID) (*directMessage, error) {
 	var dm *directMessage
 
 	var dmExists bool
-	dm, dmExists = fyneUI.dms[id]
+	dm, dmExists = ui.dms[id]
 	if !dmExists {
-		u, userExists := fyneUI.users.get(id)
+		u, userExists := ui.users.get(id)
 		if !userExists {
 			return dm, errUnknownUser
 		}
 
 		fyne.DoAndWait(func() {
-			fyneUI.NewDirectMessage(chat.User{
+			ui.NewDirectMessage(chat.User{
 				ID:   u.id,
 				Name: u.getName(),
 			})
 		})
-		dm, dmExists = fyneUI.dms[id]
+		dm, dmExists = ui.dms[id]
 		if !dmExists {
 			return dm, errors.New("direct message not found after creation")
 		}

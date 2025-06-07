@@ -26,11 +26,11 @@ const MaximumNameLength = 128
 //
 const undeliverableAfter = time.Duration(4 * 7 * 24 * time.Hour)
 
-type bounce struct {
+type Bounce struct {
 	configDirectory       string
 	database              *gorm.DB
 	referenceDatabase     *gorm.DB
-	userInterface         UI
+	ui                    UI
 	network               Network
 	devicePool            *devicePool
 	consensusStore        *consensusStore
@@ -48,17 +48,16 @@ type bounce struct {
 // The main entrypoint for starting the Bounce chat engine, blocks until the user interface
 // is closed, the network reaches a fatal error, or the process is sent an interrupt.
 //
-func Start(network Network, ui UI) {
+func Open(ui UI, network Network, configDirectory string) *Bounce {
 	if os.Getenv("DEBUG") == "true" {
 		log.SetReportCaller(true)
 	}
 	log.SetLevel(log.DebugLevel) // TODO: put behind the envar when ready.  run in warn otherwise?
 
-	ensureOnlyOneInstance()
-	b := &bounce{
-		configDirectory: getConfigDirectory(),
-		userInterface:   ui,
+	b := &Bounce{
+		configDirectory: configDirectory,
 		network:         network,
+		ui:              ui,
 		devicePool: &devicePool{
 			devices:            make(map[string]*remoteDevice),
 			groupPools:         make(map[uuid.UUID][]*remoteDevice),
@@ -73,95 +72,30 @@ func Start(network Network, ui UI) {
 			groups: make(map[uuid.UUID]*canonicalStack),
 		},
 	}
+	b.ensureOnlyOneInstance()
 	log.RegisterExitHandler(b.fatalShutdown)
 	go b.handleInterrupts()
 
 	b.openDatabase()
-	b.userInterface.Build(
-		b.configDirectory,
-		UICallbacks{
-			GetNewSyncString:                  b.getNewSyncString,
-			RequestToSync:                     b.requestToSync,
-			GetNewAddUserString:               b.getNewAddUserString,
-			RequestToAddUser:                  b.requestToAddUser,
-			SendDirectMessage:                 b.sendDirectMessage,
-			CreateGroup:                       b.createGroup,
-			SendGroupMessage:                  b.sendGroupMessage,
-			AddUser:                           b.addUser,
-			RemoveUser:                        b.removeUser,
-			RenameGroup:                       b.renameGroup,
-			SetGroupImage:                     b.setGroupImage,
-			SetGroupRetention:                 b.setGroupRetention,
-			ClearGroupChatHistory:             b.clearGroupChatHistory,
-			SetGroupMutedUntil:                b.setGroupMutedUntil,
-			PromoteAdmin:                      b.promoteAdmin,
-			DemoteAdmin:                       b.demoteAdmin,
-			RestrictUserManagement:            b.restrictUserManagement,
-			UnrestrictUserManagement:          b.unrestrictUserManagement,
-			RestrictGroupEdits:                b.restrictGroupEdits,
-			UnrestrictGroupEdits:              b.unrestrictGroupEdits,
-			RestrictPosting:                   b.restrictPosting,
-			UnrestrictPosting:                 b.unrestrictPosting,
-			DeleteGroup:                       b.deleteGroup,
-			BlockGroup:                        b.blockGroup,
-			SetProfile:                        b.setProfile,
-			ImportUser:                        b.importUser,
-			ExportContact:                     b.exportContact,
-			UserConnectionDesired:             b.userConnectionDesired,
-			GroupConnectionDesired:            b.groupConnectionDesired,
-			GetFileData:                       b.getFileData,
-			SetDMRetention:                    b.setDMRetention,
-			SetDMMutedUntil:                   b.setDMMutedUntil,
-			ClearDMChatHistory:                b.clearDMChatHistory,
-			TypingInDirectMessage:             b.typingInDirectMessage,
-			TypingInGroup:                     b.typingInGroup,
-			UpdateProfileName:                 b.updateProfileName,
-			UpdateProfileImage:                b.updateProfileImage,
-			RevokeDevice:                      b.revokeDevice,
-			RenameDevice:                      b.renameDevice,
-			MarkAsRead:                        b.markAsRead,
-			NeverAskForBatteryOptimizations:   b.neverAskForBatteryOptimizations,
-			SetReadReceiptsByDefault:          b.setReadReceiptsByDefault,
-			SetTypingIndicatorsByDefault:      b.setTypingIndicatorsByDefault,
-			SetNewGroupRetention:              b.setNewGroupRetention,
-			SetNewGroupRestrictUserManagement: b.setNewGroupRestrictUserManagement,
-			SetNewGroupRestrictGroupEdits:     b.setNewGroupRestrictGroupEdits,
-			SetNewGroupRestrictPosting:        b.setNewGroupRestrictPosting,
-			SetGroupReadReceiptSettings:       b.setGroupReadReceiptSettings,
-			SetGroupTypingIndicatorSettings:   b.setGroupTypingIndicatorSettings,
-			SetDMReadReceiptSettings:          b.setDMReadReceiptSettings,
-			SetDMTypingIndicatorSettings:      b.setDMTypingIndicatorSettings,
-			MarkAllGroupMessagesAsRead:        b.markAllGroupMessagesAsRead,
-			MarkAllDirectMessagesAsRead:       b.markAllDirectMessagesAsRead,
-			SetDarkMode:                       b.setDarkMode,
-		},
-		b.darkMode(),
-	)
 
 	go func() {
 		b.network.Load(b.configDirectory)
 		b.openReferenceDatabase()
-		go b.network.Start(
+		b.network.Start(
 			NetworkCallbacks{
 				NetworkOnline:  b.networkOnline,
 				NetworkOffline: b.networkOffline,
 			},
 		)
-		initialState := b.buildInitialState()
-		b.userInterface.LoadInitialState(initialState)
 	}()
 
-	// Run the UI and block
-	b.userInterface.Run()
-
-	// Once the UI is closed, stop bounce
-	b.shutdown()
+	return b
 }
 
 //
 // Gracefully stop all Bounce.  Used when a fatal error is encountered or the user interface is closed
 //
-func (b *bounce) shutdown() {
+func (b *Bounce) Shutdown() {
 	b.shutdownStarted.Store(true)
 
 	// Logrus is going to call in here on a fatal error, then os.Exit.  If multiple fatal logs occur, which
@@ -263,7 +197,7 @@ func (b *bounce) shutdown() {
 	}
 
 	// Delete our PID file
-	pidFile := getConfigDirectory() + "/.pid"
+	pidFile := b.configDirectory + "/.pid"
 	err := os.Remove(pidFile)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -281,9 +215,9 @@ func (b *bounce) shutdown() {
 // in one of them.  So we just attempt to close the database and delete the PID file before allowing logrus
 // to exit.
 //
-func (b *bounce) fatalShutdown() {
+func (b *Bounce) fatalShutdown() {
 	// Close the UI
-	b.userInterface.Quit()
+	b.ui.Quit()
 
 	// Close the database connection
 	sqliteDB, err := b.database.DB()
@@ -300,7 +234,7 @@ func (b *bounce) fatalShutdown() {
 	}
 
 	// Delete our PID file
-	pidFile := getConfigDirectory() + "/.pid"
+	pidFile := b.configDirectory + "/.pid"
 	err = os.Remove(pidFile)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -313,7 +247,7 @@ func (b *bounce) fatalShutdown() {
 //
 // Shut the app down if the process receives an interrupt
 //
-func (b *bounce) handleInterrupts() {
+func (b *Bounce) handleInterrupts() {
 	//
 	// Handle interrupts, from a Ctrl+C on the command
 	// line or a kill signal elsewhere
@@ -327,17 +261,17 @@ func (b *bounce) handleInterrupts() {
 		}).Info("signal received to kill process, shutting down")
 		// Stopping the user interface unblocks the main blocking call of the appplication,
 		// which in turn shuts down the network handler and the network
-		b.userInterface.Quit()
+		b.ui.Quit()
 	}
 }
 
-func ensureOnlyOneInstance() {
+func (b *Bounce) ensureOnlyOneInstance() {
 	// Let mobile operating systems handle this problem
 	if runtime.GOOS == "android" || runtime.GOOS == "ios" {
 		return
 	}
 
-	pidFile := getConfigDirectory() + "/.pid"
+	pidFile := b.configDirectory + "/.pid"
 
 	// If there's no PID file, make one and return
 	_, err := os.Stat(pidFile)
@@ -418,33 +352,4 @@ func ensureOnlyOneInstance() {
 			}).Fatal("Another instance of Bounce is running.  Please close it, or if you are sure it is not running, delete the pid file and try again: ", pidFile)
 		}
 	}
-}
-
-func getConfigDirectory() string {
-	var configDirectory string
-	if testing.Testing() {
-		configDirectory = os.TempDir() + "/bounce-test-" + uuid.New().String()
-	} else if runtime.GOOS == "android" {
-		// TODO: use /data/data/chat.bounce/ ?
-		configDirectory = "/sdcard/Android/data/chat.bounce"
-	} else {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"at":    "configDirectory",
-				"error": err.Error(),
-			}).Fatal("error getting home directory")
-		}
-		configDirectory = home + "/.bounce"
-	}
-
-	err := os.MkdirAll(configDirectory, 0700)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"path":  configDirectory,
-			"error": err.Error(),
-		}).Fatal("error creating config directory")
-	}
-
-	return configDirectory
 }

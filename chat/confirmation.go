@@ -84,7 +84,7 @@ func (c *confirmation) getTimestamp() int64 {
 	return c.Timestamp
 }
 
-func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) broadcastable {
 	groupMutex.Lock()
 	defer groupMutex.Unlock()
 
@@ -180,7 +180,7 @@ func (b *bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 	return &c
 }
 
-func (b *bounce) sendConfirmation(ug updateGroup) {
+func (b *Bounce) sendConfirmation(ug updateGroup) {
 	// Check if we already confirmed this update
 	var existingConfirmation confirmation
 	err := b.database.Where("signing_device = ? AND update_group_id = ?", b.network.Address(), ug.ID).First(&existingConfirmation).Error

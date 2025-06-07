@@ -4,7 +4,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (b *bounce) networkOnline() {
+func (b *Bounce) networkOnline() {
 	b.networkIsOnline = true
 	if !b.networkHasBeenOnline {
 		b.networkHasBeenOnline = true
@@ -12,15 +12,15 @@ func (b *bounce) networkOnline() {
 		go b.peer()
 	}
 	b.auditPeers()
-	b.userInterface.NetworkOnline()
+	b.ui.NetworkOnline()
 }
 
-func (b *bounce) networkOffline() {
+func (b *Bounce) networkOffline() {
 	b.networkIsOnline = false
-	b.userInterface.NetworkOffline()
+	b.ui.NetworkOffline()
 }
 
-func (b *bounce) acceptConnections() {
+func (b *Bounce) acceptConnections() {
 	defer func() {
 		if r := recover(); r != nil {
 			errString := "recovered a panic while accepting a connection, this can occur when the network returns a non-fatal Accept error but the next attempt causes a panic in the network provider"

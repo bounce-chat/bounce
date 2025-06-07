@@ -103,7 +103,7 @@ func getReferenceOfferMutexForPeer(peer string) *sync.Mutex {
 	return mutex
 }
 
-func (b *bounce) sendReferences(peer string) {
+func (b *Bounce) sendReferences(peer string) {
 	mutex := getReferenceOfferMutexForPeer(peer)
 	mutex.Lock()
 	defer mutex.Unlock()
@@ -176,7 +176,7 @@ func (b *bounce) sendReferences(peer string) {
 	}
 }
 
-func (b *bounce) hasAnyReferencesFor(address string) bool {
+func (b *Bounce) hasAnyReferencesFor(address string) bool {
 	// Make sure we don't generate references while we're in the middle of handling a catch up,
 	// in order to not generate incomplete references of update group histories
 	catchUpMutex.Lock()
@@ -248,7 +248,7 @@ func (b *bounce) hasAnyReferencesFor(address string) bool {
 	return false
 }
 
-func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
+func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	// Make sure we don't generate references while we're in the middle of handling a catch up,
 	// in order to not generate incomplete references of update group histories
 	catchUpMutex.Lock()
@@ -281,7 +281,7 @@ func (b *bounce) getReferenceOfferFor(address string) *referenceOffer {
 	}
 }
 
-func (b *bounce) getDirectMessagesToOffer(dev device) []frameReference {
+func (b *Bounce) getDirectMessagesToOffer(dev device) []frameReference {
 	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 		return []frameReference{}
 	}
@@ -327,7 +327,7 @@ func (b *bounce) getDirectMessagesToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) getGroupMessagesToOffer(dev device) []frameReference {
+func (b *Bounce) getGroupMessagesToOffer(dev device) []frameReference {
 	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 		return []frameReference{}
 	}
@@ -367,7 +367,7 @@ func (b *bounce) getGroupMessagesToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) getUpdateDMsToOffer(dev device) []frameReference {
+func (b *Bounce) getUpdateDMsToOffer(dev device) []frameReference {
 	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 		return []frameReference{}
 	}
@@ -412,7 +412,7 @@ func (b *bounce) getUpdateDMsToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) getDevicesToOffer(dev device) []frameReference {
+func (b *Bounce) getDevicesToOffer(dev device) []frameReference {
 	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 		return []frameReference{}
 	}
@@ -472,7 +472,7 @@ func (b *bounce) getDevicesToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) getAddUsersToOffer(dev device) []frameReference {
+func (b *Bounce) getAddUsersToOffer(dev device) []frameReference {
 	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 		return []frameReference{}
 	}
@@ -511,7 +511,7 @@ func (b *bounce) getAddUsersToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) getGroupCreationsToOffer(dev device) []frameReference {
+func (b *Bounce) getGroupCreationsToOffer(dev device) []frameReference {
 	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 		return []frameReference{}
 	}
@@ -540,7 +540,7 @@ func (b *bounce) getGroupCreationsToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) getUpdateGroupsToOffer(dev device) []frameReference {
+func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 		return []frameReference{}
 	}
@@ -672,7 +672,7 @@ func (b *bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) getConfirmationsToOffer(dev device) []frameReference {
+func (b *Bounce) getConfirmationsToOffer(dev device) []frameReference {
 	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 		return []frameReference{}
 	}
@@ -709,7 +709,7 @@ func (b *bounce) getConfirmationsToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) getUpdateUsersToOffer(dev device) []frameReference {
+func (b *Bounce) getUpdateUsersToOffer(dev device) []frameReference {
 	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 		return []frameReference{}
 	}
@@ -766,7 +766,7 @@ func (b *bounce) getUpdateUsersToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) getUpdateDevicesToOffer(dev device) []frameReference {
+func (b *Bounce) getUpdateDevicesToOffer(dev device) []frameReference {
 	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 		var revoke updateDevice
 		err := b.database.Where("target = ? AND type = ?", dev.ID, updateDeviceTypeRevoke).First(&revoke).Error
@@ -837,7 +837,7 @@ func (b *bounce) getUpdateDevicesToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) getReadReceiptsToOffer(dev device) []frameReference {
+func (b *Bounce) getReadReceiptsToOffer(dev device) []frameReference {
 	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 		return []frameReference{}
 	}
@@ -892,7 +892,7 @@ func (b *bounce) getReadReceiptsToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) getUpdateSettingsToOffer(dev device) []frameReference {
+func (b *Bounce) getUpdateSettingsToOffer(dev device) []frameReference {
 	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 		return []frameReference{}
 	}
@@ -922,7 +922,7 @@ func (b *bounce) getUpdateSettingsToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) getFilesToOffer(dev device) []frameReference {
+func (b *Bounce) getFilesToOffer(dev device) []frameReference {
 	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 		return []frameReference{}
 	}
@@ -997,7 +997,7 @@ func (b *bounce) getFilesToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) getChunkOffersToOffer(dev device) []frameReference {
+func (b *Bounce) getChunkOffersToOffer(dev device) []frameReference {
 	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 		return []frameReference{}
 	}
@@ -1072,7 +1072,7 @@ func (b *bounce) getChunkOffersToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) broadcastable {
 	if _, revoked := b.devicePool.revokedDevices[peer]; revoked {
 		return nil
 	}
@@ -1171,7 +1171,7 @@ func (b *bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	return nil
 }
 
-func (b *bounce) getDirectMessagesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getDirectMessagesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 
@@ -1196,7 +1196,7 @@ func (b *bounce) getDirectMessagesToRequestAndAck(dev device, deviceExists bool,
 	return references, acks
 }
 
-func (b *bounce) getGroupMessagesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getGroupMessagesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 
@@ -1221,7 +1221,7 @@ func (b *bounce) getGroupMessagesToRequestAndAck(dev device, deviceExists bool, 
 	return references, acks
 }
 
-func (b *bounce) getUpdateDMsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getUpdateDMsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 
@@ -1247,7 +1247,7 @@ func (b *bounce) getUpdateDMsToRequestAndAck(dev device, deviceExists bool, offe
 	return references, acks
 }
 
-func (b *bounce) getDevicesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getDevicesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 
@@ -1273,7 +1273,7 @@ func (b *bounce) getDevicesToRequestAndAck(dev device, deviceExists bool, offere
 	return references, acks
 }
 
-func (b *bounce) getAddUsersToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getAddUsersToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 
@@ -1299,7 +1299,7 @@ func (b *bounce) getAddUsersToRequestAndAck(dev device, deviceExists bool, offer
 	return references, acks
 }
 
-func (b *bounce) getGroupCreationsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getGroupCreationsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 
@@ -1325,7 +1325,7 @@ func (b *bounce) getGroupCreationsToRequestAndAck(dev device, deviceExists bool,
 	return references, acks
 }
 
-func (b *bounce) getUpdateGroupsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getUpdateGroupsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 
@@ -1351,7 +1351,7 @@ func (b *bounce) getUpdateGroupsToRequestAndAck(dev device, deviceExists bool, o
 	return references, acks
 }
 
-func (b *bounce) getConfirmationsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getConfirmationsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 
@@ -1377,7 +1377,7 @@ func (b *bounce) getConfirmationsToRequestAndAck(dev device, deviceExists bool, 
 	return references, acks
 }
 
-func (b *bounce) getUpdateUsersToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getUpdateUsersToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 
@@ -1403,7 +1403,7 @@ func (b *bounce) getUpdateUsersToRequestAndAck(dev device, deviceExists bool, of
 	return references, acks
 }
 
-func (b *bounce) getUpdateDevicesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getUpdateDevicesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 
@@ -1429,7 +1429,7 @@ func (b *bounce) getUpdateDevicesToRequestAndAck(dev device, deviceExists bool, 
 	return references, acks
 }
 
-func (b *bounce) getReadReceiptsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getReadReceiptsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 
@@ -1455,7 +1455,7 @@ func (b *bounce) getReadReceiptsToRequestAndAck(dev device, deviceExists bool, o
 	return references, acks
 }
 
-func (b *bounce) getUpdateSettingsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getUpdateSettingsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 
@@ -1481,7 +1481,7 @@ func (b *bounce) getUpdateSettingsToRequestAndAck(dev device, deviceExists bool,
 	return references, acks
 }
 
-func (b *bounce) getFilesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getFilesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 
@@ -1507,7 +1507,7 @@ func (b *bounce) getFilesToRequestAndAck(dev device, deviceExists bool, offeredI
 	return references, acks
 }
 
-func (b *bounce) getChunkOffersToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getChunkOffersToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 	for _, chunkOfferID := range offeredIDs {

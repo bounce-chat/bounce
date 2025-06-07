@@ -36,7 +36,7 @@ func (cs *customScope) addresses() []string {
 	return strings.Split(cs.Addresses, ",")
 }
 
-func (b *bounce) createCustomScopeFromGroup(groupID uuid.UUID) error {
+func (b *Bounce) createCustomScopeFromGroup(groupID uuid.UUID) error {
 	var g group
 	err := b.database.Preload("Users.Devices").Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
 	if err != nil {
@@ -81,7 +81,7 @@ func (b *bounce) createCustomScopeFromGroup(groupID uuid.UUID) error {
 // This function is called when we've been re-added to a group we were previously removed from and we want to
 // undo the custom scoping of past frames
 //
-func (b *bounce) rescopeIfReAddedToGroup(groupID uuid.UUID) error {
+func (b *Bounce) rescopeIfReAddedToGroup(groupID uuid.UUID) error {
 	// Remove custom scopes from updateGroups for this group
 	err := b.database.Model(&updateGroup{}).Where("custom_scope = ?", groupID).Updates(map[string]interface{}{"custom_scope": uuid.Nil, "applied": false}).Error
 	if err != nil {

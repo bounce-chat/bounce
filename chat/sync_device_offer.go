@@ -29,7 +29,7 @@ func (sdo *syncDeviceOffer) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (b *bounce) getNewSyncString() string {
+func (b *Bounce) GetNewSyncString() string {
 	// Generate a secret
 	secretBytes := make([]byte, 16)
 	rand.Read(secretBytes)

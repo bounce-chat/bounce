@@ -109,7 +109,7 @@ func (ud *updateDevice) validPayload() error {
 	return nil
 }
 
-func (b *bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) broadcastable {
 	updateDeviceMutex.Lock()
 	defer updateDeviceMutex.Unlock()
 
@@ -221,7 +221,7 @@ func (b *bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 	return &ud
 }
 
-func (b *bounce) updateDeviceState(deviceID uuid.UUID) {
+func (b *Bounce) updateDeviceState(deviceID uuid.UUID) {
 	var d device
 	err := b.database.Where("id = ?", deviceID).First(&d).Error
 	if err != nil {
@@ -283,27 +283,26 @@ func (b *bounce) updateDeviceState(deviceID uuid.UUID) {
 			}).Fatal("database error updating device name")
 		}
 
-		b.userInterface.DeviceRenamed(deviceID, name)
+		b.ui.DeviceRenamed(deviceID, name)
 	}
 
 	if revokedAt != 0 && (d.RevokedAt == 0 || revokedAt < d.RevokedAt) {
 		if d.Address == b.network.Address() {
 			// This device has been revoked, remove all files and close the app
 			log.Info("this device has been revoked, cleaning up data and exiting")
-			configDirectory := getConfigDirectory()
-			dir, err := ioutil.ReadDir(configDirectory)
+			dir, err := ioutil.ReadDir(b.configDirectory)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-					"path":  configDirectory,
+					"path":  b.configDirectory,
 				}).Error("error reading directory")
 			}
 			for _, d := range dir {
-				err = os.RemoveAll(filepath.Join(configDirectory, d.Name()))
+				err = os.RemoveAll(filepath.Join(b.configDirectory, d.Name()))
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
-						"path":  filepath.Join(configDirectory, d.Name()),
+						"path":  filepath.Join(b.configDirectory, d.Name()),
 					}).Error("error removing file")
 				}
 			}
@@ -321,7 +320,7 @@ func (b *bounce) updateDeviceState(deviceID uuid.UUID) {
 			b.revokeUnauthorizedDeviceActions(d.Address, revokedAt)
 
 			if d.UserID == b.currentUserID() {
-				b.userInterface.DeviceRevoked(deviceID)
+				b.ui.DeviceRevoked(deviceID)
 			}
 
 			if sendDirect {
@@ -334,7 +333,7 @@ func (b *bounce) updateDeviceState(deviceID uuid.UUID) {
 	}
 }
 
-func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64) {
+func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64) {
 	// Find any group creations signed by this device after it was revoked and delete those groups
 	var unauthorizedGroupCreations []groupCreation
 	err := b.database.Where("signer = ? AND timestamp > ?", address, revokedAt).Find(&unauthorizedGroupCreations).Error
@@ -351,7 +350,7 @@ func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 				"error": err.Error(),
 			}).Fatal("error deleting unauthorized group")
 		}
-		b.userInterface.GroupDeleted(GroupDeleted{
+		b.ui.GroupDeleted(GroupDeleted{
 			Group: gc.ID,
 			Actor: uuid.Nil,
 		})
@@ -373,7 +372,7 @@ func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 				"error": err.Error(),
 			}).Fatal("error deleting unauthorized group message")
 		}
-		b.userInterface.DeleteItem(gm.ID)
+		b.ui.DeleteItem(gm.ID)
 	}
 
 	// Find any update groups signed by this device after it was revoked and delete them, then re-do group consensus
@@ -411,7 +410,7 @@ func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 				"error": err.Error(),
 			}).Fatal("error deleting unauthorized update user")
 		}
-		b.userInterface.DeleteItem(uu.ID)
+		b.ui.DeleteItem(uu.ID)
 	}
 	for target, _ := range usersToUpdate {
 		b.updateUserState(target)
@@ -436,7 +435,7 @@ func (b *bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 	}
 }
 
-func (b *bounce) renameDevice(deviceID uuid.UUID, name string) error {
+func (b *Bounce) RenameDevice(deviceID uuid.UUID, name string) error {
 	ud := updateDevice{
 		ID:        uuid.New(),
 		Target:    deviceID,
@@ -449,7 +448,7 @@ func (b *bounce) renameDevice(deviceID uuid.UUID, name string) error {
 	return b.applyAndBroadcastUpdateDevice(ud)
 }
 
-func (b *bounce) revokeDevice(deviceID uuid.UUID) error {
+func (b *Bounce) RevokeDevice(deviceID uuid.UUID) error {
 	var dev device
 	err := b.database.First(&dev, "id = ?", deviceID).Error
 	if err != nil {
@@ -491,7 +490,7 @@ func (b *bounce) revokeDevice(deviceID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateDevice(ud)
 }
 
-func (b *bounce) applyAndBroadcastUpdateDevice(ud updateDevice) error {
+func (b *Bounce) applyAndBroadcastUpdateDevice(ud updateDevice) error {
 	var err error
 	ud.OriginalPayload, err = msgpack.Marshal(&ud)
 	if err != nil {

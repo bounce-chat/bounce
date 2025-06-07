@@ -15,7 +15,7 @@ func TestCanRenameGroupAndConfirm(t *testing.T) {
 	userIDs := []uuid.UUID{b.currentUserID(), alice.currentUserID(), bob.currentUserID()}
 
 	newName := "New Name"
-	b.renameGroup(groupID, newName)
+	b.RenameGroup(groupID, newName)
 	var ug updateGroup
 	err := b.database.Select("id").First(&ug, "target = ?", groupID).Error
 	assert.NoError(t, err)

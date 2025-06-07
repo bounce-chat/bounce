@@ -42,7 +42,7 @@ func (fr *frameReference) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (b *bounce) openReferenceDatabase() {
+func (b *Bounce) openReferenceDatabase() {
 	gormLogger := logger.New(
 		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags), // TODO: https://gist.github.com/bnadland/2e4287b801a47dcfcc94
 		logger.Config{
@@ -83,7 +83,7 @@ func (b *bounce) openReferenceDatabase() {
 	go b.keepReferenceDatabasePruned()
 }
 
-func (b *bounce) keepReferenceDatabasePruned() {
+func (b *Bounce) keepReferenceDatabasePruned() {
 	databasePruningTicker := time.NewTicker(300 * time.Second) // TODO: properly shut this down at shutdown?
 
 	for _ = range databasePruningTicker.C {
@@ -112,7 +112,7 @@ func (b *bounce) keepReferenceDatabasePruned() {
 // only load things from the reference offer that we don't have, the ones
 // that we do have we ack while handing the offer
 //
-func (b *bounce) loadReferenceOffer(peer string, ro []frameReference) {
+func (b *Bounce) loadReferenceOffer(peer string, ro []frameReference) {
 	referenceRequestMutex.Lock()
 
 	log.WithFields(log.Fields{
@@ -150,7 +150,7 @@ func (b *bounce) loadReferenceOffer(peer string, ro []frameReference) {
 //
 // Inform any devies that offered us a frame that we just handled that we no longer need that frame, and remove those references from the database
 //
-func (b *bounce) loadCatchUp(peer string, cu []frameReference) {
+func (b *Bounce) loadCatchUp(peer string, cu []frameReference) {
 	log.WithFields(log.Fields{
 		"peer": peer,
 		"len":  len(cu),
@@ -185,7 +185,7 @@ func (b *bounce) loadCatchUp(peer string, cu []frameReference) {
 	}
 }
 
-func (b *bounce) makeReferenceRequests() {
+func (b *Bounce) makeReferenceRequests() {
 	// Make sure we aren't handling a catch up while checking what we still need to request
 	catchUpMutex.Lock()
 

@@ -94,7 +94,7 @@ func (dm *directMessage) getTimestamp() int64 {
 	return dm.WrittenAt
 }
 
-func (b *bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) broadcastable {
 	directMessageMutex.Lock()
 	defer directMessageMutex.Unlock()
 	readReceiptMutex.Lock()
@@ -167,7 +167,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 	b.updateLastUserActivity(dm.getDestination(b.currentUserID()), dm.SavedAt)
 
 	// Send the message to the user interface
-	b.userInterface.DisplayDirectMessage(DirectMessage{
+	b.ui.DisplayDirectMessage(DirectMessage{
 		ID:        dm.ID,
 		Author:    dm.Author,
 		Thread:    dm.getDestination(b.currentUserID()),
@@ -177,7 +177,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		Seen:      dm.Seen,
 		Text:      dm.Text,
 	})
-	b.userInterface.MessageDelivered(dm.ID, srcDevice.UserID)
+	b.ui.MessageDelivered(dm.ID, srcDevice.UserID)
 
 	// Make sure the user interface isn't still displaying that the user is typing
 	b.clearUserTypingIndicator(dm.Author, dm.getDestination(b.currentUserID()), typeDirectMessage)
@@ -188,7 +188,7 @@ func (b *bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 	return &dm
 }
 
-func (b *bounce) dmOriginAcceptable(dm directMessage, dev device) bool {
+func (b *Bounce) dmOriginAcceptable(dm directMessage, dev device) bool {
 	// If this is a message to ourselves, then the peer must be a device we own
 	if dm.Xor == uuid.Nil {
 		if dm.Author == b.currentUserID() {
@@ -251,7 +251,7 @@ func (b *bounce) dmOriginAcceptable(dm directMessage, dev device) bool {
 	}
 }
 
-func (b *bounce) sendDirectMessage(message DirectMessage) {
+func (b *Bounce) SendDirectMessage(message DirectMessage) {
 	if message.ID != uuid.Nil {
 		log.Fatal("direct message ID cannot be set by the UI")
 	}
@@ -285,7 +285,7 @@ func (b *bounce) sendDirectMessage(message DirectMessage) {
 
 	go b.checkIfDirectMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), dm.ID)
 
-	go b.userInterface.DisplaySentDirectMessage(DirectMessage{
+	go b.ui.DisplaySentDirectMessage(DirectMessage{
 		ID:            dm.ID,
 		Author:        dm.Author,
 		Thread:        dm.getDestination(b.currentUserID()),
@@ -300,7 +300,7 @@ func (b *bounce) sendDirectMessage(message DirectMessage) {
 	b.broadcast(dm)
 }
 
-func (b *bounce) deleteDirectMessageAt(timestamp int64, id uuid.UUID) {
+func (b *Bounce) deleteDirectMessageAt(timestamp int64, id uuid.UUID) {
 	// Sleep as long as needed
 	duration := timestamp - time.Now().Unix()
 	if duration > 0 {
@@ -317,10 +317,10 @@ func (b *bounce) deleteDirectMessageAt(timestamp int64, id uuid.UUID) {
 	}
 
 	// Delete from the UI
-	b.userInterface.DeleteItem(id)
+	b.ui.DeleteItem(id)
 }
 
-func (b *bounce) checkIfDirectMessageUndeliverableAt(timestamp int64, id uuid.UUID) {
+func (b *Bounce) checkIfDirectMessageUndeliverableAt(timestamp int64, id uuid.UUID) {
 	// Create a receiver for delivery notifications
 	delivered := make(chan bool)
 	dmDeliveryNotificationMutex.Lock()
@@ -380,6 +380,6 @@ func (b *bounce) checkIfDirectMessageUndeliverableAt(timestamp int64, id uuid.UU
 				"error":      err.Error(),
 			}).Fatal("error updating undeliverable field of undeliverable direct message")
 		}
-		b.userInterface.MarkMessageUndeliverable(dm.ID)
+		b.ui.MarkMessageUndeliverable(dm.ID)
 	}
 }

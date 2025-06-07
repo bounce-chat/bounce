@@ -19,15 +19,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (fyneUI *Fyne) showEditThreadContainer(g *group) {
+func (ui *ui) showEditThreadContainer(g *group) {
 	if fyne.CurrentDevice().IsMobile() {
-		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeGroupSettings, context: g.id})
+		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeGroupSettings, context: g.id})
 	}
-	fyneUI.mainWindow.SetContent(g.editContainer)
+	ui.mainWindow.SetContent(g.editContainer)
 	g.editContainer.Show()
 }
 
-func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
+func (ui *ui) buildEditThreadContainer(g *group) {
 	currentThreadName, err := g.name.Get()
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -47,7 +47,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		g.editThreadNameEntry.Refresh()
 	}))
 
-	g.editIcon = newDefaultImage(g.id, g.images, g.initial, 128, fyneUI.callbacks.GetFileData, func() {
+	g.editIcon = newDefaultImage(g.id, g.images, g.initial, 128, ui.bounce.GetFileData, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
@@ -72,31 +72,31 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			// TODO: make sure data is a valid image, allow for editing, etc
 			// TODO: don't actualy set it until they hit save?
 
-			fyneUI.callbacks.SetGroupImage(g.id, data)
-		}, fyneUI.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
+			ui.bounce.SetGroupImage(g.id, data)
+		}, ui.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 
 	g.retentionSelection = widget.NewSelect(retentionSelections, nil)
 	g.retentionSelection.Selected = getRetentionName(g.retention)
 
-	g.readReceiptOverrideSelection = widget.NewSelect(fyneUI.readReceiptOverrideSelectionOptions(), nil)
-	g.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
-	g.typingIndicatorOverrideSelection = widget.NewSelect(fyneUI.typingIndicatorOverrideSelectionOptions(), nil)
-	g.refreshTypingIndicatorSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+	g.readReceiptOverrideSelection = widget.NewSelect(ui.readReceiptOverrideSelectionOptions(), nil)
+	g.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
+	g.typingIndicatorOverrideSelection = widget.NewSelect(ui.typingIndicatorOverrideSelectionOptions(), nil)
+	g.refreshTypingIndicatorSettingSelection(ui.readReceiptOverrideSelectionOptions())
 
 	returnToThread := false
 	var showError error
 	confirmCleanup := func() {
 		if returnToThread {
 			if fyne.CurrentDevice().IsMobile() {
-				fyneUI.mobileBack()
+				ui.mobileBack()
 			} else {
-				fyneUI.showMainContainer()
+				ui.showMainContainer()
 			}
-			fyneUI.mainWindow.Canvas().Focus(g.getEntry())
+			ui.mainWindow.Canvas().Focus(g.getEntry())
 		}
 		if showError != nil {
-			fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)
+			ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
 		}
 	}
 
@@ -107,17 +107,17 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			returnToThread = confirmed
 			showError = nil
 			if confirmed {
-				err := fyneUI.callbacks.ClearGroupChatHistory(g.id)
+				err := ui.bounce.ClearGroupChatHistory(g.id)
 				if err != nil {
 					showError = errors.New("error clearing chat history: " + err.Error())
 					returnToThread = false
 				}
 			}
 		},
-		fyneUI.mainWindow,
+		ui.mainWindow,
 	)
 	g.clearHistoryButton = widget.NewButton("Clear History", func() {
-		fyneUI.showDialog(confirmClearHistory, confirmCleanup)
+		ui.showDialog(confirmClearHistory, confirmCleanup)
 	})
 
 	confirmLeaveGroup := dialog.NewConfirm(
@@ -127,18 +127,18 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			returnToThread = confirmed
 			showError = nil
 			if confirmed {
-				err := fyneUI.callbacks.RemoveUser(g.id, fyneUI.profile.id)
+				err := ui.bounce.RemoveUserFromGroup(g.id, ui.profile.id)
 				if err != nil {
 					showError = errors.New("error leaving group: " + err.Error())
 					returnToThread = false
 				}
 			}
 		},
-		fyneUI.mainWindow,
+		ui.mainWindow,
 	)
 
 	g.leaveGroupButton = widget.NewButton("Leave Group", func() {
-		fyneUI.showDialog(confirmLeaveGroup, confirmCleanup)
+		ui.showDialog(confirmLeaveGroup, confirmCleanup)
 	})
 
 	confirmDeleteGroup := dialog.NewConfirm(
@@ -148,17 +148,17 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			returnToThread = confirmed
 			showError = nil
 			if confirmed {
-				err := fyneUI.callbacks.DeleteGroup(g.id)
+				err := ui.bounce.DeleteGroup(g.id)
 				if err != nil {
 					showError = errors.New("error deleting group: " + err.Error())
 					returnToThread = false
 				}
 			}
 		},
-		fyneUI.mainWindow,
+		ui.mainWindow,
 	)
 	g.deleteGroupButton = widget.NewButton("Delete Group", func() {
-		fyneUI.showDialog(confirmDeleteGroup, confirmCleanup)
+		ui.showDialog(confirmDeleteGroup, confirmCleanup)
 	})
 
 	confirmBlockGroup := dialog.NewConfirm(
@@ -168,17 +168,17 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			returnToThread = confirmed
 			showError = nil
 			if confirmed {
-				err := fyneUI.callbacks.BlockGroup(g.id)
+				err := ui.bounce.BlockGroup(g.id)
 				if err != nil {
 					showError = errors.New("error blocking group: " + err.Error())
 					returnToThread = false
 				}
 			}
 		},
-		fyneUI.mainWindow,
+		ui.mainWindow,
 	)
 	g.blockGroupButton = widget.NewButton("Block Group", func() {
-		fyneUI.showDialog(confirmBlockGroup, confirmCleanup)
+		ui.showDialog(confirmBlockGroup, confirmCleanup)
 	})
 
 	saveButton := widget.NewButton("Save", func() {
@@ -191,9 +191,9 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		}
 		newThreadName := g.editThreadNameEntry.Text
 		if currentThreadName != newThreadName {
-			err := fyneUI.callbacks.RenameGroup(g.id, strings.TrimSpace(newThreadName))
+			err := ui.bounce.RenameGroup(g.id, strings.TrimSpace(newThreadName))
 			if err != nil {
-				fyneUI.showDialog(dialog.NewError(errors.New("error renaming group: "+err.Error()), fyneUI.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error renaming group: "+err.Error()), ui.mainWindow), nil)
 				return
 			}
 		}
@@ -204,9 +204,9 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 			if !g.notificationsEnabledCheck.Checked {
 				mutedUntil = chat.MutedForever
 			}
-			err := fyneUI.callbacks.SetGroupMutedUntil(g.id, mutedUntil)
+			err := ui.bounce.SetGroupMutedUntil(g.id, mutedUntil)
 			if err != nil {
-				fyneUI.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), fyneUI.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.mainWindow), nil)
 				return
 			}
 		}
@@ -215,12 +215,12 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		selectedRetentionString := g.retentionSelection.Selected
 		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
 		if !ok {
-			dialog.ShowError(errors.New("invalid retention selection: "+selectedRetentionString), fyneUI.mainWindow)
+			dialog.ShowError(errors.New("invalid retention selection: "+selectedRetentionString), ui.mainWindow)
 		} else {
 			if g.retention != selectedRetentionValue {
-				err = fyneUI.callbacks.SetGroupRetention(g.id, selectedRetentionValue)
+				err = ui.bounce.SetGroupRetention(g.id, selectedRetentionValue)
 				if err != nil {
-					fyneUI.showDialog(dialog.NewError(errors.New("error setting new retention value: "+err.Error()), fyneUI.mainWindow), nil)
+					ui.showDialog(dialog.NewError(errors.New("error setting new retention value: "+err.Error()), ui.mainWindow), nil)
 					return
 				}
 			}
@@ -228,44 +228,44 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 
 		// Update the permissions if needed
 		if g.restrictUserManagementCheck.Checked && !g.restrictUserManagement {
-			err := fyneUI.callbacks.RestrictUserManagement(g.id)
+			err := ui.bounce.RestrictUserManagement(g.id)
 			if err != nil {
-				fyneUI.showDialog(dialog.NewError(errors.New("error restricting user management: "+err.Error()), fyneUI.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error restricting user management: "+err.Error()), ui.mainWindow), nil)
 				return
 			}
 		}
 		if !g.restrictUserManagementCheck.Checked && g.restrictUserManagement {
-			err := fyneUI.callbacks.UnrestrictUserManagement(g.id)
+			err := ui.bounce.UnrestrictUserManagement(g.id)
 			if err != nil {
-				fyneUI.showDialog(dialog.NewError(errors.New("error unrestricting user management: "+err.Error()), fyneUI.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error unrestricting user management: "+err.Error()), ui.mainWindow), nil)
 				return
 			}
 		}
 		if g.restrictGroupEditsCheck.Checked && !g.restrictGroupEdits {
-			err := fyneUI.callbacks.RestrictGroupEdits(g.id)
+			err := ui.bounce.RestrictGroupEdits(g.id)
 			if err != nil {
-				fyneUI.showDialog(dialog.NewError(errors.New("error restricting group edits: "+err.Error()), fyneUI.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error restricting group edits: "+err.Error()), ui.mainWindow), nil)
 				return
 			}
 		}
 		if !g.restrictGroupEditsCheck.Checked && g.restrictGroupEdits {
-			err := fyneUI.callbacks.UnrestrictGroupEdits(g.id)
+			err := ui.bounce.UnrestrictGroupEdits(g.id)
 			if err != nil {
-				fyneUI.showDialog(dialog.NewError(errors.New("error unrestricting group edits: "+err.Error()), fyneUI.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error unrestricting group edits: "+err.Error()), ui.mainWindow), nil)
 				return
 			}
 		}
 		if g.restrictPostingCheck.Checked && !g.restrictPosting {
-			err := fyneUI.callbacks.RestrictPosting(g.id)
+			err := ui.bounce.RestrictPosting(g.id)
 			if err != nil {
-				fyneUI.showDialog(dialog.NewError(errors.New("error restricting posting: "+err.Error()), fyneUI.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error restricting posting: "+err.Error()), ui.mainWindow), nil)
 				return
 			}
 		}
 		if !g.restrictPostingCheck.Checked && g.restrictPosting {
-			err := fyneUI.callbacks.UnrestrictPosting(g.id)
+			err := ui.bounce.UnrestrictPosting(g.id)
 			if err != nil {
-				fyneUI.showDialog(dialog.NewError(errors.New("error unrestricting posting: "+err.Error()), fyneUI.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error unrestricting posting: "+err.Error()), ui.mainWindow), nil)
 				return
 			}
 		}
@@ -283,11 +283,11 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		// Set values if needed
 		if switchedReadReceiptDefault || switchedReadReceiptEnabled {
 			if defaultReadReceiptSelected {
-				fyneUI.callbacks.SetGroupReadReceiptSettings(g.id, false, true)
+				ui.bounce.SetGroupReadReceiptSettings(g.id, false, true)
 			} else if readReceiptSelection == on {
-				fyneUI.callbacks.SetGroupReadReceiptSettings(g.id, true, true)
+				ui.bounce.SetGroupReadReceiptSettings(g.id, true, true)
 			} else if readReceiptSelection == off {
-				fyneUI.callbacks.SetGroupReadReceiptSettings(g.id, true, false)
+				ui.bounce.SetGroupReadReceiptSettings(g.id, true, false)
 			} else {
 				log.WithFields(log.Fields{
 					"group_id":  g.id,
@@ -297,11 +297,11 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		}
 		if switchedTypingIndicatorDefault || switchedTypingIndicatorEnabled {
 			if defaultTypingIndicatorSelected {
-				fyneUI.callbacks.SetGroupTypingIndicatorSettings(g.id, false, true)
+				ui.bounce.SetGroupTypingIndicatorSettings(g.id, false, true)
 			} else if typingIndicatorSelection == on {
-				fyneUI.callbacks.SetGroupTypingIndicatorSettings(g.id, true, true)
+				ui.bounce.SetGroupTypingIndicatorSettings(g.id, true, true)
 			} else if typingIndicatorSelection == off {
-				fyneUI.callbacks.SetGroupTypingIndicatorSettings(g.id, true, false)
+				ui.bounce.SetGroupTypingIndicatorSettings(g.id, true, false)
 			} else {
 				log.WithFields(log.Fields{
 					"group_id":  g.id,
@@ -311,10 +311,10 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		}
 
 		if fyne.CurrentDevice().IsMobile() {
-			fyneUI.mobileBack()
+			ui.mobileBack()
 		} else {
-			fyneUI.showMainContainer()
-			fyneUI.mainWindow.Canvas().Focus(g.getEntry())
+			ui.showMainContainer()
+			ui.mainWindow.Canvas().Focus(g.getEntry())
 		}
 	})
 	saveButton.Importance = widget.HighImportance
@@ -340,7 +340,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 
 		// Reset user editing
 		g.pendingUsers.empty()
-		fyneUI.refreshUserSelections(g)
+		ui.refreshUserSelections(g)
 
 		// Reset permissions
 		g.restrictUserManagementCheck.SetChecked(g.restrictUserManagement)
@@ -348,15 +348,15 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 		g.restrictPostingCheck.SetChecked(g.restrictPosting)
 
 		// Reset the read receipt and typing indicator overrides
-		g.refreshReadReceiptSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
-		g.refreshTypingIndicatorSettingSelection(fyneUI.readReceiptOverrideSelectionOptions())
+		g.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
+		g.refreshTypingIndicatorSettingSelection(ui.readReceiptOverrideSelectionOptions())
 
 		// Show main tontainer
 		if fyne.CurrentDevice().IsMobile() {
-			fyneUI.mobileBack()
+			ui.mobileBack()
 		} else {
-			fyneUI.showMainContainer()
-			fyneUI.mainWindow.Canvas().Focus(g.getEntry())
+			ui.showMainContainer()
+			ui.mainWindow.Canvas().Focus(g.getEntry())
 		}
 	}
 	cancelButton := widget.NewButton("Cancel", cancelChanges)
@@ -376,7 +376,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 
 	g.newUserSearchEntry = widget.NewEntry()
 	g.newUserSearchEntry.OnChanged = func(str string) {
-		fyneUI.refreshAvailableNewUsers(g, fyneUI.users.search(str))
+		ui.refreshAvailableNewUsers(g, ui.users.search(str))
 	}
 	newUserSelector := container.New(
 		layout.NewBorderLayout(g.newUserSearchEntry, nil, nil, nil),
@@ -391,29 +391,29 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 
 	addUsersDialogCleanup := func() {
 		g.pendingUsers.empty()
-		fyneUI.refreshUserSelections(g)
+		ui.refreshUserSelections(g)
 		g.newUserSearchEntry.Text = ""
 		g.newUserSearchEntry.Refresh()
-		fyneUI.refreshAvailableNewUsers(g, fyneUI.users.search(g.newUserSearchEntry.Text))
+		ui.refreshAvailableNewUsers(g, ui.users.search(g.newUserSearchEntry.Text))
 
 		if showError != nil {
-			fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)
+			ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
 		}
 	}
 	addUsersDialog := dialog.NewCustomConfirm("Add Users", "Save", "Cancel", newUserSelector, func(apply bool) {
 		showError = nil
 		if apply {
 			for _, thisUser := range g.pendingUsers.userList {
-				err := fyneUI.callbacks.AddUser(g.id, thisUser.id)
+				err := ui.bounce.AddUserToGroup(g.id, thisUser.id)
 				if err != nil {
 					showError = errors.New("error adding user: " + err.Error())
 					return
 				}
 			}
 		}
-	}, fyneUI.mainWindow)
+	}, ui.mainWindow)
 	g.addUsersButton = widget.NewButton("Add Users", func() {
-		fyneUI.showDialog(
+		ui.showDialog(
 			addUsersDialog,
 			addUsersDialogCleanup,
 		)
@@ -467,7 +467,7 @@ func (fyneUI *Fyne) buildEditThreadContainer(g *group) {
 	)
 }
 
-func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
+func (ui *ui) refreshCurrentAndPendingUsers(g *group) {
 	currentUsersList := container.NewVBox()
 	adminMap := map[uuid.UUID]bool{}
 	for _, adminID := range g.admins {
@@ -493,12 +493,12 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 		func(u *user) {
 			// TODO: setup listener to update the button text below
 			userDetailsButton := newUserButton(
-				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, fyneUI.callbacks.GetFileData, nil),
+				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil),
 				u.getName(),
 				g.isAdmin(u.id),
 				func() {
-					d, callback := fyneUI.getEditUserDialog(g, u.id)
-					fyneUI.showDialog(d, callback)
+					d, callback := ui.getEditUserDialog(g, u.id)
+					ui.showDialog(d, callback)
 				},
 			)
 
@@ -525,12 +525,12 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 		func(u *user) {
 			// TODO: setup listener to update the button text below
 			removePendingUserButton := newUserButton(
-				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), fyneUI.callbacks.GetFileData, nil),
+				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), ui.bounce.GetFileData, nil),
 				u.getName(),
 				false,
 				func() {
 					g.pendingUsers.remove(u.id)
-					fyneUI.refreshUserSelections(g)
+					ui.refreshUserSelections(g)
 				},
 			)
 			pendingUsersList.Objects = append(
@@ -552,7 +552,7 @@ func (fyneUI *Fyne) refreshCurrentAndPendingUsers(g *group) {
 	g.pendingUsersContainer.Refresh()
 }
 
-func (fyneUI *Fyne) refreshAvailableNewUsers(g *group, allAvailableUsers []*user) {
+func (ui *ui) refreshAvailableNewUsers(g *group, allAvailableUsers []*user) {
 	blockedUsersMap := map[uuid.UUID]bool{}
 	for _, id := range g.blockedUsers {
 		blockedUsersMap[id] = true
@@ -577,12 +577,12 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(g *group, allAvailableUsers []*user
 		func(u *user) {
 			// TODO: setup listener to update the button text below
 			addUserButton := newUserButton(
-				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), fyneUI.callbacks.GetFileData, nil),
+				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), ui.bounce.GetFileData, nil),
 				u.getName(),
 				false,
 				func() {
 					g.pendingUsers.add(u)
-					fyneUI.refreshUserSelections(g)
+					ui.refreshUserSelections(g)
 				},
 			)
 			allUsersListBox.Objects = append(
@@ -604,7 +604,7 @@ func (fyneUI *Fyne) refreshAvailableNewUsers(g *group, allAvailableUsers []*user
 	g.availableNewUsersScroll.Refresh()
 }
 
-func (fyneUI *Fyne) refreshUserSelections(g *group) {
-	fyneUI.refreshCurrentAndPendingUsers(g)
-	fyneUI.refreshAvailableNewUsers(g, fyneUI.users.search(g.newUserSearchEntry.Text))
+func (ui *ui) refreshUserSelections(g *group) {
+	ui.refreshCurrentAndPendingUsers(g)
+	ui.refreshAvailableNewUsers(g, ui.users.search(g.newUserSearchEntry.Text))
 }

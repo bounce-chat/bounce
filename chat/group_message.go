@@ -95,7 +95,7 @@ func (gm *groupMessage) getTimestamp() int64 {
 	return gm.WrittenAt
 }
 
-func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) broadcastable {
 	groupMutex.Lock()
 	defer groupMutex.Unlock()
 	readReceiptMutex.Lock()
@@ -239,7 +239,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 	}
 
 	// Inform the UI about the new message
-	b.userInterface.DisplayGroupMessage(GroupMessage{
+	b.ui.DisplayGroupMessage(GroupMessage{
 		ID:        gm.ID,
 		Author:    gm.Author,
 		Thread:    gm.Destination,
@@ -249,7 +249,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 		Seen:      gm.Seen,
 		Text:      gm.Text,
 	})
-	b.userInterface.MessageDelivered(gm.ID, srcDevice.UserID)
+	b.ui.MessageDelivered(gm.ID, srcDevice.UserID)
 
 	// Update the activity timestamp on the group model
 	b.updateLastGroupActivity(gm.Destination, gm.SavedAt)
@@ -260,7 +260,7 @@ func (b *bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 	return &gm
 }
 
-func (b *bounce) sendGroupMessage(message GroupMessage) {
+func (b *Bounce) SendGroupMessage(message GroupMessage) {
 	if message.ID != uuid.Nil {
 		log.Fatal("group message ID cannot be set by the UI")
 	}
@@ -310,7 +310,7 @@ func (b *bounce) sendGroupMessage(message GroupMessage) {
 
 	go b.checkIfGroupMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), gm.ID)
 
-	go b.userInterface.DisplaySentGroupMessage(GroupMessage{
+	go b.ui.DisplaySentGroupMessage(GroupMessage{
 		ID:            gm.ID,
 		Author:        gm.Author,
 		Thread:        gm.getDestination(b.currentUserID()),
@@ -325,7 +325,7 @@ func (b *bounce) sendGroupMessage(message GroupMessage) {
 	b.broadcast(gm)
 }
 
-func (b *bounce) deleteGroupMessageAt(timestamp int64, id uuid.UUID) {
+func (b *Bounce) deleteGroupMessageAt(timestamp int64, id uuid.UUID) {
 	// Sleep as long as needed
 	duration := timestamp - time.Now().Unix()
 	if duration > 0 {
@@ -342,10 +342,10 @@ func (b *bounce) deleteGroupMessageAt(timestamp int64, id uuid.UUID) {
 	}
 
 	// Delete from the UI
-	b.userInterface.DeleteItem(id)
+	b.ui.DeleteItem(id)
 }
 
-func (b *bounce) checkIfGroupMessageUndeliverableAt(timestamp int64, id uuid.UUID) {
+func (b *Bounce) checkIfGroupMessageUndeliverableAt(timestamp int64, id uuid.UUID) {
 	// Create a receiver for delivery notifications
 	delivered := make(chan bool)
 	gmDeliveryNotificationMutex.Lock()
@@ -405,6 +405,6 @@ func (b *bounce) checkIfGroupMessageUndeliverableAt(timestamp int64, id uuid.UUI
 				"error":      err.Error(),
 			}).Fatal("error updating undeliverable field of undeliverable group message")
 		}
-		b.userInterface.MarkMessageUndeliverable(gm.ID)
+		b.ui.MarkMessageUndeliverable(gm.ID)
 	}
 }

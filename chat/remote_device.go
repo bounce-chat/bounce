@@ -34,7 +34,7 @@ func (rd *remoteDevice) shutdown() {
 	rd.shutdownReceiversMutex.Unlock()
 }
 
-func (b *bounce) getRemoteDevice(address string) *remoteDevice {
+func (b *Bounce) getRemoteDevice(address string) *remoteDevice {
 	b.devicePool.deviceMutex.Lock()
 	defer b.devicePool.deviceMutex.Unlock()
 
@@ -46,7 +46,7 @@ func (b *bounce) getRemoteDevice(address string) *remoteDevice {
 	return rd
 }
 
-func (b *bounce) insertConnectionIntoDevicePool(conn net.Conn) {
+func (b *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	// Get the remote device
 	peer := conn.RemoteAddr().String()
 	rd := b.getRemoteDevice(peer)
@@ -84,7 +84,7 @@ func frameAllowedWithoutProfile(frameType uint16) bool {
 	return false
 }
 
-func (b *bounce) readFrames(conn net.Conn) {
+func (b *Bounce) readFrames(conn net.Conn) {
 	handlers := b.getHandlers()
 	peer := conn.RemoteAddr().String()
 	profile, profileExists := b.currentUser()
@@ -136,7 +136,7 @@ func (b *bounce) readFrames(conn net.Conn) {
 				}).Error("error updating last time device was seen")
 			}
 			if dev.UserID == profile.ID {
-				b.userInterface.DeviceLastSeen(dev.ID, lastSeen)
+				b.ui.DeviceLastSeen(dev.ID, lastSeen)
 			}
 		}
 
@@ -168,7 +168,7 @@ func (b *bounce) readFrames(conn net.Conn) {
 	}
 }
 
-func (b *bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
+func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 	if b.shutdownStarted.Load() {
 		return
 	}

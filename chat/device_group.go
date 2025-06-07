@@ -31,7 +31,7 @@ func dfs(n *node) {
 //
 // Check if the addition of a new device to a user would result in a valid device group
 //
-func (b *bounce) isValidAddition(u user, dev device) bool {
+func (b *Bounce) isValidAddition(u user, dev device) bool {
 	u.Devices = append(u.Devices, dev)
 	return b.hasValidDeviceGroup(u)
 }
@@ -39,7 +39,7 @@ func (b *bounce) isValidAddition(u user, dev device) bool {
 //
 // Check if the devices belonging to this user constitute a valid device group
 //
-func (b *bounce) hasValidDeviceGroup(u user) bool {
+func (b *Bounce) hasValidDeviceGroup(u user) bool {
 	dg := &deviceGroup{}
 	originalDevice := ""
 	signers := map[string]bool{}

@@ -16,7 +16,7 @@ func (aurr *addUserRequestRejected) getPayload() []byte {
 	return []byte{}
 }
 
-func (b *bounce) handleAddUserRequestRejected(peer string, payload []byte, _ bool) broadcastable {
-	b.userInterface.AddUserRequestRejected(peer)
+func (b *Bounce) handleAddUserRequestRejected(peer string, payload []byte, _ bool) broadcastable {
+	b.ui.AddUserRequestRejected(peer)
 	return nil
 }

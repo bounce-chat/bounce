@@ -1,11 +1,14 @@
 package ui
 
 import (
+	"os"
 	"runtime"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/hkparker/bounce/chat"
+	"github.com/hkparker/bounce/network"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -31,12 +34,13 @@ const defaultWidth = float32(900)
 const defaultChatHistoryHeight = float32(585.84375)
 const defaultChatHistoryWidth = float32(566)
 
-//
-// An implementation of the Bounce chat.UI interface using Fyne
-//
-type Fyne struct {
+type ui struct {
+	bounce                        *chat.Bounce
 	app                           fyne.App
 	mainWindow                    fyne.Window
+	newGroupWidgets               *newGroupWidgets
+	newSyncDeviceWidgets          *newSyncDeviceWidgets
+	settingsWidgets               *settingsWidgets
 	mainContainer                 *fyne.Container
 	defaultContainer              *fyne.Container
 	newInstall                    *fyne.Container
@@ -57,8 +61,6 @@ type Fyne struct {
 	threadVBox                    *fyne.Container
 	chatContainer                 *fyne.Container
 	mobileMenu                    *fyne.Container
-	newGroupWidgets               *newGroupWidgets
-	newSyncDeviceWidgets          *newSyncDeviceWidgets
 	newProfileImage               *defaultImage
 	newProfileImageData           []byte
 	profileNameEntry              *widget.Entry
@@ -80,7 +82,6 @@ type Fyne struct {
 	profile                       *user
 	settings                      chat.Settings
 	localSettings                 chat.LocalSettings
-	settingsWidgets               *settingsWidgets
 	users                         *userStore
 	devices                       *deviceStore
 	messages                      *messageStore
@@ -92,136 +93,146 @@ type Fyne struct {
 	networkState                  int
 	setupStep                     int
 	viewStack                     []view
-	callbacks                     chat.UICallbacks
 }
 
-func (fyneUI *Fyne) Build(configDirectory string, callbacks chat.UICallbacks, darkMode bool) {
+func Main() {
+	ui := &ui{}
+	ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())
+	ui.build()
+
+	ui.app.Lifecycle().SetOnStarted(func() {
+		go ui.loadInitialState(ui.bounce.GetInitialState())
+	})
+
+	ui.app.Lifecycle().SetOnStopped(func() {
+		ui.bounce.Shutdown()
+	})
+
+	ui.app.Run()
+}
+
+func (ui *ui) build() {
 	//
 	// Define the app
 	//
-	fyneUI.app = app.NewWithID("chat.bounce")
-	fyneUI.app.SetIcon(newEmbeddedResource("assets/icon.png"))
-	fyneUI.app.Lifecycle().SetOnEnteredForeground(func() { fyneUI.focused = true })
-	fyneUI.app.Lifecycle().SetOnExitedForeground(func() { fyneUI.focused = false })
-	if darkMode {
-		fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
+	ui.app = app.NewWithID("chat.bounce")
+	ui.app.SetIcon(newEmbeddedResource("assets/icon.png"))
+	ui.app.Lifecycle().SetOnEnteredForeground(func() { ui.focused = true })
+	ui.app.Lifecycle().SetOnExitedForeground(func() { ui.focused = false })
+	if ui.bounce.DarkMode() {
+		ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
 	} else {
-		fyneUI.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
+		ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
 	}
-
-	//
-	// Hookup callbacks
-	//
-	fyneUI.callbacks = callbacks
 
 	//
 	// Initialize types that require it
 	//
-	fyneUI.groups = make(map[uuid.UUID]*group)
-	fyneUI.dms = make(map[uuid.UUID]*directMessage)
-	fyneUI.threadWithItem = make(map[uuid.UUID]thread)
-	fyneUI.pausedGroupNotifications = make(map[uuid.UUID]bool)
-	fyneUI.users = newUserStore()
-	fyneUI.devices = newDeviceStore()
-	fyneUI.messages = newMessageStore(configDirectory)
-	fyneUI.focused = true
-	fyneUI.syncString = binding.NewString()
-	fyneUI.addUserString = binding.NewString()
-	fyneUI.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-	fyneUI.networkOfflineWarning.Show()
-	fyneUI.deletedUser = makeUser(uuid.Nil, "-deleted-")
-	fyneUI.viewStack = []view{}
+	ui.groups = make(map[uuid.UUID]*group)
+	ui.dms = make(map[uuid.UUID]*directMessage)
+	ui.threadWithItem = make(map[uuid.UUID]thread)
+	ui.pausedGroupNotifications = make(map[uuid.UUID]bool)
+	ui.users = newUserStore()
+	ui.devices = newDeviceStore()
+	ui.messages = newMessageStore(getConfigDirectory())
+	ui.focused = true
+	ui.syncString = binding.NewString()
+	ui.addUserString = binding.NewString()
+	ui.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	ui.networkOfflineWarning.Show()
+	ui.deletedUser = makeUser(uuid.Nil, "-deleted-")
+	ui.viewStack = []view{}
 
 	//
 	// Define the main window
 	//
-	fyneUI.mainWindow = fyneUI.app.NewWindow("Bounce")
-	fyneUI.mainWindow.SetMaster()
-	//fyneUI.mainWindow.SetOnClosed(func() {
+	ui.mainWindow = ui.app.NewWindow("Bounce")
+	ui.mainWindow.SetMaster()
+	//ui.mainWindow.SetOnClosed(func() {
 	//	if !fyne.CurrentDevice().IsMobile() {
-	//		fyneUI.app.Preferences().SetBool("size-set", true)
-	//		fyneUI.app.Preferences().SetBool("fullscreen", fyneUI.mainWindow.FullScreen())
-	//		mainSize := fyneUI.mainWindow.Canvas().Size()
+	//		ui.app.Preferences().SetBool("size-set", true)
+	//		ui.app.Preferences().SetBool("fullscreen", ui.mainWindow.FullScreen())
+	//		mainSize := ui.mainWindow.Canvas().Size()
 	//		mainSize.Width -= 2 // The window appears to always be 2px less wide than the canvas size
-	//		fyneUI.app.Preferences().SetFloat("main-width", float64(mainSize.Width))
-	//		fyneUI.app.Preferences().SetFloat("main-height", float64(mainSize.Height))
+	//		ui.app.Preferences().SetFloat("main-width", float64(mainSize.Width))
+	//		ui.app.Preferences().SetFloat("main-height", float64(mainSize.Height))
 	//		log.WithFields(log.Fields{
 	//			"w": mainSize.Width,
 	//			"h": mainSize.Height,
 	//		}).Warn("closing, saving sizes")
 	//	}
 	//})
-	fyneUI.mainWindow.SetCloseIntercept(func() {
+	ui.mainWindow.SetCloseIntercept(func() {
 		// There's some bug in Fyne where the app will hang when the close button
 		// is hit unless this is explicitly set https://github.com/fyne-io/fyne/issues/2314
-		fyneUI.Quit()
+		ui.Quit()
 	})
 	//if !fyne.CurrentDevice().IsMobile() {
-	//	if fyneUI.app.Preferences().Bool("size-set") {
-	//		if fyneUI.app.Preferences().Bool("fullscreen") {
-	//			fyneUI.mainWindow.SetFullScreen(true)
+	//	if ui.app.Preferences().Bool("size-set") {
+	//		if ui.app.Preferences().Bool("fullscreen") {
+	//			ui.mainWindow.SetFullScreen(true)
 	//		} else {
-	//			w := float32(fyneUI.app.Preferences().Float("main-width"))
-	//			h := float32(fyneUI.app.Preferences().Float("main-height"))
+	//			w := float32(ui.app.Preferences().Float("main-width"))
+	//			h := float32(ui.app.Preferences().Float("main-height"))
 	//			log.WithFields(log.Fields{
 	//				"w": w,
 	//				"h": h,
 	//			}).Warn("starting up, sizes")
-	//			fyneUI.mainWindow.Resize(fyne.Size{Height: h, Width: w})
+	//			ui.mainWindow.Resize(fyne.Size{Height: h, Width: w})
 	//		}
 	//	} else {
-	fyneUI.mainWindow.Resize(fyne.Size{Height: defaultHeight, Width: defaultWidth})
+	ui.mainWindow.Resize(fyne.Size{Height: defaultHeight, Width: defaultWidth})
 	//	}
 	//}
-	fyneUI.mainWindow.Canvas().SetOnTypedKey(func(ev *fyne.KeyEvent) {
+	ui.mainWindow.Canvas().SetOnTypedKey(func(ev *fyne.KeyEvent) {
 		if fyne.CurrentDevice().IsMobile() && ev.Name == mobile.KeyBack {
-			fyneUI.mobileBack()
+			ui.mobileBack()
 		}
 	})
-	//if desk, ok := fyneUI.app.(desktop.App); ok {
+	//if desk, ok := ui.app.(desktop.App); ok {
 	//	m := fyne.NewMenu("Bounce",
 	//		fyne.NewMenuItem("Show", func() {
-	//			fyneUI.mainWindow.Show()
+	//			ui.mainWindow.Show()
 	//		}),
 	//	)
 	//	desk.SetSystemTrayMenu(m)
-	//	fyneUI.mainWindow.SetCloseIntercept(func() {
-	//		fyneUI.mainWindow.Hide()
+	//	ui.mainWindow.SetCloseIntercept(func() {
+	//		ui.mainWindow.Hide()
 	//	})
 	//}
 
 	//
 	// Build all the containers
 	//
-	fyneUI.buildMenu()
-	fyneUI.buildNewSyncDeviceWidgets()
-	fyneUI.buildNewInstall()
-	fyneUI.buildNewSyncDevice()
-	fyneUI.buildNameNewDevice()
-	fyneUI.buildAddUser()
-	fyneUI.buildNewProfileCreator()
-	fyneUI.buildDatabaseLoading()
-	fyneUI.buildEditProfile()
-	fyneUI.buildDisplaySyncString()
-	fyneUI.buildDisplayAddUserString()
-	fyneUI.buildSettings()
-	fyneUI.buildAbout()
-	fyneUI.buildNewGroup()
-	fyneUI.buildNewDM()
-	fyneUI.buildImportContact()
-	fyneUI.buildMainContainer()
-	fyneUI.buildMobileMenu()
+	ui.buildMenu()
+	ui.buildNewSyncDeviceWidgets()
+	ui.buildNewInstall()
+	ui.buildNewSyncDevice()
+	ui.buildNameNewDevice()
+	ui.buildAddUser()
+	ui.buildNewProfileCreator()
+	ui.buildDatabaseLoading()
+	ui.buildEditProfile()
+	ui.buildDisplaySyncString()
+	ui.buildDisplayAddUserString()
+	ui.buildSettings()
+	ui.buildAbout()
+	ui.buildNewGroup()
+	ui.buildNewDM()
+	ui.buildImportContact()
+	ui.buildMainContainer()
+	ui.buildMobileMenu()
 
 	//
 	// Default to displaying the loading container
 	//
-	fyneUI.networkState = networkStateStarting
-	fyneUI.showMainContainer()
-	fyneUI.mainWindow.Show()
+	ui.networkState = networkStateStarting
+	ui.showMainContainer()
+	ui.mainWindow.Show()
 }
 
-func (fyneUI *Fyne) askToIgnoreBatteryOptimizations() {
-	if fyneUI.localSettings.NeverAskForBatteryOptimizations {
+func (ui *ui) askToIgnoreBatteryOptimizations() {
+	if ui.localSettings.NeverAskForBatteryOptimizations {
 		return
 	}
 
@@ -242,7 +253,7 @@ func (fyneUI *Fyne) askToIgnoreBatteryOptimizations() {
 			batteryLater.Importance = widget.LowImportance
 			batteryNever := widget.NewButton("Never", func() {
 				batteryDialog.Hide()
-				fyneUI.callbacks.NeverAskForBatteryOptimizations()
+				ui.bounce.NeverAskForBatteryOptimizations()
 			})
 			batteryNever.Importance = widget.LowImportance
 
@@ -256,29 +267,29 @@ func (fyneUI *Fyne) askToIgnoreBatteryOptimizations() {
 			batteryDialog = dialog.NewCustomWithoutButtons(
 				"Allow Backgrounding",
 				batteryContent,
-				fyneUI.mainWindow,
+				ui.mainWindow,
 			)
-			fyneUI.showDialog(batteryDialog, nil)
+			ui.showDialog(batteryDialog, nil)
 		}
 	}
 }
 
-func (fyneUI *Fyne) Run() {
-	fyneUI.app.Run()
+func (ui *ui) Run() {
+	ui.app.Run()
 }
 
-func (fyneUI *Fyne) Quit() {
-	fyne.Do(func() { fyneUI.app.Quit() })
+func (ui *ui) Quit() {
+	ui.app.Quit()
 }
 
-func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
+func (ui *ui) loadInitialState(state chat.InitialState) {
 	fyne.DoAndWait(func() {
-		if fyneUI.initialStateSet {
+		if ui.initialStateSet {
 			log.Fatal("the initial state of the UI can only be loaded once")
 		}
 		// Refresh the state of the main view after the state is loaded
-		fyneUI.initialStateSet = true
-		defer fyneUI.showMainContainer()
+		ui.initialStateSet = true
+		defer ui.showMainContainer()
 
 		if state.Profile == nil {
 			// This is a brand new installation.  Tell the user interface it must have the
@@ -288,18 +299,18 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 			return
 		}
 
-		fyneUI.profile = makeUser(state.Profile.ID, state.Profile.Name)
-		fyneUI.profile.images = state.Profile.Images
-		fyneUI.users.add(fyneUI.profile)
-		fyneUI.settings = state.Settings
-		fyneUI.localSettings = state.LocalSettings
-		fyneUI.askToIgnoreBatteryOptimizations()
+		ui.profile = makeUser(state.Profile.ID, state.Profile.Name)
+		ui.profile.images = state.Profile.Images
+		ui.users.add(ui.profile)
+		ui.settings = state.Settings
+		ui.localSettings = state.LocalSettings
+		ui.askToIgnoreBatteryOptimizations()
 
 		for i, _ := range state.SyncDevices {
 			dev := state.SyncDevices[i]
-			fyneUI.devices.add(&dev)
+			ui.devices.add(&dev)
 		}
-		fyneUI.updateDeviceStatus()
+		ui.updateDeviceStatus()
 
 		dmItems := make(map[uuid.UUID]threadItems)
 		groupItems := make(map[uuid.UUID]threadItems)
@@ -308,20 +319,20 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		for _, u := range state.Users {
 			uiUser := makeUser(u.ID, u.Name)
 			uiUser.images = u.Images
-			fyneUI.users.add(uiUser)
+			ui.users.add(uiUser)
 			initialDMStates[u.ID] = u.State
 		}
 
 		for _, g := range state.Groups {
-			fyneUI.buildNewGroupChat(g)
-			group, exists := fyneUI.groups[g.ID]
+			ui.buildNewGroupChat(g)
+			group, exists := ui.groups[g.ID]
 			if !exists {
 				log.Fatal("group doesn't exist immediately after creation")
 			}
 			group.button.setLastMessageTime(time.Unix(g.LastActivity, 0))
 			group.setLastMessageTime(g.LastActivity)
 
-			gcTi, err := fyneUI.newGroupCreated(g.ID, g.ID, g.CreatedBy, g.CreatedAt)
+			gcTi, err := ui.newGroupCreated(g.ID, g.ID, g.CreatedBy, g.CreatedAt)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":      err.Error(),
@@ -333,8 +344,8 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, dm := range state.DirectMessages {
-			fyneUI.createDMIfNeeded(dm.Thread, initialDMStates)
-			dmti, err := fyneUI.newDirectMessage(dm)
+			ui.createDMIfNeeded(dm.Thread, initialDMStates)
+			dmti, err := ui.newDirectMessage(dm)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -342,8 +353,8 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, udmr := range state.UpdateDMRetentions {
-			fyneUI.createDMIfNeeded(udmr.Thread, initialDMStates)
-			udmrItem, err := fyneUI.newUpdateDMRetention(udmr)
+			ui.createDMIfNeeded(udmr.Thread, initialDMStates)
+			udmrItem, err := ui.newUpdateDMRetention(udmr)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -351,8 +362,8 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, udmch := range state.UpdateDMClearHistories {
-			fyneUI.createDMIfNeeded(udmch.Thread, initialDMStates)
-			udmchItem, err := fyneUI.newUpdateDMClearHistory(udmch)
+			ui.createDMIfNeeded(udmch.Thread, initialDMStates)
+			udmchItem, err := ui.newUpdateDMClearHistory(udmch)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -360,7 +371,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, gm := range state.GroupMessages {
-			mti, err := fyneUI.newGroupMessage(gm)
+			mti, err := ui.newGroupMessage(gm)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -368,7 +379,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, ugr := range state.UpdateGroupRetentions {
-			ugrItem, err := fyneUI.newUpdateGroupRetention(ugr)
+			ugrItem, err := ui.newUpdateGroupRetention(ugr)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -376,7 +387,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, ugn := range state.UpdateGroupNames {
-			ugnItem, err := fyneUI.newUpdateGroupName(ugn)
+			ugnItem, err := ui.newUpdateGroupName(ugn)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -384,7 +395,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, ugau := range state.UpdateGroupAddUsers {
-			ugauItem, err := fyneUI.newUpdateGroupAddUser(ugau)
+			ugauItem, err := ui.newUpdateGroupAddUser(ugau)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -392,7 +403,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, ugru := range state.UpdateGroupRemoveUsers {
-			ugruItem, err := fyneUI.newUpdateGroupRemoveUser(ugru)
+			ugruItem, err := ui.newUpdateGroupRemoveUser(ugru)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -400,7 +411,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, ugch := range state.UpdateGroupClearHistories {
-			ugchItem, err := fyneUI.newUpdateGroupClearHistory(ugch)
+			ugchItem, err := ui.newUpdateGroupClearHistory(ugch)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -408,7 +419,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, ugap := range state.UpdateGroupAdminPromotions {
-			ugapItem, err := fyneUI.newUpdateGroupAdminPromoted(ugap)
+			ugapItem, err := ui.newUpdateGroupAdminPromoted(ugap)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -416,7 +427,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, ugad := range state.UpdateGroupAdminDemotions {
-			ugadItem, err := fyneUI.newUpdateGroupAdminDemoted(ugad)
+			ugadItem, err := ui.newUpdateGroupAdminDemoted(ugad)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -424,7 +435,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, ugumr := range state.UpdateGroupUserManagementsRestricted {
-			ugumrItem, err := fyneUI.newUpdateGroupUserManagementRestricted(ugumr)
+			ugumrItem, err := ui.newUpdateGroupUserManagementRestricted(ugumr)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -432,7 +443,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, ugumu := range state.UpdateGroupUserManagementsUnrestricted {
-			ugumuItem, err := fyneUI.newUpdateGroupUserManagementUnrestricted(ugumu)
+			ugumuItem, err := ui.newUpdateGroupUserManagementUnrestricted(ugumu)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -440,7 +451,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, uger := range state.UpdateGroupEditsRestricted {
-			ugerItem, err := fyneUI.newUpdateGroupEditsRestricted(uger)
+			ugerItem, err := ui.newUpdateGroupEditsRestricted(uger)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -448,7 +459,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, ugeu := range state.UpdateGroupEditsUnrestricted {
-			ugeuItem, err := fyneUI.newUpdateGroupEditsUnrestricted(ugeu)
+			ugeuItem, err := ui.newUpdateGroupEditsUnrestricted(ugeu)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -456,7 +467,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, ugpr := range state.UpdateGroupPostingsRestricted {
-			ugprItem, err := fyneUI.newUpdateGroupPostingRestricted(ugpr)
+			ugprItem, err := ui.newUpdateGroupPostingRestricted(ugpr)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -464,7 +475,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, ugpu := range state.UpdateGroupPostingsUnrestricted {
-			ugpuItem, err := fyneUI.newUpdateGroupPostingUnrestricted(ugpu)
+			ugpuItem, err := ui.newUpdateGroupPostingUnrestricted(ugpu)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -472,7 +483,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, ubg := range state.UpdateGroupUserBlockedGroups {
-			ubgItem, err := fyneUI.newUpdateGroupUserBlocked(ubg)
+			ubgItem, err := ui.newUpdateGroupUserBlocked(ubg)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -480,7 +491,7 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, ugci := range state.UpdateGroupUserChangedGroupImages {
-			ugciItem, err := fyneUI.newUpdateGroupUserChangedGroupImage(ugci)
+			ugciItem, err := ui.newUpdateGroupUserChangedGroupImage(ugci)
 			if err != nil {
 				log.Error(err.Error())
 			}
@@ -488,20 +499,20 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		for _, uuun := range state.UpdateUserUpdateNames {
-			if uuun.User == fyneUI.profile.id {
-				for dmID, _ := range fyneUI.dms { // TODO: don't add to DMs before the DMs should exist
-					uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+			if uuun.User == ui.profile.id {
+				for dmID, _ := range ui.dms { // TODO: don't add to DMs before the DMs should exist
+					uuunItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 					if err != nil {
 						log.Error(err.Error())
 					} else {
 						dmItems[dmID] = append(dmItems[dmID], uuunItem)
 					}
 				}
-				for _, g := range fyneUI.groups {
+				for _, g := range ui.groups {
 					if uuun.Timestamp < g.createdAt {
 						continue
 					}
-					uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+					uuunItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 					if err != nil {
 						log.Error(err.Error())
 					} else {
@@ -509,18 +520,18 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 					}
 				}
 			} else {
-				uuunItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+				uuunItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 				if err != nil {
 					log.Error(err.Error())
 				}
 				dmItems[uuun.User] = append(dmItems[uuun.User], uuunItem)
 
-				for _, g := range fyneUI.groups {
+				for _, g := range ui.groups {
 					if uuun.Timestamp < g.createdAt {
 						continue
 					}
 					if g.users.contains(uuun.User) {
-						uuunGroupItem, err := fyneUI.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+						uuunGroupItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 						if err != nil {
 							log.Error(err.Error())
 						}
@@ -530,20 +541,20 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 			}
 		}
 		for _, uuui := range state.UpdateUserUpdateImages {
-			if uuui.User == fyneUI.profile.id {
-				for dmID, _ := range fyneUI.dms { // TODO: don't add to DMs before the DMs should exist
-					uuuiItem, err := fyneUI.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+			if uuui.User == ui.profile.id {
+				for dmID, _ := range ui.dms { // TODO: don't add to DMs before the DMs should exist
+					uuuiItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 					if err != nil {
 						log.Error(err.Error())
 					} else {
 						dmItems[dmID] = append(dmItems[dmID], uuuiItem)
 					}
 				}
-				for _, g := range fyneUI.groups {
+				for _, g := range ui.groups {
 					if uuui.Timestamp < g.createdAt {
 						continue
 					}
-					uuuiItem, err := fyneUI.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+					uuuiItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 					if err != nil {
 						log.Error(err.Error())
 					} else {
@@ -551,18 +562,18 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 					}
 				}
 			} else {
-				uuuiItem, err := fyneUI.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+				uuuiItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 				if err != nil {
 					log.Error(err.Error())
 				}
 				dmItems[uuui.User] = append(dmItems[uuui.User], uuuiItem)
 
-				for _, g := range fyneUI.groups {
+				for _, g := range ui.groups {
 					if uuui.Timestamp < g.createdAt {
 						continue
 					}
 					if g.users.contains(uuui.User) {
-						uuuiGroupItem, err := fyneUI.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+						uuuiGroupItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 						if err != nil {
 							log.Error(err.Error())
 						}
@@ -573,19 +584,19 @@ func (fyneUI *Fyne) LoadInitialState(state chat.InitialState) {
 		}
 
 		// Create widgets for all the thread items we added
-		for _, g := range fyneUI.groups { // TODO: store groups and DMs in a shared threads slice?
+		for _, g := range ui.groups { // TODO: store groups and DMs in a shared threads slice?
 			if items, ok := groupItems[g.id]; ok {
-				fyneUI.populateInitialItems(g, items)
+				ui.populateInitialItems(g, items)
 			}
 		}
-		for _, u := range fyneUI.dms { // TODO: store groups and DMs in a shared threads slice?
+		for _, u := range ui.dms { // TODO: store groups and DMs in a shared threads slice?
 			if items, ok := dmItems[u.user.id]; ok {
-				fyneUI.populateInitialItems(u, items)
+				ui.populateInitialItems(u, items)
 			}
 		}
-		fyneUI.refreshThreadOrder()
+		ui.refreshThreadOrder()
 	})
-	go fyneUI.messages.writeCache()
+	go ui.messages.writeCache()
 }
 
 func chatContainerSizeAtStartup() fyne.Size {
@@ -610,74 +621,103 @@ func chatContainerSizeAtStartup() fyne.Size {
 	}
 }
 
-func (fyneUI *Fyne) createDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]chat.DMState) {
-	u, exists := fyneUI.users.get(id)
+func (ui *ui) createDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]chat.DMState) {
+	u, exists := ui.users.get(id)
 	if !exists {
 		log.Fatal("dm user not known to UI")
 	}
 
 	initialState, _ := initialStates[id]
 
-	_, exists = fyneUI.dms[id]
+	_, exists = ui.dms[id]
 	if !exists {
-		fyneUI.buildNewDirectMessage(chat.User{
+		ui.buildNewDirectMessage(chat.User{
 			ID:     id,
 			Name:   u.getName(),
 			Images: u.images,
 			State:  initialState,
 		})
-		_, exists = fyneUI.dms[id]
+		_, exists = ui.dms[id]
 		if !exists {
 			log.Fatal("dm doesn't exist after creation")
 		}
 	}
 }
 
-func (fyneUI *Fyne) NetworkOnline() {
-	if fyneUI.activeThread != uuid.Nil {
-		if _, ok := fyneUI.dms[fyneUI.activeThread]; ok { // TODO: group and dm maps are not concurrency safe
-			fyneUI.callbacks.UserConnectionDesired(fyneUI.activeThread)
-		} else if _, ok = fyneUI.groups[fyneUI.activeThread]; ok {
-			fyneUI.callbacks.GroupConnectionDesired(fyneUI.activeThread)
+func (ui *ui) NetworkOnline() {
+	if ui.activeThread != uuid.Nil {
+		if _, ok := ui.dms[ui.activeThread]; ok { // TODO: group and dm maps are not concurrency safe
+			ui.bounce.UserConnectionDesired(ui.activeThread)
+		} else if _, ok = ui.groups[ui.activeThread]; ok {
+			ui.bounce.GroupConnectionDesired(ui.activeThread)
 		} else {
 			log.WithFields(log.Fields{
-				"thread": fyneUI.activeThread,
+				"thread": ui.activeThread,
 			}).Error("active thread is not a known user or group")
 		}
 	}
-	fyne.DoAndWait(func() { fyneUI.networkOfflineWarning.Hide() })
-	fyneUI.networkState = networkStateOnline
+	fyne.DoAndWait(func() { ui.networkOfflineWarning.Hide() })
+	ui.networkState = networkStateOnline
 }
 
-func (fyneUI *Fyne) NetworkOffline() {
-	fyneUI.networkState = networkStateOffline
+func (ui *ui) NetworkOffline() {
+	ui.networkState = networkStateOffline
 	fyne.DoAndWait(func() {
-		fyneUI.networkOfflineWarning.SetText("network connection lost, reconnecting...")
-		fyneUI.networkOfflineWarning.Show()
+		ui.networkOfflineWarning.SetText("network connection lost, reconnecting...")
+		ui.networkOfflineWarning.Show()
 	})
 }
 
-func (fyneUI *Fyne) UserImported(u chat.User) {
+func (ui *ui) UserImported(u chat.User) {
 	newUser := makeUser(u.ID, u.Name)
-	fyneUI.users.add(newUser)
-	fyne.DoAndWait(func() { fyneUI.NewDirectMessage(u) })
+	ui.users.add(newUser)
+	fyne.DoAndWait(func() { ui.NewDirectMessage(u) })
 }
 
-func (fyneUI *Fyne) FileCompleted(fileID uuid.UUID) {
+func (ui *ui) FileCompleted(fileID uuid.UUID) {
 	// TODO: check if anything is waiting for this file and refresh it
-	for _, g := range fyneUI.groups {
-		fyne.Do(func() {
+	for _, g := range ui.groups {
+		fyne.DoAndWait(func() {
 			g.editIcon.Refresh()
 			g.headerIcon.Refresh()
 			g.button.threadImage.Refresh()
 		})
 	}
 
-	for _, dm := range fyneUI.dms {
-		fyne.Do(func() {
+	for _, dm := range ui.dms {
+		fyne.DoAndWait(func() {
 			dm.editIcon.Refresh()
 			dm.headerIcon.Refresh()
 			dm.button.threadImage.Refresh()
 		})
 	}
+}
+
+func getConfigDirectory() string {
+	var configDirectory string
+	if testing.Testing() {
+		configDirectory = os.TempDir() + "/bounce-test-" + uuid.New().String()
+	} else if runtime.GOOS == "android" {
+		// TODO: use /data/data/chat.bounce/ ?
+		configDirectory = "/sdcard/Android/data/chat.bounce"
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"at":    "configDirectory",
+				"error": err.Error(),
+			}).Fatal("error getting home directory")
+		}
+		configDirectory = home + "/.bounce"
+	}
+
+	err := os.MkdirAll(configDirectory, 0700)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"path":  configDirectory,
+			"error": err.Error(),
+		}).Fatal("error creating config directory")
+	}
+
+	return configDirectory
 }

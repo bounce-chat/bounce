@@ -6,71 +6,71 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-func (fyneUI *Fyne) buildMenu() {
-	fyneUI.mainMenu = fyne.NewMainMenu(
+func (ui *ui) buildMenu() {
+	ui.mainMenu = fyne.NewMainMenu(
 		fyne.NewMenu(
 			"Bounce",
 			fyne.NewMenuItem("My Profile", func() {
-				fyneUI.showEditProfile()
+				ui.showEditProfile()
 			}),
 			//fyne.NewMenuItem("My Devices", func() {
-			//fyneUI.showEditDevices()
+			//ui.showEditDevices()
 			//}),
 			fyne.NewMenuItem("Settings", func() {
-				fyneUI.showSettings()
+				ui.showSettings()
 			}),
 			fyne.NewMenuItem("About", func() {
-				fyneUI.showAbout()
+				ui.showAbout()
 			}),
 		),
 		fyne.NewMenu(
 			"Chat",
 			fyne.NewMenuItem("New Group", func() {
-				fyneUI.showNewGroup()
+				ui.showNewGroup()
 			}),
 			fyne.NewMenuItem("New DM", func() {
-				fyneUI.showNewDM()
+				ui.showNewDM()
 			}),
 			//fyne.NewMenuItem("Manage Workspaces", func() {
-			//	fyneUI.showNewWorkspace()
+			//	ui.showNewWorkspace()
 			//}),
 		),
 		fyne.NewMenu(
 			"Contacts",
 			fyne.NewMenuItem("Share", func() {
-				fyneUI.showDisplayAddUserString()
+				ui.showDisplayAddUserString()
 			}),
 			fyne.NewMenuItem("Add", func() {
-				fyneUI.showAddUser()
+				ui.showAddUser()
 			}),
 			//fyne.NewMenuItem("Introduce", func() {
-			//	fyneUI.showIntroduceContacts()
+			//	ui.showIntroduceContacts()
 			//}),
 			fyne.NewMenuItem("Import", func() {
-				fyneUI.showImportContact()
+				ui.showImportContact()
 			}),
 		),
 	)
 }
 
-func (fyneUI *Fyne) showMobileMenu() {
-	fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeMenu})
-	fyneUI.mainWindow.SetContent(fyneUI.mobileMenu)
-	fyneUI.mobileMenu.Show()
+func (ui *ui) showMobileMenu() {
+	ui.viewStack = append(ui.viewStack, view{viewType: viewTypeMenu})
+	ui.mainWindow.SetContent(ui.mobileMenu)
+	ui.mobileMenu.Show()
 }
 
-func (fyneUI *Fyne) buildMobileMenu() {
-	fyneUI.mobileMenu = container.NewVBox(
+func (ui *ui) buildMobileMenu() {
+	ui.mobileMenu = container.NewVBox(
 		makeLogo(228, 167), // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
-		widget.NewButton("My Profile", func() { fyneUI.showEditProfile() }),
-		widget.NewButton("Settings", func() { fyneUI.showSettings() }),
-		widget.NewButton("New Group", func() { fyneUI.showNewGroup() }),
-		widget.NewButton("New DM", func() { fyneUI.showNewDM() }),
-		widget.NewButton("Share Contact", func() { fyneUI.showDisplayAddUserString() }),
-		widget.NewButton("Add Contact", func() { fyneUI.showAddUser() }),
-		widget.NewButton("Import Contact", func() { fyneUI.showImportContact() }),
-		widget.NewButton("About", func() { fyneUI.showAbout() }),
-		widget.NewButton("Close", func() { fyneUI.mobileBack() }),
+		widget.NewButton("My Profile", func() { ui.showEditProfile() }),
+		widget.NewButton("Settings", func() { ui.showSettings() }),
+		widget.NewButton("New Group", func() { ui.showNewGroup() }),
+		widget.NewButton("New DM", func() { ui.showNewDM() }),
+		widget.NewButton("Share Contact", func() { ui.showDisplayAddUserString() }),
+		widget.NewButton("Add Contact", func() { ui.showAddUser() }),
+		widget.NewButton("Import Contact", func() { ui.showImportContact() }),
+		widget.NewButton("About", func() { ui.showAbout() }),
+		widget.NewButton("Close", func() { ui.mobileBack() }),
 	)
 
 }

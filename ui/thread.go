@@ -49,12 +49,12 @@ func (threads sortableThreads) Less(i, j int) bool {
 // Helper functions for organizing and displaying threads in the UI
 //
 
-func (fyneUI *Fyne) refreshThreadOrder() {
+func (ui *ui) refreshThreadOrder() {
 	allThreads := sortableThreads{}
-	for _, group := range fyneUI.groups {
+	for _, group := range ui.groups {
 		allThreads = append(allThreads, group)
 	}
-	for _, dm := range fyneUI.dms {
+	for _, dm := range ui.dms {
 		allThreads = append(allThreads, dm)
 	}
 	sort.Sort(allThreads)
@@ -63,22 +63,22 @@ func (fyneUI *Fyne) refreshThreadOrder() {
 	for _, thread := range allThreads {
 		buttons = append(buttons, thread.getButton())
 	}
-	fyneUI.threadVBox.Objects = buttons
-	fyneUI.threadVBox.Refresh()
+	ui.threadVBox.Objects = buttons
+	ui.threadVBox.Refresh()
 }
 
-func (fyneUI *Fyne) populateInitialItems(t thread, items threadItems) {
+func (ui *ui) populateInitialItems(t thread, items threadItems) {
 	sort.Sort(items)
 
-	fyneUI.threadWithItemMutex.Lock()
+	ui.threadWithItemMutex.Lock()
 	widgetData := []threadable{}
 	for _, item := range items {
-		fyneUI.threadWithItem[item.id] = t
+		ui.threadWithItem[item.id] = t
 		widgetData = append(widgetData, item.widgetData)
 	}
 	t.chatHistoryScroll().setItems(widgetData, chatContainerSizeAtStartup())
 
-	fyneUI.threadWithItemMutex.Unlock()
+	ui.threadWithItemMutex.Unlock()
 
 	for i := len(items) - 1; i >= 0; i-- {
 		lastItem := items[i]
@@ -94,7 +94,7 @@ func (fyneUI *Fyne) populateInitialItems(t thread, items threadItems) {
 	t.chatHistoryScroll().updateUnreadCounter()
 }
 
-func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
+func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
 	// Determine if we are already scrolled down to the bottom of this thread before appending
 	autoscroll := false
 	location := t.chatHistoryScroll().GetScrollOffset()
@@ -110,9 +110,9 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	t.chatHistoryScroll().insertItem(ti, appendingToEnd)
 
 	// Keep track of which threads have which items
-	fyneUI.threadWithItemMutex.Lock()
-	fyneUI.threadWithItem[ti.id] = t
-	fyneUI.threadWithItemMutex.Unlock()
+	ui.threadWithItemMutex.Lock()
+	ui.threadWithItem[ti.id] = t
+	ui.threadWithItemMutex.Unlock()
 
 	// Update the thread button if this is the latest message
 	if ti.setButton != nil && ti.timestamp > t.getLastMessageTime() { // TODO: same as appendingToEnd?
@@ -120,28 +120,28 @@ func (fyneUI *Fyne) appendThreadItem(t thread, ti *threadItem) {
 	}
 
 	// Keep the thread scrolled down, if it is open and was already scrolled down
-	if autoscroll && fyneUI.isActive(t) && appendingToEnd && fyneUI.focused {
+	if autoscroll && ui.isActive(t) && appendingToEnd && ui.focused {
 		t.chatHistoryScroll().ScrollToBottom()
 	} else {
 		t.chatHistoryScroll().displayJumpToBottomIfNeeded()
 	}
 
 	// Send a notification if required
-	notificationsEnabled := (t.getNotificationsMutedUntil() != chat.MutedForever) && !(t.getID() == fyneUI.profile.id) && !fyneUI.groupNotificationsPaused(t.getID())
+	notificationsEnabled := (t.getNotificationsMutedUntil() != chat.MutedForever) && !(t.getID() == ui.profile.id) && !ui.groupNotificationsPaused(t.getID())
 	notificationsMuted := time.Now().Unix() < t.getNotificationsMutedUntil()
-	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll && !fyneUI.initialSyncIncomplete { //TODO: also notify if this is false but we're not focused?
-		fyneUI.app.SendNotification(ti.notification)
+	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll && !ui.initialSyncIncomplete { //TODO: also notify if this is false but we're not focused?
+		ui.app.SendNotification(ti.notification)
 	}
 
 	// Update the latest time of this thread and update the thread order
 	if !ti.dontBumpThread && appendingToEnd {
 		t.setLastMessageTime(ti.timestamp)
-		fyneUI.refreshThreadOrder()
+		ui.refreshThreadOrder()
 	}
 }
 
-func (fyneUI *Fyne) MarkMessageUndeliverable(id uuid.UUID) {
-	item, ok := fyneUI.messages.get(id)
+func (ui *ui) MarkMessageUndeliverable(id uuid.UUID) {
+	item, ok := ui.messages.get(id)
 	if !ok {
 		log.WithFields(log.Fields{
 			"id": id,
@@ -150,9 +150,9 @@ func (fyneUI *Fyne) MarkMessageUndeliverable(id uuid.UUID) {
 
 	item.setState(stateError)
 
-	fyneUI.threadWithItemMutex.Lock()
-	thread, ok := fyneUI.threadWithItem[id]
-	fyneUI.threadWithItemMutex.Unlock()
+	ui.threadWithItemMutex.Lock()
+	thread, ok := ui.threadWithItem[id]
+	ui.threadWithItemMutex.Unlock()
 	if !ok {
 		log.WithFields(log.Fields{
 			"message_id": id,
@@ -163,17 +163,17 @@ func (fyneUI *Fyne) MarkMessageUndeliverable(id uuid.UUID) {
 	fyne.DoAndWait(func() { thread.chatHistoryScroll().Refresh() })
 }
 
-func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
-	item, ok := fyneUI.messages.get(id)
+func (ui *ui) MessageSeen(id uuid.UUID) {
+	item, ok := ui.messages.get(id)
 	if !ok {
 		log.WithFields(log.Fields{
 			"id": id,
 		}).Warn("item not found during attempt to mark item as seen")
 	}
 
-	fyneUI.threadWithItemMutex.Lock()
-	t, ok := fyneUI.threadWithItem[id]
-	fyneUI.threadWithItemMutex.Unlock()
+	ui.threadWithItemMutex.Lock()
+	t, ok := ui.threadWithItem[id]
+	ui.threadWithItemMutex.Unlock()
 	if !ok {
 		log.WithFields(log.Fields{
 			"message_id": id,
@@ -201,17 +201,17 @@ func (fyneUI *Fyne) MessageSeen(id uuid.UUID) {
 
 }
 
-func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
-	item, ok := fyneUI.messages.get(messageID)
+func (ui *ui) MessageDelivered(messageID, userID uuid.UUID) {
+	item, ok := ui.messages.get(messageID)
 	if !ok {
 		log.WithFields(log.Fields{
 			"id": messageID,
 		}).Warn("item not found during attempt to mark item as delivered")
 	}
 
-	fyneUI.threadWithItemMutex.Lock()
-	t, ok := fyneUI.threadWithItem[messageID]
-	fyneUI.threadWithItemMutex.Unlock()
+	ui.threadWithItemMutex.Lock()
+	t, ok := ui.threadWithItem[messageID]
+	ui.threadWithItemMutex.Unlock()
 	if !ok {
 		log.WithFields(log.Fields{
 			"message_id": messageID,
@@ -223,10 +223,10 @@ func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
 	if currentState == stateRead || currentState == stateDelivered {
 		return
 	}
-	if userID == fyneUI.profile.id {
+	if userID == ui.profile.id {
 		if currentState == statePending {
 			item.setState(stateSynced)
-			if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
+			if item.getAuthor() == ui.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
 				fyne.DoAndWait(func() {
 					t.getButton().showLastMessageState(stateSynced)
 					t.chatHistoryScroll().Refresh()
@@ -236,7 +236,7 @@ func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
 
 	} else {
 		item.setState(stateDelivered)
-		if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
+		if item.getAuthor() == ui.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
 			fyne.DoAndWait(func() {
 				t.getButton().showLastMessageState(stateDelivered)
 				t.chatHistoryScroll().Refresh()
@@ -245,21 +245,21 @@ func (fyneUI *Fyne) MessageDelivered(messageID, userID uuid.UUID) {
 	}
 }
 
-func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
-	if rr.Actor == fyneUI.profile.id {
+func (ui *ui) ReceivedReadReceipt(rr chat.ReadReceipt) {
+	if rr.Actor == ui.profile.id {
 		return
 	}
 
-	item, ok := fyneUI.messages.get(rr.Target)
+	item, ok := ui.messages.get(rr.Target)
 	if !ok {
 		log.WithFields(log.Fields{
 			"id": rr.Target,
 		}).Warn("item not found during attempt to mark item as read")
 	}
 
-	fyneUI.threadWithItemMutex.Lock()
-	t, ok := fyneUI.threadWithItem[rr.Target]
-	fyneUI.threadWithItemMutex.Unlock()
+	ui.threadWithItemMutex.Lock()
+	t, ok := ui.threadWithItem[rr.Target]
+	ui.threadWithItemMutex.Unlock()
 	if !ok {
 		log.WithFields(log.Fields{
 			"message_id": rr.Target,
@@ -269,21 +269,19 @@ func (fyneUI *Fyne) ReceivedReadReceipt(rr chat.ReadReceipt) {
 
 	item.setState(stateRead)
 
-	fyne.DoAndWait(func() {
-		if item.getAuthor() == fyneUI.profile.id && t.chatHistoryScroll().isLastItem(rr.Target) {
-			t.getButton().showLastMessageState(stateRead)
-		}
+	if item.getAuthor() == ui.profile.id && t.chatHistoryScroll().isLastItem(rr.Target) {
+		fyne.DoAndWait(func() { t.getButton().showLastMessageState(stateRead) })
+	}
 
-		t.chatHistoryScroll().Refresh()
-	})
+	fyne.DoAndWait(func() { t.chatHistoryScroll().Refresh() })
 }
 
-func (fyneUI *Fyne) DeleteItem(id uuid.UUID) {
-	fyneUI.messages.remove(id)
+func (ui *ui) DeleteItem(id uuid.UUID) {
+	ui.messages.remove(id)
 
-	fyneUI.threadWithItemMutex.Lock()
-	thread, ok := fyneUI.threadWithItem[id]
-	fyneUI.threadWithItemMutex.Unlock()
+	ui.threadWithItemMutex.Lock()
+	thread, ok := ui.threadWithItem[id]
+	ui.threadWithItemMutex.Unlock()
 	if !ok {
 		log.WithFields(log.Fields{
 			"message_id": id,
@@ -295,9 +293,9 @@ func (fyneUI *Fyne) DeleteItem(id uuid.UUID) {
 		deleted := thread.chatHistoryScroll().deleteItem(id)
 
 		if deleted {
-			fyneUI.threadWithItemMutex.Lock()
-			delete(fyneUI.threadWithItem, id)
-			fyneUI.threadWithItemMutex.Unlock()
+			ui.threadWithItemMutex.Lock()
+			delete(ui.threadWithItem, id)
+			ui.threadWithItemMutex.Unlock()
 		} else {
 			log.WithFields(log.Fields{
 				"message_id": id,
@@ -307,36 +305,41 @@ func (fyneUI *Fyne) DeleteItem(id uuid.UUID) {
 	})
 }
 
-func (fyneUI *Fyne) displayThread(thread thread) {
-	fyneUI.activeThread = thread.getID()
-	fyneUI.chatContainer.Objects = []fyne.CanvasObject{thread.getView()}
-	fyneUI.chatContainer.Refresh()
-
+func (ui *ui) displayThread(thread thread) {
 	openedThreadMutex.Lock()
+	_, opened := openedThreads[thread.getID()]
 	openedThreads[thread.getID()] = true
 	openedThreadMutex.Unlock()
 
+	ui.activeThread = thread.getID()
+	ui.chatContainer.Objects = []fyne.CanvasObject{thread.getView()}
+	ui.chatContainer.Refresh()
+
 	if fyne.CurrentDevice().IsMobile() {
-		fyneUI.mainWindow.SetContent(fyneUI.chatContainer)
-		fyneUI.chatContainer.Show()
+		ui.mainWindow.SetContent(ui.chatContainer)
+		ui.chatContainer.Show()
 	} else {
-		fyneUI.mainWindow.Canvas().Focus(thread.getEntry())
+		ui.mainWindow.Canvas().Focus(thread.getEntry())
+	}
+
+	if !opened {
+		thread.chatHistoryScroll().scrollToLastRead()
 	}
 }
 
-func (fyneUI *Fyne) isActive(thread thread) bool {
-	return fyneUI.activeThread == thread.getID()
+func (ui *ui) isActive(thread thread) bool {
+	return ui.activeThread == thread.getID()
 }
 
-func (fyneUI *Fyne) getThread(id uuid.UUID) (thread, bool) {
+func (ui *ui) getThread(id uuid.UUID) (thread, bool) {
 	// TODO: lock
 
-	groupThread, ok := fyneUI.groups[id]
+	groupThread, ok := ui.groups[id]
 	if ok {
 		return groupThread, true
 	}
 
-	dmThread, ok := fyneUI.dms[id]
+	dmThread, ok := ui.dms[id]
 	if ok {
 		return dmThread, true
 	}
@@ -344,8 +347,8 @@ func (fyneUI *Fyne) getThread(id uuid.UUID) (thread, bool) {
 	return nil, false
 }
 
-func (fyneUI *Fyne) ShowTypingIndicator(userID, threadID uuid.UUID) {
-	t, ok := fyneUI.getThread(threadID)
+func (ui *ui) ShowTypingIndicator(userID, threadID uuid.UUID) {
+	t, ok := ui.getThread(threadID)
 	if !ok {
 		log.WithFields(log.Fields{
 			"thread_id": threadID,
@@ -353,7 +356,7 @@ func (fyneUI *Fyne) ShowTypingIndicator(userID, threadID uuid.UUID) {
 		return
 	}
 
-	u, ok := fyneUI.users.get(userID)
+	u, ok := ui.users.get(userID)
 	if !ok {
 		log.WithFields(log.Fields{
 			"thread_id": threadID,
@@ -371,8 +374,8 @@ func (fyneUI *Fyne) ShowTypingIndicator(userID, threadID uuid.UUID) {
 	})
 }
 
-func (fyneUI *Fyne) HideTypingIndicator(userID, threadID uuid.UUID) {
-	t, ok := fyneUI.getThread(threadID)
+func (ui *ui) HideTypingIndicator(userID, threadID uuid.UUID) {
+	t, ok := ui.getThread(threadID)
 	if !ok {
 		log.WithFields(log.Fields{
 			"thread_id": threadID,

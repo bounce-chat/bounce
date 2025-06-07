@@ -137,7 +137,7 @@ func (ud *updateDM) validPayload() error {
 	return nil
 }
 
-func (b *bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broadcastable {
 	updateDMMutex.Lock()
 	defer updateDMMutex.Unlock()
 
@@ -220,7 +220,7 @@ func (b *bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 	return &ud
 }
 
-func (b *bounce) updateDMState(userID uuid.UUID) {
+func (b *Bounce) updateDMState(userID uuid.UUID) {
 	// Set the initial values for the DM
 	retention := int64(0)
 	mutedUntil := int64(0)
@@ -295,7 +295,7 @@ func (b *bounce) updateDMState(userID uuid.UUID) {
 	}
 
 	// Inform the UI of the current state
-	b.userInterface.SetDMState(
+	b.ui.SetDMState(
 		userID,
 		DMState{
 			Retention:                      retention,
@@ -308,7 +308,7 @@ func (b *bounce) updateDMState(userID uuid.UUID) {
 	)
 }
 
-func (b *bounce) saveAndDisplayUpdateDM(ud updateDM) error {
+func (b *Bounce) saveAndDisplayUpdateDM(ud updateDM) error {
 	// Only sync devices can change sync scoped messages
 	if ud.getScope(b.currentUserID()) == scopeSync {
 		if ud.Actor != b.currentUserID() {
@@ -380,12 +380,12 @@ func (b *bounce) saveAndDisplayUpdateDM(ud updateDM) error {
 	return nil
 }
 
-func (b *bounce) informUIUpdateDMChangeRetention(u user, ud updateDM) error {
+func (b *Bounce) informUIUpdateDMChangeRetention(u user, ud updateDM) error {
 	// Decode the new retention value
 	retention := int64(binary.LittleEndian.Uint64(ud.Data))
 
 	// Inform the UI
-	b.userInterface.DMRetentionChanged(UpdateDMRetention{
+	b.ui.DMRetentionChanged(UpdateDMRetention{
 		ID:        ud.ID,
 		Thread:    u.ID,
 		Actor:     ud.Actor,
@@ -396,7 +396,7 @@ func (b *bounce) informUIUpdateDMChangeRetention(u user, ud updateDM) error {
 	return nil
 }
 
-func (b *bounce) informUIUpdateDMSetClearBefore(u user, ud updateDM) error {
+func (b *Bounce) informUIUpdateDMSetClearBefore(u user, ud updateDM) error {
 	// Decode the new retention value
 	clearBefore := int64(binary.LittleEndian.Uint64(ud.Data))
 
@@ -416,9 +416,9 @@ func (b *bounce) informUIUpdateDMSetClearBefore(u user, ud updateDM) error {
 				"id":    dm.ID,
 			}).Fatal("error deleting direct message while clearing chat history")
 		}
-		b.userInterface.DeleteItem(dm.ID)
+		b.ui.DeleteItem(dm.ID)
 	}
-	b.userInterface.DMChatHistoryCleared(UpdateDMClearHistory{
+	b.ui.DMChatHistoryCleared(UpdateDMClearHistory{
 		ID:        ud.ID,
 		Thread:    u.ID,
 		Actor:     ud.Actor,
@@ -429,7 +429,7 @@ func (b *bounce) informUIUpdateDMSetClearBefore(u user, ud updateDM) error {
 	return nil
 }
 
-func (b *bounce) setDMMutedUntil(userID uuid.UUID, mutedUntil int64) error {
+func (b *Bounce) SetDMMutedUntil(userID uuid.UUID, mutedUntil int64) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(mutedUntil))
 
@@ -443,7 +443,7 @@ func (b *bounce) setDMMutedUntil(userID uuid.UUID, mutedUntil int64) error {
 	})
 }
 
-func (b *bounce) setDMRetention(userID uuid.UUID, retention int64) error {
+func (b *Bounce) SetDMRetention(userID uuid.UUID, retention int64) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(retention))
 
@@ -457,7 +457,7 @@ func (b *bounce) setDMRetention(userID uuid.UUID, retention int64) error {
 	})
 }
 
-func (b *bounce) clearDMChatHistory(userID uuid.UUID) error {
+func (b *Bounce) ClearDMChatHistory(userID uuid.UUID) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(time.Now().Unix()))
 
@@ -471,7 +471,7 @@ func (b *bounce) clearDMChatHistory(userID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) setDMReadReceiptSettings(userID uuid.UUID, override bool, enabled bool) error {
+func (b *Bounce) SetDMReadReceiptSettings(userID uuid.UUID, override bool, enabled bool) error {
 	payload := []byte{}
 	if override {
 		payload = append(payload, readReceiptsOverriddenValue)
@@ -495,7 +495,7 @@ func (b *bounce) setDMReadReceiptSettings(userID uuid.UUID, override bool, enabl
 	})
 }
 
-func (b *bounce) setDMTypingIndicatorSettings(userID uuid.UUID, override bool, enabled bool) error {
+func (b *Bounce) SetDMTypingIndicatorSettings(userID uuid.UUID, override bool, enabled bool) error {
 	payload := []byte{}
 	if override {
 		payload = append(payload, typingIndicatorsOverriddenValue)
@@ -519,7 +519,7 @@ func (b *bounce) setDMTypingIndicatorSettings(userID uuid.UUID, override bool, e
 	})
 }
 
-func (b *bounce) applyAndBroadcastUpdateDM(ud updateDM) error {
+func (b *Bounce) applyAndBroadcastUpdateDM(ud updateDM) error {
 	// Called in a goroutine since the UI can't be called back from main
 	go func() {
 		// Save and display the update the UI

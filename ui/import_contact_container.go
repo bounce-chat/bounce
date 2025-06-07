@@ -14,20 +14,20 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-func (fyneUI *Fyne) showImportContact() {
+func (ui *ui) showImportContact() {
 	if fyne.CurrentDevice().IsMobile() {
-		fyneUI.viewStack = append(fyneUI.viewStack, view{viewType: viewTypeImportContact})
+		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeImportContact})
 	}
-	fyneUI.mainWindow.SetContent(fyneUI.importContact)
-	fyneUI.importContact.Show()
+	ui.mainWindow.SetContent(ui.importContact)
+	ui.importContact.Show()
 }
 
-func (fyneUI *Fyne) buildImportContact() {
+func (ui *ui) buildImportContact() {
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		if fyne.CurrentDevice().IsMobile() {
-			fyneUI.mobileBack()
+			ui.mobileBack()
 		} else {
-			fyneUI.showMainContainer()
+			ui.showMainContainer()
 		}
 	})
 	closeButton.Importance = widget.LowImportance
@@ -41,9 +41,9 @@ func (fyneUI *Fyne) buildImportContact() {
 	var showInformation dialog.Dialog
 	dialogCleanup := func() {
 		if showError != nil {
-			fyneUI.showDialog(dialog.NewError(showError, fyneUI.mainWindow), nil)
+			ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
 		} else if showInformation != nil {
-			fyneUI.showDialog(showInformation, nil)
+			ui.showDialog(showInformation, nil)
 		}
 	}
 	fileSelector := dialog.NewFileOpen(func(handler fyne.URIReadCloser, err error) {
@@ -60,26 +60,26 @@ func (fyneUI *Fyne) buildImportContact() {
 			showError = errors.New("error reading file: " + err.Error())
 			return
 		}
-		newUser, err := fyneUI.callbacks.ImportUser(data)
+		newUser, err := ui.bounce.ImportUser(data)
 		if err != nil {
 			showError = errors.New("error importing contact: " + err.Error())
 			return
 		} else {
 			// TODO: add this user to the store as a pending user, waiting on confirmation
-			//fyneUI.users.add(&user{id: newUser.ID, name: newUser.Name}) // TODO: user store should use exported type
-			showInformation = dialog.NewInformation("Success", fmt.Sprintf("%s has been imported", newUser.Name), fyneUI.mainWindow)
+			//ui.users.add(&user{id: newUser.ID, name: newUser.Name}) // TODO: user store should use exported type
+			showInformation = dialog.NewInformation("Success", fmt.Sprintf("%s has been imported", newUser.Name), ui.mainWindow)
 			// TODO: offer to delete file?
 		}
 		uName := binding.NewString()
 		uName.Set(newUser.Name)
-		fyneUI.users.add(&user{id: newUser.ID, name: uName})
-	}, fyneUI.mainWindow)
+		ui.users.add(&user{id: newUser.ID, name: uName})
+	}, ui.mainWindow)
 
-	fyneUI.importContact = container.New( // TODO: scan QR code, have the engine respond will full contact details if QR secret is sent within 30 mins
+	ui.importContact = container.New( // TODO: scan QR code, have the engine respond will full contact details if QR secret is sent within 30 mins
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.NewCenter(
-			widget.NewButton("Click here to select a contact file", func() { fyneUI.showDialog(fileSelector, dialogCleanup) }),
+			widget.NewButton("Click here to select a contact file", func() { ui.showDialog(fileSelector, dialogCleanup) }),
 		),
 	)
 }

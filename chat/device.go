@@ -83,7 +83,7 @@ func (d *device) getTimestamp() int64 {
 	return d.Timestamp
 }
 
-func (b *bounce) handleDevice(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) broadcastable {
 	handleDevicesMutex.Lock()
 	defer handleDevicesMutex.Unlock()
 
@@ -156,7 +156,7 @@ func (b *bounce) handleDevice(peer string, payload []byte, catchUp bool) broadca
 			lastSeen = time.Now().Unix()
 		}
 
-		b.userInterface.DeviceAdded(Device{
+		b.ui.DeviceAdded(Device{
 			ID:        newDevice.ID,
 			Name:      newDevice.Name,
 			Address:   newDevice.Address,
@@ -174,7 +174,7 @@ func (b *bounce) handleDevice(peer string, payload []byte, catchUp bool) broadca
 // Helper functions for looking up devices in other parts of the codebase
 //
 
-func (b *bounce) getDeviceFromAddress(address string) (device, bool) {
+func (b *Bounce) getDeviceFromAddress(address string) (device, bool) {
 	var dev device
 	err := b.database.Preload(clause.Associations).Where("address = ?", address).First(&dev).Error
 	if err != nil {
@@ -189,7 +189,7 @@ func (b *bounce) getDeviceFromAddress(address string) (device, bool) {
 	return dev, true
 }
 
-func (b *bounce) isSyncDevice(dev device) bool {
+func (b *Bounce) isSyncDevice(dev device) bool {
 	return dev.UserID == b.currentUserID()
 }
 

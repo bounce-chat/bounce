@@ -261,7 +261,7 @@ func (ug *updateGroup) validPayloadFormat() bool {
 	return false
 }
 
-func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) broadcastable {
 	groupMutex.Lock()
 	defer groupMutex.Unlock()
 
@@ -435,7 +435,7 @@ func (b *bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 	return &ug
 }
 
-func (b *bounce) processEarlyConfirmations(ug updateGroup) {
+func (b *Bounce) processEarlyConfirmations(ug updateGroup) {
 	var confirmations []confirmation
 	err := b.database.Find(&confirmations, "update_group_id = ?", ug.ID).Error
 	if err != nil {
@@ -462,7 +462,7 @@ func (b *bounce) processEarlyConfirmations(ug updateGroup) {
 	}
 }
 
-func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
+func (b *Bounce) RenameGroup(groupID uuid.UUID, newName string) error {
 	if !validGroupName(newName) {
 		return errInvalidGroupName
 	}
@@ -477,7 +477,7 @@ func (b *bounce) renameGroup(groupID uuid.UUID, newName string) error {
 	})
 }
 
-func (b *bounce) setGroupImage(groupID uuid.UUID, image []byte) error {
+func (b *Bounce) SetGroupImage(groupID uuid.UUID, image []byte) error {
 	if !validImage(image) {
 		return errInvalidImage
 	}
@@ -497,7 +497,7 @@ func (b *bounce) setGroupImage(groupID uuid.UUID, image []byte) error {
 	})
 }
 
-func (b *bounce) setGroupMutedUntil(groupID uuid.UUID, mutedUntil int64) error {
+func (b *Bounce) SetGroupMutedUntil(groupID uuid.UUID, mutedUntil int64) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(mutedUntil))
 
@@ -511,7 +511,7 @@ func (b *bounce) setGroupMutedUntil(groupID uuid.UUID, mutedUntil int64) error {
 	})
 }
 
-func (b *bounce) setGroupRetention(groupID uuid.UUID, retention int64) error {
+func (b *Bounce) SetGroupRetention(groupID uuid.UUID, retention int64) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(retention))
 
@@ -525,7 +525,7 @@ func (b *bounce) setGroupRetention(groupID uuid.UUID, retention int64) error {
 	})
 }
 
-func (b *bounce) clearGroupChatHistory(groupID uuid.UUID) error {
+func (b *Bounce) ClearGroupChatHistory(groupID uuid.UUID) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(time.Now().Unix()))
 
@@ -539,7 +539,7 @@ func (b *bounce) clearGroupChatHistory(groupID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) addUser(groupID, userID uuid.UUID) error {
+func (b *Bounce) AddUserToGroup(groupID, userID uuid.UUID) error {
 	// Look up the user to add with all associations
 	var newUser user
 	err := b.database.
@@ -578,7 +578,7 @@ func (b *bounce) addUser(groupID, userID uuid.UUID) error {
 	}
 
 	// Connect to this new user to send the new group
-	b.userConnectionDesired(userID)
+	b.UserConnectionDesired(userID)
 
 	// Do a reference flow with any devices we're currently connected to
 	for _, dev := range newUser.Devices {
@@ -588,7 +588,7 @@ func (b *bounce) addUser(groupID, userID uuid.UUID) error {
 	return nil
 }
 
-func (b *bounce) removeUser(groupID, userID uuid.UUID) error {
+func (b *Bounce) RemoveUserFromGroup(groupID, userID uuid.UUID) error {
 	// Create an update group
 	ug := &updateGroup{
 		ID:        uuid.New(),
@@ -633,7 +633,7 @@ func (b *bounce) removeUser(groupID, userID uuid.UUID) error {
 	return nil
 }
 
-func (b *bounce) deleteGroup(groupID uuid.UUID) error {
+func (b *Bounce) DeleteGroup(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
@@ -643,7 +643,7 @@ func (b *bounce) deleteGroup(groupID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) promoteAdmin(groupID, userID uuid.UUID) error {
+func (b *Bounce) PromoteGroupAdmin(groupID, userID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
@@ -654,7 +654,7 @@ func (b *bounce) promoteAdmin(groupID, userID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) demoteAdmin(groupID, userID uuid.UUID) error {
+func (b *Bounce) DemoteGroupAdmin(groupID, userID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
@@ -665,7 +665,7 @@ func (b *bounce) demoteAdmin(groupID, userID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) restrictUserManagement(groupID uuid.UUID) error {
+func (b *Bounce) RestrictUserManagement(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
@@ -676,7 +676,7 @@ func (b *bounce) restrictUserManagement(groupID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) unrestrictUserManagement(groupID uuid.UUID) error {
+func (b *Bounce) UnrestrictUserManagement(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
@@ -687,7 +687,7 @@ func (b *bounce) unrestrictUserManagement(groupID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) restrictGroupEdits(groupID uuid.UUID) error {
+func (b *Bounce) RestrictGroupEdits(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
@@ -698,7 +698,7 @@ func (b *bounce) restrictGroupEdits(groupID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) unrestrictGroupEdits(groupID uuid.UUID) error {
+func (b *Bounce) UnrestrictGroupEdits(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
@@ -709,7 +709,7 @@ func (b *bounce) unrestrictGroupEdits(groupID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) restrictPosting(groupID uuid.UUID) error {
+func (b *Bounce) RestrictPosting(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
@@ -720,7 +720,7 @@ func (b *bounce) restrictPosting(groupID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) unrestrictPosting(groupID uuid.UUID) error {
+func (b *Bounce) UnrestrictPosting(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
@@ -731,7 +731,7 @@ func (b *bounce) unrestrictPosting(groupID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) blockGroup(groupID uuid.UUID) error {
+func (b *Bounce) BlockGroup(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
@@ -741,7 +741,7 @@ func (b *bounce) blockGroup(groupID uuid.UUID) error {
 	})
 }
 
-func (b *bounce) setGroupReadReceiptSettings(groupID uuid.UUID, override bool, enabled bool) error {
+func (b *Bounce) SetGroupReadReceiptSettings(groupID uuid.UUID, override bool, enabled bool) error {
 	payload := []byte{}
 	if override {
 		payload = append(payload, readReceiptsOverriddenValue)
@@ -765,7 +765,7 @@ func (b *bounce) setGroupReadReceiptSettings(groupID uuid.UUID, override bool, e
 	})
 }
 
-func (b *bounce) setGroupTypingIndicatorSettings(groupID uuid.UUID, override bool, enabled bool) error {
+func (b *Bounce) SetGroupTypingIndicatorSettings(groupID uuid.UUID, override bool, enabled bool) error {
 	payload := []byte{}
 	if override {
 		payload = append(payload, typingIndicatorsOverriddenValue)
@@ -789,7 +789,7 @@ func (b *bounce) setGroupTypingIndicatorSettings(groupID uuid.UUID, override boo
 	})
 }
 
-func (b *bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
+func (b *Bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
 	// Find the group we're updating
 	var g group
 	err := b.database.Preload(clause.Associations).Where("id = ?", ug.Target).First(&g).Error
@@ -858,7 +858,7 @@ func (b *bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
 	return nil
 }
 
-func (b *bounce) informUIOfUpdateGroup(ug updateGroup) {
+func (b *Bounce) informUIOfUpdateGroup(ug updateGroup) {
 	switch ug.Type {
 	case updateGroupTypeChangeName:
 		b.informUIUpdateGroupChangeName(ug)
@@ -899,7 +899,7 @@ func (b *bounce) informUIOfUpdateGroup(ug updateGroup) {
 	}
 }
 
-func (b *bounce) informUIUpdateGroupChangeName(ug updateGroup) {
+func (b *Bounce) informUIUpdateGroupChangeName(ug updateGroup) {
 	newName := string(ug.Data)
 	if !validGroupName(newName) {
 		log.WithFields(log.Fields{
@@ -908,7 +908,7 @@ func (b *bounce) informUIUpdateGroupChangeName(ug updateGroup) {
 		return
 	}
 
-	b.userInterface.RenameGroup(UpdateGroupName{
+	b.ui.RenameGroup(UpdateGroupName{
 		ID:        ug.ID,
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
@@ -917,7 +917,7 @@ func (b *bounce) informUIUpdateGroupChangeName(ug updateGroup) {
 	})
 }
 
-func (b *bounce) informUIUpdateGroupAddUser(ug updateGroup) {
+func (b *Bounce) informUIUpdateGroupAddUser(ug updateGroup) {
 	// Unmarshall the new user
 	var u user
 	err := msgpack.Unmarshal(ug.Data, &u)
@@ -929,7 +929,7 @@ func (b *bounce) informUIUpdateGroupAddUser(ug updateGroup) {
 	}
 
 	// Notify the UI
-	b.userInterface.AddUser(
+	b.ui.AddUser(
 		UpdateGroupAddUser{
 			ID:        ug.ID,
 			Thread:    ug.Target,
@@ -942,7 +942,7 @@ func (b *bounce) informUIUpdateGroupAddUser(ug updateGroup) {
 		})
 }
 
-func (b *bounce) informUIUpdateGroupRemoveUser(ug updateGroup) {
+func (b *Bounce) informUIUpdateGroupRemoveUser(ug updateGroup) {
 	// Parse the user ID
 	userID, err := uuid.FromBytes(ug.Data)
 	if err != nil {
@@ -955,7 +955,7 @@ func (b *bounce) informUIUpdateGroupRemoveUser(ug updateGroup) {
 	}
 
 	// Notify the UI
-	b.userInterface.RemoveUser(
+	b.ui.RemoveUser(
 		UpdateGroupRemoveUser{
 			ID:        ug.ID,
 			Thread:    ug.Target,
@@ -965,8 +965,8 @@ func (b *bounce) informUIUpdateGroupRemoveUser(ug updateGroup) {
 		})
 }
 
-func (b *bounce) informUIUpdateGroupChangeRetention(ug updateGroup) {
-	b.userInterface.GroupRetentionChanged(UpdateGroupRetention{
+func (b *Bounce) informUIUpdateGroupChangeRetention(ug updateGroup) {
+	b.ui.GroupRetentionChanged(UpdateGroupRetention{
 		ID:        ug.ID,
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
@@ -975,8 +975,8 @@ func (b *bounce) informUIUpdateGroupChangeRetention(ug updateGroup) {
 	})
 }
 
-func (b *bounce) informUIUpdateGroupSetClearBefore(ug updateGroup) {
-	b.userInterface.GroupChatHistoryCleared(UpdateGroupClearHistory{
+func (b *Bounce) informUIUpdateGroupSetClearBefore(ug updateGroup) {
+	b.ui.GroupChatHistoryCleared(UpdateGroupClearHistory{
 		ID:        ug.ID,
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
@@ -985,7 +985,7 @@ func (b *bounce) informUIUpdateGroupSetClearBefore(ug updateGroup) {
 	})
 }
 
-func (b *bounce) informUIUpdateGroupPromoteAdmin(ug updateGroup) {
+func (b *Bounce) informUIUpdateGroupPromoteAdmin(ug updateGroup) {
 	// Parse the UUID
 	userID, err := uuid.FromBytes(ug.Data)
 	if err != nil {
@@ -998,7 +998,7 @@ func (b *bounce) informUIUpdateGroupPromoteAdmin(ug updateGroup) {
 	}
 
 	// Notify the UI
-	b.userInterface.AdminPromoted(UpdateGroupAdminPromoted{
+	b.ui.AdminPromoted(UpdateGroupAdminPromoted{
 		ID:        ug.ID,
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
@@ -1007,7 +1007,7 @@ func (b *bounce) informUIUpdateGroupPromoteAdmin(ug updateGroup) {
 	})
 }
 
-func (b *bounce) informUIUpdateGroupDemoteAdmin(ug updateGroup) {
+func (b *Bounce) informUIUpdateGroupDemoteAdmin(ug updateGroup) {
 	// Parse the UUID
 	userID, err := uuid.FromBytes(ug.Data)
 	if err != nil {
@@ -1020,7 +1020,7 @@ func (b *bounce) informUIUpdateGroupDemoteAdmin(ug updateGroup) {
 	}
 
 	// Notify the UI
-	b.userInterface.AdminDemoted(UpdateGroupAdminDemoted{
+	b.ui.AdminDemoted(UpdateGroupAdminDemoted{
 		ID:        ug.ID,
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
@@ -1029,20 +1029,20 @@ func (b *bounce) informUIUpdateGroupDemoteAdmin(ug updateGroup) {
 	})
 }
 
-func (b *bounce) informUIUpdateGroupChangeUserManagementPermission(ug updateGroup) {
+func (b *Bounce) informUIUpdateGroupChangeUserManagementPermission(ug updateGroup) {
 	restricted, err := ug.permissionPayloadIsRestricted()
 	if err != nil {
 		return
 	}
 	if restricted {
-		b.userInterface.UserManagementRestricted(UpdateGroupUserManagementRestricted{
+		b.ui.UserManagementRestricted(UpdateGroupUserManagementRestricted{
 			ID:        ug.ID,
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
 			Timestamp: ug.Timestamp,
 		})
 	} else {
-		b.userInterface.UserManagementUnrestricted(UpdateGroupUserManagementUnrestricted{
+		b.ui.UserManagementUnrestricted(UpdateGroupUserManagementUnrestricted{
 			ID:        ug.ID,
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
@@ -1051,20 +1051,20 @@ func (b *bounce) informUIUpdateGroupChangeUserManagementPermission(ug updateGrou
 	}
 }
 
-func (b *bounce) informUIUpdateGroupChangeGroupEditsPermission(ug updateGroup) {
+func (b *Bounce) informUIUpdateGroupChangeGroupEditsPermission(ug updateGroup) {
 	restricted, err := ug.permissionPayloadIsRestricted()
 	if err != nil {
 		return
 	}
 	if restricted {
-		b.userInterface.GroupEditsRestricted(UpdateGroupEditsRestricted{
+		b.ui.GroupEditsRestricted(UpdateGroupEditsRestricted{
 			ID:        ug.ID,
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
 			Timestamp: ug.Timestamp,
 		})
 	} else {
-		b.userInterface.GroupEditsUnrestricted(UpdateGroupEditsUnrestricted{
+		b.ui.GroupEditsUnrestricted(UpdateGroupEditsUnrestricted{
 			ID:        ug.ID,
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
@@ -1073,20 +1073,20 @@ func (b *bounce) informUIUpdateGroupChangeGroupEditsPermission(ug updateGroup) {
 	}
 }
 
-func (b *bounce) informUIUpdateGroupChangePostingPermission(ug updateGroup) {
+func (b *Bounce) informUIUpdateGroupChangePostingPermission(ug updateGroup) {
 	restricted, err := ug.permissionPayloadIsRestricted()
 	if err != nil {
 		return
 	}
 	if restricted {
-		b.userInterface.PostingRestricted(UpdateGroupPostingRestricted{
+		b.ui.PostingRestricted(UpdateGroupPostingRestricted{
 			ID:        ug.ID,
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
 			Timestamp: ug.Timestamp,
 		})
 	} else {
-		b.userInterface.PostingUnrestricted(UpdateGroupPostingUnrestricted{
+		b.ui.PostingUnrestricted(UpdateGroupPostingUnrestricted{
 			ID:        ug.ID,
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
@@ -1095,8 +1095,8 @@ func (b *bounce) informUIUpdateGroupChangePostingPermission(ug updateGroup) {
 	}
 }
 
-func (b *bounce) informUIUpdateGroupBlock(ug updateGroup) {
-	b.userInterface.UserBlockedGroup(UserBlockedGroup{
+func (b *Bounce) informUIUpdateGroupBlock(ug updateGroup) {
+	b.ui.UserBlockedGroup(UserBlockedGroup{
 		ID:        ug.ID,
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
@@ -1104,8 +1104,8 @@ func (b *bounce) informUIUpdateGroupBlock(ug updateGroup) {
 	})
 }
 
-func (b *bounce) informUIUpdateGroupSetImage(ug updateGroup) {
-	b.userInterface.UserChangedGroupImage(UpdateGroupUserChangedGroupImage{
+func (b *Bounce) informUIUpdateGroupSetImage(ug updateGroup) {
+	b.ui.UserChangedGroupImage(UpdateGroupUserChangedGroupImage{
 		ID:        ug.ID,
 		Thread:    ug.Target,
 		Actor:     ug.Actor,

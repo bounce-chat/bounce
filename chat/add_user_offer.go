@@ -30,7 +30,7 @@ func (auo *addUserOffer) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (b *bounce) getNewAddUserString() string {
+func (b *Bounce) GetNewAddUserString() string {
 	// Generate a secret
 	secretBytes := make([]byte, 16)
 	rand.Read(secretBytes)

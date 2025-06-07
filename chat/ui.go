@@ -300,13 +300,10 @@ type InitialState struct {
 }
 
 //
-// User interfaces for bounce are achieved by implementing the UI interface.
+// Functions that are passed to bounce that can be used to inform and update the UI
 //
 type UI interface {
 	// App lifecycle
-	Build(configPath string, callbacks UICallbacks, darkMode bool)
-	LoadInitialState(InitialState)
-	Run()
 	Quit()
 
 	// Network state
@@ -398,85 +395,3 @@ const TypeGroupMessage = "GroupMessage"
 const TypeUpdateGroup = "UpdateGroup"
 const TypeGroupCreation = "GroupCreation" // TODO: include this?
 const TypeUpdateUser = "UpdateUser"
-
-//
-// The chat engine will provide these callbacks to a user interface so that the interface can instruct the chat engine
-//
-type UICallbacks struct {
-	// Get a string that can be scanned by a new device in order to become a sync device of this profile
-	GetNewSyncString func() string
-	RequestToSync    func(string) error
-
-	// Adding friends
-	GetNewAddUserString func() string
-	RequestToAddUser    func(string) error
-
-	// The user wants to send a direct message.
-	SendDirectMessage func(DirectMessage)
-	// The user wants to send a group  message
-	SendGroupMessage func(GroupMessage)
-
-	UpdateProfileName  func(string) error
-	UpdateProfileImage func([]byte) error
-
-	// Called every time a character is entered into an entry to inform the chat engine to send a typing indicator
-	TypingInDirectMessage func(userID uuid.UUID)
-	TypingInGroup         func(groupID uuid.UUID)
-
-	CreateGroup                     func(g Group, image []byte) error               // Create a new group
-	AddUser                         func(groupID, userID uuid.UUID) error           // The user wants to add another user to a group
-	RemoveUser                      func(groupID, userID uuid.UUID) error           // User wants to remove a user from a group
-	RenameGroup                     func(groupID uuid.UUID, newName string) error   // The user wants to rename a group
-	SetGroupImage                   func(groupID uuid.UUID, image []byte) error     // Set the group image
-	SetGroupRetention               func(groupID uuid.UUID, retention int64) error  // Set the message retention for a group
-	ClearGroupChatHistory           func(groupID uuid.UUID) error                   // Erase all history on all devices
-	SetGroupMutedUntil              func(groupID uuid.UUID, mutedUntil int64) error // The user wants to change the notification settings for a group
-	PromoteAdmin                    func(groupID, userID uuid.UUID) error           // Make a member of a group an admin
-	DemoteAdmin                     func(groupID, userID uuid.UUID) error           // Remove admin permissions from a member of a group
-	RestrictUserManagement          func(groupID uuid.UUID) error                   // Restrict adding and removing users to only admins
-	UnrestrictUserManagement        func(groupID uuid.UUID) error                   // Allow anyone to add or remove users
-	RestrictGroupEdits              func(groupID uuid.UUID) error                   // Restrict editing group properties to admin
-	UnrestrictGroupEdits            func(groupID uuid.UUID) error                   // Allow any user to edit group properties
-	RestrictPosting                 func(groupID uuid.UUID) error                   // Restrict posting to only admins
-	UnrestrictPosting               func(groupID uuid.UUID) error                   // Allow any user to post
-	DeleteGroup                     func(groupID uuid.UUID) error                   // Delete a group
-	BlockGroup                      func(groupID uuid.UUID) error                   // Block a group
-	SetGroupReadReceiptSettings     func(groupID uuid.UUID, override bool, enabled bool) error
-	SetGroupTypingIndicatorSettings func(groupID uuid.UUID, override bool, enabled bool) error
-
-	RenameDevice func(deviceID uuid.UUID, name string) error
-	RevokeDevice func(deviceID uuid.UUID) error
-
-	SetDMMutedUntil              func(userID uuid.UUID, mutedUntil int64) error // Set a temporary mute on a DM by setting the unix timestamp to pause notifications until
-	SetDMRetention               func(userID uuid.UUID, retention int64) error  // Set the message retention settings for a DM
-	ClearDMChatHistory           func(userID uuid.UUID) error                   // Clear all DM messages on all devices
-	SetDMReadReceiptSettings     func(groupID uuid.UUID, override bool, enabled bool) error
-	SetDMTypingIndicatorSettings func(groupID uuid.UUID, override bool, enabled bool) error
-
-	// Setup a new profile on a fresh install
-	SetProfile    func(profileName string, profileImage []byte, deviceName string) (uuid.UUID, uuid.UUID, error)
-	ImportUser    func(user []byte) (User, error)
-	ExportContact func(name string, expiration int64, oneTime bool) []byte
-
-	// Some user interactions, like opening a DM, indicate that the user might want to send a message to this
-	// user soon.  Calling this will cause the chat engine to attempt to dial the user if there isn't already
-	// an open connection, reducing the latency in message delivery should the user decide to send a message.
-	UserConnectionDesired  func(uuid.UUID)
-	GroupConnectionDesired func(uuid.UUID)
-
-	GetFileData func(uuid.UUID) ([]byte, error)
-
-	MarkAsRead                  func(messageID uuid.UUID, frameType string)
-	MarkAllGroupMessagesAsRead  func(groupID uuid.UUID)
-	MarkAllDirectMessagesAsRead func(userID uuid.UUID)
-
-	NeverAskForBatteryOptimizations   func()
-	SetReadReceiptsByDefault          func(bool)
-	SetTypingIndicatorsByDefault      func(bool)
-	SetNewGroupRetention              func(int64)
-	SetNewGroupRestrictUserManagement func(bool)
-	SetNewGroupRestrictGroupEdits     func(bool)
-	SetNewGroupRestrictPosting        func(bool)
-
-	SetDarkMode func(bool)
-}

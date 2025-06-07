@@ -101,7 +101,7 @@ func (uu *updateUser) validPayload() error {
 	return nil
 }
 
-func (b *bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) broadcastable {
 	updateUserMutex.Lock()
 	defer updateUserMutex.Unlock()
 
@@ -189,7 +189,7 @@ func (b *bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) bro
 	return &uu
 }
 
-func (b *bounce) saveAndDisplayUpdateUser(uu updateUser) error {
+func (b *Bounce) saveAndDisplayUpdateUser(uu updateUser) error {
 	// Make sure this update has a valid payload
 	err := uu.validPayload()
 	if err != nil {
@@ -230,7 +230,7 @@ func (b *bounce) saveAndDisplayUpdateUser(uu updateUser) error {
 	return nil
 }
 
-func (b *bounce) previousName(uu updateUser) (string, error) {
+func (b *Bounce) previousName(uu updateUser) (string, error) {
 	// Find the newest update name that isn't this one
 	var previousUU updateUser
 	err := b.database.Select("data", "MAX(timestamp)").Where("target = ? AND type = ? AND timestamp < ?", uu.Target, updateUserTypeUpdateName, uu.Timestamp).First(&previousUU).Error
@@ -265,8 +265,8 @@ func (b *bounce) previousName(uu updateUser) (string, error) {
 	return string(previousUU.Data), nil
 }
 
-func (b *bounce) informUIUpdateUserUpdateName(uu updateUser) {
-	go b.userInterface.UserNameUpdated(UpdateUserUpdateName{
+func (b *Bounce) informUIUpdateUserUpdateName(uu updateUser) {
+	go b.ui.UserNameUpdated(UpdateUserUpdateName{
 		ID:        uu.ID,
 		User:      uu.Target,
 		Name:      string(uu.Data),
@@ -275,15 +275,15 @@ func (b *bounce) informUIUpdateUserUpdateName(uu updateUser) {
 	})
 }
 
-func (b *bounce) informUIUpdateUserUpdateImage(uu updateUser) {
-	go b.userInterface.UserImageUpdated(UpdateUserUpdateImage{
+func (b *Bounce) informUIUpdateUserUpdateImage(uu updateUser) {
+	go b.ui.UserImageUpdated(UpdateUserUpdateImage{
 		ID:        uu.ID,
 		User:      uu.Target,
 		Timestamp: uu.Timestamp,
 	})
 }
 
-func (b *bounce) updateUserState(userID uuid.UUID) {
+func (b *Bounce) updateUserState(userID uuid.UUID) {
 	// Get the user and assign default states
 	var u user
 	err := b.database.Where("id = ?", userID).First(&u).Error
@@ -364,14 +364,14 @@ func (b *bounce) updateUserState(userID uuid.UUID) {
 		u.Images = newImages
 	}
 
-	go b.userInterface.SetUserState(User{
+	go b.ui.SetUserState(User{
 		ID:     u.ID,
 		Name:   u.Name,
 		Images: imageIDs,
 	})
 }
 
-func (b *bounce) updateProfileImage(newImage []byte) error {
+func (b *Bounce) UpdateProfileImage(newImage []byte) error {
 	currentUser, ok := b.currentUser()
 	if !ok {
 		return errUserNotFound
@@ -395,7 +395,7 @@ func (b *bounce) updateProfileImage(newImage []byte) error {
 	})
 }
 
-func (b *bounce) updateProfileName(newName string) error {
+func (b *Bounce) UpdateProfileName(newName string) error {
 	currentUser, ok := b.currentUser()
 	if !ok {
 		return errUserNotFound
@@ -413,7 +413,7 @@ func (b *bounce) updateProfileName(newName string) error {
 	})
 }
 
-func (b *bounce) applyAndBroadcastUpdateUser(uu updateUser) error {
+func (b *Bounce) applyAndBroadcastUpdateUser(uu updateUser) error {
 	// Create the signed container for this update
 	var err error
 	uu.OriginalPayload, err = msgpack.Marshal(&uu)
