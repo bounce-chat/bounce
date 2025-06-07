@@ -31,7 +31,8 @@ type chatHistory struct {
 	ids     []uuid.UUID
 	heights []float32
 
-	unread int
+	disableSeenTracking bool
+	unread              int
 
 	jumpToBottomIcon *clickableImage
 
@@ -386,6 +387,10 @@ func (ch *chatHistory) headTimestamp() int64 {
 }
 
 func (ch *chatHistory) seen(index int) {
+	if ch.disableSeenTracking {
+		return
+	}
+
 	id := ch.ids[index]
 	if _, ok := ch.seenTracking[id]; !ok {
 		ch.seenTracking[id] = true
@@ -769,8 +774,10 @@ func (chl *chatHistoryLayout) offsetUpdated(pos fyne.Position) {
 			chl.ch.updateUnreadCounter()
 
 			for index, id := range chl.ch.ids {
-				chl.ch.items[index].markSeen()
-				chl.ch.seenTracking[id] = true
+				if !chl.ch.disableSeenTracking {
+					chl.ch.items[index].markSeen()
+					chl.ch.seenTracking[id] = true
+				}
 			}
 		}
 	}

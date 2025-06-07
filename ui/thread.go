@@ -311,6 +311,11 @@ func (ui *ui) displayThread(thread thread) {
 	openedThreads[thread.getID()] = true
 	openedThreadMutex.Unlock()
 
+	// Don't mark things seen while we find where to scroll to the last read
+	if !opened {
+		thread.chatHistoryScroll().disableSeenTracking = true
+	}
+
 	ui.activeThread = thread.getID()
 	ui.chatContainer.Objects = []fyne.CanvasObject{thread.getView()}
 	ui.chatContainer.Refresh()
@@ -324,6 +329,7 @@ func (ui *ui) displayThread(thread thread) {
 
 	if !opened {
 		thread.chatHistoryScroll().scrollToLastRead()
+		thread.chatHistoryScroll().disableSeenTracking = false
 	}
 }
 
