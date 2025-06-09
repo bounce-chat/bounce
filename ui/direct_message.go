@@ -32,6 +32,7 @@ type directMessage struct {
 	header                           *fyne.Container
 	button                           *threadButton
 	typingIndicator                  *typingIndicator
+	pendingMessageAttachments        *pendingMessageAttachments
 	notificationsEnabledCheck        *widget.Check
 	readReceiptOverrideSelection     *widget.Select
 	typingIndicatorOverrideSelection *widget.Select
@@ -205,10 +206,18 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 		go ui.bounce.TypingInDirectMessage(dm.user.id)
 	}
 	entry.customOnSubmitted = func() {
-		ui.bounce.SendDirectMessage(chat.DirectMessage{
+		chatMessage := chat.DirectMessage{
 			Thread: dm.user.id,
 			Text:   entry.Text,
-		})
+		}
+
+		attachments := dm.pendingMessageAttachments.extract()
+		for _, reader := range attachments {
+			log.WithFields(log.Fields{"name": reader.URI().Name()}).Warn("want to include this attachment on a message")
+			// TODO: determine what this is and how to attach it to the message
+		}
+
+		ui.bounce.SendDirectMessage(chatMessage)
 	}
 
 	openThread := func() {
@@ -244,9 +253,34 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 
 	dm.typingIndicator = newTypingIndicator(typingIndicatorModeIcons, ui.bounce.GetFileData)
 	dm.typingIndicator.Hide()
+
+	addFiles := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
+		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if reader == nil {
+				return
+			}
+
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Debug("error selecting file for message attachment")
+				return
+			}
+
+			dm.pendingMessageAttachments.add(reader)
+		}, ui.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
+	})
+	addFiles.Importance = widget.LowImportance
+	dm.pendingMessageAttachments = newPendingMessageAttachments()
+
 	footer := container.NewVBox(
 		dm.typingIndicator,
-		dm.entry,
+		dm.pendingMessageAttachments,
+		container.New(
+			layout.NewBorderLayout(nil, nil, nil, addFiles),
+			addFiles,
+			dm.entry,
+		),
 	)
 
 	dm.view = container.New(
