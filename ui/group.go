@@ -70,6 +70,7 @@ type group struct {
 	editUserDialogs                  map[uuid.UUID]dialogWithCallback
 	editUserDialogsMutex             sync.Mutex
 	typingIndicator                  *typingIndicator
+	pendingMessageAttachments        *pendingMessageAttachments
 	entry                            *threadEntry
 	lastMessage                      int64
 }
@@ -500,10 +501,18 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		go ui.bounce.TypingInGroup(group.id)
 	}
 	entry.customOnSubmitted = func() {
-		ui.bounce.SendGroupMessage(chat.GroupMessage{
+		gm := chat.GroupMessage{
 			Thread: group.id,
 			Text:   entry.Text,
-		})
+		}
+
+		attachments := group.pendingMessageAttachments.extract()
+		for _, reader := range attachments {
+			log.WithFields(log.Fields{"name": reader.URI().Name()}).Warn("want to include this attachment on a message")
+			// TODO: determine what this is and how to attach it to the message
+		}
+
+		ui.bounce.SendGroupMessage(gm)
 	}
 
 	openThread := func() {
@@ -538,9 +547,33 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 
 	group.typingIndicator = newTypingIndicator(typingIndicatorModeIcons, ui.bounce.GetFileData)
 	group.typingIndicator.Hide()
+
+	addFiles := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
+		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if reader == nil {
+				return
+			}
+
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Debug("error selecting file for message attachment")
+				return
+			}
+
+			group.pendingMessageAttachments.add(reader)
+		}, ui.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
+	})
+	addFiles.Importance = widget.LowImportance
+	group.pendingMessageAttachments = newPendingMessageAttachments()
 	footer := container.NewVBox(
 		group.typingIndicator,
-		group.entry,
+		group.pendingMessageAttachments,
+		container.New(
+			layout.NewBorderLayout(nil, nil, nil, addFiles),
+			addFiles,
+			group.entry,
+		),
 	)
 	group.view = container.New(
 		layout.NewBorderLayout(group.header, footer, nil, nil),

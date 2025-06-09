@@ -24,7 +24,7 @@ var lastChunkTimeMutex sync.Mutex
 var writingChunk = map[string]bool{}
 var writingChunkMutex sync.Mutex
 
-const embeddedFileLimit = 1024 * 1024 * 20 // 20MiB
+const EmbeddedFileLimit = 1024 * 1024 * 20 // 20MiB
 const fileChunkSize = 1024 * 1024          // 1MiB
 const expectedChunkDeliverySeconds = 10    // 100KiB/s
 
@@ -759,7 +759,7 @@ func (b *Bounce) distributeFile(data []byte, scope int, destination uuid.UUID, f
 }
 
 func (b *Bounce) distributeFileByID(fileID uuid.UUID, data []byte, scope int, destination uuid.UUID, fileType int, attachment uuid.UUID) error {
-	if len(data) > embeddedFileLimit {
+	if len(data) > EmbeddedFileLimit {
 		return ErrFileTooBig
 	}
 
