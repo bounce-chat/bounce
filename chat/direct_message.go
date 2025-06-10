@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"io"
 	"sync"
 	"time"
 
@@ -21,17 +22,19 @@ var dmDeliveryNotifications = map[uuid.UUID]chan bool{}
 // A direct message is a chat message from one user to another
 //
 type directMessage struct {
-	ID            uuid.UUID `gorm:"type:uuid;primary_key;"`
-	SavedAt       int64     `msgpack:"-"`
-	WrittenAt     int64
-	DeleteAt      int64
-	Seen          bool `msgpack:"-"`
-	Undeliverable bool `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
-	Author        uuid.UUID
-	Xor           uuid.UUID // XOR of the two users in the DM
-	Text          string
-	payload       []byte
-	payloadMutex  sync.Mutex
+	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
+	SavedAt          int64     `msgpack:"-"`
+	WrittenAt        int64
+	DeleteAt         int64
+	Seen             bool `msgpack:"-"`
+	Undeliverable    bool `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
+	Author           uuid.UUID
+	Xor              uuid.UUID // XOR of the two users in the DM
+	Text             string
+	FileAttachments  []fileAttachment  `gorm:"foreignKey:MessageID"`
+	ImageAttachments []imageAttachment `gorm:"foreignKey:MessageID"`
+	payload          []byte
+	payloadMutex     sync.Mutex
 }
 
 func (dm *directMessage) BeforeCreate(tx *gorm.DB) error {
@@ -43,7 +46,15 @@ func (dm *directMessage) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (dm *directMessage) AfterDelete(tx *gorm.DB) error {
-	err := tx.Where("frame_id = ? AND frame_type = ?", dm.ID, typeDirectMessage).Delete(&deliveryRecord{}).Error
+	err := tx.Where("message_id = ?", dm.ID).Delete(&imageAttachment{}).Error
+	if err != nil {
+		return err
+	}
+	err = tx.Where("message_id = ?", dm.ID).Delete(&fileAttachment{}).Error
+	if err != nil {
+		return err
+	}
+	err = tx.Where("frame_id = ? AND frame_type = ?", dm.ID, typeDirectMessage).Delete(&deliveryRecord{}).Error
 	if err != nil {
 		return err
 	}
@@ -251,7 +262,7 @@ func (b *Bounce) dmOriginAcceptable(dm directMessage, dev device) bool {
 	}
 }
 
-func (b *Bounce) SendDirectMessage(message DirectMessage) {
+func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]io.ReadCloser) {
 	if message.ID != uuid.Nil {
 		log.Fatal("direct message ID cannot be set by the UI")
 	}
@@ -275,6 +286,102 @@ func (b *Bounce) SendDirectMessage(message DirectMessage) {
 	message.Author = b.currentUserID()
 	message.WrittenAt = now.Unix()
 
+	includedImageAttachments := []ImageAttachment{}
+	for _, ia := range message.ImageAttachments {
+		if ia.Size > EmbeddedFileLimit {
+			// TODO: this needs to be seeded from disk, and maybe sent as a regular file?
+			log.Warn("image too large to attach to message")
+			continue
+		}
+
+		reader, ok := readers[ia.ID]
+		if !ok {
+			log.WithFields(log.Fields{
+				"id":   ia.ID,
+				"name": ia.Name,
+			}).Error("cannot attach image to message without reader")
+			continue
+		}
+
+		data, err := io.ReadAll(reader)
+		reader.Close()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    ia.ID,
+				"name":  ia.Name,
+				"error": err.Error(),
+			}).Error("error reading image data to attach to message")
+			continue
+		}
+
+		err = b.distributeFileByID(ia.ID, data, scopeUser, message.Thread, fileTypeMessageAttachment, dm.ID)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    ia.ID,
+				"name":  ia.Name,
+				"error": err.Error(),
+			}).Error("error distributing image attachment")
+		} else {
+			includedImageAttachments = append(includedImageAttachments, ia)
+			dm.ImageAttachments = append(dm.ImageAttachments, imageAttachment{
+				ID:        uuid.New(),
+				FileID:    ia.ID,
+				MessageID: dm.ID,
+				Name:      ia.Name,
+				Size:      ia.Size,
+				Width:     ia.Width,
+				Height:    ia.Height,
+				BlurHash:  ia.BlurHash,
+			})
+		}
+	}
+	includedFileAttachments := []FileAttachment{}
+	for _, fa := range message.FileAttachments {
+		if fa.Size > EmbeddedFileLimit {
+			// TODO: this needs to be seeded from disk, and maybe sent as a regular file?
+			log.Warn("file too large to attach to message")
+			continue
+		}
+
+		reader, ok := readers[fa.ID]
+		if !ok {
+			log.WithFields(log.Fields{
+				"id":   fa.ID,
+				"name": fa.Name,
+			}).Error("cannot attach file to message without reader")
+			continue
+		}
+
+		data, err := io.ReadAll(reader)
+		reader.Close()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    fa.ID,
+				"name":  fa.Name,
+				"error": err.Error(),
+			}).Error("error reading file data to attach to message")
+			continue
+		}
+
+		err = b.distributeFileByID(fa.ID, data, scopeUser, message.Thread, fileTypeMessageAttachment, dm.ID)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    fa.ID,
+				"name":  fa.Name,
+				"error": err.Error(),
+			}).Error("error distributing file attachment")
+		} else {
+			includedFileAttachments = append(includedFileAttachments, fa)
+			dm.FileAttachments = append(dm.FileAttachments, fileAttachment{
+				ID:        uuid.New(),
+				FileID:    fa.ID,
+				MessageID: dm.ID,
+				Name:      fa.Name,
+				Size:      fa.Size,
+			})
+		}
+	}
+
 	err := b.database.Create(dm).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -286,15 +393,17 @@ func (b *Bounce) SendDirectMessage(message DirectMessage) {
 	go b.checkIfDirectMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), dm.ID)
 
 	go b.ui.DisplaySentDirectMessage(DirectMessage{
-		ID:            dm.ID,
-		Author:        dm.Author,
-		Thread:        dm.getDestination(b.currentUserID()),
-		WrittenAt:     dm.WrittenAt,
-		SavedAt:       dm.SavedAt,
-		ExpiresAt:     dm.DeleteAt,
-		Text:          dm.Text,
-		Seen:          dm.Seen,
-		Undeliverable: dm.Undeliverable,
+		ID:               dm.ID,
+		Author:           dm.Author,
+		Thread:           dm.getDestination(b.currentUserID()),
+		WrittenAt:        dm.WrittenAt,
+		SavedAt:          dm.SavedAt,
+		ExpiresAt:        dm.DeleteAt,
+		Text:             dm.Text,
+		Seen:             dm.Seen,
+		Undeliverable:    dm.Undeliverable,
+		ImageAttachments: includedImageAttachments,
+		FileAttachments:  includedFileAttachments,
 	})
 
 	b.broadcast(dm)

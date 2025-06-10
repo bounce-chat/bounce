@@ -206,18 +206,47 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 		go ui.bounce.TypingInDirectMessage(dm.user.id)
 	}
 	entry.customOnSubmitted = func() {
-		chatMessage := chat.DirectMessage{
+		chatDM := chat.DirectMessage{
 			Thread: dm.user.id,
 			Text:   entry.Text,
 		}
 
-		attachments := dm.pendingMessageAttachments.extract()
-		for _, reader := range attachments {
-			log.WithFields(log.Fields{"name": reader.URI().Name()}).Warn("want to include this attachment on a message")
-			// TODO: determine what this is and how to attach it to the message
+		imageAttachments := []chat.ImageAttachment{}
+		fileAttachments := []chat.FileAttachment{}
+		readers := map[uuid.UUID]io.ReadCloser{}
+
+		pendingAttachments := dm.pendingMessageAttachments.extract()
+		for _, pma := range pendingAttachments {
+			readers[pma.id] = pma.reader
+
+			if pma.isImage {
+				imageAttachments = append(
+					imageAttachments,
+					chat.ImageAttachment{
+						ID:       pma.id,
+						Name:     pma.reader.URI().Name(),
+						Size:     pma.fileSize,
+						Width:    pma.width,
+						Height:   pma.height,
+						BlurHash: pma.blurHash,
+					},
+				)
+			} else {
+				fileAttachments = append(
+					fileAttachments,
+					chat.FileAttachment{
+						ID:   pma.id,
+						Name: pma.reader.URI().Name(),
+						Size: pma.fileSize,
+					},
+				)
+			}
 		}
 
-		ui.bounce.SendDirectMessage(chatMessage)
+		chatDM.ImageAttachments = imageAttachments
+		chatDM.FileAttachments = fileAttachments
+
+		ui.bounce.SendDirectMessage(chatDM, readers)
 	}
 
 	openThread := func() {

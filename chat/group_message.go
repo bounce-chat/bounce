@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"io"
 	"sync"
 	"time"
 
@@ -18,20 +19,22 @@ var gmDeliveryNotifications = map[uuid.UUID]chan bool{}
 // A group message is sent from a member of a group to a group
 //
 type groupMessage struct {
-	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
-	SavedAt         int64     `msgpack:"-"`
-	WrittenAt       int64
-	DeleteAt        int64
-	Seen            bool `msgpack:"-"`
-	Undeliverable   bool `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
-	Author          uuid.UUID
-	Destination     uuid.UUID
-	Text            string
-	Signer          string `msgpack:"-" gorm:"not null"`
-	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
-	Signature       []byte `msgpack:"-" gorm:"not null"`
-	payload         []byte
-	payloadMutex    sync.Mutex
+	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
+	SavedAt          int64     `msgpack:"-"`
+	WrittenAt        int64
+	DeleteAt         int64
+	Seen             bool `msgpack:"-"`
+	Undeliverable    bool `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
+	Author           uuid.UUID
+	Destination      uuid.UUID
+	Text             string
+	FileAttachments  []fileAttachment  `gorm:"foreignKey:MessageID"`
+	ImageAttachments []imageAttachment `gorm:"foreignKey:MessageID"`
+	Signer           string            `msgpack:"-" gorm:"not null"`
+	OriginalPayload  []byte            `msgpack:"-" gorm:"not null"`
+	Signature        []byte            `msgpack:"-" gorm:"not null"`
+	payload          []byte
+	payloadMutex     sync.Mutex
 }
 
 func (gm *groupMessage) BeforeCreate(tx *gorm.DB) error {
@@ -43,7 +46,15 @@ func (gm *groupMessage) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (gm *groupMessage) AfterDelete(tx *gorm.DB) error {
-	err := tx.Where("frame_id = ? AND frame_type = ?", gm.ID, typeGroupMessage).Delete(&deliveryRecord{}).Error
+	err := tx.Where("message_id = ?", gm.ID).Delete(&imageAttachment{}).Error
+	if err != nil {
+		return err
+	}
+	err = tx.Where("message_id = ?", gm.ID).Delete(&fileAttachment{}).Error
+	if err != nil {
+		return err
+	}
+	err = tx.Where("frame_id = ? AND frame_type = ?", gm.ID, typeGroupMessage).Delete(&deliveryRecord{}).Error
 	if err != nil {
 		return err
 	}
@@ -238,16 +249,38 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 		}).Fatal("error saving group message")
 	}
 
+	uiImageAttachments := []ImageAttachment{}
+	for _, ia := range gm.ImageAttachments {
+		uiImageAttachments = append(uiImageAttachments, ImageAttachment{
+			ID:       ia.FileID,
+			Name:     ia.Name,
+			Size:     ia.Size,
+			Width:    ia.Width,
+			Height:   ia.Height,
+			BlurHash: ia.BlurHash,
+		})
+	}
+	uiFileAttachments := []FileAttachment{}
+	for _, fa := range gm.FileAttachments {
+		uiFileAttachments = append(uiFileAttachments, FileAttachment{
+			ID:   fa.FileID,
+			Name: fa.Name,
+			Size: fa.Size,
+		})
+	}
+
 	// Inform the UI about the new message
 	b.ui.DisplayGroupMessage(GroupMessage{
-		ID:        gm.ID,
-		Author:    gm.Author,
-		Thread:    gm.Destination,
-		WrittenAt: gm.WrittenAt,
-		SavedAt:   gm.SavedAt,
-		ExpiresAt: gm.DeleteAt,
-		Seen:      gm.Seen,
-		Text:      gm.Text,
+		ID:               gm.ID,
+		Author:           gm.Author,
+		Thread:           gm.Destination,
+		WrittenAt:        gm.WrittenAt,
+		SavedAt:          gm.SavedAt,
+		ExpiresAt:        gm.DeleteAt,
+		Seen:             gm.Seen,
+		Text:             gm.Text,
+		ImageAttachments: uiImageAttachments,
+		FileAttachments:  uiFileAttachments,
 	})
 	b.ui.MessageDelivered(gm.ID, srcDevice.UserID)
 
@@ -260,7 +293,7 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 	return &gm
 }
 
-func (b *Bounce) SendGroupMessage(message GroupMessage) {
+func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io.ReadCloser) {
 	if message.ID != uuid.Nil {
 		log.Fatal("group message ID cannot be set by the UI")
 	}
@@ -290,6 +323,102 @@ func (b *Bounce) SendGroupMessage(message GroupMessage) {
 		Text:        message.Text,
 	}
 
+	includedImageAttachments := []ImageAttachment{}
+	for _, ia := range message.ImageAttachments {
+		if ia.Size > EmbeddedFileLimit {
+			// TODO: this needs to be seeded from disk, and maybe sent as a regular file?
+			log.Warn("image too large to attach to message")
+			continue
+		}
+
+		reader, ok := readers[ia.ID]
+		if !ok {
+			log.WithFields(log.Fields{
+				"id":   ia.ID,
+				"name": ia.Name,
+			}).Error("cannot attach image to message without reader")
+			continue
+		}
+
+		data, err := io.ReadAll(reader)
+		reader.Close()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    ia.ID,
+				"name":  ia.Name,
+				"error": err.Error(),
+			}).Error("error reading image data to attach to message")
+			continue
+		}
+
+		err = b.distributeFileByID(ia.ID, data, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    ia.ID,
+				"name":  ia.Name,
+				"error": err.Error(),
+			}).Error("error distributing image attachment")
+		} else {
+			includedImageAttachments = append(includedImageAttachments, ia)
+			gm.ImageAttachments = append(gm.ImageAttachments, imageAttachment{
+				ID:        uuid.New(),
+				FileID:    ia.ID,
+				MessageID: gm.ID,
+				Name:      ia.Name,
+				Size:      ia.Size,
+				Width:     ia.Width,
+				Height:    ia.Height,
+				BlurHash:  ia.BlurHash,
+			})
+		}
+	}
+	includedFileAttachments := []FileAttachment{}
+	for _, fa := range message.FileAttachments {
+		if fa.Size > EmbeddedFileLimit {
+			// TODO: this needs to be seeded from disk, and maybe sent as a regular file?
+			log.Warn("file too large to attach to message")
+			continue
+		}
+
+		reader, ok := readers[fa.ID]
+		if !ok {
+			log.WithFields(log.Fields{
+				"id":   fa.ID,
+				"name": fa.Name,
+			}).Error("cannot attach file to message without reader")
+			continue
+		}
+
+		data, err := io.ReadAll(reader)
+		reader.Close()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    fa.ID,
+				"name":  fa.Name,
+				"error": err.Error(),
+			}).Error("error reading file data to attach to message")
+			continue
+		}
+
+		err = b.distributeFileByID(fa.ID, data, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    fa.ID,
+				"name":  fa.Name,
+				"error": err.Error(),
+			}).Error("error distributing file attachment")
+		} else {
+			includedFileAttachments = append(includedFileAttachments, fa)
+			gm.FileAttachments = append(gm.FileAttachments, fileAttachment{
+				ID:        uuid.New(),
+				FileID:    fa.ID,
+				MessageID: gm.ID,
+				Name:      fa.Name,
+				Size:      fa.Size,
+			})
+		}
+	}
+
 	gm.OriginalPayload, err = msgpack.Marshal(gm)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -311,15 +440,17 @@ func (b *Bounce) SendGroupMessage(message GroupMessage) {
 	go b.checkIfGroupMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), gm.ID)
 
 	go b.ui.DisplaySentGroupMessage(GroupMessage{
-		ID:            gm.ID,
-		Author:        gm.Author,
-		Thread:        gm.getDestination(b.currentUserID()),
-		WrittenAt:     gm.WrittenAt,
-		SavedAt:       gm.SavedAt,
-		ExpiresAt:     gm.DeleteAt,
-		Text:          gm.Text,
-		Seen:          gm.Seen,
-		Undeliverable: gm.Undeliverable,
+		ID:               gm.ID,
+		Author:           gm.Author,
+		Thread:           gm.getDestination(b.currentUserID()),
+		WrittenAt:        gm.WrittenAt,
+		SavedAt:          gm.SavedAt,
+		ExpiresAt:        gm.DeleteAt,
+		Text:             gm.Text,
+		Seen:             gm.Seen,
+		Undeliverable:    gm.Undeliverable,
+		ImageAttachments: includedImageAttachments,
+		FileAttachments:  includedFileAttachments,
 	})
 
 	b.broadcast(gm)

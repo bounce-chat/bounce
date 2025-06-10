@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/bbrks/go-blurhash"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
@@ -18,8 +19,13 @@ import (
 type pendingMessageAttachment struct {
 	widget.BaseWidget
 
-	id     uuid.UUID
-	reader fyne.URIReadCloser
+	id       uuid.UUID
+	reader   fyne.URIReadCloser
+	fileSize int64
+	isImage  bool
+	blurHash string
+	width    int
+	height   int
 
 	icon     *canvas.Image
 	filename *widget.RichText
@@ -38,6 +44,10 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, remove
 	sizeString := fileSizeString(f.Size())
 
 	var icon *canvas.Image
+	isImage := false
+	blurHash := ""
+	width := 0
+	height := 0
 	if f.Size() < chat.EmbeddedFileLimit {
 		diskReader, err := os.Open(reader.URI().Path())
 		if err != nil {
@@ -49,6 +59,17 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, remove
 		img, _, err := image.Decode(diskReader)
 		if err == nil {
 			icon = canvas.NewImageFromImage(img)
+			isImage = true
+			blur, err := blurhash.Encode(4, 4, img)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error generating blur hash for pending message attachment")
+			} else {
+				blurHash = blur
+			}
+			width = img.Bounds().Dx()
+			height = img.Bounds().Dy()
 		} else {
 			icon = canvas.NewImageFromResource(theme.FileIcon())
 		}
@@ -59,6 +80,11 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, remove
 	pma := &pendingMessageAttachment{
 		id:       id,
 		reader:   reader,
+		fileSize: f.Size(),
+		isImage:  isImage,
+		blurHash: blurHash,
+		width:    width,
+		height:   height,
 		icon:     icon,
 		filename: widget.NewRichTextWithText(reader.URI().Name()),
 		size: &canvas.Text{
@@ -184,13 +210,8 @@ func (pmas *pendingMessageAttachments) remove(id uuid.UUID) {
 	pmas.Refresh()
 }
 
-func (pmas *pendingMessageAttachments) extract() []fyne.URIReadCloser {
-	content := []fyne.URIReadCloser{}
-
-	for _, file := range pmas.files {
-		content = append(content, file.reader)
-	}
-
+func (pmas *pendingMessageAttachments) extract() []*pendingMessageAttachment {
+	content := pmas.files
 	pmas.files = []*pendingMessageAttachment{}
 	pmas.Refresh()
 
@@ -241,6 +262,12 @@ func (pmasr *pendingMessageAttachmentsRenderer) Refresh() {
 	pmasr.pmas.attachments.Objects = []fyne.CanvasObject{}
 	for _, file := range pmasr.pmas.files {
 		pmasr.pmas.attachments.Add(file)
+	}
+
+	if len(pmasr.pmas.files) == 0 {
+		pmasr.pmas.Hide()
+	} else {
+		pmasr.pmas.Show()
 	}
 
 	for _, obj := range pmasr.Objects() {

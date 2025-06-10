@@ -303,7 +303,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			expiresAt:  gm.ExpiresAt,
 			seen:       gm.Seen,
 			state:      state,
-			mergeMode:  mergeModeStandalone, //TODO
+			mergeMode:  mergeModeStandalone,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
@@ -387,7 +387,7 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 			expiresAt: dm.ExpiresAt,
 			seen:      dm.Seen,
 			state:     state,
-			mergeMode: mergeModeStandalone, //TODO
+			mergeMode: mergeModeStandalone,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {

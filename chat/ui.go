@@ -44,18 +44,35 @@ type DMState struct {
 	TypingIndicatorsEnabled        bool
 }
 
+type FileAttachment struct {
+	ID   uuid.UUID
+	Name string
+	Size int64
+}
+
+type ImageAttachment struct {
+	ID       uuid.UUID
+	Name     string
+	Size     int64
+	Width    int
+	Height   int
+	BlurHash string
+}
+
 type DirectMessage struct {
-	ID            uuid.UUID
-	Author        uuid.UUID
-	Thread        uuid.UUID
-	WrittenAt     int64
-	SavedAt       int64
-	ExpiresAt     int64
-	Text          string
-	Seen          bool
-	Undeliverable bool
-	ReadReceipts  []ReadReceipt
-	DeliveredTo   []uuid.UUID
+	ID               uuid.UUID
+	Author           uuid.UUID
+	Thread           uuid.UUID
+	WrittenAt        int64
+	SavedAt          int64
+	ExpiresAt        int64
+	Text             string
+	Seen             bool
+	Undeliverable    bool
+	ImageAttachments []ImageAttachment
+	FileAttachments  []FileAttachment
+	ReadReceipts     []ReadReceipt
+	DeliveredTo      []uuid.UUID
 }
 
 type UpdateDMRetention struct {
@@ -98,17 +115,19 @@ type Group struct {
 }
 
 type GroupMessage struct {
-	ID            uuid.UUID
-	Author        uuid.UUID
-	Thread        uuid.UUID
-	WrittenAt     int64
-	SavedAt       int64
-	ExpiresAt     int64
-	Text          string
-	Seen          bool
-	Undeliverable bool
-	ReadReceipts  []ReadReceipt
-	DeliveredTo   []uuid.UUID
+	ID               uuid.UUID
+	Author           uuid.UUID
+	Thread           uuid.UUID
+	WrittenAt        int64
+	SavedAt          int64
+	ExpiresAt        int64
+	Text             string
+	Seen             bool
+	Undeliverable    bool
+	ImageAttachments []ImageAttachment
+	FileAttachments  []FileAttachment
+	ReadReceipts     []ReadReceipt
+	DeliveredTo      []uuid.UUID
 }
 
 type UpdateGroupRetention struct {

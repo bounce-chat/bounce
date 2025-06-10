@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"io"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -506,13 +507,41 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 			Text:   entry.Text,
 		}
 
-		attachments := group.pendingMessageAttachments.extract()
-		for _, reader := range attachments {
-			log.WithFields(log.Fields{"name": reader.URI().Name()}).Warn("want to include this attachment on a message")
-			// TODO: determine what this is and how to attach it to the message
+		imageAttachments := []chat.ImageAttachment{}
+		fileAttachments := []chat.FileAttachment{}
+		readers := map[uuid.UUID]io.ReadCloser{}
+
+		pendingAttachments := group.pendingMessageAttachments.extract()
+		for _, pma := range pendingAttachments {
+			readers[pma.id] = pma.reader
+
+			if pma.isImage {
+				imageAttachments = append(
+					imageAttachments,
+					chat.ImageAttachment{
+						ID:       pma.id,
+						Name:     pma.reader.URI().Name(),
+						Size:     pma.fileSize,
+						Width:    pma.width,
+						Height:   pma.height,
+						BlurHash: pma.blurHash,
+					},
+				)
+			} else {
+				fileAttachments = append(
+					fileAttachments,
+					chat.FileAttachment{
+						ID:   pma.id,
+						Name: pma.reader.URI().Name(),
+						Size: pma.fileSize,
+					},
+				)
+			}
 		}
 
-		ui.bounce.SendGroupMessage(gm)
+		gm.ImageAttachments = imageAttachments
+		gm.FileAttachments = fileAttachments
+		ui.bounce.SendGroupMessage(gm, readers)
 	}
 
 	openThread := func() {

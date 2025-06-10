@@ -7,6 +7,7 @@ toolchain go1.24.2
 require (
 	fyne.io/fyne/v2 v2.6.1
 	github.com/alecthomas/assert/v2 v2.11.0
+	github.com/bbrks/go-blurhash v1.1.1
 	github.com/cretz/bine v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b

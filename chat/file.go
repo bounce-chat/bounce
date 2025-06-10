@@ -252,6 +252,11 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 		f.Wanted = true
 	}
 
+	// TODO: for now, auto-download all message attachments, for testing
+	if f.Type == fileTypeMessageAttachment {
+		f.Wanted = true
+	}
+
 	// If all of the chunks already existed, this file might already be downloaded
 	allDownloaded := true
 	for _, c := range f.Chunks {

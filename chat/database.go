@@ -80,6 +80,8 @@ func (b *Bounce) openDatabase() {
 		&file{},
 		&chunk{},
 		&chunkOffer{},
+		&imageAttachment{},
+		&fileAttachment{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -413,7 +415,7 @@ func (b *Bounce) GetInitialState() InitialState {
 
 	// Load all direct messages
 	dms := []directMessage{}
-	err = b.database.Order("saved_at asc").Find(&dms).Error
+	err = b.database.Preload(clause.Associations).Order("saved_at asc").Find(&dms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -470,20 +472,41 @@ func (b *Bounce) GetInitialState() InitialState {
 				go b.checkIfDirectMessageUndeliverableAt(time.Unix(dm.WrittenAt, 0).Add(undeliverableAfter).Unix(), dm.ID)
 			}
 		}
+		uiImageAttachments := []ImageAttachment{}
+		for _, ia := range dm.ImageAttachments {
+			uiImageAttachments = append(uiImageAttachments, ImageAttachment{
+				ID:       ia.FileID,
+				Name:     ia.Name,
+				Size:     ia.Size,
+				Width:    ia.Width,
+				Height:   ia.Height,
+				BlurHash: ia.BlurHash,
+			})
+		}
+		uiFileAttachments := []FileAttachment{}
+		for _, fa := range dm.FileAttachments {
+			uiFileAttachments = append(uiFileAttachments, FileAttachment{
+				ID:   fa.FileID,
+				Name: fa.Name,
+				Size: fa.Size,
+			})
+		}
 		exportedDMs = append(
 			exportedDMs,
 			DirectMessage{
-				ID:            dm.ID,
-				Author:        dm.Author,
-				Thread:        dm.getDestination(b.currentUserID()),
-				WrittenAt:     dm.WrittenAt,
-				SavedAt:       dm.SavedAt,
-				ExpiresAt:     dm.DeleteAt,
-				Text:          dm.Text,
-				Seen:          dm.Seen,
-				Undeliverable: dm.Undeliverable,
-				ReadReceipts:  readReceipts,
-				DeliveredTo:   deliveredTo,
+				ID:               dm.ID,
+				Author:           dm.Author,
+				Thread:           dm.getDestination(b.currentUserID()),
+				WrittenAt:        dm.WrittenAt,
+				SavedAt:          dm.SavedAt,
+				ExpiresAt:        dm.DeleteAt,
+				Text:             dm.Text,
+				ImageAttachments: uiImageAttachments,
+				FileAttachments:  uiFileAttachments,
+				Seen:             dm.Seen,
+				Undeliverable:    dm.Undeliverable,
+				ReadReceipts:     readReceipts,
+				DeliveredTo:      deliveredTo,
 			},
 		)
 	}
@@ -528,7 +551,7 @@ func (b *Bounce) GetInitialState() InitialState {
 
 	// Load all group messages
 	gms := []groupMessage{}
-	err = b.database.Order("saved_at asc").Find(&gms).Error
+	err = b.database.Preload(clause.Associations).Order("saved_at asc").Find(&gms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -585,20 +608,41 @@ func (b *Bounce) GetInitialState() InitialState {
 				go b.checkIfGroupMessageUndeliverableAt(time.Unix(gm.WrittenAt, 0).Add(undeliverableAfter).Unix(), gm.ID)
 			}
 		}
+		uiImageAttachments := []ImageAttachment{}
+		for _, ia := range gm.ImageAttachments {
+			uiImageAttachments = append(uiImageAttachments, ImageAttachment{
+				ID:       ia.FileID,
+				Name:     ia.Name,
+				Size:     ia.Size,
+				Width:    ia.Width,
+				Height:   ia.Height,
+				BlurHash: ia.BlurHash,
+			})
+		}
+		uiFileAttachments := []FileAttachment{}
+		for _, fa := range gm.FileAttachments {
+			uiFileAttachments = append(uiFileAttachments, FileAttachment{
+				ID:   fa.FileID,
+				Name: fa.Name,
+				Size: fa.Size,
+			})
+		}
 		exportedGMs = append(
 			exportedGMs,
 			GroupMessage{
-				ID:            gm.ID,
-				Author:        gm.Author,
-				Thread:        gm.getDestination(b.currentUserID()),
-				WrittenAt:     gm.WrittenAt,
-				SavedAt:       gm.SavedAt,
-				ExpiresAt:     gm.DeleteAt,
-				Text:          gm.Text,
-				Seen:          gm.Seen,
-				Undeliverable: gm.Undeliverable,
-				ReadReceipts:  readReceipts,
-				DeliveredTo:   deliveredTo,
+				ID:               gm.ID,
+				Author:           gm.Author,
+				Thread:           gm.getDestination(b.currentUserID()),
+				WrittenAt:        gm.WrittenAt,
+				SavedAt:          gm.SavedAt,
+				ExpiresAt:        gm.DeleteAt,
+				Text:             gm.Text,
+				ImageAttachments: uiImageAttachments,
+				FileAttachments:  uiFileAttachments,
+				Seen:             gm.Seen,
+				Undeliverable:    gm.Undeliverable,
+				ReadReceipts:     readReceipts,
+				DeliveredTo:      deliveredTo,
 			},
 		)
 	}
