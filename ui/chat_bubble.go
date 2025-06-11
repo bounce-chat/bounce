@@ -469,6 +469,12 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 	}
 
 	usedWidth := cbr.cb.maxTextWidth + theme.Padding()*4
+	if cbr.cb.imageAttachments != nil {
+		// TODO: if we can use more without wrapping, use it
+		if cbr.cb.imageAttachments.MinSize().Width > usedWidth {
+			usedWidth = cbr.cb.imageAttachments.MinSize().Width + theme.Padding()*4
+		}
+	}
 	decorationsWidth := cbr.cb.decorations.MinSize().Width + theme.Padding()
 	if cbr.cb.decorations.Visible() {
 		cbr.decorationsOnNewLine = cbr.cb.decoratorNeedsNewLine(
@@ -558,6 +564,10 @@ func (cbr *chatBubbleRenderer) MinSize() fyne.Size {
 
 	if cbr.cb.imageAttachments != nil {
 		minSize.Height += cbr.cb.imageAttachments.MinSize().Height + theme.Padding()*2
+
+		if cbr.cb.imageAttachments.MinSize().Width > minSize.Width {
+			minSize.Width = cbr.cb.imageAttachments.MinSize().Width
+		}
 	}
 
 	return minSize

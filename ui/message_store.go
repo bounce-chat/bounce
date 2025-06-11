@@ -20,10 +20,11 @@ type cachedData struct {
 
 type messageStore struct {
 	sync.Mutex
-	messages         map[uuid.UUID]threadable
-	messagesByAuthor map[uuid.UUID]map[uuid.UUID]threadable
-	cache            map[uuid.UUID]cachedData
-	cacheFile        string
+	messages                 map[uuid.UUID]threadable
+	messagesByAuthor         map[uuid.UUID]map[uuid.UUID]threadable
+	messagesByFileAttachment map[uuid.UUID]threadable
+	cache                    map[uuid.UUID]cachedData
+	cacheFile                string
 }
 
 func newMessageStore(configDirectory string) *messageStore {
@@ -46,10 +47,11 @@ func newMessageStore(configDirectory string) *messageStore {
 	}
 
 	ms := &messageStore{
-		messages:         make(map[uuid.UUID]threadable),
-		messagesByAuthor: make(map[uuid.UUID]map[uuid.UUID]threadable),
-		cache:            cache,
-		cacheFile:        cacheFile,
+		messages:                 make(map[uuid.UUID]threadable),
+		messagesByAuthor:         make(map[uuid.UUID]map[uuid.UUID]threadable),
+		messagesByFileAttachment: make(map[uuid.UUID]threadable),
+		cache:                    cache,
+		cacheFile:                cacheFile,
 	}
 
 	go func() {
@@ -74,6 +76,16 @@ func (ms *messageStore) insert(t threadable) {
 		ms.messagesByAuthor[t.getAuthor()] = make(map[uuid.UUID]threadable)
 	}
 	ms.messagesByAuthor[t.getAuthor()][t.getID()] = t
+
+	// Index by attachment file ID
+	if cbd, ok := t.(*chatBubbleData); ok {
+		for _, ia := range cbd.imageAttachments {
+			ms.messagesByFileAttachment[ia.ID] = t
+		}
+		for _, fa := range cbd.fileAttachments {
+			ms.messagesByFileAttachment[fa.ID] = t
+		}
+	}
 }
 
 func (ms *messageStore) get(id uuid.UUID) (threadable, bool) {
@@ -133,6 +145,18 @@ func (ms *messageStore) updateUserImage(userID uuid.UUID, images []uuid.UUID) {
 			item.iconImages = images
 		}
 	}
+}
+
+func (ms *messageStore) getMessageWithFile(fileID uuid.UUID) (uuid.UUID, bool) {
+	ms.Lock()
+	defer ms.Unlock()
+
+	t, ok := ms.messagesByFileAttachment[fileID]
+	if !ok {
+		return uuid.Nil, false
+	}
+
+	return t.getID(), true
 }
 
 func (ms *messageStore) queryCache(id uuid.UUID) (cachedData, bool) {

@@ -675,7 +675,16 @@ func (ui *ui) UserImported(u chat.User) {
 }
 
 func (ui *ui) FileCompleted(fileID uuid.UUID) {
-	// TODO check if there is a message with this file as an attachment, and update that cbd / thread, then return
+	messageID, ok := ui.messages.getMessageWithFile(fileID)
+	if ok {
+		ui.threadWithItemMutex.Lock()
+		t, ok := ui.threadWithItem[messageID]
+		ui.threadWithItemMutex.Unlock()
+		if ok {
+			fyne.DoAndWait(func() { t.chatHistoryScroll().Refresh() })
+		}
+		return
+	}
 
 	// TODO: check if anything is waiting for this file and refresh it
 	for _, g := range ui.groups {
