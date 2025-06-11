@@ -496,7 +496,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		editButton,
 	)
 
-	entry := newThreadEntry(5)
+	entry := newThreadEntry(5, func() bool { return len(group.pendingMessageAttachments.files) > 0 })
 	group.entry = entry
 	entry.OnChanged = func(_ string) {
 		go ui.bounce.TypingInGroup(group.id)

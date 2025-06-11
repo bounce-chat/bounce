@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/image/draw"
 )
 
 type pendingMessageAttachment struct {
@@ -60,7 +61,12 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, remove
 		if err == nil {
 			icon = canvas.NewImageFromImage(img)
 			isImage = true
-			blur, err := blurhash.Encode(4, 4, img)
+
+			// Scale the image down to make BlurHash faster
+			smaller := image.NewRGBA(image.Rect(0, 0, img.Bounds().Max.X/6, img.Bounds().Max.Y/6))
+			draw.NearestNeighbor.Scale(smaller, smaller.Rect, img, img.Bounds(), draw.Over, nil)
+
+			blur, err := blurhash.Encode(4, 4, smaller)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),

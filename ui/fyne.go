@@ -675,6 +675,8 @@ func (ui *ui) UserImported(u chat.User) {
 }
 
 func (ui *ui) FileCompleted(fileID uuid.UUID) {
+	// TODO check if there is a message with this file as an attachment, and update that cbd / thread, then return
+
 	// TODO: check if anything is waiting for this file and refresh it
 	for _, g := range ui.groups {
 		fyne.DoAndWait(func() {

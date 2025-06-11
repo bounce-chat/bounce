@@ -11,6 +11,7 @@ import (
 
 type threadEntry struct {
 	widget.Entry
+	hasAttachments    func() bool
 	customOnSubmitted func()
 	selectKeyDown     bool
 	selecting         bool
@@ -20,8 +21,10 @@ type threadEntry struct {
 	maxHeightLabel    *widget.Label
 }
 
-func newThreadEntry(maxRows int) *threadEntry {
-	entry := &threadEntry{}
+func newThreadEntry(maxRows int, hasAttachments func() bool) *threadEntry {
+	entry := &threadEntry{
+		hasAttachments: hasAttachments,
+	}
 	entry.ExtendBaseWidget(entry)
 	entry.MultiLine = true
 	entry.Wrapping = fyne.TextWrapWord
@@ -61,7 +64,7 @@ func (entry *threadEntry) TypedKey(ev *fyne.KeyEvent) {
 			if entry.customOnSubmitted == nil {
 				log.Fatal("user interface bug: a threadEntry does not have a customOnSubmitted defined")
 			} else {
-				if entry.Text != "" {
+				if entry.Text != "" || entry.hasAttachments() {
 					entry.customOnSubmitted()
 				}
 			}

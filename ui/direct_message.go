@@ -200,7 +200,7 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 	//
 	// BUild the entry bar
 	//
-	entry := newThreadEntry(5)
+	entry := newThreadEntry(5, func() bool { return len(dm.pendingMessageAttachments.files) > 0 })
 	dm.entry = entry
 	entry.OnChanged = func(_ string) {
 		go ui.bounce.TypingInDirectMessage(dm.user.id)

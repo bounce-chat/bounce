@@ -1,16 +1,21 @@
 package ui
 
 import (
+	"bytes"
 	"image"
 	"image/color"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/bbrks/go-blurhash"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -32,6 +37,9 @@ var stateError = 4
 
 var wordWrapRE = regexp.MustCompile(`\s*\S+`)
 
+var imageAttachmentCache = map[string]image.Image{}
+var imageAttachmentCacheMutex sync.Mutex
+
 type chatBubble struct {
 	widget.BaseWidget
 	id               uuid.UUID
@@ -41,6 +49,7 @@ type chatBubble struct {
 	mergeMode        int
 	username         *widget.RichText
 	message          *widget.RichText
+	imageAttachments *fyne.Container
 	icon             *defaultImage
 	background       *canvas.Rectangle
 	decorations      *fyne.Container
@@ -220,6 +229,65 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 
 	cb.message.Segments[0].(*widget.TextSegment).Text = m.text
 	cb.message.Refresh()
+
+	if len(m.imageAttachments) > 0 {
+		size := float32(100) // TODO: change based on how many images there are?
+		cb.imageAttachments = container.New(layout.NewGridWrapLayout(fyne.NewSize(size, size)))
+		for _, attachment := range m.imageAttachments {
+			var rawImage image.Image
+			var err error
+			data, err := cb.icon.fileGetter(attachment.ID)
+			if err != nil || len(data) == 0 {
+				cacheKey := "blurhash-" + attachment.ID.String() + strconv.Itoa(attachment.Width) + strconv.Itoa(attachment.Height)
+				var ok bool
+				imageAttachmentCacheMutex.Lock()
+				rawImage, ok = imageAttachmentCache[cacheKey]
+				imageAttachmentCacheMutex.Unlock()
+				if !ok {
+					rawImage, err = blurhash.Decode(attachment.BlurHash, attachment.Width, attachment.Height, 1)
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error":    err.Error(),
+							"blurhash": attachment.BlurHash,
+						}).Error("invalid blurhash on image attachment")
+						continue
+					}
+					imageAttachmentCacheMutex.Lock()
+					imageAttachmentCache[cacheKey] = rawImage
+					imageAttachmentCacheMutex.Unlock()
+				}
+			} else {
+				cacheKey := attachment.ID.String() + strconv.Itoa(attachment.Width) + strconv.Itoa(attachment.Height)
+				var ok bool
+				imageAttachmentCacheMutex.Lock()
+				rawImage, ok = imageAttachmentCache[cacheKey]
+				imageAttachmentCacheMutex.Unlock()
+				if !ok {
+					rawImage, _, err = image.Decode(bytes.NewReader(data))
+					if err != nil {
+						log.WithFields(log.Fields{
+							"blurhash": attachment.BlurHash,
+						}).Error("invalid image data on image attachment")
+						continue
+					}
+					imageAttachmentCacheMutex.Lock()
+					imageAttachmentCache[cacheKey] = rawImage
+					imageAttachmentCacheMutex.Unlock()
+				}
+			}
+			img := canvas.NewImageFromImage(rawImage)
+			img.Resize(fyne.Size{
+				Height: float32(attachment.Height),
+				Width:  float32(attachment.Width),
+			})
+			img.FillMode = canvas.ImageFillContain
+			cb.imageAttachments.Add(img)
+		}
+		cb.imageAttachments.Refresh()
+	} else {
+		cb.imageAttachments = nil
+	}
+	// TODO: file attachments
 
 	cb.maxMessageWidth = fyne.MeasureText(
 		longestLine(cb.message.Segments[0].(*widget.TextSegment).Text),
@@ -438,10 +506,17 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 	cbr.cb.background.Move(fyne.Position{leftBorder, top})
 
 	messageTop := top
+
 	if cbr.cb.username.Visible() {
 		cbr.cb.username.Resize(fyne.Size{Height: size.Height, Width: width + theme.Padding()*2})
 		cbr.cb.username.Move(fyne.Position{leftBorder, top - theme.Padding()})
 		messageTop += cbr.cb.username.MinSize().Height - theme.Padding()*2
+	}
+
+	if cbr.cb.imageAttachments != nil {
+		cbr.cb.imageAttachments.Resize(fyne.Size{Height: size.Height, Width: width})
+		cbr.cb.imageAttachments.Move(fyne.Position{leftBorder + theme.Padding()*2, messageTop + theme.Padding()*2})
+		messageTop += cbr.cb.imageAttachments.MinSize().Height + theme.Padding()*2
 	}
 
 	if cbr.cb.decorations.Visible() {
@@ -481,17 +556,25 @@ func (cbr *chatBubbleRenderer) MinSize() fyne.Size {
 		minSize.Height += unmergedVerticalBuffer
 	}
 
+	if cbr.cb.imageAttachments != nil {
+		minSize.Height += cbr.cb.imageAttachments.MinSize().Height + theme.Padding()*2
+	}
+
 	return minSize
 }
 
 func (cbr *chatBubbleRenderer) Objects() []fyne.CanvasObject {
-	return []fyne.CanvasObject{
+	objs := []fyne.CanvasObject{
 		cbr.cb.background,
 		cbr.cb.decorations,
 		cbr.cb.username,
 		cbr.cb.message,
 		cbr.cb.icon,
 	}
+	if cbr.cb.imageAttachments != nil {
+		objs = append(objs, cbr.cb.imageAttachments)
+	}
+	return objs
 }
 
 func (cbr *chatBubbleRenderer) Destroy() {}

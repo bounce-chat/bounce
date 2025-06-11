@@ -28,20 +28,22 @@ type threadable interface {
 }
 
 type chatBubbleData struct {
-	id         uuid.UUID
-	frameType  string
-	author     uuid.UUID
-	iconImages []uuid.UUID
-	username   string
-	initials   string
-	text       string
-	outgoing   bool
-	direct     bool
-	writtenAt  int64
-	expiresAt  int64
-	seen       bool
-	state      int
-	mergeMode  int
+	id               uuid.UUID
+	frameType        string
+	author           uuid.UUID
+	iconImages       []uuid.UUID
+	username         string
+	initials         string
+	text             string
+	imageAttachments []chat.ImageAttachment
+	fileAttachments  []chat.FileAttachment
+	outgoing         bool
+	direct           bool
+	writtenAt        int64
+	expiresAt        int64
+	seen             bool
+	state            int
+	mergeMode        int
 }
 
 func (cbd *chatBubbleData) getID() uuid.UUID {
@@ -290,20 +292,22 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 	return &threadItem{
 		id: gm.ID,
 		widgetData: &chatBubbleData{
-			id:         gm.ID,
-			frameType:  chat.TypeGroupMessage,
-			author:     gm.Author,
-			iconImages: u.images,
-			username:   username,
-			initials:   initials,
-			text:       gm.Text,
-			outgoing:   outgoing,
-			direct:     false,
-			writtenAt:  gm.WrittenAt,
-			expiresAt:  gm.ExpiresAt,
-			seen:       gm.Seen,
-			state:      state,
-			mergeMode:  mergeModeStandalone,
+			id:               gm.ID,
+			frameType:        chat.TypeGroupMessage,
+			author:           gm.Author,
+			iconImages:       u.images,
+			username:         username,
+			initials:         initials,
+			text:             gm.Text,
+			imageAttachments: gm.ImageAttachments,
+			fileAttachments:  gm.FileAttachments,
+			outgoing:         outgoing,
+			direct:           false,
+			writtenAt:        gm.WrittenAt,
+			expiresAt:        gm.ExpiresAt,
+			seen:             gm.Seen,
+			state:            state,
+			mergeMode:        mergeModeStandalone,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
@@ -375,19 +379,21 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 	return &threadItem{
 		id: dm.ID,
 		widgetData: &chatBubbleData{
-			id:        dm.ID,
-			frameType: chat.TypeDirectMessage,
-			author:    dm.Author,
-			username:  username,
-			initials:  initials,
-			text:      dm.Text,
-			outgoing:  outgoing,
-			direct:    true,
-			writtenAt: dm.WrittenAt,
-			expiresAt: dm.ExpiresAt,
-			seen:      dm.Seen,
-			state:     state,
-			mergeMode: mergeModeStandalone,
+			id:               dm.ID,
+			frameType:        chat.TypeDirectMessage,
+			author:           dm.Author,
+			username:         username,
+			initials:         initials,
+			text:             dm.Text,
+			imageAttachments: dm.ImageAttachments,
+			fileAttachments:  dm.FileAttachments,
+			outgoing:         outgoing,
+			direct:           true,
+			writtenAt:        dm.WrittenAt,
+			expiresAt:        dm.ExpiresAt,
+			seen:             dm.Seen,
+			state:            state,
+			mergeMode:        mergeModeStandalone,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
