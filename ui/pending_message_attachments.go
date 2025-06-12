@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"bytes"
 	"fmt"
 	"image"
+	"io"
 	"os"
 
 	"fyne.io/fyne/v2"
@@ -34,36 +36,92 @@ type pendingMessageAttachment struct {
 	remove   *widget.Button
 }
 
-func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, removeCallback func()) *pendingMessageAttachment {
+func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, removeCallback func()) (*pendingMessageAttachment, error) {
+	size := int64(0)
+	//if fyne.CurrentDevice().IsMobile() {
+	//	var err error
+	//	size, err = io.Copy(io.Discard, reader)
+	//	if err != nil {
+	//		log.WithFields(log.Fields{
+	//			"error": err.Error(),
+	//		}).Error("error reading data to get size")
+	//	}
+	//	reader.Close()
+	//	reader, err = storage.Reader(reader.URI())
+	//	if err != nil {
+	//		log.WithFields(log.Fields{
+	//			"error": err.Error(),
+	//		}).Error("error re-opening reader")
+	//	}
+	//} else {
 	f, err := os.Stat(reader.URI().Path())
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 			"path":  reader.URI().Path(),
 		}).Error("file selected as message attachment cannot be read from disk")
+		return nil, err
 	}
-	sizeString := fileSizeString(f.Size())
+	size = f.Size()
+	//}
+	sizeString := fileSizeString(size)
 
 	var icon *canvas.Image
 	isImage := false
 	blurHash := ""
 	width := 0
 	height := 0
-	if f.Size() < chat.EmbeddedFileLimit {
+	if size < chat.EmbeddedFileLimit {
+		var err error
+		imageBytes := []byte{}
+		//if fyne.CurrentDevice().IsMobile() {
+		//	imageBytes, err = io.ReadAll(reader)
+		//	if err != nil {
+		//		log.WithFields(log.Fields{
+		//			"error": err.Error(),
+		//		}).Error("error reading all from reader")
+		//	}
+		//	reader.Close()
+		//	reader, err = storage.Reader(reader.URI())
+		//	if err != nil {
+		//		log.WithFields(log.Fields{
+		//			"error": err.Error(),
+		//		}).Error("error re-opening reader")
+		//	}
+		//} else {
 		diskReader, err := os.Open(reader.URI().Path())
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 				"path":  reader.URI().Path(),
 			}).Error("file selected as message attachment cannot be read from disk")
+			return nil, err
 		}
-		img, _, err := image.Decode(diskReader)
+		imageBytes, err = io.ReadAll(diskReader)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error reading all from disk")
+			return nil, err
+		}
+		diskReader.Close()
+		//}
+
+		img, _, err := image.Decode(bytes.NewReader(imageBytes))
 		if err == nil {
 			icon = canvas.NewImageFromImage(img)
 			isImage = true
 
 			// Scale the image down to make BlurHash faster
-			smaller := image.NewRGBA(image.Rect(0, 0, img.Bounds().Max.X/6, img.Bounds().Max.Y/6))
+			larger := img.Bounds().Dx()
+			if img.Bounds().Dy() > larger {
+				larger = img.Bounds().Dy()
+			}
+			scaleFactor := 1
+			if larger > 32 {
+				scaleFactor = larger / 32
+			}
+			smaller := image.NewRGBA(image.Rect(0, 0, img.Bounds().Max.X/scaleFactor, img.Bounds().Max.Y/scaleFactor))
 			draw.NearestNeighbor.Scale(smaller, smaller.Rect, img, img.Bounds(), draw.Over, nil)
 
 			blur, err := blurhash.Encode(4, 4, smaller)
@@ -86,7 +144,7 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, remove
 	pma := &pendingMessageAttachment{
 		id:       id,
 		reader:   reader,
-		fileSize: f.Size(),
+		fileSize: size,
 		isImage:  isImage,
 		blurHash: blurHash,
 		width:    width,
@@ -108,7 +166,7 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, remove
 
 	pma.ExtendBaseWidget(pma)
 
-	return pma
+	return pma, nil
 }
 
 func (pma *pendingMessageAttachment) CreateRenderer() fyne.WidgetRenderer {
@@ -200,8 +258,11 @@ func newPendingMessageAttachments() *pendingMessageAttachments {
 
 func (pmas *pendingMessageAttachments) add(reader fyne.URIReadCloser) {
 	id := uuid.New()
-	pmas.files = append(pmas.files, newPendingMessageAttachment(id, reader, func() { pmas.remove(id) }))
-	pmas.Refresh()
+	newFile, err := newPendingMessageAttachment(id, reader, func() { pmas.remove(id) })
+	if err == nil {
+		pmas.files = append(pmas.files, newFile)
+		pmas.Refresh()
+	}
 }
 
 func (pmas *pendingMessageAttachments) remove(id uuid.UUID) {
