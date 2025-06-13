@@ -85,7 +85,7 @@ func newChatHistory(threadID, myID uuid.UUID, messageStore *messageStore, readCa
 
 	ch.jumpToBottomIcon = newClickableImage(
 		"",
-		newEmbeddedResource("assets/icons/thread/jump_to_bottom.png"),
+		canvas.NewImageFromResource(newEmbeddedResource("assets/icons/thread/jump_to_bottom.png")),
 		jumpToBottomIconSize,
 		jumpToBottomIconSize,
 		false,

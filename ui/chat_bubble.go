@@ -47,6 +47,8 @@ type chatBubble struct {
 	direct           bool
 	writtenAt        int64
 	mergeMode        int
+	rawImages        []image.Image
+	imageData        [][]byte
 	username         *widget.RichText
 	message          *widget.RichText
 	imageAttachments *fyne.Container
@@ -230,10 +232,12 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	cb.message.Segments[0].(*widget.TextSegment).Text = m.text
 	cb.message.Refresh()
 
+	cb.rawImages = []image.Image{}
+	cb.imageData = [][]byte{}
 	if len(m.imageAttachments) > 0 {
 		size := float32(100) // TODO: change based on how many images there are?
 		cb.imageAttachments = container.New(layout.NewGridWrapLayout(fyne.NewSize(size, size)))
-		for _, attachment := range m.imageAttachments {
+		for i, attachment := range m.imageAttachments {
 			var rawImage image.Image
 			var err error
 			data, err := cb.icon.fileGetter(attachment.ID)
@@ -275,14 +279,21 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 					imageAttachmentCacheMutex.Unlock()
 				}
 			}
-			img := canvas.NewImageFromImage(rawImage)
-			img.Resize(fyne.Size{
-				Height: float32(attachment.Height),
-				Width:  float32(attachment.Width),
-			})
-			img.FillMode = canvas.ImageFillContain
-			cb.imageAttachments.Add(img)
+
+			cb.rawImages = append(cb.rawImages, rawImage)
+			cb.imageData = append(cb.imageData, data)
+			cb.imageAttachments.Add(
+				newClickableImage(
+					"",
+					canvas.NewImageFromImage(rawImage),
+					size,
+					size,
+					false,
+					func() { m.imageDisplay(cb.rawImages, cb.imageData, i) },
+				),
+			)
 		}
+
 		cb.imageAttachments.Refresh()
 	} else {
 		cb.imageAttachments = nil

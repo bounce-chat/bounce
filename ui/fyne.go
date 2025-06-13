@@ -41,6 +41,7 @@ type ui struct {
 	newGroupWidgets               *newGroupWidgets
 	newSyncDeviceWidgets          *newSyncDeviceWidgets
 	settingsWidgets               *settingsWidgets
+	imageViewer                   *imageViewer
 	mainContainer                 *fyne.Container
 	defaultContainer              *fyne.Container
 	newInstall                    *fyne.Container
@@ -222,6 +223,7 @@ func (ui *ui) build() {
 	ui.buildImportContact()
 	ui.buildMainContainer()
 	ui.buildMobileMenu()
+	ui.buildImageViewer()
 
 	//
 	// Default to displaying the loading container

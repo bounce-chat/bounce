@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"image"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -44,6 +45,7 @@ type chatBubbleData struct {
 	seen             bool
 	state            int
 	mergeMode        int
+	imageDisplay     func([]image.Image, [][]byte, int)
 }
 
 func (cbd *chatBubbleData) getID() uuid.UUID {
@@ -308,6 +310,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			seen:             gm.Seen,
 			state:            state,
 			mergeMode:        mergeModeStandalone,
+			imageDisplay:     ui.showImageViewer,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
@@ -394,6 +397,7 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 			seen:             dm.Seen,
 			state:            state,
 			mergeMode:        mergeModeStandalone,
+			imageDisplay:     ui.showImageViewer,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {

@@ -20,8 +20,7 @@ type clickableImage struct {
 	clicked      func()
 }
 
-func newClickableImage(text string, resource fyne.Resource, width, height float32, animateHover bool, onClicked func()) *clickableImage {
-	img := canvas.NewImageFromResource(resource)
+func newClickableImage(text string, img *canvas.Image, width, height float32, animateHover bool, onClicked func()) *clickableImage {
 	img.FillMode = canvas.ImageFillContain
 	img.SetMinSize(fyne.NewSize(width, height))
 

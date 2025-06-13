@@ -27,6 +27,7 @@ const viewTypeAbout = 15
 const viewTypeEditProfile = 16
 const viewTypeNameNewDevice = 17
 const viewTypeDialog = 18
+const viewTypeImageViewer = 19
 
 var hookedDialogs = make(map[dialog.Dialog]bool)
 
@@ -156,6 +157,9 @@ func (ui *ui) mobileBack() {
 	case viewTypeNameNewDevice:
 		ui.mainWindow.SetContent(ui.nameNewDevice)
 		ui.nameNewDevice.Show()
+	case viewTypeImageViewer:
+		ui.mainWindow.SetContent(ui.imageViewer.viewer)
+		ui.imageViewer.viewer.Show()
 	default:
 		log.WithFields(log.Fields{
 			"type": displayView.viewType,
