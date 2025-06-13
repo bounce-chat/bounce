@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"testing"
 	"time"
@@ -97,19 +98,23 @@ type ui struct {
 }
 
 func Main() {
+	defer func() {
+		// TODO: trying to find occastional map race on android
+		if r := recover(); r != nil {
+			debug.PrintStack()
+		}
+	}()
+
 	ui := &ui{}
 	ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())
 	ui.build()
 
-	ui.app.Lifecycle().SetOnStarted(func() {
-		go ui.loadInitialState(ui.bounce.GetInitialState())
-	})
-
-	ui.app.Lifecycle().SetOnStopped(func() {
-		ui.bounce.Shutdown()
-	})
+	go func() {
+		ui.loadInitialState(ui.bounce.GetInitialState())
+	}()
 
 	ui.app.Run()
+	ui.bounce.Shutdown()
 }
 
 func (ui *ui) build() {

@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/bbrks/go-blurhash"
@@ -38,32 +39,32 @@ type pendingMessageAttachment struct {
 
 func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, removeCallback func()) (*pendingMessageAttachment, error) {
 	size := int64(0)
-	//if fyne.CurrentDevice().IsMobile() {
-	//	var err error
-	//	size, err = io.Copy(io.Discard, reader)
-	//	if err != nil {
-	//		log.WithFields(log.Fields{
-	//			"error": err.Error(),
-	//		}).Error("error reading data to get size")
-	//	}
-	//	reader.Close()
-	//	reader, err = storage.Reader(reader.URI())
-	//	if err != nil {
-	//		log.WithFields(log.Fields{
-	//			"error": err.Error(),
-	//		}).Error("error re-opening reader")
-	//	}
-	//} else {
-	f, err := os.Stat(reader.URI().Path())
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-			"path":  reader.URI().Path(),
-		}).Error("file selected as message attachment cannot be read from disk")
-		return nil, err
+	if fyne.CurrentDevice().IsMobile() {
+		var err error
+		size, err = io.Copy(io.Discard, reader)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error reading data to get size")
+		}
+		reader.Close()
+		reader, err = storage.Reader(reader.URI())
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error re-opening reader")
+		}
+	} else {
+		f, err := os.Stat(reader.URI().Path())
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"path":  reader.URI().Path(),
+			}).Error("file selected as message attachment cannot be read from disk")
+			return nil, err
+		}
+		size = f.Size()
 	}
-	size = f.Size()
-	//}
 	sizeString := fileSizeString(size)
 
 	var icon *canvas.Image
@@ -74,38 +75,38 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, remove
 	if size < chat.EmbeddedFileLimit {
 		var err error
 		imageBytes := []byte{}
-		//if fyne.CurrentDevice().IsMobile() {
-		//	imageBytes, err = io.ReadAll(reader)
-		//	if err != nil {
-		//		log.WithFields(log.Fields{
-		//			"error": err.Error(),
-		//		}).Error("error reading all from reader")
-		//	}
-		//	reader.Close()
-		//	reader, err = storage.Reader(reader.URI())
-		//	if err != nil {
-		//		log.WithFields(log.Fields{
-		//			"error": err.Error(),
-		//		}).Error("error re-opening reader")
-		//	}
-		//} else {
-		diskReader, err := os.Open(reader.URI().Path())
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-				"path":  reader.URI().Path(),
-			}).Error("file selected as message attachment cannot be read from disk")
-			return nil, err
+		if fyne.CurrentDevice().IsMobile() {
+			imageBytes, err = io.ReadAll(reader)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error reading all from reader")
+			}
+			reader.Close()
+			reader, err = storage.Reader(reader.URI())
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error re-opening reader")
+			}
+		} else {
+			diskReader, err := os.Open(reader.URI().Path())
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"path":  reader.URI().Path(),
+				}).Error("file selected as message attachment cannot be read from disk")
+				return nil, err
+			}
+			imageBytes, err = io.ReadAll(diskReader)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error reading all from disk")
+				return nil, err
+			}
+			diskReader.Close()
 		}
-		imageBytes, err = io.ReadAll(diskReader)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error reading all from disk")
-			return nil, err
-		}
-		diskReader.Close()
-		//}
 
 		img, _, err := image.Decode(bytes.NewReader(imageBytes))
 		if err == nil {
