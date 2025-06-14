@@ -319,7 +319,25 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			if mine {
 				displayName = "You"
 			}
-			group.button.setLastMessage(displayName, gm.Text, mine)
+			if len(gm.Text) == 0 {
+				changeString := displayName + " posted "
+
+				if len(gm.ImageAttachments) > 1 {
+					changeString += "images"
+				} else if len(gm.ImageAttachments) == 1 {
+					changeString += "an image"
+				}
+
+				if len(gm.FileAttachments) > 1 {
+					changeString += " and files"
+				} else if len(gm.FileAttachments) == 1 {
+					changeString += " and a file"
+				}
+
+				tb.setLastAction(changeString, mine) // TODO: possible to bind actor's name?
+			} else {
+				group.button.setLastMessage(displayName, gm.Text, mine)
+			}
 			group.button.setLastMessageTime(time.Unix(gm.WrittenAt, 0))
 			group.setLastMessageTime(gm.WrittenAt)
 			group.chatHistoryScroll().Refresh()
@@ -406,7 +424,25 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 			if mine {
 				displayName = "You"
 			}
-			dmThread.button.setLastMessage(displayName, dm.Text, mine)
+			if len(dm.Text) == 0 {
+				changeString := displayName + " posted "
+
+				if len(dm.ImageAttachments) > 1 {
+					changeString += "images"
+				} else if len(dm.ImageAttachments) == 1 {
+					changeString += "an image"
+				}
+
+				if len(dm.FileAttachments) > 1 {
+					changeString += " and files"
+				} else if len(dm.FileAttachments) == 1 {
+					changeString += " and a file"
+				}
+
+				tb.setLastAction(changeString, mine) // TODO: possible to bind actor's name?
+			} else {
+				dmThread.button.setLastMessage(displayName, dm.Text, mine)
+			}
 			dmThread.button.setLastMessageTime(time.Unix(dm.WrittenAt, 0))
 			dmThread.setLastMessageTime(dm.WrittenAt)
 			dmThread.chatHistoryScroll().Refresh()
