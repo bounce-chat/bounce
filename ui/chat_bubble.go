@@ -21,6 +21,7 @@ import (
 
 var iconSize = float32(12)
 var bufferSize = float32(30)
+var imageAttachmentWidth = float32(300)
 var unmergedVerticalBuffer = float32(4)
 
 var mergeModeStandalone = 0
@@ -41,32 +42,31 @@ var imageAttachmentCacheMutex sync.Mutex
 
 type chatBubble struct {
 	widget.BaseWidget
-	id                   uuid.UUID
-	outgoing             bool
-	direct               bool
-	writtenAt            int64
-	mergeMode            int
-	imageAttachmentWidth float32
-	rawImages            []image.Image
-	imageData            [][]byte
-	username             *widget.RichText
-	message              *widget.RichText
-	imageAttachments     *fyne.Container
-	icon                 *defaultImage
-	background           *canvas.Rectangle
-	decorations          *fyne.Container
-	timestamp            *canvas.Text
-	disappearingIcon     *themedImage
-	statusIcons          *fyne.Container
-	pending              *themedImage
-	synced               *themedImage
-	delivered            *themedImage
-	read                 *themedImage
-	errorIcon            *themedImage
-	chunks               []string
-	chunkLengths         []float32
-	maxTextWidth         float32
-	maxMessageWidth      float32
+	id               uuid.UUID
+	outgoing         bool
+	direct           bool
+	writtenAt        int64
+	mergeMode        int
+	rawImages        []image.Image
+	imageData        [][]byte
+	username         *widget.RichText
+	message          *widget.RichText
+	imageAttachments *fyne.Container
+	icon             *defaultImage
+	background       *canvas.Rectangle
+	decorations      *fyne.Container
+	timestamp        *canvas.Text
+	disappearingIcon *themedImage
+	statusIcons      *fyne.Container
+	pending          *themedImage
+	synced           *themedImage
+	delivered        *themedImage
+	read             *themedImage
+	errorIcon        *themedImage
+	chunks           []string
+	chunkLengths     []float32
+	maxTextWidth     float32
+	maxMessageWidth  float32
 }
 
 func newChatBubbleTemplate(fileGetter func(uuid.UUID) ([]byte, error)) *chatBubble {
@@ -165,7 +165,6 @@ func newChatBubbleTemplate(fileGetter func(uuid.UUID) ([]byte, error)) *chatBubb
 			fileGetter: fileGetter,
 			imageCache: make(map[uuid.UUID]*canvas.Image),
 		},
-		imageAttachmentWidth: 300,
 		background: &canvas.Rectangle{
 			CornerRadius: 15,
 		},
@@ -241,7 +240,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	cb.rawImages = []image.Image{}
 	cb.imageData = [][]byte{}
 	if len(m.imageAttachments) > 0 {
-		size := cb.imageAttachmentWidth / float32(len(m.imageAttachments))
+		size := imageAttachmentWidth / float32(len(m.imageAttachments))
 		if size < 50 {
 			size = float32(50)
 		}
@@ -494,7 +493,7 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 
 	usedWidth := cbr.cb.maxTextWidth + theme.Padding()*4
 	if cbr.cb.imageAttachments != nil {
-		usedWidth = cbr.cb.imageAttachmentWidth + theme.Padding()*4
+		usedWidth = imageAttachmentWidth + theme.Padding()*4
 	}
 	decorationsWidth := cbr.cb.decorations.MinSize().Width + theme.Padding()
 	if cbr.cb.decorations.Visible() {
@@ -509,7 +508,7 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 		} else {
 			messageAndDecorations := cbr.cb.maxMessageWidth + decorationsWidth + theme.Padding()*3
 			if messageAndDecorations > usedWidth {
-				if cbr.cb.imageAttachments != nil && messageAndDecorations > cbr.cb.imageAttachmentWidth {
+				if cbr.cb.imageAttachments != nil && messageAndDecorations > imageAttachmentWidth {
 					cbr.decorationsOnNewLine = true
 				} else {
 					usedWidth = messageAndDecorations
@@ -590,7 +589,7 @@ func (cbr *chatBubbleRenderer) MinSize() fyne.Size {
 
 	if cbr.cb.imageAttachments != nil {
 		minSize.Height += cbr.cb.imageAttachments.MinSize().Height + theme.Padding()*2
-		minSize.Width = cbr.cb.imageAttachmentWidth + theme.Padding()*4 + bufferSize
+		minSize.Width = imageAttachmentWidth + theme.Padding()*4 + bufferSize
 	}
 
 	return minSize
