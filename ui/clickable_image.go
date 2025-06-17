@@ -22,7 +22,13 @@ type clickableImage struct {
 
 func newClickableImage(text string, img *canvas.Image, width, height float32, animateHover bool, onClicked func()) *clickableImage {
 	img.FillMode = canvas.ImageFillContain
-	img.SetMinSize(fyne.NewSize(width, height))
+
+	if img.Image != nil {
+		aspectRatio := float32(img.Image.Bounds().Dy()) / float32(img.Image.Bounds().Dx())
+		img.SetMinSize(fyne.NewSize(width, width*aspectRatio))
+	} else {
+		img.SetMinSize(fyne.NewSize(width, height))
+	}
 
 	ci := &clickableImage{
 		image: img,

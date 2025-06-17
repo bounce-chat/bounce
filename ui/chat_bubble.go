@@ -12,7 +12,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/bbrks/go-blurhash"
@@ -42,31 +41,32 @@ var imageAttachmentCacheMutex sync.Mutex
 
 type chatBubble struct {
 	widget.BaseWidget
-	id               uuid.UUID
-	outgoing         bool
-	direct           bool
-	writtenAt        int64
-	mergeMode        int
-	rawImages        []image.Image
-	imageData        [][]byte
-	username         *widget.RichText
-	message          *widget.RichText
-	imageAttachments *fyne.Container
-	icon             *defaultImage
-	background       *canvas.Rectangle
-	decorations      *fyne.Container
-	timestamp        *canvas.Text
-	disappearingIcon *themedImage
-	statusIcons      *fyne.Container
-	pending          *themedImage
-	synced           *themedImage
-	delivered        *themedImage
-	read             *themedImage
-	errorIcon        *themedImage
-	chunks           []string
-	chunkLengths     []float32
-	maxTextWidth     float32
-	maxMessageWidth  float32
+	id                   uuid.UUID
+	outgoing             bool
+	direct               bool
+	writtenAt            int64
+	mergeMode            int
+	imageAttachmentWidth float32
+	rawImages            []image.Image
+	imageData            [][]byte
+	username             *widget.RichText
+	message              *widget.RichText
+	imageAttachments     *fyne.Container
+	icon                 *defaultImage
+	background           *canvas.Rectangle
+	decorations          *fyne.Container
+	timestamp            *canvas.Text
+	disappearingIcon     *themedImage
+	statusIcons          *fyne.Container
+	pending              *themedImage
+	synced               *themedImage
+	delivered            *themedImage
+	read                 *themedImage
+	errorIcon            *themedImage
+	chunks               []string
+	chunkLengths         []float32
+	maxTextWidth         float32
+	maxMessageWidth      float32
 }
 
 func newChatBubbleTemplate(fileGetter func(uuid.UUID) ([]byte, error)) *chatBubble {
@@ -165,6 +165,7 @@ func newChatBubbleTemplate(fileGetter func(uuid.UUID) ([]byte, error)) *chatBubb
 			fileGetter: fileGetter,
 			imageCache: make(map[uuid.UUID]*canvas.Image),
 		},
+		imageAttachmentWidth: 300,
 		background: &canvas.Rectangle{
 			CornerRadius: 15,
 		},
@@ -229,14 +230,26 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 		cb.username.Hide()
 	}
 
-	cb.message.Segments[0].(*widget.TextSegment).Text = m.text
-	cb.message.Refresh()
+	if m.text != "" {
+		cb.message.Segments[0].(*widget.TextSegment).Text = m.text
+		cb.message.Show()
+		cb.message.Refresh()
+	} else {
+		cb.message.Hide()
+	}
 
 	cb.rawImages = []image.Image{}
 	cb.imageData = [][]byte{}
 	if len(m.imageAttachments) > 0 {
-		size := float32(100) // TODO: change based on how many images there are?
-		cb.imageAttachments = container.New(layout.NewGridWrapLayout(fyne.NewSize(size, size)))
+		size := cb.imageAttachmentWidth / float32(len(m.imageAttachments))
+		if size < 50 {
+			size = float32(50)
+		}
+		if len(m.imageAttachments) > 1 {
+			size -= theme.Padding()
+		}
+
+		cb.imageAttachments = container.New(NewRowWrapLayout())
 		for i, attachment := range m.imageAttachments {
 			var rawImage image.Image
 			var err error
@@ -481,10 +494,7 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 
 	usedWidth := cbr.cb.maxTextWidth + theme.Padding()*4
 	if cbr.cb.imageAttachments != nil {
-		// TODO: if we can use more without wrapping, use it
-		if cbr.cb.imageAttachments.MinSize().Width > usedWidth {
-			usedWidth = cbr.cb.imageAttachments.MinSize().Width + theme.Padding()*4
-		}
+		usedWidth = cbr.cb.imageAttachmentWidth + theme.Padding()*4
 	}
 	decorationsWidth := cbr.cb.decorations.MinSize().Width + theme.Padding()
 	if cbr.cb.decorations.Visible() {
@@ -499,7 +509,11 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 		} else {
 			messageAndDecorations := cbr.cb.maxMessageWidth + decorationsWidth + theme.Padding()*3
 			if messageAndDecorations > usedWidth {
-				usedWidth = messageAndDecorations
+				if cbr.cb.imageAttachments != nil && messageAndDecorations > cbr.cb.imageAttachmentWidth {
+					cbr.decorationsOnNewLine = true
+				} else {
+					usedWidth = messageAndDecorations
+				}
 			}
 		}
 	}
@@ -551,6 +565,7 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 
 func (cbr *chatBubbleRenderer) MinSize() fyne.Size {
 	minSize := cbr.cb.message.MinSize()
+	minSize.Width += bufferSize
 
 	if cbr.cb.decorations.Visible() {
 		if !cbr.decorationsOnNewLine {
@@ -575,10 +590,7 @@ func (cbr *chatBubbleRenderer) MinSize() fyne.Size {
 
 	if cbr.cb.imageAttachments != nil {
 		minSize.Height += cbr.cb.imageAttachments.MinSize().Height + theme.Padding()*2
-
-		if cbr.cb.imageAttachments.MinSize().Width > minSize.Width {
-			minSize.Width = cbr.cb.imageAttachments.MinSize().Width
-		}
+		minSize.Width = cbr.cb.imageAttachmentWidth + theme.Padding()*4 + bufferSize
 	}
 
 	return minSize
