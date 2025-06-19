@@ -887,6 +887,22 @@ func (b *Bounce) GetFileData(fileID uuid.UUID) ([]byte, error) {
 	return data, nil
 }
 
+func (b *Bounce) FileDownloaded(fileID uuid.UUID) bool {
+	var f file
+	err := b.database.Select("downloaded").Where("id = ?", fileID).First(&f).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up file")
+		}
+	}
+
+	return f.Downloaded
+}
+
 func splitChunks(fileID uuid.UUID, data []byte) ([]chunk, string) {
 	chunks := []chunk{}
 	hashes := []string{}

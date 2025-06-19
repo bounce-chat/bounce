@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/color"
 	"regexp"
@@ -12,6 +13,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/bbrks/go-blurhash"
@@ -68,9 +70,11 @@ type chatBubble struct {
 	chunkLengths     []float32
 	maxTextWidth     float32
 	maxMessageWidth  float32
+	fileIsDownloaded func(uuid.UUID) bool
+	saveFile         func(uuid.UUID)
 }
 
-func newChatBubbleTemplate(fileGetter func(uuid.UUID) ([]byte, error)) *chatBubble {
+func (ui *ui) newChatBubbleTemplate() *chatBubble {
 	message := widget.NewRichText(&widget.TextSegment{
 		Text: "",
 		Style: widget.RichTextStyle{
@@ -163,7 +167,7 @@ func newChatBubbleTemplate(fileGetter func(uuid.UUID) ([]byte, error)) *chatBubb
 				rect:  image.Rect(0, 0, int(theme.IconInlineSize())*8, int(theme.IconInlineSize())*8),
 				color: color.Black,
 			})),
-			fileGetter: fileGetter,
+			fileGetter: ui.bounce.GetFileData,
 			imageCache: make(map[uuid.UUID]*canvas.Image),
 		},
 		imageAttachments: container.New(NewRowWrapLayout()),
@@ -180,11 +184,34 @@ func newChatBubbleTemplate(fileGetter func(uuid.UUID) ([]byte, error)) *chatBubb
 			read,
 			errorIcon,
 		),
-		pending:   pending,
-		synced:    synced,
-		delivered: delivered,
-		read:      read,
-		errorIcon: errorIcon,
+		pending:          pending,
+		synced:           synced,
+		delivered:        delivered,
+		read:             read,
+		errorIcon:        errorIcon,
+		fileIsDownloaded: ui.bounce.FileDownloaded,
+		saveFile: func(attachmentID uuid.UUID) {
+			dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
+				if err != nil {
+					return
+				}
+
+				if writer == nil {
+					return
+				}
+
+				data, err := ui.bounce.GetFileData(attachmentID)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error getting data for file attachment")
+					ui.showDialog(dialog.NewError(errors.New("error saving file: "+err.Error()), ui.mainWindow), nil)
+				} else {
+					writer.Write(data)
+				}
+				writer.Close()
+			}, ui.mainWindow).Show()
+		},
 	}
 	cb.decorations = container.NewHBox(
 		cb.timestamp,
@@ -331,7 +358,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 					},
 				},
 				remove: widget.NewButtonWithIcon("", theme.DownloadIcon(), func() {
-					// TODO: pop a file save dialog open, get the data from sqlite, and write it
+					cb.saveFile(attachment.ID)
 				}),
 			}
 			pma.filename.Truncation = fyne.TextTruncateEllipsis
@@ -340,7 +367,11 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 
 			pma.ExtendBaseWidget(pma)
 
-			// TODO: if the file data isn't present in sqlite, disable the download button
+			if cb.fileIsDownloaded(attachment.ID) {
+				pma.remove.Enable()
+			} else {
+				pma.remove.Disable()
+			}
 
 			cb.fileAttachments.Add(pma)
 		}

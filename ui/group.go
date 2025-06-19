@@ -552,19 +552,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		}
 	}
 	group.button = newThreadButton(newDefaultImage(group.id, group.images, group.initial, 64, ui.bounce.GetFileData, openThread), group.name, openThread)
-	group.scroll = newChatHistory(
-		group.id,
-		ui.profile.id,
-		ui.messages,
-		ui.bounce.MarkAsRead,
-		group.button.setUnreadCount,
-		func(id uuid.UUID) {
-			ui.bounce.MarkAllGroupMessagesAsRead(id)
-			ui.mainWindow.Canvas().Focus(group.entry)
-		},
-		func() bool { return ui.focused },
-		ui.bounce.GetFileData,
-	)
+	group.scroll = ui.newChatHistory(group)
 
 	// Keep the last message time counter up to date
 	go func() {

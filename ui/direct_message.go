@@ -258,19 +258,7 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 	}
 	dm.button = newThreadButton(newDefaultImage(user.id, bounceUser.Images, user.initials, 64, ui.bounce.GetFileData, openThread), user.name, openThread)
 	dm.button.Refresh()
-	dm.scroll = newChatHistory(
-		dm.user.id,
-		ui.profile.id,
-		ui.messages,
-		ui.bounce.MarkAsRead,
-		dm.button.setUnreadCount,
-		func(id uuid.UUID) {
-			ui.bounce.MarkAllDirectMessagesAsRead(id)
-			ui.mainWindow.Canvas().Focus(dm.entry)
-		},
-		func() bool { return ui.focused },
-		ui.bounce.GetFileData,
-	)
+	dm.scroll = ui.newChatHistory(dm)
 
 	// Keep the last message time counter up to date
 	go func() {

@@ -51,30 +51,29 @@ type chatHistory struct {
 	seenTracking          map[uuid.UUID]bool
 }
 
-func newChatHistory(threadID, myID uuid.UUID, messageStore *messageStore, readCallback func(uuid.UUID, string), unreadCountCallback func(int), markAllAsReadCallback func(uuid.UUID), windowFocused func() bool, fileGetter func(uuid.UUID) ([]byte, error)) *chatHistory {
-	if readCallback == nil {
-		log.Fatal("cannot create chat history widget without read callback")
-	}
-
+func (ui *ui) newChatHistory(t thread) *chatHistory {
 	ch := &chatHistory{
-		id:                    threadID,
-		myID:                  myID,
-		messages:              messageStore,
-		items:                 []threadable{},
-		ids:                   []uuid.UUID{},
-		heights:               []float32{},
-		readCallback:          readCallback,
-		unreadCountCallback:   unreadCountCallback,
-		markAllAsReadCallback: markAllAsReadCallback,
-		seenTracking:          make(map[uuid.UUID]bool),
-		windowFocused:         windowFocused,
+		id:                  t.getID(),
+		myID:                ui.profile.id,
+		messages:            ui.messages,
+		items:               []threadable{},
+		ids:                 []uuid.UUID{},
+		heights:             []float32{},
+		readCallback:        ui.bounce.MarkAsRead,
+		unreadCountCallback: t.getButton().setUnreadCount,
+		markAllAsReadCallback: func(id uuid.UUID) {
+			ui.bounce.MarkAllDirectMessagesAsRead(id)
+			ui.mainWindow.Canvas().Focus(t.getEntry())
+		},
+		seenTracking:  make(map[uuid.UUID]bool),
+		windowFocused: func() bool { return ui.focused },
 	}
 	ch.Length = func() int {
 		return len(ch.items)
 	}
 	ch.CreateItem = func() fyne.CanvasObject {
 		return container.NewStack(
-			newChatBubbleTemplate(fileGetter),
+			ui.newChatBubbleTemplate(),
 			newStatusChangeTemplate(),
 		)
 	}
