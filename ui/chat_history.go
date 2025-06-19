@@ -419,7 +419,6 @@ func (ch *chatHistory) MinSize() fyne.Size {
 		Height: ch.BaseWidget.MinSize().Height,
 		Width:  imageAttachmentWidth + bufferSize + iconSize + theme.Padding()*6,
 	}
-	//return ch.BaseWidget.MinSize()
 }
 
 func (ch *chatHistory) RefreshItem(index int) {

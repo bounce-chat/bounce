@@ -52,6 +52,7 @@ type chatBubble struct {
 	username         *widget.RichText
 	message          *widget.RichText
 	imageAttachments *fyne.Container
+	fileAttachments  *fyne.Container
 	icon             *defaultImage
 	background       *canvas.Rectangle
 	decorations      *fyne.Container
@@ -165,6 +166,8 @@ func newChatBubbleTemplate(fileGetter func(uuid.UUID) ([]byte, error)) *chatBubb
 			fileGetter: fileGetter,
 			imageCache: make(map[uuid.UUID]*canvas.Image),
 		},
+		imageAttachments: container.New(NewRowWrapLayout()),
+		fileAttachments:  container.NewVBox(),
 		background: &canvas.Rectangle{
 			CornerRadius: 15,
 		},
@@ -239,6 +242,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 
 	cb.rawImages = []image.Image{}
 	cb.imageData = [][]byte{}
+	cb.imageAttachments.Objects = []fyne.CanvasObject{}
 	if len(m.imageAttachments) > 0 {
 		size := imageAttachmentWidth / float32(len(m.imageAttachments))
 		if size < 50 {
@@ -248,7 +252,6 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 			size -= theme.Padding()
 		}
 
-		cb.imageAttachments = container.New(NewRowWrapLayout())
 		for i, attachment := range m.imageAttachments {
 			var rawImage image.Image
 			var err error
@@ -305,12 +308,48 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 				),
 			)
 		}
-
+		cb.imageAttachments.Show()
 		cb.imageAttachments.Refresh()
 	} else {
-		cb.imageAttachments = nil
+		cb.imageAttachments.Hide()
 	}
-	// TODO: file attachments
+	cb.fileAttachments.Objects = []fyne.CanvasObject{}
+	if len(m.fileAttachments) > 0 {
+		for _, attachment := range m.fileAttachments {
+			pma := &pendingMessageAttachment{
+				id:       attachment.ID,
+				reader:   nil,
+				fileSize: attachment.Size,
+				isImage:  false,
+				icon:     canvas.NewImageFromResource(theme.FileIcon()),
+				filename: widget.NewRichTextWithText(attachment.Name),
+				size: &canvas.Text{
+					Text:     fileSizeString(attachment.Size),
+					TextSize: theme.TextSize() * 0.75,
+					TextStyle: fyne.TextStyle{
+						Italic: true,
+					},
+				},
+				remove: widget.NewButtonWithIcon("", theme.DownloadIcon(), func() {
+					// TODO: pop a file save dialog open, get the data from sqlite, and write it
+				}),
+			}
+			pma.filename.Truncation = fyne.TextTruncateEllipsis
+			pma.remove.Importance = widget.LowImportance
+			pma.icon.FillMode = canvas.ImageFillContain
+
+			pma.ExtendBaseWidget(pma)
+
+			// TODO: if the file data isn't present in sqlite, disable the download button
+
+			cb.fileAttachments.Add(pma)
+		}
+
+		cb.fileAttachments.Show()
+		cb.fileAttachments.Refresh()
+	} else {
+		cb.fileAttachments.Hide()
+	}
 
 	cb.maxMessageWidth = fyne.MeasureText(
 		longestLine(cb.message.Segments[0].(*widget.TextSegment).Text),
@@ -492,7 +531,7 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 	}
 
 	usedWidth := cbr.cb.maxTextWidth + theme.Padding()*4
-	if cbr.cb.imageAttachments != nil {
+	if cbr.cb.imageAttachments.Visible() {
 		usedWidth = imageAttachmentWidth + theme.Padding()*4
 	}
 	decorationsWidth := cbr.cb.decorations.MinSize().Width + theme.Padding()
@@ -508,11 +547,28 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 		} else {
 			messageAndDecorations := cbr.cb.maxMessageWidth + decorationsWidth + theme.Padding()*3
 			if messageAndDecorations > usedWidth {
-				if cbr.cb.imageAttachments != nil && messageAndDecorations > imageAttachmentWidth {
+				if cbr.cb.imageAttachments.Visible() && messageAndDecorations > imageAttachmentWidth {
 					cbr.decorationsOnNewLine = true
 				} else {
 					usedWidth = messageAndDecorations
 				}
+			}
+		}
+	}
+
+	if cbr.cb.fileAttachments.Visible() {
+		max := float32(0)
+		for _, attachment := range cbr.cb.fileAttachments.Objects {
+			ideal := attachment.(*pendingMessageAttachment).idealWidth() + theme.Padding()*4
+			if ideal > max {
+				max = ideal
+			}
+		}
+		if max > usedWidth {
+			if max > imageAttachmentWidth {
+				usedWidth = imageAttachmentWidth + theme.Padding()*4
+			} else {
+				usedWidth = max
 			}
 		}
 	}
@@ -543,10 +599,16 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 		messageTop += cbr.cb.username.MinSize().Height - theme.Padding()*2
 	}
 
-	if cbr.cb.imageAttachments != nil {
+	if cbr.cb.imageAttachments.Visible() {
 		cbr.cb.imageAttachments.Resize(fyne.Size{Height: size.Height, Width: width})
 		cbr.cb.imageAttachments.Move(fyne.Position{leftBorder + theme.Padding()*2, messageTop + theme.Padding()*2})
 		messageTop += cbr.cb.imageAttachments.MinSize().Height + theme.Padding()*2
+	}
+
+	if cbr.cb.fileAttachments.Visible() {
+		cbr.cb.fileAttachments.Resize(fyne.Size{Height: size.Height, Width: width})
+		cbr.cb.fileAttachments.Move(fyne.Position{leftBorder + theme.Padding()*2, messageTop + theme.Padding()*2})
+		messageTop += cbr.cb.fileAttachments.MinSize().Height + theme.Padding()*2
 	}
 
 	if cbr.cb.decorations.Visible() {
@@ -587,9 +649,16 @@ func (cbr *chatBubbleRenderer) MinSize() fyne.Size {
 		minSize.Height += unmergedVerticalBuffer
 	}
 
-	if cbr.cb.imageAttachments != nil {
+	if cbr.cb.imageAttachments.Visible() {
 		minSize.Height += cbr.cb.imageAttachments.MinSize().Height + theme.Padding()*2
 		minSize.Width = imageAttachmentWidth + theme.Padding()*4 + bufferSize
+	}
+
+	if cbr.cb.fileAttachments.Visible() {
+		minSize.Height += cbr.cb.fileAttachments.MinSize().Height + theme.Padding()*2
+		if cbr.cb.fileAttachments.MinSize().Width > minSize.Width {
+			minSize.Width = cbr.cb.fileAttachments.MinSize().Width + theme.Padding()*4 + bufferSize
+		}
 	}
 
 	return minSize
@@ -602,9 +671,8 @@ func (cbr *chatBubbleRenderer) Objects() []fyne.CanvasObject {
 		cbr.cb.username,
 		cbr.cb.message,
 		cbr.cb.icon,
-	}
-	if cbr.cb.imageAttachments != nil {
-		objs = append(objs, cbr.cb.imageAttachments)
+		cbr.cb.imageAttachments,
+		cbr.cb.fileAttachments,
 	}
 	return objs
 }

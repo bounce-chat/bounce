@@ -180,6 +180,26 @@ func (pma *pendingMessageAttachment) CreateRenderer() fyne.WidgetRenderer {
 	return pmar
 }
 
+func (pma *pendingMessageAttachment) idealWidth() float32 {
+	return theme.Padding() +
+		pma.icon.MinSize().Width +
+		theme.Padding() +
+		fyne.MeasureText(
+			pma.filename.Segments[0].(*widget.TextSegment).Text,
+			theme.Size(pma.filename.Segments[0].(*widget.TextSegment).Style.SizeName),
+			pma.filename.Segments[0].(*widget.TextSegment).Style.TextStyle,
+		).Width +
+		theme.Padding() +
+		fyne.MeasureText(
+			pma.size.Text,
+			pma.size.TextSize,
+			pma.size.TextStyle,
+		).Width +
+		theme.Padding()*7 +
+		pma.remove.MinSize().Width +
+		theme.Padding()
+}
+
 type pendingMessageAttachmentRenderer struct {
 	pma *pendingMessageAttachment
 }
