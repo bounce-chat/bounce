@@ -262,7 +262,7 @@ func (b *Bounce) dmOriginAcceptable(dm directMessage, dev device) bool {
 	}
 }
 
-func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]io.ReadCloser) {
+func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]io.ReadCloser, sources map[uuid.UUID]string) {
 	if message.ID != uuid.Nil {
 		log.Fatal("direct message ID cannot be set by the UI")
 	}
@@ -289,7 +289,7 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 	includedImageAttachments := []ImageAttachment{}
 	for _, ia := range message.ImageAttachments {
 		if ia.Size > EmbeddedFileLimit {
-			// TODO: this needs to be seeded from disk, and maybe sent as a regular file?
+			// TODO: automatically make this a file attachment that is seeded from disk
 			log.Warn("image too large to attach to message")
 			continue
 		}
@@ -314,7 +314,7 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 			continue
 		}
 
-		err = b.distributeFileByID(ia.ID, data, scopeUser, message.Thread, fileTypeMessageAttachment, dm.ID)
+		err = b.distributeFile(ia.ID, data, scopeUser, message.Thread, fileTypeMessageAttachment, dm.ID)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"id":    ia.ID,
@@ -338,48 +338,62 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 	includedFileAttachments := []FileAttachment{}
 	for _, fa := range message.FileAttachments {
 		if fa.Size > EmbeddedFileLimit {
-			// TODO: this needs to be seeded from disk, and maybe sent as a regular file?
-			log.Warn("file too large to attach to message")
-			continue
-		}
+			source, ok := sources[fa.ID]
+			if !ok {
+				log.WithFields(log.Fields{
+					"id":   fa.ID,
+					"name": fa.Name,
+				}).Error("cannot attach large large file to message without source")
+				continue
+			}
 
-		reader, ok := readers[fa.ID]
-		if !ok {
-			log.WithFields(log.Fields{
-				"id":   fa.ID,
-				"name": fa.Name,
-			}).Error("cannot attach file to message without reader")
-			continue
-		}
-
-		data, err := io.ReadAll(reader)
-		reader.Close()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"id":    fa.ID,
-				"name":  fa.Name,
-				"error": err.Error(),
-			}).Error("error reading file data to attach to message")
-			continue
-		}
-
-		err = b.distributeFileByID(fa.ID, data, scopeUser, message.Thread, fileTypeMessageAttachment, dm.ID)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"id":    fa.ID,
-				"name":  fa.Name,
-				"error": err.Error(),
-			}).Error("error distributing file attachment")
+			err := b.seedFile(fa.ID, source, scopeUser, message.Thread, fileTypeMessageAttachment, dm.ID)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    fa.ID,
+					"name":  fa.Name,
+					"error": err.Error(),
+				}).Error("error seeding file attachment")
+				continue
+			}
 		} else {
-			includedFileAttachments = append(includedFileAttachments, fa)
-			dm.FileAttachments = append(dm.FileAttachments, fileAttachment{
-				ID:        uuid.New(),
-				FileID:    fa.ID,
-				MessageID: dm.ID,
-				Name:      fa.Name,
-				Size:      fa.Size,
-			})
+			reader, ok := readers[fa.ID]
+			if !ok {
+				log.WithFields(log.Fields{
+					"id":   fa.ID,
+					"name": fa.Name,
+				}).Error("cannot attach file to message without reader")
+				continue
+			}
+
+			data, err := io.ReadAll(reader)
+			reader.Close()
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    fa.ID,
+					"name":  fa.Name,
+					"error": err.Error(),
+				}).Error("error reading file data to attach to message")
+				continue
+			}
+
+			err = b.distributeFile(fa.ID, data, scopeUser, message.Thread, fileTypeMessageAttachment, dm.ID)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    fa.ID,
+					"name":  fa.Name,
+					"error": err.Error(),
+				}).Error("error distributing file attachment")
+			}
 		}
+		includedFileAttachments = append(includedFileAttachments, fa)
+		dm.FileAttachments = append(dm.FileAttachments, fileAttachment{
+			ID:        uuid.New(),
+			FileID:    fa.ID,
+			MessageID: dm.ID,
+			Name:      fa.Name,
+			Size:      fa.Size,
+		})
 	}
 
 	err := b.database.Create(dm).Error

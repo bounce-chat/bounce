@@ -381,7 +381,8 @@ func (b *Bounce) UpdateProfileImage(newImage []byte) error {
 		return errInvalidImage
 	}
 
-	newImageID, err := b.distributeFile(newImage, scopeGlobal, currentUser.ID, fileTypeUserImage, currentUser.ID)
+	newImageID := uuid.New()
+	err := b.distributeFile(newImageID, newImage, scopeGlobal, currentUser.ID, fileTypeUserImage, currentUser.ID)
 	if err != nil {
 		return err
 	}

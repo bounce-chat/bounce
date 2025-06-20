@@ -71,6 +71,7 @@ type chatBubble struct {
 	maxTextWidth     float32
 	maxMessageWidth  float32
 	fileIsDownloaded func(uuid.UUID) bool
+	fileIsEmbedded   func(uuid.UUID) bool
 	saveFile         func(uuid.UUID)
 }
 
@@ -190,6 +191,7 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 		read:             read,
 		errorIcon:        errorIcon,
 		fileIsDownloaded: ui.bounce.FileDownloaded,
+		fileIsEmbedded:   ui.bounce.FileEmbedded,
 		saveFile: func(attachmentID uuid.UUID) {
 			dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
 				if err != nil {
@@ -200,16 +202,20 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 					return
 				}
 
-				data, err := ui.bounce.GetFileData(attachmentID)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Error("error getting data for file attachment")
-					ui.showDialog(dialog.NewError(errors.New("error saving file: "+err.Error()), ui.mainWindow), nil)
+				if ui.bounce.FileEmbedded(attachmentID) {
+					data, err := ui.bounce.GetFileData(attachmentID)
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Error("error getting data for file attachment")
+						ui.showDialog(dialog.NewError(errors.New("error saving file: "+err.Error()), ui.mainWindow), nil)
+					} else {
+						writer.Write(data)
+					}
+					writer.Close()
 				} else {
-					writer.Write(data)
+					ui.bounce.DownloadFileToDisk(attachmentID, writer.URI().Path())
 				}
-				writer.Close()
 			}, ui.mainWindow).Show()
 		},
 	}
@@ -345,7 +351,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 		for _, attachment := range m.fileAttachments {
 			pma := newMessageAttachment(attachment.ID, attachment.Name, attachment.Size, func() { cb.saveFile(attachment.ID) })
 
-			if cb.fileIsDownloaded(attachment.ID) {
+			if !cb.fileIsEmbedded(attachment.ID) || (cb.fileIsEmbedded(attachment.ID) && cb.fileIsDownloaded(attachment.ID)) {
 				pma.action.Enable()
 			} else {
 				pma.action.Disable()

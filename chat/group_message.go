@@ -294,7 +294,7 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 	return &gm
 }
 
-func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io.ReadCloser) {
+func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io.ReadCloser, sources map[uuid.UUID]string) {
 	if message.ID != uuid.Nil {
 		log.Fatal("group message ID cannot be set by the UI")
 	}
@@ -327,7 +327,7 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 	includedImageAttachments := []ImageAttachment{}
 	for _, ia := range message.ImageAttachments {
 		if ia.Size > EmbeddedFileLimit {
-			// TODO: this needs to be seeded from disk, and maybe sent as a regular file?
+			// TODO: automatically make this a file attachment that is seeded from disk
 			log.Warn("image too large to attach to message")
 			continue
 		}
@@ -352,7 +352,7 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 			continue
 		}
 
-		err = b.distributeFileByID(ia.ID, data, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
+		err = b.distributeFile(ia.ID, data, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"id":    ia.ID,
@@ -376,48 +376,63 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 	includedFileAttachments := []FileAttachment{}
 	for _, fa := range message.FileAttachments {
 		if fa.Size > EmbeddedFileLimit {
-			// TODO: this needs to be seeded from disk, and maybe sent as a regular file?
-			log.Warn("file too large to attach to message")
-			continue
-		}
+			source, ok := sources[fa.ID]
+			if !ok {
+				log.WithFields(log.Fields{
+					"id":   fa.ID,
+					"name": fa.Name,
+				}).Error("cannot attach large file to message without reader")
+				continue
+			}
 
-		reader, ok := readers[fa.ID]
-		if !ok {
-			log.WithFields(log.Fields{
-				"id":   fa.ID,
-				"name": fa.Name,
-			}).Error("cannot attach file to message without reader")
-			continue
-		}
-
-		data, err := io.ReadAll(reader)
-		reader.Close()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"id":    fa.ID,
-				"name":  fa.Name,
-				"error": err.Error(),
-			}).Error("error reading file data to attach to message")
-			continue
-		}
-
-		err = b.distributeFileByID(fa.ID, data, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"id":    fa.ID,
-				"name":  fa.Name,
-				"error": err.Error(),
-			}).Error("error distributing file attachment")
+			err = b.seedFile(fa.ID, source, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    fa.ID,
+					"name":  fa.Name,
+					"error": err.Error(),
+				}).Error("error seeding file attachment")
+				continue
+			}
 		} else {
-			includedFileAttachments = append(includedFileAttachments, fa)
-			gm.FileAttachments = append(gm.FileAttachments, fileAttachment{
-				ID:        uuid.New(),
-				FileID:    fa.ID,
-				MessageID: gm.ID,
-				Name:      fa.Name,
-				Size:      fa.Size,
-			})
+			reader, ok := readers[fa.ID]
+			if !ok {
+				log.WithFields(log.Fields{
+					"id":   fa.ID,
+					"name": fa.Name,
+				}).Error("cannot attach file to message without reader")
+				continue
+			}
+
+			data, err := io.ReadAll(reader)
+			reader.Close()
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    fa.ID,
+					"name":  fa.Name,
+					"error": err.Error(),
+				}).Error("error reading file data to attach to message")
+				continue
+			}
+
+			err = b.distributeFile(fa.ID, data, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    fa.ID,
+					"name":  fa.Name,
+					"error": err.Error(),
+				}).Error("error embedding file attachment")
+				continue
+			}
 		}
+		includedFileAttachments = append(includedFileAttachments, fa)
+		gm.FileAttachments = append(gm.FileAttachments, fileAttachment{
+			ID:        uuid.New(),
+			FileID:    fa.ID,
+			MessageID: gm.ID,
+			Name:      fa.Name,
+			Size:      fa.Size,
+		})
 	}
 
 	gm.OriginalPayload, err = msgpack.Marshal(gm)

@@ -214,10 +214,12 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 		imageAttachments := []chat.ImageAttachment{}
 		fileAttachments := []chat.FileAttachment{}
 		readers := map[uuid.UUID]io.ReadCloser{}
+		sources := map[uuid.UUID]string{}
 
 		pendingAttachments := dm.pendingMessageAttachments.extract()
 		for _, pma := range pendingAttachments {
 			readers[pma.id] = pma.reader
+			sources[pma.id] = pma.reader.URI().Path()
 
 			if pma.isImage {
 				imageAttachments = append(
@@ -246,7 +248,7 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 		chatDM.ImageAttachments = imageAttachments
 		chatDM.FileAttachments = fileAttachments
 
-		ui.bounce.SendDirectMessage(chatDM, readers)
+		ui.bounce.SendDirectMessage(chatDM, readers, sources)
 	}
 
 	openThread := func() {

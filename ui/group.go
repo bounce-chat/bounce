@@ -510,10 +510,12 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		imageAttachments := []chat.ImageAttachment{}
 		fileAttachments := []chat.FileAttachment{}
 		readers := map[uuid.UUID]io.ReadCloser{}
+		sources := map[uuid.UUID]string{}
 
 		pendingAttachments := group.pendingMessageAttachments.extract()
 		for _, pma := range pendingAttachments {
 			readers[pma.id] = pma.reader
+			sources[pma.id] = pma.reader.URI().Path()
 
 			if pma.isImage {
 				imageAttachments = append(
@@ -541,7 +543,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 
 		gm.ImageAttachments = imageAttachments
 		gm.FileAttachments = fileAttachments
-		ui.bounce.SendGroupMessage(gm, readers)
+		ui.bounce.SendGroupMessage(gm, readers, sources)
 	}
 
 	openThread := func() {
