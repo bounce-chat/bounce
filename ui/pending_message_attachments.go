@@ -20,7 +20,7 @@ import (
 	"golang.org/x/image/draw"
 )
 
-type pendingMessageAttachment struct {
+type messageAttachment struct {
 	widget.BaseWidget
 
 	id       uuid.UUID
@@ -34,10 +34,36 @@ type pendingMessageAttachment struct {
 	icon     *canvas.Image
 	filename *widget.RichText
 	size     *canvas.Text
-	remove   *widget.Button
+	action   *widget.Button
 }
 
-func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, removeCallback func()) (*pendingMessageAttachment, error) {
+func newMessageAttachment(id uuid.UUID, name string, size int64, actionCallback func()) *messageAttachment {
+	ma := &messageAttachment{
+		id:       id,
+		reader:   nil,
+		fileSize: size,
+		isImage:  false,
+		icon:     canvas.NewImageFromResource(theme.FileIcon()),
+		filename: widget.NewRichTextWithText(name),
+		size: &canvas.Text{
+			Text:     fileSizeString(size),
+			TextSize: theme.TextSize() * 0.75,
+			TextStyle: fyne.TextStyle{
+				Italic: true,
+			},
+		},
+		action: widget.NewButtonWithIcon("", theme.DownloadIcon(), actionCallback),
+	}
+	ma.filename.Truncation = fyne.TextTruncateEllipsis
+	ma.action.Importance = widget.LowImportance
+	ma.icon.FillMode = canvas.ImageFillContain
+
+	ma.ExtendBaseWidget(ma)
+
+	return ma
+}
+
+func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, actionCallback func()) (*messageAttachment, error) {
 	size := int64(0)
 	if fyne.CurrentDevice().IsMobile() {
 		var err error
@@ -142,7 +168,7 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, remove
 		icon = canvas.NewImageFromResource(theme.FileIcon())
 	}
 
-	pma := &pendingMessageAttachment{
+	ma := &messageAttachment{
 		id:       id,
 		reader:   reader,
 		fileSize: size,
@@ -159,98 +185,98 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, remove
 				Italic: true,
 			},
 		},
-		remove: widget.NewButtonWithIcon("", theme.CancelIcon(), removeCallback),
+		action: widget.NewButtonWithIcon("", theme.CancelIcon(), actionCallback),
 	}
-	pma.filename.Truncation = fyne.TextTruncateEllipsis
-	pma.remove.Importance = widget.LowImportance
-	pma.icon.FillMode = canvas.ImageFillContain
+	ma.filename.Truncation = fyne.TextTruncateEllipsis
+	ma.action.Importance = widget.LowImportance
+	ma.icon.FillMode = canvas.ImageFillContain
 
-	pma.ExtendBaseWidget(pma)
+	ma.ExtendBaseWidget(ma)
 
-	return pma, nil
+	return ma, nil
 }
 
-func (pma *pendingMessageAttachment) CreateRenderer() fyne.WidgetRenderer {
-	pma.ExtendBaseWidget(pma)
+func (ma *messageAttachment) CreateRenderer() fyne.WidgetRenderer {
+	ma.ExtendBaseWidget(ma)
 
-	pmar := &pendingMessageAttachmentRenderer{
-		pma: pma,
+	mar := &messageAttachmentRenderer{
+		ma: ma,
 	}
 
-	return pmar
+	return mar
 }
 
-func (pma *pendingMessageAttachment) idealWidth() float32 {
+func (ma *messageAttachment) idealWidth() float32 {
 	return theme.Padding() +
-		pma.icon.MinSize().Width +
+		ma.icon.MinSize().Width +
 		theme.Padding() +
 		fyne.MeasureText(
-			pma.filename.Segments[0].(*widget.TextSegment).Text,
-			theme.Size(pma.filename.Segments[0].(*widget.TextSegment).Style.SizeName),
-			pma.filename.Segments[0].(*widget.TextSegment).Style.TextStyle,
+			ma.filename.Segments[0].(*widget.TextSegment).Text,
+			theme.Size(ma.filename.Segments[0].(*widget.TextSegment).Style.SizeName),
+			ma.filename.Segments[0].(*widget.TextSegment).Style.TextStyle,
 		).Width +
 		theme.Padding() +
 		fyne.MeasureText(
-			pma.size.Text,
-			pma.size.TextSize,
-			pma.size.TextStyle,
+			ma.size.Text,
+			ma.size.TextSize,
+			ma.size.TextStyle,
 		).Width +
 		theme.Padding()*7 +
-		pma.remove.MinSize().Width +
+		ma.action.MinSize().Width +
 		theme.Padding()
 }
 
-type pendingMessageAttachmentRenderer struct {
-	pma *pendingMessageAttachment
+type messageAttachmentRenderer struct {
+	ma *messageAttachment
 }
 
-func (pmar *pendingMessageAttachmentRenderer) Destroy() {}
+func (mar *messageAttachmentRenderer) Destroy() {}
 
-func (pmar *pendingMessageAttachmentRenderer) Layout(size fyne.Size) {
-	pmar.pma.icon.Resize(fyne.Size{
+func (mar *messageAttachmentRenderer) Layout(size fyne.Size) {
+	mar.ma.icon.Resize(fyne.Size{
 		theme.IconInlineSize(),
 		theme.IconInlineSize(),
 	})
-	pmar.pma.icon.Move(fyne.Position{
+	mar.ma.icon.Move(fyne.Position{
 		theme.Padding(),
-		(size.Height - pmar.pma.icon.Size().Height) / 2,
+		(size.Height - mar.ma.icon.Size().Height) / 2,
 	})
 
 	filenameSize := size
-	filenameSize.Width -= theme.Padding()*5 + pmar.pma.remove.MinSize().Width + pmar.pma.size.MinSize().Width + pmar.pma.icon.Size().Width
-	pmar.pma.filename.Resize(filenameSize)
-	pmar.pma.filename.Move(fyne.Position{
-		theme.Padding()*2 + pmar.pma.icon.Size().Width,
-		(size.Height - pmar.pma.filename.MinSize().Height) / 2,
+	filenameSize.Width -= theme.Padding()*5 + mar.ma.action.MinSize().Width + mar.ma.size.MinSize().Width + mar.ma.icon.Size().Width
+	mar.ma.filename.Resize(filenameSize)
+	mar.ma.filename.Move(fyne.Position{
+		theme.Padding()*2 + mar.ma.icon.Size().Width,
+		(size.Height - mar.ma.filename.MinSize().Height) / 2,
 	})
 
-	pmar.pma.size.Resize(pmar.pma.size.MinSize())
-	pmar.pma.size.Move(fyne.Position{
-		size.Width - pmar.pma.remove.MinSize().Width - pmar.pma.size.MinSize().Width - theme.Padding()*2,
-		(size.Height - pmar.pma.size.MinSize().Height) / 2,
+	mar.ma.size.Resize(mar.ma.size.MinSize())
+	mar.ma.size.Move(fyne.Position{
+		size.Width - mar.ma.action.MinSize().Width - mar.ma.size.MinSize().Width - theme.Padding()*2,
+		(size.Height - mar.ma.size.MinSize().Height) / 2,
 	})
 
-	pmar.pma.remove.Resize(pmar.pma.remove.MinSize())
-	pmar.pma.remove.Move(fyne.Position{size.Width - pmar.pma.remove.MinSize().Width - theme.Padding(), theme.Padding()})
+	mar.ma.action.Resize(mar.ma.action.MinSize())
+	mar.ma.action.Move(fyne.Position{size.Width - mar.ma.action.MinSize().Width - theme.Padding(), theme.Padding()})
 }
 
-func (pmar *pendingMessageAttachmentRenderer) MinSize() fyne.Size {
-	size := pmar.pma.filename.MinSize()
-	size.Width += theme.Padding()*5 + pmar.pma.icon.MinSize().Width + pmar.pma.remove.MinSize().Width + pmar.pma.size.MinSize().Width
+func (mar *messageAttachmentRenderer) MinSize() fyne.Size {
+	size := mar.ma.filename.MinSize()
+	size.Width += theme.Padding()*5 + mar.ma.icon.MinSize().Width + mar.ma.action.MinSize().Width + mar.ma.size.MinSize().Width
 	return size
 }
 
-func (pmar *pendingMessageAttachmentRenderer) Objects() []fyne.CanvasObject {
+func (mar *messageAttachmentRenderer) Objects() []fyne.CanvasObject {
 	return []fyne.CanvasObject{
-		pmar.pma.icon,
-		pmar.pma.filename,
-		pmar.pma.size,
-		pmar.pma.remove,
+		mar.ma.icon,
+		mar.ma.filename,
+		mar.ma.size,
+		mar.ma.action,
 	}
 }
 
-func (pmar *pendingMessageAttachmentRenderer) Refresh() {
-	for _, obj := range pmar.Objects() {
+func (mar *messageAttachmentRenderer) Refresh() {
+	for _, obj := range mar.Objects() {
 		obj.Refresh()
 	}
 }
@@ -258,7 +284,7 @@ func (pmar *pendingMessageAttachmentRenderer) Refresh() {
 type pendingMessageAttachments struct {
 	widget.BaseWidget
 
-	files []*pendingMessageAttachment
+	files []*messageAttachment
 
 	attachments *fyne.Container
 	scroll      *container.Scroll
@@ -287,7 +313,7 @@ func (pmas *pendingMessageAttachments) add(reader fyne.URIReadCloser) {
 }
 
 func (pmas *pendingMessageAttachments) remove(id uuid.UUID) {
-	pruned := []*pendingMessageAttachment{}
+	pruned := []*messageAttachment{}
 
 	for _, file := range pmas.files {
 		if file.id != id {
@@ -298,9 +324,9 @@ func (pmas *pendingMessageAttachments) remove(id uuid.UUID) {
 	pmas.Refresh()
 }
 
-func (pmas *pendingMessageAttachments) extract() []*pendingMessageAttachment {
+func (pmas *pendingMessageAttachments) extract() []*messageAttachment {
 	content := pmas.files
-	pmas.files = []*pendingMessageAttachment{}
+	pmas.files = []*messageAttachment{}
 	pmas.Refresh()
 
 	return content

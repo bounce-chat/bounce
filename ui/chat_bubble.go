@@ -343,34 +343,12 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	cb.fileAttachments.Objects = []fyne.CanvasObject{}
 	if len(m.fileAttachments) > 0 {
 		for _, attachment := range m.fileAttachments {
-			pma := &pendingMessageAttachment{
-				id:       attachment.ID,
-				reader:   nil,
-				fileSize: attachment.Size,
-				isImage:  false,
-				icon:     canvas.NewImageFromResource(theme.FileIcon()),
-				filename: widget.NewRichTextWithText(attachment.Name),
-				size: &canvas.Text{
-					Text:     fileSizeString(attachment.Size),
-					TextSize: theme.TextSize() * 0.75,
-					TextStyle: fyne.TextStyle{
-						Italic: true,
-					},
-				},
-				remove: widget.NewButtonWithIcon("", theme.DownloadIcon(), func() {
-					cb.saveFile(attachment.ID)
-				}),
-			}
-			pma.filename.Truncation = fyne.TextTruncateEllipsis
-			pma.remove.Importance = widget.LowImportance
-			pma.icon.FillMode = canvas.ImageFillContain
-
-			pma.ExtendBaseWidget(pma)
+			pma := newMessageAttachment(attachment.ID, attachment.Name, attachment.Size, func() { cb.saveFile(attachment.ID) })
 
 			if cb.fileIsDownloaded(attachment.ID) {
-				pma.remove.Enable()
+				pma.action.Enable()
 			} else {
-				pma.remove.Disable()
+				pma.action.Disable()
 			}
 
 			cb.fileAttachments.Add(pma)
@@ -590,7 +568,7 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 	if cbr.cb.fileAttachments.Visible() {
 		max := float32(0)
 		for _, attachment := range cbr.cb.fileAttachments.Objects {
-			ideal := attachment.(*pendingMessageAttachment).idealWidth() + theme.Padding()*4
+			ideal := attachment.(*messageAttachment).idealWidth() + theme.Padding()*4
 			if ideal > max {
 				max = ideal
 			}
