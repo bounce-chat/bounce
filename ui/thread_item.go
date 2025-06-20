@@ -329,9 +329,15 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 				}
 
 				if len(gm.FileAttachments) > 1 {
-					changeString += " and files"
+					if len(gm.ImageAttachments) != 0 {
+						changeString += " and "
+					}
+					changeString += "files"
 				} else if len(gm.FileAttachments) == 1 {
-					changeString += " and a file"
+					if len(gm.ImageAttachments) != 0 {
+						changeString += " and "
+					}
+					changeString += "a file"
 				}
 
 				tb.setLastAction(changeString, mine) // TODO: possible to bind actor's name?

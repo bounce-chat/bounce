@@ -376,6 +376,21 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 					return
 				}
 
+				var size int64
+				size, reader, err = fileSizeInReader(reader)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error getting file size")
+					reader.Close()
+					return
+				}
+				if size > chat.EmbeddedFileLimit {
+					ui.showDialog(dialog.NewError(errors.New("file is too large"), ui.mainWindow), nil)
+					reader.Close()
+					return
+				}
+
 				data, err := io.ReadAll(reader)
 				reader.Close()
 				if err != nil {

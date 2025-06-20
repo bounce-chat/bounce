@@ -64,32 +64,15 @@ func newMessageAttachment(id uuid.UUID, name string, size int64, actionCallback 
 }
 
 func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, actionCallback func()) (*messageAttachment, error) {
-	size := int64(0)
-	if fyne.CurrentDevice().IsMobile() {
-		var err error
-		size, err = io.Copy(io.Discard, reader)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error reading data to get size")
-		}
-		reader.Close()
-		reader, err = storage.Reader(reader.URI())
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error re-opening reader")
-		}
-	} else {
-		f, err := os.Stat(reader.URI().Path())
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-				"path":  reader.URI().Path(),
-			}).Error("file selected as message attachment cannot be read from disk")
-			return nil, err
-		}
-		size = f.Size()
+	var size int64
+	var err error
+	size, reader, err = fileSizeInReader(reader)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"id":    id,
+			"error": err.Error(),
+		}).Error("error getting file size")
+		return nil, err
 	}
 	sizeString := fileSizeString(size)
 
@@ -412,4 +395,28 @@ func fileSizeString(size int64) string {
 	}
 
 	return fmt.Sprintf("%.1f %s", float64(size)/float64(div), suffixes[exp])
+}
+
+func fileSizeInReader(reader fyne.URIReadCloser) (int64, fyne.URIReadCloser, error) {
+	size := int64(0)
+	if fyne.CurrentDevice().IsMobile() {
+		var err error
+		size, err = io.Copy(io.Discard, reader)
+		if err != nil {
+			return 0, nil, err
+		}
+		reader.Close()
+		reader, err = storage.Reader(reader.URI())
+		if err != nil {
+			return 0, nil, err
+		}
+	} else {
+		f, err := os.Stat(reader.URI().Path())
+		if err != nil {
+			return 0, nil, err
+		}
+		size = f.Size()
+	}
+
+	return size, reader, nil
 }
