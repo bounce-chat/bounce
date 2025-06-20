@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var gmDeliveryNotificationMutex sync.Mutex
@@ -242,7 +243,7 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 	gm.Seen = gm.Author == b.currentUserID()
 
 	// Save the new group message
-	err = b.database.Create(&gm).Error
+	err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&gm).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

@@ -167,7 +167,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 	dm.Seen = dm.Author == b.currentUserID()
 
 	// Save the new message
-	err = b.database.Create(&dm).Error
+	err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&dm).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
