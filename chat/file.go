@@ -679,7 +679,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 			}).Fatal("database error looking up file")
 		}
 		if f.Size > EmbeddedFileLimit {
-			fh, err := os.Open(f.Source)
+			fh, err := os.OpenFile(f.Source, os.O_RDWR|os.O_CREATE, 0644)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"path":  f.Source,
