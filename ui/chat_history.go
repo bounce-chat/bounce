@@ -47,11 +47,12 @@ type chatHistory struct {
 	windowFocused         func() bool
 	readCallback          func(uuid.UUID, string)
 	unreadCountCallback   func(int)
-	markAllAsReadCallback func(uuid.UUID)
+	markAllAsReadCallback func()
 	seenTracking          map[uuid.UUID]bool
 }
 
 func (ui *ui) newChatHistory(t thread) *chatHistory {
+	_, group := t.(*group)
 	ch := &chatHistory{
 		id:                  t.getID(),
 		myID:                ui.profile.id,
@@ -61,8 +62,12 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 		heights:             []float32{},
 		readCallback:        ui.bounce.MarkAsRead,
 		unreadCountCallback: t.getButton().setUnreadCount,
-		markAllAsReadCallback: func(id uuid.UUID) {
-			ui.bounce.MarkAllDirectMessagesAsRead(id)
+		markAllAsReadCallback: func() {
+			if group {
+				ui.bounce.MarkAllGroupMessagesAsRead(t.getID())
+			} else {
+				ui.bounce.MarkAllDirectMessagesAsRead(t.getID())
+			}
 			ui.mainWindow.Canvas().Focus(t.getEntry())
 		},
 		seenTracking:  make(map[uuid.UUID]bool),
@@ -96,7 +101,7 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 				ch.items[index].markSeen()
 				ch.seenTracking[id] = true
 			}
-			ch.markAllAsReadCallback(ch.id)
+			ch.markAllAsReadCallback()
 		},
 	)
 	ch.jumpToBottomIcon.Hide()
@@ -772,7 +777,7 @@ func (chl *chatHistoryLayout) offsetUpdated(pos fyne.Position) {
 
 	if pos.Y == chl.ch.contentHeight()-chl.ch.scroller.Size().Height {
 		if chl.ch.unread > 0 {
-			chl.ch.markAllAsReadCallback(chl.ch.id)
+			chl.ch.markAllAsReadCallback()
 			chl.ch.unread = 0
 			chl.ch.updateUnreadCounter()
 
