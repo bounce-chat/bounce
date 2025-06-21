@@ -46,15 +46,15 @@ var errInvalidImage = errors.New("invalid image data")
 type file struct {
 	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name            string
-	Source          string
 	Type            int
 	AttachedTo      uuid.UUID
 	Hash            string
 	Size            int64
 	ChunkSize       int
 	HashList        string
-	Wanted          bool `msgpack:"-"`
-	Downloaded      bool `msgpack:"-"`
+	Source          string `msgpack:"-"`
+	Wanted          bool   `msgpack:"-"`
+	Downloaded      bool   `msgpack:"-"`
 	Scope           int
 	Destination     uuid.UUID
 	Author          uuid.UUID
@@ -256,7 +256,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 	}
 
 	// TODO: for now, auto-download all message attachments, for testing
-	if f.Type == fileTypeMessageAttachment {
+	if f.Type == fileTypeMessageAttachment && f.Size < EmbeddedFileLimit {
 		f.Wanted = true
 	}
 
@@ -497,8 +497,9 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 	err = b.database.Select("chunk_size", "source", "size").Where("id = ?", c.FileID).First(&f).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
-			"peer":    peer,
-			"file_id": c.FileID,
+			"peer":     peer,
+			"file_id":  c.FileID,
+			"chunk_id": c.ID,
 		}).Warn("peer sent request for file chunk with unknown file")
 		return nil
 	} else if err != nil {
