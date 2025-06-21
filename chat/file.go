@@ -666,12 +666,12 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 		// Update the chunk data, either by updating the database record if the file is small enough,
 		// or by writing to disk
 		var f file
-		err = b.database.Select("chunk_size", "source", "size").Where("id = ?", c.FileID).First(&f).Error
+		err = b.database.Select("chunk_size", "source", "size").Where("id = ?", targetChunk.FileID).First(&f).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"peer":    peer,
 				"file_id": c.FileID,
-			}).Warn("peer sent request for file chunk with unknown file")
+			}).Warn("peer sent chunk without file ID")
 			return nil
 		} else if err != nil {
 			log.WithFields(log.Fields{
