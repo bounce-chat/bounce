@@ -1031,8 +1031,19 @@ func (b *Bounce) seedFile(fileID uuid.UUID, path string, scope int, destination 
 }
 
 func (b *Bounce) DownloadFileToDisk(fileID uuid.UUID, destination string) {
-	// TODO: reset the download status of all the chunks
-	err := b.database.Table("files").Where("id = ?", fileID).Update("source", destination).Error
+	err := b.database.Table("chunks").Where("file_id = ?", fileID).Update("downloaded", false).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("database error updating chunks")
+	}
+	err = b.database.Table("files").Where("id = ?", fileID).Update("downloaded", false).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("database error updating file")
+	}
+	err = b.database.Table("files").Where("id = ?", fileID).Update("source", destination).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
