@@ -483,7 +483,7 @@ func (b *Bounce) SetGroupImage(groupID uuid.UUID, image []byte) error {
 	}
 
 	fileID := uuid.New()
-	err := b.distributeFile(fileID, image, scopeGroup, groupID, fileTypeGroupImage, groupID)
+	err := b.embedFile(fileID, image, scopeGroup, groupID, fileTypeGroupImage, groupID)
 	if err != nil {
 		return err
 	}

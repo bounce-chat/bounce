@@ -210,7 +210,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		return newID, iconID, err
 	}
 	if len(image) > 0 {
-		err := b.distributeFile(iconID, image, scopeGlobal, u.ID, fileTypeUserImage, u.ID)
+		err := b.embedFile(iconID, image, scopeGlobal, u.ID, fileTypeUserImage, u.ID)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

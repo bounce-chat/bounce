@@ -502,6 +502,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		go ui.bounce.TypingInGroup(group.id)
 	}
 	entry.customOnSubmitted = func() {
+		entry.Disable()
 		gm := chat.GroupMessage{
 			Thread: group.id,
 			Text:   entry.Text,
@@ -544,6 +545,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		gm.ImageAttachments = imageAttachments
 		gm.FileAttachments = fileAttachments
 		ui.bounce.SendGroupMessage(gm, readers, sources)
+		entry.Enable()
 	}
 
 	openThread := func() {

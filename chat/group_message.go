@@ -352,7 +352,7 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 			continue
 		}
 
-		err = b.distributeFile(ia.ID, data, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
+		err = b.embedFile(ia.ID, data, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"id":    ia.ID,
@@ -415,7 +415,7 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 				continue
 			}
 
-			err = b.distributeFile(fa.ID, data, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
+			err = b.embedFile(fa.ID, data, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"id":    fa.ID,

@@ -206,6 +206,7 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 		go ui.bounce.TypingInDirectMessage(dm.user.id)
 	}
 	entry.customOnSubmitted = func() {
+		entry.Disable()
 		chatDM := chat.DirectMessage{
 			Thread: dm.user.id,
 			Text:   entry.Text,
@@ -249,6 +250,7 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 		chatDM.FileAttachments = fileAttachments
 
 		ui.bounce.SendDirectMessage(chatDM, readers, sources)
+		entry.Enable()
 	}
 
 	openThread := func() {

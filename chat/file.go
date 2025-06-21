@@ -30,6 +30,8 @@ const EmbeddedFileLimit = 1024 * 1024 * 20 // 20MiB
 const fileChunkSize = 1024 * 1024          // 1MiB
 const expectedChunkDeliverySeconds = 10    // 100KiB/s
 
+const downloadExtension = ".bouncedownload"
+
 const fileTypeGroupImage = 0
 const fileTypeUserImage = 1
 const fileTypeMessageAttachment = 2
@@ -237,10 +239,13 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 
 		// If a chunk with the same data already exists in the database, copy the data over and mark this one as downloaded
 		var preexistingChunk chunk
-		err = b.database.Where("hash =? AND downloaded = ?", chunkHash, true).First(&preexistingChunk).Error
+		err = b.database.Where("hash = ? AND downloaded = ?", chunkHash, true).First(&preexistingChunk).Error
 		if err == nil {
-			c.Data = preexistingChunk.Data
-			c.Downloaded = true
+			// Ignore chunks that are downloaded but stored on disk
+			if len(preexistingChunk.Data) > 0 {
+				c.Data = preexistingChunk.Data
+				c.Downloaded = true
+			}
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -494,7 +499,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 
 	// If the chunk data only exists on disk, load it from the disk and add it to this chunk
 	var f file
-	err = b.database.Select("chunk_size", "source", "size").Where("id = ?", c.FileID).First(&f).Error
+	err = b.database.Select("chunk_size", "source", "size", "downloaded").Where("id = ?", c.FileID).First(&f).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"peer":     peer,
@@ -508,7 +513,11 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 		}).Fatal("database error looking up file")
 	}
 	if f.Size > EmbeddedFileLimit {
-		fh, err := os.Open(f.Source)
+		filename := f.Source
+		if !f.Downloaded {
+			filename += downloadExtension
+		}
+		fh, err := os.Open(filename)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"path":  f.Source,
@@ -679,7 +688,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 			}).Fatal("database error looking up file")
 		}
 		if f.Size > EmbeddedFileLimit {
-			fh, err := os.OpenFile(f.Source, os.O_RDWR|os.O_CREATE, 0644)
+			fh, err := os.OpenFile(f.Source+downloadExtension, os.O_RDWR|os.O_CREATE, 0644)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"path":  f.Source,
@@ -747,6 +756,15 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 				}).Fatal("database error setting file as downloaded")
 			}
 			b.ui.FileCompleted(targetChunk.FileID)
+
+			if f.Size > EmbeddedFileLimit {
+				err = os.Rename(f.Source+downloadExtension, f.Source)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error renaming completed file")
+				}
+			}
 		}
 
 		// Offer this chunk
@@ -869,7 +887,7 @@ func (b *Bounce) makeChunkRequests() {
 	}
 }
 
-func (b *Bounce) distributeFile(fileID uuid.UUID, data []byte, scope int, destination uuid.UUID, fileType int, attachment uuid.UUID) error {
+func (b *Bounce) embedFile(fileID uuid.UUID, data []byte, scope int, destination uuid.UUID, fileType int, attachment uuid.UUID) error {
 	if len(data) > EmbeddedFileLimit {
 		return ErrFileTooBig
 	}
@@ -1013,6 +1031,7 @@ func (b *Bounce) seedFile(fileID uuid.UUID, path string, scope int, destination 
 }
 
 func (b *Bounce) DownloadFileToDisk(fileID uuid.UUID, destination string) {
+	// TODO: reset the download status of all the chunks
 	err := b.database.Table("files").Where("id = ?", fileID).Update("source", destination).Error
 	if err != nil {
 		log.WithFields(log.Fields{
