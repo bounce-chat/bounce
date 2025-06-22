@@ -952,6 +952,40 @@ func (b *Bounce) GetInitialState() InitialState {
 		}
 	}
 
+	fileProgress := []FileProgress{}
+	var pendingFiles []file
+	err = b.database.Where("downloaded = ? AND wanted = ? AND size > ?", false, true, EmbeddedFileLimit).Find(&pendingFiles).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up files in progress")
+	}
+	for _, f := range pendingFiles {
+		downloadedSize := int64(0)
+
+		var chunks []chunk
+		err = b.database.Where("file_id = ?", f.ID).Find(&chunks).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up chunks")
+		}
+
+		for _, c := range chunks {
+			if c.Downloaded {
+				if c.Index == len(chunks)-1 {
+					// The last chunk might be smaller than the chunk size
+					downloadedSize += int64(f.Size % int64(f.ChunkSize))
+				} else {
+					downloadedSize += int64(f.ChunkSize)
+				}
+			}
+		}
+
+		fileDataDownloaded[f.ID] = downloadedSize
+		fileProgress = append(fileProgress, FileProgress{ID: f.ID, Progress: float64(downloadedSize) / float64(f.Size)})
+	}
+
 	// Create the initial state for the UI
 	return InitialState{
 		Profile:                                profile,
@@ -981,5 +1015,6 @@ func (b *Bounce) GetInitialState() InitialState {
 		UpdateGroupUserChangedGroupImages:      exportedUpdateGroupUserChangedGroupImages,
 		UpdateUserUpdateNames:                  exportedUpdateUserUpdateNames,
 		UpdateUserUpdateImages:                 exportedUpdateUserUpdateImages,
+		FileProgress:                           fileProgress,
 	}
 }

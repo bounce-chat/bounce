@@ -36,8 +36,8 @@ type chatBubbleData struct {
 	username         string
 	initials         string
 	text             string
-	imageAttachments []chat.ImageAttachment
-	fileAttachments  []chat.FileAttachment
+	imageAttachments []*chat.ImageAttachment
+	fileAttachments  []*chat.FileAttachment
 	outgoing         bool
 	direct           bool
 	writtenAt        int64
@@ -291,6 +291,14 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			break
 		}
 	}
+	imageAttachments := []*chat.ImageAttachment{}
+	for i := 0; i < len(gm.ImageAttachments); i++ {
+		imageAttachments = append(imageAttachments, &gm.ImageAttachments[i])
+	}
+	fileAttachments := []*chat.FileAttachment{}
+	for i := 0; i < len(gm.FileAttachments); i++ {
+		fileAttachments = append(fileAttachments, &gm.FileAttachments[i])
+	}
 	return &threadItem{
 		id: gm.ID,
 		widgetData: &chatBubbleData{
@@ -301,8 +309,8 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			username:         username,
 			initials:         initials,
 			text:             gm.Text,
-			imageAttachments: gm.ImageAttachments,
-			fileAttachments:  gm.FileAttachments,
+			imageAttachments: imageAttachments,
+			fileAttachments:  fileAttachments,
 			outgoing:         outgoing,
 			direct:           false,
 			writtenAt:        gm.WrittenAt,
@@ -403,6 +411,14 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 			break
 		}
 	}
+	imageAttachments := []*chat.ImageAttachment{}
+	for i := 0; i < len(dm.ImageAttachments); i++ {
+		imageAttachments = append(imageAttachments, &dm.ImageAttachments[i])
+	}
+	fileAttachments := []*chat.FileAttachment{}
+	for i := 0; i < len(dm.FileAttachments); i++ {
+		fileAttachments = append(fileAttachments, &dm.FileAttachments[i])
+	}
 	return &threadItem{
 		id: dm.ID,
 		widgetData: &chatBubbleData{
@@ -412,8 +428,8 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 			username:         username,
 			initials:         initials,
 			text:             dm.Text,
-			imageAttachments: dm.ImageAttachments,
-			fileAttachments:  dm.FileAttachments,
+			imageAttachments: imageAttachments,
+			fileAttachments:  fileAttachments,
 			outgoing:         outgoing,
 			direct:           true,
 			writtenAt:        dm.WrittenAt,

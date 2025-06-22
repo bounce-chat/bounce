@@ -45,9 +45,10 @@ type DMState struct {
 }
 
 type FileAttachment struct {
-	ID   uuid.UUID
-	Name string
-	Size int64
+	ID       uuid.UUID
+	Name     string
+	Size     int64
+	Progress float64
 }
 
 type ImageAttachment struct {
@@ -288,6 +289,11 @@ type ReadReceipt struct {
 	//TargetType string
 }
 
+type FileProgress struct {
+	ID       uuid.UUID
+	Progress float64
+}
+
 type InitialState struct {
 	Profile                                *User
 	Settings                               Settings
@@ -316,6 +322,7 @@ type InitialState struct {
 	UpdateGroupUserChangedGroupImages      []UpdateGroupUserChangedGroupImage
 	UpdateUserUpdateNames                  []UpdateUserUpdateName
 	UpdateUserUpdateImages                 []UpdateUserUpdateImage
+	FileProgress                           []FileProgress
 }
 
 //
@@ -405,6 +412,7 @@ type UI interface {
 
 	// File management
 	FileCompleted(uuid.UUID)
+	FileDownloadProgress(uuid.UUID, float64)
 }
 
 // Frames that support being marked as read

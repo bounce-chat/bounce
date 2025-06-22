@@ -72,7 +72,9 @@ type chatBubble struct {
 	maxMessageWidth  float32
 	fileIsDownloaded func(uuid.UUID) bool
 	fileIsEmbedded   func(uuid.UUID) bool
+	fileIsWanted     func(uuid.UUID) bool
 	saveFile         func(uuid.UUID)
+	cancelDownload   func(uuid.UUID)
 }
 
 func (ui *ui) newChatBubbleTemplate() *chatBubble {
@@ -192,6 +194,7 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 		errorIcon:        errorIcon,
 		fileIsDownloaded: ui.bounce.FileDownloaded,
 		fileIsEmbedded:   ui.bounce.FileEmbedded,
+		fileIsWanted:     ui.bounce.FileWanted,
 		saveFile: func(attachmentID uuid.UUID) {
 			dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
 				if err != nil {
@@ -215,8 +218,34 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 					writer.Close()
 				} else {
 					ui.bounce.DownloadFileToDisk(attachmentID, writer.URI().Path())
+					writer.Close()
 				}
 			}, ui.mainWindow).Show()
+		},
+		cancelDownload: func(attachmentID uuid.UUID) {
+			ui.bounce.CancelDownload(attachmentID)
+
+			messageID, ok := ui.messages.getMessageWithFile(attachmentID)
+			if !ok {
+				log.WithFields(log.Fields{
+					"file_id": messageID,
+				}).Warn("message not found with file while trying to cancel progress")
+				return
+			}
+
+			ui.threadWithItemMutex.Lock()
+			t, ok := ui.threadWithItem[messageID]
+			ui.threadWithItemMutex.Unlock()
+			if !ok {
+				log.WithFields(log.Fields{
+					"message_id": messageID,
+				}).Warn("thread not found with message")
+				return
+			}
+
+			fyne.Do(func() {
+				t.chatHistoryScroll().Refresh()
+			})
 		},
 	}
 	cb.decorations = container.NewHBox(
@@ -349,7 +378,17 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	cb.fileAttachments.Objects = []fyne.CanvasObject{}
 	if len(m.fileAttachments) > 0 {
 		for _, attachment := range m.fileAttachments {
-			pma := newMessageAttachment(attachment.ID, attachment.Name, attachment.Size, func() { cb.saveFile(attachment.ID) })
+			pma := newMessageAttachment(attachment.ID, attachment.Name, attachment.Size)
+
+			if !cb.fileIsEmbedded(attachment.ID) && cb.fileIsWanted(attachment.ID) && !cb.fileIsDownloaded(attachment.ID) {
+				pma.progress.Value = attachment.Progress
+				pma.progress.Show()
+				pma.action = widget.NewButtonWithIcon("", theme.CancelIcon(), func() { cb.cancelDownload(attachment.ID) })
+			} else {
+				pma.action = widget.NewButtonWithIcon("", theme.DownloadIcon(), func() { cb.saveFile(attachment.ID) })
+				pma.progress.Hide()
+			}
+			pma.action.Importance = widget.LowImportance
 
 			if !cb.fileIsEmbedded(attachment.ID) || (cb.fileIsEmbedded(attachment.ID) && cb.fileIsDownloaded(attachment.ID)) {
 				pma.action.Enable()

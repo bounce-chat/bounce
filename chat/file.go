@@ -25,6 +25,7 @@ var lastChunkTime = map[string]int64{}
 var lastChunkTimeMutex sync.Mutex
 var writingChunk = map[string]bool{}
 var writingChunkMutex sync.Mutex
+var fileDataDownloaded = map[uuid.UUID]int64{}
 
 const EmbeddedFileLimit = 1024 * 1024 * 20 // 20MiB
 const fileChunkSize = 1024 * 1024          // 1MiB
@@ -675,7 +676,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 		// Update the chunk data, either by updating the database record if the file is small enough,
 		// or by writing to disk
 		var f file
-		err = b.database.Select("chunk_size", "source", "size").Where("id = ?", targetChunk.FileID).First(&f).Error
+		err = b.database.Select("chunk_size", "source", "size", "wanted").Where("id = ?", targetChunk.FileID).First(&f).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"peer":    peer,
@@ -686,6 +687,9 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Fatal("database error looking up file")
+		}
+		if !f.Wanted {
+			continue
 		}
 		if f.Size > EmbeddedFileLimit {
 			fh, err := os.OpenFile(f.Source+downloadExtension, os.O_RDWR|os.O_CREATE, 0644)
@@ -723,6 +727,11 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 				}).Warn("error writing file containing chunk data")
 				return nil
 			}
+
+			progress, _ := fileDataDownloaded[targetChunk.FileID]
+			progress += int64(len(c.Data))
+			fileDataDownloaded[targetChunk.FileID] = progress
+			b.ui.FileDownloadProgress(targetChunk.FileID, float64(progress)/float64(f.Size))
 		} else {
 			err = b.database.Model(&targetChunk).Update("data", c.Data).Error
 			if err != nil {
@@ -1056,7 +1065,34 @@ func (b *Bounce) DownloadFileToDisk(fileID uuid.UUID, destination string) {
 		}).Error("database error updating file")
 	}
 
+	fileDataDownloaded[fileID] = 0
+	b.ui.FileDownloadProgress(fileID, 0)
 	b.makeChunkRequests()
+}
+
+func (b *Bounce) CancelDownload(fileID uuid.UUID) {
+	err := b.database.Table("files").Where("id = ?", fileID).Update("wanted", false).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("database error updating file")
+	}
+	err = b.database.Table("files").Where("id = ?", fileID).Update("downloaded", false).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("database error updating file")
+	}
+	err = b.database.Table("files").Where("id = ?", fileID).Update("downloaded", false).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("database error updating file")
+	}
+
+	//fileDataDownloaded[fileID] = 0 // TODO: hide the progress bar, probably don't need to reset this here
+
+	// TODO: delete the in-progress download file
 }
 
 func (b *Bounce) offerChunk(c chunk) {
@@ -1164,6 +1200,22 @@ func (b *Bounce) FileEmbedded(fileID uuid.UUID) bool {
 	}
 
 	return f.Size <= EmbeddedFileLimit
+}
+
+func (b *Bounce) FileWanted(fileID uuid.UUID) bool {
+	var f file
+	err := b.database.Select("wanted").Where("id = ?", fileID).First(&f).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up file")
+		}
+	}
+
+	return f.Wanted
 }
 
 func splitChunks(fileID uuid.UUID, data []byte) ([]chunk, string) {

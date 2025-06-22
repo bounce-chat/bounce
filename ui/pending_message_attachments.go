@@ -35,9 +35,10 @@ type messageAttachment struct {
 	filename *widget.RichText
 	size     *canvas.Text
 	action   *widget.Button
+	progress *widget.ProgressBar
 }
 
-func newMessageAttachment(id uuid.UUID, name string, size int64, actionCallback func()) *messageAttachment {
+func newMessageAttachment(id uuid.UUID, name string, size int64) *messageAttachment {
 	ma := &messageAttachment{
 		id:       id,
 		reader:   nil,
@@ -52,11 +53,14 @@ func newMessageAttachment(id uuid.UUID, name string, size int64, actionCallback 
 				Italic: true,
 			},
 		},
-		action: widget.NewButtonWithIcon("", theme.DownloadIcon(), actionCallback),
+		action:   widget.NewButtonWithIcon("", theme.DownloadIcon(), nil),
+		progress: widget.NewProgressBar(),
 	}
 	ma.filename.Truncation = fyne.TextTruncateEllipsis
 	ma.action.Importance = widget.LowImportance
 	ma.icon.FillMode = canvas.ImageFillContain
+	ma.progress.Hide()
+	ma.progress.TextFormatter = func() string { return "" }
 
 	ma.ExtendBaseWidget(ma)
 
@@ -168,11 +172,14 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, action
 				Italic: true,
 			},
 		},
-		action: widget.NewButtonWithIcon("", theme.CancelIcon(), actionCallback),
+		action:   widget.NewButtonWithIcon("", theme.CancelIcon(), actionCallback),
+		progress: widget.NewProgressBar(),
 	}
 	ma.filename.Truncation = fyne.TextTruncateEllipsis
 	ma.action.Importance = widget.LowImportance
 	ma.icon.FillMode = canvas.ImageFillContain
+	ma.progress.Hide()
+	ma.progress.TextFormatter = func() string { return "" }
 
 	ma.ExtendBaseWidget(ma)
 
@@ -240,7 +247,12 @@ func (mar *messageAttachmentRenderer) Layout(size fyne.Size) {
 	})
 
 	mar.ma.action.Resize(mar.ma.action.MinSize())
-	mar.ma.action.Move(fyne.Position{size.Width - mar.ma.action.MinSize().Width - theme.Padding(), theme.Padding()})
+	mar.ma.action.Move(fyne.Position{size.Width - mar.ma.action.MinSize().Width - theme.Padding()*2, 0})
+
+	if mar.ma.progress.Visible() {
+		mar.ma.progress.Resize(fyne.Size{Height: size.Height, Width: size.Width - theme.Padding()*3})
+		mar.ma.progress.Move(fyne.Position{})
+	}
 }
 
 func (mar *messageAttachmentRenderer) MinSize() fyne.Size {
@@ -251,6 +263,7 @@ func (mar *messageAttachmentRenderer) MinSize() fyne.Size {
 
 func (mar *messageAttachmentRenderer) Objects() []fyne.CanvasObject {
 	return []fyne.CanvasObject{
+		mar.ma.progress,
 		mar.ma.icon,
 		mar.ma.filename,
 		mar.ma.size,

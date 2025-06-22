@@ -594,6 +594,10 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			}
 		}
 		ui.refreshThreadOrder()
+
+		for _, fp := range state.FileProgress {
+			ui.FileDownloadProgress(fp.ID, fp.Progress)
+		}
 	})
 	go ui.messages.writeCache()
 }
@@ -680,6 +684,7 @@ func (ui *ui) FileCompleted(fileID uuid.UUID) {
 		t, ok := ui.threadWithItem[messageID]
 		ui.threadWithItemMutex.Unlock()
 		if ok {
+			// TODO hide any progress bars?
 			fyne.DoAndWait(func() { t.chatHistoryScroll().Refresh() })
 		}
 		return
@@ -701,6 +706,49 @@ func (ui *ui) FileCompleted(fileID uuid.UUID) {
 			dm.button.threadImage.Refresh()
 		})
 	}
+}
+
+func (ui *ui) FileDownloadProgress(fileID uuid.UUID, progress float64) {
+	messageID, ok := ui.messages.getMessageWithFile(fileID)
+	if !ok {
+		log.WithFields(log.Fields{
+			"file_id": fileID,
+		}).Warn("message not found with file while trying to update progress")
+		return
+	}
+	m, ok := ui.messages.get(messageID)
+	if !ok {
+		log.WithFields(log.Fields{
+			"message_id": messageID,
+		}).Warn("message not found in the message store")
+		return
+	}
+
+	ui.threadWithItemMutex.Lock()
+	t, ok := ui.threadWithItem[messageID]
+	ui.threadWithItemMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"message_id": messageID,
+		}).Warn("thread not found with message")
+		return
+	}
+
+	fyne.Do(func() {
+		cbd, ok := m.(*chatBubbleData)
+		if !ok {
+			log.WithFields(log.Fields{
+				"message_id": messageID,
+			}).Warn("message with file attachment is not a chat bubble")
+			return
+		}
+		for _, attachment := range cbd.fileAttachments {
+			if attachment.ID == fileID {
+				attachment.Progress = progress
+			}
+		}
+		t.chatHistoryScroll().Refresh()
+	})
 }
 
 func getConfigDirectory() string {
