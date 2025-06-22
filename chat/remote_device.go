@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"bytes"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -13,6 +14,7 @@ import (
 type remoteDevice struct {
 	connectedSockets       atomic.Int64
 	messages               chan sendable
+	chunks                 chan sendable
 	shutdownReceivers      map[uuid.UUID]chan bool
 	shutdownReceiversMutex sync.Mutex
 	closer                 sync.WaitGroup
@@ -22,6 +24,7 @@ func newRemoteDevice() *remoteDevice {
 	return &remoteDevice{
 		connectedSockets:  atomic.Int64{},
 		messages:          make(chan sendable),
+		chunks:            make(chan sendable),
 		shutdownReceivers: make(map[uuid.UUID]chan bool),
 	}
 }
@@ -32,6 +35,30 @@ func (rd *remoteDevice) shutdown() {
 		receiver <- true
 	}
 	rd.shutdownReceiversMutex.Unlock()
+}
+
+func (rd *remoteDevice) chunkDuty(writer uuid.UUID) bool {
+	// Whichever writer has the lowest ID is responsible for sending chunks
+	rd.shutdownReceiversMutex.Lock()
+	defer rd.shutdownReceiversMutex.Unlock()
+
+	if len(rd.shutdownReceivers) == 1 {
+		return true
+	}
+
+	uuidList := []uuid.UUID{}
+	for id, _ := range rd.shutdownReceivers {
+		uuidList = append(uuidList, id)
+	}
+
+	lowest := uuidList[0]
+	for _, id := range uuidList {
+		if bytes.Compare(id[:], lowest[:]) < 0 {
+			lowest = id
+		}
+	}
+
+	return writer == lowest
 }
 
 func (b *Bounce) getRemoteDevice(address string) *remoteDevice {
@@ -183,52 +210,77 @@ func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 	rd.shutdownReceivers[writerID] = shutdownReceiver
 	rd.shutdownReceiversMutex.Unlock()
 
-	for {
-		select {
-		case <-shutdownReceiver:
-			log.WithFields(log.Fields{
-				"peer": conn.RemoteAddr().String(),
-			}).Debug("closing connection")
-			rd.connectedSockets.Add(-1)
-			if !b.shutdownStarted.Load() {
-				b.updateUserOnlineStatus(conn.RemoteAddr().String())
-			}
-			conn.Close()
-			return
-		case br := <-rd.messages:
-			if _, revoked := b.devicePool.revokedDevices[conn.RemoteAddr().String()]; revoked {
-				// Only send revoked devices frames that are used to tell them they are revoked, and keep alives
-				if !(br.getType() == typeReferenceOffer || br.getType() == typeCatchUp || br.getType() == typeUpdateDevice || br.getType() == typeKeepAlive || br.getType() == typeAck) {
-					log.WithFields(log.Fields{
-						"type": br.getType(),
-						"peer": conn.RemoteAddr().String(),
-					}).Warn("attempt to send unexpected frame to revoked device")
-					continue
-				}
-			}
-
-			err := writeFrame(conn, br.getType(), br.getPayload())
-			if err != nil {
+	writeChunk := func(br sendable) {
+		if _, revoked := b.devicePool.revokedDevices[conn.RemoteAddr().String()]; revoked {
+			// Only send revoked devices frames that are used to tell them they are revoked, and keep alives
+			if !(br.getType() == typeReferenceOffer || br.getType() == typeCatchUp || br.getType() == typeUpdateDevice || br.getType() == typeKeepAlive || br.getType() == typeAck) {
 				log.WithFields(log.Fields{
-					"error": err.Error(),
-					"peer":  conn.RemoteAddr().String(),
-					"type":  br.getType(),
-				}).Debug("error writing frame")
-				rd.connectedSockets.Add(-1)
-				b.updateUserOnlineStatus(conn.RemoteAddr().String())
-
-				// If this socket died during a write, but there are other sockets that might still be alive,
-				// send references for anything that might not have made it through this socket
-				if rd.connectedSockets.Load() > 0 {
-					go b.sendReferences(conn.RemoteAddr().String())
-				}
-
-				// We will no longer be reading shutdown signals from the remote device
-				// so we remove our channel from the map
-				rd.shutdownReceiversMutex.Lock()
-				delete(rd.shutdownReceivers, writerID)
-				rd.shutdownReceiversMutex.Unlock()
+					"type": br.getType(),
+					"peer": conn.RemoteAddr().String(),
+				}).Warn("attempt to send unexpected frame to revoked device")
 				return
+			}
+		}
+
+		err := writeFrame(conn, br.getType(), br.getPayload())
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"peer":  conn.RemoteAddr().String(),
+				"type":  br.getType(),
+			}).Debug("error writing frame")
+			rd.connectedSockets.Add(-1)
+			b.updateUserOnlineStatus(conn.RemoteAddr().String())
+
+			// If this socket died during a write, but there are other sockets that might still be alive,
+			// send references for anything that might not have made it through this socket
+			if rd.connectedSockets.Load() > 0 {
+				go b.sendReferences(conn.RemoteAddr().String())
+			}
+
+			// We will no longer be reading shutdown signals from the remote device
+			// so we remove our channel from the map
+			rd.shutdownReceiversMutex.Lock()
+			delete(rd.shutdownReceivers, writerID)
+			rd.shutdownReceiversMutex.Unlock()
+			return
+		}
+	}
+
+	for {
+		// Only one socket at a time is responsible for sending chunks, in order to keep other
+		// frames delivering in a low latency way while a large file is being transferred
+		if rd.chunkDuty(writerID) {
+			select {
+			case <-shutdownReceiver:
+				log.WithFields(log.Fields{
+					"peer": conn.RemoteAddr().String(),
+				}).Debug("closing connection")
+				rd.connectedSockets.Add(-1)
+				if !b.shutdownStarted.Load() {
+					b.updateUserOnlineStatus(conn.RemoteAddr().String())
+				}
+				conn.Close()
+				return
+			case br := <-rd.messages:
+				writeChunk(br)
+			case br := <-rd.chunks:
+				writeChunk(br)
+			}
+		} else {
+			select {
+			case <-shutdownReceiver:
+				log.WithFields(log.Fields{
+					"peer": conn.RemoteAddr().String(),
+				}).Debug("closing connection")
+				rd.connectedSockets.Add(-1)
+				if !b.shutdownStarted.Load() {
+					b.updateUserOnlineStatus(conn.RemoteAddr().String())
+				}
+				conn.Close()
+				return
+			case br := <-rd.messages:
+				writeChunk(br)
 			}
 		}
 	}

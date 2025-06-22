@@ -121,7 +121,11 @@ func (b *Bounce) broadcast(br broadcastable) {
 
 func (b *Bounce) sendDirect(peer string, br sendable) {
 	rd := b.getRemoteDevice(peer)
-	rd.messages <- br
+	if br.getType() == typeChunk {
+		rd.chunks <- br
+	} else {
+		rd.messages <- br
+	}
 }
 
 func (b *Bounce) getBroadcastScope(br broadcastable, excludeDelivered bool) []string {
