@@ -1090,9 +1090,22 @@ func (b *Bounce) CancelDownload(fileID uuid.UUID) {
 		}).Error("database error updating file")
 	}
 
-	//fileDataDownloaded[fileID] = 0 // TODO: hide the progress bar, probably don't need to reset this here
-
-	// TODO: delete the in-progress download file
+	var f file
+	err = b.database.Select("source").Where("id = ?", fileID).First(&f).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"path":  f.Source + downloadExtension,
+		}).Warn("error looking up partially downloaded file for deletion")
+		return
+	}
+	err = os.Remove(f.Source + downloadExtension)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"path":  f.Source + downloadExtension,
+		}).Warn("error deleting partially downloaded file")
+	}
 }
 
 func (b *Bounce) offerChunk(c chunk) {
