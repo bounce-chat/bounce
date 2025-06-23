@@ -1043,7 +1043,114 @@ func (b *Bounce) seedFile(fileID uuid.UUID, path string, scope int, destination 
 }
 
 func (b *Bounce) DownloadFileToDisk(fileID uuid.UUID, destination string) {
-	err := b.database.Table("chunks").Where("file_id = ?", fileID).Update("downloaded", false).Error
+	// Find the file we want to download
+	var f file
+	err := b.database.Where("id = ?", fileID).First(&f).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"file_id": fileID,
+		}).Error("cannot download unknown file")
+		return
+	} else if err != nil {
+		log.WithFields(log.Fields{
+			"file_id": fileID,
+		}).Fatal("database error looking up file")
+	}
+
+	// Check if it is already on disk anywhere
+	destinationExists, destinationHash := checkFileHash(destination)
+	sourceExists, sourceHash := checkFileHash(f.Source)
+	if destinationExists && destinationHash == f.Hash {
+		// If we have the file already at the requested destination, mark it as done in the database and return
+		log.WithFields(log.Fields{
+			"path": destination,
+		}).Info("file requested for download already exists")
+		err = b.database.Table("chunks").Where("file_id = ?", fileID).Update("downloaded", true).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("database error updating chunks")
+		}
+		err = b.database.Table("files").Where("id = ?", fileID).Update("downloaded", true).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("database error updating file")
+		}
+		err = b.database.Table("files").Where("id = ?", fileID).Update("source", destination).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("database error updating file")
+		}
+		return
+	} else if sourceExists && sourceHash == f.Hash {
+		// The file doesn't exist at the destination, but it is still on disk at the last location we had it,
+		// so we create a copy at the new destination and update the database
+		sourceHandler, err := os.Open(f.Source)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"path":  f.Source,
+				"error": err.Error(),
+			}).Error("error opening file")
+			return
+		}
+
+		destinationHandler, err := os.Create(destination)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"path":  destination,
+				"error": err.Error(),
+			}).Error("error opening file")
+			return
+		}
+
+		_, err = io.Copy(destinationHandler, sourceHandler)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"source":      f.Source,
+				"destination": destination,
+				"error":       err.Error(),
+			}).Error("error copying data into new destination")
+			return
+		}
+
+		err = b.database.Table("chunks").Where("file_id = ?", fileID).Update("downloaded", true).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("database error updating chunks")
+		}
+		err = b.database.Table("files").Where("id = ?", fileID).Update("downloaded", true).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("database error updating file")
+		}
+		err = b.database.Table("files").Where("id = ?", fileID).Update("source", destination).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("database error updating file")
+		}
+
+		return
+	}
+
+	// Make sure we're able to create the destination file
+	testHandler, err := os.Create(destination)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"path":  destination,
+			"error": err.Error(),
+		}).Error("error creating destination file")
+		return
+	} else {
+		testHandler.Close()
+	}
+
+	// Set up the database for downloading
+	err = b.database.Table("chunks").Where("file_id = ?", fileID).Update("downloaded", false).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -1068,9 +1175,40 @@ func (b *Bounce) DownloadFileToDisk(fileID uuid.UUID, destination string) {
 		}).Error("database error updating file")
 	}
 
+	// Start requesting chunks
 	fileDataDownloaded[fileID] = 0
 	b.ui.FileDownloadProgress(fileID, 0)
 	b.makeNextChunkRequests()
+}
+
+func checkFileHash(path string) (bool, string) {
+	fh, err := os.Open(path)
+	if err != nil {
+		return false, ""
+	}
+
+	info, err := fh.Stat()
+	if err != nil {
+		return false, ""
+	}
+
+	hasher := blake3.New()
+	read := int64(0)
+	for read < info.Size() {
+		chunkData := make([]byte, fileChunkSize)
+		n, err := fh.Read(chunkData)
+		read += int64(n)
+		if err != nil {
+			if !(err == io.EOF && read == info.Size()) {
+				return false, ""
+			}
+		}
+		hasher.Write(chunkData)
+	}
+
+	allDataHash := make([]byte, 32)
+	hasher.Digest().Read(allDataHash)
+	return true, hashString([32]byte(allDataHash[:32]))
 }
 
 func (b *Bounce) CancelDownload(fileID uuid.UUID) {
