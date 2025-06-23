@@ -92,7 +92,7 @@ func (b *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	b.sendReferences(peer)
 
 	// Request any file chunks for this peer if needed
-	b.makeChunkRequests()
+	b.makeNextChunkRequests()
 }
 
 func frameAllowedWithoutProfile(frameType uint16) bool {

@@ -21,8 +21,6 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-var lastChunkTime = map[string]int64{}
-var lastChunkTimeMutex sync.Mutex
 var writingChunk = map[string]bool{}
 var writingChunkMutex sync.Mutex
 var fileDataDownloaded = map[uuid.UUID]int64{}
@@ -285,7 +283,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 		}).Fatal("error saving file")
 	}
 
-	b.makeChunkRequests()
+	b.makeNextChunkRequests()
 
 	return &f
 }
@@ -426,7 +424,7 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) bro
 		}
 	}
 	if !allDownloaded {
-		b.makeChunkRequests()
+		b.makeNextChunkRequests()
 	}
 	return &co
 }
@@ -644,12 +642,6 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 	chunkMutex.Lock()
 	defer chunkMutex.Unlock()
 	chunkRequestMutex.Lock()
-	defer chunkRequestMutex.Unlock()
-
-	// Track the last time this peer sent a chunk
-	lastChunkTimeMutex.Lock()
-	lastChunkTime[peer] = time.Now().Unix()
-	lastChunkTimeMutex.Unlock()
 
 	// Unmarshal the chunk
 	var c chunk
@@ -658,6 +650,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling chunk")
+		chunkRequestMutex.Unlock()
 		return nil
 	}
 
@@ -682,6 +675,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 				"peer":    peer,
 				"file_id": c.FileID,
 			}).Warn("peer sent chunk without file ID")
+			chunkRequestMutex.Unlock()
 			return nil
 		} else if err != nil {
 			log.WithFields(log.Fields{
@@ -698,6 +692,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 					"path":  f.Source,
 					"error": err.Error(),
 				}).Warn("error opening file for writing chunk data")
+				chunkRequestMutex.Unlock()
 				return nil
 			}
 
@@ -708,6 +703,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 					"path":  f.Source,
 					"error": err.Error(),
 				}).Warn("error seeking file for writing chunk data")
+				chunkRequestMutex.Unlock()
 				return nil
 			}
 			if sought != start {
@@ -716,6 +712,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 					"start":  start,
 					"sought": sought,
 				}).Warn("seeking file for writing chunk data did not seek to correct location")
+				chunkRequestMutex.Unlock()
 				return nil
 			}
 
@@ -725,6 +722,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 					"path":  f.Source,
 					"error": err.Error(),
 				}).Warn("error writing file containing chunk data")
+				chunkRequestMutex.Unlock()
 				return nil
 			}
 
@@ -780,10 +778,12 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 		b.offerChunk(targetChunk)
 	}
 
+	chunkRequestMutex.Unlock()
+	b.makeNextChunkRequests()
 	return nil
 }
 
-func (b *Bounce) makeChunkRequests() {
+func (b *Bounce) makeNextChunkRequests() {
 	chunkRequestMutex.Lock()
 	defer chunkRequestMutex.Unlock()
 
@@ -795,16 +795,7 @@ func (b *Bounce) makeChunkRequests() {
 		}).Fatal("database error looking up unfinished files")
 	}
 
-	activePeers := []string{}
-	lastChunkTimeMutex.Lock()
-	for peer, t := range lastChunkTime {
-		if t > time.Now().Unix()-expectedChunkDeliverySeconds {
-			activePeers = append(activePeers, peer)
-		}
-	}
-	lastChunkTimeMutex.Unlock()
-
-	recheck := false
+	alreadyHitPeer := map[string]bool{}
 	for _, f := range unfinishedFiles {
 		for _, c := range f.Chunks {
 			if c.Downloaded {
@@ -813,7 +804,7 @@ func (b *Bounce) makeChunkRequests() {
 			// Find all the offers where we just requested this chunk a few seconds ago, or where we have requested this chunk before from a peer that is
 			// actively delivering chunks right now.  If either exists, we don't need to make any additional requests for this chunk.
 			activeOffers := []chunkOffer{}
-			err = b.database.Where("hash = ? AND (last_request_time > ? OR location IN (?))", c.Hash, time.Now().Unix()-expectedChunkDeliverySeconds, activePeers).Find(&activeOffers).Error
+			err = b.database.Where("hash = ? AND last_request_time > ?", c.Hash, time.Now().Unix()-expectedChunkDeliverySeconds).Find(&activeOffers).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -833,16 +824,17 @@ func (b *Bounce) makeChunkRequests() {
 			}
 			availableUnusedLocations := []string{}
 			for _, offer := range unusedOffers {
+				_, alreadyHit := alreadyHitPeer[offer.Location]
 				rd := b.getRemoteDevice(offer.Location)
-				if rd.connectedSockets.Load() > 0 {
+				if rd.connectedSockets.Load() > 0 && !alreadyHit {
 					availableUnusedLocations = append(availableUnusedLocations, offer.Location)
 				}
 			}
 			if len(availableUnusedLocations) > 0 {
 				r := rand.New(rand.NewSource(time.Now().UnixNano()))
 				location := availableUnusedLocations[r.Intn(len(availableUnusedLocations))]
-
 				go b.sendDirect(location, &chunkRequest{Hash: c.Hash})
+				alreadyHitPeer[location] = true
 				err = b.database.Table("chunk_offers").Where("hash = ? AND location = ?", c.Hash, location).Update("last_request_time", time.Now().Unix()).Error
 				if err != nil {
 					log.WithFields(log.Fields{
@@ -851,7 +843,6 @@ func (b *Bounce) makeChunkRequests() {
 						"peer":  location,
 					}).Fatal("database error updating last request time on chunk")
 				}
-				recheck = true
 				continue
 			}
 
@@ -865,8 +856,9 @@ func (b *Bounce) makeChunkRequests() {
 			}
 			availableRetryLocations := []string{}
 			for _, offer := range previouslyTriedOffers {
+				_, alreadyHit := alreadyHitPeer[offer.Location]
 				rd := b.getRemoteDevice(offer.Location)
-				if rd.connectedSockets.Load() > 0 {
+				if rd.connectedSockets.Load() > 0 && !alreadyHit {
 					availableRetryLocations = append(availableRetryLocations, offer.Location)
 				}
 			}
@@ -875,6 +867,7 @@ func (b *Bounce) makeChunkRequests() {
 				location := availableRetryLocations[r.Intn(len(availableRetryLocations))]
 
 				go b.sendDirect(location, &chunkRequest{Hash: c.Hash})
+				alreadyHitPeer[location] = true
 				err = b.database.Table("chunk_offers").Where("hash = ? AND location = ?", c.Hash, location).Update("last_request_time", time.Now().Unix()).Error
 				if err != nil {
 					log.WithFields(log.Fields{
@@ -883,16 +876,8 @@ func (b *Bounce) makeChunkRequests() {
 						"peer":  location,
 					}).Fatal("database error updating last request time on chunk")
 				}
-				recheck = true
 			}
 		}
-	}
-
-	if recheck {
-		go func() {
-			time.Sleep(expectedChunkDeliverySeconds + 1*time.Second)
-			b.makeChunkRequests()
-		}()
 	}
 }
 
@@ -1067,7 +1052,7 @@ func (b *Bounce) DownloadFileToDisk(fileID uuid.UUID, destination string) {
 
 	fileDataDownloaded[fileID] = 0
 	b.ui.FileDownloadProgress(fileID, 0)
-	b.makeChunkRequests()
+	b.makeNextChunkRequests()
 }
 
 func (b *Bounce) CancelDownload(fileID uuid.UUID) {
