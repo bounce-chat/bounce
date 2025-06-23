@@ -5,6 +5,7 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -217,8 +218,9 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 					}
 					writer.Close()
 				} else {
-					ui.bounce.DownloadFileToDisk(attachmentID, writer.URI().Path())
 					writer.Close()
+					os.Remove(writer.URI().Path())
+					ui.bounce.DownloadFileToDisk(attachmentID, writer.URI().Path())
 				}
 			}, ui.mainWindow).Show()
 		},

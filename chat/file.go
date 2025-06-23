@@ -481,90 +481,98 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 		}()
 	}
 
-	// Find the chunk data that is being requested
-	var c chunk
-	err = b.database.First(&c, "hash = ?", cr.Hash).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	// Make sure the peer has permission to access a file that contains this chunk
+	if !b.peerCanHaveChunk(peer, cr.Hash) {
 		log.WithFields(log.Fields{
 			"peer": peer,
 			"hash": cr.Hash,
-		}).Warn("peer sent request for unknown file chunk")
+		}).Warn("peer requested chunk they are not allowed to have")
 		return nil
-	} else if err != nil {
+	}
+
+	// Find all the possible chunks with the data that is being requested
+	var cs []chunk
+	err = b.database.Find(&cs, "hash = ?", cr.Hash).Error
+	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("database error looking up chunk")
+		}).Fatal("database error looking up chunks")
 	}
 
-	// If the chunk data only exists on disk, load it from the disk and add it to this chunk
-	var f file
-	err = b.database.Select("chunk_size", "source", "size", "downloaded").Where("id = ?", c.FileID).First(&f).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		log.WithFields(log.Fields{
-			"peer":     peer,
-			"file_id":  c.FileID,
-			"chunk_id": c.ID,
-		}).Warn("peer sent request for file chunk with unknown file")
-		return nil
-	} else if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error looking up file")
-	}
-	if f.Size > EmbeddedFileLimit {
-		filename := f.Source
-		if !f.Downloaded {
-			filename += downloadExtension
-		}
-		fh, err := os.Open(filename)
-		if err != nil {
+	for _, c := range cs {
+		// Find the file that this chunk is a part of
+		var f file
+		err = b.database.Select("chunk_size", "source", "size", "downloaded").Where("id = ?", c.FileID).First(&f).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
-				"path":  f.Source,
+				"peer":     peer,
+				"file_id":  c.FileID,
+				"chunk_id": c.ID,
+			}).Warn("peer sent request for file chunk with unknown file")
+			return nil
+		} else if err != nil {
+			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Warn("error opening file containing chunk data")
-			return nil
+			}).Fatal("database error looking up file")
 		}
 
-		start := int64(c.Index * f.ChunkSize)
-		sought, err := fh.Seek(start, 0)
-		if err != nil {
+		// If the chunk data is stored on disk, load it from the disk and add it to this chunk
+		if f.Size > EmbeddedFileLimit {
+			filename := f.Source
+			if !f.Downloaded {
+				filename += downloadExtension
+			}
+			fh, err := os.Open(filename)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"path":  f.Source,
+					"error": err.Error(),
+				}).Warn("error opening file containing chunk data")
+				continue
+			}
+
+			start := int64(c.Index * f.ChunkSize)
+			sought, err := fh.Seek(start, 0)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"path":  f.Source,
+					"error": err.Error(),
+				}).Warn("error seeking file containing chunk data")
+				continue
+			}
+			if sought != start {
+				log.WithFields(log.Fields{
+					"path":   f.Source,
+					"start":  start,
+					"sought": sought,
+				}).Warn("seeking file containing chunk data did not seek to correct location")
+				continue
+			}
+
+			data := make([]byte, f.ChunkSize)
+			n, err := fh.Read(data)
+			if err != nil && err != io.EOF {
+				log.WithFields(log.Fields{
+					"path":  f.Source,
+					"error": err.Error(),
+				}).Warn("error reading file containing chunk data")
+				continue
+			}
+
+			c.Data = data[:n]
+		}
+
+		// Make sure that the hash of the data matches what has been requested, if so send it over and break
+		if cr.Hash == hashString(blake3.Sum256(c.Data)) {
+			b.sendDirect(peer, &c)
+			break
+		} else {
 			log.WithFields(log.Fields{
-				"path":  f.Source,
-				"error": err.Error(),
-			}).Warn("error seeking file containing chunk data")
-			return nil
+				"chunk": c.ID,
+				"hash":  cr.Hash,
+				"file":  f.ID,
+			}).Warn("chunk data does not match hash")
 		}
-		if sought != start {
-			log.WithFields(log.Fields{
-				"path":   f.Source,
-				"start":  start,
-				"sought": sought,
-			}).Warn("seeking file containing chunk data did not seek to correct location")
-			return nil
-		}
-
-		data := make([]byte, f.ChunkSize)
-		n, err := fh.Read(data)
-		if err != nil && err != io.EOF {
-			log.WithFields(log.Fields{
-				"path":  f.Source,
-				"error": err.Error(),
-			}).Warn("error reading file containing chunk data")
-			return nil
-		}
-
-		c.Data = data[:n]
-	}
-
-	// Make sure a file with this chunk should be sent to the user
-	if b.peerCanHaveChunk(peer, cr.Hash) {
-		b.sendDirect(peer, &c)
-	} else {
-		log.WithFields(log.Fields{
-			"peer":    peer,
-			"file_id": c.FileID,
-			"hash":    cr.Hash,
-		}).Warn("peer requested valid chunk they are not allowed to have")
 	}
 
 	return nil
@@ -796,6 +804,7 @@ func (b *Bounce) makeNextChunkRequests() {
 	}
 
 	alreadyHitPeer := map[string]bool{}
+	recheck := false
 	for _, f := range unfinishedFiles {
 		for _, c := range f.Chunks {
 			if c.Downloaded {
@@ -843,6 +852,7 @@ func (b *Bounce) makeNextChunkRequests() {
 						"peer":  location,
 					}).Fatal("database error updating last request time on chunk")
 				}
+				recheck = true
 				continue
 			}
 
@@ -876,8 +886,16 @@ func (b *Bounce) makeNextChunkRequests() {
 						"peer":  location,
 					}).Fatal("database error updating last request time on chunk")
 				}
+				recheck = true
 			}
 		}
+	}
+
+	if recheck {
+		go func() {
+			time.Sleep(expectedChunkDeliverySeconds + 1*time.Second)
+			b.makeNextChunkRequests()
+		}()
 	}
 }
 
