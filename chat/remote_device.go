@@ -51,6 +51,10 @@ func (rd *remoteDevice) chunkDuty(writer uuid.UUID) bool {
 		uuidList = append(uuidList, id)
 	}
 
+	if len(uuidList) == 0 {
+		return true
+	}
+
 	lowest := uuidList[0]
 	for _, id := range uuidList {
 		if bytes.Compare(id[:], lowest[:]) < 0 {

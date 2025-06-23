@@ -779,6 +779,13 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 						"error": err.Error(),
 					}).Error("error renaming completed file")
 				}
+				_, hash := checkFileHash(f.Source)
+				if hash != f.Hash {
+					log.WithFields(log.Fields{
+						"expected": f.Hash,
+						"actual":   hash,
+					}).Error("completed file does not have expected hash")
+				}
 			}
 		}
 
