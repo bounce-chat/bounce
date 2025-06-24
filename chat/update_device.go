@@ -12,6 +12,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var updateDeviceMutex sync.Mutex
@@ -365,7 +366,7 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 		}).Fatal("error looking up unauthorized group messages")
 	}
 	for _, gm := range unauthorizedGroupMessages {
-		err := b.database.Where("id = ?", gm.ID).Delete(&groupMessage{}).Error
+		err := b.database.Clauses(clause.Returning{}).Where("id = ?", gm.ID).Delete(&groupMessage{}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"id":    gm.ID,

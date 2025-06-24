@@ -87,19 +87,22 @@ func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (ug *updateGroup) AfterDelete(tx *gorm.DB) error {
+	if ug.ID == uuid.Nil {
+		return nil
+	}
 	if ug.CustomScope != uuid.Nil {
-		err := tx.Where("id = ?", ug.CustomScope).Delete(&customScope{}).Error
+		err := tx.Clauses(clause.Returning{}).Where("id = ?", ug.CustomScope).Delete(&customScope{}).Error
 		if err != nil {
 			return err
 		}
 	}
 
-	err := tx.Where("update_group_id = ?", ug.ID).Delete(&confirmation{}).Error
+	err := tx.Clauses(clause.Returning{}).Where("update_group_id = ?", ug.ID).Delete(&confirmation{}).Error
 	if err != nil {
 		return err
 	}
 
-	return tx.Where("frame_id = ? AND frame_type = ?", ug.ID, typeUpdateGroup).Delete(&deliveryRecord{}).Error
+	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", ug.ID, typeUpdateGroup).Delete(&deliveryRecord{}).Error
 }
 
 func (ug *updateGroup) getID() uuid.UUID {

@@ -38,7 +38,10 @@ func (gc *groupCreation) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (gc *groupCreation) AfterDelete(tx *gorm.DB) error {
-	return tx.Where("frame_id = ? AND frame_type = ?", gc.ID, typeGroupCreation).Delete(&deliveryRecord{}).Error
+	if gc.ID == uuid.Nil {
+		return nil
+	}
+	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", gc.ID, typeGroupCreation).Delete(&deliveryRecord{}).Error
 }
 
 func (gc *groupCreation) getID() uuid.UUID {

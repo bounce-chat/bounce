@@ -47,19 +47,22 @@ func (gm *groupMessage) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (gm *groupMessage) AfterDelete(tx *gorm.DB) error {
-	err := tx.Where("message_id = ?", gm.ID).Delete(&imageAttachment{}).Error
+	if gm.ID == uuid.Nil {
+		return nil
+	}
+	err := tx.Clauses(clause.Returning{}).Where("message_id = ?", gm.ID).Delete(&imageAttachment{}).Error
 	if err != nil {
 		return err
 	}
-	err = tx.Where("message_id = ?", gm.ID).Delete(&fileAttachment{}).Error
+	err = tx.Clauses(clause.Returning{}).Where("message_id = ?", gm.ID).Delete(&fileAttachment{}).Error
 	if err != nil {
 		return err
 	}
-	err = tx.Where("frame_id = ? AND frame_type = ?", gm.ID, typeGroupMessage).Delete(&deliveryRecord{}).Error
+	err = tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", gm.ID, typeGroupMessage).Delete(&deliveryRecord{}).Error
 	if err != nil {
 		return err
 	}
-	return tx.Where("target = ? AND target_type = ?", gm.ID, typeGroupMessage).Delete(&readReceipt{}).Error
+	return tx.Clauses(clause.Returning{}).Where("target = ? AND target_type = ?", gm.ID, typeGroupMessage).Delete(&readReceipt{}).Error
 }
 
 func (gm *groupMessage) getID() uuid.UUID {
@@ -480,7 +483,7 @@ func (b *Bounce) deleteGroupMessageAt(timestamp int64, id uuid.UUID) {
 	}
 
 	// Delete from the database
-	err := b.database.Where("id = ?", id).Delete(&groupMessage{}).Error
+	err := b.database.Clauses(clause.Returning{}).Where("id = ?", id).Delete(&groupMessage{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"message_id": id,

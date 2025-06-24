@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 //
@@ -48,7 +49,7 @@ func (b *Bounce) GetNewSyncString() string {
 	}
 
 	// Delete all other past offers
-	err = b.database.Where("id != ?", offer.ID).Delete(syncDeviceOffer{}).Error
+	err = b.database.Clauses(clause.Returning{}).Where("id != ?", offer.ID).Delete(syncDeviceOffer{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

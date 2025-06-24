@@ -41,7 +41,10 @@ func (au *addUser) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (au *addUser) AfterDelete(tx *gorm.DB) error {
-	return tx.Where("frame_id = ? AND frame_type = ?", au.ID, typeAddUser).Delete(&deliveryRecord{}).Error
+	if au.ID == uuid.Nil {
+		return nil
+	}
+	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", au.ID, typeAddUser).Delete(&deliveryRecord{}).Error
 }
 
 func (au *addUser) getID() uuid.UUID {

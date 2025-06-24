@@ -40,7 +40,10 @@ func (d *device) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (d *device) AfterDelete(tx *gorm.DB) error {
-	return tx.Where("frame_id = ? AND frame_type = ?", d.ID, typeDevice).Delete(&deliveryRecord{}).Error
+	if d.ID == uuid.Nil {
+		return nil
+	}
+	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", d.ID, typeDevice).Delete(&deliveryRecord{}).Error
 }
 
 func (d *device) getID() uuid.UUID {

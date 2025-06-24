@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var syncDeviceOfferValidForSeconds = int64(300)
@@ -126,7 +127,7 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 		// This is already a known sync device.  The device must be requesting to sync again because something went
 		// wrong on their end during the process.  That's fine, everything about this device has been validated in
 		// the past, so we just send our information over again and drop all delivery records in case they lost data.
-		err = b.database.Where("destination = ?", peer).Delete(&deliveryRecord{}).Error
+		err = b.database.Clauses(clause.Returning{}).Where("destination = ?", peer).Delete(&deliveryRecord{}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"peer":  peer,

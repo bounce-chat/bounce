@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 //
@@ -37,7 +38,10 @@ func (c *confirmation) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (c *confirmation) AfterDelete(tx *gorm.DB) error {
-	return tx.Where("frame_id = ? AND frame_type = ?", c.ID, typeConfirmation).Delete(&deliveryRecord{}).Error
+	if c.ID == uuid.Nil {
+		return nil
+	}
+	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", c.ID, typeConfirmation).Delete(&deliveryRecord{}).Error
 }
 
 func (c *confirmation) getID() uuid.UUID {

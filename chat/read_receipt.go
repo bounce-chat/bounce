@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var readReceiptTargetTypeString = map[uint16]string{
@@ -57,7 +58,10 @@ func (rr *readReceipt) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (rr *readReceipt) AfterDelete(tx *gorm.DB) error {
-	return tx.Where("frame_id = ? AND frame_type = ?", rr.ID, typeReadReceipt).Delete(&deliveryRecord{}).Error
+	if rr.ID == uuid.Nil {
+		return nil
+	}
+	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", rr.ID, typeReadReceipt).Delete(&deliveryRecord{}).Error
 }
 
 func (rr *readReceipt) getID() uuid.UUID {

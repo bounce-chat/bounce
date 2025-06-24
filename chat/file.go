@@ -69,11 +69,14 @@ type file struct {
 }
 
 func (f *file) AfterDelete(tx *gorm.DB) error {
-	err := tx.Where("file_id = ?", f.ID).Delete(&chunk{}).Error
+	if f.ID == uuid.Nil {
+		return nil
+	}
+	err := tx.Clauses(clause.Returning{}).Where("file_id = ?", f.ID).Delete(&chunk{}).Error
 	if err != nil {
 		return err
 	}
-	err = tx.Where("file_id = ?", f.ID).Delete(&chunkOffer{}).Error
+	err = tx.Clauses(clause.Returning{}).Where("file_id = ?", f.ID).Delete(&chunkOffer{}).Error
 	if err != nil {
 		return err
 	}
@@ -1231,7 +1234,7 @@ func (b *Bounce) CancelDownload(fileID uuid.UUID) {
 			"error": err.Error(),
 		}).Error("database error updating file")
 	}
-	err = b.database.Table("files").Where("id = ?", fileID).Update("downloaded", false).Error
+	err = b.database.Table("chunks").Where("id = ?", fileID).Update("downloaded", false).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

@@ -3,6 +3,7 @@ package chat
 import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type fileAttachment struct {
@@ -14,7 +15,10 @@ type fileAttachment struct {
 }
 
 func (fa *fileAttachment) AfterDelete(tx *gorm.DB) error {
-	return tx.Where("id = ?", fa.FileID).Delete(&file{}).Error
+	if fa.ID == uuid.Nil {
+		return nil
+	}
+	return tx.Clauses(clause.Returning{}).Where("id = ?", fa.FileID).Delete(&file{}).Error
 }
 
 type imageAttachment struct {
@@ -29,5 +33,8 @@ type imageAttachment struct {
 }
 
 func (ia *imageAttachment) AfterDelete(tx *gorm.DB) error {
-	return tx.Where("id = ?", ia.FileID).Delete(&file{}).Error
+	if ia.ID == uuid.Nil {
+		return nil
+	}
+	return tx.Clauses(clause.Returning{}).Where("id = ?", ia.FileID).Delete(&file{}).Error
 }

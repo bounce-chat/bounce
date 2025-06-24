@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var updateSettingsMutex sync.Mutex
@@ -44,7 +45,10 @@ func (us *updateSettings) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (us *updateSettings) AfterDelete(tx *gorm.DB) error {
-	return tx.Where("frame_id = ? AND frame_type = ?", us.ID, typeUpdateSettings).Delete(&deliveryRecord{}).Error
+	if us.ID == uuid.Nil {
+		return nil
+	}
+	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", us.ID, typeUpdateSettings).Delete(&deliveryRecord{}).Error
 }
 
 func (us *updateSettings) getID() uuid.UUID {

@@ -63,7 +63,10 @@ func (ud *updateDM) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (ud *updateDM) AfterDelete(tx *gorm.DB) error {
-	return tx.Where("frame_id = ? AND frame_type = ?", ud.ID, typeUpdateDM).Delete(&deliveryRecord{}).Error
+	if ud.ID == uuid.Nil {
+		return nil
+	}
+	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", ud.ID, typeUpdateDM).Delete(&deliveryRecord{}).Error
 }
 
 func (ud *updateDM) getID() uuid.UUID {

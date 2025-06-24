@@ -117,7 +117,7 @@ func (b *Bounce) openDatabase() {
 
 func (b *Bounce) pruneDirectMessages() {
 	// Delete messages from the database that are past expiration
-	err := b.database.Where("delete_at != 0 AND delete_at < ?", time.Now().Unix()).Delete(&directMessage{}).Error
+	err := b.database.Clauses(clause.Returning{}).Where("delete_at != 0 AND delete_at < ?", time.Now().Unix()).Delete(&directMessage{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -165,7 +165,7 @@ func (b *Bounce) pruneDirectMessages() {
 
 func (b *Bounce) pruneGroupMessages() {
 	// Delete messages from the database that are past expiration
-	err := b.database.Where("delete_at != 0 AND delete_at < ?", time.Now().Unix()).Delete(&groupMessage{}).Error
+	err := b.database.Clauses(clause.Returning{}).Where("delete_at != 0 AND delete_at < ?", time.Now().Unix()).Delete(&groupMessage{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -215,7 +215,7 @@ func (b *Bounce) pruneUndeliverableCustomScopes() {
 	deleteBefore := time.Now().Unix() - int64(undeliverableAfter.Seconds())
 
 	// Prune update groups
-	err := b.database.Where("custom_scope != ? AND timestamp < ?", uuid.Nil, deleteBefore).Delete(&updateGroup{}).Error
+	err := b.database.Clauses(clause.Returning{}).Where("custom_scope != ? AND timestamp < ?", uuid.Nil, deleteBefore).Delete(&updateGroup{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

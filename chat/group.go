@@ -52,23 +52,27 @@ func (g *group) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (g *group) AfterDelete(tx *gorm.DB) error {
-	err := tx.Where("id = ?", g.ID).Delete(&groupCreation{}).Error
+	if g.ID == uuid.Nil {
+		log.Error("attempt to run delete hooks on empty group")
+		return nil
+	}
+	err := tx.Clauses(clause.Returning{}).Where("id = ?", g.ID).Delete(&groupCreation{}).Error
 	if err != nil {
 		return err
 	}
-	err = tx.Where("destination = ?", g.ID).Delete(&groupMessage{}).Error
+	err = tx.Clauses(clause.Returning{}).Where("destination = ?", g.ID).Delete(&groupMessage{}).Error
 	if err != nil {
 		return err
 	}
-	err = tx.Where("target = ? AND custom_scope = ?", g.ID, uuid.Nil).Delete(&updateGroup{}).Error
+	err = tx.Clauses(clause.Returning{}).Where("target = ? AND custom_scope = ?", g.ID, uuid.Nil).Delete(&updateGroup{}).Error
 	if err != nil {
 		return err
 	}
-	err = tx.Exec("DELETE FROM group_users WHERE group_id = ?", g.ID).Error
+	err = tx.Clauses(clause.Returning{}).Exec("DELETE FROM group_users WHERE group_id = ?", g.ID).Error
 	if err != nil {
 		return err
 	}
-	err = tx.Where("type = ? AND destination =?", fileTypeGroupImage, g.ID).Delete(&file{}).Error
+	err = tx.Clauses(clause.Returning{}).Where("type = ? AND destination =?", fileTypeGroupImage, g.ID).Delete(&file{}).Error
 	if err != nil {
 		return err
 	}

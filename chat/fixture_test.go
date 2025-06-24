@@ -468,6 +468,7 @@ func (t *testUI) SetUserState(User)                                             
 func (t *testUI) FileCompleted(uuid.UUID)                                          {}
 func (t *testUI) UserChangedGroupImage(UpdateGroupUserChangedGroupImage)           {}
 func (t *testUI) UserImageUpdated(UpdateUserUpdateImage)                           {}
+func (t *testUI) FileDownloadProgress(uuid.UUID, float64)                          {}
 
 func newBounce() *Bounce {
 	ui := newTestUI()
