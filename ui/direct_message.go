@@ -118,7 +118,7 @@ func (ui *ui) DMTypingIndicatorSettingsSet(userID uuid.UUID, override, enabled b
 }
 
 func (ui *ui) NewDirectMessage(bounceUser chat.User) {
-	fyne.DoAndWait(func() { ui.buildNewDirectMessage(bounceUser) })
+	ui.buildNewDirectMessage(bounceUser)
 }
 
 func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {

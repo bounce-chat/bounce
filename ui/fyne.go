@@ -769,7 +769,7 @@ func getConfigDirectory() string {
 		configDirectory = home + "/.bounce"
 	}
 
-	err := os.MkdirAll(configDirectory, 0700)
+	err := os.MkdirAll(configDirectory+"/blobs/", 0700)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"path":  configDirectory,

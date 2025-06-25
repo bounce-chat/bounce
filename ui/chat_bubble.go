@@ -7,7 +7,6 @@ import (
 	"image/color"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -20,6 +19,7 @@ import (
 	"github.com/bbrks/go-blurhash"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/image/draw"
 )
 
 var iconSize = float32(12)
@@ -318,15 +318,22 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 
 		for i, attachment := range m.imageAttachments {
 			var rawImage image.Image
+			var scaledImage image.Image
 			var err error
 			data, err := cb.icon.fileGetter(attachment.ID)
+
 			if err != nil || len(data) == 0 {
-				cacheKey := "blurhash-" + attachment.ID.String() + strconv.Itoa(attachment.Width) + strconv.Itoa(attachment.Height)
-				var ok bool
+				cacheKey := "blurhash-" + attachment.ID.String()
+				scaledCacheKey := "blurhash-" + attachment.ID.String() + "-scaled"
+
+				var rawOk bool
+				var scaledOk bool
 				imageAttachmentCacheMutex.Lock()
-				rawImage, ok = imageAttachmentCache[cacheKey]
+				rawImage, rawOk = imageAttachmentCache[cacheKey]
+				scaledImage, scaledOk = imageAttachmentCache[scaledCacheKey]
 				imageAttachmentCacheMutex.Unlock()
-				if !ok {
+
+				if !rawOk || !scaledOk {
 					rawImage, err = blurhash.Decode(attachment.BlurHash, attachment.Width, attachment.Height, 1)
 					if err != nil {
 						log.WithFields(log.Fields{
@@ -335,17 +342,28 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 						}).Error("invalid blurhash on image attachment")
 						continue
 					}
+
+					scaledImageDst := image.NewRGBA(image.Rect(0, 0, int(size), rawImage.Bounds().Dy()/(rawImage.Bounds().Dx()/int(size))))
+					draw.NearestNeighbor.Scale(scaledImageDst, scaledImageDst.Rect, rawImage, rawImage.Bounds(), draw.Over, nil)
+					scaledImage = scaledImageDst
+
 					imageAttachmentCacheMutex.Lock()
 					imageAttachmentCache[cacheKey] = rawImage
+					imageAttachmentCache[scaledCacheKey] = scaledImage
 					imageAttachmentCacheMutex.Unlock()
 				}
 			} else {
-				cacheKey := attachment.ID.String() + strconv.Itoa(attachment.Width) + strconv.Itoa(attachment.Height)
-				var ok bool
+				cacheKey := attachment.ID.String()
+				scaledCacheKey := attachment.ID.String() + "-scaled"
+
+				var rawOk bool
+				var scaledOk bool
 				imageAttachmentCacheMutex.Lock()
-				rawImage, ok = imageAttachmentCache[cacheKey]
+				rawImage, rawOk = imageAttachmentCache[cacheKey]
+				scaledImage, scaledOk = imageAttachmentCache[scaledCacheKey]
 				imageAttachmentCacheMutex.Unlock()
-				if !ok {
+
+				if !rawOk || !scaledOk {
 					rawImage, _, err = image.Decode(bytes.NewReader(data))
 					if err != nil {
 						log.WithFields(log.Fields{
@@ -353,8 +371,14 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 						}).Error("invalid image data on image attachment")
 						continue
 					}
+
+					scaledImageDst := image.NewRGBA(image.Rect(0, 0, int(size), rawImage.Bounds().Dy()/(rawImage.Bounds().Dx()/int(size))))
+					draw.NearestNeighbor.Scale(scaledImageDst, scaledImageDst.Rect, rawImage, rawImage.Bounds(), draw.Over, nil)
+					scaledImage = scaledImageDst
+
 					imageAttachmentCacheMutex.Lock()
 					imageAttachmentCache[cacheKey] = rawImage
+					imageAttachmentCache[scaledCacheKey] = scaledImage
 					imageAttachmentCacheMutex.Unlock()
 				}
 			}
@@ -364,7 +388,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 			cb.imageAttachments.Add(
 				newClickableImage(
 					"",
-					canvas.NewImageFromImage(rawImage),
+					canvas.NewImageFromImage(scaledImage),
 					size,
 					size,
 					false,

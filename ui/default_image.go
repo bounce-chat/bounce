@@ -132,10 +132,22 @@ func (di *defaultImage) setBackground() {
 	}
 
 	di.foregroundText.Show()
+
+	imageCacheMutex.Lock()
+	cacheKey := di.id.String() + "-default-" + strconv.FormatFloat(float64(di.size), 'f', -1, 32)
+	cachedImage, ok := imageCache[cacheKey]
+	imageCacheMutex.Unlock()
+	if ok {
+		di.backgroundColor = cachedImage
+		return
+	}
 	di.backgroundColor = canvas.NewImageFromImage(makeCircle(&colorRectangle{
 		rect:  image.Rect(0, 0, int(di.size)*8, int(di.size)*8),
 		color: uuidToColor(di.id),
 	}))
+	imageCacheMutex.Lock()
+	imageCache[cacheKey] = di.backgroundColor
+	imageCacheMutex.Unlock()
 }
 
 type defaultImageRenderer struct {

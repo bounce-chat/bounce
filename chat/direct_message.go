@@ -339,7 +339,11 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 			continue
 		}
 
-		err = b.embedFile(ia.ID, data, scopeUser, message.Thread, fileTypeMessageAttachment, dm.ID)
+		scope := scopeUser
+		if message.Thread == b.currentUserID() {
+			scope = scopeSync
+		}
+		err = b.embedFile(ia.ID, data, scope, message.Thread, fileTypeMessageAttachment, dm.ID)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"id":    ia.ID,
@@ -372,7 +376,11 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 				continue
 			}
 
-			err := b.seedFile(fa.ID, source, scopeUser, message.Thread, fileTypeMessageAttachment, dm.ID)
+			scope := scopeUser
+			if message.Thread == b.currentUserID() {
+				scope = scopeSync
+			}
+			err := b.seedFile(fa.ID, source, scope, message.Thread, fileTypeMessageAttachment, dm.ID)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"id":    fa.ID,
