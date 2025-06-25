@@ -214,7 +214,7 @@ func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 	rd.shutdownReceivers[writerID] = shutdownReceiver
 	rd.shutdownReceiversMutex.Unlock()
 
-	writeChunk := func(br sendable) {
+	writeChunk := func(br sendable) error {
 		if _, revoked := b.devicePool.revokedDevices[conn.RemoteAddr().String()]; revoked {
 			// Only send revoked devices frames that are used to tell them they are revoked, and keep alives
 			if !(br.getType() == typeReferenceOffer || br.getType() == typeCatchUp || br.getType() == typeUpdateDevice || br.getType() == typeKeepAlive || br.getType() == typeAck) {
@@ -222,7 +222,7 @@ func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 					"type": br.getType(),
 					"peer": conn.RemoteAddr().String(),
 				}).Warn("attempt to send unexpected frame to revoked device")
-				return
+				return nil
 			}
 		}
 
@@ -247,8 +247,10 @@ func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 			rd.shutdownReceiversMutex.Lock()
 			delete(rd.shutdownReceivers, writerID)
 			rd.shutdownReceiversMutex.Unlock()
-			return
+			return err
 		}
+
+		return nil
 	}
 
 	for {
@@ -267,9 +269,15 @@ func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 				conn.Close()
 				return
 			case br := <-rd.messages:
-				writeChunk(br)
+				err := writeChunk(br)
+				if err != nil {
+					return
+				}
 			case br := <-rd.chunks:
-				writeChunk(br)
+				err := writeChunk(br)
+				if err != nil {
+					return
+				}
 			}
 		} else {
 			select {
@@ -284,7 +292,10 @@ func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 				conn.Close()
 				return
 			case br := <-rd.messages:
-				writeChunk(br)
+				err := writeChunk(br)
+				if err != nil {
+					return
+				}
 			}
 		}
 	}
