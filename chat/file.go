@@ -657,7 +657,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 	for _, targetChunk := range targetChunks {
 		// Find the file that contains this chunk
 		var f file
-		err = b.database.Select("chunk_size", "path", "size", "wanted").Where("id = ?", targetChunk.FileID).First(&f).Error
+		err = b.database.Select("chunk_size", "path", "size", "hash", "wanted").Where("id = ?", targetChunk.FileID).First(&f).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"peer":    peer,
@@ -898,6 +898,7 @@ func (b *Bounce) embedFile(fileID uuid.UUID, data []byte, scope int, destination
 		ID:          fileID,
 		Type:        fileType,
 		AttachedTo:  attachment,
+		Path:        b.configDirectory + "/blobs/" + fileID.String(),
 		Hash:        hashString(hash),
 		Size:        int64(len(data)),
 		ChunkSize:   fileChunkSize,
