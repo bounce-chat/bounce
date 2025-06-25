@@ -403,13 +403,12 @@ func (ch *chatHistory) seen(index int) {
 		item.markSeen()
 		if item.countsAsUnread() && !(item.getAuthor() == ch.myID) {
 			ch.unread -= 1
+			ch.updateUnreadCounter()
 		}
 		if ch.windowFocused() {
 			go ch.readCallback(id, item.getType())
 		}
 	}
-
-	ch.updateUnreadCounter()
 }
 
 func (ch *chatHistory) updateUnreadCounter() {

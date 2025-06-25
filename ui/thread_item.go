@@ -86,7 +86,6 @@ func (cbd *chatBubbleData) setState(state int) {
 
 func (cbd *chatBubbleData) populateTemplate(obj fyne.CanvasObject) {
 	obj.(*fyne.Container).Objects[0].(*chatBubble).setData(cbd)
-	obj.(*fyne.Container).Objects[0].(*chatBubble).Refresh()
 	obj.(*fyne.Container).Objects[0].(*chatBubble).Show()
 	obj.(*fyne.Container).Objects[1].(*statusChange).Hide()
 }
