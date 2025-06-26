@@ -1,10 +1,14 @@
 package ui
 
 import (
+	"bytes"
+	"image"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/mobile"
 	"github.com/google/uuid"
+	"github.com/rymdport/go-qrcode"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -116,19 +120,45 @@ func (ui *ui) mobileBack() {
 		ui.mainWindow.SetContent(ui.importContact)
 		ui.importContact.Show()
 	case viewTypeDisplaySyncString:
-		err := ui.syncString.Set(ui.bounce.GetNewSyncString())
+		newSyncString := ui.bounce.GetNewSyncString()
+		ui.syncStringEntry.SetText(newSyncString)
+		qrData, err := qrcode.Encode(newSyncString, qrcode.Medium, 256)
 		if err != nil {
-			log.Fatal("data bindings are broken")
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error QR encoding add device string")
+		} else {
+			qrImg, _, err := image.Decode(bytes.NewReader(qrData))
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error decoding QR data as image")
+			} else {
+				ui.addDeviceQRCode.Image = qrImg
+				ui.addDeviceQRCode.Refresh()
+			}
 		}
-		// TODO: update the QR code data
 		ui.mainWindow.SetContent(ui.displaySyncString)
 		ui.displaySyncString.Show()
 	case viewTypeDisplayAddUserString:
-		err := ui.addUserString.Set(ui.bounce.GetNewAddUserString())
+		newAddUserString := ui.bounce.GetNewAddUserString()
+		ui.addUserStringEntry.SetText(newAddUserString)
+		qrData, err := qrcode.Encode(newAddUserString, qrcode.Medium, 256)
 		if err != nil {
-			log.Fatal("data bindings are broken")
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error QR encoding add user string")
+		} else {
+			qrImg, _, err := image.Decode(bytes.NewReader(qrData))
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error decoding QR data as image")
+			} else {
+				ui.addUserQRCode.Image = qrImg
+				ui.addUserQRCode.Refresh()
+			}
 		}
-		// TODO: update the QR code data
 		ui.mainWindow.SetContent(ui.displayAddUserString)
 		ui.displayAddUserString.Show()
 	case viewTypeAddUser:

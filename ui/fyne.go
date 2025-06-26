@@ -12,8 +12,8 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/mobile"
 	"fyne.io/fyne/v2/theme"
@@ -78,8 +78,10 @@ type ui struct {
 	pausedGroupNotifications      map[uuid.UUID]bool
 	pausedGroupNotificationsMutex sync.Mutex
 	activeThread                  uuid.UUID
-	syncString                    binding.String
-	addUserString                 binding.String
+	syncStringEntry               *widget.Entry
+	addUserStringEntry            *widget.Entry
+	addUserQRCode                 *canvas.Image
+	addDeviceQRCode               *canvas.Image
 	profile                       *user
 	settings                      chat.Settings
 	localSettings                 chat.LocalSettings
@@ -134,8 +136,6 @@ func (ui *ui) build() {
 	ui.devices = newDeviceStore()
 	ui.messages = newMessageStore(getConfigDirectory())
 	ui.focused = true
-	ui.syncString = binding.NewString()
-	ui.addUserString = binding.NewString()
 	ui.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	ui.networkOfflineWarning.Show()
 	ui.deletedUser = makeUser(uuid.Nil, "-deleted-")

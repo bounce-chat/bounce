@@ -12,9 +12,11 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
 	github.com/hkparker/go-libtor v0.0.0-20221215221725-0e61cb383f30
+	github.com/rymdport/go-qrcode v1.2.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/zeebo/blake3 v0.2.4
+	golang.org/x/image v0.27.0
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.30.0
 )
@@ -55,7 +57,6 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/yuin/goldmark v1.7.12 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
-	golang.org/x/image v0.27.0 // indirect
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
