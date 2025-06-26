@@ -314,8 +314,14 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 	includedImageAttachments := []ImageAttachment{}
 	for _, ia := range message.ImageAttachments {
 		if ia.Size > EmbeddedFileLimit {
-			// TODO: automatically make this a file attachment that is seeded from disk
-			log.Warn("image too large to attach to message")
+			message.FileAttachments = append(
+				message.FileAttachments,
+				FileAttachment{
+					ID:   ia.ID,
+					Name: ia.Name,
+					Size: ia.Size,
+				},
+			)
 			continue
 		}
 
