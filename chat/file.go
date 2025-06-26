@@ -507,8 +507,9 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 		fh, err := os.Open(filename)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"path":  f.Path,
-				"error": err.Error(),
+				"file_id": c.FileID,
+				"path":    f.Path,
+				"error":   err.Error(),
 			}).Warn("error opening file containing chunk data")
 			continue
 		}
@@ -1193,7 +1194,7 @@ func checkFileHash(path string) (bool, string) {
 				return false, ""
 			}
 		}
-		hasher.Write(chunkData)
+		hasher.Write(chunkData[:n])
 	}
 
 	allDataHash := make([]byte, 32)
