@@ -266,7 +266,31 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		if err != nil {
 			log.Fatal("data bindings are broken")
 		}
-		notification = fyne.NewNotification(groupName, u.getName()+": "+gm.Text)
+
+		notificationString := u.getName() + ": " + gm.Text
+		if len(gm.Text) == 0 {
+			notificationString = u.getName() + " posted "
+
+			if len(gm.ImageAttachments) > 1 {
+				notificationString += "images"
+			} else if len(gm.ImageAttachments) == 1 {
+				notificationString += "an image"
+			}
+
+			if len(gm.FileAttachments) > 1 {
+				if len(gm.ImageAttachments) != 0 {
+					notificationString += " and "
+				}
+				notificationString += "files"
+			} else if len(gm.FileAttachments) == 1 {
+				if len(gm.ImageAttachments) != 0 {
+					notificationString += " and "
+				}
+				notificationString += "a file"
+			}
+		}
+
+		notification = fyne.NewNotification(groupName, notificationString)
 	} else {
 		username = "You"
 	}
@@ -386,7 +410,29 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 	initials := u.getInitials()
 	var notification *fyne.Notification
 	if !outgoing {
-		notification = fyne.NewNotification(u.getName(), dm.Text)
+		notificationString := dm.Text
+		if len(dm.Text) == 0 {
+			notificationString = "posted "
+
+			if len(dm.ImageAttachments) > 1 {
+				notificationString += "images"
+			} else if len(dm.ImageAttachments) == 1 {
+				notificationString += "an image"
+			}
+
+			if len(dm.FileAttachments) > 1 {
+				if len(dm.ImageAttachments) != 0 {
+					notificationString += " and "
+				}
+				notificationString += "files"
+			} else if len(dm.FileAttachments) == 1 {
+				if len(dm.ImageAttachments) != 0 {
+					notificationString += " and "
+				}
+				notificationString += "a file"
+			}
+		}
+		notification = fyne.NewNotification(u.getName(), notificationString)
 	} else {
 		username = "You"
 	}

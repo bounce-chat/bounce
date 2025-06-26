@@ -512,11 +512,13 @@ func getValidRequestedUUIDs(originalOffer []uuid.UUID, requested []uuid.UUID) []
 	}
 
 	for _, requestedID := range requested {
-		// Make sure that this requested UUID was actually offered and skip it if not
+		// Make sure that this requested UUID is something we are still offering, and skip it if not.
+		// This can sometimes happen for legitimate reasons and is not automatically evidence of bad
+		// behavior from a client.
 		if _, present := offeredCache[requestedID]; !present {
 			log.WithFields(log.Fields{
 				"id": requestedID,
-			}).Warn("reference request asks for UUID not present in reference offer")
+			}).Debug("reference request asks for UUID not present in reference offer")
 			continue
 		}
 

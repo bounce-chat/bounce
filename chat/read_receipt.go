@@ -333,7 +333,7 @@ func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
 					"id": id,
-				}).Debug("group message not found while marking as read")
+				}).Debug("direct message not found while marking as read")
 				return uuid.Nil, uuid.Nil, scopeSync, err
 			} else {
 				log.WithFields(log.Fields{
