@@ -647,14 +647,11 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 		for _, bu := range bounceGroup.Users {
 			u, ok := ui.users.get(bu.ID)
 			if !ok {
-				u := makeUser(bu.ID, bu.Name)
-				ui.users.add(u)
-				g.users.add(u)
+				u = makeUser(bu.ID, bu.Name)
 			}
-			func(thisUser *user) {
-				g.users.add(thisUser)
-				g.pendingUsers.remove(u.id)
-			}(u)
+			ui.users.add(u)
+			g.users.add(u)
+			g.pendingUsers.remove(u.id)
 		}
 
 		g.admins = bounceGroup.Admins
