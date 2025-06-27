@@ -42,6 +42,7 @@ var chunkRequestMutex sync.Mutex
 
 var ErrFileTooBig = errors.New("file is too large")
 var errFileNotFound = errors.New("file not found")
+var errChunkDataNotFound = errors.New("chunk data not found")
 var errInvalidImage = errors.New("invalid image data")
 
 type file struct {
@@ -53,7 +54,7 @@ type file struct {
 	Size            int64
 	ChunkSize       int
 	HashList        string
-	Path            string `msgpack:"-"`
+	Path            string `msgpack:"-" gorm:"not null"`
 	Wanted          bool   `msgpack:"-"`
 	Downloaded      bool   `msgpack:"-"`
 	Scope           int
@@ -259,6 +260,15 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error saving file")
+	}
+
+	// Copy data from any existing chunks where possible
+	for _, c := range f.Chunks {
+		data, err := b.getChunkData(c.Hash)
+		if err == nil {
+			c.Data = data
+			b.writeChunkToDisk(c)
+		}
 	}
 
 	// Request any missing chunks
@@ -473,9 +483,22 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 		return nil
 	}
 
+	chunkData, err := b.getChunkData(cr.Hash)
+	if err == nil {
+		b.sendDirect(peer, &chunk{Data: chunkData})
+	} else {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"hash":  cr.Hash,
+			"peer":  peer,
+		}).Warn("error getting requested chunk")
+	}
+	return nil
+}
+func (b *Bounce) getChunkData(hash string) ([]byte, error) {
 	// Find all the possible chunks with the data that is being requested
 	var cs []chunk
-	err = b.database.Find(&cs, "hash = ? AND downloaded = ?", cr.Hash, true).Error
+	err := b.database.Find(&cs, "hash = ? AND downloaded = ?", hash, true).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -488,11 +511,10 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 		err = b.database.Select("chunk_size", "path", "size", "downloaded").Where("id = ?", c.FileID).First(&f).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
-				"peer":     peer,
 				"file_id":  c.FileID,
 				"chunk_id": c.ID,
 			}).Warn("peer sent request for file chunk with unknown file")
-			return nil
+			return []byte{}, errFileNotFound
 		} else if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -545,19 +567,18 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 		c.Data = data[:n]
 
 		// Make sure that the hash of the data matches what has been requested, if so send it over and break
-		if cr.Hash == hashString(blake3.Sum256(c.Data)) {
-			b.sendDirect(peer, &c)
-			break
+		if hash == hashString(blake3.Sum256(c.Data)) {
+			return c.Data, nil
 		} else {
 			log.WithFields(log.Fields{
 				"chunk": c.ID,
-				"hash":  cr.Hash,
+				"hash":  hash,
 				"file":  f.ID,
 			}).Warn("chunk data does not match hash")
 		}
 	}
 
-	return nil
+	return []byte{}, errChunkDataNotFound
 }
 
 func (b *Bounce) peerCanHaveChunk(peer, hash string) bool {
@@ -634,8 +655,8 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 	chunkRequestMutex.Lock()
 
 	// Unmarshal the chunk
-	var c chunk
-	err := msgpack.Unmarshal(payload, &c)
+	var incomingChunk chunk
+	err := msgpack.Unmarshal(payload, &incomingChunk)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -645,7 +666,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 	}
 
 	// Hash the data
-	hash := blake3.Sum256(c.Data)
+	hash := blake3.Sum256(incomingChunk.Data)
 
 	// Find any chunks in the database that have this hash and are empty
 	var targetChunks []chunk
@@ -655,127 +676,127 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 			"error": err.Error(),
 		}).Fatal("database error looking up chunks")
 	}
-	for _, targetChunk := range targetChunks {
-		// Find the file that contains this chunk
-		var f file
-		err = b.database.Select("chunk_size", "path", "size", "hash", "wanted").Where("id = ?", targetChunk.FileID).First(&f).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"peer":    peer,
-				"file_id": c.FileID,
-			}).Warn("peer sent chunk without file ID")
-			chunkRequestMutex.Unlock()
-			return nil
-		} else if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up file")
-		}
-		if !f.Wanted {
-			continue
-		}
+	for _, c := range targetChunks {
+		c.Data = incomingChunk.Data
 
-		// Write the data to disk
-		path := f.Path
-		if !f.embedded() {
-			path += downloadExtension
-		}
-		fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"path":  f.Path,
-				"error": err.Error(),
-			}).Warn("error opening file for writing chunk data")
-			chunkRequestMutex.Unlock()
-			return nil
-		}
-
-		start := int64(targetChunk.Index * f.ChunkSize)
-		sought, err := fh.Seek(start, 0)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"path":  f.Path,
-				"error": err.Error(),
-			}).Warn("error seeking file for writing chunk data")
-			chunkRequestMutex.Unlock()
-			return nil
-		}
-		if sought != start {
-			log.WithFields(log.Fields{
-				"path":   f.Path,
-				"start":  start,
-				"sought": sought,
-			}).Warn("seeking file for writing chunk data did not seek to correct location")
-			chunkRequestMutex.Unlock()
-			return nil
-		}
-
-		_, err = fh.Write(c.Data)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"path":  f.Path,
-				"error": err.Error(),
-			}).Warn("error writing file containing chunk data")
-			chunkRequestMutex.Unlock()
-			return nil
-		}
-
-		if !f.embedded() {
-			progress, _ := fileDataDownloaded[targetChunk.FileID]
-			progress += int64(len(c.Data))
-			fileDataDownloaded[targetChunk.FileID] = progress
-			b.ui.FileDownloadProgress(targetChunk.FileID, float64(progress)/float64(f.Size))
-		}
-
-		// Update the download status
-		err = b.database.Model(&targetChunk).Update("downloaded", true).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("database error updating chunk data")
-		}
-
-		// Mark the file as downloaded if this was the last chunk to get
-		var otherEmptyChunks []chunk
-		err = b.database.Where("file_id = ? AND downloaded = ?", targetChunk.FileID, false).Find(&otherEmptyChunks).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error checking for remaining empty chunks")
-		}
-		if len(otherEmptyChunks) == 0 {
-			err = b.database.Table("files").Where("id = ?", targetChunk.FileID).Update("downloaded", true).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error setting file as downloaded")
-			}
-			b.ui.FileCompleted(targetChunk.FileID)
-
-			if !f.embedded() {
-				err = os.Rename(f.Path+downloadExtension, f.Path)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Error("error renaming completed file")
-				}
-			}
-			_, hash := checkFileHash(f.Path)
-			if hash != f.Hash {
-				log.WithFields(log.Fields{
-					"expected": f.Hash,
-					"actual":   hash,
-				}).Error("completed file does not have expected hash")
-			}
-		}
-
-		// Offer this chunk
-		b.offerChunk(targetChunk)
+		b.writeChunkToDisk(c)
 	}
 
 	chunkRequestMutex.Unlock()
 	b.makeNextChunkRequests()
 	return nil
+}
+
+func (b *Bounce) writeChunkToDisk(c chunk) {
+	// Find the file that contains this chunk
+	var f file
+	err := b.database.Select("chunk_size", "path", "size", "hash", "wanted").Where("id = ?", c.FileID).First(&f).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"file_id": c.FileID,
+		}).Warn("file not found for chunk")
+		return
+	} else if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up file")
+	}
+	if !f.Wanted {
+		return
+	}
+
+	// Write the data to disk
+	path := f.Path
+	if !f.embedded() {
+		path += downloadExtension
+	}
+	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"path":  f.Path,
+			"error": err.Error(),
+		}).Warn("error opening file for writing chunk data")
+		return
+	}
+
+	start := int64(c.Index * f.ChunkSize)
+	sought, err := fh.Seek(start, 0)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"path":  f.Path,
+			"error": err.Error(),
+		}).Warn("error seeking file for writing chunk data")
+		return
+	}
+	if sought != start {
+		log.WithFields(log.Fields{
+			"path":   f.Path,
+			"start":  start,
+			"sought": sought,
+		}).Warn("seeking file for writing chunk data did not seek to correct location")
+		return
+	}
+
+	_, err = fh.Write(c.Data)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"path":  f.Path,
+			"error": err.Error(),
+		}).Warn("error writing file containing chunk data")
+		return
+	}
+
+	if !f.embedded() {
+		progress, _ := fileDataDownloaded[c.FileID]
+		progress += int64(len(c.Data))
+		fileDataDownloaded[c.FileID] = progress
+		b.ui.FileDownloadProgress(c.FileID, float64(progress)/float64(f.Size))
+	}
+
+	// Update the download status
+	err = b.database.Model(&c).Update("downloaded", true).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("database error updating chunk data")
+	}
+
+	// Mark the file as downloaded if this was the last chunk to get
+	var otherEmptyChunks []chunk
+	err = b.database.Where("file_id = ? AND downloaded = ?", c.FileID, false).Find(&otherEmptyChunks).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error checking for remaining empty chunks")
+	}
+	if len(otherEmptyChunks) == 0 {
+		err = b.database.Table("files").Where("id = ?", c.FileID).Update("downloaded", true).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error setting file as downloaded")
+		}
+		b.ui.FileCompleted(c.FileID)
+
+		if !f.embedded() {
+			err = os.Rename(f.Path+downloadExtension, f.Path)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error renaming completed file")
+			}
+		}
+		_, hash := checkFileHash(f.Path)
+		if hash != f.Hash {
+			log.WithFields(log.Fields{
+				"expected": f.Hash,
+				"actual":   hash,
+			}).Error("completed file does not have expected hash")
+		}
+	}
+
+	// Offer this chunk
+	b.offerChunk(c)
 }
 
 func (b *Bounce) makeNextChunkRequests() {

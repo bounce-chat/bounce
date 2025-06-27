@@ -46,6 +46,7 @@ func (st *statusChange) setData(id uuid.UUID, timestamp int64, str string) {
 	st.id = id
 	st.timestamp = timestamp
 	st.action.Segments[0].(*widget.TextSegment).Text = str
+	st.action.Refresh()
 	st.actionSize = fyne.MeasureText(
 		str,
 		theme.Size(st.action.Segments[0].(*widget.TextSegment).Style.SizeName),

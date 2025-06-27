@@ -137,7 +137,6 @@ func (scd *statusChangeData) getTimestamp() int64 {
 
 func (scd *statusChangeData) populateTemplate(obj fyne.CanvasObject) {
 	obj.(*fyne.Container).Objects[1].(*statusChange).setData(scd.id, scd.timestamp, scd.changeString)
-	obj.(*fyne.Container).Objects[1].(*statusChange).Refresh()
 	obj.(*fyne.Container).Objects[1].(*statusChange).Show()
 	obj.(*fyne.Container).Objects[0].(*chatBubble).Hide()
 }
