@@ -270,6 +270,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 		colorName = colorNameOutgoingChatBubble
 	}
 	cb.background.FillColor = theme.Color(colorName)
+	cb.background.Refresh()
 
 	if !m.direct && !m.outgoing {
 		cb.username.Segments[0].(*widget.TextSegment).Text = m.username
@@ -315,6 +316,12 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 		if len(m.imageAttachments) > 1 {
 			size -= theme.Padding()
 		}
+		if len(m.imageAttachments) == 1 && m.imageAttachments[0].Width < int(size) {
+			size = float32(m.imageAttachments[0].Width)
+			if size < 50 {
+				size = float32(50)
+			}
+		}
 
 		for i, attachment := range m.imageAttachments {
 			var rawImage image.Image
@@ -343,7 +350,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 						continue
 					}
 
-					scaledImageDst := image.NewRGBA(image.Rect(0, 0, int(size), rawImage.Bounds().Dy()/(rawImage.Bounds().Dx()/int(size))))
+					scaledImageDst := image.NewRGBA(image.Rect(0, 0, int(size), int((float32(rawImage.Bounds().Dy())/float32(rawImage.Bounds().Dx()))*size)))
 					draw.NearestNeighbor.Scale(scaledImageDst, scaledImageDst.Rect, rawImage, rawImage.Bounds(), draw.Over, nil)
 					scaledImage = scaledImageDst
 
@@ -372,7 +379,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 						continue
 					}
 
-					scaledImageDst := image.NewRGBA(image.Rect(0, 0, int(size), rawImage.Bounds().Dy()/(rawImage.Bounds().Dx()/int(size))))
+					scaledImageDst := image.NewRGBA(image.Rect(0, 0, int(size), int((float32(rawImage.Bounds().Dy())/float32(rawImage.Bounds().Dx()))*size)))
 					draw.NearestNeighbor.Scale(scaledImageDst, scaledImageDst.Rect, rawImage, rawImage.Bounds(), draw.Over, nil)
 					scaledImage = scaledImageDst
 
@@ -440,7 +447,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 		m.username,
 		theme.Size(cb.username.Segments[0].(*widget.TextSegment).Style.SizeName),
 		cb.username.Segments[0].(*widget.TextSegment).Style.TextStyle,
-	).Width
+	).Width + theme.Padding()
 
 	cb.outgoing = m.outgoing
 
@@ -496,24 +503,22 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	case mergeModeTop:
 		if !m.outgoing {
 			cb.icon.Hide()
-		} else {
-			cb.decorations.Show()
 		}
 		cb.decorations.Hide()
 	case mergeModeMiddle:
 		if !m.outgoing {
 			cb.icon.Hide()
 			cb.username.Hide()
-		} else {
-			cb.decorations.Show()
 		}
 		cb.decorations.Hide()
 	case mergeModeBottom:
 		if !m.outgoing {
 			cb.username.Hide()
 		}
+		cb.decorations.Refresh()
 		cb.decorations.Show()
 	case mergeModeStandalone:
+		cb.decorations.Refresh()
 		cb.decorations.Show()
 	}
 
@@ -583,57 +588,36 @@ func (cbr *chatBubbleRenderer) Refresh() {
 }
 
 func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
+	// Define the largest possible bounds of the chat bubble within this size
 	top := float32(0)
 	bottom := size.Height
+	left := float32(0) + theme.Padding()
+	right := size.Width - theme.Padding()
+
 	switch cbr.cb.mergeMode {
 	case mergeModeStandalone:
 		top += unmergedVerticalBuffer
-		size.Height -= unmergedVerticalBuffer * 2
 		bottom -= unmergedVerticalBuffer
 	case mergeModeTop:
 		top += unmergedVerticalBuffer
-		size.Height -= unmergedVerticalBuffer
 	case mergeModeBottom:
-		size.Height -= unmergedVerticalBuffer
 		bottom -= unmergedVerticalBuffer
 	}
 
-	leftBorder := float32(0)
-	rightBorder := size.Width
-
 	if cbr.cb.outgoing {
-		leftBorder += bufferSize
+		left += bufferSize
 	} else {
-		rightBorder -= bufferSize
+		right -= bufferSize
 		if cbr.shiftForIcon() {
-			leftBorder += cbr.iconSize() + theme.Padding()
+			left += cbr.iconSize() + theme.Padding()
 		}
 	}
 
-	usedWidth := cbr.cb.maxTextWidth + theme.Padding()*4
+	// Figure out the widest we would want to make this chat bubble
+	maximumDesiredWidth := cbr.cb.maxTextWidth + theme.Padding()*4
+
 	if cbr.cb.imageAttachments.Visible() {
-		usedWidth = imageAttachmentWidth + theme.Padding()*4
-	}
-	decorationsWidth := cbr.cb.decorations.MinSize().Width + theme.Padding()
-	if cbr.cb.decorations.Visible() {
-		cbr.decorationsOnNewLine = cbr.cb.decoratorNeedsNewLine(
-			rightBorder-leftBorder-theme.Padding()*4,
-			cbr.cb.decorations.MinSize().Width,
-		)
-		if cbr.decorationsOnNewLine {
-			if decorationsWidth > cbr.cb.maxTextWidth {
-				usedWidth = decorationsWidth + theme.Padding()*2
-			}
-		} else {
-			messageAndDecorations := cbr.cb.maxMessageWidth + decorationsWidth + theme.Padding()*3
-			if messageAndDecorations > usedWidth {
-				if cbr.cb.imageAttachments.Visible() && messageAndDecorations > imageAttachmentWidth {
-					cbr.decorationsOnNewLine = true
-				} else {
-					usedWidth = messageAndDecorations
-				}
-			}
-		}
+		maximumDesiredWidth = imageAttachmentWidth + theme.Padding()*4
 	}
 
 	if cbr.cb.fileAttachments.Visible() {
@@ -644,81 +628,130 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 				max = ideal
 			}
 		}
-		if max > usedWidth {
+		if max > maximumDesiredWidth {
 			if max > imageAttachmentWidth {
-				usedWidth = imageAttachmentWidth + theme.Padding()*4
+				maximumDesiredWidth = imageAttachmentWidth + theme.Padding()*4
 			} else {
-				usedWidth = max
+				maximumDesiredWidth = max
 			}
 		}
 	}
 
-	width := rightBorder - leftBorder
-	if usedWidth < width {
-		width = usedWidth
-		if cbr.cb.outgoing {
-			rightBorder = size.Width
-			leftBorder = size.Width - width
+	decorationsWidth := cbr.cb.decorations.MinSize().Width + theme.Padding()
+	if cbr.cb.decorations.Visible() {
+		cbr.decorationsOnNewLine = cbr.cb.decoratorNeedsNewLine(
+			right-left-theme.Padding()*4,
+			cbr.cb.decorations.MinSize().Width,
+		)
+		if cbr.decorationsOnNewLine {
+			if decorationsWidth > maximumDesiredWidth {
+				maximumDesiredWidth = decorationsWidth + theme.Padding()*2
+			}
 		} else {
-			rightBorder = leftBorder + width
+			messageAndDecorations := cbr.cb.maxMessageWidth + decorationsWidth + theme.Padding()*3
+			if messageAndDecorations > maximumDesiredWidth {
+				maximumDesiredWidth = messageAndDecorations
+			}
 		}
 	}
-	if cbr.cb.outgoing {
-		rightBorder -= theme.Padding()
-		leftBorder -= theme.Padding()
+
+	width := right - left
+	height := bottom - top
+	if maximumDesiredWidth < width {
+		width = maximumDesiredWidth
+
+		if cbr.cb.outgoing {
+			left = size.Width - width
+		} else {
+			right = left + width
+		}
 	}
 
-	cbr.cb.background.Resize(fyne.Size{Height: size.Height, Width: width})
-	cbr.cb.background.Move(fyne.Position{leftBorder, top})
+	// Place the background and icon
+	cbr.cb.background.Resize(fyne.Size{Height: height, Width: width})
+	cbr.cb.background.Move(fyne.Position{left, top})
 
-	messageTop := top
+	if cbr.cb.icon.Visible() {
+		cbr.cb.icon.Move(fyne.Position{theme.Padding(), bottom - cbr.iconSize()})
+	}
 
+	// Place each widget from top to bottom
+	topEdge := top
 	if cbr.cb.username.Visible() {
-		cbr.cb.username.Resize(fyne.Size{Height: size.Height, Width: width + theme.Padding()*2})
-		cbr.cb.username.Move(fyne.Position{leftBorder, top - theme.Padding()})
-		messageTop += cbr.cb.username.MinSize().Height - theme.Padding()*2
+		cbr.cb.username.Resize(fyne.Size{Height: height, Width: width})
+		cbr.cb.username.Move(fyne.Position{left, top})
+		topEdge += cbr.cb.username.MinSize().Height
 	}
 
 	if cbr.cb.imageAttachments.Visible() {
-		cbr.cb.imageAttachments.Resize(fyne.Size{Height: size.Height, Width: width})
-		cbr.cb.imageAttachments.Move(fyne.Position{leftBorder + theme.Padding()*2, messageTop + theme.Padding()*2})
-		messageTop += cbr.cb.imageAttachments.MinSize().Height + theme.Padding()*2
+		if !cbr.cb.username.Visible() {
+			topEdge += theme.Padding()
+		}
+		cbr.cb.imageAttachments.Resize(fyne.Size{Height: height, Width: width})
+		cbr.cb.imageAttachments.Move(fyne.Position{left + theme.Padding()*2, topEdge})
+		topEdge += cbr.cb.imageAttachments.MinSize().Height
 	}
 
 	if cbr.cb.fileAttachments.Visible() {
-		cbr.cb.fileAttachments.Resize(fyne.Size{Height: size.Height, Width: width})
-		cbr.cb.fileAttachments.Move(fyne.Position{leftBorder + theme.Padding()*2, messageTop + theme.Padding()*2})
-		messageTop += cbr.cb.fileAttachments.MinSize().Height + theme.Padding()*2
+		if cbr.cb.imageAttachments.Visible() || (!cbr.cb.imageAttachments.Visible() && !cbr.cb.username.Visible() && (cbr.cb.decorations.Visible() || cbr.cb.message.Visible())) {
+			topEdge += theme.Padding()
+		}
+		cbr.cb.fileAttachments.Resize(fyne.Size{Height: height, Width: width})
+		cbr.cb.fileAttachments.Move(fyne.Position{left + theme.Padding()*2, topEdge})
+		topEdge += cbr.cb.fileAttachments.MinSize().Height
+	}
+
+	if cbr.cb.message.Visible() {
+		cbr.cb.message.Resize(fyne.Size{Height: height, Width: width})
+		cbr.cb.message.Move(fyne.Position{left, topEdge})
 	}
 
 	if cbr.cb.decorations.Visible() {
 		cbr.cb.decorations.Resize(cbr.cb.decorations.MinSize())
-		cbr.cb.decorations.Move(fyne.Position{rightBorder - decorationsWidth, bottom - cbr.cb.decorations.MinSize().Height - theme.Padding()})
-	}
-
-	cbr.cb.message.Resize(fyne.Size{Height: size.Height, Width: width})
-	cbr.cb.message.Move(fyne.Position{leftBorder, messageTop})
-
-	if cbr.cb.icon.Visible() {
-		cbr.cb.icon.Move(fyne.Position{0, bottom - cbr.iconSize()})
+		cbr.cb.decorations.Move(fyne.Position{right - decorationsWidth + theme.Padding(), bottom - cbr.cb.decorations.MinSize().Height - theme.Padding()})
 	}
 }
 
 func (cbr *chatBubbleRenderer) MinSize() fyne.Size {
-	minSize := cbr.cb.message.MinSize()
-	minSize.Width += bufferSize
+	minSize := fyne.Size{}
 
-	if cbr.cb.decorations.Visible() {
-		if !cbr.decorationsOnNewLine {
-			minSize.Width += cbr.cb.decorations.MinSize().Width + theme.Padding()
-		} else {
-			minSize.Height += cbr.cb.decorations.MinSize().Height + theme.Padding()
+	if cbr.cb.imageAttachments.Visible() {
+		minSize.Width = imageAttachmentWidth + theme.Padding()*4
+	} else {
+		minSize.Width = cbr.cb.maxTextWidth + theme.Padding()*4
+	}
+
+	if cbr.cb.fileAttachments.Visible() {
+		max := float32(0)
+		for _, attachment := range cbr.cb.fileAttachments.Objects {
+			ideal := attachment.(*messageAttachment).idealWidth() + theme.Padding()*4
+			if ideal > max {
+				max = ideal
+			}
+		}
+		if max > minSize.Width {
+			if max > imageAttachmentWidth {
+				minSize.Width = imageAttachmentWidth + theme.Padding()*4
+			} else {
+				minSize.Width = max
+			}
 		}
 	}
 
-	if cbr.cb.username.Visible() {
-		minSize.Height += cbr.cb.username.MinSize().Height - theme.Padding()*2
+	decorationsWidth := cbr.cb.decorations.MinSize().Width + theme.Padding()
+	if cbr.cb.decorations.Visible() {
+		if cbr.decorationsOnNewLine {
+			if decorationsWidth > minSize.Width {
+				minSize.Width = decorationsWidth + theme.Padding()*2
+			}
+		} else {
+			messageAndDecorations := cbr.cb.maxMessageWidth + decorationsWidth + theme.Padding()*3
+			if messageAndDecorations > minSize.Width {
+				minSize.Width = messageAndDecorations
+			}
+		}
 	}
+	minSize.Width += bufferSize
 
 	switch cbr.cb.mergeMode {
 	case mergeModeStandalone:
@@ -729,19 +762,44 @@ func (cbr *chatBubbleRenderer) MinSize() fyne.Size {
 		minSize.Height += unmergedVerticalBuffer
 	}
 
+	if cbr.cb.username.Visible() {
+		minSize.Height += cbr.cb.username.MinSize().Height
+	}
+
 	if cbr.cb.imageAttachments.Visible() {
-		minSize.Height += cbr.cb.imageAttachments.MinSize().Height + theme.Padding()*2
-		minSize.Width = imageAttachmentWidth + theme.Padding()*4 + bufferSize
+		if !cbr.cb.username.Visible() {
+			minSize.Height += theme.Padding()
+		}
+		minSize.Height += cbr.cb.imageAttachments.MinSize().Height
+		if !cbr.cb.fileAttachments.Visible() && !cbr.cb.message.Visible() && !cbr.cb.decorations.Visible() {
+			minSize.Height += theme.Padding()
+		}
 	}
 
 	if cbr.cb.fileAttachments.Visible() {
-		minSize.Height += cbr.cb.fileAttachments.MinSize().Height + theme.Padding()*2
-		if cbr.cb.fileAttachments.MinSize().Width > minSize.Width {
-			minSize.Width = cbr.cb.fileAttachments.MinSize().Width + theme.Padding()*4 + bufferSize
+		if cbr.cb.imageAttachments.Visible() || (!cbr.cb.imageAttachments.Visible() && !cbr.cb.username.Visible() && (cbr.cb.decorations.Visible() || cbr.cb.message.Visible())) {
+			minSize.Height += theme.Padding()
+		}
+		minSize.Height += cbr.cb.fileAttachments.MinSize().Height
+	}
+
+	if cbr.cb.message.Visible() {
+		minSize.Height += cbr.cb.message.MinSize().Height
+	}
+	if cbr.cb.decorations.Visible() {
+		if cbr.cb.message.Visible() {
+			if !cbr.decorationsOnNewLine {
+				minSize.Width += cbr.cb.decorations.MinSize().Width + theme.Padding()
+			} else {
+				minSize.Height += cbr.cb.decorations.MinSize().Height
+			}
+		} else {
+			minSize.Height += cbr.cb.decorations.MinSize().Height + theme.Padding()
 		}
 	}
 
 	return minSize
+
 }
 
 func (cbr *chatBubbleRenderer) Objects() []fyne.CanvasObject {

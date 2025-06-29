@@ -153,6 +153,7 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 			ch.setMergeMode(i, false)
 
 			ch.UpdateItem(i, sizer)
+			sizer.Refresh() // Unclear why this is required for smooth scrolling, widget should be updated already
 			sizer.Resize(initialSize)
 			height := sizer.MinSize().Height
 			ch.SetItemHeight(i, height)
@@ -594,6 +595,7 @@ func (ch *chatHistory) contentHeight() float32 {
 func (ch *chatHistory) calculateAndSetItemHeight(id int, containerSize fyne.Size) float32 {
 	sizer := ch.CreateItem()
 	ch.UpdateItem(id, sizer)
+	sizer.Refresh() // Unclear why this is required for smooth scrolling, widget should be updated already
 	sizer.Resize(containerSize)
 	height := sizer.MinSize().Height
 	ch.SetItemHeight(id, height)
