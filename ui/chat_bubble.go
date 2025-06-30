@@ -616,8 +616,22 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 	// Figure out the widest we would want to make this chat bubble
 	maximumDesiredWidth := cbr.cb.maxTextWidth + theme.Padding()*4
 
-	if cbr.cb.imageAttachments.Visible() {
-		maximumDesiredWidth = imageAttachmentWidth + theme.Padding()*4
+	decorationsWidth := cbr.cb.decorations.MinSize().Width + theme.Padding()
+	if cbr.cb.decorations.Visible() {
+		cbr.decorationsOnNewLine = cbr.cb.decoratorNeedsNewLine(
+			right-left-theme.Padding()*4,
+			cbr.cb.decorations.MinSize().Width,
+		)
+		if cbr.decorationsOnNewLine {
+			if decorationsWidth > maximumDesiredWidth {
+				maximumDesiredWidth = decorationsWidth + theme.Padding()*2
+			}
+		} else {
+			messageAndDecorations := cbr.cb.maxMessageWidth + decorationsWidth + theme.Padding()*4
+			if messageAndDecorations > maximumDesiredWidth {
+				maximumDesiredWidth = messageAndDecorations
+			}
+		}
 	}
 
 	if cbr.cb.fileAttachments.Visible() {
@@ -637,34 +651,22 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 		}
 	}
 
-	decorationsWidth := cbr.cb.decorations.MinSize().Width + theme.Padding()
-	if cbr.cb.decorations.Visible() {
-		cbr.decorationsOnNewLine = cbr.cb.decoratorNeedsNewLine(
-			right-left-theme.Padding()*4,
-			cbr.cb.decorations.MinSize().Width,
-		)
-		if cbr.decorationsOnNewLine {
-			if decorationsWidth > maximumDesiredWidth {
-				maximumDesiredWidth = decorationsWidth + theme.Padding()*2
-			}
-		} else {
-			messageAndDecorations := cbr.cb.maxMessageWidth + decorationsWidth + theme.Padding()*3
-			if messageAndDecorations > maximumDesiredWidth {
-				maximumDesiredWidth = messageAndDecorations
-			}
-		}
+	if cbr.cb.imageAttachments.Visible() {
+		maximumDesiredWidth = imageAttachmentWidth + theme.Padding()*4
 	}
 
 	width := right - left
 	height := bottom - top
 	if maximumDesiredWidth < width {
 		width = maximumDesiredWidth
-
-		if cbr.cb.outgoing {
-			left = size.Width - width
-		} else {
-			right = left + width
-		}
+	}
+	if cbr.cb.outgoing {
+		left = size.Width - width
+		// Make room for scroll bar
+		left -= theme.Padding()
+		right -= theme.Padding()
+	} else {
+		right = left + width
 	}
 
 	// Place the background and icon
