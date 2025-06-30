@@ -112,13 +112,20 @@ func (ub *userButton) CreateRenderer() fyne.WidgetRenderer {
 
 	ubr := &userButtonRenderer{
 		ub: ub,
+		objects: []fyne.CanvasObject{
+			ub.background,
+			ub.icon,
+			ub.name,
+			ub.admin,
+		},
 	}
 
 	return ubr
 }
 
 type userButtonRenderer struct {
-	ub *userButton
+	ub      *userButton
+	objects []fyne.CanvasObject
 }
 
 func (ubr *userButtonRenderer) Destroy() {}
@@ -168,12 +175,7 @@ func (ubr *userButtonRenderer) MinSize() fyne.Size {
 }
 
 func (ubr *userButtonRenderer) Objects() []fyne.CanvasObject {
-	return []fyne.CanvasObject{
-		ubr.ub.background,
-		ubr.ub.icon,
-		ubr.ub.name,
-		ubr.ub.admin,
-	}
+	return ubr.objects
 }
 
 func (ubr *userButtonRenderer) Refresh() {

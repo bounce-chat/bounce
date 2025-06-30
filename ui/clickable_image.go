@@ -100,13 +100,19 @@ func (ci *clickableImage) CreateRenderer() fyne.WidgetRenderer {
 
 	cir := &clickableImageRenderer{
 		ci: ci,
+		objects: []fyne.CanvasObject{
+			ci.background,
+			ci.image,
+			ci.text,
+		},
 	}
 
 	return cir
 }
 
 type clickableImageRenderer struct {
-	ci *clickableImage
+	ci      *clickableImage
+	objects []fyne.CanvasObject
 }
 
 func (cir *clickableImageRenderer) Destroy() {}
@@ -152,11 +158,7 @@ func (cir *clickableImageRenderer) MinSize() fyne.Size {
 }
 
 func (cir *clickableImageRenderer) Objects() []fyne.CanvasObject {
-	return []fyne.CanvasObject{
-		cir.ci.background,
-		cir.ci.image,
-		cir.ci.text,
-	}
+	return cir.objects
 }
 
 func (cir *clickableImageRenderer) Refresh() {

@@ -554,11 +554,21 @@ func (cb *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 
 	return &chatBubbleRenderer{
 		cb: cb,
+		objects: []fyne.CanvasObject{
+			cb.background,
+			cb.decorations,
+			cb.username,
+			cb.message,
+			cb.icon,
+			cb.imageAttachments,
+			cb.fileAttachments,
+		},
 	}
 }
 
 type chatBubbleRenderer struct {
 	cb                   *chatBubble
+	objects              []fyne.CanvasObject
 	decorationsOnNewLine bool
 }
 
@@ -805,16 +815,7 @@ func (cbr *chatBubbleRenderer) MinSize() fyne.Size {
 }
 
 func (cbr *chatBubbleRenderer) Objects() []fyne.CanvasObject {
-	objs := []fyne.CanvasObject{
-		cbr.cb.background,
-		cbr.cb.decorations,
-		cbr.cb.username,
-		cbr.cb.message,
-		cbr.cb.icon,
-		cbr.cb.imageAttachments,
-		cbr.cb.fileAttachments,
-	}
-	return objs
+	return cbr.objects
 }
 
 func (cbr *chatBubbleRenderer) Destroy() {}

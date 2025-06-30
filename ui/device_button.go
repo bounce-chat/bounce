@@ -138,13 +138,20 @@ func (db *deviceButton) CreateRenderer() fyne.WidgetRenderer {
 
 	dbr := &deviceButtonRenderer{
 		db: db,
+		objects: []fyne.CanvasObject{
+			db.background,
+			db.icon,
+			db.name,
+			db.features,
+		},
 	}
 
 	return dbr
 }
 
 type deviceButtonRenderer struct {
-	db *deviceButton
+	db      *deviceButton
+	objects []fyne.CanvasObject
 }
 
 func (dbr *deviceButtonRenderer) Destroy() {}
@@ -192,12 +199,7 @@ func (dbr *deviceButtonRenderer) MinSize() fyne.Size {
 }
 
 func (dbr *deviceButtonRenderer) Objects() []fyne.CanvasObject {
-	return []fyne.CanvasObject{
-		dbr.db.background,
-		dbr.db.icon,
-		dbr.db.name,
-		dbr.db.features,
-	}
+	return dbr.objects
 }
 
 func (dbr *deviceButtonRenderer) Refresh() {

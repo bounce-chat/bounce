@@ -365,6 +365,22 @@ func (tb *threadButton) CreateRenderer() fyne.WidgetRenderer {
 
 	tbr := &threadButtonRenderer{
 		threadButton: tb,
+		objects: []fyne.CanvasObject{
+			tb.threadImage,
+			tb.threadName,
+			tb.lastMessage,
+			tb.typingIndicator,
+			tb.threadNameFadeOut,
+			tb.lastMessageTimeBackground,
+			tb.lastMessageTimeFadeOut,
+			tb.defaultTextFadeOut,
+			tb.unreadCounterTextFadeOut,
+			tb.unreadCounterBackground,
+			tb.unreadCounterCircle,
+			tb.unreadCounterText,
+			tb.lastMessageTimeText,
+			tb.statusIcons,
+		},
 	}
 
 	return tbr
@@ -372,6 +388,7 @@ func (tb *threadButton) CreateRenderer() fyne.WidgetRenderer {
 
 type threadButtonRenderer struct {
 	threadButton *threadButton
+	objects      []fyne.CanvasObject
 }
 
 func (tbr *threadButtonRenderer) Destroy() {}
@@ -471,22 +488,7 @@ func (tbr *threadButtonRenderer) MinSize() fyne.Size {
 }
 
 func (tbr *threadButtonRenderer) Objects() []fyne.CanvasObject {
-	return []fyne.CanvasObject{
-		tbr.threadButton.threadImage,
-		tbr.threadButton.threadName,
-		tbr.threadButton.lastMessage,
-		tbr.threadButton.typingIndicator,
-		tbr.threadButton.threadNameFadeOut,
-		tbr.threadButton.lastMessageTimeBackground,
-		tbr.threadButton.lastMessageTimeFadeOut,
-		tbr.threadButton.defaultTextFadeOut,
-		tbr.threadButton.unreadCounterTextFadeOut,
-		tbr.threadButton.unreadCounterBackground,
-		tbr.threadButton.unreadCounterCircle,
-		tbr.threadButton.unreadCounterText,
-		tbr.threadButton.lastMessageTimeText,
-		tbr.threadButton.statusIcons,
-	}
+	return tbr.objects
 }
 
 func (tbr *threadButtonRenderer) Refresh() {

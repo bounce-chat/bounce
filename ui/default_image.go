@@ -81,6 +81,10 @@ func (di *defaultImage) CreateRenderer() fyne.WidgetRenderer {
 
 	dir := &defaultImageRenderer{
 		di: di,
+		objects: []fyne.CanvasObject{
+			di.backgroundColor,
+			di.foregroundText,
+		},
 	}
 
 	return dir
@@ -151,7 +155,8 @@ func (di *defaultImage) setBackground() {
 }
 
 type defaultImageRenderer struct {
-	di *defaultImage
+	di      *defaultImage
+	objects []fyne.CanvasObject
 }
 
 func (dir *defaultImageRenderer) Destroy() {}
@@ -175,10 +180,7 @@ func (dir *defaultImageRenderer) MinSize() fyne.Size {
 }
 
 func (dir *defaultImageRenderer) Objects() []fyne.CanvasObject {
-	return []fyne.CanvasObject{
-		dir.di.backgroundColor,
-		dir.di.foregroundText,
-	}
+	return dir.objects
 }
 
 func (dir *defaultImageRenderer) Refresh() {

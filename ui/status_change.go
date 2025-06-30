@@ -62,13 +62,18 @@ func (st *statusChange) CreateRenderer() fyne.WidgetRenderer {
 
 	str := &statusChangeRenderer{
 		st: st,
+		objects: []fyne.CanvasObject{
+			st.action,
+			st.time,
+		},
 	}
 
 	return str
 }
 
 type statusChangeRenderer struct {
-	st *statusChange
+	st      *statusChange
+	objects []fyne.CanvasObject
 }
 
 func (str *statusChangeRenderer) Destroy() {}
@@ -110,10 +115,7 @@ func (str *statusChangeRenderer) MinSize() fyne.Size {
 }
 
 func (str *statusChangeRenderer) Objects() []fyne.CanvasObject {
-	return []fyne.CanvasObject{
-		str.st.action,
-		str.st.time,
-	}
+	return str.objects
 }
 
 func (str *statusChangeRenderer) Refresh() {

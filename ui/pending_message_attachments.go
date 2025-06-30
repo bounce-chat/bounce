@@ -191,6 +191,13 @@ func (ma *messageAttachment) CreateRenderer() fyne.WidgetRenderer {
 
 	mar := &messageAttachmentRenderer{
 		ma: ma,
+		objects: []fyne.CanvasObject{
+			ma.progress,
+			ma.icon,
+			ma.filename,
+			ma.size,
+			ma.action,
+		},
 	}
 
 	return mar
@@ -217,7 +224,8 @@ func (ma *messageAttachment) idealWidth() float32 {
 }
 
 type messageAttachmentRenderer struct {
-	ma *messageAttachment
+	ma      *messageAttachment
+	objects []fyne.CanvasObject
 }
 
 func (mar *messageAttachmentRenderer) Destroy() {}
@@ -262,13 +270,7 @@ func (mar *messageAttachmentRenderer) MinSize() fyne.Size {
 }
 
 func (mar *messageAttachmentRenderer) Objects() []fyne.CanvasObject {
-	return []fyne.CanvasObject{
-		mar.ma.progress,
-		mar.ma.icon,
-		mar.ma.filename,
-		mar.ma.size,
-		mar.ma.action,
-	}
+	return mar.objects
 }
 
 func (mar *messageAttachmentRenderer) Refresh() {

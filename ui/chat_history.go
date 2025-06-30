@@ -618,7 +618,8 @@ func (ch *chatHistory) CreateRenderer() fyne.WidgetRenderer {
 type chatHistoryRenderer struct {
 	//cachedWidth  float32
 	//cachedHeight float32
-	ch *chatHistory
+	ch      *chatHistory
+	objects []fyne.CanvasObject
 }
 
 func newChatHistoryRenderer(ch *chatHistory) *chatHistoryRenderer {
@@ -626,6 +627,10 @@ func newChatHistoryRenderer(ch *chatHistory) *chatHistoryRenderer {
 		//cachedWidth:  float32(fyne.CurrentApp().Preferences().Float("chat-width")),
 		//cachedHeight: float32(fyne.CurrentApp().Preferences().Float("chat-height")),
 		ch: ch,
+		objects: []fyne.CanvasObject{
+			ch.scroller,
+			ch.jumpToBottomIcon,
+		},
 	}
 
 	return chr
@@ -674,10 +679,7 @@ func (chr *chatHistoryRenderer) Destroy() {
 }
 
 func (chr chatHistoryRenderer) Objects() []fyne.CanvasObject {
-	return []fyne.CanvasObject{
-		chr.ch.scroller,
-		chr.ch.jumpToBottomIcon,
-	}
+	return chr.objects
 }
 
 type itemAndIndex struct {

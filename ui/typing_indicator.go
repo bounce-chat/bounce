@@ -29,6 +29,7 @@ type typingIndicator struct {
 	firstTypingDot      *canvas.Circle
 	secondTypingDot     *canvas.Circle
 	thirdTypingDot      *canvas.Circle
+	objects             []fyne.CanvasObject
 }
 
 func newTypingIndicator(mode int, fileGetter func(uuid.UUID) ([]byte, error)) *typingIndicator {
@@ -60,9 +61,23 @@ func newTypingIndicator(mode int, fileGetter func(uuid.UUID) ([]byte, error)) *t
 		Tick:        ti.updateTypingAnimation,
 	}
 
+	ti.updateObjects()
+
 	ti.ExtendBaseWidget(ti)
 
 	return ti
+}
+
+func (ti *typingIndicator) updateObjects() {
+	objs := []fyne.CanvasObject{}
+	for _, icon := range ti.icons {
+		objs = append(objs, icon)
+	}
+	objs = append(objs, ti.currentlyTypingUser)
+	objs = append(objs, ti.firstTypingDot)
+	objs = append(objs, ti.secondTypingDot)
+	objs = append(objs, ti.thirdTypingDot)
+	ti.objects = objs
 }
 
 func (ti *typingIndicator) updateTypingAnimation(state float32) {
@@ -116,6 +131,7 @@ func (ti *typingIndicator) showUser(u *user) {
 		ti.Show()
 	}
 
+	ti.updateObjects()
 	ti.Refresh()
 }
 
@@ -142,6 +158,7 @@ func (ti *typingIndicator) hideUser(userID uuid.UUID) {
 		ti.Hide()
 	}
 
+	ti.updateObjects()
 	ti.Refresh()
 }
 
@@ -241,15 +258,7 @@ func (tir *typingIndicatorRenderer) MinSize() fyne.Size {
 }
 
 func (tir *typingIndicatorRenderer) Objects() []fyne.CanvasObject {
-	objs := []fyne.CanvasObject{}
-	for _, icon := range tir.ti.icons {
-		objs = append(objs, icon)
-	}
-	objs = append(objs, tir.ti.currentlyTypingUser)
-	objs = append(objs, tir.ti.firstTypingDot)
-	objs = append(objs, tir.ti.secondTypingDot)
-	objs = append(objs, tir.ti.thirdTypingDot)
-	return objs
+	return tir.ti.objects
 }
 
 func (tir *typingIndicatorRenderer) Refresh() {
