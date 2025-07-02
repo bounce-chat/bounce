@@ -20,7 +20,6 @@ var threadButtonHeight = float32(64)
 
 type threadButton struct {
 	widget.BaseWidget
-	// TODO: mutex everything that changes this?
 	threadImage               *defaultImage
 	threadName                *widget.RichText
 	lastMessage               *widget.RichText
@@ -355,10 +354,6 @@ func (tb *threadButton) displayCorrectUnreadCount() {
 
 	tb.Refresh()
 }
-
-//func (tb *threadButton) Hide() {} // TODO: need to call into base widget here?
-
-//func (tb *threadButton) MinSize() {} // TODO: needed?
 
 func (tb *threadButton) CreateRenderer() fyne.WidgetRenderer {
 	tb.ExtendBaseWidget(tb)
