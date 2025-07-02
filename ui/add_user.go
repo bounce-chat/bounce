@@ -56,11 +56,9 @@ func (ui *ui) buildAddUser() {
 
 	userStringEntry := widget.NewEntry()
 	userStringEntry.OnSubmitted = func(str string) {
+		sendingStep.Show()
+		ui.addUser.Refresh()
 		go func() {
-			fyne.Do(func() {
-				sendingStep.Show()
-				ui.addUser.Refresh()
-			})
 			err := ui.bounce.RequestToAddUser(strings.TrimSpace(str))
 			fyne.Do(func() {
 				if err != nil {

@@ -176,15 +176,12 @@ func (ui *ui) buildNewSyncDevice() {
 	ui.newSyncDeviceWidgets.progressBar.Hide()
 
 	ui.newSyncDeviceWidgets.syncStringEntry.OnSubmitted = func(str string) {
+		ui.newSyncDeviceWidgets.syncStringInput.Hide()
+		ui.newSyncDeviceWidgets.backButton.Disable()
+		ui.initialSyncIncomplete = true
+		// TODO: change logo to loading version
+		ui.newSyncDeviceWidgets.currentStep.Show()
 		go func() {
-			fyne.Do(func() {
-				ui.newSyncDeviceWidgets.syncStringInput.Hide()
-				ui.newSyncDeviceWidgets.backButton.Disable()
-				ui.initialSyncIncomplete = true
-				// TODO: change logo to loading version
-				ui.newSyncDeviceWidgets.currentStep.Show()
-			})
-
 			if ui.networkState == networkStateStarting || ui.networkState == networkStateOffline {
 				fyne.Do(func() {
 					ui.newSyncDeviceWidgets.currentStep.Text = "Waiting for network..."
