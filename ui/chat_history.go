@@ -568,7 +568,7 @@ func (ch *chatHistory) displayJumpToBottomIfNeeded() {
 		return
 	}
 	scrollerHeight := ch.scroller.Size().Height
-	if scrollerHeight == 0 {
+	if scrollerHeight <= 0 {
 		scrollerHeight = chatContainerSizeAtStartup().Height
 	}
 	if ch.contentHeight() > scrollerHeight*2.5 && ch.offsetY < ch.contentHeight()-scrollerHeight*2.5 {

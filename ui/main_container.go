@@ -340,6 +340,10 @@ func (ui *ui) buildNewProfileCreator() {
 			ui.profileIcon.Refresh()
 		}
 		ui.showMainContainer()
+		ui.NewDirectMessage(chat.User{
+			ID:   profile.id,
+			Name: profile.getName(),
+		})
 	})
 	saveButton.Importance = widget.HighImportance
 	backButton := widget.NewButton("Back", func() {

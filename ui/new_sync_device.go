@@ -72,7 +72,7 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 
 	ui.newSyncDeviceWidgets.deviceNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
-		str, trimmed := trimLeadingSpace(str)
+		str, trimmed := trimLeadingSpace(strings.TrimSpace(str))
 		ui.newSyncDeviceWidgets.deviceNameEntry.Text = str
 		if trimmed != 0 {
 			ui.newSyncDeviceWidgets.deviceNameEntry.CursorRow = 0
@@ -176,43 +176,53 @@ func (ui *ui) buildNewSyncDevice() {
 	ui.newSyncDeviceWidgets.progressBar.Hide()
 
 	ui.newSyncDeviceWidgets.syncStringEntry.OnSubmitted = func(str string) {
-		ui.newSyncDeviceWidgets.syncStringInput.Hide()
-		ui.newSyncDeviceWidgets.backButton.Disable()
-		ui.initialSyncIncomplete = true
-		// TODO: change logo to loading version
+		go func() {
+			fyne.Do(func() {
+				ui.newSyncDeviceWidgets.syncStringInput.Hide()
+				ui.newSyncDeviceWidgets.backButton.Disable()
+				ui.initialSyncIncomplete = true
+				// TODO: change logo to loading version
+				ui.newSyncDeviceWidgets.currentStep.Show()
+			})
 
-		ui.newSyncDeviceWidgets.currentStep.Show()
-		if ui.networkState == networkStateStarting || ui.networkState == networkStateOffline {
-			ui.newSyncDeviceWidgets.currentStep.Text = "Waiting for network..."
-			ui.newSyncDeviceWidgets.currentStep.Refresh()
-			ui.newSyncDeviceWidgets.infiniteProgressBar.Show()
-			for {
-				time.Sleep(500 * time.Millisecond) // TODO: use a callback for this?
-				if ui.networkState == networkStateOnline {
-					break
+			if ui.networkState == networkStateStarting || ui.networkState == networkStateOffline {
+				fyne.Do(func() {
+					ui.newSyncDeviceWidgets.currentStep.Text = "Waiting for network..."
+					ui.newSyncDeviceWidgets.currentStep.Refresh()
+					ui.newSyncDeviceWidgets.infiniteProgressBar.Show()
+				})
+				for {
+					time.Sleep(500 * time.Millisecond) // TODO: use a callback for this?
+					if ui.networkState == networkStateOnline {
+						break
+					}
 				}
 			}
-		}
 
-		ui.newSyncDeviceWidgets.currentStep.Text = "Sending sync request..."
-		ui.newSyncDeviceWidgets.currentStep.Refresh()
-		ui.newSyncDeviceWidgets.infiniteProgressBar.Show()
+			fyne.Do(func() {
+				ui.newSyncDeviceWidgets.currentStep.Text = "Sending sync request..."
+				ui.newSyncDeviceWidgets.currentStep.Refresh()
+				ui.newSyncDeviceWidgets.infiniteProgressBar.Show()
+			})
 
-		err := ui.bounce.RequestToSync(str)
-		if err != nil {
-			ui.initialSyncIncomplete = false
-			ui.newSyncDeviceWidgets.infiniteProgressBar.Hide()
-			ui.newSyncDeviceWidgets.currentStep.Text = ""
-			ui.newSyncDeviceWidgets.currentStep.Hide()
-			ui.newSyncDeviceWidgets.syncStringEntry.Text = ""
-			ui.newSyncDeviceWidgets.syncStringEntry.Refresh()
-			ui.showDialog(dialog.NewError(errors.New("Error sending sync request: "+err.Error()), ui.mainWindow), nil)
-			ui.newSyncDeviceWidgets.backButton.Enable()
-			ui.newSyncDeviceWidgets.syncStringInput.Show()
-		} else {
-			ui.newSyncDeviceWidgets.currentStep.Text = "Waiting for sync response..."
-			ui.newSyncDeviceWidgets.currentStep.Refresh()
-		}
+			err := ui.bounce.RequestToSync(str)
+			fyne.Do(func() {
+				if err != nil {
+					ui.initialSyncIncomplete = false
+					ui.newSyncDeviceWidgets.infiniteProgressBar.Hide()
+					ui.newSyncDeviceWidgets.currentStep.Text = ""
+					ui.newSyncDeviceWidgets.currentStep.Hide()
+					ui.newSyncDeviceWidgets.syncStringEntry.Text = ""
+					ui.newSyncDeviceWidgets.syncStringEntry.Refresh()
+					ui.showDialog(dialog.NewError(errors.New("Error sending sync request: "+err.Error()), ui.mainWindow), nil)
+					ui.newSyncDeviceWidgets.backButton.Enable()
+					ui.newSyncDeviceWidgets.syncStringInput.Show()
+				} else {
+					ui.newSyncDeviceWidgets.currentStep.Text = "Waiting for sync response..."
+					ui.newSyncDeviceWidgets.currentStep.Refresh()
+				}
+			})
+		}()
 	}
 
 	ui.newSyncDevice = container.New(

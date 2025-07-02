@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -17,6 +18,7 @@ func (ui *ui) showAddUser() {
 	}
 	ui.mainWindow.SetContent(ui.addUser)
 	ui.addUser.Show()
+	// TODO: focus the entry
 }
 
 func (ui *ui) buildAddUser() {
@@ -54,17 +56,25 @@ func (ui *ui) buildAddUser() {
 
 	userStringEntry := widget.NewEntry()
 	userStringEntry.OnSubmitted = func(str string) {
-		sendingStep.Show()
-		err := ui.bounce.RequestToAddUser(str)
-		if err != nil {
-			sendingStep.Hide()
-			userStringEntry.Text = ""
-			userStringEntry.Refresh()
-			ui.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), ui.mainWindow), nil)
-		} else {
-			sendingRequestProgress.Stop()
-			receivingStep.Show()
-		}
+		go func() {
+			fyne.Do(func() {
+				sendingStep.Show()
+				ui.addUser.Refresh()
+			})
+			err := ui.bounce.RequestToAddUser(strings.TrimSpace(str))
+			fyne.Do(func() {
+				if err != nil {
+					sendingStep.Hide()
+					userStringEntry.Text = ""
+					ui.addUser.Refresh()
+					ui.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), ui.mainWindow), nil)
+				} else {
+					sendingRequestProgress.Stop()
+					receivingStep.Show()
+					ui.addUser.Refresh()
+				}
+			})
+		}()
 	}
 
 	ui.addUser = container.New(

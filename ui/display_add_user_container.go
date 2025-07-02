@@ -93,6 +93,7 @@ func (ui *ui) UserAdded(u chat.User) {
 	//ui.showMainContainer() // TODO: only if still showing the add user container, and actually go to the last screen
 	if !ui.initialSyncIncomplete {
 		fyne.DoAndWait(func() {
+			ui.NewDirectMessage(u)
 			ui.showDialog(dialog.NewInformation("New contact added", u.Name+" was added as a friend", ui.mainWindow), nil)
 		})
 	}
