@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"fmt"
+	"runtime/debug"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
@@ -31,14 +34,35 @@ func (ui *ui) buildAbout() {
 		closeButton,
 	)
 
+	revision := "000000"
+	buildInfo, ok := debug.ReadBuildInfo()
+	if ok {
+		for _, bs := range buildInfo.Settings {
+			if bs.Key == "vcs.revision" {
+				revision = bs.Value
+				if len(revision) > 6 {
+					revision = revision[:6]
+				}
+				break
+			}
+		}
+
+		for _, bs := range buildInfo.Settings {
+			if bs.Key == "vcs.modified" {
+				revision = revision + "-modified"
+				break
+			}
+		}
+	}
+
 	ui.about = container.New(
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.NewCenter(
 			container.NewVBox(
 				makeLogo(228, 167), // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
-				widget.NewLabel("version 0.0.0 pre-release evaluation demo"),
-				widget.NewLabel("for your consideration"),
+				widget.NewLabel("version 0.0.0 pre-release"),
+				widget.NewLabel(fmt.Sprintf("build %s", revision)),
 			),
 		),
 	)

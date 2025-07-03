@@ -206,51 +206,51 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 		go ui.bounce.TypingInDirectMessage(dm.user.id)
 	}
 	entry.customOnSubmitted = func() {
-		entry.Disable()
-		chatDM := chat.DirectMessage{
-			Thread: dm.user.id,
-			Text:   entry.Text,
-		}
-
-		imageAttachments := []chat.ImageAttachment{}
-		fileAttachments := []chat.FileAttachment{}
-		readers := map[uuid.UUID]io.ReadCloser{}
-		sources := map[uuid.UUID]string{}
-
-		pendingAttachments := dm.pendingMessageAttachments.extract()
-		for _, pma := range pendingAttachments {
-			readers[pma.id] = pma.reader
-			sources[pma.id] = pma.reader.URI().Path()
-
-			if pma.isImage {
-				imageAttachments = append(
-					imageAttachments,
-					chat.ImageAttachment{
-						ID:       pma.id,
-						Name:     pma.reader.URI().Name(),
-						Size:     pma.fileSize,
-						Width:    pma.width,
-						Height:   pma.height,
-						BlurHash: pma.blurHash,
-					},
-				)
-			} else {
-				fileAttachments = append(
-					fileAttachments,
-					chat.FileAttachment{
-						ID:   pma.id,
-						Name: pma.reader.URI().Name(),
-						Size: pma.fileSize,
-					},
-				)
+		go func() {
+			chatDM := chat.DirectMessage{
+				Thread: dm.user.id,
+				Text:   entry.Text,
 			}
-		}
 
-		chatDM.ImageAttachments = imageAttachments
-		chatDM.FileAttachments = fileAttachments
+			imageAttachments := []chat.ImageAttachment{}
+			fileAttachments := []chat.FileAttachment{}
+			readers := map[uuid.UUID]io.ReadCloser{}
+			sources := map[uuid.UUID]string{}
 
-		ui.bounce.SendDirectMessage(chatDM, readers, sources)
-		entry.Enable()
+			pendingAttachments := dm.pendingMessageAttachments.extract()
+			for _, pma := range pendingAttachments {
+				readers[pma.id] = pma.reader
+				sources[pma.id] = pma.reader.URI().Path()
+
+				if pma.isImage {
+					imageAttachments = append(
+						imageAttachments,
+						chat.ImageAttachment{
+							ID:       pma.id,
+							Name:     pma.reader.URI().Name(),
+							Size:     pma.fileSize,
+							Width:    pma.width,
+							Height:   pma.height,
+							BlurHash: pma.blurHash,
+						},
+					)
+				} else {
+					fileAttachments = append(
+						fileAttachments,
+						chat.FileAttachment{
+							ID:   pma.id,
+							Name: pma.reader.URI().Name(),
+							Size: pma.fileSize,
+						},
+					)
+				}
+			}
+
+			chatDM.ImageAttachments = imageAttachments
+			chatDM.FileAttachments = fileAttachments
+
+			ui.bounce.SendDirectMessage(chatDM, readers, sources)
+		}()
 	}
 
 	openThread := func() {
