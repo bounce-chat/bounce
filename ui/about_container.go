@@ -49,7 +49,9 @@ func (ui *ui) buildAbout() {
 
 		for _, bs := range buildInfo.Settings {
 			if bs.Key == "vcs.modified" {
-				revision = revision + "-modified"
+				if bs.Value == "true" {
+					revision = revision + "-modified"
+				}
 				break
 			}
 		}
