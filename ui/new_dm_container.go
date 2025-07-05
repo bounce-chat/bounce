@@ -65,24 +65,16 @@ func (ui *ui) refreshAllUsersDMLinks() {
 				false,
 				func() {
 
-					t, ok := ui.getThread(u.id)
+					dm, ok := ui.threads.getDM(u.id)
 					if !ok {
 						ui.NewDirectMessage(chat.User{
 							ID:   u.id,
 							Name: u.getName(),
 						})
-						t, ok = ui.getThread(u.id)
+						dm, ok = ui.threads.getDM(u.id)
 						if !ok {
 							log.Fatal("DM doesn't exist immediately after creation")
 						}
-					}
-					dm, ok := t.(*directMessage)
-					if !ok {
-						log.WithFields(log.Fields{
-							"user_id": u.id,
-						}).Error("direct message cannot be cast as direct message")
-						ui.threadsMutex.Unlock()
-						return
 					}
 
 					if fyne.CurrentDevice().IsMobile() {

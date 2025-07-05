@@ -269,24 +269,16 @@ func (ui *ui) getEditUserDialog(g *group, userID uuid.UUID) (dialog.Dialog, func
 	editUserContainer := container.NewVBox(
 		container.NewCenter(newDefaultImage(u.id, u.images, u.initials, 64, ui.bounce.GetFileData, nil)), // TODO: get size from theme
 		widget.NewButton("Direct Message", func() {
-			t, ok := ui.getThread(u.id)
+			dm, ok := ui.threads.getDM(u.id)
 			if !ok {
 				ui.NewDirectMessage(chat.User{
 					ID:   u.id,
 					Name: u.getName(),
 				})
-				t, ok = ui.getThread(u.id)
+				dm, ok = ui.threads.getDM(u.id)
 				if !ok {
 					log.Fatal("DM doesn't exist immediately after creation")
 				}
-			}
-			dm, ok := t.(*directMessage)
-			if !ok {
-				log.WithFields(log.Fields{
-					"user_id": u.id,
-				}).Error("direct message cannot be cast as direct message")
-				ui.threadsMutex.Unlock()
-				return
 			}
 
 			if fyne.CurrentDevice().IsMobile() {
@@ -376,7 +368,7 @@ func (ui *ui) amAdmin(g *group) bool {
 func (ui *ui) OpenNewGroupChat(bounceGroup chat.Group) { // TODO: rename "create and open"?
 	ui.NewGroupChat(bounceGroup)
 
-	g, exists := ui.getThread(bounceGroup.ID)
+	g, exists := ui.threads.getGroup(bounceGroup.ID)
 	if exists {
 		fyne.DoAndWait(func() {
 			ui.showMainContainer()
@@ -392,7 +384,7 @@ func (ui *ui) NewGroupChat(bounceGroup chat.Group) {
 }
 
 func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
-	if _, exists := ui.getThread(bounceGroup.ID); exists {
+	if _, exists := ui.threads.getGroup(bounceGroup.ID); exists {
 		return
 	}
 
@@ -618,9 +610,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		footer,
 		container.New(&autoscollLayout{}, group.scroll),
 	)
-	ui.threadsMutex.Lock()
-	ui.threads[group.id] = group
-	ui.threadsMutex.Unlock()
+	ui.threads.add(group.id, group)
 	ui.refreshThreadOrder()
 	ui.updateEnabledFeatures(group)
 
@@ -638,18 +628,11 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 
 func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 	fyne.DoAndWait(func() {
-		t, exists := ui.getThread(bounceGroup.ID)
+		g, exists := ui.threads.getGroup(bounceGroup.ID)
 		if !exists {
 			log.WithFields(log.Fields{
 				"group_id": bounceGroup.ID,
 			}).Warn("cannot set state on unknown group")
-			return
-		}
-		g, ok := t.(*group)
-		if !ok {
-			log.WithFields(log.Fields{
-				"group_id": bounceGroup.ID,
-			}).Warn("cannot set group state on thread that is not group")
 			return
 		}
 
@@ -719,7 +702,7 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 }
 
 func (ui *ui) DisplayGroupMessage(gm chat.GroupMessage) {
-	g, exists := ui.getThread(gm.Thread)
+	g, exists := ui.threads.getGroup(gm.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": gm.Thread,
@@ -739,7 +722,7 @@ func (ui *ui) DisplayGroupMessage(gm chat.GroupMessage) {
 }
 
 func (ui *ui) DisplaySentGroupMessage(gm chat.GroupMessage) {
-	g, exists := ui.getThread(gm.Thread)
+	g, exists := ui.threads.getGroup(gm.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": gm.Thread,
@@ -767,7 +750,7 @@ func (ui *ui) DisplaySentGroupMessage(gm chat.GroupMessage) {
 }
 
 func (ui *ui) AddUser(ugau chat.UpdateGroupAddUser) {
-	g, exists := ui.getThread(ugau.Thread)
+	g, exists := ui.threads.getGroup(ugau.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ugau.Thread,
@@ -790,7 +773,7 @@ func (ui *ui) AddUser(ugau chat.UpdateGroupAddUser) {
 }
 
 func (ui *ui) RemoveUser(ugru chat.UpdateGroupRemoveUser) {
-	g, exists := ui.getThread(ugru.Thread)
+	g, exists := ui.threads.getGroup(ugru.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ugru.Thread,
@@ -832,7 +815,7 @@ func (ui *ui) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 				}).Error("unknown user removed us from a group")
 				actorName = "unknown user"
 			}
-			t, ok := ui.getThread(rfg.Group)
+			t, ok := ui.threads.get(rfg.Group)
 			if !ok {
 				log.WithFields(log.Fields{
 					"group": rfg.Group,
@@ -854,9 +837,7 @@ func (ui *ui) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 				ui.showDialog(dialog.NewInformation("Removed From Group", actorName+" removed you from "+groupName, ui.mainWindow), nil)
 			}
 		}
-		ui.threadsMutex.Lock()
-		delete(ui.threads, rfg.Group)
-		ui.threadsMutex.Unlock()
+		ui.threads.remove(rfg.Group)
 		ui.refreshThreadOrder()
 	})
 }
@@ -890,7 +871,7 @@ func (ui *ui) GroupDeleted(gd chat.GroupDeleted) {
 				}
 			}
 
-			t, ok := ui.getThread(gd.Group)
+			t, ok := ui.threads.get(gd.Group)
 			if !ok {
 				log.WithFields(log.Fields{
 					"group": gd.Group,
@@ -913,15 +894,13 @@ func (ui *ui) GroupDeleted(gd chat.GroupDeleted) {
 			}
 		}
 
-		ui.threadsMutex.Lock()
-		delete(ui.threads, gd.Group)
-		ui.threadsMutex.Unlock()
+		ui.threads.remove(gd.Group)
 		ui.refreshThreadOrder()
 	})
 }
 
 func (ui *ui) RenameGroup(ugn chat.UpdateGroupName) {
-	g, exists := ui.getThread(ugn.Thread)
+	g, exists := ui.threads.getGroup(ugn.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ugn.Thread,
@@ -941,7 +920,7 @@ func (ui *ui) RenameGroup(ugn chat.UpdateGroupName) {
 }
 
 func (ui *ui) GroupRetentionChanged(ugr chat.UpdateGroupRetention) {
-	g, exists := ui.getThread(ugr.Thread)
+	g, exists := ui.threads.getGroup(ugr.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ugr.Thread,
@@ -961,7 +940,7 @@ func (ui *ui) GroupRetentionChanged(ugr chat.UpdateGroupRetention) {
 }
 
 func (ui *ui) GroupChatHistoryCleared(ugch chat.UpdateGroupClearHistory) {
-	g, exists := ui.getThread(ugch.Thread)
+	g, exists := ui.threads.getGroup(ugch.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ugch.Thread,
@@ -988,7 +967,7 @@ func (ui *ui) GroupChatHistoryCleared(ugch chat.UpdateGroupClearHistory) {
 }
 
 func (ui *ui) AdminPromoted(ugap chat.UpdateGroupAdminPromoted) {
-	g, exists := ui.getThread(ugap.Thread)
+	g, exists := ui.threads.getGroup(ugap.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ugap.Thread,
@@ -1008,7 +987,7 @@ func (ui *ui) AdminPromoted(ugap chat.UpdateGroupAdminPromoted) {
 }
 
 func (ui *ui) AdminDemoted(ugad chat.UpdateGroupAdminDemoted) {
-	g, exists := ui.getThread(ugad.Thread)
+	g, exists := ui.threads.getGroup(ugad.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ugad.Thread,
@@ -1028,7 +1007,7 @@ func (ui *ui) AdminDemoted(ugad chat.UpdateGroupAdminDemoted) {
 }
 
 func (ui *ui) UserManagementRestricted(ugumr chat.UpdateGroupUserManagementRestricted) {
-	g, exists := ui.getThread(ugumr.Thread)
+	g, exists := ui.threads.getGroup(ugumr.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ugumr.Thread,
@@ -1048,7 +1027,7 @@ func (ui *ui) UserManagementRestricted(ugumr chat.UpdateGroupUserManagementRestr
 }
 
 func (ui *ui) UserManagementUnrestricted(ugumu chat.UpdateGroupUserManagementUnrestricted) {
-	g, exists := ui.getThread(ugumu.Thread)
+	g, exists := ui.threads.getGroup(ugumu.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ugumu.Thread,
@@ -1068,7 +1047,7 @@ func (ui *ui) UserManagementUnrestricted(ugumu chat.UpdateGroupUserManagementUnr
 }
 
 func (ui *ui) GroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) {
-	g, exists := ui.getThread(uger.Thread)
+	g, exists := ui.threads.getGroup(uger.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": uger.Thread,
@@ -1088,7 +1067,7 @@ func (ui *ui) GroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) {
 }
 
 func (ui *ui) GroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricted) {
-	g, exists := ui.getThread(ugeu.Thread)
+	g, exists := ui.threads.getGroup(ugeu.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ugeu.Thread,
@@ -1108,7 +1087,7 @@ func (ui *ui) GroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricted) {
 }
 
 func (ui *ui) PostingRestricted(ugpr chat.UpdateGroupPostingRestricted) {
-	g, exists := ui.getThread(ugpr.Thread)
+	g, exists := ui.threads.getGroup(ugpr.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ugpr.Thread,
@@ -1128,7 +1107,7 @@ func (ui *ui) PostingRestricted(ugpr chat.UpdateGroupPostingRestricted) {
 }
 
 func (ui *ui) PostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted) {
-	g, exists := ui.getThread(ugpu.Thread)
+	g, exists := ui.threads.getGroup(ugpu.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ugpu.Thread,
@@ -1147,7 +1126,7 @@ func (ui *ui) PostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted) {
 }
 
 func (ui *ui) UserBlockedGroup(ubg chat.UserBlockedGroup) {
-	g, exists := ui.getThread(ubg.Thread)
+	g, exists := ui.threads.getGroup(ubg.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ubg.Thread,
@@ -1166,7 +1145,7 @@ func (ui *ui) UserBlockedGroup(ubg chat.UserBlockedGroup) {
 }
 
 func (ui *ui) UserChangedGroupImage(ugci chat.UpdateGroupUserChangedGroupImage) {
-	g, exists := ui.getThread(ugci.Thread)
+	g, exists := ui.threads.getGroup(ugci.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ugci.Thread,

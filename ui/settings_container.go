@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
@@ -128,21 +129,17 @@ func (ui *ui) SetSettings(settings chat.Settings) {
 		if updateReadReceipts {
 			ui.settingsWidgets.sendReadReceiptsByDefault.Checked = settings.DefaultSendReadReceipts
 			ui.settingsWidgets.sendReadReceiptsByDefault.Refresh()
-			ui.threadsMutex.Lock()
-			for _, t := range ui.threads {
+			ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
 				t.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
-			}
-			ui.threadsMutex.Unlock()
+			})
 		}
 
 		if updateTypingIndicators {
 			ui.settingsWidgets.sendTypingIndicatorsByDefault.Checked = settings.DefaultSendTypingIndicators
 			ui.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
-			ui.threadsMutex.Lock()
-			for _, t := range ui.threads {
+			ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
 				t.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
-			}
-			ui.threadsMutex.Unlock()
+			})
 		}
 
 		ui.settingsWidgets.defaultNewGroupRestrictUserManagement.Checked = settings.NewGroupRestrictUserManagement

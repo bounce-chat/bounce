@@ -80,7 +80,7 @@ func (ui *ui) mobileBack() {
 		ui.mainWindow.SetContent(ui.mainContainer)
 		ui.mainContainer.Show()
 	case viewTypeThread:
-		t, ok := ui.getThread(displayView.context)
+		t, ok := ui.threads.get(displayView.context)
 		if !ok {
 			log.WithFields(log.Fields{
 				"type": displayView.viewType,

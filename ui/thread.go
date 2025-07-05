@@ -55,11 +55,9 @@ func (threads sortableThreads) Less(i, j int) bool {
 
 func (ui *ui) refreshThreadOrder() {
 	allThreads := sortableThreads{}
-	ui.threadsMutex.Lock()
-	for _, t := range ui.threads {
+	ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
 		allThreads = append(allThreads, t)
-	}
-	ui.threadsMutex.Unlock()
+	})
 	sort.Sort(allThreads)
 
 	buttons := []fyne.CanvasObject{}
@@ -340,16 +338,8 @@ func (ui *ui) isActive(thread thread) bool {
 	return ui.activeThread == thread.getID()
 }
 
-func (ui *ui) getThread(id uuid.UUID) (thread, bool) {
-	ui.threadsMutex.Lock()
-	defer ui.threadsMutex.Unlock()
-
-	t, ok := ui.threads[id]
-	return t, ok
-}
-
 func (ui *ui) ShowTypingIndicator(userID, threadID uuid.UUID) {
-	t, ok := ui.getThread(threadID)
+	t, ok := ui.threads.get(threadID)
 	if !ok {
 		log.WithFields(log.Fields{
 			"thread_id": threadID,
@@ -376,7 +366,7 @@ func (ui *ui) ShowTypingIndicator(userID, threadID uuid.UUID) {
 }
 
 func (ui *ui) HideTypingIndicator(userID, threadID uuid.UUID) {
-	t, ok := ui.getThread(threadID)
+	t, ok := ui.threads.get(threadID)
 	if !ok {
 		log.WithFields(log.Fields{
 			"thread_id": threadID,

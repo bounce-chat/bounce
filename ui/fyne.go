@@ -71,8 +71,6 @@ type ui struct {
 	mainMenu                      *fyne.MainMenu
 	allUsersDMLinksScroll         *container.Scroll
 	networkOfflineWarning         *widget.Label
-	threads                       map[uuid.UUID]thread
-	threadsMutex                  sync.Mutex
 	threadWithItem                map[uuid.UUID]thread
 	threadWithItemMutex           sync.Mutex
 	pausedGroupNotifications      map[uuid.UUID]bool
@@ -88,6 +86,7 @@ type ui struct {
 	users                         *userStore
 	devices                       *deviceStore
 	messages                      *messageStore
+	threads                       *threadStore
 	currentDevices                *container.Scroll
 	deletedUser                   *user
 	initialStateSet               bool
@@ -128,12 +127,12 @@ func (ui *ui) build() {
 	//
 	// Initialize types that require it
 	//
-	ui.threads = make(map[uuid.UUID]thread)
-	ui.threadWithItem = make(map[uuid.UUID]thread)
 	ui.pausedGroupNotifications = make(map[uuid.UUID]bool)
 	ui.users = newUserStore()
 	ui.devices = newDeviceStore()
 	ui.messages = newMessageStore(getConfigDirectory())
+	ui.threads = newThreadStore()
+	ui.threadWithItem = make(map[uuid.UUID]thread)
 	ui.focused = true
 	ui.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	ui.networkOfflineWarning.Show()
@@ -322,13 +321,9 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 
 		for _, g := range state.Groups {
 			ui.buildNewGroupChat(g)
-			t, ok := ui.getThread(g.ID)
+			group, ok := ui.threads.getGroup(g.ID)
 			if !ok {
 				log.Fatal("group thread doesn't exist immediately after creation")
-			}
-			group, ok := t.(*group)
-			if !ok {
-				log.Fatal("group doesn't exist immediately after creation")
 			}
 			group.button.setLastMessageTime(time.Unix(g.LastActivity, 0))
 			group.setLastMessageTime(g.LastActivity)
@@ -501,12 +496,11 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 
 		for _, uuun := range state.UpdateUserUpdateNames {
 			if uuun.User == ui.profile.id {
-				ui.threadsMutex.Lock()
-				for _, th := range ui.threads {
+				ui.threads.rangeFunc(func(_ uuid.UUID, th thread) {
 					switch t := th.(type) {
 					case *group:
 						if uuun.Timestamp < t.createdAt {
-							continue
+							return
 						}
 						uuunItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 						if err != nil {
@@ -522,8 +516,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 							threadItems[t.user.id] = append(threadItems[t.user.id], uuunItem)
 						}
 					}
-				}
-				ui.threadsMutex.Unlock()
+				})
 			} else {
 				uuunItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 				if err != nil {
@@ -531,11 +524,10 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 				}
 				threadItems[uuun.User] = append(threadItems[uuun.User], uuunItem)
 
-				ui.threadsMutex.Lock()
-				for _, t := range ui.threads {
+				ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
 					if g, ok := t.(*group); ok {
 						if uuun.Timestamp < g.createdAt {
-							continue
+							return
 						}
 						if g.users.contains(uuun.User) {
 							uuunGroupItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
@@ -545,18 +537,16 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 							threadItems[g.id] = append(threadItems[g.id], uuunGroupItem)
 						}
 					}
-				}
-				ui.threadsMutex.Unlock()
+				})
 			}
 		}
 		for _, uuui := range state.UpdateUserUpdateImages {
 			if uuui.User == ui.profile.id {
-				ui.threadsMutex.Lock()
-				for _, th := range ui.threads {
+				ui.threads.rangeFunc(func(_ uuid.UUID, th thread) {
 					switch t := th.(type) {
 					case *group:
 						if uuui.Timestamp < t.createdAt {
-							continue
+							return
 						}
 						uuuiItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 						if err != nil {
@@ -572,8 +562,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 							threadItems[t.user.id] = append(threadItems[t.user.id], uuuiItem)
 						}
 					}
-				}
-				ui.threadsMutex.Unlock()
+				})
 			} else {
 				uuuiItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 				if err != nil {
@@ -581,11 +570,10 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 				}
 				threadItems[uuui.User] = append(threadItems[uuui.User], uuuiItem)
 
-				ui.threadsMutex.Lock()
-				for _, t := range ui.threads {
+				ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
 					if g, ok := t.(*group); ok {
 						if uuui.Timestamp < g.createdAt {
-							continue
+							return
 						}
 						if g.users.contains(uuui.User) {
 							uuuiGroupItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
@@ -595,19 +583,16 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 							threadItems[g.id] = append(threadItems[g.id], uuuiGroupItem)
 						}
 					}
-				}
-				ui.threadsMutex.Unlock()
+				})
 			}
 		}
 
 		// Create widgets for all the thread items we added
-		ui.threadsMutex.Lock()
-		for _, t := range ui.threads {
+		ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
 			if items, ok := threadItems[t.getID()]; ok {
 				ui.populateInitialItems(t, items)
 			}
-		}
-		ui.threadsMutex.Unlock()
+		})
 		ui.refreshThreadOrder()
 
 		for _, fp := range state.FileProgress {
@@ -642,7 +627,7 @@ func chatContainerSizeAtStartup() fyne.Size {
 func (ui *ui) createDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]chat.DMState) {
 	initialState, _ := initialStates[id]
 
-	_, ok := ui.getThread(id)
+	_, ok := ui.threads.getDM(id)
 	if !ok {
 		u, userExists := ui.users.get(id)
 		if !userExists {
@@ -656,7 +641,7 @@ func (ui *ui) createDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]chat.DM
 			State:  initialState,
 		})
 
-		_, ok = ui.getThread(id)
+		_, ok = ui.threads.getDM(id)
 		if !ok {
 			log.Fatal("DM doesn't exist immediately after creation")
 		}
@@ -665,7 +650,7 @@ func (ui *ui) createDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]chat.DM
 
 func (ui *ui) NetworkOnline() {
 	if ui.activeThread != uuid.Nil {
-		t, ok := ui.getThread(ui.activeThread)
+		t, ok := ui.threads.get(ui.activeThread)
 		if !ok {
 			log.WithFields(log.Fields{
 				"thread": ui.activeThread,
@@ -709,16 +694,13 @@ func (ui *ui) FileCompleted(fileID uuid.UUID) {
 	}
 
 	// TODO: check if anything is waiting for this file and refresh it
-
-	ui.threadsMutex.Lock()
-	for _, t := range ui.threads {
+	ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
 		fyne.DoAndWait(func() {
 			t.getEditIcon().Refresh()
 			t.getHeaderIcon().Refresh()
 			t.getButton().threadImage.Refresh()
 		})
-	}
-	ui.threadsMutex.Unlock()
+	})
 }
 
 func (ui *ui) FileDownloadProgress(fileID uuid.UUID, progress float64) {

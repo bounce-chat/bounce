@@ -242,18 +242,11 @@ func (ui *ui) newUpdateGroupClearHistory(ugch chat.UpdateGroupClearHistory) (*th
 }
 
 func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
-	t, exists := ui.getThread(gm.Thread)
+	group, exists := ui.threads.getGroup(gm.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": gm.Thread,
 		}).Error("group does not exist on message receive, ignoring the message")
-		return &threadItem{}, errUnknownThread
-	}
-	group, ok := t.(*group)
-	if !ok {
-		log.WithFields(log.Fields{
-			"group_id": gm.Thread,
-		}).Error("group message received for thread that is not a group, ignoring the message")
 		return &threadItem{}, errUnknownThread
 	}
 
@@ -395,7 +388,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 }
 
 func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
-	dmThread, exists := ui.getThread(dm.Thread)
+	dmThread, exists := ui.threads.getDM(dm.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"user_id": dm.Thread,
@@ -755,7 +748,7 @@ func (ui *ui) userChangedImage(id, userID uuid.UUID, timestamp int64) (*threadIt
 }
 
 func (ui *ui) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, frameType, action string, timestamp int64, seen bool) (*threadItem, error) {
-	t, ok := ui.getThread(threadID)
+	t, ok := ui.threads.get(threadID)
 	if !ok {
 		log.WithFields(log.Fields{
 			"thread_id": threadID,

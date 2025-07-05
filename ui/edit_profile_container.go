@@ -322,7 +322,7 @@ func (ui *ui) buildEditProfile() {
 			ui.showDialog(dialog.NewError(errors.New("error updating name: "+err.Error()), ui.mainWindow), nil)
 		} else {
 			ui.showMainContainer()
-			t, ok := ui.getThread(ui.activeThread)
+			t, ok := ui.threads.get(ui.activeThread)
 			if ok {
 				ui.mainWindow.Canvas().Focus(t.getEntry())
 			}
