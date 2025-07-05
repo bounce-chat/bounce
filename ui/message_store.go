@@ -27,9 +27,9 @@ type messageStore struct {
 	cacheFile                string
 }
 
-func newMessageStore(configDirectory string) *messageStore {
+func newMessageStore() *messageStore {
 	cache := map[uuid.UUID]cachedData{}
-	cacheFile := configDirectory + "/messageStore.cache"
+	cacheFile := getConfigDirectory() + "/messageStore.cache"
 	data, err := ioutil.ReadFile(cacheFile)
 	if err != nil {
 		if !os.IsNotExist(err) {

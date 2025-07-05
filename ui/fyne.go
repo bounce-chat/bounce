@@ -36,6 +36,10 @@ const defaultChatHistoryWidth = float32(566)
 
 type ui struct {
 	bounce                        *chat.Bounce
+	users                         *userStore
+	devices                       *deviceStore
+	messages                      *messageStore
+	threads                       *threadStore
 	app                           fyne.App
 	mainWindow                    fyne.Window
 	newGroupWidgets               *newGroupWidgets
@@ -81,10 +85,6 @@ type ui struct {
 	profile                       *user
 	settings                      chat.Settings
 	localSettings                 chat.LocalSettings
-	users                         *userStore
-	devices                       *deviceStore
-	messages                      *messageStore
-	threads                       *threadStore
 	currentDevices                *container.Scroll
 	deletedUser                   *user
 	initialStateSet               bool
@@ -99,7 +99,7 @@ func Main() {
 	ui := &ui{
 		users:    newUserStore(),
 		devices:  newDeviceStore(),
-		messages: newMessageStore(getConfigDirectory()),
+		messages: newMessageStore(),
 		threads:  newThreadStore(),
 	}
 	ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())

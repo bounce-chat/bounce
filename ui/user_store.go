@@ -92,9 +92,6 @@ func (store *userStore) remove(id uuid.UUID) {
 }
 
 func (store *userStore) alphabetized() []*user {
-	store.Lock()
-	defer store.Unlock()
-
 	return store.userList
 }
 

@@ -39,7 +39,12 @@ func (ts *threadStore) remove(id uuid.UUID) {
 	ts.Lock()
 	defer ts.Unlock()
 
-	// TODO: remove everything from items that points to this thread
+	// Prune the items map of items that point to this thread
+	for itemID, t := range ts.items {
+		if t.getID() == id {
+			delete(ts.items, itemID)
+		}
+	}
 
 	delete(ts.threads, id)
 }
