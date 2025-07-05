@@ -71,8 +71,8 @@ type ui struct {
 	mainMenu                      *fyne.MainMenu
 	allUsersDMLinksScroll         *container.Scroll
 	networkOfflineWarning         *widget.Label
-	groups                        map[uuid.UUID]*group
-	dms                           map[uuid.UUID]*directMessage
+	threads                       map[uuid.UUID]thread
+	threadsMutex                  sync.Mutex
 	threadWithItem                map[uuid.UUID]thread
 	threadWithItemMutex           sync.Mutex
 	pausedGroupNotifications      map[uuid.UUID]bool
@@ -128,8 +128,7 @@ func (ui *ui) build() {
 	//
 	// Initialize types that require it
 	//
-	ui.groups = make(map[uuid.UUID]*group)
-	ui.dms = make(map[uuid.UUID]*directMessage)
+	ui.threads = make(map[uuid.UUID]thread)
 	ui.threadWithItem = make(map[uuid.UUID]thread)
 	ui.pausedGroupNotifications = make(map[uuid.UUID]bool)
 	ui.users = newUserStore()
@@ -311,8 +310,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 		ui.updateDeviceStatus()
 
-		dmItems := make(map[uuid.UUID]threadItems)
-		groupItems := make(map[uuid.UUID]threadItems)
+		threadItems := make(map[uuid.UUID]threadItems)
 
 		initialDMStates := map[uuid.UUID]chat.DMState{}
 		for _, u := range state.Users {
@@ -324,8 +322,12 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 
 		for _, g := range state.Groups {
 			ui.buildNewGroupChat(g)
-			group, exists := ui.groups[g.ID]
-			if !exists {
+			t, ok := ui.getThread(g.ID)
+			if !ok {
+				log.Fatal("group thread doesn't exist immediately after creation")
+			}
+			group, ok := t.(*group)
+			if !ok {
 				log.Fatal("group doesn't exist immediately after creation")
 			}
 			group.button.setLastMessageTime(time.Unix(g.LastActivity, 0))
@@ -339,7 +341,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 					"created_by": g.CreatedBy,
 				}).Warn("error creating thread item for group creation while loading initial state")
 			}
-			groupItems[g.ID] = append(groupItems[g.ID], gcTi)
+			threadItems[g.ID] = append(threadItems[g.ID], gcTi)
 		}
 
 		for _, dm := range state.DirectMessages {
@@ -348,7 +350,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			dmItems[dm.Thread] = append(dmItems[dm.Thread], dmti)
+			threadItems[dm.Thread] = append(threadItems[dm.Thread], dmti)
 		}
 
 		for _, udmr := range state.UpdateDMRetentions {
@@ -357,7 +359,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			dmItems[udmr.Thread] = append(dmItems[udmr.Thread], udmrItem)
+			threadItems[udmr.Thread] = append(threadItems[udmr.Thread], udmrItem)
 		}
 
 		for _, udmch := range state.UpdateDMClearHistories {
@@ -366,7 +368,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			dmItems[udmch.Thread] = append(dmItems[udmch.Thread], udmchItem)
+			threadItems[udmch.Thread] = append(threadItems[udmch.Thread], udmchItem)
 		}
 
 		for _, gm := range state.GroupMessages {
@@ -374,7 +376,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[gm.Thread] = append(groupItems[gm.Thread], mti)
+			threadItems[gm.Thread] = append(threadItems[gm.Thread], mti)
 		}
 
 		for _, ugr := range state.UpdateGroupRetentions {
@@ -382,7 +384,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[ugr.Thread] = append(groupItems[ugr.Thread], ugrItem)
+			threadItems[ugr.Thread] = append(threadItems[ugr.Thread], ugrItem)
 		}
 
 		for _, ugn := range state.UpdateGroupNames {
@@ -390,7 +392,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[ugn.Thread] = append(groupItems[ugn.Thread], ugnItem)
+			threadItems[ugn.Thread] = append(threadItems[ugn.Thread], ugnItem)
 		}
 
 		for _, ugau := range state.UpdateGroupAddUsers {
@@ -398,7 +400,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[ugau.Thread] = append(groupItems[ugau.Thread], ugauItem)
+			threadItems[ugau.Thread] = append(threadItems[ugau.Thread], ugauItem)
 		}
 
 		for _, ugru := range state.UpdateGroupRemoveUsers {
@@ -406,7 +408,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[ugru.Thread] = append(groupItems[ugru.Thread], ugruItem)
+			threadItems[ugru.Thread] = append(threadItems[ugru.Thread], ugruItem)
 		}
 
 		for _, ugch := range state.UpdateGroupClearHistories {
@@ -414,7 +416,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[ugch.Thread] = append(groupItems[ugch.Thread], ugchItem)
+			threadItems[ugch.Thread] = append(threadItems[ugch.Thread], ugchItem)
 		}
 
 		for _, ugap := range state.UpdateGroupAdminPromotions {
@@ -422,7 +424,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[ugap.Thread] = append(groupItems[ugap.Thread], ugapItem)
+			threadItems[ugap.Thread] = append(threadItems[ugap.Thread], ugapItem)
 		}
 
 		for _, ugad := range state.UpdateGroupAdminDemotions {
@@ -430,7 +432,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[ugad.Thread] = append(groupItems[ugad.Thread], ugadItem)
+			threadItems[ugad.Thread] = append(threadItems[ugad.Thread], ugadItem)
 		}
 
 		for _, ugumr := range state.UpdateGroupUserManagementsRestricted {
@@ -438,7 +440,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[ugumr.Thread] = append(groupItems[ugumr.Thread], ugumrItem)
+			threadItems[ugumr.Thread] = append(threadItems[ugumr.Thread], ugumrItem)
 		}
 
 		for _, ugumu := range state.UpdateGroupUserManagementsUnrestricted {
@@ -446,7 +448,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[ugumu.Thread] = append(groupItems[ugumu.Thread], ugumuItem)
+			threadItems[ugumu.Thread] = append(threadItems[ugumu.Thread], ugumuItem)
 		}
 
 		for _, uger := range state.UpdateGroupEditsRestricted {
@@ -454,7 +456,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[uger.Thread] = append(groupItems[uger.Thread], ugerItem)
+			threadItems[uger.Thread] = append(threadItems[uger.Thread], ugerItem)
 		}
 
 		for _, ugeu := range state.UpdateGroupEditsUnrestricted {
@@ -462,7 +464,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[ugeu.Thread] = append(groupItems[ugeu.Thread], ugeuItem)
+			threadItems[ugeu.Thread] = append(threadItems[ugeu.Thread], ugeuItem)
 		}
 
 		for _, ugpr := range state.UpdateGroupPostingsRestricted {
@@ -470,7 +472,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[ugpr.Thread] = append(groupItems[ugpr.Thread], ugprItem)
+			threadItems[ugpr.Thread] = append(threadItems[ugpr.Thread], ugprItem)
 		}
 
 		for _, ugpu := range state.UpdateGroupPostingsUnrestricted {
@@ -478,7 +480,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[ugpu.Thread] = append(groupItems[ugpu.Thread], ugpuItem)
+			threadItems[ugpu.Thread] = append(threadItems[ugpu.Thread], ugpuItem)
 		}
 
 		for _, ubg := range state.UpdateGroupUserBlockedGroups {
@@ -486,7 +488,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[ubg.Thread] = append(groupItems[ubg.Thread], ubgItem)
+			threadItems[ubg.Thread] = append(threadItems[ubg.Thread], ubgItem)
 		}
 
 		for _, ugci := range state.UpdateGroupUserChangedGroupImages {
@@ -494,105 +496,118 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			if err != nil {
 				log.Error(err.Error())
 			}
-			groupItems[ugci.Thread] = append(groupItems[ugci.Thread], ugciItem)
+			threadItems[ugci.Thread] = append(threadItems[ugci.Thread], ugciItem)
 		}
 
 		for _, uuun := range state.UpdateUserUpdateNames {
 			if uuun.User == ui.profile.id {
-				for dmID, _ := range ui.dms { // TODO: don't add to DMs before the DMs should exist
-					uuunItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
-					if err != nil {
-						log.Error(err.Error())
-					} else {
-						dmItems[dmID] = append(dmItems[dmID], uuunItem)
+				ui.threadsMutex.Lock()
+				for _, th := range ui.threads {
+					switch t := th.(type) {
+					case *group:
+						if uuun.Timestamp < t.createdAt {
+							continue
+						}
+						uuunItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+						if err != nil {
+							log.Error(err.Error())
+						} else {
+							threadItems[t.id] = append(threadItems[t.id], uuunItem)
+						}
+					case *directMessage:
+						uuunItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+						if err != nil {
+							log.Error(err.Error())
+						} else {
+							threadItems[t.user.id] = append(threadItems[t.user.id], uuunItem)
+						}
 					}
 				}
-				for _, g := range ui.groups {
-					if uuun.Timestamp < g.createdAt {
-						continue
-					}
-					uuunItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
-					if err != nil {
-						log.Error(err.Error())
-					} else {
-						groupItems[g.id] = append(groupItems[g.id], uuunItem)
-					}
-				}
+				ui.threadsMutex.Unlock()
 			} else {
 				uuunItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 				if err != nil {
 					log.Error(err.Error())
 				}
-				dmItems[uuun.User] = append(dmItems[uuun.User], uuunItem)
+				threadItems[uuun.User] = append(threadItems[uuun.User], uuunItem)
 
-				for _, g := range ui.groups {
-					if uuun.Timestamp < g.createdAt {
-						continue
-					}
-					if g.users.contains(uuun.User) {
-						uuunGroupItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
-						if err != nil {
-							log.Error(err.Error())
+				ui.threadsMutex.Lock()
+				for _, t := range ui.threads {
+					if g, ok := t.(*group); ok {
+						if uuun.Timestamp < g.createdAt {
+							continue
 						}
-						groupItems[g.id] = append(groupItems[g.id], uuunGroupItem)
+						if g.users.contains(uuun.User) {
+							uuunGroupItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+							if err != nil {
+								log.Error(err.Error())
+							}
+							threadItems[g.id] = append(threadItems[g.id], uuunGroupItem)
+						}
 					}
 				}
+				ui.threadsMutex.Unlock()
 			}
 		}
 		for _, uuui := range state.UpdateUserUpdateImages {
 			if uuui.User == ui.profile.id {
-				for dmID, _ := range ui.dms { // TODO: don't add to DMs before the DMs should exist
-					uuuiItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
-					if err != nil {
-						log.Error(err.Error())
-					} else {
-						dmItems[dmID] = append(dmItems[dmID], uuuiItem)
+				ui.threadsMutex.Lock()
+				for _, th := range ui.threads {
+					switch t := th.(type) {
+					case *group:
+						if uuui.Timestamp < t.createdAt {
+							continue
+						}
+						uuuiItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+						if err != nil {
+							log.Error(err.Error())
+						} else {
+							threadItems[t.id] = append(threadItems[t.id], uuuiItem)
+						}
+					case *directMessage:
+						uuuiItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+						if err != nil {
+							log.Error(err.Error())
+						} else {
+							threadItems[t.user.id] = append(threadItems[t.user.id], uuuiItem)
+						}
 					}
 				}
-				for _, g := range ui.groups {
-					if uuui.Timestamp < g.createdAt {
-						continue
-					}
-					uuuiItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
-					if err != nil {
-						log.Error(err.Error())
-					} else {
-						groupItems[g.id] = append(groupItems[g.id], uuuiItem)
-					}
-				}
+				ui.threadsMutex.Unlock()
 			} else {
 				uuuiItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 				if err != nil {
 					log.Error(err.Error())
 				}
-				dmItems[uuui.User] = append(dmItems[uuui.User], uuuiItem)
+				threadItems[uuui.User] = append(threadItems[uuui.User], uuuiItem)
 
-				for _, g := range ui.groups {
-					if uuui.Timestamp < g.createdAt {
-						continue
-					}
-					if g.users.contains(uuui.User) {
-						uuuiGroupItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
-						if err != nil {
-							log.Error(err.Error())
+				ui.threadsMutex.Lock()
+				for _, t := range ui.threads {
+					if g, ok := t.(*group); ok {
+						if uuui.Timestamp < g.createdAt {
+							continue
 						}
-						groupItems[g.id] = append(groupItems[g.id], uuuiGroupItem)
+						if g.users.contains(uuui.User) {
+							uuuiGroupItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+							if err != nil {
+								log.Error(err.Error())
+							}
+							threadItems[g.id] = append(threadItems[g.id], uuuiGroupItem)
+						}
 					}
 				}
+				ui.threadsMutex.Unlock()
 			}
 		}
 
 		// Create widgets for all the thread items we added
-		for _, g := range ui.groups { // TODO: store groups and DMs in a shared threads slice?
-			if items, ok := groupItems[g.id]; ok {
-				ui.populateInitialItems(g, items)
+		ui.threadsMutex.Lock()
+		for _, t := range ui.threads {
+			if items, ok := threadItems[t.getID()]; ok {
+				ui.populateInitialItems(t, items)
 			}
 		}
-		for _, u := range ui.dms { // TODO: store groups and DMs in a shared threads slice?
-			if items, ok := dmItems[u.user.id]; ok {
-				ui.populateInitialItems(u, items)
-			}
-		}
+		ui.threadsMutex.Unlock()
 		ui.refreshThreadOrder()
 
 		for _, fp := range state.FileProgress {
@@ -625,38 +640,41 @@ func chatContainerSizeAtStartup() fyne.Size {
 }
 
 func (ui *ui) createDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]chat.DMState) {
-	u, exists := ui.users.get(id)
-	if !exists {
-		log.Fatal("dm user not known to UI")
-	}
-
 	initialState, _ := initialStates[id]
 
-	_, exists = ui.dms[id]
-	if !exists {
-		ui.buildNewDirectMessage(chat.User{
-			ID:     id,
+	_, ok := ui.getThread(id)
+	if !ok {
+		u, userExists := ui.users.get(id)
+		if !userExists {
+			log.Fatal("dm user not known to UI")
+		}
+
+		ui.NewDirectMessage(chat.User{
+			ID:     u.id,
 			Name:   u.getName(),
 			Images: u.images,
 			State:  initialState,
 		})
-		_, exists = ui.dms[id]
-		if !exists {
-			log.Fatal("dm doesn't exist after creation")
+
+		_, ok = ui.getThread(id)
+		if !ok {
+			log.Fatal("DM doesn't exist immediately after creation")
 		}
 	}
 }
 
 func (ui *ui) NetworkOnline() {
 	if ui.activeThread != uuid.Nil {
-		if _, ok := ui.dms[ui.activeThread]; ok { // TODO: group and dm maps are not concurrency safe
-			ui.bounce.UserConnectionDesired(ui.activeThread)
-		} else if _, ok = ui.groups[ui.activeThread]; ok {
-			ui.bounce.GroupConnectionDesired(ui.activeThread)
-		} else {
+		t, ok := ui.getThread(ui.activeThread)
+		if !ok {
 			log.WithFields(log.Fields{
 				"thread": ui.activeThread,
 			}).Error("active thread is not a known user or group")
+		}
+		if _, ok = t.(*group); ok {
+			ui.bounce.GroupConnectionDesired(ui.activeThread)
+		} else {
+			ui.bounce.UserConnectionDesired(ui.activeThread)
 		}
 	}
 	fyne.DoAndWait(func() { ui.networkOfflineWarning.Hide() })
@@ -691,21 +709,16 @@ func (ui *ui) FileCompleted(fileID uuid.UUID) {
 	}
 
 	// TODO: check if anything is waiting for this file and refresh it
-	for _, g := range ui.groups {
-		fyne.DoAndWait(func() {
-			g.editIcon.Refresh()
-			g.headerIcon.Refresh()
-			g.button.threadImage.Refresh()
-		})
-	}
 
-	for _, dm := range ui.dms {
+	ui.threadsMutex.Lock()
+	for _, t := range ui.threads {
 		fyne.DoAndWait(func() {
-			dm.editIcon.Refresh()
-			dm.headerIcon.Refresh()
-			dm.button.threadImage.Refresh()
+			t.getEditIcon().Refresh()
+			t.getHeaderIcon().Refresh()
+			t.getButton().threadImage.Refresh()
 		})
 	}
+	ui.threadsMutex.Unlock()
 }
 
 func (ui *ui) FileDownloadProgress(fileID uuid.UUID, progress float64) {

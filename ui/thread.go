@@ -25,6 +25,10 @@ type thread interface {
 	getLastMessageTime() int64
 	setLastMessageTime(int64)
 	getNotificationsMutedUntil() int64
+	refreshReadReceiptSettingSelection([]string)
+	refreshTypingIndicatorSettingSelection([]string)
+	getEditIcon() *defaultImage
+	getHeaderIcon() *defaultImage
 }
 
 //
@@ -51,12 +55,11 @@ func (threads sortableThreads) Less(i, j int) bool {
 
 func (ui *ui) refreshThreadOrder() {
 	allThreads := sortableThreads{}
-	for _, group := range ui.groups {
-		allThreads = append(allThreads, group)
+	ui.threadsMutex.Lock()
+	for _, t := range ui.threads {
+		allThreads = append(allThreads, t)
 	}
-	for _, dm := range ui.dms {
-		allThreads = append(allThreads, dm)
-	}
+	ui.threadsMutex.Unlock()
 	sort.Sort(allThreads)
 
 	buttons := []fyne.CanvasObject{}
@@ -338,19 +341,11 @@ func (ui *ui) isActive(thread thread) bool {
 }
 
 func (ui *ui) getThread(id uuid.UUID) (thread, bool) {
-	// TODO: lock
+	ui.threadsMutex.Lock()
+	defer ui.threadsMutex.Unlock()
 
-	groupThread, ok := ui.groups[id]
-	if ok {
-		return groupThread, true
-	}
-
-	dmThread, ok := ui.dms[id]
-	if ok {
-		return dmThread, true
-	}
-
-	return nil, false
+	t, ok := ui.threads[id]
+	return t, ok
 }
 
 func (ui *ui) ShowTypingIndicator(userID, threadID uuid.UUID) {

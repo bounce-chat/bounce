@@ -242,11 +242,18 @@ func (ui *ui) newUpdateGroupClearHistory(ugch chat.UpdateGroupClearHistory) (*th
 }
 
 func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
-	group, exists := ui.groups[gm.Thread]
+	t, exists := ui.getThread(gm.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": gm.Thread,
 		}).Error("group does not exist on message receive, ignoring the message")
+		return &threadItem{}, errUnknownThread
+	}
+	group, ok := t.(*group)
+	if !ok {
+		log.WithFields(log.Fields{
+			"group_id": gm.Thread,
+		}).Error("group message received for thread that is not a group, ignoring the message")
 		return &threadItem{}, errUnknownThread
 	}
 
@@ -388,7 +395,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 }
 
 func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
-	dmThread, exists := ui.dms[dm.Thread]
+	dmThread, exists := ui.getThread(dm.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"user_id": dm.Thread,
@@ -507,9 +514,9 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 
 				tb.setLastAction(changeString, mine) // TODO: possible to bind actor's name?
 			} else {
-				dmThread.button.setLastMessage(displayName, dm.Text, mine)
+				dmThread.getButton().setLastMessage(displayName, dm.Text, mine)
 			}
-			dmThread.button.setLastMessageTime(time.Unix(dm.WrittenAt, 0))
+			dmThread.getButton().setLastMessageTime(time.Unix(dm.WrittenAt, 0))
 			dmThread.setLastMessageTime(dm.WrittenAt)
 			dmThread.chatHistoryScroll().Refresh()
 			if outgoing {

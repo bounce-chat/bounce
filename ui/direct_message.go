@@ -77,6 +77,14 @@ func (dm *directMessage) getNotificationsMutedUntil() int64 {
 	return dm.notificationsMutedUntil
 }
 
+func (dm *directMessage) getEditIcon() *defaultImage {
+	return dm.editIcon
+}
+
+func (dm *directMessage) getHeaderIcon() *defaultImage {
+	return dm.headerIcon
+}
+
 func (dm *directMessage) refreshReadReceiptSettingSelection(options []string) {
 	dm.readReceiptOverrideSelection.Options = options
 	if !dm.overrideReadReceiptSetting {
@@ -106,13 +114,21 @@ func (dm *directMessage) refreshTypingIndicatorSettingSelection(options []string
 }
 
 func (ui *ui) DMTypingIndicatorSettingsSet(userID uuid.UUID, override, enabled bool) {
-	dm, exists := ui.dms[userID]
+	t, exists := ui.getThread(userID)
 	if !exists {
 		log.WithFields(log.Fields{
 			"userID": userID,
 		}).Error("cannot set typing indicator override settings for unknown direct message")
 		return
 	}
+	dm, ok := t.(*directMessage)
+	if !ok {
+		log.WithFields(log.Fields{
+			"userID": userID,
+		}).Error("cannot set typing indicator override settings for direct message that cannot be cast")
+		return
+	}
+
 	dm.overrideTypingIndicatorSetting = override
 	dm.typingIndicatorsEnabled = enabled
 }
@@ -129,7 +145,7 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 		}).Error("cannot create DM with user unknown to the UI")
 		return
 	}
-	if _, exists := ui.dms[bounceUser.ID]; exists {
+	if _, exists := ui.getThread(bounceUser.ID); exists {
 		log.WithFields(log.Fields{
 			"user_id": bounceUser.ID,
 		}).Error("attempt to create a DM that already exists, ignoring")
@@ -310,7 +326,9 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 		footer,
 		container.New(&autoscollLayout{}, dm.scroll),
 	)
-	ui.dms[bounceUser.ID] = dm
+	ui.threadsMutex.Lock()
+	ui.threads[bounceUser.ID] = dm
+	ui.threadsMutex.Unlock()
 	ui.refreshThreadOrder()
 }
 
@@ -606,11 +624,18 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 
 func (ui *ui) SetDMState(userID uuid.UUID, state chat.DMState) {
 	// Find the thread
-	dm, exists := ui.dms[userID]
-	if !exists {
+	t, ok := ui.getThread(userID)
+	if !ok {
 		log.WithFields(log.Fields{
 			"user_id": userID,
 		}).Error("cannot set state of unknown dm")
+		return
+	}
+	dm, ok := t.(*directMessage)
+	if !ok {
+		log.WithFields(log.Fields{
+			"user_id": userID,
+		}).Error("cannot set dm state of thread that is not a dm")
 		return
 	}
 
@@ -680,26 +705,32 @@ func (ui *ui) DMRetentionChanged(udr chat.UpdateDMRetention) {
 }
 
 func (ui *ui) getOrCreateDM(id uuid.UUID) (*directMessage, error) {
-	var dm *directMessage
-
-	var dmExists bool
-	dm, dmExists = ui.dms[id]
-	if !dmExists {
+	t, ok := ui.getThread(id)
+	if !ok {
 		u, userExists := ui.users.get(id)
 		if !userExists {
-			return dm, errUnknownUser
+			return nil, errUnknownUser
 		}
 
 		fyne.DoAndWait(func() {
 			ui.NewDirectMessage(chat.User{
 				ID:   u.id,
 				Name: u.getName(),
+				// TODO: set state here?
 			})
 		})
-		dm, dmExists = ui.dms[id]
-		if !dmExists {
-			return dm, errors.New("direct message not found after creation")
+
+		t, ok = ui.getThread(id)
+		if !ok {
+			log.Fatal("DM doesn't exist immediately after creation")
 		}
+	}
+	dm, ok := t.(*directMessage)
+	if !ok {
+		log.WithFields(log.Fields{
+			"user_id": id,
+		}).Error("direct message cannot be cast as direct message")
+		return nil, errors.New("cannot cast direct message")
 	}
 
 	return dm, nil

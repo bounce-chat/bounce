@@ -128,23 +128,21 @@ func (ui *ui) SetSettings(settings chat.Settings) {
 		if updateReadReceipts {
 			ui.settingsWidgets.sendReadReceiptsByDefault.Checked = settings.DefaultSendReadReceipts
 			ui.settingsWidgets.sendReadReceiptsByDefault.Refresh()
-			for _, g := range ui.groups {
-				g.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
+			ui.threadsMutex.Lock()
+			for _, t := range ui.threads {
+				t.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
 			}
-			for _, dm := range ui.dms {
-				dm.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
-			}
+			ui.threadsMutex.Unlock()
 		}
 
 		if updateTypingIndicators {
 			ui.settingsWidgets.sendTypingIndicatorsByDefault.Checked = settings.DefaultSendTypingIndicators
 			ui.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
-			for _, g := range ui.groups {
-				g.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
+			ui.threadsMutex.Lock()
+			for _, t := range ui.threads {
+				t.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
 			}
-			for _, dm := range ui.dms {
-				dm.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
-			}
+			ui.threadsMutex.Unlock()
 		}
 
 		ui.settingsWidgets.defaultNewGroupRestrictUserManagement.Checked = settings.NewGroupRestrictUserManagement

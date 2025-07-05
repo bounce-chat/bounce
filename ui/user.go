@@ -105,15 +105,24 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 	u.name.Set(chatUser.Name)
 
 	ui.messages.renameUser(chatUser.ID, u.getName(), u.getInitials())
-	dm, ok := ui.dms[chatUser.ID]
+
+	t, ok := ui.getThread(chatUser.ID)
 	if ok {
-		fyne.DoAndWait(func() { dm.chatHistoryScroll().Refresh() })
-	}
-	for _, g := range ui.groups {
-		if g.users.contains(chatUser.ID) {
-			fyne.DoAndWait(func() { g.chatHistoryScroll().Refresh() })
+		dm, ok := t.(*directMessage)
+		if ok {
+			fyne.DoAndWait(func() { dm.chatHistoryScroll().Refresh() })
 		}
 	}
+
+	ui.threadsMutex.Lock()
+	for _, t := range ui.threads {
+		if g, ok := t.(*group); ok {
+			if g.users.contains(chatUser.ID) {
+				fyne.DoAndWait(func() { g.chatHistoryScroll().Refresh() })
+			}
+		}
+	}
+	ui.threadsMutex.Unlock()
 
 	// Re-add user to any user stores they are in, in order to regenerate ngram search tokens
 	allUserStoresMutex.Lock()
@@ -137,16 +146,24 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 	// Update the chat bubbles that have an icon
 	ui.messages.updateUserImage(chatUser.ID, chatUser.Images)
 	if chatUser.ID != ui.profile.id {
-		for _, g := range ui.groups {
-			if g.users.contains(chatUser.ID) {
-				fyne.DoAndWait(func() { g.chatHistoryScroll().Refresh() })
+		ui.threadsMutex.Lock()
+		for _, t := range ui.threads {
+			if g, ok := t.(*group); ok {
+				if g.users.contains(chatUser.ID) {
+					fyne.DoAndWait(func() { g.chatHistoryScroll().Refresh() })
+				}
 			}
 		}
+		ui.threadsMutex.Unlock()
 	}
 
 	// Update the images if there is a DM open
-	dm, exists := ui.dms[chatUser.ID]
+	t, exists := ui.getThread(chatUser.ID)
 	if !exists {
+		return
+	}
+	dm, ok := t.(*directMessage)
+	if !ok {
 		return
 	}
 
@@ -163,101 +180,99 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 
 func (ui *ui) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 	if uuun.User == ui.profile.id {
-		for _, dm := range ui.dms {
+		ui.threadsMutex.Lock()
+		for _, t := range ui.threads {
 			ti, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("error creating thread item for user name change")
 			} else {
-				fyne.DoAndWait(func() { ui.appendThreadItem(dm, ti) })
+				fyne.DoAndWait(func() { ui.appendThreadItem(t, ti) })
 			}
 		}
-		for _, g := range ui.groups {
-			ti, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error creating thread item for user name change")
-			} else {
-				fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
-			}
-		}
+		ui.threadsMutex.Unlock()
 	} else {
-		dm, ok := ui.dms[uuun.User]
+		t, ok := ui.getThread(uuun.User)
 		if ok {
-			ti, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error creating thread item for user name change")
-			} else {
-				fyne.DoAndWait(func() { ui.appendThreadItem(dm, ti) })
-			}
-		}
-
-		for _, g := range ui.groups {
-			if g.users.contains(uuun.User) {
+			dm, ok := t.(*directMessage)
+			if ok {
 				ti, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
 					}).Error("error creating thread item for user name change")
 				} else {
-					fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
+					fyne.DoAndWait(func() { ui.appendThreadItem(dm, ti) })
 				}
 			}
 		}
+
+		ui.threadsMutex.Lock()
+		for _, t := range ui.threads {
+			if g, ok := t.(*group); ok {
+				if g.users.contains(uuun.User) {
+					ti, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Error("error creating thread item for user name change")
+					} else {
+						fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
+					}
+				}
+			}
+		}
+		ui.threadsMutex.Unlock()
 	}
 }
 
 func (ui *ui) UserImageUpdated(uuui chat.UpdateUserUpdateImage) {
 	if uuui.User == ui.profile.id {
-		for _, dm := range ui.dms {
+		ui.threadsMutex.Lock()
+		for _, t := range ui.threads {
 			ti, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("error creating thread item for user image change")
 			} else {
-				fyne.DoAndWait(func() { ui.appendThreadItem(dm, ti) })
+				fyne.DoAndWait(func() { ui.appendThreadItem(t, ti) })
 			}
 		}
-		for _, g := range ui.groups {
-			ti, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error creating thread item for user image change")
-			} else {
-				fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
-			}
-		}
+		ui.threadsMutex.Unlock()
 	} else {
-		dm, ok := ui.dms[uuui.User]
+		t, ok := ui.getThread(uuui.User)
 		if ok {
-			ti, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error creating thread item for user image change")
-			} else {
-				fyne.DoAndWait(func() { ui.appendThreadItem(dm, ti) })
-			}
-		}
-
-		for _, g := range ui.groups {
-			if g.users.contains(uuui.User) {
+			dm, ok := t.(*directMessage)
+			if ok {
 				ti, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
 					}).Error("error creating thread item for user image change")
 				} else {
-					fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
+					fyne.DoAndWait(func() { ui.appendThreadItem(dm, ti) })
 				}
 			}
 		}
+
+		ui.threadsMutex.Lock()
+		for _, t := range ui.threads {
+			if g, ok := t.(*group); ok {
+				if g.users.contains(uuui.User) {
+					ti, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Error("error creating thread item for user image change")
+					} else {
+						fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
+					}
+				}
+			}
+		}
+		ui.threadsMutex.Unlock()
 	}
 }
 
