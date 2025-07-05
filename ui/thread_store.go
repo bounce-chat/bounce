@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"sort"
 	"sync"
 
 	"github.com/google/uuid"
@@ -110,4 +111,16 @@ func (ts *threadStore) rangeFunc(f func(t thread)) {
 	for _, t := range threads {
 		f(t)
 	}
+}
+
+func (ts *threadStore) sorted() []thread {
+	threads := sortableThreads{}
+	ts.Lock()
+	for _, t := range ts.threads {
+		threads = append(threads, t)
+	}
+	ts.Unlock()
+
+	sort.Sort(threads)
+	return threads
 }

@@ -54,14 +54,8 @@ func (threads sortableThreads) Less(i, j int) bool {
 //
 
 func (ui *ui) refreshThreadOrder() {
-	allThreads := sortableThreads{}
-	ui.threads.rangeFunc(func(t thread) {
-		allThreads = append(allThreads, t)
-	})
-	sort.Sort(allThreads)
-
 	buttons := []fyne.CanvasObject{}
-	for _, thread := range allThreads {
+	for _, thread := range ui.threads.sorted() {
 		buttons = append(buttons, thread.getButton())
 	}
 	ui.threadVBox.Objects = buttons
