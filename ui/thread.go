@@ -55,7 +55,7 @@ func (threads sortableThreads) Less(i, j int) bool {
 
 func (ui *ui) refreshThreadOrder() {
 	allThreads := sortableThreads{}
-	ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
+	ui.threads.rangeFunc(func(t thread) {
 		allThreads = append(allThreads, t)
 	})
 	sort.Sort(allThreads)
@@ -71,15 +71,12 @@ func (ui *ui) refreshThreadOrder() {
 func (ui *ui) populateInitialItems(t thread, items threadItems) {
 	sort.Sort(items)
 
-	ui.threadWithItemMutex.Lock()
 	widgetData := []threadable{}
 	for _, item := range items {
-		ui.threadWithItem[item.id] = t
+		ui.threads.associate(t, item.id)
 		widgetData = append(widgetData, item.widgetData)
 	}
 	t.chatHistoryScroll().setItems(widgetData, chatContainerSizeAtStartup())
-
-	ui.threadWithItemMutex.Unlock()
 
 	for i := len(items) - 1; i >= 0; i-- {
 		lastItem := items[i]
@@ -111,9 +108,7 @@ func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
 	t.chatHistoryScroll().insertItem(ti, appendingToEnd)
 
 	// Keep track of which threads have which items
-	ui.threadWithItemMutex.Lock()
-	ui.threadWithItem[ti.id] = t
-	ui.threadWithItemMutex.Unlock()
+	ui.threads.associate(t, ti.id)
 
 	// Update the thread button if this is the latest message
 	if ti.setButton != nil && ti.timestamp > t.getLastMessageTime() { // TODO: same as appendingToEnd?
@@ -151,9 +146,7 @@ func (ui *ui) MarkMessageUndeliverable(id uuid.UUID) {
 
 	item.setState(stateError)
 
-	ui.threadWithItemMutex.Lock()
-	thread, ok := ui.threadWithItem[id]
-	ui.threadWithItemMutex.Unlock()
+	t, ok := ui.threads.withItem(id)
 	if !ok {
 		log.WithFields(log.Fields{
 			"message_id": id,
@@ -161,7 +154,7 @@ func (ui *ui) MarkMessageUndeliverable(id uuid.UUID) {
 		return
 	}
 
-	fyne.DoAndWait(func() { thread.chatHistoryScroll().Refresh() })
+	fyne.DoAndWait(func() { t.chatHistoryScroll().Refresh() })
 }
 
 func (ui *ui) MessageSeen(id uuid.UUID) {
@@ -172,9 +165,7 @@ func (ui *ui) MessageSeen(id uuid.UUID) {
 		}).Warn("item not found during attempt to mark item as seen")
 	}
 
-	ui.threadWithItemMutex.Lock()
-	t, ok := ui.threadWithItem[id]
-	ui.threadWithItemMutex.Unlock()
+	t, ok := ui.threads.withItem(id)
 	if !ok {
 		log.WithFields(log.Fields{
 			"message_id": id,
@@ -210,9 +201,7 @@ func (ui *ui) MessageDelivered(messageID, userID uuid.UUID) {
 		}).Warn("item not found during attempt to mark item as delivered")
 	}
 
-	ui.threadWithItemMutex.Lock()
-	t, ok := ui.threadWithItem[messageID]
-	ui.threadWithItemMutex.Unlock()
+	t, ok := ui.threads.withItem(messageID)
 	if !ok {
 		log.WithFields(log.Fields{
 			"message_id": messageID,
@@ -258,9 +247,7 @@ func (ui *ui) ReceivedReadReceipt(rr chat.ReadReceipt) {
 		}).Warn("item not found during attempt to mark item as read")
 	}
 
-	ui.threadWithItemMutex.Lock()
-	t, ok := ui.threadWithItem[rr.Target]
-	ui.threadWithItemMutex.Unlock()
+	t, ok := ui.threads.withItem(rr.Target)
 	if !ok {
 		log.WithFields(log.Fields{
 			"message_id": rr.Target,
@@ -280,9 +267,7 @@ func (ui *ui) ReceivedReadReceipt(rr chat.ReadReceipt) {
 func (ui *ui) DeleteItem(id uuid.UUID) {
 	ui.messages.remove(id)
 
-	ui.threadWithItemMutex.Lock()
-	thread, ok := ui.threadWithItem[id]
-	ui.threadWithItemMutex.Unlock()
+	t, ok := ui.threads.withItem(id)
 	if !ok {
 		log.WithFields(log.Fields{
 			"message_id": id,
@@ -291,19 +276,19 @@ func (ui *ui) DeleteItem(id uuid.UUID) {
 	}
 
 	fyne.DoAndWait(func() {
-		deleted := thread.chatHistoryScroll().deleteItem(id)
+		deleted := t.chatHistoryScroll().deleteItem(id)
 
 		if deleted {
-			ui.threadWithItemMutex.Lock()
-			delete(ui.threadWithItem, id)
-			ui.threadWithItemMutex.Unlock()
+			ui.threads.removeItem(id)
 		} else {
 			log.WithFields(log.Fields{
 				"message_id": id,
-				"thread_id":  thread.getID(),
-			}).Warn("attempt to delete thread item that was not in thread despite being in threadWithItem map")
+				"thread_id":  t.getID(),
+			}).Warn("attempt to delete thread item that was not in chat history widget but was in thread storemap")
 		}
 	})
+
+	ui.messages.remove(id)
 }
 
 func (ui *ui) displayThread(thread thread) {

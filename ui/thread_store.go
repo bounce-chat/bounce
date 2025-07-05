@@ -8,12 +8,14 @@ import (
 
 type threadStore struct {
 	sync.Mutex
-	threads map[uuid.UUID]thread
+	threads map[uuid.UUID]thread // thread ID to thread
+	items   map[uuid.UUID]thread // thread item ID to thread
 }
 
 func newThreadStore() *threadStore {
 	return &threadStore{
 		threads: map[uuid.UUID]thread{},
+		items:   map[uuid.UUID]thread{},
 	}
 }
 
@@ -36,7 +38,31 @@ func (ts *threadStore) remove(id uuid.UUID) {
 	ts.Lock()
 	defer ts.Unlock()
 
+	// TODO: remove everything from items that points to this thread
+
 	delete(ts.threads, id)
+}
+
+func (ts *threadStore) associate(t thread, itemID uuid.UUID) {
+	ts.Lock()
+	defer ts.Unlock()
+
+	ts.items[itemID] = t
+}
+
+func (ts *threadStore) withItem(id uuid.UUID) (thread, bool) {
+	ts.Lock()
+	defer ts.Unlock()
+
+	t, ok := ts.items[id]
+	return t, ok
+}
+
+func (ts *threadStore) removeItem(id uuid.UUID) {
+	ts.Lock()
+	defer ts.Unlock()
+
+	delete(ts.items, id)
 }
 
 func (ts *threadStore) getGroup(id uuid.UUID) (*group, bool) {
@@ -73,11 +99,15 @@ func (ts *threadStore) getDM(id uuid.UUID) (*directMessage, bool) {
 	return dm, true
 }
 
-func (ts *threadStore) rangeFunc(f func(id uuid.UUID, t thread)) {
+func (ts *threadStore) rangeFunc(f func(t thread)) {
+	threads := []thread{}
 	ts.Lock()
-	defer ts.Unlock()
+	for _, t := range ts.threads {
+		threads = append(threads, t)
+	}
+	ts.Unlock()
 
-	for id, t := range ts.threads {
-		f(id, t)
+	for _, t := range threads {
+		f(t)
 	}
 }

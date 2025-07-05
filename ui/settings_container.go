@@ -6,7 +6,6 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
@@ -129,7 +128,7 @@ func (ui *ui) SetSettings(settings chat.Settings) {
 		if updateReadReceipts {
 			ui.settingsWidgets.sendReadReceiptsByDefault.Checked = settings.DefaultSendReadReceipts
 			ui.settingsWidgets.sendReadReceiptsByDefault.Refresh()
-			ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
+			ui.threads.rangeFunc(func(t thread) {
 				t.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
 			})
 		}
@@ -137,7 +136,7 @@ func (ui *ui) SetSettings(settings chat.Settings) {
 		if updateTypingIndicators {
 			ui.settingsWidgets.sendTypingIndicatorsByDefault.Checked = settings.DefaultSendTypingIndicators
 			ui.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
-			ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
+			ui.threads.rangeFunc(func(t thread) {
 				t.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
 			})
 		}

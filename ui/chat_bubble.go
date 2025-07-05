@@ -235,9 +235,7 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 				return
 			}
 
-			ui.threadWithItemMutex.Lock()
-			t, ok := ui.threadWithItem[messageID]
-			ui.threadWithItemMutex.Unlock()
+			t, ok := ui.threads.withItem(messageID)
 			if !ok {
 				log.WithFields(log.Fields{
 					"message_id": messageID,

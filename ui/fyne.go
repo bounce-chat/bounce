@@ -71,8 +71,6 @@ type ui struct {
 	mainMenu                      *fyne.MainMenu
 	allUsersDMLinksScroll         *container.Scroll
 	networkOfflineWarning         *widget.Label
-	threadWithItem                map[uuid.UUID]thread
-	threadWithItemMutex           sync.Mutex
 	pausedGroupNotifications      map[uuid.UUID]bool
 	pausedGroupNotificationsMutex sync.Mutex
 	activeThread                  uuid.UUID
@@ -98,7 +96,12 @@ type ui struct {
 }
 
 func Main() {
-	ui := &ui{}
+	ui := &ui{
+		users:    newUserStore(),
+		devices:  newDeviceStore(),
+		messages: newMessageStore(getConfigDirectory()),
+		threads:  newThreadStore(),
+	}
 	ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())
 	ui.build()
 
@@ -128,11 +131,6 @@ func (ui *ui) build() {
 	// Initialize types that require it
 	//
 	ui.pausedGroupNotifications = make(map[uuid.UUID]bool)
-	ui.users = newUserStore()
-	ui.devices = newDeviceStore()
-	ui.messages = newMessageStore(getConfigDirectory())
-	ui.threads = newThreadStore()
-	ui.threadWithItem = make(map[uuid.UUID]thread)
 	ui.focused = true
 	ui.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	ui.networkOfflineWarning.Show()
@@ -496,7 +494,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 
 		for _, uuun := range state.UpdateUserUpdateNames {
 			if uuun.User == ui.profile.id {
-				ui.threads.rangeFunc(func(_ uuid.UUID, th thread) {
+				ui.threads.rangeFunc(func(th thread) {
 					switch t := th.(type) {
 					case *group:
 						if uuun.Timestamp < t.createdAt {
@@ -524,7 +522,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 				}
 				threadItems[uuun.User] = append(threadItems[uuun.User], uuunItem)
 
-				ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
+				ui.threads.rangeFunc(func(t thread) {
 					if g, ok := t.(*group); ok {
 						if uuun.Timestamp < g.createdAt {
 							return
@@ -542,7 +540,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 		for _, uuui := range state.UpdateUserUpdateImages {
 			if uuui.User == ui.profile.id {
-				ui.threads.rangeFunc(func(_ uuid.UUID, th thread) {
+				ui.threads.rangeFunc(func(th thread) {
 					switch t := th.(type) {
 					case *group:
 						if uuui.Timestamp < t.createdAt {
@@ -570,7 +568,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 				}
 				threadItems[uuui.User] = append(threadItems[uuui.User], uuuiItem)
 
-				ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
+				ui.threads.rangeFunc(func(t thread) {
 					if g, ok := t.(*group); ok {
 						if uuui.Timestamp < g.createdAt {
 							return
@@ -588,7 +586,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 
 		// Create widgets for all the thread items we added
-		ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
+		ui.threads.rangeFunc(func(t thread) {
 			if items, ok := threadItems[t.getID()]; ok {
 				ui.populateInitialItems(t, items)
 			}
@@ -683,9 +681,7 @@ func (ui *ui) UserImported(u chat.User) {
 func (ui *ui) FileCompleted(fileID uuid.UUID) {
 	messageID, ok := ui.messages.getMessageWithFile(fileID)
 	if ok {
-		ui.threadWithItemMutex.Lock()
-		t, ok := ui.threadWithItem[messageID]
-		ui.threadWithItemMutex.Unlock()
+		t, ok := ui.threads.withItem(messageID)
 		if ok {
 			// TODO hide any progress bars?
 			fyne.DoAndWait(func() { t.chatHistoryScroll().Refresh() })
@@ -694,7 +690,7 @@ func (ui *ui) FileCompleted(fileID uuid.UUID) {
 	}
 
 	// TODO: check if anything is waiting for this file and refresh it
-	ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
+	ui.threads.rangeFunc(func(t thread) {
 		fyne.DoAndWait(func() {
 			t.getEditIcon().Refresh()
 			t.getHeaderIcon().Refresh()
@@ -719,9 +715,7 @@ func (ui *ui) FileDownloadProgress(fileID uuid.UUID, progress float64) {
 		return
 	}
 
-	ui.threadWithItemMutex.Lock()
-	t, ok := ui.threadWithItem[messageID]
-	ui.threadWithItemMutex.Unlock()
+	t, ok := ui.threads.withItem(messageID)
 	if !ok {
 		log.WithFields(log.Fields{
 			"message_id": messageID,

@@ -111,7 +111,7 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 		fyne.DoAndWait(func() { dm.chatHistoryScroll().Refresh() })
 	}
 
-	ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
+	ui.threads.rangeFunc(func(t thread) {
 		if g, ok := t.(*group); ok {
 			if g.users.contains(chatUser.ID) {
 				fyne.DoAndWait(func() { g.chatHistoryScroll().Refresh() })
@@ -141,7 +141,7 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 	// Update the chat bubbles that have an icon
 	ui.messages.updateUserImage(chatUser.ID, chatUser.Images)
 	if chatUser.ID != ui.profile.id {
-		ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
+		ui.threads.rangeFunc(func(t thread) {
 			if g, ok := t.(*group); ok {
 				if g.users.contains(chatUser.ID) {
 					fyne.DoAndWait(func() { g.chatHistoryScroll().Refresh() })
@@ -169,7 +169,7 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 
 func (ui *ui) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 	if uuun.User == ui.profile.id {
-		ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
+		ui.threads.rangeFunc(func(t thread) {
 			ti, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 			if err != nil {
 				log.WithFields(log.Fields{
@@ -192,7 +192,7 @@ func (ui *ui) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 			}
 		}
 
-		ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
+		ui.threads.rangeFunc(func(t thread) {
 			if g, ok := t.(*group); ok {
 				if g.users.contains(uuun.User) {
 					ti, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
@@ -211,7 +211,7 @@ func (ui *ui) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 
 func (ui *ui) UserImageUpdated(uuui chat.UpdateUserUpdateImage) {
 	if uuui.User == ui.profile.id {
-		ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
+		ui.threads.rangeFunc(func(t thread) {
 			ti, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 			if err != nil {
 				log.WithFields(log.Fields{
@@ -234,7 +234,7 @@ func (ui *ui) UserImageUpdated(uuui chat.UpdateUserUpdateImage) {
 			}
 		}
 
-		ui.threads.rangeFunc(func(_ uuid.UUID, t thread) {
+		ui.threads.rangeFunc(func(t thread) {
 			if g, ok := t.(*group); ok {
 				if g.users.contains(uuui.User) {
 					ti, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
