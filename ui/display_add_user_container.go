@@ -7,11 +7,9 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/hkparker/bounce/chat"
 	"github.com/rymdport/go-qrcode"
 	log "github.com/sirupsen/logrus"
 )
@@ -85,16 +83,4 @@ func (ui *ui) buildDisplayAddUserString() {
 			),
 		),
 	)
-}
-
-func (ui *ui) UserAdded(u chat.User) {
-	newUser := makeUser(u.ID, u.Name)
-	ui.users.add(newUser)
-	//ui.showMainContainer() // TODO: only if still showing the add user container, and actually go to the last screen
-	if !ui.initialSyncIncomplete {
-		fyne.DoAndWait(func() {
-			ui.NewDirectMessage(u)
-			ui.showDialog(dialog.NewInformation("New contact added", u.Name+" was added as a friend", ui.mainWindow), nil)
-		})
-	}
 }

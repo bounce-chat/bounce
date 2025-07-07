@@ -44,6 +44,7 @@ type ui struct {
 	mainWindow                    fyne.Window
 	newGroupWidgets               *newGroupWidgets
 	newSyncDeviceWidgets          *newSyncDeviceWidgets
+	addUserWidgets                *addUserWidgets
 	settingsWidgets               *settingsWidgets
 	imageViewer                   *imageViewer
 	mainContainer                 *fyne.Container
