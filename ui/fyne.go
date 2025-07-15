@@ -53,6 +53,8 @@ type ui struct {
 	newSyncDevice                 *fyne.Container
 	nameNewDevice                 *fyne.Container
 	addUser                       *fyne.Container
+	addUserContent                *fyne.Container
+	scanUser                      *fyne.Container
 	newProfileCreator             *fyne.Container
 	databaseLoading               *fyne.Container
 	editProfile                   *fyne.Container
@@ -209,12 +211,10 @@ func (ui *ui) build() {
 	ui.buildDatabaseLoading()
 	ui.buildEditProfile()
 	ui.buildDisplaySyncString()
-	ui.buildDisplayAddUserString()
 	ui.buildSettings()
 	ui.buildAbout()
 	ui.buildNewGroup()
 	ui.buildNewDM()
-	ui.buildImportContact()
 	ui.buildMainContainer()
 	ui.buildMobileMenu()
 	ui.buildImageViewer()

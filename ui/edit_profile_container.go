@@ -365,105 +365,6 @@ func (ui *ui) buildEditProfile() {
 	)
 
 	//
-	// Existing exports section
-	//
-
-	contactExportsLabel := widget.NewLabel("Contact Exports")
-	contactExportsLabel.TextStyle = fyne.TextStyle{Bold: true}
-
-	contactExportContainer := container.NewVScroll(widget.NewLabel("viewing past exports not implemented"))
-
-	//
-	// New exports section
-	//
-
-	exportLabel := widget.NewLabel("New Export")
-	exportLabel.TextStyle = fyne.TextStyle{Bold: true}
-
-	exportNameEntry := widget.NewEntry()
-	exportExpirationSelect := widget.NewSelect(expirationSelections, nil)
-	exportExpirationSelect.Selected = expirationOneHour.display
-	oneTimeUse := widget.NewCheck("One-Time Use", nil)
-	oneTimeUse.Checked = true
-
-	exportContactForm := widget.NewForm(
-		&widget.FormItem{
-			Text:   "Name:",
-			Widget: exportNameEntry,
-		},
-		&widget.FormItem{
-			Text:   "Expires:",
-			Widget: exportExpirationSelect,
-		},
-		&widget.FormItem{
-			Text:   "",
-			Widget: oneTimeUse,
-		},
-	)
-	exportContactForm.SubmitText = "Export"
-
-	var showError error
-	var showInformation dialog.Dialog
-	selectorCleanup := func() {
-		if showInformation != nil {
-			ui.showDialog(showInformation, nil)
-		}
-		if showError != nil {
-			ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
-		}
-	}
-	fileSelector := dialog.NewFileSave(func(handler fyne.URIWriteCloser, err error) {
-		showError = nil
-		showInformation = nil
-		if err != nil {
-			showError = errors.New("error opening file: " + err.Error())
-			return
-		}
-		if handler == nil {
-			return
-		}
-
-		expiration := int64(0)
-		if exportExpirationSelect.Selected != expirationNever.display {
-			increment, ok := expirationIncrements[exportExpirationSelect.Selected]
-			if !ok {
-				log.WithFields(log.Fields{
-					"selection": exportExpirationSelect.Selected,
-				}).Fatal("unsupported selection for export expiration")
-			}
-			expiration = time.Now().Unix() + increment
-		}
-
-		profileData := ui.bounce.ExportContact(exportNameEntry.Text, expiration, oneTimeUse.Checked)
-		_, err = handler.Write(profileData)
-		if err != nil {
-			showError = errors.New("error writing file: " + err.Error())
-			return
-		}
-		err = handler.Close()
-		if err != nil {
-			showError = errors.New("error closing file: " + err.Error())
-			return
-		}
-
-		showInformation = dialog.NewInformation("Success", "Contact export written to "+handler.URI().Name(), ui.mainWindow)
-	}, ui.mainWindow)
-
-	exportContactForm.OnSubmit = func() {
-		if exportNameEntry.Text == "" {
-			ui.showDialog(dialog.NewError(errors.New("Please select a name for this export"), ui.mainWindow), nil)
-			return
-		}
-		fileSelector.SetFileName("profile.bounce") // TODO: set the user's current profile name
-		ui.showDialog(fileSelector, selectorCleanup)
-	}
-
-	exportContactMenu := container.NewVBox(
-		exportLabel,
-		exportContactForm,
-	)
-
-	//
 	// Layout of all sections
 	//
 
@@ -484,16 +385,10 @@ func (ui *ui) buildEditProfile() {
 		ui.profileOptions,
 		devicesLabel,
 		devicesContainer,
-		contactExportsLabel,
 	)
 	ui.editProfile = container.New(
-		layout.NewBorderLayout(closeBar, exportContactMenu, nil, nil),
+		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
-		exportContactMenu,
-		container.New(
-			layout.NewBorderLayout(nonScrollingContainers, nil, nil, nil),
-			nonScrollingContainers, // TODO: a border layout with this at the top and the exports scroll taking up the remaining space
-			contactExportContainer,
-		),
+		nonScrollingContainers,
 	)
 }

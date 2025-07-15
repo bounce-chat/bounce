@@ -12,26 +12,26 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const viewTypeAllThreads = 0
-const viewTypeThread = 1
-const viewTypeDMSettings = 2
-const viewTypeGroupSettings = 3
-const viewTypeSettings = 4
-const viewTypeNewSyncDevice = 5
-const viewTypeNewInstall = 6
-const viewTypeProfileCreator = 7
-const viewTypeNewGroup = 8
-const viewTypeNewDM = 9
-const viewTypeMenu = 10
-const viewTypeImportContact = 11
-const viewTypeDisplaySyncString = 12
-const viewTypeDisplayAddUserString = 13
-const viewTypeAddUser = 14
-const viewTypeAbout = 15
-const viewTypeEditProfile = 16
-const viewTypeNameNewDevice = 17
-const viewTypeDialog = 18
-const viewTypeImageViewer = 19
+const (
+	viewTypeAllThreads = iota
+	viewTypeThread
+	viewTypeDMSettings
+	viewTypeGroupSettings
+	viewTypeSettings
+	viewTypeNewSyncDevice
+	viewTypeNewInstall
+	viewTypeProfileCreator
+	viewTypeNewGroup
+	viewTypeNewDM
+	viewTypeMenu
+	viewTypeDisplaySyncString
+	viewTypeAddUser
+	viewTypeAbout
+	viewTypeEditProfile
+	viewTypeNameNewDevice
+	viewTypeDialog
+	viewTypeImageViewer
+)
 
 var hookedDialogs = make(map[dialog.Dialog]bool)
 
@@ -116,9 +116,6 @@ func (ui *ui) mobileBack() {
 	case viewTypeMenu:
 		ui.mainWindow.SetContent(ui.mobileMenu)
 		ui.mobileMenu.Show()
-	case viewTypeImportContact:
-		ui.mainWindow.SetContent(ui.importContact)
-		ui.importContact.Show()
 	case viewTypeDisplaySyncString:
 		newSyncString := ui.bounce.GetNewSyncString()
 		ui.syncStringEntry.SetText(newSyncString)
@@ -140,7 +137,7 @@ func (ui *ui) mobileBack() {
 		}
 		ui.mainWindow.SetContent(ui.displaySyncString)
 		ui.displaySyncString.Show()
-	case viewTypeDisplayAddUserString:
+	case viewTypeAddUser:
 		newAddUserString := ui.bounce.GetNewAddUserString()
 		ui.addUserStringEntry.SetText(newAddUserString)
 		qrData, err := qrcode.Encode(newAddUserString, qrcode.Medium, 256)
@@ -159,9 +156,6 @@ func (ui *ui) mobileBack() {
 				ui.addUserQRCode.Refresh()
 			}
 		}
-		ui.mainWindow.SetContent(ui.displayAddUserString)
-		ui.displayAddUserString.Show()
-	case viewTypeAddUser:
 		ui.mainWindow.SetContent(ui.addUser)
 		ui.addUser.Show()
 	case viewTypeAbout:

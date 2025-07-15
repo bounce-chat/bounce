@@ -37,17 +37,11 @@ func (ui *ui) buildMenu() {
 		),
 		fyne.NewMenu(
 			"Contacts",
-			fyne.NewMenuItem("Share", func() {
-				ui.showDisplayAddUserString()
-			}),
 			fyne.NewMenuItem("Add", func() {
 				ui.showAddUser()
 			}),
-			//fyne.NewMenuItem("Introduce", func() {
-			//	ui.showIntroduceContacts()
-			//}),
-			fyne.NewMenuItem("Import", func() {
-				ui.showImportContact()
+			fyne.NewMenuItem("Manage", func() {
+				//ui.showManageUsers()
 			}),
 		),
 	)
@@ -66,9 +60,7 @@ func (ui *ui) buildMobileMenu() {
 		widget.NewButton("Settings", func() { ui.showSettings() }),
 		widget.NewButton("New Group", func() { ui.showNewGroup() }),
 		widget.NewButton("New DM", func() { ui.showNewDM() }),
-		widget.NewButton("Share Contact", func() { ui.showDisplayAddUserString() }),
 		widget.NewButton("Add Contact", func() { ui.showAddUser() }),
-		widget.NewButton("Import Contact", func() { ui.showImportContact() }),
 		widget.NewButton("About", func() { ui.showAbout() }),
 		widget.NewButton("Close", func() { ui.mobileBack() }),
 	)

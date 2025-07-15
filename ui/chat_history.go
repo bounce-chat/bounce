@@ -55,14 +55,18 @@ type chatHistory struct {
 func (ui *ui) newChatHistory(t thread) *chatHistory {
 	_, group := t.(*group)
 	ch := &chatHistory{
-		id:                  t.getID(),
-		myID:                ui.profile.id,
-		messages:            ui.messages,
-		items:               []threadable{},
-		ids:                 []uuid.UUID{},
-		heights:             []float32{},
-		windowFocused:       func() bool { return ui.focused },
-		focusEntry:          func() { ui.mainWindow.Canvas().Focus(t.getEntry()) },
+		id:            t.getID(),
+		myID:          ui.profile.id,
+		messages:      ui.messages,
+		items:         []threadable{},
+		ids:           []uuid.UUID{},
+		heights:       []float32{},
+		windowFocused: func() bool { return ui.focused },
+		focusEntry: func() {
+			if ui.isActive(t) {
+				ui.mainWindow.Canvas().Focus(t.getEntry())
+			}
+		},
 		readCallback:        ui.bounce.MarkAsRead,
 		unreadCountCallback: t.getButton().setUnreadCount,
 		markAllAsReadCallback: func() {
