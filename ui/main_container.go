@@ -35,6 +35,7 @@ func (ui *ui) showMainContainer() {
 			ui.mainWindow.SetContent(ui.newInstall)
 			ui.newInstall.Show()
 			ui.viewStack = []view{view{viewType: viewTypeNewInstall}}
+			ui.currentView = viewTypeNewInstall
 		} else if ui.setupStep == setupStepProfile {
 			ui.mainWindow.SetMainMenu(nil)
 			ui.mainWindow.SetContent(ui.newProfileCreator)
@@ -42,6 +43,7 @@ func (ui *ui) showMainContainer() {
 			if fyne.CurrentDevice().IsMobile() {
 				ui.viewStack = append(ui.viewStack, view{viewType: viewTypeProfileCreator})
 			}
+			ui.currentView = viewTypeProfileCreator
 		} else {
 			log.WithFields(log.Fields{
 				"step": ui.setupStep,
@@ -49,6 +51,7 @@ func (ui *ui) showMainContainer() {
 		}
 	} else {
 		ui.viewStack = []view{view{viewType: viewTypeAllThreads}}
+		ui.currentView = viewTypeAllThreads
 		ui.mainWindow.SetMainMenu(ui.mainMenu)
 		ui.mainWindow.SetContent(ui.mainContainer)
 		ui.mainContainer.Show()

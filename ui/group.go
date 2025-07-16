@@ -286,6 +286,7 @@ func (ui *ui) getEditUserDialog(g *group, userID uuid.UUID) (dialog.Dialog, func
 				ui.mobileBack()          // Exit the edit group page
 				ui.mobileBack()          // Exit the group
 				ui.viewStack = append(ui.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
+				ui.currentView = viewTypeThread
 			} else {
 				if userDetailsDialog == nil {
 					log.Fatal("userDetailsDialog used before assignment, this should be impossible")
@@ -562,6 +563,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		if fyne.CurrentDevice().IsMobile() {
 			ui.viewStack = append(ui.viewStack, view{viewType: viewTypeThread, context: group.id})
 		}
+		ui.currentView = viewTypeThread
 	}
 	group.button = newThreadButton(newDefaultImage(group.id, group.images, group.initial, 64, ui.bounce.GetFileData, openThread), group.name, openThread)
 	group.scroll = ui.newChatHistory(group)

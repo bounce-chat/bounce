@@ -32,6 +32,7 @@ func (ui *ui) showAddUser() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeAddUser})
 	}
+	ui.currentView = viewTypeAddUser
 
 	ui.addUserWidgets.entry.Text = ""
 	ui.addUserWidgets.entry.Refresh()
@@ -326,7 +327,13 @@ func (ui *ui) UserAdded(u chat.User) {
 	ui.addUserWidgets.progressBar.Hide()
 	newUser := makeUser(u.ID, u.Name)
 	ui.users.add(newUser)
-	//ui.showMainContainer() // TODO: only if still showing the add user container, and actually go to the last screen
+	if ui.currentView == viewTypeAddUser {
+		if fyne.CurrentDevice().IsMobile() {
+			ui.mobileBack()
+		} else {
+			ui.showMainContainer()
+		}
+	}
 	if !ui.initialSyncIncomplete {
 		fyne.DoAndWait(func() {
 			ui.NewDirectMessage(u)

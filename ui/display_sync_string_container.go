@@ -19,6 +19,7 @@ func (ui *ui) showDisplaySyncString() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeDisplaySyncString})
 	}
+	ui.currentView = viewTypeDisplaySyncString
 	newDeviceString := ui.bounce.GetNewSyncString()
 	ui.syncStringEntry.SetText(newDeviceString)
 
@@ -84,6 +85,13 @@ func (ui *ui) buildDisplaySyncString() {
 
 func (ui *ui) NewSyncDeviceAdded() {
 	fyne.DoAndWait(func() {
+		if ui.currentView == viewTypeDisplaySyncString {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack()
+			} else {
+				ui.showEditProfile()
+			}
+		}
 		ui.showDialog(dialog.NewInformation("New sync device", "A new device has been paired to your profile", ui.mainWindow), nil)
 	})
 }

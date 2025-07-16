@@ -44,6 +44,7 @@ func (ui *ui) showSettings() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeSettings})
 	}
+	ui.currentView = viewTypeSettings
 	ui.mainWindow.SetContent(ui.settingsContainer)
 	ui.settingsContainer.Show()
 }

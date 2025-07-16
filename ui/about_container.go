@@ -15,6 +15,7 @@ func (ui *ui) showAbout() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeAbout})
 	}
+	ui.currentView = viewTypeAbout
 	ui.mainWindow.SetContent(ui.about)
 	ui.about.Show()
 }

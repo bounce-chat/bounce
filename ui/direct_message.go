@@ -268,6 +268,7 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 		if fyne.CurrentDevice().IsMobile() {
 			ui.viewStack = append(ui.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
 		}
+		ui.currentView = viewTypeThread
 	}
 	dm.button = newThreadButton(newDefaultImage(user.id, bounceUser.Images, user.initials, 64, ui.bounce.GetFileData, openThread), user.name, openThread)
 	dm.button.Refresh()
@@ -369,6 +370,7 @@ func (ui *ui) showEditDMContainer(dm *directMessage) {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeDMSettings, context: dm.user.id})
 	}
+	ui.currentView = viewTypeDMSettings
 	ui.mainWindow.SetContent(dm.editContainer)
 	dm.editContainer.Show()
 }

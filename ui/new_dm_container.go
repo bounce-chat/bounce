@@ -15,6 +15,7 @@ func (ui *ui) showNewDM() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeNewDM})
 	}
+	ui.currentView = viewTypeNewDM
 	ui.newDMUserSearchEntry.Text = ""
 	ui.newDMUserSearchEntry.Refresh()
 	ui.refreshAllUsersDMLinks()
@@ -81,6 +82,7 @@ func (ui *ui) refreshAllUsersDMLinks() {
 						ui.mobileBack() // Close new DM view
 						ui.mobileBack() // Close menu
 						ui.viewStack = append(ui.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
+						ui.currentView = viewTypeThread
 					} else {
 						ui.showMainContainer()
 					}

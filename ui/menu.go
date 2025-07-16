@@ -49,6 +49,7 @@ func (ui *ui) buildMenu() {
 
 func (ui *ui) showMobileMenu() {
 	ui.viewStack = append(ui.viewStack, view{viewType: viewTypeMenu})
+	ui.currentView = viewTypeMenu
 	ui.mainWindow.SetContent(ui.mobileMenu)
 	ui.mobileMenu.Show()
 }

@@ -248,6 +248,7 @@ func (ui *ui) showNewGroup() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeNewGroup})
 	}
+	ui.currentView = viewTypeNewGroup
 	ui.clearNewGroupSelectors()
 	ui.mainWindow.SetContent(ui.newGroup)
 	ui.newGroup.Show()

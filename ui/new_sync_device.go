@@ -93,6 +93,7 @@ func (ui *ui) showNameNewDevice() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeNameNewDevice})
 	}
+	ui.currentView = viewTypeNameNewDevice
 	ui.mainWindow.SetContent(ui.nameNewDevice)
 	ui.nameNewDevice.Show()
 	ui.mainWindow.Canvas().Focus(ui.newSyncDeviceWidgets.deviceNameEntry)
@@ -152,6 +153,7 @@ func (ui *ui) showNewSyncDevice() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeNewSyncDevice})
 	}
+	ui.currentView = viewTypeNewSyncDevice
 	ui.mainWindow.SetContent(ui.newSyncDevice)
 	ui.newSyncDevice.Show()
 }

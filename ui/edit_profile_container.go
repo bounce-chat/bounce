@@ -54,6 +54,7 @@ func (ui *ui) showEditProfile() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeEditProfile})
 	}
+	ui.currentView = viewTypeEditProfile
 
 	ui.profileIcon.id = ui.profile.id
 	ui.profileIcon.images = ui.profile.images

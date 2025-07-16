@@ -42,6 +42,7 @@ func (ui *ui) showImageViewer(images []image.Image, data [][]byte, index int) {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeImageViewer})
 	}
+	ui.currentView = viewTypeImageViewer
 	ui.mainWindow.SetContent(ui.imageViewer.viewer)
 	ui.imageViewer.viewer.Show()
 }

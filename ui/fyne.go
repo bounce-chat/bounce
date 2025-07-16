@@ -95,6 +95,7 @@ type ui struct {
 	focused                       bool
 	networkState                  int
 	setupStep                     int
+	currentView                   int
 	viewStack                     []view
 }
 
