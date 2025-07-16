@@ -164,7 +164,14 @@ func (ui *ui) buildScanUser() {
 			})
 		}()
 	}
-	ui.addUserWidgets.entry.ActionItem = widget.NewButtonWithIcon("", theme.MediaPhotoIcon(), func() {})
+	ui.addUserWidgets.entry.ActionItem = widget.NewButtonWithIcon("", theme.MediaPhotoIcon(), func() {
+		// TODO: open the camera
+		//_, err := camera.Open()
+		//if err != nil {
+		//	log.Error(err.Error())
+		//}
+	})
+	ui.addUserWidgets.entry.ActionItem.(*widget.Button).Disable()
 
 	importSelector := dialog.NewFileOpen(func(handler fyne.URIReadCloser, err error) {
 		if handler == nil {
