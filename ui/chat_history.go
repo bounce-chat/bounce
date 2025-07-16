@@ -45,7 +45,6 @@ type chatHistory struct {
 	offsetUpdated func(fyne.Position)
 
 	windowFocused         func() bool
-	focusEntry            func()
 	readCallback          func(uuid.UUID, string)
 	unreadCountCallback   func(int)
 	markAllAsReadCallback func()
@@ -55,18 +54,13 @@ type chatHistory struct {
 func (ui *ui) newChatHistory(t thread) *chatHistory {
 	_, group := t.(*group)
 	ch := &chatHistory{
-		id:            t.getID(),
-		myID:          ui.profile.id,
-		messages:      ui.messages,
-		items:         []threadable{},
-		ids:           []uuid.UUID{},
-		heights:       []float32{},
-		windowFocused: func() bool { return ui.focused },
-		focusEntry: func() {
-			if ui.isActive(t) {
-				ui.mainWindow.Canvas().Focus(t.getEntry())
-			}
-		},
+		id:                  t.getID(),
+		myID:                ui.profile.id,
+		messages:            ui.messages,
+		items:               []threadable{},
+		ids:                 []uuid.UUID{},
+		heights:             []float32{},
+		windowFocused:       func() bool { return ui.focused },
 		readCallback:        ui.bounce.MarkAsRead,
 		unreadCountCallback: t.getButton().setUnreadCount,
 		markAllAsReadCallback: func() {
@@ -108,7 +102,7 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 			}
 			ch.markAllAsReadCallback()
 			if !fyne.CurrentDevice().IsMobile() {
-				ch.focusEntry()
+				ui.mainWindow.Canvas().Focus(t.getEntry())
 			}
 		},
 	)
@@ -787,9 +781,6 @@ func (chl *chatHistoryLayout) offsetUpdated(pos fyne.Position) {
 	chl.ch.displayJumpToBottomIfNeeded()
 
 	if pos.Y == chl.ch.contentHeight()-chl.ch.scroller.Size().Height {
-		if !fyne.CurrentDevice().IsMobile() {
-			chl.ch.focusEntry()
-		}
 		if chl.ch.unread > 0 {
 			chl.ch.markAllAsReadCallback()
 			chl.ch.unread = 0

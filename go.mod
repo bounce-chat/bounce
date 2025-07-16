@@ -22,7 +22,7 @@ require (
 )
 
 require (
-	fyne.io/systray v1.11.0 // indirect
+	fyne.io/systray v1.11.1-0.20250603113521-ca66a66d8b58 // indirect
 	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/alecthomas/repr v0.4.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -40,7 +40,7 @@ require (
 	github.com/hack-pad/go-indexeddb v0.3.2 // indirect
 	github.com/hack-pad/safejs v0.1.1 // indirect
 	github.com/hexops/gotextdiff v1.0.3 // indirect
-	github.com/jeandeaual/go-locale v0.0.0-20250421151639-a9d6ed1b3d45 // indirect
+	github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25 // indirect
