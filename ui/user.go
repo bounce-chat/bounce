@@ -131,16 +131,16 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 
 	// Set the images
 	u.images = chatUser.Images
-	if chatUser.ID == ui.profile.id {
-		ui.profileIcon.images = ui.profile.images
+	if chatUser.ID == ui.state.profile.id {
+		ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
 		fyne.DoAndWait(func() {
-			ui.profileIcon.Refresh()
+			ui.widgets.editProfile.profileIcon.Refresh()
 		})
 	}
 
 	// Update the chat bubbles that have an icon
 	ui.messages.updateUserImage(chatUser.ID, chatUser.Images)
-	if chatUser.ID != ui.profile.id {
+	if chatUser.ID != ui.state.profile.id {
 		ui.threads.rangeFunc(func(t thread) {
 			if g, ok := t.(*group); ok {
 				if g.users.contains(chatUser.ID) {
@@ -168,7 +168,7 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 }
 
 func (ui *ui) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
-	if uuun.User == ui.profile.id {
+	if uuun.User == ui.state.profile.id {
 		ui.threads.rangeFunc(func(t thread) {
 			ti, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 			if err != nil {
@@ -210,7 +210,7 @@ func (ui *ui) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
 }
 
 func (ui *ui) UserImageUpdated(uuui chat.UpdateUserUpdateImage) {
-	if uuui.User == ui.profile.id {
+	if uuui.User == ui.state.profile.id {
 		ui.threads.rangeFunc(func(t thread) {
 			ti, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 			if err != nil {

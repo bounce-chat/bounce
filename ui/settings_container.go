@@ -15,7 +15,7 @@ var defaultOff = "Default (Off)"
 var on = "On"
 var off = "Off"
 
-type settingsWidgets struct {
+type settings struct {
 	sendReadReceiptsByDefault             *widget.Check
 	sendTypingIndicatorsByDefault         *widget.Check
 	defaultNewGroupRetention              *widget.Select
@@ -26,27 +26,26 @@ type settingsWidgets struct {
 }
 
 func (ui *ui) showSettings() {
-	ui.settingsWidgets.sendReadReceiptsByDefault.Checked = ui.settings.DefaultSendReadReceipts
-	ui.settingsWidgets.sendReadReceiptsByDefault.Refresh()
-	ui.settingsWidgets.sendTypingIndicatorsByDefault.Checked = ui.settings.DefaultSendTypingIndicators
-	ui.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
-	ui.settingsWidgets.defaultNewGroupRetention.Selected = getRetentionName(ui.settings.DefaultGroupRetention)
-	ui.settingsWidgets.defaultNewGroupRetention.Refresh()
-	ui.settingsWidgets.defaultNewGroupRestrictUserManagement.Checked = ui.settings.NewGroupRestrictUserManagement
-	ui.settingsWidgets.defaultNewGroupRestrictUserManagement.Refresh()
-	ui.settingsWidgets.defaultNewGroupRestrictGroupEdits.Checked = ui.settings.NewGroupRestrictGroupEdits
-	ui.settingsWidgets.defaultNewGroupRestrictGroupEdits.Refresh()
-	ui.settingsWidgets.defaultNewGroupRestrictPosting.Checked = ui.settings.NewGroupRestrictPosting
-	ui.settingsWidgets.defaultNewGroupRestrictPosting.Refresh()
-	ui.settingsWidgets.darkMode.Checked = ui.localSettings.DarkMode
-	ui.settingsWidgets.darkMode.Refresh()
+	ui.widgets.settings.sendReadReceiptsByDefault.Checked = ui.state.settings.DefaultSendReadReceipts
+	ui.widgets.settings.sendReadReceiptsByDefault.Refresh()
+	ui.widgets.settings.sendTypingIndicatorsByDefault.Checked = ui.state.settings.DefaultSendTypingIndicators
+	ui.widgets.settings.sendTypingIndicatorsByDefault.Refresh()
+	ui.widgets.settings.defaultNewGroupRetention.Selected = getRetentionName(ui.state.settings.DefaultGroupRetention)
+	ui.widgets.settings.defaultNewGroupRetention.Refresh()
+	ui.widgets.settings.defaultNewGroupRestrictUserManagement.Checked = ui.state.settings.NewGroupRestrictUserManagement
+	ui.widgets.settings.defaultNewGroupRestrictUserManagement.Refresh()
+	ui.widgets.settings.defaultNewGroupRestrictGroupEdits.Checked = ui.state.settings.NewGroupRestrictGroupEdits
+	ui.widgets.settings.defaultNewGroupRestrictGroupEdits.Refresh()
+	ui.widgets.settings.defaultNewGroupRestrictPosting.Checked = ui.state.settings.NewGroupRestrictPosting
+	ui.widgets.settings.defaultNewGroupRestrictPosting.Refresh()
+	ui.widgets.settings.darkMode.Checked = ui.localSettings.DarkMode
+	ui.widgets.settings.darkMode.Refresh()
 
 	if fyne.CurrentDevice().IsMobile() {
-		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeSettings})
+		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeSettings})
 	}
-	ui.currentView = viewTypeSettings
-	ui.mainWindow.SetContent(ui.settingsContainer)
-	ui.settingsContainer.Show()
+	ui.state.currentView = viewTypeSettings
+	ui.window.SetContent(ui.views.settings)
 }
 
 func (ui *ui) buildSettings() {
@@ -73,7 +72,7 @@ func (ui *ui) buildSettings() {
 		closeButton,
 	)
 
-	ui.settingsWidgets = &settingsWidgets{
+	ui.widgets.settings = &settings{
 		sendReadReceiptsByDefault:             widget.NewCheck("Send Read Receipts By Default", ui.bounce.SetReadReceiptsByDefault),
 		sendTypingIndicatorsByDefault:         widget.NewCheck("Send Typing Indicators By Default", ui.bounce.SetTypingIndicatorsByDefault),
 		defaultNewGroupRetention:              widget.NewSelect(retentionSelections, ui.sendDefaultRetentionSelection),
@@ -83,24 +82,24 @@ func (ui *ui) buildSettings() {
 		darkMode:                              widget.NewCheck("Dark Mode", ui.bounce.SetDarkMode),
 	}
 
-	ui.settingsContainer = container.New(
+	ui.views.settings = container.New(
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.NewVScroll(container.NewVBox(
 			container.NewCenter(makeLogo(247, 75)),
 			globalSettingsLabel,
-			ui.settingsWidgets.sendReadReceiptsByDefault,
-			ui.settingsWidgets.sendTypingIndicatorsByDefault,
+			ui.widgets.settings.sendReadReceiptsByDefault,
+			ui.widgets.settings.sendTypingIndicatorsByDefault,
 			groupSettingsLabel,
 			container.NewHBox(
 				widget.NewLabel("Retention"),
-				ui.settingsWidgets.defaultNewGroupRetention,
+				ui.widgets.settings.defaultNewGroupRetention,
 			),
-			ui.settingsWidgets.defaultNewGroupRestrictUserManagement,
-			ui.settingsWidgets.defaultNewGroupRestrictGroupEdits,
-			ui.settingsWidgets.defaultNewGroupRestrictPosting,
+			ui.widgets.settings.defaultNewGroupRestrictUserManagement,
+			ui.widgets.settings.defaultNewGroupRestrictGroupEdits,
+			ui.widgets.settings.defaultNewGroupRestrictPosting,
 			themeSettingsLabel,
-			ui.settingsWidgets.darkMode,
+			ui.widgets.settings.darkMode,
 		)),
 	)
 }
@@ -118,38 +117,38 @@ func (ui *ui) sendDefaultRetentionSelection(selection string) { // TODO: rename 
 
 func (ui *ui) SetSettings(settings chat.Settings) {
 	fyne.DoAndWait(func() {
-		updateReadReceipts := ui.settings.DefaultSendReadReceipts != settings.DefaultSendReadReceipts
-		updateTypingIndicators := ui.settings.DefaultSendTypingIndicators != settings.DefaultSendTypingIndicators
+		updateReadReceipts := ui.state.settings.DefaultSendReadReceipts != settings.DefaultSendReadReceipts
+		updateTypingIndicators := ui.state.settings.DefaultSendTypingIndicators != settings.DefaultSendTypingIndicators
 
-		ui.settings = settings
+		ui.state.settings = settings
 
-		ui.settingsWidgets.defaultNewGroupRetention.Selected = getRetentionName(settings.DefaultGroupRetention)
-		ui.settingsWidgets.defaultNewGroupRetention.Refresh()
+		ui.widgets.settings.defaultNewGroupRetention.Selected = getRetentionName(settings.DefaultGroupRetention)
+		ui.widgets.settings.defaultNewGroupRetention.Refresh()
 
 		if updateReadReceipts {
-			ui.settingsWidgets.sendReadReceiptsByDefault.Checked = settings.DefaultSendReadReceipts
-			ui.settingsWidgets.sendReadReceiptsByDefault.Refresh()
+			ui.widgets.settings.sendReadReceiptsByDefault.Checked = settings.DefaultSendReadReceipts
+			ui.widgets.settings.sendReadReceiptsByDefault.Refresh()
 			ui.threads.rangeFunc(func(t thread) {
 				t.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
 			})
 		}
 
 		if updateTypingIndicators {
-			ui.settingsWidgets.sendTypingIndicatorsByDefault.Checked = settings.DefaultSendTypingIndicators
-			ui.settingsWidgets.sendTypingIndicatorsByDefault.Refresh()
+			ui.widgets.settings.sendTypingIndicatorsByDefault.Checked = settings.DefaultSendTypingIndicators
+			ui.widgets.settings.sendTypingIndicatorsByDefault.Refresh()
 			ui.threads.rangeFunc(func(t thread) {
 				t.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
 			})
 		}
 
-		ui.settingsWidgets.defaultNewGroupRestrictUserManagement.Checked = settings.NewGroupRestrictUserManagement
-		ui.settingsWidgets.defaultNewGroupRestrictUserManagement.Refresh()
+		ui.widgets.settings.defaultNewGroupRestrictUserManagement.Checked = settings.NewGroupRestrictUserManagement
+		ui.widgets.settings.defaultNewGroupRestrictUserManagement.Refresh()
 
-		ui.settingsWidgets.defaultNewGroupRestrictGroupEdits.Checked = settings.NewGroupRestrictGroupEdits
-		ui.settingsWidgets.defaultNewGroupRestrictGroupEdits.Refresh()
+		ui.widgets.settings.defaultNewGroupRestrictGroupEdits.Checked = settings.NewGroupRestrictGroupEdits
+		ui.widgets.settings.defaultNewGroupRestrictGroupEdits.Refresh()
 
-		ui.settingsWidgets.defaultNewGroupRestrictPosting.Checked = settings.NewGroupRestrictPosting
-		ui.settingsWidgets.defaultNewGroupRestrictPosting.Refresh()
+		ui.widgets.settings.defaultNewGroupRestrictPosting.Checked = settings.NewGroupRestrictPosting
+		ui.widgets.settings.defaultNewGroupRestrictPosting.Refresh()
 	})
 }
 
@@ -161,14 +160,14 @@ func (ui *ui) SetDarkMode(value bool) {
 			ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
 		}
 		ui.localSettings.DarkMode = value
-		ui.settingsWidgets.darkMode.Checked = value
-		ui.settingsWidgets.darkMode.Refresh()
+		ui.widgets.settings.darkMode.Checked = value
+		ui.widgets.settings.darkMode.Refresh()
 	})
 }
 
 func (ui *ui) readReceiptOverrideSelectionOptions() []string {
 	strings := []string{}
-	if ui.settings.DefaultSendReadReceipts {
+	if ui.state.settings.DefaultSendReadReceipts {
 		strings = append(strings, defaultOn)
 	} else {
 		strings = append(strings, defaultOff)
@@ -179,7 +178,7 @@ func (ui *ui) readReceiptOverrideSelectionOptions() []string {
 
 func (ui *ui) typingIndicatorOverrideSelectionOptions() []string {
 	strings := []string{}
-	if ui.settings.DefaultSendTypingIndicators {
+	if ui.state.settings.DefaultSendTypingIndicators {
 		strings = append(strings, defaultOn)
 	} else {
 		strings = append(strings, defaultOff)

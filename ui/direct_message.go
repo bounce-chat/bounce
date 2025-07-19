@@ -266,9 +266,9 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 		ui.displayThread(dm)
 		ui.bounce.UserConnectionDesired(user.id)
 		if fyne.CurrentDevice().IsMobile() {
-			ui.viewStack = append(ui.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
+			ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
 		}
-		ui.currentView = viewTypeThread
+		ui.state.currentView = viewTypeThread
 	}
 	dm.button = newThreadButton(newDefaultImage(user.id, bounceUser.Images, user.initials, 64, ui.bounce.GetFileData, openThread), user.name, openThread)
 	dm.button.Refresh()
@@ -299,7 +299,7 @@ func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 			}
 
 			dm.pendingMessageAttachments.add(reader)
-		}, ui.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
+		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 	addFiles.Importance = widget.LowImportance
 	dm.pendingMessageAttachments = newPendingMessageAttachments()
@@ -362,22 +362,22 @@ func (ui *ui) DisplaySentDirectMessage(dm chat.DirectMessage) {
 		dmThread.entry.Refresh()
 
 		dmThread.chatHistoryScroll().ScrollToBottom()
-		ui.chatContainer.Refresh()
+		ui.containers.chat.Refresh()
 	})
 }
 
 func (ui *ui) showEditDMContainer(dm *directMessage) {
 	if fyne.CurrentDevice().IsMobile() {
-		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeDMSettings, context: dm.user.id})
+		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeDMSettings, context: dm.user.id})
 	}
-	ui.currentView = viewTypeDMSettings
-	ui.mainWindow.SetContent(dm.editContainer)
+	ui.state.currentView = viewTypeDMSettings
+	ui.window.SetContent(dm.editContainer)
 	dm.editContainer.Show()
 }
 
 func (ui *ui) buildEditDMContainer(dm *directMessage) {
 	var selectImage func()
-	if dm.user.id == ui.profile.id {
+	if dm.user.id == ui.state.profile.id {
 		selectImage = func() {
 			dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 				if reader == nil {
@@ -401,7 +401,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 					return
 				}
 				if size > chat.EmbeddedFileLimit {
-					ui.showDialog(dialog.NewError(errors.New("file is too large"), ui.mainWindow), nil)
+					ui.showDialog(dialog.NewError(errors.New("file is too large"), ui.window), nil)
 					reader.Close()
 					return
 				}
@@ -419,7 +419,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 				// TODO: don't actualy set it until they hit save?
 
 				ui.bounce.UpdateProfileImage(data)
-			}, ui.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
+			}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 		}
 	}
 	dm.editIcon = newDefaultImage(dm.user.id, dm.user.images, dm.user.initials, 128, ui.bounce.GetFileData, selectImage)
@@ -457,7 +457,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 				}
 			}
 		},
-		ui.mainWindow,
+		ui.window,
 	)
 	dialogCleanup := func() {
 		if returnToThread {
@@ -466,10 +466,10 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 			} else {
 				ui.showMainContainer()
 			}
-			ui.mainWindow.Canvas().Focus(dm.getEntry())
+			ui.window.Canvas().Focus(dm.getEntry())
 		}
 		if showError != nil {
-			ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
+			ui.showDialog(dialog.NewError(showError, ui.window), nil)
 		}
 	}
 	clearHistoryButton := widget.NewButton("Clear history", func() {
@@ -495,7 +495,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		selectedRetentionString := dm.retentionSelection.Selected
 		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
 		if !ok {
-			ui.showDialog(dialog.NewError(errors.New("invalid retention selection: "+selectedRetentionString), ui.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("invalid retention selection: "+selectedRetentionString), ui.window), nil)
 			return
 		} else {
 			if dm.retention != selectedRetentionValue {
@@ -545,7 +545,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 
 		// Go back to the thread after settings updates are done
 		ui.showMainContainer()
-		ui.mainWindow.Canvas().Focus(dm.getEntry())
+		ui.window.Canvas().Focus(dm.getEntry())
 	})
 	saveButton.Importance = widget.HighImportance
 
@@ -567,7 +567,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 			ui.mobileBack()
 		} else {
 			ui.showMainContainer()
-			ui.mainWindow.Canvas().Focus(dm.getEntry())
+			ui.window.Canvas().Focus(dm.getEntry())
 		}
 	}
 	cancelButton := widget.NewButton("Cancel", cancelChanges)

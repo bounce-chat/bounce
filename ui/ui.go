@@ -12,7 +12,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/mobile"
@@ -35,76 +34,95 @@ const defaultChatHistoryHeight = float32(585.84375)
 const defaultChatHistoryWidth = float32(566)
 
 type ui struct {
-	bounce                        *chat.Bounce
-	users                         *userStore
-	devices                       *deviceStore
-	messages                      *messageStore
-	threads                       *threadStore
-	app                           fyne.App
-	mainWindow                    fyne.Window
-	newGroupWidgets               *newGroupWidgets
-	newSyncDeviceWidgets          *newSyncDeviceWidgets
-	addUserWidgets                *addUserWidgets
-	settingsWidgets               *settingsWidgets
-	imageViewer                   *imageViewer
-	mainContainer                 *fyne.Container
-	defaultContainer              *fyne.Container
-	newInstall                    *fyne.Container
-	newSyncDevice                 *fyne.Container
-	nameNewDevice                 *fyne.Container
-	addUser                       *fyne.Container
-	addUserContent                *fyne.Container
-	scanUser                      *fyne.Container
-	newProfileCreator             *fyne.Container
-	databaseLoading               *fyne.Container
-	editProfile                   *fyne.Container
-	displaySyncString             *fyne.Container
-	displayAddUserString          *fyne.Container
-	settingsContainer             *fyne.Container
-	about                         *fyne.Container
-	newGroup                      *fyne.Container
-	newDM                         *fyne.Container
-	introduceContacts             *fyne.Container
-	importContact                 *fyne.Container
-	threadVBox                    *fyne.Container
-	chatContainer                 *fyne.Container
-	mobileMenu                    *fyne.Container
-	newProfileImage               *defaultImage
-	newProfileImageData           []byte
-	profileNameEntry              *widget.Entry
-	profileIcon                   *defaultImage
-	profileOptions                *fyne.Container
-	newDMUserSearchEntry          *widget.Entry
-	mainMenu                      *fyne.MainMenu
-	allUsersDMLinksScroll         *container.Scroll
-	networkOfflineWarning         *widget.Label
-	pausedGroupNotifications      map[uuid.UUID]bool
-	pausedGroupNotificationsMutex sync.Mutex
-	activeThread                  uuid.UUID
-	syncStringEntry               *widget.Entry
-	addUserStringEntry            *widget.Entry
-	addUserQRCode                 *canvas.Image
-	addDeviceQRCode               *canvas.Image
+	bounce *chat.Bounce
+	state  *state
+
+	app    fyne.App
+	window fyne.Window
+
+	views      *views
+	containers *containers
+	widgets    *widgets
+
+	users    *userStore
+	devices  *deviceStore
+	messages *messageStore
+	threads  *threadStore
+
+	localSettings chat.LocalSettings // TODO: remove
+}
+
+type widgets struct {
+	networkOfflineWarning *widget.Label
+	newInstall            *newInstall
+	editProfile           *editProfile
+	newGroup              *newGroup
+	newSyncDevice         *newSyncDevice
+	displaySyncString     *displaySyncString
+	addUser               *addUser
+	settings              *settings
+	newDM                 *newDM
+	imageViewer           *imageViewer
+}
+
+type containers struct {
+	profileOptions       *fyne.Container
+	defaultContainer     *fyne.Container
+	addUserContent       *fyne.Container
+	scanUser             *fyne.Container
+	displayAddUserString *fyne.Container
+	threads              *fyne.Container
+	chat                 *fyne.Container
+	currentDevices       *container.Scroll
+	mainMenu             *fyne.MainMenu
+}
+
+type views struct {
+	main              *fyne.Container
+	newInstall        *fyne.Container
+	newSyncDevice     *fyne.Container
+	displaySyncString *fyne.Container
+	nameNewDevice     *fyne.Container
+	addUser           *fyne.Container
+	newProfileCreator *fyne.Container
+	databaseLoading   *fyne.Container
+	editProfile       *fyne.Container
+	settings          *fyne.Container
+	about             *fyne.Container
+	newGroup          *fyne.Container
+	newDM             *fyne.Container
+	mobileMenu        *fyne.Container
+}
+
+type state struct {
 	profile                       *user
 	settings                      chat.Settings
-	localSettings                 chat.LocalSettings
-	currentDevices                *container.Scroll
-	deletedUser                   *user
+	currentView                   int
+	viewStack                     []view
+	activeThread                  uuid.UUID
 	initialStateSet               bool
 	initialSyncIncomplete         bool
 	focused                       bool
 	networkState                  int
 	setupStep                     int
-	currentView                   int
-	viewStack                     []view
+	pausedGroupNotifications      map[uuid.UUID]bool
+	pausedGroupNotificationsMutex sync.Mutex
 }
 
 func Main() {
 	ui := &ui{
-		users:    newUserStore(),
-		devices:  newDeviceStore(),
-		messages: newMessageStore(),
-		threads:  newThreadStore(),
+		containers: &containers{},
+		views:      &views{},
+		widgets:    &widgets{},
+		users:      newUserStore(),
+		devices:    newDeviceStore(),
+		messages:   newMessageStore(),
+		threads:    newThreadStore(),
+		state: &state{
+			focused:                  true,
+			networkState:             networkStateStarting,
+			pausedGroupNotifications: make(map[uuid.UUID]bool),
+		},
 	}
 	ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())
 	ui.build()
@@ -113,6 +131,7 @@ func Main() {
 		ui.loadInitialState(ui.bounce.GetInitialState())
 	}()
 
+	ui.window.Show()
 	ui.app.Run()
 	ui.bounce.Shutdown()
 }
@@ -123,8 +142,8 @@ func (ui *ui) build() {
 	//
 	ui.app = app.NewWithID("chat.bounce")
 	ui.app.SetIcon(newEmbeddedResource("assets/icon.png"))
-	ui.app.Lifecycle().SetOnEnteredForeground(func() { ui.focused = true })
-	ui.app.Lifecycle().SetOnExitedForeground(func() { ui.focused = false })
+	ui.app.Lifecycle().SetOnEnteredForeground(func() { ui.state.focused = true })
+	ui.app.Lifecycle().SetOnExitedForeground(func() { ui.state.focused = false })
 	if ui.bounce.DarkMode() {
 		ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
 	} else {
@@ -134,23 +153,20 @@ func (ui *ui) build() {
 	//
 	// Initialize types that require it
 	//
-	ui.pausedGroupNotifications = make(map[uuid.UUID]bool)
-	ui.focused = true
-	ui.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-	ui.networkOfflineWarning.Show()
-	ui.deletedUser = makeUser(uuid.Nil, "-deleted-")
-	ui.viewStack = []view{}
+	ui.widgets.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	ui.widgets.networkOfflineWarning.Show()
+	ui.state.viewStack = []view{}
 
 	//
 	// Define the main window
 	//
-	ui.mainWindow = ui.app.NewWindow("Bounce")
-	ui.mainWindow.SetMaster()
-	//ui.mainWindow.SetOnClosed(func() {
+	ui.window = ui.app.NewWindow("Bounce")
+	ui.window.SetMaster()
+	//ui.window.SetOnClosed(func() {
 	//	if !fyne.CurrentDevice().IsMobile() {
 	//		ui.app.Preferences().SetBool("size-set", true)
-	//		ui.app.Preferences().SetBool("fullscreen", ui.mainWindow.FullScreen())
-	//		mainSize := ui.mainWindow.Canvas().Size()
+	//		ui.app.Preferences().SetBool("fullscreen", ui.window.FullScreen())
+	//		mainSize := ui.window.Canvas().Size()
 	//		mainSize.Width -= 2 // The window appears to always be 2px less wide than the canvas size
 	//		ui.app.Preferences().SetFloat("main-width", float64(mainSize.Width))
 	//		ui.app.Preferences().SetFloat("main-height", float64(mainSize.Height))
@@ -160,7 +176,7 @@ func (ui *ui) build() {
 	//		}).Warn("closing, saving sizes")
 	//	}
 	//})
-	ui.mainWindow.SetCloseIntercept(func() {
+	ui.window.SetCloseIntercept(func() {
 		// There's some bug in Fyne where the app will hang when the close button
 		// is hit unless this is explicitly set https://github.com/fyne-io/fyne/issues/2314
 		ui.Quit()
@@ -168,7 +184,7 @@ func (ui *ui) build() {
 	//if !fyne.CurrentDevice().IsMobile() {
 	//	if ui.app.Preferences().Bool("size-set") {
 	//		if ui.app.Preferences().Bool("fullscreen") {
-	//			ui.mainWindow.SetFullScreen(true)
+	//			ui.window.SetFullScreen(true)
 	//		} else {
 	//			w := float32(ui.app.Preferences().Float("main-width"))
 	//			h := float32(ui.app.Preferences().Float("main-height"))
@@ -176,13 +192,13 @@ func (ui *ui) build() {
 	//				"w": w,
 	//				"h": h,
 	//			}).Warn("starting up, sizes")
-	//			ui.mainWindow.Resize(fyne.Size{Height: h, Width: w})
+	//			ui.window.Resize(fyne.Size{Height: h, Width: w})
 	//		}
 	//	} else {
-	ui.mainWindow.Resize(fyne.Size{Height: defaultHeight, Width: defaultWidth})
+	ui.window.Resize(fyne.Size{Height: defaultHeight, Width: defaultWidth})
 	//	}
 	//}
-	ui.mainWindow.Canvas().SetOnTypedKey(func(ev *fyne.KeyEvent) {
+	ui.window.Canvas().SetOnTypedKey(func(ev *fyne.KeyEvent) {
 		if fyne.CurrentDevice().IsMobile() && ev.Name == mobile.KeyBack {
 			ui.mobileBack()
 		}
@@ -190,18 +206,25 @@ func (ui *ui) build() {
 	//if desk, ok := ui.app.(desktop.App); ok {
 	//	m := fyne.NewMenu("Bounce",
 	//		fyne.NewMenuItem("Show", func() {
-	//			ui.mainWindow.Show()
+	//			ui.window.Show()
 	//		}),
 	//	)
 	//	desk.SetSystemTrayMenu(m)
-	//	ui.mainWindow.SetCloseIntercept(func() {
-	//		ui.mainWindow.Hide()
+	//	ui.window.SetCloseIntercept(func() {
+	//		ui.window.Hide()
 	//	})
 	//}
 
+	ui.buildWidgets()
+
 	//
-	// Build all the containers
+	// Default to displaying the loading container
 	//
+
+	ui.showMainContainer()
+}
+
+func (ui *ui) buildWidgets() {
 	ui.buildMenu()
 	ui.buildNewSyncDeviceWidgets()
 	ui.buildNewInstall()
@@ -219,13 +242,6 @@ func (ui *ui) build() {
 	ui.buildMainContainer()
 	ui.buildMobileMenu()
 	ui.buildImageViewer()
-
-	//
-	// Default to displaying the loading container
-	//
-	ui.networkState = networkStateStarting
-	ui.showMainContainer()
-	ui.mainWindow.Show()
 }
 
 func (ui *ui) askToIgnoreBatteryOptimizations() {
@@ -264,14 +280,14 @@ func (ui *ui) askToIgnoreBatteryOptimizations() {
 			batteryDialog = dialog.NewCustomWithoutButtons(
 				"Allow Backgrounding",
 				batteryContent,
-				ui.mainWindow,
+				ui.window,
 			)
 			ui.showDialog(batteryDialog, nil)
 		}
 	}
 }
 
-func (ui *ui) Run() {
+func (ui *ui) Run() { // TODO: still need this interface since control re-inverted?
 	ui.app.Run()
 }
 
@@ -281,11 +297,11 @@ func (ui *ui) Quit() {
 
 func (ui *ui) loadInitialState(state chat.InitialState) {
 	fyne.DoAndWait(func() {
-		if ui.initialStateSet {
+		if ui.state.initialStateSet {
 			log.Fatal("the initial state of the UI can only be loaded once")
 		}
 		// Refresh the state of the main view after the state is loaded
-		ui.initialStateSet = true
+		ui.state.initialStateSet = true
 		defer ui.showMainContainer()
 
 		if state.Profile == nil {
@@ -296,10 +312,10 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			return
 		}
 
-		ui.profile = makeUser(state.Profile.ID, state.Profile.Name)
-		ui.profile.images = state.Profile.Images
-		ui.users.add(ui.profile)
-		ui.settings = state.Settings
+		ui.state.profile = makeUser(state.Profile.ID, state.Profile.Name)
+		ui.state.profile.images = state.Profile.Images
+		ui.users.add(ui.state.profile)
+		ui.state.settings = state.Settings
 		ui.localSettings = state.LocalSettings
 		ui.askToIgnoreBatteryOptimizations()
 
@@ -495,7 +511,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 
 		for _, uuun := range state.UpdateUserUpdateNames {
-			if uuun.User == ui.profile.id {
+			if uuun.User == ui.state.profile.id {
 				ui.threads.rangeFunc(func(th thread) {
 					switch t := th.(type) {
 					case *group:
@@ -541,7 +557,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			}
 		}
 		for _, uuui := range state.UpdateUserUpdateImages {
-			if uuui.User == ui.profile.id {
+			if uuui.User == ui.state.profile.id {
 				ui.threads.rangeFunc(func(th thread) {
 					switch t := th.(type) {
 					case *group:
@@ -649,28 +665,28 @@ func (ui *ui) createDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]chat.DM
 }
 
 func (ui *ui) NetworkOnline() {
-	if ui.activeThread != uuid.Nil {
-		t, ok := ui.threads.get(ui.activeThread)
+	if ui.state.activeThread != uuid.Nil {
+		t, ok := ui.threads.get(ui.state.activeThread)
 		if !ok {
 			log.WithFields(log.Fields{
-				"thread": ui.activeThread,
+				"thread": ui.state.activeThread,
 			}).Error("active thread is not a known user or group")
 		}
 		if _, ok = t.(*group); ok {
-			ui.bounce.GroupConnectionDesired(ui.activeThread)
+			ui.bounce.GroupConnectionDesired(ui.state.activeThread)
 		} else {
-			ui.bounce.UserConnectionDesired(ui.activeThread)
+			ui.bounce.UserConnectionDesired(ui.state.activeThread)
 		}
 	}
-	fyne.DoAndWait(func() { ui.networkOfflineWarning.Hide() })
-	ui.networkState = networkStateOnline
+	fyne.DoAndWait(func() { ui.widgets.networkOfflineWarning.Hide() })
+	ui.state.networkState = networkStateOnline
 }
 
 func (ui *ui) NetworkOffline() {
-	ui.networkState = networkStateOffline
+	ui.state.networkState = networkStateOffline
 	fyne.DoAndWait(func() {
-		ui.networkOfflineWarning.SetText("network connection lost, reconnecting...")
-		ui.networkOfflineWarning.Show()
+		ui.widgets.networkOfflineWarning.SetText("network connection lost, reconnecting...")
+		ui.widgets.networkOfflineWarning.Show()
 	})
 }
 

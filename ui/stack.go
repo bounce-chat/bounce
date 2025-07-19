@@ -48,7 +48,7 @@ type dialogWithCallback struct {
 
 func (ui *ui) mobileBack() {
 	// If there's only one view left in the history, we're at the beginning and should close the app
-	if len(ui.viewStack) == 1 {
+	if len(ui.state.viewStack) == 1 {
 		if drv, ok := ui.app.Driver().(mobile.Driver); ok {
 			drv.(mobile.Driver).GoBack()
 		}
@@ -56,7 +56,7 @@ func (ui *ui) mobileBack() {
 	}
 
 	// If the current view is a dialog, hide that dialog and run any cleanup tasks required
-	currentView := ui.viewStack[len(ui.viewStack)-1]
+	currentView := ui.state.viewStack[len(ui.state.viewStack)-1]
 	if currentView.viewType == viewTypeDialog {
 		if currentView.dialog != nil {
 			// view stack is popped and cleanup is ran in dialog closed callback
@@ -69,56 +69,48 @@ func (ui *ui) mobileBack() {
 	}
 
 	// Grab the view that occured before the current one as the one we want to display
-	displayView := ui.viewStack[len(ui.viewStack)-2]
+	displayView := ui.state.viewStack[len(ui.state.viewStack)-2]
 
 	// Remove the current view from history
-	ui.viewStack = ui.viewStack[0 : len(ui.viewStack)-1]
+	ui.state.viewStack = ui.state.viewStack[0 : len(ui.state.viewStack)-1]
 
 	// Set the UI to the view we want to display
 	switch displayView.viewType {
 	case viewTypeAllThreads:
-		ui.mainWindow.SetContent(ui.mainContainer)
-		ui.mainContainer.Show()
+		ui.window.SetContent(ui.views.main)
 	case viewTypeThread:
 		t, ok := ui.threads.get(displayView.context)
 		if !ok {
 			log.WithFields(log.Fields{
 				"type": displayView.viewType,
 			}).Warn("cannot display unknown thread when handling mobile back button")
-			ui.mainWindow.SetContent(ui.mainContainer)
-			ui.mainContainer.Show()
+			ui.window.SetContent(ui.views.main)
+			ui.views.main.Show()
 		} else {
 			ui.displayThread(t)
 		}
 	case viewTypeSettings:
-		ui.mainWindow.SetContent(ui.settingsContainer)
-		ui.settingsContainer.Show()
+		ui.window.SetContent(ui.views.settings)
 	case viewTypeNewSyncDevice:
-		ui.newSyncDeviceWidgets.syncStringInput.Show()
-		ui.mainWindow.SetContent(ui.newSyncDevice)
-		ui.newSyncDevice.Show()
+		ui.widgets.newSyncDevice.syncStringInput.Show()
+		ui.window.SetContent(ui.views.newSyncDevice)
 	case viewTypeNewInstall:
-		ui.mainWindow.SetContent(ui.newInstall)
-		ui.newInstall.Show()
+		ui.window.SetContent(ui.views.newInstall)
 	case viewTypeProfileCreator:
-		ui.mainWindow.SetContent(ui.newProfileCreator)
-		ui.newProfileCreator.Show()
+		ui.window.SetContent(ui.views.newProfileCreator)
 	case viewTypeNewGroup:
 		ui.clearNewGroupSelectors()
-		ui.mainWindow.SetContent(ui.newGroup)
-		ui.newGroup.Show()
+		ui.window.SetContent(ui.views.newGroup)
 	case viewTypeNewDM:
-		ui.newDMUserSearchEntry.Text = ""
-		ui.newDMUserSearchEntry.Refresh()
+		ui.widgets.newDM.searchEntry.Text = ""
+		ui.widgets.newDM.searchEntry.Refresh()
 		ui.refreshAllUsersDMLinks()
-		ui.mainWindow.SetContent(ui.newDM)
-		ui.newDM.Show()
+		ui.window.SetContent(ui.views.newDM)
 	case viewTypeMenu:
-		ui.mainWindow.SetContent(ui.mobileMenu)
-		ui.mobileMenu.Show()
+		ui.window.SetContent(ui.views.mobileMenu)
 	case viewTypeDisplaySyncString:
 		newSyncString := ui.bounce.GetNewSyncString()
-		ui.syncStringEntry.SetText(newSyncString)
+		ui.widgets.displaySyncString.entry.SetText(newSyncString)
 		qrData, err := qrcode.Encode(newSyncString, qrcode.Medium, 256)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -131,15 +123,14 @@ func (ui *ui) mobileBack() {
 					"error": err.Error(),
 				}).Error("error decoding QR data as image")
 			} else {
-				ui.addDeviceQRCode.Image = qrImg
-				ui.addDeviceQRCode.Refresh()
+				ui.widgets.displaySyncString.qrCode.Image = qrImg
+				ui.widgets.displaySyncString.qrCode.Refresh()
 			}
 		}
-		ui.mainWindow.SetContent(ui.displaySyncString)
-		ui.displaySyncString.Show()
+		ui.window.SetContent(ui.views.displaySyncString)
 	case viewTypeAddUser:
 		newAddUserString := ui.bounce.GetNewAddUserString()
-		ui.addUserStringEntry.SetText(newAddUserString)
+		ui.widgets.addUser.displayEntry.SetText(newAddUserString)
 		qrData, err := qrcode.Encode(newAddUserString, qrcode.Medium, 256)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -152,38 +143,33 @@ func (ui *ui) mobileBack() {
 					"error": err.Error(),
 				}).Error("error decoding QR data as image")
 			} else {
-				ui.addUserQRCode.Image = qrImg
-				ui.addUserQRCode.Refresh()
+				ui.widgets.addUser.qrCode.Image = qrImg
+				ui.widgets.addUser.qrCode.Refresh()
 			}
 		}
-		ui.mainWindow.SetContent(ui.addUser)
-		ui.addUser.Show()
+		ui.window.SetContent(ui.views.addUser)
 	case viewTypeAbout:
-		ui.mainWindow.SetContent(ui.about)
-		ui.about.Show()
+		ui.window.SetContent(ui.views.about)
 	case viewTypeEditProfile:
-		ui.profileIcon.id = ui.profile.id
-		ui.profileIcon.images = ui.profile.images
-		initials, err := ui.profile.initials.Get()
+		ui.widgets.editProfile.profileIcon.id = ui.state.profile.id
+		ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
+		initials, err := ui.state.profile.initials.Get()
 		if err != nil {
 			log.Fatal("data bindings are broken")
 		}
-		ui.profileIcon.foregroundText.Text = initials
-		ui.profileIcon.Refresh()
+		ui.widgets.editProfile.profileIcon.foregroundText.Text = initials
+		ui.widgets.editProfile.profileIcon.Refresh()
 
-		ui.profileNameEntry.Text = ui.profile.getName()
-		ui.profileNameEntry.Refresh()
-		ui.profileNameEntry.FocusLost()
+		ui.widgets.editProfile.profileNameEntry.Text = ui.state.profile.getName()
+		ui.widgets.editProfile.profileNameEntry.Refresh()
+		ui.widgets.editProfile.profileNameEntry.FocusLost()
 
-		ui.profileOptions.Refresh()
-		ui.mainWindow.SetContent(ui.editProfile)
-		ui.editProfile.Show()
+		ui.containers.profileOptions.Refresh()
+		ui.window.SetContent(ui.views.editProfile)
 	case viewTypeNameNewDevice:
-		ui.mainWindow.SetContent(ui.nameNewDevice)
-		ui.nameNewDevice.Show()
+		ui.window.SetContent(ui.views.nameNewDevice)
 	case viewTypeImageViewer:
-		ui.mainWindow.SetContent(ui.imageViewer.viewer)
-		ui.imageViewer.viewer.Show()
+		ui.window.SetContent(ui.widgets.imageViewer.viewer)
 	default:
 		log.WithFields(log.Fields{
 			"type": displayView.viewType,
@@ -195,7 +181,7 @@ func (ui *ui) mobileBack() {
 
 	// If we're not looking at a thread, unset the active thread
 	if displayView.viewType != viewTypeThread {
-		ui.activeThread = uuid.Nil
+		ui.state.activeThread = uuid.Nil
 	}
 }
 
@@ -203,11 +189,11 @@ func (ui *ui) showDialog(d dialog.Dialog, cleanup func()) {
 	if _, hooked := hookedDialogs[d]; !hooked {
 		d.SetOnClosed(func() {
 			if fyne.CurrentDevice().IsMobile() {
-				if len(ui.viewStack) == 1 {
+				if len(ui.state.viewStack) == 1 {
 					log.Warn("view stack has one member when hiding dialog")
 					return
 				}
-				ui.viewStack = ui.viewStack[0 : len(ui.viewStack)-1]
+				ui.state.viewStack = ui.state.viewStack[0 : len(ui.state.viewStack)-1]
 			}
 			if cleanup != nil {
 				cleanup()
@@ -217,8 +203,8 @@ func (ui *ui) showDialog(d dialog.Dialog, cleanup func()) {
 	}
 	d.Show()
 	if fyne.CurrentDevice().IsMobile() {
-		ui.viewStack = append(
-			ui.viewStack,
+		ui.state.viewStack = append(
+			ui.state.viewStack,
 			view{
 				viewType: viewTypeDialog,
 				dialog:   d,

@@ -11,21 +11,27 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type newDM struct {
+	searchEntry *widget.Entry
+	scroll      *container.Scroll
+}
+
 func (ui *ui) showNewDM() {
 	if fyne.CurrentDevice().IsMobile() {
-		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeNewDM})
+		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeNewDM})
 	}
-	ui.currentView = viewTypeNewDM
-	ui.newDMUserSearchEntry.Text = ""
-	ui.newDMUserSearchEntry.Refresh()
+	ui.state.currentView = viewTypeNewDM
+	ui.widgets.newDM.searchEntry.Text = ""
+	ui.widgets.newDM.searchEntry.Refresh()
 	ui.refreshAllUsersDMLinks()
-	ui.mainWindow.SetContent(ui.newDM)
-	ui.newDM.Show()
-	ui.mainWindow.Canvas().Focus(ui.newDMUserSearchEntry)
+	ui.window.SetContent(ui.views.newDM)
+	ui.window.Canvas().Focus(ui.widgets.newDM.searchEntry)
 }
 
 func (ui *ui) buildNewDM() {
-	ui.allUsersDMLinksScroll = container.NewVScroll(container.NewVBox())
+	ui.widgets.newDM = &newDM{
+		scroll: container.NewVScroll(container.NewVBox()),
+	}
 
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		if fyne.CurrentDevice().IsMobile() {
@@ -41,24 +47,24 @@ func (ui *ui) buildNewDM() {
 		closeButton,
 	)
 
-	ui.newDMUserSearchEntry = widget.NewEntry()
-	ui.newDMUserSearchEntry.OnChanged = func(str string) {
+	ui.widgets.newDM.searchEntry = widget.NewEntry()
+	ui.widgets.newDM.searchEntry.OnChanged = func(str string) {
 		ui.refreshAllUsersDMLinks()
 	}
-	ui.newDM = container.New(
+	ui.views.newDM = container.New(
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.New(
-			layout.NewBorderLayout(ui.newDMUserSearchEntry, nil, nil, nil),
-			ui.newDMUserSearchEntry,
-			ui.allUsersDMLinksScroll,
+			layout.NewBorderLayout(ui.widgets.newDM.searchEntry, nil, nil, nil),
+			ui.widgets.newDM.searchEntry,
+			ui.widgets.newDM.scroll,
 		),
 	)
 }
 
 func (ui *ui) refreshAllUsersDMLinks() {
 	usersBox := container.NewVBox()
-	for _, thisUser := range ui.users.search(ui.newDMUserSearchEntry.Text) {
+	for _, thisUser := range ui.users.search(ui.widgets.newDM.searchEntry.Text) {
 		func(u *user) {
 			openDMButton := newUserButton(
 				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil),
@@ -81,8 +87,8 @@ func (ui *ui) refreshAllUsersDMLinks() {
 					if fyne.CurrentDevice().IsMobile() {
 						ui.mobileBack() // Close new DM view
 						ui.mobileBack() // Close menu
-						ui.viewStack = append(ui.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
-						ui.currentView = viewTypeThread
+						ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
+						ui.state.currentView = viewTypeThread
 					} else {
 						ui.showMainContainer()
 					}
@@ -96,6 +102,6 @@ func (ui *ui) refreshAllUsersDMLinks() {
 			)
 		}(thisUser)
 	}
-	ui.allUsersDMLinksScroll.Content = usersBox
-	ui.allUsersDMLinksScroll.Refresh()
+	ui.widgets.newDM.scroll.Content = usersBox
+	ui.widgets.newDM.scroll.Refresh()
 }

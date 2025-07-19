@@ -7,7 +7,7 @@ import (
 )
 
 func (ui *ui) buildMenu() {
-	ui.mainMenu = fyne.NewMainMenu(
+	ui.containers.mainMenu = fyne.NewMainMenu(
 		fyne.NewMenu(
 			"Bounce",
 			fyne.NewMenuItem("My Profile", func() {
@@ -48,14 +48,13 @@ func (ui *ui) buildMenu() {
 }
 
 func (ui *ui) showMobileMenu() {
-	ui.viewStack = append(ui.viewStack, view{viewType: viewTypeMenu})
-	ui.currentView = viewTypeMenu
-	ui.mainWindow.SetContent(ui.mobileMenu)
-	ui.mobileMenu.Show()
+	ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeMenu})
+	ui.state.currentView = viewTypeMenu
+	ui.window.SetContent(ui.views.mobileMenu)
 }
 
 func (ui *ui) buildMobileMenu() {
-	ui.mobileMenu = container.NewVBox(
+	ui.views.mobileMenu = container.NewVBox(
 		makeLogo(228, 167), // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
 		widget.NewButton("My Profile", func() { ui.showEditProfile() }),
 		widget.NewButton("Settings", func() { ui.showSettings() }),

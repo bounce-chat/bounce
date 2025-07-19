@@ -22,45 +22,46 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type newInstall struct {
+	newProfileImage     *defaultImage
+	newProfileImageData []byte
+}
+
 func (ui *ui) showMainContainer() {
-	if !ui.initialStateSet { // TODO: rename?
-		ui.mainWindow.SetMainMenu(nil)
-		ui.mainWindow.SetContent(ui.databaseLoading)
-		ui.databaseLoading.Show()
-	} else if ui.profile == nil {
+	if !ui.state.initialStateSet { // TODO: rename?
+		ui.window.SetMainMenu(nil)
+		ui.window.SetContent(ui.views.databaseLoading)
+	} else if ui.state.profile == nil {
 		// The database has been loaded but this is a new install with no profile setup.
 		// Display the screen that the user is on for walking through new device setup.
-		if ui.setupStep == setupStepInit {
-			ui.mainWindow.SetMainMenu(nil)
-			ui.mainWindow.SetContent(ui.newInstall)
-			ui.newInstall.Show()
-			ui.viewStack = []view{view{viewType: viewTypeNewInstall}}
-			ui.currentView = viewTypeNewInstall
-		} else if ui.setupStep == setupStepProfile {
-			ui.mainWindow.SetMainMenu(nil)
-			ui.mainWindow.SetContent(ui.newProfileCreator)
-			ui.newProfileCreator.Show()
+		if ui.state.setupStep == setupStepInit {
+			ui.window.SetMainMenu(nil)
+			ui.window.SetContent(ui.views.newInstall)
+			ui.state.viewStack = []view{view{viewType: viewTypeNewInstall}}
+			ui.state.currentView = viewTypeNewInstall
+		} else if ui.state.setupStep == setupStepProfile {
+			ui.window.SetMainMenu(nil)
+			ui.window.SetContent(ui.views.newProfileCreator)
 			if fyne.CurrentDevice().IsMobile() {
-				ui.viewStack = append(ui.viewStack, view{viewType: viewTypeProfileCreator})
+				ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeProfileCreator})
 			}
-			ui.currentView = viewTypeProfileCreator
+			ui.state.currentView = viewTypeProfileCreator
 		} else {
 			log.WithFields(log.Fields{
-				"step": ui.setupStep,
+				"step": ui.state.setupStep,
 			}).Fatal("unconfigured user interface is in unknown setup step")
 		}
 	} else {
-		ui.viewStack = []view{view{viewType: viewTypeAllThreads}}
-		ui.currentView = viewTypeAllThreads
-		ui.mainWindow.SetMainMenu(ui.mainMenu)
-		ui.mainWindow.SetContent(ui.mainContainer)
-		ui.mainContainer.Show()
+		ui.state.viewStack = []view{view{viewType: viewTypeAllThreads}}
+		ui.state.currentView = viewTypeAllThreads
+		ui.window.SetMainMenu(ui.containers.mainMenu)
+		ui.window.SetContent(ui.views.main)
 	}
 }
 
 func (ui *ui) buildMainContainer() {
 	// Logo and welcome message / instructions to be shown before a thread is selected
-	ui.defaultContainer = container.NewMax(
+	ui.containers.defaultContainer = container.NewMax(
 		container.New(
 			layout.NewCenterLayout(),
 			container.NewVBox(
@@ -69,9 +70,9 @@ func (ui *ui) buildMainContainer() {
 			),
 		),
 	)
-	ui.chatContainer = container.NewMax()
-	ui.chatContainer.Objects = []fyne.CanvasObject{ui.defaultContainer}
-	ui.threadVBox = container.NewVBox()
+	ui.containers.chat = container.NewMax()
+	ui.containers.chat.Objects = []fyne.CanvasObject{ui.containers.defaultContainer}
+	ui.containers.threads = container.NewVBox()
 
 	threadSearch := widget.NewButtonWithIcon("", theme.SearchIcon(), func() {
 		// TODO: replace the top bar with a search entry for n-gram search of thread names, switch back to
@@ -100,7 +101,7 @@ func (ui *ui) buildMainContainer() {
 			layout.NewBorderLayout(nil, nil, logoWithText, topButtons),
 			logoWithText,
 			topButtons,
-			ui.networkOfflineWarning,
+			ui.widgets.networkOfflineWarning,
 		)
 
 		settings := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
@@ -109,10 +110,10 @@ func (ui *ui) buildMainContainer() {
 		settings.Importance = widget.LowImportance
 		topButtons.Objects = append(topButtons.Objects, settings)
 
-		ui.mainContainer = container.New(
+		ui.views.main = container.New(
 			layout.NewBorderLayout(logoSearchAndMenu, nil, nil, nil),
 			logoSearchAndMenu,
-			container.NewVScroll(ui.threadVBox),
+			container.NewVScroll(ui.containers.threads),
 		)
 	} else {
 		logoSearchAndMenu := container.New(
@@ -121,7 +122,7 @@ func (ui *ui) buildMainContainer() {
 			container.New(
 				layout.NewBorderLayout(nil, nil, icon, nil),
 				icon,
-				ui.networkOfflineWarning,
+				ui.widgets.networkOfflineWarning,
 			),
 		)
 
@@ -129,14 +130,14 @@ func (ui *ui) buildMainContainer() {
 			container.New(
 				layout.NewBorderLayout(nil, logoSearchAndMenu, nil, nil),
 				logoSearchAndMenu,
-				container.NewVScroll(ui.threadVBox),
+				container.NewVScroll(ui.containers.threads),
 			),
 			widget.NewSeparator(),
 		)
-		ui.mainContainer = container.New(
+		ui.views.main = container.New(
 			layout.NewBorderLayout(nil, nil, threads, nil),
 			threads,
-			ui.chatContainer,
+			ui.containers.chat,
 		)
 	}
 }
@@ -157,7 +158,7 @@ func (ui *ui) buildDatabaseLoading() {
 	loading := widget.NewLabel("loading...")
 	loading.Alignment = fyne.TextAlignCenter
 
-	ui.databaseLoading = container.NewMax(
+	ui.views.databaseLoading = container.NewMax(
 		container.New(
 			layout.NewCenterLayout(),
 			container.NewVBox(
@@ -175,14 +176,13 @@ func (ui *ui) buildNewInstall() {
 	)
 
 	selectNewProfile := newClickableImage("Create a new profile", canvas.NewImageFromResource(newEmbeddedResource("assets/new_profile.png")), 200, 200, true, func() {
-		ui.setupStep = setupStepProfile
-		ui.mainWindow.SetContent(ui.newProfileCreator)
-		ui.newProfileCreator.Show()
+		ui.state.setupStep = setupStepProfile
+		ui.window.SetContent(ui.views.newProfileCreator)
+		ui.views.newProfileCreator.Show()
 	})
 
 	selectSyncDevice := newClickableImage("Add device to profile", canvas.NewImageFromResource(newEmbeddedResource("assets/add_to_profile.png")), 200, 200, true, func() {
-		ui.mainWindow.SetContent(ui.nameNewDevice)
-		ui.nameNewDevice.Show()
+		ui.window.SetContent(ui.views.nameNewDevice)
 	})
 
 	content := container.NewGridWithColumns(
@@ -191,7 +191,7 @@ func (ui *ui) buildNewInstall() {
 		selectSyncDevice,
 	)
 
-	ui.newInstall = container.New(
+	ui.views.newInstall = container.New(
 		layout.NewBorderLayout(header, nil, nil, nil),
 		header,
 		content,
@@ -199,6 +199,8 @@ func (ui *ui) buildNewInstall() {
 }
 
 func (ui *ui) buildNewProfileCreator() {
+	ui.widgets.newInstall = &newInstall{}
+
 	profileNameEntry := widget.NewEntry()
 	userIconName := binding.NewString()
 
@@ -246,11 +248,11 @@ func (ui *ui) buildNewProfileCreator() {
 		}
 	}
 
-	ui.newProfileImageData = []byte{}
+	ui.widgets.newInstall.newProfileImageData = []byte{}
 	fileGetter := func(_ uuid.UUID) ([]byte, error) {
-		return ui.newProfileImageData, nil
+		return ui.widgets.newInstall.newProfileImageData, nil
 	}
-	ui.newProfileImage = newDefaultImage(uuid.Nil, []uuid.UUID{}, userIconName, 128, fileGetter, func() {
+	ui.widgets.newInstall.newProfileImage = newDefaultImage(uuid.Nil, []uuid.UUID{}, userIconName, 128, fileGetter, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
@@ -274,10 +276,10 @@ func (ui *ui) buildNewProfileCreator() {
 
 			// TODO: make sure data is a valid image, allow for editing, etc
 
-			ui.newProfileImageData = data
-			ui.newProfileImage.images = []uuid.UUID{uuid.New()}
-			ui.newProfileImage.Refresh()
-		}, ui.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
+			ui.widgets.newInstall.newProfileImageData = data
+			ui.widgets.newInstall.newProfileImage.images = []uuid.UUID{uuid.New()}
+			ui.widgets.newInstall.newProfileImage.Refresh()
+		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 
 	deviceNameEntry := widget.NewEntry()
@@ -316,31 +318,30 @@ func (ui *ui) buildNewProfileCreator() {
 	)
 
 	profileDetails := container.NewVBox(
-		container.NewCenter(ui.newProfileImage),
+		container.NewCenter(ui.widgets.newInstall.newProfileImage),
 		profileForm,
 	)
 
 	saveButton := widget.NewButton("Save", func() {
 		if profileNameEntry.Text == "" {
-			ui.showDialog(dialog.NewError(errors.New("Profile name must be set"), ui.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("Profile name must be set"), ui.window), nil)
 			return
 		}
 		if deviceNameEntry.Text == "" {
-			ui.showDialog(dialog.NewError(errors.New("Device name must be set"), ui.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("Device name must be set"), ui.window), nil)
 			return
 		}
-		id, imageID, err := ui.bounce.SetProfile(profileNameEntry.Text, ui.newProfileImageData, deviceNameEntry.Text)
+		id, imageID, err := ui.bounce.SetProfile(profileNameEntry.Text, ui.widgets.newInstall.newProfileImageData, deviceNameEntry.Text)
 		if err != nil {
-			ui.showDialog(dialog.NewError(errors.New("Error saving profile: "+err.Error()), ui.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("Error saving profile: "+err.Error()), ui.window), nil)
 			return
 		}
 		profile := makeUser(id, profileNameEntry.Text)
 		ui.users.add(profile)
-		ui.profile = profile
+		ui.state.profile = profile
 		if imageID != uuid.Nil {
-			ui.profile.images = []uuid.UUID{imageID}
-			ui.profileIcon.images = ui.profile.images
-			ui.profileIcon.Refresh()
+			ui.state.profile.images = []uuid.UUID{imageID}
+			ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
 		}
 		ui.showMainContainer()
 		ui.NewDirectMessage(chat.User{
@@ -355,12 +356,11 @@ func (ui *ui) buildNewProfileCreator() {
 		userIconName.Set("")
 		deviceNameEntry.Text = ""
 		deviceNameEntry.Refresh()
-		ui.newProfileImageData = []byte{}
-		ui.newProfileImage.images = []uuid.UUID{}
-		ui.newProfileImage.Refresh()
-		ui.setupStep = setupStepInit
-		ui.mainWindow.SetContent(ui.newInstall)
-		ui.newInstall.Show()
+		ui.widgets.newInstall.newProfileImageData = []byte{}
+		ui.widgets.newInstall.newProfileImage.images = []uuid.UUID{}
+		ui.widgets.newInstall.newProfileImage.Refresh()
+		ui.state.setupStep = setupStepInit
+		ui.window.SetContent(ui.views.newInstall)
 	})
 	actionButtons := container.New(
 		layout.NewBorderLayout(nil, nil, backButton, saveButton),
@@ -368,7 +368,7 @@ func (ui *ui) buildNewProfileCreator() {
 		backButton,
 	)
 
-	ui.newProfileCreator = container.New(
+	ui.views.newProfileCreator = container.New(
 		layout.NewBorderLayout(nil, actionButtons, nil, nil),
 		actionButtons,
 		container.NewMax(profileDetails),

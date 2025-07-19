@@ -22,27 +22,29 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type addUserWidgets struct {
-	currentStep *widget.Label
-	progressBar *widget.ProgressBarInfinite
-	entry       *widget.Entry
+type addUser struct {
+	currentStep  *widget.Label
+	progressBar  *widget.ProgressBarInfinite
+	scanEntry    *widget.Entry
+	displayEntry *widget.Entry
+	qrCode       *canvas.Image
 }
 
 func (ui *ui) showAddUser() {
 	if fyne.CurrentDevice().IsMobile() {
-		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeAddUser})
+		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeAddUser})
 	}
-	ui.currentView = viewTypeAddUser
+	ui.state.currentView = viewTypeAddUser
 
-	ui.addUserWidgets.entry.Text = ""
-	ui.addUserWidgets.entry.Refresh()
-	ui.addUserWidgets.progressBar.Hide()
-	ui.addUserWidgets.currentStep.Text = ""
-	ui.addUserWidgets.currentStep.Refresh()
-	ui.addUserWidgets.currentStep.Hide()
+	ui.widgets.addUser.scanEntry.Text = ""
+	ui.widgets.addUser.scanEntry.Refresh()
+	ui.widgets.addUser.progressBar.Hide()
+	ui.widgets.addUser.currentStep.Text = ""
+	ui.widgets.addUser.currentStep.Refresh()
+	ui.widgets.addUser.currentStep.Hide()
 
 	newAddUserString := ui.bounce.GetNewAddUserString()
-	ui.addUserStringEntry.SetText(newAddUserString)
+	ui.widgets.addUser.displayEntry.SetText(newAddUserString)
 	qrData, err := qrcode.Encode(newAddUserString, qrcode.Medium, 256)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -55,14 +57,14 @@ func (ui *ui) showAddUser() {
 				"error": err.Error(),
 			}).Error("error decoding QR data as image")
 		} else {
-			ui.addUserQRCode.Image = qrImg
-			ui.addUserQRCode.Refresh()
+			ui.widgets.addUser.qrCode.Image = qrImg
+			ui.widgets.addUser.qrCode.Refresh()
 		}
 	}
 
-	ui.addUserContent.Objects = []fyne.CanvasObject{ui.displayAddUserString}
-	ui.addUserContent.Refresh()
-	ui.mainWindow.SetContent(ui.addUser)
+	ui.containers.addUserContent.Objects = []fyne.CanvasObject{ui.containers.displayAddUserString}
+	ui.containers.addUserContent.Refresh()
+	ui.window.SetContent(ui.views.addUser)
 }
 
 func (ui *ui) buildAddUser() {
@@ -90,8 +92,8 @@ func (ui *ui) buildAddUser() {
 		scanButton.Importance = widget.MediumImportance
 		scanButton.Refresh()
 
-		ui.addUserContent.Objects = []fyne.CanvasObject{ui.displayAddUserString}
-		ui.addUserContent.Refresh()
+		ui.containers.addUserContent.Objects = []fyne.CanvasObject{ui.containers.displayAddUserString}
+		ui.containers.addUserContent.Refresh()
 	})
 	shareButton.Importance = widget.HighImportance
 	scanButton = widget.NewButton("Scan", func() {
@@ -100,10 +102,10 @@ func (ui *ui) buildAddUser() {
 		shareButton.Importance = widget.MediumImportance
 		shareButton.Refresh()
 
-		ui.addUserContent.Objects = []fyne.CanvasObject{ui.scanUser}
-		ui.addUserContent.Refresh()
+		ui.containers.addUserContent.Objects = []fyne.CanvasObject{ui.containers.scanUser}
+		ui.containers.addUserContent.Refresh()
 		if !fyne.CurrentDevice().IsMobile() {
-			ui.mainWindow.Canvas().Focus(ui.addUserWidgets.entry)
+			ui.window.Canvas().Focus(ui.widgets.addUser.scanEntry)
 		}
 	})
 	scanButton.Importance = widget.MediumImportance
@@ -114,64 +116,64 @@ func (ui *ui) buildAddUser() {
 			scanButton,
 		)),
 	)
-	ui.addUserContent = container.NewStack()
-	ui.addUser = container.New(
+	ui.containers.addUserContent = container.NewStack()
+	ui.views.addUser = container.New(
 		layout.NewBorderLayout(header, nil, nil, nil),
 		header,
-		ui.addUserContent,
+		ui.containers.addUserContent,
 	)
 }
 
 func (ui *ui) buildScanUser() {
-	ui.addUserWidgets = &addUserWidgets{
+	ui.widgets.addUser = &addUser{
 		currentStep: widget.NewLabel(""),
 		progressBar: widget.NewProgressBarInfinite(),
-		entry:       widget.NewEntry(),
+		scanEntry:   widget.NewEntry(),
 	}
 
-	ui.addUserWidgets.entry.OnSubmitted = func(str string) {
-		ui.addUserWidgets.progressBar.Start()
-		ui.addUserWidgets.progressBar.Show()
+	ui.widgets.addUser.scanEntry.OnSubmitted = func(str string) {
+		ui.widgets.addUser.progressBar.Start()
+		ui.widgets.addUser.progressBar.Show()
 		go func() {
-			if ui.networkState == networkStateStarting || ui.networkState == networkStateOffline {
+			if ui.state.networkState == networkStateStarting || ui.state.networkState == networkStateOffline {
 				fyne.Do(func() {
-					ui.addUserWidgets.currentStep.Text = "Waiting for network..."
-					ui.addUserWidgets.currentStep.Refresh()
-					ui.addUserWidgets.currentStep.Show()
+					ui.widgets.addUser.currentStep.Text = "Waiting for network..."
+					ui.widgets.addUser.currentStep.Refresh()
+					ui.widgets.addUser.currentStep.Show()
 				})
 				for {
 					time.Sleep(500 * time.Millisecond) // TODO: use a callback for this?
-					if ui.networkState == networkStateOnline {
+					if ui.state.networkState == networkStateOnline {
 						break
 					}
 				}
 			}
 
-			ui.addUserWidgets.currentStep.Text = "Sending friend request..."
-			ui.addUserWidgets.currentStep.Refresh()
-			ui.addUserWidgets.currentStep.Show()
+			ui.widgets.addUser.currentStep.Text = "Sending friend request..."
+			ui.widgets.addUser.currentStep.Refresh()
+			ui.widgets.addUser.currentStep.Show()
 			err := ui.bounce.RequestToAddUser(strings.TrimSpace(str))
 			fyne.Do(func() {
 				if err != nil {
-					ui.addUserWidgets.entry.Text = ""
-					ui.scanUser.Refresh()
-					ui.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), ui.mainWindow), nil)
+					ui.widgets.addUser.scanEntry.Text = ""
+					ui.containers.scanUser.Refresh()
+					ui.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), ui.window), nil)
 				} else {
-					ui.addUserWidgets.currentStep.Text = "Waiting for response..."
-					ui.addUserWidgets.currentStep.Refresh()
-					ui.addUser.Refresh()
+					ui.widgets.addUser.currentStep.Text = "Waiting for response..."
+					ui.widgets.addUser.currentStep.Refresh()
+					ui.views.addUser.Refresh()
 				}
 			})
 		}()
 	}
-	ui.addUserWidgets.entry.ActionItem = widget.NewButtonWithIcon("", theme.MediaPhotoIcon(), func() {
+	ui.widgets.addUser.scanEntry.ActionItem = widget.NewButtonWithIcon("", theme.MediaPhotoIcon(), func() {
 		// TODO: open the camera
 		//_, err := camera.Open()
 		//if err != nil {
 		//	log.Error(err.Error())
 		//}
 	})
-	ui.addUserWidgets.entry.ActionItem.(*widget.Button).Disable()
+	ui.widgets.addUser.scanEntry.ActionItem.(*widget.Button).Disable()
 
 	importSelector := dialog.NewFileOpen(func(handler fyne.URIReadCloser, err error) {
 		if handler == nil {
@@ -180,27 +182,27 @@ func (ui *ui) buildScanUser() {
 		}
 		data, err := io.ReadAll(handler)
 		if err != nil {
-			ui.showDialog(dialog.NewError(errors.New("error reading file: "+err.Error()), ui.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("error reading file: "+err.Error()), ui.window), nil)
 			return
 		}
 		newUser, err := ui.bounce.ImportUser(data)
 		if err != nil {
-			ui.showDialog(dialog.NewError(errors.New("error importing user: "+err.Error()), ui.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("error importing user: "+err.Error()), ui.window), nil)
 			return
 		}
 
 		// TODO: add this user to the store as a pending user, waiting on confirmation
-		ui.showDialog(dialog.NewInformation("Success", fmt.Sprintf("%s has been imported", newUser.Name), ui.mainWindow), nil)
+		ui.showDialog(dialog.NewInformation("Success", fmt.Sprintf("%s has been imported", newUser.Name), ui.window), nil)
 		uName := binding.NewString()
 		uName.Set(newUser.Name)
 		ui.users.add(&user{id: newUser.ID, name: uName})
-	}, ui.mainWindow)
+	}, ui.window)
 
-	ui.scanUser = container.NewVBox(
+	ui.containers.scanUser = container.NewVBox(
 		widget.NewLabel("Paste in the string or scan the QR code to add friend"),
-		ui.addUserWidgets.entry,
-		ui.addUserWidgets.currentStep,
-		ui.addUserWidgets.progressBar,
+		ui.widgets.addUser.scanEntry,
+		ui.widgets.addUser.currentStep,
+		ui.widgets.addUser.progressBar,
 		widget.NewAccordion(
 			&widget.AccordionItem{
 				Title: "Advanced Options",
@@ -215,13 +217,13 @@ func (ui *ui) buildScanUser() {
 func (ui *ui) buildDisplayAddUserString() {
 	title := widget.NewLabel("Scan or paste this on your friend's device:")
 
-	ui.addUserQRCode = &canvas.Image{
+	ui.widgets.addUser.qrCode = &canvas.Image{
 		FillMode: canvas.ImageFillContain,
 	}
-	ui.addUserQRCode.SetMinSize(fyne.Size{Height: 256, Width: 256})
+	ui.widgets.addUser.qrCode.SetMinSize(fyne.Size{Height: 256, Width: 256})
 
-	ui.addUserStringEntry = widget.NewEntry()
-	ui.addUserStringEntry.ActionItem = widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() { ui.mainWindow.Clipboard().SetContent(ui.addUserStringEntry.Text) })
+	ui.widgets.addUser.displayEntry = widget.NewEntry()
+	ui.widgets.addUser.displayEntry.ActionItem = widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() { ui.window.Clipboard().SetContent(ui.widgets.addUser.displayEntry.Text) })
 
 	exportLabel := widget.NewLabel("Share File")
 	exportLabel.TextStyle = fyne.TextStyle{Bold: true}
@@ -255,7 +257,7 @@ func (ui *ui) buildDisplayAddUserString() {
 			ui.showDialog(showInformation, nil)
 		}
 		if showError != nil {
-			ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
+			ui.showDialog(dialog.NewError(showError, ui.window), nil)
 		}
 	}
 	fileSelector := dialog.NewFileSave(func(handler fyne.URIWriteCloser, err error) {
@@ -292,12 +294,12 @@ func (ui *ui) buildDisplayAddUserString() {
 			return
 		}
 
-		showInformation = dialog.NewInformation("Success", "Contact export written to "+handler.URI().Name(), ui.mainWindow)
-	}, ui.mainWindow)
+		showInformation = dialog.NewInformation("Success", "Contact export written to "+handler.URI().Name(), ui.window)
+	}, ui.window)
 
 	exportContactForm.OnSubmit = func() {
 		if exportNameEntry.Text == "" {
-			ui.showDialog(dialog.NewError(errors.New("Please select a name for this export"), ui.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("Please select a name for this export"), ui.window), nil)
 			return
 		}
 		fileSelector.SetFileName("profile.bounce") // TODO: set the user's current profile name
@@ -309,12 +311,12 @@ func (ui *ui) buildDisplayAddUserString() {
 		exportContactForm,
 	)
 
-	ui.displayAddUserString = container.New(
+	ui.containers.displayAddUserString = container.New(
 		layout.NewBorderLayout(title, nil, nil, nil),
 		title,
 		container.NewVBox(
-			ui.addUserQRCode,
-			ui.addUserStringEntry,
+			ui.widgets.addUser.qrCode,
+			ui.widgets.addUser.displayEntry,
 			widget.NewAccordion(
 				&widget.AccordionItem{
 					Title: "Advanced Options",
@@ -328,29 +330,29 @@ func (ui *ui) buildDisplayAddUserString() {
 }
 
 func (ui *ui) UserAdded(u chat.User) {
-	ui.addUserWidgets.currentStep.Text = "Success!"
-	ui.addUserWidgets.currentStep.Refresh()
-	ui.addUserWidgets.progressBar.Stop()
-	ui.addUserWidgets.progressBar.Hide()
+	ui.widgets.addUser.currentStep.Text = "Success!"
+	ui.widgets.addUser.currentStep.Refresh()
+	ui.widgets.addUser.progressBar.Stop()
+	ui.widgets.addUser.progressBar.Hide()
 	newUser := makeUser(u.ID, u.Name)
 	ui.users.add(newUser)
-	if ui.currentView == viewTypeAddUser {
+	if ui.state.currentView == viewTypeAddUser {
 		if fyne.CurrentDevice().IsMobile() {
 			ui.mobileBack()
 		} else {
 			ui.showMainContainer()
 		}
 	}
-	if !ui.initialSyncIncomplete {
+	if !ui.state.initialSyncIncomplete {
 		fyne.DoAndWait(func() {
 			ui.NewDirectMessage(u)
-			ui.showDialog(dialog.NewInformation("New contact added", u.Name+" was added as a friend", ui.mainWindow), nil)
+			ui.showDialog(dialog.NewInformation("New contact added", u.Name+" was added as a friend", ui.window), nil)
 		})
 	}
 }
 
 func (ui *ui) AddUserRequestRejected(peer string) {
 	fyne.DoAndWait(func() {
-		ui.showDialog(dialog.NewError(errors.New("Friend request rejected, make sure you scan the device quickly"), ui.mainWindow), nil)
+		ui.showDialog(dialog.NewError(errors.New("Friend request rejected, make sure you scan the device quickly"), ui.window), nil)
 	})
 }

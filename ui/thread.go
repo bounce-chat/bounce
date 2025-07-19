@@ -58,8 +58,8 @@ func (ui *ui) refreshThreadOrder() {
 	for _, thread := range ui.threads.sorted() {
 		buttons = append(buttons, thread.getButton())
 	}
-	ui.threadVBox.Objects = buttons
-	ui.threadVBox.Refresh()
+	ui.containers.threads.Objects = buttons
+	ui.containers.threads.Refresh()
 }
 
 func (ui *ui) populateInitialItems(t thread, items threadItems) {
@@ -110,16 +110,16 @@ func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
 	}
 
 	// Keep the thread scrolled down, if it is open and was already scrolled down
-	if autoscroll && ui.isActive(t) && appendingToEnd && ui.focused {
+	if autoscroll && ui.isActive(t) && appendingToEnd && ui.state.focused {
 		t.chatHistoryScroll().ScrollToBottom()
 	} else {
 		t.chatHistoryScroll().displayJumpToBottomIfNeeded()
 	}
 
 	// Send a notification if required
-	notificationsEnabled := (t.getNotificationsMutedUntil() != chat.MutedForever) && !(t.getID() == ui.profile.id) && !ui.groupNotificationsPaused(t.getID())
+	notificationsEnabled := (t.getNotificationsMutedUntil() != chat.MutedForever) && !(t.getID() == ui.state.profile.id) && !ui.groupNotificationsPaused(t.getID())
 	notificationsMuted := time.Now().Unix() < t.getNotificationsMutedUntil()
-	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll && !ui.initialSyncIncomplete { //TODO: also notify if this is false but we're not focused?
+	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll && !ui.state.initialSyncIncomplete { //TODO: also notify if this is false but we're not focused?
 		ui.app.SendNotification(ti.notification)
 	}
 
@@ -207,10 +207,10 @@ func (ui *ui) MessageDelivered(messageID, userID uuid.UUID) {
 	if currentState == stateRead || currentState == stateDelivered {
 		return
 	}
-	if userID == ui.profile.id {
+	if userID == ui.state.profile.id {
 		if currentState == statePending {
 			item.setState(stateSynced)
-			if item.getAuthor() == ui.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
+			if item.getAuthor() == ui.state.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
 				fyne.DoAndWait(func() {
 					t.getButton().showLastMessageState(stateSynced)
 					t.chatHistoryScroll().Refresh()
@@ -220,7 +220,7 @@ func (ui *ui) MessageDelivered(messageID, userID uuid.UUID) {
 
 	} else {
 		item.setState(stateDelivered)
-		if item.getAuthor() == ui.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
+		if item.getAuthor() == ui.state.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
 			fyne.DoAndWait(func() {
 				t.getButton().showLastMessageState(stateDelivered)
 				t.chatHistoryScroll().Refresh()
@@ -230,7 +230,7 @@ func (ui *ui) MessageDelivered(messageID, userID uuid.UUID) {
 }
 
 func (ui *ui) ReceivedReadReceipt(rr chat.ReadReceipt) {
-	if rr.Actor == ui.profile.id {
+	if rr.Actor == ui.state.profile.id {
 		return
 	}
 
@@ -251,7 +251,7 @@ func (ui *ui) ReceivedReadReceipt(rr chat.ReadReceipt) {
 
 	item.setState(stateRead)
 
-	if item.getAuthor() == ui.profile.id && t.chatHistoryScroll().isLastItem(rr.Target) {
+	if item.getAuthor() == ui.state.profile.id && t.chatHistoryScroll().isLastItem(rr.Target) {
 		fyne.DoAndWait(func() { t.getButton().showLastMessageState(stateRead) })
 	}
 
@@ -296,15 +296,15 @@ func (ui *ui) displayThread(thread thread) {
 		thread.chatHistoryScroll().disableSeenTracking = true
 	}
 
-	ui.activeThread = thread.getID()
-	ui.chatContainer.Objects = []fyne.CanvasObject{thread.getView()}
-	ui.chatContainer.Refresh()
+	ui.state.activeThread = thread.getID()
+	ui.containers.chat.Objects = []fyne.CanvasObject{thread.getView()}
+	ui.containers.chat.Refresh()
 
 	if fyne.CurrentDevice().IsMobile() {
-		ui.mainWindow.SetContent(ui.chatContainer)
-		ui.chatContainer.Show()
+		ui.window.SetContent(ui.containers.chat)
+		ui.containers.chat.Show()
 	} else {
-		ui.mainWindow.Canvas().Focus(thread.getEntry())
+		ui.window.Canvas().Focus(thread.getEntry())
 	}
 
 	if !opened {
@@ -314,7 +314,7 @@ func (ui *ui) displayThread(thread thread) {
 }
 
 func (ui *ui) isActive(thread thread) bool {
-	return ui.activeThread == thread.getID()
+	return ui.state.activeThread == thread.getID()
 }
 
 func (ui *ui) ShowTypingIndicator(userID, threadID uuid.UUID) {

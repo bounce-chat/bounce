@@ -13,11 +13,10 @@ import (
 
 func (ui *ui) showAbout() {
 	if fyne.CurrentDevice().IsMobile() {
-		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeAbout})
+		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeAbout})
 	}
-	ui.currentView = viewTypeAbout
-	ui.mainWindow.SetContent(ui.about)
-	ui.about.Show()
+	ui.state.currentView = viewTypeAbout
+	ui.window.SetContent(ui.views.about)
 }
 
 func (ui *ui) buildAbout() {
@@ -58,7 +57,7 @@ func (ui *ui) buildAbout() {
 		}
 	}
 
-	ui.about = container.New(
+	ui.views.about = container.New(
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.NewCenter(

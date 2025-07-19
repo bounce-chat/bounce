@@ -194,7 +194,7 @@ func (ui *ui) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Button {
 	buttonText := "Remove From Group"
 	dialogHeader := "Remove User?"
 	dialogPrompt := "Are you sure you want to remove this user from the group?"
-	if userID == ui.profile.id {
+	if userID == ui.state.profile.id {
 		buttonText = "Leave Group"
 		dialogHeader = "Leave Group?"
 		dialogPrompt = "Are you sure you want to leave this group?"
@@ -216,7 +216,7 @@ func (ui *ui) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Button {
 			}
 		}
 		if showError != nil {
-			ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
+			ui.showDialog(dialog.NewError(showError, ui.window), nil)
 		}
 	}
 
@@ -231,7 +231,7 @@ func (ui *ui) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Button {
 		func(confirmed bool) {
 			closeEdit = confirmed
 			if confirmed {
-				returnToThread = ui.profile.id == userID
+				returnToThread = ui.state.profile.id == userID
 				err := ui.bounce.RemoveUserFromGroup(g.id, userID)
 				if err != nil {
 					showError = errors.New("error removing user: " + err.Error())
@@ -239,7 +239,7 @@ func (ui *ui) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Button {
 				}
 			}
 		},
-		ui.mainWindow,
+		ui.window,
 	)
 
 	button = widget.NewButton(buttonText, func() { ui.showDialog(confirmRemoveUser, confirmDialogCleanup) })
@@ -285,8 +285,8 @@ func (ui *ui) getEditUserDialog(g *group, userID uuid.UUID) (dialog.Dialog, func
 				userDetailsDialog.Hide() // Close the edit user dialog
 				ui.mobileBack()          // Exit the edit group page
 				ui.mobileBack()          // Exit the group
-				ui.viewStack = append(ui.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
-				ui.currentView = viewTypeThread
+				ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
+				ui.state.currentView = viewTypeThread
 			} else {
 				if userDetailsDialog == nil {
 					log.Fatal("userDetailsDialog used before assignment, this should be impossible")
@@ -304,7 +304,7 @@ func (ui *ui) getEditUserDialog(g *group, userID uuid.UUID) (dialog.Dialog, func
 	var showError error
 	dialogCleanup := func() {
 		if showError != nil {
-			ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
+			ui.showDialog(dialog.NewError(showError, ui.window), nil)
 		}
 	}
 	userDetailsDialog = dialog.NewCustomConfirm(u.getName(), "Apply", "Cancel", editUserContainer, func(apply bool) { // TODO: add listener to update name when it changes
@@ -323,7 +323,7 @@ func (ui *ui) getEditUserDialog(g *group, userID uuid.UUID) (dialog.Dialog, func
 			}
 		}
 		g.getAdminCheck(u.id).SetChecked(g.isAdmin(u.id))
-	}, ui.mainWindow)
+	}, ui.window)
 
 	g.editUserDialogs[userID] = dialogWithCallback{dialog: userDetailsDialog, callback: dialogCleanup}
 
@@ -358,7 +358,7 @@ func (ui *ui) removeAdmin(g *group, userID uuid.UUID) {
 
 func (ui *ui) amAdmin(g *group) bool {
 	for _, id := range g.admins {
-		if ui.profile.id == id {
+		if ui.state.profile.id == id {
 			return true
 		}
 	}
@@ -561,9 +561,9 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		ui.displayThread(group)
 		ui.bounce.GroupConnectionDesired(group.id)
 		if fyne.CurrentDevice().IsMobile() {
-			ui.viewStack = append(ui.viewStack, view{viewType: viewTypeThread, context: group.id})
+			ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeThread, context: group.id})
 		}
-		ui.currentView = viewTypeThread
+		ui.state.currentView = viewTypeThread
 	}
 	group.button = newThreadButton(newDefaultImage(group.id, group.images, group.initial, 64, ui.bounce.GetFileData, openThread), group.name, openThread)
 	group.scroll = ui.newChatHistory(group)
@@ -593,7 +593,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 			}
 
 			group.pendingMessageAttachments.add(reader)
-		}, ui.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
+		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 	addFiles.Importance = widget.LowImportance
 	group.pendingMessageAttachments = newPendingMessageAttachments()
@@ -747,7 +747,7 @@ func (ui *ui) DisplaySentGroupMessage(gm chat.GroupMessage) {
 		g.getEntry().Refresh()
 
 		g.chatHistoryScroll().ScrollToBottom()
-		ui.chatContainer.Refresh()
+		ui.containers.chat.Refresh()
 	})
 }
 
@@ -796,16 +796,16 @@ func (ui *ui) RemoveUser(ugru chat.UpdateGroupRemoveUser) {
 
 func (ui *ui) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 	fyne.DoAndWait(func() {
-		if ui.activeThread == rfg.Group {
+		if ui.state.activeThread == rfg.Group {
 			if fyne.CurrentDevice().IsMobile() {
 				ui.showMainContainer()
 			} else {
-				ui.chatContainer.Objects = []fyne.CanvasObject{ui.defaultContainer}
-				ui.chatContainer.Refresh()
-				ui.activeThread = uuid.Nil
+				ui.containers.chat.Objects = []fyne.CanvasObject{ui.containers.defaultContainer}
+				ui.containers.chat.Refresh()
+				ui.state.activeThread = uuid.Nil
 			}
 		}
-		if rfg.Actor != ui.profile.id {
+		if rfg.Actor != ui.state.profile.id {
 			var actorName string
 			actor, ok := ui.users.get(rfg.Actor)
 			if ok {
@@ -835,8 +835,8 @@ func (ui *ui) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 			if err != nil {
 				log.Fatal("data bindings are broken")
 			}
-			if !ui.initialSyncIncomplete {
-				ui.showDialog(dialog.NewInformation("Removed From Group", actorName+" removed you from "+groupName, ui.mainWindow), nil)
+			if !ui.state.initialSyncIncomplete {
+				ui.showDialog(dialog.NewInformation("Removed From Group", actorName+" removed you from "+groupName, ui.window), nil)
 			}
 		}
 		ui.threads.remove(rfg.Group)
@@ -846,19 +846,19 @@ func (ui *ui) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 
 func (ui *ui) GroupDeleted(gd chat.GroupDeleted) {
 	fyne.DoAndWait(func() {
-		if ui.activeThread == gd.Group {
+		if ui.state.activeThread == gd.Group {
 			if fyne.CurrentDevice().IsMobile() {
 				ui.showMainContainer()
 			} else {
-				ui.chatContainer.Objects = []fyne.CanvasObject{ui.defaultContainer}
-				ui.chatContainer.Refresh()
-				ui.activeThread = uuid.Nil
+				ui.containers.chat.Objects = []fyne.CanvasObject{ui.containers.defaultContainer}
+				ui.containers.chat.Refresh()
+				ui.state.activeThread = uuid.Nil
 			}
 		}
 
-		if gd.Actor != ui.profile.id {
+		if gd.Actor != ui.state.profile.id {
 			var actorName string
-			if gd.Actor == ui.profile.id {
+			if gd.Actor == ui.state.profile.id {
 				actorName = "You"
 			} else {
 				actor, ok := ui.users.get(gd.Actor)
@@ -891,8 +891,8 @@ func (ui *ui) GroupDeleted(gd chat.GroupDeleted) {
 			if err != nil {
 				log.Fatal("data bindings are broken")
 			}
-			if !ui.initialSyncIncomplete {
-				ui.showDialog(dialog.NewInformation("Group Deleted", actorName+" deleted the group \""+groupName+"\"", ui.mainWindow), nil)
+			if !ui.state.initialSyncIncomplete {
+				ui.showDialog(dialog.NewInformation("Group Deleted", actorName+" deleted the group \""+groupName+"\"", ui.window), nil)
 			}
 		}
 
@@ -1166,7 +1166,7 @@ func (ui *ui) UserChangedGroupImage(ugci chat.UpdateGroupUserChangedGroupImage) 
 }
 
 func (ui *ui) updateEnabledFeatures(g *group) {
-	amAdmin := g.isAdmin(ui.profile.id)
+	amAdmin := g.isAdmin(ui.state.profile.id)
 
 	if amAdmin {
 		g.restrictUserManagementCheck.Enable()
@@ -1230,23 +1230,23 @@ func (ui *ui) updateEnabledFeatures(g *group) {
 }
 
 func (ui *ui) PauseGroupNotifications(groupID uuid.UUID) {
-	ui.pausedGroupNotificationsMutex.Lock()
-	defer ui.pausedGroupNotificationsMutex.Unlock()
+	ui.state.pausedGroupNotificationsMutex.Lock()
+	defer ui.state.pausedGroupNotificationsMutex.Unlock()
 
-	ui.pausedGroupNotifications[groupID] = true
+	ui.state.pausedGroupNotifications[groupID] = true
 }
 
 func (ui *ui) ResumeGroupNotifications(groupID uuid.UUID) {
-	ui.pausedGroupNotificationsMutex.Lock()
-	defer ui.pausedGroupNotificationsMutex.Unlock()
+	ui.state.pausedGroupNotificationsMutex.Lock()
+	defer ui.state.pausedGroupNotificationsMutex.Unlock()
 
-	delete(ui.pausedGroupNotifications, groupID)
+	delete(ui.state.pausedGroupNotifications, groupID)
 }
 
 func (ui *ui) groupNotificationsPaused(groupID uuid.UUID) bool {
-	ui.pausedGroupNotificationsMutex.Lock()
-	defer ui.pausedGroupNotificationsMutex.Unlock()
+	ui.state.pausedGroupNotificationsMutex.Lock()
+	defer ui.state.pausedGroupNotificationsMutex.Unlock()
 
-	_, ok := ui.pausedGroupNotifications[groupID]
+	_, ok := ui.state.pausedGroupNotifications[groupID]
 	return ok
 }

@@ -252,11 +252,11 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 
 	u, exists := ui.users.get(gm.Author)
 	if !exists {
-		u = ui.deletedUser
+		u = makeUser(uuid.Nil, "-deleted-")
 		// TODO: make sure to make this unique with a text color for deleted users
 	}
 
-	outgoing := gm.Author == ui.profile.id
+	outgoing := gm.Author == ui.state.profile.id
 	username := u.getName()
 	initials := u.getInitials()
 	var notification *fyne.Notification
@@ -299,7 +299,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		state = stateError
 	}
 	for _, id := range gm.DeliveredTo {
-		if id == ui.profile.id {
+		if id == ui.state.profile.id {
 			if state == statePending {
 				state = stateSynced
 			}
@@ -308,7 +308,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		}
 	}
 	for _, rr := range gm.ReadReceipts {
-		if rr.Actor != ui.profile.id {
+		if rr.Actor != ui.state.profile.id {
 			state = stateRead
 			break
 		}
@@ -345,7 +345,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		notification: notification,
 		setButton: func(tb *threadButton) {
 			displayName := u.getName() // TODO: bind last message button text?
-			mine := gm.Author == ui.profile.id
+			mine := gm.Author == ui.state.profile.id
 			if mine {
 				displayName = "You"
 			}
@@ -404,7 +404,7 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 		return &threadItem{}, errUnknownUser
 	}
 
-	outgoing := dm.Author == ui.profile.id
+	outgoing := dm.Author == ui.state.profile.id
 	username := u.getName()
 	initials := u.getInitials()
 	var notification *fyne.Notification
@@ -441,7 +441,7 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 		state = stateError
 	}
 	for _, id := range dm.DeliveredTo {
-		if id == ui.profile.id {
+		if id == ui.state.profile.id {
 			if state == statePending {
 				state = stateSynced
 			}
@@ -450,7 +450,7 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 		}
 	}
 	for _, rr := range dm.ReadReceipts {
-		if rr.Actor != ui.profile.id {
+		if rr.Actor != ui.state.profile.id {
 			state = stateRead
 			break
 		}
@@ -486,7 +486,7 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 		notification: notification,
 		setButton: func(tb *threadButton) {
 			displayName := u.getName()
-			mine := dm.Author == ui.profile.id
+			mine := dm.Author == ui.state.profile.id
 			if mine {
 				displayName = "You"
 			}
@@ -697,7 +697,7 @@ func (ui *ui) userChangedName(id, userID uuid.UUID, oldName, newName string, tim
 	}
 
 	action := " changed their name to "
-	if user.id == ui.profile.id {
+	if user.id == ui.state.profile.id {
 		oldName = "You"
 		action = " changed your name to "
 	}
@@ -727,7 +727,7 @@ func (ui *ui) userChangedImage(id, userID uuid.UUID, timestamp int64) (*threadIt
 	}
 
 	changeString := user.getName() + " changed their profile image"
-	if user.id == ui.profile.id {
+	if user.id == ui.state.profile.id {
 		changeString = "You changed your profile image"
 	}
 
@@ -761,7 +761,7 @@ func (ui *ui) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, frameTy
 		return &threadItem{}, errUnknownActor
 	}
 	actorName := actor.getName()
-	if actorID == ui.profile.id {
+	if actorID == ui.state.profile.id {
 		actorName = "You"
 	}
 

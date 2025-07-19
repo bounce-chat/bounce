@@ -55,12 +55,12 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 	_, group := t.(*group)
 	ch := &chatHistory{
 		id:                  t.getID(),
-		myID:                ui.profile.id,
+		myID:                ui.state.profile.id,
 		messages:            ui.messages,
 		items:               []threadable{},
 		ids:                 []uuid.UUID{},
 		heights:             []float32{},
-		windowFocused:       func() bool { return ui.focused },
+		windowFocused:       func() bool { return ui.state.focused },
 		readCallback:        ui.bounce.MarkAsRead,
 		unreadCountCallback: t.getButton().setUnreadCount,
 		markAllAsReadCallback: func() {
@@ -102,7 +102,7 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 			}
 			ch.markAllAsReadCallback()
 			if !fyne.CurrentDevice().IsMobile() {
-				ui.mainWindow.Canvas().Focus(t.getEntry())
+				ui.window.Canvas().Focus(t.getEntry())
 			}
 		},
 	)

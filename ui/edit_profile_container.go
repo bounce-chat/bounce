@@ -19,6 +19,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type editProfile struct {
+	profileNameEntry *widget.Entry
+	profileIcon      *defaultImage
+}
+
 type expirationSelection struct {
 	display       string
 	unixIncrement int64
@@ -52,26 +57,25 @@ var expirationIncrements = map[string]int64{
 
 func (ui *ui) showEditProfile() {
 	if fyne.CurrentDevice().IsMobile() {
-		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeEditProfile})
+		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeEditProfile})
 	}
-	ui.currentView = viewTypeEditProfile
+	ui.state.currentView = viewTypeEditProfile
 
-	ui.profileIcon.id = ui.profile.id
-	ui.profileIcon.images = ui.profile.images
-	initials, err := ui.profile.initials.Get()
+	ui.widgets.editProfile.profileIcon.id = ui.state.profile.id
+	ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
+	initials, err := ui.state.profile.initials.Get()
 	if err != nil {
 		log.Fatal("data bindings are broken")
 	}
-	ui.profileIcon.foregroundText.Text = initials
-	ui.profileIcon.Refresh()
+	ui.widgets.editProfile.profileIcon.foregroundText.Text = initials
+	ui.widgets.editProfile.profileIcon.Refresh()
 
-	ui.profileNameEntry.Text = ui.profile.getName()
-	ui.profileNameEntry.Refresh()
-	ui.profileNameEntry.FocusLost()
+	ui.widgets.editProfile.profileNameEntry.Text = ui.state.profile.getName()
+	ui.widgets.editProfile.profileNameEntry.Refresh()
+	ui.widgets.editProfile.profileNameEntry.FocusLost()
 
-	ui.profileOptions.Refresh()
-	ui.mainWindow.SetContent(ui.editProfile)
-	ui.editProfile.Show()
+	ui.containers.profileOptions.Refresh()
+	ui.window.SetContent(ui.views.editProfile)
 }
 
 func (ui *ui) updateDeviceStatus() {
@@ -142,7 +146,7 @@ func (ui *ui) updateDeviceStatus() {
 					editDeviceDialog.Hide()
 				}
 				if showError != nil {
-					ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
+					ui.showDialog(dialog.NewError(showError, ui.window), nil)
 				}
 			}
 			confirmRevokeDialog := dialog.NewConfirm(
@@ -158,7 +162,7 @@ func (ui *ui) updateDeviceStatus() {
 						}
 					}
 				},
-				ui.mainWindow,
+				ui.window,
 			)
 			revokeButton := widget.NewButton("Revoke", func() {
 				ui.showDialog(confirmRevokeDialog, confirmRevokeCleanup)
@@ -203,7 +207,7 @@ func (ui *ui) updateDeviceStatus() {
 					nameEntry.Text = dev.Name
 				}
 				if showError != nil {
-					ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
+					ui.showDialog(dialog.NewError(showError, ui.window), nil)
 				}
 			}
 			editDeviceDialog = dialog.NewCustomConfirm(shortName, "Apply", "Cancel", editDeviceContainer, func(apply bool) {
@@ -214,7 +218,7 @@ func (ui *ui) updateDeviceStatus() {
 						showError = ui.bounce.RenameDevice(dev.ID, strings.TrimSpace(nameEntry.Text))
 					}
 				}
-			}, ui.mainWindow)
+			}, ui.window)
 
 			return editDeviceDialog, editDeviceCleanup, state
 		}(*dev)
@@ -233,7 +237,7 @@ func (ui *ui) updateDeviceStatus() {
 			),
 		)
 	}
-	ui.currentDevices.Content = currentDevicesList
+	ui.containers.currentDevices.Content = currentDevicesList
 
 	currentDevicesHeight := float32(0)
 	for i, obj := range currentDevicesList.Objects {
@@ -243,17 +247,18 @@ func (ui *ui) updateDeviceStatus() {
 		currentDevicesHeight += obj.MinSize().Height
 	}
 	currentDevicesHeight += theme.Padding() * float32(len(currentDevicesList.Objects)+1)
-	ui.currentDevices.SetMinSize(fyne.Size{Height: currentDevicesHeight})
+	ui.containers.currentDevices.SetMinSize(fyne.Size{Height: currentDevicesHeight})
 
-	ui.currentDevices.Refresh()
-	ui.editProfile.Refresh()
+	ui.containers.currentDevices.Refresh()
+	ui.views.editProfile.Refresh()
 }
 
 func (ui *ui) buildEditProfile() {
+	ui.widgets.editProfile = &editProfile{}
 	//
 	// Personal details section
 	//
-	ui.profileIcon = newDefaultImage(uuid.Nil, []uuid.UUID{}, binding.NewString(), 128, ui.bounce.GetFileData, func() {
+	ui.widgets.editProfile.profileIcon = newDefaultImage(uuid.Nil, []uuid.UUID{}, binding.NewString(), 128, ui.bounce.GetFileData, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
@@ -276,7 +281,7 @@ func (ui *ui) buildEditProfile() {
 				return
 			}
 			if size > chat.EmbeddedFileLimit {
-				ui.showDialog(dialog.NewError(errors.New("file is too large"), ui.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("file is too large"), ui.window), nil)
 				reader.Close()
 				return
 			}
@@ -294,38 +299,38 @@ func (ui *ui) buildEditProfile() {
 			// TODO: don't actualy set it until they hit save?
 
 			ui.bounce.UpdateProfileImage(data)
-		}, ui.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
+		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 
-	ui.profileNameEntry = widget.NewEntry()
-	ui.profileNameEntry.OnChanged = func(str string) {
+	ui.widgets.editProfile.profileNameEntry = widget.NewEntry()
+	ui.widgets.editProfile.profileNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
 		str, trimmed := trimLeadingSpace(str)
-		ui.profileNameEntry.Text = str
+		ui.widgets.editProfile.profileNameEntry.Text = str
 		if trimmed != 0 {
-			ui.profileNameEntry.CursorRow = 0
-			ui.profileNameEntry.CursorColumn = 0
+			ui.widgets.editProfile.profileNameEntry.CursorRow = 0
+			ui.widgets.editProfile.profileNameEntry.CursorColumn = 0
 		}
 
 		// Enforce length limit
 		if utf8.RuneCountInString(str) > chat.MaximumNameLength {
 			runes := []rune(str)
 			truncated := runes[0:chat.MaximumNameLength]
-			ui.profileNameEntry.Text = string(truncated)
+			ui.widgets.editProfile.profileNameEntry.Text = string(truncated)
 
 		}
-		ui.profileNameEntry.Refresh()
+		ui.widgets.editProfile.profileNameEntry.Refresh()
 	}
 
 	saveProfileButton := widget.NewButton("Update", func() {
-		err := ui.bounce.UpdateProfileName(strings.TrimSpace(ui.profileNameEntry.Text))
+		err := ui.bounce.UpdateProfileName(strings.TrimSpace(ui.widgets.editProfile.profileNameEntry.Text))
 		if err != nil {
-			ui.showDialog(dialog.NewError(errors.New("error updating name: "+err.Error()), ui.mainWindow), nil)
+			ui.showDialog(dialog.NewError(errors.New("error updating name: "+err.Error()), ui.window), nil)
 		} else {
 			ui.showMainContainer()
-			t, ok := ui.threads.get(ui.activeThread)
+			t, ok := ui.threads.get(ui.state.activeThread)
 			if ok {
-				ui.mainWindow.Canvas().Focus(t.getEntry())
+				ui.window.Canvas().Focus(t.getEntry())
 			}
 		}
 	})
@@ -336,9 +341,9 @@ func (ui *ui) buildEditProfile() {
 		saveProfileButton,
 	)
 
-	ui.profileOptions = container.NewVBox(
-		container.NewCenter(ui.profileIcon),
-		ui.profileNameEntry,
+	ui.containers.profileOptions = container.NewVBox(
+		container.NewCenter(ui.widgets.editProfile.profileIcon),
+		ui.widgets.editProfile.profileNameEntry,
 		saveProfileButtonBar,
 	)
 
@@ -349,7 +354,7 @@ func (ui *ui) buildEditProfile() {
 	devicesLabel := widget.NewLabel("Devices")
 	devicesLabel.TextStyle = fyne.TextStyle{Bold: true}
 
-	ui.currentDevices = container.NewVScroll(container.NewVBox())
+	ui.containers.currentDevices = container.NewVScroll(container.NewVBox())
 
 	addDeviceButton := widget.NewButton("Add Device", func() {
 		ui.showDisplaySyncString()
@@ -361,7 +366,7 @@ func (ui *ui) buildEditProfile() {
 	)
 
 	devicesContainer := container.NewVBox(
-		ui.currentDevices,
+		ui.containers.currentDevices,
 		addDeviceButtonBar,
 	)
 
@@ -383,11 +388,11 @@ func (ui *ui) buildEditProfile() {
 		closeButton,
 	)
 	nonScrollingContainers := container.NewVBox(
-		ui.profileOptions,
+		ui.containers.profileOptions,
 		devicesLabel,
 		devicesContainer,
 	)
-	ui.editProfile = container.New(
+	ui.views.editProfile = container.New(
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		nonScrollingContainers,

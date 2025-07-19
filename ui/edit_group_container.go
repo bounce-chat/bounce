@@ -21,10 +21,10 @@ import (
 
 func (ui *ui) showEditThreadContainer(g *group) {
 	if fyne.CurrentDevice().IsMobile() {
-		ui.viewStack = append(ui.viewStack, view{viewType: viewTypeGroupSettings, context: g.id})
+		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeGroupSettings, context: g.id})
 	}
-	ui.currentView = viewTypeGroupSettings
-	ui.mainWindow.SetContent(g.editContainer)
+	ui.state.currentView = viewTypeGroupSettings
+	ui.window.SetContent(g.editContainer)
 	g.editContainer.Show()
 }
 
@@ -71,7 +71,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 				return
 			}
 			if size > chat.EmbeddedFileLimit {
-				ui.showDialog(dialog.NewError(errors.New("file is too large"), ui.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("file is too large"), ui.window), nil)
 				reader.Close()
 				return
 			}
@@ -89,7 +89,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 			// TODO: don't actualy set it until they hit save?
 
 			ui.bounce.SetGroupImage(g.id, data)
-		}, ui.mainWindow).Show() // We do not use showDialog here because on mobile this uses a native intent
+		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 
 	g.retentionSelection = widget.NewSelect(retentionSelections, nil)
@@ -109,10 +109,10 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 			} else {
 				ui.showMainContainer()
 			}
-			ui.mainWindow.Canvas().Focus(g.getEntry())
+			ui.window.Canvas().Focus(g.getEntry())
 		}
 		if showError != nil {
-			ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
+			ui.showDialog(dialog.NewError(showError, ui.window), nil)
 		}
 	}
 
@@ -130,7 +130,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 				}
 			}
 		},
-		ui.mainWindow,
+		ui.window,
 	)
 	g.clearHistoryButton = widget.NewButton("Clear History", func() {
 		ui.showDialog(confirmClearHistory, confirmCleanup)
@@ -143,14 +143,14 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 			returnToThread = confirmed
 			showError = nil
 			if confirmed {
-				err := ui.bounce.RemoveUserFromGroup(g.id, ui.profile.id)
+				err := ui.bounce.RemoveUserFromGroup(g.id, ui.state.profile.id)
 				if err != nil {
 					showError = errors.New("error leaving group: " + err.Error())
 					returnToThread = false
 				}
 			}
 		},
-		ui.mainWindow,
+		ui.window,
 	)
 
 	g.leaveGroupButton = widget.NewButton("Leave Group", func() {
@@ -171,7 +171,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 				}
 			}
 		},
-		ui.mainWindow,
+		ui.window,
 	)
 	g.deleteGroupButton = widget.NewButton("Delete Group", func() {
 		ui.showDialog(confirmDeleteGroup, confirmCleanup)
@@ -191,7 +191,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 				}
 			}
 		},
-		ui.mainWindow,
+		ui.window,
 	)
 	g.blockGroupButton = widget.NewButton("Block Group", func() {
 		ui.showDialog(confirmBlockGroup, confirmCleanup)
@@ -209,7 +209,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 		if currentThreadName != newThreadName {
 			err := ui.bounce.RenameGroup(g.id, strings.TrimSpace(newThreadName))
 			if err != nil {
-				ui.showDialog(dialog.NewError(errors.New("error renaming group: "+err.Error()), ui.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error renaming group: "+err.Error()), ui.window), nil)
 				return
 			}
 		}
@@ -222,7 +222,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 			}
 			err := ui.bounce.SetGroupMutedUntil(g.id, mutedUntil)
 			if err != nil {
-				ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
 				return
 			}
 		}
@@ -231,12 +231,12 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 		selectedRetentionString := g.retentionSelection.Selected
 		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
 		if !ok {
-			dialog.ShowError(errors.New("invalid retention selection: "+selectedRetentionString), ui.mainWindow)
+			dialog.ShowError(errors.New("invalid retention selection: "+selectedRetentionString), ui.window)
 		} else {
 			if g.retention != selectedRetentionValue {
 				err = ui.bounce.SetGroupRetention(g.id, selectedRetentionValue)
 				if err != nil {
-					ui.showDialog(dialog.NewError(errors.New("error setting new retention value: "+err.Error()), ui.mainWindow), nil)
+					ui.showDialog(dialog.NewError(errors.New("error setting new retention value: "+err.Error()), ui.window), nil)
 					return
 				}
 			}
@@ -246,42 +246,42 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 		if g.restrictUserManagementCheck.Checked && !g.restrictUserManagement {
 			err := ui.bounce.RestrictUserManagement(g.id)
 			if err != nil {
-				ui.showDialog(dialog.NewError(errors.New("error restricting user management: "+err.Error()), ui.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error restricting user management: "+err.Error()), ui.window), nil)
 				return
 			}
 		}
 		if !g.restrictUserManagementCheck.Checked && g.restrictUserManagement {
 			err := ui.bounce.UnrestrictUserManagement(g.id)
 			if err != nil {
-				ui.showDialog(dialog.NewError(errors.New("error unrestricting user management: "+err.Error()), ui.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error unrestricting user management: "+err.Error()), ui.window), nil)
 				return
 			}
 		}
 		if g.restrictGroupEditsCheck.Checked && !g.restrictGroupEdits {
 			err := ui.bounce.RestrictGroupEdits(g.id)
 			if err != nil {
-				ui.showDialog(dialog.NewError(errors.New("error restricting group edits: "+err.Error()), ui.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error restricting group edits: "+err.Error()), ui.window), nil)
 				return
 			}
 		}
 		if !g.restrictGroupEditsCheck.Checked && g.restrictGroupEdits {
 			err := ui.bounce.UnrestrictGroupEdits(g.id)
 			if err != nil {
-				ui.showDialog(dialog.NewError(errors.New("error unrestricting group edits: "+err.Error()), ui.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error unrestricting group edits: "+err.Error()), ui.window), nil)
 				return
 			}
 		}
 		if g.restrictPostingCheck.Checked && !g.restrictPosting {
 			err := ui.bounce.RestrictPosting(g.id)
 			if err != nil {
-				ui.showDialog(dialog.NewError(errors.New("error restricting posting: "+err.Error()), ui.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error restricting posting: "+err.Error()), ui.window), nil)
 				return
 			}
 		}
 		if !g.restrictPostingCheck.Checked && g.restrictPosting {
 			err := ui.bounce.UnrestrictPosting(g.id)
 			if err != nil {
-				ui.showDialog(dialog.NewError(errors.New("error unrestricting posting: "+err.Error()), ui.mainWindow), nil)
+				ui.showDialog(dialog.NewError(errors.New("error unrestricting posting: "+err.Error()), ui.window), nil)
 				return
 			}
 		}
@@ -330,7 +330,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 			ui.mobileBack()
 		} else {
 			ui.showMainContainer()
-			ui.mainWindow.Canvas().Focus(g.getEntry())
+			ui.window.Canvas().Focus(g.getEntry())
 		}
 	})
 	saveButton.Importance = widget.HighImportance
@@ -372,7 +372,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 			ui.mobileBack()
 		} else {
 			ui.showMainContainer()
-			ui.mainWindow.Canvas().Focus(g.getEntry())
+			ui.window.Canvas().Focus(g.getEntry())
 		}
 	}
 	cancelButton := widget.NewButton("Cancel", cancelChanges)
@@ -413,7 +413,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 		ui.refreshAvailableNewUsers(g, ui.users.search(g.newUserSearchEntry.Text))
 
 		if showError != nil {
-			ui.showDialog(dialog.NewError(showError, ui.mainWindow), nil)
+			ui.showDialog(dialog.NewError(showError, ui.window), nil)
 		}
 	}
 	addUsersDialog := dialog.NewCustomConfirm("Add Users", "Save", "Cancel", newUserSelector, func(apply bool) {
@@ -427,7 +427,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 				}
 			}
 		}
-	}, ui.mainWindow)
+	}, ui.window)
 	g.addUsersButton = widget.NewButton("Add Users", func() {
 		ui.showDialog(
 			addUsersDialog,

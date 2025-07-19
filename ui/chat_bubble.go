@@ -212,7 +212,7 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 						log.WithFields(log.Fields{
 							"error": err.Error(),
 						}).Error("error getting data for file attachment")
-						ui.showDialog(dialog.NewError(errors.New("error saving file: "+err.Error()), ui.mainWindow), nil)
+						ui.showDialog(dialog.NewError(errors.New("error saving file: "+err.Error()), ui.window), nil)
 					} else {
 						writer.Write(data)
 					}
@@ -222,7 +222,7 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 					os.Remove(writer.URI().Path())
 					ui.bounce.DownloadFileToDisk(attachmentID, writer.URI().Path())
 				}
-			}, ui.mainWindow).Show()
+			}, ui.window).Show()
 		},
 		cancelDownload: func(attachmentID uuid.UUID) {
 			ui.bounce.CancelDownload(attachmentID)
