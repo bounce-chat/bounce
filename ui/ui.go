@@ -33,6 +33,9 @@ const defaultWidth = float32(900)
 const defaultChatHistoryHeight = float32(585.84375)
 const defaultChatHistoryWidth = float32(566)
 
+const darkMode = "darkMode"
+const neverAskForBatteryOptimizations = "neverAskForBatteryOptimizations"
+
 type ui struct {
 	bounce *chat.Bounce
 	state  *state
@@ -48,8 +51,6 @@ type ui struct {
 	devices  *deviceStore
 	messages *messageStore
 	threads  *threadStore
-
-	localSettings chat.LocalSettings // TODO: remove
 }
 
 type widgets struct {
@@ -124,14 +125,13 @@ func Main() {
 			pausedGroupNotifications: make(map[uuid.UUID]bool),
 		},
 	}
-	ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())
 	ui.build()
 
 	go func() {
+		ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())
 		ui.loadInitialState(ui.bounce.GetInitialState())
 	}()
 
-	ui.window.Show()
 	ui.app.Run()
 	ui.bounce.Shutdown()
 }
@@ -144,7 +144,7 @@ func (ui *ui) build() {
 	ui.app.SetIcon(newEmbeddedResource("assets/icon.png"))
 	ui.app.Lifecycle().SetOnEnteredForeground(func() { ui.state.focused = true })
 	ui.app.Lifecycle().SetOnExitedForeground(func() { ui.state.focused = false })
-	if ui.bounce.DarkMode() {
+	if ui.app.Preferences().Bool(darkMode) {
 		ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
 	} else {
 		ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
@@ -222,6 +222,7 @@ func (ui *ui) build() {
 	//
 
 	ui.showMainContainer()
+	ui.window.Show()
 }
 
 func (ui *ui) buildWidgets() {
@@ -245,7 +246,7 @@ func (ui *ui) buildWidgets() {
 }
 
 func (ui *ui) askToIgnoreBatteryOptimizations() {
-	if ui.localSettings.NeverAskForBatteryOptimizations {
+	if ui.app.Preferences().Bool(neverAskForBatteryOptimizations) {
 		return
 	}
 
@@ -266,7 +267,7 @@ func (ui *ui) askToIgnoreBatteryOptimizations() {
 			batteryLater.Importance = widget.LowImportance
 			batteryNever := widget.NewButton("Never", func() {
 				batteryDialog.Hide()
-				ui.bounce.NeverAskForBatteryOptimizations()
+				ui.app.Preferences().SetBool(neverAskForBatteryOptimizations, true)
 			})
 			batteryNever.Importance = widget.LowImportance
 
@@ -285,10 +286,6 @@ func (ui *ui) askToIgnoreBatteryOptimizations() {
 			ui.showDialog(batteryDialog, nil)
 		}
 	}
-}
-
-func (ui *ui) Run() { // TODO: still need this interface since control re-inverted?
-	ui.app.Run()
 }
 
 func (ui *ui) Quit() {
@@ -316,7 +313,6 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		ui.state.profile.images = state.Profile.Images
 		ui.users.add(ui.state.profile)
 		ui.state.settings = state.Settings
-		ui.localSettings = state.LocalSettings
 		ui.askToIgnoreBatteryOptimizations()
 
 		for i, _ := range state.SyncDevices {

@@ -76,7 +76,6 @@ func (b *Bounce) openDatabase() {
 		&updateDevice{},
 		&readReceipt{},
 		&updateSettings{},
-		&localSettings{},
 		&file{},
 		&chunk{},
 		&chunkOffer{},
@@ -232,27 +231,10 @@ func (b *Bounce) GetInitialState() InitialState {
 	// Load the profile and sync devices
 	var profile *User
 	var settings Settings
-	var lSettings LocalSettings
 	syncDevices := []Device{}
 	var dbProfile user
 	err := b.database.Preload(clause.Associations).Where("profile = ?", true).First(&dbProfile).Error
 	if err == nil {
-		if dbProfile.LocalSettings == nil { // TODO: temporary migration not needed for new installs
-			ls := &localSettings{
-				ID:                              uuid.New(),
-				UserID:                          dbProfile.ID,
-				NeverAskForBatteryOptimizations: false,
-				DarkMode:                        true,
-			}
-			dbProfile.LocalSettings = ls
-			err = b.database.Create(ls).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("error creating local settings")
-			}
-		}
-
 		imageHistory := []uuid.UUID{}
 		if len(dbProfile.Images) > 0 {
 			for _, imageIDString := range strings.Split(dbProfile.Images, ",") {
@@ -278,8 +260,6 @@ func (b *Bounce) GetInitialState() InitialState {
 		settings.NewGroupRestrictUserManagement = dbProfile.ProfileSettings.NewGroupRestrictUserManagement
 		settings.NewGroupRestrictGroupEdits = dbProfile.ProfileSettings.NewGroupRestrictGroupEdits
 		settings.NewGroupRestrictPosting = dbProfile.ProfileSettings.NewGroupRestrictPosting
-		lSettings.NeverAskForBatteryOptimizations = dbProfile.LocalSettings.NeverAskForBatteryOptimizations
-		lSettings.DarkMode = dbProfile.LocalSettings.DarkMode
 		for _, dev := range dbProfile.Devices {
 			if dev.RevokedAt != 0 {
 				continue
@@ -911,7 +891,7 @@ func (b *Bounce) GetInitialState() InitialState {
 		}
 	}
 
-	// Load all update groups
+	// Load all update users
 	uus := []updateUser{}
 	err = b.database.Order("timestamp asc").Find(&uus).Error
 	if err != nil {
@@ -990,7 +970,6 @@ func (b *Bounce) GetInitialState() InitialState {
 	return InitialState{
 		Profile:                                profile,
 		Settings:                               settings,
-		LocalSettings:                          lSettings,
 		SyncDevices:                            syncDevices,
 		Users:                                  chatUsers,
 		Groups:                                 chatGroups,

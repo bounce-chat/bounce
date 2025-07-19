@@ -32,7 +32,6 @@ type user struct {
 	Devices                    []device
 	Groups                     []group          `gorm:"many2many:group_users;" json:"-" msgpack:"-"`
 	ProfileSettings            *profileSettings `json:"-" msgpack:"-"`
-	LocalSettings              *localSettings   `json:"-" msgpack:"-"`
 	payload                    []byte
 	payloadMutex               sync.Mutex
 }
@@ -194,10 +193,6 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 			NewGroupRestrictUserManagement: true,
 			NewGroupRestrictGroupEdits:     false,
 			NewGroupRestrictPosting:        false,
-		},
-		LocalSettings: &localSettings{
-			DarkMode:                        true,
-			NeverAskForBatteryOptimizations: false,
 		},
 	}
 	if len(image) > 0 {

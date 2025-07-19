@@ -20,11 +20,6 @@ type Settings struct {
 	NewGroupRestrictPosting        bool
 }
 
-type LocalSettings struct {
-	NeverAskForBatteryOptimizations bool
-	DarkMode                        bool
-}
-
 type Device struct {
 	ID        uuid.UUID
 	Name      string
@@ -297,7 +292,6 @@ type FileProgress struct {
 type InitialState struct {
 	Profile                                *User
 	Settings                               Settings
-	LocalSettings                          LocalSettings
 	SyncDevices                            []Device
 	Users                                  []User
 	Groups                                 []Group
@@ -325,9 +319,7 @@ type InitialState struct {
 	FileProgress                           []FileProgress
 }
 
-//
 // Functions that are passed to bounce that can be used to inform and update the UI
-//
 type UI interface {
 	// App lifecycle
 	Quit()
@@ -408,7 +400,6 @@ type UI interface {
 
 	// Settings
 	SetSettings(Settings)
-	SetDarkMode(value bool)
 
 	// File management
 	FileCompleted(uuid.UUID)

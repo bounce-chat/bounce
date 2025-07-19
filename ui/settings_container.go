@@ -38,7 +38,7 @@ func (ui *ui) showSettings() {
 	ui.widgets.settings.defaultNewGroupRestrictGroupEdits.Refresh()
 	ui.widgets.settings.defaultNewGroupRestrictPosting.Checked = ui.state.settings.NewGroupRestrictPosting
 	ui.widgets.settings.defaultNewGroupRestrictPosting.Refresh()
-	ui.widgets.settings.darkMode.Checked = ui.localSettings.DarkMode
+	ui.widgets.settings.darkMode.Checked = ui.app.Preferences().Bool(darkMode)
 	ui.widgets.settings.darkMode.Refresh()
 
 	if fyne.CurrentDevice().IsMobile() {
@@ -79,7 +79,7 @@ func (ui *ui) buildSettings() {
 		defaultNewGroupRestrictUserManagement: widget.NewCheck("Restrict User Management", ui.bounce.SetNewGroupRestrictUserManagement),
 		defaultNewGroupRestrictGroupEdits:     widget.NewCheck("Restrict Group Edits", ui.bounce.SetNewGroupRestrictGroupEdits),
 		defaultNewGroupRestrictPosting:        widget.NewCheck("Restrict Posting", ui.bounce.SetNewGroupRestrictPosting),
-		darkMode:                              widget.NewCheck("Dark Mode", ui.bounce.SetDarkMode),
+		darkMode:                              widget.NewCheck("Dark Mode", ui.setDarkMode),
 	}
 
 	ui.views.settings = container.New(
@@ -152,16 +152,16 @@ func (ui *ui) SetSettings(settings chat.Settings) {
 	})
 }
 
-func (ui *ui) SetDarkMode(value bool) {
+func (ui *ui) setDarkMode(value bool) {
 	fyne.DoAndWait(func() {
+		ui.app.Preferences().SetBool(darkMode, value)
+		ui.widgets.settings.darkMode.Checked = value
+		ui.widgets.settings.darkMode.Refresh()
 		if value {
 			ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
 		} else {
 			ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
 		}
-		ui.localSettings.DarkMode = value
-		ui.widgets.settings.darkMode.Checked = value
-		ui.widgets.settings.darkMode.Refresh()
 	})
 }
 
