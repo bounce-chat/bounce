@@ -57,7 +57,6 @@ func (b *Bounce) openDatabase() {
 	err = b.database.AutoMigrate(
 		&user{},
 		&device{},
-		&profileExport{},
 		&introductionSignature{},
 		&directMessage{},
 		&syncDeviceOffer{},

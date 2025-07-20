@@ -347,7 +347,6 @@ type UI interface {
 	// User management
 	AddUserRequestRejected(string)
 	UserAdded(User)
-	UserImported(User) // TODO: replace with async add user?
 
 	// Direct messages
 	DisplayDirectMessage(DirectMessage)

@@ -3,16 +3,13 @@ package ui
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"image"
-	"io"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -175,42 +172,11 @@ func (ui *ui) buildScanUser() {
 	})
 	ui.widgets.addUser.scanEntry.ActionItem.(*widget.Button).Disable()
 
-	importSelector := dialog.NewFileOpen(func(handler fyne.URIReadCloser, err error) {
-		if handler == nil {
-			// Selection canceled
-			return
-		}
-		data, err := io.ReadAll(handler)
-		if err != nil {
-			ui.showDialog(dialog.NewError(errors.New("error reading file: "+err.Error()), ui.window), nil)
-			return
-		}
-		newUser, err := ui.bounce.ImportUser(data)
-		if err != nil {
-			ui.showDialog(dialog.NewError(errors.New("error importing user: "+err.Error()), ui.window), nil)
-			return
-		}
-
-		// TODO: add this user to the store as a pending user, waiting on confirmation
-		ui.showDialog(dialog.NewInformation("Success", fmt.Sprintf("%s has been imported", newUser.Name), ui.window), nil)
-		uName := binding.NewString()
-		uName.Set(newUser.Name)
-		ui.users.add(&user{id: newUser.ID, name: uName})
-	}, ui.window)
-
 	ui.containers.scanUser = container.NewVBox(
 		widget.NewLabel("Paste in the string or scan the QR code to add friend"),
 		ui.widgets.addUser.scanEntry,
 		ui.widgets.addUser.currentStep,
 		ui.widgets.addUser.progressBar,
-		widget.NewAccordion(
-			&widget.AccordionItem{
-				Title: "Advanced Options",
-				Detail: container.NewVBox(
-					widget.NewButton("Import User", func() { importSelector.Show() }), // We don't use showDialog here because file selector is native on mobile
-				),
-			},
-		),
 	)
 }
 
@@ -225,106 +191,12 @@ func (ui *ui) buildDisplayAddUserString() {
 	ui.widgets.addUser.displayEntry = widget.NewEntry()
 	ui.widgets.addUser.displayEntry.ActionItem = widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() { ui.window.Clipboard().SetContent(ui.widgets.addUser.displayEntry.Text) })
 
-	exportLabel := widget.NewLabel("Share File")
-	exportLabel.TextStyle = fyne.TextStyle{Bold: true}
-
-	exportNameEntry := widget.NewEntry()
-	exportExpirationSelect := widget.NewSelect(expirationSelections, nil)
-	exportExpirationSelect.Selected = expirationOneHour.display
-	oneTimeUse := widget.NewCheck("One-Time Use", nil)
-	oneTimeUse.Checked = true
-
-	exportContactForm := widget.NewForm(
-		&widget.FormItem{
-			Text:   "Name:",
-			Widget: exportNameEntry,
-		},
-		&widget.FormItem{
-			Text:   "Expires:",
-			Widget: exportExpirationSelect,
-		},
-		&widget.FormItem{
-			Text:   "",
-			Widget: oneTimeUse,
-		},
-	)
-	exportContactForm.SubmitText = "Export"
-
-	var showError error
-	var showInformation dialog.Dialog
-	selectorCleanup := func() {
-		if showInformation != nil {
-			ui.showDialog(showInformation, nil)
-		}
-		if showError != nil {
-			ui.showDialog(dialog.NewError(showError, ui.window), nil)
-		}
-	}
-	fileSelector := dialog.NewFileSave(func(handler fyne.URIWriteCloser, err error) {
-		showError = nil
-		showInformation = nil
-		if err != nil {
-			showError = errors.New("error opening file: " + err.Error())
-			return
-		}
-		if handler == nil {
-			return
-		}
-
-		expiration := int64(0)
-		if exportExpirationSelect.Selected != expirationNever.display {
-			increment, ok := expirationIncrements[exportExpirationSelect.Selected]
-			if !ok {
-				log.WithFields(log.Fields{
-					"selection": exportExpirationSelect.Selected,
-				}).Fatal("unsupported selection for export expiration")
-			}
-			expiration = time.Now().Unix() + increment
-		}
-
-		profileData := ui.bounce.ExportContact(exportNameEntry.Text, expiration, oneTimeUse.Checked)
-		_, err = handler.Write(profileData)
-		if err != nil {
-			showError = errors.New("error writing file: " + err.Error())
-			return
-		}
-		err = handler.Close()
-		if err != nil {
-			showError = errors.New("error closing file: " + err.Error())
-			return
-		}
-
-		showInformation = dialog.NewInformation("Success", "Contact export written to "+handler.URI().Name(), ui.window)
-	}, ui.window)
-
-	exportContactForm.OnSubmit = func() {
-		if exportNameEntry.Text == "" {
-			ui.showDialog(dialog.NewError(errors.New("Please select a name for this export"), ui.window), nil)
-			return
-		}
-		fileSelector.SetFileName("profile.bounce") // TODO: set the user's current profile name
-		ui.showDialog(fileSelector, selectorCleanup)
-	}
-
-	exportContactMenu := container.NewVBox(
-		exportLabel,
-		exportContactForm,
-	)
-
 	ui.containers.displayAddUserString = container.New(
 		layout.NewBorderLayout(title, nil, nil, nil),
 		title,
 		container.NewVBox(
 			ui.widgets.addUser.qrCode,
 			ui.widgets.addUser.displayEntry,
-			widget.NewAccordion(
-				&widget.AccordionItem{
-					Title: "Advanced Options",
-					Detail: container.NewVBox(
-						exportContactMenu,
-					),
-				},
-			),
 		),
 	)
 }

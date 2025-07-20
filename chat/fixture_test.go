@@ -405,18 +405,19 @@ func (t *testUI) InitialSyncStarting()                                        {}
 func (t *testUI) InitialSyncProgress(float64)                                 {}
 func (t *testUI) InitialSyncComplete()                                        {}
 func (t *testUI) AddUserRequestRejected(string)                               {}
-func (t *testUI) UserAdded(User)                                              {}
-func (t *testUI) UserImported(User)                                           {}
-func (t *testUI) DeleteItem(uuid.UUID)                                        {}
-func (t *testUI) MarkMessageUndeliverable(uuid.UUID)                          {}
-func (t *testUI) DisplayDirectMessage(DirectMessage)                          {}
-func (t *testUI) DisplaySentDirectMessage(DirectMessage)                      {}
-func (t *testUI) SetDMState(uuid.UUID, DMState)                               {}
-func (t *testUI) DMRetentionChanged(UpdateDMRetention)                        {}
-func (t *testUI) DMChatHistoryCleared(UpdateDMClearHistory)                   {}
-func (t *testUI) SetUserName(uuid.UUID, string)                               {}
-func (t *testUI) UserNameUpdated(UpdateUserUpdateName)                        {}
-func (t *testUI) OpenNewGroupChat(Group)                                      {}
+func (t *testUI) UserAdded(u User) {
+	t.called <- call{function: "UserAdded", args: []interface{}{u}}
+}
+func (t *testUI) DeleteItem(uuid.UUID)                      {}
+func (t *testUI) MarkMessageUndeliverable(uuid.UUID)        {}
+func (t *testUI) DisplayDirectMessage(DirectMessage)        {}
+func (t *testUI) DisplaySentDirectMessage(DirectMessage)    {}
+func (t *testUI) SetDMState(uuid.UUID, DMState)             {}
+func (t *testUI) DMRetentionChanged(UpdateDMRetention)      {}
+func (t *testUI) DMChatHistoryCleared(UpdateDMClearHistory) {}
+func (t *testUI) SetUserName(uuid.UUID, string)             {}
+func (t *testUI) UserNameUpdated(UpdateUserUpdateName)      {}
+func (t *testUI) OpenNewGroupChat(Group)                    {}
 func (t *testUI) NewGroupChat(g Group) {
 	t.called <- call{function: "NewGroupChat", args: []interface{}{g}}
 }
@@ -479,29 +480,48 @@ func newBounce() *Bounce {
 	return Open(ui, network, configDirectory)
 }
 
+func newBounceUser(name string) *Bounce {
+	b := newBounce()
+	b.SetProfile(name, []byte{}, "test")
+	return b
+}
+
 func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UUID) {
-	me = newBounce()
-	me.SetProfile("Me", []byte{}, "test")
-	meExport := me.ExportContact("export", time.Now().Unix()+100, false)
+	me = newBounceUser("Me")
+	meUser, ok := me.currentUser()
+	assert.True(t, ok)
 
-	alice = newBounce()
-	alice.SetProfile("Alice", []byte{}, "test")
-	aliceExport := alice.ExportContact("export", time.Now().Unix()+100, false)
+	alice = newBounceUser("Alice")
+	aliceUser, ok := alice.currentUser()
+	assert.True(t, ok)
 
-	bob = newBounce()
-	bob.SetProfile("Bob", []byte{}, "test")
-	bobExport := bob.ExportContact("export", time.Now().Unix()+100, false)
+	bob = newBounceUser("Bob")
+	bobUser, ok := bob.currentUser()
+	assert.True(t, ok)
 
-	me.ImportUser(aliceExport)
-	me.ImportUser(bobExport)
-	alice.ImportUser(meExport)
-	alice.ImportUser(bobExport)
-	bob.ImportUser(meExport)
-	bob.ImportUser(aliceExport)
+	var mu user
+	mb, _ := msgpack.Marshal(meUser)
+	msgpack.Unmarshal(mb, &mu)
+	var au user
+	ab, _ := msgpack.Marshal(aliceUser)
+	msgpack.Unmarshal(ab, &au)
+	var bu user
+	bb, _ := msgpack.Marshal(bobUser)
+	msgpack.Unmarshal(bb, &bu)
 
-	assert.NotEqual(t, uuid.Nil, me.currentUserID())
-	assert.NotEqual(t, uuid.Nil, alice.currentUserID())
-	assert.NotEqual(t, uuid.Nil, bob.currentUserID())
+	assert.NoError(t, me.database.Create(&au).Error)
+	assert.NoError(t, me.database.Create(&bu).Error)
+	assert.NoError(t, alice.database.Create(&mu).Error)
+	assert.NoError(t, alice.database.Create(&bu).Error)
+	assert.NoError(t, bob.database.Create(&mu).Error)
+	assert.NoError(t, bob.database.Create(&au).Error)
+
+	me.UserConnectionDesired(aliceUser.ID)
+	me.UserConnectionDesired(bobUser.ID)
+	alice.UserConnectionDesired(meUser.ID)
+	alice.UserConnectionDesired(bobUser.ID)
+	bob.UserConnectionDesired(meUser.ID)
+	bob.UserConnectionDesired(aliceUser.ID)
 
 	me.CreateGroup(Group{
 		Name: "Test Group",

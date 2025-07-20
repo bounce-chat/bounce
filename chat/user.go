@@ -1,10 +1,7 @@
 package chat
 
 import (
-	"crypto/rand"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -134,22 +131,22 @@ func (b *Bounce) addBlockedGroup(groupID uuid.UUID) {
 func (b *Bounce) blockedGroups() []uuid.UUID {
 	blocked := []uuid.UUID{}
 
-	var joinedBlockedGroups string
-	err := b.database.Model(&profileSettings{}).Select("blocked_groups").Where("user_id = ?", b.currentUserID()).First(&joinedBlockedGroups).Error
+	var settings profileSettings
+	err := b.database.Select("blocked_groups").Where("user_id = ?", b.currentUserID()).First(&settings).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error selecting profile user blocked groups")
 	}
 
-	if len(joinedBlockedGroups) > 0 {
-		for _, blockedIDString := range strings.Split(joinedBlockedGroups, ",") {
+	if len(settings.BlockedGroups) > 0 {
+		for _, blockedIDString := range strings.Split(settings.BlockedGroups, ",") {
 			blockedID, err := uuid.Parse(blockedIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":          err.Error(),
 					"user_id":        b.currentUserID(),
-					"blocked_groups": joinedBlockedGroups,
+					"blocked_groups": settings.BlockedGroups,
 				}).Fatal("invalid UUID in blocked groups list")
 
 			}
@@ -221,111 +218,6 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 	})
 	err = b.RenameDevice(d.ID, deviceName)
 	return newID, iconID, err
-}
-
-type profileExport struct {
-	ID         uuid.UUID `gorm:"type:uuid;primary_key;" json:"-"`
-	Secret     string
-	Name       string `json:"-"`
-	OneTimeUse bool   `json:"-"`
-	Expiration int64
-	Profile    user `gorm:"-"`
-}
-
-func (profileExport *profileExport) BeforeCreate(tx *gorm.DB) error {
-	if profileExport.ID != uuid.Nil {
-		log.Fatal("unexpected profileExport primary key assigned before create")
-	}
-	profileExport.ID = uuid.New()
-	return nil
-}
-
-func (b *Bounce) ExportContact(name string, expiration int64, oneTime bool) []byte {
-	myProfile, exists := b.currentUser()
-	if !exists {
-		log.Fatal("cannot export contact when no profile exists")
-	}
-	secretBytes := make([]byte, 16)
-	rand.Read(secretBytes)
-	secret := fmt.Sprintf("%x", secretBytes)
-
-	export := profileExport{
-		Name:       name,
-		Secret:     secret,
-		Expiration: expiration,
-		OneTimeUse: oneTime,
-		Profile:    myProfile,
-	}
-
-	bytes, err := json.Marshal(export)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error marshalling contact export")
-	}
-
-	err = b.database.Create(&export).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error saving contact export")
-	}
-
-	return bytes
-}
-
-func (b *Bounce) ImportUser(data []byte) (User, error) {
-	newUser := profileExport{}
-	err := json.Unmarshal(data, &newUser)
-	if err != nil {
-		return User{}, err
-	}
-
-	// Make sure the export hasn't expired
-	if newUser.Expiration != 0 && time.Now().Unix() >= newUser.Expiration {
-		return User{}, errors.New("file has expired")
-	}
-
-	// Make sure we don't already know about any of the devices
-	for _, contactDevice := range newUser.Profile.Devices {
-		_, exists := b.getDeviceFromAddress(contactDevice.Address)
-		if exists {
-			return User{}, errors.New("contact contains device that already exists in database")
-		}
-	}
-
-	// Make sure this contact has a valid device group
-	if !b.hasValidDeviceGroup(newUser.Profile) {
-		return User{}, errors.New("invalid device group")
-	}
-
-	// Save the new user to the database
-	err = b.database.Create(&newUser.Profile).Error
-	if err != nil {
-		return User{}, err
-	}
-
-	// TODO: some sort of UI feedback on the secret being accepted on the remote side?
-	// As in, bounce only accepts DMs from user's in a shared group or who send an import secret
-
-	// Inform the user sync devices about it
-	//b.broadcast(&newUser.Profile)
-
-	// Set the defaul local DM settings
-	b.SetDMMutedUntil(newUser.Profile.ID, int64(0)) // TODO: make this default a setting on our profile
-
-	// Set the default DM settings
-	defaultMessageRetention := int64(7 * 24 * 60 * 60) // TODO: make this a setting on our profile
-	b.SetDMRetention(newUser.Profile.ID, defaultMessageRetention)
-
-	// Try to connect to the user we just imported
-	b.UserConnectionDesired(newUser.Profile.ID)
-
-	// Return a UI representation of the user to the frontend
-	return User{
-		ID:   newUser.Profile.ID,
-		Name: newUser.Profile.Name,
-	}, nil
 }
 
 func (b *Bounce) directMessageWrittenBeforeHistoryCleared(userID uuid.UUID, messageWrittenAt int64) bool {
