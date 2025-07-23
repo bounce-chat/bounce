@@ -153,16 +153,14 @@ func (ui *ui) SetSettings(settings chat.Settings) {
 }
 
 func (ui *ui) setDarkMode(value bool) {
-	fyne.DoAndWait(func() {
-		ui.app.Preferences().SetBool(darkMode, value)
-		ui.widgets.settings.darkMode.Checked = value
-		ui.widgets.settings.darkMode.Refresh()
-		if value {
-			ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
-		} else {
-			ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
-		}
-	})
+	ui.app.Preferences().SetBool(darkMode, value)
+	ui.widgets.settings.darkMode.Checked = value
+	ui.widgets.settings.darkMode.Refresh()
+	if value {
+		ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
+	} else {
+		ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
+	}
 }
 
 func (ui *ui) readReceiptOverrideSelectionOptions() []string {

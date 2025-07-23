@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"github.com/hkparker/bounce/chat"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
@@ -74,16 +72,19 @@ func (ui *ui) refreshAllUsersDMLinks() {
 					dm, ok := ui.threads.getDM(u.id)
 					if !ok {
 						ui.bounce.SetOpenDM(u.id, true)
-						ui.NewDirectMessage(chat.User{
-							ID:   u.id,
-							Name: u.getName(),
-						})
+						state := ui.bounce.GetDMHistory(u.id)
+						if len(state.Users) != 1 {
+							log.Error("loading DM history did not return state with one user")
+							return
+						}
+						chatUser := state.Users[0]
+
+						ui.NewDirectMessage(chatUser)
 						dm, ok = ui.threads.getDM(u.id)
 						if !ok {
 							log.Fatal("DM doesn't exist immediately after creation")
 						}
 
-						state := ui.bounce.GetDMHistory(u.id)
 						tis := []*threadItem{}
 						for _, dm := range state.DirectMessages {
 							dmti, err := ui.newDirectMessage(dm)

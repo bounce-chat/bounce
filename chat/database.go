@@ -1000,9 +1000,47 @@ func (b *Bounce) GetInitialState() InitialState {
 
 // Get all structures that could be threaded in a direct message
 func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
+	// Load the user
+	var chatUsers []User
+	var u user
+	err := b.database.Where("id = ?", userID).First(&u).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"user_id": userID,
+		}).Fatal("database error looking up user")
+	}
+	imageHistory := []uuid.UUID{}
+	if len(u.Images) > 0 {
+		for _, imageIDString := range strings.Split(u.Images, ",") {
+			imageID, err := uuid.Parse(imageIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"images": u.Images,
+				}).Fatal("invalid UUID in user images list")
+			}
+			imageHistory = append(imageHistory, imageID)
+		}
+	}
+	chatUsers = append(chatUsers, User{
+		ID:     u.ID,
+		Name:   u.Name,
+		Images: imageHistory,
+		State: DMState{
+			Open:                           u.OpenDM,
+			Retention:                      u.Retention,
+			MutedUntil:                     u.MutedUntil,
+			OverrideReadReceiptSetting:     u.ReadReceiptsOverridden,
+			ReadReceiptsEnabled:            u.ReadReceiptsEnabled,
+			OverrideTypingIndicatorSetting: u.TypingIndicatorsOverridden,
+			TypingIndicatorsEnabled:        u.TypingIndicatorsEnabled,
+		},
+	})
+
 	// Load all direct messages
 	dms := []directMessage{}
-	err := b.database.Preload(clause.Associations).Order("saved_at asc").Where("xor = ?", xor(b.currentUserID(), userID)).Find(&dms).Error
+	err = b.database.Preload(clause.Associations).Order("saved_at asc").Where("xor = ?", xor(b.currentUserID(), userID)).Find(&dms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -1215,6 +1253,7 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 
 	// Create the initial state for the UI
 	return InitialState{
+		Users:                  chatUsers,
 		DirectMessages:         exportedDMs,
 		UpdateDMRetentions:     exportedUpdateDMRetentions,
 		UpdateDMClearHistories: exportedUpdateDMClearHistories,
