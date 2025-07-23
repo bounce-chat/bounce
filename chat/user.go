@@ -18,6 +18,7 @@ type user struct {
 	Name                       string
 	Images                     string
 	Profile                    bool  `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
+	OpenDM                     bool  `json:"-" msgpack:"-"`
 	Retention                  int64 `json:"-" msgpack:"-"`
 	ClearBefore                int64 `json:"-" msgpack:"-"`
 	MutedUntil                 int64 `json:"-" msgpack:"-"`
@@ -157,6 +158,17 @@ func (b *Bounce) blockedGroups() []uuid.UUID {
 	return blocked
 }
 
+func (b *Bounce) SetOpenDM(userID uuid.UUID, status bool) {
+	err := b.database.Table("users").Where("id = ?", userID).Update("open_dm", status).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"user_id": userID,
+			"error":   err.Error(),
+			"status":  status,
+		}).Warn("error setting user open DM")
+	}
+}
+
 func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string) (uuid.UUID, uuid.UUID, error) {
 	newID := uuid.New()
 	iconID := uuid.Nil
@@ -180,6 +192,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		ID:      newID,
 		Name:    profileName,
 		Profile: true,
+		OpenDM:  true,
 		Devices: []device{
 			d,
 		},

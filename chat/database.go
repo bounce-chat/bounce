@@ -310,6 +310,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			Name:   u.Name,
 			Images: imageHistory,
 			State: DMState{
+				Open:                           u.OpenDM,
 				Retention:                      u.Retention,
 				MutedUntil:                     u.MutedUntil,
 				OverrideReadReceiptSetting:     u.ReadReceiptsOverridden,
@@ -994,5 +995,231 @@ func (b *Bounce) GetInitialState() InitialState {
 		UpdateUserUpdateNames:                  exportedUpdateUserUpdateNames,
 		UpdateUserUpdateImages:                 exportedUpdateUserUpdateImages,
 		FileProgress:                           fileProgress,
+	}
+}
+
+// Get all structures that could be threaded in a direct message
+func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
+	// Load all direct messages
+	dms := []directMessage{}
+	err := b.database.Preload(clause.Associations).Order("saved_at asc").Where("xor = ?", xor(b.currentUserID(), userID)).Find(&dms).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up direct messages")
+	}
+
+	dmRRs := []readReceipt{}
+	dmRRmap := map[uuid.UUID][]ReadReceipt{}
+	err = b.database.Where("target_type = ? AND destination = ?", typeDirectMessage, userID).Find(&dmRRs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error looking up read receipts")
+	}
+	for _, rr := range dmRRs {
+		dmRRmap[rr.Target] = append(
+			dmRRmap[rr.Target],
+			ReadReceipt{
+				ID:     rr.ID,
+				Actor:  rr.Actor,
+				Target: rr.Target,
+			},
+		)
+	}
+
+	dmDRs := []deliveryRecord{}
+	dmDRmap := map[uuid.UUID][]uuid.UUID{}
+	err = b.database.Where("frame_type = ?", typeDirectMessage).Find(&dmDRs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error looking up delivery records")
+	}
+	for _, dr := range dmDRs {
+		dev, ok := b.getDeviceFromAddress(dr.Destination)
+		if ok {
+			dmDRmap[dr.FrameID] = append(
+				dmDRmap[dr.FrameID],
+				dev.UserID,
+			)
+		}
+	}
+
+	fileProgress := []FileProgress{}
+	exportedDMs := []DirectMessage{}
+	for _, dm := range dms {
+		readReceipts, ok := dmRRmap[dm.ID]
+		if !ok {
+			readReceipts = []ReadReceipt{}
+		}
+		deliveredTo, ok := dmDRmap[dm.ID]
+		if !ok {
+			deliveredTo = []uuid.UUID{}
+			if !dm.Undeliverable {
+				go b.checkIfDirectMessageUndeliverableAt(time.Unix(dm.WrittenAt, 0).Add(undeliverableAfter).Unix(), dm.ID)
+			}
+		}
+
+		uiImageAttachments := []ImageAttachment{}
+		for _, ia := range dm.ImageAttachments {
+			uiImageAttachments = append(uiImageAttachments, ImageAttachment{
+				ID:       ia.FileID,
+				Name:     ia.Name,
+				Size:     ia.Size,
+				Width:    ia.Width,
+				Height:   ia.Height,
+				BlurHash: ia.BlurHash,
+			})
+		}
+		uiFileAttachments := []FileAttachment{}
+		for _, fa := range dm.FileAttachments {
+			uiFileAttachments = append(uiFileAttachments, FileAttachment{
+				ID:   fa.FileID,
+				Name: fa.Name,
+				Size: fa.Size,
+			})
+		}
+
+		var pendingFiles []file
+		err = b.database.Where("downloaded = ? AND wanted = ? AND size > ? AND attached_to = ?", false, true, EmbeddedFileLimit, dm.ID).Find(&pendingFiles).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up files in progress")
+		}
+		for _, f := range pendingFiles {
+			downloadedSize := int64(0)
+
+			var chunks []chunk
+			err = b.database.Where("file_id = ?", f.ID).Find(&chunks).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up chunks")
+			}
+
+			for _, c := range chunks {
+				if c.Downloaded {
+					if c.Index == len(chunks)-1 {
+						// The last chunk might be smaller than the chunk size
+						downloadedSize += int64(f.Size % int64(f.ChunkSize))
+					} else {
+						downloadedSize += int64(f.ChunkSize)
+					}
+				}
+			}
+
+			fileDataDownloaded[f.ID] = downloadedSize
+			fileProgress = append(fileProgress, FileProgress{ID: f.ID, Progress: float64(downloadedSize) / float64(f.Size)})
+		}
+
+		exportedDMs = append(
+			exportedDMs,
+			DirectMessage{
+				ID:               dm.ID,
+				Author:           dm.Author,
+				Thread:           dm.getDestination(b.currentUserID()),
+				WrittenAt:        dm.WrittenAt,
+				SavedAt:          dm.SavedAt,
+				ExpiresAt:        dm.DeleteAt,
+				Text:             dm.Text,
+				ImageAttachments: uiImageAttachments,
+				FileAttachments:  uiFileAttachments,
+				Seen:             dm.Seen,
+				Undeliverable:    dm.Undeliverable,
+				ReadReceipts:     readReceipts,
+				DeliveredTo:      deliveredTo,
+			},
+		)
+	}
+
+	udms := []updateDM{}
+	err = b.database.Order("timestamp asc").Where("target = ?", xor(b.currentUserID(), userID)).Find(&udms).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up all update DMs")
+	}
+	exportedUpdateDMRetentions := []UpdateDMRetention{}
+	exportedUpdateDMClearHistories := []UpdateDMClearHistory{}
+	for _, udm := range udms {
+		switch udm.Type {
+		case updateDMTypeChangeRetention:
+			exportedUpdateDMRetentions = append(
+				exportedUpdateDMRetentions,
+				UpdateDMRetention{
+					ID:        udm.ID,
+					Thread:    xor(udm.Target, b.currentUserID()),
+					Actor:     udm.Actor,
+					Timestamp: udm.Timestamp,
+					Seen:      udm.Seen,
+					Retention: int64(binary.LittleEndian.Uint64(udm.Data)),
+				},
+			)
+		case updateDMTypeSetClearBefore:
+			exportedUpdateDMClearHistories = append(
+				exportedUpdateDMClearHistories,
+				UpdateDMClearHistory{
+					ID:        udm.ID,
+					Thread:    xor(udm.Target, b.currentUserID()),
+					Actor:     udm.Actor,
+					Timestamp: udm.Timestamp,
+					Seen:      udm.Seen,
+					ClearTime: int64(binary.LittleEndian.Uint64(udm.Data)),
+				},
+			)
+		}
+	}
+
+	// Load all update users
+	uus := []updateUser{}
+	err = b.database.Order("timestamp asc").Where("target = ? OR target = ?", b.currentUserID(), userID).Find(&uus).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up all update users")
+	}
+	exportedUpdateUserUpdateNames := []UpdateUserUpdateName{}
+	exportedUpdateUserUpdateImages := []UpdateUserUpdateImage{}
+	for _, uu := range uus {
+		switch uu.Type {
+		case updateUserTypeUpdateName:
+			exportedUpdateUserUpdateNames = append(
+				exportedUpdateUserUpdateNames,
+				UpdateUserUpdateName{
+					ID:        uu.ID,
+					User:      uu.Target,
+					Name:      string(uu.Data),
+					OldName:   string(uu.PreviousData),
+					Timestamp: uu.Timestamp,
+				},
+			)
+		case updateUserTypeUpdateImage:
+			exportedUpdateUserUpdateImages = append(
+				exportedUpdateUserUpdateImages,
+				UpdateUserUpdateImage{
+					ID:        uu.ID,
+					User:      uu.Target,
+					Timestamp: uu.Timestamp,
+				},
+			)
+		default:
+			log.WithFields(log.Fields{
+				"id":      uu.ID,
+				"type":    uu.Type,
+				"user_id": uu.Target,
+			}).Warn("unsupported update user type")
+		}
+	}
+
+	// Create the initial state for the UI
+	return InitialState{
+		DirectMessages:         exportedDMs,
+		UpdateDMRetentions:     exportedUpdateDMRetentions,
+		UpdateDMClearHistories: exportedUpdateDMClearHistories,
+		UpdateUserUpdateNames:  exportedUpdateUserUpdateNames,
+		UpdateUserUpdateImages: exportedUpdateUserUpdateImages,
+		FileProgress:           fileProgress,
 	}
 }

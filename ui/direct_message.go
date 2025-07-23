@@ -476,6 +476,20 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		ui.showDialog(confirmClearHistory, dialogCleanup)
 	})
 
+	hideThreadButton := widget.NewButton("Hide", func() {
+		ui.bounce.SetOpenDM(dm.user.id, false)
+		ui.threads.remove(dm.user.id)
+		ui.containers.chat.Objects = []fyne.CanvasObject{ui.containers.defaultContainer}
+		ui.containers.chat.Refresh()
+		ui.state.activeThread = uuid.Nil
+		ui.refreshThreadOrder()
+		if fyne.CurrentDevice().IsMobile() {
+			ui.mobileBack()
+		} else {
+			ui.showMainContainer()
+		}
+	})
+
 	//
 	// Save and Cancel buttons
 	//
@@ -592,7 +606,11 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		dm.notificationsEnabledCheck,
 		widget.NewLabel("Disappearing Messages"),
 		dm.retentionSelection,
-		container.NewHBox(clearHistoryButton),
+		container.NewHBox(
+			clearHistoryButton,
+			hideThreadButton,
+			// TODO: block user button
+		),
 		widget.NewAccordion(
 			&widget.AccordionItem{
 				Title: "Advanced Options",

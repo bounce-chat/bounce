@@ -31,6 +31,7 @@ type Device struct {
 }
 
 type DMState struct {
+	Open                           bool
 	Retention                      int64
 	MutedUntil                     int64
 	OverrideReadReceiptSetting     bool

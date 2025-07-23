@@ -28,18 +28,14 @@ var allowedCatchUpFrames = map[uint16]bool{
 	typeChunkOffer:     true,
 }
 
-//
 // A frame contains the ID, type, and marshalled payload of any other frame
-//
 type frame struct {
 	ID      uuid.UUID
 	Type    uint16
 	Payload []byte
 }
 
-//
 // A catch up is a frame that is used to transport a set of frames that are chronologically ordered
-//
 type catchUp struct {
 	Frames         []frame
 	broadcastables sortableBroadcastables

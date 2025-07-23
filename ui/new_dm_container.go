@@ -71,9 +71,9 @@ func (ui *ui) refreshAllUsersDMLinks() {
 				u.getName(),
 				false,
 				func() {
-
 					dm, ok := ui.threads.getDM(u.id)
 					if !ok {
+						ui.bounce.SetOpenDM(u.id, true)
 						ui.NewDirectMessage(chat.User{
 							ID:   u.id,
 							Name: u.getName(),
@@ -81,6 +81,55 @@ func (ui *ui) refreshAllUsersDMLinks() {
 						dm, ok = ui.threads.getDM(u.id)
 						if !ok {
 							log.Fatal("DM doesn't exist immediately after creation")
+						}
+
+						state := ui.bounce.GetDMHistory(u.id)
+						tis := []*threadItem{}
+						for _, dm := range state.DirectMessages {
+							dmti, err := ui.newDirectMessage(dm)
+							if err != nil {
+								log.Error(err.Error())
+							} else {
+								tis = append(tis, dmti)
+							}
+						}
+						for _, udmr := range state.UpdateDMRetentions {
+							udmrItem, err := ui.newUpdateDMRetention(udmr)
+							if err != nil {
+								log.Error(err.Error())
+							} else {
+								tis = append(tis, udmrItem)
+							}
+						}
+
+						for _, udmch := range state.UpdateDMClearHistories {
+							udmchItem, err := ui.newUpdateDMClearHistory(udmch)
+							if err != nil {
+								log.Error(err.Error())
+							} else {
+								tis = append(tis, udmchItem)
+							}
+						}
+						for _, uuun := range state.UpdateUserUpdateNames {
+							uuunItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
+							if err != nil {
+								log.Error(err.Error())
+							} else {
+								tis = append(tis, uuunItem)
+							}
+						}
+						for _, uuui := range state.UpdateUserUpdateImages {
+							uuuiItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
+							if err != nil {
+								log.Error(err.Error())
+							} else {
+								tis = append(tis, uuuiItem)
+							}
+						}
+						ui.populateInitialItems(dm, tis)
+						ui.refreshThreadOrder()
+						for _, fp := range state.FileProgress {
+							ui.FileDownloadProgress(fp.ID, fp.Progress)
 						}
 					}
 

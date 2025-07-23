@@ -15,10 +15,8 @@ import (
 
 var handleAddUsersMutex sync.Mutex
 
-//
 // An addUser frame contains proof that two users became friends, where one of the users is us.  It is created as part
 // of the final step in adding a user over the wire.
-//
 type addUser struct {
 	ID                 uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Xor                uuid.UUID
@@ -322,6 +320,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 	// Save the new user
 	if userIsNew {
 		// Save this new user and all of their devices
+		counterparty.OpenDM = true
 		err = b.database.Create(&counterparty).Error
 		if err != nil {
 			log.WithFields(log.Fields{

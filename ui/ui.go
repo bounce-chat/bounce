@@ -64,6 +64,7 @@ type widgets struct {
 	settings              *settings
 	newDM                 *newDM
 	imageViewer           *imageViewer
+	manageUsers           *manageUsers
 }
 
 type containers struct {
@@ -93,6 +94,7 @@ type views struct {
 	newGroup          *fyne.Container
 	newDM             *fyne.Container
 	mobileMenu        *fyne.Container
+	manageUsers       *fyne.Container
 }
 
 type state struct {
@@ -123,6 +125,7 @@ func Main() {
 			focused:                  true,
 			networkState:             networkStateStarting,
 			pausedGroupNotifications: make(map[uuid.UUID]bool),
+			viewStack:                []view{},
 		},
 	}
 	ui.build()
@@ -149,13 +152,6 @@ func (ui *ui) build() {
 	} else {
 		ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
 	}
-
-	//
-	// Initialize types that require it
-	//
-	ui.widgets.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-	ui.widgets.networkOfflineWarning.Show()
-	ui.state.viewStack = []view{}
 
 	//
 	// Define the main window
@@ -226,6 +222,8 @@ func (ui *ui) build() {
 }
 
 func (ui *ui) buildWidgets() {
+	ui.widgets.networkOfflineWarning = widget.NewLabelWithStyle("network is starting...", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+
 	ui.buildMenu()
 	ui.buildNewSyncDeviceWidgets()
 	ui.buildNewInstall()
@@ -243,6 +241,7 @@ func (ui *ui) buildWidgets() {
 	ui.buildMainContainer()
 	ui.buildMobileMenu()
 	ui.buildImageViewer()
+	ui.buildManageUsers()
 }
 
 func (ui *ui) askToIgnoreBatteryOptimizations() {
@@ -323,12 +322,27 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 
 		threadItems := make(map[uuid.UUID]threadItems)
 
-		initialDMStates := map[uuid.UUID]chat.DMState{}
+		if state.Profile.State.Open {
+			ui.NewDirectMessage(chat.User{
+				ID:     state.Profile.ID,
+				Name:   state.Profile.Name,
+				Images: state.Profile.Images,
+				State:  state.Profile.State,
+			})
+		}
 		for _, u := range state.Users {
 			uiUser := makeUser(u.ID, u.Name)
 			uiUser.images = u.Images
 			ui.users.add(uiUser)
-			initialDMStates[u.ID] = u.State
+
+			if u.State.Open {
+				ui.NewDirectMessage(chat.User{
+					ID:     u.ID,
+					Name:   u.Name,
+					Images: u.Images,
+					State:  u.State,
+				})
+			}
 		}
 
 		for _, g := range state.Groups {
@@ -352,7 +366,10 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 
 		for _, dm := range state.DirectMessages {
-			ui.createDMIfNeeded(dm.Thread, initialDMStates)
+			_, ok := ui.threads.getDM(dm.Thread)
+			if !ok {
+				continue
+			}
 			dmti, err := ui.newDirectMessage(dm)
 			if err != nil {
 				log.Error(err.Error())
@@ -361,7 +378,6 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 
 		for _, udmr := range state.UpdateDMRetentions {
-			ui.createDMIfNeeded(udmr.Thread, initialDMStates)
 			udmrItem, err := ui.newUpdateDMRetention(udmr)
 			if err != nil {
 				log.Error(err.Error())
@@ -370,7 +386,6 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 
 		for _, udmch := range state.UpdateDMClearHistories {
-			ui.createDMIfNeeded(udmch.Thread, initialDMStates)
 			udmchItem, err := ui.newUpdateDMClearHistory(udmch)
 			if err != nil {
 				log.Error(err.Error())
@@ -633,30 +648,6 @@ func chatContainerSizeAtStartup() fyne.Size {
 	return fyne.Size{
 		Width:  defaultChatHistoryWidth,
 		Height: defaultChatHistoryHeight,
-	}
-}
-
-func (ui *ui) createDMIfNeeded(id uuid.UUID, initialStates map[uuid.UUID]chat.DMState) {
-	initialState, _ := initialStates[id]
-
-	_, ok := ui.threads.getDM(id)
-	if !ok {
-		u, userExists := ui.users.get(id)
-		if !userExists {
-			log.Fatal("dm user not known to UI")
-		}
-
-		ui.NewDirectMessage(chat.User{
-			ID:     u.id,
-			Name:   u.getName(),
-			Images: u.images,
-			State:  initialState,
-		})
-
-		_, ok = ui.threads.getDM(id)
-		if !ok {
-			log.Fatal("DM doesn't exist immediately after creation")
-		}
 	}
 }
 
