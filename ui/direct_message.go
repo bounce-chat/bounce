@@ -484,7 +484,8 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		ui.state.activeThread = uuid.Nil
 		ui.refreshThreadOrder()
 		if fyne.CurrentDevice().IsMobile() {
-			ui.mobileBack()
+			ui.mobileBack() // Exit the edit DM menu
+			ui.mobileBack() // Exit the thread back to all threads
 		} else {
 			ui.showMainContainer()
 		}
