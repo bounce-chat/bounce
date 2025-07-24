@@ -158,17 +158,6 @@ func (b *Bounce) blockedGroups() []uuid.UUID {
 	return blocked
 }
 
-func (b *Bounce) SetOpenDM(userID uuid.UUID, status bool) {
-	err := b.database.Table("users").Where("id = ?", userID).Update("open_dm", status).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"user_id": userID,
-			"error":   err.Error(),
-			"status":  status,
-		}).Warn("error setting user open DM")
-	}
-}
-
 func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string) (uuid.UUID, uuid.UUID, error) {
 	newID := uuid.New()
 	iconID := uuid.Nil

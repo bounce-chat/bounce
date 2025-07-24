@@ -18,12 +18,14 @@ const updateDMTypeChangeRetention = uint16(1)
 const updateDMTypeSetClearBefore = uint16(2)
 const updateDMTypeSetReadReceipts = uint16(3)
 const updateDMTypeSetTypingIndicators = uint16(4)
+const updateDMTypeSetOpen = uint16(5)
 
 var errUpdateDMWithUnknownType = errors.New("update DM has unknown update type")
 var errInvalidPayloadLength = errors.New("invalid payload length")
 var errInvalidOverriddenValue = errors.New("invalid value for overridden byte")
 var errInvalidEnabledValue = errors.New("invalid value for enabled byte")
 var errSyncScopedMessageFromNonSyncSource = errors.New("sync scoped frame can only come from sync device")
+var errInvalidSetOpenValue = errors.New("invalid value for setting DM open state")
 
 const readReceiptsDefaultValue = 0x00
 const readReceiptsOverriddenValue = 0x01
@@ -33,15 +35,15 @@ const typingIndicatorsDefaultValue = 0x00
 const typingIndicatorsOverriddenValue = 0x01
 const typingIndicatorsEnabledValue = 0x00
 const typingIndicatorsDisabledValue = 0x01
+const dmClosed = 0x00
+const dmOpen = 0x01
 
 var updateDMMutex sync.Mutex
 
-//
 // An updateDM frame changes the settings of a direct message thread, such as retention or notification settings.
 // Some settings, like retention, must be observed by both participants of the DM, where others like notification
 // settings are only sent to sync devices.  The data field of the structure contains different data depending on
 // the type of update.
-//
 type updateDM struct {
 	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Actor        uuid.UUID
@@ -74,7 +76,7 @@ func (ud *updateDM) getID() uuid.UUID {
 }
 
 func (ud *updateDM) getScope(_ uuid.UUID) int {
-	if ud.Type == updateDMTypeChangeMutedUntil || ud.Type == updateDMTypeSetReadReceipts || ud.Type == updateDMTypeSetTypingIndicators || ud.Target == uuid.Nil {
+	if ud.Type == updateDMTypeChangeMutedUntil || ud.Type == updateDMTypeSetReadReceipts || ud.Type == updateDMTypeSetTypingIndicators || ud.Type == updateDMTypeSetOpen || ud.Target == uuid.Nil {
 		return scopeSync
 	}
 
@@ -134,6 +136,13 @@ func (ud *updateDM) validPayload() error {
 		}
 		if !(ud.Data[1] == typingIndicatorsEnabledValue || ud.Data[1] == typingIndicatorsDisabledValue) {
 			return errInvalidEnabledValue
+		}
+	case updateDMTypeSetOpen:
+		if len(ud.Data) != 1 {
+			return errInvalidPayloadLength
+		}
+		if !(ud.Data[0] == dmOpen || ud.Data[0] == dmClosed) {
+			return errInvalidSetOpenValue
 		}
 	}
 
@@ -232,6 +241,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 	readReceiptsEnabled := true
 	typingIndicatorsOverridden := false
 	typingIndicatorsEnabled := true
+	open := true // TODO: should default to false for users met through groups, or we need to excplicity set it to open this way with each new user and default to false
 
 	// Find all updates
 	uds := []updateDM{}
@@ -266,6 +276,8 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 		case updateDMTypeSetTypingIndicators:
 			typingIndicatorsOverridden = ud.Data[0] == typingIndicatorsOverriddenValue
 			typingIndicatorsEnabled = ud.Data[1] == typingIndicatorsEnabledValue
+		case updateDMTypeSetOpen:
+			open = ud.Data[0] == dmOpen
 		default:
 			log.WithFields(log.Fields{
 				"type": ud.Type,
@@ -275,6 +287,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 
 	// Set the values in the database
 	err = b.database.Model(&user{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"open_dm":                      open,
 		"retention":                    retention,
 		"muted_until":                  mutedUntil,
 		"clear_before":                 clearBefore,
@@ -301,6 +314,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 	b.ui.SetDMState(
 		userID,
 		DMState{
+			Open:                           open,
 			Retention:                      retention,
 			MutedUntil:                     mutedUntil,
 			OverrideReadReceiptSetting:     readReceiptsOverridden,
@@ -368,6 +382,8 @@ func (b *Bounce) saveAndDisplayUpdateDM(ud updateDM) error {
 		// No UI status changes for read receipt settings
 	case updateDMTypeSetTypingIndicators:
 		// No UI status changes for read receipt settings
+	case updateDMTypeSetOpen:
+		// No UI status changes for opening and closing DMs
 	default:
 		log.WithFields(log.Fields{
 			"type": ud.Type,
@@ -518,6 +534,24 @@ func (b *Bounce) SetDMTypingIndicatorSettings(userID uuid.UUID, override bool, e
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
 		Type:      updateDMTypeSetTypingIndicators,
+		Data:      payload,
+	})
+}
+
+func (b *Bounce) SetOpenDM(userID uuid.UUID, open bool) error {
+	payload := []byte{}
+	if open {
+		payload = append(payload, dmOpen)
+	} else {
+		payload = append(payload, dmClosed)
+	}
+
+	return b.applyAndBroadcastUpdateDM(updateDM{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    xor(userID, b.currentUserID()),
+		Timestamp: time.Now().Unix(),
+		Type:      updateDMTypeSetOpen,
 		Data:      payload,
 	})
 }

@@ -127,10 +127,6 @@ func (ui *ui) DMTypingIndicatorSettingsSet(userID uuid.UUID, override, enabled b
 }
 
 func (ui *ui) NewDirectMessage(bounceUser chat.User) {
-	ui.buildNewDirectMessage(bounceUser)
-}
-
-func (ui *ui) buildNewDirectMessage(bounceUser chat.User) {
 	user, exists := ui.users.get(bounceUser.ID)
 	if !exists {
 		log.WithFields(log.Fields{
@@ -477,7 +473,6 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 	})
 
 	hideThreadButton := widget.NewButton("Hide", func() {
-		ui.bounce.SetOpenDM(dm.user.id, false)
 		ui.threads.remove(dm.user.id)
 		ui.containers.chat.Objects = []fyne.CanvasObject{ui.containers.defaultContainer}
 		ui.containers.chat.Refresh()
@@ -489,6 +484,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		} else {
 			ui.showMainContainer()
 		}
+		ui.bounce.SetOpenDM(dm.user.id, false)
 	})
 
 	//
@@ -635,16 +631,41 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 }
 
 func (ui *ui) SetDMState(userID uuid.UUID, state chat.DMState) {
-	// Find the thread
-	dm, ok := ui.threads.getDM(userID)
+	// Find the user and thread if it already opened
+	u, ok := ui.users.get(userID)
 	if !ok {
 		log.WithFields(log.Fields{
 			"user_id": userID,
-		}).Error("cannot set state of unknown dm")
+		}).Error("cannot set state of DM for unknown user")
 		return
+	}
+	dm, alreadyOpen := ui.threads.getDM(userID)
+	if !alreadyOpen {
+		if !state.Open {
+			// The DM isn't opened and we've already closed it
+			return
+		}
 	}
 
 	fyne.DoAndWait(func() {
+		if state.Open && !alreadyOpen {
+			dm = ui.openAndPopulateDM(u)
+			if dm == nil {
+				log.Error("cannot create dm")
+				return
+			}
+			ui.refreshThreadOrder()
+		} else if !state.Open && alreadyOpen {
+			ui.threads.remove(dm.user.id)
+			if ui.state.activeThread == dm.user.id {
+				ui.containers.chat.Objects = []fyne.CanvasObject{ui.containers.defaultContainer}
+				ui.containers.chat.Refresh()
+				ui.state.activeThread = uuid.Nil
+			}
+			ui.refreshThreadOrder()
+			return
+		}
+
 		// Update retention
 		dm.retention = state.Retention
 		newRetentionName := getRetentionName(dm.retention)
