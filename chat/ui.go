@@ -5,10 +5,11 @@ import (
 )
 
 type User struct {
-	ID     uuid.UUID
-	Name   string
-	Images []uuid.UUID
-	State  DMState
+	ID               uuid.UUID
+	Name             string
+	Images           []uuid.UUID
+	State            DMState
+	IntroductionTime int64
 }
 
 type Settings struct {

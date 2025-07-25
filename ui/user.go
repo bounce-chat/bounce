@@ -12,10 +12,11 @@ import (
 )
 
 type user struct {
-	id       uuid.UUID
-	name     binding.String
-	initials binding.String
-	images   []uuid.UUID
+	id               uuid.UUID
+	name             binding.String
+	initials         binding.String
+	images           []uuid.UUID
+	introductionTime int64
 }
 
 func makeUser(id uuid.UUID, name string) *user {

@@ -333,6 +333,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		for _, u := range state.Users {
 			uiUser := makeUser(u.ID, u.Name)
 			uiUser.images = u.Images
+			uiUser.introductionTime = u.IntroductionTime
 			ui.users.add(uiUser)
 
 			if u.State.Open {
@@ -536,6 +537,9 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 							threadItems[t.id] = append(threadItems[t.id], uuunItem)
 						}
 					case *directMessage:
+						if uuun.Timestamp < t.user.introductionTime {
+							return
+						}
 						uuunItem, err := ui.userChangedName(uuun.ID, uuun.User, uuun.OldName, uuun.Name, uuun.Timestamp)
 						if err != nil {
 							log.Error(err.Error())
@@ -582,6 +586,9 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 							threadItems[t.id] = append(threadItems[t.id], uuuiItem)
 						}
 					case *directMessage:
+						if uuui.Timestamp < t.user.introductionTime {
+							return
+						}
 						uuuiItem, err := ui.userChangedImage(uuui.ID, uuui.User, uuui.Timestamp)
 						if err != nil {
 							log.Error(err.Error())

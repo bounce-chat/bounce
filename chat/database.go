@@ -306,9 +306,10 @@ func (b *Bounce) GetInitialState() InitialState {
 			}
 		}
 		chatUsers = append(chatUsers, User{
-			ID:     u.ID,
-			Name:   u.Name,
-			Images: imageHistory,
+			ID:               u.ID,
+			Name:             u.Name,
+			Images:           imageHistory,
+			IntroductionTime: u.IntroductionTime,
 			State: DMState{
 				Open:                           u.OpenDM,
 				Retention:                      u.Retention,
@@ -1024,9 +1025,10 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 		}
 	}
 	chatUsers = append(chatUsers, User{
-		ID:     u.ID,
-		Name:   u.Name,
-		Images: imageHistory,
+		ID:               u.ID,
+		Name:             u.Name,
+		Images:           imageHistory,
+		IntroductionTime: u.IntroductionTime,
 		State: DMState{
 			Open:                           u.OpenDM,
 			Retention:                      u.Retention,
@@ -1212,7 +1214,7 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 
 	// Load all update users
 	uus := []updateUser{}
-	err = b.database.Order("timestamp asc").Where("target = ? OR target = ?", b.currentUserID(), userID).Find(&uus).Error
+	err = b.database.Order("timestamp asc").Where("timestamp >= ? AND (target = ? OR target = ?)", u.IntroductionTime, b.currentUserID(), userID).Find(&uus).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
