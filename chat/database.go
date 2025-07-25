@@ -1011,23 +1011,10 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 			"user_id": userID,
 		}).Fatal("database error looking up user")
 	}
-	imageHistory := []uuid.UUID{}
-	if len(u.Images) > 0 {
-		for _, imageIDString := range strings.Split(u.Images, ",") {
-			imageID, err := uuid.Parse(imageIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"images": u.Images,
-				}).Fatal("invalid UUID in user images list")
-			}
-			imageHistory = append(imageHistory, imageID)
-		}
-	}
 	chatUsers = append(chatUsers, User{
 		ID:               u.ID,
 		Name:             u.Name,
-		Images:           imageHistory,
+		Images:           u.images(),
 		IntroductionTime: u.IntroductionTime,
 		State: DMState{
 			Open:                           u.OpenDM,

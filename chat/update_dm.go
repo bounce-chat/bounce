@@ -19,6 +19,7 @@ const updateDMTypeSetClearBefore = uint16(2)
 const updateDMTypeSetReadReceipts = uint16(3)
 const updateDMTypeSetTypingIndicators = uint16(4)
 const updateDMTypeSetOpen = uint16(5)
+const updateDMTypeSetAlias = uint16(6)
 
 var errUpdateDMWithUnknownType = errors.New("update DM has unknown update type")
 var errInvalidPayloadLength = errors.New("invalid payload length")
@@ -76,7 +77,12 @@ func (ud *updateDM) getID() uuid.UUID {
 }
 
 func (ud *updateDM) getScope(_ uuid.UUID) int {
-	if ud.Type == updateDMTypeChangeMutedUntil || ud.Type == updateDMTypeSetReadReceipts || ud.Type == updateDMTypeSetTypingIndicators || ud.Type == updateDMTypeSetOpen || ud.Target == uuid.Nil {
+	if ud.Type == updateDMTypeChangeMutedUntil ||
+		ud.Type == updateDMTypeSetReadReceipts ||
+		ud.Type == updateDMTypeSetTypingIndicators ||
+		ud.Type == updateDMTypeSetOpen ||
+		ud.Type == updateDMTypeSetAlias ||
+		ud.Target == uuid.Nil {
 		return scopeSync
 	}
 
@@ -143,6 +149,10 @@ func (ud *updateDM) validPayload() error {
 		}
 		if !(ud.Data[0] == dmOpen || ud.Data[0] == dmClosed) {
 			return errInvalidSetOpenValue
+		}
+	case updateDMTypeSetAlias:
+		if !validUserName(string(ud.Data)) {
+			return errInvalidUserName
 		}
 	}
 
@@ -233,6 +243,23 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 }
 
 func (b *Bounce) updateDMState(userID uuid.UUID) {
+	var u user
+	err := b.database.First(&u, "id = ?", userID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+				"error":   err.Error(),
+			}).Error("user not found when updating DM state")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+				"error":   err.Error(),
+			}).Fatal("database error looking up user")
+		}
+	}
+
 	// Set the initial values for the DM
 	retention := int64(0)
 	mutedUntil := int64(0)
@@ -242,10 +269,11 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 	typingIndicatorsOverridden := false
 	typingIndicatorsEnabled := true
 	open := b.dmOpenByDefault(userID)
+	alias := ""
 
 	// Find all updates
 	uds := []updateDM{}
-	err := b.database.Where("target =  ?", xor(userID, b.currentUserID())).Order("timestamp asc").Find(&uds).Error
+	err = b.database.Where("target =  ?", xor(userID, b.currentUserID())).Order("timestamp asc").Find(&uds).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -278,6 +306,8 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 			typingIndicatorsEnabled = ud.Data[1] == typingIndicatorsEnabledValue
 		case updateDMTypeSetOpen:
 			open = ud.Data[0] == dmOpen
+		case updateDMTypeSetAlias:
+			alias = string(ud.Data)
 		default:
 			log.WithFields(log.Fields{
 				"type": ud.Type,
@@ -295,6 +325,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 		"read_receipts_enabled":        readReceiptsEnabled,
 		"typing_indicators_overridden": typingIndicatorsOverridden,
 		"typing_indicators_enabled":    typingIndicatorsEnabled,
+		"alias":                        alias,
 	}).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -323,6 +354,15 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 			TypingIndicatorsEnabled:        typingIndicatorsEnabled,
 		},
 	)
+
+	// Update the user in case the alias or notes changed
+	b.ui.SetUserState(User{
+		ID:               u.ID,
+		Name:             u.Name,
+		IntroductionTime: u.IntroductionTime,
+		Images:           u.images(),
+		Alias:            alias,
+	})
 }
 
 func (b *Bounce) saveAndDisplayUpdateDM(ud updateDM) error {
@@ -369,21 +409,17 @@ func (b *Bounce) saveAndDisplayUpdateDM(ud updateDM) error {
 	case updateDMTypeChangeMutedUntil:
 		// nothing to show in thread
 	case updateDMTypeChangeRetention:
-		err = b.informUIUpdateDMChangeRetention(u, ud)
-		if err != nil {
-			return err
-		}
+		b.informUIUpdateDMChangeRetention(u, ud)
 	case updateDMTypeSetClearBefore:
-		err = b.informUIUpdateDMSetClearBefore(u, ud)
-		if err != nil {
-			return err
-		}
+		b.informUIUpdateDMSetClearBefore(u, ud)
 	case updateDMTypeSetReadReceipts:
 		// No UI status changes for read receipt settings
 	case updateDMTypeSetTypingIndicators:
 		// No UI status changes for read receipt settings
 	case updateDMTypeSetOpen:
 		// No UI status changes for opening and closing DMs
+	case updateDMTypeSetAlias:
+		b.informUIUpdateDMSetAlias(u, ud)
 	default:
 		log.WithFields(log.Fields{
 			"type": ud.Type,
@@ -399,7 +435,7 @@ func (b *Bounce) saveAndDisplayUpdateDM(ud updateDM) error {
 	return nil
 }
 
-func (b *Bounce) informUIUpdateDMChangeRetention(u user, ud updateDM) error {
+func (b *Bounce) informUIUpdateDMChangeRetention(u user, ud updateDM) {
 	// Decode the new retention value
 	retention := int64(binary.LittleEndian.Uint64(ud.Data))
 
@@ -411,11 +447,9 @@ func (b *Bounce) informUIUpdateDMChangeRetention(u user, ud updateDM) error {
 		Timestamp: ud.Timestamp,
 		Retention: retention,
 	})
-
-	return nil
 }
 
-func (b *Bounce) informUIUpdateDMSetClearBefore(u user, ud updateDM) error {
+func (b *Bounce) informUIUpdateDMSetClearBefore(u user, ud updateDM) {
 	// Decode the new retention value
 	clearBefore := int64(binary.LittleEndian.Uint64(ud.Data))
 
@@ -444,8 +478,15 @@ func (b *Bounce) informUIUpdateDMSetClearBefore(u user, ud updateDM) error {
 		Timestamp: ud.Timestamp,
 		ClearTime: clearBefore,
 	})
+}
 
-	return nil
+func (b *Bounce) informUIUpdateDMSetAlias(u user, ud updateDM) {
+	b.ui.UserAliased(UpdateDMSetAlias{
+		ID:        ud.ID,
+		User:      ud.Target,
+		Timestamp: ud.Timestamp,
+		Alias:     string(ud.Data),
+	})
 }
 
 func (b *Bounce) SetDMMutedUntil(userID uuid.UUID, mutedUntil int64) error {
@@ -553,6 +594,17 @@ func (b *Bounce) SetOpenDM(userID uuid.UUID, open bool) error {
 		Timestamp: time.Now().Unix(),
 		Type:      updateDMTypeSetOpen,
 		Data:      payload,
+	})
+}
+
+func (b *Bounce) AliasUser(userID uuid.UUID, alias string) error {
+	return b.applyAndBroadcastUpdateDM(updateDM{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    xor(userID, b.currentUserID()),
+		Timestamp: time.Now().Unix(),
+		Type:      updateDMTypeSetAlias,
+		Data:      []byte(alias),
 	})
 }
 

@@ -120,6 +120,8 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 		}
 	})
 
+	// TODO: set the alias
+
 	// Re-add user to any user stores they are in, in order to regenerate ngram search tokens
 	allUserStoresMutex.Lock()
 	for _, us := range allUserStores {
@@ -243,6 +245,48 @@ func (ui *ui) UserImageUpdated(uuui chat.UpdateUserUpdateImage) {
 						log.WithFields(log.Fields{
 							"error": err.Error(),
 						}).Error("error creating thread item for user image change")
+					} else {
+						fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
+					}
+				}
+			}
+		})
+	}
+}
+
+func (ui *ui) UserAliased(udsa chat.UpdateDMSetAlias) {
+	if udsa.User == ui.state.profile.id {
+		ui.threads.rangeFunc(func(t thread) {
+			ti, err := ui.userAliasSet(udsa)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error creating thread item for user alias set")
+			} else {
+				fyne.DoAndWait(func() { ui.appendThreadItem(t, ti) })
+			}
+		})
+	} else {
+		dm, ok := ui.threads.getDM(udsa.User)
+		if ok {
+			ti, err := ui.userAliasSet(udsa)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error creating thread item for user alias set")
+			} else {
+				fyne.DoAndWait(func() { ui.appendThreadItem(dm, ti) })
+			}
+		}
+
+		ui.threads.rangeFunc(func(t thread) {
+			if g, ok := t.(*group); ok {
+				if g.users.contains(udsa.User) {
+					ti, err := ui.userAliasSet(udsa)
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Error("error creating thread item for user alias set")
 					} else {
 						fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
 					}

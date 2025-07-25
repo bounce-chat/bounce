@@ -548,6 +548,33 @@ func (ui *ui) newUpdateDMClearHistory(udmch chat.UpdateDMClearHistory) (*threadI
 	return ti, err
 }
 
+func (ui *ui) userAliasSet(udsa chat.UpdateDMSetAlias) (*threadItem, error) {
+	u, ok := ui.users.get(udsa.User)
+	if !ok {
+		log.WithFields(log.Fields{
+			"user_id": udsa.User,
+		}).Error("cannot create alias thread item for unknown user")
+		return &threadItem{}, errUnknownUser
+	}
+
+	changeString := u.getName() + " has been aliased to " + udsa.Alias
+
+	return &threadItem{
+		id: udsa.ID,
+		widgetData: &statusChangeData{
+			id:           udsa.ID,
+			frameType:    chat.TypeUpdateDM,
+			author:       ui.state.profile.id,
+			timestamp:    udsa.Timestamp,
+			changeString: changeString,
+			seen:         true,
+		},
+		setButton:      nil,
+		timestamp:      udsa.Timestamp,
+		dontBumpThread: true,
+	}, nil
+}
+
 func (ui *ui) newUpdateGroupAdminPromoted(ugap chat.UpdateGroupAdminPromoted) (*threadItem, error) {
 	newAdmin, ok := ui.users.get(ugap.UserID)
 	if !ok {

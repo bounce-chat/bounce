@@ -10,6 +10,7 @@ type User struct {
 	Images           []uuid.UUID
 	State            DMState
 	IntroductionTime int64
+	Alias            string
 }
 
 type Settings struct {
@@ -89,6 +90,13 @@ type UpdateDMClearHistory struct {
 	Timestamp int64
 	Seen      bool
 	ClearTime int64
+}
+
+type UpdateDMSetAlias struct {
+	ID        uuid.UUID
+	User      uuid.UUID
+	Timestamp int64
+	Alias     string
 }
 
 type Group struct {
@@ -356,6 +364,7 @@ type UI interface {
 	SetDMState(uuid.UUID, DMState)
 	DMRetentionChanged(UpdateDMRetention)      // The retention settings for a DM have been changed
 	DMChatHistoryCleared(UpdateDMClearHistory) // Display that a user has deleted all past DMs
+	UserAliased(UpdateDMSetAlias)
 
 	// Group chats
 	OpenNewGroupChat(Group)

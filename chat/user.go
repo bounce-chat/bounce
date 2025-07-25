@@ -33,6 +33,7 @@ type user struct {
 	TypingIndicatorsEnabled    bool   `msgpack:"-"`
 	IntroductionMethod         string `msgpack:"-"`
 	IntroductionTime           int64  `msgpack:"-"`
+	Alias                      string `msgpack:"-"`
 	Devices                    []device
 	Groups                     []group          `gorm:"many2many:group_users;" msgpack:"-"`
 	ProfileSettings            *profileSettings `msgpack:"-"`
@@ -48,6 +49,24 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 	u.LastActivity = time.Now().Unix()
 
 	return nil
+}
+
+func (u *user) images() []uuid.UUID {
+	imageHistory := []uuid.UUID{}
+	if len(u.Images) > 0 {
+		for _, imageIDString := range strings.Split(u.Images, ",") {
+			imageID, err := uuid.Parse(imageIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"images": u.Images,
+				}).Fatal("invalid UUID in user images list")
+			}
+			imageHistory = append(imageHistory, imageID)
+		}
+	}
+
+	return imageHistory
 }
 
 func (b *Bounce) currentUser() (user, bool) {
