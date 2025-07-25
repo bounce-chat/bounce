@@ -36,9 +36,9 @@ type chatHistory struct {
 
 	jumpToBottomIcon *clickableImage
 
-	Length     func() int                              `json:"-"`
-	CreateItem func() fyne.CanvasObject                `json:"-"`
-	UpdateItem func(index int, item fyne.CanvasObject) `json:"-"`
+	Length     func() int
+	CreateItem func() fyne.CanvasObject
+	UpdateItem func(index int, item fyne.CanvasObject)
 
 	scroller      *container.Scroll
 	offsetY       float32

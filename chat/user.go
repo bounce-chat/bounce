@@ -21,21 +21,21 @@ type user struct {
 	ID                         uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name                       string
 	Images                     string
-	Profile                    bool   `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
-	OpenDM                     bool   `json:"-" msgpack:"-"`
-	Retention                  int64  `json:"-" msgpack:"-"`
-	ClearBefore                int64  `json:"-" msgpack:"-"`
-	MutedUntil                 int64  `json:"-" msgpack:"-"`
-	LastActivity               int64  `json:"-" msgpack:"-"`
-	ReadReceiptsOverridden     bool   `json:"-" msgpack:"-"`
-	ReadReceiptsEnabled        bool   `json:"-" msgpack:"-"`
-	TypingIndicatorsOverridden bool   `json:"-" msgpack:"-"`
-	TypingIndicatorsEnabled    bool   `json:"-" msgpack:"-"`
-	IntroductionMethod         string `json:"-" msgpack:"-"`
-	IntroductionTime           int64  `json:"-" msgpack:"-"`
+	Profile                    bool   `gorm:"index:,where:profile = true" msgpack:"-"`
+	OpenDM                     bool   `msgpack:"-"`
+	Retention                  int64  `msgpack:"-"`
+	ClearBefore                int64  `msgpack:"-"`
+	MutedUntil                 int64  `msgpack:"-"`
+	LastActivity               int64  `msgpack:"-"`
+	ReadReceiptsOverridden     bool   `msgpack:"-"`
+	ReadReceiptsEnabled        bool   `msgpack:"-"`
+	TypingIndicatorsOverridden bool   `msgpack:"-"`
+	TypingIndicatorsEnabled    bool   `msgpack:"-"`
+	IntroductionMethod         string `msgpack:"-"`
+	IntroductionTime           int64  `msgpack:"-"`
 	Devices                    []device
-	Groups                     []group          `gorm:"many2many:group_users;" json:"-" msgpack:"-"`
-	ProfileSettings            *profileSettings `json:"-" msgpack:"-"`
+	Groups                     []group          `gorm:"many2many:group_users;" msgpack:"-"`
+	ProfileSettings            *profileSettings `msgpack:"-"`
 	payload                    []byte
 	payloadMutex               sync.Mutex
 }

@@ -16,18 +16,16 @@ import (
 
 var handleDevicesMutex sync.Mutex
 
-//
 // A device represents an instance of bounce
-//
 type device struct {
 	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name         string    `json:"-" msgpack:"-"`
-	UserID       uuid.UUID `json:"-"`
-	Address      string    `gorm:"uniqueIndex"`
+	Name         string    `msgpack:"-"`
+	UserID       uuid.UUID
+	Address      string `gorm:"uniqueIndex"`
 	Timestamp    int64
-	LastSeen     int64 `json:"-" msgpack:"-"`
+	LastSeen     int64 `msgpack:"-"`
 	RevokedAt    int64
-	Signature    *introductionSignature `json:",omitempty" gorm:"constraint:OnDelete:CASCADE;"`
+	Signature    *introductionSignature `gorm:"constraint:OnDelete:CASCADE;"`
 	payload      []byte
 	payloadMutex sync.Mutex
 }
