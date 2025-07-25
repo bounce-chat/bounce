@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -321,6 +322,8 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 	if userIsNew {
 		// Save this new user and all of their devices
 		counterparty.OpenDM = true
+		counterparty.IntroductionMethod = userIntroductionAddUser
+		counterparty.IntroductionTime = time.Now().Unix()
 		err = b.database.Create(&counterparty).Error
 		if err != nil {
 			log.WithFields(log.Fields{

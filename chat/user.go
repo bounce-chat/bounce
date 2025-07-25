@@ -13,20 +13,26 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const userIntroductionProfile = "profile"
+const userIntroductionAddUser = "add_user"
+const userIntroductionGroup = "group"
+
 type user struct {
 	ID                         uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name                       string
 	Images                     string
-	Profile                    bool  `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
-	OpenDM                     bool  `json:"-" msgpack:"-"`
-	Retention                  int64 `json:"-" msgpack:"-"`
-	ClearBefore                int64 `json:"-" msgpack:"-"`
-	MutedUntil                 int64 `json:"-" msgpack:"-"`
-	LastActivity               int64 `json:"-" msgpack:"-"`
-	ReadReceiptsOverridden     bool  `json:"-" msgpack:"-"`
-	ReadReceiptsEnabled        bool  `json:"-" msgpack:"-"`
-	TypingIndicatorsOverridden bool  `json:"-" msgpack:"-"`
-	TypingIndicatorsEnabled    bool  `json:"-" msgpack:"-"`
+	Profile                    bool   `gorm:"index:,where:profile = true" json:"-" msgpack:"-"`
+	OpenDM                     bool   `json:"-" msgpack:"-"`
+	Retention                  int64  `json:"-" msgpack:"-"`
+	ClearBefore                int64  `json:"-" msgpack:"-"`
+	MutedUntil                 int64  `json:"-" msgpack:"-"`
+	LastActivity               int64  `json:"-" msgpack:"-"`
+	ReadReceiptsOverridden     bool   `json:"-" msgpack:"-"`
+	ReadReceiptsEnabled        bool   `json:"-" msgpack:"-"`
+	TypingIndicatorsOverridden bool   `json:"-" msgpack:"-"`
+	TypingIndicatorsEnabled    bool   `json:"-" msgpack:"-"`
+	IntroductionMethod         string `json:"-" msgpack:"-"`
+	IntroductionTime           int64  `json:"-" msgpack:"-"`
 	Devices                    []device
 	Groups                     []group          `gorm:"many2many:group_users;" json:"-" msgpack:"-"`
 	ProfileSettings            *profileSettings `json:"-" msgpack:"-"`
@@ -178,10 +184,12 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 	}
 
 	u := &user{
-		ID:      newID,
-		Name:    profileName,
-		Profile: true,
-		OpenDM:  true,
+		ID:                 newID,
+		Name:               profileName,
+		Profile:            true,
+		OpenDM:             true,
+		IntroductionMethod: userIntroductionProfile,
+		IntroductionTime:   time.Now().Unix(),
 		Devices: []device{
 			d,
 		},
@@ -271,6 +279,16 @@ func (b *Bounce) updateLastUserActivity(userID uuid.UUID, timestamp int64) {
 			}).Fatal("database error updating user last activity")
 		}
 	}
+}
+
+func (b *Bounce) dmOpenByDefault(userID uuid.UUID) bool {
+	var u user
+	err := b.database.Select("introduction_method").Where("id = ?", userID).First(&u).Error
+	if err != nil {
+		return false
+	}
+
+	return u.IntroductionMethod != userIntroductionGroup
 }
 
 func validUserName(name string) bool {

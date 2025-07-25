@@ -241,7 +241,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 	readReceiptsEnabled := true
 	typingIndicatorsOverridden := false
 	typingIndicatorsEnabled := true
-	open := true // TODO: should default to false for users met through groups, or we need to excplicity set it to open this way with each new user and default to false
+	open := b.dmOpenByDefault(userID)
 
 	// Find all updates
 	uds := []updateDM{}

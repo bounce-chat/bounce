@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -634,6 +635,8 @@ func (b *Bounce) createNewUserIfNeeded(u user) {
 				}).Fatal("error saving device that belongs to a user being added to a group")
 			}
 		}
+		u.IntroductionMethod = userIntroductionGroup
+		u.IntroductionTime = time.Now().Unix()
 		err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
 		if err != nil {
 			log.WithFields(log.Fields{
