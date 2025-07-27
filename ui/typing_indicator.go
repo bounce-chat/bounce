@@ -273,7 +273,7 @@ func (tir *typingIndicatorRenderer) Refresh() {
 		}
 		if len(tir.ti.users) > 0 {
 			u := tir.ti.users[len(tir.ti.users)-1]
-			tir.ti.currentlyTypingUser.Segments[0].(*widget.TextSegment).Text = u.getName() + ":"
+			tir.ti.currentlyTypingUser.Segments[0].(*widget.TextSegment).Text = u.getDisplayName() + ":"
 		}
 		tir.ti.currentlyTypingUser.Show()
 	}

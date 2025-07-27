@@ -5,7 +5,6 @@ import (
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/data/binding"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
@@ -13,53 +12,32 @@ import (
 
 type user struct {
 	id               uuid.UUID
-	name             binding.String
-	initials         binding.String
+	name             string
+	alias            string
+	initials         string
 	images           []uuid.UUID
 	introductionTime int64
 }
 
 func makeUser(id uuid.UUID, name string) *user {
 	u := &user{
-		id:       id,
-		name:     binding.NewString(),
-		initials: binding.NewString(),
+		id:   id,
+		name: name,
 	}
-
-	u.name.Set(name)
-	u.setInitials() // TODO: required for chat bubble icons to have initials
-	u.name.AddListener(binding.NewDataListener(func() {
-		u.setInitials()
-	}))
+	u.setInitials()
 
 	return u
 }
 
-func (u user) getName() string {
-	str, err := u.name.Get()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"user_id": u.id,
-			"error":   err.Error(),
-		}).Fatal("data bindings broken for user name")
+func (u *user) getDisplayName() string {
+	if len(u.alias) > 0 {
+		return u.alias
 	}
-	return str
+	return u.name
 }
 
-func (u user) getInitials() string {
-	str, err := u.initials.Get()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"user_id": u.id,
-			"error":   err.Error(),
-		}).Fatal("data bindings broken for user initials")
-	}
-	return str
-}
-
-func (u user) setInitials() {
-	name := u.getName()
-	parts := strings.Split(name, " ")
+func (u *user) setInitials() {
+	parts := strings.Split(u.getDisplayName(), " ")
 	if len(parts) == 1 {
 		r, n := utf8.DecodeRuneInString(parts[0])
 		if r == utf8.RuneError {
@@ -69,7 +47,7 @@ func (u user) setInitials() {
 			}).Error("error setting user initials")
 			return
 		}
-		u.initials.Set(string(r))
+		u.initials = string(r)
 	} else {
 		firstRune, n := utf8.DecodeRuneInString(parts[0])
 		if firstRune == utf8.RuneError {
@@ -89,7 +67,7 @@ func (u user) setInitials() {
 			return
 		}
 
-		u.initials.Set(string(firstRune) + string(lastRune))
+		u.initials = string(firstRune) + string(lastRune)
 	}
 }
 
@@ -103,13 +81,32 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 	}
 
 	// Rename the user
-	u.name.Set(chatUser.Name)
+	u.name = chatUser.Name
+	u.alias = chatUser.Alias
+	u.setInitials()
 
-	ui.messages.renameUser(chatUser.ID, u.getName(), u.getInitials())
+	ui.messages.renameUser(chatUser.ID, u.getDisplayName(), u.initials)
 
 	dm, ok := ui.threads.getDM(chatUser.ID)
 	if ok {
-		fyne.DoAndWait(func() { dm.chatHistoryScroll().Refresh() })
+		fyne.DoAndWait(func() {
+			dm.username.Text = u.getDisplayName()
+			dm.username.Refresh()
+			dm.headerUsername.Text = u.getDisplayName()
+			dm.headerUsername.Refresh()
+
+			if len(u.alias) > 0 && u.alias != u.name {
+				dm.realName.Show()
+			} else {
+				dm.realName.Hide()
+			}
+
+			dm.headerIcon.setString(u.initials)
+			dm.editIcon.setString(u.initials)
+			dm.button.setName(u.getDisplayName(), u.initials)
+
+			dm.chatHistoryScroll().Refresh()
+		})
 	}
 
 	ui.threads.rangeFunc(func(t thread) {
@@ -119,8 +116,6 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 			}
 		}
 	})
-
-	// TODO: set the alias
 
 	// Re-add user to any user stores they are in, in order to regenerate ngram search tokens
 	allUserStoresMutex.Lock()
@@ -153,7 +148,7 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 		})
 	}
 
-	// Update the images if there is a DM open
+	// Update the images if there is a DM open // TODO: merge with the above
 	dm, exists := ui.threads.getDM(chatUser.ID)
 	if !exists {
 		return

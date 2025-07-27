@@ -26,7 +26,10 @@ type directMessage struct {
 	overrideTypingIndicatorSetting   bool
 	typingIndicatorsEnabled          bool
 	editIcon                         *defaultImage
+	headerUsername                   *widget.Label
 	headerIcon                       *defaultImage
+	username                         *widget.Label
+	realName                         *widget.RichText
 	editContainer                    *fyne.Container
 	view                             *fyne.Container
 	header                           *fyne.Container
@@ -173,7 +176,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 
 	dm.headerIcon = newDefaultImage(user.id, bounceUser.Images, user.initials, 32, ui.bounce.GetFileData, nil) // TODO: get size from theme
 
-	userLabelText := widget.NewLabelWithData(user.name)
+	dm.headerUsername = widget.NewLabel(user.getDisplayName())
 
 	var userLabel *fyne.Container
 	if fyne.CurrentDevice().IsMobile() {
@@ -185,17 +188,16 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		userLabel = container.NewHBox(
 			backButton,
 			dm.headerIcon,
-			userLabelText,
+			dm.headerUsername,
 		)
 	} else {
 		userLabel = container.NewHBox(
 			dm.headerIcon,
-			userLabelText,
+			dm.headerUsername,
 		)
 	}
 
-	//userLabelText.Bind(user.name) // TODO: user objects should have bindings as names and take updates from the chat engine
-	userLabelText.TextStyle = fyne.TextStyle{Bold: true}
+	dm.headerUsername.TextStyle = fyne.TextStyle{Bold: true}
 	dm.header = container.New(
 		layout.NewBorderLayout(nil, nil, userLabel, editButton),
 		userLabel,
@@ -266,7 +268,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		}
 		ui.state.currentView = viewTypeThread
 	}
-	dm.button = newThreadButton(newDefaultImage(user.id, bounceUser.Images, user.initials, 64, ui.bounce.GetFileData, openThread), user.name, openThread)
+	dm.button = newThreadButton(newDefaultImage(user.id, bounceUser.Images, user.initials, 64, ui.bounce.GetFileData, openThread), user.getDisplayName(), openThread)
 	dm.button.Refresh()
 	dm.scroll = ui.newChatHistory(dm)
 
@@ -420,7 +422,62 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 	}
 	dm.editIcon = newDefaultImage(dm.user.id, dm.user.images, dm.user.initials, 128, ui.bounce.GetFileData, selectImage)
 
-	username := widget.NewLabelWithData(dm.user.name)
+	dm.username = widget.NewLabel(dm.user.getDisplayName())
+	dm.realName = widget.NewRichTextWithText("(" + dm.user.name + ")") // TODO: truncate
+	dm.realName.Segments[0].(*widget.TextSegment).Style = widget.RichTextStyle{
+		SizeName: theme.SizeNameCaptionText,
+	}
+	if len(dm.user.alias) > 0 && dm.user.alias != dm.user.name {
+		dm.realName.Show()
+	} else {
+		dm.realName.Hide()
+	}
+	usernameEntry := widget.NewEntry()
+	usernameEntry.Hide()
+	nameEditStack := container.NewStack(
+		dm.username,
+		container.New(
+			newMinWidthLayout(150),
+			usernameEntry,
+		),
+	)
+	var nameSaveOrCancelButtons *fyne.Container
+	var nameEditButton *widget.Button
+	nameEditButton = widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), func() {
+		dm.username.Hide()
+		usernameEntry.Text = dm.user.getDisplayName()
+		usernameEntry.Show()
+		nameEditButton.Hide()
+		nameSaveOrCancelButtons.Show()
+	})
+	nameEditButton.Importance = widget.LowImportance
+	nameSaveButton := widget.NewButtonWithIcon("", theme.DocumentSaveIcon(), func() {
+		ui.bounce.AliasUser(dm.user.id, usernameEntry.Text)
+		usernameEntry.Hide()
+		nameSaveOrCancelButtons.Hide()
+		dm.username.Show()
+		nameEditButton.Show()
+	})
+	nameCancelButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+		usernameEntry.Hide()
+		nameSaveOrCancelButtons.Hide()
+		dm.username.Show()
+		nameEditButton.Show()
+	})
+	nameSaveOrCancelButtons = container.NewHBox(
+		nameSaveButton,
+		nameCancelButton,
+	)
+	nameSaveOrCancelButtons.Hide()
+	buttonStack := container.NewStack(
+		nameEditButton,
+		nameSaveOrCancelButtons,
+	)
+	nameSection := container.NewCenter(container.NewHBox(
+		nameEditStack,
+		dm.realName,
+		buttonStack,
+	))
 
 	//
 	// Selection for message retention
@@ -599,7 +656,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 
 	editDMFeatures := container.NewVBox(
 		container.NewCenter(dm.editIcon),
-		container.NewCenter(username),
+		nameSection,
 		dm.notificationsEnabledCheck,
 		widget.NewLabel("Disappearing Messages"),
 		dm.retentionSelection,
@@ -741,7 +798,7 @@ func (ui *ui) getOrCreateDM(id uuid.UUID) (*directMessage, error) {
 		fyne.DoAndWait(func() {
 			ui.NewDirectMessage(chat.User{
 				ID:   u.id,
-				Name: u.getName(),
+				Name: u.getDisplayName(),
 				// TODO: set state here?
 			})
 		})

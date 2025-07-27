@@ -11,7 +11,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -45,17 +44,9 @@ type threadButton struct {
 	clicked                   func()
 }
 
-func newThreadButton(image *defaultImage, name binding.String, clicked func()) *threadButton {
+func newThreadButton(image *defaultImage, name string, clicked func()) *threadButton {
 	if clicked == nil {
 		log.Fatal("threadButton widgets must be defined with a clicked callback")
-	}
-
-	nameString, err := name.Get()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("data bindings broken for user name")
-
 	}
 
 	pending := newThemedImage(
@@ -109,7 +100,7 @@ func newThreadButton(image *defaultImage, name binding.String, clicked func()) *
 			Style: widget.RichTextStyle{
 				SizeName: theme.SizeNameSubHeadingText,
 			},
-			Text: nameString,
+			Text: name,
 		}),
 		lastMessage: widget.NewRichText(
 			&widget.TextSegment{
@@ -182,19 +173,6 @@ func newThreadButton(image *defaultImage, name binding.String, clicked func()) *
 		clicked:   clicked,
 	}
 
-	// Bind the name and update the thread button when the name changes
-	name.AddListener(binding.NewDataListener(func() {
-		nameStr, err := name.Get()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error getting data binding")
-		}
-		tb.threadName.Segments[0].(*widget.TextSegment).Text = nameStr
-		tb.threadName.Refresh()
-		tb.Refresh()
-	}))
-
 	tb.typingIndicator.Hide()
 	tb.lastMessageTimeBackground.Hide()
 	tb.lastMessageTimeFadeOut.Hide()
@@ -206,6 +184,13 @@ func newThreadButton(image *defaultImage, name binding.String, clicked func()) *
 
 	tb.ExtendBaseWidget(tb)
 	return tb
+}
+
+func (tb *threadButton) setName(str, initials string) {
+	tb.threadName.Segments[0].(*widget.TextSegment).Text = str
+	tb.threadName.Refresh()
+
+	tb.threadImage.setString(initials)
 }
 
 func (tb *threadButton) Tapped(*fyne.PointEvent) {

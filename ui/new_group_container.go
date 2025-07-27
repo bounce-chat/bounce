@@ -8,7 +8,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -21,7 +20,7 @@ import (
 type newGroup struct {
 	icon                          *defaultImage
 	iconData                      []byte
-	iconName                      binding.String
+	iconName                      string
 	nameEntry                     *widget.Entry
 	selectedUsersContainer        *container.Scroll
 	pendingUsersList              *container.Scroll
@@ -157,7 +156,7 @@ func (ui *ui) buildNewGroup() {
 		cancelButton,
 	)
 
-	ui.widgets.newGroup.iconName = binding.NewString()
+	initial := ""
 	ui.widgets.newGroup.nameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
 		str, trimmed := trimLeadingSpace(str)
@@ -171,7 +170,7 @@ func (ui *ui) buildNewGroup() {
 		if utf8.RuneCountInString(str) > chat.MaximumNameLength {
 			runes := []rune(str)
 			truncated := runes[0:chat.MaximumNameLength]
-			ui.widgets.newGroup.nameEntry.Text = string(truncated)
+			initial = string(truncated)
 
 		}
 		ui.widgets.newGroup.nameEntry.Refresh()
@@ -179,15 +178,17 @@ func (ui *ui) buildNewGroup() {
 		// Set the group icon
 		r, _ := utf8.DecodeRuneInString(str)
 		if r == utf8.RuneError {
-			ui.widgets.newGroup.iconName.Set("")
+			initial = ""
 		} else {
-			ui.widgets.newGroup.iconName.Set(string(r))
+			initial = string(r)
 		}
+
+		ui.widgets.newGroup.icon.setString(initial)
 	}
 	fileGetter := func(_ uuid.UUID) ([]byte, error) {
 		return ui.widgets.newGroup.iconData, nil
 	}
-	ui.widgets.newGroup.icon = newDefaultImage(uuid.Nil, []uuid.UUID{}, ui.widgets.newGroup.iconName, 128, fileGetter, func() {
+	ui.widgets.newGroup.icon = newDefaultImage(uuid.Nil, []uuid.UUID{}, initial, 128, fileGetter, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
@@ -260,7 +261,7 @@ func (ui *ui) clearNewGroupSelectors() {
 	ui.widgets.newGroup.createButton.Enable()
 	ui.widgets.newGroup.nameEntry.Enable()
 
-	ui.widgets.newGroup.iconName.Set("")
+	ui.widgets.newGroup.icon.setString("")
 	ui.widgets.newGroup.iconData = []byte{}
 	ui.widgets.newGroup.icon.images = []uuid.UUID{}
 	ui.widgets.newGroup.icon.Refresh()
@@ -293,7 +294,7 @@ func (ui *ui) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 			// TODO: add listening to update button name with binding
 			removePendingUserButton := newUserButton(
 				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), ui.bounce.GetFileData, nil),
-				u.getName(),
+				u.getDisplayName(),
 				false,
 				func() {
 					ui.widgets.newGroup.selectedUsers.remove(u.id)
@@ -333,7 +334,7 @@ func (ui *ui) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 			// TODO: add listener to update button name with binding
 			addUserButton := newUserButton(
 				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), ui.bounce.GetFileData, nil),
-				u.getName(),
+				u.getDisplayName(),
 				false,
 				func() {
 					ui.widgets.newGroup.selectedUsers.add(u)
@@ -363,7 +364,7 @@ func (ui *ui) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 	for _, thisUser := range ui.widgets.newGroup.pendingUsers.alphabetized() {
 		func(u *user) {
 			userIcon := newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil)
-			userName := widget.NewLabelWithData(u.name) // TODO: use RichText, and not and HBox, to support truncation
+			userName := widget.NewLabel(u.name) // TODO: use RichText, and not and HBox, to support truncation
 			userDetails := container.NewHBox(
 				userIcon,
 				userName,

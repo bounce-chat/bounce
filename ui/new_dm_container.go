@@ -66,7 +66,7 @@ func (ui *ui) refreshAllUsersDMLinks() {
 		func(u *user) {
 			openDMButton := newUserButton(
 				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil),
-				u.getName(),
+				u.getDisplayName(),
 				false,
 				func() {
 					dm, ok := ui.threads.getDM(u.id)

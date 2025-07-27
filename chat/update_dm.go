@@ -3,6 +3,7 @@ package chat
 import (
 	"encoding/binary"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -151,7 +152,7 @@ func (ud *updateDM) validPayload() error {
 			return errInvalidSetOpenValue
 		}
 	case updateDMTypeSetAlias:
-		if !validUserName(string(ud.Data)) {
+		if !(validUserName(string(ud.Data)) || string(ud.Data) == "") {
 			return errInvalidUserName
 		}
 	}
@@ -604,7 +605,7 @@ func (b *Bounce) AliasUser(userID uuid.UUID, alias string) error {
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
 		Type:      updateDMTypeSetAlias,
-		Data:      []byte(alias),
+		Data:      []byte(strings.TrimSpace(alias)),
 	})
 }
 

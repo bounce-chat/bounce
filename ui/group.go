@@ -11,7 +11,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -22,8 +21,8 @@ import (
 
 type group struct {
 	id                               uuid.UUID
-	name                             binding.String
-	initial                          binding.String
+	name                             string
+	initial                          string
 	images                           []uuid.UUID
 	users                            *userStore
 	admins                           []uuid.UUID
@@ -41,6 +40,7 @@ type group struct {
 	notificationsMutedUntil          int64
 	createdAt                        int64
 	editIcon                         *defaultImage
+	headerName                       *widget.Label
 	headerIcon                       *defaultImage
 	editContainer                    *fyne.Container
 	editThreadNameEntry              *widget.Entry
@@ -144,11 +144,7 @@ func (g *group) getAdminCheck(userID uuid.UUID) *widget.Check {
 }
 
 func (g *group) setInitial() {
-	name, err := g.name.Get()
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-	r, n := utf8.DecodeRuneInString(name)
+	r, n := utf8.DecodeRuneInString(g.name)
 	if r == utf8.RuneError {
 		log.WithFields(log.Fields{
 			"rune_error": r,
@@ -156,7 +152,7 @@ func (g *group) setInitial() {
 		}).Error("error setting group inital")
 		return
 	}
-	g.initial.Set(string(r))
+	g.initial = string(r)
 }
 
 func (g *group) refreshReadReceiptSettingSelection(options []string) {
@@ -273,7 +269,7 @@ func (ui *ui) getEditUserDialog(g *group, userID uuid.UUID) (dialog.Dialog, func
 			if !ok {
 				ui.NewDirectMessage(chat.User{
 					ID:   u.id,
-					Name: u.getName(),
+					Name: u.getDisplayName(),
 				})
 				dm, ok = ui.threads.getDM(u.id)
 				if !ok {
@@ -307,7 +303,7 @@ func (ui *ui) getEditUserDialog(g *group, userID uuid.UUID) (dialog.Dialog, func
 			ui.showDialog(dialog.NewError(showError, ui.window), nil)
 		}
 	}
-	userDetailsDialog = dialog.NewCustomConfirm(u.getName(), "Apply", "Cancel", editUserContainer, func(apply bool) { // TODO: add listener to update name when it changes
+	userDetailsDialog = dialog.NewCustomConfirm(u.getDisplayName(), "Apply", "Cancel", editUserContainer, func(apply bool) { // TODO: add listener to update name when it changes
 		showError = nil
 		if apply {
 			if g.getAdminCheck(u.id).Checked && !g.isAdmin(u.id) {
@@ -391,8 +387,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 
 	group := &group{
 		id:                             bounceGroup.ID,
-		name:                           binding.NewString(),
-		initial:                        binding.NewString(),
+		name:                           bounceGroup.Name,
 		images:                         bounceGroup.Images,
 		users:                          newUserStore(),
 		admins:                         bounceGroup.Admins,
@@ -417,6 +412,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		editUserDialogs:                make(map[uuid.UUID]dialogWithCallback),
 		lastMessage:                    time.Now().Unix(),
 	}
+	group.setInitial()
 
 	for _, bu := range bounceGroup.Users {
 		u, exists := ui.users.get(bu.ID)
@@ -428,16 +424,6 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 			group.users.add(u)
 		}
 	}
-
-	err := group.name.Set(bounceGroup.Name)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("data bindings are broken")
-	}
-	group.name.AddListener(binding.NewDataListener(func() {
-		group.setInitial()
-	}))
 
 	group.editThreadNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
@@ -477,7 +463,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 	editButton.Importance = widget.LowImportance
 
 	group.headerIcon = newDefaultImage(group.id, bounceGroup.Images, group.initial, 32, ui.bounce.GetFileData, nil) // TODO: get size from theme
-	groupLabelText := widget.NewLabel(bounceGroup.Name)
+	group.headerName = widget.NewLabel(bounceGroup.Name)
 
 	var groupLabel *fyne.Container
 	if fyne.CurrentDevice().IsMobile() {
@@ -488,17 +474,16 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		groupLabel = container.NewHBox(
 			backButton,
 			group.headerIcon,
-			groupLabelText,
+			group.headerName,
 		)
 	} else {
 		groupLabel = container.NewHBox(
 			group.headerIcon,
-			groupLabelText,
+			group.headerName,
 		)
 	}
 
-	groupLabelText.Bind(group.name)
-	groupLabelText.TextStyle = fyne.TextStyle{Bold: true}
+	group.headerName.TextStyle = fyne.TextStyle{Bold: true}
 	group.header = container.New(
 		layout.NewBorderLayout(nil, nil, groupLabel, editButton),
 		groupLabel,
@@ -638,18 +623,18 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 			return
 		}
 
-		err := g.name.Set(bounceGroup.Name)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("data bindings are broken")
-		}
-
+		g.name = bounceGroup.Name
+		g.headerName.Text = bounceGroup.Name
+		g.headerName.Refresh()
+		g.setInitial()
+		g.headerIcon.setString(g.initial)
+		g.editIcon.setString(g.initial)
 		g.images = bounceGroup.Images
 		g.editIcon.images = bounceGroup.Images
 		g.editIcon.Refresh()
 		g.headerIcon.images = bounceGroup.Images
 		g.headerIcon.Refresh()
+		g.button.setName(bounceGroup.Name, g.initial)
 		g.button.threadImage.images = bounceGroup.Images
 		g.button.threadImage.Refresh()
 
@@ -700,6 +685,9 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 		g.overrideTypingIndicatorSetting = bounceGroup.OverrideTypingIndicatorSetting
 		g.typingIndicatorsEnabled = bounceGroup.TypingIndicatorsEnabled
 		g.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
+
+		g.editThreadNameEntry.Text = bounceGroup.Name
+		g.editThreadNameEntry.Refresh()
 	})
 }
 
@@ -809,7 +797,7 @@ func (ui *ui) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 			var actorName string
 			actor, ok := ui.users.get(rfg.Actor)
 			if ok {
-				actorName = actor.getName()
+				actorName = actor.getDisplayName()
 			} else {
 				log.WithFields(log.Fields{
 					"actor": rfg.Actor,
@@ -831,12 +819,8 @@ func (ui *ui) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 				}).Error("removed from group applied tp thread that is not group")
 				return
 			}
-			groupName, err := g.name.Get()
-			if err != nil {
-				log.Fatal("data bindings are broken")
-			}
 			if !ui.state.initialSyncIncomplete {
-				ui.showDialog(dialog.NewInformation("Removed From Group", actorName+" removed you from "+groupName, ui.window), nil)
+				ui.showDialog(dialog.NewInformation("Removed From Group", actorName+" removed you from "+g.name, ui.window), nil)
 			}
 		}
 		ui.threads.remove(rfg.Group)
@@ -863,7 +847,7 @@ func (ui *ui) GroupDeleted(gd chat.GroupDeleted) {
 			} else {
 				actor, ok := ui.users.get(gd.Actor)
 				if ok {
-					actorName = actor.getName()
+					actorName = actor.getDisplayName()
 				} else {
 					log.WithFields(log.Fields{
 						"actor": gd.Actor,
@@ -887,12 +871,8 @@ func (ui *ui) GroupDeleted(gd chat.GroupDeleted) {
 				}).Error("delete group applied tp thread that is not group")
 				return
 			}
-			groupName, err := g.name.Get()
-			if err != nil {
-				log.Fatal("data bindings are broken")
-			}
 			if !ui.state.initialSyncIncomplete {
-				ui.showDialog(dialog.NewInformation("Group Deleted", actorName+" deleted the group \""+groupName+"\"", ui.window), nil)
+				ui.showDialog(dialog.NewInformation("Group Deleted", actorName+" deleted the group \""+g.name+"\"", ui.window), nil)
 			}
 		}
 

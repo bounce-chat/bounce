@@ -333,7 +333,9 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		for _, u := range state.Users {
 			uiUser := makeUser(u.ID, u.Name)
 			uiUser.images = u.Images
+			uiUser.alias = u.Alias
 			uiUser.introductionTime = u.IntroductionTime
+			uiUser.setInitials()
 			ui.users.add(uiUser)
 
 			if u.State.Open {

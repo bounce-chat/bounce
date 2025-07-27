@@ -221,7 +221,7 @@ func (ui *ui) newUpdateGroupRemoveUser(ugru chat.UpdateGroupRemoveUser) (*thread
 		ugru.Thread,
 		ugru.Actor,
 		chat.TypeUpdateGroup,
-		"removed "+removedUser.getName()+" from the group", // TODO: bind username:
+		"removed "+removedUser.getDisplayName()+" from the group",
 		ugru.Timestamp,
 		ugru.Seen,
 	)
@@ -257,18 +257,12 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 	}
 
 	outgoing := gm.Author == ui.state.profile.id
-	username := u.getName()
-	initials := u.getInitials()
+	username := u.getDisplayName()
 	var notification *fyne.Notification
 	if !outgoing {
-		groupName, err := group.name.Get()
-		if err != nil {
-			log.Fatal("data bindings are broken")
-		}
-
-		notificationString := u.getName() + ": " + gm.Text
+		notificationString := u.getDisplayName() + ": " + gm.Text
 		if len(gm.Text) == 0 {
-			notificationString = u.getName() + " posted "
+			notificationString = u.getDisplayName() + " posted "
 
 			if len(gm.ImageAttachments) > 1 {
 				notificationString += "images"
@@ -289,7 +283,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			}
 		}
 
-		notification = fyne.NewNotification(groupName, notificationString)
+		notification = fyne.NewNotification(group.name, notificationString)
 	} else {
 		username = "You"
 	}
@@ -329,7 +323,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			author:           gm.Author,
 			iconImages:       u.images,
 			username:         username,
-			initials:         initials,
+			initials:         u.initials,
 			text:             gm.Text,
 			imageAttachments: imageAttachments,
 			fileAttachments:  fileAttachments,
@@ -344,7 +338,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
-			displayName := u.getName() // TODO: bind last message button text?
+			displayName := u.getDisplayName()
 			mine := gm.Author == ui.state.profile.id
 			if mine {
 				displayName = "You"
@@ -370,7 +364,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 					changeString += "a file"
 				}
 
-				tb.setLastAction(changeString, mine) // TODO: possible to bind actor's name?
+				tb.setLastAction(changeString, mine)
 			} else {
 				group.button.setLastMessage(displayName, gm.Text, mine)
 			}
@@ -405,8 +399,7 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 	}
 
 	outgoing := dm.Author == ui.state.profile.id
-	username := u.getName()
-	initials := u.getInitials()
+	username := u.getDisplayName()
 	var notification *fyne.Notification
 	if !outgoing {
 		notificationString := dm.Text
@@ -431,7 +424,7 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 				notificationString += "a file"
 			}
 		}
-		notification = fyne.NewNotification(u.getName(), notificationString)
+		notification = fyne.NewNotification(u.getDisplayName(), notificationString)
 	} else {
 		username = "You"
 	}
@@ -470,7 +463,7 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 			frameType:        chat.TypeDirectMessage,
 			author:           dm.Author,
 			username:         username,
-			initials:         initials,
+			initials:         u.initials,
 			text:             dm.Text,
 			imageAttachments: imageAttachments,
 			fileAttachments:  fileAttachments,
@@ -485,7 +478,7 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
 		setButton: func(tb *threadButton) {
-			displayName := u.getName()
+			displayName := u.getDisplayName()
 			mine := dm.Author == ui.state.profile.id
 			if mine {
 				displayName = "You"
@@ -505,7 +498,7 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 					changeString += " and a file"
 				}
 
-				tb.setLastAction(changeString, mine) // TODO: possible to bind actor's name?
+				tb.setLastAction(changeString, mine)
 			} else {
 				dmThread.getButton().setLastMessage(displayName, dm.Text, mine)
 			}
@@ -557,7 +550,7 @@ func (ui *ui) userAliasSet(udsa chat.UpdateDMSetAlias) (*threadItem, error) {
 		return &threadItem{}, errUnknownUser
 	}
 
-	changeString := u.getName() + " has been aliased to " + udsa.Alias
+	changeString := u.getDisplayName() + " has been aliased to " + udsa.Alias
 
 	return &threadItem{
 		id: udsa.ID,
@@ -586,7 +579,7 @@ func (ui *ui) newUpdateGroupAdminPromoted(ugap chat.UpdateGroupAdminPromoted) (*
 		ugap.Thread,
 		ugap.Actor,
 		chat.TypeUpdateGroup,
-		"made "+newAdmin.getName()+" an admin", // TODO: bind?
+		"made "+newAdmin.getDisplayName()+" an admin",
 		ugap.Timestamp,
 		ugap.Seen,
 	)
@@ -603,7 +596,7 @@ func (ui *ui) newUpdateGroupAdminDemoted(ugad chat.UpdateGroupAdminDemoted) (*th
 		ugad.Thread,
 		ugad.Actor,
 		chat.TypeUpdateGroup,
-		"removed "+oldAdmin.getName()+" as an admin", // TODO: bind?
+		"removed "+oldAdmin.getDisplayName()+" as an admin",
 		ugad.Timestamp,
 		ugad.Seen,
 	)
@@ -753,7 +746,7 @@ func (ui *ui) userChangedImage(id, userID uuid.UUID, timestamp int64) (*threadIt
 		return &threadItem{}, errUnknownActor
 	}
 
-	changeString := user.getName() + " changed their profile image"
+	changeString := user.getDisplayName() + " changed their profile image"
 	if user.id == ui.state.profile.id {
 		changeString = "You changed your profile image"
 	}
@@ -787,7 +780,7 @@ func (ui *ui) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, frameTy
 	if !ok {
 		return &threadItem{}, errUnknownActor
 	}
-	actorName := actor.getName()
+	actorName := actor.getDisplayName()
 	if actorID == ui.state.profile.id {
 		actorName = "You"
 	}
@@ -805,7 +798,7 @@ func (ui *ui) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, frameTy
 			seen:         seen,
 		},
 		setButton: func(tb *threadButton) {
-			t.getButton().setLastAction(changeString, false) // TODO: possible to bind actor's name?
+			t.getButton().setLastAction(changeString, false)
 			t.getButton().setLastMessageTime(time.Unix(timestamp, 0))
 			t.setLastMessageTime(timestamp)
 			t.chatHistoryScroll().Refresh()

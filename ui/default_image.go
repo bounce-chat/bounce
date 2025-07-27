@@ -11,7 +11,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -23,12 +22,19 @@ var colorCacheMutex sync.Mutex
 var imageCache = map[string]*canvas.Image{}
 var imageCacheMutex sync.Mutex
 
-func newDefaultImage(id uuid.UUID, images []uuid.UUID, text binding.String, size float32, fileGetter func(uuid.UUID) ([]byte, error), clicked func()) *defaultImage {
-	str, err := text.Get()
-	if err != nil {
-		log.Fatal("data bindings are broken")
-	}
+type defaultImage struct {
+	widget.BaseWidget
+	id              uuid.UUID
+	size            float32
+	foregroundText  *canvas.Text
+	backgroundColor *canvas.Image
+	images          []uuid.UUID
+	fileGetter      func(uuid.UUID) ([]byte, error)
+	clicked         func()
+	imageCache      map[uuid.UUID]*canvas.Image
+}
 
+func newDefaultImage(id uuid.UUID, images []uuid.UUID, str string, size float32, fileGetter func(uuid.UUID) ([]byte, error), clicked func()) *defaultImage {
 	di := &defaultImage{
 		id:   id,
 		size: size,
@@ -44,30 +50,14 @@ func newDefaultImage(id uuid.UUID, images []uuid.UUID, text binding.String, size
 	}
 	di.setBackground()
 
-	text.AddListener(binding.NewDataListener(func() {
-		str, err := text.Get()
-		if err != nil {
-			log.Fatal("data bindings are broken")
-		}
-		di.foregroundText.Text = str
-		di.foregroundText.Refresh()
-		di.Refresh()
-	}))
-
 	di.ExtendBaseWidget(di)
 	return di
 }
 
-type defaultImage struct {
-	widget.BaseWidget
-	id              uuid.UUID
-	size            float32
-	foregroundText  *canvas.Text
-	backgroundColor *canvas.Image
-	images          []uuid.UUID
-	fileGetter      func(uuid.UUID) ([]byte, error)
-	clicked         func()
-	imageCache      map[uuid.UUID]*canvas.Image
+func (di *defaultImage) setString(str string) {
+	di.foregroundText.Text = str
+	di.foregroundText.Refresh()
+	di.Refresh()
 }
 
 func (di *defaultImage) Tapped(*fyne.PointEvent) {
@@ -212,9 +202,7 @@ func (cr *colorRectangle) At(x, y int) color.Color {
 	return cr.color
 }
 
-//
 // Deterministically generate a color from a UUID
-//
 func uuidToColor(id uuid.UUID) color.RGBA {
 	colorCacheMutex.Lock()
 	defer colorCacheMutex.Unlock()

@@ -251,6 +251,7 @@ func (b *Bounce) GetInitialState() InitialState {
 		profile = &User{
 			ID:     dbProfile.ID,
 			Name:   dbProfile.Name,
+			Alias:  dbProfile.Alias,
 			Images: imageHistory,
 		}
 		settings.DefaultGroupRetention = dbProfile.ProfileSettings.DefaultGroupRetention
@@ -308,6 +309,7 @@ func (b *Bounce) GetInitialState() InitialState {
 		chatUsers = append(chatUsers, User{
 			ID:               u.ID,
 			Name:             u.Name,
+			Alias:            u.Alias,
 			Images:           imageHistory,
 			IntroductionTime: u.IntroductionTime,
 			State: DMState{

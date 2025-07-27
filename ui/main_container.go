@@ -10,7 +10,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -202,7 +201,7 @@ func (ui *ui) buildNewProfileCreator() {
 	ui.widgets.newInstall = &newInstall{}
 
 	profileNameEntry := widget.NewEntry()
-	userIconName := binding.NewString()
+	userIconName := ""
 
 	profileNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
@@ -226,26 +225,28 @@ func (ui *ui) buildNewProfileCreator() {
 		if len(parts) == 1 {
 			r, _ := utf8.DecodeRuneInString(parts[0])
 			if r == utf8.RuneError {
-				userIconName.Set("")
+				userIconName = ""
 				return
 			}
 
-			userIconName.Set(string(r))
+			userIconName = string(r)
 		} else {
 			firstRune, _ := utf8.DecodeRuneInString(parts[0])
 			if firstRune == utf8.RuneError {
-				userIconName.Set("")
+				userIconName = ""
 				return
 			}
 
 			lastRune, _ := utf8.DecodeRuneInString(parts[len(parts)-1])
 			if lastRune == utf8.RuneError {
-				userIconName.Set(string(firstRune))
+				userIconName = string(firstRune)
 				return
 			}
 
-			userIconName.Set(string(firstRune) + string(lastRune))
+			userIconName = string(firstRune) + string(lastRune)
 		}
+
+		ui.widgets.newInstall.newProfileImage.setString(userIconName)
 	}
 
 	ui.widgets.newInstall.newProfileImageData = []byte{}
@@ -346,14 +347,15 @@ func (ui *ui) buildNewProfileCreator() {
 		ui.showMainContainer()
 		ui.NewDirectMessage(chat.User{
 			ID:   profile.id,
-			Name: profile.getName(),
+			Name: profile.getDisplayName(),
 		})
 	})
 	saveButton.Importance = widget.HighImportance
 	backButton := widget.NewButton("Back", func() {
 		profileNameEntry.Text = ""
 		profileNameEntry.Refresh()
-		userIconName.Set("")
+		userIconName = ""
+		ui.widgets.newInstall.newProfileImage.setString(userIconName)
 		deviceNameEntry.Text = ""
 		deviceNameEntry.Refresh()
 		ui.widgets.newInstall.newProfileImageData = []byte{}

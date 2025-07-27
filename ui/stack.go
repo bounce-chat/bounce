@@ -154,14 +154,10 @@ func (ui *ui) mobileBack() {
 	case viewTypeEditProfile:
 		ui.widgets.editProfile.profileIcon.id = ui.state.profile.id
 		ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
-		initials, err := ui.state.profile.initials.Get()
-		if err != nil {
-			log.Fatal("data bindings are broken")
-		}
-		ui.widgets.editProfile.profileIcon.foregroundText.Text = initials
+		ui.widgets.editProfile.profileIcon.foregroundText.Text = ui.state.profile.initials
 		ui.widgets.editProfile.profileIcon.Refresh()
 
-		ui.widgets.editProfile.profileNameEntry.Text = ui.state.profile.getName()
+		ui.widgets.editProfile.profileNameEntry.Text = ui.state.profile.getDisplayName()
 		ui.widgets.editProfile.profileNameEntry.Refresh()
 		ui.widgets.editProfile.profileNameEntry.FocusLost()
 

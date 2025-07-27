@@ -43,7 +43,7 @@ func (store *userStore) add(u *user) {
 	store.userMap[u.id] = u
 	smaller := 0
 	for _, existingUser := range store.userList {
-		if existingUser.getName() < u.getName() {
+		if existingUser.getDisplayName() < u.getDisplayName() {
 			smaller++
 		}
 	}
@@ -51,7 +51,7 @@ func (store *userStore) add(u *user) {
 	largerUsers := store.userList[smaller:]
 	store.userList = append(smallerUsers, append([]*user{u}, largerUsers...)...)
 
-	grams := makeNgrams(strings.ToLower(u.getName()))
+	grams := makeNgrams(strings.ToLower(u.getDisplayName()))
 	for _, gram := range grams {
 		store.ngrams[gram] = append(store.ngrams[gram], u)
 	}

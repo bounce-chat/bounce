@@ -9,7 +9,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -63,14 +62,10 @@ func (ui *ui) showEditProfile() {
 
 	ui.widgets.editProfile.profileIcon.id = ui.state.profile.id
 	ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
-	initials, err := ui.state.profile.initials.Get()
-	if err != nil {
-		log.Fatal("data bindings are broken")
-	}
-	ui.widgets.editProfile.profileIcon.foregroundText.Text = initials
+	ui.widgets.editProfile.profileIcon.foregroundText.Text = ui.state.profile.initials
 	ui.widgets.editProfile.profileIcon.Refresh()
 
-	ui.widgets.editProfile.profileNameEntry.Text = ui.state.profile.getName()
+	ui.widgets.editProfile.profileNameEntry.Text = ui.state.profile.getDisplayName()
 	ui.widgets.editProfile.profileNameEntry.Refresh()
 	ui.widgets.editProfile.profileNameEntry.FocusLost()
 
@@ -258,7 +253,7 @@ func (ui *ui) buildEditProfile() {
 	//
 	// Personal details section
 	//
-	ui.widgets.editProfile.profileIcon = newDefaultImage(uuid.Nil, []uuid.UUID{}, binding.NewString(), 128, ui.bounce.GetFileData, func() {
+	ui.widgets.editProfile.profileIcon = newDefaultImage(uuid.Nil, []uuid.UUID{}, "", 128, ui.bounce.GetFileData, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return

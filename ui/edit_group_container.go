@@ -10,7 +10,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
@@ -29,24 +28,7 @@ func (ui *ui) showEditThreadContainer(g *group) {
 }
 
 func (ui *ui) buildEditThreadContainer(g *group) {
-	currentThreadName, err := g.name.Get()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("data bindings are broken")
-	}
-	g.editThreadNameEntry.Text = currentThreadName
-
-	g.name.AddListener(binding.NewDataListener(func() {
-		newName, err := g.name.Get()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("data bindings are broken")
-		}
-		g.editThreadNameEntry.Text = newName
-		g.editThreadNameEntry.Refresh()
-	}))
+	g.editThreadNameEntry.Text = g.name
 
 	g.editIcon = newDefaultImage(g.id, g.images, g.initial, 128, ui.bounce.GetFileData, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
@@ -198,15 +180,9 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 	})
 
 	saveButton := widget.NewButton("Save", func() {
-		// Update the g name if it was changed
-		currentThreadName, err := g.name.Get()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("data bindings are broken")
-		}
+		// Update the group name if it was changed
 		newThreadName := g.editThreadNameEntry.Text
-		if currentThreadName != newThreadName {
+		if g.name != newThreadName {
 			err := ui.bounce.RenameGroup(g.id, strings.TrimSpace(newThreadName))
 			if err != nil {
 				ui.showDialog(dialog.NewError(errors.New("error renaming group: "+err.Error()), ui.window), nil)
@@ -234,7 +210,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 			dialog.ShowError(errors.New("invalid retention selection: "+selectedRetentionString), ui.window)
 		} else {
 			if g.retention != selectedRetentionValue {
-				err = ui.bounce.SetGroupRetention(g.id, selectedRetentionValue)
+				err := ui.bounce.SetGroupRetention(g.id, selectedRetentionValue)
 				if err != nil {
 					ui.showDialog(dialog.NewError(errors.New("error setting new retention value: "+err.Error()), ui.window), nil)
 					return
@@ -337,13 +313,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 
 	cancelChanges := func() {
 		// Reset name
-		currentThreadName, err := g.name.Get()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("data bindings are broken")
-		}
-		g.editThreadNameEntry.Text = currentThreadName
+		g.editThreadNameEntry.Text = g.name
 		g.editThreadNameEntry.Refresh()
 
 		// Reset retention
@@ -510,7 +480,7 @@ func (ui *ui) refreshCurrentAndPendingUsers(g *group) {
 			// TODO: setup listener to update the button text below
 			userDetailsButton := newUserButton(
 				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil),
-				u.getName(),
+				u.getDisplayName(),
 				g.isAdmin(u.id),
 				func() {
 					d, callback := ui.getEditUserDialog(g, u.id)
@@ -542,7 +512,7 @@ func (ui *ui) refreshCurrentAndPendingUsers(g *group) {
 			// TODO: setup listener to update the button text below
 			removePendingUserButton := newUserButton(
 				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), ui.bounce.GetFileData, nil),
-				u.getName(),
+				u.getDisplayName(),
 				false,
 				func() {
 					g.pendingUsers.remove(u.id)
@@ -594,7 +564,7 @@ func (ui *ui) refreshAvailableNewUsers(g *group, allAvailableUsers []*user) {
 			// TODO: setup listener to update the button text below
 			addUserButton := newUserButton(
 				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), ui.bounce.GetFileData, nil),
-				u.getName(),
+				u.getDisplayName(),
 				false,
 				func() {
 					g.pendingUsers.add(u)
