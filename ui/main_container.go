@@ -201,7 +201,6 @@ func (ui *ui) buildNewProfileCreator() {
 	ui.widgets.newInstall = &newInstall{}
 
 	profileNameEntry := widget.NewEntry()
-	userIconName := ""
 
 	profileNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
@@ -225,35 +224,33 @@ func (ui *ui) buildNewProfileCreator() {
 		if len(parts) == 1 {
 			r, _ := utf8.DecodeRuneInString(parts[0])
 			if r == utf8.RuneError {
-				userIconName = ""
+				ui.widgets.newInstall.newProfileImage.setString("")
 				return
 			}
 
-			userIconName = string(r)
+			ui.widgets.newInstall.newProfileImage.setString(string(r))
 		} else {
 			firstRune, _ := utf8.DecodeRuneInString(parts[0])
 			if firstRune == utf8.RuneError {
-				userIconName = ""
+				ui.widgets.newInstall.newProfileImage.setString("")
 				return
 			}
 
 			lastRune, _ := utf8.DecodeRuneInString(parts[len(parts)-1])
 			if lastRune == utf8.RuneError {
-				userIconName = string(firstRune)
+				ui.widgets.newInstall.newProfileImage.setString(string(firstRune))
 				return
 			}
 
-			userIconName = string(firstRune) + string(lastRune)
+			ui.widgets.newInstall.newProfileImage.setString(string(firstRune) + string(lastRune))
 		}
-
-		ui.widgets.newInstall.newProfileImage.setString(userIconName)
 	}
 
 	ui.widgets.newInstall.newProfileImageData = []byte{}
 	fileGetter := func(_ uuid.UUID) ([]byte, error) {
 		return ui.widgets.newInstall.newProfileImageData, nil
 	}
-	ui.widgets.newInstall.newProfileImage = newDefaultImage(uuid.Nil, []uuid.UUID{}, userIconName, 128, fileGetter, func() {
+	ui.widgets.newInstall.newProfileImage = newDefaultImage(uuid.Nil, []uuid.UUID{}, "", 128, fileGetter, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
@@ -354,8 +351,7 @@ func (ui *ui) buildNewProfileCreator() {
 	backButton := widget.NewButton("Back", func() {
 		profileNameEntry.Text = ""
 		profileNameEntry.Refresh()
-		userIconName = ""
-		ui.widgets.newInstall.newProfileImage.setString(userIconName)
+		ui.widgets.newInstall.newProfileImage.setString("")
 		deviceNameEntry.Text = ""
 		deviceNameEntry.Refresh()
 		ui.widgets.newInstall.newProfileImageData = []byte{}

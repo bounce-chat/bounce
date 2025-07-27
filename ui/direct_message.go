@@ -19,7 +19,7 @@ import (
 
 type directMessage struct {
 	user                             *user
-	notificationsMutedUntil          int64 // TODO: fyne feature request/PR: support binding int64 for time.Time
+	notificationsMutedUntil          int64
 	retention                        int64
 	overrideReadReceiptSetting       bool
 	readReceiptsEnabled              bool
@@ -39,7 +39,7 @@ type directMessage struct {
 	notificationsEnabledCheck        *widget.Check
 	readReceiptOverrideSelection     *widget.Select
 	typingIndicatorOverrideSelection *widget.Select
-	scroll                           *chatHistory //List // TODO: rename to history
+	scroll                           *chatHistory // TODO: rename
 	entry                            *threadEntry
 	retentionSelection               *widget.Select
 	lastMessage                      int64

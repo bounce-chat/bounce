@@ -291,7 +291,6 @@ func (ui *ui) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 	currentUsersList := container.NewVBox()
 	for _, thisUser := range ui.widgets.newGroup.selectedUsers.alphabetized() {
 		func(u *user) {
-			// TODO: add listening to update button name with binding
 			removePendingUserButton := newUserButton(
 				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), ui.bounce.GetFileData, nil),
 				u.getDisplayName(),
@@ -331,7 +330,6 @@ func (ui *ui) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 		}
 
 		func(u *user) {
-			// TODO: add listener to update button name with binding
 			addUserButton := newUserButton(
 				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), ui.bounce.GetFileData, nil),
 				u.getDisplayName(),
