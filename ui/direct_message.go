@@ -611,6 +611,15 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 			}
 		}
 
+		// Do the alias saving, if it's being edited
+		if nameSaveOrCancelButtons.Visible() {
+			ui.bounce.AliasUser(dm.user.id, usernameEntry.Text)
+			usernameEntry.Hide()
+			nameSaveOrCancelButtons.Hide()
+			dm.username.Show()
+			nameEditButton.Show()
+		}
+
 		// Go back to the thread after settings updates are done
 		ui.showMainContainer()
 		ui.window.Canvas().Focus(dm.getEntry())
