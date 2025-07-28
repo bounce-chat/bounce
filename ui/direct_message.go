@@ -458,6 +458,8 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		dm.username.Hide()
 		usernameEntry.Text = dm.user.getDisplayName()
 		usernameEntry.Show()
+		ui.window.Canvas().Focus(usernameEntry)
+		usernameEntry.TypedKey(&fyne.KeyEvent{Name: fyne.KeyEnd})
 		nameEditButton.Hide()
 		nameSaveOrCancelButtons.Show()
 	})
@@ -571,6 +573,8 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 	var saveOrCancelNotesButtons *fyne.Container
 	editNotesButton = widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), func() {
 		dm.notesEntry.Enable()
+		ui.window.Canvas().Focus(dm.notesEntry)
+		dm.notesEntry.TypedKey(&fyne.KeyEvent{Name: fyne.KeyEnd})
 		editNotesButton.Hide()
 		saveOrCancelNotesButtons.Show()
 	})
@@ -710,6 +714,21 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		// Reset the read receipt and typing indicator overrides
 		dm.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
 		dm.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
+
+		// Cancel alias and notes if they are being edited
+		if nameSaveOrCancelButtons.Visible() {
+			usernameEntry.Hide()
+			nameSaveOrCancelButtons.Hide()
+			dm.username.Show()
+			nameEditButton.Show()
+		}
+
+		if saveOrCancelNotesButtons.Visible() {
+			dm.notesEntry.SetText(dm.user.notes)
+			dm.notesEntry.Disable()
+			saveOrCancelNotesButtons.Hide()
+			editNotesButton.Show()
+		}
 
 		// Show main tontainer
 		if fyne.CurrentDevice().IsMobile() {
