@@ -323,9 +323,14 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 }
 
 func (ui *ui) DisplayDirectMessage(dm chat.DirectMessage) {
-	dmThread, err := ui.getOrCreateDM(dm.Thread)
+	dmThread, reloaded, err := ui.getOrReloadDM(dm.Thread)
 	if err != nil {
 		log.Fatal("DM doesn't exist immediately after creation")
+	}
+	if reloaded {
+		// The DM was closed and we opened it and reloaded all of this history,
+		// which would have included this message
+		return
 	}
 
 	ti, err := ui.newDirectMessage(dm)
@@ -340,9 +345,14 @@ func (ui *ui) DisplayDirectMessage(dm chat.DirectMessage) {
 }
 
 func (ui *ui) DisplaySentDirectMessage(dm chat.DirectMessage) {
-	dmThread, err := ui.getOrCreateDM(dm.Thread)
+	dmThread, reloaded, err := ui.getOrReloadDM(dm.Thread)
 	if err != nil {
 		log.Fatal("DM doesn't exist immediately after creation")
+	}
+	if reloaded {
+		// The DM was closed and we opened it and reloaded all of this history,
+		// which would have included this message
+		return
 	}
 
 	ti, err := ui.newDirectMessage(dm)
@@ -535,6 +545,9 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		ui.containers.chat.Refresh()
 		ui.state.activeThread = uuid.Nil
 		ui.refreshThreadOrder()
+		openedThreadMutex.Lock()
+		delete(openedThreads, dm.user.id)
+		openedThreadMutex.Unlock()
 		if fyne.CurrentDevice().IsMobile() {
 			ui.mobileBack() // Exit the edit DM menu
 			ui.mobileBack() // Exit the thread back to all threads
@@ -755,12 +768,17 @@ func (ui *ui) SetDMState(userID uuid.UUID, state chat.DMState) {
 }
 
 func (ui *ui) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
-	dmThread, err := ui.getOrCreateDM(udch.Thread)
+	dmThread, reloaded, err := ui.getOrReloadDM(udch.Thread)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
 			"user_id": udch.Thread,
 		}).Error("cannot clear history for unknown dm thread")
+		return
+	}
+	if reloaded {
+		// The DM was closed and we opened it and reloaded all of this history,
+		// which would have included this update
 		return
 	}
 
@@ -776,12 +794,17 @@ func (ui *ui) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
 }
 
 func (ui *ui) DMRetentionChanged(udr chat.UpdateDMRetention) {
-	dmThread, err := ui.getOrCreateDM(udr.Thread)
+	dmThread, reloaded, err := ui.getOrReloadDM(udr.Thread)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
 			"user_id": udr.Thread,
 		}).Error("cannot update retention for unknown dm thread")
+		return
+	}
+	if reloaded {
+		// The DM was closed and we opened it and reloaded all of this history,
+		// which would have included this update
 		return
 	}
 
@@ -796,27 +819,19 @@ func (ui *ui) DMRetentionChanged(udr chat.UpdateDMRetention) {
 	fyne.DoAndWait(func() { ui.appendThreadItem(dmThread, ti) })
 }
 
-func (ui *ui) getOrCreateDM(id uuid.UUID) (*directMessage, error) {
+func (ui *ui) getOrReloadDM(id uuid.UUID) (*directMessage, bool, error) {
+	reloaded := false
 	dm, ok := ui.threads.getDM(id)
 	if !ok {
-		u, userExists := ui.users.get(id)
-		if !userExists {
-			return nil, errUnknownUser
-		}
-
-		fyne.DoAndWait(func() {
-			ui.NewDirectMessage(chat.User{
-				ID:   u.id,
-				Name: u.getDisplayName(),
-				// TODO: set state here?
-			})
-		})
-
-		dm, ok = ui.threads.getDM(id)
+		u, ok := ui.users.get(id)
 		if !ok {
-			log.Fatal("DM doesn't exist immediately after creation")
+			return nil, false, errUnknownUser
 		}
+		fyne.DoAndWait(func() { ui.openAndPopulateDM(u) })
+		dm, ok = ui.threads.getDM(id)
+		ui.bounce.SetOpenDM(u.id, true)
+		reloaded = true
 	}
 
-	return dm, nil
+	return dm, reloaded, nil
 }

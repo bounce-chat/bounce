@@ -90,6 +90,11 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 	dm, ok := ui.threads.getDM(chatUser.ID)
 	if ok {
 		fyne.DoAndWait(func() {
+			dm.user.images = chatUser.Images
+			dm.editIcon.images = chatUser.Images
+			dm.headerIcon.images = chatUser.Images
+			dm.button.threadImage.images = chatUser.Images
+
 			dm.username.Text = u.getDisplayName()
 			dm.username.Refresh()
 			dm.headerUsername.Text = u.getDisplayName()
@@ -147,22 +152,6 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 			}
 		})
 	}
-
-	// Update the images if there is a DM open // TODO: merge with the above
-	dm, exists := ui.threads.getDM(chatUser.ID)
-	if !exists {
-		return
-	}
-
-	dm.user.images = chatUser.Images
-	dm.editIcon.images = chatUser.Images
-	dm.headerIcon.images = chatUser.Images
-	dm.button.threadImage.images = chatUser.Images
-	fyne.DoAndWait(func() {
-		dm.editIcon.Refresh()
-		dm.headerIcon.Refresh()
-		dm.button.threadImage.Refresh()
-	})
 }
 
 func (ui *ui) UserNameUpdated(uuun chat.UpdateUserUpdateName) {

@@ -18,9 +18,7 @@ var directMessageMutex sync.Mutex
 var dmDeliveryNotificationMutex sync.Mutex
 var dmDeliveryNotifications = map[uuid.UUID]chan bool{}
 
-//
 // A direct message is a chat message from one user to another
-//
 type directMessage struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt          int64     `msgpack:"-"`

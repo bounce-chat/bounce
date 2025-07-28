@@ -415,6 +415,7 @@ func (t *testUI) DisplaySentDirectMessage(DirectMessage)    {}
 func (t *testUI) SetDMState(uuid.UUID, DMState)             {}
 func (t *testUI) DMRetentionChanged(UpdateDMRetention)      {}
 func (t *testUI) DMChatHistoryCleared(UpdateDMClearHistory) {}
+func (t *testUI) UserAliased(UpdateDMSetAlias)              {}
 func (t *testUI) SetUserName(uuid.UUID, string)             {}
 func (t *testUI) UserNameUpdated(UpdateUserUpdateName)      {}
 func (t *testUI) OpenNewGroupChat(Group)                    {}

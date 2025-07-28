@@ -339,12 +339,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			ui.users.add(uiUser)
 
 			if u.State.Open {
-				ui.NewDirectMessage(chat.User{
-					ID:     u.ID,
-					Name:   u.Name,
-					Images: u.Images,
-					State:  u.State,
-				})
+				ui.NewDirectMessage(u)
 			}
 		}
 
