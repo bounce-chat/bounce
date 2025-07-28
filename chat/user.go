@@ -34,6 +34,7 @@ type user struct {
 	IntroductionMethod         string `msgpack:"-"`
 	IntroductionTime           int64  `msgpack:"-"`
 	Alias                      string `msgpack:"-"`
+	Notes                      string `msgpack:"-"`
 	Devices                    []device
 	Groups                     []group          `gorm:"many2many:group_users;" msgpack:"-"`
 	ProfileSettings            *profileSettings `msgpack:"-"`

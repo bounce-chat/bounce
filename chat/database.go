@@ -252,6 +252,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			ID:     dbProfile.ID,
 			Name:   dbProfile.Name,
 			Alias:  dbProfile.Alias,
+			Notes:  dbProfile.Notes,
 			Images: imageHistory,
 		}
 		settings.DefaultGroupRetention = dbProfile.ProfileSettings.DefaultGroupRetention
@@ -310,6 +311,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			ID:               u.ID,
 			Name:             u.Name,
 			Alias:            u.Alias,
+			Notes:            u.Notes,
 			Images:           imageHistory,
 			IntroductionTime: u.IntroductionTime,
 			State: DMState{

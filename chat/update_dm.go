@@ -21,6 +21,7 @@ const updateDMTypeSetReadReceipts = uint16(3)
 const updateDMTypeSetTypingIndicators = uint16(4)
 const updateDMTypeSetOpen = uint16(5)
 const updateDMTypeSetAlias = uint16(6)
+const updateDMTypeSetNotes = uint16(7)
 
 var errUpdateDMWithUnknownType = errors.New("update DM has unknown update type")
 var errInvalidPayloadLength = errors.New("invalid payload length")
@@ -78,16 +79,11 @@ func (ud *updateDM) getID() uuid.UUID {
 }
 
 func (ud *updateDM) getScope(_ uuid.UUID) int {
-	if ud.Type == updateDMTypeChangeMutedUntil ||
-		ud.Type == updateDMTypeSetReadReceipts ||
-		ud.Type == updateDMTypeSetTypingIndicators ||
-		ud.Type == updateDMTypeSetOpen ||
-		ud.Type == updateDMTypeSetAlias ||
-		ud.Target == uuid.Nil {
-		return scopeSync
+	if ud.Target != uuid.Nil && (ud.Type == updateDMTypeChangeRetention || ud.Type == updateDMTypeSetClearBefore) {
+		return scopeUser
 	}
 
-	return scopeUser
+	return scopeSync
 }
 
 func (ud *updateDM) getDestination(myID uuid.UUID) uuid.UUID {
@@ -271,6 +267,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 	typingIndicatorsEnabled := true
 	open := b.dmOpenByDefault(userID)
 	alias := ""
+	notes := ""
 
 	// Find all updates
 	uds := []updateDM{}
@@ -309,6 +306,8 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 			open = ud.Data[0] == dmOpen
 		case updateDMTypeSetAlias:
 			alias = string(ud.Data)
+		case updateDMTypeSetNotes:
+			notes = string(ud.Data)
 		default:
 			log.WithFields(log.Fields{
 				"type": ud.Type,
@@ -327,6 +326,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 		"typing_indicators_overridden": typingIndicatorsOverridden,
 		"typing_indicators_enabled":    typingIndicatorsEnabled,
 		"alias":                        alias,
+		"notes":                        notes,
 	}).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -363,6 +363,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 		IntroductionTime: u.IntroductionTime,
 		Images:           u.images(),
 		Alias:            alias,
+		Notes:            notes,
 	})
 }
 
@@ -421,6 +422,8 @@ func (b *Bounce) saveAndDisplayUpdateDM(ud updateDM) error {
 		// No UI status changes for opening and closing DMs
 	case updateDMTypeSetAlias:
 		b.informUIUpdateDMSetAlias(u, ud)
+	case updateDMTypeSetNotes:
+		// No UI status changes for notes
 	default:
 		log.WithFields(log.Fields{
 			"type": ud.Type,
@@ -606,6 +609,17 @@ func (b *Bounce) AliasUser(userID uuid.UUID, alias string) error {
 		Timestamp: time.Now().Unix(),
 		Type:      updateDMTypeSetAlias,
 		Data:      []byte(strings.TrimSpace(alias)),
+	})
+}
+
+func (b *Bounce) SetUserNotes(userID uuid.UUID, notes string) error {
+	return b.applyAndBroadcastUpdateDM(updateDM{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    xor(userID, b.currentUserID()),
+		Timestamp: time.Now().Unix(),
+		Type:      updateDMTypeSetNotes,
+		Data:      []byte(notes),
 	})
 }
 

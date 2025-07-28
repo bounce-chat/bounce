@@ -310,6 +310,10 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 
 		ui.state.profile = makeUser(state.Profile.ID, state.Profile.Name)
 		ui.state.profile.images = state.Profile.Images
+		ui.state.profile.alias = state.Profile.Alias
+		ui.state.profile.notes = state.Profile.Notes
+		ui.state.profile.introductionTime = state.Profile.IntroductionTime
+		ui.state.profile.setInitials()
 		ui.users.add(ui.state.profile)
 		ui.state.settings = state.Settings
 		ui.askToIgnoreBatteryOptimizations()
@@ -323,17 +327,13 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		threadItems := make(map[uuid.UUID]threadItems)
 
 		if state.Profile.State.Open {
-			ui.NewDirectMessage(chat.User{
-				ID:     state.Profile.ID,
-				Name:   state.Profile.Name,
-				Images: state.Profile.Images,
-				State:  state.Profile.State,
-			})
+			ui.NewDirectMessage(*state.Profile)
 		}
 		for _, u := range state.Users {
 			uiUser := makeUser(u.ID, u.Name)
 			uiUser.images = u.Images
 			uiUser.alias = u.Alias
+			uiUser.notes = u.Notes
 			uiUser.introductionTime = u.IntroductionTime
 			uiUser.setInitials()
 			ui.users.add(uiUser)

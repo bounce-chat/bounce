@@ -11,6 +11,7 @@ type User struct {
 	State            DMState
 	IntroductionTime int64
 	Alias            string
+	Notes            string
 }
 
 type Settings struct {

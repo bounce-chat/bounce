@@ -16,6 +16,7 @@ type user struct {
 	alias            string
 	initials         string
 	images           []uuid.UUID
+	notes            string
 	introductionTime int64
 }
 
@@ -105,6 +106,8 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 			} else {
 				dm.realName.Hide()
 			}
+
+			dm.notesEntry.SetText(chatUser.Notes)
 
 			dm.headerIcon.setString(u.initials)
 			dm.editIcon.setString(u.initials)

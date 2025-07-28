@@ -30,6 +30,7 @@ type directMessage struct {
 	headerIcon                       *defaultImage
 	username                         *widget.Label
 	realName                         *widget.RichText
+	notesEntry                       *widget.Entry
 	editContainer                    *fyne.Container
 	view                             *fyne.Container
 	header                           *fyne.Container
@@ -557,6 +558,57 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		ui.bounce.SetOpenDM(dm.user.id, false)
 	})
 
+	dm.notesEntry = widget.NewMultiLineEntry()
+	dm.notesEntry.SetText(dm.user.notes)
+	dm.notesEntry.Disable()
+	notesLabel := widget.NewLabel("Notes")
+	notesLabelSection := container.New(
+		layout.NewBorderLayout(notesLabel, nil, nil, nil),
+		notesLabel,
+	)
+
+	var editNotesButton *widget.Button
+	var saveOrCancelNotesButtons *fyne.Container
+	editNotesButton = widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), func() {
+		dm.notesEntry.Enable()
+		editNotesButton.Hide()
+		saveOrCancelNotesButtons.Show()
+	})
+	editNotesButton.Importance = widget.LowImportance
+	saveNotesButton := widget.NewButtonWithIcon("", theme.DocumentSaveIcon(), func() {
+		ui.bounce.SetUserNotes(dm.user.id, dm.notesEntry.Text)
+		dm.notesEntry.Disable()
+		saveOrCancelNotesButtons.Hide()
+		editNotesButton.Show()
+	})
+	cancelNotesButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+		dm.notesEntry.SetText(dm.user.notes)
+		dm.notesEntry.Disable()
+		saveOrCancelNotesButtons.Hide()
+		editNotesButton.Show()
+	})
+	saveOrCancelNotesButtons = container.NewHBox(
+		saveNotesButton,
+		cancelNotesButton,
+	)
+	saveOrCancelNotesButtons.Hide()
+	notesButtons := container.NewStack(
+		editNotesButton,
+		saveOrCancelNotesButtons,
+	)
+	notesButtonsSection := container.New(
+		layout.NewBorderLayout(nil, nil, nil, notesButtons),
+		notesButtons,
+	)
+	notes := container.NewVBox(
+		container.New(
+			layout.NewBorderLayout(nil, nil, notesLabelSection, nil),
+			notesLabelSection,
+			dm.notesEntry,
+		),
+		notesButtonsSection,
+	)
+
 	//
 	// Save and Cancel buttons
 	//
@@ -633,6 +685,13 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 			nameEditButton.Show()
 		}
 
+		if saveOrCancelNotesButtons.Visible() {
+			ui.bounce.SetUserNotes(dm.user.id, dm.notesEntry.Text)
+			dm.notesEntry.Disable()
+			saveOrCancelNotesButtons.Hide()
+			editNotesButton.Show()
+		}
+
 		// Go back to the thread after settings updates are done
 		ui.showMainContainer()
 		ui.window.Canvas().Focus(dm.getEntry())
@@ -687,6 +746,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 			hideThreadButton,
 			// TODO: block user button
 		),
+		notes,
 		widget.NewAccordion(
 			&widget.AccordionItem{
 				Title: "Advanced Options",
