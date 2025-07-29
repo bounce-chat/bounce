@@ -308,15 +308,13 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			return
 		}
 
-		ui.state.profile = makeUser(state.Profile.ID, state.Profile.Name)
-		ui.state.profile.images = state.Profile.Images
-		ui.state.profile.alias = state.Profile.Alias
-		ui.state.profile.notes = state.Profile.Notes
-		ui.state.profile.introductionTime = state.Profile.IntroductionTime
-		ui.state.profile.setInitials()
+		ui.state.profile = makeUser(*state.Profile)
 		ui.users.add(ui.state.profile)
 		ui.state.settings = state.Settings
 		ui.askToIgnoreBatteryOptimizations()
+		if state.Profile.State.Open {
+			ui.NewDirectMessage(*state.Profile)
+		}
 
 		for i, _ := range state.SyncDevices {
 			dev := state.SyncDevices[i]
@@ -326,16 +324,8 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 
 		threadItems := make(map[uuid.UUID]threadItems)
 
-		if state.Profile.State.Open {
-			ui.NewDirectMessage(*state.Profile)
-		}
 		for _, u := range state.Users {
-			uiUser := makeUser(u.ID, u.Name)
-			uiUser.images = u.Images
-			uiUser.alias = u.Alias
-			uiUser.notes = u.Notes
-			uiUser.introductionTime = u.IntroductionTime
-			uiUser.setInitials()
+			uiUser := makeUser(u)
 			ui.users.add(uiUser)
 
 			if u.State.Open {
@@ -682,8 +672,7 @@ func (ui *ui) NetworkOffline() {
 }
 
 func (ui *ui) UserImported(u chat.User) {
-	newUser := makeUser(u.ID, u.Name)
-	ui.users.add(newUser)
+	ui.users.add(makeUser(u))
 	fyne.DoAndWait(func() { ui.NewDirectMessage(u) })
 }
 

@@ -417,7 +417,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 	for _, bu := range bounceGroup.Users {
 		u, exists := ui.users.get(bu.ID)
 		if !exists {
-			u := makeUser(bu.ID, bu.Name)
+			u := makeUser(bu)
 			ui.users.add(u)
 			group.users.add(u)
 		} else {
@@ -642,7 +642,7 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 		for _, bu := range bounceGroup.Users {
 			u, ok := ui.users.get(bu.ID)
 			if !ok {
-				u = makeUser(bu.ID, bu.Name)
+				u = makeUser(bu)
 			}
 			ui.users.add(u)
 			g.users.add(u)
@@ -756,8 +756,9 @@ func (ui *ui) AddUser(ugau chat.UpdateGroupAddUser) {
 		return
 	}
 
-	u := makeUser(ugau.User.ID, ugau.User.Name)
-	ui.users.add(u) // TODO: this is needed since it isn't in the group state, should it be?
+	// TODO: should not be needed since it happens in SetGroupState
+	//u := makeUser(ugau.User)
+	//ui.users.add(u)
 
 	fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
 }

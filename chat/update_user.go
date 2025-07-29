@@ -368,6 +368,7 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 		ID:     u.ID,
 		Name:   u.Name,
 		Images: imageIDs,
+		// TODO: missing fields?
 	})
 }
 

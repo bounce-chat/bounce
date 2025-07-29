@@ -11,6 +11,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var deletedUser = makeUser(chat.User{ID: uuid.Nil, Name: "-deleted-"})
+
 var errUnknownThread = errors.New("unknown thread")
 var errUnknownActor = errors.New("unknown actor")
 var errUnknownUser = errors.New("unknown user")
@@ -252,7 +254,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 
 	u, exists := ui.users.get(gm.Author)
 	if !exists {
-		u = makeUser(uuid.Nil, "-deleted-")
+		u = deletedUser
 		// TODO: make sure to make this unique with a text color for deleted users
 	}
 

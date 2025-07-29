@@ -19,7 +19,7 @@ import (
 var colorCache = map[uuid.UUID]color.RGBA{}
 var colorCacheMutex sync.Mutex
 
-var imageCache = map[string]*canvas.Image{}
+var imageCache = map[string]image.Image{}
 var imageCacheMutex sync.Mutex
 
 type defaultImage struct {
@@ -36,8 +36,9 @@ type defaultImage struct {
 
 func newDefaultImage(id uuid.UUID, images []uuid.UUID, str string, size float32, fileGetter func(uuid.UUID) ([]byte, error), clicked func()) *defaultImage {
 	di := &defaultImage{
-		id:   id,
-		size: size,
+		id:              id,
+		size:            size,
+		backgroundColor: &canvas.Image{},
 		foregroundText: &canvas.Text{
 			Text:     str,
 			TextSize: size / 2,
@@ -89,7 +90,7 @@ func (di *defaultImage) setBackground() {
 		cachedImage, ok := imageCache[cacheKey]
 		imageCacheMutex.Unlock()
 		if ok {
-			di.backgroundColor = cachedImage
+			di.backgroundColor.Image = cachedImage
 			di.foregroundText.Hide()
 			return
 		}
@@ -117,9 +118,9 @@ func (di *defaultImage) setBackground() {
 			}).Warn("error decoding image")
 			continue
 		}
-		di.backgroundColor = canvas.NewImageFromImage(makeCircle(goImg))
+		di.backgroundColor.Image = makeCircle(goImg)
 		imageCacheMutex.Lock()
-		imageCache[cacheKey] = di.backgroundColor
+		imageCache[cacheKey] = di.backgroundColor.Image
 		imageCacheMutex.Unlock()
 		di.foregroundText.Hide()
 		return
@@ -132,15 +133,16 @@ func (di *defaultImage) setBackground() {
 	cachedImage, ok := imageCache[cacheKey]
 	imageCacheMutex.Unlock()
 	if ok {
-		di.backgroundColor = cachedImage
+		di.backgroundColor.Image = cachedImage
 		return
 	}
-	di.backgroundColor = canvas.NewImageFromImage(makeCircle(&colorRectangle{
+	di.backgroundColor.Image = makeCircle(&colorRectangle{
 		rect:  image.Rect(0, 0, int(di.size)*8, int(di.size)*8),
 		color: uuidToColor(di.id),
-	}))
+	})
+
 	imageCacheMutex.Lock()
-	imageCache[cacheKey] = di.backgroundColor
+	imageCache[cacheKey] = di.backgroundColor.Image
 	imageCacheMutex.Unlock()
 }
 

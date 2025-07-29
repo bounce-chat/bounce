@@ -247,7 +247,8 @@ func (ui *ui) buildNewProfileCreator() {
 	}
 
 	ui.widgets.newInstall.newProfileImageData = []byte{}
-	fileGetter := func(_ uuid.UUID) ([]byte, error) {
+	fileGetter := func(id uuid.UUID) ([]byte, error) {
+		log.WithFields(log.Fields{"id": id}).Warn("getting image data")
 		return ui.widgets.newInstall.newProfileImageData, nil
 	}
 	ui.widgets.newInstall.newProfileImage = newDefaultImage(uuid.Nil, []uuid.UUID{}, "", 128, fileGetter, func() {
@@ -259,7 +260,7 @@ func (ui *ui) buildNewProfileCreator() {
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Debug("error selecting image for new group")
+				}).Debug("error selecting image for new profile")
 				return
 			}
 
@@ -268,7 +269,7 @@ func (ui *ui) buildNewProfileCreator() {
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Debug("error reading new group image")
+				}).Debug("error reading new profile image")
 				return
 			}
 
@@ -276,7 +277,10 @@ func (ui *ui) buildNewProfileCreator() {
 
 			ui.widgets.newInstall.newProfileImageData = data
 			ui.widgets.newInstall.newProfileImage.images = []uuid.UUID{uuid.New()}
+			log.WithFields(log.Fields{"images": ui.widgets.newInstall.newProfileImage.images}).Warn("set new profile images")
 			ui.widgets.newInstall.newProfileImage.Refresh()
+			ui.views.newProfileCreator.Refresh()
+			log.Warn("refreshed")
 		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 
@@ -329,23 +333,11 @@ func (ui *ui) buildNewProfileCreator() {
 			ui.showDialog(dialog.NewError(errors.New("Device name must be set"), ui.window), nil)
 			return
 		}
-		id, imageID, err := ui.bounce.SetProfile(profileNameEntry.Text, ui.widgets.newInstall.newProfileImageData, deviceNameEntry.Text)
+		err := ui.bounce.SetProfile(profileNameEntry.Text, ui.widgets.newInstall.newProfileImageData, deviceNameEntry.Text)
 		if err != nil {
 			ui.showDialog(dialog.NewError(errors.New("Error saving profile: "+err.Error()), ui.window), nil)
 			return
 		}
-		profile := makeUser(id, profileNameEntry.Text)
-		ui.users.add(profile)
-		ui.state.profile = profile
-		if imageID != uuid.Nil {
-			ui.state.profile.images = []uuid.UUID{imageID}
-			ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
-		}
-		ui.showMainContainer()
-		ui.NewDirectMessage(chat.User{
-			ID:   profile.id,
-			Name: profile.getDisplayName(),
-		})
 	})
 	saveButton.Importance = widget.HighImportance
 	backButton := widget.NewButton("Back", func() {
@@ -371,6 +363,21 @@ func (ui *ui) buildNewProfileCreator() {
 		actionButtons,
 		container.NewMax(profileDetails),
 	)
+}
+
+func (ui *ui) ProfileSet(u chat.User, d chat.Device) {
+	fyne.DoAndWait(func() {
+		profile := makeUser(u)
+		ui.users.add(profile)
+		ui.state.profile = profile
+		ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
+		ui.widgets.editProfile.profileIcon.Refresh()
+		ui.showMainContainer()
+		ui.NewDirectMessage(u) // TODO: set an share a DM state?
+
+		ui.devices.add(&d)
+		ui.updateDeviceStatus()
+	})
 }
 
 func makeLogo(width, height float32) *themedImage {

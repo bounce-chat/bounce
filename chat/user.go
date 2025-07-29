@@ -184,7 +184,7 @@ func (b *Bounce) blockedGroups() []uuid.UUID {
 	return blocked
 }
 
-func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string) (uuid.UUID, uuid.UUID, error) {
+func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string) error {
 	newID := uuid.New()
 	iconID := uuid.Nil
 	if len(image) > 0 {
@@ -194,7 +194,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 	var count int64
 	b.database.Model(&user{}).Where("profile = ?", true).Count(&count)
 	if count > 0 {
-		return newID, iconID, errors.New("profile already exists on this device")
+		return errors.New("profile already exists on this device")
 	}
 
 	d := device{
@@ -207,7 +207,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		ID:                 newID,
 		Name:               profileName,
 		Profile:            true,
-		OpenDM:             true,
+		OpenDM:             true, // TODO: other default DM states
 		IntroductionMethod: userIntroductionProfile,
 		IntroductionTime:   time.Now().Unix(),
 		Devices: []device{
@@ -229,7 +229,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 	}
 	err := b.database.Create(u).Error
 	if err != nil {
-		return newID, iconID, err
+		return err
 	}
 	if len(image) > 0 {
 		err := b.embedFile(iconID, image, scopeGlobal, u.ID, fileTypeUserImage, u.ID)
@@ -240,14 +240,25 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		}
 	}
 
-	go b.ui.DeviceAdded(Device{
-		ID:        d.ID,
-		Address:   d.Address,
-		CreatedAt: d.Timestamp,
-		Local:     true,
-	})
-	err = b.RenameDevice(d.ID, deviceName)
-	return newID, iconID, err
+	go func() {
+		b.ui.ProfileSet(
+			User{
+				ID:               u.ID,
+				Name:             u.Name,
+				Images:           u.images(),
+				IntroductionTime: u.IntroductionTime,
+				// TODO: set an share a DM state?
+			},
+			Device{
+				ID:        d.ID,
+				Address:   d.Address,
+				CreatedAt: d.Timestamp,
+				Local:     true,
+			},
+		)
+		b.RenameDevice(d.ID, deviceName)
+	}()
+	return nil
 }
 
 func (b *Bounce) directMessageWrittenBeforeHistoryCleared(userID uuid.UUID, messageWrittenAt int64) bool {

@@ -254,6 +254,15 @@ func (b *Bounce) GetInitialState() InitialState {
 			Alias:  dbProfile.Alias,
 			Notes:  dbProfile.Notes,
 			Images: imageHistory,
+			State: DMState{
+				Open:                           dbProfile.OpenDM,
+				Retention:                      dbProfile.Retention,
+				MutedUntil:                     dbProfile.MutedUntil,
+				OverrideReadReceiptSetting:     dbProfile.ReadReceiptsOverridden,
+				ReadReceiptsEnabled:            dbProfile.ReadReceiptsEnabled,
+				OverrideTypingIndicatorSetting: dbProfile.TypingIndicatorsOverridden,
+				TypingIndicatorsEnabled:        dbProfile.TypingIndicatorsEnabled,
+			},
 		}
 		settings.DefaultGroupRetention = dbProfile.ProfileSettings.DefaultGroupRetention
 		settings.DefaultSendReadReceipts = dbProfile.ProfileSettings.DefaultSendReadReceipts
@@ -294,25 +303,12 @@ func (b *Bounce) GetInitialState() InitialState {
 	}
 	chatUsers := []User{}
 	for _, u := range users {
-		imageHistory := []uuid.UUID{}
-		if len(u.Images) > 0 {
-			for _, imageIDString := range strings.Split(u.Images, ",") {
-				imageID, err := uuid.Parse(imageIDString)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error":  err.Error(),
-						"images": u.Images,
-					}).Fatal("invalid UUID in user images list")
-				}
-				imageHistory = append(imageHistory, imageID)
-			}
-		}
 		chatUsers = append(chatUsers, User{
 			ID:               u.ID,
 			Name:             u.Name,
 			Alias:            u.Alias,
 			Notes:            u.Notes,
-			Images:           imageHistory,
+			Images:           u.images(),
 			IntroductionTime: u.IntroductionTime,
 			State: DMState{
 				Open:                           u.OpenDM,

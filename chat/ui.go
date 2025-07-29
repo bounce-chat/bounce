@@ -339,9 +339,10 @@ type UI interface {
 	NetworkOnline()
 	NetworkOffline()
 
-	// Device pairing
+	// Profile creation and device pairing
+	ProfileSet(User, Device)
 	NewSyncDeviceAdded()
-	SyncDeviceRequestAccepted(uuid.UUID, string, []Device, bool)
+	SyncDeviceRequestAccepted(User, []Device, bool)
 	SyncDeviceRequestRejected(peer string)
 	InitialSyncStarting()
 	InitialSyncProgress(float64)

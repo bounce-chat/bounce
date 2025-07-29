@@ -20,11 +20,16 @@ type user struct {
 	introductionTime int64
 }
 
-func makeUser(id uuid.UUID, name string) *user {
+func makeUser(chatUser chat.User) *user {
 	u := &user{
-		id:   id,
-		name: name,
+		id:               chatUser.ID,
+		name:             chatUser.Name,
+		images:           chatUser.Images,
+		alias:            chatUser.Alias,
+		notes:            chatUser.Notes,
+		introductionTime: chatUser.IntroductionTime,
 	}
+
 	u.setInitials()
 
 	return u
@@ -84,6 +89,8 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 	// Rename the user
 	u.name = chatUser.Name
 	u.alias = chatUser.Alias
+	u.notes = chatUser.Notes
+	u.images = chatUser.Images
 	u.setInitials()
 
 	ui.messages.renameUser(chatUser.ID, u.getDisplayName(), u.initials)
@@ -136,9 +143,8 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 	allUserStoresMutex.Unlock()
 
 	// Set the images
-	u.images = chatUser.Images
 	if chatUser.ID == ui.state.profile.id {
-		ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
+		ui.widgets.editProfile.profileIcon.images = u.images
 		fyne.DoAndWait(func() {
 			ui.widgets.editProfile.profileIcon.Refresh()
 		})

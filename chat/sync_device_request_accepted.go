@@ -9,11 +9,9 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-//
 // A sync device request accepted frame is sent from an offer device to a requester device when it is approving the requester
 // device as a new sync device.  It contains the full profile that the requester device is being added to, this includes the
 // requester device in the device group.
-//
 type syncDeviceRequestAccepted struct {
 	Profile      user
 	Settings     *profileSettings
@@ -87,6 +85,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	// Save the new profile
 	sdra.Settings.ID = uuid.New()
 	sdra.Profile.ProfileSettings = sdra.Settings
+	sdra.Profile.OpenDM = true // TODO: set other default DM states?
 	err = b.database.Create(&sdra.Profile).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -116,7 +115,16 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	}
 
 	// Inform the UI
-	b.ui.SyncDeviceRequestAccepted(sdra.Profile.ID, sdra.Profile.Name, devices, sdra.References)
+	exportedUser := User{
+		ID:               sdra.Profile.ID,
+		Name:             sdra.Profile.Name,
+		Images:           sdra.Profile.images(),
+		IntroductionTime: sdra.Profile.IntroductionTime,
+		State: DMState{ // TODO: set other default DM states?
+			Open: true,
+		},
+	}
+	b.ui.SyncDeviceRequestAccepted(exportedUser, devices, sdra.References)
 
 	// Connect to any other sync devices now
 	b.auditPeers()

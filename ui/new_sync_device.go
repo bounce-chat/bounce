@@ -12,7 +12,6 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
-	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
@@ -237,10 +236,11 @@ func (ui *ui) buildNewSyncDevice() {
 	)
 }
 
-func (ui *ui) SyncDeviceRequestAccepted(id uuid.UUID, name string, devices []chat.Device, references bool) {
-	profile := makeUser(id, name)
-	ui.state.profile = profile
-	ui.users.add(profile)
+func (ui *ui) SyncDeviceRequestAccepted(profile chat.User, devices []chat.Device, references bool) {
+	u := makeUser(profile)
+	ui.state.profile = u
+	ui.users.add(u)
+
 	for i, _ := range devices {
 		dev := devices[i]
 		ui.devices.add(&dev)
