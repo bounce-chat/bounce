@@ -25,6 +25,8 @@ type addUser struct {
 	scanEntry    *widget.Entry
 	displayEntry *widget.Entry
 	qrCode       *canvas.Image
+	scanButton   *widget.Button
+	shareButton  *widget.Button
 }
 
 func (ui *ui) showAddUser() {
@@ -59,6 +61,11 @@ func (ui *ui) showAddUser() {
 		}
 	}
 
+	ui.widgets.addUser.shareButton.Importance = widget.HighImportance
+	ui.widgets.addUser.shareButton.Refresh()
+	ui.widgets.addUser.scanButton.Importance = widget.MediumImportance
+	ui.widgets.addUser.scanButton.Refresh()
+
 	ui.containers.addUserContent.Objects = []fyne.CanvasObject{ui.containers.displayAddUserString}
 	ui.containers.addUserContent.Refresh()
 	ui.window.SetContent(ui.views.addUser)
@@ -81,23 +88,21 @@ func (ui *ui) buildAddUser() {
 		closeButton,
 	)
 
-	var shareButton *widget.Button
-	var scanButton *widget.Button
-	shareButton = widget.NewButton("Share", func() {
-		shareButton.Importance = widget.HighImportance
-		shareButton.Refresh()
-		scanButton.Importance = widget.MediumImportance
-		scanButton.Refresh()
+	ui.widgets.addUser.shareButton = widget.NewButton("Share", func() {
+		ui.widgets.addUser.shareButton.Importance = widget.HighImportance
+		ui.widgets.addUser.shareButton.Refresh()
+		ui.widgets.addUser.scanButton.Importance = widget.MediumImportance
+		ui.widgets.addUser.scanButton.Refresh()
 
 		ui.containers.addUserContent.Objects = []fyne.CanvasObject{ui.containers.displayAddUserString}
 		ui.containers.addUserContent.Refresh()
 	})
-	shareButton.Importance = widget.HighImportance
-	scanButton = widget.NewButton("Scan", func() {
-		scanButton.Importance = widget.HighImportance
-		scanButton.Refresh()
-		shareButton.Importance = widget.MediumImportance
-		shareButton.Refresh()
+	ui.widgets.addUser.shareButton.Importance = widget.HighImportance
+	ui.widgets.addUser.scanButton = widget.NewButton("Scan", func() {
+		ui.widgets.addUser.scanButton.Importance = widget.HighImportance
+		ui.widgets.addUser.scanButton.Refresh()
+		ui.widgets.addUser.shareButton.Importance = widget.MediumImportance
+		ui.widgets.addUser.shareButton.Refresh()
 
 		ui.containers.addUserContent.Objects = []fyne.CanvasObject{ui.containers.scanUser}
 		ui.containers.addUserContent.Refresh()
@@ -105,12 +110,12 @@ func (ui *ui) buildAddUser() {
 			ui.window.Canvas().Focus(ui.widgets.addUser.scanEntry)
 		}
 	})
-	scanButton.Importance = widget.MediumImportance
+	ui.widgets.addUser.scanButton.Importance = widget.MediumImportance
 	header := container.NewVBox(
 		closeBar,
 		container.NewCenter(container.NewHBox(
-			shareButton,
-			scanButton,
+			ui.widgets.addUser.shareButton,
+			ui.widgets.addUser.scanButton,
 		)),
 	)
 	ui.containers.addUserContent = container.NewStack()
