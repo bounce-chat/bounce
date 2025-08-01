@@ -15,11 +15,9 @@ import (
 var referenceOfferMutexLock sync.Mutex
 var referenceOfferMutexes = map[string]*sync.Mutex{}
 
-//
 // A reference offer is a message sent to a newly connected device that provides the UUIDs of any frames that device
 // should have, but that we didn't deliver to it.  Reference offers are delivery tracked using acks in order to
 // support re-send logic, so they do have an ID even though they are only ever sent directly.
-//
 type referenceOffer struct {
 	ID           uuid.UUID
 	References   []frameReference
@@ -929,7 +927,7 @@ func (b *Bounce) getFilesToOffer(dev device) []frameReference {
 
 	var unsentFiles []file
 
-	if !b.isSyncDevice(dev) {
+	if b.isSyncDevice(dev) {
 		// If this is a sync device, send all unsent files
 		err := b.database.
 			Select("files.*").
@@ -1004,7 +1002,7 @@ func (b *Bounce) getChunkOffersToOffer(dev device) []frameReference {
 
 	var unsentChunkOffers []chunkOffer
 
-	if !b.isSyncDevice(dev) {
+	if b.isSyncDevice(dev) {
 		// If this is a sync device, send all unsent chunk offers
 		err := b.database.
 			Select("chunk_offers.*").
@@ -1021,13 +1019,28 @@ func (b *Bounce) getChunkOffersToOffer(dev device) []frameReference {
 		// 	scope is not sync AND
 		// 	scope is user and the destination is this device's user OR
 		// 	scope is group and the destination is a group that this device's user is in OR
-		// 	scope is global and the author is me or this device's user OR
+		//      scope is global and the author is me or this device's user OR
 		// 	scope is global and the author is someone who shares a group with this device's user
 		err := b.database.
 			Distinct("chunk_offers.id").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == chunk_offers.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeChunkOffer).
 			Where(
-				"((chunk_offers.scope == ? AND chunk_offers.destination = ?) OR (chunk_offers.scope = ? AND chunk_offers.destination IN (?)) OR (chunk_offers.scope == ? AND (chunk_offers.author == ? OR chunk_offers.author == ? OR chunk_offers.author IN (?)))) AND chunk_offers.scope != ? AND delivery_records.id IS NULL",
+				`
+					delivery_records.id IS NULL AND chunk_offers.scope != ? AND
+					(
+						(
+							chunk_offers.scope = ? AND chunk_offers.destination = ?
+						) OR (
+							chunk_offers.scope = ? AND chunk_offers.destination IN (?)
+						) OR (
+							chunk_offers.scope = ? AND (
+								chunk_offers.author = ? OR
+								chunk_offers.author = ? OR
+								chunk_offers.author IN (?)
+							)
+						)
+					)`,
+				scopeSync,
 				scopeUser,
 				dev.UserID,
 				scopeGroup,
@@ -1054,7 +1067,6 @@ func (b *Bounce) getChunkOffersToOffer(dev device) []frameReference {
 							Joins("JOIN group_users ON group_users.group_id = groups.id").
 							Where("user_id = ?", dev.UserID),
 					),
-				scopeSync,
 			).
 			Find(&unsentChunkOffers).Error
 		if err != nil {

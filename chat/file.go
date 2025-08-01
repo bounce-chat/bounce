@@ -168,7 +168,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 			"peer":           peer,
 			"author":         f.Author,
 			"signing_device": sc.Signer,
-		}).Warn("ignoring file that was not signed by the supposed author")
+		}).Warn("ignoring file that could not be signature validated")
 		return nil
 	}
 
@@ -373,7 +373,7 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) bro
 			"peer":           peer,
 			"author":         co.Author,
 			"signing_device": sc.Signer,
-		}).Warn("ignoring chunk offer that was not signed by the supposed author")
+		}).Warn("ignoring chunk offer that could not be signature validated")
 		return nil
 	}
 

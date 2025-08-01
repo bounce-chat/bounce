@@ -396,15 +396,16 @@ func (t *testUI) Quit() {
 	t.closer <- true
 }
 
-func (t *testUI) NetworkOnline()                                              {}
-func (t *testUI) NetworkOffline()                                             {}
-func (t *testUI) NewSyncDeviceAdded()                                         {}
-func (t *testUI) SyncDeviceRequestAccepted(uuid.UUID, string, []Device, bool) {}
-func (t *testUI) SyncDeviceRequestRejected(peer string)                       {}
-func (t *testUI) InitialSyncStarting()                                        {}
-func (t *testUI) InitialSyncProgress(float64)                                 {}
-func (t *testUI) InitialSyncComplete()                                        {}
-func (t *testUI) AddUserRequestRejected(string)                               {}
+func (t *testUI) NetworkOnline()                                 {}
+func (t *testUI) NetworkOffline()                                {}
+func (t *testUI) NewSyncDeviceAdded()                            {}
+func (t *testUI) SyncDeviceRequestAccepted(User, []Device, bool) {}
+func (t *testUI) SyncDeviceRequestRejected(peer string)          {}
+func (t *testUI) ProfileSet(User, Device)                        {}
+func (t *testUI) InitialSyncStarting()                           {}
+func (t *testUI) InitialSyncProgress(float64)                    {}
+func (t *testUI) InitialSyncComplete()                           {}
+func (t *testUI) AddUserRequestRejected(string)                  {}
 func (t *testUI) UserAdded(u User) {
 	t.called <- call{function: "UserAdded", args: []interface{}{u}}
 }
