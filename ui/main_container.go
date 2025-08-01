@@ -248,7 +248,6 @@ func (ui *ui) buildNewProfileCreator() {
 
 	ui.widgets.newInstall.newProfileImageData = []byte{}
 	fileGetter := func(id uuid.UUID) ([]byte, error) {
-		log.WithFields(log.Fields{"id": id}).Warn("getting image data")
 		return ui.widgets.newInstall.newProfileImageData, nil
 	}
 	ui.widgets.newInstall.newProfileImage = newDefaultImage(uuid.Nil, []uuid.UUID{}, "", 128, fileGetter, func() {
@@ -277,10 +276,8 @@ func (ui *ui) buildNewProfileCreator() {
 
 			ui.widgets.newInstall.newProfileImageData = data
 			ui.widgets.newInstall.newProfileImage.images = []uuid.UUID{uuid.New()}
-			log.WithFields(log.Fields{"images": ui.widgets.newInstall.newProfileImage.images}).Warn("set new profile images")
 			ui.widgets.newInstall.newProfileImage.Refresh()
 			ui.views.newProfileCreator.Refresh()
-			log.Warn("refreshed")
 		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 
@@ -371,7 +368,6 @@ func (ui *ui) ProfileSet(u chat.User, d chat.Device) {
 		ui.users.add(profile)
 		ui.state.profile = profile
 		ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
-		ui.widgets.editProfile.profileIcon.Refresh()
 		ui.showMainContainer()
 		ui.NewDirectMessage(u) // TODO: set an share a DM state?
 
