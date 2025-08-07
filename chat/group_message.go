@@ -16,9 +16,7 @@ import (
 var gmDeliveryNotificationMutex sync.Mutex
 var gmDeliveryNotifications = map[uuid.UUID]chan bool{}
 
-//
 // A group message is sent from a member of a group to a group
-//
 type groupMessage struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt          int64     `msgpack:"-"`
@@ -178,6 +176,21 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 			"signer": sc.Signer,
 			"author": gm.Author,
 		}).Warn("received group message signed by a different user than the author, ignoring")
+		return nil
+	}
+
+	// Ignore anything from a blocked user
+	if blockedAuthor(&gm) {
+		log.WithFields(log.Fields{
+			"id":     gm.ID,
+			"author": gm.getAuthor(),
+		}).Warn("ignoring group message from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeGroupMessage, gm.ID)
+			}
+		}
 		return nil
 	}
 

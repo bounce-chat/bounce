@@ -11,6 +11,7 @@ import (
 type newDM struct {
 	searchEntry *widget.Entry
 	scroll      *container.Scroll
+	showBlocked bool
 }
 
 func (ui *ui) showNewDM() {
@@ -44,16 +45,27 @@ func (ui *ui) buildNewDM() {
 		closeButton,
 	)
 
+	filters := container.NewHBox(
+		widget.NewCheck("Show Blocked", func(set bool) {
+			ui.widgets.newDM.showBlocked = set
+			ui.refreshAllUsersDMLinks()
+		}),
+	)
 	ui.widgets.newDM.searchEntry = widget.NewEntry()
 	ui.widgets.newDM.searchEntry.OnChanged = func(str string) {
 		ui.refreshAllUsersDMLinks()
 	}
+	searchBar := container.New(
+		layout.NewBorderLayout(nil, nil, nil, filters),
+		filters,
+		ui.widgets.newDM.searchEntry,
+	)
 	ui.views.newDM = container.New(
 		layout.NewBorderLayout(closeBar, nil, nil, nil),
 		closeBar,
 		container.New(
-			layout.NewBorderLayout(ui.widgets.newDM.searchEntry, nil, nil, nil),
-			ui.widgets.newDM.searchEntry,
+			layout.NewBorderLayout(searchBar, nil, nil, nil),
+			searchBar,
 			ui.widgets.newDM.scroll,
 		),
 	)
@@ -63,6 +75,9 @@ func (ui *ui) refreshAllUsersDMLinks() {
 	usersBox := container.NewVBox()
 	for _, thisUser := range ui.users.search(ui.widgets.newDM.searchEntry.Text) {
 		func(u *user) {
+			if u.blocked && !ui.widgets.newDM.showBlocked {
+				return
+			}
 			openDMButton := newUserButton(
 				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil),
 				u.getDisplayName(),

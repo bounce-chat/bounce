@@ -42,10 +42,8 @@ type typingStatus struct {
 	uiIndicating  bool
 }
 
-//
 // A typing indicator is sent when someone is typing into an entry widget in the UI, to communicate to the other members
 // of the thread that a user is currently typing
-//
 type typingIndicator struct {
 	ID              uuid.UUID
 	Thread          uuid.UUID
@@ -144,6 +142,15 @@ func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool
 	ti.Signer = sc.Signer
 	ti.OriginalPayload = sc.Payload
 	ti.Signature = sc.Signature
+
+	// Ignore anything from a blocked user
+	if blockedAuthor(&ti) {
+		log.WithFields(log.Fields{
+			"id":     ti.ID,
+			"author": ti.getAuthor(),
+		}).Warn("ignoring typing indicator from blocked user")
+		return nil
+	}
 
 	// Do nothing if we've already seen this typing indicator
 	if typingIndicatorAlreadySeen(ti.ID) {

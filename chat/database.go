@@ -308,6 +308,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			Name:             u.Name,
 			Alias:            u.Alias,
 			Notes:            u.Notes,
+			Blocked:          u.Blocked,
 			Images:           u.images(),
 			IntroductionTime: u.IntroductionTime,
 			State: DMState{
@@ -320,6 +321,10 @@ func (b *Bounce) GetInitialState() InitialState {
 				TypingIndicatorsEnabled:        u.TypingIndicatorsEnabled,
 			},
 		})
+
+		if u.Blocked {
+			cacheBlockedUser(u.ID)
+		}
 	}
 
 	// Load all groups

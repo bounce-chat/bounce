@@ -117,9 +117,14 @@ func (b *Bounce) sendReferences(peer string) {
 		return
 	}
 
-	_, exists := b.getDeviceFromAddress(peer)
+	dev, exists := b.getDeviceFromAddress(peer)
 	if !exists {
 		// We have nothing to offer a device that we don't know about
+		return
+	}
+
+	if blockedUser(dev.UserID) {
+		// Reject any reference offer from a block user's device
 		return
 	}
 

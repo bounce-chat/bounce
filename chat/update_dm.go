@@ -22,6 +22,7 @@ const updateDMTypeSetTypingIndicators = uint16(4)
 const updateDMTypeSetOpen = uint16(5)
 const updateDMTypeSetAlias = uint16(6)
 const updateDMTypeSetNotes = uint16(7)
+const updateDMTypeSetBlocked = uint16(8)
 
 var errUpdateDMWithUnknownType = errors.New("update DM has unknown update type")
 var errInvalidPayloadLength = errors.New("invalid payload length")
@@ -29,6 +30,8 @@ var errInvalidOverriddenValue = errors.New("invalid value for overridden byte")
 var errInvalidEnabledValue = errors.New("invalid value for enabled byte")
 var errSyncScopedMessageFromNonSyncSource = errors.New("sync scoped frame can only come from sync device")
 var errInvalidSetOpenValue = errors.New("invalid value for setting DM open state")
+var errInvalidSetBlockedValue = errors.New("invalid value for setting user blocked state")
+var errCannotBlockSelf = errors.New("cannot block or unblock self")
 
 const readReceiptsDefaultValue = 0x00
 const readReceiptsOverriddenValue = 0x01
@@ -40,6 +43,8 @@ const typingIndicatorsEnabledValue = 0x00
 const typingIndicatorsDisabledValue = 0x01
 const dmClosed = 0x00
 const dmOpen = 0x01
+const userNotBlocked = 0x00
+const userBlocked = 0x01
 
 var updateDMMutex sync.Mutex
 
@@ -151,6 +156,16 @@ func (ud *updateDM) validPayload() error {
 		if !(validUserName(string(ud.Data)) || string(ud.Data) == "") {
 			return errInvalidUserName
 		}
+	case updateDMTypeSetBlocked:
+		if len(ud.Data) != 1 {
+			return errInvalidPayloadLength
+		}
+		if !(ud.Data[0] == userNotBlocked || ud.Data[0] == userBlocked) {
+			return errInvalidSetBlockedValue
+		}
+		if ud.Target == uuid.Nil {
+			return errCannotBlockSelf
+		}
 	}
 
 	return nil
@@ -167,6 +182,21 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling update DM settings")
+		return nil
+	}
+
+	// Ignore anything from a blocked user
+	if blockedAuthor(&ud) {
+		log.WithFields(log.Fields{
+			"id":     ud.ID,
+			"author": ud.getAuthor(),
+		}).Warn("ignoring update DM from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeUpdateDM, ud.ID)
+			}
+		}
 		return nil
 	}
 
@@ -234,6 +264,11 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 	// If we're not in a catchup, set the state now
 	if !catchUp {
 		b.updateDMState(xor(ud.Target, b.currentUserID()))
+
+		// Update the group consensus of any groups this user is in, if we're changing the user's blocked state
+		if ud.Type == updateDMTypeSetBlocked {
+			b.leaveGroupsWithBlockedUsers()
+		}
 	}
 
 	return &ud
@@ -268,6 +303,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 	open := b.dmOpenByDefault(userID)
 	alias := ""
 	notes := ""
+	blocked := false
 
 	// Find all updates
 	uds := []updateDM{}
@@ -308,6 +344,9 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 			alias = string(ud.Data)
 		case updateDMTypeSetNotes:
 			notes = string(ud.Data)
+		case updateDMTypeSetBlocked:
+			blocked = ud.Data[0] == userBlocked
+			open = !blocked
 		default:
 			log.WithFields(log.Fields{
 				"type": ud.Type,
@@ -327,6 +366,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 		"typing_indicators_enabled":    typingIndicatorsEnabled,
 		"alias":                        alias,
 		"notes":                        notes,
+		"blocked":                      blocked,
 	}).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -340,6 +380,12 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 				"error": err.Error(),
 			}).Fatal("database error updating user fields")
 		}
+	}
+
+	if blocked {
+		cacheBlockedUser(userID)
+	} else {
+		cacheUnblockedUser(userID)
 	}
 
 	// Inform the UI of the current state
@@ -364,6 +410,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 		Images:           u.images(),
 		Alias:            alias,
 		Notes:            notes,
+		Blocked:          blocked,
 	})
 }
 
@@ -424,6 +471,8 @@ func (b *Bounce) saveAndDisplayUpdateDM(ud updateDM) error {
 		b.informUIUpdateDMSetAlias(u, ud)
 	case updateDMTypeSetNotes:
 		// No UI status changes for notes
+	case updateDMTypeSetBlocked:
+		// No UI status changes for blocking users
 	default:
 		log.WithFields(log.Fields{
 			"type": ud.Type,
@@ -620,6 +669,43 @@ func (b *Bounce) SetUserNotes(userID uuid.UUID, notes string) error {
 		Timestamp: time.Now().Unix(),
 		Type:      updateDMTypeSetNotes,
 		Data:      []byte(notes),
+	})
+}
+
+func (b *Bounce) BlockUser(userID uuid.UUID) error {
+	if userID == b.currentUserID() {
+		return errCannotBlockSelf
+	}
+
+	err := b.applyAndBroadcastUpdateDM(updateDM{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    xor(userID, b.currentUserID()),
+		Timestamp: time.Now().Unix(),
+		Type:      updateDMTypeSetBlocked,
+		Data:      []byte{userBlocked},
+	})
+	if err != nil {
+		return err
+	}
+
+	b.leaveGroupsWithBlockedUser(userID)
+
+	return nil
+}
+
+func (b *Bounce) UnblockUser(userID uuid.UUID) error {
+	if userID == b.currentUserID() {
+		return errCannotBlockSelf
+	}
+
+	return b.applyAndBroadcastUpdateDM(updateDM{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    xor(userID, b.currentUserID()),
+		Timestamp: time.Now().Unix(),
+		Type:      updateDMTypeSetBlocked,
+		Data:      []byte{userNotBlocked},
 	})
 }
 

@@ -613,6 +613,8 @@ func (b *Bounce) setGroupStateInDatabase(g group, gs groupState) error {
 		TypingIndicatorsEnabled:        g.TypingIndicatorsEnabled,
 	})
 
+	b.referenceAllOnlineDevicesInGroup(g.ID)
+
 	return nil
 }
 

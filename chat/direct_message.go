@@ -122,6 +122,21 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		return nil
 	}
 
+	// Ignore anything from a blocked user
+	if blockedAuthor(&dm) {
+		log.WithFields(log.Fields{
+			"id":     dm.ID,
+			"author": dm.getAuthor(),
+		}).Warn("ignoring direct message from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeDirectMessage, dm.ID)
+			}
+		}
+		return nil
+	}
+
 	// Look up the device that sent it
 	srcDevice, exists := b.getDeviceFromAddress(peer)
 	if !exists {
@@ -288,6 +303,13 @@ func (b *Bounce) dmOriginAcceptable(dm directMessage, dev device) bool {
 func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]io.ReadCloser, sources map[uuid.UUID]string) {
 	if message.ID != uuid.Nil {
 		log.Fatal("direct message ID cannot be set by the UI")
+	}
+
+	if blockedUser(message.Thread) {
+		log.WithFields(log.Fields{
+			"user_id": message.Thread,
+		}).Warn("refusing to send DM to blocked user")
+		return
 	}
 
 	now := time.Now()

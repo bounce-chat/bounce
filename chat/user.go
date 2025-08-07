@@ -17,6 +17,9 @@ const userIntroductionProfile = "profile"
 const userIntroductionAddUser = "add_user"
 const userIntroductionGroup = "group"
 
+var blockedUsers = map[uuid.UUID]bool{}
+var blockedUsersMutex sync.Mutex
+
 type user struct {
 	ID                         uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name                       string
@@ -35,6 +38,7 @@ type user struct {
 	IntroductionTime           int64  `msgpack:"-"`
 	Alias                      string `msgpack:"-"`
 	Notes                      string `msgpack:"-"`
+	Blocked                    bool   `msgpack:"-"`
 	Devices                    []device
 	Groups                     []group          `gorm:"many2many:group_users;" msgpack:"-"`
 	ProfileSettings            *profileSettings `msgpack:"-"`
@@ -355,4 +359,30 @@ func xor(uuid1, uuid2 uuid.UUID) uuid.UUID {
 	}
 
 	return xorUUID
+}
+
+func cacheBlockedUser(userID uuid.UUID) {
+	blockedUsersMutex.Lock()
+	defer blockedUsersMutex.Unlock()
+
+	blockedUsers[userID] = true
+}
+
+func cacheUnblockedUser(userID uuid.UUID) {
+	blockedUsersMutex.Lock()
+	defer blockedUsersMutex.Unlock()
+
+	delete(blockedUsers, userID)
+}
+
+func blockedUser(userID uuid.UUID) bool {
+	blockedUsersMutex.Lock()
+	defer blockedUsersMutex.Unlock()
+
+	_, ok := blockedUsers[userID]
+	return ok
+}
+
+func blockedAuthor(br broadcastable) bool {
+	return blockedUser(br.getAuthor())
 }

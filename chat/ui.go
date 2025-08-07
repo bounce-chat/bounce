@@ -12,6 +12,7 @@ type User struct {
 	IntroductionTime int64
 	Alias            string
 	Notes            string
+	Blocked          bool
 }
 
 type Settings struct {

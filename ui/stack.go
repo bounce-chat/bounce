@@ -31,7 +31,6 @@ const (
 	viewTypeNameNewDevice
 	viewTypeDialog
 	viewTypeImageViewer
-	viewTypeManageUsers
 )
 
 var hookedDialogs = make(map[dialog.Dialog]bool)
@@ -167,8 +166,6 @@ func (ui *ui) mobileBack() {
 		ui.window.SetContent(ui.views.nameNewDevice)
 	case viewTypeImageViewer:
 		ui.window.SetContent(ui.widgets.imageViewer.viewer)
-	case viewTypeManageUsers:
-		ui.window.SetContent(ui.views.manageUsers)
 	default:
 		log.WithFields(log.Fields{
 			"type": displayView.viewType,

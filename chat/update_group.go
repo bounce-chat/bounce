@@ -53,11 +53,9 @@ var errCannotRemoveLastAdmin = errors.New("cannot remove the last admin from a g
 var errCannotDemoteAdminWhoDeletedGroup = errors.New("admins who deleted group cannot be demoted")
 var errAlreadyDeleted = errors.New("group already deleted")
 
-//
 // An updateGroup frame changes the settings and status of a group, such as permissions, membership, retention, or notification settings.
 // Some settings, like retention and membership, must be observed by all participants of the group, where others like notification are only
 // sent to sync devices.  The data field of the structure contains different data depending on the type of update.
-//
 type updateGroup struct {
 	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Actor           uuid.UUID
@@ -1115,4 +1113,54 @@ func (b *Bounce) informUIUpdateGroupSetImage(ug updateGroup) {
 		Actor:     ug.Actor,
 		Timestamp: ug.Timestamp,
 	})
+}
+
+func (b *Bounce) leaveGroupsWithBlockedUsers() {
+	var blockedUsers []user
+	err := b.database.Where("blocked = ?", true).Find(&blockedUsers).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up blocked users")
+	}
+
+	alreadyLeft := map[uuid.UUID]bool{}
+	for _, u := range blockedUsers {
+		var groups []uuid.UUID
+		err = b.database.Table("group_users").
+			Select("group_id").
+			Where("user_id = ?", u.ID).
+			Find(&groups).
+			Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": u.ID,
+			}).Error("error getting groups to update when blocking a user")
+		}
+		for _, groupID := range groups {
+			if _, ok := alreadyLeft[groupID]; !ok {
+				b.RemoveUserFromGroup(groupID, b.currentUserID())
+				alreadyLeft[groupID] = true
+			}
+		}
+	}
+}
+
+func (b *Bounce) leaveGroupsWithBlockedUser(userID uuid.UUID) {
+	var groups []uuid.UUID
+	err := b.database.Table("group_users").
+		Select("group_id").
+		Where("user_id = ?", userID).
+		Find(&groups).
+		Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"user_id": userID,
+		}).Error("error getting groups to update when blocking a user")
+	}
+	for _, groupID := range groups {
+		b.RemoveUserFromGroup(groupID, b.currentUserID())
+	}
 }

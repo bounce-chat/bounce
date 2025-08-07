@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"time"
 
@@ -37,6 +38,8 @@ type directMessage struct {
 	button                           *threadButton
 	typingIndicator                  *typingIndicator
 	pendingMessageAttachments        *pendingMessageAttachments
+	blockUserButton                  *widget.Button
+	unblockUserButton                *widget.Button
 	notificationsEnabledCheck        *widget.Check
 	readReceiptOverrideSelection     *widget.Select
 	typingIndicatorOverrideSelection *widget.Select
@@ -376,6 +379,18 @@ func (ui *ui) DisplaySentDirectMessage(dm chat.DirectMessage) {
 }
 
 func (ui *ui) showEditDMContainer(dm *directMessage) {
+	if dm.user.blocked {
+		dm.blockUserButton.Hide()
+		dm.unblockUserButton.Show()
+	} else {
+		dm.blockUserButton.Show()
+		dm.unblockUserButton.Hide()
+	}
+	if dm.user.id == ui.state.profile.id {
+		dm.blockUserButton.Hide()
+		dm.unblockUserButton.Hide()
+	}
+
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeDMSettings, context: dm.user.id})
 	}
@@ -525,7 +540,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		},
 		ui.window,
 	)
-	dialogCleanup := func() {
+	clearHistoryDialogCleanup := func() {
 		if returnToThread {
 			if fyne.CurrentDevice().IsMobile() {
 				ui.mobileBack()
@@ -539,7 +554,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		}
 	}
 	clearHistoryButton := widget.NewButton("Clear history", func() {
-		ui.showDialog(confirmClearHistory, dialogCleanup)
+		ui.showDialog(confirmClearHistory, clearHistoryDialogCleanup)
 	})
 
 	hideThreadButton := widget.NewButton("Hide", func() {
@@ -559,6 +574,87 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		}
 		ui.bounce.SetOpenDM(dm.user.id, false)
 	})
+
+	blockUserDialogCleanup := func() {
+		if returnToThread {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack()
+				ui.mobileBack()
+			} else {
+				ui.showMainContainer()
+			}
+		}
+		if showError != nil {
+			ui.showDialog(dialog.NewError(showError, ui.window), nil)
+		}
+	}
+	dm.blockUserButton = widget.NewButton("Block", func() {
+		groupsWarning := ""
+		groupsToLeave := ui.threads.groupsWithUser(dm.user.id)
+		if groupsToLeave == 1 {
+			groupsWarning = "  You will be removed from 1 group you have in common."
+		} else if groupsToLeave > 1 {
+			groupsWarning = fmt.Sprintf("  You will be removed from %d groups you have in common.", groupsToLeave)
+		}
+		confirmBlockUser := dialog.NewConfirm(
+			fmt.Sprintf("Block %s?", dm.user.getDisplayName()),
+			"Are you sure you want to block this user?"+groupsWarning,
+			func(confirmed bool) {
+				returnToThread = confirmed
+				showError = nil
+				if confirmed {
+					err := ui.bounce.BlockUser(dm.user.id)
+					if err != nil {
+						showError = errors.New("error blocking user: " + err.Error())
+						returnToThread = false
+					}
+				}
+			},
+			ui.window,
+		)
+		ui.showDialog(confirmBlockUser, blockUserDialogCleanup)
+	})
+	unblockUserDialogCleanup := func() {
+		if returnToThread {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack()
+			} else {
+				ui.showMainContainer()
+			}
+			ui.window.Canvas().Focus(dm.getEntry())
+		}
+		if showError != nil {
+			ui.showDialog(dialog.NewError(showError, ui.window), nil)
+		}
+	}
+	dm.unblockUserButton = widget.NewButton("Unblock", func() {
+		confirmUnblockUser := dialog.NewConfirm(
+			fmt.Sprintf("Unblock %s?", dm.user.getDisplayName()),
+			"Are you sure you want to unblock this user?",
+			func(confirmed bool) {
+				returnToThread = confirmed
+				showError = nil
+				if confirmed {
+					err := ui.bounce.UnblockUser(dm.user.id)
+					if err != nil {
+						showError = errors.New("error unblocking user: " + err.Error())
+						returnToThread = false
+					}
+				}
+			},
+			ui.window,
+		)
+		ui.showDialog(confirmUnblockUser, unblockUserDialogCleanup)
+	})
+	if dm.user.blocked {
+		dm.blockUserButton.Hide()
+	} else {
+		dm.unblockUserButton.Hide()
+	}
+	if dm.user.id == ui.state.profile.id {
+		dm.blockUserButton.Hide()
+		dm.unblockUserButton.Hide()
+	}
 
 	dm.notesEntry = widget.NewMultiLineEntry()
 	dm.notesEntry.SetText(dm.user.notes)
@@ -763,7 +859,8 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		container.NewHBox(
 			clearHistoryButton,
 			hideThreadButton,
-			// TODO: block user button
+			dm.blockUserButton,
+			dm.unblockUserButton,
 		),
 		notes,
 		widget.NewAccordion(

@@ -23,14 +23,12 @@ const failedDialCooldown = time.Duration(30 * time.Minute)
 const auditFrequency = time.Duration(60 * time.Second)
 const keepAliveFrequency = time.Duration(15 * time.Second)
 
-//
 // The device pool is responsible for peering.  It stores all of the remote devices bounce is aware of in the devices field,
 // and these are used when broadcasting to collect a set of devices that are in scope for a frame.  The device pool needs to
 // ensure that connections are made to peer with specific groups and users, and to ensure there's no bifurcation of groups
 // it needs to keep track of if the intention of a connection was to peer with a user or a group that user is in.  To
 // accomplish this, two maps exist in the device pool to keep track of which remote devices were connected to to establish
 // peering with users or groups.
-//
 type devicePool struct {
 	auditing           sync.Mutex
 	poolMutex          sync.Mutex
@@ -160,6 +158,13 @@ func (b *Bounce) connectToGroups(desiredConnections int) {
 		// Collect all the devices associated with this group that are not on dial cooldown
 		groupAddresses := []string{}
 		for _, u := range g.Users {
+			if u.Blocked {
+				log.WithFields(log.Fields{
+					"group_id": g.ID,
+					"user_id":  u.ID,
+				}).Debug("blocking attempt to dial blocked user as part of dialing group")
+				continue
+			}
 			for _, dev := range u.Devices {
 				if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 					continue
@@ -193,7 +198,7 @@ func (b *Bounce) connectToUsers(desiredConnections int) {
 	// Connect to any users we have interacted with recently
 	var activeUsers []user
 	aMonthAgo := time.Now().Add(-4 * 7 * 24 * time.Hour).Unix()
-	err := b.database.Preload(clause.Associations).Where("profile = ? AND last_activity > ?", false, aMonthAgo).Find(&activeUsers).Error
+	err := b.database.Preload(clause.Associations).Where("profile = ? AND last_activity > ? AND blocked = ?", false, aMonthAgo, false).Find(&activeUsers).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -233,13 +238,13 @@ func (b *Bounce) connectToUsers(desiredConnections int) {
 
 	// Try to connect to any users we have not interacted with recently, but that we have non-group messages for
 	var inactiveUsers []user
-	err = b.database.Preload(clause.Associations).Where("profile = ? AND last_activity < ?", false, aMonthAgo).Find(&inactiveUsers).Error
+	err = b.database.Preload(clause.Associations).Where("profile = ? AND last_activity < ? AND blocked = ?", false, aMonthAgo, false).Find(&inactiveUsers).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error loading inactive users")
 	}
-	for _, u := range activeUsers {
+	for _, u := range inactiveUsers {
 		for _, dev := range u.Devices {
 			if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 				continue
@@ -422,6 +427,14 @@ func (b *Bounce) UserConnectionDesired(id uuid.UUID) {
 		}
 	}
 
+	// Ensure we never dial blocked users
+	if u.Blocked {
+		log.WithFields(log.Fields{
+			"user_id": u.ID,
+		}).Debug("blocking attempt to dial blocked user")
+		return
+	}
+
 	// Prune the pool of closed connections
 	b.devicePool.poolMutex.Lock()
 	b.prunePool(poolTypeUser, u.ID)
@@ -483,6 +496,13 @@ func (b *Bounce) GroupConnectionDesired(id uuid.UUID) {
 		// Collect all the devices associated with this group that are not on dial cooldown
 		groupAddresses := []string{}
 		for _, u := range g.Users {
+			if u.Blocked {
+				log.WithFields(log.Fields{
+					"group_id": g.ID,
+					"user_id":  u.ID,
+				}).Debug("blocking attempt to dial blocked user as part of dialing group")
+				continue
+			}
 			for _, dev := range u.Devices {
 				if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
 					continue

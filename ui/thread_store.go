@@ -129,3 +129,20 @@ func (ts *threadStore) sorted() []thread {
 	sort.Sort(threads)
 	return threads
 }
+
+func (ts *threadStore) groupsWithUser(id uuid.UUID) int {
+	ts.Lock()
+	defer ts.Unlock()
+
+	count := 0
+	for _, t := range ts.threads {
+		g, ok := t.(*group)
+		if ok {
+			if g.users.contains(id) {
+				count += 1
+			}
+		}
+	}
+
+	return count
+}

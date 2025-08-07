@@ -64,7 +64,6 @@ type widgets struct {
 	settings              *settings
 	newDM                 *newDM
 	imageViewer           *imageViewer
-	manageUsers           *manageUsers
 }
 
 type containers struct {
@@ -94,7 +93,6 @@ type views struct {
 	newGroup          *fyne.Container
 	newDM             *fyne.Container
 	mobileMenu        *fyne.Container
-	manageUsers       *fyne.Container
 }
 
 type state struct {
@@ -241,7 +239,6 @@ func (ui *ui) buildWidgets() {
 	ui.buildMainContainer()
 	ui.buildMobileMenu()
 	ui.buildImageViewer()
-	ui.buildManageUsers()
 }
 
 func (ui *ui) askToIgnoreBatteryOptimizations() {

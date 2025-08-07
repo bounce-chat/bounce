@@ -150,6 +150,21 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) bro
 		return nil
 	}
 
+	// Ignore anything from a blocked user
+	if blockedAuthor(&uu) {
+		log.WithFields(log.Fields{
+			"id":     uu.ID,
+			"author": uu.getAuthor(),
+		}).Warn("ignoring update user from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeUpdateUser, uu.ID)
+			}
+		}
+		return nil
+	}
+
 	// Make sure this update was signed by the user who it applies to
 	if !b.signedByUser(sc, uu.Target) {
 		log.WithFields(log.Fields{

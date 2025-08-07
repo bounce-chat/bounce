@@ -89,8 +89,8 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) broadca
 	defer handleDevicesMutex.Unlock()
 
 	// Unmarshal the device
-	var newDevice device
-	err := msgpack.Unmarshal(payload, &newDevice)
+	var d device
+	err := msgpack.Unmarshal(payload, &d)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -98,9 +98,24 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) broadca
 		return nil
 	}
 
+	// Ignore anything from a blocked user
+	if blockedAuthor(&d) {
+		log.WithFields(log.Fields{
+			"id":     d.ID,
+			"author": d.getAuthor(),
+		}).Warn("ignoring device from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeDevice, d.ID)
+			}
+		}
+		return nil
+	}
+
 	// If the device already exists, track delivery, ack it, and return
 	var existingDevice device
-	err = b.database.Preload(clause.Associations).Where("address = ?", newDevice.Address).First(&existingDevice).Error
+	err = b.database.Preload(clause.Associations).Where("address = ?", d.Address).First(&existingDevice).Error
 	if err == nil {
 		return &existingDevice
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -111,13 +126,13 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) broadca
 
 	// Find the user this new device is for
 	var targetUser user
-	err = b.database.Preload("Devices.Signature").Preload(clause.Associations).First(&targetUser, "id = ?", newDevice.UserID).Error
+	err = b.database.Preload("Devices.Signature").Preload(clause.Associations).First(&targetUser, "id = ?", d.UserID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
-				"user":    newDevice.UserID,
-				"device":  newDevice.ID,
-				"address": newDevice.Address,
+				"user":    d.UserID,
+				"device":  d.ID,
+				"address": d.Address,
 				"peer":    peer,
 			}).Warn("rejecting received device because we do not have the specified user")
 			return nil
@@ -130,18 +145,18 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) broadca
 
 	// Make sure this device is properly introduced by checking if adding the device to the user would result in an
 	// invalid device group
-	if !b.isValidAddition(targetUser, newDevice) {
+	if !b.isValidAddition(targetUser, d) {
 		log.WithFields(log.Fields{
 			"user":    targetUser.ID,
-			"device":  newDevice.ID,
-			"address": newDevice.Address,
+			"device":  d.ID,
+			"address": d.Address,
 			"peer":    peer,
 		}).Warn("rejecting received device because it would result in an invalid device group")
 		return nil
 	}
 
 	// Save it
-	err = b.database.Create(&newDevice).Error
+	err = b.database.Create(&d).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -149,26 +164,26 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) broadca
 	}
 
 	// Inform the UI if this is a new sync device
-	if newDevice.UserID == b.currentUserID() {
-		rd := b.getRemoteDevice(newDevice.Address)
+	if d.UserID == b.currentUserID() {
+		rd := b.getRemoteDevice(d.Address)
 		online := rd.connectedSockets.Load() > 0
 		var lastSeen int64
-		if peer == newDevice.Address {
+		if peer == d.Address {
 			lastSeen = time.Now().Unix()
 		}
 
 		b.ui.DeviceAdded(Device{
-			ID:        newDevice.ID,
-			Name:      newDevice.Name,
-			Address:   newDevice.Address,
-			CreatedAt: newDevice.Timestamp,
+			ID:        d.ID,
+			Name:      d.Name,
+			Address:   d.Address,
+			CreatedAt: d.Timestamp,
 			LastSeen:  lastSeen,
 			Local:     false,
 			Online:    online,
 		})
 	}
 
-	return &newDevice
+	return &d
 }
 
 //

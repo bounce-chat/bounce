@@ -83,6 +83,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 	g.refreshTypingIndicatorSettingSelection(ui.readReceiptOverrideSelectionOptions())
 
 	returnToThread := false
+	focusEntry := false
 	var showError error
 	confirmCleanup := func() {
 		if returnToThread {
@@ -91,7 +92,9 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 			} else {
 				ui.showMainContainer()
 			}
-			ui.window.Canvas().Focus(g.getEntry())
+			if focusEntry {
+				ui.window.Canvas().Focus(g.getEntry())
+			}
 		}
 		if showError != nil {
 			ui.showDialog(dialog.NewError(showError, ui.window), nil)
@@ -103,6 +106,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 		"Are you sure you want to permanently delete all chat history on all devices?",
 		func(confirmed bool) {
 			returnToThread = confirmed
+			focusEntry = confirmed
 			showError = nil
 			if confirmed {
 				err := ui.bounce.ClearGroupChatHistory(g.id)
@@ -123,6 +127,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 		"Are you sure you want to leave this group?",
 		func(confirmed bool) {
 			returnToThread = confirmed
+			focusEntry = false
 			showError = nil
 			if confirmed {
 				err := ui.bounce.RemoveUserFromGroup(g.id, ui.state.profile.id)
@@ -144,6 +149,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 		"Are you sure you want to permanently delete this group for all members?",
 		func(confirmed bool) {
 			returnToThread = confirmed
+			focusEntry = false
 			showError = nil
 			if confirmed {
 				err := ui.bounce.DeleteGroup(g.id)
@@ -164,6 +170,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 		"Are you sure you want to block this group?  You will never be able to join this group again.",
 		func(confirmed bool) {
 			returnToThread = confirmed
+			focusEntry = false
 			showError = nil
 			if confirmed {
 				err := ui.bounce.BlockGroup(g.id)
@@ -555,8 +562,12 @@ func (ui *ui) refreshAvailableNewUsers(g *group, allAvailableUsers []*user) {
 			continue
 		}
 
-		// Hide blocked users
+		// Exclude users who have blocked this group
 		if _, exists := blockedUsersMap[thisUser.id]; exists {
+			continue
+		}
+		// Exclude users we blocked
+		if thisUser.blocked {
 			continue
 		}
 

@@ -328,6 +328,10 @@ func (ui *ui) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 		if _, exists := ui.widgets.newGroup.pendingUsers.get(thisUser.id); exists {
 			continue
 		}
+		// Exclude blocked users
+		if thisUser.blocked {
+			continue
+		}
 
 		func(u *user) {
 			addUserButton := newUserButton(

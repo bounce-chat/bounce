@@ -18,6 +18,7 @@ type user struct {
 	images           []uuid.UUID
 	notes            string
 	introductionTime int64
+	blocked          bool
 }
 
 func makeUser(chatUser chat.User) *user {
@@ -28,6 +29,7 @@ func makeUser(chatUser chat.User) *user {
 		alias:            chatUser.Alias,
 		notes:            chatUser.Notes,
 		introductionTime: chatUser.IntroductionTime,
+		blocked:          chatUser.Blocked,
 	}
 
 	u.setInitials()
@@ -91,6 +93,7 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 	u.alias = chatUser.Alias
 	u.notes = chatUser.Notes
 	u.images = chatUser.Images
+	u.blocked = chatUser.Blocked
 	u.setInitials()
 
 	ui.messages.renameUser(chatUser.ID, u.getDisplayName(), u.initials)
@@ -119,6 +122,12 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 			dm.headerIcon.setString(u.initials)
 			dm.editIcon.setString(u.initials)
 			dm.button.setName(u.getDisplayName(), u.initials)
+
+			if u.blocked {
+				dm.entry.Disable()
+			} else {
+				dm.entry.Enable()
+			}
 
 			dm.chatHistoryScroll().Refresh()
 		})

@@ -12,11 +12,9 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-//
 // A confirmation is a signature of an update group from a device which is broadcast to the entire group.
 // This is used to establish which update groups are to be applied to a group in the case of a conflict
 // and reduce the risk of a malicious former admin manipulating the update history.
-//
 type confirmation struct {
 	ID            uuid.UUID `gorm:"type:uuid;primary_key;"`
 	UpdateGroupID uuid.UUID
@@ -99,6 +97,21 @@ func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling confirmation")
+		return nil
+	}
+
+	// Ignore anything from a blocked user
+	if blockedAuthor(&c) {
+		log.WithFields(log.Fields{
+			"id":     c.ID,
+			"author": c.getAuthor(),
+		}).Warn("ignoring confirmation from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeConfirmation, c.ID)
+			}
+		}
 		return nil
 	}
 
