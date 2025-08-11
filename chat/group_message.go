@@ -179,21 +179,6 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 		return nil
 	}
 
-	// Ignore anything from a blocked user
-	if blockedAuthor(&gm) {
-		log.WithFields(log.Fields{
-			"id":     gm.ID,
-			"author": gm.getAuthor(),
-		}).Warn("ignoring group message from blocked user")
-
-		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
-			if !blockedUser(peerDev.UserID) {
-				go b.sendAck(peer, typeGroupMessage, gm.ID)
-			}
-		}
-		return nil
-	}
-
 	// If we have already seen this message, all we need to do is mark that this peer has the message and ack it
 	var existingGM groupMessage
 	err = b.database.Where("id = ?", gm.ID).First(&existingGM).Error

@@ -98,21 +98,6 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) broadca
 		return nil
 	}
 
-	// Ignore anything from a blocked user
-	if blockedAuthor(&d) {
-		log.WithFields(log.Fields{
-			"id":     d.ID,
-			"author": d.getAuthor(),
-		}).Warn("ignoring device from blocked user")
-
-		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
-			if !blockedUser(peerDev.UserID) {
-				go b.sendAck(peer, typeDevice, d.ID)
-			}
-		}
-		return nil
-	}
-
 	// If the device already exists, track delivery, ack it, and return
 	var existingDevice device
 	err = b.database.Preload(clause.Associations).Where("address = ?", d.Address).First(&existingDevice).Error

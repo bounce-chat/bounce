@@ -142,21 +142,6 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 		return nil
 	}
 
-	// Ignore anything from a blocked user
-	if blockedAuthor(&rr) {
-		log.WithFields(log.Fields{
-			"id":     rr.ID,
-			"author": rr.getAuthor(),
-		}).Warn("ignoring read receipt from blocked user")
-
-		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
-			if !blockedUser(peerDev.UserID) {
-				go b.sendAck(peer, typeReadReceipt, rr.ID)
-			}
-		}
-		return nil
-	}
-
 	// Check if it already exists in the database
 	var existingRR readReceipt
 	err = b.database.Where("id = ?", rr.ID).First(&existingRR).Error

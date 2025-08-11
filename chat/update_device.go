@@ -138,12 +138,6 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("ignoring update device with invalid payload")
-
-		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
-			if !blockedUser(peerDev.UserID) {
-				go b.sendAck(peer, typeUpdateDevice, ud.ID)
-			}
-		}
 		return nil
 	}
 
@@ -198,15 +192,6 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 			"signer": ud.Signer,
 		}).Warn("ignoring update device signed by revoked device")
 		go b.sendAck(peer, typeUpdateDevice, ud.ID)
-		return nil
-	}
-
-	// Ignore anything from a blocked user
-	if blockedAuthor(&ud) {
-		log.WithFields(log.Fields{
-			"id":     ud.ID,
-			"author": ud.getAuthor(),
-		}).Warn("ignoring update device from blocked user")
 		return nil
 	}
 

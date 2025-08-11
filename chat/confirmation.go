@@ -100,21 +100,6 @@ func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 		return nil
 	}
 
-	// Ignore anything from a blocked user
-	if blockedAuthor(&c) {
-		log.WithFields(log.Fields{
-			"id":     c.ID,
-			"author": c.getAuthor(),
-		}).Warn("ignoring confirmation from blocked user")
-
-		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
-			if !blockedUser(peerDev.UserID) {
-				go b.sendAck(peer, typeConfirmation, c.ID)
-			}
-		}
-		return nil
-	}
-
 	// Check if we already have this confirmation
 	var existingConfirmation confirmation
 	err = b.database.Where("id = ?", c.ID).First(&existingConfirmation).Error

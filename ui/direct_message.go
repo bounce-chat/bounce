@@ -589,16 +589,9 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		}
 	}
 	dm.blockUserButton = widget.NewButton("Block", func() {
-		groupsWarning := ""
-		groupsToLeave := ui.threads.groupsWithUser(dm.user.id)
-		if groupsToLeave == 1 {
-			groupsWarning = "  You will be removed from 1 group you have in common."
-		} else if groupsToLeave > 1 {
-			groupsWarning = fmt.Sprintf("  You will be removed from %d groups you have in common.", groupsToLeave)
-		}
 		confirmBlockUser := dialog.NewConfirm(
 			fmt.Sprintf("Block %s?", dm.user.getDisplayName()),
-			"Are you sure you want to block this user?"+groupsWarning,
+			"Are you sure you want to block this user?",
 			func(confirmed bool) {
 				returnToThread = confirmed
 				showError = nil

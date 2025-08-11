@@ -185,21 +185,6 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 		return nil
 	}
 
-	// Ignore anything from a blocked user
-	if blockedAuthor(&ud) {
-		log.WithFields(log.Fields{
-			"id":     ud.ID,
-			"author": ud.getAuthor(),
-		}).Warn("ignoring update DM from blocked user")
-
-		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
-			if !blockedUser(peerDev.UserID) {
-				go b.sendAck(peer, typeUpdateDM, ud.ID)
-			}
-		}
-		return nil
-	}
-
 	// Find the user this applies to
 	counterparty := xor(b.currentUserID(), ud.Target)
 	var targetUser user
@@ -262,13 +247,8 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 	}
 
 	// If we're not in a catchup, set the state now
-	if !catchUp {
+	if !catchUp || ud.Type == updateDMTypeSetBlocked {
 		b.updateDMState(xor(ud.Target, b.currentUserID()))
-
-		// Update the group consensus of any groups this user is in, if we're changing the user's blocked state
-		if ud.Type == updateDMTypeSetBlocked {
-			b.leaveGroupsWithBlockedUsers()
-		}
 	}
 
 	return &ud
@@ -677,7 +657,7 @@ func (b *Bounce) BlockUser(userID uuid.UUID) error {
 		return errCannotBlockSelf
 	}
 
-	err := b.applyAndBroadcastUpdateDM(updateDM{
+	return b.applyAndBroadcastUpdateDM(updateDM{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
@@ -685,13 +665,6 @@ func (b *Bounce) BlockUser(userID uuid.UUID) error {
 		Type:      updateDMTypeSetBlocked,
 		Data:      []byte{userBlocked},
 	})
-	if err != nil {
-		return err
-	}
-
-	b.leaveGroupsWithBlockedUser(userID)
-
-	return nil
 }
 
 func (b *Bounce) UnblockUser(userID uuid.UUID) error {

@@ -382,7 +382,3 @@ func blockedUser(userID uuid.UUID) bool {
 	_, ok := blockedUsers[userID]
 	return ok
 }
-
-func blockedAuthor(br broadcastable) bool {
-	return blockedUser(br.getAuthor())
-}

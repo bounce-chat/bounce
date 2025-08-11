@@ -134,10 +134,6 @@ func (b *Bounce) readFrames(conn net.Conn) {
 			}
 		}
 
-		if blockedUser(dev.UserID) {
-			continue
-		}
-
 		if b.shutdownStarted.Load() {
 			return
 		}

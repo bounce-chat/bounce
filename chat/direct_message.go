@@ -123,7 +123,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 	}
 
 	// Ignore anything from a blocked user
-	if blockedAuthor(&dm) {
+	if blockedUser(dm.Author) {
 		log.WithFields(log.Fields{
 			"id":     dm.ID,
 			"author": dm.getAuthor(),

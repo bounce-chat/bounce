@@ -86,12 +86,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 	// Check if we're aware of the peer identity before processing this catch up.  If we don't know
 	// who this device belongs to, we should be able to learn after handling all of the frames inside
 	// it and we'll want to check to make sure that happened.
-	dev, deviceAlreadyExists := b.getDeviceFromAddress(peer)
-
-	// Do not allow catchups from blocked users
-	if blockedUser(dev.UserID) {
-		return nil
-	}
+	_, deviceAlreadyExists := b.getDeviceFromAddress(peer)
 
 	// Keep track of which groups will need a consensus update
 	groupsToUpdateConsensus := map[uuid.UUID]bool{}
@@ -195,23 +190,6 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 			usersToUpdate[br.getAuthor()] = true
 		case typeUpdateDM:
 			dmsToUpdate[br.getDestination(b.currentUserID())] = true
-
-			// If this is an update to anyone's block status, do the update immediately
-			// so that the change applies to handling other frames in the catch up
-			ud, ok := br.(*updateDM)
-			if !ok {
-				log.WithFields(log.Fields{
-					"id": br.getID(),
-				}).Warn("cannot cast update DM broadcastable")
-				continue
-			}
-			if ud.Type == updateDMTypeSetBlocked {
-				u, ok := b.currentUser()
-				if !ok {
-					continue
-				}
-				b.updateDMState(ud.getDestination(u.ID))
-			}
 		case typeUpdateSettings:
 			settingsUpdated = true
 		case typeUpdateDevice:
@@ -232,22 +210,6 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 
 	// Ack all of the handled frames
 	go b.sendDirect(peer, a)
-
-	for userID, _ := range usersToUpdate {
-		b.updateUserState(userID)
-	}
-
-	for userID, _ := range dmsToUpdate {
-		b.updateDMState(userID)
-	}
-
-	if settingsUpdated {
-		b.updateSettingsState()
-	}
-
-	for deviceID, _ := range devicesToUpdate {
-		b.updateDeviceState(deviceID)
-	}
 
 	// Update all group consensus states for groups that had an update group in this catch up
 	for groupID, _ := range groupsToUpdateConsensus {
@@ -307,12 +269,25 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		}
 	}
 
-	// Make sure we were not added to any groups that contain users we've blocked
-	b.leaveGroupsWithBlockedUsers()
-
 	// Resume notifications for groups
 	for groupID, _ := range unpause {
 		b.ui.ResumeGroupNotifications(groupID)
+	}
+
+	for userID, _ := range usersToUpdate {
+		b.updateUserState(userID)
+	}
+
+	for userID, _ := range dmsToUpdate {
+		b.updateDMState(userID)
+	}
+
+	if settingsUpdated {
+		b.updateSettingsState()
+	}
+
+	for deviceID, _ := range devicesToUpdate {
+		b.updateDeviceState(deviceID)
 	}
 
 	// Send references to any device we would have broadcast to
