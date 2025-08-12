@@ -21,6 +21,9 @@ import (
 
 func (ui *ui) scanQR() (string, error) {
 	reader, err := camera.Open()
+	if reader == nil {
+		return "", nil
+	}
 	if err != nil {
 		ui.showDialog(dialog.NewError(errors.New("error opening camera: "+err.Error()), ui.window), nil)
 		return "", err
