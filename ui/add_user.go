@@ -17,6 +17,7 @@ import (
 	"github.com/hkparker/bounce/chat"
 	"github.com/rymdport/go-qrcode"
 	log "github.com/sirupsen/logrus"
+	//"golang.org/x/image/bmp"
 )
 
 type addUser struct {
@@ -158,6 +159,8 @@ func (ui *ui) buildScanUser() {
 			fyne.Do(func() {
 				if err != nil {
 					ui.widgets.addUser.scanEntry.Text = ""
+					ui.widgets.addUser.progressBar.Hide()
+					ui.widgets.addUser.currentStep.Hide()
 					ui.containers.scanUser.Refresh()
 					ui.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), ui.window), nil)
 				} else {
@@ -169,13 +172,14 @@ func (ui *ui) buildScanUser() {
 		}()
 	}
 	ui.widgets.addUser.scanEntry.ActionItem = widget.NewButtonWithIcon("", theme.MediaPhotoIcon(), func() {
-		// TODO: open the camera
-		//_, err := camera.Open()
-		//if err != nil {
-		//	log.Error(err.Error())
-		//}
+		str, err := ui.scanQR()
+		if err != nil {
+			ui.widgets.addUser.scanEntry.OnSubmitted(str)
+		}
 	})
-	ui.widgets.addUser.scanEntry.ActionItem.(*widget.Button).Disable()
+	if !fyne.CurrentDevice().IsMobile() {
+		ui.widgets.addUser.scanEntry.ActionItem.(*widget.Button).Disable()
+	}
 
 	ui.containers.scanUser = container.NewVBox(
 		widget.NewLabel("Paste in the string or scan the QR code to add friend"),

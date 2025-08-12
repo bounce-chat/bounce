@@ -4,6 +4,8 @@ go 1.23.0
 
 toolchain go1.24.5
 
+//replace fyne.io/fyne/v2 => /home/hayden/Development/Go/src/github.com/hkparker/fyne
+
 require (
 	fyne.io/fyne/v2 v2.6.2
 	github.com/alecthomas/assert/v2 v2.11.0
@@ -26,7 +28,7 @@ require (
 	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/alecthomas/repr v0.4.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/fredbi/uri v1.1.0 // indirect
+	github.com/fredbi/uri v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fyne-io/gl-js v0.2.0 // indirect
 	github.com/fyne-io/glfw-js v0.3.0 // indirect

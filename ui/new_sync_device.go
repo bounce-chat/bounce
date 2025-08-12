@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
@@ -221,6 +222,12 @@ func (ui *ui) buildNewSyncDevice() {
 			})
 		}()
 	}
+	ui.widgets.newSyncDevice.syncStringEntry.ActionItem = widget.NewButtonWithIcon("", theme.MediaPhotoIcon(), func() {
+		str, err := ui.scanQR()
+		if err != nil {
+			ui.widgets.newSyncDevice.syncStringEntry.OnSubmitted(str)
+		}
+	})
 
 	ui.views.newSyncDevice = container.New(
 		layout.NewBorderLayout(header, actionButtons, nil, nil),
