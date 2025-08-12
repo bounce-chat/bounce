@@ -173,7 +173,7 @@ func (ui *ui) buildScanUser() {
 	}
 	ui.widgets.addUser.scanEntry.ActionItem = widget.NewButtonWithIcon("", theme.MediaPhotoIcon(), func() {
 		str, err := ui.scanQR()
-		if err != nil {
+		if err == nil {
 			ui.widgets.addUser.scanEntry.OnSubmitted(str)
 		}
 	})

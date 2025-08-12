@@ -13,7 +13,9 @@ import (
 	"fyne.io/fyne/v2/camera"
 	"fyne.io/fyne/v2/dialog"
 	"github.com/makiuchi-d/gozxing"
+
 	zxingqr "github.com/makiuchi-d/gozxing/qrcode"
+
 	log "github.com/sirupsen/logrus"
 )
 

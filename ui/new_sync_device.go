@@ -224,7 +224,7 @@ func (ui *ui) buildNewSyncDevice() {
 	}
 	ui.widgets.newSyncDevice.syncStringEntry.ActionItem = widget.NewButtonWithIcon("", theme.MediaPhotoIcon(), func() {
 		str, err := ui.scanQR()
-		if err != nil {
+		if err == nil {
 			ui.widgets.newSyncDevice.syncStringEntry.OnSubmitted(str)
 		}
 	})
