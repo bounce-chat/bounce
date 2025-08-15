@@ -286,7 +286,6 @@ func (b *Bounce) getDirectMessagesToOffer(dev device) []frameReference {
 
 	// All DMs we have sent to or received from this user in the past week
 	var dms []directMessage
-
 	if b.isSyncDevice(dev) {
 		err := b.database.
 			Select("direct_messages.*").
@@ -952,7 +951,7 @@ func (b *Bounce) getFilesToOffer(dev device) []frameReference {
 			Where(
 				"((files.scope == ? AND files.destination = ?) OR (files.scope = ? AND files.destination IN (?)) OR (files.scope == ? AND (files.author == ? OR files.author == ? OR files.author IN (?)))) AND files.scope != ? AND delivery_records.id IS NULL",
 				scopeUser,
-				dev.UserID,
+				xor(b.currentUserID(), dev.UserID),
 				scopeGroup,
 				b.database.
 					Model(&group{}).
@@ -1042,7 +1041,7 @@ func (b *Bounce) getChunkOffersToOffer(dev device) []frameReference {
 					)`,
 				scopeSync,
 				scopeUser,
-				dev.UserID,
+				xor(dev.UserID, b.currentUserID()),
 				scopeGroup,
 				b.database.
 					Model(&group{}).

@@ -11,10 +11,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-//
 // A reference request is sent in response to a reference offer if the offer contained frame references that
 // are needed by the device
-//
 type referenceRequest struct {
 	References   []frameReference
 	payload      []byte
@@ -98,7 +96,7 @@ func (b *Bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, of
 
 	for _, dmID := range requestedDirectMessageIDs {
 		var dm directMessage
-		err := b.database.Where("id = ?", dmID).First(&dm).Error
+		err := b.database.Preload(clause.Associations).Where("id = ?", dmID).First(&dm).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
@@ -126,7 +124,7 @@ func (b *Bounce) getRequestedGroupMessagePayloads(peer device, requestedIDs, off
 
 	for _, gmID := range requestedGroupMessageIDs {
 		var gm groupMessage
-		err := b.database.Where("id = ?", gmID).First(&gm).Error
+		err := b.database.Preload(clause.Associations).Where("id = ?", gmID).First(&gm).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
@@ -492,11 +490,9 @@ func (b *Bounce) getRequestedChunkOfferPayloads(peer device, requestedIDs, offer
 	return requestedData
 }
 
-//
 // Given two lists of UUIDs, one representing the original offer and the other representing what
 // was requested by the peer, separate them into the valid requested UUIDs and the UUIDs that we
 // can assume were already delivered because they were not requested.
-//
 func getValidRequestedUUIDs(originalOffer []uuid.UUID, requested []uuid.UUID) []uuid.UUID {
 	requestedSet := []uuid.UUID{}
 
