@@ -93,6 +93,9 @@ func (f *file) getScope(myID uuid.UUID) int {
 }
 
 func (f *file) getDestination(myID uuid.UUID) uuid.UUID {
+	if f.Scope == scopeUser {
+		return xor(f.Destination, myID)
+	}
 	return f.Destination
 }
 
@@ -307,6 +310,9 @@ func (co *chunkOffer) getScope(myID uuid.UUID) int {
 }
 
 func (co *chunkOffer) getDestination(myID uuid.UUID) uuid.UUID {
+	if co.Scope == scopeUser {
+		return xor(co.Destination, myID)
+	}
 	return co.Destination
 }
 

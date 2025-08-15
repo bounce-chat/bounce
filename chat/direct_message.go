@@ -366,10 +366,12 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 		}
 
 		scope := scopeUser
+		destination := xor(message.Thread, b.currentUserID())
 		if message.Thread == b.currentUserID() {
 			scope = scopeSync
+			destination = b.currentUserID()
 		}
-		err = b.embedFile(ia.ID, data, scope, message.Thread, fileTypeMessageAttachment, dm.ID)
+		err = b.embedFile(ia.ID, data, scope, destination, fileTypeMessageAttachment, dm.ID)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"id":    ia.ID,
@@ -403,10 +405,12 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 			}
 
 			scope := scopeUser
+			destination := xor(message.Thread, b.currentUserID())
 			if message.Thread == b.currentUserID() {
 				scope = scopeSync
+				destination = b.currentUserID()
 			}
-			err := b.seedFile(fa.ID, source, scope, message.Thread, fileTypeMessageAttachment, dm.ID)
+			err := b.seedFile(fa.ID, source, scope, destination, fileTypeMessageAttachment, dm.ID)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"id":    fa.ID,
@@ -436,7 +440,13 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 				continue
 			}
 
-			err = b.embedFile(fa.ID, data, scopeUser, message.Thread, fileTypeMessageAttachment, dm.ID)
+			scope := scopeUser
+			destination := xor(message.Thread, b.currentUserID())
+			if message.Thread == b.currentUserID() {
+				scope = scopeSync
+				destination = b.currentUserID()
+			}
+			err = b.embedFile(fa.ID, data, scope, destination, fileTypeMessageAttachment, dm.ID)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"id":    fa.ID,
