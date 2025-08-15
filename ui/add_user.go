@@ -219,7 +219,8 @@ func (ui *ui) UserAdded(u chat.User) {
 	ui.users.add(newUser)
 	if ui.state.currentView == viewTypeAddUser {
 		if fyne.CurrentDevice().IsMobile() {
-			ui.mobileBack()
+			ui.mobileBack() // Exit to menu
+			ui.mobileBack() // Exit menu to home
 		} else {
 			ui.showMainContainer()
 		}
