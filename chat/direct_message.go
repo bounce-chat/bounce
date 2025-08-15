@@ -106,6 +106,10 @@ func (dm *directMessage) getTimestamp() int64 {
 	return dm.WrittenAt
 }
 
+func (dm *directMessage) empty() bool {
+	return dm.Text == "" && len(dm.ImageAttachments) == 0 && len(dm.FileAttachments) == 0
+}
+
 func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) broadcastable {
 	directMessageMutex.Lock()
 	defer directMessageMutex.Unlock()
@@ -134,6 +138,15 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 				go b.sendAck(peer, typeDirectMessage, dm.ID)
 			}
 		}
+		return nil
+	}
+
+	// Ignore empty messages
+	if dm.empty() {
+		log.WithFields(log.Fields{
+			"id": dm.ID,
+		}).Warn("ignoring empty direct message")
+		go b.sendAck(peer, typeDirectMessage, dm.ID)
 		return nil
 	}
 
@@ -463,6 +476,11 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 			Name:      fa.Name,
 			Size:      fa.Size,
 		})
+	}
+
+	if dm.empty() {
+		log.Error("refusing to send empty direct message")
+		return
 	}
 
 	err := b.database.Create(dm).Error

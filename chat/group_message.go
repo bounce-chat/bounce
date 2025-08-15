@@ -108,6 +108,10 @@ func (gm *groupMessage) getTimestamp() int64 {
 	return gm.WrittenAt
 }
 
+func (gm *groupMessage) empty() bool {
+	return gm.Text == "" && len(gm.ImageAttachments) == 0 && len(gm.FileAttachments) == 0
+}
+
 func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) broadcastable {
 	groupMutex.Lock()
 	defer groupMutex.Unlock()
@@ -142,6 +146,15 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) b
 	gm.OriginalPayload = sc.Payload
 	gm.Signature = sc.Signature
 	gm.Signer = sc.Signer
+
+	// Ignore empty messages
+	if gm.empty() {
+		log.WithFields(log.Fields{
+			"id": gm.ID,
+		}).Warn("ignoring empty group message")
+		go b.sendAck(peer, typeGroupMessage, gm.ID)
+		return nil
+	}
 
 	// Make sure the signing device was not revoked before creating this
 	var signerDevice device
@@ -440,6 +453,11 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 			Name:      fa.Name,
 			Size:      fa.Size,
 		})
+	}
+
+	if gm.empty() {
+		log.Error("refusing to send empty group message")
+		return
 	}
 
 	gm.OriginalPayload, err = msgpack.Marshal(gm)
