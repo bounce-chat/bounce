@@ -4,14 +4,11 @@ import "errors"
 
 /*
 import (
-	"bytes"
-	"encoding/base64"
 	"errors"
-	"image"
-	"io"
 
-	"fyne.io/fyne/v2/camera"
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/sensor"
 	"github.com/makiuchi-d/gozxing"
 
 	zxingqr "github.com/makiuchi-d/gozxing/qrcode"
@@ -20,30 +17,17 @@ import (
 )
 
 func (ui *ui) scanQR() (string, error) {
-	reader, err := camera.Open()
-	if reader == nil {
+	cameraDevice, ok := fyne.CurrentDevice().(sensor.CameraDevice)
+	if !ok {
+		log.Error("camera is unsupported on this device")
+		return "", nil
+	}
+
+	img, captured, err := cameraDevice.CapturePhoto()
+	if !captured {
 		return "", nil
 	}
 	if err != nil {
-		ui.showDialog(dialog.NewError(errors.New("error opening camera: "+err.Error()), ui.window), nil)
-		return "", err
-	}
-
-	encoded, err := io.ReadAll(reader)
-	if err != nil {
-		ui.showDialog(dialog.NewError(errors.New("error reading camera data: "+err.Error()), ui.window), nil)
-		return "", err
-	}
-
-	data, err := base64.StdEncoding.DecodeString(string(encoded))
-	if err != nil {
-		ui.showDialog(dialog.NewError(errors.New("error decoding camera data: "+err.Error()), ui.window), nil)
-		return "", err
-	}
-
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		ui.showDialog(dialog.NewError(errors.New("error decoding image: "+err.Error()), ui.window), nil)
 		return "", err
 	}
 
