@@ -369,19 +369,37 @@ func (ui *ui) buildEditProfile() {
 	// Layout of all sections
 	//
 
-	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		if fyne.CurrentDevice().IsMobile() {
-			ui.mobileBack()
-		} else {
-			ui.showMainContainer()
-		}
-	})
-	closeButton.Importance = widget.LowImportance
+	var closeBar fyne.CanvasObject
+	if fyne.CurrentDevice().IsMobile() {
+		closeButton := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack()
+			} else {
+				ui.showMainContainer()
+			}
+		})
+		closeButton.Importance = widget.LowImportance
 
-	closeBar := container.New(
-		layout.NewBorderLayout(nil, nil, nil, closeButton),
-		closeButton,
-	)
+		closeBar = container.New(
+			layout.NewBorderLayout(nil, nil, closeButton, nil),
+			closeButton,
+		)
+	} else {
+		closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack()
+			} else {
+				ui.showMainContainer()
+			}
+		})
+		closeButton.Importance = widget.LowImportance
+
+		closeBar = container.New(
+			layout.NewBorderLayout(nil, nil, nil, closeButton),
+			closeButton,
+		)
+	}
+
 	nonScrollingContainers := container.NewVBox(
 		ui.containers.profileOptions,
 		devicesLabel,

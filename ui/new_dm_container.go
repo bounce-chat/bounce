@@ -31,19 +31,36 @@ func (ui *ui) buildNewDM() {
 		scroll: container.NewVScroll(container.NewVBox()),
 	}
 
-	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		if fyne.CurrentDevice().IsMobile() {
-			ui.mobileBack()
-		} else {
-			ui.showMainContainer()
-		}
-	})
-	closeButton.Importance = widget.LowImportance
+	var closeBar fyne.CanvasObject
+	if fyne.CurrentDevice().IsMobile() {
+		closeButton := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack()
+			} else {
+				ui.showMainContainer()
+			}
+		})
+		closeButton.Importance = widget.LowImportance
 
-	closeBar := container.New(
-		layout.NewBorderLayout(nil, nil, nil, closeButton),
-		closeButton,
-	)
+		closeBar = container.New(
+			layout.NewBorderLayout(nil, nil, closeButton, nil),
+			closeButton,
+		)
+	} else {
+		closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack()
+			} else {
+				ui.showMainContainer()
+			}
+		})
+		closeButton.Importance = widget.LowImportance
+
+		closeBar = container.New(
+			layout.NewBorderLayout(nil, nil, nil, closeButton),
+			closeButton,
+		)
+	}
 
 	filters := container.NewHBox(
 		widget.NewCheck("Show Blocked", func(set bool) {

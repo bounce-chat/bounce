@@ -20,19 +20,36 @@ func (ui *ui) showAbout() {
 }
 
 func (ui *ui) buildAbout() {
-	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		if fyne.CurrentDevice().IsMobile() {
-			ui.mobileBack()
-		} else {
-			ui.showMainContainer()
-		}
-	})
-	closeButton.Importance = widget.LowImportance
+	var closeBar fyne.CanvasObject
+	if fyne.CurrentDevice().IsMobile() {
+		closeButton := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack()
+			} else {
+				ui.showMainContainer()
+			}
+		})
+		closeButton.Importance = widget.LowImportance
 
-	closeBar := container.New(
-		layout.NewBorderLayout(nil, nil, nil, closeButton),
-		closeButton,
-	)
+		closeBar = container.New(
+			layout.NewBorderLayout(nil, nil, closeButton, nil),
+			closeButton,
+		)
+	} else {
+		closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack()
+			} else {
+				ui.showMainContainer()
+			}
+		})
+		closeButton.Importance = widget.LowImportance
+
+		closeBar = container.New(
+			layout.NewBorderLayout(nil, nil, nil, closeButton),
+			closeButton,
+		)
+	}
 
 	revision := "000000"
 	buildInfo, ok := debug.ReadBuildInfo()

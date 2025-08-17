@@ -90,19 +90,36 @@ func (ui *ui) buildNewGroup() {
 	ui.widgets.newGroup.postingRestrictedCheck = widget.NewCheck("Restrict Posting", func(_ bool) {})
 	ui.widgets.newGroup.postingRestrictedCheck.SetChecked(ui.state.settings.NewGroupRestrictPosting)
 
-	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		if fyne.CurrentDevice().IsMobile() {
-			ui.mobileBack()
-		} else {
-			ui.showMainContainer()
-		}
-	})
-	closeButton.Importance = widget.LowImportance
+	var closeBar fyne.CanvasObject
+	if fyne.CurrentDevice().IsMobile() {
+		closeButton := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack()
+			} else {
+				ui.showMainContainer()
+			}
+		})
+		closeButton.Importance = widget.LowImportance
 
-	closeBar := container.New(
-		layout.NewBorderLayout(nil, nil, nil, closeButton),
-		closeButton,
-	)
+		closeBar = container.New(
+			layout.NewBorderLayout(nil, nil, closeButton, nil),
+			closeButton,
+		)
+	} else {
+		closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack()
+			} else {
+				ui.showMainContainer()
+			}
+		})
+		closeButton.Importance = widget.LowImportance
+
+		closeBar = container.New(
+			layout.NewBorderLayout(nil, nil, nil, closeButton),
+			closeButton,
+		)
+	}
 
 	ui.widgets.newGroup.createButton = widget.NewButton("Create", func() {
 		ui.widgets.newGroup.createButton.Disable()

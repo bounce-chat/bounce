@@ -58,19 +58,36 @@ func (ui *ui) buildSettings() {
 	themeSettingsLabel := widget.NewLabel("Theme")
 	themeSettingsLabel.TextStyle = fyne.TextStyle{Bold: true}
 
-	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-		if fyne.CurrentDevice().IsMobile() {
-			ui.mobileBack()
-		} else {
-			ui.showMainContainer()
-		}
-	})
-	closeButton.Importance = widget.LowImportance
+	var closeBar fyne.CanvasObject
+	if fyne.CurrentDevice().IsMobile() {
+		closeButton := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack()
+			} else {
+				ui.showMainContainer()
+			}
+		})
+		closeButton.Importance = widget.LowImportance
 
-	closeBar := container.New(
-		layout.NewBorderLayout(nil, nil, nil, closeButton),
-		closeButton,
-	)
+		closeBar = container.New(
+			layout.NewBorderLayout(nil, nil, closeButton, nil),
+			closeButton,
+		)
+	} else {
+		closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack()
+			} else {
+				ui.showMainContainer()
+			}
+		})
+		closeButton.Importance = widget.LowImportance
+
+		closeBar = container.New(
+			layout.NewBorderLayout(nil, nil, nil, closeButton),
+			closeButton,
+		)
+	}
 
 	ui.widgets.settings = &settings{
 		sendReadReceiptsByDefault:             widget.NewCheck("Send Read Receipts By Default", ui.bounce.SetReadReceiptsByDefault),
@@ -82,11 +99,14 @@ func (ui *ui) buildSettings() {
 		darkMode:                              widget.NewCheck("Dark Mode", ui.setDarkMode),
 	}
 
-	ui.views.settings = container.New(
-		layout.NewBorderLayout(closeBar, nil, nil, nil),
+	header := container.NewVBox(
 		closeBar,
+		makeLogo(247, 75),
+	)
+	ui.views.settings = container.New(
+		layout.NewBorderLayout(header, nil, nil, nil),
+		header,
 		container.NewVScroll(container.NewVBox(
-			container.NewCenter(makeLogo(247, 75)),
 			globalSettingsLabel,
 			ui.widgets.settings.sendReadReceiptsByDefault,
 			ui.widgets.settings.sendTypingIndicatorsByDefault,
