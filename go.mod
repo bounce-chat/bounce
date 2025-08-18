@@ -7,7 +7,7 @@ toolchain go1.24.5
 //replace fyne.io/fyne/v2 => /home/hayden/Development/Go/src/github.com/hkparker/fyne
 
 require (
-	fyne.io/fyne/v2 v2.6.2
+	fyne.io/fyne/v2 v2.6.2-0.20250817214456-878c696755e2
 	github.com/alecthomas/assert/v2 v2.11.0
 	github.com/bbrks/go-blurhash v1.1.1
 	github.com/cretz/bine v0.2.0

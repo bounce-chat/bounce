@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/bbrks/go-blurhash"
@@ -174,7 +175,7 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 			fileGetter: ui.bounce.GetFileData,
 			imageCache: make(map[uuid.UUID]*canvas.Image),
 		},
-		imageAttachments: container.New(NewRowWrapLayout()),
+		imageAttachments: container.New(layout.NewRowWrapLayout()),
 		fileAttachments:  container.NewVBox(),
 		background: &canvas.Rectangle{
 			CornerRadius: 15,
