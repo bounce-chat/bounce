@@ -81,6 +81,15 @@ func (f *file) AfterDelete(tx *gorm.DB) error {
 	if err != nil {
 		return err
 	}
+	if f.embedded() {
+		err = os.Remove(f.Path)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"path":  f.Path,
+			}).Warn("error removing file that is being deleted from disk")
+		}
+	}
 	return nil
 }
 
@@ -577,9 +586,11 @@ func (b *Bounce) getChunkData(hash string) ([]byte, error) {
 			return c.Data, nil
 		} else {
 			log.WithFields(log.Fields{
-				"chunk": c.ID,
-				"hash":  hash,
-				"file":  f.ID,
+				"chunk":  c.ID,
+				"hash":   hash,
+				"actual": hashString(blake3.Sum256(c.Data)),
+				"length": len(c.Data),
+				"file":   c.FileID,
 			}).Warn("chunk data does not match hash")
 		}
 	}
@@ -1005,9 +1016,9 @@ func (b *Bounce) seedFile(fileID uuid.UUID, path string, scope int, destination 
 				return err
 			}
 		}
-		hasher.Write(chunkData)
 
-		chunkHash := blake3.Sum256(chunkData)
+		hasher.Write(chunkData[:n])
+		chunkHash := blake3.Sum256(chunkData[:n])
 		chunkHashString := hashString(chunkHash)
 		chunkID, err := uuid.FromBytes(chunkHash[:16])
 		if err != nil {
@@ -1017,9 +1028,10 @@ func (b *Bounce) seedFile(fileID uuid.UUID, path string, scope int, destination 
 		chunks = append(
 			chunks,
 			chunk{
-				ID:    xor(fileID, chunkID),
-				Hash:  chunkHashString,
-				Index: i,
+				ID:         xor(fileID, chunkID),
+				Hash:       chunkHashString,
+				Index:      i,
+				Downloaded: true,
 			},
 		)
 		hashList = append(
