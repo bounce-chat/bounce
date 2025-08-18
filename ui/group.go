@@ -496,50 +496,48 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		go ui.bounce.TypingInGroup(group.id)
 	}
 	entry.customOnSubmitted = func() {
-		go func() {
-			gm := chat.GroupMessage{
-				Thread: group.id,
-				Text:   entry.Text,
+		gm := chat.GroupMessage{
+			Thread: group.id,
+			Text:   entry.Text,
+		}
+
+		imageAttachments := []chat.ImageAttachment{}
+		fileAttachments := []chat.FileAttachment{}
+		readers := map[uuid.UUID]io.ReadCloser{}
+		sources := map[uuid.UUID]string{}
+
+		pendingAttachments := group.pendingMessageAttachments.extract()
+		for _, pma := range pendingAttachments {
+			readers[pma.id] = pma.reader
+			sources[pma.id] = pma.reader.URI().Path()
+
+			if pma.isImage {
+				imageAttachments = append(
+					imageAttachments,
+					chat.ImageAttachment{
+						ID:       pma.id,
+						Name:     pma.reader.URI().Name(),
+						Size:     pma.fileSize,
+						Width:    pma.width,
+						Height:   pma.height,
+						BlurHash: pma.blurHash,
+					},
+				)
+			} else {
+				fileAttachments = append(
+					fileAttachments,
+					chat.FileAttachment{
+						ID:   pma.id,
+						Name: pma.reader.URI().Name(),
+						Size: pma.fileSize,
+					},
+				)
 			}
+		}
 
-			imageAttachments := []chat.ImageAttachment{}
-			fileAttachments := []chat.FileAttachment{}
-			readers := map[uuid.UUID]io.ReadCloser{}
-			sources := map[uuid.UUID]string{}
-
-			pendingAttachments := group.pendingMessageAttachments.extract()
-			for _, pma := range pendingAttachments {
-				readers[pma.id] = pma.reader
-				sources[pma.id] = pma.reader.URI().Path()
-
-				if pma.isImage {
-					imageAttachments = append(
-						imageAttachments,
-						chat.ImageAttachment{
-							ID:       pma.id,
-							Name:     pma.reader.URI().Name(),
-							Size:     pma.fileSize,
-							Width:    pma.width,
-							Height:   pma.height,
-							BlurHash: pma.blurHash,
-						},
-					)
-				} else {
-					fileAttachments = append(
-						fileAttachments,
-						chat.FileAttachment{
-							ID:   pma.id,
-							Name: pma.reader.URI().Name(),
-							Size: pma.fileSize,
-						},
-					)
-				}
-			}
-
-			gm.ImageAttachments = imageAttachments
-			gm.FileAttachments = fileAttachments
-			ui.bounce.SendGroupMessage(gm, readers, sources)
-		}()
+		gm.ImageAttachments = imageAttachments
+		gm.FileAttachments = fileAttachments
+		go ui.bounce.SendGroupMessage(gm, readers, sources)
 	}
 
 	openThread := func() {
