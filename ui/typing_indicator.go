@@ -179,7 +179,7 @@ type typingIndicatorRenderer struct {
 func (tir *typingIndicatorRenderer) Destroy() {}
 
 func (tir *typingIndicatorRenderer) Layout(size fyne.Size) {
-	animationLeft := float32(0)
+	animationLeft := theme.Padding()
 
 	if tir.ti.mode == typingIndicatorModeIcons {
 		for i, icon := range tir.ti.icons {
@@ -195,7 +195,7 @@ func (tir *typingIndicatorRenderer) Layout(size fyne.Size) {
 				Height: theme.IconInlineSize(),
 			})
 
-			left := float32(0)
+			left := theme.Padding()
 			if i > 0 {
 				left += theme.IconInlineSize() * float32(i)
 				left -= theme.IconInlineSize() / 2
