@@ -540,8 +540,8 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 		},
 		Admins: []uuid.UUID{me.currentUserID()},
 	}, []byte{})
-	await(t, alice, "NewGroupChat")
-	await(t, bob, "NewGroupChat")
+	await(t, alice, "SetGroupState")
+	await(t, bob, "SetGroupState")
 
 	var g group
 	me.database.First(&g)

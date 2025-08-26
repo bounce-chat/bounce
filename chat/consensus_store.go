@@ -245,7 +245,9 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 				if gs.ug.Actor != b.currentUserID() && gs.ug.Type != updateGroupTypeBlock {
 					// We only want confirmations to be send to devices that are in the group in the final group state, so we
 					// defer the call to sending confirmations so that it happens after the database has been updated
-					defer b.sendConfirmation(gs.ug)
+					if finalState.deletedBy == nil && !finalState.isBlocked(b.currentUserID()) && finalState.isMember(b.currentUserID()) {
+						b.sendConfirmation(gs.ug)
+					}
 				}
 			}
 		}

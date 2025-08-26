@@ -104,13 +104,13 @@ func TestEarlyConfirmationWorks(t *testing.T) {
 	}
 
 	// Handle the confirmation, ensure it gets saved
-	fr := b.handleConfirmation(alice.network.Address(), aliceConfirmation.getPayload(), false)
+	fr, _ := b.handleConfirmation(alice.network.Address(), aliceConfirmation.getPayload(), false)
 	assert.True(t, fr == nil)
 	var c confirmation
 	assert.NoError(t, b.database.First(&c, "id = ?", aliceConfirmation.ID).Error)
 
 	// Handle the update group and ensure that it gets saved
-	fr = b.handleUpdateGroup(alice.network.Address(), restrictEdits.getPayload(), false)
+	fr, _ = b.handleUpdateGroup(alice.network.Address(), restrictEdits.getPayload(), false)
 	assert.False(t, fr == nil)
 
 	// Load the update from the database and see that it already has a confirmation

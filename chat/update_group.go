@@ -458,7 +458,8 @@ func (b *Bounce) processEarlyConfirmations(ug updateGroup) {
 				"error":           err.Error(),
 			}).Fatal("error updating confirmation destination and custom scope")
 		}
-
+		c.Destination = ug.Target
+		c.CustomScope = ug.CustomScope
 		go b.broadcast(&c)
 	}
 }
