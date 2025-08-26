@@ -81,13 +81,21 @@ func (g *group) AfterDelete(tx *gorm.DB) error {
 
 func (g *group) state() groupState {
 	gs := groupState{
-		name:                     g.Name,
-		mutedUntil:               g.MutedUntil,
-		retention:                g.Retention,
-		clearBefore:              g.ClearBefore,
-		postingRestricted:        g.RestrictPosting,
-		editingRestricted:        g.RestrictGroupEdits,
-		userManagementRestricted: g.RestrictUserManagement,
+		name:                       g.Name,
+		images:                     []uuid.UUID{},
+		users:                      []uuid.UUID{},
+		admins:                     []uuid.UUID{},
+		blockedUsers:               []uuid.UUID{},
+		mutedUntil:                 g.MutedUntil,
+		retention:                  g.Retention,
+		clearBefore:                g.ClearBefore,
+		postingRestricted:          g.RestrictPosting,
+		editingRestricted:          g.RestrictGroupEdits,
+		userManagementRestricted:   g.RestrictUserManagement,
+		readReceiptsOverridden:     g.ReadReceiptsOverridden,
+		readReceiptsEnabled:        g.ReadReceiptsEnabled,
+		typingIndicatorsOverridden: g.TypingIndicatorsOverridden,
+		typingIndicatorsEnabled:    g.TypingIndicatorsEnabled,
 	}
 
 	for _, u := range g.Users {
@@ -119,6 +127,19 @@ func (g *group) state() groupState {
 			}
 
 			gs.blockedUsers = append(gs.blockedUsers, blockedID)
+		}
+	}
+
+	if len(g.Images) > 0 {
+		for _, imageIDString := range strings.Split(g.Images, ",") {
+			imageID, err := uuid.Parse(imageIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"images": g.Images,
+				}).Fatal("invalid UUID in group images list")
+			}
+			gs.images = append(gs.images, imageID)
 		}
 	}
 

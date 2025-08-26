@@ -605,8 +605,6 @@ func (b *Bounce) setGroupStateInDatabase(g group, gs groupState, ugsToNotify []u
 		}
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
 	go func() {
 		b.ui.SetGroupState(Group{
 			ID:                             g.ID,
@@ -632,9 +630,7 @@ func (b *Bounce) setGroupStateInDatabase(g group, gs groupState, ugsToNotify []u
 		for _, ug := range ugsToNotify {
 			b.informUIOfUpdateGroup(ug)
 		}
-		wg.Done()
 	}()
-	wg.Wait()
 
 	b.referenceAllOnlineDevicesInGroup(g.ID)
 
@@ -693,6 +689,37 @@ func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {
 		}
 	}
 
+	// Get the images in the group
+	var g group
+	err = b.database.Select("images").Where("id = ?", groupID).Find(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+				"user_id":  userID,
+			}).Error("group not found when attempting to delete delivery records for group user was removed from")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Fatal("database error looking up group")
+		}
+	}
+	imageHistory := []uuid.UUID{}
+	if len(g.Images) > 0 {
+		for _, imageIDString := range strings.Split(g.Images, ",") {
+			imageID, err := uuid.Parse(imageIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":  err.Error(),
+					"images": g.Images,
+				}).Fatal("invalid UUID in group images list")
+			}
+			imageHistory = append(imageHistory, imageID)
+		}
+	}
+
 	// Delete all delivery records for this user for items in this group, and send the removal directly
 	for _, dev := range u.Devices {
 		// Delete the delivery records for each group message
@@ -712,6 +739,43 @@ func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {
 					"user_id":  userID,
 					"group_id": groupID,
 				}).Fatal("database error deleting delivery records")
+			}
+
+			// Clear delivery records for any files associated with this message
+			fas := []fileAttachment{}
+			err = b.database.Select("file_id").Where("message_id = ?", gm.ID).Find(&fas).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up all file attachments for a message")
+			}
+			for _, fa := range fas {
+				err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeFile, fa.FileID).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":    err.Error(),
+						"user_id":  userID,
+						"group_id": groupID,
+					}).Fatal("database error deleting delivery records")
+				}
+			}
+
+			ias := []imageAttachment{}
+			err = b.database.Select("file_id").Where("message_id = ?", gm.ID).Find(&ias).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up all image attachments for a message")
+			}
+			for _, ia := range ias {
+				err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeFile, ia.FileID).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":    err.Error(),
+						"user_id":  userID,
+						"group_id": groupID,
+					}).Fatal("database error deleting delivery records")
+				}
 			}
 		}
 
@@ -765,6 +829,16 @@ func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {
 				"group_id": groupID,
 			}).Fatal("database error deleting delivery records")
 		}
+
+		// Clear delivery records for any files or file related frames for this group
+		err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id IN (?)", dev.Address, typeFile, imageHistory).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"user_id":  userID,
+				"group_id": groupID,
+			}).Fatal("database error deleting delivery records")
+		}
 	}
 }
 
@@ -791,7 +865,7 @@ func (b *Bounce) pruneMessagesBeforeClear(clearBefore int64, groupID uuid.UUID) 
 func (b *Bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID uuid.UUID) {
 	// Check if we've already cleared delivery records as a result of this update group
 	var g group
-	err := b.database.Select("delivery_records_cleared_for").Where("id = ?", groupID).Find(&g).Error
+	err := b.database.Select("images", "delivery_records_cleared_for").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":    err.Error(),
@@ -857,6 +931,63 @@ func (b *Bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID uuid
 				}).Fatal("database error deleting delivery records")
 
 			}
+
+			// Clear delivery records for any files associated with this message
+			fas := []fileAttachment{}
+			err = b.database.Select("file_id").Where("message_id = ?", gm.ID).Find(&fas).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up all file attachments for a message")
+			}
+			for _, fa := range fas {
+				err = b.database.Exec("DELETE FROM delivery_records WHERE frame_type = ? AND frame_id = ?", typeFile, fa.FileID).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":    err.Error(),
+						"group_id": groupID,
+					}).Fatal("database error deleting delivery records")
+				}
+			}
+
+			ias := []imageAttachment{}
+			err = b.database.Select("file_id").Where("message_id = ?", gm.ID).Find(&ias).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up all image attachments for a message")
+			}
+			for _, ia := range ias {
+				err = b.database.Exec("DELETE FROM delivery_records WHERE frame_type = ? AND frame_id = ?", typeFile, ia.FileID).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":    err.Error(),
+						"group_id": groupID,
+					}).Fatal("database error deleting delivery records")
+				}
+			}
+		}
+
+		// Clear delivery records for any group images
+		imageHistory := []uuid.UUID{}
+		if len(g.Images) > 0 {
+			for _, imageIDString := range strings.Split(g.Images, ",") {
+				imageID, err := uuid.Parse(imageIDString)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":  err.Error(),
+						"images": g.Images,
+					}).Fatal("invalid UUID in group images list")
+				}
+				imageHistory = append(imageHistory, imageID)
+			}
+		}
+		err = b.database.Exec("DELETE FROM delivery_records WHERE frame_type = ? AND frame_id IN (?)", typeFile, imageHistory).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+			}).Fatal("database error deleting delivery records")
 		}
 
 		b.referenceAllOnlineDevicesInGroup(groupID)
