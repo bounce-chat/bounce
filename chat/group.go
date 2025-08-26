@@ -529,14 +529,6 @@ func (b *Bounce) removeGroupAdmin(groupID, userID uuid.UUID) {
 		}
 	}
 
-	if len(admins) == 0 {
-		log.WithFields(log.Fields{
-			"group_id": groupID,
-			"user_id":  userID,
-		}).Error("cannot remove last admin from group")
-		return
-	}
-
 	if removedUser {
 		err = b.database.Model(&g).Where("id = ?", groupID).Update("admins", strings.Join(admins, ",")).Error
 		if err != nil {
