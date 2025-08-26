@@ -313,9 +313,6 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 			}).Error("update group attempted to remove user with invalid UUID")
 			return err
 		}
-		if len(gs.admins) == 1 && gs.admins[0] == userID {
-			return errCannotRemoveLastAdmin
-		}
 		if ug.Actor == userID {
 			return nil
 		}
@@ -374,7 +371,12 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 				return errCannotPromoteAdminNotInGroup
 			}
 		} else {
-			return errAdminRequired
+			if len(gs.admins) == 0 {
+				// When no one in a group is an admin, anyone can promote anyone to admin
+				return nil
+			} else {
+				return errAdminRequired
+			}
 		}
 	case updateGroupTypeDemoteAdmin:
 		userID, err := uuid.FromBytes(ug.Data)
@@ -390,9 +392,6 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 			return errCannotDemoteAdminWhoDeletedGroup
 		}
 		if gs.isAdmin(ug.Actor) {
-			if len(gs.admins) == 1 && gs.admins[0] == userID {
-				return errCannotRemoveLastAdmin
-			}
 			return nil
 		} else {
 			return errAdminRequired
@@ -425,11 +424,6 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 			return errAdminRequired
 		}
 	case updateGroupTypeBlock:
-		if gs.isAdmin(ug.Actor) {
-			if len(gs.admins) == 1 && gs.admins[0] == ug.Actor {
-				return errCannotRemoveLastAdmin
-			}
-		}
 		return nil
 	case updateGroupTypeSetReadReceiptSettings:
 		if myID == ug.Actor {
@@ -570,10 +564,6 @@ func applyUpdateGroupRemoveUserToState(gs groupState, ug updateGroup) (groupStat
 		}
 	}
 
-	if len(adminsWithoutUser) == 0 {
-		return gs, errCannotRemoveLastAdmin
-	}
-
 	gs.users = membersWithoutUser
 	gs.admins = adminsWithoutUser
 
@@ -642,10 +632,6 @@ func applyUpdateGroupDemoteAdminToState(gs groupState, ug updateGroup) (groupSta
 		}
 	}
 
-	if len(adminsWithoutUser) == 0 {
-		return gs, errCannotRemoveLastAdmin
-	}
-
 	gs.admins = adminsWithoutUser
 
 	if gs.deletedBy != nil && gs.deletedBy.Actor == userID {
@@ -711,10 +697,6 @@ func applyUpdateGroupBlockToState(gs groupState, ug updateGroup) (groupState, er
 		if id != ug.Actor {
 			adminsWithoutUser = append(adminsWithoutUser, id)
 		}
-	}
-
-	if len(adminsWithoutUser) == 0 {
-		return gs, errCannotRemoveLastAdmin
 	}
 
 	gs.users = membersWithoutUser

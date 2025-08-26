@@ -49,7 +49,6 @@ var errUpdateNotApplied = errors.New("update could not be applied")
 var errGroupNotFound = errors.New("group not found")
 var errUserNotInGroup = errors.New("user is not in group")
 var errAdminRequired = errors.New("this action can only be performed by admins")
-var errCannotRemoveLastAdmin = errors.New("cannot remove the last admin from a group")
 var errCannotDemoteAdminWhoDeletedGroup = errors.New("admins who deleted group cannot be demoted")
 var errAlreadyDeleted = errors.New("group already deleted")
 

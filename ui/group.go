@@ -1171,6 +1171,12 @@ func (ui *ui) updateEnabledFeatures(g *group) {
 				check.Disable()
 			}
 			g.adminChecksMutex.Unlock()
+		} else {
+			g.adminChecksMutex.Lock()
+			for _, check := range g.adminChecks {
+				check.Enable()
+			}
+			g.adminChecksMutex.Unlock()
 		}
 	}
 
