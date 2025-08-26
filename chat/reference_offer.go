@@ -1083,9 +1083,9 @@ func (b *Bounce) getChunkOffersToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	if _, revoked := b.devicePool.revokedDevices[peer]; revoked {
-		return nil
+		return nil, false
 	}
 
 	// Unpack the offer
@@ -1095,7 +1095,7 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling reference offer")
-		return nil
+		return nil, false
 	}
 
 	dev, deviceExists := b.getDeviceFromAddress(peer)
@@ -1179,7 +1179,7 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		References: acks,
 	})
 
-	return nil
+	return nil, false
 }
 
 func (b *Bounce) getDirectMessagesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {

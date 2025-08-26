@@ -141,7 +141,7 @@ func (f *file) getTimestamp() int64 {
 	return f.Timestamp
 }
 
-func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	fileMutex.Lock()
 	defer fileMutex.Unlock()
 
@@ -151,7 +151,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("ignoring a file sent from an unknown device")
-		return nil
+		return nil, false
 	}
 
 	// Verify and unpack the signed container
@@ -160,7 +160,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unpacking signed container for file")
-		return nil
+		return nil, false
 	}
 	var f file
 	err = msgpack.Unmarshal(sc.Payload, &f)
@@ -168,7 +168,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling file")
-		return nil
+		return nil, false
 	}
 	f.OriginalPayload = sc.Payload
 	f.Signature = sc.Signature
@@ -181,7 +181,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 			"author":         f.Author,
 			"signing_device": sc.Signer,
 		}).Warn("ignoring file that could not be signature validated")
-		return nil
+		return nil, false
 	}
 
 	// Make sure the device that signed this message belongs to the author
@@ -192,7 +192,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 			"signer": sc.Signer,
 			"author": f.Author,
 		}).Warn("received file signed by a different user than the author, ignoring")
-		return nil
+		return nil, false
 	}
 
 	// Make sure the signing device was not revoked before creating this
@@ -203,7 +203,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 			log.WithFields(log.Fields{
 				"address": f.Signer,
 			}).Error("signer device not found for file")
-			return nil
+			return nil, false
 		} else {
 			log.WithFields(log.Fields{
 				"address": f.Signer,
@@ -217,14 +217,14 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 			"signer": f.Signer,
 		}).Warn("ignoring file signed by revoked device")
 		go b.sendAck(peer, typeFile, f.ID)
-		return nil
+		return nil, false
 	}
 
 	// If we have already seen this file, all we need to do is mark that this peer has the file and ack it
 	var existingFile file
 	err = b.database.Where("id = ?", f.ID).First(&existingFile).Error
 	if err == nil {
-		return &existingFile
+		return &existingFile, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -237,7 +237,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 			"id":   f.ID,
 			"peer": peer,
 		}).Error("ignoring file with no hashes")
-		return nil
+		return nil, false
 	}
 
 	// Create the empty chunks of the file
@@ -286,7 +286,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) broadcast
 	// Request any missing chunks
 	b.makeNextChunkRequests()
 
-	return &f
+	return &f, true
 }
 
 func (f *file) embedded() bool {
@@ -358,7 +358,7 @@ func (co *chunkOffer) getTimestamp() int64 {
 	return co.Timestamp
 }
 
-func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	chunkOfferMutex.Lock()
 	defer chunkOfferMutex.Unlock()
 
@@ -368,7 +368,7 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) bro
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unpacking signed container for chunk offer")
-		return nil
+		return nil, false
 	}
 	var co chunkOffer
 	err = msgpack.Unmarshal(sc.Payload, &co)
@@ -376,7 +376,7 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) bro
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling chunk offer")
-		return nil
+		return nil, false
 	}
 	co.OriginalPayload = sc.Payload
 	co.Signature = sc.Signature
@@ -389,14 +389,14 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) bro
 			"author":         co.Author,
 			"signing_device": sc.Signer,
 		}).Warn("ignoring chunk offer that could not be signature validated")
-		return nil
+		return nil, false
 	}
 
 	// Check if we already have this offer
 	var existingChunkOffer chunkOffer
 	err = b.database.Where("id = ?", co.ID).First(&existingChunkOffer).Error
 	if err == nil {
-		return &existingChunkOffer
+		return &existingChunkOffer, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -422,7 +422,7 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) bro
 	if len(chunks) == 0 {
 		// Sometimes chunk offers come in on the wire before the files do, so we might
 		// get offers before we know about the files they are for
-		return &co
+		return &co, true
 	}
 	allDownloaded := true
 	for _, c := range chunks {
@@ -434,7 +434,7 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) bro
 	if !allDownloaded {
 		b.makeNextChunkRequests()
 	}
-	return &co
+	return &co, true
 }
 
 type chunkRequest struct {
@@ -463,7 +463,7 @@ func (cr *chunkRequest) getPayload() []byte {
 	return cr.payload
 }
 
-func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	// Unmarshal the request
 	var cr chunkRequest
 	err := msgpack.Unmarshal(payload, &cr)
@@ -471,14 +471,14 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling chunk request")
-		return nil
+		return nil, false
 	}
 
 	// Make sure we aren't currently writing or queued to write this data to this peer already
 	writingChunkMutex.Lock()
 	if _, alreadyWriting := writingChunk[peer+cr.Hash]; alreadyWriting {
 		writingChunkMutex.Unlock()
-		return nil
+		return nil, false
 	} else {
 		writingChunk[peer+cr.Hash] = true
 		writingChunkMutex.Unlock()
@@ -495,7 +495,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 			"peer": peer,
 			"hash": cr.Hash,
 		}).Warn("peer requested chunk they are not allowed to have")
-		return nil
+		return nil, false
 	}
 
 	chunkData, err := b.getChunkData(cr.Hash)
@@ -508,7 +508,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) b
 			"peer":  peer,
 		}).Warn("error getting requested chunk")
 	}
-	return nil
+	return nil, false
 }
 func (b *Bounce) getChunkData(hash string) ([]byte, error) {
 	// Find all the possible chunks with the data that is being requested
@@ -666,7 +666,7 @@ func (c *chunk) getPayload() []byte {
 	return c.payload
 }
 
-func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	chunkMutex.Lock()
 	defer chunkMutex.Unlock()
 	chunkRequestMutex.Lock()
@@ -679,7 +679,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 			"error": err.Error(),
 		}).Error("error unmarshalling chunk")
 		chunkRequestMutex.Unlock()
-		return nil
+		return nil, false
 	}
 
 	// Hash the data
@@ -701,7 +701,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) broadcas
 
 	chunkRequestMutex.Unlock()
 	b.makeNextChunkRequests()
-	return nil
+	return nil, false
 }
 
 func (b *Bounce) writeChunkToDisk(c chunk) {

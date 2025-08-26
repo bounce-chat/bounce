@@ -363,21 +363,17 @@ func (ui *ui) amAdmin(g *group) bool {
 }
 
 func (ui *ui) OpenNewGroupChat(bounceGroup chat.Group) { // TODO: rename "create and open"?
-	ui.NewGroupChat(bounceGroup)
+	fyne.DoAndWait(func() {
+		ui.buildNewGroupChat(bounceGroup)
 
-	g, exists := ui.threads.getGroup(bounceGroup.ID)
-	if exists {
-		fyne.DoAndWait(func() {
+		g, exists := ui.threads.getGroup(bounceGroup.ID)
+		if exists {
 			ui.showMainContainer()
 			ui.displayThread(g)
-		})
-	} else {
-		log.Error("cannot open newly created group because the UI isn't aware of it")
-	}
-}
-
-func (ui *ui) NewGroupChat(bounceGroup chat.Group) {
-	fyne.DoAndWait(func() { ui.buildNewGroupChat(bounceGroup) })
+		} else {
+			log.Error("cannot open newly created group because the UI isn't aware of it")
+		}
+	})
 }
 
 func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
@@ -606,19 +602,24 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 			"group":      group.id,
 			"created_by": bounceGroup.CreatedBy,
 		}).Warn("error creating thread item for group creation")
+	} else {
+		ui.appendThreadItem(group, ti)
+		ti.setButton(group.button)
 	}
-	ui.appendThreadItem(group, ti)
-	ti.setButton(group.button)
 }
 
 func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 	fyne.DoAndWait(func() {
 		g, exists := ui.threads.getGroup(bounceGroup.ID)
 		if !exists {
-			log.WithFields(log.Fields{
-				"group_id": bounceGroup.ID,
-			}).Warn("cannot set state on unknown group")
-			return
+			ui.buildNewGroupChat(bounceGroup)
+			g, exists = ui.threads.getGroup(bounceGroup.ID)
+			if !exists {
+				log.WithFields(log.Fields{
+					"group_id": bounceGroup.ID,
+				}).Warn("cannot set state on group that could not be created")
+				return
+			}
 		}
 
 		g.name = bounceGroup.Name

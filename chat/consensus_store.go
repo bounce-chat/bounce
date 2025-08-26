@@ -212,7 +212,8 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 	// Find any canonical update groups that have not been applied and make them as applied and inform the UI if needed
 	canonical := make(map[uuid.UUID]bool)
 	everInGroup := make(map[uuid.UUID]bool)
-	for _, gs := range cs.history[1:] {
+	ugsToNotify := []updateGroup{}
+	for i, gs := range cs.history[1:] {
 		canonical[gs.ug.ID] = true
 		if _, ok := applied[gs.ug.ID]; !ok {
 			err := b.database.Model(&gs.ug).Select("applied").Update("applied", true).Error
@@ -221,9 +222,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 			}
 
 			if finalState.deletedBy == nil && finalState.isMember(b.currentUserID()) {
-				// Defer is used to the the UI calls occur after the state has been set, for tests that trigger
-				// checks based on when UI calls complete.
-				defer func() { go b.informUIOfUpdateGroup(gs.ug) }()
+				ugsToNotify = append(ugsToNotify, cs.history[i+1].ug)
 			}
 
 			if gs.ug.Type == updateGroupTypeAddUser {
@@ -437,10 +436,20 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		}).Fatal("database error looking for unapplied update group delete")
 	}
 
-	return b.setGroupStateInDatabase(g, finalState)
+	err = b.setGroupStateInDatabase(g, finalState, ugsToNotify)
+	if err != nil {
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": g.ID,
+			}).Error("error updating group consensus")
+		}
+
+	}
+	return err
 }
 
-func (b *Bounce) setGroupStateInDatabase(g group, gs groupState) error {
+func (b *Bounce) setGroupStateInDatabase(g group, gs groupState, ugsToNotify []updateGroup) error {
 	// Prune cleared messages
 	b.pruneMessagesBeforeClear(gs.clearBefore, g.ID)
 
@@ -594,24 +603,36 @@ func (b *Bounce) setGroupStateInDatabase(g group, gs groupState) error {
 		}
 	}
 
-	go b.ui.SetGroupState(Group{
-		ID:                             g.ID,
-		Name:                           g.Name,
-		Images:                         gs.images,
-		Users:                          finalUsers,
-		Admins:                         gs.admins,
-		BlockedUsers:                   gs.blockedUsers,
-		Retention:                      g.Retention,
-		MutedUntil:                     g.MutedUntil,
-		LastActivity:                   g.LastActivity,
-		RestrictUserManagement:         g.RestrictUserManagement,
-		RestrictGroupEdits:             g.RestrictGroupEdits,
-		RestrictPosting:                g.RestrictPosting,
-		OverrideReadReceiptSetting:     g.ReadReceiptsOverridden,
-		ReadReceiptsEnabled:            g.ReadReceiptsEnabled,
-		OverrideTypingIndicatorSetting: g.TypingIndicatorsOverridden,
-		TypingIndicatorsEnabled:        g.TypingIndicatorsEnabled,
-	})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		b.ui.SetGroupState(Group{
+			ID:                             g.ID,
+			Name:                           g.Name,
+			Images:                         gs.images,
+			Users:                          finalUsers,
+			Admins:                         gs.admins,
+			BlockedUsers:                   gs.blockedUsers,
+			Retention:                      g.Retention,
+			MutedUntil:                     g.MutedUntil,
+			LastActivity:                   g.LastActivity,
+			CreatedBy:                      g.CreatedBy,
+			CreatedAt:                      g.CreatedAt,
+			RestrictUserManagement:         g.RestrictUserManagement,
+			RestrictGroupEdits:             g.RestrictGroupEdits,
+			RestrictPosting:                g.RestrictPosting,
+			OverrideReadReceiptSetting:     g.ReadReceiptsOverridden,
+			ReadReceiptsEnabled:            g.ReadReceiptsEnabled,
+			OverrideTypingIndicatorSetting: g.TypingIndicatorsOverridden,
+			TypingIndicatorsEnabled:        g.TypingIndicatorsEnabled,
+		})
+
+		for _, ug := range ugsToNotify {
+			b.informUIOfUpdateGroup(ug)
+		}
+		wg.Done()
+	}()
+	wg.Wait()
 
 	b.referenceAllOnlineDevicesInGroup(g.ID)
 

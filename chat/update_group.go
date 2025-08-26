@@ -262,7 +262,7 @@ func (ug *updateGroup) validPayloadFormat() bool {
 	return false
 }
 
-func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	groupMutex.Lock()
 	defer groupMutex.Unlock()
 
@@ -272,7 +272,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unpacking signed container for update group")
-		return nil
+		return nil, false
 	}
 	var ug updateGroup
 	err = msgpack.Unmarshal(sc.Payload, &ug)
@@ -280,7 +280,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling update group")
-		return nil
+		return nil, false
 	}
 	ug.OriginalPayload = sc.Payload
 	ug.Signature = sc.Signature
@@ -290,7 +290,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 	for _, blockedGroup := range b.blockedGroups() {
 		if ug.Target == blockedGroup {
 			go b.sendAck(peer, typeUpdateGroup, ug.ID)
-			return nil
+			return nil, false
 		}
 	}
 
@@ -302,7 +302,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 			"signing_device": sc.Signer,
 			"group":          ug.Target,
 		}).Warn("ignoring group update that was not signed by the supposed actor")
-		return nil
+		return nil, false
 	}
 
 	// Make sure the signing device was not revoked before creating this
@@ -313,7 +313,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 			log.WithFields(log.Fields{
 				"address": ug.Signer,
 			}).Error("signer device not found for update group")
-			return nil
+			return nil, false
 		} else {
 			log.WithFields(log.Fields{
 				"address": ug.Signer,
@@ -327,14 +327,14 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 			"signer": ug.Signer,
 		}).Warn("ignoring update group signed by revoked device")
 		go b.sendAck(peer, typeUpdateGroup, ug.ID)
-		return nil
+		return nil, false
 	}
 
 	// If we already have this update, we just mark that this peer has it too and return
 	var existingUG updateGroup
 	err = b.database.Where("id = ?", ug.ID).First(&existingUG).Error
 	if err == nil {
-		return &existingUG
+		return &existingUG, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -347,7 +347,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 			"id":   ug.ID,
 			"peer": peer,
 		}).Warn("ignoring update group with invalid data")
-		return nil
+		return nil, false
 	}
 
 	// Save this update
@@ -397,7 +397,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 						"actor":   ug.Actor,
 						"user_id": ug.Data,
 					}).Error("update group attempted to remove user with invalid UUID")
-					return nil
+					return nil, false
 				}
 			case updateGroupTypeBlock:
 				userID = ug.Actor
@@ -412,7 +412,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 						log.WithFields(log.Fields{
 							"user_id": userID,
 						}).Error("user not found for direct remove from group broadcast")
-						return nil
+						return nil, false
 					} else {
 						log.WithFields(log.Fields{
 							"error": err.Error(),
@@ -433,7 +433,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) br
 		}
 	}
 
-	return &ug
+	return &ug, true
 }
 
 func (b *Bounce) processEarlyConfirmations(ug updateGroup) {

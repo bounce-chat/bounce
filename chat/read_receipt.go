@@ -108,7 +108,7 @@ func (rr *readReceipt) getTimestamp() int64 {
 	return rr.Timestamp
 }
 
-func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	readReceiptMutex.Lock()
 	defer readReceiptMutex.Unlock()
 
@@ -118,7 +118,7 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unpacking signed container for read receipt")
-		return nil
+		return nil, false
 	}
 	var rr readReceipt
 	err = msgpack.Unmarshal(sc.Payload, &rr)
@@ -126,7 +126,7 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling read receipt")
-		return nil
+		return nil, false
 	}
 	rr.OriginalPayload = sc.Payload
 	rr.Signature = sc.Signature
@@ -139,14 +139,14 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 			"actor":          rr.Actor,
 			"signing_device": sc.Signer,
 		}).Warn("ignoring read receipt that was not signed by the supposed actor")
-		return nil
+		return nil, false
 	}
 
 	// Check if it already exists in the database
 	var existingRR readReceipt
 	err = b.database.Where("id = ?", rr.ID).First(&existingRR).Error
 	if err == nil {
-		return &existingRR
+		return &existingRR, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -159,7 +159,7 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 		log.WithFields(log.Fields{
 			"error": errUnknownReadReceiptTargetType.Error(),
 		}).Error("error parsing read receipt")
-		return nil
+		return nil, false
 	}
 	destination, author, scope, err := b.getReadReceiptDestinationAuthorAndScope(rr.Target, targetTypeString)
 	if err == nil {
@@ -188,7 +188,7 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 			}
 		}
 
-		return &rr
+		return &rr, true
 	} else if errors.Is(err, gorm.ErrRecordNotFound) {
 		// A read receipt may have arrived before the message, just save it and ack but don't broadcast,
 		// additional details will be saved on this read receipt when the message arrives
@@ -200,12 +200,12 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) br
 		}
 		go b.sendAck(peer, typeReadReceipt, rr.ID)
 
-		return nil
+		return nil, false
 	} else {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error parsing read receipt")
-		return nil
+		return nil, false
 	}
 }
 

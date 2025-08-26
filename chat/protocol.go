@@ -70,8 +70,8 @@ func (sbrs sortableBroadcastables) Less(i, j int) bool {
 	return sbrs[i].getTimestamp() < sbrs[j].getTimestamp()
 }
 
-func (b *Bounce) getHandlers() map[uint16]func(string, []byte, bool) broadcastable {
-	return map[uint16]func(string, []byte, bool) broadcastable{
+func (b *Bounce) getHandlers() map[uint16]func(string, []byte, bool) (broadcastable, bool) {
+	return map[uint16]func(string, []byte, bool) (broadcastable, bool){
 		typeDirectMessage:             b.handleDirectMessage,
 		typeGroupMessage:              b.handleGroupMessage,
 		typeReferenceOffer:            b.handleReferenceOffer,
@@ -218,9 +218,7 @@ func (b *Bounce) getUserScope(br broadcastable, excludeDelivered bool) []string 
 	return broadcastTargets
 }
 
-//
 // Get any devices that we are connected to that belong to any members of a group, including ourself
-//
 func (b *Bounce) getGroupScope(br broadcastable, excludeDelivered bool) []string {
 	broadcastTargets := []string{}
 
@@ -258,9 +256,7 @@ func (b *Bounce) getGroupScope(br broadcastable, excludeDelivered bool) []string
 	return broadcastTargets
 }
 
-//
 // Send a message to any device that we're connected to right now
-//
 func (b *Bounce) getGlobalScope(br broadcastable, excludeDelivered bool) []string {
 	broadcastTargets := []string{}
 

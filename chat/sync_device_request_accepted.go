@@ -40,7 +40,7 @@ func (sdra *syncDeviceRequestAccepted) getPayload() []byte {
 	return sdra.payload
 }
 
-func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	// Unmarshal the payload
 	var sdra syncDeviceRequestAccepted
 	err := msgpack.Unmarshal(payload, &sdra)
@@ -48,7 +48,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling sync device request accepted")
-		return nil
+		return nil, false
 	}
 
 	// Make sure a profile doesn't already exist
@@ -57,7 +57,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("peer sent a sync device request accepted after a profile exists")
-		return nil
+		return nil, false
 	}
 
 	// Profile is excluded in msgpack, make sure it is set here
@@ -66,7 +66,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	// Make sure this profile has a valid device group
 	if !b.hasValidDeviceGroup(sdra.Profile) {
 		log.Error("sdra contains profile with invalid device group")
-		return nil
+		return nil, false
 	}
 
 	// Make sure that our device is in the device group of this new profile
@@ -134,5 +134,5 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 		waitingForInitialSyncFrom = peer
 	}
 
-	return nil
+	return nil, false
 }

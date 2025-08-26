@@ -10,11 +10,9 @@ import (
 	"github.com/zeebo/blake3"
 )
 
-//
 // An add user request accepted frame is sent from the offering device and includes their half of the signatures
 // in an add user.  When this is received the requester user can create their half of the signatures and broadcast
 // a complete add user.
-//
 type addUserRequestAccepted struct {
 	OfferUser      []byte
 	OfferSignature []byte // signature of the requester user by the offer user's device
@@ -42,7 +40,7 @@ func (aura *addUserRequestAccepted) getPayload() []byte {
 	return aura.payload
 }
 
-func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	// Unmarshal the payload
 	var aura addUserRequestAccepted
 	err := msgpack.Unmarshal(payload, &aura)
@@ -50,7 +48,7 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling add user request accepted")
-		return nil
+		return nil, false
 	}
 
 	// Unmarshal the offer user
@@ -60,20 +58,20 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling offer user while handling add user request accepted")
-		return nil
+		return nil, false
 	}
 
 	// Make sure this profile has a valid device group
 	if !b.hasValidDeviceGroup(offerUser) {
 		log.Error("add user request accepted contains offer user with invalid device group")
-		return nil
+		return nil, false
 	}
 
 	// Re-generate our user that was originally sent in the request
 	requesterUser, ok := b.currentUser()
 	if !ok {
 		log.Error("cannot handle add user request accepted when no profile exists")
-		return nil
+		return nil, false
 	}
 	requesterBytes, err := msgpack.Marshal(requesterUser)
 	if err != nil {
@@ -87,7 +85,7 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 	ok = b.network.VerifySignature(peer, requesterUserHash[:], aura.OfferSignature)
 	if !ok {
 		log.Warn("ignoring add user request accepted that contains invalid offer signature")
-		return nil
+		return nil, false
 	}
 
 	// Create and marshal the new add user
@@ -108,16 +106,16 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error marshalling add user")
-		return nil
+		return nil, false
 	}
 
 	// Use the add user handler to save and broadcast
-	au := b.handleAddUser(b.network.Address(), newUserBytes, false)
+	au, _ := b.handleAddUser(b.network.Address(), newUserBytes, false)
 	if au == nil {
 		log.Error("failed to create add user frame from add user request accepted")
 	} else {
 		b.broadcast(au)
 	}
 
-	return nil
+	return nil, false
 }

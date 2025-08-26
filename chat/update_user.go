@@ -101,7 +101,7 @@ func (uu *updateUser) validPayload() error {
 	return nil
 }
 
-func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	updateUserMutex.Lock()
 	defer updateUserMutex.Unlock()
 
@@ -111,7 +111,7 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) bro
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unpacking signed container for update user")
-		return nil
+		return nil, false
 	}
 	var uu updateUser
 	err = msgpack.Unmarshal(sc.Payload, &uu)
@@ -119,7 +119,7 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) bro
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling update user")
-		return nil
+		return nil, false
 	}
 	uu.OriginalPayload = sc.Payload
 	uu.Signature = sc.Signature
@@ -133,7 +133,7 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) bro
 			log.WithFields(log.Fields{
 				"address": uu.Signer,
 			}).Error("signer device not found for update user")
-			return nil
+			return nil, false
 		} else {
 			log.WithFields(log.Fields{
 				"address": uu.Signer,
@@ -147,7 +147,7 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) bro
 			"signer": uu.Signer,
 		}).Warn("ignoring update user signed by revoked device")
 		go b.sendAck(peer, typeUpdateUser, uu.ID)
-		return nil
+		return nil, false
 	}
 
 	// Make sure this update was signed by the user who it applies to
@@ -157,14 +157,14 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) bro
 			"signer": uu.Signer,
 			"peer":   peer,
 		}).Warn("ignoring update user not signed by the user it targets")
-		return nil
+		return nil, false
 	}
 
 	// If we already have this update, we just mark that this peer has it too and return
 	var existingUU updateUser
 	err = b.database.Where("id = ?", uu.ID).First(&existingUU).Error
 	if err == nil {
-		return &existingUU
+		return &existingUU, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -178,7 +178,7 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) bro
 			"error":   err.Error(),
 			"user_id": uu.Target,
 		}).Error("error saving and applying update user")
-		return nil
+		return nil, false
 	}
 
 	// If we're not in a catchup, set the state now
@@ -186,7 +186,7 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) bro
 		b.updateUserState(uu.Target)
 	}
 
-	return &uu
+	return &uu, true
 }
 
 func (b *Bounce) saveAndDisplayUpdateUser(uu updateUser) error {

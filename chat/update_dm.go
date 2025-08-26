@@ -171,7 +171,7 @@ func (ud *updateDM) validPayload() error {
 	return nil
 }
 
-func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	updateDMMutex.Lock()
 	defer updateDMMutex.Unlock()
 
@@ -182,7 +182,7 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling update DM settings")
-		return nil
+		return nil, false
 	}
 
 	// Find the user this applies to
@@ -194,7 +194,7 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 			log.WithFields(log.Fields{
 				"user_id": counterparty,
 			}).Error("cannot update DM settings for unknown user")
-			return nil
+			return nil, false
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -209,7 +209,7 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 			"peer":        peer,
 			"target_user": counterparty,
 		}).Warn("rejecting update DM settings from out of scope device")
-		return nil
+		return nil, false
 	}
 
 	// Sync scoped messages must come from a sync device
@@ -219,7 +219,7 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 				"peer":        peer,
 				"target_user": counterparty,
 			}).Warn("rejecting update DM for muting a thread that is not sent by sync device")
-			return nil
+			return nil, false
 		}
 	}
 
@@ -227,7 +227,7 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 	var existingUD updateDM
 	err = b.database.Where("id = ?", ud.ID).First(&existingUD).Error
 	if err == nil {
-		return &existingUD
+		return &existingUD, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -243,7 +243,7 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 			"type":   ud.Type,
 			"error":  err.Error(),
 		}).Error("error applying update DM")
-		return nil
+		return nil, false
 	}
 
 	// If we're not in a catchup, set the state now
@@ -251,7 +251,7 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) broad
 		b.updateDMState(xor(ud.Target, b.currentUserID()))
 	}
 
-	return &ud
+	return &ud, true
 }
 
 func (b *Bounce) updateDMState(userID uuid.UUID) {

@@ -138,7 +138,7 @@ func (us *updateSettings) validPayload() error {
 	return nil
 }
 
-func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	updateSettingsMutex.Lock()
 	defer updateSettingsMutex.Unlock()
 
@@ -148,7 +148,7 @@ func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("rejecting update settings from out of scope device")
-		return nil
+		return nil, false
 	}
 
 	// Unmarshall it
@@ -158,14 +158,14 @@ func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling update ettings")
-		return nil
+		return nil, false
 	}
 
 	// If we already have this update, we just mark that this peer has it too, ack it, and return
 	var existingUS updateSettings
 	err = b.database.Where("id = ?", us.ID).First(&existingUS).Error
 	if err == nil {
-		return &existingUS
+		return &existingUS, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -180,7 +180,7 @@ func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 			"type":   us.Type,
 			"error":  err.Error(),
 		}).Error("error applying update DM")
-		return nil
+		return nil, false
 	}
 
 	// Update the database state if we're not in a catch up
@@ -188,7 +188,7 @@ func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 		b.updateSettingsState()
 	}
 
-	return &us
+	return &us, true
 }
 
 func (b *Bounce) saveUpdateSettings(us updateSettings) error {

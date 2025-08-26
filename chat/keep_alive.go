@@ -1,8 +1,6 @@
 package chat
 
-//
 // Keep alives are used to regularly send a small amount of data down all open connections to test that they are still alive
-//
 type keepAlive struct{}
 
 func (ka keepAlive) getType() uint16 {
@@ -13,6 +11,6 @@ func (ka keepAlive) getPayload() []byte {
 	return []byte("keep-alive")
 }
 
-func (b *Bounce) handleKeepAlive(peer string, payload []byte, catchUp bool) broadcastable {
-	return nil
+func (b *Bounce) handleKeepAlive(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	return nil, false
 }

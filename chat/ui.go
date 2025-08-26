@@ -371,7 +371,6 @@ type UI interface {
 
 	// Group chats
 	OpenNewGroupChat(Group)
-	NewGroupChat(Group)
 	SetGroupState(Group)
 	DisplayGroupMessage(GroupMessage)
 	DisplaySentGroupMessage(GroupMessage)

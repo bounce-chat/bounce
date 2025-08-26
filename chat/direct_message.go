@@ -110,7 +110,7 @@ func (dm *directMessage) empty() bool {
 	return dm.Text == "" && len(dm.ImageAttachments) == 0 && len(dm.FileAttachments) == 0
 }
 
-func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	directMessageMutex.Lock()
 	defer directMessageMutex.Unlock()
 	readReceiptMutex.Lock()
@@ -123,7 +123,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling direct message")
-		return nil
+		return nil, false
 	}
 
 	// Ignore anything from a blocked user
@@ -138,7 +138,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 				go b.sendAck(peer, typeDirectMessage, dm.ID)
 			}
 		}
-		return nil
+		return nil, false
 	}
 
 	// Ignore empty messages
@@ -147,7 +147,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			"id": dm.ID,
 		}).Warn("ignoring empty direct message")
 		go b.sendAck(peer, typeDirectMessage, dm.ID)
-		return nil
+		return nil, false
 	}
 
 	// Look up the device that sent it
@@ -156,7 +156,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("ignoring a direct message sent from an unknown device")
-		return nil
+		return nil, false
 	}
 
 	// Make sure that the peer we received this DM from makes sense, it must either be from a device belonging to the
@@ -168,14 +168,14 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			"destination": dm.getDestination(b.currentUserID()),
 			"peer":        peer,
 		}).Warn("ignoring a direct message from an unacceptable peer")
-		return nil
+		return nil, false
 	}
 
 	// If we have already seen this message, all we need to do is mark that this peer has the message as well and ack it
 	var existingDM directMessage
 	err = b.database.Where("id = ?", dm.ID).First(&existingDM).Error
 	if err == nil {
-		return &existingDM
+		return &existingDM, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -189,7 +189,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			"destination": dm.getDestination(b.currentUserID()),
 			"written_at":  dm.WrittenAt,
 		}).Debug("ignoring a direct message that was written before the history was cleared")
-		return nil
+		return nil, false
 	}
 
 	// If we wrote this message, assume we've seen it
@@ -247,7 +247,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 	// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI
 	b.processEarlyReadReceipts(dm.ID, typeDirectMessage)
 
-	return &dm
+	return &dm, true
 }
 
 func (b *Bounce) dmOriginAcceptable(dm directMessage, dev device) bool {

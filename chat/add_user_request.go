@@ -16,10 +16,8 @@ var addUserOfferValidForSeconds = int64(300)
 
 var addUserRequestMutex sync.Mutex
 
-//
 // Add user requests are frames sent by a device that has scanned another device's add user offer.  The
 // device sending the request sends that secret that was offered, as well as their marshalled user.
-//
 type addUserRequest struct {
 	Secret        string
 	RequesterUser []byte
@@ -47,7 +45,7 @@ func (aur *addUserRequest) getPayload() []byte {
 	return aur.payload
 }
 
-func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broadcastable {
+func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broadcastable, bool) {
 	addUserRequestMutex.Lock()
 	defer addUserRequestMutex.Unlock()
 
@@ -58,7 +56,7 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broad
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling add user request")
-		return nil
+		return nil, false
 	}
 
 	// Make sure we've got an offer out with this secret
@@ -70,7 +68,7 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broad
 				"peer": peer,
 			}).Warn("peer sent an add user request with an invalid secret")
 			b.sendDirect(peer, &addUserRequestRejected{})
-			return nil
+			return nil, false
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -90,7 +88,7 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broad
 	// Enforce the timestamp on the offer
 	if time.Now().Unix() > offer.Timestamp+addUserOfferValidForSeconds {
 		b.sendDirect(peer, &addUserRequestRejected{})
-		return nil
+		return nil, false
 	}
 
 	// Unmarshal the user that is requesting to be our friend
@@ -101,7 +99,7 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broad
 			"error": err.Error(),
 		}).Error("error unmarshalling requester user while handing user request")
 		b.sendDirect(peer, &addUserRequestRejected{})
-		return nil
+		return nil, false
 	}
 
 	// Validate that this new friend has a valid device group
@@ -112,7 +110,7 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broad
 			"name":    requesterUser.Name,
 		}).Warn("rejecting friend request from user with invalid device group")
 		b.sendDirect(peer, &addUserRequestRejected{})
-		return nil
+		return nil, false
 	}
 
 	// Make sure that the peer that sent us this is part of the requester user's device group
@@ -125,7 +123,7 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broad
 	if !found {
 		log.Warn("add user request came from device that is not part of the requester user's device group")
 		b.sendDirect(peer, &addUserRequestRejected{})
-		return nil
+		return nil, false
 	}
 
 	// Make sure that we don't have any of these devices already associated with another user
@@ -139,7 +137,7 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broad
 					"exisiting_user": existingDevice.UserID,
 				}).Warn("rejecting add user request with device address collision with separate existing user")
 				b.sendDirect(peer, &addUserRequestRejected{})
-				return nil
+				return nil, false
 			}
 		}
 		// Primary keys cannot collise
@@ -153,7 +151,7 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broad
 					"exisiting_user": existingDevice.UserID,
 				}).Warn("rejecting add user with device ID collision with separate existing user")
 				b.sendDirect(peer, &addUserRequestRejected{})
-				return nil
+				return nil, false
 			}
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -166,7 +164,7 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broad
 	offerUser, ok := b.currentUser()
 	if !ok {
 		log.Error("cannot handle add user request when no profile exists")
-		return nil
+		return nil, false
 	}
 	offerBytes, err := msgpack.Marshal(offerUser)
 	if err != nil {
@@ -180,7 +178,7 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) broad
 		OfferSignature: b.network.Sign(requesterUserHash[:]),
 	})
 
-	return nil
+	return nil, false
 }
 
 func (b *Bounce) RequestToAddUser(offer string) error {

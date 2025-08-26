@@ -11,11 +11,9 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-//
 // An ack is a frame that contains any number of frame references.  Acks indicate that a peer has a received
 // a frame, and are sent in response to most frames as well as to indicate that frames offered during a
 // reference offer have already been delivered to a device.
-//
 type ack struct {
 	References   []frameReference
 	payload      []byte
@@ -42,14 +40,14 @@ func (a *ack) getPayload() []byte {
 	return a.payload
 }
 
-func (b *Bounce) handleAck(peer string, payload []byte, _ bool) broadcastable {
+func (b *Bounce) handleAck(peer string, payload []byte, _ bool) (broadcastable, bool) {
 	var a ack
 	err := msgpack.Unmarshal(payload, &a)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling ack")
-		return nil
+		return nil, false
 	}
 
 	ackedIDs := referencedIDs(a.References)
@@ -70,7 +68,7 @@ func (b *Bounce) handleAck(peer string, payload []byte, _ bool) broadcastable {
 	b.handleAckFiles(peer, ackedIDs[typeFile])
 	b.handleAckChunkOffers(peer, ackedIDs[typeChunkOffer])
 
-	return nil
+	return nil, false
 }
 
 func (b *Bounce) sendAck(peer string, frameType uint16, frameID uuid.UUID) {

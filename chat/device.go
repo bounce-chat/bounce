@@ -84,7 +84,7 @@ func (d *device) getTimestamp() int64 {
 	return d.Timestamp
 }
 
-func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	handleDevicesMutex.Lock()
 	defer handleDevicesMutex.Unlock()
 
@@ -95,14 +95,14 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) broadca
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling device")
-		return nil
+		return nil, false
 	}
 
 	// If the device already exists, track delivery, ack it, and return
 	var existingDevice device
 	err = b.database.Preload(clause.Associations).Where("address = ?", d.Address).First(&existingDevice).Error
 	if err == nil {
-		return &existingDevice
+		return &existingDevice, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -120,7 +120,7 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) broadca
 				"address": d.Address,
 				"peer":    peer,
 			}).Warn("rejecting received device because we do not have the specified user")
-			return nil
+			return nil, false
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -137,7 +137,7 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) broadca
 			"address": d.Address,
 			"peer":    peer,
 		}).Warn("rejecting received device because it would result in an invalid device group")
-		return nil
+		return nil, false
 	}
 
 	// Save it
@@ -168,7 +168,7 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) broadca
 		})
 	}
 
-	return &d
+	return &d, true
 }
 
 //

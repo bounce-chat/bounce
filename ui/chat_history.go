@@ -168,37 +168,29 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 }
 
 func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
-	// Insert statusChange thread items into their correct location in time, insert everything else
-	// at the bottom regaurdless of timestamp
-	if _, ok := ti.widgetData.(*statusChangeData); ok {
-		if len(ch.items) == 0 || appendingToEnd {
-			ch.items = append(ch.items, ti.widgetData)
-			ch.ids = append(ch.ids, ti.id)
-		} else {
-			for i := len(ch.items); i >= 0; i-- {
-				if i == 0 {
-					ch.items = append([]threadable{ti.widgetData}, ch.items...)
-					ch.ids = append([]uuid.UUID{ti.id}, ch.ids...)
-					ch.heights = append([]float32{0}, ch.heights...)
-					ch.setMergeMode(0, true)
-					break
-				}
-				compare := ch.items[i-1]
-				if ti.timestamp > compare.getTimestamp() {
-					ch.items = append(ch.items[:i], append([]threadable{ti.widgetData}, ch.items[i:]...)...)
-					ch.ids = append(ch.ids[:i], append([]uuid.UUID{ti.id}, ch.ids[i:]...)...)
-					if len(ch.heights) >= len(ch.items)-1 {
-						ch.heights = append(ch.heights[:i], append([]float32{0}, ch.heights[i:]...)...)
-					}
-					ch.setMergeMode(i, true)
-					break
-				}
-			}
-		}
-	} else {
+	if len(ch.items) == 0 || appendingToEnd {
 		ch.items = append(ch.items, ti.widgetData)
 		ch.ids = append(ch.ids, ti.id)
-		ch.setMergeMode(len(ch.items)-1, true)
+	} else {
+		for i := len(ch.items); i >= 0; i-- {
+			if i == 0 {
+				ch.items = append([]threadable{ti.widgetData}, ch.items...)
+				ch.ids = append([]uuid.UUID{ti.id}, ch.ids...)
+				ch.heights = append([]float32{0}, ch.heights...)
+				ch.setMergeMode(0, true)
+				break
+			}
+			compare := ch.items[i-1]
+			if ti.timestamp > compare.getTimestamp() {
+				ch.items = append(ch.items[:i], append([]threadable{ti.widgetData}, ch.items[i:]...)...)
+				ch.ids = append(ch.ids[:i], append([]uuid.UUID{ti.id}, ch.ids[i:]...)...)
+				if len(ch.heights) >= len(ch.items)-1 {
+					ch.heights = append(ch.heights[:i], append([]float32{0}, ch.heights[i:]...)...)
+				}
+				ch.setMergeMode(i, true)
+				break
+			}
+		}
 	}
 
 	if ti.widgetData.countsAsUnread() && !ti.widgetData.isSeen() && !(ti.widgetData.getAuthor() == ch.myID) {

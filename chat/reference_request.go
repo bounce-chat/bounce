@@ -39,7 +39,7 @@ func (rr *referenceRequest) getPayload() []byte {
 	return rr.payload
 }
 
-func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) broadcastable {
+func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (broadcastable, bool) {
 	// Unmarshal the reference request
 	var rr referenceRequest
 	err := msgpack.Unmarshal(payload, &rr)
@@ -47,7 +47,7 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) bro
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling reference request")
-		return nil
+		return nil, false
 	}
 
 	// Get the device for this peer
@@ -56,7 +56,7 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) bro
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("got reference request from unknown peer device, ignoring")
-		return nil
+		return nil, false
 	}
 
 	// Get all of the requested frames and pack them into a catch up frame
@@ -86,7 +86,7 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) bro
 		go b.sendDirect(peer, cu)
 	}
 
-	return nil
+	return nil, false
 }
 
 func (b *Bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {

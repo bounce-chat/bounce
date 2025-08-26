@@ -305,6 +305,7 @@ func (b *Bounce) CreateGroup(proposedGroup Group, iconData []byte) error {
 		Admins:                 proposedGroup.Admins,
 		CreatedBy:              g.CreatedBy,
 		CreatedAt:              g.CreatedAt,
+		LastActivity:           g.LastActivity,
 		RestrictUserManagement: proposedGroup.RestrictUserManagement,
 		RestrictGroupEdits:     proposedGroup.RestrictGroupEdits,
 		RestrictPosting:        proposedGroup.RestrictPosting,

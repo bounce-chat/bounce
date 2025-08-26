@@ -388,6 +388,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			CreatedBy:                      g.CreatedBy,
 			CreatedAt:                      g.CreatedAt,
 			Retention:                      g.Retention,
+			MutedUntil:                     g.MutedUntil,
 			LastActivity:                   g.LastActivity,
 			RestrictUserManagement:         g.RestrictUserManagement,
 			RestrictGroupEdits:             g.RestrictGroupEdits,

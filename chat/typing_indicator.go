@@ -123,14 +123,14 @@ func (ti *typingIndicator) getTimestamp() int64 {
 	return ti.timestamp
 }
 
-func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	// Unmarshal and signature verify the typing indicator
 	sc, err := b.unpackSignedContainer(payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unpacking signed container for typing indicator")
-		return nil
+		return nil, false
 	}
 	var ti typingIndicator
 	err = msgpack.Unmarshal(sc.Payload, &ti)
@@ -145,7 +145,7 @@ func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool
 
 	// Do nothing if we've already seen this typing indicator
 	if typingIndicatorAlreadySeen(ti.ID) {
-		return nil
+		return nil, false
 	}
 
 	// Make sure that the author of this indicator also signed the message
@@ -155,7 +155,7 @@ func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool
 			"peer":   peer,
 			"signer": sc.Signer,
 		}).Warn("rejecting typing indicator signed by unknown device")
-		return nil
+		return nil, false
 	}
 	if signerDevice.UserID != ti.Author {
 		log.WithFields(log.Fields{
@@ -163,7 +163,7 @@ func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool
 			"signer": signerDevice.UserID,
 			"author": ti.Author,
 		}).Warn("rejecting typing indicator not signed by the author")
-		return nil
+		return nil, false
 	}
 
 	// Assume a typing indicator we receive was broadcast just now and assign the timestamp to now
@@ -178,7 +178,7 @@ func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool
 			"timestamp":    ti.timestamp,
 			"author":       ti.Author,
 		}).Warn("received a valid typing indicator from unknown device")
-		return nil
+		return nil, false
 	}
 
 	// Verify the typing indicator according to message type
@@ -191,7 +191,7 @@ func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool
 				"timestamp":    ti.timestamp,
 				"author":       ti.Author,
 			}).Warn("received a valid typing indicator from device outside scope")
-			return nil
+			return nil, false
 		}
 	} else if ti.MessageType == typeGroupMessage {
 		// Group typing indicators must come from a user in the group
@@ -205,7 +205,7 @@ func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool
 					"timestamp":    ti.timestamp,
 					"author":       ti.Author,
 				}).Warn("received a valid typing indicator for an unknown group")
-				return nil
+				return nil, false
 			} else {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -223,7 +223,7 @@ func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool
 				"peer_device":  peerDevice.ID,
 				"peer_user":    peerDevice.UserID,
 			}).Warn("received a valid typing indicator from user outside of group")
-			return nil
+			return nil, false
 		}
 	} else {
 		log.WithFields(log.Fields{
@@ -232,7 +232,7 @@ func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool
 			"timestamp":    ti.timestamp,
 			"author":       ti.Author,
 		}).Warn("received a typing indicator with unsupported message type")
-		return nil
+		return nil, false
 	}
 
 	// Refresh the frontend if needed
@@ -243,7 +243,7 @@ func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool
 	// we copy the scoping and broadcast functions, and use all the scoped devices except for this peer.
 	go b.manuallySendTypingIndicators(&ti, peer)
 
-	return nil
+	return nil, false
 }
 
 func (b *Bounce) manuallySendTypingIndicators(ti *typingIndicator, excludedPeer string) {

@@ -86,7 +86,7 @@ func (c *confirmation) getTimestamp() int64 {
 	return c.Timestamp
 }
 
-func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	groupMutex.Lock()
 	defer groupMutex.Unlock()
 
@@ -97,14 +97,14 @@ func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling confirmation")
-		return nil
+		return nil, false
 	}
 
 	// Check if we already have this confirmation
 	var existingConfirmation confirmation
 	err = b.database.Where("id = ?", c.ID).First(&existingConfirmation).Error
 	if err == nil {
-		return &existingConfirmation
+		return &existingConfirmation, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -119,7 +119,7 @@ func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 			"confirmation_id": c.ID,
 			"signing_device":  c.SigningDevice,
 		}).Warn("ignoring confirmation with invalid signature")
-		return nil
+		return nil, false
 	}
 
 	// Look up and assign the user who signed this confirmation
@@ -130,7 +130,7 @@ func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 			"confirmation_id": c.ID,
 			"signing_device":  c.SigningDevice,
 		}).Warn("ignoring confirmation from unknown device")
-		return nil
+		return nil, false
 	}
 	c.Author = dev.UserID
 
@@ -150,7 +150,7 @@ func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 			// We can't broadcast it yet without a destination, but we do manually ack to the peer that send it
 			b.markDeliveredTo(&c, peer)
 			go b.sendAck(peer, typeConfirmation, c.ID)
-			return nil
+			return nil, false
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -179,7 +179,7 @@ func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) b
 		}
 
 	}
-	return &c
+	return &c, true
 }
 
 func (b *Bounce) sendConfirmation(ug updateGroup) {

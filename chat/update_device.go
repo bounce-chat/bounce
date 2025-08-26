@@ -110,7 +110,7 @@ func (ud *updateDevice) validPayload() error {
 	return nil
 }
 
-func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	updateDeviceMutex.Lock()
 	defer updateDeviceMutex.Unlock()
 
@@ -120,7 +120,7 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unpacking signed container for update device")
-		return nil
+		return nil, false
 	}
 	var ud updateDevice
 	err = msgpack.Unmarshal(sc.Payload, &ud)
@@ -128,7 +128,7 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling update device")
-		return nil
+		return nil, false
 	}
 	ud.OriginalPayload = sc.Payload
 	ud.Signature = sc.Signature
@@ -138,7 +138,7 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("ignoring update device with invalid payload")
-		return nil
+		return nil, false
 	}
 
 	var d device
@@ -150,7 +150,7 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 				"device_id": ud.Target,
 				"error":     err.Error(),
 			}).Error("target device not found in update device")
-			return nil
+			return nil, false
 		} else {
 			log.WithFields(log.Fields{
 				"device_id": ud.Target,
@@ -167,7 +167,7 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 			"target": ud.Target,
 			"signer": ud.Signer,
 		}).Warn("ignoring update device not signed by user who owns device")
-		return nil
+		return nil, false
 	}
 
 	// Make sure the signing device was not revoked before creating this
@@ -178,7 +178,7 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 			log.WithFields(log.Fields{
 				"address": ud.Signer,
 			}).Error("signer device not found for update device")
-			return nil
+			return nil, false
 		} else {
 			log.WithFields(log.Fields{
 				"address": ud.Signer,
@@ -192,14 +192,14 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 			"signer": ud.Signer,
 		}).Warn("ignoring update device signed by revoked device")
 		go b.sendAck(peer, typeUpdateDevice, ud.ID)
-		return nil
+		return nil, false
 	}
 
 	// If we already have this update, we just mark that this peer has it too and return
 	var existingUD updateDevice
 	err = b.database.Where("id = ?", ud.ID).First(&existingUD).Error
 	if err == nil {
-		return &existingUD
+		return &existingUD, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -219,7 +219,7 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) b
 		b.updateDeviceState(ud.Target)
 	}
 
-	return &ud
+	return &ud, true
 }
 
 func (b *Bounce) updateDeviceState(deviceID uuid.UUID) {

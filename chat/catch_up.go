@@ -68,7 +68,7 @@ func (cu *catchUp) getPayload() []byte {
 	return cu.payload
 }
 
-func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastable {
+func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastable, bool) {
 	if waitingForInitialSyncFrom == peer {
 		b.ui.InitialSyncStarting()
 	}
@@ -80,13 +80,13 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling catch up")
-		return nil
+		return nil, false
 	}
 
 	// Check if we're aware of the peer identity before processing this catch up.  If we don't know
 	// who this device belongs to, we should be able to learn after handling all of the frames inside
 	// it and we'll want to check to make sure that happened.
-	_, deviceAlreadyExists := b.getDeviceFromAddress(peer)
+	dev, deviceExists := b.getDeviceFromAddress(peer)
 
 	// Keep track of which groups will need a consensus update
 	groupsToUpdateConsensus := map[uuid.UUID]bool{}
@@ -111,6 +111,10 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 	// Keep track of devices that are getting updates
 	devicesToUpdate := map[uuid.UUID]bool{}
 
+	// Keep a list of group messages that were part of this catch up so that we can display them after
+	// we've updated group consensus
+	gmsToDisplay := []*groupMessage{}
+
 	// Collect all the processed frames into a single ack
 	a := &ack{}
 
@@ -130,7 +134,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 				"frame_type": fr.Type,
 				"peer":       peer,
 			}).Warn("refusing to process catch up that contains frame not allowed in catch ups")
-			return nil
+			return nil, false
 		}
 
 		handler, ok := handlers[fr.Type]
@@ -141,7 +145,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 			}).Warn("peer sent a catch up frame type that doesn't have a handler")
 			continue
 		}
-		br := handler(peer, fr.Payload, true)
+		br, firstTimeSeeing := handler(peer, fr.Payload, true)
 		if br == nil {
 			log.WithFields(log.Fields{
 				"id":   fr.ID,
@@ -165,7 +169,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 				"type":              br.getType(),
 				"id":                br.getID(),
 			}).Error("refusing to process out-of-order catch up")
-			return nil
+			return nil, false
 		}
 		lastTimestamp = br.getTimestamp()
 
@@ -194,6 +198,18 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 			settingsUpdated = true
 		case typeUpdateDevice:
 			devicesToUpdate[br.getDestination(b.currentUserID())] = true
+		case typeGroupMessage:
+			if firstTimeSeeing {
+				gm, ok := br.(*groupMessage)
+				if !ok {
+					log.WithFields(log.Fields{
+						"id": br.getID(),
+					}).Warn("group message handler returned broadcastable that is not group message")
+					continue
+				}
+				gmsToDisplay = append(gmsToDisplay, gm)
+			}
+
 		}
 
 		if waitingForInitialSyncFrom == peer {
@@ -210,6 +226,22 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 
 	// Ack all of the handled frames
 	go b.sendDirect(peer, a)
+
+	for userID, _ := range usersToUpdate {
+		b.updateUserState(userID)
+	}
+
+	for userID, _ := range dmsToUpdate {
+		b.updateDMState(userID)
+	}
+
+	if settingsUpdated {
+		b.updateSettingsState()
+	}
+
+	for deviceID, _ := range devicesToUpdate {
+		b.updateDeviceState(deviceID)
+	}
 
 	// Update all group consensus states for groups that had an update group in this catch up
 	for groupID, _ := range groupsToUpdateConsensus {
@@ -269,25 +301,72 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		}
 	}
 
+	// Display the group messages we received for the first time in this catch up, as long as we are still in the groups
+	for _, gm := range gmsToDisplay {
+		groupID := gm.getDestination(b.currentUserID())
+		gs, err := b.currentGroupState(groupID)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+				"error":    err.Error(),
+			}).Error("error getting group state while checking if group message should be displayed")
+			continue
+		}
+		if !gs.isMember(b.currentUserID()) || gs.isBlocked(b.currentUserID()) || gs.deletedBy != nil {
+			// Do not display group messages for groups that we are no longer displaying
+			continue
+		}
+
+		uiImageAttachments := []ImageAttachment{}
+		for _, ia := range gm.ImageAttachments {
+			uiImageAttachments = append(uiImageAttachments, ImageAttachment{
+				ID:       ia.FileID,
+				Name:     ia.Name,
+				Size:     ia.Size,
+				Width:    ia.Width,
+				Height:   ia.Height,
+				BlurHash: ia.BlurHash,
+			})
+		}
+		uiFileAttachments := []FileAttachment{}
+		for _, fa := range gm.FileAttachments {
+			uiFileAttachments = append(uiFileAttachments, FileAttachment{
+				ID:   fa.FileID,
+				Name: fa.Name,
+				Size: fa.Size,
+			})
+		}
+
+		// Inform the UI about the new message
+		b.ui.DisplayGroupMessage(GroupMessage{
+			ID:               gm.ID,
+			Author:           gm.Author,
+			Thread:           gm.Destination,
+			WrittenAt:        gm.WrittenAt,
+			SavedAt:          gm.SavedAt,
+			ExpiresAt:        gm.DeleteAt,
+			Seen:             gm.Seen,
+			Text:             gm.Text,
+			ImageAttachments: uiImageAttachments,
+			FileAttachments:  uiFileAttachments,
+		})
+
+		if deviceExists {
+			b.ui.MessageDelivered(gm.ID, dev.UserID)
+		} else {
+			log.WithFields(log.Fields{
+				"peer":             peer,
+				"group_message_id": gm.ID,
+			}).Warn("an unknown device delivered a valid group message via catch up")
+		}
+
+		// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI
+		b.processEarlyReadReceipts(gm.ID, typeGroupMessage)
+	}
+
 	// Resume notifications for groups
 	for groupID, _ := range unpause {
 		b.ui.ResumeGroupNotifications(groupID)
-	}
-
-	for userID, _ := range usersToUpdate {
-		b.updateUserState(userID)
-	}
-
-	for userID, _ := range dmsToUpdate {
-		b.updateDMState(userID)
-	}
-
-	if settingsUpdated {
-		b.updateSettingsState()
-	}
-
-	for deviceID, _ := range devicesToUpdate {
-		b.updateDeviceState(deviceID)
 	}
 
 	// Send references to any device we would have broadcast to
@@ -301,8 +380,8 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 
 	// If we didn't know who this device belonged to at first, check to make sure we know who it belongs to
 	// after handling all of the frames
-	if !deviceAlreadyExists {
-		if _, deviceNowExists := b.getDeviceFromAddress(peer); deviceNowExists {
+	if !deviceExists {
+		if _, deviceExists = b.getDeviceFromAddress(peer); deviceExists {
 			// An unknown device sent a catch up that included frames that prove we should add the device,
 			// since we didn't initially offer references to this device we should now do so now that we
 			// have context on what this device is
@@ -321,5 +400,5 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) broadcastabl
 		b.makeNextChunkRequests()
 	}
 
-	return nil
+	return nil, false
 }

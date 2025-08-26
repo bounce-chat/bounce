@@ -88,7 +88,7 @@ func (au *addUser) getTimestamp() int64 {
 	return au.Timestamp
 }
 
-func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastable {
+func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastable, bool) {
 	handleAddUsersMutex.Lock()
 	defer handleAddUsersMutex.Unlock()
 
@@ -99,14 +99,14 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling add user")
-		return nil
+		return nil, false
 	}
 
 	// If we already know about this add user, just ack it and mark as delivered
 	var existingAU addUser
 	err = b.database.Where("id = ?", au.ID).First(&existingAU).Error
 	if err == nil {
-		return &existingAU
+		return &existingAU, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -118,14 +118,14 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 	ok := b.network.VerifySignature(au.RequesterDevice, offerUserHash[:], au.RequesterSignature)
 	if !ok {
 		log.Warn("add user has invalid requester signature")
-		return nil
+		return nil, false
 
 	}
 	requesterUserHash := blake3.Sum256(au.RequesterUser)
 	ok = b.network.VerifySignature(au.OfferDevice, requesterUserHash[:], au.OfferSignature)
 	if !ok {
 		log.Warn("add user has invalid offer signature")
-		return nil
+		return nil, false
 	}
 
 	// Unmarshal the users inside the structure
@@ -135,7 +135,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling offer user inside of add user")
-		return nil
+		return nil, false
 	}
 	var requesterUser user
 	err = msgpack.Unmarshal(au.RequesterUser, &requesterUser)
@@ -143,7 +143,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling requester user inside of add user")
-		return nil
+		return nil, false
 	}
 
 	// Make sure the xor matches the users
@@ -154,7 +154,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 			"offer_user_id":     offerUser.ID,
 			"requester_user_id": requesterUser.ID,
 		}).Warn("rejecting add user with invalid xor")
-		return nil
+		return nil, false
 	}
 
 	// Ensure that the devices that did the signing are part of the users in the structure
@@ -169,7 +169,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 	}
 	if !offerDeviceFound {
 		log.Warn("add user offer signature not made by a device owned by the offer user")
-		return nil
+		return nil, false
 	}
 	requesterDeviceFound := false
 	for _, dev := range requesterUser.Devices {
@@ -182,7 +182,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 	}
 	if !requesterDeviceFound {
 		log.Warn("add user requester signature not made by a device owned by the requester user")
-		return nil
+		return nil, false
 	}
 
 	// Figure out which user is not us
@@ -199,13 +199,13 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 			"offer_user":     offerUser.ID,
 			"requester_user": requesterUser.ID,
 		}).Warn("add user does not contain us and someone else")
-		return nil
+		return nil, false
 	}
 
 	// Make sure that this new user has a valid device group
 	if !b.hasValidDeviceGroup(counterparty) {
 		log.Warn("rejecting add user with invalid device group")
-		return nil
+		return nil, false
 	}
 	for _, dev := range counterparty.Devices {
 		if dev.UserID != counterparty.ID {
@@ -214,14 +214,14 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 				"counterparty_id": counterparty.ID,
 				"device_user":     dev.UserID,
 			}).Warn("rejecting add user with counterparty device that does not belong to counterparty")
-			return nil
+			return nil, false
 		}
 	}
 
 	// Make sure that our user has a valid device group
 	if !b.hasValidDeviceGroup(myUser) {
 		log.Warn("rejecting add user with invalid device group")
-		return nil
+		return nil, false
 	}
 	for _, dev := range myUser.Devices {
 		if dev.UserID != myUser.ID {
@@ -230,7 +230,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 				"profile_id":  myUser.ID,
 				"device_user": dev.UserID,
 			}).Warn("rejecting add user with sync device that does not belong to profile")
-			return nil
+			return nil, false
 		}
 	}
 
@@ -263,7 +263,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 			"peer":            peer,
 			"counterparty_id": counterparty.ID,
 		}).Warn("add user came from unexpected device, ignoring")
-		return nil
+		return nil, false
 	}
 
 	// Make sure that none of the devices don't already belong to another user
@@ -276,7 +276,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 					"new_user":       counterparty.ID,
 					"exisiting_user": existingDevice.UserID,
 				}).Warn("rejecting add user with device address collision with separate existing user")
-				return nil
+				return nil, false
 			}
 		}
 		// Primary keys cannot collise
@@ -289,7 +289,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 					"new_user":       counterparty.ID,
 					"exisiting_user": existingDevice.UserID,
 				}).Warn("rejecting add user with device ID collision with separate existing user")
-				return nil
+				return nil, false
 			}
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -329,7 +329,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Error("error saving new user while handing add user")
-			return nil
+			return nil, false
 		}
 
 		// Ack and delivery track these devices
@@ -370,5 +370,5 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) broadcastabl
 		})
 	}
 
-	return &au
+	return &au, true
 }

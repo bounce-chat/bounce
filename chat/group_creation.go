@@ -89,7 +89,7 @@ func (gc *groupCreation) getTimestamp() int64 {
 	return gc.Timestamp
 }
 
-func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) broadcastable {
+func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	groupMutex.Lock()
 	defer groupMutex.Unlock()
 
@@ -99,7 +99,7 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unpacking signed container for group creation")
-		return nil
+		return nil, false
 	}
 	var gc groupCreation
 	err = msgpack.Unmarshal(sc.Payload, &gc)
@@ -107,7 +107,7 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling group creation")
-		return nil
+		return nil, false
 	}
 	gc.OriginalPayload = sc.Payload
 	gc.Signature = sc.Signature
@@ -116,7 +116,7 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 	// Ignore group creations for blocked groups
 	for _, blockedGroup := range b.blockedGroups() {
 		if gc.ID == blockedGroup {
-			return nil
+			return nil, false
 		}
 	}
 
@@ -128,7 +128,7 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 			log.WithFields(log.Fields{
 				"address": gc.Signer,
 			}).Error("signer device not found for group creation")
-			return nil
+			return nil, false
 		} else {
 			log.WithFields(log.Fields{
 				"address": gc.Signer,
@@ -142,7 +142,7 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 			"signer": gc.Signer,
 		}).Warn("ignoring group creation signed by revoked device")
 		go b.sendAck(peer, typeGroupCreation, gc.ID)
-		return nil
+		return nil, false
 	}
 
 	// Make sure the ID of this group creation matches the hash of the group data
@@ -168,7 +168,7 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 			"group_creation_id": gc.ID,
 			"group_hash_id":     groupID,
 		}).Error("rejecting group creation with ID that does not match hash of group data")
-		return nil
+		return nil, false
 	}
 
 	// Unmarshall the group
@@ -178,7 +178,7 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling group")
-		return nil
+		return nil, false
 	}
 
 	// Assign the group ID as the group creation ID
@@ -190,7 +190,7 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 			"timestamp":        gc.Timestamp,
 			"group_created_at": g.CreatedAt,
 		}).Error("rejection group creation with timestamp mismatch")
-		return nil
+		return nil, false
 	}
 
 	// Make sure that one of the devices in this group signed the creation of this group, and check if we're in the group
@@ -210,14 +210,14 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		log.WithFields(log.Fields{
 			"signing_device": gc.Signer,
 		}).Warn("rejecting group creation not signed by any of the original devices")
-		return nil
+		return nil, false
 	}
 	if !catchUp && !weAreInGroup {
 		// Group creations that define a group that does not include us can only be learned about within a catchup
 		log.WithFields(log.Fields{
 			"group_id": g.ID,
 		}).Warn("ignoring group creation that does not include us")
-		return nil
+		return nil, false
 	}
 
 	// Check that each user has a valid device group
@@ -227,7 +227,7 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 				"peer":    peer,
 				"user_id": u.ID,
 			}).Warn("ignoring group that contains user with invalid device group")
-			return nil
+			return nil, false
 		}
 	}
 
@@ -235,7 +235,7 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 	var existingGroupCreation groupCreation
 	err = b.database.Where("id = ?", gc.ID).First(&existingGroupCreation).Error
 	if err == nil {
-		return &existingGroupCreation
+		return &existingGroupCreation, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -335,27 +335,16 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 			imageUUIDs = append(imageUUIDs, imageID)
 		}
 	}
-	b.ui.NewGroupChat(Group{
-		ID:                     g.ID,
-		Name:                   g.Name,
-		Images:                 imageUUIDs,
-		Users:                  uiUsers,
-		Admins:                 adminUUIDs,
-		CreatedBy:              g.CreatedBy,
-		CreatedAt:              g.CreatedAt,
-		Retention:              g.Retention,
-		MutedUntil:             g.MutedUntil,
-		LastActivity:           g.LastActivity,
-		RestrictUserManagement: g.RestrictUserManagement,
-		RestrictGroupEdits:     g.RestrictGroupEdits,
-		RestrictPosting:        g.RestrictPosting,
-	})
+
+	// Start tracking this group's state in the consensus store, and notify
+	// the UI / update the database if this in real time
+	b.reloadGroupConsensus(g.ID)
+	if !catchUp {
+		b.writeGroupConsensus(g.ID)
+	}
 
 	// Notify the peering engine that we want to be connected to this group right now
 	b.GroupConnectionDesired(g.ID)
 
-	// Start tracking this group's state in the consensus store
-	b.reloadGroupConsensus(g.ID)
-
-	return &gc
+	return &gc, true
 }
