@@ -549,17 +549,19 @@ func (b *Bounce) setGroupStateInDatabase(g group, gs groupState, ugsToNotify []u
 
 	// Set group admins
 	admins := []uuid.UUID{}
-	for _, adminIDString := range strings.Split(g.Admins, ",") {
-		adminID, err := uuid.Parse(adminIDString)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":    err.Error(),
-				"group_id": g.ID,
-				"admins":   g.Admins,
-			}).Fatal("invalid UUID in group admin list")
+	if len(g.Admins) > 0 {
+		for _, adminIDString := range strings.Split(g.Admins, ",") {
+			adminID, err := uuid.Parse(adminIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": g.ID,
+					"admins":   g.Admins,
+				}).Fatal("invalid UUID in group admin list")
 
+			}
+			admins = append(admins, adminID)
 		}
-		admins = append(admins, adminID)
 	}
 	for _, adminID := range admins {
 		if !gs.isAdmin(adminID) {

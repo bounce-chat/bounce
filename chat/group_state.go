@@ -103,17 +103,19 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 	}
 
 	// Set the values for the original admins
-	for _, adminIDString := range strings.Split(g.Admins, ",") {
-		adminID, err := uuid.Parse(adminIDString)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":    err.Error(),
-				"group_id": groupID,
-				"admins":   g.Admins,
-			}).Fatal("invalid UUID in group admin list")
-		}
+	if len(g.Admins) != 0 {
+		for _, adminIDString := range strings.Split(g.Admins, ",") {
+			adminID, err := uuid.Parse(adminIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": groupID,
+					"admins":   g.Admins,
+				}).Fatal("invalid UUID in group admin list")
+			}
 
-		gs.admins = append(gs.admins, adminID)
+			gs.admins = append(gs.admins, adminID)
+		}
 	}
 
 	// Return the state

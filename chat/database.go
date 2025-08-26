@@ -355,15 +355,17 @@ func (b *Bounce) GetInitialState() InitialState {
 			userList = append(userList, User{ID: u.ID, Name: u.Name})
 		}
 		adminList := []uuid.UUID{}
-		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := uuid.Parse(adminIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"admins": g.Admins,
-				}).Fatal("invalid UUID in group admin list")
+		if len(g.Admins) > 0 {
+			for _, adminIDString := range strings.Split(g.Admins, ",") {
+				adminID, err := uuid.Parse(adminIDString)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":  err.Error(),
+						"admins": g.Admins,
+					}).Fatal("invalid UUID in group admin list")
+				}
+				adminList = append(adminList, adminID)
 			}
-			adminList = append(adminList, adminID)
 		}
 		blockedList := []uuid.UUID{}
 		if len(g.BlockedUsers) > 0 {

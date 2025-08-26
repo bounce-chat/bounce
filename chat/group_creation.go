@@ -308,17 +308,19 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 
 	// Inform the UI of the new group
 	adminUUIDs := []uuid.UUID{}
-	for _, adminIDString := range strings.Split(g.Admins, ",") {
-		adminID, err := uuid.Parse(adminIDString)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":    err.Error(),
-				"group_id": g.ID,
-				"admins":   g.Admins,
-			}).Fatal("invalid UUID in group admin list")
-		}
+	if len(g.Admins) > 0 {
+		for _, adminIDString := range strings.Split(g.Admins, ",") {
+			adminID, err := uuid.Parse(adminIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": g.ID,
+					"admins":   g.Admins,
+				}).Fatal("invalid UUID in group admin list")
+			}
 
-		adminUUIDs = append(adminUUIDs, adminID)
+			adminUUIDs = append(adminUUIDs, adminID)
+		}
 	}
 	imageUUIDs := []uuid.UUID{}
 	if len(g.Images) > 0 {

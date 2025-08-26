@@ -102,17 +102,19 @@ func (g *group) state() groupState {
 		gs.users = append(gs.users, u.ID)
 	}
 
-	for _, adminIDString := range strings.Split(g.Admins, ",") {
-		adminID, err := uuid.Parse(adminIDString)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":    err.Error(),
-				"group_id": g.ID,
-				"admins":   g.Admins,
-			}).Fatal("invalid UUID in group admin list")
-		}
+	if len(g.Admins) > 0 {
+		for _, adminIDString := range strings.Split(g.Admins, ",") {
+			adminID, err := uuid.Parse(adminIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": g.ID,
+					"admins":   g.Admins,
+				}).Fatal("invalid UUID in group admin list")
+			}
 
-		gs.admins = append(gs.admins, adminID)
+			gs.admins = append(gs.admins, adminID)
+		}
 	}
 
 	if len(g.BlockedUsers) > 0 {
@@ -414,18 +416,20 @@ func (b *Bounce) isGroupAdmin(groupID, userID uuid.UUID) bool {
 		}
 	}
 
-	for _, adminIDString := range strings.Split(g.Admins, ",") {
-		adminID, err := uuid.Parse(adminIDString)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":    err.Error(),
-				"group_id": groupID,
-				"admins":   g.Admins,
-			}).Fatal("invalid UUID in group admin list")
-		}
+	if len(g.Admins) > 0 {
+		for _, adminIDString := range strings.Split(g.Admins, ",") {
+			adminID, err := uuid.Parse(adminIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": groupID,
+					"admins":   g.Admins,
+				}).Fatal("invalid UUID in group admin list")
+			}
 
-		if adminID == userID {
-			return true
+			if adminID == userID {
+				return true
+			}
 		}
 	}
 
@@ -451,22 +455,24 @@ func (b *Bounce) addGroupAdmin(groupID, userID uuid.UUID) {
 
 	admins := []string{}
 	alreadyAnAdmin := false
-	for _, adminIDString := range strings.Split(g.Admins, ",") {
-		adminID, err := uuid.Parse(adminIDString)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":    err.Error(),
-				"group_id": groupID,
-				"admins":   g.Admins,
-			}).Fatal("invalid UUID in group admin list")
+	if len(g.Admins) > 0 {
+		for _, adminIDString := range strings.Split(g.Admins, ",") {
+			adminID, err := uuid.Parse(adminIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": groupID,
+					"admins":   g.Admins,
+				}).Fatal("invalid UUID in group admin list")
 
+			}
+
+			if adminID == userID {
+				alreadyAnAdmin = true
+			}
+
+			admins = append(admins, adminIDString)
 		}
-
-		if adminID == userID {
-			alreadyAnAdmin = true
-		}
-
-		admins = append(admins, adminIDString)
 	}
 
 	if !alreadyAnAdmin {
@@ -512,20 +518,22 @@ func (b *Bounce) removeGroupAdmin(groupID, userID uuid.UUID) {
 
 	admins := []string{}
 	removedUser := false
-	for _, adminIDString := range strings.Split(g.Admins, ",") {
-		adminID, err := uuid.Parse(adminIDString)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":    err.Error(),
-				"group_id": groupID,
-				"admins":   g.Admins,
-			}).Fatal("invalid UUID in group admin list")
-		}
+	if len(g.Admins) > 0 {
+		for _, adminIDString := range strings.Split(g.Admins, ",") {
+			adminID, err := uuid.Parse(adminIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": groupID,
+					"admins":   g.Admins,
+				}).Fatal("invalid UUID in group admin list")
+			}
 
-		if adminID == userID {
-			removedUser = true
-		} else {
-			admins = append(admins, adminIDString)
+			if adminID == userID {
+				removedUser = true
+			} else {
+				admins = append(admins, adminIDString)
+			}
 		}
 	}
 
