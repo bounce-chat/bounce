@@ -171,6 +171,7 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 	if len(ch.items) == 0 || appendingToEnd {
 		ch.items = append(ch.items, ti.widgetData)
 		ch.ids = append(ch.ids, ti.id)
+		ch.setMergeMode(len(ch.items)-1, true)
 	} else {
 		for i := len(ch.items); i >= 0; i-- {
 			if i == 0 {
