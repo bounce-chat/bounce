@@ -576,7 +576,7 @@ func (b *Bounce) setGroupStateInDatabase(g group, gs groupState, ugsToNotify []u
 
 	// Set the invited users
 	invited := []uuid.UUID{}
-	if len(g.Admins) > 0 {
+	if len(g.Invites) > 0 {
 		for _, invitedIDString := range strings.Split(g.Invites, ",") {
 			invitedID, err := uuid.Parse(invitedIDString)
 			if err != nil {
