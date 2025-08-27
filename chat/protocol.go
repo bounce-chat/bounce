@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -14,6 +15,7 @@ var scopeUser = 1
 var scopeGroup = 2
 var scopeGlobal = 3
 var scopeCustom = 4
+var scopeGroupWithInvites = 5
 
 var typeDirectMessage = uint16(0)
 var typeGroupMessage = uint16(1)
@@ -141,6 +143,8 @@ func (b *Bounce) getBroadcastScope(br broadcastable, excludeDelivered bool) []st
 		return b.getGlobalScope(br, excludeDelivered)
 	} else if scope == scopeCustom {
 		return b.getCustomScope(br, excludeDelivered)
+	} else if scope == scopeGroupWithInvites {
+		return b.getGroupWithInvitesScope(br, excludeDelivered)
 	} else {
 		log.WithFields(log.Fields{
 			"destination": br.getDestination(b.currentUserID()),
@@ -359,6 +363,90 @@ func (b *Bounce) getCustomScope(br broadcastable, excludeDelivered bool) []strin
 			continue
 		}
 		broadcastTargets = append(broadcastTargets, addr)
+	}
+
+	return broadcastTargets
+}
+
+// Like the group scope, but also including any invited users
+func (b *Bounce) getGroupWithInvitesScope(br broadcastable, excludeDelivered bool) []string {
+	broadcastTargets := []string{}
+
+	var destinationGroup group
+	err := b.database.Preload("Users.Devices").Preload(clause.Associations).First(&destinationGroup, "id = ?", br.getDestination(b.currentUserID())).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"frame_id":    br.getID(),
+				"type":        br.getType(),
+				"destination": br.getDestination(b.currentUserID()),
+			}).Debug("group not found when broadcasting group scoped message, using sync scope instead")
+			return b.getSyncScope(br, excludeDelivered)
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error loading group from database")
+		}
+	}
+	for _, u := range destinationGroup.Users {
+		for _, dev := range u.Devices {
+			if dev.RevokedAt != 0 {
+				continue
+			}
+			if dev.Address == b.network.Address() {
+				continue
+			}
+			if excludeDelivered && b.isDeliveredTo(br, dev.Address) {
+				continue
+			}
+			broadcastTargets = append(broadcastTargets, dev.Address)
+		}
+	}
+
+	invites := []uuid.UUID{}
+	if len(destinationGroup.Invites) > 0 {
+		for _, inviteIDString := range strings.Split(destinationGroup.Invites, ",") {
+			inviteID, err := uuid.Parse(inviteIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": destinationGroup.ID,
+					"invites":  destinationGroup.Invites,
+				}).Fatal("invalid UUID in group invite list")
+			}
+
+			invites = append(invites, inviteID)
+		}
+	}
+	for _, userID := range invites {
+		var u user
+		err := b.database.Preload(clause.Associations).First(&u, "id = ?", userID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"frame_id":    br.getID(),
+					"destination": br.getDestination(b.currentUserID()),
+					"type":        br.getType(),
+				}).Error("user not found when adding invitees to group scope")
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("error loading user from database")
+			}
+		}
+		for _, dev := range u.Devices {
+			if dev.RevokedAt != 0 {
+				continue
+			}
+			if dev.Address == b.network.Address() {
+				continue
+			}
+			if excludeDelivered && b.isDeliveredTo(br, dev.Address) {
+				continue
+			}
+			broadcastTargets = append(broadcastTargets, dev.Address)
+		}
 	}
 
 	return broadcastTargets

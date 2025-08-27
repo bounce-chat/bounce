@@ -225,7 +225,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 				ugsToNotify = append(ugsToNotify, cs.history[i+1].ug)
 			}
 
-			if gs.ug.Type == updateGroupTypeAddUser {
+			if gs.ug.Type == updateGroupTypeInviteUser {
 				var newUser user
 				err := msgpack.Unmarshal(gs.ug.Data, &newUser)
 				if err != nil {
@@ -315,7 +315,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 				alwaysAnAdmin = false
 			}
 
-			if gs.ug.Type == updateGroupTypeAddUser || gs.ug.Type == updateGroupTypeRemoveUser || gs.ug.Type == updateGroupTypePromoteAdmin || gs.ug.Type == updateGroupTypeDemoteAdmin {
+			if gs.ug.Type == updateGroupTypeInviteUser || gs.ug.Type == updateGroupTypeRemoveUser || gs.ug.Type == updateGroupTypePromoteAdmin || gs.ug.Type == updateGroupTypeDemoteAdmin {
 				ugsWithAdminStatusSideEffects = append(ugsWithAdminStatusSideEffects, gs.ug)
 			}
 		}
@@ -571,6 +571,33 @@ func (b *Bounce) setGroupStateInDatabase(g group, gs groupState, ugsToNotify []u
 	for _, adminID := range gs.admins {
 		if !b.isGroupAdmin(g.ID, adminID) { // TODO: check the group struct that was passed in?
 			b.addGroupAdmin(g.ID, adminID)
+		}
+	}
+
+	// Set the invited users
+	invited := []uuid.UUID{}
+	if len(g.Admins) > 0 {
+		for _, invitedIDString := range strings.Split(g.Invites, ",") {
+			invitedID, err := uuid.Parse(invitedIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": g.ID,
+					"invited":  g.Invites,
+				}).Fatal("invalid UUID in group invited list")
+
+			}
+			invited = append(invited, invitedID)
+		}
+	}
+	for _, invitedID := range invited {
+		if !gs.isInvited(invitedID) {
+			b.removeGroupInvite(g.ID, invitedID)
+		}
+	}
+	for _, invitedID := range gs.invites {
+		if !b.isInvited(g.ID, invitedID) {
+			b.addGroupInvite(g.ID, invitedID)
 		}
 	}
 

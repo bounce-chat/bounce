@@ -14,7 +14,7 @@ import (
 )
 
 const updateGroupTypeChangeName = uint16(0)
-const updateGroupTypeAddUser = uint16(1)
+const updateGroupTypeInviteUser = uint16(1)
 const updateGroupTypeRemoveUser = uint16(2)
 const updateGroupTypeChangeMutedUntil = uint16(3)
 const updateGroupTypeChangeRetention = uint16(4)
@@ -115,7 +115,7 @@ func (ug *updateGroup) getScope(myID uuid.UUID) int {
 		return scopeCustom
 	}
 
-	return scopeGroup
+	return scopeGroupWithInvites
 }
 
 func (ug *updateGroup) getDestination(myID uuid.UUID) uuid.UUID {
@@ -197,7 +197,7 @@ func (ug *updateGroup) validPayloadFormat() bool {
 	case updateGroupTypeSetImage:
 		_, err := uuid.FromBytes(ug.Data)
 		return err == nil
-	case updateGroupTypeAddUser:
+	case updateGroupTypeInviteUser:
 		var u user
 		err := msgpack.Unmarshal(ug.Data, &u)
 		return err == nil
@@ -541,7 +541,7 @@ func (b *Bounce) ClearGroupChatHistory(groupID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) AddUserToGroup(groupID, userID uuid.UUID) error {
+func (b *Bounce) InviteUserToGroup(groupID, userID uuid.UUID) error {
 	// Look up the user to add with all associations
 	var newUser user
 	err := b.database.
@@ -572,7 +572,7 @@ func (b *Bounce) AddUserToGroup(groupID, userID uuid.UUID) error {
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
-		Type:      updateGroupTypeAddUser,
+		Type:      updateGroupTypeInviteUser,
 		Data:      newUserBytes,
 	})
 	if err != nil {
@@ -864,8 +864,8 @@ func (b *Bounce) informUIOfUpdateGroup(ug updateGroup) {
 	switch ug.Type {
 	case updateGroupTypeChangeName:
 		b.informUIUpdateGroupChangeName(ug)
-	case updateGroupTypeAddUser:
-		b.informUIUpdateGroupAddUser(ug)
+	case updateGroupTypeInviteUser:
+		b.informUIUpdateGroupInviteUser(ug)
 	case updateGroupTypeRemoveUser:
 		b.informUIUpdateGroupRemoveUser(ug)
 	case updateGroupTypeChangeRetention:
@@ -919,7 +919,7 @@ func (b *Bounce) informUIUpdateGroupChangeName(ug updateGroup) {
 	})
 }
 
-func (b *Bounce) informUIUpdateGroupAddUser(ug updateGroup) {
+func (b *Bounce) informUIUpdateGroupInviteUser(ug updateGroup) {
 	// Unmarshall the new user
 	var u user
 	err := msgpack.Unmarshal(ug.Data, &u)
@@ -931,8 +931,8 @@ func (b *Bounce) informUIUpdateGroupAddUser(ug updateGroup) {
 	}
 
 	// Notify the UI
-	b.ui.AddUser(
-		UpdateGroupAddUser{
+	b.ui.InviteUser(
+		UpdateGroupInviteUser{
 			ID:        ug.ID,
 			Thread:    ug.Target,
 			Actor:     ug.Actor,

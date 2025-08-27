@@ -402,12 +402,12 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			threadItems[ugn.Thread] = append(threadItems[ugn.Thread], ugnItem)
 		}
 
-		for _, ugau := range state.UpdateGroupAddUsers {
-			ugauItem, err := ui.newUpdateGroupAddUser(ugau)
+		for _, ugiu := range state.UpdateGroupInvitedUsers {
+			ugiuItem, err := ui.newUpdateGroupInviteUser(ugiu)
 			if err != nil {
 				log.Error(err.Error())
 			}
-			threadItems[ugau.Thread] = append(threadItems[ugau.Thread], ugauItem)
+			threadItems[ugiu.Thread] = append(threadItems[ugiu.Thread], ugiuItem)
 		}
 
 		for _, ugru := range state.UpdateGroupRemoveUsers {

@@ -48,7 +48,7 @@ func (gc *groupCreation) getID() uuid.UUID {
 }
 
 func (gc *groupCreation) getScope(_ uuid.UUID) int {
-	return scopeGroup
+	return scopeGroupWithInvites
 }
 
 func (gc *groupCreation) getDestination(_ uuid.UUID) uuid.UUID {

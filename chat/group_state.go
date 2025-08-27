@@ -16,6 +16,7 @@ type groupState struct {
 	images                     []uuid.UUID
 	users                      []uuid.UUID
 	admins                     []uuid.UUID
+	invites                    []uuid.UUID
 	blockedUsers               []uuid.UUID
 	mutedUntil                 int64
 	retention                  int64
@@ -39,6 +40,7 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 		users:                      []uuid.UUID{},
 		images:                     []uuid.UUID{},
 		admins:                     []uuid.UUID{},
+		invites:                    []uuid.UUID{},
 		blockedUsers:               []uuid.UUID{},
 		postingRestricted:          true,
 		editingRestricted:          true,
@@ -198,6 +200,22 @@ func (gs groupState) equals(otherState groupState) bool {
 		}
 	}
 
+	if len(gs.invites) != len(otherState.invites) {
+		return false
+	}
+
+	for _, userID := range gs.invites {
+		if !otherState.isInvited(userID) {
+			return false
+		}
+	}
+
+	for _, userID := range otherState.invites {
+		if !gs.isInvited(userID) {
+			return false
+		}
+	}
+
 	if len(gs.blockedUsers) != len(otherState.blockedUsers) {
 		return false
 	}
@@ -236,6 +254,15 @@ func (gs groupState) equals(otherState groupState) bool {
 func (gs groupState) isAdmin(userID uuid.UUID) bool {
 	for _, adminID := range gs.admins {
 		if adminID == userID {
+			return true
+		}
+	}
+	return false
+}
+
+func (gs groupState) isInvited(userID uuid.UUID) bool {
+	for _, invitedID := range gs.invites {
+		if invitedID == userID {
 			return true
 		}
 	}
@@ -295,7 +322,7 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 		} else {
 			return nil
 		}
-	case updateGroupTypeAddUser:
+	case updateGroupTypeInviteUser:
 		if gs.userManagementRestricted {
 			if gs.isAdmin(ug.Actor) {
 				return nil
@@ -457,8 +484,8 @@ func applyUpdateGroupToState(gs groupState, ug updateGroup) (groupState, error) 
 		return applyUpdateGroupChangeNameToState(gs, ug)
 	case updateGroupTypeSetImage:
 		return applyUpdateGroupSetImageToState(gs, ug)
-	case updateGroupTypeAddUser:
-		return applyUpdateGroupAddUserToState(gs, ug)
+	case updateGroupTypeInviteUser:
+		return applyUpdateGroupInviteUserToState(gs, ug)
 	case updateGroupTypeRemoveUser:
 		return applyUpdateGroupRemoveUserToState(gs, ug)
 	case updateGroupTypeChangeMutedUntil:
@@ -524,7 +551,7 @@ func applyUpdateGroupSetImageToState(gs groupState, ug updateGroup) (groupState,
 	return gs, nil
 }
 
-func applyUpdateGroupAddUserToState(gs groupState, ug updateGroup) (groupState, error) {
+func applyUpdateGroupInviteUserToState(gs groupState, ug updateGroup) (groupState, error) {
 	var u user
 	err := msgpack.Unmarshal(ug.Data, &u)
 	if err != nil {
@@ -534,8 +561,8 @@ func applyUpdateGroupAddUserToState(gs groupState, ug updateGroup) (groupState, 
 		return gs, err
 	}
 
-	if !gs.isMember(u.ID) {
-		gs.users = append(gs.users, u.ID)
+	if !gs.isInvited(u.ID) {
+		gs.invites = append(gs.invites, u.ID)
 	}
 
 	return gs, nil

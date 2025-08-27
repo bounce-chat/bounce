@@ -27,7 +27,8 @@ type group struct {
 	ClearBefore                int64
 	MutedUntil                 int64
 	Users                      []user `gorm:"many2many:group_users;"`
-	Admins                     string `gorm:"not null"`
+	Admins                     string
+	Invites                    string
 	BlockedUsers               string
 	RestrictUserManagement     bool
 	RestrictGroupEdits         bool
@@ -658,5 +659,165 @@ func (b *Bounce) blockUserFromGroup(groupID, userID uuid.UUID) {
 				"group_id": groupID,
 			}).Fatal("database error adding blocked user")
 		}
+	}
+}
+
+func (b *Bounce) isInvited(groupID, userID uuid.UUID) bool {
+	var g group
+	err := b.database.Select("invited").Where("id = ?", groupID).Find(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("group not found when checking invite status")
+			return false
+		} else {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+			}).Fatal("database error looking up group invites")
+		}
+	}
+
+	if len(g.Invites) > 0 {
+		for _, inviteIDString := range strings.Split(g.Invites, ",") {
+			inviteID, err := uuid.Parse(inviteIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": groupID,
+					"invites":  g.Invites,
+				}).Fatal("invalid UUID in group invite list")
+			}
+
+			if inviteID == userID {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (b *Bounce) addGroupInvite(groupID, userID uuid.UUID) {
+	var g group
+	err := b.database.Select("invites").Where("id = ?", groupID).Find(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("group not found when checking invite status")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+			}).Fatal("database error looking up group invites")
+		}
+	}
+
+	invites := []string{}
+	alreadyInvited := false
+	if len(g.Invites) > 0 {
+		for _, inviteIDString := range strings.Split(g.Invites, ",") {
+			inviteID, err := uuid.Parse(inviteIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": groupID,
+					"invites":  g.Invites,
+				}).Fatal("invalid UUID in group invite list")
+
+			}
+
+			if inviteID == userID {
+				alreadyInvited = true
+			}
+
+			invites = append(invites, inviteIDString)
+		}
+	}
+
+	if !alreadyInvited {
+		invites = append(invites, userID.String())
+	} else {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"user_id":  userID,
+		}).Warn("ignoring request to invite user that is already invited")
+		return
+	}
+
+	err = b.database.Model(&g).Where("id = ?", groupID).Update("invites", strings.Join(invites, ",")).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("group not found when adding invite")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error adding group invite")
+		}
+	}
+}
+
+func (b *Bounce) removeGroupInvite(groupID, userID uuid.UUID) {
+	var g group
+	err := b.database.Select("invites").Where("id = ?", groupID).Find(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("group not found when checking invite status")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Fatal("database error looking up group invites")
+		}
+	}
+
+	invites := []string{}
+	removedUser := false
+	if len(g.Invites) > 0 {
+		for _, inviteIDString := range strings.Split(g.Invites, ",") {
+			inviteID, err := uuid.Parse(inviteIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": groupID,
+					"invites":  g.Invites,
+				}).Fatal("invalid UUID in group invite list")
+			}
+
+			if inviteID == userID {
+				removedUser = true
+			} else {
+				invites = append(invites, inviteIDString)
+			}
+		}
+	}
+
+	if removedUser {
+		err = b.database.Model(&g).Where("id = ?", groupID).Update("invites", strings.Join(invites, ",")).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"group_id": groupID,
+				}).Error("group not found when removing invite")
+				return
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error removing group invite")
+			}
+		}
+	} else {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+			"user_id":  userID,
+		}).Warn("ignoring request to remove invite from group that already wasn't there")
 	}
 }

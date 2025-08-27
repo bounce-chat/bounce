@@ -188,15 +188,15 @@ func (ui *ui) newUpdateGroupRetention(ugr chat.UpdateGroupRetention) (*threadIte
 	)
 }
 
-func (ui *ui) newUpdateGroupAddUser(ugau chat.UpdateGroupAddUser) (*threadItem, error) {
+func (ui *ui) newUpdateGroupInviteUser(ugiu chat.UpdateGroupInviteUser) (*threadItem, error) {
 	return ui.newStatusChangeThreadItem(
-		ugau.ID,
-		ugau.Thread,
-		ugau.Actor,
+		ugiu.ID,
+		ugiu.Thread,
+		ugiu.Actor,
 		chat.TypeUpdateGroup,
-		"added "+ugau.User.Name+" to the group",
-		ugau.Timestamp,
-		ugau.Seen,
+		"invited "+ugiu.User.Name+" to the group",
+		ugiu.Timestamp,
+		ugiu.Seen,
 	)
 }
 

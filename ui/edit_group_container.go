@@ -397,7 +397,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 		showError = nil
 		if apply {
 			for _, thisUser := range g.pendingUsers.userList {
-				err := ui.bounce.AddUserToGroup(g.id, thisUser.id)
+				err := ui.bounce.InviteUserToGroup(g.id, thisUser.id)
 				if err != nil {
 					showError = errors.New("error adding user: " + err.Error())
 					return

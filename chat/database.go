@@ -646,7 +646,7 @@ func (b *Bounce) GetInitialState() InitialState {
 	}
 	exportedUpdateGroupRetentions := []UpdateGroupRetention{}
 	exportedUpdateGroupNames := []UpdateGroupName{}
-	exportedUpdateGroupAddUsers := []UpdateGroupAddUser{}
+	exportedUpdateGroupInvitedUsers := []UpdateGroupInviteUser{}
 	exportedUpdateGroupRemoveUsers := []UpdateGroupRemoveUser{}
 	exportedUpdateGroupClearHistories := []UpdateGroupClearHistory{}
 	exportedUpdateGroupAdminPromotions := []UpdateGroupAdminPromoted{}
@@ -685,19 +685,19 @@ func (b *Bounce) GetInitialState() InitialState {
 					Retention: int64(binary.LittleEndian.Uint64(ug.Data)),
 				},
 			)
-		case updateGroupTypeAddUser:
+		case updateGroupTypeInviteUser:
 			var u user
 			err := msgpack.Unmarshal(ug.Data, &u)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"id":    ug.ID,
 					"error": err.Error(),
-				}).Fatal("error unmarshalling user in update group add user in database")
+				}).Fatal("error unmarshalling user in update group invite user in database")
 			}
 
-			exportedUpdateGroupAddUsers = append(
-				exportedUpdateGroupAddUsers,
-				UpdateGroupAddUser{
+			exportedUpdateGroupInvitedUsers = append(
+				exportedUpdateGroupInvitedUsers,
+				UpdateGroupInviteUser{
 					ID:        ug.ID,
 					Thread:    ug.Target,
 					Actor:     ug.Actor,
@@ -988,7 +988,7 @@ func (b *Bounce) GetInitialState() InitialState {
 		GroupMessages:                          exportedGMs,
 		UpdateGroupRetentions:                  exportedUpdateGroupRetentions,
 		UpdateGroupNames:                       exportedUpdateGroupNames,
-		UpdateGroupAddUsers:                    exportedUpdateGroupAddUsers,
+		UpdateGroupInvitedUsers:                exportedUpdateGroupInvitedUsers,
 		UpdateGroupRemoveUsers:                 exportedUpdateGroupRemoveUsers,
 		UpdateGroupClearHistories:              exportedUpdateGroupClearHistories,
 		UpdateGroupAdminPromotions:             exportedUpdateGroupAdminPromotions,

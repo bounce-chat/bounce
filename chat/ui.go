@@ -107,6 +107,7 @@ type Group struct {
 	Images                         []uuid.UUID
 	Users                          []User
 	Admins                         []uuid.UUID
+	InvitedUsers                   []uuid.UUID // TODO: need to pass the whole user?
 	BlockedUsers                   []uuid.UUID
 	Retention                      int64
 	MutedUntil                     int64
@@ -156,7 +157,7 @@ type UpdateGroupName struct {
 	Name      string
 }
 
-type UpdateGroupAddUser struct {
+type UpdateGroupInviteUser struct {
 	ID        uuid.UUID
 	Thread    uuid.UUID
 	Actor     uuid.UUID
@@ -313,7 +314,7 @@ type InitialState struct {
 	GroupMessages                          []GroupMessage
 	UpdateGroupRetentions                  []UpdateGroupRetention
 	UpdateGroupNames                       []UpdateGroupName
-	UpdateGroupAddUsers                    []UpdateGroupAddUser
+	UpdateGroupInvitedUsers                []UpdateGroupInviteUser
 	UpdateGroupRemoveUsers                 []UpdateGroupRemoveUser
 	UpdateGroupClearHistories              []UpdateGroupClearHistory
 	UpdateGroupAdminPromotions             []UpdateGroupAdminPromoted
@@ -374,7 +375,7 @@ type UI interface {
 	SetGroupState(Group)
 	DisplayGroupMessage(GroupMessage)
 	DisplaySentGroupMessage(GroupMessage)
-	AddUser(UpdateGroupAddUser)
+	InviteUser(UpdateGroupInviteUser)
 	RemoveUser(UpdateGroupRemoveUser)
 	RemovedFromGroup(RemovedFromGroup)
 	GroupDeleted(GroupDeleted)

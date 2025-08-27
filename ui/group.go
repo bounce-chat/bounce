@@ -738,16 +738,16 @@ func (ui *ui) DisplaySentGroupMessage(gm chat.GroupMessage) {
 	})
 }
 
-func (ui *ui) AddUser(ugau chat.UpdateGroupAddUser) {
-	g, exists := ui.threads.getGroup(ugau.Thread)
+func (ui *ui) InviteUser(ugiu chat.UpdateGroupInviteUser) {
+	g, exists := ui.threads.getGroup(ugiu.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
-			"group_id": ugau.Thread,
+			"group_id": ugiu.Thread,
 		}).Error("group not found for update group add user")
 		return
 	}
 
-	ti, err := ui.newUpdateGroupAddUser(ugau)
+	ti, err := ui.newUpdateGroupInviteUser(ugiu)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -758,6 +758,7 @@ func (ui *ui) AddUser(ugau chat.UpdateGroupAddUser) {
 	// TODO: should not be needed since it happens in SetGroupState
 	//u := makeUser(ugau.User)
 	//ui.users.add(u)
+	// TODO: also, doesn't SetGroupState happen first?
 
 	fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
 }
