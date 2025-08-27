@@ -659,6 +659,7 @@ func (b *Bounce) GetInitialState() InitialState {
 	exportedUpdateGroupPostingsUnrestricted := []UpdateGroupPostingUnrestricted{}
 	exportedUpdateGroupUserBlockedGroups := []UserBlockedGroup{}
 	exportedUpdateGroupUserChangedGroupImages := []UpdateGroupUserChangedGroupImage{}
+	exportedUpdateGroupInvitesRevoked := []UpdateGroupInviteRevoked{}
 	for _, ug := range ugs {
 		switch ug.Type {
 		case updateGroupTypeChangeName:
@@ -897,6 +898,26 @@ func (b *Bounce) GetInitialState() InitialState {
 					Timestamp: ug.Timestamp,
 				},
 			)
+		case updateGroupTypeRevokeInvite:
+			userID, err := uuid.FromBytes(ug.Data)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"id":    ug.Data,
+					"error": err.Error(),
+				}).Fatal("error parsing user ID for invite revocation in database")
+			}
+
+			exportedUpdateGroupInvitesRevoked = append(
+				exportedUpdateGroupInvitesRevoked,
+				UpdateGroupInviteRevoked{
+					ID:        ug.ID,
+					Thread:    ug.Target,
+					Actor:     ug.Actor,
+					Timestamp: ug.Timestamp,
+					UserID:    userID,
+					Seen:      ug.Seen,
+				},
+			)
 		}
 	}
 
@@ -1001,6 +1022,7 @@ func (b *Bounce) GetInitialState() InitialState {
 		UpdateGroupPostingsUnrestricted:        exportedUpdateGroupPostingsUnrestricted,
 		UpdateGroupUserBlockedGroups:           exportedUpdateGroupUserBlockedGroups,
 		UpdateGroupUserChangedGroupImages:      exportedUpdateGroupUserChangedGroupImages,
+		UpdateGroupRevokedInvites:              exportedUpdateGroupInvitesRevoked,
 		UpdateUserUpdateNames:                  exportedUpdateUserUpdateNames,
 		UpdateUserUpdateImages:                 exportedUpdateUserUpdateImages,
 		FileProgress:                           fileProgress,

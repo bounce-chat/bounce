@@ -1146,6 +1146,26 @@ func (ui *ui) UserChangedGroupImage(ugci chat.UpdateGroupUserChangedGroupImage) 
 	fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
 }
 
+func (ui *ui) GroupInviteRevoked(ugri chat.UpdateGroupInviteRevoked) {
+	g, exists := ui.threads.getGroup(ugri.Thread)
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugri.Thread,
+		}).Error("cannot revoke invite for group that doesn't exist")
+		return
+	}
+
+	ti, err := ui.newUpdateGroupInviteRevoked(ugri)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for update group revoke invite")
+		return
+	}
+
+	fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
+}
+
 func (ui *ui) updateEnabledFeatures(g *group) {
 	amAdmin := g.isAdmin(ui.state.profile.id)
 

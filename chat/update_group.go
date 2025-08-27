@@ -29,6 +29,7 @@ const updateGroupTypeBlock = uint16(12)
 const updateGroupTypeSetReadReceiptSettings = uint16(13)
 const updateGroupTypeSetTypingIndicatorSettings = uint16(14)
 const updateGroupTypeSetImage = uint16(15)
+const updateGroupTypeRevokeInvite = uint16(16)
 
 const permissionUnrestricted = 0x00
 const permissionRestricted = 0x01
@@ -251,6 +252,9 @@ func (ug *updateGroup) validPayloadFormat() bool {
 			return false
 		}
 		return true
+	case updateGroupTypeRevokeInvite:
+		_, err := uuid.FromBytes(ug.Data)
+		return err == nil
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -791,6 +795,17 @@ func (b *Bounce) SetGroupTypingIndicatorSettings(groupID uuid.UUID, override boo
 	})
 }
 
+func (b *Bounce) RevokeInvite(groupID, userID uuid.UUID) error {
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeRevokeInvite,
+		Data:      userID[:],
+	})
+}
+
 func (b *Bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
 	// Find the group we're updating
 	var g group
@@ -894,6 +909,8 @@ func (b *Bounce) informUIOfUpdateGroup(ug updateGroup) {
 		return
 	case updateGroupTypeSetImage:
 		b.informUIUpdateGroupSetImage(ug)
+	case updateGroupTypeRevokeInvite:
+		b.informUIUpdateGroupRevokeInvite(ug)
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -1112,5 +1129,26 @@ func (b *Bounce) informUIUpdateGroupSetImage(ug updateGroup) {
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
 		Timestamp: ug.Timestamp,
+	})
+}
+
+func (b *Bounce) informUIUpdateGroupRevokeInvite(ug updateGroup) {
+	// Parse the UUID
+	userID, err := uuid.FromBytes(ug.Data)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"actor":   ug.Actor,
+			"user_id": ug.Data,
+		}).Error("update group attempted to revoke invite with invalid UUID")
+		return
+	}
+
+	b.ui.GroupInviteRevoked(UpdateGroupInviteRevoked{
+		ID:        ug.ID,
+		Thread:    ug.Target,
+		Actor:     ug.Actor,
+		Timestamp: ug.Timestamp,
+		UserID:    userID,
 	})
 }

@@ -769,6 +769,23 @@ func (ui *ui) userChangedImage(id, userID uuid.UUID, timestamp int64) (*threadIt
 	}, nil
 }
 
+func (ui *ui) newUpdateGroupInviteRevoked(ugir chat.UpdateGroupInviteRevoked) (*threadItem, error) {
+	oldInvite, ok := ui.users.get(ugir.UserID)
+	if !ok {
+		return &threadItem{}, errUnknownUser
+	}
+
+	return ui.newStatusChangeThreadItem(
+		ugir.ID,
+		ugir.Thread,
+		ugir.Actor,
+		chat.TypeUpdateGroup,
+		"removed the invite for "+oldInvite.getDisplayName(),
+		ugir.Timestamp,
+		ugir.Seen,
+	)
+}
+
 func (ui *ui) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, frameType, action string, timestamp int64, seen bool) (*threadItem, error) {
 	t, ok := ui.threads.get(threadID)
 	if !ok {

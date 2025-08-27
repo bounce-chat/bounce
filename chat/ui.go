@@ -276,6 +276,15 @@ type UpdateGroupUserChangedGroupImage struct {
 	Seen      bool
 }
 
+type UpdateGroupInviteRevoked struct {
+	ID        uuid.UUID
+	Thread    uuid.UUID
+	Actor     uuid.UUID
+	Timestamp int64
+	UserID    uuid.UUID
+	Seen      bool
+}
+
 type UpdateUserUpdateName struct {
 	ID        uuid.UUID
 	User      uuid.UUID
@@ -327,6 +336,7 @@ type InitialState struct {
 	UpdateGroupPostingsUnrestricted        []UpdateGroupPostingUnrestricted
 	UpdateGroupUserBlockedGroups           []UserBlockedGroup // TODO: make name consistent?
 	UpdateGroupUserChangedGroupImages      []UpdateGroupUserChangedGroupImage
+	UpdateGroupRevokedInvites              []UpdateGroupInviteRevoked
 	UpdateUserUpdateNames                  []UpdateUserUpdateName
 	UpdateUserUpdateImages                 []UpdateUserUpdateImage
 	FileProgress                           []FileProgress
@@ -392,6 +402,7 @@ type UI interface {
 	PostingUnrestricted(UpdateGroupPostingUnrestricted)
 	UserBlockedGroup(UserBlockedGroup)
 	UserChangedGroupImage(UpdateGroupUserChangedGroupImage)
+	GroupInviteRevoked(UpdateGroupInviteRevoked)
 	PauseGroupNotifications(uuid.UUID)
 	ResumeGroupNotifications(uuid.UUID)
 

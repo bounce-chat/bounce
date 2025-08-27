@@ -466,6 +466,16 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 		} else {
 			return errTypingIndicatorOnlyMutableBySelf
 		}
+	case updateGroupTypeRevokeInvite:
+		if gs.userManagementRestricted {
+			if gs.isAdmin(ug.Actor) {
+				return nil
+			} else {
+				return errNoPermissionToManageUsers
+			}
+		} else {
+			return nil
+		}
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -512,6 +522,8 @@ func applyUpdateGroupToState(gs groupState, ug updateGroup) (groupState, error) 
 		return applyUpdateGroupSetReadReceiptsToState(gs, ug)
 	case updateGroupTypeSetTypingIndicatorSettings:
 		return applyUpdateGroupSetTypingIndicatorsToState(gs, ug)
+	case updateGroupTypeRevokeInvite:
+		return applyUpdateGroupRevokeInviteToState(gs, ug)
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -752,6 +764,29 @@ func applyUpdateGroupSetTypingIndicatorsToState(gs groupState, ug updateGroup) (
 
 	gs.typingIndicatorsOverridden = ug.Data[0] == typingIndicatorsOverriddenValue
 	gs.typingIndicatorsEnabled = ug.Data[1] == typingIndicatorsEnabledValue
+
+	return gs, nil
+}
+
+func applyUpdateGroupRevokeInviteToState(gs groupState, ug updateGroup) (groupState, error) {
+	userID, err := uuid.FromBytes(ug.Data)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"actor":   ug.Actor,
+			"user_id": ug.Data,
+		}).Error("update group attempted to revoke invite with invalid UUID")
+		return gs, err
+	}
+
+	invitesWithoutUser := []uuid.UUID{}
+	for _, id := range gs.invites {
+		if id != userID {
+			invitesWithoutUser = append(invitesWithoutUser, id)
+		}
+	}
+
+	gs.invites = invitesWithoutUser
 
 	return gs, nil
 }
