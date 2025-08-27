@@ -331,23 +331,41 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 
 		for _, g := range state.Groups {
-			ui.buildNewGroupChat(g)
-			group, ok := ui.threads.getGroup(g.ID)
-			if !ok {
-				log.Fatal("group thread doesn't exist immediately after creation")
+			member := false
+			for _, bu := range g.Users {
+				if ui.state.profile.id == bu.ID {
+					member = true
+					break
+				}
 			}
-			group.button.setLastMessageTime(time.Unix(g.LastActivity, 0))
-			group.setLastMessageTime(g.LastActivity)
+			invited := false
+			for _, inviteID := range g.Invites {
+				if ui.state.profile.id == inviteID {
+					invited = true
+					break
+				}
+			}
+			if invited && !member {
+				ui.buildNewGroupChatInvite(g)
+			} else if !invited && member {
+				ui.buildNewGroupChat(g)
+				group, ok := ui.threads.getGroup(g.ID)
+				if !ok {
+					log.Fatal("group thread doesn't exist immediately after creation")
+				}
+				group.button.setLastMessageTime(time.Unix(g.LastActivity, 0))
+				group.setLastMessageTime(g.LastActivity)
 
-			gcTi, err := ui.newGroupCreated(g.ID, g.ID, g.CreatedBy, g.CreatedAt)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":      err.Error(),
-					"group":      g.ID,
-					"created_by": g.CreatedBy,
-				}).Warn("error creating thread item for group creation while loading initial state")
+				gcTi, err := ui.newGroupCreated(g.ID, g.ID, g.CreatedBy, g.CreatedAt)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":      err.Error(),
+						"group":      g.ID,
+						"created_by": g.CreatedBy,
+					}).Warn("error creating thread item for group creation while loading initial state")
+				}
+				threadItems[g.ID] = append(threadItems[g.ID], gcTi)
 			}
-			threadItems[g.ID] = append(threadItems[g.ID], gcTi)
 		}
 
 		for _, dm := range state.DirectMessages {

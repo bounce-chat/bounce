@@ -61,6 +61,9 @@ func (ub *userButton) Tapped(*fyne.PointEvent) {
 }
 
 func (ub *userButton) MouseIn(*desktop.MouseEvent) {
+	if ub.clicked == nil {
+		return
+	}
 	ub.hovered = true
 
 	ub.applyTheme()
@@ -70,6 +73,9 @@ func (ub *userButton) MouseMoved(*desktop.MouseEvent) {
 }
 
 func (ub *userButton) MouseOut() {
+	if ub.clicked == nil {
+		return
+	}
 	ub.hovered = false
 
 	ub.applyTheme()

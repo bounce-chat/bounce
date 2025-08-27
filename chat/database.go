@@ -367,6 +367,19 @@ func (b *Bounce) GetInitialState() InitialState {
 				adminList = append(adminList, adminID)
 			}
 		}
+		invitedList := []uuid.UUID{}
+		if len(g.Invites) > 0 {
+			for _, inviteIDString := range strings.Split(g.Invites, ",") {
+				inviteID, err := uuid.Parse(inviteIDString)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":   err.Error(),
+						"invites": g.Invites,
+					}).Fatal("invalid UUID in group invite list")
+				}
+				invitedList = append(invitedList, inviteID)
+			}
+		}
 		blockedList := []uuid.UUID{}
 		if len(g.BlockedUsers) > 0 {
 			for _, blockedIDString := range strings.Split(g.BlockedUsers, ",") {
@@ -386,6 +399,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			Images:                         imageHistory,
 			Users:                          userList,
 			Admins:                         adminList,
+			Invites:                        invitedList,
 			BlockedUsers:                   blockedList,
 			CreatedBy:                      g.CreatedBy,
 			CreatedAt:                      g.CreatedAt,

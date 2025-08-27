@@ -286,13 +286,15 @@ func (ui *ui) DeleteItem(id uuid.UUID) {
 }
 
 func (ui *ui) displayThread(thread thread) {
+	_, isInvite := thread.(*invite)
+
 	openedThreadMutex.Lock()
 	_, opened := openedThreads[thread.getID()]
 	openedThreads[thread.getID()] = true
 	openedThreadMutex.Unlock()
 
 	// Don't mark things seen while we find where to scroll to the last read
-	if !opened {
+	if !opened && !isInvite {
 		thread.chatHistoryScroll().disableSeenTracking = true
 	}
 
@@ -304,10 +306,12 @@ func (ui *ui) displayThread(thread thread) {
 		ui.window.SetContent(ui.containers.chat)
 		ui.containers.chat.Show()
 	} else {
-		ui.window.Canvas().Focus(thread.getEntry())
+		if !isInvite {
+			ui.window.Canvas().Focus(thread.getEntry())
+		}
 	}
 
-	if !opened {
+	if !opened && !isInvite {
 		thread.chatHistoryScroll().scrollToLastRead()
 		thread.chatHistoryScroll().disableSeenTracking = false
 	}

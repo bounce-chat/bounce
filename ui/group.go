@@ -665,7 +665,9 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 				log.Error("cannot cast recently created invite thread to invite")
 				return
 			}
-			i.name.SetText(bounceGroup.Name)
+			i.name = bounceGroup.Name
+			i.nameLabel.Segments[0].(*widget.TextSegment).Text = bounceGroup.Name
+			i.nameLabel.Refresh()
 			// TODO: update the invite page: who else is in/invited to the group, the name, image, etc
 		})
 

@@ -1,32 +1,140 @@
 package ui
 
 import (
+	"unicode/utf8"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
+	log "github.com/sirupsen/logrus"
 )
 
 type invite struct {
-	id        uuid.UUID
-	name      *widget.Label
-	view      *fyne.Container
-	button    *threadButton
-	timestamp int64
+	id          uuid.UUID
+	name        string
+	initial     string
+	inviteLabel *widget.RichText //canvas.Text
+	icon        *defaultImage
+	nameLabel   *widget.RichText
+	images      []uuid.UUID
+	view        *fyne.Container
+	button      *threadButton
+	timestamp   int64
 	// TODO: widgets for the things, name, etc
 }
 
 func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 	i := &invite{
-		name: widget.NewLabel(bounceGroup.Name),
+		name: bounceGroup.Name,
+		inviteLabel: widget.NewRichText(
+			&widget.TextSegment{
+				Text: "you have been invited to join", // TODO: bounceGroup.InvitedBy
+				Style: widget.RichTextStyle{
+					TextStyle: fyne.TextStyle{
+						Italic: true,
+					},
+				},
+			},
+		),
+		nameLabel: widget.NewRichText(
+			&widget.TextSegment{
+				Text: bounceGroup.Name,
+				Style: widget.RichTextStyle{
+					SizeName: theme.SizeNameHeadingText,
+				},
+			},
+		),
+		timestamp: bounceGroup.CreatedAt,
 	}
+
+	r, n := utf8.DecodeRuneInString(i.name)
+	if r == utf8.RuneError {
+		log.WithFields(log.Fields{
+			"rune_error": r,
+			"size":       n,
+		}).Error("error setting group inital")
+	} else {
+		i.initial = string(r)
+	}
+
+	i.icon = newDefaultImage(i.id, i.images, i.initial, 128, ui.bounce.GetFileData, nil)
+
+	acceptButton := widget.NewButton("Join Group", func() {})
+	acceptButton.Importance = widget.HighImportance
+
+	rejectButton := widget.NewButton("Reject Group", func() {}) // TODO: confirm dialog
+	rejectButton.Importance = widget.DangerImportance
+
+	/*
+		acceptSize := acceptButton.MinSize()
+		rejectSize := rejectButton.MinSize()
+		if acceptSize.Width > rejectSize.Width {
+			rejectButton.SetMinSize(acceptSize)
+		} else {
+			acceptButton.SetMinSize(rejectSize)
+		}
+	*/
+
+	userList := container.NewVBox(widget.NewLabel("Current Users"))
+	for _, bounceUser := range bounceGroup.Users {
+		admin := false
+		for _, adminID := range bounceGroup.Admins {
+			if bounceUser.ID == adminID {
+				admin = true
+				break
+			}
+		}
+
+		u, ok := ui.users.get(bounceUser.ID)
+		if !ok {
+			log.Warn("unknown user in group we are invited to")
+			continue
+		}
+		icon := newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil)
+
+		userList.Add(newUserButton(icon, u.name, admin, nil))
+	}
+	if len(bounceGroup.Invites) > 0 {
+		userList.Add(widget.NewLabel("Invited Users"))
+		for _, invitedID := range bounceGroup.Invites {
+			u, ok := ui.users.get(invitedID)
+			if !ok {
+				log.Warn("unknown user in group we are invited to")
+				continue
+			}
+
+			icon := newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil)
+
+			userList.Add(newUserButton(icon, u.name, false, nil))
+		}
+	}
+
+	userListScroll := container.NewVScroll(userList)
 
 	i.view = container.NewCenter(
 		container.NewVBox(
-			i.name,
+			container.NewCenter(i.inviteLabel),
+			container.NewCenter(i.icon),
+			container.NewCenter(i.nameLabel),
+			container.NewCenter(container.New(layout.NewGridLayoutWithColumns(2), acceptButton, rejectButton)),
+			userListScroll,
 		),
 	)
+
+	userListScroll.SetMinSize(fyne.Size{Height: 300})
+
+	openThread := func() {
+		ui.displayThread(i)
+		if fyne.CurrentDevice().IsMobile() {
+			ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeThread, context: i.id})
+		}
+		ui.state.currentView = viewTypeThread
+	}
+	i.button = newThreadButton(newDefaultImage(i.id, i.images, i.initial, 64, ui.bounce.GetFileData, openThread), i.name, openThread)
 
 	ui.threads.add(bounceGroup.ID, i)
 	ui.refreshThreadOrder()
