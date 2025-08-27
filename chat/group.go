@@ -664,7 +664,7 @@ func (b *Bounce) blockUserFromGroup(groupID, userID uuid.UUID) {
 
 func (b *Bounce) isInvited(groupID, userID uuid.UUID) bool {
 	var g group
-	err := b.database.Select("invited").Where("id = ?", groupID).Find(&g).Error
+	err := b.database.Select("invites").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{

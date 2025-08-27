@@ -521,7 +521,7 @@ func (b *Bounce) getGroupCreationsToOffer(dev device) []frameReference {
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_creations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeGroupCreation).
 		Joins("JOIN groups ON groups.id = group_creations.id").
 		Joins("JOIN group_users ON groups.id = group_users.group_id JOIN users ON group_users.user_id = users.id").
-		Where("delivery_records.id IS NULL AND group_users.user_id = ?", dev.UserID).
+		Where("delivery_records.id IS NULL AND (group_users.user_id = ? OR groups.invites LIKE ?)", dev.UserID, "%"+dev.UserID.String()+"%").
 		Find(&unsentGroupCreations).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -562,10 +562,12 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 			Preload(clause.Associations).
 			Select("update_groups.id").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
+			Joins("JOIN groups ON groups.id = update_groups.target").
 			Joins("LEFT JOIN group_users ON update_groups.target = group_users.group_id").
 			Where(
-				"delivery_records.id IS NULL AND ((group_users.user_id = ? AND update_groups.custom_scope == ?) OR update_groups.custom_scope IN (?))",
+				"delivery_records.id IS NULL AND (((group_users.user_id = ? OR groups.invites LIKE ?) AND update_groups.custom_scope == ?) OR update_groups.custom_scope IN (?))",
 				dev.UserID,
+				"%"+dev.UserID.String()+"%",
 				uuid.Nil,
 				b.database.
 					Model(&customScope{}).
