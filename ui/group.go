@@ -609,6 +609,81 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 }
 
 func (ui *ui) SetGroupState(bounceGroup chat.Group) {
+	member := false
+	for _, bu := range bounceGroup.Users {
+		if ui.state.profile.id == bu.ID {
+			member = true
+			break
+		}
+	}
+	invited := false
+	for _, inviteID := range bounceGroup.Invites {
+		if ui.state.profile.id == inviteID {
+			invited = true
+			break
+		}
+	}
+	if !member && !invited {
+		log.WithFields(log.Fields{
+			"group_id": bounceGroup.ID,
+		}).Warn("cannot display group that we are neither in nor invited to")
+		return
+	}
+
+	if member && invited {
+		log.WithFields(log.Fields{
+			"group_id": bounceGroup.ID,
+		}).Warn("cannot display group that we are both in and invited to")
+		return
+	}
+
+	if !member && invited {
+		// If the thread is already being displayed as a real thread, remove it before
+		// creating the invite
+		t, exists := ui.threads.get(bounceGroup.ID)
+		if exists {
+			if _, ok := t.(*invite); !ok {
+				ui.threads.remove(bounceGroup.ID)
+			}
+		}
+
+		fyne.DoAndWait(func() {
+			t, exists := ui.threads.get(bounceGroup.ID)
+			if !exists {
+				ui.buildNewGroupChatInvite(bounceGroup)
+				t, exists = ui.threads.get(bounceGroup.ID)
+				if !exists {
+					log.WithFields(log.Fields{
+						"group_id": bounceGroup.ID,
+					}).Warn("cannot set state on group that could not be created")
+					return
+				}
+			}
+
+			i, ok := t.(*invite)
+			if !ok {
+				log.Error("cannot cast recently created invite thread to invite")
+				return
+			}
+			i.name.SetText(bounceGroup.Name)
+			// TODO: update the invite page: who else is in/invited to the group, the name, image, etc
+		})
+
+		return
+	}
+
+	// If we are displaying an invite, and we are now a member of this group, remove the invite from the list of threads
+	// before creating the actual thread
+	if member && !invited {
+		g, exists := ui.threads.get(bounceGroup.ID)
+		if exists {
+			if _, ok := g.(*invite); ok {
+				ui.threads.remove(bounceGroup.ID)
+
+			}
+		}
+	}
+
 	fyne.DoAndWait(func() {
 		g, exists := ui.threads.getGroup(bounceGroup.ID)
 		if !exists {
@@ -654,6 +729,8 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 			g.getAdminCheck(u.id).SetChecked(g.isAdmin(u.id))
 			g.getAdminCheck(u.id).Refresh()
 		}
+
+		// TODO: add invites
 
 		g.blockedUsers = bounceGroup.BlockedUsers
 

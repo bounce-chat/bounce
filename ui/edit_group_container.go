@@ -393,7 +393,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 			ui.showDialog(dialog.NewError(showError, ui.window), nil)
 		}
 	}
-	addUsersDialog := dialog.NewCustomConfirm("Add Users", "Save", "Cancel", newUserSelector, func(apply bool) {
+	addUsersDialog := dialog.NewCustomConfirm("Invite Users", "Save", "Cancel", newUserSelector, func(apply bool) {
 		showError = nil
 		if apply {
 			for _, thisUser := range g.pendingUsers.userList {
@@ -405,7 +405,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 			}
 		}
 	}, ui.window)
-	g.addUsersButton = widget.NewButton("Add Users", func() {
+	g.addUsersButton = widget.NewButton("Invite Users", func() {
 		ui.showDialog(
 			addUsersDialog,
 			addUsersDialogCleanup,
