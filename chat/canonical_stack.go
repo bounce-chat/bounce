@@ -29,7 +29,7 @@ func (cs *canonicalStack) push(ug updateGroup) error {
 		return err
 	}
 
-	updatedGroupState, err := applyUpdateGroupToState(top, ug)
+	updatedGroupState, err := applyUpdateGroupToState(top, ug, cs.myID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"update_group_id": ug.ID,
@@ -139,7 +139,7 @@ func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 	}
 
 	// Ignore this update if it changes nothing
-	if changeIsNOP(lastState, ug) {
+	if changeIsNOP(lastState, ug, cs.myID) {
 		return
 	}
 

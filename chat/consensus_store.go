@@ -498,6 +498,12 @@ func (b *Bounce) setGroupStateInDatabase(g group, gs groupState, ugsToNotify []u
 			return err
 		}
 	}
+	if g.InvitedBy != gs.invitedBy {
+		err := b.database.Model(&g).Select("invited_by").Update("invited_by", gs.invitedBy).Error
+		if err != nil {
+			return err
+		}
+	}
 
 	// Set group members
 	for _, u := range g.Users {
@@ -641,6 +647,8 @@ func (b *Bounce) setGroupStateInDatabase(g group, gs groupState, ugsToNotify []u
 			Images:                         gs.images,
 			Users:                          finalUsers,
 			Admins:                         gs.admins,
+			Invites:                        gs.invites,
+			InvitedBy:                      gs.invitedBy,
 			BlockedUsers:                   gs.blockedUsers,
 			Retention:                      g.Retention,
 			MutedUntil:                     g.MutedUntil,

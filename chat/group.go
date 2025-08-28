@@ -29,6 +29,7 @@ type group struct {
 	Users                      []user `gorm:"many2many:group_users;"`
 	Admins                     string
 	Invites                    string
+	InvitedBy                  uuid.UUID `msgpack:"-"`
 	BlockedUsers               string
 	RestrictUserManagement     bool
 	RestrictGroupEdits         bool

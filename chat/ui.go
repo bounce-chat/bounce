@@ -108,6 +108,7 @@ type Group struct {
 	Users                          []User
 	Admins                         []uuid.UUID
 	Invites                        []uuid.UUID // TODO: need to pass the whole user?
+	InvitedBy                      uuid.UUID
 	BlockedUsers                   []uuid.UUID
 	Retention                      int64
 	MutedUntil                     int64

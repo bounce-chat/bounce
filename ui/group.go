@@ -668,7 +668,7 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 			i.name = bounceGroup.Name
 			i.nameLabel.Segments[0].(*widget.TextSegment).Text = bounceGroup.Name
 			i.nameLabel.Refresh()
-			// TODO: update the invite page: who else is in/invited to the group, the name, image, etc
+			// TODO: update the invite page: who else is in/invited to the group, the name, image, threadButton, etc
 		})
 
 		return

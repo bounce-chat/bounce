@@ -28,11 +28,19 @@ type invite struct {
 }
 
 func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
+	invitedString := "you have been invited to join"
+	if bounceGroup.InvitedBy != uuid.Nil {
+		invitingUser, ok := ui.users.get(bounceGroup.InvitedBy)
+		if ok {
+			invitedString = invitingUser.getDisplayName() + " has invited you to join" // TODO: truncation
+		}
+	}
+
 	i := &invite{
 		name: bounceGroup.Name,
 		inviteLabel: widget.NewRichText(
 			&widget.TextSegment{
-				Text: "you have been invited to join", // TODO: bounceGroup.InvitedBy
+				Text: invitedString,
 				Style: widget.RichTextStyle{
 					TextStyle: fyne.TextStyle{
 						Italic: true,

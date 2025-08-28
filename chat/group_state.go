@@ -28,6 +28,7 @@ type groupState struct {
 	readReceiptsEnabled        bool
 	typingIndicatorsOverridden bool
 	typingIndicatorsEnabled    bool
+	invitedBy                  uuid.UUID
 	deletedBy                  *updateGroup
 	removedBy                  *updateGroup
 	blockedBy                  *updateGroup
@@ -287,8 +288,8 @@ func (gs groupState) isBlocked(userID uuid.UUID) bool {
 	return false
 }
 
-func changeIsNOP(lastState groupState, ug updateGroup) bool {
-	updatedGroupState, err := applyUpdateGroupToState(lastState, ug)
+func changeIsNOP(lastState groupState, ug updateGroup, myID uuid.UUID) bool {
+	updatedGroupState, err := applyUpdateGroupToState(lastState, ug, myID)
 	if err != nil {
 		return true
 	}
@@ -486,7 +487,7 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 	return errUpdateGroupWithUnknownType
 }
 
-func applyUpdateGroupToState(gs groupState, ug updateGroup) (groupState, error) {
+func applyUpdateGroupToState(gs groupState, ug updateGroup, myID uuid.UUID) (groupState, error) {
 	gs.ug = ug
 
 	switch ug.Type {
@@ -495,7 +496,7 @@ func applyUpdateGroupToState(gs groupState, ug updateGroup) (groupState, error) 
 	case updateGroupTypeSetImage:
 		return applyUpdateGroupSetImageToState(gs, ug)
 	case updateGroupTypeInviteUser:
-		return applyUpdateGroupInviteUserToState(gs, ug)
+		return applyUpdateGroupInviteUserToState(gs, ug, myID)
 	case updateGroupTypeRemoveUser:
 		return applyUpdateGroupRemoveUserToState(gs, ug)
 	case updateGroupTypeChangeMutedUntil:
@@ -563,7 +564,7 @@ func applyUpdateGroupSetImageToState(gs groupState, ug updateGroup) (groupState,
 	return gs, nil
 }
 
-func applyUpdateGroupInviteUserToState(gs groupState, ug updateGroup) (groupState, error) {
+func applyUpdateGroupInviteUserToState(gs groupState, ug updateGroup, myID uuid.UUID) (groupState, error) {
 	var u user
 	err := msgpack.Unmarshal(ug.Data, &u)
 	if err != nil {
@@ -573,8 +574,16 @@ func applyUpdateGroupInviteUserToState(gs groupState, ug updateGroup) (groupStat
 		return gs, err
 	}
 
+	if gs.isMember(u.ID) {
+		return gs, nil
+	}
+
 	if !gs.isInvited(u.ID) {
 		gs.invites = append(gs.invites, u.ID)
+	}
+
+	if u.ID == myID {
+		gs.invitedBy = ug.Actor
 	}
 
 	return gs, nil

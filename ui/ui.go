@@ -331,7 +331,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 
 		for _, g := range state.Groups {
-			member := false
+			member := false // TODO: just use SetGroupState for this?
 			for _, bu := range g.Users {
 				if ui.state.profile.id == bu.ID {
 					member = true
