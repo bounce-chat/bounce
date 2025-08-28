@@ -77,16 +77,6 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 	rejectButton := widget.NewButton("Reject Group", func() {}) // TODO: confirm dialog
 	rejectButton.Importance = widget.DangerImportance
 
-	/*
-		acceptSize := acceptButton.MinSize()
-		rejectSize := rejectButton.MinSize()
-		if acceptSize.Width > rejectSize.Width {
-			rejectButton.SetMinSize(acceptSize)
-		} else {
-			acceptButton.SetMinSize(rejectSize)
-		}
-	*/
-
 	userList := container.NewVBox(widget.NewLabel("Current Users"))
 	for _, bounceUser := range bounceGroup.Users {
 		admin := false

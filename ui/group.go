@@ -26,6 +26,7 @@ type group struct {
 	images                           []uuid.UUID
 	users                            *userStore
 	admins                           []uuid.UUID
+	invites                          []uuid.UUID
 	blockedUsers                     []uuid.UUID
 	retention                        int64
 	restrictUserManagement           bool
@@ -63,6 +64,7 @@ type group struct {
 	newUserSearchEntry               *widget.Entry
 	availableNewUsersScroll          *container.Scroll
 	currentUsersContainer            *container.Scroll
+	currentInvitesContainer          *container.Scroll
 	pendingUsersContainer            *container.Scroll
 	adminChecks                      map[uuid.UUID]*widget.Check
 	adminChecksMutex                 sync.Mutex
@@ -387,6 +389,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		images:                         bounceGroup.Images,
 		users:                          newUserStore(),
 		admins:                         bounceGroup.Admins,
+		invites:                        bounceGroup.Invites,
 		blockedUsers:                   bounceGroup.BlockedUsers,
 		retention:                      bounceGroup.Retention,
 		overrideReadReceiptSetting:     bounceGroup.OverrideReadReceiptSetting,
@@ -402,6 +405,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		pendingUsers:                   newUserStore(),
 		availableNewUsersScroll:        container.NewVScroll(container.NewVBox()),
 		currentUsersContainer:          container.NewVScroll(container.NewVBox()),
+		currentInvitesContainer:        container.NewVScroll(container.NewVBox()),
 		pendingUsersContainer:          container.NewVScroll(container.NewVBox()),
 		adminChecks:                    make(map[uuid.UUID]*widget.Check),
 		removeUserButtons:              make(map[uuid.UUID]*widget.Button),
@@ -732,7 +736,7 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 			g.getAdminCheck(u.id).Refresh()
 		}
 
-		// TODO: add invites
+		g.invites = bounceGroup.Invites
 
 		g.blockedUsers = bounceGroup.BlockedUsers
 

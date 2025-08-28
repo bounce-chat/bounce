@@ -366,6 +366,12 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 		usersLabel,
 		g.currentUsersContainer,
 	)
+	invitesLabel := widget.NewLabel("Invites:")
+	currentInvitesListView := container.New(
+		layout.NewBorderLayout(invitesLabel, nil, nil, nil),
+		invitesLabel,
+		g.currentInvitesContainer,
+	)
 
 	g.newUserSearchEntry = widget.NewEntry()
 	g.newUserSearchEntry.OnChanged = func(str string) {
@@ -436,6 +442,7 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 		g.restrictGroupEditsCheck,
 		g.restrictPostingCheck,
 		currentUsersListView,
+		currentInvitesListView,
 		container.NewHBox(g.addUsersButton),
 		widget.NewAccordion(
 			&widget.AccordionItem{
@@ -543,12 +550,53 @@ func (ui *ui) refreshCurrentAndPendingUsers(g *group) {
 	pendingUserHeight += theme.Padding() * float32(len(pendingUsersList.Objects)+1)
 	g.pendingUsersContainer.SetMinSize(fyne.Size{Height: pendingUserHeight})
 	g.pendingUsersContainer.Refresh()
+
+	invitedUserList := container.NewVBox()
+	for _, inviteID := range g.invites {
+		thisUser, ok := ui.users.get(inviteID)
+		if !ok {
+			log.WithFields(log.Fields{
+				"user_id": inviteID,
+			}).Warn("group has unknown invited user")
+			continue
+		}
+		func(u *user) {
+			manageInviteButton := newUserButton(
+				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil),
+				u.getDisplayName(),
+				false,
+				func() {
+					// TODO: open a dialog to offer to revoke this invite
+				},
+			)
+			invitedUserList.Objects = append(
+				invitedUserList.Objects,
+				manageInviteButton,
+			)
+
+		}(thisUser)
+	}
+	g.currentInvitesContainer.Content = invitedUserList
+	currentInvitesHeight := float32(0)
+	for i, obj := range invitedUserList.Objects {
+		if i == 3 {
+			break
+		}
+		currentInvitesHeight += obj.MinSize().Height
+	}
+	currentInvitesHeight += theme.Padding() * float32(len(invitedUserList.Objects)+1)
+	g.currentInvitesContainer.SetMinSize(fyne.Size{Height: currentInvitesHeight})
+	g.currentInvitesContainer.Refresh()
 }
 
 func (ui *ui) refreshAvailableNewUsers(g *group, allAvailableUsers []*user) {
 	blockedUsersMap := map[uuid.UUID]bool{}
 	for _, id := range g.blockedUsers {
 		blockedUsersMap[id] = true
+	}
+	invitedUsersMap := map[uuid.UUID]bool{}
+	for _, id := range g.invites {
+		invitedUsersMap[id] = true
 	}
 
 	allUsersListBox := container.NewVBox()
@@ -559,6 +607,10 @@ func (ui *ui) refreshAvailableNewUsers(g *group, allAvailableUsers []*user) {
 		}
 		// Exclude users that are pending addition to the group
 		if _, exists := g.pendingUsers.get(thisUser.id); exists {
+			continue
+		}
+		// Exclude users who are already invited
+		if _, exists := invitedUsersMap[thisUser.id]; exists {
 			continue
 		}
 
