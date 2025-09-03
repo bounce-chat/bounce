@@ -561,12 +561,23 @@ func (ui *ui) refreshCurrentAndPendingUsers(g *group) {
 			continue
 		}
 		func(u *user) {
+			revokeDialog := dialog.NewConfirm(
+				"Revoke Invite",
+				"Revoke invite for "+u.getDisplayName()+"?",
+				func(confirmed bool) {
+					if confirmed {
+						ui.bounce.RevokeInvite(g.id, u.id)
+					}
+				},
+				ui.window,
+			)
+
 			manageInviteButton := newUserButton(
 				newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil),
 				u.getDisplayName(),
 				false,
 				func() {
-					// TODO: open a dialog to offer to revoke this invite
+					ui.showDialog(revokeDialog, nil)
 				},
 			)
 			invitedUserList.Objects = append(
