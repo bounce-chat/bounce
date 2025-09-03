@@ -577,7 +577,10 @@ func (ui *ui) refreshCurrentAndPendingUsers(g *group) {
 				u.getDisplayName(),
 				false,
 				func() {
-					ui.showDialog(revokeDialog, nil)
+					amAdmin := g.isAdmin(ui.state.profile.id)
+					if !g.restrictUserManagement || amAdmin {
+						ui.showDialog(revokeDialog, nil)
+					}
 				},
 			)
 			invitedUserList.Objects = append(
