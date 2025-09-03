@@ -901,19 +901,18 @@ func (ui *ui) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 				if !ui.state.initialSyncIncomplete {
 					ui.showDialog(dialog.NewInformation("Removed From Group", actorName+" removed you from "+g.name, ui.window), nil)
 				}
-				return
-			}
-			i, ok := t.(*invite)
-			if ok {
-				if !ui.state.initialSyncIncomplete {
-					ui.showDialog(dialog.NewInformation("Removed From Group", actorName+" removed your invite to "+i.name, ui.window), nil)
+			} else {
+				i, ok := t.(*invite)
+				if ok {
+					if !ui.state.initialSyncIncomplete {
+						ui.showDialog(dialog.NewInformation("Removed From Group", actorName+" removed your invite to "+i.name, ui.window), nil)
+					}
+				} else {
+					log.WithFields(log.Fields{
+						"group": rfg.Group,
+					}).Error("removed from group applied to thread that is not group or invite")
 				}
-				return
 			}
-			log.WithFields(log.Fields{
-				"group": rfg.Group,
-			}).Error("removed from group applied to thread that is not group or invite")
-
 		}
 		ui.threads.remove(rfg.Group)
 		ui.refreshThreadOrder()

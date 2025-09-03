@@ -634,6 +634,9 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		// Create widgets for all the thread items we added
 		ui.threads.rangeFunc(func(t thread) {
 			if items, ok := threadItems[t.getID()]; ok {
+				if _, ok := t.(*invite); ok {
+					return
+				}
 				ui.populateInitialItems(t, items)
 			}
 		})
@@ -676,7 +679,9 @@ func (ui *ui) NetworkOnline() {
 				"thread": ui.state.activeThread,
 			}).Error("active thread is not a known user or group")
 		}
-		if _, ok = t.(*group); ok {
+		_, isGroup := t.(*group)
+		_, isInvite := t.(*invite)
+		if isGroup || isInvite {
 			ui.bounce.GroupConnectionDesired(ui.state.activeThread)
 		} else {
 			ui.bounce.UserConnectionDesired(ui.state.activeThread)
