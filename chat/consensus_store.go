@@ -254,6 +254,9 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		for _, member := range gs.users {
 			everInGroup[member] = true
 		}
+		for _, member := range gs.invites {
+			everInGroup[member] = true
+		}
 	}
 
 	// If we blocked this group, save that on user, custom scope our block update, and delete the group
@@ -416,7 +419,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 
 	// Clear delivery records for users that were removed in the final state
 	for userID, _ := range everInGroup {
-		if !finalState.isMember(userID) {
+		if !finalState.isMember(userID) || !finalState.isInvited(userID) {
 			b.clearGroupDeliveryRecordsForUser(userID, g.ID)
 		}
 	}

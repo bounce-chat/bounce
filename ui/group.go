@@ -897,15 +897,23 @@ func (ui *ui) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 				return
 			}
 			g, ok := t.(*group)
-			if !ok {
-				log.WithFields(log.Fields{
-					"group": rfg.Group,
-				}).Error("removed from group applied tp thread that is not group")
+			if ok {
+				if !ui.state.initialSyncIncomplete {
+					ui.showDialog(dialog.NewInformation("Removed From Group", actorName+" removed you from "+g.name, ui.window), nil)
+				}
 				return
 			}
-			if !ui.state.initialSyncIncomplete {
-				ui.showDialog(dialog.NewInformation("Removed From Group", actorName+" removed you from "+g.name, ui.window), nil)
+			i, ok := t.(*invite)
+			if ok {
+				if !ui.state.initialSyncIncomplete {
+					ui.showDialog(dialog.NewInformation("Removed From Group", actorName+" removed your invite to "+i.name, ui.window), nil)
+				}
+				return
 			}
+			log.WithFields(log.Fields{
+				"group": rfg.Group,
+			}).Error("removed from group applied to thread that is not group or invite")
+
 		}
 		ui.threads.remove(rfg.Group)
 		ui.refreshThreadOrder()
