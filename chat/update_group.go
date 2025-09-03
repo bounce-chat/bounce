@@ -796,14 +796,43 @@ func (b *Bounce) SetGroupTypingIndicatorSettings(groupID uuid.UUID, override boo
 }
 
 func (b *Bounce) RevokeInvite(groupID, userID uuid.UUID) error {
-	return b.applyAndBroadcastUpdateGroup(&updateGroup{
+	ug := &updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeRevokeInvite,
 		Data:      userID[:],
-	})
+	}
+	err := b.applyAndBroadcastUpdateGroup(ug)
+	if err != nil {
+		return err
+	}
+
+	// Broadcast this removal directly to the removed device since it is no longer in scope
+	var u user
+	err = b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+			}).Error("user not found for direct revoked invite broadcast")
+			return err
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error looking up user")
+		}
+	}
+
+	for _, dev := range u.Devices {
+		rd := b.getRemoteDevice(dev.Address)
+		if rd.connectedSockets.Load() > 0 {
+			go b.sendDirect(dev.Address, ug)
+		}
+	}
+
+	return nil
 }
 
 func (b *Bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {

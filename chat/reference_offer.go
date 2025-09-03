@@ -589,8 +589,9 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 			Distinct().
 			Select("target").
 			Where(
-				"type = ? AND data = ?",
+				"(type = ? OR type = ?) AND data = ?",
 				updateGroupTypeRemoveUser,
+				updateGroupTypeRevokeInvite,
 				dev.UserID[:],
 			).
 			Find(&groupsUserLeft).Error
@@ -602,13 +603,13 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 		}
 		for _, groupID := range groupsUserLeft {
 			// Make sure they were not re-added to the group
-			if b.userIsInGroup(groupID, dev.UserID) {
+			if b.userIsInGroup(groupID, dev.UserID) || b.isInvited(groupID, dev.UserID) {
 				continue
 			}
 
 			// Find the timestamp of their latest departure
 			var lastRemoval int64
-			row := b.database.Table("update_groups").Where("type = ? AND data = ?", updateGroupTypeRemoveUser, dev.UserID[:]).Select("MAX(timestamp)").Row()
+			row := b.database.Table("update_groups").Where("(type = ? OR type = ?) AND data = ?", updateGroupTypeRemoveUser, updateGroupTypeRemoveUser, dev.UserID[:]).Select("MAX(timestamp)").Row()
 			err := row.Scan(&lastRemoval)
 			if err != nil {
 				log.WithFields(log.Fields{

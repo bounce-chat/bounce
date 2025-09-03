@@ -43,10 +43,10 @@ func (cs *canonicalStack) push(ug updateGroup) error {
 		updatedGroupState.blockedBy = &ug
 	}
 
-	if updatedGroupState.isMember(cs.myID) {
+	if updatedGroupState.isMember(cs.myID) || updatedGroupState.isInvited(cs.myID) {
 		updatedGroupState.removedBy = nil
 	} else {
-		if top.isMember(cs.myID) {
+		if top.isMember(cs.myID) || top.isInvited(cs.myID) {
 			updatedGroupState.removedBy = &ug
 		}
 	}
