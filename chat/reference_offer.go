@@ -961,7 +961,7 @@ func (b *Bounce) getFilesToOffer(dev device) []frameReference {
 						) OR (
 							files.scope = ? AND files.destination IN (?)
 						) OR (
-							chunk_offers.scope = ? AND (chunk_offers.destination IN (?) OR chunk_offers.destination IN (?))
+							files.scope = ? AND (files.destination IN (?) OR files.destination IN (?))
 						) OR (
 							files.scope == ? AND (
 								files.author == ? OR
