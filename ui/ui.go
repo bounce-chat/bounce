@@ -718,9 +718,18 @@ func (ui *ui) FileCompleted(fileID uuid.UUID) {
 	// TODO: check if anything is waiting for this file and refresh it
 	ui.threads.rangeFunc(func(t thread) {
 		fyne.DoAndWait(func() {
-			t.getEditIcon().Refresh()
-			t.getHeaderIcon().Refresh()
-			t.getButton().threadImage.Refresh()
+			ei := t.getEditIcon()
+			if ei != nil {
+				ei.Refresh()
+			}
+			hi := t.getHeaderIcon()
+			if hi != nil {
+				hi.Refresh()
+			}
+			b := t.getButton()
+			if b != nil {
+				b.threadImage.Refresh()
+			}
 		})
 	})
 }

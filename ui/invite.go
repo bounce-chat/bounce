@@ -36,7 +36,7 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 		id:        bounceGroup.ID,
 		name:      bounceGroup.Name,
 		invitedBy: bounceGroup.InvitedBy,
-		inviteLabel: widget.NewRichText( // TODO: truncation
+		inviteLabel: widget.NewRichText(
 			&widget.TextSegment{
 				Text: "",
 				Style: widget.RichTextStyle{
@@ -46,7 +46,7 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 				},
 			},
 		),
-		nameLabel: widget.NewRichText( // TODO: truncation
+		nameLabel: widget.NewRichText(
 			&widget.TextSegment{
 				Text: bounceGroup.Name,
 				Style: widget.RichTextStyle{
@@ -57,6 +57,8 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 		timestamp: bounceGroup.CreatedAt,
 	}
 
+	//i.inviteLabel.Truncation = fyne.TextTruncateEllipsis // TODO: truncate with centered minimum width
+	//i.nameLabel.Truncation = fyne.TextTruncateEllipsis
 	i.setInitial()
 
 	i.icon = newDefaultImage(i.id, i.images, i.initial, 128, ui.bounce.GetFileData, nil)
@@ -152,7 +154,18 @@ func (ui *ui) refreshInviteUsers(i *invite) {
 	}
 
 	i.userListScroll.Content = userList
-	i.userListScroll.SetMinSize(fyne.Size{Height: 300, Width: 200})
+
+	scrollHeight := float32(0)
+	n := 0
+	for i, obj := range userList.Objects {
+		n = i
+		if i == 8 {
+			break
+		}
+		scrollHeight += obj.MinSize().Height
+	}
+	scrollHeight += theme.Padding() * float32(n+1)
+	i.userListScroll.SetMinSize(fyne.Size{Height: scrollHeight, Width: 250})
 	i.userListScroll.Refresh()
 }
 

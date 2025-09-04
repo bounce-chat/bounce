@@ -516,7 +516,7 @@ func (ui *ui) refreshCurrentAndPendingUsers(g *group) {
 		}
 		currentUserHeight += obj.MinSize().Height
 	}
-	currentUserHeight += theme.Padding() * float32(len(currentUsersList.Objects)+1)
+	currentUserHeight += theme.Padding() * float32(len(currentUsersList.Objects)+1) // TODO: only count objects we're displaying without scroll?
 	g.currentUsersContainer.SetMinSize(fyne.Size{Height: currentUserHeight})
 	g.currentUsersContainer.Refresh()
 
@@ -547,7 +547,7 @@ func (ui *ui) refreshCurrentAndPendingUsers(g *group) {
 		}
 		pendingUserHeight += obj.MinSize().Height
 	}
-	pendingUserHeight += theme.Padding() * float32(len(pendingUsersList.Objects)+1)
+	pendingUserHeight += theme.Padding() * float32(len(pendingUsersList.Objects)+1) // TODO: only count objects we're displaying without scroll?
 	g.pendingUsersContainer.SetMinSize(fyne.Size{Height: pendingUserHeight})
 	g.pendingUsersContainer.Refresh()
 
@@ -598,7 +598,7 @@ func (ui *ui) refreshCurrentAndPendingUsers(g *group) {
 		}
 		currentInvitesHeight += obj.MinSize().Height
 	}
-	currentInvitesHeight += theme.Padding() * float32(len(invitedUserList.Objects)+1)
+	currentInvitesHeight += theme.Padding() * float32(len(invitedUserList.Objects)+1) // TODO: only count objects we're displaying without scroll?
 	g.currentInvitesContainer.SetMinSize(fyne.Size{Height: currentInvitesHeight})
 	g.currentInvitesContainer.Refresh()
 }
