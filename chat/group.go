@@ -280,7 +280,7 @@ func (b *Bounce) CreateGroup(proposedGroup Group, iconData []byte) error {
 	g.ID = groupID
 
 	if len(iconData) > 0 {
-		err := b.embedFile(iconID, iconData, scopeGroup, groupID, fileTypeGroupImage, groupID)
+		err := b.embedFile(iconID, iconData, scopeGroupWithInvites, groupID, fileTypeGroupImage, groupID)
 		if err != nil {
 			return errors.New("error distributing new group image: " + err.Error())
 		}

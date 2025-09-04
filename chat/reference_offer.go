@@ -609,7 +609,7 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 
 			// Find the timestamp of their latest departure
 			var lastRemoval int64
-			row := b.database.Table("update_groups").Where("(type = ? OR type = ?) AND data = ?", updateGroupTypeRemoveUser, updateGroupTypeRemoveUser, dev.UserID[:]).Select("MAX(timestamp)").Row()
+			row := b.database.Table("update_groups").Where("(type = ? OR type = ?) AND data = ?", updateGroupTypeRemoveUser, updateGroupTypeRevokeInvite, dev.UserID[:]).Select("MAX(timestamp)").Row()
 			err := row.Scan(&lastRemoval)
 			if err != nil {
 				log.WithFields(log.Fields{
