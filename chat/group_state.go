@@ -29,6 +29,7 @@ type groupState struct {
 	typingIndicatorsOverridden bool
 	typingIndicatorsEnabled    bool
 	invitedBy                  uuid.UUID
+	invitedAt                  int64
 	deletedBy                  *updateGroup
 	removedBy                  *updateGroup
 	blockedBy                  *updateGroup
@@ -584,6 +585,7 @@ func applyUpdateGroupInviteUserToState(gs groupState, ug updateGroup, myID uuid.
 
 	if u.ID == myID {
 		gs.invitedBy = ug.Actor
+		gs.invitedAt = ug.Timestamp
 	}
 
 	return gs, nil

@@ -671,6 +671,7 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 			}
 
 			i.invitedBy = bounceGroup.InvitedBy
+			i.timestamp = bounceGroup.InvitedAt
 			ui.refreshInvitedBy(i)
 
 			i.images = bounceGroup.Images

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"time"
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
@@ -55,7 +56,7 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 				},
 			},
 		),
-		timestamp: bounceGroup.CreatedAt,
+		timestamp: bounceGroup.InvitedAt,
 	}
 
 	//i.inviteLabel.Truncation = fyne.TextTruncateEllipsis // TODO: truncate with centered minimum width
@@ -92,7 +93,7 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 
 	i.userListScroll = container.NewVScroll(container.NewVBox())
 
-	i.view = container.NewCenter(
+	desktopView := container.NewCenter(
 		container.NewVBox(
 			container.NewCenter(i.inviteLabel),
 			container.NewCenter(i.icon),
@@ -101,6 +102,29 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 			i.userListScroll,
 		),
 	)
+	if fyne.CurrentDevice().IsMobile() {
+		closeButton := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack()
+			} else {
+				ui.showMainContainer()
+			}
+		})
+		closeButton.Importance = widget.LowImportance
+
+		closeBar := container.New(
+			layout.NewBorderLayout(nil, nil, closeButton, nil),
+			closeButton,
+		)
+
+		i.view = container.New(
+			layout.NewBorderLayout(closeBar, nil, nil, nil),
+			closeBar,
+			desktopView,
+		)
+	} else {
+		i.view = desktopView
+	}
 
 	openThread := func() {
 		ui.displayThread(i)
@@ -183,6 +207,7 @@ func (ui *ui) refreshInvitedBy(i *invite) {
 	i.inviteLabel.Refresh()
 
 	i.button.setLastAction(invitedString, false)
+	i.button.setLastMessageTime(time.Unix(i.timestamp, 0))
 }
 
 func (i *invite) setInitial() {
