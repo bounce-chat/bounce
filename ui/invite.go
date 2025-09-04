@@ -14,34 +14,31 @@ import (
 )
 
 type invite struct {
-	id          uuid.UUID
-	name        string
-	initial     string
-	inviteLabel *widget.RichText //canvas.Text
-	icon        *defaultImage
-	nameLabel   *widget.RichText
-	images      []uuid.UUID
-	view        *fyne.Container
-	button      *threadButton
-	timestamp   int64
-	// TODO: widgets for the things, name, etc
+	id             uuid.UUID
+	name           string
+	initial        string
+	members        []uuid.UUID
+	invited        []uuid.UUID
+	admins         []uuid.UUID
+	invitedBy      uuid.UUID
+	inviteLabel    *widget.RichText
+	icon           *defaultImage
+	nameLabel      *widget.RichText
+	images         []uuid.UUID
+	view           *fyne.Container
+	button         *threadButton
+	userListScroll *container.Scroll
+	timestamp      int64
 }
 
 func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
-	invitedString := "you have been invited to join"
-	if bounceGroup.InvitedBy != uuid.Nil {
-		invitingUser, ok := ui.users.get(bounceGroup.InvitedBy)
-		if ok {
-			invitedString = invitingUser.getDisplayName() + " has invited you to join" // TODO: truncation
-		}
-	}
-
 	i := &invite{
-		id:   bounceGroup.ID,
-		name: bounceGroup.Name,
-		inviteLabel: widget.NewRichText(
+		id:        bounceGroup.ID,
+		name:      bounceGroup.Name,
+		invitedBy: bounceGroup.InvitedBy,
+		inviteLabel: widget.NewRichText( // TODO: truncation
 			&widget.TextSegment{
-				Text: invitedString,
+				Text: "",
 				Style: widget.RichTextStyle{
 					TextStyle: fyne.TextStyle{
 						Italic: true,
@@ -49,7 +46,7 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 				},
 			},
 		),
-		nameLabel: widget.NewRichText(
+		nameLabel: widget.NewRichText( // TODO: truncation
 			&widget.TextSegment{
 				Text: bounceGroup.Name,
 				Style: widget.RichTextStyle{
@@ -60,25 +57,16 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 		timestamp: bounceGroup.CreatedAt,
 	}
 
-	r, n := utf8.DecodeRuneInString(i.name)
-	if r == utf8.RuneError {
-		log.WithFields(log.Fields{
-			"rune_error": r,
-			"size":       n,
-		}).Error("error setting group inital")
-	} else {
-		i.initial = string(r)
-	}
+	i.setInitial()
 
 	i.icon = newDefaultImage(i.id, i.images, i.initial, 128, ui.bounce.GetFileData, nil)
 
 	acceptButton := widget.NewButton("Join Group", func() {})
 	acceptButton.Importance = widget.HighImportance
 
-	rejectButton := widget.NewButton("Reject Group", func() {}) // TODO: confirm dialog
+	rejectButton := widget.NewButton("Reject Group", func() {})
 	rejectButton.Importance = widget.DangerImportance
 
-	userList := container.NewVBox(widget.NewLabel("Current Users"))
 	for _, bounceUser := range bounceGroup.Users {
 		admin := false
 		for _, adminID := range bounceGroup.Admins {
@@ -88,31 +76,18 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 			}
 		}
 
-		u, ok := ui.users.get(bounceUser.ID)
-		if !ok {
-			log.Warn("unknown user in group we are invited to")
-			continue
+		i.members = append(i.members, bounceUser.ID)
+		if admin {
+			i.admins = append(i.admins, bounceUser.ID)
 		}
-		icon := newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil)
-
-		userList.Add(newUserButton(icon, u.name, admin, nil))
 	}
 	if len(bounceGroup.Invites) > 0 {
-		userList.Add(widget.NewLabel("Invited Users"))
 		for _, invitedID := range bounceGroup.Invites {
-			u, ok := ui.users.get(invitedID)
-			if !ok {
-				log.Warn("unknown user in group we are invited to")
-				continue
-			}
-
-			icon := newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil)
-
-			userList.Add(newUserButton(icon, u.name, false, nil))
+			i.invited = append(i.invited, invitedID)
 		}
 	}
 
-	userListScroll := container.NewVScroll(userList)
+	i.userListScroll = container.NewVScroll(container.NewVBox())
 
 	i.view = container.NewCenter(
 		container.NewVBox(
@@ -120,11 +95,9 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 			container.NewCenter(i.icon),
 			container.NewCenter(i.nameLabel),
 			container.NewCenter(container.New(layout.NewGridLayoutWithColumns(2), acceptButton, rejectButton)),
-			userListScroll,
+			i.userListScroll,
 		),
 	)
-
-	userListScroll.SetMinSize(fyne.Size{Height: 300})
 
 	openThread := func() {
 		ui.displayThread(i)
@@ -135,8 +108,79 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 	}
 	i.button = newThreadButton(newDefaultImage(i.id, i.images, i.initial, 64, ui.bounce.GetFileData, openThread), i.name, openThread)
 
+	ui.refreshInvitedBy(i)
+	ui.refreshInviteUsers(i)
 	ui.threads.add(bounceGroup.ID, i)
 	ui.refreshThreadOrder()
+}
+
+func (ui *ui) refreshInviteUsers(i *invite) {
+	userList := container.NewVBox()
+	userList.Add(widget.NewLabel("Current Users"))
+
+	adminMap := map[uuid.UUID]bool{}
+	for _, adminID := range i.admins {
+		adminMap[adminID] = true
+	}
+
+	for _, memberID := range i.members {
+		u, ok := ui.users.get(memberID)
+		if !ok {
+			log.Warn("unknown user in group we are invited to")
+			continue
+		}
+		icon := newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil)
+
+		_, admin := adminMap[memberID]
+		userList.Add(newUserButton(icon, u.name, admin, nil))
+	}
+
+	if len(i.invited) > 0 {
+		userList.Add(widget.NewLabel("Invited Users"))
+	}
+
+	for _, invitedID := range i.invited {
+		u, ok := ui.users.get(invitedID)
+		if !ok {
+			log.Warn("unknown user in group we are invited to")
+			continue
+		}
+
+		icon := newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil)
+
+		userList.Add(newUserButton(icon, u.name, false, nil))
+	}
+
+	i.userListScroll.Content = userList
+	i.userListScroll.SetMinSize(fyne.Size{Height: 300, Width: 200})
+	i.userListScroll.Refresh()
+}
+
+func (ui *ui) refreshInvitedBy(i *invite) {
+	invitedString := "you have been invited to join"
+	if i.invitedBy != uuid.Nil {
+		invitingUser, ok := ui.users.get(i.invitedBy)
+		if ok {
+			invitedString = invitingUser.getDisplayName() + " has invited you to join"
+		}
+	}
+
+	i.inviteLabel.Segments[0].(*widget.TextSegment).Text = invitedString
+	i.inviteLabel.Refresh()
+
+	i.button.setLastAction(invitedString, false)
+}
+
+func (i *invite) setInitial() {
+	r, n := utf8.DecodeRuneInString(i.name)
+	if r == utf8.RuneError {
+		log.WithFields(log.Fields{
+			"rune_error": r,
+			"size":       n,
+		}).Error("error setting group inital")
+	} else {
+		i.initial = string(r)
+	}
 }
 
 func (i *invite) getID() uuid.UUID {
