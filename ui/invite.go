@@ -35,6 +35,7 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 	i := &invite{
 		id:        bounceGroup.ID,
 		name:      bounceGroup.Name,
+		images:    bounceGroup.Images,
 		invitedBy: bounceGroup.InvitedBy,
 		inviteLabel: widget.NewRichText(
 			&widget.TextSegment{
