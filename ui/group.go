@@ -373,7 +373,7 @@ func (ui *ui) OpenNewGroupChat(bounceGroup chat.Group) { // TODO: rename "create
 			ui.showMainContainer()
 			ui.displayThread(g)
 		} else {
-			log.Error("cannot open newly created group because the UI isn't aware of it")
+			log.Error("cannot open newly created g because the UI isn't aware of it")
 		}
 	})
 }
@@ -383,7 +383,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		return
 	}
 
-	group := &group{
+	g := &group{
 		id:                             bounceGroup.ID,
 		name:                           bounceGroup.Name,
 		images:                         bounceGroup.Images,
@@ -412,92 +412,92 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		editUserDialogs:                make(map[uuid.UUID]dialogWithCallback),
 		lastMessage:                    time.Now().Unix(),
 	}
-	group.setInitial()
+	g.setInitial()
 
 	for _, bu := range bounceGroup.Users {
 		u, exists := ui.users.get(bu.ID)
 		if !exists {
 			u := makeUser(bu)
 			ui.users.add(u)
-			group.users.add(u)
+			g.users.add(u)
 		} else {
-			group.users.add(u)
+			g.users.add(u)
 		}
 	}
 
-	group.editThreadNameEntry.OnChanged = func(str string) {
+	g.editThreadNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
 		str, trimmed := trimLeadingSpace(str)
-		group.editThreadNameEntry.Text = str
+		g.editThreadNameEntry.Text = str
 		if trimmed != 0 {
-			group.editThreadNameEntry.CursorRow = 0
-			group.editThreadNameEntry.CursorColumn = 0
+			g.editThreadNameEntry.CursorRow = 0
+			g.editThreadNameEntry.CursorColumn = 0
 		}
 
 		// Enforce length limit
 		if utf8.RuneCountInString(str) > chat.MaximumNameLength {
 			runes := []rune(str)
 			truncated := runes[0:chat.MaximumNameLength]
-			group.editThreadNameEntry.Text = string(truncated)
+			g.editThreadNameEntry.Text = string(truncated)
 
 		}
-		group.editThreadNameEntry.Refresh()
+		g.editThreadNameEntry.Refresh()
 	}
 
-	group.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(_ bool) {})
-	enabled := group.notificationsMutedUntil != chat.MutedForever
-	group.notificationsEnabledCheck.SetChecked(enabled)
+	g.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(_ bool) {})
+	enabled := g.notificationsMutedUntil != chat.MutedForever
+	g.notificationsEnabledCheck.SetChecked(enabled)
 
-	group.restrictUserManagementCheck = widget.NewCheck("Restrict User Management", func(_ bool) {})
-	group.restrictGroupEditsCheck = widget.NewCheck("Restrict Group Edits", func(_ bool) {})
-	group.restrictPostingCheck = widget.NewCheck("Restrict Posting", func(_ bool) {})
-	group.restrictUserManagementCheck.SetChecked(group.restrictUserManagement)
-	group.restrictGroupEditsCheck.SetChecked(group.restrictGroupEdits)
-	group.restrictPostingCheck.SetChecked(group.restrictPosting)
+	g.restrictUserManagementCheck = widget.NewCheck("Restrict User Management", func(_ bool) {})
+	g.restrictGroupEditsCheck = widget.NewCheck("Restrict Group Edits", func(_ bool) {})
+	g.restrictPostingCheck = widget.NewCheck("Restrict Posting", func(_ bool) {})
+	g.restrictUserManagementCheck.SetChecked(g.restrictUserManagement)
+	g.restrictGroupEditsCheck.SetChecked(g.restrictGroupEdits)
+	g.restrictPostingCheck.SetChecked(g.restrictPosting)
 
-	ui.buildEditThreadContainer(group)
+	ui.buildEditThreadContainer(g)
 	editButton := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
-		ui.refreshUserSelections(group)
-		ui.showEditThreadContainer(group)
+		ui.refreshUserSelections(g)
+		ui.showEditThreadContainer(g)
 	})
 	editButton.Importance = widget.LowImportance
 
-	group.headerIcon = newDefaultImage(group.id, bounceGroup.Images, group.initial, 32, ui.bounce.GetFileData, nil) // TODO: get size from theme
-	group.headerName = widget.NewLabel(bounceGroup.Name)
+	g.headerIcon = newDefaultImage(g.id, bounceGroup.Images, g.initial, 32, ui.bounce.GetFileData, nil) // TODO: get size from theme
+	g.headerName = widget.NewLabel(bounceGroup.Name)
 
-	var groupLabel *fyne.Container
+	var gLabel *fyne.Container
 	if fyne.CurrentDevice().IsMobile() {
 		backButton := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
 			ui.mobileBack()
 		})
 		backButton.Importance = widget.LowImportance
-		groupLabel = container.NewHBox(
+		gLabel = container.NewHBox(
 			backButton,
-			group.headerIcon,
-			group.headerName,
+			g.headerIcon,
+			g.headerName,
 		)
 	} else {
-		groupLabel = container.NewHBox(
-			group.headerIcon,
-			group.headerName,
+		gLabel = container.NewHBox(
+			g.headerIcon,
+			g.headerName,
 		)
 	}
 
-	group.headerName.TextStyle = fyne.TextStyle{Bold: true}
-	group.header = container.New(
-		layout.NewBorderLayout(nil, nil, groupLabel, editButton),
-		groupLabel,
+	g.headerName.TextStyle = fyne.TextStyle{Bold: true}
+	g.header = container.New(
+		layout.NewBorderLayout(nil, nil, gLabel, editButton),
+		gLabel,
 		editButton,
 	)
 
-	entry := newThreadEntry(5, func() bool { return len(group.pendingMessageAttachments.files) > 0 })
-	group.entry = entry
+	entry := newThreadEntry(5, func() bool { return len(g.pendingMessageAttachments.files) > 0 })
+	g.entry = entry
 	entry.OnChanged = func(_ string) {
-		go ui.bounce.TypingInGroup(group.id)
+		go ui.bounce.TypingInGroup(g.id)
 	}
 	entry.customOnSubmitted = func() {
 		gm := chat.GroupMessage{
-			Thread: group.id,
+			Thread: g.id,
 			Text:   entry.Text,
 		}
 
@@ -506,7 +506,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		readers := map[uuid.UUID]io.ReadCloser{}
 		sources := map[uuid.UUID]string{}
 
-		pendingAttachments := group.pendingMessageAttachments.extract()
+		pendingAttachments := g.pendingMessageAttachments.extract()
 		for _, pma := range pendingAttachments {
 			readers[pma.id] = pma.reader
 			sources[pma.id] = pma.reader.URI().Path()
@@ -541,26 +541,26 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 	}
 
 	openThread := func() {
-		ui.displayThread(group)
-		ui.bounce.GroupConnectionDesired(group.id)
+		ui.displayThread(g)
+		ui.bounce.GroupConnectionDesired(g.id)
 		if fyne.CurrentDevice().IsMobile() {
-			ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeThread, context: group.id})
+			ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeThread, context: g.id})
 		}
 		ui.state.currentView = viewTypeThread
 	}
-	group.button = newThreadButton(newDefaultImage(group.id, group.images, group.initial, 64, ui.bounce.GetFileData, openThread), group.name, openThread)
-	group.scroll = ui.newChatHistory(group)
+	g.button = newThreadButton(newDefaultImage(g.id, g.images, g.initial, 64, ui.bounce.GetFileData, openThread), g.name, openThread)
+	g.scroll = ui.newChatHistory(g)
 
 	// Keep the last message time counter up to date
 	go func() {
 		for {
 			time.Sleep(1 * time.Minute)
-			fyne.Do(func() { group.button.updateLastMessageTimeText() })
+			fyne.Do(func() { g.button.updateLastMessageTimeText() })
 		}
 	}()
 
-	group.typingIndicator = newTypingIndicator(typingIndicatorModeIcons, ui.bounce.GetFileData)
-	group.typingIndicator.Hide()
+	g.typingIndicator = newTypingIndicator(typingIndicatorModeIcons, ui.bounce.GetFileData)
+	g.typingIndicator.Hide()
 
 	addFiles := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
@@ -575,40 +575,40 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 				return
 			}
 
-			group.pendingMessageAttachments.add(reader)
+			g.pendingMessageAttachments.add(reader)
 		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 	addFiles.Importance = widget.LowImportance
-	group.pendingMessageAttachments = newPendingMessageAttachments()
+	g.pendingMessageAttachments = newPendingMessageAttachments()
 	footer := container.NewVBox(
-		group.typingIndicator,
-		group.pendingMessageAttachments,
+		g.typingIndicator,
+		g.pendingMessageAttachments,
 		container.New(
 			layout.NewBorderLayout(nil, nil, nil, addFiles),
 			addFiles,
-			group.entry,
+			g.entry,
 		),
 	)
-	group.view = container.New(
-		layout.NewBorderLayout(group.header, footer, nil, nil),
-		group.header,
+	g.view = container.New(
+		layout.NewBorderLayout(g.header, footer, nil, nil),
+		g.header,
 		footer,
-		container.New(&autoscollLayout{}, group.scroll),
+		container.New(&autoscollLayout{}, g.scroll),
 	)
-	ui.threads.add(group.id, group)
+	ui.threads.add(g.id, g)
 	ui.refreshThreadOrder()
-	ui.updateEnabledFeatures(group)
+	ui.updateEnabledFeatures(g)
 
-	ti, err := ui.newGroupCreated(group.id, group.id, bounceGroup.CreatedBy, bounceGroup.CreatedAt)
+	ti, err := ui.newGroupCreated(g.id, g.id, bounceGroup.CreatedBy, bounceGroup.CreatedAt)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":      err.Error(),
-			"group":      group.id,
+			"g":          g.id,
 			"created_by": bounceGroup.CreatedBy,
-		}).Warn("error creating thread item for group creation")
+		}).Warn("error creating thread item for g creation")
 	} else {
-		ui.appendThreadItem(group, ti)
-		ti.setButton(group.button)
+		ui.appendThreadItem(g, ti)
+		ti.setButton(g.button)
 	}
 }
 
@@ -702,12 +702,13 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 
 	// If we are displaying an invite, and we are now a member of this group, remove the invite from the list of threads
 	// before creating the actual thread
+	wasAnInvite := false
 	if member && !invited {
 		g, exists := ui.threads.get(bounceGroup.ID)
 		if exists {
 			if _, ok := g.(*invite); ok {
 				ui.threads.remove(bounceGroup.ID)
-
+				wasAnInvite = true
 			}
 		}
 	}
@@ -792,6 +793,10 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 
 		g.editThreadNameEntry.Text = bounceGroup.Name
 		g.editThreadNameEntry.Refresh()
+
+		if ui.state.activeThread == g.id && wasAnInvite {
+			ui.displayThread(g)
+		}
 	})
 }
 

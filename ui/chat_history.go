@@ -505,11 +505,17 @@ func (ch *chatHistory) ScrollTo(id int) {
 }
 
 func (ch *chatHistory) ScrollToBottom() {
+	if ch.scroller == nil {
+		return
+	}
 	ch.scroller.ScrollToBottom()
 	ch.offsetUpdated(ch.scroller.Offset)
 }
 
 func (ch *chatHistory) ScrollToTop() {
+	if ch.scroller == nil {
+		return
+	}
 	ch.scroller.ScrollToTop()
 	ch.offsetUpdated(ch.scroller.Offset)
 }
