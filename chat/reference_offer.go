@@ -946,13 +946,31 @@ func (b *Bounce) getFilesToOffer(dev device) []frameReference {
 		// 	scope is not sync AND
 		// 	scope is user and the destination is this device's user OR
 		// 	scope is group and the destination is a group that this device's user is in OR
+		//	scope is group with invites and the destination is a group that this device's user is in OR it is a group that this device's user has been invited to OR
 		// 	scope is global and the author is me or this device's user OR
 		// 	scope is global and the author is someone who shares a group with this device's user
 		err := b.database.
 			Distinct("files.id").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == files.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeFile).
 			Where(
-				"((files.scope == ? AND files.destination = ?) OR (files.scope = ? AND files.destination IN (?)) OR (files.scope == ? AND (files.author == ? OR files.author == ? OR files.author IN (?)))) AND files.scope != ? AND delivery_records.id IS NULL",
+				`
+					delivery_records.id IS NULL AND files.scope != ? AND
+					(
+						(
+							files.scope == ? AND files.destination = ?
+						) OR (
+							files.scope = ? AND files.destination IN (?)
+						) OR (
+							chunk_offers.scope = ? AND (chunk_offers.destination IN (?) OR chunk_offers.destination IN (?))
+						) OR (
+							files.scope == ? AND (
+								files.author == ? OR
+								files.author == ? OR
+								files.author IN (?)
+							)
+						)
+					)`,
+				scopeSync,
 				scopeUser,
 				xor(b.currentUserID(), dev.UserID),
 				scopeGroup,
@@ -962,6 +980,18 @@ func (b *Bounce) getFilesToOffer(dev device) []frameReference {
 					Select("groups.id").
 					Joins("JOIN group_users ON group_users.group_id = groups.id").
 					Where("user_id = ?", dev.UserID),
+				scopeGroupWithInvites,
+				b.database.
+					Model(&group{}).
+					Distinct().
+					Select("groups.id").
+					Joins("JOIN group_users ON group_users.group_id = groups.id").
+					Where("user_id = ?", dev.UserID),
+				b.database.
+					Model(&group{}).
+					Distinct().
+					Select("id").
+					Where("invites LIKE ?", "%"+dev.UserID.String()+"%"),
 				scopeGlobal,
 				b.currentUserID(),
 				dev.UserID,
@@ -979,7 +1009,6 @@ func (b *Bounce) getFilesToOffer(dev device) []frameReference {
 							Joins("JOIN group_users ON group_users.group_id = groups.id").
 							Where("user_id = ?", dev.UserID),
 					),
-				scopeSync,
 			).
 			Find(&unsentFiles).Error
 		if err != nil {
@@ -1021,6 +1050,7 @@ func (b *Bounce) getChunkOffersToOffer(dev device) []frameReference {
 		// 	scope is not sync AND
 		// 	scope is user and the destination is this device's user OR
 		// 	scope is group and the destination is a group that this device's user is in OR
+		//	scope is group with invites and the destination is a group that this device's user is in OR it is a group that this device's user has been invited to OR
 		//      scope is global and the author is me or this device's user OR
 		// 	scope is global and the author is someone who shares a group with this device's user
 		err := b.database.
@@ -1034,6 +1064,8 @@ func (b *Bounce) getChunkOffersToOffer(dev device) []frameReference {
 							chunk_offers.scope = ? AND chunk_offers.destination = ?
 						) OR (
 							chunk_offers.scope = ? AND chunk_offers.destination IN (?)
+						) OR (
+							chunk_offers.scope = ? AND (chunk_offers.destination IN (?) OR chunk_offers.destination IN (?))
 						) OR (
 							chunk_offers.scope = ? AND (
 								chunk_offers.author = ? OR
@@ -1052,6 +1084,18 @@ func (b *Bounce) getChunkOffersToOffer(dev device) []frameReference {
 					Select("groups.id").
 					Joins("JOIN group_users ON group_users.group_id = groups.id").
 					Where("user_id = ?", dev.UserID),
+				scopeGroupWithInvites,
+				b.database.
+					Model(&group{}).
+					Distinct().
+					Select("groups.id").
+					Joins("JOIN group_users ON group_users.group_id = groups.id").
+					Where("user_id = ?", dev.UserID),
+				b.database.
+					Model(&group{}).
+					Distinct().
+					Select("id").
+					Where("invites LIKE ?", "%"+dev.UserID.String()+"%"),
 				scopeGlobal,
 				b.currentUserID(),
 				dev.UserID,
