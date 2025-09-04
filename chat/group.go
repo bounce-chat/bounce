@@ -89,6 +89,9 @@ func (g *group) state() groupState {
 		users:                      []uuid.UUID{},
 		admins:                     []uuid.UUID{},
 		blockedUsers:               []uuid.UUID{},
+		invites:                    []uuid.UUID{},
+		invitedBy:                  g.InvitedBy,
+		invitedAt:                  g.InvitedAt,
 		mutedUntil:                 g.MutedUntil,
 		retention:                  g.Retention,
 		clearBefore:                g.ClearBefore,
@@ -132,6 +135,21 @@ func (g *group) state() groupState {
 			}
 
 			gs.blockedUsers = append(gs.blockedUsers, blockedID)
+		}
+	}
+
+	if len(g.Invites) > 0 {
+		for _, invitedIDString := range strings.Split(g.Invites, ",") {
+			invitedID, err := uuid.Parse(invitedIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": g.ID,
+					"invites":  g.Invites,
+				}).Fatal("invalid UUID in group invite list")
+			}
+
+			gs.invites = append(gs.invites, invitedID)
 		}
 	}
 

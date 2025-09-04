@@ -676,6 +676,8 @@ func (b *Bounce) GetInitialState() InitialState {
 	exportedUpdateGroupUserBlockedGroups := []UserBlockedGroup{}
 	exportedUpdateGroupUserChangedGroupImages := []UpdateGroupUserChangedGroupImage{}
 	exportedUpdateGroupInvitesRevoked := []UpdateGroupInviteRevoked{}
+	exportedUpdateGroupInvitesAccepted := []UpdateGroupInviteAccepted{}
+	exportedUpdateGroupInvitesRejected := []UpdateGroupInviteRejected{}
 	for _, ug := range ugs {
 		switch ug.Type {
 		case updateGroupTypeChangeName:
@@ -934,6 +936,45 @@ func (b *Bounce) GetInitialState() InitialState {
 					Seen:      ug.Seen,
 				},
 			)
+		case updateGroupTypeRespondToInvite:
+			if len(ug.Data) != 1 {
+				log.WithFields(log.Fields{
+					"id": ug.ID,
+				}).Error("invalid payload length for update group respond to invite")
+				continue
+			}
+			rejected := ug.Data[0] == rejectInvite
+			accepted := ug.Data[0] == acceptInvite
+
+			if accepted {
+				exportedUpdateGroupInvitesAccepted = append(
+					exportedUpdateGroupInvitesAccepted,
+					UpdateGroupInviteAccepted{
+						ID:        ug.ID,
+						Thread:    ug.Target,
+						Actor:     ug.Actor,
+						Timestamp: ug.Timestamp,
+						Seen:      ug.Seen,
+					},
+				)
+			} else if rejected {
+				exportedUpdateGroupInvitesRejected = append(
+					exportedUpdateGroupInvitesRejected,
+					UpdateGroupInviteRejected{
+						ID:        ug.ID,
+						Thread:    ug.Target,
+						Actor:     ug.Actor,
+						Timestamp: ug.Timestamp,
+						Seen:      ug.Seen,
+					},
+				)
+			} else {
+				log.WithFields(log.Fields{
+					"id":      ug.ID,
+					"payload": ug.Data[0],
+				}).Error("invalid payload for update group respond to invite")
+				continue
+			}
 		}
 	}
 
@@ -1039,6 +1080,8 @@ func (b *Bounce) GetInitialState() InitialState {
 		UpdateGroupUserBlockedGroups:           exportedUpdateGroupUserBlockedGroups,
 		UpdateGroupUserChangedGroupImages:      exportedUpdateGroupUserChangedGroupImages,
 		UpdateGroupRevokedInvites:              exportedUpdateGroupInvitesRevoked,
+		UpdateGroupAcceptedInvites:             exportedUpdateGroupInvitesAccepted,
+		UpdateGroupRejectedInvites:             exportedUpdateGroupInvitesRejected,
 		UpdateUserUpdateNames:                  exportedUpdateUserUpdateNames,
 		UpdateUserUpdateImages:                 exportedUpdateUserUpdateImages,
 		FileProgress:                           fileProgress,

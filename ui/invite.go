@@ -6,6 +6,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -65,7 +66,12 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 
 	i.icon = newDefaultImage(i.id, i.images, i.initial, 128, ui.bounce.GetFileData, nil)
 
-	acceptButton := widget.NewButton("Join Group", func() {})
+	acceptButton := widget.NewButton("Join Group", func() {
+		err := ui.bounce.AcceptInvite(i.id)
+		if err != nil {
+			ui.showDialog(dialog.NewError(err, ui.window), nil)
+		}
+	})
 	acceptButton.Importance = widget.HighImportance
 
 	rejectButton := widget.NewButton("Reject Group", func() {})

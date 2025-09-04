@@ -299,7 +299,7 @@ func changeIsNOP(lastState groupState, ug updateGroup, myID uuid.UUID) bool {
 }
 
 func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
-	if !gs.isMember(ug.Actor) {
+	if !gs.isMember(ug.Actor) && !(ug.Type == updateGroupTypeRespondToInvite || ug.Type == updateGroupTypeBlock) {
 		return errUserNotInGroup
 	}
 
@@ -478,6 +478,12 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 		} else {
 			return nil
 		}
+	case updateGroupTypeRespondToInvite:
+		if gs.isInvited(ug.Actor) {
+			return nil
+		} else {
+			return errMustBeInvitedToRespond
+		}
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -526,6 +532,8 @@ func applyUpdateGroupToState(gs groupState, ug updateGroup, myID uuid.UUID) (gro
 		return applyUpdateGroupSetTypingIndicatorsToState(gs, ug)
 	case updateGroupTypeRevokeInvite:
 		return applyUpdateGroupRevokeInviteToState(gs, ug)
+	case updateGroupTypeRespondToInvite:
+		return applyUpdateGroupRespondToInviteToState(gs, ug)
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -751,8 +759,16 @@ func applyUpdateGroupBlockToState(gs groupState, ug updateGroup) (groupState, er
 		}
 	}
 
+	invitesWithoutUser := []uuid.UUID{}
+	for _, id := range gs.invites {
+		if id != ug.Actor {
+			invitesWithoutUser = append(invitesWithoutUser, id)
+		}
+	}
+
 	gs.users = membersWithoutUser
 	gs.admins = adminsWithoutUser
+	gs.invites = invitesWithoutUser
 
 	return gs, nil
 }
@@ -798,6 +814,27 @@ func applyUpdateGroupRevokeInviteToState(gs groupState, ug updateGroup) (groupSt
 	}
 
 	gs.invites = invitesWithoutUser
+
+	return gs, nil
+}
+
+func applyUpdateGroupRespondToInviteToState(gs groupState, ug updateGroup) (groupState, error) {
+	if len(ug.Data) != 1 {
+		return gs, errInvalidPayloadLength
+	}
+	accepted := ug.Data[0] == acceptInvite
+
+	invitesWithoutUser := []uuid.UUID{}
+	for _, id := range gs.invites {
+		if id != ug.Actor {
+			invitesWithoutUser = append(invitesWithoutUser, id)
+		}
+	}
+	gs.invites = invitesWithoutUser
+
+	if accepted {
+		gs.users = append(gs.users, ug.Actor)
+	}
 
 	return gs, nil
 }

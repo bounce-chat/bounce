@@ -1278,6 +1278,46 @@ func (ui *ui) GroupInviteRevoked(ugri chat.UpdateGroupInviteRevoked) {
 	fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
 }
 
+func (ui *ui) GroupInviteAccepted(ugia chat.UpdateGroupInviteAccepted) {
+	g, exists := ui.threads.getGroup(ugia.Thread)
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugia.Thread,
+		}).Error("cannot accept invite for group that doesn't exist")
+		return
+	}
+
+	ti, err := ui.newUpdateGroupInviteAccepted(ugia)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for update group invite accepted")
+		return
+	}
+
+	fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
+}
+
+func (ui *ui) GroupInviteRejected(ugir chat.UpdateGroupInviteRejected) {
+	g, exists := ui.threads.getGroup(ugir.Thread)
+	if !exists {
+		log.WithFields(log.Fields{
+			"group_id": ugir.Thread,
+		}).Error("cannot reject invite for group that doesn't exist")
+		return
+	}
+
+	ti, err := ui.newUpdateGroupInviteRejected(ugir)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating thread item for update group invite rejected")
+		return
+	}
+
+	fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
+}
+
 func (ui *ui) updateEnabledFeatures(g *group) {
 	amAdmin := g.isAdmin(ui.state.profile.id)
 

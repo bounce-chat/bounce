@@ -30,9 +30,13 @@ const updateGroupTypeSetReadReceiptSettings = uint16(13)
 const updateGroupTypeSetTypingIndicatorSettings = uint16(14)
 const updateGroupTypeSetImage = uint16(15)
 const updateGroupTypeRevokeInvite = uint16(16)
+const updateGroupTypeRespondToInvite = uint16(17)
 
 const permissionUnrestricted = 0x00
 const permissionRestricted = 0x01
+
+const rejectInvite = 0x00
+const acceptInvite = 0x01
 
 var errUpdateGroupWithUnknownType = errors.New("update group has unknown update type")
 var errInvalidGroupName = errors.New("invalid group name")
@@ -52,6 +56,7 @@ var errUserNotInGroup = errors.New("user is not in group")
 var errAdminRequired = errors.New("this action can only be performed by admins")
 var errCannotDemoteAdminWhoDeletedGroup = errors.New("admins who deleted group cannot be demoted")
 var errAlreadyDeleted = errors.New("group already deleted")
+var errMustBeInvitedToRespond = errors.New("user must have active invite to group in order to respond to invite")
 
 // An updateGroup frame changes the settings and status of a group, such as permissions, membership, retention, or notification settings.
 // Some settings, like retention and membership, must be observed by all participants of the group, where others like notification are only
@@ -255,6 +260,14 @@ func (ug *updateGroup) validPayloadFormat() bool {
 	case updateGroupTypeRevokeInvite:
 		_, err := uuid.FromBytes(ug.Data)
 		return err == nil
+	case updateGroupTypeRespondToInvite:
+		if len(ug.Data) != 1 {
+			return false
+		}
+		if !(ug.Data[0] == acceptInvite || ug.Data[0] == rejectInvite) {
+			return false
+		}
+		return true
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -835,6 +848,30 @@ func (b *Bounce) RevokeInvite(groupID, userID uuid.UUID) error {
 	return nil
 }
 
+func (b *Bounce) AcceptInvite(groupID uuid.UUID) error {
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeRespondToInvite,
+		Data:      []byte{acceptInvite},
+	})
+}
+
+func (b *Bounce) RejectInvite(groupID uuid.UUID) error {
+	return b.applyAndBroadcastUpdateGroup(&updateGroup{
+		ID:        uuid.New(),
+		Actor:     b.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeRespondToInvite,
+		Data:      []byte{rejectInvite},
+	})
+
+	// TODO: broadcast directly?
+}
+
 func (b *Bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
 	// Find the group we're updating
 	var g group
@@ -852,7 +889,6 @@ func (b *Bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
 		}
 	}
 
-	// Check to make sure we have permission to do this update right now
 	if err = stateChangeAllowed(g.state(), *ug, b.currentUserID()); err != nil {
 		return err
 	}
@@ -940,6 +976,8 @@ func (b *Bounce) informUIOfUpdateGroup(ug updateGroup) {
 		b.informUIUpdateGroupSetImage(ug)
 	case updateGroupTypeRevokeInvite:
 		b.informUIUpdateGroupRevokeInvite(ug)
+	case updateGroupTypeRespondToInvite:
+		b.informUIUpdateGroupRespondToInvite(ug)
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -1180,4 +1218,41 @@ func (b *Bounce) informUIUpdateGroupRevokeInvite(ug updateGroup) {
 		Timestamp: ug.Timestamp,
 		UserID:    userID,
 	})
+}
+
+func (b *Bounce) informUIUpdateGroupRespondToInvite(ug updateGroup) {
+	if len(ug.Data) != 1 {
+		log.WithFields(log.Fields{
+			"id": ug.ID,
+		}).Error("invalid payload length for update group respond to invite")
+		return
+	}
+	rejected := ug.Data[0] == rejectInvite
+	accepted := ug.Data[0] == acceptInvite
+
+	if !accepted && !rejected {
+		log.WithFields(log.Fields{
+			"id":      ug.ID,
+			"payload": ug.Data[0],
+		}).Error("invalid payload for update group respond to invite")
+		return
+	}
+
+	if accepted {
+		b.ui.GroupInviteAccepted(UpdateGroupInviteAccepted{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+		})
+	}
+
+	if rejected {
+		b.ui.GroupInviteRejected(UpdateGroupInviteRejected{
+			ID:        ug.ID,
+			Thread:    ug.Target,
+			Actor:     ug.Actor,
+			Timestamp: ug.Timestamp,
+		})
+	}
 }

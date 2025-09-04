@@ -786,6 +786,30 @@ func (ui *ui) newUpdateGroupInviteRevoked(ugir chat.UpdateGroupInviteRevoked) (*
 	)
 }
 
+func (ui *ui) newUpdateGroupInviteAccepted(ugia chat.UpdateGroupInviteAccepted) (*threadItem, error) {
+	return ui.newStatusChangeThreadItem(
+		ugia.ID,
+		ugia.Thread,
+		ugia.Actor,
+		chat.TypeUpdateGroup,
+		"accepted the invite",
+		ugia.Timestamp,
+		ugia.Seen,
+	)
+}
+
+func (ui *ui) newUpdateGroupInviteRejected(ugir chat.UpdateGroupInviteRejected) (*threadItem, error) {
+	return ui.newStatusChangeThreadItem(
+		ugir.ID,
+		ugir.Thread,
+		ugir.Actor,
+		chat.TypeUpdateGroup,
+		"rejected the invite",
+		ugir.Timestamp,
+		ugir.Seen,
+	)
+}
+
 func (ui *ui) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, frameType, action string, timestamp int64, seen bool) (*threadItem, error) {
 	t, ok := ui.threads.get(threadID)
 	if !ok {

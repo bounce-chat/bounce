@@ -532,6 +532,22 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			threadItems[ugir.Thread] = append(threadItems[ugir.Thread], ugirItem)
 		}
 
+		for _, ugia := range state.UpdateGroupAcceptedInvites {
+			ugiaItem, err := ui.newUpdateGroupInviteAccepted(ugia)
+			if err != nil {
+				log.Error(err.Error())
+			}
+			threadItems[ugia.Thread] = append(threadItems[ugia.Thread], ugiaItem)
+		}
+
+		for _, ugir := range state.UpdateGroupRejectedInvites {
+			ugirItem, err := ui.newUpdateGroupInviteRejected(ugir)
+			if err != nil {
+				log.Error(err.Error())
+			}
+			threadItems[ugir.Thread] = append(threadItems[ugir.Thread], ugirItem)
+		}
+
 		for _, uuun := range state.UpdateUserUpdateNames {
 			if uuun.User == ui.state.profile.id {
 				ui.threads.rangeFunc(func(th thread) {

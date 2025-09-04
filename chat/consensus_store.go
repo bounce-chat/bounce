@@ -242,7 +242,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 			// If we were a member of the group for this update, and we are still in the group and it is not deleted, broadcast a confirmation
 			if gs.isMember(b.currentUserID()) {
 				b.updateLastGroupActivity(gs.ug.Target, gs.ug.Timestamp)
-				if gs.ug.Actor != b.currentUserID() && gs.ug.Type != updateGroupTypeBlock {
+				if gs.ug.Actor != b.currentUserID() && gs.ug.Type != updateGroupTypeBlock && gs.ug.Type != updateGroupTypeRespondToInvite {
 					// We only want confirmations to be send to devices that are in the group in the final group state, so we
 					// defer the call to sending confirmations so that it happens after the database has been updated
 					if finalState.deletedBy == nil && !finalState.isBlocked(b.currentUserID()) && finalState.isMember(b.currentUserID()) {
@@ -403,6 +403,8 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		// Delete the group
 		return b.database.Delete(&g).Error
 	}
+
+	// TODO: if we are not invited or a member, but there's no block / delete / removal, then we must have been added by someone who's permission was rolled back, and we should remove the group from the UI
 
 	// Find any non-canonical update groups that have been applied and mark them as not applied roll them back in the UI
 	for _, ug := range ugs {
