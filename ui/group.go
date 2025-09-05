@@ -42,6 +42,7 @@ type group struct {
 	createdAt                        int64
 	editIcon                         *defaultImage
 	headerName                       *widget.Label
+	invitesLabel                     *widget.Label
 	headerIcon                       *defaultImage
 	editContainer                    *fyne.Container
 	editThreadNameEntry              *widget.Entry
@@ -794,8 +795,12 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 		g.editThreadNameEntry.Text = bounceGroup.Name
 		g.editThreadNameEntry.Refresh()
 
-		if ui.state.activeThread == g.id && wasAnInvite {
-			ui.displayThread(g)
+		if wasAnInvite {
+			// TODO: load the history of update groups into the thread
+
+			if ui.state.activeThread == g.id {
+				ui.displayThread(g)
+			}
 		}
 	})
 }

@@ -366,10 +366,10 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 		usersLabel,
 		g.currentUsersContainer,
 	)
-	invitesLabel := widget.NewLabel("Invites:")
+	g.invitesLabel = widget.NewLabel("Invites:")
 	currentInvitesListView := container.New(
-		layout.NewBorderLayout(invitesLabel, nil, nil, nil),
-		invitesLabel,
+		layout.NewBorderLayout(g.invitesLabel, nil, nil, nil),
+		g.invitesLabel,
 		g.currentInvitesContainer,
 	)
 
@@ -551,6 +551,14 @@ func (ui *ui) refreshCurrentAndPendingUsers(g *group) {
 	g.pendingUsersContainer.SetMinSize(fyne.Size{Height: pendingUserHeight})
 	g.pendingUsersContainer.Refresh()
 
+	if len(g.invites) == 0 {
+		g.currentInvitesContainer.Hide()
+		g.invitesLabel.Hide()
+		return
+	} else {
+		g.currentInvitesContainer.Show()
+		g.invitesLabel.Show()
+	}
 	invitedUserList := container.NewVBox()
 	for _, inviteID := range g.invites {
 		thisUser, ok := ui.users.get(inviteID)
