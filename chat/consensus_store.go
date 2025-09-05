@@ -1044,18 +1044,7 @@ func (b *Bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID uuid
 }
 
 func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
-	// Get all the user IDs in this group
-	//var userIDs []uuid.UUID
-	//err := b.database.Table("group_users").
-	//	Select("user_id").
-	//	Where("group_id = ?", groupID).
-	//	Find(&userIDs).
-	//	Error
-	//if err != nil {
-	//	log.WithFields(log.Fields{
-	//		"error": err.Error(),
-	//	}).Fatal("database error getting user IDs in group")
-	//}
+	// Get the current state of the group
 	cs, ok := b.consensusStore.groups[groupID]
 	if !ok {
 		log.WithFields(log.Fields{
@@ -1076,7 +1065,7 @@ func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
 	var addresses []string
 	err = b.database.Table("devices").
 		Select("address").
-		Where("address != ? AND user_id IN (?)", b.network.Address(), gs.users). //userIDs).
+		Where("address != ? AND user_id IN (?)", b.network.Address(), append(gs.users, gs.invites...)).
 		Find(&addresses).
 		Error
 	if err != nil {
@@ -1087,6 +1076,7 @@ func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
 
 	// Send references to any online devices
 	for _, addr := range addresses {
+		// TODO: check if blocked / revoked?
 		rd := b.getRemoteDevice(addr)
 		if rd.connectedSockets.Load() > 1 {
 			go b.sendReferences(addr)
