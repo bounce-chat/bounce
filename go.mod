@@ -5,6 +5,7 @@ go 1.23.0
 toolchain go1.24.5
 
 //replace fyne.io/fyne/v2 => /home/hayden/Development/Go/src/github.com/hkparker/fyne
+//replace github.com/hkparker/go-libtor => /home/hayden/Development/Go/src/github.com/hkparker/go-libtor
 
 require (
 	fyne.io/fyne/v2 v2.6.2-0.20250817214456-878c696755e2

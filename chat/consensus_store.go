@@ -209,6 +209,13 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		}
 	}
 
+	notified := map[uuid.UUID]bool{}
+	for _, ug := range ugs {
+		if ug.Notified {
+			notified[ug.ID] = true
+		}
+	}
+
 	// Find any canonical update groups that have not been applied and make them as applied and inform the UI if needed
 	canonical := make(map[uuid.UUID]bool)
 	everInGroup := make(map[uuid.UUID]bool)
@@ -219,10 +226,6 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 			err := b.database.Model(&gs.ug).Select("applied").Update("applied", true).Error
 			if err != nil {
 				return err
-			}
-
-			if finalState.deletedBy == nil && finalState.isMember(b.currentUserID()) {
-				ugsToNotify = append(ugsToNotify, cs.history[i+1].ug)
 			}
 
 			if gs.ug.Type == updateGroupTypeInviteUser {
@@ -251,6 +254,18 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 				}
 			}
 		}
+
+		if _, ok := notified[gs.ug.ID]; !ok {
+			if finalState.deletedBy == nil && finalState.isMember(b.currentUserID()) {
+				ugsToNotify = append(ugsToNotify, cs.history[i+1].ug)
+
+				err := b.database.Model(&gs.ug).Select("notified").Update("notified", true).Error
+				if err != nil {
+					return err
+				}
+			}
+		}
+
 		for _, member := range gs.users {
 			everInGroup[member] = true
 		}
