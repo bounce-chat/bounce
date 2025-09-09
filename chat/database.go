@@ -367,17 +367,33 @@ func (b *Bounce) GetInitialState() InitialState {
 				adminList = append(adminList, adminID)
 			}
 		}
-		invitedList := []uuid.UUID{}
+		invitedList := []User{}
 		if len(g.Invites) > 0 {
 			for _, inviteIDString := range strings.Split(g.Invites, ",") {
-				inviteID, err := uuid.Parse(inviteIDString)
+				invitedID, err := uuid.Parse(inviteIDString)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error":   err.Error(),
 						"invites": g.Invites,
 					}).Fatal("invalid UUID in group invite list")
 				}
-				invitedList = append(invitedList, inviteID)
+
+				var u user
+				err = b.database.Select("name").First(&u, "id = ?", invitedID).Error
+				if err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						log.WithFields(log.Fields{
+							"error":   err.Error(),
+							"user_id": invitedID,
+						}).Error("group final state contains invited user not in database")
+						continue
+					} else {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Fatal("database error looking up user")
+					}
+				}
+				invitedList = append(invitedList, User{ID: u.ID, Name: u.Name})
 			}
 		}
 		blockedList := []uuid.UUID{}

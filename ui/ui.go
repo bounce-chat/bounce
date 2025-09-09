@@ -339,8 +339,8 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 				}
 			}
 			invited := false
-			for _, inviteID := range g.Invites {
-				if ui.state.profile.id == inviteID {
+			for _, inviteUser := range g.Invites {
+				if ui.state.profile.id == inviteUser.ID {
 					invited = true
 					break
 				}

@@ -627,10 +627,28 @@ func (b *Bounce) setGroupStateInDatabase(g group, gs groupState, ugsToNotify []u
 			b.removeGroupInvite(g.ID, invitedID)
 		}
 	}
+	finalInvites := []User{}
 	for _, invitedID := range gs.invites {
 		if !b.isInvited(g.ID, invitedID) {
 			b.addGroupInvite(g.ID, invitedID)
 		}
+
+		var u user
+		err := b.database.Select("name").First(&u, "id = ?", invitedID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"error":   err.Error(),
+					"user_id": invitedID,
+				}).Error("group final state contains invited user not in database")
+				return err
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up user")
+			}
+		}
+		finalInvites = append(finalInvites, User{ID: invitedID, Name: u.Name}) // TODO: include all user details
 	}
 
 	// Set blocked users
@@ -673,7 +691,7 @@ func (b *Bounce) setGroupStateInDatabase(g group, gs groupState, ugsToNotify []u
 			Images:                         gs.images,
 			Users:                          finalUsers,
 			Admins:                         gs.admins,
-			Invites:                        gs.invites,
+			Invites:                        finalInvites,
 			InvitedBy:                      gs.invitedBy,
 			InvitedAt:                      gs.invitedAt,
 			BlockedUsers:                   gs.blockedUsers,

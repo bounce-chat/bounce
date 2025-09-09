@@ -110,8 +110,8 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 		}
 	}
 	if len(bounceGroup.Invites) > 0 {
-		for _, invitedID := range bounceGroup.Invites {
-			i.invited = append(i.invited, invitedID)
+		for _, invitedUser := range bounceGroup.Invites {
+			i.invited = append(i.invited, invitedUser.ID)
 		}
 	}
 

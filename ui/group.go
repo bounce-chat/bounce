@@ -384,13 +384,18 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		return
 	}
 
+	invitedIDs := []uuid.UUID{}
+	for _, u := range bounceGroup.Invites {
+		invitedIDs = append(invitedIDs, u.ID)
+	}
+
 	g := &group{
 		id:                             bounceGroup.ID,
 		name:                           bounceGroup.Name,
 		images:                         bounceGroup.Images,
 		users:                          newUserStore(),
 		admins:                         bounceGroup.Admins,
-		invites:                        bounceGroup.Invites,
+		invites:                        invitedIDs,
 		blockedUsers:                   bounceGroup.BlockedUsers,
 		retention:                      bounceGroup.Retention,
 		overrideReadReceiptSetting:     bounceGroup.OverrideReadReceiptSetting,
@@ -622,8 +627,8 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 		}
 	}
 	invited := false
-	for _, inviteID := range bounceGroup.Invites {
-		if ui.state.profile.id == inviteID {
+	for _, invitedUser := range bounceGroup.Invites {
+		if ui.state.profile.id == invitedUser.ID {
 			invited = true
 			break
 		}
@@ -685,11 +690,26 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 
 			members := []uuid.UUID{}
 			for _, bu := range bounceGroup.Users {
+				u, ok := ui.users.get(bu.ID)
+				if !ok {
+					u = makeUser(bu)
+				}
+				ui.users.add(u)
 				members = append(members, bu.ID)
 			}
 			i.members = members
 			i.admins = bounceGroup.Admins
-			i.invited = bounceGroup.Invites
+
+			invites := []uuid.UUID{}
+			for _, bu := range bounceGroup.Invites {
+				u, ok := ui.users.get(bu.ID)
+				if !ok {
+					u = makeUser(bu)
+				}
+				ui.users.add(u)
+				invites = append(invites, bu.ID)
+			}
+			i.invited = invites
 			ui.refreshInviteUsers(i)
 
 			i.setInitial()
@@ -760,7 +780,16 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 			g.getAdminCheck(u.id).Refresh()
 		}
 
-		g.invites = bounceGroup.Invites
+		invites := []uuid.UUID{}
+		for _, bu := range bounceGroup.Invites {
+			u, ok := ui.users.get(bu.ID)
+			if !ok {
+				u = makeUser(bu)
+			}
+			ui.users.add(u)
+			invites = append(invites, bu.ID)
+		}
+		g.invites = invites
 
 		g.blockedUsers = bounceGroup.BlockedUsers
 
