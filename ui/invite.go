@@ -74,7 +74,25 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 	})
 	acceptButton.Importance = widget.HighImportance
 
-	rejectButton := widget.NewButton("Reject Group", func() {})
+	blockWarning := widget.NewLabel("You can prevent groups that are harassing you from ever being able to invite you again by permanently blocking the group")
+	blockWarning.Wrapping = fyne.TextWrapWord
+	blockCheck := widget.NewCheck("Permanently block group", nil)
+	rejectConfirmDialog := dialog.NewCustomConfirm("Reject Group?", "Reject", "Cancel", container.NewVBox(blockWarning, blockCheck), func(confirmed bool) {
+		defer blockCheck.SetChecked(false)
+
+		if !confirmed {
+			return
+		}
+
+		if blockCheck.Checked {
+			ui.bounce.BlockGroup(i.id)
+		} else {
+			ui.bounce.RejectInvite(i.id)
+		}
+	}, ui.window)
+	rejectButton := widget.NewButton("Reject Group", func() {
+		ui.showDialog(rejectConfirmDialog, nil)
+	})
 	rejectButton.Importance = widget.DangerImportance
 
 	for _, bounceUser := range bounceGroup.Users {

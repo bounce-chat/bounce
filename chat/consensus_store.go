@@ -282,7 +282,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		// Find our block update and custom scope it
 		err = b.createCustomScopeFromGroup(g.ID)
 		if err == nil {
-			err = b.database.Model(&updateGroup{}).Where("id = ?", finalState.blockedBy).Select("custom_scope").Update("custom_scope", g.ID).Error
+			err = b.database.Model(&updateGroup{}).Where("id = ?", finalState.blockedBy.ID).Select("custom_scope").Update("custom_scope", g.ID).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"update_group_id": finalState.blockedBy,

@@ -869,8 +869,6 @@ func (b *Bounce) RejectInvite(groupID uuid.UUID) error {
 		Type:      updateGroupTypeRespondToInvite,
 		Data:      []byte{rejectInvite},
 	})
-
-	// TODO: broadcast directly?
 }
 
 func (b *Bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
