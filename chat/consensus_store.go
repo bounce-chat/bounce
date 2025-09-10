@@ -237,7 +237,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 					}).Error("update group add user container invalid user data")
 					return err
 				}
-				if finalState.isMember(newUser.ID) {
+				if finalState.isMember(newUser.ID) || finalState.isInvited(newUser.ID) {
 					b.createNewUserIfNeeded(newUser)
 				}
 			}
