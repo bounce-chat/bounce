@@ -125,6 +125,16 @@ type Group struct {
 	TypingIndicatorsEnabled        bool
 }
 
+type NewGroup struct {
+	Name                   string
+	Image                  []byte
+	InitialInvites         []uuid.UUID
+	Retention              int64
+	RestrictUserManagement bool
+	RestrictGroupEdits     bool
+	RestrictPosting        bool
+}
+
 type GroupMessage struct {
 	ID               uuid.UUID
 	Author           uuid.UUID

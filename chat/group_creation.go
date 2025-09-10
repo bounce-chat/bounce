@@ -193,17 +193,27 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		return nil, false
 	}
 
+	// Make sure this group has one user, who is also the admin and creator
+	if len(g.Users) != 1 {
+		log.Warn("ignoring group creation that contains more than one user")
+		return nil, false
+	}
+	if g.Users[0].ID != g.CreatedBy {
+		log.Warn("ignoring group creation that does not include the creator as the only user in the group")
+		return nil, false
+	}
+	if g.Users[0].ID.String() != g.Admins {
+		log.Warn("ignoring group creation that does not have the only user as the only admin")
+		return nil, false
+	}
+
 	// Make sure that one of the devices in this group signed the creation of this group, and check if we're in the group
 	signingDeviceInGroup := false
-	weAreInGroup := false
 	for _, u := range g.Users {
 		for _, dev := range u.Devices {
 			if dev.Address == gc.Signer {
 				signingDeviceInGroup = true
 			}
-		}
-		if u.ID == b.currentUserID() {
-			weAreInGroup = true
 		}
 	}
 	if !signingDeviceInGroup {
@@ -212,23 +222,14 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		}).Warn("rejecting group creation not signed by any of the original devices")
 		return nil, false
 	}
-	if !catchUp && !weAreInGroup {
-		// Group creations that define a group that does not include us can only be learned about within a catchup
-		log.WithFields(log.Fields{
-			"group_id": g.ID,
-		}).Warn("ignoring group creation that does not include us")
-		return nil, false
-	}
 
 	// Check that each user has a valid device group
-	for _, u := range g.Users {
-		if !b.hasValidDeviceGroup(u) {
-			log.WithFields(log.Fields{
-				"peer":    peer,
-				"user_id": u.ID,
-			}).Warn("ignoring group that contains user with invalid device group")
-			return nil, false
-		}
+	if !b.hasValidDeviceGroup(g.Users[0]) {
+		log.WithFields(log.Fields{
+			"peer":    peer,
+			"user_id": g.Users[0].ID,
+		}).Warn("ignoring group that contains user with invalid device group")
+		return nil, false
 	}
 
 	// If we already know about this group, ack it, mark as delivered, and return
@@ -243,30 +244,28 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 	}
 
 	// Save all of the structures in this group, creating any new users or devices as needed
-	uiUsers := []User{}
 	err = b.database.Transaction(func(tx *gorm.DB) error {
-		for _, u := range g.Users {
-			for _, dev := range u.Devices {
-				err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Error("error saving device that is part of a group")
-					return err
-				}
-			}
-			u.IntroductionMethod = userIntroductionGroup
-			u.IntroductionTime = time.Now().Unix()
-			err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
+		u := g.Users[0]
+		for _, dev := range u.Devices {
+			err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Error("error saving user that is part of a group")
+				}).Error("error saving device that is part of a group")
 				return err
 			}
-			uiUsers = append(uiUsers, User{ID: u.ID, Name: u.Name})
 		}
-		err := tx.Create(&gc).Error
+		u.IntroductionMethod = userIntroductionGroup
+		u.IntroductionTime = time.Now().Unix()
+		err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error saving user that is part of a group")
+			return err
+		}
+
+		err = tx.Create(&gc).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

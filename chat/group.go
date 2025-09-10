@@ -169,104 +169,39 @@ func (g *group) state() groupState {
 	return gs
 }
 
-func (b *Bounce) CreateGroup(proposedGroup Group, iconData []byte) error {
-	if proposedGroup.ID != uuid.Nil {
-		return errors.New("group UUID cannot be set from the UI")
-	}
-
-	if proposedGroup.Name == "" {
+func (b *Bounce) CreateGroup(ng NewGroup) error {
+	if ng.Name == "" {
 		return errors.New("cannot create group without name")
 	}
-	if !validGroupName(proposedGroup.Name) {
+	if !validGroupName(ng.Name) {
 		return errInvalidGroupName
 	}
-
-	if len(proposedGroup.Users) == 0 {
-		return errors.New("cannot create a group without any users")
-	}
-
-	users := []user{}
-	userMap := map[uuid.UUID]bool{}
-	uiUsers := []User{}
-	userListContainsProfile := false
-	for _, proposedUser := range proposedGroup.Users {
-		var u user
-		err := b.database.Preload("Devices.Signature").Preload(clause.Associations).Where("id = ?", proposedUser.ID).First(&u).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"user_id": proposedUser.ID,
-				}).Error("attempt to create a group with user ID that doesn't exist in the database")
-				return errors.New("cannot create group with unknown user")
-			} else {
-				log.WithFields(log.Fields{
-					"user_id": proposedUser.ID,
-					"error":   err.Error(),
-				}).Fatal("error looking up user")
-			}
-		}
-		users = append(users, u)
-		if _, present := userMap[u.ID]; present {
-			return errors.New("cannot create group with duplicate users")
-		}
-		userMap[u.ID] = true
-		uiUsers = append(uiUsers, User{ID: u.ID, Name: u.Name})
-		if u.ID == b.currentUserID() {
-			userListContainsProfile = true
-		}
-	}
-	if !userListContainsProfile {
-		return errors.New("cannot create a new group without being a member")
-	}
-
-	if len(proposedGroup.Admins) == 0 {
-		return errors.New("cannot create a group with no admins")
-	}
-
-	adminStrings := []string{}
-	adminMap := map[uuid.UUID]bool{}
-	for _, adminID := range proposedGroup.Admins {
-		if _, present := userMap[adminID]; !present {
-			return errors.New("cannot create a group with an admin that is not also a member")
-		}
-		adminStrings = append(adminStrings, adminID.String())
-		if _, present := adminMap[adminID]; present {
-			return errors.New("cannot create group with duplicate admins")
-		}
-		adminMap[adminID] = true
-	}
-
-	if proposedGroup.LastActivity != 0 {
-		return errors.New("last activity for group cannot be set by the UI during group creation")
-	}
-
-	if proposedGroup.MutedUntil != 0 {
-		return errors.New("notification muting for group cannot be set by the UI during group creation")
+	profile, ok := b.currentUser()
+	if !ok {
+		return errors.New("cannot create group when profile does not exist")
 	}
 
 	iconID := uuid.Nil
-	if len(iconData) > 0 {
+	imagesString := ""
+	if len(ng.Image) > 0 {
 		iconID = uuid.New()
+		imagesString = iconID.String()
 	}
 
-	creationTime := time.Now().Unix()
+	creationTime := time.Now().Unix() - 1 // Subtract one second to ensure any invites are ordered after the group creation
 	g := group{
 		ID:                     uuid.Nil,
-		Name:                   proposedGroup.Name,
+		Name:                   ng.Name,
+		Images:                 imagesString,
 		CreatedBy:              b.currentUserID(),
 		CreatedAt:              creationTime,
-		Retention:              proposedGroup.Retention,
-		Users:                  users,
-		Admins:                 strings.Join(adminStrings, ","),
-		RestrictUserManagement: proposedGroup.RestrictUserManagement,
-		RestrictGroupEdits:     proposedGroup.RestrictGroupEdits,
-		RestrictPosting:        proposedGroup.RestrictPosting,
+		Retention:              ng.Retention,
+		Users:                  []user{profile},
+		Admins:                 b.currentUserID().String(),
+		RestrictUserManagement: ng.RestrictUserManagement,
+		RestrictGroupEdits:     ng.RestrictGroupEdits,
+		RestrictPosting:        ng.RestrictPosting,
 		LastActivity:           time.Now().Unix(),
-	}
-	if len(iconData) > 0 {
-		g.Images = iconID.String()
-	} else {
-		g.Images = ""
 	}
 
 	groupData, err := msgpack.Marshal(g)
@@ -298,8 +233,8 @@ func (b *Bounce) CreateGroup(proposedGroup Group, iconData []byte) error {
 	}
 	g.ID = groupID
 
-	if len(iconData) > 0 {
-		err := b.embedFile(iconID, iconData, scopeGroupWithInvites, groupID, fileTypeGroupImage, groupID)
+	if len(ng.Image) > 0 {
+		err := b.embedFile(iconID, ng.Image, scopeGroupWithInvites, groupID, fileTypeGroupImage, groupID)
 		if err != nil {
 			return errors.New("error distributing new group image: " + err.Error())
 		}
@@ -344,21 +279,32 @@ func (b *Bounce) CreateGroup(proposedGroup Group, iconData []byte) error {
 	uiGroup := Group{
 		ID:                     g.ID,
 		Name:                   g.Name,
-		Retention:              proposedGroup.Retention,
-		Users:                  uiUsers,
-		Admins:                 proposedGroup.Admins,
+		Retention:              ng.Retention,
+		Users:                  []User{User{ID: profile.ID}},
+		Admins:                 []uuid.UUID{b.currentUserID()},
 		CreatedBy:              g.CreatedBy,
 		CreatedAt:              g.CreatedAt,
 		LastActivity:           g.LastActivity,
-		RestrictUserManagement: proposedGroup.RestrictUserManagement,
-		RestrictGroupEdits:     proposedGroup.RestrictGroupEdits,
-		RestrictPosting:        proposedGroup.RestrictPosting,
+		RestrictUserManagement: ng.RestrictUserManagement,
+		RestrictGroupEdits:     ng.RestrictGroupEdits,
+		RestrictPosting:        ng.RestrictPosting,
 	}
-	if len(iconData) > 0 {
+	if len(ng.Image) > 0 {
 		uiGroup.Images = []uuid.UUID{iconID}
 	}
 
 	go b.ui.OpenNewGroupChat(uiGroup)
+
+	for _, i := range ng.InitialInvites {
+		err = b.InviteUserToGroup(g.ID, i)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"user_id":  i,
+				"group_id": g.ID,
+			}).Error("error inviting user to new group")
+		}
+	}
 
 	return nil
 }

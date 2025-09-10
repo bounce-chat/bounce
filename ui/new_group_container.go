@@ -28,7 +28,6 @@ type newGroup struct {
 	userSearchEntry               *widget.Entry
 	selectedUsers                 *userStore
 	pendingUsers                  *userStore
-	pendingAdmins                 map[uuid.UUID]bool
 	createButton                  *widget.Button
 	addAdminsButton               *widget.Button
 	addUsersButton                *widget.Button
@@ -47,7 +46,6 @@ func (ui *ui) buildNewGroup() {
 		pendingUsersList:       container.NewVScroll(container.NewVBox()),
 		selectedUsers:          newUserStore(),
 		pendingUsers:           newUserStore(),
-		pendingAdmins:          map[uuid.UUID]bool{},
 	}
 
 	ui.widgets.newGroup.userSearchEntry = widget.NewEntry()
@@ -131,28 +129,22 @@ func (ui *ui) buildNewGroup() {
 			ui.showDialog(dialog.NewError(errors.New("invalid retention selection: "+selectedRetentionString), ui.window), nil)
 		}
 
-		users := []chat.User{}
+		initialInvites := []uuid.UUID{}
 		for _, user := range ui.widgets.newGroup.pendingUsers.alphabetized() {
-			users = append(users, chat.User{ID: user.id})
+			initialInvites = append(initialInvites, user.id)
 		}
 
-		admins := []uuid.UUID{}
-		for k, _ := range ui.widgets.newGroup.pendingAdmins {
-			admins = append(admins, k)
-		}
-
-		newGroup := chat.Group{
-			Name: strings.TrimSpace(ui.widgets.newGroup.nameEntry.Text),
-			//Image:
-			Users:                  users,
-			Admins:                 admins,
+		newGroup := chat.NewGroup{
+			Name:                   strings.TrimSpace(ui.widgets.newGroup.nameEntry.Text),
+			Image:                  ui.widgets.newGroup.iconData,
+			InitialInvites:         initialInvites,
 			Retention:              selectedRetentionValue,
 			RestrictUserManagement: ui.widgets.newGroup.userManagementRestrictedCheck.Checked,
 			RestrictGroupEdits:     ui.widgets.newGroup.groupEditsRestrictedCheck.Checked,
 			RestrictPosting:        ui.widgets.newGroup.postingRestrictedCheck.Checked,
 		}
 
-		err := ui.bounce.CreateGroup(newGroup, ui.widgets.newGroup.iconData)
+		err := ui.bounce.CreateGroup(newGroup)
 		if err != nil {
 			ui.showDialog(dialog.NewError(errors.New("Error creating group: "+err.Error()), ui.window), nil)
 		}
@@ -289,12 +281,8 @@ func (ui *ui) clearNewGroupSelectors() {
 	ui.widgets.newGroup.userSearchEntry.Text = ""
 	ui.widgets.newGroup.userSearchEntry.Refresh()
 
-	ui.widgets.newGroup.pendingAdmins = map[uuid.UUID]bool{
-		ui.state.profile.id: true,
-	}
 	ui.widgets.newGroup.selectedUsers.empty()
 	ui.widgets.newGroup.pendingUsers.empty()
-	ui.widgets.newGroup.pendingUsers.add(ui.state.profile)
 	ui.refreshNewGroupUserSelections(ui.users.search(ui.widgets.newGroup.userSearchEntry.Text))
 
 	ui.widgets.newGroup.retentionSelection.Selected = getRetentionName(ui.state.settings.DefaultGroupRetention)
@@ -349,6 +337,10 @@ func (ui *ui) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 		if thisUser.blocked {
 			continue
 		}
+		// Exclude myself
+		if thisUser.id == ui.state.profile.id {
+			continue
+		}
 
 		func(u *user) {
 			addUserButton := newUserButton(
@@ -379,36 +371,32 @@ func (ui *ui) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 	ui.widgets.newGroup.allAvailableUsers.Refresh()
 
 	// Refresh the users that have been selected for the new group
-	pendingUsersList := container.NewVBox()
+	myIcon := newDefaultImage(ui.state.profile.id, ui.state.profile.images, ui.state.profile.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil)
+	myName := widget.NewLabel(ui.state.profile.name) // TODO: use RichText, and not and HBox, to support truncation
+	myDetails := container.NewHBox(
+		myIcon,
+		myName,
+	)
+
+	optionButtons := container.NewHBox(widget.NewLabel("Admin"))
+	pendingUsersList := container.NewVBox(container.New(
+		layout.NewBorderLayout(nil, nil, myDetails, optionButtons),
+		myDetails,
+		optionButtons,
+	))
 	for _, thisUser := range ui.widgets.newGroup.pendingUsers.alphabetized() {
 		func(u *user) {
 			userIcon := newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil)
-			userName := widget.NewLabel(u.name) // TODO: use RichText, and not and HBox, to support truncation
+			userName := widget.NewLabel(u.getDisplayName()) // TODO: use RichText, and not and HBox, to support truncation
 			userDetails := container.NewHBox(
 				userIcon,
 				userName,
 			)
 
-			adminCheck := widget.NewCheck("Admin", func(checked bool) {
-				if checked {
-					ui.widgets.newGroup.pendingAdmins[u.id] = true
-				} else {
-					delete(ui.widgets.newGroup.pendingAdmins, u.id)
-				}
-			})
-			if _, present := ui.widgets.newGroup.pendingAdmins[u.id]; present {
-				adminCheck.Checked = true
-				adminCheck.Refresh()
-			}
-
-			optionButtons := container.NewHBox(
-				adminCheck,
-				widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-					delete(ui.widgets.newGroup.pendingAdmins, u.id)
-					ui.widgets.newGroup.pendingUsers.remove(u.id)
-					ui.refreshNewGroupUserSelections(ui.users.search(ui.widgets.newGroup.userSearchEntry.Text))
-				}),
-			)
+			optionButtons := container.NewHBox(widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+				ui.widgets.newGroup.pendingUsers.remove(u.id)
+				ui.refreshNewGroupUserSelections(ui.users.search(ui.widgets.newGroup.userSearchEntry.Text))
+			}))
 			pendingUserRow := container.New(
 				layout.NewBorderLayout(nil, nil, userDetails, optionButtons),
 				userDetails,
