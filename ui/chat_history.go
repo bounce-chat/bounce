@@ -398,7 +398,9 @@ func (ch *chatHistory) seen(index int) {
 		item := ch.items[index]
 		item.markSeen()
 		if item.countsAsUnread() && !(item.getAuthor() == ch.myID) {
-			ch.unread -= 1
+			if ch.unread > 0 {
+				ch.unread -= 1
+			}
 			ch.updateUnreadCounter()
 		}
 		if ch.windowFocused() {
