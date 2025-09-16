@@ -560,6 +560,7 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 		// Find all update groups for groups this user is in
 		err := b.database.
 			Preload(clause.Associations).
+			Distinct().
 			Select("update_groups.id").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
 			Joins("LEFT JOIN groups ON groups.id = update_groups.target").
@@ -582,17 +583,20 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 			}).Fatal("error selecting unsent update groups in reference offer")
 		}
 
-		// Find all the groups this user has ever left or been kicked from
+		// Find all the groups this user has ever left, rejected, or been kicked from
 		groupsUserLeft := []uuid.UUID{}
 		err = b.database.
 			Model(&updateGroup{}).
 			Distinct().
 			Select("target").
 			Where(
-				"(type = ? OR type = ?) AND data = ?",
+				"((type = ? OR type = ?) AND data = ?) OR (type = ? AND data = ? AND actor = ?)",
 				updateGroupTypeRemoveUser,
 				updateGroupTypeRevokeInvite,
 				dev.UserID[:],
+				updateGroupTypeRespondToInvite,
+				[]byte{rejectInvite},
+				dev.UserID,
 			).
 			Find(&groupsUserLeft).Error
 		if err != nil {
@@ -609,7 +613,19 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 
 			// Find the timestamp of their latest departure
 			var lastRemoval int64
-			row := b.database.Table("update_groups").Where("(type = ? OR type = ?) AND data = ?", updateGroupTypeRemoveUser, updateGroupTypeRevokeInvite, dev.UserID[:]).Select("MAX(timestamp)").Row()
+			row := b.database.
+				Table("update_groups").
+				Where(
+					"((type = ? OR type = ?) AND data = ?) OR (type = ? AND data = ? AND actor = ?)",
+					updateGroupTypeRemoveUser,
+					updateGroupTypeRevokeInvite,
+					dev.UserID[:],
+					updateGroupTypeRespondToInvite,
+					[]byte{rejectInvite},
+					dev.UserID,
+				).
+				Select("MAX(timestamp)").
+				Row()
 			err := row.Scan(&lastRemoval)
 			if err != nil {
 				log.WithFields(log.Fields{
