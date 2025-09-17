@@ -393,10 +393,14 @@ func (ui *ui) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 				userName,
 			)
 
-			optionButtons := container.NewHBox(widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+			removeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 				ui.widgets.newGroup.pendingUsers.remove(u.id)
 				ui.refreshNewGroupUserSelections(ui.users.search(ui.widgets.newGroup.userSearchEntry.Text))
-			}))
+			})
+			removeButton.Importance = widget.LowImportance
+			optionButtons := container.NewHBox(
+				removeButton,
+			)
 			pendingUserRow := container.New(
 				layout.NewBorderLayout(nil, nil, userDetails, optionButtons),
 				userDetails,
