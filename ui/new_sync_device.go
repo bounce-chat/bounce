@@ -72,7 +72,7 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 
 	ui.widgets.newSyncDevice.deviceNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
-		str, trimmed := trimLeadingSpace(strings.TrimSpace(str))
+		str, trimmed := trimLeadingSpace(str)
 		ui.widgets.newSyncDevice.deviceNameEntry.Text = str
 		if trimmed != 0 {
 			ui.widgets.newSyncDevice.deviceNameEntry.CursorRow = 0
@@ -292,7 +292,7 @@ func (ui *ui) InitialSyncComplete() {
 		ui.state.initialSyncIncomplete = false // Allow notifications and dialogs
 		ui.showMainContainer()
 
-		newDeviceName = ui.widgets.newSyncDevice.deviceNameEntry.Text
+		newDeviceName = strings.TrimSpace(ui.widgets.newSyncDevice.deviceNameEntry.Text)
 	})
 
 	if newDeviceName != "" {
