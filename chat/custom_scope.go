@@ -54,6 +54,12 @@ func (b *Bounce) createCustomScopeFromGroup(groupID uuid.UUID) error {
 	}
 
 	addresses := b.getGroupWithInvitesScope(&gc, false)
+	if len(addresses) == 0 {
+		log.WithFields(log.Fields{
+			"group_id": groupID,
+		}).Error("cannot create custom scope for group that has no addresses")
+		return errors.New("no addresses in scope")
+	}
 
 	cs := &customScope{
 		ID:        groupID,
