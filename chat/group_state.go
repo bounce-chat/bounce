@@ -58,9 +58,12 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 	err := b.database.Where("id = ?", groupID).First(&gc).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// This happens when we receive an update group for a group we're being added to
+			// before we receive the rest of the group information, and usually is not indicative
+			// of a bug
 			log.WithFields(log.Fields{
 				"group_id": groupID,
-			}).Error("group creation not found for consensus calculation")
+			}).Debug("group creation not found for consensus calculation")
 			return gs, err
 		} else {
 			log.WithFields(log.Fields{

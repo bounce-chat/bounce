@@ -61,7 +61,7 @@ func (b *Bounce) reloadGroupConsensus(groupID uuid.UUID) {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
 			"error":    err.Error(),
-		}).Error("error creating initial state while updating group consensus")
+		}).Debug("error creating initial state while updating group consensus")
 		return
 	}
 	cs := newCanonicalStack(initialState, b.currentUserID())
