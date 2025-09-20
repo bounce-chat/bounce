@@ -135,44 +135,6 @@ func (b *Bounce) writeGroupConsensus(groupID uuid.UUID) error {
 	b.consensusStore.Lock()
 	defer b.consensusStore.Unlock()
 
-	// Try to find the group, if there is no group, apply any blocking updates for that group
-	var g group
-	err := b.database.Preload(clause.Associations).Where("id = ?", groupID).First(&g).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// If the group doesn't exist we might still have unprocessed block frames to apply
-			var ugs []updateGroup
-			err = b.database.Preload(clause.Associations).Where(
-				"target = ? AND type = ? AND actor = ? AND applied = ?",
-				groupID,
-				updateGroupTypeBlock,
-				b.currentUserID(),
-				false,
-			).Order("timestamp asc").Find(&ugs).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error looking up update groups")
-			}
-			for _, ug := range ugs {
-				b.addBlockedGroup(ug.Target)
-				err = b.database.Model(&ug).Select("applied").Update("applied", true).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"id":    ug.ID,
-						"error": err.Error(),
-					}).Error("error setting applied on update group that blocks group")
-				}
-			}
-			return nil
-		} else {
-			log.WithFields(log.Fields{
-				"group_id": groupID,
-				"error":    err.Error(),
-			}).Fatal("database error looking up group")
-		}
-	}
-
 	// Get the canonical history stack
 	stack, ok := b.consensusStore.groups[groupID]
 	if !ok {
@@ -181,7 +143,7 @@ func (b *Bounce) writeGroupConsensus(groupID uuid.UUID) error {
 
 	// Get all update groups for this group
 	var ugs []updateGroup
-	err = b.database.Find(&ugs, "target = ?", groupID).Error
+	err := b.database.Find(&ugs, "target = ?", groupID).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
@@ -190,10 +152,10 @@ func (b *Bounce) writeGroupConsensus(groupID uuid.UUID) error {
 	}
 
 	// Apply the group state to the database and UI, marking updates in the database as applied or not where needed
-	return b.setRollbacksApplicationsAndGroupState(g, stack, ugs)
+	return b.setRollbacksApplicationsAndGroupState(groupID, stack, ugs)
 }
 
-func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalStack, ugs []updateGroup) error {
+func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *canonicalStack, ugs []updateGroup) error {
 	finalState, err := cs.top()
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -215,6 +177,49 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 			notified[ug.ID] = true
 		}
 	}
+
+	// Create a list of all of the users included in this group, starting with the user who created it
+	initialGroup, err := b.groupCreationEmbeddedGroup(groupID)
+	if err != nil {
+		// If we're trying to update consensus on a group that we do not have a group creation for,
+		// it is possible we are handling frames we used to block the group.  In that case, make sure
+		// the group is blocked.
+		var ugs []updateGroup
+		ugErr := b.database.Preload(clause.Associations).Where(
+			"target = ? AND type = ? AND actor = ?",
+			groupID,
+			updateGroupTypeBlock,
+			b.currentUserID(),
+		).Order("timestamp asc").Find(&ugs).Error
+		if ugErr != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up update groups")
+		}
+
+		if len(ugs) == 0 {
+			// There were no blocking update groups for this group and we don't have the group creation, this is unexpected
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error getting creating user from group creation")
+			return err
+		} else {
+			for _, ug := range ugs {
+				if !ug.Applied {
+					b.addBlockedGroup(ug.Target)
+					err = b.database.Model(&ug).Select("applied").Update("applied", true).Error
+					if err != nil {
+						log.WithFields(log.Fields{
+							"id":    ug.ID,
+							"error": err.Error(),
+						}).Error("error setting applied on update group that blocks group")
+					}
+				}
+			}
+			return nil
+		}
+	}
+	allUsers := []user{initialGroup.Users[0]}
 
 	// Find any canonical update groups that have not been applied and make them as applied and inform the UI if needed
 	canonical := make(map[uuid.UUID]bool)
@@ -238,7 +243,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 					return err
 				}
 				if finalState.isMember(newUser.ID) || finalState.isInvited(newUser.ID) {
-					b.createNewUserIfNeeded(newUser)
+					allUsers = append(allUsers, newUser)
 				}
 			}
 
@@ -274,15 +279,45 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		}
 	}
 
+	// We can only be invited to groups by people we were aware of before they invited us to a group, this prevents a user who knows our details
+	// from being able to bootstrap themselves into our contacts without being introduced by someone we already know
+	var invitedByUser user
+	err = b.database.Select("id").First(&invitedByUser, "id = ?", finalState.invitedBy).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			err = b.database.Exec("DELETE FROM group_creations WHERE id = ?", groupID).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"group_id": groupID,
+					"error":    err.Error(),
+				}).Error("error removing group creation from unauthorized group")
+			}
+
+			err = b.database.Exec("DELETE FROM update_groups WHERE target = ?", groupID).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"group_id": groupID,
+					"error":    err.Error(),
+				}).Error("error removing update groups from unauthorized group")
+			}
+
+			return nil
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up user")
+		}
+	}
+
 	// If we blocked this group, save that on user, custom scope our block update, and delete the group
 	if finalState.blockedBy != nil {
 		// Add this group to our list of blocked groups
-		b.addBlockedGroup(g.ID)
+		b.addBlockedGroup(groupID)
 
 		// Find our block update and custom scope it
-		err = b.createCustomScopeFromGroup(g.ID)
+		err = b.createCustomScopeFromGroup(groupID)
 		if err == nil {
-			err = b.database.Model(&updateGroup{}).Where("id = ?", finalState.blockedBy.ID).Select("custom_scope").Update("custom_scope", g.ID).Error
+			err = b.database.Model(&updateGroup{}).Where("id = ?", finalState.blockedBy.ID).Select("custom_scope").Update("custom_scope", groupID).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"update_group_id": finalState.blockedBy,
@@ -298,20 +333,20 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 
 		// Inform the UI
 		go b.ui.GroupDeleted(GroupDeleted{
-			Group: g.ID,
+			Group: groupID,
 			Actor: b.currentUserID(),
 		})
 
 		// Delete the group
-		return b.database.Delete(&g).Error
+		return b.database.Delete(&initialGroup).Error
 	}
 
 	// If the final state is that the group is deleted, delete the group
 	if finalState.deletedBy != nil {
 		// Attach a custom scope to this update group
-		err = b.createCustomScopeFromGroup(g.ID)
+		err = b.createCustomScopeFromGroup(groupID)
 		if err == nil {
-			err = b.database.Model(&updateGroup{}).Where("id = ?", finalState.deletedBy.ID).Select("custom_scope").Update("custom_scope", g.ID).Error
+			err = b.database.Model(&updateGroup{}).Where("id = ?", finalState.deletedBy.ID).Select("custom_scope").Update("custom_scope", groupID).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"update_group_id": finalState.deletedBy.ID,
@@ -342,11 +377,11 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 		if !alwaysAnAdmin {
 			// Find the custom scope we just created
 			var cs customScope
-			err = b.database.First(&cs, "id = ?", g.ID).Error
+			err = b.database.First(&cs, "id = ?", groupID).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					log.WithFields(log.Fields{
-						"id": g.ID,
+						"id": groupID,
 					}).Warn("cannot find custom scope that was just created")
 				} else {
 					log.WithFields(log.Fields{
@@ -368,7 +403,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 					}
 
 					if !allDelivered {
-						err = b.database.Model(&ug).Select("custom_scope").Update("custom_scope", g.ID).Error
+						err = b.database.Model(&ug).Select("custom_scope").Update("custom_scope", groupID).Error
 						if err != nil {
 							log.WithFields(log.Fields{
 								"update_group_id": ug.ID,
@@ -382,20 +417,20 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 
 		// Inform the UI
 		go b.ui.GroupDeleted(GroupDeleted{
-			Group: g.ID,
+			Group: groupID,
 			Actor: finalState.ug.Actor,
 		})
 
 		// Delete the group
-		return b.database.Delete(&g).Error
+		return b.database.Delete(&initialGroup).Error
 	}
 
 	// If the final state involves us being removed from the group, delete the group
 	if finalState.removedBy != nil {
 		// Attach a custom scope to this update group
-		err = b.createCustomScopeFromGroup(g.ID)
+		err = b.createCustomScopeFromGroup(groupID)
 		if err == nil {
-			err = b.database.Model(&updateGroup{}).Where("id = ?", finalState.removedBy.ID).Select("custom_scope").Update("custom_scope", g.ID).Error
+			err = b.database.Model(&updateGroup{}).Where("id = ?", finalState.removedBy.ID).Select("custom_scope").Update("custom_scope", groupID).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"update_group_id": finalState.removedBy.ID,
@@ -411,12 +446,12 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 
 		// Inform the UI
 		go b.ui.RemovedFromGroup(RemovedFromGroup{
-			Group: g.ID,
+			Group: groupID,
 			Actor: finalState.removedBy.Actor,
 		})
 
 		// Delete the group
-		return b.database.Delete(&g).Error
+		return b.database.Delete(&initialGroup).Error
 	}
 
 	// TODO: if we are not invited or a member, but there's no block / delete / removal, then we must have been added by someone who's permission was rolled back, and we should remove the group from the UI
@@ -437,7 +472,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 	// Clear delivery records for users that were removed in the final state
 	for userID, _ := range everInGroup {
 		if !finalState.isMember(userID) || !finalState.isInvited(userID) {
-			b.clearGroupDeliveryRecordsForUser(userID, g.ID)
+			b.clearGroupDeliveryRecordsForUser(userID, groupID)
 		}
 	}
 
@@ -446,24 +481,24 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 	var failedDelete updateGroup
 	err = b.database.
 		Select("id", "MAX(timestamp)").
-		Where("target = ? AND type = ? AND applied = false", g.ID, updateGroupTypeDelete).
+		Where("target = ? AND type = ? AND applied = false", groupID, updateGroupTypeDelete).
 		Find(&failedDelete).
 		Error
 	if err == nil {
-		b.clearDeliveryRecordsForFailedDelete(g.ID, failedDelete.ID)
+		b.clearDeliveryRecordsForFailedDelete(groupID, failedDelete.ID)
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
-			"group_id": g.ID,
+			"group_id": groupID,
 			"error":    err.Error(),
 		}).Fatal("database error looking for unapplied update group delete")
 	}
 
-	err = b.setGroupStateInDatabase(g, finalState, ugsToNotify)
+	err = b.setGroupStateInDatabase(initialGroup, allUsers, finalState, ugsToNotify)
 	if err != nil {
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":    err.Error(),
-				"group_id": g.ID,
+				"group_id": groupID,
 			}).Error("error updating group consensus")
 		}
 
@@ -471,7 +506,30 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(g group, cs *canonicalSta
 	return err
 }
 
-func (b *Bounce) setGroupStateInDatabase(g group, gs groupState, ugsToNotify []updateGroup) error {
+func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs groupState, ugsToNotify []updateGroup) error {
+	for _, u := range allUsers {
+		b.createNewUserIfNeeded(u)
+	}
+	var g group
+	err := b.database.Preload(clause.Associations).Where("id = ?", initialGroup.ID).First(&g).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			g = initialGroup
+			err = b.database.Create(&initialGroup).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": initialGroup.ID,
+				}).Fatal("database error creating group")
+			}
+		} else {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": initialGroup.ID,
+			}).Fatal("database error looking up group")
+		}
+	}
+
 	// Prune cleared messages
 	b.pruneMessagesBeforeClear(gs.clearBefore, g.ID)
 
@@ -574,7 +632,7 @@ func (b *Bounce) setGroupStateInDatabase(g group, gs groupState, ugsToNotify []u
 	for _, imageID := range gs.images {
 		imageIDStrings = append(imageIDStrings, imageID.String())
 	}
-	err := b.database.Model(&g).Select("images").Update("images", strings.Join(imageIDStrings, ",")).Error
+	err = b.database.Model(&g).Select("images").Update("images", strings.Join(imageIDStrings, ",")).Error
 	if err != nil {
 		return err
 	}

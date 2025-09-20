@@ -4,7 +4,6 @@ import (
 	"errors"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -243,49 +242,13 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		}).Fatal("error looking up group creation")
 	}
 
-	// Save all of the structures in this group, creating any new users or devices as needed
-	err = b.database.Transaction(func(tx *gorm.DB) error {
-		u := g.Users[0]
-		for _, dev := range u.Devices {
-			err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error saving device that is part of a group")
-				return err
-			}
-		}
-		u.IntroductionMethod = userIntroductionGroup
-		u.IntroductionTime = time.Now().Unix()
-		err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error saving user that is part of a group")
-			return err
-		}
-
-		err = tx.Create(&gc).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error saving new group creation")
-			return err
-		}
-		err = tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&g).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error saving new group")
-			return err
-		}
-
-		return nil
-	})
+	// Save the group creation in the database
+	err = b.database.Create(&gc).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error in transaction for saving a new group")
+		}).Error("error saving new group creation")
+		return nil, false
 	}
 
 	// Ack and delivery track all of the devices included in this group creation
@@ -348,4 +311,30 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 	b.GroupConnectionDesired(g.ID)
 
 	return &gc, true
+}
+
+func (b *Bounce) groupCreationEmbeddedGroup(groupID uuid.UUID) (group, error) {
+	var gc groupCreation
+	err := b.database.First(&gc, "id = ?", groupID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return group{}, err
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up group creation")
+		}
+	}
+
+	var g group
+	err = msgpack.Unmarshal(gc.Data, &g)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling group in group creation")
+		return group{}, err
+	}
+	g.ID = groupID
+
+	return g, nil
 }
