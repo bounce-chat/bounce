@@ -280,32 +280,35 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 	}
 
 	// We can only be invited to groups by people we were aware of before they invited us to a group, this prevents a user who knows our details
-	// from being able to bootstrap themselves into our contacts without being introduced by someone we already know
-	var invitedByUser user
-	err = b.database.Select("id").First(&invitedByUser, "id = ?", finalState.invitedBy).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			err = b.database.Exec("DELETE FROM group_creations WHERE id = ?", groupID).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"group_id": groupID,
-					"error":    err.Error(),
-				}).Error("error removing group creation from unauthorized group")
-			}
+	// from being able to bootstrap themselves into our contacts without being introduced by someone we already know.  If we didn't create the
+	// group, we check to make sure that whoever invited us already existed in our database.
+	if initialGroup.Users[0].ID != b.currentUserID() {
+		var invitedByUser user
+		err = b.database.Select("id").First(&invitedByUser, "id = ?", finalState.invitedBy).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				err = b.database.Exec("DELETE FROM group_creations WHERE id = ?", groupID).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"group_id": groupID,
+						"error":    err.Error(),
+					}).Error("error removing group creation from unauthorized group")
+				}
 
-			err = b.database.Exec("DELETE FROM update_groups WHERE target = ?", groupID).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"group_id": groupID,
-					"error":    err.Error(),
-				}).Error("error removing update groups from unauthorized group")
-			}
+				err = b.database.Exec("DELETE FROM update_groups WHERE target = ?", groupID).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"group_id": groupID,
+						"error":    err.Error(),
+					}).Error("error removing update groups from unauthorized group")
+				}
 
-			return nil
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up user")
+				return nil
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up user")
+			}
 		}
 	}
 
@@ -528,6 +531,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 					"group_id": initialGroup.ID,
 				}).Fatal("database error creating group")
 			}
+			b.GroupConnectionDesired(g.ID)
 		} else {
 			log.WithFields(log.Fields{
 				"error":    err.Error(),

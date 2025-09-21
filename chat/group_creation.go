@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -268,47 +267,12 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		}).Error("error cleaning up custom scopes when re-added to group")
 	}
 
-	// Inform the UI of the new group
-	adminUUIDs := []uuid.UUID{}
-	if len(g.Admins) > 0 {
-		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := uuid.Parse(adminIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": g.ID,
-					"admins":   g.Admins,
-				}).Fatal("invalid UUID in group admin list")
-			}
-
-			adminUUIDs = append(adminUUIDs, adminID)
-		}
-	}
-	imageUUIDs := []uuid.UUID{}
-	if len(g.Images) > 0 {
-		for _, imageIDString := range strings.Split(g.Images, ",") {
-			imageID, err := uuid.Parse(imageIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": g.ID,
-					"images":   g.Images,
-				}).Fatal("invalid UUID in group image list")
-			}
-
-			imageUUIDs = append(imageUUIDs, imageID)
-		}
-	}
-
 	// Start tracking this group's state in the consensus store, and notify
 	// the UI / update the database if this in real time
 	b.reloadGroupConsensus(g.ID)
 	if !catchUp {
 		b.writeGroupConsensus(g.ID)
 	}
-
-	// Notify the peering engine that we want to be connected to this group right now
-	b.GroupConnectionDesired(g.ID)
 
 	return &gc, true
 }

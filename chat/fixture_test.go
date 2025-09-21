@@ -428,9 +428,6 @@ func (t *testUI) SetGroupState(g Group) {
 }
 func (t *testUI) DisplaySentGroupMessage(GroupMessage) {}
 func (t *testUI) DisplayGroupMessage(GroupMessage)     {}
-func (t *testUI) AddUser(ugau UpdateGroupAddUser) {
-	t.called <- call{function: "AddUser", args: []interface{}{ugau}}
-}
 func (t *testUI) RemoveUser(ugru UpdateGroupRemoveUser) {
 	t.called <- call{function: "RemoveUser", args: []interface{}{ugru}}
 }
@@ -452,6 +449,11 @@ func (t *testUI) PostingRestricted(UpdateGroupPostingRestricted)                
 func (t *testUI) PostingUnrestricted(UpdateGroupPostingUnrestricted)               {}
 func (t *testUI) PauseGroupNotifications(groupID uuid.UUID)                        {}
 func (t *testUI) ResumeGroupNotifications(groupID uuid.UUID)                       {}
+func (t *testUI) InviteUser(UpdateGroupInviteUser)                                 {}
+func (t *testUI) RollbackGroup(uuid.UUID)                                          {}
+func (t *testUI) GroupInviteRevoked(UpdateGroupInviteRevoked)                      {}
+func (t *testUI) GroupInviteAccepted(UpdateGroupInviteAccepted)                    {}
+func (t *testUI) GroupInviteRejected(UpdateGroupInviteRejected)                    {}
 func (t *testUI) ShowTypingIndicator(userID, threadID uuid.UUID)                   {}
 func (t *testUI) HideTypingIndicator(userID, threadID uuid.UUID)                   {}
 func (t *testUI) UserOnline(userID uuid.UUID)                                      {}
@@ -525,27 +527,22 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 	bob.UserConnectionDesired(meUser.ID)
 	bob.UserConnectionDesired(aliceUser.ID)
 
-	me.CreateGroup(Group{
+	assert.NoError(t, me.CreateGroup(NewGroup{
 		Name: "Test Group",
-		Users: []User{
-			User{
-				ID: me.currentUserID(),
-			},
-			User{
-				ID: alice.currentUserID(),
-			},
-			User{
-				ID: bob.currentUserID(),
-			},
+		InitialInvites: []uuid.UUID{
+			alice.currentUserID(),
+			bob.currentUserID(),
 		},
-		Admins: []uuid.UUID{me.currentUserID()},
-	}, []byte{})
-	await(t, alice, "SetGroupState")
-	await(t, bob, "SetGroupState")
-
+	}))
 	var g group
 	me.database.First(&g)
 	groupID = g.ID
+
+	await(t, alice, "SetGroupState") // TODO: manually create the invites and acceptance in all databases and update group states manually?
+	alice.AcceptInvite(g.ID)
+
+	await(t, bob, "SetGroupState")
+	bob.AcceptInvite(g.ID)
 
 	t.Cleanup(func() {
 		me.Shutdown()
@@ -567,4 +564,8 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 	bob.ui.(*testUI).Unlock()
 
 	return
+}
+
+func TestSetup(t *testing.T) {
+	createUsersAndGroups(t)
 }

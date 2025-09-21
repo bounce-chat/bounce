@@ -616,7 +616,7 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix() + 1,
-		Type:      updateGroupTypeAddUser,
+		Type:      updateGroupTypeInviteUser,
 		Data:      newUserBytes,
 	}
 	add.OriginalPayload, err = msgpack.Marshal(add)
@@ -648,6 +648,8 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 		},
 	}
 	alice.handleCatchUp(b.network.Address(), cu.getPayload(), false)
+
+	// TODO: have alice accept the invite
 
 	// Make sure Alice is now a member of the group again
 	state, err := alice.currentGroupState(groupID)
