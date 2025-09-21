@@ -76,6 +76,24 @@ func (b *Bounce) createCustomScopeFromGroup(groupID uuid.UUID) error {
 	return nil
 }
 
+func (b *Bounce) createCustomScopeForSync() uuid.UUID {
+	addresses := b.getSyncScope(nil, false)
+
+	cs := &customScope{
+		ID:        uuid.New(),
+		Addresses: strings.Join(addresses, ","),
+	}
+
+	err := b.database.Create(cs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error creating custom scope")
+	}
+
+	return cs.ID
+}
+
 // This function is called when we've been re-added to a group we were previously removed from and we want to
 // undo the custom scoping of past frames
 func (b *Bounce) rescopeIfReAddedToGroup(groupID uuid.UUID) error {

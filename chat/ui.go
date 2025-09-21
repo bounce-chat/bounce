@@ -437,6 +437,7 @@ type UI interface {
 	GroupInviteRejected(UpdateGroupInviteRejected)
 	PauseGroupNotifications(uuid.UUID)
 	ResumeGroupNotifications(uuid.UUID)
+	RollbackGroup(uuid.UUID)
 
 	// Generic thread items
 	DeleteItem(uuid.UUID)

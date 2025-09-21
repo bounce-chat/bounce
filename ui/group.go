@@ -1355,6 +1355,11 @@ func (ui *ui) GroupInviteRejected(ugir chat.UpdateGroupInviteRejected) {
 	fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
 }
 
+func (ui *ui) RollbackGroup(groupID uuid.UUID) {
+	ui.threads.remove(groupID)
+	ui.refreshThreadOrder()
+}
+
 func (ui *ui) updateEnabledFeatures(g *group) {
 	amAdmin := g.isAdmin(ui.state.profile.id)
 

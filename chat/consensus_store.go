@@ -454,7 +454,13 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		return b.database.Delete(&initialGroup).Error
 	}
 
-	// TODO: if we are not invited or a member, but there's no block / delete / removal, then we must have been added by someone who's permission was rolled back, and we should remove the group from the UI
+	if !finalState.isMember(b.currentUserID()) && !finalState.isInvited(b.currentUserID()) {
+		// We are not a member of this group nor have we been invited.  We also haven't blocked it, been removed from it, or deleted it.
+		// This indicates that our previous invitation to the group has been rolled back by a consensus operation.  We should remove
+		// everything about the group from this device, aside from custom sync scoping the updates, and remove it from the UI.
+		b.cleanupRolledBackInvite(groupID)
+		b.ui.RollbackGroup(groupID)
+	}
 
 	// Find any non-canonical update groups that have been applied and mark them as not applied roll them back in the UI
 	for _, ug := range ugs {
@@ -1172,5 +1178,32 @@ func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
 		if rd.connectedSockets.Load() > 1 {
 			go b.sendReferences(addr)
 		}
+	}
+}
+
+func (b *Bounce) cleanupRolledBackInvite(groupID uuid.UUID) {
+	id := b.createCustomScopeForSync()
+	err := b.database.Model(&updateGroup{}).Where("target = ?", groupID).Select("custom_scope").Update("custom_scope", id).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error updating custom scope on update groups")
+	}
+
+	var g group
+	err = b.database.First(&g, "id = ?", groupID).Error
+	if err == nil {
+		err = b.database.Delete(&g).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+			}).Error("error deleting rollback group")
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": groupID,
+		}).Fatal("database error looking up group")
 	}
 }
