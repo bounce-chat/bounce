@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -123,11 +122,9 @@ func TestChunkOffersInReferenceFollowOverlapScope(t *testing.T) {
 		if fr.Type == typeChunkOffer {
 			if fr.FrameID == bco.ID {
 				hasMyChunkOffer = true
-				fmt.Printf("bco:%+v\n", bco)
 			}
 			if fr.FrameID == aco.ID {
 				hasAliceChunkOffer = true
-				fmt.Printf("aco:%+v\n", aco)
 			}
 		}
 	}

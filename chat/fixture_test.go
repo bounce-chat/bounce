@@ -640,7 +640,3 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 
 	return
 }
-
-func TestSetup(t *testing.T) {
-	createUsersAndGroups(t)
-}

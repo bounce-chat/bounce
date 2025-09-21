@@ -326,13 +326,13 @@ func TestAddingConflictToHistoryStackIsIgnored(t *testing.T) {
 func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
 	b, alice, bob, groupID := createUsersAndGroups(t)
 
-	// Make sure history only has the group creation at the beginning and the restriction on edits
+	// Make sure history only has the group creation at the beginning
 	stack, err := b.currentGroupStack(groupID)
 	assert.NoError(t, err)
 	b.consensusStore.Lock()
 	stackLen := len(stack.history)
 	b.consensusStore.Unlock()
-	assert.Equal(t, 1, stackLen)
+	assert.Equal(t, 5, stackLen)
 
 	// Create an update group that restricts edits and insert
 	restrictEdits := updateGroup{
@@ -357,7 +357,7 @@ func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
 	b.consensusStore.Lock()
 	stackLen = len(stack.history)
 	b.consensusStore.Unlock()
-	assert.Equal(t, 2, stackLen)
+	assert.Equal(t, 6, stackLen)
 
 	// Create an edit from Alice that happens later
 	unauthorizedEdit := updateGroup{
@@ -405,7 +405,7 @@ func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
 	b.consensusStore.Lock()
 	stackLen = len(stack.history)
 	b.consensusStore.Unlock()
-	assert.Equal(t, 2, stackLen)
+	assert.Equal(t, 6, stackLen)
 
 	// Get the final state and check that the name edit applied and the restriction did not
 	gs, err := stack.top()
@@ -423,7 +423,7 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 	b.consensusStore.Lock()
 	stackLen := len(stack.history)
 	b.consensusStore.Unlock()
-	assert.Equal(t, 1, stackLen)
+	assert.Equal(t, 5, stackLen)
 
 	// Create an update group that restricts edits and insert
 	restrictEdits := updateGroup{
@@ -448,7 +448,7 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 	b.consensusStore.Lock()
 	stackLen = len(stack.history)
 	b.consensusStore.Unlock()
-	assert.Equal(t, 2, stackLen)
+	assert.Equal(t, 6, stackLen)
 
 	// Add confirmations for it
 	aliceConfirmation := confirmation{
@@ -519,7 +519,7 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 	b.consensusStore.Lock()
 	stackLen = len(stack.history)
 	b.consensusStore.Unlock()
-	assert.Equal(t, 2, stackLen)
+	assert.Equal(t, 6, stackLen)
 
 	// Get the final state and check that the name edit applied and the restriction did not
 	gs, err := stack.top()
@@ -625,6 +625,20 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 	add.Signature = sc.Signature
 	add.Signer = sc.Signer
 
+	accept := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     alice.currentUserID(),
+		Target:    groupID,
+		Timestamp: time.Now().Unix() + 2,
+		Type:      updateGroupTypeRespondToInvite,
+		Data:      []byte{acceptInvite},
+	}
+	accept.OriginalPayload, err = msgpack.Marshal(accept)
+	assert.NoError(t, err)
+	sc = alice.createSignedContainer(accept.OriginalPayload)
+	accept.Signature = sc.Signature
+	accept.Signer = sc.Signer
+
 	// Re-add Alice to the group via a catch up that contains all of the group history and an add frame
 	var gc groupCreation
 	assert.NoError(t, b.database.First(&gc, "id = ?", groupID).Error)
@@ -644,6 +658,11 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 				ID:      add.ID,
 				Type:    typeUpdateGroup,
 				Payload: add.getPayload(),
+			},
+			frame{
+				ID:      accept.ID,
+				Type:    typeUpdateGroup,
+				Payload: accept.getPayload(),
 			},
 		},
 	}
