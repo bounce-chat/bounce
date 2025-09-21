@@ -529,20 +529,95 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 
 	assert.NoError(t, me.CreateGroup(NewGroup{
 		Name: "Test Group",
-		InitialInvites: []uuid.UUID{
-			alice.currentUserID(),
-			bob.currentUserID(),
-		},
 	}))
 	var g group
 	me.database.First(&g)
 	groupID = g.ID
 
-	await(t, alice, "SetGroupState") // TODO: manually create the invites and acceptance in all databases and update group states manually?
-	alice.AcceptInvite(g.ID)
+	var gc groupCreation
+	me.database.First(&gc)
+	alice.database.Create(&gc)
+	bob.database.Create(&gc)
 
-	await(t, bob, "SetGroupState")
-	bob.AcceptInvite(g.ID)
+	inviteTime := time.Now().Unix() - 2
+	acceptTime := inviteTime + 1
+	var err error
+
+	addAlice := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     me.currentUserID(),
+		Target:    groupID,
+		Timestamp: inviteTime,
+		Type:      updateGroupTypeInviteUser,
+		Data:      ab,
+	}
+	addAlice.OriginalPayload, err = msgpack.Marshal(addAlice)
+	assert.NoError(t, err)
+	sc := me.createSignedContainer(addAlice.OriginalPayload)
+	addAlice.Signature = sc.Signature
+	addAlice.Signer = sc.Signer
+
+	addBob := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     me.currentUserID(),
+		Target:    groupID,
+		Timestamp: inviteTime,
+		Type:      updateGroupTypeInviteUser,
+		Data:      bb,
+	}
+	addBob.OriginalPayload, err = msgpack.Marshal(addBob)
+	assert.NoError(t, err)
+	sc = me.createSignedContainer(addBob.OriginalPayload)
+	addBob.Signature = sc.Signature
+	addBob.Signer = sc.Signer
+
+	aliceAccepts := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     alice.currentUserID(),
+		Target:    groupID,
+		Timestamp: acceptTime,
+		Type:      updateGroupTypeRespondToInvite,
+		Data:      []byte{acceptInvite},
+	}
+	aliceAccepts.OriginalPayload, err = msgpack.Marshal(aliceAccepts)
+	assert.NoError(t, err)
+	sc = alice.createSignedContainer(aliceAccepts.OriginalPayload)
+	aliceAccepts.Signature = sc.Signature
+	aliceAccepts.Signer = sc.Signer
+
+	bobAccepts := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     bob.currentUserID(),
+		Target:    groupID,
+		Timestamp: acceptTime,
+		Type:      updateGroupTypeRespondToInvite,
+		Data:      []byte{acceptInvite},
+	}
+	bobAccepts.OriginalPayload, err = msgpack.Marshal(bobAccepts)
+	assert.NoError(t, err)
+	sc = bob.createSignedContainer(bobAccepts.OriginalPayload)
+	bobAccepts.Signature = sc.Signature
+	bobAccepts.Signer = sc.Signer
+
+	assert.NoError(t, me.database.Create(addAlice).Error)
+	assert.NoError(t, me.database.Create(addBob).Error)
+	assert.NoError(t, me.database.Create(aliceAccepts).Error)
+	assert.NoError(t, me.database.Create(bobAccepts).Error)
+	assert.NoError(t, alice.database.Create(addAlice).Error)
+	assert.NoError(t, alice.database.Create(addBob).Error)
+	assert.NoError(t, alice.database.Create(aliceAccepts).Error)
+	assert.NoError(t, alice.database.Create(bobAccepts).Error)
+	assert.NoError(t, bob.database.Create(addAlice).Error)
+	assert.NoError(t, bob.database.Create(addBob).Error)
+	assert.NoError(t, bob.database.Create(aliceAccepts).Error)
+	assert.NoError(t, bob.database.Create(bobAccepts).Error)
+
+	me.reloadGroupConsensus(groupID)
+	me.writeGroupConsensus(groupID)
+	alice.reloadGroupConsensus(groupID)
+	alice.writeGroupConsensus(groupID)
+	bob.reloadGroupConsensus(groupID)
+	bob.writeGroupConsensus(groupID)
 
 	t.Cleanup(func() {
 		me.Shutdown()

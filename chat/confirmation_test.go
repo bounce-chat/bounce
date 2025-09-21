@@ -17,7 +17,7 @@ func TestCanRenameGroupAndConfirm(t *testing.T) {
 	newName := "New Name"
 	b.RenameGroup(groupID, newName)
 	var ug updateGroup
-	err := b.database.Select("id").First(&ug, "target = ?", groupID).Error
+	err := b.database.Select("id").First(&ug, "target = ? AND type = ?", groupID, updateGroupTypeChangeName).Error
 	assert.NoError(t, err)
 
 	var g group
@@ -53,21 +53,21 @@ func TestCanRenameGroupAndConfirm(t *testing.T) {
 	// I see three confirmations
 	awaitAck(t, alice, b, typeConfirmation, ac.ID)
 	awaitAck(t, bob, b, typeConfirmation, bc.ID)
-	err = b.database.Preload(clause.Associations).First(&ug, "target = ?", groupID).Error
+	err = b.database.Preload(clause.Associations).First(&ug, "target = ? AND type = ?", groupID, updateGroupTypeChangeName).Error
 	assert.NoError(t, err)
 	assert.Equal(t, 3, ug.confirmingUsers(userIDs))
 
 	// Alice sees three confirmations
 	awaitAck(t, bob, alice, typeConfirmation, bc.ID)
 	var aug updateGroup
-	err = alice.database.Preload(clause.Associations).First(&aug, "target = ?", groupID).Error
+	err = alice.database.Preload(clause.Associations).First(&aug, "target = ? AND type = ?", groupID, updateGroupTypeChangeName).Error
 	assert.NoError(t, err)
 	assert.Equal(t, 3, aug.confirmingUsers(userIDs))
 
 	// Bob sees three confirmations
 	awaitAck(t, alice, bob, typeConfirmation, ac.ID)
 	var bug updateGroup
-	err = bob.database.Preload(clause.Associations).First(&bug, "target = ?", groupID).Error
+	err = bob.database.Preload(clause.Associations).First(&bug, "target = ? AND type = ?", groupID, updateGroupTypeChangeName).Error
 	assert.NoError(t, err)
 	assert.Equal(t, 3, bug.confirmingUsers(userIDs))
 }
