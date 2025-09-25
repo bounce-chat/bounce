@@ -56,7 +56,7 @@ func (b *Bounce) reloadGroupConsensus(groupID uuid.UUID) {
 	defer b.consensusStore.Unlock()
 
 	// Create the initial group state from the group creation and use that to start history
-	initialState, addressMap, err := b.createInitialGroupState(groupID)
+	initialState, addressMap, revokedMap, err := b.createInitialGroupState(groupID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
@@ -64,7 +64,7 @@ func (b *Bounce) reloadGroupConsensus(groupID uuid.UUID) {
 		}).Debug("error creating initial state while updating group consensus")
 		return
 	}
-	cs := newCanonicalStack(initialState, addressMap, b.currentUserID())
+	cs := newCanonicalStack(initialState, addressMap, revokedMap, b.currentUserID())
 
 	// Get all update groups for this group
 	var ugs []updateGroup

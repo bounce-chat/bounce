@@ -36,7 +36,7 @@ type groupState struct {
 	ug                         updateGroup
 }
 
-func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[string]uuid.UUID, error) {
+func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[string]uuid.UUID, map[string]int64, error) {
 	// Create the group state
 	gs := groupState{
 		users:                      []uuid.UUID{},
@@ -53,6 +53,7 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[str
 		typingIndicatorsEnabled:    true,
 	}
 	initialDeviceMap := map[string]uuid.UUID{}
+	revokedTimeMap := map[string]int64{}
 
 	// Look up the group creation and unpack the original group
 	var gc groupCreation
@@ -65,7 +66,7 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[str
 			log.WithFields(log.Fields{
 				"group_id": groupID,
 			}).Debug("group creation not found for consensus calculation")
-			return gs, initialDeviceMap, err
+			return gs, initialDeviceMap, revokedTimeMap, err
 		} else {
 			log.WithFields(log.Fields{
 				"group_id": groupID,
@@ -80,7 +81,7 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[str
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling group")
-		return gs, initialDeviceMap, err
+		return gs, initialDeviceMap, revokedTimeMap, err
 	}
 
 	// Set group properties
@@ -124,7 +125,26 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[str
 
 		for _, dev := range devs {
 			initialDeviceMap[dev.Address] = u.ID
+			revokedTimeMap[dev.Address] = dev.RevokedAt
 		}
+	}
+
+	// Make sure the creating device wasn't revoked before group creation
+	if revokedAt, ok := revokedTimeMap[gc.Signer]; ok {
+		if revokedAt != 0 {
+			if revokedAt < gc.Timestamp {
+				log.WithFields(log.Fields{
+					"id":             gc.ID,
+					"signing_device": gc.Signer,
+					"revoked_at":     revokedAt,
+				}).Warn("group creation signed by device that was already revoked")
+				return gs, initialDeviceMap, revokedTimeMap, errors.New("group creation signed by revoked device")
+			}
+		}
+	} else {
+		log.WithFields(log.Fields{
+			"address": gc.Signer,
+		}).Warn("no revocation time found for group creation signer")
 	}
 
 	// Set the values for the original admins
@@ -144,7 +164,7 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[str
 	}
 
 	// Return the state
-	return gs, initialDeviceMap, nil
+	return gs, initialDeviceMap, revokedTimeMap, nil
 }
 
 func (gs groupState) equals(otherState groupState) bool {

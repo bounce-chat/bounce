@@ -13,14 +13,16 @@ var errStackEmpty = errors.New("stack is empty")
 type canonicalStack struct {
 	myID         uuid.UUID
 	addressMap   map[string]uuid.UUID
+	revokedMap   map[string]int64
 	history      []groupState
 	historyStash []groupState
 }
 
-func newCanonicalStack(initialState groupState, addressMap map[string]uuid.UUID, myID uuid.UUID) *canonicalStack {
+func newCanonicalStack(initialState groupState, addressMap map[string]uuid.UUID, revokedMap map[string]int64, myID uuid.UUID) *canonicalStack {
 	return &canonicalStack{
 		myID:       myID,
 		addressMap: addressMap,
+		revokedMap: revokedMap,
 		history:    []groupState{initialState},
 	}
 }
@@ -114,6 +116,7 @@ func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 
 		for _, dev := range devs {
 			cs.addressMap[dev.Address] = dev.UserID
+			cs.revokedMap[dev.Address] = dev.RevokedAt
 		}
 	}
 
@@ -125,6 +128,25 @@ func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 			"signing_device": ug.Signer,
 		}).Warn("rejecting update group that was not signed by the actor")
 		return
+	}
+
+	// Make sure the signing device wasn't revoked
+	if revokedAt, ok := cs.revokedMap[ug.Signer]; ok {
+		if revokedAt != 0 {
+			if revokedAt < ug.Timestamp {
+				log.WithFields(log.Fields{
+					"id":             ug.ID,
+					"actor":          ug.Actor,
+					"signing_device": ug.Signer,
+					"revoked_at":     revokedAt,
+				}).Warn("rejecting update group signed by revoked device")
+				return
+			}
+		}
+	} else {
+		log.WithFields(log.Fields{
+			"address": ug.Signer,
+		}).Warn("no revocation time found for address")
 	}
 
 	// Don't allow updated that were signed by a device after it was revoked
