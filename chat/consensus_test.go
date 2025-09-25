@@ -880,3 +880,57 @@ func TestCanLearnAboutCreatingUserFromGroupInvite(t *testing.T) {
 	assert.NoError(t, b.database.First(&g, "id = ?", gc.ID).Error)
 	assert.NoError(t, b.database.First(&ug, "id = ?", addMe.ID).Error)
 }
+
+func TestCanLearnAboutInvitedUserFromGroupInvite(t *testing.T) {
+	b, alice, _, groupID := createUsersAndGroups(t)
+	var err error
+
+	// Carol exists
+	carol := newBounceUser("Carol")
+	ts := time.Now().Unix() + 1
+
+	// Carol and Alice are friends
+	aliceUser, _ := alice.currentUser()
+	var au user
+	ab, _ := msgpack.Marshal(aliceUser)
+	msgpack.Unmarshal(ab, &au)
+
+	carolUser, _ := carol.currentUser()
+	var cu user
+	cb, _ := msgpack.Marshal(carolUser)
+	msgpack.Unmarshal(cb, &cu)
+
+	assert.NoError(t, alice.database.Create(&cu).Error)
+	assert.NoError(t, carol.database.Create(&au).Error)
+
+	// Alice invites Carol to the group
+	addCarol := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     alice.currentUserID(),
+		Target:    groupID,
+		Timestamp: ts,
+		Type:      updateGroupTypeInviteUser,
+		Data:      cb,
+	}
+	ts += 1
+	addCarol.OriginalPayload, err = msgpack.Marshal(addCarol)
+	assert.NoError(t, err)
+	sc := alice.createSignedContainer(addCarol.OriginalPayload)
+	addCarol.Signature = sc.Signature
+	addCarol.Signer = sc.Signer
+
+	history := &catchUp{
+		Frames: []frame{
+			frame{
+				ID:      addCarol.ID,
+				Type:    typeUpdateGroup,
+				Payload: addCarol.getPayload(),
+			},
+		},
+	}
+	b.handleCatchUp(alice.network.Address(), history.getPayload(), false)
+
+	// I should now have Carol's user
+	var u user
+	assert.NoError(t, b.database.First(&u, "id = ?", carol.currentUserID()).Error)
+}
