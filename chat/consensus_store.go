@@ -249,7 +249,6 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 
 			// If we were a member of the group for this update, and we are still in the group and it is not deleted, broadcast a confirmation
 			if gs.isMember(b.currentUserID()) {
-				b.updateLastGroupActivity(gs.ug.Target, gs.ug.Timestamp) // TODO: move into the database updates section
 				if gs.ug.Actor != b.currentUserID() && gs.ug.Type != updateGroupTypeBlock && gs.ug.Type != updateGroupTypeRespondToInvite {
 					// We only want confirmations to be send to devices that are in the group in the final group state, so we
 					// defer the call to sending confirmations so that it happens after the database has been updated
@@ -539,6 +538,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 			}).Fatal("database error looking up group")
 		}
 	}
+	b.updateLastGroupActivity(initialGroup.ID, gs.ug.Timestamp)
 
 	// Prune cleared messages
 	b.pruneMessagesBeforeClear(gs.clearBefore, g.ID)
