@@ -36,7 +36,7 @@ type groupState struct {
 	ug                         updateGroup
 }
 
-func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) {
+func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[string]uuid.UUID, error) {
 	// Create the group state
 	gs := groupState{
 		users:                      []uuid.UUID{},
@@ -52,6 +52,7 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 		typingIndicatorsOverridden: false,
 		typingIndicatorsEnabled:    true,
 	}
+	initialDeviceMap := map[string]uuid.UUID{}
 
 	// Look up the group creation and unpack the original group
 	var gc groupCreation
@@ -64,7 +65,7 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 			log.WithFields(log.Fields{
 				"group_id": groupID,
 			}).Debug("group creation not found for consensus calculation")
-			return gs, err
+			return gs, initialDeviceMap, err
 		} else {
 			log.WithFields(log.Fields{
 				"group_id": groupID,
@@ -79,7 +80,7 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling group")
-		return gs, err
+		return gs, initialDeviceMap, err
 	}
 
 	// Set group properties
@@ -107,6 +108,23 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 	// Set the values for the original members
 	for _, u := range g.Users {
 		gs.users = append(gs.users, u.ID)
+
+		// Collect the addresses into a map to the user user ID, including
+		// anything in the database, if present
+		var devs []device
+		err := b.database.Where("user_id = ?", u.ID).Find(&devs).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error finding devices")
+		}
+		if len(devs) == 0 {
+			devs = u.Devices
+		}
+
+		for _, dev := range devs {
+			initialDeviceMap[dev.Address] = u.ID
+		}
 	}
 
 	// Set the values for the original admins
@@ -126,7 +144,7 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, error) 
 	}
 
 	// Return the state
-	return gs, nil
+	return gs, initialDeviceMap, nil
 }
 
 func (gs groupState) equals(otherState groupState) bool {

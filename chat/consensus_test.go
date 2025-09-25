@@ -274,9 +274,9 @@ func TestAddingConflictToHistoryStackIsIgnored(t *testing.T) {
 	b, alice, _, groupID := createUsersAndGroups(t)
 
 	// Create a canonical stack
-	initialState, err := b.createInitialGroupState(groupID)
+	initialState, addressMap, err := b.createInitialGroupState(groupID)
 	assert.NoError(t, err)
-	stack := newCanonicalStack(initialState, b.currentUserID())
+	stack := newCanonicalStack(initialState, addressMap, b.currentUserID())
 
 	// Add a restriction to editing permissions to the stack
 	restrictEditing := updateGroup{
@@ -370,7 +370,7 @@ func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
 	}
 	unauthorizedEdit.OriginalPayload, err = msgpack.Marshal(unauthorizedEdit)
 	assert.NoError(t, err)
-	sc = b.createSignedContainer(unauthorizedEdit.OriginalPayload)
+	sc = alice.createSignedContainer(unauthorizedEdit.OriginalPayload)
 	unauthorizedEdit.Signature = sc.Signature
 	unauthorizedEdit.Signer = sc.Signer
 	assert.NoError(t, b.database.Create(&unauthorizedEdit).Error)
@@ -668,8 +668,6 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 	}
 	alice.handleCatchUp(b.network.Address(), cu.getPayload(), false)
 
-	// TODO: have alice accept the invite
-
 	// Make sure Alice is now a member of the group again
 	state, err := alice.currentGroupState(groupID)
 	assert.NoError(t, err)
@@ -685,4 +683,200 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 	//await(t, alice, "NewGroupChat") TODO: flaky
 	//await(t, alice, "RemoveUser")
 	//await(t, alice, "AddUser")
+}
+
+func TestCannotBeAddedToGroupByUnknownUser(t *testing.T) {
+	b, _, _, _ := createUsersAndGroups(t)
+
+	carol := newBounceUser("Carol")
+	assert.NoError(t, carol.CreateGroup(NewGroup{
+		Name: "Test Group",
+	}))
+
+	var gc groupCreation
+	assert.NoError(t, carol.database.First(&gc).Error)
+
+	meUser, _ := b.currentUser()
+	var mu user
+	mb, _ := msgpack.Marshal(meUser)
+	msgpack.Unmarshal(mb, &mu)
+
+	add := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     carol.currentUserID(),
+		Target:    gc.ID,
+		Timestamp: time.Now().Unix(),
+		Type:      updateGroupTypeInviteUser,
+		Data:      mb,
+	}
+	var err error
+	add.OriginalPayload, err = msgpack.Marshal(add)
+	assert.NoError(t, err)
+	sc := carol.createSignedContainer(add.OriginalPayload)
+	add.Signature = sc.Signature
+	add.Signer = sc.Signer
+
+	cu := &catchUp{
+		Frames: []frame{
+			frame{
+				ID:      gc.ID,
+				Type:    typeGroupCreation,
+				Payload: gc.getPayload(),
+			},
+			frame{
+				ID:      add.ID,
+				Type:    typeUpdateGroup,
+				Payload: add.getPayload(),
+			},
+		},
+	}
+	b.handleCatchUp(carol.network.Address(), cu.getPayload(), false)
+
+	// I should not have saved any information from this exchange because I don't know Carol
+	var g group
+	var ug updateGroup
+	var u user
+	assert.Error(t, b.database.First(&u, "id = ?", carol.currentUserID()).Error)
+	assert.Error(t, b.database.First(&gc, "id = ?", gc.ID).Error)
+	assert.Error(t, b.database.First(&g, "id = ?", gc.ID).Error)
+	assert.Error(t, b.database.First(&ug, "id = ?", add.ID).Error)
+}
+
+func TestCanLearnAboutCreatingUserFromGroupInvite(t *testing.T) {
+	b, alice, _, _ := createUsersAndGroups(t)
+	var err error
+
+	// Carol exists and created a group
+	carol := newBounceUser("Carol")
+	assert.NoError(t, carol.CreateGroup(NewGroup{
+		Name: "Carol Group",
+	}))
+
+	var gc groupCreation
+	assert.NoError(t, carol.database.First(&gc).Error)
+	ts := gc.Timestamp
+	ts += 1
+
+	// Carol and Alice are friends
+	aliceUser, _ := alice.currentUser()
+	var au user
+	ab, _ := msgpack.Marshal(aliceUser)
+	msgpack.Unmarshal(ab, &au)
+
+	carolUser, _ := carol.currentUser()
+	var cu user
+	cb, _ := msgpack.Marshal(carolUser)
+	msgpack.Unmarshal(cb, &cu)
+
+	assert.NoError(t, alice.database.Create(&cu).Error)
+	assert.NoError(t, carol.database.Create(&au).Error)
+
+	// Carol adds alice to the group
+	addAlice := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     carol.currentUserID(),
+		Target:    gc.ID,
+		Timestamp: ts,
+		Type:      updateGroupTypeInviteUser,
+		Data:      ab,
+	}
+	ts += 1
+	addAlice.OriginalPayload, err = msgpack.Marshal(addAlice)
+	assert.NoError(t, err)
+	sc := carol.createSignedContainer(addAlice.OriginalPayload)
+	addAlice.Signature = sc.Signature
+	addAlice.Signer = sc.Signer
+
+	// Alice accepts the invite to the group
+	accept := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     alice.currentUserID(),
+		Target:    gc.ID,
+		Timestamp: ts,
+		Type:      updateGroupTypeRespondToInvite,
+		Data:      []byte{acceptInvite},
+	}
+	ts += 1
+	accept.OriginalPayload, err = msgpack.Marshal(accept)
+	assert.NoError(t, err)
+	sc = alice.createSignedContainer(accept.OriginalPayload)
+	accept.Signature = sc.Signature
+	accept.Signer = sc.Signer
+
+	// Carol makes Alice an admin
+	aliceID := alice.currentUserID()
+	promote := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     carol.currentUserID(),
+		Target:    gc.ID,
+		Timestamp: ts,
+		Type:      updateGroupTypePromoteAdmin,
+		Data:      aliceID[:],
+	}
+	ts += 1
+	promote.OriginalPayload, err = msgpack.Marshal(promote)
+	assert.NoError(t, err)
+	sc = carol.createSignedContainer(promote.OriginalPayload)
+	promote.Signature = sc.Signature
+	promote.Signer = sc.Signer
+
+	// Alice adds me to a group Carol created
+	meUser, _ := b.currentUser()
+	var mu user
+	mb, _ := msgpack.Marshal(meUser)
+	msgpack.Unmarshal(mb, &mu)
+
+	addMe := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     alice.currentUserID(),
+		Target:    gc.ID,
+		Timestamp: ts,
+		Type:      updateGroupTypeInviteUser,
+		Data:      mb,
+	}
+	addMe.OriginalPayload, err = msgpack.Marshal(addMe)
+	assert.NoError(t, err)
+	sc = alice.createSignedContainer(addMe.OriginalPayload)
+	addMe.Signature = sc.Signature
+	addMe.Signer = sc.Signer
+
+	history := &catchUp{
+		Frames: []frame{
+			frame{
+				ID:      gc.ID,
+				Type:    typeGroupCreation,
+				Payload: gc.getPayload(),
+			},
+			frame{
+				ID:      addAlice.ID,
+				Type:    typeUpdateGroup,
+				Payload: addAlice.getPayload(),
+			},
+			frame{
+				ID:      accept.ID,
+				Type:    typeUpdateGroup,
+				Payload: accept.getPayload(),
+			},
+			frame{
+				ID:      promote.ID,
+				Type:    typeUpdateGroup,
+				Payload: promote.getPayload(),
+			},
+			frame{
+				ID:      addMe.ID,
+				Type:    typeUpdateGroup,
+				Payload: addMe.getPayload(),
+			},
+		},
+	}
+	b.handleCatchUp(alice.network.Address(), history.getPayload(), false)
+
+	// I should now have this group saved as well as Carol's user
+	var g group
+	var ug updateGroup
+	var u user
+	assert.NoError(t, b.database.First(&u, "id = ?", carol.currentUserID()).Error)
+	assert.NoError(t, b.database.First(&gc, "id = ?", gc.ID).Error)
+	assert.NoError(t, b.database.First(&g, "id = ?", gc.ID).Error)
+	assert.NoError(t, b.database.First(&ug, "id = ?", addMe.ID).Error)
 }

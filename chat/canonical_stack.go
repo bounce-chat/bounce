@@ -5,21 +5,23 @@ import (
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"gorm.io/gorm"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 var errStackEmpty = errors.New("stack is empty")
 
 type canonicalStack struct {
 	myID         uuid.UUID
+	addressMap   map[string]uuid.UUID
 	history      []groupState
 	historyStash []groupState
 }
 
-func newCanonicalStack(initialState groupState, myID uuid.UUID) *canonicalStack {
+func newCanonicalStack(initialState groupState, addressMap map[string]uuid.UUID, myID uuid.UUID) *canonicalStack {
 	return &canonicalStack{
-		myID:    myID,
-		history: []groupState{initialState},
+		myID:       myID,
+		addressMap: addressMap,
+		history:    []groupState{initialState},
 	}
 }
 
@@ -87,23 +89,55 @@ func (cs *canonicalStack) restore() {
 
 // Given an update group, add it into the history stack if it should be applied, detecting and removing any conflicts in the process
 func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) {
+	// Update the map from address to user for this group if needed
+	if ug.Type == updateGroupTypeInviteUser {
+		var u user
+		err := msgpack.Unmarshal(ug.Data, &u)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error unmarshalling user in update group")
+			return
+		}
+
+		var devs []device
+		err = b.database.Where("user_id = ?", u.ID).Find(&devs).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error finding devices")
+		}
+
+		if len(devs) == 0 {
+			devs = u.Devices
+		}
+
+		for _, dev := range devs {
+			cs.addressMap[dev.Address] = dev.UserID
+		}
+	}
+
+	// Make sure that the actor for this update is the user who signed it
+	if cs.addressMap[ug.Signer] != ug.Actor {
+		log.WithFields(log.Fields{
+			"id":             ug.ID,
+			"actor":          ug.Actor,
+			"signing_device": ug.Signer,
+		}).Warn("rejecting update group that was not signed by the actor")
+		return
+	}
+
 	// Don't allow updated that were signed by a device after it was revoked
 	var dev device
 	err := b.database.First(&dev, "address = ?", ug.Signer).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	if err == nil {
+		if dev.RevokedAt > 0 && dev.RevokedAt < ug.Timestamp {
 			log.WithFields(log.Fields{
-				"update_group_id": ug.ID,
-				"address":         ug.Signer,
-			}).Error("cannot find signing device for update group")
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up device")
+				"id":     ug.ID,
+				"signer": ug.Signer,
+			}).Warn("rejecting update group signed by a device after it was revoked")
+			return
 		}
-	}
-	if dev.RevokedAt > 0 && dev.RevokedAt < ug.Timestamp {
-		return
 	}
 
 	// Make sure the payload of this update is valid for its type

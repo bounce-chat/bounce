@@ -311,40 +311,18 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 		}
 	}
 
-	// Make sure that the user that created this signed container is the actor
-	if !b.signedByUser(sc, ug.Actor) {
-		log.WithFields(log.Fields{
-			"peer":           peer,
-			"actor":          ug.Actor,
-			"signing_device": sc.Signer,
-			"group":          ug.Target,
-		}).Warn("ignoring group update that was not signed by the supposed actor")
-		return nil, false
-	}
-
 	// Make sure the signing device was not revoked before creating this
 	var signerDevice device
 	err = b.database.Select("revoked_at").Where("address = ?", ug.Signer).First(&signerDevice).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	if err == nil {
+		if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < ug.Timestamp {
 			log.WithFields(log.Fields{
-				"address": ug.Signer,
-			}).Error("signer device not found for update group")
+				"id":     ug.ID,
+				"signer": ug.Signer,
+			}).Warn("ignoring update group signed by revoked device")
+			go b.sendAck(peer, typeUpdateGroup, ug.ID)
 			return nil, false
-		} else {
-			log.WithFields(log.Fields{
-				"address": ug.Signer,
-				"error":   err.Error(),
-			}).Fatal("database error looking up signing device")
 		}
-	}
-	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < ug.Timestamp {
-		log.WithFields(log.Fields{
-			"id":     ug.ID,
-			"signer": ug.Signer,
-		}).Warn("ignoring update group signed by revoked device")
-		go b.sendAck(peer, typeUpdateGroup, ug.ID)
-		return nil, false
 	}
 
 	// If we already have this update, we just mark that this peer has it too and return

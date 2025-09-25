@@ -56,7 +56,7 @@ func (b *Bounce) reloadGroupConsensus(groupID uuid.UUID) {
 	defer b.consensusStore.Unlock()
 
 	// Create the initial group state from the group creation and use that to start history
-	initialState, err := b.createInitialGroupState(groupID)
+	initialState, addressMap, err := b.createInitialGroupState(groupID)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
@@ -64,7 +64,7 @@ func (b *Bounce) reloadGroupConsensus(groupID uuid.UUID) {
 		}).Debug("error creating initial state while updating group consensus")
 		return
 	}
-	cs := newCanonicalStack(initialState, b.currentUserID())
+	cs := newCanonicalStack(initialState, addressMap, b.currentUserID())
 
 	// Get all update groups for this group
 	var ugs []updateGroup
@@ -104,7 +104,7 @@ func (b *Bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) {
 	}
 	defer b.consensusStore.Unlock()
 
-	// Remove updates that are at or older than timestamp from the stack
+	// Remove updates that are at or newer than timestamp from the stack
 	untouchedState := []groupState{}
 	for _, gs := range stack.history {
 		if gs.ug.Timestamp < ts {
@@ -249,7 +249,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 
 			// If we were a member of the group for this update, and we are still in the group and it is not deleted, broadcast a confirmation
 			if gs.isMember(b.currentUserID()) {
-				b.updateLastGroupActivity(gs.ug.Target, gs.ug.Timestamp)
+				b.updateLastGroupActivity(gs.ug.Target, gs.ug.Timestamp) // TODO: move into the database updates section
 				if gs.ug.Actor != b.currentUserID() && gs.ug.Type != updateGroupTypeBlock && gs.ug.Type != updateGroupTypeRespondToInvite {
 					// We only want confirmations to be send to devices that are in the group in the final group state, so we
 					// defer the call to sending confirmations so that it happens after the database has been updated
