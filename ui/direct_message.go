@@ -152,7 +152,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		user:                           user,
 		notificationsMutedUntil:        bounceUser.State.MutedUntil,
 		retention:                      bounceUser.State.Retention,
-		lastMessage:                    time.Now().Unix(),
+		lastMessage:                    bounceUser.IntroductionTime,
 		overrideReadReceiptSetting:     bounceUser.State.OverrideReadReceiptSetting,
 		readReceiptsEnabled:            bounceUser.State.ReadReceiptsEnabled,
 		overrideTypingIndicatorSetting: bounceUser.State.OverrideTypingIndicatorSetting,
@@ -321,6 +321,8 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		container.New(&autoscollLayout{}, dm.scroll),
 	)
 	ui.threads.add(bounceUser.ID, dm)
+	dm.setLastMessageTime(dm.lastMessage)
+	dm.button.setLastMessageTime(time.Unix(dm.lastMessage, 0))
 	ui.refreshThreadOrder()
 }
 

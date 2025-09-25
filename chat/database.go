@@ -249,11 +249,12 @@ func (b *Bounce) GetInitialState() InitialState {
 		}
 
 		profile = &User{
-			ID:     dbProfile.ID,
-			Name:   dbProfile.Name,
-			Alias:  dbProfile.Alias,
-			Notes:  dbProfile.Notes,
-			Images: imageHistory,
+			ID:               dbProfile.ID,
+			Name:             dbProfile.Name,
+			Alias:            dbProfile.Alias,
+			Notes:            dbProfile.Notes,
+			IntroductionTime: dbProfile.IntroductionTime,
+			Images:           imageHistory,
 			State: DMState{
 				Open:                           dbProfile.OpenDM,
 				Retention:                      dbProfile.Retention,
