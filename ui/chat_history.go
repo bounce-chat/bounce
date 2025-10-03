@@ -260,7 +260,7 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
 	checkUp := true
 	checkDown := true
 
-	if len(ch.items)-1 < index {
+	if index >= len(ch.items) {
 		log.WithFields(log.Fields{
 			"index": index,
 		}).Warn("out of bounds index while setting merge mode")

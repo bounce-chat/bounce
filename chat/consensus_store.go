@@ -201,7 +201,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 			// There were no blocking update groups for this group and we don't have the group creation, this is unexpected
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("error getting creating user from group creation")
+			}).Error("no group creations or blocking updates associated with group consensus update target")
 			return err
 		} else {
 			for _, ug := range ugs {
