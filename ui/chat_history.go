@@ -798,12 +798,10 @@ func (chl *chatHistoryLayout) offsetUpdated(pos fyne.Position) {
 }
 
 func (chl *chatHistoryLayout) setupItem(item fyne.CanvasObject, index int) {
-	if f := chl.ch.UpdateItem; f != nil {
-		f(index, item)
-		chl.ch.SetItemHeight(index, item.MinSize().Height)
-		if len(chl.ch.ids) > index {
-			chl.ch.messages.cacheHeight(chl.ch.ids[index], chl.ch.Size().Width, item.MinSize().Height)
-		}
+	chl.ch.UpdateItem(index, item)
+	chl.ch.SetItemHeight(index, item.MinSize().Height)
+	if len(chl.ch.ids) > index {
+		chl.ch.messages.cacheHeight(chl.ch.ids[index], chl.ch.Size().Width, item.MinSize().Height)
 	}
 }
 
@@ -880,6 +878,10 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 
 	if newOnly {
 		for _, vis := range visible {
+			if vis.index > len(chl.ch.items)-1 {
+				log.Warn("ignoring attempt to set up chat history item outside of bounds")
+				return
+			}
 			if _, ok := chl.searchVisible(wasVisible, vis.index); !ok {
 				chl.setupItem(vis.item, vis.index)
 			}
@@ -891,6 +893,10 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 		}
 	} else {
 		for _, vis := range visible {
+			if vis.index > len(chl.ch.items)-1 {
+				log.Warn("ignoring attempt to set up chat history item outside of bounds")
+				return
+			}
 			chl.setupItem(vis.item, vis.index)
 
 			offset := chl.ch.GetScrollOffset()
