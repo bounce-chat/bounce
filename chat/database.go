@@ -394,7 +394,7 @@ func (b *Bounce) GetInitialState() InitialState {
 						}).Fatal("database error looking up user")
 					}
 				}
-				invitedList = append(invitedList, User{ID: u.ID, Name: u.Name})
+				invitedList = append(invitedList, User{ID: invitedID, Name: u.Name})
 			}
 		}
 		blockedList := []uuid.UUID{}

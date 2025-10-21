@@ -340,7 +340,12 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 	}
 
 	// Update the group state without commiting to the database or sending to the UI
-	b.reloadGroupConsensusSince(ug.Target, ug.Timestamp)
+	err = b.reloadGroupConsensusSince(ug.Target, ug.Timestamp)
+	if err != nil {
+		// We are getting an update that isn't a part of a valid consensus stack.  This is probably an invite for
+		// us to join a group that we aren't aware of it yet, but either way it's ok to save and move on here.
+		return nil, false
+	}
 
 	// If there are confirmations for this update group already in the database, make sure their author
 	// was allowed to confirm the update and set the broadcast info for the confirmation

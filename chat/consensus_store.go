@@ -51,7 +51,7 @@ func (b *Bounce) currentGroupState(groupID uuid.UUID) (groupState, error) {
 	return top, nil
 }
 
-func (b *Bounce) reloadGroupConsensus(groupID uuid.UUID) {
+func (b *Bounce) reloadGroupConsensus(groupID uuid.UUID) error {
 	b.consensusStore.Lock()
 	defer b.consensusStore.Unlock()
 
@@ -62,7 +62,7 @@ func (b *Bounce) reloadGroupConsensus(groupID uuid.UUID) {
 			"group_id": groupID,
 			"error":    err.Error(),
 		}).Debug("error creating initial state while updating group consensus")
-		return
+		return err
 	}
 	cs := newCanonicalStack(initialState, addressMap, revokedMap, b.currentUserID())
 
@@ -83,24 +83,24 @@ func (b *Bounce) reloadGroupConsensus(groupID uuid.UUID) {
 
 	// Add this stack to the consensus store
 	b.consensusStore.groups[groupID] = cs
+
+	return nil
 }
 
-func (b *Bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) {
+func (b *Bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) error {
 	b.consensusStore.Lock()
 
 	// Reload everything if timestamp is 0
 	if ts == 0 {
 		b.consensusStore.Unlock()
-		b.reloadGroupConsensus(groupID)
-		return
+		return b.reloadGroupConsensus(groupID)
 	}
 
 	// Find the stack, reload everything if we don't have a stack yet
 	stack, ok := b.consensusStore.groups[groupID]
 	if !ok {
 		b.consensusStore.Unlock()
-		b.reloadGroupConsensus(groupID)
-		return
+		return b.reloadGroupConsensus(groupID)
 	}
 	defer b.consensusStore.Unlock()
 
@@ -129,6 +129,8 @@ func (b *Bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) {
 	for _, ug := range ugs {
 		b.insertUpdateGroupIntoStack(stack, ug)
 	}
+
+	return nil
 }
 
 func (b *Bounce) writeGroupConsensus(groupID uuid.UUID) error {
@@ -340,6 +342,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		})
 
 		// Delete the group
+		delete(b.consensusStore.groups, groupID)
 		return b.database.Delete(&initialGroup).Error
 	}
 
@@ -424,6 +427,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		})
 
 		// Delete the group
+		delete(b.consensusStore.groups, groupID)
 		return b.database.Delete(&initialGroup).Error
 	}
 
@@ -453,6 +457,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		})
 
 		// Delete the group
+		delete(b.consensusStore.groups, groupID)
 		return b.database.Delete(&initialGroup).Error
 	}
 
