@@ -233,6 +233,10 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		}
 	}
 
+	// Start tracking this group's state in the consensus store, and notify
+	// the UI / update the database if this in real time
+	b.reloadGroupConsensus(g.ID)
+
 	// If we're being re-added to this group, clean up any custom scopes from our past removal
 	err = b.rescopeIfReAddedToGroup(g.ID)
 	if err != nil {
@@ -242,9 +246,6 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		}).Error("error cleaning up custom scopes when re-added to group")
 	}
 
-	// Start tracking this group's state in the consensus store, and notify
-	// the UI / update the database if this in real time
-	b.reloadGroupConsensus(g.ID)
 	if !catchUp {
 		b.writeGroupConsensus(g.ID)
 	}
