@@ -22,6 +22,7 @@ type Settings struct {
 	NewGroupRestrictUserManagement bool
 	NewGroupRestrictGroupEdits     bool
 	NewGroupRestrictPosting        bool
+	AutoJoinGroups                 int
 }
 
 type Device struct {

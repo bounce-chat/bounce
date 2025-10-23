@@ -4,6 +4,10 @@ import (
 	"github.com/google/uuid"
 )
 
+const OnlyAutoJoinGroupsWithNoNewUsers = 0
+const NeverAutoJoinGroups = 1
+const AlwaysAutoJoinGroups = 2
+
 type profileSettings struct {
 	ID                             uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
 	UserID                         uuid.UUID
@@ -14,4 +18,5 @@ type profileSettings struct {
 	NewGroupRestrictUserManagement bool
 	NewGroupRestrictGroupEdits     bool
 	NewGroupRestrictPosting        bool
+	AutoJoinGroups                 int
 }

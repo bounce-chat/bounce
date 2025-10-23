@@ -23,7 +23,8 @@ const updateSettingsTypeSetDefatulReadReceipts = uint16(1)
 const updateSettingsTypeSetDefaultTypingIndicators = uint16(2)
 const updateSettingsTypeSetNewGroupRestrictUserManagement = uint16(3)
 const updateSettingsTypeSetNewGroupRestirctGroupEdits = uint16(4)
-const updateSettingsTypeSewNewGroupRestrictPosting = uint16(5)
+const updateSettingsTypeSetNewGroupRestrictPosting = uint16(5)
+const updateSettingsTypeSetAutoJoinGroups = uint16(6)
 
 var errInvalidPayloadValue = errors.New("invalid payload value")
 
@@ -123,11 +124,19 @@ func (us *updateSettings) validPayload() error {
 		if !(us.Data[0] == enabled || us.Data[0] == disabled) {
 			return errInvalidPayloadValue
 		}
-	case updateSettingsTypeSewNewGroupRestrictPosting:
+	case updateSettingsTypeSetNewGroupRestrictPosting:
 		if len(us.Data) != 1 {
 			return errInvalidPayloadLength
 		}
 		if !(us.Data[0] == enabled || us.Data[0] == disabled) {
+			return errInvalidPayloadValue
+		}
+	case updateSettingsTypeSetAutoJoinGroups:
+		if len(us.Data) != 1 {
+			return errInvalidPayloadLength
+		}
+		val := int(us.Data[0])
+		if !(val == OnlyAutoJoinGroupsWithNoNewUsers || val == NeverAutoJoinGroups || val == AlwaysAutoJoinGroups) {
 			return errInvalidPayloadValue
 		}
 	default:
@@ -217,6 +226,7 @@ func (b *Bounce) updateSettingsState() {
 	newGroupRestrictUserManagement := true
 	newGroupRestrictGroupEdits := false
 	newGroupRestrictPosting := false
+	autoJoinGroups := 0
 
 	// Find all updates
 	uss := []updateSettings{}
@@ -249,8 +259,10 @@ func (b *Bounce) updateSettingsState() {
 			newGroupRestrictUserManagement = us.Data[0] == enabled
 		case updateSettingsTypeSetNewGroupRestirctGroupEdits:
 			newGroupRestrictGroupEdits = us.Data[0] == enabled
-		case updateSettingsTypeSewNewGroupRestrictPosting:
+		case updateSettingsTypeSetNewGroupRestrictPosting:
 			newGroupRestrictPosting = us.Data[0] == enabled
+		case updateSettingsTypeSetAutoJoinGroups:
+			autoJoinGroups = int(us.Data[0])
 		default:
 			log.WithFields(log.Fields{
 				"type": us.Type,
@@ -266,6 +278,7 @@ func (b *Bounce) updateSettingsState() {
 		"new_group_restrict_user_management": newGroupRestrictUserManagement,
 		"new_group_restrict_group_edits":     newGroupRestrictGroupEdits,
 		"new_group_restrict_posting":         newGroupRestrictPosting,
+		"auto_join_groups":                   autoJoinGroups,
 	}).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -289,6 +302,7 @@ func (b *Bounce) updateSettingsState() {
 			NewGroupRestrictUserManagement: newGroupRestrictUserManagement,
 			NewGroupRestrictGroupEdits:     newGroupRestrictGroupEdits,
 			NewGroupRestrictPosting:        newGroupRestrictPosting,
+			AutoJoinGroups:                 autoJoinGroups,
 		},
 	)
 }
@@ -380,8 +394,17 @@ func (b *Bounce) SetNewGroupRestrictPosting(value bool) {
 	b.applyAndBroadcastUpdateSettings(updateSettings{
 		ID:        uuid.New(),
 		Timestamp: time.Now().Unix(),
-		Type:      updateSettingsTypeSewNewGroupRestrictPosting,
+		Type:      updateSettingsTypeSetNewGroupRestrictPosting,
 		Data:      payload,
+	})
+}
+
+func (b *Bounce) SetAutoJoinGroups(value int) {
+	b.applyAndBroadcastUpdateSettings(updateSettings{
+		ID:        uuid.New(),
+		Timestamp: time.Now().Unix(),
+		Type:      updateSettingsTypeSetAutoJoinGroups,
+		Data:      []byte{byte(value)},
 	})
 }
 

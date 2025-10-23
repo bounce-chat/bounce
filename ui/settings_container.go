@@ -15,6 +15,23 @@ var defaultOff = "Default (Off)"
 var on = "On"
 var off = "Off"
 
+var whenKnowEveryone = "When I know everyone in the group"
+var never = "Never"
+var always = "Always"
+var autoAcceptGroupInviteSelections = []string{whenKnowEveryone, never, always}
+
+var autoJoinGroupLabels = map[int]string{
+	chat.OnlyAutoJoinGroupsWithNoNewUsers: whenKnowEveryone,
+	chat.NeverAutoJoinGroups:              never,
+	chat.AlwaysAutoJoinGroups:             always,
+}
+
+var autoJoinGroupValues = map[string]int{
+	whenKnowEveryone: chat.OnlyAutoJoinGroupsWithNoNewUsers,
+	never:            chat.NeverAutoJoinGroups,
+	always:           chat.AlwaysAutoJoinGroups,
+}
+
 type settings struct {
 	sendReadReceiptsByDefault             *widget.Check
 	sendTypingIndicatorsByDefault         *widget.Check
@@ -22,6 +39,7 @@ type settings struct {
 	defaultNewGroupRestrictUserManagement *widget.Check
 	defaultNewGroupRestrictGroupEdits     *widget.Check
 	defaultNewGroupRestrictPosting        *widget.Check
+	autoAcceptGroupInvites                *widget.Select
 	darkMode                              *widget.Check
 }
 
@@ -30,6 +48,8 @@ func (ui *ui) showSettings() {
 	ui.widgets.settings.sendReadReceiptsByDefault.Refresh()
 	ui.widgets.settings.sendTypingIndicatorsByDefault.Checked = ui.state.settings.DefaultSendTypingIndicators
 	ui.widgets.settings.sendTypingIndicatorsByDefault.Refresh()
+
+	ui.widgets.settings.autoAcceptGroupInvites.Selected = getAutoJoinLabel(ui.state.settings.AutoJoinGroups)
 	ui.widgets.settings.defaultNewGroupRetention.Selected = getRetentionName(ui.state.settings.DefaultGroupRetention)
 	ui.widgets.settings.defaultNewGroupRetention.Refresh()
 	ui.widgets.settings.defaultNewGroupRestrictUserManagement.Checked = ui.state.settings.NewGroupRestrictUserManagement
@@ -96,6 +116,7 @@ func (ui *ui) buildSettings() {
 		defaultNewGroupRestrictUserManagement: widget.NewCheck("Restrict User Management", ui.bounce.SetNewGroupRestrictUserManagement),
 		defaultNewGroupRestrictGroupEdits:     widget.NewCheck("Restrict Group Edits", ui.bounce.SetNewGroupRestrictGroupEdits),
 		defaultNewGroupRestrictPosting:        widget.NewCheck("Restrict Posting", ui.bounce.SetNewGroupRestrictPosting),
+		autoAcceptGroupInvites:                widget.NewSelect(autoAcceptGroupInviteSelections, ui.sendDefaultAutoJoinGroups),
 		darkMode:                              widget.NewCheck("Dark Mode", ui.setDarkMode),
 	}
 
@@ -110,6 +131,10 @@ func (ui *ui) buildSettings() {
 			globalSettingsLabel,
 			ui.widgets.settings.sendReadReceiptsByDefault,
 			ui.widgets.settings.sendTypingIndicatorsByDefault,
+			container.NewHBox(
+				widget.NewLabel("Automatically Accept Group Invites"),
+				ui.widgets.settings.autoAcceptGroupInvites,
+			),
 			groupSettingsLabel,
 			container.NewHBox(
 				widget.NewLabel("Retention"),
@@ -135,6 +160,25 @@ func (ui *ui) sendDefaultRetentionSelection(selection string) { // TODO: rename 
 	ui.bounce.SetNewGroupRetention(value)
 }
 
+func (ui *ui) sendDefaultAutoJoinGroups(selection string) {
+	value, ok := autoJoinGroupValues[selection]
+	if !ok {
+		log.WithFields(log.Fields{
+			"selection": selection,
+		}).Error("unsupported auto join group selection")
+		return
+	}
+	ui.bounce.SetAutoJoinGroups(value)
+}
+
+func getAutoJoinLabel(setting int) string {
+	autoJoinLabel, ok := autoJoinGroupLabels[setting]
+	if !ok {
+		autoJoinLabel = "unsupported setting"
+	}
+	return autoJoinLabel
+}
+
 func (ui *ui) SetSettings(settings chat.Settings) {
 	fyne.DoAndWait(func() {
 		updateReadReceipts := ui.state.settings.DefaultSendReadReceipts != settings.DefaultSendReadReceipts
@@ -144,6 +188,9 @@ func (ui *ui) SetSettings(settings chat.Settings) {
 
 		ui.widgets.settings.defaultNewGroupRetention.Selected = getRetentionName(settings.DefaultGroupRetention)
 		ui.widgets.settings.defaultNewGroupRetention.Refresh()
+
+		ui.widgets.settings.autoAcceptGroupInvites.Selected = getAutoJoinLabel(settings.AutoJoinGroups)
+		ui.widgets.settings.autoAcceptGroupInvites.Refresh()
 
 		if updateReadReceipts {
 			ui.widgets.settings.sendReadReceiptsByDefault.Checked = settings.DefaultSendReadReceipts
