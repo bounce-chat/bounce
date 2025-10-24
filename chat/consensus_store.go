@@ -596,6 +596,12 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 				}).Fatal("database error creating group")
 			}
 			b.GroupConnectionDesired(g.ID)
+
+			if gs.isMember(b.currentUserID()) {
+				b.ui.NotifyAddedToGroup(initialGroup.Name)
+			} else {
+				b.ui.NotifyInvitedToGroup(initialGroup.Name)
+			}
 		} else {
 			log.WithFields(log.Fields{
 				"error":    err.Error(),

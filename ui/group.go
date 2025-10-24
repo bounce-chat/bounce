@@ -832,6 +832,14 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 	})
 }
 
+func (ui *ui) NotifyInvitedToGroup(name string) {
+	ui.app.SendNotification(fyne.NewNotification(name, "You have been invited to a group"))
+}
+
+func (ui *ui) NotifyAddedToGroup(name string) {
+	ui.app.SendNotification(fyne.NewNotification(name, "You have been added to a group"))
+}
+
 func (ui *ui) DisplayGroupMessage(gm chat.GroupMessage) {
 	g, exists := ui.threads.getGroup(gm.Thread)
 	if !exists {
@@ -896,11 +904,6 @@ func (ui *ui) InviteUser(ugiu chat.UpdateGroupInviteUser) {
 		}).Error("error creating thread item for adding user to group")
 		return
 	}
-
-	// TODO: should not be needed since it happens in SetGroupState
-	//u := makeUser(ugau.User)
-	//ui.users.add(u)
-	// TODO: also, doesn't SetGroupState happen first?
 
 	fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
 }
