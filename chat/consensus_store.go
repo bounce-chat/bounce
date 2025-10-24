@@ -506,6 +506,66 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		}).Fatal("database error looking for unapplied update group delete")
 	}
 
+	// If we're invited, check our policy for automatically accepting group invites, and act on it if needed
+	if finalState.isInvited(b.currentUserID()) {
+		// Make sure that if we've set this setting before, we're only using the setting if it was set before this invite.
+		// This prevents changing the setting from retroactively causing any invites to be accepted.
+		if ts := b.lastAutoJoinGroupSettingChange(); ts == 0 || ts < finalState.invitedAt {
+			u, ok := b.currentUser()
+			if !ok {
+				log.Error("current user doesn't exist when updating group state")
+				return errUserNotFound
+			}
+
+			noNewUsers := true
+			for _, userID := range finalState.users {
+				var test user
+				err := b.database.Select("id").First(&test, "id = ?", userID).Error
+				if err != nil {
+					noNewUsers = false
+				}
+			}
+
+			if u.ProfileSettings.AutoJoinGroups == AlwaysAutoJoinGroups || (u.ProfileSettings.AutoJoinGroups == OnlyAutoJoinGroupsWithNoNewUsers && noNewUsers) {
+				// Create an update group to auto-accept
+				accept := updateGroup{
+					ID:        uuid.New(),
+					Actor:     b.currentUserID(),
+					Target:    groupID,
+					Timestamp: time.Now().Unix(),
+					Type:      updateGroupTypeRespondToInvite,
+					Data:      []byte{acceptInvite},
+				}
+				accept.OriginalPayload, err = msgpack.Marshal(accept)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("error marshalling group update")
+				}
+				sc := b.createSignedContainer(accept.OriginalPayload)
+				accept.Signature = sc.Signature
+				accept.Signer = sc.Signer
+
+				err = b.database.Create(&accept).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("database error saving update group")
+				}
+
+				// Push it onto the canonical stack
+				err = cs.push(accept)
+				if err != nil {
+					log.Error("error pushing group invite auto-accept into canonical stack")
+				} else {
+					// Broadcast it and recursively set the state
+					b.broadcast(&accept)
+					return b.setRollbacksApplicationsAndGroupState(groupID, cs, append(ugs, accept))
+				}
+			}
+		}
+	}
+
 	err = b.setGroupStateInDatabase(initialGroup, allUsers, finalState, ugsToNotify)
 	if err != nil {
 		if err != nil {

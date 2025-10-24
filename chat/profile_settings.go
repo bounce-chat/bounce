@@ -20,3 +20,12 @@ type profileSettings struct {
 	NewGroupRestrictPosting        bool
 	AutoJoinGroups                 int
 }
+
+func (b *Bounce) lastAutoJoinGroupSettingChange() int64 {
+	var us updateSettings
+	err := b.database.Select("timestamp", "MAX(timestamp)").Find(&us).Error
+	if err != nil {
+		return 0
+	}
+	return us.Timestamp
+}
