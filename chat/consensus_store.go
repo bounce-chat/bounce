@@ -506,6 +506,72 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		}).Fatal("database error looking for unapplied update group delete")
 	}
 
+	// If this group contains a blocked user, leave the group if we're in it, or reject it if we're invited
+	hasBlockedUser := false
+	for _, userID := range finalState.users {
+		if blockedUser(userID) {
+			hasBlockedUser = true
+			break
+		}
+	}
+	for _, userID := range finalState.invites {
+		if blockedUser(userID) {
+			hasBlockedUser = true
+			break
+		}
+	}
+	if hasBlockedUser {
+		// Create an update to block or leave the group depending on our status
+		var injectedUpdate updateGroup
+		if finalState.isMember(b.currentUserID()) {
+			currentUserID := b.currentUserID()
+			injectedUpdate = updateGroup{
+				ID:        uuid.New(),
+				Actor:     b.currentUserID(),
+				Target:    groupID,
+				Timestamp: time.Now().Unix(),
+				Type:      updateGroupTypeRemoveUser,
+				Data:      currentUserID[:],
+			}
+		} else {
+			injectedUpdate = updateGroup{
+				ID:        uuid.New(),
+				Actor:     b.currentUserID(),
+				Target:    groupID,
+				Timestamp: time.Now().Unix(),
+				Type:      updateGroupTypeRespondToInvite,
+				Data:      []byte{rejectInvite},
+			}
+		}
+		injectedUpdate.OriginalPayload, err = msgpack.Marshal(injectedUpdate)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error marshalling group update")
+		}
+		sc := b.createSignedContainer(injectedUpdate.OriginalPayload)
+		injectedUpdate.Signature = sc.Signature
+		injectedUpdate.Signer = sc.Signer
+
+		err = b.database.Create(&injectedUpdate).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error saving update group")
+		}
+
+		// Push it onto the canonical stack
+		err = cs.push(injectedUpdate)
+		if err != nil {
+			log.Error("error pushing group invite auto-injectedUpdate into canonical stack")
+		} else {
+			// Broadcast it and recursively set the state
+			b.broadcast(&injectedUpdate)
+			return b.setRollbacksApplicationsAndGroupState(groupID, cs, append(ugs, injectedUpdate))
+		}
+
+	}
+
 	// If we're invited, check our policy for automatically accepting group invites, and act on it if needed
 	if finalState.isInvited(b.currentUserID()) {
 		// Make sure that if we've set this setting before, we're only using the setting if it was set before this invite.
