@@ -787,3 +787,22 @@ func (b *Bounce) removeGroupInvite(groupID, userID uuid.UUID) {
 		}).Warn("ignoring request to remove invite from group that already wasn't there")
 	}
 }
+
+func (b *Bounce) updateConsensusForGroupsWithUser(userID uuid.UUID) {
+	var groups []uuid.UUID
+	err := b.database.Table("group_users").
+		Select("group_id").
+		Where("user_id = ?", userID).
+		Find(&groups).
+		Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"user_id": userID,
+		}).Error("error getting groups to update that contain user")
+	}
+	for _, groupID := range groups {
+		b.reloadGroupConsensus(groupID)
+		b.writeGroupConsensus(groupID)
+	}
+}

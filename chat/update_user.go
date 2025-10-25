@@ -125,6 +125,21 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) (br
 	uu.Signature = sc.Signature
 	uu.Signer = sc.Signer
 
+	// Ignore anything from a blocked user
+	if blockedUser(uu.getAuthor()) {
+		log.WithFields(log.Fields{
+			"id":     uu.ID,
+			"author": uu.getAuthor(),
+		}).Warn("ignoring update user from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeUpdateUser, uu.ID)
+			}
+		}
+		return nil, false
+	}
+
 	// Make sure the signing device was not revoked before creating this
 	var signerDevice device
 	err = b.database.Select("revoked_at").Where("address = ?", uu.Signer).First(&signerDevice).Error

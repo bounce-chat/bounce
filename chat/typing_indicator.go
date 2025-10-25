@@ -143,6 +143,15 @@ func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool
 	ti.OriginalPayload = sc.Payload
 	ti.Signature = sc.Signature
 
+	// Ignore anything from a blocked user
+	if blockedUser(ti.getAuthor()) {
+		log.WithFields(log.Fields{
+			"id":     ti.ID,
+			"author": ti.getAuthor(),
+		}).Warn("ignoring typing indicator from blocked user")
+		return nil, false
+	}
+
 	// Do nothing if we've already seen this typing indicator
 	if typingIndicatorAlreadySeen(ti.ID) {
 		return nil, false

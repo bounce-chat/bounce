@@ -184,6 +184,21 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		return nil, false
 	}
 
+	// Ignore anything from a blocked user
+	if blockedUser(f.getAuthor()) {
+		log.WithFields(log.Fields{
+			"id":     f.ID,
+			"author": f.getAuthor(),
+		}).Warn("ignoring file from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeFile, f.ID)
+			}
+		}
+		return nil, false
+	}
+
 	// Make sure the device that signed this message belongs to the author
 	if !b.signedByUser(sc, f.Author) {
 		log.WithFields(log.Fields{
@@ -389,6 +404,21 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) (br
 			"author":         co.Author,
 			"signing_device": sc.Signer,
 		}).Warn("ignoring chunk offer that could not be signature validated")
+		return nil, false
+	}
+
+	// Ignore anything from a blocked user
+	if blockedUser(co.getAuthor()) {
+		log.WithFields(log.Fields{
+			"id":     co.ID,
+			"author": co.getAuthor(),
+		}).Warn("ignoring chunk offer from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeChunkOffer, co.ID)
+			}
+		}
 		return nil, false
 	}
 

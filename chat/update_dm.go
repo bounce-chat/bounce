@@ -657,7 +657,7 @@ func (b *Bounce) BlockUser(userID uuid.UUID) error {
 		return errCannotBlockSelf
 	}
 
-	return b.applyAndBroadcastUpdateDM(updateDM{
+	err := b.applyAndBroadcastUpdateDM(updateDM{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
@@ -665,6 +665,13 @@ func (b *Bounce) BlockUser(userID uuid.UUID) error {
 		Type:      updateDMTypeSetBlocked,
 		Data:      []byte{userBlocked},
 	})
+	if err != nil {
+		return err
+	}
+
+	b.updateConsensusForGroupsWithUser(userID)
+
+	return nil
 }
 
 func (b *Bounce) UnblockUser(userID uuid.UUID) error {
