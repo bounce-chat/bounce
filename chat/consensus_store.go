@@ -433,6 +433,12 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 
 	// If the final state involves us being removed from the group, delete the group
 	if finalState.removedBy != nil {
+		if finalState.removedBy.CustomScope != uuid.Nil {
+			// If the update already has a custom scope, then this was us rejecting a group
+			// that we never saved to disk, so we don't need to do anything here
+			return nil
+		}
+
 		// Attach a custom scope to this update group
 		err = b.createCustomScopeFromGroup(groupID)
 		if err == nil {
@@ -543,6 +549,20 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				Data:      []byte{rejectInvite},
 			}
 		}
+		// Create a custom scope since we are not going to keep this group on disk
+		scope := customScope{
+			ID:        groupID,
+			Addresses: strings.Join(finalState.scope(), ","),
+		}
+		err = b.database.Create(&scope).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error saving custom scope")
+		}
+		injectedUpdate.CustomScope = scope.ID
+
+		// Sign it
 		injectedUpdate.OriginalPayload, err = msgpack.Marshal(injectedUpdate)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -553,6 +573,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		injectedUpdate.Signature = sc.Signature
 		injectedUpdate.Signer = sc.Signer
 
+		// Save the update
 		err = b.database.Create(&injectedUpdate).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -563,7 +584,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		// Push it onto the canonical stack
 		err = cs.push(injectedUpdate)
 		if err != nil {
-			log.Error("error pushing group invite auto-injectedUpdate into canonical stack")
+			log.Error("error pushing group invite auto-injected update into canonical stack")
 		} else {
 			// Broadcast it and recursively set the state
 			b.broadcast(&injectedUpdate)
@@ -625,7 +646,6 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 					log.Error("error pushing group invite auto-accept into canonical stack")
 				} else {
 					// Broadcast it and recursively set the state
-					b.broadcast(&accept)
 					return b.setRollbacksApplicationsAndGroupState(groupID, cs, append(ugs, accept))
 				}
 			}

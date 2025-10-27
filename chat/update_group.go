@@ -85,7 +85,9 @@ func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
 		return errors.New("update group ID must be set before creation")
 	}
 
-	ug.CustomScope = uuid.Nil
+	if len(ug.CustomScope) == 0 {
+		ug.CustomScope = uuid.Nil
+	}
 
 	return nil
 }

@@ -18,6 +18,7 @@ type groupState struct {
 	admins                     []uuid.UUID
 	invites                    []uuid.UUID
 	blockedUsers               []uuid.UUID
+	devices                    map[uuid.UUID][]string
 	mutedUntil                 int64
 	retention                  int64
 	clearBefore                int64
@@ -44,6 +45,7 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[str
 		admins:                     []uuid.UUID{},
 		invites:                    []uuid.UUID{},
 		blockedUsers:               []uuid.UUID{},
+		devices:                    make(map[uuid.UUID][]string),
 		postingRestricted:          true,
 		editingRestricted:          true,
 		userManagementRestricted:   true,
@@ -107,6 +109,7 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[str
 	}
 
 	// Set the values for the original members
+
 	for _, u := range g.Users {
 		gs.users = append(gs.users, u.ID)
 
@@ -123,10 +126,13 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[str
 			devs = u.Devices
 		}
 
+		addrs := []string{}
 		for _, dev := range devs {
+			addrs = append(addrs, dev.Address)
 			initialDeviceMap[dev.Address] = u.ID
 			revokedTimeMap[dev.Address] = dev.RevokedAt
 		}
+		gs.devices[u.ID] = addrs
 	}
 
 	// Make sure the creating device wasn't revoked before group creation
@@ -328,6 +334,36 @@ func (gs groupState) isBlocked(userID uuid.UUID) bool {
 		}
 	}
 	return false
+}
+
+func (gs groupState) scope() []string {
+	scope := []string{}
+
+	for _, id := range gs.users {
+		devs, ok := gs.devices[id]
+		if !ok {
+			log.WithFields(log.Fields{
+				"id": id,
+			}).Error("user in group state has no devices")
+			continue
+		}
+
+		scope = append(scope, devs...)
+	}
+
+	for _, id := range gs.invites {
+		devs, ok := gs.devices[id]
+		if !ok {
+			log.WithFields(log.Fields{
+				"id": id,
+			}).Error("invited user in group state has no devices")
+			continue
+		}
+
+		scope = append(scope, devs...)
+	}
+
+	return scope
 }
 
 func changeIsNOP(lastState groupState, ug updateGroup, myID uuid.UUID) bool {
@@ -636,6 +672,12 @@ func applyUpdateGroupInviteUserToState(gs groupState, ug updateGroup, myID uuid.
 		gs.invitedBy = ug.Actor
 		gs.invitedAt = ug.Timestamp
 	}
+
+	addrs := []string{}
+	for _, dev := range u.Devices {
+		addrs = append(addrs, dev.Address)
+	}
+	gs.devices[u.ID] = addrs
 
 	return gs, nil
 }
