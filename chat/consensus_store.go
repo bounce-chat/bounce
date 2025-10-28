@@ -433,29 +433,26 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 
 	// If the final state involves us being removed from the group, delete the group
 	if finalState.removedBy != nil {
-		if finalState.removedBy.CustomScope != uuid.Nil {
-			// If the update already has a custom scope, then this was us rejecting a group
-			// that we never saved to disk, so we don't need to do anything here
-			return nil
-		}
-
-		// Attach a custom scope to this update group
-		err = b.createCustomScopeFromGroup(groupID)
-		if err == nil {
-			err = b.database.Model(&updateGroup{}).Where("id = ?", finalState.removedBy.ID).Select("custom_scope").Update("custom_scope", groupID).Error
-			if err != nil {
+		if finalState.removedBy.CustomScope == uuid.Nil {
+			// Attach a custom scope to this update group
+			err = b.createCustomScopeFromGroup(groupID)
+			if err == nil {
+				err = b.database.Model(&updateGroup{}).Where("id = ?", finalState.removedBy.ID).Select("custom_scope").Update("custom_scope", groupID).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"update_group_id": finalState.removedBy.ID,
+						"error":           err.Error(),
+					}).Fatal("error updating custom scope on update group")
+				}
+			} else {
 				log.WithFields(log.Fields{
 					"update_group_id": finalState.removedBy.ID,
 					"error":           err.Error(),
-				}).Fatal("error updating custom scope on update group")
+				}).Error("error creating custom scope for update group")
 			}
-		} else {
-			log.WithFields(log.Fields{
-				"update_group_id": finalState.removedBy.ID,
-				"error":           err.Error(),
-			}).Error("error creating custom scope for update group")
 		}
 
+		// TODO: we only need to do these things if the UI is already aware of the group
 		// Inform the UI
 		go b.ui.RemovedFromGroup(RemovedFromGroup{
 			Group: groupID,
