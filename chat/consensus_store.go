@@ -1057,6 +1057,26 @@ func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {
 				}).Fatal("database error looking up all file attachments for a message")
 			}
 			for _, fa := range fas {
+				offers := []chunkOffer{}
+				err := b.database.Select("id").Where("file_id = ?", fa.FileID).Find(&offers).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":    err.Error(),
+						"user_id":  userID,
+						"group_id": groupID,
+					}).Fatal("database error deleting delivery records")
+				}
+				for _, offer := range offers {
+					err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeChunkOffer, offer.ID).Error
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error":    err.Error(),
+							"user_id":  userID,
+							"group_id": groupID,
+						}).Fatal("database error deleting delivery records")
+					}
+				}
+
 				err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeFile, fa.FileID).Error
 				if err != nil {
 					log.WithFields(log.Fields{
@@ -1075,6 +1095,26 @@ func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {
 				}).Fatal("database error looking up all image attachments for a message")
 			}
 			for _, ia := range ias {
+				offers := []chunkOffer{}
+				err := b.database.Select("id").Where("file_id = ?", ia.FileID).Find(&offers).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":    err.Error(),
+						"user_id":  userID,
+						"group_id": groupID,
+					}).Fatal("database error deleting delivery records")
+				}
+				for _, offer := range offers {
+					err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeChunkOffer, offer.ID).Error
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error":    err.Error(),
+							"user_id":  userID,
+							"group_id": groupID,
+						}).Fatal("database error deleting delivery records")
+					}
+				}
+
 				err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeFile, ia.FileID).Error
 				if err != nil {
 					log.WithFields(log.Fields{
@@ -1145,6 +1185,28 @@ func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {
 				"user_id":  userID,
 				"group_id": groupID,
 			}).Fatal("database error deleting delivery records")
+		}
+
+		for _, img := range imageHistory {
+			offers := []chunkOffer{}
+			err := b.database.Select("id").Where("file_id = ?", img).Find(&offers).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"user_id":  userID,
+					"group_id": groupID,
+				}).Fatal("database error deleting delivery records")
+			}
+			for _, offer := range offers {
+				err = b.database.Exec("DELETE FROM delivery_records WHERE destination = ? AND frame_type = ? AND frame_id = ?", dev.Address, typeChunkOffer, offer.ID).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":    err.Error(),
+						"user_id":  userID,
+						"group_id": groupID,
+					}).Fatal("database error deleting delivery records")
+				}
+			}
 		}
 	}
 }
