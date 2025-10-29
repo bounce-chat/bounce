@@ -14,7 +14,7 @@ require (
 	github.com/cretz/bine v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
-	github.com/hkparker/go-libtor v0.0.0-20251029121523-54c2c00391fe
+	github.com/hkparker/go-libtor v0.0.0-20251029222718-b43fc5caa454
 	github.com/rymdport/go-qrcode v1.2.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/vmihailenco/msgpack/v5 v5.4.1

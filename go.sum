@@ -54,8 +54,8 @@ github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b h1:wDUNC2eKiL35DbLvsD
 github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b/go.mod h1:VzxiSdG6j1pi7rwGm/xYI5RbtpBgM8sARDXlvEvxlu0=
 github.com/hexops/gotextdiff v1.0.3 h1:gitA9+qJrrTCsiCl7+kh75nPqQt1cx4ZkudSTLoUqJM=
 github.com/hexops/gotextdiff v1.0.3/go.mod h1:pSWU5MAI3yDq+fZBTazCSJysOMbxWL1BSow5/V2vxeg=
-github.com/hkparker/go-libtor v0.0.0-20251029121523-54c2c00391fe h1:dM6oug0pWpvEmMV8+NZrXNS4c1hLHRezs2dC5LBWn/8=
-github.com/hkparker/go-libtor v0.0.0-20251029121523-54c2c00391fe/go.mod h1:ks2j94MTC5LzW+S+1SOyPXgRzhl3Ydyifg4CaBZbqSk=
+github.com/hkparker/go-libtor v0.0.0-20251029222718-b43fc5caa454 h1:R4pJfA/kaX3SQAzloWlOeT+lgszFI1SyPb19wYy2jH0=
+github.com/hkparker/go-libtor v0.0.0-20251029222718-b43fc5caa454/go.mod h1:ks2j94MTC5LzW+S+1SOyPXgRzhl3Ydyifg4CaBZbqSk=
 github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade h1:FmusiCI1wHw+XQbvL9M+1r/C3SPqKrmBaIOYwVfQoDE=
 github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade/go.mod h1:ZDXo8KHryOWSIqnsb/CiDq7hQUYryCgdVnxbj8tDG7o=
 github.com/jinzhu/inflection v1.0.0 h1:K317FqzuhWc8YvSVlFMCCUb36O/S9MCKRDI7QkRKD/E=
