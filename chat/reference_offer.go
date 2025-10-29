@@ -682,7 +682,13 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 
 	// Collect all these update groups into a set of references
 	references := []frameReference{}
+	included := map[uuid.UUID]bool{}
 	for _, ug := range unsentUpdateGroups {
+		if _, ok := included[ug.ID]; ok {
+			continue
+		} else {
+			included[ug.ID] = true
+		}
 		// Ignore sync scoped update groups unless this is a sync device
 		if ug.getScope(b.currentUserID()) == scopeSync && !b.isSyncDevice(dev) {
 			continue

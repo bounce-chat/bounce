@@ -1,6 +1,6 @@
 module github.com/hkparker/bounce
 
-go 1.23.0
+go 1.24.0
 
 toolchain go1.24.5
 
@@ -14,7 +14,7 @@ require (
 	github.com/cretz/bine v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
-	github.com/hkparker/go-libtor v0.0.0-20221215221725-0e61cb383f30
+	github.com/hkparker/go-libtor v0.0.0-20251029121523-54c2c00391fe
 	github.com/rymdport/go-qrcode v1.2.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/vmihailenco/msgpack/v5 v5.4.1
@@ -59,9 +59,9 @@ require (
 	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/yuin/goldmark v1.7.13 // indirect
-	golang.org/x/crypto v0.40.0 // indirect
-	golang.org/x/net v0.42.0 // indirect
-	golang.org/x/sys v0.34.0 // indirect
-	golang.org/x/text v0.27.0 // indirect
+	golang.org/x/crypto v0.43.0 // indirect
+	golang.org/x/net v0.45.0 // indirect
+	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/text v0.30.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
