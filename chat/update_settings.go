@@ -25,6 +25,7 @@ const updateSettingsTypeSetNewGroupRestrictUserManagement = uint16(3)
 const updateSettingsTypeSetNewGroupRestirctGroupEdits = uint16(4)
 const updateSettingsTypeSetNewGroupRestrictPosting = uint16(5)
 const updateSettingsTypeSetAutoJoinGroups = uint16(6)
+const updateSettingsTypeSetDefaultDMRetention = uint16(7)
 
 var errInvalidPayloadValue = errors.New("invalid payload value")
 
@@ -95,7 +96,7 @@ func (us *updateSettings) getTimestamp() int64 {
 func (us *updateSettings) validPayload() error {
 	switch us.Type {
 	case updateSettingsTypeSetDefaultGroupRetention:
-		//
+		// TODO
 	case updateSettingsTypeSetDefatulReadReceipts:
 		if len(us.Data) != 1 {
 			return errInvalidPayloadLength
@@ -139,6 +140,8 @@ func (us *updateSettings) validPayload() error {
 		if !(val == OnlyAutoJoinGroupsWithNoNewUsers || val == NeverAutoJoinGroups || val == AlwaysAutoJoinGroups) {
 			return errInvalidPayloadValue
 		}
+	case updateSettingsTypeSetDefaultDMRetention:
+		// TODO
 	default:
 		log.WithFields(log.Fields{
 			"type": us.Type,
@@ -227,6 +230,7 @@ func (b *Bounce) updateSettingsState() {
 	newGroupRestrictGroupEdits := false
 	newGroupRestrictPosting := false
 	autoJoinGroups := 0
+	defaultDMRetention := int64(time.Duration(24 * time.Hour * 7 * 4).Seconds())
 
 	// Find all updates
 	uss := []updateSettings{}
@@ -263,6 +267,8 @@ func (b *Bounce) updateSettingsState() {
 			newGroupRestrictPosting = us.Data[0] == enabled
 		case updateSettingsTypeSetAutoJoinGroups:
 			autoJoinGroups = int(us.Data[0])
+		case updateSettingsTypeSetDefaultDMRetention:
+			defaultDMRetention = int64(binary.LittleEndian.Uint64(us.Data))
 		default:
 			log.WithFields(log.Fields{
 				"type": us.Type,
@@ -279,6 +285,7 @@ func (b *Bounce) updateSettingsState() {
 		"new_group_restrict_group_edits":     newGroupRestrictGroupEdits,
 		"new_group_restrict_posting":         newGroupRestrictPosting,
 		"auto_join_groups":                   autoJoinGroups,
+		"default_dm_retention":               defaultDMRetention,
 	}).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -303,6 +310,7 @@ func (b *Bounce) updateSettingsState() {
 			NewGroupRestrictGroupEdits:     newGroupRestrictGroupEdits,
 			NewGroupRestrictPosting:        newGroupRestrictPosting,
 			AutoJoinGroups:                 autoJoinGroups,
+			DefaultDMRetention:             defaultDMRetention,
 		},
 	)
 }
@@ -405,6 +413,18 @@ func (b *Bounce) SetAutoJoinGroups(value int) {
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetAutoJoinGroups,
 		Data:      []byte{byte(value)},
+	})
+}
+
+func (b *Bounce) SetNewDMRetention(value int64) {
+	payload := make([]byte, 8)
+	binary.LittleEndian.PutUint64(payload, uint64(value))
+
+	b.applyAndBroadcastUpdateSettings(updateSettings{
+		ID:        uuid.New(),
+		Timestamp: time.Now().Unix(),
+		Type:      updateSettingsTypeSetDefaultDMRetention,
+		Data:      payload,
 	})
 }
 

@@ -23,6 +23,7 @@ type Settings struct {
 	NewGroupRestrictGroupEdits     bool
 	NewGroupRestrictPosting        bool
 	AutoJoinGroups                 int
+	DefaultDMRetention             int64
 }
 
 type Device struct {

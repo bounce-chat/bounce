@@ -19,6 +19,7 @@ type profileSettings struct {
 	NewGroupRestrictGroupEdits     bool
 	NewGroupRestrictPosting        bool
 	AutoJoinGroups                 int
+	DefaultDMRetention             int64
 }
 
 func (b *Bounce) lastAutoJoinGroupSettingChange() int64 {

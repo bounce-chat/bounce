@@ -35,6 +35,7 @@ var autoJoinGroupValues = map[string]int{
 type settings struct {
 	sendReadReceiptsByDefault             *widget.Check
 	sendTypingIndicatorsByDefault         *widget.Check
+	defaultNewDMRetention                 *widget.Select
 	defaultNewGroupRetention              *widget.Select
 	defaultNewGroupRestrictUserManagement *widget.Check
 	defaultNewGroupRestrictGroupEdits     *widget.Check
@@ -48,6 +49,8 @@ func (ui *ui) showSettings() {
 	ui.widgets.settings.sendReadReceiptsByDefault.Refresh()
 	ui.widgets.settings.sendTypingIndicatorsByDefault.Checked = ui.state.settings.DefaultSendTypingIndicators
 	ui.widgets.settings.sendTypingIndicatorsByDefault.Refresh()
+	ui.widgets.settings.defaultNewDMRetention.Selected = getRetentionName(ui.state.settings.DefaultDMRetention)
+	ui.widgets.settings.defaultNewDMRetention.Refresh()
 
 	ui.widgets.settings.autoAcceptGroupInvites.Selected = getAutoJoinLabel(ui.state.settings.AutoJoinGroups)
 	ui.widgets.settings.defaultNewGroupRetention.Selected = getRetentionName(ui.state.settings.DefaultGroupRetention)
@@ -110,12 +113,13 @@ func (ui *ui) buildSettings() {
 	}
 
 	ui.widgets.settings = &settings{
-		sendReadReceiptsByDefault:             widget.NewCheck("Send Read Receipts By Default", ui.bounce.SetReadReceiptsByDefault),
-		sendTypingIndicatorsByDefault:         widget.NewCheck("Send Typing Indicators By Default", ui.bounce.SetTypingIndicatorsByDefault),
-		defaultNewGroupRetention:              widget.NewSelect(retentionSelections, ui.sendDefaultRetentionSelection),
-		defaultNewGroupRestrictUserManagement: widget.NewCheck("Restrict User Management", ui.bounce.SetNewGroupRestrictUserManagement),
-		defaultNewGroupRestrictGroupEdits:     widget.NewCheck("Restrict Group Edits", ui.bounce.SetNewGroupRestrictGroupEdits),
-		defaultNewGroupRestrictPosting:        widget.NewCheck("Restrict Posting", ui.bounce.SetNewGroupRestrictPosting),
+		sendReadReceiptsByDefault:             widget.NewCheck("Send Read Receipts By Default", func(v bool) { ui.bounce.SetReadReceiptsByDefault(v) }),
+		sendTypingIndicatorsByDefault:         widget.NewCheck("Send Typing Indicators By Default", func(v bool) { ui.bounce.SetTypingIndicatorsByDefault(v) }),
+		defaultNewDMRetention:                 widget.NewSelect(retentionSelections, ui.sendDefaultDMRetentionSelection),
+		defaultNewGroupRetention:              widget.NewSelect(retentionSelections, ui.sendDefaultGroupRetentionSelection),
+		defaultNewGroupRestrictUserManagement: widget.NewCheck("Restrict User Management", func(v bool) { ui.bounce.SetNewGroupRestrictUserManagement(v) }),
+		defaultNewGroupRestrictGroupEdits:     widget.NewCheck("Restrict Group Edits", func(v bool) { ui.bounce.SetNewGroupRestrictGroupEdits(v) }),
+		defaultNewGroupRestrictPosting:        widget.NewCheck("Restrict Posting", func(v bool) { ui.bounce.SetNewGroupRestrictPosting(v) }),
 		autoAcceptGroupInvites:                widget.NewSelect(autoAcceptGroupInviteSelections, ui.sendDefaultAutoJoinGroups),
 		darkMode:                              widget.NewCheck("Dark Mode", ui.setDarkMode),
 	}
@@ -135,6 +139,10 @@ func (ui *ui) buildSettings() {
 				widget.NewLabel("Automatically Accept Group Invites"),
 				ui.widgets.settings.autoAcceptGroupInvites,
 			),
+			container.NewHBox(
+				widget.NewLabel("Default Direct Message Retention"),
+				ui.widgets.settings.defaultNewDMRetention,
+			),
 			groupSettingsLabel,
 			container.NewHBox(
 				widget.NewLabel("Retention"),
@@ -149,7 +157,7 @@ func (ui *ui) buildSettings() {
 	)
 }
 
-func (ui *ui) sendDefaultRetentionSelection(selection string) { // TODO: rename to group, different setting for user
+func (ui *ui) sendDefaultGroupRetentionSelection(selection string) {
 	value, ok := retentionValues[selection]
 	if !ok {
 		log.WithFields(log.Fields{
@@ -158,6 +166,17 @@ func (ui *ui) sendDefaultRetentionSelection(selection string) { // TODO: rename 
 		return
 	}
 	ui.bounce.SetNewGroupRetention(value)
+}
+
+func (ui *ui) sendDefaultDMRetentionSelection(selection string) {
+	value, ok := retentionValues[selection]
+	if !ok {
+		log.WithFields(log.Fields{
+			"selection": selection,
+		}).Error("unsupported retention selection")
+		return
+	}
+	ui.bounce.SetNewDMRetention(value)
 }
 
 func (ui *ui) sendDefaultAutoJoinGroups(selection string) {
@@ -185,6 +204,9 @@ func (ui *ui) SetSettings(settings chat.Settings) {
 		updateTypingIndicators := ui.state.settings.DefaultSendTypingIndicators != settings.DefaultSendTypingIndicators
 
 		ui.state.settings = settings
+
+		ui.widgets.settings.defaultNewDMRetention.Selected = getRetentionName(settings.DefaultDMRetention)
+		ui.widgets.settings.defaultNewDMRetention.Refresh()
 
 		ui.widgets.settings.defaultNewGroupRetention.Selected = getRetentionName(settings.DefaultGroupRetention)
 		ui.widgets.settings.defaultNewGroupRetention.Refresh()

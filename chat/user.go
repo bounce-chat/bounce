@@ -224,6 +224,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 			NewGroupRestrictUserManagement: true,
 			NewGroupRestrictGroupEdits:     false,
 			NewGroupRestrictPosting:        false,
+			DefaultDMRetention:             int64(time.Duration(24 * time.Hour * 7 * 4).Seconds()),
 		},
 	}
 	if len(image) > 0 {
