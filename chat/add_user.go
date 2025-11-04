@@ -331,6 +331,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 			}).Error("error saving new user while handing add user")
 			return nil, false
 		}
+		b.updateDMState(counterparty.ID)
 
 		// Ack and delivery track these devices
 		for _, dev := range counterparty.Devices {

@@ -968,6 +968,7 @@ func (b *Bounce) createNewUserIfNeeded(u user) {
 				"error": err.Error(),
 			}).Fatal("error saving user that is being added to a group")
 		}
+		b.updateDMState(u.ID)
 
 		// Attempt to make a connection to the user
 		b.UserConnectionDesired(u.ID)

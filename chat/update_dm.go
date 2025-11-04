@@ -23,6 +23,7 @@ const updateDMTypeSetOpen = uint16(5)
 const updateDMTypeSetAlias = uint16(6)
 const updateDMTypeSetNotes = uint16(7)
 const updateDMTypeSetBlocked = uint16(8)
+const updateDMTypeOfferRetention = uint16(9)
 
 var errUpdateDMWithUnknownType = errors.New("update DM has unknown update type")
 var errInvalidPayloadLength = errors.New("invalid payload length")
@@ -272,8 +273,16 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 		}
 	}
 
+	profile, ok := b.currentUser()
+	if !ok {
+		log.Fatal("cannot set DM state before profile exists")
+	}
+
 	// Set the initial values for the DM
-	retention := int64(0)
+	retention := profile.ProfileSettings.DefaultDMRetention
+	if userID == b.currentUserID() {
+		retention = int64(0) // Note to self lasts forever by default
+	}
 	mutedUntil := int64(0)
 	clearBefore := int64(0)
 	readReceiptsOverridden := false
@@ -284,6 +293,13 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 	alias := ""
 	notes := ""
 	blocked := false
+
+	// Track states related to setting retention for the first time
+	anyoneEverSetRetention := false
+	profileOfferedRetention := false
+	profileDefaultRetention := int64(0)
+	counterpartyOfferedRetention := false
+	counterpartyDefaultRetention := int64(0)
 
 	// Find all updates
 	uds := []updateDM{}
@@ -310,6 +326,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 			mutedUntil = int64(binary.LittleEndian.Uint64(ud.Data))
 		case updateDMTypeChangeRetention:
 			retention = int64(binary.LittleEndian.Uint64(ud.Data))
+			anyoneEverSetRetention = true
 		case updateDMTypeSetClearBefore:
 			clearBefore = int64(binary.LittleEndian.Uint64(ud.Data))
 		case updateDMTypeSetReadReceipts:
@@ -327,10 +344,79 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 		case updateDMTypeSetBlocked:
 			blocked = ud.Data[0] == userBlocked
 			open = !blocked
+		case updateDMTypeOfferRetention:
+			if ud.Actor == profile.ID {
+				profileOfferedRetention = true
+				profileDefaultRetention = int64(binary.LittleEndian.Uint64(ud.Data))
+			} else {
+				counterpartyOfferedRetention = true
+				counterpartyDefaultRetention = int64(binary.LittleEndian.Uint64(ud.Data))
+			}
 		default:
 			log.WithFields(log.Fields{
 				"type": ud.Type,
 			}).Warn("ignoring update DM with unknown type")
+		}
+	}
+
+	// If retention has never been set, advertize our default retention and see if one needs to be set
+	bothSharedSameDefault := profileOfferedRetention && counterpartyOfferedRetention && profileDefaultRetention == counterpartyDefaultRetention
+	if !anyoneEverSetRetention && userID != b.currentUserID() {
+		if bothSharedSameDefault {
+			retention = profileDefaultRetention
+		} else {
+			if counterpartyOfferedRetention {
+				if profile.ProfileSettings.DefaultDMRetention < counterpartyDefaultRetention {
+					// Set the retention to my default
+					payload := make([]byte, 8)
+					binary.LittleEndian.PutUint64(payload, uint64(profile.ProfileSettings.DefaultDMRetention))
+
+					set := updateDM{
+						ID:        uuid.New(),
+						Actor:     b.currentUserID(),
+						Target:    xor(userID, b.currentUserID()),
+						Timestamp: time.Now().Unix(),
+						Type:      updateDMTypeChangeRetention,
+						Data:      payload,
+					}
+
+					err = b.database.Create(&set).Error
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Fatal("database error saving update DM")
+					}
+
+					b.broadcast(&set)
+
+					b.updateDMState(userID)
+					return
+				}
+			}
+
+			if !profileOfferedRetention {
+				// Offer my retention
+				payload := make([]byte, 8)
+				binary.LittleEndian.PutUint64(payload, uint64(profile.ProfileSettings.DefaultDMRetention))
+
+				offer := updateDM{
+					ID:        uuid.New(),
+					Actor:     b.currentUserID(),
+					Target:    xor(userID, b.currentUserID()),
+					Timestamp: time.Now().Unix(),
+					Type:      updateDMTypeOfferRetention,
+					Data:      payload,
+				}
+
+				err = b.database.Create(&offer).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("database error saving update DM")
+				}
+
+				b.broadcast(&offer)
+			}
 		}
 	}
 
@@ -453,6 +539,8 @@ func (b *Bounce) saveAndDisplayUpdateDM(ud updateDM) error {
 		// No UI status changes for notes
 	case updateDMTypeSetBlocked:
 		// No UI status changes for blocking users
+	case updateDMTypeOfferRetention:
+		// No UI changes for determining retention
 	default:
 		log.WithFields(log.Fields{
 			"type": ud.Type,
