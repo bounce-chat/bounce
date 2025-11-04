@@ -96,7 +96,9 @@ func (us *updateSettings) getTimestamp() int64 {
 func (us *updateSettings) validPayload() error {
 	switch us.Type {
 	case updateSettingsTypeSetDefaultGroupRetention:
-		// TODO
+		if len(us.Data) != 8 {
+			return errInvalidPayloadLength
+		}
 	case updateSettingsTypeSetDefatulReadReceipts:
 		if len(us.Data) != 1 {
 			return errInvalidPayloadLength
@@ -141,7 +143,9 @@ func (us *updateSettings) validPayload() error {
 			return errInvalidPayloadValue
 		}
 	case updateSettingsTypeSetDefaultDMRetention:
-		// TODO
+		if len(us.Data) != 8 {
+			return errInvalidPayloadLength
+		}
 	default:
 		log.WithFields(log.Fields{
 			"type": us.Type,

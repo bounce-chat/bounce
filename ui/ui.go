@@ -128,8 +128,8 @@ func Main() {
 	}
 	ui.build()
 
-	ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())
 	go func() {
+		ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())
 		ui.loadInitialState(ui.bounce.GetInitialState())
 	}()
 

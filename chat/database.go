@@ -265,6 +265,7 @@ func (b *Bounce) GetInitialState() InitialState {
 				TypingIndicatorsEnabled:        dbProfile.TypingIndicatorsEnabled,
 			},
 		}
+		settings.DefaultDMRetention = dbProfile.ProfileSettings.DefaultDMRetention
 		settings.DefaultGroupRetention = dbProfile.ProfileSettings.DefaultGroupRetention
 		settings.DefaultSendReadReceipts = dbProfile.ProfileSettings.DefaultSendReadReceipts
 		settings.DefaultSendTypingIndicators = dbProfile.ProfileSettings.DefaultSendTypingIndicators
