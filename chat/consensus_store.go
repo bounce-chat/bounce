@@ -766,7 +766,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 	finalUsers := []User{}
 	for _, userID := range gs.users {
 		var u user
-		err := b.database.Select("name").First(&u, "id = ?", userID).Error
+		err := b.database.First(&u, "id = ?", userID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
@@ -865,7 +865,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 		}
 
 		var u user
-		err := b.database.Select("name").First(&u, "id = ?", invitedID).Error
+		err := b.database.First(&u, "id = ?", invitedID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
