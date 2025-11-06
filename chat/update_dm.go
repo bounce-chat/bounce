@@ -388,8 +388,9 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 					}
 
 					b.broadcast(&set)
-
 					b.updateDMState(userID)
+					b.informUIUpdateDMChangeRetention(u, set)
+
 					return
 				}
 			}
