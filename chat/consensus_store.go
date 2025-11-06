@@ -879,7 +879,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 				}).Fatal("database error looking up user")
 			}
 		}
-		finalInvites = append(finalUsers, User{
+		finalInvites = append(finalInvites, User{
 			ID:               u.ID,
 			Name:             u.Name,
 			Alias:            u.Alias,
