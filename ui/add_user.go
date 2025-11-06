@@ -229,26 +229,26 @@ func (ui *ui) buildDisplayAddUserString() {
 }
 
 func (ui *ui) UserAdded(u chat.User) {
-	ui.widgets.addUser.currentStep.Text = "Success!"
-	ui.widgets.addUser.currentStep.Refresh()
-	ui.widgets.addUser.progressBar.Stop()
-	ui.widgets.addUser.progressBar.Hide()
-	newUser := makeUser(u)
-	ui.users.add(newUser)
-	if ui.state.currentView == viewTypeAddUser {
-		if fyne.CurrentDevice().IsMobile() {
-			ui.mobileBack() // Exit to menu
-			ui.mobileBack() // Exit menu to home
-		} else {
-			ui.showMainContainer()
+	fyne.DoAndWait(func() {
+		ui.widgets.addUser.currentStep.Text = "Success!"
+		ui.widgets.addUser.currentStep.Refresh()
+		ui.widgets.addUser.progressBar.Stop()
+		ui.widgets.addUser.progressBar.Hide()
+		newUser := makeUser(u)
+		ui.users.add(newUser)
+		if ui.state.currentView == viewTypeAddUser {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.mobileBack() // Exit to menu
+				ui.mobileBack() // Exit menu to home
+			} else {
+				ui.showMainContainer()
+			}
 		}
-	}
-	if !ui.state.initialSyncIncomplete {
-		fyne.DoAndWait(func() {
+		if !ui.state.initialSyncIncomplete {
 			ui.NewDirectMessage(u) // TODO: no DM state exists for the user yet
 			ui.showDialog(dialog.NewInformation("New contact added", u.Name+" was added as a friend", ui.window), nil)
-		})
-	}
+		}
+	})
 }
 
 func (ui *ui) AddUserRequestRejected(peer string) {

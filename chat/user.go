@@ -272,6 +272,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 				TypingIndicatorsEnabled:        u.ProfileSettings.DefaultSendTypingIndicators,
 			},
 		)
+		b.updateSettingsState()
 		b.RenameDevice(d.ID, deviceName)
 	}()
 	return nil

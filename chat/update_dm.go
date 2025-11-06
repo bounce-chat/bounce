@@ -85,7 +85,7 @@ func (ud *updateDM) getID() uuid.UUID {
 }
 
 func (ud *updateDM) getScope(_ uuid.UUID) int {
-	if ud.Target != uuid.Nil && (ud.Type == updateDMTypeChangeRetention || ud.Type == updateDMTypeSetClearBefore) {
+	if ud.Target != uuid.Nil && (ud.Type == updateDMTypeChangeRetention || ud.Type == updateDMTypeSetClearBefore || ud.Type == updateDMTypeOfferRetention) {
 		return scopeUser
 	}
 
@@ -366,7 +366,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 			retention = profileDefaultRetention
 		} else {
 			if counterpartyOfferedRetention {
-				if profile.ProfileSettings.DefaultDMRetention < counterpartyDefaultRetention {
+				if profile.ProfileSettings.DefaultDMRetention != 0 && profile.ProfileSettings.DefaultDMRetention < counterpartyDefaultRetention {
 					// Set the retention to my default
 					payload := make([]byte, 8)
 					binary.LittleEndian.PutUint64(payload, uint64(profile.ProfileSettings.DefaultDMRetention))
