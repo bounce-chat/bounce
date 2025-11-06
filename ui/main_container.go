@@ -369,7 +369,7 @@ func (ui *ui) ProfileSet(u chat.User, d chat.Device) {
 		ui.state.profile = profile
 		ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
 		ui.showMainContainer()
-		ui.NewDirectMessage(u) // TODO: set an share a DM state?
+		ui.NewDirectMessage(u)
 
 		ui.devices.add(&d)
 		ui.updateDeviceStatus()

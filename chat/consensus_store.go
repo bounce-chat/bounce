@@ -663,8 +663,9 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 }
 
 func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs groupState, ugsToNotify []updateGroup) error {
+	newUsers := make(map[uuid.UUID]bool)
 	for _, u := range allUsers {
-		b.createNewUserIfNeeded(u)
+		newUsers[u.ID] = b.createNewUserIfNeeded(u)
 	}
 	var g group
 	err := b.database.Preload(clause.Associations).Where("id = ?", initialGroup.ID).First(&g).Error
@@ -779,9 +780,17 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 				}).Fatal("database error looking up user")
 			}
 		}
-		finalUsers = append(finalUsers, User{ID: userID, Name: u.Name})
+		finalUsers = append(finalUsers, User{
+			ID:               u.ID,
+			Name:             u.Name,
+			Alias:            u.Alias,
+			Notes:            u.Notes,
+			Blocked:          u.Blocked,
+			Images:           u.images(),
+			IntroductionTime: u.IntroductionTime,
+		})
 
-		if !b.userIsInGroup(g.ID, userID) { // TODO: check the groups struct that was passed?
+		if !b.userIsInGroup(g.ID, userID) {
 			err = b.database.Exec("INSERT INTO group_users VALUES(?, ?)", g.ID, userID).Error
 			if err != nil {
 				if !errors.Is(err, gorm.ErrDuplicatedKey) {
@@ -823,7 +832,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 		}
 	}
 	for _, adminID := range gs.admins {
-		if !b.isGroupAdmin(g.ID, adminID) { // TODO: check the group struct that was passed in?
+		if !b.isGroupAdmin(g.ID, adminID) {
 			b.addGroupAdmin(g.ID, adminID)
 		}
 	}
@@ -870,7 +879,15 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 				}).Fatal("database error looking up user")
 			}
 		}
-		finalInvites = append(finalInvites, User{ID: invitedID, Name: u.Name}) // TODO: include all user details
+		finalInvites = append(finalUsers, User{
+			ID:               u.ID,
+			Name:             u.Name,
+			Alias:            u.Alias,
+			Notes:            u.Notes,
+			Blocked:          u.Blocked,
+			Images:           u.images(),
+			IntroductionTime: u.IntroductionTime,
+		})
 	}
 
 	// Set blocked users
@@ -934,6 +951,14 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 		for _, ug := range ugsToNotify {
 			b.informUIOfUpdateGroup(ug)
 		}
+
+		for id, created := range newUsers {
+			if created {
+				// For users that were just created, start the process of
+				// figuring out a shared DM rentention setting
+				b.updateDMState(id)
+			}
+		}
 	}()
 
 	b.referenceAllOnlineDevicesInGroup(g.ID)
@@ -941,38 +966,41 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 	return nil
 }
 
-func (b *Bounce) createNewUserIfNeeded(u user) {
-	if u.ID != b.currentUserID() {
-		// Ensure the user is valid
-		if !b.hasValidDeviceGroup(u) {
-			log.WithFields(log.Fields{
-				"user_id": u.ID,
-			}).Warn("refusing to save user with invalid device group")
-			return
-		}
+func (b *Bounce) createNewUserIfNeeded(u user) bool {
+	if u.ID == b.currentUserID() {
+		return false
+	}
 
-		// Save the user and their devices if we don't have them
-		for _, dev := range u.Devices {
-			err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("error saving device that belongs to a user being added to a group")
-			}
-		}
-		u.IntroductionMethod = userIntroductionGroup
-		u.IntroductionTime = time.Now().Unix()
-		err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&u).Error
+	// Ensure the user is valid
+	if !b.hasValidDeviceGroup(u) {
+		log.WithFields(log.Fields{
+			"user_id": u.ID,
+		}).Warn("refusing to save user with invalid device group")
+		return false
+	}
+
+	// Save the user and their devices if we don't have them
+	for _, dev := range u.Devices {
+		err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("error saving user that is being added to a group")
+			}).Fatal("error saving device that belongs to a user being added to a group")
 		}
-		b.updateDMState(u.ID)
-
-		// Attempt to make a connection to the user
-		b.UserConnectionDesired(u.ID)
 	}
+	u.IntroductionMethod = userIntroductionGroup
+	u.IntroductionTime = time.Now().Unix()
+	res := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&u)
+	if res.Error != nil {
+		log.WithFields(log.Fields{
+			"error": res.Error.Error(),
+		}).Fatal("error saving user that is being added to a group")
+	}
+
+	// Attempt to make a connection to the user
+	b.UserConnectionDesired(u.ID)
+
+	return res.RowsAffected == 1
 }
 
 func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {

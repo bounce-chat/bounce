@@ -380,10 +380,13 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 	}
 
 	go b.ui.SetUserState(User{
-		ID:     u.ID,
-		Name:   u.Name,
-		Images: imageIDs,
-		// TODO: missing fields?
+		ID:               u.ID,
+		Name:             u.Name,
+		Alias:            u.Alias,
+		Notes:            u.Notes,
+		Images:           imageIDs,
+		Blocked:          u.Blocked,
+		IntroductionTime: u.IntroductionTime,
 	})
 }
 

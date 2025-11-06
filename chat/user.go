@@ -211,7 +211,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		ID:                 newID,
 		Name:               profileName,
 		Profile:            true,
-		OpenDM:             true, // TODO: other default DM states
+		OpenDM:             true,
 		IntroductionMethod: userIntroductionProfile,
 		IntroductionTime:   time.Now().Unix(),
 		Devices: []device{
@@ -252,13 +252,24 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 				Name:             u.Name,
 				Images:           u.images(),
 				IntroductionTime: u.IntroductionTime,
-				// TODO: set an share a DM state?
 			},
 			Device{
 				ID:        d.ID,
 				Address:   d.Address,
 				CreatedAt: d.Timestamp,
 				Local:     true,
+			},
+		)
+		b.ui.SetDMState(
+			u.ID,
+			DMState{
+				Open:                           true,
+				Retention:                      u.ProfileSettings.DefaultDMRetention,
+				MutedUntil:                     0,
+				OverrideReadReceiptSetting:     false,
+				ReadReceiptsEnabled:            u.ProfileSettings.DefaultSendReadReceipts,
+				OverrideTypingIndicatorSetting: false,
+				TypingIndicatorsEnabled:        u.ProfileSettings.DefaultSendTypingIndicators,
 			},
 		)
 		b.RenameDevice(d.ID, deviceName)

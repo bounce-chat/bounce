@@ -85,7 +85,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	// Save the new profile
 	sdra.Settings.ID = uuid.New()
 	sdra.Profile.ProfileSettings = sdra.Settings
-	sdra.Profile.OpenDM = true // TODO: set other default DM states?
+	sdra.Profile.OpenDM = true
 	err = b.database.Create(&sdra.Profile).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -120,7 +120,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 		Name:             sdra.Profile.Name,
 		Images:           sdra.Profile.images(),
 		IntroductionTime: sdra.Profile.IntroductionTime,
-		State: DMState{ // TODO: set other default DM states?
+		State: DMState{
 			Open: true,
 		},
 	}
