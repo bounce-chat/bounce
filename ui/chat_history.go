@@ -27,7 +27,6 @@ type chatHistory struct {
 	myID     uuid.UUID
 	messages *messageStore
 
-	items   []threadable
 	ids     []uuid.UUID
 	heights []float32
 
@@ -36,9 +35,7 @@ type chatHistory struct {
 
 	jumpToBottomIcon *clickableImage
 
-	Length     func() int
-	CreateItem func() fyne.CanvasObject
-	UpdateItem func(index int, item fyne.CanvasObject)
+	template func() fyne.CanvasObject
 
 	scroller      *container.Scroll
 	offsetY       float32
@@ -57,7 +54,6 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 		id:                  t.getID(),
 		myID:                ui.state.profile.id,
 		messages:            ui.messages,
-		items:               []threadable{},
 		ids:                 []uuid.UUID{},
 		heights:             []float32{},
 		windowFocused:       func() bool { return ui.state.focused },
@@ -71,19 +67,12 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 			}
 		},
 		seenTracking: make(map[uuid.UUID]bool),
-	}
-	ch.Length = func() int {
-		return len(ch.items)
-	}
-	ch.CreateItem = func() fyne.CanvasObject {
-		return container.NewStack(
-			ui.newChatBubbleTemplate(),
-			newStatusChangeTemplate(),
-		)
-	}
-	ch.UpdateItem = func(index int, obj fyne.CanvasObject) {
-		item := ch.items[index]
-		item.populateTemplate(obj)
+		template: func() fyne.CanvasObject {
+			return container.NewStack(
+				ui.newChatBubbleTemplate(),
+				newStatusChangeTemplate(),
+			)
+		},
 	}
 
 	ch.jumpToBottomIcon = newClickableImage(
@@ -97,7 +86,8 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 			ch.unread = 0
 			ch.updateUnreadCounter()
 			for index, id := range ch.ids {
-				ch.items[index].markSeen()
+				item := ch.getItem(index)
+				item.markSeen()
 				ch.seenTracking[id] = true
 			}
 			ch.markAllAsReadCallback()
@@ -121,13 +111,16 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 }
 
 func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
-	ch.items = items
-	sizer := ch.CreateItem()
+	sizer := ch.template()
 
 	ch.ids = []uuid.UUID{}
-	for i, item := range items {
+	for _, item := range items {
 		ch.ids = append(ch.ids, item.getID())
 		ch.messages.insert(item)
+	}
+
+	for i, id := range ch.ids {
+		item, _ := ch.messages.get(id)
 
 		if item.isSeen() {
 			ch.seenTracking[item.getID()] = true
@@ -154,7 +147,7 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 		} else {
 			ch.setMergeMode(i, false)
 
-			ch.UpdateItem(i, sizer)
+			ch.getItem(i).populateTemplate(sizer)
 			sizer.Refresh() // Unclear why this is required for smooth scrolling, widget should be updated already
 			sizer.Resize(initialSize)
 			height := sizer.MinSize().Height
@@ -167,25 +160,24 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 	ch.Refresh()
 }
 
-func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
-	if len(ch.items) == 0 || appendingToEnd {
-		ch.items = append(ch.items, ti.widgetData)
-		ch.ids = append(ch.ids, ti.id)
-		ch.setMergeMode(len(ch.items)-1, true)
+func (ch *chatHistory) insertItem(item threadable, appendingToEnd bool) {
+	ch.messages.insert(item)
+
+	if len(ch.ids) == 0 || appendingToEnd {
+		ch.ids = append(ch.ids, item.getID())
+		ch.setMergeMode(len(ch.ids)-1, true)
 	} else {
-		for i := len(ch.items); i >= 0; i-- {
+		for i := len(ch.ids); i >= 0; i-- {
 			if i == 0 {
-				ch.items = append([]threadable{ti.widgetData}, ch.items...)
-				ch.ids = append([]uuid.UUID{ti.id}, ch.ids...)
+				ch.ids = append([]uuid.UUID{item.getID()}, ch.ids...)
 				ch.heights = append([]float32{0}, ch.heights...)
 				ch.setMergeMode(0, true)
 				break
 			}
-			compare := ch.items[i-1]
-			if ti.timestamp > compare.getTimestamp() {
-				ch.items = append(ch.items[:i], append([]threadable{ti.widgetData}, ch.items[i:]...)...)
-				ch.ids = append(ch.ids[:i], append([]uuid.UUID{ti.id}, ch.ids[i:]...)...)
-				if len(ch.heights) >= len(ch.items)-1 {
+			compare := ch.getItem(i - 1)
+			if item.getTimestamp() > compare.getTimestamp() {
+				ch.ids = append(ch.ids[:i], append([]uuid.UUID{item.getID()}, ch.ids[i:]...)...)
+				if len(ch.heights) >= len(ch.ids)-1 {
 					ch.heights = append(ch.heights[:i], append([]float32{0}, ch.heights[i:]...)...)
 				}
 				ch.setMergeMode(i, true)
@@ -194,41 +186,38 @@ func (ch *chatHistory) insertItem(ti *threadItem, appendingToEnd bool) {
 		}
 	}
 
-	if ti.widgetData.countsAsUnread() && !ti.widgetData.isSeen() && !(ti.widgetData.getAuthor() == ch.myID) {
+	if item.countsAsUnread() && !item.isSeen() && !(item.getAuthor() == ch.myID) {
 		ch.unread += 1
 	}
 	ch.updateUnreadCounter()
+}
 
-	ch.messages.insert(ti.widgetData)
+func (ch *chatHistory) getItem(index int) threadable {
+	item, ok := ch.messages.get(ch.ids[index])
+	if !ok {
+		log.WithFields(log.Fields{
+			"index": index,
+		}).Fatal("message in chat history missing from message store")
+	}
+	return item
 }
 
 func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
 	found := false
 	location := 0
-	for i, obj := range ch.items {
-		switch cast := obj.(type) {
-		case *chatBubbleData:
-			if cast.id == id {
-				found = true
-				location = i
-				break
-			}
-		case *statusChangeData:
-			if cast.id == id {
-				found = true
-				location = i
-				break
-			}
-		default:
-			continue
+	for i, itemID := range ch.ids {
+		if itemID == id {
+			found = true
+			location = i
+			break
 		}
 	}
 
-	ch.items = append(ch.items[:location], ch.items[location+1:]...)
-	ch.ids = append(ch.ids[:location], ch.ids[location+1:]...)
-	ch.heights = append(ch.heights[:location], ch.heights[location+1:]...)
-
-	ch.Refresh()
+	if found {
+		ch.ids = append(ch.ids[:location], ch.ids[location+1:]...)
+		ch.heights = append(ch.heights[:location], ch.heights[location+1:]...)
+		ch.Refresh()
+	}
 
 	ch.messages.remove(id)
 
@@ -236,20 +225,20 @@ func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
 }
 
 func (ch *chatHistory) isLastItem(id uuid.UUID) bool {
-	if len(ch.items) == 0 {
+	if len(ch.ids) == 0 {
 		return false
 	}
 
-	item := ch.items[len(ch.items)-1]
-	return item.getID() == id
+	lastID := ch.ids[len(ch.ids)-1]
+	return lastID == id
 }
 
 func (ch *chatHistory) isLastAuthor(id uuid.UUID) bool {
-	if len(ch.items) == 0 {
+	if len(ch.ids) == 0 {
 		return false
 	}
 
-	item := ch.items[len(ch.items)-1]
+	item := ch.getItem(len(ch.ids) - 1)
 	return item.getAuthor() == id
 }
 
@@ -260,20 +249,20 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
 	checkUp := true
 	checkDown := true
 
-	if index >= len(ch.items) {
+	if index >= len(ch.ids) {
 		log.WithFields(log.Fields{
 			"index": index,
 		}).Warn("out of bounds index while setting merge mode")
 		return
 	}
-	if len(ch.items)-1 == index {
+	if len(ch.ids)-1 == index {
 		checkDown = false
 	}
 	if index == 0 {
 		checkUp = false
 	}
 
-	item := ch.items[index]
+	item := ch.getItem(index)
 	myType := item.getType()
 	if !(myType == chat.TypeGroupMessage || myType == chat.TypeDirectMessage) {
 		return
@@ -282,7 +271,7 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
 	myTimestamp := item.getTimestamp()
 
 	if checkUp {
-		above := ch.items[index-1]
+		above := ch.getItem(index - 1)
 		aboveType := above.getType()
 		aboveAuthor := above.getAuthor()
 		aboveTimestamp := above.getTimestamp()
@@ -292,7 +281,7 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
 	}
 
 	if checkDown {
-		below := ch.items[index+1]
+		below := ch.getItem(index + 1)
 		belowType := below.getType()
 		belowAuthor := below.getAuthor()
 		belowTimestamp := below.getTimestamp()
@@ -321,7 +310,7 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
 
 	if neighbors {
 		if mergeUp {
-			above := ch.items[index-1]
+			above := ch.getItem(index - 1)
 			aboveCBD, ok := above.(*chatBubbleData)
 			if !ok {
 				log.WithFields(log.Fields{
@@ -346,7 +335,7 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
 		}
 
 		if mergeDown {
-			below := ch.items[index+1]
+			below := ch.getItem(index + 1)
 			belowCBD, ok := below.(*chatBubbleData)
 			if !ok {
 				log.WithFields(log.Fields{
@@ -371,8 +360,8 @@ func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
 
 func (ch *chatHistory) headTimestamp() int64 {
 	currentHead := int64(0)
-	if len(ch.items) > 0 {
-		compare := ch.items[len(ch.items)-1]
+	if len(ch.ids) > 0 {
+		compare := ch.getItem(len(ch.ids) - 1)
 		switch cast := compare.(type) {
 		case *chatBubbleData:
 			currentHead = cast.writtenAt
@@ -395,7 +384,7 @@ func (ch *chatHistory) seen(index int) {
 	if _, ok := ch.seenTracking[id]; !ok {
 		ch.seenTracking[id] = true
 
-		item := ch.items[index]
+		item := ch.getItem(index)
 		item.markSeen()
 		if item.countsAsUnread() && !(item.getAuthor() == ch.myID) {
 			if ch.unread > 0 {
@@ -495,11 +484,7 @@ func (ch *chatHistory) Resize(s fyne.Size) {
 }
 
 func (ch *chatHistory) ScrollTo(id int) {
-	length := 0
-	if f := ch.Length; f != nil {
-		length = f()
-	}
-	if id < 0 || id >= length {
+	if id < 0 || id >= len(ch.ids) {
 		return
 	}
 	ch.scrollTo(id)
@@ -523,7 +508,9 @@ func (ch *chatHistory) ScrollToTop() {
 }
 
 func (ch *chatHistory) scrollToLastRead() {
-	for i, item := range ch.items {
+	for i, _ := range ch.ids {
+		item := ch.getItem(i)
+
 		if !item.countsAsUnread() {
 			continue
 		}
@@ -584,7 +571,7 @@ func (ch *chatHistory) contentMinSize() fyne.Size {
 	}
 	return fyne.NewSize(
 		0,
-		ch.offsetFor(len(ch.items)-1)+scrollerHeight,
+		ch.offsetFor(len(ch.ids)-1)+scrollerHeight,
 	)
 }
 
@@ -595,15 +582,15 @@ func (ch *chatHistory) contentHeight() float32 {
 	return ch.scroller.Content.(*fyne.Container).Size().Height
 }
 
-func (ch *chatHistory) calculateAndSetItemHeight(id int, containerSize fyne.Size) float32 {
-	sizer := ch.CreateItem()
-	ch.UpdateItem(id, sizer)
+func (ch *chatHistory) calculateAndSetItemHeight(index int, containerSize fyne.Size) float32 {
+	sizer := ch.template()
+	ch.getItem(index).populateTemplate(sizer)
 	sizer.Refresh() // Unclear why this is required for smooth scrolling, widget should be updated already
 	sizer.Resize(containerSize)
 	height := sizer.MinSize().Height
-	ch.SetItemHeight(id, height)
-	if len(ch.ids) > id {
-		ch.messages.cacheHeight(ch.ids[id], containerSize.Width, height)
+	ch.SetItemHeight(index, height)
+	if len(ch.ids) > index {
+		ch.messages.cacheHeight(ch.ids[index], containerSize.Width, height)
 	}
 	return height
 }
@@ -764,9 +751,7 @@ func (chl *chatHistoryLayout) getItem() fyne.CanvasObject {
 		item = o.(fyne.CanvasObject)
 	}
 	if item == nil {
-		if f := chl.ch.CreateItem; f != nil {
-			item = f()
-		}
+		item = chl.ch.template()
 	}
 	return item
 }
@@ -789,7 +774,8 @@ func (chl *chatHistoryLayout) offsetUpdated(pos fyne.Position) {
 
 			for index, id := range chl.ch.ids {
 				if !chl.ch.disableSeenTracking {
-					chl.ch.items[index].markSeen()
+					item := chl.ch.getItem(index)
+					item.markSeen()
 					chl.ch.seenTracking[id] = true
 				}
 			}
@@ -798,7 +784,7 @@ func (chl *chatHistoryLayout) offsetUpdated(pos fyne.Position) {
 }
 
 func (chl *chatHistoryLayout) setupItem(item fyne.CanvasObject, index int) {
-	chl.ch.UpdateItem(index, item)
+	chl.ch.getItem(index).populateTemplate(item)
 	chl.ch.SetItemHeight(index, item.MinSize().Height)
 	if len(chl.ch.ids) > index {
 		chl.ch.messages.cacheHeight(chl.ch.ids[index], chl.ch.Size().Width, item.MinSize().Height)
@@ -809,13 +795,7 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 	th := chl.ch.Theme()
 	separatorThickness := th.Size(theme.SizeNamePadding)
 	width := chl.ch.Size().Width
-	length := 0
-	if f := chl.ch.Length; f != nil {
-		length = f()
-	}
-	if chl.ch.UpdateItem == nil {
-		fyne.LogError("Missing UpdateCell callback required for List", nil)
-	}
+	length := len(chl.ch.ids)
 
 	// Keep pointer reference for copying slice header when returning to the pool
 	// https://blog.mike.norgate.xyz/unlocking-go-slice-performance-navigating-sync-pool-for-enhanced-efficiency-7cb63b0b453e
@@ -878,7 +858,7 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 
 	if newOnly {
 		for _, vis := range visible {
-			if vis.index > len(chl.ch.items)-1 {
+			if vis.index > len(chl.ch.ids)-1 {
 				log.Warn("ignoring attempt to set up chat history item outside of bounds")
 				return
 			}
@@ -893,7 +873,7 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 		}
 	} else {
 		for _, vis := range visible {
-			if vis.index > len(chl.ch.items)-1 {
+			if vis.index > len(chl.ch.ids)-1 {
 				log.Warn("ignoring attempt to set up chat history item outside of bounds")
 				return
 			}

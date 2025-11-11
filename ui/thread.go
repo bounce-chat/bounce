@@ -99,7 +99,7 @@ func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
 	appendingToEnd := ti.timestamp > t.chatHistoryScroll().headTimestamp()
 
 	// Add this thread item to the chat history
-	t.chatHistoryScroll().insertItem(ti, appendingToEnd)
+	t.chatHistoryScroll().insertItem(ti.widgetData, appendingToEnd)
 
 	// Keep track of which threads have which items
 	ui.threads.associate(t, ti.id)
