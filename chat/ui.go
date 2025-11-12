@@ -341,6 +341,14 @@ type FileProgress struct {
 	Progress float64
 }
 
+type BulkUpdate struct {
+	Source         uuid.UUID
+	Seen           []uuid.UUID
+	GroupMessages  map[uuid.UUID][]GroupMessage
+	DirectMessages map[uuid.UUID][]DirectMessage
+	ReadReceipts   map[uuid.UUID][]ReadReceipt
+}
+
 type InitialState struct {
 	Profile                                *User
 	Settings                               Settings
@@ -437,8 +445,6 @@ type UI interface {
 	GroupInviteRevoked(UpdateGroupInviteRevoked)
 	GroupInviteAccepted(UpdateGroupInviteAccepted)
 	GroupInviteRejected(UpdateGroupInviteRejected)
-	PauseGroupNotifications(uuid.UUID)
-	ResumeGroupNotifications(uuid.UUID)
 	RollbackGroup(uuid.UUID)
 	NotifyInvitedToGroup(string)
 	NotifyAddedToGroup(string)
@@ -451,6 +457,7 @@ type UI interface {
 	ReceivedReadReceipt(ReadReceipt) // Someone else read a message of ours
 	ShowTypingIndicator(userID, threadID uuid.UUID)
 	HideTypingIndicator(userID, threadID uuid.UUID)
+	CatchUpMessages(BulkUpdate)
 
 	// User settings and status
 	SetUserState(User)

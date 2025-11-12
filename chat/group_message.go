@@ -316,7 +316,7 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 		b.ui.MessageDelivered(gm.ID, srcDevice.UserID)
 
 		// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI
-		b.processEarlyReadReceipts(gm.ID, typeGroupMessage)
+		b.processEarlyReadReceipts(gm.ID, typeGroupMessage, true)
 	}
 
 	// Update the activity timestamp on the group model

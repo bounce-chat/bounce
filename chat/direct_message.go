@@ -206,46 +206,49 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 	// Update the activity timestamp on the user model
 	b.updateLastUserActivity(dm.getDestination(b.currentUserID()), dm.SavedAt)
 
-	uiImageAttachments := []ImageAttachment{}
-	for _, ia := range dm.ImageAttachments {
-		uiImageAttachments = append(uiImageAttachments, ImageAttachment{
-			ID:       ia.FileID,
-			Name:     ia.Name,
-			Size:     ia.Size,
-			Width:    ia.Width,
-			Height:   ia.Height,
-			BlurHash: ia.BlurHash,
-		})
-	}
-	uiFileAttachments := []FileAttachment{}
-	for _, fa := range dm.FileAttachments {
-		uiFileAttachments = append(uiFileAttachments, FileAttachment{
-			ID:   fa.FileID,
-			Name: fa.Name,
-			Size: fa.Size,
-		})
-	}
-
-	// Send the message to the user interface
-	b.ui.DisplayDirectMessage(DirectMessage{
-		ID:               dm.ID,
-		Author:           dm.Author,
-		Thread:           dm.getDestination(b.currentUserID()),
-		WrittenAt:        dm.WrittenAt,
-		SavedAt:          dm.SavedAt,
-		ExpiresAt:        dm.DeleteAt,
-		Seen:             dm.Seen,
-		Text:             dm.Text,
-		ImageAttachments: uiImageAttachments,
-		FileAttachments:  uiFileAttachments,
-	})
-	b.ui.MessageDelivered(dm.ID, srcDevice.UserID)
-
 	// Make sure the user interface isn't still displaying that the user is typing
 	b.clearUserTypingIndicator(dm.Author, dm.getDestination(b.currentUserID()), typeDirectMessage)
 
-	// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI
-	b.processEarlyReadReceipts(dm.ID, typeDirectMessage)
+	// Send the message to the user interface
+	if !catchUp {
+		uiImageAttachments := []ImageAttachment{}
+		for _, ia := range dm.ImageAttachments {
+			uiImageAttachments = append(uiImageAttachments, ImageAttachment{
+				ID:       ia.FileID,
+				Name:     ia.Name,
+				Size:     ia.Size,
+				Width:    ia.Width,
+				Height:   ia.Height,
+				BlurHash: ia.BlurHash,
+			})
+		}
+		uiFileAttachments := []FileAttachment{}
+		for _, fa := range dm.FileAttachments {
+			uiFileAttachments = append(uiFileAttachments, FileAttachment{
+				ID:   fa.FileID,
+				Name: fa.Name,
+				Size: fa.Size,
+			})
+		}
+
+		b.ui.DisplayDirectMessage(DirectMessage{
+			ID:               dm.ID,
+			Author:           dm.Author,
+			Thread:           dm.getDestination(b.currentUserID()),
+			WrittenAt:        dm.WrittenAt,
+			SavedAt:          dm.SavedAt,
+			ExpiresAt:        dm.DeleteAt,
+			Seen:             dm.Seen,
+			Text:             dm.Text,
+			ImageAttachments: uiImageAttachments,
+			FileAttachments:  uiFileAttachments,
+		})
+
+		b.ui.MessageDelivered(dm.ID, srcDevice.UserID)
+
+		// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI
+		b.processEarlyReadReceipts(dm.ID, typeDirectMessage, true)
+	}
 
 	return &dm, true
 }

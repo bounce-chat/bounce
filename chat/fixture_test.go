@@ -447,8 +447,6 @@ func (t *testUI) GroupEditsRestricted(UpdateGroupEditsRestricted)               
 func (t *testUI) GroupEditsUnrestricted(UpdateGroupEditsUnrestricted)              {}
 func (t *testUI) PostingRestricted(UpdateGroupPostingRestricted)                   {}
 func (t *testUI) PostingUnrestricted(UpdateGroupPostingUnrestricted)               {}
-func (t *testUI) PauseGroupNotifications(groupID uuid.UUID)                        {}
-func (t *testUI) ResumeGroupNotifications(groupID uuid.UUID)                       {}
 func (t *testUI) InviteUser(UpdateGroupInviteUser)                                 {}
 func (t *testUI) RollbackGroup(uuid.UUID)                                          {}
 func (t *testUI) NotifyAddedToGroup(string)                                        {}
@@ -476,6 +474,7 @@ func (t *testUI) FileCompleted(uuid.UUID)                                       
 func (t *testUI) UserChangedGroupImage(UpdateGroupUserChangedGroupImage)           {}
 func (t *testUI) UserImageUpdated(UpdateUserUpdateImage)                           {}
 func (t *testUI) FileDownloadProgress(uuid.UUID, float64)                          {}
+func (t *testUI) CatchUpMessages(BulkUpdate)                                       {}
 
 func newBounce() *Bounce {
 	ui := newTestUI()

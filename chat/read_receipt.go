@@ -192,9 +192,11 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) (b
 		// Update the database and UI
 		if rr.Actor == b.currentUserID() {
 			b.markSeenInDatabase(rr.Target, targetTypeString)
-			b.ui.MessageSeen(rr.Target)
+			if !catchUp {
+				b.ui.MessageSeen(rr.Target)
+			}
 		} else if author == b.currentUserID() {
-			if rr.Scope != scopeSync {
+			if rr.Scope != scopeSync && !catchUp {
 				b.ui.ReceivedReadReceipt(ReadReceipt{
 					ID:     rr.ID,
 					Actor:  rr.Actor,
@@ -224,7 +226,7 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) (b
 	}
 }
 
-func (b *Bounce) processEarlyReadReceipts(messageID uuid.UUID, messageType uint16) {
+func (b *Bounce) processEarlyReadReceipts(messageID uuid.UUID, messageType uint16, notify bool) (bool, []ReadReceipt) {
 	// Find any read receipts for this message that came early, add missing data, and send to the UI
 	var rrs []readReceipt
 	err := b.database.Where("target = ? AND target_type = ?", messageID, messageType).Find(&rrs).Error
@@ -233,6 +235,9 @@ func (b *Bounce) processEarlyReadReceipts(messageID uuid.UUID, messageType uint1
 			"error": err.Error(),
 		}).Fatal("error looking up read receipts")
 	}
+
+	rrsToNotify := []ReadReceipt{}
+	seen := false
 	for _, rr := range rrs {
 		targetTypeString, ok := readReceiptTargetTypeString[rr.TargetType]
 		if !ok {
@@ -275,19 +280,28 @@ func (b *Bounce) processEarlyReadReceipts(messageID uuid.UUID, messageType uint1
 
 		if rr.Actor == b.currentUserID() {
 			b.markSeenInDatabase(rr.Target, targetTypeString)
-			b.ui.MessageSeen(rr.Target)
+			seen = true
+			if notify {
+				b.ui.MessageSeen(rr.Target)
+			}
 		} else if author == b.currentUserID() {
 			if rr.Scope != scopeSync {
-				b.ui.ReceivedReadReceipt(ReadReceipt{
+				exportedRR := ReadReceipt{
 					ID:     rr.ID,
 					Actor:  rr.Actor,
 					Target: rr.Target,
-				})
+				}
+				rrsToNotify = append(rrsToNotify, exportedRR)
+				if notify {
+					b.ui.ReceivedReadReceipt(exportedRR)
+				}
 			}
 		}
 
 		b.broadcast(&rr)
 	}
+
+	return seen, rrsToNotify
 }
 
 func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType string) (uuid.UUID, uuid.UUID, int, error) {

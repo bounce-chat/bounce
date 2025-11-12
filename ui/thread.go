@@ -91,7 +91,7 @@ func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
 	autoscroll := false
 	location := t.chatHistoryScroll().GetScrollOffset()
 	height := t.chatHistoryScroll().contentHeight() - t.chatHistoryScroll().Size().Height
-	if height == location {
+	if height == location && ui.state.focused {
 		autoscroll = true
 	}
 
@@ -110,16 +110,16 @@ func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
 	}
 
 	// Keep the thread scrolled down, if it is open and was already scrolled down
-	if autoscroll && ui.isActive(t) && appendingToEnd && ui.state.focused {
+	if autoscroll && ui.isActive(t) && appendingToEnd {
 		t.chatHistoryScroll().ScrollToBottom()
 	} else {
 		t.chatHistoryScroll().displayJumpToBottomIfNeeded()
 	}
 
 	// Send a notification if required
-	notificationsEnabled := (t.getNotificationsMutedUntil() != chat.MutedForever) && !(t.getID() == ui.state.profile.id) && !ui.groupNotificationsPaused(t.getID())
+	notificationsEnabled := (t.getNotificationsMutedUntil() != chat.MutedForever) && !(t.getID() == ui.state.profile.id)
 	notificationsMuted := time.Now().Unix() < t.getNotificationsMutedUntil()
-	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll && !ui.state.initialSyncIncomplete { //TODO: also notify if this is false but we're not focused?
+	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll && !ui.state.initialSyncIncomplete {
 		ui.app.SendNotification(ti.notification)
 	}
 
@@ -128,6 +128,174 @@ func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
 		t.setLastMessageTime(ti.timestamp)
 		ui.refreshThreadOrder()
 	}
+}
+
+// A user has synced up with us after coming online and delivered the following messages
+// and read receipts in bulk.  Load them all in without needing to refresh or notify, then
+// update the UI all at once and send one notification per thread.
+func (ui *ui) CatchUpMessages(bu chat.BulkUpdate) {
+	seen := map[uuid.UUID]bool{}
+	for _, seenID := range bu.Seen {
+		seen[seenID] = true
+	}
+
+	for groupID, gms := range bu.GroupMessages {
+		g, ok := ui.threads.getGroup(groupID)
+		if !ok {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("group not found during bulk update")
+			continue
+		}
+
+		var lastItem *threadItem
+		var lastNotifyingItem *threadItem
+		allSeen := true
+		for _, gm := range gms {
+			ti, err := ui.newGroupMessage(gm)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error creating thread item for group message")
+				continue
+			}
+
+			if _, ok := seen[gm.ID]; ok {
+				ti.widgetData.markSeen()
+			} else {
+				allSeen = false
+			}
+
+			if _, ok := bu.ReadReceipts[gm.ID]; ok {
+				ti.widgetData.setState(stateRead)
+				delete(bu.ReadReceipts, gm.ID)
+			}
+
+			appendingToEnd := ti.timestamp > g.chatHistoryScroll().headTimestamp()
+			fyne.Do(func() { g.chatHistoryScroll().insertItem(ti.widgetData, appendingToEnd) })
+			ui.threads.associate(g, ti.id)
+			lastItem = ti
+			if ti.notification != nil {
+				lastNotifyingItem = ti
+			}
+		}
+
+		if lastItem == nil {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("last message is nil for group messages in bulk update")
+			fyne.Do(func() { g.chatHistoryScroll().Refresh() })
+			continue
+		}
+
+		if lastItem.timestamp > g.getLastMessageTime() {
+			g.setLastMessageTime(lastItem.timestamp)
+			fyne.Do(func() { lastItem.setButton(g.getButton()) })
+			if lastItem.widgetData.getAuthor() == ui.state.profile.id {
+				fyne.Do(func() { g.getButton().showLastMessageState(lastItem.widgetData.getState()) })
+			}
+		}
+
+		if lastNotifyingItem != nil {
+			notificationsEnabled := (g.getNotificationsMutedUntil() != chat.MutedForever)
+			notificationsMuted := time.Now().Unix() < g.getNotificationsMutedUntil()
+			if notificationsEnabled && !notificationsMuted && !ui.state.initialSyncIncomplete {
+				ui.app.SendNotification(lastNotifyingItem.notification)
+			}
+		}
+
+		if !allSeen {
+			fyne.Do(func() {
+				g.chatHistoryScroll().scrollToLastRead()
+				g.chatHistoryScroll().displayJumpToBottomIfNeeded()
+			})
+		}
+
+		fyne.Do(func() { g.chatHistoryScroll().Refresh() })
+	}
+
+	for userID, dms := range bu.DirectMessages {
+		t, ok := ui.threads.getDM(userID)
+		if !ok {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+			}).Error("direct message thread not found during bulk update")
+			continue
+		}
+
+		var lastItem *threadItem
+		var lastNotifyingItem *threadItem
+		allSeen := true
+		for _, dm := range dms {
+			ti, err := ui.newDirectMessage(dm)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error creating thread item for direct message")
+				continue
+			}
+
+			if _, ok := seen[dm.ID]; ok {
+				ti.widgetData.markSeen()
+			} else {
+				allSeen = false
+			}
+
+			if _, ok := bu.ReadReceipts[dm.ID]; ok {
+				ti.widgetData.setState(stateRead)
+				delete(bu.ReadReceipts, dm.ID)
+			}
+
+			appendingToEnd := ti.timestamp > t.chatHistoryScroll().headTimestamp()
+			fyne.Do(func() { t.chatHistoryScroll().insertItem(ti.widgetData, appendingToEnd) })
+			ui.threads.associate(t, ti.id)
+			lastItem = ti
+			if ti.notification != nil {
+				lastNotifyingItem = ti
+			}
+		}
+
+		if lastItem == nil {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+			}).Error("last message is nil for group messages in bulk update")
+			fyne.Do(func() { t.chatHistoryScroll().Refresh() })
+			continue
+		}
+
+		if lastItem.timestamp > t.getLastMessageTime() {
+			t.setLastMessageTime(lastItem.timestamp)
+			fyne.Do(func() { lastItem.setButton(t.getButton()) })
+			if lastItem.widgetData.getAuthor() == ui.state.profile.id {
+				fyne.Do(func() { t.getButton().showLastMessageState(lastItem.widgetData.getState()) })
+			}
+		}
+
+		if lastNotifyingItem != nil {
+			notificationsEnabled := (t.getNotificationsMutedUntil() != chat.MutedForever)
+			notificationsMuted := time.Now().Unix() < t.getNotificationsMutedUntil()
+			if notificationsEnabled && !notificationsMuted && !ui.state.initialSyncIncomplete {
+				ui.app.SendNotification(lastNotifyingItem.notification)
+			}
+		}
+
+		if !allSeen {
+			fyne.Do(func() {
+				t.chatHistoryScroll().scrollToLastRead()
+				t.chatHistoryScroll().displayJumpToBottomIfNeeded()
+			})
+		}
+
+		fyne.Do(func() { t.chatHistoryScroll().Refresh() })
+	}
+
+	for _, rrs := range bu.ReadReceipts {
+		for _, rr := range rrs {
+			ui.ReceivedReadReceipt(rr)
+		}
+	}
+
+	fyne.Do(func() { ui.refreshThreadOrder() })
 }
 
 func (ui *ui) MarkMessageUndeliverable(id uuid.UUID) {

@@ -96,11 +96,6 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	// Keep track of which groups will need a consensus update
 	groupsToUpdateConsensus := map[uuid.UUID]bool{}
 
-	// Keep track of all the group creations we see and pause notifications until the end of the catch up.
-	// This is so that we aren't notified about the entire history of a group when we get added to it.  We
-	// need to unpause these group notifications after, so we keep track of those groups here
-	unpause := map[uuid.UUID]bool{}
-
 	// Keep track of which users are getting updated
 	usersToUpdate := map[uuid.UUID]bool{}
 
@@ -116,9 +111,10 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	// Keep track of devices that are getting updates
 	devicesToUpdate := map[uuid.UUID]bool{}
 
-	// Keep a list of group messages that were part of this catch up so that we can display them after
-	// we've updated group consensus
+	// Keep track of frames that will be shared with the UI in a BulkUpdate after everything else is processed
 	gmsToDisplay := []*groupMessage{}
+	dmsToDisplay := []*directMessage{}
+	rrsToDisplay := []*readReceipt{}
 
 	// Collect all the processed frames into a single ack
 	a := &ack{}
@@ -192,9 +188,6 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			groupsToUpdateConsensus[br.getDestination(b.currentUserID())] = true
 		case typeGroupCreation:
 			groupsToUpdateConsensus[br.getDestination(b.currentUserID())] = true
-			groupID := br.getDestination(b.currentUserID())
-			b.ui.PauseGroupNotifications(groupID)
-			unpause[groupID] = true
 		case typeUpdateUser:
 			usersToUpdate[br.getAuthor()] = true
 		case typeUpdateDM:
@@ -231,7 +224,28 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 				}
 				gmsToDisplay = append(gmsToDisplay, gm)
 			}
-
+		case typeDirectMessage:
+			if firstTimeSeeing {
+				dm, ok := br.(*directMessage)
+				if !ok {
+					log.WithFields(log.Fields{
+						"id": br.getID(),
+					}).Warn("direct message handler returned broadcastable that is not direct message")
+					continue
+				}
+				dmsToDisplay = append(dmsToDisplay, dm)
+			}
+		case typeReadReceipt:
+			if firstTimeSeeing {
+				rr, ok := br.(*readReceipt)
+				if !ok {
+					log.WithFields(log.Fields{
+						"id": br.getID(),
+					}).Warn("read receipt handler returned broadcastable that is not read receipt")
+					continue
+				}
+				rrsToDisplay = append(rrsToDisplay, rr)
+			}
 		}
 
 		if waitingForInitialSyncFrom == peer {
@@ -323,7 +337,33 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		}
 	}
 
+	// If we didn't know who this device belonged to at first, check to make sure we know who it belongs to
+	// after handling all of the frames
+	if !deviceExists {
+		if _, deviceExists = b.getDeviceFromAddress(peer); deviceExists {
+			// An unknown device sent a catch up that included frames that prove we should add the device,
+			// since we didn't initially offer references to this device we should now do so now that we
+			// have context on what this device is
+			go b.sendReferences(peer)
+		} else {
+			log.WithFields(log.Fields{
+				"peer":        peer,
+				"frame_count": len(cu.Frames),
+			}).Warn("catch up from unknown device did not result in learning device identity")
+		}
+	}
+
 	// Display the group messages we received for the first time in this catch up, as long as we are still in the groups
+	bulkUpdate := BulkUpdate{
+		Source:         uuid.Nil,
+		Seen:           make([]uuid.UUID, 0),
+		GroupMessages:  make(map[uuid.UUID][]GroupMessage),
+		DirectMessages: make(map[uuid.UUID][]DirectMessage),
+		ReadReceipts:   make(map[uuid.UUID][]ReadReceipt),
+	}
+	if deviceExists {
+		bulkUpdate.Source = dev.UserID
+	}
 	for _, gm := range gmsToDisplay {
 		groupID := gm.getDestination(b.currentUserID())
 		gs, err := b.currentGroupState(groupID)
@@ -360,7 +400,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		}
 
 		// Inform the UI about the new message
-		b.ui.DisplayGroupMessage(GroupMessage{
+		bulkUpdate.GroupMessages[gm.Destination] = append(bulkUpdate.GroupMessages[gm.Destination], GroupMessage{
 			ID:               gm.ID,
 			Author:           gm.Author,
 			Thread:           gm.Destination,
@@ -373,23 +413,88 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			FileAttachments:  uiFileAttachments,
 		})
 
-		if deviceExists {
-			b.ui.MessageDelivered(gm.ID, dev.UserID)
-		} else {
-			log.WithFields(log.Fields{
-				"peer":             peer,
-				"group_message_id": gm.ID,
-			}).Warn("an unknown device delivered a valid group message via catch up")
+		// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI
+		seen, rrs := b.processEarlyReadReceipts(gm.ID, typeGroupMessage, false)
+		if seen {
+			bulkUpdate.Seen = append(bulkUpdate.Seen, gm.ID)
+		}
+		bulkUpdate.ReadReceipts[gm.ID] = append(bulkUpdate.ReadReceipts[gm.ID], rrs...)
+	}
+	for _, dm := range dmsToDisplay {
+		uiImageAttachments := []ImageAttachment{}
+		for _, ia := range dm.ImageAttachments {
+			uiImageAttachments = append(uiImageAttachments, ImageAttachment{
+				ID:       ia.FileID,
+				Name:     ia.Name,
+				Size:     ia.Size,
+				Width:    ia.Width,
+				Height:   ia.Height,
+				BlurHash: ia.BlurHash,
+			})
+		}
+		uiFileAttachments := []FileAttachment{}
+		for _, fa := range dm.FileAttachments {
+			uiFileAttachments = append(uiFileAttachments, FileAttachment{
+				ID:   fa.FileID,
+				Name: fa.Name,
+				Size: fa.Size,
+			})
 		}
 
-		// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI
-		b.processEarlyReadReceipts(gm.ID, typeGroupMessage)
-	}
+		// Inform the UI about the new message
+		destination := dm.getDestination(b.currentUserID())
+		bulkUpdate.DirectMessages[destination] = append(bulkUpdate.DirectMessages[destination], DirectMessage{
+			ID:               dm.ID,
+			Author:           dm.Author,
+			Thread:           destination,
+			WrittenAt:        dm.WrittenAt,
+			SavedAt:          dm.SavedAt,
+			ExpiresAt:        dm.DeleteAt,
+			Seen:             dm.Seen,
+			Text:             dm.Text,
+			ImageAttachments: uiImageAttachments,
+			FileAttachments:  uiFileAttachments,
+		})
 
-	// Resume notifications for groups
-	for groupID, _ := range unpause {
-		b.ui.ResumeGroupNotifications(groupID)
+		// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI
+		seen, rrs := b.processEarlyReadReceipts(dm.ID, typeDirectMessage, false)
+		if seen {
+			bulkUpdate.Seen = append(bulkUpdate.Seen, dm.ID)
+		}
+		bulkUpdate.ReadReceipts[dm.ID] = append(bulkUpdate.ReadReceipts[dm.ID], rrs...)
 	}
+	for _, rr := range rrsToDisplay {
+		targetTypeString, ok := readReceiptTargetTypeString[rr.TargetType]
+		if !ok {
+			log.WithFields(log.Fields{
+				"error": errUnknownReadReceiptTargetType.Error(),
+			}).Error("error parsing read receipt")
+			return nil, false
+		}
+		_, author, _, err := b.getReadReceiptDestinationAuthorAndScope(rr.Target, targetTypeString)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    rr.ID,
+				"error": err.Error(),
+			}).Warn("error processing read receipt for bulk update in catch up")
+			continue
+		}
+		if rr.Actor == b.currentUserID() {
+			bulkUpdate.Seen = append(bulkUpdate.Seen, rr.Target)
+		} else if author == b.currentUserID() {
+			if rr.Scope != scopeSync {
+				bulkUpdate.ReadReceipts[rr.Target] = append(
+					bulkUpdate.ReadReceipts[rr.Target],
+					ReadReceipt{
+						ID:     rr.ID,
+						Actor:  rr.Actor,
+						Target: rr.Target,
+					},
+				)
+			}
+		}
+	}
+	b.ui.CatchUpMessages(bulkUpdate)
 
 	// Send references to any device we would have broadcast to
 	for address, _ := range devicesToReference {
@@ -399,22 +504,6 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	// We might have learned about new devices from this catch up, so we should see if there's anyone else we
 	// now want to dial
 	go b.auditPeers()
-
-	// If we didn't know who this device belonged to at first, check to make sure we know who it belongs to
-	// after handling all of the frames
-	if !deviceExists {
-		if _, deviceExists = b.getDeviceFromAddress(peer); deviceExists {
-			// An unknown device sent a catch up that included frames that prove we should add the device,
-			// since we didn't initially offer references to this device we should now do so now that we
-			// have context on what this device is
-			go b.sendReferences(peer)
-		} else {
-			log.WithFields(log.Fields{
-				"peer":        peer,
-				"frame_count": len(cu.Frames),
-			}).Warn("catch up from unknown device did not result in learning device identity")
-		}
-	}
 
 	if waitingForInitialSyncFrom == peer {
 		waitingForInitialSyncFrom = ""

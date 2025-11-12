@@ -3,7 +3,6 @@ package ui
 import (
 	"os"
 	"runtime"
-	"sync"
 	"testing"
 	"time"
 
@@ -96,18 +95,16 @@ type views struct {
 }
 
 type state struct {
-	profile                       *user
-	settings                      chat.Settings
-	currentView                   int
-	viewStack                     []view
-	activeThread                  uuid.UUID
-	initialStateSet               bool
-	initialSyncIncomplete         bool
-	focused                       bool
-	networkState                  int
-	setupStep                     int
-	pausedGroupNotifications      map[uuid.UUID]bool
-	pausedGroupNotificationsMutex sync.Mutex
+	profile               *user
+	settings              chat.Settings
+	currentView           int
+	viewStack             []view
+	activeThread          uuid.UUID
+	initialStateSet       bool
+	initialSyncIncomplete bool
+	focused               bool
+	networkState          int
+	setupStep             int
 }
 
 func Main() {
@@ -120,10 +117,9 @@ func Main() {
 		messages:   newMessageStore(),
 		threads:    newThreadStore(),
 		state: &state{
-			focused:                  true,
-			networkState:             networkStateStarting,
-			pausedGroupNotifications: make(map[uuid.UUID]bool),
-			viewStack:                []view{},
+			focused:      true,
+			networkState: networkStateStarting,
+			viewStack:    []view{},
 		},
 	}
 	ui.build()

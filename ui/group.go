@@ -1432,25 +1432,3 @@ func (ui *ui) updateEnabledFeatures(g *group) {
 		g.entry.Enable()
 	}
 }
-
-func (ui *ui) PauseGroupNotifications(groupID uuid.UUID) {
-	ui.state.pausedGroupNotificationsMutex.Lock()
-	defer ui.state.pausedGroupNotificationsMutex.Unlock()
-
-	ui.state.pausedGroupNotifications[groupID] = true
-}
-
-func (ui *ui) ResumeGroupNotifications(groupID uuid.UUID) {
-	ui.state.pausedGroupNotificationsMutex.Lock()
-	defer ui.state.pausedGroupNotificationsMutex.Unlock()
-
-	delete(ui.state.pausedGroupNotifications, groupID)
-}
-
-func (ui *ui) groupNotificationsPaused(groupID uuid.UUID) bool {
-	ui.state.pausedGroupNotificationsMutex.Lock()
-	defer ui.state.pausedGroupNotificationsMutex.Unlock()
-
-	_, ok := ui.state.pausedGroupNotifications[groupID]
-	return ok
-}
