@@ -31,6 +31,7 @@ type groupState struct {
 	typingIndicatorsEnabled    bool
 	invitedBy                  uuid.UUID
 	invitedAt                  int64
+	acceptedAt                 int64
 	deletedBy                  *updateGroup
 	removedBy                  *updateGroup
 	blockedBy                  *updateGroup

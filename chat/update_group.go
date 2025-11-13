@@ -969,6 +969,7 @@ func (b *Bounce) informUIUpdateGroupChangeName(ug updateGroup) {
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
 		Timestamp: ug.Timestamp,
+		Seen:      ug.Seen,
 		Name:      newName,
 	})
 }
@@ -991,6 +992,7 @@ func (b *Bounce) informUIUpdateGroupInviteUser(ug updateGroup) {
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
 			Timestamp: ug.Timestamp,
+			Seen:      ug.Seen,
 			User: User{
 				ID:   u.ID,
 				Name: u.Name,
@@ -1017,6 +1019,7 @@ func (b *Bounce) informUIUpdateGroupRemoveUser(ug updateGroup) {
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
 			Timestamp: ug.Timestamp,
+			Seen:      ug.Seen,
 			User:      userID,
 		})
 }
@@ -1027,6 +1030,7 @@ func (b *Bounce) informUIUpdateGroupChangeRetention(ug updateGroup) {
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
 		Timestamp: ug.Timestamp,
+		Seen:      ug.Seen,
 		Retention: int64(binary.LittleEndian.Uint64(ug.Data)),
 	})
 }
@@ -1037,6 +1041,7 @@ func (b *Bounce) informUIUpdateGroupSetClearBefore(ug updateGroup) {
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
 		Timestamp: ug.Timestamp,
+		Seen:      ug.Seen,
 		ClearTime: int64(binary.LittleEndian.Uint64(ug.Data)),
 	})
 }
@@ -1059,6 +1064,7 @@ func (b *Bounce) informUIUpdateGroupPromoteAdmin(ug updateGroup) {
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
 		Timestamp: ug.Timestamp,
+		Seen:      ug.Seen,
 		UserID:    userID,
 	})
 }
@@ -1081,6 +1087,7 @@ func (b *Bounce) informUIUpdateGroupDemoteAdmin(ug updateGroup) {
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
 		Timestamp: ug.Timestamp,
+		Seen:      ug.Seen,
 		UserID:    userID,
 	})
 }
@@ -1096,6 +1103,7 @@ func (b *Bounce) informUIUpdateGroupChangeUserManagementPermission(ug updateGrou
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
 			Timestamp: ug.Timestamp,
+			Seen:      ug.Seen,
 		})
 	} else {
 		b.ui.UserManagementUnrestricted(UpdateGroupUserManagementUnrestricted{
@@ -1103,6 +1111,7 @@ func (b *Bounce) informUIUpdateGroupChangeUserManagementPermission(ug updateGrou
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
 			Timestamp: ug.Timestamp,
+			Seen:      ug.Seen,
 		})
 	}
 }
@@ -1118,6 +1127,7 @@ func (b *Bounce) informUIUpdateGroupChangeGroupEditsPermission(ug updateGroup) {
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
 			Timestamp: ug.Timestamp,
+			Seen:      ug.Seen,
 		})
 	} else {
 		b.ui.GroupEditsUnrestricted(UpdateGroupEditsUnrestricted{
@@ -1125,6 +1135,7 @@ func (b *Bounce) informUIUpdateGroupChangeGroupEditsPermission(ug updateGroup) {
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
 			Timestamp: ug.Timestamp,
+			Seen:      ug.Seen,
 		})
 	}
 }
@@ -1140,6 +1151,7 @@ func (b *Bounce) informUIUpdateGroupChangePostingPermission(ug updateGroup) {
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
 			Timestamp: ug.Timestamp,
+			Seen:      ug.Seen,
 		})
 	} else {
 		b.ui.PostingUnrestricted(UpdateGroupPostingUnrestricted{
@@ -1147,6 +1159,7 @@ func (b *Bounce) informUIUpdateGroupChangePostingPermission(ug updateGroup) {
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
 			Timestamp: ug.Timestamp,
+			Seen:      ug.Seen,
 		})
 	}
 }
@@ -1157,6 +1170,7 @@ func (b *Bounce) informUIUpdateGroupBlock(ug updateGroup) {
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
 		Timestamp: ug.Timestamp,
+		Seen:      ug.Seen,
 	})
 }
 
@@ -1166,6 +1180,7 @@ func (b *Bounce) informUIUpdateGroupSetImage(ug updateGroup) {
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
 		Timestamp: ug.Timestamp,
+		Seen:      ug.Seen,
 	})
 }
 
@@ -1186,6 +1201,7 @@ func (b *Bounce) informUIUpdateGroupRevokeInvite(ug updateGroup) {
 		Thread:    ug.Target,
 		Actor:     ug.Actor,
 		Timestamp: ug.Timestamp,
+		Seen:      ug.Seen,
 		UserID:    userID,
 	})
 }
@@ -1214,6 +1230,7 @@ func (b *Bounce) informUIUpdateGroupRespondToInvite(ug updateGroup) {
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
 			Timestamp: ug.Timestamp,
+			Seen:      ug.Seen,
 		})
 	}
 
@@ -1223,6 +1240,7 @@ func (b *Bounce) informUIUpdateGroupRespondToInvite(ug updateGroup) {
 			Thread:    ug.Target,
 			Actor:     ug.Actor,
 			Timestamp: ug.Timestamp,
+			Seen:      ug.Seen,
 		})
 	}
 }

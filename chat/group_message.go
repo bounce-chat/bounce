@@ -265,6 +265,11 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 		return nil, false
 	}
 
+	// If this message created before we joined the group, mark it as already seen
+	if gs.acceptedAt != 0 && gm.WrittenAt < gs.acceptedAt {
+		gm.Seen = true
+	}
+
 	// Make sure the user interface isn't still displaying that the user is typing
 	b.clearUserTypingIndicator(gm.Author, gm.Destination, typeGroupMessage)
 

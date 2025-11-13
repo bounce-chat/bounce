@@ -753,6 +753,12 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 			return err
 		}
 	}
+	if g.AcceptedAt != gs.acceptedAt {
+		err := b.database.Model(&g).Select("accepted_at").Update("accepted_at", gs.acceptedAt).Error
+		if err != nil {
+			return err
+		}
+	}
 
 	// Set group members
 	for _, u := range g.Users {
@@ -923,6 +929,24 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 		}
 	}
 
+	// Mark every update group and group message that occured before the last time we accepted the invite as having already been seen
+	if gs.acceptedAt != 0 {
+		err := b.database.Exec("UPDATE update_groups SET seen = true WHERE target = ? AND timestamp < ?", g.ID, gs.acceptedAt).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"group_id": g.ID,
+				"error":    err.Error(),
+			}).Error("error marking update groups that occured before accepting the group as seen")
+		}
+		err = b.database.Exec("UPDATE group_messages SET seen = true WHERE destination = ? AND written_at < ?", g.ID, gs.acceptedAt).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"group_id": g.ID,
+				"error":    err.Error(),
+			}).Error("error marking group messages that occured before accepting the group as seen")
+		}
+	}
+
 	go func() {
 		b.ui.SetGroupState(Group{
 			ID:                             g.ID,
@@ -933,6 +957,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 			Invites:                        finalInvites,
 			InvitedBy:                      gs.invitedBy,
 			InvitedAt:                      gs.invitedAt,
+			AcceptedAt:                     gs.acceptedAt,
 			BlockedUsers:                   gs.blockedUsers,
 			Retention:                      g.Retention,
 			MutedUntil:                     g.MutedUntil,
@@ -949,6 +974,9 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 		})
 
 		for _, ug := range ugsToNotify {
+			if gs.acceptedAt != 0 && ug.Timestamp < gs.acceptedAt {
+				ug.Seen = true
+			}
 			b.informUIOfUpdateGroup(ug)
 		}
 

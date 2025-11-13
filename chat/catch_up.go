@@ -399,6 +399,17 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			})
 		}
 
+		// Reload the seen value in case it was updated during group consensus
+		var seenReload groupMessage
+		err = b.database.Select("seen").First(&seenReload, "id = ?", gm.ID).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":           err.Error(),
+				"update_group_id": gm.ID,
+			}).Error("error reloading seen value for update group")
+		}
+		gm.Seen = seenReload.Seen
+
 		// Inform the UI about the new message
 		bulkUpdate.GroupMessages[gm.Destination] = append(bulkUpdate.GroupMessages[gm.Destination], GroupMessage{
 			ID:               gm.ID,

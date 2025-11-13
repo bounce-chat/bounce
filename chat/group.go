@@ -31,6 +31,7 @@ type group struct {
 	Invites                    string
 	InvitedBy                  uuid.UUID `msgpack:"-"`
 	InvitedAt                  int64     `msgpack:"-"`
+	AcceptedAt                 int64     `msgpack:"-"`
 	BlockedUsers               string
 	RestrictUserManagement     bool
 	RestrictGroupEdits         bool

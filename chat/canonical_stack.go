@@ -55,6 +55,10 @@ func (cs *canonicalStack) push(ug updateGroup) error {
 		}
 	}
 
+	if !top.isMember(cs.myID) && updatedGroupState.isMember(cs.myID) {
+		updatedGroupState.acceptedAt = ug.Timestamp
+	}
+
 	cs.history = append(cs.history, updatedGroupState)
 
 	return nil

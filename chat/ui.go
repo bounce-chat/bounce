@@ -112,6 +112,7 @@ type Group struct {
 	Invites                        []User
 	InvitedBy                      uuid.UUID
 	InvitedAt                      int64
+	AcceptedAt                     int64
 	BlockedUsers                   []uuid.UUID
 	Retention                      int64
 	MutedUntil                     int64

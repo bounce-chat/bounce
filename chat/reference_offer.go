@@ -522,6 +522,7 @@ func (b *Bounce) getGroupCreationsToOffer(dev device) []frameReference {
 
 	err := b.database.
 		Preload(clause.Associations).
+		Distinct().
 		Select("group_creations.*").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_creations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeGroupCreation).
 		Joins("JOIN groups ON groups.id = group_creations.id").

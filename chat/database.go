@@ -420,6 +420,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			Invites:                        invitedList,
 			InvitedBy:                      g.InvitedBy,
 			InvitedAt:                      g.InvitedAt,
+			AcceptedAt:                     g.AcceptedAt,
 			BlockedUsers:                   blockedList,
 			CreatedBy:                      g.CreatedBy,
 			CreatedAt:                      g.CreatedAt,
