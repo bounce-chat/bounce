@@ -361,6 +361,7 @@ func (ui *ui) MessageDelivered(messageID, userID uuid.UUID) {
 		log.WithFields(log.Fields{
 			"id": messageID,
 		}).Warn("item not found during attempt to mark item as delivered")
+		return
 	}
 
 	t, ok := ui.threads.withItem(messageID)
@@ -407,6 +408,7 @@ func (ui *ui) ReceivedReadReceipt(rr chat.ReadReceipt) {
 		log.WithFields(log.Fields{
 			"id": rr.Target,
 		}).Warn("item not found during attempt to mark item as read")
+		return
 	}
 
 	t, ok := ui.threads.withItem(rr.Target)

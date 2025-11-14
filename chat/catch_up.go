@@ -430,6 +430,9 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			bulkUpdate.Seen = append(bulkUpdate.Seen, gm.ID)
 		}
 		bulkUpdate.ReadReceipts[gm.ID] = append(bulkUpdate.ReadReceipts[gm.ID], rrs...)
+
+		// Update last activity time if it is the latest
+		b.updateLastGroupActivity(gm.Destination, gm.SavedAt)
 	}
 	for _, dm := range dmsToDisplay {
 		uiImageAttachments := []ImageAttachment{}

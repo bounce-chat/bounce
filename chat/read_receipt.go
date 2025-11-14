@@ -320,9 +320,6 @@ func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 		err := b.database.Select("destination", "author").First(&gm, "id = ?", id).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": id,
-				}).Debug("group message not found while marking as read")
 				return uuid.Nil, uuid.Nil, scopeSync, err
 			} else {
 				log.WithFields(log.Fields{
@@ -337,9 +334,6 @@ func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 		err = b.database.Select("read_receipts_overridden", "read_receipts_enabled").First(&g, "id = ?", gm.Destination).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": gm.Destination,
-				}).Error("group not found while marking as read")
 				return uuid.Nil, uuid.Nil, scopeSync, err
 			} else {
 				log.WithFields(log.Fields{
