@@ -40,6 +40,7 @@ type DMState struct {
 	Open                           bool
 	Retention                      int64
 	MutedUntil                     int64
+	LastActivity                   int64
 	OverrideReadReceiptSetting     bool
 	ReadReceiptsEnabled            bool
 	OverrideTypingIndicatorSetting bool

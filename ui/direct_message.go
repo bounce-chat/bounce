@@ -148,11 +148,15 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		return
 	}
 
+	lastTimestamp := bounceUser.State.LastActivity
+	if lastTimestamp == 0 {
+		lastTimestamp = bounceUser.IntroductionTime
+	}
 	dm := &directMessage{
 		user:                           user,
 		notificationsMutedUntil:        bounceUser.State.MutedUntil,
 		retention:                      bounceUser.State.Retention,
-		lastMessage:                    bounceUser.IntroductionTime,
+		lastMessage:                    lastTimestamp,
 		overrideReadReceiptSetting:     bounceUser.State.OverrideReadReceiptSetting,
 		readReceiptsEnabled:            bounceUser.State.ReadReceiptsEnabled,
 		overrideTypingIndicatorSetting: bounceUser.State.OverrideTypingIndicatorSetting,
