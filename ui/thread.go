@@ -196,8 +196,8 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate) {
 			}
 		}
 
-		if lastNotifyingItem != nil {
-			notificationsEnabled := (g.getNotificationsMutedUntil() != chat.MutedForever)
+		if lastNotifyingItem != nil && !allSeen {
+			notificationsEnabled := g.getNotificationsMutedUntil() != chat.MutedForever
 			notificationsMuted := time.Now().Unix() < g.getNotificationsMutedUntil()
 			if notificationsEnabled && !notificationsMuted && !ui.state.initialSyncIncomplete {
 				ui.app.SendNotification(lastNotifyingItem.notification)
@@ -271,8 +271,8 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate) {
 			}
 		}
 
-		if lastNotifyingItem != nil {
-			notificationsEnabled := (t.getNotificationsMutedUntil() != chat.MutedForever)
+		if lastNotifyingItem != nil && !allSeen {
+			notificationsEnabled := t.getNotificationsMutedUntil() != chat.MutedForever
 			notificationsMuted := time.Now().Unix() < t.getNotificationsMutedUntil()
 			if notificationsEnabled && !notificationsMuted && !ui.state.initialSyncIncomplete {
 				ui.app.SendNotification(lastNotifyingItem.notification)

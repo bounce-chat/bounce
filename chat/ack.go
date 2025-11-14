@@ -291,7 +291,13 @@ func (b *Bounce) handleAckUpdateGroups(peer string, ids []uuid.UUID) {
 						log.WithFields(log.Fields{
 							"id":   ug.ID,
 							"peer": peer,
-						}).Warn("update group missing custom scope")
+						}).Debug("update group missing custom scope")
+						err = b.database.Delete(&ug).Error
+						if err != nil {
+							log.WithFields(log.Fields{
+								"error": err.Error(),
+							}).Fatal("database error deleting update group")
+						}
 						continue
 					} else {
 						log.WithFields(log.Fields{
