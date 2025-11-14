@@ -833,11 +833,17 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 }
 
 func (ui *ui) NotifyInvitedToGroup(name string) {
-	ui.app.SendNotification(fyne.NewNotification(name, "You have been invited to a group"))
+	deferToAnotherDevice := !ui.state.active && ui.state.anotherDeviceActive
+	if !deferToAnotherDevice {
+		ui.app.SendNotification(fyne.NewNotification(name, "You have been invited to a group"))
+	}
 }
 
 func (ui *ui) NotifyAddedToGroup(name string) {
-	ui.app.SendNotification(fyne.NewNotification(name, "You have been added to a group"))
+	deferToAnotherDevice := !ui.state.active && ui.state.anotherDeviceActive
+	if !deferToAnotherDevice {
+		ui.app.SendNotification(fyne.NewNotification(name, "You have been added to a group"))
+	}
 }
 
 func (ui *ui) DisplayGroupMessage(gm chat.GroupMessage) {

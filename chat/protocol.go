@@ -45,6 +45,7 @@ var typeFile = uint16(24)
 var typeChunk = uint16(25)
 var typeChunkOffer = uint16(26)
 var typeChunkRequest = uint16(27)
+var typeActiveDevice = uint16(28)
 
 type sendable interface {
 	getType() uint16
@@ -102,6 +103,7 @@ func (b *Bounce) getHandlers() map[uint16]func(string, []byte, bool) (broadcasta
 		typeChunkOffer:                b.handleChunkOffer,
 		typeChunkRequest:              b.handleChunkRequest,
 		typeChunk:                     b.handleChunk,
+		typeActiveDevice:              b.handleActiveDevice,
 	}
 }
 

@@ -103,6 +103,8 @@ type state struct {
 	initialStateSet       bool
 	initialSyncIncomplete bool
 	focused               bool
+	active                bool
+	anotherDeviceActive   bool
 	networkState          int
 	setupStep             int
 }
@@ -118,6 +120,7 @@ func Main() {
 		threads:    newThreadStore(),
 		state: &state{
 			focused:      true,
+			active:       true,
 			networkState: networkStateStarting,
 			viewStack:    []view{},
 		},
@@ -134,22 +137,50 @@ func Main() {
 }
 
 func (ui *ui) build() {
-	//
 	// Define the app
-	//
 	ui.app = app.NewWithID("chat.bounce")
 	ui.app.SetIcon(newEmbeddedResource("assets/icon.png"))
-	ui.app.Lifecycle().SetOnEnteredForeground(func() { ui.state.focused = true })
-	ui.app.Lifecycle().SetOnExitedForeground(func() { ui.state.focused = false })
+
+	// Keep track of the focused state and use focus to report if the device is active
+	var activeTicker *time.Ticker
+	var activeTickerCleanup chan bool
+	ui.app.Lifecycle().SetOnEnteredForeground(func() {
+		ui.state.focused = true
+		ui.state.active = true
+
+		activeTicker = time.NewTicker(5 * time.Second)
+		activeTickerCleanup = make(chan bool)
+		go func() {
+			for {
+				select {
+				case <-activeTickerCleanup:
+					return
+				case <-activeTicker.C:
+					if ui.bounce != nil {
+						ui.bounce.CurrentDeviceActive()
+					}
+				}
+			}
+		}()
+	})
+	ui.app.Lifecycle().SetOnExitedForeground(func() {
+		ui.state.focused = false
+		ui.state.active = false
+
+		if activeTicker != nil {
+			activeTicker.Stop()
+			activeTickerCleanup <- true
+		}
+	})
+
+	// Set theme mode
 	if ui.app.Preferences().Bool(darkMode) {
 		ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
 	} else {
 		ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
 	}
 
-	//
 	// Define the main window
-	//
 	ui.window = ui.app.NewWindow("Bounce")
 	ui.window.SetMaster()
 	//ui.window.SetOnClosed(func() {
@@ -207,10 +238,7 @@ func (ui *ui) build() {
 
 	ui.buildWidgets()
 
-	//
 	// Default to displaying the loading container
-	//
-
 	ui.showMainContainer()
 	ui.window.Show()
 }
@@ -789,6 +817,14 @@ func (ui *ui) FileDownloadProgress(fileID uuid.UUID, progress float64) {
 		}
 		t.chatHistoryScroll().Refresh()
 	})
+}
+
+func (ui *ui) AnotherDeviceActive() {
+	ui.state.anotherDeviceActive = true
+}
+
+func (ui *ui) NoOtherDeviceActive() {
+	ui.state.anotherDeviceActive = false
 }
 
 func getConfigDirectory() string {

@@ -119,7 +119,8 @@ func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
 	// Send a notification if required
 	notificationsEnabled := (t.getNotificationsMutedUntil() != chat.MutedForever) && !(t.getID() == ui.state.profile.id)
 	notificationsMuted := time.Now().Unix() < t.getNotificationsMutedUntil()
-	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll && !ui.state.initialSyncIncomplete {
+	deferToAnotherDevice := !ui.state.active && ui.state.anotherDeviceActive
+	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll && !ui.state.initialSyncIncomplete && !deferToAnotherDevice {
 		ui.app.SendNotification(ti.notification)
 	}
 
@@ -199,7 +200,8 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate) {
 		if lastNotifyingItem != nil && !allSeen {
 			notificationsEnabled := g.getNotificationsMutedUntil() != chat.MutedForever
 			notificationsMuted := time.Now().Unix() < g.getNotificationsMutedUntil()
-			if notificationsEnabled && !notificationsMuted && !ui.state.initialSyncIncomplete {
+			deferToAnotherDevice := !ui.state.active && ui.state.anotherDeviceActive
+			if notificationsEnabled && !notificationsMuted && !ui.state.initialSyncIncomplete && !deferToAnotherDevice {
 				ui.app.SendNotification(lastNotifyingItem.notification)
 			}
 		}
@@ -274,7 +276,8 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate) {
 		if lastNotifyingItem != nil && !allSeen {
 			notificationsEnabled := t.getNotificationsMutedUntil() != chat.MutedForever
 			notificationsMuted := time.Now().Unix() < t.getNotificationsMutedUntil()
-			if notificationsEnabled && !notificationsMuted && !ui.state.initialSyncIncomplete {
+			deferToAnotherDevice := !ui.state.active && ui.state.anotherDeviceActive
+			if notificationsEnabled && !notificationsMuted && !ui.state.initialSyncIncomplete && !deferToAnotherDevice {
 				ui.app.SendNotification(lastNotifyingItem.notification)
 			}
 		}

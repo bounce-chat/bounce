@@ -387,6 +387,8 @@ type InitialState struct {
 // Functions that are passed to bounce that can be used to inform and update the UI
 type UI interface {
 	// App lifecycle
+	AnotherDeviceActive()
+	NoOtherDeviceActive()
 	Quit()
 
 	// Network state
