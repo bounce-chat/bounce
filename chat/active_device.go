@@ -46,7 +46,7 @@ func (b *Bounce) handleActiveDevice(peer string, _ []byte, _ bool) (broadcastabl
 
 	b.updateOtherDeviceActive()
 	go func() {
-		time.Sleep(secondsUntilDeviceInactive + 1*time.Second)
+		time.Sleep((secondsUntilDeviceInactive + 1) * time.Second)
 		b.updateOtherDeviceActive()
 	}()
 

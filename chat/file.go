@@ -948,7 +948,7 @@ func (b *Bounce) makeNextChunkRequests() {
 
 	if recheck {
 		go func() {
-			time.Sleep(expectedChunkDeliverySeconds + 1*time.Second)
+			time.Sleep((expectedChunkDeliverySeconds + 1) * time.Second)
 			b.makeNextChunkRequests()
 		}()
 	}
