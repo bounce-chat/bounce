@@ -39,13 +39,13 @@ func (ti *themedImage) Refresh() {
 		log.Warn("cannot use themedImage when not using the forcedVarient theme")
 		return
 	}
-	if fv.variant == theme.VariantDark {
+	if fv.variant == theme.VariantDark && ti.image.Resource != ti.dark {
 		ti.image.Resource = ti.dark
-	} else {
+		ti.image.Refresh()
+	} else if fv.variant == theme.VariantLight && ti.image.Resource != ti.light {
 		ti.image.Resource = ti.light
+		ti.image.Refresh()
 	}
-
-	ti.image.Refresh()
 }
 
 func (ti *themedImage) CreateRenderer() fyne.WidgetRenderer {

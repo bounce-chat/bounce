@@ -386,7 +386,6 @@ func (ui *ui) MessageDelivered(messageID, userID uuid.UUID) {
 				})
 			}
 		}
-
 	} else {
 		item.setState(stateDelivered)
 		if item.getAuthor() == ui.state.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
