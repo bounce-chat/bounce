@@ -475,6 +475,8 @@ func (t *testUI) UserChangedGroupImage(UpdateGroupUserChangedGroupImage)        
 func (t *testUI) UserImageUpdated(UpdateUserUpdateImage)                           {}
 func (t *testUI) FileDownloadProgress(uuid.UUID, float64)                          {}
 func (t *testUI) CatchUpMessages(BulkUpdate)                                       {}
+func (t *testUI) AnotherDeviceActive()                                             {}
+func (t *testUI) NoOtherDeviceActive()                                             {}
 
 func newBounce() *Bounce {
 	ui := newTestUI()
