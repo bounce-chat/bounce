@@ -1018,6 +1018,15 @@ func (b *Bounce) createNewUserIfNeeded(u user) bool {
 	}
 	u.IntroductionMethod = userIntroductionGroup
 	u.IntroductionTime = time.Now().Unix()
+	kek, err := b.generateKEK(u.PublicECDHKey)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"user_id": u.ID,
+			"error":   err.Error(),
+		}).Error("refusing to save user in group consensus, error generating key encryption key")
+		return false
+	}
+	u.KeyEncryptionKey = kek
 	res := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&u)
 	if res.Error != nil {
 		log.WithFields(log.Fields{

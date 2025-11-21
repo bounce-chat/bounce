@@ -1,6 +1,9 @@
 package chat
 
 import (
+	"crypto/ecdh"
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"strings"
 	"sync"
@@ -24,7 +27,13 @@ type user struct {
 	ID                         uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name                       string
 	Images                     string
-	Profile                    bool   `gorm:"index:,where:profile = true" msgpack:"-"`
+	Profile                    bool `gorm:"index:,where:profile = true" msgpack:"-"`
+	EncryptedDevices           string
+	PublicECDSAKey             []byte
+	PrivateECDSAKey            []byte `msgpack:"-"`
+	PublicECDHKey              []byte
+	PrivateECDHKey             []byte `msgpack:"-"`
+	KeyEncryptionKey           []byte `msgpack:"-"`
 	OpenDM                     bool   `msgpack:"-"`
 	Retention                  int64  `msgpack:"-"`
 	ClearBefore                int64  `msgpack:"-"`
@@ -207,10 +216,32 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		Timestamp: time.Now().Unix(),
 	}
 
+	curve := ecdh.X25519()
+	privateECDHKey, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error generating x25519 private key")
+	}
+	publicECDHKey := privateECDHKey.PublicKey()
+	publicECDSAKey, privateECDSAKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error generating ECDSA keypair")
+	}
+	kek := make([]byte, 32)
+	rand.Read(kek)
+
 	u := &user{
 		ID:                 newID,
 		Name:               profileName,
 		Profile:            true,
+		PublicECDSAKey:     []byte(publicECDSAKey),
+		PrivateECDSAKey:    privateECDSAKey.Seed(),
+		PublicECDHKey:      publicECDHKey.Bytes(),
+		PrivateECDHKey:     privateECDHKey.Bytes(),
+		KeyEncryptionKey:   kek,
 		OpenDM:             true,
 		IntroductionMethod: userIntroductionProfile,
 		IntroductionTime:   time.Now().Unix(),
@@ -232,7 +263,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 	} else {
 		u.Images = ""
 	}
-	err := b.database.Create(u).Error
+	err = b.database.Create(u).Error
 	if err != nil {
 		return err
 	}

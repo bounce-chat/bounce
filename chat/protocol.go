@@ -46,6 +46,7 @@ var typeChunk = uint16(25)
 var typeChunkOffer = uint16(26)
 var typeChunkRequest = uint16(27)
 var typeActiveDevice = uint16(28)
+var typeEncryptedSend = uint16(29)
 
 type sendable interface {
 	getType() uint16
@@ -121,6 +122,7 @@ func (b *Bounce) broadcast(br broadcastable) {
 			}(rd.messages, br)
 		}
 	}
+	go b.sendToEncryptedDevices(br)
 }
 
 func (b *Bounce) sendDirect(peer string, br sendable) {

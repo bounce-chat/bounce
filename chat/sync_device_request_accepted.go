@@ -13,11 +13,14 @@ import (
 // device as a new sync device.  It contains the full profile that the requester device is being added to, this includes the
 // requester device in the device group.
 type syncDeviceRequestAccepted struct {
-	Profile      user
-	Settings     *profileSettings
-	References   bool // TODO: just send the actual offer in here?
-	payload      []byte
-	payloadMutex sync.Mutex
+	Profile          user
+	PrivateECDHKey   []byte
+	PrivateECDSAKey  []byte
+	KeyEncryptionKey []byte
+	Settings         *profileSettings
+	References       bool // TODO: just send the actual offer in here?
+	payload          []byte
+	payloadMutex     sync.Mutex
 }
 
 func (sdra *syncDeviceRequestAccepted) getType() uint16 {
@@ -62,6 +65,9 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 
 	// Profile is excluded in msgpack, make sure it is set here
 	sdra.Profile.Profile = true
+	sdra.Profile.PrivateECDHKey = sdra.PrivateECDHKey
+	sdra.Profile.PrivateECDSAKey = sdra.PrivateECDSAKey
+	sdra.Profile.KeyEncryptionKey = sdra.KeyEncryptionKey
 
 	// Make sure this profile has a valid device group
 	if !b.hasValidDeviceGroup(sdra.Profile) {
