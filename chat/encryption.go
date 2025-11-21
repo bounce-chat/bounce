@@ -212,7 +212,7 @@ func (b *Bounce) getUsersInScope(br broadcastable) []user {
 		}
 		users = append(users, currentUser)
 	} else if scope == scopeUser {
-		err := b.database.Where("id = ? OR id = ?", b.currentUserID, br.getDestination(b.currentUserID())).Find(&users).Error
+		err := b.database.Where("id = ? OR id = ?", b.currentUserID(), br.getDestination(b.currentUserID())).Find(&users).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
