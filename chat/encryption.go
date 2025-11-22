@@ -102,18 +102,20 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 
 	// Check if any of them have access to an encrypted device that is online
 	allEncryptedDevices := map[string]bool{}
+	deviceUsers := map[string]uuid.UUID{}
 	for _, u := range users {
 		if len(u.EncryptedDevices) > 0 {
 			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
 				allEncryptedDevices[addr] = true
+				deviceUsers[addr] = u.ID
 			}
 		}
 	}
-	availableEncryptedDevices := []*remoteDevice{}
+	availableEncryptedDevices := map[string]*remoteDevice{}
 	for addr, _ := range allEncryptedDevices {
 		rd := b.getRemoteDevice(addr)
 		if rd.connectedSockets.Load() > 0 {
-			availableEncryptedDevices = append(availableEncryptedDevices, rd)
+			availableEncryptedDevices[addr] = rd
 		}
 	}
 	if len(availableEncryptedDevices) == 0 {
@@ -139,53 +141,60 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 	}
 	ciphertext := dekGCM.Seal(nil, []byte{}, br.getPayload(), nil)
 
-	// Create recipients for each user in scope, up to a limit
-	recipients := []recipient{}
-	for _, u := range b.pruneEncryptedRecipients(users) {
-		block, err := aes.NewCipher(u.KeyEncryptionKey)
+	for addr, rd := range availableEncryptedDevices {
+		// Get the user that owns this device, since they must be one of the recipients
+		mustHave, ok := deviceUsers[addr]
+		if !ok {
+			log.WithFields(log.Fields{
+				"address": addr,
+			}).Error("unable to determine user ID for encrypted device address")
+			continue
+		}
+
+		// Create recipients for each user in scope, up to a limit
+		recipients := []recipient{}
+		for _, u := range b.pruneEncryptedRecipients(mustHave, users) {
+			block, err := aes.NewCipher(u.KeyEncryptionKey)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error encrypting frame")
+				return
+			}
+			gcm, err := cipher.NewGCMWithRandomNonce(block)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error encrypting frame")
+				return
+			}
+
+			recipients = append(recipients, recipient{
+				PublicKey:    u.PublicECDSAKey,
+				EncryptedDEK: gcm.Seal(nil, []byte{}, dek, nil),
+			})
+		}
+
+		// Sign the encrypted frame and recipients, send to the encrypted device
+		ef := encryptedFrame{
+			ID:         br.getID(),
+			Type:       br.getType(),
+			Payload:    ciphertext,
+			DeleteAt:   getDeleteAt(br),
+			Recipients: recipients,
+		}
+		encodedEncryptedFrame, err := msgpack.Marshal(&ef)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("error encrypting frame")
+			}).Error("error encoding encrypted frame")
 			return
 		}
-		gcm, err := cipher.NewGCMWithRandomNonce(block)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error encrypting frame")
-			return
+		es := encryptedSend{
+			Frame:     encodedEncryptedFrame,
+			Client:    currentUser.PublicECDSAKey,
+			Signature: ed25519.Sign(ed25519.NewKeyFromSeed(currentUser.PrivateECDSAKey), encodedEncryptedFrame),
 		}
-
-		recipients = append(recipients, recipient{
-			PublicKey:    u.PublicECDSAKey,
-			EncryptedDEK: gcm.Seal(nil, []byte{}, dek, nil),
-		})
-	}
-
-	// Sign the encrypted frame and recipients
-	ef := encryptedFrame{
-		ID:         br.getID(),
-		Type:       br.getType(),
-		Payload:    ciphertext,
-		DeleteAt:   getDeleteAt(br),
-		Recipients: recipients,
-	}
-	encodedEncryptedFrame, err := msgpack.Marshal(&ef)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error encoding encrypted frame")
-		return
-	}
-	es := encryptedSend{
-		Frame:     encodedEncryptedFrame,
-		Client:    currentUser.PublicECDSAKey,
-		Signature: ed25519.Sign(ed25519.NewKeyFromSeed(currentUser.PrivateECDSAKey), encodedEncryptedFrame),
-	}
-
-	// Send to all of the encrypted devices that could serve this frame
-	for _, rd := range availableEncryptedDevices {
 		rd.messages <- es
 	}
 }
@@ -375,13 +384,25 @@ func (b *Bounce) getUsersInGroupWithInvitesScope(br broadcastable) []user {
 	return users
 }
 
-func (b *Bounce) pruneEncryptedRecipients(users []user) []user {
+func (b *Bounce) pruneEncryptedRecipients(mustHave uuid.UUID, users []user) []user {
 	if len(users) <= maximumRecipients {
 		return users
 	}
 
+	// Determine which user we must have
+	var mustHaveUser user
+	otherUsers := []user{}
+	for i, _ := range users {
+		if users[i].ID == mustHave {
+			mustHaveUser = users[i]
+		} else {
+			otherUsers = append(otherUsers, users[i])
+		}
+	}
+
 	// TODO: prioritize based on which users are most likely to be online?  Choose random ones for now
-	return chooseNUsers(users, maximumRecipients)
+	otherUsersSelection := chooseNUsers(otherUsers, maximumRecipients-1)
+	return append(otherUsersSelection, mustHaveUser)
 }
 
 func chooseNUsers(set []user, n int) []user {
