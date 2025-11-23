@@ -760,7 +760,8 @@ func (b *Bounce) getUpdateUsersToOffer(dev device) []frameReference {
 			Distinct("update_users.id").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateUser).
 			Where(
-				"(update_users.target = ? OR update_users.target = ? OR update_users.target IN (?)) AND delivery_records.id IS NULL",
+				"update_users.type != ? AND (update_users.target = ? OR update_users.target = ? OR update_users.target IN (?)) AND delivery_records.id IS NULL",
+				updateUserTypeSetEncryptedDeviceName,
 				dev.UserID,
 				b.currentUserID(),
 				b.database.

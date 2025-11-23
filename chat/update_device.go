@@ -452,6 +452,18 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 }
 
 func (b *Bounce) RenameDevice(deviceID uuid.UUID, name string) error {
+	var esd encryptedSyncDevice
+	err := b.database.First(&esd, "id = ?", deviceID).Error
+	if err == nil {
+		return b.applyAndBroadcastUpdateUser(updateUser{
+			ID:        uuid.New(),
+			Target:    b.currentUserID(),
+			Timestamp: time.Now().Unix(),
+			Type:      updateUserTypeSetEncryptedDeviceName,
+			Data:      append(esd.ID[:], []byte(name)...),
+		})
+	}
+
 	ud := updateDevice{
 		ID:        uuid.New(),
 		Target:    deviceID,
@@ -465,8 +477,20 @@ func (b *Bounce) RenameDevice(deviceID uuid.UUID, name string) error {
 }
 
 func (b *Bounce) RevokeDevice(deviceID uuid.UUID) error {
+	var esd encryptedSyncDevice
+	err := b.database.First(&esd, "id = ?", deviceID).Error
+	if err == nil {
+		return b.applyAndBroadcastUpdateUser(updateUser{
+			ID:        uuid.New(),
+			Target:    b.currentUserID(),
+			Timestamp: time.Now().Unix(),
+			Type:      updateUserTypeRemoveEncryptedDevice,
+			Data:      []byte(esd.Address),
+		})
+	}
+
 	var dev device
-	err := b.database.First(&dev, "id = ?", deviceID).Error
+	err = b.database.First(&dev, "id = ?", deviceID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return err

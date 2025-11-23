@@ -18,10 +18,12 @@ var updateUserTypeUpdateName = uint16(0)
 var updateUserTypeUpdateImage = uint16(1)
 var updateUserTypeAddEncryptedDevice = uint16(2)
 var updateUserTypeRemoveEncryptedDevice = uint16(3)
+var updateUserTypeSetEncryptedDeviceName = uint16(4)
 
 var errInvalidUserName = errors.New("invalid name")
 var errUnsupportedUpdateUserType = errors.New("unsupported update user type")
 var errAddressTooShort = errors.New("address is too short")
+var errPayloadTooShort = errors.New("payload is too short")
 
 type updateUser struct {
 	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
@@ -51,6 +53,10 @@ func (uu *updateUser) getID() uuid.UUID {
 }
 
 func (uu *updateUser) getScope(myID uuid.UUID) int {
+	if uu.Type == updateUserTypeSetEncryptedDeviceName {
+		return scopeSync
+	}
+
 	return scopeGlobal
 }
 
@@ -106,6 +112,10 @@ func (uu *updateUser) validPayload() error {
 	case updateUserTypeRemoveEncryptedDevice:
 		if len(uu.Data) == 0 {
 			return errAddressTooShort
+		}
+	case updateUserTypeSetEncryptedDeviceName:
+		if len(uu.Data) < 16 {
+			return errPayloadTooShort
 		}
 	}
 
@@ -249,6 +259,8 @@ func (b *Bounce) saveAndDisplayUpdateUser(uu updateUser) error {
 		// Encrypted devices do not create status changes
 	case updateUserTypeRemoveEncryptedDevice:
 		// Encrypted devices do not create status changes
+	case updateUserTypeSetEncryptedDeviceName:
+		// Setting encrypted device name doesn't create state change
 	default:
 		log.WithFields(log.Fields{
 			"id":   uu.ID,
@@ -334,6 +346,7 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 	newName := u.Name
 	images := []string{}
 	encryptedDevices := map[string]bool{}
+	encryptedDeviceNames := map[uuid.UUID]string{}
 
 	// Get all update users for this user
 	var uus []updateUser
@@ -356,7 +369,7 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Error("update user container image with invalid UUID")
+				}).Error("update user contains image with invalid UUID")
 			} else {
 				images = append(images, imageID.String())
 				imageIDs = append(imageIDs, imageID)
@@ -365,6 +378,23 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 			encryptedDevices[string(uu.Data)] = true
 		case updateUserTypeRemoveEncryptedDevice:
 			delete(encryptedDevices, string(uu.Data))
+		case updateUserTypeSetEncryptedDeviceName:
+			if len(uu.Data) < 16 {
+				log.WithFields(log.Fields{
+					"length": len(uu.Data),
+				}).Error("update user data length to short to update encrypted device name")
+				continue
+			}
+			idBytes := uu.Data[:16]
+			id, err := uuid.FromBytes(idBytes)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("update user contains encrypted device invalid UUID")
+				continue
+			}
+			name := uu.Data[16:]
+			encryptedDeviceNames[id] = string(name)
 		default:
 			log.WithFields(log.Fields{
 				"id":      uu.ID,
@@ -418,6 +448,31 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 
 	if userID == b.currentUserID() {
 		b.createOrDeleteEncryptedSyncDevices(encryptedDeviceList)
+
+		var allEncryptedSyncDevices []encryptedSyncDevice
+		err := b.database.Find(&allEncryptedSyncDevices).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error getting all encrypted sync devices")
+		}
+		for _, esd := range allEncryptedSyncDevices {
+			desiredDeviceName, ok := encryptedDeviceNames[esd.ID]
+			if !ok {
+				continue
+			}
+			if esd.Name != desiredDeviceName {
+				err := b.database.Table("encrypted_sync_devices").Where("id = ?", esd.ID).Updates(map[string]interface{}{"name": desiredDeviceName}).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error renaming encrypted sync device")
+					continue
+				}
+
+				b.ui.DeviceRenamed(esd.ID, desiredDeviceName)
+			}
+		}
 	}
 
 	go b.ui.SetUserState(User{
