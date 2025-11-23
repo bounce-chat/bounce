@@ -33,6 +33,7 @@ type Device struct {
 	LastSeen  int64
 	CreatedAt int64
 	Local     bool
+	Encrypted bool
 	Online    bool
 }
 

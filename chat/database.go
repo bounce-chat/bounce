@@ -80,6 +80,7 @@ func (b *Bounce) openDatabase() {
 		&chunkOffer{},
 		&imageAttachment{},
 		&fileAttachment{},
+		&encryptedSyncDevice{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -286,6 +287,30 @@ func (b *Bounce) GetInitialState() InitialState {
 					CreatedAt: dev.Timestamp,
 					LastSeen:  dev.LastSeen,
 					Local:     dev.Address == b.network.Address(),
+					Encrypted: false,
+					Online:    false,
+				},
+			)
+		}
+
+		var allEncryptedSyncDevices []encryptedSyncDevice
+		err := b.database.Find(&allEncryptedSyncDevices).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error getting all encrypted sync devices")
+		}
+		for _, esd := range allEncryptedSyncDevices {
+			syncDevices = append(
+				syncDevices,
+				Device{
+					ID:        esd.ID,
+					Name:      esd.Name,
+					Address:   esd.Address,
+					CreatedAt: esd.CreatedAt,
+					LastSeen:  esd.LastSeen,
+					Local:     false,
+					Encrypted: true,
 					Online:    false,
 				},
 			)

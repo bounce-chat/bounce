@@ -16,9 +16,12 @@ var updateUserMutex sync.Mutex
 
 var updateUserTypeUpdateName = uint16(0)
 var updateUserTypeUpdateImage = uint16(1)
+var updateUserTypeAddEncryptedDevice = uint16(2)
+var updateUserTypeRemoveEncryptedDevice = uint16(3)
 
 var errInvalidUserName = errors.New("invalid name")
 var errUnsupportedUpdateUserType = errors.New("unsupported update user type")
+var errAddressTooShort = errors.New("address is too short")
 
 type updateUser struct {
 	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
@@ -96,6 +99,14 @@ func (uu *updateUser) validPayload() error {
 	case updateUserTypeUpdateImage:
 		_, err := uuid.FromBytes(uu.Data)
 		return err
+	case updateUserTypeAddEncryptedDevice:
+		if len(uu.Data) == 0 {
+			return errAddressTooShort
+		}
+	case updateUserTypeRemoveEncryptedDevice:
+		if len(uu.Data) == 0 {
+			return errAddressTooShort
+		}
 	}
 
 	return nil
@@ -234,6 +245,10 @@ func (b *Bounce) saveAndDisplayUpdateUser(uu updateUser) error {
 		b.informUIUpdateUserUpdateName(uu)
 	case updateUserTypeUpdateImage:
 		b.informUIUpdateUserUpdateImage(uu)
+	case updateUserTypeAddEncryptedDevice:
+		// Encrypted devices do not create status changes
+	case updateUserTypeRemoveEncryptedDevice:
+		// Encrypted devices do not create status changes
 	default:
 		log.WithFields(log.Fields{
 			"id":   uu.ID,
@@ -318,6 +333,7 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 	}
 	newName := u.Name
 	images := []string{}
+	encryptedDevices := map[string]bool{}
 
 	// Get all update users for this user
 	var uus []updateUser
@@ -345,6 +361,10 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 				images = append(images, imageID.String())
 				imageIDs = append(imageIDs, imageID)
 			}
+		case updateUserTypeAddEncryptedDevice:
+			encryptedDevices[string(uu.Data)] = true
+		case updateUserTypeRemoveEncryptedDevice:
+			delete(encryptedDevices, string(uu.Data))
 		default:
 			log.WithFields(log.Fields{
 				"id":      uu.ID,
@@ -379,6 +399,27 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 		u.Images = newImages
 	}
 
+	encryptedDeviceList := []string{}
+	for encryptedDevice, _ := range encryptedDevices {
+		encryptedDeviceList = append(encryptedDeviceList, encryptedDevice)
+	}
+	encryptedDeviceField := strings.Join(encryptedDeviceList, ",")
+	if u.EncryptedDevices != encryptedDeviceField {
+		err := b.database.Table("users").Where("id = ?", userID).Updates(map[string]interface{}{"encrypted_devices": encryptedDeviceField}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Fatal("database error updating user encryptedDevices")
+		}
+
+		u.EncryptedDevices = encryptedDeviceField
+	}
+
+	if userID == b.currentUserID() {
+		b.createOrDeleteEncryptedSyncDevices(encryptedDeviceList)
+	}
+
 	go b.ui.SetUserState(User{
 		ID:               u.ID,
 		Name:             u.Name,
@@ -388,6 +429,65 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 		Blocked:          u.Blocked,
 		IntroductionTime: u.IntroductionTime,
 	})
+}
+
+func (b *Bounce) createOrDeleteEncryptedSyncDevices(addresses []string) {
+	shouldExist := map[string]bool{}
+	for _, addr := range addresses {
+		shouldExist[addr] = true
+
+		var existingEncryptedSyncDevice encryptedSyncDevice
+		err := b.database.Where("address = ?", addr).First(&existingEncryptedSyncDevice).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				esd := encryptedSyncDevice{
+					ID:        uuid.New(),
+					Address:   addr,
+					Name:      "",
+					CreatedAt: time.Now().Unix(),
+				}
+				err = b.database.Create(&esd).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("database error creating encrypted sync device")
+				} else {
+					b.ui.DeviceAdded(Device{
+						ID:        esd.ID,
+						Address:   addr,
+						CreatedAt: esd.CreatedAt,
+						Local:     false,
+						Encrypted: true,
+						Online:    false,
+					})
+				}
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up encrypted sync device")
+			}
+		}
+	}
+
+	var allEncryptedSyncDevices []encryptedSyncDevice
+	err := b.database.Find(&allEncryptedSyncDevices).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error getting all encrypted sync devices")
+	}
+	for _, esd := range allEncryptedSyncDevices {
+		if _, ok := shouldExist[esd.Address]; !ok {
+			err = b.database.Delete(&esd).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("database error deleting encrypted sync device")
+			} else {
+				b.ui.DeviceRevoked(esd.ID)
+			}
+		}
+	}
 }
 
 func (b *Bounce) UpdateProfileImage(newImage []byte) error {

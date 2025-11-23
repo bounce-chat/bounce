@@ -64,6 +64,14 @@ func (es encryptedSend) getPayload() []byte {
 	return []byte{}
 }
 
+type encryptedSyncDevice struct {
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Address   string    `gorm:"uniqueIndex"`
+	Name      string
+	CreatedAt int64
+	LastSeen  int64
+}
+
 func (b *Bounce) generateKEK(counterpartyPublicKeyBytes []byte) ([]byte, error) {
 	curve := ecdh.X25519()
 
