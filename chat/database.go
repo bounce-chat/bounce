@@ -301,6 +301,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			}).Fatal("database error getting all encrypted sync devices")
 		}
 		for _, esd := range allEncryptedSyncDevices {
+			encryptedDeviceCache[esd.Address] = append(encryptedDeviceCache[esd.Address], dbProfile.ID)
 			syncDevices = append(
 				syncDevices,
 				Device{
@@ -353,6 +354,12 @@ func (b *Bounce) GetInitialState() InitialState {
 
 		if u.Blocked {
 			cacheBlockedUser(u.ID)
+		}
+
+		if len(u.EncryptedDevices) > 0 {
+			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+				encryptedDeviceCache[addr] = append(encryptedDeviceCache[addr], u.ID)
+			}
 		}
 	}
 

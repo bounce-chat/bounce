@@ -19,6 +19,9 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+var encryptedDeviceCache = map[string][]uuid.UUID{}
+var encryptedDeviceCacheMutex sync.Mutex
+
 const maximumRecipients = 15
 
 type encryptedFrame struct {

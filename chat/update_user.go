@@ -375,9 +375,31 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 				imageIDs = append(imageIDs, imageID)
 			}
 		case updateUserTypeAddEncryptedDevice:
-			encryptedDevices[string(uu.Data)] = true
+			address := string(uu.Data)
+			encryptedDevices[address] = true
+
+			encryptedDeviceCacheMutex.Lock()
+			encryptedDeviceCache[address] = append(encryptedDeviceCache[address], userID)
+			encryptedDeviceCacheMutex.Unlock()
 		case updateUserTypeRemoveEncryptedDevice:
-			delete(encryptedDevices, string(uu.Data))
+			address := string(uu.Data)
+			delete(encryptedDevices, address)
+
+			encryptedDeviceCacheMutex.Lock()
+			allUsers, ok := encryptedDeviceCache[address]
+			if !ok {
+				encryptedDeviceCacheMutex.Unlock()
+				continue
+			}
+
+			otherUsers := []uuid.UUID{}
+			for _, id := range allUsers {
+				if id != userID {
+					otherUsers = append(otherUsers, id)
+				}
+			}
+			encryptedDeviceCache[address] = otherUsers
+			encryptedDeviceCacheMutex.Unlock()
 		case updateUserTypeSetEncryptedDeviceName:
 			if len(uu.Data) < 16 {
 				log.WithFields(log.Fields{
