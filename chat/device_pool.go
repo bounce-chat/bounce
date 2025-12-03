@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -136,6 +137,20 @@ func (b *Bounce) connectToSyncDevices() {
 			go b.tryDialing(dev.Address)
 		}
 	}
+
+	var allEncryptedSyncDevices []encryptedSyncDevice
+	err := b.database.Find(&allEncryptedSyncDevices).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error getting all encrypted sync devices")
+	}
+	for _, esd := range allEncryptedSyncDevices {
+		rd := b.getRemoteDevice(esd.Address)
+		if rd.connectedSockets.Load() < connectionsPerDevice {
+			go b.tryDialing(esd.Address)
+		}
+	}
 }
 
 func (b *Bounce) connectToGroups(desiredConnections int) {
@@ -157,6 +172,7 @@ func (b *Bounce) connectToGroups(desiredConnections int) {
 
 		// Collect all the devices associated with this group that are not on dial cooldown
 		groupAddresses := []string{}
+		groupEncryptedDevices := map[string]bool{}
 		for _, u := range g.Users {
 			if u.Blocked {
 				log.WithFields(log.Fields{
@@ -173,11 +189,18 @@ func (b *Bounce) connectToGroups(desiredConnections int) {
 					groupAddresses = append(groupAddresses, dev.Address)
 				}
 			}
+
+			if len(u.EncryptedDevices) > 0 {
+				for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+					groupEncryptedDevices[addr] = true
+				}
+			}
 		}
 
 		// Choose a random selection of those devices in order to fill the pool
 		b.devicePool.poolMutex.Lock()
 		addressesToDial := chooseN(groupAddresses, desiredConnections-len(b.devicePool.groupPools[g.ID]))
+		anyOnline := len(b.devicePool.groupPools[g.ID]) > 0
 		b.devicePool.poolMutex.Unlock()
 
 		// Attempt to dial them
@@ -186,8 +209,20 @@ func (b *Bounce) connectToGroups(desiredConnections int) {
 			if rd.connectedSockets.Load() > 0 {
 				// If we're already connected to this device, we can just associate the existing connection with this group
 				b.insertRemoteDeviceIntoPool(address, poolTypeGroup, g.ID)
+				anyOnline = true
 			} else {
 				// If we have no connections to this device, try to dial it and associate the connection with the group
+				go b.tryDialingAndAssociateWithGroup(address, g.ID)
+			}
+		}
+
+		if !anyOnline {
+			encryptedAddressList := []string{}
+			for addr, _ := range groupEncryptedDevices {
+				encryptedAddressList = append(encryptedAddressList, addr)
+			}
+			encryptedAddressesToDial := chooseN(encryptedAddressList, desiredConnections)
+			for _, address := range encryptedAddressesToDial {
 				go b.tryDialingAndAssociateWithGroup(address, g.ID)
 			}
 		}
@@ -228,11 +263,27 @@ func (b *Bounce) connectToUsers(desiredConnections int) {
 		// Choose a random selection of those devices in order to fill the pool
 		b.devicePool.poolMutex.Lock()
 		addressesToDial := chooseN(unconnectedUserAddresses, desiredConnections-len(b.devicePool.userPools[u.ID]))
+		anyOnline := len(b.devicePool.userPools[u.ID]) > 0
 		b.devicePool.poolMutex.Unlock()
 
 		// Attempt to dial them
 		for _, address := range addressesToDial {
 			go b.tryDialing(address)
+		}
+
+		// Try to dial some encrypted devices if there are no regular devices online
+		if !anyOnline {
+			if len(u.EncryptedDevices) > 0 {
+				encryptedDevices := []string{}
+				for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+					encryptedDevices = append(encryptedDevices, addr)
+				}
+				encryptedAddressesToDial := chooseN(encryptedDevices, desiredConnections)
+
+				for _, address := range encryptedAddressesToDial {
+					go b.tryDialing(address)
+				}
+			}
 		}
 	}
 
@@ -254,6 +305,17 @@ func (b *Bounce) connectToUsers(desiredConnections int) {
 			// Dial this inactive user if we have non-global content that isn't just group messages
 			if references.shouldDialUser() && !references.onlyGroupContent() && rd.connectedSockets.Load() == 0 {
 				go b.tryDialing(dev.Address)
+			}
+		}
+
+		if len(u.EncryptedDevices) > 0 {
+			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+				references := b.getReferenceOfferFor(addr)
+				rd := b.getRemoteDevice(addr)
+				// Dial this inactive user if we have non-global content that isn't just group messages
+				if references.shouldDialUser() && !references.onlyGroupContent() && rd.connectedSockets.Load() == 0 {
+					go b.tryDialing(addr)
+				}
 			}
 		}
 	}
@@ -463,6 +525,15 @@ func (b *Bounce) UserConnectionDesired(id uuid.UUID) {
 		for _, address := range addressesToDial {
 			go b.tryDialing(address)
 		}
+
+		// Attempt to dial their encrypted devices
+		if len(u.EncryptedDevices) > 0 {
+			encryptedDevices := strings.Split(u.EncryptedDevices, ",")
+			encryptedDevicesToDial := chooseN(encryptedDevices, startupDialsPerThread)
+			for _, addr := range encryptedDevicesToDial {
+				go b.tryDialing(addr)
+			}
+		}
 	}
 }
 
@@ -495,6 +566,7 @@ func (b *Bounce) GroupConnectionDesired(id uuid.UUID) {
 	if connectedCount == 0 {
 		// Collect all the devices associated with this group that are not on dial cooldown
 		groupAddresses := []string{}
+		groupEncryptedDevices := map[string]bool{}
 		for _, u := range g.Users {
 			for _, dev := range u.Devices {
 				if u.Blocked {
@@ -511,6 +583,12 @@ func (b *Bounce) GroupConnectionDesired(id uuid.UUID) {
 					groupAddresses = append(groupAddresses, dev.Address)
 				}
 			}
+
+			if len(u.EncryptedDevices) > 0 {
+				for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+					groupEncryptedDevices[addr] = true
+				}
+			}
 		}
 
 		// Choose a random selection of those devices in order to fill the pool
@@ -521,6 +599,15 @@ func (b *Bounce) GroupConnectionDesired(id uuid.UUID) {
 			go b.tryDialingAndAssociateWithGroup(address, id)
 		}
 
+		// Attempt to dial encrypted devices that are part of this group
+		encryptedAddressList := []string{}
+		for addr, _ := range groupEncryptedDevices {
+			encryptedAddressList = append(encryptedAddressList, addr)
+		}
+		encryptedAddressesToDial := chooseN(encryptedAddressList, startupDialsPerThread)
+		for _, address := range encryptedAddressesToDial {
+			go b.tryDialingAndAssociateWithGroup(address, g.ID)
+		}
 	}
 }
 
@@ -694,11 +781,23 @@ func (b *Bounce) updateUserOnlineStatus(address string) {
 	b.devicePool.onlineMutex.Lock()
 	defer b.devicePool.onlineMutex.Unlock()
 
-	// Ignore unknown devices
-	dev, exists := b.getDeviceFromAddress(address)
-	if !exists {
-		return
+	var deviceID uuid.UUID
+	var deviceOwner uuid.UUID
+	var esd encryptedSyncDevice
+	err := b.database.First(&esd, "address = ?", address).Error
+	if err == nil {
+		deviceID = esd.ID
+		deviceOwner = b.currentUserID()
+	} else {
+		dev, exists := b.getDeviceFromAddress(address)
+		if !exists {
+			// Ignore unknown devices
+			return
+		}
+		deviceID = dev.ID
+		deviceOwner = dev.UserID
 	}
+
 	// Ignore if we don't have a profile yet
 	u, exists := b.currentUser()
 	if !exists {
@@ -712,43 +811,43 @@ func (b *Bounce) updateUserOnlineStatus(address string) {
 	online := rd.connectedSockets.Load() > 0
 
 	// Track sync devices on a per-device basis
-	if dev.UserID == u.ID {
+	if deviceOwner == u.ID {
 		// Get the current state for this device
-		knownOnline, ok := b.devicePool.deviceOnlineStatus[dev.ID]
+		knownOnline, ok := b.devicePool.deviceOnlineStatus[deviceID]
 		if !ok {
-			b.devicePool.deviceOnlineStatus[dev.ID] = false
+			b.devicePool.deviceOnlineStatus[deviceID] = false
 			knownOnline = false
 		}
 
 		// Update the UI and cache if there's a state change
 		if online && !knownOnline {
-			b.devicePool.deviceOnlineStatus[dev.ID] = true
-			b.ui.DeviceOnline(dev.ID)
+			b.devicePool.deviceOnlineStatus[deviceID] = true
+			b.ui.DeviceOnline(deviceID)
 		} else if !online && knownOnline {
-			b.devicePool.deviceOnlineStatus[dev.ID] = false
-			b.ui.DeviceOffline(dev.ID)
+			b.devicePool.deviceOnlineStatus[deviceID] = false
+			b.ui.DeviceOffline(deviceID)
 		}
 	} else {
 		// Get the current state for this user
-		knownOnline, ok := b.devicePool.userOnlineStatus[dev.UserID]
+		knownOnline, ok := b.devicePool.userOnlineStatus[deviceOwner]
 		if !ok {
-			b.devicePool.userOnlineStatus[dev.UserID] = false
+			b.devicePool.userOnlineStatus[deviceOwner] = false
 			knownOnline = false
 		}
 
 		// Update the UI and cache if there's a state change
 		if online && !knownOnline {
-			b.devicePool.userOnlineStatus[dev.UserID] = true
-			b.ui.UserOnline(dev.UserID)
+			b.devicePool.userOnlineStatus[deviceOwner] = true
+			b.ui.UserOnline(deviceOwner)
 		} else if !online && knownOnline {
-			b.devicePool.userOnlineStatus[dev.UserID] = false
-			b.ui.UserOffline(dev.UserID)
+			b.devicePool.userOnlineStatus[deviceOwner] = false
+			b.ui.UserOffline(deviceOwner)
 		}
 	}
 }
 
 func chooseN(set []string, n int) []string {
-	if n < 0 {
+	if n <= 0 {
 		return []string{}
 	}
 	if len(set) < n {

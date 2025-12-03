@@ -115,11 +115,31 @@ func frameAllowedWithoutProfile(frameType uint16) bool {
 	return false
 }
 
+func (b *Bounce) getDeviceOrEncryptedSyncDevice(peer string) (bool, bool, device, encryptedSyncDevice) {
+	var deviceIsKnown bool
+	var deviceIsEncrypted bool
+	var dev device
+	var esd encryptedSyncDevice
+	dev, deviceIsKnown = b.getDeviceFromAddress(peer)
+	if !deviceIsKnown {
+		err := b.database.First(&esd, "address = ?", peer).Error
+		if err == nil {
+			deviceIsKnown = true
+			deviceIsEncrypted = true
+		}
+	} else {
+		deviceIsEncrypted = false
+	}
+
+	return deviceIsKnown, deviceIsEncrypted, dev, esd
+}
+
 func (b *Bounce) readFrames(conn net.Conn) {
 	handlers := b.getHandlers()
 	peer := conn.RemoteAddr().String()
 	profile, profileExists := b.currentUser()
-	dev, deviceExists := b.getDeviceFromAddress(peer)
+
+	deviceIsKnown, deviceIsEncrypted, dev, esd := b.getDeviceOrEncryptedSyncDevice(peer)
 
 	for {
 		frameType, data, err := readFrame(conn) // TODO: just read the header first, make sure we want to read the rest in the context of the device (untrusted devices can't send large messages, etc)
@@ -159,20 +179,29 @@ func (b *Bounce) readFrames(conn net.Conn) {
 		}
 
 		// Re-check if we're aware of this device if needed
-		if !deviceExists {
-			dev, deviceExists = b.getDeviceFromAddress(peer)
+		if !deviceIsKnown {
+			deviceIsKnown, deviceIsEncrypted, dev, esd = b.getDeviceOrEncryptedSyncDevice(peer)
 		}
-		if deviceExists && profileExists {
+		if deviceIsKnown && profileExists {
 			lastSeen := time.Now().Unix()
-			err := b.database.Table("devices").Where("id = ?", dev.ID).Updates(map[string]interface{}{"last_seen": lastSeen}).Error
+			if deviceIsEncrypted {
+				b.ui.DeviceLastSeen(esd.ID, lastSeen)
+			} else {
+				if dev.UserID == profile.ID {
+					b.ui.DeviceLastSeen(dev.ID, lastSeen)
+				}
+			}
+
+			table := "devices"
+			if deviceIsEncrypted {
+				table = "encrypted_sync_devices"
+			}
+			err := b.database.Table(table).Where("address = ?", peer).Updates(map[string]interface{}{"last_seen": lastSeen}).Error
 			if err != nil {
 				log.WithFields(log.Fields{
-					"device_id": dev.ID,
-					"error":     err.Error(),
+					"peer":  peer,
+					"error": err.Error(),
 				}).Error("error updating last time device was seen")
-			}
-			if dev.UserID == profile.ID {
-				b.ui.DeviceLastSeen(dev.ID, lastSeen)
 			}
 		}
 
