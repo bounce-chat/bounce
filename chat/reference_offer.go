@@ -118,12 +118,15 @@ func (b *Bounce) sendReferences(peer string) {
 	}
 
 	dev, exists := b.getDeviceFromAddress(peer)
-	if !exists {
+	encryptedDeviceCacheMutex.Lock()
+	_, encrypted := encryptedDeviceCache[peer]
+	encryptedDeviceCacheMutex.Unlock()
+	if !exists && !encrypted {
 		// We have nothing to offer a device that we don't know about
 		return
 	}
 
-	if blockedUser(dev.UserID) {
+	if exists && blockedUser(dev.UserID) {
 		// Reject any reference offer from a block user's device
 		return
 	}
@@ -185,67 +188,62 @@ func (b *Bounce) hasAnyReferencesFor(address string) bool {
 	catchUpMutex.Lock()
 	defer catchUpMutex.Unlock()
 
+	var users []uuid.UUID
 	dev, ok := b.getDeviceFromAddress(address)
-	if !ok {
-		return false
+	if ok {
+		users = []uuid.UUID{dev.UserID}
+	} else {
+		encryptedDeviceCacheMutex.Lock()
+		users, ok = encryptedDeviceCache[address]
+		encryptedDeviceCacheMutex.Unlock()
+		if !ok {
+			return false
+		}
 	}
 
-	references := []frameReference{}
-	references = append(references, b.getDirectMessagesToOffer(dev)...)
-	if len(references) > 0 {
-		return true
-	}
-	references = append(references, b.getGroupMessagesToOffer(dev)...)
-	if len(references) > 0 {
-		return true
-	}
-	references = append(references, b.getUpdateDMsToOffer(dev)...)
-	if len(references) > 0 {
-		return true
-	}
-	references = append(references, b.getDevicesToOffer(dev)...)
-	if len(references) > 0 {
-		return true
-	}
-	references = append(references, b.getAddUsersToOffer(dev)...)
-	if len(references) > 0 {
-		return true
-	}
-	references = append(references, b.getGroupCreationsToOffer(dev)...)
-	if len(references) > 0 {
-		return true
-	}
-	references = append(references, b.getUpdateGroupsToOffer(dev)...)
-	if len(references) > 0 {
-		return true
-	}
-	references = append(references, b.getConfirmationsToOffer(dev)...)
-	if len(references) > 0 {
-		return true
-	}
-	references = append(references, b.getUpdateUsersToOffer(dev)...)
-	if len(references) > 0 {
-		return true
-	}
-	references = append(references, b.getUpdateDevicesToOffer(dev)...)
-	if len(references) > 0 {
-		return true
-	}
-	references = append(references, b.getReadReceiptsToOffer(dev)...)
-	if len(references) > 0 {
-		return true
-	}
-	references = append(references, b.getUpdateSettingsToOffer(dev)...)
-	if len(references) > 0 {
-		return true
-	}
-	references = append(references, b.getFilesToOffer(dev)...)
-	if len(references) > 0 {
-		return true
-	}
-	references = append(references, b.getChunkOffersToOffer(dev)...)
-	if len(references) > 0 {
-		return true
+	for _, userID := range users {
+		if len(b.getDirectMessagesToOffer(address, userID)) > 0 {
+			return true
+		}
+		if len(b.getGroupMessagesToOffer(address, userID)) > 0 {
+			return true
+		}
+		if len(b.getUpdateDMsToOffer(address, userID)) > 0 {
+			return true
+		}
+		if len(b.getDevicesToOffer(address, userID)) > 0 {
+			return true
+		}
+		if len(b.getAddUsersToOffer(address, userID)) > 0 {
+			return true
+		}
+		if len(b.getGroupCreationsToOffer(address, userID)) > 0 {
+			return true
+		}
+		if len(b.getUpdateGroupsToOffer(address, userID)) > 0 {
+			return true
+		}
+		if len(b.getConfirmationsToOffer(address, userID)) > 0 {
+			return true
+		}
+		if len(b.getUpdateUsersToOffer(address, userID)) > 0 {
+			return true
+		}
+		if len(b.getUpdateDevicesToOffer(address, userID)) > 0 {
+			return true
+		}
+		if len(b.getReadReceiptsToOffer(address, userID)) > 0 {
+			return true
+		}
+		if len(b.getUpdateSettingsToOffer(address, userID)) > 0 {
+			return true
+		}
+		if len(b.getFilesToOffer(address, userID)) > 0 {
+			return true
+		}
+		if len(b.getChunkOffersToOffer(address, userID)) > 0 {
+			return true
+		}
 	}
 
 	return false
@@ -257,26 +255,36 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	catchUpMutex.Lock()
 	defer catchUpMutex.Unlock()
 
+	var users []uuid.UUID
 	dev, ok := b.getDeviceFromAddress(address)
-	if !ok {
-		return &referenceOffer{}
+	if ok {
+		users = []uuid.UUID{dev.UserID}
+	} else {
+		encryptedDeviceCacheMutex.Lock()
+		users, ok = encryptedDeviceCache[address]
+		encryptedDeviceCacheMutex.Unlock()
+		if !ok {
+			return &referenceOffer{}
+		}
 	}
 
 	references := []frameReference{}
-	references = append(references, b.getDirectMessagesToOffer(dev)...)
-	references = append(references, b.getGroupMessagesToOffer(dev)...)
-	references = append(references, b.getUpdateDMsToOffer(dev)...)
-	references = append(references, b.getDevicesToOffer(dev)...)
-	references = append(references, b.getAddUsersToOffer(dev)...)
-	references = append(references, b.getGroupCreationsToOffer(dev)...)
-	references = append(references, b.getUpdateGroupsToOffer(dev)...)
-	references = append(references, b.getConfirmationsToOffer(dev)...)
-	references = append(references, b.getUpdateUsersToOffer(dev)...)
-	references = append(references, b.getUpdateDevicesToOffer(dev)...)
-	references = append(references, b.getReadReceiptsToOffer(dev)...)
-	references = append(references, b.getUpdateSettingsToOffer(dev)...)
-	references = append(references, b.getFilesToOffer(dev)...)
-	references = append(references, b.getChunkOffersToOffer(dev)...)
+	for _, userID := range users {
+		references = append(references, b.getDirectMessagesToOffer(address, userID)...)
+		references = append(references, b.getGroupMessagesToOffer(address, userID)...)
+		references = append(references, b.getUpdateDMsToOffer(address, userID)...)
+		references = append(references, b.getDevicesToOffer(address, userID)...)
+		references = append(references, b.getAddUsersToOffer(address, userID)...)
+		references = append(references, b.getGroupCreationsToOffer(address, userID)...)
+		references = append(references, b.getUpdateGroupsToOffer(address, userID)...)
+		references = append(references, b.getConfirmationsToOffer(address, userID)...)
+		references = append(references, b.getUpdateUsersToOffer(address, userID)...)
+		references = append(references, b.getUpdateDevicesToOffer(address, userID)...)
+		references = append(references, b.getReadReceiptsToOffer(address, userID)...)
+		references = append(references, b.getUpdateSettingsToOffer(address, userID)...)
+		references = append(references, b.getFilesToOffer(address, userID)...)
+		references = append(references, b.getChunkOffersToOffer(address, userID)...)
+	}
 
 	return &referenceOffer{
 		ID:         uuid.New(),
@@ -284,38 +292,38 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	}
 }
 
-func (b *Bounce) getDirectMessagesToOffer(dev device) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+func (b *Bounce) getDirectMessagesToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
 		return []frameReference{}
 	}
 
 	// All DMs we have sent to or received from this user in the past week
 	var dms []directMessage
-	if b.isSyncDevice(dev) {
+	if userID == b.currentUserID() {
 		err := b.database.
 			Select("direct_messages.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDirectMessage).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeDirectMessage).
 			Where("delivery_records.id IS NULL").
 			Find(&dms).Error
 		if err != nil {
 			log.WithFields(log.Fields{
-				"peer":  dev.Address,
+				"peer":  address,
 				"error": err.Error(),
 			}).Fatal("error loading DMs for reference offer")
 		}
 	} else {
 		err := b.database.
 			Select("direct_messages.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDirectMessage).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeDirectMessage).
 			Where(
 				"delivery_records.id IS NULL AND direct_messages.written_at >= ? AND direct_messages.xor = ?",
 				time.Now().Add(-undeliverableAfter).Unix(),
-				xor(dev.UserID, b.currentUserID()),
+				xor(userID, b.currentUserID()),
 			).
 			Find(&dms).Error
 		if err != nil {
 			log.WithFields(log.Fields{
-				"peer":  dev.Address,
+				"peer":  address,
 				"error": err.Error(),
 			}).Fatal("error loading DMs for reference offer")
 		}
@@ -329,13 +337,13 @@ func (b *Bounce) getDirectMessagesToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *Bounce) getGroupMessagesToOffer(dev device) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+func (b *Bounce) getGroupMessagesToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
 		return []frameReference{}
 	}
 
 	oldestAllowedMessage := int64(0)
-	if !b.isSyncDevice(dev) {
+	if userID != b.currentUserID() {
 		oldestAllowedMessage = time.Now().Add(-undeliverableAfter).Unix()
 	}
 
@@ -343,7 +351,7 @@ func (b *Bounce) getGroupMessagesToOffer(dev device) []frameReference {
 	var gms []groupMessage
 	err := b.database.
 		Select("group_messages.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeGroupMessage).
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeGroupMessage).
 		Where(
 			"delivery_records.id IS NULL AND group_messages.written_at >= ? AND group_messages.destination IN (?)",
 			oldestAllowedMessage,
@@ -352,12 +360,12 @@ func (b *Bounce) getGroupMessagesToOffer(dev device) []frameReference {
 				Distinct().
 				Select("groups.id").
 				Joins("JOIN group_users ON groups.id = group_users.group_id").
-				Where("group_users.user_id = ?", dev.UserID),
+				Where("group_users.user_id = ?", userID),
 		).
 		Find(&gms).Error
 	if err != nil {
 		log.WithFields(log.Fields{
-			"peer":  dev.Address,
+			"peer":  address,
 			"error": err.Error(),
 		}).Fatal("error loading DMs for reference offer")
 	}
@@ -369,18 +377,18 @@ func (b *Bounce) getGroupMessagesToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *Bounce) getUpdateDMsToOffer(dev device) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+func (b *Bounce) getUpdateDMsToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
 		return []frameReference{}
 	}
 
 	var unsentUpdateDMs []updateDM
 
-	if b.isSyncDevice(dev) {
+	if userID == b.currentUserID() {
 		// Select all update DMs from any DM
 		err := b.database.
 			Select("update_dms.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dms.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateDM).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dms.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateDM).
 			Where("delivery_records.id IS NULL").
 			Find(&unsentUpdateDMs).Error
 		if err != nil {
@@ -392,8 +400,8 @@ func (b *Bounce) getUpdateDMsToOffer(dev device) []frameReference {
 		// Select updateDMs related to this user
 		err := b.database.
 			Select("update_dms.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dms.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateDM).
-			Where("update_dms.target = ? AND delivery_records.id IS NULL", xor(dev.UserID, b.currentUserID())).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dms.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateDM).
+			Where("update_dms.target = ? AND delivery_records.id IS NULL", xor(userID, b.currentUserID())).
 			Find(&unsentUpdateDMs).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -405,7 +413,7 @@ func (b *Bounce) getUpdateDMsToOffer(dev device) []frameReference {
 	references := []frameReference{}
 	for _, ud := range unsentUpdateDMs {
 		// Ignore sync scoped update DMs unless this is a sync device
-		if ud.getScope(b.currentUserID()) == scopeSync && !b.isSyncDevice(dev) {
+		if ud.getScope(b.currentUserID()) == scopeSync && userID != b.currentUserID() {
 			continue
 		}
 		references = append(references, frameReference{FrameID: ud.ID, Type: typeUpdateDM})
@@ -414,18 +422,18 @@ func (b *Bounce) getUpdateDMsToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *Bounce) getDevicesToOffer(dev device) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+func (b *Bounce) getDevicesToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
 		return []frameReference{}
 	}
 
 	var unsentDevices []device
 
-	if b.isSyncDevice(dev) {
+	if userID == b.currentUserID() {
 		// Sync devices can learn about any device we know about
 		err := b.database.
 			Select("devices.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDevice).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeDevice).
 			Where("delivery_records.id IS NULL").
 			Find(&unsentDevices).Error
 		if err != nil {
@@ -437,12 +445,12 @@ func (b *Bounce) getDevicesToOffer(dev device) []frameReference {
 		// Get any device that belongs to us or them, or any users that share a group with this user
 		err := b.database.
 			Distinct("devices.id").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeDevice).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeDevice).
 			Where(
 				"devices.address != ? AND (devices.user_id = ? OR devices.user_id = ? OR devices.user_id IN (?)) AND delivery_records.id IS NULL",
-				dev.Address,
+				address,
 				b.currentUserID(),
-				dev.UserID,
+				userID,
 				b.database.
 					Model(&user{}).
 					Distinct().
@@ -455,7 +463,7 @@ func (b *Bounce) getDevicesToOffer(dev device) []frameReference {
 							Distinct().
 							Select("groups.id").
 							Joins("JOIN group_users ON group_users.group_id = groups.id").
-							Where("user_id = ?", dev.UserID),
+							Where("user_id = ?", userID),
 					),
 			).
 			Find(&unsentDevices).Error
@@ -474,17 +482,17 @@ func (b *Bounce) getDevicesToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *Bounce) getAddUsersToOffer(dev device) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+func (b *Bounce) getAddUsersToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
 		return []frameReference{}
 	}
 
 	var unsentAddUsers []addUser
 
-	if b.isSyncDevice(dev) {
+	if userID == b.currentUserID() {
 		err := b.database.
 			Select("add_users.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeAddUser).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeAddUser).
 			Where("delivery_records.id IS NULL").
 			Find(&unsentAddUsers).Error
 		if err != nil {
@@ -495,8 +503,8 @@ func (b *Bounce) getAddUsersToOffer(dev device) []frameReference {
 	} else {
 		err := b.database.
 			Select("add_users.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeAddUser).
-			Where("delivery_records.id IS NULL AND add_users.xor = ?", xor(b.currentUserID(), dev.UserID)).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == add_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeAddUser).
+			Where("delivery_records.id IS NULL AND add_users.xor = ?", xor(b.currentUserID(), userID)).
 			Find(&unsentAddUsers).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -513,8 +521,8 @@ func (b *Bounce) getAddUsersToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *Bounce) getGroupCreationsToOffer(dev device) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+func (b *Bounce) getGroupCreationsToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
 		return []frameReference{}
 	}
 
@@ -524,10 +532,10 @@ func (b *Bounce) getGroupCreationsToOffer(dev device) []frameReference {
 		Preload(clause.Associations).
 		Distinct().
 		Select("group_creations.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_creations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeGroupCreation).
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_creations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeGroupCreation).
 		Joins("JOIN groups ON groups.id = group_creations.id").
 		Joins("JOIN group_users ON groups.id = group_users.group_id JOIN users ON group_users.user_id = users.id").
-		Where("delivery_records.id IS NULL AND (group_users.user_id = ? OR groups.invites LIKE ?)", dev.UserID, "%"+dev.UserID.String()+"%").
+		Where("delivery_records.id IS NULL AND (group_users.user_id = ? OR groups.invites LIKE ?)", userID, "%"+userID.String()+"%").
 		Find(&unsentGroupCreations).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -543,18 +551,18 @@ func (b *Bounce) getGroupCreationsToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+func (b *Bounce) getUpdateGroupsToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
 		return []frameReference{}
 	}
 
 	var unsentUpdateGroups []updateGroup
 
-	if b.isSyncDevice(dev) {
+	if userID == b.currentUserID() {
 		err := b.database.
 			Preload(clause.Associations).
 			Select("update_groups.id").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateGroup).
 			Where("delivery_records.id IS NULL").
 			Find(&unsentUpdateGroups).Error
 		if err != nil {
@@ -568,19 +576,19 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 			Preload(clause.Associations).
 			Distinct().
 			Select("update_groups.id").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateGroup).
 			Joins("LEFT JOIN groups ON groups.id = update_groups.target").
 			Joins("LEFT JOIN group_users ON update_groups.target = group_users.group_id").
 			Where(
 				"delivery_records.id IS NULL AND (((group_users.user_id = ? OR groups.invites LIKE ?) AND update_groups.custom_scope == ?) OR update_groups.custom_scope IN (?))",
-				dev.UserID,
-				"%"+dev.UserID.String()+"%",
+				userID,
+				"%"+userID.String()+"%",
 				uuid.Nil,
 				b.database.
 					Model(&customScope{}).
 					Distinct().
 					Select("id").
-					Where("addresses LIKE ?", "%"+dev.Address+"%"),
+					Where("addresses LIKE ?", "%"+address+"%"),
 			).
 			Find(&unsentUpdateGroups).Error
 		if err != nil {
@@ -599,10 +607,10 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 				"((type = ? OR type = ?) AND data = ?) OR (type = ? AND data = ? AND actor = ?)",
 				updateGroupTypeRemoveUser,
 				updateGroupTypeRevokeInvite,
-				dev.UserID[:],
+				userID[:],
 				updateGroupTypeRespondToInvite,
 				[]byte{rejectInvite},
-				dev.UserID,
+				userID,
 			).
 			Find(&groupsUserLeft).Error
 		if err != nil {
@@ -613,7 +621,7 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 		}
 		for _, groupID := range groupsUserLeft {
 			// Make sure they were not re-added to the group
-			if b.userIsInGroup(groupID, dev.UserID) || b.isInvited(groupID, dev.UserID) {
+			if b.userIsInGroup(groupID, userID) || b.isInvited(groupID, userID) {
 				continue
 			}
 
@@ -625,10 +633,10 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 					"((type = ? OR type = ?) AND data = ?) OR (type = ? AND data = ? AND actor = ?)",
 					updateGroupTypeRemoveUser,
 					updateGroupTypeRevokeInvite,
-					dev.UserID[:],
+					userID[:],
 					updateGroupTypeRespondToInvite,
 					[]byte{rejectInvite},
-					dev.UserID,
+					userID,
 				).
 				Select("MAX(timestamp)").
 				Row()
@@ -643,7 +651,7 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 			var ugs []updateGroup
 			err = b.database.
 				Select("update_groups.id").
-				Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
+				Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateGroup).
 				Where(
 					"delivery_records.id IS NULL AND update_groups.target = ? AND update_groups.timestamp <= ?",
 					groupID,
@@ -665,10 +673,10 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 		var ugs []updateGroup
 		err = b.database.
 			Select("update_groups.id").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateGroup).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateGroup).
 			Where(
 				"delivery_records.id IS NULL AND update_groups.actor = ? AND update_groups.type = ?",
-				dev.UserID,
+				userID,
 				updateGroupTypeBlock,
 			).Find(&ugs).Error
 		if err != nil {
@@ -691,7 +699,7 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 			included[ug.ID] = true
 		}
 		// Ignore sync scoped update groups unless this is a sync device
-		if ug.getScope(b.currentUserID()) == scopeSync && !b.isSyncDevice(dev) {
+		if ug.getScope(b.currentUserID()) == scopeSync && userID != b.currentUserID() {
 			continue
 		}
 		references = append(references, frameReference{FrameID: ug.ID, Type: typeUpdateGroup})
@@ -700,8 +708,8 @@ func (b *Bounce) getUpdateGroupsToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *Bounce) getConfirmationsToOffer(dev device) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+func (b *Bounce) getConfirmationsToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
 		return []frameReference{}
 	}
 
@@ -709,18 +717,18 @@ func (b *Bounce) getConfirmationsToOffer(dev device) []frameReference {
 	err := b.database.
 		Preload(clause.Associations).
 		Select("confirmations.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == confirmations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeConfirmation).
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == confirmations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeConfirmation).
 		Joins("JOIN update_groups ON update_groups.id == confirmations.update_group_id").
 		Joins("LEFT JOIN group_users ON update_groups.target == group_users.group_id").
 		Where(
 			"delivery_records.id IS NULL AND ((group_users.user_id = ? AND confirmations.custom_scope == ?) OR confirmations.custom_scope IN (?))",
-			dev.UserID,
+			userID,
 			uuid.Nil,
 			b.database.
 				Model(&customScope{}).
 				Distinct().
 				Select("id").
-				Where("addresses LIKE ?", "%"+dev.Address+"%"),
+				Where("addresses LIKE ?", "%"+address+"%"),
 		).
 		Find(&unsentConfirmations).Error
 	if err != nil {
@@ -737,17 +745,17 @@ func (b *Bounce) getConfirmationsToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *Bounce) getUpdateUsersToOffer(dev device) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+func (b *Bounce) getUpdateUsersToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
 		return []frameReference{}
 	}
 
 	var unsentUpdateUsers []updateUser
 
-	if b.isSyncDevice(dev) {
+	if userID == b.currentUserID() {
 		err := b.database.
 			Distinct("update_users.id").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateUser).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateUser).
 			Where("delivery_records.id IS NULL").
 			Find(&unsentUpdateUsers).Error
 		if err != nil {
@@ -758,11 +766,11 @@ func (b *Bounce) getUpdateUsersToOffer(dev device) []frameReference {
 	} else {
 		err := b.database.
 			Distinct("update_users.id").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateUser).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateUser).
 			Where(
 				"update_users.type != ? AND (update_users.target = ? OR update_users.target = ? OR update_users.target IN (?)) AND delivery_records.id IS NULL",
 				updateUserTypeSetEncryptedDeviceName,
-				dev.UserID,
+				userID,
 				b.currentUserID(),
 				b.database.
 					Model(&user{}).
@@ -776,7 +784,7 @@ func (b *Bounce) getUpdateUsersToOffer(dev device) []frameReference {
 							Distinct().
 							Select("groups.id").
 							Joins("JOIN group_users ON group_users.group_id = groups.id").
-							Where("user_id = ?", dev.UserID),
+							Where("user_id = ?", userID),
 					),
 			).
 			Find(&unsentUpdateUsers).Error
@@ -795,29 +803,32 @@ func (b *Bounce) getUpdateUsersToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *Bounce) getUpdateDevicesToOffer(dev device) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
-		var revoke updateDevice
-		err := b.database.Where("target = ? AND type = ?", dev.ID, updateDeviceTypeRevoke).First(&revoke).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"peer":  dev.Address,
-				"error": err.Error(),
-			}).Error("error finding revoke update for revoked device")
-			return []frameReference{}
+func (b *Bounce) getUpdateDevicesToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+		dev, ok := b.getDeviceFromAddress(address)
+		if ok {
+			var revoke updateDevice
+			err := b.database.Where("target = ? AND type = ?", dev.ID, updateDeviceTypeRevoke).First(&revoke).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"peer":  address,
+					"error": err.Error(),
+				}).Error("error finding revoke update for revoked device")
+				return []frameReference{}
+			}
+			return []frameReference{frameReference{
+				FrameID: revoke.ID,
+				Type:    typeUpdateDevice,
+			}}
 		}
-		return []frameReference{frameReference{
-			FrameID: revoke.ID,
-			Type:    typeUpdateDevice,
-		}}
 	}
 
 	var unsentUpdateDevices []updateDevice
 
-	if b.isSyncDevice(dev) {
+	if userID == b.currentUserID() {
 		err := b.database.
 			Distinct("update_devices.id").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateDevice).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateDevice).
 			Where("delivery_records.id IS NULL").
 			Find(&unsentUpdateDevices).Error
 		if err != nil {
@@ -829,11 +840,11 @@ func (b *Bounce) getUpdateDevicesToOffer(dev device) []frameReference {
 		// Only get updates that revoke a device, using overlap scope
 		err := b.database.
 			Distinct("update_devices.id").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateDevice).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_devices.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateDevice).
 			Where(
 				"update_devices.type = ? AND (update_devices.author = ? OR update_devices.author = ? OR update_devices.author IN (?)) AND delivery_records.id IS NULL",
 				updateDeviceTypeRevoke,
-				dev.UserID,
+				userID,
 				b.currentUserID(),
 				b.database.
 					Model(&user{}).
@@ -847,7 +858,7 @@ func (b *Bounce) getUpdateDevicesToOffer(dev device) []frameReference {
 							Distinct().
 							Select("groups.id").
 							Joins("JOIN group_users ON group_users.group_id = groups.id").
-							Where("user_id = ?", dev.UserID),
+							Where("user_id = ?", userID),
 					),
 			).
 			Find(&unsentUpdateDevices).Error
@@ -866,17 +877,17 @@ func (b *Bounce) getUpdateDevicesToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *Bounce) getReadReceiptsToOffer(dev device) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+func (b *Bounce) getReadReceiptsToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
 		return []frameReference{}
 	}
 
 	var unsentReadReceipts []readReceipt
 
-	if b.isSyncDevice(dev) {
+	if userID == b.currentUserID() {
 		err := b.database.
 			Distinct("read_receipts.id").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == read_receipts.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeReadReceipt).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == read_receipts.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeReadReceipt).
 			Where("delivery_records.id IS NULL").
 			Find(&unsentReadReceipts).Error
 		if err != nil {
@@ -891,18 +902,18 @@ func (b *Bounce) getReadReceiptsToOffer(dev device) []frameReference {
 		//	either way, scope is not sync
 		err := b.database.
 			Distinct("read_receipts.id").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == read_receipts.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeReadReceipt).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == read_receipts.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeReadReceipt).
 			Where(
 				"((read_receipts.target_type == ? AND read_receipts.destination = ?) OR (read_receipts.target_type = ? AND read_receipts.destination IN (?))) AND read_receipts.scope != ? AND delivery_records.id IS NULL",
 				typeDirectMessage,
-				dev.UserID,
+				userID,
 				typeGroupMessage,
 				b.database.
 					Model(&group{}).
 					Distinct().
 					Select("groups.id").
 					Joins("JOIN group_users ON group_users.group_id = groups.id").
-					Where("user_id = ?", dev.UserID),
+					Where("user_id = ?", userID),
 				scopeSync,
 			).
 			Find(&unsentReadReceipts).Error
@@ -921,12 +932,12 @@ func (b *Bounce) getReadReceiptsToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *Bounce) getUpdateSettingsToOffer(dev device) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+func (b *Bounce) getUpdateSettingsToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
 		return []frameReference{}
 	}
 
-	if !b.isSyncDevice(dev) {
+	if userID != b.currentUserID() {
 		return []frameReference{}
 	}
 
@@ -934,7 +945,7 @@ func (b *Bounce) getUpdateSettingsToOffer(dev device) []frameReference {
 	var unsentUpdateSettings []updateSettings
 	err := b.database.
 		Select("update_settings.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_settings.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeUpdateSettings).
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_settings.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateSettings).
 		Where("delivery_records.id IS NULL").
 		Find(&unsentUpdateSettings).Error
 	if err != nil {
@@ -951,18 +962,18 @@ func (b *Bounce) getUpdateSettingsToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *Bounce) getFilesToOffer(dev device) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+func (b *Bounce) getFilesToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
 		return []frameReference{}
 	}
 
 	var unsentFiles []file
 
-	if b.isSyncDevice(dev) {
+	if userID == b.currentUserID() {
 		// If this is a sync device, send all unsent files
 		err := b.database.
 			Select("files.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == files.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeFile).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == files.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeFile).
 			Where("delivery_records.id IS NULL").
 			Find(&unsentFiles).Error
 		if err != nil {
@@ -980,7 +991,7 @@ func (b *Bounce) getFilesToOffer(dev device) []frameReference {
 		// 	scope is global and the author is someone who shares a group with this device's user
 		err := b.database.
 			Distinct("files.id").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == files.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeFile).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == files.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeFile).
 			Where(
 				`
 					delivery_records.id IS NULL AND files.scope != ? AND
@@ -1001,29 +1012,29 @@ func (b *Bounce) getFilesToOffer(dev device) []frameReference {
 					)`,
 				scopeSync,
 				scopeUser,
-				xor(b.currentUserID(), dev.UserID),
+				xor(b.currentUserID(), userID),
 				scopeGroup,
 				b.database.
 					Model(&group{}).
 					Distinct().
 					Select("groups.id").
 					Joins("JOIN group_users ON group_users.group_id = groups.id").
-					Where("user_id = ?", dev.UserID),
+					Where("user_id = ?", userID),
 				scopeGroupWithInvites,
 				b.database.
 					Model(&group{}).
 					Distinct().
 					Select("groups.id").
 					Joins("JOIN group_users ON group_users.group_id = groups.id").
-					Where("user_id = ?", dev.UserID),
+					Where("user_id = ?", userID),
 				b.database.
 					Model(&group{}).
 					Distinct().
 					Select("id").
-					Where("invites LIKE ?", "%"+dev.UserID.String()+"%"),
+					Where("invites LIKE ?", "%"+userID.String()+"%"),
 				scopeGlobal,
 				b.currentUserID(),
-				dev.UserID,
+				userID,
 				b.database.
 					Model(&user{}).
 					Distinct().
@@ -1036,7 +1047,7 @@ func (b *Bounce) getFilesToOffer(dev device) []frameReference {
 							Distinct().
 							Select("groups.id").
 							Joins("JOIN group_users ON group_users.group_id = groups.id").
-							Where("user_id = ?", dev.UserID),
+							Where("user_id = ?", userID),
 					),
 			).
 			Find(&unsentFiles).Error
@@ -1055,18 +1066,18 @@ func (b *Bounce) getFilesToOffer(dev device) []frameReference {
 	return references
 }
 
-func (b *Bounce) getChunkOffersToOffer(dev device) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+func (b *Bounce) getChunkOffersToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
 		return []frameReference{}
 	}
 
 	var unsentChunkOffers []chunkOffer
 
-	if b.isSyncDevice(dev) {
+	if userID == b.currentUserID() {
 		// If this is a sync device, send all unsent chunk offers
 		err := b.database.
 			Select("chunk_offers.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == chunk_offers.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeChunkOffer).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == chunk_offers.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeChunkOffer).
 			Where("delivery_records.id IS NULL").
 			Find(&unsentChunkOffers).Error
 		if err != nil {
@@ -1084,7 +1095,7 @@ func (b *Bounce) getChunkOffersToOffer(dev device) []frameReference {
 		// 	scope is global and the author is someone who shares a group with this device's user
 		err := b.database.
 			Distinct("chunk_offers.id").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == chunk_offers.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", dev.Address, typeChunkOffer).
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == chunk_offers.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeChunkOffer).
 			Where(
 				`
 					delivery_records.id IS NULL AND chunk_offers.scope != ? AND
@@ -1105,29 +1116,29 @@ func (b *Bounce) getChunkOffersToOffer(dev device) []frameReference {
 					)`,
 				scopeSync,
 				scopeUser,
-				xor(dev.UserID, b.currentUserID()),
+				xor(userID, b.currentUserID()),
 				scopeGroup,
 				b.database.
 					Model(&group{}).
 					Distinct().
 					Select("groups.id").
 					Joins("JOIN group_users ON group_users.group_id = groups.id").
-					Where("user_id = ?", dev.UserID),
+					Where("user_id = ?", userID),
 				scopeGroupWithInvites,
 				b.database.
 					Model(&group{}).
 					Distinct().
 					Select("groups.id").
 					Joins("JOIN group_users ON group_users.group_id = groups.id").
-					Where("user_id = ?", dev.UserID),
+					Where("user_id = ?", userID),
 				b.database.
 					Model(&group{}).
 					Distinct().
 					Select("id").
-					Where("invites LIKE ?", "%"+dev.UserID.String()+"%"),
+					Where("invites LIKE ?", "%"+userID.String()+"%"),
 				scopeGlobal,
 				b.currentUserID(),
-				dev.UserID,
+				userID,
 				b.database.
 					Model(&user{}).
 					Distinct().
@@ -1140,7 +1151,7 @@ func (b *Bounce) getChunkOffersToOffer(dev device) []frameReference {
 							Distinct().
 							Select("groups.id").
 							Joins("JOIN group_users ON group_users.group_id = groups.id").
-							Where("user_id = ?", dev.UserID),
+							Where("user_id = ?", userID),
 					),
 			).
 			Find(&unsentChunkOffers).Error
