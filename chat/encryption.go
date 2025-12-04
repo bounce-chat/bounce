@@ -27,6 +27,7 @@ const maximumRecipients = 15
 type encryptedFrame struct {
 	ID         uuid.UUID
 	Type       uint16
+	Timestamp  int64
 	Payload    []byte
 	DeleteAt   int64
 	Recipients []recipient
@@ -191,6 +192,7 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 			ID:         br.getID(),
 			Type:       br.getType(),
 			Payload:    ciphertext,
+			Timestamp:  br.getTimestamp(),
 			DeleteAt:   getDeleteAt(br),
 			Recipients: recipients,
 		}
@@ -207,6 +209,103 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 			Signature: ed25519.Sign(ed25519.NewKeyFromSeed(currentUser.PrivateECDSAKey), encodedEncryptedFrame),
 		}
 		rd.messages <- es
+	}
+}
+
+func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encryptedSend {
+	currentUser, ok := b.currentUser()
+	if !ok {
+		log.Error("cannot send frames to encrypted device before current user exists")
+		return nil
+	}
+
+	// Get the users that are in scope
+	users := b.getUsersInScope(br)
+
+	// Check if any of them have access to an encrypted device that is online
+	allEncryptedDevices := map[string]bool{}
+	deviceUsers := map[string]uuid.UUID{}
+	for _, u := range users {
+		if len(u.EncryptedDevices) > 0 {
+			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+				allEncryptedDevices[addr] = true
+				deviceUsers[addr] = u.ID
+			}
+		}
+	}
+
+	// Encrypt the frame with a random key
+	dek := make([]byte, 32)
+	rand.Read(dek)
+	dekBlock, err := aes.NewCipher(dek)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error encrypting frame")
+		return nil
+	}
+	dekGCM, err := cipher.NewGCMWithRandomNonce(dekBlock)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error encrypting frame")
+		return nil
+	}
+	ciphertext := dekGCM.Seal(nil, []byte{}, br.getPayload(), nil)
+
+	// Get the user that owns this device, since they must be one of the recipients
+	mustHave, ok := deviceUsers[addr]
+	if !ok {
+		log.WithFields(log.Fields{
+			"address": addr,
+		}).Error("unable to determine user ID for encrypted device address")
+		return nil
+	}
+
+	// Create recipients for each user in scope, up to a limit
+	recipients := []recipient{}
+	for _, u := range b.pruneEncryptedRecipients(mustHave, users) {
+		block, err := aes.NewCipher(u.KeyEncryptionKey)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error encrypting frame")
+			return nil
+		}
+		gcm, err := cipher.NewGCMWithRandomNonce(block)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error encrypting frame")
+			return nil
+		}
+
+		recipients = append(recipients, recipient{
+			PublicKey:    u.PublicECDSAKey,
+			EncryptedDEK: gcm.Seal(nil, []byte{}, dek, nil),
+		})
+	}
+
+	// Sign the encrypted frame and recipients, send to the encrypted device
+	ef := encryptedFrame{
+		ID:         br.getID(),
+		Type:       br.getType(),
+		Payload:    ciphertext,
+		Timestamp:  br.getTimestamp(),
+		DeleteAt:   getDeleteAt(br),
+		Recipients: recipients,
+	}
+	encodedEncryptedFrame, err := msgpack.Marshal(&ef)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error encoding encrypted frame")
+		return nil
+	}
+	return &encryptedSend{
+		Frame:     encodedEncryptedFrame,
+		Client:    currentUser.PublicECDSAKey,
+		Signature: ed25519.Sign(ed25519.NewKeyFromSeed(currentUser.PrivateECDSAKey), encodedEncryptedFrame),
 	}
 }
 

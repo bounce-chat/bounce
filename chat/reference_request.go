@@ -81,8 +81,15 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedFilePayloads(dev, requestedIDs[typeFile], offeredIDs[typeFile])...)
 	cu.broadcastables = append(cu.broadcastables, b.getRequestedChunkOfferPayloads(dev, requestedIDs[typeChunkOffer], offeredIDs[typeChunkOffer])...)
 
-	// Send the catchup if there's anything to send
-	if len(cu.broadcastables) > 0 {
+	if len(cu.broadcastables) == 0 {
+		return nil, false
+	}
+
+	if _, ok := encryptedDeviceCache[peer]; ok {
+		for _, br := range cu.broadcastables {
+			go b.sendDirect(peer, b.encryptFrameForDevice(br, peer))
+		}
+	} else {
 		go b.sendDirect(peer, cu)
 	}
 
