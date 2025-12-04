@@ -934,3 +934,87 @@ func TestCanLearnAboutInvitedUserFromGroupInvite(t *testing.T) {
 	var u user
 	assert.NoError(t, b.database.First(&u, "id = ?", carol.currentUserID()).Error)
 }
+
+func TestUserDoesNotJoinGroupWithUnknownUserByDefault(t *testing.T) {
+	_, alice, _, groupID := createUsersAndGroups(t)
+	var err error
+
+	// Carol exists
+	carol := newBounceUser("Carol")
+	ts := time.Now().Unix() + 1
+
+	// Carol and Alice are friends
+	aliceUser, _ := alice.currentUser()
+	var au user
+	ab, _ := msgpack.Marshal(aliceUser)
+	msgpack.Unmarshal(ab, &au)
+
+	carolUser, _ := carol.currentUser()
+	var cu user
+	cb, _ := msgpack.Marshal(carolUser)
+	msgpack.Unmarshal(cb, &cu)
+
+	assert.NoError(t, alice.database.Create(&cu).Error)
+	assert.NoError(t, carol.database.Create(&au).Error)
+
+	// Get the history of the group up until now
+	var gc groupCreation
+	err = alice.database.First(&gc, "id = ?", groupID).Error
+	assert.NoError(t, err)
+	carol.handleGroupCreation(alice.network.Address(), gc.getPayload(), false)
+
+	groupHistory := []frame{
+		frame{
+			ID:      gc.ID,
+			Type:    typeGroupCreation,
+			Payload: gc.getPayload(),
+		},
+	}
+
+	var ugs []updateGroup
+	err = alice.database.Order("timestamp asc").Where("target = ?", groupID).Find(&ugs).Error
+	assert.NoError(t, err)
+	for _, ug := range ugs {
+		groupHistory = append(
+			groupHistory,
+			frame{
+				ID:      ug.ID,
+				Type:    typeUpdateGroup,
+				Payload: ug.getPayload(),
+			},
+		)
+	}
+
+	// Alice invites Carol to the group
+	addCarol := &updateGroup{
+		ID:        uuid.New(),
+		Actor:     alice.currentUserID(),
+		Target:    groupID,
+		Timestamp: ts,
+		Type:      updateGroupTypeInviteUser,
+		Data:      cb,
+	}
+	addCarol.OriginalPayload, err = msgpack.Marshal(addCarol)
+	assert.NoError(t, err)
+	sc := alice.createSignedContainer(addCarol.OriginalPayload)
+	addCarol.Signature = sc.Signature
+	addCarol.Signer = sc.Signer
+
+	history := &catchUp{
+		Frames: append(
+			groupHistory,
+			frame{
+				ID:      addCarol.ID,
+				Type:    typeUpdateGroup,
+				Payload: addCarol.getPayload(),
+			},
+		),
+	}
+	carol.handleCatchUp(alice.network.Address(), history.getPayload(), false)
+
+	// Carol should not have automatically accepted the invite
+	gs, err := carol.currentGroupState(groupID)
+	assert.NoError(t, err)
+	assert.False(t, gs.isMember(carol.currentUserID()))
+	assert.True(t, gs.isInvited(carol.currentUserID()))
+}

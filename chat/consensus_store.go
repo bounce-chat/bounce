@@ -487,7 +487,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 
 	// Clear delivery records for users that were removed in the final state
 	for userID, _ := range everInGroup {
-		if !finalState.isMember(userID) || !finalState.isInvited(userID) {
+		if !finalState.isMember(userID) && !finalState.isInvited(userID) {
 			b.clearGroupDeliveryRecordsForUser(userID, groupID)
 		}
 	}

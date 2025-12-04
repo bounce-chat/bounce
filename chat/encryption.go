@@ -232,7 +232,7 @@ func (b *Bounce) getUsersInScope(br broadcastable) []user {
 		}
 		users = append(users, currentUser)
 	} else if scope == scopeUser {
-		err := b.database.Where("id = ? OR id = ?", b.currentUserID(), br.getDestination(b.currentUserID())).Find(&users).Error
+		err := b.database.Preload(clause.Associations).Where("id = ? OR id = ?", b.currentUserID(), br.getDestination(b.currentUserID())).Find(&users).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -240,7 +240,7 @@ func (b *Bounce) getUsersInScope(br broadcastable) []user {
 		}
 	} else if scope == scopeGroup {
 		var destinationGroup group
-		err := b.database.Preload(clause.Associations).First(&destinationGroup, "id = ?", br.getDestination(b.currentUserID())).Error
+		err := b.database.Preload("Users.Devices").Preload(clause.Associations).First(&destinationGroup, "id = ?", br.getDestination(b.currentUserID())).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -348,7 +348,7 @@ func (b *Bounce) getUsersInGroupWithInvitesScope(br broadcastable) []user {
 	var users []user
 
 	var destinationGroup group
-	err := b.database.Preload(clause.Associations).First(&destinationGroup, "id = ?", br.getDestination(b.currentUserID())).Error
+	err := b.database.Preload("Users.Devices").Preload(clause.Associations).First(&destinationGroup, "id = ?", br.getDestination(b.currentUserID())).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

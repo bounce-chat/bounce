@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
+	"github.com/zeebo/blake3"
 )
 
 var hosts = map[string]*testnet{}
@@ -530,15 +531,11 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 	bob.UserConnectionDesired(meUser.ID)
 	bob.UserConnectionDesired(aliceUser.ID)
 
-	assert.NoError(t, me.CreateGroup(NewGroup{
+	gc := me.createGroupCreation(NewGroup{
 		Name: "Test Group",
-	}))
-	var g group
-	me.database.First(&g)
-	groupID = g.ID
-
-	var gc groupCreation
-	me.database.First(&gc)
+	})
+	groupID = gc.ID
+	me.database.Create(&gc)
 	alice.database.Create(&gc)
 	bob.database.Create(&gc)
 
@@ -642,4 +639,66 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 	bob.ui.(*testUI).Unlock()
 
 	return
+}
+
+func (b *Bounce) createGroupCreation(ng NewGroup) groupCreation {
+	profile, _ := b.currentUser()
+	creationTime := time.Now().Unix() - 3 // Subtract one second to ensure any invites are ordered after the group creation
+	g := group{
+		ID:                     uuid.Nil,
+		Name:                   ng.Name,
+		Images:                 "",
+		CreatedBy:              b.currentUserID(),
+		CreatedAt:              creationTime,
+		Retention:              ng.Retention,
+		Users:                  []user{profile},
+		Admins:                 b.currentUserID().String(),
+		RestrictUserManagement: ng.RestrictUserManagement,
+		RestrictGroupEdits:     ng.RestrictGroupEdits,
+		RestrictPosting:        ng.RestrictPosting,
+		LastActivity:           time.Now().Unix(),
+	}
+
+	groupData, err := msgpack.Marshal(g)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal group")
+	}
+
+	hasher := blake3.New()
+	written, _ := hasher.Write(groupData)
+	if written != len(groupData) {
+		log.WithFields(log.Fields{
+			"length":  len(groupData),
+			"written": written,
+		}).Fatal("failed to write all group data into hasher")
+	}
+	digest := hasher.Digest()
+	groupHash := make([]byte, 16)
+	digest.Read(groupHash)
+	groupID, err := uuid.FromBytes(groupHash)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot create UUID from hash of group data")
+	}
+	g.ID = groupID
+
+	gc := groupCreation{
+		ID:        groupID,
+		Timestamp: creationTime,
+		Data:      groupData,
+	}
+	gc.OriginalPayload, err = msgpack.Marshal(gc)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling group creation")
+	}
+	sc := b.createSignedContainer(gc.OriginalPayload)
+	gc.Signature = sc.Signature
+	gc.Signer = sc.Signer
+
+	return gc
 }
