@@ -48,6 +48,8 @@ var typeChunkRequest = uint16(27)
 var typeActiveDevice = uint16(28)
 var typeEncryptedSend = uint16(29)
 var typeEncryptedCatchUp = uint16(30)
+var typeEncryptedDeviceManagementRequest = uint16(31)
+var typeEncryptedDeviceManagementResponse = uint16(32)
 
 type sendable interface {
 	getType() uint16
@@ -76,37 +78,47 @@ func (sbrs sortableBroadcastables) Less(i, j int) bool {
 }
 
 func (b *Bounce) getHandlers() map[uint16]func(string, []byte, bool) (broadcastable, bool) {
+	if b.encrypted {
+		return map[uint16]func(string, []byte, bool) (broadcastable, bool){
+			typeKeepAlive:                        b.handleKeepAlive,
+			typeReferenceOffer:                   b.handleReferenceOffer,
+			typeReferenceRequest:                 b.handleReferenceRequest,
+			typeEncryptedDeviceManagementRequest: b.handleEncryptedDeviceManagementRequest,
+		}
+	}
+
 	return map[uint16]func(string, []byte, bool) (broadcastable, bool){
-		typeDirectMessage:             b.handleDirectMessage,
-		typeGroupMessage:              b.handleGroupMessage,
-		typeReferenceOffer:            b.handleReferenceOffer,
-		typeReferenceRequest:          b.handleReferenceRequest,
-		typeCatchUp:                   b.handleCatchUp,
-		typeAck:                       b.handleAck,
-		typeKeepAlive:                 b.handleKeepAlive,
-		typeSyncDeviceRequest:         b.handleSyncDeviceRequest,
-		typeSyncDeviceRequestRejected: b.handleSyncDeviceRequestRejected,
-		typeSyncDeviceRequestAccepted: b.handleSyncDeviceRequestAccepted,
-		typeDevice:                    b.handleDevice,
-		typeUpdateDM:                  b.handleUpdateDM,
-		typeGroupCreation:             b.handleGroupCreation,
-		typeUpdateGroup:               b.handleUpdateGroup,
-		typeTypingIndicator:           b.handleTypingIndicator,
-		typeAddUserRequest:            b.handleAddUserRequest,
-		typeAddUserRequestAccepted:    b.handleAddUserRequestAccepted,
-		typeAddUserRequestRejected:    b.handleAddUserRequestRejected,
-		typeAddUser:                   b.handleAddUser,
-		typeConfirmation:              b.handleConfirmation,
-		typeUpdateUser:                b.handleUpdateUser,
-		typeUpdateDevice:              b.handleUpdateDevice,
-		typeReadReceipt:               b.handleReadReceipt,
-		typeUpdateSettings:            b.handleUpdateSettings,
-		typeFile:                      b.handleFile,
-		typeChunkOffer:                b.handleChunkOffer,
-		typeChunkRequest:              b.handleChunkRequest,
-		typeChunk:                     b.handleChunk,
-		typeActiveDevice:              b.handleActiveDevice,
-		typeEncryptedCatchUp:          b.handleEncryptedCatchUp,
+		typeDirectMessage:                     b.handleDirectMessage,
+		typeGroupMessage:                      b.handleGroupMessage,
+		typeReferenceOffer:                    b.handleReferenceOffer,
+		typeReferenceRequest:                  b.handleReferenceRequest,
+		typeCatchUp:                           b.handleCatchUp,
+		typeAck:                               b.handleAck,
+		typeKeepAlive:                         b.handleKeepAlive,
+		typeSyncDeviceRequest:                 b.handleSyncDeviceRequest,
+		typeSyncDeviceRequestRejected:         b.handleSyncDeviceRequestRejected,
+		typeSyncDeviceRequestAccepted:         b.handleSyncDeviceRequestAccepted,
+		typeDevice:                            b.handleDevice,
+		typeUpdateDM:                          b.handleUpdateDM,
+		typeGroupCreation:                     b.handleGroupCreation,
+		typeUpdateGroup:                       b.handleUpdateGroup,
+		typeTypingIndicator:                   b.handleTypingIndicator,
+		typeAddUserRequest:                    b.handleAddUserRequest,
+		typeAddUserRequestAccepted:            b.handleAddUserRequestAccepted,
+		typeAddUserRequestRejected:            b.handleAddUserRequestRejected,
+		typeAddUser:                           b.handleAddUser,
+		typeConfirmation:                      b.handleConfirmation,
+		typeUpdateUser:                        b.handleUpdateUser,
+		typeUpdateDevice:                      b.handleUpdateDevice,
+		typeReadReceipt:                       b.handleReadReceipt,
+		typeUpdateSettings:                    b.handleUpdateSettings,
+		typeFile:                              b.handleFile,
+		typeChunkOffer:                        b.handleChunkOffer,
+		typeChunkRequest:                      b.handleChunkRequest,
+		typeChunk:                             b.handleChunk,
+		typeActiveDevice:                      b.handleActiveDevice,
+		typeEncryptedCatchUp:                  b.handleEncryptedCatchUp,
+		typeEncryptedDeviceManagementResponse: b.handleEncryptedDeviceManagementResponse,
 	}
 }
 

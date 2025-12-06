@@ -20,13 +20,12 @@ import (
 const MutedForever = int64(-1)
 const MaximumNameLength = 128
 
-//
 // This constant defines the amount of time a message can exist without a successful delivery
 // before the chat engine gives up and stops attempting to deliver it
-//
 const undeliverableAfter = time.Duration(4 * 7 * 24 * time.Hour)
 
 type Bounce struct {
+	encrypted             bool
 	configDirectory       string
 	database              *gorm.DB
 	referenceDatabase     *gorm.DB
@@ -44,10 +43,8 @@ type Bounce struct {
 	shutdownMutex         sync.Mutex
 }
 
-//
 // The main entrypoint for starting the Bounce chat engine, blocks until the user interface
 // is closed, the network reaches a fatal error, or the process is sent an interrupt.
-//
 func Open(ui UI, network Network, configDirectory string) *Bounce {
 	if os.Getenv("DEBUG") == "true" {
 		log.SetReportCaller(true)
@@ -92,9 +89,7 @@ func Open(ui UI, network Network, configDirectory string) *Bounce {
 	return b
 }
 
-//
 // Gracefully stop all Bounce.  Used when a fatal error is encountered or the user interface is closed
-//
 func (b *Bounce) Shutdown() {
 	b.shutdownStarted.Store(true)
 
@@ -209,15 +204,15 @@ func (b *Bounce) Shutdown() {
 	log.Info("stopped bounce")
 }
 
-//
 // Used by logrus when a fatal error is logged.  We can't cleanly shutdown everything on fatal error, since
 // the shutdown function waits for running handlers to finish executing, and the fatal call might have happened
 // in one of them.  So we just attempt to close the database and delete the PID file before allowing logrus
 // to exit.
-//
 func (b *Bounce) fatalShutdown() {
 	// Close the UI
-	b.ui.Quit()
+	if !b.encrypted {
+		b.ui.Quit()
+	}
 
 	// Close the database connection
 	sqliteDB, err := b.database.DB()
@@ -244,9 +239,7 @@ func (b *Bounce) fatalShutdown() {
 	}
 }
 
-//
 // Shut the app down if the process receives an interrupt
-//
 func (b *Bounce) handleInterrupts() {
 	//
 	// Handle interrupts, from a Ctrl+C on the command
@@ -261,7 +254,12 @@ func (b *Bounce) handleInterrupts() {
 		}).Info("signal received to kill process, shutting down")
 		// Stopping the user interface unblocks the main blocking call of the appplication,
 		// which in turn shuts down the network handler and the network
-		b.ui.Quit()
+		if b.encrypted {
+			b.fatalShutdown()
+			os.Exit(0)
+		} else {
+			b.ui.Quit()
+		}
 	}
 }
 

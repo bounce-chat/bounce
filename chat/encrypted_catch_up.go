@@ -11,10 +11,11 @@ import (
 )
 
 type encryptedReceive struct {
-	ID        uuid.UUID
-	Type      uint16
-	Payload   []byte
-	Encrypter []byte
+	ID           uuid.UUID
+	Type         uint16
+	Payload      []byte
+	EncryptedDEK []byte
+	Encrypter    []byte
 }
 
 type encryptedCatchUp struct {
@@ -63,14 +64,14 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 			continue
 		}
 
-		block, err := aes.NewCipher(kek)
+		kekBlock, err := aes.NewCipher(kek)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Error("error creating block")
 			continue
 		}
-		gcm, err := cipher.NewGCMWithRandomNonce(block)
+		kekGCM, err := cipher.NewGCMWithRandomNonce(kekBlock)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -78,7 +79,32 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 			continue
 		}
 
-		decryptedPayload, err := gcm.Open(nil, []byte{}, f.Payload, nil)
+		dek, err := kekGCM.Open(nil, []byte{}, f.EncryptedDEK, nil)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    f.ID,
+				"type":  f.Type,
+				"error": err.Error(),
+			}).Error("error decrypting key in encrypted catch up")
+			continue
+		}
+
+		dekBlock, err := aes.NewCipher(dek)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating block")
+			continue
+		}
+		dekGCM, err := cipher.NewGCMWithRandomNonce(dekBlock)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating gcm")
+			continue
+		}
+
+		decryptedPayload, err := dekGCM.Open(nil, []byte{}, f.Payload, nil)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"id":    f.ID,

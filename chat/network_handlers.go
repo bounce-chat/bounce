@@ -9,15 +9,21 @@ func (b *Bounce) networkOnline() {
 	if !b.networkHasBeenOnline {
 		b.networkHasBeenOnline = true
 		go b.acceptConnections()
-		go b.peer()
+		if !b.encrypted {
+			go b.peer()
+		}
 	}
-	b.auditPeers()
-	b.ui.NetworkOnline()
+	if !b.encrypted {
+		b.auditPeers()
+		b.ui.NetworkOnline()
+	}
 }
 
 func (b *Bounce) networkOffline() {
 	b.networkIsOnline = false
-	b.ui.NetworkOffline()
+	if !b.encrypted {
+		b.ui.NetworkOffline()
+	}
 }
 
 func (b *Bounce) acceptConnections() {

@@ -610,6 +610,16 @@ func (b *Bounce) UpdateProfileName(newName string) error {
 	})
 }
 
+func (b *Bounce) addEncryptedDevice(address string) error {
+	return b.applyAndBroadcastUpdateUser(updateUser{
+		ID:        uuid.New(),
+		Target:    b.currentUserID(),
+		Timestamp: time.Now().Unix(),
+		Type:      updateUserTypeAddEncryptedDevice,
+		Data:      []byte(address),
+	})
+}
+
 func (b *Bounce) applyAndBroadcastUpdateUser(uu updateUser) error {
 	// Create the signed container for this update
 	var err error
