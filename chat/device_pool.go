@@ -778,6 +778,9 @@ func (b *Bounce) shouldCooldownDial(address string) bool {
 }
 
 func (b *Bounce) updateUserOnlineStatus(address string) {
+	if b.encrypted {
+		return
+	}
 	b.devicePool.onlineMutex.Lock()
 	defer b.devicePool.onlineMutex.Unlock()
 

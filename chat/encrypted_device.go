@@ -35,6 +35,15 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 		encrypted:       true,
 		configDirectory: configDirectory,
 		network:         network,
+		devicePool: &devicePool{
+			deviceMutex:        sync.Mutex{},
+			devices:            make(map[string]*remoteDevice),
+			userOnlineStatus:   make(map[uuid.UUID]bool),
+			deviceOnlineStatus: make(map[uuid.UUID]bool),
+			lastDial:           make(map[string]time.Time),
+			lastFailedDial:     make(map[string]time.Time),
+			revokedDevices:     make(map[string]bool),
+		},
 	}
 	b.ensureOnlyOneInstance()
 	log.RegisterExitHandler(b.fatalShutdown)

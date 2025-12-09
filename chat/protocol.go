@@ -84,6 +84,7 @@ func (b *Bounce) getHandlers() map[uint16]func(string, []byte, bool) (broadcasta
 			typeReferenceOffer:                   b.handleReferenceOffer,
 			typeReferenceRequest:                 b.handleReferenceRequest,
 			typeEncryptedDeviceManagementRequest: b.handleEncryptedDeviceManagementRequest,
+			typeEncryptedSend:                    b.handleEncryptedSend,
 		}
 	}
 

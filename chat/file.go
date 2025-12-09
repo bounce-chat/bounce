@@ -847,6 +847,11 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 }
 
 func (b *Bounce) makeNextChunkRequests() {
+	if b.encrypted {
+		// TODO: file support for encrypted devices
+		return
+	}
+
 	chunkRequestMutex.Lock()
 	defer chunkRequestMutex.Unlock()
 

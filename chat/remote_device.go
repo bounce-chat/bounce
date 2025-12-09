@@ -87,9 +87,11 @@ func (b *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	go b.writeFrames(rd, conn)
 
 	// Associate this device with a user if there is one
-	dev, ok := b.getDeviceFromAddress(conn.RemoteAddr().String())
-	if ok {
-		b.insertRemoteDeviceIntoPool(conn.RemoteAddr().String(), poolTypeUser, dev.UserID)
+	if !b.encrypted {
+		dev, ok := b.getDeviceFromAddress(conn.RemoteAddr().String())
+		if ok {
+			b.insertRemoteDeviceIntoPool(conn.RemoteAddr().String(), poolTypeUser, dev.UserID)
+		}
 	}
 
 	// Do a reference flow
@@ -137,9 +139,17 @@ func (b *Bounce) getDeviceOrEncryptedSyncDevice(peer string) (bool, bool, device
 func (b *Bounce) readFrames(conn net.Conn) {
 	handlers := b.getHandlers()
 	peer := conn.RemoteAddr().String()
-	profile, profileExists := b.currentUser()
 
-	deviceIsKnown, deviceIsEncrypted, dev, esd := b.getDeviceOrEncryptedSyncDevice(peer)
+	var profile user
+	var profileExists bool
+	var deviceIsKnown bool
+	var deviceIsEncrypted bool
+	var dev device
+	var esd encryptedSyncDevice
+	if !b.encrypted {
+		profile, profileExists = b.currentUser()
+		deviceIsKnown, deviceIsEncrypted, dev, esd = b.getDeviceOrEncryptedSyncDevice(peer)
+	}
 
 	for {
 		frameType, data, err := readFrame(conn) // TODO: just read the header first, make sure we want to read the rest in the context of the device (untrusted devices can't send large messages, etc)
@@ -163,45 +173,47 @@ func (b *Bounce) readFrames(conn net.Conn) {
 			return
 		}
 
-		// Make sure that we can handle this type of frame without a profile if we don't have one
-		if !profileExists {
-			// Re-check if we have a profile if needed, just in case one was setup between the last frame and this frame
-			profile, profileExists = b.currentUser()
-		}
-		if !profileExists {
-			if !frameAllowedWithoutProfile(frameType) {
-				log.WithFields(log.Fields{
-					"frame_type": frameType,
-					"peer":       peer,
-				}).Warn("peer sent a frame that cannot be handeled when no profile exists")
-				continue
+		if !b.encrypted {
+			// Make sure that we can handle this type of frame without a profile if we don't have one
+			if !profileExists {
+				// Re-check if we have a profile if needed, just in case one was setup between the last frame and this frame
+				profile, profileExists = b.currentUser()
 			}
-		}
-
-		// Re-check if we're aware of this device if needed
-		if !deviceIsKnown {
-			deviceIsKnown, deviceIsEncrypted, dev, esd = b.getDeviceOrEncryptedSyncDevice(peer)
-		}
-		if deviceIsKnown && profileExists {
-			lastSeen := time.Now().Unix()
-			if deviceIsEncrypted {
-				b.ui.DeviceLastSeen(esd.ID, lastSeen)
-			} else {
-				if dev.UserID == profile.ID {
-					b.ui.DeviceLastSeen(dev.ID, lastSeen)
+			if !profileExists {
+				if !frameAllowedWithoutProfile(frameType) {
+					log.WithFields(log.Fields{
+						"frame_type": frameType,
+						"peer":       peer,
+					}).Warn("peer sent a frame that cannot be handeled when no profile exists")
+					continue
 				}
 			}
 
-			table := "devices"
-			if deviceIsEncrypted {
-				table = "encrypted_sync_devices"
+			// Re-check if we're aware of this device if needed
+			if !deviceIsKnown {
+				deviceIsKnown, deviceIsEncrypted, dev, esd = b.getDeviceOrEncryptedSyncDevice(peer)
 			}
-			err := b.database.Table(table).Where("address = ?", peer).Updates(map[string]interface{}{"last_seen": lastSeen}).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"peer":  peer,
-					"error": err.Error(),
-				}).Error("error updating last time device was seen")
+			if deviceIsKnown && profileExists {
+				lastSeen := time.Now().Unix()
+				if deviceIsEncrypted {
+					b.ui.DeviceLastSeen(esd.ID, lastSeen)
+				} else {
+					if dev.UserID == profile.ID {
+						b.ui.DeviceLastSeen(dev.ID, lastSeen)
+					}
+				}
+
+				table := "devices"
+				if deviceIsEncrypted {
+					table = "encrypted_sync_devices"
+				}
+				err := b.database.Table(table).Where("address = ?", peer).Updates(map[string]interface{}{"last_seen": lastSeen}).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"peer":  peer,
+						"error": err.Error(),
+					}).Error("error updating last time device was seen")
+				}
 			}
 		}
 

@@ -100,7 +100,7 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, ed25519.Priv
 	if err != nil {
 		log.WithFields(log.Fields{
 			"path": privateKeyFile,
-		}).Info("no hidden service private key found, generating new key pair")
+		}).Debug("no hidden service private key found, generating new key pair")
 	} else {
 		publicKeyBytes, err := ioutil.ReadFile(publicKeyFile)
 		if err != nil {

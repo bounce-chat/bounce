@@ -224,7 +224,7 @@ func (ui *ui) updateDeviceStatus() {
 				dev.Name,
 				dev.Address,
 				state,
-				false,
+				dev.Encrypted,
 				false,
 				func() {
 					ui.showDialog(editDeviceDialog, editDeviceCleanup)
