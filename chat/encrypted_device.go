@@ -2,6 +2,7 @@ package chat
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -126,7 +127,7 @@ func (b *Bounce) handleEncryptedDeviceManagementRequest(peer string, payload []b
 	return nil, false
 }
 
-func (b *Bounce) RequestToManageEncryptedDevice(data string) {
+func (b *Bounce) RequestToManageEncryptedDevice(data string) error {
 	currentUser, ok := b.currentUser()
 	if !ok {
 		log.Error("cannot manage encrypted device before profile creation")
@@ -134,11 +135,16 @@ func (b *Bounce) RequestToManageEncryptedDevice(data string) {
 
 	parts := strings.Split(data, ":")
 	if len(parts) != 2 {
-		log.Error("invalid sync data")
-		return
+		return errors.New("invalid data")
 	}
 	address := parts[0]
 	secret := parts[1]
+
+	conn, err := b.network.Dial(address)
+	if err != nil {
+		return errors.New("could not connect to device")
+	}
+	b.insertConnectionIntoDevicePool(conn)
 
 	edmr := encryptedDeviceManagementRequest{
 		Pubkey: currentUser.PublicECDSAKey,
@@ -156,6 +162,8 @@ func (b *Bounce) RequestToManageEncryptedDevice(data string) {
 	}()
 
 	go b.sendDirect(address, &edmr)
+
+	return nil
 }
 
 type encryptedDeviceManagementResponse struct {
@@ -191,6 +199,7 @@ func (b *Bounce) handleEncryptedDeviceManagementResponse(peer string, payload []
 	wantToManageMutex.Unlock()
 	if !ok {
 		log.Warn("received encrypted device management response from peer that we did not request to manage recently")
+		return nil, false
 	}
 
 	if edmr.Accepted {
@@ -202,10 +211,61 @@ func (b *Bounce) handleEncryptedDeviceManagementResponse(peer string, payload []
 			return nil, false
 		}
 
-		//b.ui.EncryptedDeviceAdded() // TODO: this isn't needed since we're using the DeviceAdded call, but that call needs to handle this case
+		var newESD encryptedSyncDevice
+		err = b.database.First(&newESD, "address = ?", peer).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"address": peer,
+				"error":   err.Error(),
+			}).Error("cannot find local sync device that was just created")
+		} else {
+			b.ui.DeviceAdded(Device{
+				ID:        newESD.ID,
+				Address:   peer,
+				LastSeen:  time.Now().Unix(),
+				CreatedAt: newESD.CreatedAt,
+				Local:     false,
+				Encrypted: true,
+				Online:    true,
+			})
+			b.ui.EncryptedDeviceAdded()
+		}
 	} else {
-		//b.ui.EncryptedDeviceRejected()
+		b.ui.EncryptedDeviceRejected()
 	}
 
+	return nil, false
+}
+
+type encryptedSend struct {
+	Frame        []byte
+	Client       []byte
+	Signature    []byte
+	payload      []byte
+	payloadMutex sync.Mutex
+}
+
+func (es encryptedSend) getType() uint16 {
+	return typeEncryptedSend
+}
+
+func (es encryptedSend) getPayload() []byte {
+	es.payloadMutex.Lock()
+	defer es.payloadMutex.Unlock()
+
+	if len(es.payload) == 0 {
+		bytes, err := msgpack.Marshal(&es)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("cannot msgpack marshal encrypted send")
+		}
+		es.payload = bytes
+	}
+	return es.payload
+	return []byte{}
+}
+
+func (b *Bounce) handleEncryptedSend(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	return nil, false
 }

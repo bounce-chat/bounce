@@ -39,35 +39,6 @@ type recipient struct {
 	EncryptedDEK []byte
 }
 
-type encryptedSend struct {
-	Frame        []byte
-	Client       []byte
-	Signature    []byte
-	payload      []byte
-	payloadMutex sync.Mutex
-}
-
-func (es encryptedSend) getType() uint16 {
-	return typeEncryptedSend
-}
-
-func (es encryptedSend) getPayload() []byte {
-	es.payloadMutex.Lock()
-	defer es.payloadMutex.Unlock()
-
-	if len(es.payload) == 0 {
-		bytes, err := msgpack.Marshal(&es)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal encrypted send")
-		}
-		es.payload = bytes
-	}
-	return es.payload
-	return []byte{}
-}
-
 type encryptedSyncDevice struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Address   string    `gorm:"uniqueIndex"`

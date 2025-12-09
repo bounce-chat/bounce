@@ -170,9 +170,11 @@ func (ui *ui) buildScanUser() {
 				}
 			}
 
-			ui.widgets.addUser.currentStep.Text = "Sending friend request..."
-			ui.widgets.addUser.currentStep.Refresh()
-			ui.widgets.addUser.currentStep.Show()
+			fyne.Do(func() {
+				ui.widgets.addUser.currentStep.Text = "Sending friend request..."
+				ui.widgets.addUser.currentStep.Refresh()
+				ui.widgets.addUser.currentStep.Show()
+			})
 			err := ui.bounce.RequestToAddUser(strings.TrimSpace(str))
 			fyne.Do(func() {
 				if err != nil {

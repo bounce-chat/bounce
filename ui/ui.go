@@ -58,7 +58,7 @@ type widgets struct {
 	editProfile           *editProfile
 	newGroup              *newGroup
 	newSyncDevice         *newSyncDevice
-	displaySyncString     *displaySyncString
+	addSyncDevice         *addSyncDevice
 	addUser               *addUser
 	settings              *settings
 	newDM                 *newDM
@@ -66,22 +66,25 @@ type widgets struct {
 }
 
 type containers struct {
-	profileOptions       *fyne.Container
-	defaultContainer     *fyne.Container
-	addUserContent       *fyne.Container
-	scanUser             *fyne.Container
-	displayAddUserString *fyne.Container
-	threads              *fyne.Container
-	chat                 *fyne.Container
-	currentDevices       *container.Scroll
-	mainMenu             *fyne.MainMenu
+	profileOptions           *fyne.Container
+	defaultContainer         *fyne.Container
+	addUserContent           *fyne.Container
+	scanUser                 *fyne.Container
+	displayAddUserString     *fyne.Container
+	addSyncDeviceContent     *fyne.Container
+	syncDeviceOptions        *fyne.Container
+	inputEncryptedSyncString *fyne.Container
+	threads                  *fyne.Container
+	chat                     *fyne.Container
+	currentDevices           *container.Scroll
+	mainMenu                 *fyne.MainMenu
 }
 
 type views struct {
 	main              *fyne.Container
 	newInstall        *fyne.Container
 	newSyncDevice     *fyne.Container
-	displaySyncString *fyne.Container
+	addSyncDevice     *fyne.Container
 	nameNewDevice     *fyne.Container
 	addUser           *fyne.Container
 	newProfileCreator *fyne.Container

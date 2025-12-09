@@ -110,7 +110,7 @@ func (ui *ui) mobileBack() {
 		ui.window.SetContent(ui.views.mobileMenu)
 	case viewTypeDisplaySyncString:
 		newSyncString := ui.bounce.GetNewSyncString()
-		ui.widgets.displaySyncString.entry.SetText(newSyncString)
+		ui.widgets.addSyncDevice.entry.SetText(newSyncString)
 		qrData, err := qrcode.Encode(newSyncString, qrcode.Medium, 256)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -123,11 +123,11 @@ func (ui *ui) mobileBack() {
 					"error": err.Error(),
 				}).Error("error decoding QR data as image")
 			} else {
-				ui.widgets.displaySyncString.qrCode.Image = qrImg
-				ui.widgets.displaySyncString.qrCode.Refresh()
+				ui.widgets.addSyncDevice.qrCode.Image = qrImg
+				ui.widgets.addSyncDevice.qrCode.Refresh()
 			}
 		}
-		ui.window.SetContent(ui.views.displaySyncString)
+		ui.window.SetContent(ui.views.addSyncDevice)
 	case viewTypeAddUser:
 		newAddUserString := ui.bounce.GetNewAddUserString()
 		ui.widgets.addUser.displayEntry.SetText(newAddUserString)

@@ -412,6 +412,8 @@ type UI interface {
 	DeviceRevoked(uuid.UUID)
 	DeviceRenamed(uuid.UUID, string)
 	DeviceLastSeen(uuid.UUID, int64)
+	EncryptedDeviceAdded()
+	EncryptedDeviceRejected()
 
 	// User management
 	AddUserRequestRejected(string)
