@@ -28,9 +28,10 @@ var setupKey string
 var encryptedDeviceManagementMutex sync.Mutex
 
 type authorizedUser struct {
-	ID        uuid.UUID
-	PublicKey []byte
-	Manager   bool
+	ID         uuid.UUID
+	PublicKey  []byte
+	SigningKey []byte
+	Manager    bool
 }
 
 func StartEncryptedDevice(network Network, configDirectory string) {
@@ -136,8 +137,9 @@ func (b *Bounce) encryptedManagerProvisioned() bool {
 }
 
 type encryptedDeviceManagementRequest struct {
-	Secret string
-	Pubkey []byte
+	Secret     string
+	SigningKey []byte
+	Pubkey     []byte
 }
 
 func (edmr *encryptedDeviceManagementRequest) getType() uint16 {
@@ -173,9 +175,10 @@ func (b *Bounce) handleEncryptedDeviceManagementRequest(peer string, payload []b
 
 	if edmr.Secret == setupKey {
 		au := authorizedUser{
-			ID:        uuid.New(),
-			PublicKey: edmr.Pubkey,
-			Manager:   true,
+			ID:         uuid.New(),
+			PublicKey:  edmr.Pubkey,
+			SigningKey: edmr.SigningKey,
+			Manager:    true,
 		}
 		err = b.database.Create(&au).Error
 		if err != nil {
@@ -212,8 +215,9 @@ func (b *Bounce) RequestToManageEncryptedDevice(data string) error {
 	b.insertConnectionIntoDevicePool(conn)
 
 	edmr := encryptedDeviceManagementRequest{
-		Pubkey: currentUser.PublicECDSAKey,
-		Secret: secret,
+		Pubkey:     currentUser.PublicECDHKey,
+		SigningKey: currentUser.PublicECDSAKey,
+		Secret:     secret,
 	}
 
 	wantToManageMutex.Lock()
@@ -376,7 +380,7 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 	foundAuthorizedUser := false
 	for _, r := range ef.Recipients {
 		var au authorizedUser
-		err := b.database.Take(&au, "public_key = ?", r.PublicKey).Error
+		err := b.database.Take(&au, "public_key = ?", r.PublicKey).Error // TODO: needs to be the ECDH key of the authorized user
 		if err == nil {
 			foundAuthorizedUser = true
 			break

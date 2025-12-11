@@ -301,8 +301,8 @@ func (b *Bounce) getEncryptedReferenceOfferFor(address string, publicKey []byte)
 	b.database.
 		Select("encrypted_frames.*").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_frames.id AND delivery_records.destination == ?", address).
-		Joins("JOIN recipients ON recipients.frame_id == encrypted_frames.id AND recipients.public_key = ?", publicKey).
-		Where("delivery_record.id IS NULL").
+		Joins("JOIN recipients ON recipients.encrypted_frame_id == encrypted_frames.id AND recipients.public_key = ?", publicKey).
+		Where("delivery_records.id IS NULL").
 		Find(&encryptedFrames)
 
 	ro := &referenceOffer{}

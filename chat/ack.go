@@ -96,7 +96,7 @@ func (b *Bounce) handleAckDirectMessages(peer string, ids []uuid.UUID) {
 		}
 		b.markDeliveredTo(&dm, peer)
 
-		dev, ok := b.getDeviceFromAddress(peer)
+		dev, ok := b.getDeviceFromAddress(peer) // TODO: also let UI know about delivery to encrypted device?
 		if ok {
 			b.ui.MessageDelivered(dmID, dev.UserID)
 		} else {
@@ -134,7 +134,7 @@ func (b *Bounce) handleAckGroupMessages(peer string, ids []uuid.UUID) {
 		}
 		b.markDeliveredTo(&gm, peer)
 
-		dev, ok := b.getDeviceFromAddress(peer)
+		dev, ok := b.getDeviceFromAddress(peer) // TODO: also let UI know about delivery to encrypted device?
 		if ok {
 			b.ui.MessageDelivered(gmID, dev.UserID)
 		} else {

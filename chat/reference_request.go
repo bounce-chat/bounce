@@ -55,34 +55,25 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 		return nil, false
 	}
 
-	// Get the device for this peer
-	dev, ok := b.getDeviceFromAddress(peer)
-	if !ok {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("got reference request from unknown peer device, ignoring")
-		return nil, false
-	}
-
 	// Get all of the requested frames and pack them into a catch up frame
 	offerable := b.getReferenceOfferFor(peer)
 	offeredIDs := referencedIDs(offerable.References)
 	requestedIDs := referencedIDs(rr.References)
 	broadcastables := []broadcastable{}
-	broadcastables = append(broadcastables, b.getRequestedDirectMessagePayloads(dev, requestedIDs[typeDirectMessage], offeredIDs[typeDirectMessage])...)
-	broadcastables = append(broadcastables, b.getRequestedGroupMessagePayloads(dev, requestedIDs[typeGroupMessage], offeredIDs[typeGroupMessage])...)
-	broadcastables = append(broadcastables, b.getRequestedUpdateDMsPayloads(dev, requestedIDs[typeUpdateDM], offeredIDs[typeUpdateDM])...)
-	broadcastables = append(broadcastables, b.getRequestedDevicesPayloads(dev, requestedIDs[typeDevice], offeredIDs[typeDevice])...)
-	broadcastables = append(broadcastables, b.getRequestedAddUsersPayloads(dev, requestedIDs[typeAddUser], offeredIDs[typeAddUser])...)
-	broadcastables = append(broadcastables, b.getRequestedGroupCreationPayloads(dev, requestedIDs[typeGroupCreation], offeredIDs[typeGroupCreation])...)
-	broadcastables = append(broadcastables, b.getRequestedUpdateGroupsPayloads(dev, requestedIDs[typeUpdateGroup], offeredIDs[typeUpdateGroup])...)
-	broadcastables = append(broadcastables, b.getRequestedConfirmationsPayloads(dev, requestedIDs[typeConfirmation], offeredIDs[typeConfirmation], getValidRequestedUUIDs(offeredIDs[typeUpdateGroup], requestedIDs[typeUpdateGroup]))...)
-	broadcastables = append(broadcastables, b.getRequestedUpdateUsersPayloads(dev, requestedIDs[typeUpdateUser], offeredIDs[typeUpdateUser])...)
-	broadcastables = append(broadcastables, b.getRequestedUpdateDevicesPayloads(dev, requestedIDs[typeUpdateDevice], offeredIDs[typeUpdateDevice])...)
-	broadcastables = append(broadcastables, b.getRequestedReadReceiptPayloads(dev, requestedIDs[typeReadReceipt], offeredIDs[typeReadReceipt])...)
-	broadcastables = append(broadcastables, b.getRequestedUpdateSettingsPayloads(dev, requestedIDs[typeUpdateSettings], offeredIDs[typeUpdateSettings])...)
-	broadcastables = append(broadcastables, b.getRequestedFilePayloads(dev, requestedIDs[typeFile], offeredIDs[typeFile])...)
-	broadcastables = append(broadcastables, b.getRequestedChunkOfferPayloads(dev, requestedIDs[typeChunkOffer], offeredIDs[typeChunkOffer])...)
+	broadcastables = append(broadcastables, b.getRequestedDirectMessagePayloads(requestedIDs[typeDirectMessage], offeredIDs[typeDirectMessage])...)
+	broadcastables = append(broadcastables, b.getRequestedGroupMessagePayloads(requestedIDs[typeGroupMessage], offeredIDs[typeGroupMessage])...)
+	broadcastables = append(broadcastables, b.getRequestedUpdateDMsPayloads(requestedIDs[typeUpdateDM], offeredIDs[typeUpdateDM])...)
+	broadcastables = append(broadcastables, b.getRequestedDevicesPayloads(requestedIDs[typeDevice], offeredIDs[typeDevice])...)
+	broadcastables = append(broadcastables, b.getRequestedAddUsersPayloads(requestedIDs[typeAddUser], offeredIDs[typeAddUser])...)
+	broadcastables = append(broadcastables, b.getRequestedGroupCreationPayloads(requestedIDs[typeGroupCreation], offeredIDs[typeGroupCreation])...)
+	broadcastables = append(broadcastables, b.getRequestedUpdateGroupsPayloads(requestedIDs[typeUpdateGroup], offeredIDs[typeUpdateGroup])...)
+	broadcastables = append(broadcastables, b.getRequestedConfirmationsPayloads(requestedIDs[typeConfirmation], offeredIDs[typeConfirmation], getValidRequestedUUIDs(offeredIDs[typeUpdateGroup], requestedIDs[typeUpdateGroup]))...)
+	broadcastables = append(broadcastables, b.getRequestedUpdateUsersPayloads(requestedIDs[typeUpdateUser], offeredIDs[typeUpdateUser])...)
+	broadcastables = append(broadcastables, b.getRequestedUpdateDevicesPayloads(requestedIDs[typeUpdateDevice], offeredIDs[typeUpdateDevice])...)
+	broadcastables = append(broadcastables, b.getRequestedReadReceiptPayloads(requestedIDs[typeReadReceipt], offeredIDs[typeReadReceipt])...)
+	broadcastables = append(broadcastables, b.getRequestedUpdateSettingsPayloads(requestedIDs[typeUpdateSettings], offeredIDs[typeUpdateSettings])...)
+	broadcastables = append(broadcastables, b.getRequestedFilePayloads(requestedIDs[typeFile], offeredIDs[typeFile])...)
+	broadcastables = append(broadcastables, b.getRequestedChunkOfferPayloads(requestedIDs[typeChunkOffer], offeredIDs[typeChunkOffer])...)
 
 	if len(broadcastables) == 0 {
 		return nil, false
@@ -115,7 +106,7 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	return nil, false
 }
 
-func (b *Bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+func (b *Bounce) getRequestedDirectMessagePayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
 	requestedData := []broadcastable{}
 
 	requestedDirectMessageIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -126,8 +117,7 @@ func (b *Bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, of
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   dmID,
-					"peer": peer.Address,
+					"id": dmID,
 				}).Warn("reference request asks for an unknown direct message")
 			} else {
 				log.WithFields(log.Fields{
@@ -143,7 +133,7 @@ func (b *Bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, of
 	return requestedData
 }
 
-func (b *Bounce) getRequestedGroupMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+func (b *Bounce) getRequestedGroupMessagePayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
 	requestedData := []broadcastable{}
 
 	requestedGroupMessageIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -154,8 +144,7 @@ func (b *Bounce) getRequestedGroupMessagePayloads(peer device, requestedIDs, off
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   gmID,
-					"peer": peer.Address,
+					"id": gmID,
 				}).Warn("reference request asks for an unknown group message")
 			} else {
 				log.WithFields(log.Fields{
@@ -171,7 +160,7 @@ func (b *Bounce) getRequestedGroupMessagePayloads(peer device, requestedIDs, off
 	return requestedData
 }
 
-func (b *Bounce) getRequestedUpdateDMsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+func (b *Bounce) getRequestedUpdateDMsPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
 	requestedData := []broadcastable{}
 
 	requestedUpdateDMsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -182,8 +171,7 @@ func (b *Bounce) getRequestedUpdateDMsPayloads(peer device, requestedIDs, offere
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   udID,
-					"peer": peer.Address,
+					"id": udID,
 				}).Warn("reference request asks for an unknown update DM settings")
 			} else {
 				log.WithFields(log.Fields{
@@ -199,7 +187,7 @@ func (b *Bounce) getRequestedUpdateDMsPayloads(peer device, requestedIDs, offere
 	return requestedData
 }
 
-func (b *Bounce) getRequestedUpdateGroupsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+func (b *Bounce) getRequestedUpdateGroupsPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
 	requestedData := []broadcastable{}
 
 	requestedUpdateGroupsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -210,8 +198,7 @@ func (b *Bounce) getRequestedUpdateGroupsPayloads(peer device, requestedIDs, off
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   ugID,
-					"peer": peer.Address,
+					"id": ugID,
 				}).Warn("reference request asks for an unknown update group")
 			} else {
 				log.WithFields(log.Fields{
@@ -227,7 +214,7 @@ func (b *Bounce) getRequestedUpdateGroupsPayloads(peer device, requestedIDs, off
 	return requestedData
 }
 
-func (b *Bounce) getRequestedGroupCreationPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+func (b *Bounce) getRequestedGroupCreationPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
 	requestedData := []broadcastable{}
 
 	requestedGroupCreationIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -238,8 +225,7 @@ func (b *Bounce) getRequestedGroupCreationPayloads(peer device, requestedIDs, of
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   groupCreationID,
-					"peer": peer.Address,
+					"id": groupCreationID,
 				}).Warn("reference request asks for unknown group creation we offered")
 			} else {
 				log.WithFields(log.Fields{
@@ -255,7 +241,7 @@ func (b *Bounce) getRequestedGroupCreationPayloads(peer device, requestedIDs, of
 	return requestedData
 }
 
-func (b *Bounce) getRequestedDevicesPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+func (b *Bounce) getRequestedDevicesPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
 	requestedData := []broadcastable{}
 
 	requestedDeviceIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -266,8 +252,7 @@ func (b *Bounce) getRequestedDevicesPayloads(peer device, requestedIDs, offeredI
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   deviceID,
-					"peer": peer.Address,
+					"id": deviceID,
 				}).Warn("reference request asks for unknown device we offered")
 			} else {
 				log.WithFields(log.Fields{
@@ -283,7 +268,7 @@ func (b *Bounce) getRequestedDevicesPayloads(peer device, requestedIDs, offeredI
 	return requestedData
 }
 
-func (b *Bounce) getRequestedAddUsersPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+func (b *Bounce) getRequestedAddUsersPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
 	requestedData := []broadcastable{}
 
 	requestedAddUserIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -294,8 +279,7 @@ func (b *Bounce) getRequestedAddUsersPayloads(peer device, requestedIDs, offered
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   addUserID,
-					"peer": peer.Address,
+					"id": addUserID,
 				}).Warn("reference request asks for unknown add user we offered")
 			} else {
 				log.WithFields(log.Fields{
@@ -311,7 +295,7 @@ func (b *Bounce) getRequestedAddUsersPayloads(peer device, requestedIDs, offered
 	return requestedData
 }
 
-func (b *Bounce) getRequestedConfirmationsPayloads(peer device, requestedIDs, offeredIDs, ugsToDeliver []uuid.UUID) []broadcastable {
+func (b *Bounce) getRequestedConfirmationsPayloads(requestedIDs, offeredIDs, ugsToDeliver []uuid.UUID) []broadcastable {
 	requestedData := []broadcastable{}
 
 	includedInUG := map[uuid.UUID]bool{}
@@ -327,8 +311,7 @@ func (b *Bounce) getRequestedConfirmationsPayloads(peer device, requestedIDs, of
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   confirmationID,
-					"peer": peer.Address,
+					"id": confirmationID,
 				}).Warn("reference request asks for unknown confirmation we offered")
 			} else {
 				log.WithFields(log.Fields{
@@ -348,7 +331,7 @@ func (b *Bounce) getRequestedConfirmationsPayloads(peer device, requestedIDs, of
 	return requestedData
 }
 
-func (b *Bounce) getRequestedUpdateUsersPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+func (b *Bounce) getRequestedUpdateUsersPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
 	requestedData := []broadcastable{}
 
 	requestedUpdateUserIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -359,8 +342,7 @@ func (b *Bounce) getRequestedUpdateUsersPayloads(peer device, requestedIDs, offe
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   updateUserID,
-					"peer": peer.Address,
+					"id": updateUserID,
 				}).Warn("reference request asks for unknown update user we offered")
 			} else {
 				log.WithFields(log.Fields{
@@ -376,7 +358,7 @@ func (b *Bounce) getRequestedUpdateUsersPayloads(peer device, requestedIDs, offe
 	return requestedData
 }
 
-func (b *Bounce) getRequestedUpdateDevicesPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+func (b *Bounce) getRequestedUpdateDevicesPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
 	requestedData := []broadcastable{}
 
 	requestedUpdateDevicesIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -387,8 +369,7 @@ func (b *Bounce) getRequestedUpdateDevicesPayloads(peer device, requestedIDs, of
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   updateDeviceID,
-					"peer": peer.Address,
+					"id": updateDeviceID,
 				}).Warn("reference request asks for unknown update device we offered")
 			} else {
 				log.WithFields(log.Fields{
@@ -404,7 +385,7 @@ func (b *Bounce) getRequestedUpdateDevicesPayloads(peer device, requestedIDs, of
 	return requestedData
 }
 
-func (b *Bounce) getRequestedReadReceiptPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+func (b *Bounce) getRequestedReadReceiptPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
 	requestedData := []broadcastable{}
 
 	requestedReadReceiptIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -415,8 +396,7 @@ func (b *Bounce) getRequestedReadReceiptPayloads(peer device, requestedIDs, offe
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   readReceiptID,
-					"peer": peer.Address,
+					"id": readReceiptID,
 				}).Warn("reference request asks for unknown read receipt we offered")
 			} else {
 				log.WithFields(log.Fields{
@@ -432,7 +412,7 @@ func (b *Bounce) getRequestedReadReceiptPayloads(peer device, requestedIDs, offe
 	return requestedData
 }
 
-func (b *Bounce) getRequestedUpdateSettingsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+func (b *Bounce) getRequestedUpdateSettingsPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
 	requestedData := []broadcastable{}
 
 	requestedUpdateSettingsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -443,8 +423,7 @@ func (b *Bounce) getRequestedUpdateSettingsPayloads(peer device, requestedIDs, o
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   updateSettingsID,
-					"peer": peer.Address,
+					"id": updateSettingsID,
 				}).Warn("reference request asks for unknown update settings we offered")
 			} else {
 				log.WithFields(log.Fields{
@@ -460,7 +439,7 @@ func (b *Bounce) getRequestedUpdateSettingsPayloads(peer device, requestedIDs, o
 	return requestedData
 }
 
-func (b *Bounce) getRequestedFilePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+func (b *Bounce) getRequestedFilePayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
 	requestedData := []broadcastable{}
 
 	requestedFileIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -471,8 +450,7 @@ func (b *Bounce) getRequestedFilePayloads(peer device, requestedIDs, offeredIDs 
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   fileID,
-					"peer": peer.Address,
+					"id": fileID,
 				}).Warn("reference request asks for unknown file we offered")
 			} else {
 				log.WithFields(log.Fields{
@@ -488,7 +466,7 @@ func (b *Bounce) getRequestedFilePayloads(peer device, requestedIDs, offeredIDs 
 	return requestedData
 }
 
-func (b *Bounce) getRequestedChunkOfferPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+func (b *Bounce) getRequestedChunkOfferPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
 	requestedData := []broadcastable{}
 
 	requestedChunkOfferIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
@@ -499,8 +477,7 @@ func (b *Bounce) getRequestedChunkOfferPayloads(peer device, requestedIDs, offer
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id":   chunkOfferID,
-					"peer": peer.Address,
+					"id": chunkOfferID,
 				}).Warn("reference request asks for unknown chunk offer we offered")
 			} else {
 				log.WithFields(log.Fields{
