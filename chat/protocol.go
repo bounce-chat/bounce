@@ -93,6 +93,7 @@ func (b *Bounce) getHandlers() map[uint16]func(string, []byte, bool) (broadcasta
 			typeKeepAlive:                        b.handleKeepAlive,
 			typeReferenceOffer:                   b.handleReferenceOffer,
 			typeReferenceRequest:                 b.handleReferenceRequest,
+			typeCatchUp:                          b.handleCatchUp,
 			typeAck:                              b.handleAck,
 			typeEncryptedDeviceManagementRequest: b.handleEncryptedDeviceManagementRequest,
 			typeEncryptedFrame:                   b.handleEncryptedFrame,

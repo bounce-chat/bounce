@@ -83,6 +83,13 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		return nil, false
 	}
 
+	if b.encrypted {
+		for _, fr := range cu.Frames {
+			b.handleEncryptedFrame(peer, fr.Payload, true)
+		}
+		return nil, false
+	}
+
 	// Check if we're aware of the peer identity before processing this catch up.  If we don't know
 	// who this device belongs to, we should be able to learn after handling all of the frames inside
 	// it and we'll want to check to make sure that happened.

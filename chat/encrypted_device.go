@@ -380,7 +380,7 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 	foundAuthorizedUser := false
 	for _, r := range ef.Recipients {
 		var au authorizedUser
-		err := b.database.Take(&au, "public_key = ?", r.PublicKey).Error // TODO: needs to be the ECDH key of the authorized user
+		err := b.database.Take(&au, "public_key = ?", r.PublicKey).Error
 		if err == nil {
 			foundAuthorizedUser = true
 			break
@@ -394,14 +394,14 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 				"error": err.Error(),
 			}).Error("error saving encrypted frame")
 		}
+		b.markFrameDelivered(ef.ID, ef.Type, peer)
+		go b.sendAck(peer, ef.Type, ef.ID)
 	} else {
 		log.WithFields(log.Fields{
-			"peer": peer,
+			"peer":       peer,
+			"recipients": len(ef.Recipients),
 		}).Warn("ignoring encrypted frame that did not include an authorized user as a recipient")
 	}
-
-	b.markFrameDelivered(ef.ID, ef.Type, peer)
-	go b.sendAck(peer, ef.Type, ef.ID)
 
 	return nil, false
 }

@@ -1082,6 +1082,12 @@ func (b *Bounce) GetInitialState() InitialState {
 					Timestamp: uu.Timestamp,
 				},
 			)
+		case updateUserTypeAddEncryptedDevice:
+			// Encrypted devices do not create status changes
+		case updateUserTypeRemoveEncryptedDevice:
+			// Encrypted devices do not create status changes
+		case updateUserTypeSetEncryptedDeviceName:
+		// Setting encrypted device name doesn't create state change
 		default:
 			log.WithFields(log.Fields{
 				"id":      uu.ID,
@@ -1392,6 +1398,12 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 					Timestamp: uu.Timestamp,
 				},
 			)
+		case updateUserTypeAddEncryptedDevice:
+			// Encrypted devices do not create status changes
+		case updateUserTypeRemoveEncryptedDevice:
+			// Encrypted devices do not create status changes
+		case updateUserTypeSetEncryptedDeviceName:
+		// Setting encrypted device name doesn't create state change
 		default:
 			log.WithFields(log.Fields{
 				"id":      uu.ID,
