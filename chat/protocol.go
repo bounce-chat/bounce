@@ -151,7 +151,10 @@ func (b *Bounce) broadcast(br broadcastable) {
 			}(rd.messages, br)
 		}
 	}
-	go b.sendToEncryptedDevices(br)
+
+	if br.getType() != typeTypingIndicator {
+		go b.sendToEncryptedDevices(br)
+	}
 }
 
 func (b *Bounce) sendDirect(peer string, br sendable) {
