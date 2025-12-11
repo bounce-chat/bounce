@@ -19,7 +19,7 @@ type encryptedReceive struct {
 	Type         uint16
 	Payload      []byte
 	EncryptedDEK []byte
-	Encrypter    []byte // TODO: public ECDH key?
+	PublicKey    []byte
 }
 
 type encryptedCatchUp struct {
@@ -60,7 +60,7 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 
 	decryptedFrames := []frame{}
 	for _, f := range ecu.Frames {
-		kek, err := b.generateKEK(f.Encrypter) // TODO: f.Encrypted is public ECDSA key, use it to look up ECDH key from database?
+		kek, err := b.generateKEK(f.PublicKey)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -206,7 +206,7 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 			Type:         ef.Type,
 			Payload:      ef.Payload,
 			EncryptedDEK: desiredRecipient.EncryptedDEK,
-			Encrypter:    desiredRecipient.PublicKey,
+			PublicKey:    desiredRecipient.PublicKey,
 		})
 	}
 

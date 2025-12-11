@@ -1,7 +1,10 @@
 package chat
 
 import (
-	"crypto/ed25519"
+	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/ecdh"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -34,7 +37,7 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 	if os.Getenv("DEBUG") == "true" {
 		log.SetReportCaller(true)
 	}
-	log.SetLevel(log.InfoLevel) // TODO: put behind the envar when ready.  run in warn otherwise?
+	log.SetLevel(log.DebugLevel) // TODO: put behind the envar when ready.  run in warn otherwise?
 
 	b := &Bounce{
 		encrypted:       true,
@@ -300,10 +303,10 @@ func (b *Bounce) handleEncryptedDeviceManagementResponse(peer string, payload []
 }
 
 type recipient struct {
-	ID           uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
-	FrameID      uuid.UUID `msgpack:"-"`
-	PublicKey    []byte
-	EncryptedDEK []byte
+	ID               uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
+	EncryptedFrameID uuid.UUID `msgpack:"-"`
+	PublicKey        []byte
+	EncryptedDEK     []byte
 }
 
 func (r *recipient) BeforeCreate(tx *gorm.DB) error {
@@ -400,6 +403,7 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 }
 
 type encryptedReferenceOfferChallenge struct {
+	Key       []byte
 	Challenge []byte
 }
 
@@ -433,12 +437,58 @@ func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []b
 		return nil, false
 	}
 
+	dek, err := b.generateKEK(eroc.Key)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error generating reference offer challenge key")
+		return nil, false
+	}
+
+	dekBlock, err := aes.NewCipher(dek)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error encrypting frame")
+		return nil, false
+	}
+	dekGCM, err := cipher.NewGCMWithRandomNonce(dekBlock)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error encrypting frame")
+		return nil, false
+	}
+	ciphertext := dekGCM.Seal(nil, []byte{}, eroc.Challenge, nil)
+
 	go b.sendDirect(peer, &encryptedReferenceOfferResponse{
-		PublicKey: currentUser.PublicECDSAKey,
-		Response:  ed25519.Sign(currentUser.PrivateECDSAKey, eroc.Challenge),
+		PublicKey: currentUser.PublicECDHKey,
+		Response:  ciphertext,
 	})
 
 	return nil, false
+}
+
+var eroChallengePrivateKey = []byte{}
+var eroChallengePublicKey = []byte{}
+
+func eroChallengeKey() ([]byte, []byte) {
+	if len(eroChallengePrivateKey) == 0 {
+
+		curve := ecdh.X25519()
+		privateKey, err := curve.GenerateKey(rand.Reader)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error generating x25519 private key")
+		}
+		publicKey := privateKey.PublicKey()
+
+		eroChallengePrivateKey = privateKey.Bytes()
+		eroChallengePublicKey = publicKey.Bytes()
+	}
+
+	return eroChallengePrivateKey, eroChallengePublicKey
 }
 
 var referenceOfferChallengeMutex sync.Mutex
@@ -455,7 +505,10 @@ func (b *Bounce) challengeUnencryptedPeerForReferenceOffer(peer string) {
 	referenceOfferChallengeTime[peer] = time.Now().Unix()
 	referenceOfferChallengeMutex.Unlock()
 
+	_, pubkey := eroChallengeKey()
+
 	go b.sendDirect(peer, &encryptedReferenceOfferChallenge{
+		Key:       pubkey,
 		Challenge: challenge,
 	})
 }
@@ -489,6 +542,7 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 		return nil, false
 	}
 
+	// Make sure that we offered a challenge to this device recently, and store it if we did
 	referenceOfferChallengeMutex.Lock()
 	for peer, ts := range referenceOfferChallengeTime {
 		if ts < time.Now().Add(-5*time.Minute).Unix() {
@@ -505,10 +559,51 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 		return nil, false
 	}
 
-	valid := ed25519.Verify(eroc.PublicKey, challenge, eroc.Response)
-	if valid {
+	// Find our challenge private key, their public key, and do an ECDH exchange to get a shared key
+	curve := ecdh.X25519()
+	challengePrivateKeyBytes, _ := eroChallengeKey()
+	challengePrivateKey, err := curve.NewPrivateKey(challengePrivateKeyBytes)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error parsing private key")
+		return nil, false
+	}
+	counterpartyPublicKey, err := curve.NewPublicKey(eroc.PublicKey)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error parsing public key")
+		return nil, false
+	}
+	dek, err := challengePrivateKey.ECDH(counterpartyPublicKey)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error doing ECDH exchange during reference offer challenge")
+		return nil, false
+	}
+
+	// Prepare to decrypt with this key
+	dekBlock, err := aes.NewCipher(dek)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating block")
+		return nil, false
+	}
+	dekGCM, err := cipher.NewGCMWithRandomNonce(dekBlock)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating gcm")
+		return nil, false
+	}
+
+	// Try to decypt the challenge and make sure the data is unchanged
+	decryptedChallenge, err := dekGCM.Open(nil, []byte{}, eroc.Response, nil)
+	if err == nil && bytes.Equal(challenge, decryptedChallenge) {
 		referenceOfferChallengeMutex.Lock()
-		// TODO: error if peer already has different key
 		peerUserKeys[peer] = eroc.PublicKey
 		referenceOfferChallengeMutex.Unlock()
 		go b.sendDirect(peer, b.getEncryptedReferenceOfferFor(peer, eroc.PublicKey))
