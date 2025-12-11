@@ -1,13 +1,17 @@
 package chat
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"errors"
 	"sync"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type encryptedReceive struct {
@@ -15,7 +19,7 @@ type encryptedReceive struct {
 	Type         uint16
 	Payload      []byte
 	EncryptedDEK []byte
-	Encrypter    []byte
+	Encrypter    []byte // TODO: public ECDH key?
 }
 
 type encryptedCatchUp struct {
@@ -136,4 +140,75 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 	}
 
 	return b.handleCatchUp(peer, decryptedCatchUpPayload, true)
+}
+
+func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *encryptedCatchUp {
+	ecu := &encryptedCatchUp{}
+
+	referenceOfferChallengeMutex.Lock()
+	peerKey, ok := peerUserKeys[peer]
+	referenceOfferChallengeMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Error("cannot generate encrypted catch up for peer with unknown key")
+		return ecu
+	}
+
+	originalOffer := b.getEncryptedReferenceOfferFor(peer, peerKey)
+	allowed := map[uuid.UUID]bool{}
+	for _, ref := range originalOffer.References {
+		allowed[ref.ID] = true
+	}
+
+	validIDs := []uuid.UUID{}
+	for _, ref := range rr.References {
+		if _, ok := allowed[ref.ID]; ok {
+			validIDs = append(validIDs, ref.ID)
+		}
+	}
+
+	for _, id := range validIDs {
+		var ef encryptedFrame
+		err := b.database.Preload(clause.Associations).Take(&ef, "id = ?", id).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id": id,
+				}).Error("requested encrypted frame not found")
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up encrypted frame")
+			}
+		}
+
+		var desiredRecipient recipient
+		found := false
+		for _, r := range ef.Recipients {
+			if bytes.Equal(r.PublicKey, peerKey) {
+				desiredRecipient = r
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			log.WithFields(log.Fields{
+				"id": id,
+			}).Error("encrypted frame requested by recipient no in recipient list")
+			continue
+		}
+
+		ecu.Frames = append(ecu.Frames, encryptedReceive{
+			ID:           ef.ID,
+			Type:         ef.Type,
+			Payload:      ef.Payload,
+			EncryptedDEK: desiredRecipient.EncryptedDEK,
+			Encrypter:    desiredRecipient.PublicKey,
+		})
+	}
+
+	return ecu
 }

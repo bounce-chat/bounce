@@ -322,8 +322,16 @@ type encryptedFrame struct {
 	payloadMutex sync.Mutex
 }
 
+func (ef encryptedFrame) getID() uuid.UUID {
+	return ef.ID
+}
+
 func (ef encryptedFrame) getType() uint16 {
 	return typeEncryptedFrame
+}
+
+func (ef encryptedFrame) getTimestamp() int64 {
+	return ef.Timestamp
 }
 
 func (ef encryptedFrame) getPayload() []byte {
@@ -436,6 +444,7 @@ func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []b
 var referenceOfferChallengeMutex sync.Mutex
 var referenceOfferChallengeMap = map[string][]byte{}
 var referenceOfferChallengeTime = map[string]int64{}
+var peerUserKeys = map[string][]byte{}
 
 func (b *Bounce) challengeUnencryptedPeerForReferenceOffer(peer string) {
 	challenge := make([]byte, 32)
@@ -498,6 +507,10 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 
 	valid := ed25519.Verify(eroc.PublicKey, challenge, eroc.Response)
 	if valid {
+		referenceOfferChallengeMutex.Lock()
+		// TODO: error if peer already has different key
+		peerUserKeys[peer] = eroc.PublicKey
+		referenceOfferChallengeMutex.Unlock()
 		go b.sendDirect(peer, b.getEncryptedReferenceOfferFor(peer, eroc.PublicKey))
 	} else {
 		log.WithFields(log.Fields{

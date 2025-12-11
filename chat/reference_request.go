@@ -50,6 +50,11 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 		return nil, false
 	}
 
+	if b.encrypted {
+		go b.sendDirect(peer, b.generateEncryptedCatchUpFor(peer, rr))
+		return nil, false
+	}
+
 	// Get the device for this peer
 	dev, ok := b.getDeviceFromAddress(peer)
 	if !ok {
@@ -63,41 +68,55 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	offerable := b.getReferenceOfferFor(peer)
 	offeredIDs := referencedIDs(offerable.References)
 	requestedIDs := referencedIDs(rr.References)
-	cu := &catchUp{
-		broadcastables: sortableBroadcastables{},
-	}
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedDirectMessagePayloads(dev, requestedIDs[typeDirectMessage], offeredIDs[typeDirectMessage])...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupMessagePayloads(dev, requestedIDs[typeGroupMessage], offeredIDs[typeGroupMessage])...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDMsPayloads(dev, requestedIDs[typeUpdateDM], offeredIDs[typeUpdateDM])...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedDevicesPayloads(dev, requestedIDs[typeDevice], offeredIDs[typeDevice])...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedAddUsersPayloads(dev, requestedIDs[typeAddUser], offeredIDs[typeAddUser])...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedGroupCreationPayloads(dev, requestedIDs[typeGroupCreation], offeredIDs[typeGroupCreation])...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateGroupsPayloads(dev, requestedIDs[typeUpdateGroup], offeredIDs[typeUpdateGroup])...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedConfirmationsPayloads(dev, requestedIDs[typeConfirmation], offeredIDs[typeConfirmation], getValidRequestedUUIDs(offeredIDs[typeUpdateGroup], requestedIDs[typeUpdateGroup]))...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateUsersPayloads(dev, requestedIDs[typeUpdateUser], offeredIDs[typeUpdateUser])...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateDevicesPayloads(dev, requestedIDs[typeUpdateDevice], offeredIDs[typeUpdateDevice])...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedReadReceiptPayloads(dev, requestedIDs[typeReadReceipt], offeredIDs[typeReadReceipt])...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedUpdateSettingsPayloads(dev, requestedIDs[typeUpdateSettings], offeredIDs[typeUpdateSettings])...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedFilePayloads(dev, requestedIDs[typeFile], offeredIDs[typeFile])...)
-	cu.broadcastables = append(cu.broadcastables, b.getRequestedChunkOfferPayloads(dev, requestedIDs[typeChunkOffer], offeredIDs[typeChunkOffer])...)
+	broadcastables := []broadcastable{}
+	broadcastables = append(broadcastables, b.getRequestedDirectMessagePayloads(dev, requestedIDs[typeDirectMessage], offeredIDs[typeDirectMessage])...)
+	broadcastables = append(broadcastables, b.getRequestedGroupMessagePayloads(dev, requestedIDs[typeGroupMessage], offeredIDs[typeGroupMessage])...)
+	broadcastables = append(broadcastables, b.getRequestedUpdateDMsPayloads(dev, requestedIDs[typeUpdateDM], offeredIDs[typeUpdateDM])...)
+	broadcastables = append(broadcastables, b.getRequestedDevicesPayloads(dev, requestedIDs[typeDevice], offeredIDs[typeDevice])...)
+	broadcastables = append(broadcastables, b.getRequestedAddUsersPayloads(dev, requestedIDs[typeAddUser], offeredIDs[typeAddUser])...)
+	broadcastables = append(broadcastables, b.getRequestedGroupCreationPayloads(dev, requestedIDs[typeGroupCreation], offeredIDs[typeGroupCreation])...)
+	broadcastables = append(broadcastables, b.getRequestedUpdateGroupsPayloads(dev, requestedIDs[typeUpdateGroup], offeredIDs[typeUpdateGroup])...)
+	broadcastables = append(broadcastables, b.getRequestedConfirmationsPayloads(dev, requestedIDs[typeConfirmation], offeredIDs[typeConfirmation], getValidRequestedUUIDs(offeredIDs[typeUpdateGroup], requestedIDs[typeUpdateGroup]))...)
+	broadcastables = append(broadcastables, b.getRequestedUpdateUsersPayloads(dev, requestedIDs[typeUpdateUser], offeredIDs[typeUpdateUser])...)
+	broadcastables = append(broadcastables, b.getRequestedUpdateDevicesPayloads(dev, requestedIDs[typeUpdateDevice], offeredIDs[typeUpdateDevice])...)
+	broadcastables = append(broadcastables, b.getRequestedReadReceiptPayloads(dev, requestedIDs[typeReadReceipt], offeredIDs[typeReadReceipt])...)
+	broadcastables = append(broadcastables, b.getRequestedUpdateSettingsPayloads(dev, requestedIDs[typeUpdateSettings], offeredIDs[typeUpdateSettings])...)
+	broadcastables = append(broadcastables, b.getRequestedFilePayloads(dev, requestedIDs[typeFile], offeredIDs[typeFile])...)
+	broadcastables = append(broadcastables, b.getRequestedChunkOfferPayloads(dev, requestedIDs[typeChunkOffer], offeredIDs[typeChunkOffer])...)
 
-	if len(cu.broadcastables) == 0 {
+	if len(broadcastables) == 0 {
 		return nil, false
 	}
 
 	if _, ok := encryptedDeviceCache[peer]; ok {
-		for _, br := range cu.broadcastables {
-			go b.sendDirect(peer, b.encryptFrameForDevice(br, peer))
+		// If we're preparing this catch up for an encrypted device, pack it with encrypted versions of the frames
+		cuForEncryptedDevice := &catchUp{
+			sendables: sortableSendables{},
 		}
+		for _, br := range broadcastables {
+			cuForEncryptedDevice.sendables = append(cuForEncryptedDevice.sendables, b.encryptFrameForDevice(br, peer))
+		}
+		go b.sendDirect(peer, cuForEncryptedDevice)
 	} else {
+		// If we're preparing this catch up for a formal device, pack the frames in directly
+		cu := &catchUp{
+			sendables: sortableSendables{},
+		}
+		for _, br := range broadcastables {
+			s, ok := br.(sortableSendable)
+			if !ok {
+				log.Error("broadcastable frame is not also a sortableSendable frame")
+			}
+			cu.sendables = append(cu.sendables, s)
+		}
 		go b.sendDirect(peer, cu)
 	}
 
 	return nil, false
 }
 
-func (b *Bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
+func (b *Bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
 
 	requestedDirectMessageIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
@@ -124,8 +143,8 @@ func (b *Bounce) getRequestedDirectMessagePayloads(peer device, requestedIDs, of
 	return requestedData
 }
 
-func (b *Bounce) getRequestedGroupMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
+func (b *Bounce) getRequestedGroupMessagePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
 
 	requestedGroupMessageIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
@@ -152,8 +171,8 @@ func (b *Bounce) getRequestedGroupMessagePayloads(peer device, requestedIDs, off
 	return requestedData
 }
 
-func (b *Bounce) getRequestedUpdateDMsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
+func (b *Bounce) getRequestedUpdateDMsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
 
 	requestedUpdateDMsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
@@ -180,8 +199,8 @@ func (b *Bounce) getRequestedUpdateDMsPayloads(peer device, requestedIDs, offere
 	return requestedData
 }
 
-func (b *Bounce) getRequestedUpdateGroupsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
+func (b *Bounce) getRequestedUpdateGroupsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
 
 	requestedUpdateGroupsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
@@ -208,8 +227,8 @@ func (b *Bounce) getRequestedUpdateGroupsPayloads(peer device, requestedIDs, off
 	return requestedData
 }
 
-func (b *Bounce) getRequestedGroupCreationPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
+func (b *Bounce) getRequestedGroupCreationPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
 
 	requestedGroupCreationIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
@@ -236,8 +255,8 @@ func (b *Bounce) getRequestedGroupCreationPayloads(peer device, requestedIDs, of
 	return requestedData
 }
 
-func (b *Bounce) getRequestedDevicesPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
+func (b *Bounce) getRequestedDevicesPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
 
 	requestedDeviceIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
@@ -264,8 +283,8 @@ func (b *Bounce) getRequestedDevicesPayloads(peer device, requestedIDs, offeredI
 	return requestedData
 }
 
-func (b *Bounce) getRequestedAddUsersPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
+func (b *Bounce) getRequestedAddUsersPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
 
 	requestedAddUserIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
@@ -292,8 +311,8 @@ func (b *Bounce) getRequestedAddUsersPayloads(peer device, requestedIDs, offered
 	return requestedData
 }
 
-func (b *Bounce) getRequestedConfirmationsPayloads(peer device, requestedIDs, offeredIDs, ugsToDeliver []uuid.UUID) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
+func (b *Bounce) getRequestedConfirmationsPayloads(peer device, requestedIDs, offeredIDs, ugsToDeliver []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
 
 	includedInUG := map[uuid.UUID]bool{}
 	for _, id := range ugsToDeliver {
@@ -329,8 +348,8 @@ func (b *Bounce) getRequestedConfirmationsPayloads(peer device, requestedIDs, of
 	return requestedData
 }
 
-func (b *Bounce) getRequestedUpdateUsersPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
+func (b *Bounce) getRequestedUpdateUsersPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
 
 	requestedUpdateUserIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
@@ -357,8 +376,8 @@ func (b *Bounce) getRequestedUpdateUsersPayloads(peer device, requestedIDs, offe
 	return requestedData
 }
 
-func (b *Bounce) getRequestedUpdateDevicesPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
+func (b *Bounce) getRequestedUpdateDevicesPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
 
 	requestedUpdateDevicesIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
@@ -385,8 +404,8 @@ func (b *Bounce) getRequestedUpdateDevicesPayloads(peer device, requestedIDs, of
 	return requestedData
 }
 
-func (b *Bounce) getRequestedReadReceiptPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
+func (b *Bounce) getRequestedReadReceiptPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
 
 	requestedReadReceiptIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
@@ -413,8 +432,8 @@ func (b *Bounce) getRequestedReadReceiptPayloads(peer device, requestedIDs, offe
 	return requestedData
 }
 
-func (b *Bounce) getRequestedUpdateSettingsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
+func (b *Bounce) getRequestedUpdateSettingsPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
 
 	requestedUpdateSettingsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
@@ -441,8 +460,8 @@ func (b *Bounce) getRequestedUpdateSettingsPayloads(peer device, requestedIDs, o
 	return requestedData
 }
 
-func (b *Bounce) getRequestedFilePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
+func (b *Bounce) getRequestedFilePayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
 
 	requestedFileIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 
@@ -469,8 +488,8 @@ func (b *Bounce) getRequestedFilePayloads(peer device, requestedIDs, offeredIDs 
 	return requestedData
 }
 
-func (b *Bounce) getRequestedChunkOfferPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) sortableBroadcastables {
-	requestedData := sortableBroadcastables{}
+func (b *Bounce) getRequestedChunkOfferPayloads(peer device, requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
 
 	requestedChunkOfferIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
 

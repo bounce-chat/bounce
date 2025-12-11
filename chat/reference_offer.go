@@ -106,32 +106,30 @@ func (b *Bounce) sendReferences(peer string) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	if !b.encrypted {
-		if _, exists := b.currentUser(); !exists {
-			// Our profile hasn't been setup yet, we have nothing to offer
-			return
-		}
+	if _, exists := b.currentUser(); !exists {
+		// Our profile hasn't been setup yet, we have nothing to offer
+		return
+	}
 
-		dev, exists := b.getDeviceFromAddress(peer)
-		encryptedDeviceCacheMutex.Lock()
-		_, encrypted := encryptedDeviceCache[peer]
-		encryptedDeviceCacheMutex.Unlock()
-		if !exists && !encrypted {
-			// We have nothing to offer a device that we don't know about
-			return
-		}
+	dev, exists := b.getDeviceFromAddress(peer)
+	encryptedDeviceCacheMutex.Lock()
+	_, encrypted := encryptedDeviceCache[peer]
+	encryptedDeviceCacheMutex.Unlock()
+	if !exists && !encrypted {
+		// We have nothing to offer a device that we don't know about
+		return
+	}
 
-		if exists && blockedUser(dev.UserID) {
-			// Reject any reference offer from a block user's device
-			return
-		}
+	if exists && blockedUser(dev.UserID) {
+		// Reject any reference offer from a block user's device
+		return
+	}
 
-		_, exists = b.getDeviceFromAddress(b.network.Address())
-		if !exists {
-			// Our own devices doesn't exist yet, we're probably going to be added as a new sync
-			// device now.  In the meantime there's nothing to do.
-			return
-		}
+	_, exists = b.getDeviceFromAddress(b.network.Address())
+	if !exists {
+		// Our own devices doesn't exist yet, we're probably going to be added as a new sync
+		// device now.  In the meantime there's nothing to do.
+		return
 	}
 
 	rd := b.getRemoteDevice(peer)

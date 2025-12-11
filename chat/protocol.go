@@ -58,25 +58,33 @@ type sendable interface {
 	getPayload() []byte
 }
 
-type broadcastable interface {
-	sendable
-	getID() uuid.UUID
-	getScope(myID uuid.UUID) int
-	getDestination(myID uuid.UUID) uuid.UUID
-	getAuthor() uuid.UUID
+type sortable interface {
 	getTimestamp() int64
 }
 
-type sortableBroadcastables []broadcastable
+type sortableSendable interface {
+	getID() uuid.UUID
+	sendable
+	sortable
+}
 
-func (sbrs sortableBroadcastables) Len() int {
-	return len(sbrs)
+type broadcastable interface {
+	sortableSendable
+	getScope(myID uuid.UUID) int
+	getDestination(myID uuid.UUID) uuid.UUID
+	getAuthor() uuid.UUID
 }
-func (sbrs sortableBroadcastables) Swap(i, j int) {
-	sbrs[i], sbrs[j] = sbrs[j], sbrs[i]
+
+type sortableSendables []sortableSendable
+
+func (sss sortableSendables) Len() int {
+	return len(sss)
 }
-func (sbrs sortableBroadcastables) Less(i, j int) bool {
-	return sbrs[i].getTimestamp() < sbrs[j].getTimestamp()
+func (sss sortableSendables) Swap(i, j int) {
+	sss[i], sss[j] = sss[j], sss[i]
+}
+func (sss sortableSendables) Less(i, j int) bool {
+	return sss[i].getTimestamp() < sss[j].getTimestamp()
 }
 
 func (b *Bounce) getHandlers() map[uint16]func(string, []byte, bool) (broadcastable, bool) {

@@ -37,10 +37,10 @@ type frame struct {
 
 // A catch up is a frame that is used to transport a set of frames that are chronologically ordered
 type catchUp struct {
-	Frames         []frame
-	broadcastables sortableBroadcastables
-	payload        []byte
-	payloadMutex   sync.Mutex
+	Frames       []frame
+	sendables    sortableSendables
+	payload      []byte
+	payloadMutex sync.Mutex
 }
 
 func (cu *catchUp) getType() uint16 {
@@ -52,8 +52,8 @@ func (cu *catchUp) getPayload() []byte {
 	defer cu.payloadMutex.Unlock()
 
 	if len(cu.payload) == 0 {
-		sort.Sort(cu.broadcastables)
-		for _, br := range cu.broadcastables {
+		sort.Sort(cu.sendables)
+		for _, br := range cu.sendables {
 			cu.Frames = append(cu.Frames, frame{ID: br.getID(), Type: br.getType(), Payload: br.getPayload()})
 		}
 
