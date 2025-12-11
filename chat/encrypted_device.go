@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -386,6 +387,123 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 
 	b.markFrameDelivered(ef.ID, ef.Type, peer)
 	go b.sendAck(peer, ef.Type, ef.ID)
+
+	return nil, false
+}
+
+type encryptedReferenceOfferChallenge struct {
+	Challenge []byte
+}
+
+func (eroc *encryptedReferenceOfferChallenge) getType() uint16 {
+	return typeEncryptedReferenceOfferChallenge
+}
+
+func (eroc *encryptedReferenceOfferChallenge) getPayload() []byte {
+	bytes, err := msgpack.Marshal(&eroc)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal encrypted reference offer challenge")
+	}
+	return bytes
+}
+
+func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	currentUser, ok := b.currentUser()
+	if !ok {
+		log.Error("cannot handle encrypted reference offer challenge when no profile exists")
+		return nil, false
+	}
+
+	var eroc encryptedReferenceOfferChallenge
+	err := msgpack.Unmarshal(payload, &eroc)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling encrypted reference offer challenge")
+		return nil, false
+	}
+
+	go b.sendDirect(peer, &encryptedReferenceOfferResponse{
+		PublicKey: currentUser.PublicECDSAKey,
+		Response:  ed25519.Sign(currentUser.PrivateECDSAKey, eroc.Challenge),
+	})
+
+	return nil, false
+}
+
+var referenceOfferChallengeMutex sync.Mutex
+var referenceOfferChallengeMap = map[string][]byte{}
+var referenceOfferChallengeTime = map[string]int64{}
+
+func (b *Bounce) challengeUnencryptedPeerForReferenceOffer(peer string) {
+	challenge := make([]byte, 32)
+	rand.Read(challenge)
+
+	referenceOfferChallengeMutex.Lock()
+	referenceOfferChallengeMap[peer] = challenge
+	referenceOfferChallengeTime[peer] = time.Now().Unix()
+	referenceOfferChallengeMutex.Unlock()
+
+	go b.sendDirect(peer, &encryptedReferenceOfferChallenge{
+		Challenge: challenge,
+	})
+}
+
+type encryptedReferenceOfferResponse struct {
+	PublicKey []byte
+	Response  []byte
+}
+
+func (eroc *encryptedReferenceOfferResponse) getType() uint16 {
+	return typeEncryptedReferenceOfferResponse
+}
+
+func (eroc *encryptedReferenceOfferResponse) getPayload() []byte {
+	bytes, err := msgpack.Marshal(&eroc)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal encrypted reference offer challenge")
+	}
+	return bytes
+}
+
+func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	var eroc encryptedReferenceOfferResponse
+	err := msgpack.Unmarshal(payload, &eroc)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling encrypted reference offer response")
+		return nil, false
+	}
+
+	referenceOfferChallengeMutex.Lock()
+	for peer, ts := range referenceOfferChallengeTime {
+		if ts < time.Now().Add(-5*time.Minute).Unix() {
+			delete(referenceOfferChallengeTime, peer)
+			delete(referenceOfferChallengeMap, peer)
+		}
+	}
+	challenge, ok := referenceOfferChallengeMap[peer]
+	referenceOfferChallengeMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Error("received encrypted reference offer response for unknown challenge")
+		return nil, false
+	}
+
+	valid := ed25519.Verify(eroc.PublicKey, challenge, eroc.Response)
+	if valid {
+		go b.sendDirect(peer, b.getEncryptedReferenceOfferFor(peer, eroc.PublicKey))
+	} else {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Error("received encrypted reference offer response with invalid signature")
+	}
 
 	return nil, false
 }

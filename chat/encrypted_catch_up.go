@@ -56,7 +56,7 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 
 	decryptedFrames := []frame{}
 	for _, f := range ecu.Frames {
-		kek, err := b.generateKEK(f.Encrypter)
+		kek, err := b.generateKEK(f.Encrypter) // TODO: f.Encrypted is public ECDSA key, use it to look up ECDH key from database?
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
