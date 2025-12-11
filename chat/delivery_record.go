@@ -58,3 +58,20 @@ func (b *Bounce) isDeliveredTo(br broadcastable, destination string) bool {
 	}
 	return true
 }
+
+func (b *Bounce) markFrameDelivered(id uuid.UUID, frameType uint16, destination string) {
+	if id == uuid.Nil {
+		log.Warn("tracking delivery of broadcastable with nil UUID")
+	}
+
+	err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
+		Destination: destination,
+		FrameID:     id,
+		FrameType:   frameType,
+	}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error creating delivery record")
+	}
+}

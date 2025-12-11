@@ -46,7 +46,7 @@ var typeChunk = uint16(25)
 var typeChunkOffer = uint16(26)
 var typeChunkRequest = uint16(27)
 var typeActiveDevice = uint16(28)
-var typeEncryptedSend = uint16(29)
+var typeEncryptedFrame = uint16(29)
 var typeEncryptedCatchUp = uint16(30)
 var typeEncryptedDeviceManagementRequest = uint16(31)
 var typeEncryptedDeviceManagementResponse = uint16(32)
@@ -83,8 +83,9 @@ func (b *Bounce) getHandlers() map[uint16]func(string, []byte, bool) (broadcasta
 			typeKeepAlive:                        b.handleKeepAlive,
 			typeReferenceOffer:                   b.handleReferenceOffer,
 			typeReferenceRequest:                 b.handleReferenceRequest,
+			typeAck:                              b.handleAck,
 			typeEncryptedDeviceManagementRequest: b.handleEncryptedDeviceManagementRequest,
-			typeEncryptedSend:                    b.handleEncryptedSend,
+			typeEncryptedFrame:                   b.handleEncryptedFrame,
 		}
 	}
 

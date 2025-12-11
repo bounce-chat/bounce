@@ -478,6 +478,8 @@ func (t *testUI) FileDownloadProgress(uuid.UUID, float64)                       
 func (t *testUI) CatchUpMessages(BulkUpdate)                                       {}
 func (t *testUI) AnotherDeviceActive()                                             {}
 func (t *testUI) NoOtherDeviceActive()                                             {}
+func (t *testUI) EncryptedDeviceAdded()                                            {}
+func (t *testUI) EncryptedDeviceRejected()                                         {}
 
 func newBounce() *Bounce {
 	ui := newTestUI()

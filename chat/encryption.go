@@ -4,7 +4,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdh"
-	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
 	insecurerand "math/rand"
@@ -14,7 +13,6 @@ import (
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -23,21 +21,6 @@ var encryptedDeviceCache = map[string][]uuid.UUID{}
 var encryptedDeviceCacheMutex sync.Mutex
 
 const maximumRecipients = 15
-
-type encryptedFrame struct {
-	ID         uuid.UUID
-	Type       uint16
-	Timestamp  int64
-	Payload    []byte
-	DeleteAt   int64
-	Recipients []recipient
-}
-
-type recipient struct {
-	FrameID      uuid.UUID `msgpack:"-"`
-	PublicKey    []byte
-	EncryptedDEK []byte
-}
 
 type encryptedSyncDevice struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
@@ -74,12 +57,6 @@ func (b *Bounce) generateKEK(counterpartyPublicKeyBytes []byte) ([]byte, error) 
 }
 
 func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
-	currentUser, ok := b.currentUser()
-	if !ok {
-		log.Error("cannot send frames to encrypted device before current user exists")
-		return
-	}
-
 	// Get the users that are in scope
 	users := b.getUsersInScope(br)
 
@@ -167,29 +144,11 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 			DeleteAt:   getDeleteAt(br),
 			Recipients: recipients,
 		}
-		encodedEncryptedFrame, err := msgpack.Marshal(&ef)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error encoding encrypted frame")
-			return
-		}
-		es := encryptedSend{
-			Frame:     encodedEncryptedFrame,
-			Client:    currentUser.PublicECDSAKey,
-			Signature: ed25519.Sign(ed25519.NewKeyFromSeed(currentUser.PrivateECDSAKey), encodedEncryptedFrame),
-		}
-		rd.messages <- es
+		rd.messages <- ef
 	}
 }
 
-func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encryptedSend {
-	currentUser, ok := b.currentUser()
-	if !ok {
-		log.Error("cannot send frames to encrypted device before current user exists")
-		return nil
-	}
-
+func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encryptedFrame {
 	// Get the users that are in scope
 	users := b.getUsersInScope(br)
 
@@ -258,25 +217,13 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 	}
 
 	// Sign the encrypted frame and recipients, send to the encrypted device
-	ef := encryptedFrame{
+	return &encryptedFrame{
 		ID:         br.getID(),
 		Type:       br.getType(),
 		Payload:    ciphertext,
 		Timestamp:  br.getTimestamp(),
 		DeleteAt:   getDeleteAt(br),
 		Recipients: recipients,
-	}
-	encodedEncryptedFrame, err := msgpack.Marshal(&ef)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error encoding encrypted frame")
-		return nil
-	}
-	return &encryptedSend{
-		Frame:     encodedEncryptedFrame,
-		Client:    currentUser.PublicECDSAKey,
-		Signature: ed25519.Sign(ed25519.NewKeyFromSeed(currentUser.PrivateECDSAKey), encodedEncryptedFrame),
 	}
 }
 

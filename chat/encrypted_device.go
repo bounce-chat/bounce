@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	stdlog "log"
 	"os"
 	"strings"
 	"sync"
@@ -12,6 +13,9 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var wantToManage = map[string]bool{}
@@ -20,16 +24,16 @@ var setupKey string
 var encryptedDeviceManagementMutex sync.Mutex
 
 type authorizedUser struct {
-	ID      uuid.UUID
-	Pubkey  []byte
-	Manager bool
+	ID        uuid.UUID
+	PublicKey []byte
+	Manager   bool
 }
 
 func StartEncryptedDevice(network Network, configDirectory string) {
 	if os.Getenv("DEBUG") == "true" {
 		log.SetReportCaller(true)
 	}
-	log.SetLevel(log.DebugLevel) // TODO: put behind the envar when ready.  run in warn otherwise?
+	log.SetLevel(log.InfoLevel) // TODO: put behind the envar when ready.  run in warn otherwise?
 
 	b := &Bounce{
 		encrypted:       true,
@@ -67,6 +71,54 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 			NetworkOffline: b.networkOffline,
 		},
 	)
+}
+
+func (b *Bounce) openEncryptedDatabase() {
+	databaseFile := b.configDirectory + "/bounce.enc.db"
+
+	// Define a logger for gorm that uses logrus
+	gormLogger := logger.New(
+		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags), // TODO: https://gist.github.com/bnadland/2e4287b801a47dcfcc94
+		logger.Config{
+			LogLevel:                  logger.Error,
+			IgnoreRecordNotFoundError: true,
+		},
+	)
+
+	// Open the database
+	var err error
+	b.database, err = gorm.Open(sqlite.Open(databaseFile), &gorm.Config{
+		TranslateError: true,
+		Logger:         gormLogger,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"file":  databaseFile,
+			"error": err.Error(),
+		}).Fatal("error opening database")
+	}
+
+	// Set max connections to 1 to avoid locks
+	sqliteDB, err := b.database.DB()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error getting underlying database interface from gorm while opening database")
+	}
+	sqliteDB.SetMaxOpenConns(1)
+
+	// Migrate
+	err = b.database.AutoMigrate(
+		&deliveryRecord{},
+		&authorizedUser{},
+		&encryptedFrame{},
+		&recipient{},
+	)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error migrating the database")
+	}
 }
 
 func (b *Bounce) encryptedManagerProvisioned() bool {
@@ -117,9 +169,9 @@ func (b *Bounce) handleEncryptedDeviceManagementRequest(peer string, payload []b
 
 	if edmr.Secret == setupKey {
 		au := authorizedUser{
-			ID:      uuid.New(),
-			Pubkey:  edmr.Pubkey,
-			Manager: true,
+			ID:        uuid.New(),
+			PublicKey: edmr.Pubkey,
+			Manager:   true,
 		}
 		err = b.database.Create(&au).Error
 		if err != nil {
@@ -246,35 +298,94 @@ func (b *Bounce) handleEncryptedDeviceManagementResponse(peer string, payload []
 	return nil, false
 }
 
-type encryptedSend struct {
-	Frame        []byte
-	Client       []byte
-	Signature    []byte
+type recipient struct {
+	ID           uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
+	FrameID      uuid.UUID `msgpack:"-"`
+	PublicKey    []byte
+	EncryptedDEK []byte
+}
+
+func (r *recipient) BeforeCreate(tx *gorm.DB) error {
+	r.ID = uuid.New()
+	return nil
+}
+
+type encryptedFrame struct {
+	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Type         uint16
+	Timestamp    int64
+	Payload      []byte
+	DeleteAt     int64
+	Recipients   []recipient
 	payload      []byte
 	payloadMutex sync.Mutex
 }
 
-func (es encryptedSend) getType() uint16 {
-	return typeEncryptedSend
+func (ef encryptedFrame) getType() uint16 {
+	return typeEncryptedFrame
 }
 
-func (es encryptedSend) getPayload() []byte {
-	es.payloadMutex.Lock()
-	defer es.payloadMutex.Unlock()
+func (ef encryptedFrame) getPayload() []byte {
+	ef.payloadMutex.Lock()
+	defer ef.payloadMutex.Unlock()
 
-	if len(es.payload) == 0 {
-		bytes, err := msgpack.Marshal(&es)
+	if len(ef.payload) == 0 {
+		bytes, err := msgpack.Marshal(&ef)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal encrypted send")
+			}).Fatal("cannot msgpack marshal encrypted frame")
 		}
-		es.payload = bytes
+		ef.payload = bytes
 	}
-	return es.payload
-	return []byte{}
+	return ef.payload
 }
 
-func (b *Bounce) handleEncryptedSend(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	var ef encryptedFrame
+	err := msgpack.Unmarshal(payload, &ef)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling encrypted send")
+		return nil, false
+	}
+
+	var existingEF encryptedFrame
+	err = b.database.Take(&existingEF, "id = ?", ef.ID).Error
+	if err == nil {
+		return nil, false
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up encrypted frame")
+	}
+
+	foundAuthorizedUser := false
+	for _, r := range ef.Recipients {
+		var au authorizedUser
+		err := b.database.Take(&au, "public_key = ?", r.PublicKey).Error
+		if err == nil {
+			foundAuthorizedUser = true
+			break
+		}
+	}
+
+	if foundAuthorizedUser {
+		err = b.database.Create(&ef).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error saving encrypted frame")
+		}
+	} else {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("ignoring encrypted frame that did not include an authorized user as a recipient")
+	}
+
+	b.markFrameDelivered(ef.ID, ef.Type, peer)
+	go b.sendAck(peer, ef.Type, ef.ID)
+
 	return nil, false
 }

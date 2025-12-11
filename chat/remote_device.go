@@ -86,19 +86,19 @@ func (b *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	go b.readFrames(conn)
 	go b.writeFrames(rd, conn)
 
-	// Associate this device with a user if there is one
 	if !b.encrypted {
+		// Associate this device with a user if there is one
 		dev, ok := b.getDeviceFromAddress(conn.RemoteAddr().String())
 		if ok {
 			b.insertRemoteDeviceIntoPool(conn.RemoteAddr().String(), poolTypeUser, dev.UserID)
 		}
+
+		// Do a reference flow
+		b.sendReferences(peer)
+
+		// Request any file chunks for this peer if needed
+		b.makeNextChunkRequests()
 	}
-
-	// Do a reference flow
-	b.sendReferences(peer)
-
-	// Request any file chunks for this peer if needed
-	b.makeNextChunkRequests()
 }
 
 func frameAllowedWithoutProfile(frameType uint16) bool {

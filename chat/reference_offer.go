@@ -257,6 +257,10 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	catchUpMutex.Lock()
 	defer catchUpMutex.Unlock()
 
+	if b.encrypted {
+		log.Fatal("cannot generate reference offer from encrypted device")
+	}
+
 	var users []uuid.UUID
 	dev, ok := b.getDeviceFromAddress(address)
 	if ok {
@@ -292,6 +296,22 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 		ID:         uuid.New(),
 		References: references,
 	}
+}
+
+func (b *Bounce) getEncryptedReferenceOfferFor(address string, publicKey []byte) *referenceOffer {
+	var encryptedFrames []encryptedFrame
+	b.database.
+		Select("encrypted_frames.*").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_frames.id AND delivery_records.destination == ?", address).
+		Joins("JOIN recipients ON recipients.frame_id == encrypted_frames.id AND recipients.public_key = ?", publicKey).
+		Where("delivery_record.id IS NULL").
+		Find(&encryptedFrames)
+
+	ro := &referenceOffer{}
+	for _, ef := range encryptedFrames {
+		ro.References = append(ro.References, frameReference{FrameID: ef.ID, Type: ef.Type})
+	}
+	return ro
 }
 
 func (b *Bounce) getDirectMessagesToOffer(address string, userID uuid.UUID) []frameReference {
@@ -1187,73 +1207,36 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		return nil, false
 	}
 
-	dev, deviceExists := b.getDeviceFromAddress(peer)
-
 	go b.sendAck(peer, typeReferenceOffer, ro.ID)
 
 	// Make sure we aren't still handling a catch up while determining what we need to request
 	catchUpMutex.Lock()
 
 	// Create a set of references for all of the offered references that we don't have, ACKing the ones we do have in the process
-	typesToIDs := referencedIDs(ro.References)
 	references := []frameReference{}
 	acks := []frameReference{}
-
-	dmRefs, dmAcks := b.getDirectMessagesToRequestAndAck(dev, deviceExists, typesToIDs[typeDirectMessage])
-	references = append(references, dmRefs...)
-	acks = append(acks, dmAcks...)
-
-	gmRefs, gmAcks := b.getGroupMessagesToRequestAndAck(dev, deviceExists, typesToIDs[typeGroupMessage])
-	references = append(references, gmRefs...)
-	acks = append(acks, gmAcks...)
-
-	udmRefs, udmAcks := b.getUpdateDMsToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateDM])
-	references = append(references, udmRefs...)
-	acks = append(acks, udmAcks...)
-
-	dRefs, dAcks := b.getDevicesToRequestAndAck(dev, deviceExists, typesToIDs[typeDevice])
-	references = append(references, dRefs...)
-	acks = append(acks, dAcks...)
-
-	auRefs, auAcks := b.getAddUsersToRequestAndAck(dev, deviceExists, typesToIDs[typeAddUser])
-	references = append(references, auRefs...)
-	acks = append(acks, auAcks...)
-
-	gcRefs, gcAcks := b.getGroupCreationsToRequestAndAck(dev, deviceExists, typesToIDs[typeGroupCreation])
-	references = append(references, gcRefs...)
-	acks = append(acks, gcAcks...)
-
-	ugRefs, ugAcks := b.getUpdateGroupsToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateGroup])
-	references = append(references, ugRefs...)
-	acks = append(acks, ugAcks...)
-
-	cRefs, cAcks := b.getConfirmationsToRequestAndAck(dev, deviceExists, typesToIDs[typeConfirmation])
-	references = append(references, cRefs...)
-	acks = append(acks, cAcks...)
-
-	uuRefs, uuAcks := b.getUpdateUsersToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateUser])
-	references = append(references, uuRefs...)
-	acks = append(acks, uuAcks...)
-
-	udRefs, udAcks := b.getUpdateDevicesToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateDevice])
-	references = append(references, udRefs...)
-	acks = append(acks, udAcks...)
-
-	rrRefs, rrAcks := b.getReadReceiptsToRequestAndAck(dev, deviceExists, typesToIDs[typeReadReceipt])
-	references = append(references, rrRefs...)
-	acks = append(acks, rrAcks...)
-
-	usRefs, usAcks := b.getUpdateSettingsToRequestAndAck(dev, deviceExists, typesToIDs[typeUpdateSettings])
-	references = append(references, usRefs...)
-	acks = append(acks, usAcks...)
-
-	fRefs, fAcks := b.getFilesToRequestAndAck(dev, deviceExists, typesToIDs[typeFile])
-	references = append(references, fRefs...)
-	acks = append(acks, fAcks...)
-
-	coRefs, coAcks := b.getChunkOffersToRequestAndAck(dev, deviceExists, typesToIDs[typeChunkOffer])
-	references = append(references, coRefs...)
-	acks = append(acks, coAcks...)
+	typesToIDs := referencedIDs(ro.References)
+	typesToRespondWith := []uint16{
+		typeDirectMessage,
+		typeGroupMessage,
+		typeUpdateDM,
+		typeDevice,
+		typeAddUser,
+		typeGroupCreation,
+		typeUpdateGroup,
+		typeConfirmation,
+		typeUpdateUser,
+		typeUpdateDevice,
+		typeReadReceipt,
+		typeUpdateSettings,
+		typeFile,
+		typeChunkOffer,
+	}
+	for _, frameType := range typesToRespondWith {
+		refs, acks := b.getFramesToRequestAndAck(peer, typesToIDs[frameType], frameType)
+		references = append(references, refs...)
+		acks = append(acks, acks...)
+	}
 
 	// Unlock the catch up mutex
 	catchUpMutex.Unlock()
@@ -1271,361 +1254,45 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	return nil, false
 }
 
-func (b *Bounce) getDirectMessagesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
+func (b *Bounce) getFramesToRequestAndAck(address string, offeredIDs []uuid.UUID, frameType uint16) ([]frameReference, []frameReference) {
 	references := []frameReference{}
 	acks := []frameReference{}
 
-	for _, dmID := range offeredIDs {
-		ref := frameReference{FrameID: dmID, Type: typeDirectMessage}
-		var dm directMessage
-		err := b.database.First(&dm, "id = ?", dmID).Error
-		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&dm, dev.Address) {
-				b.markDeliveredTo(&dm, dev.Address)
-			}
-			acks = append(acks, ref)
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, ref)
-		} else {
+	var table string
+	var ok bool
+	if !b.encrypted {
+		table, ok = typeTable[frameType]
+		if !ok {
 			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error getting direct message from database")
+				"type": frameType,
+			}).Warn("attempted to get frame that doesn't have database table")
 		}
 	}
 
-	return references, acks
-}
+	for _, id := range offeredIDs {
+		ref := frameReference{FrameID: id, Type: frameType}
 
-func (b *Bounce) getGroupMessagesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
-	references := []frameReference{}
-	acks := []frameReference{}
-
-	for _, gmID := range offeredIDs {
-		ref := frameReference{FrameID: gmID, Type: typeGroupMessage}
-		var gm groupMessage
-		err := b.database.First(&gm, "id = ?", gmID).Error
-		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&gm, dev.Address) {
-				b.markDeliveredTo(&gm, dev.Address)
-			}
-			acks = append(acks, ref)
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, ref)
+		var err error
+		if b.encrypted {
+			var ef encryptedFrame
+			err = b.database.Where("id = ? AND type = ?", id, frameType).Take(&ef).Error
 		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error getting group message from database")
+			var count int64
+			err = b.database.Table(table).Where("id = ?", id).Count(&count).Error
+			if count == 0 {
+				err = gorm.ErrRecordNotFound
+			}
 		}
-	}
 
-	return references, acks
-}
-
-func (b *Bounce) getUpdateDMsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
-	references := []frameReference{}
-	acks := []frameReference{}
-
-	for _, udID := range offeredIDs {
-		ref := frameReference{FrameID: udID, Type: typeUpdateDM}
-		var ud updateDM
-		err := b.database.First(&ud, "id = ?", udID).Error
 		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&ud, dev.Address) {
-				b.markDeliveredTo(&ud, dev.Address)
-			}
+			b.markFrameDelivered(id, frameType, address)
 			acks = append(acks, ref)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			references = append(references, ref)
 		} else {
 			log.WithFields(log.Fields{
-				"id":    udID,
 				"error": err.Error(),
-			}).Fatal("database error querying for update DM settings")
-		}
-	}
-
-	return references, acks
-}
-
-func (b *Bounce) getDevicesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
-	references := []frameReference{}
-	acks := []frameReference{}
-
-	for _, deviceID := range offeredIDs {
-		ref := frameReference{FrameID: deviceID, Type: typeDevice}
-		var existingDev device
-		err := b.database.First(&existingDev, "id = ?", deviceID).Error
-		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&existingDev, dev.Address) {
-				b.markDeliveredTo(&existingDev, dev.Address)
-			}
-			acks = append(acks, ref)
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, ref)
-		} else {
-			log.WithFields(log.Fields{
-				"id":    deviceID,
-				"error": err.Error(),
-			}).Fatal("database error querying for device")
-		}
-	}
-
-	return references, acks
-}
-
-func (b *Bounce) getAddUsersToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
-	references := []frameReference{}
-	acks := []frameReference{}
-
-	for _, addUserID := range offeredIDs {
-		ref := frameReference{FrameID: addUserID, Type: typeAddUser}
-		var au addUser
-		err := b.database.First(&au, "id = ?", addUserID).Error
-		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&au, dev.Address) {
-				b.markDeliveredTo(&au, dev.Address)
-			}
-			acks = append(acks, ref)
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, ref)
-		} else {
-			log.WithFields(log.Fields{
-				"id":    addUserID,
-				"error": err.Error(),
-			}).Fatal("database error querying for add user")
-		}
-	}
-
-	return references, acks
-}
-
-func (b *Bounce) getGroupCreationsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
-	references := []frameReference{}
-	acks := []frameReference{}
-
-	for _, groupCreationID := range offeredIDs {
-		ref := frameReference{FrameID: groupCreationID, Type: typeGroupCreation}
-		var gc groupCreation
-		err := b.database.First(&gc, "id = ?", groupCreationID).Error
-		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&gc, dev.Address) {
-				b.markDeliveredTo(&gc, dev.Address)
-			}
-			acks = append(acks, ref)
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, ref)
-		} else {
-			log.WithFields(log.Fields{
-				"id":    groupCreationID,
-				"error": err.Error(),
-			}).Fatal("database error querying for group creation")
-		}
-	}
-
-	return references, acks
-}
-
-func (b *Bounce) getUpdateGroupsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
-	references := []frameReference{}
-	acks := []frameReference{}
-
-	for _, updateGroupID := range offeredIDs {
-		ref := frameReference{FrameID: updateGroupID, Type: typeUpdateGroup}
-		var ug updateGroup
-		err := b.database.First(&ug, "id = ?", updateGroupID).Error
-		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&ug, dev.Address) {
-				b.markDeliveredTo(&ug, dev.Address)
-			}
-			acks = append(acks, ref)
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, ref)
-		} else {
-			log.WithFields(log.Fields{
-				"id":    updateGroupID,
-				"error": err.Error(),
-			}).Fatal("database error querying for update group")
-		}
-	}
-
-	return references, acks
-}
-
-func (b *Bounce) getConfirmationsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
-	references := []frameReference{}
-	acks := []frameReference{}
-
-	for _, confirmationID := range offeredIDs {
-		ref := frameReference{FrameID: confirmationID, Type: typeConfirmation}
-		var c confirmation
-		err := b.database.First(&c, "id = ?", confirmationID).Error
-		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&c, dev.Address) {
-				b.markDeliveredTo(&c, dev.Address)
-			}
-			acks = append(acks, ref)
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, ref)
-		} else {
-			log.WithFields(log.Fields{
-				"id":    confirmationID,
-				"error": err.Error(),
-			}).Fatal("database error querying for confirmation")
-		}
-	}
-
-	return references, acks
-}
-
-func (b *Bounce) getUpdateUsersToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
-	references := []frameReference{}
-	acks := []frameReference{}
-
-	for _, updateUserID := range offeredIDs {
-		ref := frameReference{FrameID: updateUserID, Type: typeUpdateUser}
-		var uu updateUser
-		err := b.database.First(&uu, "id = ?", updateUserID).Error
-		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&uu, dev.Address) {
-				b.markDeliveredTo(&uu, dev.Address)
-			}
-			acks = append(acks, ref)
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, ref)
-		} else {
-			log.WithFields(log.Fields{
-				"id":    updateUserID,
-				"error": err.Error(),
-			}).Fatal("database error querying for update user")
-		}
-	}
-
-	return references, acks
-}
-
-func (b *Bounce) getUpdateDevicesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
-	references := []frameReference{}
-	acks := []frameReference{}
-
-	for _, updateDeviceID := range offeredIDs {
-		ref := frameReference{FrameID: updateDeviceID, Type: typeUpdateDevice}
-		var ud updateDevice
-		err := b.database.First(&ud, "id = ?", updateDeviceID).Error
-		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&ud, dev.Address) {
-				b.markDeliveredTo(&ud, dev.Address)
-			}
-			acks = append(acks, ref)
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, ref)
-		} else {
-			log.WithFields(log.Fields{
-				"id":    updateDeviceID,
-				"error": err.Error(),
-			}).Fatal("database error querying for update device")
-		}
-	}
-
-	return references, acks
-}
-
-func (b *Bounce) getReadReceiptsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
-	references := []frameReference{}
-	acks := []frameReference{}
-
-	for _, readReceiptID := range offeredIDs {
-		ref := frameReference{FrameID: readReceiptID, Type: typeReadReceipt}
-		var rr readReceipt
-		err := b.database.First(&rr, "id = ?", readReceiptID).Error
-		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&rr, dev.Address) {
-				b.markDeliveredTo(&rr, dev.Address)
-			}
-			acks = append(acks, ref)
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, ref)
-		} else {
-			log.WithFields(log.Fields{
-				"id":    readReceiptID,
-				"error": err.Error(),
-			}).Fatal("database error querying for read receipt")
-		}
-	}
-
-	return references, acks
-}
-
-func (b *Bounce) getUpdateSettingsToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
-	references := []frameReference{}
-	acks := []frameReference{}
-
-	for _, updateSettingsID := range offeredIDs {
-		ref := frameReference{FrameID: updateSettingsID, Type: typeUpdateSettings}
-		var us updateSettings
-		err := b.database.First(&us, "id = ?", updateSettingsID).Error
-		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&us, dev.Address) {
-				b.markDeliveredTo(&us, dev.Address)
-			}
-			acks = append(acks, ref)
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, ref)
-		} else {
-			log.WithFields(log.Fields{
-				"id":    updateSettingsID,
-				"error": err.Error(),
-			}).Fatal("database error querying for update settings")
-		}
-	}
-
-	return references, acks
-}
-
-func (b *Bounce) getFilesToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
-	references := []frameReference{}
-	acks := []frameReference{}
-
-	for _, fileID := range offeredIDs {
-		ref := frameReference{FrameID: fileID, Type: typeFile}
-		var f file
-		err := b.database.First(&f, "id = ?", fileID).Error
-		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&f, dev.Address) {
-				b.markDeliveredTo(&f, dev.Address)
-			}
-			acks = append(acks, ref)
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, ref)
-		} else {
-			log.WithFields(log.Fields{
-				"id":    fileID,
-				"error": err.Error(),
-			}).Fatal("database error querying for file")
-		}
-	}
-
-	return references, acks
-}
-
-func (b *Bounce) getChunkOffersToRequestAndAck(dev device, deviceExists bool, offeredIDs []uuid.UUID) ([]frameReference, []frameReference) {
-	references := []frameReference{}
-	acks := []frameReference{}
-	for _, chunkOfferID := range offeredIDs {
-		ref := frameReference{FrameID: chunkOfferID, Type: typeChunkOffer}
-		var co chunkOffer
-		err := b.database.First(&co, "id = ?", chunkOfferID).Error
-		if err == nil {
-			if deviceExists && !b.isDeliveredTo(&co, dev.Address) {
-				b.markDeliveredTo(&co, dev.Address)
-			}
-			acks = append(acks, ref)
-		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, ref)
-		} else {
-			log.WithFields(log.Fields{
-				"id":    chunkOfferID,
-				"error": err.Error(),
-			}).Fatal("database error querying for chunk offer")
+			}).Fatal("database error getting frame to request or ack")
 		}
 	}
 
