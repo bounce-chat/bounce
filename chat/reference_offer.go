@@ -305,11 +305,14 @@ func (b *Bounce) getEncryptedReferenceOfferFor(address string, publicKey []byte)
 		Where("delivery_records.id IS NULL").
 		Find(&encryptedFrames)
 
-	ro := &referenceOffer{}
+	references := []frameReference{}
 	for _, ef := range encryptedFrames {
-		ro.References = append(ro.References, frameReference{FrameID: ef.ID, Type: ef.Type})
+		references = append(references, frameReference{FrameID: ef.ID, Type: ef.Type})
 	}
-	return ro
+	return &referenceOffer{
+		ID:         uuid.New(),
+		References: references,
+	}
 }
 
 func (b *Bounce) getDirectMessagesToOffer(address string, userID uuid.UUID) []frameReference {

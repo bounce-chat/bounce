@@ -398,6 +398,7 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 		go b.sendAck(peer, ef.Type, ef.ID)
 	} else {
 		log.WithFields(log.Fields{
+			"id":         ef.ID,
 			"peer":       peer,
 			"recipients": len(ef.Recipients),
 		}).Warn("ignoring encrypted frame that did not include an authorized user as a recipient")

@@ -67,7 +67,7 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 		if len(u.EncryptedDevices) > 0 {
 			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
 				allEncryptedDevices[addr] = true
-				deviceUsers[addr] = u.ID
+				deviceUsers[addr] = u.ID // TODO append
 			}
 		}
 	}
@@ -103,7 +103,7 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 
 	for addr, rd := range availableEncryptedDevices {
 		// Get the user that owns this device, since they must be one of the recipients
-		mustHave, ok := deviceUsers[addr]
+		mustHave, ok := deviceUsers[addr] // TODO: choose one
 		if !ok {
 			log.WithFields(log.Fields{
 				"address": addr,
@@ -163,6 +163,8 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 			}
 		}
 	}
+
+	// TODO: if device users is empty, no users can use this device?
 
 	// Encrypt the frame with a random key
 	dek := make([]byte, 32)

@@ -286,7 +286,7 @@ func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 
 			// If this socket died during a write, but there are other sockets that might still be alive,
 			// send references for anything that might not have made it through this socket
-			if rd.connectedSockets.Load() > 0 {
+			if rd.connectedSockets.Load() > 0 && !b.encrypted {
 				go b.sendReferences(conn.RemoteAddr().String())
 			}
 

@@ -158,13 +158,13 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 	originalOffer := b.getEncryptedReferenceOfferFor(peer, peerKey)
 	allowed := map[uuid.UUID]bool{}
 	for _, ref := range originalOffer.References {
-		allowed[ref.ID] = true
+		allowed[ref.FrameID] = true
 	}
 
 	validIDs := []uuid.UUID{}
 	for _, ref := range rr.References {
-		if _, ok := allowed[ref.ID]; ok {
-			validIDs = append(validIDs, ref.ID)
+		if _, ok := allowed[ref.FrameID]; ok {
+			validIDs = append(validIDs, ref.FrameID)
 		}
 	}
 
