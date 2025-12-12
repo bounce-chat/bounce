@@ -19,7 +19,7 @@ type encryptedReceive struct {
 	Type         uint16
 	Payload      []byte
 	EncryptedDEK []byte
-	PublicKey    []byte
+	EncrypterKey []byte
 }
 
 type encryptedCatchUp struct {
@@ -60,7 +60,7 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 
 	decryptedFrames := []frame{}
 	for _, f := range ecu.Frames {
-		kek, err := b.generateKEK(f.PublicKey)
+		kek, err := b.generateKEK(f.EncrypterKey)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -206,7 +206,7 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 			Type:         ef.Type,
 			Payload:      ef.Payload,
 			EncryptedDEK: desiredRecipient.EncryptedDEK,
-			PublicKey:    desiredRecipient.PublicKey,
+			EncrypterKey: desiredRecipient.EncrypterKey,
 		})
 	}
 

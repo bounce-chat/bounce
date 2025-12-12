@@ -136,7 +136,8 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 			}
 
 			recipients = append(recipients, recipient{
-				PublicKey:    currentUser.PublicECDHKey,
+				EncrypterKey: currentUser.PublicECDHKey,
+				PublicKey:    u.PublicECDHKey,
 				EncryptedDEK: gcm.Seal(nil, []byte{}, dek, nil),
 			})
 		}
@@ -225,7 +226,8 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 		}
 
 		recipients = append(recipients, recipient{
-			PublicKey:    currentUser.PublicECDHKey,
+			EncrypterKey: currentUser.PublicECDHKey,
+			PublicKey:    u.PublicECDHKey,
 			EncryptedDEK: gcm.Seal(nil, []byte{}, dek, nil),
 		})
 	}

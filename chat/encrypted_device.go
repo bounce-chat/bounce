@@ -310,6 +310,7 @@ type recipient struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
 	EncryptedFrameID uuid.UUID `msgpack:"-"`
 	PublicKey        []byte
+	EncrypterKey     []byte
 	EncryptedDEK     []byte
 }
 
