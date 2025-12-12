@@ -286,7 +286,7 @@ func (b *Bounce) getUsersInScope(br broadcastable) []user {
 func (b *Bounce) getUsersInGlobalScope(br broadcastable) []user {
 	var users []user
 	if br.getAuthor() == b.currentUserID() {
-		err := b.database.Select("id", "key_encryption_key", "public_ecdsa_key", "encrypted_devices").Find(&users).Error
+		err := b.database.Find(&users).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -294,11 +294,11 @@ func (b *Bounce) getUsersInGlobalScope(br broadcastable) []user {
 		}
 	} else {
 		b.database.
-			Distinct("users.id").
-			Select("users.id", "users.key_encryption_key", "users.public_ecdsa_key", "users.encrypted_devices").
-			Joins("JOIN group_users ON group_users.user_id = users.id").
+			Joins("LEFT JOIN group_users ON group_users.user_id = users.id").
 			Where(
-				"group_users.group_id IN (?)",
+				"(group_users.user_id IS NULL AND (users.id = ? OR users.id = ?)) OR group_users.group_id IN (?)",
+				br.getAuthor(),
+				b.currentUserID(),
 				b.database.
 					Model(&group{}).
 					Distinct().
@@ -351,7 +351,7 @@ func (b *Bounce) getUsersInCustomScope(br broadcastable) []user {
 	for userID, _ := range userIDs {
 		userList = append(userList, userID)
 	}
-	err = b.database.Select("id", "key_encryption_key", "public_ecdsa_key", "encrypted_devices").Where("id IN (?)", userList).Find(&users).Error
+	err = b.database.Where("id IN (?)", userList).Find(&users).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

@@ -85,7 +85,15 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 			sendables: sortableSendables{},
 		}
 		for _, br := range broadcastables {
-			cuForEncryptedDevice.sendables = append(cuForEncryptedDevice.sendables, b.encryptFrameForDevice(br, peer))
+			s := b.encryptFrameForDevice(br, peer)
+			if s != nil {
+				cuForEncryptedDevice.sendables = append(cuForEncryptedDevice.sendables, s)
+			} else {
+				log.WithFields(log.Fields{
+					"id":   br.getID(),
+					"type": br.getType(),
+				}).Warn("excluding broadcastable from catch up that could not be encrypted")
+			}
 		}
 		go b.sendDirect(peer, cuForEncryptedDevice)
 	} else {
