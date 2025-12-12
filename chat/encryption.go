@@ -57,6 +57,12 @@ func (b *Bounce) generateKEK(counterpartyPublicKeyBytes []byte) ([]byte, error) 
 }
 
 func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
+	currentUser, ok := b.currentUser()
+	if !ok {
+		log.Error("cannot send to encrypted devices before user exists")
+		return
+	}
+
 	// Get the users that are in scope
 	users := b.getUsersInScope(br)
 
@@ -130,7 +136,7 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 			}
 
 			recipients = append(recipients, recipient{
-				PublicKey:    u.PublicECDHKey,
+				PublicKey:    currentUser.PublicECDHKey,
 				EncryptedDEK: gcm.Seal(nil, []byte{}, dek, nil),
 			})
 		}
@@ -149,6 +155,12 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 }
 
 func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encryptedFrame {
+	currentUser, ok := b.currentUser()
+	if !ok {
+		log.Error("cannot send to encrypted devices before user exists")
+		return nil
+	}
+
 	// Get the users that are in scope
 	users := b.getUsersInScope(br)
 
@@ -213,7 +225,7 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 		}
 
 		recipients = append(recipients, recipient{
-			PublicKey:    u.PublicECDHKey,
+			PublicKey:    currentUser.PublicECDHKey,
 			EncryptedDEK: gcm.Seal(nil, []byte{}, dek, nil),
 		})
 	}
