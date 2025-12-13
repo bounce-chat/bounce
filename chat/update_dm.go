@@ -248,27 +248,6 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 		}
 	}
 
-	// Make sure this came from a sync device or one of the user's devices
-	srcDevice, exists := b.getDeviceFromAddress(peer)
-	if !exists || !(srcDevice.UserID == b.currentUserID() || srcDevice.UserID == counterparty) {
-		log.WithFields(log.Fields{
-			"peer":        peer,
-			"target_user": counterparty,
-		}).Warn("rejecting update DM settings from out of scope device")
-		return nil, false
-	}
-
-	// Sync scoped messages must come from a sync device
-	if ud.getScope(b.currentUserID()) == scopeSync {
-		if srcDevice.UserID != b.currentUserID() {
-			log.WithFields(log.Fields{
-				"peer":        peer,
-				"target_user": counterparty,
-			}).Warn("rejecting update DM for muting a thread that is not sent by sync device")
-			return nil, false
-		}
-	}
-
 	// If we already have this update, we just mark that this peer has it too, ack it, and return
 	var existingUD updateDM
 	err = b.database.Where("id = ?", ud.ID).First(&existingUD).Error
@@ -284,10 +263,9 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 	err = b.saveAndDisplayUpdateDM(ud)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"user":   xor(ud.Target, b.currentUserID()),
-			"device": srcDevice.ID,
-			"type":   ud.Type,
-			"error":  err.Error(),
+			"user":  xor(ud.Target, b.currentUserID()),
+			"type":  ud.Type,
+			"error": err.Error(),
 		}).Error("error applying update DM")
 		return nil, false
 	}

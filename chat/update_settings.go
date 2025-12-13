@@ -159,15 +159,6 @@ func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 	updateSettingsMutex.Lock()
 	defer updateSettingsMutex.Unlock()
 
-	// Make sure this came from a sync device
-	srcDevice, exists := b.getDeviceFromAddress(peer)
-	if !exists || !(srcDevice.UserID == b.currentUserID()) {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("rejecting update settings from out of scope device")
-		return nil, false
-	}
-
 	// Verify the signature
 	sc, err := b.unpackSignedContainer(payload)
 	if err != nil {
@@ -237,9 +228,8 @@ func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 	err = b.saveUpdateSettings(us)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"device": srcDevice.ID,
-			"type":   us.Type,
-			"error":  err.Error(),
+			"type":  us.Type,
+			"error": err.Error(),
 		}).Error("error applying update DM")
 		return nil, false
 	}

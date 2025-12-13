@@ -142,15 +142,6 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 	fileMutex.Lock()
 	defer fileMutex.Unlock()
 
-	// Look up the device that sent it
-	_, exists := b.getDeviceFromAddress(peer)
-	if !exists {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("ignoring a file sent from an unknown device")
-		return nil, false
-	}
-
 	// Verify and unpack the signed container
 	sc, err := b.unpackSignedContainer(payload)
 	if err != nil {
@@ -170,42 +161,6 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 	f.OriginalPayload = sc.Payload
 	f.Signature = sc.Signature
 	f.Signer = sc.Signer
-
-	// Make sure that the user that created this signed container is the actor
-	if !b.signedByUser(sc, f.Author) {
-		log.WithFields(log.Fields{
-			"peer":           peer,
-			"author":         f.Author,
-			"signing_device": sc.Signer,
-		}).Warn("ignoring file that could not be signature validated")
-		return nil, false
-	}
-
-	// Ignore anything from a blocked user
-	if blockedUser(f.getAuthor()) {
-		log.WithFields(log.Fields{
-			"id":     f.ID,
-			"author": f.getAuthor(),
-		}).Warn("ignoring file from blocked user")
-
-		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
-			if !blockedUser(peerDev.UserID) {
-				go b.sendAck(peer, typeFile, f.ID)
-			}
-		}
-		return nil, false
-	}
-
-	// Make sure the device that signed this message belongs to the author
-	if !b.signedByUser(sc, f.Author) {
-		log.WithFields(log.Fields{
-			"id":     f.ID,
-			"group":  f.Destination,
-			"signer": sc.Signer,
-			"author": f.Author,
-		}).Warn("received file signed by a different user than the author, ignoring")
-		return nil, false
-	}
 
 	// Make sure the signing device was not revoked before creating this
 	var signerDevice device
@@ -229,6 +184,32 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 			"signer": f.Signer,
 		}).Warn("ignoring file signed by revoked device")
 		go b.sendAck(peer, typeFile, f.ID)
+		return nil, false
+	}
+
+	// Make sure the device that signed this message belongs to the author
+	if !b.signedByUser(sc, f.Author) {
+		log.WithFields(log.Fields{
+			"id":     f.ID,
+			"group":  f.Destination,
+			"signer": sc.Signer,
+			"author": f.Author,
+		}).Warn("received file signed by a different user than the author, ignoring")
+		return nil, false
+	}
+
+	// Ignore anything from a blocked user
+	if blockedUser(f.getAuthor()) {
+		log.WithFields(log.Fields{
+			"id":     f.ID,
+			"author": f.getAuthor(),
+		}).Warn("ignoring file from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeFile, f.ID)
+			}
+		}
 		return nil, false
 	}
 

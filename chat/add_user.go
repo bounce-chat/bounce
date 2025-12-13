@@ -255,16 +255,6 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		}
 	}
 
-	// Make sure the device that is sending us this makes sense
-	peerDevice, exists := b.getDeviceFromAddress(peer)
-	if exists && !(b.isSyncDevice(peerDevice) || peerDevice.UserID == counterparty.ID) {
-		log.WithFields(log.Fields{
-			"peer":            peer,
-			"counterparty_id": counterparty.ID,
-		}).Warn("add user came from unexpected device, ignoring")
-		return nil, false
-	}
-
 	// Make sure that none of the devices don't already belong to another user
 	for _, dev := range counterparty.Devices {
 		// Addresses cannot collide
