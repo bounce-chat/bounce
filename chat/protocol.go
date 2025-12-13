@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -85,6 +86,17 @@ func (sss sortableSendables) Swap(i, j int) {
 }
 func (sss sortableSendables) Less(i, j int) bool {
 	return sss[i].getTimestamp() < sss[j].getTimestamp()
+}
+
+type signedFrame struct {
+	Signer          string `msgpack:"-" gorm:"not null"`
+	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
+	Signature       []byte `msgpack:"-" gorm:"not null"`
+}
+
+type cachedEncoding struct {
+	payload      []byte
+	payloadMutex sync.Mutex
 }
 
 func (b *Bounce) getHandlers() map[uint16]func(string, []byte, bool) (broadcastable, bool) {

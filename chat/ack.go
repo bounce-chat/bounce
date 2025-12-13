@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"sync"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -15,9 +14,7 @@ import (
 // a frame, and are sent in response to most frames as well as to indicate that frames offered during a
 // reference offer have already been delivered to a device.
 type ack struct {
-	References   []frameReference
-	payload      []byte
-	payloadMutex sync.Mutex
+	References []frameReference
 }
 
 func (a *ack) getType() uint16 {
@@ -25,19 +22,13 @@ func (a *ack) getType() uint16 {
 }
 
 func (a *ack) getPayload() []byte {
-	a.payloadMutex.Lock()
-	defer a.payloadMutex.Unlock()
-
-	if len(a.payload) == 0 {
-		bytes, err := msgpack.Marshal(a)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal ack")
-		}
-		a.payload = bytes
+	bytes, err := msgpack.Marshal(a)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal ack")
 	}
-	return a.payload
+	return bytes
 }
 
 func (b *Bounce) handleAck(peer string, payload []byte, _ bool) (broadcastable, bool) {

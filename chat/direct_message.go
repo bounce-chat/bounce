@@ -20,6 +20,8 @@ var dmDeliveryNotifications = map[uuid.UUID]chan bool{}
 
 // A direct message is a chat message from one user to another
 type directMessage struct {
+	signedFrame
+	cachedEncoding
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt          int64     `msgpack:"-"`
 	WrittenAt        int64
@@ -31,8 +33,6 @@ type directMessage struct {
 	Text             string
 	FileAttachments  []fileAttachment  `gorm:"foreignKey:MessageID"`
 	ImageAttachments []imageAttachment `gorm:"foreignKey:MessageID"`
-	payload          []byte
-	payloadMutex     sync.Mutex
 }
 
 func (dm *directMessage) BeforeCreate(tx *gorm.DB) error {
@@ -116,13 +116,59 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 	readReceiptMutex.Lock()
 	defer readReceiptMutex.Unlock()
 
-	// Unmarshal the payload
-	var dm directMessage
-	err := msgpack.Unmarshal(payload, &dm)
+	// Verify the signature
+	sc, err := b.unpackSignedContainer(payload)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unpacking signed container for group message")
+		return nil, false
+	}
+	var dm groupMessage
+	err = msgpack.Unmarshal(sc.Payload, &dm)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling direct message")
+		return nil, false
+	}
+	dm.OriginalPayload = sc.Payload
+	dm.Signature = sc.Signature
+	dm.Signer = sc.Signer
+
+	// Make sure the signing device was not revoked before creating this
+	var signerDevice device
+	err = b.database.Select("revoked_at").Where("address = ?", dm.Signer).First(&signerDevice).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"address": dm.Signer,
+			}).Error("signer device not found for direct message")
+			return nil, false
+		} else {
+			log.WithFields(log.Fields{
+				"address": dm.Signer,
+				"error":   err.Error(),
+			}).Fatal("database error looking up signing device")
+		}
+	}
+	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < dm.WrittenAt {
+		log.WithFields(log.Fields{
+			"id":     dm.ID,
+			"signer": dm.Signer,
+		}).Warn("ignoring direct message signed by revoked device")
+		go b.sendAck(peer, typeDirectMessage, dm.ID)
+		return nil, false
+	}
+
+	// Make sure the device that signed this message belongs to the author
+	if !b.signedByUser(sc, dm.Author) {
+		log.WithFields(log.Fields{
+			"id":     dm.ID,
+			"group":  dm.Destination,
+			"signer": sc.Signer,
+			"author": dm.Author,
+		}).Warn("received direct message signed by a different user than the author, ignoring")
 		return nil, false
 	}
 
@@ -147,27 +193,6 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			"id": dm.ID,
 		}).Warn("ignoring empty direct message")
 		go b.sendAck(peer, typeDirectMessage, dm.ID)
-		return nil, false
-	}
-
-	// Look up the device that sent it
-	srcDevice, exists := b.getDeviceFromAddress(peer)
-	if !exists {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("ignoring a direct message sent from an unknown device")
-		return nil, false
-	}
-
-	// Make sure that the peer we received this DM from makes sense, it must either be from a device belonging to the
-	// other user or one of our devices
-	if !b.dmOriginAcceptable(dm, srcDevice) {
-		log.WithFields(log.Fields{
-			"message_id":  dm.ID,
-			"author":      dm.Author,
-			"destination": dm.getDestination(b.currentUserID()),
-			"peer":        peer,
-		}).Warn("ignoring a direct message from an unacceptable peer")
 		return nil, false
 	}
 
@@ -244,76 +269,29 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			FileAttachments:  uiFileAttachments,
 		})
 
-		b.ui.MessageDelivered(dm.ID, srcDevice.UserID)
+		encryptedDeviceCacheMutex.Lock()
+		users, ok := encryptedDeviceCache[peer]
+		encryptedDeviceCacheMutex.Unlock()
+		if ok {
+			for _, userID := range users {
+				b.ui.MessageDelivered(dm.ID, userID)
+			}
+		} else {
+			dev, ok := b.getDeviceFromAddress(peer)
+			if ok {
+				b.ui.MessageDelivered(dm.ID, dev.UserID)
+			} else {
+				log.WithFields(log.Fields{
+					"peer": peer,
+				}).Warn("direct message received from unknown peer")
+			}
+		}
 
 		// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI
 		b.processEarlyReadReceipts(dm.ID, typeDirectMessage, true)
 	}
 
 	return &dm, true
-}
-
-func (b *Bounce) dmOriginAcceptable(dm directMessage, dev device) bool {
-	// If this is a message to ourselves, then the peer must be a device we own
-	if dm.Xor == uuid.Nil {
-		if dm.Author == b.currentUserID() {
-			if dev.UserID == b.currentUserID() {
-				return true
-			} else {
-				log.WithFields(log.Fields{
-					"peer": dev.Address,
-				}).Warn("got self direct message from a device that is not a sync device")
-				return false
-			}
-		} else {
-			// This is a message from a user to themselves, but that user isn't us
-			log.WithFields(log.Fields{
-				"peer":        dev.Address,
-				"author":      dm.Author,
-				"destination": dm.getDestination(b.currentUserID()),
-			}).Warn("received self direct message not intended for us")
-			return false
-		}
-	} else {
-		// Make sure that user actually exists
-		var otherUser user
-		err := b.database.Preload(clause.Associations).First(&otherUser, "id = ?", dm.getDestination(b.currentUserID())).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"user_id": dm.getDestination(b.currentUserID()),
-				}).Error("user not found while validating direct message peer address")
-				return false
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error looking up user")
-			}
-		}
-
-		// If the message came from one of our devices it's allowed
-		if b.isSyncDevice(dev) {
-			return true
-		}
-
-		// If the message didn't come from one of our devices, it must come from one of theirs
-		for _, userDevice := range otherUser.Devices {
-			if userDevice.Address == dev.Address {
-				// Early return as soon as we discover the peer's device with the address
-				// that sent this message
-				return true
-			}
-		}
-
-		// The device that sent this otherwise valid DM was not owned by the indicated counterparty
-		log.WithFields(log.Fields{
-			"message_id":  dm.ID,
-			"author":      dm.Author,
-			"destination": dm.getDestination(b.currentUserID()),
-			"peer":        dev.Address,
-		}).Warn("received direct message from a device not in the allowed device set")
-		return false
-	}
 }
 
 func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]io.ReadCloser, sources map[uuid.UUID]string) {
@@ -486,7 +464,18 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 		return
 	}
 
-	err := b.database.Create(dm).Error
+	var err error
+	dm.OriginalPayload, err = msgpack.Marshal(dm)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling direct message")
+	}
+	sc := b.createSignedContainer(dm.OriginalPayload)
+	dm.Signature = sc.Signature
+	dm.Signer = sc.Signer
+
+	err = b.database.Create(dm).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

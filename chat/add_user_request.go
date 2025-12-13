@@ -21,8 +21,6 @@ var addUserRequestMutex sync.Mutex
 type addUserRequest struct {
 	Secret        string
 	RequesterUser []byte
-	payload       []byte
-	payloadMutex  sync.Mutex
 }
 
 func (aur *addUserRequest) getType() uint16 {
@@ -30,19 +28,13 @@ func (aur *addUserRequest) getType() uint16 {
 }
 
 func (aur *addUserRequest) getPayload() []byte {
-	aur.payloadMutex.Lock()
-	defer aur.payloadMutex.Unlock()
-
-	if len(aur.payload) == 0 {
-		bytes, err := msgpack.Marshal(aur)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal add user request")
-		}
-		aur.payload = bytes
+	bytes, err := msgpack.Marshal(aur)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal add user request")
 	}
-	return aur.payload
+	return bytes
 }
 
 func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broadcastable, bool) {

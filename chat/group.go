@@ -42,8 +42,6 @@ type group struct {
 	TypingIndicatorsOverridden bool      `msgpack:"-"`
 	TypingIndicatorsEnabled    bool      `msgpack:"-"`
 	DeliveryRecordsClearedFor  uuid.UUID `msgpack:"-"`
-	payload                    []byte
-	payloadMutex               sync.Mutex
 }
 
 func (g *group) BeforeCreate(tx *gorm.DB) error {

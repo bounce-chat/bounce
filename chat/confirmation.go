@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +15,7 @@ import (
 // This is used to establish which update groups are to be applied to a group in the case of a conflict
 // and reduce the risk of a malicious former admin manipulating the update history.
 type confirmation struct {
+	cachedEncoding
 	ID            uuid.UUID `gorm:"type:uuid;primary_key;"`
 	UpdateGroupID uuid.UUID
 	Destination   uuid.UUID `msgpack:"-"`
@@ -24,8 +24,6 @@ type confirmation struct {
 	SigningDevice string
 	Signature     []byte
 	Timestamp     int64
-	payload       []byte
-	payloadMutex  sync.Mutex
 }
 
 func (c *confirmation) BeforeCreate(tx *gorm.DB) error {

@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"sync"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -17,14 +16,11 @@ import (
 // marshalled group that is contained in this structure.  This prevents any modification to the group during broadcast, as future frames
 // are referencing this group via a hash of it's orignal state.
 type groupCreation struct {
-	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Timestamp       int64
-	Data            []byte `gorm:"not null"` // Original group structure, msgpacked
-	Signer          string `msgpack:"-" gorm:"not null"`
-	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
-	Signature       []byte `msgpack:"-" gorm:"not null"`
-	payload         []byte
-	payloadMutex    sync.Mutex
+	signedFrame
+	cachedEncoding
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Timestamp int64
+	Data      []byte `gorm:"not null"` // Original group structure, msgpacked
 }
 
 func (gc *groupCreation) BeforeCreate(tx *gorm.DB) error {

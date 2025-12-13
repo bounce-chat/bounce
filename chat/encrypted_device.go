@@ -320,14 +320,13 @@ func (r *recipient) BeforeCreate(tx *gorm.DB) error {
 }
 
 type encryptedFrame struct {
-	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Type         uint16
-	Timestamp    int64
-	Payload      []byte
-	DeleteAt     int64
-	Recipients   []recipient
-	payload      []byte
-	payloadMutex sync.Mutex
+	cachedEncoding
+	ID         uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Type       uint16
+	Timestamp  int64
+	Payload    []byte
+	DeleteAt   int64
+	Recipients []recipient
 }
 
 func (ef encryptedFrame) getID() uuid.UUID {

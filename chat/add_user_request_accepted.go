@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,8 +15,6 @@ import (
 type addUserRequestAccepted struct {
 	OfferUser      []byte
 	OfferSignature []byte // signature of the requester user by the offer user's device
-	payload        []byte
-	payloadMutex   sync.Mutex
 }
 
 func (aura *addUserRequestAccepted) getType() uint16 {
@@ -25,19 +22,13 @@ func (aura *addUserRequestAccepted) getType() uint16 {
 }
 
 func (aura *addUserRequestAccepted) getPayload() []byte {
-	aura.payloadMutex.Lock()
-	defer aura.payloadMutex.Unlock()
-
-	if len(aura.payload) == 0 {
-		bytes, err := msgpack.Marshal(aura)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal add user request accepted")
-		}
-		aura.payload = bytes
+	bytes, err := msgpack.Marshal(aura)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal add user request accepted")
 	}
-	return aura.payload
+	return bytes
 }
 
 func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catchUp bool) (broadcastable, bool) {

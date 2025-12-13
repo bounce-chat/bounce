@@ -37,10 +37,8 @@ type frame struct {
 
 // A catch up is a frame that is used to transport a set of frames that are chronologically ordered
 type catchUp struct {
-	Frames       []frame
-	sendables    sortableSendables
-	payload      []byte
-	payloadMutex sync.Mutex
+	Frames    []frame
+	sendables sortableSendables
 }
 
 func (cu *catchUp) getType() uint16 {
@@ -48,24 +46,18 @@ func (cu *catchUp) getType() uint16 {
 }
 
 func (cu *catchUp) getPayload() []byte {
-	cu.payloadMutex.Lock()
-	defer cu.payloadMutex.Unlock()
-
-	if len(cu.payload) == 0 {
-		sort.Sort(cu.sendables)
-		for _, br := range cu.sendables {
-			cu.Frames = append(cu.Frames, frame{ID: br.getID(), Type: br.getType(), Payload: br.getPayload()})
-		}
-
-		bytes, err := msgpack.Marshal(cu)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal catch up")
-		}
-		cu.payload = bytes
+	sort.Sort(cu.sendables)
+	for _, br := range cu.sendables {
+		cu.Frames = append(cu.Frames, frame{ID: br.getID(), Type: br.getType(), Payload: br.getPayload()})
 	}
-	return cu.payload
+
+	bytes, err := msgpack.Marshal(cu)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal catch up")
+	}
+	return bytes
 }
 
 func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastable, bool) {

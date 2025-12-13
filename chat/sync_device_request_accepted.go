@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,8 +18,6 @@ type syncDeviceRequestAccepted struct {
 	KeyEncryptionKey []byte
 	Settings         *profileSettings
 	References       bool // TODO: just send the actual offer in here?
-	payload          []byte
-	payloadMutex     sync.Mutex
 }
 
 func (sdra *syncDeviceRequestAccepted) getType() uint16 {
@@ -28,19 +25,13 @@ func (sdra *syncDeviceRequestAccepted) getType() uint16 {
 }
 
 func (sdra *syncDeviceRequestAccepted) getPayload() []byte {
-	sdra.payloadMutex.Lock()
-	defer sdra.payloadMutex.Unlock()
-
-	if len(sdra.payload) == 0 {
-		bytes, err := msgpack.Marshal(sdra)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal sync device request accepted")
-		}
-		sdra.payload = bytes
+	bytes, err := msgpack.Marshal(sdra)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal sync device request accepted")
 	}
-	return sdra.payload
+	return bytes
 }
 
 func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, catchUp bool) (broadcastable, bool) {

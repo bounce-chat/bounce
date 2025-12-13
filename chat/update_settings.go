@@ -30,12 +30,12 @@ const updateSettingsTypeSetDefaultDMRetention = uint16(7)
 var errInvalidPayloadValue = errors.New("invalid payload value")
 
 type updateSettings struct {
-	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Type         uint16
-	Data         []byte
-	Timestamp    int64
-	payload      []byte
-	payloadMutex sync.Mutex
+	signedFrame
+	cachedEncoding
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Type      uint16
+	Data      []byte
+	Timestamp int64
 }
 
 func (us *updateSettings) BeforeCreate(tx *gorm.DB) error {
@@ -78,7 +78,7 @@ func (us *updateSettings) getPayload() []byte {
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal update dm settings")
+			}).Fatal("cannot msgpack marshal update settings")
 		}
 		us.payload = bytes
 	}
@@ -86,7 +86,8 @@ func (us *updateSettings) getPayload() []byte {
 }
 
 func (us *updateSettings) getAuthor() uuid.UUID {
-	return uuid.Nil // TODO us.Actor
+	// Author isn't needed for these and it can only ever be us
+	return uuid.Nil
 }
 
 func (us *updateSettings) getTimestamp() int64 {
@@ -167,13 +168,57 @@ func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 		return nil, false
 	}
 
-	// Unmarshall it
-	var us updateSettings
-	err := msgpack.Unmarshal(payload, &us)
+	// Verify the signature
+	sc, err := b.unpackSignedContainer(payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error unmarshalling update ettings")
+		}).Error("error unpacking signed container for group message")
+		return nil, false
+	}
+	var us updateSettings
+	err = msgpack.Unmarshal(sc.Payload, &us)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling update settings")
+		return nil, false
+	}
+	us.OriginalPayload = sc.Payload
+	us.Signature = sc.Signature
+	us.Signer = sc.Signer
+
+	// Make sure the signing device was not revoked before creating this
+	var signerDevice device
+	err = b.database.Select("revoked_at").Where("address = ?", us.Signer).First(&signerDevice).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"address": us.Signer,
+			}).Error("signer device not found for update settings")
+			return nil, false
+		} else {
+			log.WithFields(log.Fields{
+				"address": us.Signer,
+				"error":   err.Error(),
+			}).Fatal("database error looking up signing device")
+		}
+	}
+	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < us.Timestamp {
+		log.WithFields(log.Fields{
+			"id":     us.ID,
+			"signer": us.Signer,
+		}).Warn("ignoring update settings signed by revoked device")
+		go b.sendAck(peer, typeUpdateSettings, us.ID)
+		return nil, false
+	}
+
+	// Make sure the device that signed this message belongs to the author
+	if !b.signedByUser(sc, b.currentUserID()) {
+		log.WithFields(log.Fields{
+			"id":     us.ID,
+			"signer": us.Signer,
+		}).Warn("received update settings signed by a different user than the author, ignoring")
 		return nil, false
 	}
 
@@ -213,6 +258,17 @@ func (b *Bounce) saveUpdateSettings(us updateSettings) error {
 	if err != nil {
 		return err
 	}
+
+	// Sign it
+	us.OriginalPayload, err = msgpack.Marshal(&us)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling update settings")
+	}
+	sc := b.createSignedContainer(us.OriginalPayload)
+	us.Signature = sc.Signature
+	us.Signer = sc.Signer
 
 	// Save the update
 	err = b.database.Create(&us).Error

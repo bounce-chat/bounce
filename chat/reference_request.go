@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"sync"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -14,9 +13,7 @@ import (
 // A reference request is sent in response to a reference offer if the offer contained frame references that
 // are needed by the device
 type referenceRequest struct {
-	References   []frameReference
-	payload      []byte
-	payloadMutex sync.Mutex
+	References []frameReference
 }
 
 func (rr *referenceRequest) getType() uint16 {
@@ -24,19 +21,13 @@ func (rr *referenceRequest) getType() uint16 {
 }
 
 func (rr *referenceRequest) getPayload() []byte {
-	rr.payloadMutex.Lock()
-	defer rr.payloadMutex.Unlock()
-
-	if len(rr.payload) == 0 {
-		bytes, err := msgpack.Marshal(rr)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal reference request")
-		}
-		rr.payload = bytes
+	bytes, err := msgpack.Marshal(rr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal reference request")
 	}
-	return rr.payload
+	return bytes
 }
 
 func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (broadcastable, bool) {

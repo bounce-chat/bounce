@@ -19,6 +19,7 @@ var handleAddUsersMutex sync.Mutex
 // An addUser frame contains proof that two users became friends, where one of the users is us.  It is created as part
 // of the final step in adding a user over the wire.
 type addUser struct {
+	cachedEncoding
 	ID                 uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Xor                uuid.UUID
 	Timestamp          int64
@@ -28,8 +29,6 @@ type addUser struct {
 	RequesterDevice    string
 	OfferSignature     []byte
 	RequesterSignature []byte
-	payload            []byte
-	payloadMutex       sync.Mutex
 }
 
 func (au *addUser) BeforeCreate(tx *gorm.DB) error {

@@ -3,7 +3,6 @@ package chat
 import (
 	"encoding/binary"
 	"errors"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -62,22 +61,19 @@ var errMustBeInvitedToRespond = errors.New("user must have active invite to grou
 // Some settings, like retention and membership, must be observed by all participants of the group, where others like notification are only
 // sent to sync devices.  The data field of the structure contains different data depending on the type of update.
 type updateGroup struct {
-	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Actor           uuid.UUID
-	Target          uuid.UUID
-	Timestamp       int64
-	Type            uint16
-	Data            []byte
-	CustomScope     uuid.UUID `msgpack:"-"`
-	Confirmations   []confirmation
-	Applied         bool   `msgpack:"-"`
-	Notified        bool   `msgpack:"-"`
-	Seen            bool   `msgpack:"-"`
-	Signer          string `msgpack:"-" gorm:"not null"`
-	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
-	Signature       []byte `msgpack:"-" gorm:"not null"`
-	payload         []byte
-	payloadMutex    sync.Mutex
+	signedFrame
+	cachedEncoding
+	ID            uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Actor         uuid.UUID
+	Target        uuid.UUID
+	Timestamp     int64
+	Type          uint16
+	Data          []byte
+	CustomScope   uuid.UUID `msgpack:"-"`
+	Confirmations []confirmation
+	Applied       bool `msgpack:"-"`
+	Notified      bool `msgpack:"-"`
+	Seen          bool `msgpack:"-"`
 }
 
 func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {

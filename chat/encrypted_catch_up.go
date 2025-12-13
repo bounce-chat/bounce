@@ -5,7 +5,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"errors"
-	"sync"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -23,9 +22,7 @@ type encryptedReceive struct {
 }
 
 type encryptedCatchUp struct {
-	Frames       []encryptedReceive
-	payload      []byte
-	payloadMutex sync.Mutex
+	Frames []encryptedReceive
 }
 
 func (ecu *encryptedCatchUp) getType() uint16 {
@@ -33,19 +30,13 @@ func (ecu *encryptedCatchUp) getType() uint16 {
 }
 
 func (ecu *encryptedCatchUp) getPayload() []byte {
-	ecu.payloadMutex.Lock()
-	defer ecu.payloadMutex.Unlock()
-
-	if len(ecu.payload) == 0 {
-		bytes, err := msgpack.Marshal(ecu)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal catch up")
-		}
-		ecu.payload = bytes
+	bytes, err := msgpack.Marshal(ecu)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal catch up")
 	}
-	return ecu.payload
+	return bytes
 }
 
 func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (broadcastable, bool) {

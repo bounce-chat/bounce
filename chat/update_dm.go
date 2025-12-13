@@ -54,15 +54,15 @@ var updateDMMutex sync.Mutex
 // settings are only sent to sync devices.  The data field of the structure contains different data depending on
 // the type of update.
 type updateDM struct {
-	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Actor        uuid.UUID
-	Target       uuid.UUID // XOR of two users in the DM
-	Timestamp    int64
-	Seen         bool `msgpack:"-"`
-	Type         uint16
-	Data         []byte
-	payload      []byte
-	payloadMutex sync.Mutex
+	signedFrame
+	cachedEncoding
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Actor     uuid.UUID
+	Target    uuid.UUID // XOR of two users in the DM
+	Timestamp int64
+	Seen      bool `msgpack:"-"`
+	Type      uint16
+	Data      []byte
 }
 
 func (ud *updateDM) BeforeCreate(tx *gorm.DB) error {
@@ -176,13 +176,58 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 	updateDMMutex.Lock()
 	defer updateDMMutex.Unlock()
 
-	// Unmarshall it
-	var ud updateDM
-	err := msgpack.Unmarshal(payload, &ud)
+	// Verify the signature
+	sc, err := b.unpackSignedContainer(payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error unmarshalling update DM settings")
+		}).Error("error unpacking signed container for group message")
+		return nil, false
+	}
+	var ud updateDM
+	err = msgpack.Unmarshal(sc.Payload, &ud)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling update dm")
+		return nil, false
+	}
+	ud.OriginalPayload = sc.Payload
+	ud.Signature = sc.Signature
+	ud.Signer = sc.Signer
+
+	// Make sure the signing device was not revoked before creating this
+	var signerDevice device
+	err = b.database.Select("revoked_at").Where("address = ?", ud.Signer).First(&signerDevice).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"address": ud.Signer,
+			}).Error("signer device not found for update device")
+			return nil, false
+		} else {
+			log.WithFields(log.Fields{
+				"address": ud.Signer,
+				"error":   err.Error(),
+			}).Fatal("database error looking up signing device")
+		}
+	}
+	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < ud.Timestamp {
+		log.WithFields(log.Fields{
+			"id":     ud.ID,
+			"signer": ud.Signer,
+		}).Warn("ignoring direct message signed by revoked device")
+		go b.sendAck(peer, typeUpdateDM, ud.ID)
+		return nil, false
+	}
+
+	// Make sure the device that signed this message belongs to the author
+	if !b.signedByUser(sc, ud.Actor) {
+		log.WithFields(log.Fields{
+			"id":     ud.ID,
+			"signer": sc.Signer,
+			"author": ud.Actor,
+		}).Warn("received update DM signed by a different user than the author, ignoring")
 		return nil, false
 	}
 
@@ -380,6 +425,16 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 						Data:      payload,
 					}
 
+					set.OriginalPayload, err = msgpack.Marshal(&set)
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Fatal("error marshalling update DM")
+					}
+					sc := b.createSignedContainer(set.OriginalPayload)
+					set.Signature = sc.Signature
+					set.Signer = sc.Signer
+
 					err = b.database.Create(&set).Error
 					if err != nil {
 						log.WithFields(log.Fields{
@@ -408,6 +463,16 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 					Type:      updateDMTypeOfferRetention,
 					Data:      payload,
 				}
+
+				offer.OriginalPayload, err = msgpack.Marshal(&offer)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("error marshalling update DM")
+				}
+				sc := b.createSignedContainer(offer.OriginalPayload)
+				offer.Signature = sc.Signature
+				offer.Signer = sc.Signer
 
 				err = b.database.Create(&offer).Error
 				if err != nil {
@@ -494,6 +559,16 @@ func (b *Bounce) saveAndDisplayUpdateDM(ud updateDM) error {
 	if err != nil {
 		return err
 	}
+
+	ud.OriginalPayload, err = msgpack.Marshal(&ud)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling update DM")
+	}
+	sc := b.createSignedContainer(ud.OriginalPayload)
+	ud.Signature = sc.Signature
+	ud.Signer = sc.Signer
 
 	// Save the update DM
 	err = b.database.Create(&ud).Error

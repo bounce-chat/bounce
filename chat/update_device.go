@@ -27,17 +27,14 @@ var errDeviceAlreadyRevoked = errors.New("device has already been revoked")
 var errCannotRevokeLastDevice = errors.New("cannot revoke last device")
 
 type updateDevice struct {
-	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Target          uuid.UUID
-	Type            uint16
-	Data            []byte
-	Timestamp       int64
-	Author          uuid.UUID `msgpack:"-"`
-	Signer          string    `msgpack:"-" gorm:"not null"`
-	OriginalPayload []byte    `msgpack:"-" gorm:"not null"`
-	Signature       []byte    `msgpack:"-" gorm:"not null"`
-	payload         []byte
-	payloadMutex    sync.Mutex
+	signedFrame
+	cachedEncoding
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Target    uuid.UUID
+	Type      uint16
+	Data      []byte
+	Timestamp int64
+	Author    uuid.UUID `msgpack:"-"`
 }
 
 func (ud *updateDevice) BeforeCreate(tx *gorm.DB) error {

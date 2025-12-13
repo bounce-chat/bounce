@@ -18,6 +18,8 @@ var gmDeliveryNotifications = map[uuid.UUID]chan bool{}
 
 // A group message is sent from a member of a group to a group
 type groupMessage struct {
+	signedFrame
+	cachedEncoding
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt          int64     `msgpack:"-"`
 	WrittenAt        int64
@@ -29,11 +31,6 @@ type groupMessage struct {
 	Text             string
 	FileAttachments  []fileAttachment  `gorm:"foreignKey:MessageID"`
 	ImageAttachments []imageAttachment `gorm:"foreignKey:MessageID"`
-	Signer           string            `msgpack:"-" gorm:"not null"`
-	OriginalPayload  []byte            `msgpack:"-" gorm:"not null"`
-	Signature        []byte            `msgpack:"-" gorm:"not null"`
-	payload          []byte
-	payloadMutex     sync.Mutex
 }
 
 func (gm *groupMessage) BeforeCreate(tx *gorm.DB) error {
@@ -117,15 +114,6 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 	defer groupMutex.Unlock()
 	readReceiptMutex.Lock()
 	defer readReceiptMutex.Unlock()
-
-	// Look up the device that sent it
-	srcDevice, exists := b.getDeviceFromAddress(peer)
-	if !exists {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("ignoring a group message sent from an unknown device")
-		return nil, false
-	}
 
 	// Verify and unpack the signed container
 	sc, err := b.unpackSignedContainer(payload)
@@ -247,16 +235,6 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 		return nil, false
 	}
 
-	// Make sure the peer that delivered this message is part of the group
-	if !gs.isMember(srcDevice.UserID) {
-		log.WithFields(log.Fields{
-			"user":   srcDevice.UserID,
-			"device": srcDevice.ID,
-			"group":  gm.Destination,
-		}).Warn("device sent a message for a group that the device's user is not a part of, ignoring")
-		return nil, false
-	}
-
 	// Make sure the user has permission to post
 	if gs.postingRestricted && !gs.isAdmin(gm.Author) {
 		log.WithFields(log.Fields{
@@ -318,7 +296,24 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 			ImageAttachments: uiImageAttachments,
 			FileAttachments:  uiFileAttachments,
 		})
-		b.ui.MessageDelivered(gm.ID, srcDevice.UserID)
+
+		encryptedDeviceCacheMutex.Lock()
+		users, ok := encryptedDeviceCache[peer]
+		encryptedDeviceCacheMutex.Unlock()
+		if ok {
+			for _, userID := range users {
+				b.ui.MessageDelivered(gm.ID, userID)
+			}
+		} else {
+			dev, ok := b.getDeviceFromAddress(peer)
+			if ok {
+				b.ui.MessageDelivered(gm.ID, dev.UserID)
+			} else {
+				log.WithFields(log.Fields{
+					"peer": peer,
+				}).Warn("direct message received from unknown peer")
+			}
+		}
 
 		// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI
 		b.processEarlyReadReceipts(gm.ID, typeGroupMessage, true)

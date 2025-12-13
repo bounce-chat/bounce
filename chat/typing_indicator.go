@@ -45,16 +45,13 @@ type typingStatus struct {
 // A typing indicator is sent when someone is typing into an entry widget in the UI, to communicate to the other members
 // of the thread that a user is currently typing
 type typingIndicator struct {
-	ID              uuid.UUID
-	Thread          uuid.UUID
-	MessageType     uint16
-	Author          uuid.UUID
-	timestamp       int64  // Defined when received and not sent over the wire
-	Signer          string `msgpack:"-"`
-	OriginalPayload []byte `msgpack:"-"`
-	Signature       []byte `msgpack:"-"`
-	payload         []byte
-	payloadMutex    sync.Mutex
+	signedFrame
+	cachedEncoding
+	ID          uuid.UUID
+	Thread      uuid.UUID
+	MessageType uint16
+	Author      uuid.UUID
+	timestamp   int64 // Defined when received and not sent over the wire
 }
 
 func (ti *typingIndicator) getID() uuid.UUID {

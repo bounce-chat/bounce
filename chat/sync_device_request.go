@@ -22,10 +22,8 @@ var waitingForInitialSyncFrom string
 // A sync device request is our request to join an existing profile.  We do this by sending the secret that was present in an offer,
 // as well as our signature of the address of the device that made the offer.
 type syncDeviceRequest struct {
-	Signature    []byte
-	Secret       string
-	payload      []byte
-	payloadMutex sync.Mutex
+	Signature []byte
+	Secret    string
 }
 
 func (sdr *syncDeviceRequest) getType() uint16 {
@@ -33,19 +31,13 @@ func (sdr *syncDeviceRequest) getType() uint16 {
 }
 
 func (sdr *syncDeviceRequest) getPayload() []byte {
-	sdr.payloadMutex.Lock()
-	defer sdr.payloadMutex.Unlock()
-
-	if len(sdr.payload) == 0 {
-		bytes, err := msgpack.Marshal(sdr)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal sync device request")
-		}
-		sdr.payload = bytes
+	bytes, err := msgpack.Marshal(sdr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal sync device request")
 	}
-	return sdr.payload
+	return bytes
 }
 
 func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bool) (broadcastable, bool) {

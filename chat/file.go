@@ -46,27 +46,24 @@ var errChunkDataNotFound = errors.New("chunk data not found")
 var errInvalidImage = errors.New("invalid image data")
 
 type file struct {
-	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name            string
-	Type            int
-	AttachedTo      uuid.UUID
-	Hash            string
-	Size            int64
-	ChunkSize       int
-	HashList        string
-	Path            string `msgpack:"-" gorm:"not null"`
-	Wanted          bool   `msgpack:"-"`
-	Downloaded      bool   `msgpack:"-"`
-	Scope           int
-	Destination     uuid.UUID
-	Author          uuid.UUID
-	Timestamp       int64
-	Chunks          []chunk `msgpack:"-"`
-	Signer          string  `msgpack:"-" gorm:"not null"`
-	OriginalPayload []byte  `msgpack:"-" gorm:"not null"`
-	Signature       []byte  `msgpack:"-" gorm:"not null"`
-	payload         []byte
-	payloadMutex    sync.Mutex
+	signedFrame
+	cachedEncoding
+	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name        string
+	Type        int
+	AttachedTo  uuid.UUID
+	Hash        string
+	Size        int64
+	ChunkSize   int
+	HashList    string
+	Path        string `msgpack:"-" gorm:"not null"`
+	Wanted      bool   `msgpack:"-"`
+	Downloaded  bool   `msgpack:"-"`
+	Scope       int
+	Destination uuid.UUID
+	Author      uuid.UUID
+	Timestamp   int64
+	Chunks      []chunk `msgpack:"-"`
 }
 
 func (f *file) AfterDelete(tx *gorm.DB) error {
@@ -309,6 +306,8 @@ func (f *file) embedded() bool {
 }
 
 type chunkOffer struct {
+	signedFrame
+	cachedEncoding
 	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Author          uuid.UUID
 	FileID          uuid.UUID
@@ -317,12 +316,7 @@ type chunkOffer struct {
 	Timestamp       int64
 	Scope           int
 	Destination     uuid.UUID
-	LastRequestTime int64  `msgpack:"-"`
-	Signer          string `msgpack:"-" gorm:"not null"`
-	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
-	Signature       []byte `msgpack:"-" gorm:"not null"`
-	payload         []byte
-	payloadMutex    sync.Mutex
+	LastRequestTime int64 `msgpack:"-"`
 }
 
 func (co *chunkOffer) getID() uuid.UUID {
@@ -468,9 +462,8 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) (br
 }
 
 type chunkRequest struct {
-	Hash         string
-	payload      []byte
-	payloadMutex sync.Mutex
+	cachedEncoding
+	Hash string
 }
 
 func (cr *chunkRequest) getType() uint16 {
@@ -666,14 +659,13 @@ func (b *Bounce) peerCanHaveChunk(peer, hash string) bool {
 }
 
 type chunk struct {
-	ID           uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
-	FileID       uuid.UUID `msgpack:"-"`
-	Hash         string    `msgpack:"-"`
-	Index        int       `msgpack:"-"`
-	Downloaded   bool      `msgpack:"-"`
-	Data         []byte    `gorm:"-"`
-	payload      []byte
-	payloadMutex sync.Mutex
+	cachedEncoding
+	ID         uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
+	FileID     uuid.UUID `msgpack:"-"`
+	Hash       string    `msgpack:"-"`
+	Index      int       `msgpack:"-"`
+	Downloaded bool      `msgpack:"-"`
+	Data       []byte    `gorm:"-"`
 }
 
 func (c *chunk) getType() uint16 {

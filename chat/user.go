@@ -51,8 +51,6 @@ type user struct {
 	Devices                    []device
 	Groups                     []group          `gorm:"many2many:group_users;" msgpack:"-"`
 	ProfileSettings            *profileSettings `msgpack:"-"`
-	payload                    []byte
-	payloadMutex               sync.Mutex
 }
 
 func (u *user) BeforeCreate(tx *gorm.DB) error {
