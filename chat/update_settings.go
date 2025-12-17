@@ -74,11 +74,15 @@ func (us *updateSettings) getPayload() []byte {
 	defer us.payloadMutex.Unlock()
 
 	if len(us.payload) == 0 {
-		bytes, err := msgpack.Marshal(us)
+		bytes, err := msgpack.Marshal(signedContainer{
+			Payload:   us.OriginalPayload,
+			Signature: us.Signature,
+			Signer:    us.Signer,
+		})
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal update settings")
+			}).Fatal("error marshalling update settings' signed container")
 		}
 		us.payload = bytes
 	}

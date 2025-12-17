@@ -87,11 +87,15 @@ func (dm *directMessage) getPayload() []byte {
 	defer dm.payloadMutex.Unlock()
 
 	if len(dm.payload) == 0 {
-		bytes, err := msgpack.Marshal(dm)
+		bytes, err := msgpack.Marshal(signedContainer{
+			Payload:   dm.OriginalPayload,
+			Signature: dm.Signature,
+			Signer:    dm.Signer,
+		})
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal direct message")
+			}).Fatal("error marshalling direct message's signed container")
 		}
 		dm.payload = bytes
 	}
@@ -121,10 +125,10 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error unpacking signed container for group message")
+		}).Error("error unpacking signed container for direct message")
 		return nil, false
 	}
-	var dm groupMessage
+	var dm directMessage
 	err = msgpack.Unmarshal(sc.Payload, &dm)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -165,7 +169,6 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 	if !b.signedByUser(sc, dm.Author) {
 		log.WithFields(log.Fields{
 			"id":     dm.ID,
-			"group":  dm.Destination,
 			"signer": sc.Signer,
 			"author": dm.Author,
 		}).Warn("received direct message signed by a different user than the author, ignoring")

@@ -105,11 +105,15 @@ func (ud *updateDM) getPayload() []byte {
 	defer ud.payloadMutex.Unlock()
 
 	if len(ud.payload) == 0 {
-		bytes, err := msgpack.Marshal(ud)
+		bytes, err := msgpack.Marshal(signedContainer{
+			Payload:   ud.OriginalPayload,
+			Signature: ud.Signature,
+			Signer:    ud.Signer,
+		})
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal update dm settings")
+			}).Fatal("error marshalling update direct message's signed container")
 		}
 		ud.payload = bytes
 	}
