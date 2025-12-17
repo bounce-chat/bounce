@@ -1470,6 +1470,31 @@ func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
 			go b.sendReferences(addr)
 		}
 	}
+
+	for _, userID := range append(gs.users, gs.invites...) {
+		var u user
+		err = b.database.Select("encrypted_devices").Take(&u, "id = ?", userID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"user_id": userID,
+				}).Error("user not found in group")
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error getting encrypted devices from user")
+			}
+		}
+		if len(u.EncryptedDevices) > 0 {
+			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+				rd := b.getRemoteDevice(addr)
+				if rd.connectedSockets.Load() > 1 {
+					go b.sendReferences(addr)
+				}
+			}
+		}
+	}
 }
 
 func (b *Bounce) cleanupRolledBackInvite(groupID uuid.UUID) {

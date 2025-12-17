@@ -5,6 +5,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"errors"
+	"sort"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -19,11 +20,24 @@ type encryptedReceive struct {
 	Payload      []byte
 	EncryptedDEK []byte
 	EncrypterKey []byte
+	timestamp    int64
+}
+
+type sortableEncryptedReceives []encryptedReceive
+
+func (ser sortableEncryptedReceives) Len() int {
+	return len(ser)
+}
+func (ser sortableEncryptedReceives) Swap(i, j int) {
+	ser[i], ser[j] = ser[j], ser[i]
+}
+func (ser sortableEncryptedReceives) Less(i, j int) bool {
+	return ser[i].timestamp < ser[j].timestamp
 }
 
 type encryptedCatchUp struct {
 	DEKs   []discloseDEK
-	Frames []encryptedReceive
+	Frames sortableEncryptedReceives
 }
 
 func (ecu *encryptedCatchUp) getType() uint16 {
@@ -280,8 +294,11 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 			Payload:      ef.Payload,
 			EncryptedDEK: desiredRecipient.EncryptedDEK,
 			EncrypterKey: desiredRecipient.EncrypterKey,
+			timestamp:    ef.Timestamp,
 		})
 	}
+
+	sort.Sort(ecu.Frames)
 
 	return ecu
 }
