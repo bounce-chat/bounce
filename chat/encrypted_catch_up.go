@@ -83,7 +83,7 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 			continue
 		}
 
-		err = b.database.Create(&dataEncryptionKey{ID: dd.ID, Key: dek}).Error
+		err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&dataEncryptionKey{ID: dd.ID, Key: dek}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -127,7 +127,7 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 		}
 
 		if storeDEK(f.Type) {
-			err = b.database.Create(&dataEncryptionKey{ID: f.ID, Key: dek}).Error
+			err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&dataEncryptionKey{ID: f.ID, Key: dek}).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
