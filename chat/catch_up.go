@@ -77,7 +77,11 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 
 	if b.encrypted {
 		for _, fr := range cu.Frames {
-			b.handleEncryptedFrame(peer, fr.Payload, true)
+			if fr.Type == typeAppendRecipient {
+				b.handleAppendRecipient(peer, fr.Payload, true)
+			} else {
+				b.handleEncryptedFrame(peer, fr.Payload, true)
+			}
 		}
 		return nil, false
 	}

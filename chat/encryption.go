@@ -30,6 +30,24 @@ type encryptedSyncDevice struct {
 	LastSeen  int64
 }
 
+type dataEncryptionKey struct {
+	ID  uuid.UUID
+	Key []byte
+}
+
+type discloseDEK struct {
+	ID           uuid.UUID
+	EncryptedDEK []byte
+	EncrypterKey []byte
+}
+
+func storeDEK(t uint16) bool {
+	if t == typeGroupCreation || t == typeUpdateGroup {
+		return true
+	}
+	return false
+}
+
 func (b *Bounce) generateKEK(counterpartyPublicKeyBytes []byte) ([]byte, error) {
 	curve := ecdh.X25519()
 
@@ -91,6 +109,15 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 	// Encrypt the frame with a random key
 	dek := make([]byte, 32)
 	rand.Read(dek)
+	if storeDEK(br.getType()) {
+		err := b.database.Create(&dataEncryptionKey{ID: br.getID(), Key: dek}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error saving data encryption key")
+		}
+	}
+
 	dekBlock, err := aes.NewCipher(dek)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -182,6 +209,15 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 	// Encrypt the frame with a random key
 	dek := make([]byte, 32)
 	rand.Read(dek)
+	if storeDEK(br.getType()) {
+		err := b.database.Create(&dataEncryptionKey{ID: br.getID(), Key: dek}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error saving data encryption key")
+		}
+	}
+
 	dekBlock, err := aes.NewCipher(dek)
 	if err != nil {
 		log.WithFields(log.Fields{

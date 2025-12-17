@@ -280,6 +280,7 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 		references = append(references, b.getUpdateSettingsToOffer(address, userID)...)
 		references = append(references, b.getFilesToOffer(address, userID)...)
 		references = append(references, b.getChunkOffersToOffer(address, userID)...)
+		references = append(references, b.getAppendRecipientsToOffer(address, userID)...)
 	}
 
 	return &referenceOffer{
@@ -301,6 +302,7 @@ func (b *Bounce) getEncryptedReferenceOfferFor(address string, publicKey []byte)
 	for _, ef := range encryptedFrames {
 		references = append(references, frameReference{FrameID: ef.ID, Type: ef.Type})
 	}
+
 	return &referenceOffer{
 		ID:         uuid.New(),
 		References: references,
@@ -1185,6 +1187,39 @@ func (b *Bounce) getChunkOffersToOffer(address string, userID uuid.UUID) []frame
 	return references
 }
 
+func (b *Bounce) getAppendRecipientsToOffer(address string, userID uuid.UUID) []frameReference {
+	references := []frameReference{}
+
+	encryptedDeviceCacheMutex.Lock()
+	_, ok := encryptedDeviceCache[address]
+	encryptedDeviceCacheMutex.Unlock()
+	if !ok {
+		return references
+	}
+
+	// Get all of the append recipients that target a group creation or update group that we have already delivered to this device
+	var unsentAppendRecipients []appendRecipient
+	err := b.database.
+		Select("append_recipients.id").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == append_recipients.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeAppendRecipient).
+		Where(
+			"delivery_records.id IS NULL AND append_recipients.frame_id IN (?)",
+			b.database.
+				Model(&deliveryRecord{}).
+				Distinct().
+				Select("id").
+				Where("desintation = ? AND frame_type IN (?)", address, []uint16{typeGroupCreation, typeUpdateGroup}),
+		).
+		Find(&unsentAppendRecipients).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up append recipients")
+	}
+
+	return references
+}
+
 func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	if _, revoked := b.devicePool.revokedDevices[peer]; revoked {
 		return nil, false
@@ -1224,6 +1259,7 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		typeUpdateSettings,
 		typeFile,
 		typeChunkOffer,
+		typeAppendRecipient,
 	}
 	for _, frameType := range typesToRespondWith {
 		refs, acks := b.getFramesToRequestAndAck(peer, typesToIDs[frameType], frameType)

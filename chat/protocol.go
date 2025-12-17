@@ -53,6 +53,7 @@ var typeEncryptedDeviceManagementRequest = uint16(31)
 var typeEncryptedDeviceManagementResponse = uint16(32)
 var typeEncryptedReferenceOfferChallenge = uint16(33)
 var typeEncryptedReferenceOfferResponse = uint16(34)
+var typeAppendRecipient = uint16(35)
 
 type sendable interface {
 	getType() uint16
@@ -110,6 +111,7 @@ func (b *Bounce) getHandlers() map[uint16]func(string, []byte, bool) (broadcasta
 			typeEncryptedDeviceManagementRequest: b.handleEncryptedDeviceManagementRequest,
 			typeEncryptedFrame:                   b.handleEncryptedFrame,
 			typeEncryptedReferenceOfferResponse:  b.handleEncryptedReferenceOfferResponse,
+			typeAppendRecipient:                  b.handleAppendRecipient,
 		}
 	}
 

@@ -21,21 +21,22 @@ import (
 
 // Frames that are sent over the network that have a corresponding database table
 var typeTable = map[uint16]string{
-	typeDirectMessage:  "direct_messages",
-	typeGroupMessage:   "group_messages",
-	typeDevice:         "devices",
-	typeUpdateDM:       "update_dms",
-	typeGroupCreation:  "group_creations",
-	typeUpdateGroup:    "update_groups",
-	typeAddUser:        "add_users",
-	typeConfirmation:   "confirmations",
-	typeUpdateUser:     "update_users",
-	typeUpdateDevice:   "update_devices",
-	typeReadReceipt:    "read_receipts",
-	typeUpdateSettings: "update_settings",
-	typeFile:           "files",
-	typeChunk:          "chunks",
-	typeChunkOffer:     "chunk_offers",
+	typeDirectMessage:   "direct_messages",
+	typeGroupMessage:    "group_messages",
+	typeDevice:          "devices",
+	typeUpdateDM:        "update_dms",
+	typeGroupCreation:   "group_creations",
+	typeUpdateGroup:     "update_groups",
+	typeAddUser:         "add_users",
+	typeConfirmation:    "confirmations",
+	typeUpdateUser:      "update_users",
+	typeUpdateDevice:    "update_devices",
+	typeReadReceipt:     "read_receipts",
+	typeUpdateSettings:  "update_settings",
+	typeFile:            "files",
+	typeChunk:           "chunks",
+	typeChunkOffer:      "chunk_offers",
+	typeAppendRecipient: "append_recipients",
 }
 
 func (b *Bounce) openDatabase() {
@@ -100,6 +101,8 @@ func (b *Bounce) openDatabase() {
 		&imageAttachment{},
 		&fileAttachment{},
 		&encryptedSyncDevice{},
+		&dataEncryptionKey{},
+		&appendRecipient{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{

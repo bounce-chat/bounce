@@ -108,10 +108,8 @@ func (b *Bounce) keepReferenceDatabasePruned() {
 
 }
 
-//
 // only load things from the reference offer that we don't have, the ones
 // that we do have we ack while handing the offer
-//
 func (b *Bounce) loadReferenceOffer(peer string, ro []frameReference) {
 	referenceRequestMutex.Lock()
 
@@ -147,9 +145,7 @@ func (b *Bounce) loadReferenceOffer(peer string, ro []frameReference) {
 	}()
 }
 
-//
 // Inform any devies that offered us a frame that we just handled that we no longer need that frame, and remove those references from the database
-//
 func (b *Bounce) loadCatchUp(peer string, cu []frameReference) {
 	log.WithFields(log.Fields{
 		"peer": peer,
@@ -247,21 +243,22 @@ func (b *Bounce) makeReferenceRequests() {
 // Extract all the IDs in the references by type
 func referencedIDs(references []frameReference) map[uint16][]uuid.UUID {
 	ids := map[uint16][]uuid.UUID{
-		typeReferenceOffer: []uuid.UUID{},
-		typeDirectMessage:  []uuid.UUID{},
-		typeGroupMessage:   []uuid.UUID{},
-		typeUpdateDM:       []uuid.UUID{},
-		typeDevice:         []uuid.UUID{},
-		typeAddUser:        []uuid.UUID{},
-		typeGroupCreation:  []uuid.UUID{},
-		typeUpdateGroup:    []uuid.UUID{},
-		typeConfirmation:   []uuid.UUID{},
-		typeUpdateUser:     []uuid.UUID{},
-		typeUpdateDevice:   []uuid.UUID{},
-		typeReadReceipt:    []uuid.UUID{},
-		typeUpdateSettings: []uuid.UUID{},
-		typeFile:           []uuid.UUID{},
-		typeChunkOffer:     []uuid.UUID{},
+		typeReferenceOffer:  []uuid.UUID{},
+		typeDirectMessage:   []uuid.UUID{},
+		typeGroupMessage:    []uuid.UUID{},
+		typeUpdateDM:        []uuid.UUID{},
+		typeDevice:          []uuid.UUID{},
+		typeAddUser:         []uuid.UUID{},
+		typeGroupCreation:   []uuid.UUID{},
+		typeUpdateGroup:     []uuid.UUID{},
+		typeConfirmation:    []uuid.UUID{},
+		typeUpdateUser:      []uuid.UUID{},
+		typeUpdateDevice:    []uuid.UUID{},
+		typeReadReceipt:     []uuid.UUID{},
+		typeUpdateSettings:  []uuid.UUID{},
+		typeFile:            []uuid.UUID{},
+		typeChunkOffer:      []uuid.UUID{},
+		typeAppendRecipient: []uuid.UUID{},
 	}
 
 	for _, reference := range references {

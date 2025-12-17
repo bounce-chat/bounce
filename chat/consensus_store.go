@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"errors"
 	"strings"
 	"sync"
@@ -868,6 +870,9 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 	for _, invitedID := range gs.invites {
 		if !b.isInvited(g.ID, invitedID) {
 			b.addGroupInvite(g.ID, invitedID)
+
+			// Add this user as a recipient for the group creation and updates for any encrypted devices
+			b.addInvitedUserAsEncryptedRecipient(invitedID, g.ID)
 		}
 
 		var u user
@@ -1491,5 +1496,152 @@ func (b *Bounce) cleanupRolledBackInvite(groupID uuid.UUID) {
 			"error":    err.Error(),
 			"group_id": groupID,
 		}).Fatal("database error looking up group")
+	}
+}
+
+func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
+	var u user
+	err := b.database.Take(&u, "id = ?", userID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"user_id": userID,
+			}).Error("user not found when adding encrypted recipient")
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Fatal("database error looking up user")
+		}
+	}
+
+	currentUser, ok := b.currentUser()
+	if !ok {
+		log.Error("cannot add user recipient when no profile exists")
+		return
+	}
+
+	allEncryptedAddresses := []string{}
+	encryptedDeviceCacheMutex.Lock()
+	for addr, _ := range encryptedDeviceCache {
+		allEncryptedAddresses = append(allEncryptedAddresses, addr)
+	}
+	encryptedDeviceCacheMutex.Unlock()
+
+	var gc groupCreation
+	err = b.database.Take(&gc, "id = ?", groupID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"group_id": groupID,
+			}).Error("group creation not found when adding encrypted recipient")
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up group creation")
+		}
+	}
+
+	var gcDEK dataEncryptionKey
+	err = b.database.Take(&gcDEK, "id = ?", groupID).Error
+	if err == nil {
+		block, err := aes.NewCipher(u.KeyEncryptionKey)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error encrypting frame")
+			return
+		}
+		gcm, err := cipher.NewGCMWithRandomNonce(block)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error encrypting frame")
+			return
+		}
+
+		ar := &appendRecipient{
+			ID:           xor(gc.ID, u.ID),
+			FrameID:      gc.ID,
+			EncrypterKey: currentUser.PublicECDHKey,
+			PublicKey:    u.PublicECDHKey,
+			EncryptedDEK: gcm.Seal(nil, []byte{}, gcDEK.Key, nil),
+		}
+
+		err = b.database.Create(&ar).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error creating append recipient")
+		}
+
+		// Deliver in real time to any encrypted devices that need it
+		var encryptedDeliveries []deliveryRecord
+		err = b.database.Where("frame_id = ? AND desintation IN (?)", gc.ID, allEncryptedAddresses).Find(&encryptedDeliveries).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up delivery records")
+		}
+		for _, dr := range encryptedDeliveries {
+			go b.sendDirect(dr.Destination, ar)
+		}
+	}
+
+	var ugs []updateGroup
+	err = b.database.Where("target = ?", groupID).Find(&ugs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error getting all update groups")
+	}
+
+	for _, ug := range ugs {
+		var ugDEK dataEncryptionKey
+		err = b.database.Take(&ugDEK, "id = ?", ug.ID).Error
+		if err == nil {
+			block, err := aes.NewCipher(u.KeyEncryptionKey)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error encrypting frame")
+				return
+			}
+			gcm, err := cipher.NewGCMWithRandomNonce(block)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error encrypting frame")
+				return
+			}
+
+			ar := &appendRecipient{
+				ID:           xor(ug.ID, u.ID),
+				FrameID:      ug.ID,
+				EncrypterKey: currentUser.PublicECDHKey,
+				PublicKey:    u.PublicECDHKey,
+				EncryptedDEK: gcm.Seal(nil, []byte{}, ugDEK.Key, nil),
+			}
+
+			err = b.database.Create(&ar).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error creating append recipient")
+			}
+
+			// Deliver in real time to any encrypted devices that need it
+			var encryptedDeliveries []deliveryRecord
+			err = b.database.Where("frame_id = ? AND desintation IN (?)", ug.ID, allEncryptedAddresses).Find(&encryptedDeliveries).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up delivery records")
+			}
+			for _, dr := range encryptedDeliveries {
+				go b.sendDirect(dr.Destination, ar)
+			}
+		}
 	}
 }
