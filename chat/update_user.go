@@ -26,7 +26,7 @@ var errAddressTooShort = errors.New("address is too short")
 var errPayloadTooShort = errors.New("payload is too short")
 
 type updateUser struct {
-	signedFrame
+	SignedFrame
 	cachedEncoding
 	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Target       uuid.UUID

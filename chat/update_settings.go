@@ -30,7 +30,7 @@ const updateSettingsTypeSetDefaultDMRetention = uint16(7)
 var errInvalidPayloadValue = errors.New("invalid payload value")
 
 type updateSettings struct {
-	signedFrame
+	SignedFrame
 	cachedEncoding
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Type      uint16

@@ -46,7 +46,7 @@ var errChunkDataNotFound = errors.New("chunk data not found")
 var errInvalidImage = errors.New("invalid image data")
 
 type file struct {
-	signedFrame
+	SignedFrame
 	cachedEncoding
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name        string
@@ -287,7 +287,7 @@ func (f *file) embedded() bool {
 }
 
 type chunkOffer struct {
-	signedFrame
+	SignedFrame
 	cachedEncoding
 	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Author          uuid.UUID

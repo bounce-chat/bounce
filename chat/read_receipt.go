@@ -35,7 +35,7 @@ var errUnknownReadReceiptTargetType = errors.New("unknown target type for read r
 var readReceiptMutex sync.Mutex
 
 type readReceipt struct {
-	signedFrame
+	SignedFrame
 	cachedEncoding
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Actor       uuid.UUID

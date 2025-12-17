@@ -54,7 +54,7 @@ var updateDMMutex sync.Mutex
 // settings are only sent to sync devices.  The data field of the structure contains different data depending on
 // the type of update.
 type updateDM struct {
-	signedFrame
+	SignedFrame
 	cachedEncoding
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Actor     uuid.UUID

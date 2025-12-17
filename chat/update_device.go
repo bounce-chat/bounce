@@ -27,7 +27,7 @@ var errDeviceAlreadyRevoked = errors.New("device has already been revoked")
 var errCannotRevokeLastDevice = errors.New("cannot revoke last device")
 
 type updateDevice struct {
-	signedFrame
+	SignedFrame
 	cachedEncoding
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Target    uuid.UUID

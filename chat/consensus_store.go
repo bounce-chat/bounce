@@ -1569,7 +1569,7 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 			EncryptedDEK: gcm.Seal(nil, []byte{}, gcDEK.Key, nil),
 		}
 
-		err = b.database.Create(&ar).Error
+		err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&ar).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -1578,7 +1578,7 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 
 		// Deliver in real time to any encrypted devices that need it
 		var encryptedDeliveries []deliveryRecord
-		err = b.database.Where("frame_id = ? AND desintation IN (?)", gc.ID, allEncryptedAddresses).Find(&encryptedDeliveries).Error
+		err = b.database.Where("frame_id = ? AND destination IN (?)", gc.ID, allEncryptedAddresses).Find(&encryptedDeliveries).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -1624,7 +1624,7 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 				EncryptedDEK: gcm.Seal(nil, []byte{}, ugDEK.Key, nil),
 			}
 
-			err = b.database.Create(&ar).Error
+			err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&ar).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -1633,7 +1633,7 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 
 			// Deliver in real time to any encrypted devices that need it
 			var encryptedDeliveries []deliveryRecord
-			err = b.database.Where("frame_id = ? AND desintation IN (?)", ug.ID, allEncryptedAddresses).Find(&encryptedDeliveries).Error
+			err = b.database.Where("frame_id = ? AND destination IN (?)", ug.ID, allEncryptedAddresses).Find(&encryptedDeliveries).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),

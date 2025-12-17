@@ -16,7 +16,7 @@ import (
 // marshalled group that is contained in this structure.  This prevents any modification to the group during broadcast, as future frames
 // are referencing this group via a hash of it's orignal state.
 type groupCreation struct {
-	signedFrame
+	SignedFrame
 	cachedEncoding
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Timestamp int64

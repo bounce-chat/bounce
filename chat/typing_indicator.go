@@ -45,7 +45,7 @@ type typingStatus struct {
 // A typing indicator is sent when someone is typing into an entry widget in the UI, to communicate to the other members
 // of the thread that a user is currently typing
 type typingIndicator struct {
-	signedFrame
+	SignedFrame
 	cachedEncoding
 	ID          uuid.UUID
 	Thread      uuid.UUID

@@ -61,7 +61,7 @@ var errMustBeInvitedToRespond = errors.New("user must have active invite to grou
 // Some settings, like retention and membership, must be observed by all participants of the group, where others like notification are only
 // sent to sync devices.  The data field of the structure contains different data depending on the type of update.
 type updateGroup struct {
-	signedFrame
+	SignedFrame
 	cachedEncoding
 	ID            uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Actor         uuid.UUID

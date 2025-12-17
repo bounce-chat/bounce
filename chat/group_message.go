@@ -18,7 +18,7 @@ var gmDeliveryNotifications = map[uuid.UUID]chan bool{}
 
 // A group message is sent from a member of a group to a group
 type groupMessage struct {
-	signedFrame
+	SignedFrame
 	cachedEncoding
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt          int64     `msgpack:"-"`

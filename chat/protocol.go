@@ -89,7 +89,7 @@ func (sss sortableSendables) Less(i, j int) bool {
 	return sss[i].getTimestamp() < sss[j].getTimestamp()
 }
 
-type signedFrame struct {
+type SignedFrame struct {
 	Signer          string `msgpack:"-" gorm:"not null"`
 	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
 	Signature       []byte `msgpack:"-" gorm:"not null"`
