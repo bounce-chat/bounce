@@ -1625,14 +1625,32 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 		}
 	}
 
-	gs, err := b.currentGroupState(groupID)
+	var g group
+	err = b.database.Preload(clause.Associations).Take(&g, "id = ?", groupID).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error getting group state when adding encrypted recipients for invited user")
+		}).Error("error getting group when adding encrypted recipients for invited user")
 		return
 	}
-	for _, userID := range append(gs.users, gs.invites...) {
+	userIDs := []uuid.UUID{}
+	for _, u := range g.Users {
+		userIDs = append(userIDs, u.ID)
+	}
+	if len(g.Invites) > 0 {
+		for _, invitedIDString := range strings.Split(g.Invites, ",") {
+			invitedID, err := uuid.Parse(invitedIDString)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"group_id": g.ID,
+					"invites":  g.Invites,
+				}).Fatal("invalid UUID in group invite list")
+			}
+			userIDs = append(userIDs, invitedID)
+		}
+	}
+	for _, userID := range userIDs {
 		var u user
 		err = b.database.Select("encrypted_devices").Take(&u, "id = ?", userID).Error
 		if err != nil {
