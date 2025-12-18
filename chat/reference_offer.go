@@ -1207,7 +1207,7 @@ func (b *Bounce) getAppendRecipientsToOffer(address string, userID uuid.UUID) []
 			b.database.
 				Model(&deliveryRecord{}).
 				Distinct().
-				Select("id").
+				Select("frame_id").
 				Where("destination = ? AND frame_type IN (?)", address, []uint16{typeGroupCreation, typeUpdateGroup}),
 		).
 		Find(&unsentAppendRecipients).Error

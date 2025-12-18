@@ -1466,7 +1466,7 @@ func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
 	for _, addr := range addresses {
 		// TODO: check if blocked / revoked?
 		rd := b.getRemoteDevice(addr)
-		if rd.connectedSockets.Load() > 1 {
+		if rd.connectedSockets.Load() >= 1 {
 			go b.sendReferences(addr)
 		}
 	}
@@ -1521,13 +1521,6 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 		log.Error("cannot add user recipient when no profile exists")
 		return
 	}
-
-	allEncryptedAddresses := []string{}
-	encryptedDeviceCacheMutex.Lock()
-	for addr, _ := range encryptedDeviceCache {
-		allEncryptedAddresses = append(allEncryptedAddresses, addr)
-	}
-	encryptedDeviceCacheMutex.Unlock()
 
 	arsToSend := []*appendRecipient{}
 
@@ -1668,7 +1661,7 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 		if len(u.EncryptedDevices) > 0 {
 			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
 				rd := b.getRemoteDevice(addr)
-				if rd.connectedSockets.Load() > 1 {
+				if rd.connectedSockets.Load() >= 1 {
 					for _, ar := range arsToSend {
 						go b.sendDirect(addr, ar)
 					}
