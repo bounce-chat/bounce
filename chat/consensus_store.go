@@ -1470,31 +1470,6 @@ func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
 			go b.sendReferences(addr)
 		}
 	}
-
-	for _, userID := range append(gs.users, gs.invites...) {
-		var u user
-		err = b.database.Select("encrypted_devices").Take(&u, "id = ?", userID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"user_id": userID,
-				}).Error("user not found in group")
-				continue
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error getting encrypted devices from user")
-			}
-		}
-		if len(u.EncryptedDevices) > 0 {
-			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
-				rd := b.getRemoteDevice(addr)
-				if rd.connectedSockets.Load() > 1 {
-					go b.sendReferences(addr)
-				}
-			}
-		}
-	}
 }
 
 func (b *Bounce) cleanupRolledBackInvite(groupID uuid.UUID) {
@@ -1554,6 +1529,8 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 	}
 	encryptedDeviceCacheMutex.Unlock()
 
+	arsToSend := []*appendRecipient{}
+
 	var gc groupCreation
 	err = b.database.Take(&gc, "id = ?", groupID).Error
 	if err != nil {
@@ -1593,24 +1570,13 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 			PublicKey:    u.PublicECDHKey,
 			EncryptedDEK: gcm.Seal(nil, []byte{}, gcDEK.Key, nil),
 		}
+		arsToSend = append(arsToSend, ar)
 
 		err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&ar).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Fatal("database error creating append recipient")
-		}
-
-		// Deliver in real time to any encrypted devices that need it
-		var encryptedDeliveries []deliveryRecord
-		err = b.database.Where("frame_id = ? AND destination IN (?)", gc.ID, allEncryptedAddresses).Find(&encryptedDeliveries).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up delivery records")
-		}
-		for _, dr := range encryptedDeliveries {
-			go b.sendDirect(dr.Destination, ar)
 		}
 	}
 
@@ -1648,6 +1614,7 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 				PublicKey:    u.PublicECDHKey,
 				EncryptedDEK: gcm.Seal(nil, []byte{}, ugDEK.Key, nil),
 			}
+			arsToSend = append(arsToSend, ar)
 
 			err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&ar).Error
 			if err != nil {
@@ -1655,17 +1622,39 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 					"error": err.Error(),
 				}).Fatal("database error creating append recipient")
 			}
+		}
+	}
 
-			// Deliver in real time to any encrypted devices that need it
-			var encryptedDeliveries []deliveryRecord
-			err = b.database.Where("frame_id = ? AND destination IN (?)", ug.ID, allEncryptedAddresses).Find(&encryptedDeliveries).Error
-			if err != nil {
+	gs, err := b.currentGroupState(groupID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error getting group state when adding encrypted recipients for invited user")
+		return
+	}
+	for _, userID := range append(gs.users, gs.invites...) {
+		var u user
+		err = b.database.Select("encrypted_devices").Take(&u, "id = ?", userID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"user_id": userID,
+				}).Error("user not found in group")
+				continue
+			} else {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Fatal("database error looking up delivery records")
+				}).Fatal("database error getting encrypted devices from user")
 			}
-			for _, dr := range encryptedDeliveries {
-				go b.sendDirect(dr.Destination, ar)
+		}
+		if len(u.EncryptedDevices) > 0 {
+			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+				rd := b.getRemoteDevice(addr)
+				if rd.connectedSockets.Load() > 1 {
+					for _, ar := range arsToSend {
+						go b.sendDirect(addr, ar)
+					}
+				}
 			}
 		}
 	}
