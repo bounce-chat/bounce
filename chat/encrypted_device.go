@@ -371,6 +371,8 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 	var existingEF encryptedFrame
 	err = b.database.Take(&existingEF, "id = ?", ef.ID).Error
 	if err == nil {
+		b.markFrameDelivered(ef.ID, ef.Type, peer)
+		go b.sendAck(peer, ef.Type, ef.ID)
 		return nil, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{

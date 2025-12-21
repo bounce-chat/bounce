@@ -1188,13 +1188,11 @@ func (b *Bounce) getChunkOffersToOffer(address string, userID uuid.UUID) []frame
 }
 
 func (b *Bounce) getAppendRecipientsToOffer(address string, userID uuid.UUID) []frameReference {
-	references := []frameReference{}
-
 	encryptedDeviceCacheMutex.Lock()
 	_, ok := encryptedDeviceCache[address]
 	encryptedDeviceCacheMutex.Unlock()
 	if !ok {
-		return references
+		return []frameReference{}
 	}
 
 	// Get all of the append recipients that target a group creation or update group that we have already delivered to this device
@@ -1215,6 +1213,11 @@ func (b *Bounce) getAppendRecipientsToOffer(address string, userID uuid.UUID) []
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error looking up append recipients")
+	}
+
+	references := []frameReference{}
+	for _, co := range unsentAppendRecipients {
+		references = append(references, frameReference{FrameID: co.ID, Type: typeAppendRecipient})
 	}
 
 	return references
