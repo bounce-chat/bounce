@@ -110,7 +110,7 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 	dek := make([]byte, 32)
 	rand.Read(dek)
 	if storeDEK(br.getType()) {
-		err := b.database.Create(&dataEncryptionKey{ID: br.getID(), Key: dek}).Error
+		err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&dataEncryptionKey{ID: br.getID(), Key: dek}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -197,9 +197,9 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 	deviceUsers := map[string]uuid.UUID{}
 	for _, u := range users {
 		if len(u.EncryptedDevices) > 0 {
-			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
-				allEncryptedDevices[addr] = true
-				deviceUsers[addr] = u.ID
+			for _, userAddress := range strings.Split(u.EncryptedDevices, ",") {
+				allEncryptedDevices[userAddress] = true
+				deviceUsers[userAddress] = u.ID
 			}
 		}
 	}
@@ -210,7 +210,7 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 	dek := make([]byte, 32)
 	rand.Read(dek)
 	if storeDEK(br.getType()) {
-		err := b.database.Create(&dataEncryptionKey{ID: br.getID(), Key: dek}).Error
+		err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&dataEncryptionKey{ID: br.getID(), Key: dek}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -322,6 +322,20 @@ func (b *Bounce) getUsersInScope(br broadcastable) []user {
 		users = b.getUsersInGlobalScope(br)
 	} else if scope == scopeCustom {
 		users = b.getUsersInCustomScope(br)
+		profileIncluded := false
+		for _, u := range users {
+			if u.ID == b.currentUserID() {
+				profileIncluded = true
+			}
+		}
+		if !profileIncluded {
+			currentUser, ok := b.currentUser()
+			if !ok {
+				log.Error("cannot get users in scope before profile exists")
+				return users
+			}
+			users = append(users, currentUser)
+		}
 	} else if scope == scopeGroupWithInvites {
 		users = b.getUsersInGroupWithInvitesScope(br)
 	} else {
@@ -390,9 +404,6 @@ func (b *Bounce) getUsersInCustomScope(br broadcastable) []user {
 		if _, revoked := b.devicePool.revokedDevices[addr]; revoked {
 			continue
 		}
-		if b.isDeliveredTo(br, addr) {
-			continue
-		}
 		dev, ok := b.getDeviceFromAddress(addr)
 		if ok {
 			userIDs[dev.UserID] = true
@@ -419,9 +430,16 @@ func (b *Bounce) getUsersInGroupWithInvitesScope(br broadcastable) []user {
 	var destinationGroup group
 	err := b.database.Preload("Users.Devices").Preload(clause.Associations).First(&destinationGroup, "id = ?", br.getDestination(b.currentUserID())).Error
 	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error looking up group")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("group not found when trying to get users in group with invite scope")
+			return users
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up group")
+		}
 	}
 	for _, u := range destinationGroup.Users {
 		users = append(users, u)
