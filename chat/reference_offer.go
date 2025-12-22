@@ -1265,9 +1265,9 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		typeAppendRecipient,
 	}
 	for _, frameType := range typesToRespondWith {
-		refs, acks := b.getFramesToRequestAndAck(peer, typesToIDs[frameType], frameType)
+		refs, as := b.getFramesToRequestAndAck(peer, typesToIDs[frameType], frameType)
 		references = append(references, refs...)
-		acks = append(acks, acks...)
+		acks = append(acks, as...)
 	}
 
 	// Unlock the catch up mutex
