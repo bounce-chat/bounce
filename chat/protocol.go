@@ -412,6 +412,16 @@ func (b *Bounce) getCustomScope(br broadcastable, excludeDelivered bool) []strin
 		if excludeDelivered && b.isDeliveredTo(br, addr) {
 			continue
 		}
+
+		// Custom scopes include encrypted device addresses for references, but we
+		// do not want to broadcast to the encrypted devices in general
+		encryptedDeviceCacheMutex.Lock()
+		_, encrypted := encryptedDeviceCache[addr]
+		encryptedDeviceCacheMutex.Unlock()
+		if encrypted {
+			continue
+		}
+
 		broadcastTargets = append(broadcastTargets, addr)
 	}
 
