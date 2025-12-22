@@ -644,6 +644,10 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				if err != nil {
 					log.Error("error pushing group invite auto-accept into canonical stack")
 				} else {
+					// Send this acceptance frame to any encrypted devices in the group
+					for _, addr := range b.onlineEncryptedDeviceInGroup(groupID) {
+						go b.sendDirect(addr, b.encryptFrameForDevice(&accept, addr))
+					}
 					// Broadcast it and recursively set the state
 					return b.setRollbacksApplicationsAndGroupState(groupID, cs, append(ugs, accept))
 				}
@@ -1618,13 +1622,23 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 		}
 	}
 
+	for _, addr := range b.onlineEncryptedDeviceInGroup(groupID) {
+		for _, ar := range arsToSend {
+			go b.sendDirect(addr, ar)
+		}
+	}
+}
+
+func (b *Bounce) onlineEncryptedDeviceInGroup(groupID uuid.UUID) []string {
+	addrs := []string{}
+
 	var g group
-	err = b.database.Preload(clause.Associations).Take(&g, "id = ?", groupID).Error
+	err := b.database.Preload(clause.Associations).Take(&g, "id = ?", groupID).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error getting group when adding encrypted recipients for invited user")
-		return
+		}).Error("error getting group when collecting encrypted devices")
+		return []string{}
 	}
 	userIDs := []uuid.UUID{}
 	for _, u := range g.Users {
@@ -1662,11 +1676,11 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
 				rd := b.getRemoteDevice(addr)
 				if rd.connectedSockets.Load() >= 1 {
-					for _, ar := range arsToSend {
-						go b.sendDirect(addr, ar)
-					}
+					addrs = append(addrs, addr)
 				}
 			}
 		}
 	}
+
+	return addrs
 }
