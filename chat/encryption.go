@@ -86,12 +86,12 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 
 	// Check if any of them have access to an encrypted device that is online
 	allEncryptedDevices := map[string]bool{}
-	deviceUsers := map[string]uuid.UUID{}
+	deviceUsers := map[string][]uuid.UUID{}
 	for _, u := range users {
 		if len(u.EncryptedDevices) > 0 {
 			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
 				allEncryptedDevices[addr] = true
-				deviceUsers[addr] = u.ID // TODO append
+				deviceUsers[addr] = append(deviceUsers[addr], u.ID)
 			}
 		}
 	}
@@ -136,13 +136,18 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 
 	for addr, rd := range availableEncryptedDevices {
 		// Get the user that owns this device, since they must be one of the recipients
-		mustHave, ok := deviceUsers[addr] // TODO: choose one
+		options, ok := deviceUsers[addr]
 		if !ok {
 			log.WithFields(log.Fields{
 				"address": addr,
-			}).Error("unable to determine user ID for encrypted device address")
-			continue
+			}).Error("no users use this device")
 		}
+		if len(options) < 1 {
+			log.WithFields(log.Fields{
+				"address": addr,
+			}).Error("no users use this device")
+		}
+		mustHave := options[0]
 
 		// Create recipients for each user in scope, up to a limit
 		recipients := []recipient{}
@@ -194,17 +199,15 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 
 	// Check if any of them have access to an encrypted device that is online
 	allEncryptedDevices := map[string]bool{}
-	deviceUsers := map[string]uuid.UUID{}
+	deviceUsers := map[string][]uuid.UUID{}
 	for _, u := range users {
 		if len(u.EncryptedDevices) > 0 {
 			for _, userAddress := range strings.Split(u.EncryptedDevices, ",") {
 				allEncryptedDevices[userAddress] = true
-				deviceUsers[userAddress] = u.ID
+				deviceUsers[userAddress] = append(deviceUsers[userAddress], u.ID)
 			}
 		}
 	}
-
-	// TODO: if device users is empty, no users can use this device?
 
 	// Encrypt the frame with a random key
 	dek := make([]byte, 32)
@@ -235,13 +238,18 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 	ciphertext := dekGCM.Seal(nil, []byte{}, br.getPayload(), nil)
 
 	// Get the user that owns this device, since they must be one of the recipients
-	mustHave, ok := deviceUsers[addr]
+	options, ok := deviceUsers[addr]
 	if !ok {
 		log.WithFields(log.Fields{
 			"address": addr,
-		}).Error("unable to determine user ID for encrypted device address")
-		return nil
+		}).Error("no users use this device")
 	}
+	if len(options) < 1 {
+		log.WithFields(log.Fields{
+			"address": addr,
+		}).Error("no users use this device")
+	}
+	mustHave := options[0]
 
 	// Create recipients for each user in scope, up to a limit
 	recipients := []recipient{}
