@@ -536,6 +536,18 @@ func (b *Bounce) GetInitialState() InitialState {
 				dmDRmap[dr.FrameID],
 				dev.UserID,
 			)
+		} else {
+			encryptedDeviceCacheMutex.Lock()
+			deliveredEncryptedUsers, ok := encryptedDeviceCache[dr.Destination]
+			encryptedDeviceCacheMutex.Unlock()
+			if ok {
+				for _, userID := range deliveredEncryptedUsers {
+					dmDRmap[dr.FrameID] = append(
+						dmDRmap[dr.FrameID],
+						userID,
+					)
+				}
+			}
 		}
 	}
 
@@ -672,6 +684,18 @@ func (b *Bounce) GetInitialState() InitialState {
 				gmDRmap[dr.FrameID],
 				dev.UserID,
 			)
+		} else {
+			encryptedDeviceCacheMutex.Lock()
+			deliveredEncryptedUsers, ok := encryptedDeviceCache[dr.Destination]
+			encryptedDeviceCacheMutex.Unlock()
+			if ok {
+				for _, userID := range deliveredEncryptedUsers {
+					gmDRmap[dr.FrameID] = append(
+						gmDRmap[dr.FrameID],
+						userID,
+					)
+				}
+			}
 		}
 	}
 
