@@ -593,7 +593,6 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 	}
 
 	// If we're invited, check our policy for automatically accepting group invites, and act on it if needed
-	autoAccepts := []updateGroup{}
 	if finalState.isInvited(b.currentUserID()) {
 		// Make sure that if we've set this setting before, we're only using the setting if it was set before this invite.
 		// This prevents changing the setting from retroactively causing any invites to be accepted.
@@ -646,14 +645,14 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 					log.Error("error pushing group invite auto-accept into canonical stack")
 				} else {
 					// Broadcast it and recursively set the state
-					autoAccepts = append(autoAccepts, accept)
+					// TODO: doesn't work because of the return below
 					return b.setRollbacksApplicationsAndGroupState(groupID, cs, append(ugs, accept))
 				}
 			}
 		}
 	}
 
-	err = b.setGroupStateInDatabase(initialGroup, allUsers, finalState, ugsToNotify, autoAccepts)
+	err = b.setGroupStateInDatabase(initialGroup, allUsers, finalState, ugsToNotify)
 	if err != nil {
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -666,7 +665,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 	return err
 }
 
-func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs groupState, ugsToNotify []updateGroup, autoAccepts []updateGroup) error {
+func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs groupState, ugsToNotify []updateGroup) error {
 	newUsers := make(map[uuid.UUID]bool)
 	for _, u := range allUsers {
 		newUsers[u.ID] = b.createNewUserIfNeeded(u)
@@ -997,12 +996,6 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 	}()
 
 	b.referenceAllOnlineDevicesInGroup(g.ID)
-
-	for _, a := range autoAccepts {
-		for _, addr := range b.onlineEncryptedDevicesInGroup(g.ID) {
-			go b.sendDirect(addr, b.encryptFrameForDevice(&a, addr))
-		}
-	}
 
 	return nil
 }
@@ -1477,6 +1470,10 @@ func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
 		if rd.connectedSockets.Load() >= 1 {
 			go b.sendReferences(addr)
 		}
+	}
+
+	for _, addr := range b.onlineEncryptedDevicesInGroup(groupID) {
+		go b.sendReferences(addr)
 	}
 }
 
