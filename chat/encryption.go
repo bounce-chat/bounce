@@ -243,11 +243,13 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 		log.WithFields(log.Fields{
 			"address": addr,
 		}).Error("no users use this device")
+		return nil
 	}
 	if len(options) < 1 {
 		log.WithFields(log.Fields{
 			"address": addr,
 		}).Error("no users use this device")
+		return nil
 	}
 	mustHave := options[0]
 
