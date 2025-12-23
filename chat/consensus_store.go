@@ -645,7 +645,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 					log.Error("error pushing group invite auto-accept into canonical stack")
 				} else {
 					// Send this acceptance frame to any encrypted devices in the group
-					for _, addr := range b.onlineEncryptedDeviceInGroup(groupID) {
+					for _, addr := range b.onlineEncryptedDevicesInUserList(allUsers) {
 						go b.sendDirect(addr, b.encryptFrameForDevice(&accept, addr))
 					}
 					// Broadcast it and recursively set the state
@@ -1622,14 +1622,14 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 		}
 	}
 
-	for _, addr := range b.onlineEncryptedDeviceInGroup(groupID) {
+	for _, addr := range b.onlineEncryptedDevicesInGroup(groupID) {
 		for _, ar := range arsToSend {
 			go b.sendDirect(addr, ar)
 		}
 	}
 }
 
-func (b *Bounce) onlineEncryptedDeviceInGroup(groupID uuid.UUID) []string {
+func (b *Bounce) onlineEncryptedDevicesInGroup(groupID uuid.UUID) []string {
 	addrs := []string{}
 
 	var g group
@@ -1672,6 +1672,25 @@ func (b *Bounce) onlineEncryptedDeviceInGroup(groupID uuid.UUID) []string {
 				}).Fatal("database error getting encrypted devices from user")
 			}
 		}
+		if len(u.EncryptedDevices) > 0 {
+			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+				rd := b.getRemoteDevice(addr)
+				if rd.connectedSockets.Load() >= 1 {
+					addrs = append(addrs, addr)
+				}
+			}
+		}
+	}
+
+	return addrs
+}
+
+func (b *Bounce) onlineEncryptedDevicesInUserList(users []user) []string {
+	addrs := []string{}
+
+	for _, u := range users {
+		b.database.Take(&u, "id = ?", u.ID)
+
 		if len(u.EncryptedDevices) > 0 {
 			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
 				rd := b.getRemoteDevice(addr)
