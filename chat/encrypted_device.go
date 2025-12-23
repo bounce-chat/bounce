@@ -671,7 +671,10 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 		referenceOfferChallengeMutex.Lock()
 		peerUserKeys[peer] = eroc.PublicKey
 		referenceOfferChallengeMutex.Unlock()
-		go b.sendDirect(peer, b.getEncryptedReferenceOfferFor(peer, eroc.PublicKey))
+		ero := b.getEncryptedReferenceOfferFor(peer, eroc.PublicKey)
+		if len(ero.References) > 0 {
+			go b.sendDirect(peer, ero)
+		}
 	} else {
 		log.WithFields(log.Fields{
 			"peer": peer,

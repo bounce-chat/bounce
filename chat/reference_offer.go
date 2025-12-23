@@ -260,6 +260,9 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 		users, ok = encryptedDeviceCache[address]
 		encryptedDeviceCacheMutex.Unlock()
 		if !ok {
+			log.WithFields(log.Fields{
+				"address": address,
+			}).Warn("cannot generate reference offer for unknown device")
 			return &referenceOffer{}
 		}
 	}
@@ -1279,9 +1282,11 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	}
 
 	// Send an ack for everything we already have in the database
-	go b.sendDirect(peer, &ack{
-		References: acks,
-	})
+	if len(acks) > 0 {
+		go b.sendDirect(peer, &ack{
+			References: acks,
+		})
+	}
 
 	return nil, false
 }
