@@ -90,6 +90,9 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	// who this device belongs to, we should be able to learn after handling all of the frames inside
 	// it and we'll want to check to make sure that happened.
 	dev, deviceExists := b.getDeviceFromAddress(peer)
+	encryptedDeviceCacheMutex.Lock()
+	_, encrypted := encryptedDeviceCache[peer]
+	encryptedDeviceCacheMutex.Unlock()
 
 	// Do not allow catchups from blocked users
 	if blockedUser(dev.UserID) {
@@ -179,8 +182,8 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 
 		// Keep track of any device we would broadcast this to so that we can reference them
 		destinations := b.getBroadcastScope(br, true)
-		for _, dev := range destinations {
-			devicesToReference[dev] = true
+		for _, dst := range destinations {
+			devicesToReference[dst] = true
 		}
 
 		// Track any follow up actions we need to take on these frames after the catchup compeltes
@@ -342,17 +345,22 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 
 	// If we didn't know who this device belonged to at first, check to make sure we know who it belongs to
 	// after handling all of the frames
-	if !deviceExists {
+	if !encrypted && !deviceExists {
 		if _, deviceExists = b.getDeviceFromAddress(peer); deviceExists {
 			// An unknown device sent a catch up that included frames that prove we should add the device,
 			// since we didn't initially offer references to this device we should now do so now that we
 			// have context on what this device is
 			go b.sendReferences(peer)
 		} else {
-			log.WithFields(log.Fields{
-				"peer":        peer,
-				"frame_count": len(cu.Frames),
-			}).Warn("catch up from unknown device did not result in learning device identity")
+			encryptedDeviceCacheMutex.Lock()
+			_, encrypted := encryptedDeviceCache[peer]
+			encryptedDeviceCacheMutex.Unlock()
+			if !encrypted {
+				log.WithFields(log.Fields{
+					"peer":        peer,
+					"frame_count": len(cu.Frames),
+				}).Warn("catch up from unknown device did not result in learning device identity")
+			}
 		}
 	}
 
