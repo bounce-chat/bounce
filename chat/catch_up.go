@@ -126,7 +126,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	a := &ack{}
 
 	// Handle reach frame in the catch up using it's handler
-	handlers := b.getHandlers()
+	handlers := b.getHandlers(b.encrypted)
 	lastTimestamp := int64(0)
 	catchUpMutex.Lock()
 	frameCount := len(cu.Frames)

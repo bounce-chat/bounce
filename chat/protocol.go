@@ -100,8 +100,8 @@ type cachedEncoding struct {
 	payloadMutex sync.Mutex
 }
 
-func (b *Bounce) getHandlers() map[uint16]func(string, []byte, bool) (broadcastable, bool) {
-	if b.encrypted {
+func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, bool) (broadcastable, bool) {
+	if encrypted {
 		return map[uint16]func(string, []byte, bool) (broadcastable, bool){
 			typeKeepAlive:                        b.handleKeepAlive,
 			typeReferenceOffer:                   b.handleReferenceOffer,

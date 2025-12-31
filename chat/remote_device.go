@@ -139,7 +139,7 @@ func (b *Bounce) getDeviceOrEncryptedSyncDevice(peer string) (bool, bool, device
 }
 
 func (b *Bounce) readFrames(conn net.Conn) {
-	handlers := b.getHandlers()
+	handlers := b.getHandlers(b.encrypted)
 	peer := conn.RemoteAddr().String()
 
 	var profile user
@@ -262,6 +262,8 @@ func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 	rd.shutdownReceivers[writerID] = shutdownReceiver
 	rd.shutdownReceiversMutex.Unlock()
 
+	encryptedHandlers := b.getHandlers(true)
+
 	writeChunk := func(br sendable) error {
 		if _, revoked := b.devicePool.revokedDevices[conn.RemoteAddr().String()]; revoked {
 			// Only send revoked devices frames that are used to tell them they are revoked, and keep alives
@@ -270,6 +272,20 @@ func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 					"type": br.getType(),
 					"peer": conn.RemoteAddr().String(),
 				}).Warn("attempt to send unexpected frame to revoked device")
+				return nil
+			}
+		}
+
+		// Make sure only frames that can be sent to encrypted devices get sent to encrypted devices
+		encryptedDeviceCacheMutex.Lock()
+		_, encryptedDevice := encryptedDeviceCache[conn.RemoteAddr().String()]
+		encryptedDeviceCacheMutex.Unlock()
+		if encryptedDevice {
+			if _, ok := encryptedHandlers[br.getType()]; !ok {
+				log.WithFields(log.Fields{
+					"type": br.getType(),
+					"peer": conn.RemoteAddr().String(),
+				}).Error("refusing to send frame that cannot be handled on encrypted device to encrypted device")
 				return nil
 			}
 		}
