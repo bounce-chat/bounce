@@ -71,6 +71,19 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 		fmt.Printf("%s:%s\n\n", b.network.Address(), setupKey)
 	}
 
+	ticker := time.NewTicker(5 * time.Minute)
+	go func() {
+		for {
+			<-ticker.C
+			err := b.database.Where("delete_at != 0 AND delete_at <= ?", time.Now().Unix()).Delete(&encryptedFrame{}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error pruning encrypted frames")
+			}
+		}
+	}()
+
 	b.network.Start(
 		NetworkCallbacks{
 			NetworkOnline:  b.networkOnline,
@@ -390,22 +403,34 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 		}
 	}
 
-	if foundAuthorizedUser {
-		err = b.database.Create(&ef).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error saving encrypted frame")
-		}
-		b.markFrameDelivered(ef.ID, ef.Type, peer)
-		go b.sendAck(peer, ef.Type, ef.ID)
-	} else {
+	if !foundAuthorizedUser {
 		log.WithFields(log.Fields{
 			"id":         ef.ID,
 			"peer":       peer,
 			"recipients": len(ef.Recipients),
 		}).Warn("ignoring encrypted frame that did not include an authorized user as a recipient")
+		return nil, false
 	}
+
+	if ef.DeleteAt != 0 && ef.DeleteAt <= time.Now().Unix() {
+		log.WithFields(log.Fields{
+			"id":         ef.ID,
+			"peer":       peer,
+			"recipients": len(ef.Recipients),
+		}).Warn("ignoring encrypted frame that should already be deleted")
+		b.markFrameDelivered(ef.ID, ef.Type, peer)
+		go b.sendAck(peer, ef.Type, ef.ID)
+		return nil, false
+	}
+
+	err = b.database.Create(&ef).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error saving encrypted frame")
+	}
+	b.markFrameDelivered(ef.ID, ef.Type, peer)
+	go b.sendAck(peer, ef.Type, ef.ID)
 
 	return nil, false
 }

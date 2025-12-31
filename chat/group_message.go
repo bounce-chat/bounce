@@ -235,6 +235,17 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 		return nil, false
 	}
 
+	// Ignore messages that should have already been deleted
+	if gm.DeleteAt <= time.Now().Unix() {
+		log.WithFields(log.Fields{
+			"id":          gm.ID,
+			"author":      gm.Author,
+			"destination": gm.getDestination(b.currentUserID()),
+			"delete_at":   gm.DeleteAt,
+		}).Debug("ignoring a group message that has delete time older than now")
+		return nil, false
+	}
+
 	// Make sure the user has permission to post
 	if gs.postingRestricted && !gs.isAdmin(gm.Author) {
 		log.WithFields(log.Fields{

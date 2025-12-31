@@ -220,6 +220,17 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		return nil, false
 	}
 
+	// Ignore messages that should have already been deleted
+	if dm.DeleteAt <= time.Now().Unix() {
+		log.WithFields(log.Fields{
+			"id":          dm.ID,
+			"author":      dm.Author,
+			"destination": dm.getDestination(b.currentUserID()),
+			"delete_at":   dm.DeleteAt,
+		}).Debug("ignoring a direct message that has delete time older than now")
+		return nil, false
+	}
+
 	// If we wrote this message, assume we've seen it
 	dm.Seen = dm.Author == b.currentUserID()
 
