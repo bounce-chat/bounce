@@ -29,7 +29,7 @@ type user struct {
 	Images                     string
 	Profile                    bool `gorm:"index:,where:profile = true" msgpack:"-"`
 	EncryptedDevices           string
-	PublicECDSAKey             []byte
+	PublicECDSAKey             []byte `msgpack:"-"`
 	PrivateECDSAKey            []byte `msgpack:"-"`
 	PublicECDHKey              []byte
 	PrivateECDHKey             []byte `msgpack:"-"`

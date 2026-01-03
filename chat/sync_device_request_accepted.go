@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"crypto/ed25519"
 	"time"
 
 	"github.com/google/uuid"
@@ -58,6 +59,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	sdra.Profile.Profile = true
 	sdra.Profile.PrivateECDHKey = sdra.PrivateECDHKey
 	sdra.Profile.PrivateECDSAKey = sdra.PrivateECDSAKey
+	sdra.Profile.PublicECDSAKey = ed25519.PrivateKey(sdra.PrivateECDSAKey).Public().([]byte)
 	sdra.Profile.KeyEncryptionKey = sdra.KeyEncryptionKey
 
 	// Make sure this profile has a valid device group
