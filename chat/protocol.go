@@ -54,6 +54,8 @@ var typeEncryptedDeviceManagementResponse = uint16(32)
 var typeEncryptedReferenceOfferChallenge = uint16(33)
 var typeEncryptedReferenceOfferResponse = uint16(34)
 var typeAppendRecipient = uint16(35)
+var typeManageEncryptedDevice = uint16(36)
+var typeEncryptedDeviceManagementActionResponse = uint16(37)
 
 type sendable interface {
 	getType() uint16

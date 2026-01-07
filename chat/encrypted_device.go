@@ -5,6 +5,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdh"
+	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -707,4 +708,198 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 	}
 
 	return nil, false
+}
+
+const actionTypeChangeManagementKey = 0
+const actionTypeAddAuthorizedUser = 1
+const actionTypeRemoveAuthorizedUser = 2
+const actionTypeGetAuthorizedUsers = 3
+const actionTypeRevokeDevice = 4
+
+type encryptedDeviceManagementAction struct {
+	ActionType int
+	Data       []byte
+}
+
+type manageEncryptedDevice struct {
+	ID        uuid.UUID
+	Action    encryptedDeviceManagementAction
+	Signature []byte
+}
+
+func (med *manageEncryptedDevice) getID() uuid.UUID {
+	return med.ID
+}
+
+func (med *manageEncryptedDevice) getType() uint16 {
+	return typeManageEncryptedDevice
+}
+
+func (med *manageEncryptedDevice) getPayload() []byte {
+	bytes, err := msgpack.Marshal(med)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal manage encrypted device")
+	}
+	return bytes
+}
+
+func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	var med manageEncryptedDevice
+	err := msgpack.Unmarshal(payload, &med)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling manage encrypted device")
+		return nil, false
+	}
+
+	response := encryptedDeviceManagementActionResponse{
+		ID: med.ID,
+	}
+	var allAUs []authorizedUser
+	err = b.database.Find(&allAUs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("database error getting all authorized users")
+		return nil, false
+	}
+	for _, client := range allAUs {
+		response.AuthorizedUsers = append(response.AuthorizedUsers, client.PublicKey)
+	}
+
+	var au authorizedUser
+	err = b.database.Where("manager = ?", true).Take(&au).Error
+	if err != nil {
+		go b.sendDirect(peer, &response)
+		return nil, false
+	}
+
+	encoded, err := msgpack.Marshal(med.Action)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("failed to encode manage encrypted device payload")
+		go b.sendDirect(peer, &response)
+		return nil, false
+	}
+
+	validSignature := ed25519.Verify(au.SigningKey, encoded, med.Signature)
+	if !validSignature {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("manage encrypted device has invalid signature with authorized user key")
+		go b.sendDirect(peer, &response)
+		return nil, false
+	} else {
+		response.Authorized = true
+	}
+
+	switch med.Action.ActionType {
+	case actionTypeChangeManagementKey:
+		err = b.database.Table("authorized_users").Where("id = ?", au.ID).Updates(map[string]interface{}{"public_key": med.Action.Data}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error updating management key")
+			go b.sendDirect(peer, &response)
+		} else {
+			response.Applied = true
+			go b.sendDirect(peer, &response)
+		}
+	case actionTypeAddAuthorizedUser:
+		for _, client := range allAUs {
+			if bytes.Equal(client.PublicKey, med.Action.Data) {
+				go b.sendDirect(peer, &response)
+				return nil, false
+			}
+		}
+
+		newAU := authorizedUser{
+			ID:        uuid.New(),
+			PublicKey: med.Action.Data,
+			Manager:   false,
+		}
+
+		err = b.database.Create(&newAU).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating new authorized user")
+			go b.sendDirect(peer, &response)
+		} else {
+			response.Applied = true
+			response.AuthorizedUsers = append(response.AuthorizedUsers, med.Action.Data)
+			go b.sendDirect(peer, &response)
+		}
+	case actionTypeRemoveAuthorizedUser:
+		err = b.database.Where("id != ? AND public_key = ?", au.ID, med.Action.Data).Delete(&authorizedUser{}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error removing authorized user")
+			go b.sendDirect(peer, &response)
+		} else {
+			response.Applied = true
+			usersWithoutRemovedUser := [][]byte{}
+			for _, client := range allAUs {
+				if !bytes.Equal(client.PublicKey, med.Action.Data) {
+					usersWithoutRemovedUser = append(usersWithoutRemovedUser, client.PublicKey)
+				}
+			}
+			response.AuthorizedUsers = usersWithoutRemovedUser
+			go b.sendDirect(peer, &response)
+		}
+	case actionTypeGetAuthorizedUsers:
+		response.Applied = true
+		go b.sendDirect(peer, &response)
+	case actionTypeRevokeDevice:
+		b.database.Exec("DELETE FROM delivery_records")
+		b.database.Exec("DELETE FROM authorized_users")
+		b.database.Exec("DELETE FROM encrypted_frames")
+		b.database.Exec("DELETE FROM recipients")
+		// TODO: delete file tables and blob data
+		log.Info("encrypted device revoked")
+		response.Applied = true
+		b.sendDirect(peer, &response)
+		os.Exit(0)
+	default:
+		log.WithFields(log.Fields{
+			"action_type": med.Action.ActionType,
+		}).Warn("unknown management action received from managing user")
+		go b.sendDirect(peer, &response)
+	}
+
+	return nil, false
+}
+
+func (b *Bounce) changeEncryptedDeviceManegementKeys(oldKey, newKey []byte) {
+	// TODO: for each esd, create a frame to update the key to my current key
+}
+
+type encryptedDeviceManagementActionResponse struct {
+	ID              uuid.UUID
+	Authorized      bool
+	Applied         bool
+	AuthorizedUsers [][]byte
+}
+
+func (edmar *encryptedDeviceManagementActionResponse) getID() uuid.UUID {
+	return edmar.ID
+}
+
+func (edmar *encryptedDeviceManagementActionResponse) getType() uint16 {
+	return typeEncryptedDeviceManagementActionResponse
+}
+
+func (edmar *encryptedDeviceManagementActionResponse) getPayload() []byte {
+	bytes, err := msgpack.Marshal(edmar)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal encrypted device management action response")
+	}
+	return bytes
 }
