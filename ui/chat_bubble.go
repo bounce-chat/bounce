@@ -5,6 +5,7 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -22,6 +23,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/image/draw"
 )
+
+var hyperlinkPattern = regexp.MustCompile(`(?:\w*://)?(?:[^/.\s]+\.)*[a-z]+(?:[.][\w]+|[:]\d+\b)(?:/[^/\s]+)*/?`)
 
 var iconSize = float32(12)
 var bufferSize = float32(30)
@@ -297,6 +300,8 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	}
 
 	if m.text != "" {
+		// TODO: enable hyperlinks once they wrap https://github.com/fyne-io/fyne/issues/3393
+		//cb.message.Segments = hyperlinkify(m.text)
 		cb.message.Segments[0].(*widget.TextSegment).Text = m.text
 		cb.message.Show()
 		cb.message.Refresh()
@@ -438,9 +443,9 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	}
 
 	cb.maxMessageWidth = fyne.MeasureText(
-		longestLine(cb.message.Segments[0].(*widget.TextSegment).Text),
-		theme.Size(cb.message.Segments[0].(*widget.TextSegment).Style.SizeName),
-		cb.message.Segments[0].(*widget.TextSegment).Style.TextStyle,
+		longestLine(m.text),
+		theme.Size(theme.SizeNameText),
+		fyne.TextStyle{},
 	).Width
 	usernameWidth := fyne.MeasureText(
 		m.username,
@@ -537,8 +542,8 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 			cb.chunkLengths,
 			fyne.MeasureText(
 				c,
-				theme.Size(cb.message.Segments[0].(*widget.TextSegment).Style.SizeName),
-				cb.message.Segments[0].(*widget.TextSegment).Style.TextStyle,
+				theme.Size(theme.SizeNameText),
+				fyne.TextStyle{},
 			).Width,
 		)
 	}
@@ -840,8 +845,8 @@ func (cb *chatBubble) decoratorNeedsNewLine(availableWidth, decoratorWidth float
 			firstWord, _ := trimLeadingSpace(cb.chunks[i])
 			currentWrap = fyne.MeasureText(
 				firstWord,
-				theme.Size(cb.message.Segments[0].(*widget.TextSegment).Style.SizeName),
-				cb.message.Segments[0].(*widget.TextSegment).Style.TextStyle,
+				theme.Size(theme.SizeNameText),
+				fyne.TextStyle{},
 			).Width
 		} else {
 			currentWrap += l
@@ -849,4 +854,103 @@ func (cb *chatBubble) decoratorNeedsNewLine(availableWidth, decoratorWidth float
 	}
 
 	return currentWrap+decoratorWidth > availableWidth
+}
+
+func hyperlinkify(text string) []widget.RichTextSegment {
+	segments := []widget.RichTextSegment{}
+
+	allIndexes := hyperlinkPattern.FindAllSubmatchIndex([]byte(text), -1)
+	matchCount := len(allIndexes)
+
+	if len(allIndexes) == 0 {
+		return []widget.RichTextSegment{
+			&widget.TextSegment{
+				Text: text,
+				Style: widget.RichTextStyle{
+					SizeName: theme.SizeNameText,
+					Inline:   true,
+				},
+			},
+		}
+	}
+
+	start := 0
+	for i, loc := range allIndexes {
+		terminal := string(text[loc[1]-1])
+		end := loc[1]
+		stripped := ""
+		if terminal == "." || terminal == "," {
+			end -= 1
+			stripped = terminal
+		}
+
+		if loc[0] > start {
+			segments = append(segments, &widget.TextSegment{
+				Text: string(text[start:loc[0]]),
+				Style: widget.RichTextStyle{
+					SizeName: theme.SizeNameText,
+					Inline:   true,
+				},
+			})
+		}
+		start = end
+
+		hyperlinkText := string(text[loc[0]:end])
+		parse := hyperlinkText
+		if !strings.Contains(hyperlinkText, "://") {
+			parse = "http://" + hyperlinkText
+		}
+		url, err := url.Parse(parse)
+		if url.Scheme == "" {
+			url.Scheme = "http"
+		}
+		if err == nil {
+			segments = append(segments,
+				&widget.HyperlinkSegment{
+					Text: hyperlinkText,
+					URL:  url,
+				},
+			)
+		} else {
+			segments = append(segments, &widget.TextSegment{
+				Text: hyperlinkText,
+				Style: widget.RichTextStyle{
+					SizeName: theme.SizeNameText,
+					Inline:   true,
+				},
+			})
+
+		}
+
+		if i == matchCount-1 {
+			if loc[1] < len(text) {
+				segments = append(segments, &widget.TextSegment{
+					Text: string(text[end:len(text)]),
+					Style: widget.RichTextStyle{
+						SizeName: theme.SizeNameText,
+						Inline:   true,
+					},
+				})
+			} else if stripped != "" {
+				segments = append(segments, &widget.TextSegment{
+					Text: stripped,
+					Style: widget.RichTextStyle{
+						SizeName: theme.SizeNameText,
+						Inline:   true,
+					},
+				})
+			}
+		}
+	}
+
+	if len(segments) == 0 {
+		segments = append(segments, &widget.TextSegment{
+			Text: "",
+			Style: widget.RichTextStyle{
+				SizeName: theme.SizeNameText,
+			},
+		})
+	}
+
+	return segments
 }

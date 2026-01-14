@@ -68,6 +68,11 @@ func (f *forcedVariant) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) col
 		return color.RGBA{0x2d, 0xc2, 0x39, 0xff}
 	}
 
+	// Match hyperlinks to text
+	if name == theme.ColorNameHyperlink {
+		return f.Theme.Color(theme.ColorNameForeground, f.variant)
+	}
+
 	// Default to the default theme
 	return f.Theme.Color(name, f.variant)
 }
