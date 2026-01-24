@@ -114,6 +114,7 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 			typeEncryptedFrame:                   b.handleEncryptedFrame,
 			typeEncryptedReferenceOfferResponse:  b.handleEncryptedReferenceOfferResponse,
 			typeAppendRecipient:                  b.handleAppendRecipient,
+			typeManageEncryptedDevice:            b.handleManageEncryptedDevice,
 		}
 	}
 
@@ -150,6 +151,7 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 		typeEncryptedCatchUp:                  b.handleEncryptedCatchUp,
 		typeEncryptedDeviceManagementResponse: b.handleEncryptedDeviceManagementResponse,
 		typeEncryptedReferenceOfferChallenge:  b.handleEncryptedReferenceOfferChallenge,
+		typeEncryptedDeviceManagementActionResponse: b.handleEncryptedDeviceManagementActionResponse,
 	}
 }
 

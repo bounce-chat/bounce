@@ -185,7 +185,6 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadc
 	return &d, true
 }
 
-// Helper functions for looking up devices in other parts of the codebase
 func (b *Bounce) getDeviceFromAddress(address string) (device, bool) {
 	var dev device
 	err := b.database.Preload(clause.Associations).Where("address = ?", address).First(&dev).Error
@@ -203,6 +202,19 @@ func (b *Bounce) getDeviceFromAddress(address string) (device, bool) {
 
 func (b *Bounce) isSyncDevice(dev device) bool {
 	return dev.UserID == b.currentUserID()
+}
+
+func (b *Bounce) deviceWasRevokedAt(address string, ts int64) bool {
+	dev, ok := b.getDeviceFromAddress(address)
+	if !ok {
+		return false
+	}
+
+	if dev.RevokedAt == 0 {
+		return false
+	}
+
+	return dev.RevokedAt <= ts
 }
 
 func validDeviceName(name string) bool {

@@ -339,6 +339,10 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 
 	// Update the DM fields in the orders of the updates
 	for _, ud := range uds {
+		if b.deviceWasRevokedAt(ud.Signer, ud.Timestamp) {
+			continue
+		}
+
 		err := ud.validPayload()
 		if err != nil {
 			log.WithFields(log.Fields{

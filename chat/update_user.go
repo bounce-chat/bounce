@@ -1,6 +1,10 @@
 package chat
 
 import (
+	"bytes"
+	"crypto/ecdh"
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"strings"
 	"sync"
@@ -19,11 +23,21 @@ var updateUserTypeUpdateImage = uint16(1)
 var updateUserTypeAddEncryptedDevice = uint16(2)
 var updateUserTypeRemoveEncryptedDevice = uint16(3)
 var updateUserTypeSetEncryptedDeviceName = uint16(4)
+var updateUserTypeReplaceKeys = uint16(5)
+var updateUserTypeReplaceECDHPublicKey = uint16(6)
 
 var errInvalidUserName = errors.New("invalid name")
 var errUnsupportedUpdateUserType = errors.New("unsupported update user type")
 var errAddressTooShort = errors.New("address is too short")
 var errPayloadTooShort = errors.New("payload is too short")
+
+type keySet struct {
+	PrivateECDSAKey []byte
+	PublicECDSAKey  []byte
+	PrivateECDHKey  []byte
+	PublicECDHKey   []byte
+	Kek             []byte
+}
 
 type updateUser struct {
 	SignedFrame
@@ -50,7 +64,7 @@ func (uu *updateUser) getID() uuid.UUID {
 }
 
 func (uu *updateUser) getScope(myID uuid.UUID) int {
-	if uu.Type == updateUserTypeSetEncryptedDeviceName {
+	if uu.Type == updateUserTypeSetEncryptedDeviceName || uu.Type == updateUserTypeReplaceKeys {
 		return scopeSync
 	}
 
@@ -344,6 +358,11 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 	images := []string{}
 	encryptedDevices := map[string]bool{}
 	encryptedDeviceNames := map[uuid.UUID]string{}
+	privateECDSA := u.PrivateECDSAKey
+	publicECDSA := u.PublicECDSAKey
+	privateECDH := u.PrivateECDHKey
+	publicECDH := u.PublicECDHKey
+	kek := u.KeyEncryptionKey
 
 	// Get all update users for this user
 	var uus []updateUser
@@ -358,6 +377,10 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 	// Iterate through them to get the final user state
 	imageIDs := []uuid.UUID{}
 	for _, uu := range uus {
+		if b.deviceWasRevokedAt(uu.Signer, uu.Timestamp) {
+			continue
+		}
+
 		switch uu.Type {
 		case updateUserTypeUpdateName:
 			newName = string(uu.Data)
@@ -414,6 +437,23 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 			}
 			name := uu.Data[16:]
 			encryptedDeviceNames[id] = string(name)
+		case updateUserTypeReplaceKeys:
+			var ks keySet
+			err = msgpack.Unmarshal(uu.Data, &ks)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("invlaid key set in update user")
+				continue
+			}
+
+			publicECDSA = ks.PublicECDSAKey
+			privateECDSA = ks.PrivateECDSAKey
+			publicECDH = ks.PublicECDHKey
+			privateECDH = ks.PrivateECDHKey
+			kek = ks.Kek
+		case updateUserTypeReplaceECDHPublicKey:
+			publicECDH = uu.Data
 		default:
 			log.WithFields(log.Fields{
 				"id":      uu.ID,
@@ -494,7 +534,57 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 		}
 	}
 
-	go b.ui.SetUserState(User{
+	if !bytes.Equal(privateECDSA, u.PrivateECDSAKey) {
+		err := b.database.Table("users").Where("id = ?", userID).Updates(map[string]interface{}{"private_ecdsa_key": privateECDSA}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Fatal("database error updating user")
+		}
+	}
+
+	if !bytes.Equal(publicECDSA, u.PublicECDSAKey) {
+		err := b.database.Table("users").Where("id = ?", userID).Updates(map[string]interface{}{"public_ecdsa_key": publicECDSA}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Fatal("database error updating user")
+		}
+	}
+
+	if !bytes.Equal(privateECDH, u.PrivateECDHKey) {
+		err := b.database.Table("users").Where("id = ?", userID).Updates(map[string]interface{}{"private_ecdh_key": privateECDH}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Fatal("database error updating user")
+		}
+	}
+
+	if !bytes.Equal(publicECDH, u.PublicECDHKey) {
+		err := b.database.Table("users").Where("id = ?", userID).Updates(map[string]interface{}{"public_ecdh_key": publicECDH}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Fatal("database error updating user")
+		}
+	}
+
+	if !bytes.Equal(kek, u.KeyEncryptionKey) {
+		err := b.database.Table("users").Where("id = ?", userID).Updates(map[string]interface{}{"key_encryption_key": kek}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Fatal("database error updating user")
+		}
+	}
+
+	go b.ui.SetUserState(User{ // TODO: set encrypted devices as well
 		ID:               u.ID,
 		Name:             u.Name,
 		Alias:            u.Alias,
@@ -615,6 +705,67 @@ func (b *Bounce) addEncryptedDevice(address string) error {
 		Type:      updateUserTypeAddEncryptedDevice,
 		Data:      []byte(address),
 	})
+}
+
+// removeEncryptedDevice
+// updateEncryptedDeviceName
+
+func (b *Bounce) rollKeys() error {
+	// Generate new user keys
+	curve := ecdh.X25519()
+	privateECDHKey, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error generating x25519 private key")
+	}
+	publicECDHKey := privateECDHKey.PublicKey()
+	publicECDSAKey, privateECDSAKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error generating ECDSA keypair")
+	}
+	kek := make([]byte, 32)
+	rand.Read(kek)
+
+	ks := keySet{
+		PublicECDSAKey:  []byte(publicECDSAKey),
+		PrivateECDSAKey: privateECDSAKey.Seed(),
+		PublicECDHKey:   publicECDHKey.Bytes(),
+		PrivateECDHKey:  privateECDHKey.Bytes(),
+		Kek:             kek,
+	}
+	keySetData, err := msgpack.Marshal(&ks)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("failed to marshal key set")
+		return err
+	}
+
+	err = b.applyAndBroadcastUpdateUser(updateUser{
+		ID:        uuid.New(),
+		Target:    b.currentUserID(),
+		Timestamp: time.Now().Unix(),
+		Type:      updateUserTypeReplaceKeys,
+		Data:      keySetData,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("failed to apply and broadcast new key set")
+		return err
+	}
+	return b.applyAndBroadcastUpdateUser(updateUser{
+		ID:        uuid.New(),
+		Target:    b.currentUserID(),
+		Timestamp: time.Now().Unix(),
+		Type:      updateUserTypeReplaceECDHPublicKey,
+		Data:      publicECDHKey.Bytes(),
+	})
+
+	// TODO: if any encrypted devices are online right now, tell them to change keys
 }
 
 func (b *Bounce) applyAndBroadcastUpdateUser(uu updateUser) error {

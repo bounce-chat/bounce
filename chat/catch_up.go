@@ -269,6 +269,10 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	// Ack all of the handled frames
 	go b.sendDirect(peer, a)
 
+	for deviceID, _ := range devicesToUpdate {
+		b.updateDeviceState(deviceID)
+	}
+
 	for userID, _ := range usersToUpdate {
 		b.updateUserState(userID)
 	}
@@ -279,10 +283,6 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 
 	if settingsUpdated {
 		b.updateSettingsState()
-	}
-
-	for deviceID, _ := range devicesToUpdate {
-		b.updateDeviceState(deviceID)
 	}
 
 	// Update all group consensus states for groups that had an update group in this catch up

@@ -266,6 +266,10 @@ func (b *Bounce) updateDeviceState(deviceID uuid.UUID) {
 	var revokeFrame updateDevice
 	sendDirect := false
 	for _, ud := range uds {
+		if b.deviceWasRevokedAt(ud.Signer, ud.Timestamp) {
+			continue
+		}
+
 		switch ud.Type {
 		case updateDeviceTypeUpdateName:
 			name = string(ud.Data)
@@ -524,7 +528,14 @@ func (b *Bounce) RevokeDevice(deviceID uuid.UUID) error {
 		Author:    b.currentUserID(),
 	}
 
-	return b.applyAndBroadcastUpdateDevice(ud)
+	err = b.applyAndBroadcastUpdateDevice(ud)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error applying update device that revokes a device")
+	}
+
+	return b.rollKeys()
 }
 
 func (b *Bounce) applyAndBroadcastUpdateDevice(ud updateDevice) error {
@@ -555,7 +566,7 @@ func (b *Bounce) applyAndBroadcastUpdateDevice(ud updateDevice) error {
 		return err
 	}
 
-	go b.updateDeviceState(ud.Target)
+	b.updateDeviceState(ud.Target)
 
 	b.broadcast(&ud)
 
