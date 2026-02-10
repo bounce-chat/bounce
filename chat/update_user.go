@@ -125,9 +125,7 @@ func (uu *updateUser) validPayload() error {
 			return errAddressTooShort
 		}
 	case updateUserTypeSetEncryptedDeviceName:
-		if len(uu.Data) < 16 {
-			return errPayloadTooShort
-		}
+		// Minimum payload length can't be determined here
 	}
 
 	return nil
@@ -357,7 +355,7 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 	newName := u.Name
 	images := []string{}
 	encryptedDevices := map[string]bool{}
-	encryptedDeviceNames := map[uuid.UUID]string{}
+	encryptedDeviceNames := map[string]string{}
 	privateECDSA := u.PrivateECDSAKey
 	publicECDSA := u.PublicECDSAKey
 	privateECDH := u.PrivateECDHKey
@@ -421,22 +419,16 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 			encryptedDeviceCache[address] = otherUsers
 			encryptedDeviceCacheMutex.Unlock()
 		case updateUserTypeSetEncryptedDeviceName:
-			if len(uu.Data) < 16 {
+			addressLength := len(b.network.Address())
+			if len(uu.Data) < addressLength+2 {
 				log.WithFields(log.Fields{
 					"length": len(uu.Data),
 				}).Error("update user data length to short to update encrypted device name")
 				continue
 			}
-			idBytes := uu.Data[:16]
-			id, err := uuid.FromBytes(idBytes)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("update user contains encrypted device invalid UUID")
-				continue
-			}
-			name := uu.Data[16:]
-			encryptedDeviceNames[id] = string(name)
+			address := string(uu.Data[:addressLength])
+			name := string(uu.Data[addressLength+1:])
+			encryptedDeviceNames[address] = string(name)
 		case updateUserTypeReplaceKeys:
 			var ks keySet
 			err = msgpack.Unmarshal(uu.Data, &ks)
@@ -516,7 +508,7 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 			}).Fatal("database error getting all encrypted sync devices")
 		}
 		for _, esd := range allEncryptedSyncDevices {
-			desiredDeviceName, ok := encryptedDeviceNames[esd.ID]
+			desiredDeviceName, ok := encryptedDeviceNames[esd.Address]
 			if !ok {
 				continue
 			}
@@ -584,7 +576,7 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 		}
 	}
 
-	go b.ui.SetUserState(User{ // TODO: set encrypted devices as well
+	go b.ui.SetUserState(User{
 		ID:               u.ID,
 		Name:             u.Name,
 		Alias:            u.Alias,

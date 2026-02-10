@@ -461,7 +461,7 @@ func (b *Bounce) RenameDevice(deviceID uuid.UUID, name string) error {
 			Target:    b.currentUserID(),
 			Timestamp: time.Now().Unix(),
 			Type:      updateUserTypeSetEncryptedDeviceName,
-			Data:      append(esd.ID[:], []byte(name)...),
+			Data:      []byte(esd.Address + ":" + name),
 		})
 	}
 

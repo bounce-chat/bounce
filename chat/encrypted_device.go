@@ -1021,6 +1021,8 @@ func (b *Bounce) desiredAuthorizedUsers(address string) ([][]byte, error) {
 }
 
 func (b *Bounce) getEncryptedDeviceState(address string) {
+	// TODO: need to update the key if it has changed
+
 	var esd encryptedSyncDevice
 	err := b.database.First(&esd, "address = ?", address).Error
 	if err != nil {

@@ -553,6 +553,10 @@ func (cb *chatBubble) updateDisplayTime() {
 	cb.timestamp.Text = timestampString(cb.writtenAt)
 }
 
+func (cb *chatBubble) TappedSecondary(*fyne.PointEvent) {
+	//TODO: open the reply / react / etc menu
+}
+
 func (cb *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 	cb.ExtendBaseWidget(cb)
 
