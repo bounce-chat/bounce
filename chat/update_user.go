@@ -521,7 +521,7 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 					continue
 				}
 
-				b.ui.DeviceRenamed(esd.ID, desiredDeviceName)
+				go b.ui.DeviceRenamed(esd.ID, desiredDeviceName)
 			}
 		}
 	}
