@@ -1082,7 +1082,7 @@ func (b *Bounce) handleGetManagementKeyHash(peer string, payload []byte, _ bool)
 
 func (b *Bounce) getManagementKeyHash(address string) {
 	var esd encryptedSyncDevice
-	err := b.database.First(&esd, "address = ?", address).Error
+	err := b.database.First(&esd, "address = ? AND managed = ?", address, true).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return
@@ -1159,6 +1159,9 @@ func (b *Bounce) handleManagementKeyHashResponse(peer string, payload []byte, _ 
 
 		b.sendDirect(peer, &med)
 	} else {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("encrypted device cannot be managed with any known key")
 		// TODO: offer to remove this esd / show warning
 	}
 

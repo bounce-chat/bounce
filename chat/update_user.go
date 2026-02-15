@@ -600,6 +600,7 @@ func (b *Bounce) createOrDeleteEncryptedSyncDevices(addresses []string) {
 					ID:        uuid.New(),
 					Address:   addr,
 					Name:      "",
+					Managed:   true, // TODO: should not be set for devices that were only shared with us
 					CreatedAt: time.Now().Unix(),
 				}
 				err = b.database.Create(&esd).Error
