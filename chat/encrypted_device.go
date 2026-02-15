@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
+	"github.com/zeebo/blake3"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -698,9 +699,7 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 		peerUserKeys[peer] = eroc.PublicKey
 		referenceOfferChallengeMutex.Unlock()
 		ero := b.getEncryptedReferenceOfferFor(peer, eroc.PublicKey)
-		if len(ero.References) > 0 {
-			go b.sendDirect(peer, ero)
-		}
+		go b.sendDirect(peer, ero)
 	} else {
 		log.WithFields(log.Fields{
 			"peer": peer,
@@ -715,6 +714,7 @@ const actionTypeAddAuthorizedUser = 1
 const actionTypeRemoveAuthorizedUser = 2
 const actionTypeGetAuthorizedUsers = 3
 const actionTypeRevokeDevice = 4
+const actionTypeGetManagementKeyHash = 5
 
 type encryptedDeviceManagementAction struct {
 	ActionType int
@@ -912,11 +912,14 @@ func (b *Bounce) handleEncryptedDeviceManagementActionResponse(peer string, payl
 	}
 
 	if !edmr.Authorized {
-		// TODO: offer to remove this encrypted device
+		// TODO: offer to remove this encrypted device, if it was managed?
 		return nil, false
 	}
 
-	if edmr.Type == actionTypeGetAuthorizedUsers {
+	switch edmr.Type {
+	case actionTypeChangeManagementKey:
+		b.getEncryptedDeviceState(peer)
+	case actionTypeGetAuthorizedUsers:
 		exists := map[string]bool{}
 		desired := map[string]bool{}
 
@@ -1021,10 +1024,8 @@ func (b *Bounce) desiredAuthorizedUsers(address string) ([][]byte, error) {
 }
 
 func (b *Bounce) getEncryptedDeviceState(address string) {
-	// TODO: need to update the key if it has changed
-
 	var esd encryptedSyncDevice
-	err := b.database.First(&esd, "address = ?", address).Error
+	err := b.database.First(&esd, "address = ? AND managed = ?", address, true).Error
 	if err != nil {
 		return
 	}
@@ -1054,4 +1055,156 @@ func (b *Bounce) getEncryptedDeviceState(address string) {
 	}
 
 	go b.sendDirect(address, &med)
+}
+
+type getManagementKeyHash struct{}
+
+func (gmkh *getManagementKeyHash) getPayload() []byte {
+	return []byte{}
+}
+
+func (gmkh *getManagementKeyHash) getType() uint16 {
+	return typeGetManagementKeyHash
+}
+
+func (b *Bounce) handleGetManagementKeyHash(peer string, payload []byte, _ bool) (broadcastable, bool) {
+	var au authorizedUser
+	err := b.database.Where("manager = ?", true).Take(&au).Error
+	if err != nil {
+		log.Error("cannot return management key hash when no managing user exists")
+		return nil, false
+	}
+
+	b.sendDirect(peer, &managementKeyHashResponse{Hash: hashString(blake3.Sum256(au.SigningKey))})
+
+	return nil, false
+}
+
+func (b *Bounce) getManagementKeyHash(address string) {
+	var esd encryptedSyncDevice
+	err := b.database.First(&esd, "address = ?", address).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up encrypted sync device")
+		}
+	}
+
+	go b.sendDirect(address, &getManagementKeyHash{})
+}
+
+type managementKeyHashResponse struct {
+	Hash string
+}
+
+func (mkhr *managementKeyHashResponse) getPayload() []byte {
+	payload, err := msgpack.Marshal(mkhr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal management key hash response")
+	}
+	return payload
+}
+
+func (mkhr *managementKeyHashResponse) getType() uint16 {
+	return typeManagementKeyHashResponse
+}
+
+func (b *Bounce) handleManagementKeyHashResponse(peer string, payload []byte, _ bool) (broadcastable, bool) {
+	var mkhr managementKeyHashResponse
+	err := msgpack.Unmarshal(payload, &mkhr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling management key hash response")
+		return nil, false
+	}
+
+	cu, ok := b.currentUser()
+	if !ok {
+		log.Error("cannot handle management key hash response before profile creation")
+		return nil, false
+	}
+
+	if mkhr.Hash == hashString(blake3.Sum256(cu.PublicECDSAKey)) {
+		// Keys already match, sync up the authorized user state now
+		b.getEncryptedDeviceState(peer)
+		return nil, false
+	}
+
+	oldKeys := b.managementKeyHistory()
+	if private, ok := oldKeys[mkhr.Hash]; ok {
+		edma := encryptedDeviceManagementAction{
+			ActionType: actionTypeChangeManagementKey,
+			Data:       cu.PublicECDSAKey,
+		}
+		encoded, err := msgpack.Marshal(&edma)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error encoding encrypted device management action")
+			return nil, false
+		}
+		signature := ed25519.Sign(private, encoded)
+
+		med := manageEncryptedDevice{
+			ID:        uuid.New(),
+			Action:    encoded,
+			Signature: signature,
+		}
+
+		b.sendDirect(peer, &med)
+	} else {
+		// TODO: offer to remove this esd / show warning
+	}
+
+	return nil, false
+}
+
+// Create a map from publick key hash to private key for all encrypted device management keys we've ever used
+func (b *Bounce) managementKeyHistory() map[string]ed25519.PrivateKey {
+	results := make(map[string]ed25519.PrivateKey)
+
+	var u user
+	err := b.database.Where("id = ?", b.currentUserID()).First(&u).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("cannot get management key history before user exists")
+			return results
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up current user")
+		}
+	}
+
+	results[hashString(blake3.Sum256(u.PublicECDSAKey))] = ed25519.PrivateKey(u.PrivateECDSAKey)
+
+	var uus []updateUser
+	err = b.database.Where("target = ? AND type = ?", b.currentUserID(), updateUserTypeReplaceKeys).Find(&uus).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up update users")
+	}
+	for _, uu := range uus {
+		var ks keySet
+		err = msgpack.Unmarshal(uu.Data, &ks)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("invlaid key set in update user")
+			continue
+		}
+
+		results[hashString(blake3.Sum256(ks.PublicECDSAKey))] = ed25519.PrivateKey(ks.PrivateECDSAKey)
+	}
+
+	return results
 }

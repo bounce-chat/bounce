@@ -1243,6 +1243,15 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 
 	go b.sendAck(peer, typeReferenceOffer, ro.ID)
 
+	if len(ro.References) == 0 {
+		// An encrypted device may send an empty reference offer in order to trigger the peer
+		// to request the management key hash, in case the peer is a manager and therefore
+		// needs to check if the encrypted device needs to be re-keyed.  This is the only case
+		// that an empty reference offer should ever be sent.
+		b.getManagementKeyHash(peer)
+		return nil, false
+	}
+
 	// Make sure we aren't still handling a catch up while determining what we need to request
 	catchUpMutex.Lock()
 
@@ -1279,6 +1288,10 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	// Inform the reference engine that this peer has these frames that we don't know about
 	if len(references) > 0 {
 		b.loadReferenceOffer(peer, references)
+	} else {
+		// If this is an encrypted device we manage, and we have nothing we need to request from it, then we can now
+		// check the management key and re-key if needed.
+		b.getManagementKeyHash(peer)
 	}
 
 	// Send an ack for everything we already have in the database

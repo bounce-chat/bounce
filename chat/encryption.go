@@ -26,6 +26,7 @@ type encryptedSyncDevice struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Address   string    `gorm:"uniqueIndex"`
 	Name      string
+	Managed   bool
 	CreatedAt int64
 	LastSeen  int64
 }

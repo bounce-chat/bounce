@@ -56,6 +56,8 @@ var typeEncryptedReferenceOfferResponse = uint16(34)
 var typeAppendRecipient = uint16(35)
 var typeManageEncryptedDevice = uint16(36)
 var typeEncryptedDeviceManagementActionResponse = uint16(37)
+var typeGetManagementKeyHash = uint16(38)
+var typeManagementKeyHashResponse = uint16(39)
 
 type sendable interface {
 	getType() uint16
@@ -115,6 +117,7 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 			typeEncryptedReferenceOfferResponse:  b.handleEncryptedReferenceOfferResponse,
 			typeAppendRecipient:                  b.handleAppendRecipient,
 			typeManageEncryptedDevice:            b.handleManageEncryptedDevice,
+			typeGetManagementKeyHash:             b.handleGetManagementKeyHash,
 		}
 	}
 
@@ -152,6 +155,7 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 		typeEncryptedDeviceManagementResponse: b.handleEncryptedDeviceManagementResponse,
 		typeEncryptedReferenceOfferChallenge:  b.handleEncryptedReferenceOfferChallenge,
 		typeEncryptedDeviceManagementActionResponse: b.handleEncryptedDeviceManagementActionResponse,
+		typeManagementKeyHashResponse:               b.handleManagementKeyHashResponse,
 	}
 }
 

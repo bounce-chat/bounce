@@ -98,9 +98,6 @@ func (b *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 
 		// Request any file chunks for this peer if needed
 		b.makeNextChunkRequests()
-
-		// Ask for the encryped device state if this peer is encrypted
-		b.getEncryptedDeviceState(conn.RemoteAddr().String())
 	} else {
 		b.challengeUnencryptedPeerForReferenceOffer(conn.RemoteAddr().String())
 	}
