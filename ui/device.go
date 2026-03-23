@@ -35,3 +35,11 @@ func (ui *ui) DeviceLastSeen(id uuid.UUID, timestamp int64) {
 	ui.devices.updateLastSeen(id, timestamp)
 	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 }
+
+func (ui *ui) EncryptedDeviceUnmanagable(id uuid.UUID) {
+	// TODO: show error on device because we have no key for it
+}
+
+func (ui *ui) EncryptedDeviceManagable(id uuid.UUID) {
+	// TODO: clear any unmanagable errors for this device
+}

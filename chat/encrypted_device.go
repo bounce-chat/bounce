@@ -912,8 +912,10 @@ func (b *Bounce) handleEncryptedDeviceManagementActionResponse(peer string, payl
 	}
 
 	if !edmr.Authorized {
-		// TODO: offer to remove this encrypted device, if it was managed?
+		b.updateManagableWarning(peer, false)
 		return nil, false
+	} else {
+		b.updateManagableWarning(peer, true)
 	}
 
 	switch edmr.Type {
@@ -1132,6 +1134,7 @@ func (b *Bounce) handleManagementKeyHashResponse(peer string, payload []byte, _ 
 
 	if mkhr.Hash == hashString(blake3.Sum256(cu.PublicECDSAKey)) {
 		// Keys already match, sync up the authorized user state now
+		b.updateManagableWarning(peer, true)
 		b.getEncryptedDeviceState(peer)
 		return nil, false
 	}
@@ -1158,14 +1161,36 @@ func (b *Bounce) handleManagementKeyHashResponse(peer string, payload []byte, _ 
 		}
 
 		b.sendDirect(peer, &med)
+
+		b.updateManagableWarning(peer, true)
 	} else {
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("encrypted device cannot be managed with any known key")
-		// TODO: offer to remove this esd / show warning
+		b.updateManagableWarning(peer, false)
 	}
 
 	return nil, false
+}
+
+func (b *Bounce) updateManagableWarning(peer string, managable bool) {
+	var esd encryptedSyncDevice
+	err := b.database.First(&esd, "address = ?", peer).Error
+	if err == nil {
+		if managable {
+			b.ui.EncryptedDeviceManagable(esd.ID)
+		} else {
+			b.ui.EncryptedDeviceUnmanagable(esd.ID)
+		}
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Error("key hash response from unknown encrypted sync device")
+	} else {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up encrypted sync device")
+	}
 }
 
 // Create a map from publick key hash to private key for all encrypted device management keys we've ever used
