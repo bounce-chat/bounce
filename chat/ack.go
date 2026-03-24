@@ -73,12 +73,10 @@ func (b *Bounce) handleAckSideEffects(fr frameReference, peer string) {
 	switch fr.Type {
 	case typeDirectMessage:
 		encryptedDeviceCacheMutex.Lock()
-		users, ok := encryptedDeviceCache[peer]
+		userID, ok := encryptedDeviceCache[peer]
 		encryptedDeviceCacheMutex.Unlock()
 		if ok {
-			for _, userID := range users {
-				b.ui.MessageDelivered(fr.FrameID, userID)
-			}
+			b.ui.MessageDelivered(fr.FrameID, userID)
 		} else {
 			dev, ok := b.getDeviceFromAddress(peer)
 			if ok {
@@ -98,12 +96,10 @@ func (b *Bounce) handleAckSideEffects(fr frameReference, peer string) {
 		dmDeliveryNotificationMutex.Unlock()
 	case typeGroupMessage:
 		encryptedDeviceCacheMutex.Lock()
-		users, ok := encryptedDeviceCache[peer]
+		userID, ok := encryptedDeviceCache[peer]
 		encryptedDeviceCacheMutex.Unlock()
 		if ok {
-			for _, userID := range users {
-				b.ui.MessageDelivered(fr.FrameID, userID)
-			}
+			b.ui.MessageDelivered(fr.FrameID, userID)
 		} else {
 			dev, ok := b.getDeviceFromAddress(peer)
 			if ok {

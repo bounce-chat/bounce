@@ -284,12 +284,10 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		})
 
 		encryptedDeviceCacheMutex.Lock()
-		users, ok := encryptedDeviceCache[peer]
+		userID, ok := encryptedDeviceCache[peer]
 		encryptedDeviceCacheMutex.Unlock()
 		if ok {
-			for _, userID := range users {
-				b.ui.MessageDelivered(dm.ID, userID)
-			}
+			b.ui.MessageDelivered(dm.ID, userID)
 		} else {
 			dev, ok := b.getDeviceFromAddress(peer)
 			if ok {

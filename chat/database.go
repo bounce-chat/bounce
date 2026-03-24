@@ -323,7 +323,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			}).Fatal("database error getting all encrypted sync devices")
 		}
 		for _, esd := range allEncryptedSyncDevices {
-			encryptedDeviceCache[esd.Address] = append(encryptedDeviceCache[esd.Address], dbProfile.ID)
+			encryptedDeviceCache[esd.Address] = dbProfile.ID
 			syncDevices = append(
 				syncDevices,
 				Device{
@@ -380,7 +380,17 @@ func (b *Bounce) GetInitialState() InitialState {
 
 		if len(u.EncryptedDevices) > 0 {
 			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
-				encryptedDeviceCache[addr] = append(encryptedDeviceCache[addr], u.ID)
+				if assigned, ok := encryptedDeviceCache[addr]; ok {
+					if assigned != u.ID {
+						log.WithFields(log.Fields{
+							"assigned_to": assigned,
+							"claiming":    u.ID,
+							"address":     addr,
+						}).Error("encrypted device already assigned to different user")
+						continue
+					}
+				}
+				encryptedDeviceCache[addr] = u.ID
 			}
 		}
 	}
@@ -538,15 +548,13 @@ func (b *Bounce) GetInitialState() InitialState {
 			)
 		} else {
 			encryptedDeviceCacheMutex.Lock()
-			deliveredEncryptedUsers, ok := encryptedDeviceCache[dr.Destination]
+			userID, ok := encryptedDeviceCache[dr.Destination]
 			encryptedDeviceCacheMutex.Unlock()
 			if ok {
-				for _, userID := range deliveredEncryptedUsers {
-					dmDRmap[dr.FrameID] = append(
-						dmDRmap[dr.FrameID],
-						userID,
-					)
-				}
+				dmDRmap[dr.FrameID] = append(
+					dmDRmap[dr.FrameID],
+					userID,
+				)
 			}
 		}
 	}
@@ -686,15 +694,13 @@ func (b *Bounce) GetInitialState() InitialState {
 			)
 		} else {
 			encryptedDeviceCacheMutex.Lock()
-			deliveredEncryptedUsers, ok := encryptedDeviceCache[dr.Destination]
+			userID, ok := encryptedDeviceCache[dr.Destination]
 			encryptedDeviceCacheMutex.Unlock()
 			if ok {
-				for _, userID := range deliveredEncryptedUsers {
-					gmDRmap[dr.FrameID] = append(
-						gmDRmap[dr.FrameID],
-						userID,
-					)
-				}
+				gmDRmap[dr.FrameID] = append(
+					gmDRmap[dr.FrameID],
+					userID,
+				)
 			}
 		}
 	}

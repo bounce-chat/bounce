@@ -397,26 +397,32 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 			encryptedDevices[address] = true
 
 			encryptedDeviceCacheMutex.Lock()
-			encryptedDeviceCache[address] = append(encryptedDeviceCache[address], userID)
+			currentUser, ok := encryptedDeviceCache[address]
+			if ok && currentUser != userID {
+				log.WithFields(log.Fields{
+					"address":     address,
+					"currentUser": currentUser,
+					"newUser":     userID,
+				}).Error("refusing to add encrypted device that already belongs to another user")
+			} else {
+				encryptedDeviceCache[address] = userID
+			}
 			encryptedDeviceCacheMutex.Unlock()
 		case updateUserTypeRemoveEncryptedDevice:
 			address := string(uu.Data)
 			delete(encryptedDevices, address)
 
 			encryptedDeviceCacheMutex.Lock()
-			allUsers, ok := encryptedDeviceCache[address]
-			if !ok {
-				encryptedDeviceCacheMutex.Unlock()
-				continue
+			currentUser, ok := encryptedDeviceCache[address]
+			if ok && currentUser != userID {
+				delete(encryptedDeviceCache, address)
+			} else if ok {
+				log.WithFields(log.Fields{
+					"address":      address,
+					"currentUser":  currentUser,
+					"removingUser": userID,
+				}).Error("refusing to remove encrypted device from cache that doesn't belong to user doing the removal")
 			}
-
-			otherUsers := []uuid.UUID{}
-			for _, id := range allUsers {
-				if id != userID {
-					otherUsers = append(otherUsers, id)
-				}
-			}
-			encryptedDeviceCache[address] = otherUsers
 			encryptedDeviceCacheMutex.Unlock()
 		case updateUserTypeSetEncryptedDeviceName:
 			addressLength := len(b.network.Address())
@@ -600,7 +606,6 @@ func (b *Bounce) createOrDeleteEncryptedSyncDevices(addresses []string) {
 					ID:        uuid.New(),
 					Address:   addr,
 					Name:      "",
-					Managed:   true, // TODO: should not be set for devices that were only shared with us
 					CreatedAt: time.Now().Unix(),
 				}
 				err = b.database.Create(&esd).Error

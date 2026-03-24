@@ -180,62 +180,60 @@ func (b *Bounce) hasAnyReferencesFor(address string) bool {
 	catchUpMutex.Lock()
 	defer catchUpMutex.Unlock()
 
-	var users []uuid.UUID
+	var userID uuid.UUID
 	dev, ok := b.getDeviceFromAddress(address)
 	if ok {
-		users = []uuid.UUID{dev.UserID}
+		userID = dev.UserID
 	} else {
 		encryptedDeviceCacheMutex.Lock()
-		users, ok = encryptedDeviceCache[address]
+		userID, ok = encryptedDeviceCache[address]
 		encryptedDeviceCacheMutex.Unlock()
 		if !ok {
 			return false
 		}
 	}
 
-	for _, userID := range users {
-		if len(b.getDirectMessagesToOffer(address, userID)) > 0 {
-			return true
-		}
-		if len(b.getGroupMessagesToOffer(address, userID)) > 0 {
-			return true
-		}
-		if len(b.getUpdateDMsToOffer(address, userID)) > 0 {
-			return true
-		}
-		if len(b.getDevicesToOffer(address, userID)) > 0 {
-			return true
-		}
-		if len(b.getAddUsersToOffer(address, userID)) > 0 {
-			return true
-		}
-		if len(b.getGroupCreationsToOffer(address, userID)) > 0 {
-			return true
-		}
-		if len(b.getUpdateGroupsToOffer(address, userID)) > 0 {
-			return true
-		}
-		if len(b.getConfirmationsToOffer(address, userID)) > 0 {
-			return true
-		}
-		if len(b.getUpdateUsersToOffer(address, userID)) > 0 {
-			return true
-		}
-		if len(b.getUpdateDevicesToOffer(address, userID)) > 0 {
-			return true
-		}
-		if len(b.getReadReceiptsToOffer(address, userID)) > 0 {
-			return true
-		}
-		if len(b.getUpdateSettingsToOffer(address, userID)) > 0 {
-			return true
-		}
-		if len(b.getFilesToOffer(address, userID)) > 0 {
-			return true
-		}
-		if len(b.getChunkOffersToOffer(address, userID)) > 0 {
-			return true
-		}
+	if len(b.getDirectMessagesToOffer(address, userID)) > 0 {
+		return true
+	}
+	if len(b.getGroupMessagesToOffer(address, userID)) > 0 {
+		return true
+	}
+	if len(b.getUpdateDMsToOffer(address, userID)) > 0 {
+		return true
+	}
+	if len(b.getDevicesToOffer(address, userID)) > 0 {
+		return true
+	}
+	if len(b.getAddUsersToOffer(address, userID)) > 0 {
+		return true
+	}
+	if len(b.getGroupCreationsToOffer(address, userID)) > 0 {
+		return true
+	}
+	if len(b.getUpdateGroupsToOffer(address, userID)) > 0 {
+		return true
+	}
+	if len(b.getConfirmationsToOffer(address, userID)) > 0 {
+		return true
+	}
+	if len(b.getUpdateUsersToOffer(address, userID)) > 0 {
+		return true
+	}
+	if len(b.getUpdateDevicesToOffer(address, userID)) > 0 {
+		return true
+	}
+	if len(b.getReadReceiptsToOffer(address, userID)) > 0 {
+		return true
+	}
+	if len(b.getUpdateSettingsToOffer(address, userID)) > 0 {
+		return true
+	}
+	if len(b.getFilesToOffer(address, userID)) > 0 {
+		return true
+	}
+	if len(b.getChunkOffersToOffer(address, userID)) > 0 {
+		return true
 	}
 
 	return false
@@ -251,13 +249,13 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 		log.Fatal("cannot generate reference offer from encrypted device")
 	}
 
-	var users []uuid.UUID
+	var userID uuid.UUID
 	dev, ok := b.getDeviceFromAddress(address)
 	if ok {
-		users = []uuid.UUID{dev.UserID}
+		userID = dev.UserID
 	} else {
 		encryptedDeviceCacheMutex.Lock()
-		users, ok = encryptedDeviceCache[address]
+		userID, ok = encryptedDeviceCache[address]
 		encryptedDeviceCacheMutex.Unlock()
 		if !ok {
 			log.WithFields(log.Fields{
@@ -268,23 +266,21 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	}
 
 	references := []frameReference{}
-	for _, userID := range users {
-		references = append(references, b.getDirectMessagesToOffer(address, userID)...)
-		references = append(references, b.getGroupMessagesToOffer(address, userID)...)
-		references = append(references, b.getUpdateDMsToOffer(address, userID)...)
-		references = append(references, b.getDevicesToOffer(address, userID)...)
-		references = append(references, b.getAddUsersToOffer(address, userID)...)
-		references = append(references, b.getGroupCreationsToOffer(address, userID)...)
-		references = append(references, b.getUpdateGroupsToOffer(address, userID)...)
-		references = append(references, b.getConfirmationsToOffer(address, userID)...)
-		references = append(references, b.getUpdateUsersToOffer(address, userID)...)
-		references = append(references, b.getUpdateDevicesToOffer(address, userID)...)
-		references = append(references, b.getReadReceiptsToOffer(address, userID)...)
-		references = append(references, b.getUpdateSettingsToOffer(address, userID)...)
-		references = append(references, b.getFilesToOffer(address, userID)...)
-		references = append(references, b.getChunkOffersToOffer(address, userID)...)
-		references = append(references, b.getAppendRecipientsToOffer(address, userID)...)
-	}
+	references = append(references, b.getDirectMessagesToOffer(address, userID)...)
+	references = append(references, b.getGroupMessagesToOffer(address, userID)...)
+	references = append(references, b.getUpdateDMsToOffer(address, userID)...)
+	references = append(references, b.getDevicesToOffer(address, userID)...)
+	references = append(references, b.getAddUsersToOffer(address, userID)...)
+	references = append(references, b.getGroupCreationsToOffer(address, userID)...)
+	references = append(references, b.getUpdateGroupsToOffer(address, userID)...)
+	references = append(references, b.getConfirmationsToOffer(address, userID)...)
+	references = append(references, b.getUpdateUsersToOffer(address, userID)...)
+	references = append(references, b.getUpdateDevicesToOffer(address, userID)...)
+	references = append(references, b.getReadReceiptsToOffer(address, userID)...)
+	references = append(references, b.getUpdateSettingsToOffer(address, userID)...)
+	references = append(references, b.getFilesToOffer(address, userID)...)
+	references = append(references, b.getChunkOffersToOffer(address, userID)...)
+	references = append(references, b.getAppendRecipientsToOffer(address, userID)...)
 
 	return &referenceOffer{
 		ID:         uuid.New(),

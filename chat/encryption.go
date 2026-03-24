@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-var encryptedDeviceCache = map[string][]uuid.UUID{}
+var encryptedDeviceCache = map[string]uuid.UUID{}
 var encryptedDeviceCacheMutex sync.Mutex
 
 const maximumRecipients = 15
@@ -26,7 +26,6 @@ type encryptedSyncDevice struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Address   string    `gorm:"uniqueIndex"`
 	Name      string
-	Managed   bool
 	CreatedAt int64
 	LastSeen  int64
 }
