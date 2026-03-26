@@ -705,9 +705,6 @@ func (b *Bounce) addEncryptedDevice(address string) error {
 	})
 }
 
-// removeEncryptedDevice
-// updateEncryptedDeviceName
-
 func (b *Bounce) rollKeys() error {
 	// Generate new user keys
 	curve := ecdh.X25519()

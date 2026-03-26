@@ -710,7 +710,6 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 }
 
 const actionTypeChangeManagementKey = 0
-const actionTypeRevokeDevice = 1
 
 type encryptedDeviceManagementAction struct {
 	ActionType int
@@ -805,16 +804,6 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 			response.Applied = true
 			go b.sendDirect(peer, &response)
 		}
-	case actionTypeRevokeDevice:
-		b.database.Exec("DELETE FROM delivery_records")
-		b.database.Exec("DELETE FROM authorized_users")
-		b.database.Exec("DELETE FROM encrypted_frames")
-		b.database.Exec("DELETE FROM recipients")
-		// TODO: delete file tables and blob data
-		log.Info("encrypted device revoked")
-		response.Applied = true
-		b.sendDirect(peer, &response)
-		os.Exit(0)
 	default:
 		log.WithFields(log.Fields{
 			"action_type": edma.ActionType,

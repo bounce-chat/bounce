@@ -2,8 +2,12 @@ package ui
 
 import (
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
+	log "github.com/sirupsen/logrus"
 )
 
 func (ui *ui) DeviceOnline(id uuid.UUID) {
@@ -37,9 +41,35 @@ func (ui *ui) DeviceLastSeen(id uuid.UUID, timestamp int64) {
 }
 
 func (ui *ui) EncryptedDeviceUnmanagable(id uuid.UUID) {
-	// TODO: show error on device because we have no key for it
+	ui.devices.Lock()
+	d, ok := ui.devices.devices[id]
+	ui.devices.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"device_id": id,
+		}).Warn("unknown device is not managable")
+		return
+	}
+
+	fyne.Do(func() {
+		ui.showDialog(
+			dialog.NewCustomConfirm(
+				"Encrypted Device Management Error",
+				"Remove Device",
+				"Keep Device",
+				container.NewMax(
+					widget.NewLabel("An encrypted device management action failed on the following device because this device does not currently have the correct key.  Remove this encrypted device?"),
+					widget.NewLabel(d.Address),
+				),
+				func(remove bool) {
+					ui.bounce.RevokeDevice(id)
+				},
+				ui.window,
+			),
+			nil,
+		)
+	})
 }
 
 func (ui *ui) EncryptedDeviceManagable(id uuid.UUID) {
-	// TODO: clear any unmanagable errors for this device
 }
