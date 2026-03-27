@@ -884,7 +884,7 @@ func (b *Bounce) handleGetManagementKeyHash(peer string, payload []byte, _ bool)
 
 func (b *Bounce) getManagementKeyHash(address string) {
 	var esd encryptedSyncDevice
-	err := b.database.First(&esd, "address = ? AND managed = ?", address, true).Error
+	err := b.database.First(&esd, "address = ?", address).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return
