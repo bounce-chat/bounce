@@ -706,6 +706,13 @@ func (b *Bounce) addEncryptedDevice(address string) error {
 }
 
 func (b *Bounce) rollKeys() error {
+	// Cache the current signing key that is about to be repalced
+	cu, ok := b.currentUser()
+	if !ok {
+		return errors.New("cannot roll keys without existing current user")
+	}
+	oldECDSA := cu.PrivateECDSAKey
+
 	// Generate new user keys
 	curve := ecdh.X25519()
 	privateECDHKey, err := curve.GenerateKey(rand.Reader)
@@ -739,6 +746,7 @@ func (b *Bounce) rollKeys() error {
 		return err
 	}
 
+	// Inform sync devices about new keys, and all other users about public ECDH key
 	err = b.applyAndBroadcastUpdateUser(updateUser{
 		ID:        uuid.New(),
 		Target:    b.currentUserID(),
@@ -752,15 +760,67 @@ func (b *Bounce) rollKeys() error {
 		}).Error("failed to apply and broadcast new key set")
 		return err
 	}
-	return b.applyAndBroadcastUpdateUser(updateUser{
+	err = b.applyAndBroadcastUpdateUser(updateUser{
 		ID:        uuid.New(),
 		Target:    b.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeReplaceECDHPublicKey,
 		Data:      publicECDHKey.Bytes(),
 	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("failed to apply and broadcast new ECDH key")
+		return err
+	}
 
-	// TODO: if any encrypted devices are online right now, tell them to change keys
+	// Update any encrypted devices that are currently online
+	var allESDs []encryptedSyncDevice
+	err = b.database.Find(&allESDs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error loading all encrypted sync devices")
+	}
+	for _, esd := range allESDs {
+		rd := b.getRemoteDevice(esd.Address)
+		if rd.connectedSockets.Load() > 0 {
+			esdks := keySet{
+				PublicECDSAKey: cu.PublicECDSAKey,
+				PublicECDHKey:  cu.PublicECDHKey,
+			}
+			esdKeySetData, err := msgpack.Marshal(&esdks)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("failed to marshal key set")
+				continue
+			}
+
+			edma := encryptedDeviceManagementAction{
+				ActionType: actionTypeChangeManagementKey,
+				Data:       esdKeySetData,
+			}
+			encoded, err := msgpack.Marshal(&edma)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error encoding encrypted device management action")
+				continue
+			}
+			signature := ed25519.Sign(oldECDSA, encoded)
+
+			med := manageEncryptedDevice{
+				ID:        uuid.New(),
+				Action:    encoded,
+				Signature: signature,
+			}
+
+			b.sendDirect(esd.Address, &med)
+		}
+	}
+
+	return nil
 }
 
 func (b *Bounce) applyAndBroadcastUpdateUser(uu updateUser) error {
