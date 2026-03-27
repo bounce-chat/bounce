@@ -236,13 +236,13 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 	}
 
 	// Ignore messages that should have already been deleted
-	if gm.DeleteAt <= time.Now().Unix() {
+	if gm.DeleteAt != 0 && gm.DeleteAt <= time.Now().Unix() {
 		log.WithFields(log.Fields{
 			"id":          gm.ID,
 			"author":      gm.Author,
 			"destination": gm.getDestination(b.currentUserID()),
 			"delete_at":   gm.DeleteAt,
-		}).Debug("ignoring a group message that has delete time older than now")
+		}).Debug("ignoring a group message that has delete time that occured before now")
 		return nil, false
 	}
 
