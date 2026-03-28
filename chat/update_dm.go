@@ -264,7 +264,7 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 	}
 
 	// Apply this update locally
-	err = b.saveAndDisplayUpdateDM(ud)
+	err = b.saveAndDisplayUpdateDM(&ud)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"user":  xor(ud.Target, b.currentUserID()),
@@ -402,7 +402,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 					payload := make([]byte, 8)
 					binary.LittleEndian.PutUint64(payload, uint64(profile.ProfileSettings.DefaultDMRetention))
 
-					set := updateDM{
+					set := &updateDM{
 						ID:        uuid.New(),
 						Actor:     b.currentUserID(),
 						Target:    xor(userID, b.currentUserID()),
@@ -421,14 +421,14 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 					set.Signature = sc.Signature
 					set.Signer = sc.Signer
 
-					err = b.database.Create(&set).Error
+					err = b.database.Create(set).Error
 					if err != nil {
 						log.WithFields(log.Fields{
 							"error": err.Error(),
 						}).Fatal("database error saving update DM")
 					}
 
-					b.broadcast(&set)
+					b.broadcast(set)
 					b.updateDMState(userID)
 					b.informUIUpdateDMChangeRetention(u, set)
 
@@ -441,7 +441,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 				payload := make([]byte, 8)
 				binary.LittleEndian.PutUint64(payload, uint64(profile.ProfileSettings.DefaultDMRetention))
 
-				offer := updateDM{
+				offer := &updateDM{
 					ID:        uuid.New(),
 					Actor:     b.currentUserID(),
 					Target:    xor(userID, b.currentUserID()),
@@ -450,7 +450,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 					Data:      payload,
 				}
 
-				offer.OriginalPayload, err = msgpack.Marshal(&offer)
+				offer.OriginalPayload, err = msgpack.Marshal(offer)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
@@ -460,14 +460,14 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 				offer.Signature = sc.Signature
 				offer.Signer = sc.Signer
 
-				err = b.database.Create(&offer).Error
+				err = b.database.Create(offer).Error
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
 					}).Fatal("database error saving update DM")
 				}
 
-				b.broadcast(&offer)
+				b.broadcast(offer)
 			}
 		}
 	}
@@ -532,7 +532,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 	})
 }
 
-func (b *Bounce) saveAndDisplayUpdateDM(ud updateDM) error {
+func (b *Bounce) saveAndDisplayUpdateDM(ud *updateDM) error {
 	// Only sync devices can change sync scoped messages
 	if ud.getScope(b.currentUserID()) == scopeSync {
 		if ud.Actor != b.currentUserID() {
@@ -557,7 +557,7 @@ func (b *Bounce) saveAndDisplayUpdateDM(ud updateDM) error {
 	ud.Signer = sc.Signer
 
 	// Save the update DM
-	err = b.database.Create(&ud).Error
+	err = b.database.Create(ud).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -618,7 +618,7 @@ func (b *Bounce) saveAndDisplayUpdateDM(ud updateDM) error {
 	return nil
 }
 
-func (b *Bounce) informUIUpdateDMChangeRetention(u user, ud updateDM) {
+func (b *Bounce) informUIUpdateDMChangeRetention(u user, ud *updateDM) {
 	// Decode the new retention value
 	retention := int64(binary.LittleEndian.Uint64(ud.Data))
 
@@ -632,7 +632,7 @@ func (b *Bounce) informUIUpdateDMChangeRetention(u user, ud updateDM) {
 	})
 }
 
-func (b *Bounce) informUIUpdateDMSetClearBefore(u user, ud updateDM) {
+func (b *Bounce) informUIUpdateDMSetClearBefore(u user, ud *updateDM) {
 	// Decode the new retention value
 	clearBefore := int64(binary.LittleEndian.Uint64(ud.Data))
 
@@ -663,7 +663,7 @@ func (b *Bounce) informUIUpdateDMSetClearBefore(u user, ud updateDM) {
 	})
 }
 
-func (b *Bounce) informUIUpdateDMSetAlias(u user, ud updateDM) {
+func (b *Bounce) informUIUpdateDMSetAlias(u user, ud *updateDM) {
 	b.ui.UserAliased(UpdateDMSetAlias{
 		ID:        ud.ID,
 		User:      ud.Target,
@@ -676,7 +676,7 @@ func (b *Bounce) SetDMMutedUntil(userID uuid.UUID, mutedUntil int64) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(mutedUntil))
 
-	return b.applyAndBroadcastUpdateDM(updateDM{
+	return b.applyAndBroadcastUpdateDM(&updateDM{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
@@ -690,7 +690,7 @@ func (b *Bounce) SetDMRetention(userID uuid.UUID, retention int64) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(retention))
 
-	return b.applyAndBroadcastUpdateDM(updateDM{
+	return b.applyAndBroadcastUpdateDM(&updateDM{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
@@ -704,7 +704,7 @@ func (b *Bounce) ClearDMChatHistory(userID uuid.UUID) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(time.Now().Unix()))
 
-	return b.applyAndBroadcastUpdateDM(updateDM{
+	return b.applyAndBroadcastUpdateDM(&updateDM{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
@@ -728,7 +728,7 @@ func (b *Bounce) SetDMReadReceiptSettings(userID uuid.UUID, override bool, enabl
 		payload = append(payload, readReceiptsDisabledValue)
 	}
 
-	return b.applyAndBroadcastUpdateDM(updateDM{
+	return b.applyAndBroadcastUpdateDM(&updateDM{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
@@ -752,7 +752,7 @@ func (b *Bounce) SetDMTypingIndicatorSettings(userID uuid.UUID, override bool, e
 		payload = append(payload, typingIndicatorsDisabledValue)
 	}
 
-	return b.applyAndBroadcastUpdateDM(updateDM{
+	return b.applyAndBroadcastUpdateDM(&updateDM{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
@@ -770,7 +770,7 @@ func (b *Bounce) SetOpenDM(userID uuid.UUID, open bool) error {
 		payload = append(payload, dmClosed)
 	}
 
-	return b.applyAndBroadcastUpdateDM(updateDM{
+	return b.applyAndBroadcastUpdateDM(&updateDM{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
@@ -781,7 +781,7 @@ func (b *Bounce) SetOpenDM(userID uuid.UUID, open bool) error {
 }
 
 func (b *Bounce) AliasUser(userID uuid.UUID, alias string) error {
-	return b.applyAndBroadcastUpdateDM(updateDM{
+	return b.applyAndBroadcastUpdateDM(&updateDM{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
@@ -792,7 +792,7 @@ func (b *Bounce) AliasUser(userID uuid.UUID, alias string) error {
 }
 
 func (b *Bounce) SetUserNotes(userID uuid.UUID, notes string) error {
-	return b.applyAndBroadcastUpdateDM(updateDM{
+	return b.applyAndBroadcastUpdateDM(&updateDM{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
@@ -807,7 +807,7 @@ func (b *Bounce) BlockUser(userID uuid.UUID) error {
 		return errCannotBlockSelf
 	}
 
-	err := b.applyAndBroadcastUpdateDM(updateDM{
+	err := b.applyAndBroadcastUpdateDM(&updateDM{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
@@ -829,7 +829,7 @@ func (b *Bounce) UnblockUser(userID uuid.UUID) error {
 		return errCannotBlockSelf
 	}
 
-	return b.applyAndBroadcastUpdateDM(updateDM{
+	return b.applyAndBroadcastUpdateDM(&updateDM{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
@@ -839,7 +839,7 @@ func (b *Bounce) UnblockUser(userID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) applyAndBroadcastUpdateDM(ud updateDM) error {
+func (b *Bounce) applyAndBroadcastUpdateDM(ud *updateDM) error {
 	// Called in a goroutine since the UI can't be called back from main
 	go func() {
 		// Save and display the update the UI
@@ -855,7 +855,7 @@ func (b *Bounce) applyAndBroadcastUpdateDM(ud updateDM) error {
 		b.updateDMState(xor(ud.Target, b.currentUserID()))
 
 		// Broadcast
-		b.broadcast(&ud)
+		b.broadcast(ud)
 	}()
 
 	return nil

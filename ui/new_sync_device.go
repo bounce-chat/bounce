@@ -256,10 +256,7 @@ func (ui *ui) SyncDeviceRequestAccepted(profile chat.User, devices []chat.Device
 	ui.updateDeviceStatus()
 
 	if !references {
-		fyne.DoAndWait(func() {
-			ui.showMainContainer()
-			ui.NewDirectMessage(profile)
-		})
+		fyne.DoAndWait(func() { ui.showMainContainer() })
 	}
 }
 
