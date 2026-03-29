@@ -62,7 +62,9 @@ func (ui *ui) EncryptedDeviceUnmanagable(id uuid.UUID) {
 					widget.NewLabel(d.Address),
 				),
 				func(remove bool) {
-					ui.bounce.RevokeDevice(id)
+					if remove {
+						ui.bounce.RevokeDevice(id)
+					}
 				},
 				ui.window,
 			),
