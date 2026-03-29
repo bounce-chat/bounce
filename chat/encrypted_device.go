@@ -407,6 +407,7 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 
 	if !foundAuthorizedUser {
 		log.WithFields(log.Fields{
+			"type":       ef.Type,
 			"id":         ef.ID,
 			"peer":       peer,
 			"recipients": len(ef.Recipients),
@@ -790,7 +791,7 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("invlaid key set in manage encreypted device")
+			}).Error("invlaid key set in manage encrypted device")
 			return nil, false
 		}
 

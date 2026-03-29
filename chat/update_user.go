@@ -418,7 +418,7 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 
 			encryptedDeviceCacheMutex.Lock()
 			currentUser, ok := encryptedDeviceCache[address]
-			if ok && currentUser != userID {
+			if ok && currentUser == userID {
 				delete(encryptedDeviceCache, address)
 			} else if ok {
 				log.WithFields(log.Fields{
@@ -737,7 +737,7 @@ func (b *Bounce) rollKeys() error {
 
 	ks := keySet{
 		PublicECDSAKey:  []byte(publicECDSAKey),
-		PrivateECDSAKey: privateECDSAKey.Seed(),
+		PrivateECDSAKey: privateECDSAKey,
 		PublicECDHKey:   publicECDHKey.Bytes(),
 		PrivateECDHKey:  privateECDHKey.Bytes(),
 		Kek:             kek,
@@ -790,8 +790,8 @@ func (b *Bounce) rollKeys() error {
 		rd := b.getRemoteDevice(esd.Address)
 		if rd.connectedSockets.Load() > 0 {
 			esdks := keySet{
-				PublicECDSAKey: cu.PublicECDSAKey,
-				PublicECDHKey:  cu.PublicECDHKey,
+				PublicECDSAKey: ks.PublicECDSAKey,
+				PublicECDHKey:  ks.PublicECDHKey,
 			}
 			esdKeySetData, err := msgpack.Marshal(&esdks)
 			if err != nil {
