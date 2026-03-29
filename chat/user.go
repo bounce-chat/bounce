@@ -236,7 +236,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		Name:               profileName,
 		Profile:            true,
 		PublicECDSAKey:     []byte(publicECDSAKey),
-		PrivateECDSAKey:    privateECDSAKey.Seed(),
+		PrivateECDSAKey:    privateECDSAKey,
 		PublicECDHKey:      publicECDHKey.Bytes(),
 		PrivateECDHKey:     privateECDHKey.Bytes(),
 		KeyEncryptionKey:   kek,
