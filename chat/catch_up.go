@@ -536,8 +536,8 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		b.makeNextChunkRequests()
 	}
 
-	// If this is an encryped device, check if we manage it, and if so check if we need to re-key it
-	if encrypted {
+	// If this is an encryped device (and we aren't), check if we manage it, and if so check if we need to re-key it
+	if encrypted && !b.encrypted {
 		b.getManagementKeyHash(peer)
 	}
 

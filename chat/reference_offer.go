@@ -1239,7 +1239,7 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 
 	go b.sendAck(peer, typeReferenceOffer, ro.ID)
 
-	if len(ro.References) == 0 {
+	if len(ro.References) == 0 && !b.encrypted {
 		// An encrypted device may send an empty reference offer in order to trigger the peer
 		// to request the management key hash, in case the peer is a manager and therefore
 		// needs to check if the encrypted device needs to be re-keyed.  This is the only case
@@ -1284,7 +1284,7 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	// Inform the reference engine that this peer has these frames that we don't know about
 	if len(references) > 0 {
 		b.loadReferenceOffer(peer, references)
-	} else {
+	} else if !b.encrypted {
 		// If this is an encrypted device we manage, and we have nothing we need to request from it, then we can now
 		// check the management key and re-key if needed.
 		b.getManagementKeyHash(peer)
