@@ -57,8 +57,8 @@ func (ui *ui) EncryptedDeviceUnmanagable(id uuid.UUID) {
 				"Encrypted Device Management Error",
 				"Remove Device",
 				"Keep Device",
-				container.NewMax(
-					widget.NewLabel("An encrypted device management action failed on the following device because this device does not currently have the correct key.  Remove this encrypted device?"),
+				container.NewVBox(
+					widget.NewLabel("An encrypted device management action failed because we don't have the correct key.  Remove this encrypted device?"),
 					widget.NewLabel(d.Address),
 				),
 				func(remove bool) {
