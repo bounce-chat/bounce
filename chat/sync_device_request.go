@@ -162,7 +162,9 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 		b.sendDirect(peer, &syncDeviceRequestAccepted{
 			Profile:         profile,
 			PrivateECDHKey:  profile.PrivateECDHKey,
+			PublicECDHKey:   profile.PublicECDHKey,
 			PrivateECDSAKey: profile.PrivateECDSAKey,
+			PublicECDSAKey:  profile.PublicECDSAKey,
 			Settings:        profile.ProfileSettings,
 			References:      b.hasAnyReferencesFor(peer),
 		})

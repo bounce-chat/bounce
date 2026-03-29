@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"crypto/ed25519"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,7 +14,9 @@ import (
 type syncDeviceRequestAccepted struct {
 	Profile          user
 	PrivateECDHKey   []byte
+	PublicECDHKey    []byte
 	PrivateECDSAKey  []byte
+	PublicECDSAKey   []byte
 	KeyEncryptionKey []byte
 	Settings         *profileSettings
 	References       bool // TODO: just send the actual offer in here?
@@ -58,8 +59,9 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	// Profile is excluded in msgpack, make sure it is set here
 	sdra.Profile.Profile = true
 	sdra.Profile.PrivateECDHKey = sdra.PrivateECDHKey
+	sdra.Profile.PublicECDHKey = sdra.PublicECDHKey
 	sdra.Profile.PrivateECDSAKey = sdra.PrivateECDSAKey
-	sdra.Profile.PublicECDSAKey = ed25519.PrivateKey(sdra.PrivateECDSAKey).Public().(ed25519.PublicKey)
+	sdra.Profile.PublicECDSAKey = sdra.PublicECDSAKey
 	sdra.Profile.KeyEncryptionKey = sdra.KeyEncryptionKey
 
 	// Make sure this profile has a valid device group
