@@ -337,7 +337,7 @@ func (b *Bounce) updateDeviceState(deviceID uuid.UUID) {
 			b.revokeUnauthorizedDeviceActions(d.Address, revokedAt)
 
 			if d.UserID == b.currentUserID() {
-				b.ui.DeviceRevoked(deviceID)
+				go b.ui.DeviceRevoked(deviceID)
 			}
 
 			if sendDirect {

@@ -69,6 +69,9 @@ func (b *Bounce) CurrentDeviceActive() {
 		if dev.Address == b.network.Address() {
 			continue
 		}
+		if dev.RevokedAt > 0 {
+			continue
+		}
 		rd := b.getRemoteDevice(dev.Address)
 		if rd.connectedSockets.Load() > 0 {
 			go func(dst chan sendable, msg sendable) {

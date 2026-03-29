@@ -269,7 +269,11 @@ func (b *Bounce) saveAndDisplayUpdateUser(uu updateUser) error {
 	case updateUserTypeRemoveEncryptedDevice:
 		// Encrypted devices do not create status changes
 	case updateUserTypeSetEncryptedDeviceName:
-		// Setting encrypted device name doesn't create state change
+		// Setting encrypted device name doesn't create status change
+	case updateUserTypeReplaceKeys:
+		// Changing keys does not create a status change
+	case updateUserTypeReplaceECDHPublicKey:
+		// Changing keys does not create a status change
 	default:
 		log.WithFields(log.Fields{
 			"id":   uu.ID,
@@ -646,7 +650,7 @@ func (b *Bounce) createOrDeleteEncryptedSyncDevices(addresses []string) {
 					"error": err.Error(),
 				}).Error("database error deleting encrypted sync device")
 			} else {
-				b.ui.DeviceRevoked(esd.ID)
+				go b.ui.DeviceRevoked(esd.ID)
 			}
 		}
 	}
