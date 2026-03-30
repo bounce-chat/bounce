@@ -1,0 +1,51 @@
+<p align="center">
+  <img src="ui/assets/logo.png"/>
+</p>
+
+Bounce is a distributed group chat application that protects the metadata of conversations, while having a familiar look and feel.
+
+<p align="center">
+  <img src="docs/screenshots.png"/>
+</p>
+
+# Design Overview
+
+Each instance of Bounce includes a Tor hidden service, and all connections between devices occur over Tor.  Users can own multiple devices, including encrypted devices that do not have access to the message contents.  Messages are scoped to their user or group, and gossiped between online device.  Devices coming online have an efficient way to catch up.  Group states (name, admin status, etc) can survive a bad actor attempting to mess with history, so long as the majority of users are honest.  The UI is built using [Fyne](github.com/fyne-io/fyne),
+
+For more details, see the [design document](docs/design.md).
+
+## Status
+
+Things should be working pretty reliably!  While it is unlikely that existing protocol will change, I have not yet committed to freezing the existing protocol, so backwards compatibility between updates is not yet guaranteed.  Bounce has not been audited by a third party yet, and should be considered experimental.
+
+#### Clients
+
+**Linux / MacOS**
+
+Fully supported
+
+**Android**
+
+Supported, but currently does not support backgrounding and will go offline and miss notifications shortly after being backgrounded on most devices.
+
+**Windows**
+
+Requires an updated go-libtor build for windows, which has not been done yet.
+
+**iOS**
+
+iOS does not allow apps to run in the background, implementing Bounce on iOS will require a sort of "light client" that receives notifications through a message bus from a server.
+
+## Installation
+
+**Binary Releases**
+
+
+
+**Building from source**
+
+
+
+## License
+
+Copyright 2026 Hayden Parker.  Bounce is licensed under the MIT license unless otherwise specified.  Design assets are licensed under CC BY-NC-ND.
