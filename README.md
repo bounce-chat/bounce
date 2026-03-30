@@ -20,7 +20,7 @@ Things should be working pretty reliably!  While it is unlikely that existing pr
 |---|---|---|
 |Linux|✅|Fully supported|
 |macOS|✅|Fully supported|
-|Android|✔️|Supported, but currently does not support backgrounding and will go offline and miss notifications shortly after being backgrounded on most devices.  See [Fyne#](https://github.com/fyne-io/fyne/discussions/5221).|
+|Android|✔️|Supported, but currently does not support backgrounding and will go offline and miss notifications shortly after being backgrounded on most devices.  See [Fyne#5221](https://github.com/fyne-io/fyne/discussions/5221).|
 |Windows|❌|Requires an updated go-libtor build for windows, which has not been done yet.|
 |iOS|❌|iOS does not allow apps to run in the background, implementing Bounce on iOS will require a sort of "light client" that receives notifications through a message bus from a server.|
 
