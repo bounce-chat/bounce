@@ -275,37 +275,6 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		}
 	}
 
-	// Set the keys to their current values in an updateUser, just to keep a permanent copy
-	// in the database, in case we need to re-key an encrypted sync device later
-	ks := keySet{
-		PublicECDSAKey:  u.PublicECDSAKey,
-		PrivateECDSAKey: u.PrivateECDSAKey,
-		PublicECDHKey:   u.PublicECDHKey,
-		PrivateECDHKey:  u.PrivateECDHKey,
-		Kek:             u.KeyEncryptionKey,
-	}
-	keySetData, err := msgpack.Marshal(&ks)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("failed to marshal key set")
-		return err
-	}
-
-	// Inform sync devices about new keys, and all other users about public ECDH key
-	err = b.applyAndBroadcastUpdateUser(updateUser{
-		ID:        uuid.New(),
-		Target:    b.currentUserID(),
-		Timestamp: time.Now().Unix(),
-		Type:      updateUserTypeReplaceKeys,
-		Data:      keySetData,
-	})
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("failed to set initial keys in an updateUser")
-	}
-
 	go func() {
 		b.ui.ProfileSet(
 			User{
@@ -335,6 +304,36 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		)
 		b.updateSettingsState()
 		b.RenameDevice(d.ID, deviceName)
+
+		// Set the keys to their current values in an updateUser, just to keep a permanent copy
+		// in the database, in case we need to re-key an encrypted sync device later
+		ks := keySet{
+			PublicECDSAKey:  u.PublicECDSAKey,
+			PrivateECDSAKey: u.PrivateECDSAKey,
+			PublicECDHKey:   u.PublicECDHKey,
+			PrivateECDHKey:  u.PrivateECDHKey,
+			Kek:             u.KeyEncryptionKey,
+		}
+		keySetData, err := msgpack.Marshal(&ks)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("failed to marshal key set")
+			return
+		}
+
+		err = b.applyAndBroadcastUpdateUser(updateUser{
+			ID:        uuid.New(),
+			Target:    b.currentUserID(),
+			Timestamp: time.Now().Unix(),
+			Type:      updateUserTypeReplaceKeys,
+			Data:      keySetData,
+		})
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("failed to set initial keys in an updateUser")
+		}
 	}()
 	return nil
 }
