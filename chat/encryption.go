@@ -47,8 +47,16 @@ func storeDEK(t uint16) bool {
 	}
 	return false
 }
-
 func (b *Bounce) generateKEK(counterpartyPublicKeyBytes []byte) ([]byte, error) {
+	currentUser, ok := b.currentUser()
+	if !ok {
+		return []byte{}, errUserNotFound
+	}
+
+	return b.generateKEKFromPrivateKey(currentUser.PrivateECDHKey, counterpartyPublicKeyBytes)
+}
+
+func (b *Bounce) generateKEKFromPrivateKey(privateKey, counterpartyPublicKeyBytes []byte) ([]byte, error) {
 	curve := ecdh.X25519()
 
 	counterpartyPublicKey, err := curve.NewPublicKey(counterpartyPublicKeyBytes)
@@ -56,12 +64,7 @@ func (b *Bounce) generateKEK(counterpartyPublicKeyBytes []byte) ([]byte, error) 
 		return []byte{}, err
 	}
 
-	currentUser, ok := b.currentUser()
-	if !ok {
-		return []byte{}, errUserNotFound
-	}
-
-	myPrivateKey, err := curve.NewPrivateKey(currentUser.PrivateECDHKey)
+	myPrivateKey, err := curve.NewPrivateKey(privateKey)
 	if err != nil {
 		return []byte{}, err
 	}

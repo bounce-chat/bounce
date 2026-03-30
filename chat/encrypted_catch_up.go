@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack/v5"
+	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -20,6 +21,7 @@ type encryptedReceive struct {
 	Payload      []byte
 	EncryptedDEK []byte
 	EncrypterKey []byte
+	OldKeyHash   string // Indicates that a previously used key will be required to decrypt this frame
 	timestamp    int64
 }
 
@@ -64,6 +66,8 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 		return nil, false
 	}
 
+	encryptionKeyHistory := b.encryptionKeyHistory()
+
 	for _, dd := range ecu.DEKs {
 		kek, err := b.generateKEK(dd.EncrypterKey)
 		if err != nil {
@@ -107,12 +111,34 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 
 	decryptedFrames := []frame{}
 	for _, f := range ecu.Frames {
-		kek, err := b.generateKEK(f.EncrypterKey)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error generating key encryption key for encrypted catch up frame")
-			continue
+		var kek []byte
+
+		if f.OldKeyHash != "" {
+			oldPrivateKey, ok := encryptionKeyHistory[f.OldKeyHash]
+			if !ok {
+				log.WithFields(log.Fields{
+					"id":      f.ID,
+					"type":    f.Type,
+					"old_key": f.OldKeyHash,
+				}).Error("unable to find encryption key for encrypted receive that specifies and older key")
+				continue
+			}
+			kek, err = b.generateKEKFromPrivateKey(oldPrivateKey, f.EncrypterKey)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"old_key": f.OldKeyHash,
+					"error":   err.Error(),
+				}).Error("error generating key encryption key for encrypted catch up frame")
+				continue
+			}
+		} else {
+			kek, err = b.generateKEK(f.EncrypterKey)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error generating key encryption key for encrypted catch up frame")
+				continue
+			}
 		}
 
 		kekBlock, err := aes.NewCipher(kek)
@@ -211,7 +237,35 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 		return ecu
 	}
 
+	var au authorizedUser
+	err := b.database.First(&au).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error getting authorized user while generating encrypted catch up")
+	}
+
+	allowedRecipientKeys := [][]byte{peerKey}
 	originalOffer := b.getEncryptedReferenceOfferFor(peer, peerKey)
+	// If this public key belongs to our authorized user, then also include anything we have for their old keys
+	if bytes.Equal(peerKey, au.PublicKey) {
+		var oldKeys []oldKey
+		err = b.database.Where("authorized_user_id = ?", au.ID).Find(&oldKeys).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error getting all old keys")
+		}
+
+		for _, pastKey := range oldKeys {
+			allowedRecipientKeys = append(allowedRecipientKeys, pastKey.PublicKey)
+			okEro := b.getEncryptedReferenceOfferFor(peer, pastKey.PublicKey)
+			if okEro != nil {
+				originalOffer.References = append(originalOffer.References, okEro.References...)
+			}
+		}
+	}
+
 	allowed := map[uuid.UUID]bool{}
 	for _, ref := range originalOffer.References {
 		allowed[ref.FrameID] = true
@@ -273,11 +327,14 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 
 		var desiredRecipient recipient
 		found := false
+	search:
 		for _, r := range ef.Recipients {
-			if bytes.Equal(r.PublicKey, peerKey) {
-				desiredRecipient = r
-				found = true
-				break
+			for _, allowedKey := range allowedRecipientKeys {
+				if bytes.Equal(r.PublicKey, allowedKey) {
+					desiredRecipient = r
+					found = true
+					break search
+				}
 			}
 		}
 
@@ -288,14 +345,21 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 			continue
 		}
 
-		ecu.Frames = append(ecu.Frames, encryptedReceive{
+		er := encryptedReceive{
 			ID:           ef.ID,
 			Type:         ef.Type,
 			Payload:      ef.Payload,
 			EncryptedDEK: desiredRecipient.EncryptedDEK,
 			EncrypterKey: desiredRecipient.EncrypterKey,
 			timestamp:    ef.Timestamp,
-		})
+		}
+
+		// If this recipient differs from the current key for our user, include the key hash of the appropriate key
+		if !bytes.Equal(peerKey, desiredRecipient.PublicKey) {
+			er.OldKeyHash = hashString(blake3.Sum256(desiredRecipient.PublicKey))
+		}
+
+		ecu.Frames = append(ecu.Frames, er)
 	}
 
 	sort.Sort(ecu.Frames)

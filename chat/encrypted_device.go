@@ -31,9 +31,17 @@ var setupKey string
 var encryptedDeviceManagementMutex sync.Mutex
 
 type authorizedUser struct {
-	ID         uuid.UUID
+	ID         uuid.UUID `gorm:"type:uuid;primary_key;"`
 	PublicKey  []byte
 	SigningKey []byte
+	OldKeys    []oldKey
+}
+
+type oldKey struct {
+	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
+	AuthorizedUserID uuid.UUID
+	PublicKey        []byte
+	SigningKey       []byte
 }
 
 func StartEncryptedDevice(network Network, configDirectory string) {
@@ -131,6 +139,7 @@ func (b *Bounce) openEncryptedDatabase() {
 	err = b.database.AutoMigrate(
 		&deliveryRecord{},
 		&authorizedUser{},
+		&oldKey{},
 		&encryptedFrame{},
 		&recipient{},
 	)
@@ -634,6 +643,15 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 		return nil, false
 	}
 
+	// Get the current user
+	var au authorizedUser
+	err = b.database.First(&au).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error getting authorized user while handling encrypted reference offer response")
+	}
+
 	// Make sure that we offered a challenge to this device recently, and store it if we did
 	referenceOfferChallengeMutex.Lock()
 	for peer, ts := range referenceOfferChallengeTime {
@@ -698,7 +716,27 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 		referenceOfferChallengeMutex.Lock()
 		peerUserKeys[peer] = eroc.PublicKey
 		referenceOfferChallengeMutex.Unlock()
+
 		ero := b.getEncryptedReferenceOfferFor(peer, eroc.PublicKey)
+
+		// If this public key belongs to our authorized user, then also include anything we have for their old keys
+		if bytes.Equal(eroc.PublicKey, au.PublicKey) {
+			var oldKeys []oldKey
+			err = b.database.Where("authorized_user_id = ?", au.ID).Find(&oldKeys).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error getting all old keys")
+			}
+
+			for _, pastKey := range oldKeys {
+				okEro := b.getEncryptedReferenceOfferFor(peer, pastKey.PublicKey)
+				if okEro != nil {
+					ero.References = append(ero.References, okEro.References...)
+				}
+			}
+		}
+
 		go b.sendDirect(peer, ero)
 	} else {
 		log.WithFields(log.Fields{
@@ -794,6 +832,29 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 			return nil, false
 		}
 
+		// Create a copy of the old key
+		err = b.database.Create(&oldKey{
+			ID:               uuid.New(),
+			AuthorizedUserID: au.ID,
+			PublicKey:        au.PublicKey,
+			SigningKey:       au.SigningKey,
+		}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating old key for authorized user")
+		}
+
+		// Update the peer address to key map
+		referenceOfferChallengeMutex.Lock()
+		for addr, key := range peerUserKeys {
+			if bytes.Equal(key, au.PublicKey) {
+				peerUserKeys[addr] = ks.PublicECDHKey
+			}
+		}
+		referenceOfferChallengeMutex.Unlock()
+
+		// Update the key in the database
 		err = b.database.Table("authorized_users").Where("id = ?", au.ID).Updates(map[string]interface{}{"public_key": ks.PublicECDHKey, "signing_key": ks.PublicECDSAKey}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -1043,6 +1104,49 @@ func (b *Bounce) managementKeyHistory() map[string]ed25519.PrivateKey {
 		}
 
 		results[hashString(blake3.Sum256(ks.PublicECDSAKey))] = ed25519.PrivateKey(ks.PrivateECDSAKey)
+	}
+
+	return results
+}
+
+func (b *Bounce) encryptionKeyHistory() map[string][]byte {
+	results := make(map[string][]byte)
+
+	var u user
+	err := b.database.Where("id = ?", b.currentUserID()).First(&u).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("cannot get management key history before user exists")
+			return results
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up current user")
+		}
+	}
+
+	results[hashString(blake3.Sum256(u.PublicECDHKey))] = u.PrivateECDHKey
+
+	var uus []updateUser
+	err = b.database.Where("target = ? AND type = ?", b.currentUserID(), updateUserTypeReplaceKeys).Find(&uus).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up update users")
+	}
+	for _, uu := range uus {
+		var ks keySet
+		err = msgpack.Unmarshal(uu.Data, &ks)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("invlaid key set in update user")
+			continue
+		}
+
+		results[hashString(blake3.Sum256(ks.PublicECDHKey))] = ks.PrivateECDHKey
 	}
 
 	return results
