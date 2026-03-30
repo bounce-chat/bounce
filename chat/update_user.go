@@ -750,34 +750,6 @@ func (b *Bounce) rollKeys() error {
 		return err
 	}
 
-	// Inform sync devices about new keys, and all other users about public ECDH key
-	err = b.applyAndBroadcastUpdateUser(updateUser{
-		ID:        uuid.New(),
-		Target:    b.currentUserID(),
-		Timestamp: time.Now().Unix(),
-		Type:      updateUserTypeReplaceKeys,
-		Data:      keySetData,
-	})
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("failed to apply and broadcast new key set")
-		return err
-	}
-	err = b.applyAndBroadcastUpdateUser(updateUser{
-		ID:        uuid.New(),
-		Target:    b.currentUserID(),
-		Timestamp: time.Now().Unix(),
-		Type:      updateUserTypeReplaceECDHPublicKey,
-		Data:      publicECDHKey.Bytes(),
-	})
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("failed to apply and broadcast new ECDH key")
-		return err
-	}
-
 	// Update any encrypted devices that are currently online
 	var allESDs []encryptedSyncDevice
 	err = b.database.Find(&allESDs).Error
@@ -822,6 +794,34 @@ func (b *Bounce) rollKeys() error {
 
 			b.sendDirect(esd.Address, &med)
 		}
+	}
+
+	// Inform sync devices about new keys, and all other users about public ECDH key
+	err = b.applyAndBroadcastUpdateUser(updateUser{
+		ID:        uuid.New(),
+		Target:    b.currentUserID(),
+		Timestamp: time.Now().Unix(),
+		Type:      updateUserTypeReplaceKeys,
+		Data:      keySetData,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("failed to apply and broadcast new key set")
+		return err
+	}
+	err = b.applyAndBroadcastUpdateUser(updateUser{
+		ID:        uuid.New(),
+		Target:    b.currentUserID(),
+		Timestamp: time.Now().Unix(),
+		Type:      updateUserTypeReplaceECDHPublicKey,
+		Data:      publicECDHKey.Bytes(),
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("failed to apply and broadcast new ECDH key")
+		return err
 	}
 
 	return nil

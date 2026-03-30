@@ -129,6 +129,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 
 	// Connect to any other sync devices now
 	b.auditPeers()
+	b.updateUserOnlineStatus(peer)
 
 	// Mark that we're now waiting for a catch up for this device
 	if sdra.References {

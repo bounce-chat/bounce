@@ -179,6 +179,7 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 			Local:     false,
 			Online:    true,
 		})
+		b.updateUserOnlineStatus(peer)
 
 		// Store that we've told this device about themselves
 		b.markDeliveredTo(&newDevice, peer)

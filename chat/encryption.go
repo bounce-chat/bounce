@@ -362,7 +362,10 @@ func (b *Bounce) getUsersInScope(br broadcastable) []user {
 func (b *Bounce) getUsersInGlobalScope(br broadcastable) []user {
 	var users []user
 	if br.getAuthor() == b.currentUserID() {
-		err := b.database.Find(&users).Error
+		// TODO: select most active users, as opposed to random?
+		err := b.database.Clauses(clause.OrderBy{
+			Expression: clause.Expr{SQL: "RANDOM()"},
+		}).Limit(maximumRecipients).Find(&users).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

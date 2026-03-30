@@ -314,6 +314,7 @@ func (b *Bounce) handleEncryptedDeviceManagementResponse(peer string, payload []
 				Online:    true,
 			})
 			b.ui.EncryptedDeviceAdded()
+			b.updateUserOnlineStatus(peer)
 		}
 	} else {
 		b.ui.EncryptedDeviceRejected()
