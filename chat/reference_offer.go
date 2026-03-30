@@ -1241,9 +1241,8 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 
 	if len(ro.References) == 0 && !b.encrypted {
 		// An encrypted device may send an empty reference offer in order to trigger the peer
-		// to request the management key hash, in case the peer is a manager and therefore
-		// needs to check if the encrypted device needs to be re-keyed.  This is the only case
-		// that an empty reference offer should ever be sent.
+		// to request the management key hash, so that the peer can check if the encrypted device needs
+		// to be re-keyed.  This is the only case that an empty reference offer should ever be sent.
 		b.getManagementKeyHash(peer)
 		return nil, false
 	}

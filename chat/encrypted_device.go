@@ -34,7 +34,6 @@ type authorizedUser struct {
 	ID         uuid.UUID
 	PublicKey  []byte
 	SigningKey []byte
-	Manager    bool
 }
 
 func StartEncryptedDevice(network Network, configDirectory string) {
@@ -148,7 +147,7 @@ func (b *Bounce) encryptedManagerProvisioned() bool {
 	}
 
 	var au authorizedUser
-	err := b.database.Where("manager = ?", true).First(&au).Error
+	err := b.database.First(&au).Error
 	return err == nil
 }
 
@@ -194,7 +193,6 @@ func (b *Bounce) handleEncryptedDeviceManagementRequest(peer string, payload []b
 			ID:         uuid.New(),
 			PublicKey:  edmr.Pubkey,
 			SigningKey: edmr.SigningKey,
-			Manager:    true,
 		}
 		err = b.database.Create(&au).Error
 		if err != nil {
@@ -757,7 +755,7 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 	}
 
 	var au authorizedUser
-	err = b.database.Where("manager = ?", true).Take(&au).Error
+	err = b.database.First(&au).Error
 	if err != nil {
 		go b.sendDirect(peer, &response)
 		return nil, false
@@ -873,7 +871,7 @@ func (gmkh *getManagementKeyHash) getType() uint16 {
 
 func (b *Bounce) handleGetManagementKeyHash(peer string, payload []byte, _ bool) (broadcastable, bool) {
 	var au authorizedUser
-	err := b.database.Where("manager = ?", true).Take(&au).Error
+	err := b.database.First(&au).Error
 	if err != nil {
 		log.Error("cannot return management key hash when no managing user exists")
 		return nil, false
