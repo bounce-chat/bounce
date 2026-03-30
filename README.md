@@ -10,7 +10,7 @@ Bounce is a distributed group chat application that protects the metadata of con
 
 ## Design Overview
 
-Each instance of Bounce includes a Tor hidden service, and all connections between devices occur over Tor.  Users can own multiple devices, including encrypted devices that do not have access to the message contents.  Messages are scoped to their user or group, and gossiped between online device.  Devices coming online have an efficient way to catch up.  Group states (name, admin status, etc) can survive a bad actor attempting to mess with history, so long as the majority of users are honest.  The UI is built using [Fyne](github.com/fyne-io/fyne),
+Each instance of Bounce includes a Tor hidden service, and all connections between devices occur over Tor.  Users can own multiple devices, including encrypted devices that do not have access to the message contents.  Messages are scoped to their user or group, and gossiped between online device.  Devices coming online have an efficient way to catch up.  Group states (name, admin status, etc) can survive a bad actor attempting to mess with history, so long as the majority of users are honest.  The UI is built using [Fyne](https://github.com/fyne-io/fyne),
 
 For more details, see the [design document](docs/design.md).
 
