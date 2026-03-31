@@ -2,7 +2,9 @@
   <img width=50% src="ui/assets/logo.png"/>
 </p>
 
-<center>Bounce is a distributed group chat application that protects metadata, while having a familiar look and feel.</center>
+<p align="center">
+Bounce is a distributed group chat application that protects metadata, while having a familiar look and feel.
+</p>
 
 <p align="center">
   <img src="docs/screenshots.png"/>
