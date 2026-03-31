@@ -2,7 +2,7 @@
   <img width=50% src="ui/assets/logo.png"/>
 </p>
 
-Bounce is a distributed group chat application that protects the metadata of conversations, while having a familiar look and feel.
+<center>Bounce is a distributed group chat application that protects metadata, while having a familiar look and feel.</center>
 
 <p align="center">
   <img src="docs/screenshots.png"/>
@@ -14,7 +14,7 @@ Each instance of Bounce includes a Tor hidden service, and all connections betwe
 
 ## Status
 
-Things should be working pretty reliably!  While it is unlikely that existing protocol will change, I have not yet committed to freezing the existing protocol, so backwards compatibility between updates is not yet guaranteed.  Bounce has not been audited by a third party yet, and should be considered experimental.
+Things should be working pretty reliably!  Please open a bug if a feature in the UI is not working as expected.  While it is unlikely that existing protocol will change, I have not yet committed to freezing the existing protocol, so backwards compatibility between updates is not yet guaranteed.  Bounce has not been audited by a third party yet, and should be considered experimental.
 
 |Client|Status|Notes|
 |---|---|---|
