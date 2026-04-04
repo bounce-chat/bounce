@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"crypto/ecdh"
+	"crypto/rand"
 	"errors"
 	"io/ioutil"
 	"os"
@@ -19,6 +21,7 @@ var updateDeviceMutex sync.Mutex
 
 var updateDeviceTypeUpdateName = uint16(0)
 var updateDeviceTypeRevoke = uint16(1)
+var updateDeviceTypeSetPublicKey = uint16(2)
 
 var errInvalidDeviceName = errors.New("invalid name")
 var errUnsupportedUpdateDeviceType = errors.New("unsupported update device type")
@@ -253,6 +256,7 @@ func (b *Bounce) updateDeviceState(deviceID uuid.UUID) {
 	}
 	name := d.Name
 	revokedAt := d.RevokedAt
+	publicKey := []byte{}
 
 	var uds []updateDevice
 	err = b.database.Where("target = ?", deviceID).Order("timestamp asc").Find(&uds).Error
@@ -288,6 +292,8 @@ func (b *Bounce) updateDeviceState(deviceID uuid.UUID) {
 					revokedAt = ud.Timestamp
 				}
 			}
+		case updateDeviceTypeSetPublicKey:
+			publicKey = ud.Data
 		}
 	}
 
@@ -346,6 +352,16 @@ func (b *Bounce) updateDeviceState(deviceID uuid.UUID) {
 					rd.messages <- &revokeFrame
 				}
 			}
+		}
+	}
+
+	if len(publicKey) > 0 && d.Address != b.network.Address() {
+		err := b.database.Table("devices").Where("id = ?", deviceID).Updates(map[string]interface{}{"ecdh_public_key": publicKey}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":     err.Error(),
+				"device_id": deviceID,
+			}).Fatal("database error updating device public key")
 		}
 	}
 }
@@ -536,6 +552,42 @@ func (b *Bounce) RevokeDevice(deviceID uuid.UUID) error {
 	}
 
 	return b.rollKeys()
+}
+
+func (b *Bounce) createAndShareDeviceECDHKey() {
+	d, ok := b.getDeviceFromAddress(b.network.Address())
+	if !ok {
+		log.Error("cannot set device ECDH key before device exists")
+		return
+	}
+
+	curve := ecdh.X25519()
+	privateKey, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error generating x25519 private key")
+	}
+	publicKey := privateKey.PublicKey()
+
+	privateKeyBytes := privateKey.Bytes()
+	publicKeyBytes := publicKey.Bytes()
+
+	err = b.database.Where("address = ?", b.network.Address()).Updates(map[string]interface{}{"ecdh_public_key": publicKeyBytes, "ecdh_private_key": privateKeyBytes}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error setting device ECDH key")
+	}
+
+	b.applyAndBroadcastUpdateDevice(updateDevice{
+		ID:        uuid.New(),
+		Target:    d.ID,
+		Type:      updateDeviceTypeSetPublicKey,
+		Data:      publicKeyBytes,
+		Timestamp: time.Now().Unix(),
+		Author:    b.currentUserID(),
+	})
 }
 
 func (b *Bounce) applyAndBroadcastUpdateDevice(ud updateDevice) error {

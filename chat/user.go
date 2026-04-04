@@ -304,6 +304,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		)
 		b.updateSettingsState()
 		b.RenameDevice(d.ID, deviceName)
+		b.createAndShareDeviceECDHKey()
 
 		// Set the keys to their current values in an updateUser, just to keep a permanent copy
 		// in the database, in case we need to re-key an encrypted sync device later

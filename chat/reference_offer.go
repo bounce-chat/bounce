@@ -293,8 +293,9 @@ func (b *Bounce) getEncryptedReferenceOfferFor(address string, publicKey []byte)
 	b.database.
 		Select("encrypted_frames.*").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_frames.id AND delivery_records.destination == ?", address).
-		Joins("JOIN recipients ON recipients.encrypted_frame_id == encrypted_frames.id AND recipients.public_key = ?", publicKey).
-		Where("delivery_records.id IS NULL AND (encrypted_frames.delete_at == 0 OR encrypted_frames.delete_at > ?)", time.Now().Unix()).
+		Joins("LEFT JOIN recipients ON recipients.encrypted_frame_id == encrypted_frames.id AND recipients.public_key = ?", publicKey).
+		Joins("LEFT JOIN device_recipients ON device_recipients.encrypted_frame_id = encrypted_frames.id AND device_recipients.recipient_address = ?", address).
+		Where("delivery_records.id IS NULL AND (encrypted_frames.delete_at == 0 OR encrypted_frames.delete_at > ?) AND (recipients.id IS NOT NULL OR device_recipients.id IS NOT NULL)", time.Now().Unix()).
 		Find(&encryptedFrames)
 
 	references := []frameReference{}

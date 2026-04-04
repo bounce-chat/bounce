@@ -142,6 +142,7 @@ func (b *Bounce) openEncryptedDatabase() {
 		&oldKey{},
 		&encryptedFrame{},
 		&recipient{},
+		&deviceRecipient{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -343,14 +344,28 @@ func (r *recipient) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+type deviceRecipient struct {
+	ID               uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
+	EncryptedFrameID uuid.UUID `msgpack:"-"`
+	RecipientAddress string
+	Counterparty     string
+	EncryptedDEK     []byte
+}
+
+func (dr *deviceRecipient) BeforeCreate(tx *gorm.DB) error {
+	dr.ID = uuid.New()
+	return nil
+}
+
 type encryptedFrame struct {
 	cachedEncoding
-	ID         uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Type       uint16
-	Timestamp  int64
-	Payload    []byte
-	DeleteAt   int64
-	Recipients []recipient
+	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Type             uint16
+	Timestamp        int64
+	Payload          []byte
+	DeleteAt         int64
+	Recipients       []recipient
+	DeviceRecipients []deviceRecipient
 }
 
 func (ef encryptedFrame) getID() uuid.UUID {

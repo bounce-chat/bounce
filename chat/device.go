@@ -19,14 +19,16 @@ var handleDevicesMutex sync.Mutex
 // A device represents an instance of bounce
 type device struct {
 	cachedEncoding
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name      string    `msgpack:"-"`
-	UserID    uuid.UUID
-	Address   string `gorm:"uniqueIndex"`
-	Timestamp int64
-	LastSeen  int64 `msgpack:"-"`
-	RevokedAt int64
-	Signature *introductionSignature `gorm:"constraint:OnDelete:CASCADE;"`
+	ID             uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name           string    `msgpack:"-"`
+	UserID         uuid.UUID
+	Address        string `gorm:"uniqueIndex"`
+	Timestamp      int64
+	LastSeen       int64 `msgpack:"-"`
+	RevokedAt      int64
+	ECDHPublicKey  []byte                 `msgpack:"-"`
+	ECDHPrivateKey []byte                 `msgpack:"-"`
+	Signature      *introductionSignature `gorm:"constraint:OnDelete:CASCADE;"`
 }
 
 func (d *device) BeforeCreate(tx *gorm.DB) error {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -78,6 +79,21 @@ func (b *Bounce) generateKEKFromPrivateKey(privateKey, counterpartyPublicKeyByte
 }
 
 func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
+	// Encrypt re-key frames to the specific devices that should be able to decrypt them
+	if br.getType() == typeUpdateUser {
+		var uu updateUser
+		err := msgpack.Unmarshal(br.getPayload(), &uu)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error unmarshalling updateUser for encryption")
+		}
+		if uu.Type == updateUserTypeReplaceKeys {
+			b.sendEncryptReKeyFrames(br)
+			return
+		}
+	}
+
 	currentUser, ok := b.currentUser()
 	if !ok {
 		log.Error("cannot send to encrypted devices before user exists")
@@ -87,14 +103,14 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 	// Get the users that are in scope
 	users := b.getUsersInScope(br)
 
-	// Check if any of them have access to an encrypted device that is online
+	// Collect all the encrypted devices and their owners
 	allEncryptedDevices := map[string]bool{}
-	deviceUsers := map[string][]uuid.UUID{}
+	deviceUsers := map[string]uuid.UUID{}
 	for _, u := range users {
 		if len(u.EncryptedDevices) > 0 {
 			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
 				allEncryptedDevices[addr] = true
-				deviceUsers[addr] = append(deviceUsers[addr], u.ID)
+				deviceUsers[addr] = u.ID
 			}
 		}
 	}
@@ -139,22 +155,16 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 
 	for addr, rd := range availableEncryptedDevices {
 		// Get the user that owns this device, since they must be one of the recipients
-		options, ok := deviceUsers[addr]
+		owner, ok := deviceUsers[addr]
 		if !ok {
 			log.WithFields(log.Fields{
 				"address": addr,
-			}).Error("no users use this device")
+			}).Error("no users own this device")
 		}
-		if len(options) < 1 {
-			log.WithFields(log.Fields{
-				"address": addr,
-			}).Error("no users use this device")
-		}
-		mustHave := options[0]
 
 		// Create recipients for each user in scope, up to a limit
 		recipients := []recipient{}
-		for _, u := range b.pruneEncryptedRecipients(mustHave, users) {
+		for _, u := range b.pruneEncryptedRecipients(owner, users) {
 			block, err := aes.NewCipher(u.KeyEncryptionKey)
 			if err != nil {
 				log.WithFields(log.Fields{
@@ -191,6 +201,20 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 }
 
 func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encryptedFrame {
+	// Encrypt re-key frames to the specific devices that should be able to decrypt them
+	if br.getType() == typeUpdateUser {
+		var uu updateUser
+		err := msgpack.Unmarshal(br.getPayload(), &uu)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error unmarshalling updateUser for encryption")
+		}
+		if uu.Type == updateUserTypeReplaceKeys {
+			return b.encryptReKeyFrame(br)
+		}
+	}
+
 	currentUser, ok := b.currentUser()
 	if !ok {
 		log.Error("cannot send to encrypted devices before user exists")
@@ -200,14 +224,14 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 	// Get the users that are in scope
 	users := b.getUsersInScope(br)
 
-	// Check if any of them have access to an encrypted device that is online
+	// Collect all the encrypted devices and their owners
 	allEncryptedDevices := map[string]bool{}
-	deviceUsers := map[string][]uuid.UUID{}
+	deviceUsers := map[string]uuid.UUID{}
 	for _, u := range users {
 		if len(u.EncryptedDevices) > 0 {
-			for _, userAddress := range strings.Split(u.EncryptedDevices, ",") {
-				allEncryptedDevices[userAddress] = true
-				deviceUsers[userAddress] = append(deviceUsers[userAddress], u.ID)
+			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+				allEncryptedDevices[addr] = true
+				deviceUsers[addr] = u.ID
 			}
 		}
 	}
@@ -241,24 +265,17 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 	ciphertext := dekGCM.Seal(nil, []byte{}, br.getPayload(), nil)
 
 	// Get the user that owns this device, since they must be one of the recipients
-	options, ok := deviceUsers[addr]
+	owner, ok := deviceUsers[addr]
 	if !ok {
 		log.WithFields(log.Fields{
 			"address": addr,
-		}).Error("no users use this device")
+		}).Error("no users oen this device")
 		return nil
 	}
-	if len(options) < 1 {
-		log.WithFields(log.Fields{
-			"address": addr,
-		}).Error("no users use this device")
-		return nil
-	}
-	mustHave := options[0]
 
 	// Create recipients for each user in scope, up to a limit
 	recipients := []recipient{}
-	for _, u := range b.pruneEncryptedRecipients(mustHave, users) {
+	for _, u := range b.pruneEncryptedRecipients(owner, users) {
 		block, err := aes.NewCipher(u.KeyEncryptionKey)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -289,6 +306,109 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 		Timestamp:  br.getTimestamp(),
 		DeleteAt:   getDeleteAt(br),
 		Recipients: recipients,
+	}
+}
+
+func (b *Bounce) sendEncryptReKeyFrames(br broadcastable) {
+	var allESDs []encryptedSyncDevice
+	err := b.database.Find(&allESDs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error loading all encrypted sync devices")
+	}
+
+	for _, esd := range allESDs {
+		rd := b.getRemoteDevice(esd.Address)
+		if rd.connectedSockets.Load() < 1 {
+			continue
+		}
+
+		ef := b.encryptReKeyFrame(br)
+		if ef != nil {
+			rd.messages <- ef
+		}
+	}
+}
+
+func (b *Bounce) encryptReKeyFrame(br broadcastable) *encryptedFrame {
+	dek := make([]byte, 32)
+	rand.Read(dek)
+
+	dekBlock, err := aes.NewCipher(dek)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error encrypting frame")
+		return nil
+	}
+	dekGCM, err := cipher.NewGCMWithRandomNonce(dekBlock)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error encrypting frame")
+		return nil
+	}
+	ciphertext := dekGCM.Seal(nil, []byte{}, br.getPayload(), nil)
+
+	deviceRecipients := []deviceRecipient{}
+	addrs := b.getBroadcastScope(br, true)
+	myDevice, ok := b.getDeviceFromAddress(b.network.Address())
+	if !ok {
+		log.Error("cannot encrypt re-key frames with no current device")
+		return nil
+	}
+	for _, addr := range addrs {
+		recipientDevice, ok := b.getDeviceFromAddress(addr)
+		if !ok {
+			log.WithFields(log.Fields{
+				"address": addr,
+			}).Warn("device in broadcast scope not found for re-key encryption")
+			continue
+		}
+
+		if recipientDevice.UserID != myDevice.UserID {
+			log.Error("refusing to create device recipient for re-key frame for a device that isn't mine")
+			continue
+		}
+
+		kek, err := b.generateKEKFromPrivateKey(myDevice.ECDHPrivateKey, recipientDevice.ECDHPublicKey)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating kek for device recipient")
+			continue
+		}
+
+		block, err := aes.NewCipher(kek)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error encrypting frame")
+			return nil
+		}
+		gcm, err := cipher.NewGCMWithRandomNonce(block)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error encrypting frame")
+			return nil
+		}
+
+		deviceRecipients = append(deviceRecipients, deviceRecipient{
+			RecipientAddress: addr,
+			Counterparty:     b.network.Address(),
+			EncryptedDEK:     gcm.Seal(nil, []byte{}, dek, nil),
+		})
+	}
+
+	return &encryptedFrame{
+		ID:               br.getID(),
+		Type:             br.getType(),
+		Payload:          ciphertext,
+		Timestamp:        br.getTimestamp(),
+		DeleteAt:         getDeleteAt(br),
+		DeviceRecipients: deviceRecipients,
 	}
 }
 

@@ -16,13 +16,15 @@ import (
 )
 
 type encryptedReceive struct {
-	ID           uuid.UUID
-	Type         uint16
-	Payload      []byte
-	EncryptedDEK []byte
-	EncrypterKey []byte
-	OldKeyHash   string // Indicates that a previously used key will be required to decrypt this frame
-	timestamp    int64
+	ID               uuid.UUID
+	Type             uint16
+	Payload          []byte
+	EncryptedDEK     []byte
+	EncrypterKey     []byte
+	EncrypterAddress string
+	UseAddress       bool
+	OldKeyHash       string // Indicates that a previously used key will be required to decrypt this frame
+	timestamp        int64
 }
 
 type sortableEncryptedReceives []encryptedReceive
@@ -113,7 +115,26 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 	for _, f := range ecu.Frames {
 		var kek []byte
 
-		if f.OldKeyHash != "" {
+		if f.UseAddress {
+			myDevice, ok := b.getDeviceFromAddress(b.network.Address())
+			if !ok {
+				log.Warn("my device not found when handling encrypted receive")
+			}
+			recipientDevice, ok := b.getDeviceFromAddress(f.EncrypterAddress)
+			if !ok {
+				log.WithFields(log.Fields{
+					"address": f.EncrypterAddress,
+				}).Error("encrypter device not found for encrypted receive")
+			}
+
+			kek, err = b.generateKEKFromPrivateKey(myDevice.ECDHPrivateKey, recipientDevice.ECDHPublicKey)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error generating key encryption key from device for encrypted catch up frame")
+				continue
+			}
+		} else if f.OldKeyHash != "" {
 			oldPrivateKey, ok := encryptionKeyHistory[f.OldKeyHash]
 			if !ok {
 				log.WithFields(log.Fields{
@@ -327,13 +348,28 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 
 		var desiredRecipient recipient
 		found := false
-	search:
 		for _, r := range ef.Recipients {
 			for _, allowedKey := range allowedRecipientKeys {
 				if bytes.Equal(r.PublicKey, allowedKey) {
 					desiredRecipient = r
 					found = true
-					break search
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+
+		var desiredDeviceRecipient deviceRecipient
+		encryptedToDevice := false
+		if !found {
+			for _, dr := range ef.DeviceRecipients {
+				if dr.RecipientAddress == peer {
+					found = true
+					desiredDeviceRecipient = dr
+					encryptedToDevice = true
+					break
 				}
 			}
 		}
@@ -345,13 +381,27 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 			continue
 		}
 
-		er := encryptedReceive{
-			ID:           ef.ID,
-			Type:         ef.Type,
-			Payload:      ef.Payload,
-			EncryptedDEK: desiredRecipient.EncryptedDEK,
-			EncrypterKey: desiredRecipient.EncrypterKey,
-			timestamp:    ef.Timestamp,
+		var er encryptedReceive
+		if !encryptedToDevice {
+			er = encryptedReceive{
+				ID:           ef.ID,
+				Type:         ef.Type,
+				Payload:      ef.Payload,
+				EncryptedDEK: desiredRecipient.EncryptedDEK,
+				EncrypterKey: desiredRecipient.EncrypterKey,
+				UseAddress:   false,
+				timestamp:    ef.Timestamp,
+			}
+		} else {
+			er = encryptedReceive{
+				ID:               ef.ID,
+				Type:             ef.Type,
+				Payload:          ef.Payload,
+				EncryptedDEK:     desiredDeviceRecipient.EncryptedDEK,
+				EncrypterAddress: desiredDeviceRecipient.Counterparty,
+				UseAddress:       true,
+				timestamp:        ef.Timestamp,
+			}
 		}
 
 		// If this recipient differs from the current key for our user, include the key hash of the appropriate key

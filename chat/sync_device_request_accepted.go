@@ -93,6 +93,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 			"error": err.Error(),
 		}).Fatal("error saving new sync profile")
 	}
+	b.createAndShareDeviceECDHKey()
 
 	// Collect the sync devices for the UI
 	var devices []Device
