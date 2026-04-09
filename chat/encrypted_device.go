@@ -428,6 +428,12 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 		}
 	}
 
+	if len(ef.DeviceRecipients) > 0 {
+		// TODO: need to validate a device belongs to us and created this, or anyone can use this device
+		// TODO: probably can use peerUserKeys to check if the peer owns this device, and skip these checks in that case
+		foundAuthorizedUser = true
+	}
+
 	if !foundAuthorizedUser {
 		log.WithFields(log.Fields{
 			"type":       ef.Type,

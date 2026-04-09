@@ -81,8 +81,15 @@ func (b *Bounce) generateKEKFromPrivateKey(privateKey, counterpartyPublicKeyByte
 func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 	// Encrypt re-key frames to the specific devices that should be able to decrypt them
 	if br.getType() == typeUpdateUser {
+		sc, err := b.unpackSignedContainer(br.getPayload())
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error unpacking signed container for update user")
+			return
+		}
 		var uu updateUser
-		err := msgpack.Unmarshal(br.getPayload(), &uu)
+		err = msgpack.Unmarshal(sc.Payload, &uu)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -310,6 +317,12 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 }
 
 func (b *Bounce) sendEncryptReKeyFrames(br broadcastable) {
+	ef := b.encryptReKeyFrame(br)
+	if ef == nil {
+		log.Error("failed to encrypt re-key frame")
+		return
+	}
+
 	var allESDs []encryptedSyncDevice
 	err := b.database.Find(&allESDs).Error
 	if err != nil {
@@ -324,10 +337,7 @@ func (b *Bounce) sendEncryptReKeyFrames(br broadcastable) {
 			continue
 		}
 
-		ef := b.encryptReKeyFrame(br)
-		if ef != nil {
-			rd.messages <- ef
-		}
+		rd.messages <- ef
 	}
 }
 
