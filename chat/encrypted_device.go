@@ -418,23 +418,27 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 		}).Fatal("database error looking up encrypted frame")
 	}
 
-	foundAuthorizedUser := false
-	for _, r := range ef.Recipients {
+	authorized := false
+	if pubkey, ok := peerUserKeys[peer]; ok {
 		var au authorizedUser
-		err := b.database.Take(&au, "public_key = ?", r.PublicKey).Error
+		err := b.database.Take(&au, "public_key = ?", pubkey).Error
 		if err == nil {
-			foundAuthorizedUser = true
-			break
+			authorized = true
 		}
 	}
 
-	if len(ef.DeviceRecipients) > 0 {
-		// TODO: need to validate a device belongs to us and created this, or anyone can use this device
-		// TODO: probably can use peerUserKeys to check if the peer owns this device, and skip these checks in that case
-		foundAuthorizedUser = true
+	if !authorized {
+		for _, r := range ef.Recipients {
+			var au authorizedUser
+			err := b.database.Take(&au, "public_key = ?", r.PublicKey).Error
+			if err == nil {
+				authorized = true
+				break
+			}
+		}
 	}
 
-	if !foundAuthorizedUser {
+	if !authorized {
 		log.WithFields(log.Fields{
 			"type":       ef.Type,
 			"id":         ef.ID,

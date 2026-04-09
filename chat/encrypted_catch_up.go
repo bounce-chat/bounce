@@ -404,8 +404,9 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 			}
 		}
 
-		// If this recipient differs from the current key for our user, include the key hash of the appropriate key
-		if !bytes.Equal(peerKey, desiredRecipient.PublicKey) {
+		// If this recipient differs from the current key for our user, include the key hash of the appropriate key.  We also
+		// attach this to updateDevices, in case we're revoking a device and will be changing keys at the same time.
+		if !bytes.Equal(peerKey, desiredRecipient.PublicKey) || ef.Type == typeUpdateDevice {
 			er.OldKeyHash = hashString(blake3.Sum256(desiredRecipient.PublicKey))
 		}
 
