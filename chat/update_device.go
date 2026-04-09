@@ -573,7 +573,7 @@ func (b *Bounce) createAndShareDeviceECDHKey() {
 	privateKeyBytes := privateKey.Bytes()
 	publicKeyBytes := publicKey.Bytes()
 
-	err = b.database.Where("address = ?", b.network.Address()).Updates(map[string]interface{}{"ecdh_public_key": publicKeyBytes, "ecdh_private_key": privateKeyBytes}).Error
+	err = b.database.Table("devices").Where("address = ?", b.network.Address()).Updates(map[string]interface{}{"ecdh_public_key": publicKeyBytes, "ecdh_private_key": privateKeyBytes}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
