@@ -160,14 +160,13 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 		// Accept this device as a new sync device by responding with our updated profile information
 		// that includes this new device
 		b.sendDirect(peer, &syncDeviceRequestAccepted{
-			Profile:          profile,
-			PrivateECDHKey:   profile.PrivateECDHKey,
-			PublicECDHKey:    profile.PublicECDHKey,
-			PrivateECDSAKey:  profile.PrivateECDSAKey,
-			PublicECDSAKey:   profile.PublicECDSAKey,
-			KeyEncryptionKey: profile.KeyEncryptionKey,
-			Settings:         profile.ProfileSettings,
-			References:       b.hasAnyReferencesFor(peer),
+			Profile:         profile,
+			PrivateECDHKey:  profile.PrivateECDHKey,
+			PublicECDHKey:   profile.PublicECDHKey,
+			PrivateECDSAKey: profile.PrivateECDSAKey,
+			PublicECDSAKey:  profile.PublicECDSAKey,
+			Settings:        profile.ProfileSettings,
+			References:      b.hasAnyReferencesFor(peer),
 		})
 
 		// Tell the UI that we've accepted the sync device

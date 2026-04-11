@@ -172,7 +172,15 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 		// Create recipients for each user in scope, up to a limit
 		recipients := []recipient{}
 		for _, u := range b.pruneEncryptedRecipients(owner, users) {
-			block, err := aes.NewCipher(u.KeyEncryptionKey)
+			kek, err := b.generateKEK(u.PublicECDHKey)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error generating kek")
+				return
+			}
+
+			block, err := aes.NewCipher(kek)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -283,7 +291,15 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 	// Create recipients for each user in scope, up to a limit
 	recipients := []recipient{}
 	for _, u := range b.pruneEncryptedRecipients(owner, users) {
-		block, err := aes.NewCipher(u.KeyEncryptionKey)
+		kek, err := b.generateKEK(u.PublicECDHKey)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error generating kek")
+			return nil
+		}
+
+		block, err := aes.NewCipher(kek)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

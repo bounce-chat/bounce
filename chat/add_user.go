@@ -313,15 +313,6 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		counterparty.OpenDM = true
 		counterparty.IntroductionMethod = userIntroductionAddUser
 		counterparty.IntroductionTime = time.Now().Unix()
-		kek, err := b.generateKEK(counterparty.PublicECDHKey)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"user_id": counterparty.ID,
-				"error":   err.Error(),
-			}).Error("refusing to save user in add user, error generating key encryption key")
-			return nil, false
-		}
-		counterparty.KeyEncryptionKey = kek
 		err = b.database.Create(&counterparty).Error
 		if err != nil {
 			log.WithFields(log.Fields{

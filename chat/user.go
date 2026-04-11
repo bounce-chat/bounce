@@ -34,7 +34,6 @@ type user struct {
 	PrivateECDSAKey            []byte `msgpack:"-"`
 	PublicECDHKey              []byte
 	PrivateECDHKey             []byte `msgpack:"-"`
-	KeyEncryptionKey           []byte `msgpack:"-"`
 	OpenDM                     bool   `msgpack:"-"`
 	Retention                  int64  `msgpack:"-"`
 	ClearBefore                int64  `msgpack:"-"`
@@ -229,8 +228,6 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 			"error": err.Error(),
 		}).Fatal("error generating ECDSA keypair")
 	}
-	kek := make([]byte, 32)
-	rand.Read(kek)
 
 	u := &user{
 		ID:                 newID,
@@ -240,7 +237,6 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		PrivateECDSAKey:    privateECDSAKey,
 		PublicECDHKey:      publicECDHKey.Bytes(),
 		PrivateECDHKey:     privateECDHKey.Bytes(),
-		KeyEncryptionKey:   kek,
 		OpenDM:             true,
 		IntroductionMethod: userIntroductionProfile,
 		IntroductionTime:   time.Now().Unix(),
@@ -313,7 +309,6 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 			PrivateECDSAKey: u.PrivateECDSAKey,
 			PublicECDHKey:   u.PublicECDHKey,
 			PrivateECDHKey:  u.PrivateECDHKey,
-			Kek:             u.KeyEncryptionKey,
 		}
 		keySetData, err := msgpack.Marshal(&ks)
 		if err != nil {

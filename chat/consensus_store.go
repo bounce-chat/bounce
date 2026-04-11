@@ -1024,15 +1024,6 @@ func (b *Bounce) createNewUserIfNeeded(u user) bool {
 	}
 	u.IntroductionMethod = userIntroductionGroup
 	u.IntroductionTime = time.Now().Unix()
-	kek, err := b.generateKEK(u.PublicECDHKey)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"user_id": u.ID,
-			"error":   err.Error(),
-		}).Error("refusing to save user in group consensus, error generating key encryption key")
-		return false
-	}
-	u.KeyEncryptionKey = kek
 	res := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&u)
 	if res.Error != nil {
 		log.WithFields(log.Fields{
@@ -1546,7 +1537,15 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 	var gcDEK dataEncryptionKey
 	err = b.database.Take(&gcDEK, "id = ?", groupID).Error
 	if err == nil {
-		block, err := aes.NewCipher(u.KeyEncryptionKey)
+		kek, err := b.generateKEK(u.PublicECDHKey)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error generating kek for invited user")
+			return
+		}
+
+		block, err := aes.NewCipher(kek)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -1590,7 +1589,15 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 		var ugDEK dataEncryptionKey
 		err = b.database.Take(&ugDEK, "id = ?", ug.ID).Error
 		if err == nil {
-			block, err := aes.NewCipher(u.KeyEncryptionKey)
+			kek, err := b.generateKEK(u.PublicECDHKey)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error generating kek for invited user")
+				return
+			}
+
+			block, err := aes.NewCipher(kek)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),

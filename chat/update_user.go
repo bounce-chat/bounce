@@ -364,7 +364,6 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 	publicECDSA := u.PublicECDSAKey
 	privateECDH := u.PrivateECDHKey
 	publicECDH := u.PublicECDHKey
-	kek := u.KeyEncryptionKey
 
 	// Get all update users for this user
 	var uus []updateUser
@@ -453,7 +452,6 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 			privateECDSA = ks.PrivateECDSAKey
 			publicECDH = ks.PublicECDHKey
 			privateECDH = ks.PrivateECDHKey
-			kek = ks.Kek
 		case updateUserTypeReplaceECDHPublicKey:
 			publicECDH = uu.Data
 		default:
@@ -568,16 +566,6 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 
 	if !bytes.Equal(publicECDH, u.PublicECDHKey) {
 		err := b.database.Table("users").Where("id = ?", userID).Updates(map[string]interface{}{"public_ecdh_key": publicECDH}).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":   err.Error(),
-				"user_id": userID,
-			}).Fatal("database error updating user")
-		}
-	}
-
-	if !bytes.Equal(kek, u.KeyEncryptionKey) {
-		err := b.database.Table("users").Where("id = ?", userID).Updates(map[string]interface{}{"key_encryption_key": kek}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":   err.Error(),
