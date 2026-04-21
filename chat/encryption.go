@@ -13,7 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/vmihailenco/msgpack/v5"
+	"github.com/Basekick-Labs/msgpack/v6"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

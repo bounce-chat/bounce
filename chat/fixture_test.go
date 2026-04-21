@@ -17,7 +17,7 @@ import (
 	"github.com/cretz/bine/torutil/ed25519"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/vmihailenco/msgpack/v5"
+	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/zeebo/blake3"
 )
 

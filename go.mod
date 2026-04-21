@@ -1,14 +1,13 @@
 module github.com/hkparker/bounce
 
-go 1.24.0
-
-toolchain go1.24.5
+go 1.26
 
 //replace fyne.io/fyne/v2 => /home/hayden/Development/Go/src/github.com/hkparker/fyne
 //replace github.com/hkparker/go-libtor => /home/hayden/Development/Go/src/github.com/hkparker/go-libtor
 
 require (
 	fyne.io/fyne/v2 v2.7.0
+	github.com/Basekick-Labs/msgpack/v6 v6.0.0
 	github.com/alecthomas/assert/v2 v2.11.0
 	github.com/bbrks/go-blurhash v1.1.1
 	github.com/cretz/bine v0.2.0
@@ -17,7 +16,6 @@ require (
 	github.com/hkparker/go-libtor v0.0.0-20251106224647-07620ff21cd3
 	github.com/rymdport/go-qrcode v1.2.1
 	github.com/sirupsen/logrus v1.9.3
-	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/zeebo/blake3 v0.2.4
 	golang.org/x/image v0.32.0
 	gorm.io/driver/sqlite v1.6.0

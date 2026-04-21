@@ -6,7 +6,7 @@ import (
 
 	"github.com/alecthomas/assert/v2"
 	"github.com/google/uuid"
-	"github.com/vmihailenco/msgpack/v5"
+	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/zeebo/blake3"
 )
 
