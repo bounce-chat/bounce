@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/alecthomas/assert/v2"
 	"github.com/google/uuid"
-	"github.com/Basekick-Labs/msgpack/v6"
 	"gorm.io/gorm/clause"
 )
 

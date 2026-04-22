@@ -17,9 +17,7 @@ var headerSize = 6
 var typeSize = 2
 var maxPayloadSize = intPow(2, (headerSize-typeSize)*8)
 
-//
 // Read a Bounce frame from the socket.  This will return the type of frame, the frame bytes, and any error
-//
 func readFrame(conn net.Conn) (uint16, []byte, error) {
 	header := make([]byte, 0)
 	headerRead := 0

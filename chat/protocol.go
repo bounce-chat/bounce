@@ -115,7 +115,6 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 			typeEncryptedDeviceManagementRequest: b.handleEncryptedDeviceManagementRequest,
 			typeEncryptedFrame:                   b.handleEncryptedFrame,
 			typeEncryptedReferenceOfferResponse:  b.handleEncryptedReferenceOfferResponse,
-			typeAppendRecipient:                  b.handleAppendRecipient,
 			typeManageEncryptedDevice:            b.handleManageEncryptedDevice,
 			typeGetManagementKeyHash:             b.handleGetManagementKeyHash,
 		}

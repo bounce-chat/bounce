@@ -4,9 +4,7 @@ import (
 	"net"
 )
 
-//
 // Any overlay network that can satisfy this interface can host Bounce
-//
 type Network interface {
 	// Load the network keys from the config directory
 	Load(configDirectory string)
@@ -39,9 +37,7 @@ type Network interface {
 	Shutdown()
 }
 
-//
 // Callbacks the network can use to inform the chat engine of state changes
-//
 type NetworkCallbacks struct {
 	// NetworkOnline must be called the first time the network becomes available,
 	// and any time the network recovers from an offline state

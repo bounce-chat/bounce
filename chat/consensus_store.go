@@ -1,16 +1,14 @@
 package chat
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"errors"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/Basekick-Labs/msgpack/v6"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -1496,145 +1494,8 @@ func (b *Bounce) cleanupRolledBackInvite(groupID uuid.UUID) {
 }
 
 func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
-	var u user
-	err := b.database.Take(&u, "id = ?", userID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"user_id": userID,
-			}).Error("user not found when adding encrypted recipient")
-			return
-		} else {
-			log.WithFields(log.Fields{
-				"error":   err.Error(),
-				"user_id": userID,
-			}).Fatal("database error looking up user")
-		}
-	}
-
-	currentUser, ok := b.currentUser()
-	if !ok {
-		log.Error("cannot add user recipient when no profile exists")
-		return
-	}
-
-	arsToSend := []*appendRecipient{}
-
-	var gc groupCreation
-	err = b.database.Take(&gc, "id = ?", groupID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"group_id": groupID,
-			}).Error("group creation not found when adding encrypted recipient")
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up group creation")
-		}
-	}
-
-	var gcDEK dataEncryptionKey
-	err = b.database.Take(&gcDEK, "id = ?", groupID).Error
-	if err == nil {
-		kek, err := b.generateKEK(u.PublicECDHKey)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error generating kek for invited user")
-			return
-		}
-
-		block, err := aes.NewCipher(kek)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error encrypting frame")
-			return
-		}
-		gcm, err := cipher.NewGCMWithRandomNonce(block)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error encrypting frame")
-			return
-		}
-
-		ar := &appendRecipient{
-			ID:           xor(gc.ID, u.ID),
-			FrameID:      gc.ID,
-			EncrypterKey: currentUser.PublicECDHKey,
-			PublicKey:    u.PublicECDHKey,
-			EncryptedDEK: gcm.Seal(nil, []byte{}, gcDEK.Key, nil),
-		}
-		arsToSend = append(arsToSend, ar)
-
-		err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&ar).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error creating append recipient")
-		}
-	}
-
-	var ugs []updateGroup
-	err = b.database.Where("target = ?", groupID).Find(&ugs).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error getting all update groups")
-	}
-
-	for _, ug := range ugs {
-		var ugDEK dataEncryptionKey
-		err = b.database.Take(&ugDEK, "id = ?", ug.ID).Error
-		if err == nil {
-			kek, err := b.generateKEK(u.PublicECDHKey)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error generating kek for invited user")
-				return
-			}
-
-			block, err := aes.NewCipher(kek)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error encrypting frame")
-				return
-			}
-			gcm, err := cipher.NewGCMWithRandomNonce(block)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error encrypting frame")
-				return
-			}
-
-			ar := &appendRecipient{
-				ID:           xor(ug.ID, u.ID),
-				FrameID:      ug.ID,
-				EncrypterKey: currentUser.PublicECDHKey,
-				PublicKey:    u.PublicECDHKey,
-				EncryptedDEK: gcm.Seal(nil, []byte{}, ugDEK.Key, nil),
-			}
-			arsToSend = append(arsToSend, ar)
-
-			err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&ar).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error creating append recipient")
-			}
-		}
-	}
-
-	for _, addr := range b.onlineEncryptedDevicesInGroup(groupID) {
-		for _, ar := range arsToSend {
-			go b.sendDirect(addr, ar)
-		}
-	}
+	// TODO: save the pending intention to add this
+	// TODO: start the flow to do it with any online ESDs
 }
 
 func (b *Bounce) onlineEncryptedDevicesInGroup(groupID uuid.UUID) []string {

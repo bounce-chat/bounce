@@ -3,9 +3,9 @@ package chat
 import (
 	"errors"
 
+	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/Basekick-Labs/msgpack/v6"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -88,17 +88,13 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 			}
 		}
 
-		ars := b.getRequestedAppendRecipientPayloads(requestedIDs[typeAppendRecipient], offeredIDs[typeAppendRecipient])
-		for _, ar := range ars {
-			cuForEncryptedDevice.sendables = append(cuForEncryptedDevice.sendables, ar)
-		}
-
 		go b.sendDirect(peer, cuForEncryptedDevice)
 	} else {
 		// If we're preparing this catch up for a normal device, pack the frames in directly
 		cu := &catchUp{
 			sendables: sortableSendables{},
 		}
+
 		for _, br := range broadcastables {
 			s, ok := br.(sortableSendable)
 			if !ok {
@@ -106,6 +102,7 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 			}
 			cu.sendables = append(cu.sendables, s)
 		}
+
 		go b.sendDirect(peer, cu)
 	}
 
@@ -493,33 +490,6 @@ func (b *Bounce) getRequestedChunkOfferPayloads(requestedIDs, offeredIDs []uuid.
 			}
 		} else {
 			requestedData = append(requestedData, &co)
-		}
-	}
-
-	return requestedData
-}
-
-func (b *Bounce) getRequestedAppendRecipientPayloads(requestedIDs, offeredIDs []uuid.UUID) []sortableSendable {
-	requestedData := []sortableSendable{}
-
-	requestedAppendRecipientIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, appendRecipientID := range requestedAppendRecipientIDs {
-		var ar appendRecipient
-		err := b.database.First(&ar, "id = ?", appendRecipientID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": appendRecipientID,
-				}).Warn("reference request asks for unknown append recipient we offered")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    appendRecipientID,
-					"error": err.Error(),
-				}).Fatal("database error querying for appendRecipient")
-			}
-		} else {
-			requestedData = append(requestedData, ar)
 		}
 	}
 

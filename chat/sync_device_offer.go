@@ -11,11 +11,9 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-//
 // A sync device offer is the secret stored on our device that is conveyed to another device that wants to be a sync device for our user.
 // The other device scans or otherwise gets a strng with our address and this secret, then initiates the flow with a sync device request.
 // A new secret is generated every time the UI displays this string, and only one is stored in the database at a time.
-//
 type syncDeviceOffer struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Timestamp int64

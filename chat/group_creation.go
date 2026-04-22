@@ -3,9 +3,9 @@ package chat
 import (
 	"errors"
 
+	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

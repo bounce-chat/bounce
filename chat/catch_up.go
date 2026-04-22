@@ -4,9 +4,9 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/Basekick-Labs/msgpack/v6"
 )
 
 var catchUpMutex sync.Mutex
@@ -77,11 +77,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 
 	if b.encrypted {
 		for _, fr := range cu.Frames {
-			if fr.Type == typeAppendRecipient {
-				b.handleAppendRecipient(peer, fr.Payload, true)
-			} else {
-				b.handleEncryptedFrame(peer, fr.Payload, true)
-			}
+			b.handleEncryptedFrame(peer, fr.Payload, true)
 		}
 		return nil, false
 	}

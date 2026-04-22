@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/Basekick-Labs/msgpack/v6"
+	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 )

@@ -15,13 +15,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/zeebo/blake3"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 )
 
@@ -467,63 +466,6 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 	}
 	b.markFrameDelivered(ef.ID, ef.Type, peer)
 	go b.sendAck(peer, ef.Type, ef.ID)
-
-	return nil, false
-}
-
-type appendRecipient struct {
-	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
-	FrameID      uuid.UUID
-	PublicKey    []byte
-	EncrypterKey []byte
-	EncryptedDEK []byte
-}
-
-func (ar appendRecipient) getID() uuid.UUID {
-	return ar.ID
-}
-
-func (ar appendRecipient) getType() uint16 {
-	return typeAppendRecipient
-}
-
-func (ar appendRecipient) getTimestamp() int64 {
-	return 0
-}
-
-func (ar appendRecipient) getPayload() []byte {
-	bytes, err := msgpack.Marshal(&ar)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("cannot msgpack marshal append recipient")
-	}
-	return bytes
-}
-
-func (b *Bounce) handleAppendRecipient(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
-	var ar appendRecipient
-	err := msgpack.Unmarshal(payload, &ar)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error unmarshalling append recipient")
-		return nil, false
-	}
-
-	err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&recipient{
-		EncryptedFrameID: ar.FrameID,
-		PublicKey:        ar.PublicKey,
-		EncrypterKey:     ar.EncrypterKey,
-		EncryptedDEK:     ar.EncryptedDEK,
-	}).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error saving appended recipient")
-	}
-
-	go b.sendAck(peer, typeAppendRecipient, ar.ID)
 
 	return nil, false
 }

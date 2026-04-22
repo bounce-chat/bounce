@@ -14,9 +14,9 @@ import (
 
 	stdlog "log"
 
+	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/Basekick-Labs/msgpack/v6"
 )
 
 // Frames that are sent over the network that have a corresponding database table
@@ -101,8 +101,6 @@ func (b *Bounce) openDatabase() {
 		&imageAttachment{},
 		&fileAttachment{},
 		&encryptedSyncDevice{},
-		&dataEncryptionKey{},
-		&appendRecipient{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{

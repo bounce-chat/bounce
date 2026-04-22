@@ -3,9 +3,9 @@ package chat
 import (
 	"time"
 
+	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/Basekick-Labs/msgpack/v6"
 )
 
 // A sync device request accepted frame is sent from an offer device to a requester device when it is approving the requester
