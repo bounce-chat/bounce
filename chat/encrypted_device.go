@@ -695,7 +695,7 @@ func (b *Bounce) handleAppendRecipientResponse(peer string, payload []byte, _ bo
 	}
 
 	// Create the new recipients
-	recipients := []recipient{}
+	recipients := map[uuid.UUID]recipient{}
 	for _, dd := range arr.DEKs {
 		// Decrypt the DEK
 		oldKek, err := b.generateKEK(dd.EncrypterKey)
@@ -753,12 +753,11 @@ func (b *Bounce) handleAppendRecipientResponse(peer string, payload []byte, _ bo
 			continue
 		}
 
-		recipients = append(recipients, recipient{
-			EncryptedFrameID: dd.FrameID,
-			EncrypterKey:     currentUser.PublicECDHKey,
-			PublicKey:        u.PublicECDHKey,
-			EncryptedDEK:     gcm.Seal(nil, []byte{}, dek, nil),
-		})
+		recipients[dd.FrameID] = recipient{
+			EncrypterKey: currentUser.PublicECDHKey,
+			PublicKey:    u.PublicECDHKey,
+			EncryptedDEK: gcm.Seal(nil, []byte{}, dek, nil),
+		}
 	}
 
 	arp := appendRecipientPayloads{
@@ -795,7 +794,7 @@ func (b *Bounce) handleAppendRecipientResponse(peer string, payload []byte, _ bo
 
 type appendRecipientPayloads struct {
 	ID         uuid.UUID
-	Recipients []recipient
+	Recipients map[uuid.UUID]recipient
 }
 
 func (arp *appendRecipientPayloads) getType() uint16 {
@@ -824,9 +823,9 @@ func (b *Bounce) handleAppendRecipientPayloads(peer string, payload []byte, _ bo
 
 	go b.sendAck(peer, typeAppendRecipientPayloads, arp.ID)
 
-	for i, _ := range arp.Recipients {
-		r := arp.Recipients[i]
+	for id, r := range arp.Recipients {
 		r.ID = uuid.New()
+		r.EncryptedFrameID = id
 		err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&r).Error
 		if err != nil {
 			log.WithFields(log.Fields{
