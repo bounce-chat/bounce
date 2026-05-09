@@ -587,9 +587,9 @@ func (b *Bounce) handleAppendRecipientRequest(peer string, payload []byte, _ boo
 
 		var r recipient
 		err = b.database.Select("id").Where("encrypted_frame_id = ? AND public_key = ?", frameID, arr.Pubkey).First(&r).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if err == nil {
 			continue
-		} else if err != nil {
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Fatal("database error looking up recipient")
