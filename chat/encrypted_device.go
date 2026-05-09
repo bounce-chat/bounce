@@ -21,6 +21,7 @@ import (
 	"github.com/zeebo/blake3"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 )
 
@@ -468,6 +469,404 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 	go b.sendAck(peer, ef.Type, ef.ID)
 
 	return nil, false
+}
+
+// Stores our intention to add this user's key as a recipient to all a group's update groups up until this timestamp
+type appendRecipient struct {
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	GroupID   uuid.UUID
+	UserID    uuid.UUID
+	Timestamp int64
+	Address   string
+}
+
+var appendRecipientMutex sync.Mutex
+
+func (b *Bounce) addRecipientsIfNeeded() {
+	appendRecipientMutex.Lock()
+	defer appendRecipientMutex.Unlock()
+
+	var ars []appendRecipient
+	err := b.database.Find(&ars).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up all append recipients")
+	}
+
+	for _, ar := range ars {
+		rd := b.getRemoteDevice(ar.Address)
+		if rd.connectedSockets.Load() < 1 {
+			continue
+		}
+
+		var u user
+		err = b.database.Take(&u, "id = ?", ar.UserID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"user_id": ar.UserID,
+				}).Error("user not found in append recipeint")
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up user")
+			}
+		}
+
+		desiredIDs := []uuid.UUID{ar.GroupID}
+		var ugs []updateGroup
+		err = b.database.Select("id").Where("target = ?", ar.GroupID).Find(&ugs).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up update groups")
+		}
+		for _, ug := range ugs {
+			desiredIDs = append(desiredIDs, ug.ID)
+		}
+
+		go b.sendDirect(ar.Address, &appendRecipientRequest{
+			ID:     ar.ID,
+			Frames: desiredIDs,
+			Pubkey: u.PublicECDHKey,
+		})
+	}
+}
+
+type appendRecipientRequest struct {
+	ID     uuid.UUID
+	Frames []uuid.UUID
+	Pubkey []byte
+}
+
+func (arr *appendRecipientRequest) getType() uint16 {
+	return typeAppendRecipientRequest
+}
+
+func (arr *appendRecipientRequest) getPayload() []byte {
+	bytes, err := msgpack.Marshal(arr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal append recipient request")
+	}
+	return bytes
+}
+
+func (b *Bounce) handleAppendRecipientRequest(peer string, payload []byte, _ bool) (broadcastable, bool) {
+	var arr appendRecipientRequest
+	err := msgpack.Unmarshal(payload, &arr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling append recipient request")
+		return nil, false
+	}
+
+	response := appendRecipientResponse{
+		ID: arr.ID,
+	}
+
+	peerKey, ok := peerUserKeys[peer]
+	if !ok {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("append recipient request from peer without key")
+		b.sendDirect(peer, &response)
+		return nil, false
+	}
+
+	for _, frameID := range arr.Frames {
+		var ef encryptedFrame
+		err = b.database.Select("id").Take(&ef, "id = ?", frameID).Error
+		if err != nil {
+			continue
+		}
+
+		var r recipient
+		err = b.database.Select("id").Where("encrypted_frame_id = ? AND public_key = ?", frameID, arr.Pubkey).First(&r).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			continue
+		} else if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up recipient")
+		}
+
+		var peerRecipient recipient
+		err = b.database.Where("encrypted_frame_id = ? AND public_key = ?", frameID, peerKey).First(&peerRecipient).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			continue
+		} else if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up recipient")
+		}
+
+		response.DEKs = append(response.DEKs, discloseDEK{
+			FrameID:      frameID,
+			EncrypterKey: peerRecipient.EncrypterKey,
+			EncryptedDEK: peerRecipient.EncryptedDEK,
+		})
+	}
+
+	b.sendDirect(peer, &response)
+	return nil, false
+}
+
+type discloseDEK struct {
+	FrameID      uuid.UUID
+	EncrypterKey []byte
+	EncryptedDEK []byte
+}
+
+type appendRecipientResponse struct {
+	ID   uuid.UUID
+	DEKs []discloseDEK
+}
+
+func (arr *appendRecipientResponse) getType() uint16 {
+	return typeAppendRecipientResponse
+}
+
+func (arr *appendRecipientResponse) getPayload() []byte {
+	bytes, err := msgpack.Marshal(arr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal append recipient response")
+	}
+	return bytes
+}
+
+func (b *Bounce) handleAppendRecipientResponse(peer string, payload []byte, _ bool) (broadcastable, bool) {
+	var arr appendRecipientResponse
+	err := msgpack.Unmarshal(payload, &arr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling append recipient response")
+		return nil, false
+	}
+
+	// Find the original intention and user
+	var ar appendRecipient
+	err = b.database.Take(&ar, "id = ?", arr.ID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"id": arr.ID,
+			}).Warn("append recipient not found from append recipient response")
+			return nil, false
+		} else if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up append recipient")
+		}
+	}
+
+	var u user
+	err = b.database.Take(&u, "id = ?", ar.UserID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"id": ar.UserID,
+			}).Warn("user not found from append recipient response")
+			return nil, false
+		} else if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up user")
+		}
+	}
+
+	currentUser, ok := b.currentUser()
+	if !ok {
+		log.Error("cannot handle append recipient response before profile is created")
+		return nil, false
+	}
+
+	// Delete if there is nothing to do
+	if len(arr.DEKs) == 0 {
+		b.database.Delete(&ar)
+		return nil, false
+	}
+
+	// Create the new recipients
+	recipients := []recipient{}
+	for _, dd := range arr.DEKs {
+		// Decrypt the DEK
+		oldKek, err := b.generateKEK(dd.EncrypterKey)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error generating key encryption key from discloseDEK")
+			continue
+		}
+
+		oldKekBlock, err := aes.NewCipher(oldKek)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating block")
+			continue
+		}
+		oldKekGCM, err := cipher.NewGCMWithRandomNonce(oldKekBlock)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating gcm")
+			continue
+		}
+
+		dek, err := oldKekGCM.Open(nil, []byte{}, dd.EncryptedDEK, nil)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error decrypting key in disclose DEK")
+			continue
+		}
+
+		// Encrypt this DEK with the new recipient's key and generate a new recipient
+		newKek, err := b.generateKEK(u.PublicECDHKey)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error generating kek")
+			continue
+		}
+
+		block, err := aes.NewCipher(newKek)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error encrypting frame")
+			continue
+		}
+		gcm, err := cipher.NewGCMWithRandomNonce(block)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error encrypting frame")
+			continue
+		}
+
+		recipients = append(recipients, recipient{
+			EncryptedFrameID: dd.FrameID,
+			EncrypterKey:     currentUser.PublicECDHKey,
+			PublicKey:        u.PublicECDHKey,
+			EncryptedDEK:     gcm.Seal(nil, []byte{}, dek, nil),
+		})
+	}
+
+	arp := appendRecipientPayloads{
+		ID:         arr.ID,
+		Recipients: recipients,
+	}
+	for range 5 {
+		b.sendDirect(peer, &arp)
+		time.Sleep(5 * time.Second)
+
+		var originalAR appendRecipient
+		err = b.database.Take(&originalAR, "id = ?", arr.ID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				break
+			} else {
+				log.WithFields(log.Fields{
+					"id":    arr.ID,
+					"error": err.Error(),
+				}).Fatal("database error looking up append recipient")
+			}
+		}
+	}
+	var originalAR appendRecipient
+	err = b.database.Take(&originalAR, "id = ?", arr.ID).Error
+	if err == nil {
+		log.WithFields(log.Fields{
+			"id": arr.ID,
+		}).Error("append recipient still exists in database after attempt to send new recipients")
+	}
+
+	return nil, false
+}
+
+type appendRecipientPayloads struct {
+	ID         uuid.UUID
+	Recipients []recipient
+}
+
+func (arp *appendRecipientPayloads) getType() uint16 {
+	return typeAppendRecipientPayloads
+}
+
+func (arp *appendRecipientPayloads) getPayload() []byte {
+	bytes, err := msgpack.Marshal(arp)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal append recipient payloads")
+	}
+	return bytes
+}
+
+func (b *Bounce) handleAppendRecipientPayloads(peer string, payload []byte, _ bool) (broadcastable, bool) {
+	var arp appendRecipientPayloads
+	err := msgpack.Unmarshal(payload, &arp)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling append recipient payloads")
+		return nil, false
+	}
+
+	go b.sendAck(peer, typeAppendRecipientPayloads, arp.ID)
+
+	for i, _ := range arp.Recipients {
+		r := arp.Recipients[i]
+		r.ID = uuid.New()
+		err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&r).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error saving new recipient")
+		}
+	}
+
+	return nil, false
+}
+
+func (b *Bounce) encryptedDevicesInGroup(groupID uuid.UUID) []string {
+	gs, err := b.currentGroupState(groupID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error getting group state for all encrypted devices in a group")
+		return []string{}
+	}
+
+	addresses := []string{}
+	for _, userID := range gs.users {
+		var u user
+		err = b.database.Select("encrypted_devices").Where("id = ?", userID).Take(&u).Error
+		if err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up user encrypted devices")
+			} else {
+				continue
+			}
+		}
+		if len(u.EncryptedDevices) > 0 {
+			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+				addresses = append(addresses, addr)
+			}
+		}
+	}
+	return addresses
 }
 
 type encryptedReferenceOfferChallenge struct {

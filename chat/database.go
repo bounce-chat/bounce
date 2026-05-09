@@ -101,6 +101,7 @@ func (b *Bounce) openDatabase() {
 		&imageAttachment{},
 		&fileAttachment{},
 		&encryptedSyncDevice{},
+		&appendRecipient{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{

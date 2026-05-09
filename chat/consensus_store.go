@@ -1494,8 +1494,23 @@ func (b *Bounce) cleanupRolledBackInvite(groupID uuid.UUID) {
 }
 
 func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
-	// TODO: save the pending intention to add this
-	// TODO: start the flow to do it with any online ESDs
+	for _, address := range b.encryptedDevicesInGroup(groupID) {
+		err := b.database.Create(&appendRecipient{
+			ID:        uuid.New(),
+			GroupID:   groupID,
+			UserID:    userID,
+			Timestamp: time.Now().Unix(),
+			Address:   address,
+		}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error saving new appendRecipient")
+			return
+		}
+	}
+
+	b.addRecipientsIfNeeded()
 }
 
 func (b *Bounce) onlineEncryptedDevicesInGroup(groupID uuid.UUID) []string {

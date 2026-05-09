@@ -57,6 +57,17 @@ func (b *Bounce) handleAck(peer string, payload []byte, _ bool) (broadcastable, 
 			continue
 		}
 
+		// Append recipient payloads just delete the append recipient intentions in the database
+		if fr.Type == typeAppendRecipientPayloads {
+			err = b.database.Where("id = ?", fr.FrameID).Delete(&appendRecipient{}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error deleting append recipient")
+			}
+			continue
+		}
+
 		// All other delivery records are stored in the main database
 		b.markFrameDelivered(fr.FrameID, fr.Type, peer)
 
