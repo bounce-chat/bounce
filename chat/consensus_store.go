@@ -871,7 +871,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 			b.addGroupInvite(g.ID, invitedID)
 
 			// Add this user as a recipient for the group creation and updates for any encrypted devices
-			b.addInvitedUserAsEncryptedRecipient(invitedID, g.ID)
+			go b.addInvitedUserAsEncryptedRecipient(invitedID, g.ID)
 		}
 
 		var u user
