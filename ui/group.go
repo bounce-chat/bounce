@@ -581,7 +581,10 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 				return
 			}
 
-			g.pendingMessageAttachments.add(reader)
+			err = g.pendingMessageAttachments.add(reader)
+			if err != nil {
+				ui.showDialog(dialog.NewError(err, ui.window), nil)
+			}
 		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 	addFiles.Importance = widget.LowImportance

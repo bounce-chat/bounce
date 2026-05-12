@@ -302,7 +302,10 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 				return
 			}
 
-			dm.pendingMessageAttachments.add(reader)
+			err = dm.pendingMessageAttachments.add(reader)
+			if err != nil {
+				ui.showDialog(dialog.NewError(err, ui.window), nil)
+			}
 		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 	addFiles.Importance = widget.LowImportance

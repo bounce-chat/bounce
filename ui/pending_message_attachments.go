@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"image"
 	"io"
@@ -152,6 +153,9 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, action
 			icon = canvas.NewImageFromResource(theme.FileIcon())
 		}
 	} else {
+		if reader.URI().Scheme() == "content" {
+			return nil, errors.New("unable to seed large files from mobile devices")
+		}
 		icon = canvas.NewImageFromResource(theme.FileIcon())
 	}
 
@@ -301,13 +305,14 @@ func newPendingMessageAttachments() *pendingMessageAttachments {
 	return pmas
 }
 
-func (pmas *pendingMessageAttachments) add(reader fyne.URIReadCloser) {
+func (pmas *pendingMessageAttachments) add(reader fyne.URIReadCloser) error {
 	id := uuid.New()
 	newFile, err := newPendingMessageAttachment(id, reader, func() { pmas.remove(id) })
 	if err == nil {
 		pmas.files = append(pmas.files, newFile)
 		pmas.Refresh()
 	}
+	return err
 }
 
 func (pmas *pendingMessageAttachments) remove(id uuid.UUID) {
