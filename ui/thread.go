@@ -431,8 +431,6 @@ func (ui *ui) ReceivedReadReceipt(rr chat.ReadReceipt) {
 }
 
 func (ui *ui) DeleteItem(id uuid.UUID) {
-	ui.messages.remove(id)
-
 	t, ok := ui.threads.withItem(id)
 	if !ok {
 		log.WithFields(log.Fields{
