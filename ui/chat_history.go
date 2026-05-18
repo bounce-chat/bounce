@@ -42,6 +42,7 @@ type chatHistory struct {
 	offsetUpdated func(fyne.Position)
 
 	windowFocused         func() bool
+	threadActive          func() bool
 	readCallback          func(uuid.UUID, string)
 	unreadCountCallback   func(int)
 	markAllAsReadCallback func()
@@ -57,6 +58,7 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 		ids:                 []uuid.UUID{},
 		heights:             []float32{},
 		windowFocused:       func() bool { return ui.state.focused },
+		threadActive:        func() bool { return ui.isActive(t) },
 		readCallback:        ui.bounce.MarkAsRead,
 		unreadCountCallback: t.getButton().setUnreadCount,
 		markAllAsReadCallback: func() {
@@ -868,7 +870,9 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 
 			offset := chl.ch.GetScrollOffset()
 			if offset >= chl.ch.offsetFor(vis.index) {
-				chl.ch.seen(vis.index)
+				if chl.ch.threadActive() && chl.ch.windowFocused() {
+					chl.ch.seen(vis.index)
+				}
 			}
 		}
 	} else {
@@ -881,7 +885,9 @@ func (chl *chatHistoryLayout) updateList(newOnly bool) {
 
 			offset := chl.ch.GetScrollOffset()
 			if offset >= chl.ch.offsetFor(vis.index) {
-				chl.ch.seen(vis.index)
+				if chl.ch.threadActive() && chl.ch.windowFocused() {
+					chl.ch.seen(vis.index)
+				}
 			}
 		}
 
