@@ -326,6 +326,10 @@ func (ui *ui) buildNewProfileCreator() {
 			ui.showDialog(dialog.NewError(errors.New("Profile name must be set"), ui.window), nil)
 			return
 		}
+
+		if deviceNameEntry.Text == "" {
+			deviceNameEntry.Text = deviceNameEntry.PlaceHolder
+		}
 		if deviceNameEntry.Text == "" {
 			ui.showDialog(dialog.NewError(errors.New("Device name must be set"), ui.window), nil)
 			return
