@@ -273,8 +273,6 @@ func (ug *updateGroup) validPayloadFormat() bool {
 		}).Warn("cannot validate payload format for update group with unknown type")
 		return false
 	}
-
-	return false
 }
 
 func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (broadcastable, bool) {

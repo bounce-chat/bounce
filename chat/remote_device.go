@@ -228,8 +228,8 @@ func (b *Bounce) readFrames(conn net.Conn) {
 			conn.Close()
 			return
 		} else {
+			b.runningHandlers.Add(1)
 			go func(thisPeer string, thisData []byte) {
-				b.runningHandlers.Add(1)
 				log.WithFields(log.Fields{
 					"peer": peer,
 					"type": frameType,

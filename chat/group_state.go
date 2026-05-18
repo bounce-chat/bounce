@@ -568,8 +568,6 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 		}).Warn("cannot apply update group with unknown type")
 		return errUpdateGroupWithUnknownType
 	}
-
-	return errUpdateGroupWithUnknownType
 }
 
 func applyUpdateGroupToState(gs groupState, ug updateGroup, myID uuid.UUID) (groupState, error) {
@@ -618,8 +616,6 @@ func applyUpdateGroupToState(gs groupState, ug updateGroup, myID uuid.UUID) (gro
 		}).Warn("cannot apply update group with unknown type")
 		return gs, errUpdateGroupWithUnknownType
 	}
-
-	return gs, nil
 }
 
 func applyUpdateGroupChangeNameToState(gs groupState, ug updateGroup) (groupState, error) {
