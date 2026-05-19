@@ -275,7 +275,6 @@ func (i *invite) getLastMessageTime() int64 {
 }
 
 func (i *invite) setLastMessageTime(timestamp int64) {
-
 }
 
 func (i *invite) getNotificationsMutedUntil() int64 {
@@ -292,4 +291,11 @@ func (i *invite) getEditIcon() *defaultImage {
 
 func (i *invite) getHeaderIcon() *defaultImage {
 	return nil
+}
+
+func (i *invite) setOpened() {
+}
+
+func (i *invite) hasBeenOpened() bool {
+	return true
 }

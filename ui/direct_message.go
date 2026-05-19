@@ -47,6 +47,7 @@ type directMessage struct {
 	entry                            *threadEntry
 	retentionSelection               *widget.Select
 	lastMessage                      int64
+	opened                           bool
 }
 
 func (dm *directMessage) getID() uuid.UUID {
@@ -90,6 +91,14 @@ func (dm *directMessage) getEditIcon() *defaultImage {
 
 func (dm *directMessage) getHeaderIcon() *defaultImage {
 	return dm.headerIcon
+}
+
+func (dm *directMessage) setOpened() {
+	dm.opened = true
+}
+
+func (dm *directMessage) hasBeenOpened() bool {
+	return dm.opened
 }
 
 func (dm *directMessage) refreshReadReceiptSettingSelection(options []string) {
@@ -570,9 +579,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		ui.containers.chat.Refresh()
 		ui.state.activeThread = uuid.Nil
 		ui.refreshThreadOrder()
-		openedThreadMutex.Lock()
-		delete(openedThreads, dm.user.id)
-		openedThreadMutex.Unlock()
+		dm.opened = false
 		if fyne.CurrentDevice().IsMobile() {
 			ui.mobileBack() // Exit the edit DM menu
 			ui.mobileBack() // Exit the thread back to all threads

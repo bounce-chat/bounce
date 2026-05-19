@@ -3,7 +3,6 @@ package ui
 import (
 	"sort"
 	"strconv"
-	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -11,9 +10,6 @@ import (
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
-
-var openedThreads = map[uuid.UUID]bool{}
-var openedThreadMutex sync.Mutex
 
 type thread interface {
 	getID() uuid.UUID
@@ -29,6 +25,8 @@ type thread interface {
 	refreshTypingIndicatorSettingSelection([]string)
 	getEditIcon() *defaultImage
 	getHeaderIcon() *defaultImage
+	setOpened()
+	hasBeenOpened() bool
 }
 
 //
@@ -349,10 +347,7 @@ func (ui *ui) MessageSeen(id uuid.UUID) {
 		}
 	}
 
-	openedThreadMutex.Lock()
-	_, opened := openedThreads[t.getID()]
-	openedThreadMutex.Unlock()
-	if !opened {
+	if !t.hasBeenOpened() {
 		fyne.DoAndWait(func() { t.chatHistoryScroll().scrollToLastRead() })
 	}
 
@@ -455,21 +450,19 @@ func (ui *ui) DeleteItem(id uuid.UUID) {
 	ui.messages.remove(id)
 }
 
-func (ui *ui) displayThread(thread thread) {
-	_, isInvite := thread.(*invite)
+func (ui *ui) displayThread(t thread) {
+	_, isInvite := t.(*invite)
 
-	openedThreadMutex.Lock()
-	_, opened := openedThreads[thread.getID()]
-	openedThreads[thread.getID()] = true
-	openedThreadMutex.Unlock()
+	opened := t.hasBeenOpened()
+	t.setOpened()
 
 	// Don't mark things seen while we find where to scroll to the last read
 	if !opened && !isInvite {
-		thread.chatHistoryScroll().disableSeenTracking = true
+		t.chatHistoryScroll().disableSeenTracking = true
 	}
 
-	ui.state.activeThread = thread.getID()
-	ui.containers.chat.Objects = []fyne.CanvasObject{thread.getView()}
+	ui.state.activeThread = t.getID()
+	ui.containers.chat.Objects = []fyne.CanvasObject{t.getView()}
 	ui.containers.chat.Refresh()
 
 	if fyne.CurrentDevice().IsMobile() {
@@ -477,18 +470,18 @@ func (ui *ui) displayThread(thread thread) {
 		ui.containers.chat.Show()
 	} else {
 		if !isInvite {
-			ui.window.Canvas().Focus(thread.getEntry())
+			ui.window.Canvas().Focus(t.getEntry())
 		}
 	}
 
 	if !opened && !isInvite {
-		thread.chatHistoryScroll().scrollToLastRead()
-		thread.chatHistoryScroll().disableSeenTracking = false
+		t.chatHistoryScroll().scrollToLastRead()
+		t.chatHistoryScroll().disableSeenTracking = false
 	}
 }
 
-func (ui *ui) isActive(thread thread) bool {
-	return ui.state.activeThread == thread.getID()
+func (ui *ui) isActive(t thread) bool {
+	return ui.state.activeThread == t.getID()
 }
 
 func (ui *ui) ShowTypingIndicator(userID, threadID uuid.UUID) {

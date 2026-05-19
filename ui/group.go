@@ -77,6 +77,7 @@ type group struct {
 	pendingMessageAttachments        *pendingMessageAttachments
 	entry                            *threadEntry
 	lastMessage                      int64
+	opened                           bool
 }
 
 func (g *group) getID() uuid.UUID {
@@ -129,6 +130,14 @@ func (g *group) isAdmin(userID uuid.UUID) bool {
 		}
 	}
 	return false
+}
+
+func (g *group) setOpened() {
+	g.opened = true
+}
+
+func (g *group) hasBeenOpened() bool {
+	return g.opened
 }
 
 func (g *group) getAdminCheck(userID uuid.UUID) *widget.Check {
