@@ -244,7 +244,7 @@ func (ui *ui) newUpdateGroupClearHistory(ugch chat.UpdateGroupClearHistory) (*th
 }
 
 func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
-	group, exists := ui.threads.getGroup(gm.Thread)
+	g, exists := ui.threads.getGroup(gm.Thread)
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": gm.Thread,
@@ -285,7 +285,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			}
 		}
 
-		notification = fyne.NewNotification(group.name, notificationString)
+		notification = fyne.NewNotification(g.name, notificationString)
 	} else {
 		username = "You"
 	}
@@ -368,11 +368,11 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 
 				tb.setLastAction(changeString, mine)
 			} else {
-				group.button.setLastMessage(displayName, gm.Text, mine)
+				g.button.setLastMessage(displayName, gm.Text, mine)
 			}
-			group.button.setLastMessageTime(time.Unix(gm.WrittenAt, 0))
-			group.setLastMessageTime(gm.WrittenAt)
-			group.chatHistoryScroll().Refresh()
+			g.button.setLastMessageTime(time.Unix(gm.WrittenAt, 0))
+			g.setLastMessageTime(gm.WrittenAt)
+			g.chatHistoryScroll().Refresh()
 			if outgoing {
 				tb.showLastMessageState(state)
 			} else {

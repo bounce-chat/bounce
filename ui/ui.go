@@ -376,12 +376,12 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 				ui.buildNewGroupChatInvite(g)
 			} else if !invited && member {
 				ui.buildNewGroupChat(g)
-				group, ok := ui.threads.getGroup(g.ID)
+				t, ok := ui.threads.getGroup(g.ID)
 				if !ok {
 					log.Fatal("group thread doesn't exist immediately after creation")
 				}
-				group.button.setLastMessageTime(time.Unix(g.LastActivity, 0))
-				group.setLastMessageTime(g.LastActivity)
+				t.button.setLastMessageTime(time.Unix(g.LastActivity, 0))
+				t.setLastMessageTime(g.LastActivity)
 
 				gcTi, err := ui.newGroupCreated(g.ID, g.ID, g.CreatedBy, g.CreatedAt)
 				if err != nil {
