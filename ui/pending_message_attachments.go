@@ -236,30 +236,30 @@ func (mar *messageAttachmentRenderer) Destroy() {}
 
 func (mar *messageAttachmentRenderer) Layout(size fyne.Size) {
 	mar.ma.icon.Resize(fyne.Size{
-		theme.IconInlineSize(),
-		theme.IconInlineSize(),
+		Width:  theme.IconInlineSize(),
+		Height: theme.IconInlineSize(),
 	})
 	mar.ma.icon.Move(fyne.Position{
-		theme.Padding(),
-		(size.Height - mar.ma.icon.Size().Height) / 2,
+		X: theme.Padding(),
+		Y: (size.Height - mar.ma.icon.Size().Height) / 2,
 	})
 
 	filenameSize := size
 	filenameSize.Width -= theme.Padding()*5 + mar.ma.action.MinSize().Width + mar.ma.size.MinSize().Width + mar.ma.icon.Size().Width
 	mar.ma.filename.Resize(filenameSize)
 	mar.ma.filename.Move(fyne.Position{
-		theme.Padding()*2 + mar.ma.icon.Size().Width,
-		(size.Height - mar.ma.filename.MinSize().Height) / 2,
+		X: theme.Padding()*2 + mar.ma.icon.Size().Width,
+		Y: (size.Height - mar.ma.filename.MinSize().Height) / 2,
 	})
 
 	mar.ma.size.Resize(mar.ma.size.MinSize())
 	mar.ma.size.Move(fyne.Position{
-		size.Width - mar.ma.action.MinSize().Width - mar.ma.size.MinSize().Width - theme.Padding()*2,
-		(size.Height - mar.ma.size.MinSize().Height) / 2,
+		X: size.Width - mar.ma.action.MinSize().Width - mar.ma.size.MinSize().Width - theme.Padding()*2,
+		Y: (size.Height - mar.ma.size.MinSize().Height) / 2,
 	})
 
 	mar.ma.action.Resize(mar.ma.action.MinSize())
-	mar.ma.action.Move(fyne.Position{size.Width - mar.ma.action.MinSize().Width - theme.Padding()*2, 0})
+	mar.ma.action.Move(fyne.Position{X: size.Width - mar.ma.action.MinSize().Width - theme.Padding()*2, Y: 0})
 
 	if mar.ma.progress.Visible() {
 		mar.ma.progress.Resize(fyne.Size{Height: size.Height, Width: size.Width - theme.Padding()*3})

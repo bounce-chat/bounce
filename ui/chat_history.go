@@ -631,7 +631,7 @@ func newChatHistoryRenderer(ch *chatHistory) *chatHistoryRenderer {
 func (chr *chatHistoryRenderer) Layout(size fyne.Size) {
 	chr.ch.scroller.Resize(size)
 	if chr.ch.jumpToBottomIcon.Visible() {
-		chr.ch.jumpToBottomIcon.Resize(fyne.Size{jumpToBottomIconSize, jumpToBottomIconSize})
+		chr.ch.jumpToBottomIcon.Resize(fyne.Size{Width: jumpToBottomIconSize, Height: jumpToBottomIconSize})
 		chr.ch.jumpToBottomIcon.Move(fyne.Position{
 			X: size.Width - jumpToBottomIconSize - theme.Padding()*3,
 			Y: size.Height - jumpToBottomIconSize - theme.Padding()*3,

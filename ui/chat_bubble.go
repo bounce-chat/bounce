@@ -689,17 +689,17 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 
 	// Place the background and icon
 	cbr.cb.background.Resize(fyne.Size{Height: height, Width: width})
-	cbr.cb.background.Move(fyne.Position{left, top})
+	cbr.cb.background.Move(fyne.Position{X: left, Y: top})
 
 	if cbr.cb.icon.Visible() {
-		cbr.cb.icon.Move(fyne.Position{theme.Padding(), bottom - cbr.iconSize()})
+		cbr.cb.icon.Move(fyne.Position{X: theme.Padding(), Y: bottom - cbr.iconSize()})
 	}
 
 	// Place each widget from top to bottom
 	topEdge := top
 	if cbr.cb.username.Visible() {
 		cbr.cb.username.Resize(fyne.Size{Height: height, Width: width})
-		cbr.cb.username.Move(fyne.Position{left, top})
+		cbr.cb.username.Move(fyne.Position{X: left, Y: top})
 		topEdge += cbr.cb.username.MinSize().Height
 	}
 
@@ -708,7 +708,7 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 			topEdge += theme.Padding()
 		}
 		cbr.cb.imageAttachments.Resize(fyne.Size{Height: height, Width: width})
-		cbr.cb.imageAttachments.Move(fyne.Position{left + theme.Padding()*2, topEdge})
+		cbr.cb.imageAttachments.Move(fyne.Position{X: left + theme.Padding()*2, Y: topEdge})
 		topEdge += cbr.cb.imageAttachments.MinSize().Height
 	}
 
@@ -717,18 +717,18 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 			topEdge += theme.Padding()
 		}
 		cbr.cb.fileAttachments.Resize(fyne.Size{Height: height, Width: width})
-		cbr.cb.fileAttachments.Move(fyne.Position{left + theme.Padding()*2, topEdge})
+		cbr.cb.fileAttachments.Move(fyne.Position{X: left + theme.Padding()*2, Y: topEdge})
 		topEdge += cbr.cb.fileAttachments.MinSize().Height
 	}
 
 	if cbr.cb.message.Visible() {
 		cbr.cb.message.Resize(fyne.Size{Height: height, Width: width})
-		cbr.cb.message.Move(fyne.Position{left, topEdge})
+		cbr.cb.message.Move(fyne.Position{X: left, Y: topEdge})
 	}
 
 	if cbr.cb.decorations.Visible() {
 		cbr.cb.decorations.Resize(cbr.cb.decorations.MinSize())
-		cbr.cb.decorations.Move(fyne.Position{right - decorationsWidth + theme.Padding(), bottom - cbr.cb.decorations.MinSize().Height - theme.Padding()})
+		cbr.cb.decorations.Move(fyne.Position{X: right - decorationsWidth + theme.Padding(), Y: bottom - cbr.cb.decorations.MinSize().Height - theme.Padding()})
 	}
 }
 

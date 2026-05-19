@@ -17,7 +17,7 @@ func (asl *autoscollLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) 
 	}
 
 	embedded := objects[0]
-	embedded.Move(fyne.Position{0, 0})
+	embedded.Move(fyne.Position{X: 0, Y: 0})
 	embedded.Resize(size)
 
 	s, ok := embedded.(*chatHistory)
