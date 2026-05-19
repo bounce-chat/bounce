@@ -381,9 +381,6 @@ func (ef encryptedFrame) getTimestamp() int64 {
 }
 
 func (ef encryptedFrame) getPayload() []byte {
-	ef.payloadMutex.Lock()
-	defer ef.payloadMutex.Unlock()
-
 	if len(ef.payload) == 0 {
 		bytes, err := msgpack.Marshal(&ef)
 		if err != nil {

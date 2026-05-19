@@ -61,9 +61,6 @@ func (c *confirmation) getType() uint16 {
 }
 
 func (c *confirmation) getPayload() []byte {
-	c.payloadMutex.Lock()
-	defer c.payloadMutex.Unlock()
-
 	if len(c.payload) == 0 {
 		bytes, err := msgpack.Marshal(c)
 		if err != nil {

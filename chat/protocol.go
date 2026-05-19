@@ -3,7 +3,6 @@ package chat
 import (
 	"errors"
 	"strings"
-	"sync"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -103,8 +102,7 @@ type SignedFrame struct {
 }
 
 type cachedEncoding struct {
-	payload      []byte
-	payloadMutex sync.Mutex
+	payload []byte
 }
 
 func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, bool) (broadcastable, bool) {

@@ -70,9 +70,6 @@ func (us *updateSettings) getType() uint16 {
 }
 
 func (us *updateSettings) getPayload() []byte {
-	us.payloadMutex.Lock()
-	defer us.payloadMutex.Unlock()
-
 	if len(us.payload) == 0 {
 		bytes, err := msgpack.Marshal(signedContainer{
 			Payload:   us.OriginalPayload,

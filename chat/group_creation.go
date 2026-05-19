@@ -54,9 +54,6 @@ func (gc *groupCreation) getType() uint16 {
 }
 
 func (gc *groupCreation) getPayload() []byte {
-	gc.payloadMutex.Lock()
-	defer gc.payloadMutex.Unlock()
-
 	if len(gc.payload) == 0 {
 		bytes, err := msgpack.Marshal(signedContainer{
 			Payload:   gc.OriginalPayload,

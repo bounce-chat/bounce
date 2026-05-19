@@ -77,9 +77,6 @@ func (gm *groupMessage) getType() uint16 {
 }
 
 func (gm *groupMessage) getPayload() []byte {
-	gm.payloadMutex.Lock()
-	defer gm.payloadMutex.Unlock()
-
 	if len(gm.payload) == 0 {
 		bytes, err := msgpack.Marshal(signedContainer{
 			Payload:   gm.OriginalPayload,

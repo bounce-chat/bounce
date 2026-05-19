@@ -72,9 +72,6 @@ func (ud *updateDevice) getType() uint16 {
 }
 
 func (ud *updateDevice) getPayload() []byte {
-	ud.payloadMutex.Lock()
-	defer ud.payloadMutex.Unlock()
-
 	if len(ud.payload) == 0 {
 		bytes, err := msgpack.Marshal(signedContainer{
 			Payload:   ud.OriginalPayload,

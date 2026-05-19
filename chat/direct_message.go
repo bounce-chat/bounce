@@ -83,9 +83,6 @@ func (dm *directMessage) getType() uint16 {
 }
 
 func (dm *directMessage) getPayload() []byte {
-	dm.payloadMutex.Lock()
-	defer dm.payloadMutex.Unlock()
-
 	if len(dm.payload) == 0 {
 		bytes, err := msgpack.Marshal(signedContainer{
 			Payload:   dm.OriginalPayload,

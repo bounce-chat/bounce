@@ -110,9 +110,6 @@ func (f *file) getType() uint16 {
 }
 
 func (f *file) getPayload() []byte {
-	f.payloadMutex.Lock()
-	defer f.payloadMutex.Unlock()
-
 	if len(f.payload) == 0 {
 		bytes, err := msgpack.Marshal(signedContainer{
 			Payload:   f.OriginalPayload,
@@ -320,9 +317,6 @@ func (co *chunkOffer) getType() uint16 {
 }
 
 func (co *chunkOffer) getPayload() []byte {
-	co.payloadMutex.Lock()
-	defer co.payloadMutex.Unlock()
-
 	if len(co.payload) == 0 {
 		bytes, err := msgpack.Marshal(signedContainer{
 			Payload:   co.OriginalPayload,
@@ -452,9 +446,6 @@ func (cr *chunkRequest) getType() uint16 {
 }
 
 func (cr *chunkRequest) getPayload() []byte {
-	cr.payloadMutex.Lock()
-	defer cr.payloadMutex.Unlock()
-
 	if len(cr.payload) == 0 {
 		bytes, err := msgpack.Marshal(cr)
 		if err != nil {
@@ -654,9 +645,6 @@ func (c *chunk) getType() uint16 {
 }
 
 func (c *chunk) getPayload() []byte {
-	c.payloadMutex.Lock()
-	defer c.payloadMutex.Unlock()
-
 	if len(c.payload) == 0 {
 		bytes, err := msgpack.Marshal(c)
 		if err != nil {

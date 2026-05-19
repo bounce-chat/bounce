@@ -132,9 +132,6 @@ func (ug *updateGroup) getType() uint16 {
 }
 
 func (ug *updateGroup) getPayload() []byte {
-	ug.payloadMutex.Lock()
-	defer ug.payloadMutex.Unlock()
-
 	if len(ug.payload) == 0 {
 		bytes, err := msgpack.Marshal(signedContainer{
 			Payload:   ug.OriginalPayload,

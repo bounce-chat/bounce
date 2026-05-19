@@ -92,9 +92,6 @@ func (ti *typingIndicator) getType() uint16 {
 }
 
 func (ti *typingIndicator) getPayload() []byte {
-	ti.payloadMutex.Lock()
-	defer ti.payloadMutex.Unlock()
-
 	if len(ti.payload) == 0 {
 		bytes, err := msgpack.Marshal(signedContainer{
 			Payload:   ti.OriginalPayload,

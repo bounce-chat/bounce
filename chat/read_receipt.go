@@ -78,9 +78,6 @@ func (rr *readReceipt) getType() uint16 {
 }
 
 func (rr *readReceipt) getPayload() []byte {
-	rr.payloadMutex.Lock()
-	defer rr.payloadMutex.Unlock()
-
 	if len(rr.payload) == 0 {
 		bytes, err := msgpack.Marshal(signedContainer{
 			Payload:   rr.OriginalPayload,

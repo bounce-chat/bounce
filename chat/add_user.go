@@ -62,9 +62,6 @@ func (au *addUser) getType() uint16 {
 }
 
 func (au *addUser) getPayload() []byte {
-	au.payloadMutex.Lock()
-	defer au.payloadMutex.Unlock()
-
 	if len(au.payload) == 0 {
 		bytes, err := msgpack.Marshal(au)
 		if err != nil {
