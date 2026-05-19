@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DeRuina/timberjack"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
@@ -50,6 +51,17 @@ func Open(ui UI, network Network, configDirectory string) *Bounce {
 		log.SetReportCaller(true)
 	}
 	log.SetLevel(log.DebugLevel) // TODO: put behind the envar when ready.  run in warn otherwise?
+
+	logfile = &timberjack.Logger{
+		Filename:           configDirectory + "/bounce-log.txt",
+		MaxAge:             3,
+		Compression:        "none",
+		LocalTime:          true,
+		RotateAt:           []string{"00:00", "12:00"},
+		BackupTimeFormat:   "2006-01-02-15-04-05",
+		AppendTimeAfterExt: true,
+	}
+	log.AddHook(&filehook{})
 
 	b := &Bounce{
 		configDirectory: configDirectory,

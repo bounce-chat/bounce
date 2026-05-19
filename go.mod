@@ -8,6 +8,7 @@ go 1.26
 require (
 	fyne.io/fyne/v2 v2.7.0
 	github.com/Basekick-Labs/msgpack/v6 v6.0.0
+	github.com/DeRuina/timberjack v1.4.2
 	github.com/alecthomas/assert/v2 v2.11.0
 	github.com/bbrks/go-blurhash v1.1.1
 	github.com/cretz/bine v0.2.0
@@ -45,6 +46,7 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25 // indirect
+	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.32 // indirect
