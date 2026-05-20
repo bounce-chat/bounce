@@ -31,6 +31,8 @@ var bufferSize = float32(30)
 var imageAttachmentWidth = float32(300)
 var unmergedVerticalBuffer = float32(4)
 
+var maxRunes = 500
+
 var mergeModeStandalone = 0
 var mergeModeTop = 1
 var mergeModeMiddle = 2
@@ -49,37 +51,42 @@ var imageAttachmentCacheMutex sync.Mutex
 
 type chatBubble struct {
 	widget.BaseWidget
-	id               uuid.UUID
-	outgoing         bool
-	direct           bool
-	writtenAt        int64
-	mergeMode        int
-	rawImages        []image.Image
-	imageData        [][]byte
-	username         *widget.RichText
-	message          *widget.RichText
-	imageAttachments *fyne.Container
-	fileAttachments  *fyne.Container
-	icon             *defaultImage
-	background       *canvas.Rectangle
-	decorations      *fyne.Container
-	timestamp        *canvas.Text
-	disappearingIcon *themedImage
-	statusIcons      *fyne.Container
-	pending          *themedImage
-	synced           *themedImage
-	delivered        *themedImage
-	read             *themedImage
-	errorIcon        *themedImage
-	chunks           []string
-	chunkLengths     []float32
-	maxTextWidth     float32
-	maxMessageWidth  float32
-	fileIsDownloaded func(uuid.UUID) bool
-	fileIsEmbedded   func(uuid.UUID) bool
-	fileIsWanted     func(uuid.UUID) bool
-	saveFile         func(uuid.UUID)
-	cancelDownload   func(uuid.UUID)
+	id                    uuid.UUID
+	outgoing              bool
+	direct                bool
+	writtenAt             int64
+	mergeMode             int
+	rawImages             []image.Image
+	imageData             [][]byte
+	username              *widget.RichText
+	message               *widget.RichText
+	imageAttachments      *fyne.Container
+	fileAttachments       *fyne.Container
+	icon                  *defaultImage
+	background            *canvas.Rectangle
+	decorations           *fyne.Container
+	timestamp             *canvas.Text
+	disappearingIcon      *themedImage
+	statusIcons           *fyne.Container
+	pending               *themedImage
+	synced                *themedImage
+	delivered             *themedImage
+	read                  *themedImage
+	errorIcon             *themedImage
+	tooLong               bool
+	readMore              *widget.Button
+	chunks                []string
+	chunkLengths          []float32
+	maxTextWidth          float32
+	maxMessageWidth       float32
+	fileIsDownloaded      func(uuid.UUID) bool
+	fileIsEmbedded        func(uuid.UUID) bool
+	fileIsWanted          func(uuid.UUID) bool
+	saveFile              func(uuid.UUID)
+	cancelDownload        func(uuid.UUID)
+	window                fyne.Window
+	showDialog            func(dialog.Dialog, func())
+	newChatBubbleTemplate func() *chatBubble
 }
 
 func (ui *ui) newChatBubbleTemplate() *chatBubble {
@@ -197,6 +204,7 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 		delivered:        delivered,
 		read:             read,
 		errorIcon:        errorIcon,
+		readMore:         widget.NewButton("Read More", func() {}),
 		fileIsDownloaded: ui.bounce.FileDownloaded,
 		fileIsEmbedded:   ui.bounce.FileEmbedded,
 		fileIsWanted:     ui.bounce.FileWanted,
@@ -251,7 +259,12 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 				t.chatHistoryScroll().Refresh()
 			})
 		},
+		window:                ui.window,
+		showDialog:            ui.showDialog,
+		newChatBubbleTemplate: ui.newChatBubbleTemplate,
 	}
+	cb.readMore.Importance = widget.LowImportance // TODO: remove hover color
+
 	cb.decorations = container.NewHBox(
 		cb.timestamp,
 		cb.disappearingIcon,
@@ -266,6 +279,49 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	cb.id = m.id
 	cb.mergeMode = m.mergeMode
 	cb.direct = m.direct
+	cb.tooLong = len([]rune(m.text)) > maxRunes
+
+	if cb.tooLong {
+		cb.readMore.OnTapped = func() {
+			fullBubble := cb.newChatBubbleTemplate()
+			fullBubble.setData(m)
+			fullBubble.tooLong = false
+			fullBubble.readMore.Hide()
+			fullBubble.message.Segments[0].(*widget.TextSegment).Text = m.text
+			fullBubble.message.Show()
+			fullBubble.message.Refresh()
+			fullBubble.mergeMode = mergeModeStandalone
+			fullBubble.decorations.Show()
+			fullBubble.Refresh()
+
+			var displayFull dialog.Dialog
+			closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+				displayFull.Dismiss()
+			})
+			closeButton.Importance = widget.LowImportance
+			closeBar := container.New(
+				layout.NewBorderLayout(nil, nil, nil, closeButton),
+				closeButton,
+			)
+
+			bubbleScroll := container.NewVScroll(
+				container.NewVBox(fullBubble),
+			)
+			content := container.New(
+				layout.NewBorderLayout(closeBar, nil, nil, nil),
+				closeBar,
+				bubbleScroll,
+			)
+
+			displayFull = dialog.NewCustomWithoutButtons("Read More", content, cb.window) // TODO: remove title
+			displayFull.Resize(cb.window.Canvas().Size())
+			displayFull.Refresh()
+			cb.showDialog(displayFull, nil)
+		}
+		cb.readMore.Show()
+	} else {
+		cb.readMore.Hide()
+	}
 
 	colorName := colorNameIncomingChatBubble
 	if m.outgoing {
@@ -302,7 +358,11 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	if m.text != "" {
 		// TODO: enable hyperlinks once they wrap https://github.com/fyne-io/fyne/issues/3393
 		//cb.message.Segments = hyperlinkify(m.text)
-		cb.message.Segments[0].(*widget.TextSegment).Text = m.text
+		if cb.tooLong {
+			cb.message.Segments[0].(*widget.TextSegment).Text = string([]rune(m.text)[:maxRunes]) + "..."
+		} else {
+			cb.message.Segments[0].(*widget.TextSegment).Text = m.text
+		}
 		cb.message.Show()
 		cb.message.Refresh()
 	} else {
@@ -520,10 +580,18 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 			cb.username.Hide()
 		}
 		cb.decorations.Refresh()
-		cb.decorations.Show()
+		if cb.tooLong {
+			cb.decorations.Hide()
+		} else {
+			cb.decorations.Show()
+		}
 	case mergeModeStandalone:
 		cb.decorations.Refresh()
-		cb.decorations.Show()
+		if cb.tooLong {
+			cb.decorations.Hide()
+		} else {
+			cb.decorations.Show()
+		}
 	}
 
 	cb.maxTextWidth = cb.maxMessageWidth
@@ -570,6 +638,7 @@ func (cb *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 			cb.icon,
 			cb.imageAttachments,
 			cb.fileAttachments,
+			cb.readMore,
 		},
 	}
 }
@@ -729,6 +798,9 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 	if cbr.cb.decorations.Visible() {
 		cbr.cb.decorations.Resize(cbr.cb.decorations.MinSize())
 		cbr.cb.decorations.Move(fyne.Position{X: right - decorationsWidth + theme.Padding(), Y: bottom - cbr.cb.decorations.MinSize().Height - theme.Padding()})
+	} else if cbr.cb.readMore.Visible() {
+		cbr.cb.readMore.Resize(cbr.cb.readMore.MinSize())
+		cbr.cb.readMore.Move(fyne.Position{X: right - cbr.cb.readMore.MinSize().Width + theme.Padding(), Y: bottom - cbr.cb.readMore.MinSize().Height})
 	}
 }
 
@@ -818,6 +890,9 @@ func (cbr *chatBubbleRenderer) MinSize() fyne.Size {
 		}
 	}
 
+	if minSize.Width > 50 {
+		minSize.Width = 50
+	}
 	return minSize
 
 }
