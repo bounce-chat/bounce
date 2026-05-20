@@ -334,7 +334,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		layout.NewBorderLayout(dm.header, footer, nil, nil),
 		dm.header,
 		footer,
-		container.New(&autoscollLayout{}, dm.scroll),
+		container.New(&autoscrollLayout{}, dm.scroll),
 	)
 	ui.threads.add(bounceUser.ID, dm)
 	dm.setLastMessageTime(dm.lastMessage)

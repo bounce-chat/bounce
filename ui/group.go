@@ -611,7 +611,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		layout.NewBorderLayout(g.header, footer, nil, nil),
 		g.header,
 		footer,
-		container.New(&autoscollLayout{}, g.scroll),
+		container.New(&autoscrollLayout{}, g.scroll),
 	)
 	ui.threads.add(g.id, g)
 	ui.refreshThreadOrder()

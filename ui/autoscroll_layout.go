@@ -5,15 +5,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type autoscollLayout struct {
+type autoscrollLayout struct {
 	lastHeight float32
 }
 
-func (asl *autoscollLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+func (asl *autoscrollLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 	if len(objects) != 1 {
 		log.WithFields(log.Fields{
 			"oject_count": len(objects),
-		}).Fatal("cannot create autoscollLayout with multiple objects")
+		}).Fatal("cannot create autoscrollLayout with multiple objects")
 	}
 
 	embedded := objects[0]
@@ -22,7 +22,7 @@ func (asl *autoscollLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) 
 
 	s, ok := embedded.(*chatHistory)
 	if !ok {
-		log.Fatal("cannot create autoscollLayout with anything other than chatHisotry")
+		log.Fatal("cannot create autoscrollLayout with anything other than chatHisotry")
 	}
 
 	if asl.lastHeight != 0 {
@@ -43,11 +43,11 @@ func (asl *autoscollLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) 
 	s.Refresh()
 }
 
-func (asl *autoscollLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+func (asl *autoscrollLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
 	if len(objects) != 1 {
 		log.WithFields(log.Fields{
 			"oject_count": len(objects),
-		}).Fatal("cannot create autoscollLayout with multiple objects")
+		}).Fatal("cannot create autoscrollLayout with multiple objects")
 	}
 
 	return objects[0].MinSize()
