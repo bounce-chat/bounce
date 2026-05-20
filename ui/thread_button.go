@@ -202,6 +202,9 @@ func (tb *threadButton) Tapped(*fyne.PointEvent) {
 }
 
 func (tb *threadButton) setLastMessage(name, text string, status bool) { // TODO: will need to detect when a user's name changes and they are the last message and update it here, or reference by UUID
+	if len(text) > 200 {
+		text = text[:200]
+	}
 	tb.lastMessageHasStatus = status
 	tb.lastMessage.Segments[0].(*widget.TextSegment).Text = name + ": "
 	tb.lastMessage.Segments[0].(*widget.TextSegment).Style.TextStyle.Italic = false
