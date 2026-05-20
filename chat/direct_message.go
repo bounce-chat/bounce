@@ -13,6 +13,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const maximumMessageLength = 1024 * 1024 * 10
+
 var directMessageMutex sync.Mutex
 
 var dmDeliveryNotificationMutex sync.Mutex
@@ -196,6 +198,15 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		return nil, false
 	}
 
+	// Ignore messages that are too long
+	if len(dm.Text) > maximumMessageLength {
+		log.WithFields(log.Fields{
+			"id": dm.ID,
+		}).Warn("ignoring direct message that is too long")
+		go b.sendAck(peer, typeGroupMessage, dm.ID)
+		return nil, false
+	}
+
 	// If we have already seen this message, all we need to do is mark that this peer has the message as well and ack it
 	var existingDM directMessage
 	err = b.database.Where("id = ?", dm.ID).First(&existingDM).Error
@@ -304,6 +315,9 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 }
 
 func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]io.ReadCloser, sources map[uuid.UUID]string) {
+	if len(message.Text) > maximumMessageLength {
+		log.Error("refusing to send message that is too long")
+	}
 	if message.ID != uuid.Nil {
 		log.Fatal("direct message ID cannot be set by the UI")
 	}

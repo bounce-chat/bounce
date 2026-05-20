@@ -141,6 +141,15 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 		return nil, false
 	}
 
+	// Ignore messages that are too long
+	if len(gm.Text) > maximumMessageLength {
+		log.WithFields(log.Fields{
+			"id": gm.ID,
+		}).Warn("ignoring group message that is too long")
+		go b.sendAck(peer, typeGroupMessage, gm.ID)
+		return nil, false
+	}
+
 	// Make sure the signing device was not revoked before creating this
 	var signerDevice device
 	err = b.database.Select("revoked_at").Where("address = ?", gm.Signer).First(&signerDevice).Error
@@ -332,6 +341,9 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 }
 
 func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io.ReadCloser, sources map[uuid.UUID]string) {
+	if len(message.Text) > maximumMessageLength {
+		log.Error("refusing to send message that is too long")
+	}
 	if message.ID != uuid.Nil {
 		log.Fatal("group message ID cannot be set by the UI")
 	}
