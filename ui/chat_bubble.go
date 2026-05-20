@@ -74,7 +74,7 @@ type chatBubble struct {
 	read                  *themedImage
 	errorIcon             *themedImage
 	tooLong               bool
-	readMore              *widget.Button
+	readMore              *nohoverButton
 	chunks                []string
 	chunkLengths          []float32
 	maxTextWidth          float32
@@ -204,7 +204,7 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 		delivered:        delivered,
 		read:             read,
 		errorIcon:        errorIcon,
-		readMore:         widget.NewButton("Read More", func() {}),
+		readMore:         newNoHoverButton("Read More", func() {}, nil),
 		fileIsDownloaded: ui.bounce.FileDownloaded,
 		fileIsEmbedded:   ui.bounce.FileEmbedded,
 		fileIsWanted:     ui.bounce.FileWanted,
@@ -263,7 +263,7 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 		showDialog:            ui.showDialog,
 		newChatBubbleTemplate: ui.newChatBubbleTemplate,
 	}
-	cb.readMore.Importance = widget.LowImportance // TODO: remove hover color
+	cb.readMore.Importance = widget.LowImportance
 
 	cb.decorations = container.NewHBox(
 		cb.timestamp,
@@ -480,9 +480,9 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 			if !cb.fileIsEmbedded(attachment.ID) && cb.fileIsWanted(attachment.ID) && !cb.fileIsDownloaded(attachment.ID) {
 				pma.progress.Value = attachment.Progress
 				pma.progress.Show()
-				pma.action = widget.NewButtonWithIcon("", theme.CancelIcon(), func() { cb.cancelDownload(attachment.ID) })
+				pma.action = newNoHoverButton("", func() { cb.cancelDownload(attachment.ID) }, theme.CancelIcon())
 			} else {
-				pma.action = widget.NewButtonWithIcon("", theme.DownloadIcon(), func() { cb.saveFile(attachment.ID) })
+				pma.action = newNoHoverButton("", func() { cb.saveFile(attachment.ID) }, theme.DownloadIcon())
 				pma.progress.Hide()
 			}
 			pma.action.Importance = widget.LowImportance

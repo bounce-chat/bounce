@@ -35,7 +35,7 @@ type messageAttachment struct {
 	icon     *canvas.Image
 	filename *widget.RichText
 	size     *canvas.Text
-	action   *widget.Button
+	action   *nohoverButton
 	progress *widget.ProgressBar
 }
 
@@ -54,7 +54,7 @@ func newMessageAttachment(id uuid.UUID, name string, size int64) *messageAttachm
 				Italic: true,
 			},
 		},
-		action:   widget.NewButtonWithIcon("", theme.DownloadIcon(), nil),
+		action:   newNoHoverButton("", nil, theme.DownloadIcon()),
 		progress: widget.NewProgressBar(),
 	}
 	ma.filename.Truncation = fyne.TextTruncateEllipsis
@@ -176,7 +176,7 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, action
 				Italic: true,
 			},
 		},
-		action:   widget.NewButtonWithIcon("", theme.CancelIcon(), actionCallback),
+		action:   newNoHoverButton("", actionCallback, theme.CancelIcon()),
 		progress: widget.NewProgressBar(),
 	}
 	ma.filename.Truncation = fyne.TextTruncateEllipsis
