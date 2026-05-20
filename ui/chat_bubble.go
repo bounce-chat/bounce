@@ -75,6 +75,7 @@ type chatBubble struct {
 	errorIcon             *themedImage
 	tooLong               bool
 	readMore              *nohoverButton
+	readMoreBackground    *canvas.Rectangle
 	chunks                []string
 	chunkLengths          []float32
 	maxTextWidth          float32
@@ -199,15 +200,16 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 			read,
 			errorIcon,
 		),
-		pending:          pending,
-		synced:           synced,
-		delivered:        delivered,
-		read:             read,
-		errorIcon:        errorIcon,
-		readMore:         newNoHoverButton("Read More", func() {}, nil),
-		fileIsDownloaded: ui.bounce.FileDownloaded,
-		fileIsEmbedded:   ui.bounce.FileEmbedded,
-		fileIsWanted:     ui.bounce.FileWanted,
+		pending:            pending,
+		synced:             synced,
+		delivered:          delivered,
+		read:               read,
+		errorIcon:          errorIcon,
+		readMore:           newNoHoverButton("Read More", func() {}, nil),
+		readMoreBackground: &canvas.Rectangle{},
+		fileIsDownloaded:   ui.bounce.FileDownloaded,
+		fileIsEmbedded:     ui.bounce.FileEmbedded,
+		fileIsWanted:       ui.bounce.FileWanted,
 		saveFile: func(attachmentID uuid.UUID) {
 			dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
 				if err != nil {
@@ -281,6 +283,13 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	cb.direct = m.direct
 	cb.tooLong = len([]rune(m.text)) > maxRunes
 
+	colorName := colorNameIncomingChatBubble
+	if m.outgoing {
+		colorName = colorNameOutgoingChatBubble
+	}
+	cb.background.FillColor = theme.Color(colorName)
+	cb.background.Refresh()
+
 	if cb.tooLong {
 		cb.readMore.OnTapped = func() {
 			fullBubble := cb.newChatBubbleTemplate()
@@ -319,16 +328,12 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 			cb.showDialog(displayFull, nil)
 		}
 		cb.readMore.Show()
+		cb.readMoreBackground.FillColor = theme.Color(colorName)
+		cb.readMoreBackground.Show()
 	} else {
+		cb.readMoreBackground.Hide()
 		cb.readMore.Hide()
 	}
-
-	colorName := colorNameIncomingChatBubble
-	if m.outgoing {
-		colorName = colorNameOutgoingChatBubble
-	}
-	cb.background.FillColor = theme.Color(colorName)
-	cb.background.Refresh()
 
 	if !m.direct && !m.outgoing {
 		cb.username.Segments[0].(*widget.TextSegment).Text = m.username
@@ -638,6 +643,7 @@ func (cb *chatBubble) CreateRenderer() fyne.WidgetRenderer {
 			cb.icon,
 			cb.imageAttachments,
 			cb.fileAttachments,
+			cb.readMoreBackground,
 			cb.readMore,
 		},
 	}
@@ -801,6 +807,8 @@ func (cbr *chatBubbleRenderer) Layout(size fyne.Size) {
 	} else if cbr.cb.readMore.Visible() {
 		cbr.cb.readMore.Resize(cbr.cb.readMore.MinSize())
 		cbr.cb.readMore.Move(fyne.Position{X: right - cbr.cb.readMore.MinSize().Width + theme.Padding(), Y: bottom - cbr.cb.readMore.MinSize().Height})
+		cbr.cb.readMoreBackground.Resize(fyne.Size{Width: cbr.cb.readMore.Size().Width - theme.Padding()*2, Height: cbr.cb.readMore.Size().Height - theme.Padding()*5})
+		cbr.cb.readMoreBackground.Move(fyne.Position{X: right - cbr.cb.readMore.MinSize().Width + theme.Padding(), Y: bottom - cbr.cb.readMore.MinSize().Height + theme.Padding()*3})
 	}
 }
 
