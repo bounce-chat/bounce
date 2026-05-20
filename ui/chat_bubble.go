@@ -322,8 +322,11 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 				bubbleScroll,
 			)
 
-			displayFull = dialog.NewCustomWithoutButtons("Read More", content, cb.window) // TODO: remove title
+			displayFull = dialog.NewCustomWithoutButtons("Read More", content, cb.window)
 			displayFull.Resize(cb.window.Canvas().Size())
+			if fyne.CurrentDevice().IsMobile() {
+				displayFull.Resize(fyne.Size{Width: cb.window.Canvas().Size().Width - 50, Height: cb.window.Canvas().Size().Height - 150})
+			}
 			displayFull.Refresh()
 			cb.showDialog(displayFull, nil)
 		}
