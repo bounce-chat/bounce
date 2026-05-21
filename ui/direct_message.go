@@ -38,9 +38,9 @@ type directMessage struct {
 	button                           *threadButton
 	typingIndicator                  *typingIndicator
 	pendingMessageAttachments        *pendingMessageAttachments
+	muteButton                       *widget.Button
 	blockUserButton                  *widget.Button
 	unblockUserButton                *widget.Button
-	notificationsEnabledCheck        *widget.Check
 	readReceiptOverrideSelection     *widget.Select
 	typingIndicatorOverrideSelection *widget.Select
 	scroll                           *chatHistory // TODO: rename
@@ -171,19 +171,6 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		overrideTypingIndicatorSetting: bounceUser.State.OverrideTypingIndicatorSetting,
 		typingIndicatorsEnabled:        bounceUser.State.TypingIndicatorsEnabled,
 	}
-
-	dm.notificationsEnabledCheck = widget.NewCheck("Enable notifications", func(_ bool) {})
-	var err error
-	dm.notificationsMutedUntil = bounceUser.State.MutedUntil
-	if err != nil {
-		log.WithFields(log.Fields{
-			"user_id": dm.user.id,
-		}).Error("cannot find muted until for user")
-		return
-		// TODO: fatal?
-	}
-	enabled := dm.notificationsMutedUntil != chat.MutedForever
-	dm.notificationsEnabledCheck.SetChecked(enabled)
 
 	ui.buildEditDMContainer(dm)
 	editButton := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
@@ -395,6 +382,7 @@ func (ui *ui) DisplaySentDirectMessage(dm chat.DirectMessage) {
 }
 
 func (ui *ui) showEditDMContainer(dm *directMessage) {
+	ui.setDMMutedUntilButton(dm)
 	if dm.user.blocked {
 		dm.blockUserButton.Hide()
 		dm.unblockUserButton.Show()
@@ -522,6 +510,8 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		dm.realName,
 		buttonStack,
 	))
+
+	dm.muteButton = widget.NewButton("Mute", func() {})
 
 	//
 	// Selection for message retention
@@ -729,16 +719,6 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 	//
 
 	saveButton := widget.NewButton("Save", func() {
-		// Update notification muted until if the selection doesn't line up with what we have for this user
-		notificationsEnabled := dm.notificationsMutedUntil != chat.MutedForever
-		if dm.notificationsEnabledCheck.Checked != notificationsEnabled {
-			mutedUntil := int64(0)
-			if !dm.notificationsEnabledCheck.Checked {
-				mutedUntil = chat.MutedForever
-			}
-			ui.bounce.SetDMMutedUntil(dm.user.id, mutedUntil)
-		}
-
 		// Update message retention if the selection doesn't line up with what we have for this user
 		selectedRetentionString := dm.retentionSelection.Selected
 		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
@@ -818,10 +798,6 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		dm.retentionSelection.Selected = getRetentionName(dm.retention)
 		dm.retentionSelection.Refresh()
 
-		// Reset notification settings
-		enabled := dm.notificationsMutedUntil != chat.MutedForever
-		dm.notificationsEnabledCheck.SetChecked(enabled)
-
 		// Reset the read receipt and typing indicator overrides
 		dm.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
 		dm.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
@@ -868,10 +844,10 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 	editDMFeatures := container.NewVBox(
 		container.NewCenter(dm.editIcon),
 		nameSection,
-		dm.notificationsEnabledCheck,
 		widget.NewLabel("Disappearing Messages"),
 		dm.retentionSelection,
 		container.NewHBox(
+			dm.muteButton,
 			clearHistoryButton,
 			hideThreadButton,
 			dm.blockUserButton,
@@ -936,17 +912,14 @@ func (ui *ui) SetDMState(userID uuid.UUID, state chat.DMState) {
 			return
 		}
 
+		dm.notificationsMutedUntil = state.MutedUntil
+		ui.setDMMutedUntilButton(dm)
+
 		// Update retention
 		dm.retention = state.Retention
 		newRetentionName := getRetentionName(dm.retention)
 		dm.retentionSelection.Selected = newRetentionName
 		dm.retentionSelection.Refresh()
-
-		// Update muted until
-		dm.notificationsMutedUntil = state.MutedUntil
-		enabled := dm.notificationsMutedUntil != chat.MutedForever
-		dm.notificationsEnabledCheck.SetChecked(enabled)
-		dm.notificationsEnabledCheck.Refresh()
 
 		// Update read receipt and typign indicator selections
 		dm.overrideReadReceiptSetting = state.OverrideReadReceiptSetting
@@ -956,6 +929,90 @@ func (ui *ui) SetDMState(userID uuid.UUID, state chat.DMState) {
 		dm.typingIndicatorsEnabled = state.TypingIndicatorsEnabled
 		dm.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
 	})
+}
+
+func (ui *ui) setDMMutedUntilButton(dm *directMessage) {
+	if dm.notificationsMutedUntil == chat.MutedForever {
+		dm.muteButton.Text = "Unmute"
+		dm.muteButton.Icon = nil
+		dm.muteButton.OnTapped = func() {
+			err := ui.bounce.SetDMMutedUntil(dm.user.id, 0)
+			if err != nil {
+				ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+			}
+		}
+	} else if dm.notificationsMutedUntil == 0 || dm.notificationsMutedUntil < time.Now().Unix() {
+		dm.muteButton.Text = "Mute"
+		dm.muteButton.Icon = nil
+		dm.muteButton.OnTapped = func() {
+			var muteMenu dialog.Dialog
+			content := container.NewVBox(
+				widget.NewButton("Mute for 5 mins", func() {
+					err := ui.bounce.SetDMMutedUntil(dm.user.id, time.Now().Unix()+60*5)
+					if err != nil {
+						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+					}
+					muteMenu.Dismiss()
+				}),
+				widget.NewButton("Mute for 1 hour", func() {
+					err := ui.bounce.SetDMMutedUntil(dm.user.id, time.Now().Unix()+60*60)
+					if err != nil {
+						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+					}
+					muteMenu.Dismiss()
+				}),
+				widget.NewButton("Mute for 1 day", func() {
+					err := ui.bounce.SetDMMutedUntil(dm.user.id, time.Now().Unix()+60*60*24)
+					if err != nil {
+						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+					}
+					muteMenu.Dismiss()
+				}),
+				widget.NewButton("Mute for 1 week", func() {
+					err := ui.bounce.SetDMMutedUntil(dm.user.id, time.Now().Unix()+60*60*24*7)
+					if err != nil {
+						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+					}
+					muteMenu.Dismiss()
+				}),
+				widget.NewButton("Mute forever", func() {
+					err := ui.bounce.SetDMMutedUntil(dm.user.id, chat.MutedForever)
+					if err != nil {
+						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+					}
+					muteMenu.Dismiss()
+				}),
+				widget.NewButton("Cancel", func() {
+					muteMenu.Dismiss()
+				}),
+			)
+			muteMenu = dialog.NewCustomWithoutButtons("Mute", content, ui.window)
+			ui.showDialog(muteMenu, nil)
+		}
+	} else {
+		dm.muteButton.Text = "Muted"
+		dm.muteButton.Icon = theme.CalendarIcon()
+		dm.muteButton.OnTapped = func() {
+			var muteMenu dialog.Dialog
+			content := container.NewHBox(
+				widget.NewLabel("Muted until "+mutedTimestampString(dm.notificationsMutedUntil)),
+				widget.NewButton("Unmute Now", func() {
+					err := ui.bounce.SetDMMutedUntil(dm.user.id, 0)
+					if err != nil {
+						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+					}
+					muteMenu.Dismiss()
+				}),
+				widget.NewButton("Cancel", func() {
+					muteMenu.Dismiss()
+				}),
+			)
+			muteMenu = dialog.NewCustomWithoutButtons("Mute", content, ui.window)
+			ui.showDialog(muteMenu, nil)
+
+		}
+	}
+	dm.muteButton.Refresh()
 }
 
 func (ui *ui) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
