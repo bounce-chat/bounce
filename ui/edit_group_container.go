@@ -18,7 +18,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (ui *ui) showEditThreadContainer(g *group) {
+func (ui *ui) showEditGroupContainer(g *group) {
+	ui.setGroupMutedUntilButton(g)
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeGroupSettings, context: g.id})
 	}

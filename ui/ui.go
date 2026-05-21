@@ -392,7 +392,6 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 					}).Warn("error creating thread item for group creation while loading initial state")
 				}
 				threadItems[g.ID] = append(threadItems[g.ID], gcTi)
-				go ui.SetGroupState(g)
 			} else {
 				log.WithFields(log.Fields{
 					"group_id": g.ID,

@@ -471,7 +471,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 	ui.buildEditThreadContainer(g)
 	editButton := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
 		ui.refreshUserSelections(g)
-		ui.showEditThreadContainer(g)
+		ui.showEditGroupContainer(g)
 	})
 	editButton.Importance = widget.LowImportance
 
@@ -808,87 +808,7 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 		g.retentionSelection.Refresh()
 
 		g.notificationsMutedUntil = bounceGroup.MutedUntil
-		if g.notificationsMutedUntil == chat.MutedForever {
-			g.muteButton.Text = "Unmute"
-			g.muteButton.Icon = nil
-			g.muteButton.OnTapped = func() {
-				err := ui.bounce.SetGroupMutedUntil(g.id, 0)
-				if err != nil {
-					ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
-				}
-			}
-		} else if g.notificationsMutedUntil == 0 || g.notificationsMutedUntil < time.Now().Unix() {
-			g.muteButton.Text = "Mute"
-			g.muteButton.Icon = nil
-			g.muteButton.OnTapped = func() {
-				var muteMenu dialog.Dialog
-				content := container.NewVBox(
-					widget.NewButton("Mute for 5 mins", func() {
-						err := ui.bounce.SetGroupMutedUntil(g.id, time.Now().Unix()+60*5)
-						if err != nil {
-							ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
-						}
-						muteMenu.Dismiss()
-					}),
-					widget.NewButton("Mute for 1 hour", func() {
-						err := ui.bounce.SetGroupMutedUntil(g.id, time.Now().Unix()+60*60)
-						if err != nil {
-							ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
-						}
-						muteMenu.Dismiss()
-					}),
-					widget.NewButton("Mute for 1 day", func() {
-						err := ui.bounce.SetGroupMutedUntil(g.id, time.Now().Unix()+60*60*24)
-						if err != nil {
-							ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
-						}
-						muteMenu.Dismiss()
-					}),
-					widget.NewButton("Mute for 1 week", func() {
-						err := ui.bounce.SetGroupMutedUntil(g.id, time.Now().Unix()+60*60*24*7)
-						if err != nil {
-							ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
-						}
-						muteMenu.Dismiss()
-					}),
-					widget.NewButton("Mute forever", func() {
-						err := ui.bounce.SetGroupMutedUntil(g.id, chat.MutedForever)
-						if err != nil {
-							ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
-						}
-						muteMenu.Dismiss()
-					}),
-					widget.NewButton("Cancel", func() {
-						muteMenu.Dismiss()
-					}),
-				)
-				muteMenu = dialog.NewCustomWithoutButtons("Mute", content, ui.window)
-				ui.showDialog(muteMenu, nil)
-			}
-		} else {
-			g.muteButton.Text = "Muted"
-			g.muteButton.Icon = theme.CalendarIcon()
-			g.muteButton.OnTapped = func() {
-				var muteMenu dialog.Dialog
-				content := container.NewHBox(
-					widget.NewLabel("Muted until "+mutedTimestampString(g.notificationsMutedUntil)),
-					widget.NewButton("Unmute Now", func() {
-						err := ui.bounce.SetGroupMutedUntil(g.id, 0)
-						if err != nil {
-							ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
-						}
-						muteMenu.Dismiss()
-					}),
-					widget.NewButton("Cancel", func() {
-						muteMenu.Dismiss()
-					}),
-				)
-				muteMenu = dialog.NewCustomWithoutButtons("Mute", content, ui.window)
-				ui.showDialog(muteMenu, nil)
-
-			}
-		}
-		g.muteButton.Refresh()
+		ui.setGroupMutedUntilButton(g)
 
 		g.restrictUserManagementCheck.SetChecked(bounceGroup.RestrictUserManagement)
 		g.restrictUserManagement = bounceGroup.RestrictUserManagement
@@ -918,6 +838,90 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 			}
 		}
 	})
+}
+
+func (ui *ui) setGroupMutedUntilButton(g *group) {
+	if g.notificationsMutedUntil == chat.MutedForever {
+		g.muteButton.Text = "Unmute"
+		g.muteButton.Icon = nil
+		g.muteButton.OnTapped = func() {
+			err := ui.bounce.SetGroupMutedUntil(g.id, 0)
+			if err != nil {
+				ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+			}
+		}
+	} else if g.notificationsMutedUntil == 0 || g.notificationsMutedUntil < time.Now().Unix() {
+		g.muteButton.Text = "Mute"
+		g.muteButton.Icon = nil
+		g.muteButton.OnTapped = func() {
+			var muteMenu dialog.Dialog
+			content := container.NewVBox(
+				widget.NewButton("Mute for 5 mins", func() {
+					err := ui.bounce.SetGroupMutedUntil(g.id, time.Now().Unix()+60*5)
+					if err != nil {
+						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+					}
+					muteMenu.Dismiss()
+				}),
+				widget.NewButton("Mute for 1 hour", func() {
+					err := ui.bounce.SetGroupMutedUntil(g.id, time.Now().Unix()+60*60)
+					if err != nil {
+						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+					}
+					muteMenu.Dismiss()
+				}),
+				widget.NewButton("Mute for 1 day", func() {
+					err := ui.bounce.SetGroupMutedUntil(g.id, time.Now().Unix()+60*60*24)
+					if err != nil {
+						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+					}
+					muteMenu.Dismiss()
+				}),
+				widget.NewButton("Mute for 1 week", func() {
+					err := ui.bounce.SetGroupMutedUntil(g.id, time.Now().Unix()+60*60*24*7)
+					if err != nil {
+						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+					}
+					muteMenu.Dismiss()
+				}),
+				widget.NewButton("Mute forever", func() {
+					err := ui.bounce.SetGroupMutedUntil(g.id, chat.MutedForever)
+					if err != nil {
+						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+					}
+					muteMenu.Dismiss()
+				}),
+				widget.NewButton("Cancel", func() {
+					muteMenu.Dismiss()
+				}),
+			)
+			muteMenu = dialog.NewCustomWithoutButtons("Mute", content, ui.window)
+			ui.showDialog(muteMenu, nil)
+		}
+	} else {
+		g.muteButton.Text = "Muted"
+		g.muteButton.Icon = theme.CalendarIcon()
+		g.muteButton.OnTapped = func() {
+			var muteMenu dialog.Dialog
+			content := container.NewHBox(
+				widget.NewLabel("Muted until "+mutedTimestampString(g.notificationsMutedUntil)),
+				widget.NewButton("Unmute Now", func() {
+					err := ui.bounce.SetGroupMutedUntil(g.id, 0)
+					if err != nil {
+						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+					}
+					muteMenu.Dismiss()
+				}),
+				widget.NewButton("Cancel", func() {
+					muteMenu.Dismiss()
+				}),
+			)
+			muteMenu = dialog.NewCustomWithoutButtons("Mute", content, ui.window)
+			ui.showDialog(muteMenu, nil)
+
+		}
+	}
+	g.muteButton.Refresh()
 }
 
 func (ui *ui) NotifyInvitedToGroup(name string) {
