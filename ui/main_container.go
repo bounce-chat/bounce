@@ -73,17 +73,20 @@ func (ui *ui) buildMainContainer() {
 	ui.containers.chat.Objects = []fyne.CanvasObject{ui.containers.defaultContainer}
 	ui.containers.threads = container.NewVBox()
 
+	icon := canvas.NewImageFromResource(newEmbeddedResource("assets/icon.png"))
+	icon.FillMode = canvas.ImageFillContain
+	icon.SetMinSize(fyne.NewSize(theme.TextHeadingSize(), theme.TextHeadingSize()))
+
+	searchEntry := newAutohideEntry(icon.Show)
+	searchEntry.Hide()
 	threadSearch := widget.NewButtonWithIcon("", theme.SearchIcon(), func() {
-		// TODO: replace the top bar with a search entry for n-gram search of thread names, switch back to
-		// icon, title, and search icon when entry loses focus
+		icon.Hide()
+		searchEntry.Show()
+		ui.window.Canvas().Focus(searchEntry)
 	})
 	threadSearch.Importance = widget.LowImportance
 
 	topButtons := container.NewHBox(threadSearch)
-
-	icon := canvas.NewImageFromResource(newEmbeddedResource("assets/icon.png"))
-	icon.FillMode = canvas.ImageFillContain
-	icon.SetMinSize(fyne.NewSize(theme.TextHeadingSize(), theme.TextHeadingSize()))
 
 	if fyne.CurrentDevice().IsMobile() {
 		logoWithText := container.NewHBox(
@@ -95,12 +98,21 @@ func (ui *ui) buildMainContainer() {
 				Text: "Bounce",
 			}),
 		)
+		threadSearch.OnTapped = func() {
+			logoWithText.Hide()
+			searchEntry.Show()
+			ui.window.Canvas().Focus(searchEntry)
+		}
+		searchEntry.hideAction = func() {
+			logoWithText.Show()
+		}
 
 		logoSearchAndMenu := container.New(
 			layout.NewBorderLayout(nil, nil, logoWithText, topButtons),
 			logoWithText,
 			topButtons,
 			ui.widgets.networkOfflineWarning,
+			searchEntry,
 		)
 
 		settings := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
@@ -122,6 +134,7 @@ func (ui *ui) buildMainContainer() {
 				layout.NewBorderLayout(nil, nil, icon, nil),
 				icon,
 				ui.widgets.networkOfflineWarning,
+				searchEntry,
 			),
 		)
 
