@@ -77,12 +77,18 @@ func (ui *ui) buildMainContainer() {
 	icon.FillMode = canvas.ImageFillContain
 	icon.SetMinSize(fyne.NewSize(theme.TextHeadingSize(), theme.TextHeadingSize()))
 
-	searchEntry := newAutohideEntry(func() {
-		icon.Show()
-		if len(ui.containers.threads.Objects) == 0 {
-			ui.refreshThreadOrder()
-		}
-	})
+	var searchEntry *autohideEntry
+	searchEntry = newAutohideEntry(
+		func() {
+			icon.Show()
+			if len(ui.containers.threads.Objects) == 0 {
+				ui.refreshThreadOrder()
+			}
+		},
+		func() bool {
+			return searchEntry.Text != "" && len(ui.containers.threads.Objects) > 0
+		},
+	)
 	searchEntry.Hide()
 	searchEntry.OnChanged = func(str string) {
 		buttons := []fyne.CanvasObject{}
@@ -93,10 +99,16 @@ func (ui *ui) buildMainContainer() {
 		ui.containers.threads.Refresh()
 	}
 	threadSearch := widget.NewButtonWithIcon("", theme.SearchIcon(), func() {
-		icon.Hide()
-		searchEntry.Show()
-		ui.window.Canvas().Focus(searchEntry)
-		ui.refreshThreadOrder()
+		if searchEntry.Visible() {
+			searchEntry.Text = ""
+			searchEntry.hideAction()
+			searchEntry.Hide()
+			ui.refreshThreadOrder()
+		} else {
+			icon.Hide()
+			searchEntry.Show()
+			ui.window.Canvas().Focus(searchEntry)
+		}
 	})
 	threadSearch.Importance = widget.LowImportance
 

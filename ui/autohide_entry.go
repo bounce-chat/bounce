@@ -7,17 +7,24 @@ import (
 type autohideEntry struct {
 	widget.Entry
 	hideAction func()
+	dontHide   func() bool
 }
 
-func newAutohideEntry(hideAction func()) *autohideEntry {
-	e := &autohideEntry{hideAction: hideAction}
+func newAutohideEntry(hideAction func(), dontHide func() bool) *autohideEntry {
+	e := &autohideEntry{
+		hideAction: hideAction,
+		dontHide:   dontHide,
+	}
 	e.ExtendBaseWidget(e)
 
 	return e
 }
 
 func (e *autohideEntry) FocusLost() {
-	e.Text = ""
-	e.Hide()
-	e.hideAction()
+	e.Entry.FocusLost()
+	if !e.dontHide() {
+		e.Text = ""
+		e.Hide()
+		e.hideAction()
+	}
 }

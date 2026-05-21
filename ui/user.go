@@ -151,6 +151,13 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 	}
 	allUserStoresMutex.Unlock()
 
+	// Redo the ngrams for the DM in the thread store
+	t, ok := ui.threads.getDM(chatUser.ID)
+	if ok {
+		ui.threads.remove(chatUser.ID)
+		ui.threads.add(chatUser.ID, t)
+	}
+
 	// Set the images
 	if chatUser.ID == ui.state.profile.id {
 		ui.widgets.editProfile.profileIcon.images = u.images
