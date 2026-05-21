@@ -77,12 +77,26 @@ func (ui *ui) buildMainContainer() {
 	icon.FillMode = canvas.ImageFillContain
 	icon.SetMinSize(fyne.NewSize(theme.TextHeadingSize(), theme.TextHeadingSize()))
 
-	searchEntry := newAutohideEntry(icon.Show)
+	searchEntry := newAutohideEntry(func() {
+		icon.Show()
+		if len(ui.containers.threads.Objects) == 0 {
+			ui.refreshThreadOrder()
+		}
+	})
 	searchEntry.Hide()
+	searchEntry.OnChanged = func(str string) {
+		buttons := []fyne.CanvasObject{}
+		for _, t := range ui.threads.search(str) {
+			buttons = append(buttons, t.getButton())
+		}
+		ui.containers.threads.Objects = buttons
+		ui.containers.threads.Refresh()
+	}
 	threadSearch := widget.NewButtonWithIcon("", theme.SearchIcon(), func() {
 		icon.Hide()
 		searchEntry.Show()
 		ui.window.Canvas().Focus(searchEntry)
+		ui.refreshThreadOrder()
 	})
 	threadSearch.Importance = widget.LowImportance
 
@@ -105,6 +119,9 @@ func (ui *ui) buildMainContainer() {
 		}
 		searchEntry.hideAction = func() {
 			logoWithText.Show()
+			if len(ui.containers.threads.Objects) == 0 {
+				ui.refreshThreadOrder()
+			}
 		}
 
 		logoSearchAndMenu := container.New(
@@ -142,7 +159,10 @@ func (ui *ui) buildMainContainer() {
 			container.New(
 				layout.NewBorderLayout(nil, logoSearchAndMenu, nil, nil),
 				logoSearchAndMenu,
-				container.NewVScroll(ui.containers.threads),
+				container.New(
+					newMinWidthLayout(threadButtonHeight*5),
+					container.NewVScroll(ui.containers.threads),
+				),
 			),
 			widget.NewSeparator(),
 		)

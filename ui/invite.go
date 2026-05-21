@@ -250,6 +250,10 @@ func (i *invite) getID() uuid.UUID {
 	return i.id
 }
 
+func (i *invite) getName() string {
+	return i.name
+}
+
 func (i *invite) getView() *fyne.Container {
 	return i.view
 }

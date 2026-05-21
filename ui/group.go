@@ -84,6 +84,10 @@ func (g *group) getID() uuid.UUID {
 	return g.id
 }
 
+func (g *group) getName() string {
+	return g.name
+}
+
 func (g *group) getView() *fyne.Container {
 	return g.view
 }

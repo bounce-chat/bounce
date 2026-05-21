@@ -20,7 +20,7 @@ func (mwl *minWidthLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 		if mwl.minWidth > childWidth {
 			childWidth = mwl.minWidth
 		}
-		child.Resize(fyne.Size{Width: childWidth, Height: child.MinSize().Height})
+		child.Resize(fyne.Size{Width: childWidth, Height: size.Height})
 		child.Move(fyne.NewPos(0, 0))
 	}
 }

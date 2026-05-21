@@ -2,6 +2,7 @@ package ui
 
 import (
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -11,12 +12,14 @@ type threadStore struct {
 	sync.Mutex
 	threads map[uuid.UUID]thread // thread ID to thread
 	items   map[uuid.UUID]thread // thread item ID to thread
+	ngrams  map[string][]thread
 }
 
 func newThreadStore() *threadStore {
 	return &threadStore{
 		threads: map[uuid.UUID]thread{},
 		items:   map[uuid.UUID]thread{},
+		ngrams:  make(map[string][]thread),
 	}
 }
 
@@ -25,6 +28,11 @@ func (ts *threadStore) add(id uuid.UUID, t thread) {
 	defer ts.Unlock()
 
 	ts.threads[id] = t
+
+	grams := makeNgrams(strings.ToLower(t.getName()))
+	for _, gram := range grams {
+		ts.ngrams[gram] = append(ts.ngrams[gram], t)
+	}
 }
 
 func (ts *threadStore) get(id uuid.UUID) (thread, bool) {
@@ -47,6 +55,18 @@ func (ts *threadStore) remove(id uuid.UUID) {
 	}
 
 	delete(ts.threads, id)
+
+	prunedNgrams := map[string][]thread{}
+	for gram, threads := range ts.ngrams {
+		threadsWithoutThisThread := []thread{}
+		for _, t := range threads {
+			if t.getID() != id {
+				threadsWithoutThisThread = append(threadsWithoutThisThread, t)
+			}
+		}
+		prunedNgrams[gram] = threadsWithoutThisThread
+	}
+	ts.ngrams = prunedNgrams
 }
 
 func (ts *threadStore) associate(t thread, itemID uuid.UUID) {
@@ -145,4 +165,24 @@ func (ts *threadStore) groupsWithUser(id uuid.UUID) int {
 	}
 
 	return count
+}
+
+func (ts *threadStore) search(str string) []thread {
+	if str == "" {
+		return ts.sorted()
+	}
+
+	ts.Lock()
+	defer ts.Unlock()
+	results, ok := ts.ngrams[strings.ToLower(str)]
+	if !ok {
+		return []thread{}
+	}
+
+	threads := sortableThreads{}
+	for _, r := range results {
+		threads = append(threads, r)
+	}
+	sort.Sort(threads)
+	return threads
 }

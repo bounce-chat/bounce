@@ -13,6 +13,7 @@ import (
 
 type thread interface {
 	getID() uuid.UUID
+	getName() string
 	getView() *fyne.Container
 	getEntry() *threadEntry
 	chatHistoryScroll() *chatHistory
@@ -53,8 +54,8 @@ func (threads sortableThreads) Less(i, j int) bool {
 
 func (ui *ui) refreshThreadOrder() {
 	buttons := []fyne.CanvasObject{}
-	for _, thread := range ui.threads.sorted() {
-		buttons = append(buttons, thread.getButton())
+	for _, t := range ui.threads.sorted() {
+		buttons = append(buttons, t.getButton())
 	}
 	ui.containers.threads.Objects = buttons
 	ui.containers.threads.Refresh()

@@ -54,6 +54,10 @@ func (dm *directMessage) getID() uuid.UUID {
 	return dm.user.id
 }
 
+func (dm *directMessage) getName() string {
+	return dm.user.name
+}
+
 func (dm *directMessage) getView() *fyne.Container {
 	return dm.view
 }
