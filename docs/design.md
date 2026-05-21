@@ -14,6 +14,28 @@ Users are simply collections of devices owned by the same person.
 
 ### b. Adding and Revoking Devices
 
-## 3. Wire Protocol
+## 3. Frames
+
+### a. Wire Protocol
+
+### b. Handlers
 
 ## 4. Scopes
+
+### a. Sync
+
+### b. User
+
+### c. Group
+
+### d. Global / Overlap
+
+## Delivery Tracking and References
+
+### a. Acks
+
+### b. Reference Offer
+
+### c. Reference Request
+
+### d. Catch Up
