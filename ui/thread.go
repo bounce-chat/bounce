@@ -566,3 +566,36 @@ func timestampString(timestamp int64) string {
 
 	return timestring
 }
+
+func mutedTimestampString(timestamp int64) string {
+	now := time.Now()
+	diff := now.Unix() - timestamp
+	if diff >= 0 && diff < 60 {
+		return "Now"
+	}
+
+	timestampTime := time.Unix(timestamp, 0)
+	timestring := ""
+	if timestampTime.Year() != now.Year() {
+		timestring = strconv.Itoa(timestampTime.Year())
+	}
+	if timestampTime.Month() != now.Month() {
+		if len(timestring) != 0 {
+			timestring = timestring + " "
+		}
+		timestring = timestring + timestampTime.Format("Jan 2")
+	} else if timestampTime.Day() != now.Day() {
+		if len(timestring) != 0 {
+			timestring = timestring + " "
+		}
+		timestring = timestring + timestampTime.Weekday().String()[0:3]
+		timestring = timestring + " " + timestampTime.Format("2")
+	}
+
+	if len(timestring) != 0 {
+		timestring = timestring + " "
+	}
+	timestring = timestring + timestampTime.Format(time.Kitchen)
+
+	return timestring
+}

@@ -197,19 +197,6 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 			}
 		}
 
-		// Update the notification settings if they have changes
-		if g.notificationsEnabledCheck.Checked != (g.notificationsMutedUntil != chat.MutedForever) {
-			mutedUntil := int64(0)
-			if !g.notificationsEnabledCheck.Checked {
-				mutedUntil = chat.MutedForever
-			}
-			err := ui.bounce.SetGroupMutedUntil(g.id, mutedUntil)
-			if err != nil {
-				ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
-				return
-			}
-		}
-
 		// Update the retention if it changed
 		selectedRetentionString := g.retentionSelection.Selected
 		selectedRetentionValue, ok := retentionValues[selectedRetentionString]
@@ -327,10 +314,6 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 		g.retentionSelection.Selected = getRetentionName(g.retention)
 		g.retentionSelection.Refresh()
 
-		// Reset notification settings
-		enabled := g.notificationsMutedUntil != chat.MutedForever
-		g.notificationsEnabledCheck.SetChecked(enabled)
-
 		// Reset user editing
 		g.pendingUsers.empty()
 		ui.refreshUserSelections(g)
@@ -429,15 +412,15 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 	editGroupFeatures := container.NewVBox(
 		container.NewCenter(g.editIcon),
 		g.editThreadNameEntry,
-		g.notificationsEnabledCheck,
-		widget.NewLabel("Disappearing Messages"),
-		g.retentionSelection,
 		container.NewHBox(
+			container.NewHBox(g.muteButton),
 			container.NewHBox(g.clearHistoryButton),
 			container.NewHBox(g.leaveGroupButton),
 			container.NewHBox(g.deleteGroupButton),
 			container.NewHBox(g.blockGroupButton),
 		),
+		widget.NewLabel("Disappearing Messages"),
+		g.retentionSelection,
 		g.restrictUserManagementCheck,
 		g.restrictGroupEditsCheck,
 		g.restrictPostingCheck,
