@@ -303,7 +303,7 @@ func (b *Bounce) updateDeviceState(deviceID uuid.UUID) {
 			}).Fatal("database error updating device name")
 		}
 
-		b.ui.DeviceRenamed(deviceID, name)
+		go b.ui.DeviceRenamed(deviceID, name)
 	}
 
 	if revokedAt != 0 && (d.RevokedAt == 0 || revokedAt < d.RevokedAt) {

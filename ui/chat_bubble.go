@@ -86,6 +86,8 @@ type chatBubble struct {
 	saveFile              func(uuid.UUID)
 	cancelDownload        func(uuid.UUID)
 	window                fyne.Window
+	threads               *threadStore
+	showEditDMContainer   func(*directMessage)
 	showDialog            func(dialog.Dialog, func())
 	newChatBubbleTemplate func() *chatBubble
 }
@@ -264,6 +266,8 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 		window:                ui.window,
 		showDialog:            ui.showDialog,
 		newChatBubbleTemplate: ui.newChatBubbleTemplate,
+		threads:               ui.threads,
+		showEditDMContainer:   ui.showEditDMContainer,
 	}
 	cb.readMore.Importance = widget.LowImportance
 
@@ -349,11 +353,10 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 		cb.icon.id = m.author
 		cb.icon.images = m.iconImages
 		cb.icon.clicked = func() {
-			// TODO: bug: not clickable
-			log.WithFields(log.Fields{
-				"id":   m.author,
-				"name": m.username,
-			}).Info("user wants to open profile via icon")
+			dm, ok := cb.threads.getDM(m.author)
+			if ok {
+				cb.showEditDMContainer(dm)
+			}
 		}
 		cb.icon.setBackground()
 		cb.icon.Refresh()
@@ -627,6 +630,18 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 
 func (cb *chatBubble) updateDisplayTime() {
 	cb.timestamp.Text = timestampString(cb.writtenAt)
+}
+
+func (cb *chatBubble) Tapped(e *fyne.PointEvent) {
+	if cb.icon.Visible() {
+		if e.Position.X > theme.Padding() && e.Position.X < cb.icon.MinSize().Width+theme.Padding() {
+			if e.Position.Y > cb.Size().Height-cb.icon.MinSize().Height && e.Position.Y < cb.Size().Height {
+				if cb.icon.clicked != nil {
+					cb.icon.clicked()
+				}
+			}
+		}
+	}
 }
 
 func (cb *chatBubble) TappedSecondary(*fyne.PointEvent) {
