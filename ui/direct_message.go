@@ -194,9 +194,13 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		})
 		backButton.Importance = widget.LowImportance
 
-		userLabel = container.NewHBox(
+		leftItems := container.NewHBox(
 			backButton,
 			dm.headerIcon,
+		)
+		userLabel = container.New(
+			layout.NewBorderLayout(nil, nil, leftItems, nil),
+			leftItems,
 			dm.headerUsername,
 		)
 	} else {

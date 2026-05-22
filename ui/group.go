@@ -489,9 +489,13 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 			ui.mobileBack()
 		})
 		backButton.Importance = widget.LowImportance
-		gLabel = container.NewHBox(
+		leftItems := container.NewHBox(
 			backButton,
 			g.headerIcon,
+		)
+		gLabel = container.New(
+			layout.NewBorderLayout(nil, nil, leftItems, nil),
+			leftItems,
 			g.headerName,
 		)
 	} else {
