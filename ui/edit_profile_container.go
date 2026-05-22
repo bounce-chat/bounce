@@ -85,11 +85,6 @@ func (ui *ui) updateDeviceStatus() {
 				state = deviceStatusLocal
 			}
 
-			shortName := dev.Name // TODO: truncate if it's too long
-			if shortName == "" {
-				shortName = dev.Address[0:8] + "..."
-			}
-
 			nameLabel := widget.NewLabel("Name:")
 			nameEntry := widget.NewEntry()
 			nameEntry.OnChanged = func(str string) {
@@ -205,7 +200,7 @@ func (ui *ui) updateDeviceStatus() {
 					ui.showDialog(dialog.NewError(showError, ui.window), nil)
 				}
 			}
-			editDeviceDialog = dialog.NewCustomConfirm(shortName, "Apply", "Cancel", editDeviceContainer, func(apply bool) {
+			editDeviceDialog = dialog.NewCustomConfirm("Edit Device", "Apply", "Cancel", editDeviceContainer, func(apply bool) {
 				applied = apply
 				showError = nil
 				if apply {
