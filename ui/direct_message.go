@@ -463,9 +463,13 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 	dm.editIcon = newDefaultImage(dm.user.id, dm.user.images, dm.user.initials, 128, ui.bounce.GetFileData, selectImage)
 
 	dm.username = widget.NewLabel(dm.user.getDisplayName())
-	dm.realName = widget.NewRichTextWithText("(" + dm.user.name + ")") // TODO: truncate
+	dm.username.Truncation = fyne.TextTruncateEllipsis
+	dm.username.Alignment = fyne.TextAlignCenter
+	dm.realName = widget.NewRichTextWithText("(" + dm.user.name + ")")
+	dm.realName.Truncation = fyne.TextTruncateEllipsis
 	dm.realName.Segments[0].(*widget.TextSegment).Style = widget.RichTextStyle{
-		SizeName: theme.SizeNameCaptionText,
+		SizeName:  theme.SizeNameCaptionText,
+		Alignment: fyne.TextAlignCenter,
 	}
 	if len(dm.user.alias) > 0 && dm.user.alias != dm.user.name {
 		dm.realName.Show()
@@ -476,10 +480,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 	usernameEntry.Hide()
 	nameEditStack := container.NewStack(
 		dm.username,
-		container.New(
-			newMinWidthLayout(150),
-			usernameEntry,
-		),
+		usernameEntry,
 	)
 	var nameSaveOrCancelButtons *fyne.Container
 	var nameEditButton *widget.Button
@@ -515,11 +516,20 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		nameEditButton,
 		nameSaveOrCancelButtons,
 	)
-	nameSection := container.NewCenter(container.NewHBox(
-		nameEditStack,
+
+	spacer := container.New(
+		newMinWidthLayout(buttonStack.MinSize().Width),
+		widget.NewLabel(""),
+	)
+	nameSection := container.NewVBox(
+		container.New(
+			layout.NewBorderLayout(nil, nil, spacer, buttonStack),
+			spacer,
+			buttonStack,
+			nameEditStack,
+		),
 		dm.realName,
-		buttonStack,
-	))
+	)
 
 	dm.muteButton = widget.NewButton("Mute", func() {})
 
