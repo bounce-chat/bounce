@@ -1439,7 +1439,11 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 		case updateUserTypeRemoveEncryptedDevice:
 			// Encrypted devices do not create status changes
 		case updateUserTypeSetEncryptedDeviceName:
-		// Setting encrypted device name doesn't create state change
+			// Setting encrypted device name doesn't create state change
+		case updateUserTypeReplaceKeys:
+			// Changing keys does not create a status change
+		case updateUserTypeReplaceECDHPublicKey:
+			// Changing keys does not create a status change
 		default:
 			log.WithFields(log.Fields{
 				"id":      uu.ID,
