@@ -293,6 +293,9 @@ func (ui *ui) InitialSyncComplete() {
 		ui.showMainContainer()
 
 		newDeviceName = strings.TrimSpace(ui.widgets.newSyncDevice.deviceNameEntry.Text)
+		if newDeviceName == "" {
+			newDeviceName = strings.TrimSpace(ui.widgets.newSyncDevice.deviceNameEntry.PlaceHolder)
+		}
 	})
 
 	if newDeviceName != "" {
