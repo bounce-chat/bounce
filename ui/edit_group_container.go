@@ -30,7 +30,7 @@ func (ui *ui) showEditGroupContainer(g *group) {
 	g.editContainer.Show()
 }
 
-func (ui *ui) buildEditThreadContainer(g *group) {
+func (ui *ui) buildEditGroupContainer(g *group) {
 	g.editThreadNameEntry.Text = g.name
 
 	g.editIcon = newDefaultImage(g.id, g.images, g.initial, 128, ui.bounce.GetFileData, func() {

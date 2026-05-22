@@ -472,7 +472,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 	g.restrictGroupEditsCheck.SetChecked(g.restrictGroupEdits)
 	g.restrictPostingCheck.SetChecked(g.restrictPosting)
 
-	ui.buildEditThreadContainer(g)
+	ui.buildEditGroupContainer(g)
 	editButton := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
 		ui.refreshUserSelections(g)
 		ui.showEditGroupContainer(g)
@@ -481,6 +481,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 
 	g.headerIcon = newDefaultImage(g.id, bounceGroup.Images, g.initial, 32, ui.bounce.GetFileData, nil) // TODO: get size from theme
 	g.headerName = widget.NewLabel(bounceGroup.Name)
+	g.headerName.Truncation = fyne.TextTruncateEllipsis
 
 	var gLabel *fyne.Container
 	if fyne.CurrentDevice().IsMobile() {
@@ -494,7 +495,8 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 			g.headerName,
 		)
 	} else {
-		gLabel = container.NewHBox(
+		gLabel = container.New(
+			layout.NewBorderLayout(nil, nil, g.headerIcon, nil),
 			g.headerIcon,
 			g.headerName,
 		)
@@ -502,9 +504,9 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 
 	g.headerName.TextStyle = fyne.TextStyle{Bold: true}
 	g.header = container.New(
-		layout.NewBorderLayout(nil, nil, gLabel, editButton),
-		gLabel,
+		layout.NewBorderLayout(nil, nil, nil, editButton),
 		editButton,
+		gLabel,
 	)
 
 	entry := newThreadEntry(5, func() bool { return len(g.pendingMessageAttachments.files) > 0 })

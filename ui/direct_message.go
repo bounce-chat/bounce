@@ -185,6 +185,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 	dm.headerIcon = newDefaultImage(user.id, bounceUser.Images, user.initials, 32, ui.bounce.GetFileData, nil) // TODO: get size from theme
 
 	dm.headerUsername = widget.NewLabel(user.getDisplayName())
+	dm.headerUsername.Truncation = fyne.TextTruncateEllipsis
 
 	var userLabel *fyne.Container
 	if fyne.CurrentDevice().IsMobile() {
@@ -199,7 +200,8 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 			dm.headerUsername,
 		)
 	} else {
-		userLabel = container.NewHBox(
+		userLabel = container.New(
+			layout.NewBorderLayout(nil, nil, dm.headerIcon, nil),
 			dm.headerIcon,
 			dm.headerUsername,
 		)
@@ -207,9 +209,9 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 
 	dm.headerUsername.TextStyle = fyne.TextStyle{Bold: true}
 	dm.header = container.New(
-		layout.NewBorderLayout(nil, nil, userLabel, editButton),
-		userLabel,
+		layout.NewBorderLayout(nil, nil, nil, editButton),
 		editButton,
+		userLabel,
 	)
 
 	//
