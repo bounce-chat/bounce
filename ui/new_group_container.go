@@ -372,26 +372,20 @@ func (ui *ui) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 
 	// Refresh the users that have been selected for the new group
 	myIcon := newDefaultImage(ui.state.profile.id, ui.state.profile.images, ui.state.profile.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil)
-	myName := widget.NewLabel(ui.state.profile.name) // TODO: use RichText, and not and HBox, to support truncation
-	myDetails := container.NewHBox(
-		myIcon,
-		myName,
-	)
+	myName := widget.NewLabel(ui.state.profile.name)
 
 	optionButtons := container.NewHBox(widget.NewLabel("Admin"))
 	pendingUsersList := container.NewVBox(container.New(
-		layout.NewBorderLayout(nil, nil, myDetails, optionButtons),
-		myDetails,
+		layout.NewBorderLayout(nil, nil, myIcon, optionButtons),
+		myIcon,
 		optionButtons,
+		myName,
 	))
 	for _, thisUser := range ui.widgets.newGroup.pendingUsers.alphabetized() {
 		func(u *user) {
 			userIcon := newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize()*2, ui.bounce.GetFileData, nil)
-			userName := widget.NewLabel(u.getDisplayName()) // TODO: use RichText, and not and HBox, to support truncation
-			userDetails := container.NewHBox(
-				userIcon,
-				userName,
-			)
+			userName := widget.NewLabel(u.getDisplayName())
+			userName.Truncation = fyne.TextTruncateEllipsis
 
 			removeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 				ui.widgets.newGroup.pendingUsers.remove(u.id)
@@ -402,9 +396,10 @@ func (ui *ui) refreshNewGroupUserSelections(allAvailableUsers []*user) {
 				removeButton,
 			)
 			pendingUserRow := container.New(
-				layout.NewBorderLayout(nil, nil, userDetails, optionButtons),
-				userDetails,
+				layout.NewBorderLayout(nil, nil, userIcon, optionButtons),
+				userIcon,
 				optionButtons,
+				userName,
 			)
 
 			pendingUsersList.Objects = append(
