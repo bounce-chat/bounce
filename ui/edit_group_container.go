@@ -18,6 +18,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var dontWarnAboutSharingHistory = "dontWarnAboutSharingHistory"
+
 func (ui *ui) showEditGroupContainer(g *group) {
 	ui.setGroupMutedUntilButton(g)
 	if fyne.CurrentDevice().IsMobile() {
@@ -396,10 +398,29 @@ func (ui *ui) buildEditThreadContainer(g *group) {
 		}
 	}, ui.window)
 	g.addUsersButton = widget.NewButton("Invite Users", func() {
-		ui.showDialog(
-			addUsersDialog,
-			addUsersDialogCleanup,
-		)
+		if ui.app.Preferences().Bool(dontWarnAboutSharingHistory) {
+			ui.showDialog(
+				addUsersDialog,
+				addUsersDialogCleanup,
+			)
+		} else {
+			ui.showDialog(dialog.NewCustomConfirm(
+				"Warning",
+				"Don't show again",
+				"Dismiss",
+				widget.NewLabel("After a user has been added to a group, they will be able to see all of the group history"),
+				func(hideForever bool) {
+					if hideForever {
+						ui.app.Preferences().SetBool(dontWarnAboutSharingHistory, true)
+					}
+					ui.showDialog(
+						addUsersDialog,
+						addUsersDialogCleanup,
+					)
+				},
+				ui.window,
+			), nil)
+		}
 	})
 
 	closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), cancelChanges)
