@@ -85,11 +85,15 @@ type chatBubble struct {
 	fileIsWanted          func(uuid.UUID) bool
 	saveFile              func(uuid.UUID)
 	cancelDownload        func(uuid.UUID)
+	getFileData           func(uuid.UUID) ([]byte, error)
 	window                fyne.Window
 	threads               *threadStore
 	showEditDMContainer   func(*directMessage)
 	showDialog            func(dialog.Dialog, func())
 	newChatBubbleTemplate func() *chatBubble
+	openThread            func(*directMessage)
+	showImageViewer       func([]image.Image, [][]byte, int)
+	mobileBack            func()
 }
 
 func (ui *ui) newChatBubbleTemplate() *chatBubble {
@@ -263,11 +267,22 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 				t.chatHistoryScroll().Refresh()
 			})
 		},
+		getFileData:           ui.bounce.GetFileData,
 		window:                ui.window,
 		showDialog:            ui.showDialog,
 		newChatBubbleTemplate: ui.newChatBubbleTemplate,
 		threads:               ui.threads,
 		showEditDMContainer:   ui.showEditDMContainer,
+		openThread: func(dm *directMessage) {
+			ui.displayThread(dm)
+			ui.bounce.UserConnectionDesired(dm.user.id)
+			if fyne.CurrentDevice().IsMobile() {
+				ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
+			}
+			ui.state.currentView = viewTypeThread
+		},
+		showImageViewer: ui.showImageViewer,
+		mobileBack:      ui.mobileBack,
 	}
 	cb.readMore.Importance = widget.LowImportance
 
@@ -353,10 +368,72 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 		cb.icon.id = m.author
 		cb.icon.images = m.iconImages
 		cb.icon.clicked = func() {
-			dm, ok := cb.threads.getDM(m.author)
-			if ok {
-				cb.showEditDMContainer(dm)
-			}
+			var d dialog.Dialog
+			viewImage := container.NewCenter(newDefaultImage(m.author, m.iconImages, m.initials, 128, cb.getFileData, func() {
+				data, err := cb.getFileData(m.iconImages[0])
+				if err == nil {
+					goImg, _, err := image.Decode(bytes.NewReader(data))
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error":   err.Error(),
+							"file_id": m.iconImages[0],
+						}).Warn("error decoding image")
+					} else {
+						img := makeCircle(goImg)
+						if fyne.CurrentDevice().IsMobile() {
+							cb.mobileBack()
+						} else {
+							d.Dismiss()
+						}
+						cb.showImageViewer([]image.Image{img}, [][]byte{data}, 0)
+					}
+				}
+			}))
+			name := widget.NewLabel(m.username)
+			name.Truncation = fyne.TextTruncateEllipsis
+			name.Alignment = fyne.TextAlignCenter
+			sizedName := container.New(
+				newMinWidthLayout(150),
+				name,
+			)
+			message := widget.NewButton("Message", func() {
+				dm, ok := cb.threads.getDM(m.author)
+				if ok {
+					if fyne.CurrentDevice().IsMobile() {
+						cb.mobileBack()
+					} else {
+						d.Dismiss()
+					}
+					cb.openThread(dm)
+				}
+			})
+			editUser := widget.NewButton("Edit User", func() {
+				dm, ok := cb.threads.getDM(m.author)
+				if ok {
+					if fyne.CurrentDevice().IsMobile() {
+						cb.mobileBack()
+					} else {
+						d.Dismiss()
+					}
+					cb.showEditDMContainer(dm)
+				}
+			})
+			closeButton := widget.NewButton("Close", func() {
+				if fyne.CurrentDevice().IsMobile() {
+					cb.mobileBack()
+				} else {
+					d.Dismiss()
+				}
+			})
+			content := container.NewVBox(
+				viewImage,
+				sizedName,
+				message,
+				editUser,
+				closeButton,
+			)
+			d = dialog.NewCustomWithoutButtons("User Details", content, cb.window)
+			cb.showDialog(d, nil)
 		}
 		cb.icon.setBackground()
 		cb.icon.Refresh()

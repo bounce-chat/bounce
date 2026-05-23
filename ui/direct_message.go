@@ -829,7 +829,9 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 
 		// Go back to the thread after settings updates are done
 		ui.showMainContainer()
-		ui.window.Canvas().Focus(dm.getEntry())
+		if ui.isActive(dm) {
+			ui.window.Canvas().Focus(dm.getEntry())
+		}
 	})
 	saveButton.Importance = widget.HighImportance
 
@@ -862,7 +864,9 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 			ui.mobileBack()
 		} else {
 			ui.showMainContainer()
-			ui.window.Canvas().Focus(dm.getEntry())
+			if ui.isActive(dm) {
+				ui.window.Canvas().Focus(dm.getEntry())
+			}
 		}
 	}
 	cancelButton := widget.NewButton("Cancel", cancelChanges)
@@ -992,38 +996,62 @@ func (ui *ui) setDMMutedUntilButton(dm *directMessage) {
 					if err != nil {
 						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
 					}
-					muteMenu.Dismiss()
+					if fyne.CurrentDevice().IsMobile() {
+						ui.mobileBack()
+					} else {
+						muteMenu.Dismiss()
+					}
 				}),
 				widget.NewButton("Mute for 1 hour", func() {
 					err := ui.bounce.SetDMMutedUntil(dm.user.id, time.Now().Unix()+60*60)
 					if err != nil {
 						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
 					}
-					muteMenu.Dismiss()
+					if fyne.CurrentDevice().IsMobile() {
+						ui.mobileBack()
+					} else {
+						muteMenu.Dismiss()
+					}
 				}),
 				widget.NewButton("Mute for 1 day", func() {
 					err := ui.bounce.SetDMMutedUntil(dm.user.id, time.Now().Unix()+60*60*24)
 					if err != nil {
 						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
 					}
-					muteMenu.Dismiss()
+					if fyne.CurrentDevice().IsMobile() {
+						ui.mobileBack()
+					} else {
+						muteMenu.Dismiss()
+					}
 				}),
 				widget.NewButton("Mute for 1 week", func() {
 					err := ui.bounce.SetDMMutedUntil(dm.user.id, time.Now().Unix()+60*60*24*7)
 					if err != nil {
 						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
 					}
-					muteMenu.Dismiss()
+					if fyne.CurrentDevice().IsMobile() {
+						ui.mobileBack()
+					} else {
+						muteMenu.Dismiss()
+					}
 				}),
 				widget.NewButton("Mute forever", func() {
 					err := ui.bounce.SetDMMutedUntil(dm.user.id, chat.MutedForever)
 					if err != nil {
 						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
 					}
-					muteMenu.Dismiss()
+					if fyne.CurrentDevice().IsMobile() {
+						ui.mobileBack()
+					} else {
+						muteMenu.Dismiss()
+					}
 				}),
 				widget.NewButton("Cancel", func() {
-					muteMenu.Dismiss()
+					if fyne.CurrentDevice().IsMobile() {
+						ui.mobileBack()
+					} else {
+						muteMenu.Dismiss()
+					}
 				}),
 			)
 			muteMenu = dialog.NewCustomWithoutButtons("Mute", content, ui.window)
@@ -1041,10 +1069,18 @@ func (ui *ui) setDMMutedUntilButton(dm *directMessage) {
 					if err != nil {
 						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
 					}
-					muteMenu.Dismiss()
+					if fyne.CurrentDevice().IsMobile() {
+						ui.mobileBack()
+					} else {
+						muteMenu.Dismiss()
+					}
 				}),
 				widget.NewButton("Cancel", func() {
-					muteMenu.Dismiss()
+					if fyne.CurrentDevice().IsMobile() {
+						ui.mobileBack()
+					} else {
+						muteMenu.Dismiss()
+					}
 				}),
 			)
 			muteMenu = dialog.NewCustomWithoutButtons("Mute", content, ui.window)
