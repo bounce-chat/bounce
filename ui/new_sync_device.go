@@ -253,7 +253,7 @@ func (ui *ui) SyncDeviceRequestAccepted(profile chat.User, devices []chat.Device
 		ui.devices.add(&dev)
 	}
 	ui.state.initialStateSet = true
-	ui.updateDeviceStatus()
+	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 
 	if !references {
 		fyne.DoAndWait(func() { ui.showMainContainer() })

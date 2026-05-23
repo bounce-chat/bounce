@@ -99,16 +99,9 @@ func (ui *ui) buildMainContainer() {
 		ui.containers.threads.Refresh()
 	}
 	threadSearch := widget.NewButtonWithIcon("", theme.SearchIcon(), func() {
-		if searchEntry.Visible() {
-			searchEntry.Text = ""
-			searchEntry.hideAction()
-			searchEntry.Hide()
-			ui.refreshThreadOrder()
-		} else {
-			icon.Hide()
-			searchEntry.Show()
-			ui.window.Canvas().Focus(searchEntry)
-		}
+		icon.Hide()
+		searchEntry.Show()
+		ui.window.Canvas().Focus(searchEntry)
 	})
 	threadSearch.Importance = widget.LowImportance
 

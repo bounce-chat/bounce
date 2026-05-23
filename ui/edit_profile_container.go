@@ -231,7 +231,7 @@ func (ui *ui) updateDeviceStatus() {
 
 	currentDevicesHeight := float32(0)
 	for i, obj := range currentDevicesList.Objects {
-		if i == 3 {
+		if i == 8 {
 			break
 		}
 		currentDevicesHeight += obj.MinSize().Height
