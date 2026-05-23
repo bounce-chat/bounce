@@ -26,6 +26,7 @@ type chatHistory struct {
 	id       uuid.UUID
 	myID     uuid.UUID
 	messages *messageStore
+	added    map[uuid.UUID]bool
 
 	ids     []uuid.UUID
 	heights []float32
@@ -55,6 +56,7 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 		id:                  t.getID(),
 		myID:                ui.state.profile.id,
 		messages:            ui.messages,
+		added:               make(map[uuid.UUID]bool),
 		ids:                 []uuid.UUID{},
 		heights:             []float32{},
 		windowFocused:       func() bool { return ui.state.focused },
@@ -122,6 +124,14 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 	}
 
 	for i, id := range ch.ids {
+		if _, ok := ch.added[id]; ok {
+			log.WithFields(log.Fields{
+				"id": id,
+			}).Warn("ignoring duplicate thread item in setItems")
+			continue
+		}
+		ch.added[id] = true
+
 		item, _ := ch.messages.get(id)
 
 		if item.isSeen() {
@@ -163,6 +173,14 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 }
 
 func (ch *chatHistory) insertItem(item threadable, appendingToEnd bool) {
+	if _, ok := ch.added[item.getID()]; ok {
+		log.WithFields(log.Fields{
+			"id": item.getID(),
+		}).Warn("ignoring duplicate thread item in insertItems")
+		return
+	}
+	ch.added[item.getID()] = true
+
 	ch.messages.insert(item)
 
 	if len(ch.ids) == 0 || appendingToEnd {
