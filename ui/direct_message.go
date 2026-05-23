@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"image"
 	"io"
 	"time"
 
@@ -458,6 +460,24 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 
 				ui.bounce.UpdateProfileImage(data)
 			}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
+		}
+	} else {
+		if len(dm.user.images) > 0 {
+			data, err := ui.bounce.GetFileData(dm.user.images[0])
+			if err == nil {
+				goImg, _, err := image.Decode(bytes.NewReader(data))
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error":   err.Error(),
+						"file_id": dm.user.images[0],
+					}).Warn("error decoding image")
+				} else {
+					img := makeCircle(goImg)
+					selectImage = func() {
+						ui.showImageViewer([]image.Image{img}, [][]byte{data}, 0)
+					}
+				}
+			}
 		}
 	}
 	dm.editIcon = newDefaultImage(dm.user.id, dm.user.images, dm.user.initials, 128, ui.bounce.GetFileData, selectImage)
