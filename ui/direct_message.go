@@ -465,14 +465,13 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		if len(dm.user.images) > 0 {
 			data, err := ui.bounce.GetFileData(dm.user.images[0])
 			if err == nil {
-				goImg, _, err := image.Decode(bytes.NewReader(data))
+				img, _, err := image.Decode(bytes.NewReader(data))
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error":   err.Error(),
 						"file_id": dm.user.images[0],
 					}).Warn("error decoding image")
 				} else {
-					img := makeCircle(goImg)
 					selectImage = func() {
 						ui.showImageViewer([]image.Image{img}, [][]byte{data}, 0)
 					}

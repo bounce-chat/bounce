@@ -372,14 +372,13 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 			viewImage := container.NewCenter(newDefaultImage(m.author, m.iconImages, m.initials, 128, cb.getFileData, func() {
 				data, err := cb.getFileData(m.iconImages[0])
 				if err == nil {
-					goImg, _, err := image.Decode(bytes.NewReader(data))
+					img, _, err := image.Decode(bytes.NewReader(data))
 					if err != nil {
 						log.WithFields(log.Fields{
 							"error":   err.Error(),
 							"file_id": m.iconImages[0],
 						}).Warn("error decoding image")
 					} else {
-						img := makeCircle(goImg)
 						if fyne.CurrentDevice().IsMobile() {
 							cb.mobileBack()
 						} else {
