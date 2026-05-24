@@ -83,6 +83,10 @@ func (ui *ui) populateInitialItems(t thread, items threadItems) {
 
 	t.chatHistoryScroll().scrollToLastRead()
 	t.chatHistoryScroll().updateUnreadCounter()
+
+	for _, item := range items {
+		ui.threads.associate(t, item.id)
+	}
 }
 
 func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
