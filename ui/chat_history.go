@@ -127,7 +127,7 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 		if _, ok := ch.added[id]; ok {
 			log.WithFields(log.Fields{
 				"id": id,
-			}).Warn("ignoring duplicate thread item in setItems")
+			}).Debug("ignoring duplicate thread item in setItems")
 			continue
 		}
 		ch.added[id] = true
@@ -176,7 +176,7 @@ func (ch *chatHistory) insertItem(item threadable, appendingToEnd bool) {
 	if _, ok := ch.added[item.getID()]; ok {
 		log.WithFields(log.Fields{
 			"id": item.getID(),
-		}).Warn("ignoring duplicate thread item in insertItems")
+		}).Debug("ignoring duplicate thread item in insertItems")
 		return
 	}
 	ch.added[item.getID()] = true

@@ -260,16 +260,19 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 		}).Fatal("database error looking up update DM")
 	}
 
-	// Apply this update locally
-	err = b.saveAndDisplayUpdateDM(&ud)
+	// Save the update
+	err = b.database.Create(&ud).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"user":  xor(ud.Target, b.currentUserID()),
 			"type":  ud.Type,
 			"error": err.Error(),
-		}).Error("error applying update DM")
+		}).Error("error saving update DM")
 		return nil, false
 	}
+
+	// Inform the UI
+	b.informUIOfUpdateDM(&ud)
 
 	// If we're not in a catchup, set the state now
 	if !catchUp || ud.Type == updateDMTypeSetBlocked {
@@ -374,11 +377,15 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 			open = !blocked
 		case updateDMTypeOfferRetention:
 			if ud.Actor == profile.ID {
-				profileOfferedRetention = true
-				profileDefaultRetention = int64(binary.LittleEndian.Uint64(ud.Data))
+				if !profileOfferedRetention {
+					profileOfferedRetention = true
+					profileDefaultRetention = int64(binary.LittleEndian.Uint64(ud.Data))
+				}
 			} else {
-				counterpartyOfferedRetention = true
-				counterpartyDefaultRetention = int64(binary.LittleEndian.Uint64(ud.Data))
+				if !counterpartyOfferedRetention {
+					counterpartyOfferedRetention = true
+					counterpartyDefaultRetention = int64(binary.LittleEndian.Uint64(ud.Data))
+				}
 			}
 		default:
 			log.WithFields(log.Fields{
@@ -561,16 +568,23 @@ func (b *Bounce) saveAndDisplayUpdateDM(ud *updateDM) error {
 		}).Fatal("database error saving update DM")
 	}
 
+	// Inform the UI
+	b.informUIOfUpdateDM(ud)
+
+	return nil
+}
+
+func (b *Bounce) informUIOfUpdateDM(ud *updateDM) {
 	// Look up the user that we're updating
 	counterpartyID := xor(ud.Target, b.currentUserID())
 	var u user
-	err = b.database.Where("id = ?", counterpartyID).First(&u).Error
+	err := b.database.Where("id = ?", counterpartyID).First(&u).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"user_id": counterpartyID,
 			}).Error("update DM specifies user not found in database")
-			return err
+			return
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -604,15 +618,13 @@ func (b *Bounce) saveAndDisplayUpdateDM(ud *updateDM) error {
 		log.WithFields(log.Fields{
 			"type": ud.Type,
 		}).Warn("received update DM with unknown type")
-		return errUpdateDMWithUnknownType
+		return
 	}
 
 	// Update the activity timestamp on the user model
 	if ud.getScope(b.currentUserID()) != scopeSync {
 		b.updateLastUserActivity(xor(b.currentUserID(), ud.Target), ud.Timestamp)
 	}
-
-	return nil
 }
 
 func (b *Bounce) informUIUpdateDMChangeRetention(u user, ud *updateDM) {

@@ -16,9 +16,9 @@ Users are simply collections of devices owned by the same person.
 
 ## Frames
 
-### Wire Protocol
-
 ### Handlers
+
+### Wire Protocol
 
 ## Scopes
 
