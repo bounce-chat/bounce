@@ -154,8 +154,10 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 	// Redo the ngrams for the DM in the thread store
 	t, ok := ui.threads.getDM(chatUser.ID)
 	if ok {
+		items := ui.threads.associatedItems(chatUser.ID)
 		ui.threads.remove(chatUser.ID)
 		ui.threads.add(chatUser.ID, t)
+		ui.threads.bulkAssociate(t, items)
 	}
 
 	// Set the images

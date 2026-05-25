@@ -771,8 +771,10 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 		g.name = bounceGroup.Name
 		// Regenerate ngrams for thread search
 		if reindex {
+			items := ui.threads.associatedItems(bounceGroup.ID)
 			ui.threads.remove(bounceGroup.ID)
 			ui.threads.add(bounceGroup.ID, g)
+			ui.threads.bulkAssociate(g, items)
 		}
 		g.headerName.Text = bounceGroup.Name
 		g.headerName.Refresh()

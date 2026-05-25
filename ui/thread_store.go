@@ -76,6 +76,28 @@ func (ts *threadStore) associate(t thread, itemID uuid.UUID) {
 	ts.items[itemID] = t
 }
 
+func (ts *threadStore) bulkAssociate(t thread, items []uuid.UUID) {
+	ts.Lock()
+	defer ts.Unlock()
+
+	for _, itemID := range items {
+		ts.items[itemID] = t
+	}
+}
+
+func (ts *threadStore) associatedItems(threadID uuid.UUID) []uuid.UUID {
+	ts.Lock()
+	defer ts.Unlock()
+
+	items := []uuid.UUID{}
+	for itemID, t := range ts.items {
+		if t.getID() == threadID {
+			items = append(items, itemID)
+		}
+	}
+	return items
+}
+
 func (ts *threadStore) withItem(id uuid.UUID) (thread, bool) {
 	ts.Lock()
 	defer ts.Unlock()
