@@ -133,7 +133,7 @@ func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
 // A user has synced up with us after coming online and delivered the following messages
 // and read receipts in bulk.  Load them all in without needing to refresh or notify, then
 // update the UI all at once and send one notification per thread.
-func (ui *ui) CatchUpMessages(bu chat.BulkUpdate) {
+func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 	seen := map[uuid.UUID]bool{}
 	for _, seenID := range bu.Seen {
 		seen[seenID] = true
@@ -148,8 +148,8 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate) {
 			continue
 		}
 
-		var lastItem *threadItem
 		var lastNotifyingItem *threadItem
+		var lastButtonItem *threadItem
 		allSeen := true
 		for _, gm := range gms {
 			ti, err := ui.newGroupMessage(gm)
@@ -174,25 +174,19 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate) {
 			appendingToEnd := ti.timestamp > g.chatHistoryScroll().headTimestamp()
 			fyne.Do(func() { g.chatHistoryScroll().insertItem(ti.widgetData, appendingToEnd) })
 			ui.threads.associate(g, ti.id)
-			lastItem = ti
 			if ti.notification != nil {
 				lastNotifyingItem = ti
 			}
+			if ti.setButton != nil {
+				lastButtonItem = ti
+			}
 		}
 
-		if lastItem == nil {
-			log.WithFields(log.Fields{
-				"group_id": groupID,
-			}).Error("last message is nil for group messages in bulk update")
-			fyne.Do(func() { g.chatHistoryScroll().Refresh() })
-			continue
-		}
-
-		if lastItem.timestamp > g.getLastMessageTime() {
-			g.setLastMessageTime(lastItem.timestamp)
-			fyne.Do(func() { lastItem.setButton(g.getButton()) })
-			if lastItem.widgetData.getAuthor() == ui.state.profile.id {
-				fyne.Do(func() { g.getButton().showLastMessageState(lastItem.widgetData.getState()) })
+		if lastButtonItem != nil && (initialSync || lastButtonItem.timestamp > g.getLastMessageTime()) {
+			g.setLastMessageTime(lastButtonItem.timestamp)
+			fyne.Do(func() { lastButtonItem.setButton(g.getButton()) })
+			if lastButtonItem.widgetData.getAuthor() == ui.state.profile.id {
+				fyne.Do(func() { g.getButton().showLastMessageState(lastButtonItem.widgetData.getState()) })
 			}
 		}
 
@@ -224,8 +218,8 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate) {
 			continue
 		}
 
-		var lastItem *threadItem
 		var lastNotifyingItem *threadItem
+		var lastButtonItem *threadItem
 		allSeen := true
 		for _, dm := range dms {
 			ti, err := ui.newDirectMessage(dm)
@@ -250,25 +244,19 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate) {
 			appendingToEnd := ti.timestamp > t.chatHistoryScroll().headTimestamp()
 			fyne.Do(func() { t.chatHistoryScroll().insertItem(ti.widgetData, appendingToEnd) })
 			ui.threads.associate(t, ti.id)
-			lastItem = ti
 			if ti.notification != nil {
 				lastNotifyingItem = ti
 			}
+			if ti.setButton != nil {
+				lastButtonItem = ti
+			}
 		}
 
-		if lastItem == nil {
-			log.WithFields(log.Fields{
-				"user_id": userID,
-			}).Error("last message is nil for group messages in bulk update")
-			fyne.Do(func() { t.chatHistoryScroll().Refresh() })
-			continue
-		}
-
-		if lastItem.timestamp > t.getLastMessageTime() {
-			t.setLastMessageTime(lastItem.timestamp)
-			fyne.Do(func() { lastItem.setButton(t.getButton()) })
-			if lastItem.widgetData.getAuthor() == ui.state.profile.id {
-				fyne.Do(func() { t.getButton().showLastMessageState(lastItem.widgetData.getState()) })
+		if lastButtonItem != nil && (initialSync || lastButtonItem.timestamp > t.getLastMessageTime()) {
+			t.setLastMessageTime(lastButtonItem.timestamp)
+			fyne.Do(func() { lastButtonItem.setButton(t.getButton()) })
+			if lastButtonItem.widgetData.getAuthor() == ui.state.profile.id {
+				fyne.Do(func() { t.getButton().showLastMessageState(lastButtonItem.widgetData.getState()) })
 			}
 		}
 

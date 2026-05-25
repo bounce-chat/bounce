@@ -466,7 +466,7 @@ type UI interface {
 	ReceivedReadReceipt(ReadReceipt) // Someone else read a message of ours
 	ShowTypingIndicator(userID, threadID uuid.UUID)
 	HideTypingIndicator(userID, threadID uuid.UUID)
-	CatchUpMessages(BulkUpdate)
+	CatchUpMessages(BulkUpdate, bool)
 
 	// User settings and status
 	SetUserState(User)

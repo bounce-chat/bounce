@@ -515,7 +515,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			}
 		}
 	}
-	b.ui.CatchUpMessages(bulkUpdate)
+	b.ui.CatchUpMessages(bulkUpdate, waitingForInitialSyncFrom == peer)
 
 	// Send references to any device we would have broadcast to
 	for address, _ := range devicesToReference {
