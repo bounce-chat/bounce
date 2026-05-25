@@ -194,7 +194,6 @@ func (b *Bounce) blockedGroups() []uuid.UUID {
 
 	return blocked
 }
-
 func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string) error {
 	newID := uuid.New()
 	iconID := uuid.Nil

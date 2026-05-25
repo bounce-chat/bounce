@@ -355,6 +355,14 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 	}
 	newName := u.Name
 	images := []string{}
+	existingImages := u.images()
+	if len(existingImages) > 0 {
+		images = []string{existingImages[0].String()}
+	}
+	imageIDs := []uuid.UUID{}
+	if len(images) > 0 {
+		imageIDs = []uuid.UUID{existingImages[0]}
+	}
 	encryptedDevices := map[string]bool{}
 	encryptedDeviceNames := map[string]string{}
 	privateECDSA := u.PrivateECDSAKey
@@ -373,7 +381,6 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 	}
 
 	// Iterate through them to get the final user state
-	imageIDs := []uuid.UUID{}
 	for _, uu := range uus {
 		if b.deviceWasRevokedAt(uu.Signer, uu.Timestamp) {
 			continue
