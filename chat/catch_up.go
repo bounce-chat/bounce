@@ -26,6 +26,7 @@ var allowedCatchUpFrames = map[uint16]bool{
 	typeUpdateSettings: true,
 	typeFile:           true,
 	typeChunkOffer:     true,
+	typeDraft:          true,
 }
 
 // A frame contains the ID, type, and marshalled payload of any other frame
