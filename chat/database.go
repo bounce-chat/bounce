@@ -37,6 +37,7 @@ var typeTable = map[uint16]string{
 	typeChunk:           "chunks",
 	typeChunkOffer:      "chunk_offers",
 	typeAppendRecipient: "append_recipients",
+	typeDraft:           "drafts",
 }
 
 func (b *Bounce) openDatabase() {
@@ -102,6 +103,7 @@ func (b *Bounce) openDatabase() {
 		&fileAttachment{},
 		&encryptedSyncDevice{},
 		&appendRecipient{},
+		&draft{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -1167,6 +1169,34 @@ func (b *Bounce) GetInitialState() InitialState {
 		fileProgress = append(fileProgress, FileProgress{ID: f.ID, Progress: float64(downloadedSize) / float64(f.Size)})
 	}
 
+	var exportedDrafts []Draft
+	var drafts []draft
+	err = b.database.Find(&drafts).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error finding drafts")
+	}
+	latestDrafts := map[uuid.UUID]draft{}
+	for _, d := range drafts {
+		existing, ok := latestDrafts[d.Thread]
+		if !ok || existing.Timestamp < d.Timestamp {
+			latestDrafts[d.Thread] = d
+		}
+	}
+	for _, d := range latestDrafts {
+		exportedDrafts = append(exportedDrafts, Draft{Thread: d.Thread, Text: d.Text})
+		draftMutex.Lock()
+		draftCache[d.Thread] = &draft{
+			ID:        d.ID,
+			Thread:    d.Thread,
+			Text:      d.Text,
+			Timestamp: d.Timestamp,
+			Saved:     d.Saved,
+		}
+		draftMutex.Unlock()
+	}
+
 	// Create the initial state for the UI
 	return InitialState{
 		Profile:                                profile,
@@ -1199,6 +1229,7 @@ func (b *Bounce) GetInitialState() InitialState {
 		UpdateUserUpdateNames:                  exportedUpdateUserUpdateNames,
 		UpdateUserUpdateImages:                 exportedUpdateUserUpdateImages,
 		FileProgress:                           fileProgress,
+		Drafts:                                 exportedDrafts,
 	}
 }
 

@@ -65,6 +65,7 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	broadcastables = append(broadcastables, b.getRequestedUpdateSettingsPayloads(requestedIDs[typeUpdateSettings], offeredIDs[typeUpdateSettings])...)
 	broadcastables = append(broadcastables, b.getRequestedFilePayloads(requestedIDs[typeFile], offeredIDs[typeFile])...)
 	broadcastables = append(broadcastables, b.getRequestedChunkOfferPayloads(requestedIDs[typeChunkOffer], offeredIDs[typeChunkOffer])...)
+	broadcastables = append(broadcastables, b.getRequestedDraftPayloads(requestedIDs[typeDraft], offeredIDs[typeDraft])...)
 
 	if len(broadcastables) == 0 {
 		return nil, false
@@ -490,6 +491,33 @@ func (b *Bounce) getRequestedChunkOfferPayloads(requestedIDs, offeredIDs []uuid.
 			}
 		} else {
 			requestedData = append(requestedData, &co)
+		}
+	}
+
+	return requestedData
+}
+
+func (b *Bounce) getRequestedDraftPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
+
+	requestedDraftIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
+
+	for _, dID := range requestedDraftIDs {
+		var d draft
+		err := b.database.First(&d, "id = ?", dID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id": dID,
+				}).Warn("reference request asks for an unknown draft")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    dID,
+					"error": err.Error(),
+				}).Fatal("database error querying for draft")
+			}
+		} else {
+			requestedData = append(requestedData, &d)
 		}
 	}
 

@@ -225,8 +225,9 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 	//
 	entry := newThreadEntry(5, func() bool { return len(dm.pendingMessageAttachments.files) > 0 })
 	dm.entry = entry
-	entry.OnChanged = func(_ string) {
+	entry.OnChanged = func(str string) {
 		go ui.bounce.TypingInDirectMessage(dm.user.id)
+		go ui.bounce.UpdateDraft(dm.user.id, str)
 	}
 	entry.customOnSubmitted = func() {
 		chatDM := chat.DirectMessage{
@@ -271,6 +272,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		chatDM.ImageAttachments = imageAttachments
 		chatDM.FileAttachments = fileAttachments
 
+		go ui.bounce.UpdateDraft(dm.user.id, "")
 		go ui.bounce.SendDirectMessage(chatDM, readers, sources)
 	}
 

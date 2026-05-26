@@ -690,7 +690,11 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		ui.refreshThreadOrder()
 
 		for _, fp := range state.FileProgress {
-			ui.FileDownloadProgress(fp.ID, fp.Progress)
+			go ui.FileDownloadProgress(fp.ID, fp.Progress)
+		}
+
+		for _, d := range state.Drafts {
+			go ui.UpdateDraft(d)
 		}
 	})
 	go ui.messages.writeCache()

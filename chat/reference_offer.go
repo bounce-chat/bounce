@@ -64,6 +64,8 @@ func (ro *referenceOffer) shouldDialUser() bool {
 			return true
 		} else if reference.Type == typeChunkOffer {
 			return true
+		} else if reference.Type == typeDraft {
+			return true
 		}
 	}
 	return false
@@ -235,6 +237,9 @@ func (b *Bounce) hasAnyReferencesFor(address string) bool {
 	if len(b.getChunkOffersToOffer(address, userID)) > 0 {
 		return true
 	}
+	if len(b.getDraftsToOffer(address, userID)) > 0 {
+		return true
+	}
 
 	return false
 }
@@ -280,6 +285,7 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	references = append(references, b.getUpdateSettingsToOffer(address, userID)...)
 	references = append(references, b.getFilesToOffer(address, userID)...)
 	references = append(references, b.getChunkOffersToOffer(address, userID)...)
+	references = append(references, b.getDraftsToOffer(address, userID)...)
 
 	return &referenceOffer{
 		ID:         uuid.New(),
@@ -1186,6 +1192,36 @@ func (b *Bounce) getChunkOffersToOffer(address string, userID uuid.UUID) []frame
 	return references
 }
 
+func (b *Bounce) getDraftsToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+		return []frameReference{}
+	}
+
+	if userID != b.currentUserID() {
+		return []frameReference{}
+	}
+
+	// Select all update setting that have not been delivered
+	var unsentDrafts []draft
+	err := b.database.
+		Select("drafts.*").
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == drafts.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeDraft).
+		Where("delivery_records.id IS NULL").
+		Find(&unsentDrafts).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error selecting drafts for reference offer")
+	}
+
+	references := []frameReference{}
+	for _, ud := range unsentDrafts {
+		references = append(references, frameReference{FrameID: ud.ID, Type: typeDraft})
+	}
+
+	return references
+}
+
 func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	if _, revoked := b.devicePool.revokedDevices[peer]; revoked {
 		return nil, false
@@ -1233,6 +1269,7 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		typeUpdateSettings,
 		typeFile,
 		typeChunkOffer,
+		typeDraft,
 	}
 	for _, frameType := range typesToRespondWith {
 		refs, as := b.getFramesToRequestAndAck(peer, typesToIDs[frameType], frameType)

@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const MutedForever = int64(-1)
@@ -98,12 +99,37 @@ func Open(ui UI, network Network, configDirectory string) *Bounce {
 		)
 	}()
 
+	go b.keepDraftsSynced()
+
 	return b
 }
 
 // Gracefully stop all Bounce.  Used when a fatal error is encountered or the user interface is closed
 func (b *Bounce) Shutdown() {
 	b.shutdownStarted.Store(true)
+
+	// Save all drafts to the database
+	draftMutex.Lock()
+	for _, d := range draftCache {
+		if !d.Saved {
+			err := b.database.Clauses(clause.Returning{}).Where("thread = ?", d.Thread).Delete(&draft{}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error deleting drafts")
+			}
+
+			d.Saved = true
+			err = b.database.Create(d).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"thread": d.Thread,
+					"error":  err.Error(),
+				}).Error("error saving draft")
+			}
+		}
+	}
+	draftMutex.Unlock()
 
 	// Logrus is going to call in here on a fatal error, then os.Exit.  If multiple fatal logs occur, which
 	// is likely as the shutdown process is going to cause other fatal errors, the first one will spend some

@@ -519,6 +519,21 @@ func (ui *ui) HideTypingIndicator(userID, threadID uuid.UUID) {
 	})
 }
 
+func (ui *ui) UpdateDraft(d chat.Draft) {
+	t, ok := ui.threads.get(d.Thread)
+	if !ok {
+		log.WithFields(log.Fields{
+			"thread_id": d.Thread,
+		}).Warn("attempt to set draft for unknown thread")
+		return
+	}
+
+	fyne.Do(func() {
+		t.getEntry().Text = d.Text
+		t.getEntry().Refresh()
+	})
+}
+
 func timestampString(timestamp int64) string {
 	now := time.Now()
 	diff := now.Unix() - timestamp

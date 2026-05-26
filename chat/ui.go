@@ -336,12 +336,16 @@ type ReadReceipt struct {
 	ID     uuid.UUID
 	Actor  uuid.UUID
 	Target uuid.UUID
-	//TargetType string
 }
 
 type FileProgress struct {
 	ID       uuid.UUID
 	Progress float64
+}
+
+type Draft struct {
+	Thread uuid.UUID
+	Text   string
 }
 
 type BulkUpdate struct {
@@ -383,6 +387,7 @@ type InitialState struct {
 	UpdateUserUpdateNames                  []UpdateUserUpdateName
 	UpdateUserUpdateImages                 []UpdateUserUpdateImage
 	FileProgress                           []FileProgress
+	Drafts                                 []Draft
 }
 
 // Functions that are passed to bounce that can be used to inform and update the UI
@@ -467,6 +472,7 @@ type UI interface {
 	ShowTypingIndicator(userID, threadID uuid.UUID)
 	HideTypingIndicator(userID, threadID uuid.UUID)
 	CatchUpMessages(BulkUpdate, bool)
+	UpdateDraft(Draft)
 
 	// User settings and status
 	SetUserState(User)
