@@ -22,6 +22,7 @@ type threadButton struct {
 	threadImage               *defaultImage
 	threadName                *widget.RichText
 	lastMessage               *widget.RichText
+	draft                     *widget.RichText
 	lastMessageHasStatus      bool
 	typingIndicator           *typingIndicator
 	threadNameFadeOut         *canvas.LinearGradient
@@ -103,6 +104,20 @@ func newThreadButton(image *defaultImage, name string, clicked func()) *threadBu
 			Text: name,
 		}),
 		lastMessage: widget.NewRichText(
+			&widget.TextSegment{
+				Style: widget.RichTextStyle{
+					Inline: true,
+					TextStyle: fyne.TextStyle{
+						Bold: true,
+					},
+				},
+				Text: "",
+			},
+			&widget.TextSegment{
+				Text: "",
+			},
+		),
+		draft: widget.NewRichText(
 			&widget.TextSegment{
 				Style: widget.RichTextStyle{
 					Inline: true,
@@ -222,11 +237,26 @@ func (tb *threadButton) setLastAction(text string, status bool) {
 	tb.lastMessage.Refresh()
 }
 
-// TODO: use when all messages expire or history is cleared
-func (tb *threadButton) clearLastMessage() {
-	tb.lastMessage.Segments[0].(*widget.TextSegment).Text = ""
-	tb.lastMessage.Segments[1].(*widget.TextSegment).Text = ""
-	tb.lastMessage.Refresh()
+func (tb *threadButton) setDraft(text string) {
+	if text == "" {
+		tb.draft.Segments[1].(*widget.TextSegment).Text = ""
+		tb.draft.Hide()
+		tb.lastMessage.Show()
+	} else {
+		if len(text) > 200 {
+			text = text[:200]
+		}
+
+		tb.draft.Segments[0].(*widget.TextSegment).Text = "Draft: "
+		tb.draft.Segments[0].(*widget.TextSegment).Style.TextStyle.Italic = true
+		tb.draft.Segments[0].(*widget.TextSegment).Style.TextStyle.Bold = true
+		tb.draft.Segments[1].(*widget.TextSegment).Text = strings.ReplaceAll(text, "\n", " ") // TODO: use non-platform-scpeific newlines
+		tb.draft.Segments[1].(*widget.TextSegment).Style.TextStyle.Italic = true
+		tb.draft.Refresh()
+
+		tb.lastMessage.Hide()
+		tb.draft.Show()
+	}
 }
 
 func (tb *threadButton) showLastMessageState(state int) {
@@ -352,6 +382,7 @@ func (tb *threadButton) CreateRenderer() fyne.WidgetRenderer {
 			tb.threadImage,
 			tb.threadName,
 			tb.lastMessage,
+			tb.draft,
 			tb.typingIndicator,
 			tb.threadNameFadeOut,
 			tb.lastMessageTimeBackground,
@@ -395,6 +426,10 @@ func (tbr *threadButtonRenderer) Layout(size fyne.Size) {
 	tbr.threadButton.lastMessage.Move(fyne.Position{
 		X: threadButtonHeight,
 		Y: threadButtonHeight - tbr.threadButton.lastMessage.MinSize().Height + theme.Padding(),
+	})
+	tbr.threadButton.draft.Move(fyne.Position{
+		X: threadButtonHeight,
+		Y: threadButtonHeight - tbr.threadButton.draft.MinSize().Height + theme.Padding(),
 	})
 	tbr.threadButton.threadNameFadeOut.Resize(fyne.Size{Width: (threadButtonHeight / 4) + theme.Padding(), Height: threadButtonHeight / 2})
 	tbr.threadButton.threadNameFadeOut.Move(fyne.Position{
@@ -499,9 +534,14 @@ func (tbr *threadButtonRenderer) Refresh() {
 
 	if tbr.threadButton.typingIndicator.Visible() {
 		tbr.threadButton.lastMessage.Hide()
+		tbr.threadButton.draft.Hide()
 		tbr.threadButton.statusIcons.Hide()
 	} else {
-		tbr.threadButton.lastMessage.Show()
+		if len(tbr.threadButton.draft.Segments[1].(*widget.TextSegment).Text) > 0 {
+			tbr.threadButton.draft.Show()
+		} else {
+			tbr.threadButton.lastMessage.Show()
+		}
 		if tbr.threadButton.lastMessageHasStatus {
 			tbr.threadButton.unreadCounterTextFadeOut.Show()
 			tbr.threadButton.unreadCounterBackground.Show()

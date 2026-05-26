@@ -36,6 +36,7 @@ func newThreadEntry(maxRows int, hasAttachments func() bool) *threadEntry {
 		maxHeightString.WriteString("\n")
 	}
 	entry.maxHeightLabel.Text = maxHeightString.String()
+
 	return entry
 }
 
@@ -73,10 +74,6 @@ func (entry *threadEntry) TypedKey(ev *fyne.KeyEvent) {
 	}
 	entry.Entry.TypedKey(ev)
 }
-
-//
-// Just to get selectKeyDown
-//
 
 func (e *threadEntry) KeyDown(key *fyne.KeyEvent) {
 	if e.Disabled() {

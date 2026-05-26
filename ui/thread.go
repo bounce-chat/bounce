@@ -530,7 +530,11 @@ func (ui *ui) UpdateDraft(d chat.Draft) {
 
 	fyne.Do(func() {
 		t.getEntry().Text = d.Text
+		//t.getEntry().TypedKey(&fyne.KeyEvent{Name: fyne.KeyEnd})
 		t.getEntry().Refresh()
+
+		t.getButton().setDraft(d.Text)
+		t.getButton().Refresh()
 	})
 }
 
