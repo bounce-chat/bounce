@@ -467,6 +467,8 @@ func (ui *ui) displayThread(t thread) {
 		t.chatHistoryScroll().scrollToLastRead()
 		t.chatHistoryScroll().disableSeenTracking = false
 	}
+
+	t.getEntry().TypedKey(&fyne.KeyEvent{Name: fyne.KeyEnd})
 }
 
 func (ui *ui) isActive(t thread) bool {
@@ -530,7 +532,6 @@ func (ui *ui) UpdateDraft(d chat.Draft) {
 
 	fyne.Do(func() {
 		t.getEntry().Text = d.Text
-		//t.getEntry().TypedKey(&fyne.KeyEvent{Name: fyne.KeyEnd})
 		t.getEntry().Refresh()
 
 		t.getButton().setDraft(d.Text)
