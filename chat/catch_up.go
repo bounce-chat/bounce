@@ -115,7 +115,6 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 
 	// Handle reach frame in the catch up using it's handler
 	handlers := b.getHandlers(b.encrypted)
-	lastTimestamp := int64(0)
 	catchUpMutex.Lock()
 	frameCount := len(cu.Frames)
 	progressMod := 1
@@ -155,18 +154,6 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			"type": br.getType(),
 			"peer": peer,
 		}).Debug("handling frame inside a catch up")
-
-		// Make sure this catch up is in order
-		if br.getTimestamp() < lastTimestamp {
-			log.WithFields(log.Fields{
-				"last_timestamp":    lastTimestamp,
-				"current_timestamp": br.getTimestamp(),
-				"type":              br.getType(),
-				"id":                br.getID(),
-			}).Error("refusing to process out-of-order catch up")
-			return nil, false
-		}
-		lastTimestamp = br.getTimestamp()
 
 		// Keep track of any device we would broadcast this to so that we can reference them
 		destinations := b.getBroadcastScope(br, true)
