@@ -1187,13 +1187,17 @@ func (b *Bounce) GetInitialState() InitialState {
 	for _, d := range latestDrafts {
 		exportedDrafts = append(exportedDrafts, Draft{Thread: d.Thread, Text: d.Text})
 		draftMutex.Lock()
-		draftCache[d.Thread] = &draft{
+		dr := &draft{
 			ID:        d.ID,
 			Thread:    d.Thread,
 			Text:      d.Text,
 			Timestamp: d.Timestamp,
 			Saved:     d.Saved,
 		}
+		dr.OriginalPayload = d.OriginalPayload
+		dr.Signer = d.Signer
+		dr.Signature = d.Signature
+		draftCache[d.Thread] = dr
 		draftMutex.Unlock()
 	}
 

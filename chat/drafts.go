@@ -24,6 +24,7 @@ func (b *Bounce) keepDraftsSynced() {
 }
 
 type draft struct {
+	SignedFrame
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Thread    uuid.UUID
 	Text      string
@@ -44,7 +45,11 @@ func (d *draft) getType() uint16 {
 }
 
 func (d *draft) getPayload() []byte {
-	bytes, err := msgpack.Marshal(d)
+	bytes, err := msgpack.Marshal(signedContainer{
+		Payload:   d.OriginalPayload,
+		Signature: d.Signature,
+		Signer:    d.Signer,
+	})
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -73,26 +78,54 @@ func (b *Bounce) handleDraft(peer string, payload []byte, catchUp bool) (broadca
 	draftHandlerMutex.Lock()
 	draftHandlerMutex.Unlock()
 
-	peerDevice, ok := b.getDeviceFromAddress(peer)
-	if !ok {
+	sc, err := b.unpackSignedContainer(payload)
+	if err != nil {
 		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Error("rejecting draft sent from unknown device")
+			"error": err.Error(),
+		}).Error("error unpacking signed container for draft")
 		return nil, false
 	}
-	if !b.isSyncDevice(peerDevice) {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Error("rejecting draft sent from non-sync device")
-		return nil, false
-	}
-
 	var d draft
-	err := msgpack.Unmarshal(payload, &d)
+	err = msgpack.Unmarshal(sc.Payload, &d)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling draft")
+		return nil, false
+	}
+	d.OriginalPayload = sc.Payload
+	d.Signature = sc.Signature
+	d.Signer = sc.Signer
+
+	var signerDevice device
+	err = b.database.Select("revoked_at").Where("address = ?", d.Signer).First(&signerDevice).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"address": d.Signer,
+			}).Error("signer device not found for draft")
+			return nil, false
+		} else {
+			log.WithFields(log.Fields{
+				"address": d.Signer,
+				"error":   err.Error(),
+			}).Fatal("database error looking up signing device")
+		}
+	}
+	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < d.Timestamp {
+		log.WithFields(log.Fields{
+			"id":     d.ID,
+			"signer": d.Signer,
+		}).Warn("ignoring draft signed by revoked device")
+		go b.sendAck(peer, typeDraft, d.ID)
+		return nil, false
+	}
+
+	if !b.signedByUser(sc, b.currentUserID()) {
+		log.WithFields(log.Fields{
+			"id":     d.ID,
+			"signer": sc.Signer,
+		}).Warn("received draft signed by another user, ignoring")
 		return nil, false
 	}
 
@@ -130,6 +163,17 @@ func (b *Bounce) UpdateDraft(threadID uuid.UUID, text string) {
 		Timestamp: time.Now().Unix(),
 		Saved:     false,
 	}
+	var err error
+	d.OriginalPayload, err = msgpack.Marshal(d)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling draft")
+	}
+	sc := b.createSignedContainer(d.OriginalPayload)
+	d.Signature = sc.Signature
+	d.Signer = sc.Signer
+
 	draftMutex.Lock()
 	draftCache[threadID] = d
 	draftMutex.Unlock()
