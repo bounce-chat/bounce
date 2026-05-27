@@ -1122,6 +1122,7 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 }
 
 const actionTypeChangeManagementKey = 0
+const actionTypePruneDrafts = 1
 
 type encryptedDeviceManagementAction struct {
 	ActionType int
@@ -1238,6 +1239,18 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 		} else {
 			response.Applied = true
 			go b.sendDirect(peer, &response)
+		}
+	case actionTypePruneDrafts:
+		draftPayload := string(edma.Data)
+		if len(draftPayload) > 0 {
+			drafts := strings.Split(draftPayload, ",")
+
+			err = b.database.Where("type = ? AND id NOT IN (?)", typeDraft, drafts).Delete(&encryptedFrame{}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("database error pruning drafts")
+			}
 		}
 	default:
 		log.WithFields(log.Fields{
@@ -1524,4 +1537,57 @@ func (b *Bounce) encryptionKeyHistory() map[string][]byte {
 	}
 
 	return results
+}
+
+func (b *Bounce) pruneEncryptedDrafts() {
+	currentUser, ok := b.currentUser()
+	if !ok {
+		log.Warn("attempt to prune drafts from encrypted device when no profile exists")
+		return
+	}
+	if time.Now().Before(startupTime.Add(5 * time.Minute)) {
+		return
+	}
+
+	var esds []encryptedSyncDevice
+	err := b.database.Find(&esds).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error finding all encrypted sync devices")
+	}
+
+	draftIDs := []string{}
+	draftMutex.Lock()
+	for _, d := range draftCache {
+		draftIDs = append(draftIDs, d.ID.String())
+	}
+	draftMutex.Unlock()
+	draftsPayload := strings.Join(draftIDs, ",")
+
+	for _, esd := range esds {
+		rd := b.getRemoteDevice(esd.Address)
+		if rd.connectedSockets.Load() > 0 {
+			edma := encryptedDeviceManagementAction{
+				ActionType: actionTypePruneDrafts,
+				Data:       []byte(draftsPayload),
+			}
+			encoded, err := msgpack.Marshal(&edma)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error encoding encrypted device management action")
+				return
+			}
+			signature := ed25519.Sign(currentUser.PrivateECDSAKey, encoded)
+
+			med := manageEncryptedDevice{
+				ID:        uuid.New(),
+				Action:    encoded,
+				Signature: signature,
+			}
+
+			b.sendDirect(esd.Address, &med)
+		}
+	}
 }

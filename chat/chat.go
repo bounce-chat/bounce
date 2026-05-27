@@ -26,6 +26,8 @@ const MaximumNameLength = 128
 // before the chat engine gives up and stops attempting to deliver it
 const undeliverableAfter = time.Duration(4 * 7 * 24 * time.Hour)
 
+var startupTime = time.Now()
+
 type Bounce struct {
 	encrypted             bool
 	configDirectory       string
