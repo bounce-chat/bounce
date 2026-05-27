@@ -96,22 +96,13 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		return nil, false
 	}
 
-	// Keep track of which groups will need a consensus update
+	// Keep track of things that are impacted by this catch up
 	groupsToUpdateConsensus := map[uuid.UUID]bool{}
-
-	// Keep track of which users are getting updated
 	usersToUpdate := map[uuid.UUID]bool{}
-
-	// Keep track of which DMs are getting updated
 	dmsToUpdate := map[uuid.UUID]bool{}
-
-	// Keep track of devices we need to reference after this
 	devicesToReference := map[string]bool{}
-
-	// Keep track of if our settings update
 	settingsUpdated := false
-
-	// Keep track of devices that are getting updates
+	draftsUpdated := true
 	devicesToUpdate := map[uuid.UUID]bool{}
 
 	// Keep track of frames that will be shared with the UI in a BulkUpdate after everything else is processed
@@ -249,6 +240,8 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 				}
 				rrsToDisplay = append(rrsToDisplay, rr)
 			}
+		case typeDraft:
+			draftsUpdated = true
 		}
 
 		if waitingForInitialSyncFrom == peer {
@@ -280,6 +273,15 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 
 	if settingsUpdated {
 		b.updateSettingsState()
+	}
+
+	if draftsUpdated {
+		draftMutex.Lock()
+		for _, d := range draftCache {
+			b.ui.UpdateDraft(Draft{Thread: d.Thread, Text: d.Text})
+		}
+		draftMutex.Unlock()
+		b.syncDrafts()
 	}
 
 	// Update all group consensus states for groups that had an update group in this catch up

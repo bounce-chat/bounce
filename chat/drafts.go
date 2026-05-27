@@ -148,10 +148,14 @@ func (b *Bounce) handleDraft(peer string, payload []byte, catchUp bool) (broadca
 		draftCache[d.Thread] = &d
 		draftMutex.Unlock()
 
-		b.ui.UpdateDraft(Draft{Thread: d.Thread, Text: d.Text})
+		if !catchUp {
+			b.ui.UpdateDraft(Draft{Thread: d.Thread, Text: d.Text})
+		}
 	}
 
-	b.syncDrafts()
+	if !catchUp {
+		b.syncDrafts()
+	}
 	return &d, true
 }
 
