@@ -22,6 +22,7 @@ import (
 )
 
 type newInstall struct {
+	profileNameEntry    *widget.Entry
 	newProfileImage     *defaultImage
 	newProfileImageData []byte
 }
@@ -40,11 +41,7 @@ func (ui *ui) showMainContainer() {
 			ui.state.currentView = viewTypeNewInstall
 		} else if ui.state.setupStep == setupStepProfile {
 			ui.window.SetMainMenu(nil)
-			ui.window.SetContent(ui.views.newProfileCreator)
-			if fyne.CurrentDevice().IsMobile() {
-				ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeProfileCreator})
-			}
-			ui.state.currentView = viewTypeProfileCreator
+			ui.showNewProfileCreator()
 		} else {
 			log.WithFields(log.Fields{
 				"step": ui.state.setupStep,
@@ -213,13 +210,11 @@ func (ui *ui) buildNewInstall() {
 	)
 
 	selectNewProfile := newClickableImage("Create a new profile", canvas.NewImageFromResource(newEmbeddedResource("assets/icons/setup/new_profile.png")), 200, 200, true, func() {
-		ui.state.setupStep = setupStepProfile
-		ui.window.SetContent(ui.views.newProfileCreator)
-		ui.views.newProfileCreator.Show()
+		ui.showNewProfileCreator()
 	})
 
 	selectSyncDevice := newClickableImage("Add device to profile", canvas.NewImageFromResource(newEmbeddedResource("assets/icons/setup/add_to_profile.png")), 200, 200, true, func() {
-		ui.window.SetContent(ui.views.nameNewDevice)
+		ui.showNameNewDevice()
 	})
 
 	content := container.NewGridWithColumns(
@@ -235,27 +230,38 @@ func (ui *ui) buildNewInstall() {
 	)
 }
 
+func (ui *ui) showNewProfileCreator() {
+	ui.state.currentView = viewTypeProfileCreator
+	ui.state.setupStep = setupStepProfile
+	ui.window.SetContent(ui.views.newProfileCreator)
+	ui.views.newProfileCreator.Show()
+	if fyne.CurrentDevice().IsMobile() {
+		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeProfileCreator})
+	}
+	ui.window.Canvas().Focus(ui.widgets.newInstall.profileNameEntry)
+}
+
 func (ui *ui) buildNewProfileCreator() {
-	ui.widgets.newInstall = &newInstall{}
+	ui.widgets.newInstall = &newInstall{
+		profileNameEntry: widget.NewEntry(),
+	}
 
-	profileNameEntry := widget.NewEntry()
-
-	profileNameEntry.OnChanged = func(str string) {
+	ui.widgets.newInstall.profileNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
 		str, trimmed := trimLeadingSpace(str)
-		profileNameEntry.Text = str
+		ui.widgets.newInstall.profileNameEntry.Text = str
 		if trimmed != 0 {
-			profileNameEntry.CursorRow = 0
-			profileNameEntry.CursorColumn = 0
+			ui.widgets.newInstall.profileNameEntry.CursorRow = 0
+			ui.widgets.newInstall.profileNameEntry.CursorColumn = 0
 		}
 
 		// Enforce length limit
 		if utf8.RuneCountInString(str) > chat.MaximumNameLength {
 			runes := []rune(str)
 			truncated := runes[0:chat.MaximumNameLength]
-			profileNameEntry.Text = string(truncated)
+			ui.widgets.newInstall.profileNameEntry.Text = string(truncated)
 		}
-		profileNameEntry.Refresh()
+		ui.widgets.newInstall.profileNameEntry.Refresh()
 
 		// Set the user icon
 		parts := strings.Split(str, " ")
@@ -345,7 +351,7 @@ func (ui *ui) buildNewProfileCreator() {
 	profileForm := widget.NewForm(
 		&widget.FormItem{
 			Text:   "Your Name:",
-			Widget: profileNameEntry,
+			Widget: ui.widgets.newInstall.profileNameEntry,
 		},
 		&widget.FormItem{
 			Text:     "Device Name:",
@@ -360,7 +366,7 @@ func (ui *ui) buildNewProfileCreator() {
 	)
 
 	saveButton := widget.NewButton("Save", func() {
-		if profileNameEntry.Text == "" {
+		if ui.widgets.newInstall.profileNameEntry.Text == "" {
 			ui.showDialog(dialog.NewError(errors.New("Profile name must be set"), ui.window), nil)
 			return
 		}
@@ -372,7 +378,7 @@ func (ui *ui) buildNewProfileCreator() {
 			ui.showDialog(dialog.NewError(errors.New("Device name must be set"), ui.window), nil)
 			return
 		}
-		err := ui.bounce.SetProfile(profileNameEntry.Text, ui.widgets.newInstall.newProfileImageData, deviceNameEntry.Text)
+		err := ui.bounce.SetProfile(ui.widgets.newInstall.profileNameEntry.Text, ui.widgets.newInstall.newProfileImageData, deviceNameEntry.Text)
 		if err != nil {
 			ui.showDialog(dialog.NewError(errors.New("Error saving profile: "+err.Error()), ui.window), nil)
 			return
@@ -380,8 +386,8 @@ func (ui *ui) buildNewProfileCreator() {
 	})
 	saveButton.Importance = widget.HighImportance
 	backButton := widget.NewButton("Back", func() {
-		profileNameEntry.Text = ""
-		profileNameEntry.Refresh()
+		ui.widgets.newInstall.profileNameEntry.Text = ""
+		ui.widgets.newInstall.profileNameEntry.Refresh()
 		ui.widgets.newInstall.newProfileImage.setString("")
 		deviceNameEntry.Text = ""
 		deviceNameEntry.Refresh()

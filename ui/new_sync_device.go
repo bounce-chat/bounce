@@ -45,8 +45,7 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 			if fyne.CurrentDevice().IsMobile() {
 				ui.mobileBack()
 			} else {
-				ui.window.SetContent(ui.views.nameNewDevice)
-				ui.views.nameNewDevice.Show()
+				ui.showNameNewDevice()
 			}
 		}),
 		deviceNameEntry: widget.NewEntry(),
@@ -155,6 +154,7 @@ func (ui *ui) showNewSyncDevice() {
 	}
 	ui.state.currentView = viewTypeNewSyncDevice
 	ui.window.SetContent(ui.views.newSyncDevice)
+	ui.window.Canvas().Focus(ui.widgets.newSyncDevice.syncStringEntry)
 }
 
 func (ui *ui) buildNewSyncDevice() {
