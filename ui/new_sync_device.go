@@ -155,6 +155,10 @@ func (ui *ui) showNewSyncDevice() {
 	ui.state.currentView = viewTypeNewSyncDevice
 	ui.window.SetContent(ui.views.newSyncDevice)
 	ui.window.Canvas().Focus(ui.widgets.newSyncDevice.syncStringEntry)
+
+	ui.widgets.newSyncDevice.syncStringInput.Show()
+	ui.widgets.newSyncDevice.backButton.Enable()
+	ui.widgets.newSyncDevice.infiniteProgressBar.Hide()
 }
 
 func (ui *ui) buildNewSyncDevice() {
