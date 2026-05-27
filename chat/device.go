@@ -24,6 +24,7 @@ type device struct {
 	UserID         uuid.UUID
 	Address        string `gorm:"uniqueIndex"`
 	Timestamp      int64
+	SavedAt        int64 `msgpack:"-"`
 	LastSeen       int64 `msgpack:"-"`
 	RevokedAt      int64
 	ECDHPublicKey  []byte                 `msgpack:"-"`
@@ -35,6 +36,7 @@ func (d *device) BeforeCreate(tx *gorm.DB) error {
 	if d.ID == uuid.Nil {
 		return errors.New("device must have ID set before creation")
 	}
+	d.SavedAt = time.Now().Unix()
 	return nil
 }
 
@@ -80,6 +82,10 @@ func (d *device) getAuthor() uuid.UUID {
 
 func (d *device) getTimestamp() int64 {
 	return d.Timestamp
+}
+
+func (d *device) getSavedAt() int64 {
+	return d.SavedAt
 }
 
 func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadcastable, bool) {

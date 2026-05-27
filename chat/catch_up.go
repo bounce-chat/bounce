@@ -39,7 +39,7 @@ type frame struct {
 // A catch up is a frame that is used to transport a set of frames that are chronologically ordered
 type catchUp struct {
 	Frames    []frame
-	sendables sortableSendables
+	sendables sortableCatchUpAbles
 }
 
 func (cu *catchUp) getType() uint16 {

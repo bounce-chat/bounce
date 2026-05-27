@@ -74,7 +74,7 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	if _, ok := encryptedDeviceCache[peer]; ok {
 		// If we're preparing this catch up for an encrypted device, pack it with encrypted versions of the frames
 		cuForEncryptedDevice := &catchUp{
-			sendables: sortableSendables{},
+			sendables: sortableCatchUpAbles{},
 		}
 
 		for _, br := range broadcastables {
@@ -93,11 +93,11 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	} else {
 		// If we're preparing this catch up for a normal device, pack the frames in directly
 		cu := &catchUp{
-			sendables: sortableSendables{},
+			sendables: sortableCatchUpAbles{},
 		}
 
 		for _, br := range broadcastables {
-			s, ok := br.(sortableSendable)
+			s, ok := br.(catchUpAble)
 			if !ok {
 				log.Error("broadcastable frame is not also a sortableSendable frame")
 			}

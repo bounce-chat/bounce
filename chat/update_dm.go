@@ -60,7 +60,8 @@ type updateDM struct {
 	Actor     uuid.UUID
 	Target    uuid.UUID // XOR of two users in the DM
 	Timestamp int64
-	Seen      bool `msgpack:"-"`
+	SavedAt   int64 `msgpack:"-"`
+	Seen      bool  `msgpack:"-"`
 	Type      uint16
 	Data      []byte
 }
@@ -69,6 +70,7 @@ func (ud *updateDM) BeforeCreate(tx *gorm.DB) error {
 	if ud.ID == uuid.Nil {
 		return errors.New("update DM ID must be set before creation")
 	}
+	ud.SavedAt = time.Now().Unix()
 
 	return nil
 }
@@ -123,6 +125,10 @@ func (ud *updateDM) getAuthor() uuid.UUID {
 
 func (ud *updateDM) getTimestamp() int64 {
 	return ud.Timestamp
+}
+
+func (ud *updateDM) getSavedAt() int64 {
+	return ud.SavedAt
 }
 
 func (ud *updateDM) validPayload() error {

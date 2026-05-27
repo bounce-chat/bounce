@@ -48,13 +48,15 @@ type updateUser struct {
 	Data         []byte
 	PreviousData []byte `msgpack:"-"` // Used to store the old name during a name change
 	Timestamp    int64
-	Seen         bool `msgpack:"-"`
+	SavedAt      int64 `msgpack:"-"`
+	Seen         bool  `msgpack:"-"`
 }
 
 func (uu *updateUser) BeforeCreate(tx *gorm.DB) error {
 	if uu.ID == uuid.Nil {
 		return errors.New("update user ID must be set before creation")
 	}
+	uu.SavedAt = time.Now().Unix()
 
 	return nil
 }
@@ -102,6 +104,10 @@ func (uu *updateUser) getAuthor() uuid.UUID {
 
 func (uu *updateUser) getTimestamp() int64 {
 	return uu.Timestamp
+}
+
+func (uu *updateUser) getSavedAt() int64 {
+	return uu.SavedAt
 }
 
 func (uu *updateUser) validPayload() error {

@@ -102,6 +102,10 @@ func (gm *groupMessage) getTimestamp() int64 {
 	return gm.WrittenAt
 }
 
+func (gm *groupMessage) getSavedAt() int64 {
+	return gm.SavedAt
+}
+
 func (gm *groupMessage) empty() bool {
 	return gm.Text == "" && len(gm.ImageAttachments) == 0 && len(gm.FileAttachments) == 0
 }

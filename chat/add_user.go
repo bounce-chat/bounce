@@ -23,6 +23,7 @@ type addUser struct {
 	ID                 uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Xor                uuid.UUID
 	Timestamp          int64
+	SavedAt            int64 `msgpack:"-"`
 	OfferUser          []byte
 	RequesterUser      []byte
 	OfferDevice        string
@@ -35,6 +36,7 @@ func (au *addUser) BeforeCreate(tx *gorm.DB) error {
 	if au.ID == uuid.Nil {
 		log.Fatal("add user must have an ID assigned before save")
 	}
+	au.SavedAt = time.Now().Unix()
 	return nil
 }
 
@@ -82,6 +84,10 @@ func (au *addUser) getAuthor() uuid.UUID {
 
 func (au *addUser) getTimestamp() int64 {
 	return au.Timestamp
+}
+
+func (au *addUser) getSavedAt() int64 {
+	return au.SavedAt
 }
 
 func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastable, bool) {

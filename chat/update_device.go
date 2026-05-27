@@ -37,6 +37,7 @@ type updateDevice struct {
 	Type      uint16
 	Data      []byte
 	Timestamp int64
+	SavedAt   int64     `msgpack:"-"`
 	Author    uuid.UUID `msgpack:"-"`
 }
 
@@ -44,6 +45,7 @@ func (ud *updateDevice) BeforeCreate(tx *gorm.DB) error {
 	if ud.ID == uuid.Nil {
 		return errors.New("update device ID must be set before creation")
 	}
+	ud.SavedAt = time.Now().Unix()
 
 	return nil
 }
@@ -94,6 +96,10 @@ func (ud *updateDevice) getAuthor() uuid.UUID {
 
 func (ud *updateDevice) getTimestamp() int64 {
 	return ud.Timestamp
+}
+
+func (ud *updateDevice) getSavedAt() int64 {
+	return ud.SavedAt
 }
 
 func (ud *updateDevice) validPayload() error {

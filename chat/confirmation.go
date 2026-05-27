@@ -24,12 +24,14 @@ type confirmation struct {
 	SigningDevice string
 	Signature     []byte
 	Timestamp     int64
+	SavedAt       int64 `msgpack:"-"`
 }
 
 func (c *confirmation) BeforeCreate(tx *gorm.DB) error {
 	if c.ID == uuid.Nil {
 		return errors.New("confirmation must have an ID assigned before creation")
 	}
+	c.SavedAt = time.Now().Unix()
 	return nil
 }
 
@@ -79,6 +81,10 @@ func (c *confirmation) getAuthor() uuid.UUID {
 
 func (c *confirmation) getTimestamp() int64 {
 	return c.Timestamp
+}
+
+func (c *confirmation) getSavedAt() int64 {
+	return c.SavedAt
 }
 
 func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) (broadcastable, bool) {

@@ -29,7 +29,13 @@ type draft struct {
 	Thread    uuid.UUID
 	Text      string
 	Timestamp int64
-	Saved     bool `gorm:"-"`
+	Saved     bool  `gorm:"-"`
+	SavedAt   int64 `msgpack:"-"`
+}
+
+func (d *draft) BeforeCreate(tx *gorm.DB) error {
+	d.SavedAt = time.Now().Unix()
+	return nil
 }
 
 func (d *draft) AfterDelete(tx *gorm.DB) error {
@@ -60,6 +66,10 @@ func (d *draft) getPayload() []byte {
 
 func (d *draft) getTimestamp() int64 {
 	return d.Timestamp
+}
+
+func (d *draft) getSavedAt() int64 {
+	return d.SavedAt
 }
 
 func (d *draft) getScope(myID uuid.UUID) int {

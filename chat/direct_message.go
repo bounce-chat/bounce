@@ -109,6 +109,10 @@ func (dm *directMessage) getTimestamp() int64 {
 	return dm.WrittenAt
 }
 
+func (dm *directMessage) getSavedAt() int64 {
+	return dm.SavedAt
+}
+
 func (dm *directMessage) empty() bool {
 	return dm.Text == "" && len(dm.ImageAttachments) == 0 && len(dm.FileAttachments) == 0
 }

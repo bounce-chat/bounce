@@ -71,29 +71,82 @@ type sortable interface {
 	getTimestamp() int64
 }
 
-type sortableSendable interface {
+type identifiable interface {
 	getID() uuid.UUID
+}
+
+type catchUpAble interface {
+	identifiable
 	sendable
-	sortable
+	getSavedAt() int64
 }
 
 type broadcastable interface {
-	sortableSendable
+	identifiable
+	sendable
+	sortable
 	getScope(myID uuid.UUID) int
 	getDestination(myID uuid.UUID) uuid.UUID
 	getAuthor() uuid.UUID
 }
 
-type sortableSendables []sortableSendable
+type sortableCatchUpAbles []catchUpAble
 
-func (sss sortableSendables) Len() int {
-	return len(sss)
+var catchUpOrder = map[uint16]int{
+	typeAddUser:        0,
+	typeDevice:         1,
+	typeUpdateDevice:   2,
+	typeUpdateUser:     3,
+	typeUpdateDM:       4,
+	typeDirectMessage:  5,
+	typeGroupCreation:  6,
+	typeUpdateGroup:    7,
+	typeGroupMessage:   8,
+	typeConfirmation:   9,
+	typeReadReceipt:    10,
+	typeUpdateSettings: 11,
+	typeFile:           12,
+	typeChunkOffer:     13,
+	typeDraft:          14,
 }
-func (sss sortableSendables) Swap(i, j int) {
-	sss[i], sss[j] = sss[j], sss[i]
+
+func (scua sortableCatchUpAbles) Len() int {
+	return len(scua)
 }
-func (sss sortableSendables) Less(i, j int) bool {
-	return sss[i].getTimestamp() < sss[j].getTimestamp()
+func (scua sortableCatchUpAbles) Swap(i, j int) {
+	scua[i], scua[j] = scua[j], scua[i]
+}
+func (scua sortableCatchUpAbles) Less(i, j int) bool {
+	if scua[i].getSavedAt() == scua[j].getSavedAt() {
+		iType := scua[i].getType()
+		jType := scua[j].getType()
+
+		if iType == typeEncryptedFrame {
+			iType = scua[i].(encryptedFrame).Type
+		}
+		if jType == typeEncryptedFrame {
+			jType = scua[j].(encryptedFrame).Type
+		}
+
+		iOrder, ok := catchUpOrder[iType]
+		if !ok {
+			log.WithFields(log.Fields{
+				"type": iType,
+			}).Error("catch up type cannot be ordered")
+			return false
+		}
+		jOrder, ok := catchUpOrder[jType]
+		if !ok {
+			log.WithFields(log.Fields{
+				"type": jType,
+			}).Error("catch up type cannot be ordered")
+			return false
+		}
+
+		return iOrder < jOrder
+	}
+
+	return scua[i].getSavedAt() < scua[j].getSavedAt()
 }
 
 type SignedFrame struct {

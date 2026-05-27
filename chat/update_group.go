@@ -67,6 +67,7 @@ type updateGroup struct {
 	Actor         uuid.UUID
 	Target        uuid.UUID
 	Timestamp     int64
+	SavedAt       int64 `msgpack:"-"`
 	Type          uint16
 	Data          []byte
 	CustomScope   uuid.UUID `msgpack:"-"`
@@ -80,6 +81,7 @@ func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
 	if ug.ID == uuid.Nil {
 		return errors.New("update group ID must be set before creation")
 	}
+	ug.SavedAt = time.Now().Unix()
 
 	if len(ug.CustomScope) == 0 {
 		ug.CustomScope = uuid.Nil
@@ -154,6 +156,10 @@ func (ug *updateGroup) getAuthor() uuid.UUID {
 
 func (ug *updateGroup) getTimestamp() int64 {
 	return ug.Timestamp
+}
+
+func (ug *updateGroup) getSavedAt() int64 {
+	return ug.SavedAt
 }
 
 func (ug *updateGroup) confirmingUsers(possibleUsers []uuid.UUID) int {

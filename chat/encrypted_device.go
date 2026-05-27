@@ -374,10 +374,16 @@ type encryptedFrame struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Type             uint16
 	Timestamp        int64
+	SavedAt          int64 `msgpack:"-"`
 	Payload          []byte
 	DeleteAt         int64
 	Recipients       []recipient
 	DeviceRecipients []deviceRecipient
+}
+
+func (ef *encryptedFrame) BeforeCreate(tx *gorm.DB) error {
+	ef.SavedAt = time.Now().Unix()
+	return nil
 }
 
 func (ef encryptedFrame) getID() uuid.UUID {
@@ -390,6 +396,10 @@ func (ef encryptedFrame) getType() uint16 {
 
 func (ef encryptedFrame) getTimestamp() int64 {
 	return ef.Timestamp
+}
+
+func (ef encryptedFrame) getSavedAt() int64 {
+	return ef.SavedAt
 }
 
 func (ef encryptedFrame) getPayload() []byte {

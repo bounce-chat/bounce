@@ -44,12 +44,14 @@ type readReceipt struct {
 	Target      uuid.UUID
 	TargetType  uint16
 	Timestamp   int64
+	SavedAt     int64 `msgpack:"-"`
 }
 
 func (rr *readReceipt) BeforeCreate(tx *gorm.DB) error {
 	if rr.ID == uuid.Nil {
 		return errors.New("read receipt ID must be set before creation")
 	}
+	rr.SavedAt = time.Now().Unix()
 
 	return nil
 }
@@ -100,6 +102,10 @@ func (rr *readReceipt) getAuthor() uuid.UUID {
 
 func (rr *readReceipt) getTimestamp() int64 {
 	return rr.Timestamp
+}
+
+func (rr *readReceipt) getSavedAt() int64 {
+	return rr.SavedAt
 }
 
 func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) (broadcastable, bool) {

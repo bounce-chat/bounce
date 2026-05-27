@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
@@ -20,6 +21,7 @@ type groupCreation struct {
 	cachedEncoding
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Timestamp int64
+	SavedAt   int64  `msgpack:"-"`
 	Data      []byte `gorm:"not null"` // Original group structure, msgpacked
 }
 
@@ -27,6 +29,7 @@ func (gc *groupCreation) BeforeCreate(tx *gorm.DB) error {
 	if gc.ID == uuid.Nil {
 		return errors.New("group creation must have an ID assigned before creation")
 	}
+	gc.SavedAt = time.Now().Unix()
 	return nil
 }
 
@@ -78,6 +81,10 @@ func (gc *groupCreation) getAuthor() uuid.UUID {
 
 func (gc *groupCreation) getTimestamp() int64 {
 	return gc.Timestamp
+}
+
+func (gc *groupCreation) getSavedAt() int64 {
+	return gc.SavedAt
 }
 
 func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) (broadcastable, bool) {

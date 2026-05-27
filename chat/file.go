@@ -63,6 +63,7 @@ type file struct {
 	Destination uuid.UUID
 	Author      uuid.UUID
 	Timestamp   int64
+	SavedAt     int64   `msgpack:"-"`
 	Chunks      []chunk `msgpack:"-"`
 }
 
@@ -70,6 +71,7 @@ func (f *file) AfterDelete(tx *gorm.DB) error {
 	if f.ID == uuid.Nil {
 		return nil
 	}
+	f.SavedAt = time.Now().Unix()
 	err := tx.Clauses(clause.Returning{}).Where("file_id = ?", f.ID).Delete(&chunk{}).Error
 	if err != nil {
 		return err
@@ -133,6 +135,10 @@ func (f *file) getAuthor() uuid.UUID {
 
 func (f *file) getTimestamp() int64 {
 	return f.Timestamp
+}
+
+func (f *file) getSavedAt() int64 {
+	return f.SavedAt
 }
 
 func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
@@ -292,9 +298,15 @@ type chunkOffer struct {
 	Hash            string
 	Location        string
 	Timestamp       int64
+	SavedAt         int64 `msgpack:"-"`
 	Scope           int
 	Destination     uuid.UUID
 	LastRequestTime int64 `msgpack:"-"`
+}
+
+func (co *chunkOffer) BeforeCreate(tx *gorm.DB) error {
+	co.SavedAt = time.Now().Unix()
+	return nil
 }
 
 func (co *chunkOffer) getID() uuid.UUID {
@@ -340,6 +352,10 @@ func (co *chunkOffer) getAuthor() uuid.UUID {
 
 func (co *chunkOffer) getTimestamp() int64 {
 	return co.Timestamp
+}
+
+func (co *chunkOffer) getSavedAt() int64 {
+	return co.SavedAt
 }
 
 func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) (broadcastable, bool) {

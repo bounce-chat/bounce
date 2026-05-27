@@ -36,12 +36,14 @@ type updateSettings struct {
 	Type      uint16
 	Data      []byte
 	Timestamp int64
+	SavedAt   int64 `msgpack:"-"`
 }
 
 func (us *updateSettings) BeforeCreate(tx *gorm.DB) error {
 	if us.ID == uuid.Nil {
 		return errors.New("update settings ID must be set before creation")
 	}
+	us.SavedAt = time.Now().Unix()
 
 	return nil
 }
@@ -93,6 +95,10 @@ func (us *updateSettings) getAuthor() uuid.UUID {
 
 func (us *updateSettings) getTimestamp() int64 {
 	return us.Timestamp
+}
+
+func (us *updateSettings) getSavedAt() int64 {
+	return us.SavedAt
 }
 
 func (us *updateSettings) validPayload() error {
