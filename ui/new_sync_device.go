@@ -159,6 +159,8 @@ func (ui *ui) showNewSyncDevice() {
 	ui.widgets.newSyncDevice.syncStringInput.Show()
 	ui.widgets.newSyncDevice.backButton.Enable()
 	ui.widgets.newSyncDevice.infiniteProgressBar.Hide()
+	ui.widgets.newSyncDevice.currentStep.Text = ""
+	ui.widgets.newSyncDevice.currentStep.Refresh()
 }
 
 func (ui *ui) buildNewSyncDevice() {
