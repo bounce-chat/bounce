@@ -40,9 +40,25 @@ The sync scope consists of your sync devices.  Frames that might be sent to your
 
 ### User
 
+The user scope contains all of your sync devices, as well as all of the devices belonging to one other user.  This is used for direct messages, as well as settings related to a DM (message retention, etc).
+
 ### Group
 
+The group scope is used for group messages and contains all of the devices belonging to all of the users who are members of the group.
+
+### GroupWithInvites
+
+The GroupWithInvites scope extends the group scope to include the device groups of all of the users who have a pending invite.  This scope is used for all of the metadata about a group (see: Group Consensus), including it's creation, any name or image changes, as well as changes to the list of invited and active members.  This allows users to see the group details before they join, but prevents them from having access to group messages until they join.
+
+When a user with an invite accepts the invite and becomes a member, they go from being in the GroupWithInvites scope to being in the Group scope for that group, and as a result can see all of the historic messages for the group.
+
 ### Global / Overlap
+
+The global scope is used to share profile updates with all known contacts and includes all devices associated with known users.  When a user updates their name or profile picture, this is broadcast using the global scope.  When a user receives someone else's globally scoped updated, the user broadcasts it to the best of their ability using the Overlap Scope.  The overlap scope is defined as all devices belonging to users who share a group with the user in question.  This way, if user A changes their name, and you know user A is in a group with user B, you know it's safe to send that update to user B, since they will necessarily be in user A's global scope.  Both you and user A might be friends with user C, but if you don't share a group you can't be certain of that, and so you do not share the update with user C.
+
+### Custom
+
+The custom scope uses records in the database that define a specific set of devices.  This is used when the context for a scope is disappearing, but it is important to share a frame with certain devices.  For example, when a group is deleted, the group is removed from the database.  But the frame that deletes the group should be saved, and shared with any members of the group who might come online later and need to be informed.  This is accomplished by saving the devices that are in the group in a custom scope, then deleting the group, then preserving the delete action with that custom scope.
 
 ## Delivery Tracking and References
 
