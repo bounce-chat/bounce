@@ -13,6 +13,7 @@ import (
 
 const char *batteryOptimizationsIgnored(uintptr_t java_vm, uintptr_t jni_env, uintptr_t ctx);
 const char *requestIgnoreBatteryOptimizations(uintptr_t java_vm, uintptr_t jni_env, uintptr_t ctx);
+const void *updateSystemBarsAppearance(uintptr_t java_vm, uintptr_t jni_env, uintptr_t ctx, bool dark);
 */
 import "C"
 
@@ -47,6 +48,16 @@ func requestIgnoreBatteryOptimizations() {
 				"error": goStr,
 			}).Error("error starting intent to ignore battery optimizations")
 		}
+
+		return nil
+	})
+}
+
+func setStatusBar(dark bool) {
+	driver.RunNative(func(ctx interface{}) error {
+		ac := ctx.(*driver.AndroidContext)
+
+		C.updateSystemBarsAppearance(C.uintptr_t(ac.VM), C.uintptr_t(ac.Env), C.uintptr_t(ac.Ctx), C.bool(dark))
 
 		return nil
 	})

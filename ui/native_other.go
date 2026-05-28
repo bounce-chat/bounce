@@ -1,4 +1,4 @@
-//go:build !android && !ios
+//go:build !android
 
 package ui
 
@@ -8,3 +8,5 @@ func batteryOptimizationsIgnored() bool {
 
 func requestIgnoreBatteryOptimizations() {
 }
+
+func setStatusBar(_ bool) {}

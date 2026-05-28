@@ -183,6 +183,19 @@ func (ui *ui) build() {
 		ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
 	}
 
+	// For some reason, these calls don't work until after the UI is entirely up on Android
+	if fyne.CurrentDevice().IsMobile() {
+		go func() {
+			time.Sleep(1 * time.Second)
+
+			if ui.app.Preferences().Bool(darkMode) {
+				setStatusBar(true)
+			} else {
+				setStatusBar(false)
+			}
+		}()
+	}
+
 	// Define the main window
 	ui.window = ui.app.NewWindow("Bounce")
 	ui.window.SetMaster()

@@ -247,8 +247,10 @@ func (ui *ui) setDarkMode(value bool) {
 	ui.widgets.settings.darkMode.Refresh()
 	if value {
 		ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantDark})
+		setStatusBar(true)
 	} else {
 		ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
+		setStatusBar(false)
 	}
 }
 
