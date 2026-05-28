@@ -50,6 +50,7 @@ func readFrame(conn net.Conn, deviceIsKnown bool) (uint16, []byte, error) {
 				"peer": conn.RemoteAddr().String(),
 				"size": payloadSize,
 			}).Warn(errKnownDeviceFrameTooLarge.Error())
+			conn.Close()
 			return 0, []byte{}, errKnownDeviceFrameTooLarge
 		}
 	} else {
@@ -58,6 +59,7 @@ func readFrame(conn net.Conn, deviceIsKnown bool) (uint16, []byte, error) {
 				"peer": conn.RemoteAddr().String(),
 				"size": payloadSize,
 			}).Warn(errUnknownDeviceFrameTooLarge.Error())
+			conn.Close()
 			return 0, []byte{}, errUnknownDeviceFrameTooLarge
 		}
 	}
