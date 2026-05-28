@@ -1239,6 +1239,10 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 
 	go b.sendAck(peer, typeReferenceOffer, ro.ID)
 
+	lastROTimeMutex.Lock()
+	lastROTime[peer] = time.Now().Unix()
+	lastROTimeMutex.Unlock()
+
 	if len(ro.References) == 0 && !b.encrypted {
 		// An encrypted device may send an empty reference offer in order to trigger the peer
 		// to request the management key hash, so that the peer can check if the encrypted device needs

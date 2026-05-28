@@ -229,6 +229,11 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) (br
 		return nil, false
 	}
 
+	// If we're learning about changes to encrypted devices, audit peers
+	if uu.Type == updateUserTypeAddEncryptedDevice || uu.Type == updateUserTypeRemoveEncryptedDevice {
+		b.auditPeers()
+	}
+
 	// If we're not in a catchup, set the state now
 	if !catchUp {
 		b.updateUserState(uu.Target)

@@ -62,6 +62,8 @@ The custom scope uses records in the database that define a specific set of devi
 
 ## Delivery Tracking and References
 
+In order to prevent re-delivering frames, Bounce keeps track of which devices have received a frame.  This is done by sending an ack frame back to the source of a frame after successfully handling it, and saving a delivery record when an ack is received.  Acks are always from one device to another, Bounce has no mechanism to indirectly learn if a device has a frame.  When two devices connect, both can search for frames that other should have but might not have.  After exchanging this list of IDs, both devices can look for frames they don't actually have and request them.  This allows two devices to only share data that the other doesn't have when syncing back up, and is known as the "reference flow".
+
 ### Acks
 
 ### Reference Offer

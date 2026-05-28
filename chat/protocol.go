@@ -67,10 +67,6 @@ type sendable interface {
 	getPayload() []byte
 }
 
-type sortable interface {
-	getTimestamp() int64
-}
-
 type identifiable interface {
 	getID() uuid.UUID
 }
@@ -84,10 +80,10 @@ type catchUpAble interface {
 type broadcastable interface {
 	identifiable
 	sendable
-	sortable
 	getScope(myID uuid.UUID) int
 	getDestination(myID uuid.UUID) uuid.UUID
 	getAuthor() uuid.UUID
+	getTimestamp() int64
 }
 
 type sortableCatchUpAbles []catchUpAble
@@ -122,10 +118,10 @@ func (scua sortableCatchUpAbles) Less(i, j int) bool {
 		jType := scua[j].getType()
 
 		if iType == typeEncryptedFrame {
-			iType = scua[i].(encryptedFrame).Type
+			iType = scua[i].(*encryptedFrame).Type
 		}
 		if jType == typeEncryptedFrame {
-			jType = scua[j].(encryptedFrame).Type
+			jType = scua[j].(*encryptedFrame).Type
 		}
 
 		iOrder, ok := catchUpOrder[iType]

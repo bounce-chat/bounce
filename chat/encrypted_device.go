@@ -906,6 +906,9 @@ func (eroc *encryptedReferenceOfferChallenge) getPayload() []byte {
 	return bytes
 }
 
+var lastROTime = map[string]int64{}
+var lastROTimeMutex sync.Mutex
+
 func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	currentUser, ok := b.currentUser()
 	if !ok {
@@ -946,10 +949,29 @@ func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []b
 	}
 	ciphertext := dekGCM.Seal(nil, []byte{}, eroc.Challenge, nil)
 
-	go b.sendDirect(peer, &encryptedReferenceOfferResponse{
-		PublicKey: currentUser.PublicECDHKey,
-		Response:  ciphertext,
-	})
+	start := time.Now().Unix()
+	success := false
+	for range 5 {
+		go b.sendDirect(peer, &encryptedReferenceOfferResponse{
+			PublicKey: currentUser.PublicECDHKey,
+			Response:  ciphertext,
+		})
+
+		time.Sleep(5 * time.Second)
+
+		lastROTimeMutex.Lock()
+		t, ok := lastROTime[peer]
+		lastROTimeMutex.Unlock()
+		if ok && t >= start {
+			success = true
+			break
+		}
+	}
+	if !success {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("gave up delivering encrypted reference offer response to peer")
+	}
 
 	return nil, false
 }
@@ -981,6 +1003,9 @@ var referenceOfferChallengeMap = map[string][]byte{}
 var referenceOfferChallengeTime = map[string]int64{}
 var peerUserKeys = map[string][]byte{}
 
+var lastERORTime = map[string]int64{}
+var lastERORTimeMutex sync.Mutex
+
 func (b *Bounce) challengeUnencryptedPeerForReferenceOffer(peer string) {
 	challenge := make([]byte, 32)
 	rand.Read(challenge)
@@ -992,10 +1017,31 @@ func (b *Bounce) challengeUnencryptedPeerForReferenceOffer(peer string) {
 
 	_, pubkey := eroChallengeKey()
 
-	go b.sendDirect(peer, &encryptedReferenceOfferChallenge{
-		Key:       pubkey,
-		Challenge: challenge,
-	})
+	start := time.Now().Unix()
+	go func() {
+		success := false
+		for range 5 {
+			go b.sendDirect(peer, &encryptedReferenceOfferChallenge{
+				Key:       pubkey,
+				Challenge: challenge,
+			})
+
+			time.Sleep(5 * time.Second)
+
+			lastERORTimeMutex.Lock()
+			t, ok := lastERORTime[peer]
+			lastERORTimeMutex.Unlock()
+			if ok && t >= start {
+				success = true
+				break
+			}
+		}
+		if !success {
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Warn("gave up delivering encrypted reference offer challenge to peer")
+		}
+	}()
 }
 
 type encryptedReferenceOfferResponse struct {
@@ -1018,6 +1064,10 @@ func (eroc *encryptedReferenceOfferResponse) getPayload() []byte {
 }
 
 func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	lastERORTimeMutex.Lock()
+	lastERORTime[peer] = time.Now().Unix()
+	lastERORTimeMutex.Unlock()
+
 	var eroc encryptedReferenceOfferResponse
 	err := msgpack.Unmarshal(payload, &eroc)
 	if err != nil {
@@ -1121,7 +1171,27 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 			}
 		}
 
-		go b.sendDirect(peer, ero)
+		go func() {
+			success := false
+			for range 5 {
+				b.sendDirect(peer, ero)
+
+				time.Sleep(10 * time.Second)
+
+				var dr deliveryRecord
+				err := b.referenceDatabase.Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, ero.ID, typeReferenceOffer).First(&dr).Error
+				if err == nil {
+					success = true
+					break
+				}
+			}
+			if !success {
+				log.WithFields(log.Fields{
+					"peer": peer,
+				}).Warn("gave up delivering reference offer to peer")
+			}
+		}()
+
 	} else {
 		log.WithFields(log.Fields{
 			"peer": peer,
