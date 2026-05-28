@@ -9,16 +9,18 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-//
-// Reader/Writer for a simple Type,Length,Value protocol used by Bounce
-//
-
 var headerSize = 6
 var typeSize = 2
 var maxPayloadSize = intPow(2, (headerSize-typeSize)*8)
 
+var maximumPayloadFromKnownDevice = maxPayloadSize
+var maximumPayloadFromUnknownDevice = 1024 * 1024
+
+var errUnknownDeviceFrameTooLarge = errors.New("refusing to read frame from unknown device that is too large")
+var errKnownDeviceFrameTooLarge = errors.New("refusing to read frame from device that is too large")
+
 // Read a Bounce frame from the socket.  This will return the type of frame, the frame bytes, and any error
-func readFrame(conn net.Conn) (uint16, []byte, error) {
+func readFrame(conn net.Conn, deviceIsKnown bool) (uint16, []byte, error) {
 	header := make([]byte, 0)
 	headerRead := 0
 	for headerRead < headerSize {
@@ -34,13 +36,31 @@ func readFrame(conn net.Conn) (uint16, []byte, error) {
 
 		}
 		header = append(header, buf[:n]...)
-	} // TODO: maybe break header reading out so the engine can drop connections with unknown frame types before reading the whole thing?
+	}
 
 	typeBytes := header[:typeSize]
 	sizeBytes := header[typeSize:]
 
 	typeInt := binary.BigEndian.Uint16(typeBytes)
 	payloadSize := binary.BigEndian.Uint32(sizeBytes)
+
+	if deviceIsKnown {
+		if int(payloadSize) > maximumPayloadFromKnownDevice {
+			log.WithFields(log.Fields{
+				"peer": conn.RemoteAddr().String(),
+				"size": payloadSize,
+			}).Warn(errKnownDeviceFrameTooLarge.Error())
+			return 0, []byte{}, errKnownDeviceFrameTooLarge
+		}
+	} else {
+		if int(payloadSize) > maximumPayloadFromUnknownDevice {
+			log.WithFields(log.Fields{
+				"peer": conn.RemoteAddr().String(),
+				"size": payloadSize,
+			}).Warn(errUnknownDeviceFrameTooLarge.Error())
+			return 0, []byte{}, errUnknownDeviceFrameTooLarge
+		}
+	}
 
 	payload := make([]byte, 0)
 	payloadRead := uint32(0)

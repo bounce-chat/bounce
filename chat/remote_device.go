@@ -154,7 +154,7 @@ func (b *Bounce) readFrames(conn net.Conn) {
 	}
 
 	for {
-		frameType, data, err := readFrame(conn) // TODO: just read the header first, make sure we want to read the rest in the context of the device (untrusted devices can't send large messages, etc)
+		frameType, data, err := readFrame(conn, deviceIsKnown)
 		if err != nil {
 			return
 		}
