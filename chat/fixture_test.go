@@ -72,7 +72,7 @@ func (t *testnet) Dial(address string) (net.Conn, error) {
 
 	go func() {
 		for {
-			frameType, payload, err := readFrame(dialerIntercept)
+			frameType, payload, err := readFrame(dialerIntercept, true)
 			if err != nil {
 				return
 			}
@@ -85,7 +85,7 @@ func (t *testnet) Dial(address string) (net.Conn, error) {
 	}()
 	go func() {
 		for {
-			frameType, payload, err := readFrame(listenerIntercept)
+			frameType, payload, err := readFrame(listenerIntercept, true)
 			if err != nil {
 				return
 			}
@@ -475,13 +475,14 @@ func (t *testUI) FileCompleted(uuid.UUID)                                       
 func (t *testUI) UserChangedGroupImage(UpdateGroupUserChangedGroupImage)           {}
 func (t *testUI) UserImageUpdated(UpdateUserUpdateImage)                           {}
 func (t *testUI) FileDownloadProgress(uuid.UUID, float64)                          {}
-func (t *testUI) CatchUpMessages(BulkUpdate)                                       {}
+func (t *testUI) CatchUpMessages(BulkUpdate, bool)                                 {}
 func (t *testUI) AnotherDeviceActive()                                             {}
 func (t *testUI) NoOtherDeviceActive()                                             {}
 func (t *testUI) EncryptedDeviceAdded()                                            {}
 func (t *testUI) EncryptedDeviceRejected()                                         {}
 func (t *testUI) EncryptedDeviceManagable(uuid.UUID)                               {}
 func (t *testUI) EncryptedDeviceUnmanagable(uuid.UUID)                             {}
+func (t *testUI) UpdateDraft(Draft)                                                {}
 
 func newBounce() *Bounce {
 	ui := newTestUI()
