@@ -438,7 +438,10 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 	}
 
 	authorized := false
-	if pubkey, ok := peerUserKeys[peer]; ok {
+	peerUserKeyMutex.Lock()
+	pubkey, ok := peerUserKeys[peer]
+	peerUserKeyMutex.Unlock()
+	if ok {
 		var au authorizedUser
 		err := b.database.Take(&au, "public_key = ?", pubkey).Error
 		if err == nil {
@@ -487,7 +490,42 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 	b.markFrameDelivered(ef.ID, ef.Type, peer)
 	go b.sendAck(peer, ef.Type, ef.ID)
 
+	go b.encryptedBroadcast(ef)
+
 	return nil, false
+}
+
+func (b *Bounce) encryptedBroadcast(ef encryptedFrame) {
+	for _, r := range ef.Recipients {
+		addr, ok := addressForKey(r.PublicKey)
+		if !ok {
+			return
+		}
+		rd := b.getRemoteDevice(addr)
+		if rd.connectedSockets.Load() > 0 {
+			b.sendDirect(addr, encryptedReceive{
+				ID:           ef.ID,
+				Type:         ef.Type,
+				Payload:      ef.Payload,
+				EncryptedDEK: r.EncryptedDEK,
+				EncrypterKey: r.EncrypterKey,
+				UseAddress:   false,
+				savedAt:      ef.SavedAt,
+			})
+		}
+	}
+}
+
+func addressForKey(key []byte) (string, bool) {
+	peerUserKeyMutex.Lock()
+	defer peerUserKeyMutex.Unlock()
+
+	for addr, key := range peerUserKeys {
+		if bytes.Equal(key, key) {
+			return addr, true
+		}
+	}
+	return "", false
 }
 
 // Stores our intention to add this user's key as a recipient to all a group's update groups up until this timestamp
@@ -588,7 +626,9 @@ func (b *Bounce) handleAppendRecipientRequest(peer string, payload []byte, _ boo
 		ID: arr.ID,
 	}
 
+	peerUserKeyMutex.Lock()
 	peerKey, ok := peerUserKeys[peer]
+	peerUserKeyMutex.Unlock()
 	if !ok {
 		log.WithFields(log.Fields{
 			"peer": peer,
@@ -1002,6 +1042,7 @@ var referenceOfferChallengeMutex sync.Mutex
 var referenceOfferChallengeMap = map[string][]byte{}
 var referenceOfferChallengeTime = map[string]int64{}
 var peerUserKeys = map[string][]byte{}
+var peerUserKeyMutex sync.Mutex
 
 var lastERORTime = map[string]int64{}
 var lastERORTimeMutex sync.Mutex
@@ -1147,9 +1188,9 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 	// Try to decypt the challenge and make sure the data is unchanged
 	decryptedChallenge, err := dekGCM.Open(nil, []byte{}, eroc.Response, nil)
 	if err == nil && bytes.Equal(challenge, decryptedChallenge) {
-		referenceOfferChallengeMutex.Lock()
+		peerUserKeyMutex.Lock()
 		peerUserKeys[peer] = eroc.PublicKey
-		referenceOfferChallengeMutex.Unlock()
+		peerUserKeyMutex.Unlock()
 
 		ero := b.getEncryptedReferenceOfferFor(peer, eroc.PublicKey)
 
@@ -1301,13 +1342,13 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 		}
 
 		// Update the peer address to key map
-		referenceOfferChallengeMutex.Lock()
+		peerUserKeyMutex.Lock()
 		for addr, key := range peerUserKeys {
 			if bytes.Equal(key, au.PublicKey) {
 				peerUserKeys[addr] = ks.PublicECDHKey
 			}
 		}
-		referenceOfferChallengeMutex.Unlock()
+		peerUserKeyMutex.Unlock()
 
 		// Update the key in the database
 		err = b.database.Table("authorized_users").Where("id = ?", au.ID).Updates(map[string]interface{}{"public_key": ks.PublicECDHKey, "signing_key": ks.PublicECDSAKey}).Error

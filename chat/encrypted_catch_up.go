@@ -24,23 +24,33 @@ type encryptedReceive struct {
 	EncrypterAddress string
 	UseAddress       bool
 	OldKeyHash       string // Indicates that a previously used key will be required to decrypt this frame
-	timestamp        int64
+	savedAt          int64
 }
 
-type sortableEncryptedReceives []encryptedReceive
+func (er encryptedReceive) getID() uuid.UUID {
+	return er.ID
+}
 
-func (ser sortableEncryptedReceives) Len() int {
-	return len(ser)
+func (er encryptedReceive) getPayload() []byte {
+	bytes, err := msgpack.Marshal(&er)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal encrypted receive")
+	}
+	return bytes
 }
-func (ser sortableEncryptedReceives) Swap(i, j int) {
-	ser[i], ser[j] = ser[j], ser[i]
+
+func (er encryptedReceive) getType() uint16 {
+	return typeEncryptedReceive
 }
-func (ser sortableEncryptedReceives) Less(i, j int) bool {
-	return ser[i].timestamp < ser[j].timestamp
+
+func (er encryptedReceive) getSavedAt() int64 {
+	return er.savedAt
 }
 
 type encryptedCatchUp struct {
-	Frames sortableEncryptedReceives
+	Frames sortableCatchUpAbles
 }
 
 func (ecu *encryptedCatchUp) getType() uint16 {
@@ -67,117 +77,20 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 		return nil, false
 	}
 
-	encryptionKeyHistory := b.encryptionKeyHistory()
-
 	decryptedFrames := []frame{}
+	keyHistory := b.encryptionKeyHistory()
 	for _, f := range ecu.Frames {
-		var kek []byte
-
-		if f.UseAddress {
-			myDevice, ok := b.getDeviceFromAddress(b.network.Address())
-			if !ok {
-				log.Warn("my device not found when handling encrypted receive")
-			}
-			recipientDevice, ok := b.getDeviceFromAddress(f.EncrypterAddress)
-			if !ok {
-				log.WithFields(log.Fields{
-					"address": f.EncrypterAddress,
-				}).Error("encrypter device not found for encrypted receive")
-			}
-
-			kek, err = b.generateKEKFromPrivateKey(myDevice.ECDHPrivateKey, recipientDevice.ECDHPublicKey)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error generating key encryption key from device for encrypted catch up frame")
-				continue
-			}
-		} else if f.OldKeyHash != "" {
-			oldPrivateKey, ok := encryptionKeyHistory[f.OldKeyHash]
-			if !ok {
-				log.WithFields(log.Fields{
-					"id":      f.ID,
-					"type":    f.Type,
-					"old_key": f.OldKeyHash,
-				}).Error("unable to find encryption key for encrypted receive that specifies and older key")
-				continue
-			}
-			kek, err = b.generateKEKFromPrivateKey(oldPrivateKey, f.EncrypterKey)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"old_key": f.OldKeyHash,
-					"error":   err.Error(),
-				}).Error("error generating key encryption key for encrypted catch up frame")
-				continue
-			}
-		} else {
-			kek, err = b.generateKEK(f.EncrypterKey)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error generating key encryption key for encrypted catch up frame")
-				continue
-			}
-		}
-
-		kekBlock, err := aes.NewCipher(kek)
-		if err != nil {
+		er, ok := f.(encryptedReceive)
+		if !ok {
 			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating block")
+				"peer": peer,
+			}).Error("frame in encrypted catch up is not encrypted receive")
 			continue
 		}
-		kekGCM, err := cipher.NewGCMWithRandomNonce(kekBlock)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating gcm")
-			continue
+		decrypted, err := b.decryptEncryptedReceive(er, keyHistory)
+		if err == nil {
+			decryptedFrames = append(decryptedFrames, decrypted)
 		}
-
-		dek, err := kekGCM.Open(nil, []byte{}, f.EncryptedDEK, nil)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"id":    f.ID,
-				"type":  f.Type,
-				"error": err.Error(),
-			}).Error("error decrypting key in encrypted catch up")
-			continue
-		}
-
-		dekBlock, err := aes.NewCipher(dek)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating block")
-			continue
-		}
-		dekGCM, err := cipher.NewGCMWithRandomNonce(dekBlock)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating gcm")
-			continue
-		}
-
-		decryptedPayload, err := dekGCM.Open(nil, []byte{}, f.Payload, nil)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"id":    f.ID,
-				"type":  f.Type,
-				"error": err.Error(),
-			}).Error("error decrypting frame in encrypted catch up")
-			continue
-		}
-
-		decryptedFrames = append(
-			decryptedFrames,
-			frame{
-				ID:      f.ID,
-				Type:    f.Type,
-				Payload: decryptedPayload,
-			},
-		)
 	}
 
 	cu := &catchUp{
@@ -194,12 +107,145 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 	return b.handleCatchUp(peer, decryptedCatchUpPayload, true)
 }
 
+func (b *Bounce) handleEncryptedReceive(peer string, payload []byte, _ bool) (broadcastable, bool) {
+	var er encryptedReceive
+	err := msgpack.Unmarshal(payload, &er)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling encrypted receive")
+		return nil, false
+	}
+
+	decrypted, err := b.decryptEncryptedReceive(er, b.encryptionKeyHistory())
+	if err != nil {
+		return nil, false
+	}
+
+	handlers := b.getHandlers(false)
+	handler, ok := handlers[decrypted.Type]
+	if ok {
+		return handler(peer, decrypted.Payload, false)
+	}
+
+	return nil, false
+}
+
+func (b *Bounce) decryptEncryptedReceive(f encryptedReceive, encryptionKeyHistory map[string][]byte) (frame, error) {
+	var kek []byte
+	var empty frame
+	var err error
+
+	if f.UseAddress {
+		myDevice, ok := b.getDeviceFromAddress(b.network.Address())
+		if !ok {
+			log.Warn("my device not found when handling encrypted receive")
+		}
+		recipientDevice, ok := b.getDeviceFromAddress(f.EncrypterAddress)
+		if !ok {
+			log.WithFields(log.Fields{
+				"address": f.EncrypterAddress,
+			}).Error("encrypter device not found for encrypted receive")
+		}
+
+		kek, err = b.generateKEKFromPrivateKey(myDevice.ECDHPrivateKey, recipientDevice.ECDHPublicKey)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error generating key encryption key from device for encrypted catch up frame")
+			return empty, err
+		}
+	} else if f.OldKeyHash != "" {
+		oldPrivateKey, ok := encryptionKeyHistory[f.OldKeyHash]
+		if !ok {
+			log.WithFields(log.Fields{
+				"id":      f.ID,
+				"type":    f.Type,
+				"old_key": f.OldKeyHash,
+			}).Error("unable to find encryption key for encrypted receive that specifies and older key")
+			return empty, errors.New("encryption key not found")
+		}
+		kek, err = b.generateKEKFromPrivateKey(oldPrivateKey, f.EncrypterKey)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"old_key": f.OldKeyHash,
+				"error":   err.Error(),
+			}).Error("error generating key encryption key for encrypted catch up frame")
+			return empty, err
+		}
+	} else {
+		kek, err = b.generateKEK(f.EncrypterKey)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error generating key encryption key for encrypted catch up frame")
+			return empty, err
+		}
+	}
+
+	kekBlock, err := aes.NewCipher(kek)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating block")
+		return empty, err
+	}
+	kekGCM, err := cipher.NewGCMWithRandomNonce(kekBlock)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating gcm")
+		return empty, err
+	}
+
+	dek, err := kekGCM.Open(nil, []byte{}, f.EncryptedDEK, nil)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"id":    f.ID,
+			"type":  f.Type,
+			"error": err.Error(),
+		}).Error("error decrypting key in encrypted catch up")
+		return empty, err
+	}
+
+	dekBlock, err := aes.NewCipher(dek)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating block")
+		return empty, err
+	}
+	dekGCM, err := cipher.NewGCMWithRandomNonce(dekBlock)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error creating gcm")
+		return empty, err
+	}
+
+	decryptedPayload, err := dekGCM.Open(nil, []byte{}, f.Payload, nil)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"id":    f.ID,
+			"type":  f.Type,
+			"error": err.Error(),
+		}).Error("error decrypting frame in encrypted catch up")
+		return empty, err
+	}
+
+	return frame{
+		ID:      f.ID,
+		Type:    f.Type,
+		Payload: decryptedPayload,
+	}, nil
+}
+
 func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *encryptedCatchUp {
 	ecu := &encryptedCatchUp{}
 
-	referenceOfferChallengeMutex.Lock()
+	peerUserKeyMutex.Lock()
 	peerKey, ok := peerUserKeys[peer]
-	referenceOfferChallengeMutex.Unlock()
+	peerUserKeyMutex.Unlock()
 	if !ok {
 		log.WithFields(log.Fields{
 			"peer": peer,
@@ -312,7 +358,7 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 				EncryptedDEK: desiredRecipient.EncryptedDEK,
 				EncrypterKey: desiredRecipient.EncrypterKey,
 				UseAddress:   false,
-				timestamp:    ef.Timestamp,
+				savedAt:      ef.Timestamp,
 			}
 
 			// If this recipient differs from the current key for our user, include the key hash of the appropriate key.  We also
@@ -328,7 +374,7 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 				EncryptedDEK:     desiredDeviceRecipient.EncryptedDEK,
 				EncrypterAddress: desiredDeviceRecipient.Counterparty,
 				UseAddress:       true,
-				timestamp:        ef.Timestamp,
+				savedAt:          ef.Timestamp,
 			}
 		}
 

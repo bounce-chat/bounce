@@ -61,6 +61,7 @@ var typeAppendRecipientRequest = uint16(40)
 var typeAppendRecipientResponse = uint16(41)
 var typeAppendRecipientPayloads = uint16(42)
 var typeDraft = uint16(43)
+var typeEncryptedReceive = uint16(44)
 
 type sendable interface {
 	getType() uint16
@@ -203,6 +204,7 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 		typeChunkRequest:                      b.handleChunkRequest,
 		typeChunk:                             b.handleChunk,
 		typeActiveDevice:                      b.handleActiveDevice,
+		typeEncryptedReceive:                  b.handleEncryptedReceive,
 		typeEncryptedCatchUp:                  b.handleEncryptedCatchUp,
 		typeEncryptedDeviceManagementResponse: b.handleEncryptedDeviceManagementResponse,
 		typeEncryptedReferenceOfferChallenge:  b.handleEncryptedReferenceOfferChallenge,
