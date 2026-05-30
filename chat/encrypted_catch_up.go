@@ -155,6 +155,19 @@ func (b *Bounce) handleEncryptedReceive(peer string, payload []byte, _ bool) (br
 		br, _ := handler(peer, decrypted.Payload, false)
 		if br != nil {
 			go b.sendAck(peer, decrypted.Type, decrypted.ID)
+			err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
+				Destination: peer,
+				FrameID:     decrypted.ID,
+				FrameType:   decrypted.Type,
+			}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"id":    decrypted.ID,
+					"type":  decrypted.Type,
+					"peer":  peer,
+				}).Error("error saving delivery tracking for encrypted receive")
+			}
 		}
 	} else {
 		log.WithFields(log.Fields{
