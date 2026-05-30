@@ -67,6 +67,11 @@ type file struct {
 	Chunks      []chunk `msgpack:"-"`
 }
 
+func (f *file) BeforeCreate(tx *gorm.DB) error {
+	f.SavedAt = time.Now().Unix()
+	return nil
+}
+
 func (f *file) AfterDelete(tx *gorm.DB) error {
 	if f.ID == uuid.Nil {
 		return nil
@@ -941,6 +946,11 @@ func (b *Bounce) embedFile(fileID uuid.UUID, data []byte, scope int, destination
 		return ErrFileTooBig
 	}
 
+	err := os.WriteFile(b.configDirectory+"/blobs/"+fileID.String(), data, 0644)
+	if err != nil {
+		return err
+	}
+
 	hash := blake3.Sum256(data)
 
 	chunks, hashList := splitChunks(fileID, data)
@@ -962,7 +972,6 @@ func (b *Bounce) embedFile(fileID uuid.UUID, data []byte, scope int, destination
 		HashList:    hashList,
 		Chunks:      chunks,
 	}
-	var err error
 	f.OriginalPayload, err = msgpack.Marshal(f)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -976,7 +985,6 @@ func (b *Bounce) embedFile(fileID uuid.UUID, data []byte, scope int, destination
 	if err != nil {
 		return err
 	}
-	os.WriteFile(b.configDirectory+"/blobs/"+fileID.String(), data, 0644)
 
 	b.broadcast(f)
 
