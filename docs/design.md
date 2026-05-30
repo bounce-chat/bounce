@@ -62,15 +62,21 @@ The custom scope uses records in the database that define a specific set of devi
 
 ## Delivery Tracking and References
 
-In order to prevent re-delivering frames, Bounce keeps track of which devices have received a frame.  This is done by sending an ack frame back to the source of a frame after successfully handling it, and saving a delivery record when an ack is received.  Acks are always from one device to another, Bounce has no mechanism to indirectly learn if a device has a frame.  When two devices connect, both can search for frames that other should have but might not have.  After exchanging this list of IDs, both devices can look for frames they don't actually have and request them.  This allows two devices to only share data that the other doesn't have when syncing back up, and is known as the "reference flow".
-
-### Acks
+In order to prevent re-delivering frames, Bounce keeps track of which devices have received a frame.  This is done by sending an ack frame back to the source of a frame after successfully handling it, and saving a delivery record when an ack is received.  Acks are always from one device to another, Bounce has no mechanism to indirectly learn if a device has a frame.  When two devices connect, both can search for frames that other should have but might not have.  After exchanging this list of IDs, both devices can look for frames they need from the other, and request them.  This allows two devices to only share data that the other doesn't have when syncing back up, and is known as the "reference flow", as devices pass around "references" (consisting of the UUID and type of a frame) to each other.
 
 ### Reference Offer
 
+The reference offer is the first step in the reference flow.  Every time a device opens a socket to another device, it sends a reference offer, unless there are no frames to offer.  To generate a reference offer, a device checks every frame that the peer is authorized to have, and joins the delivery records table.  If there is no record of successful delivery to the peer, a reference to the frame is included in the reference offer.
+
 ### Reference Request
 
+When handing a reference offer, a device checks each reference and sees if it has the frame in the database.  If it already has the frame, it includes the reference in an ack that gets sent back to the peer.  If it doesn't have the frame, it includes the reference in a reference request that gets sent back to the peer.
+
 ### Catch Up
+
+When handling a reference request, a device iterates through the references and confirms that the requesting peer does indeed have the right to view the frame.  If so, the frames is marshaled and collected into a slice on a catch up frame.  The frames are then sorted by the time the device first saved them locally, and this catch up frame is then sent to the requester
+
+When handling a catch up, each frame is sequentially processed by the same handler that would process it if it was received in real time on the wire.  However, when handlers know that a frame is part of a catchup, they forgo some calls into the UI.  The catch up handler keeps track of which UI states might need to be updated, and updates them in bulk after all of the frames are processed.  
 
 ## Adding Users
 
