@@ -520,8 +520,8 @@ func addressForKey(key []byte) (string, bool) {
 	peerUserKeyMutex.Lock()
 	defer peerUserKeyMutex.Unlock()
 
-	for addr, key := range peerUserKeys {
-		if bytes.Equal(key, key) {
+	for addr, peerKey := range peerUserKeys {
+		if bytes.Equal(peerKey, key) {
 			return addr, true
 		}
 	}
