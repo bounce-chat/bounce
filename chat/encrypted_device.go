@@ -501,7 +501,9 @@ func (b *Bounce) encryptedBroadcast(ef encryptedFrame) {
 		if !ok {
 			return
 		}
-		if !b.isDeliveredTo(ef, addr) {
+		var dr deliveryRecord
+		err := b.database.Where("destination = ? AND frame_id = ? AND frame_type = ?", addr, ef.ID, ef.Type).First(&dr).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			rd := b.getRemoteDevice(addr)
 			if rd.connectedSockets.Load() > 0 {
 				b.sendDirect(addr, encryptedReceive{

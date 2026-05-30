@@ -152,7 +152,14 @@ func (b *Bounce) handleEncryptedReceive(peer string, payload []byte, _ bool) (br
 	handlers := b.getHandlers(false)
 	handler, ok := handlers[decrypted.Type]
 	if ok {
-		return handler(peer, decrypted.Payload, false)
+		br, _ := handler(peer, decrypted.Payload, false)
+		if br != nil {
+			go b.sendAck(peer, decrypted.Type, decrypted.ID)
+		}
+	} else {
+		log.WithFields(log.Fields{
+			"type": decrypted.Type,
+		}).Error("encrypted receive type does not have a handler")
 	}
 
 	return nil, false

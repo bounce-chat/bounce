@@ -72,11 +72,6 @@ type identifiable interface {
 	getID() uuid.UUID
 }
 
-type trackable interface {
-	identifiable
-	getType() uint16
-}
-
 type catchUpAble interface {
 	identifiable
 	sendable

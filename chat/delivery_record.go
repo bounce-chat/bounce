@@ -27,7 +27,7 @@ func (dr *deliveryRecord) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (b *Bounce) markDeliveredTo(br trackable, destination string) {
+func (b *Bounce) markDeliveredTo(br broadcastable, destination string) {
 	if br.getID() == uuid.Nil {
 		log.Warn("tracking delivery of broadcastable with nil UUID")
 	}
@@ -44,7 +44,7 @@ func (b *Bounce) markDeliveredTo(br trackable, destination string) {
 	}
 }
 
-func (b *Bounce) isDeliveredTo(br trackable, destination string) bool {
+func (b *Bounce) isDeliveredTo(br broadcastable, destination string) bool {
 	var dr deliveryRecord
 	err := b.database.Where("destination = ? AND frame_id = ? AND frame_type = ?", destination, br.getID(), br.getType()).First(&dr).Error
 	if err != nil {
