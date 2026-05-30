@@ -50,7 +50,41 @@ func (er encryptedReceive) getSavedAt() int64 {
 }
 
 type encryptedCatchUp struct {
-	Frames sortableCatchUpAbles
+	Frames sortableEncryptedReceives
+}
+
+type sortableEncryptedReceives []encryptedReceive
+
+func (ser sortableEncryptedReceives) Len() int {
+	return len(ser)
+}
+func (ser sortableEncryptedReceives) Swap(i, j int) {
+	ser[i], ser[j] = ser[j], ser[i]
+}
+func (ser sortableEncryptedReceives) Less(i, j int) bool {
+	if ser[i].savedAt == ser[j].savedAt {
+		iType := ser[i].Type
+		jType := ser[j].Type
+
+		iOrder, ok := catchUpOrder[iType]
+		if !ok {
+			log.WithFields(log.Fields{
+				"type": iType,
+			}).Error("encrypted catch up type cannot be ordered")
+			return false
+		}
+		jOrder, ok := catchUpOrder[jType]
+		if !ok {
+			log.WithFields(log.Fields{
+				"type": jType,
+			}).Error("encrypted catch up type cannot be ordered")
+			return false
+		}
+
+		return iOrder < jOrder
+	}
+
+	return ser[i].savedAt < ser[j].savedAt
 }
 
 func (ecu *encryptedCatchUp) getType() uint16 {
@@ -79,14 +113,7 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 
 	decryptedFrames := []frame{}
 	keyHistory := b.encryptionKeyHistory()
-	for _, f := range ecu.Frames {
-		er, ok := f.(encryptedReceive)
-		if !ok {
-			log.WithFields(log.Fields{
-				"peer": peer,
-			}).Error("frame in encrypted catch up is not encrypted receive")
-			continue
-		}
+	for _, er := range ecu.Frames {
 		decrypted, err := b.decryptEncryptedReceive(er, keyHistory)
 		if err == nil {
 			decryptedFrames = append(decryptedFrames, decrypted)
