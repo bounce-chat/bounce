@@ -501,17 +501,19 @@ func (b *Bounce) encryptedBroadcast(ef encryptedFrame) {
 		if !ok {
 			return
 		}
-		rd := b.getRemoteDevice(addr)
-		if rd.connectedSockets.Load() > 0 {
-			b.sendDirect(addr, encryptedReceive{
-				ID:           ef.ID,
-				Type:         ef.Type,
-				Payload:      ef.Payload,
-				EncryptedDEK: r.EncryptedDEK,
-				EncrypterKey: r.EncrypterKey,
-				UseAddress:   false,
-				savedAt:      ef.SavedAt,
-			})
+		if !b.isDeliveredTo(ef, addr) {
+			rd := b.getRemoteDevice(addr)
+			if rd.connectedSockets.Load() > 0 {
+				b.sendDirect(addr, encryptedReceive{
+					ID:           ef.ID,
+					Type:         ef.Type,
+					Payload:      ef.Payload,
+					EncryptedDEK: r.EncryptedDEK,
+					EncrypterKey: r.EncrypterKey,
+					UseAddress:   false,
+					savedAt:      ef.SavedAt,
+				})
+			}
 		}
 	}
 }
