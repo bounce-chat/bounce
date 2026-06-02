@@ -104,6 +104,7 @@ func (b *Bounce) openDatabase() {
 		&encryptedSyncDevice{},
 		&appendRecipient{},
 		&draft{},
+		&encryptedChunkOffer{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{

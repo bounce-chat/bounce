@@ -155,6 +155,9 @@ func (b *Bounce) openEncryptedDatabase() {
 		&encryptedFrame{},
 		&recipient{},
 		&deviceRecipient{},
+		&encryptedChunkOffer{},
+		&encryptedChunkStorageRequest{},
+		&encryptedChunkRecipient{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -1237,6 +1240,7 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 			}
 		}()
 
+		b.sendEncryptedStorageReferenceOffer(peer)
 	} else {
 		log.WithFields(log.Fields{
 			"peer": peer,

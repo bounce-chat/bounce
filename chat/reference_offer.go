@@ -66,6 +66,8 @@ func (ro *referenceOffer) shouldDialUser() bool {
 			return true
 		} else if reference.Type == typeDraft {
 			return true
+		} else if reference.Type == typeEncryptedChunkOffer {
+			return true
 		}
 	}
 	return false
@@ -240,6 +242,9 @@ func (b *Bounce) hasAnyReferencesFor(address string) bool {
 	if len(b.getDraftsToOffer(address, userID)) > 0 {
 		return true
 	}
+	if len(b.getEncryptedChunkOffersToOffer(address, userID)) > 0 {
+		return true
+	}
 
 	return false
 }
@@ -286,6 +291,7 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	references = append(references, b.getFilesToOffer(address, userID)...)
 	references = append(references, b.getChunkOffersToOffer(address, userID)...)
 	references = append(references, b.getDraftsToOffer(address, userID)...)
+	references = append(references, b.getEncryptedChunkOffersToOffer(address, userID)...)
 
 	return &referenceOffer{
 		ID:         uuid.New(),
@@ -1222,6 +1228,110 @@ func (b *Bounce) getDraftsToOffer(address string, userID uuid.UUID) []frameRefer
 	return references
 }
 
+func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID uuid.UUID) []frameReference {
+	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+		return []frameReference{}
+	}
+
+	var unsentEncryptedChunkOffers []encryptedChunkOffer
+
+	if userID == b.currentUserID() {
+		// If this is a sync device, send all unsent chunk offers
+		err := b.database.
+			Select("encrypted_chunk_offers.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_chunk_offers.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeEncryptedChunkOffer).
+			Where("delivery_records.id IS NULL").
+			Find(&unsentEncryptedChunkOffers).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting encrypted chunk offers for reference offer")
+		}
+	} else {
+		// If this is not a sync device, get all encrypted chunk offers where
+		// 	scope is not sync AND
+		// 	scope is user and the destination is this device's user OR
+		// 	scope is group and the destination is a group that this device's user is in OR
+		//	scope is group with invites and the destination is a group that this device's user is in OR it is a group that this device's user has been invited to OR
+		//      scope is global and the author is me or this device's user OR
+		// 	scope is global and the author is someone who shares a group with this device's user
+		err := b.database.
+			Distinct("encrypted_chunk_offers.id").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_chunk_offers.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeEncryptedChunkOffer).
+			Where(
+				`
+					delivery_records.id IS NULL AND encrypted_chunk_offers.scope != ? AND
+					(
+						(
+							encrypted_chunk_offers.scope = ? AND encrypted_chunk_offers.destination = ?
+						) OR (
+							encrypted_chunk_offers.scope = ? AND encrypted_chunk_offers.destination IN (?)
+						) OR (
+							encrypted_chunk_offers.scope = ? AND (encrypted_chunk_offers.destination IN (?) OR encrypted_chunk_offers.destination IN (?))
+						) OR (
+							encrypted_chunk_offers.scope = ? AND (
+								encrypted_chunk_offers.author = ? OR
+								encrypted_chunk_offers.author = ? OR
+								encrypted_chunk_offers.author IN (?)
+							)
+						)
+					)`,
+				scopeSync,
+				scopeUser,
+				xor(userID, b.currentUserID()),
+				scopeGroup,
+				b.database.
+					Model(&group{}).
+					Distinct().
+					Select("groups.id").
+					Joins("JOIN group_users ON group_users.group_id = groups.id").
+					Where("user_id = ?", userID),
+				scopeGroupWithInvites,
+				b.database.
+					Model(&group{}).
+					Distinct().
+					Select("groups.id").
+					Joins("JOIN group_users ON group_users.group_id = groups.id").
+					Where("user_id = ?", userID),
+				b.database.
+					Model(&group{}).
+					Distinct().
+					Select("id").
+					Where("invites LIKE ?", "%"+userID.String()+"%"),
+				scopeGlobal,
+				b.currentUserID(),
+				userID,
+				b.database.
+					Model(&user{}).
+					Distinct().
+					Select("users.id").
+					Joins("JOIN group_users ON group_users.user_id = users.id").
+					Where(
+						"group_users.group_id IN (?)",
+						b.database.
+							Model(&group{}).
+							Distinct().
+							Select("groups.id").
+							Joins("JOIN group_users ON group_users.group_id = groups.id").
+							Where("user_id = ?", userID),
+					),
+			).
+			Find(&unsentEncryptedChunkOffers).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error selecting chunk offers for reference offer")
+		}
+	}
+
+	references := []frameReference{}
+	for _, eco := range unsentEncryptedChunkOffers {
+		references = append(references, frameReference{FrameID: eco.ID, Type: typeEncryptedChunkOffer})
+	}
+
+	return references
+}
+
 func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	if _, revoked := b.devicePool.revokedDevices[peer]; revoked {
 		return nil, false
@@ -1274,6 +1384,7 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		typeFile,
 		typeChunkOffer,
 		typeDraft,
+		typeEncryptedChunkOffer,
 	}
 	for _, frameType := range typesToRespondWith {
 		refs, as := b.getFramesToRequestAndAck(peer, typesToIDs[frameType], frameType)

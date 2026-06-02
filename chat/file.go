@@ -2,6 +2,9 @@ package chat
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	crand "crypto/rand"
 	"encoding/hex"
 	"errors"
 	"image"
@@ -48,23 +51,25 @@ var errInvalidImage = errors.New("invalid image data")
 type file struct {
 	SignedFrame
 	cachedEncoding
-	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name        string
-	Type        int
-	AttachedTo  uuid.UUID
-	Hash        string
-	Size        int64
-	ChunkSize   int
-	HashList    string
-	Path        string `msgpack:"-" gorm:"not null"`
-	Wanted      bool   `msgpack:"-"`
-	Downloaded  bool   `msgpack:"-"`
-	Scope       int
-	Destination uuid.UUID
-	Author      uuid.UUID
-	Timestamp   int64
-	SavedAt     int64   `msgpack:"-"`
-	Chunks      []chunk `msgpack:"-"`
+	ID                uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Name              string
+	Type              int
+	AttachedTo        uuid.UUID
+	Hash              string
+	Size              int64
+	ChunkSize         int
+	HashList          string
+	EncryptedHashList string
+	Key               []byte
+	Path              string `msgpack:"-" gorm:"not null"`
+	Wanted            bool   `msgpack:"-"`
+	Downloaded        bool   `msgpack:"-"`
+	Scope             int
+	Destination       uuid.UUID
+	Author            uuid.UUID
+	Timestamp         int64
+	SavedAt           int64   `msgpack:"-"`
+	Chunks            []chunk `msgpack:"-"`
 }
 
 func (f *file) BeforeCreate(tx *gorm.DB) error {
@@ -653,12 +658,13 @@ func (b *Bounce) peerCanHaveChunk(peer, hash string) bool {
 
 type chunk struct {
 	cachedEncoding
-	ID         uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
-	FileID     uuid.UUID `msgpack:"-"`
-	Hash       string    `msgpack:"-"`
-	Index      int       `msgpack:"-"`
-	Downloaded bool      `msgpack:"-"`
-	Data       []byte    `gorm:"-"`
+	ID            uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
+	FileID        uuid.UUID `msgpack:"-"`
+	Hash          string    `msgpack:"-"`
+	EncryptedHash string    `msgpack:"-"`
+	Index         int       `msgpack:"-"`
+	Downloaded    bool      `msgpack:"-"`
+	Data          []byte    `gorm:"-"`
 }
 
 func (c *chunk) getType() uint16 {
@@ -950,27 +956,30 @@ func (b *Bounce) embedFile(fileID uuid.UUID, data []byte, scope int, destination
 	if err != nil {
 		return err
 	}
+	key := make([]byte, 32)
+	crand.Read(key)
 
 	hash := blake3.Sum256(data)
-
-	chunks, hashList := splitChunks(fileID, data)
+	chunks, hashList, encryptedHashList := splitChunks(fileID, data, key)
 
 	f := &file{
-		ID:          fileID,
-		Type:        fileType,
-		AttachedTo:  attachment,
-		Path:        b.configDirectory + "/blobs/" + fileID.String(),
-		Hash:        hashString(hash),
-		Size:        int64(len(data)),
-		ChunkSize:   fileChunkSize,
-		Wanted:      true,
-		Downloaded:  true,
-		Scope:       scope,
-		Destination: destination,
-		Timestamp:   time.Now().Unix(),
-		Author:      b.currentUserID(),
-		HashList:    hashList,
-		Chunks:      chunks,
+		ID:                fileID,
+		Type:              fileType,
+		AttachedTo:        attachment,
+		Path:              b.configDirectory + "/blobs/" + fileID.String(),
+		Hash:              hashString(hash),
+		Key:               key,
+		Size:              int64(len(data)),
+		ChunkSize:         fileChunkSize,
+		Wanted:            true,
+		Downloaded:        true,
+		Scope:             scope,
+		Destination:       destination,
+		Timestamp:         time.Now().Unix(),
+		Author:            b.currentUserID(),
+		HashList:          hashList,
+		EncryptedHashList: encryptedHashList,
+		Chunks:            chunks,
 	}
 	f.OriginalPayload, err = msgpack.Marshal(f)
 	if err != nil {
@@ -1415,44 +1424,64 @@ func (b *Bounce) FileWanted(fileID uuid.UUID) bool {
 	return f.Wanted
 }
 
-func splitChunks(fileID uuid.UUID, data []byte) ([]chunk, string) {
+func splitChunks(fileID uuid.UUID, data []byte, key []byte) ([]chunk, string, string) {
 	chunks := []chunk{}
 	hashes := []string{}
+	encryptedHashes := []string{}
 
 	index := 0
 	for {
 		if len(data) < fileChunkSize {
-			c := makeChunk(fileID, index, data)
+			c := makeChunk(fileID, index, data, key)
 			chunks = append(chunks, c)
 			hashes = append(hashes, c.Hash)
+			encryptedHashes = append(hashes, c.EncryptedHash)
 			break
 		}
 
 		chunkData := data[:fileChunkSize]
 		data = data[fileChunkSize:]
 
-		c := makeChunk(fileID, index, chunkData)
+		c := makeChunk(fileID, index, chunkData, key)
 		chunks = append(chunks, c)
 		hashes = append(hashes, c.Hash)
+		encryptedHashes = append(hashes, c.EncryptedHash)
 
 		index += 1
 	}
 
-	return chunks, strings.Join(hashes, ",")
+	return chunks, strings.Join(hashes, ","), strings.Join(encryptedHashes, ",")
 }
 
-func makeChunk(fileID uuid.UUID, index int, data []byte) chunk {
+func makeChunk(fileID uuid.UUID, index int, data []byte, key []byte) chunk {
 	hash := blake3.Sum256(data)
 	chunkID, err := uuid.FromBytes(hash[:16])
 	if err != nil {
 		log.Fatal("cannot make uuid from bytes for chunk")
 	}
 
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error encrypting chunk")
+	}
+	gcm, err := cipher.NewGCMWithRandomNonce(block)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error encrypting chunk")
+	}
+
+	ciphertext := gcm.Seal(nil, []byte{}, data, nil)
+	encryptedHash := blake3.Sum256(ciphertext)
+
 	return chunk{
-		ID:         xor(fileID, chunkID),
-		Hash:       hashString(hash),
-		Index:      index,
-		Downloaded: true,
+		ID:            xor(fileID, chunkID),
+		Hash:          hashString(hash),
+		EncryptedHash: hashString(encryptedHash),
+		Index:         index,
+		Downloaded:    true,
 	}
 }
 

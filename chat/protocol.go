@@ -62,6 +62,9 @@ var typeAppendRecipientResponse = uint16(41)
 var typeAppendRecipientPayloads = uint16(42)
 var typeDraft = uint16(43)
 var typeEncryptedReceive = uint16(44)
+var typeEncryptedChunkOffer = uint16(45)
+var typeEncryptedStorageReferenceOffer = uint16(46)
+var typeEncryptedStorageReferenceRequest = uint16(47)
 
 type sendable interface {
 	getType() uint16
@@ -90,21 +93,22 @@ type broadcastable interface {
 type sortableCatchUpAbles []catchUpAble
 
 var catchUpOrder = map[uint16]int{
-	typeAddUser:        0,
-	typeDevice:         1,
-	typeUpdateDevice:   2,
-	typeUpdateUser:     3,
-	typeUpdateDM:       4,
-	typeDirectMessage:  5,
-	typeGroupCreation:  6,
-	typeUpdateGroup:    7,
-	typeGroupMessage:   8,
-	typeConfirmation:   9,
-	typeReadReceipt:    10,
-	typeUpdateSettings: 11,
-	typeFile:           12,
-	typeChunkOffer:     13,
-	typeDraft:          14,
+	typeAddUser:             0,
+	typeDevice:              1,
+	typeUpdateDevice:        2,
+	typeUpdateUser:          3,
+	typeUpdateDM:            4,
+	typeDirectMessage:       5,
+	typeGroupCreation:       6,
+	typeUpdateGroup:         7,
+	typeGroupMessage:        8,
+	typeConfirmation:        9,
+	typeReadReceipt:         10,
+	typeUpdateSettings:      11,
+	typeFile:                12,
+	typeChunkOffer:          13,
+	typeEncryptedChunkOffer: 14,
+	typeDraft:               15,
 }
 
 func (scua sortableCatchUpAbles) Len() int {
@@ -171,6 +175,7 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 			typeGetManagementKeyHash:             b.handleGetManagementKeyHash,
 			typeAppendRecipientRequest:           b.handleAppendRecipientRequest,
 			typeAppendRecipientPayloads:          b.handleAppendRecipientPayloads,
+			typeEncryptedStorageReferenceRequest: b.handleEncryptedStorageReferenceRequest,
 		}
 	}
 
@@ -212,6 +217,8 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 		typeManagementKeyHashResponse:               b.handleManagementKeyHashResponse,
 		typeAppendRecipientResponse:                 b.handleAppendRecipientResponse,
 		typeDraft:                                   b.handleDraft,
+		typeEncryptedChunkOffer:                     b.handleEncryptedChunkOffer,
+		typeEncryptedStorageReferenceOffer:          b.handleEncryptedStorageReferenceOffer,
 	}
 }
 
