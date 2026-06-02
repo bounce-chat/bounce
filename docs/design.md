@@ -76,9 +76,25 @@ When handing a reference offer, a device checks each reference and sees if it ha
 
 When handling a reference request, a device iterates through the references and confirms that the requesting peer does indeed have the right to view the frame.  If so, the frames is marshaled and collected into a slice on a catch up frame.  The frames are then sorted by the time the device first saved them locally, and this catch up frame is then sent to the requester
 
-When handling a catch up, each frame is sequentially processed by the same handler that would process it if it was received in real time on the wire.  However, when handlers know that a frame is part of a catchup, they forgo some calls into the UI.  The catch up handler keeps track of which UI states might need to be updated, and updates them in bulk after all of the frames are processed.  
+When handling a catch up, each frame is sequentially processed by the same handler that would process it if it was received in real time on the wire.  However, when handlers know that a frame is part of a catchup, they forgo some calls into the UI.  The catch up handler keeps track of which UI states might need to be updated, and updates them in bulk after all of the frames are processed.
 
 ## Adding Users
+
+Users add each other using the following flow:
+1. One of the users generates a random secret that is valid for 5 minutes.  This is known as the "offer user".
+2. The offer user displays this secret, along with the address of the device that is doing the displaying.  This information is scanned by the other user, which is known as the "requester user".
+3. The requester user gets this information and connects to the address.  It sends an "add user request", which is a structure containing the secret, as well as the entire requester user's user structure (which includes their ID, name, device group, etc).
+4. The offer user receives this request and ensures the secret is correct and not expired, then validates the user inside, making sure the device group is valid, the data doesn't conflict with any existing users, and that the request came from one of the devices in the requester user's device group.
+5. The offer user accepts this request by sending an "add user request accepted" structure.  This structure contains the offer user's user structure, as well as the offer user's device's signature of a hash of the requester user's user structure that was provided in the add user request.
+6. The requester user receives this, validates the offer user data, and users their device to sign a hash of the offer user data.  The requester then creates the final "add user" struct.  This struct includes both of the full user structures, both of the signatures, and both of the addresses of the devices that did the signing.  The requester user runs this add user through the add user handler, and broadcasts it to all of their devices and all of the offer users devices.
+
+The add user struct that was created by this process contains proof that a device belonging to each user's device groups consented to the adding the other user.  It can be shared with any device that is a member of either user's device group now or in the future, and so long as neither of the signing devices are revoked, it can be used to add the contact.  This design makes it possible for a device to add a user it has never seen before, without hearing about that user from one of it's sync devices.  For example:
+
+1. Offer user A owns a laptop and phone
+2. Requester user B owns a desktop
+3. A's laptop does the add user flow with B's desktop while A's phone is offline
+4. A's laptop goes offline, then A's phone comes online, and still doesn't know anything about user B
+5. User B's desktop can dial user A's phone now, and prove that user A's laptop added user B as a friend while the phone was offline
 
 ## Sending Messages
 
