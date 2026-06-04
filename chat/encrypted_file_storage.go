@@ -429,6 +429,49 @@ type encryptedChunkStorageRequest struct {
 	DownloadedAt   int64                     `msgpack:"-"`
 }
 
+func (ecsr encryptedChunkStorageRequest) getType() uint16 {
+	return typeEncryptedChunkStorageRequest
+}
+
+func (ecsr encryptedChunkStorageRequest) getPayload() []byte {
+	bytes, err := msgpack.Marshal(ecsr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling encrypted chunk storage request")
+	}
+	return bytes
+}
+
+func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	var sr encryptedChunkStorageRequest
+	err := msgpack.Unmarshal(payload, &sr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling encrypted chunk storage request")
+		return nil, false
+	}
+
+	for _, key := range sr.Recipients {
+		sr.RecipientUsers = append(sr.RecipientUsers, encryptedChunkRecipient{
+			ID:        uuid.New(),
+			Hash:      sr.Hash,
+			PublicKey: key,
+		})
+	}
+	sr.Source = peer
+	err = b.database.Create(&sr).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("database error saving encrypted chunk storage request")
+	}
+	b.makeNextEncryptedChunkRequests()
+
+	return nil, false
+}
+
 type encryptedChunkRecipient struct {
 	ID                             uuid.UUID `gorm:"type:uuid;primary_key;"`
 	EncryptedChunkStorageRequestID uuid.UUID

@@ -948,6 +948,9 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 		return nil, false
 	}
 
+	// TODO: delete oldest chunks if running out of disk space
+
+	// Save it to disk
 	hash := blake3.Sum256(incomingChunk.Data)
 	path := b.configDirectory + "/blobs/" + hashString(hash)
 	err = ioutil.WriteFile(path, incomingChunk.Data, 0600)
@@ -960,6 +963,54 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 		return nil, false
 	}
 
+	// Distribute an encrypted chunk offer to online devices that should have it
+	eco := &encryptedChunkOffer{
+		ID:        uuid.New(),
+		Hash:      hashString(hash),
+		Location:  b.network.Address(),
+		Timestamp: time.Now().Unix(),
+	}
+	eco.OriginalPayload, err = msgpack.Marshal(eco)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling encrypted chunk offer")
+	}
+	sc := b.createSignedContainer(eco.OriginalPayload)
+	eco.Signature = sc.Signature
+	eco.Signer = sc.Signer
+	var srs []encryptedChunkStorageRequest
+	err = b.database.Preload(clause.Associations).Where("hash = ?", hash).Find(&srs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up encrypted chunk storage requests")
+	}
+	keysToSendTo := map[string]bool{}
+	for _, sr := range srs {
+		for _, r := range sr.RecipientUsers {
+			keysToSendTo[string(r.PublicKey)] = true
+		}
+	}
+	addressesToSendTo := map[string]bool{}
+	for k, _ := range keysToSendTo {
+		key := []byte(k)
+		peerUserKeyMutex.Lock()
+		for address, peerKey := range peerUserKeys {
+			if bytes.Equal(key, peerKey) {
+				addressesToSendTo[address] = true
+			}
+		}
+		peerUserKeyMutex.Unlock()
+	}
+	for address, _ := range addressesToSendTo {
+		rd := b.getRemoteDevice(address)
+		if rd.connectedSockets.Load() > 0 {
+			go b.sendDirect(address, eco)
+		}
+	}
+
+	// Continue to make requests, if needed
 	encryptedChunkRequestMutex.Unlock()
 	go b.makeNextEncryptedChunkRequests()
 
@@ -1106,7 +1157,14 @@ func (b *Bounce) makeNextChunkRequests() {
 					"error": err.Error(),
 				}).Fatal("database error looking up actively used chunk offers")
 			}
-			if len(activeOffers) > 0 {
+			activeEncryptedOffers := []encryptedChunkOffer{}
+			err = b.database.Where("hash = ? AND last_request_time > ?", c.EncryptedHash, time.Now().Unix()-expectedChunkDeliverySeconds).Find(&activeEncryptedOffers).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up actively used encrypted chunk offers")
+			}
+			if len(activeOffers) > 0 || len(activeEncryptedOffers) > 0 {
 				continue
 			}
 
@@ -1118,7 +1176,15 @@ func (b *Bounce) makeNextChunkRequests() {
 					"error": err.Error(),
 				}).Fatal("database error looking up unused chunk offers")
 			}
+			unusedEncryptedOffers := []encryptedChunkOffer{}
+			err = b.database.Where("hash = ? AND last_request_time = ?", c.EncryptedHash, 0).Find(&unusedEncryptedOffers).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up unused encrypted chunk offers")
+			}
 			availableUnusedLocations := []string{}
+			locationIsEncrypted := map[string]bool{}
 			for _, offer := range unusedOffers {
 				_, alreadyHit := alreadyHitPeer[offer.Location]
 				rd := b.getRemoteDevice(offer.Location)
@@ -1126,18 +1192,32 @@ func (b *Bounce) makeNextChunkRequests() {
 					availableUnusedLocations = append(availableUnusedLocations, offer.Location)
 				}
 			}
+			for _, offer := range unusedEncryptedOffers {
+				_, alreadyHit := alreadyHitPeer[offer.Location]
+				rd := b.getRemoteDevice(offer.Location)
+				if rd.connectedSockets.Load() > 0 && !alreadyHit {
+					availableUnusedLocations = append(availableUnusedLocations, offer.Location)
+					locationIsEncrypted[offer.Location] = true
+				}
+			}
 			if len(availableUnusedLocations) > 0 {
 				r := rand.New(rand.NewSource(time.Now().UnixNano()))
 				location := availableUnusedLocations[r.Intn(len(availableUnusedLocations))]
-				go b.sendDirect(location, &chunkRequest{Hash: c.Hash})
+				hash := c.Hash
+				table := "chunk_offers"
+				if _, enc := locationIsEncrypted[location]; enc {
+					hash = c.EncryptedHash
+					table = "encrypted_chunk_offers"
+				}
+				go b.sendDirect(location, &chunkRequest{Hash: hash})
 				alreadyHitPeer[location] = true
-				err = b.database.Table("chunk_offers").Where("hash = ? AND location = ?", c.Hash, location).Update("last_request_time", time.Now().Unix()).Error
+				err = b.database.Table(table).Where("hash = ? AND location = ?", hash, location).Update("last_request_time", time.Now().Unix()).Error
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
 						"hash":  c.Hash,
 						"peer":  location,
-					}).Fatal("database error updating last request time on chunk")
+					}).Fatal("database error updating last request time")
 				}
 				recheck = true
 				continue
@@ -1151,6 +1231,13 @@ func (b *Bounce) makeNextChunkRequests() {
 					"error": err.Error(),
 				}).Fatal("database error looking up previously tried chunk offers")
 			}
+			previouslyTriedEncryptedOffers := []encryptedChunkOffer{}
+			err = b.database.Where("hash = ? AND last_request_time != ?", c.EncryptedHash, 0).Find(&previouslyTriedEncryptedOffers).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up previously tried encrypted chunk offers")
+			}
 			availableRetryLocations := []string{}
 			for _, offer := range previouslyTriedOffers {
 				_, alreadyHit := alreadyHitPeer[offer.Location]
@@ -1159,19 +1246,32 @@ func (b *Bounce) makeNextChunkRequests() {
 					availableRetryLocations = append(availableRetryLocations, offer.Location)
 				}
 			}
+			for _, offer := range previouslyTriedEncryptedOffers {
+				_, alreadyHit := alreadyHitPeer[offer.Location]
+				rd := b.getRemoteDevice(offer.Location)
+				if rd.connectedSockets.Load() > 0 && !alreadyHit {
+					availableRetryLocations = append(availableRetryLocations, offer.Location)
+					locationIsEncrypted[offer.Location] = true
+				}
+			}
 			if len(availableRetryLocations) > 0 {
 				r := rand.New(rand.NewSource(time.Now().UnixNano()))
 				location := availableRetryLocations[r.Intn(len(availableRetryLocations))]
-
-				go b.sendDirect(location, &chunkRequest{Hash: c.Hash})
+				hash := c.Hash
+				table := "chunk_offers"
+				if _, enc := locationIsEncrypted[location]; enc {
+					hash = c.EncryptedHash
+					table = "encrypted_chunk_offers"
+				}
+				go b.sendDirect(location, &chunkRequest{Hash: hash})
 				alreadyHitPeer[location] = true
-				err = b.database.Table("chunk_offers").Where("hash = ? AND location = ?", c.Hash, location).Update("last_request_time", time.Now().Unix()).Error
+				err = b.database.Table(table).Where("hash = ? AND location = ?", hash, location).Update("last_request_time", time.Now().Unix()).Error
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
 						"hash":  c.Hash,
 						"peer":  location,
-					}).Fatal("database error updating last request time on chunk")
+					}).Fatal("database error updating last request time")
 				}
 				recheck = true
 			}
@@ -1597,6 +1697,28 @@ func (b *Bounce) offerChunk(c chunk) {
 		}).Fatal("error saving new chunk offer")
 	}
 	b.broadcast(co)
+
+	// Request that each encrypted device that could store this chunk does so
+	usersInScope := b.getUsersInScope(co)
+	recipients := [][]byte{}
+	for _, u := range usersInScope {
+		recipients = append(recipients, u.PublicECDHKey)
+	}
+	sr := encryptedChunkStorageRequest{
+		ID:         uuid.New(),
+		Hash:       c.EncryptedHash,
+		Recipients: recipients,
+	}
+	for _, u := range usersInScope {
+		if len(u.EncryptedDevices) > 0 {
+			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+				rd := b.getRemoteDevice(addr)
+				if rd.connectedSockets.Load() > 0 {
+					b.sendDirect(addr, sr)
+				}
+			}
+		}
+	}
 }
 
 func (b *Bounce) GetFileData(fileID uuid.UUID) ([]byte, error) {
