@@ -331,6 +331,7 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 					esrr.StorageRequests = append(
 						esrr.StorageRequests,
 						encryptedChunkStorageRequest{
+							ID:         uuid.New(),
 							Hash:       hash,
 							Recipients: userKeys,
 						},

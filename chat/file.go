@@ -787,6 +787,14 @@ func (b *Bounce) encryptedPeerCanHaveChunk(userID uuid.UUID, hash string) bool {
 		}).Fatal("database error looking up chunks")
 	}
 
+	if len(chunks) == 0 {
+		log.WithFields(log.Fields{
+			"user_id": userID,
+			"hash":    hash,
+		}).Warn("no chunks found by encrypted hash when checking if encrypted device can have chunk")
+		return false
+	}
+
 	allowedFiles := b.getFilesUserCanHave(userID)
 	allowed := map[uuid.UUID]bool{}
 	for _, fID := range allowedFiles {
@@ -849,7 +857,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 
 	// Hash the data
 	data := incomingChunk.Data
-	hash := blake3.Sum256(data)
+	hash := hashString(blake3.Sum256(data))
 
 	// Decrypt the data if this peer is encrypted
 	encryptedDeviceCacheMutex.Lock()
@@ -911,12 +919,12 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 		}
 
 		data = decrypted
-		hash = blake3.Sum256(data)
+		hash = hashString(blake3.Sum256(data))
 	}
 
 	// Find any chunks in the database that have this hash and are empty
 	var targetChunks []chunk
-	err = b.database.Where("hash = ? AND downloaded = ?", hashString(hash), false).Find(&targetChunks).Error
+	err = b.database.Where("hash = ? AND downloaded = ?", hash, false).Find(&targetChunks).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -980,7 +988,7 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 	eco.Signature = sc.Signature
 	eco.Signer = sc.Signer
 	var srs []encryptedChunkStorageRequest
-	err = b.database.Preload(clause.Associations).Where("hash = ?", hash).Find(&srs).Error
+	err = b.database.Preload(clause.Associations).Where("hash = ?", hashString(hash)).Find(&srs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
