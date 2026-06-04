@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -510,25 +511,146 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 		}()
 	}
 
-	// Make sure the peer has permission to access a file that contains this chunk
-	if !b.peerCanHaveChunk(peer, cr.Hash) {
-		log.WithFields(log.Fields{
-			"peer": peer,
-			"hash": cr.Hash,
-		}).Warn("peer requested chunk they are not allowed to have")
-		return nil, false
+	if b.encrypted {
+		peerUserKeyMutex.Lock()
+		peerKey, ok := peerUserKeys[peer]
+		peerUserKeyMutex.Unlock()
+		if !ok {
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Warn("cannot respond to chunk request from device with unknown user key")
+			return nil, false
+		}
+
+		// Make sure the chunk string is safe to pass to the filesystem call
+		allowed, _ := regexp.MatchString("^[a-zA-Z0-9]*$", cr.Hash)
+		if !allowed {
+			log.WithFields(log.Fields{
+				"chunk": cr.Hash,
+			}).Error("refusing to attempt filesystem read for encrypted chunk in unexpected format")
+			return nil, false
+		}
+
+		var srs []encryptedChunkStorageRequest
+		err = b.database.Preload(clause.Associations).Where("hash = ?", cr.Hash).Find(&srs).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up encrypted chunk storage requests")
+		}
+
+		allowed = false
+		for _, sr := range srs {
+			for _, r := range sr.RecipientUsers {
+				if bytes.Equal(r.PublicKey, peerKey) {
+					allowed = true
+					break
+				}
+			}
+			if allowed {
+				break
+			}
+		}
+
+		if !allowed {
+			log.WithFields(log.Fields{
+				"peer": peer,
+				"hash": cr.Hash,
+			}).Warn("peer requested encrypted chunk they are not allowed to have")
+			return nil, false
+		}
+
+		chunkData, err := ioutil.ReadFile(b.configDirectory + "/blobs/" + cr.Hash)
+		if err == nil {
+			b.sendDirect(peer, &chunk{Data: chunkData})
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"hash":  cr.Hash,
+				"peer":  peer,
+			}).Warn("error getting requested encrypted chunk")
+		}
+	} else {
+		encryptedDeviceCacheMutex.Lock()
+		encryptedUserID, encryptedPeer := encryptedDeviceCache[peer]
+		encryptedDeviceCacheMutex.Unlock()
+
+		if encryptedPeer {
+			if !b.encryptedPeerCanHaveChunk(encryptedUserID, cr.Hash) {
+				log.WithFields(log.Fields{
+					"peer": peer,
+					"hash": cr.Hash,
+				}).Warn("encrypted peer requested chunk they are not allowed to have")
+				return nil, false
+			}
+
+			var c chunk
+			err := b.database.Where("encrypted_hash = ?", cr.Hash).Take(&c).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"encrypted_hash": cr.Hash,
+				}).Warn("could not find chunk by encrypted hash")
+				return nil, false
+			}
+
+			plaintextData, err := b.getChunkData(c.Hash)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"hash":  c.Hash,
+					"peer":  peer,
+				}).Warn("error getting requested chunk")
+			}
+
+			var f file
+			err = b.database.Take(&f, "id = ?", c.FileID).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"file_id": c.FileID,
+				}).Warn("unable to find file for chunk")
+			}
+
+			block, err := aes.NewCipher(f.Key)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error creating encryption block")
+				return nil, false
+			}
+			gcm, err := cipher.NewGCMWithRandomNonce(block)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error encrypting chunk")
+				return nil, false
+			}
+
+			encryptedData := gcm.Seal(nil, []byte{}, plaintextData, nil)
+
+			b.sendDirect(peer, &chunk{Data: encryptedData})
+		} else {
+			// Make sure the peer has permission to access a file that contains this chunk
+			if !b.peerCanHaveChunk(peer, cr.Hash) {
+				log.WithFields(log.Fields{
+					"peer": peer,
+					"hash": cr.Hash,
+				}).Warn("peer requested chunk they are not allowed to have")
+				return nil, false
+			}
+
+			chunkData, err := b.getChunkData(cr.Hash)
+			if err == nil {
+				b.sendDirect(peer, &chunk{Data: chunkData})
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"hash":  cr.Hash,
+					"peer":  peer,
+				}).Warn("error getting requested chunk")
+			}
+		}
 	}
 
-	chunkData, err := b.getChunkData(cr.Hash)
-	if err == nil {
-		b.sendDirect(peer, &chunk{Data: chunkData})
-	} else {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-			"hash":  cr.Hash,
-			"peer":  peer,
-		}).Warn("error getting requested chunk")
-	}
 	return nil, false
 }
 func (b *Bounce) getChunkData(hash string) ([]byte, error) {
@@ -656,6 +778,31 @@ func (b *Bounce) peerCanHaveChunk(peer, hash string) bool {
 	return false
 }
 
+func (b *Bounce) encryptedPeerCanHaveChunk(userID uuid.UUID, hash string) bool {
+	var chunks []chunk
+	err := b.database.Select("file_id").Where("encrypted_hash = ?", hash).Find(&chunks).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up chunks")
+	}
+
+	allowedFiles := b.getFilesUserCanHave(userID)
+	allowed := map[uuid.UUID]bool{}
+	for _, fID := range allowedFiles {
+		allowed[fID] = true
+	}
+
+	for _, c := range chunks {
+		_, ok := allowed[c.FileID]
+		if ok {
+			return true
+		}
+	}
+
+	return false
+}
+
 type chunk struct {
 	cachedEncoding
 	ID            uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
@@ -719,6 +866,12 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 
 	chunkRequestMutex.Unlock()
 	b.makeNextChunkRequests()
+	return nil, false
+}
+
+func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	// TODO: take the chunk data and save it in the blobs directory
+
 	return nil, false
 }
 
@@ -835,11 +988,6 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 }
 
 func (b *Bounce) makeNextChunkRequests() {
-	if b.encrypted {
-		// TODO: file support for encrypted devices
-		return
-	}
-
 	chunkRequestMutex.Lock()
 	defer chunkRequestMutex.Unlock()
 

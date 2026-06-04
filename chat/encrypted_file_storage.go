@@ -160,8 +160,51 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 
 	return nil, false
 }
+
+var encryptedChunkRequestMutex sync.Mutex
+
 func (b *Bounce) makeNextEncryptedChunkRequests() {
-	// TODO: take all storage requests where downloaded is false, and request chunks
+	encryptedChunkRequestMutex.Lock()
+	defer encryptedChunkRequestMutex.Unlock()
+
+	var srs []encryptedChunkStorageRequest
+	err := b.database.Where("downloaded = ?", false).Find(&srs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up encrypted chunk storage requests")
+	}
+
+	if len(srs) == 0 {
+		return
+	}
+
+	neededChunks := map[string][]string{}
+	for _, sr := range srs {
+		neededChunks[sr.Hash] = append(neededChunks[sr.Hash], sr.Source)
+	}
+
+	recheck := false
+	for hash, sources := range neededChunks {
+		for i, s := range sources {
+			rd := b.getRemoteDevice(s)
+			if rd.connectedSockets.Load() > 0 {
+				go b.sendDirect(s, &chunkRequest{Hash: hash})
+
+				if len(sources) > i+1 {
+					recheck = true
+				}
+				break
+			}
+		}
+	}
+
+	if recheck {
+		go func() {
+			time.Sleep((expectedChunkDeliverySeconds + 1) * time.Second)
+			b.makeNextEncryptedChunkRequests()
+		}()
+	}
 }
 
 type encryptedStorageReferenceOffer struct {

@@ -176,6 +176,8 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 			typeAppendRecipientRequest:           b.handleAppendRecipientRequest,
 			typeAppendRecipientPayloads:          b.handleAppendRecipientPayloads,
 			typeEncryptedStorageReferenceRequest: b.handleEncryptedStorageReferenceRequest,
+			typeChunkRequest:                     b.handleChunkRequest,
+			typeChunk:                            b.handleEncryptedChunk,
 		}
 	}
 
