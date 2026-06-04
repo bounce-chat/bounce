@@ -50,7 +50,7 @@ func (eco *encryptedChunkOffer) getDestination(myID uuid.UUID) uuid.UUID {
 }
 
 func (eco *encryptedChunkOffer) getType() uint16 {
-	return typeChunkOffer
+	return typeEncryptedChunkOffer
 }
 
 func (eco *encryptedChunkOffer) getPayload() []byte {
@@ -405,6 +405,13 @@ func (b *Bounce) handleEncryptedStorageReferenceRequest(peer string, payload []b
 			})
 		}
 		sr.Source = peer
+
+		var existingSR encryptedChunkStorageRequest
+		err = b.database.Where("hash = ? AND source = ?", sr.Hash, sr.Source).Take(&existingSR).Error
+		if err == nil {
+			continue
+		}
+
 		err = b.database.Create(&sr).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -462,6 +469,13 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 		})
 	}
 	sr.Source = peer
+
+	var existingSR encryptedChunkStorageRequest
+	err = b.database.Where("hash = ? AND source = ?", sr.Hash, sr.Source).Take(&existingSR).Error
+	if err == nil {
+		return nil, false
+	}
+
 	err = b.database.Create(&sr).Error
 	if err != nil {
 		log.WithFields(log.Fields{

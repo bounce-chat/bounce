@@ -974,6 +974,17 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 		return nil, false
 	}
 
+	// Set all of the storage requests as downloaded
+	err = b.database.Table("encrypted_chunk_storage_requests").Where("hash = ?", hashString(hash)).Updates(map[string]interface{}{
+		"downloaded":    true,
+		"downloaded_at": time.Now().Unix(),
+	}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("database error updating encrypted chunk storage requests")
+	}
+
 	// Distribute an encrypted chunk offer to online devices that should have it
 	eco := &encryptedChunkOffer{
 		ID:        uuid.New(),
