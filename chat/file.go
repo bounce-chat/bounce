@@ -62,6 +62,7 @@ type file struct {
 	HashList          string
 	EncryptedHashList string
 	Key               []byte
+	Nonce             []byte
 	Path              string `msgpack:"-" gorm:"not null"`
 	Wanted            bool   `msgpack:"-"`
 	Downloaded        bool   `msgpack:"-"`
@@ -600,6 +601,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 					"hash":  c.Hash,
 					"peer":  peer,
 				}).Warn("error getting requested chunk")
+				return nil, false
 			}
 
 			var f file
@@ -608,6 +610,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 				log.WithFields(log.Fields{
 					"file_id": c.FileID,
 				}).Warn("unable to find file for chunk")
+				return nil, false
 			}
 
 			block, err := aes.NewCipher(f.Key)
@@ -617,7 +620,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 				}).Error("error creating encryption block")
 				return nil, false
 			}
-			gcm, err := cipher.NewGCMWithRandomNonce(block)
+			gcm, err := cipher.NewGCM(block)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -625,7 +628,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 				return nil, false
 			}
 
-			encryptedData := gcm.Seal(nil, []byte{}, plaintextData, nil)
+			encryptedData := gcm.Seal(nil, f.Nonce, plaintextData, nil)
 
 			b.sendDirect(peer, &chunk{Data: encryptedData})
 		} else {
@@ -1305,9 +1308,23 @@ func (b *Bounce) embedFile(fileID uuid.UUID, data []byte, scope int, destination
 	}
 	key := make([]byte, 32)
 	crand.Read(key)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error creating aes cipher from key")
+	}
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error creating gcm from block")
+	}
+	nonce := make([]byte, aesgcm.NonceSize())
+	crand.Read(nonce)
 
 	hash := blake3.Sum256(data)
-	chunks, hashList, encryptedHashList := splitChunks(fileID, data, key)
+	chunks, hashList, encryptedHashList := splitChunks(fileID, data, key, nonce)
 
 	f := &file{
 		ID:                fileID,
@@ -1316,6 +1333,7 @@ func (b *Bounce) embedFile(fileID uuid.UUID, data []byte, scope int, destination
 		Path:              b.configDirectory + "/blobs/" + fileID.String(),
 		Hash:              hashString(hash),
 		Key:               key,
+		Nonce:             nonce,
 		Size:              int64(len(data)),
 		ChunkSize:         fileChunkSize,
 		Wanted:            true,
@@ -1793,7 +1811,7 @@ func (b *Bounce) FileWanted(fileID uuid.UUID) bool {
 	return f.Wanted
 }
 
-func splitChunks(fileID uuid.UUID, data []byte, key []byte) ([]chunk, string, string) {
+func splitChunks(fileID uuid.UUID, data, key, nonce []byte) ([]chunk, string, string) {
 	chunks := []chunk{}
 	hashes := []string{}
 	encryptedHashes := []string{}
@@ -1801,20 +1819,20 @@ func splitChunks(fileID uuid.UUID, data []byte, key []byte) ([]chunk, string, st
 	index := 0
 	for {
 		if len(data) < fileChunkSize {
-			c := makeChunk(fileID, index, data, key)
+			c := makeChunk(fileID, index, data, key, nonce)
 			chunks = append(chunks, c)
 			hashes = append(hashes, c.Hash)
-			encryptedHashes = append(hashes, c.EncryptedHash)
+			encryptedHashes = append(encryptedHashes, c.EncryptedHash)
 			break
 		}
 
 		chunkData := data[:fileChunkSize]
 		data = data[fileChunkSize:]
 
-		c := makeChunk(fileID, index, chunkData, key)
+		c := makeChunk(fileID, index, chunkData, key, nonce)
 		chunks = append(chunks, c)
 		hashes = append(hashes, c.Hash)
-		encryptedHashes = append(hashes, c.EncryptedHash)
+		encryptedHashes = append(encryptedHashes, c.EncryptedHash)
 
 		index += 1
 	}
@@ -1822,7 +1840,7 @@ func splitChunks(fileID uuid.UUID, data []byte, key []byte) ([]chunk, string, st
 	return chunks, strings.Join(hashes, ","), strings.Join(encryptedHashes, ",")
 }
 
-func makeChunk(fileID uuid.UUID, index int, data []byte, key []byte) chunk {
+func makeChunk(fileID uuid.UUID, index int, data, key, nonce []byte) chunk {
 	hash := blake3.Sum256(data)
 	chunkID, err := uuid.FromBytes(hash[:16])
 	if err != nil {
@@ -1835,14 +1853,14 @@ func makeChunk(fileID uuid.UUID, index int, data []byte, key []byte) chunk {
 			"error": err.Error(),
 		}).Error("error encrypting chunk")
 	}
-	gcm, err := cipher.NewGCMWithRandomNonce(block)
+	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error encrypting chunk")
 	}
 
-	ciphertext := gcm.Seal(nil, []byte{}, data, nil)
+	ciphertext := gcm.Seal(nil, nonce, data, nil)
 	encryptedHash := blake3.Sum256(ciphertext)
 
 	return chunk{

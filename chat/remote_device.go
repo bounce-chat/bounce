@@ -154,7 +154,7 @@ func (b *Bounce) readFrames(conn net.Conn) {
 	}
 
 	for {
-		frameType, data, err := readFrame(conn, deviceIsKnown)
+		frameType, data, err := readFrame(conn, deviceIsKnown || b.encrypted)
 		if err != nil {
 			return
 		}
