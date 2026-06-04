@@ -848,7 +848,71 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 	}
 
 	// Hash the data
-	hash := blake3.Sum256(incomingChunk.Data)
+	data := incomingChunk.Data
+	hash := blake3.Sum256(data)
+
+	// Decrypt the data if this peer is encrypted
+	encryptedDeviceCacheMutex.Lock()
+	_, encryptedPeer := encryptedDeviceCache[peer]
+	encryptedDeviceCacheMutex.Unlock()
+	if encryptedPeer {
+		var encryptedChunk chunk
+		err = b.database.Where("encrypted_hash = ?", hash).Take(&encryptedChunk).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"peer": peer,
+				"hash": hash,
+			}).Warn("received encrypted chunk not found in database")
+			chunkRequestMutex.Unlock()
+			return nil, false
+		}
+
+		var f file
+		err = b.database.Take(&f, "id = ?", encryptedChunk.FileID).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"peer":     peer,
+				"hash":     hash,
+				"file_id":  encryptedChunk.FileID,
+				"chunk_id": encryptedChunk.ID,
+			}).Warn("received encrypted chunk without file")
+			chunkRequestMutex.Unlock()
+			return nil, false
+		}
+
+		block, err := aes.NewCipher(f.Key)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating block")
+			chunkRequestMutex.Unlock()
+			return nil, false
+		}
+		gcm, err := cipher.NewGCMWithRandomNonce(block)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error creating gcm")
+			chunkRequestMutex.Unlock()
+			return nil, false
+		}
+
+		decrypted, err := gcm.Open(nil, []byte{}, data, nil)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"peer":     peer,
+				"hash":     hash,
+				"file_id":  encryptedChunk.FileID,
+				"chunk_id": encryptedChunk.ID,
+			}).Error("error decrypting chunk")
+			chunkRequestMutex.Unlock()
+			return nil, false
+		}
+
+		data = decrypted
+		hash = blake3.Sum256(data)
+	}
 
 	// Find any chunks in the database that have this hash and are empty
 	var targetChunks []chunk
@@ -859,7 +923,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 		}).Fatal("database error looking up chunks")
 	}
 	for _, c := range targetChunks {
-		c.Data = incomingChunk.Data
+		c.Data = data
 
 		b.writeChunkToDisk(c)
 	}
@@ -870,7 +934,34 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 }
 
 func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
-	// TODO: take the chunk data and save it in the blobs directory
+	chunkMutex.Lock()
+	defer chunkMutex.Unlock()
+	encryptedChunkRequestMutex.Lock()
+
+	var incomingChunk chunk
+	err := msgpack.Unmarshal(payload, &incomingChunk)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling chunk")
+		encryptedChunkRequestMutex.Unlock()
+		return nil, false
+	}
+
+	hash := blake3.Sum256(incomingChunk.Data)
+	path := b.configDirectory + "/blobs/" + hashString(hash)
+	err = ioutil.WriteFile(path, incomingChunk.Data, 0600)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"path":  path,
+		}).Error("error writing encrypted chunk data")
+		encryptedChunkRequestMutex.Unlock()
+		return nil, false
+	}
+
+	encryptedChunkRequestMutex.Unlock()
+	go b.makeNextEncryptedChunkRequests()
 
 	return nil, false
 }
