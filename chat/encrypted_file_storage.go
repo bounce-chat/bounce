@@ -2,6 +2,8 @@ package chat
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -10,7 +12,12 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+const encryptedBlobStorageLimit = 1024 * 1024 * 1024 * 10 // 10GiB
+var encryptedBlobStorageSize = int64(0)
+var encryptedBlockStorageLimitMutex sync.Mutex
 
 var encryptedChunkOfferMutex sync.Mutex
 
@@ -437,6 +444,14 @@ type encryptedChunkStorageRequest struct {
 	DownloadedAt   int64                     `msgpack:"-"`
 }
 
+func (ecsr *encryptedChunkStorageRequest) AfterDelete(tx *gorm.DB) error {
+	err := tx.Clauses(clause.Returning{}).Where("encrypted_chunk_storage_request_id = ?", ecsr.ID).Delete(&encryptedChunkRecipient{}).Error
+	if err != nil {
+		return err
+	}
+	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", ecsr.ID, typeEncryptedChunkStorageRequest).Delete(&deliveryRecord{}).Error
+}
+
 func (ecsr encryptedChunkStorageRequest) getType() uint16 {
 	return typeEncryptedChunkStorageRequest
 }
@@ -583,4 +598,67 @@ func (b *Bounce) getFilesUserCanHave(userID uuid.UUID) []uuid.UUID {
 	}
 
 	return ids
+}
+
+type requestECRO struct{}
+
+func (recro requestECRO) getType() uint16 {
+	return typeRequestECRO
+}
+
+func (recro requestECRO) getPayload() []byte {
+	return []byte{}
+}
+
+func (b *Bounce) handleRequestECRO(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	b.sendEncryptedStorageReferenceOffer(peer)
+	return nil, false
+}
+
+func (b *Bounce) getEncryptedBlobStorageSize() int64 {
+	encryptedBlockStorageLimitMutex.Lock()
+	size := encryptedBlobStorageSize
+	encryptedBlockStorageLimitMutex.Unlock()
+	return size
+}
+
+func (b *Bounce) incrementEncryptedBlobStorageSize(size int64) {
+	encryptedBlockStorageLimitMutex.Lock()
+	defer encryptedBlockStorageLimitMutex.Unlock()
+
+	encryptedBlobStorageSize += size
+}
+
+func (b *Bounce) decrementEncryptedBlobStorageSize(size int64) {
+	encryptedBlockStorageLimitMutex.Lock()
+	defer encryptedBlockStorageLimitMutex.Unlock()
+
+	encryptedBlobStorageSize -= size
+	if encryptedBlobStorageSize < 0 {
+		encryptedBlobStorageSize = 0
+	}
+}
+
+func (b *Bounce) recheckEncryptedBlobStorageSize() {
+	encryptedBlockStorageLimitMutex.Lock()
+	defer encryptedBlockStorageLimitMutex.Unlock()
+
+	var size int64
+	err := filepath.Walk(b.configDirectory+"/blobs/", func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return err
+	})
+
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"path":  b.configDirectory + "/blobs/",
+		}).Error("error getting blob storage usage")
+	}
+	encryptedBlobStorageSize = size
 }

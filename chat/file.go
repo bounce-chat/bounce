@@ -92,6 +92,10 @@ func (f *file) AfterDelete(tx *gorm.DB) error {
 	if err != nil {
 		return err
 	}
+	err = tx.Clauses(clause.Returning{}).Where("file_id = ?", f.ID).Delete(&encryptedChunkOffer{}).Error
+	if err != nil {
+		return err
+	}
 	if f.embedded() {
 		err = os.Remove(f.Path)
 		if err != nil {
@@ -959,7 +963,59 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 		return nil, false
 	}
 
-	// TODO: delete oldest chunks if running out of disk space
+	// Remove the oldest chunks if we're running out of allocated storage space
+	if os.Getenv("UNLIMITED_STORAGE") != "true" {
+		newData := int64(len(incomingChunk.Data))
+
+		for b.getEncryptedBlobStorageSize()+newData > encryptedBlobStorageLimit {
+			// Find the oldest download
+			var oldestSR encryptedChunkStorageRequest
+			err = b.database.Distinct("hash").Where("downloaded = ?", true).Order("downloaded_at asc").Limit(1).First(&oldestSR).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.Error("unable to find oldest storage request while freeing disk space")
+					break
+				} else {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("database error looking up encrypted chunk storage request")
+				}
+			}
+			oldestChunkPath := b.configDirectory + "/blobs/" + oldestSR.Hash
+
+			// Get the size of the file
+			fi, err := os.Stat(oldestChunkPath)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"path":  oldestChunkPath,
+					"error": err.Error(),
+				}).Error("unable to stat oldest chunk in blobs directory")
+				continue
+			}
+			oldestChunkSize := fi.Size()
+
+			// Delete the file and associated records
+			err = os.Remove(oldestChunkPath)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"path":  oldestChunkPath,
+					"error": err.Error(),
+				}).Error("error removing file")
+				break
+			}
+			err = b.database.Delete(&oldestSR).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"id":    oldestSR.ID,
+				}).Error("error deleting oldest downloaded encrypted chunk storage request")
+			}
+
+			// Update the disk usage
+			b.decrementEncryptedBlobStorageSize(oldestChunkSize)
+			log.WithFields(log.Fields{"oldestChunkPath": oldestChunkPath}).Debug("removed old chunk to free disk space")
+		}
+	}
 
 	// Save it to disk
 	hash := blake3.Sum256(incomingChunk.Data)
@@ -973,6 +1029,7 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 		encryptedChunkRequestMutex.Unlock()
 		return nil, false
 	}
+	b.incrementEncryptedBlobStorageSize(int64(len(incomingChunk.Data)))
 
 	// Set all of the storage requests as downloaded
 	err = b.database.Table("encrypted_chunk_storage_requests").Where("hash = ?", hashString(hash)).Updates(map[string]interface{}{

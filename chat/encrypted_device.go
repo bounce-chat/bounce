@@ -84,6 +84,8 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 	b.network.Load(b.configDirectory)
 	b.openReferenceDatabase()
 
+	go b.recheckEncryptedBlobStorageSize()
+
 	if !b.encryptedManagerProvisioned() {
 		secretBytes := make([]byte, 16)
 		rand.Read(secretBytes)
