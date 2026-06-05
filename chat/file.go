@@ -251,17 +251,33 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		}).Error("ignoring file with no hashes")
 		return nil, false
 	}
+	if len(f.EncryptedHashList) == 0 {
+		log.WithFields(log.Fields{
+			"id":   f.ID,
+			"peer": peer,
+		}).Error("ignoring file with no encrypted hashes")
+		return nil, false
+	}
 
 	// Create the empty chunks of the file
+	var encryptedHashes = make(map[int]string)
+	for i, encryptedChunkHash := range strings.Split(f.EncryptedHashList, ",") {
+		encryptedHashes[i] = encryptedChunkHash
+	}
 	for i, chunkHash := range strings.Split(f.HashList, ",") {
 		chunkID, err := uuid.FromBytes([]byte(chunkHash)[:16])
 		if err != nil {
 			log.Fatal("cannot make uuid from bytes for chunk")
 		}
+		encryptedHash, ok := encryptedHashes[i]
+		if !ok {
+			log.Error("file does not have encrypted hash for chunk")
+		}
 		c := chunk{
-			ID:    xor(f.ID, chunkID),
-			Hash:  chunkHash,
-			Index: i,
+			ID:            xor(f.ID, chunkID),
+			Hash:          chunkHash,
+			EncryptedHash: encryptedHash,
+			Index:         i,
 		}
 
 		f.Chunks = append(f.Chunks, c)
