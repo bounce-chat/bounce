@@ -251,7 +251,7 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 	if !ok {
 		log.WithFields(log.Fields{
 			"address": addr,
-		}).Error("no users oen this device")
+		}).Error("no users own this device")
 		return nil
 	}
 

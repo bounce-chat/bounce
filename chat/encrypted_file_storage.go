@@ -544,7 +544,6 @@ func (b *Bounce) getFilesUserCanHave(userID uuid.UUID) []uuid.UUID {
 							files.author IN (?)
 						)
 					)`,
-				scopeSync,
 				scopeUser,
 				xor(b.currentUserID(), userID),
 				scopeGroup,
