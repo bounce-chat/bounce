@@ -919,7 +919,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 			chunkRequestMutex.Unlock()
 			return nil, false
 		}
-		gcm, err := cipher.NewGCMWithRandomNonce(block)
+		gcm, err := cipher.NewGCM(block)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -928,7 +928,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 			return nil, false
 		}
 
-		decrypted, err := gcm.Open(nil, []byte{}, data, nil)
+		decrypted, err := gcm.Open(nil, f.Nonce, data, nil)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":    err.Error(),
@@ -1074,6 +1074,13 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 	sc := b.createSignedContainer(eco.OriginalPayload)
 	eco.Signature = sc.Signature
 	eco.Signer = sc.Signer
+
+	err = b.database.Create(eco).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("database error creating encrypted chunk offer")
+	}
 	var srs []encryptedChunkStorageRequest
 	err = b.database.Preload(clause.Associations).Where("hash = ?", hashString(hash)).Find(&srs).Error
 	if err != nil {
@@ -1087,6 +1094,7 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 			keysToSendTo[string(r.PublicKey)] = true
 		}
 	}
+
 	addressesToSendTo := map[string]bool{}
 	for k, _ := range keysToSendTo {
 		key := []byte(k)
