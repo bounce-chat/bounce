@@ -370,6 +370,9 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 		cb.icon.clicked = func() {
 			var d dialog.Dialog
 			viewImage := container.NewCenter(newDefaultImage(m.author, m.iconImages, m.initials, 128, cb.getFileData, func() {
+				if len(m.iconImages) == 0 {
+					return
+				}
 				data, err := cb.getFileData(m.iconImages[0])
 				if err == nil {
 					img, _, err := image.Decode(bytes.NewReader(data))
