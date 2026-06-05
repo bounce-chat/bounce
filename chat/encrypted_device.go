@@ -166,6 +166,25 @@ func (b *Bounce) openEncryptedDatabase() {
 			"error": err.Error(),
 		}).Fatal("error migrating the database")
 	}
+
+	// Find any encrypted storage requests that were downloaded and have had their data deleted and remove them
+	var srs []encryptedChunkStorageRequest
+	err = b.database.Where("downloaded = ?", true).Find(&srs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error finding downloaded encrypted chunk storage requests")
+	}
+	for _, sr := range srs {
+		path := b.configDirectory + "/blobs/" + sr.Hash
+		_, err := os.Stat(path)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"path": path,
+			}).Warn("removing downlaoded storage request without file")
+			b.database.Delete(&sr)
+		}
+	}
 }
 
 func (b *Bounce) encryptedManagerProvisioned() bool {

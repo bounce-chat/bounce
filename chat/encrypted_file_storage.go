@@ -650,8 +650,17 @@ func (b *Bounce) recheckEncryptedBlobStorageSize() {
 		}
 		if !info.IsDir() {
 			size += info.Size()
+
+			var srs []encryptedChunkStorageRequest
+			b.database.Where("hash = ?", info.Name()).Find(&srs)
+			if len(srs) == 0 {
+				log.WithFields(log.Fields{
+					"name": info.Name(),
+				}).Warn("file in blobs directory has no database record associated with it")
+			}
 		}
-		return err
+
+		return nil
 	})
 
 	if err != nil {
