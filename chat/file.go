@@ -1075,7 +1075,7 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 	eco.Signature = sc.Signature
 	eco.Signer = sc.Signer
 
-	err = b.database.Create(eco).Error
+	err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(eco).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

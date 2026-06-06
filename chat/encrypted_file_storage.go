@@ -114,8 +114,9 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 	eco.Signer = sc.Signer
 
 	var existingECO encryptedChunkOffer
-	err = b.database.Take(&existingECO, "id = ?", eco.ID).Error
+	err = b.database.Take(&existingECO, "hash = ? AND location = ?", eco.Hash, eco.Location).Error
 	if err == nil {
+		b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
 		return &existingECO, false
 	}
 
@@ -156,7 +157,7 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 	eco.Scope = unencryptedCO.Scope
 	eco.Destination = unencryptedCO.Destination
 
-	err = b.database.Create(&eco).Error
+	err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&eco).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -164,7 +165,7 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 	}
 
 	b.makeNextChunkRequests()
-
+	b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
 	return nil, false
 }
 
