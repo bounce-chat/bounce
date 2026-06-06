@@ -12,21 +12,22 @@ import (
 var catchUpMutex sync.Mutex
 
 var allowedCatchUpFrames = map[uint16]bool{
-	typeDirectMessage:  true,
-	typeGroupMessage:   true,
-	typeUpdateDM:       true,
-	typeDevice:         true,
-	typeAddUser:        true,
-	typeGroupCreation:  true,
-	typeUpdateGroup:    true,
-	typeConfirmation:   true,
-	typeUpdateUser:     true,
-	typeUpdateDevice:   true,
-	typeReadReceipt:    true,
-	typeUpdateSettings: true,
-	typeFile:           true,
-	typeChunkOffer:     true,
-	typeDraft:          true,
+	typeDirectMessage:       true,
+	typeGroupMessage:        true,
+	typeUpdateDM:            true,
+	typeDevice:              true,
+	typeAddUser:             true,
+	typeGroupCreation:       true,
+	typeUpdateGroup:         true,
+	typeConfirmation:        true,
+	typeUpdateUser:          true,
+	typeUpdateDevice:        true,
+	typeReadReceipt:         true,
+	typeUpdateSettings:      true,
+	typeFile:                true,
+	typeChunkOffer:          true,
+	typeDraft:               true,
+	typeEncryptedChunkOffer: true,
 }
 
 // A frame contains the ID, type, and marshalled payload of any other frame
