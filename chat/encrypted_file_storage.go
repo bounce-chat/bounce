@@ -209,7 +209,7 @@ func (b *Bounce) makeNextEncryptedChunkRequests() {
 			if rd.connectedSockets.Load() > 0 {
 				go b.sendDirect(s, &chunkRequest{Hash: hash})
 				alreadyHitPeer[s] = true
-				err = b.database.Table("encrypted_chunk_storage_requests").Where("source = ? AND hash ?", s, hash).Updates(map[string]interface{}{
+				err = b.database.Table("encrypted_chunk_storage_requests").Where("source = ? AND hash = ?", s, hash).Updates(map[string]interface{}{
 					"last_attempted_at": time.Now().Unix(),
 				}).Error
 				if err != nil {
