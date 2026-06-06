@@ -146,15 +146,21 @@ func (b *Bounce) readFrames(conn net.Conn) {
 	var profileExists bool
 	var deviceIsKnown bool
 	var deviceIsEncrypted bool
+	var deviceIsAnotherUsersEncryptedDevice bool
 	var dev device
 	var esd encryptedSyncDevice
 	if !b.encrypted {
 		profile, profileExists = b.currentUser()
 		deviceIsKnown, deviceIsEncrypted, dev, esd = b.getDeviceOrEncryptedSyncDevice(peer)
+		if !deviceIsKnown {
+			encryptedDeviceCacheMutex.Lock()
+			_, deviceIsAnotherUsersEncryptedDevice = encryptedDeviceCache[peer]
+			encryptedDeviceCacheMutex.Unlock()
+		}
 	}
 
 	for {
-		frameType, data, err := readFrame(conn, deviceIsKnown || b.encrypted)
+		frameType, data, err := readFrame(conn, deviceIsKnown || b.encrypted || deviceIsAnotherUsersEncryptedDevice)
 		if err != nil {
 			return
 		}
