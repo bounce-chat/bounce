@@ -187,17 +187,34 @@ func (b *Bounce) makeNextEncryptedChunkRequests() {
 		return
 	}
 
+	recheck := false
 	neededChunks := map[string][]string{}
 	for _, sr := range srs {
+		if sr.LastAttemptedAt > time.Now().Unix()-expectedChunkDeliverySeconds {
+			recheck = true
+			continue
+		}
 		neededChunks[sr.Hash] = append(neededChunks[sr.Hash], sr.Source)
 	}
 
-	recheck := false
+	alreadyHitPeer := map[string]bool{}
 	for hash, sources := range neededChunks {
 		for i, s := range sources {
+			if _, alreadyHit := alreadyHitPeer[s]; alreadyHit {
+				recheck = true
+				continue
+			}
+
 			rd := b.getRemoteDevice(s)
 			if rd.connectedSockets.Load() > 0 {
 				go b.sendDirect(s, &chunkRequest{Hash: hash})
+				alreadyHitPeer[s] = true
+				err = b.database.Table("encrypted_chunk_storage_requests").Where("source = ? AND hash ?", s, hash).Updates(map[string]interface{}{
+					"last_attempted_at": time.Now().Unix(),
+				}).Error
+				if err != nil {
+					log.Error("error updating last attempt field for encrypted chunk storage request")
+				}
 
 				if len(sources) > i+1 {
 					recheck = true
@@ -443,13 +460,14 @@ func (b *Bounce) handleEncryptedStorageReferenceRequest(peer string, payload []b
 }
 
 type encryptedChunkStorageRequest struct {
-	ID             uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Hash           string
-	Recipients     [][]byte                  `gorm:"-"`
-	RecipientUsers []encryptedChunkRecipient `msgpack:"-"`
-	Source         string                    `msgpack:"-"`
-	Downloaded     bool                      `msgpack:"-"`
-	DownloadedAt   int64                     `msgpack:"-"`
+	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Hash            string
+	Recipients      [][]byte                  `gorm:"-"`
+	RecipientUsers  []encryptedChunkRecipient `msgpack:"-"`
+	Source          string                    `msgpack:"-"`
+	Downloaded      bool                      `msgpack:"-"`
+	DownloadedAt    int64                     `msgpack:"-"`
+	LastAttemptedAt int64                     `msgpack:"-"`
 }
 
 func (ecsr *encryptedChunkStorageRequest) AfterDelete(tx *gorm.DB) error {
