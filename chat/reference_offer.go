@@ -1398,10 +1398,20 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	// Inform the reference engine that this peer has these frames that we don't know about
 	if len(references) > 0 {
 		b.loadReferenceOffer(peer, references)
-	} else if !b.encrypted {
+	} else {
 		// If this is an encrypted device we manage, and we have nothing we need to request from it, then we can now
 		// check the management key and re-key if needed.
-		b.getManagementKeyHash(peer)
+		if !b.encrypted {
+			b.getManagementKeyHash(peer)
+		}
+
+		// If this peer is an encrypted device and we don't need anything from it, request an encrypted storage reference next
+		encryptedDeviceCacheMutex.Lock()
+		_, encryptedPeer := encryptedDeviceCache[peer]
+		encryptedDeviceCacheMutex.Unlock()
+		if encryptedPeer {
+			b.sendDirect(peer, requestECRO{})
+		}
 	}
 
 	// Send an ack for everything we already have in the database

@@ -25,8 +25,8 @@ type encryptedChunkOffer struct {
 	SignedFrame
 	cachedEncoding
 	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Hash            string
-	Location        string
+	Hash            string    `gorm:"index;uniqueIndex:idx_hash_location"`
+	Location        string    `gorm:"index;uniqueIndex:idx_hash_location"`
 	Timestamp       int64
 	Author          uuid.UUID `msgpack:"-"`
 	FileID          uuid.UUID `msgpack:"-"`
@@ -246,7 +246,7 @@ func (b *Bounce) sendEncryptedStorageReferenceOffer(address string) encryptedSto
 	}
 
 	var ecos []encryptedChunkOffer
-	err := b.database.Select("encrypted_chunk_offers.id").
+	err := b.database.Distinct("encrypted_chunk_offers.id").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_chunk_offers.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeEncryptedChunkOffer).
 		Joins("LEFT JOIN encrypted_chunk_recipients ON encrypted_chunk_recipients.hash == encrypted_chunk_offers.hash AND encrypted_chunk_recipients.public_key == ?", peerKey).
 		Where("delivery_records.id IS NULL AND encrypted_chunk_recipients.id IS NOT NULL").
@@ -419,6 +419,13 @@ func (b *Bounce) handleEncryptedStorageReferenceRequest(peer string, payload []b
 			continue
 		}
 
+		var alreadyDownloadedSR encryptedChunkStorageRequest
+		err = b.database.Where("hash = ? AND downloaded = ?", sr.Hash, true).Take(&alreadyDownloadedSR).Error
+		if err == nil {
+			sr.Downloaded = true
+			sr.DownloadedAt = time.Now().Unix()
+		}
+
 		err = b.database.Create(&sr).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -489,6 +496,13 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 	err = b.database.Where("hash = ? AND source = ?", sr.Hash, sr.Source).Take(&existingSR).Error
 	if err == nil {
 		return nil, false
+	}
+
+	var alreadyDownloadedSR encryptedChunkStorageRequest
+	err = b.database.Where("hash = ? AND downloaded = ?", sr.Hash, true).Take(&alreadyDownloadedSR).Error
+	if err == nil {
+		sr.Downloaded = true
+		sr.DownloadedAt = time.Now().Unix()
 	}
 
 	err = b.database.Create(&sr).Error

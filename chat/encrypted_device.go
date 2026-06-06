@@ -1261,7 +1261,6 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 			}
 		}()
 
-		b.sendEncryptedStorageReferenceOffer(peer)
 		b.makeNextEncryptedChunkRequests()
 	} else {
 		log.WithFields(log.Fields{

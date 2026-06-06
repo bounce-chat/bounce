@@ -113,14 +113,10 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 
 	decryptedFrames := []frame{}
 	keyHistory := b.encryptionKeyHistory()
-	reRequestECRO := false
 	for _, er := range ecu.Frames {
 		decrypted, err := b.decryptEncryptedReceive(er, keyHistory)
 		if err == nil {
 			decryptedFrames = append(decryptedFrames, decrypted)
-		}
-		if er.Type == typeFile || er.Type == typeChunkOffer {
-			reRequestECRO = true
 		}
 	}
 
@@ -136,9 +132,7 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 	}
 
 	br, first := b.handleCatchUp(peer, decryptedCatchUpPayload, true)
-	if reRequestECRO {
-		b.sendDirect(peer, requestECRO{})
-	}
+	b.sendDirect(peer, requestECRO{})
 	return br, first
 }
 
