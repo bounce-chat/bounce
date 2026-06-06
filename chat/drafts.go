@@ -153,7 +153,7 @@ func (b *Bounce) handleDraft(peer string, payload []byte, catchUp bool) (broadca
 	existingDraft, ok := draftCache[d.Thread]
 	draftMutex.Unlock()
 
-	if !ok || d.Timestamp > existingDraft.Timestamp {
+	if !ok || d.Timestamp > existingDraft.Timestamp || (d.Timestamp == existingDraft.Timestamp && d.Text == "") {
 		draftMutex.Lock()
 		draftCache[d.Thread] = &d
 		draftMutex.Unlock()
