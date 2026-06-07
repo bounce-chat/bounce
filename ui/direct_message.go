@@ -320,6 +320,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 			if err != nil {
 				ui.showDialog(dialog.NewError(err, ui.window), nil)
 			}
+			ui.window.Canvas().Focus(dm.entry)
 		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 	addFiles.Importance = widget.LowImportance
@@ -911,6 +912,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 					dm.readReceiptOverrideSelection,
 					widget.NewLabel("Typing Indicators"),
 					dm.typingIndicatorOverrideSelection,
+					widget.NewLabel("User ID: "+dm.user.id.String()+", introduced on "+time.Unix(dm.user.introductionTime, 0).Format(time.DateOnly)),
 				),
 			},
 		),
@@ -1226,6 +1228,9 @@ func (ui *ui) openAndPopulateDM(u *user) *directMessage {
 	ui.refreshThreadOrder()
 	for _, fp := range state.FileProgress {
 		ui.FileDownloadProgress(fp.ID, fp.Progress)
+	}
+	for _, d := range state.Drafts {
+		go ui.UpdateDraft(d)
 	}
 
 	return dm

@@ -1268,6 +1268,7 @@ func (b *Bounce) makeNextChunkRequests() {
 				}).Fatal("database error looking up actively used encrypted chunk offers")
 			}
 			if len(activeOffers) > 0 || len(activeEncryptedOffers) > 0 {
+				recheck = true
 				continue
 			}
 

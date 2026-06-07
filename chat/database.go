@@ -1491,6 +1491,13 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 		}
 	}
 
+	var exportedDrafts []Draft
+	var d draft
+	err = b.database.Where("thread = ?", userID).Order("timestamp asc").Limit(1).First(&d).Error
+	if err == nil {
+		exportedDrafts = append(exportedDrafts, Draft{Thread: userID, Text: d.Text})
+	}
+
 	// Create the initial state for the UI
 	return InitialState{
 		Users:                  chatUsers,
@@ -1500,5 +1507,6 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 		UpdateUserUpdateNames:  exportedUpdateUserUpdateNames,
 		UpdateUserUpdateImages: exportedUpdateUserUpdateImages,
 		FileProgress:           fileProgress,
+		Drafts:                 exportedDrafts,
 	}
 }

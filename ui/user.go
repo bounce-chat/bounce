@@ -45,7 +45,13 @@ func (u *user) getDisplayName() string {
 }
 
 func (u *user) setInitials() {
-	parts := strings.Split(u.getDisplayName(), " ")
+	split := strings.Split(u.getDisplayName(), " ")
+	parts := []string{}
+	for _, s := range split {
+		if s != "" {
+			parts = append(parts, s)
+		}
+	}
 	if len(parts) == 1 {
 		r, n := utf8.DecodeRuneInString(parts[0])
 		if r == utf8.RuneError {

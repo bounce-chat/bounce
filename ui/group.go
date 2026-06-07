@@ -608,6 +608,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 			if err != nil {
 				ui.showDialog(dialog.NewError(err, ui.window), nil)
 			}
+			ui.window.Canvas().Focus(g.entry)
 		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 	addFiles.Importance = widget.LowImportance

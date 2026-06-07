@@ -378,7 +378,7 @@ func (ui *ui) buildNewProfileCreator() {
 			ui.showDialog(dialog.NewError(errors.New("Device name must be set"), ui.window), nil)
 			return
 		}
-		err := ui.bounce.SetProfile(ui.widgets.newInstall.profileNameEntry.Text, ui.widgets.newInstall.newProfileImageData, deviceNameEntry.Text)
+		err := ui.bounce.SetProfile(strings.TrimSpace(ui.widgets.newInstall.profileNameEntry.Text), ui.widgets.newInstall.newProfileImageData, strings.TrimSpace(deviceNameEntry.Text))
 		if err != nil {
 			ui.showDialog(dialog.NewError(errors.New("Error saving profile: "+err.Error()), ui.window), nil)
 			return

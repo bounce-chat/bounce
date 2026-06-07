@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
@@ -457,6 +458,7 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 					g.readReceiptOverrideSelection,
 					widget.NewLabel("Typing Indicators"),
 					g.typingIndicatorOverrideSelection,
+					widget.NewLabel("Group ID: "+g.id.String()+", created on "+time.Unix(g.createdAt, 0).Format(time.DateOnly)),
 				),
 			},
 		),

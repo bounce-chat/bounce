@@ -707,7 +707,13 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 
 		for _, d := range state.Drafts {
-			go ui.UpdateDraft(d)
+			t, ok := ui.threads.get(d.Thread)
+			if ok {
+				dm, isDM := t.(*directMessage)
+				if !isDM || dm.opened {
+					go ui.UpdateDraft(d)
+				}
+			}
 		}
 	})
 	go ui.messages.writeCache()

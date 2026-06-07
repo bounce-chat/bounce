@@ -74,7 +74,11 @@ func (g *group) AfterDelete(tx *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	err = tx.Clauses(clause.Returning{}).Where("type = ? AND destination =?", fileTypeGroupImage, g.ID).Delete(&file{}).Error
+	err = tx.Clauses(clause.Returning{}).Where("type = ? AND destination = ?", fileTypeGroupImage, g.ID).Delete(&file{}).Error
+	if err != nil {
+		return err
+	}
+	err = tx.Clauses(clause.Returning{}).Where("thread = ?", g.ID).Delete(&draft{}).Error
 	if err != nil {
 		return err
 	}
