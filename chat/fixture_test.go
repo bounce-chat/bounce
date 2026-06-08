@@ -489,6 +489,7 @@ func newBounce() *Bounce {
 	network := newTestnet()
 	configDirectory := os.TempDir() + "/bounce-test-" + uuid.New().String()
 	os.MkdirAll(configDirectory, 0700)
+	os.MkdirAll(configDirectory+"/blobs/", 0700)
 
 	return Open(ui, network, configDirectory)
 }

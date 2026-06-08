@@ -1,6 +1,9 @@
 package chat
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	crand "crypto/rand"
 	"os"
 	"testing"
 	"time"
@@ -19,25 +22,43 @@ func TestChunkOffersInReferenceFollowOverlapScope(t *testing.T) {
 	fileID := uuid.New()
 	data := []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06}
 	hash := blake3.Sum256(data)
-	chunks, hashList := splitChunks(fileID, data)
-	f := &file{
-		ID:          fileID,
-		Type:        fileTypeUserImage,
-		AttachedTo:  b.currentUserID(),
-		Path:        os.TempDir() + "/bounce-file-" + uuid.New().String(),
-		Hash:        hashString(hash),
-		Size:        int64(len(data)),
-		ChunkSize:   fileChunkSize,
-		Wanted:      true,
-		Downloaded:  true,
-		Scope:       scopeGlobal,
-		Destination: b.currentUserID(),
-		Timestamp:   time.Now().Unix(),
-		Author:      b.currentUserID(),
-		HashList:    hashList,
-		Chunks:      chunks,
+	key := make([]byte, 32)
+	crand.Read(key)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error creating aes cipher from key")
 	}
-	var err error
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error creating gcm from block")
+	}
+	nonce := make([]byte, aesgcm.NonceSize())
+	crand.Read(nonce)
+	chunks, hashList, encryptedHashList := splitChunks(fileID, data, key, nonce)
+	f := &file{
+		ID:                fileID,
+		Type:              fileTypeUserImage,
+		AttachedTo:        b.currentUserID(),
+		Path:              os.TempDir() + "/bounce-file-" + uuid.New().String(),
+		Hash:              hashString(hash),
+		Size:              int64(len(data)),
+		ChunkSize:         fileChunkSize,
+		Wanted:            true,
+		Downloaded:        true,
+		Scope:             scopeGlobal,
+		Destination:       b.currentUserID(),
+		Timestamp:         time.Now().Unix(),
+		Author:            b.currentUserID(),
+		HashList:          hashList,
+		EncryptedHashList: encryptedHashList,
+		Chunks:            chunks,
+		Key:               key,
+		Nonce:             nonce,
+	}
 	f.OriginalPayload, err = msgpack.Marshal(f)
 	if err != nil {
 		log.WithFields(log.Fields{
