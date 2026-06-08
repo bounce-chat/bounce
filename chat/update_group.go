@@ -514,6 +514,8 @@ func (b *Bounce) SetGroupRetention(groupID uuid.UUID, retention int64) error {
 }
 
 func (b *Bounce) ClearGroupChatHistory(groupID uuid.UUID) error {
+	go b.updateEncryptedClearBefore(groupID, time.Now().Unix())
+
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(time.Now().Unix()))
 

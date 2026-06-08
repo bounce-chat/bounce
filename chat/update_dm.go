@@ -716,6 +716,8 @@ func (b *Bounce) SetDMRetention(userID uuid.UUID, retention int64) error {
 }
 
 func (b *Bounce) ClearDMChatHistory(userID uuid.UUID) error {
+	go b.updateEncryptedClearBefore(xor(userID, b.currentUserID()), time.Now().Unix())
+
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(time.Now().Unix()))
 

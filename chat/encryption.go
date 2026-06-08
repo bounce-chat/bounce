@@ -84,13 +84,47 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 		}
 	}
 
+	// Frames that might need to be deletes as part of clearing chat history should have a batch delete key assigned
+	batchDeleteKey := uuid.Nil
+	if br.getType() == typeDirectMessage {
+		dm, ok := br.(*directMessage)
+		if !ok {
+			log.WithFields(log.Fields{
+				"id": br.getID(),
+			}).Error("could not turn direct message broadcastable into direct message")
+			return
+		}
+		batchDeleteKey = dm.Xor
+	} else if br.getType() == typeGroupMessage {
+		batchDeleteKey = br.getDestination(b.currentUserID())
+	} else if br.getType() == typeFile {
+		f, ok := br.(*file)
+		if !ok {
+			log.WithFields(log.Fields{
+				"id": br.getID(),
+			}).Error("could not turn file broadcastable into file")
+			return
+		}
+		if f.Type == fileTypeMessageAttachment {
+			batchDeleteKey = f.Destination
+		}
+	} else if br.getType() == typeReadReceipt {
+		rr, ok := br.(*readReceipt)
+		if !ok {
+			log.WithFields(log.Fields{
+				"id": br.getID(),
+			}).Error("could not turn read receipt broadcastable into read receipt")
+			return
+		}
+		batchDeleteKey = rr.Destination
+	}
+
+	// Get the users that are in scope
 	currentUser, ok := b.currentUser()
 	if !ok {
 		log.Error("cannot send to encrypted devices before user exists")
 		return
 	}
-
-	// Get the users that are in scope
 	users := b.getUsersInScope(br)
 
 	// Collect all the encrypted devices and their owners
@@ -179,12 +213,13 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 
 		// Sign the encrypted frame and recipients, send to the encrypted device
 		ef := encryptedFrame{
-			ID:         br.getID(),
-			Type:       br.getType(),
-			Payload:    ciphertext,
-			Timestamp:  br.getTimestamp(),
-			DeleteAt:   getDeleteAt(br),
-			Recipients: recipients,
+			ID:             br.getID(),
+			Type:           br.getType(),
+			Payload:        ciphertext,
+			Timestamp:      br.getTimestamp(),
+			DeleteAt:       getDeleteAt(br),
+			BatchDeleteKey: batchDeleteKey,
+			Recipients:     recipients,
 		}
 		rd.messages <- ef
 	}
@@ -205,13 +240,47 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 		}
 	}
 
+	// Frames that might need to be deletes as part of clearing chat history should have a batch delete key assigned
+	batchDeleteKey := uuid.Nil
+	if br.getType() == typeDirectMessage {
+		dm, ok := br.(*directMessage)
+		if !ok {
+			log.WithFields(log.Fields{
+				"id": br.getID(),
+			}).Error("could not turn direct message broadcastable into direct message")
+			return nil
+		}
+		batchDeleteKey = dm.Xor
+	} else if br.getType() == typeGroupMessage {
+		batchDeleteKey = br.getDestination(b.currentUserID())
+	} else if br.getType() == typeFile {
+		f, ok := br.(*file)
+		if !ok {
+			log.WithFields(log.Fields{
+				"id": br.getID(),
+			}).Error("could not turn file broadcastable into file")
+			return nil
+		}
+		if f.Type == fileTypeMessageAttachment {
+			batchDeleteKey = f.Destination
+		}
+	} else if br.getType() == typeReadReceipt {
+		rr, ok := br.(*readReceipt)
+		if !ok {
+			log.WithFields(log.Fields{
+				"id": br.getID(),
+			}).Error("could not turn read receipt broadcastable into read receipt")
+			return nil
+		}
+		batchDeleteKey = rr.Destination
+	}
+
+	// Get the users that are in scope
 	currentUser, ok := b.currentUser()
 	if !ok {
 		log.Error("cannot send to encrypted devices before user exists")
 		return nil
 	}
-
-	// Get the users that are in scope
 	users := b.getUsersInScope(br)
 
 	// Collect all the encrypted devices and their owners
@@ -290,12 +359,13 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 
 	// Sign the encrypted frame and recipients, send to the encrypted device
 	return &encryptedFrame{
-		ID:         br.getID(),
-		Type:       br.getType(),
-		Payload:    ciphertext,
-		Timestamp:  br.getTimestamp(),
-		DeleteAt:   getDeleteAt(br),
-		Recipients: recipients,
+		ID:             br.getID(),
+		Type:           br.getType(),
+		Payload:        ciphertext,
+		Timestamp:      br.getTimestamp(),
+		DeleteAt:       getDeleteAt(br),
+		BatchDeleteKey: batchDeleteKey,
+		Recipients:     recipients,
 	}
 }
 

@@ -67,6 +67,7 @@ var typeEncryptedStorageReferenceOffer = uint16(46)
 var typeEncryptedStorageReferenceRequest = uint16(47)
 var typeEncryptedChunkStorageRequest = uint16(48)
 var typeRequestECRO = uint16(49)
+var typeEncryptedClearBefore = uint16(50)
 
 type sendable interface {
 	getType() uint16
@@ -182,6 +183,7 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 			typeChunk:                            b.handleEncryptedChunk,
 			typeEncryptedChunkStorageRequest:     b.handleEncryptedChunkStorageRequest,
 			typeRequestECRO:                      b.handleRequestECRO,
+			typeEncryptedClearBefore:             b.handleEncryptedClearBefore,
 		}
 	}
 

@@ -401,6 +401,7 @@ type encryptedFrame struct {
 	SavedAt          int64 `msgpack:"-"`
 	Payload          []byte
 	DeleteAt         int64
+	BatchDeleteKey   uuid.UUID
 	Recipients       []recipient
 	DeviceRecipients []deviceRecipient
 }
@@ -554,6 +555,186 @@ func addressForKey(key []byte) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+type encryptedClearBefore struct {
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	BatchKey  uuid.UUID
+	Timestamp int64
+}
+
+func (ecb encryptedClearBefore) getType() uint16 {
+	return typeEncryptedClearBefore
+}
+
+func (ecb encryptedClearBefore) getPayload() []byte {
+	bytes, err := msgpack.Marshal(ecb)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal encrypted clear before")
+	}
+	return bytes
+}
+
+func (b *Bounce) handleEncryptedClearBefore(peer string, payload []byte, _ bool) (broadcastable, bool) {
+	var ecb encryptedClearBefore
+	err := msgpack.Unmarshal(payload, &ecb)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling encrypted clear before")
+		return nil, false
+	}
+
+	peerUserKeyMutex.Lock()
+	requesterKey, ok := peerUserKeys[peer]
+	peerUserKeyMutex.Unlock()
+
+	if !ok {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Error("cannot handle encrypted clear before from peer with unknown user key")
+		return nil, false
+	}
+
+	err = b.database.Where(
+		"id IN (?)",
+		b.database.
+			Model(&encryptedFrame{}).
+			Distinct("encrypted_frames.id").
+			Joins("LEFT JOIN recipients ON recipients.encrypted_frame_id == encrypted_frames.id AND recipients.public_key = ?", requesterKey).
+			Where(
+				"batch_delete_key = ? AND timestamp <= ? AND (encrypted_frames.type = ? OR encrypted_frames.type = ? OR encrypted_frames.type = ? OR encrypted_frames.type = ?) AND recipients.id IS NOT NULL",
+				ecb.BatchKey,
+				ecb.Timestamp,
+				typeDirectMessage,
+				typeGroupMessage,
+				typeFile,
+				typeReadReceipt,
+			),
+	).Delete(&encryptedFrame{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":     err.Error(),
+			"batch_key": ecb.BatchKey,
+		}).Error("error deleting encrypted frames by batch key")
+	}
+
+	b.sendAck(peer, typeEncryptedClearBefore, ecb.ID)
+
+	return nil, false
+}
+
+func (b *Bounce) updateEncryptedClearBefore(thread uuid.UUID, timestamp int64) {
+	err := b.database.Where("batch_key = ?", thread).Delete(&encryptedClearBefore{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":  err.Error(),
+			"thread": thread,
+		}).Error("error removing old encrypted clear before records")
+	}
+
+	err = b.database.Create(&encryptedClearBefore{
+		ID:        uuid.New(),
+		BatchKey:  thread,
+		Timestamp: timestamp,
+	}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":  err.Error(),
+			"thread": thread,
+		}).Error("error saving new encrypted clear before record")
+		return
+	}
+
+	encryptedDeviceCacheMutex.Lock()
+	for addr, _ := range encryptedDeviceCache {
+		if b.getRemoteDevice(addr).connectedSockets.Load() > 0 {
+			go b.sendEncryptedClearBefores(addr)
+		}
+	}
+	encryptedDeviceCacheMutex.Unlock()
+}
+
+func (b *Bounce) sendEncryptedClearBefores(address string) {
+	encryptedDeviceCacheMutex.Lock()
+	ownerID, ok := encryptedDeviceCache[address]
+	encryptedDeviceCacheMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"address": address,
+		}).Error("cannot send encrypted clear befores to address with unknown owner")
+		return
+	}
+
+	if ownerID == b.currentUserID() {
+		var all []encryptedClearBefore
+		err := b.database.
+			Select("encrypted_clear_befores.*").
+			Distinct().
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_clear_befores.id AND delivery_records.destination == ?", address).
+			Where("delivery_records.id IS NULL").
+			Find(&all).Error
+		if err == nil {
+			for _, ecb := range all {
+				b.sendDirect(address, ecb)
+			}
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up encrypted clear befores")
+		}
+	} else {
+		var clearForTheUser encryptedClearBefore
+		err := b.database.
+			Select("encrypted_clear_befores.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_clear_befores.id AND delivery_records.destination == ?", address).
+			Where("delivery_records.id IS NULL AND batch_key = ?", xor(b.currentUserID(), ownerID)).
+			Take(&clearForTheUser).Error
+		if err == nil {
+			b.sendDirect(address, clearForTheUser)
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up encrypted clear before")
+		}
+
+		groupIDs := []uuid.UUID{}
+		b.consensusStore.Lock()
+		for groupID, stack := range b.consensusStore.groups {
+			top, err := stack.top()
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error getting group state while sending encrypted clear befores")
+				continue
+			}
+			if top.isMember(ownerID) {
+				groupIDs = append(groupIDs, groupID)
+			}
+		}
+		b.consensusStore.Unlock()
+
+		var clearsForTheGroups []encryptedClearBefore
+		err = b.database.
+			Select("encrypted_clear_befores.*").
+			Distinct().
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_clear_befores.id AND delivery_records.destination == ?", address).
+			Where("delivery_records.id IS NULL AND batch_key IN (?)", groupIDs).
+			Find(&clearsForTheGroups).Error
+		if err == nil {
+			for _, ecb := range clearsForTheGroups {
+				b.sendDirect(address, ecb)
+			}
+		} else {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up encrypted clear befores")
+		}
+	}
+
+	b.pruneEncryptedDrafts()
 }
 
 // Stores our intention to add this user's key as a recipient to all a group's update groups up until this timestamp

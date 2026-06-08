@@ -40,6 +40,7 @@ var typeTable = map[uint16]string{
 	typeDraft:                        "drafts",
 	typeEncryptedChunkOffer:          "encrypted_chunk_offers",
 	typeEncryptedChunkStorageRequest: "encrypted_chunk_storage_requests",
+	typeEncryptedClearBefore:         "encrypted_clear_befores",
 }
 
 func (b *Bounce) openDatabase() {
@@ -107,6 +108,7 @@ func (b *Bounce) openDatabase() {
 		&appendRecipient{},
 		&draft{},
 		&encryptedChunkOffer{},
+		&encryptedClearBefore{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
