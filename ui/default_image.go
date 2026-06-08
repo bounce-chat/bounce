@@ -31,7 +31,6 @@ type defaultImage struct {
 	images          []uuid.UUID
 	fileGetter      func(uuid.UUID) ([]byte, error)
 	clicked         func()
-	imageCache      map[uuid.UUID]*canvas.Image
 }
 
 func newDefaultImage(id uuid.UUID, images []uuid.UUID, str string, size float32, fileGetter func(uuid.UUID) ([]byte, error), clicked func()) *defaultImage {
@@ -47,7 +46,6 @@ func newDefaultImage(id uuid.UUID, images []uuid.UUID, str string, size float32,
 		fileGetter: fileGetter,
 		clicked:    clicked,
 		images:     images,
-		imageCache: make(map[uuid.UUID]*canvas.Image),
 	}
 	di.setBackground()
 

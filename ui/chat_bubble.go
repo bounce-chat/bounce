@@ -190,7 +190,6 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 				color: color.Black,
 			})),
 			fileGetter: ui.bounce.GetFileData,
-			imageCache: make(map[uuid.UUID]*canvas.Image),
 		},
 		imageAttachments: container.New(layout.NewRowWrapLayout()),
 		fileAttachments:  container.NewVBox(),
