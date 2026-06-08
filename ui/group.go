@@ -519,7 +519,6 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		go ui.bounce.TypingInGroup(g.id)
 		go ui.bounce.UpdateDraft(g.id, str)
 		g.button.setDraft(str)
-		g.button.Refresh()
 	}
 	entry.customOnSubmitted = func() {
 		gm := chat.GroupMessage{
@@ -565,7 +564,6 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		gm.FileAttachments = fileAttachments
 		go ui.bounce.UpdateDraft(g.id, "")
 		g.button.setDraft("")
-		g.button.Refresh()
 		go ui.bounce.SendGroupMessage(gm, readers, sources)
 	}
 

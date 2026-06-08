@@ -535,7 +535,6 @@ func (ui *ui) UpdateDraft(d chat.Draft) {
 		t.getEntry().Refresh()
 
 		t.getButton().setDraft(d.Text)
-		t.getButton().Refresh()
 	})
 }
 

@@ -229,7 +229,6 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		go ui.bounce.TypingInDirectMessage(dm.user.id)
 		go ui.bounce.UpdateDraft(dm.user.id, str)
 		dm.button.setDraft(str)
-		dm.button.Refresh()
 	}
 	entry.customOnSubmitted = func() {
 		chatDM := chat.DirectMessage{
@@ -276,7 +275,6 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 
 		go ui.bounce.UpdateDraft(dm.user.id, "")
 		dm.button.setDraft("")
-		dm.button.Refresh()
 		go ui.bounce.SendDirectMessage(chatDM, readers, sources)
 	}
 
