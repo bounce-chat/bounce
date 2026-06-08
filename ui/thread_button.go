@@ -164,6 +164,7 @@ func newThreadButton(image *defaultImage, name string, clicked func()) *threadBu
 			Style: widget.RichTextStyle{
 				Alignment: fyne.TextAlignCenter,
 				SizeName:  theme.SizeNameCaptionText,
+				ColorName: theme.ColorNameForegroundOnPrimary,
 			},
 			Text: "",
 		}),
