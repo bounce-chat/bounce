@@ -700,7 +700,6 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 				ui.populateInitialItems(t, items)
 			}
 		})
-		ui.refreshThreadOrder()
 
 		for _, fp := range state.FileProgress {
 			go ui.FileDownloadProgress(fp.ID, fp.Progress)
@@ -709,12 +708,14 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		for _, d := range state.Drafts {
 			t, ok := ui.threads.get(d.Thread)
 			if ok {
-				dm, isDM := t.(*directMessage)
-				if !isDM || dm.opened {
-					go ui.UpdateDraft(d)
-				}
+				t.getEntry().Text = d.Text
+				t.getEntry().Refresh()
+
+				t.getButton().setDraft(d.Text)
 			}
 		}
+
+		ui.refreshThreadOrder()
 	})
 	go ui.messages.writeCache()
 }

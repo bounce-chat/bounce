@@ -31,6 +31,7 @@ type invite struct {
 	button         *threadButton
 	userListScroll *container.Scroll
 	timestamp      int64
+	lastOpened     int64
 }
 
 func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
@@ -156,6 +157,8 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 			ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeThread, context: i.id})
 		}
 		ui.state.currentView = viewTypeThread
+		i.lastOpened = time.Now().Unix()
+		ui.bounce.SetGroupLastOpened(i.id, time.Now().Unix())
 	}
 	i.button = newThreadButton(newDefaultImage(i.id, i.images, i.initial, 64, ui.bounce.GetFileData, openThread), i.name, openThread)
 
@@ -302,4 +305,12 @@ func (i *invite) setOpened() {
 
 func (i *invite) hasBeenOpened() bool {
 	return true
+}
+
+func (i *invite) getLastOpenTime() int64 {
+	return i.lastOpened
+}
+
+func (i *invite) hasDraft() bool {
+	return false
 }

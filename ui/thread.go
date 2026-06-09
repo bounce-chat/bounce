@@ -28,6 +28,8 @@ type thread interface {
 	getHeaderIcon() *defaultImage
 	setOpened()
 	hasBeenOpened() bool
+	getLastOpenTime() int64
+	hasDraft() bool
 }
 
 //
@@ -44,8 +46,20 @@ func (threads sortableThreads) Swap(i, j int) {
 	threads[i], threads[j] = threads[j], threads[i]
 }
 func (threads sortableThreads) Less(i, j int) bool {
+	iTime := threads[i].getLastMessageTime()
+	jTime := threads[j].getLastMessageTime()
+
+	if threads[i].hasDraft() && threads[i].getLastOpenTime() > iTime {
+		iTime = threads[i].getLastOpenTime()
+	}
+
+	if threads[j].hasDraft() && threads[j].getLastOpenTime() > jTime {
+		jTime = threads[j].getLastOpenTime()
+	}
+
 	// Reverse order, highest timestamp on top
-	return threads[i].getLastMessageTime() > threads[j].getLastMessageTime()
+	return iTime > jTime
+
 }
 
 //

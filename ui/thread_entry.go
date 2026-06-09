@@ -13,6 +13,7 @@ type threadEntry struct {
 	widget.Entry
 	hasAttachments    func() bool
 	customOnSubmitted func()
+	customFocusLost   func()
 	selectKeyDown     bool
 	selecting         bool
 	selectRow         int
@@ -101,5 +102,8 @@ func (e *threadEntry) KeyUp(key *fyne.KeyEvent) {
 
 func (e *threadEntry) FocusLost() {
 	e.selectKeyDown = false
+	if e.customFocusLost != nil {
+		e.customFocusLost()
+	}
 	e.Entry.FocusLost()
 }

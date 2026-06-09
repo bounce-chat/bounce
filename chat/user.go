@@ -35,6 +35,7 @@ type user struct {
 	PublicECDHKey              []byte
 	PrivateECDHKey             []byte `msgpack:"-"`
 	OpenDM                     bool   `msgpack:"-"`
+	LastOpened                 int64  `msgpack:"-"`
 	Retention                  int64  `msgpack:"-"`
 	ClearBefore                int64  `msgpack:"-"`
 	MutedUntil                 int64  `msgpack:"-"`
@@ -449,4 +450,13 @@ func blockedUser(userID uuid.UUID) bool {
 
 	_, ok := blockedUsers[userID]
 	return ok
+}
+
+func (b *Bounce) SetDMLastOpened(userID uuid.UUID, timestamp int64) {
+	err := b.database.Table("users").Where("id = ?", userID).Updates(map[string]interface{}{"last_opened": timestamp}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error updating user last opened time")
+	}
 }

@@ -77,6 +77,7 @@ type group struct {
 	pendingMessageAttachments        *pendingMessageAttachments
 	entry                            *threadEntry
 	lastMessage                      int64
+	lastOpened                       int64
 	opened                           bool
 }
 
@@ -142,6 +143,14 @@ func (g *group) setOpened() {
 
 func (g *group) hasBeenOpened() bool {
 	return g.opened
+}
+
+func (g *group) getLastOpenTime() int64 {
+	return g.lastOpened
+}
+
+func (g *group) hasDraft() bool {
+	return len(g.button.draft.Segments[1].(*widget.TextSegment).Text) > 0
 }
 
 func (g *group) getAdminCheck(userID uuid.UUID) *widget.Check {
@@ -430,6 +439,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		removeUserButtons:              make(map[uuid.UUID]*widget.Button),
 		editUserDialogs:                make(map[uuid.UUID]dialogWithCallback),
 		lastMessage:                    time.Now().Unix(),
+		lastOpened:                     bounceGroup.LastOpened,
 	}
 	g.setInitial()
 
@@ -520,6 +530,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		go ui.bounce.UpdateDraft(g.id, str)
 		g.button.setDraft(str)
 	}
+	entry.customFocusLost = func() { ui.refreshThreadOrder() }
 	entry.customOnSubmitted = func() {
 		gm := chat.GroupMessage{
 			Thread: g.id,
@@ -574,6 +585,8 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 			ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeThread, context: g.id})
 		}
 		ui.state.currentView = viewTypeThread
+		g.lastOpened = time.Now().Unix()
+		ui.bounce.SetGroupLastOpened(g.id, time.Now().Unix())
 	}
 	g.button = newThreadButton(newDefaultImage(g.id, g.images, g.initial, 64, ui.bounce.GetFileData, openThread), g.name, openThread)
 	g.scroll = ui.newChatHistory(g)

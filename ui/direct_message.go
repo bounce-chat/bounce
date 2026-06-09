@@ -49,6 +49,7 @@ type directMessage struct {
 	entry                            *threadEntry
 	retentionSelection               *widget.Select
 	lastMessage                      int64
+	lastOpened                       int64
 	opened                           bool
 }
 
@@ -105,6 +106,14 @@ func (dm *directMessage) setOpened() {
 
 func (dm *directMessage) hasBeenOpened() bool {
 	return dm.opened
+}
+
+func (dm *directMessage) getLastOpenTime() int64 {
+	return dm.lastOpened
+}
+
+func (dm *directMessage) hasDraft() bool {
+	return len(dm.button.draft.Segments[1].(*widget.TextSegment).Text) > 0
 }
 
 func (dm *directMessage) refreshReadReceiptSettingSelection(options []string) {
@@ -176,6 +185,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		readReceiptsEnabled:            bounceUser.State.ReadReceiptsEnabled,
 		overrideTypingIndicatorSetting: bounceUser.State.OverrideTypingIndicatorSetting,
 		typingIndicatorsEnabled:        bounceUser.State.TypingIndicatorsEnabled,
+		lastOpened:                     bounceUser.State.LastOpened,
 	}
 
 	ui.buildEditDMContainer(dm)
@@ -230,6 +240,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		go ui.bounce.UpdateDraft(dm.user.id, str)
 		dm.button.setDraft(str)
 	}
+	entry.customFocusLost = func() { ui.refreshThreadOrder() }
 	entry.customOnSubmitted = func() {
 		chatDM := chat.DirectMessage{
 			Thread: dm.user.id,
@@ -285,6 +296,8 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 			ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeThread, context: dm.user.id})
 		}
 		ui.state.currentView = viewTypeThread
+		dm.lastOpened = time.Now().Unix()
+		ui.bounce.SetDMLastOpened(dm.user.id, time.Now().Unix())
 	}
 	dm.button = newThreadButton(newDefaultImage(user.id, bounceUser.Images, user.initials, 64, ui.bounce.GetFileData, openThread), user.getDisplayName(), openThread)
 	dm.button.Refresh()

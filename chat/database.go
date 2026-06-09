@@ -293,6 +293,7 @@ func (b *Bounce) GetInitialState() InitialState {
 				ReadReceiptsEnabled:            dbProfile.ReadReceiptsEnabled,
 				OverrideTypingIndicatorSetting: dbProfile.TypingIndicatorsOverridden,
 				TypingIndicatorsEnabled:        dbProfile.TypingIndicatorsEnabled,
+				LastOpened:                     dbProfile.LastOpened,
 			},
 		}
 		settings.DefaultDMRetention = dbProfile.ProfileSettings.DefaultDMRetention
@@ -377,6 +378,7 @@ func (b *Bounce) GetInitialState() InitialState {
 				ReadReceiptsEnabled:            u.ReadReceiptsEnabled,
 				OverrideTypingIndicatorSetting: u.TypingIndicatorsOverridden,
 				TypingIndicatorsEnabled:        u.TypingIndicatorsEnabled,
+				LastOpened:                     u.LastOpened,
 			},
 		})
 
@@ -506,6 +508,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			ReadReceiptsEnabled:            g.ReadReceiptsEnabled,
 			OverrideTypingIndicatorSetting: g.TypingIndicatorsOverridden,
 			TypingIndicatorsEnabled:        g.TypingIndicatorsEnabled,
+			LastOpened:                     g.LastOpened,
 		})
 	}
 

@@ -46,6 +46,7 @@ type DMState struct {
 	ReadReceiptsEnabled            bool
 	OverrideTypingIndicatorSetting bool
 	TypingIndicatorsEnabled        bool
+	LastOpened                     int64
 }
 
 type FileAttachment struct {
@@ -128,6 +129,7 @@ type Group struct {
 	ReadReceiptsEnabled            bool
 	OverrideTypingIndicatorSetting bool
 	TypingIndicatorsEnabled        bool
+	LastOpened                     int64
 }
 
 type NewGroup struct {

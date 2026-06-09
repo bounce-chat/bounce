@@ -42,6 +42,7 @@ type group struct {
 	TypingIndicatorsOverridden bool      `msgpack:"-"`
 	TypingIndicatorsEnabled    bool      `msgpack:"-"`
 	DeliveryRecordsClearedFor  uuid.UUID `msgpack:"-"`
+	LastOpened                 int64     `msgpack:"-"`
 }
 
 func (g *group) BeforeCreate(tx *gorm.DB) error {
@@ -807,5 +808,14 @@ func (b *Bounce) updateConsensusForGroupsWithUser(userID uuid.UUID) {
 	for _, groupID := range groups {
 		b.reloadGroupConsensus(groupID)
 		b.writeGroupConsensus(groupID)
+	}
+}
+
+func (b *Bounce) SetGroupLastOpened(groupID uuid.UUID, timestamp int64) {
+	err := b.database.Table("groups").Where("id = ?", groupID).Updates(map[string]interface{}{"last_opened": timestamp}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error updating group last opened time")
 	}
 }
