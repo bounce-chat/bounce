@@ -33,22 +33,23 @@ type user struct {
 	PublicECDSAKey             []byte `msgpack:"-"`
 	PrivateECDSAKey            []byte `msgpack:"-"`
 	PublicECDHKey              []byte
-	PrivateECDHKey             []byte `msgpack:"-"`
-	OpenDM                     bool   `msgpack:"-"`
-	LastOpened                 int64  `msgpack:"-"`
-	Retention                  int64  `msgpack:"-"`
-	ClearBefore                int64  `msgpack:"-"`
-	MutedUntil                 int64  `msgpack:"-"`
-	LastActivity               int64  `msgpack:"-"`
-	ReadReceiptsOverridden     bool   `msgpack:"-"`
-	ReadReceiptsEnabled        bool   `msgpack:"-"`
-	TypingIndicatorsOverridden bool   `msgpack:"-"`
-	TypingIndicatorsEnabled    bool   `msgpack:"-"`
-	IntroductionMethod         string `msgpack:"-"`
-	IntroductionTime           int64  `msgpack:"-"`
-	Alias                      string `msgpack:"-"`
-	Notes                      string `msgpack:"-"`
-	Blocked                    bool   `msgpack:"-"`
+	PrivateECDHKey             []byte    `msgpack:"-"`
+	OpenDM                     bool      `msgpack:"-"`
+	LastOpened                 int64     `msgpack:"-"`
+	Retention                  int64     `msgpack:"-"`
+	ClearBefore                int64     `msgpack:"-"`
+	MutedUntil                 int64     `msgpack:"-"`
+	LastActivity               int64     `msgpack:"-"`
+	ReadReceiptsOverridden     bool      `msgpack:"-"`
+	ReadReceiptsEnabled        bool      `msgpack:"-"`
+	TypingIndicatorsOverridden bool      `msgpack:"-"`
+	TypingIndicatorsEnabled    bool      `msgpack:"-"`
+	IntroductionMethod         string    `msgpack:"-"`
+	IntroductionTime           int64     `msgpack:"-"`
+	IntroductionMetadata       uuid.UUID `msgpack:"-"`
+	Alias                      string    `msgpack:"-"`
+	Notes                      string    `msgpack:"-"`
+	Blocked                    bool      `msgpack:"-"`
 	Devices                    []device
 	Groups                     []group          `gorm:"many2many:group_users;" msgpack:"-"`
 	ProfileSettings            *profileSettings `msgpack:"-"`

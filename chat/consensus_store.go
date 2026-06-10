@@ -601,14 +601,29 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				return errUserNotFound
 			}
 
-			noNewUsers := true
+			var usersCreatedByGroup []user
+			err = b.database.Where("introduction_metadata = ?", groupID).Find(&usersCreatedByGroup).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up users created by group")
+			}
+			allUsersCreated := true
 			for _, userID := range finalState.users {
 				var test user
-				err := b.database.Select("id").First(&test, "id = ?", userID).Error
+				err := b.database.Select("id").Take(&test, "id = ?", userID).Error
 				if err != nil {
-					noNewUsers = false
+					allUsersCreated = false
 				}
 			}
+			for _, userID := range finalState.invites {
+				var test user
+				err := b.database.Select("id").Take(&test, "id = ?", userID).Error
+				if err != nil {
+					allUsersCreated = false
+				}
+			}
+			noNewUsers := len(usersCreatedByGroup) == 0 && allUsersCreated
 
 			if u.ProfileSettings.AutoJoinGroups == AlwaysAutoJoinGroups || (u.ProfileSettings.AutoJoinGroups == OnlyAutoJoinGroupsWithNoNewUsers && noNewUsers) {
 				// Create an update group to auto-accept
@@ -666,7 +681,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs groupState, ugsToNotify []updateGroup) error {
 	newUsers := make(map[uuid.UUID]bool)
 	for _, u := range allUsers {
-		newUsers[u.ID] = b.createNewUserIfNeeded(u)
+		newUsers[u.ID] = b.createNewUserIfNeeded(u, initialGroup.ID)
 	}
 	var g group
 	err := b.database.Preload(clause.Associations).Where("id = ?", initialGroup.ID).First(&g).Error
@@ -998,7 +1013,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 	return nil
 }
 
-func (b *Bounce) createNewUserIfNeeded(u user) bool {
+func (b *Bounce) createNewUserIfNeeded(u user, groupID uuid.UUID) bool {
 	if u.ID == b.currentUserID() {
 		return false
 	}
@@ -1022,6 +1037,7 @@ func (b *Bounce) createNewUserIfNeeded(u user) bool {
 	}
 	u.IntroductionMethod = userIntroductionGroup
 	u.IntroductionTime = time.Now().Unix()
+	u.IntroductionMetadata = groupID
 	res := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&u)
 	if res.Error != nil {
 		log.WithFields(log.Fields{

@@ -47,6 +47,7 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 					TextStyle: fyne.TextStyle{
 						Italic: true,
 					},
+					Alignment: fyne.TextAlignCenter,
 				},
 			},
 		),
@@ -54,15 +55,16 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 			&widget.TextSegment{
 				Text: bounceGroup.Name,
 				Style: widget.RichTextStyle{
-					SizeName: theme.SizeNameHeadingText,
+					SizeName:  theme.SizeNameHeadingText,
+					Alignment: fyne.TextAlignCenter,
 				},
 			},
 		),
 		timestamp: bounceGroup.InvitedAt,
 	}
 
-	//i.inviteLabel.Truncation = fyne.TextTruncateEllipsis // TODO: truncate with centered minimum width
-	//i.nameLabel.Truncation = fyne.TextTruncateEllipsis
+	i.inviteLabel.Truncation = fyne.TextTruncateEllipsis
+	i.nameLabel.Truncation = fyne.TextTruncateEllipsis
 	i.setInitial()
 
 	i.icon = newDefaultImage(i.id, i.images, i.initial, 128, ui.bounce.GetFileData, nil)
@@ -120,9 +122,9 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 
 	desktopView := container.NewCenter(
 		container.NewVBox(
-			container.NewCenter(i.inviteLabel),
+			i.inviteLabel,
 			container.NewCenter(i.icon),
-			container.NewCenter(i.nameLabel),
+			i.nameLabel,
 			container.NewCenter(container.New(layout.NewGridLayoutWithColumns(2), acceptButton, rejectButton)),
 			i.userListScroll,
 		),

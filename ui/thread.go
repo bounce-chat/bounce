@@ -482,7 +482,9 @@ func (ui *ui) displayThread(t thread) {
 		t.chatHistoryScroll().disableSeenTracking = false
 	}
 
-	t.getEntry().TypedKey(&fyne.KeyEvent{Name: fyne.KeyEnd})
+	if !isInvite {
+		t.getEntry().TypedKey(&fyne.KeyEvent{Name: fyne.KeyEnd})
+	}
 }
 
 func (ui *ui) isActive(t thread) bool {
