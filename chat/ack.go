@@ -173,7 +173,7 @@ func (b *Bounce) handleAckSideEffects(fr frameReference, peer string) {
 
 			allDelivered := true
 			for _, addr := range cs.addresses() {
-				if _, revoked := b.devicePool.revokedDevices[addr]; revoked {
+				if b.devicePool.isRevoked(addr) {
 					continue
 				}
 				if !b.isDeliveredTo(&ug, addr) {

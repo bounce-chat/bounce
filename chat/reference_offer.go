@@ -321,7 +321,7 @@ func (b *Bounce) getEncryptedReferenceOfferFor(address string, publicKey []byte)
 }
 
 func (b *Bounce) getDirectMessagesToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -366,7 +366,7 @@ func (b *Bounce) getDirectMessagesToOffer(address string, userID uuid.UUID) []fr
 }
 
 func (b *Bounce) getGroupMessagesToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -406,7 +406,7 @@ func (b *Bounce) getGroupMessagesToOffer(address string, userID uuid.UUID) []fra
 }
 
 func (b *Bounce) getUpdateDMsToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -451,7 +451,7 @@ func (b *Bounce) getUpdateDMsToOffer(address string, userID uuid.UUID) []frameRe
 }
 
 func (b *Bounce) getDevicesToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -511,7 +511,7 @@ func (b *Bounce) getDevicesToOffer(address string, userID uuid.UUID) []frameRefe
 }
 
 func (b *Bounce) getAddUsersToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -550,7 +550,7 @@ func (b *Bounce) getAddUsersToOffer(address string, userID uuid.UUID) []frameRef
 }
 
 func (b *Bounce) getGroupCreationsToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -580,7 +580,7 @@ func (b *Bounce) getGroupCreationsToOffer(address string, userID uuid.UUID) []fr
 }
 
 func (b *Bounce) getUpdateGroupsToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -737,7 +737,7 @@ func (b *Bounce) getUpdateGroupsToOffer(address string, userID uuid.UUID) []fram
 }
 
 func (b *Bounce) getConfirmationsToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -774,7 +774,7 @@ func (b *Bounce) getConfirmationsToOffer(address string, userID uuid.UUID) []fra
 }
 
 func (b *Bounce) getUpdateUsersToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -832,7 +832,7 @@ func (b *Bounce) getUpdateUsersToOffer(address string, userID uuid.UUID) []frame
 }
 
 func (b *Bounce) getUpdateDevicesToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		dev, ok := b.getDeviceFromAddress(address)
 		if ok {
 			var revoke updateDevice
@@ -906,7 +906,7 @@ func (b *Bounce) getUpdateDevicesToOffer(address string, userID uuid.UUID) []fra
 }
 
 func (b *Bounce) getReadReceiptsToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -961,7 +961,7 @@ func (b *Bounce) getReadReceiptsToOffer(address string, userID uuid.UUID) []fram
 }
 
 func (b *Bounce) getUpdateSettingsToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -991,7 +991,7 @@ func (b *Bounce) getUpdateSettingsToOffer(address string, userID uuid.UUID) []fr
 }
 
 func (b *Bounce) getFilesToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -1095,7 +1095,7 @@ func (b *Bounce) getFilesToOffer(address string, userID uuid.UUID) []frameRefere
 }
 
 func (b *Bounce) getChunkOffersToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -1199,7 +1199,7 @@ func (b *Bounce) getChunkOffersToOffer(address string, userID uuid.UUID) []frame
 }
 
 func (b *Bounce) getDraftsToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -1229,7 +1229,7 @@ func (b *Bounce) getDraftsToOffer(address string, userID uuid.UUID) []frameRefer
 }
 
 func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID uuid.UUID) []frameReference {
-	if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
 
@@ -1333,7 +1333,7 @@ func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID uuid.UUID
 }
 
 func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
-	if _, revoked := b.devicePool.revokedDevices[peer]; revoked {
+	if b.devicePool.isRevoked(peer) {
 		return nil, false
 	}
 

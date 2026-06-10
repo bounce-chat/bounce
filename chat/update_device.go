@@ -4,9 +4,7 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"errors"
-	"io/ioutil"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -315,22 +313,13 @@ func (b *Bounce) updateDeviceState(deviceID uuid.UUID) {
 	if revokedAt != 0 && (d.RevokedAt == 0 || revokedAt < d.RevokedAt) {
 		if d.Address == b.network.Address() {
 			// This device has been revoked, remove all files and close the app
-			log.Info("this device has been revoked, cleaning up data and exiting")
-			dir, err := ioutil.ReadDir(b.configDirectory)
+			log.Info("this device has been revoked")
+			err := b.database.Table("devices").Where("id = ?", deviceID).Updates(map[string]interface{}{"revoked_at": revokedAt}).Error
 			if err != nil {
 				log.WithFields(log.Fields{
-					"error": err.Error(),
-					"path":  b.configDirectory,
-				}).Error("error reading directory")
-			}
-			for _, d := range dir {
-				err = os.RemoveAll(filepath.Join(b.configDirectory, d.Name()))
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-						"path":  filepath.Join(b.configDirectory, d.Name()),
-					}).Error("error removing file")
-				}
+					"error":     err.Error(),
+					"device_id": deviceID,
+				}).Fatal("database error updating device revoked at")
 			}
 			os.Exit(0)
 		} else {
@@ -341,7 +330,9 @@ func (b *Bounce) updateDeviceState(deviceID uuid.UUID) {
 					"device_id": deviceID,
 				}).Fatal("database error updating device revoked at")
 			}
+			b.devicePool.revokedMutex.Lock()
 			b.devicePool.revokedDevices[d.Address] = true
+			b.devicePool.revokedMutex.Unlock()
 
 			b.revokeUnauthorizedDeviceActions(d.Address, revokedAt)
 

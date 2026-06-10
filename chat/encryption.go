@@ -600,7 +600,7 @@ func (b *Bounce) getUsersInCustomScope(br broadcastable) []user {
 
 	userIDs := map[uuid.UUID]bool{}
 	for _, addr := range cs.addresses() {
-		if _, revoked := b.devicePool.revokedDevices[addr]; revoked {
+		if b.devicePool.isRevoked(addr) {
 			continue
 		}
 		dev, ok := b.getDeviceFromAddress(addr)

@@ -359,6 +359,7 @@ type BulkUpdate struct {
 }
 
 type InitialState struct {
+	DeviceRevoked                          bool
 	Profile                                *User
 	Settings                               Settings
 	SyncDevices                            []Device

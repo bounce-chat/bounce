@@ -110,7 +110,9 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 			}
 			devices = append(devices, syncDev)
 		} else {
+			b.devicePool.revokedMutex.Lock()
 			b.devicePool.revokedDevices[dev.Address] = true
+			b.devicePool.revokedMutex.Unlock()
 		}
 	}
 

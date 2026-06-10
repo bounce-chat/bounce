@@ -482,7 +482,7 @@ func (b *Bounce) getCustomScope(br broadcastable, excludeDelivered bool) []strin
 	}
 
 	for _, addr := range cs.addresses() {
-		if _, revoked := b.devicePool.revokedDevices[addr]; revoked {
+		if b.devicePool.isRevoked(addr) {
 			continue
 		}
 		if addr == b.network.Address() {

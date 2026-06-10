@@ -93,12 +93,14 @@ func Open(ui UI, network Network, configDirectory string) *Bounce {
 	go func() {
 		b.network.Load(b.configDirectory)
 		b.openReferenceDatabase()
-		b.network.Start(
-			NetworkCallbacks{
-				NetworkOnline:  b.networkOnline,
-				NetworkOffline: b.networkOffline,
-			},
-		)
+		if !b.deviceIsRevoked() {
+			b.network.Start(
+				NetworkCallbacks{
+					NetworkOnline:  b.networkOnline,
+					NetworkOffline: b.networkOffline,
+				},
+			)
+		}
 	}()
 
 	go b.keepDraftsSynced()

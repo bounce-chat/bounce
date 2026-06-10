@@ -44,6 +44,15 @@ type devicePool struct {
 	lastDial           map[string]time.Time
 	lastFailedDial     map[string]time.Time
 	revokedDevices     map[string]bool
+	revokedMutex       sync.Mutex
+}
+
+func (dp *devicePool) isRevoked(address string) bool {
+	dp.revokedMutex.Lock()
+	defer dp.revokedMutex.Unlock()
+
+	_, revoked := dp.revokedDevices[address]
+	return revoked
 }
 
 func (b *Bounce) peer() {
@@ -63,9 +72,11 @@ func (b *Bounce) populateRevokedDevices() {
 			"error": err.Error(),
 		}).Fatal("error loading revoked devices")
 	}
+	b.devicePool.revokedMutex.Lock()
 	for _, dev := range revokedDevices {
 		b.devicePool.revokedDevices[dev.Address] = true
 	}
+	b.devicePool.revokedMutex.Unlock()
 }
 
 func (b *Bounce) makeInitialPeeringConnections() {
@@ -129,7 +140,7 @@ func (b *Bounce) connectToSyncDevices() {
 		if dev.Address == b.network.Address() {
 			continue
 		}
-		if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+		if b.devicePool.isRevoked(dev.Address) {
 			continue
 		}
 		rd := b.getRemoteDevice(dev.Address)
@@ -182,7 +193,7 @@ func (b *Bounce) connectToGroups(desiredConnections int) {
 				continue
 			}
 			for _, dev := range u.Devices {
-				if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+				if b.devicePool.isRevoked(dev.Address) {
 					continue
 				}
 				if !b.shouldCooldownDial(dev.Address) && dev.Address != b.network.Address() {
@@ -249,7 +260,7 @@ func (b *Bounce) connectToUsers(desiredConnections int) {
 		// Collect all the devices associated with this user that are not on dial cooldown
 		unconnectedUserAddresses := []string{}
 		for _, dev := range u.Devices {
-			if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+			if b.devicePool.isRevoked(dev.Address) {
 				continue
 			}
 			if !b.shouldCooldownDial(dev.Address) && dev.Address != b.network.Address() {
@@ -297,7 +308,7 @@ func (b *Bounce) connectToUsers(desiredConnections int) {
 	}
 	for _, u := range inactiveUsers {
 		for _, dev := range u.Devices {
-			if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+			if b.devicePool.isRevoked(dev.Address) {
 				continue
 			}
 			references := b.getReferenceOfferFor(dev.Address)
@@ -342,7 +353,7 @@ func (b *Bounce) connectToCustomScopes(desiredConnections int) {
 		// Collect all the devices associated with this custom scope that are not on dial cooldown
 		scopeAddresses := []string{}
 		for _, address := range cs.addresses() {
-			if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+			if b.devicePool.isRevoked(address) {
 				continue
 			}
 			if !b.shouldCooldownDial(address) && address != b.network.Address() {
@@ -457,7 +468,7 @@ func (b *Bounce) dialMissingSockets() {
 	defer b.devicePool.deviceMutex.Unlock()
 
 	for address, rd := range b.devicePool.devices {
-		if _, revoked := b.devicePool.revokedDevices[address]; revoked {
+		if b.devicePool.isRevoked(address) {
 			continue
 		}
 		if rd.connectedSockets.Load() > 0 && rd.connectedSockets.Load() < connectionsPerDevice {
@@ -510,7 +521,7 @@ func (b *Bounce) UserConnectionDesired(id uuid.UUID) {
 		// Collect all the devices associated with this user that are not on dial cooldown
 		userAddresses := []string{}
 		for _, dev := range u.Devices {
-			if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+			if b.devicePool.isRevoked(dev.Address) {
 				continue
 			}
 			if !b.shouldCooldownDial(dev.Address) {
@@ -576,7 +587,7 @@ func (b *Bounce) GroupConnectionDesired(id uuid.UUID) {
 					}).Debug("blocking attempt to dial blocked user as part of dialing group")
 					continue
 				}
-				if _, revoked := b.devicePool.revokedDevices[dev.Address]; revoked {
+				if b.devicePool.isRevoked(dev.Address) {
 					continue
 				}
 				if !b.shouldCooldownDial(dev.Address) && dev.Address != b.network.Address() {

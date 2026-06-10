@@ -716,6 +716,12 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 
 		ui.refreshThreadOrder()
+
+		if state.DeviceRevoked {
+			ui.widgets.networkOfflineWarning.SetText("This device has been revoked")
+			ui.widgets.networkOfflineWarning.Importance = widget.DangerImportance
+			ui.widgets.networkOfflineWarning.Refresh()
+		}
 	})
 	go ui.messages.writeCache()
 }

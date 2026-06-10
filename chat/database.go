@@ -142,6 +142,14 @@ func (b *Bounce) openDatabase() {
 	b.populateRevokedDevices()
 }
 
+func (b *Bounce) deviceIsRevoked() bool {
+	dev, ok := b.getDeviceFromAddress(b.network.Address())
+	if !ok {
+		return false
+	}
+	return dev.RevokedAt != 0
+}
+
 func (b *Bounce) pruneDirectMessages() {
 	// Delete messages from the database that are past expiration
 	err := b.database.Clauses(clause.Returning{}).Where("delete_at != 0 AND delete_at < ?", time.Now().Unix()).Delete(&directMessage{}).Error
@@ -1211,6 +1219,7 @@ func (b *Bounce) GetInitialState() InitialState {
 
 	// Create the initial state for the UI
 	return InitialState{
+		DeviceRevoked:                          b.deviceIsRevoked(),
 		Profile:                                profile,
 		Settings:                               settings,
 		SyncDevices:                            syncDevices,

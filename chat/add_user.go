@@ -104,6 +104,28 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		return nil, false
 	}
 
+	// Ignore add users where any device involved is revoked
+	if b.devicePool.isRevoked(peer) {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("ignoring add user from revoked peer")
+		return nil, false
+	}
+	if b.devicePool.isRevoked(au.OfferDevice) {
+		log.WithFields(log.Fields{
+			"peer":         peer,
+			"offer_device": au.OfferDevice,
+		}).Warn("ignoring add user with revoked offer device")
+		return nil, false
+	}
+	if b.devicePool.isRevoked(au.RequesterDevice) {
+		log.WithFields(log.Fields{
+			"peer":         peer,
+			"offer_device": au.RequesterDevice,
+		}).Warn("ignoring add user with revoked requester device")
+		return nil, false
+	}
+
 	// If we already know about this add user, just ack it and mark as delivered
 	var existingAU addUser
 	err = b.database.Where("id = ?", au.ID).First(&existingAU).Error

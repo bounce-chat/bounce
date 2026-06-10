@@ -399,7 +399,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				for _, ug := range ugsWithAdminStatusSideEffects {
 					allDelivered := true
 					for _, addr := range addrs {
-						if _, revoked := b.devicePool.revokedDevices[addr]; revoked {
+						if b.devicePool.isRevoked(addr) {
 							continue
 						}
 						if !b.isDeliveredTo(&ug, addr) {
