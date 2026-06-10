@@ -28,10 +28,12 @@ import (
 var writingChunk = map[string]bool{}
 var writingChunkMutex sync.Mutex
 var fileDataDownloaded = map[uuid.UUID]int64{}
+var totalAttemptCounter = map[string]int{}
 
 const EmbeddedFileLimit = 1024 * 1024 * 20 // 20MiB
 const fileChunkSize = 1024 * 1024          // 1MiB
 const expectedChunkDeliverySeconds = 10    // 100KiB/s
+const maxChunkAttempts = 10
 
 const downloadExtension = ".bouncedownload"
 
@@ -1313,6 +1315,14 @@ func (b *Bounce) makeNextChunkRequests() {
 					hash = c.EncryptedHash
 					table = "encrypted_chunk_offers"
 				}
+
+				count, ok := totalAttemptCounter[location+hash]
+				if ok {
+					totalAttemptCounter[location+hash] = count + 1
+				} else {
+					totalAttemptCounter[location+hash] = 1
+				}
+
 				go b.sendDirect(location, &chunkRequest{Hash: hash})
 				alreadyHitPeer[location] = true
 				err = b.database.Table(table).Where("hash = ? AND location = ?", hash, location).Update("last_request_time", time.Now().Unix()).Error
@@ -1344,6 +1354,19 @@ func (b *Bounce) makeNextChunkRequests() {
 			}
 			availableRetryLocations := []string{}
 			for _, offer := range previouslyTriedOffers {
+				count, ok := totalAttemptCounter[offer.Location+c.Hash]
+				if ok {
+					if count >= maxChunkAttempts+1 {
+						log.WithFields(log.Fields{
+							"location": offer.Location,
+							"hash":     c.Hash,
+							"attempts": maxChunkAttempts,
+						}).Warn("refusing to request the same chunk from a device after too many attempts")
+						continue
+					}
+					totalAttemptCounter[offer.Location+c.Hash] = count + 1
+				}
+
 				_, alreadyHit := alreadyHitPeer[offer.Location]
 				rd := b.getRemoteDevice(offer.Location)
 				if rd.connectedSockets.Load() > 0 && !alreadyHit {
@@ -1351,6 +1374,19 @@ func (b *Bounce) makeNextChunkRequests() {
 				}
 			}
 			for _, offer := range previouslyTriedEncryptedOffers {
+				count, ok := totalAttemptCounter[offer.Location+c.EncryptedHash]
+				if ok {
+					if count >= maxChunkAttempts+1 {
+						log.WithFields(log.Fields{
+							"location": offer.Location,
+							"hash":     c.EncryptedHash,
+							"attempts": maxChunkAttempts,
+						}).Warn("refusing to request the same chunk from a device after too many attempts")
+						continue
+					}
+					totalAttemptCounter[offer.Location+c.EncryptedHash] = count + 1
+				}
+
 				_, alreadyHit := alreadyHitPeer[offer.Location]
 				rd := b.getRemoteDevice(offer.Location)
 				if rd.connectedSockets.Load() > 0 && !alreadyHit {
@@ -1367,6 +1403,14 @@ func (b *Bounce) makeNextChunkRequests() {
 					hash = c.EncryptedHash
 					table = "encrypted_chunk_offers"
 				}
+
+				count, ok := totalAttemptCounter[location+hash]
+				if ok {
+					totalAttemptCounter[location+hash] = count + 1
+				} else {
+					totalAttemptCounter[location+hash] = 1
+				}
+
 				go b.sendDirect(location, &chunkRequest{Hash: hash})
 				alreadyHitPeer[location] = true
 				err = b.database.Table(table).Where("hash = ? AND location = ?", hash, location).Update("last_request_time", time.Now().Unix()).Error
