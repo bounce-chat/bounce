@@ -55,7 +55,7 @@ type group struct {
 	addUsersButton                   *widget.Button
 	view                             *fyne.Container
 	header                           *fyne.Container
-	button                           *threadButton
+	buttonData                       *threadButtonData
 	restrictUserManagementCheck      *widget.Check
 	restrictGroupEditsCheck          *widget.Check
 	restrictPostingCheck             *widget.Check
@@ -100,8 +100,8 @@ func (g *group) chatHistoryScroll() *chatHistory {
 	return g.scroll
 }
 
-func (g *group) getButton() *threadButton {
-	return g.button
+func (g *group) getButtonData() *threadButtonData {
+	return g.buttonData
 }
 
 func (g *group) getTypingIndicator() *typingIndicator {
@@ -150,7 +150,7 @@ func (g *group) getLastOpenTime() int64 {
 }
 
 func (g *group) hasDraft() bool {
-	return len(g.button.draft.Segments[1].(*widget.TextSegment).Text) > 0
+	return len(g.buttonData.draft) > 0
 }
 
 func (g *group) getAdminCheck(userID uuid.UUID) *widget.Check {
@@ -528,9 +528,10 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 	entry.OnChanged = func(str string) {
 		go ui.bounce.TypingInGroup(g.id)
 		go ui.bounce.UpdateDraft(g.id, str)
-		g.button.setDraft(str)
+		g.buttonData.setDraft(str)
+		ui.containers.threads.Refresh()
 	}
-	entry.customFocusLost = func() { ui.refreshThreadOrder() }
+	entry.customFocusLost = func() { ui.containers.threads.Refresh() }
 	entry.customOnSubmitted = func() {
 		gm := chat.GroupMessage{
 			Thread: g.id,
@@ -574,7 +575,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		gm.ImageAttachments = imageAttachments
 		gm.FileAttachments = fileAttachments
 		go ui.bounce.UpdateDraft(g.id, "")
-		g.button.setDraft("")
+		g.buttonData.setDraft("")
 		go ui.bounce.SendGroupMessage(gm, readers, sources)
 	}
 
@@ -588,16 +589,14 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		g.lastOpened = time.Now().Unix()
 		ui.bounce.SetGroupLastOpened(g.id, time.Now().Unix())
 	}
-	g.button = newThreadButton(newDefaultImage(g.id, g.images, g.initial, 64, ui.bounce.GetFileData, openThread), g.name, openThread)
+	g.buttonData = &threadButtonData{
+		id:       g.id,
+		images:   g.images,
+		name:     g.name,
+		initials: g.initial,
+		clicked:  openThread,
+	}
 	g.scroll = ui.newChatHistory(g)
-
-	// Keep the last message time counter up to date
-	go func() {
-		for {
-			time.Sleep(1 * time.Minute)
-			fyne.Do(func() { g.button.updateLastMessageTimeText() })
-		}
-	}()
 
 	g.typingIndicator = newTypingIndicator(typingIndicatorModeIcons, ui.bounce.GetFileData)
 	g.typingIndicator.Hide()
@@ -640,7 +639,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		container.New(&autoscrollLayout{}, g.scroll),
 	)
 	ui.threads.add(g.id, g)
-	ui.refreshThreadOrder()
+	ui.containers.threads.Refresh()
 	ui.updateEnabledFeatures(g)
 
 	ti, err := ui.newGroupCreated(g.id, g.id, bounceGroup.CreatedBy, bounceGroup.CreatedAt)
@@ -652,7 +651,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		}).Warn("error creating thread item for g creation")
 	} else {
 		ui.appendThreadItem(g, ti)
-		ti.setButton(g.button)
+		ti.setButtonData(g.buttonData)
 	}
 }
 
@@ -751,9 +750,8 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 			ui.refreshInviteUsers(i)
 
 			i.setInitial()
-			i.button.setName(bounceGroup.Name, i.initial)
-			i.button.threadImage.images = bounceGroup.Images
-			i.button.threadImage.Refresh()
+			i.buttonData.setName(bounceGroup.Name, i.initial)
+			i.buttonData.images = bounceGroup.Images
 		})
 
 		return
@@ -804,9 +802,8 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 		g.editIcon.Refresh()
 		g.headerIcon.images = bounceGroup.Images
 		g.headerIcon.Refresh()
-		g.button.setName(bounceGroup.Name, g.initial)
-		g.button.threadImage.images = bounceGroup.Images
-		g.button.threadImage.Refresh()
+		g.buttonData.setName(bounceGroup.Name, g.initial)
+		g.buttonData.images = bounceGroup.Images
 
 		g.users.empty()
 		for _, bu := range bounceGroup.Users {
@@ -1111,7 +1108,7 @@ func (ui *ui) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 			}
 		}
 		ui.threads.remove(rfg.Group)
-		ui.refreshThreadOrder()
+		ui.containers.threads.Refresh()
 	})
 }
 
@@ -1164,7 +1161,7 @@ func (ui *ui) GroupDeleted(gd chat.GroupDeleted) {
 		}
 
 		ui.threads.remove(gd.Group)
-		ui.refreshThreadOrder()
+		ui.containers.threads.Refresh()
 	})
 }
 
@@ -1494,7 +1491,7 @@ func (ui *ui) GroupInviteRejected(ugir chat.UpdateGroupInviteRejected) {
 
 func (ui *ui) RollbackGroup(groupID uuid.UUID) {
 	ui.threads.remove(groupID)
-	ui.refreshThreadOrder()
+	ui.containers.threads.Refresh()
 }
 
 func (ui *ui) updateEnabledFeatures(g *group) {

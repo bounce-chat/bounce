@@ -6,11 +6,12 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/google/uuid"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -45,11 +46,7 @@ type threadButton struct {
 	clicked                   func()
 }
 
-func newThreadButton(image *defaultImage, name string, clicked func()) *threadButton {
-	if clicked == nil {
-		log.Fatal("threadButton widgets must be defined with a clicked callback")
-	}
-
+func newThreadButtonTemplate(fileGetter func(uuid.UUID) ([]byte, error)) *threadButton {
 	pending := newThemedImage(
 		newEmbeddedResource("assets/icons/chat_bubble/white/png/pending.png"),
 		newEmbeddedResource("assets/icons/chat_bubble/black/png/pending.png"),
@@ -96,12 +93,12 @@ func newThreadButton(image *defaultImage, name string, clicked func()) *threadBu
 	errorIcon.Hide()
 
 	tb := &threadButton{
-		threadImage: image,
+		threadImage: newDefaultImage(uuid.Nil, []uuid.UUID{}, "", 64, fileGetter, nil),
 		threadName: widget.NewRichText(&widget.TextSegment{
 			Style: widget.RichTextStyle{
 				SizeName: theme.SizeNameSubHeadingText,
 			},
-			Text: name,
+			Text: "",
 		}),
 		lastMessage: widget.NewRichText(
 			&widget.TextSegment{
@@ -131,7 +128,7 @@ func newThreadButton(image *defaultImage, name string, clicked func()) *threadBu
 				Text: "",
 			},
 		),
-		typingIndicator: newTypingIndicator(typingIndicatorModeText, image.fileGetter),
+		typingIndicator: newTypingIndicator(typingIndicatorModeText, fileGetter),
 		threadNameFadeOut: canvas.NewLinearGradient(
 			color.RGBA{},
 			theme.Color(theme.ColorNameBackground),
@@ -186,131 +183,103 @@ func newThreadButton(image *defaultImage, name string, clicked func()) *threadBu
 		delivered: delivered,
 		read:      read,
 		errorIcon: errorIcon,
-		clicked:   clicked,
+		clicked:   nil,
 	}
-
-	tb.typingIndicator.Hide()
-	tb.lastMessageTimeBackground.Hide()
-	tb.lastMessageTimeFadeOut.Hide()
-	tb.unreadCounterTextFadeOut.Hide()
-	tb.unreadCounterBackground.Hide()
-	tb.unreadCounterCircle.Hide()
-	tb.unreadCounterText.Hide()
-	tb.lastMessageTimeText.Hide()
-
 	tb.ExtendBaseWidget(tb)
 	return tb
 }
 
-func (tb *threadButton) setName(str, initials string) {
-	tb.threadName.Segments[0].(*widget.TextSegment).Text = str
+func (tb *threadButton) setContent(tbd *threadButtonData) {
+	tb.threadName.Segments[0].(*widget.TextSegment).Text = tbd.name
 	tb.threadName.Refresh()
 
-	tb.threadImage.setString(initials)
-}
+	tb.clicked = tbd.clicked
 
-func (tb *threadButton) Tapped(*fyne.PointEvent) {
-	if tb.clicked != nil {
-		tb.clicked()
-	} else {
-		log.Fatal("threadButton widgets must have a clickable callback")
-	}
-}
+	tb.threadImage.id = tbd.id
+	tb.threadImage.images = tbd.images
+	tb.threadImage.setString(tbd.initials)
 
-func (tb *threadButton) setLastMessage(name, text string, status bool) { // TODO: will need to detect when a user's name changes and they are the last message and update it here, or reference by UUID
-	if len(text) > 200 {
-		text = text[:200]
-	}
-	tb.lastMessageHasStatus = status
-	tb.lastMessage.Segments[0].(*widget.TextSegment).Text = name + ": "
-	tb.lastMessage.Segments[0].(*widget.TextSegment).Style.TextStyle.Italic = false
-	tb.lastMessage.Segments[0].(*widget.TextSegment).Style.TextStyle.Bold = true
-	tb.lastMessage.Segments[1].(*widget.TextSegment).Text = strings.ReplaceAll(text, "\n", " ") // TODO: use non-platform-scpeific newlines
-	tb.lastMessage.Refresh()
-}
-
-func (tb *threadButton) setLastAction(text string, status bool) {
-	tb.lastMessageHasStatus = status
-	tb.lastMessage.Segments[0].(*widget.TextSegment).Text = text
-	tb.lastMessage.Segments[0].(*widget.TextSegment).Style.TextStyle.Italic = true
-	tb.lastMessage.Segments[0].(*widget.TextSegment).Style.TextStyle.Bold = false
-	tb.lastMessage.Segments[1].(*widget.TextSegment).Text = ""
-	tb.lastMessage.Refresh()
-}
-
-func (tb *threadButton) setDraft(text string) {
-	if text == "" {
+	if tbd.draft == "" {
 		tb.draft.Segments[1].(*widget.TextSegment).Text = ""
 		tb.draft.Hide()
+		tb.lastMessageHasStatus = tbd.showLastMessageState
+		tb.lastMessage.Segments[0].(*widget.TextSegment).Text = tbd.lastMessageSegmentOne
+		tb.lastMessage.Segments[0].(*widget.TextSegment).Style.TextStyle.Italic = tbd.lastMessageSegmentOneItalic
+		tb.lastMessage.Segments[0].(*widget.TextSegment).Style.TextStyle.Bold = tbd.lastMessageSegmentOneBold
+		tb.lastMessage.Segments[1].(*widget.TextSegment).Text = tbd.lastMessageSegmentTwo
+		tb.lastMessage.Refresh()
 		tb.lastMessage.Show()
 	} else {
-		if len(text) > 200 {
-			text = text[:200]
-		}
-
 		tb.draft.Segments[0].(*widget.TextSegment).Text = "Draft: "
 		tb.draft.Segments[0].(*widget.TextSegment).Style.TextStyle.Italic = true
 		tb.draft.Segments[0].(*widget.TextSegment).Style.TextStyle.Bold = true
-		tb.draft.Segments[1].(*widget.TextSegment).Text = strings.ReplaceAll(text, "\n", " ") // TODO: use non-platform-scpeific newlines
+		tb.draft.Segments[1].(*widget.TextSegment).Text = strings.ReplaceAll(tbd.draft, "\n", " ") // TODO: use non-platform-scpeific newlines?
 		tb.draft.Segments[1].(*widget.TextSegment).Style.TextStyle.Italic = true
 		tb.draft.Refresh()
-
 		tb.lastMessage.Hide()
 		tb.draft.Show()
 	}
-}
 
-func (tb *threadButton) showLastMessageState(state int) {
-	if tb.unreadCount > 0 {
-		return
+	if tbd.showLastMessageState {
+		if tbd.unreadCount == 0 {
+			switch tbd.lastMessageState {
+			case statePending:
+				tb.pending.Show()
+				tb.synced.Hide()
+				tb.delivered.Hide()
+				tb.read.Hide()
+				tb.errorIcon.Hide()
+			case stateSynced:
+				tb.pending.Hide()
+				tb.synced.Show()
+				tb.delivered.Hide()
+				tb.read.Hide()
+				tb.errorIcon.Hide()
+			case stateDelivered:
+				tb.pending.Hide()
+				tb.synced.Hide()
+				tb.delivered.Show()
+				tb.read.Hide()
+				tb.errorIcon.Hide()
+			case stateRead:
+				tb.pending.Hide()
+				tb.synced.Hide()
+				tb.delivered.Hide()
+				tb.read.Show()
+				tb.errorIcon.Hide()
+			case stateError:
+				tb.pending.Hide()
+				tb.synced.Hide()
+				tb.delivered.Hide()
+				tb.read.Hide()
+				tb.errorIcon.Show()
+			}
+			tb.statusIcons.Show()
+			tb.statusIcons.Refresh()
+
+			tb.unreadCounterTextFadeOut.Show()
+			tb.unreadCounterBackground.Show()
+		}
+	} else {
+		tb.statusIcons.Hide()
 	}
 
-	switch state {
-	case statePending:
-		tb.pending.Show()
-		tb.synced.Hide()
-		tb.delivered.Hide()
-		tb.read.Hide()
-		tb.errorIcon.Hide()
-	case stateSynced:
-		tb.pending.Hide()
-		tb.synced.Show()
-		tb.delivered.Hide()
-		tb.read.Hide()
-		tb.errorIcon.Hide()
-	case stateDelivered:
-		tb.pending.Hide()
-		tb.synced.Hide()
-		tb.delivered.Show()
-		tb.read.Hide()
-		tb.errorIcon.Hide()
-	case stateRead:
-		tb.pending.Hide()
-		tb.synced.Hide()
-		tb.delivered.Hide()
-		tb.read.Show()
-		tb.errorIcon.Hide()
-	case stateError:
-		tb.pending.Hide()
-		tb.synced.Hide()
-		tb.delivered.Hide()
-		tb.read.Hide()
-		tb.errorIcon.Show()
+	tb.typingIndicator.setUsers(tbd.typing)
+	if len(tb.typingIndicator.icons) == 0 {
+		tb.typingIndicator.typingAnimation.Stop()
+		tb.typingIndicator.Hide()
+	} else {
+		tb.typingIndicator.typingAnimation.Start()
+		tb.typingIndicator.Show()
 	}
-	tb.statusIcons.Show()
-	tb.statusIcons.Refresh()
+	tb.typingIndicator.updateObjects()
+	tb.typingIndicator.Refresh()
 
-	tb.unreadCounterTextFadeOut.Show()
-	tb.unreadCounterBackground.Show()
-}
-
-func (tb *threadButton) hideLastMessageState() {
-	tb.statusIcons.Hide()
-}
-
-func (tb *threadButton) setLastMessageTime(timestamp time.Time) {
-	tb.lastMessageTime = timestamp
+	tb.lastMessageTime = tbd.lastMessageTime
 	tb.updateLastMessageTimeText()
+
+	tb.unreadCount = tbd.unreadCount
+	tb.displayCorrectUnreadCount()
 }
 
 func (tb *threadButton) updateLastMessageTimeText() { //TODO: use the same time string as thread items?
@@ -337,11 +306,6 @@ func (tb *threadButton) updateLastMessageTimeText() { //TODO: use the same time 
 	tb.lastMessageTimeText.Show()
 	// TODO: hide the default fade out here since it isn't needed?
 	tb.lastMessageTimeText.Refresh()
-}
-
-func (tb *threadButton) setUnreadCount(n int) {
-	tb.unreadCount = n
-	tb.displayCorrectUnreadCount()
 }
 
 func (tb *threadButton) displayCorrectUnreadCount() {
@@ -372,6 +336,21 @@ func (tb *threadButton) displayCorrectUnreadCount() {
 	}
 
 	tb.Refresh()
+}
+
+func (tb *threadButton) Tapped(*fyne.PointEvent) {
+	if tb.clicked != nil {
+		tb.clicked()
+	}
+}
+
+func (tb *threadButton) MouseIn(*desktop.MouseEvent) {
+}
+
+func (tb *threadButton) MouseMoved(*desktop.MouseEvent) {
+}
+
+func (tb *threadButton) MouseOut() {
 }
 
 func (tb *threadButton) CreateRenderer() fyne.WidgetRenderer {
@@ -549,4 +528,94 @@ func (tbr *threadButtonRenderer) Refresh() {
 			tbr.threadButton.statusIcons.Show()
 		}
 	}
+}
+
+type threadButtonData struct {
+	id                          uuid.UUID
+	name                        string
+	initials                    string
+	images                      []uuid.UUID
+	clicked                     func()
+	lastMessageSegmentOne       string
+	lastMessageSegmentOneItalic bool
+	lastMessageSegmentOneBold   bool
+	lastMessageSegmentTwo       string
+	lastMessageSegmentTwoItalic bool
+	lastMessageSegmentTwoBold   bool
+	draft                       string
+	lastMessageState            int
+	showLastMessageState        bool
+	unreadCount                 int
+	lastMessageTime             time.Time
+	typing                      []*user
+}
+
+func (tbd *threadButtonData) setName(name, initials string) {
+	tbd.name = name
+	tbd.initials = initials
+}
+
+func (tbd *threadButtonData) setLastMessage(name, text string, status bool) { // TODO: will need to detect when a user's name changes and they are the last message and update it here, or reference by UUID
+	if len(text) > 200 {
+		text = text[:200]
+	}
+	tbd.showLastMessageState = status
+	tbd.lastMessageSegmentOne = name + ": "
+	tbd.lastMessageSegmentOneItalic = false
+	tbd.lastMessageSegmentOneBold = true
+	tbd.lastMessageSegmentTwo = strings.ReplaceAll(text, "\n", " ") // TODO: use non-platform-scpeific newlines?
+}
+
+func (tbd *threadButtonData) setLastAction(text string, status bool) {
+	tbd.showLastMessageState = status
+	tbd.lastMessageSegmentOne = text
+	tbd.lastMessageSegmentOneItalic = true
+	tbd.lastMessageSegmentOneBold = false
+	tbd.lastMessageSegmentTwo = ""
+}
+
+func (tbd *threadButtonData) setDraft(text string) {
+	if len(text) > 200 {
+		text = text[:200]
+	}
+	tbd.draft = text
+}
+
+func (tbd *threadButtonData) setShowLastMessageState(state int) {
+	tbd.lastMessageState = state
+	tbd.showLastMessageState = true
+}
+
+func (tbd *threadButtonData) hideLastMessageState() {
+	tbd.showLastMessageState = false
+}
+
+func (tbd *threadButtonData) setLastMessageTime(timestamp time.Time) {
+	tbd.lastMessageTime = timestamp
+}
+
+func (tbd *threadButtonData) setUnreadCount(n int) {
+	tbd.unreadCount = n
+}
+
+func (tbd *threadButtonData) showTypingUser(u *user) {
+	for _, di := range tbd.typing {
+		if di.id == u.id {
+			return
+		}
+	}
+
+	tbd.typing = append(tbd.typing, u)
+}
+
+func (tbd *threadButtonData) hideTypingUser(userID uuid.UUID) {
+	usersWithoutUser := []*user{}
+
+	for _, u := range tbd.typing {
+		if u.id != userID {
+			usersWithoutUser = append(usersWithoutUser, u)
+		}
+	}
+
+	tbd.typing = usersWithoutUser
 }

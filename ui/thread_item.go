@@ -147,7 +147,7 @@ type threadItem struct {
 	id             uuid.UUID
 	widgetData     threadable
 	notification   *fyne.Notification
-	setButton      func(*threadButton)
+	setButtonData  func(*threadButtonData)
 	timestamp      int64
 	dontBumpThread bool
 }
@@ -339,7 +339,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			imageDisplay:     ui.showImageViewer,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
-		setButton: func(tb *threadButton) {
+		setButtonData: func(tbd *threadButtonData) {
 			displayName := u.getDisplayName()
 			mine := gm.Author == ui.state.profile.id
 			if mine {
@@ -366,17 +366,17 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 					changeString += "a file"
 				}
 
-				tb.setLastAction(changeString, mine)
+				tbd.setLastAction(changeString, mine)
 			} else {
-				g.button.setLastMessage(displayName, gm.Text, mine)
+				tbd.setLastMessage(displayName, gm.Text, mine)
 			}
-			g.button.setLastMessageTime(time.Unix(gm.WrittenAt, 0))
+			tbd.setLastMessageTime(time.Unix(gm.WrittenAt, 0))
 			g.setLastMessageTime(gm.WrittenAt)
 			g.chatHistoryScroll().Refresh()
 			if outgoing {
-				tb.showLastMessageState(state)
+				tbd.setShowLastMessageState(state)
 			} else {
-				tb.hideLastMessageState()
+				tbd.hideLastMessageState()
 			}
 		},
 		timestamp: gm.WrittenAt, // TODO: SavedAt would be more consistent across restarts but causes inconsistencies when re-adding to a group, as it gets reset
@@ -479,7 +479,7 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 			imageDisplay:     ui.showImageViewer,
 		}, // TODO: add SavedAt and show a difference if it's large
 		notification: notification,
-		setButton: func(tb *threadButton) {
+		setButtonData: func(tbd *threadButtonData) {
 			displayName := u.getDisplayName()
 			mine := dm.Author == ui.state.profile.id
 			if mine {
@@ -500,17 +500,17 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 					changeString += " and a file"
 				}
 
-				tb.setLastAction(changeString, mine)
+				tbd.setLastAction(changeString, mine)
 			} else {
-				dmThread.getButton().setLastMessage(displayName, dm.Text, mine)
+				tbd.setLastMessage(displayName, dm.Text, mine)
 			}
-			dmThread.getButton().setLastMessageTime(time.Unix(dm.WrittenAt, 0))
+			tbd.setLastMessageTime(time.Unix(dm.WrittenAt, 0))
 			dmThread.setLastMessageTime(dm.WrittenAt)
 			dmThread.chatHistoryScroll().Refresh()
 			if outgoing {
-				tb.showLastMessageState(state)
+				tbd.setShowLastMessageState(state)
 			} else {
-				tb.hideLastMessageState()
+				tbd.hideLastMessageState()
 			}
 		},
 		timestamp: dm.WrittenAt, // TODO: SavedAt would be more consistent across restarts but causes inconsistencies when re-adding to a group, as it gets reset
@@ -564,7 +564,7 @@ func (ui *ui) userAliasSet(udsa chat.UpdateDMSetAlias) (*threadItem, error) {
 			changeString: changeString,
 			seen:         true,
 		},
-		setButton:      nil,
+		setButtonData:  nil,
 		timestamp:      udsa.Timestamp,
 		dontBumpThread: true,
 	}, nil
@@ -736,7 +736,7 @@ func (ui *ui) userChangedName(id, userID uuid.UUID, oldName, newName string, tim
 			changeString: changeString,
 			seen:         true,
 		},
-		setButton:      nil,
+		setButtonData:  nil,
 		timestamp:      timestamp,
 		dontBumpThread: true,
 	}, nil
@@ -763,7 +763,7 @@ func (ui *ui) userChangedImage(id, userID uuid.UUID, timestamp int64) (*threadIt
 			changeString: changeString,
 			seen:         true,
 		},
-		setButton:      nil,
+		setButtonData:  nil,
 		timestamp:      timestamp,
 		dontBumpThread: true,
 	}, nil
@@ -840,9 +840,9 @@ func (ui *ui) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, frameTy
 			changeString: changeString,
 			seen:         seen,
 		},
-		setButton: func(tb *threadButton) {
-			t.getButton().setLastAction(changeString, false)
-			t.getButton().setLastMessageTime(time.Unix(timestamp, 0))
+		setButtonData: func(tbd *threadButtonData) {
+			tbd.setLastAction(changeString, false)
+			tbd.setLastMessageTime(time.Unix(timestamp, 0))
 			t.setLastMessageTime(timestamp)
 			t.chatHistoryScroll().Refresh()
 		},

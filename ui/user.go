@@ -110,7 +110,7 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 			dm.user.images = chatUser.Images
 			dm.editIcon.images = chatUser.Images
 			dm.headerIcon.images = chatUser.Images
-			dm.button.threadImage.images = chatUser.Images
+			dm.buttonData.images = chatUser.Images
 
 			dm.username.Text = u.getDisplayName()
 			dm.username.Refresh()
@@ -127,7 +127,7 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 
 			dm.headerIcon.setString(u.initials)
 			dm.editIcon.setString(u.initials)
-			dm.button.setName(u.getDisplayName(), u.initials)
+			dm.buttonData.setName(u.getDisplayName(), u.initials)
 
 			if u.blocked {
 				dm.entry.Disable()
@@ -317,7 +317,7 @@ func (ui *ui) UserOnline(userID uuid.UUID) {
 	fyne.DoAndWait(func() {
 		log.WithFields(log.Fields{
 			"user_id": userID,
-		}).Info("user is online")
+		}).Debug("user is online")
 	})
 }
 
@@ -325,6 +325,6 @@ func (ui *ui) UserOffline(userID uuid.UUID) {
 	fyne.DoAndWait(func() {
 		log.WithFields(log.Fields{
 			"user_id": userID,
-		}).Info("user is offline")
+		}).Debug("user is offline")
 	})
 }

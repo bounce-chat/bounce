@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
@@ -68,7 +69,32 @@ func (ui *ui) buildMainContainer() {
 	)
 	ui.containers.chat = container.NewMax()
 	ui.containers.chat.Objects = []fyne.CanvasObject{ui.containers.defaultContainer}
-	ui.containers.threads = container.NewVBox()
+	ui.containers.threads = widget.NewList(
+		func() int {
+			return len(ui.threads.search(ui.state.threadSearch))
+		},
+		func() fyne.CanvasObject {
+			return newThreadButtonTemplate(ui.bounce.GetFileData)
+		},
+		func(id widget.ListItemID, bo fyne.CanvasObject) {
+			b, ok := bo.(*threadButton)
+			if ok {
+				ts := ui.threads.search(ui.state.threadSearch)
+				data := ts[int(id)].getButtonData()
+				b.setContent(data)
+			} else {
+				log.Fatal("only thread buttons can be in the threads list")
+			}
+		},
+	)
+	ui.containers.threads.HideSeparators = true
+	go func() {
+		// Keep the last message time counter up to date
+		for {
+			time.Sleep(1 * time.Minute)
+			fyne.Do(func() { ui.containers.threads.Refresh() })
+		}
+	}()
 
 	icon := canvas.NewImageFromResource(newEmbeddedResource("assets/icon.png"))
 	icon.FillMode = canvas.ImageFillContain
@@ -78,21 +104,18 @@ func (ui *ui) buildMainContainer() {
 	searchEntry = newAutohideEntry(
 		func() {
 			icon.Show()
-			if len(ui.containers.threads.Objects) == 0 {
-				ui.refreshThreadOrder()
+			if len(ui.threads.search(ui.state.threadSearch)) == 0 {
+				ui.state.threadSearch = ""
+				ui.containers.threads.Refresh()
 			}
 		},
 		func() bool {
-			return searchEntry.Text != "" && len(ui.containers.threads.Objects) > 0
+			return searchEntry.Text != "" && len(ui.threads.search(ui.state.threadSearch)) > 0
 		},
 	)
 	searchEntry.Hide()
 	searchEntry.OnChanged = func(str string) {
-		buttons := []fyne.CanvasObject{}
-		for _, t := range ui.threads.search(str) {
-			buttons = append(buttons, t.getButton())
-		}
-		ui.containers.threads.Objects = buttons
+		ui.state.threadSearch = str
 		ui.containers.threads.Refresh()
 	}
 	threadSearch := widget.NewButtonWithIcon("", theme.SearchIcon(), func() {
@@ -121,8 +144,11 @@ func (ui *ui) buildMainContainer() {
 		}
 		searchEntry.hideAction = func() {
 			logoWithText.Show()
-			if len(ui.containers.threads.Objects) == 0 {
-				ui.refreshThreadOrder()
+			if len(ui.threads.search(ui.state.threadSearch)) == 0 {
+				ui.state.threadSearch = ""
+				searchEntry.Text = ""
+				searchEntry.Refresh()
+				ui.containers.threads.Refresh()
 			}
 		}
 

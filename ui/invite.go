@@ -28,7 +28,7 @@ type invite struct {
 	nameLabel      *widget.RichText
 	images         []uuid.UUID
 	view           *fyne.Container
-	button         *threadButton
+	buttonData     *threadButtonData
 	userListScroll *container.Scroll
 	timestamp      int64
 	lastOpened     int64
@@ -162,12 +162,18 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 		i.lastOpened = time.Now().Unix()
 		ui.bounce.SetGroupLastOpened(i.id, time.Now().Unix())
 	}
-	i.button = newThreadButton(newDefaultImage(i.id, i.images, i.initial, 64, ui.bounce.GetFileData, openThread), i.name, openThread)
+	i.buttonData = &threadButtonData{
+		id:       i.id,
+		images:   i.images,
+		name:     i.name,
+		initials: i.initial,
+		clicked:  openThread,
+	}
 
 	ui.refreshInvitedBy(i)
 	ui.refreshInviteUsers(i)
 	ui.threads.add(bounceGroup.ID, i)
-	ui.refreshThreadOrder()
+	ui.containers.threads.Refresh()
 }
 
 func (ui *ui) refreshInviteUsers(i *invite) {
@@ -235,8 +241,8 @@ func (ui *ui) refreshInvitedBy(i *invite) {
 	i.inviteLabel.Segments[0].(*widget.TextSegment).Text = invitedString
 	i.inviteLabel.Refresh()
 
-	i.button.setLastAction(invitedString, false)
-	i.button.setLastMessageTime(time.Unix(i.timestamp, 0))
+	i.buttonData.setLastAction(invitedString, false)
+	i.buttonData.setLastMessageTime(time.Unix(i.timestamp, 0))
 }
 
 func (i *invite) setInitial() {
@@ -271,8 +277,8 @@ func (i *invite) chatHistoryScroll() *chatHistory {
 	return nil
 }
 
-func (i *invite) getButton() *threadButton {
-	return i.button
+func (i *invite) getButtonData() *threadButtonData {
+	return i.buttonData
 }
 
 func (i *invite) getTypingIndicator() *typingIndicator {

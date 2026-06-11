@@ -37,7 +37,7 @@ type directMessage struct {
 	editContainer                    *fyne.Container
 	view                             *fyne.Container
 	header                           *fyne.Container
-	button                           *threadButton
+	buttonData                       *threadButtonData
 	typingIndicator                  *typingIndicator
 	pendingMessageAttachments        *pendingMessageAttachments
 	muteButton                       *widget.Button
@@ -72,8 +72,8 @@ func (dm *directMessage) chatHistoryScroll() *chatHistory {
 	return dm.scroll
 }
 
-func (dm *directMessage) getButton() *threadButton {
-	return dm.button
+func (dm *directMessage) getButtonData() *threadButtonData {
+	return dm.buttonData
 }
 
 func (dm *directMessage) getTypingIndicator() *typingIndicator {
@@ -113,7 +113,7 @@ func (dm *directMessage) getLastOpenTime() int64 {
 }
 
 func (dm *directMessage) hasDraft() bool {
-	return len(dm.button.draft.Segments[1].(*widget.TextSegment).Text) > 0
+	return len(dm.buttonData.draft) > 0
 }
 
 func (dm *directMessage) refreshReadReceiptSettingSelection(options []string) {
@@ -238,9 +238,10 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 	entry.OnChanged = func(str string) {
 		go ui.bounce.TypingInDirectMessage(dm.user.id)
 		go ui.bounce.UpdateDraft(dm.user.id, str)
-		dm.button.setDraft(str)
+		dm.buttonData.setDraft(str)
+		ui.containers.threads.Refresh()
 	}
-	entry.customFocusLost = func() { ui.refreshThreadOrder() }
+	entry.customFocusLost = func() { ui.containers.threads.Refresh() }
 	entry.customOnSubmitted = func() {
 		chatDM := chat.DirectMessage{
 			Thread: dm.user.id,
@@ -285,7 +286,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		chatDM.FileAttachments = fileAttachments
 
 		go ui.bounce.UpdateDraft(dm.user.id, "")
-		dm.button.setDraft("")
+		dm.buttonData.setDraft("")
 		go ui.bounce.SendDirectMessage(chatDM, readers, sources)
 	}
 
@@ -299,17 +300,14 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		dm.lastOpened = time.Now().Unix()
 		ui.bounce.SetDMLastOpened(dm.user.id, time.Now().Unix())
 	}
-	dm.button = newThreadButton(newDefaultImage(user.id, bounceUser.Images, user.initials, 64, ui.bounce.GetFileData, openThread), user.getDisplayName(), openThread)
-	dm.button.Refresh()
+	dm.buttonData = &threadButtonData{
+		id:       user.id,
+		images:   bounceUser.Images,
+		name:     user.getDisplayName(),
+		initials: user.initials,
+		clicked:  openThread,
+	}
 	dm.scroll = ui.newChatHistory(dm)
-
-	// Keep the last message time counter up to date
-	go func() {
-		for {
-			time.Sleep(1 * time.Minute)
-			fyne.Do(func() { dm.button.updateLastMessageTimeText() })
-		}
-	}()
 
 	dm.typingIndicator = newTypingIndicator(typingIndicatorModeIcons, ui.bounce.GetFileData)
 	dm.typingIndicator.Hide()
@@ -355,8 +353,8 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 	)
 	ui.threads.add(bounceUser.ID, dm)
 	dm.setLastMessageTime(dm.lastMessage)
-	dm.button.setLastMessageTime(time.Unix(dm.lastMessage, 0))
-	ui.refreshThreadOrder()
+	dm.buttonData.setLastMessageTime(time.Unix(dm.lastMessage, 0))
+	ui.containers.threads.Refresh()
 }
 
 func (ui *ui) DisplayDirectMessage(dm chat.DirectMessage) {
@@ -625,7 +623,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		ui.containers.chat.Objects = []fyne.CanvasObject{ui.containers.defaultContainer}
 		ui.containers.chat.Refresh()
 		ui.state.activeThread = uuid.Nil
-		ui.refreshThreadOrder()
+		ui.containers.threads.Refresh()
 		dm.opened = false
 		if fyne.CurrentDevice().IsMobile() {
 			ui.mobileBack() // Exit the edit DM menu
@@ -962,7 +960,7 @@ func (ui *ui) SetDMState(userID uuid.UUID, state chat.DMState) {
 				log.Error("cannot create dm")
 				return
 			}
-			ui.refreshThreadOrder()
+			ui.containers.threads.Refresh()
 		} else if !state.Open && alreadyOpen {
 			ui.threads.remove(dm.user.id)
 			if ui.state.activeThread == dm.user.id {
@@ -970,7 +968,7 @@ func (ui *ui) SetDMState(userID uuid.UUID, state chat.DMState) {
 				ui.containers.chat.Refresh()
 				ui.state.activeThread = uuid.Nil
 			}
-			ui.refreshThreadOrder()
+			ui.containers.threads.Refresh()
 			return
 		}
 
@@ -1236,7 +1234,7 @@ func (ui *ui) openAndPopulateDM(u *user) *directMessage {
 	}
 	ui.populateInitialItems(dm, tis)
 	ui.threads.add(u.id, dm)
-	ui.refreshThreadOrder()
+	ui.containers.threads.Refresh()
 	for _, fp := range state.FileProgress {
 		ui.FileDownloadProgress(fp.ID, fp.Progress)
 	}

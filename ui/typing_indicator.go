@@ -116,7 +116,6 @@ func (ti *typingIndicator) showUser(u *user) {
 	}
 
 	userIcon := newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), ti.fileGetter, nil)
-	userIcon.images = u.images
 	ti.icons = append(
 		ti.icons,
 		userIcon,
@@ -160,6 +159,18 @@ func (ti *typingIndicator) hideUser(userID uuid.UUID) {
 
 	ti.updateObjects()
 	ti.Refresh()
+}
+
+func (ti *typingIndicator) setUsers(users []*user) {
+	ti.icons = []*defaultImage{}
+	ti.users = users
+
+	for _, u := range users {
+		ti.icons = append(
+			ti.icons,
+			newDefaultImage(u.id, u.images, u.initials, theme.IconInlineSize(), ti.fileGetter, nil),
+		)
+	}
 }
 
 func (ti *typingIndicator) CreateRenderer() fyne.WidgetRenderer {

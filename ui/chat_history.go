@@ -53,16 +53,19 @@ type chatHistory struct {
 func (ui *ui) newChatHistory(t thread) *chatHistory {
 	_, group := t.(*group)
 	ch := &chatHistory{
-		id:                  t.getID(),
-		myID:                ui.state.profile.id,
-		messages:            ui.messages,
-		added:               make(map[uuid.UUID]bool),
-		ids:                 []uuid.UUID{},
-		heights:             []float32{},
-		windowFocused:       func() bool { return ui.state.focused },
-		threadActive:        func() bool { return ui.isActive(t) },
-		readCallback:        ui.bounce.MarkAsRead,
-		unreadCountCallback: t.getButton().setUnreadCount,
+		id:            t.getID(),
+		myID:          ui.state.profile.id,
+		messages:      ui.messages,
+		added:         make(map[uuid.UUID]bool),
+		ids:           []uuid.UUID{},
+		heights:       []float32{},
+		windowFocused: func() bool { return ui.state.focused },
+		threadActive:  func() bool { return ui.isActive(t) },
+		readCallback:  ui.bounce.MarkAsRead,
+		unreadCountCallback: func(count int) {
+			t.getButtonData().setUnreadCount(count)
+			ui.containers.threads.Refresh()
+		},
 		markAllAsReadCallback: func() {
 			if group {
 				ui.bounce.MarkAllGroupMessagesAsRead(t.getID())

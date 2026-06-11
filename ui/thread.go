@@ -17,7 +17,7 @@ type thread interface {
 	getView() *fyne.Container
 	getEntry() *threadEntry
 	chatHistoryScroll() *chatHistory
-	getButton() *threadButton
+	getButtonData() *threadButtonData
 	getTypingIndicator() *typingIndicator
 	getLastMessageTime() int64
 	setLastMessageTime(int64)
@@ -62,19 +62,6 @@ func (threads sortableThreads) Less(i, j int) bool {
 
 }
 
-//
-// Helper functions for organizing and displaying threads in the UI
-//
-
-func (ui *ui) refreshThreadOrder() {
-	buttons := []fyne.CanvasObject{}
-	for _, t := range ui.threads.sorted() {
-		buttons = append(buttons, t.getButton())
-	}
-	ui.containers.threads.Objects = buttons
-	ui.containers.threads.Refresh()
-}
-
 func (ui *ui) populateInitialItems(t thread, items threadItems) {
 	sort.Sort(items)
 
@@ -87,10 +74,10 @@ func (ui *ui) populateInitialItems(t thread, items threadItems) {
 
 	for i := len(items) - 1; i >= 0; i-- {
 		lastItem := items[i]
-		if lastItem.setButton == nil {
+		if lastItem.setButtonData == nil {
 			continue
 		} else {
-			lastItem.setButton(t.getButton())
+			lastItem.setButtonData(t.getButtonData())
 			break
 		}
 	}
@@ -118,8 +105,8 @@ func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
 	ui.threads.associate(t, ti.id)
 
 	// Update the thread button if this is the latest message
-	if ti.setButton != nil && ti.timestamp > t.getLastMessageTime() { // TODO: same as appendingToEnd?
-		ti.setButton(t.getButton())
+	if ti.setButtonData != nil && ti.timestamp > t.getLastMessageTime() { // TODO: same as appendingToEnd?
+		ti.setButtonData(t.getButtonData())
 	}
 
 	// Keep the thread scrolled down, if it is open and was already scrolled down
@@ -140,7 +127,7 @@ func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
 	// Update the latest time of this thread and update the thread order
 	if !ti.dontBumpThread && appendingToEnd {
 		t.setLastMessageTime(ti.timestamp)
-		ui.refreshThreadOrder()
+		ui.containers.threads.Refresh()
 	}
 }
 
@@ -191,16 +178,16 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 			if ti.notification != nil {
 				lastNotifyingItem = ti
 			}
-			if ti.setButton != nil {
+			if ti.setButtonData != nil {
 				lastButtonItem = ti
 			}
 		}
 
 		if lastButtonItem != nil && (initialSync || lastButtonItem.timestamp > g.getLastMessageTime()) {
 			g.setLastMessageTime(lastButtonItem.timestamp)
-			fyne.Do(func() { lastButtonItem.setButton(g.getButton()) })
+			fyne.Do(func() { lastButtonItem.setButtonData(g.getButtonData()) })
 			if lastButtonItem.widgetData.getAuthor() == ui.state.profile.id {
-				fyne.Do(func() { g.getButton().showLastMessageState(lastButtonItem.widgetData.getState()) })
+				fyne.Do(func() { g.getButtonData().setShowLastMessageState(lastButtonItem.widgetData.getState()) })
 			}
 		}
 
@@ -261,16 +248,16 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 			if ti.notification != nil {
 				lastNotifyingItem = ti
 			}
-			if ti.setButton != nil {
+			if ti.setButtonData != nil {
 				lastButtonItem = ti
 			}
 		}
 
 		if lastButtonItem != nil && (initialSync || lastButtonItem.timestamp > t.getLastMessageTime()) {
 			t.setLastMessageTime(lastButtonItem.timestamp)
-			fyne.Do(func() { lastButtonItem.setButton(t.getButton()) })
+			fyne.Do(func() { lastButtonItem.setButtonData(t.getButtonData()) })
 			if lastButtonItem.widgetData.getAuthor() == ui.state.profile.id {
-				fyne.Do(func() { t.getButton().showLastMessageState(lastButtonItem.widgetData.getState()) })
+				fyne.Do(func() { t.getButtonData().setShowLastMessageState(lastButtonItem.widgetData.getState()) })
 			}
 		}
 
@@ -299,7 +286,7 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 		}
 	}
 
-	fyne.Do(func() { ui.refreshThreadOrder() })
+	fyne.Do(func() { ui.containers.threads.Refresh() })
 }
 
 func (ui *ui) MarkMessageUndeliverable(id uuid.UUID) {
@@ -320,7 +307,10 @@ func (ui *ui) MarkMessageUndeliverable(id uuid.UUID) {
 		return
 	}
 
-	fyne.DoAndWait(func() { t.chatHistoryScroll().Refresh() })
+	fyne.DoAndWait(func() {
+		t.chatHistoryScroll().Refresh()
+		ui.containers.threads.Refresh()
+	})
 }
 
 func (ui *ui) MessageSeen(id uuid.UUID) {
@@ -346,6 +336,7 @@ func (ui *ui) MessageSeen(id uuid.UUID) {
 				t.chatHistoryScroll().unread -= 1
 				t.chatHistoryScroll().updateUnreadCounter()
 				t.chatHistoryScroll().Refresh()
+				ui.containers.threads.Refresh()
 			})
 		}
 	}
@@ -382,8 +373,9 @@ func (ui *ui) MessageDelivered(messageID, userID uuid.UUID) {
 			item.setState(stateSynced)
 			if item.getAuthor() == ui.state.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
 				fyne.DoAndWait(func() {
-					t.getButton().showLastMessageState(stateSynced)
+					t.getButtonData().setShowLastMessageState(stateSynced)
 					t.chatHistoryScroll().Refresh()
+					ui.containers.threads.Refresh()
 				})
 			}
 		}
@@ -391,8 +383,9 @@ func (ui *ui) MessageDelivered(messageID, userID uuid.UUID) {
 		item.setState(stateDelivered)
 		if item.getAuthor() == ui.state.profile.id && t.chatHistoryScroll().isLastItem(messageID) {
 			fyne.DoAndWait(func() {
-				t.getButton().showLastMessageState(stateDelivered)
+				t.getButtonData().setShowLastMessageState(stateDelivered)
 				t.chatHistoryScroll().Refresh()
+				ui.containers.threads.Refresh()
 			})
 		}
 	}
@@ -422,10 +415,13 @@ func (ui *ui) ReceivedReadReceipt(rr chat.ReadReceipt) {
 	item.setState(stateRead)
 
 	if item.getAuthor() == ui.state.profile.id && t.chatHistoryScroll().isLastItem(rr.Target) {
-		fyne.DoAndWait(func() { t.getButton().showLastMessageState(stateRead) })
+		fyne.DoAndWait(func() { t.getButtonData().setShowLastMessageState(stateRead) })
 	}
 
-	fyne.DoAndWait(func() { t.chatHistoryScroll().Refresh() })
+	fyne.DoAndWait(func() {
+		t.chatHistoryScroll().Refresh()
+		ui.containers.threads.Refresh()
+	})
 }
 
 func (ui *ui) DeleteItem(id uuid.UUID) {
@@ -513,8 +509,8 @@ func (ui *ui) ShowTypingIndicator(userID, threadID uuid.UUID) {
 		t.getTypingIndicator().showUser(u)
 		t.getView().Refresh()
 
-		t.getButton().typingIndicator.showUser(u)
-		t.getButton().Refresh()
+		t.getButtonData().showTypingUser(u)
+		ui.containers.threads.Refresh()
 	})
 }
 
@@ -531,9 +527,8 @@ func (ui *ui) HideTypingIndicator(userID, threadID uuid.UUID) {
 		t.getTypingIndicator().hideUser(userID)
 		t.getView().Refresh()
 
-		button := t.getButton()
-		button.typingIndicator.hideUser(userID)
-		button.Refresh()
+		t.getButtonData().hideTypingUser(userID)
+		ui.containers.threads.Refresh()
 	})
 }
 
@@ -550,7 +545,7 @@ func (ui *ui) UpdateDraft(d chat.Draft) {
 		t.getEntry().Text = d.Text
 		t.getEntry().Refresh()
 
-		t.getButton().setDraft(d.Text)
+		t.getButtonData().setDraft(d.Text)
 	})
 }
 

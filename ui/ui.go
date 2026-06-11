@@ -74,7 +74,7 @@ type containers struct {
 	addSyncDeviceContent     *fyne.Container
 	syncDeviceOptions        *fyne.Container
 	inputEncryptedSyncString *fyne.Container
-	threads                  *fyne.Container
+	threads                  *widget.List
 	chat                     *fyne.Container
 	currentDevices           *container.Scroll
 	mainMenu                 *fyne.MainMenu
@@ -110,6 +110,7 @@ type state struct {
 	anotherDeviceActive   bool
 	networkState          int
 	setupStep             int
+	threadSearch          string
 }
 
 func Main() {
@@ -393,7 +394,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 				if !ok {
 					log.Fatal("group thread doesn't exist immediately after creation")
 				}
-				t.button.setLastMessageTime(time.Unix(g.LastActivity, 0))
+				t.buttonData.setLastMessageTime(time.Unix(g.LastActivity, 0))
 				t.setLastMessageTime(g.LastActivity)
 
 				gcTi, err := ui.newGroupCreated(g.ID, g.ID, g.CreatedBy, g.CreatedAt)
@@ -711,11 +712,11 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 				t.getEntry().Text = d.Text
 				t.getEntry().Refresh()
 
-				t.getButton().setDraft(d.Text)
+				t.getButtonData().setDraft(d.Text)
 			}
 		}
 
-		ui.refreshThreadOrder()
+		ui.containers.threads.Refresh()
 
 		if state.DeviceRevoked {
 			ui.widgets.networkOfflineWarning.SetText("This device has been revoked")
@@ -803,10 +804,7 @@ func (ui *ui) FileCompleted(fileID uuid.UUID) {
 			if hi != nil {
 				hi.Refresh()
 			}
-			b := t.getButton()
-			if b != nil {
-				b.threadImage.Refresh()
-			}
+			ui.containers.threads.Refresh()
 		})
 	})
 }
