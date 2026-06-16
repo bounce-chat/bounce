@@ -252,6 +252,22 @@ func (ui *ui) setDarkMode(value bool) {
 		ui.app.Settings().SetTheme(&forcedVariant{Theme: theme.DefaultTheme(), variant: theme.VariantLight})
 		setStatusBar(false)
 	}
+	if fyne.CurrentDevice().IsMobile() {
+		ui.views.main.Refresh()
+		ui.views.newInstall.Refresh()
+		ui.views.newSyncDevice.Refresh()
+		ui.views.addSyncDevice.Refresh()
+		ui.views.nameNewDevice.Refresh()
+		ui.views.addUser.Refresh()
+		ui.views.newProfileCreator.Refresh()
+		ui.views.databaseLoading.Refresh()
+		ui.views.editProfile.Refresh()
+		ui.views.settings.Refresh()
+		ui.views.about.Refresh()
+		ui.views.newGroup.Refresh()
+		ui.views.newDM.Refresh()
+		ui.views.mobileMenu.Refresh()
+	}
 }
 
 func (ui *ui) readReceiptOverrideSelectionOptions() []string {

@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/driver/mobile"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -241,17 +242,17 @@ func (ui *ui) build() {
 			ui.mobileBack()
 		}
 	})
-	//if desk, ok := ui.app.(desktop.App); ok {
-	//	m := fyne.NewMenu("Bounce",
-	//		fyne.NewMenuItem("Show", func() {
-	//			ui.window.Show()
-	//		}),
-	//	)
-	//	desk.SetSystemTrayMenu(m)
-	//	ui.window.SetCloseIntercept(func() {
-	//		ui.window.Hide()
-	//	})
-	//}
+	if desk, ok := ui.app.(desktop.App); ok {
+		m := fyne.NewMenu("Bounce",
+			fyne.NewMenuItem("Show", func() {
+				ui.window.Show()
+			}),
+		)
+		desk.SetSystemTrayMenu(m)
+		ui.window.SetCloseIntercept(func() {
+			ui.window.Hide()
+		})
+	}
 
 	ui.buildWidgets()
 
