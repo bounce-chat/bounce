@@ -24,7 +24,7 @@ require (
 )
 
 require (
-	fyne.io/systray v1.12.1 // indirect
+	fyne.io/systray v1.12.2 // indirect
 	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/alecthomas/repr v0.4.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect

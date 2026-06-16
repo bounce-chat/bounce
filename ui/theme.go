@@ -70,6 +70,14 @@ func (f *forcedVariant) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) col
 
 	// Match hyperlinks to text
 	if name == theme.ColorNameHyperlink {
+		if fyne.CurrentDevice().IsMobile() {
+			// Mobile devices don't have a hover effect, until I can add underlining, make the links more obvious
+			if f.variant == theme.VariantDark {
+				return color.NRGBA{R: 0xe0, G: 0xe0, B: 0xff, A: 0xff}
+			} else {
+				return color.NRGBA{R: 0x46, G: 0x46, B: 0x56, A: 0xff}
+			}
+		}
 		return f.Theme.Color(theme.ColorNameForeground, f.variant)
 	}
 

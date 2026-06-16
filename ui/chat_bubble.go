@@ -445,11 +445,12 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	}
 
 	if m.text != "" {
-		// TODO: enable hyperlinks once they wrap https://github.com/fyne-io/fyne/issues/3393
-		//cb.message.Segments = hyperlinkify(m.text)
+		// TODO: enable hyperlinks in Fyne 2.8 once wrapping is fixed
 		if cb.tooLong {
+			//cb.message.Segments = hyperlinkify(string([]rune(m.text)[:maxRunes]) + "...")
 			cb.message.Segments[0].(*widget.TextSegment).Text = string([]rune(m.text)[:maxRunes]) + "..."
 		} else {
+			//cb.message.Segments = hyperlinkify(m.text)
 			cb.message.Segments[0].(*widget.TextSegment).Text = m.text
 		}
 		cb.message.Show()
@@ -1065,6 +1066,16 @@ func hyperlinkify(text string) []widget.RichTextSegment {
 		if terminal == "." || terminal == "," {
 			end -= 1
 			stripped = terminal
+			terminal = string(text[loc[1]-2])
+		}
+
+		hyperlinkText := string(text[loc[0]:end])
+		if terminal == ")" && !parenthesisAreBalanced(hyperlinkText) {
+			// The link ends with a parentesis but the URL suggests that the author
+			// didn't intend for that to be part of the link
+			end -= 1
+			stripped = terminal + stripped
+			hyperlinkText = string(text[loc[0]:end])
 		}
 
 		if loc[0] > start {
@@ -1078,7 +1089,6 @@ func hyperlinkify(text string) []widget.RichTextSegment {
 		}
 		start = end
 
-		hyperlinkText := string(text[loc[0]:end])
 		parse := hyperlinkText
 		if !strings.Contains(hyperlinkText, "://") {
 			parse = "http://" + hyperlinkText
@@ -1136,4 +1146,25 @@ func hyperlinkify(text string) []widget.RichTextSegment {
 	}
 
 	return segments
+}
+
+func parenthesisAreBalanced(text string) bool {
+	stack := []rune{}
+
+	for _, c := range text {
+		if c == '(' {
+			stack = append(stack, c)
+		} else if c == ')' {
+			if len(stack) == 0 {
+				return false
+			}
+			end := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if end != '(' {
+				return false
+			}
+		}
+	}
+
+	return len(stack) == 0
 }
