@@ -34,6 +34,7 @@ const defaultChatHistoryHeight = float32(585.84375)
 const defaultChatHistoryWidth = float32(566)
 
 const darkMode = "darkMode"
+const sysTray = "sysTray"
 const neverAskForBatteryOptimizations = "neverAskForBatteryOptimizations"
 
 type ui struct {
@@ -242,16 +243,19 @@ func (ui *ui) build() {
 			ui.mobileBack()
 		}
 	})
-	if desk, ok := ui.app.(desktop.App); ok {
-		m := fyne.NewMenu("Bounce",
-			fyne.NewMenuItem("Show", func() {
-				ui.window.Show()
-			}),
-		)
-		desk.SetSystemTrayMenu(m)
-		ui.window.SetCloseIntercept(func() {
-			ui.window.Hide()
-		})
+
+	if ui.app.Preferences().Bool(sysTray) {
+		if desk, ok := ui.app.(desktop.App); ok {
+			m := fyne.NewMenu("Bounce",
+				fyne.NewMenuItem("Show", func() {
+					ui.window.Show()
+				}),
+			)
+			desk.SetSystemTrayMenu(m)
+			ui.window.SetCloseIntercept(func() {
+				ui.window.Hide()
+			})
+		}
 	}
 
 	ui.buildWidgets()

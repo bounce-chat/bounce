@@ -42,6 +42,7 @@ type settings struct {
 	defaultNewGroupRestrictPosting        *widget.Check
 	autoAcceptGroupInvites                *widget.Select
 	darkMode                              *widget.Check
+	sysTray                               *widget.Check
 }
 
 func (ui *ui) showSettings() {
@@ -63,6 +64,8 @@ func (ui *ui) showSettings() {
 	ui.widgets.settings.defaultNewGroupRestrictPosting.Refresh()
 	ui.widgets.settings.darkMode.Checked = ui.app.Preferences().Bool(darkMode)
 	ui.widgets.settings.darkMode.Refresh()
+	ui.widgets.settings.sysTray.Checked = ui.app.Preferences().Bool(sysTray)
+	ui.widgets.settings.sysTray.Refresh()
 
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeSettings})
@@ -122,6 +125,7 @@ func (ui *ui) buildSettings() {
 		defaultNewGroupRestrictPosting:        widget.NewCheck("Restrict Posting", func(v bool) { ui.bounce.SetNewGroupRestrictPosting(v) }),
 		autoAcceptGroupInvites:                widget.NewSelect(autoAcceptGroupInviteSelections, ui.sendDefaultAutoJoinGroups),
 		darkMode:                              widget.NewCheck("Dark Mode", ui.setDarkMode),
+		sysTray:                               widget.NewCheck("Use System Tray (requires restart)", ui.setSysTray),
 	}
 
 	header := container.NewVBox(
@@ -153,6 +157,7 @@ func (ui *ui) buildSettings() {
 			ui.widgets.settings.defaultNewGroupRestrictPosting,
 			themeSettingsLabel,
 			ui.widgets.settings.darkMode,
+			ui.widgets.settings.sysTray,
 		)),
 	)
 }
@@ -268,6 +273,12 @@ func (ui *ui) setDarkMode(value bool) {
 		ui.views.newDM.Refresh()
 		ui.views.mobileMenu.Refresh()
 	}
+}
+
+func (ui *ui) setSysTray(value bool) {
+	ui.app.Preferences().SetBool(sysTray, value)
+	ui.widgets.settings.sysTray.Checked = value
+	ui.widgets.settings.sysTray.Refresh()
 }
 
 func (ui *ui) readReceiptOverrideSelectionOptions() []string {
