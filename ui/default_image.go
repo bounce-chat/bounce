@@ -56,7 +56,6 @@ func newDefaultImage(id uuid.UUID, images []uuid.UUID, str string, size float32,
 func (di *defaultImage) setString(str string) {
 	di.foregroundText.Text = str
 	di.foregroundText.Refresh()
-	di.Refresh()
 }
 
 func (di *defaultImage) Tapped(*fyne.PointEvent) {

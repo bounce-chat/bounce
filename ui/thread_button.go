@@ -195,8 +195,12 @@ func (tb *threadButton) setContent(tbd *threadButtonData) {
 
 	tb.clicked = tbd.clicked
 
-	tb.threadImage.id = tbd.id
-	tb.threadImage.images = tbd.images
+	previousID := tb.threadImage.id
+	if tbd.id != previousID || !sameImages(tbd.images, tb.threadImage.images) {
+		tb.threadImage.id = tbd.id
+		tb.threadImage.images = tbd.images
+		tb.Refresh()
+	}
 	tb.threadImage.setString(tbd.initials)
 
 	if tbd.draft == "" {
@@ -329,13 +333,10 @@ func (tb *threadButton) displayCorrectUnreadCount() {
 		tb.unreadCounterText.Segments[0].(*widget.TextSegment).Text = unreadCountDisplay
 		tb.unreadCounterText.Refresh()
 		tb.unreadCounterText.Show()
-		//tb.defaultTextFadeOut.Hide()  // TODO: hide the unneeded gradients when they aren't needed?
 		tb.unreadCounterTextFadeOut.Show()
 		tb.unreadCounterBackground.Show()
 		tb.unreadCounterCircle.Show()
 	}
-
-	tb.Refresh()
 }
 
 func (tb *threadButton) Tapped(*fyne.PointEvent) {
@@ -618,4 +619,16 @@ func (tbd *threadButtonData) hideTypingUser(userID uuid.UUID) {
 	}
 
 	tbd.typing = usersWithoutUser
+}
+
+func sameImages(old, updated []uuid.UUID) bool {
+	if len(old) != len(updated) {
+		return false
+	}
+	for i, val := range old {
+		if updated[i] != val {
+			return false
+		}
+	}
+	return true
 }
