@@ -1242,5 +1242,7 @@ func (ui *ui) openAndPopulateDM(u *user) *directMessage {
 		go ui.UpdateDraft(d)
 	}
 
+	go ui.bounce.SetOpenDM(u.id, true)
+
 	return dm
 }

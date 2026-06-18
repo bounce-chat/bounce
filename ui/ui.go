@@ -431,6 +431,9 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 
 		for _, udmr := range state.UpdateDMRetentions {
+			if _, ok := ui.threads.getDM(udmr.Thread); !ok {
+				continue
+			}
 			udmrItem, err := ui.newUpdateDMRetention(udmr)
 			if err != nil {
 				log.Error(err.Error())
@@ -439,6 +442,9 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 
 		for _, udmch := range state.UpdateDMClearHistories {
+			if _, ok := ui.threads.getDM(udmch.Thread); !ok {
+				continue
+			}
 			udmchItem, err := ui.newUpdateDMClearHistory(udmch)
 			if err != nil {
 				log.Error(err.Error())

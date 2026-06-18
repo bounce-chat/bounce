@@ -88,6 +88,8 @@ type chatBubble struct {
 	getFileData           func(uuid.UUID) ([]byte, error)
 	window                fyne.Window
 	threads               *threadStore
+	users                 *userStore
+	openAndPopulateDM     func(*user) *directMessage
 	showEditDMContainer   func(*directMessage)
 	showDialog            func(dialog.Dialog, func())
 	newChatBubbleTemplate func() *chatBubble
@@ -271,6 +273,8 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 		showDialog:            ui.showDialog,
 		newChatBubbleTemplate: ui.newChatBubbleTemplate,
 		threads:               ui.threads,
+		users:                 ui.users,
+		openAndPopulateDM:     ui.openAndPopulateDM,
 		showEditDMContainer:   ui.showEditDMContainer,
 		openThread: func(dm *directMessage) {
 			ui.displayThread(dm)
@@ -399,25 +403,41 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 			)
 			message := widget.NewButton("Message", func() {
 				dm, ok := cb.threads.getDM(m.author)
-				if ok {
-					if fyne.CurrentDevice().IsMobile() {
-						cb.mobileBack()
-					} else {
-						d.Dismiss()
+				if !ok {
+					u, ok := cb.users.get(m.author)
+					if !ok {
+						log.WithFields(log.Fields{
+							"user_id": m.author,
+						}).Error("cannot open DM for unknown user")
+						return
 					}
-					cb.openThread(dm)
+					dm = cb.openAndPopulateDM(u)
 				}
+				if fyne.CurrentDevice().IsMobile() {
+					cb.mobileBack()
+				} else {
+					d.Dismiss()
+				}
+				cb.openThread(dm)
 			})
 			editUser := widget.NewButton("Edit User", func() {
 				dm, ok := cb.threads.getDM(m.author)
-				if ok {
-					if fyne.CurrentDevice().IsMobile() {
-						cb.mobileBack()
-					} else {
-						d.Dismiss()
+				if !ok {
+					u, ok := cb.users.get(m.author)
+					if !ok {
+						log.WithFields(log.Fields{
+							"user_id": m.author,
+						}).Error("cannot open DM for unknown user")
+						return
 					}
-					cb.showEditDMContainer(dm)
+					dm = cb.openAndPopulateDM(u)
 				}
+				if fyne.CurrentDevice().IsMobile() {
+					cb.mobileBack()
+				} else {
+					d.Dismiss()
+				}
+				cb.showEditDMContainer(dm)
 			})
 			closeButton := widget.NewButton("Close", func() {
 				if fyne.CurrentDevice().IsMobile() {
