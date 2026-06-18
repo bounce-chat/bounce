@@ -128,6 +128,7 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 			dm.headerIcon.setString(u.initials)
 			dm.editIcon.setString(u.initials)
 			dm.buttonData.setName(u.getDisplayName(), u.initials)
+			ui.containers.threads.Refresh()
 
 			if u.blocked {
 				dm.entry.Disable()

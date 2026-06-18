@@ -174,8 +174,13 @@ func (ubr *userButtonRenderer) MinSize() fyne.Size {
 		minHeight = textHeight
 	}
 
+	width := theme.Padding() + ubr.ub.icon.MinSize().Width + ubr.ub.name.MinSize().Width + theme.Padding()
+	if ubr.ub.admin.Visible() {
+		width += theme.Padding()*4 + ubr.ub.admin.MinSize().Width
+	}
+
 	return fyne.Size{
-		Width:  theme.Padding() + ubr.ub.icon.MinSize().Width + ubr.ub.name.MinSize().Width + theme.Padding()*5 + ubr.ub.admin.MinSize().Width,
+		Width:  width,
 		Height: minHeight,
 	}
 }

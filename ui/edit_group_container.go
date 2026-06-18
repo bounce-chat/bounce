@@ -432,16 +432,18 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 		closeButton,
 	)
 
+	details := widget.NewLabel("Group ID: " + g.id.String() + ", created on " + time.Unix(g.createdAt, 0).Format(time.DateOnly))
+	details.Wrapping = fyne.TextWrapBreak
 	editGroupFeatures := container.NewVBox(
 		container.NewCenter(g.editIcon),
 		g.editThreadNameEntry,
-		container.NewHBox(
+		container.NewHScroll(container.NewHBox(
 			container.NewHBox(g.muteButton),
 			container.NewHBox(g.clearHistoryButton),
 			container.NewHBox(g.leaveGroupButton),
 			container.NewHBox(g.deleteGroupButton),
 			container.NewHBox(g.blockGroupButton),
-		),
+		)),
 		widget.NewLabel("Disappearing Messages"),
 		g.retentionSelection,
 		g.restrictUserManagementCheck,
@@ -458,7 +460,7 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 					g.readReceiptOverrideSelection,
 					widget.NewLabel("Typing Indicators"),
 					g.typingIndicatorOverrideSelection,
-					widget.NewLabel("Group ID: "+g.id.String()+", created on "+time.Unix(g.createdAt, 0).Format(time.DateOnly)),
+					details,
 				),
 			},
 		),

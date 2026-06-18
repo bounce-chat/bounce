@@ -900,18 +900,20 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		closeButton,
 	)
 
+	details := widget.NewLabel("User ID: " + dm.user.id.String() + ", introduced on " + time.Unix(dm.user.introductionTime, 0).Format(time.DateOnly))
+	details.Wrapping = fyne.TextWrapBreak
 	editDMFeatures := container.NewVBox(
 		container.NewCenter(dm.editIcon),
 		nameSection,
 		widget.NewLabel("Disappearing Messages"),
 		dm.retentionSelection,
-		container.NewHBox(
+		container.NewHScroll(container.NewHBox(
 			dm.muteButton,
 			clearHistoryButton,
 			hideThreadButton,
 			dm.blockUserButton,
 			dm.unblockUserButton,
-		),
+		)),
 		notes,
 		widget.NewAccordion(
 			&widget.AccordionItem{
@@ -921,7 +923,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 					dm.readReceiptOverrideSelection,
 					widget.NewLabel("Typing Indicators"),
 					dm.typingIndicatorOverrideSelection,
-					widget.NewLabel("User ID: "+dm.user.id.String()+", introduced on "+time.Unix(dm.user.introductionTime, 0).Format(time.DateOnly)),
+					details,
 				),
 			},
 		),
