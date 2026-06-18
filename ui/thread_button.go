@@ -201,6 +201,7 @@ func (tb *threadButton) setContent(tbd *threadButtonData) {
 		tb.threadImage.images = tbd.images
 		tb.Refresh()
 	}
+	tb.threadImage.clicked = tbd.clicked
 	tb.threadImage.setString(tbd.initials)
 
 	if tbd.draft == "" {
