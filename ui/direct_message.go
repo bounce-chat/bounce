@@ -479,7 +479,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		}
 	} else {
 		if len(dm.user.images) > 0 {
-			data, err := ui.bounce.GetFileData(dm.user.images[0])
+			data, err := ui.bounce.GetFileData(dm.user.images[len(dm.user.images)-1])
 			if err == nil {
 				img, _, err := image.Decode(bytes.NewReader(data))
 				if err != nil {
