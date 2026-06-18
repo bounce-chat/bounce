@@ -42,10 +42,16 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 		progressBar:         progressBar,
 		infiniteProgressBar: infiniteProgressBar,
 		backButton: widget.NewButton("Back", func() {
+			ui.widgets.newSyncDevice.infiniteProgressBar.Hide()
+			ui.widgets.newSyncDevice.currentStep.Text = ""
+			ui.widgets.newSyncDevice.currentStep.Hide()
+			ui.widgets.newSyncDevice.syncStringEntry.Text = ""
+			ui.widgets.newSyncDevice.syncStringEntry.Refresh()
+			ui.widgets.newSyncDevice.syncStringInput.Show()
 			if fyne.CurrentDevice().IsMobile() {
 				ui.mobileBack()
 			} else {
-				ui.showNameNewDevice()
+				ui.showNewSyncDevice()
 			}
 		}),
 		deviceNameEntry: widget.NewEntry(),
@@ -184,7 +190,6 @@ func (ui *ui) buildNewSyncDevice() {
 
 	ui.widgets.newSyncDevice.syncStringEntry.OnSubmitted = func(str string) {
 		ui.widgets.newSyncDevice.syncStringInput.Hide()
-		ui.widgets.newSyncDevice.backButton.Disable()
 		ui.state.initialSyncIncomplete = true
 		// TODO: change logo to loading version
 		ui.widgets.newSyncDevice.currentStep.Show()
