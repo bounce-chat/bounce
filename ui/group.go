@@ -394,6 +394,10 @@ func (ui *ui) OpenNewGroupChat(bounceGroup chat.Group) { // TODO: rename "create
 		g, exists := ui.threads.getGroup(bounceGroup.ID)
 		if exists {
 			ui.showMainContainer()
+			if fyne.CurrentDevice().IsMobile() {
+				ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeThread, context: g.id})
+			}
+			ui.state.currentView = viewTypeThread
 			ui.displayThread(g)
 		} else {
 			log.Error("cannot open newly created g because the UI isn't aware of it")
