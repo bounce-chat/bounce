@@ -350,7 +350,15 @@ func (b *Bounce) ensureOnlyOneInstance() {
 			"error":    err.Error(),
 			"file":     pidFile,
 			"contents": string(pidBytes),
-		}).Fatal("pid file did not contain int")
+		}).Error("pid file did not contain int")
+		err = os.Remove(pidFile)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"path":  pidFile,
+				"error": err.Error(),
+			}).Fatal("error deleting old pid file")
+		}
+		return
 	}
 
 	process, err := os.FindProcess(pid)

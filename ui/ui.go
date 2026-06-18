@@ -131,10 +131,10 @@ func Main() {
 			viewStack:    []view{},
 		},
 	}
-	ui.build()
 
+	ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())
+	ui.build()
 	go func() {
-		ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())
 		ui.loadInitialState(ui.bounce.GetInitialState())
 	}()
 
