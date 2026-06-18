@@ -225,7 +225,7 @@ func (tb *threadButton) setContent(tbd *threadButtonData) {
 		tb.draft.Show()
 	}
 
-	if tbd.showLastMessageState {
+	if tbd.showLastMessageState && tbd.draft == "" {
 		if tbd.unreadCount == 0 {
 			switch tbd.lastMessageState {
 			case statePending:
