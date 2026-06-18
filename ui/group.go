@@ -810,6 +810,7 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 		g.headerIcon.Refresh()
 		g.buttonData.setName(bounceGroup.Name, g.initial)
 		g.buttonData.images = bounceGroup.Images
+		ui.containers.threads.Refresh()
 
 		g.users.empty()
 		for _, bu := range bounceGroup.Users {
