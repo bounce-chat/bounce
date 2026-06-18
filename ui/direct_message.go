@@ -912,13 +912,14 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		nameSection,
 		widget.NewLabel("Disappearing Messages"),
 		dm.retentionSelection,
-		container.NewHScroll(container.NewHBox(
+		container.New(
+			layout.NewRowWrapLayout(),
 			dm.muteButton,
 			clearHistoryButton,
 			hideThreadButton,
 			dm.blockUserButton,
 			dm.unblockUserButton,
-		)),
+		),
 		notes,
 		widget.NewAccordion(
 			&widget.AccordionItem{
