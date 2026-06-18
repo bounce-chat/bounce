@@ -33,7 +33,7 @@ type directMessage struct {
 	headerIcon                       *defaultImage
 	username                         *widget.Label
 	realName                         *widget.RichText
-	notesEntry                       *widget.Entry
+	notesEntry                       *customTapEntry
 	editContainer                    *fyne.Container
 	view                             *fyne.Container
 	header                           *fyne.Container
@@ -716,7 +716,15 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		dm.unblockUserButton.Hide()
 	}
 
-	dm.notesEntry = widget.NewMultiLineEntry()
+	var editNotesButton *widget.Button
+	var saveOrCancelNotesButtons *fyne.Container
+	dm.notesEntry = newCustomTapEntry(func(_ *fyne.PointEvent) {
+		dm.notesEntry.Enable()
+		ui.window.Canvas().Focus(dm.notesEntry)
+		dm.notesEntry.TypedKey(&fyne.KeyEvent{Name: fyne.KeyEnd})
+		editNotesButton.Hide()
+		saveOrCancelNotesButtons.Show()
+	})
 	dm.notesEntry.SetText(dm.user.notes)
 	dm.notesEntry.Disable()
 	notesLabel := widget.NewLabel("Notes")
@@ -724,9 +732,6 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		layout.NewBorderLayout(notesLabel, nil, nil, nil),
 		notesLabel,
 	)
-
-	var editNotesButton *widget.Button
-	var saveOrCancelNotesButtons *fyne.Container
 	editNotesButton = widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), func() {
 		dm.notesEntry.Enable()
 		ui.window.Canvas().Focus(dm.notesEntry)
