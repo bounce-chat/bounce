@@ -212,6 +212,11 @@ func (ui *ui) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Button {
 	g.removeUserButtonsMutex.Lock()
 	defer g.removeUserButtonsMutex.Unlock()
 
+	button, ok := g.removeUserButtons[userID]
+	if ok {
+		return button
+	}
+
 	buttonText := "Remove From Group"
 	dialogHeader := "Remove User?"
 	dialogPrompt := "Are you sure you want to remove this user from the group?"
@@ -239,11 +244,6 @@ func (ui *ui) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Button {
 		if showError != nil {
 			ui.showDialog(dialog.NewError(showError, ui.window), nil)
 		}
-	}
-
-	button, ok := g.removeUserButtons[userID]
-	if ok {
-		return button
 	}
 
 	confirmRemoveUser := dialog.NewConfirm(
@@ -452,6 +452,8 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		} else {
 			g.users.add(u)
 		}
+		ui.getRemoveUserButton(g, bu.ID)
+		g.getAdminCheck(bu.ID)
 	}
 
 	g.editThreadNameEntry.OnChanged = func(str string) {
