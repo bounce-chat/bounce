@@ -506,13 +506,20 @@ func (b *Bounce) getUsersInScope(br broadcastable) []user {
 	} else if scope == scopeGroup {
 		var destinationGroup group
 		err := b.database.Preload("Users.Devices").Preload(clause.Associations).First(&destinationGroup, "id = ?", br.getDestination(b.currentUserID())).Error
-		if err != nil {
+		if err == nil {
+			for _, u := range destinationGroup.Users {
+				users = append(users, u)
+			}
+		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("database error looking up group")
-		}
-		for _, u := range destinationGroup.Users {
-			users = append(users, u)
+			}).Error("database error looking up group while getting users in group scope for encryption, using sync scope")
+			currentUser, ok := b.currentUser()
+			if !ok {
+				log.Error("cannot get users in scope before profile exists")
+				return users
+			}
+			users = append(users, currentUser)
 		}
 	} else if scope == scopeGlobal {
 		users = b.getUsersInGlobalScope(br)
