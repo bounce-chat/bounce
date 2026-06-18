@@ -79,50 +79,38 @@ func (di *defaultImage) CreateRenderer() fyne.WidgetRenderer {
 }
 
 func (di *defaultImage) setBackground() {
-	for i := len(di.images) - 1; i >= 0; i-- {
-		id := di.images[i]
+	// If this image should have a non-default image, try to load it from cache
+	if len(di.images) > 0 {
+		chosen := -1
+		// Set the first cached image, if any are avilable
+		for i := len(di.images) - 1; i >= 0; i-- {
+			id := di.images[i]
 
-		imageCacheMutex.Lock()
-		cacheKey := id.String() + strconv.FormatFloat(float64(di.size), 'f', -1, 32)
-		cachedImage, ok := imageCache[cacheKey]
-		imageCacheMutex.Unlock()
-		if ok {
-			di.backgroundColor.Image = cachedImage
-			di.foregroundText.Hide()
-			return
-		}
-
-		originalImage, err := di.fileGetter(id)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"file_id": id,
-				"error":   err.Error(),
-			}).Debug("error loading image")
-			continue
-		}
-		if len(originalImage) == 0 {
-			log.WithFields(log.Fields{
-				"file_id": id,
-			}).Warn("image file has no content")
-			continue
+			imageCacheMutex.Lock()
+			cacheKey := id.String() + strconv.FormatFloat(float64(di.size), 'f', -1, 32)
+			cachedImage, ok := imageCache[cacheKey]
+			imageCacheMutex.Unlock()
+			if ok {
+				di.backgroundColor.Image = cachedImage
+				di.foregroundText.Hide()
+				chosen = i
+				break
+			}
 		}
 
-		goImg, _, err := image.Decode(bytes.NewReader(originalImage))
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":   err.Error(),
-				"file_id": id,
-			}).Warn("error decoding image")
-			continue
+		// If we didn't set the last image, go try to get and set the first available image and cache it
+		if chosen != len(di.images)-1 {
+			di.setDefaultBackground()
+			go di.setFirstAvailableImage(len(di.images) - 1)
 		}
-		di.backgroundColor.Image = makeCircle(goImg)
-		imageCacheMutex.Lock()
-		imageCache[cacheKey] = di.backgroundColor.Image
-		imageCacheMutex.Unlock()
-		di.foregroundText.Hide()
-		return
+	} else {
+		di.setDefaultBackground()
 	}
+}
 
+func (di *defaultImage) setDefaultBackground() {
+	// Either there are no images set, or none of them are in the cache right now.  Default
+	// to a solid color with text.  Also, cache that solid color circle if needed.
 	di.foregroundText.Show()
 
 	imageCacheMutex.Lock()
@@ -141,6 +129,60 @@ func (di *defaultImage) setBackground() {
 	imageCacheMutex.Lock()
 	imageCache[cacheKey] = di.backgroundColor.Image
 	imageCacheMutex.Unlock()
+}
+
+func (di *defaultImage) setFirstAvailableImage(startIndex int) {
+	if startIndex < 0 {
+		return
+	}
+	if startIndex > len(di.images)-1 {
+		return
+	}
+	id := di.images[startIndex]
+	nextIndex := startIndex - 1
+
+	originalImage, err := di.fileGetter(id)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"file_id": id,
+			"error":   err.Error(),
+		}).Debug("error loading image")
+		if nextIndex >= 0 {
+			di.setFirstAvailableImage(nextIndex)
+		}
+		return
+	}
+	if len(originalImage) == 0 {
+		log.WithFields(log.Fields{
+			"file_id": id,
+		}).Warn("image file has no content")
+		if nextIndex >= 0 {
+			di.setFirstAvailableImage(nextIndex)
+		}
+		return
+	}
+
+	goImg, _, err := image.Decode(bytes.NewReader(originalImage))
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"file_id": id,
+		}).Warn("error decoding image")
+		if nextIndex >= 0 {
+			di.setFirstAvailableImage(nextIndex)
+		}
+		return
+	}
+	croppedImage := makeCircle(goImg)
+	cacheKey := id.String() + strconv.FormatFloat(float64(di.size), 'f', -1, 32)
+	imageCacheMutex.Lock()
+	imageCache[cacheKey] = croppedImage
+	imageCacheMutex.Unlock()
+	fyne.Do(func() {
+		di.backgroundColor.Image = croppedImage
+		di.foregroundText.Hide()
+		di.Refresh()
+	})
 }
 
 type defaultImageRenderer struct {
@@ -260,4 +302,54 @@ func hsvToRGB(h, s, v float64) (uint8, uint8, uint8) {
 	b := (bPrime + m) * 255
 
 	return uint8(r), uint8(g), uint8(b)
+}
+
+func makeCircle(src image.Image) image.Image {
+	bounds := src.Bounds()
+	dx := bounds.Dx()
+	dy := bounds.Dy()
+
+	radius := dx / 2
+	if dy < dx {
+		radius = dy / 2
+	}
+
+	centerX := bounds.Min.X + dx/2
+	centerY := bounds.Min.Y + dy/2
+
+	cropRect := image.Rect(centerX-radius, centerY-radius, centerX+radius, centerY+radius)
+	cropped := image.NewRGBA(cropRect)
+
+	srcRGBA, isRGBA := src.(*image.RGBA)
+	radiusSq := radius * radius
+
+	for y := cropRect.Min.Y; y < cropRect.Max.Y; y++ {
+		distY := y - centerY
+		distYSq := distY * distY
+
+		destRowStart := (y - cropRect.Min.Y) * cropped.Stride
+		var srcRowStart int
+		if isRGBA {
+			srcRowStart = (y - bounds.Min.Y) * srcRGBA.Stride
+		}
+
+		for x := cropRect.Min.X; x < cropRect.Max.X; x++ {
+			distX := x - centerX
+			if (distX*distX)+distYSq < radiusSq {
+				destIdx := destRowStart + (x-cropRect.Min.X)*4
+				if isRGBA {
+					srcIdx := srcRowStart + (x-bounds.Min.X)*4
+					copy(cropped.Pix[destIdx:destIdx+4], srcRGBA.Pix[srcIdx:srcIdx+4])
+				} else {
+					r, g, b, a := src.At(x, y).RGBA()
+					cropped.Pix[destIdx+0] = uint8(r >> 8)
+					cropped.Pix[destIdx+1] = uint8(g >> 8)
+					cropped.Pix[destIdx+2] = uint8(b >> 8)
+					cropped.Pix[destIdx+3] = uint8(a >> 8)
+				}
+			}
+		}
+	}
+
+	return cropped
 }
