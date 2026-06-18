@@ -70,6 +70,7 @@ func (ui *ui) mobileBack() {
 
 	// Grab the view that occured before the current one as the one we want to display
 	displayView := ui.state.viewStack[len(ui.state.viewStack)-2]
+	ui.state.currentView = displayView.viewType
 
 	// Remove the current view from history
 	ui.state.viewStack = ui.state.viewStack[0 : len(ui.state.viewStack)-1]
@@ -88,6 +89,36 @@ func (ui *ui) mobileBack() {
 			ui.views.main.Show()
 		} else {
 			ui.displayThread(t)
+		}
+	case viewTypeDMSettings:
+		dm, ok := ui.threads.getDM(displayView.context)
+		if ok {
+			ui.setDMMutedUntilButton(dm)
+			if dm.user.blocked {
+				dm.blockUserButton.Hide()
+				dm.unblockUserButton.Show()
+			} else {
+				dm.blockUserButton.Show()
+				dm.unblockUserButton.Hide()
+			}
+			if dm.user.id == ui.state.profile.id {
+				dm.blockUserButton.Hide()
+				dm.unblockUserButton.Hide()
+			}
+
+			ui.window.SetContent(dm.editContainer)
+		} else {
+			log.Error("cannot go back to edit DM settings view for unknown DM")
+			ui.mobileBack()
+		}
+	case viewTypeGroupSettings:
+		g, ok := ui.threads.getGroup(displayView.context)
+		if ok {
+			ui.setGroupMutedUntilButton(g)
+			ui.window.SetContent(g.editContainer)
+		} else {
+			log.Error("cannot go back to edit group settings view for unknown DM")
+			ui.mobileBack()
 		}
 	case viewTypeSettings:
 		ui.window.SetContent(ui.views.settings)
@@ -170,9 +201,7 @@ func (ui *ui) mobileBack() {
 		log.WithFields(log.Fields{
 			"type": displayView.viewType,
 		}).Warn("cannot display unknown view type when handling mobile back button")
-		if drv, ok := ui.app.Driver().(mobile.Driver); ok {
-			drv.(mobile.Driver).GoBack()
-		}
+		ui.mobileBack()
 	}
 
 	// If we're not looking at a thread, unset the active thread

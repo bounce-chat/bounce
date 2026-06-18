@@ -215,7 +215,7 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 		if !ok {
 			log.WithFields(log.Fields{
 				"user_id": userID,
-			}).Error("direct message thread not found during bulk update")
+			}).Debug("open direct message thread not found during bulk update")
 			continue
 		}
 
