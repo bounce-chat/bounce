@@ -1238,6 +1238,37 @@ func (b *Bounce) makeNextChunkRequests() {
 
 	alreadyHitPeer := map[string]bool{}
 	recheck := false
+	activeOffersForAnyChunk := []chunkOffer{}
+	err = b.database.Where("last_request_time > ?", time.Now().Unix()-expectedChunkDeliverySeconds).Find(&activeOffersForAnyChunk).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up all actively used chunk offers")
+	}
+	for _, co := range activeOffersForAnyChunk {
+		var c chunk
+		err = b.database.Where("hash = ?", co.Hash).Take(&c).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"hash": co.Hash,
+				}).Error("chunk offer does not have corresponding chunk")
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"hash":  co.Hash,
+					"error": err.Error(),
+				}).Fatal("database error looking up chunk")
+			}
+		}
+		if !c.Downloaded {
+			alreadyHitPeer[co.Location] = true
+		}
+	}
+	if len(activeOffersForAnyChunk) > 0 {
+		recheck = true
+	}
+
 	for _, f := range unfinishedFiles {
 		for _, c := range f.Chunks {
 			if c.Downloaded {
