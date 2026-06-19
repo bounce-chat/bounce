@@ -264,10 +264,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		if err != nil {
 			log.Fatal("cannot make uuid from bytes for chunk")
 		}
-		encryptedHash, ok := encryptedHashes[i]
-		if !ok {
-			log.Error("file does not have encrypted hash for chunk")
-		}
+		encryptedHash, _ := encryptedHashes[i]
 		c := chunk{
 			ID:            xor(f.ID, chunkID),
 			Hash:          chunkHash,
