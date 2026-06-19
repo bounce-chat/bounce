@@ -810,7 +810,7 @@ func (b *Bounce) encryptedPeerCanHaveChunk(userID uuid.UUID, hash string) bool {
 		return false
 	}
 
-	allowedFiles := b.getFilesUserCanHave(userID)
+	allowedFiles := b.getFilesUserCanHaveViaEncryptedDevice(userID)
 	allowed := map[uuid.UUID]bool{}
 	for _, fID := range allowedFiles {
 		allowed[fID] = true

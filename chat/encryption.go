@@ -639,7 +639,14 @@ func (b *Bounce) getUsersInGroupWithInvitesScope(br broadcastable) []user {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("group not found when trying to get users in group with invite scope")
+			}).Warn("group not found when trying to get users in group with invite scope")
+
+			currentUser, ok := b.currentUser()
+			if !ok {
+				log.Error("cannot get users in scope before profile exists")
+				return users
+			}
+			users = append(users, currentUser)
 			return users
 		} else {
 			log.WithFields(log.Fields{

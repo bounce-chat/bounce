@@ -189,15 +189,16 @@ func (b *Bounce) makeNextEncryptedChunkRequests() {
 
 	recheck := false
 	neededChunks := map[string][]string{}
+	alreadyHitPeer := map[string]bool{}
 	for _, sr := range srs {
 		if sr.LastAttemptedAt > time.Now().Unix()-expectedChunkDeliverySeconds {
 			recheck = true
-			continue
+			alreadyHitPeer[sr.Source] = true
+		} else {
+			neededChunks[sr.Hash] = append(neededChunks[sr.Hash], sr.Source)
 		}
-		neededChunks[sr.Hash] = append(neededChunks[sr.Hash], sr.Source)
 	}
 
-	alreadyHitPeer := map[string]bool{}
 	for hash, sources := range neededChunks {
 		for i, s := range sources {
 			if _, alreadyHit := alreadyHitPeer[s]; alreadyHit {
@@ -330,7 +331,7 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 	}
 
 	// Find all files that this user can have access to
-	filesThisDeviceCanHave := b.getFilesUserCanHave(ownerUser.ID)
+	filesThisDeviceCanHave := b.getFilesUserCanHaveViaEncryptedDevice(ownerUser.ID)
 	for _, fileID := range filesThisDeviceCanHave {
 		// For each encrypted hash in this file, check if this encrypted device has already offered it
 		var f file
@@ -542,11 +543,11 @@ type encryptedChunkRecipient struct {
 	PublicKey                      []byte
 }
 
-func (b *Bounce) getFilesUserCanHave(userID uuid.UUID) []uuid.UUID {
+func (b *Bounce) getFilesUserCanHaveViaEncryptedDevice(userID uuid.UUID) []uuid.UUID {
 	var allowedFiles []file
 
 	if userID == b.currentUserID() {
-		err := b.database.Select("files.*").Find(&allowedFiles).Error
+		err := b.database.Where("length(encrypted_hash_list) > 0").Select("files.*").Find(&allowedFiles).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -565,16 +566,20 @@ func (b *Bounce) getFilesUserCanHave(userID uuid.UUID) []uuid.UUID {
 			Where(
 				`
 					(
-						files.scope == ? AND files.destination = ?
-					) OR (
-						files.scope = ? AND files.destination IN (?)
-					) OR (
-						files.scope = ? AND (files.destination IN (?) OR files.destination IN (?))
-					) OR (
-						files.scope == ? AND (
-							files.author == ? OR
-							files.author == ? OR
-							files.author IN (?)
+						length(files.encrypted_hash_list) > 0
+					) AND (
+						(
+							files.scope == ? AND files.destination = ?
+						) OR (
+							files.scope = ? AND files.destination IN (?)
+						) OR (
+							files.scope = ? AND (files.destination IN (?) OR files.destination IN (?))
+						) OR (
+							files.scope == ? AND (
+								files.author == ? OR
+								files.author == ? OR
+								files.author IN (?)
+							)
 						)
 					)`,
 				scopeUser,
