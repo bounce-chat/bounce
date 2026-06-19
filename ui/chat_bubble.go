@@ -83,7 +83,7 @@ type chatBubble struct {
 	fileIsDownloaded      func(uuid.UUID) bool
 	fileIsEmbedded        func(uuid.UUID) bool
 	fileIsWanted          func(uuid.UUID) bool
-	saveFile              func(uuid.UUID)
+	saveFile              func(string, uuid.UUID)
 	cancelDownload        func(uuid.UUID)
 	getFileData           func(uuid.UUID) ([]byte, error)
 	window                fyne.Window
@@ -217,8 +217,8 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 		fileIsDownloaded:   ui.bounce.FileDownloaded,
 		fileIsEmbedded:     ui.bounce.FileEmbedded,
 		fileIsWanted:       ui.bounce.FileWanted,
-		saveFile: func(attachmentID uuid.UUID) {
-			dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
+		saveFile: func(name string, attachmentID uuid.UUID) {
+			d := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
 				if err != nil {
 					return
 				}
@@ -243,7 +243,9 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 					os.Remove(writer.URI().Path())
 					ui.bounce.DownloadFileToDisk(attachmentID, writer.URI().Path())
 				}
-			}, ui.window).Show()
+			}, ui.window)
+			d.SetFileName(name)
+			d.Show()
 		},
 		cancelDownload: func(attachmentID uuid.UUID) {
 			ui.bounce.CancelDownload(attachmentID)
@@ -592,7 +594,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 				pma.progress.Show()
 				pma.action = newNoHoverButton("", func() { cb.cancelDownload(attachment.ID) }, theme.CancelIcon())
 			} else {
-				pma.action = newNoHoverButton("", func() { cb.saveFile(attachment.ID) }, theme.DownloadIcon())
+				pma.action = newNoHoverButton("", func() { cb.saveFile(attachment.Name, attachment.ID) }, theme.DownloadIcon())
 				pma.progress.Hide()
 			}
 			pma.action.Importance = widget.LowImportance
