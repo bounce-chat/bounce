@@ -440,7 +440,12 @@ func (ef encryptedFrame) getPayload() []byte {
 	return ef.payload
 }
 
+var encryptedFrameMutex sync.Mutex
+
 func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	encryptedFrameMutex.Lock()
+	defer encryptedFrameMutex.Unlock()
+
 	var ef encryptedFrame
 	err := msgpack.Unmarshal(payload, &ef)
 	if err != nil {
