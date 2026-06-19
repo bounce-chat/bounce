@@ -1829,6 +1829,12 @@ func (b *Bounce) CancelDownload(fileID uuid.UUID) {
 			"path":  f.Path + downloadExtension,
 		}).Warn("error deleting partially downloaded file")
 	}
+	info, err := os.Stat(f.Path)
+	if err == nil {
+		if info.Size() == 0 {
+			os.Remove(f.Path)
+		}
+	}
 }
 
 func (b *Bounce) offerChunk(c chunk) {
