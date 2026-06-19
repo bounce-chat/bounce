@@ -215,8 +215,6 @@ func (dir *defaultImageRenderer) Objects() []fyne.CanvasObject {
 }
 
 func (dir *defaultImageRenderer) Refresh() {
-	dir.di.setBackground()
-
 	for _, obj := range dir.Objects() {
 		obj.Refresh()
 	}

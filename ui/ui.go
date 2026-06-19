@@ -806,17 +806,21 @@ func (ui *ui) FileCompleted(fileID uuid.UUID) {
 
 	// TODO: check if anything is waiting for this file and refresh it
 	ui.threads.rangeFunc(func(t thread) {
-		fyne.DoAndWait(func() {
+		fyne.Do(func() {
 			ei := t.getEditIcon()
+			ei.setBackground()
 			if ei != nil {
 				ei.Refresh()
 			}
 			hi := t.getHeaderIcon()
+			hi.setBackground()
 			if hi != nil {
 				hi.Refresh()
 			}
-			ui.containers.threads.Refresh()
 		})
+	})
+	fyne.Do(func() {
+		ui.containers.threads.Refresh()
 	})
 }
 

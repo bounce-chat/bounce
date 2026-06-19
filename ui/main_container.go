@@ -82,6 +82,7 @@ func (ui *ui) buildMainContainer() {
 				ts := ui.threads.search(ui.state.threadSearch)
 				data := ts[int(id)].getButtonData()
 				b.setContent(data)
+				b.threadImage.setBackground()
 			} else {
 				log.Fatal("only thread buttons can be in the threads list")
 			}
