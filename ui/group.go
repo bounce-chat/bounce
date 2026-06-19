@@ -726,6 +726,7 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 			i.images = bounceGroup.Images
 			i.icon.images = bounceGroup.Images
 			i.icon.Refresh()
+			ui.containers.threads.Refresh()
 
 			i.name = bounceGroup.Name
 			i.nameLabel.Segments[0].(*widget.TextSegment).Text = bounceGroup.Name

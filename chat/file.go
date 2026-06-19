@@ -253,13 +253,6 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		}).Error("ignoring file with no hashes")
 		return nil, false
 	}
-	if len(f.EncryptedHashList) == 0 {
-		log.WithFields(log.Fields{
-			"id":   f.ID,
-			"peer": peer,
-		}).Error("ignoring file with no encrypted hashes")
-		return nil, false
-	}
 
 	// Create the empty chunks of the file
 	var encryptedHashes = make(map[int]string)
