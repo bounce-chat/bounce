@@ -95,9 +95,6 @@ func (b *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 
 		// Do a reference flow
 		b.sendReferences(peer)
-
-		// Request any file chunks for this peer if needed
-		b.makeNextChunkRequests()
 	} else {
 		b.challengeUnencryptedPeerForReferenceOffer(conn.RemoteAddr().String())
 	}

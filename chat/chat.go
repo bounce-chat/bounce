@@ -37,6 +37,7 @@ type Bounce struct {
 	network               Network
 	devicePool            *devicePool
 	consensusStore        *consensusStore
+	chunkEngine           *chunkEngine
 	userID                uuid.UUID
 	networkIsOnline       bool
 	networkHasBeenOnline  bool
@@ -93,6 +94,7 @@ func Open(ui UI, network Network, configDirectory string) *Bounce {
 	go func() {
 		b.network.Load(b.configDirectory)
 		b.openReferenceDatabase()
+		b.loadChunkEngine()
 		if !b.deviceIsRevoked() {
 			b.network.Start(
 				NetworkCallbacks{

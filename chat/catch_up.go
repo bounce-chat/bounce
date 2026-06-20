@@ -520,7 +520,6 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	if waitingForInitialSyncFrom == peer {
 		waitingForInitialSyncFrom = ""
 		b.ui.InitialSyncComplete()
-		b.makeNextChunkRequests()
 	}
 
 	// If this is an encryped device (and we aren't), check if we manage it, and if so check if we need to re-key it

@@ -164,7 +164,7 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 		}).Fatal("database error saving encrypted chunk offer")
 	}
 
-	b.makeNextChunkRequests()
+	b.addEncryptedChunkOfferToChunkEngine(&eco)
 	b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
 	return nil, false
 }
@@ -555,6 +555,7 @@ func (b *Bounce) getFilesUserCanHaveViaEncryptedDevice(userID uuid.UUID) []uuid.
 		}
 	} else {
 		// Get all files where
+		//	the file has encrypted hashes
 		// 	scope is not sync AND
 		// 	scope is user and the destination is this device's user OR
 		// 	scope is group and the destination is a group that this device's user is in OR

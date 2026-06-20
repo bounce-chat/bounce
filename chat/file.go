@@ -10,7 +10,6 @@ import (
 	"image"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"os"
 	"regexp"
 	"strings"
@@ -32,8 +31,6 @@ var totalAttemptCounter = map[string]int{}
 
 const EmbeddedFileLimit = 1024 * 1024 * 20 // 20MiB
 const fileChunkSize = 1024 * 1024          // 1MiB
-const expectedChunkDeliverySeconds = 10    // 100KiB/s
-const maxChunkAttempts = 10
 
 const downloadExtension = ".bouncedownload"
 
@@ -303,9 +300,6 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		}
 	}
 
-	// Request any missing chunks
-	b.makeNextChunkRequests()
-
 	return &f, true
 }
 
@@ -471,7 +465,7 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) (br
 		}
 	}
 	if !allDownloaded {
-		b.makeNextChunkRequests()
+		b.addChunkOfferToChunkEngine(&co)
 	}
 	return &co, true
 }
@@ -950,9 +944,9 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 
 		b.writeChunkToDisk(c)
 	}
+	b.chunkEngine.completed(hash)
 
 	chunkRequestMutex.Unlock()
-	b.makeNextChunkRequests()
 	return nil, false
 }
 
@@ -1222,235 +1216,6 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 
 	// Offer this chunk
 	b.offerChunk(c)
-}
-
-func (b *Bounce) makeNextChunkRequests() {
-	chunkRequestMutex.Lock()
-	defer chunkRequestMutex.Unlock()
-
-	var unfinishedFiles []file
-	err := b.database.Preload(clause.Associations).Where("wanted = ? AND downloaded = ?", true, false).Find(&unfinishedFiles).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error looking up unfinished files")
-	}
-
-	alreadyHitPeer := map[string]bool{}
-	recheck := false
-	activeOffersForAnyChunk := []chunkOffer{}
-	err = b.database.Where("last_request_time > ?", time.Now().Unix()-expectedChunkDeliverySeconds).Find(&activeOffersForAnyChunk).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error looking up all actively used chunk offers")
-	}
-	for _, co := range activeOffersForAnyChunk {
-		var c chunk
-		err = b.database.Where("hash = ?", co.Hash).Take(&c).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"hash": co.Hash,
-				}).Error("chunk offer does not have corresponding chunk")
-				continue
-			} else {
-				log.WithFields(log.Fields{
-					"hash":  co.Hash,
-					"error": err.Error(),
-				}).Fatal("database error looking up chunk")
-			}
-		}
-		if !c.Downloaded {
-			alreadyHitPeer[co.Location] = true
-		}
-	}
-	if len(activeOffersForAnyChunk) > 0 {
-		recheck = true
-	}
-
-	for _, f := range unfinishedFiles {
-		for _, c := range f.Chunks {
-			if c.Downloaded {
-				continue
-			}
-			// Find all the offers where we just requested this chunk a few seconds ago, or where we have requested this chunk before from a peer that is
-			// actively delivering chunks right now.  If either exists, we don't need to make any additional requests for this chunk.
-			activeOffers := []chunkOffer{}
-			err = b.database.Where("hash = ? AND last_request_time > ?", c.Hash, time.Now().Unix()-expectedChunkDeliverySeconds).Find(&activeOffers).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error looking up actively used chunk offers")
-			}
-			activeEncryptedOffers := []encryptedChunkOffer{}
-			err = b.database.Where("hash = ? AND last_request_time > ?", c.EncryptedHash, time.Now().Unix()-expectedChunkDeliverySeconds).Find(&activeEncryptedOffers).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error looking up actively used encrypted chunk offers")
-			}
-			if len(activeOffers) > 0 || len(activeEncryptedOffers) > 0 {
-				recheck = true
-				continue
-			}
-
-			// If there are no actively used offers for this chunk we choose a new offer to try, one that hasn't been tried before
-			unusedOffers := []chunkOffer{}
-			err = b.database.Where("hash = ? AND last_request_time = ?", c.Hash, 0).Find(&unusedOffers).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error looking up unused chunk offers")
-			}
-			unusedEncryptedOffers := []encryptedChunkOffer{}
-			err = b.database.Where("hash = ? AND last_request_time = ?", c.EncryptedHash, 0).Find(&unusedEncryptedOffers).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error looking up unused encrypted chunk offers")
-			}
-			availableUnusedLocations := []string{}
-			locationIsEncrypted := map[string]bool{}
-			for _, offer := range unusedOffers {
-				_, alreadyHit := alreadyHitPeer[offer.Location]
-				rd := b.getRemoteDevice(offer.Location)
-				if rd.connectedSockets.Load() > 0 && !alreadyHit {
-					availableUnusedLocations = append(availableUnusedLocations, offer.Location)
-				}
-			}
-			for _, offer := range unusedEncryptedOffers {
-				_, alreadyHit := alreadyHitPeer[offer.Location]
-				rd := b.getRemoteDevice(offer.Location)
-				if rd.connectedSockets.Load() > 0 && !alreadyHit {
-					availableUnusedLocations = append(availableUnusedLocations, offer.Location)
-					locationIsEncrypted[offer.Location] = true
-				}
-			}
-			if len(availableUnusedLocations) > 0 {
-				r := rand.New(rand.NewSource(time.Now().UnixNano()))
-				location := availableUnusedLocations[r.Intn(len(availableUnusedLocations))]
-				hash := c.Hash
-				table := "chunk_offers"
-				if _, enc := locationIsEncrypted[location]; enc {
-					hash = c.EncryptedHash
-					table = "encrypted_chunk_offers"
-				}
-
-				count, ok := totalAttemptCounter[location+hash]
-				if ok {
-					totalAttemptCounter[location+hash] = count + 1
-				} else {
-					totalAttemptCounter[location+hash] = 1
-				}
-
-				go b.sendDirect(location, &chunkRequest{Hash: hash})
-				alreadyHitPeer[location] = true
-				err = b.database.Table(table).Where("hash = ? AND location = ?", hash, location).Update("last_request_time", time.Now().Unix()).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-						"hash":  c.Hash,
-						"peer":  location,
-					}).Fatal("database error updating last request time")
-				}
-				recheck = true
-				continue
-			}
-
-			// Lastly, if our only option is to re-request the chunk from a peer that we have already tried, we try again
-			previouslyTriedOffers := []chunkOffer{}
-			err = b.database.Where("hash = ? AND last_request_time != ?", c.Hash, 0).Find(&previouslyTriedOffers).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error looking up previously tried chunk offers")
-			}
-			previouslyTriedEncryptedOffers := []encryptedChunkOffer{}
-			err = b.database.Where("hash = ? AND last_request_time != ?", c.EncryptedHash, 0).Find(&previouslyTriedEncryptedOffers).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error looking up previously tried encrypted chunk offers")
-			}
-			availableRetryLocations := []string{}
-			for _, offer := range previouslyTriedOffers {
-				count, ok := totalAttemptCounter[offer.Location+c.Hash]
-				if ok {
-					if count >= maxChunkAttempts+1 {
-						log.WithFields(log.Fields{
-							"location": offer.Location,
-							"hash":     c.Hash,
-							"attempts": maxChunkAttempts,
-						}).Warn("refusing to request the same chunk from a device after too many attempts")
-						continue
-					}
-				}
-
-				_, alreadyHit := alreadyHitPeer[offer.Location]
-				rd := b.getRemoteDevice(offer.Location)
-				if rd.connectedSockets.Load() > 0 && !alreadyHit {
-					availableRetryLocations = append(availableRetryLocations, offer.Location)
-				}
-			}
-			for _, offer := range previouslyTriedEncryptedOffers {
-				count, ok := totalAttemptCounter[offer.Location+c.EncryptedHash]
-				if ok {
-					if count >= maxChunkAttempts+1 {
-						log.WithFields(log.Fields{
-							"location": offer.Location,
-							"hash":     c.EncryptedHash,
-							"attempts": maxChunkAttempts,
-						}).Warn("refusing to request the same chunk from a device after too many attempts")
-						continue
-					}
-				}
-
-				_, alreadyHit := alreadyHitPeer[offer.Location]
-				rd := b.getRemoteDevice(offer.Location)
-				if rd.connectedSockets.Load() > 0 && !alreadyHit {
-					availableRetryLocations = append(availableRetryLocations, offer.Location)
-					locationIsEncrypted[offer.Location] = true
-				}
-			}
-			if len(availableRetryLocations) > 0 {
-				r := rand.New(rand.NewSource(time.Now().UnixNano()))
-				location := availableRetryLocations[r.Intn(len(availableRetryLocations))]
-				hash := c.Hash
-				table := "chunk_offers"
-				if _, enc := locationIsEncrypted[location]; enc {
-					hash = c.EncryptedHash
-					table = "encrypted_chunk_offers"
-				}
-
-				count, ok := totalAttemptCounter[location+hash]
-				if ok {
-					totalAttemptCounter[location+hash] = count + 1
-				} else {
-					totalAttemptCounter[location+hash] = 1
-				}
-
-				go b.sendDirect(location, &chunkRequest{Hash: hash})
-				alreadyHitPeer[location] = true
-				err = b.database.Table(table).Where("hash = ? AND location = ?", hash, location).Update("last_request_time", time.Now().Unix()).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-						"hash":  c.Hash,
-						"peer":  location,
-					}).Fatal("database error updating last request time")
-				}
-				recheck = true
-			}
-		}
-	}
-
-	if recheck {
-		go func() {
-			time.Sleep((expectedChunkDeliverySeconds + 1) * time.Second)
-			b.makeNextChunkRequests()
-		}()
-	}
 }
 
 func (b *Bounce) embedFile(fileID uuid.UUID, data []byte, scope int, destination uuid.UUID, fileType int, attachment uuid.UUID) error {
@@ -1758,7 +1523,6 @@ func (b *Bounce) DownloadFileToDisk(fileID uuid.UUID, destination string) {
 	// Start requesting chunks
 	fileDataDownloaded[fileID] = 0
 	b.ui.FileDownloadProgress(fileID, 0)
-	b.makeNextChunkRequests()
 }
 
 func checkFileHash(path string) (bool, string) {
