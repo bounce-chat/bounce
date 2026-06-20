@@ -41,7 +41,6 @@ const fileTypeMessageAttachment = 2
 var fileMutex sync.Mutex
 var chunkOfferMutex sync.Mutex
 var chunkMutex sync.Mutex
-var chunkRequestMutex sync.Mutex
 
 var ErrFileTooBig = errors.New("file is too large")
 var errFileNotFound = errors.New("file not found")
@@ -851,7 +850,6 @@ func (c *chunk) getPayload() []byte {
 func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	chunkMutex.Lock()
 	defer chunkMutex.Unlock()
-	chunkRequestMutex.Lock()
 
 	// Unmarshal the chunk
 	var incomingChunk chunk
@@ -860,7 +858,6 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling chunk")
-		chunkRequestMutex.Unlock()
 		return nil, false
 	}
 
@@ -880,7 +877,6 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 				"peer": peer,
 				"hash": hash,
 			}).Warn("received encrypted chunk not found in database")
-			chunkRequestMutex.Unlock()
 			return nil, false
 		}
 
@@ -893,7 +889,6 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 				"file_id":  encryptedChunk.FileID,
 				"chunk_id": encryptedChunk.ID,
 			}).Warn("received encrypted chunk without file")
-			chunkRequestMutex.Unlock()
 			return nil, false
 		}
 
@@ -902,7 +897,6 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Error("error creating block")
-			chunkRequestMutex.Unlock()
 			return nil, false
 		}
 		gcm, err := cipher.NewGCM(block)
@@ -910,7 +904,6 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Error("error creating gcm")
-			chunkRequestMutex.Unlock()
 			return nil, false
 		}
 
@@ -923,7 +916,6 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 				"file_id":  encryptedChunk.FileID,
 				"chunk_id": encryptedChunk.ID,
 			}).Error("error decrypting chunk")
-			chunkRequestMutex.Unlock()
 			return nil, false
 		}
 
@@ -946,7 +938,6 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 	}
 	b.chunkEngine.completed(hash)
 
-	chunkRequestMutex.Unlock()
 	return nil, false
 }
 
@@ -1518,6 +1509,42 @@ func (b *Bounce) DownloadFileToDisk(fileID uuid.UUID, destination string) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("database error updating file")
+	}
+
+	// Make sure the chunk engine is aware of all offers
+	var allChunks []chunk
+	err = b.database.Where("file_id = ?", fileID).Find(&allChunks).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up chunks")
+	}
+	for _, c := range allChunks {
+		var allOffers []chunkOffer
+		err = b.database.Where("hash = ?", c.Hash).Find(&allOffers).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up chunk offers")
+		}
+		for i := range len(allOffers) {
+			co := allOffers[i]
+			b.addChunkOfferToChunkEngine(&co)
+		}
+
+		if c.EncryptedHash != "" {
+			var allEncryptedOffers []encryptedChunkOffer
+			err = b.database.Where("hash = ?", c.EncryptedHash).Find(&allEncryptedOffers).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up encrypted chunk offers")
+			}
+			for i := range len(allEncryptedOffers) {
+				eco := allEncryptedOffers[i]
+				b.addEncryptedChunkOfferToChunkEngine(&eco)
+			}
+		}
 	}
 
 	// Start requesting chunks

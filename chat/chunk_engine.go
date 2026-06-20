@@ -1,10 +1,12 @@
 package chat
 
 import (
+	"errors"
 	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -38,7 +40,7 @@ func (b *Bounce) loadChunkEngine() {
 
 	b.chunkEngine.Lock()
 	var unfinishedFiles []file
-	err := b.database.Preload(clause.Associations).Where("wanted = ? AND downloaded = ?", true, false).Find(&unfinishedFiles).Error
+	err := b.database.Preload(clause.Associations).Where("downloaded = ?", false).Find(&unfinishedFiles).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -49,7 +51,7 @@ func (b *Bounce) loadChunkEngine() {
 		for _, c := range f.Chunks {
 			if !c.Downloaded {
 				offers := []chunkOffer{}
-				err = b.database.Where("hash = ?", c.Hash).Find(&offers).Error
+				err = b.database.Where("hash = ? AND location != ?", c.Hash, b.network.Address()).Find(&offers).Error
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
@@ -64,7 +66,7 @@ func (b *Bounce) loadChunkEngine() {
 					b.chunkEngine.toEncryptedHash[c.Hash] = c.EncryptedHash
 
 					encryptedOffers := []encryptedChunkOffer{}
-					err = b.database.Where("hash = ?", c.EncryptedHash).Find(&encryptedOffers).Error
+					err = b.database.Where("hash = ? AND location != ?", c.EncryptedHash, b.network.Address()).Find(&encryptedOffers).Error
 					if err != nil {
 						log.WithFields(log.Fields{
 							"error": err.Error(),
@@ -124,6 +126,10 @@ func (b *Bounce) makeAnyChunkRequests() {
 	// tried, if any are avilable
 	unassignedHashes := b.chunkEngine.unassignedHashes()
 	for _, hash := range unassignedHashes {
+		if !b.chunkWanted(hash) {
+			continue
+		}
+
 		options, ok := b.chunkEngine.byHash[hash]
 		if !ok {
 			log.WithFields(log.Fields{
@@ -194,6 +200,10 @@ func (b *Bounce) makeAnyChunkRequests() {
 			continue
 		}
 		for _, hash := range requests {
+			if !b.chunkWanted(hash) {
+				continue
+			}
+
 			if time.Since(b.chunkEngine.getLastRequestTime(location, hash)) > expectedChunkDeliverySeconds*time.Second {
 				encryptedDeviceCacheMutex.Lock()
 				_, encrypted := encryptedDeviceCache[location]
@@ -287,23 +297,38 @@ func (ce *chunkEngine) unassignedHashes() []string {
 }
 
 func (b *Bounce) addChunkOfferToChunkEngine(co *chunkOffer) {
-	b.chunkEngine.Lock()
-	defer b.chunkEngine.Unlock()
-
-	var c chunk
-	err := b.database.Where("hash = ?", co.Hash).Take(&c).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"hash": co.Hash,
-		}).Warn("cannot add chunk offer to chunk engine for chunk we don't yet have")
+	if co.Location == b.network.Address() {
 		return
 	}
 
-	b.chunkEngine.byHash[c.Hash] = append(b.chunkEngine.byHash[c.Hash], co.Location)
-	b.chunkEngine.byLocation[co.Location] = append(b.chunkEngine.byHash[c.Hash], co.Hash)
+	b.chunkEngine.Lock()
+	defer b.chunkEngine.Unlock()
+
+	alreadyInHash := false
+	for _, l := range b.chunkEngine.byHash[co.Hash] {
+		if l == co.Location {
+			alreadyInHash = true
+		}
+	}
+	if !alreadyInHash {
+		b.chunkEngine.byHash[co.Hash] = append(b.chunkEngine.byHash[co.Hash], co.Location)
+	}
+
+	alreadyInLocation := false
+	for _, h := range b.chunkEngine.byLocation[co.Location] {
+		if h == co.Hash {
+			alreadyInLocation = true
+		}
+	}
+	if !alreadyInLocation {
+		b.chunkEngine.byLocation[co.Location] = append(b.chunkEngine.byLocation[co.Location], co.Hash)
+	}
 }
 
 func (b *Bounce) addEncryptedChunkOfferToChunkEngine(eco *encryptedChunkOffer) {
+	if eco.Location == b.network.Address() {
+		return
+	}
 	b.chunkEngine.Lock()
 	defer b.chunkEngine.Unlock()
 
@@ -316,8 +341,25 @@ func (b *Bounce) addEncryptedChunkOfferToChunkEngine(eco *encryptedChunkOffer) {
 		return
 	}
 
-	b.chunkEngine.byHash[c.Hash] = append(b.chunkEngine.byHash[c.Hash], eco.Location)
-	b.chunkEngine.byHash[eco.Location] = append(b.chunkEngine.byHash[c.Hash], c.Hash)
+	alreadyInHash := false
+	for _, l := range b.chunkEngine.byHash[c.Hash] {
+		if l == eco.Location {
+			alreadyInHash = true
+		}
+	}
+	if !alreadyInHash {
+		b.chunkEngine.byHash[c.Hash] = append(b.chunkEngine.byHash[c.Hash], eco.Location)
+	}
+
+	alreadyInLocation := false
+	for _, h := range b.chunkEngine.byLocation[eco.Location] {
+		if h == c.Hash {
+			alreadyInLocation = true
+		}
+	}
+	if !alreadyInLocation {
+		b.chunkEngine.byLocation[eco.Location] = append(b.chunkEngine.byLocation[eco.Location], c.Hash)
+	}
 }
 
 func (ce *chunkEngine) completed(target string) {
@@ -343,7 +385,7 @@ func (ce *chunkEngine) completed(target string) {
 	delete(ce.requestCount, target)
 
 	prunedOutstandingRequests := make(map[string][]string)
-	for location, requests := range prunedOutstandingRequests {
+	for location, requests := range ce.outstandingRequests {
 		requestsWithoutTarget := []string{}
 		for _, hash := range requests {
 			if hash != target {
@@ -352,6 +394,7 @@ func (ce *chunkEngine) completed(target string) {
 		}
 		prunedOutstandingRequests[location] = requestsWithoutTarget
 	}
+
 	ce.outstandingRequests = prunedOutstandingRequests
 }
 
@@ -385,4 +428,35 @@ func (ce *chunkEngine) remove(targetLocation, targetHash string) {
 		}
 	}
 	ce.outstandingRequests[targetLocation] = outstandingRequestsWithoutTargetHash
+}
+
+func (b *Bounce) chunkWanted(hash string) bool {
+	var chunks []chunk
+	err := b.database.Select("file_id").Where("hash = ?", hash).Find(&chunks).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up chunks")
+	}
+
+	for _, c := range chunks {
+		var f file
+		err = b.database.Select("wanted").Where("id = ?", c.FileID).Take(&f).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"file_id": c.FileID,
+				}).Warn("count not find file for chunk")
+				continue
+			} else {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up file")
+			}
+		}
+		if f.Wanted {
+			return true
+		}
+	}
+	return false
 }
