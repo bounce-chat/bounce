@@ -835,35 +835,15 @@ func (c *chunk) getType() uint16 {
 }
 
 func (c *chunk) getPayload() []byte {
-	if len(c.payload) == 0 {
-		bytes, err := msgpack.Marshal(c)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal chunk")
-		}
-		c.payload = bytes
-	}
-	return c.payload
+	return c.Data
 }
 
 func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	chunkMutex.Lock()
 	defer chunkMutex.Unlock()
 
-	// Unmarshal the chunk
-	var incomingChunk chunk
-	err := msgpack.Unmarshal(payload, &incomingChunk)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error unmarshalling chunk")
-		return nil, false
-	}
-
 	// Hash the data
-	data := incomingChunk.Data
-	hash := hashString(blake3.Sum256(data))
+	hash := hashString(blake3.Sum256(payload))
 
 	// Decrypt the data if this peer is encrypted
 	encryptedDeviceCacheMutex.Lock()
@@ -871,7 +851,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 	encryptedDeviceCacheMutex.Unlock()
 	if encryptedPeer {
 		var encryptedChunk chunk
-		err = b.database.Where("encrypted_hash = ?", hash).Take(&encryptedChunk).Error
+		err := b.database.Where("encrypted_hash = ?", hash).Take(&encryptedChunk).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"peer": peer,
@@ -907,7 +887,7 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 			return nil, false
 		}
 
-		decrypted, err := gcm.Open(nil, f.Nonce, data, nil)
+		decrypted, err := gcm.Open(nil, f.Nonce, payload, nil)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":    err.Error(),
@@ -919,20 +899,20 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 			return nil, false
 		}
 
-		data = decrypted
-		hash = hashString(blake3.Sum256(data))
+		payload = decrypted
+		hash = hashString(blake3.Sum256(payload))
 	}
 
 	// Find any chunks in the database that have this hash and are empty
 	var targetChunks []chunk
-	err = b.database.Where("hash = ? AND downloaded = ?", hash, false).Find(&targetChunks).Error
+	err := b.database.Where("hash = ? AND downloaded = ?", hash, false).Find(&targetChunks).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error looking up chunks")
 	}
 	for _, c := range targetChunks {
-		c.Data = data
+		c.Data = payload
 
 		b.writeChunkToDisk(c)
 	}
