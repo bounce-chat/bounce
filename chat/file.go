@@ -1385,7 +1385,6 @@ func (b *Bounce) makeNextChunkRequests() {
 						}).Warn("refusing to request the same chunk from a device after too many attempts")
 						continue
 					}
-					totalAttemptCounter[offer.Location+c.Hash] = count + 1
 				}
 
 				_, alreadyHit := alreadyHitPeer[offer.Location]
@@ -1405,7 +1404,6 @@ func (b *Bounce) makeNextChunkRequests() {
 						}).Warn("refusing to request the same chunk from a device after too many attempts")
 						continue
 					}
-					totalAttemptCounter[offer.Location+c.EncryptedHash] = count + 1
 				}
 
 				_, alreadyHit := alreadyHitPeer[offer.Location]
