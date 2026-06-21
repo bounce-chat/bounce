@@ -550,7 +550,7 @@ func (b *Bounce) TypingInDirectMessage(userID uuid.UUID) {
 
 func (b *Bounce) typingIndicatorsEnabledForGroup(groupID uuid.UUID) bool {
 	var g group
-	err := b.database.Select("typing_indicators_overridden", "typing_indicators_enabled").First(&g, "id = ?", groupID).Error
+	err := b.database.Select("typing_indicators_overridden", "typing_indicators_enabled").Take(&g, "id = ?", groupID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
@@ -570,7 +570,7 @@ func (b *Bounce) typingIndicatorsEnabledForGroup(groupID uuid.UUID) bool {
 	}
 
 	var defaultSendTypingIndicators bool
-	err = b.database.Model(&profileSettings{}).Select("default_send_typing_indicators").Where("user_id = ?", b.currentUserID()).First(&defaultSendTypingIndicators).Error
+	err = b.database.Model(&profileSettings{}).Select("default_send_typing_indicators").Where("user_id = ?", b.currentUserID()).Take(&defaultSendTypingIndicators).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{

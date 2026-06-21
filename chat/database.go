@@ -50,7 +50,9 @@ func (b *Bounce) openDatabase() {
 	gormLogger := logger.New(
 		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags), // TODO: https://gist.github.com/bnadland/2e4287b801a47dcfcc94
 		logger.Config{
-			LogLevel:                  logger.Error,
+			//LogLevel:                  logger.Error,
+			SlowThreshold:             200 * time.Millisecond,
+			LogLevel:                  logger.Warn,
 			IgnoreRecordNotFoundError: true,
 		},
 	)

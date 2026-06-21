@@ -1114,80 +1114,58 @@ func (b *Bounce) getChunkOffersToOffer(address string, userID uuid.UUID) []frame
 			}).Fatal("database error selecting chunk offers for reference offer")
 		}
 	} else {
-		// If this is not a sync device, get all chunk offers where
-		// 	scope is not sync AND
-		// 	scope is user and the destination is this device's user OR
-		// 	scope is group and the destination is a group that this device's user is in OR
-		//	scope is group with invites and the destination is a group that this device's user is in OR it is a group that this device's user has been invited to OR
-		//      scope is global and the author is me or this device's user OR
-		// 	scope is global and the author is someone who shares a group with this device's user
-		err := b.database.
-			Distinct("chunk_offers.id").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == chunk_offers.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeChunkOffer).
-			Where(
-				`
-					delivery_records.id IS NULL AND chunk_offers.scope != ? AND
-					(
-						(
-							chunk_offers.scope = ? AND chunk_offers.destination = ?
-						) OR (
-							chunk_offers.scope = ? AND chunk_offers.destination IN (?)
-						) OR (
-							chunk_offers.scope = ? AND (chunk_offers.destination IN (?) OR chunk_offers.destination IN (?))
-						) OR (
-							chunk_offers.scope = ? AND (
-								chunk_offers.author = ? OR
-								chunk_offers.author = ? OR
-								chunk_offers.author IN (?)
-							)
-						)
-					)`,
-				scopeSync,
-				scopeUser,
-				xor(userID, b.currentUserID()),
-				scopeGroup,
-				b.database.
-					Model(&group{}).
-					Distinct().
-					Select("groups.id").
-					Joins("JOIN group_users ON group_users.group_id = groups.id").
-					Where("user_id = ?", userID),
-				scopeGroupWithInvites,
-				b.database.
-					Model(&group{}).
-					Distinct().
-					Select("groups.id").
-					Joins("JOIN group_users ON group_users.group_id = groups.id").
-					Where("user_id = ?", userID),
-				b.database.
-					Model(&group{}).
-					Distinct().
-					Select("id").
-					Where("invites LIKE ?", "%"+userID.String()+"%"),
-				scopeGlobal,
-				b.currentUserID(),
-				userID,
-				b.database.
-					Model(&user{}).
-					Distinct().
-					Select("users.id").
-					Joins("JOIN group_users ON group_users.user_id = users.id").
-					Where(
-						"group_users.group_id IN (?)",
-						b.database.
-							Model(&group{}).
-							Distinct().
-							Select("groups.id").
-							Joins("JOIN group_users ON group_users.group_id = groups.id").
-							Where("user_id = ?", userID),
-					),
-			).
-			Find(&unsentChunkOffers).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error selecting chunk offers for reference offer")
+		// Groups the user is in
+		var groupIDs []string
+		b.database.Table("group_users").
+			Where("user_id = ?", userID).
+			Pluck("group_id", &groupIDs)
+
+		// All the users in the groups this user is in
+		var peerIDs []string
+		if len(groupIDs) > 0 {
+			b.database.Table("group_users").
+				Where("group_id IN ?", groupIDs).
+				Pluck("user_id", &peerIDs)
 		}
+
+		// Groups that this user is invited to
+		var groupInviteIDs []string
+		b.database.Model(&group{}).
+			Where("invites LIKE ?", "%"+userID.String()+"%").
+			Pluck("id", &groupInviteIDs)
+
+		// All groups that the user has metadata access to
+		allAccessibleGroupIDs := append(groupIDs, groupInviteIDs...)
+
+		// All delivered chunk offers
+		var deliveredIDs []string
+		b.database.Model(&deliveryRecord{}).
+			Where("destination = ? AND frame_type = ?", address, typeChunkOffer).
+			Pluck("frame_id", &deliveredIDs)
+
+		// First, get all the user scoped chunk offers for our xor
+		var userScoped []chunkOffer
+		b.database.Model(&chunkOffer{}).
+			Distinct("id").
+			Where("id NOT IN (?) AND scope = ? AND destination = ?", deliveredIDs, scopeUser, xor(userID, b.currentUserID())).
+			Find(&userScoped)
+		unsentChunkOffers = append(unsentChunkOffers, userScoped...)
+
+		// Next, get all the group scoped chunks for any group accessible to the user
+		var groupScoped []chunkOffer
+		b.database.Model(&chunkOffer{}).
+			Distinct("id").
+			Where("id NOT IN (?) AND scope IN ? AND destination IN ?", deliveredIDs, []int{scopeGroup, scopeGroupWithInvites}, allAccessibleGroupIDs).
+			Find(&groupScoped)
+		unsentChunkOffers = append(unsentChunkOffers, groupScoped...)
+
+		// Lastly, get any overlap scoped offers
+		var globalScoped []chunkOffer
+		b.database.Model(&chunkOffer{}).
+			Distinct("id").
+			Where("id NOT IN (?) AND scope = ? AND (author IN ? OR author = ?)", deliveredIDs, scopeGlobal, peerIDs, b.currentUserID()).
+			Find(&globalScoped)
+		unsentChunkOffers = append(unsentChunkOffers, globalScoped...)
 	}
 
 	references := []frameReference{}

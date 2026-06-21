@@ -39,8 +39,8 @@ type group struct {
 	LastActivity               int64
 	ReadReceiptsOverridden     bool      `msgpack:"-"`
 	ReadReceiptsEnabled        bool      `msgpack:"-"`
-	TypingIndicatorsOverridden bool      `msgpack:"-"`
-	TypingIndicatorsEnabled    bool      `msgpack:"-"`
+	TypingIndicatorsOverridden bool      `msgpack:"-" gorm:"index:idx_group_typing_indicators"`
+	TypingIndicatorsEnabled    bool      `msgpack:"-" gorm:"index:idx_group_typing_indicators"`
 	DeliveryRecordsClearedFor  uuid.UUID `msgpack:"-"`
 	LastOpened                 int64     `msgpack:"-"`
 }

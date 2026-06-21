@@ -310,14 +310,14 @@ type chunkOffer struct {
 	SignedFrame
 	cachedEncoding
 	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Author          uuid.UUID
+	Scope           int       `gorm:"index:idx_chunk_offers_scope_dest"`
+	Destination     uuid.UUID `gorm:"index:idx_chunk_offers_scope_dest"`
+	Author          uuid.UUID `gorm:"index"`
 	FileID          uuid.UUID
 	Hash            string
 	Location        string
 	Timestamp       int64
 	SavedAt         int64 `msgpack:"-"`
-	Scope           int
-	Destination     uuid.UUID
 	LastRequestTime int64 `msgpack:"-"`
 }
 
@@ -823,7 +823,7 @@ type chunk struct {
 	cachedEncoding
 	ID            uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
 	FileID        uuid.UUID `msgpack:"-"`
-	Hash          string    `msgpack:"-"`
+	Hash          string    `msgpack:"-" gorm:"index"`
 	EncryptedHash string    `msgpack:"-"`
 	Index         int       `msgpack:"-"`
 	Downloaded    bool      `msgpack:"-"`
@@ -1682,7 +1682,7 @@ func (b *Bounce) offerChunk(c chunk) {
 
 func (b *Bounce) GetFileData(fileID uuid.UUID) ([]byte, error) {
 	var f file
-	err := b.database.Preload(clause.Associations).Where("id = ? AND downloaded = ?", fileID, true).First(&f).Error
+	err := b.database.Preload(clause.Associations).Where("id = ? AND downloaded = ?", fileID, true).Take(&f).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return []byte{}, errFileNotFound

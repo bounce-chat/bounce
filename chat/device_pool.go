@@ -630,15 +630,9 @@ func (b *Bounce) tryDialingAndAssociateWithGroup(address string, groupID uuid.UU
 
 func (b *Bounce) tryDialing(address string) bool {
 	if !b.networkIsOnline {
-		log.WithFields(log.Fields{
-			"address": address,
-		}).Debug("ignoring request to dial while network is offline")
 		return false
 	}
 	if b.shouldCooldownDial(address) {
-		log.WithFields(log.Fields{
-			"address": address,
-		}).Debug("avoiding dial because of cooldown period")
 		return false
 	}
 	if address == b.network.Address() {
