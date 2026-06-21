@@ -808,13 +808,13 @@ func (ui *ui) FileCompleted(fileID uuid.UUID) {
 	ui.threads.rangeFunc(func(t thread) {
 		fyne.Do(func() {
 			ei := t.getEditIcon()
-			ei.setBackground()
 			if ei != nil {
+				ei.setBackground()
 				ei.Refresh()
 			}
 			hi := t.getHeaderIcon()
-			hi.setBackground()
 			if hi != nil {
+				hi.setBackground()
 				hi.Refresh()
 			}
 		})
