@@ -60,8 +60,9 @@ func (b *Bounce) openDatabase() {
 	// Open the database
 	var err error
 	b.database, err = gorm.Open(sqlite.Open(databaseFile), &gorm.Config{
-		TranslateError: true,
-		Logger:         gormLogger,
+		TranslateError:  true,
+		Logger:          gormLogger,
+		CreateBatchSize: 1000,
 	})
 	if err != nil {
 		log.WithFields(log.Fields{

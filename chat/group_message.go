@@ -444,15 +444,16 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 				continue
 			}
 
-			err = b.seedFile(fa.ID, source, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"id":    fa.ID,
-					"name":  fa.Name,
-					"error": err.Error(),
-				}).Error("error seeding file attachment")
-				continue
-			}
+			go func() {
+				err = b.seedFile(fa.ID, source, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"id":    fa.ID,
+						"name":  fa.Name,
+						"error": err.Error(),
+					}).Error("error seeding file attachment")
+				}
+			}()
 		} else {
 			reader, ok := readers[fa.ID]
 			if !ok {
