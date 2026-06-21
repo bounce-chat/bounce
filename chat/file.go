@@ -50,7 +50,7 @@ var errInvalidImage = errors.New("invalid image data")
 type file struct {
 	SignedFrame
 	cachedEncoding
-	ID                uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID                uuid.UUID `gorm:"type:uuid;primary_key;index:idx_file_downloaded"`
 	Name              string
 	Type              int
 	AttachedTo        uuid.UUID
@@ -63,7 +63,7 @@ type file struct {
 	Nonce             []byte
 	Path              string `msgpack:"-" gorm:"not null"`
 	Wanted            bool   `msgpack:"-"`
-	Downloaded        bool   `msgpack:"-"`
+	Downloaded        bool   `msgpack:"-" gorm:"index:idx_file_downloaded"`
 	Scope             int
 	Destination       uuid.UUID
 	Author            uuid.UUID
@@ -1682,7 +1682,7 @@ func (b *Bounce) offerChunk(c chunk) {
 
 func (b *Bounce) GetFileData(fileID uuid.UUID) ([]byte, error) {
 	var f file
-	err := b.database.Preload(clause.Associations).Where("id = ? AND downloaded = ?", fileID, true).Take(&f).Error
+	err := b.database.Select("id").Where("id = ? AND downloaded = ?", fileID, true).Take(&f).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return []byte{}, errFileNotFound
