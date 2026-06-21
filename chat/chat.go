@@ -93,6 +93,7 @@ func Open(ui UI, network Network, configDirectory string) *Bounce {
 
 	go func() {
 		b.network.Load(b.configDirectory)
+		b.openReferenceDatabase()
 		if !b.deviceIsRevoked() {
 			b.network.Start(
 				NetworkCallbacks{
@@ -101,7 +102,6 @@ func Open(ui UI, network Network, configDirectory string) *Bounce {
 				},
 			)
 		}
-		b.openReferenceDatabase()
 		b.loadChunkEngine()
 	}()
 
