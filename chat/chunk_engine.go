@@ -441,7 +441,7 @@ func (b *Bounce) chunkWanted(hash string) bool {
 
 	for _, c := range chunks {
 		var f file
-		err = b.database.Select("wanted").Where("id = ?", c.FileID).Take(&f).Error
+		err = b.database.Select("wanted", "downloaded").Where("id = ?", c.FileID).Take(&f).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
@@ -454,7 +454,7 @@ func (b *Bounce) chunkWanted(hash string) bool {
 				}).Fatal("database error looking up file")
 			}
 		}
-		if f.Wanted {
+		if f.Wanted && !f.Downloaded {
 			return true
 		}
 	}
