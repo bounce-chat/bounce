@@ -241,7 +241,7 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 				} else {
 					writer.Close()
 					os.Remove(writer.URI().Path())
-					ui.bounce.DownloadFileToDisk(attachmentID, writer.URI().Path())
+					go ui.bounce.DownloadFileToDisk(attachmentID, writer.URI().Path())
 				}
 			}, ui.window)
 			d.SetFileName(name)

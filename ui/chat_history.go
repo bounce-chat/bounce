@@ -128,9 +128,6 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 
 	for i, id := range ch.ids {
 		if _, ok := ch.added[id]; ok {
-			log.WithFields(log.Fields{
-				"id": id,
-			}).Debug("ignoring duplicate thread item in setItems")
 			continue
 		}
 		ch.added[id] = true
