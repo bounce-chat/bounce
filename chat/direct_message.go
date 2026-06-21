@@ -431,15 +431,16 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 				scope = scopeSync
 				destination = b.currentUserID()
 			}
-			err := b.seedFile(fa.ID, source, scope, destination, fileTypeMessageAttachment, dm.ID)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"id":    fa.ID,
-					"name":  fa.Name,
-					"error": err.Error(),
-				}).Error("error seeding file attachment")
-				continue
-			}
+			go func() {
+				err := b.seedFile(fa.ID, source, scope, destination, fileTypeMessageAttachment, dm.ID)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"id":    fa.ID,
+						"name":  fa.Name,
+						"error": err.Error(),
+					}).Error("error seeding file attachment")
+				}
+			}()
 		} else {
 			reader, ok := readers[fa.ID]
 			if !ok {
