@@ -1281,7 +1281,7 @@ func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID uuid.UUID
 
 		// First, get all the user scoped chunk offers for our xor
 		var userScoped []encryptedChunkOffer
-		b.database.Model(&chunkOffer{}).
+		b.database.Model(&encryptedChunkOffer{}).
 			Distinct("id").
 			Where("id NOT IN (?) AND scope = ? AND destination = ?", deliveredIDs, scopeUser, xor(userID, b.currentUserID())).
 			Find(&userScoped)
@@ -1289,7 +1289,7 @@ func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID uuid.UUID
 
 		// Next, get all the group scoped chunks for any group accessible to the user
 		var groupScoped []encryptedChunkOffer
-		b.database.Model(&chunkOffer{}).
+		b.database.Model(&encryptedChunkOffer{}).
 			Distinct("id").
 			Where("id NOT IN (?) AND scope IN ? AND destination IN ?", deliveredIDs, []int{scopeGroup, scopeGroupWithInvites}, allAccessibleGroupIDs).
 			Find(&groupScoped)
@@ -1297,7 +1297,7 @@ func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID uuid.UUID
 
 		// Lastly, get any overlap scoped offers
 		var globalScoped []encryptedChunkOffer
-		b.database.Model(&chunkOffer{}).
+		b.database.Model(&encryptedChunkOffer{}).
 			Distinct("id").
 			Where("id NOT IN (?) AND scope = ? AND (author IN ? OR author = ?)", deliveredIDs, scopeGlobal, peerIDs, b.currentUserID()).
 			Find(&globalScoped)
