@@ -300,13 +300,41 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 }
 
 func (b *Bounce) getEncryptedReferenceOfferFor(address string, publicKey []byte) *referenceOffer {
+	// Frame IDs this public key can have
+	var allowedPubkeyIDs []string
+	b.database.Model(&recipient{}).
+		Where("public_key = ?", publicKey).
+		Pluck("encrypted_frame_id", &allowedPubkeyIDs)
+
+	// Frmae IDs this device can have
+	var allowedDeviceIDs []string
+	b.database.Model(&deviceRecipient{}).
+		Where("recipient_address = ?", address).
+		Pluck("encrypted_frame_id", &allowedDeviceIDs)
+
+	allowedIDs := append(allowedPubkeyIDs, allowedDeviceIDs...)
+
+	// Frame IDs we have delivered
+	var deliveredIDs []string
+	b.database.Model(&deliveryRecord{}).
+		Where("destination = ? AND frame_type = ?", address, typeEncryptedFrame).
+		Pluck("frame_id", &deliveredIDs)
+	deliveredMap := map[string]bool{}
+	for _, id := range deliveredIDs {
+		deliveredMap[id] = true
+	}
+
+	offerIDs := []string{}
+	for _, id := range allowedIDs {
+		if _, present := deliveredMap[id]; !present {
+			offerIDs = append(offerIDs, id)
+		}
+	}
+
 	var encryptedFrames []encryptedFrame
 	b.database.
-		Select("encrypted_frames.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_frames.id AND delivery_records.destination == ?", address).
-		Joins("LEFT JOIN recipients ON recipients.encrypted_frame_id == encrypted_frames.id AND recipients.public_key = ?", publicKey).
-		Joins("LEFT JOIN device_recipients ON device_recipients.encrypted_frame_id = encrypted_frames.id AND device_recipients.recipient_address = ?", address).
-		Where("delivery_records.id IS NULL AND (encrypted_frames.delete_at == 0 OR encrypted_frames.delete_at > ?) AND (recipients.id IS NOT NULL OR device_recipients.id IS NOT NULL)", time.Now().Unix()).
+		Select("id", "type").
+		Where("encrypted_frames.id IN (?)", offerIDs).
 		Find(&encryptedFrames)
 
 	references := []frameReference{}

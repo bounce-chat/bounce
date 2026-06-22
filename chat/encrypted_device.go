@@ -370,7 +370,7 @@ func (b *Bounce) handleEncryptedDeviceManagementResponse(peer string, payload []
 type recipient struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
 	EncryptedFrameID uuid.UUID `msgpack:"-"`
-	PublicKey        []byte
+	PublicKey        []byte    `gorm:"index"`
 	EncrypterKey     []byte
 	EncryptedDEK     []byte
 }
@@ -383,7 +383,7 @@ func (r *recipient) BeforeCreate(tx *gorm.DB) error {
 type deviceRecipient struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
 	EncryptedFrameID uuid.UUID `msgpack:"-"`
-	RecipientAddress string
+	RecipientAddress string    `gorm:"index"`
 	Counterparty     string
 	EncryptedDEK     []byte
 }
