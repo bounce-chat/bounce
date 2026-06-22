@@ -16,7 +16,7 @@ Each instance of Bounce includes a Tor hidden service, and all connections betwe
 
 ## Status
 
-Things should be working pretty reliably!  Please open an issue if a feature in the UI is not working as expected.  While it is unlikely that existing protocol will change, I have not yet committed to freezing the existing protocol, so backwards compatibility between updates is not yet guaranteed.  Bounce has not been audited by a third party yet, and should be considered experimental.
+Things should be working pretty reliably, though some performance optimization is still required.  Please open an issue if a feature in the UI is not working as expected.  While I do not anticipate existing protocol will change, I have not yet committed to freezing the existing protocol, so backwards compatibility between updates is not yet guaranteed.  Bounce has not been audited by a third party yet, and should be considered experimental.
 
 |Client|Status|Notes|
 |---|---|---|

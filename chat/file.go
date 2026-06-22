@@ -575,6 +575,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 				"hash":  cr.Hash,
 				"peer":  peer,
 			}).Warn("error getting requested encrypted chunk")
+			b.sendDirect(peer, &chunkUnavailable{Hash: cr.Hash})
 		}
 	} else {
 		encryptedDeviceCacheMutex.Lock()
@@ -582,20 +583,21 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 		encryptedDeviceCacheMutex.Unlock()
 
 		if encryptedPeer {
-			if !b.encryptedPeerCanHaveChunk(encryptedUserID, cr.Hash) {
-				log.WithFields(log.Fields{
-					"peer": peer,
-					"hash": cr.Hash,
-				}).Warn("encrypted peer requested chunk they are not allowed to have")
-				return nil, false
-			}
-
 			var c chunk
 			err := b.database.Where("encrypted_hash = ?", cr.Hash).Take(&c).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"encrypted_hash": cr.Hash,
 				}).Warn("could not find chunk by encrypted hash")
+				b.sendDirect(peer, &chunkUnavailable{Hash: cr.Hash})
+				return nil, false
+			}
+
+			if !b.encryptedPeerCanHaveChunk(encryptedUserID, cr.Hash) {
+				log.WithFields(log.Fields{
+					"peer": peer,
+					"hash": cr.Hash,
+				}).Warn("encrypted peer requested chunk they are not allowed to have")
 				return nil, false
 			}
 
@@ -606,6 +608,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 					"hash":  c.Hash,
 					"peer":  peer,
 				}).Warn("error getting requested chunk")
+				b.sendDirect(peer, &chunkUnavailable{Hash: cr.Hash})
 				return nil, false
 			}
 
@@ -615,6 +618,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 				log.WithFields(log.Fields{
 					"file_id": c.FileID,
 				}).Warn("unable to find file for chunk")
+				b.sendDirect(peer, &chunkUnavailable{Hash: cr.Hash})
 				return nil, false
 			}
 
@@ -655,6 +659,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 					"hash":  cr.Hash,
 					"peer":  peer,
 				}).Warn("error getting requested chunk")
+				b.sendDirect(peer, &chunkUnavailable{Hash: cr.Hash})
 			}
 		}
 	}
@@ -1678,6 +1683,73 @@ func (b *Bounce) offerChunk(c chunk) {
 			}
 		}
 	}
+}
+
+type chunkUnavailable struct {
+	Hash string
+}
+
+func (cu *chunkUnavailable) getType() uint16 {
+	return typeChunkUnavailable
+}
+
+func (cu *chunkUnavailable) getPayload() []byte {
+	bytes, err := msgpack.Marshal(cu)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal chunk unavailable")
+	}
+	return bytes
+}
+
+func (b *Bounce) handleChunkUnavailable(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	var cu chunkUnavailable
+	err := msgpack.Unmarshal(payload, &cu)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling chunk unavailable")
+		return nil, false
+	}
+
+	if b.encrypted {
+		err := b.database.Clauses(clause.Returning{}).Where("hash = ? and source = ?", cu.Hash, peer).Delete(&encryptedChunkStorageRequest{}).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error deleting encrypted chunk storage request")
+		}
+	} else {
+		encryptedDeviceCacheMutex.Lock()
+		_, encryptedPeer := encryptedDeviceCache[peer]
+		encryptedDeviceCacheMutex.Unlock()
+
+		if encryptedPeer {
+			err := b.database.Clauses(clause.Returning{}).Where("hash = ? and location = ?", cu.Hash, peer).Delete(&encryptedChunkOffer{}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error deleting encrypted chunk offer")
+			}
+
+			var c chunk
+			err = b.database.Where("encrypted_hash = ?", cu.Hash).Take(&c).Error
+			if err == nil {
+				b.chunkEngine.remove(peer, c.Hash)
+			}
+		} else {
+			err := b.database.Clauses(clause.Returning{}).Where("hash = ? and location = ?", cu.Hash, peer).Delete(&chunkOffer{}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error deleting chunk offer")
+			}
+			b.chunkEngine.remove(peer, cu.Hash)
+		}
+	}
+
+	return nil, false
 }
 
 func (b *Bounce) GetFileData(fileID uuid.UUID) ([]byte, error) {
