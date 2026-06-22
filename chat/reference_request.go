@@ -65,6 +65,7 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	broadcastables = append(broadcastables, b.getRequestedUpdateSettingsPayloads(requestedIDs[typeUpdateSettings], offeredIDs[typeUpdateSettings])...)
 	broadcastables = append(broadcastables, b.getRequestedFilePayloads(requestedIDs[typeFile], offeredIDs[typeFile])...)
 	broadcastables = append(broadcastables, b.getRequestedChunkOfferPayloads(requestedIDs[typeChunkOffer], offeredIDs[typeChunkOffer])...)
+	broadcastables = append(broadcastables, b.getRequestedEncryptedChunkOfferPayloads(requestedIDs[typeChunkOffer], offeredIDs[typeChunkOffer])...)
 	broadcastables = append(broadcastables, b.getRequestedDraftPayloads(requestedIDs[typeDraft], offeredIDs[typeDraft])...)
 
 	if len(broadcastables) == 0 {
@@ -491,6 +492,33 @@ func (b *Bounce) getRequestedChunkOfferPayloads(requestedIDs, offeredIDs []uuid.
 			}
 		} else {
 			requestedData = append(requestedData, &co)
+		}
+	}
+
+	return requestedData
+}
+
+func (b *Bounce) getRequestedEncryptedChunkOfferPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
+	requestedData := []broadcastable{}
+
+	requestedEncryptedChunkOfferIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
+
+	for _, encryptedChunkOfferID := range requestedEncryptedChunkOfferIDs {
+		var eco encryptedChunkOffer
+		err := b.database.First(&eco, "id = ?", encryptedChunkOfferID).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"id": encryptedChunkOfferID,
+				}).Warn("reference request asks for unknown encrypted chunk offer we offered")
+			} else {
+				log.WithFields(log.Fields{
+					"id":    encryptedChunkOfferID,
+					"error": err.Error(),
+				}).Fatal("database error querying for encrypted chunk offer")
+			}
+		} else {
+			requestedData = append(requestedData, &eco)
 		}
 	}
 
