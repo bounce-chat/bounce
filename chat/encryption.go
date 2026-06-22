@@ -175,7 +175,8 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 		if !ok {
 			log.WithFields(log.Fields{
 				"address": addr,
-			}).Error("no users own this device")
+			}).Warn("encrypted device not owned by user in scope")
+			continue
 		}
 
 		// Create recipients for each user in scope, up to a limit
@@ -320,7 +321,7 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 	if !ok {
 		log.WithFields(log.Fields{
 			"address": addr,
-		}).Error("no users own this device")
+		}).Warn("encrypted device not owned by user in scope")
 		return nil
 	}
 

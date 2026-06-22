@@ -128,6 +128,7 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 				"hash": eco.Hash,
 				"peer": peer,
 			}).Error("received encrypted chunk offer for unknown chunk")
+			b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
 			return nil, false
 		} else {
 			log.WithFields(log.Fields{
