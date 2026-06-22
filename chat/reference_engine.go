@@ -21,7 +21,7 @@ var referenceStateOffered = 0
 var referenceStateRequested = 1
 
 // TODO: might make sense to dynamically retry depending on size of offer
-var referenceRetrySeconds = 5
+var referenceRetrySeconds = 30
 
 type frameReference struct {
 	ID         uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`

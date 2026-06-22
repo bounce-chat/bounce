@@ -1431,7 +1431,7 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 			for range 5 {
 				b.sendDirect(peer, ero)
 
-				time.Sleep(10 * time.Second)
+				time.Sleep(time.Duration(referenceRetrySeconds) * time.Second)
 
 				var dr deliveryRecord
 				err := b.referenceDatabase.Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, ero.ID, typeReferenceOffer).First(&dr).Error

@@ -149,7 +149,7 @@ func (b *Bounce) sendReferences(peer string) {
 		b.sendDirect(peer, referenceOffer)
 
 		// Wait for an ack before checking if it was delivered
-		time.Sleep(10 * time.Second)
+		time.Sleep(time.Duration(referenceRetrySeconds) * time.Second)
 
 		// Manually check the reference database for a delivery record, and delete it and return if found
 		var dr deliveryRecord
