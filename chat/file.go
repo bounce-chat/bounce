@@ -931,24 +931,14 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 	defer chunkMutex.Unlock()
 	encryptedChunkRequestMutex.Lock()
 
-	var incomingChunk chunk
-	err := msgpack.Unmarshal(payload, &incomingChunk)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error unmarshalling chunk")
-		encryptedChunkRequestMutex.Unlock()
-		return nil, false
-	}
-
 	// Remove the oldest chunks if we're running out of allocated storage space
 	if os.Getenv("UNLIMITED_STORAGE") != "true" {
-		newData := int64(len(incomingChunk.Data))
+		newData := int64(len(payload))
 
 		for b.getEncryptedBlobStorageSize()+newData > encryptedBlobStorageLimit {
 			// Find the oldest download
 			var oldestSR encryptedChunkStorageRequest
-			err = b.database.Distinct("hash").Where("downloaded = ?", true).Order("downloaded_at asc").Limit(1).First(&oldestSR).Error
+			err := b.database.Distinct("hash").Where("downloaded = ?", true).Order("downloaded_at asc").Limit(1).First(&oldestSR).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					log.Error("unable to find oldest storage request while freeing disk space")
@@ -996,9 +986,9 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 	}
 
 	// Save it to disk
-	hash := blake3.Sum256(incomingChunk.Data)
+	hash := blake3.Sum256(payload)
 	path := b.configDirectory + "/blobs/" + hashString(hash)
-	err = ioutil.WriteFile(path, incomingChunk.Data, 0600)
+	err := ioutil.WriteFile(path, payload, 0600)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -1007,7 +997,7 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 		encryptedChunkRequestMutex.Unlock()
 		return nil, false
 	}
-	b.incrementEncryptedBlobStorageSize(int64(len(incomingChunk.Data)))
+	b.incrementEncryptedBlobStorageSize(int64(len(payload)))
 
 	// Set all of the storage requests as downloaded
 	err = b.database.Table("encrypted_chunk_storage_requests").Where("hash = ?", hashString(hash)).Updates(map[string]interface{}{
