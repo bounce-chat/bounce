@@ -232,6 +232,7 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 			"user":  gm.Author,
 			"group": gm.Destination,
 		}).Warn("user sent message to a group they are not in, ignoring")
+		go b.sendAck(peer, typeGroupMessage, gm.ID)
 		return nil, false
 	}
 
@@ -242,6 +243,7 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 			"group":      gm.Destination,
 			"written_at": gm.WrittenAt,
 		}).Debug("ignoring a group message that was written before the history was cleared")
+		go b.sendAck(peer, typeGroupMessage, gm.ID)
 		return nil, false
 	}
 
@@ -253,6 +255,7 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 			"destination": gm.getDestination(b.currentUserID()),
 			"delete_at":   gm.DeleteAt,
 		}).Debug("ignoring a group message that has delete time that occured before now")
+		go b.sendAck(peer, typeGroupMessage, gm.ID)
 		return nil, false
 	}
 
