@@ -65,7 +65,7 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	broadcastables = append(broadcastables, b.getRequestedUpdateSettingsPayloads(requestedIDs[typeUpdateSettings], offeredIDs[typeUpdateSettings])...)
 	broadcastables = append(broadcastables, b.getRequestedFilePayloads(requestedIDs[typeFile], offeredIDs[typeFile])...)
 	broadcastables = append(broadcastables, b.getRequestedChunkOfferPayloads(requestedIDs[typeChunkOffer], offeredIDs[typeChunkOffer])...)
-	broadcastables = append(broadcastables, b.getRequestedEncryptedChunkOfferPayloads(requestedIDs[typeChunkOffer], offeredIDs[typeChunkOffer])...)
+	broadcastables = append(broadcastables, b.getRequestedEncryptedChunkOfferPayloads(requestedIDs[typeEncryptedChunkOffer], offeredIDs[typeEncryptedChunkOffer])...)
 	broadcastables = append(broadcastables, b.getRequestedDraftPayloads(requestedIDs[typeDraft], offeredIDs[typeDraft])...)
 
 	if len(broadcastables) == 0 {
