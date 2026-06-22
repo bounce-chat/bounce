@@ -317,7 +317,7 @@ func (b *Bounce) getEncryptedReferenceOfferFor(address string, publicKey []byte)
 	// Frame IDs we have delivered
 	var deliveredIDs []string
 	b.database.Model(&deliveryRecord{}).
-		Where("destination = ? AND frame_type = ?", address, typeEncryptedFrame).
+		Where("destination = ?", address).
 		Pluck("frame_id", &deliveredIDs)
 	deliveredMap := map[string]bool{}
 	for _, id := range deliveredIDs {
