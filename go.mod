@@ -7,6 +7,7 @@ go 1.26
 
 require (
 	fyne.io/fyne/v2 v2.7.4
+	github.com/AndroidGoLab/jni v0.0.8
 	github.com/Basekick-Labs/msgpack/v6 v6.1.0
 	github.com/DeRuina/timberjack v1.4.5
 	github.com/alecthomas/assert/v2 v2.11.0
@@ -62,8 +63,14 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/mobile v0.0.0-20260611195102-4dd8f1dbf5d2 // indirect
+	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/tools v0.46.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+tool golang.org/x/mobile/cmd/gobind

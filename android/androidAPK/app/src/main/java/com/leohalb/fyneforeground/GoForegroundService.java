@@ -48,6 +48,10 @@ public class GoForegroundService extends Service {
         public String getEvents() {
             return Goservice.getEvents();
         }
+        @Override
+        public void eval(String arg) {
+            Goservice.eval(arg);
+        }
     };
 
     // -----------------------------------------------------------------------

@@ -38,7 +38,7 @@ const sysTray = "sysTray"
 const neverAskForBatteryOptimizations = "neverAskForBatteryOptimizations"
 
 type ui struct {
-	bounce *chat.Bounce
+	bounce chat.Engine
 	state  *state
 
 	app    fyne.App
@@ -133,6 +133,33 @@ func Main() {
 	}
 
 	ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())
+	ui.build()
+	go func() {
+		ui.loadInitialState(ui.bounce.GetInitialState())
+	}()
+
+	ui.app.Run()
+	ui.bounce.Shutdown()
+}
+
+func StartShimmed(shim chat.Engine) {
+	ui := &ui{
+		containers: &containers{},
+		views:      &views{},
+		widgets:    &widgets{},
+		users:      newUserStore(),
+		devices:    newDeviceStore(),
+		messages:   newMessageStore(),
+		threads:    newThreadStore(),
+		state: &state{
+			focused:      true,
+			active:       true,
+			networkState: networkStateStarting,
+			viewStack:    []view{},
+		},
+	}
+
+	ui.bounce = shim
 	ui.build()
 	go func() {
 		ui.loadInitialState(ui.bounce.GetInitialState())

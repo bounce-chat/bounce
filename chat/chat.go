@@ -50,7 +50,7 @@ type Bounce struct {
 
 // The main entrypoint for starting the Bounce chat engine, blocks until the user interface
 // is closed, the network reaches a fatal error, or the process is sent an interrupt.
-func Open(ui UI, network Network, configDirectory string) *Bounce {
+func Open(ui UI, network Network, configDirectory string) Engine {
 	if os.Getenv("DEBUG") == "true" {
 		log.SetReportCaller(true)
 	}

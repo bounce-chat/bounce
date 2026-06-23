@@ -23,13 +23,14 @@ import (
 	"unsafe"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/AndroidGoLab/jni"
 	jniApp "github.com/AndroidGoLab/jni/app"
+
+	"github.com/hkparker/bounce/ui"
 )
 
 var binderRef *jni.Object
@@ -38,22 +39,8 @@ var binderMu sync.Mutex
 var boundCh = make(chan struct{}, 1)
 
 func main() {
-	a := app.NewWithID("chat.bounce")
-
-	if runtime.GOOS != "android" {
-		return
-	} else {
-		err := startGoForegroundService()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	w := a.NewWindow("Clock")
-	split := container.NewCenter(Show())
-	w.SetContent(split)
-	w.Resize(fyne.NewSize(480, 360))
-	w.ShowAndRun()
+	startGoForegroundService()
+	ui.StartShimmed(&aidlBounce{})
 }
 
 func startGoForegroundService() error {
