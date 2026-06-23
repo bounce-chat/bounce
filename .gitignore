@@ -3,3 +3,9 @@ bounce
 Bounce.apk
 fyne-cross/
 fyne_metadata_init.go
+
+android/activity/unzippedAPK
+*.so
+*.jar
+*.aar
+*.apk

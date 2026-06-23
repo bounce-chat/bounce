@@ -100,7 +100,11 @@ The add user struct that was created by this process contains proof that a devic
 
 ## Sending Messages
 
+With the above out of the way, sending messages is straightforward.  A user creates a message structure containing the text of their message, as well as the IDs of any attachments, and signs it.  If it is a direct message, it is user-scoped to the counterparty of the direct message thread.  If it is a group message, it is group-scoped to the group.  The message is then broadcast and gossiped to any devices that are online, and any devices that are offline will pick it up via the reference flow when coming back online.  Upon seeing a message, users can broadcast read receipts, which are scoped and distributed in the same way.
+
 ## Group Consensus
+
+
 
 ## Files
 
