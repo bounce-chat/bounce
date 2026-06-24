@@ -184,7 +184,7 @@ public class GoForegroundService extends Service {
                 .setOngoing(true) // Makes notification non-dismissible
                 .setAutoCancel(false); // Prevents dismissal on tap
 
-        dest.addAction(android.R.drawable.ic_menu_close_clear_cancel, "Close", closePendingIntent);
+        dest.addAction(android.R.drawable.ic_menu_close_clear_cancel, "Quit", closePendingIntent);
 
 
         return dest.build();

@@ -1,10 +1,13 @@
 package goservice
 
 import (
+	"encoding/base64"
 	"sync"
 
+	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
+	log "github.com/sirupsen/logrus"
 )
 
 // A struct that holds calls the UI needs to evaluate for the UI to poll
@@ -14,17 +17,69 @@ type uiBuffer struct {
 	events []map[int][]byte
 }
 
-func (u *uiBuffer) LoadInitialState(chat.InitialState)                       {}
-func (u *uiBuffer) Run()                                                     {}
-func (u *uiBuffer) Quit()                                                    {}
-func (u *uiBuffer) NetworkOnline()                                           {}
+func (u *uiBuffer) getEvents() string {
+	u.Lock()
+	defer u.Unlock()
+
+	if len(u.events) == 0 {
+		return ""
+	}
+
+	bytes, err := msgpack.Marshal(u.events)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling event queue")
+	}
+
+	u.events = []map[int][]byte{}
+
+	return base64.StdEncoding.EncodeToString(bytes)
+}
+
+func (u *uiBuffer) LoadInitialState(chat.InitialState) {}
+func (u *uiBuffer) Run()                               {}
+func (u *uiBuffer) Quit()                              {}
+
+func (u *uiBuffer) NetworkOnline() {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("NetworkOnline"),
+	})
+}
+
 func (u *uiBuffer) NetworkOffline()                                          {}
 func (u *uiBuffer) NewSyncDeviceAdded()                                      {}
 func (u *uiBuffer) SyncDeviceRequestAccepted(chat.User, []chat.Device, bool) {}
 func (u *uiBuffer) SyncDeviceRequestRejected(peer string)                    {}
 
-func (u *uiBuffer) ProfileSet(chat.User, chat.Device) {
-	// TODO: add this to the event stack
+func (u *uiBuffer) ProfileSet(chatUser chat.User, chatDevice chat.Device) {
+	u.Lock()
+	defer u.Unlock()
+
+	userBytes, err := msgpack.Marshal(&chatUser)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling user")
+		return
+	}
+
+	deviceBytes, err := msgpack.Marshal(&chatDevice)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling device")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("ProfileSet"),
+		1: userBytes,
+		2: deviceBytes,
+	})
 }
 
 func (u *uiBuffer) InitialSyncStarting()                                                  {}

@@ -4,7 +4,6 @@
 package goservice
 
 import (
-	"crypto/rand"
 	"encoding/base64"
 	"os"
 	"runtime"
@@ -28,7 +27,9 @@ var stoppedTime time.Duration
 var chDone = make(chan bool)
 
 func StartForegroundService() {
-	ui := &uiBuffer{}
+	ui = &uiBuffer{
+		events: []map[int][]byte{},
+	}
 	b = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())
 	<-chDone
 }
@@ -58,13 +59,7 @@ func GetEvents() string {
 	if ui == nil {
 		return ""
 	}
-	// TODO: lock and serialize the current event buffer into a string and send it over
-
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
-		return ""
-	}
-	return base64.URLEncoding.EncodeToString(bytes)[:16]
+	return ui.getEvents()
 }
 
 func Eval(rawTask string) {

@@ -142,7 +142,7 @@ func Main() {
 	ui.bounce.Shutdown()
 }
 
-func StartShimmed(shim chat.Engine, bind func()) {
+func StartShimmed(shim chat.Engine, bind func(), poll func(chat.UI)) {
 	ui := &ui{
 		containers: &containers{},
 		views:      &views{},
@@ -164,6 +164,7 @@ func StartShimmed(shim chat.Engine, bind func()) {
 	go func() {
 		bind()
 		ui.loadInitialState(ui.bounce.GetInitialState())
+		poll(ui)
 	}()
 
 	ui.app.Run()
