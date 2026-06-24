@@ -42,7 +42,8 @@
 	    android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:theme="@android:style/Theme" android:windowSoftInputMode="adjustResize"
             android:name="org.golang.app.GoNativeActivity"
-            android:exported="true">
+            android:exported="true"
+            android:enableOnBackInvokedCallback="false">
             <meta-data
                     android:name="android.app.lib_name"
                     android:value="Bounce" />
