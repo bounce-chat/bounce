@@ -325,7 +325,7 @@ func callStringMethod(methodName string) (string, error) {
 	return result, err
 }
 
-func callServiceFunction(rawArg string) error {
+func callServiceFunction(rawArg string) (string, error) {
 	arg := base64.StdEncoding.EncodeToString([]byte(rawArg))
 
 	binderMu.Lock()
@@ -334,25 +334,31 @@ func callServiceFunction(rawArg string) error {
 	binderMu.Unlock()
 
 	if ref == nil || vm == nil {
-		return fmt.Errorf("service not bound")
+		return "", fmt.Errorf("service not bound")
 	}
 
-	return vm.Do(func(env *jni.Env) error {
+	var result string
+	err := vm.Do(func(env *jni.Env) error {
 		cls := env.GetObjectClass(ref)
-		mid, err := env.GetMethodID(cls, "eval", "(Ljava/lang/String;)V")
+		mid, err := env.GetMethodID(cls, "eval", "(Ljava/lang/String;)Ljava/lang/String;")
 		if err != nil {
 			return fmt.Errorf("eval method not found: %w", err)
 		}
 
-		//jStr, err := env.NewString(utf16.Encode([]rune(arg)))
 		jStr, err := env.NewString(utf16.Encode([]rune(arg)))
 		if err != nil {
 			return fmt.Errorf("cannot make java string: %w", err)
 		}
 		jObj := (*jni.Object)(unsafe.Pointer(jStr))
-		//defer env.DeleteLocalRef(jObj)
 
-		//jObj := jni.ObjectFromPtr(unsafe.Pointer(jStr))
-		return env.CallVoidMethod(ref, mid, jni.ObjectValue(jObj))
+		retObj, err := env.CallObjectMethod(ref, mid, jni.ObjectValue(jObj))
+		if err != nil {
+			return err
+		}
+		if retObj != nil {
+			result = env.GoString((*jni.String)(unsafe.Pointer(retObj)))
+		}
+		return nil
 	})
+	return result, err
 }

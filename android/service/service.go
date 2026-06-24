@@ -62,60 +62,6 @@ func GetEvents() string {
 	return ui.getEvents()
 }
 
-func Eval(rawTask string) {
-	if b == nil {
-		return
-	}
-
-	task, err := base64.StdEncoding.DecodeString(rawTask)
-	if err != nil {
-		return
-	}
-	cmd := make(map[int][]byte)
-	err = msgpack.Unmarshal([]byte(task), &cmd)
-	if err != nil {
-		// TODO
-		return
-	}
-
-	if len(cmd) == 0 {
-		// TODO
-		return
-	}
-
-	funcName, ok := cmd[0]
-	if !ok {
-		// TODO
-		return
-	}
-
-	switch string(funcName) {
-	case "SetProfile":
-		name, ok := cmd[1]
-		if !ok {
-			// TODO
-			return
-		}
-		image, ok := cmd[2]
-		if !ok {
-			// TODO
-			return
-		}
-		deviceName, ok := cmd[3]
-		if !ok {
-			// TODO
-			return
-		}
-
-		err := b.SetProfile(string(name), image, string(deviceName))
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Warn("error setting profile")
-		}
-	}
-}
-
 func getConfigDirectory() string {
 	var configDirectory string
 	if testing.Testing() {

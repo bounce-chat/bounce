@@ -14,7 +14,9 @@ import (
 type aidlBounce struct{}
 
 func (b *aidlBounce) GetInitialState() chat.InitialState {
-	encodedData, err := callStringMethod("getInitialState")
+	encodedData, err := callCommand(map[int][]byte{
+		0: []byte("GetInitialState"),
+	})
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -114,24 +116,12 @@ func (b *aidlBounce) SetNewGroupRetention(value int64)            {}
 func (b *aidlBounce) SetOpenDM(userID uuid.UUID, open bool) error { return nil }
 
 func (b *aidlBounce) SetProfile(profileName string, image []byte, deviceName string) error {
-	cmd := map[int][]byte{
+	_, err := callCommand(map[int][]byte{
 		0: []byte("SetProfile"),
 		1: []byte(profileName),
 		2: image,
 		3: []byte(deviceName),
-	}
-	data, err := msgpack.Marshal(&cmd)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error marshalling set profile command")
-	}
-	err = callServiceFunction(string(data))
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error calling eval for SetProfile")
-	}
+	})
 	return err
 }
 
@@ -149,3 +139,13 @@ func (b *aidlBounce) UpdateDraft(threadID uuid.UUID, text string)       {}
 func (b *aidlBounce) UpdateProfileImage(newImage []byte) error          { return nil }
 func (b *aidlBounce) UpdateProfileName(newName string) error            { return nil }
 func (b *aidlBounce) UserConnectionDesired(id uuid.UUID)                {}
+
+func callCommand(cmd map[int][]byte) (string, error) {
+	data, err := msgpack.Marshal(&cmd)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling set profile command")
+	}
+	return callServiceFunction(string(data))
+}

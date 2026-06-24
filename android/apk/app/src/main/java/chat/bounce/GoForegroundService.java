@@ -41,16 +41,12 @@ public class GoForegroundService extends Service {
 
     private final IGoService.Stub binder = new IGoService.Stub() {
         @Override
-        public String getInitialState() {
-            return Goservice.getInitialState();
-        }
-        @Override
         public String getEvents() {
             return Goservice.getEvents();
         }
         @Override
-        public void eval(String arg) {
-            Goservice.eval(arg);
+        public String eval(String arg) {
+            return Goservice.eval(arg);
         }
     };
 
