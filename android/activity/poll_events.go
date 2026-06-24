@@ -631,6 +631,360 @@ func pollEvents(userInterface chat.UI) {
 				}
 
 				userInterface.GroupEditsUnrestricted(ugeu)
+			case "PostingRestricted":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugpr chat.UpdateGroupPostingRestricted
+				err = msgpack.Unmarshal(bytes, &ugpr)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.PostingRestricted(ugpr)
+			case "PostingUnrestricted":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugpu chat.UpdateGroupPostingUnrestricted
+				err = msgpack.Unmarshal(bytes, &ugpu)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.PostingUnrestricted(ugpu)
+			case "InviteUser":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugiu chat.UpdateGroupInviteUser
+				err = msgpack.Unmarshal(bytes, &ugiu)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.InviteUser(ugiu)
+			case "RollbackGroup":
+				idBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				id, err := uuid.FromBytes(idBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				userInterface.RollbackGroup(id)
+			case "NotifyAddedToGroup":
+				sBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+				userInterface.NotifyAddedToGroup(string(sBytes))
+			case "NotifyInvitedToGroup":
+				sBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+				userInterface.NotifyInvitedToGroup(string(sBytes))
+			case "GroupInviteRevoked":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugir chat.UpdateGroupInviteRevoked
+				err = msgpack.Unmarshal(bytes, &ugir)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.GroupInviteRevoked(ugir)
+			case "GroupInviteAccepted":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugia chat.UpdateGroupInviteAccepted
+				err = msgpack.Unmarshal(bytes, &ugia)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.GroupInviteAccepted(ugia)
+			case "GroupInviteRejected":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugir chat.UpdateGroupInviteRejected
+				err = msgpack.Unmarshal(bytes, &ugir)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.GroupInviteRejected(ugir)
+			case "ShowTypingIndicator":
+				userBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				userID, err := uuid.FromBytes(userBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				threadBytes, ok := cmd[2]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				threadID, err := uuid.FromBytes(threadBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				userInterface.ShowTypingIndicator(userID, threadID)
+			case "HideTypingIndicator":
+				userBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				userID, err := uuid.FromBytes(userBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				threadBytes, ok := cmd[2]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				threadID, err := uuid.FromBytes(threadBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				userInterface.HideTypingIndicator(userID, threadID)
+			case "UserOnline":
+				userBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				userID, err := uuid.FromBytes(userBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				userInterface.UserOnline(userID)
+			case "UserOffline":
+				userBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				userID, err := uuid.FromBytes(userBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				userInterface.UserOffline(userID)
+			case "DeviceOnline":
+				idBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				id, err := uuid.FromBytes(idBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				userInterface.DeviceOnline(id)
+			case "DeviceOffline":
+				idBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				id, err := uuid.FromBytes(idBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				userInterface.DeviceOffline(id)
+			case "DeviceAdded":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var d chat.Device
+				err = msgpack.Unmarshal(bytes, &d)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.DeviceAdded(d)
+			case "DeviceRevoked":
+				idBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				id, err := uuid.FromBytes(idBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				userInterface.DeviceRevoked(id)
+			case "DeviceRenamed":
+				idBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				id, err := uuid.FromBytes(idBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				nameBytes, ok := cmd[2]
+				if !ok {
+					log.Error("no name bytes")
+					continue
+				}
+
+				userInterface.DeviceRenamed(id, string(nameBytes))
+			case "DeviceLastSeen":
+				idBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				id, err := uuid.FromBytes(idBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				tsBytes, ok := cmd[2]
+				if !ok || len(tsBytes) != 8 {
+					log.Error("bad ts bytes")
+					continue
+				}
+				ts := int64(binary.BigEndian.Uint64(tsBytes))
+
+				userInterface.DeviceLastSeen(id, ts)
+			case "MessageSeen":
+				idBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				id, err := uuid.FromBytes(idBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				userInterface.MessageSeen(id)
+			case "ReceivedReadReceipt":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var rr chat.ReadReceipt
+				err = msgpack.Unmarshal(bytes, &rr)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.ReceivedReadReceipt(rr)
 			default:
 				log.WithFields(log.Fields{
 					"function": string(funcName),
