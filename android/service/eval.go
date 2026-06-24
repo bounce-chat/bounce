@@ -46,6 +46,13 @@ func Eval(rawTask string) string {
 			}).Error("error marshalling initial state")
 		}
 		return base64.StdEncoding.EncodeToString(data)
+	case "RequestToAddUser":
+		offerBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no offer bytes")
+			return ""
+		}
+		b.RequestToAddUser(string(offerBytes))
 	case "SetProfile":
 		name, ok := cmd[1]
 		if !ok {

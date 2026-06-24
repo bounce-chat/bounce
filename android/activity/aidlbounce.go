@@ -76,14 +76,22 @@ func (b *aidlBounce) RejectInvite(groupID uuid.UUID) error                      
 func (b *aidlBounce) RemoveUserFromGroup(groupID uuid.UUID, userID uuid.UUID) error { return nil }
 func (b *aidlBounce) RenameDevice(deviceID uuid.UUID, name string) error            { return nil }
 func (b *aidlBounce) RenameGroup(groupID uuid.UUID, newName string) error           { return nil }
-func (b *aidlBounce) RequestToAddUser(offer string) error                           { return nil }
-func (b *aidlBounce) RequestToManageEncryptedDevice(data string) error              { return nil }
-func (b *aidlBounce) RequestToSync(data string) error                               { return nil }
-func (b *aidlBounce) RestrictGroupEdits(groupID uuid.UUID) error                    { return nil }
-func (b *aidlBounce) RestrictPosting(groupID uuid.UUID) error                       { return nil }
-func (b *aidlBounce) RestrictUserManagement(groupID uuid.UUID) error                { return nil }
-func (b *aidlBounce) RevokeDevice(deviceID uuid.UUID) error                         { return nil }
-func (b *aidlBounce) RevokeInvite(groupID uuid.UUID, userID uuid.UUID) error        { return nil }
+
+func (b *aidlBounce) RequestToAddUser(offer string) error {
+	_, err := callCommand(map[int][]byte{
+		0: []byte("RequestToAddUser"),
+		1: []byte(offer),
+	})
+	return err
+}
+
+func (b *aidlBounce) RequestToManageEncryptedDevice(data string) error       { return nil }
+func (b *aidlBounce) RequestToSync(data string) error                        { return nil }
+func (b *aidlBounce) RestrictGroupEdits(groupID uuid.UUID) error             { return nil }
+func (b *aidlBounce) RestrictPosting(groupID uuid.UUID) error                { return nil }
+func (b *aidlBounce) RestrictUserManagement(groupID uuid.UUID) error         { return nil }
+func (b *aidlBounce) RevokeDevice(deviceID uuid.UUID) error                  { return nil }
+func (b *aidlBounce) RevokeInvite(groupID uuid.UUID, userID uuid.UUID) error { return nil }
 func (b *aidlBounce) SendDirectMessage(chat.DirectMessage, map[uuid.UUID]io.ReadCloser, map[uuid.UUID]string) {
 }
 func (b *aidlBounce) SendGroupMessage(chat.GroupMessage, map[uuid.UUID]io.ReadCloser, map[uuid.UUID]string) {
