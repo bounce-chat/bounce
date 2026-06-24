@@ -376,6 +376,261 @@ func pollEvents(userInterface chat.UI) {
 				}
 
 				userInterface.SetGroupState(g)
+			case "DisplaySentGroupMessage":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var gm chat.GroupMessage
+				err = msgpack.Unmarshal(bytes, &gm)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.DisplaySentGroupMessage(gm)
+			case "DisplayGroupMessage":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var gm chat.GroupMessage
+				err = msgpack.Unmarshal(bytes, &gm)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.DisplayGroupMessage(gm)
+			case "RemoveUser":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugru chat.UpdateGroupRemoveUser
+				err = msgpack.Unmarshal(bytes, &ugru)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.RemoveUser(ugru)
+			case "RemovedFromGroup":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var rfg chat.RemovedFromGroup
+				err = msgpack.Unmarshal(bytes, &rfg)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.RemovedFromGroup(rfg)
+			case "GroupDeleted":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var gd chat.GroupDeleted
+				err = msgpack.Unmarshal(bytes, &gd)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.GroupDeleted(gd)
+			case "UserBlockedGroup":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ubg chat.UserBlockedGroup
+				err = msgpack.Unmarshal(bytes, &ubg)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.UserBlockedGroup(ubg)
+			case "RenameGroup":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugn chat.UpdateGroupName
+				err = msgpack.Unmarshal(bytes, &ugn)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.RenameGroup(ugn)
+			case "GroupRetentionChanged":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugr chat.UpdateGroupRetention
+				err = msgpack.Unmarshal(bytes, &ugr)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.GroupRetentionChanged(ugr)
+			case "GroupChatHistoryCleared":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugch chat.UpdateGroupClearHistory
+				err = msgpack.Unmarshal(bytes, &ugch)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.GroupChatHistoryCleared(ugch)
+			case "AdminPromoted":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugap chat.UpdateGroupAdminPromoted
+				err = msgpack.Unmarshal(bytes, &ugap)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.AdminPromoted(ugap)
+			case "AdminDemoted":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugad chat.UpdateGroupAdminDemoted
+				err = msgpack.Unmarshal(bytes, &ugad)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.AdminDemoted(ugad)
+			case "UserManagementRestricted":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugumr chat.UpdateGroupUserManagementRestricted
+				err = msgpack.Unmarshal(bytes, &ugumr)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.UserManagementRestricted(ugumr)
+			case "UserManagementUnrestricted":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugumu chat.UpdateGroupUserManagementUnrestricted
+				err = msgpack.Unmarshal(bytes, &ugumu)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.UserManagementUnrestricted(ugumu)
+			case "GroupEditsRestricted":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var uger chat.UpdateGroupEditsRestricted
+				err = msgpack.Unmarshal(bytes, &uger)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.GroupEditsRestricted(uger)
+			case "GroupEditsUnrestricted":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugeu chat.UpdateGroupEditsUnrestricted
+				err = msgpack.Unmarshal(bytes, &ugeu)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.GroupEditsUnrestricted(ugeu)
 			default:
 				log.WithFields(log.Fields{
 					"function": string(funcName),

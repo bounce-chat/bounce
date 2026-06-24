@@ -383,55 +383,310 @@ func (u *uiBuffer) SetGroupState(g chat.Group) {
 	})
 }
 
-func (u *uiBuffer) DisplaySentGroupMessage(chat.GroupMessage)                             {}
-func (u *uiBuffer) DisplayGroupMessage(chat.GroupMessage)                                 {}
-func (u *uiBuffer) RemoveUser(chat.UpdateGroupRemoveUser)                                 {}
-func (u *uiBuffer) RemovedFromGroup(chat.RemovedFromGroup)                                {}
-func (u *uiBuffer) GroupDeleted(chat.GroupDeleted)                                        {}
-func (u *uiBuffer) UserBlockedGroup(chat.UserBlockedGroup)                                {}
-func (u *uiBuffer) RenameGroup(chat.UpdateGroupName)                                      {}
-func (u *uiBuffer) GroupRetentionChanged(chat.UpdateGroupRetention)                       {}
-func (u *uiBuffer) GroupChatHistoryCleared(chat.UpdateGroupClearHistory)                  {}
-func (u *uiBuffer) AdminPromoted(chat.UpdateGroupAdminPromoted)                           {}
-func (u *uiBuffer) AdminDemoted(chat.UpdateGroupAdminDemoted)                             {}
-func (u *uiBuffer) UserManagementRestricted(chat.UpdateGroupUserManagementRestricted)     {}
-func (u *uiBuffer) UserManagementUnrestricted(chat.UpdateGroupUserManagementUnrestricted) {}
-func (u *uiBuffer) GroupEditsRestricted(chat.UpdateGroupEditsRestricted)                  {}
-func (u *uiBuffer) GroupEditsUnrestricted(chat.UpdateGroupEditsUnrestricted)              {}
-func (u *uiBuffer) PostingRestricted(chat.UpdateGroupPostingRestricted)                   {}
-func (u *uiBuffer) PostingUnrestricted(chat.UpdateGroupPostingUnrestricted)               {}
-func (u *uiBuffer) InviteUser(chat.UpdateGroupInviteUser)                                 {}
-func (u *uiBuffer) RollbackGroup(uuid.UUID)                                               {}
-func (u *uiBuffer) NotifyAddedToGroup(string)                                             {}
-func (u *uiBuffer) NotifyInvitedToGroup(string)                                           {}
-func (u *uiBuffer) GroupInviteRevoked(chat.UpdateGroupInviteRevoked)                      {}
-func (u *uiBuffer) GroupInviteAccepted(chat.UpdateGroupInviteAccepted)                    {}
-func (u *uiBuffer) GroupInviteRejected(chat.UpdateGroupInviteRejected)                    {}
-func (u *uiBuffer) ShowTypingIndicator(userID, threadID uuid.UUID)                        {}
-func (u *uiBuffer) HideTypingIndicator(userID, threadID uuid.UUID)                        {}
-func (u *uiBuffer) UserOnline(userID uuid.UUID)                                           {}
-func (u *uiBuffer) UserOffline(userID uuid.UUID)                                          {}
-func (u *uiBuffer) DeviceOnline(uuid.UUID)                                                {}
-func (u *uiBuffer) DeviceOffline(uuid.UUID)                                               {}
-func (u *uiBuffer) DeviceAdded(chat.Device)                                               {}
-func (u *uiBuffer) DeviceRevoked(uuid.UUID)                                               {}
-func (u *uiBuffer) DeviceRenamed(uuid.UUID, string)                                       {}
-func (u *uiBuffer) DeviceLastSeen(uuid.UUID, int64)                                       {}
-func (u *uiBuffer) MessageSeen(uuid.UUID)                                                 {}
-func (u *uiBuffer) ReceivedReadReceipt(chat.ReadReceipt)                                  {}
-func (u *uiBuffer) SetSettings(chat.Settings)                                             {}
-func (u *uiBuffer) MessageDelivered(messageID, userID uuid.UUID)                          {}
-func (u *uiBuffer) SetDarkMode(value bool)                                                {}
-func (u *uiBuffer) SetUserState(chat.User)                                                {}
-func (u *uiBuffer) FileCompleted(uuid.UUID)                                               {}
-func (u *uiBuffer) UserChangedGroupImage(chat.UpdateGroupUserChangedGroupImage)           {}
-func (u *uiBuffer) UserImageUpdated(chat.UpdateUserUpdateImage)                           {}
-func (u *uiBuffer) FileDownloadProgress(uuid.UUID, float64)                               {}
-func (u *uiBuffer) CatchUpMessages(chat.BulkUpdate, bool)                                 {}
-func (u *uiBuffer) AnotherDeviceActive()                                                  {}
-func (u *uiBuffer) NoOtherDeviceActive()                                                  {}
-func (u *uiBuffer) EncryptedDeviceAdded()                                                 {}
-func (u *uiBuffer) EncryptedDeviceRejected()                                              {}
-func (u *uiBuffer) EncryptedDeviceManagable(uuid.UUID)                                    {}
-func (u *uiBuffer) EncryptedDeviceUnmanagable(uuid.UUID)                                  {}
-func (u *uiBuffer) UpdateDraft(chat.Draft)                                                {}
+func (u *uiBuffer) DisplaySentGroupMessage(gm chat.GroupMessage) {
+	u.Lock()
+	defer u.Unlock()
+
+	gmBytes, err := msgpack.Marshal(&gm)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling group message")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("DisplaySentGroupMessage"),
+		1: gmBytes,
+	})
+}
+
+func (u *uiBuffer) DisplayGroupMessage(gm chat.GroupMessage) {
+	u.Lock()
+	defer u.Unlock()
+
+	gmBytes, err := msgpack.Marshal(&gm)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling group message")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("DisplayGroupMessage"),
+		1: gmBytes,
+	})
+}
+
+func (u *uiBuffer) RemoveUser(ugru chat.UpdateGroupRemoveUser) {
+	u.Lock()
+	defer u.Unlock()
+
+	ugruBytes, err := msgpack.Marshal(&ugru)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling ugru")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("RemoveUser"),
+		1: ugruBytes,
+	})
+}
+
+func (u *uiBuffer) RemovedFromGroup(rfg chat.RemovedFromGroup) {
+	u.Lock()
+	defer u.Unlock()
+
+	rfgBytes, err := msgpack.Marshal(&rfg)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("RemovedFromGroup"),
+		1: rfgBytes,
+	})
+}
+
+func (u *uiBuffer) GroupDeleted(gd chat.GroupDeleted) {
+	u.Lock()
+	defer u.Unlock()
+
+	gdBytes, err := msgpack.Marshal(&gd)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling group deleted")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("GroupDeleted"),
+		1: gdBytes,
+	})
+}
+
+func (u *uiBuffer) UserBlockedGroup(ubg chat.UserBlockedGroup) {
+	u.Lock()
+	defer u.Unlock()
+
+	ubgBytes, err := msgpack.Marshal(&ubg)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("UserBlockedGroup"),
+		1: ubgBytes,
+	})
+}
+
+func (u *uiBuffer) RenameGroup(ugn chat.UpdateGroupName) {
+	u.Lock()
+	defer u.Unlock()
+
+	ugnBytes, err := msgpack.Marshal(&ugn)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("RenameGroup"),
+		1: ugnBytes,
+	})
+}
+
+func (u *uiBuffer) GroupRetentionChanged(ugr chat.UpdateGroupRetention) {
+	u.Lock()
+	defer u.Unlock()
+
+	ugrBytes, err := msgpack.Marshal(&ugr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("GroupRetentionChanged"),
+		1: ugrBytes,
+	})
+}
+
+func (u *uiBuffer) GroupChatHistoryCleared(ugch chat.UpdateGroupClearHistory) {
+	u.Lock()
+	defer u.Unlock()
+
+	ugchBytes, err := msgpack.Marshal(&ugch)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("GroupChatHistoryCleared"),
+		1: ugchBytes,
+	})
+}
+
+func (u *uiBuffer) AdminPromoted(ugap chat.UpdateGroupAdminPromoted) {
+	u.Lock()
+	defer u.Unlock()
+
+	bytes, err := msgpack.Marshal(&ugap)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("AdminPromoted"),
+		1: bytes,
+	})
+}
+
+func (u *uiBuffer) AdminDemoted(ugad chat.UpdateGroupAdminDemoted) {
+	u.Lock()
+	defer u.Unlock()
+
+	bytes, err := msgpack.Marshal(&ugad)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("AdminDemoted"),
+		1: bytes,
+	})
+}
+
+func (u *uiBuffer) UserManagementRestricted(ugumr chat.UpdateGroupUserManagementRestricted) {
+	u.Lock()
+	defer u.Unlock()
+
+	bytes, err := msgpack.Marshal(&ugumr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("UserManagementRestricted"),
+		1: bytes,
+	})
+}
+
+func (u *uiBuffer) UserManagementUnrestricted(ugumu chat.UpdateGroupUserManagementUnrestricted) {
+	u.Lock()
+	defer u.Unlock()
+
+	bytes, err := msgpack.Marshal(&ugumu)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("UserManagementUnrestricted"),
+		1: bytes,
+	})
+}
+
+func (u *uiBuffer) GroupEditsRestricted(uger chat.UpdateGroupEditsRestricted) {
+	u.Lock()
+	defer u.Unlock()
+
+	bytes, err := msgpack.Marshal(&uger)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("GroupEditsRestricted"),
+		1: bytes,
+	})
+}
+
+func (u *uiBuffer) GroupEditsUnrestricted(ugeu chat.UpdateGroupEditsUnrestricted) {
+	u.Lock()
+	defer u.Unlock()
+
+	bytes, err := msgpack.Marshal(&ugeu)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("GroupEditsUnrestricted"),
+		1: bytes,
+	})
+}
+
+func (u *uiBuffer) PostingRestricted(chat.UpdateGroupPostingRestricted)         {}
+func (u *uiBuffer) PostingUnrestricted(chat.UpdateGroupPostingUnrestricted)     {}
+func (u *uiBuffer) InviteUser(chat.UpdateGroupInviteUser)                       {}
+func (u *uiBuffer) RollbackGroup(uuid.UUID)                                     {}
+func (u *uiBuffer) NotifyAddedToGroup(string)                                   {}
+func (u *uiBuffer) NotifyInvitedToGroup(string)                                 {}
+func (u *uiBuffer) GroupInviteRevoked(chat.UpdateGroupInviteRevoked)            {}
+func (u *uiBuffer) GroupInviteAccepted(chat.UpdateGroupInviteAccepted)          {}
+func (u *uiBuffer) GroupInviteRejected(chat.UpdateGroupInviteRejected)          {}
+func (u *uiBuffer) ShowTypingIndicator(userID, threadID uuid.UUID)              {}
+func (u *uiBuffer) HideTypingIndicator(userID, threadID uuid.UUID)              {}
+func (u *uiBuffer) UserOnline(userID uuid.UUID)                                 {}
+func (u *uiBuffer) UserOffline(userID uuid.UUID)                                {}
+func (u *uiBuffer) DeviceOnline(uuid.UUID)                                      {}
+func (u *uiBuffer) DeviceOffline(uuid.UUID)                                     {}
+func (u *uiBuffer) DeviceAdded(chat.Device)                                     {}
+func (u *uiBuffer) DeviceRevoked(uuid.UUID)                                     {}
+func (u *uiBuffer) DeviceRenamed(uuid.UUID, string)                             {}
+func (u *uiBuffer) DeviceLastSeen(uuid.UUID, int64)                             {}
+func (u *uiBuffer) MessageSeen(uuid.UUID)                                       {}
+func (u *uiBuffer) ReceivedReadReceipt(chat.ReadReceipt)                        {}
+func (u *uiBuffer) SetSettings(chat.Settings)                                   {}
+func (u *uiBuffer) MessageDelivered(messageID, userID uuid.UUID)                {}
+func (u *uiBuffer) SetDarkMode(value bool)                                      {}
+func (u *uiBuffer) SetUserState(chat.User)                                      {}
+func (u *uiBuffer) FileCompleted(uuid.UUID)                                     {}
+func (u *uiBuffer) UserChangedGroupImage(chat.UpdateGroupUserChangedGroupImage) {}
+func (u *uiBuffer) UserImageUpdated(chat.UpdateUserUpdateImage)                 {}
+func (u *uiBuffer) FileDownloadProgress(uuid.UUID, float64)                     {}
+func (u *uiBuffer) CatchUpMessages(chat.BulkUpdate, bool)                       {}
+func (u *uiBuffer) AnotherDeviceActive()                                        {}
+func (u *uiBuffer) NoOtherDeviceActive()                                        {}
+func (u *uiBuffer) EncryptedDeviceAdded()                                       {}
+func (u *uiBuffer) EncryptedDeviceRejected()                                    {}
+func (u *uiBuffer) EncryptedDeviceManagable(uuid.UUID)                          {}
+func (u *uiBuffer) EncryptedDeviceUnmanagable(uuid.UUID)                        {}
+func (u *uiBuffer) UpdateDraft(chat.Draft)                                      {}
