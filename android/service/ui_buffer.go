@@ -155,7 +155,7 @@ func (u *uiBuffer) InitialSyncProgress(f float64) {
 
 	bits := math.Float64bits(f)
 	bytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(bytes, bits)
+	binary.BigEndian.PutUint64(bytes, bits)
 
 	u.events = append(u.events, map[int][]byte{
 		0: []byte("InitialSyncProgress"),
@@ -934,19 +934,208 @@ func (u *uiBuffer) ReceivedReadReceipt(rr chat.ReadReceipt) {
 	})
 }
 
-func (u *uiBuffer) SetSettings(chat.Settings)                                   {}
-func (u *uiBuffer) MessageDelivered(messageID, userID uuid.UUID)                {}
-func (u *uiBuffer) SetDarkMode(value bool)                                      {}
-func (u *uiBuffer) SetUserState(chat.User)                                      {}
-func (u *uiBuffer) FileCompleted(uuid.UUID)                                     {}
-func (u *uiBuffer) UserChangedGroupImage(chat.UpdateGroupUserChangedGroupImage) {}
-func (u *uiBuffer) UserImageUpdated(chat.UpdateUserUpdateImage)                 {}
-func (u *uiBuffer) FileDownloadProgress(uuid.UUID, float64)                     {}
-func (u *uiBuffer) CatchUpMessages(chat.BulkUpdate, bool)                       {}
-func (u *uiBuffer) AnotherDeviceActive()                                        {}
-func (u *uiBuffer) NoOtherDeviceActive()                                        {}
-func (u *uiBuffer) EncryptedDeviceAdded()                                       {}
-func (u *uiBuffer) EncryptedDeviceRejected()                                    {}
-func (u *uiBuffer) EncryptedDeviceManagable(uuid.UUID)                          {}
-func (u *uiBuffer) EncryptedDeviceUnmanagable(uuid.UUID)                        {}
-func (u *uiBuffer) UpdateDraft(chat.Draft)                                      {}
+func (u *uiBuffer) SetSettings(s chat.Settings) {
+	u.Lock()
+	defer u.Unlock()
+
+	bytes, err := msgpack.Marshal(&s)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("SetSettings"),
+		1: bytes,
+	})
+}
+
+func (u *uiBuffer) MessageDelivered(messageID, userID uuid.UUID) {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("MessageDelivered"),
+		1: messageID[:],
+		2: userID[:],
+	})
+}
+
+func (u *uiBuffer) SetUserState(chatUser chat.User) {
+	u.Lock()
+	defer u.Unlock()
+
+	bytes, err := msgpack.Marshal(&chatUser)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("SetUserState"),
+		1: bytes,
+	})
+}
+
+func (u *uiBuffer) FileCompleted(id uuid.UUID) {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("FileCompleted"),
+		1: id[:],
+	})
+}
+
+func (u *uiBuffer) UserChangedGroupImage(ugucgi chat.UpdateGroupUserChangedGroupImage) {
+	u.Lock()
+	defer u.Unlock()
+
+	bytes, err := msgpack.Marshal(&ugucgi)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("UserChangedGroupImage"),
+		1: bytes,
+	})
+}
+
+func (u *uiBuffer) UserImageUpdated(uuui chat.UpdateUserUpdateImage) {
+	u.Lock()
+	defer u.Unlock()
+
+	bytes, err := msgpack.Marshal(&uuui)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("UserImageUpdated"),
+		1: bytes,
+	})
+}
+
+func (u *uiBuffer) FileDownloadProgress(id uuid.UUID, progress float64) {
+	u.Lock()
+	defer u.Unlock()
+
+	bits := math.Float64bits(progress)
+	progressBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(progressBytes, bits)
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("FileDownloadProgress"),
+		1: id[:],
+		2: progressBytes,
+	})
+}
+
+func (u *uiBuffer) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
+	u.Lock()
+	defer u.Unlock()
+
+	bytes, err := msgpack.Marshal(&bu)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	initialSyncBytes := []byte{0x00}
+	if initialSync {
+		initialSyncBytes = []byte{0x01}
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("CatchUpMessages"),
+		1: bytes,
+		2: initialSyncBytes,
+	})
+}
+
+func (u *uiBuffer) AnotherDeviceActive() {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("AnotherDeviceActive"),
+	})
+}
+
+func (u *uiBuffer) NoOtherDeviceActive() {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("NoOtherDeviceActive"),
+	})
+}
+
+func (u *uiBuffer) EncryptedDeviceAdded() {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("EncryptedDeviceAdded"),
+	})
+}
+
+func (u *uiBuffer) EncryptedDeviceRejected() {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("EncryptedDeviceRejected"),
+	})
+}
+
+func (u *uiBuffer) EncryptedDeviceManagable(id uuid.UUID) {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("EncryptedDeviceManagable"),
+		1: id[:],
+	})
+}
+
+func (u *uiBuffer) EncryptedDeviceUnmanagable(id uuid.UUID) {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("EncryptedDeviceUnmanagable"),
+		1: id[:],
+	})
+}
+
+func (u *uiBuffer) UpdateDraft(d chat.Draft) {
+	u.Lock()
+	defer u.Unlock()
+
+	bytes, err := msgpack.Marshal(&d)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("UpdateDraft"),
+		1: bytes,
+	})
+}

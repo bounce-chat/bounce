@@ -152,7 +152,7 @@ func pollEvents(userInterface chat.UI) {
 					log.Error("bad float bytes for sync progress")
 					continue
 				}
-				bits := binary.LittleEndian.Uint64(floatBytes)
+				bits := binary.BigEndian.Uint64(floatBytes)
 				f := math.Float64frombits(bits)
 
 				userInterface.InitialSyncProgress(f)
@@ -985,6 +985,220 @@ func pollEvents(userInterface chat.UI) {
 				}
 
 				userInterface.ReceivedReadReceipt(rr)
+			case "SetSettings":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var s chat.Settings
+				err = msgpack.Unmarshal(bytes, &s)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.SetSettings(s)
+			case "MessageDelivered":
+				messageBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+				messageID, err := uuid.FromBytes(messageBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				userBytes, ok := cmd[2]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				userID, err := uuid.FromBytes(userBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				userInterface.MessageDelivered(messageID, userID)
+			case "SetUserState":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var u chat.User
+				err = msgpack.Unmarshal(bytes, &u)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.SetUserState(u)
+			case "FileCompleted":
+				idBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				id, err := uuid.FromBytes(idBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				userInterface.FileCompleted(id)
+			case "UserChangedGroupImage":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var ugucgi chat.UpdateGroupUserChangedGroupImage
+				err = msgpack.Unmarshal(bytes, &ugucgi)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.UserChangedGroupImage(ugucgi)
+			case "UserImageUpdated":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+
+				var uuui chat.UpdateUserUpdateImage
+				err = msgpack.Unmarshal(bytes, &uuui)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.UserImageUpdated(uuui)
+			case "FileDownloadProgress":
+				idBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				id, err := uuid.FromBytes(idBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				floatBytes, ok := cmd[2]
+				if !ok {
+					log.Error("no float bytes")
+					continue
+				}
+				bits := binary.BigEndian.Uint64(floatBytes)
+				f := math.Float64frombits(bits)
+
+				userInterface.FileDownloadProgress(id, f)
+			case "CatchUpMessages":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+				var bu chat.BulkUpdate
+				err = msgpack.Unmarshal(bytes, &bu)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				initialSyncBytes, ok := cmd[2]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+				initialSync := false
+				if len(initialSyncBytes) == 1 && initialSyncBytes[0] == 0x01 {
+					initialSync = true
+				}
+
+				userInterface.CatchUpMessages(bu, initialSync)
+			case "AnotherDeviceActive":
+				userInterface.AnotherDeviceActive()
+			case "NoOtherDeviceActive":
+				userInterface.NoOtherDeviceActive()
+			case "EncryptedDeviceAdded":
+				userInterface.EncryptedDeviceAdded()
+			case "EncryptedDeviceRejected":
+				userInterface.EncryptedDeviceRejected()
+			case "EncryptedDeviceManagable":
+				idBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				id, err := uuid.FromBytes(idBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				userInterface.EncryptedDeviceManagable(id)
+			case "EncryptedDeviceUnmanagable":
+				idBytes, ok := cmd[1]
+				if !ok {
+					log.Error("no id bytes")
+					continue
+				}
+				id, err := uuid.FromBytes(idBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				userInterface.EncryptedDeviceUnmanagable(id)
+			case "UpdateDraft":
+				bytes, ok := cmd[1]
+				if !ok {
+					log.Error("no bytes")
+					continue
+				}
+				var d chat.Draft
+				err = msgpack.Unmarshal(bytes, &d)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error unmarshalling")
+					continue
+				}
+
+				userInterface.UpdateDraft(d)
 			default:
 				log.WithFields(log.Fields{
 					"function": string(funcName),
