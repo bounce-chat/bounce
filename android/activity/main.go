@@ -26,10 +26,8 @@ import (
 
 	"github.com/AndroidGoLab/jni"
 	jniApp "github.com/AndroidGoLab/jni/app"
-	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/hkparker/bounce/chat"
 	"github.com/hkparker/bounce/ui"
 )
 
@@ -66,92 +64,6 @@ func main() {
 	}
 
 	ui.StartShimmed(&aidlBounce{}, bind, pollEvents)
-}
-
-func pollEvents(userInterface chat.UI) {
-	for range time.NewTicker(500 * time.Millisecond).C {
-		dataStr, err := callStringMethod("getEvents")
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error calling getEvents")
-			continue
-		}
-
-		if len(dataStr) == 0 {
-			continue
-		}
-
-		data, err := base64.StdEncoding.DecodeString(dataStr)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error decoding event data")
-			continue
-
-		}
-		cmds := []map[int][]byte{}
-		err = msgpack.Unmarshal(data, &cmds)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error unmarshalling event data")
-			continue
-
-		}
-
-		for _, cmd := range cmds {
-			if len(cmd) == 0 {
-				log.Error("empty event data set")
-				continue
-
-			}
-
-			funcName, ok := cmd[0]
-			if !ok {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("event data is missing command name")
-				continue
-
-			}
-
-			switch string(funcName) {
-			case "ProfileSet":
-				userBytes, ok := cmd[1]
-				if !ok {
-					log.Error("no user bytes for SetProfile")
-					continue
-				}
-				var u chat.User
-				err = msgpack.Unmarshal(userBytes, &u)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Error("error unmarshalling user bytes")
-					continue
-				}
-
-				deviceBytes, ok := cmd[2]
-				if !ok {
-					log.Error("no device bytes for set profile")
-					continue
-				}
-				var d chat.Device
-				err = msgpack.Unmarshal(deviceBytes, &d)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Error("error unmarshalling device bytes")
-					continue
-				}
-
-				userInterface.ProfileSet(u, d)
-			case "NetworkOnline":
-				userInterface.NetworkOnline()
-			}
-		}
-	}
 }
 
 func startGoForegroundService() error {

@@ -2,6 +2,8 @@ package goservice
 
 import (
 	"encoding/base64"
+	"encoding/binary"
+	"math"
 	"sync"
 
 	"github.com/Basekick-Labs/msgpack/v6"
@@ -50,10 +52,66 @@ func (u *uiBuffer) NetworkOnline() {
 	})
 }
 
-func (u *uiBuffer) NetworkOffline()                                          {}
-func (u *uiBuffer) NewSyncDeviceAdded()                                      {}
-func (u *uiBuffer) SyncDeviceRequestAccepted(chat.User, []chat.Device, bool) {}
-func (u *uiBuffer) SyncDeviceRequestRejected(peer string)                    {}
+func (u *uiBuffer) NetworkOffline() {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("NetworkOffline"),
+	})
+}
+
+func (u *uiBuffer) NewSyncDeviceAdded() {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("NewSyncDeviceAdded"),
+	})
+}
+
+func (u *uiBuffer) SyncDeviceRequestAccepted(chatUser chat.User, chatDevices []chat.Device, references bool) {
+	u.Lock()
+	defer u.Unlock()
+
+	userBytes, err := msgpack.Marshal(&chatUser)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling user")
+		return
+	}
+
+	devicesBytes, err := msgpack.Marshal(&chatDevices)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling devices")
+		return
+	}
+
+	referencesByte := []byte{0x00}
+	if references {
+		referencesByte = []byte{0x01}
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("SyncDeviceRequestAccepted"),
+		1: userBytes,
+		2: devicesBytes,
+		3: referencesByte,
+	})
+}
+
+func (u *uiBuffer) SyncDeviceRequestRejected(peer string) {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("SyncDeviceRequestRejected"),
+		1: []byte(peer),
+	})
+}
 
 func (u *uiBuffer) ProfileSet(chatUser chat.User, chatDevice chat.Device) {
 	u.Lock()
@@ -82,24 +140,249 @@ func (u *uiBuffer) ProfileSet(chatUser chat.User, chatDevice chat.Device) {
 	})
 }
 
-func (u *uiBuffer) InitialSyncStarting()                                                  {}
-func (u *uiBuffer) InitialSyncProgress(float64)                                           {}
-func (u *uiBuffer) InitialSyncComplete()                                                  {}
-func (u *uiBuffer) AddUserRequestRejected(string)                                         {}
-func (u *uiBuffer) UserAdded(chat.User)                                                   {}
-func (u *uiBuffer) DeleteItem(uuid.UUID)                                                  {}
-func (u *uiBuffer) MarkMessageUndeliverable(uuid.UUID)                                    {}
-func (u *uiBuffer) DisplayDirectMessage(chat.DirectMessage)                               {}
-func (u *uiBuffer) DisplaySentDirectMessage(chat.DirectMessage)                           {}
-func (u *uiBuffer) SetDMState(uuid.UUID, chat.DMState)                                    {}
-func (u *uiBuffer) DMRetentionChanged(chat.UpdateDMRetention)                             {}
-func (u *uiBuffer) DMChatHistoryCleared(chat.UpdateDMClearHistory)                        {}
-func (u *uiBuffer) UserAliased(chat.UpdateDMSetAlias)                                     {}
-func (u *uiBuffer) SetUserName(uuid.UUID, string)                                         {}
-func (u *uiBuffer) UserNameUpdated(chat.UpdateUserUpdateName)                             {}
-func (u *uiBuffer) OpenNewGroupChat(chat.Group)                                           {}
-func (u *uiBuffer) NewGroupChat(chat.Group)                                               {}
-func (u *uiBuffer) SetGroupState(chat.Group)                                              {}
+func (u *uiBuffer) InitialSyncStarting() {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("InitialSyncStarting"),
+	})
+}
+
+func (u *uiBuffer) InitialSyncProgress(f float64) {
+	u.Lock()
+	defer u.Unlock()
+
+	bits := math.Float64bits(f)
+	bytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bytes, bits)
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("InitialSyncProgress"),
+		1: bytes,
+	})
+}
+
+func (u *uiBuffer) InitialSyncComplete() {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("InitialSyncComplete"),
+	})
+}
+
+func (u *uiBuffer) AddUserRequestRejected(peer string) {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("AddUserRequestRejected"),
+		1: []byte(peer),
+	})
+}
+
+func (u *uiBuffer) UserAdded(chatUser chat.User) {
+	u.Lock()
+	defer u.Unlock()
+
+	userBytes, err := msgpack.Marshal(&chatUser)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling user")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("UserAdded"),
+		1: userBytes,
+	})
+}
+
+func (u *uiBuffer) DeleteItem(id uuid.UUID) {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("AddUserRequestRejected"),
+		1: id[:],
+	})
+}
+
+func (u *uiBuffer) MarkMessageUndeliverable(id uuid.UUID) {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("MarkMessageUndeliverable"),
+		1: id[:],
+	})
+}
+
+func (u *uiBuffer) DisplayDirectMessage(dm chat.DirectMessage) {
+	u.Lock()
+	defer u.Unlock()
+
+	dmBytes, err := msgpack.Marshal(&dm)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling dm")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("DisplayDirectMessage"),
+		1: dmBytes,
+	})
+}
+
+func (u *uiBuffer) DisplaySentDirectMessage(dm chat.DirectMessage) {
+	u.Lock()
+	defer u.Unlock()
+
+	dmBytes, err := msgpack.Marshal(&dm)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling dm")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("DisplaySentDirectMessage"),
+		1: dmBytes,
+	})
+}
+
+func (u *uiBuffer) SetDMState(id uuid.UUID, state chat.DMState) {
+	u.Lock()
+	defer u.Unlock()
+
+	stateBytes, err := msgpack.Marshal(&state)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling DM state")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("SetDMState"),
+		1: id[:],
+		2: stateBytes,
+	})
+}
+
+func (u *uiBuffer) DMRetentionChanged(udmr chat.UpdateDMRetention) {
+	u.Lock()
+	defer u.Unlock()
+
+	udmrBytes, err := msgpack.Marshal(&udmr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling udmr")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("DMRetentionChanged"),
+		1: udmrBytes,
+	})
+}
+
+func (u *uiBuffer) DMChatHistoryCleared(udch chat.UpdateDMClearHistory) {
+	u.Lock()
+	defer u.Unlock()
+
+	udchBytes, err := msgpack.Marshal(&udch)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling udch")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("DMChatHistoryCleared"),
+		1: udchBytes,
+	})
+}
+
+func (u *uiBuffer) UserAliased(udsa chat.UpdateDMSetAlias) {
+	u.Lock()
+	defer u.Unlock()
+
+	udsaBytes, err := msgpack.Marshal(&udsa)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling udsa")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("UserAliased"),
+		1: udsaBytes,
+	})
+}
+
+func (u *uiBuffer) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
+	u.Lock()
+	defer u.Unlock()
+
+	uuunBytes, err := msgpack.Marshal(&uuun)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling uuun")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("UserNameUpdated"),
+		1: uuunBytes,
+	})
+}
+
+func (u *uiBuffer) OpenNewGroupChat(g chat.Group) {
+	u.Lock()
+	defer u.Unlock()
+
+	gBytes, err := msgpack.Marshal(&g)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling group")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("OpenNewGroupChat"),
+		1: gBytes,
+	})
+}
+
+func (u *uiBuffer) SetGroupState(g chat.Group) {
+	u.Lock()
+	defer u.Unlock()
+
+	gBytes, err := msgpack.Marshal(&g)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling group")
+		return
+	}
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("SetGroupState"),
+		1: gBytes,
+	})
+}
+
 func (u *uiBuffer) DisplaySentGroupMessage(chat.GroupMessage)                             {}
 func (u *uiBuffer) DisplayGroupMessage(chat.GroupMessage)                                 {}
 func (u *uiBuffer) RemoveUser(chat.UpdateGroupRemoveUser)                                 {}
