@@ -15,20 +15,18 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
-	"log"
-	"runtime"
 	"sync"
 	"time"
+	"unicode/utf16"
 	"unsafe"
 
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver"
-	"fyne.io/fyne/v2/widget"
 
 	"github.com/AndroidGoLab/jni"
 	jniApp "github.com/AndroidGoLab/jni/app"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/hkparker/bounce/ui"
 )
@@ -40,7 +38,32 @@ var boundCh = make(chan struct{}, 1)
 
 func main() {
 	startGoForegroundService()
-	ui.StartShimmed(&aidlBounce{})
+
+	bind := func() {
+		// Give the window time to initialize the native context
+		time.Sleep(500 * time.Millisecond)
+
+		log.Println("Attempting to bind to service...")
+		if err := bindToService(); err != nil {
+			log.Println("bindToService error:", err)
+			return
+		}
+
+		// Wait for onServiceConnected
+		select {
+		case <-boundCh:
+			log.Println("Service binding confirmed")
+		case <-time.After(10 * time.Second):
+			log.Println("timed out waiting for service binding")
+		}
+
+		err := requestPostNotificationPermission()
+		if err != nil {
+			log.Println("error posting notification: ", err)
+		}
+	}
+
+	ui.StartShimmed(&aidlBounce{}, bind)
 }
 
 func startGoForegroundService() error {
@@ -109,68 +132,6 @@ func startGoForegroundService() error {
 		log.Println("GoForegroundService started from Go")
 		return nil
 	})
-}
-
-func Show() fyne.CanvasObject {
-	initialState := widget.NewLabel("loading initial state...")
-	events := widget.NewLabel("")
-	var currentlyRunning bool
-	if runtime.GOOS != "android" {
-		return container.NewStack()
-	}
-
-	// On Android, bind to the AIDL service asynchronously after a short delay
-	// to ensure the Fyne native context is ready
-	go func() {
-		// Give the window time to initialize the native context
-		time.Sleep(500 * time.Millisecond)
-
-		log.Println("Attempting to bind to service...")
-		if err := bindToService(); err != nil {
-			log.Println("bindToService error:", err)
-			return
-		}
-
-		// Wait for onServiceConnected
-		select {
-		case <-boundCh:
-			log.Println("Service binding confirmed")
-			currentlyRunning = true
-			st, _ := aidlGetInitialState()
-			initialState.SetText(st)
-		case <-time.After(10 * time.Second):
-			log.Println("timed out waiting for service binding")
-		}
-	}()
-
-	ticker := time.NewTicker(time.Second)
-	go func() {
-		for {
-			if currentlyRunning {
-				e, err := aidlGetEvents()
-				if err != nil {
-					log.Println("error getting elapsed time: ", err)
-				} else {
-					fyne.Do(func() {
-						events.SetText(e)
-					})
-				}
-			} else {
-				fyne.Do(func() {
-					events.SetText("not currently running")
-				})
-			}
-			<-ticker.C
-		}
-	}()
-
-	err := requestPostNotificationPermission()
-	if err != nil {
-		log.Println("error posting notification: ", err)
-	}
-
-	c := container.NewVBox(widget.NewLabel("content from service:"), initialState, events)
-	return c
 }
 
 func requestPostNotificationPermission() error {
@@ -364,10 +325,34 @@ func callStringMethod(methodName string) (string, error) {
 	return result, err
 }
 
-func aidlGetInitialState() (string, error) {
-	return callStringMethod("getInitialState")
-}
+func callServiceFunction(rawArg string) error {
+	arg := base64.StdEncoding.EncodeToString([]byte(rawArg))
 
-func aidlGetEvents() (string, error) {
-	return callStringMethod("getEvents")
+	binderMu.Lock()
+	ref := binderRef
+	vm := binderVM
+	binderMu.Unlock()
+
+	if ref == nil || vm == nil {
+		return fmt.Errorf("service not bound")
+	}
+
+	return vm.Do(func(env *jni.Env) error {
+		cls := env.GetObjectClass(ref)
+		mid, err := env.GetMethodID(cls, "eval", "(Ljava/lang/String;)V")
+		if err != nil {
+			return fmt.Errorf("eval method not found: %w", err)
+		}
+
+		//jStr, err := env.NewString(utf16.Encode([]rune(arg)))
+		jStr, err := env.NewString(utf16.Encode([]rune(arg)))
+		if err != nil {
+			return fmt.Errorf("cannot make java string: %w", err)
+		}
+		jObj := (*jni.Object)(unsafe.Pointer(jStr))
+		//defer env.DeleteLocalRef(jObj)
+
+		//jObj := jni.ObjectFromPtr(unsafe.Pointer(jStr))
+		return env.CallVoidMethod(ref, mid, jni.ObjectValue(jObj))
+	})
 }

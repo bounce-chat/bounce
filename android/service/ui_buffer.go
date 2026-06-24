@@ -7,25 +7,26 @@ import (
 	"github.com/hkparker/bounce/chat"
 )
 
-type event struct {
-}
-
 // A struct that holds calls the UI needs to evaluate for the UI to poll
 type uiBuffer struct {
 	sync.Mutex
 
-	events []event
+	events []map[int][]byte
 }
 
-func (u *uiBuffer) LoadInitialState(chat.InitialState)                                    {}
-func (u *uiBuffer) Run()                                                                  {}
-func (u *uiBuffer) Quit()                                                                 {}
-func (u *uiBuffer) NetworkOnline()                                                        {}
-func (u *uiBuffer) NetworkOffline()                                                       {}
-func (u *uiBuffer) NewSyncDeviceAdded()                                                   {}
-func (u *uiBuffer) SyncDeviceRequestAccepted(chat.User, []chat.Device, bool)              {}
-func (u *uiBuffer) SyncDeviceRequestRejected(peer string)                                 {}
-func (u *uiBuffer) ProfileSet(chat.User, chat.Device)                                     {}
+func (u *uiBuffer) LoadInitialState(chat.InitialState)                       {}
+func (u *uiBuffer) Run()                                                     {}
+func (u *uiBuffer) Quit()                                                    {}
+func (u *uiBuffer) NetworkOnline()                                           {}
+func (u *uiBuffer) NetworkOffline()                                          {}
+func (u *uiBuffer) NewSyncDeviceAdded()                                      {}
+func (u *uiBuffer) SyncDeviceRequestAccepted(chat.User, []chat.Device, bool) {}
+func (u *uiBuffer) SyncDeviceRequestRejected(peer string)                    {}
+
+func (u *uiBuffer) ProfileSet(chat.User, chat.Device) {
+	// TODO: add this to the event stack
+}
+
 func (u *uiBuffer) InitialSyncStarting()                                                  {}
 func (u *uiBuffer) InitialSyncProgress(float64)                                           {}
 func (u *uiBuffer) InitialSyncComplete()                                                  {}

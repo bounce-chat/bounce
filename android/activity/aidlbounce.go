@@ -1,14 +1,40 @@
 package main
 
 import (
+	"encoding/base64"
 	"io"
 
+	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
+	log "github.com/sirupsen/logrus"
 )
 
 // A shim that takes all calls and serializes them to the chat engine over AIDL
 type aidlBounce struct{}
+
+func (b *aidlBounce) GetInitialState() chat.InitialState {
+	encodedData, err := callStringMethod("getInitialState")
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error calling getInitialState")
+	}
+	is := chat.InitialState{}
+	data, err := base64.StdEncoding.DecodeString(encodedData)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error decoding initial state")
+	}
+	err = msgpack.Unmarshal([]byte(data), &is)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling initial state")
+	}
+	return is
+}
 
 func (b *aidlBounce) AcceptInvite(groupID uuid.UUID) error {
 	return nil
@@ -36,7 +62,6 @@ func (b *aidlBounce) FileEmbedded(fileID uuid.UUID) bool                        
 func (b *aidlBounce) FileWanted(fileID uuid.UUID) bool                              { return false }
 func (b *aidlBounce) GetDMHistory(userID uuid.UUID) chat.InitialState               { return chat.InitialState{} }
 func (b *aidlBounce) GetFileData(fileID uuid.UUID) ([]byte, error)                  { return []byte{}, nil }
-func (b *aidlBounce) GetInitialState() chat.InitialState                            { return chat.InitialState{} }
 func (b *aidlBounce) GetNewAddUserString() string                                   { return "" }
 func (b *aidlBounce) GetNewSyncString() string                                      { return "" }
 func (b *aidlBounce) GroupConnectionDesired(id uuid.UUID)                           {}
@@ -87,9 +112,29 @@ func (b *aidlBounce) SetNewGroupRestrictPosting(value bool)       {}
 func (b *aidlBounce) SetNewGroupRestrictUserManagement(bool)      {}
 func (b *aidlBounce) SetNewGroupRetention(value int64)            {}
 func (b *aidlBounce) SetOpenDM(userID uuid.UUID, open bool) error { return nil }
+
 func (b *aidlBounce) SetProfile(profileName string, image []byte, deviceName string) error {
-	return nil
+	cmd := map[int][]byte{
+		0: []byte("SetProfile"),
+		1: []byte(profileName),
+		2: image,
+		3: []byte(deviceName),
+	}
+	data, err := msgpack.Marshal(&cmd)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling set profile command")
+	}
+	err = callServiceFunction(string(data))
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error calling eval for SetProfile")
+	}
+	return err
 }
+
 func (b *aidlBounce) SetReadReceiptsByDefault(value bool)               {}
 func (b *aidlBounce) SetTypingIndicatorsByDefault(value bool)           {}
 func (b *aidlBounce) SetUserNotes(userID uuid.UUID, notes string) error { return nil }

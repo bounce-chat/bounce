@@ -142,7 +142,7 @@ func Main() {
 	ui.bounce.Shutdown()
 }
 
-func StartShimmed(shim chat.Engine) {
+func StartShimmed(shim chat.Engine, bind func()) {
 	ui := &ui{
 		containers: &containers{},
 		views:      &views{},
@@ -162,6 +162,7 @@ func StartShimmed(shim chat.Engine) {
 	ui.bounce = shim
 	ui.build()
 	go func() {
+		bind()
 		ui.loadInitialState(ui.bounce.GetInitialState())
 	}()
 
