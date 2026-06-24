@@ -1,5 +1,5 @@
 //go:generate gomobile bind -target=android/arm64 -androidapi 26 -o goservice.aar -ldflags=-checklinkname=0 -v github.com/hkparker/bounce/android/service
-//go:generate cp goservice.aar ../androidAPK/app/src/main/libs/
+//go:generate cp goservice.aar ../apk/app/src/main/libs/
 
 package goservice
 

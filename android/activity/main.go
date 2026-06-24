@@ -9,8 +9,8 @@
 //https://github.com/pxb1988/dex2jar/releases
 //go:generate dex2jar ./unzippedAPK/classes.dex -o ./activity.jar --force
 
-//go:generate sh -c "cp activity.jar ../androidAPK/app/src/main/libs"
-//go:generate sh -c "cp -r unzippedAPK/lib/* ../androidAPK/app/src/main/jniLibs/"
+//go:generate sh -c "cp activity.jar ../apk/app/src/main/libs"
+//go:generate sh -c "cp -r unzippedAPK/lib/* ../apk/app/src/main/jniLibs/"
 
 package main
 
