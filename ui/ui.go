@@ -179,6 +179,7 @@ func (ui *ui) build() {
 	// Keep track of the focused state and use focus to report if the device is active
 	var activeTicker *time.Ticker
 	var activeTickerCleanup chan bool
+	firstTime := true
 	ui.app.Lifecycle().SetOnEnteredForeground(func() {
 		ui.state.focused = true
 		ui.state.active = true
@@ -197,6 +198,27 @@ func (ui *ui) build() {
 				}
 			}
 		}()
+
+		if !firstTime {
+			// TODO: need to restart the event poll here?
+			if fyne.CurrentDevice().IsMobile() {
+				go func() {
+					if ui.app.Preferences().Bool(darkMode) {
+						setStatusBar(true)
+					} else {
+						setStatusBar(false)
+					}
+					if ui.bounce != nil {
+						if ui.bounce.NetworkOnline() {
+							ui.NetworkOnline()
+						} else {
+							ui.NetworkOffline()
+						}
+					}
+				}()
+			}
+		}
+		firstTime = false
 	})
 	ui.app.Lifecycle().SetOnExitedForeground(func() {
 		ui.state.focused = false

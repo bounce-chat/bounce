@@ -4,6 +4,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+func (b *Bounce) NetworkOnline() bool {
+	return b.networkIsOnline
+}
+
 func (b *Bounce) networkOnline() {
 	b.networkIsOnline = true
 	if !b.networkHasBeenOnline {

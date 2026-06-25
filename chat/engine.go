@@ -32,6 +32,7 @@ type Engine interface {
 	MarkAllDirectMessagesAsRead(userID uuid.UUID)
 	MarkAllGroupMessagesAsRead(groupID uuid.UUID)
 	MarkAsRead(id uuid.UUID, frameType string)
+	NetworkOnline() bool
 	PromoteGroupAdmin(groupID uuid.UUID, userID uuid.UUID) error
 	RejectInvite(groupID uuid.UUID) error
 	RemoveUserFromGroup(groupID uuid.UUID, userID uuid.UUID) error

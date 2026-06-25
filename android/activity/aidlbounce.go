@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"errors"
 	"io"
 
 	"github.com/Basekick-Labs/msgpack/v6"
@@ -39,38 +40,278 @@ func (b *aidlBounce) GetInitialState() chat.InitialState {
 }
 
 func (b *aidlBounce) AcceptInvite(groupID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("AcceptInvite"),
+		1: groupID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
 	return nil
 }
 
 func (b *aidlBounce) AliasUser(userID uuid.UUID, alias string) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("AliasUser"),
+		1: userID[:],
+		2: []byte(alias),
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
 	return nil
 }
 
 func (b *aidlBounce) BlockGroup(groupID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("BlockGroup"),
+		1: groupID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
 	return nil
 }
 
-func (b *aidlBounce) BlockUser(userID uuid.UUID) error                              { return nil }
-func (b *aidlBounce) CancelDownload(fileID uuid.UUID)                               {}
-func (b *aidlBounce) ClearDMChatHistory(userID uuid.UUID) error                     { return nil }
-func (b *aidlBounce) ClearGroupChatHistory(groupID uuid.UUID) error                 { return nil }
-func (b *aidlBounce) CreateGroup(ng chat.NewGroup) error                            { return nil }
-func (b *aidlBounce) CurrentDeviceActive()                                          {}
-func (b *aidlBounce) DeleteGroup(groupID uuid.UUID) error                           { return nil }
-func (b *aidlBounce) DemoteGroupAdmin(groupID uuid.UUID, userID uuid.UUID) error    { return nil }
-func (b *aidlBounce) DownloadFileToDisk(fileID uuid.UUID, destination string)       {}
-func (b *aidlBounce) FileDownloaded(fileID uuid.UUID) bool                          { return false }
-func (b *aidlBounce) FileEmbedded(fileID uuid.UUID) bool                            { return false }
-func (b *aidlBounce) FileWanted(fileID uuid.UUID) bool                              { return false }
-func (b *aidlBounce) GetDMHistory(userID uuid.UUID) chat.InitialState               { return chat.InitialState{} }
-func (b *aidlBounce) GetFileData(fileID uuid.UUID) ([]byte, error)                  { return []byte{}, nil }
-func (b *aidlBounce) GetNewAddUserString() string                                   { return "" }
-func (b *aidlBounce) GetNewSyncString() string                                      { return "" }
-func (b *aidlBounce) GroupConnectionDesired(id uuid.UUID)                           {}
-func (b *aidlBounce) InviteUserToGroup(groupID uuid.UUID, userID uuid.UUID) error   { return nil }
-func (b *aidlBounce) MarkAllDirectMessagesAsRead(userID uuid.UUID)                  {}
-func (b *aidlBounce) MarkAllGroupMessagesAsRead(groupID uuid.UUID)                  {}
-func (b *aidlBounce) MarkAsRead(id uuid.UUID, frameType string)                     {}
+func (b *aidlBounce) BlockUser(userID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("BlockUser"),
+		1: userID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) CancelDownload(fileID uuid.UUID) {
+	callCommand(map[int][]byte{
+		0: []byte("CancelDownload"),
+		1: fileID[:],
+	})
+}
+
+func (b *aidlBounce) ClearDMChatHistory(userID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("ClearDMChatHistory"),
+		1: userID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) ClearGroupChatHistory(groupID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("ClearGroupChatHistory"),
+		1: groupID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) CreateGroup(ng chat.NewGroup) error {
+	groupBytes, err := msgpack.Marshal(&ng)
+	if err != nil {
+		return err
+	}
+
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("CreateGroup"),
+		1: groupBytes,
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) CurrentDeviceActive() {
+	callCommand(map[int][]byte{
+		0: []byte("CurrentDeviceActive"),
+	})
+}
+
+func (b *aidlBounce) DeleteGroup(groupID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("DeleteGroup"),
+		1: groupID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) DemoteGroupAdmin(groupID uuid.UUID, userID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("DemoteGroupAdmin"),
+		1: groupID[:],
+		2: userID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) DownloadFileToDisk(fileID uuid.UUID, destination string) {
+	callCommand(map[int][]byte{
+		0: []byte("DownloadFileToDisk"),
+		1: fileID[:],
+		2: []byte(destination),
+	})
+}
+
+func (b *aidlBounce) FileDownloaded(fileID uuid.UUID) bool {
+	resp, _ := callCommand(map[int][]byte{
+		0: []byte("FileDownloaded"),
+		1: fileID[:],
+	})
+	return resp == "true"
+}
+
+func (b *aidlBounce) FileEmbedded(fileID uuid.UUID) bool {
+	resp, _ := callCommand(map[int][]byte{
+		0: []byte("FileEmbedded"),
+		1: fileID[:],
+	})
+	return resp == "true"
+}
+
+func (b *aidlBounce) FileWanted(fileID uuid.UUID) bool {
+	resp, _ := callCommand(map[int][]byte{
+		0: []byte("FileWanted"),
+		1: fileID[:],
+	})
+	return resp == "true"
+}
+
+func (b *aidlBounce) GetDMHistory(userID uuid.UUID) chat.InitialState {
+	encodedData, err := callCommand(map[int][]byte{
+		0: []byte("GetDMHistory"),
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error calling getInitialState")
+	}
+	is := chat.InitialState{}
+	data, err := base64.StdEncoding.DecodeString(encodedData)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error decoding initial state")
+	}
+	err = msgpack.Unmarshal([]byte(data), &is)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling initial state")
+	}
+	return is
+}
+
+func (b *aidlBounce) GetFileData(fileID uuid.UUID) ([]byte, error) {
+	encodedData, err := callCommand(map[int][]byte{
+		0: []byte("GetFileData"),
+		1: fileID[:],
+	})
+	if err != nil {
+		return []byte{}, err
+	}
+	return base64.StdEncoding.DecodeString(encodedData)
+}
+
+func (b *aidlBounce) GetNewAddUserString() string {
+	str, _ := callCommand(map[int][]byte{
+		0: []byte("GetNewAddUserString"),
+	})
+	return str
+}
+
+func (b *aidlBounce) GetNewSyncString() string {
+	str, _ := callCommand(map[int][]byte{
+		0: []byte("GetNewSyncString"),
+	})
+	return str
+}
+
+func (b *aidlBounce) GroupConnectionDesired(id uuid.UUID) {
+	callCommand(map[int][]byte{
+		0: []byte("GroupConnectionDesired"),
+		1: id[:],
+	})
+}
+
+func (b *aidlBounce) InviteUserToGroup(groupID uuid.UUID, userID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("InviteUserToGroup"),
+		1: groupID[:],
+		2: userID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) MarkAllDirectMessagesAsRead(id uuid.UUID) {
+	callCommand(map[int][]byte{
+		0: []byte("MarkAllDirectMessagesAsRead"),
+		1: id[:],
+	})
+}
+
+func (b *aidlBounce) MarkAllGroupMessagesAsRead(id uuid.UUID) {
+	callCommand(map[int][]byte{
+		0: []byte("MarkAllGroupMessagesAsRead"),
+		1: id[:],
+	})
+}
+
+func (b *aidlBounce) MarkAsRead(id uuid.UUID, frameType string) {
+	callCommand(map[int][]byte{
+		0: []byte("MarkAsRead"),
+		1: id[:],
+		2: []byte(frameType),
+	})
+}
+
+func (b *aidlBounce) NetworkOnline() bool                                           { return true }
 func (b *aidlBounce) PromoteGroupAdmin(groupID uuid.UUID, userID uuid.UUID) error   { return nil }
 func (b *aidlBounce) RejectInvite(groupID uuid.UUID) error                          { return nil }
 func (b *aidlBounce) RemoveUserFromGroup(groupID uuid.UUID, userID uuid.UUID) error { return nil }
@@ -124,13 +365,19 @@ func (b *aidlBounce) SetNewGroupRetention(value int64)            {}
 func (b *aidlBounce) SetOpenDM(userID uuid.UUID, open bool) error { return nil }
 
 func (b *aidlBounce) SetProfile(profileName string, image []byte, deviceName string) error {
-	_, err := callCommand(map[int][]byte{
+	errStr, err := callCommand(map[int][]byte{
 		0: []byte("SetProfile"),
 		1: []byte(profileName),
 		2: image,
 		3: []byte(deviceName),
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
 }
 
 func (b *aidlBounce) SetReadReceiptsByDefault(value bool)               {}
@@ -155,5 +402,11 @@ func callCommand(cmd map[int][]byte) (string, error) {
 			"error": err.Error(),
 		}).Error("error marshalling set profile command")
 	}
-	return callServiceFunction(string(data))
+	res, err := callServiceFunction(string(data))
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error calling service function")
+	}
+	return res, err
 }
