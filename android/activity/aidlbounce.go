@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"io"
 
@@ -311,12 +312,86 @@ func (b *aidlBounce) MarkAsRead(id uuid.UUID, frameType string) {
 	})
 }
 
-func (b *aidlBounce) NetworkOnline() bool                                           { return true }
-func (b *aidlBounce) PromoteGroupAdmin(groupID uuid.UUID, userID uuid.UUID) error   { return nil }
-func (b *aidlBounce) RejectInvite(groupID uuid.UUID) error                          { return nil }
-func (b *aidlBounce) RemoveUserFromGroup(groupID uuid.UUID, userID uuid.UUID) error { return nil }
-func (b *aidlBounce) RenameDevice(deviceID uuid.UUID, name string) error            { return nil }
-func (b *aidlBounce) RenameGroup(groupID uuid.UUID, newName string) error           { return nil }
+func (b *aidlBounce) NetworkOnline() bool {
+	resp, _ := callCommand(map[int][]byte{
+		0: []byte("NetworkOnline"),
+	})
+	return resp == "true"
+}
+
+func (b *aidlBounce) PromoteGroupAdmin(groupID uuid.UUID, userID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("PromoteGroupAdmin"),
+		1: groupID[:],
+		2: userID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) RejectInvite(groupID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("RejectInvite"),
+		1: groupID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) RemoveUserFromGroup(groupID uuid.UUID, userID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("RemoveUserFromGroup"),
+		1: groupID[:],
+		2: userID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) RenameDevice(deviceID uuid.UUID, name string) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("RenameDevice"),
+		1: deviceID[:],
+		2: []byte(name),
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) RenameGroup(groupID uuid.UUID, name string) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("RenameGroup"),
+		1: groupID[:],
+		2: []byte(name),
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
 
 func (b *aidlBounce) RequestToAddUser(offer string) error {
 	_, err := callCommand(map[int][]byte{
@@ -326,20 +401,169 @@ func (b *aidlBounce) RequestToAddUser(offer string) error {
 	return err
 }
 
-func (b *aidlBounce) RequestToManageEncryptedDevice(data string) error       { return nil }
-func (b *aidlBounce) RequestToSync(data string) error                        { return nil }
-func (b *aidlBounce) RestrictGroupEdits(groupID uuid.UUID) error             { return nil }
-func (b *aidlBounce) RestrictPosting(groupID uuid.UUID) error                { return nil }
-func (b *aidlBounce) RestrictUserManagement(groupID uuid.UUID) error         { return nil }
-func (b *aidlBounce) RevokeDevice(deviceID uuid.UUID) error                  { return nil }
-func (b *aidlBounce) RevokeInvite(groupID uuid.UUID, userID uuid.UUID) error { return nil }
-func (b *aidlBounce) SendDirectMessage(chat.DirectMessage, map[uuid.UUID]io.ReadCloser, map[uuid.UUID]string) {
+func (b *aidlBounce) RequestToManageEncryptedDevice(data string) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("RequestToManageEncryptedDevice"),
+		1: []byte(data),
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
 }
-func (b *aidlBounce) SendGroupMessage(chat.GroupMessage, map[uuid.UUID]io.ReadCloser, map[uuid.UUID]string) {
+
+func (b *aidlBounce) RequestToSync(data string) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("RequestToSync"),
+		1: []byte(data),
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
 }
-func (b *aidlBounce) SetAutoJoinGroups(value int)                              {}
-func (b *aidlBounce) SetDMLastOpened(userID uuid.UUID, timestamp int64)        {}
-func (b *aidlBounce) SetDMMutedUntil(userID uuid.UUID, mutedUntil int64) error { return nil }
+
+func (b *aidlBounce) RestrictGroupEdits(groupID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("RestrictGroupEdits"),
+		1: groupID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) RestrictPosting(groupID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("RestrictPosting"),
+		1: groupID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) RestrictUserManagement(groupID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("RestrictUserManagement"),
+		1: groupID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) RevokeDevice(deviceID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("RevokeDevice"),
+		1: deviceID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) RevokeInvite(groupID uuid.UUID, userID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("RevokeInvite"),
+		1: groupID[:],
+		2: userID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) SendDirectMessage(dm chat.DirectMessage, _ map[uuid.UUID]io.ReadCloser, _ map[uuid.UUID]string) {
+	dmBytes, err := msgpack.Marshal(&dm)
+	if err != nil {
+		return
+	}
+
+	callCommand(map[int][]byte{
+		0: []byte("SendDirectMessage"),
+		1: dmBytes,
+	})
+	// TODO: handling files
+
+}
+func (b *aidlBounce) SendGroupMessage(gm chat.GroupMessage, _ map[uuid.UUID]io.ReadCloser, _ map[uuid.UUID]string) {
+	gmBytes, err := msgpack.Marshal(&gm)
+	if err != nil {
+		return
+	}
+
+	callCommand(map[int][]byte{
+		0: []byte("SendGroupMessage"),
+		1: gmBytes,
+	})
+	// TODO: handling files
+}
+
+func (b *aidlBounce) SetAutoJoinGroups(value int) {
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(bytes, uint64(value))
+
+	callCommand(map[int][]byte{
+		0: []byte("SetAutoJoinGroups"),
+		1: bytes,
+	})
+}
+
+func (b *aidlBounce) SetDMLastOpened(userID uuid.UUID, timestamp int64) {
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(bytes, uint64(timestamp))
+
+	callCommand(map[int][]byte{
+		0: []byte("SetDMLastOpened"),
+		1: bytes,
+	})
+}
+
+func (b *aidlBounce) SetDMMutedUntil(userID uuid.UUID, mutedUntil int64) error {
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(bytes, uint64(mutedUntil))
+
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("RevokeInvite"),
+		1: userID[:],
+		2: bytes,
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
 func (b *aidlBounce) SetDMReadReceiptSettings(userID uuid.UUID, override bool, enabled bool) error {
 	return nil
 }

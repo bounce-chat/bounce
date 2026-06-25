@@ -2,6 +2,8 @@ package goservice
 
 import (
 	"encoding/base64"
+	"encoding/binary"
+	"io"
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
@@ -396,6 +398,93 @@ func Eval(rawTask string) string {
 		}
 
 		b.MarkAsRead(id, string(typeBytes))
+	case "NetworkOnline":
+		if b.NetworkOnline() {
+			return "true"
+		} else {
+			return "false"
+		}
+	case "PromoteGroupAdmin":
+		groupIDBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		groupID, err := uuid.FromBytes(groupIDBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		userIDBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		userID, err := uuid.FromBytes(userIDBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		err = b.PromoteGroupAdmin(groupID, userID)
+		if err != nil {
+			return err.Error()
+		}
+	case "Reject Invite":
+		groupIDBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		groupID, err := uuid.FromBytes(groupIDBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		err = b.RejectInvite(groupID)
+		if err != nil {
+			return err.Error()
+		}
+	case "RenameDevice":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		nameBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		b.RenameDevice(id, string(nameBytes))
+	case "RenameGroup":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		nameBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		b.RenameGroup(id, string(nameBytes))
 	case "RequestToAddUser":
 		offerBytes, ok := cmd[1]
 		if !ok {
@@ -403,6 +492,230 @@ func Eval(rawTask string) string {
 			return ""
 		}
 		b.RequestToAddUser(string(offerBytes))
+	case "RemoveUserFromGroup":
+		groupIDBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		groupID, err := uuid.FromBytes(groupIDBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		userIDBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		userID, err := uuid.FromBytes(userIDBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		err = b.RemoveUserFromGroup(groupID, userID)
+		if err != nil {
+			return err.Error()
+		}
+	case "RequestToManageEncryptedDevice":
+		strBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		err := b.RequestToManageEncryptedDevice(string(strBytes))
+		if err != nil {
+			return err.Error()
+		}
+	case "RequestToSync":
+		strBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		err := b.RequestToSync(string(strBytes))
+		if err != nil {
+			return err.Error()
+		}
+	case "RestrictGroupEdits":
+		groupIDBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		groupID, err := uuid.FromBytes(groupIDBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		err = b.RestrictGroupEdits(groupID)
+		if err != nil {
+			return err.Error()
+		}
+	case "RestrictPosting":
+		groupIDBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		groupID, err := uuid.FromBytes(groupIDBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		err = b.RestrictPosting(groupID)
+		if err != nil {
+			return err.Error()
+		}
+	case "RestrictUserManagement":
+		groupIDBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		groupID, err := uuid.FromBytes(groupIDBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		err = b.RestrictUserManagement(groupID)
+		if err != nil {
+			return err.Error()
+		}
+	case "RevokeDevice":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		err = b.RevokeDevice(id)
+		if err != nil {
+			return err.Error()
+		}
+	case "RevokeInvite":
+		groupIDBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		groupID, err := uuid.FromBytes(groupIDBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		userIDBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		userID, err := uuid.FromBytes(userIDBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		err = b.RevokeInvite(groupID, userID)
+		if err != nil {
+			return err.Error()
+		}
+	case "SendDirectMessage":
+		dmBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		dm := chat.DirectMessage{}
+		err = msgpack.Unmarshal(dmBytes, &dm)
+		if err != nil {
+			return err.Error()
+		}
+
+		// TODO: handle files
+		readers := map[uuid.UUID]io.ReadCloser{}
+		names := map[uuid.UUID]string{}
+		b.SendDirectMessage(dm, readers, names)
+	case "SendGroupMessage":
+		gmBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		gm := chat.GroupMessage{}
+		err = msgpack.Unmarshal(gmBytes, &gm)
+		if err != nil {
+			return err.Error()
+		}
+
+		// TODO: handle files
+		readers := map[uuid.UUID]io.ReadCloser{}
+		names := map[uuid.UUID]string{}
+		b.SendGroupMessage(gm, readers, names)
+	case "SetAutoJoinGroups":
+		valueBytes, ok := cmd[1]
+		if !ok || len(valueBytes) != 8 {
+			log.Error("bad ts bytes")
+			return "malformed command"
+		}
+		value := int(binary.BigEndian.Uint64(valueBytes))
+
+		b.SetAutoJoinGroups(value)
+	case "SetDMLastOpened":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		valueBytes, ok := cmd[2]
+		if !ok || len(valueBytes) != 8 {
+			log.Error("bad ts bytes")
+			return "malformed command"
+		}
+		value := int64(binary.BigEndian.Uint64(valueBytes))
+
+		b.SetDMLastOpened(id, value)
+	case "SetDMMutedUntil":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		valueBytes, ok := cmd[2]
+		if !ok || len(valueBytes) != 8 {
+			log.Error("bad ts bytes")
+			return "malformed command"
+		}
+		value := int64(binary.BigEndian.Uint64(valueBytes))
+
+		err = b.SetDMMutedUntil(id, value)
+		if err != nil {
+			return err.Error()
+		}
 	case "SetProfile":
 		name, ok := cmd[1]
 		if !ok {
