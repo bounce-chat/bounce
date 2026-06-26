@@ -5,7 +5,9 @@ package goservice
 
 import (
 	"encoding/base64"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
@@ -27,6 +29,7 @@ var stoppedTime time.Duration
 var chDone = make(chan bool)
 
 func StartForegroundService() {
+	go keepCachePruned()
 	ui = &uiBuffer{
 		events: []map[int][]byte{},
 	}
@@ -89,4 +92,44 @@ func getConfigDirectory() string {
 	}
 
 	return configDirectory
+}
+
+func keepCachePruned() {
+	pruneCache()
+	for range time.NewTicker(1 * time.Hour).C {
+		pruneCache()
+	}
+}
+
+func pruneCache() {
+	cutoff := time.Now().Add(-1 * time.Hour)
+
+	err := filepath.WalkDir("/data/data/chat.bounce/cache/", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+
+		if info.ModTime().Before(cutoff) {
+			if err := os.Remove(path); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error pruning cache directory")
+	}
 }
