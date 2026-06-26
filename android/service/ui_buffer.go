@@ -205,7 +205,7 @@ func (u *uiBuffer) DeleteItem(id uuid.UUID) {
 	defer u.Unlock()
 
 	u.events = append(u.events, map[int][]byte{
-		0: []byte("AddUserRequestRejected"),
+		0: []byte("DeleteItem"),
 		1: id[:],
 	})
 }

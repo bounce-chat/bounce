@@ -420,7 +420,7 @@ func Eval(rawTask string) string {
 		if err != nil {
 			return err.Error()
 		}
-	case "Reject Invite":
+	case "RejectInvite":
 		groupIDBytes, ok := cmd[1]
 		if !ok {
 			log.Error("no bytes")
