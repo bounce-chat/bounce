@@ -63,6 +63,7 @@ func (ui *ui) showEditProfile() {
 	ui.widgets.editProfile.profileIcon.id = ui.state.profile.id
 	ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
 	ui.widgets.editProfile.profileIcon.foregroundText.Text = ui.state.profile.initials
+	ui.widgets.editProfile.profileIcon.setBackground()
 	ui.widgets.editProfile.profileIcon.Refresh()
 
 	ui.widgets.editProfile.profileNameEntry.Text = ui.state.profile.getDisplayName()

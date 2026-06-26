@@ -109,7 +109,11 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 		fyne.DoAndWait(func() {
 			dm.user.images = chatUser.Images
 			dm.editIcon.images = chatUser.Images
+			dm.editIcon.setBackground()
+			dm.editIcon.Refresh()
 			dm.headerIcon.images = chatUser.Images
+			dm.headerIcon.setBackground()
+			dm.headerIcon.Refresh()
 			dm.buttonData.images = chatUser.Images
 
 			dm.username.Text = u.getDisplayName()
