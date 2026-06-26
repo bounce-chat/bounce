@@ -687,14 +687,22 @@ func (b *aidlBounce) SetDMTypingIndicatorSettings(userID uuid.UUID, override boo
 func (b *aidlBounce) SetGroupImage(groupID uuid.UUID, image []byte) error {
 	tempID := uuid.New()
 	path := "/data/data/chat.bounce/cache/" + tempID.String()
-	err := os.WriteFile(path, image, 0644)
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		log.WithFields(log.Fields{
-			"path":  path,
-			"error": err.Error(),
-		}).Error("error writing temp file")
 		return err
 	}
+	_, err = f.Write(image)
+	if err != nil {
+		f.Close()
+		return err
+	}
+	err = f.Sync()
+	if err != nil {
+		f.Close()
+		return err
+	}
+	f.Close()
 
 	errStr, err := callCommand(map[int][]byte{
 		0: []byte("SetGroupImage"),
@@ -1033,14 +1041,22 @@ func (b *aidlBounce) UpdateDraft(threadID uuid.UUID, text string) {
 func (b *aidlBounce) UpdateProfileImage(image []byte) error {
 	tempID := uuid.New()
 	path := "/data/data/chat.bounce/cache/" + tempID.String()
-	err := os.WriteFile(path, image, 0644)
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		log.WithFields(log.Fields{
-			"path":  path,
-			"error": err.Error(),
-		}).Error("error writing temp file")
 		return err
 	}
+	_, err = f.Write(image)
+	if err != nil {
+		f.Close()
+		return err
+	}
+	err = f.Sync()
+	if err != nil {
+		f.Close()
+		return err
+	}
+	f.Close()
 
 	errStr, err := callCommand(map[int][]byte{
 		0: []byte("UpdateProfileImage"),

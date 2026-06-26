@@ -8,6 +8,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"io/ioutil"
 	"os"
@@ -1873,5 +1876,10 @@ func hashString(hash [32]byte) string {
 
 func validImage(data []byte) bool {
 	_, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Debug("invalid image data")
+	}
 	return err == nil
 }

@@ -175,6 +175,7 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 	if chatUser.ID == ui.state.profile.id {
 		ui.widgets.editProfile.profileIcon.images = u.images
 		fyne.DoAndWait(func() {
+			ui.widgets.editProfile.profileIcon.setBackground()
 			ui.widgets.editProfile.profileIcon.Refresh()
 		})
 	}
