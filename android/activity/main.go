@@ -17,7 +17,10 @@ package main
 import (
 	"encoding/base64"
 	"fmt"
+	"os"
+	"runtime"
 	"sync"
+	"testing"
 	"time"
 	"unicode/utf16"
 	"unsafe"
@@ -26,6 +29,7 @@ import (
 
 	"github.com/AndroidGoLab/jni"
 	jniApp "github.com/AndroidGoLab/jni/app"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/hkparker/bounce/ui"
@@ -361,4 +365,33 @@ func callServiceFunction(rawArg string) (string, error) {
 		return nil
 	})
 	return result, err
+}
+
+func getConfigDirectory() string {
+	var configDirectory string
+	if testing.Testing() {
+		configDirectory = os.TempDir() + "/bounce-test-" + uuid.New().String()
+	} else if runtime.GOOS == "android" {
+		// TODO: use /data/data/chat.bounce/ ?
+		configDirectory = "/sdcard/Android/data/chat.bounce"
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"at":    "configDirectory",
+				"error": err.Error(),
+			}).Fatal("error getting home directory")
+		}
+		configDirectory = home + "/.bounce"
+	}
+
+	err := os.MkdirAll(configDirectory+"/blobs/", 0700)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"path":  configDirectory,
+			"error": err.Error(),
+		}).Fatal("error creating config directory")
+	}
+
+	return configDirectory
 }

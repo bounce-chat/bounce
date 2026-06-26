@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"io/ioutil"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
@@ -244,14 +245,8 @@ func (b *aidlBounce) GetDMHistory(userID uuid.UUID) chat.InitialState {
 }
 
 func (b *aidlBounce) GetFileData(fileID uuid.UUID) ([]byte, error) {
-	encodedData, err := callCommand(map[int][]byte{
-		0: []byte("GetFileData"),
-		1: fileID[:],
-	})
-	if err != nil {
-		return []byte{}, err
-	}
-	return base64.StdEncoding.DecodeString(encodedData)
+	// TODO: check if downloaded
+	return ioutil.ReadFile(getConfigDirectory() + "/blobs/" + fileID.String())
 }
 
 func (b *aidlBounce) GetNewAddUserString() string {
@@ -551,7 +546,7 @@ func (b *aidlBounce) SetDMMutedUntil(userID uuid.UUID, mutedUntil int64) error {
 	binary.BigEndian.PutUint64(bytes, uint64(mutedUntil))
 
 	errStr, err := callCommand(map[int][]byte{
-		0: []byte("RevokeInvite"),
+		0: []byte("SetDMMutedUntil"),
 		1: userID[:],
 		2: bytes,
 	})
@@ -565,28 +560,258 @@ func (b *aidlBounce) SetDMMutedUntil(userID uuid.UUID, mutedUntil int64) error {
 }
 
 func (b *aidlBounce) SetDMReadReceiptSettings(userID uuid.UUID, override bool, enabled bool) error {
+	overrideBytes := []byte{0x00}
+	if override {
+		overrideBytes = []byte{0x01}
+	}
+	enabledBytes := []byte{0x00}
+	if enabled {
+		enabledBytes = []byte{0x01}
+	}
+
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("SetDMReadReceiptSettings"),
+		1: userID[:],
+		2: overrideBytes,
+		3: enabledBytes,
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
 	return nil
 }
-func (b *aidlBounce) SetDMRetention(userID uuid.UUID, retention int64) error { return nil }
+func (b *aidlBounce) SetDMRetention(userID uuid.UUID, retention int64) error {
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(bytes, uint64(retention))
+
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("SetDMRetention"),
+		1: userID[:],
+		2: bytes,
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
 func (b *aidlBounce) SetDMTypingIndicatorSettings(userID uuid.UUID, override bool, enabled bool) error {
+	overrideBytes := []byte{0x00}
+	if override {
+		overrideBytes = []byte{0x01}
+	}
+	enabledBytes := []byte{0x00}
+	if enabled {
+		enabledBytes = []byte{0x01}
+	}
+
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("SetDMTypingIndicatorSettings"),
+		1: userID[:],
+		2: overrideBytes,
+		3: enabledBytes,
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
 	return nil
 }
-func (b *aidlBounce) SetGroupImage(groupID uuid.UUID, image []byte) error          { return nil }
-func (b *aidlBounce) SetGroupLastOpened(groupID uuid.UUID, timestamp int64)        {}
-func (b *aidlBounce) SetGroupMutedUntil(groupID uuid.UUID, mutedUntil int64) error { return nil }
+
+func (b *aidlBounce) SetGroupImage(groupID uuid.UUID, image []byte) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("SetGroupImage"),
+		1: groupID[:],
+		2: image,
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) SetGroupLastOpened(groupID uuid.UUID, timestamp int64) {
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(bytes, uint64(timestamp))
+
+	callCommand(map[int][]byte{
+		0: []byte("SetGroupLastOpened"),
+		1: bytes,
+	})
+}
+
+func (b *aidlBounce) SetGroupMutedUntil(groupID uuid.UUID, mutedUntil int64) error {
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(bytes, uint64(mutedUntil))
+
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("SetGroupMutedUntil"),
+		1: groupID[:],
+		2: bytes,
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
 func (b *aidlBounce) SetGroupReadReceiptSettings(groupID uuid.UUID, override bool, enabled bool) error {
+	overrideBytes := []byte{0x00}
+	if override {
+		overrideBytes = []byte{0x01}
+	}
+	enabledBytes := []byte{0x00}
+	if enabled {
+		enabledBytes = []byte{0x01}
+	}
+
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("SetGroupReadReceiptSettings"),
+		1: groupID[:],
+		2: overrideBytes,
+		3: enabledBytes,
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
 	return nil
 }
-func (b *aidlBounce) SetGroupRetention(groupID uuid.UUID, retention int64) error { return nil }
+
+func (b *aidlBounce) SetGroupRetention(groupID uuid.UUID, retention int64) error {
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(bytes, uint64(retention))
+
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("SetGroupRetention"),
+		1: groupID[:],
+		2: bytes,
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
 func (b *aidlBounce) SetGroupTypingIndicatorSettings(groupID uuid.UUID, override bool, enabled bool) error {
+	overrideBytes := []byte{0x00}
+	if override {
+		overrideBytes = []byte{0x01}
+	}
+	enabledBytes := []byte{0x00}
+	if enabled {
+		enabledBytes = []byte{0x01}
+	}
+
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("SetGroupTypingIndicatorSettings"),
+		1: groupID[:],
+		2: overrideBytes,
+		3: enabledBytes,
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
 	return nil
 }
-func (b *aidlBounce) SetNewDMRetention(value int64)               {}
-func (b *aidlBounce) SetNewGroupRestrictGroupEdits(value bool)    {}
-func (b *aidlBounce) SetNewGroupRestrictPosting(value bool)       {}
-func (b *aidlBounce) SetNewGroupRestrictUserManagement(bool)      {}
-func (b *aidlBounce) SetNewGroupRetention(value int64)            {}
-func (b *aidlBounce) SetOpenDM(userID uuid.UUID, open bool) error { return nil }
+
+func (b *aidlBounce) SetNewDMRetention(value int64) {
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(bytes, uint64(value))
+
+	callCommand(map[int][]byte{
+		0: []byte("SetNewDMRetention"),
+		1: bytes,
+	})
+}
+
+func (b *aidlBounce) SetNewGroupRestrictGroupEdits(value bool) {
+	valueBytes := []byte{0x00}
+	if value {
+		valueBytes = []byte{0x01}
+	}
+
+	callCommand(map[int][]byte{
+		0: []byte("SetNewGroupRestrictGroupEdits"),
+		1: valueBytes,
+	})
+}
+
+func (b *aidlBounce) SetNewGroupRestrictPosting(value bool) {
+	valueBytes := []byte{0x00}
+	if value {
+		valueBytes = []byte{0x01}
+	}
+
+	callCommand(map[int][]byte{
+		0: []byte("SetNewGroupRestrictPosting"),
+		1: valueBytes,
+	})
+}
+
+func (b *aidlBounce) SetNewGroupRestrictUserManagement(value bool) {
+	valueBytes := []byte{0x00}
+	if value {
+		valueBytes = []byte{0x01}
+	}
+
+	callCommand(map[int][]byte{
+		0: []byte("SetNewGroupRestrictUserManagement"),
+		1: valueBytes,
+	})
+}
+
+func (b *aidlBounce) SetNewGroupRetention(value int64) {
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(bytes, uint64(value))
+
+	callCommand(map[int][]byte{
+		0: []byte("SetNewGroupRetention"),
+		1: bytes,
+	})
+}
+
+func (b *aidlBounce) SetOpenDM(userID uuid.UUID, value bool) error {
+	valueBytes := []byte{0x00}
+	if value {
+		valueBytes = []byte{0x01}
+	}
+
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("SetOpenDM"),
+		1: userID[:],
+		2: valueBytes,
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
 
 func (b *aidlBounce) SetProfile(profileName string, image []byte, deviceName string) error {
 	errStr, err := callCommand(map[int][]byte{
@@ -604,20 +829,161 @@ func (b *aidlBounce) SetProfile(profileName string, image []byte, deviceName str
 	return nil
 }
 
-func (b *aidlBounce) SetReadReceiptsByDefault(value bool)               {}
-func (b *aidlBounce) SetTypingIndicatorsByDefault(value bool)           {}
-func (b *aidlBounce) SetUserNotes(userID uuid.UUID, notes string) error { return nil }
-func (b *aidlBounce) Shutdown()                                         {}
-func (b *aidlBounce) TypingInDirectMessage(userID uuid.UUID)            {}
-func (b *aidlBounce) TypingInGroup(groupID uuid.UUID)                   {}
-func (b *aidlBounce) UnblockUser(userID uuid.UUID) error                { return nil }
-func (b *aidlBounce) UnrestrictGroupEdits(groupID uuid.UUID) error      { return nil }
-func (b *aidlBounce) UnrestrictPosting(groupID uuid.UUID) error         { return nil }
-func (b *aidlBounce) UnrestrictUserManagement(groupID uuid.UUID) error  { return nil }
-func (b *aidlBounce) UpdateDraft(threadID uuid.UUID, text string)       {}
-func (b *aidlBounce) UpdateProfileImage(newImage []byte) error          { return nil }
-func (b *aidlBounce) UpdateProfileName(newName string) error            { return nil }
-func (b *aidlBounce) UserConnectionDesired(id uuid.UUID)                {}
+func (b *aidlBounce) SetReadReceiptsByDefault(value bool) {
+	valueBytes := []byte{0x00}
+	if value {
+		valueBytes = []byte{0x01}
+	}
+
+	callCommand(map[int][]byte{
+		0: []byte("SetReadReceiptsByDefault"),
+		1: valueBytes,
+	})
+}
+
+func (b *aidlBounce) SetTypingIndicatorsByDefault(value bool) {
+	valueBytes := []byte{0x00}
+	if value {
+		valueBytes = []byte{0x01}
+	}
+
+	callCommand(map[int][]byte{
+		0: []byte("SetTypingIndicatorsByDefault"),
+		1: valueBytes,
+	})
+}
+
+func (b *aidlBounce) SetUserNotes(userID uuid.UUID, notes string) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("SetUserNotes"),
+		1: userID[:],
+		2: []byte(notes),
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) Shutdown() {
+	// Activity should not be able to shut down the service
+}
+
+func (b *aidlBounce) TypingInDirectMessage(userID uuid.UUID) {
+	callCommand(map[int][]byte{
+		0: []byte("TypingInDirectMessage"),
+		1: userID[:],
+	})
+}
+
+func (b *aidlBounce) TypingInGroup(groupID uuid.UUID) {
+	callCommand(map[int][]byte{
+		0: []byte("TypingInGroup"),
+		1: groupID[:],
+	})
+}
+
+func (b *aidlBounce) UnblockUser(userID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("UnblockUser"),
+		1: userID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) UnrestrictGroupEdits(groupID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("UnrestrictGroupEdits"),
+		1: groupID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) UnrestrictPosting(groupID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("UnrestrictPosting"),
+		1: groupID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) UnrestrictUserManagement(groupID uuid.UUID) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("UnrestrictUserManagement"),
+		1: groupID[:],
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) UpdateDraft(threadID uuid.UUID, text string) {
+	callCommand(map[int][]byte{
+		0: []byte("UpdateDraft"),
+		1: threadID[:],
+		2: []byte(text),
+	})
+}
+
+func (b *aidlBounce) UpdateProfileImage(newImage []byte) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("UpdateProfileImage"),
+		1: newImage,
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) UpdateProfileName(newName string) error {
+	errStr, err := callCommand(map[int][]byte{
+		0: []byte("UpdateProfileName"),
+		1: []byte(newName),
+	})
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func (b *aidlBounce) UserConnectionDesired(id uuid.UUID) {
+	callCommand(map[int][]byte{
+		0: []byte("UserConnectionDesired"),
+		1: id[:],
+	})
+}
 
 func callCommand(cmd map[int][]byte) (string, error) {
 	data, err := msgpack.Marshal(&cmd)

@@ -296,19 +296,7 @@ func Eval(rawTask string) string {
 		}
 		return base64.StdEncoding.EncodeToString(data)
 	case "GetFileData":
-		idBytes, ok := cmd[1]
-		if !ok {
-			log.Error("no bytes")
-			return "malformed command"
-		}
-
-		id, err := uuid.FromBytes(idBytes)
-		if err != nil {
-			return err.Error()
-		}
-
-		bytes, _ := b.GetFileData(id)
-		return base64.StdEncoding.EncodeToString(bytes)
+		// The activity can read files without IPC
 	case "GetNewAddUserString":
 		return b.GetNewAddUserString()
 	case "GetNewSyncString":
@@ -716,6 +704,317 @@ func Eval(rawTask string) string {
 		if err != nil {
 			return err.Error()
 		}
+	case "SetDMReadReceiptSettings":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		overrideBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		override := false
+		if len(overrideBytes) == 1 && overrideBytes[0] == 0x01 {
+			override = true
+		}
+
+		enabledBytes, ok := cmd[3]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		enabled := false
+		if len(enabledBytes) == 1 && enabledBytes[0] == 0x01 {
+			enabled = true
+		}
+
+		b.SetDMReadReceiptSettings(id, override, enabled)
+	case "SetDMRetention":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		valueBytes, ok := cmd[2]
+		if !ok || len(valueBytes) != 8 {
+			log.Error("bad ts bytes")
+			return "malformed command"
+		}
+		value := int64(binary.BigEndian.Uint64(valueBytes))
+
+		b.SetDMRetention(id, value)
+	case "SetDMTypingIndicatorSettings":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		overrideBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		override := false
+		if len(overrideBytes) == 1 && overrideBytes[0] == 0x01 {
+			override = true
+		}
+
+		enabledBytes, ok := cmd[3]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		enabled := false
+		if len(enabledBytes) == 1 && enabledBytes[0] == 0x01 {
+			enabled = true
+		}
+
+		b.SetDMTypingIndicatorSettings(id, override, enabled)
+	case "SetGroupImage":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		bytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		b.SetGroupImage(id, bytes)
+	case "SetGroupLastOpened":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		valueBytes, ok := cmd[2]
+		if !ok || len(valueBytes) != 8 {
+			log.Error("bad ts bytes")
+			return "malformed command"
+		}
+		value := int64(binary.BigEndian.Uint64(valueBytes))
+
+		b.SetGroupLastOpened(id, value)
+	case "SetGroupMutedUntil":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		valueBytes, ok := cmd[2]
+		if !ok || len(valueBytes) != 8 {
+			log.Error("bad ts bytes")
+			return "malformed command"
+		}
+		value := int64(binary.BigEndian.Uint64(valueBytes))
+
+		err = b.SetGroupMutedUntil(id, value)
+		if err != nil {
+			return err.Error()
+		}
+	case "SetGroupReadReceiptSettings":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		overrideBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		override := false
+		if len(overrideBytes) == 1 && overrideBytes[0] == 0x01 {
+			override = true
+		}
+
+		enabledBytes, ok := cmd[3]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		enabled := false
+		if len(enabledBytes) == 1 && enabledBytes[0] == 0x01 {
+			enabled = true
+		}
+
+		b.SetGroupReadReceiptSettings(id, override, enabled)
+	case "SetGroupRetention":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		valueBytes, ok := cmd[2]
+		if !ok || len(valueBytes) != 8 {
+			log.Error("bad ts bytes")
+			return "malformed command"
+		}
+		value := int64(binary.BigEndian.Uint64(valueBytes))
+
+		b.SetGroupRetention(id, value)
+	case "SetGroupTypingIndicatorSettings":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		overrideBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		override := false
+		if len(overrideBytes) == 1 && overrideBytes[0] == 0x01 {
+			override = true
+		}
+
+		enabledBytes, ok := cmd[3]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		enabled := false
+		if len(enabledBytes) == 1 && enabledBytes[0] == 0x01 {
+			enabled = true
+		}
+
+		b.SetGroupTypingIndicatorSettings(id, override, enabled)
+	case "SetNewDMRetention":
+		valueBytes, ok := cmd[1]
+		if !ok || len(valueBytes) != 8 {
+			log.Error("bad ts bytes")
+			return "malformed command"
+		}
+		value := int64(binary.BigEndian.Uint64(valueBytes))
+
+		b.SetNewDMRetention(value)
+	case "SetNewGroupRestrictGroupEdits":
+		valueBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		value := false
+		if len(valueBytes) == 1 && valueBytes[0] == 0x01 {
+			value = true
+		}
+		b.SetNewGroupRestrictGroupEdits(value)
+	case "SetNewGroupRestrictPosting":
+		valueBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		value := false
+		if len(valueBytes) == 1 && valueBytes[0] == 0x01 {
+			value = true
+		}
+		b.SetNewGroupRestrictPosting(value)
+	case "SetNewGroupRestrictUserManagement":
+		valueBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		value := false
+		if len(valueBytes) == 1 && valueBytes[0] == 0x01 {
+			value = true
+		}
+		b.SetNewGroupRestrictUserManagement(value)
+	case "SetNewGroupRetention":
+		valueBytes, ok := cmd[1]
+		if !ok || len(valueBytes) != 8 {
+			log.Error("bad ts bytes")
+			return "malformed command"
+		}
+		value := int64(binary.BigEndian.Uint64(valueBytes))
+
+		b.SetNewGroupRetention(value)
+	case "SetOpenDM":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		valueBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		value := false
+		if len(valueBytes) == 1 && valueBytes[0] == 0x01 {
+			value = true
+		}
+
+		err = b.SetOpenDM(id, value)
+		if err != nil {
+			return err.Error()
+		}
 	case "SetProfile":
 		name, ok := cmd[1]
 		if !ok {
@@ -740,6 +1039,179 @@ func Eval(rawTask string) string {
 			}).Warn("error setting profile")
 			return err.Error()
 		}
+	case "SetReadReceiptsByDefault":
+		valueBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		value := false
+		if len(valueBytes) == 1 && valueBytes[0] == 0x01 {
+			value = true
+		}
+		b.SetReadReceiptsByDefault(value)
+	case "SetTypingIndicatorsByDefault":
+		valueBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		value := false
+		if len(valueBytes) == 1 && valueBytes[0] == 0x01 {
+			value = true
+		}
+		b.SetTypingIndicatorsByDefault(value)
+	case "SetUserNotes":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		notesBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		b.SetUserNotes(id, string(notesBytes))
+	case "TypingInDirectMessage":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		b.TypingInDirectMessage(id)
+	case "TypingInGroup":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		b.TypingInGroup(id)
+	case "UnblockUser":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		b.UnblockUser(id)
+	case "UnrestrictGroupEdits":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		b.UnrestrictGroupEdits(id)
+	case "UnrestrictPosting":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		b.UnrestrictPosting(id)
+	case "UnrestrictUserManagement":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		b.UnrestrictUserManagement(id)
+	case "UpdateDraft":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		draftBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		b.UpdateDraft(id, string(draftBytes))
+	case "UpdateProfileImage":
+		imageBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		err := b.UpdateProfileImage(imageBytes)
+		if err != nil {
+			return err.Error()
+		}
+	case "UpdateProfileName":
+		nameBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		err := b.UpdateProfileName(string(nameBytes))
+		if err != nil {
+			return err.Error()
+		}
+	case "UserConnectionDesired":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		b.UserConnectionDesired(id)
 	}
 	return ""
 }
