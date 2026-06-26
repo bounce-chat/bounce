@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"io"
+	"os"
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
@@ -631,10 +632,32 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		// TODO: handle files
+		sourcesBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		var sources map[uuid.UUID]string
+		err = msgpack.Unmarshal(sourcesBytes, &sources)
+		if err != nil {
+			return err.Error()
+		}
+
 		readers := map[uuid.UUID]io.ReadCloser{}
-		names := map[uuid.UUID]string{}
-		b.SendDirectMessage(dm, readers, names)
+		for id, _ := range sources {
+			path := "/data/data/chat.bounce/cache/" + id.String()
+			f, err := os.Open(path)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"path":  path,
+				}).Error("error opening file")
+				continue
+			}
+			readers[id] = f
+		}
+
+		b.SendDirectMessage(dm, readers, sources)
 	case "SendGroupMessage":
 		gmBytes, ok := cmd[1]
 		if !ok {
@@ -648,10 +671,32 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		// TODO: handle files
+		sourcesBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		var sources map[uuid.UUID]string
+		err = msgpack.Unmarshal(sourcesBytes, &sources)
+		if err != nil {
+			return err.Error()
+		}
+
 		readers := map[uuid.UUID]io.ReadCloser{}
-		names := map[uuid.UUID]string{}
-		b.SendGroupMessage(gm, readers, names)
+		for id, _ := range sources {
+			path := "/data/data/chat.bounce/cache/" + id.String()
+			f, err := os.Open(path)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"path":  path,
+				}).Error("error opening file")
+				continue
+			}
+			readers[id] = f
+		}
+
+		b.SendGroupMessage(gm, readers, sources)
 	case "SetAutoJoinGroups":
 		valueBytes, ok := cmd[1]
 		if !ok || len(valueBytes) != 8 {
@@ -802,13 +847,28 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		bytes, ok := cmd[2]
+		imageIDBytes, ok := cmd[2]
 		if !ok {
 			log.Error("no bytes")
 			return "malformed command"
 		}
 
-		b.SetGroupImage(id, bytes)
+		imageID, err := uuid.FromBytes(imageIDBytes)
+		if err != nil {
+			return err.Error()
+		}
+		path := "/data/data/chat.bounce/cache/" + imageID.String()
+		defer os.Remove(path)
+		image, err := os.ReadFile(path)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"path":  path,
+				"error": err.Error(),
+			}).Error("error reading temp file")
+			return err.Error()
+		}
+
+		b.SetGroupImage(id, image)
 	case "SetGroupLastOpened":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -1021,18 +1081,34 @@ func Eval(rawTask string) string {
 			log.Error("no bytes")
 			return "malformed command"
 		}
-		image, ok := cmd[2]
+		imageIDBytes, ok := cmd[2]
 		if !ok {
 			log.Error("no bytes")
 			return "malformed command"
 		}
+
+		imageID, err := uuid.FromBytes(imageIDBytes)
+		if err != nil {
+			return err.Error()
+		}
+		path := "/data/data/chat.bounce/cache/" + imageID.String()
+		defer os.Remove(path)
+		image, err := os.ReadFile(path)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"path":  path,
+				"error": err.Error(),
+			}).Error("error reading temp file")
+			return err.Error()
+		}
+
 		deviceName, ok := cmd[3]
 		if !ok {
 			log.Error("no bytes")
 			return "malformed command"
 		}
 
-		err := b.SetProfile(string(name), image, string(deviceName))
+		err = b.SetProfile(string(name), image, string(deviceName))
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -1178,13 +1254,28 @@ func Eval(rawTask string) string {
 
 		b.UpdateDraft(id, string(draftBytes))
 	case "UpdateProfileImage":
-		imageBytes, ok := cmd[1]
+		imageIDBytes, ok := cmd[1]
 		if !ok {
 			log.Error("no bytes")
 			return "malformed command"
 		}
 
-		err := b.UpdateProfileImage(imageBytes)
+		imageID, err := uuid.FromBytes(imageIDBytes)
+		if err != nil {
+			return err.Error()
+		}
+		path := "/data/data/chat.bounce/cache/" + imageID.String()
+		defer os.Remove(path)
+		image, err := os.ReadFile(path)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"path":  path,
+				"error": err.Error(),
+			}).Error("error reading temp file")
+			return err.Error()
+		}
+
+		err = b.UpdateProfileImage(image)
 		if err != nil {
 			return err.Error()
 		}

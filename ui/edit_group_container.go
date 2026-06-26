@@ -74,7 +74,12 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 			// TODO: make sure data is a valid image, allow for editing, etc
 			// TODO: don't actualy set it until they hit save?
 
-			ui.bounce.SetGroupImage(g.id, data)
+			err = ui.bounce.SetGroupImage(g.id, data)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error setting group image")
+			}
 		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
 

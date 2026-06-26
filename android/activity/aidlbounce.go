@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"os"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
@@ -245,8 +246,10 @@ func (b *aidlBounce) GetDMHistory(userID uuid.UUID) chat.InitialState {
 }
 
 func (b *aidlBounce) GetFileData(fileID uuid.UUID) ([]byte, error) {
-	// TODO: check if downloaded
-	return ioutil.ReadFile(getConfigDirectory() + "/blobs/" + fileID.String())
+	if b.FileDownloaded(fileID) {
+		return ioutil.ReadFile(getConfigDirectory() + "/blobs/" + fileID.String())
+	}
+	return []byte{}, errors.New("file not found")
 }
 
 func (b *aidlBounce) GetNewAddUserString() string {
@@ -495,30 +498,85 @@ func (b *aidlBounce) RevokeInvite(groupID uuid.UUID, userID uuid.UUID) error {
 	return nil
 }
 
-func (b *aidlBounce) SendDirectMessage(dm chat.DirectMessage, _ map[uuid.UUID]io.ReadCloser, _ map[uuid.UUID]string) {
+func (b *aidlBounce) SendDirectMessage(dm chat.DirectMessage, readers map[uuid.UUID]io.ReadCloser, sources map[uuid.UUID]string) {
 	dmBytes, err := msgpack.Marshal(&dm)
 	if err != nil {
+		log.Error("unable to marshal direct message")
+		return
+	}
+
+	for k, v := range readers {
+		path := "/data/data/chat.bounce/cache/" + k.String()
+		f, err := os.Create(path)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"path":  path,
+			}).Error("error creating file")
+			return
+		}
+		_, err = io.Copy(f, v)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"path":  path,
+			}).Error("error copying into file")
+			return
+		}
+		defer f.Close()
+	}
+
+	sourcesBytes, err := msgpack.Marshal(&sources)
+	if err != nil {
+		log.Error("unable to marshal sources")
 		return
 	}
 
 	callCommand(map[int][]byte{
 		0: []byte("SendDirectMessage"),
 		1: dmBytes,
+		2: sourcesBytes,
 	})
-	// TODO: handling files
 
 }
-func (b *aidlBounce) SendGroupMessage(gm chat.GroupMessage, _ map[uuid.UUID]io.ReadCloser, _ map[uuid.UUID]string) {
+func (b *aidlBounce) SendGroupMessage(gm chat.GroupMessage, readers map[uuid.UUID]io.ReadCloser, sources map[uuid.UUID]string) {
 	gmBytes, err := msgpack.Marshal(&gm)
 	if err != nil {
+		return
+	}
+
+	for k, v := range readers {
+		path := "/data/data/chat.bounce/cache/" + k.String()
+		f, err := os.Create(path)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"path":  path,
+			}).Error("error creating file")
+			return
+		}
+		_, err = io.Copy(f, v)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"path":  path,
+			}).Error("error copying into file")
+			return
+		}
+		defer f.Close()
+	}
+
+	sourcesBytes, err := msgpack.Marshal(&sources)
+	if err != nil {
+		log.Error("unable to marshal sources")
 		return
 	}
 
 	callCommand(map[int][]byte{
 		0: []byte("SendGroupMessage"),
 		1: gmBytes,
+		2: sourcesBytes,
 	})
-	// TODO: handling files
 }
 
 func (b *aidlBounce) SetAutoJoinGroups(value int) {
@@ -627,10 +685,21 @@ func (b *aidlBounce) SetDMTypingIndicatorSettings(userID uuid.UUID, override boo
 }
 
 func (b *aidlBounce) SetGroupImage(groupID uuid.UUID, image []byte) error {
+	tempID := uuid.New()
+	path := "/data/data/chat.bounce/cache/" + tempID.String()
+	err := os.WriteFile(path, image, 0644)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"path":  path,
+			"error": err.Error(),
+		}).Error("error writing temp file")
+		return err
+	}
+
 	errStr, err := callCommand(map[int][]byte{
 		0: []byte("SetGroupImage"),
 		1: groupID[:],
-		2: image,
+		2: tempID[:],
 	})
 	if err != nil {
 		return err
@@ -814,10 +883,21 @@ func (b *aidlBounce) SetOpenDM(userID uuid.UUID, value bool) error {
 }
 
 func (b *aidlBounce) SetProfile(profileName string, image []byte, deviceName string) error {
+	tempID := uuid.New()
+	path := "/data/data/chat.bounce/cache/" + tempID.String()
+	err := os.WriteFile(path, image, 0644)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"path":  path,
+			"error": err.Error(),
+		}).Error("error writing temp file")
+		return err
+	}
+
 	errStr, err := callCommand(map[int][]byte{
 		0: []byte("SetProfile"),
 		1: []byte(profileName),
-		2: image,
+		2: tempID[:],
 		3: []byte(deviceName),
 	})
 	if err != nil {
@@ -950,10 +1030,21 @@ func (b *aidlBounce) UpdateDraft(threadID uuid.UUID, text string) {
 	})
 }
 
-func (b *aidlBounce) UpdateProfileImage(newImage []byte) error {
+func (b *aidlBounce) UpdateProfileImage(image []byte) error {
+	tempID := uuid.New()
+	path := "/data/data/chat.bounce/cache/" + tempID.String()
+	err := os.WriteFile(path, image, 0644)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"path":  path,
+			"error": err.Error(),
+		}).Error("error writing temp file")
+		return err
+	}
+
 	errStr, err := callCommand(map[int][]byte{
 		0: []byte("UpdateProfileImage"),
-		1: newImage,
+		1: tempID[:],
 	})
 	if err != nil {
 		return err
