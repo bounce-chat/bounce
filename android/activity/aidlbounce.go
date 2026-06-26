@@ -523,7 +523,8 @@ func (b *aidlBounce) SendDirectMessage(dm chat.DirectMessage, readers map[uuid.U
 			}).Error("error copying into file")
 			return
 		}
-		defer f.Close()
+		f.Sync()
+		f.Close()
 	}
 
 	sourcesBytes, err := msgpack.Marshal(&sources)
