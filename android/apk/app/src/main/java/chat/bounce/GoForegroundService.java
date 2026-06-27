@@ -268,8 +268,8 @@ public class GoForegroundService extends Service {
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, tapIntent, piFlags);
     
         builder.setContentTitle(title)
-                .setSmallIcon(currentIconRes)
-		.setGroup(title)
+                .setSmallIcon(R.drawable.adaptive_icon)
+                .setGroup(title)
                 .setContentText(message)
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true);
