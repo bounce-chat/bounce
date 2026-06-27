@@ -295,6 +295,13 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			FileAttachments:  uiFileAttachments,
 		})
 
+		if b.postNotification != nil && b.shouldNotifyDM(&dm) {
+			title, content, err := b.getDMNotificationContent(&dm)
+			if err == nil {
+				b.postNotification(title, content)
+			}
+		}
+
 		encryptedDeviceCacheMutex.Lock()
 		userID, ok := encryptedDeviceCache[peer]
 		encryptedDeviceCacheMutex.Unlock()
@@ -316,6 +323,79 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 	}
 
 	return &dm, true
+}
+
+func (b *Bounce) shouldNotifyDM(dm *directMessage) bool {
+	if dm.Author == b.currentUserID() {
+		return false
+	}
+
+	var author user
+	err := b.database.Take(&author, "id = ?", dm.Author).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error getting the author of a direct message")
+		return false
+	}
+
+	if author.MutedUntil == MutedForever {
+		return false
+	}
+
+	if author.MutedUntil > time.Now().Unix() {
+		return false
+	}
+
+	if waitingForInitialSyncFrom != "" {
+		return false
+	}
+
+	if anotherDeviceIsActive.Load() && !uiIsInForeground.Load() {
+		return false
+	}
+
+	if uiIsInForeground.Load() && autoscrolling(dm.getDestination(b.currentUserID())) {
+		return false
+	}
+
+	return true
+}
+
+func (b *Bounce) getDMNotificationContent(dm *directMessage) (string, string, error) {
+	var author user
+	err := b.database.Take(&author, "id = ?", dm.Author).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error getting the author of a direct message")
+		return "", "", err
+	}
+
+	content := dm.Text
+	if content == "" {
+		content = "posted "
+
+		if len(dm.ImageAttachments) > 1 {
+			content += "images"
+		} else if len(dm.ImageAttachments) == 1 {
+			content += "an image"
+		}
+
+		if len(dm.FileAttachments) > 1 {
+			if len(dm.ImageAttachments) != 0 {
+				content += " and "
+			}
+			content += "files"
+		} else if len(dm.FileAttachments) == 1 {
+			if len(dm.ImageAttachments) != 0 {
+				content += " and "
+			}
+			content += "a file"
+		}
+	}
+
+	return author.Name, content, nil
 }
 
 func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]io.ReadCloser, sources map[uuid.UUID]string) {

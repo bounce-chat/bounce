@@ -47,6 +47,7 @@ type chatHistory struct {
 	readCallback          func(uuid.UUID, string)
 	unreadCountCallback   func(int)
 	markAllAsReadCallback func()
+	reportScrolledDown    func(bool)
 	seenTracking          map[uuid.UUID]bool
 }
 
@@ -72,6 +73,9 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 			} else {
 				ui.bounce.MarkAllDirectMessagesAsRead(t.getID())
 			}
+		},
+		reportScrolledDown: func(value bool) {
+			ui.bounce.SetScrolledDown(t.getID(), value)
 		},
 		seenTracking: make(map[uuid.UUID]bool),
 		template: func() fyne.CanvasObject {
@@ -787,6 +791,7 @@ func (chl *chatHistoryLayout) offsetUpdated(pos fyne.Position) {
 	chl.ch.displayJumpToBottomIfNeeded()
 
 	if pos.Y == chl.ch.contentHeight()-chl.ch.scroller.Size().Height {
+		chl.ch.reportScrolledDown(true)
 		if chl.ch.unread > 0 {
 			chl.ch.markAllAsReadCallback()
 			chl.ch.unread = 0
@@ -800,6 +805,8 @@ func (chl *chatHistoryLayout) offsetUpdated(pos fyne.Position) {
 				}
 			}
 		}
+	} else {
+		chl.ch.reportScrolledDown(false)
 	}
 }
 

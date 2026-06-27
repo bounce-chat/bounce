@@ -450,8 +450,6 @@ func (t *testUI) PostingRestricted(UpdateGroupPostingRestricted)                
 func (t *testUI) PostingUnrestricted(UpdateGroupPostingUnrestricted)               {}
 func (t *testUI) InviteUser(UpdateGroupInviteUser)                                 {}
 func (t *testUI) RollbackGroup(uuid.UUID)                                          {}
-func (t *testUI) NotifyAddedToGroup(string)                                        {}
-func (t *testUI) NotifyInvitedToGroup(string)                                      {}
 func (t *testUI) GroupInviteRevoked(UpdateGroupInviteRevoked)                      {}
 func (t *testUI) GroupInviteAccepted(UpdateGroupInviteAccepted)                    {}
 func (t *testUI) GroupInviteRejected(UpdateGroupInviteRejected)                    {}

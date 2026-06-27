@@ -362,7 +362,9 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	if deviceExists {
 		bulkUpdate.Source = dev.UserID
 	}
-	for _, gm := range gmsToDisplay {
+
+	var mostRecentUnseenGMs = map[uuid.UUID]*groupMessage{}
+	for i, gm := range gmsToDisplay {
 		groupID := gm.getDestination(b.currentUserID())
 		gs, err := b.currentGroupState(groupID)
 		if err != nil {
@@ -426,13 +428,17 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		seen, rrs := b.processEarlyReadReceipts(gm.ID, typeGroupMessage, false)
 		if seen {
 			bulkUpdate.Seen = append(bulkUpdate.Seen, gm.ID)
+		} else {
+			mostRecentUnseenGMs[gm.Destination] = gmsToDisplay[i]
 		}
 		bulkUpdate.ReadReceipts[gm.ID] = append(bulkUpdate.ReadReceipts[gm.ID], rrs...)
 
 		// Update last activity time if it is the latest
 		b.updateLastGroupActivity(gm.Destination, gm.SavedAt)
 	}
-	for _, dm := range dmsToDisplay {
+
+	var mostRecentUnseenDMs = map[uuid.UUID]*directMessage{}
+	for i, dm := range dmsToDisplay {
 		uiImageAttachments := []ImageAttachment{}
 		for _, ia := range dm.ImageAttachments {
 			uiImageAttachments = append(uiImageAttachments, ImageAttachment{
@@ -472,9 +478,12 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		seen, rrs := b.processEarlyReadReceipts(dm.ID, typeDirectMessage, false)
 		if seen {
 			bulkUpdate.Seen = append(bulkUpdate.Seen, dm.ID)
+		} else {
+			mostRecentUnseenDMs[dm.getDestination(b.currentUserID())] = dmsToDisplay[i]
 		}
 		bulkUpdate.ReadReceipts[dm.ID] = append(bulkUpdate.ReadReceipts[dm.ID], rrs...)
 	}
+
 	for _, rr := range rrsToDisplay {
 		targetTypeString, ok := readReceiptTargetTypeString[rr.TargetType]
 		if !ok {
@@ -507,6 +516,22 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		}
 	}
 	b.ui.CatchUpMessages(bulkUpdate, waitingForInitialSyncFrom == peer)
+	for _, dm := range mostRecentUnseenDMs {
+		if b.postNotification != nil && b.shouldNotifyDM(dm) {
+			title, content, err := b.getDMNotificationContent(dm)
+			if err == nil {
+				b.postNotification(title, content)
+			}
+		}
+	}
+	for _, gm := range mostRecentUnseenGMs {
+		if b.postNotification != nil && b.shouldNotifyGM(gm) {
+			title, content, err := b.getGMNotificationContent(gm)
+			if err == nil {
+				b.postNotification(title, content)
+			}
+		}
+	}
 
 	// Send references to any device we would have broadcast to
 	for address, _ := range devicesToReference {

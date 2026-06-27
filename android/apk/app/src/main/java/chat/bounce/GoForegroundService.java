@@ -1,5 +1,6 @@
 package chat.bounce;
 
+import android.content.Context;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -14,6 +15,7 @@ import android.util.Log;
 
 import go.Seq;
 import goservice.Goservice;
+import goservice.NotificationData;
 
 public class GoForegroundService extends Service {
 
@@ -25,15 +27,16 @@ public class GoForegroundService extends Service {
     /** Extras that carry the user-visible notification content. */
 
     private static final String CHANNEL_ID   = "chat.bounce.foreground_service_channel";
+    private static final String MESSAGE_CHANNEL_ID   = "chat.bounce.message_channel";
     private static final int    NOTIFICATION_ID = 1;
     private static final long   UPDATE_INTERVAL_MS = 1000; // 1 second
 
     private Thread serverThread;
     private Handler notificationHandler;
     private Runnable notificationUpdateRunnable;
-    private String currentContent = "0s";
     private int currentIconRes = android.R.drawable.ic_notification_overlay;
     private boolean isServiceRunning = false;
+    private volatile boolean isNotificationPollRunning = false;
 
     // -----------------------------------------------------------------------
     // AIDL Binder — runs methods in the service process (safe for Go runtime B)
@@ -89,7 +92,6 @@ public class GoForegroundService extends Service {
         }
 
         Notification notification = builder
-                .setContentText(currentContent)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true) // Makes notification non-dismissible
                 .setAutoCancel(false) // Prevents dismissal on tap
@@ -120,6 +122,13 @@ public class GoForegroundService extends Service {
         }
 
         isServiceRunning = true;
+
+        if (!isNotificationPollRunning) {
+            isNotificationPollRunning = true;
+            Thread workerThread = new Thread(new NativeLoopRunnable());
+            workerThread.start();
+        }
+
         return START_STICKY;
     }
 
@@ -171,8 +180,6 @@ public class GoForegroundService extends Service {
             builder = new Notification.Builder(this);
         }
 
-        //currentContent = Goservice.getNotificationContent();
-
         Notification.Builder dest = builder
                 .setContentText("Bounce is running in the background")
                 .setSmallIcon(currentIconRes)
@@ -217,6 +224,61 @@ public class GoForegroundService extends Service {
             Notification notification = buildNotification();
             manager.notify(NOTIFICATION_ID, notification);
         }
+    }
+
+    private class NativeLoopRunnable implements Runnable {
+        @Override
+        public void run() {
+	    int id = 0;
+            while (isNotificationPollRunning && !Thread.currentThread().isInterrupted()) {
+                try {
+                    NotificationData result = Goservice.getNotification();
+                    showNotification(id, result.getTitle(), result.getContent());
+		    id = id +1;
+                } catch (Exception e) {
+                    isNotificationPollRunning = false;
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+    }
+
+    public void showNotification(int id, String title, String message) {
+        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        Notification.Builder builder;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                MESSAGE_CHANNEL_ID,
+                "App Notifications",
+                NotificationManager.IMPORTANCE_DEFAULT
+            );
+            notificationManager.createNotificationChannel(channel);
+
+            builder = new Notification.Builder(this, MESSAGE_CHANNEL_ID);
+        } else {
+            builder = new Notification.Builder(this);
+        }
+    
+        Intent tapIntent = new Intent(this, org.golang.app.GoNativeActivity.class);
+        tapIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        int piFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                ? PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+                : PendingIntent.FLAG_UPDATE_CURRENT;
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, tapIntent, piFlags);
+    
+        builder.setContentTitle(title)
+                .setSmallIcon(currentIconRes)
+		.setGroup(title)
+                .setContentText(message)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true);
+    
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            builder.setPriority(Notification.PRIORITY_DEFAULT);
+        }
+    
+        notificationManager.notify(id, builder.build());
     }
 
     // -----------------------------------------------------------------------

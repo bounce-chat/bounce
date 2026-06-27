@@ -580,6 +580,13 @@ func (b *aidlBounce) SendGroupMessage(gm chat.GroupMessage, readers map[uuid.UUI
 	})
 }
 
+func (b *aidlBounce) SetActiveThread(id uuid.UUID) {
+	callCommand(map[int][]byte{
+		0: []byte("SetActiveThread"),
+		1: id[:],
+	})
+}
+
 func (b *aidlBounce) SetAutoJoinGroups(value int) {
 	bytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(bytes, uint64(value))
@@ -683,6 +690,18 @@ func (b *aidlBounce) SetDMTypingIndicatorSettings(userID uuid.UUID, override boo
 		return errors.New(errStr)
 	}
 	return nil
+}
+
+func (b *aidlBounce) SetForeground(value bool) {
+	valueBytes := []byte{0x00}
+	if value {
+		valueBytes = []byte{0x01}
+	}
+
+	callCommand(map[int][]byte{
+		0: []byte("SetForeground"),
+		1: valueBytes,
+	})
 }
 
 func (b *aidlBounce) SetGroupImage(groupID uuid.UUID, image []byte) error {
@@ -927,6 +946,19 @@ func (b *aidlBounce) SetReadReceiptsByDefault(value bool) {
 	callCommand(map[int][]byte{
 		0: []byte("SetReadReceiptsByDefault"),
 		1: valueBytes,
+	})
+}
+
+func (b *aidlBounce) SetScrolledDown(id uuid.UUID, value bool) {
+	valueBytes := []byte{0x00}
+	if value {
+		valueBytes = []byte{0x01}
+	}
+
+	callCommand(map[int][]byte{
+		0: []byte("SetScrolledDown"),
+		1: id[:],
+		2: valueBytes,
 	})
 }
 

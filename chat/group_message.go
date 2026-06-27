@@ -321,6 +321,13 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 			FileAttachments:  uiFileAttachments,
 		})
 
+		if b.postNotification != nil && b.shouldNotifyGM(&gm) {
+			title, content, err := b.getGMNotificationContent(&gm)
+			if err == nil {
+				b.postNotification(title, content)
+			}
+		}
+
 		encryptedDeviceCacheMutex.Lock()
 		userID, ok := encryptedDeviceCache[peer]
 		encryptedDeviceCacheMutex.Unlock()
@@ -345,6 +352,88 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 	}
 
 	return &gm, true
+}
+
+func (b *Bounce) shouldNotifyGM(gm *groupMessage) bool {
+	if gm.Author == b.currentUserID() {
+		return false
+	}
+
+	var g group
+	err := b.database.Take(&g, "id = ?", gm.Destination).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error getting group for group message")
+		return false
+	}
+
+	if g.MutedUntil == MutedForever {
+		return false
+	}
+
+	if g.MutedUntil > time.Now().Unix() {
+		return false
+	}
+
+	if waitingForInitialSyncFrom != "" {
+		return false
+	}
+
+	if anotherDeviceIsActive.Load() && !uiIsInForeground.Load() {
+		return false
+	}
+
+	if uiIsInForeground.Load() && autoscrolling(gm.Destination) {
+		return false
+	}
+
+	return true
+}
+
+func (b *Bounce) getGMNotificationContent(gm *groupMessage) (string, string, error) {
+	var g group
+	err := b.database.Take(&g, "id = ?", gm.Destination).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error getting group for group message")
+		return "", "", err
+	}
+
+	var author user
+	err = b.database.Take(&author, "id = ?", gm.Author).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error getting the author of a group message")
+		return "", "", err
+	}
+
+	content := author.Name + ": " + gm.Text
+	if len(gm.Text) == 0 {
+		content = author.Name + " posted "
+
+		if len(gm.ImageAttachments) > 1 {
+			content += "images"
+		} else if len(gm.ImageAttachments) == 1 {
+			content += "an image"
+		}
+
+		if len(gm.FileAttachments) > 1 {
+			if len(gm.ImageAttachments) != 0 {
+				content += " and "
+			}
+			content += "files"
+		} else if len(gm.FileAttachments) == 1 {
+			if len(gm.ImageAttachments) != 0 {
+				content += " and "
+			}
+			content += "a file"
+		}
+	}
+
+	return g.Name, content, nil
 }
 
 func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io.ReadCloser, sources map[uuid.UUID]string) {

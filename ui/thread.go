@@ -116,14 +116,6 @@ func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
 		t.chatHistoryScroll().displayJumpToBottomIfNeeded()
 	}
 
-	// Send a notification if required
-	notificationsEnabled := (t.getNotificationsMutedUntil() != chat.MutedForever) && !(t.getID() == ui.state.profile.id)
-	notificationsMuted := time.Now().Unix() < t.getNotificationsMutedUntil()
-	deferToAnotherDevice := !ui.state.active && ui.state.anotherDeviceActive
-	if ti.notification != nil && notificationsEnabled && !notificationsMuted && !autoscroll && !ui.state.initialSyncIncomplete && !deferToAnotherDevice {
-		ui.app.SendNotification(ti.notification)
-	}
-
 	// Update the latest time of this thread and update the thread order
 	if !ti.dontBumpThread && appendingToEnd {
 		t.setLastMessageTime(ti.timestamp)
@@ -149,7 +141,6 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 			continue
 		}
 
-		var lastNotifyingItem *threadItem
 		var lastButtonItem *threadItem
 		allSeen := true
 		for _, gm := range gms {
@@ -175,9 +166,6 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 			appendingToEnd := ti.timestamp > g.chatHistoryScroll().headTimestamp()
 			fyne.Do(func() { g.chatHistoryScroll().insertItem(ti.widgetData, appendingToEnd) })
 			ui.threads.associate(g, ti.id)
-			if ti.notification != nil {
-				lastNotifyingItem = ti
-			}
 			if ti.setButtonData != nil {
 				lastButtonItem = ti
 			}
@@ -188,15 +176,6 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 			fyne.Do(func() { lastButtonItem.setButtonData(g.getButtonData()) })
 			if lastButtonItem.widgetData.getAuthor() == ui.state.profile.id {
 				fyne.Do(func() { g.getButtonData().setShowLastMessageState(lastButtonItem.widgetData.getState()) })
-			}
-		}
-
-		if lastNotifyingItem != nil && !allSeen {
-			notificationsEnabled := g.getNotificationsMutedUntil() != chat.MutedForever
-			notificationsMuted := time.Now().Unix() < g.getNotificationsMutedUntil()
-			deferToAnotherDevice := !ui.state.active && ui.state.anotherDeviceActive
-			if notificationsEnabled && !notificationsMuted && !ui.state.initialSyncIncomplete && !deferToAnotherDevice {
-				ui.app.SendNotification(lastNotifyingItem.notification)
 			}
 		}
 
@@ -219,7 +198,6 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 			continue
 		}
 
-		var lastNotifyingItem *threadItem
 		var lastButtonItem *threadItem
 		allSeen := true
 		for _, dm := range dms {
@@ -245,9 +223,6 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 			appendingToEnd := ti.timestamp > t.chatHistoryScroll().headTimestamp()
 			fyne.Do(func() { t.chatHistoryScroll().insertItem(ti.widgetData, appendingToEnd) })
 			ui.threads.associate(t, ti.id)
-			if ti.notification != nil {
-				lastNotifyingItem = ti
-			}
 			if ti.setButtonData != nil {
 				lastButtonItem = ti
 			}
@@ -258,15 +233,6 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 			fyne.Do(func() { lastButtonItem.setButtonData(t.getButtonData()) })
 			if lastButtonItem.widgetData.getAuthor() == ui.state.profile.id {
 				fyne.Do(func() { t.getButtonData().setShowLastMessageState(lastButtonItem.widgetData.getState()) })
-			}
-		}
-
-		if lastNotifyingItem != nil && !allSeen {
-			notificationsEnabled := t.getNotificationsMutedUntil() != chat.MutedForever
-			notificationsMuted := time.Now().Unix() < t.getNotificationsMutedUntil()
-			deferToAnotherDevice := !ui.state.active && ui.state.anotherDeviceActive
-			if notificationsEnabled && !notificationsMuted && !ui.state.initialSyncIncomplete && !deferToAnotherDevice {
-				ui.app.SendNotification(lastNotifyingItem.notification)
 			}
 		}
 
@@ -461,6 +427,7 @@ func (ui *ui) displayThread(t thread) {
 	}
 
 	ui.state.activeThread = t.getID()
+	ui.bounce.SetActiveThread(t.getID())
 	ui.containers.chat.Objects = []fyne.CanvasObject{t.getView()}
 	ui.containers.chat.Refresh()
 

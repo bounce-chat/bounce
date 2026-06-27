@@ -23,17 +23,21 @@ import (
 var b chat.Engine
 var ui *uiBuffer
 
-var timestamp time.Time
-var stoppedTime time.Duration
-
 var chDone = make(chan bool)
+
+type NotificationData struct {
+	Title   string
+	Content string
+}
+
+var notificationChannel = make(chan *NotificationData)
 
 func StartForegroundService() {
 	go keepCachePruned()
 	ui = &uiBuffer{
 		events: []map[int][]byte{},
 	}
-	b = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())
+	b = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory(), handleNotification)
 	<-chDone
 }
 
@@ -132,4 +136,15 @@ func pruneCache() {
 			"error": err.Error(),
 		}).Error("error pruning cache directory")
 	}
+}
+
+func handleNotification(title, content string) {
+	notificationChannel <- &NotificationData{
+		Title:   title,
+		Content: content,
+	}
+}
+
+func GetNotification() *NotificationData {
+	return <-notificationChannel
 }

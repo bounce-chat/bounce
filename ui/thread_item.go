@@ -146,7 +146,6 @@ func (scd *statusChangeData) populateTemplate(obj fyne.CanvasObject) {
 type threadItem struct {
 	id             uuid.UUID
 	widgetData     threadable
-	notification   *fyne.Notification
 	setButtonData  func(*threadButtonData)
 	timestamp      int64
 	dontBumpThread bool
@@ -260,33 +259,7 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 
 	outgoing := gm.Author == ui.state.profile.id
 	username := u.getDisplayName()
-	var notification *fyne.Notification
-	if !outgoing {
-		notificationString := u.getDisplayName() + ": " + gm.Text
-		if len(gm.Text) == 0 {
-			notificationString = u.getDisplayName() + " posted "
-
-			if len(gm.ImageAttachments) > 1 {
-				notificationString += "images"
-			} else if len(gm.ImageAttachments) == 1 {
-				notificationString += "an image"
-			}
-
-			if len(gm.FileAttachments) > 1 {
-				if len(gm.ImageAttachments) != 0 {
-					notificationString += " and "
-				}
-				notificationString += "files"
-			} else if len(gm.FileAttachments) == 1 {
-				if len(gm.ImageAttachments) != 0 {
-					notificationString += " and "
-				}
-				notificationString += "a file"
-			}
-		}
-
-		notification = fyne.NewNotification(g.name, notificationString)
-	} else {
+	if outgoing {
 		username = "You"
 	}
 
@@ -338,7 +311,6 @@ func (ui *ui) newGroupMessage(gm chat.GroupMessage) (*threadItem, error) {
 			mergeMode:        mergeModeStandalone,
 			imageDisplay:     ui.showImageViewer,
 		}, // TODO: add SavedAt and show a difference if it's large
-		notification: notification,
 		setButtonData: func(tbd *threadButtonData) {
 			displayName := u.getDisplayName()
 			mine := gm.Author == ui.state.profile.id
@@ -402,32 +374,7 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 
 	outgoing := dm.Author == ui.state.profile.id
 	username := u.getDisplayName()
-	var notification *fyne.Notification
-	if !outgoing {
-		notificationString := dm.Text
-		if len(dm.Text) == 0 {
-			notificationString = "posted "
-
-			if len(dm.ImageAttachments) > 1 {
-				notificationString += "images"
-			} else if len(dm.ImageAttachments) == 1 {
-				notificationString += "an image"
-			}
-
-			if len(dm.FileAttachments) > 1 {
-				if len(dm.ImageAttachments) != 0 {
-					notificationString += " and "
-				}
-				notificationString += "files"
-			} else if len(dm.FileAttachments) == 1 {
-				if len(dm.ImageAttachments) != 0 {
-					notificationString += " and "
-				}
-				notificationString += "a file"
-			}
-		}
-		notification = fyne.NewNotification(u.getDisplayName(), notificationString)
-	} else {
+	if outgoing {
 		username = "You"
 	}
 
@@ -478,7 +425,6 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 			mergeMode:        mergeModeStandalone,
 			imageDisplay:     ui.showImageViewer,
 		}, // TODO: add SavedAt and show a difference if it's large
-		notification: notification,
 		setButtonData: func(tbd *threadButtonData) {
 			displayName := u.getDisplayName()
 			mine := dm.Author == ui.state.profile.id

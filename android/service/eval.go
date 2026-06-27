@@ -697,6 +697,19 @@ func Eval(rawTask string) string {
 		}
 
 		b.SendGroupMessage(gm, readers, sources)
+	case "SetActiveThread":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		b.SetActiveThread(id)
 	case "SetAutoJoinGroups":
 		valueBytes, ok := cmd[1]
 		if !ok || len(valueBytes) != 8 {
@@ -835,6 +848,18 @@ func Eval(rawTask string) string {
 		}
 
 		b.SetDMTypingIndicatorSettings(id, override, enabled)
+	case "SetForeground":
+		valueBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		value := false
+		if len(valueBytes) == 1 && valueBytes[0] == 0x01 {
+			value = true
+		}
+
+		b.SetForeground(value)
 	case "SetGroupImage":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -1126,6 +1151,29 @@ func Eval(rawTask string) string {
 			value = true
 		}
 		b.SetReadReceiptsByDefault(value)
+	case "SetScrolledDown":
+		idBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		id, err := uuid.FromBytes(idBytes)
+		if err != nil {
+			return err.Error()
+		}
+
+		valueBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		value := false
+		if len(valueBytes) == 1 && valueBytes[0] == 0x01 {
+			value = true
+		}
+
+		b.SetScrolledDown(id, value)
 	case "SetTypingIndicatorsByDefault":
 		valueBytes, ok := cmd[1]
 		if !ok {

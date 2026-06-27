@@ -9,6 +9,7 @@ import (
 )
 
 var lastActiveReport = atomic.Int64{}
+var anotherDeviceIsActive = atomic.Bool{}
 var mostRecentActiveReports = map[string]int64{}
 var mostRecentActiveReportsMutex sync.Mutex
 
@@ -88,10 +89,12 @@ func (b *Bounce) updateOtherDeviceActive() {
 	now := time.Now().Unix()
 	for _, ts := range mostRecentActiveReports {
 		if ts+secondsUntilDeviceInactive > now {
+			anotherDeviceIsActive.Store(true)
 			b.ui.AnotherDeviceActive()
 			return
 		}
 	}
 
+	anotherDeviceIsActive.Store(false)
 	b.ui.NoOtherDeviceActive()
 }

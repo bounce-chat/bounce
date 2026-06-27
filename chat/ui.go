@@ -463,8 +463,6 @@ type UI interface {
 	GroupInviteAccepted(UpdateGroupInviteAccepted)
 	GroupInviteRejected(UpdateGroupInviteRejected)
 	RollbackGroup(uuid.UUID)
-	NotifyInvitedToGroup(string)
-	NotifyAddedToGroup(string)
 
 	// Generic thread items
 	DeleteItem(uuid.UUID)

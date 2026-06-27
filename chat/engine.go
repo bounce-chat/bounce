@@ -48,12 +48,14 @@ type Engine interface {
 	RevokeInvite(groupID uuid.UUID, userID uuid.UUID) error
 	SendDirectMessage(DirectMessage, map[uuid.UUID]io.ReadCloser, map[uuid.UUID]string)
 	SendGroupMessage(GroupMessage, map[uuid.UUID]io.ReadCloser, map[uuid.UUID]string)
+	SetActiveThread(id uuid.UUID)
 	SetAutoJoinGroups(value int)
 	SetDMLastOpened(userID uuid.UUID, timestamp int64)
 	SetDMMutedUntil(userID uuid.UUID, mutedUntil int64) error
 	SetDMReadReceiptSettings(userID uuid.UUID, override bool, enabled bool) error
 	SetDMRetention(userID uuid.UUID, retention int64) error
 	SetDMTypingIndicatorSettings(userID uuid.UUID, override bool, enabled bool) error
+	SetForeground(bool)
 	SetGroupImage(groupID uuid.UUID, image []byte) error
 	SetGroupLastOpened(groupID uuid.UUID, timestamp int64)
 	SetGroupMutedUntil(groupID uuid.UUID, mutedUntil int64) error
@@ -68,6 +70,7 @@ type Engine interface {
 	SetOpenDM(userID uuid.UUID, open bool) error
 	SetProfile(profileName string, image []byte, deviceName string) error
 	SetReadReceiptsByDefault(value bool)
+	SetScrolledDown(id uuid.UUID, value bool)
 	SetTypingIndicatorsByDefault(value bool)
 	SetUserNotes(userID uuid.UUID, notes string) error
 	Shutdown()

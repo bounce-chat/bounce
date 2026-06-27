@@ -698,9 +698,19 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 			b.GroupConnectionDesired(g.ID)
 
 			if gs.isMember(b.currentUserID()) {
-				b.ui.NotifyAddedToGroup(initialGroup.Name)
+				if b.postNotification != nil {
+					deferToAnotherDevice := !uiIsInForeground.Load() && anotherDeviceIsActive.Load()
+					if !deferToAnotherDevice {
+						b.postNotification(initialGroup.Name, "You have been added to a group")
+					}
+				}
 			} else {
-				b.ui.NotifyInvitedToGroup(initialGroup.Name)
+				if b.postNotification != nil {
+					deferToAnotherDevice := !uiIsInForeground.Load() && anotherDeviceIsActive.Load()
+					if !deferToAnotherDevice {
+						b.postNotification(initialGroup.Name, "You have been invited to a group")
+					}
+				}
 			}
 		} else {
 			log.WithFields(log.Fields{

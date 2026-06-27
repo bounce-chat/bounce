@@ -697,20 +697,6 @@ func pollEvents(userInterface chat.UI) {
 				}
 
 				userInterface.RollbackGroup(id)
-			case "NotifyAddedToGroup":
-				sBytes, ok := cmd[1]
-				if !ok {
-					log.Error("no bytes")
-					continue
-				}
-				userInterface.NotifyAddedToGroup(string(sBytes))
-			case "NotifyInvitedToGroup":
-				sBytes, ok := cmd[1]
-				if !ok {
-					log.Error("no bytes")
-					continue
-				}
-				userInterface.NotifyInvitedToGroup(string(sBytes))
 			case "GroupInviteRevoked":
 				bytes, ok := cmd[1]
 				if !ok {

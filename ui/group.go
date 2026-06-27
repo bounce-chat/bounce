@@ -968,20 +968,6 @@ func (ui *ui) setGroupMutedUntilButton(g *group) {
 	g.muteButton.Refresh()
 }
 
-func (ui *ui) NotifyInvitedToGroup(name string) {
-	deferToAnotherDevice := !ui.state.active && ui.state.anotherDeviceActive
-	if !deferToAnotherDevice {
-		ui.app.SendNotification(fyne.NewNotification(name, "You have been invited to a group"))
-	}
-}
-
-func (ui *ui) NotifyAddedToGroup(name string) {
-	deferToAnotherDevice := !ui.state.active && ui.state.anotherDeviceActive
-	if !deferToAnotherDevice {
-		ui.app.SendNotification(fyne.NewNotification(name, "You have been added to a group"))
-	}
-}
-
 func (ui *ui) DisplayGroupMessage(gm chat.GroupMessage) {
 	g, exists := ui.threads.getGroup(gm.Thread)
 	if !exists {

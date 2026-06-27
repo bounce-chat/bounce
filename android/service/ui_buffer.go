@@ -717,26 +717,6 @@ func (u *uiBuffer) RollbackGroup(id uuid.UUID) {
 	})
 }
 
-func (u *uiBuffer) NotifyAddedToGroup(s string) {
-	u.Lock()
-	defer u.Unlock()
-
-	u.events = append(u.events, map[int][]byte{
-		0: []byte("NotifyAddedToGroup"),
-		1: []byte(s),
-	})
-}
-
-func (u *uiBuffer) NotifyInvitedToGroup(s string) {
-	u.Lock()
-	defer u.Unlock()
-
-	u.events = append(u.events, map[int][]byte{
-		0: []byte("NotifyInvitedToGroup"),
-		1: []byte(s),
-	})
-}
-
 func (u *uiBuffer) GroupInviteRevoked(ugir chat.UpdateGroupInviteRevoked) {
 	u.Lock()
 	defer u.Unlock()

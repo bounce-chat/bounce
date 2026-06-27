@@ -132,7 +132,7 @@ func Main() {
 		},
 	}
 
-	ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory())
+	ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory(), ui.postNotification)
 	ui.build()
 	go func() {
 		ui.loadInitialState(ui.bounce.GetInitialState())
@@ -183,6 +183,7 @@ func (ui *ui) build() {
 	ui.app.Lifecycle().SetOnEnteredForeground(func() {
 		ui.state.focused = true
 		ui.state.active = true
+		ui.bounce.SetForeground(true)
 
 		activeTicker = time.NewTicker(5 * time.Second)
 		activeTickerCleanup = make(chan bool)
@@ -223,6 +224,7 @@ func (ui *ui) build() {
 	ui.app.Lifecycle().SetOnExitedForeground(func() {
 		ui.state.focused = false
 		ui.state.active = false
+		ui.bounce.SetForeground(false)
 
 		if activeTicker != nil {
 			activeTicker.Stop()
@@ -787,6 +789,10 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 	})
 	go ui.messages.writeCache()
+}
+
+func (ui *ui) postNotification(title, content string) {
+	ui.app.SendNotification(fyne.NewNotification(title, content))
 }
 
 func chatContainerSizeAtStartup() fyne.Size {

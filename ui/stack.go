@@ -213,6 +213,7 @@ func (ui *ui) mobileBack() {
 	// If we're not looking at a thread, unset the active thread
 	if displayView.viewType != viewTypeThread {
 		ui.state.activeThread = uuid.Nil
+		ui.bounce.SetActiveThread(uuid.Nil)
 	}
 }
 
