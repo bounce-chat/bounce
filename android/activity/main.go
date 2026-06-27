@@ -4,11 +4,13 @@
 //go:generate gomobile init
 
 //go:generate fyne package  --app-id chat.bounce -icon ../../ui/assets/launcher_circle.png -name Bounce -os android -tags migrated_fynedo
+////go:generate ../../../../bounce-chat/tools/cmd/fyne/fyne package  --app-id chat.bounce -icon ../../ui/assets/launcher_circle.png -name Bounce -os android -tags migrated_fynedo
 
 //go:generate unzip -o "Bounce.apk" -d ./unzippedAPK
 //https://github.com/pxb1988/dex2jar/releases
 //go:generate dex2jar ./unzippedAPK/classes.dex -o ./activity.jar --force
 
+////go:generate zip -d activity.jar "com/google/errorprone/*" "com/google/common/*" "org/jspecify/*" "org/jetbrains/*" "org/intellij/*" "kotlinx/*" "kotlin/*" "android/*" "androidx/annotation/*" "androidx/arch/*" "androidx/collection/*" "androidx/concurrent/*" "androidx/core/*" "androidx/lifecycle/*" "androidx/tracing/*" "androidx/versionedparcelable/*"
 //go:generate sh -c "cp activity.jar ../apk/app/src/main/libs"
 //go:generate sh -c "cp -r unzippedAPK/lib/* ../apk/app/src/main/jniLibs/"
 
