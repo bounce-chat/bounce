@@ -205,9 +205,9 @@ func (ui *ui) build() {
 			if fyne.CurrentDevice().IsMobile() {
 				go func() {
 					if ui.app.Preferences().Bool(darkMode) {
-						setStatusBar(true)
+						fyne.Do(func() { setStatusBar(true) })
 					} else {
-						setStatusBar(false)
+						fyne.Do(func() { setStatusBar(false) })
 					}
 					if ui.bounce != nil {
 						if ui.bounce.NetworkOnline() {

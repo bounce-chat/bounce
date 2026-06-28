@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/mobile"
+	"fyne.io/fyne/v2/driver/sensor"
 	"github.com/google/uuid"
 	"github.com/rymdport/go-qrcode"
 	log "github.com/sirupsen/logrus"
@@ -33,6 +34,8 @@ const (
 	viewTypeImageViewer
 )
 
+var cameraIsRunning = false
+
 var hookedDialogs = make(map[dialog.Dialog]bool)
 
 type view struct {
@@ -47,14 +50,15 @@ type dialogWithCallback struct {
 }
 
 func (ui *ui) mobileBack() {
+	if cameraIsRunning {
+		if cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice); isCameraDevice {
+			cameraDevice.StopPreview()
+			cameraIsRunning = false
+		}
+	}
+
 	// If there's only one view left in the history, we're at the beginning and should close the app
 	if len(ui.state.viewStack) == 1 {
-		if ui.state.viewStack[0].viewType != viewTypeAllThreads {
-			log.Error("mobile navigation bug: view all threads was not the root of the mobile view stack.  Preventing close and inserting it is root.")
-			ui.state.viewStack = []view{view{viewType: viewTypeAllThreads}}
-			ui.showMainContainer()
-			return
-		}
 		if drv, ok := ui.app.Driver().(mobile.Driver); ok {
 			drv.(mobile.Driver).GoBack()
 		}

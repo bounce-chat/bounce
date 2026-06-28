@@ -35,6 +35,12 @@
     <uses-permission
 	    android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <uses-permission
+	    android:name="android.permission.CAMERA" />
+
+    <uses-feature android:name="android.hardware.camera.any" />
+    <uses-feature android:name="android.hardware.camera.autofocus" />
+
     <application
         android:icon="@mipmap/icon"
         android:label="Bounce">
@@ -49,7 +55,10 @@
                     android:value="Bounce" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
+		<category android:name="android.intent.category.LAUNCHER" />
+		<action android:name="android.media.action.IMAGE_CAPTURE" />
+                <action android:name="android.media.action.STILL_IMAGE_CAMERA"/>
+                <action android:name="android.media.action.VIDEO_CAMERA" />
             </intent-filter>
         </activity>
 

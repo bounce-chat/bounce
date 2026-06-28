@@ -5,20 +5,25 @@ import (
 	"errors"
 	"image"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/sensor"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/hkparker/bounce/chat"
+	go_qr "github.com/piglig/go-qr"
 	"github.com/rymdport/go-qrcode"
 	log "github.com/sirupsen/logrus"
-	//"golang.org/x/image/bmp"
 )
+
+var stopAddUserCameraProcessing chan bool
+var addUserScanner = make(chan image.Image)
 
 type addUser struct {
 	currentStep  *widget.Label
@@ -28,6 +33,7 @@ type addUser struct {
 	qrCode       *canvas.Image
 	scanButton   *widget.Button
 	shareButton  *widget.Button
+	videoStream  *canvas.Image
 }
 
 func (ui *ui) showAddUser() {
@@ -82,6 +88,16 @@ func (ui *ui) buildAddUser() {
 			if fyne.CurrentDevice().IsMobile() {
 				ui.mobileBack()
 			} else {
+				if cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice); isCameraDevice {
+					if cameraIsRunning {
+						cameraDevice.StopPreview()
+						cameraIsRunning = false
+						select {
+						case stopAddUserCameraProcessing <- true:
+						default:
+						}
+					}
+				}
 				ui.showMainContainer()
 			}
 		})
@@ -96,6 +112,16 @@ func (ui *ui) buildAddUser() {
 			if fyne.CurrentDevice().IsMobile() {
 				ui.mobileBack()
 			} else {
+				if cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice); isCameraDevice {
+					if cameraIsRunning {
+						cameraDevice.StopPreview()
+						cameraIsRunning = false
+						select {
+						case stopAddUserCameraProcessing <- true:
+						default:
+						}
+					}
+				}
 				ui.showMainContainer()
 			}
 		})
@@ -118,6 +144,12 @@ func (ui *ui) buildAddUser() {
 	})
 	ui.widgets.addUser.shareButton.Importance = widget.HighImportance
 	ui.widgets.addUser.scanButton = widget.NewButton("Scan", func() {
+		cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
+		if isCameraDevice {
+			cameraDevice.StartPreview()
+			cameraIsRunning = true
+			go ui.processCameraFramesForAddUser()
+		}
 		ui.widgets.addUser.scanButton.Importance = widget.HighImportance
 		ui.widgets.addUser.scanButton.Refresh()
 		ui.widgets.addUser.shareButton.Importance = widget.MediumImportance
@@ -125,7 +157,7 @@ func (ui *ui) buildAddUser() {
 
 		ui.containers.addUserContent.Objects = []fyne.CanvasObject{ui.containers.scanUser}
 		ui.containers.addUserContent.Refresh()
-		if !fyne.CurrentDevice().IsMobile() {
+		if !isCameraDevice {
 			ui.window.Canvas().Focus(ui.widgets.addUser.scanEntry)
 		}
 	})
@@ -146,6 +178,8 @@ func (ui *ui) buildAddUser() {
 }
 
 func (ui *ui) buildScanUser() {
+	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
+
 	ui.widgets.addUser = &addUser{
 		currentStep: widget.NewLabel(""),
 		progressBar: widget.NewProgressBarInfinite(),
@@ -176,37 +210,89 @@ func (ui *ui) buildScanUser() {
 				ui.widgets.addUser.currentStep.Show()
 			})
 			err := ui.bounce.RequestToAddUser(strings.TrimSpace(str))
-			fyne.Do(func() {
-				if err != nil {
+			if err == nil {
+				fyne.Do(func() {
+					ui.widgets.addUser.currentStep.Text = "Waiting for response..."
+					ui.widgets.addUser.currentStep.Refresh()
+					ui.views.addUser.Refresh()
+				})
+			} else {
+				fyne.Do(func() {
 					ui.widgets.addUser.scanEntry.Text = ""
 					ui.widgets.addUser.progressBar.Hide()
 					ui.widgets.addUser.currentStep.Hide()
 					ui.containers.scanUser.Refresh()
-					ui.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), ui.window), nil)
-				} else {
-					ui.widgets.addUser.currentStep.Text = "Waiting for response..."
-					ui.widgets.addUser.currentStep.Refresh()
-					ui.views.addUser.Refresh()
-				}
-			})
+					ui.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), ui.window), func() {
+						if isCameraDevice {
+							cameraDevice.StartPreview()
+							go ui.processCameraFramesForAddUser()
+							cameraIsRunning = true
+						}
+					})
+				})
+			}
 		}()
 	}
-	ui.widgets.addUser.scanEntry.ActionItem = widget.NewButtonWithIcon("", theme.MediaPhotoIcon(), func() {
-		str, err := ui.scanQR()
-		if str != "" && err == nil {
-			ui.widgets.addUser.scanEntry.OnSubmitted(str)
-		}
-	})
-	if !fyne.CurrentDevice().IsMobile() {
-		ui.widgets.addUser.scanEntry.ActionItem.(*widget.Button).Disable()
-	}
 
-	ui.containers.scanUser = container.NewVBox(
-		widget.NewLabel("Paste in the string or scan the QR code to add friend"),
-		ui.widgets.addUser.scanEntry,
-		ui.widgets.addUser.currentStep,
-		ui.widgets.addUser.progressBar,
-	)
+	if isCameraDevice {
+		size := float32(300)
+
+		ui.widgets.addUser.videoStream = &canvas.Image{
+			FillMode: canvas.ImageFillCover,
+		}
+		ui.widgets.addUser.videoStream.Resize(fyne.Size{size, size})
+		ui.widgets.addUser.videoStream.SetMinSize(fyne.Size{size, size})
+
+		guideImage, _ := assets.ReadFile("assets/qr-guide.png")
+		guide := canvas.NewImageFromReader(bytes.NewReader(guideImage), "qr-guide.png")
+		guide.Translucency = 0.5
+		guide.Resize(fyne.Size{size, size})
+		guide.SetMinSize(fyne.Size{size, size})
+
+		var haveResult atomic.Bool
+		go func() {
+			for frame := range addUserScanner {
+				text, err := go_qr.Decode(frame)
+				if err == nil {
+					fyne.Do(func() {
+						if haveResult.Load() {
+							return
+						}
+						haveResult.Store(true)
+						if cameraIsRunning {
+							cameraDevice.StopPreview()
+							cameraIsRunning = false
+							select {
+							case stopAddUserCameraProcessing <- true:
+							default:
+							}
+						}
+						ui.widgets.addUser.scanEntry.SetText(text)
+						ui.widgets.addUser.scanEntry.OnSubmitted(text)
+						haveResult.Store(false)
+					})
+				}
+			}
+		}()
+
+		ui.containers.scanUser = container.NewVBox(
+			widget.NewLabel("Scan their QR code, or paste in the string to add friend"),
+			container.NewCenter(container.NewStack(
+				ui.widgets.addUser.videoStream,
+				guide,
+			)),
+			ui.widgets.addUser.scanEntry,
+			ui.widgets.addUser.currentStep,
+			ui.widgets.addUser.progressBar,
+		)
+	} else {
+		ui.containers.scanUser = container.NewVBox(
+			widget.NewLabel("Paste in the string to add friend"),
+			ui.widgets.addUser.scanEntry,
+			ui.widgets.addUser.currentStep,
+			ui.widgets.addUser.progressBar,
+		)
+	}
 }
 
 func (ui *ui) buildDisplayAddUserString() {
@@ -215,7 +301,7 @@ func (ui *ui) buildDisplayAddUserString() {
 	ui.widgets.addUser.qrCode = &canvas.Image{
 		FillMode: canvas.ImageFillContain,
 	}
-	ui.widgets.addUser.qrCode.SetMinSize(fyne.Size{Height: 256, Width: 256})
+	ui.widgets.addUser.qrCode.SetMinSize(fyne.Size{Height: 300, Width: 300})
 
 	ui.widgets.addUser.displayEntry = widget.NewEntry()
 	ui.widgets.addUser.displayEntry.ActionItem = widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() { ui.window.Clipboard().SetContent(ui.widgets.addUser.displayEntry.Text) })
@@ -245,6 +331,17 @@ func (ui *ui) UserAdded(u chat.User) {
 			} else {
 				ui.showMainContainer()
 			}
+		} else {
+			if cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice); isCameraDevice {
+				if cameraIsRunning {
+					cameraDevice.StopPreview()
+					cameraIsRunning = false
+					select {
+					case stopAddUserCameraProcessing <- true:
+					default:
+					}
+				}
+			}
 		}
 		if !ui.state.initialSyncIncomplete {
 			ui.NewDirectMessage(u) // TODO: no DM state exists for the user yet
@@ -257,4 +354,31 @@ func (ui *ui) AddUserRequestRejected(peer string) {
 	fyne.DoAndWait(func() {
 		ui.showDialog(dialog.NewError(errors.New("Friend request rejected, make sure you scan the device quickly"), ui.window), nil)
 	})
+}
+
+func (ui *ui) processCameraFramesForAddUser() {
+	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
+	if !isCameraDevice {
+		return
+	}
+	preview := cameraDevice.Preview()
+
+	for {
+		select {
+		case img := <-preview:
+			fyne.Do(func() {
+				if ui.widgets.addUser.videoStream == nil {
+					return
+				}
+				ui.widgets.addUser.videoStream.Image = img
+				ui.widgets.addUser.videoStream.Refresh()
+			})
+			select {
+			case addUserScanner <- img:
+			default:
+			}
+		case <-stopAddUserCameraProcessing:
+			return
+		}
+	}
 }

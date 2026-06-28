@@ -1,21 +1,29 @@
 package ui
 
 import (
+	"bytes"
 	"errors"
+	"image"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/sensor"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/hkparker/bounce/chat"
+	go_qr "github.com/piglig/go-qr"
 	log "github.com/sirupsen/logrus"
 )
+
+var stopNewSyncDeviceCameraProcessing chan bool
+var newSyncDeviceScanner = make(chan image.Image)
 
 type newSyncDevice struct {
 	currentStep         *widget.Label
@@ -26,9 +34,12 @@ type newSyncDevice struct {
 	deviceNameEntry     *widget.Entry
 	syncStringEntry     *widget.Entry
 	syncStringInput     *fyne.Container
+	videoStream         *canvas.Image
 }
 
 func (ui *ui) buildNewSyncDeviceWidgets() {
+	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
+
 	progressBar := widget.NewProgressBar()
 	infiniteProgressBar := widget.NewProgressBarInfinite()
 	progressBars := container.NewStack(
@@ -51,6 +62,16 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 			if fyne.CurrentDevice().IsMobile() {
 				ui.mobileBack()
 			} else {
+				if cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice); isCameraDevice {
+					if cameraIsRunning {
+						cameraDevice.StopPreview()
+						cameraIsRunning = false
+						select {
+						case stopNewSyncDeviceCameraProcessing <- true:
+						default:
+						}
+					}
+				}
 				ui.showNewSyncDevice()
 			}
 		}),
@@ -66,14 +87,70 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 		ui.widgets.newSyncDevice.syncStringEntry.OnSubmitted(ui.widgets.newSyncDevice.syncStringEntry.Text)
 	})
 	syncButton.Importance = widget.HighImportance
-	ui.widgets.newSyncDevice.syncStringInput = container.NewVBox(
-		syncStringEntryLabel,
-		container.New(
-			layout.NewBorderLayout(nil, nil, nil, syncButton),
-			syncButton,
-			ui.widgets.newSyncDevice.syncStringEntry,
-		),
-	)
+
+	if isCameraDevice {
+		size := float32(300)
+
+		ui.widgets.newSyncDevice.videoStream = &canvas.Image{
+			FillMode: canvas.ImageFillCover,
+		}
+		ui.widgets.newSyncDevice.videoStream.Resize(fyne.Size{size, size})
+		ui.widgets.newSyncDevice.videoStream.SetMinSize(fyne.Size{size, size})
+
+		guideImage, _ := assets.ReadFile("assets/qr-guide.png")
+		guide := canvas.NewImageFromReader(bytes.NewReader(guideImage), "qr-guide.png")
+		guide.Translucency = 0.5
+		guide.Resize(fyne.Size{size, size})
+		guide.SetMinSize(fyne.Size{size, size})
+
+		var haveResult atomic.Bool
+		go func() {
+			for frame := range newSyncDeviceScanner {
+				text, err := go_qr.Decode(frame)
+				if err == nil {
+					fyne.Do(func() {
+						if haveResult.Load() {
+							return
+						}
+						haveResult.Store(true)
+						if cameraIsRunning {
+							cameraDevice.StopPreview()
+							cameraIsRunning = false
+							select {
+							case stopNewSyncDeviceCameraProcessing <- true:
+							default:
+							}
+						}
+						ui.widgets.newSyncDevice.syncStringEntry.SetText(text)
+						ui.widgets.newSyncDevice.syncStringEntry.OnSubmitted(text)
+						haveResult.Store(false)
+					})
+				}
+			}
+		}()
+
+		ui.widgets.newSyncDevice.syncStringInput = container.NewVBox(
+			syncStringEntryLabel,
+			container.NewCenter(container.NewStack(
+				ui.widgets.newSyncDevice.videoStream,
+				guide,
+			)),
+			container.New(
+				layout.NewBorderLayout(nil, nil, nil, syncButton),
+				syncButton,
+				ui.widgets.newSyncDevice.syncStringEntry,
+			),
+		)
+	} else {
+		ui.widgets.newSyncDevice.syncStringInput = container.NewVBox(
+			syncStringEntryLabel,
+			container.New(
+				layout.NewBorderLayout(nil, nil, nil, syncButton),
+				syncButton,
+				ui.widgets.newSyncDevice.syncStringEntry,
+			),
+		)
+	}
 
 	ui.widgets.newSyncDevice.deviceNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
@@ -167,9 +244,17 @@ func (ui *ui) showNewSyncDevice() {
 	ui.widgets.newSyncDevice.infiniteProgressBar.Hide()
 	ui.widgets.newSyncDevice.currentStep.Text = ""
 	ui.widgets.newSyncDevice.currentStep.Refresh()
+
+	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
+	if isCameraDevice {
+		cameraDevice.StartPreview()
+		cameraIsRunning = true
+		go ui.processCameraFramesForNewSyncDevice()
+	}
 }
 
 func (ui *ui) buildNewSyncDevice() {
+	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
 	logo := makeLogo(228, 167) // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
 	header := container.NewVBox(
 		container.NewCenter(logo),
@@ -215,30 +300,32 @@ func (ui *ui) buildNewSyncDevice() {
 			})
 
 			err := ui.bounce.RequestToSync(str)
-			fyne.Do(func() {
-				if err != nil {
+			if err == nil {
+				fyne.Do(func() {
+					ui.widgets.newSyncDevice.currentStep.Text = "Waiting for sync response..."
+					ui.widgets.newSyncDevice.currentStep.Refresh()
+				})
+			} else {
+				fyne.Do(func() {
 					ui.state.initialSyncIncomplete = false
 					ui.widgets.newSyncDevice.infiniteProgressBar.Hide()
 					ui.widgets.newSyncDevice.currentStep.Text = ""
 					ui.widgets.newSyncDevice.currentStep.Hide()
 					ui.widgets.newSyncDevice.syncStringEntry.Text = ""
 					ui.widgets.newSyncDevice.syncStringEntry.Refresh()
-					ui.showDialog(dialog.NewError(errors.New("Error sending sync request: "+err.Error()), ui.window), nil)
 					ui.widgets.newSyncDevice.backButton.Enable()
 					ui.widgets.newSyncDevice.syncStringInput.Show()
-				} else {
-					ui.widgets.newSyncDevice.currentStep.Text = "Waiting for sync response..."
-					ui.widgets.newSyncDevice.currentStep.Refresh()
-				}
-			})
+					ui.showDialog(dialog.NewError(errors.New("Error sending sync request: "+err.Error()), ui.window), func() {
+						if isCameraDevice {
+							cameraDevice.StartPreview()
+							cameraIsRunning = true
+							go ui.processCameraFramesForNewSyncDevice()
+						}
+					})
+				})
+			}
 		}()
 	}
-	ui.widgets.newSyncDevice.syncStringEntry.ActionItem = widget.NewButtonWithIcon("", theme.MediaPhotoIcon(), func() {
-		str, err := ui.scanQR()
-		if str != "" && err == nil {
-			ui.widgets.newSyncDevice.syncStringEntry.OnSubmitted(str)
-		}
-	})
 
 	ui.views.newSyncDevice = container.New(
 		layout.NewBorderLayout(header, actionButtons, nil, nil),
@@ -272,8 +359,15 @@ func (ui *ui) SyncDeviceRequestAccepted(profile chat.User, devices []chat.Device
 }
 
 func (ui *ui) SyncDeviceRequestRejected(peer string) {
+	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
 	fyne.DoAndWait(func() {
-		ui.showDialog(dialog.NewError(errors.New("Sync request rejected, make sure you scan the device quickly"), ui.window), nil)
+		ui.showDialog(dialog.NewError(errors.New("Sync request rejected, make sure you scan the device quickly"), ui.window), func() {
+			if isCameraDevice && !cameraIsRunning {
+				cameraDevice.StartPreview()
+				cameraIsRunning = true
+				go ui.processCameraFramesForNewSyncDevice()
+			}
+		})
 		ui.widgets.newSyncDevice.currentStep.Text = ""
 		ui.widgets.newSyncDevice.currentStep.Refresh()
 		ui.widgets.newSyncDevice.currentStep.Hide()
@@ -319,6 +413,33 @@ func (ui *ui) InitialSyncComplete() {
 					ui.showDialog(dialog.NewError(errors.New("Error setting new device name: "+err.Error()), ui.window), nil)
 				})
 			}
+		}
+	}
+}
+
+func (ui *ui) processCameraFramesForNewSyncDevice() {
+	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
+	if !isCameraDevice {
+		return
+	}
+	preview := cameraDevice.Preview()
+
+	for {
+		select {
+		case img := <-preview:
+			fyne.Do(func() {
+				if ui.widgets.newSyncDevice.videoStream == nil {
+					return
+				}
+				ui.widgets.newSyncDevice.videoStream.Image = img
+				ui.widgets.newSyncDevice.videoStream.Refresh()
+			})
+			select {
+			case newSyncDeviceScanner <- img:
+			default:
+			}
+		case <-stopNewSyncDeviceCameraProcessing:
+			return
 		}
 	}
 }

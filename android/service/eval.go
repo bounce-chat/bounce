@@ -480,7 +480,10 @@ func Eval(rawTask string) string {
 			log.Error("no offer bytes")
 			return ""
 		}
-		b.RequestToAddUser(string(offerBytes))
+		err := b.RequestToAddUser(string(offerBytes))
+		if err != nil {
+			return err.Error()
+		}
 	case "RemoveUserFromGroup":
 		groupIDBytes, ok := cmd[1]
 		if !ok {

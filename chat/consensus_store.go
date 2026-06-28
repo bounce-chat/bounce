@@ -700,14 +700,14 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 			if gs.isMember(b.currentUserID()) {
 				if b.postNotification != nil {
 					deferToAnotherDevice := !uiIsInForeground.Load() && anotherDeviceIsActive.Load()
-					if !deferToAnotherDevice {
+					if !deferToAnotherDevice && waitingForInitialSyncFrom == "" {
 						b.postNotification(initialGroup.Name, "You have been added to a group")
 					}
 				}
 			} else {
 				if b.postNotification != nil {
 					deferToAnotherDevice := !uiIsInForeground.Load() && anotherDeviceIsActive.Load()
-					if !deferToAnotherDevice {
+					if !deferToAnotherDevice && waitingForInitialSyncFrom == "" {
 						b.postNotification(initialGroup.Name, "You have been invited to a group")
 					}
 				}

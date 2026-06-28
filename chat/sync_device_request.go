@@ -125,6 +125,7 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 			}).Error("error deleting old delivery records for sync device that is re-syncing")
 		}
 
+		// TODO: re-send in loop until they make a reference request
 		b.sendDirect(peer, &syncDeviceRequestAccepted{
 			Profile:    profile,
 			Settings:   profile.ProfileSettings,

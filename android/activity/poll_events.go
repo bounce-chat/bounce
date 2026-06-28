@@ -148,7 +148,7 @@ func pollEvents(userInterface chat.UI) {
 				userInterface.InitialSyncStarting()
 			case "InitialSyncProgress":
 				floatBytes, ok := cmd[1]
-				if !ok || len(floatBytes) != 9 {
+				if !ok || len(floatBytes) != 8 {
 					log.Error("bad float bytes for sync progress")
 					continue
 				}

@@ -467,13 +467,10 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 	}
 
 	if m.text != "" {
-		// TODO: enable hyperlinks in Fyne 2.8 once wrapping is fixed
 		if cb.tooLong {
-			//cb.message.Segments = hyperlinkify(string([]rune(m.text)[:maxRunes]) + "...")
-			cb.message.Segments[0].(*widget.TextSegment).Text = string([]rune(m.text)[:maxRunes]) + "..."
+			cb.message.Segments = hyperlinkify(string([]rune(m.text)[:maxRunes]) + "...")
 		} else {
-			//cb.message.Segments = hyperlinkify(m.text)
-			cb.message.Segments[0].(*widget.TextSegment).Text = m.text
+			cb.message.Segments = hyperlinkify(m.text)
 		}
 		cb.message.Show()
 		cb.message.Refresh()

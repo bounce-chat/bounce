@@ -18,6 +18,7 @@ import (
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/DeRuina/timberjack"
 	"github.com/google/uuid"
+	"github.com/mdp/qrterminal/v3"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
 	"gorm.io/driver/sqlite"
@@ -91,7 +92,16 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 		rand.Read(secretBytes)
 		setupKey = fmt.Sprintf("%x", secretBytes)
 		fmt.Println("Welcome to Bounce!  This encrypted device is currently unmanaged.  Use the following setup key on an existing device to manage this encrypted device:")
-		fmt.Printf("%s:%s\n\n", b.network.Address(), setupKey)
+		fmt.Printf("\n%s:%s\n\n", b.network.Address(), setupKey)
+		config := qrterminal.Config{
+			Level:     qrterminal.L,
+			Writer:    os.Stdout,
+			BlackChar: qrterminal.BLACK,
+			WhiteChar: qrterminal.WHITE,
+			QuietZone: 1,
+		}
+		qrterminal.GenerateWithConfig(b.network.Address()+":"+setupKey, config)
+		fmt.Print("\n\n")
 	}
 
 	ticker := time.NewTicker(5 * time.Minute)

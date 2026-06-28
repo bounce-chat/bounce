@@ -392,11 +392,17 @@ func (b *aidlBounce) RenameGroup(groupID uuid.UUID, name string) error {
 }
 
 func (b *aidlBounce) RequestToAddUser(offer string) error {
-	_, err := callCommand(map[int][]byte{
+	errStr, err := callCommand(map[int][]byte{
 		0: []byte("RequestToAddUser"),
 		1: []byte(offer),
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	if errStr != "" {
+		return errors.New(errStr)
+	}
+	return nil
 }
 
 func (b *aidlBounce) RequestToManageEncryptedDevice(data string) error {
