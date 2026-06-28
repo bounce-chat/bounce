@@ -41,7 +41,7 @@ type group struct {
 	notificationsMutedUntil          int64
 	createdAt                        int64
 	editIcon                         *defaultImage
-	headerName                       *widget.Label
+	headerUserbutton                 *userButton
 	invitesLabel                     *widget.Label
 	headerIcon                       *defaultImage
 	editContainer                    *fyne.Container
@@ -496,8 +496,12 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 	editButton.Importance = widget.LowImportance
 
 	g.headerIcon = newDefaultImage(g.id, bounceGroup.Images, g.initial, 32, ui.bounce.GetFileData, nil) // TODO: get size from theme
-	g.headerName = widget.NewLabel(bounceGroup.Name)
-	g.headerName.Truncation = fyne.TextTruncateEllipsis
+
+	g.headerUserbutton = newUserButton(g.headerIcon, bounceGroup.Name, false, func() {
+		ui.refreshUserSelections(g)
+		ui.showEditGroupContainer(g)
+	})
+	g.headerUserbutton.noHover = true
 
 	var gLabel *fyne.Container
 	if fyne.CurrentDevice().IsMobile() {
@@ -507,22 +511,17 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		backButton.Importance = widget.LowImportance
 		leftItems := container.NewHBox(
 			backButton,
-			g.headerIcon,
 		)
 		gLabel = container.New(
 			layout.NewBorderLayout(nil, nil, leftItems, nil),
 			leftItems,
-			g.headerName,
+			g.headerUserbutton,
 		)
 	} else {
-		gLabel = container.New(
-			layout.NewBorderLayout(nil, nil, g.headerIcon, nil),
-			g.headerIcon,
-			g.headerName,
-		)
+		gLabel = container.NewStack(g.headerUserbutton)
 	}
 
-	g.headerName.TextStyle = fyne.TextStyle{Bold: true}
+	g.headerUserbutton.name.Segments[0].(*widget.TextSegment).Style.TextStyle = fyne.TextStyle{Bold: true}
 	g.header = container.New(
 		layout.NewBorderLayout(nil, nil, nil, editButton),
 		editButton,
@@ -800,8 +799,8 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 			ui.threads.add(bounceGroup.ID, g)
 			ui.threads.bulkAssociate(g, items)
 		}
-		g.headerName.Text = bounceGroup.Name
-		g.headerName.Refresh()
+		g.headerUserbutton.name.Segments[0].(*widget.TextSegment).Text = bounceGroup.Name
+		g.headerUserbutton.Refresh()
 		g.setInitial()
 		g.headerIcon.setString(g.initial)
 		g.editIcon.setString(g.initial)

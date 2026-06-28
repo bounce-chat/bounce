@@ -29,7 +29,7 @@ type directMessage struct {
 	overrideTypingIndicatorSetting   bool
 	typingIndicatorsEnabled          bool
 	editIcon                         *defaultImage
-	headerUsername                   *widget.Label
+	headerUserbutton                 *userButton
 	headerIcon                       *defaultImage
 	username                         *widget.Label
 	realName                         *widget.RichText
@@ -196,8 +196,8 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 
 	dm.headerIcon = newDefaultImage(user.id, bounceUser.Images, user.initials, 32, ui.bounce.GetFileData, nil) // TODO: get size from theme
 
-	dm.headerUsername = widget.NewLabel(user.getDisplayName())
-	dm.headerUsername.Truncation = fyne.TextTruncateEllipsis
+	dm.headerUserbutton = newUserButton(dm.headerIcon, user.getDisplayName(), false, func() { ui.showEditDMContainer(dm) })
+	dm.headerUserbutton.noHover = true
 
 	var userLabel *fyne.Container
 	if fyne.CurrentDevice().IsMobile() {
@@ -208,22 +208,17 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 
 		leftItems := container.NewHBox(
 			backButton,
-			dm.headerIcon,
 		)
 		userLabel = container.New(
 			layout.NewBorderLayout(nil, nil, leftItems, nil),
 			leftItems,
-			dm.headerUsername,
+			dm.headerUserbutton,
 		)
 	} else {
-		userLabel = container.New(
-			layout.NewBorderLayout(nil, nil, dm.headerIcon, nil),
-			dm.headerIcon,
-			dm.headerUsername,
-		)
+		userLabel = container.NewStack(dm.headerUserbutton)
 	}
 
-	dm.headerUsername.TextStyle = fyne.TextStyle{Bold: true}
+	dm.headerUserbutton.name.Segments[0].(*widget.TextSegment).Style.TextStyle = fyne.TextStyle{Bold: true}
 	dm.header = container.New(
 		layout.NewBorderLayout(nil, nil, nil, editButton),
 		editButton,

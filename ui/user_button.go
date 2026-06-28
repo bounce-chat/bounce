@@ -51,6 +51,7 @@ type userButton struct {
 	admin      *canvas.Text
 	background *canvas.Rectangle
 	hovered    bool
+	noHover    bool
 	clicked    func()
 }
 
@@ -89,7 +90,7 @@ func (ub *userButton) applyTheme() {
 }
 
 func (ub *userButton) buttonColor() color.Color {
-	if ub.hovered {
+	if ub.hovered && !ub.noHover {
 		bg := theme.ButtonColor()
 		return blendColor(bg, theme.HoverColor())
 	}

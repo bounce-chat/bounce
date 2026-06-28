@@ -5,6 +5,7 @@ import (
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
 	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
@@ -118,8 +119,8 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 
 			dm.username.Text = u.getDisplayName()
 			dm.username.Refresh()
-			dm.headerUsername.Text = u.getDisplayName()
-			dm.headerUsername.Refresh()
+			dm.headerUserbutton.name.Segments[0].(*widget.TextSegment).Text = u.getDisplayName()
+			dm.headerUserbutton.Refresh()
 
 			if len(u.alias) > 0 && u.alias != u.name {
 				dm.realName.Show()
