@@ -634,9 +634,16 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 	if fyne.CurrentDevice().IsMobile() {
 		sendMessage := widget.NewButtonWithIcon("", theme.MailSendIcon(), sendMessage)
 		sendMessage.Importance = widget.HighImportance
-		messageButtons = container.NewHBox(addFiles, sendMessage)
+		buttonCollection := container.NewHBox(addFiles, sendMessage)
+		messageButtons = container.New(
+			layout.NewBorderLayout(nil, buttonCollection, nil, nil),
+			buttonCollection,
+		)
 	} else {
-		messageButtons = container.NewStack(addFiles)
+		messageButtons = container.New(
+			layout.NewBorderLayout(nil, addFiles, nil, nil),
+			addFiles,
+		)
 	}
 
 	footer := container.NewVBox(
