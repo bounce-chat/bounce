@@ -11,12 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hkparker/bounce/chat"
-
+	"github.com/alexballas/bine/tor"
+	"github.com/alexballas/bine/torutil"
+	"github.com/alexballas/bine/torutil/ed25519"
 	"github.com/bounce-chat/go-libtor"
-	"github.com/cretz/bine/tor"
-	"github.com/cretz/bine/torutil"
-	"github.com/cretz/bine/torutil/ed25519"
+	"github.com/hkparker/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -180,7 +179,6 @@ func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
 	bounceTor.onion, err = bounceTor.tor.Listen(
 		context.Background(),
 		&tor.ListenConf{
-			Version3:    true,
 			Key:         bounceTor.privateKey,
 			RemotePorts: []int{80},
 		},

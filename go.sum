@@ -14,10 +14,14 @@ github.com/alecthomas/assert/v2 v2.11.0 h1:2Q9r3ki8+JYXvGsDyBXwH3LcJ+WK5D0gc5E8v
 github.com/alecthomas/assert/v2 v2.11.0/go.mod h1:Bze95FyfUr7x34QZrjL+XP+0qgp/zg8yS+TtBj1WA3k=
 github.com/alecthomas/repr v0.4.0 h1:GhI2A8MACjfegCPVq9f1FLvIBS+DrQ2KQBFZP1iFzXc=
 github.com/alecthomas/repr v0.4.0/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
+github.com/alexballas/bine v0.0.0-20260627155058-604f8df1cecd h1:mmtKgFRLDqIG5i/Gbjr+nqQ21j1YStUlE0RSGssDhiw=
+github.com/alexballas/bine v0.0.0-20260627155058-604f8df1cecd/go.mod h1:DavFG/SJWwc60huMy9Y8EUjEOgIugOpyIK/rT+vRyZk=
 github.com/bbrks/go-blurhash v1.2.0 h1:99w0YT50b/B7uoZyM79Nqy+UemMOh8fO/ONyyxmr9MU=
 github.com/bbrks/go-blurhash v1.2.0/go.mod h1:r4N4/ViVMa2h6Ex6e1aoCWMTkykYWS/VXvYMCrbkRpw=
 github.com/bounce-chat/go-libtor v0.0.0-20260616123247-c380f572642a h1:cbIGuelgHHj1MyitI4snGCiLd+GDuypmY7v90GCmDbc=
 github.com/bounce-chat/go-libtor v0.0.0-20260616123247-c380f572642a/go.mod h1:LfZiY1Hg7jCW21ScpKn3rKkXHYHm5EpBTFP/lJTcw0k=
+github.com/bounce-chat/go-libtor v0.0.0-20260628013718-04d7a72733c1 h1:ErwRBeHOhdJafCH+QCyaubInUmp0gQ65s/7zaEvXBoc=
+github.com/bounce-chat/go-libtor v0.0.0-20260628013718-04d7a72733c1/go.mod h1:2z53K4URXluxso9A48yyjYjRxciVyFDglUt7y0t4Mtw=
 github.com/clipperhouse/uax29/v2 v2.7.0 h1:+gs4oBZ2gPfVrKPthwbMzWZDaAFPGYK72F0NJv2v7Vk=
 github.com/clipperhouse/uax29/v2 v2.7.0/go.mod h1:EFJ2TJMRUaplDxHKj1qAEhCtQPW2tJSwu5BF98AuoVM=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=

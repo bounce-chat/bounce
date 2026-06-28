@@ -3,7 +3,7 @@ module github.com/hkparker/bounce
 go 1.26
 
 //replace fyne.io/fyne/v2 => /home/hayden/Development/Go/src/github.com/hkparker/fyne
-//replace github.com/hkparker/go-libtor => /home/hayden/Development/Go/src/github.com/hkparker/go-libtor
+//replace github.com/bounce-chat/go-libtor => /home/hayden/Development/Go/src/github.com/bounce-chat/go-libtor
 
 require (
 	fyne.io/fyne/v2 v2.7.4
@@ -11,8 +11,9 @@ require (
 	github.com/Basekick-Labs/msgpack/v6 v6.1.0
 	github.com/DeRuina/timberjack v1.4.5
 	github.com/alecthomas/assert/v2 v2.11.0
+	github.com/alexballas/bine v0.0.0-20260627155058-604f8df1cecd
 	github.com/bbrks/go-blurhash v1.2.0
-	github.com/bounce-chat/go-libtor v0.0.0-20260616123247-c380f572642a
+	github.com/bounce-chat/go-libtor v0.0.0-20260628013718-04d7a72733c1
 	github.com/cretz/bine v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
