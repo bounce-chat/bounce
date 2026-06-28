@@ -67,10 +67,12 @@ func (entry *threadEntry) TypedKey(ev *fyne.KeyEvent) {
 				log.Fatal("user interface bug: a threadEntry does not have a customOnSubmitted defined")
 			} else {
 				if entry.Text != "" || entry.hasAttachments() {
-					entry.customOnSubmitted()
+					if !fyne.CurrentDevice().IsMobile() {
+						entry.customOnSubmitted()
+						return
+					}
 				}
 			}
-			return
 		}
 	}
 	entry.Entry.TypedKey(ev)

@@ -237,7 +237,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		ui.containers.threads.Refresh()
 	}
 	entry.customFocusLost = func() { ui.containers.threads.Refresh() }
-	entry.customOnSubmitted = func() {
+	sendMessage := func() {
 		chatDM := chat.DirectMessage{
 			Thread: dm.user.id,
 			Text:   entry.Text,
@@ -284,6 +284,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 		dm.buttonData.setDraft("")
 		go ui.bounce.SendDirectMessage(chatDM, readers, sources)
 	}
+	entry.customOnSubmitted = sendMessage
 
 	openThread := func() {
 		ui.displayThread(dm)
@@ -330,12 +331,28 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 	addFiles.Importance = widget.LowImportance
 	dm.pendingMessageAttachments = newPendingMessageAttachments()
 
+	var messageButtons *fyne.Container
+	if fyne.CurrentDevice().IsMobile() {
+		sendMessage := widget.NewButtonWithIcon("", theme.MailSendIcon(), sendMessage)
+		sendMessage.Importance = widget.HighImportance
+		buttonCollection := container.NewHBox(addFiles, sendMessage)
+		messageButtons = container.New(
+			layout.NewBorderLayout(nil, buttonCollection, nil, nil),
+			buttonCollection,
+		)
+	} else {
+		messageButtons = container.New(
+			layout.NewBorderLayout(nil, addFiles, nil, nil),
+			addFiles,
+		)
+	}
+
 	footer := container.NewVBox(
 		dm.typingIndicator,
 		dm.pendingMessageAttachments,
 		container.New(
-			layout.NewBorderLayout(nil, nil, nil, addFiles),
-			addFiles,
+			layout.NewBorderLayout(nil, nil, nil, messageButtons),
+			messageButtons,
 			dm.entry,
 		),
 	)

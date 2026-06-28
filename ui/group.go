@@ -537,7 +537,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		ui.containers.threads.Refresh()
 	}
 	entry.customFocusLost = func() { ui.containers.threads.Refresh() }
-	entry.customOnSubmitted = func() {
+	sendMessage := func() {
 		gm := chat.GroupMessage{
 			Thread: g.id,
 			Text:   entry.Text,
@@ -583,6 +583,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		g.buttonData.setDraft("")
 		go ui.bounce.SendGroupMessage(gm, readers, sources)
 	}
+	entry.customOnSubmitted = sendMessage
 
 	openThread := func() {
 		ui.displayThread(g)
@@ -628,12 +629,22 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 	})
 	addFiles.Importance = widget.LowImportance
 	g.pendingMessageAttachments = newPendingMessageAttachments()
+
+	var messageButtons *fyne.Container
+	if fyne.CurrentDevice().IsMobile() {
+		sendMessage := widget.NewButtonWithIcon("", theme.MailSendIcon(), sendMessage)
+		sendMessage.Importance = widget.HighImportance
+		messageButtons = container.NewHBox(addFiles, sendMessage)
+	} else {
+		messageButtons = container.NewStack(addFiles)
+	}
+
 	footer := container.NewVBox(
 		g.typingIndicator,
 		g.pendingMessageAttachments,
 		container.New(
-			layout.NewBorderLayout(nil, nil, nil, addFiles),
-			addFiles,
+			layout.NewBorderLayout(nil, nil, nil, messageButtons),
+			messageButtons,
 			g.entry,
 		),
 	)
