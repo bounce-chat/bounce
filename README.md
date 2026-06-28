@@ -34,6 +34,13 @@ Things should be working pretty reliably, though some performance optimization i
 
 **Building from source**
 
+Building Bounce from source currently requires cloning down forks of fyne and fyne-io/tools.  The relative directory structure should look like:
+
+```
+./bounce-chat/bounce  <-- you are here
+./bounce-chat/fyne
+./bounce-chat/tools
+```
 
 
 ## License

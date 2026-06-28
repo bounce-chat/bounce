@@ -2,7 +2,7 @@ module github.com/hkparker/bounce
 
 go 1.26
 
-replace fyne.io/fyne/v2 => ../../bounce-chat/fyne
+replace fyne.io/fyne/v2 => ../fyne
 
 //replace github.com/bounce-chat/go-libtor => /home/hayden/Development/Go/src/github.com/bounce-chat/go-libtor
 

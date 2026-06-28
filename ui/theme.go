@@ -85,6 +85,13 @@ func (f *forcedVariant) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) col
 	return f.Theme.Color(name, f.variant)
 }
 
+func (f *forcedVariant) Size(name fyne.ThemeSizeName) float32 {
+	if name == theme.SizeNameButtonRadius || name == theme.SizeNameSelectionRadius || name == theme.SizeNameInputRadius {
+		return 12
+	}
+	return f.Theme.Size(name)
+}
+
 func (f *forcedVariant) Icon(name fyne.ThemeIconName) fyne.Resource {
 	if name == iconNameLogo {
 		if f.variant == theme.VariantDark {
