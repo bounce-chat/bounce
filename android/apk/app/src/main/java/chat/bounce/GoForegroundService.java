@@ -251,7 +251,7 @@ public class GoForegroundService extends Service {
             NotificationChannel channel = new NotificationChannel(
                 MESSAGE_CHANNEL_ID,
                 "App Notifications",
-                NotificationManager.IMPORTANCE_DEFAULT
+                NotificationManager.IMPORTANCE_HIGH
             );
             notificationManager.createNotificationChannel(channel);
 

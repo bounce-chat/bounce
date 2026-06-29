@@ -45,8 +45,9 @@
         android:icon="@mipmap/icon"
         android:label="Bounce">
         <activity
-	    android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
-            android:theme="@android:style/Theme" android:windowSoftInputMode="adjustResize"
+            android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
+            android:theme="@android:style/Theme"
+            android:windowSoftInputMode="adjustResize"
             android:name="org.golang.app.GoNativeActivity"
             android:exported="true"
             android:enableOnBackInvokedCallback="false">
