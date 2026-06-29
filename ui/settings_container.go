@@ -132,33 +132,37 @@ func (ui *ui) buildSettings() {
 		closeBar,
 		makeLogo(247, 75),
 	)
+
+	allSettings := container.NewVBox(
+		globalSettingsLabel,
+		ui.widgets.settings.sendReadReceiptsByDefault,
+		ui.widgets.settings.sendTypingIndicatorsByDefault,
+		container.NewHBox(
+			widget.NewLabel("Automatically Accept Group Invites"),
+			ui.widgets.settings.autoAcceptGroupInvites,
+		),
+		container.NewHBox(
+			widget.NewLabel("Default Direct Message Retention"),
+			ui.widgets.settings.defaultNewDMRetention,
+		),
+		groupSettingsLabel,
+		container.NewHBox(
+			widget.NewLabel("Retention"),
+			ui.widgets.settings.defaultNewGroupRetention,
+		),
+		ui.widgets.settings.defaultNewGroupRestrictUserManagement,
+		ui.widgets.settings.defaultNewGroupRestrictGroupEdits,
+		ui.widgets.settings.defaultNewGroupRestrictPosting,
+		themeSettingsLabel,
+		ui.widgets.settings.darkMode,
+	)
+	if !fyne.CurrentDevice().IsMobile() {
+		allSettings.Add(ui.widgets.settings.sysTray)
+	}
 	ui.views.settings = container.New(
 		layout.NewBorderLayout(header, nil, nil, nil),
 		header,
-		container.NewVScroll(container.NewVBox(
-			globalSettingsLabel,
-			ui.widgets.settings.sendReadReceiptsByDefault,
-			ui.widgets.settings.sendTypingIndicatorsByDefault,
-			container.NewHBox(
-				widget.NewLabel("Automatically Accept Group Invites"),
-				ui.widgets.settings.autoAcceptGroupInvites,
-			),
-			container.NewHBox(
-				widget.NewLabel("Default Direct Message Retention"),
-				ui.widgets.settings.defaultNewDMRetention,
-			),
-			groupSettingsLabel,
-			container.NewHBox(
-				widget.NewLabel("Retention"),
-				ui.widgets.settings.defaultNewGroupRetention,
-			),
-			ui.widgets.settings.defaultNewGroupRestrictUserManagement,
-			ui.widgets.settings.defaultNewGroupRestrictGroupEdits,
-			ui.widgets.settings.defaultNewGroupRestrictPosting,
-			themeSettingsLabel,
-			ui.widgets.settings.darkMode,
-			ui.widgets.settings.sysTray,
-		)),
+		container.NewVScroll(allSettings),
 	)
 }
 
