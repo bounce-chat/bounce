@@ -378,7 +378,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 				if len(m.iconImages) == 0 {
 					return
 				}
-				data, err := cb.getFileData(m.iconImages[0])
+				data, err := cb.getFileData(m.iconImages[len(m.iconImages)-1])
 				if err == nil {
 					img, _, err := image.Decode(bytes.NewReader(data))
 					if err != nil {
