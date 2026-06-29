@@ -1169,29 +1169,76 @@ func (b *Bounce) getChunkOffersToOffer(address string, userID uuid.UUID) []frame
 			Where("destination = ? AND frame_type = ?", address, typeChunkOffer).
 			Pluck("frame_id", &deliveredIDs)
 
-		// First, get all the user scoped chunk offers for our xor
-		var userScoped []chunkOffer
-		b.database.Model(&chunkOffer{}).
-			Distinct("id").
-			Where("id NOT IN (?) AND scope = ? AND destination = ?", deliveredIDs, scopeUser, xor(userID, b.currentUserID())).
-			Find(&userScoped)
-		unsentChunkOffers = append(unsentChunkOffers, userScoped...)
+		var myDevices []string
+		b.database.Model(&device{}).
+			Where("user_id = ?", b.currentUserID()).
+			Pluck("address", &myDevices)
 
-		// Next, get all the group scoped chunks for any group accessible to the user
-		var groupScoped []chunkOffer
-		b.database.Model(&chunkOffer{}).
-			Distinct("id").
-			Where("id NOT IN (?) AND scope IN ? AND destination IN ?", deliveredIDs, []int{scopeGroup, scopeGroupWithInvites}, allAccessibleGroupIDs).
-			Find(&groupScoped)
-		unsentChunkOffers = append(unsentChunkOffers, groupScoped...)
+		if len(deliveredIDs) == 0 {
+			// Get all of the chunk offers for my profile images
+			var globalProfileScoped []chunkOffer
+			b.database.Model(&chunkOffer{}).
+				Distinct("id").
+				Where("location IN (?) AND scope = ? AND destination = ?", myDevices, scopeGlobal, b.currentUserID()).
+				Find(&globalProfileScoped)
+			unsentChunkOffers = append(unsentChunkOffers, globalProfileScoped...)
 
-		// Lastly, get any overlap scoped offers
-		var globalScoped []chunkOffer
-		b.database.Model(&chunkOffer{}).
-			Distinct("id").
-			Where("id NOT IN (?) AND scope = ? AND (author IN ? OR author = ?)", deliveredIDs, scopeGlobal, peerIDs, b.currentUserID()).
-			Find(&globalScoped)
-		unsentChunkOffers = append(unsentChunkOffers, globalScoped...)
+			// Get all the user scoped chunk offers for our xor
+			var userScoped []chunkOffer
+			b.database.Model(&chunkOffer{}).
+				Distinct("id").
+				Where("scope = ? AND destination = ?", scopeUser, xor(userID, b.currentUserID())).
+				Find(&userScoped)
+			unsentChunkOffers = append(unsentChunkOffers, userScoped...)
+
+			// Get all the group scoped chunks for any group accessible to the user
+			var groupScoped []chunkOffer
+			b.database.Model(&chunkOffer{}).
+				Distinct("id").
+				Where("scope IN ? AND destination IN ?", []int{scopeGroup, scopeGroupWithInvites}, allAccessibleGroupIDs).
+				Find(&groupScoped)
+			unsentChunkOffers = append(unsentChunkOffers, groupScoped...)
+
+			// Get any overlap scoped offers
+			var globalScoped []chunkOffer
+			b.database.Model(&chunkOffer{}).
+				Distinct("id").
+				Where("scope = ? AND (author IN ? OR author = ?)", scopeGlobal, peerIDs, b.currentUserID()).
+				Find(&globalScoped)
+			unsentChunkOffers = append(unsentChunkOffers, globalScoped...)
+		} else {
+			// Get all of the chunk offers for my profile images
+			var globalProfileScoped []chunkOffer
+			b.database.Model(&chunkOffer{}).
+				Distinct("id").
+				Where("id NOT IN (?) AND location IN (?) AND scope = ? AND destination = ?", deliveredIDs, myDevices, scopeGlobal, b.currentUserID()).
+				Find(&globalProfileScoped)
+			unsentChunkOffers = append(unsentChunkOffers, globalProfileScoped...)
+
+			// Get all the user scoped chunk offers for our xor
+			var userScoped []chunkOffer
+			b.database.Model(&chunkOffer{}).
+				Distinct("id").
+				Where("id NOT IN (?) AND scope = ? AND destination = ?", deliveredIDs, scopeUser, xor(userID, b.currentUserID())).
+				Find(&userScoped)
+			unsentChunkOffers = append(unsentChunkOffers, userScoped...)
+
+			// Get all the group scoped chunks for any group accessible to the user
+			var groupScoped []chunkOffer
+			b.database.Model(&chunkOffer{}).
+				Distinct("id").
+				Where("id NOT IN (?) AND scope IN ? AND destination IN ?", deliveredIDs, []int{scopeGroup, scopeGroupWithInvites}, allAccessibleGroupIDs).
+				Find(&groupScoped)
+			unsentChunkOffers = append(unsentChunkOffers, groupScoped...)
+
+			// Get any overlap scoped offers
+			var globalScoped []chunkOffer
+			b.database.Model(&chunkOffer{}).
+				Distinct("id").
+				Where("id NOT IN (?) AND scope = ? AND (author IN ? OR author = ?)", deliveredIDs, scopeGlobal, peerIDs, b.currentUserID()).
+				Find(&globalScoped)
+			unsentChunkOffers = append(unsentChunkOffers, globalScoped...)
+		}
 	}
 
 	references := []frameReference{}
@@ -1279,29 +1326,55 @@ func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID uuid.UUID
 			Where("destination = ? AND frame_type = ?", address, typeEncryptedChunkOffer).
 			Pluck("frame_id", &deliveredIDs)
 
-		// First, get all the user scoped chunk offers for our xor
-		var userScoped []encryptedChunkOffer
-		b.database.Model(&encryptedChunkOffer{}).
-			Distinct("id").
-			Where("id NOT IN (?) AND scope = ? AND destination = ?", deliveredIDs, scopeUser, xor(userID, b.currentUserID())).
-			Find(&userScoped)
-		unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, userScoped...)
+		if len(deliveredIDs) == 0 {
+			// First, get all the user scoped chunk offers for our xor
+			var userScoped []encryptedChunkOffer
+			b.database.Model(&encryptedChunkOffer{}).
+				Distinct("id").
+				Where("scope = ? AND destination = ?", scopeUser, xor(userID, b.currentUserID())).
+				Find(&userScoped)
+			unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, userScoped...)
 
-		// Next, get all the group scoped chunks for any group accessible to the user
-		var groupScoped []encryptedChunkOffer
-		b.database.Model(&encryptedChunkOffer{}).
-			Distinct("id").
-			Where("id NOT IN (?) AND scope IN ? AND destination IN ?", deliveredIDs, []int{scopeGroup, scopeGroupWithInvites}, allAccessibleGroupIDs).
-			Find(&groupScoped)
-		unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, groupScoped...)
+			// Next, get all the group scoped chunks for any group accessible to the user
+			var groupScoped []encryptedChunkOffer
+			b.database.Model(&encryptedChunkOffer{}).
+				Distinct("id").
+				Where("scope IN ? AND destination IN ?", []int{scopeGroup, scopeGroupWithInvites}, allAccessibleGroupIDs).
+				Find(&groupScoped)
+			unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, groupScoped...)
 
-		// Lastly, get any overlap scoped offers
-		var globalScoped []encryptedChunkOffer
-		b.database.Model(&encryptedChunkOffer{}).
-			Distinct("id").
-			Where("id NOT IN (?) AND scope = ? AND (author IN ? OR author = ?)", deliveredIDs, scopeGlobal, peerIDs, b.currentUserID()).
-			Find(&globalScoped)
-		unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, globalScoped...)
+			// Lastly, get any overlap scoped offers
+			var globalScoped []encryptedChunkOffer
+			b.database.Model(&encryptedChunkOffer{}).
+				Distinct("id").
+				Where("scope = ? AND (author IN ? OR author = ?)", scopeGlobal, peerIDs, b.currentUserID()).
+				Find(&globalScoped)
+			unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, globalScoped...)
+		} else {
+			// First, get all the user scoped chunk offers for our xor
+			var userScoped []encryptedChunkOffer
+			b.database.Model(&encryptedChunkOffer{}).
+				Distinct("id").
+				Where("id NOT IN (?) AND scope = ? AND destination = ?", deliveredIDs, scopeUser, xor(userID, b.currentUserID())).
+				Find(&userScoped)
+			unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, userScoped...)
+
+			// Next, get all the group scoped chunks for any group accessible to the user
+			var groupScoped []encryptedChunkOffer
+			b.database.Model(&encryptedChunkOffer{}).
+				Distinct("id").
+				Where("id NOT IN (?) AND scope IN ? AND destination IN ?", deliveredIDs, []int{scopeGroup, scopeGroupWithInvites}, allAccessibleGroupIDs).
+				Find(&groupScoped)
+			unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, groupScoped...)
+
+			// Lastly, get any overlap scoped offers
+			var globalScoped []encryptedChunkOffer
+			b.database.Model(&encryptedChunkOffer{}).
+				Distinct("id").
+				Where("id NOT IN (?) AND scope = ? AND (author IN ? OR author = ?)", deliveredIDs, scopeGlobal, peerIDs, b.currentUserID()).
+				Find(&globalScoped)
+			unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, globalScoped...)
+		}
 	}
 
 	references := []frameReference{}
