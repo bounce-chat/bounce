@@ -276,6 +276,7 @@ func (tb *threadButton) setContent(tbd *threadButtonData) {
 	} else {
 		tb.draft.Hide()
 		tb.lastMessage.Hide()
+		tb.statusIcons.Hide()
 		tb.typingIndicator.typingAnimation.Start()
 		tb.typingIndicator.Show()
 	}
