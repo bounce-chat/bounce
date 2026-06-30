@@ -294,7 +294,7 @@ func (ui *ui) buildNewSyncDevice() {
 			}
 
 			fyne.Do(func() {
-				ui.widgets.newSyncDevice.currentStep.Text = "Sending sync request..."
+				ui.widgets.newSyncDevice.currentStep.Text = "Sending sync request, this may take a minute..."
 				ui.widgets.newSyncDevice.currentStep.Refresh()
 				ui.widgets.newSyncDevice.infiniteProgressBar.Show()
 			})

@@ -55,6 +55,11 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 		return nil, false
 	}
 
+	if _, ok := ignoreOldSecrets[sdr.Secret]; ok {
+		// Someone is resending a valid secret they used, it's ok to silently ignore
+		return nil, false
+	}
+
 	// Make sure we've got an offer out with this secret
 	var offer syncDeviceOffer
 	err = b.database.First(&offer, "secret = ?", sdr.Secret).Error
@@ -71,6 +76,8 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 			}).Fatal("database error looking up sync device offer by secret")
 		}
 	}
+
+	ignoreOldSecrets[sdr.Secret] = true
 
 	// Delete the offer
 	err = b.database.Delete(&offer).Error
