@@ -223,6 +223,7 @@ func (b *aidlBounce) FileWanted(fileID uuid.UUID) bool {
 func (b *aidlBounce) GetDMHistory(userID uuid.UUID) chat.InitialState {
 	encodedData, err := callCommand(map[int][]byte{
 		0: []byte("GetDMHistory"),
+		1: userID[:],
 	})
 	if err != nil {
 		log.WithFields(log.Fields{
