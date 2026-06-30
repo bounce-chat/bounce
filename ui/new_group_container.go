@@ -262,6 +262,10 @@ func (ui *ui) showNewGroup() {
 	ui.state.currentView = viewTypeNewGroup
 	ui.clearNewGroupSelectors()
 	ui.window.SetContent(ui.views.newGroup)
+	ui.widgets.newGroup.iconData = []byte{}
+	ui.widgets.newGroup.icon.images = []uuid.UUID{}
+	ui.widgets.newGroup.icon.setBackground()
+	ui.widgets.newGroup.icon.Refresh()
 	if !fyne.CurrentDevice().IsMobile() {
 		ui.window.Canvas().Focus(ui.widgets.newGroup.nameEntry)
 	}
