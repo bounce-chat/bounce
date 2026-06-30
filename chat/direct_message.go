@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -114,7 +115,7 @@ func (dm *directMessage) getSavedAt() int64 {
 }
 
 func (dm *directMessage) empty() bool {
-	return dm.Text == "" && len(dm.ImageAttachments) == 0 && len(dm.FileAttachments) == 0
+	return strings.TrimSpace(dm.Text) == "" && len(dm.ImageAttachments) == 0 && len(dm.FileAttachments) == 0
 }
 
 func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) (broadcastable, bool) {

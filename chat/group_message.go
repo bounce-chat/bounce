@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -107,7 +108,7 @@ func (gm *groupMessage) getSavedAt() int64 {
 }
 
 func (gm *groupMessage) empty() bool {
-	return gm.Text == "" && len(gm.ImageAttachments) == 0 && len(gm.FileAttachments) == 0
+	return strings.TrimSpace(gm.Text) == "" && len(gm.ImageAttachments) == 0 && len(gm.FileAttachments) == 0
 }
 
 func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (broadcastable, bool) {

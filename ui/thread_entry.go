@@ -59,23 +59,32 @@ func (entry *threadEntry) MinSize() fyne.Size {
 }
 
 func (entry *threadEntry) TypedKey(ev *fyne.KeyEvent) {
-	if ev != nil && ev.Name == fyne.KeyReturn {
-		if entry.selectKeyDown {
-			entry.Refresh()
-		} else {
-			if entry.customOnSubmitted == nil {
-				log.Fatal("user interface bug: a threadEntry does not have a customOnSubmitted defined")
-			} else {
-				if entry.Text != "" || entry.hasAttachments() {
-					if !fyne.CurrentDevice().IsMobile() {
-						entry.customOnSubmitted()
-						return
-					}
-				}
-			}
+	if ev == nil {
+		return
+	}
+
+	if fyne.CurrentDevice().IsMobile() {
+		entry.Entry.TypedKey(ev)
+		return
+	}
+
+	if ev.Name != fyne.KeyReturn {
+		entry.Entry.TypedKey(ev)
+		return
+	}
+
+	if entry.selectKeyDown {
+		entry.Entry.TypedKey(ev)
+		entry.Refresh()
+	} else {
+		if entry.customOnSubmitted == nil {
+			log.Fatal("user interface bug: a threadEntry does not have a customOnSubmitted defined")
+		}
+
+		if strings.TrimSpace(entry.Text) != "" || entry.hasAttachments() {
+			entry.customOnSubmitted()
 		}
 	}
-	entry.Entry.TypedKey(ev)
 }
 
 func (e *threadEntry) KeyDown(key *fyne.KeyEvent) {
