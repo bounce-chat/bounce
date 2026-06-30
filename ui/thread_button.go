@@ -288,6 +288,7 @@ func (tb *threadButton) setContent(tbd *threadButtonData) {
 
 	tb.unreadCount = tbd.unreadCount
 	tb.displayCorrectUnreadCount()
+	tb.setTheme()
 }
 
 func (tb *threadButton) updateLastMessageTimeText() { //TODO: use the same time string as thread items?
@@ -356,6 +357,26 @@ func (tb *threadButton) MouseMoved(*desktop.MouseEvent) {
 }
 
 func (tb *threadButton) MouseOut() {
+}
+
+func (tb *threadButton) setTheme() {
+	tb.threadNameFadeOut.EndColor = theme.Color(theme.ColorNameBackground)
+	tb.threadNameFadeOut.Refresh()
+
+	tb.lastMessageTimeBackground.FillColor = theme.Color(theme.ColorNameBackground)
+	tb.lastMessageTimeBackground.Refresh()
+
+	tb.lastMessageTimeFadeOut.EndColor = theme.Color(theme.ColorNameBackground)
+	tb.lastMessageTimeFadeOut.Refresh()
+
+	tb.defaultTextFadeOut.EndColor = theme.Color(theme.ColorNameBackground)
+	tb.defaultTextFadeOut.Refresh()
+
+	tb.unreadCounterTextFadeOut.EndColor = theme.Color(theme.ColorNameBackground)
+	tb.unreadCounterTextFadeOut.Refresh()
+
+	tb.unreadCounterBackground.FillColor = theme.Color(theme.ColorNameBackground)
+	tb.unreadCounterBackground.Refresh()
 }
 
 func (tb *threadButton) CreateRenderer() fyne.WidgetRenderer {
@@ -495,24 +516,6 @@ func (tbr *threadButtonRenderer) Objects() []fyne.CanvasObject {
 }
 
 func (tbr *threadButtonRenderer) Refresh() {
-	tbr.threadButton.threadNameFadeOut.EndColor = theme.Color(theme.ColorNameBackground)
-	tbr.threadButton.threadNameFadeOut.Refresh()
-
-	tbr.threadButton.lastMessageTimeBackground.FillColor = theme.Color(theme.ColorNameBackground)
-	tbr.threadButton.lastMessageTimeBackground.Refresh()
-
-	tbr.threadButton.lastMessageTimeFadeOut.EndColor = theme.Color(theme.ColorNameBackground)
-	tbr.threadButton.lastMessageTimeFadeOut.Refresh()
-
-	tbr.threadButton.defaultTextFadeOut.EndColor = theme.Color(theme.ColorNameBackground)
-	tbr.threadButton.defaultTextFadeOut.Refresh()
-
-	tbr.threadButton.unreadCounterTextFadeOut.EndColor = theme.Color(theme.ColorNameBackground)
-	tbr.threadButton.unreadCounterTextFadeOut.Refresh()
-
-	tbr.threadButton.unreadCounterBackground.FillColor = theme.Color(theme.ColorNameBackground)
-	tbr.threadButton.unreadCounterBackground.Refresh()
-
 	for _, obj := range tbr.Objects() {
 		obj.Refresh()
 	}

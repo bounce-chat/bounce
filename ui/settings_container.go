@@ -276,6 +276,7 @@ func (ui *ui) setDarkMode(value bool) {
 		ui.views.newGroup.Refresh()
 		ui.views.newDM.Refresh()
 		ui.views.mobileMenu.Refresh()
+		ui.containers.threads.Refresh()
 	}
 }
 
