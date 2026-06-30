@@ -223,6 +223,7 @@ func (ui *ui) buildNewGroup() {
 
 			ui.widgets.newGroup.iconData = data
 			ui.widgets.newGroup.icon.images = []uuid.UUID{uuid.New()}
+			ui.widgets.newGroup.icon.setBackground()
 			ui.widgets.newGroup.icon.Refresh()
 		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
