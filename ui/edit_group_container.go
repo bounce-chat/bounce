@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/bounce-chat/bounce/chat"
+	"github.com/google/uuid"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -410,11 +410,13 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 				addUsersDialogCleanup,
 			)
 		} else {
+			warningText := widget.NewLabel("After a user has been added to a group, they will be able to see all of the group history")
+			warningText.Wrapping = fyne.TextWrapWord
 			ui.showDialog(dialog.NewCustomConfirm(
 				"Warning",
 				"Don't show again",
 				"Dismiss",
-				widget.NewLabel("After a user has been added to a group, they will be able to see all of the group history"),
+				warningText,
 				func(hideForever bool) {
 					if hideForever {
 						ui.app.Preferences().SetBool(dontWarnAboutSharingHistory, true)
