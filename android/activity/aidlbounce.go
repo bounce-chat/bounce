@@ -9,8 +9,8 @@ import (
 	"os"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	"github.com/bounce-chat/bounce/chat"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 

@@ -11,8 +11,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/bounce-chat/bounce/chat"
+	"github.com/google/uuid"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"

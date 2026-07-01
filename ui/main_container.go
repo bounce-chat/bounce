@@ -17,8 +17,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	//xwidget "fyne.io/x/fyne/widget"
-	"github.com/google/uuid"
 	"github.com/bounce-chat/bounce/chat"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 

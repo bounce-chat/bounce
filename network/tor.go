@@ -14,8 +14,8 @@ import (
 	"github.com/alexballas/bine/tor"
 	"github.com/alexballas/bine/torutil"
 	"github.com/alexballas/bine/torutil/ed25519"
-	"github.com/bounce-chat/go-libtor"
 	"github.com/bounce-chat/bounce/chat"
+	"github.com/bounce-chat/go-libtor"
 	log "github.com/sirupsen/logrus"
 )
 

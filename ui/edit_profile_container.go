@@ -13,8 +13,8 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/google/uuid"
 	"github.com/bounce-chat/bounce/chat"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -372,6 +372,7 @@ func (ui *ui) buildEditProfile() {
 				ui.mobileBack()
 			} else {
 				ui.showMainContainer()
+
 			}
 		})
 		closeButton.Importance = widget.LowImportance

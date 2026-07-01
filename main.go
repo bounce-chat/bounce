@@ -9,10 +9,10 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/bounce-chat/bounce/chat"
 	"github.com/bounce-chat/bounce/network"
 	"github.com/bounce-chat/bounce/ui"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
