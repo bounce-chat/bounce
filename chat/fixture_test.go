@@ -489,7 +489,7 @@ func newBounce() *Bounce {
 	os.MkdirAll(configDirectory, 0700)
 	os.MkdirAll(configDirectory+"/blobs/", 0700)
 
-	return Open(ui, network, configDirectory)
+	return Open(ui, network, configDirectory, nil).(*Bounce)
 }
 
 func newBounceUser(name string) *Bounce {
