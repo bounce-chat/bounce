@@ -65,11 +65,13 @@ func (entry *threadEntry) TypedKey(ev *fyne.KeyEvent) {
 
 	if fyne.CurrentDevice().IsMobile() {
 		entry.Entry.TypedKey(ev)
+		entry.Refresh()
 		return
 	}
 
 	if ev.Name != fyne.KeyReturn {
 		entry.Entry.TypedKey(ev)
+		entry.Refresh()
 		return
 	}
 
