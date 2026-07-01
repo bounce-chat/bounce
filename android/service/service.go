@@ -1,4 +1,4 @@
-//go:generate gomobile bind -target=android/arm64 -androidapi 26 -o goservice.aar -ldflags=-checklinkname=0 -v github.com/hkparker/bounce/android/service
+//go:generate gomobile bind -target=android/arm64 -androidapi 26 -o goservice.aar -ldflags=-checklinkname=0 -v github.com/bounce-chat/bounce/android/service
 //go:generate cp goservice.aar ../apk/app/src/main/libs/
 
 package goservice
@@ -14,8 +14,8 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
-	"github.com/hkparker/bounce/chat"
-	"github.com/hkparker/bounce/network"
+	"github.com/bounce-chat/bounce/chat"
+	"github.com/bounce-chat/bounce/network"
 
 	log "github.com/sirupsen/logrus"
 )

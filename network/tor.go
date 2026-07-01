@@ -15,7 +15,7 @@ import (
 	"github.com/alexballas/bine/torutil"
 	"github.com/alexballas/bine/torutil/ed25519"
 	"github.com/bounce-chat/go-libtor"
-	"github.com/hkparker/bounce/chat"
+	"github.com/bounce-chat/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
 

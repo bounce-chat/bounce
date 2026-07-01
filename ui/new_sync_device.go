@@ -17,7 +17,7 @@ import (
 	"fyne.io/fyne/v2/driver/sensor"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
-	"github.com/hkparker/bounce/chat"
+	"github.com/bounce-chat/bounce/chat"
 	go_qr "github.com/piglig/go-qr"
 	log "github.com/sirupsen/logrus"
 )

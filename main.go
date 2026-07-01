@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/hkparker/bounce/chat"
-	"github.com/hkparker/bounce/network"
-	"github.com/hkparker/bounce/ui"
+	"github.com/bounce-chat/bounce/chat"
+	"github.com/bounce-chat/bounce/network"
+	"github.com/bounce-chat/bounce/ui"
 	log "github.com/sirupsen/logrus"
 )
 

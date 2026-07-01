@@ -1,4 +1,4 @@
-module github.com/hkparker/bounce
+module github.com/bounce-chat/bounce
 
 go 1.26
 

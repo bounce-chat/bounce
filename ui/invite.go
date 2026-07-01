@@ -11,7 +11,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
-	"github.com/hkparker/bounce/chat"
+	"github.com/bounce-chat/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
 

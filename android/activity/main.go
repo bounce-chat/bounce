@@ -34,7 +34,7 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/hkparker/bounce/ui"
+	"github.com/bounce-chat/bounce/ui"
 )
 
 var binderRef *jni.Object

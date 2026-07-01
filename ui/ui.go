@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hkparker/bounce/chat"
-	"github.com/hkparker/bounce/network"
+	"github.com/bounce-chat/bounce/chat"
+	"github.com/bounce-chat/bounce/network"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"

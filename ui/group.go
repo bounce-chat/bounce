@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/hkparker/bounce/chat"
+	"github.com/bounce-chat/bounce/chat"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
