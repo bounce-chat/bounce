@@ -1221,18 +1221,6 @@ func collapse(events []map[int][]byte) []map[int][]byte {
 		}
 	}
 
-	bulkBytes, err := msgpack.Marshal(&bulkUpdate)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error marshalling bulk update")
-	}
-	collapsedEvents = append(collapsedEvents, map[int][]byte{
-		0: []byte("CatchUpMessages"),
-		1: bulkBytes,
-		2: []byte{0x00},
-	})
-
 	for _, payload := range lastDraftPerThread {
 		collapsedEvents = append(collapsedEvents, map[int][]byte{
 			0: []byte("UpdateDraft"),
@@ -1245,6 +1233,18 @@ func collapse(events []map[int][]byte) []map[int][]byte {
 			1: payload,
 		})
 	}
+
+	bulkBytes, err := msgpack.Marshal(&bulkUpdate)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling bulk update")
+	}
+	collapsedEvents = append(collapsedEvents, map[int][]byte{
+		0: []byte("CatchUpMessages"),
+		1: bulkBytes,
+		2: []byte{0x00},
+	})
 
 	return collapsedEvents
 }
