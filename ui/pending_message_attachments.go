@@ -314,9 +314,12 @@ func newPendingMessageAttachments() *pendingMessageAttachments {
 	return pmas
 }
 
-func (pmas *pendingMessageAttachments) add(reader fyne.URIReadCloser) error {
+func (pmas *pendingMessageAttachments) add(reader fyne.URIReadCloser, refocus func()) error {
 	id := uuid.New()
-	newFile, err := newPendingMessageAttachment(id, reader, func() { pmas.remove(id) })
+	newFile, err := newPendingMessageAttachment(id, reader, func() {
+		refocus()
+		pmas.remove(id)
+	})
 	if err == nil {
 		pmas.files = append(pmas.files, newFile)
 		pmas.Refresh()
