@@ -508,7 +508,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 					}).Warn("error decoding image")
 				} else {
 					selectImage = func() {
-						ui.showImageViewer([]image.Image{img}, [][]byte{data}, 0)
+						ui.showImageViewer([]image.Image{img}, [][]byte{data}, []string{}, 0)
 					}
 				}
 			}

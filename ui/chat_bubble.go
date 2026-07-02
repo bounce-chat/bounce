@@ -94,7 +94,7 @@ type chatBubble struct {
 	showDialog            func(dialog.Dialog, func())
 	newChatBubbleTemplate func() *chatBubble
 	openThread            func(*directMessage)
-	showImageViewer       func([]image.Image, [][]byte, int)
+	showImageViewer       func([]image.Image, [][]byte, []string, int)
 	mobileBack            func()
 }
 
@@ -392,7 +392,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 						} else {
 							d.Dismiss()
 						}
-						cb.showImageViewer([]image.Image{img}, [][]byte{data}, 0)
+						cb.showImageViewer([]image.Image{img}, [][]byte{data}, []string{}, 0)
 					}
 				}
 			}))
@@ -480,6 +480,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 
 	cb.rawImages = []image.Image{}
 	cb.imageData = [][]byte{}
+	names := []string{}
 	cb.imageAttachments.Objects = []fyne.CanvasObject{}
 	if len(m.imageAttachments) > 0 {
 		size := imageAttachmentWidth / float32(len(m.imageAttachments))
@@ -565,6 +566,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 
 			cb.rawImages = append(cb.rawImages, rawImage)
 			cb.imageData = append(cb.imageData, data)
+			names = append(names, attachment.Name)
 			cb.imageAttachments.Add(
 				newClickableImage(
 					"",
@@ -572,7 +574,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 					size,
 					size,
 					false,
-					func() { m.imageDisplay(cb.rawImages, cb.imageData, i) },
+					func() { m.imageDisplay(cb.rawImages, cb.imageData, names, i) },
 				),
 			)
 		}

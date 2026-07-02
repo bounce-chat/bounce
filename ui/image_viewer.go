@@ -21,10 +21,11 @@ type imageViewer struct {
 	right     *widget.Button
 	images    []image.Image
 	data      [][]byte
+	names     []string
 	index     int
 }
 
-func (ui *ui) showImageViewer(images []image.Image, data [][]byte, index int) {
+func (ui *ui) showImageViewer(images []image.Image, data [][]byte, names []string, index int) {
 	if index > len(images)-1 {
 		log.WithFields(log.Fields{
 			"index":  index,
@@ -35,6 +36,7 @@ func (ui *ui) showImageViewer(images []image.Image, data [][]byte, index int) {
 
 	ui.widgets.imageViewer.images = images
 	ui.widgets.imageViewer.data = data
+	ui.widgets.imageViewer.names = names
 	ui.widgets.imageViewer.index = index
 
 	ui.refreshImageViewer()
@@ -57,7 +59,13 @@ func (ui *ui) buildImageViewer() {
 			return
 		}
 		data := ui.widgets.imageViewer.data[ui.widgets.imageViewer.index]
-		dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
+
+		name := ""
+		if ui.widgets.imageViewer.index <= len(ui.widgets.imageViewer.names)-1 {
+			name = ui.widgets.imageViewer.names[ui.widgets.imageViewer.index]
+		}
+
+		d := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
 			if err != nil {
 				return
 			}
@@ -68,7 +76,9 @@ func (ui *ui) buildImageViewer() {
 
 			writer.Write(data)
 			writer.Close()
-		}, ui.window).Show()
+		}, ui.window)
+		d.SetFileName(name)
+		d.Show()
 	})
 	download.Importance = widget.LowImportance
 

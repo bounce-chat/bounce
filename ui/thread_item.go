@@ -47,7 +47,7 @@ type chatBubbleData struct {
 	seen             bool
 	state            int
 	mergeMode        int
-	imageDisplay     func([]image.Image, [][]byte, int)
+	imageDisplay     func([]image.Image, [][]byte, []string, int)
 }
 
 func (cbd *chatBubbleData) getID() uuid.UUID {
