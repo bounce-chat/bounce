@@ -16,6 +16,7 @@ type Engine interface {
 	ClearGroupChatHistory(groupID uuid.UUID) error
 	CreateGroup(ng NewGroup) error
 	CurrentDeviceActive()
+	CurrentUserID() uuid.UUID
 	DeleteGroup(groupID uuid.UUID) error
 	DemoteGroupAdmin(groupID uuid.UUID, userID uuid.UUID) error
 	DownloadFileToDisk(fileID uuid.UUID, destination string)

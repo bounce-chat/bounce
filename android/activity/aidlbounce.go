@@ -17,6 +17,12 @@ import (
 // A shim that takes all calls and serializes them to the chat engine over AIDL
 type aidlBounce struct{}
 
+func (b *aidlBounce) CurrentUserID() uuid.UUID {
+	// This should only be called by the service
+	log.Fatal("CurrentUserID not implemented in activity binder")
+	return uuid.Nil
+}
+
 func (b *aidlBounce) GetInitialState() chat.InitialState {
 	encodedData, err := callCommand(map[int][]byte{
 		0: []byte("GetInitialState"),

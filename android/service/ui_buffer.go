@@ -5,12 +5,15 @@ import (
 	"encoding/binary"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/bounce-chat/bounce/chat"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
+
+var lastPoll = time.Time{}
 
 // A struct that holds calls the UI needs to evaluate for the UI to poll
 type uiBuffer struct {
@@ -23,8 +26,21 @@ func (u *uiBuffer) getEvents() string {
 	u.Lock()
 	defer u.Unlock()
 
+	restarting := time.Since(lastPoll) > 2*time.Second
+	lastPoll = time.Now()
+
 	if len(u.events) == 0 {
 		return ""
+	}
+	if b == nil {
+		return ""
+	}
+
+	if restarting {
+		// The activity polling loop was paused, so we want to
+		// send the accumulated UI updates in a more condensed
+		// form (chats in a bulk update, no typing indicators)
+		u.events = collapse(u.events)
 	}
 
 	bytes, err := msgpack.Marshal(u.events)
@@ -1118,4 +1134,117 @@ func (u *uiBuffer) UpdateDraft(d chat.Draft) {
 		0: []byte("UpdateDraft"),
 		1: bytes,
 	})
+}
+
+func collapse(events []map[int][]byte) []map[int][]byte {
+	collapsedEvents := []map[int][]byte{}
+
+	bulkUpdate := chat.BulkUpdate{
+		Source:         uuid.Nil,
+		Seen:           make([]uuid.UUID, 0),
+		GroupMessages:  make(map[uuid.UUID][]chat.GroupMessage),
+		DirectMessages: make(map[uuid.UUID][]chat.DirectMessage),
+		ReadReceipts:   make(map[uuid.UUID][]chat.ReadReceipt),
+	}
+
+	lastDraftPerThread := map[uuid.UUID][]byte{}
+	lastSetGroupState := map[uuid.UUID][]byte{}
+
+	// TODO
+	//lastSetUserState := map[uuid.UUID][]byte{}
+	//lastSetDMState := map[uuid.UUID][]byte{}
+	//lastSetSettings := map[uuid.UUID][]byte{}
+
+	for _, e := range events {
+		switch string(e[0]) {
+		case "ShowTypingIndicator":
+			continue
+		case "DisplayDirectMessage", "DisplaySentDirectMessage":
+			dmBytes := e[1]
+			var dm chat.DirectMessage
+			err := msgpack.Unmarshal(dmBytes, &dm)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error unmarshalling direct message")
+				continue
+			}
+			bulkUpdate.DirectMessages[dm.Thread] = append(bulkUpdate.DirectMessages[dm.Thread], dm)
+		case "DisplayGroupMessage", "DisplaySentGroupMessage":
+			gmBytes := e[1]
+			var gm chat.GroupMessage
+			err := msgpack.Unmarshal(gmBytes, &gm)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error unmarshalling group message")
+				continue
+			}
+			bulkUpdate.GroupMessages[gm.Thread] = append(bulkUpdate.GroupMessages[gm.Thread], gm)
+		case "ReceivedReadReceipt":
+			rrBytes := e[1]
+			var rr chat.ReadReceipt
+			err := msgpack.Unmarshal(rrBytes, &rr)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error unmarshalling read receipt")
+			}
+
+			bulkUpdate.ReadReceipts[rr.Target] = append(bulkUpdate.ReadReceipts[rr.Target], rr)
+
+			if rr.Actor == b.CurrentUserID() {
+				bulkUpdate.Seen = append(bulkUpdate.Seen, rr.Target)
+			}
+		case "UpdateDraft":
+			draftBytes := e[1]
+			var d chat.Draft
+			err := msgpack.Unmarshal(draftBytes, &d)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error unmarshalling draft")
+			}
+			lastDraftPerThread[d.Thread] = draftBytes
+		case "SetGroupState":
+			gBytes := e[1]
+			var g chat.Group
+			err := msgpack.Unmarshal(gBytes, &g)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error unmarshalling group")
+			}
+			lastSetGroupState[g.ID] = gBytes
+		default:
+			collapsedEvents = append(collapsedEvents, e)
+		}
+	}
+
+	bulkBytes, err := msgpack.Marshal(&bulkUpdate)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling bulk update")
+	}
+	collapsedEvents = append(collapsedEvents, map[int][]byte{
+		0: []byte("CatchUpMessages"),
+		1: bulkBytes,
+		2: []byte{0x00},
+	})
+
+	for _, payload := range lastDraftPerThread {
+		collapsedEvents = append(collapsedEvents, map[int][]byte{
+			0: []byte("UpdateDraft"),
+			1: payload,
+		})
+	}
+	for _, payload := range lastSetGroupState {
+		collapsedEvents = append(collapsedEvents, map[int][]byte{
+			0: []byte("SetGroupState"),
+			1: payload,
+		})
+	}
+
+	return collapsedEvents
 }

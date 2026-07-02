@@ -99,6 +99,10 @@ func (b *Bounce) currentUser() (user, bool) {
 	return currentUser, true
 }
 
+func (b *Bounce) CurrentUserID() uuid.UUID {
+	return b.currentUserID()
+}
+
 func (b *Bounce) currentUserID() uuid.UUID {
 	if b.userID == uuid.Nil {
 		currentUser, ok := b.currentUser()
