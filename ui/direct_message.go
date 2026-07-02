@@ -311,7 +311,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 	dm.typingIndicator = newTypingIndicator(typingIndicatorModeIcons, ui.bounce.GetFileData)
 	dm.typingIndicator.Hide()
 
-	addFiles := widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
+	addFiles := newKeyboardPreservableButton("", theme.ContentAddIcon(), func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
@@ -336,9 +336,12 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 
 	var messageButtons *fyne.Container
 	if fyne.CurrentDevice().IsMobile() {
-		sendMessage := widget.NewButtonWithIcon("", theme.MailSendIcon(), sendMessage)
-		sendMessage.Importance = widget.HighImportance
-		buttonCollection := container.NewHBox(addFiles, sendMessage)
+		sendMessageButton := newKeyboardPreservableButton("", theme.MailSendIcon(), func() {
+			ui.window.Canvas().Focus(entry)
+			sendMessage()
+		})
+		sendMessageButton.Importance = widget.HighImportance
+		buttonCollection := container.NewHBox(addFiles, sendMessageButton)
 		messageButtons = container.New(
 			layout.NewBorderLayout(nil, buttonCollection, nil, nil),
 			buttonCollection,

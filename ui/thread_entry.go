@@ -120,3 +120,11 @@ func (e *threadEntry) FocusLost() {
 	}
 	e.Entry.FocusLost()
 }
+
+func (e *threadEntry) DoNotHideKeyboardWhenFocusing() bool {
+	return true
+}
+
+func (e *threadEntry) DoNotHideKeyboardWhenLosingFocus() bool {
+	return true
+}

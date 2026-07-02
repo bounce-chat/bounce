@@ -181,6 +181,7 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, action
 	}
 	ma.filename.Truncation = fyne.TextTruncateEllipsis
 	ma.action.Importance = widget.LowImportance
+	ma.action.KeyboardPreservable = true
 	ma.icon.FillMode = canvas.ImageFillContain
 	ma.progress.Hide()
 	ma.progress.TextFormatter = func() string { return "" }
@@ -188,6 +189,14 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, action
 	ma.ExtendBaseWidget(ma)
 
 	return ma, nil
+}
+
+func (ma *messageAttachment) DoNotHideKeyboardWhenFocusing() bool {
+	return true
+}
+
+func (ma *messageAttachment) DoNotHideKeyboardWhenLosingFocus() bool {
+	return true
 }
 
 func (ma *messageAttachment) CreateRenderer() fyne.WidgetRenderer {
