@@ -198,7 +198,9 @@ func StartShimmed(shim chat.Engine, bind func(), poll func(chat.UI)) {
 					context:  threadID,
 				},
 			}
-			ui.displayThread(t)
+			fyne.Do(func() {
+				ui.displayThread(t)
+			})
 		})
 	}
 
