@@ -299,7 +299,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		if b.postNotification != nil && b.shouldNotifyDM(&dm) {
 			title, content, err := b.getDMNotificationContent(&dm)
 			if err == nil {
-				b.postNotification(dm.ID.String(), title, content)
+				b.postNotification(dm.ID.String(), title, content, dm.getDestination(b.currentUserID()).String())
 			}
 		}
 

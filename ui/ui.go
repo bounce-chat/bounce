@@ -167,6 +167,41 @@ func StartShimmed(shim chat.Engine, bind func(), poll func(chat.UI)) {
 		poll(ui)
 	}()
 
+	if notificationDevice, ok := fyne.CurrentDevice().(mobile.NotificationCallback); ok {
+		notificationDevice.SetNotificationCallback(func(display string) {
+			// Right now, the display string is just a UUID of the thread to open,
+			// but in the future it could be expanded to a proper deep link URI
+			threadID, err := uuid.Parse(display)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"display": display,
+				}).Error("notification callback has invalid thread ID")
+				return
+			}
+
+			t, ok := ui.threads.get(threadID)
+			if !ok {
+				log.WithFields(log.Fields{
+					"threadID": threadID,
+				}).Error("cannot find thread for notification callback")
+				return
+			}
+
+			// Reset the mobile view stack so that it is just this thread opened from
+			// the main view all threads screen
+			ui.state.viewStack = []view{
+				view{
+					viewType: viewTypeAllThreads,
+				},
+				view{
+					viewType: viewTypeThread,
+					context:  threadID,
+				},
+			}
+			ui.displayThread(t)
+		})
+	}
+
 	ui.app.Run()
 	ui.bounce.Shutdown()
 }
@@ -791,7 +826,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 	go ui.messages.writeCache()
 }
 
-func (ui *ui) postNotification(_, title, content string) {
+func (ui *ui) postNotification(_, title, content, _ string) {
 	ui.app.SendNotification(fyne.NewNotification(title, content))
 }
 

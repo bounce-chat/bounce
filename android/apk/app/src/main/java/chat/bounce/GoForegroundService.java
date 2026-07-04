@@ -30,8 +30,8 @@ public class GoForegroundService extends Service {
     /** Extras that carry the user-visible notification content. */
 
     private static final String CHANNEL_ID   = "chat.bounce.foreground_service_channel";
-    private static final String MESSAGE_CHANNEL_ID   = "chat.bounce.message_channel";
-    private static final int    NOTIFICATION_ID = 1;
+    private static final String MESSAGE_CHANNEL_ID   = "chat.bounce.message_channel_v3";
+    private static final int    NOTIFICATION_ID = 9997;
     private static final long   UPDATE_INTERVAL_MS = 1000; // 1 second
 
     private Thread serverThread;
@@ -65,7 +65,7 @@ public class GoForegroundService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        createNotificationChannel();
+        createNotificationChannels();
         notificationHandler = new Handler(Looper.getMainLooper());
     }
 
@@ -172,12 +172,12 @@ public class GoForegroundService extends Service {
         int piFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                 ? PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
                 : PendingIntent.FLAG_UPDATE_CURRENT;
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, tapIntent, piFlags);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 9998, tapIntent, piFlags);
 
         // Build close intent
         Intent closeIntent = new Intent(this, GoForegroundService.class);
         closeIntent.setAction(ACTION_STOP);
-        PendingIntent closePendingIntent = PendingIntent.getService(this, 1, closeIntent, piFlags);
+        PendingIntent closePendingIntent = PendingIntent.getService(this, 9999, closeIntent, piFlags);
 
         Notification.Builder builder;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -241,7 +241,7 @@ public class GoForegroundService extends Service {
                 try {
                     NotificationData result = Goservice.getNotification();
                     notificationUUIDs.put(result.getID(), id);
-                    showNotification(id, result.getTitle(), result.getContent());
+                    showNotification(id, result.getTitle(), result.getContent(), result.getDisplay());
 		    id = id +1;
                 } catch (Exception e) {
                     Log.e(TAG, "notification loop error", e);
@@ -276,18 +276,11 @@ public class GoForegroundService extends Service {
         }
     }
 
-    public void showNotification(int id, String title, String message) {
+    public void showNotification(int id, String title, String message, String display) {
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         Notification.Builder builder;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                MESSAGE_CHANNEL_ID,
-                "App Notifications",
-                NotificationManager.IMPORTANCE_HIGH
-            );
-            notificationManager.createNotificationChannel(channel);
-
             builder = new Notification.Builder(this, MESSAGE_CHANNEL_ID);
         } else {
             builder = new Notification.Builder(this);
@@ -295,10 +288,11 @@ public class GoForegroundService extends Service {
     
         Intent tapIntent = new Intent(this, org.golang.app.GoNativeActivity.class);
         tapIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+	tapIntent.putExtra("display", display);
         int piFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                 ? PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
                 : PendingIntent.FLAG_UPDATE_CURRENT;
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, tapIntent, piFlags);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, id, tapIntent, piFlags);
     
         builder.setContentTitle(title)
                 .setSmallIcon(R.drawable.adaptive_icon)
@@ -319,17 +313,29 @@ public class GoForegroundService extends Service {
     // Private helpers
     // -----------------------------------------------------------------------
 
-    private void createNotificationChannel() {
+    private void createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    "Background service",
-                    NotificationManager.IMPORTANCE_LOW);
-            channel.setDescription("Keeps the app running in the background");
+            NotificationChannel backgroundChannel = new NotificationChannel(
+                CHANNEL_ID,
+                "Background service",
+                NotificationManager.IMPORTANCE_LOW);
+            backgroundChannel.setDescription("Keeps the app running in the background");
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
-                manager.createNotificationChannel(channel);
+                manager.createNotificationChannel(backgroundChannel);
             }
+
+            NotificationChannel messageChannel = new NotificationChannel(
+                MESSAGE_CHANNEL_ID,
+                "Chat Notifications",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+	    long[] textMessagePattern = new long[]{ 0, 400, 200, 400 };
+            messageChannel.setVibrationPattern(textMessagePattern);
+            messageChannel.enableVibration(true);
+            if (manager != null) {
+                manager.createNotificationChannel(messageChannel);
+	    }
         }
     }
 }
