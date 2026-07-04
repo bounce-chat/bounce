@@ -520,7 +520,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		if b.postNotification != nil && b.shouldNotifyDM(dm) {
 			title, content, err := b.getDMNotificationContent(dm)
 			if err == nil {
-				b.postNotification(title, content)
+				b.postNotification(dm.ID.String(), title, content)
 			}
 		}
 	}
@@ -528,7 +528,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		if b.postNotification != nil && b.shouldNotifyGM(gm) {
 			title, content, err := b.getGMNotificationContent(gm)
 			if err == nil {
-				b.postNotification(title, content)
+				b.postNotification(gm.ID.String(), title, content)
 			}
 		}
 	}

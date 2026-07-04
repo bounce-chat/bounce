@@ -26,18 +26,20 @@ var ui *uiBuffer
 var chDone = make(chan bool)
 
 type NotificationData struct {
+	ID      string
 	Title   string
 	Content string
 }
 
 var notificationChannel = make(chan *NotificationData)
+var clearNotificationChannel = make(chan string)
 
 func StartForegroundService() {
 	go keepCachePruned()
 	ui = &uiBuffer{
 		events: []map[int][]byte{},
 	}
-	b = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory(), handleNotification)
+	b = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory(), handleNotification, clearNotification)
 	<-chDone
 }
 
@@ -138,8 +140,9 @@ func pruneCache() {
 	}
 }
 
-func handleNotification(title, content string) {
+func handleNotification(id, title, content string) {
 	notificationChannel <- &NotificationData{
+		ID:      id,
 		Title:   title,
 		Content: content,
 	}
@@ -147,4 +150,12 @@ func handleNotification(title, content string) {
 
 func GetNotification() *NotificationData {
 	return <-notificationChannel
+}
+
+func clearNotification(id string) {
+	clearNotificationChannel <- id
+}
+
+func GetNotificationToClear() string {
+	return <-clearNotificationChannel
 }

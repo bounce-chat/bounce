@@ -24,7 +24,7 @@ func (b *aidlBounce) CurrentUserID() uuid.UUID {
 }
 
 func (b *aidlBounce) GetInitialState() chat.InitialState {
-	encodedData, err := callCommand(map[int][]byte{
+	tempID, err := callCommand(map[int][]byte{
 		0: []byte("GetInitialState"),
 	})
 	if err != nil {
@@ -32,14 +32,25 @@ func (b *aidlBounce) GetInitialState() chat.InitialState {
 			"error": err.Error(),
 		}).Error("error calling getInitialState")
 	}
-	is := chat.InitialState{}
-	data, err := base64.StdEncoding.DecodeString(encodedData)
+
+	_, err = uuid.Parse(tempID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": tempID,
+		}).Fatal("error loading initial state")
+	}
+
+	path := "/data/data/chat.bounce/cache/" + tempID
+	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error decoding initial state")
+		}).Fatal("error loading initial state file")
 	}
-	err = msgpack.Unmarshal([]byte(data), &is)
+	os.Remove(path)
+
+	is := chat.InitialState{}
+	err = msgpack.Unmarshal(data, &is)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

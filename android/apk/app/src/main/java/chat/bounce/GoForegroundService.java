@@ -1,5 +1,7 @@
 package chat.bounce;
 
+import java.util.concurrent.ConcurrentHashMap;
+
 import android.content.Context;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -12,6 +14,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
+import android.service.notification.StatusBarNotification;
 
 import go.Seq;
 import goservice.Goservice;
@@ -37,6 +40,8 @@ public class GoForegroundService extends Service {
     private int currentIconRes = android.R.drawable.ic_notification_overlay;
     private boolean isServiceRunning = false;
     private volatile boolean isNotificationPollRunning = false;
+
+    private ConcurrentHashMap<String, Integer> notificationUUIDs = new ConcurrentHashMap<>();
 
     // -----------------------------------------------------------------------
     // AIDL Binder — runs methods in the service process (safe for Go runtime B)
@@ -114,9 +119,9 @@ public class GoForegroundService extends Service {
                     Seq.setContext(getApplicationContext());
                     Goservice.startForegroundService(); // must BLOCK here (e.g. http.ListenAndServe)
                 } catch (Exception e) {
-                    Log.e(TAG, "Go server error", e);
+                    Log.e(TAG, "error", e);
                 }
-            }, "go-http-server");
+            }, "bounce-service");
             serverThread.setDaemon(false); // keep JVM alive
             serverThread.start();
         }
@@ -125,8 +130,10 @@ public class GoForegroundService extends Service {
 
         if (!isNotificationPollRunning) {
             isNotificationPollRunning = true;
-            Thread workerThread = new Thread(new NativeLoopRunnable());
-            workerThread.start();
+            Thread newNotificationWorker = new Thread(new PostNewNotifications());
+            newNotificationWorker.start();
+            Thread clearNotificationWorker = new Thread(new ClearNotifications());
+            clearNotificationWorker.start();
         }
 
         return START_STICKY;
@@ -226,18 +233,44 @@ public class GoForegroundService extends Service {
         }
     }
 
-    private class NativeLoopRunnable implements Runnable {
+    private class PostNewNotifications implements Runnable {
         @Override
         public void run() {
-	    int id = 0;
+	    int id = 1;
             while (isNotificationPollRunning && !Thread.currentThread().isInterrupted()) {
                 try {
                     NotificationData result = Goservice.getNotification();
+                    notificationUUIDs.put(result.getID(), id);
                     showNotification(id, result.getTitle(), result.getContent());
 		    id = id +1;
                 } catch (Exception e) {
-                    isNotificationPollRunning = false;
-                    Thread.currentThread().interrupt();
+                    Log.e(TAG, "notification loop error", e);
+                }
+            }
+        }
+    }
+
+    private class ClearNotifications implements Runnable {
+        @Override
+        public void run() {
+            while (isNotificationPollRunning && !Thread.currentThread().isInterrupted()) {
+                try {
+                    NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+		    String uuid = Goservice.getNotificationToClear();
+		    if (notificationUUIDs.containsKey(uuid) == true) {
+                        int id = notificationUUIDs.get(uuid);
+                        if (id != 0) {
+                            notificationManager.cancel(id);
+		        }
+		    }
+
+                    StatusBarNotification[] activeNotifications = notificationManager.getActiveNotifications();
+                    if (activeNotifications.length == 1) {
+			 notificationUUIDs.clear();
+		    }
+                } catch (Exception e) {
+                    Log.e(TAG, "notification clearing loop error", e);
                 }
             }
         }
@@ -272,6 +305,7 @@ public class GoForegroundService extends Service {
                 .setGroup(title)
                 .setContentText(message)
                 .setContentIntent(pendingIntent)
+                .setSortKey(Integer.toString(id))
                 .setAutoCancel(true);
     
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {

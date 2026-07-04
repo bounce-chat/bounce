@@ -44,14 +44,33 @@ func Eval(rawTask string) string {
 	switch string(funcName) {
 	case "GetInitialState":
 		initialState := b.GetInitialState()
-		data, err := msgpack.Marshal(&initialState)
+		initialStateBytes, err := msgpack.Marshal(&initialState)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Error("error marshalling initial state")
 			return ""
 		}
-		return base64.StdEncoding.EncodeToString(data)
+		tempID := uuid.New()
+		path := "/data/data/chat.bounce/cache/" + tempID.String()
+
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			return err.Error()
+		}
+		_, err = f.Write(initialStateBytes)
+		if err != nil {
+			f.Close()
+			return err.Error()
+		}
+		err = f.Sync()
+		if err != nil {
+			f.Close()
+			return err.Error()
+		}
+		f.Close()
+
+		return tempID.String()
 	case "AcceptInvite":
 		idBytes, ok := cmd[1]
 		if !ok {

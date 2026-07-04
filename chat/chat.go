@@ -38,7 +38,8 @@ type Bounce struct {
 	devicePool            *devicePool
 	consensusStore        *consensusStore
 	chunkEngine           *chunkEngine
-	postNotification      func(string, string)
+	postNotification      func(string, string, string)
+	clearNotification     func(string)
 	userID                uuid.UUID
 	networkIsOnline       bool
 	networkHasBeenOnline  bool
@@ -51,7 +52,7 @@ type Bounce struct {
 
 // The main entrypoint for starting the Bounce chat engine, blocks until the user interface
 // is closed, the network reaches a fatal error, or the process is sent an interrupt.
-func Open(ui UI, network Network, configDirectory string, postNotification func(title, content string)) Engine {
+func Open(ui UI, network Network, configDirectory string, postNotification func(id, title, content string), clearNotification func(string)) Engine {
 	if os.Getenv("DEBUG") == "true" {
 		log.SetReportCaller(true)
 	}
@@ -85,7 +86,8 @@ func Open(ui UI, network Network, configDirectory string, postNotification func(
 		consensusStore: &consensusStore{
 			groups: make(map[uuid.UUID]*canonicalStack),
 		},
-		postNotification: postNotification,
+		postNotification:  postNotification,
+		clearNotification: clearNotification,
 	}
 	b.ensureOnlyOneInstance()
 	log.RegisterExitHandler(b.fatalShutdown)

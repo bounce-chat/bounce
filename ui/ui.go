@@ -132,7 +132,7 @@ func Main() {
 		},
 	}
 
-	ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory(), ui.postNotification)
+	ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory(), ui.postNotification, nil)
 	ui.build()
 	go func() {
 		ui.loadInitialState(ui.bounce.GetInitialState())
@@ -791,7 +791,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 	go ui.messages.writeCache()
 }
 
-func (ui *ui) postNotification(title, content string) {
+func (ui *ui) postNotification(_, title, content string) {
 	ui.app.SendNotification(fyne.NewNotification(title, content))
 }
 
