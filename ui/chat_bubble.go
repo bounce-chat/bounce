@@ -525,7 +525,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 					}
 
 					scaledImageDst := image.NewRGBA(image.Rect(0, 0, int(size), int((float32(rawImage.Bounds().Dy())/float32(rawImage.Bounds().Dx()))*size)))
-					draw.NearestNeighbor.Scale(scaledImageDst, scaledImageDst.Rect, rawImage, rawImage.Bounds(), draw.Over, nil)
+					draw.ApproxBiLinear.Scale(scaledImageDst, scaledImageDst.Rect, rawImage, rawImage.Bounds(), draw.Over, nil)
 					scaledImage = scaledImageDst
 
 					imageAttachmentCacheMutex.Lock()
@@ -554,7 +554,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 					}
 
 					scaledImageDst := image.NewRGBA(image.Rect(0, 0, int(size), int((float32(rawImage.Bounds().Dy())/float32(rawImage.Bounds().Dx()))*size)))
-					draw.NearestNeighbor.Scale(scaledImageDst, scaledImageDst.Rect, rawImage, rawImage.Bounds(), draw.Over, nil)
+					draw.ApproxBiLinear.Scale(scaledImageDst, scaledImageDst.Rect, rawImage, rawImage.Bounds(), draw.Over, nil)
 					scaledImage = scaledImageDst
 
 					imageAttachmentCacheMutex.Lock()

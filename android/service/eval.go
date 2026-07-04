@@ -83,7 +83,10 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		b.AcceptInvite(id)
+		err = b.AcceptInvite(id)
+		if err != nil {
+			return err.Error()
+		}
 	case "AliasUser":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -102,7 +105,10 @@ func Eval(rawTask string) string {
 			return "malformed command"
 		}
 
-		b.AliasUser(id, string(aliasBytes))
+		err = b.AliasUser(id, string(aliasBytes))
+		if err != nil {
+			return err.Error()
+		}
 	case "BlockGroup":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -115,7 +121,10 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		b.BlockGroup(id)
+		err = b.BlockGroup(id)
+		if err != nil {
+			return err.Error()
+		}
 	case "BlockUser":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -128,7 +137,10 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		b.BlockUser(id)
+		err = b.BlockUser(id)
+		if err != nil {
+			return err.Error()
+		}
 	case "CancelDownload":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -154,7 +166,10 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		b.ClearDMChatHistory(id)
+		err = b.ClearDMChatHistory(id)
+		if err != nil {
+			return err.Error()
+		}
 	case "ClearGroupChatHistory":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -167,7 +182,10 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		b.ClearGroupChatHistory(id)
+		err = b.ClearGroupChatHistory(id)
+		if err != nil {
+			return err.Error()
+		}
 	case "CreateGroup":
 		groupBytes, ok := cmd[1]
 		if !ok {
@@ -181,7 +199,10 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		b.CreateGroup(ng)
+		err := b.CreateGroup(ng)
+		if err != nil {
+			return err.Error()
+		}
 	case "CurrentDeviceActive":
 		b.CurrentDeviceActive()
 	case "DeleteGroup":
@@ -196,7 +217,10 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		b.DeleteGroup(id)
+		err = b.DeleteGroup(id)
+		if err != nil {
+			return err.Error()
+		}
 	case "DemoteGroupAdmin":
 		groupIDBytes, ok := cmd[1]
 		if !ok {
@@ -220,7 +244,10 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		b.DemoteGroupAdmin(groupID, userID)
+		err = b.DemoteGroupAdmin(groupID, userID)
+		if err != nil {
+			return err.Error()
+		}
 	case "DownloadFileToDisk":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -473,7 +500,10 @@ func Eval(rawTask string) string {
 			return "malformed command"
 		}
 
-		b.RenameDevice(id, string(nameBytes))
+		err = b.RenameDevice(id, string(nameBytes))
+		if err != nil {
+			return err.Error()
+		}
 	case "RenameGroup":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -492,7 +522,10 @@ func Eval(rawTask string) string {
 			return "malformed command"
 		}
 
-		b.RenameGroup(id, string(nameBytes))
+		err = b.RenameGroup(id, string(nameBytes))
+		if err != nil {
+			return err.Error()
+		}
 	case "RequestToAddUser":
 		offerBytes, ok := cmd[1]
 		if !ok {
@@ -816,7 +849,10 @@ func Eval(rawTask string) string {
 			enabled = true
 		}
 
-		b.SetDMReadReceiptSettings(id, override, enabled)
+		err = b.SetDMReadReceiptSettings(id, override, enabled)
+		if err != nil {
+			return err.Error()
+		}
 	case "SetDMRetention":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -836,7 +872,10 @@ func Eval(rawTask string) string {
 		}
 		value := int64(binary.BigEndian.Uint64(valueBytes))
 
-		b.SetDMRetention(id, value)
+		err = b.SetDMRetention(id, value)
+		if err != nil {
+			return err.Error()
+		}
 	case "SetDMTypingIndicatorSettings":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -869,7 +908,10 @@ func Eval(rawTask string) string {
 			enabled = true
 		}
 
-		b.SetDMTypingIndicatorSettings(id, override, enabled)
+		err = b.SetDMTypingIndicatorSettings(id, override, enabled)
+		if err != nil {
+			return err.Error()
+		}
 	case "SetForeground":
 		valueBytes, ok := cmd[1]
 		if !ok {
@@ -915,7 +957,10 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		b.SetGroupImage(id, image)
+		err = b.SetGroupImage(id, image)
+		if err != nil {
+			return err.Error()
+		}
 	case "SetGroupLastOpened":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -991,7 +1036,10 @@ func Eval(rawTask string) string {
 			enabled = true
 		}
 
-		b.SetGroupReadReceiptSettings(id, override, enabled)
+		err = b.SetGroupReadReceiptSettings(id, override, enabled)
+		if err != nil {
+			return err.Error()
+		}
 	case "SetGroupRetention":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -1011,7 +1059,10 @@ func Eval(rawTask string) string {
 		}
 		value := int64(binary.BigEndian.Uint64(valueBytes))
 
-		b.SetGroupRetention(id, value)
+		err = b.SetGroupRetention(id, value)
+		if err != nil {
+			return err.Error()
+		}
 	case "SetGroupTypingIndicatorSettings":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -1044,7 +1095,10 @@ func Eval(rawTask string) string {
 			enabled = true
 		}
 
-		b.SetGroupTypingIndicatorSettings(id, override, enabled)
+		err = b.SetGroupTypingIndicatorSettings(id, override, enabled)
+		if err != nil {
+			return err.Error()
+		}
 	case "SetNewDMRetention":
 		valueBytes, ok := cmd[1]
 		if !ok || len(valueBytes) != 8 {
@@ -1225,7 +1279,10 @@ func Eval(rawTask string) string {
 			return "malformed command"
 		}
 
-		b.SetUserNotes(id, string(notesBytes))
+		err = b.SetUserNotes(id, string(notesBytes))
+		if err != nil {
+			return err.Error()
+		}
 	case "TypingInDirectMessage":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -1277,7 +1334,10 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		b.UnrestrictGroupEdits(id)
+		err = b.UnrestrictGroupEdits(id)
+		if err != nil {
+			return err.Error()
+		}
 	case "UnrestrictPosting":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -1290,7 +1350,10 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		b.UnrestrictPosting(id)
+		err = b.UnrestrictPosting(id)
+		if err != nil {
+			return err.Error()
+		}
 	case "UnrestrictUserManagement":
 		idBytes, ok := cmd[1]
 		if !ok {
@@ -1303,7 +1366,10 @@ func Eval(rawTask string) string {
 			return err.Error()
 		}
 
-		b.UnrestrictUserManagement(id)
+		err = b.UnrestrictUserManagement(id)
+		if err != nil {
+			return err.Error()
+		}
 	case "UpdateDraft":
 		idBytes, ok := cmd[1]
 		if !ok {
