@@ -42,7 +42,7 @@
     <uses-feature android:name="android.hardware.camera.autofocus" />
 
     <application
-        android:icon="@mipmap/icon"
+        android:icon="@mipmap/ic_launcher"
         android:label="Bounce">
         <activity
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
