@@ -120,7 +120,13 @@ Group consensus is implemented as a stack.  The stack begins with the group crea
 
 ## Files
 
+Distributing files is an important part of several features in Bounce.  Users and groups can have icons, and messages can have both image and file attachments.  Files are identified by UUID and are distributed as a hash list, each hash created from a chunk with a maximum size of 1MiB.  Small files (20MiB or less) are embedded in Bounce's blobs directory, and are automatically downloaded by clients.  This size also serves as the limit for user and group icons, and for images displayed in messages.  Larger files are "seeded" off disk where they are and are not copied into Bounce's blobs directory.  These files are not automatically downloaded by clients.
+
 ### Chunk Offers
+
+A chunk offer is a frame that indicates a device has a chunk, for the purposes of informing other clients where they can get the data from.  When a client distributes a file, they broadcast a chunk offer for each chunk in the file, and clients that want the file send back "chunk requests", asking the device with the data to send it over.  Once the clients receive the data, they broadcast their own chunk offers for the same chunk, indicating they now have the data as well.  Once a file is on several devices, new devices have options for where they can get chunks, and implement a strategy to parallelize requesting different parts of the file from different devices, in a process comparable to bittorrent.
+
+Bounce clients attempt to keep two sockets open with each peer they connect to, and always limit chunk sending to one socket when multiple are available.  This prevents a chunk that is slow to send from blocking smaller messages that should remain low latency, like typing indicators and messages.
 
 ## Encrypted Devices
 
