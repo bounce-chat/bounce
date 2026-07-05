@@ -104,9 +104,23 @@ With the above out of the way, sending messages is straightforward.  A user crea
 
 ## Group Consensus
 
+The state of groups (including the group attributes, like the name and settings, as well as who is a member or invited, and the permission of the members) must be consistent across all devices with the same data, regardless of the order that data was received in.  This is accomplished via a process called "group consensus".
 
+Groups are created via a frame called a "groupCreation", which defines the original state of the group, and changes to groups are accomplished via atmoic updates known as "updateGroups".  The ID of a group is derived from a hash of the original state as defined by the groupCreation, making it impossible for a client to lie about the original state of a group and still be referring to the same group.  Updates are applied in timestamp order, however relying just on the timestamps opens up a trivial vulnerability.  Consider the following situation:
+
+1. Group G contains admins A and B
+2. A decides to revoke B's admin status via an updateGroup, and broadcasts it
+3. B sees this and immediately broadcasts an updateGroup that revokes A's admin status with an earlier timestamp
+
+In a naive implementation, B always wins.  Bounce instances are eventually-consistent and need to be able to handle out of order data, so they have no way to tell that B is lying about the timestamp.
+
+Bounce imperfectly solves this problem by having clients broadcast a "confirmation" when they see a valid updateGroup, which is simply a signature of the update.  When a conflicting update is encountered, the update with the later timestamp can still be considered the valid one if it has the majority of users confirming it and the earlier one does not.  This means that if A can get their revoke seen by a majority of users in the group before B broadcasts the conflicting "earlier" update, B will never be able to undo that change by sharing their conflicting update with an earlier timestamp.
+
+Group consensus is implemented as a stack.  The stack begins with the group creation, then updates are applied in timestamp order.  If an update cannot be applied for any reason (permission issue, membership, etc), the stack is popped until the conflicting update is discovered.  The conflicting updates are compared, and the "earlier" one wins unless the "older" one has >50% of users confirming it and the earlier one does not.  Once all of the updates are pushed onto the stack and deconflicted this way, the stack contains the set of accepted canonical updates to the group, and the user broadcasts confirmations for any of these updates they have not already confirmed.  The final group state can then be determined by starting with the original state in the groupCreation, and applying all the valid updates in order.
 
 ## Files
+
+### Chunk Offers
 
 ## Encrypted Devices
 
