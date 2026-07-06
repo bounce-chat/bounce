@@ -299,6 +299,33 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		if err == nil {
 			c.Data = data
 			b.writeChunkToDisk(c)
+		} else {
+			// If we have any chunk offers that came in
+			// before the file, load them into the chunk
+			// engine now
+			var offers []chunkOffer
+			err = b.database.Where("hash = ?", c.Hash).Find(&offers).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error looking up chunk offers")
+			}
+			for _, co := range offers {
+				b.addChunkOfferToChunkEngine(&co)
+			}
+
+			if c.EncryptedHash != "" {
+				var encryptedOffers []encryptedChunkOffer
+				err = b.database.Where("hash = ?", c.EncryptedHash).Find(&encryptedOffers).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("database error looking up encypted chunk offers")
+				}
+				for _, eco := range encryptedOffers {
+					b.addEncryptedChunkOfferToChunkEngine(&eco)
+				}
+			}
 		}
 	}
 
@@ -1133,6 +1160,7 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 		}).Warn("error writing file containing chunk data")
 		return
 	}
+	fh.Close()
 
 	if !f.embedded() {
 		progress, _ := fileDataDownloaded[c.FileID]
