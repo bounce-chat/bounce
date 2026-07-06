@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"math"
+	"os"
 	"sync"
 	"time"
 
@@ -1050,6 +1051,34 @@ func (u *uiBuffer) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 		return
 	}
 
+	tempID := uuid.New()
+	path := "/data/data/chat.bounce/cache/" + tempID.String()
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error opening file for catch up messages")
+		return
+	}
+	_, err = f.Write(bytes)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error writing file for catch up messages")
+		f.Close()
+		return
+	}
+	err = f.Sync()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error syncing file for catch up messages")
+		f.Close()
+		return
+	}
+	f.Close()
+
 	initialSyncBytes := []byte{0x00}
 	if initialSync {
 		initialSyncBytes = []byte{0x01}
@@ -1057,7 +1086,7 @@ func (u *uiBuffer) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 
 	u.events = append(u.events, map[int][]byte{
 		0: []byte("CatchUpMessages"),
-		1: bytes,
+		1: tempID[:],
 		2: initialSyncBytes,
 	})
 }
@@ -1240,9 +1269,37 @@ func collapse(events []map[int][]byte) []map[int][]byte {
 			"error": err.Error(),
 		}).Error("error marshalling bulk update")
 	}
+
+	tempID := uuid.New()
+	path := "/data/data/chat.bounce/cache/" + tempID.String()
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error opening file for catch up messages")
+		return collapsedEvents
+	}
+	_, err = f.Write(bulkBytes)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error writing file for catch up messages")
+		f.Close()
+		return collapsedEvents
+	}
+	err = f.Sync()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error syncing file for catch up messages")
+		f.Close()
+	}
+	f.Close()
+
 	collapsedEvents = append(collapsedEvents, map[int][]byte{
 		0: []byte("CatchUpMessages"),
-		1: bulkBytes,
+		1: tempID[:],
 		2: []byte{0x00},
 	})
 

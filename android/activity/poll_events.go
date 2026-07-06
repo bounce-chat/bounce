@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"io/ioutil"
 	"math"
+	"os"
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
@@ -1106,11 +1108,28 @@ func pollEvents(userInterface chat.UI) {
 
 				userInterface.FileDownloadProgress(id, f)
 			case "CatchUpMessages":
-				bytes, ok := cmd[1]
+				idBytes, ok := cmd[1]
 				if !ok {
-					log.Error("no bytes")
+					log.Error("no id bytes")
 					continue
 				}
+				id, err := uuid.FromBytes(idBytes)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error parsing uuid")
+					continue
+				}
+
+				path := "/data/data/chat.bounce/cache/" + id.String()
+				bytes, err := ioutil.ReadFile(path)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("error loading catch up file")
+				}
+				os.Remove(path)
+
 				var bu chat.BulkUpdate
 				err = msgpack.Unmarshal(bytes, &bu)
 				if err != nil {
