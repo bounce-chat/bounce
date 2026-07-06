@@ -68,6 +68,7 @@ type Engine interface {
 	SetNewGroupRestrictPosting(value bool)
 	SetNewGroupRestrictUserManagement(value bool)
 	SetNewGroupRetention(value int64)
+	SetNotificationIcon(thread string, icon []byte)
 	SetOpenDM(userID uuid.UUID, open bool) error
 	SetProfile(profileName string, image []byte, deviceName string) error
 	SetReadReceiptsByDefault(value bool)

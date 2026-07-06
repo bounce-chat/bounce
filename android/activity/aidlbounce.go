@@ -914,6 +914,33 @@ func (b *aidlBounce) SetNewGroupRetention(value int64) {
 	})
 }
 
+func (b *aidlBounce) SetNotificationIcon(thread string, image []byte) {
+	tempID := uuid.New()
+	path := "/data/data/chat.bounce/cache/" + tempID.String()
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return
+	}
+	_, err = f.Write(image)
+	if err != nil {
+		f.Close()
+		return
+	}
+	err = f.Sync()
+	if err != nil {
+		f.Close()
+		return
+	}
+	f.Close()
+
+	callCommand(map[int][]byte{
+		0: []byte("SetNotificationIcon"),
+		1: []byte(thread),
+		2: tempID[:],
+	})
+}
+
 func (b *aidlBounce) SetOpenDM(userID uuid.UUID, value bool) error {
 	valueBytes := []byte{0x00}
 	if value {

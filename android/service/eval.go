@@ -1150,6 +1150,36 @@ func Eval(rawTask string) string {
 		value := int64(binary.BigEndian.Uint64(valueBytes))
 
 		b.SetNewGroupRetention(value)
+	case "SetNotificationIcon":
+		threadBytes, ok := cmd[1]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+		thread := string(threadBytes)
+
+		imageIDBytes, ok := cmd[2]
+		if !ok {
+			log.Error("no bytes")
+			return "malformed command"
+		}
+
+		imageID, err := uuid.FromBytes(imageIDBytes)
+		if err != nil {
+			return err.Error()
+		}
+		path := "/data/data/chat.bounce/cache/" + imageID.String()
+		defer os.Remove(path)
+		image, err := os.ReadFile(path)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"path":  path,
+				"error": err.Error(),
+			}).Error("error reading temp file")
+			return err.Error()
+		}
+
+		b.SetNotificationIcon(thread, image)
 	case "SetOpenDM":
 		idBytes, ok := cmd[1]
 		if !ok {

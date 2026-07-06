@@ -520,7 +520,13 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		if b.postNotification != nil && b.shouldNotifyDM(dm) {
 			title, content, err := b.getDMNotificationContent(dm)
 			if err == nil {
-				b.postNotification(dm.ID.String(), title, content, dm.getDestination(b.currentUserID()).String())
+				b.postNotification(
+					dm.ID.String(),
+					title,
+					content,
+					dm.getDestination(b.currentUserID()).String(),
+					b.getNotificationIcon(dm.getDestination(b.currentUserID()).String()),
+				)
 			}
 		}
 	}
@@ -528,7 +534,13 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		if b.postNotification != nil && b.shouldNotifyGM(gm) {
 			title, content, err := b.getGMNotificationContent(gm)
 			if err == nil {
-				b.postNotification(gm.ID.String(), title, content, gm.Destination.String())
+				b.postNotification(
+					gm.ID.String(),
+					title,
+					content,
+					gm.Destination.String(),
+					b.getNotificationIcon(gm.Destination.String()),
+				)
 			}
 		}
 	}

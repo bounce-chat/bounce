@@ -325,7 +325,13 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 		if b.postNotification != nil && b.shouldNotifyGM(&gm) {
 			title, content, err := b.getGMNotificationContent(&gm)
 			if err == nil {
-				b.postNotification(gm.ID.String(), title, content, gm.Destination.String())
+				b.postNotification(
+					gm.ID.String(),
+					title,
+					content,
+					gm.Destination.String(),
+					b.getNotificationIcon(gm.Destination.String()),
+				)
 			}
 		}
 

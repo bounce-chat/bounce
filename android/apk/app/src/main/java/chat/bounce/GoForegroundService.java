@@ -15,6 +15,9 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
 import android.service.notification.StatusBarNotification;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import androidx.core.app.NotificationCompat;
 
 import go.Seq;
 import goservice.Goservice;
@@ -241,7 +244,18 @@ public class GoForegroundService extends Service {
                 try {
                     NotificationData result = Goservice.getNotification();
                     notificationUUIDs.put(result.getID(), id);
-                    showNotification(id, result.getTitle(), result.getContent(), result.getDisplay());
+
+                    Bitmap iconBitmap = null;
+                    byte[] iconBytes = result.getIcon();
+                    boolean setCustomIcon = false;
+                    if (iconBytes != null && iconBytes.length > 0) {
+                        iconBitmap = BitmapFactory.decodeByteArray(iconBytes, 0, iconBytes.length);
+                        if (iconBitmap != null) {
+                            setCustomIcon = true;
+                        }
+                    }
+
+                    showNotification(id, result.getTitle(), result.getContent(), result.getDisplay(), setCustomIcon, iconBitmap);
 		    id = id +1;
                 } catch (Exception e) {
                     Log.e(TAG, "notification loop error", e);
@@ -276,7 +290,7 @@ public class GoForegroundService extends Service {
         }
     }
 
-    public void showNotification(int id, String title, String message, String display) {
+    public void showNotification(int id, String title, String message, String display, boolean setCustomIcon, Bitmap customIcon) {
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         Notification.Builder builder;
 
@@ -294,6 +308,9 @@ public class GoForegroundService extends Service {
                 : PendingIntent.FLAG_UPDATE_CURRENT;
         PendingIntent pendingIntent = PendingIntent.getActivity(this, id, tapIntent, piFlags);
     
+        if (setCustomIcon == true) {
+            builder.setLargeIcon(customIcon);
+        }
         builder.setContentTitle(title)
                 .setSmallIcon(R.drawable.adaptive_icon)
                 .setGroup(title)

@@ -30,6 +30,7 @@ type NotificationData struct {
 	Title   string
 	Content string
 	Display string
+	Icon    []byte
 }
 
 var notificationChannel = make(chan *NotificationData)
@@ -141,12 +142,13 @@ func pruneCache() {
 	}
 }
 
-func handleNotification(id, title, content, openThread string) {
+func handleNotification(id, title, content, openThread string, icon []byte) {
 	notificationChannel <- &NotificationData{
 		ID:      id,
 		Title:   title,
 		Content: content,
 		Display: openThread,
+		Icon:    icon,
 	}
 }
 
