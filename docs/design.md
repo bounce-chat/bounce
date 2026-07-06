@@ -83,6 +83,7 @@ When handling a catch up, each frame is sequentially processed by the same handl
 ## Adding Users
 
 Users add each other using the following flow:
+
 1. One of the users generates a random secret that is valid for 5 minutes.  This is known as the "offer user".
 2. The offer user displays this secret, along with the address of the device that is doing the displaying.  This information is scanned by the other user, which is known as the "requester user".
 3. The requester user gets this information and connects to the address.  It sends an "add user request", which is a structure containing the secret, as well as the entire requester user's user structure (which includes their ID, name, device group, etc).
@@ -130,4 +131,27 @@ Bounce clients attempt to keep two sockets open with each peer they connect to, 
 
 ## Encrypted Devices
 
+The goal with encrypted devices is for them to serve the role of a normal device, in that they are able to receive, broadcast, and reference frames, including file chunks, without being able to read any of the content of the frames or generate their own new frames.  The encrypted device should only have access to the minimum amount of metadata required to accomplish this.  This enables hosting instances of Bounce in less-trusted environments, such as VPSes, without concern that compromise of those hosts would result in a breach of confidentiality or loss of control over one's identity in Bounce.
+
+### User Keys
+
+To facilitate encrypted devices, each user has a persistent ECDH key.  An initial ECDH key is created when the user is created, and these keys are only rolled when the user revokes a device.
+
+### Encrypted Frames and Recipients
+
+To encrypt a frame before sending it to an encrypted device, a normal device generates a new data encryption key (DEK) unique for that frame.  The frame is encrypted with the DEK.  Then, the device takes all of the users who are in scope to receive that frame.  For each user that is in scope, the device generates a key encryption key (KEK) from the ECDH exchange of their key and that user's key.  These KEKs are included as "recipients".  So, when storing a frame on an encrypted device, the unencrypted devices sends the encrypted frame, their public key, and the set of recipients, and the encrypted device checks to make sure that the owner of the encrypted device is among the recipients, then stores the data.  The only unencrypted data that the encrypted frame has in common with it's unencrypted origin in the UUID and Type, in order to facilitate the reference flow.
+
+When receiving data from an encrypted device, devices only receive the encrypted frame, their KEK, and the public ECDH key of the user that did the encrypting.  Devices generate the DEK from their private ECDH key and the provided public ECDH key, then decrypt the frame and handle it as they otherwise would.
+
+The above technique is only aware of user-level keys.  This does not scale well for massive groups, and to prevent unbounded linear growth in the number of recipients, they are capped to 15 randomly selected group members when groups are larger than that.  Creating ECDH keys on a group level, and using group scoped recipients for them, will be a future addition to the protocol, but must be well planned to account for how to roll keys in any of the possible group consensus situations.
+
+Aside from encrypting frames to user ECDH keys, frames can also be scoped to devices, which have ECDH keys only known to their owners.  This is a special case that is only used when users need to roll their keys, and need to securely send the new keys to the unrevoked devices.
+
+### Encrypted Reference Flow
+
+### Managing Encrypted Devices
+
+#### Re-Keying
+
+### Encrypted Chunk Storage Requests / Encrypted Chunk Offers
 ---
