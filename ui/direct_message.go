@@ -7,6 +7,7 @@ import (
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
+	"image/png"
 	_ "image/png"
 	"io"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/software"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -515,6 +517,15 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		}
 	}
 	dm.editIcon = newDefaultImage(dm.user.id, dm.user.images, dm.user.initials, 128, ui.bounce.GetFileData, selectImage)
+	dm.editIcon.newBackgroundCallback = func() {
+		img := software.Render(dm.editIcon, theme.Current())
+		var buf bytes.Buffer
+		err := png.Encode(&buf, img)
+		if err == nil {
+			ui.bounce.SetNotificationIcon(dm.user.id.String(), buf.Bytes())
+		}
+	}
+	dm.editIcon.setBackground()
 
 	dm.username = widget.NewLabel(dm.user.getDisplayName())
 	dm.username.Truncation = fyne.TextTruncateEllipsis

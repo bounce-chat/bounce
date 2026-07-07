@@ -24,13 +24,14 @@ var imageCacheMutex sync.Mutex
 
 type defaultImage struct {
 	widget.BaseWidget
-	id              uuid.UUID
-	size            float32
-	foregroundText  *canvas.Text
-	backgroundColor *canvas.Image
-	images          []uuid.UUID
-	fileGetter      func(uuid.UUID) ([]byte, error)
-	clicked         func()
+	id                    uuid.UUID
+	size                  float32
+	foregroundText        *canvas.Text
+	backgroundColor       *canvas.Image
+	images                []uuid.UUID
+	fileGetter            func(uuid.UUID) ([]byte, error)
+	clicked               func()
+	newBackgroundCallback func()
 }
 
 func newDefaultImage(id uuid.UUID, images []uuid.UUID, str string, size float32, fileGetter func(uuid.UUID) ([]byte, error), clicked func()) *defaultImage {
@@ -118,6 +119,9 @@ func (di *defaultImage) setDefaultBackground() {
 	cachedImage, ok := imageCache[cacheKey]
 	imageCacheMutex.Unlock()
 	if ok {
+		if di.newBackgroundCallback != nil {
+			di.newBackgroundCallback()
+		}
 		di.backgroundColor.Image = cachedImage
 		return
 	}
@@ -129,6 +133,11 @@ func (di *defaultImage) setDefaultBackground() {
 	imageCacheMutex.Lock()
 	imageCache[cacheKey] = di.backgroundColor.Image
 	imageCacheMutex.Unlock()
+
+	di.Refresh()
+	if di.newBackgroundCallback != nil {
+		di.newBackgroundCallback()
+	}
 }
 
 func (di *defaultImage) setFirstAvailableImage(startIndex int) {
@@ -182,6 +191,9 @@ func (di *defaultImage) setFirstAvailableImage(startIndex int) {
 		di.backgroundColor.Image = croppedImage
 		di.foregroundText.Hide()
 		di.Refresh()
+		if di.newBackgroundCallback != nil {
+			di.newBackgroundCallback()
+		}
 	})
 }
 

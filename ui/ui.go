@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"bytes"
-	"image/png"
 	"os"
 	"runtime"
 	"testing"
@@ -17,7 +15,6 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/driver/mobile"
-	"fyne.io/fyne/v2/driver/software"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/google/uuid"
@@ -466,14 +463,6 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 
 			if u.State.Open {
 				ui.NewDirectMessage(u)
-
-				dm, _ := ui.threads.getDM(u.ID)
-				img := software.Render(dm.editIcon, theme.Current())
-				var buf bytes.Buffer
-				err := png.Encode(&buf, img)
-				if err == nil {
-					ui.bounce.SetNotificationIcon(u.ID.String(), buf.Bytes())
-				}
 			}
 		}
 
@@ -516,14 +505,6 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 				log.WithFields(log.Fields{
 					"group_id": g.ID,
 				}).Error("group is neither invited nor member")
-			}
-
-			t, _ := ui.threads.getGroup(g.ID)
-			img := software.Render(t.editIcon, theme.Current())
-			var buf bytes.Buffer
-			err := png.Encode(&buf, img)
-			if err == nil {
-				ui.bounce.SetNotificationIcon(g.ID.String(), buf.Bytes())
 			}
 		}
 
@@ -929,13 +910,6 @@ func (ui *ui) FileCompleted(fileID uuid.UUID) {
 			if hi != nil {
 				hi.setBackground()
 				hi.Refresh()
-			}
-
-			img := software.Render(ei, theme.Current())
-			var buf bytes.Buffer
-			err := png.Encode(&buf, img)
-			if err == nil {
-				ui.bounce.SetNotificationIcon(t.getID().String(), buf.Bytes())
 			}
 		})
 	})

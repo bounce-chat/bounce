@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"bytes"
 	"errors"
+	"image/png"
 	"io"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/software"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -82,6 +85,15 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 			}
 		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
+	g.editIcon.newBackgroundCallback = func() {
+		img := software.Render(g.editIcon, theme.Current())
+		var buf bytes.Buffer
+		err := png.Encode(&buf, img)
+		if err == nil {
+			ui.bounce.SetNotificationIcon(g.id.String(), buf.Bytes())
+		}
+	}
+	g.editIcon.setBackground()
 
 	g.retentionSelection = widget.NewSelect(retentionSelections, nil)
 	g.retentionSelection.Selected = getRetentionName(g.retention)

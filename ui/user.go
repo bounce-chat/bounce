@@ -1,14 +1,10 @@
 package ui
 
 import (
-	"bytes"
-	"image/png"
 	"strings"
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/driver/software"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/bounce-chat/bounce/chat"
 	"github.com/google/uuid"
@@ -195,14 +191,6 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 				}
 			}
 		})
-	}
-
-	// Tell the chat engine what icon to use in notifications
-	img := software.Render(dm.editIcon, theme.Current())
-	var buf bytes.Buffer
-	err := png.Encode(&buf, img)
-	if err == nil {
-		ui.bounce.SetNotificationIcon(chatUser.ID.String(), buf.Bytes())
 	}
 }
 

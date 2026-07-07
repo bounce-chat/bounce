@@ -1,10 +1,7 @@
 package ui
 
 import (
-	"bytes"
 	"errors"
-	"image"
-	"image/png"
 	"io"
 	"sync"
 	"time"
@@ -15,7 +12,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/driver/software"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -803,7 +799,6 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 		}
 	}
 
-	var headerImage image.Image
 	fyne.DoAndWait(func() {
 		g, exists := ui.threads.getGroup(bounceGroup.ID)
 		if !exists {
@@ -907,15 +902,7 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 				ui.displayThread(g)
 			}
 		}
-		headerImage = software.Render(g.editIcon, theme.Current())
 	})
-
-	// Tell the chat engine what icon to use in notifications
-	var buf bytes.Buffer
-	err := png.Encode(&buf, headerImage)
-	if err == nil {
-		ui.bounce.SetNotificationIcon(bounceGroup.ID.String(), buf.Bytes())
-	}
 }
 
 func (ui *ui) setGroupMutedUntilButton(g *group) {
