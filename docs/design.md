@@ -24,7 +24,7 @@ The above process can repeat indefinitely, with the phone able to add another de
 
 ### Revoking Devices
 
-Any device can revoke another member of the device group by broadcasting a signed frame that does so.  Revoking a device does not revoke any other devices that device previously added.  Revoked devices are marked as revoked and lose the ability to do anything, but they are retained in the device group forever, as their keys might be necessary to validate the mutual signatures in a device group.
+Any device can revoke another member of the device group by broadcasting a signed frame that does so.  Revoking a device does not revoke any other devices that device previously added.  Revoked devices are marked as revoked and lose the ability to do anything, but they are retained in the device group forever, as their keys might be necessary to validate the historic mutual signatures in a device group.
 
 Losing control over device keys can destroy a device group.  If a bad actor steals a device they can revoke the legitimate devices in the group, and other users will not be able to tell that this was done by a bad actor.  If a device is stolen, a race occurs to revoke that device before it revokes you, potentially leading to an unrecoverable loss of control over your identity.  Such is the nature of distributed cryptographic systems.
 
@@ -34,7 +34,7 @@ All communication between Bounce instances occurs by sending frames, defined as 
 
 ## Scopes
 
-Some frames are sent specifically to one device.  For example, when a new device is joining an existing profile, it sends a secret it obtained from the device that is adding it to the device that is adding it.  That frame only needs to go to one device.  However, the majority of frames are broadcast to a scope using a basic gossip protocol.  This broadcast function takes a look at all the devices that are in scope, and writes the frame to any device that is online and has not already acknowledged the frame.
+Frames can either be sent to one specific device, or broadcast to a scope.  For example, when a new device is joining an existing profile, it sends a secret to the device that is adding it.  That frame only needs to go to that one device.  However, the majority of frames are broadcast to a scope using a basic gossip protocol.  This broadcast function takes a look at all the devices that are in scope, and writes the frame to any device that is online and has not already acknowledged the frame.
 
 ### Sync
 
@@ -60,7 +60,7 @@ The global scope is used to share profile updates with all known contacts and in
 
 ### Custom
 
-The custom scope uses records in the database that define a specific set of devices.  This is used when the context for a scope is disappearing, but it is important to share a frame with certain devices.  For example, when a group is deleted, the group is removed from the database.  But the frame that deletes the group should be saved, and shared with any members of the group who might come online later and need to be informed.  This is accomplished by saving the devices that are in the group in a custom scope, then deleting the group, then preserving the delete action with that custom scope.
+The custom scope uses records in the database that define a specific set of devices.  This is used when the context for a scope is disappearing, but it is important to share a frame with certain devices.  For example, when a group is deleted, the group is removed from the database.  But the frame that deletes the group should be saved, and shared with any members of the group who might come online later and need to be informed.  This is accomplished by saving the devices that are in the group in a custom scope, deleting the group, and preserving the delete action with that custom scope.
 
 ## Delivery Tracking and References
 
@@ -76,9 +76,9 @@ When handing a reference offer, a device checks each reference and sees if it ha
 
 ### Catch Up
 
-When handling a reference request, a device iterates through the references and confirms that the requesting peer does indeed have the right to view the frame.  If so, the frames is marshaled and collected into a slice on a catch up frame.  The frames are then sorted by the time the device first saved them locally, and this catch up frame is then sent to the requester
+When handling a reference request, a device iterates through the references and confirms that the requesting peer does indeed have the right to view the frame.  If so, each frames is collected into a slice on a catch up frame.  The frames are then sorted by the time the device first saved them locally, and this catch up frame is then sent to the requester.
 
-When handling a catch up, each frame is sequentially processed by the same handler that would process it if it was received in real time on the wire.  However, when handlers know that a frame is part of a catchup, they forgo some calls into the UI.  The catch up handler keeps track of which UI states might need to be updated, and updates them in bulk after all of the frames are processed.
+When handling a catch up, each frame is sequentially processed by the same handler that would process it if it was received in real time on the wire.  However, when handlers know that a frame is part of a catchup, they forgo some calls into the UI.  The catch up handler keeps track of which UI states might need to be updated, and updates them in bulk after all of the frames are processed.  This prevents the UI from replaying everything that happened while the device was offline in sequence, and simply brings the UI up to date all at once.
 
 ## Adding Users
 
@@ -91,7 +91,7 @@ Users add each other using the following flow:
 5. The offer user accepts this request by sending an "add user request accepted" structure.  This structure contains the offer user's user structure, as well as the offer user's device's signature of a hash of the requester user's user structure that was provided in the add user request.
 6. The requester user receives this, validates the offer user data, and users their device to sign a hash of the offer user data.  The requester then creates the final "add user" struct.  This struct includes both of the full user structures, both of the signatures, and both of the addresses of the devices that did the signing.  The requester user runs this add user through the add user handler, and broadcasts it to all of their devices and all of the offer users devices.
 
-The add user struct that was created by this process contains proof that a device belonging to each user's device groups consented to the adding the other user.  It can be shared with any device that is a member of either user's device group now or in the future, and so long as neither of the signing devices are revoked, it can be used to add the contact.  This design makes it possible for a device to add a user it has never seen before, without hearing about that user from one of it's sync devices.  For example:
+The add user struct that was created by this process contains proof that a device belonging to each user's device groups consented to the adding of the other user.  It can be shared with any device that is a member of either user's device group now or in the future, and so long as neither of the signing devices are revoked, it can be used to add the contact.  This design makes it possible for a device to add a user it has never seen before, without hearing about that user from one of it's sync devices.  For example:
 
 1. Offer user A owns a laptop and phone
 2. Requester user B owns a desktop
@@ -115,13 +115,13 @@ Groups are created via a frame called a "groupCreation", which defines the origi
 
 In a naive implementation, B always wins.  Bounce instances are eventually-consistent and need to be able to handle out of order data, so they have no way to tell that B is lying about the timestamp.
 
-Bounce imperfectly solves this problem by having clients broadcast a "confirmation" when they see a valid updateGroup, which is simply a signature of the update.  When a conflicting update is encountered, the update with the later timestamp can still be considered the valid one if it has the majority of users confirming it and the earlier one does not.  This means that if A can get their revoke seen by a majority of users in the group before B broadcasts the conflicting "earlier" update, B will never be able to undo that change by sharing their conflicting update with an earlier timestamp.
+Bounce imperfectly solves this problem by having clients broadcast a "confirmation" when they see a valid updateGroup, which is simply a signature of the update.  When a conflicting update is encountered, the update with the later timestamp can still be considered the valid one if it has the majority of users confirming it and the earlier one does not.  This means that if A can get their revoke seen by a majority of users in the group before B broadcasts the conflicting "earlier" update, B will never be able to undo that change by sharing their conflicting update with an earlier timestamp.  Either way, all of the devices will share the same state of the group regardless of what happens.
 
-Group consensus is implemented as a stack.  The stack begins with the group creation, then updates are applied in timestamp order.  If an update cannot be applied for any reason (permission issue, membership, etc), the stack is popped until the conflicting update is discovered.  The conflicting updates are compared, and the "earlier" one wins unless the "older" one has >50% of users confirming it and the earlier one does not.  Once all of the updates are pushed onto the stack and deconflicted this way, the stack contains the set of accepted canonical updates to the group, and the user broadcasts confirmations for any of these updates they have not already confirmed.  The final group state can then be determined by starting with the original state in the groupCreation, and applying all the valid updates in order.
+Group consensus is implemented as a stack.  The stack begins with the group creation, then updates are applied in timestamp order.  If an update cannot be applied for any reason (permission issue, membership, etc), the stack is popped until the conflicting update is discovered.  The conflicting updates are compared, and the "earlier" one wins unless the "older" one has >50% of users confirming it and the earlier one does not.  Once all of the updates are pushed onto the stack and deconflicted this way, the stack contains the set of accepted canonical updates to the group, and the user broadcasts confirmations for any of these updates they have not already confirmed.  The current group state can then be determined by starting with the original state in the groupCreation, and applying all the valid updates in order.
 
 ## Files
 
-Distributing files is an important part of several features in Bounce.  Users and groups can have icons, and messages can have both image and file attachments.  Files are identified by UUID and are distributed as a hash list, each hash created from a chunk with a maximum size of 1MiB.  Small files (20MiB or less) are embedded in Bounce's blobs directory, and are automatically downloaded by clients.  This size also serves as the limit for user and group icons, and for images displayed in messages.  Larger files are "seeded" off disk where they are and are not copied into Bounce's blobs directory.  These files are not automatically downloaded by clients.
+Distributing files is an important part of several features in Bounce.  Users and groups can have icons, and messages can have both image and file attachments.  Files are identified by UUID and are distributed as a hash list, each hash created from a chunk with a maximum size of 1MiB.  Small files (20MiB or less) are embedded in Bounce's blobs directory, and are automatically downloaded by clients.  This size also serves as the limit for user and group icons, and for images displayed in messages.  Larger files are "seeded" off disk where they are and are not copied into Bounce's blobs directory (except an android, where all files are copied into a Bounce-controlled directory as a temporary workaround).  These files are not automatically downloaded by clients.
 
 ### Chunk Offers
 
@@ -143,15 +143,18 @@ To encrypt a frame before sending it to an encrypted device, a normal device gen
 
 When receiving data from an encrypted device, devices only receive the encrypted frame, their KEK, and the public ECDH key of the user that did the encrypting.  Devices generate the DEK from their private ECDH key and the provided public ECDH key, then decrypt the frame and handle it as they otherwise would.
 
-The above technique is only aware of user-level keys.  This does not scale well for massive groups, and to prevent unbounded linear growth in the number of recipients, they are capped to 15 randomly selected group members when groups are larger than that.  Creating ECDH keys on a group level, and using group scoped recipients for them, will be a future addition to the protocol, but must be well planned to account for how to roll keys in any of the possible group consensus situations.
+The above technique is only aware of user-level keys.  This does not scale well for massive groups, and to prevent unbounded linear growth in the number of recipients, they are capped to 15 randomly selected group members when groups are larger than that.  Creating ECDH keys on a group level and using group scoped recipients for them will be a future addition to the protocol, but must be well planned to account for how to roll keys in any of the possible group consensus situations.
 
-Aside from encrypting frames to user ECDH keys, frames can also be scoped to devices, which have ECDH keys only known to their owners.  This is a special case that is only used when users need to roll their keys, and need to securely send the new keys to the unrevoked devices.
+Aside from encrypting frames to user ECDH keys, frames can also be encrypted to devices, which have ECDH keys only known to their owners.  This is a special case that is only used when users need to roll their keys, and need to securely send the new keys to the unrevoked devices via an encrypted device.
 
 ### Encrypted Reference Flow
 
+For the purposes of scoping, normal devices can treat encrypted devices as any other device belonging to the user who owns it.  Normal devices offer references to, and send encrypted versions of, any frame that would go to a regular device owned by the encrypted device's owner.  Encrypted devices, however, do not know which devices belong to which users.  In order for them to send reference offers, they need to know which user-level key a device owns.  Encrypted devices do this by sending an encryptedReferenceOfferChallenge, containing an ephemeral ECDH public key and a random set of data.  The regular device must do an ECDH exchange with this public key and their private key, encrypt the data, then then send back their public key and the encrypted data.  The encrypted device can then confirm that the peer owns the private key for the provided public key, and send reference of any frames which include that public key as a recipient.
+
 ### Managing Encrypted Devices
+
+
 
 #### Re-Keying
 
 ### Encrypted Chunk Storage Requests / Encrypted Chunk Offers
----
