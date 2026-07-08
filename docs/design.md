@@ -62,6 +62,10 @@ The global scope is used to share profile updates with all known contacts and in
 
 The custom scope uses records in the database that define a specific set of devices.  This is used when the context for a scope is disappearing, but it is important to share a frame with certain devices.  For example, when a group is deleted, the group is removed from the database.  But the frame that deletes the group should be saved, and shared with any members of the group who might come online later and need to be informed.  This is accomplished by saving the devices that are in the group in a custom scope, deleting the group, and preserving the delete action with that custom scope.
 
+## Peering
+
+Each instance of Bounce attempts to connect to peers.  Bounce instances always attempt to dial all of their sync devices.  Users and groups are dialed if they have been interacted with in the last 30 days, or if there is data on that device for those users or groups (for example, you might not dial someone you haven't written in 3 months, but as soon as you have a pending message for them, you dial them).  When dialing a user or group, 4 random devices from that scope are selected to be dialed.  Bounce will continue to try other devices until there are 4 representatives of the scope connected, if possible.
+
 ## Delivery Tracking and References
 
 In order to prevent re-delivering frames, Bounce keeps track of which devices have received a frame.  This is done by sending an ack frame back to the source of a frame after successfully handling it, and saving a delivery record when an ack is received.  Acks are always from one device to another, Bounce has no mechanism to indirectly learn if a device has a frame.  When two devices connect, both can search for frames that other should have but might not have.  After exchanging this list of IDs, both devices can look for frames they need from the other, and request them.  This allows two devices to only share data that the other doesn't have when syncing back up, and is known as the "reference flow", as devices pass around "references" (consisting of the UUID and type of a frame) to each other.
@@ -149,12 +153,16 @@ Aside from encrypting frames to user ECDH keys, frames can also be encrypted to 
 
 ### Encrypted Reference Flow
 
-For the purposes of scoping, normal devices can treat encrypted devices as any other device belonging to the user who owns it.  Normal devices offer references to, and send encrypted versions of, any frame that would go to a regular device owned by the encrypted device's owner.  Encrypted devices, however, do not know which devices belong to which users.  In order for them to send reference offers, they need to know which user-level key a device owns.  Encrypted devices do this by sending an encryptedReferenceOfferChallenge, containing an ephemeral ECDH public key and a random set of data.  The regular device must do an ECDH exchange with this public key and their private key, encrypt the data, then then send back their public key and the encrypted data.  The encrypted device can then confirm that the peer owns the private key for the provided public key, and send reference of any frames which include that public key as a recipient.
+For the purposes of scoping, normal devices can treat encrypted devices as any other device belonging to the user who owns it.  Normal devices offer references to, and send encrypted versions of, any frame that would go to a regular device owned by the encrypted device's owner.
+
+Encrypted devices, however, do not know which devices belong to which users.  In order for them to send reference offers, they need to know which user-level key a device owns.  Encrypted devices do this by sending an encryptedReferenceOfferChallenge, containing an ephemeral ECDH public key and a random set of data.  The regular device must do an ECDH exchange with this public key and their private key, encrypt the data, then then send back their public key and the encrypted data.  The encrypted device can then confirm that the peer owns the private key for the provided public key, and send reference of any frames which include that public key as a recipient.
 
 ### Managing Encrypted Devices
 
-
-
-#### Re-Keying
+Encrypted device are owned and managed by a user.  There aren't many management actions right now, only re-keying the ownership key, and pruning old drafts.  Because encrypted devices do not know the contents of the encrypted drafts, they don't know which ones are out of date, and draft storage can be pretty noisy.  So, devices regularly inform their encrypted devices of which draft frames should be kept, letting the encrypted device prune any draft frames that are not in that list.
 
 ### Encrypted Chunk Storage Requests / Encrypted Chunk Offers
+
+When files are distributed, the file structure contains an encryption key, as well as an encrypted version of the hash list.  This means that any device with the file knows how to request and decrypt encrypted versions of the chunks that make up the file.
+
+Encrypted devices do not have access to these file structures or chunk offers, and so they cannot know which chunks they should be requesting to store.  Therefore, file storage works in the other direction for encrypted devices.  Regular devices send encryptedChunkStorageRequests to encrypted devices, asking them to store a chunk of ciphertext and to distribute it to a set of user keys.  Encrypted devices do so when their owner is one of the recipients, and once they have the data they offer the encrypted chunk to any of the authorized recipients, via an encryptedChunkOffer.  Regular devices can use these encryptedChunkOffers along side regular chunkOffers when strategizing how to download a file.
