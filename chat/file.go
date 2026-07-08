@@ -15,6 +15,7 @@ import (
 	"io/ioutil"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -97,7 +98,7 @@ func (f *file) AfterDelete(tx *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	if f.embedded() {
+	if f.embedded() || runtime.GOOS == "android" {
 		err = os.Remove(f.Path)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -106,6 +107,7 @@ func (f *file) AfterDelete(tx *gorm.DB) error {
 			}).Warn("error removing file that is being deleted from disk")
 		}
 	}
+
 	return nil
 }
 

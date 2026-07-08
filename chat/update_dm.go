@@ -660,7 +660,7 @@ func (b *Bounce) informUIUpdateDMSetClearBefore(u user, ud *updateDM) {
 		}).Fatal("error selecting direct messages to delete while clearing chat history")
 	}
 	for _, dm := range dms {
-		err := b.database.Delete(&dm).Error
+		err := b.database.Clauses(clause.Returning{}).Delete(&dm).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

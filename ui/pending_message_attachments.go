@@ -7,6 +7,7 @@ import (
 	"image"
 	"io"
 	"os"
+	"runtime"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -153,10 +154,44 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, action
 			icon = canvas.NewImageFromResource(theme.FileIcon())
 		}
 	} else {
+		// We cannot open content:// URIs from the golang service code on android right now,
+		// so we copy the files into a special directory we can access later.  This is not
+		// good, as it causes a lot of wasted disk space, and finding a way to turn these into
+		// paths we can open later from go would be ideal.
 		if reader.URI().Scheme() == "content" {
-			return nil, errors.New("unable to seed large files from mobile devices")
+			if fyne.CurrentDevice().IsMobile() {
+				// Make sure the directory exists
+				dir := "/data/data/chat.bounce/blobs/copied/"
+				err := os.MkdirAll(dir, 0700)
+				if err != nil {
+					return nil, err
+				}
+
+				// Open a new file in it to hold the copy of the data
+				path := dir + reader.URI().Name()
+				dst, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+				if err != nil {
+					return nil, err
+				}
+
+				// Copy the data in
+				_, err = io.Copy(dst, reader)
+				if err != nil {
+					return nil, err
+				}
+
+				// Create a new URIReadCloser for this file on disk
+				newURI := storage.NewFileURI(path)
+				reader, err = storage.Reader(newURI)
+				if err != nil {
+					return nil, err
+				}
+
+				icon = canvas.NewImageFromResource(theme.FileIcon())
+			} else {
+				return nil, errors.New("unsupported URI scheme on this platform")
+			}
 		}
-		icon = canvas.NewImageFromResource(theme.FileIcon())
 	}
 
 	ma := &messageAttachment{
@@ -316,9 +351,15 @@ func newPendingMessageAttachments() *pendingMessageAttachments {
 
 func (pmas *pendingMessageAttachments) add(reader fyne.URIReadCloser, refocus func()) error {
 	id := uuid.New()
-	newFile, err := newPendingMessageAttachment(id, reader, func() {
+	var newFile *messageAttachment
+	var err error
+	newFile, err = newPendingMessageAttachment(id, reader, func() {
 		refocus()
 		pmas.remove(id)
+
+		if newFile.fileSize > chat.EmbeddedFileLimit && runtime.GOOS == "android" {
+			os.Remove(newFile.reader.URI().Path())
+		}
 	})
 	if err == nil {
 		pmas.files = append(pmas.files, newFile)
