@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-Bounce is a distributed group chat application that protects metadata, while having a familiar look and feel.
+Bounce is a distributed group chat application that protects metadata, with a familiar look and feel.
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@ Each instance of Bounce includes a Tor hidden service, and all connections betwe
 
 ## Status
 
-Things should be working pretty reliably, though some performance optimization is still required.  Please open an issue if a feature in the UI is not working as expected.  While I do not anticipate existing protocol will change, I have not yet committed to freezing the existing protocol, so backwards compatibility between updates is not yet guaranteed.  Bounce has not been audited by a third party yet, and should be considered experimental.
+Things should be working pretty reliably, though some performance optimizations are still required, especially in the Android UI.  Please open an issue if a feature in the UI is not working as expected.  Bounce has not been audited by a third party yet, and should be considered experimental.
 
 |Client|Status|Notes|
 |---|---|---|
@@ -24,17 +24,21 @@ Things should be working pretty reliably, though some performance optimization i
 |macOS|✅|Fully supported|
 |Android|✅|Fully supported|
 |Windows|❌|Requires an updated go-libtor build for windows, which has not been done yet.|
-|iOS|⛔|iOS does not allow apps to run in the background.  Implementing Bounce on iOS will require a light client that receives notifications from a server via a message bus, and sends messages via that server.  This has not yet been planned.|
+|iOS|⛔|iOS does not allow apps to run in the background.  Implementing Bounce on iOS will require a light client that receives notifications from another instance of Bounce via APNs, and reaches out to that instance to send messages.  This has not been planned yet.|
 
 ## Installation
 
 ### Binary Releases
 
-
+* Visit the [Releases](https://github.com/bounce-chat/bounce/releases/) page to download the latest binaries.
+* Arch users can find [bounce]() in the AUR.
+* The best way to install Bounce on Android is with [Obtanium](https://github.com/ImranR98/Obtainium).
 
 ### Building from source
 
-Building Bounce from source currently requires cloning down forks of fyne and fyne-io/tools.  The relative directory structure should look like:
+#### Prerequisites
+
+Building Bounce from source currently requires cloning down forks of [fyne](https://github.com/bounce-chat/fyne) and [fyne-io/tools](https://github.com/bounce-chat/tools).  The relative directory structure should look like:
 
 ```
 ./bounce-chat/bounce  <-- you are here
@@ -42,6 +46,17 @@ Building Bounce from source currently requires cloning down forks of fyne and fy
 ./bounce-chat/tools
 ```
 
+#### Desktop
+
+Development builds of the desktop app can simply be built with `go build`.  The first build will take a while as it compiles [go-libtor](https://github.com/bounce-chat/go-libtor).
+
+#### Android
+
+Android is built on linux and requires `dex2jar`, `gobind` from go mobile, and `gradle`.
+
+The forked fyne tools binary must be build: `cd bounce-chat/tools/cmd/fyne && go build`
+
+Then run `make android` to create `Bounce.apk`, a debuggable development build.
 
 ## License
 
