@@ -54,9 +54,9 @@ Development builds of the desktop app can simply be built with `go build`.  The 
 
 Android is built on linux and requires `dex2jar`, `gobind` from go mobile, and `gradle`.
 
-The forked fyne tools binary must be build: `cd bounce-chat/tools/cmd/fyne && go build`
+The forked fyne tools binary must be built: `cd bounce-chat/tools/cmd/fyne && go build`
 
-Then run `make android` to create `Bounce.apk`, a debuggable development build.
+Run `make android` to create `Bounce.apk`, a debuggable development build.
 
 ## License
 
