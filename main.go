@@ -35,8 +35,7 @@ func getEncryptedConfigDirectory() string {
 	if testing.Testing() {
 		configDirectory = os.TempDir() + "/bounce-encrypted-test-" + uuid.New().String()
 	} else if runtime.GOOS == "android" {
-		// TODO: use /data/data/chat.bounce/ ?
-		configDirectory = "/sdcard/Android/data/chat.bounce.encrypted"
+		configDirectory = "/data/data/chat.bounce/bounce-encrypted"
 	} else {
 		home, err := os.UserHomeDir()
 		if err != nil {

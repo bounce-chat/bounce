@@ -374,8 +374,7 @@ func getConfigDirectory() string {
 	if testing.Testing() {
 		configDirectory = os.TempDir() + "/bounce-test-" + uuid.New().String()
 	} else if runtime.GOOS == "android" {
-		// TODO: use /data/data/chat.bounce/ ?
-		configDirectory = "/sdcard/Android/data/chat.bounce"
+		configDirectory = "/data/data/chat.bounce/bounce"
 	} else {
 		home, err := os.UserHomeDir()
 		if err != nil {
