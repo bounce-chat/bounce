@@ -161,7 +161,7 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, action
 		if reader.URI().Scheme() == "content" {
 			if fyne.CurrentDevice().IsMobile() {
 				// Make sure the directory exists
-				dir := "/data/data/chat.bounce/blobs/copied/"
+				dir := "/data/data/chat.bounce/cache/copied/"
 				err := os.MkdirAll(dir, 0700)
 				if err != nil {
 					return nil, err

@@ -537,6 +537,10 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 	// Make sure we aren't currently writing or queued to write this data to this peer already
 	writingChunkMutex.Lock()
 	if _, alreadyWriting := writingChunk[peer+cr.Hash]; alreadyWriting {
+		log.WithFields(log.Fields{
+			"peer": peer,
+			"hash": cr.Hash,
+		}).Debug("ignoring chunk request that is already queued")
 		writingChunkMutex.Unlock()
 		return nil, false
 	} else {

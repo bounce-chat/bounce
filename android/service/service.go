@@ -118,7 +118,11 @@ func pruneCache() {
 		}
 
 		if d.IsDir() {
-			return nil
+			if d.Name() == "copied" {
+				return filepath.SkipDir
+			} else {
+				return nil
+			}
 		}
 
 		info, err := d.Info()

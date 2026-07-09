@@ -161,7 +161,7 @@ Encrypted devices, however, do not know which devices belong to which users.  In
 
 Encrypted device are owned and managed by a user.  There aren't many management actions right now, only re-keying the ownership key, and pruning old drafts.  Because encrypted devices do not know the contents of the encrypted drafts, they don't know which ones are out of date, and draft storage can be pretty noisy.  So, devices regularly inform their encrypted devices of which draft frames should be kept, letting the encrypted device prune any draft frames that are not in that list.
 
-### Encrypted Chunk Storage Requests / Encrypted Chunk Offers
+### Encrypted File Storage
 
 When files are distributed, the file structure contains an encryption key, as well as an encrypted version of the hash list.  This means that any device with the file knows how to request and decrypt encrypted versions of the chunks that make up the file.
 
