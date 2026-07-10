@@ -477,7 +477,7 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 		destination := xor(message.Thread, b.currentUserID())
 		if message.Thread == b.currentUserID() {
 			scope = scopeSync
-			destination = b.currentUserID()
+			destination = uuid.Nil
 		}
 		err = b.embedFile(ia.ID, data, scope, destination, fileTypeMessageAttachment, dm.ID)
 		if err != nil {

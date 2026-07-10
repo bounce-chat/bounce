@@ -345,6 +345,7 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 		}
 
 		if len(f.EncryptedHashList) > 0 {
+			deleteAt, batchDeleteKey, canBatchDelete := b.getDeleteAtAndBatchDeleteKey(fileID)
 			for _, hash := range strings.Split(f.EncryptedHashList, ",") {
 				// Request that this encrypted devices store the chunks it does not have
 				var existingECO encryptedChunkOffer
@@ -358,9 +359,12 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 					esrr.StorageRequests = append(
 						esrr.StorageRequests,
 						encryptedChunkStorageRequest{
-							ID:         uuid.New(),
-							Hash:       hash,
-							Recipients: userKeys,
+							ID:             uuid.New(),
+							Hash:           hash,
+							Recipients:     userKeys,
+							DeleteAt:       deleteAt,
+							BatchDeleteKey: batchDeleteKey,
+							CanBatchDelete: canBatchDelete,
 						},
 					)
 				}
@@ -464,15 +468,35 @@ func (b *Bounce) handleEncryptedStorageReferenceRequest(peer string, payload []b
 type encryptedChunkStorageRequest struct {
 	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Hash            string
+	DeleteAt        int64
+	BatchDeleteKey  uuid.UUID
+	CanBatchDelete  bool
 	Recipients      [][]byte                  `gorm:"-"`
+	Timestamp       int64                     `msgpack:"-"`
 	RecipientUsers  []encryptedChunkRecipient `msgpack:"-"`
 	Source          string                    `msgpack:"-"`
 	Downloaded      bool                      `msgpack:"-"`
 	DownloadedAt    int64                     `msgpack:"-"`
 	LastAttemptedAt int64                     `msgpack:"-"`
+	FullPath        string                    `msgpack:"-" gorm:"not null"`
+}
+
+func (ecsr *encryptedChunkStorageRequest) BeforeCreate(tx *gorm.DB) error {
+	ecsr.Timestamp = time.Now().Unix()
+	return nil
 }
 
 func (ecsr *encryptedChunkStorageRequest) AfterDelete(tx *gorm.DB) error {
+	if ecsr.FullPath != "" {
+		err := os.Remove(ecsr.FullPath)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"path":  ecsr.FullPath,
+			}).Warn("failed to remove encrypted chunk from disk")
+		}
+	}
+
 	err := tx.Clauses(clause.Returning{}).Where("encrypted_chunk_storage_request_id = ?", ecsr.ID).Delete(&encryptedChunkRecipient{}).Error
 	if err != nil {
 		return err
@@ -526,6 +550,7 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 		sr.DownloadedAt = time.Now().Unix()
 	}
 
+	sr.FullPath = b.configDirectory + "/blobs/" + sr.Hash
 	err = b.database.Create(&sr).Error
 	if err != nil {
 		log.WithFields(log.Fields{

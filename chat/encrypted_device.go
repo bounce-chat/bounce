@@ -108,7 +108,13 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 	go func() {
 		for {
 			<-ticker.C
-			err := b.database.Where("delete_at != 0 AND delete_at <= ?", time.Now().Unix()).Delete(&encryptedFrame{}).Error
+			err := b.database.Clauses(clause.Returning{}).Where("delete_at != 0 AND delete_at <= ?", time.Now().Unix()).Delete(&encryptedFrame{}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error pruning encrypted frames")
+			}
+			err = b.database.Clauses(clause.Returning{}).Where("delete_at != 0 AND delete_at <= ?", time.Now().Unix()).Delete(&encryptedChunkStorageRequest{}).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -412,6 +418,7 @@ type encryptedFrame struct {
 	Payload          []byte
 	DeleteAt         int64
 	BatchDeleteKey   uuid.UUID
+	CanBatchDelete   bool
 	Recipients       []recipient
 	DeviceRecipients []deviceRecipient
 }
@@ -620,13 +627,10 @@ func (b *Bounce) handleEncryptedClearBefore(peer string, payload []byte, _ bool)
 			Distinct("encrypted_frames.id").
 			Joins("LEFT JOIN recipients ON recipients.encrypted_frame_id == encrypted_frames.id AND recipients.public_key = ?", requesterKey).
 			Where(
-				"batch_delete_key = ? AND timestamp <= ? AND (encrypted_frames.type = ? OR encrypted_frames.type = ? OR encrypted_frames.type = ? OR encrypted_frames.type = ?) AND recipients.id IS NOT NULL",
+				"batch_delete_key = ? AND timestamp <= ? AND can_batch_delete = ?  AND recipients.id IS NOT NULL",
 				ecb.BatchKey,
 				ecb.Timestamp,
-				typeDirectMessage,
-				typeGroupMessage,
-				typeFile,
-				typeReadReceipt,
+				true,
 			),
 	).Delete(&encryptedFrame{}).Error
 	if err != nil {
@@ -634,6 +638,30 @@ func (b *Bounce) handleEncryptedClearBefore(peer string, payload []byte, _ bool)
 			"error":     err.Error(),
 			"batch_key": ecb.BatchKey,
 		}).Error("error deleting encrypted frames by batch key")
+	}
+
+	var ecsrToDelete = []encryptedChunkStorageRequest{}
+	err = b.database.
+		Joins("LEFT JOIN encrypted_chunk_recipients ON encrypted_chunk_recipients.encrypted_chunk_storage_request_id == encrypted_chunk_storage_requests.id AND encrypted_chunk_recipients.public_key = ?", requesterKey).
+		Where(
+			"batch_delete_key = ? AND timestamp <= ? AND can_batch_delete = ? AND encrypted_chunk_recipients.id IS NOT NULL",
+			ecb.BatchKey,
+			ecb.Timestamp,
+			true,
+		).Find(&ecsrToDelete).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error finding ECSR to delete")
+	}
+	for _, ecsr := range ecsrToDelete {
+		err := b.database.Clauses(clause.Returning{}).Delete(&ecsr).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"id":    ecsr.ID,
+			}).Error("error deleting ECSR")
+		}
 	}
 
 	b.sendAck(peer, typeEncryptedClearBefore, ecb.ID)

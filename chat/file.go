@@ -120,6 +120,9 @@ func (f *file) getScope(myID uuid.UUID) int {
 }
 
 func (f *file) getDestination(myID uuid.UUID) uuid.UUID {
+	if f.Scope == scopeSync {
+		return myID
+	}
 	if f.Scope == scopeUser {
 		return xor(f.Destination, myID)
 	}
@@ -1695,10 +1698,14 @@ func (b *Bounce) offerChunk(c chunk) {
 	for _, u := range usersInScope {
 		recipients = append(recipients, u.PublicECDHKey)
 	}
+	deleteAt, batchDeleteKey, canBatchDelete := b.getDeleteAtAndBatchDeleteKey(c.FileID)
 	sr := encryptedChunkStorageRequest{
-		ID:         uuid.New(),
-		Hash:       c.EncryptedHash,
-		Recipients: recipients,
+		ID:             uuid.New(),
+		Hash:           c.EncryptedHash,
+		Recipients:     recipients,
+		DeleteAt:       deleteAt,
+		BatchDeleteKey: batchDeleteKey,
+		CanBatchDelete: canBatchDelete,
 	}
 	for _, u := range usersInScope {
 		if len(u.EncryptedDevices) > 0 {
@@ -1710,6 +1717,41 @@ func (b *Bounce) offerChunk(c chunk) {
 			}
 		}
 	}
+}
+
+func (b *Bounce) getDeleteAtAndBatchDeleteKey(fileID uuid.UUID) (int64, uuid.UUID, bool) {
+	var f file
+	err := b.database.Take(&f, "id = ?", fileID).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("cannot find file attempting to get delete at and batch delete key")
+		return 0, uuid.Nil, false
+	}
+
+	deleteAt := int64(0)
+	if f.Type == fileTypeMessageAttachment {
+		var dm directMessage
+		err = b.database.Select("delete_at").Take(&dm, "id = ?", f.AttachedTo).Error
+		if err == nil {
+			deleteAt = dm.DeleteAt
+		} else {
+			var gm groupMessage
+			err = b.database.Select("delete_at").Take(&gm, "id = ?", f.AttachedTo).Error
+			if err == nil {
+				deleteAt = gm.DeleteAt
+			}
+		}
+	}
+
+	batchDeleteKey := uuid.Nil
+	canBatchDelete := false
+	if f.Type == fileTypeMessageAttachment {
+		batchDeleteKey = f.Destination
+		canBatchDelete = true
+	}
+
+	return deleteAt, batchDeleteKey, canBatchDelete
 }
 
 type chunkUnavailable struct {

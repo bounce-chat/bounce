@@ -243,6 +243,7 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 
 	// Frames that might need to be deletes as part of clearing chat history should have a batch delete key assigned
 	batchDeleteKey := uuid.Nil
+	canBatchDelete := false
 	if br.getType() == typeDirectMessage {
 		dm, ok := br.(*directMessage)
 		if !ok {
@@ -252,8 +253,10 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 			return nil
 		}
 		batchDeleteKey = dm.Xor
+		canBatchDelete = true
 	} else if br.getType() == typeGroupMessage {
 		batchDeleteKey = br.getDestination(b.currentUserID())
+		canBatchDelete = true
 	} else if br.getType() == typeFile {
 		f, ok := br.(*file)
 		if !ok {
@@ -264,6 +267,7 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 		}
 		if f.Type == fileTypeMessageAttachment {
 			batchDeleteKey = f.Destination
+			canBatchDelete = true
 		}
 	} else if br.getType() == typeReadReceipt {
 		rr, ok := br.(*readReceipt)
@@ -274,6 +278,7 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 			return nil
 		}
 		batchDeleteKey = rr.Destination
+		canBatchDelete = true
 	}
 
 	// Get the users that are in scope
@@ -366,6 +371,7 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 		Timestamp:      br.getTimestamp(),
 		DeleteAt:       getDeleteAt(br),
 		BatchDeleteKey: batchDeleteKey,
+		CanBatchDelete: canBatchDelete,
 		Recipients:     recipients,
 	}
 }
