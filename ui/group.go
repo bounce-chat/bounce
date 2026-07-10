@@ -532,6 +532,13 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 	g.entry = entry
 	entry.OnChanged = func(str string) {
 		go ui.bounce.TypingInGroup(g.id)
+		if utf8.RuneCountInString(str) > chat.MaximumMessageCharacters {
+			runes := []rune(str)
+			truncated := runes[0:chat.MaximumMessageCharacters]
+			entry.Text = string(truncated)
+			str = string(truncated)
+		}
+		entry.Refresh()
 		go ui.bounce.UpdateDraft(g.id, str)
 		g.buttonData.setDraft(str)
 		ui.containers.threads.Refresh()

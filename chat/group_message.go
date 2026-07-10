@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
@@ -147,7 +148,7 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 	}
 
 	// Ignore messages that are too long
-	if len(gm.Text) > maximumMessageLength {
+	if utf8.RuneCountInString(gm.Text) > MaximumMessageCharacters {
 		log.WithFields(log.Fields{
 			"id": gm.ID,
 		}).Warn("ignoring group message that is too long")
@@ -444,7 +445,7 @@ func (b *Bounce) getGMNotificationContent(gm *groupMessage) (string, string, err
 }
 
 func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io.ReadCloser, sources map[uuid.UUID]string) {
-	if len(message.Text) > maximumMessageLength {
+	if utf8.RuneCountInString(message.Text) > MaximumMessageCharacters {
 		log.Error("refusing to send message that is too long")
 	}
 	if message.ID != uuid.Nil {

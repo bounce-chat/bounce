@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
@@ -170,6 +171,9 @@ func (b *Bounce) handleDraft(peer string, payload []byte, catchUp bool) (broadca
 }
 
 func (b *Bounce) UpdateDraft(threadID uuid.UUID, text string) {
+	if utf8.RuneCountInString(text) > MaximumMessageCharacters {
+		log.Warn("ignoring draft that is too long")
+	}
 	d := &draft{
 		ID:        uuid.New(),
 		Thread:    threadID,

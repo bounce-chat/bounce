@@ -11,6 +11,7 @@ import (
 	_ "image/png"
 	"io"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bounce-chat/bounce/chat"
 	"github.com/google/uuid"
@@ -237,6 +238,13 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 	dm.entry = entry
 	entry.OnChanged = func(str string) {
 		go ui.bounce.TypingInDirectMessage(dm.user.id)
+		if utf8.RuneCountInString(str) > chat.MaximumMessageCharacters {
+			runes := []rune(str)
+			truncated := runes[0:chat.MaximumMessageCharacters]
+			entry.Text = string(truncated)
+			str = string(truncated)
+		}
+		entry.Refresh()
 		go ui.bounce.UpdateDraft(dm.user.id, str)
 		dm.buttonData.setDraft(str)
 		ui.containers.threads.Refresh()

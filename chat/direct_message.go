@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
@@ -13,8 +14,6 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
-
-const maximumMessageLength = 1024 * 1024 * 10
 
 var directMessageMutex sync.Mutex
 
@@ -204,7 +203,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 	}
 
 	// Ignore messages that are too long
-	if len(dm.Text) > maximumMessageLength {
+	if utf8.RuneCountInString(dm.Text) > MaximumMessageCharacters {
 		log.WithFields(log.Fields{
 			"id": dm.ID,
 		}).Warn("ignoring direct message that is too long")
@@ -406,7 +405,7 @@ func (b *Bounce) getDMNotificationContent(dm *directMessage) (string, string, er
 }
 
 func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]io.ReadCloser, sources map[uuid.UUID]string) {
-	if len(message.Text) > maximumMessageLength {
+	if utf8.RuneCountInString(message.Text) > MaximumMessageCharacters {
 		log.Error("refusing to send message that is too long")
 	}
 	if message.ID != uuid.Nil {
