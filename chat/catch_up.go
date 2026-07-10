@@ -62,9 +62,14 @@ func (cu *catchUp) getPayload() []byte {
 	return bytes
 }
 
+var initialSyncMutex sync.Mutex
+
 func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastable, bool) {
 	if waitingForInitialSyncFrom == peer {
 		b.ui.InitialSyncStarting()
+
+		initialSyncMutex.Lock()
+		defer initialSyncMutex.Unlock()
 	}
 
 	// Unmarshal the catch up
