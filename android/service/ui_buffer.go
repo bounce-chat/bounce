@@ -180,6 +180,15 @@ func (u *uiBuffer) InitialSyncProgress(f float64) {
 	})
 }
 
+func (u *uiBuffer) InitialSyncPreparing() {
+	u.Lock()
+	defer u.Unlock()
+
+	u.events = append(u.events, map[int][]byte{
+		0: []byte("InitialSyncPreparing"),
+	})
+}
+
 func (u *uiBuffer) InitialSyncComplete() {
 	u.Lock()
 	defer u.Unlock()

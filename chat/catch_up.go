@@ -243,6 +243,11 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			}
 		}
 	}
+
+	if waitingForInitialSyncFrom == peer {
+		b.ui.InitialSyncPreparing()
+	}
+
 	// Inform the reference engine of all the frames we handled
 	b.loadCatchUp(peer, a.References)
 
@@ -521,6 +526,14 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		}
 	}
 	b.ui.CatchUpMessages(bulkUpdate, waitingForInitialSyncFrom == peer)
+
+	for _, gm := range gmsToDisplay {
+		b.ui.MessageDelivered(gm.ID, dev.UserID)
+	}
+	for _, dm := range dmsToDisplay {
+		b.ui.MessageDelivered(dm.ID, dev.UserID)
+	}
+
 	for _, dm := range mostRecentUnseenDMs {
 		if b.postNotification != nil && b.shouldNotifyDM(dm) {
 			title, content, err := b.getDMNotificationContent(dm)

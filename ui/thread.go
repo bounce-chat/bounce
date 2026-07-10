@@ -158,9 +158,16 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 				allSeen = false
 			}
 
-			if _, ok := bu.ReadReceipts[gm.ID]; ok {
-				ti.widgetData.setState(stateRead)
-				delete(bu.ReadReceipts, gm.ID)
+			if rrs, ok := bu.ReadReceipts[gm.ID]; ok {
+				for _, rr := range rrs {
+					if rr.Actor == ui.state.profile.id && gm.Author == ui.state.profile.id {
+						continue
+					} else {
+						ti.widgetData.setState(stateRead)
+						delete(bu.ReadReceipts, gm.ID)
+						break
+					}
+				}
 			}
 
 			appendingToEnd := ti.timestamp > g.chatHistoryScroll().headTimestamp()
@@ -215,9 +222,16 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 				allSeen = false
 			}
 
-			if _, ok := bu.ReadReceipts[dm.ID]; ok {
-				ti.widgetData.setState(stateRead)
-				delete(bu.ReadReceipts, dm.ID)
+			if rrs, ok := bu.ReadReceipts[dm.ID]; ok {
+				for _, rr := range rrs {
+					if rr.Actor == ui.state.profile.id && dm.Author == ui.state.profile.id {
+						continue
+					} else {
+						ti.widgetData.setState(stateRead)
+						delete(bu.ReadReceipts, dm.ID)
+						break
+					}
+				}
 			}
 
 			appendingToEnd := ti.timestamp > t.chatHistoryScroll().headTimestamp()

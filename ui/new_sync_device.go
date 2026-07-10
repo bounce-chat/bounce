@@ -391,6 +391,15 @@ func (ui *ui) InitialSyncProgress(p float64) {
 	fyne.DoAndWait(func() { ui.widgets.newSyncDevice.progressBar.SetValue(p) })
 }
 
+func (ui *ui) InitialSyncPreparing() {
+	fyne.DoAndWait(func() {
+		ui.widgets.newSyncDevice.currentStep.Text = "Preparing database..."
+		ui.widgets.newSyncDevice.currentStep.Refresh()
+		ui.widgets.newSyncDevice.infiniteProgressBar.Show()
+		ui.widgets.newSyncDevice.progressBar.Hide()
+	})
+}
+
 func (ui *ui) InitialSyncComplete() {
 	var newDeviceName string
 	fyne.DoAndWait(func() {

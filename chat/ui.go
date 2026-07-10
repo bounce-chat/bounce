@@ -411,6 +411,7 @@ type UI interface {
 	SyncDeviceRequestRejected(peer string)
 	InitialSyncStarting()
 	InitialSyncProgress(float64)
+	InitialSyncPreparing()
 	InitialSyncComplete()
 
 	// Device management

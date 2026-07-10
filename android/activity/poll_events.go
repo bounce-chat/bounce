@@ -158,6 +158,8 @@ func pollEvents(userInterface chat.UI) {
 				f := math.Float64frombits(bits)
 
 				userInterface.InitialSyncProgress(f)
+			case "InitialSyncPreparing":
+				userInterface.InitialSyncPreparing()
 			case "InitialSyncComplete":
 				userInterface.InitialSyncComplete()
 			case "AddUserRequestRejected":
