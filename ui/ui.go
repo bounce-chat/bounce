@@ -161,6 +161,7 @@ func StartShimmed(shim chat.Engine, bind func(), poll func(chat.UI)) {
 
 	ui.bounce = shim
 	ui.build()
+
 	go func() {
 		bind()
 		ui.loadInitialState(ui.bounce.GetInitialState())
@@ -238,7 +239,6 @@ func (ui *ui) build() {
 		}()
 
 		if !firstTime {
-			// TODO: need to restart the event poll here?
 			if fyne.CurrentDevice().IsMobile() {
 				go func() {
 					if ui.app.Preferences().Bool(darkMode) {

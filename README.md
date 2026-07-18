@@ -16,7 +16,7 @@ Each instance of Bounce includes a Tor hidden service, and all connections betwe
 
 ## Status
 
-Things should be working pretty reliably, though some performance optimizations are still required, especially in the Android UI.  Please open an issue if a feature in the UI is not working as expected.  Bounce has not been audited by a third party yet, and should be considered experimental.
+Things should be working pretty reliably, please open an issue if a feature in the UI is not behaving as expected.  Bounce has not been audited by a third party yet, and should be considered experimental.
 
 |Client|Status|Notes|
 |---|---|---|

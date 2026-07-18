@@ -1187,11 +1187,14 @@ func collapse(events []map[int][]byte) []map[int][]byte {
 
 	lastDraftPerThread := map[uuid.UUID][]byte{}
 	lastSetGroupState := map[uuid.UUID][]byte{}
-
-	// TODO
-	//lastSetUserState := map[uuid.UUID][]byte{}
-	//lastSetDMState := map[uuid.UUID][]byte{}
-	//lastSetSettings := map[uuid.UUID][]byte{}
+	lastDeviceLastSeen := map[uuid.UUID][]byte{}
+	networkState := ""
+	deviceActive := ""
+	lastDeviceOnlineOrOffline := map[uuid.UUID]string{}
+	lastUserOnlineOrOffline := map[uuid.UUID]string{}
+	lastSetUserState := map[uuid.UUID][]byte{}
+	lastSetSettings := []byte{}
+	lastSetDMState := map[uuid.UUID][]byte{}
 
 	for _, e := range events {
 		switch string(e[0]) {
@@ -1227,6 +1230,7 @@ func collapse(events []map[int][]byte) []map[int][]byte {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("error unmarshalling read receipt")
+				continue
 			}
 
 			bulkUpdate.ReadReceipts[rr.Target] = append(bulkUpdate.ReadReceipts[rr.Target], rr)
@@ -1242,6 +1246,7 @@ func collapse(events []map[int][]byte) []map[int][]byte {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("error unmarshalling draft")
+				continue
 			}
 			lastDraftPerThread[d.Thread] = draftBytes
 		case "SetGroupState":
@@ -1252,8 +1257,134 @@ func collapse(events []map[int][]byte) []map[int][]byte {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("error unmarshalling group")
+				continue
 			}
 			lastSetGroupState[g.ID] = gBytes
+		case "DeviceLastSeen":
+			idBytes, ok := e[1]
+			if !ok {
+				log.Error("no id bytes")
+				continue
+			}
+			id, err := uuid.FromBytes(idBytes)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error parsing uuid")
+				continue
+			}
+			lastDeviceLastSeen[id] = e[2]
+		case "NetworkOnline":
+			networkState = "NetworkOnline"
+		case "NetworkOffline":
+			networkState = "NetworkOffline"
+		case "AnotherDeviceActive":
+			deviceActive = "AnotherDeviceActive"
+		case "NoOtherDeviceActive":
+			deviceActive = "NoOtherDeviceActive"
+		case "DeviceOnline":
+			idBytes, ok := e[1]
+			if !ok {
+				log.Error("no id bytes")
+				continue
+			}
+			id, err := uuid.FromBytes(idBytes)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error parsing uuid")
+				continue
+			}
+
+			lastDeviceOnlineOrOffline[id] = "DeviceOnline"
+		case "DeviceOffline":
+			idBytes, ok := e[1]
+			if !ok {
+				log.Error("no id bytes")
+				continue
+			}
+			id, err := uuid.FromBytes(idBytes)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error parsing uuid")
+				continue
+			}
+
+			lastDeviceOnlineOrOffline[id] = "DeviceOffline"
+		case "UserOnline":
+			idBytes, ok := e[1]
+			if !ok {
+				log.Error("no id bytes")
+				continue
+			}
+			id, err := uuid.FromBytes(idBytes)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error parsing uuid")
+				continue
+			}
+
+			lastUserOnlineOrOffline[id] = "UserOnline"
+		case "UserOffline":
+			idBytes, ok := e[1]
+			if !ok {
+				log.Error("no id bytes")
+				continue
+			}
+			id, err := uuid.FromBytes(idBytes)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error parsing uuid")
+				continue
+			}
+
+			lastUserOnlineOrOffline[id] = "UserOffline"
+		case "SetUserState":
+			uBytes := e[1]
+			var u chat.User
+			err := msgpack.Unmarshal(uBytes, &u)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error unmarshalling user")
+				continue
+			}
+			lastSetUserState[u.ID] = uBytes
+		case "SetSettings":
+			sBytes := e[1]
+			var s chat.Settings
+			err := msgpack.Unmarshal(sBytes, &s)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error unmarshalling settings")
+				continue
+			}
+			lastSetSettings = sBytes
+		case "SetDMState":
+			idBytes, ok := e[1]
+			if !ok {
+				log.Error("no id bytes for set dm state")
+				continue
+			}
+			id, err := uuid.FromBytes(idBytes)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error parsing uuid")
+				continue
+			}
+
+			stateBytes, ok := e[2]
+			if !ok {
+				log.Error("no state bytes for set dm state")
+				continue
+			}
+
+			lastSetDMState[id] = stateBytes
 		default:
 			collapsedEvents = append(collapsedEvents, e)
 		}
@@ -1269,6 +1400,54 @@ func collapse(events []map[int][]byte) []map[int][]byte {
 		collapsedEvents = append(collapsedEvents, map[int][]byte{
 			0: []byte("SetGroupState"),
 			1: payload,
+		})
+	}
+	for id, payload := range lastDeviceLastSeen {
+		collapsedEvents = append(collapsedEvents, map[int][]byte{
+			0: []byte("DeviceLastSeen"),
+			1: id[:],
+			2: payload,
+		})
+	}
+	if networkState != "" {
+		collapsedEvents = append(collapsedEvents, map[int][]byte{
+			0: []byte(networkState),
+		})
+	}
+	if deviceActive != "" {
+		collapsedEvents = append(collapsedEvents, map[int][]byte{
+			0: []byte(deviceActive),
+		})
+	}
+	for id, command := range lastDeviceOnlineOrOffline {
+		collapsedEvents = append(collapsedEvents, map[int][]byte{
+			0: []byte(command),
+			1: id[:],
+		})
+	}
+	for id, command := range lastUserOnlineOrOffline {
+		collapsedEvents = append(collapsedEvents, map[int][]byte{
+			0: []byte(command),
+			1: id[:],
+		})
+	}
+	for _, payload := range lastSetUserState {
+		collapsedEvents = append(collapsedEvents, map[int][]byte{
+			0: []byte("SetUserState"),
+			1: payload,
+		})
+	}
+	if len(lastSetSettings) > 0 {
+		collapsedEvents = append(collapsedEvents, map[int][]byte{
+			0: []byte("SetSettings"),
+			1: lastSetSettings,
+		})
+	}
+	for id, payload := range lastSetDMState {
+		collapsedEvents = append(collapsedEvents, map[int][]byte{
+			0: []byte("SetDMState"),
+			1: id[:],
+			2: payload,
 		})
 	}
 
