@@ -4,8 +4,6 @@ go 1.26
 
 replace fyne.io/fyne/v2 => ../fyne
 
-//replace github.com/bounce-chat/go-libtor => /home/hayden/Development/Go/src/github.com/bounce-chat/go-libtor
-
 require (
 	fyne.io/fyne/v2 v2.7.4
 	github.com/AndroidGoLab/jni v0.0.8
@@ -14,7 +12,7 @@ require (
 	github.com/alecthomas/assert/v2 v2.11.0
 	github.com/alexballas/bine v0.0.0-20260627155058-604f8df1cecd
 	github.com/bbrks/go-blurhash v1.2.0
-	github.com/bounce-chat/go-libtor v0.0.0-20260628013718-04d7a72733c1
+	github.com/bounce-chat/go-libtor v0.0.0-20260717192247-169286d26eea
 	github.com/cretz/bine v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b

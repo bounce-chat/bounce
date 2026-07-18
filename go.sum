@@ -20,8 +20,8 @@ github.com/anthonynsimon/bild v0.14.0 h1:IFRkmKdNdqmexXHfEU7rPlAmdUZ8BDZEGtGHDnG
 github.com/anthonynsimon/bild v0.14.0/go.mod h1:hcvEAyBjTW69qkKJTfpcDQ83sSZHxwOunsseDfeQhUs=
 github.com/bbrks/go-blurhash v1.2.0 h1:99w0YT50b/B7uoZyM79Nqy+UemMOh8fO/ONyyxmr9MU=
 github.com/bbrks/go-blurhash v1.2.0/go.mod h1:r4N4/ViVMa2h6Ex6e1aoCWMTkykYWS/VXvYMCrbkRpw=
-github.com/bounce-chat/go-libtor v0.0.0-20260628013718-04d7a72733c1 h1:ErwRBeHOhdJafCH+QCyaubInUmp0gQ65s/7zaEvXBoc=
-github.com/bounce-chat/go-libtor v0.0.0-20260628013718-04d7a72733c1/go.mod h1:2z53K4URXluxso9A48yyjYjRxciVyFDglUt7y0t4Mtw=
+github.com/bounce-chat/go-libtor v0.0.0-20260717192247-169286d26eea h1:p3HnVvA37DSTMowLbzx2OTxJID75AzC74xSgdYqQGno=
+github.com/bounce-chat/go-libtor v0.0.0-20260717192247-169286d26eea/go.mod h1:2z53K4URXluxso9A48yyjYjRxciVyFDglUt7y0t4Mtw=
 github.com/clipperhouse/uax29/v2 v2.7.0 h1:+gs4oBZ2gPfVrKPthwbMzWZDaAFPGYK72F0NJv2v7Vk=
 github.com/clipperhouse/uax29/v2 v2.7.0/go.mod h1:EFJ2TJMRUaplDxHKj1qAEhCtQPW2tJSwu5BF98AuoVM=
 github.com/cretz/bine v0.2.0 h1:8GiDRGlTgz+o8H9DSnsl+5MeBK4HsExxgl6WgzOCuZo=

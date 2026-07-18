@@ -22,11 +22,11 @@ Things should be working pretty reliably, though some performance optimizations 
 |---|---|---|
 |Linux|✅|Fully supported|
 |macOS|✅|Fully supported|
-|Android|✅|Fully supported, though there are significant performance and usability issues when compared with established chat apps.|
-|Windows|❌|Requires an updated go-libtor build for windows, which has not been done yet.|
+|Windows|✅|Fully supported|
+|Android|✅|Fully supported, however there currently are significant performance and usability issues when compared with established chat apps.|
 |iOS|⛔|iOS does not allow apps to run in the background.  Implementing Bounce on iOS will require a light client that receives notifications from another instance of Bounce via APNs, and reaches out to that instance to send messages.  This has not been planned yet, and would change the privacy model around metadata protection.|
 
-For information on what's coming, see the [next steps]() document.
+For information on what's coming, see the [next steps](docs/next_steps.md) document.
 
 ## Installation
 
@@ -48,9 +48,13 @@ Building Bounce from source currently requires cloning down forks of [fyne](http
 ./bounce-chat/tools
 ```
 
+After cloning these down, switch to the `fyne-2.8-bounce` branches of both forks.
+
 #### Desktop
 
-Development builds of the desktop app can simply be built with `go build`.  The first build will take a while as it compiles [go-libtor](https://github.com/bounce-chat/go-libtor).
+Development builds of the desktop app can be built on linux and macOS with `go build`.  The first build will take a while as it compiles [go-libtor](https://github.com/bounce-chat/go-libtor).
+
+Windows is cross-compiled on linux using mingw32 with `CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows go build`.
 
 #### Android
 
