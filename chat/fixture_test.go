@@ -405,6 +405,7 @@ func (t *testUI) SyncDeviceRequestRejected(peer string)          {}
 func (t *testUI) ProfileSet(User, Device)                        {}
 func (t *testUI) InitialSyncStarting()                           {}
 func (t *testUI) InitialSyncProgress(float64)                    {}
+func (t *testUI) InitialSyncPreparing()                          {}
 func (t *testUI) InitialSyncComplete()                           {}
 func (t *testUI) AddUserRequestRejected(string)                  {}
 func (t *testUI) UserAdded(u User) {

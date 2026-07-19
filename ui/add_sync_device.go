@@ -229,14 +229,14 @@ func (ui *ui) buildInputEncryptedSyncString() {
 		ui.widgets.addSyncDevice.videoStream = &canvas.Image{
 			FillMode: canvas.ImageFillCover,
 		}
-		ui.widgets.addSyncDevice.videoStream.Resize(fyne.Size{size, size})
-		ui.widgets.addSyncDevice.videoStream.SetMinSize(fyne.Size{size, size})
+		ui.widgets.addSyncDevice.videoStream.Resize(fyne.Size{Height: size, Width: size})
+		ui.widgets.addSyncDevice.videoStream.SetMinSize(fyne.Size{Height: size, Width: size})
 
 		guideImage, _ := assets.ReadFile("assets/qr-guide.png")
 		guide := canvas.NewImageFromReader(bytes.NewReader(guideImage), "qr-guide.png")
 		guide.Translucency = 0.5
-		guide.Resize(fyne.Size{size, size})
-		guide.SetMinSize(fyne.Size{size, size})
+		guide.Resize(fyne.Size{Height: size, Width: size})
+		guide.SetMinSize(fyne.Size{Height: size, Width: size})
 
 		var haveResult atomic.Bool
 		go func() {
