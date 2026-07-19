@@ -40,15 +40,9 @@ For information on what's coming, see the [next steps](docs/next_steps.md) docum
 
 #### Prerequisites
 
-Building Bounce from source currently requires cloning down forks of [fyne](https://github.com/bounce-chat/fyne) and [fyne-io/tools](https://github.com/bounce-chat/tools).  The relative directory structure should look like:
+Bounce uses submodules, and should be cloned with:
 
-```
-./bounce-chat/bounce  <-- you are here
-./bounce-chat/fyne
-./bounce-chat/tools
-```
-
-After cloning these down, switch to the `fyne-2.8-bounce` branches of both forks.
+`git clone --recurse-submodules git@github.com:bounce-chat/bounce.git`
 
 #### Desktop
 
@@ -58,9 +52,9 @@ Windows is cross-compiled on linux using mingw32 with `CC=x86_64-w64-mingw32-gcc
 
 #### Android
 
-Android is built on linux and requires `dex2jar`, `gobind` from go mobile, and `gradle`.
+Android is built on linux and requires `dex2jar`, `gobind` from go mobile, and `gradle`.  Current build scripts have opinions about the location of the Android SDK that might not be appropriate for all environments.
 
-The forked fyne tools binary must be built: `cd bounce-chat/tools/cmd/fyne && go build`
+The forked fyne tools binary must first be built with `cd fyne-tools/cmd/fyne && go build`
 
 Run `make android` to create `Bounce.apk`, a debuggable development build.
 

@@ -3,8 +3,7 @@
 //go:generate go install golang.org/x/mobile/cmd/gobind@latest
 //go:generate gomobile init
 
-////go:generate fyne package  --app-id chat.bounce -icon ../../ui/assets/launcher_circle.png -name Bounce -os android -tags migrated_fynedo
-//go:generate ../../../tools/cmd/fyne/fyne package  --app-id chat.bounce -icon ../../ui/assets/launcher_circle.png -name Bounce -os android -tags migrated_fynedo
+//go:generate ../../fyne-tools/cmd/fyne/fyne package  --app-id chat.bounce -icon ../../ui/assets/launcher_circle.png -name Bounce -os android -tags migrated_fynedo
 
 //go:generate unzip -o "Bounce.apk" -d ./unzippedAPK
 //https://github.com/pxb1988/dex2jar/releases
