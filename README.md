@@ -12,7 +12,7 @@ Bounce is a distributed group chat application that protects metadata, with a fa
 
 ## Design Overview
 
-Each instance of Bounce includes a Tor hidden service, and all connections between devices occur over Tor.  Users can own multiple devices, including encrypted devices that do not have access to the message contents.  Users add contacts by scanning a code on the other person's device, or by meeting them in a group, there is no global namespace of all users.  Messages are scoped to their user or group, and gossiped between devices that are in scope and online.  Devices coming online have an efficient way to catch up.  Group states (name, admin status, etc) can survive a bad actor attempting to mess with history, so long as the majority of users are honest.  The UI is built using [Fyne](https://github.com/fyne-io/fyne).  For more details, see the [goals](docs/goals.md) and [design overview](docs/design.md).
+Each instance of Bounce includes a Tor hidden service, and all connections between devices occur over Tor.  Users can own multiple devices, including encrypted devices that do not have access to the message contents.  Users add contacts by scanning a code on the other person's device, or by meeting them in a group, there is no global namespace of all users.  Messages are scoped to their user or group, and gossiped between devices that are in scope and online.  Devices coming online have an efficient way to catch up.  Group states (name, admin status, etc) can survive a bad actor attempting to mess with history, so long as the majority of users are honest.  The UI is built using [Fyne](https://github.com/fyne-io/fyne).  For more details, see the [goals](docs/goals.md) and [design document](docs/design.md).
 
 ## Status
 
@@ -47,11 +47,11 @@ Bounce uses submodules, and should be cloned with:
 
 Development builds of the desktop app can be built on linux and macOS with `go build`.  The first build will take a while as it compiles [go-libtor](https://github.com/bounce-chat/go-libtor).
 
-Windows is cross-compiled on linux using mingw32 with `CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows go build`.
+Windows is cross-compiled on linux using mingw32 with `CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows go build  -ldflags="-H windowsgui"`.
 
 #### Android
 
-Android is built on linux and requires `dex2jar`, `gobind` from go mobile, and `gradle`.  Current build scripts have opinions about the location of the Android SDK that might not be appropriate for all environments.
+Android is built on linux and requires `dex2jar`, `gomobile`, and `gradle`.  Current build scripts have opinions about the location of the Android SDK that might not be appropriate for all environments.
 
 The forked fyne tools binary must first be built with `cd fyne-tools/cmd/fyne && go build`
 

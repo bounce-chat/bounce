@@ -8,8 +8,10 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/bounce-chat/bounce/chat"
+	"github.com/bounce-chat/bounce/config"
+
+	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -265,7 +267,7 @@ func (b *aidlBounce) GetDMHistory(userID uuid.UUID) chat.InitialState {
 
 func (b *aidlBounce) GetFileData(fileID uuid.UUID) ([]byte, error) {
 	if b.FileDownloaded(fileID) {
-		return ioutil.ReadFile(getConfigDirectory() + "/blobs/" + fileID.String())
+		return ioutil.ReadFile(config.GetConfigDirectory() + "/blobs/" + fileID.String())
 	}
 	return []byte{}, errors.New("file not found")
 }

@@ -1,12 +1,11 @@
 package ui
 
 import (
-	"os"
 	"runtime"
-	"testing"
 	"time"
 
 	"github.com/bounce-chat/bounce/chat"
+	"github.com/bounce-chat/bounce/config"
 	"github.com/bounce-chat/bounce/network"
 
 	"fyne.io/fyne/v2"
@@ -132,7 +131,7 @@ func Main() {
 		},
 	}
 
-	ui.bounce = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory(), ui.postNotification, nil)
+	ui.bounce = chat.Open(ui, &network.TorNetwork{}, config.GetConfigDirectory(), ui.postNotification, nil)
 	ui.build()
 	go func() {
 		ui.loadInitialState(ui.bounce.GetInitialState())
@@ -965,32 +964,4 @@ func (ui *ui) AnotherDeviceActive() {
 
 func (ui *ui) NoOtherDeviceActive() {
 	ui.state.anotherDeviceActive = false
-}
-
-func getConfigDirectory() string {
-	var configDirectory string
-	if testing.Testing() {
-		configDirectory = os.TempDir() + "/bounce-test-" + uuid.New().String()
-	} else if runtime.GOOS == "android" {
-		configDirectory = "/data/data/chat.bounce/bounce"
-	} else {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"at":    "configDirectory",
-				"error": err.Error(),
-			}).Fatal("error getting home directory")
-		}
-		configDirectory = home + "/.bounce"
-	}
-
-	err := os.MkdirAll(configDirectory+"/blobs/", 0700)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"path":  configDirectory,
-			"error": err.Error(),
-		}).Fatal("error creating config directory")
-	}
-
-	return configDirectory
 }

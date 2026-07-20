@@ -8,14 +8,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
-	"testing"
 	"time"
 
-	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/bounce-chat/bounce/chat"
+	"github.com/bounce-chat/bounce/config"
 	"github.com/bounce-chat/bounce/network"
-	"github.com/google/uuid"
+
+	"github.com/Basekick-Labs/msgpack/v6"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -41,7 +40,7 @@ func StartForegroundService() {
 	ui = &uiBuffer{
 		events: []map[int][]byte{},
 	}
-	b = chat.Open(ui, &network.TorNetwork{}, getConfigDirectory(), handleNotification, clearNotification)
+	b = chat.Open(ui, &network.TorNetwork{}, config.GetConfigDirectory(), handleNotification, clearNotification)
 	<-chDone
 }
 
@@ -71,34 +70,6 @@ func GetEvents() string {
 		return ""
 	}
 	return ui.getEvents()
-}
-
-func getConfigDirectory() string {
-	var configDirectory string
-	if testing.Testing() {
-		configDirectory = os.TempDir() + "/bounce-test-" + uuid.New().String()
-	} else if runtime.GOOS == "android" {
-		configDirectory = "/data/data/chat.bounce/bounce"
-	} else {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"at":    "configDirectory",
-				"error": err.Error(),
-			}).Fatal("error getting home directory")
-		}
-		configDirectory = home + "/.bounce"
-	}
-
-	err := os.MkdirAll(configDirectory+"/blobs/", 0700)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"path":  configDirectory,
-			"error": err.Error(),
-		}).Fatal("error creating config directory")
-	}
-
-	return configDirectory
 }
 
 func keepCachePruned() {

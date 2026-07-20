@@ -5,15 +5,11 @@ import (
 	//_ "net/http/pprof"
 
 	"flag"
-	"os"
-	"runtime"
-	"testing"
 
 	"github.com/bounce-chat/bounce/chat"
+	"github.com/bounce-chat/bounce/config"
 	"github.com/bounce-chat/bounce/network"
 	"github.com/bounce-chat/bounce/ui"
-	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 func main() {
@@ -24,36 +20,8 @@ func main() {
 	encrypted := flag.Bool("encrypted", false, "start an encrypted device")
 	flag.Parse()
 	if *encrypted {
-		chat.StartEncryptedDevice(&network.TorNetwork{}, getEncryptedConfigDirectory())
+		chat.StartEncryptedDevice(&network.TorNetwork{}, config.GetEncryptedConfigDirectory())
 	} else {
 		ui.Main()
 	}
-}
-
-func getEncryptedConfigDirectory() string {
-	var configDirectory string
-	if testing.Testing() {
-		configDirectory = os.TempDir() + "/bounce-encrypted-test-" + uuid.New().String()
-	} else if runtime.GOOS == "android" {
-		configDirectory = "/data/data/chat.bounce/bounce-encrypted"
-	} else {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			log.WithFields(log.Fields{
-				"at":    "configDirectory",
-				"error": err.Error(),
-			}).Fatal("error getting home directory")
-		}
-		configDirectory = home + "/.bounce-encrypted"
-	}
-
-	err := os.MkdirAll(configDirectory+"/blobs/", 0700)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"path":  configDirectory,
-			"error": err.Error(),
-		}).Fatal("error creating config directory")
-	}
-
-	return configDirectory
 }

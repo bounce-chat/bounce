@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bounce-chat/bounce/config"
+
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -29,7 +31,7 @@ type messageStore struct {
 
 func newMessageStore() *messageStore {
 	cache := map[uuid.UUID]cachedData{}
-	cacheFile := getConfigDirectory() + "/messageStore.cache"
+	cacheFile := config.GetConfigDirectory() + "/messageStore.cache"
 	data, err := ioutil.ReadFile(cacheFile)
 	if err != nil {
 		if !os.IsNotExist(err) {
