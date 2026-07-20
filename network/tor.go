@@ -148,7 +148,7 @@ func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
 	defer func() {
 		if r := recover(); r != nil {
 			// https://github.com/cretz/bine/issues/57
-			errString := "recovered a panic while starting Tor, this happens due to a nil-pointer derefernce in bine when Tor is shut down while publishing a hidden service"
+			errString := "recovered a panic while starting Tor, this can happen when Tor is shut down while publishing a hidden service"
 			if bounceTor.shutdown {
 				log.Error(errString)
 			} else {

@@ -37,8 +37,6 @@ For information on what's coming, see the [next steps](docs/next_steps.md) docum
 
 ### Building from source
 
-#### Prerequisites
-
 Bounce uses submodules, and should be cloned with:
 
 `git clone --recurse-submodules git@github.com:bounce-chat/bounce.git`
@@ -47,7 +45,7 @@ Bounce uses submodules, and should be cloned with:
 
 Development builds of the desktop app can be built on linux and macOS with `go build`.  The first build will take a while as it compiles [go-libtor](https://github.com/bounce-chat/go-libtor).
 
-Windows is cross-compiled on linux using mingw32 with `CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows go build  -ldflags="-H windowsgui"`.
+Windows is cross-compiled on linux using mingw32 with `CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows go build -ldflags="-H windowsgui"`.
 
 #### Android
 

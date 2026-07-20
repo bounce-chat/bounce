@@ -11,12 +11,12 @@ import (
 	"fmt"
 	stdlog "log"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/DeRuina/timberjack"
 	"github.com/google/uuid"
 	"github.com/mdp/qrterminal/v3"
 	log "github.com/sirupsen/logrus"
@@ -47,19 +47,18 @@ type oldKey struct {
 }
 
 func StartEncryptedDevice(network Network, configDirectory string) {
-	if os.Getenv("DEBUG") == "true" {
-		log.SetReportCaller(true)
-	}
-	log.SetLevel(log.DebugLevel) // TODO: put behind the envar when ready.  run in warn otherwise?
-
-	logfile = &timberjack.Logger{
-		Filename:           configDirectory + "/bounce-encrypted-log.txt",
-		MaxAge:             3,
-		Compression:        "none",
-		LocalTime:          true,
-		RotateAt:           []string{"00:00", "12:00"},
-		BackupTimeFormat:   "2006-01-02-15-04-05",
-		AppendTimeAfterExt: true,
+	if runtime.GOOS == "android" {
+		log.SetLevel(log.DebugLevel)
+		if os.Getenv("DEBUG") == "true" {
+			log.SetReportCaller(true)
+		}
+	} else {
+		if os.Getenv("DEBUG") == "true" {
+			log.SetLevel(log.DebugLevel)
+			log.SetReportCaller(true)
+		} else {
+			log.SetLevel(log.InfoLevel)
+		}
 	}
 	log.AddHook(&filehook{})
 

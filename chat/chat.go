@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DeRuina/timberjack"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
@@ -54,19 +53,21 @@ type Bounce struct {
 // The main entrypoint for starting the Bounce chat engine, blocks until the user interface
 // is closed, the network reaches a fatal error, or the process is sent an interrupt.
 func Open(ui UI, network Network, configDirectory string, postNotification func(id, title, content, openThread string, icon []byte), clearNotification func(string)) Engine {
-	if os.Getenv("DEBUG") == "true" {
-		log.SetReportCaller(true)
-	}
-	log.SetLevel(log.DebugLevel) // TODO: put behind the envar when ready.  run in warn otherwise?
+	if runtime.GOOS == "android" {
+		log.SetLevel(log.DebugLevel)
+		if os.Getenv("REPORT_CALLER") == "true" {
+			log.SetReportCaller(true)
+		}
+	} else {
+		if os.Getenv("REPORT_CALLER") == "true" {
+			log.SetReportCaller(true)
 
-	logfile = &timberjack.Logger{
-		Filename:           configDirectory + "/bounce-log.txt",
-		MaxAge:             3,
-		Compression:        "none",
-		LocalTime:          true,
-		RotateAt:           []string{"00:00", "12:00"},
-		BackupTimeFormat:   "2006-01-02-15-04-05",
-		AppendTimeAfterExt: true,
+		}
+		if os.Getenv("DEBUG") == "true" {
+			log.SetLevel(log.DebugLevel)
+		} else {
+			log.SetLevel(log.InfoLevel)
+		}
 	}
 	log.AddHook(&filehook{})
 

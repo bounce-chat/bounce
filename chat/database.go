@@ -47,7 +47,7 @@ func (b *Bounce) openDatabase() {
 	databaseFile := b.configDirectory + "/bounce.db"
 
 	// Define a logger for gorm that uses logrus
-	databaseLogLevel := logger.Warn // logger.Error
+	databaseLogLevel := logger.Error
 	if os.Getenv("DEBUG") == "true" {
 		databaseLogLevel = logger.Warn
 	}
