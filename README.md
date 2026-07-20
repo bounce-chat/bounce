@@ -43,9 +43,7 @@ Bounce uses submodules, and should be cloned with:
 
 #### Desktop
 
-Development builds of the desktop app can be built on linux and macOS with `go build`.  The first build will take a while as it compiles [go-libtor](https://github.com/bounce-chat/go-libtor).
-
-Windows is cross-compiled on linux using mingw32 with `CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows go build -ldflags="-H windowsgui"`.
+Development builds of the desktop app can be built on linux and macOS with `go build`.  The first build will take a while as it compiles [go-libtor](https://github.com/bounce-chat/go-libtor).  Windows is cross-compiled on linux using mingw32 by running `make windows`.
 
 #### Android
 
