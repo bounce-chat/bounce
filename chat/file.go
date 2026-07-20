@@ -1111,7 +1111,12 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 	return nil, false
 }
 
+var chunkWritingMutex sync.Mutex
+
 func (b *Bounce) writeChunkToDisk(c chunk) {
+	chunkWritingMutex.Lock()
+	defer chunkWritingMutex.Unlock()
+
 	// Find the file that contains this chunk
 	var f file
 	err := b.database.Select("chunk_size", "path", "size", "hash", "wanted").Where("id = ?", c.FileID).First(&f).Error
@@ -1144,24 +1149,7 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 	}
 
 	start := int64(c.Index * f.ChunkSize)
-	sought, err := fh.Seek(start, 0)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"path":  f.Path,
-			"error": err.Error(),
-		}).Warn("error seeking file for writing chunk data")
-		return
-	}
-	if sought != start {
-		log.WithFields(log.Fields{
-			"path":   f.Path,
-			"start":  start,
-			"sought": sought,
-		}).Warn("seeking file for writing chunk data did not seek to correct location")
-		return
-	}
-
-	_, err = fh.Write(c.Data)
+	_, err = fh.WriteAt(c.Data, start)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"path":  f.Path,

@@ -441,9 +441,15 @@ func (ui *ui) newDirectMessage(dm chat.DirectMessage) (*threadItem, error) {
 				}
 
 				if len(dm.FileAttachments) > 1 {
-					changeString += " and files"
+					if len(dm.ImageAttachments) != 0 {
+						changeString += " and "
+					}
+					changeString += "files"
 				} else if len(dm.FileAttachments) == 1 {
-					changeString += " and a file"
+					if len(dm.ImageAttachments) != 0 {
+						changeString += " and "
+					}
+					changeString += "a file"
 				}
 
 				tbd.setLastAction(changeString, mine)

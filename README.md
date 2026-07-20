@@ -18,12 +18,12 @@ Each instance of Bounce includes a Tor hidden service, and all connections betwe
 
 Things should be working pretty reliably, please open an issue if a feature in the UI is not behaving as expected.  Bounce has not been audited by a third party yet, and should be considered experimental.
 
-|Client|Status|Notes|
+|Platform|Status|Notes|
 |---|---|---|
 |Linux|✅|Fully supported|
 |macOS|✅|Fully supported|
 |Windows|✅|Fully supported|
-|Android|✅|Fully supported, however there currently are significant performance and usability issues when compared with established chat apps.|
+|Android|✅|Fully supported, however there currently are performance issues when compared with established chat apps.|
 |iOS|⛔|iOS does not allow apps to run in the background.  Implementing Bounce on iOS will require a light client that receives notifications from another instance of Bounce via APNs, and reaches out to that instance to send messages.  This has not been planned yet, and would change the privacy model around metadata protection.|
 
 For information on what's coming, see the [next steps](docs/next_steps.md) document.
@@ -33,7 +33,6 @@ For information on what's coming, see the [next steps](docs/next_steps.md) docum
 ### Binary Releases
 
 * Visit the [Releases](https://github.com/bounce-chat/bounce/releases/) page to download the latest binaries.
-* Arch users can find [bounce]() in the AUR.
 * The best way to install Bounce on Android is with [Obtanium](https://github.com/ImranR98/Obtainium).
 
 ### Building from source
