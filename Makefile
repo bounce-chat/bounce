@@ -1,4 +1,4 @@
-.PHONY: android-generate android android-release windows
+.PHONY: android-generate android android-release windows windows-release
 include .env
 
 android-generate:
@@ -23,6 +23,10 @@ android-release: android-generate
 
 windows:
 	CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows go build -ldflags="-H windowsgui"
+
+windows-release:
+	CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows fyne package --app-id chat.bounce -icon ui/assets/icon.png -name Bounce -os windows -tags migrated_fynedo --release
+	mv Bounce.exe releases/Bounce.exe
 
 clean:
 	rm -r android/apk/app/src/main/jniLibs
