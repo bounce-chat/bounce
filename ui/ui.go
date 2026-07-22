@@ -823,6 +823,10 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 			ui.widgets.networkOfflineWarning.Importance = widget.DangerImportance
 			ui.widgets.networkOfflineWarning.Refresh()
 		}
+
+		if state.NetworkOnline {
+			ui.NetworkOnline()
+		}
 	})
 	go ui.messages.writeCache()
 }

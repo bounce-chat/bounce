@@ -360,6 +360,7 @@ type BulkUpdate struct {
 
 type InitialState struct {
 	DeviceRevoked                          bool
+	NetworkOnline                          bool
 	Profile                                *User
 	Settings                               Settings
 	SyncDevices                            []Device

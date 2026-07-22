@@ -1226,6 +1226,7 @@ func (b *Bounce) GetInitialState() InitialState {
 	// Create the initial state for the UI
 	return InitialState{
 		DeviceRevoked:                          b.deviceIsRevoked(),
+		NetworkOnline:                          b.networkIsOnline,
 		Profile:                                profile,
 		Settings:                               settings,
 		SyncDevices:                            syncDevices,
