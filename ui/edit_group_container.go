@@ -29,8 +29,7 @@ func (ui *ui) showEditGroupContainer(g *group) {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeGroupSettings, context: g.id})
 	}
-	ui.state.currentView = viewTypeGroupSettings
-	ui.window.SetContent(g.editContainer)
+	ui.setContent(viewTypeGroupSettings, g.editContainer)
 	g.editContainer.Show()
 }
 

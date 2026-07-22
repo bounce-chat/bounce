@@ -446,7 +446,7 @@ func (ui *ui) displayThread(t thread) {
 	ui.containers.chat.Refresh()
 
 	if fyne.CurrentDevice().IsMobile() {
-		ui.window.SetContent(ui.containers.chat)
+		ui.setContent(viewTypeThread, ui.containers.chat)
 		ui.containers.chat.Show()
 	} else {
 		if !isInvite {

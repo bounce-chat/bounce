@@ -39,7 +39,6 @@ func (ui *ui) showDisplaySyncString() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeDisplaySyncString})
 	}
-	ui.state.currentView = viewTypeDisplaySyncString
 	newDeviceString := ui.bounce.GetNewSyncString()
 	ui.widgets.addSyncDevice.entry.SetText(newDeviceString)
 
@@ -73,7 +72,7 @@ func (ui *ui) showDisplaySyncString() {
 	ui.widgets.addSyncDevice.encryptedHeader.Refresh()
 	ui.containers.addSyncDeviceContent.Objects = []fyne.CanvasObject{ui.views.addSyncDevice}
 	ui.containers.addSyncDeviceContent.Refresh()
-	ui.window.SetContent(ui.containers.syncDeviceOptions)
+	ui.setContent(viewTypeDisplaySyncString, ui.containers.syncDeviceOptions)
 }
 
 func (ui *ui) buildDisplaySyncString() {
@@ -86,16 +85,6 @@ func (ui *ui) buildDisplaySyncString() {
 		if fyne.CurrentDevice().IsMobile() {
 			ui.mobileBack()
 		} else {
-			if cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice); isCameraDevice {
-				if cameraIsRunning {
-					cameraDevice.StopPreview()
-					cameraIsRunning = false
-					select {
-					case stopNewSyncDeviceCameraProcessing <- true:
-					default:
-					}
-				}
-			}
 			ui.showEditProfile()
 		}
 	})
@@ -120,6 +109,7 @@ func (ui *ui) buildDisplaySyncString() {
 		if isCameraDevice && !cameraIsRunning {
 			cameraDevice.StartPreview()
 			cameraIsRunning = true
+			cameraRunningFor = cameraRunningForNewEncryptedDevice
 			go ui.processCameraFramesForNewEncryptedDevice()
 		}
 		ui.widgets.addSyncDevice.encryptedHeader.Importance = widget.HighImportance
@@ -211,6 +201,7 @@ func (ui *ui) buildInputEncryptedSyncString() {
 						if isCameraDevice && !cameraIsRunning {
 							cameraDevice.StartPreview()
 							cameraIsRunning = true
+							cameraRunningFor = cameraRunningForNewEncryptedDevice
 							go ui.processCameraFramesForNewEncryptedDevice()
 						}
 					})
@@ -327,6 +318,7 @@ func (ui *ui) EncryptedDeviceRejected() {
 			if isCameraDevice && !cameraIsRunning {
 				cameraDevice.StartPreview()
 				cameraIsRunning = true
+				cameraRunningFor = cameraRunningForNewEncryptedDevice
 				go ui.processCameraFramesForNewEncryptedDevice()
 			}
 		})

@@ -62,16 +62,6 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 			if fyne.CurrentDevice().IsMobile() {
 				ui.mobileBack()
 			} else {
-				if cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice); isCameraDevice {
-					if cameraIsRunning {
-						cameraDevice.StopPreview()
-						cameraIsRunning = false
-						select {
-						case stopNewSyncDeviceCameraProcessing <- true:
-						default:
-						}
-					}
-				}
 				ui.showNewSyncDevice()
 			}
 		}),
@@ -175,8 +165,7 @@ func (ui *ui) showNameNewDevice() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeNameNewDevice})
 	}
-	ui.state.currentView = viewTypeNameNewDevice
-	ui.window.SetContent(ui.views.nameNewDevice)
+	ui.setContent(viewTypeNameNewDevice, ui.views.nameNewDevice)
 	ui.views.nameNewDevice.Show()
 	ui.window.Canvas().Focus(ui.widgets.newSyncDevice.deviceNameEntry)
 }
@@ -207,7 +196,7 @@ func (ui *ui) buildNameNewDevice() {
 		if fyne.CurrentDevice().IsMobile() {
 			ui.mobileBack()
 		} else {
-			ui.window.SetContent(ui.views.newInstall)
+			ui.setContent(viewTypeNewInstall, ui.views.newInstall)
 			ui.views.newInstall.Show()
 		}
 	})
@@ -235,8 +224,7 @@ func (ui *ui) showNewSyncDevice() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeNewSyncDevice})
 	}
-	ui.state.currentView = viewTypeNewSyncDevice
-	ui.window.SetContent(ui.views.newSyncDevice)
+	ui.setContent(viewTypeNewSyncDevice, ui.views.newSyncDevice)
 	ui.window.Canvas().Focus(ui.widgets.newSyncDevice.syncStringEntry)
 
 	ui.widgets.newSyncDevice.syncStringInput.Show()
@@ -246,9 +234,10 @@ func (ui *ui) showNewSyncDevice() {
 	ui.widgets.newSyncDevice.currentStep.Refresh()
 
 	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
-	if isCameraDevice {
+	if isCameraDevice && !cameraIsRunning {
 		cameraDevice.StartPreview()
 		cameraIsRunning = true
+		cameraRunningFor = viewTypeNewSyncDevice
 		go ui.processCameraFramesForNewSyncDevice()
 	}
 }
@@ -316,9 +305,10 @@ func (ui *ui) buildNewSyncDevice() {
 					ui.widgets.newSyncDevice.backButton.Enable()
 					ui.widgets.newSyncDevice.syncStringInput.Show()
 					ui.showDialog(dialog.NewError(errors.New("Error sending sync request: "+err.Error()), ui.window), func() {
-						if isCameraDevice {
+						if isCameraDevice && !cameraIsRunning {
 							cameraDevice.StartPreview()
 							cameraIsRunning = true
+							cameraRunningFor = viewTypeNewSyncDevice
 							go ui.processCameraFramesForNewSyncDevice()
 						}
 					})
@@ -365,6 +355,7 @@ func (ui *ui) SyncDeviceRequestRejected(peer string) {
 			if isCameraDevice && !cameraIsRunning {
 				cameraDevice.StartPreview()
 				cameraIsRunning = true
+				cameraRunningFor = viewTypeNewSyncDevice
 				go ui.processCameraFramesForNewSyncDevice()
 			}
 		})

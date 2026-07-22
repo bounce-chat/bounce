@@ -15,8 +15,7 @@ func (ui *ui) showAbout() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeAbout})
 	}
-	ui.state.currentView = viewTypeAbout
-	ui.window.SetContent(ui.views.about)
+	ui.setContent(viewTypeAbout, ui.views.about)
 }
 
 func (ui *ui) buildAbout() {
@@ -80,7 +79,7 @@ func (ui *ui) buildAbout() {
 		container.NewCenter(
 			container.NewVBox(
 				makeLogo(228, 167), // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
-				widget.NewLabel("version 0.1.0-rc1"),
+				widget.NewLabel("version 0.1.0-rc3"),
 				widget.NewLabel(fmt.Sprintf("build %s", revision)),
 			),
 		),

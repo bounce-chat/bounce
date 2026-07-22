@@ -18,11 +18,10 @@ func (ui *ui) showNewDM() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeNewDM})
 	}
-	ui.state.currentView = viewTypeNewDM
 	ui.widgets.newDM.searchEntry.Text = ""
 	ui.widgets.newDM.searchEntry.Refresh()
 	ui.refreshAllUsersDMLinks()
-	ui.window.SetContent(ui.views.newDM)
+	ui.setContent(viewTypeNewDM, ui.views.newDM)
 	ui.window.Canvas().Focus(ui.widgets.newDM.searchEntry)
 }
 

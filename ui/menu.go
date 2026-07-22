@@ -40,8 +40,7 @@ func (ui *ui) buildMenu() {
 
 func (ui *ui) showMobileMenu() {
 	ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeMenu})
-	ui.state.currentView = viewTypeMenu
-	ui.window.SetContent(ui.views.mobileMenu)
+	ui.setContent(viewTypeMenu, ui.views.mobileMenu)
 }
 
 func (ui *ui) buildMobileMenu() {

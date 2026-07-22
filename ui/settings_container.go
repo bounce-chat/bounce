@@ -70,8 +70,7 @@ func (ui *ui) showSettings() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeSettings})
 	}
-	ui.state.currentView = viewTypeSettings
-	ui.window.SetContent(ui.views.settings)
+	ui.setContent(viewTypeSettings, ui.views.settings)
 }
 
 func (ui *ui) buildSettings() {

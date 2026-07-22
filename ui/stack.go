@@ -32,9 +32,12 @@ const (
 	viewTypeNameNewDevice
 	viewTypeDialog
 	viewTypeImageViewer
+	viewTypeDatabaseLoading
+	cameraRunningForNewEncryptedDevice
 )
 
 var cameraIsRunning = false
+var cameraRunningFor = 0
 
 var hookedDialogs = make(map[dialog.Dialog]bool)
 
@@ -47,6 +50,38 @@ type view struct {
 type dialogWithCallback struct {
 	dialog   dialog.Dialog
 	callback func()
+}
+
+func (ui *ui) setContent(viewType int, view fyne.CanvasObject) {
+	if cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice); isCameraDevice {
+		if viewType != viewTypeAddUser && cameraIsRunning && cameraRunningFor == viewTypeAddUser {
+			cameraDevice.StopPreview()
+			cameraIsRunning = false
+			select {
+			case stopAddUserCameraProcessing <- true:
+			default:
+			}
+		}
+		if viewType != viewTypeNewSyncDevice && cameraIsRunning && cameraRunningFor == viewTypeNewSyncDevice {
+			cameraDevice.StopPreview()
+			cameraIsRunning = false
+			select {
+			case stopNewSyncDeviceCameraProcessing <- true:
+			default:
+			}
+		}
+		if viewType != viewTypeDisplaySyncString && cameraIsRunning && cameraRunningFor == cameraRunningForNewEncryptedDevice {
+			cameraDevice.StopPreview()
+			cameraIsRunning = false
+			select {
+			case stopNewEncryptedDeviceCameraProcessing <- true:
+			default:
+			}
+		}
+	}
+
+	ui.state.currentView = viewType
+	ui.window.SetContent(view)
 }
 
 func (ui *ui) mobileBack() {
@@ -80,7 +115,6 @@ func (ui *ui) mobileBack() {
 
 	// Grab the view that occured before the current one as the one we want to display
 	displayView := ui.state.viewStack[len(ui.state.viewStack)-2]
-	ui.state.currentView = displayView.viewType
 
 	// Remove the current view from history
 	ui.state.viewStack = ui.state.viewStack[0 : len(ui.state.viewStack)-1]
@@ -88,14 +122,14 @@ func (ui *ui) mobileBack() {
 	// Set the UI to the view we want to display
 	switch displayView.viewType {
 	case viewTypeAllThreads:
-		ui.window.SetContent(ui.views.main)
+		ui.setContent(displayView.viewType, ui.views.main)
 	case viewTypeThread:
 		t, ok := ui.threads.get(displayView.context)
 		if !ok {
 			log.WithFields(log.Fields{
 				"type": displayView.viewType,
 			}).Warn("cannot display unknown thread when handling mobile back button")
-			ui.window.SetContent(ui.views.main)
+			ui.setContent(displayView.viewType, ui.views.main)
 			ui.views.main.Show()
 		} else {
 			ui.displayThread(t)
@@ -116,7 +150,7 @@ func (ui *ui) mobileBack() {
 				dm.unblockUserButton.Hide()
 			}
 
-			ui.window.SetContent(dm.editContainer)
+			ui.setContent(displayView.viewType, dm.editContainer)
 		} else {
 			log.Error("cannot go back to edit DM settings view for unknown DM")
 			ui.mobileBack()
@@ -125,30 +159,30 @@ func (ui *ui) mobileBack() {
 		g, ok := ui.threads.getGroup(displayView.context)
 		if ok {
 			ui.setGroupMutedUntilButton(g)
-			ui.window.SetContent(g.editContainer)
+			ui.setContent(displayView.viewType, g.editContainer)
 		} else {
 			log.Error("cannot go back to edit group settings view for unknown DM")
 			ui.mobileBack()
 		}
 	case viewTypeSettings:
-		ui.window.SetContent(ui.views.settings)
+		ui.setContent(displayView.viewType, ui.views.settings)
 	case viewTypeNewSyncDevice:
 		ui.widgets.newSyncDevice.syncStringInput.Show()
-		ui.window.SetContent(ui.views.newSyncDevice)
+		ui.setContent(displayView.viewType, ui.views.newSyncDevice)
 	case viewTypeNewInstall:
-		ui.window.SetContent(ui.views.newInstall)
+		ui.setContent(displayView.viewType, ui.views.newInstall)
 	case viewTypeProfileCreator:
-		ui.window.SetContent(ui.views.newProfileCreator)
+		ui.setContent(displayView.viewType, ui.views.newProfileCreator)
 	case viewTypeNewGroup:
 		ui.clearNewGroupSelectors()
-		ui.window.SetContent(ui.views.newGroup)
+		ui.setContent(displayView.viewType, ui.views.newGroup)
 	case viewTypeNewDM:
 		ui.widgets.newDM.searchEntry.Text = ""
 		ui.widgets.newDM.searchEntry.Refresh()
 		ui.refreshAllUsersDMLinks()
-		ui.window.SetContent(ui.views.newDM)
+		ui.setContent(displayView.viewType, ui.views.newDM)
 	case viewTypeMenu:
-		ui.window.SetContent(ui.views.mobileMenu)
+		ui.setContent(displayView.viewType, ui.views.mobileMenu)
 	case viewTypeDisplaySyncString:
 		newSyncString := ui.bounce.GetNewSyncString()
 		ui.widgets.addSyncDevice.entry.SetText(newSyncString)
@@ -168,7 +202,7 @@ func (ui *ui) mobileBack() {
 				ui.widgets.addSyncDevice.qrCode.Refresh()
 			}
 		}
-		ui.window.SetContent(ui.views.addSyncDevice)
+		ui.setContent(displayView.viewType, ui.views.addSyncDevice)
 	case viewTypeAddUser:
 		newAddUserString := ui.bounce.GetNewAddUserString()
 		ui.widgets.addUser.displayEntry.SetText(newAddUserString)
@@ -188,9 +222,9 @@ func (ui *ui) mobileBack() {
 				ui.widgets.addUser.qrCode.Refresh()
 			}
 		}
-		ui.window.SetContent(ui.views.addUser)
+		ui.setContent(displayView.viewType, ui.views.addUser)
 	case viewTypeAbout:
-		ui.window.SetContent(ui.views.about)
+		ui.setContent(displayView.viewType, ui.views.about)
 	case viewTypeEditProfile:
 		ui.widgets.editProfile.profileIcon.id = ui.state.profile.id
 		ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
@@ -202,11 +236,11 @@ func (ui *ui) mobileBack() {
 		ui.widgets.editProfile.profileNameEntry.FocusLost()
 
 		ui.containers.profileOptions.Refresh()
-		ui.window.SetContent(ui.views.editProfile)
+		ui.setContent(displayView.viewType, ui.views.editProfile)
 	case viewTypeNameNewDevice:
-		ui.window.SetContent(ui.views.nameNewDevice)
+		ui.setContent(displayView.viewType, ui.views.nameNewDevice)
 	case viewTypeImageViewer:
-		ui.window.SetContent(ui.widgets.imageViewer.viewer)
+		ui.setContent(displayView.viewType, ui.widgets.imageViewer.viewer)
 	default:
 		log.WithFields(log.Fields{
 			"type": displayView.viewType,

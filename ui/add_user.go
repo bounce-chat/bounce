@@ -75,7 +75,7 @@ func (ui *ui) showAddUser() {
 
 	ui.containers.addUserContent.Objects = []fyne.CanvasObject{ui.containers.displayAddUserString}
 	ui.containers.addUserContent.Refresh()
-	ui.window.SetContent(ui.views.addUser)
+	ui.setContent(viewTypeAddUser, ui.views.addUser)
 }
 
 func (ui *ui) buildAddUser() {
@@ -87,18 +87,6 @@ func (ui *ui) buildAddUser() {
 		closeButton := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
 			if fyne.CurrentDevice().IsMobile() {
 				ui.mobileBack()
-			} else {
-				if cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice); isCameraDevice {
-					if cameraIsRunning {
-						cameraDevice.StopPreview()
-						cameraIsRunning = false
-						select {
-						case stopAddUserCameraProcessing <- true:
-						default:
-						}
-					}
-				}
-				ui.showMainContainer()
 			}
 		})
 		closeButton.Importance = widget.LowImportance
@@ -112,16 +100,6 @@ func (ui *ui) buildAddUser() {
 			if fyne.CurrentDevice().IsMobile() {
 				ui.mobileBack()
 			} else {
-				if cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice); isCameraDevice {
-					if cameraIsRunning {
-						cameraDevice.StopPreview()
-						cameraIsRunning = false
-						select {
-						case stopAddUserCameraProcessing <- true:
-						default:
-						}
-					}
-				}
 				ui.showMainContainer()
 			}
 		})
@@ -145,9 +123,10 @@ func (ui *ui) buildAddUser() {
 	ui.widgets.addUser.shareButton.Importance = widget.HighImportance
 	ui.widgets.addUser.scanButton = widget.NewButton("Scan", func() {
 		cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
-		if isCameraDevice {
+		if isCameraDevice && !cameraIsRunning {
 			cameraDevice.StartPreview()
 			cameraIsRunning = true
+			cameraRunningFor = viewTypeAddUser
 			go ui.processCameraFramesForAddUser()
 		}
 		ui.widgets.addUser.scanButton.Importance = widget.HighImportance
@@ -223,10 +202,11 @@ func (ui *ui) buildScanUser() {
 					ui.widgets.addUser.currentStep.Hide()
 					ui.containers.scanUser.Refresh()
 					ui.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), ui.window), func() {
-						if isCameraDevice {
+						if isCameraDevice && !cameraIsRunning {
 							cameraDevice.StartPreview()
 							go ui.processCameraFramesForAddUser()
 							cameraIsRunning = true
+							cameraRunningFor = viewTypeAddUser
 						}
 					})
 				})
@@ -330,17 +310,6 @@ func (ui *ui) UserAdded(u chat.User) {
 				ui.mobileBack() // Exit menu to home
 			} else {
 				ui.showMainContainer()
-			}
-		} else {
-			if cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice); isCameraDevice {
-				if cameraIsRunning {
-					cameraDevice.StopPreview()
-					cameraIsRunning = false
-					select {
-					case stopAddUserCameraProcessing <- true:
-					default:
-					}
-				}
 			}
 		}
 		if !ui.state.initialSyncIncomplete {

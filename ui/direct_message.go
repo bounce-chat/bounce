@@ -455,8 +455,7 @@ func (ui *ui) showEditDMContainer(dm *directMessage) {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeDMSettings, context: dm.user.id})
 	}
-	ui.state.currentView = viewTypeDMSettings
-	ui.window.SetContent(dm.editContainer)
+	ui.setContent(viewTypeDMSettings, dm.editContainer)
 	dm.editContainer.Show()
 }
 

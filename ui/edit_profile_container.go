@@ -58,7 +58,6 @@ func (ui *ui) showEditProfile() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeEditProfile})
 	}
-	ui.state.currentView = viewTypeEditProfile
 
 	ui.widgets.editProfile.profileIcon.id = ui.state.profile.id
 	ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
@@ -71,7 +70,7 @@ func (ui *ui) showEditProfile() {
 	ui.widgets.editProfile.profileNameEntry.FocusLost()
 
 	ui.containers.profileOptions.Refresh()
-	ui.window.SetContent(ui.views.editProfile)
+	ui.setContent(viewTypeEditProfile, ui.views.editProfile)
 }
 
 func (ui *ui) updateDeviceStatus() {

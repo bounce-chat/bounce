@@ -259,9 +259,8 @@ func (ui *ui) showNewGroup() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeNewGroup})
 	}
-	ui.state.currentView = viewTypeNewGroup
 	ui.clearNewGroupSelectors()
-	ui.window.SetContent(ui.views.newGroup)
+	ui.setContent(viewTypeNewGroup, ui.views.newGroup)
 	ui.widgets.newGroup.iconData = []byte{}
 	ui.widgets.newGroup.icon.images = []uuid.UUID{}
 	ui.widgets.newGroup.icon.setBackground()

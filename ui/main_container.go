@@ -31,15 +31,14 @@ type newInstall struct {
 func (ui *ui) showMainContainer() {
 	if !ui.state.initialStateSet { // TODO: rename?
 		ui.window.SetMainMenu(nil)
-		ui.window.SetContent(ui.views.databaseLoading)
+		ui.setContent(viewTypeDatabaseLoading, ui.views.databaseLoading)
 	} else if ui.state.profile == nil {
 		// The database has been loaded but this is a new install with no profile setup.
 		// Display the screen that the user is on for walking through new device setup.
 		if ui.state.setupStep == setupStepInit {
 			ui.window.SetMainMenu(nil)
-			ui.window.SetContent(ui.views.newInstall)
+			ui.setContent(viewTypeNewInstall, ui.views.newInstall)
 			ui.state.viewStack = []view{view{viewType: viewTypeNewInstall}}
-			ui.state.currentView = viewTypeNewInstall
 		} else if ui.state.setupStep == setupStepProfile {
 			ui.window.SetMainMenu(nil)
 			ui.showNewProfileCreator()
@@ -50,9 +49,8 @@ func (ui *ui) showMainContainer() {
 		}
 	} else {
 		ui.state.viewStack = []view{view{viewType: viewTypeAllThreads}}
-		ui.state.currentView = viewTypeAllThreads
 		ui.window.SetMainMenu(ui.containers.mainMenu)
-		ui.window.SetContent(ui.views.main)
+		ui.setContent(viewTypeAllThreads, ui.views.main)
 	}
 }
 
@@ -258,9 +256,8 @@ func (ui *ui) buildNewInstall() {
 }
 
 func (ui *ui) showNewProfileCreator() {
-	ui.state.currentView = viewTypeProfileCreator
 	ui.state.setupStep = setupStepProfile
-	ui.window.SetContent(ui.views.newProfileCreator)
+	ui.setContent(viewTypeProfileCreator, ui.views.newProfileCreator)
 	ui.views.newProfileCreator.Show()
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeProfileCreator})
@@ -422,7 +419,7 @@ func (ui *ui) buildNewProfileCreator() {
 		ui.widgets.newInstall.newProfileImage.images = []uuid.UUID{}
 		ui.widgets.newInstall.newProfileImage.Refresh()
 		ui.state.setupStep = setupStepInit
-		ui.window.SetContent(ui.views.newInstall)
+		ui.setContent(viewTypeNewInstall, ui.views.newInstall)
 	})
 	actionButtons := container.New(
 		layout.NewBorderLayout(nil, nil, backButton, saveButton),
