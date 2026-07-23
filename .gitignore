@@ -1,14 +1,18 @@
 *.sw?
 .DS_Store
+.env
+fyne_metadata_init.go
 /bounce
 /bounce.exe
 /Bounce.exe
 /Bounce.apk
-fyne-cross/
-fyne_metadata_init.go
-.env
 /build
 /releases
+
+*.tar.zst
+pkg/arch/bounce-bin/bounce
+pkg/arch/bounce-bin/pkg
+pkg/arch/bounce-bin/src
 
 android/activity/unzippedAPK
 *.so

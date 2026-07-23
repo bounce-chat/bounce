@@ -48,6 +48,17 @@ macos-release:
 	ln -s /Applications build/Applications
 	hdiutil create -volname "Bounce" -srcfolder "build/" -size 500m -ov -format UDZO "releases/Bounce.dmg"
 
+linux-arch-release:
+	mkdir -p releases
+	mkdir -p build
+	go build
+	cp bounce pkg/arch/bounce-bin/bounce
+	rm pkg/arch/bounce-bin/*.tar.zst
+	cd pkg/arch/bounce-bin/ && updpkgsums && makepkg --clean -f
+	cp pkg/arch/bounce-bin/*.tar.zst releases/
+
+linux-release: linux-arch-release
+
 clean:
 	rm -r android/apk/app/src/main/jniLibs
 	rm -r android/apk/app/build

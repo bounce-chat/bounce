@@ -1,0 +1,23 @@
+# Maintainer: Hayden Parker <hayden@bounce.chat>
+pkgname=bounce-bin
+pkgver=0.1.0
+pkgrel=2
+pkgdesc="A metadata-protecting distributed group chat application"
+arch=('x86_64')
+url="https://github.com/bounce-chat/bounce"
+license=('MIT')
+provides=("${pkgname}")
+conflicts=('bounce' 'bounce-bin')
+options+=( !debug )
+source=("bounce"
+	"bounce.desktop"
+	"bounce.svg") 
+sha256sums=('45967a3cc5f21d7d6d72b038ddce0cd8d374eac0fa341b3f6e76aa9b0dd14aed'
+            '0235cb757b597aff1730c59afc55ecac267a09504c1ff6ac54cd32fe6c258635'
+            'eb2cdcab103788b9cb947494ee3f424478d291b298d007743324388b6c678ccf')
+
+package() {
+    install -Dm755 "$srcdir/bounce" "$pkgdir/usr/bin/bounce"
+    install -Dm644 "$srcdir/bounce.desktop" "$pkgdir/usr/share/applications/bounce.desktop"
+    install -Dm644 "${srcdir}/bounce.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/bounce.svg"
+}
