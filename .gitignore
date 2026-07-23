@@ -13,6 +13,7 @@ fyne_metadata_init.go
 pkg/arch/bounce-bin/bounce
 pkg/arch/bounce-bin/pkg
 pkg/arch/bounce-bin/src
+pkg/debian/bounce/usr/local/bin
 
 android/activity/unzippedAPK
 *.so

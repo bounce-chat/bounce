@@ -57,7 +57,20 @@ linux-arch-release:
 	cd pkg/arch/bounce-bin/ && updpkgsums && makepkg --clean -f
 	cp pkg/arch/bounce-bin/*.tar.zst releases/
 
-linux-release: linux-arch-release
+linux-debian-release:
+	rm -f bounce
+	docker run --rm -it -v.:/go/src/bounce golang:trixie bash -c "cd src/bounce && make linux-debian-release-docker"
+	mkdir -p pkg/debian/bounce/usr/local/bin
+	mv -f bounce pkg/debian/bounce/usr/local/bin/bounce
+	docker run -it --rm -v ./pkg/debian/bounce:/root/bounce golang:trixie bash -c "cd /root && dpkg-deb --build bounce && chown 1000:1000 bounce.deb && mv bounce.deb bounce/"
+	mv pkg/debian/bounce/bounce.deb releases/bounce.deb
+
+linux-debian-release-docker:
+	apt update && apt install -y golang gcc libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
+	git config --global --add safe.directory /go/src/bounce
+	go build
+
+linux-release: linux-arch-release linux-debian-release
 
 clean:
 	rm -r android/apk/app/src/main/jniLibs

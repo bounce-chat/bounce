@@ -1,0 +1,7 @@
+Package: bounce
+Version: 0.1.0
+Architecture: amd64
+Maintainer: Hayden Parker <hayden@bounce.chat>
+Description: A metadata-protecting distributed group chat application
+Section: utils
+Priority: optional
