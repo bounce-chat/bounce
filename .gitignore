@@ -10,9 +10,6 @@ fyne_metadata_init.go
 /releases
 
 *.tar.zst
-pkg/arch/bounce-bin/bounce
-pkg/arch/bounce-bin/pkg
-pkg/arch/bounce-bin/src
 pkg/debian
 
 android/activity/unzippedAPK

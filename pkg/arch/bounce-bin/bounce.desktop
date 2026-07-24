@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Version=0.1.0
-Name=Bounce
-Comment=A metadata-protecting distributed group chat application
-Exec=/usr/bin/bounce
-Icon=bounce
-Terminal=false
-Categories=Chat;Network;InstantMessaging;
