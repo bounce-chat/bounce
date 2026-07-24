@@ -7,7 +7,7 @@ Bounce is a distributed group chat application that protects metadata, with a fa
 </p>
 
 <p align="center">
-  <img src="docs/screenshots.png"/>
+  <img src="docs/mockup.png"/>
 </p>
 
 ## Design Overview
@@ -23,7 +23,7 @@ Things should be working pretty reliably, please open an issue if a feature in t
 |Linux|✅|Fully supported|
 |macOS|✅|Fully supported|
 |Windows|✅|Fully supported|
-|Android|✅|Fully supported, however there are performance issues currently.|
+|Android|✅|Fully supported, however there currently are performance issues.|
 |iOS|⛔|iOS does not allow apps to run in the background.  Implementing Bounce on iOS will require a light client that receives notifications from another instance of Bounce via APNs, and reaches out to that instance to send messages.  This has not been planned yet, and would change the privacy model around metadata protection.|
 
 For information on what's coming, see the [next steps](docs/next_steps.md) document.
