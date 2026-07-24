@@ -338,6 +338,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		counterparty.OpenDM = true
 		counterparty.IntroductionMethod = userIntroductionAddUser
 		counterparty.IntroductionTime = time.Now().Unix()
+		counterparty.Accepted = true
 		err = b.database.Create(&counterparty).Error
 		if err != nil {
 			log.WithFields(log.Fields{

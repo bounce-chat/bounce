@@ -50,6 +50,7 @@ type user struct {
 	Alias                      string    `msgpack:"-"`
 	Notes                      string    `msgpack:"-"`
 	Blocked                    bool      `msgpack:"-"`
+	Accepted                   bool      `msgpack:"-"`
 	Devices                    []device
 	Groups                     []group          `gorm:"many2many:group_users;" msgpack:"-"`
 	ProfileSettings            *profileSettings `msgpack:"-"`
@@ -243,6 +244,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		PublicECDHKey:      publicECDHKey.Bytes(),
 		PrivateECDHKey:     privateECDHKey.Bytes(),
 		OpenDM:             true,
+		Accepted:           true,
 		IntroductionMethod: userIntroductionProfile,
 		IntroductionTime:   time.Now().Unix(),
 		Devices: []device{

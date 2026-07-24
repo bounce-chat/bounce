@@ -820,6 +820,8 @@ func (b *Bounce) RevokeInvite(groupID, userID uuid.UUID) error {
 }
 
 func (b *Bounce) AcceptInvite(groupID uuid.UUID) error {
+	b.acceptAllUsers(groupID)
+
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
@@ -828,6 +830,33 @@ func (b *Bounce) AcceptInvite(groupID uuid.UUID) error {
 		Type:      updateGroupTypeRespondToInvite,
 		Data:      []byte{acceptInvite},
 	})
+}
+
+func (b *Bounce) acceptAllUsers(groupID uuid.UUID) {
+	gs, err := b.currentGroupState(groupID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": groupID,
+		}).Error("error getting current group state")
+		return
+	}
+
+	ids := []uuid.UUID{}
+	for _, userID := range gs.users {
+		ids = append(ids, userID)
+	}
+	for _, userID := range gs.invites {
+		ids = append(ids, userID)
+	}
+
+	err = b.database.Table("users").Where("id IN (?)", ids).Updates(map[string]interface{}{"accepted": true}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": groupID,
+		}).Error("error marking all users in a group as accepted")
+	}
 }
 
 func (b *Bounce) RejectInvite(groupID uuid.UUID) error {

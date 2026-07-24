@@ -601,31 +601,27 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				return errUserNotFound
 			}
 
-			var usersCreatedByGroup []user
-			err = b.database.Where("introduction_metadata = ?", groupID).Find(&usersCreatedByGroup).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error looking up users created by group")
-			}
-			allUsersCreated := true
+			unacceptedUsers := false
 			for _, userID := range finalState.users {
 				var test user
-				err := b.database.Select("id").Take(&test, "id = ?", userID).Error
+				err := b.database.Select("accepted").Take(&test, "id = ?", userID).Error
 				if err != nil {
-					allUsersCreated = false
+					unacceptedUsers = true
+				} else if !test.Accepted {
+					unacceptedUsers = true
 				}
 			}
 			for _, userID := range finalState.invites {
 				var test user
-				err := b.database.Select("id").Take(&test, "id = ?", userID).Error
+				err := b.database.Select("accepted").Take(&test, "id = ?", userID).Error
 				if err != nil {
-					allUsersCreated = false
+					unacceptedUsers = true
+				} else if !test.Accepted {
+					unacceptedUsers = true
 				}
 			}
-			noNewUsers := len(usersCreatedByGroup) == 0 && allUsersCreated
 
-			if u.ProfileSettings.AutoJoinGroups == AlwaysAutoJoinGroups || (u.ProfileSettings.AutoJoinGroups == OnlyAutoJoinGroupsWithNoNewUsers && noNewUsers) {
+			if u.ProfileSettings.AutoJoinGroups == AlwaysAutoJoinGroups || (u.ProfileSettings.AutoJoinGroups == OnlyAutoJoinGroupsWithNoNewUsers && !unacceptedUsers) {
 				// Create an update group to auto-accept
 				accept := updateGroup{
 					ID:        uuid.New(),
