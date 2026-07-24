@@ -344,6 +344,7 @@ func (ui *ui) buildNewProfileCreator() {
 
 			ui.widgets.newInstall.newProfileImageData = data
 			ui.widgets.newInstall.newProfileImage.images = []uuid.UUID{uuid.New()}
+			ui.widgets.newInstall.newProfileImage.setBackground()
 			ui.widgets.newInstall.newProfileImage.Refresh()
 			ui.views.newProfileCreator.Refresh()
 		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
