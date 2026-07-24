@@ -60,15 +60,21 @@ linux-arch-release:
 linux-debian-release:
 	rm -f bounce
 	docker run --rm -it -v.:/go/src/bounce golang:trixie bash -c "cd src/bounce && make linux-debian-release-docker"
-	mkdir -p pkg/debian/bounce/usr/local/bin
-	mv -f bounce pkg/debian/bounce/usr/local/bin/bounce
-	docker run -it --rm -v ./pkg/debian/bounce:/root/bounce golang:trixie bash -c "cd /root && dpkg-deb --build bounce && chown 1000:1000 bounce.deb && mv bounce.deb bounce/"
-	mv pkg/debian/bounce/bounce.deb releases/bounce.deb
 
 linux-debian-release-docker:
 	apt update && apt install -y golang gcc libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
 	git config --global --add safe.directory /go/src/bounce
 	go build
+	rm -rf pkg/debian
+	mkdir -p pkg/debian/bounce/DEBIAN
+	mkdir -p pkg/debian/bounce/usr/local/bin
+	mkdir -p pkg/debian/bounce/usr/share/applications
+	mkdir -p pkg/debian/bounce/usr/share/icons/hicolor/scalable/apps
+	mv bounce pkg/debian/bounce/usr/local/bin/bounce
+	cp pkg/control pkg/debian/bounce/DEBIAN/
+	cp pkg/bounce.desktop pkg/debian/bounce/usr/share/applications/
+	cp ui/assets/icon.svg pkg/debian/bounce/usr/share/icons/hicolor/scalable/apps/bounce.svg
+	cd pkg/debian && dpkg-deb --build bounce && chown 1000:1000 bounce.deb && mv bounce.deb ../../releases/bounce.deb
 
 linux-release: linux-arch-release linux-debian-release
 

@@ -14,6 +14,7 @@ A few basic features remain, most importantly:
 * replies
 * editing messages
 * link previews
+* mentions
 * fine-grained notification control
 
 These will all be taken on next, along with a few other Bounce-specific chat features that are planned.
