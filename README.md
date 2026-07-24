@@ -23,7 +23,7 @@ Things should be working pretty reliably, please open an issue if a feature in t
 |Linux|✅|Fully supported|
 |macOS|✅|Fully supported|
 |Windows|✅|Fully supported|
-|Android|✅|Fully supported, however there currently are performance issues when compared with established chat apps.|
+|Android|✅|Fully supported, however there are performance issues currently.|
 |iOS|⛔|iOS does not allow apps to run in the background.  Implementing Bounce on iOS will require a light client that receives notifications from another instance of Bounce via APNs, and reaches out to that instance to send messages.  This has not been planned yet, and would change the privacy model around metadata protection.|
 
 For information on what's coming, see the [next steps](docs/next_steps.md) document.

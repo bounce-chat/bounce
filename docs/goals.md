@@ -1,10 +1,8 @@
 # Goals
 
-The design and development of Bounce is guided by the following goals:
-
 ### 1. Protect Metadata
 
-Bounce should make it difficult for an adversary with broad observation capabilities over the internet to know which users are communicating with each other.  This is accomplished by having instances of Bounce only connect to each other via a mixnet (currently, Tor hidden services).  Preventing this same adversary from knowing if an individual is a user of Bounce remains a non-goal for now.  Replacing Tor with a purpose built mixnet remains as a future goal.
+Bounce should make it difficult for an adversary with broad observation capabilities over the internet to know which users are communicating with each other.  This is accomplished by having instances of Bounce only connect to each other via a mixnet (currently, Tor hidden services).  Preventing this same adversary from knowing if an individual is a user of Bounce remains a non-goal for now.  Replacing Tor with a purpose built mixnet is a future goal.
 
 ### 2. User's data should only exist on user's hardware
 
@@ -22,7 +20,7 @@ There is flexibility here for Tor, which is not an entirely flat network, but ha
 
 ### 1. Perfect offline delivery
 
-If a user who only owns one device attempts to send a message to another user who is entirely offline, then takes their device offline, that message will not be received by the counterparty when they come online.  Any solution to this problem would necessarily violate the second goal of the project, and so solving this case is an explicit non-goal.  In order to minimize the impact of this limitation, encrypted devices were created to give people the ability to host an instance in the cloud with minimal risk.  Paid hosting of encrypted devices might be provided as an option to reduce the difficulty of setting this up.
+If user A, who only owns one device, attempts to send a message to user B, who is entirely offline, and user A takes their device offline before user B comes online, than user A's message will not be received by user B when user B comes online.  Any solution to this problem would necessarily violate the second goal of the project, and so solving this case is an explicit non-goal.  In order to minimize the impact of this limitation, encrypted devices were created to give people the ability to host an instance in the cloud with minimal risk.  Paid hosting of encrypted devices might be provided as an option to reduce the difficulty of setting this up.
 
 ### 2. Global user namespace
 
