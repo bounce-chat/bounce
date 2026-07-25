@@ -50,14 +50,15 @@ macos-release:
 
 linux-arch-release:
 	rm -f pkg/*.tar.zst
-	cd pkg && updpkgsums PKGBUILD PKGBUILD-bin
+	rm -rf pkg/bounce
+	rm -rf pkg/bounce-fyne
+	rm -rf pkg/bounce-fyne-tools
 	cd pkg && makepkg --clean -f
 	cd pkg && makepkg --clean -f -p PKGBUILD-bin
 	mv pkg/*.tar.zst releases/
-	rm -r pkg/bounce-bin
-	rm -r pkg/bounce
-	rm -r pkg/bounce-fyne
-	rm -r pkg/bounce-fyne-tools
+	rm -rf pkg/bounce
+	rm -rf pkg/bounce-fyne
+	rm -rf pkg/bounce-fyne-tools
 
 linux-debian-release:
 	rm -f bounce

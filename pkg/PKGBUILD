@@ -13,7 +13,7 @@ options+=( !debug )
 source=("${pkgname}::git+https://github.com/${pkgname}-chat/${pkgname}.git#tag=v${pkgver}"
         "${pkgname}-fyne::git+https://github.com/${pkgname}-chat/fyne.git"
         "${pkgname}-fyne-tools::git+https://github.com/${pkgname}-chat/tools.git")
-sha256sums=('fcf061c07bfb072e49ea364584c96fd68098f31775960f3c28304b94dda83114'
+sha256sums=('153b0585c94b1b2b979d21854938766d51b1294c28829b7e618607addb336351'
             'SKIP'
             'SKIP')
 

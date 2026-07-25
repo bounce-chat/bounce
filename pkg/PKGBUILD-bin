@@ -11,7 +11,7 @@ conflicts=('bounce' 'bounce-bin')
 depends=('binutils')
 options+=( !debug )
 source=("https://github.com/bounce-chat/bounce/releases/download/v${pkgver}/bounce-${pkgver}.deb")
-sha256sums=('ac66f7698e5c099ace8e116ef937537ad862365804014bd79d8b3228c57eb916')
+sha256sums=('c2eae492c08af5460f4a53f7f0f6e0abb92aed624589e930e50040d610dbb519')
 
 package() {
     ar x "$srcdir/bounce-${pkgver}.deb"
