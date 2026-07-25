@@ -38,6 +38,7 @@ For information on what's coming, see the [next steps](docs/next_steps.md) docum
 ### Binary Releases
 
 * Visit the [Releases](https://github.com/bounce-chat/bounce/releases/) page to download the latest binaries.
+* Arch users can install [bounce](https://aur.archlinux.org/packages/bounce) or [bounce-bin](https://aur.archlinux.org/packages/bounce-bin) from the AUR.
 * The best way to install Bounce on Android is with [Obtanium](https://github.com/ImranR98/Obtainium).
 
 ### Building from source
