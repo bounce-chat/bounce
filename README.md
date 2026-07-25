@@ -1,5 +1,10 @@
 <p align="center">
-  <img width=50% src="ui/assets/logo.png"/>
+
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="ui/assets/logo_dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="ui/assets/logo.png">
+    <img width=50% src="ui/assets/logo.png"/>
+  </picture>
 </p>
 
 <p align="center">
