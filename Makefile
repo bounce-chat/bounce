@@ -1,4 +1,4 @@
-.PHONY: android-generate android android-release windows windows-release macos-release
+.PHONY: android-generate android android-release windows windows-release macos-release linux-debian-release linux-debian-release-docker clean
 -include .env
 
 android-generate:
@@ -48,15 +48,6 @@ macos-release:
 	ln -s /Applications build/Applications
 	hdiutil create -volname "Bounce" -srcfolder "build/" -size 500m -ov -format UDZO "releases/Bounce.dmg"
 
-linux-arch-release:
-	mkdir -p releases
-	mkdir -p build
-	go build
-	cp bounce pkg/arch/bounce-bin/bounce
-	rm pkg/arch/bounce-bin/*.tar.zst
-	cd pkg/arch/bounce-bin/ && updpkgsums && makepkg --clean -f
-	cp pkg/arch/bounce-bin/*.tar.zst releases/
-
 linux-debian-release:
 	rm -f bounce
 	docker run --rm -it -v.:/go/src/bounce golang:trixie bash -c "cd src/bounce && make linux-debian-release-docker"
@@ -64,7 +55,7 @@ linux-debian-release:
 linux-debian-release-docker:
 	apt update && apt install -y golang gcc libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
 	git config --global --add safe.directory /go/src/bounce
-	go build
+	go build -tags migrated_fynedo
 	rm -rf pkg/debian
 	mkdir -p pkg/debian/bounce/DEBIAN
 	mkdir -p pkg/debian/bounce/usr/local/bin
@@ -75,8 +66,6 @@ linux-debian-release-docker:
 	cp pkg/bounce.desktop pkg/debian/bounce/usr/share/applications/
 	cp ui/assets/icon.svg pkg/debian/bounce/usr/share/icons/hicolor/scalable/apps/bounce.svg
 	cd pkg/debian && dpkg-deb --build bounce && chown 1000:1000 bounce.deb && mv bounce.deb ../../releases/bounce.deb
-
-linux-release: linux-arch-release linux-debian-release
 
 clean:
 	rm -r android/apk/app/src/main/jniLibs
