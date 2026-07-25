@@ -1,8 +1,8 @@
 [submodule "fyne"]
 	path = fyne
-	url = git@github.com:bounce-chat/fyne.git
+	url = https://github.com/bounce-chat/fyne
 	branch = fyne-2.8-bounce
 [submodule "fyne-tools"]
 	path = fyne-tools
-	url = git@github.com:bounce-chat/tools.git
+	url = https://github.com/bounce-chat/tools
 	branch = fyne-2.8-bounce
