@@ -8,16 +8,17 @@ url="https://github.com/bounce-chat/bounce"
 license=('MIT')
 provides=("${pkgname}")
 conflicts=('bounce' 'bounce-bin')
-depends=('binutils')
+makedepends=('binutils')
+depends=('hicolor-icon-theme' 'libglvnd' 'wayland')
 options+=( !debug )
 source=("https://github.com/bounce-chat/bounce/releases/download/v${pkgver}/bounce-${pkgver}.deb")
 sha256sums=('c2eae492c08af5460f4a53f7f0f6e0abb92aed624589e930e50040d610dbb519')
 
 package() {
-    ar x "$srcdir/bounce-${pkgver}.deb"
-    tar xf "$srcdir/data.tar.xz"
+    ar x "${srcdir}/bounce-${pkgver}.deb"
+    tar xf "${srcdir}/data.tar.xz"
 
-    install -Dm755 "$srcdir/usr/local/bin/bounce" "$pkgdir/usr/bin/bounce"
-    install -Dm644 "$srcdir/usr/share/applications/bounce.desktop" "$pkgdir/usr/share/applications/bounce.desktop"
+    install -Dm755 "${srcdir}/usr/local/bin/bounce" "${pkgdir}/usr/bin/bounce"
+    install -Dm644 "${srcdir}/usr/share/applications/bounce.desktop" "${pkgdir}/usr/share/applications/bounce.desktop"
     install -Dm644 "${srcdir}/usr/share/icons/hicolor/scalable/apps/bounce.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/bounce.svg"
 }
