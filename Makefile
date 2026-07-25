@@ -1,4 +1,4 @@
-.PHONY: android-generate android android-release windows windows-release macos-release linux-debian-release linux-debian-release-docker clean
+.PHONY: android-generate android android-release windows windows-release macos-release linux-arch-release linux-debian-release linux-debian-release-docker clean
 -include .env
 
 android-generate:
@@ -48,6 +48,17 @@ macos-release:
 	ln -s /Applications build/Applications
 	hdiutil create -volname "Bounce" -srcfolder "build/" -size 500m -ov -format UDZO "releases/Bounce.dmg"
 
+linux-arch-release:
+	rm -f pkg/*.tar.zst
+	cd pkg && updpkgsums PKGBUILD PKGBUILD-bin
+	cd pkg && makepkg --clean -f
+	cd pkg && makepkg --clean -f -p PKGBUILD-bin
+	mv pkg/*.tar.zst releases/
+	rm -r pkg/bounce-bin
+	rm -r pkg/bounce
+	rm -r pkg/bounce-fyne
+	rm -r pkg/bounce-fyne-tools
+
 linux-debian-release:
 	rm -f bounce
 	docker run --rm -it -v.:/go/src/bounce golang:trixie bash -c "cd src/bounce && make linux-debian-release-docker"
@@ -65,7 +76,7 @@ linux-debian-release-docker:
 	cp pkg/control pkg/debian/bounce/DEBIAN/
 	cp pkg/bounce.desktop pkg/debian/bounce/usr/share/applications/
 	cp ui/assets/icon.svg pkg/debian/bounce/usr/share/icons/hicolor/scalable/apps/bounce.svg
-	cd pkg/debian && dpkg-deb --build bounce && chown 1000:1000 bounce.deb && mv bounce.deb ../../releases/bounce.deb
+	cd pkg/debian && dpkg-deb --build bounce && chown 1000:1000 bounce.deb && mv bounce.deb ../../releases/bounce.deb && cd .. && rm -rf debian
 
 clean:
 	rm -r android/apk/app/src/main/jniLibs

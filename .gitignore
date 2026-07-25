@@ -9,6 +9,12 @@ fyne_metadata_init.go
 /build
 /releases
 
+/pkg/bounce
+/pkg/bounce-bin
+/pkg/bounce-fyne
+/pkg/bounce-fyne-tools
+
+*.deb
 *.tar.zst
 pkg/debian
 
