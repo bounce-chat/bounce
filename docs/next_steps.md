@@ -19,6 +19,10 @@ A few basic features remain, most importantly:
 
 These will all be taken on next, along with a few other Bounce-specific chat features that are planned.
 
+## Native Android UI
+
+The Android UI currently performs poorly in real world conditions.  Some of that is possibly a lack of optimization, but much of it is due to Fyne, particularly the known issues with text rendering performance on Android.  While this will likely be solved in the future by the great team over there, there are many small integrations with Android that are so much easier in a native application (notably text entry and gestures).  Should the quality of the Android UX prove to be a leading barrier to adoption, I will replace the Android UI with a native implementation.
+
 ## Performance
 
 There is likely a good amount of performance optimization left to do, particularly in the UI.  Some profiling and benchmarking is required.
@@ -30,10 +34,6 @@ I want to separate data storage from the chat engine using an interface, and exp
 ### Battery Optimization
 
 For Android users who own another device that is always online, and who don't care about real-time notification, I want to experiment with scheduled startups of the Bounce service, and see if it makes a significant difference on battery usage.  For example, Bounce on Android could shut down after the user leaves the application, and start up in the background every 5 or 10 (or however many) minutes to sync with a sync device.  When paired with encrypted devices, this might be an acceptable way to use Bounce on more battery-limited devices.
-
-## Native Android UI
-
-The Android UI currently performs poorly in real world conditions.  Some of that is possibly a lack of optimization, but much of it is due to Fyne, particularly the known issues with text rendering performance on Android.  While this will likely be solved in the future by the great team over there, there are many small integrations with Android that are so much easier in a native application (notably text entry and gestures).  Should the quality of the Android UX prove to be a leading barrier to adoption, I will replace the Android UI with a native implementation.
 
 ## Replacing Tor
 

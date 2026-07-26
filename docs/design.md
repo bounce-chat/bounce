@@ -4,11 +4,11 @@ This document will build Bounce up from basic components.  It's a high-level ove
 
 ## The Network
 
-Instances of Bounce need a way to communicate with each other, and use an embedded mixnet to do so.  All instances of bounce must use the same cryptographically-addressed network that is capable of implementing [this](https://github.com/bounce-chat/bounce/blob/master/chat/network.go) interface.  The network doesn't actually have to be a mixnet or decentralized, any cryptographically-addressed network could work, but a decentralized mixnet is necessary to fulfil Bounce's [goals](https://github.com/bounce-chat/bounce/blob/master/docs/goals.md).  The network keys constitute the identity of a device, and must be persistent.  When connecting to a peer, the public key of the dialing device must be known by the peer.  Put another way, when someone dials you, you have to be able to obtain the public key of the device who dialed you.
+Bounce instances communicate with each other via an embedded mixnet.  Tor is used currently, but clients may be migrated to other networks in the future.  The network keys constitute the identity of a device, and must be persistent.  When connecting to a peer, the public key of the dialing device must be known by the peer.  Put another way, when someone dials you, you have to be able to obtain the public key of the device who dialed you.
 
 ## User Identities
 
-Users are simply collections of devices owned by the same person.  A user has a few basic properties like a name and profile images, and a collection of devices known as a "Device Group".
+A user has a few basic properties like a name and profile image, and a collection of devices they own known as a "Device Group".
 
 ### Device Groups 
 
@@ -16,7 +16,7 @@ A device group is a set of devices owned by the same person.  They are defined a
 
 For example:
 1. A user creates their Bounce profile on their phone, and their device group consists of just one device, the phone
-2. The user now wants to add their laptop to their profile, which has it's own device keys
+2. The user now wants to add their laptop to their profile, which has its own device keys
 3. The phone signs the laptop's public key (consenting to add), and the laptop signs the phone's public key (consenting to be added)
 4. Both of these device details can now be distributed along with this pair of signatures, to show that the device group now consists of two devices
 
@@ -34,7 +34,7 @@ All communication between Bounce instances occurs by sending frames, defined as 
 
 ## Scopes
 
-Frames can either be sent to one specific device, or broadcast to a scope.  For example, when a new device is joining an existing profile, it sends a secret to the device that is adding it.  That frame only needs to go to that one device.  However, the majority of frames are broadcast to a scope using a basic gossip protocol.  This broadcast function takes a look at all the devices that are in scope, and writes the frame to any device that is online and has not already acknowledged the frame.
+Frames are distributed by broadcasting them to a scope via a basic gossip protocol.  The broadcast function loads all the devices that are in scope and writes the frame to any device that is online and has not already acknowledged the frame.  In some special cases frames are sent speificially to one device, for example, when a new device is joining an existing profile, it sends a secret to the device that is adding it. 
 
 ### Sync
 
@@ -50,7 +50,7 @@ The group scope is used for group messages and contains all of the devices belon
 
 ### GroupWithInvites
 
-The GroupWithInvites scope extends the group scope to include the device groups of all of the users who have a pending invite.  This scope is used for all of the metadata about a group (see: Group Consensus), including it's creation, any name or image changes, as well as changes to the list of invited and active members.  This allows users to see the group details before they join, but prevents them from having access to group messages until they join.
+The GroupWithInvites scope extends the group scope to include the device groups of all of the users who have a pending invite.  This scope is used for all of the metadata about a group (see: Group Consensus), including its creation, any name or image changes, as well as changes to the list of invited and active members.  This allows users to see the group details before they join, but prevents them from having access to group messages until they join.
 
 When a user with an invite accepts the invite and becomes a member, they go from being in the GroupWithInvites scope to being in the Group scope for that group, and as a result can see all of the historic messages for the group.
 
@@ -72,7 +72,7 @@ In order to prevent re-delivering frames, Bounce keeps track of which devices ha
 
 ### Reference Offer
 
-The reference offer is the first step in the reference flow.  Every time a device opens a socket to another device, it sends a reference offer, unless there are no frames to offer.  To generate a reference offer, a device checks every frame that the peer is authorized to have, and joins the delivery records table.  If there is no record of successful delivery to the peer, a reference to the frame is included in the reference offer.
+The reference offer is the first step in the reference flow.  Every time a device opens a socket to another device, it checks if it has any frames to offer that peer.  To generate a reference offer, a device checks every frame that the peer is authorized to have, and if there is no record of that peer acking the frame in the past, a reference to the frame is included in the reference offer.
 
 ### Reference Request
 
@@ -82,7 +82,7 @@ When handing a reference offer, a device checks each reference and sees if it ha
 
 When handling a reference request, a device iterates through the references and confirms that the requesting peer does indeed have the right to view the frame.  If so, each frames is collected into a slice on a catch up frame.  The frames are then sorted by the time the device first saved them locally, and this catch up frame is then sent to the requester.
 
-When handling a catch up, each frame is sequentially processed by the same handler that would process it if it was received in real time on the wire.  However, when handlers know that a frame is part of a catchup, they forgo some calls into the UI.  The catch up handler keeps track of which UI states might need to be updated, and updates them in bulk after all of the frames are processed.  This prevents the UI from replaying everything that happened while the device was offline in sequence, and simply brings the UI up to date all at once.
+When handling a catch up, each frame is sequentially processed by the same handler that would process it if it was received in real time on the wire.  However, when handlers know that a frame is part of a catchup, they forgo some calls into the UI.  The catch up handler keeps track of which UI states might need to be updated, and updates them in bulk after all of the frames are processed.  This prevents the UI from replaying everything that happened while the device was offline in sequence, and simply brings the UI up to speed all at once.
 
 ## Adding Users
 
@@ -95,7 +95,7 @@ Users add each other using the following flow:
 5. The offer user accepts this request by sending an "add user request accepted" structure.  This structure contains the offer user's user structure, as well as the offer user's device's signature of a hash of the requester user's user structure that was provided in the add user request.
 6. The requester user receives this, validates the offer user data, and users their device to sign a hash of the offer user data.  The requester then creates the final "add user" struct.  This struct includes both of the full user structures, both of the signatures, and both of the addresses of the devices that did the signing.  The requester user runs this add user through the add user handler, and broadcasts it to all of their devices and all of the offer users devices.
 
-The add user struct that was created by this process contains proof that a device belonging to each user's device groups consented to the adding of the other user.  It can be shared with any device that is a member of either user's device group now or in the future, and so long as neither of the signing devices are revoked, it can be used to add the contact.  This design makes it possible for a device to add a user it has never seen before, without hearing about that user from one of it's sync devices.  For example:
+The add user struct that was created by this process contains proof that a device belonging to each user's device groups consented to the adding of the other user.  It can be shared with any device that is a member of either user's device group now or in the future, and so long as neither of the signing devices are revoked, it can be used to add the contact.  This design makes it possible for a device to add a user it has never seen before, without hearing about that user from one of its sync devices.  For example:
 
 1. Offer user A owns a laptop and phone
 2. Requester user B owns a desktop
@@ -143,7 +143,7 @@ To facilitate encrypted devices, each user has a persistent ECDH key.  An initia
 
 ### Encrypted Frames and Recipients
 
-To encrypt a frame before sending it to an encrypted device, a normal device generates a new data encryption key (DEK) unique for that frame.  The frame is encrypted with the DEK.  Then, the device takes all of the users who are in scope to receive that frame.  For each user that is in scope, the device generates a key encryption key (KEK) from the ECDH exchange of their key and that user's key.  These KEKs are included as "recipients".  So, when storing a frame on an encrypted device, the unencrypted devices sends the encrypted frame, their public key, and the set of recipients, and the encrypted device checks to make sure that the owner of the encrypted device is among the recipients, then stores the data.  The only unencrypted data that the encrypted frame has in common with it's unencrypted origin in the UUID and Type, in order to facilitate the reference flow.
+To encrypt a frame before sending it to an encrypted device, a normal device generates a new data encryption key (DEK) unique for that frame.  The frame is encrypted with the DEK.  Then, the device takes all of the users who are in scope to receive that frame.  For each user that is in scope, the device generates a key encryption key (KEK) from the ECDH exchange of their key and that user's key.  These KEKs are included as "recipients".  So, when storing a frame on an encrypted device, the unencrypted devices sends the encrypted frame, their public key, and the set of recipients, and the encrypted device checks to make sure that the owner of the encrypted device is among the recipients, then stores the data.  The only unencrypted data that the encrypted frame has in common with its unencrypted origin in the UUID and Type, in order to facilitate the reference flow.
 
 When receiving data from an encrypted device, devices only receive the encrypted frame, their KEK, and the public ECDH key of the user that did the encrypting.  Devices generate the DEK from their private ECDH key and the provided public ECDH key, then decrypt the frame and handle it as they otherwise would.
 
