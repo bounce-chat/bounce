@@ -24,7 +24,7 @@ func readFrame(conn net.Conn, deviceIsKnown bool) (uint16, []byte, error) {
 	header := make([]byte, 0)
 	headerRead := 0
 	for headerRead < headerSize {
-		buf := make([]byte, headerSize)
+		buf := make([]byte, headerSize-headerRead)
 		n, err := conn.Read(buf)
 		headerRead += n
 		if err == io.EOF {
