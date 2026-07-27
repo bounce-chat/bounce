@@ -7,6 +7,7 @@ import (
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	stdlog "log"
@@ -238,6 +239,7 @@ func (b *Bounce) handleEncryptedDeviceManagementRequest(peer string, payload []b
 
 	if b.encryptedManagerProvisioned() {
 		go b.sendDirect(peer, &encryptedDeviceManagementResponse{Accepted: false})
+		return nil, false
 	}
 
 	var edmr encryptedDeviceManagementRequest
@@ -249,7 +251,7 @@ func (b *Bounce) handleEncryptedDeviceManagementRequest(peer string, payload []b
 		return nil, false
 	}
 
-	if edmr.Secret == setupKey {
+	if setupKey != "" && subtle.ConstantTimeCompare([]byte(edmr.Secret), []byte(setupKey)) == 1 {
 		au := authorizedUser{
 			ID:         uuid.New(),
 			PublicKey:  edmr.Pubkey,

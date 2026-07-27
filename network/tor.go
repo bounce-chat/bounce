@@ -294,7 +294,13 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 	}
 
 	// All onion IDs will be the same size, read the number of bytes that correspond to our ID
-	peerAddress, err := read(connection, len(bounceTor.onion.ID)) // TODO: use Address()
+	peerAddress, err := read(connection, len(bounceTor.onion.ID))
+	if err != nil {
+		return nil, err, false
+	}
+
+	// Read their bytes they XOR'd with our challenge
+	challengeXor, err := read(connection, handshakeChallengeSize)
 	if err != nil {
 		return nil, err, false
 	}
@@ -305,9 +311,9 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 		return nil, err, false
 	}
 
-	ok := bounceTor.VerifySignature(string(peerAddress), challenge, response)
+	ok := bounceTor.VerifySignature(string(peerAddress), xor(challenge, challengeXor), response)
 	if !ok {
-		return nil, errors.New("signature validation failed during handshake"), false
+		return nil, errors.New("signature validation failed during handshake with " + string(peerAddress)), false
 	}
 
 	torConn := &torNetworkConnection{
@@ -345,9 +351,26 @@ func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	response := bounceTor.Sign(challenge)
+
+	challengeXor := make([]byte, handshakeChallengeSize)
+	n, err := rand.Read(challengeXor)
+	if n != handshakeChallengeSize {
+		return nil, errors.New("failed to generate random challenge for handshake XOR")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	finalChallenge := xor(challenge, challengeXor)
+
+	response := bounceTor.Sign(finalChallenge)
 
 	err = write(conn, []byte(bounceTor.onion.ID))
+	if err != nil {
+		return nil, err
+	}
+
+	err = write(conn, challengeXor)
 	if err != nil {
 		return nil, err
 	}
@@ -525,4 +548,17 @@ func (_ *torLogger) Write(line []byte) (int, error) {
 	}).Debug(string(line))
 
 	return len(line), nil
+}
+
+func xor(a, b []byte) []byte {
+	if len(a) != len(b) {
+		log.Fatal("cannot XOR byte slices of different length")
+	}
+	n := len(a)
+
+	dst := make([]byte, n)
+	for i := 0; i < n; i++ {
+		dst[i] = a[i] ^ b[i]
+	}
+	return dst
 }

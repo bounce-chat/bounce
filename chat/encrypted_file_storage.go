@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -525,6 +526,13 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling encrypted chunk storage request")
+		return nil, false
+	}
+
+	if !regexp.MustCompile("^[a-f0-9]{64}$").MatchString(sr.Hash) {
+		log.WithFields(log.Fields{
+			"hash": sr.Hash,
+		}).Warn("ignoring encrypted chunk storage request with invalid hash")
 		return nil, false
 	}
 

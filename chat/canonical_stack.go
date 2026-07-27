@@ -106,6 +106,13 @@ func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 			return
 		}
 
+		if !b.hasValidDeviceGroup(u) {
+			log.WithFields(log.Fields{
+				"user_id": u.ID,
+			}).Warn("rejecting user invite for user with invalid device group")
+			return
+		}
+
 		var devs []device
 		err = b.database.Where("user_id = ?", u.ID).Find(&devs).Error
 		if err != nil {
@@ -119,8 +126,13 @@ func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 		}
 
 		for _, dev := range devs {
-			cs.addressMap[dev.Address] = dev.UserID
-			cs.revokedMap[dev.Address] = dev.RevokedAt
+			if _, set := cs.addressMap[dev.Address]; !set {
+				cs.addressMap[dev.Address] = u.ID
+			}
+			ts, ok := cs.revokedMap[dev.Address]
+			if !ok || ts > dev.RevokedAt {
+				cs.revokedMap[dev.Address] = dev.RevokedAt
+			}
 		}
 	}
 
