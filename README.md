@@ -23,6 +23,8 @@ Each instance of Bounce includes a Tor hidden service, and all connections betwe
 
 Things should be working pretty reliably, please open an issue if a feature in the UI is not behaving as expected.  Bounce has not been audited by a third party yet, and should be considered experimental.
 
+There may still be breaking changes between updates, as the existing protocol has not been finalized.  For now, all clients must be on the latest release to communicate.
+
 |Platform|Status|Notes|
 |---|---|---|
 |Linux|✅|Fully supported|

@@ -227,9 +227,7 @@ func (b *Bounce) readFrames(conn net.Conn) {
 			log.WithFields(log.Fields{
 				"peer": peer,
 				"type": frameType,
-			}).Error("peer sent an unsupported frame type, disconnecting")
-			conn.Close()
-			return
+			}).Error("peer sent an unsupported frame type")
 		} else {
 			b.runningHandlers.Add(1)
 			go func(thisPeer string, thisData []byte) {

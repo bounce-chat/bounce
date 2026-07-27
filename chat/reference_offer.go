@@ -1242,8 +1242,13 @@ func (b *Bounce) getChunkOffersToOffer(address string, userID uuid.UUID) []frame
 	}
 
 	references := []frameReference{}
+	alreadyIn := map[uuid.UUID]bool{}
 	for _, co := range unsentChunkOffers {
+		if _, in := alreadyIn[co.ID]; in {
+			continue
+		}
 		references = append(references, frameReference{FrameID: co.ID, Type: typeChunkOffer})
+		alreadyIn[co.ID] = true
 	}
 
 	return references
