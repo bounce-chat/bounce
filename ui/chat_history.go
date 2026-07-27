@@ -126,6 +126,10 @@ func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 
 	ch.ids = []uuid.UUID{}
 	for _, item := range items {
+		if item == nil {
+			log.Warn("skipping nil threadable item")
+			continue
+		}
 		ch.ids = append(ch.ids, item.getID())
 		ch.messages.insert(item)
 	}

@@ -191,6 +191,8 @@ func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, action
 			} else {
 				return nil, errors.New("unsupported URI scheme on this platform")
 			}
+		} else {
+			icon = canvas.NewImageFromResource(theme.FileIcon())
 		}
 	}
 

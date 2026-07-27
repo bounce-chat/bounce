@@ -131,7 +131,8 @@ func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error unmarshalling typing indicator")
+		}).Error("error unmarshalling typing indicator")
+		return nil, false
 	}
 	ti.Signer = sc.Signer
 	ti.OriginalPayload = sc.Payload

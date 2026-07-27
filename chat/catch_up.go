@@ -134,6 +134,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 				"frame_type": fr.Type,
 				"peer":       peer,
 			}).Warn("refusing to process catch up that contains frame not allowed in catch ups")
+			catchUpMutex.Lock()
 			return nil, false
 		}
 
