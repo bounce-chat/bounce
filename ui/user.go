@@ -2,6 +2,7 @@ package ui
 
 import (
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
@@ -82,7 +83,11 @@ func (u *user) setInitials() {
 			return
 		}
 
-		u.initials = string(firstRune) + string(lastRune)
+		if unicode.IsLetter(lastRune) {
+			u.initials = string(firstRune) + string(lastRune)
+		} else {
+			u.initials = string(firstRune)
+		}
 	}
 }
 

@@ -32,8 +32,8 @@ macos-release:
 	mkdir -p releases
 	mkdir -p build
 	rm -r build/*
-	CGO_ENABLED=1 GOARCH=amd64 go build -o build/bounce-amd64
-	CGO_ENABLED=1 GOARCH=arm64 go build -o build/bounce-arm64
+	CGO_ENABLED=1 GOARCH=amd64 go build -tags migrated_fynedo -o build/bounce-amd64
+	CGO_ENABLED=1 GOARCH=arm64 go build -tags migrated_fynedo -o build/bounce-arm64
 	lipo -create -output build/bounce-universal build/bounce-arm64 build/bounce-amd64
 	rm build/bounce-amd64
 	rm build/bounce-arm64
