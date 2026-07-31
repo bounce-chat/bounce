@@ -2,7 +2,7 @@
 .PHONY: macos-release
 .PHONY: linux-arch-release linux-debian-release linux-debian-release-docker
 .PHONY: android-bind android android-release android-clean
-.PHONy: clean
+.PHONY: clean
 -include .env
 
 ANDROID_SDK ?= $(HOME)/Android/sdk
