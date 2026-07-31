@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Status-bar icon: the full Bounce mark as a flat white silhouette.
+
+  All three shapes are here on purpose. An earlier version dropped the green fan
+  on the theory that overlapping white shapes would merge into a blob at 24dp,
+  which left a visibly incomplete mark. They do not merge: the gap between the
+  fan and the wave in the logo is genuine empty space between two non-touching
+  paths, not a white shape painted on top, so the union reads correctly. This
+  matches ui/assets/adaptive_icon.png, the white silhouette the Fyne build passed
+  to setSmallIcon.
+
+  This drawable is used in two places that render it very differently: the
+  status bar draws it small and white in a 24dp box, and from Android 12 the
+  notification shade draws it tinted inside a *circular badge*, which is the
+  large colour icon beside the app name.
+
+  These two pull in opposite directions, and the size below is a deliberate
+  choice between them rather than a spec value.
+
+  The status bar wants the Material system-icon grid: a 24dp box with an 18dp
+  keyline for a square mark, which is what other apps fill and what makes their
+  icons look right. At 62.5% (15dp) this mark was visibly smaller than its
+  neighbours.
+
+  The Android 12 badge wants the opposite. Measuring the real ink rather than the
+  bounding box - the furthest path point from the centre of the 24dp box, which
+  is where the badge's inscribed circle is centred:
+
+      62.5% (15.01dp)  ink reaches  9.84dp  = 82% of the 12dp badge radius
+      75.0% (18.00dp)  ink reaches 11.81dp  = 98%   <- touching the mask edge
+      83.3% (20.00dp)  ink reaches 13.12dp  = 109%  <- clipped
+
+  So the 18dp keyline is unusable here: it puts the mark hard against the badge
+  mask, which is the same "reads as cropped" failure an earlier 72.4% version
+  had. 75% is not a coincidence - 0.724*24 = 17.4dp is essentially the same size.
+
+  68.8% (16.5dp) is the compromise: ink at 90% of the badge radius, so the mark
+  still floats inside the circle, while being 10% larger in the status bar than
+  the version that looked undersized.
+
+  scale  = (24 * 0.688) / 400 = 0.04122
+  offset = (24 - 16.50) / 2 = 3.761 across, (24 - 15.74) / 2 = 4.129 down
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+
+    <group
+        android:scaleX="0.04122"
+        android:scaleY="0.04122"
+        android:translateX="3.761"
+        android:translateY="4.129">
+
+        <!-- Green fan -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M185.395,216.223c0.761,2.573,3.075,4.301,5.756,4.301c2.657,0,4.948-1.712,5.701-4.259c12.063-40.796,38.377-76.309,74.093-99.999l2.135-1.416l-0.496-2.514c-1.038-5.268-1.565-10.635-1.565-15.953c0-22.45,8.925-43.452,25.13-59.138l3.433-3.323l-3.992-2.626C264.462,10.822,228.249,0,190.868,0c-31.292,0-62.328,7.746-89.753,22.401C74.574,36.583,51.43,57.164,34.185,81.918l-3.558,5.107l6.163,0.871C106.933,97.814,165.264,148.185,185.395,216.223z" />
+
+        <!-- Blue wave / speech bubble -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M381.737,190.869c0,-3.851,-0.137,-7.895,-0.408,-12.019l-0.313,-4.762l-4.581,1.339c-7.516,2.197,-15.275,3.311,-23.061,3.311c-23.881,0,-46.583,-10.414,-62.285,-28.573l-2.292,-2.651l-2.843,2.05c-28.468,20.534,-48.567,50.545,-56.594,84.503c-4.142,17.524,-19.863,29.762,-38.229,29.762c-18.374,0,-34.091,-12.221,-38.221,-29.719c-15.105,-63.994,-71.616,-110.003,-137.424,-111.886l-2.748,-0.079l-0.953,2.578C4.1,145.526,0.136,167.393,0.003,189.715c-0.299,50.299,19.449,98.03,55.605,134.401c17.906,18.013,38.787,32.185,62.063,42.124c24.081,10.283,49.539,15.496,75.666,15.496h177.574h9.242l-6.535,-6.535l-48.617,-48.617c17.273,-17.058,30.957,-36.918,40.701,-59.085C376.342,243.295,381.737,217.513,381.737,190.869z" />
+
+        <!-- Orange dot -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M306.748,96.383a46.626,46.626 0 1,0 93.252,0a46.626,46.626 0 1,0 -93.252,0z" />
+    </group>
+</vector>

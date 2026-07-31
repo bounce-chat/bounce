@@ -1,25 +1,14 @@
-.PHONY: android-generate android android-release windows windows-release macos-release linux-arch-release linux-debian-release linux-debian-release-docker clean
+.PHONY: windows windows-release
+.PHONY: macos-release
+.PHONY: linux-arch-release linux-debian-release linux-debian-release-docker
+.PHONY: android-bind android android-release android-clean
+.PHONy: clean
 -include .env
 
-android-generate:
-	mkdir -p android/apk/app/src/main/libs/
-	mkdir -p android/apk/app/src/main/jniLibs/
-	cd android/service && go generate && cd ../..
-	cd android/activity && go generate && cd ../..
-
-android: android-generate
-	cd android/apk && ANDROID_HOME=~/Android/sdk ANDROID_SDK_ROOT=~/Android/sdk gradle assembleDebug && cd ../..
-	mv android/apk/app/build/outputs/apk/debug/app-debug.apk ./Bounce.apk
-
-android-release: android-generate
-	mkdir -p releases
-	cd android/apk && ANDROID_HOME=~/Android/sdk ANDROID_SDK_ROOT=~/Android/sdk gradle assembleRelease \
-		-Pandroid.injected.signing.store.file=$(ANDROID_KEYSTORE_PATH) \
-		-Pandroid.injected.signing.store.password=$(ANDROID_KEYSTORE_PASSWORD) \
-		-Pandroid.injected.signing.key.alias=$(ANDROID_KEY_ALIAS) \
-		-Pandroid.injected.signing.key.password=$(ANDROID_KEY_PASSWORD) \
-	&& cd ../..
-	mv android/apk/app/build/outputs/apk/release/app-release.apk releases/Bounce.apk
+ANDROID_SDK ?= $(HOME)/Android/sdk
+ANDROID_NDK ?= $(lastword $(sort $(wildcard $(ANDROID_SDK)/ndk/*)))
+NATIVE_ABIS ?= android/arm64,android/amd64
+NATIVE_API ?= 29
 
 windows:
 	CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows go build -ldflags="-H windowsgui"
@@ -79,9 +68,36 @@ linux-debian-release-docker:
 	cp ui/assets/icon.svg pkg/debian/bounce/usr/share/icons/hicolor/scalable/apps/bounce.svg
 	cd pkg/debian && dpkg-deb --build bounce && chown 1000:1000 bounce.deb && mv bounce.deb ../../releases/bounce.deb && cd .. && rm -rf debian
 
-clean:
-	rm -r android/apk/app/src/main/jniLibs
-	rm -r android/apk/app/build
-	rm -r android/activity/unzippedAPK
+android-bind:
+	@test -d "$(ANDROID_NDK)" || (echo "No NDK found under $(ANDROID_SDK)/ndk. Set ANDROID_NDK=..." && false)
+	mkdir -p android/app/libs
+	ANDROID_HOME=$(ANDROID_SDK) ANDROID_NDK_HOME=$(ANDROID_NDK) \
+		gomobile bind \
+		-target=$(NATIVE_ABIS) \
+		-androidapi $(NATIVE_API) \
+		-javapkg chat.bounce \
+		-o android/app/libs/goengine.aar \
+		-ldflags=-checklinkname=0 \
+		github.com/bounce-chat/bounce/android/goengine
+
+android: android-bind
+	cd android && ANDROID_HOME=$(ANDROID_SDK) ANDROID_SDK_ROOT=$(ANDROID_SDK) ./gradlew assembleDebug
+	cp android/app/build/outputs/apk/debug/app-debug.apk ./Bounce.apk
+
+android-release: android-bind
+	mkdir -p releases
+	cd android && ANDROID_HOME=$(ANDROID_SDK) ANDROID_SDK_ROOT=$(ANDROID_SDK) ./gradlew assembleRelease \
+		-Pandroid.injected.signing.store.file=$(ANDROID_KEYSTORE_PATH) \
+		-Pandroid.injected.signing.store.password=$(ANDROID_KEYSTORE_PASSWORD) \
+		-Pandroid.injected.signing.key.alias=$(ANDROID_KEY_ALIAS) \
+		-Pandroid.injected.signing.key.password=$(ANDROID_KEY_PASSWORD)
+	cp android/app/build/outputs/apk/release/app-release.apk releases/Bounce.apk
+
+android-clean:
+	rm -rf android/app/libs/goengine.aar android/app/libs/goengine-sources.jar
+	rm -rf android/app/build android/build android/.gradle
+	rm -f Bounce.apk
+
+clean: android-clean
 	rm -r releases/*
 	rm -r build/*

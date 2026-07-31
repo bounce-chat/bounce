@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strings for the long-message truncation affordance and the expanded message
+  overlay. Kept in their own file, and prefixed readmore_, so that the screens
+  being written in parallel do not collide on one file; aapt merges every
+  values/*.xml into the same table.
+-->
+<resources>
+
+    <string name="readmore_read_more">Read more</string>
+    <!-- Spoken instead of the visible label, which on its own says nothing about what happens. -->
+    <string name="readmore_read_more_description">Read more. Shows the full message.</string>
+    <string name="readmore_show_full_message">Show the full message</string>
+
+    <string name="readmore_dialog_title">Full message</string>
+    <string name="readmore_close">Close</string>
+    <string name="readmore_unknown_sender">Unknown</string>
+
+</resources>

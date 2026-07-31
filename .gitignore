@@ -18,7 +18,6 @@ fyne_metadata_init.go
 *.tar.zst
 pkg/debian
 
-android/activity/unzippedAPK
 *.so
 *.jar
 *.aar

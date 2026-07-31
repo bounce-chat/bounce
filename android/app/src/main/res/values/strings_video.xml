@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strings for the full-screen video attachment player. Kept in their own file,
+  and prefixed video_, so that screens being written in parallel do not collide
+  on one file; aapt merges every values/*.xml into the same table.
+-->
+<resources>
+
+    <!-- Announced by TalkBack when the player opens. Carries the filename because
+         the overlay covers the conversation entirely and nothing else says which
+         attachment is now on screen. %1$s is the attachment's filename. -->
+    <string name="video_pane_title">Video player, %1$s</string>
+    <string name="video_save">Save video</string>
+    <string name="video_close">Close video</string>
+
+    <!-- Stands in for the filename when an attachment arrived without one. -->
+    <string name="video_untitled">Video</string>
+
+    <!-- Shown in place of the picture when the decoder rejects the file. Kept
+         plain: the viewer cannot act on a codec name. -->
+    <string name="video_playback_failed">Can\'t play this video</string>
+    <string name="video_playback_failed_detail">This device has no decoder for the format it was recorded in. It downloaded fine, so it may still play elsewhere.</string>
+
+</resources>

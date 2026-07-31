@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strings for the conversation screen. Kept in their own file rather than
+  appended to strings.xml so that the screens being written in parallel do not
+  collide on one file; aapt merges every values/*.xml into the same table.
+  Every name is prefixed conv_ for the same reason.
+-->
+<resources>
+
+    <!-- Top bar -->
+    <string name="conv_back">Back</string>
+    <string name="conv_more_options">More options</string>
+    <string name="conv_online">Online</string>
+    <string name="conv_offline">Offline</string>
+    <plurals name="conv_member_count">
+        <item quantity="one">%1$d member</item>
+        <item quantity="other">%1$d members</item>
+    </plurals>
+
+    <!-- Overflow menu -->
+    <string name="conv_mute">Mute notifications</string>
+    <string name="conv_unmute">Unmute notifications</string>
+    <string name="conv_mute_title">Mute notifications</string>
+    <string name="conv_mute_5_minutes">For 5 minutes</string>
+    <string name="conv_mute_1_hour">For 1 hour</string>
+    <string name="conv_mute_1_day">For 1 day</string>
+    <string name="conv_mute_1_week">For 1 week</string>
+    <string name="conv_mute_forever">Until I turn it back on</string>
+    <string name="conv_view_info">View info</string>
+    <string name="conv_clear_history">Clear history</string>
+    <string name="conv_clear_history_title">Clear history?</string>
+    <string name="conv_clear_history_message">This permanently deletes every message in this conversation on all of your devices.</string>
+    <string name="conv_clear">Clear</string>
+    <string name="conv_block">Block</string>
+    <string name="conv_unblock">Unblock</string>
+    <string name="conv_block_user_title">Block %1$s?</string>
+    <string name="conv_block_user_message">Blocked contacts cannot message you, and you will be removed from any groups you have in common.</string>
+    <string name="conv_block_group_title">Block this group?</string>
+    <string name="conv_block_group_message">You will never be able to join this group again, and nobody will be able to invite you back to it.</string>
+    <string name="conv_cancel">Cancel</string>
+
+    <!-- History -->
+    <string name="conv_today">Today</string>
+    <string name="conv_yesterday">Yesterday</string>
+    <string name="conv_jump_to_bottom">Jump to the latest message</string>
+    <string name="conv_empty_title">No messages yet</string>
+    <string name="conv_empty_subtitle">Messages are end-to-end encrypted and routed over Tor.</string>
+    <string name="conv_unread_count_capped">999+</string>
+
+    <!-- Typing -->
+    <string name="conv_typing_one">%1$s is typing…</string>
+    <string name="conv_typing_two">%1$s and %2$s are typing…</string>
+    <string name="conv_typing_many">Several people are typing…</string>
+
+    <!-- Bubbles -->
+    <!-- Delivery states, weakest to strongest. Read by a screen reader in place
+         of the glyph, so each says what it means rather than naming the icon. -->
+    <string name="conv_status_on_device">Not sent yet</string>
+    <string name="conv_status_synced">Sent to your other devices</string>
+    <string name="conv_status_delivered">Delivered</string>
+    <string name="conv_status_read">Read</string>
+    <string name="conv_status_undeliverable">Not delivered</string>
+    <string name="conv_disappearing">Disappearing message</string>
+    <string name="conv_copy_text">Copy text</string>
+    <string name="conv_copied">Copied</string>
+    <string name="conv_save_attachment">Save attachment</string>
+    <string name="conv_save_attachments">Save attachments</string>
+    <string name="conv_save_succeeded">Image saved</string>
+    <string name="conv_save_failed">Could not save the image</string>
+    <string name="conv_play_video">Play video</string>
+    <!-- Shown while a small attachment arrives on its own; deliberately not an action. -->
+    <string name="conv_receiving">Receiving…</string>
+    <string name="conv_download">Download</string>
+    <string name="conv_cancel_download">Cancel download</string>
+    <string name="conv_photo">Photo</string>
+    <string name="conv_photo_count">Photo %1$d of %2$d</string>
+
+    <!-- Composer -->
+    <string name="conv_message_hint">Message</string>
+    <string name="conv_send">Send</string>
+    <string name="conv_attach">Add an attachment</string>
+    <string name="conv_attach_photos">Photos</string>
+    <string name="conv_attach_file">File</string>
+    <string name="conv_remove_attachment">Remove %1$s</string>
+    <string name="conv_character_count">%1$d/%2$d</string>
+    <string name="conv_composer_restricted">Only admins can post in this group</string>
+    <string name="conv_composer_blocked">You blocked this contact. Unblock them to send messages.</string>
+    <string name="conv_composer_removed">You are no longer a member of this group</string>
+    <string name="conv_composer_invite_pending">Accept the invite to join this conversation</string>
+
+    <!-- System rows -->
+    <string name="conv_you">You</string>
+    <string name="conv_you_object">you</string>
+    <string name="conv_unknown_user">Someone</string>
+    <string name="conv_sys_group_created">%1$s created the group</string>
+    <string name="conv_sys_group_blocked">%1$s blocked the group</string>
+    <string name="conv_sys_name_changed">%1$s changed their name to %2$s</string>
+    <string name="conv_sys_name_changed_self">You changed your name to %1$s</string>
+    <string name="conv_sys_image_changed">%1$s changed their profile photo</string>
+    <string name="conv_sys_image_changed_self">You changed your profile photo</string>
+    <string name="conv_sys_user_aliased">%1$s is now shown as %2$s</string>
+    <string name="conv_sys_unknown">The conversation was updated</string>
+
+    <!-- Retention durations -->
+    <string name="conv_retention_off">off</string>
+    <string name="conv_retention_hours">%1$d hours</string>
+    <string name="conv_retention_1_hour">1 hour</string>
+    <string name="conv_retention_days">%1$d days</string>
+    <string name="conv_retention_1_day">1 day</string>
+    <string name="conv_retention_weeks">%1$d weeks</string>
+    <string name="conv_retention_1_week">1 week</string>
+    <string name="conv_retention_1_month">1 month</string>
+    <string name="conv_retention_minutes">%1$d minutes</string>
+
+</resources>

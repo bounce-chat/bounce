@@ -1,5 +1,4 @@
 <p align="center">
-
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="ui/assets/logo_dark.png">
     <source media="(prefers-color-scheme: light)" srcset="ui/assets/logo.png">
@@ -17,7 +16,7 @@ Bounce is a distributed group chat application that protects metadata, with a fa
 
 ## Design Overview
 
-Each instance of Bounce includes a Tor hidden service, and all connections between devices occur over Tor.  Users can own multiple devices, including encrypted devices that do not have access to the message contents.  Users add contacts by scanning a code on the other person's device, or by meeting them in a group, there is no global namespace of all users.  Messages are scoped to their user or group, and gossiped between devices that are in scope and online.  Devices coming online have an efficient way to catch up.  Group states (name, admin status, etc) can survive a bad actor attempting to mess with history, so long as the majority of users are honest.  The UI is built using [Fyne](https://github.com/fyne-io/fyne).  For more details, see the [goals](docs/goals.md) and [design document](docs/design.md).
+Each instance of Bounce includes a Tor hidden service, and all connections between devices occur over Tor.  Users can own multiple devices, including encrypted devices that do not have access to the message contents.  Users add contacts by scanning a code on the other person's device, or by meeting them in a group, there is no global namespace of all users.  Messages are scoped to their user or group, and gossiped between devices that are in scope and online.  Devices coming online have an efficient way to catch up.  Group states (name, admin status, etc) can survive a bad actor attempting to mess with history, so long as the majority of users are honest.  The desktop UI is built using [Fyne](https://github.com/fyne-io/fyne).  For more details, see the [goals](docs/goals.md) and [design document](docs/design.md).
 
 ## Status
 
@@ -30,7 +29,7 @@ There may still be breaking changes between updates, as the existing protocol ha
 |Linux|✅|Fully supported|
 |macOS|✅|Fully supported|
 |Windows|✅|Fully supported|
-|Android|✅|Fully supported, however there currently are significant performance issues.|
+|Android|✅|Fully supported|
 |iOS|⛔|iOS does not allow apps to run in the background.  Implementing Bounce on iOS will require a light client that receives notifications from another instance of Bounce via APNs, and reaches out to that instance to send messages.  This has not been planned yet, and would change the privacy model around metadata protection.|
 
 For information on what's coming, see the [next steps](docs/next_steps.md) document.

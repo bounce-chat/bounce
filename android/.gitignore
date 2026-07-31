@@ -1,0 +1,15 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+
+# Produced by `make android-bind`; checked in nowhere, always regenerated.
+app/libs/*.aar
+app/libs/*.jar

@@ -19,10 +19,6 @@ A few basic features remain, most importantly:
 
 These will all be taken on next, along with a few other Bounce-specific chat features that are planned.
 
-## Native Android UI
-
-The Android UI currently performs poorly in real world conditions.  Some of that is possibly a lack of optimization, but much of it is due to Fyne, particularly the known issues with text rendering performance on Android.  While this will likely be solved in the future by the great team over there, there are many small integrations with Android that are so much easier in a native application (notably text entry and gestures).  Should the quality of the Android UX prove to be a leading barrier to adoption, I will replace the Android UI with a native implementation.
-
 ## Performance
 
 There is likely a good amount of performance optimization left to do, particularly in the UI.  Some profiling and benchmarking is required.

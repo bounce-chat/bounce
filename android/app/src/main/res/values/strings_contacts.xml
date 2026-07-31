@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Contacts: the address book, and the only directory that exists -->
+    <string name="contacts_title">Contacts</string>
+    <string name="contacts_search_hint">Search contacts</string>
+    <string name="contacts_search_clear">Clear the search</string>
+    <string name="contacts_details">Details for %1$s</string>
+
+    <!--
+      A DM to yourself is an ordinary thread whose id is your own user id, so it
+      belongs in the list rather than in a menu somewhere.
+    -->
+    <string name="contacts_note_to_self">Note to self</string>
+    <string name="contacts_note_to_self_subtitle">Synced across your own devices</string>
+
+    <!-- Shown under an aliased contact, so the nickname is never mistaken for the name they broadcast. -->
+
+    <string name="contacts_blocked_section">Blocked</string>
+    <string name="contacts_blocked_badge">Blocked</string>
+
+    <string name="contacts_empty_title">No contacts yet</string>
+    <string name="contacts_empty_body">Bounce has no user search, because there is no server to search. You add someone by scanning the code on their device, or by letting them scan yours.</string>
+    <string name="contacts_no_results">No contacts match your search</string>
+</resources>

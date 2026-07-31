@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strings for the thread detail screens.
+
+  Anything that already exists in strings.xml and reads correctly here is reused
+  rather than restated - the confirmation bodies for clearing history, blocking
+  and leaving are shared with the thread list, and the mute durations come from
+  MuteDuration, so a translator only ever sees one copy of each sentence.
+-->
+<resources>
+    <string name="group_info_title">Group info</string>
+    <string name="group_info_missing">This group is no longer available.</string>
+
+    <!-- Header -->
+    <string name="group_info_change_photo">Change the group photo</string>
+    <string name="group_info_name">Group name</string>
+    <string name="group_info_edit_name">Edit the group name</string>
+    <plurals name="group_info_member_count">
+        <item quantity="one">%1$d member</item>
+        <item quantity="other">%1$d members</item>
+    </plurals>
+    <string name="group_info_created_by_on">Created by %1$s on %2$s</string>
+    <string name="group_info_created_by">Created by %1$s</string>
+    <string name="group_info_created_on">Created on %1$s</string>
+    <string name="group_info_edits_restricted">Only admins can change the name and photo.</string>
+
+    <!-- Pending invite -->
+    <string name="group_info_invited_by">%1$s invited you to this group.</string>
+    <string name="group_info_invited">You were invited to this group.</string>
+    <string name="group_info_decline_title">Decline the invitation?</string>
+    <string name="group_info_decline_body">You will not join the group. Whoever invited you can send a new invitation later.</string>
+
+    <!-- Notifications -->
+    <string name="group_info_notifications">Notifications</string>
+    <string name="group_info_mute">Mute notifications</string>
+    <string name="group_info_not_muted">Not muted</string>
+
+    <!-- Privacy -->
+    <string name="group_info_privacy">Privacy</string>
+    <string name="group_info_privacy_help">These override what you chose in Settings, for this group only.</string>
+    <string name="group_info_pref_default_on">Default (On)</string>
+    <string name="group_info_pref_default_off">Default (Off)</string>
+    <string name="group_info_pref_on">On</string>
+    <string name="group_info_pref_off">Off</string>
+
+    <!-- Members -->
+    <string name="group_info_members">Members</string>
+    <string name="group_info_admin">Admin</string>
+    <string name="group_info_member_options">Options for %1$s</string>
+    <string name="group_info_promote">Promote to admin</string>
+    <string name="group_info_demote">Remove admin</string>
+    <string name="group_info_remove_member">Remove from group</string>
+    <string name="group_info_remove_member_title">Remove %1$s?</string>
+    <string name="group_info_remove_member_body">They stop receiving messages from this group. You can invite them again later.</string>
+    <string name="group_info_management_restricted">Only admins can add or remove people.</string>
+
+    <!-- Invites -->
+    <string name="group_info_invites">Pending invites</string>
+    <string name="group_info_invite_people">Invite people</string>
+    <string name="group_info_invite_empty">Everyone you have paired with is already in this group.</string>
+    <string name="group_info_revoke_title">Revoke the invitation for %1$s?</string>
+    <string name="group_info_revoke_body">They will not be able to join unless you invite them again.</string>
+
+    <!-- Permissions -->
+    <string name="group_info_permissions">Permissions</string>
+    <string name="group_info_permissions_help">Only admins can change these.</string>
+
+    <!-- Danger zone -->
+    <string name="group_info_danger_zone">Leave or delete</string>
+    <string name="group_info_delete">Delete the group for everyone</string>
+    <string name="group_info_delete_title">Delete this group?</string>
+    <string name="group_info_delete_body">The group disappears for every member and its history is deleted on every device. This cannot be undone.</string>
+
+    <!-- Confirmation buttons -->
+    <string name="group_info_action_remove">Remove</string>
+    <string name="group_info_action_revoke">Revoke</string>
+    <string name="group_info_action_clear">Clear</string>
+    <string name="group_info_action_block">Block</string>
+    <string name="group_info_action_leave">Leave</string>
+    <string name="group_info_action_delete">Delete</string>
+    <string name="group_info_action_decline">Decline</string>
+
+    <!-- Contact profile -->
+    <string name="contact_profile_title">Contact</string>
+    <string name="contact_not_found">This contact is not on this device.</string>
+
+    <!--
+      Name vs nickname. The heading is whichever name the app uses everywhere
+      else, so these two lines exist to say where that name came from.
+    -->
+    <string name="contact_header_self_named">This is the name they chose for themselves, and they can change it.</string>
+    <string name="contact_header_alias_for">Your nickname for %1$s.</string>
+    <string name="contact_unnamed">this contact</string>
+    <string name="contact_online">Online</string>
+    <string name="contact_offline">Offline</string>
+    <string name="contact_blocked_banner">You have blocked this contact.</string>
+    <string name="contact_message">Message</string>
+    <string name="contact_alias_label">Nickname</string>
+    <string name="contact_alias_help">Only on your own devices. They are never told, and clearing it shows their own name again.</string>
+    <string name="contact_alias_save">Save the nickname</string>
+
+    <!-- Notes -->
+    <string name="contact_notes">Notes</string>
+    <string name="contact_notes_label">Private notes</string>
+    <string name="contact_notes_help">Kept on your own devices. This contact can never see it.</string>
+
+    <!-- Disappearing messages -->
+    <string name="contact_retention_label">Messages disappear after</string>
+    <string name="contact_retention_help">The timer covers both sides of this conversation, and they are told when it changes.</string>
+
+    <!-- Notifications -->
+    <string name="contact_notifications">Notifications</string>
+    <string name="contact_muted_subtitle">Messages from this contact arrive quietly.</string>
+    <string name="contact_unmuted_subtitle">New messages notify you as usual.</string>
+
+    <!-- Privacy overrides -->
+    <string name="contact_read_receipts_help">Applies to this conversation only.</string>
+    <string name="contact_typing_indicators_help">Applies to this conversation only.</string>
+    <string name="contact_override_default">Use default (%1$s)</string>
+    <string name="contact_override_on">On</string>
+    <string name="contact_override_off">Off</string>
+
+    <!-- Groups in common -->
+    <string name="contact_groups_in_common">Groups in common</string>
+    <string name="contact_groups_none">You are not in any groups with this contact.</string>
+
+    <!-- Danger zone -->
+    <string name="contact_danger_zone">Danger zone</string>
+    <string name="contact_hide_help">Removes the chat from your list. Nothing is deleted.</string>
+    <string name="contact_show_chat">Show chat in the list</string>
+    <string name="contact_show_help">This chat is hidden. Showing it again sends nothing.</string>
+    <string name="contact_clear_history_help">Deletes every message in this conversation, on their devices as well as yours.</string>
+    <string name="contact_block_help">Stops their messages reaching you, and takes you out of the groups you share.</string>
+    <string name="contact_unblock_help">Lets them message you again.</string>
+    <string name="contact_confirm_unblock_title">Unblock contact?</string>
+    <string name="contact_confirm_unblock_body">They will be able to message you again. Groups you were removed from when you blocked them do not come back.</string>
+</resources>

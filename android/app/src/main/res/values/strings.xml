@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Bounce</string>
+
+    <!-- Foreground service -->
+    <string name="service_channel_name">Running</string>
+    <string name="service_channel_description">Shows that Bounce is connected and able to receive messages.</string>
+    <string name="service_notification_title">Bounce is running</string>
+    <string name="service_notification_connecting">Connecting to the network…</string>
+    <string name="service_notification_online">Connected</string>
+    <string name="service_notification_offline">Offline — waiting for a connection</string>
+    <string name="service_stop">Stop</string>
+
+    <!-- Message notifications -->
+    <string name="messages_channel_name">Messages</string>
+    <string name="messages_channel_description">New direct messages and group messages.</string>
+    <string name="notification_reply">Reply</string>
+    <string name="notification_reply_hint">Message</string>
+    <string name="notification_mark_read">Mark read</string>
+    <string name="notification_you">You</string>
+    <!--
+      Bodies for messages that are attachment-only. The engine also builds a
+      body ("posted an image"), but for a group message it concatenates the
+      sender name into it, which MessagingStyle renders separately - so the
+      body is rebuilt here from the structured message instead.
+    -->
+    <string name="notification_attachment_photo">Photo</string>
+    <string name="notification_attachment_photos">%1$d photos</string>
+    <string name="notification_attachment_file">File</string>
+    <string name="notification_attachment_files">%1$d files</string>
+    <string name="notification_attachment_mixed">Attachments</string>
+
+    <!-- Navigation / screens -->
+    <string name="threads_title">Chats</string>
+    <string name="settings_title">Settings</string>
+    <string name="devices_title">Linked devices</string>
+    <string name="new_chat">New chat</string>
+    <string name="new_group">New group</string>
+    <string name="add_contact">Add contact</string>
+    <string name="link_device">Link a device</string>
+    <string name="scan_qr_title">Scan a code</string>
+
+    <!-- Thread list -->
+    <string name="threads_search">Search</string>
+    <string name="threads_search_close">Close search</string>
+    <string name="threads_search_hint">Search chats</string>
+    <string name="threads_more">More options</string>
+    <string name="threads_offline">Network connection lost, reconnecting…</string>
+    <string name="threads_syncing">Importing your messages…</string>
+    <string name="threads_empty_title">No chats yet</string>
+    <string name="threads_empty_body">Add a contact to start your first conversation. Bounce has no servers, so you add people by scanning a code.</string>
+    <string name="threads_no_results">No chats match your search</string>
+    <string name="new_chat_no_contacts">No contacts yet</string>
+
+    <!-- Thread row -->
+    <!-- A DM row is already titled with the person's name, so naming them again
+         in the preview line reads as a stutter. Groups still name the sender. -->
+    <string name="thread_typing">typing…</string>
+    <!-- Overlaid on your own avatar for the note-to-self thread. -->
+    <string name="thread_note_to_self_badge">📝</string>
+    <string name="thread_muted">Muted</string>
+    <string name="thread_draft_prefix">"Draft: "</string>
+    <string name="thread_unread_overflow">999+</string>
+    <string name="thread_accept">Accept</string>
+    <string name="thread_decline">Decline</string>
+
+    <!-- Thread long-press actions -->
+    <string name="thread_action_mute">Mute notifications</string>
+    <string name="thread_action_unmute">Unmute</string>
+    <string name="thread_action_clear_history">Clear history</string>
+    <string name="thread_action_hide">Hide chat</string>
+    <string name="thread_action_leave">Leave group</string>
+    <string name="thread_action_block_user">Block contact</string>
+    <string name="thread_action_unblock_user">Unblock contact</string>
+    <string name="thread_action_block_group">Block group</string>
+
+    <string name="mute_title">Mute</string>
+    <string name="mute_5_minutes">Mute for 5 minutes</string>
+    <string name="mute_1_hour">Mute for 1 hour</string>
+    <string name="mute_1_day">Mute for 1 day</string>
+    <string name="mute_1_week">Mute for 1 week</string>
+    <string name="mute_forever">Mute forever</string>
+
+    <string name="confirm_clear_history_title">Clear history?</string>
+    <string name="confirm_clear_history_body">This permanently deletes all chat history in this conversation, on every device.</string>
+    <string name="confirm_block_user_title">Block contact?</string>
+    <string name="confirm_block_user_body">They will not be able to message you, and you will be removed from any groups you have in common.</string>
+    <string name="confirm_block_group_title">Block group?</string>
+    <string name="confirm_block_group_body">You will never be able to join this group again.</string>
+    <string name="confirm_leave_title">Leave group?</string>
+    <string name="confirm_leave_body">You will stop receiving messages from this group.</string>
+    <string name="confirm_hide_title">Hide chat?</string>
+    <string name="confirm_hide_body">The conversation is removed from your list. Nothing is deleted, and it comes back if they message you again.</string>
+
+    <!-- Shared actions -->
+    <string name="action_back">Back</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="action_save">Save</string>
+    <string name="action_copy">Copy</string>
+    <string name="copied_to_clipboard">Copied</string>
+
+    <!-- QR codes -->
+    <string name="qr_code_description">QR code</string>
+    <string name="qr_point_at_code">Point the camera at the code on the other device.</string>
+    <string name="qr_camera_unavailable">This device has no usable camera. Paste the code as text instead.</string>
+    <string name="qr_permission_title">Camera access needed</string>
+    <string name="qr_permission_body">Bounce uses the camera only to read the pairing code. Nothing is recorded and nothing leaves the device.</string>
+    <string name="qr_permission_grant">Allow camera</string>
+    <string name="qr_permission_denied">Camera access was denied. You can still paste the code as text.</string>
+    <string name="qr_permission_settings">Open settings</string>
+    <string name="qr_paste_instead">Paste a code instead</string>
+    <string name="qr_paste_label">Pairing code</string>
+    <string name="qr_paste_from_clipboard">Paste</string>
+    <string name="qr_paste_submit">Continue</string>
+    <string name="qr_invalid_code">That does not look like a Bounce code.</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_tagline">Group chat with no servers.</string>
+    <string name="onboarding_tor_note">Bounce carries every message over Tor, directly between devices. The first start can take a minute while that connection is built.</string>
+    <string name="onboarding_starting">Starting the network…</string>
+    <string name="onboarding_create_profile">Create a new profile</string>
+    <string name="onboarding_create_profile_subtitle">Start fresh on this device.</string>
+    <string name="onboarding_link_device">Add to an existing profile</string>
+    <string name="onboarding_link_device_subtitle">Use a device you are already set up on.</string>
+    <string name="onboarding_your_name">Your name</string>
+    <string name="onboarding_device_name">Device name</string>
+    <string name="onboarding_device_name_help">Only you and your own devices see this.</string>
+    <string name="onboarding_add_photo">Add a photo</string>
+    <string name="onboarding_change_photo">Change photo</string>
+    <string name="onboarding_create">Create profile</string>
+    <string name="onboarding_profile_failed">Your profile could not be created. Try again.</string>
+    <string name="onboarding_link_instructions_title">On your other device</string>
+    <string name="onboarding_link_instructions">Open Bounce, go to Settings, then Linked devices, and tap Link a device. Scan the code it shows with this device.</string>
+    <string name="onboarding_scan_code">Scan the code</string>
+    <string name="onboarding_sync_waiting_network">Waiting for the network…</string>
+    <string name="onboarding_sync_sending">Sending the pairing request. This can take a minute…</string>
+    <string name="onboarding_sync_importing">Importing your messages…</string>
+    <string name="onboarding_sync_preparing">Preparing the database…</string>
+    <string name="onboarding_sync_rejected">The other device turned the request down. Codes expire quickly, so show a fresh one and scan it right away.</string>
+    <string name="onboarding_sync_failed">The pairing request could not be sent. Check that both devices are online and try again.</string>
+    <string name="onboarding_keep_app_open">Keep both devices awake and Bounce open until this finishes.</string>
+    <string name="onboarding_try_again">Try again</string>
+
+    <!-- Add contact -->
+    <string name="add_contact_tab_my_code">My code</string>
+    <string name="add_contact_tab_scan">Scan</string>
+    <string name="add_contact_share_instructions">Have the other person scan this with Bounce, or send them the text below.</string>
+    <string name="add_contact_code_label">Your pairing code</string>
+    <string name="add_contact_both_online">You both need to be online and in Bounce at the same moment. The code expires quickly, so generate a fresh one if it fails.</string>
+    <string name="add_contact_scan_instructions">Scan the code shown on your friend\'s device.</string>
+    <string name="add_contact_open_camera">Open the camera</string>
+    <string name="add_contact_sending">Sending the request…</string>
+    <string name="add_contact_added">%1$s was added.</string>
+    <string name="add_contact_rejected">The request was turned down. Codes expire quickly, so try again with a fresh one.</string>
+
+    <!-- New group -->
+    <string name="new_group_photo">Group photo</string>
+    <string name="new_group_name">Group name</string>
+    <string name="new_group_members">Members</string>
+    <string name="new_group_selected">%1$d selected</string>
+    <string name="new_group_no_contacts">Add a contact first. You can only invite people you have already paired with.</string>
+    <string name="new_group_advanced">Advanced</string>
+    <string name="new_group_create">Create</string>
+    <string name="new_group_failed">The group could not be created.</string>
+    <string name="new_group_restrict_user_management">Only admins can add or remove people</string>
+    <string name="new_group_restrict_group_edits">Only admins can change the name and photo</string>
+    <string name="new_group_restrict_posting">Only admins can post</string>
+
+    <!-- Devices -->
+    <string name="devices_empty">No other devices are linked to this profile yet.</string>
+    <string name="devices_this_device">This device</string>
+    <string name="devices_online">Online</string>
+    <string name="devices_encrypted">Encrypted device</string>
+    <string name="devices_never_seen">Never connected</string>
+    <string name="devices_last_seen">Last seen %1$s</string>
+    <string name="devices_seen_now">just now</string>
+    <string name="devices_seen_minutes">%1$d min ago</string>
+    <string name="devices_seen_hours">%1$d h ago</string>
+    <string name="devices_seen_days">%1$d d ago</string>
+    <string name="devices_details_title">Device</string>
+    <string name="devices_device_name">Device name</string>
+    <string name="devices_revoke">Revoke</string>
+    <string name="devices_revoke_title">Revoke %1$s?</string>
+    <string name="devices_revoke_body">This cannot be undone. The device loses access immediately and your profile keys are rolled, so every remaining device has to rebuild its connections. Anything stored only on that device is gone.</string>
+    <string name="devices_link_title">Link a device</string>
+    <string name="devices_link_tab_standard">Standard</string>
+    <string name="devices_link_tab_encrypted">Encrypted</string>
+    <string name="devices_link_instructions">On the new device, choose Add to an existing profile and scan this code.</string>
+    <string name="devices_link_code_label">Pairing code</string>
+    <string name="devices_added">A new device was paired to your profile.</string>
+    <string name="devices_encrypted_explainer">An encrypted device is a headless copy of your profile. It stays online to relay for you but cannot read your messages. Scan the code it displays.</string>
+    <string name="devices_encrypted_scan">Scan an encrypted device</string>
+    <string name="devices_encrypted_sending">Sending the management request…</string>
+    <string name="devices_encrypted_failed">The request was not accepted. Check that the device is online and the code is fresh.</string>
+
+    <!-- Settings -->
+    <string name="settings_your_name">Your name</string>
+    <string name="settings_edit_name">Edit name</string>
+    <string name="settings_change_photo">Change photo</string>
+    <string name="settings_disappearing">Disappearing messages</string>
+    <string name="settings_disappearing_help">New conversations start with this timer. You can change it per conversation later.</string>
+    <string name="settings_default_dm_retention">New direct messages</string>
+    <string name="settings_default_group_retention">New groups</string>
+    <string name="settings_privacy">Privacy</string>
+    <string name="settings_read_receipts">Send read receipts</string>
+    <string name="settings_read_receipts_help">Let people see when you have read their message.</string>
+    <string name="settings_typing_indicators">Send typing indicators</string>
+    <string name="settings_typing_indicators_help">Let people see when you are typing.</string>
+    <string name="settings_auto_join">Accept group invites automatically</string>
+    <string name="settings_auto_join_known">When I know everyone in the group</string>
+    <string name="settings_auto_join_never">Never</string>
+    <string name="settings_auto_join_always">Always</string>
+    <string name="settings_new_group_defaults">New group defaults</string>
+    <string name="settings_about">About</string>
+    <string name="settings_about_body">Bounce has no servers. Every message travels over Tor straight between the devices in the conversation, so there is no account to seize and no contact list held anywhere but on your own devices. Messages arrive while at least one of your devices is online.</string>
+    <string name="settings_version">Version %1$s</string>
+
+    <!-- Disappearing message timers -->
+    <string name="retention_off">Off</string>
+    <string name="retention_one_day">1 day</string>
+    <string name="retention_one_week">1 week</string>
+    <string name="retention_four_weeks">4 weeks</string>
+    <string name="retention_seconds">%1$d seconds</string>
+    <string name="retention_minutes">%1$d minutes</string>
+    <string name="retention_hours">%1$d hours</string>
+    <string name="retention_days">%1$d days</string>
+
+    <!--
+      Conversation system rows. Every one of these is a whole sentence with the
+      names substituted in, so a translation can move the names around; none of
+      them are assembled by concatenation.
+    -->
+    <string name="conv_sys_you">You</string>
+    <string name="conv_sys_you_object">you</string>
+    <string name="conv_sys_someone">Someone</string>
+    <string name="conv_sys_retention_off">%1$s turned off disappearing messages</string>
+    <string name="conv_sys_retention_set">%1$s set disappearing messages to %2$s</string>
+    <string name="conv_sys_history_cleared">%1$s cleared the history</string>
+    <string name="conv_sys_group_renamed">%1$s changed the group name to %2$s</string>
+    <string name="conv_sys_user_invited">%1$s invited %2$s</string>
+    <string name="conv_sys_user_removed">%1$s removed %2$s</string>
+    <string name="conv_sys_user_left">%1$s left the group</string>
+    <string name="conv_sys_invite_revoked">%1$s revoked the invitation for %2$s</string>
+    <string name="conv_sys_invite_accepted">%1$s joined the group</string>
+    <string name="conv_sys_invite_rejected">%1$s declined the invitation</string>
+    <string name="conv_sys_admin_promoted">%1$s made %2$s an admin</string>
+    <string name="conv_sys_admin_demoted">%1$s removed admin from %2$s</string>
+    <string name="conv_sys_user_management_restricted">%1$s restricted adding and removing people to admins</string>
+    <string name="conv_sys_user_management_unrestricted">%1$s let anyone add and remove people</string>
+    <string name="conv_sys_group_edits_restricted">%1$s restricted the group name and photo to admins</string>
+    <string name="conv_sys_group_edits_unrestricted">%1$s let anyone change the group name and photo</string>
+    <string name="conv_sys_posting_restricted">%1$s restricted posting to admins</string>
+    <string name="conv_sys_posting_unrestricted">%1$s let anyone post</string>
+    <string name="conv_sys_user_blocked_group">%1$s blocked this group</string>
+    <string name="conv_sys_group_image_changed">%1$s changed the group photo</string>
+    <string name="conv_sys_user_renamed">%1$s is now known as %2$s</string>
+    <string name="conv_sys_user_renamed_self">You are now known as %1$s</string>
+    <string name="conv_sys_user_image_changed">%1$s changed their photo</string>
+    <string name="conv_sys_user_image_changed_self">You changed your photo</string>
+    <string name="conv_sys_alias_set">%1$s is now shown as %2$s</string>
+    <string name="conv_sys_alias_cleared">%1$s is shown by their own name again</string>
+
+    <!-- Durations inside the retention sentence above, so they stay lowercase -->
+    <string name="conv_sys_duration_off">off</string>
+    <string name="conv_sys_duration_1_minute">1 minute</string>
+    <string name="conv_sys_duration_minutes">%1$d minutes</string>
+    <string name="conv_sys_duration_1_hour">1 hour</string>
+    <string name="conv_sys_duration_hours">%1$d hours</string>
+    <string name="conv_sys_duration_1_day">1 day</string>
+    <string name="conv_sys_duration_days">%1$d days</string>
+    <string name="conv_sys_duration_1_week">1 week</string>
+    <string name="conv_sys_duration_weeks">%1$d weeks</string>
+</resources>

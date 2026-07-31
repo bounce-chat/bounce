@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nothing is backed up. The engine's directory holds Tor identity keys and the
+  message database; copying those off-device would break Bounce's threat model
+  (goal 2 in docs/goals.md: user data only on user hardware).
+-->
+<full-backup-content>
+    <exclude domain="root" />
+    <exclude domain="file" />
+    <exclude domain="database" />
+    <exclude domain="sharedpref" />
+    <exclude domain="external" />
+</full-backup-content>

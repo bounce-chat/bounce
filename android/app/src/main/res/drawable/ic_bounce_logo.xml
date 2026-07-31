@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Hand-converted from ui/assets/icon.svg. Paths and gradient stops are verbatim
+  from the SVG so the native client's mark matches the desktop build exactly.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="96dp"
+    android:height="92dp"
+    android:viewportWidth="400"
+    android:viewportHeight="381.737">
+
+    <!-- Green fan -->
+    <path android:pathData="M185.395,216.223c0.761,2.573,3.075,4.301,5.756,4.301c2.657,0,4.948-1.712,5.701-4.259c12.063-40.796,38.377-76.309,74.093-99.999l2.135-1.416l-0.496-2.514c-1.038-5.268-1.565-10.635-1.565-15.953c0-22.45,8.925-43.452,25.13-59.138l3.433-3.323l-3.992-2.626C264.462,10.822,228.249,0,190.868,0c-31.292,0-62.328,7.746-89.753,22.401C74.574,36.583,51.43,57.164,34.185,81.918l-3.558,5.107l6.163,0.871C106.933,97.814,165.264,148.185,185.395,216.223z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="165.1056"
+                android:startY="220.5238"
+                android:endX="165.1056"
+                android:endY="0">
+                <item android:offset="0" android:color="#FF40937C" />
+                <item android:offset="1" android:color="#FF41D26F" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Blue wave / speech bubble -->
+    <path android:pathData="M381.737,190.869c0,-3.851,-0.137,-7.895,-0.408,-12.019l-0.313,-4.762l-4.581,1.339c-7.516,2.197,-15.275,3.311,-23.061,3.311c-23.881,0,-46.583,-10.414,-62.285,-28.573l-2.292,-2.651l-2.843,2.05c-28.468,20.534,-48.567,50.545,-56.594,84.503c-4.142,17.524,-19.863,29.762,-38.229,29.762c-18.374,0,-34.091,-12.221,-38.221,-29.719c-15.105,-63.994,-71.616,-110.003,-137.424,-111.886l-2.748,-0.079l-0.953,2.578C4.1,145.526,0.136,167.393,0.003,189.715c-0.299,50.299,19.449,98.03,55.605,134.401c17.906,18.013,38.787,32.185,62.063,42.124c24.081,10.283,49.539,15.496,75.666,15.496h177.574h9.242l-6.535,-6.535l-48.617,-48.617c17.273,-17.058,30.957,-36.918,40.701,-59.085C376.342,243.295,381.737,217.513,381.737,190.869z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="190.8685"
+                android:startY="381.7371"
+                android:endX="190.8685"
+                android:endY="122.1453">
+                <item android:offset="0" android:color="#FF3260E6" />
+                <item android:offset="1" android:color="#FF4D82FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Orange dot (SVG <circle cx=353.374 cy=96.383 r=46.626> as arcs) -->
+    <path android:pathData="M306.748,96.383a46.626,46.626 0 1,0 93.252,0a46.626,46.626 0 1,0 -93.252,0z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="320.4202"
+                android:startY="129.3371"
+                android:endX="386.3282"
+                android:endY="63.4291">
+                <item android:offset="0" android:color="#FFF19A23" />
+                <item android:offset="1" android:color="#FFFFC41C" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>
