@@ -31,10 +31,14 @@ func newRemoteDevice() *remoteDevice {
 
 func (rd *remoteDevice) shutdown() {
 	rd.shutdownReceiversMutex.Lock()
-	for _, receiver := range rd.shutdownReceivers {
-		receiver <- true
+	receivers := make([]chan bool, 0, len(rd.shutdownReceivers))
+	for _, r := range rd.shutdownReceivers {
+		receivers = append(receivers, r)
 	}
 	rd.shutdownReceiversMutex.Unlock()
+	for _, r := range receivers {
+		r <- true
+	}
 }
 
 func (rd *remoteDevice) chunkDuty(writer uuid.UUID) bool {
@@ -264,6 +268,11 @@ func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 	rd.shutdownReceiversMutex.Unlock()
 
 	encryptedHandlers := b.getHandlers(true)
+	defer func() {
+		rd.shutdownReceiversMutex.Lock()
+		delete(rd.shutdownReceivers, writerID)
+		rd.shutdownReceiversMutex.Unlock()
+	}()
 
 	writeChunk := func(br sendable) error {
 		if b.devicePool.isRevoked(conn.RemoteAddr().String()) {
@@ -306,12 +315,6 @@ func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 			if rd.connectedSockets.Load() > 0 && !b.encrypted {
 				go b.sendReferences(conn.RemoteAddr().String())
 			}
-
-			// We will no longer be reading shutdown signals from the remote device
-			// so we remove our channel from the map
-			rd.shutdownReceiversMutex.Lock()
-			delete(rd.shutdownReceivers, writerID)
-			rd.shutdownReceiversMutex.Unlock()
 			return err
 		}
 

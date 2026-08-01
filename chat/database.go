@@ -44,7 +44,7 @@ var typeTable = map[uint16]string{
 }
 
 func (b *Bounce) openDatabase() {
-	databaseFile := b.configDirectory + "/bounce.db"
+	databaseFile := b.configDirectory + "/bounce.db?_journal_mode=WAL&_busy_timeout=10000&_txlock=immediate"
 
 	// Define a logger for gorm that uses logrus
 	databaseLogLevel := logger.Error
@@ -81,7 +81,8 @@ func (b *Bounce) openDatabase() {
 			"error": err.Error(),
 		}).Fatal("error getting underlying database interface from gorm while opening database")
 	}
-	sqliteDB.SetMaxOpenConns(1)
+	sqliteDB.SetMaxOpenConns(4)
+	sqliteDB.SetMaxIdleConns(4)
 
 	// Migrate
 	err = b.database.AutoMigrate(

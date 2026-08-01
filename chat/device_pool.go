@@ -441,6 +441,9 @@ func (b *Bounce) closeUnusedConnections() {
 			for k, _ := range rd.shutdownReceivers {
 				keys = append(keys, k)
 			}
+			if len(keys) < 1 {
+				continue
+			}
 
 			// Choose a random key
 			rand.Seed(time.Now().UnixNano())

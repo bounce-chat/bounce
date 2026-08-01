@@ -74,7 +74,7 @@ func (b *Bounce) loadChunkEngine() {
 					}
 					for _, eco := range encryptedOffers {
 						b.chunkEngine.byHash[c.Hash] = append(b.chunkEngine.byHash[c.Hash], eco.Location)
-						b.chunkEngine.byHash[eco.Location] = append(b.chunkEngine.byLocation[eco.Location], c.Hash)
+						b.chunkEngine.byHash[eco.Location] = append(b.chunkEngine.byHash[eco.Location], c.Hash)
 					}
 				}
 			}
