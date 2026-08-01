@@ -19,6 +19,6 @@ fyne_metadata_init.go
 pkg/debian
 
 *.so
-*.jar
 *.aar
 *.apk
+/android/app/build
