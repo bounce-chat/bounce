@@ -9,6 +9,8 @@ fyne_metadata_init.go
 /build
 /releases
 
+/pkg/pkg
+/pkg/src
 /pkg/bounce
 /pkg/bounce-bin
 /pkg/bounce-fyne

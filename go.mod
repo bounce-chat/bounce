@@ -4,15 +4,16 @@ go 1.26
 
 replace fyne.io/fyne/v2 => ./fyne
 
+replace github.com/bounce-chat/go-arti => ./go-arti
+
 require (
 	fyne.io/fyne/v2 v2.7.4
 	github.com/AndroidGoLab/jni v0.0.8
 	github.com/Basekick-Labs/msgpack/v6 v6.1.0
 	github.com/DeRuina/timberjack v1.4.5
 	github.com/alecthomas/assert/v2 v2.11.0
-	github.com/alexballas/bine v0.0.0-20260627155058-604f8df1cecd
 	github.com/bbrks/go-blurhash v1.2.0
-	github.com/bounce-chat/go-libtor v0.0.0-20260717192247-169286d26eea
+	github.com/bounce-chat/go-arti v0.0.0-00010101000000-000000000000
 	github.com/cretz/bine v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
@@ -66,7 +67,7 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
-	golang.org/x/mobile v0.0.0-20260709172247-6129f5bee9d5 // indirect
+	golang.org/x/mobile v0.0.0-20260730202154-c700fe717e6e // indirect
 	golang.org/x/mod v0.38.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
