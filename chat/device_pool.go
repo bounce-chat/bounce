@@ -79,12 +79,24 @@ func (b *Bounce) peer() {
 
 func (b *Bounce) keepRemoteDevicesPruned() {
 	ticker := time.NewTicker(pruneFrequency)
+
+	var devices []*remoteDevice
+
 	for _ = range ticker.C {
+		devices = devices[:0]
+
 		b.devicePool.deviceMutex.Lock()
+		if cap(devices) < len(b.devicePool.devices) {
+			devices = make([]*remoteDevice, 0, len(b.devicePool.devices))
+		}
 		for _, rd := range b.devicePool.devices {
-			rd.pruneSockets()
+			devices = append(devices, rd)
 		}
 		b.devicePool.deviceMutex.Unlock()
+
+		for _, rd := range devices {
+			rd.pruneSockets()
+		}
 	}
 }
 
@@ -143,14 +155,31 @@ func (b *Bounce) auditPeers() {
 
 func (b *Bounce) sendKeepAlives() {
 	ticker := time.NewTicker(keepAliveFrequency)
+
+	var devices []*remoteDevice
+
 	for _ = range ticker.C {
+		devices = devices[:0]
+
 		b.devicePool.deviceMutex.Lock()
+		if cap(devices) < len(b.devicePool.devices) {
+			devices = make([]*remoteDevice, 0, len(b.devicePool.devices))
+		}
 		for _, rd := range b.devicePool.devices {
-			if rd.connectedSockets() > 0 {
-				go func() { rd.messages <- keepAlive{} }()
-			}
+			devices = append(devices, rd)
 		}
 		b.devicePool.deviceMutex.Unlock()
+
+		for _, rd := range devices {
+			if rd.connectedSockets() > 0 {
+				go func() {
+					select {
+					case rd.messages <- keepAlive{}:
+					case <-time.After(keepAliveFrequency):
+					}
+				}()
+			}
+		}
 	}
 }
 
