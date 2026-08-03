@@ -22,6 +22,7 @@ const startupDialsPerThread = 50
 const dialCooldown = time.Duration(30 * time.Second)
 const failedDialCooldown = time.Duration(30 * time.Minute)
 const auditFrequency = time.Duration(60 * time.Second)
+const pruneFrequency = time.Duration(15 * time.Second)
 const keepAliveFrequency = time.Duration(15 * time.Second)
 
 // The device pool is responsible for peering.  It stores all of the remote devices bounce is aware of in the devices field,
@@ -55,12 +56,35 @@ func (dp *devicePool) isRevoked(address string) bool {
 	return revoked
 }
 
+func (dp *devicePool) globallyConnectedSockets() int {
+	dp.deviceMutex.Lock()
+	defer dp.deviceMutex.Unlock()
+
+	count := 0
+	for _, rd := range dp.devices {
+		count += rd.connectedSockets()
+	}
+	return count
+}
+
 func (b *Bounce) peer() {
 	b.makeInitialPeeringConnections()
 	go b.sendKeepAlives()
+	go b.keepRemoteDevicesPruned()
 	ticker := time.NewTicker(auditFrequency)
 	for _ = range ticker.C {
 		b.auditPeers()
+	}
+}
+
+func (b *Bounce) keepRemoteDevicesPruned() {
+	ticker := time.NewTicker(pruneFrequency)
+	for _ = range ticker.C {
+		b.devicePool.deviceMutex.Lock()
+		for _, rd := range b.devicePool.devices {
+			rd.pruneSockets()
+		}
+		b.devicePool.deviceMutex.Unlock()
 	}
 }
 
@@ -122,7 +146,7 @@ func (b *Bounce) sendKeepAlives() {
 	for _ = range ticker.C {
 		b.devicePool.deviceMutex.Lock()
 		for _, rd := range b.devicePool.devices {
-			if rd.connectedSockets.Load() > 0 {
+			if rd.connectedSockets() > 0 {
 				go func() { rd.messages <- keepAlive{} }()
 			}
 		}
@@ -144,7 +168,7 @@ func (b *Bounce) connectToSyncDevices() {
 			continue
 		}
 		rd := b.getRemoteDevice(dev.Address)
-		if rd.connectedSockets.Load() < connectionsPerDevice {
+		if rd.connectedSockets() < connectionsPerDevice {
 			go b.tryDialing(dev.Address)
 		}
 	}
@@ -158,7 +182,7 @@ func (b *Bounce) connectToSyncDevices() {
 	}
 	for _, esd := range allEncryptedSyncDevices {
 		rd := b.getRemoteDevice(esd.Address)
-		if rd.connectedSockets.Load() < connectionsPerDevice {
+		if rd.connectedSockets() < connectionsPerDevice {
 			go b.tryDialing(esd.Address)
 		}
 	}
@@ -217,7 +241,7 @@ func (b *Bounce) connectToGroups(desiredConnections int) {
 		// Attempt to dial them
 		for _, address := range addressesToDial {
 			rd := b.getRemoteDevice(address)
-			if rd.connectedSockets.Load() > 0 {
+			if rd.connectedSockets() > 0 {
 				// If we're already connected to this device, we can just associate the existing connection with this group
 				b.insertRemoteDeviceIntoPool(address, poolTypeGroup, g.ID)
 				anyOnline = true
@@ -265,7 +289,7 @@ func (b *Bounce) connectToUsers(desiredConnections int) {
 			}
 			if !b.shouldCooldownDial(dev.Address) && dev.Address != b.network.Address() {
 				rd := b.getRemoteDevice(dev.Address)
-				if rd.connectedSockets.Load() == 0 {
+				if rd.connectedSockets() == 0 {
 					unconnectedUserAddresses = append(unconnectedUserAddresses, dev.Address)
 				}
 			}
@@ -314,7 +338,7 @@ func (b *Bounce) connectToUsers(desiredConnections int) {
 			references := b.getReferenceOfferFor(dev.Address)
 			rd := b.getRemoteDevice(dev.Address)
 			// Dial this inactive user if we have non-global content that isn't just group messages
-			if references.shouldDialUser() && !references.onlyGroupContent() && rd.connectedSockets.Load() == 0 {
+			if references.shouldDialUser() && !references.onlyGroupContent() && rd.connectedSockets() == 0 {
 				go b.tryDialing(dev.Address)
 			}
 		}
@@ -324,7 +348,7 @@ func (b *Bounce) connectToUsers(desiredConnections int) {
 				references := b.getReferenceOfferFor(addr)
 				rd := b.getRemoteDevice(addr)
 				// Dial this inactive user if we have non-global content that isn't just group messages
-				if references.shouldDialUser() && !references.onlyGroupContent() && rd.connectedSockets.Load() == 0 {
+				if references.shouldDialUser() && !references.onlyGroupContent() && rd.connectedSockets() == 0 {
 					go b.tryDialing(addr)
 				}
 			}
@@ -369,7 +393,7 @@ func (b *Bounce) connectToCustomScopes(desiredConnections int) {
 		// Attempt to dial them
 		for _, address := range addressesToDial {
 			rd := b.getRemoteDevice(address)
-			if rd.connectedSockets.Load() > 0 {
+			if rd.connectedSockets() > 0 {
 				// If we're already connected to this device, we can just associate the existing connection with this group
 				b.insertRemoteDeviceIntoPool(address, poolTypeGroup, cs.ID)
 			} else {
@@ -387,19 +411,6 @@ func (b *Bounce) closeUnusedConnections() {
 	for groupID, _ := range b.devicePool.groupPools {
 		// Prune the pool
 		b.prunePool(poolTypeGroup, groupID)
-
-		// If there are more connections than needed, close one at random
-		if len(b.devicePool.groupPools[groupID]) > connectionsPerThread {
-			log.WithFields(log.Fields{
-				"group_id": groupID,
-			}).Debug("closing unneeded connection to group")
-			rand.Seed(time.Now().UnixNano())
-			index := rand.Intn(len(b.devicePool.groupPools[groupID]))
-			b.devicePool.groupPools[groupID][index].shutdown()
-			b.devicePool.groupPools[groupID][index].closer.Wait()
-			b.prunePool(poolTypeGroup, groupID)
-		}
-
 	}
 
 	// Close any extra connections to any users
@@ -412,56 +423,13 @@ func (b *Bounce) closeUnusedConnections() {
 
 		// Prune the pool
 		b.prunePool(poolTypeUser, userID)
-
-		// If there are more connections than needed, close one at random
-		if len(b.devicePool.userPools[userID]) > connectionsPerThread {
-			log.WithFields(log.Fields{
-				"user_id": userID,
-			}).Debug("closing unneeded connection to user")
-			rand.Seed(time.Now().UnixNano())
-			index := rand.Intn(len(b.devicePool.userPools[userID]))
-			b.devicePool.userPools[userID][index].shutdown()
-			b.devicePool.userPools[userID][index].closer.Wait()
-			b.prunePool(poolTypeUser, userID)
-		}
 	}
 	b.devicePool.poolMutex.Unlock()
 
 	// If a device has more sockets open than needed, close one at random
 	b.devicePool.deviceMutex.Lock()
-	for addr, rd := range b.devicePool.devices {
-		if rd.connectedSockets.Load() > connectionsPerDevice {
-			log.WithFields(log.Fields{
-				"connected_sockets": rd.connectedSockets.Load(),
-				"desired_sockets":   connectionsPerDevice,
-			}).Debug("closing a socket to a device")
-
-			// Collect the keys
-			keys := []uuid.UUID{}
-			for k, _ := range rd.shutdownReceivers {
-				keys = append(keys, k)
-			}
-			if len(keys) < 1 {
-				continue
-			}
-
-			// Choose a random key
-			rand.Seed(time.Now().UnixNano())
-			index := rand.Intn(len(keys))
-			key := keys[index]
-
-			// Close that socket
-			select {
-			case rd.shutdownReceivers[key] <- true:
-			default:
-				log.WithFields(log.Fields{
-					"address":           addr,
-					"connected_sockets": rd.connectedSockets.Load(),
-					"desired_sockets":   connectionsPerDevice,
-				}).Warn("failed to close socket on remote device")
-			}
-
-		}
+	for _, rd := range b.devicePool.devices {
+		rd.pruneSockets()
 	}
 	b.devicePool.deviceMutex.Unlock()
 }
@@ -474,7 +442,7 @@ func (b *Bounce) dialMissingSockets() {
 		if b.devicePool.isRevoked(address) {
 			continue
 		}
-		if rd.connectedSockets.Load() > 0 && rd.connectedSockets.Load() < connectionsPerDevice {
+		if rd.connectedSockets() > 0 && rd.connectedSockets() < connectionsPerDevice {
 			go b.tryDialing(address)
 		}
 	}
@@ -714,7 +682,7 @@ func (b *Bounce) prunePool(poolType int, id uuid.UUID) {
 		}
 		alivePool := []*remoteDevice{}
 		for _, rd := range b.devicePool.userPools[id] {
-			if rd.connectedSockets.Load() > 0 {
+			if rd.connectedSockets() > 0 {
 				alivePool = append(alivePool, rd)
 			}
 		}
@@ -726,7 +694,7 @@ func (b *Bounce) prunePool(poolType int, id uuid.UUID) {
 		}
 		alivePool := []*remoteDevice{}
 		for _, rd := range b.devicePool.groupPools[id] {
-			if rd.connectedSockets.Load() > 0 {
+			if rd.connectedSockets() > 0 {
 				alivePool = append(alivePool, rd)
 			}
 		}
@@ -819,7 +787,7 @@ func (b *Bounce) updateUserOnlineStatus(address string) {
 	rd := b.getRemoteDevice(address)
 
 	// Check if the user is currently online
-	online := rd.connectedSockets.Load() > 0
+	online := rd.connectedSockets() > 0
 
 	// Track sync devices on a per-device basis
 	if deviceOwner == u.ID {

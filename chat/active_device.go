@@ -74,7 +74,7 @@ func (b *Bounce) CurrentDeviceActive() {
 			continue
 		}
 		rd := b.getRemoteDevice(dev.Address)
-		if rd.connectedSockets.Load() > 0 {
+		if rd.connectedSockets() > 0 {
 			go func(dst chan sendable, msg sendable) {
 				dst <- msg
 			}(rd.messages, activeDevice{})

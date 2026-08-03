@@ -763,7 +763,7 @@ func (b *Bounce) rollKeys() error {
 	}
 	for _, esd := range allESDs {
 		rd := b.getRemoteDevice(esd.Address)
-		if rd.connectedSockets.Load() > 0 {
+		if rd.connectedSockets() > 0 {
 			esdks := keySet{
 				PublicECDSAKey: ks.PublicECDSAKey,
 				PublicECDHKey:  ks.PublicECDHKey,

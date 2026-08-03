@@ -1099,7 +1099,7 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 	}
 	for address, _ := range addressesToSendTo {
 		rd := b.getRemoteDevice(address)
-		if rd.connectedSockets.Load() > 0 {
+		if rd.connectedSockets() > 0 {
 			go b.sendDirect(address, eco)
 		}
 	}
@@ -1699,7 +1699,7 @@ func (b *Bounce) offerChunk(c chunk) {
 		if len(u.EncryptedDevices) > 0 {
 			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
 				rd := b.getRemoteDevice(addr)
-				if rd.connectedSockets.Load() > 0 {
+				if rd.connectedSockets() > 0 {
 					b.sendDirect(addr, sr)
 				}
 			}

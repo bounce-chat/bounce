@@ -129,7 +129,7 @@ func (b *Bounce) sendReferences(peer string) {
 	}
 
 	rd := b.getRemoteDevice(peer)
-	if rd.connectedSockets.Load() < 1 {
+	if rd.connectedSockets() < 1 {
 		// Can't send references to a device we're not connected to
 		return
 	}

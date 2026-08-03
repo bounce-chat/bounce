@@ -170,7 +170,7 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadc
 	// Inform the UI if this is a new sync device
 	if d.UserID == b.currentUserID() {
 		rd := b.getRemoteDevice(d.Address)
-		online := rd.connectedSockets.Load() > 0
+		online := rd.connectedSockets() > 0
 		var lastSeen int64
 		if peer == d.Address {
 			lastSeen = time.Now().Unix()

@@ -1478,7 +1478,7 @@ func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
 	for _, addr := range addresses {
 		// TODO: check if blocked / revoked?
 		rd := b.getRemoteDevice(addr)
-		if rd.connectedSockets.Load() >= 1 {
+		if rd.connectedSockets() >= 1 {
 			go b.sendReferences(addr)
 		}
 	}
@@ -1581,7 +1581,7 @@ func (b *Bounce) onlineEncryptedDevicesInGroup(groupID uuid.UUID) []string {
 		if len(u.EncryptedDevices) > 0 {
 			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
 				rd := b.getRemoteDevice(addr)
-				if rd.connectedSockets.Load() >= 1 {
+				if rd.connectedSockets() >= 1 {
 					addrs = append(addrs, addr)
 				}
 			}

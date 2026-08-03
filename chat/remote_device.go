@@ -1,72 +1,112 @@
 package chat
 
 import (
-	"bytes"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 type remoteDevice struct {
-	connectedSockets       atomic.Int64
-	messages               chan sendable
-	chunks                 chan sendable
-	shutdownReceivers      map[uuid.UUID]chan bool
-	shutdownReceiversMutex sync.Mutex
-	closer                 sync.WaitGroup
+	sync.Mutex
+	messages chan sendable
+	chunks   chan sendable
+	sockets  []*socket
 }
 
 func newRemoteDevice() *remoteDevice {
-	return &remoteDevice{
-		connectedSockets:  atomic.Int64{},
-		messages:          make(chan sendable),
-		chunks:            make(chan sendable),
-		shutdownReceivers: make(map[uuid.UUID]chan bool),
+	rd := &remoteDevice{
+		messages: make(chan sendable),
+		chunks:   make(chan sendable),
+		sockets:  make([]*socket, 0),
 	}
+
+	return rd
+}
+
+func (rd *remoteDevice) connectedSockets() int {
+	rd.Lock()
+	defer rd.Unlock()
+
+	count := 0
+	for _, s := range rd.sockets {
+		s.Lock()
+		if s.alive && time.Since(s.lastRead) < 60*time.Second {
+			count += 1
+		}
+		s.Unlock()
+	}
+	return count
+}
+
+func (rd *remoteDevice) pruneSockets() {
+	rd.Lock()
+	defer rd.Unlock()
+
+	aliveSockets := []*socket{}
+	for _, s := range rd.sockets {
+		s.Lock()
+		alive := s.alive
+		recentRead := time.Since(s.lastRead) < 60*time.Second
+		s.Unlock()
+		if alive && recentRead {
+			aliveSockets = append(aliveSockets, s)
+		} else {
+			s.close()
+		}
+	}
+	rd.sockets = aliveSockets
+	for i, s := range rd.sockets {
+		s.Lock()
+		if i == 0 {
+			s.chunkDuty = true
+		} else {
+			s.chunkDuty = false
+		}
+		s.Unlock()
+	}
+
+	if len(rd.sockets) > connectionsPerDevice {
+		extra := rd.sockets[len(rd.sockets)-1]
+		rd.sockets = rd.sockets[:len(rd.sockets)-1]
+		extra.close()
+	}
+}
+
+func (rd *remoteDevice) addSocket(s *socket) {
+	rd.Lock()
+	defer rd.Unlock()
+
+	rd.sockets = append(rd.sockets, s)
 }
 
 func (rd *remoteDevice) shutdown() {
-	rd.shutdownReceiversMutex.Lock()
-	receivers := make([]chan bool, 0, len(rd.shutdownReceivers))
-	for _, r := range rd.shutdownReceivers {
-		receivers = append(receivers, r)
-	}
-	rd.shutdownReceiversMutex.Unlock()
-	for _, r := range receivers {
-		r <- true
+	rd.Lock()
+	defer rd.Unlock()
+	for _, s := range rd.sockets {
+		s.close()
 	}
 }
 
-func (rd *remoteDevice) chunkDuty(writer uuid.UUID) bool {
-	// Whichever writer has the lowest ID is responsible for sending chunks
-	rd.shutdownReceiversMutex.Lock()
-	defer rd.shutdownReceiversMutex.Unlock()
+type socket struct {
+	sync.Mutex
+	underlying net.Conn
+	alive      bool
+	lastRead   time.Time
+	chunkDuty  bool
+	closer     chan bool
+	closeOnce  sync.Once
+}
 
-	if len(rd.shutdownReceivers) == 1 {
-		return true
-	}
-
-	uuidList := []uuid.UUID{}
-	for id, _ := range rd.shutdownReceivers {
-		uuidList = append(uuidList, id)
-	}
-
-	if len(uuidList) == 0 {
-		return true
-	}
-
-	lowest := uuidList[0]
-	for _, id := range uuidList {
-		if bytes.Compare(id[:], lowest[:]) < 0 {
-			lowest = id
-		}
-	}
-
-	return writer == lowest
+func (s *socket) close() {
+	s.closeOnce.Do(func() {
+		s.Lock()
+		s.alive = false
+		s.Unlock()
+		close(s.closer)
+		s.underlying.Close()
+	})
 }
 
 func (b *Bounce) getRemoteDevice(address string) *remoteDevice {
@@ -86,9 +126,18 @@ func (b *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	peer := conn.RemoteAddr().String()
 	rd := b.getRemoteDevice(peer)
 
+	s := &socket{
+		underlying: conn,
+		alive:      true,
+		lastRead:   time.Now(),
+		closer:     make(chan bool),
+	}
+	rd.addSocket(s)
+	rd.pruneSockets()
+
 	// Read and write frames from this socket
-	go b.readFrames(conn)
-	go b.writeFrames(rd, conn)
+	go b.readFrames(s)
+	go b.writeFrames(rd, s)
 
 	if !b.encrypted {
 		// Associate this device with a user if there is one
@@ -139,9 +188,9 @@ func (b *Bounce) getDeviceOrEncryptedSyncDevice(peer string) (bool, bool, device
 	return deviceIsKnown, deviceIsEncrypted, dev, esd
 }
 
-func (b *Bounce) readFrames(conn net.Conn) {
+func (b *Bounce) readFrames(s *socket) {
 	handlers := b.getHandlers(b.encrypted)
-	peer := conn.RemoteAddr().String()
+	peer := s.underlying.RemoteAddr().String()
 
 	var profile user
 	var profileExists bool
@@ -161,10 +210,14 @@ func (b *Bounce) readFrames(conn net.Conn) {
 	}
 
 	for {
-		frameType, data, err := readFrame(conn, deviceIsKnown || b.encrypted || deviceIsAnotherUsersEncryptedDevice)
+		frameType, data, err := readFrame(s.underlying, deviceIsKnown || b.encrypted || deviceIsAnotherUsersEncryptedDevice)
 		if err != nil {
+			s.close()
 			return
 		}
+		s.Lock()
+		s.lastRead = time.Now()
+		s.Unlock()
 
 		if b.devicePool.isRevoked(peer) {
 			// Drop all frames from revoked devices unless they are reference requests or keep alives
@@ -174,7 +227,7 @@ func (b *Bounce) readFrames(conn net.Conn) {
 		}
 
 		if blockedUser(dev.UserID) {
-			conn.Close()
+			s.close()
 			return
 		}
 
@@ -252,35 +305,20 @@ func (b *Bounce) readFrames(conn net.Conn) {
 	}
 }
 
-func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
+func (b *Bounce) writeFrames(rd *remoteDevice, s *socket) {
 	if b.shutdownStarted.Load() {
 		return
 	}
-	rd.connectedSockets.Add(1)
-	b.updateUserOnlineStatus(conn.RemoteAddr().String())
-	rd.closer.Add(1)
-	defer rd.closer.Done()
-
-	writerID := uuid.New()
-	rd.shutdownReceiversMutex.Lock()
-	shutdownReceiver := make(chan bool)
-	rd.shutdownReceivers[writerID] = shutdownReceiver
-	rd.shutdownReceiversMutex.Unlock()
-
+	b.updateUserOnlineStatus(s.underlying.RemoteAddr().String())
 	encryptedHandlers := b.getHandlers(true)
-	defer func() {
-		rd.shutdownReceiversMutex.Lock()
-		delete(rd.shutdownReceivers, writerID)
-		rd.shutdownReceiversMutex.Unlock()
-	}()
 
 	writeChunk := func(br sendable) error {
-		if b.devicePool.isRevoked(conn.RemoteAddr().String()) {
+		if b.devicePool.isRevoked(s.underlying.RemoteAddr().String()) {
 			// Only send revoked devices frames that are used to tell them they are revoked, and keep alives
 			if !(br.getType() == typeReferenceOffer || br.getType() == typeCatchUp || br.getType() == typeUpdateDevice || br.getType() == typeKeepAlive || br.getType() == typeAck) {
 				log.WithFields(log.Fields{
 					"type": br.getType(),
-					"peer": conn.RemoteAddr().String(),
+					"peer": s.underlying.RemoteAddr().String(),
 				}).Warn("attempt to send unexpected frame to revoked device")
 				return nil
 			}
@@ -288,32 +326,31 @@ func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 
 		// Make sure only frames that can be sent to encrypted devices get sent to encrypted devices
 		encryptedDeviceCacheMutex.Lock()
-		_, encryptedDevice := encryptedDeviceCache[conn.RemoteAddr().String()]
+		_, encryptedDevice := encryptedDeviceCache[s.underlying.RemoteAddr().String()]
 		encryptedDeviceCacheMutex.Unlock()
 		if encryptedDevice {
 			if _, ok := encryptedHandlers[br.getType()]; !ok {
 				log.WithFields(log.Fields{
 					"type": br.getType(),
-					"peer": conn.RemoteAddr().String(),
+					"peer": s.underlying.RemoteAddr().String(),
 				}).Error("refusing to send frame that cannot be handled on encrypted device to encrypted device")
 				return nil
 			}
 		}
 
-		err := writeFrame(conn, br.getType(), br.getPayload())
+		err := writeFrame(s.underlying, br.getType(), br.getPayload())
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-				"peer":  conn.RemoteAddr().String(),
+				"peer":  s.underlying.RemoteAddr().String(),
 				"type":  br.getType(),
 			}).Debug("error writing frame")
-			rd.connectedSockets.Add(-1)
-			b.updateUserOnlineStatus(conn.RemoteAddr().String())
+			b.updateUserOnlineStatus(s.underlying.RemoteAddr().String())
 
 			// If this socket died during a write, but there are other sockets that might still be alive,
 			// send references for anything that might not have made it through this socket
-			if rd.connectedSockets.Load() > 0 && !b.encrypted {
-				go b.sendReferences(conn.RemoteAddr().String())
+			if rd.connectedSockets() > 0 && !b.encrypted {
+				go b.sendReferences(s.underlying.RemoteAddr().String())
 			}
 			return err
 		}
@@ -324,44 +361,46 @@ func (b *Bounce) writeFrames(rd *remoteDevice, conn net.Conn) {
 	for {
 		// Only one socket at a time is responsible for sending chunks, in order to keep other
 		// frames delivering in a low latency way while a large file is being transferred
-		if rd.chunkDuty(writerID) {
+		s.Lock()
+		chunkDuty := s.chunkDuty
+		s.Unlock()
+		if chunkDuty {
 			select {
-			case <-shutdownReceiver:
+			case <-s.closer:
 				log.WithFields(log.Fields{
-					"peer": conn.RemoteAddr().String(),
+					"peer": s.underlying.RemoteAddr().String(),
 				}).Debug("closing connection")
-				rd.connectedSockets.Add(-1)
 				if !b.shutdownStarted.Load() {
-					b.updateUserOnlineStatus(conn.RemoteAddr().String())
+					b.updateUserOnlineStatus(s.underlying.RemoteAddr().String())
 				}
-				conn.Close()
 				return
 			case br := <-rd.messages:
 				err := writeChunk(br)
 				if err != nil {
+					s.close()
 					return
 				}
 			case br := <-rd.chunks:
 				err := writeChunk(br)
 				if err != nil {
+					s.close()
 					return
 				}
 			}
 		} else {
 			select {
-			case <-shutdownReceiver:
+			case <-s.closer:
 				log.WithFields(log.Fields{
-					"peer": conn.RemoteAddr().String(),
+					"peer": s.underlying.RemoteAddr().String(),
 				}).Debug("closing connection")
-				rd.connectedSockets.Add(-1)
 				if !b.shutdownStarted.Load() {
-					b.updateUserOnlineStatus(conn.RemoteAddr().String())
+					b.updateUserOnlineStatus(s.underlying.RemoteAddr().String())
 				}
-				conn.Close()
 				return
 			case br := <-rd.messages:
 				err := writeChunk(br)
 				if err != nil {
+					s.close()
 					return
 				}
 			}
