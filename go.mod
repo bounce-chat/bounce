@@ -2,13 +2,10 @@ module github.com/bounce-chat/bounce
 
 go 1.26
 
-replace fyne.io/fyne/v2 => ./fyne
-
 replace github.com/bounce-chat/go-arti => ./go-arti
 
 require (
-	fyne.io/fyne/v2 v2.7.4
-	github.com/AndroidGoLab/jni v0.0.8
+	fyne.io/fyne/v2 v2.8.0
 	github.com/Basekick-Labs/msgpack/v6 v6.1.0
 	github.com/DeRuina/timberjack v1.4.5
 	github.com/alecthomas/assert/v2 v2.11.0
@@ -21,6 +18,7 @@ require (
 	github.com/piglig/go-qr v1.1.0
 	github.com/rymdport/go-qrcode v1.2.1
 	github.com/sirupsen/logrus v1.9.4
+	github.com/svanichkin/gocam v0.1.0
 	github.com/zeebo/blake3 v0.2.4
 	golang.org/x/image v0.44.0
 	gorm.io/driver/sqlite v1.6.0
@@ -35,6 +33,7 @@ require (
 	github.com/anthonynsimon/bild v0.14.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/fredbi/uri v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/fyne-io/gl-js v0.2.1-0.20260315212741-029c47fd27e8 // indirect
 	github.com/fyne-io/glfw-js v0.4.0 // indirect
@@ -63,7 +62,6 @@ require (
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
-	github.com/svanichkin/gocam v0.1.0 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
 	golang.org/x/crypto v0.54.0 // indirect

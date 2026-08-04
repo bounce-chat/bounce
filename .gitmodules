@@ -1,7 +1,3 @@
-[submodule "fyne"]
-	path = fyne
-	url = ../fyne
-	branch = fyne-2.8-bounce
 [submodule "go-arti"]
 	path = go-arti
 	url = ../go-arti

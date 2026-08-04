@@ -12,7 +12,6 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/driver/sensor"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -122,9 +121,8 @@ func (ui *ui) buildAddUser() {
 	})
 	ui.widgets.addUser.shareButton.Importance = widget.HighImportance
 	ui.widgets.addUser.scanButton = widget.NewButton("Scan", func() {
-		cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
-		if isCameraDevice && !cameraIsRunning {
-			cameraDevice.StartPreview()
+		if cameraSupported() && !cameraIsRunning {
+			startCameraPreview()
 			cameraIsRunning = true
 			cameraRunningFor = viewTypeAddUser
 			go ui.processCameraFramesForAddUser()
@@ -136,7 +134,7 @@ func (ui *ui) buildAddUser() {
 
 		ui.containers.addUserContent.Objects = []fyne.CanvasObject{ui.containers.scanUser}
 		ui.containers.addUserContent.Refresh()
-		if !isCameraDevice {
+		if !cameraSupported() {
 			ui.window.Canvas().Focus(ui.widgets.addUser.scanEntry)
 		}
 	})
@@ -157,8 +155,6 @@ func (ui *ui) buildAddUser() {
 }
 
 func (ui *ui) buildScanUser() {
-	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
-
 	ui.widgets.addUser = &addUser{
 		currentStep: widget.NewLabel(""),
 		progressBar: widget.NewProgressBarInfinite(),
@@ -202,8 +198,8 @@ func (ui *ui) buildScanUser() {
 					ui.widgets.addUser.currentStep.Hide()
 					ui.containers.scanUser.Refresh()
 					ui.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), ui.window), func() {
-						if isCameraDevice && !cameraIsRunning {
-							cameraDevice.StartPreview()
+						if cameraSupported() && !cameraIsRunning {
+							startCameraPreview()
 							go ui.processCameraFramesForAddUser()
 							cameraIsRunning = true
 							cameraRunningFor = viewTypeAddUser
@@ -214,7 +210,7 @@ func (ui *ui) buildScanUser() {
 		}()
 	}
 
-	if isCameraDevice {
+	if cameraSupported() {
 		size := float32(300)
 
 		ui.widgets.addUser.videoStream = &canvas.Image{
@@ -240,7 +236,7 @@ func (ui *ui) buildScanUser() {
 						}
 						haveResult.Store(true)
 						if cameraIsRunning {
-							cameraDevice.StopPreview()
+							stopCameraPreview()
 							cameraIsRunning = false
 							select {
 							case stopAddUserCameraProcessing <- true:
@@ -326,15 +322,14 @@ func (ui *ui) AddUserRequestRejected(peer string) {
 }
 
 func (ui *ui) processCameraFramesForAddUser() {
-	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
-	if !isCameraDevice {
+	if !cameraSupported() {
 		return
 	}
-	preview := cameraDevice.Preview()
+	p := cameraPreview()
 
 	for {
 		select {
-		case img := <-preview:
+		case img := <-p:
 			fyne.Do(func() {
 				if ui.widgets.addUser.videoStream == nil {
 					return

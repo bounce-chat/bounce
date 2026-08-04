@@ -12,7 +12,6 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/driver/sensor"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -76,7 +75,6 @@ func (ui *ui) showDisplaySyncString() {
 }
 
 func (ui *ui) buildDisplaySyncString() {
-	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
 	ui.widgets.addSyncDevice = &addSyncDevice{}
 	ui.buildDisplayStandardSyncString()
 	ui.buildInputEncryptedSyncString()
@@ -106,8 +104,8 @@ func (ui *ui) buildDisplaySyncString() {
 	})
 	ui.widgets.addSyncDevice.standardHeader.Importance = widget.HighImportance
 	ui.widgets.addSyncDevice.encryptedHeader = widget.NewButton("Encrypted", func() {
-		if isCameraDevice && !cameraIsRunning {
-			cameraDevice.StartPreview()
+		if cameraSupported() && !cameraIsRunning {
+			startCameraPreview()
 			cameraIsRunning = true
 			cameraRunningFor = cameraRunningForNewEncryptedDevice
 			go ui.processCameraFramesForNewEncryptedDevice()
@@ -119,7 +117,7 @@ func (ui *ui) buildDisplaySyncString() {
 
 		ui.containers.addSyncDeviceContent.Objects = []fyne.CanvasObject{ui.containers.inputEncryptedSyncString}
 		ui.containers.addSyncDeviceContent.Refresh()
-		if !isCameraDevice {
+		if !cameraSupported() {
 			ui.window.Canvas().Focus(ui.widgets.addSyncDevice.encryptedEntry)
 		}
 	})
@@ -161,7 +159,6 @@ func (ui *ui) buildDisplayStandardSyncString() {
 }
 
 func (ui *ui) buildInputEncryptedSyncString() {
-	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
 	title := widget.NewLabel("Paste the sync string from the new encrypted device here:")
 
 	ui.widgets.addSyncDevice.currentStep = widget.NewLabel("")
@@ -198,8 +195,8 @@ func (ui *ui) buildInputEncryptedSyncString() {
 					ui.widgets.addSyncDevice.currentStep.Hide()
 					ui.containers.scanUser.Refresh()
 					ui.showDialog(dialog.NewError(errors.New("Error sending management request: "+err.Error()), ui.window), func() {
-						if isCameraDevice && !cameraIsRunning {
-							cameraDevice.StartPreview()
+						if cameraSupported() && !cameraIsRunning {
+							startCameraPreview()
 							cameraIsRunning = true
 							cameraRunningFor = cameraRunningForNewEncryptedDevice
 							go ui.processCameraFramesForNewEncryptedDevice()
@@ -214,7 +211,7 @@ func (ui *ui) buildInputEncryptedSyncString() {
 		}()
 	}
 
-	if isCameraDevice {
+	if cameraSupported() {
 		size := float32(300)
 
 		ui.widgets.addSyncDevice.videoStream = &canvas.Image{
@@ -240,7 +237,7 @@ func (ui *ui) buildInputEncryptedSyncString() {
 						}
 						haveResult.Store(true)
 						if cameraIsRunning {
-							cameraDevice.StopPreview()
+							stopCameraPreview()
 							cameraIsRunning = false
 							select {
 							case stopNewEncryptedDeviceCameraProcessing <- true:
@@ -312,11 +309,10 @@ func (ui *ui) EncryptedDeviceAdded() {
 }
 
 func (ui *ui) EncryptedDeviceRejected() {
-	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
 	fyne.DoAndWait(func() {
 		ui.showDialog(dialog.NewError(errors.New("Request to manage a new encrypted device was rejected"), ui.window), func() {
-			if isCameraDevice && !cameraIsRunning {
-				cameraDevice.StartPreview()
+			if cameraSupported() && !cameraIsRunning {
+				startCameraPreview()
 				cameraIsRunning = true
 				cameraRunningFor = cameraRunningForNewEncryptedDevice
 				go ui.processCameraFramesForNewEncryptedDevice()
@@ -326,15 +322,14 @@ func (ui *ui) EncryptedDeviceRejected() {
 }
 
 func (ui *ui) processCameraFramesForNewEncryptedDevice() {
-	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
-	if !isCameraDevice {
+	if !cameraSupported() {
 		return
 	}
-	preview := cameraDevice.Preview()
+	p := cameraPreview()
 
 	for {
 		select {
-		case img := <-preview:
+		case img := <-p:
 			fyne.Do(func() {
 				if ui.widgets.newSyncDevice.videoStream == nil {
 					return
