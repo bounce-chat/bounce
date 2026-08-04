@@ -51,6 +51,8 @@ import chat.bounce.ui.components.Avatar
 import chat.bounce.ui.components.AvatarPickerButton
 import chat.bounce.ui.components.LabelledRetentionPicker
 import chat.bounce.ui.components.rememberAvatarPicker
+import chat.bounce.ui.theme.ThemeChoice
+import chat.bounce.ui.theme.ThemePreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -69,6 +71,9 @@ fun SettingsScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val settings by ChatRepository.settings.collectAsStateWithLifecycle()
     val profile by ChatRepository.profile.collectAsStateWithLifecycle()
+    // Local to this device, so it comes from SharedPreferences rather than the
+    // engine - see ThemePreference for why it does not sync.
+    val themeChoice by ThemePreference.choice.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -171,6 +176,26 @@ fun SettingsScreen(onBack: () -> Unit) {
                 checked = settings.newGroupRestrictPosting,
                 onCheckedChange = { value -> scope.engine { it.setNewGroupRestrictPosting(value) } },
             )
+
+            HorizontalDivider()
+            SectionTitle(stringResource(R.string.settings_appearance))
+            Column(Modifier.padding(horizontal = 24.dp)) {
+                Text(
+                    text = stringResource(R.string.settings_theme),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Spacer(Modifier.height(6.dp))
+                ThemePicker(
+                    value = themeChoice,
+                    onValueChange = { ThemePreference.set(it) },
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.settings_theme_help),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             HorizontalDivider()
             SectionTitle(stringResource(R.string.settings_about))
@@ -302,6 +327,37 @@ private fun AutoJoinPicker(value: Int, onValueChange: (Int) -> Unit) {
                     onClick = {
                         expanded = false
                         if (index != value) onValueChange(index)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemePicker(value: ThemeChoice, onValueChange: (ThemeChoice) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    // Paired with the enum rather than indexed, so reordering the entries cannot
+    // silently relabel them the way AutoJoinPicker's positional list would.
+    val options = listOf(
+        ThemeChoice.SYSTEM to stringResource(R.string.settings_theme_system),
+        ThemeChoice.LIGHT to stringResource(R.string.settings_theme_light),
+        ThemeChoice.DARK to stringResource(R.string.settings_theme_dark),
+    )
+    val label = options.firstOrNull { it.first == value }?.second ?: options[0].second
+
+    Box {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+            Text(label, modifier = Modifier.weight(1f))
+            Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { (choice, text) ->
+                DropdownMenuItem(
+                    text = { Text(text) },
+                    onClick = {
+                        expanded = false
+                        if (choice != value) onValueChange(choice)
                     },
                 )
             }

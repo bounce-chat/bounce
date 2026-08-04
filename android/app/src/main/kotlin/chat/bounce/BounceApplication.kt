@@ -3,6 +3,7 @@ package chat.bounce
 import android.app.Application
 import chat.bounce.notifications.NotificationChannels
 import chat.bounce.service.BounceService
+import chat.bounce.ui.theme.ThemePreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,6 +35,10 @@ class BounceApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         current = this
+
+        // Before any composition, so the first frame is drawn in the scheme the
+        // user chose rather than flashing the system one and correcting itself.
+        ThemePreference.load(this)
 
         // Must precede the service start: startForeground() posts to the
         // service channel synchronously and a missing channel is fatal.

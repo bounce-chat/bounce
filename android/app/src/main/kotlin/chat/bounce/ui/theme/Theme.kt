@@ -14,6 +14,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
@@ -29,12 +31,26 @@ val BounceShapes = Shapes(
 )
 
 /**
+ * Resolves the effective scheme: the user's override if they set one, otherwise
+ * whatever the system is doing.
+ */
+@Composable
+fun isDarkTheme(): Boolean {
+    val choice by ThemePreference.choice.collectAsState()
+    return when (choice) {
+        ThemeChoice.SYSTEM -> isSystemInDarkTheme()
+        ThemeChoice.LIGHT -> false
+        ThemeChoice.DARK -> true
+    }
+}
+
+/**
  * @param dynamicColor honour the wallpaper palette on Android 12+. When off (or
  *   unsupported) the brand scheme is used, so Bounce still looks like Bounce.
  */
 @Composable
 fun BounceTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = isDarkTheme(),
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit,
 ) {
