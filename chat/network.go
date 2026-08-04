@@ -16,9 +16,8 @@ type Network interface {
 	Start(callbacks NetworkCallbacks)
 
 	// Restart asks the network provider to fully shutdown and re-initialize.  This can cause Accept to return an error once
-	// as the network is brought down.  It blocks while the network comes back up, and returns an error if it could not.
-	// That error is advisory rather than fatal: the usual cause is that there is still no internet, and the caller is
-	// expected to try again later.
+	// as the network is brought down.  It blocks while the network comes back up, and returns an error if it could not
+	// reconnect in a reasonable amount of time.
 	Restart() error
 
 	// Get the address of this device.  This must work even if the network has not been started or is offline, by generating

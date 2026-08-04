@@ -101,16 +101,16 @@ func (b *Bounce) keepRemoteDevicesPruned() {
 	}
 }
 
-// Arti seems to have trouble reconnecting after exteneded periods offlihe.  Restart the network if
+// Arti seems to have trouble reconnecting after exteneded periods offline.  Restart the network if
 // it used to be healthy, but we haven't had a connection in some time
 func (b *Bounce) monitorNetworkAndRestartWhenNeeded() {
-	time.Sleep(5 * time.Minute)
+	time.Sleep(2 * time.Minute)
 
 	lastSocketCount := b.devicePool.globallyConnectedSockets()
-	for range time.NewTicker(1 * time.Minute).C {
+	for range time.NewTicker(3 * time.Minute).C {
 		currentSocketCount := b.devicePool.globallyConnectedSockets()
 
-		if haveAcceptedConnections.Load() && lastSocketCount == 0 && currentSocketCount == 0 {
+		if (haveAcceptedConnections.Load() || haveDialedConnections.Load()) && lastSocketCount == 0 && currentSocketCount == 0 {
 			b.networkIsOnline = false
 			b.ui.NetworkOffline()
 			log.Debug("network failure detected, restarting network")
@@ -479,6 +479,7 @@ func (b *Bounce) connectToCustomScopes(desiredConnections int) {
 
 func (b *Bounce) closeUnusedConnections() {
 	b.devicePool.poolMutex.Lock()
+	defer b.devicePool.poolMutex.Unlock()
 
 	// Close any extra connections to any groups
 	for groupID, _ := range b.devicePool.groupPools {
@@ -497,14 +498,6 @@ func (b *Bounce) closeUnusedConnections() {
 		// Prune the pool
 		b.prunePool(poolTypeUser, userID)
 	}
-	b.devicePool.poolMutex.Unlock()
-
-	// If a device has more sockets open than needed, close one at random
-	b.devicePool.deviceMutex.Lock()
-	for _, rd := range b.devicePool.devices {
-		rd.pruneSockets()
-	}
-	b.devicePool.deviceMutex.Unlock()
 }
 
 func (b *Bounce) dialMissingSockets() {
@@ -698,6 +691,7 @@ func (b *Bounce) tryDialing(address string) bool {
 		log.WithFields(log.Fields{
 			"peer": address,
 		}).Debug("dialed")
+		haveAcceptedConnections.Store(true)
 		b.insertConnectionIntoDevicePool(conn)
 		return true
 	}

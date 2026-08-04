@@ -13,6 +13,7 @@ import (
 // Atomic because the accept loop writes it while the monitor goroutine reads
 // it on its own timer.
 var haveAcceptedConnections atomic.Bool
+var haveDialedConnections atomic.Bool
 
 func (b *Bounce) NetworkOnline() bool {
 	return b.networkIsOnline
