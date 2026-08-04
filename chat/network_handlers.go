@@ -1,8 +1,19 @@
 package chat
 
 import (
+	"sync/atomic"
+
 	log "github.com/sirupsen/logrus"
 )
+
+// haveAcceptedConnections records whether this process has ever accepted an
+// inbound connection. It gates the restart monitor, so that a fresh install
+// with no peers yet is never mistaken for a network that has gone dead.
+//
+// Atomic because the accept loop writes it while the monitor goroutine reads
+// it on its own timer.
+var haveAcceptedConnections atomic.Bool
+var haveDialedConnections atomic.Bool
 
 func (b *Bounce) NetworkOnline() bool {
 	return b.networkIsOnline
@@ -58,6 +69,7 @@ func (b *Bounce) acceptConnections() {
 				}).Debug("error accepting connection")
 			}
 		} else {
+			haveAcceptedConnections.Store(true)
 			log.WithFields(log.Fields{
 				"peer": conn.RemoteAddr().String(),
 			}).Debug("accepted connection")

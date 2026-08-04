@@ -52,6 +52,8 @@ func (t *testnet) Start(callbacks NetworkCallbacks) {
 	select {}
 }
 
+func (t *testnet) Restart() error { return nil }
+
 func (t *testnet) Address() string {
 	return torutil.OnionServiceIDFromV3PublicKey(t.publicKey)
 }

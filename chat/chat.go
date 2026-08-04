@@ -174,12 +174,11 @@ func (b *Bounce) Shutdown() {
 		b.devicePool.deviceMutex.Lock()
 		defer b.devicePool.deviceMutex.Unlock()
 
+		var waiter sync.WaitGroup
 		for _, rd := range b.devicePool.devices {
-			rd.shutdown()
+			waiter.Go(rd.shutdown)
 		}
-		for _, rd := range b.devicePool.devices {
-			rd.closer.Wait()
-		}
+		waiter.Wait()
 		connectionsClosed <- true
 	}()
 	select {

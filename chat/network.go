@@ -15,6 +15,11 @@ type Network interface {
 	// once, and the callbacks are only used to update user interface indications of network status.
 	Start(callbacks NetworkCallbacks)
 
+	// Restart asks the network provider to fully shutdown and re-initialize.  This can cause Accept to return an error once
+	// as the network is brought down.  It blocks while the network comes back up, and returns an error if it could not
+	// reconnect in a reasonable amount of time.
+	Restart() error
+
 	// Get the address of this device.  This must work even if the network has not been started or is offline, by generating
 	// the address from the stored private key.
 	Address() string
@@ -42,6 +47,7 @@ type NetworkCallbacks struct {
 	// NetworkOnline must be called the first time the network becomes available,
 	// and any time the network recovers from an offline state
 	NetworkOnline func()
+
 	// Network offline should be called when the network believes there is no
 	// internet access
 	NetworkOffline func()

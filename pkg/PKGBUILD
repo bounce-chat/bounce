@@ -8,7 +8,7 @@ url="https://github.com/bounce-chat/bounce"
 license=('MIT')
 provides=("${pkgname}")
 conflicts=('bounce' 'bounce-bin')
-makedepends=('git' 'go')
+makedepends=('git' 'go' 'rust')
 depends=('hicolor-icon-theme' 'glibc' 'libxcursor' 'libglvnd' 'libxxf86vm' 'libxi' 'libxkbcommon' 'wayland' 'libx11' 'libxrandr' 'libxinerama')
 options+=( !debug )
 source=("${pkgname}::git+https://github.com/${pkgname}-chat/${pkgname}.git#tag=v${pkgver}"
@@ -27,8 +27,9 @@ prepare() {
 }
 
 build() {
-    cd "${srcdir}/${pkgname}"
-
+    cd "${srcdir}/${pkgname}/go-arti"
+    make lib
+    cd ..
     go build -tags migrated_fynedo
 }
 

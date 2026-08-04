@@ -553,7 +553,7 @@ func (b *Bounce) encryptedBroadcast(ef encryptedFrame) {
 		err := b.database.Where("destination = ? AND frame_id = ? AND frame_type = ?", addr, ef.ID, ef.Type).First(&dr).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			rd := b.getRemoteDevice(addr)
-			if rd.connectedSockets.Load() > 0 {
+			if rd.connectedSockets() > 0 {
 				b.sendDirect(addr, encryptedReceive{
 					ID:           ef.ID,
 					Type:         ef.Type,
@@ -694,7 +694,7 @@ func (b *Bounce) updateEncryptedClearBefore(thread uuid.UUID, timestamp int64) {
 
 	encryptedDeviceCacheMutex.Lock()
 	for addr, _ := range encryptedDeviceCache {
-		if b.getRemoteDevice(addr).connectedSockets.Load() > 0 {
+		if b.getRemoteDevice(addr).connectedSockets() > 0 {
 			go b.sendEncryptedClearBefores(addr)
 		}
 	}
@@ -806,7 +806,7 @@ func (b *Bounce) addRecipientsIfNeeded() {
 
 	for _, ar := range ars {
 		rd := b.getRemoteDevice(ar.Address)
-		if rd.connectedSockets.Load() < 1 {
+		if rd.connectedSockets() < 1 {
 			continue
 		}
 
@@ -1942,7 +1942,7 @@ func (b *Bounce) pruneEncryptedDrafts() {
 
 	for _, esd := range esds {
 		rd := b.getRemoteDevice(esd.Address)
-		if rd.connectedSockets.Load() > 0 {
+		if rd.connectedSockets() > 0 {
 			edma := encryptedDeviceManagementAction{
 				ActionType: actionTypePruneDrafts,
 				Data:       []byte(draftsPayload),

@@ -141,7 +141,7 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 	availableEncryptedDevices := map[string]*remoteDevice{}
 	for addr, _ := range allEncryptedDevices {
 		rd := b.getRemoteDevice(addr)
-		if rd.connectedSockets.Load() > 0 {
+		if rd.connectedSockets() > 0 {
 			availableEncryptedDevices[addr] = rd
 		}
 	}
@@ -393,7 +393,7 @@ func (b *Bounce) sendEncryptReKeyFrames(br broadcastable) {
 
 	for _, esd := range allESDs {
 		rd := b.getRemoteDevice(esd.Address)
-		if rd.connectedSockets.Load() < 1 {
+		if rd.connectedSockets() < 1 {
 			continue
 		}
 

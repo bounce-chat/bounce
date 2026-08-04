@@ -48,15 +48,15 @@ Bounce uses submodules, and should be cloned with:
 
 `git clone --recurse-submodules git@github.com:bounce-chat/bounce.git`
 
+Then, `cd go-arti && make lib` to generate a compiled arti library for your platform.  This will require the rust compiler.  If you plan to cross-compile windows, also run `make lib GOOS=windows`, and if you plan to build android also run `make android` in `go-arti`.
+
 #### Desktop
 
-Development builds of the desktop app can be built on linux and macOS with `go build`.  The first build will take a while as it compiles [go-libtor](https://github.com/bounce-chat/go-libtor).  Windows is cross-compiled on linux using mingw32 by running `make windows`.
+Development builds of the desktop app can be built on linux and macOS with `go build`.  Windows is cross-compiled on linux using mingw32 by running `make windows`.
 
 #### Android
 
-Android is built on linux and requires `dex2jar`, `gomobile`, and `gradle`.  Current build scripts have opinions about the location of the Android SDK that might not be appropriate for all environments.
-
-The forked fyne tools binary must first be built with `cd fyne-tools/cmd/fyne && go build`
+Android is built on linux and requires `gomobile` and `gradle`.  Current build scripts have opinions about the location of the Android SDK that might not be appropriate for all environments.
 
 Run `make android` to create `Bounce.apk`, a debuggable development build.
 

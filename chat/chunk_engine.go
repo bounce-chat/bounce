@@ -97,7 +97,7 @@ func (b *Bounce) makeAnyChunkRequests() {
 	// in which case evict that outstanding request and disfavor that peer for that hash.
 	updatedOutstandingRequests := map[string][]string{}
 	for location, requests := range b.chunkEngine.outstandingRequests {
-		if b.getRemoteDevice(location).connectedSockets.Load() <= 0 {
+		if b.getRemoteDevice(location).connectedSockets() <= 0 {
 			continue
 		}
 
@@ -162,7 +162,7 @@ func (b *Bounce) makeAnyChunkRequests() {
 				continue
 			}
 
-			if b.getRemoteDevice(option).connectedSockets.Load() <= 0 {
+			if b.getRemoteDevice(option).connectedSockets() <= 0 {
 				continue
 			}
 
@@ -196,7 +196,7 @@ func (b *Bounce) makeAnyChunkRequests() {
 
 	// Re-issue any requests that have not been downloaded by an expected time
 	for location, requests := range b.chunkEngine.outstandingRequests {
-		if b.getRemoteDevice(location).connectedSockets.Load() <= 0 {
+		if b.getRemoteDevice(location).connectedSockets() <= 0 {
 			continue
 		}
 		for _, hash := range requests {
