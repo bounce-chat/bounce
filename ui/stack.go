@@ -7,7 +7,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/mobile"
-	"fyne.io/fyne/v2/driver/sensor"
 	"github.com/google/uuid"
 	"github.com/rymdport/go-qrcode"
 	log "github.com/sirupsen/logrus"
@@ -53,9 +52,9 @@ type dialogWithCallback struct {
 }
 
 func (ui *ui) setContent(viewType int, view fyne.CanvasObject) {
-	if cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice); isCameraDevice {
+	if cameraSupported() {
 		if viewType != viewTypeAddUser && cameraIsRunning && cameraRunningFor == viewTypeAddUser {
-			cameraDevice.StopPreview()
+			stopCameraPreview()
 			cameraIsRunning = false
 			select {
 			case stopAddUserCameraProcessing <- true:
@@ -63,7 +62,7 @@ func (ui *ui) setContent(viewType int, view fyne.CanvasObject) {
 			}
 		}
 		if viewType != viewTypeNewSyncDevice && cameraIsRunning && cameraRunningFor == viewTypeNewSyncDevice {
-			cameraDevice.StopPreview()
+			stopCameraPreview()
 			cameraIsRunning = false
 			select {
 			case stopNewSyncDeviceCameraProcessing <- true:
@@ -71,7 +70,7 @@ func (ui *ui) setContent(viewType int, view fyne.CanvasObject) {
 			}
 		}
 		if viewType != viewTypeDisplaySyncString && cameraIsRunning && cameraRunningFor == cameraRunningForNewEncryptedDevice {
-			cameraDevice.StopPreview()
+			stopCameraPreview()
 			cameraIsRunning = false
 			select {
 			case stopNewEncryptedDeviceCameraProcessing <- true:
@@ -86,8 +85,8 @@ func (ui *ui) setContent(viewType int, view fyne.CanvasObject) {
 
 func (ui *ui) mobileBack() {
 	if cameraIsRunning {
-		if cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice); isCameraDevice {
-			cameraDevice.StopPreview()
+		if cameraSupported() {
+			stopCameraPreview()
 			cameraIsRunning = false
 		}
 	}

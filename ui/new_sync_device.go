@@ -14,7 +14,6 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/driver/sensor"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/bounce-chat/bounce/chat"
@@ -38,8 +37,6 @@ type newSyncDevice struct {
 }
 
 func (ui *ui) buildNewSyncDeviceWidgets() {
-	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
-
 	progressBar := widget.NewProgressBar()
 	infiniteProgressBar := widget.NewProgressBarInfinite()
 	progressBars := container.NewStack(
@@ -78,7 +75,7 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 	})
 	syncButton.Importance = widget.HighImportance
 
-	if isCameraDevice {
+	if cameraSupported() {
 		size := float32(300)
 
 		ui.widgets.newSyncDevice.videoStream = &canvas.Image{
@@ -104,7 +101,7 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 						}
 						haveResult.Store(true)
 						if cameraIsRunning {
-							cameraDevice.StopPreview()
+							stopCameraPreview()
 							cameraIsRunning = false
 							select {
 							case stopNewSyncDeviceCameraProcessing <- true:
@@ -233,9 +230,8 @@ func (ui *ui) showNewSyncDevice() {
 	ui.widgets.newSyncDevice.currentStep.Text = ""
 	ui.widgets.newSyncDevice.currentStep.Refresh()
 
-	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
-	if isCameraDevice && !cameraIsRunning {
-		cameraDevice.StartPreview()
+	if cameraSupported() && !cameraIsRunning {
+		startCameraPreview()
 		cameraIsRunning = true
 		cameraRunningFor = viewTypeNewSyncDevice
 		go ui.processCameraFramesForNewSyncDevice()
@@ -243,7 +239,6 @@ func (ui *ui) showNewSyncDevice() {
 }
 
 func (ui *ui) buildNewSyncDevice() {
-	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
 	logo := makeLogo(228, 167) // TODO: choose reasonable values here, https://github.com/fyne-io/fyne/blob/v2.0.3/cmd/fyne_demo/tutorials/welcome.go#L25
 	header := container.NewVBox(
 		container.NewCenter(logo),
@@ -305,8 +300,8 @@ func (ui *ui) buildNewSyncDevice() {
 					ui.widgets.newSyncDevice.backButton.Enable()
 					ui.widgets.newSyncDevice.syncStringInput.Show()
 					ui.showDialog(dialog.NewError(errors.New("Error sending sync request: "+err.Error()), ui.window), func() {
-						if isCameraDevice && !cameraIsRunning {
-							cameraDevice.StartPreview()
+						if cameraSupported() && !cameraIsRunning {
+							startCameraPreview()
 							cameraIsRunning = true
 							cameraRunningFor = viewTypeNewSyncDevice
 							go ui.processCameraFramesForNewSyncDevice()
@@ -349,11 +344,10 @@ func (ui *ui) SyncDeviceRequestAccepted(profile chat.User, devices []chat.Device
 }
 
 func (ui *ui) SyncDeviceRequestRejected(peer string) {
-	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
 	fyne.DoAndWait(func() {
 		ui.showDialog(dialog.NewError(errors.New("Sync request rejected, make sure you scan the device quickly"), ui.window), func() {
-			if isCameraDevice && !cameraIsRunning {
-				cameraDevice.StartPreview()
+			if cameraSupported() && !cameraIsRunning {
+				startCameraPreview()
 				cameraIsRunning = true
 				cameraRunningFor = viewTypeNewSyncDevice
 				go ui.processCameraFramesForNewSyncDevice()
@@ -418,15 +412,14 @@ func (ui *ui) InitialSyncComplete() {
 }
 
 func (ui *ui) processCameraFramesForNewSyncDevice() {
-	cameraDevice, isCameraDevice := fyne.CurrentDevice().(sensor.CameraDevice)
-	if !isCameraDevice {
+	if !cameraSupported() {
 		return
 	}
-	preview := cameraDevice.Preview()
+	p := cameraPreview()
 
 	for {
 		select {
-		case img := <-preview:
+		case img := <-p:
 			fyne.Do(func() {
 				if ui.widgets.newSyncDevice.videoStream == nil {
 					return
