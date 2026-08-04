@@ -46,6 +46,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -766,10 +768,13 @@ private fun ImageViewerDialog(
     onSave: (ImageAttachment, Uri) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var index by remember(images) { mutableStateOf(initialIndex.coerceIn(0, images.lastIndex)) }
+    val pagerState = rememberPagerState(
+        initialPage = initialIndex.coerceIn(0, images.lastIndex),
+    ) { images.size }
+    val index = pagerState.currentPage
     val attachment = images[index]
+    val scope = rememberCoroutineScope()
 
-    val context = LocalContext.current
     var pendingSave by remember { mutableStateOf<ImageAttachment?>(null) }
 
     // CreateDocument rather than writing a path ourselves: the app holds no
@@ -784,14 +789,6 @@ private fun ImageViewerDialog(
         if (destination != null && target != null) {
             onSave(target, destination)
         }
-    }
-
-    // Decoded larger than the inline bubble version: zooming into a 1024px
-    // decode just magnifies the resampling.
-    val bitmap by produceState<ImageBitmap?>(null, attachment.id) {
-        value = EngineHolder.client
-            ?.let { ImageCache.load(it, attachment.id, VIEWER_MAX_DIMENSION) }
-            ?.asImageBitmap()
     }
 
     // Reset per attachment, so paging to the next photo does not inherit the
@@ -832,52 +829,94 @@ private fun ImageViewerDialog(
             Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.scrim)
-                .onSizeChanged { boxSize = it }
-                .transformable(transformState)
-                .pointerInput(attachment.id) {
-                    detectTapGestures(
-                        // Tapping a zoomed photo zooms out rather than closing:
-                        // dismissing on the same gesture that pans is too easy
-                        // to trigger by accident.
-                        onTap = {
-                            if (scale > 1f) {
-                                scale = 1f
-                                offset = Offset.Zero
-                            } else {
-                                onDismiss()
-                            }
-                        },
-                        onDoubleTap = { tap ->
-                            if (scale > 1f) {
-                                scale = 1f
-                                offset = Offset.Zero
-                            } else {
-                                scale = DOUBLE_TAP_ZOOM
-                                // Keep the tapped point under the finger by
-                                // shifting the centre toward it.
-                                val dx = (boxSize.width / 2f - tap.x) * (DOUBLE_TAP_ZOOM - 1f)
-                                val dy = (boxSize.height / 2f - tap.y) * (DOUBLE_TAP_ZOOM - 1f)
-                                offset = clamp(Offset(dx, dy), DOUBLE_TAP_ZOOM)
-                            }
-                        },
-                    )
-                },
+                .onSizeChanged { boxSize = it },
         ) {
-            bitmap?.let {
-                Image(
-                    bitmap = it,
-                    contentDescription = stringResource(R.string.conv_photo_count, index + 1, images.size),
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                // A zoomed photo pans instead of paging - otherwise the drag
+                // that moves the image around would also flick to the next one.
+                // Zooming back out (or double-tapping) re-enables the swipe.
+                userScrollEnabled = scale == 1f,
+            ) { page ->
+                val pageAttachment = images[page]
+
+                // Decoded larger than the inline bubble version: zooming into a
+                // 1024px decode just magnifies the resampling. Per page rather
+                // than per dialog, so the neighbour the pager composes during a
+                // drag is already decoded when it lands.
+                val bitmap by produceState<ImageBitmap?>(null, pageAttachment.id) {
+                    value = EngineHolder.client
+                        ?.let { ImageCache.load(it, pageAttachment.id, VIEWER_MAX_DIMENSION) }
+                        ?.asImageBitmap()
+                }
+
+                Box(
+                    Modifier
                         .fillMaxSize()
-                        .padding(16.dp)
-                        .graphicsLayer {
-                            scaleX = scale
-                            scaleY = scale
-                            translationX = offset.x
-                            translationY = offset.y
+                        .transformable(
+                            state = transformState,
+                            // Refusing the pan at 1x is what lets the drag reach
+                            // the pager: this Box is a descendant, so without it
+                            // the transform would consume every horizontal drag
+                            // and the swipe would never page.
+                            canPan = { scale > 1f },
+                        )
+                        .pointerInput(pageAttachment.id) {
+                            detectTapGestures(
+                                // Tapping a zoomed photo zooms out rather than
+                                // closing: dismissing on the same gesture that
+                                // pans is too easy to trigger by accident.
+                                onTap = {
+                                    if (scale > 1f) {
+                                        scale = 1f
+                                        offset = Offset.Zero
+                                    } else {
+                                        onDismiss()
+                                    }
+                                },
+                                onDoubleTap = { tap ->
+                                    if (scale > 1f) {
+                                        scale = 1f
+                                        offset = Offset.Zero
+                                    } else {
+                                        scale = DOUBLE_TAP_ZOOM
+                                        // Keep the tapped point under the finger
+                                        // by shifting the centre toward it.
+                                        val dx = (boxSize.width / 2f - tap.x) * (DOUBLE_TAP_ZOOM - 1f)
+                                        val dy = (boxSize.height / 2f - tap.y) * (DOUBLE_TAP_ZOOM - 1f)
+                                        offset = clamp(Offset(dx, dy), DOUBLE_TAP_ZOOM)
+                                    }
+                                },
+                            )
                         },
-                )
+                ) {
+                    bitmap?.let {
+                        Image(
+                            bitmap = it,
+                            contentDescription = stringResource(
+                                R.string.conv_photo_count,
+                                page + 1,
+                                images.size,
+                            ),
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp)
+                                .graphicsLayer {
+                                    // The zoom belongs to the page the user is
+                                    // on. Neighbours the pager has composed for
+                                    // the drag stay unscaled.
+                                    if (page == index) {
+                                        scaleX = scale
+                                        scaleY = scale
+                                        translationX = offset.x
+                                        translationY = offset.y
+                                    }
+                                },
+                        )
+                    }
+                }
             }
             Row(
                 modifier = Modifier
@@ -911,7 +950,15 @@ private fun ImageViewerDialog(
                         .padding(24.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    TextButton(onClick = { index = (index - 1 + images.size) % images.size }) {
+                    // The buttons keep wrapping around the ends, which a swipe
+                    // deliberately does not - a drag that stops at the last
+                    // photo reads as the end of the set, but a tap on ">" is an
+                    // explicit request to keep going.
+                    TextButton(onClick = {
+                        scope.launch {
+                            pagerState.animateScrollToPage((index - 1 + images.size) % images.size)
+                        }
+                    }) {
                         Text("<", color = MaterialTheme.colorScheme.inverseOnSurface)
                     }
                     Text(
@@ -919,7 +966,11 @@ private fun ImageViewerDialog(
                         color = MaterialTheme.colorScheme.inverseOnSurface,
                         style = MaterialTheme.typography.labelMedium,
                     )
-                    TextButton(onClick = { index = (index + 1) % images.size }) {
+                    TextButton(onClick = {
+                        scope.launch {
+                            pagerState.animateScrollToPage((index + 1) % images.size)
+                        }
+                    }) {
                         Text(">", color = MaterialTheme.colorScheme.inverseOnSurface)
                     }
                 }

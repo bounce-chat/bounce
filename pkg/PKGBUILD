@@ -12,17 +12,14 @@ makedepends=('git' 'go' 'rust')
 depends=('hicolor-icon-theme' 'glibc' 'libxcursor' 'libglvnd' 'libxxf86vm' 'libxi' 'libxkbcommon' 'wayland' 'libx11' 'libxrandr' 'libxinerama')
 options+=( !debug )
 source=("${pkgname}::git+https://github.com/${pkgname}-chat/${pkgname}.git#tag=v${pkgver}"
-        "${pkgname}-fyne::git+https://github.com/${pkgname}-chat/fyne.git"
-        "${pkgname}-fyne-tools::git+https://github.com/${pkgname}-chat/tools.git")
+        "${pkgname}-go-arti::git+https://github.com/${pkgname}-chat/go-arti.git"
 sha256sums=('153b0585c94b1b2b979d21854938766d51b1294c28829b7e618607addb336351'
-            'SKIP'
             'SKIP')
 
 prepare() {
     cd "${srcdir}/${pkgname}"
 
-    git config submodule.fyne-tools.url ${srcdir}/${pkgname}-fyne-tools
-    git config submodule.fyne.url ${srcdir}/${pkgname}-fyne
+    git config submodule.go-arti.url ${srcdir}/${pkgname}-go-arti
     git -c protocol.file.allow=always submodule update
 }
 
