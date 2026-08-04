@@ -458,6 +458,9 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 			"group_id": message.Thread,
 			"error":    err.Error(),
 		}).Error("error getting group state while sending group message")
+		for _, r := range readers {
+			r.Close()
+		}
 		return
 	}
 
@@ -479,6 +482,15 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 
 	includedImageAttachments := []ImageAttachment{}
 	for _, ia := range message.ImageAttachments {
+		reader, ok := readers[ia.ID]
+		if !ok {
+			log.WithFields(log.Fields{
+				"id":   ia.ID,
+				"name": ia.Name,
+			}).Error("cannot attach image to message without reader")
+			continue
+		}
+
 		if ia.Size > EmbeddedFileLimit {
 			message.FileAttachments = append(
 				message.FileAttachments,
@@ -488,15 +500,6 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 					Size: ia.Size,
 				},
 			)
-			continue
-		}
-
-		reader, ok := readers[ia.ID]
-		if !ok {
-			log.WithFields(log.Fields{
-				"id":   ia.ID,
-				"name": ia.Name,
-			}).Error("cannot attach image to message without reader")
 			continue
 		}
 
@@ -534,7 +537,17 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 	}
 	includedFileAttachments := []FileAttachment{}
 	for _, fa := range message.FileAttachments {
+		reader, ok := readers[fa.ID]
+		if !ok {
+			log.WithFields(log.Fields{
+				"id":   fa.ID,
+				"name": fa.Name,
+			}).Error("cannot attach file to message without reader")
+			continue
+		}
+
 		if fa.Size > EmbeddedFileLimit {
+			reader.Close()
 			source, ok := sources[fa.ID]
 			if !ok {
 				log.WithFields(log.Fields{
@@ -555,15 +568,6 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 				}
 			}()
 		} else {
-			reader, ok := readers[fa.ID]
-			if !ok {
-				log.WithFields(log.Fields{
-					"id":   fa.ID,
-					"name": fa.Name,
-				}).Error("cannot attach file to message without reader")
-				continue
-			}
-
 			data, err := io.ReadAll(reader)
 			reader.Close()
 			if err != nil {

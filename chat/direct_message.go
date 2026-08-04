@@ -416,6 +416,9 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 		log.WithFields(log.Fields{
 			"user_id": message.Thread,
 		}).Warn("refusing to send DM to blocked user")
+		for _, r := range readers {
+			r.Close()
+		}
 		return
 	}
 
@@ -440,6 +443,15 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 
 	includedImageAttachments := []ImageAttachment{}
 	for _, ia := range message.ImageAttachments {
+		reader, ok := readers[ia.ID]
+		if !ok {
+			log.WithFields(log.Fields{
+				"id":   ia.ID,
+				"name": ia.Name,
+			}).Error("cannot attach image to message without reader")
+			continue
+		}
+
 		if ia.Size > EmbeddedFileLimit {
 			message.FileAttachments = append(
 				message.FileAttachments,
@@ -449,15 +461,6 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 					Size: ia.Size,
 				},
 			)
-			continue
-		}
-
-		reader, ok := readers[ia.ID]
-		if !ok {
-			log.WithFields(log.Fields{
-				"id":   ia.ID,
-				"name": ia.Name,
-			}).Error("cannot attach image to message without reader")
 			continue
 		}
 
@@ -501,7 +504,17 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 	}
 	includedFileAttachments := []FileAttachment{}
 	for _, fa := range message.FileAttachments {
+		reader, ok := readers[fa.ID]
+		if !ok {
+			log.WithFields(log.Fields{
+				"id":   fa.ID,
+				"name": fa.Name,
+			}).Error("cannot attach file to message without reader")
+			continue
+		}
+
 		if fa.Size > EmbeddedFileLimit {
+			reader.Close()
 			source, ok := sources[fa.ID]
 			if !ok {
 				log.WithFields(log.Fields{
@@ -528,15 +541,6 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 				}
 			}()
 		} else {
-			reader, ok := readers[fa.ID]
-			if !ok {
-				log.WithFields(log.Fields{
-					"id":   fa.ID,
-					"name": fa.Name,
-				}).Error("cannot attach file to message without reader")
-				continue
-			}
-
 			data, err := io.ReadAll(reader)
 			reader.Close()
 			if err != nil {
@@ -561,6 +565,7 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 					"name":  fa.Name,
 					"error": err.Error(),
 				}).Error("error distributing file attachment")
+				continue
 			}
 		}
 		includedFileAttachments = append(includedFileAttachments, fa)
