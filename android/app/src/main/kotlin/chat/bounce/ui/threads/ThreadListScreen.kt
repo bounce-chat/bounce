@@ -96,6 +96,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import chat.bounce.R
 import chat.bounce.data.ChatRepository
+import chat.bounce.ui.conversation.systemEventText
 import chat.bounce.ui.components.Avatar
 import chat.bounce.ui.components.DeliveryStatusIcon
 import chat.bounce.ui.components.EmptyState
@@ -529,6 +530,23 @@ private fun PreviewLine(row: ThreadRow) {
     }
 
     val draft = row.draft
+    val systemEvent = row.systemEvent
+
+    // A status change is the row's whole line, italic and with no author prefix,
+    // matching the desktop client's setLastAction. A draft still wins over it -
+    // unsent text the user typed is the more urgent thing to surface.
+    if (draft == null && systemEvent != null) {
+        Text(
+            text = systemEventText(systemEvent),
+            style = MaterialTheme.typography.bodyMedium,
+            fontStyle = FontStyle.Italic,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        return
+    }
+
     val draftPrefix = stringResource(R.string.thread_draft_prefix)
     val draftStyle = SpanStyle(
         color = MaterialTheme.colorScheme.error,

@@ -710,6 +710,7 @@ object ChatRepository {
                 avatarFileId = group.images.lastOrNull(),
                 lastActivity = items.lastOrNull()?.timestamp ?: group.lastActivity,
                 lastMessagePreview = previewOf(items),
+                lastSystemEvent = lastSystemEventOf(items),
                 unreadCount = unreadCount(items),
                 outgoingStatus = outgoingStatusOf(items, myId),
                 mutedUntil = group.mutedUntil,
@@ -739,6 +740,7 @@ object ChatRepository {
                 avatarFileId = user.images.lastOrNull(),
                 lastActivity = items.lastOrNull()?.timestamp ?: user.state.lastActivity,
                 lastMessagePreview = previewOf(items),
+                lastSystemEvent = lastSystemEventOf(items),
                 unreadCount = unreadCount(items),
                 outgoingStatus = outgoingStatusOf(items, myId),
                 mutedUntil = user.state.mutedUntil,
@@ -764,6 +766,7 @@ object ChatRepository {
                     avatarFileId = me.images.lastOrNull(),
                     lastActivity = items.lastOrNull()?.timestamp ?: me.state.lastActivity,
                     lastMessagePreview = previewOf(items),
+                    lastSystemEvent = lastSystemEventOf(items),
                     // Always zero: every message here is your own, and
                     // unreadCount only counts incoming ones. Called anyway so
                     // the definition of unread stays in one place.
@@ -807,15 +810,31 @@ object ChatRepository {
      * the same message.
      */
     private fun outgoingStatusOf(items: List<ConversationItem>, myId: String): DeliveryState? {
-        val message = items.lastOrNull { it is ConversationItem.Message } as? ConversationItem.Message
-            ?: return null
+        val message = items.lastOrNull() as? ConversationItem.Message ?: return null
         if (!message.outgoing) return null
         return deliveryStateOf(message, myId)
     }
 
+    /**
+     * The newest item, when it is a system event rather than a message.
+     *
+     * The row cannot build this sentence itself - it needs the user directory and
+     * localized strings - so the event is handed over whole and turned into text
+     * by the same code the conversation history uses.
+     */
+    private fun lastSystemEventOf(items: List<ConversationItem>): ConversationItem.SystemEvent? =
+        items.lastOrNull() as? ConversationItem.SystemEvent
+
+    /**
+     * Preview text for the newest item, empty when that item is a system event.
+     *
+     * Keyed off the last *item* rather than the last message on purpose: a group
+     * whose newest event is "Ada was invited" should say so, not quote a message
+     * from before it. That matches the desktop client, where thread_item.go calls
+     * setLastAction for a status change and it replaces the row's message line.
+     */
     private fun previewOf(items: List<ConversationItem>): String {
-        val message = items.lastOrNull { it is ConversationItem.Message } as? ConversationItem.Message
-            ?: return ""
+        val message = items.lastOrNull() as? ConversationItem.Message ?: return ""
         if (message.text.isNotBlank()) return message.text
         return message.imageAttachments.firstOrNull()?.name
             ?: message.fileAttachments.firstOrNull()?.name

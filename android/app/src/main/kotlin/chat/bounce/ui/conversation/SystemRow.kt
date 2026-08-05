@@ -48,11 +48,15 @@ fun SystemRow(
  * The human sentence for a system event, with "You" substituted for the local
  * user so the history reads the same way the desktop client's does.
  *
+ * Shared with the thread list, which shows this as a row's preview when a status
+ * change is the newest thing in a conversation - so the line in the inbox and the
+ * line in the history are always literally the same sentence.
+ *
  * The `when` is exhaustive with no `else` on purpose: a kind added to the engine
  * should fail this build rather than render a blank row in it.
  */
 @Composable
-private fun systemEventText(event: ConversationItem.SystemEvent): String {
+fun systemEventText(event: ConversationItem.SystemEvent): String {
     val actor = actorName(event.actorId)
     val target = targetName(event.targetUserId, event.name)
     val isSelfActor = event.actorId.isNotBlank() && event.actorId == ChatRepository.currentUserId

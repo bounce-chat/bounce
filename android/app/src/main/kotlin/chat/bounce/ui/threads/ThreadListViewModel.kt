@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import chat.bounce.R
 import chat.bounce.data.ChatRepository
+import chat.bounce.data.ConversationItem
 import chat.bounce.data.DeliveryState
 import chat.bounce.data.InitialSyncState
 import chat.bounce.data.ThreadSummary
@@ -36,6 +37,12 @@ data class ThreadRow(
     val isGroup: Boolean,
     val imageIds: List<String>,
     val preview: String,
+    /**
+     * Set when a status change is the newest thing in the thread, in which case
+     * [preview] is empty. Passed through as data rather than text because the
+     * sentence needs string resources the view model has no access to.
+     */
+    val systemEvent: ConversationItem.SystemEvent?,
     /** Non-null when an unsent draft exists; it replaces [preview]. */
     val draft: String?,
     val time: String,
@@ -249,6 +256,7 @@ private fun ThreadSummary.toRow(input: RowInputs, nowMillis: Long) = ThreadRow(
     isGroup = isGroup,
     imageIds = listOfNotNull(avatarFileId),
     preview = lastMessagePreview,
+    systemEvent = lastSystemEvent,
     // hasDraft is the summary's sort-affecting flag; the text itself lives in
     // the draft map, which also carries drafts typed on another device.
     draft = if (hasDraft) input.drafts[id]?.takeIf { it.isNotBlank() } else null,

@@ -26,11 +26,17 @@ data class ThreadSummary(
     val lastActivity: Long,
     /**
      * Text of the newest message, or the newest attachment's filename when that
-     * message has no text. Empty when the thread has only system events -
-     * their text needs the user directory and localized strings, so the thread
-     * list builds it from [ConversationItem.SystemEvent] itself.
+     * message has no text. Empty when the newest item is a system event instead;
+     * that text needs the user directory and localized strings, so the row builds
+     * it from [lastSystemEvent] itself.
      */
     val lastMessagePreview: String,
+    /**
+     * Set when the newest thing in the thread is a status change rather than a
+     * message, in which case [lastMessagePreview] is empty and the row renders
+     * this instead. Null whenever a message is newest.
+     */
+    val lastSystemEvent: ConversationItem.SystemEvent? = null,
     val unreadCount: Int,
     /**
      * Delivery state of the newest message, but only when that message is ours -
