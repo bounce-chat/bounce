@@ -83,6 +83,7 @@ class ConversationViewModel(
 
     private var draftPushJob: Job? = null
     private var lastLocalEdit = 0L
+    private var lastDraftPublish = 0L
     private var lastTypingSignal = 0L
     private var lastScrolledDown: Boolean? = null
     private val markedRead = mutableSetOf<String>()
@@ -174,6 +175,9 @@ class ConversationViewModel(
     override fun onCleared() {
         val text = localDraft.value
         draftPushJob?.cancel()
+        // Synchronously, so leaving the screen mid-keystroke cannot strand a
+        // draft that the debounce had not published yet.
+        ChatRepository.setDraft(threadId, text)
         teardownScope.launch {
             val client = engine() ?: return@launch
             client.updateDraft(threadId, text)
@@ -194,11 +198,40 @@ class ConversationViewModel(
         lastLocalEdit = System.currentTimeMillis()
         signalTyping()
 
+        // Trailing debounce with a ceiling. Rescheduling on every keystroke means
+        // a fast typist never reaches the delay and the draft is never published
+        // at all, so the wait also shrinks as time since the last publish grows
+        // and reaches zero at DRAFT_MAX_INTERVAL_MS. Typing pauses publish
+        // promptly; sustained typing publishes on a steady beat.
         draftPushJob?.cancel()
+        val sincePublish = System.currentTimeMillis() - lastDraftPublish
+        val wait = minOf(
+            DRAFT_DEBOUNCE_MS,
+            (DRAFT_MAX_INTERVAL_MS - sincePublish).coerceAtLeast(0L),
+        )
         draftPushJob = viewModelScope.launch {
-            delay(DRAFT_DEBOUNCE_MS)
-            engine()?.updateDraft(threadId, text)
+            delay(wait)
+            publishDraft(localDraft.value)
         }
+    }
+
+    /**
+     * Hands the draft to the rest of the app.
+     *
+     * The repository write is not an optimistic guess at what the engine will
+     * say - the engine never says anything. UpdateDraft caches and replicates,
+     * and the Draft event only ever arrives from *another* device, so a draft
+     * typed here reaches this device's own thread list only if we put it there.
+     *
+     * Batched onto the same schedule as the engine call rather than done per
+     * keystroke because ChatRepository.threads is SharingStarted.Eagerly, so
+     * every write rebuilds every ThreadSummary whether the inbox is on screen or
+     * not.
+     */
+    private suspend fun publishDraft(text: String) {
+        lastDraftPublish = System.currentTimeMillis()
+        ChatRepository.setDraft(threadId, text)
+        engine()?.updateDraft(threadId, text)
     }
 
     fun send(text: String, attachments: List<PendingAttachment>) {
@@ -209,6 +242,10 @@ class ConversationViewModel(
         localDraft.value = ""
         pending.update { current -> current.filterNot { it.id in sentIds } }
         draftPushJob?.cancel()
+        // The text just became a message, so the row must stop advertising it as
+        // unsent. Cleared here rather than left to the engine round trip, which
+        // never reports back.
+        ChatRepository.setDraft(threadId, "")
         // Raised here rather than after the engine call: this thread is about to
         // become the newest in the list, and the request has to be standing by
         // the time the user backs out - which can happen before a blocking send
@@ -570,6 +607,14 @@ class ConversationViewModel(
         val MAX_CHARACTERS: Int = Goengine.MaximumMessageCharacters.toInt()
 
         private const val DRAFT_DEBOUNCE_MS = 300L
+
+        /**
+         * Longest a draft can go unpublished while the user keeps typing.
+         * UpdateDraft is cheap on the engine side - marshal, sign, cache, no
+         * database write - so this is about bounding how much is lost if the
+         * process dies, not about protecting the engine.
+         */
+        private const val DRAFT_MAX_INTERVAL_MS = 2_000L
         private const val DRAFT_ADOPT_QUIET_MS = 3_000L
         private const val TYPING_THROTTLE_MS = 4_000L
         private const val STOP_TIMEOUT_MS = 5_000L
