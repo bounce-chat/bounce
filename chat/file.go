@@ -100,11 +100,18 @@ func (f *file) AfterDelete(tx *gorm.DB) error {
 	}
 	if f.embedded() || runtime.GOOS == "android" {
 		err = os.Remove(f.Path)
-		if err != nil {
+		if err != nil && !os.IsNotExist(err) {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 				"path":  f.Path,
 			}).Warn("error removing file that is being deleted from disk")
+		}
+		err = os.Remove(f.Path + downloadExtension)
+		if err != nil && !os.IsNotExist(err) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"path":  f.Path + downloadExtension,
+			}).Warn("error removing partially downloaded file from disk")
 		}
 	}
 
@@ -733,7 +740,7 @@ func (b *Bounce) getChunkData(hash string) ([]byte, error) {
 
 		// Load the chunk data from disk
 		filename := f.Path
-		if !f.embedded() && !f.Downloaded {
+		if !f.Downloaded {
 			filename += downloadExtension
 		}
 		fh, err := os.Open(filename)
@@ -1134,11 +1141,7 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 		return
 	}
 
-	// Write the data to disk
-	path := f.Path
-	if !f.embedded() {
-		path += downloadExtension
-	}
+	path := f.Path + downloadExtension
 	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -1189,16 +1192,15 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 				"error": err.Error(),
 			}).Fatal("database error setting file as downloaded")
 		}
+		err = os.Rename(f.Path+downloadExtension, f.Path)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error renaming completed file")
+		}
+
 		b.ui.FileCompleted(c.FileID)
 
-		if !f.embedded() {
-			err = os.Rename(f.Path+downloadExtension, f.Path)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error renaming completed file")
-			}
-		}
 		_, hash := checkFileHash(f.Path)
 		if hash != f.Hash {
 			log.WithFields(log.Fields{
