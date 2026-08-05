@@ -415,18 +415,32 @@ private fun ImageAttachments(
         )
     } else {
         FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(IMAGE_GRID_SPACING),
+            verticalArrangement = Arrangement.spacedBy(IMAGE_GRID_SPACING),
             maxItemsInEachRow = 2,
             modifier = Modifier.width(IMAGE_BUDGET),
         ) {
+            // Weighted rather than a fixed tile size. Two tiles at (budget -
+            // spacing) / 2 add up to the budget exactly in dp, but each value is
+            // rounded to pixels on its own, and round(a) + round(b) + round(c)
+            // can exceed round(a + b + c). At a density of 2.4375 the two tiles
+            // came to 596px inside a 595px row, so FlowRow wrapped the second one
+            // onto its own line and left half the bubble empty. Weights are
+            // divided from the row's measured pixel width, so they always fit.
             attachments.forEach { attachment ->
                 ImageAttachmentView(
                     attachment = attachment,
                     progressKey = fileProgress[attachment.id],
                     onClick = { onClick(attachment) },
-                    modifier = Modifier.size(IMAGE_TILE),
+                    modifier = Modifier
+                        .weight(1f)
+                        .aspectRatio(1f),
                 )
+            }
+            // Holds the odd image at half width instead of letting it stretch
+            // across a row of its own.
+            if (attachments.size % 2 == 1) {
+                Spacer(Modifier.weight(1f))
             }
         }
     }
@@ -886,7 +900,8 @@ internal fun formatFileSize(bytes: Long): String {
 private val AVATAR_SIZE: Dp = 28.dp
 private val BUBBLE_MAX_WIDTH: Dp = 300.dp
 private val IMAGE_BUDGET: Dp = 244.dp
-private val IMAGE_TILE: Dp = 120.dp
+/** Gap between grid tiles, horizontally and vertically. */
+private val IMAGE_GRID_SPACING: Dp = 4.dp
 private val IMAGE_MIN_HEIGHT: Dp = 96.dp
 private val IMAGE_MAX_HEIGHT: Dp = 320.dp
 
