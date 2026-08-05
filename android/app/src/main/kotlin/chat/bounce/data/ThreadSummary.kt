@@ -51,6 +51,8 @@ data class ThreadSummary(
     val mutedUntil: Long,
     val isPendingInvite: Boolean,
     val hasDraft: Boolean,
+    /** Unix seconds, 0 if never opened on this device. See [sortKey]. */
+    val lastOpened: Long = 0,
     val online: Boolean,
     /**
      * A DM to yourself. The engine treats it as an ordinary thread whose id is
@@ -59,6 +61,19 @@ data class ThreadSummary(
      */
     val isSelf: Boolean = false,
 ) {
+
+    /**
+     * What the inbox orders by, newest first.
+     *
+     * Normally the last thing that happened in the conversation - but a thread
+     * with an unsent draft counts as of when it was last opened, if that is
+     * later. Mirrors ui/thread.go's sortableThreads.Less, and the effect is that
+     * opening a thread you have a draft in lifts it to the top and it then sinks
+     * back down as other conversations move, rather than being stuck wherever
+     * its last message left it.
+     */
+    val sortKey: Long
+        get() = if (hasDraft && lastOpened > lastActivity) lastOpened else lastActivity
 
     /**
      * The engine stores "muted" as a deadline, with -1 for "never unmute", so a

@@ -136,6 +136,22 @@ object ChatRepository {
     private val _drafts = MutableStateFlow<Map<String, String>>(emptyMap())
     val drafts: StateFlow<Map<String, String>> = _drafts.asStateFlow()
 
+    /**
+     * When each thread was last opened, thread ID to unix seconds.
+     *
+     * Held here rather than read off the User/Group DTOs because
+     * SetDMLastOpened and SetGroupLastOpened write the engine's database and
+     * emit nothing, so the DTOs only carry a value that is correct as of the
+     * last snapshot. Seeded from that snapshot, then maintained by whoever opens
+     * a thread.
+     */
+    private val _lastOpened = MutableStateFlow<Map<String, Long>>(emptyMap())
+    val lastOpened: StateFlow<Map<String, Long>> = _lastOpened.asStateFlow()
+
+    fun setLastOpened(threadId: String, timestamp: Long) {
+        _lastOpened.update { it + (threadId to timestamp) }
+    }
+
     /** Thread ID to the users currently typing in it. Threads with nobody typing are absent. */
     private val _typing = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     val typing: StateFlow<Map<String, Set<String>>> = _typing.asStateFlow()
@@ -235,8 +251,9 @@ object ChatRepository {
      * `threads.value` synchronously when there is no UI collecting.
      */
     val threads: StateFlow<List<ThreadSummary>> =
-        combine(threadInputs, drafts, onlineUsers, profile) { input, draftText, online, me ->
-            buildThreads(input, draftText, online, me)
+        combine(threadInputs, drafts, onlineUsers, profile, lastOpened) {
+                input, draftText, online, me, opened ->
+            buildThreads(input, draftText, online, me, opened)
         }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     // --- lookups ---------------------------------------------------------------
@@ -278,6 +295,11 @@ object ChatRepository {
         _users.value = state.users.associateBy { it.id }
         _groups.value = state.groups.associateBy { it.id }
         _drafts.value = state.drafts.associate { it.thread to it.text }
+        _lastOpened.value = buildMap {
+            state.users.forEach { put(it.id, it.state.lastOpened) }
+            state.groups.forEach { put(it.id, it.lastOpened) }
+            state.profile?.let { put(it.id, it.state.lastOpened) }
+        }
         _fileProgress.value = state.fileProgress.associate { it.id to it.progress }
         // Presence and typing are deliberately left alone: both are edge-triggered
         // by the engine and absent from the snapshot, so resetting them here would
@@ -404,6 +426,7 @@ object ChatRepository {
         _messagesByThread.value = emptyMap()
         messageIndex.value = emptyMap()
         _drafts.value = emptyMap()
+        _lastOpened.value = emptyMap()
         _typing.value = emptyMap()
         _onlineUsers.value = emptySet()
         _networkOnline.value = false
@@ -714,6 +737,7 @@ object ChatRepository {
         draftText: Map<String, String>,
         online: Set<String>,
         me: User?,
+        opened: Map<String, Long>,
     ): List<ThreadSummary> {
         val myId = me?.id.orEmpty()
         // The row's timestamp is the newest thing that actually happened in the
@@ -741,6 +765,7 @@ object ChatRepository {
                 mutedUntil = group.mutedUntil,
                 isPendingInvite = group.isPendingInvite,
                 hasDraft = draftText[group.id]?.isNotBlank() == true,
+                lastOpened = opened[group.id] ?: 0L,
                 online = group.users.any { it.id != myId && it.id in online },
             )
         }
@@ -771,6 +796,7 @@ object ChatRepository {
                 mutedUntil = user.state.mutedUntil,
                 isPendingInvite = false,
                 hasDraft = draftText[user.id]?.isNotBlank() == true,
+                lastOpened = opened[user.id] ?: 0L,
                 online = user.id in online,
             )
         }
@@ -803,6 +829,7 @@ object ChatRepository {
                     mutedUntil = me.state.mutedUntil,
                     isPendingInvite = false,
                     hasDraft = draftText[me.id]?.isNotBlank() == true,
+                    lastOpened = opened[me.id] ?: 0L,
                     // Presence is meaningless for yourself; the row shows a
                     // note-to-self badge instead of an online dot.
                     online = false,
@@ -811,7 +838,7 @@ object ChatRepository {
             }
         }
 
-        out.sortByDescending { it.lastActivity }
+        out.sortByDescending { it.sortKey }
 
         // Thread ids arrive from three independent sources - groups, contacts,
         // and the profile - so a collision is possible in a way a single source

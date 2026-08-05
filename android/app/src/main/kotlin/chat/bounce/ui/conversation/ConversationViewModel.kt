@@ -146,6 +146,10 @@ class ConversationViewModel(
             dismissThreadNotification()
             client.setActiveThread(threadId)
             val now = System.currentTimeMillis() / 1000
+            // Recorded locally too: the engine's setters write its database and
+            // emit nothing, so without this the inbox would not reorder a
+            // drafted thread until the next launch.
+            ChatRepository.setLastOpened(threadId, now)
             if (isGroup) {
                 client.groupConnectionDesired(threadId)
                 client.setGroupLastOpened(threadId, now)
