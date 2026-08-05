@@ -147,6 +147,17 @@ object ChatRepository {
     val networkOnline: StateFlow<Boolean> = _networkOnline.asStateFlow()
 
     /**
+     * This install has been revoked by another of the user's devices.
+     *
+     * Terminal: the engine refuses to start the network while the revoked row is
+     * in its database, so this never goes back to false within a session and is
+     * deliberately left out of [clear] - dropping it during an engine restart
+     * would show "offline" for the reconnect that is never going to happen.
+     */
+    private val _deviceRevoked = MutableStateFlow(false)
+    val deviceRevoked: StateFlow<Boolean> = _deviceRevoked.asStateFlow()
+
+    /**
      * Another of our own devices is currently in the foreground. The engine
      * already uses this to suppress notifications; the UI uses it to explain why
      * this device is quiet.
@@ -253,7 +264,7 @@ object ChatRepository {
             .mapValues { (_, list) -> list.sortedBy { it.timestamp } }
         messageIndex.value = items.filterIsInstance<ConversationItem.Message>().associateBy { it.id }
 
-        if (state.deviceRevoked) emit(RepositoryEffect.ThisDeviceRevoked)
+        if (state.deviceRevoked) markDeviceRevoked()
 
         // Last, deliberately. Every assignment above is a separate StateFlow
         // write and composition runs on another thread, so a collector can
@@ -470,7 +481,25 @@ object ChatRepository {
         _onlineUsers.update { if (online) it + userId else it - userId }
     }
 
+    /**
+     * Records the revocation and forces the network flag down with it.
+     *
+     * The engine has already torn Tor down by the time this is called, but it
+     * reports that by simply never emitting NetworkOnline again rather than by
+     * emitting an offline event, so without this the last value observed would
+     * stay true and the banner would never appear.
+     */
+    fun markDeviceRevoked() {
+        _deviceRevoked.value = true
+        _networkOnline.value = false
+        emit(RepositoryEffect.ThisDeviceRevoked)
+    }
+
     fun setNetworkOnline(online: Boolean) {
+        // A revoked device is never coming back online; ignoring a late event
+        // keeps a race between the revocation and an in-flight status update
+        // from clearing the banner.
+        if (_deviceRevoked.value) return
         _networkOnline.value = online
     }
 

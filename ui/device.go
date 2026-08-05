@@ -26,8 +26,17 @@ func (ui *ui) DeviceAdded(d chat.Device) {
 }
 
 func (ui *ui) DeviceRevoked(id uuid.UUID) {
-	ui.devices.remove(id)
-	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
+	if ui.devices.isLocal(id) {
+		fyne.DoAndWait(func() {
+			ui.widgets.networkOfflineWarning.SetText("This device has been revoked")
+			ui.widgets.networkOfflineWarning.Importance = widget.DangerImportance
+			ui.widgets.networkOfflineWarning.Show()
+			ui.widgets.networkOfflineWarning.Refresh()
+		})
+	} else {
+		ui.devices.remove(id)
+		fyne.DoAndWait(func() { ui.updateDeviceStatus() })
+	}
 }
 
 func (ui *ui) DeviceRenamed(id uuid.UUID, name string) {

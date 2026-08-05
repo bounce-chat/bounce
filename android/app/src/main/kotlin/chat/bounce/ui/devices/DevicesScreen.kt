@@ -91,6 +91,9 @@ fun DevicesScreen(
 ) {
     val scope = rememberCoroutineScope()
     val devices by ChatRepository.devices.collectAsStateWithLifecycle()
+    // Pairing a new device needs a working network, which this install will
+    // never have again. The list itself stays readable.
+    val revoked by ChatRepository.deviceRevoked.collectAsStateWithLifecycle()
     val snackbars = remember { SnackbarHostState() }
 
     // Saveable: the encrypted-device path leaves for the scanner destination and
@@ -137,6 +140,7 @@ fun DevicesScreen(
                 devices = devices,
                 modifier = Modifier.padding(padding),
                 onLink = { linking = true },
+                linkEnabled = !revoked,
                 onSelect = { editing = it },
             )
         }
@@ -163,6 +167,7 @@ fun DevicesScreen(
 private fun DeviceList(
     devices: List<Device>,
     onLink: () -> Unit,
+    linkEnabled: Boolean,
     onSelect: (Device) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -179,6 +184,7 @@ private fun DeviceList(
         item {
             Button(
                 onClick = onLink,
+                enabled = linkEnabled,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
             ) {
                 Text(stringResource(R.string.link_device))

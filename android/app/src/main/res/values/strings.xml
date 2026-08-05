@@ -46,6 +46,7 @@
     <string name="threads_search_hint">Search chats</string>
     <string name="threads_more">More options</string>
     <string name="threads_offline">Network connection lost, reconnecting…</string>
+    <string name="threads_device_revoked">This device has been revoked. It can no longer send or receive messages, but your history is still here.</string>
     <string name="threads_syncing">Importing your messages…</string>
     <string name="threads_empty_title">No chats yet</string>
     <string name="threads_empty_body">Add a contact to start your first conversation. Bounce has no servers, so you add people by scanning a code.</string>

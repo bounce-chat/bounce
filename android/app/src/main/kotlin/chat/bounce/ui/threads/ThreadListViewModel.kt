@@ -71,6 +71,8 @@ data class ThreadListState(
     val rows: List<ThreadRow> = emptyList(),
     val query: String = "",
     val online: Boolean = true,
+    /** Supersedes [online]: this install has been cut off from the network. */
+    val revoked: Boolean = false,
     val syncing: Boolean = false,
     /** Set only during the determinate phase of an initial sync. */
     val syncProgress: Float? = null,
@@ -117,17 +119,26 @@ class ThreadListViewModel : ViewModel() {
             ChatRepository.typing,
         ) { threads, drafts, users, typing -> RowInputs(threads, drafts, users, typing) }
 
+    // Folded into one flow because combine's typed overloads stop at five and
+    // the state already uses all five. They belong together anyway: revocation
+    // is what connectivity means once it has happened.
+    private val connectivity: Flow<Connectivity> =
+        combine(ChatRepository.networkOnline, ChatRepository.deviceRevoked) { online, revoked ->
+            Connectivity(online = online, revoked = revoked)
+        }
+
     val state: StateFlow<ThreadListState> = combine(
         rowInputs,
-        ChatRepository.networkOnline,
+        connectivity,
         ChatRepository.initialSync,
         _query,
         minuteTick,
-    ) { input, online, sync, query, now ->
+    ) { input, net, sync, query, now ->
         ThreadListState(
             rows = input.threads.filter { it.matches(query) }.map { it.toRow(input, now) },
             query = query,
-            online = online,
+            online = net.online,
+            revoked = net.revoked,
             syncing = sync.isRunning,
             syncProgress = (sync as? InitialSyncState.Progress)?.fraction?.toFloat(),
             hasAnyThreads = input.threads.isNotEmpty(),
@@ -226,6 +237,8 @@ private data class RowInputs(
     val users: Map<String, User>,
     val typing: Map<String, Set<String>>,
 )
+
+private data class Connectivity(val online: Boolean, val revoked: Boolean)
 
 private fun ThreadSummary.matches(query: String): Boolean =
     query.isBlank() || name.contains(query.trim(), ignoreCase = true)

@@ -153,10 +153,11 @@ class EngineEventPump(
 
             "DeviceRevoked" -> {
                 val id = decode<IdPayload>(payload).id
-                // Losing our own device row means this install has been cut off;
-                // that is a full-screen state, not a list refresh.
+                // Losing our own device row means this install has been cut off
+                // from the network for good. Checked before removeDevice, which
+                // takes the row the check reads.
                 if (repo.devices.value.firstOrNull { it.id == id }?.local == true) {
-                    repo.emit(RepositoryEffect.ThisDeviceRevoked)
+                    repo.markDeviceRevoked()
                 }
                 repo.removeDevice(id)
             }

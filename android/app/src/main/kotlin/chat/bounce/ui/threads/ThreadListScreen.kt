@@ -7,6 +7,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.GppBad
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.PersonAdd
@@ -59,6 +61,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
@@ -78,6 +81,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -91,6 +95,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import chat.bounce.R
+import chat.bounce.data.ChatRepository
 import chat.bounce.ui.components.Avatar
 import chat.bounce.ui.components.DeliveryStatusIcon
 import chat.bounce.ui.components.EmptyState
@@ -152,6 +157,7 @@ fun ThreadListScreen(
                 onOpenContacts = onOpenContacts,
                 onOpenDevices = onOpenDevices,
                 onOpenSettings = onOpenSettings,
+                revoked = state.revoked,
             )
         },
         floatingActionButton = {
@@ -161,7 +167,16 @@ fun ThreadListScreen(
         },
     ) { padding ->
         Column(Modifier.padding(padding)) {
-            if (!state.online) {
+            // Revocation supersedes the offline banner rather than stacking with
+            // it. Both are true at once - a revoked device is offline by
+            // definition - but "reconnecting shortly" is the wrong thing to
+            // imply when it never will.
+            if (state.revoked) {
+                Banner(
+                    icon = Icons.Outlined.GppBad,
+                    text = stringResource(R.string.threads_device_revoked),
+                )
+            } else if (!state.online) {
                 Banner(icon = Icons.Outlined.CloudOff, text = stringResource(R.string.threads_offline))
             }
 
@@ -217,6 +232,12 @@ private fun ThreadListTopBar(
     onOpenContacts: () -> Unit,
     onOpenDevices: () -> Unit,
     onOpenSettings: () -> Unit,
+    /**
+     * Disables the pairing entries. Left visible rather than hidden: a menu that
+     * silently loses items reads as a bug, and the banner above already says
+     * why they cannot be used.
+     */
+    revoked: Boolean,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
@@ -262,7 +283,27 @@ private fun ThreadListTopBar(
                         .focusRequester(focusRequester),
                 )
             } else {
-                Text(stringResource(R.string.app_name))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Sized from the title's line height, so the mark occupies
+                    // exactly the box the text already claims and the bar does
+                    // not grow. scaledDp keeps it tracking the system font
+                    // scale; the cap stops it outgrowing the 64dp bar at the
+                    // accessibility sizes.
+                    val logoHeight = MaterialTheme.typography.titleLarge.lineHeight
+                        .scaledDp(TITLE_LOGO_MAX)
+                    Image(
+                        painter = painterResource(R.drawable.ic_bounce_logo),
+                        // Decorative: the word "Bounce" is right beside it, and
+                        // announcing the mark as well just says it twice.
+                        contentDescription = null,
+                        modifier = Modifier.size(
+                            width = logoHeight * TITLE_LOGO_ASPECT,
+                            height = logoHeight,
+                        ),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.app_name))
+                }
             }
         },
         actions = {
@@ -285,6 +326,7 @@ private fun ThreadListTopBar(
                     // has an empty contact list and nothing else here helps.
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.add_contact)) },
+                        enabled = !revoked,
                         onClick = {
                             menuOpen = false
                             onAddContact()
@@ -306,6 +348,7 @@ private fun ThreadListTopBar(
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.devices_title)) },
+                        enabled = !revoked,
                         onClick = {
                             menuOpen = false
                             onOpenDevices()
@@ -760,6 +803,10 @@ fun NewChatSheet(
     viewModel: ThreadListViewModel = viewModel(),
 ) {
     val contacts by viewModel.contacts.collectAsStateWithLifecycle()
+    // Straight from the repository rather than viewModel.state: that flow
+    // rebuilds every thread row on a minute tick, and this sheet only needs the
+    // one flag.
+    val revoked by ChatRepository.deviceRevoked.collectAsStateWithLifecycle()
     val scrimInteraction = remember { MutableInteractionSource() }
 
     Box(
@@ -785,7 +832,11 @@ fun NewChatSheet(
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                 )
 
-                EntryRow(Icons.Outlined.PersonAdd, stringResource(R.string.add_contact)) {
+                EntryRow(
+                    icon = Icons.Outlined.PersonAdd,
+                    label = stringResource(R.string.add_contact),
+                    enabled = !revoked,
+                ) {
                     onDismiss()
                     onAddContact()
                 }
@@ -823,17 +874,30 @@ fun NewChatSheet(
 }
 
 @Composable
-private fun EntryRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun EntryRow(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    // Dimmed to the same degree Material disables a control with, so a row that
+    // cannot be tapped does not read as one that simply failed to respond.
+    val tint = MaterialTheme.colorScheme.primary
+    val alpha = if (enabled) 1f else DISABLED_ALPHA
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 24.dp, vertical = 14.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Icon(icon, contentDescription = null, tint = tint.copy(alpha = alpha))
         Spacer(Modifier.width(16.dp))
-        Text(label, style = MaterialTheme.typography.bodyLarge)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = LocalContentColor.current.copy(alpha = alpha),
+        )
     }
 }
 
@@ -867,5 +931,23 @@ private fun ContactRowItem(contact: ContactRow, onClick: () -> Unit) {
  * stands alone under the timestamp rather than sharing a row with other glyphs.
  * Capped for the same reason as the bubble's - see META_ICON_MAX there.
  */
+/** Material's disabled-content opacity, applied by hand where no `enabled` flag exists. */
+private const val DISABLED_ALPHA = 0.38f
+
 private val ROW_STATUS_SIZE = 15.sp
 private val ROW_STATUS_MAX = 22.dp
+
+/**
+ * The logo's own proportions, from `ic_bounce_logo.xml` (96dp x 92dp). Applied
+ * explicitly because the drawable is wider than it is tall: constraining only
+ * the height in a Row would let the painter keep its intrinsic width and
+ * letterbox the mark inside it.
+ */
+private const val TITLE_LOGO_ASPECT = 96f / 92f
+
+/**
+ * Ceiling for the title mark. titleLarge's 28sp line height lands at 28dp for
+ * most people; the 64dp app bar has room to let that grow with the font scale,
+ * but not to 56dp.
+ */
+private val TITLE_LOGO_MAX = 36.dp

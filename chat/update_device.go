@@ -4,7 +4,6 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"errors"
-	"os"
 	"sync"
 	"time"
 
@@ -312,7 +311,6 @@ func (b *Bounce) updateDeviceState(deviceID uuid.UUID) {
 
 	if revokedAt != 0 && (d.RevokedAt == 0 || revokedAt < d.RevokedAt) {
 		if d.Address == b.network.Address() {
-			// This device has been revoked, remove all files and close the app
 			log.Info("this device has been revoked")
 			err := b.database.Table("devices").Where("id = ?", deviceID).Updates(map[string]interface{}{"revoked_at": revokedAt}).Error
 			if err != nil {
@@ -321,7 +319,8 @@ func (b *Bounce) updateDeviceState(deviceID uuid.UUID) {
 					"device_id": deviceID,
 				}).Fatal("database error updating device revoked at")
 			}
-			os.Exit(0)
+			go b.goOfflineAfterRevocation()
+			go b.ui.DeviceRevoked(deviceID)
 		} else {
 			err := b.database.Table("devices").Where("id = ?", deviceID).Updates(map[string]interface{}{"revoked_at": revokedAt}).Error
 			if err != nil {
@@ -485,6 +484,24 @@ func (b *Bounce) RenameDevice(deviceID uuid.UUID, name string) error {
 	}
 
 	return b.applyAndBroadcastUpdateDevice(ud)
+}
+
+func (b *Bounce) goOfflineAfterRevocation() {
+	b.networkIsOnline = false
+
+	b.devicePool.deviceMutex.Lock()
+	devices := make([]*remoteDevice, 0, len(b.devicePool.devices))
+	for _, rd := range b.devicePool.devices {
+		devices = append(devices, rd)
+	}
+	b.devicePool.devices = make(map[string]*remoteDevice)
+	b.devicePool.deviceMutex.Unlock()
+
+	for _, rd := range devices {
+		rd.shutdown()
+	}
+
+	b.network.Shutdown()
 }
 
 func (b *Bounce) RevokeDevice(deviceID uuid.UUID) error {

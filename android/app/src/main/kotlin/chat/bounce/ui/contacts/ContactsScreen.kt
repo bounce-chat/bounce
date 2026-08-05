@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import chat.bounce.R
+import chat.bounce.data.ChatRepository
 import chat.bounce.ui.components.Avatar
 import chat.bounce.ui.components.EmptyState
 
@@ -72,6 +73,10 @@ fun ContactsScreen(
     viewModel: ContactsViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // A revoked device can never complete the pairing handshake that adding a
+    // contact requires, so the entry points to it are disabled rather than
+    // left to fail three minutes later in awaitNetworkOnline.
+    val revoked by ChatRepository.deviceRevoked.collectAsStateWithLifecycle()
 
     Scaffold(
         modifier = modifier,
@@ -87,7 +92,7 @@ fun ContactsScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onAddContact) {
+                    IconButton(onClick = onAddContact, enabled = !revoked) {
                         Icon(
                             Icons.Outlined.PersonAdd,
                             contentDescription = stringResource(R.string.add_contact),
@@ -132,7 +137,7 @@ fun ContactsScreen(
                     title = stringResource(R.string.contacts_empty_title),
                     description = stringResource(R.string.contacts_empty_body),
                     action = {
-                        Button(onClick = onAddContact) {
+                        Button(onClick = onAddContact, enabled = !revoked) {
                             Text(stringResource(R.string.add_contact))
                         }
                     },

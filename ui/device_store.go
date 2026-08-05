@@ -48,6 +48,13 @@ func (ds *deviceStore) add(d *chat.Device) {
 	}
 }
 
+func (ds *deviceStore) isLocal(id uuid.UUID) bool {
+	ds.Lock()
+	defer ds.Unlock()
+
+	return ds.local != nil && ds.local.ID == id
+}
+
 func (ds *deviceStore) remove(id uuid.UUID) {
 	ds.Lock()
 	defer ds.Unlock()
