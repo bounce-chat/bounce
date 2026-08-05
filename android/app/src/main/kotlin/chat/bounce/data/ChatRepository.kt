@@ -158,6 +158,30 @@ object ChatRepository {
     val deviceRevoked: StateFlow<Boolean> = _deviceRevoked.asStateFlow()
 
     /**
+     * A pending request for the inbox to jump back to the top.
+     *
+     * Latched rather than sent as an effect because the thread list is not
+     * composed at the moment it is raised - sending a message means the
+     * conversation is on screen - so there is nobody listening yet. The list
+     * reads it when it next appears and calls [threadListScrolledToTop].
+     */
+    private val _scrollThreadListToTop = MutableStateFlow(false)
+    val scrollThreadListToTop: StateFlow<Boolean> = _scrollThreadListToTop.asStateFlow()
+
+    /**
+     * Sending moves a thread to the top of the list, so the inbox should be
+     * showing the top when the user returns to it rather than wherever they had
+     * scrolled to before opening the conversation.
+     */
+    fun requestThreadListScrollToTop() {
+        _scrollThreadListToTop.value = true
+    }
+
+    fun threadListScrolledToTop() {
+        _scrollThreadListToTop.value = false
+    }
+
+    /**
      * Another of our own devices is currently in the foreground. The engine
      * already uses this to suppress notifications; the UI uses it to explain why
      * this device is quiet.
@@ -384,6 +408,7 @@ object ChatRepository {
         _onlineUsers.value = emptySet()
         _networkOnline.value = false
         _anotherDeviceActive.value = false
+        _scrollThreadListToTop.value = false
         _initialSync.value = InitialSyncState.Idle
         _fileProgress.value = emptyMap()
     }

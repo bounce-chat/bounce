@@ -141,6 +141,19 @@ fun ThreadListScreen(
         viewModel.setQuery("")
     }
 
+    // Sending a message moves that thread to the top, and the list restores
+    // whatever scroll position it had before the conversation was opened - so
+    // without this the thread just messaged is off screen. Not animated: this
+    // runs as the screen is coming back, and an animation would read as the list
+    // moving on its own after the transition finished.
+    val scrollToTop by ChatRepository.scrollThreadListToTop.collectAsStateWithLifecycle()
+    LaunchedEffect(scrollToTop) {
+        if (scrollToTop) {
+            listState.scrollToItem(0)
+            ChatRepository.threadListScrolledToTop()
+        }
+    }
+
     Scaffold(
         modifier = modifier,
         topBar = {

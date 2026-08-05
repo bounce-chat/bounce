@@ -209,6 +209,11 @@ class ConversationViewModel(
         localDraft.value = ""
         pending.update { current -> current.filterNot { it.id in sentIds } }
         draftPushJob?.cancel()
+        // Raised here rather than after the engine call: this thread is about to
+        // become the newest in the list, and the request has to be standing by
+        // the time the user backs out - which can happen before a blocking send
+        // returns.
+        ChatRepository.requestThreadListScrollToTop()
 
         viewModelScope.launch {
             val client = engine() ?: return@launch
