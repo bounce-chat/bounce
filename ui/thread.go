@@ -516,9 +516,6 @@ func (ui *ui) HideTypingIndicator(userID, threadID uuid.UUID) {
 func (ui *ui) UpdateDraft(d chat.Draft) {
 	t, ok := ui.threads.get(d.Thread)
 	if !ok {
-		log.WithFields(log.Fields{
-			"thread_id": d.Thread,
-		}).Warn("attempt to set draft for unknown thread")
 		return
 	}
 
