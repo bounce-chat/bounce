@@ -21,6 +21,7 @@ import (
 	"github.com/zeebo/blake3"
 )
 
+var hostsMutex sync.Mutex
 var hosts = map[string]*testnet{}
 
 var networkTracking sync.Mutex
@@ -41,7 +42,10 @@ func newTestnet() *testnet {
 		privateKey: keypair.PrivateKey(),
 		incoming:   make(chan net.Conn),
 	}
+	hostsMutex.Lock()
 	hosts[t.Address()] = t
+	hostsMutex.Unlock()
+
 	return t
 }
 
@@ -64,7 +68,10 @@ func (t *testnet) Accept() (conn net.Conn, err error, fatal bool) {
 }
 
 func (t *testnet) Dial(address string) (net.Conn, error) {
+	hostsMutex.Lock()
 	host, ok := hosts[address]
+	hostsMutex.Unlock()
+
 	if !ok {
 		return nil, errors.New("address not found in testnet")
 	}
