@@ -223,7 +223,10 @@
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_about">About</string>
     <string name="settings_about_body">Bounce has no servers. Every message travels over Tor straight between the devices in the conversation, so there is no account to seize and no contact list held anywhere but on your own devices. Messages arrive while at least one of your devices is online.</string>
-    <string name="settings_version">Version %1$s</string>
+    <!-- %1$s is the engine's own string, which already begins with "Version". -->
+    <string name="settings_version">%1$s, App Version %2$s</string>
+    <!-- Shown for the moment before the engine answers. -->
+    <string name="settings_version_app_only">App Version %1$s</string>
 
     <!-- Disappearing message timers -->
     <string name="retention_off">Off</string>

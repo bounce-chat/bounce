@@ -826,6 +826,20 @@ func (a *Engine) NetworkOnline() bool {
 	return e.NetworkOnline()
 }
 
+// VersionString is the engine's build identity - release version plus VCS
+// revision - for display in the UI.
+//
+// Empty before the engine exists rather than an error: this is a label on a
+// settings screen, and a screen reachable only once the engine is running has
+// nothing useful to do with a failure here.
+func (a *Engine) VersionString() string {
+	e, err := a.engine()
+	if err != nil {
+		return ""
+	}
+	return e.VersionString()
+}
+
 // ---------------------------------------------------------------------------
 // Read state, drafts, presence hints
 // ---------------------------------------------------------------------------

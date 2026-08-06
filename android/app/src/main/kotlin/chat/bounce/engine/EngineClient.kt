@@ -213,6 +213,12 @@ class EngineClient(
 
     suspend fun networkOnline(): Boolean = call("networkOnline") { it.networkOnline() }
 
+    /**
+     * The engine's build identity, for display. Answered from the Go package
+     * rather than a running engine, so it works before startup finishes.
+     */
+    suspend fun versionString(): String = call("versionString") { it.versionString() }
+
     // --- read state, drafts, presence hints --------------------------------
 
     suspend fun markAsRead(id: String, frameType: String) = call("markAsRead") { it.markAsRead(id, frameType) }

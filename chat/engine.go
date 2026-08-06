@@ -86,4 +86,5 @@ type Engine interface {
 	UpdateProfileImage(newImage []byte) error
 	UpdateProfileName(newName string) error
 	UserConnectionDesired(id uuid.UUID)
+	VersionString() string
 }

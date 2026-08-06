@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -251,6 +252,55 @@ func (b *Bounce) Shutdown() {
 	}
 
 	log.Info("stopped bounce")
+}
+
+// Injected with -ldflags -X for builds the Go toolchain does not stamp itself.
+//
+// `go build` records vcs.revision and vcs.modified in the binary, but only for a
+// main package: `gomobile bind` produces a c-shared library from a library
+// package and carries no VCS settings at all, which was verified with
+// `go version -m` on the resulting libgojni.so. Without these the Android build
+// would silently report a bare release version. See the android-bind target.
+var buildRevision string
+var buildModified string
+
+func (b *Bounce) VersionString() string {
+	version := "Bounce Version 0.3.0"
+
+	// The toolchain's own record wins where it exists, so an ordinary `go build`
+	// behaves exactly as it did before these variables were added.
+	revision := ""
+	modified := false
+	buildInfo, ok := debug.ReadBuildInfo()
+	if ok {
+		for _, bs := range buildInfo.Settings {
+			if bs.Key == "vcs.revision" {
+				revision = bs.Value
+				break
+			}
+		}
+
+		for _, bs := range buildInfo.Settings {
+			if bs.Key == "vcs.modified" {
+				modified = bs.Value == "true"
+				break
+			}
+		}
+	}
+
+	if revision == "" {
+		revision = buildRevision
+		modified = buildModified == "true"
+	}
+
+	if len(revision) > 7 {
+		version += " , Build " + revision[:7]
+	}
+	if modified {
+		version += "-modified"
+	}
+
+	return version
 }
 
 // Used by logrus when a fatal error is logged.  We can't cleanly shutdown everything on fatal error, since

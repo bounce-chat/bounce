@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -74,6 +75,11 @@ fun SettingsScreen(onBack: () -> Unit) {
     // Local to this device, so it comes from SharedPreferences rather than the
     // engine - see ThemePreference for why it does not sync.
     val themeChoice by ThemePreference.choice.collectAsStateWithLifecycle()
+    // Blank for the frame or two before the engine answers, which reads better
+    // than a placeholder that flickers into a real version.
+    val engineVersion by produceState("") {
+        value = EngineHolder.client?.versionString().orEmpty()
+    }
 
     Scaffold(
         topBar = {
@@ -207,7 +213,23 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
+                    // Both halves: the APK version says which release this is,
+                    // the engine's string says which build is actually running -
+                    // and after a hand-installed debug build those disagree,
+                    // which is exactly when a bug report needs to say so. The
+                    // engine's half already begins with "Version".
+                    text = if (engineVersion.isBlank()) {
+                        stringResource(
+                            R.string.settings_version_app_only,
+                            BuildConfig.VERSION_NAME,
+                        )
+                    } else {
+                        stringResource(
+                            R.string.settings_version,
+                            engineVersion,
+                            BuildConfig.VERSION_NAME,
+                        )
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

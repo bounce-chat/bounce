@@ -10,6 +10,15 @@ ANDROID_NDK ?= $(lastword $(sort $(wildcard $(ANDROID_SDK)/ndk/*)))
 NATIVE_ABIS ?= android/arm64,android/amd64
 NATIVE_API ?= 29
 
+# gomobile builds a library rather than a main package, so the toolchain does not
+# stamp vcs.revision/vcs.modified the way `go build` does and the engine has no
+# way to report which build is running. These pass the same two facts in by hand;
+# every other target uses `go build` and needs none of this.
+VCS_REVISION ?= $(shell git rev-parse HEAD 2>/dev/null)
+VCS_MODIFIED ?= $(shell test -n "$$(git status --porcelain 2>/dev/null)" && echo true || echo false)
+VERSION_LDFLAGS := -X github.com/bounce-chat/bounce/chat.buildRevision=$(VCS_REVISION) \
+	-X github.com/bounce-chat/bounce/chat.buildModified=$(VCS_MODIFIED)
+
 windows:
 	CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows go build -ldflags="-H windowsgui"
 
@@ -77,7 +86,7 @@ android-bind:
 		-androidapi $(NATIVE_API) \
 		-javapkg chat.bounce \
 		-o android/app/libs/goengine.aar \
-		-ldflags=-checklinkname=0 \
+		-ldflags="-checklinkname=0 $(VERSION_LDFLAGS)" \
 		github.com/bounce-chat/bounce/android/goengine
 
 android: android-bind
