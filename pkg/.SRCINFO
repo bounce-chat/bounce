@@ -26,7 +26,7 @@ pkgbase = bounce
 	conflicts = bounce-git
 	options = !debug
 	options = !lto
-	source = bounce::git+https://github.com/bounce-chat/bounce.git
+	source = bounce::git+https://github.com/bounce-chat/bounce.git#tag=v0.3.0
 	source = bounce-go-arti::git+https://github.com/bounce-chat/go-arti.git
 	sha256sums = SKIP
 	sha256sums = SKIP

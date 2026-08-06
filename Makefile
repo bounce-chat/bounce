@@ -70,12 +70,11 @@ macos-release: check-version
 
 linux-arch-release: check-version
 	mkdir -p releases
-	rm -f pkg/*.tar.zst pkg/LICENSE-*
+	rm -f pkg/*.tar.zst
 	rm -rf pkg/bounce pkg/bounce-go-arti pkg/src pkg/pkg
 	cd pkg && makepkg --clean -f
 	cd pkg && makepkg --clean -f -p PKGBUILD-bin
 	mv pkg/*.tar.zst releases/
-	rm -f pkg/LICENSE-*
 	rm -rf pkg/bounce pkg/bounce-go-arti pkg/src pkg/pkg
 
 linux-debian-release: check-version

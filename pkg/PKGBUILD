@@ -37,7 +37,11 @@ options=(!debug !lto)
 # be declared. prepare() then points the submodule at the local clone so
 # `submodule update` checks out the exact commit bounce pins, rather than
 # whatever go-arti's default branch happens to be.
-source=("${pkgname}::git+${url}.git"
+#
+# Only bounce carries a #tag fragment. go-arti deliberately does not: the
+# submodule gitlink in the tagged bounce tree is what pins it, so a tag here
+# would be a second, redundant pin that could disagree with the first.
+source=("${pkgname}::git+${url}.git#tag=v${pkgver}"
         "${pkgname}-go-arti::git+https://github.com/${pkgname}-chat/go-arti.git")
 sha256sums=('SKIP'
             'SKIP')

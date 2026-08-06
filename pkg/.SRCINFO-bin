@@ -7,6 +7,7 @@ pkgbase = bounce-bin
 	license = MIT
 	depends = hicolor-icon-theme
 	depends = glibc
+	depends = gcc-libs
 	depends = libglvnd
 	depends = wayland
 	depends = libx11
@@ -26,7 +27,7 @@ pkgbase = bounce-bin
 	options = !strip
 	source = bounce-0.3.0.deb::https://github.com/bounce-chat/bounce/releases/download/v0.3.0/bounce-0.3.0.deb
 	source = LICENSE
-	sha256sums = 87b3762afd8a216fc5183947a65def0e81090351a841e71f8ac023ee78494a64
+	sha256sums = 04ccced97fb8c844ce46da45b4f127281cdf0b27bf7456ec0d4d3c1d08653c15
 	sha256sums = e52465d21d1b91e02357470ae262725b8f73d7ecc271a8d1ed7ff2e49f3bc6dc
 
 pkgname = bounce-bin
