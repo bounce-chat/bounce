@@ -2,8 +2,29 @@
 .PHONY: macos-release
 .PHONY: linux-arch-release linux-debian-release linux-debian-release-docker
 .PHONY: android-bind android android-release android-clean
-.PHONY: clean
+.PHONY: clean check-version
 -include .env
+
+# Stamped into the Debian control file and every release asset filename.
+VERSION ?= 0.3.0
+
+## Fail if VERSION and pkg/PKGBUILD's pkgver disagree.
+#
+# The version lives in two hand-maintained places and nothing else notices when
+# they drift. That is not hypothetical: pkg/control sat at 0.1.0 while 0.2.0 was
+# released, so the published 0.2.0 .deb declared itself 0.1.0 and apt would not
+# have offered it as an upgrade.
+#
+# Only pkg/PKGBUILD is checked. pkg/PKGBUILD-bin is *expected* to lag: it
+# repackages a published release artifact, so it cannot move until the release
+# it names has been uploaded.
+check-version:
+	@pkgver=$$(sed -n 's/^pkgver=//p' pkg/PKGBUILD); \
+	if [ "$$pkgver" != "$(VERSION)" ]; then \
+	    echo "make: VERSION=$(VERSION) but pkg/PKGBUILD has pkgver=$$pkgver."; \
+	    echo "      Reconcile them before cutting a release."; \
+	    exit 1; \
+	fi
 
 ANDROID_SDK ?= $(HOME)/Android/sdk
 ANDROID_NDK ?= $(lastword $(sort $(wildcard $(ANDROID_SDK)/ndk/*)))
@@ -22,11 +43,12 @@ VERSION_LDFLAGS := -X github.com/bounce-chat/bounce/chat.buildRevision=$(VCS_REV
 windows:
 	CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows go build -ldflags="-H windowsgui"
 
-windows-release:
+windows-release: check-version
+	mkdir -p releases
 	CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows fyne package --app-id chat.bounce -icon ui/assets/icon.png -name Bounce -os windows -tags migrated_fynedo --release
-	mv Bounce.exe releases/Bounce.exe
+	mv Bounce.exe releases/Bounce-$(VERSION).exe
 
-macos-release:
+macos-release: check-version
 	mkdir -p releases
 	mkdir -p build
 	rm -r build/*
@@ -44,23 +66,24 @@ macos-release:
 	xcrun stapler staple ./build/Bounce.app
 	rm build/Bounce.zip
 	ln -s /Applications build/Applications
-	hdiutil create -volname "Bounce" -srcfolder "build/" -size 500m -ov -format UDZO "releases/Bounce.dmg"
+	hdiutil create -volname "Bounce" -srcfolder "build/" -size 500m -ov -format UDZO "releases/Bounce-$(VERSION).dmg"
 
-linux-arch-release:
-	rm -f pkg/*.tar.zst
-	rm -rf pkg/bounce
-	rm -rf pkg/bounce-fyne
-	rm -rf pkg/bounce-fyne-tools
+linux-arch-release: check-version
+	mkdir -p releases
+	rm -f pkg/*.tar.zst pkg/LICENSE-*
+	rm -rf pkg/bounce pkg/bounce-go-arti pkg/src pkg/pkg
 	cd pkg && makepkg --clean -f
 	cd pkg && makepkg --clean -f -p PKGBUILD-bin
 	mv pkg/*.tar.zst releases/
-	rm -rf pkg/bounce
-	rm -rf pkg/bounce-fyne
-	rm -rf pkg/bounce-fyne-tools
+	rm -f pkg/LICENSE-*
+	rm -rf pkg/bounce pkg/bounce-go-arti pkg/src pkg/pkg
 
-linux-debian-release:
+linux-debian-release: check-version
 	rm -f bounce
-	docker run --rm -it -v.:/go/src/bounce golang:trixie bash -c "cd src/bounce && make linux-debian-release-docker"
+	mkdir -p releases
+	# VERSION is passed explicitly: an override on this target's command line
+	# would otherwise not reach the sub-make inside the container.
+	docker run --rm -it -v.:/go/src/bounce golang:trixie bash -c "cd src/bounce && make linux-debian-release-docker VERSION=$(VERSION)"
 
 linux-debian-release-docker:
 	apt update && apt install -y golang gcc libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
@@ -68,14 +91,17 @@ linux-debian-release-docker:
 	go build -tags migrated_fynedo
 	rm -rf pkg/debian
 	mkdir -p pkg/debian/bounce/DEBIAN
-	mkdir -p pkg/debian/bounce/usr/local/bin
+	mkdir -p pkg/debian/bounce/usr/bin
 	mkdir -p pkg/debian/bounce/usr/share/applications
 	mkdir -p pkg/debian/bounce/usr/share/icons/hicolor/scalable/apps
-	mv bounce pkg/debian/bounce/usr/local/bin/bounce
-	cp pkg/control pkg/debian/bounce/DEBIAN/
+	mv bounce pkg/debian/bounce/usr/bin/bounce
+	sed 's/^Version:.*/Version: $(VERSION)/' pkg/control > pkg/debian/bounce/DEBIAN/control
 	cp pkg/bounce.desktop pkg/debian/bounce/usr/share/applications/
 	cp ui/assets/icon.svg pkg/debian/bounce/usr/share/icons/hicolor/scalable/apps/bounce.svg
-	cd pkg/debian && dpkg-deb --build bounce && chown 1000:1000 bounce.deb && mv bounce.deb ../../releases/bounce.deb && cd .. && rm -rf debian
+	# The release asset is named bounce-$(VERSION).deb, which is the filename
+	# pkg/PKGBUILD-bin's source URL is built from. Producing it here removes a
+	# manual rename at upload time.
+	cd pkg/debian && dpkg-deb --build bounce && chown 1000:1000 bounce.deb && mv bounce.deb ../../releases/bounce-$(VERSION).deb && cd .. && rm -rf debian
 
 android-bind:
 	@test -d "$(ANDROID_NDK)" || (echo "No NDK found under $(ANDROID_SDK)/ndk. Set ANDROID_NDK=..." && false)
@@ -93,14 +119,14 @@ android: android-bind
 	cd android && ANDROID_HOME=$(ANDROID_SDK) ANDROID_SDK_ROOT=$(ANDROID_SDK) ./gradlew assembleDebug
 	cp android/app/build/outputs/apk/debug/app-debug.apk ./Bounce.apk
 
-android-release: android-bind
+android-release: check-version android-bind
 	mkdir -p releases
 	cd android && ANDROID_HOME=$(ANDROID_SDK) ANDROID_SDK_ROOT=$(ANDROID_SDK) ./gradlew assembleRelease \
 		-Pandroid.injected.signing.store.file=$(ANDROID_KEYSTORE_PATH) \
 		-Pandroid.injected.signing.store.password=$(ANDROID_KEYSTORE_PASSWORD) \
 		-Pandroid.injected.signing.key.alias=$(ANDROID_KEY_ALIAS) \
 		-Pandroid.injected.signing.key.password=$(ANDROID_KEY_PASSWORD)
-	cp android/app/build/outputs/apk/release/app-release.apk releases/Bounce.apk
+	cp android/app/build/outputs/apk/release/app-release.apk releases/Bounce-$(VERSION).apk
 
 android-clean:
 	rm -rf android/app/libs/goengine.aar android/app/libs/goengine-sources.jar

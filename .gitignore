@@ -13,8 +13,7 @@ fyne_metadata_init.go
 /pkg/src
 /pkg/bounce
 /pkg/bounce-bin
-/pkg/bounce-fyne
-/pkg/bounce-fyne-tools
+/pkg/bounce-go-arti
 
 *.deb
 *.tar.zst

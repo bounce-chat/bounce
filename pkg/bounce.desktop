@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Version=0.1.0
+Version=1.5
 Name=Bounce
 Comment=A metadata-protecting distributed group chat application
 Exec=/usr/bin/bounce
