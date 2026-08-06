@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import chat.bounce.R
 import chat.bounce.data.ChatRepository
+import chat.bounce.data.PendingShare
 import chat.bounce.data.ConversationItem
 import chat.bounce.data.ThreadSummary
 import chat.bounce.engine.EngineClient
@@ -158,6 +159,25 @@ class ConversationViewModel(
                 client.userConnectionDesired(threadId)
                 client.setDMLastOpened(threadId, now)
                 client.markAllDirectMessagesAsRead(threadId)
+            }
+        }
+
+        // Collected rather than read once: a share can arrive while this
+        // conversation is already open, in which case the ViewModel is retained
+        // and init has long since finished. PendingShare.claim only yields a
+        // payload addressed to this thread, so every other conversation's
+        // collector sees it and declines.
+        viewModelScope.launch {
+            PendingShare.pending.collect { pending ->
+                if (pending?.threadId != threadId) return@collect
+                val payload = PendingShare.claim(threadId) ?: return@collect
+                if (payload.uris.isNotEmpty()) addAttachments(payload.uris)
+                // Appended, so a share does not silently discard something the
+                // user had already typed here.
+                if (payload.text.isNotBlank()) {
+                    val existing = localDraft.value
+                    updateDraft(if (existing.isBlank()) payload.text else "$existing\n${payload.text}")
+                }
             }
         }
 
@@ -525,7 +545,7 @@ class ConversationViewModel(
         client
     }
 
-    private fun copyToOutgoing(uri: Uri): PendingAttachment? = runCatching {
+    private fun copyToOutgoing(uri: Uri): PendingAttachment? = runCatchingLogged(uri) {
         val resolver = appContext.contentResolver
         val displayName = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
             ?.use { cursor -> if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null }
@@ -537,7 +557,7 @@ class ConversationViewModel(
         val destination = File(File(appContext.cacheDir, "outgoing").apply { mkdirs() }, id)
         resolver.openInputStream(uri)?.use { input ->
             destination.outputStream().use { output -> input.copyTo(output) }
-        } ?: return@runCatching null
+        } ?: return@runCatchingLogged null
 
         PendingAttachment(
             id = id,
@@ -546,7 +566,19 @@ class ConversationViewModel(
             size = destination.length(),
             isImage = resolver.getType(uri)?.startsWith("image/") == true,
         )
-    }.getOrNull()
+    }
+
+    /**
+     * Kept rather than folded back into a bare runCatching: staging an
+     * attachment fails silently by design - a null just means the attachment
+     * does not appear - and the commonest cause is a content URI whose read
+     * grant has expired, which is invisible without this. The URI itself is not
+     * logged, only its shape.
+     */
+    private fun <T> runCatchingLogged(uri: Uri, block: () -> T): T? =
+        runCatching(block)
+            .onFailure { Log.w(TAG, "staging attachment failed, scheme=${uri.scheme} authority=${uri.authority}", it) }
+            .getOrNull()
 
     private fun uniqueFile(dir: File, name: String): File {
         val safe = name.replace(Regex("[/\\\\:*?\"<>|]"), "_").ifBlank { "download" }

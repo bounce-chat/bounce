@@ -213,6 +213,15 @@
     <string name="settings_auto_join_never">Never</string>
     <string name="settings_auto_join_always">Always</string>
     <string name="settings_new_group_defaults">New group defaults</string>
+    <!-- Share sheet -->
+    <string name="share_title">Share with…</string>
+    <plurals name="share_subtitle_items">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+    <string name="share_no_threads_title">No chats yet</string>
+    <string name="share_no_threads_body">Start a conversation in Bounce first, then you can share to it from other apps.</string>
+
     <string name="user_card_message">Message</string>
     <string name="user_card_details">View details</string>
     <string name="settings_appearance">Appearance</string>

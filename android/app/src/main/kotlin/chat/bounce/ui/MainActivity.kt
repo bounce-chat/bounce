@@ -3,6 +3,7 @@ package chat.bounce.ui
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -18,12 +19,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import chat.bounce.data.PendingShare
+import chat.bounce.data.SharePayload
 import chat.bounce.engine.EngineHolder
 import chat.bounce.ui.theme.BounceTheme
 import kotlinx.coroutines.NonCancellable
@@ -109,11 +113,51 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        val threadId = intent?.getStringExtra(EXTRA_THREAD_ID)?.takeIf { it.isNotBlank() } ?: return
+        if (intent == null) return
+        if (handleShare(intent)) return
+
+        val threadId = intent.getStringExtra(EXTRA_THREAD_ID)?.takeIf { it.isNotBlank() } ?: return
         pendingThreadId.value = threadId
         // The intent outlives the navigation; leaving the extra in place would
         // re-open the thread after every rotation.
         intent.removeExtra(EXTRA_THREAD_ID)
+    }
+
+    /**
+     * Accepts an ACTION_SEND / ACTION_SEND_MULTIPLE share from another app.
+     *
+     * A direct-share tap names its conversation in EXTRA_SHORTCUT_ID - the
+     * shortcut id is the thread UUID, so it needs no translation. A plain "share
+     * to Bounce" leaves it null and the nav host asks the user to pick.
+     *
+     * The extras are stripped once read for the same reason the deep link is:
+     * this Activity is singleTask, so the same intent is redelivered after every
+     * configuration change and would otherwise re-share on each rotation.
+     *
+     * @return true when the intent was a share, handled or not.
+     */
+    private fun handleShare(intent: Intent): Boolean {
+        val uris = when (intent.action) {
+            Intent.ACTION_SEND ->
+                listOfNotNull(IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
+
+            Intent.ACTION_SEND_MULTIPLE ->
+                IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+                    .orEmpty()
+                    .filterNotNull()
+
+            else -> return false
+        }
+
+        val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()
+        val threadId = intent.getStringExtra(Intent.EXTRA_SHORTCUT_ID)?.takeIf { it.isNotBlank() }
+
+        intent.removeExtra(Intent.EXTRA_STREAM)
+        intent.removeExtra(Intent.EXTRA_TEXT)
+        intent.removeExtra(Intent.EXTRA_SHORTCUT_ID)
+
+        PendingShare.offer(SharePayload(uris = uris, text = text, threadId = threadId))
+        return true
     }
 
     private fun requestNotificationPermission() {

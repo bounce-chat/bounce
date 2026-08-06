@@ -33,6 +33,7 @@ import androidx.navigation.navArgument
 import chat.bounce.BounceApplication
 import chat.bounce.R
 import chat.bounce.data.ChatRepository
+import chat.bounce.data.PendingShare
 import chat.bounce.data.awaitNetworkOnline
 import chat.bounce.engine.EngineClient
 import chat.bounce.engine.EngineHolder
@@ -46,6 +47,7 @@ import chat.bounce.ui.groups.NewGroupScreen
 import chat.bounce.ui.onboarding.OnboardingScreen
 import chat.bounce.ui.qr.QrScannerScreen
 import chat.bounce.ui.settings.SettingsScreen
+import chat.bounce.ui.share.ShareTargetScreen
 import chat.bounce.ui.threads.NewChatSheet
 import chat.bounce.ui.threads.ThreadListScreen
 import kotlinx.coroutines.flow.first
@@ -69,6 +71,7 @@ object Routes {
     const val LINK_DEVICE = "linkDevice"
     const val DEVICES = "devices"
     const val SETTINGS = "settings"
+    const val SHARE_TARGET = "shareTarget"
     const val SCAN_QR = "scanQr?title={title}"
 
     // A thread's info screen is two destinations, not one: a group and a DM have
@@ -142,6 +145,24 @@ fun BounceNavHost(
             launchSingleTop = true
         }
         onDeepLinkHandled()
+    }
+
+    // A share from another app. Addressed shares - a direct-share tap, which
+    // names its conversation - go straight there; the rest stop at the picker.
+    // Same stack reset as above: a share is a fresh errand, not a continuation of
+    // whatever the user was last looking at.
+    val share by PendingShare.pending.collectAsStateWithLifecycle()
+    LaunchedEffect(share?.threadId, share != null, profile != null) {
+        val payload = share ?: return@LaunchedEffect
+        if (profile == null) return@LaunchedEffect
+
+        val destination = payload.threadId
+            ?.let { Routes.conversation(it) }
+            ?: Routes.SHARE_TARGET
+        navController.navigate(destination) {
+            popUpTo(Routes.THREADS)
+            launchSingleTop = true
+        }
     }
 
     NavHost(
@@ -300,6 +321,22 @@ fun BounceNavHost(
                     navController.navigate(Routes.LINK_DEVICE)
                 },
                 scanSubmitted = scanned,
+            )
+        }
+
+        composable(Routes.SHARE_TARGET) {
+            ShareTargetScreen(
+                // Addressing it is what makes the conversation's ViewModel claim
+                // it; navigation alone would leave the payload unowned.
+                // Addresses the payload and stops. Navigating here as well would
+                // race the effect above, which reacts to exactly this change:
+                // launchSingleTop only collapses a duplicate once the first
+                // navigation has been applied, so two calls in the same frame
+                // produce two back stack entries, two ViewModelStores and two
+                // ConversationViewModels - and the one that claims the share is
+                // not the one on screen.
+                onPick = PendingShare::addressTo,
+                onCancel = { navController.popBackStack(Routes.THREADS, inclusive = false) },
             )
         }
 

@@ -45,6 +45,24 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!--
+              Accepts shares from other apps. */* rather than image/* because the
+              engine takes arbitrary file attachments; a text/plain share matches
+              the same filter and becomes the draft instead of an attachment.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+
+            <!-- Pairs the conversation shortcuts with the filter above, which is
+                 what puts individual chats in the Sharesheet's direct-share row. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <!--

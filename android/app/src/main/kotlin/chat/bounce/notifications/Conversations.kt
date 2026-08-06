@@ -50,6 +50,13 @@ object Conversations {
      */
     private const val CATEGORY_CONVERSATION = "android.shortcut.conversation"
 
+    /**
+     * Pairs each conversation shortcut with the `<share-target>` in
+     * res/xml/shortcuts.xml. Without a category in common the Sharesheet shows
+     * Bounce as a plain app target and never offers individual chats.
+     */
+    private const val CATEGORY_SHARE_TARGET = "chat.bounce.category.SHARE_TARGET"
+
     private const val TAG = "BounceConversations"
 
     /**
@@ -125,7 +132,7 @@ object Conversations {
                 .setIntent(openThreadIntent(appContext, thread.id))
                 .setLongLived(true)
                 .setRank(rank)
-                .setCategories(setOf(CATEGORY_CONVERSATION))
+                .setCategories(setOf(CATEGORY_CONVERSATION, CATEGORY_SHARE_TARGET))
                 .setLocusId(LocusIdCompat(thread.id))
                 .apply { if (persons.isNotEmpty()) setPersons(persons.toTypedArray()) }
                 .build()
