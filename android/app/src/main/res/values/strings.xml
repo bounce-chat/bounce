@@ -213,6 +213,8 @@
     <string name="settings_auto_join_never">Never</string>
     <string name="settings_auto_join_always">Always</string>
     <string name="settings_new_group_defaults">New group defaults</string>
+    <string name="user_card_message">Message</string>
+    <string name="user_card_details">View details</string>
     <string name="settings_appearance">Appearance</string>
     <string name="settings_theme">Theme</string>
     <string name="settings_theme_help">Only affects this device. Your other devices keep their own setting.</string>

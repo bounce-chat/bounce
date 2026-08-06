@@ -186,6 +186,19 @@ fun BounceNavHost(
                         else Routes.contactProfile(threadId)
                     )
                 },
+                onOpenUserProfile = { navController.navigate(Routes.contactProfile(it)) },
+                // Replaces the group rather than stacking on it, the same way a
+                // notification tap does above: one conversation is not a
+                // sub-screen of another, and Back from the DM landing on the
+                // inbox keeps the engine's active thread honest - the group's
+                // entry is gone, so nothing is on screen claiming to be open
+                // that the engine no longer thinks is.
+                onOpenDirectMessage = { userId ->
+                    navController.navigate(Routes.conversation(userId)) {
+                        popUpTo(Routes.THREADS)
+                        launchSingleTop = true
+                    }
+                },
             )
         }
 

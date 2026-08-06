@@ -77,6 +77,25 @@ object Avatars {
         return withContext(Dispatchers.Default) { generatedAvatar(fallbackId, fallbackName, size) }
     }
 
+    /**
+     * The file ID [avatarBitmap] would pick, or null when it would fall back to
+     * the generated avatar.
+     *
+     * Answers "is this a real picture, and which one" for callers that want to
+     * open it full screen. Searched the same way and through the same cache, so
+     * after an avatar has rendered once this is a lookup rather than a decode.
+     */
+    suspend fun avatarFileId(
+        client: EngineClient,
+        fileIds: List<String>,
+        sizePx: Int,
+    ): String? {
+        for (fileId in fileIds.asReversed()) {
+            if (ImageCache.load(client, fileId, sizePx.coerceAtLeast(1)) != null) return fileId
+        }
+        return null
+    }
+
     private fun circularCrop(source: Bitmap, size: Int): Bitmap {
         val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)

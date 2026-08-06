@@ -114,6 +114,7 @@ import chat.bounce.data.ImageCache
 import chat.bounce.engine.EngineHolder
 import chat.bounce.engine.FileAttachment
 import chat.bounce.engine.ImageAttachment
+import chat.bounce.engine.User
 import chat.bounce.goengine.Goengine
 import chat.bounce.ui.components.Avatar
 import chat.bounce.ui.theme.LocalBounceColors
@@ -141,6 +142,14 @@ fun ConversationScreen(
     threadId: String,
     onBack: () -> Unit,
     onOpenThreadInfo: (String) -> Unit,
+    /** The details screen for one group member, reached from their avatar. */
+    onOpenUserProfile: (String) -> Unit,
+    /**
+     * The DM with one group member, reached from their avatar. Expected to
+     * *replace* this conversation rather than stack on it, so Back from the DM
+     * returns to the inbox.
+     */
+    onOpenDirectMessage: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val factory = remember(threadId) { ConversationViewModel.factory(threadId, context) }
@@ -217,6 +226,7 @@ fun ConversationScreen(
 
     var viewerImages by remember { mutableStateOf<List<ImageAttachment>>(emptyList()) }
     var viewerIndex by remember { mutableStateOf(0) }
+    var cardFor by remember { mutableStateOf<User?>(null) }
 
     // The engine suppresses notifications for a thread you are actively reading,
     // and this is the only signal it has for "actively".
@@ -295,6 +305,9 @@ fun ConversationScreen(
                                 onImageClick = { attachment ->
                                     viewerImages = row.message.imageAttachments
                                     viewerIndex = row.message.imageAttachments.indexOf(attachment).coerceAtLeast(0)
+                                },
+                                onAuthorClick = { authorId ->
+                                    cardFor = state.users[authorId]
                                 },
                                 onDownloadFile = { viewModel.downloadFile(it.id, it.name) },
                                 onCancelDownload = { viewModel.cancelDownload(it.id) },
@@ -378,6 +391,31 @@ fun ConversationScreen(
                 }
             },
             onDismiss = { viewerImages = emptyList() },
+        )
+    }
+
+    cardFor?.let { user ->
+        UserCard(
+            user = user,
+            // The viewer works off ImageAttachment, and an avatar is not one -
+            // it is a bare file ID with no dimensions or BlurHash recorded. The
+            // viewer only needs the ID to decode; width/height are used to clamp
+            // panning and fall back to the container when zero, and the name only
+            // seeds the save dialog's filename.
+            onViewImage = { fileId ->
+                cardFor = null
+                viewerImages = listOf(ImageAttachment(id = fileId, name = ""))
+                viewerIndex = 0
+            },
+            onMessage = {
+                cardFor = null
+                viewModel.openDirectMessageWith(user.id, onOpenDirectMessage)
+            },
+            onViewDetails = {
+                cardFor = null
+                onOpenUserProfile(user.id)
+            },
+            onDismiss = { cardFor = null },
         )
     }
 }

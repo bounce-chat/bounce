@@ -112,6 +112,8 @@ fun ChatBubble(
     grouping: BubbleGrouping,
     fileProgress: Map<String, Double>,
     onImageClick: (ImageAttachment) -> Unit,
+    /** Tapping the author's avatar. Only reachable in groups, where one is drawn. */
+    onAuthorClick: (String) -> Unit,
     onDownloadFile: (FileAttachment) -> Unit,
     onCancelDownload: (FileAttachment) -> Unit,
     /** A video ready to play, with the absolute path of its blob. */
@@ -150,12 +152,17 @@ fun ChatBubble(
             // The gutter is always reserved so merged bubbles stay flush with
             // the one carrying the avatar.
             Box(Modifier.size(AVATAR_SIZE)) {
+                // Only the run's last bubble draws one, so only it is tappable -
+                // the gutter above it is reserved space, not a hit target.
                 if (grouping.lastInRun) {
                     Avatar(
                         id = message.authorId,
                         name = author?.displayName.orEmpty(),
                         images = author?.images.orEmpty(),
                         size = AVATAR_SIZE,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { onAuthorClick(message.authorId) },
                     )
                 }
             }

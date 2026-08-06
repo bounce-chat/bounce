@@ -317,6 +317,24 @@ class ConversationViewModel(
         }
     }
 
+    /**
+     * Opens the DM with a group member and hands the thread ID back to navigate.
+     *
+     * setOpenDM is what puts the thread in the inbox - a contact you have never
+     * messaged has no row until then - and the engine answers it with SetDMState.
+     * The callback fires immediately rather than after the engine call, because
+     * the conversation screen can build itself from an empty thread and blocking
+     * navigation on a bound call would stall the tap for as long as it takes.
+     */
+    fun openDirectMessageWith(userId: String, onOpened: (String) -> Unit) {
+        viewModelScope.launch {
+            val client = engine() ?: return@launch
+            client.setOpenDM(userId, true)
+            client.userConnectionDesired(userId)
+        }
+        onOpened(userId)
+    }
+
     fun setScrolledDown(value: Boolean) {
         if (lastScrolledDown == value) return
         lastScrolledDown = value
