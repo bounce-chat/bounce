@@ -389,7 +389,7 @@ func typingIndicatorAlreadySeen(id uuid.UUID) bool {
 
 func shouldCooldownTypingIndicator(id uuid.UUID) bool {
 	typingIndicatorCooldownMutex.Lock()
-	typingIndicatorCooldownMutex.Unlock()
+	defer typingIndicatorCooldownMutex.Unlock()
 
 	if lastTime, exists := typingIndicatorCooldown[id]; exists {
 		if lastTime < time.Now().Unix()-sendNewTypingIndicatorCooldownSeconds {

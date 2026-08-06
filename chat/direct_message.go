@@ -643,7 +643,7 @@ func (b *Bounce) deleteDirectMessageAt(timestamp int64, id uuid.UUID) {
 
 func (b *Bounce) checkIfDirectMessageUndeliverableAt(timestamp int64, id uuid.UUID) {
 	// Create a receiver for delivery notifications
-	delivered := make(chan bool)
+	delivered := make(chan bool, 1)
 	dmDeliveryNotificationMutex.Lock()
 	dmDeliveryNotifications[id] = delivered
 	dmDeliveryNotificationMutex.Unlock()
@@ -686,6 +686,7 @@ func (b *Bounce) checkIfDirectMessageUndeliverableAt(timestamp int64, id uuid.UU
 				log.WithFields(log.Fields{
 					"message_id": id,
 				}).Warn("no direct message found when checking for delivery")
+				return
 			} else {
 				log.WithFields(log.Fields{
 					"error": err.Error(),

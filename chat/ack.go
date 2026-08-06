@@ -102,6 +102,7 @@ func (b *Bounce) handleAckSideEffects(fr frameReference, peer string) {
 		dmDeliveryNotificationMutex.Lock()
 		notifier, ok := dmDeliveryNotifications[fr.FrameID]
 		if ok {
+			delete(dmDeliveryNotifications, fr.FrameID)
 			notifier <- true
 		}
 		dmDeliveryNotificationMutex.Unlock()
@@ -126,6 +127,7 @@ func (b *Bounce) handleAckSideEffects(fr frameReference, peer string) {
 		gmDeliveryNotificationMutex.Lock()
 		notifier, ok := gmDeliveryNotifications[fr.FrameID]
 		if ok {
+			delete(gmDeliveryNotifications, fr.FrameID)
 			notifier <- true
 		}
 		gmDeliveryNotificationMutex.Unlock()

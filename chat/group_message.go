@@ -663,7 +663,7 @@ func (b *Bounce) deleteGroupMessageAt(timestamp int64, id uuid.UUID) {
 
 func (b *Bounce) checkIfGroupMessageUndeliverableAt(timestamp int64, id uuid.UUID) {
 	// Create a receiver for delivery notifications
-	delivered := make(chan bool)
+	delivered := make(chan bool, 1)
 	gmDeliveryNotificationMutex.Lock()
 	gmDeliveryNotifications[id] = delivered
 	gmDeliveryNotificationMutex.Unlock()
@@ -706,6 +706,7 @@ func (b *Bounce) checkIfGroupMessageUndeliverableAt(timestamp int64, id uuid.UUI
 				log.WithFields(log.Fields{
 					"message_id": id,
 				}).Warn("no group message found when checking for delivery")
+				return
 			} else {
 				log.WithFields(log.Fields{
 					"error": err.Error(),

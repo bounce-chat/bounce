@@ -87,7 +87,7 @@ func (d *draft) getAuthor() uuid.UUID {
 
 func (b *Bounce) handleDraft(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	draftHandlerMutex.Lock()
-	draftHandlerMutex.Unlock()
+	defer draftHandlerMutex.Unlock()
 
 	sc, err := b.unpackSignedContainer(payload)
 	if err != nil {
