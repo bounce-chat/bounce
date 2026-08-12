@@ -40,33 +40,7 @@ func (ro *referenceOffer) getPayload() []byte {
 // Check if anything in the reference offer is not global scope, or justifies dialing a user
 func (ro *referenceOffer) shouldDialUser() bool {
 	for _, reference := range ro.References {
-		if reference.Type == typeDirectMessage {
-			return true
-		} else if reference.Type == typeGroupMessage {
-			return true
-		} else if reference.Type == typeDevice {
-			return true
-		} else if reference.Type == typeAddUser {
-			return true
-		} else if reference.Type == typeGroupCreation {
-			return true
-		} else if reference.Type == typeUpdateGroup {
-			return true
-		} else if reference.Type == typeConfirmation {
-			return true
-		} else if reference.Type == typeUpdateDevice {
-			return true
-		} else if reference.Type == typeReadReceipt {
-			return true
-		} else if reference.Type == typeUpdateSettings {
-			return true
-		} else if reference.Type == typeFile {
-			return true
-		} else if reference.Type == typeChunkOffer {
-			return true
-		} else if reference.Type == typeDraft {
-			return true
-		} else if reference.Type == typeEncryptedChunkOffer {
+		if spec, ok := specsByType[reference.Type]; ok && spec.dialWorthy {
 			return true
 		}
 	}
@@ -276,22 +250,9 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	}
 
 	references := []frameReference{}
-	references = append(references, b.getDirectMessagesToOffer(address, userID)...)
-	references = append(references, b.getGroupMessagesToOffer(address, userID)...)
-	references = append(references, b.getUpdateDMsToOffer(address, userID)...)
-	references = append(references, b.getDevicesToOffer(address, userID)...)
-	references = append(references, b.getAddUsersToOffer(address, userID)...)
-	references = append(references, b.getGroupCreationsToOffer(address, userID)...)
-	references = append(references, b.getUpdateGroupsToOffer(address, userID)...)
-	references = append(references, b.getConfirmationsToOffer(address, userID)...)
-	references = append(references, b.getUpdateUsersToOffer(address, userID)...)
-	references = append(references, b.getUpdateDevicesToOffer(address, userID)...)
-	references = append(references, b.getReadReceiptsToOffer(address, userID)...)
-	references = append(references, b.getUpdateSettingsToOffer(address, userID)...)
-	references = append(references, b.getFilesToOffer(address, userID)...)
-	references = append(references, b.getChunkOffersToOffer(address, userID)...)
-	references = append(references, b.getDraftsToOffer(address, userID)...)
-	references = append(references, b.getEncryptedChunkOffersToOffer(address, userID)...)
+	for _, spec := range syncableSpecs {
+		references = append(references, spec.offer(b, address, userID)...)
+	}
 
 	return &referenceOffer{
 		ID:         uuid.New(),
@@ -1431,25 +1392,7 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	references := []frameReference{}
 	acks := []frameReference{}
 	typesToIDs := referencedIDs(ro.References)
-	typesToRespondWith := []uint16{
-		typeDirectMessage,
-		typeGroupMessage,
-		typeUpdateDM,
-		typeDevice,
-		typeAddUser,
-		typeGroupCreation,
-		typeUpdateGroup,
-		typeConfirmation,
-		typeUpdateUser,
-		typeUpdateDevice,
-		typeReadReceipt,
-		typeUpdateSettings,
-		typeFile,
-		typeChunkOffer,
-		typeDraft,
-		typeEncryptedChunkOffer,
-	}
-	for _, frameType := range typesToRespondWith {
+	for _, frameType := range syncableTypes {
 		refs, as := b.getFramesToRequestAndAck(peer, typesToIDs[frameType], frameType)
 		references = append(references, refs...)
 		acks = append(acks, as...)

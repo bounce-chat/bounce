@@ -104,7 +104,12 @@ func (b *Bounce) CurrentUserID() uuid.UUID {
 	return b.currentUserID()
 }
 
+var currentUserMutex sync.Mutex
+
 func (b *Bounce) currentUserID() uuid.UUID {
+	currentUserMutex.Lock()
+	defer currentUserMutex.Unlock()
+
 	if b.userID == uuid.Nil {
 		currentUser, ok := b.currentUser()
 		if !ok {

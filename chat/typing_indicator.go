@@ -46,7 +46,6 @@ type typingStatus struct {
 // of the thread that a user is currently typing
 type typingIndicator struct {
 	SignedFrame
-	cachedEncoding
 	ID          uuid.UUID
 	Thread      uuid.UUID
 	MessageType uint16
@@ -92,21 +91,18 @@ func (ti *typingIndicator) getType() uint16 {
 }
 
 func (ti *typingIndicator) getPayload() []byte {
-	if len(ti.payload) == 0 {
-		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   ti.OriginalPayload,
-			Signature: ti.Signature,
-			Signer:    ti.Signer,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling typing indicator's signed container")
-		}
-		ti.payload = bytes
+	bytes, err := msgpack.Marshal(signedContainer{
+		Payload:   ti.OriginalPayload,
+		Signature: ti.Signature,
+		Signer:    ti.Signer,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling typing indicator's signed container")
 	}
 
-	return ti.payload
+	return bytes
 }
 
 func (ti *typingIndicator) getAuthor() uuid.UUID {
@@ -360,10 +356,14 @@ func (b *Bounce) manuallySendTypingIndicators(ti *typingIndicator, excludedPeer 
 		}).Fatal("unsupported scope for typing indicators")
 	}
 
+	// Serialised once here for the same reason as in broadcast: this is the only
+	// place the payload is computed, so the writers below share nothing.
+	prepared := preparedFrame{frameType: ti.getType(), payload: ti.getPayload()}
+
 	for _, peer := range broadcastTargets {
-		go func(dst chan sendable, msg broadcastable) {
+		go func(dst chan sendable, msg sendable) {
 			dst <- msg
-		}(peer.messages, ti)
+		}(peer.messages, prepared)
 	}
 }
 

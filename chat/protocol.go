@@ -96,24 +96,8 @@ type broadcastable interface {
 
 type sortableCatchUpAbles []catchUpAble
 
-var catchUpOrder = map[uint16]int{
-	typeAddUser:             0,
-	typeDevice:              1,
-	typeUpdateDevice:        2,
-	typeUpdateUser:          3,
-	typeUpdateDM:            4,
-	typeDirectMessage:       5,
-	typeGroupCreation:       6,
-	typeUpdateGroup:         7,
-	typeGroupMessage:        8,
-	typeConfirmation:        9,
-	typeReadReceipt:         10,
-	typeUpdateSettings:      11,
-	typeFile:                12,
-	typeChunkOffer:          13,
-	typeEncryptedChunkOffer: 14,
-	typeDraft:               15,
-}
+// catchUpOrder is derived from the order of the syncable entries in frameSpecs.
+// See chat/frame_registry.go.
 
 func (scua sortableCatchUpAbles) Len() int {
 	return len(scua)
@@ -158,10 +142,6 @@ type SignedFrame struct {
 	Signer          string `msgpack:"-" gorm:"not null"`
 	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
 	Signature       []byte `msgpack:"-" gorm:"not null"`
-}
-
-type cachedEncoding struct {
-	payload []byte
 }
 
 func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, bool) (broadcastable, bool) {
@@ -233,21 +213,63 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 	}
 }
 
+// A preparedFrame is a frame that has already been serialised, carrying only
+// what the writer goroutines actually consume.
+//
+// This is where a broadcast's payload is computed once, and it replaces a lazy
+// cache that used to live on the frame structs themselves. That cache was
+// filled on the first getPayload call, which meant every recipient's writer
+// goroutine raced to fill it - and a torn read there puts a malformed signed
+// container on the wire, which the peer drops with a Warn. About as quiet as a
+// bug gets.
+//
+// A mutex was not available as a fix: the cache was embedded in gorm models
+// that are copied throughout the package, so anything with a noCopy in it
+// fails vet's copylocks wherever those models are loaded into a slice. Caching
+// here instead means the frame never crosses a goroutine boundary at all - it
+// is serialised by the goroutine that still owns it, and the writers get this
+// immutable value. getPayload is now a pure function on every frame type, so a
+// fan-out site added later cannot reintroduce the race by forgetting to prime
+// anything.
+//
+// It satisfies sendable, so the device channels and every other producer -
+// sendDirect, keep alives, acks, catch ups - are unchanged. getType has to
+// survive to the writer because the revoked-device allowlist and the
+// encrypted-device handler check are made per socket, after the channel.
+type preparedFrame struct {
+	frameType uint16
+	payload   []byte
+}
+
+func (pf preparedFrame) getType() uint16 {
+	return pf.frameType
+}
+
+func (pf preparedFrame) getPayload() []byte {
+	return pf.payload
+}
+
 func (b *Bounce) broadcast(br broadcastable) {
 	log.WithFields(log.Fields{
 		"type":        br.getType(),
 		"scope":       br.getScope(b.currentUserID()),
 		"destination": br.getDestination(b.currentUserID()),
 	}).Debug("broadcasting frame")
+
+	prepared := preparedFrame{frameType: br.getType(), payload: br.getPayload()}
+
 	for _, peer := range b.getBroadcastScope(br, true) {
 		rd := b.getRemoteDevice(peer)
 		if rd.connectedSockets() > 0 {
-			go func(dst chan sendable, msg broadcastable) {
+			go func(dst chan sendable, msg sendable) {
 				dst <- msg
-			}(rd.messages, br)
+			}(rd.messages, prepared)
 		}
 	}
 
+	// Not given the prepared frame: this re-encrypts the frame per recipient
+	// and needs the frame itself. It is one goroutine, and the writers above no
+	// longer touch br, so it is the only thing reading it.
 	if br.getType() != typeTypingIndicator {
 		go b.sendToEncryptedDevices(br)
 	}

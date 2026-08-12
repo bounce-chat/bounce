@@ -1,13 +1,9 @@
 package chat
 
 import (
-	"errors"
-
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // A reference request is sent in response to a reference offer if the offer contained frame references that
@@ -46,27 +42,39 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 		return nil, false
 	}
 
-	// Get all of the requested frames and pack them into a catch up frame
+	// Regenerate the offer for this peer rather than trusting the request, and
+	// serve only the intersection of the two.
+	//
+	// This intersection is the entirety of the authorisation check on this path,
+	// and it is why the per-type loaders below need none of their own: the offer
+	// is rebuilt here and now by getReferenceOfferFor, which applies every
+	// revocation and membership check, so a peer can only ever be sent frames it
+	// was authorised for moments ago. Asking for something outside the offer is
+	// not automatically evidence of a bad client - the offer can shrink between
+	// the two frames - so getValidRequestedUUIDs drops those quietly.
 	offerable := b.getReferenceOfferFor(peer)
 	offeredIDs := referencedIDs(offerable.References)
 	requestedIDs := referencedIDs(rr.References)
+
+	deliverable := map[uint16][]uuid.UUID{}
+	for _, spec := range syncableSpecs {
+		deliverable[spec.typ] = getValidRequestedUUIDs(offeredIDs[spec.typ], requestedIDs[spec.typ])
+	}
+
 	broadcastables := []broadcastable{}
-	broadcastables = append(broadcastables, b.getRequestedDirectMessagePayloads(requestedIDs[typeDirectMessage], offeredIDs[typeDirectMessage])...)
-	broadcastables = append(broadcastables, b.getRequestedGroupMessagePayloads(requestedIDs[typeGroupMessage], offeredIDs[typeGroupMessage])...)
-	broadcastables = append(broadcastables, b.getRequestedUpdateDMsPayloads(requestedIDs[typeUpdateDM], offeredIDs[typeUpdateDM])...)
-	broadcastables = append(broadcastables, b.getRequestedDevicesPayloads(requestedIDs[typeDevice], offeredIDs[typeDevice])...)
-	broadcastables = append(broadcastables, b.getRequestedAddUsersPayloads(requestedIDs[typeAddUser], offeredIDs[typeAddUser])...)
-	broadcastables = append(broadcastables, b.getRequestedGroupCreationPayloads(requestedIDs[typeGroupCreation], offeredIDs[typeGroupCreation])...)
-	broadcastables = append(broadcastables, b.getRequestedUpdateGroupsPayloads(requestedIDs[typeUpdateGroup], offeredIDs[typeUpdateGroup])...)
-	broadcastables = append(broadcastables, b.getRequestedConfirmationsPayloads(requestedIDs[typeConfirmation], offeredIDs[typeConfirmation], getValidRequestedUUIDs(offeredIDs[typeUpdateGroup], requestedIDs[typeUpdateGroup]))...)
-	broadcastables = append(broadcastables, b.getRequestedUpdateUsersPayloads(requestedIDs[typeUpdateUser], offeredIDs[typeUpdateUser])...)
-	broadcastables = append(broadcastables, b.getRequestedUpdateDevicesPayloads(requestedIDs[typeUpdateDevice], offeredIDs[typeUpdateDevice])...)
-	broadcastables = append(broadcastables, b.getRequestedReadReceiptPayloads(requestedIDs[typeReadReceipt], offeredIDs[typeReadReceipt])...)
-	broadcastables = append(broadcastables, b.getRequestedUpdateSettingsPayloads(requestedIDs[typeUpdateSettings], offeredIDs[typeUpdateSettings])...)
-	broadcastables = append(broadcastables, b.getRequestedFilePayloads(requestedIDs[typeFile], offeredIDs[typeFile])...)
-	broadcastables = append(broadcastables, b.getRequestedChunkOfferPayloads(requestedIDs[typeChunkOffer], offeredIDs[typeChunkOffer])...)
-	broadcastables = append(broadcastables, b.getRequestedEncryptedChunkOfferPayloads(requestedIDs[typeEncryptedChunkOffer], offeredIDs[typeEncryptedChunkOffer])...)
-	broadcastables = append(broadcastables, b.getRequestedDraftPayloads(requestedIDs[typeDraft], offeredIDs[typeDraft])...)
+	for _, spec := range syncableSpecs {
+		loaded := spec.load(b, deliverable[spec.typ])
+
+		// The one type whose delivery depends on another's. An update group is
+		// loaded with its associations, so it already carries the confirmations
+		// that signed it; sending those separately would deliver the same
+		// signatures twice.
+		if spec.typ == typeConfirmation {
+			loaded = dropConfirmationsCarriedBy(loaded, deliverable[typeUpdateGroup])
+		}
+
+		broadcastables = append(broadcastables, loaded...)
+	}
 
 	if len(broadcastables) == 0 {
 		return nil, false
@@ -111,445 +119,37 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	return nil, false
 }
 
-func (b *Bounce) getRequestedDirectMessagePayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedDirectMessageIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, dmID := range requestedDirectMessageIDs {
-		var dm directMessage
-		err := b.database.Preload(clause.Associations).Where("id = ?", dmID).First(&dm).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": dmID,
-				}).Warn("reference request asks for an unknown direct message")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    dmID,
-					"error": err.Error(),
-				}).Fatal("database error querying for direct message")
-			}
-		} else {
-			requestedData = append(requestedData, &dm)
-		}
+// Drop any confirmation whose update group is itself being delivered in this
+// catch up, because that update group carries its confirmations with it.
+func dropConfirmationsCarriedBy(loaded []broadcastable, updateGroupIDs []uuid.UUID) []broadcastable {
+	if len(updateGroupIDs) == 0 {
+		return loaded
 	}
 
-	return requestedData
-}
-
-func (b *Bounce) getRequestedGroupMessagePayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedGroupMessageIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, gmID := range requestedGroupMessageIDs {
-		var gm groupMessage
-		err := b.database.Preload(clause.Associations).Where("id = ?", gmID).First(&gm).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": gmID,
-				}).Warn("reference request asks for an unknown group message")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    gmID,
-					"error": err.Error(),
-				}).Fatal("database error querying for group message")
-			}
-		} else {
-			requestedData = append(requestedData, &gm)
-		}
+	delivering := make(map[uuid.UUID]bool, len(updateGroupIDs))
+	for _, id := range updateGroupIDs {
+		delivering[id] = true
 	}
 
-	return requestedData
-}
-
-func (b *Bounce) getRequestedUpdateDMsPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedUpdateDMsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, udID := range requestedUpdateDMsIDs {
-		var ud updateDM
-		err := b.database.First(&ud, "id = ?", udID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": udID,
-				}).Warn("reference request asks for an unknown update DM settings")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    udID,
-					"error": err.Error(),
-				}).Fatal("database error querying for update DM settings")
-			}
-		} else {
-			requestedData = append(requestedData, &ud)
-		}
-	}
-
-	return requestedData
-}
-
-func (b *Bounce) getRequestedUpdateGroupsPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedUpdateGroupsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, ugID := range requestedUpdateGroupsIDs {
-		var ug updateGroup
-		err := b.database.Preload(clause.Associations).First(&ug, "id = ?", ugID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": ugID,
-				}).Warn("reference request asks for an unknown update group")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    ugID,
-					"error": err.Error(),
-				}).Fatal("database error querying for update group")
-			}
-		} else {
-			requestedData = append(requestedData, &ug)
-		}
-	}
-
-	return requestedData
-}
-
-func (b *Bounce) getRequestedGroupCreationPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedGroupCreationIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, groupCreationID := range requestedGroupCreationIDs {
-		var gc groupCreation
-		err := b.database.First(&gc, "id = ?", groupCreationID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": groupCreationID,
-				}).Warn("reference request asks for unknown group creation we offered")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    groupCreationID,
-					"error": err.Error(),
-				}).Fatal("database error querying for group creation")
-			}
-		} else {
-			requestedData = append(requestedData, &gc)
-		}
-	}
-
-	return requestedData
-}
-
-func (b *Bounce) getRequestedDevicesPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedDeviceIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, deviceID := range requestedDeviceIDs {
-		var dev device
-		err := b.database.Preload(clause.Associations).First(&dev, "id = ?", deviceID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": deviceID,
-				}).Warn("reference request asks for unknown device we offered")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    deviceID,
-					"error": err.Error(),
-				}).Fatal("database error querying for device")
-			}
-		} else {
-			requestedData = append(requestedData, &dev)
-		}
-	}
-
-	return requestedData
-}
-
-func (b *Bounce) getRequestedAddUsersPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedAddUserIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, addUserID := range requestedAddUserIDs {
-		var au addUser
-		err := b.database.First(&au, "id = ?", addUserID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": addUserID,
-				}).Warn("reference request asks for unknown add user we offered")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    addUserID,
-					"error": err.Error(),
-				}).Fatal("database error querying for add user")
-			}
-		} else {
-			requestedData = append(requestedData, &au)
-		}
-	}
-
-	return requestedData
-}
-
-func (b *Bounce) getRequestedConfirmationsPayloads(requestedIDs, offeredIDs, ugsToDeliver []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	includedInUG := map[uuid.UUID]bool{}
-	for _, id := range ugsToDeliver {
-		includedInUG[id] = true
-	}
-
-	requestedConfirmationIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, confirmationID := range requestedConfirmationIDs {
-		var c confirmation
-		err := b.database.First(&c, "id = ?", confirmationID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": confirmationID,
-				}).Warn("reference request asks for unknown confirmation we offered")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    confirmationID,
-					"error": err.Error(),
-				}).Fatal("database error querying for confirmation")
-			}
-		} else {
-			if _, present := includedInUG[c.UpdateGroupID]; present {
-				continue
-			}
-			requestedData = append(requestedData, &c)
+	kept := make([]broadcastable, 0, len(loaded))
+	for _, br := range loaded {
+		c, ok := br.(*confirmation)
+		if !ok {
+			// Only reachable if the registry pointed typeConfirmation at the
+			// wrong model. Keep the frame rather than silently dropping it.
+			log.Error("frame loaded for typeConfirmation is not a confirmation")
+			kept = append(kept, br)
+			continue
 		}
 
-	}
-
-	return requestedData
-}
-
-func (b *Bounce) getRequestedUpdateUsersPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedUpdateUserIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, updateUserID := range requestedUpdateUserIDs {
-		var uu updateUser
-		err := b.database.First(&uu, "id = ?", updateUserID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": updateUserID,
-				}).Warn("reference request asks for unknown update user we offered")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    updateUserID,
-					"error": err.Error(),
-				}).Fatal("database error querying for update user")
-			}
-		} else {
-			requestedData = append(requestedData, &uu)
+		if delivering[c.UpdateGroupID] {
+			continue
 		}
+
+		kept = append(kept, br)
 	}
 
-	return requestedData
-}
-
-func (b *Bounce) getRequestedUpdateDevicesPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedUpdateDevicesIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, updateDeviceID := range requestedUpdateDevicesIDs {
-		var ud updateDevice
-		err := b.database.First(&ud, "id = ?", updateDeviceID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": updateDeviceID,
-				}).Warn("reference request asks for unknown update device we offered")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    updateDeviceID,
-					"error": err.Error(),
-				}).Fatal("database error querying for update device")
-			}
-		} else {
-			requestedData = append(requestedData, &ud)
-		}
-	}
-
-	return requestedData
-}
-
-func (b *Bounce) getRequestedReadReceiptPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedReadReceiptIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, readReceiptID := range requestedReadReceiptIDs {
-		var rr readReceipt
-		err := b.database.First(&rr, "id = ?", readReceiptID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": readReceiptID,
-				}).Warn("reference request asks for unknown read receipt we offered")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    readReceiptID,
-					"error": err.Error(),
-				}).Fatal("database error querying for read receipt")
-			}
-		} else {
-			requestedData = append(requestedData, &rr)
-		}
-	}
-
-	return requestedData
-}
-
-func (b *Bounce) getRequestedUpdateSettingsPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedUpdateSettingsIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, updateSettingsID := range requestedUpdateSettingsIDs {
-		var us updateSettings
-		err := b.database.First(&us, "id = ?", updateSettingsID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": updateSettingsID,
-				}).Warn("reference request asks for unknown update settings we offered")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    updateSettingsID,
-					"error": err.Error(),
-				}).Fatal("database error querying for update settings")
-			}
-		} else {
-			requestedData = append(requestedData, &us)
-		}
-	}
-
-	return requestedData
-}
-
-func (b *Bounce) getRequestedFilePayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedFileIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, fileID := range requestedFileIDs {
-		var f file
-		err := b.database.First(&f, "id = ?", fileID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": fileID,
-				}).Warn("reference request asks for unknown file we offered")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    fileID,
-					"error": err.Error(),
-				}).Fatal("database error querying for file")
-			}
-		} else {
-			requestedData = append(requestedData, &f)
-		}
-	}
-
-	return requestedData
-}
-
-func (b *Bounce) getRequestedChunkOfferPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedChunkOfferIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, chunkOfferID := range requestedChunkOfferIDs {
-		var co chunkOffer
-		err := b.database.First(&co, "id = ?", chunkOfferID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": chunkOfferID,
-				}).Warn("reference request asks for unknown chunk offer we offered")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    chunkOfferID,
-					"error": err.Error(),
-				}).Fatal("database error querying for chunk offer")
-			}
-		} else {
-			requestedData = append(requestedData, &co)
-		}
-	}
-
-	return requestedData
-}
-
-func (b *Bounce) getRequestedEncryptedChunkOfferPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedEncryptedChunkOfferIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, encryptedChunkOfferID := range requestedEncryptedChunkOfferIDs {
-		var eco encryptedChunkOffer
-		err := b.database.First(&eco, "id = ?", encryptedChunkOfferID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": encryptedChunkOfferID,
-				}).Warn("reference request asks for unknown encrypted chunk offer we offered")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    encryptedChunkOfferID,
-					"error": err.Error(),
-				}).Fatal("database error querying for encrypted chunk offer")
-			}
-		} else {
-			requestedData = append(requestedData, &eco)
-		}
-	}
-
-	return requestedData
-}
-
-func (b *Bounce) getRequestedDraftPayloads(requestedIDs, offeredIDs []uuid.UUID) []broadcastable {
-	requestedData := []broadcastable{}
-
-	requestedDraftIDs := getValidRequestedUUIDs(offeredIDs, requestedIDs)
-
-	for _, dID := range requestedDraftIDs {
-		var d draft
-		err := b.database.First(&d, "id = ?", dID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"id": dID,
-				}).Warn("reference request asks for an unknown draft")
-			} else {
-				log.WithFields(log.Fields{
-					"id":    dID,
-					"error": err.Error(),
-				}).Fatal("database error querying for draft")
-			}
-		} else {
-			requestedData = append(requestedData, &d)
-		}
-	}
-
-	return requestedData
+	return kept
 }
 
 // Given two lists of UUIDs, one representing the original offer and the other representing what

@@ -11,24 +11,8 @@ import (
 
 var catchUpMutex sync.Mutex
 
-var allowedCatchUpFrames = map[uint16]bool{
-	typeDirectMessage:       true,
-	typeGroupMessage:        true,
-	typeUpdateDM:            true,
-	typeDevice:              true,
-	typeAddUser:             true,
-	typeGroupCreation:       true,
-	typeUpdateGroup:         true,
-	typeConfirmation:        true,
-	typeUpdateUser:          true,
-	typeUpdateDevice:        true,
-	typeReadReceipt:         true,
-	typeUpdateSettings:      true,
-	typeFile:                true,
-	typeChunkOffer:          true,
-	typeDraft:               true,
-	typeEncryptedChunkOffer: true,
-}
+// allowedCatchUpFrames is derived from the syncable entries in frameSpecs.
+// See chat/frame_registry.go.
 
 // A frame contains the ID, type, and marshalled payload of any other frame
 type frame struct {

@@ -15,7 +15,6 @@ import (
 // This is used to establish which update groups are to be applied to a group in the case of a conflict
 // and reduce the risk of a malicious former admin manipulating the update history.
 type confirmation struct {
-	cachedEncoding
 	ID            uuid.UUID `gorm:"type:uuid;primary_key;"`
 	UpdateGroupID uuid.UUID
 	Destination   uuid.UUID `msgpack:"-"`
@@ -63,16 +62,14 @@ func (c *confirmation) getType() uint16 {
 }
 
 func (c *confirmation) getPayload() []byte {
-	if len(c.payload) == 0 {
-		bytes, err := msgpack.Marshal(c)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal confirmation")
-		}
-		c.payload = bytes
+	bytes, err := msgpack.Marshal(c)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal confirmation")
 	}
-	return c.payload
+
+	return bytes
 }
 
 func (c *confirmation) getAuthor() uuid.UUID {

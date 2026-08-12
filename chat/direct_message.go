@@ -23,7 +23,6 @@ var dmDeliveryNotifications = map[uuid.UUID]chan bool{}
 // A direct message is a chat message from one user to another
 type directMessage struct {
 	SignedFrame
-	cachedEncoding
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt          int64     `msgpack:"-"`
 	WrittenAt        int64
@@ -85,20 +84,18 @@ func (dm *directMessage) getType() uint16 {
 }
 
 func (dm *directMessage) getPayload() []byte {
-	if len(dm.payload) == 0 {
-		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   dm.OriginalPayload,
-			Signature: dm.Signature,
-			Signer:    dm.Signer,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling direct message's signed container")
-		}
-		dm.payload = bytes
+	bytes, err := msgpack.Marshal(signedContainer{
+		Payload:   dm.OriginalPayload,
+		Signature: dm.Signature,
+		Signer:    dm.Signer,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling direct message's signed container")
 	}
-	return dm.payload
+
+	return bytes
 }
 
 func (dm *directMessage) getAuthor() uuid.UUID {

@@ -19,7 +19,6 @@ var handleAddUsersMutex sync.Mutex
 // An addUser frame contains proof that two users became friends, where one of the users is us.  It is created as part
 // of the final step in adding a user over the wire.
 type addUser struct {
-	cachedEncoding
 	ID                 uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Xor                uuid.UUID
 	Timestamp          int64
@@ -64,16 +63,14 @@ func (au *addUser) getType() uint16 {
 }
 
 func (au *addUser) getPayload() []byte {
-	if len(au.payload) == 0 {
-		bytes, err := msgpack.Marshal(au)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal add user")
-		}
-		au.payload = bytes
+	bytes, err := msgpack.Marshal(au)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal add user")
 	}
-	return au.payload
+
+	return bytes
 }
 
 func (au *addUser) getAuthor() uuid.UUID {

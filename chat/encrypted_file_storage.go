@@ -24,7 +24,6 @@ var encryptedChunkOfferMutex sync.Mutex
 
 type encryptedChunkOffer struct {
 	SignedFrame
-	cachedEncoding
 	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Hash            string    `gorm:"index;uniqueIndex:idx_hash_location"`
 	Location        string    `gorm:"index;uniqueIndex:idx_hash_location"`
@@ -62,21 +61,18 @@ func (eco *encryptedChunkOffer) getType() uint16 {
 }
 
 func (eco *encryptedChunkOffer) getPayload() []byte {
-	if len(eco.payload) == 0 {
-		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   eco.OriginalPayload,
-			Signature: eco.Signature,
-			Signer:    eco.Signer,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling file's signed container")
-		}
-		eco.payload = bytes
+	bytes, err := msgpack.Marshal(signedContainer{
+		Payload:   eco.OriginalPayload,
+		Signature: eco.Signature,
+		Signer:    eco.Signer,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling file's signed container")
 	}
 
-	return eco.payload
+	return bytes
 }
 
 func (eco *encryptedChunkOffer) getAuthor() uuid.UUID {

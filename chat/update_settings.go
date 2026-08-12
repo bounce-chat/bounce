@@ -31,7 +31,6 @@ var errInvalidPayloadValue = errors.New("invalid payload value")
 
 type updateSettings struct {
 	SignedFrame
-	cachedEncoding
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Type      uint16
 	Data      []byte
@@ -72,20 +71,18 @@ func (us *updateSettings) getType() uint16 {
 }
 
 func (us *updateSettings) getPayload() []byte {
-	if len(us.payload) == 0 {
-		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   us.OriginalPayload,
-			Signature: us.Signature,
-			Signer:    us.Signer,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling update settings' signed container")
-		}
-		us.payload = bytes
+	bytes, err := msgpack.Marshal(signedContainer{
+		Payload:   us.OriginalPayload,
+		Signature: us.Signature,
+		Signer:    us.Signer,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling update settings' signed container")
 	}
-	return us.payload
+
+	return bytes
 }
 
 func (us *updateSettings) getAuthor() uuid.UUID {
