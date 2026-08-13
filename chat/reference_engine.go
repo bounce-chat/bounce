@@ -240,12 +240,6 @@ func (b *Bounce) makeReferenceRequests() {
 	}
 }
 
-// Extract all the IDs in the references by type
-//
-// The syncable types are seeded so that callers reading a type that appeared in
-// no reference get an empty slice rather than a nil one. Types outside the
-// registry are still collected - append handles the missing key - they just are
-// not pre-seeded, because nothing downstream reads them.
 func referencedIDs(references []frameReference) map[uint16][]uuid.UUID {
 	ids := make(map[uint16][]uuid.UUID, len(syncableTypes))
 	for _, frameType := range syncableTypes {

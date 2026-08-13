@@ -42,34 +42,22 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 		return nil, false
 	}
 
-	// Regenerate the offer for this peer rather than trusting the request, and
-	// serve only the intersection of the two.
-	//
-	// This intersection is the entirety of the authorisation check on this path,
-	// and it is why the per-type loaders below need none of their own: the offer
-	// is rebuilt here and now by getReferenceOfferFor, which applies every
-	// revocation and membership check, so a peer can only ever be sent frames it
-	// was authorised for moments ago. Asking for something outside the offer is
-	// not automatically evidence of a bad client - the offer can shrink between
-	// the two frames - so getValidRequestedUUIDs drops those quietly.
 	offerable := b.getReferenceOfferFor(peer)
 	offeredIDs := referencedIDs(offerable.References)
 	requestedIDs := referencedIDs(rr.References)
 
 	deliverable := map[uint16][]uuid.UUID{}
 	for _, spec := range syncableSpecs {
-		deliverable[spec.typ] = getValidRequestedUUIDs(offeredIDs[spec.typ], requestedIDs[spec.typ])
+		deliverable[spec.frameType] = getValidRequestedUUIDs(offeredIDs[spec.frameType], requestedIDs[spec.frameType])
 	}
 
 	broadcastables := []broadcastable{}
 	for _, spec := range syncableSpecs {
-		loaded := spec.load(b, deliverable[spec.typ])
+		loaded := spec.load(b, deliverable[spec.frameType])
 
-		// The one type whose delivery depends on another's. An update group is
-		// loaded with its associations, so it already carries the confirmations
-		// that signed it; sending those separately would deliver the same
-		// signatures twice.
-		if spec.typ == typeConfirmation {
+		// An update group is loaded with its associations, so it already carries the confirmations
+		// that signed it; sending those separately would deliver the same signatures twice.
+		if spec.frameType == typeConfirmation {
 			loaded = dropConfirmationsCarriedBy(loaded, deliverable[typeUpdateGroup])
 		}
 

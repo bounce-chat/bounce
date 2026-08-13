@@ -16,30 +16,30 @@ func TestEverySpecIsComplete(t *testing.T) {
 	seen := map[uint16]bool{}
 
 	for _, spec := range frameSpecs {
-		if seen[spec.typ] {
-			t.Errorf("frame type %d appears twice in frameSpecs", spec.typ)
+		if seen[spec.frameType] {
+			t.Errorf("frame type %d appears twice in frameSpecs", spec.frameType)
 		}
-		seen[spec.typ] = true
+		seen[spec.frameType] = true
 
 		if spec.table == "" {
-			t.Errorf("frame type %d has no table", spec.typ)
+			t.Errorf("frame type %d has no table", spec.frameType)
 		}
 
 		if spec.syncable {
 			if spec.load == nil {
 				t.Errorf("syncable frame type %d has no load function, so a peer "+
-					"requesting it would be answered with nothing", spec.typ)
+					"requesting it would be answered with nothing", spec.frameType)
 			}
 			if spec.offer == nil {
 				t.Errorf("syncable frame type %d has no offer function, so it would "+
-					"never be offered to an offline peer", spec.typ)
+					"never be offered to an offline peer", spec.frameType)
 			}
 			continue
 		}
 
 		if spec.load != nil || spec.offer != nil || spec.dialWorthy {
 			t.Errorf("frame type %d is not syncable but carries reference-flow "+
-				"fields; either mark it syncable or drop them", spec.typ)
+				"fields; either mark it syncable or drop them", spec.frameType)
 		}
 	}
 }
@@ -51,8 +51,8 @@ func TestEverySyncableTypeHasAHandler(t *testing.T) {
 	handlers := b.getHandlers(false)
 
 	for _, spec := range syncableSpecs {
-		if _, ok := handlers[spec.typ]; !ok {
-			t.Errorf("syncable frame type %d has no entry in the normal handler map", spec.typ)
+		if _, ok := handlers[spec.frameType]; !ok {
+			t.Errorf("syncable frame type %d has no entry in the normal handler map", spec.frameType)
 		}
 	}
 }
@@ -82,10 +82,10 @@ func TestDerivedTablesMatchTheRegistry(t *testing.T) {
 	// catchUpOrder ranks must be a dense 0..n-1, since Less compares them
 	// directly and a gap would mean a type was skipped while building them.
 	ranks := map[int]bool{}
-	for typ, rank := range catchUpOrder {
+	for frameType, rank := range catchUpOrder {
 		if rank < 0 || rank >= len(syncableSpecs) {
 			t.Errorf("frame type %d has catch up rank %d, outside 0..%d",
-				typ, rank, len(syncableSpecs)-1)
+				frameType, rank, len(syncableSpecs)-1)
 		}
 		if ranks[rank] {
 			t.Errorf("catch up rank %d is used by more than one frame type", rank)
@@ -94,12 +94,12 @@ func TestDerivedTablesMatchTheRegistry(t *testing.T) {
 	}
 
 	for _, spec := range syncableSpecs {
-		if typeTable[spec.typ] != spec.table {
+		if typeTable[spec.frameType] != spec.table {
 			t.Errorf("typeTable[%d] is %q, registry says %q",
-				spec.typ, typeTable[spec.typ], spec.table)
+				spec.frameType, typeTable[spec.frameType], spec.table)
 		}
-		if !allowedCatchUpFrames[spec.typ] {
-			t.Errorf("syncable frame type %d is missing from allowedCatchUpFrames", spec.typ)
+		if !allowedCatchUpFrames[spec.frameType] {
+			t.Errorf("syncable frame type %d is missing from allowedCatchUpFrames", spec.frameType)
 		}
 	}
 }

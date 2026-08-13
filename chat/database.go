@@ -19,9 +19,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Frames that are sent over the network that have a corresponding database table
-// typeTable is derived from frameSpecs. See chat/frame_registry.go.
-
 func (b *Bounce) openDatabase() {
 	databaseFile := b.configDirectory + "/bounce.db?_journal_mode=WAL&_busy_timeout=10000&_txlock=immediate"
 

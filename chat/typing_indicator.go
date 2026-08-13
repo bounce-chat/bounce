@@ -356,14 +356,11 @@ func (b *Bounce) manuallySendTypingIndicators(ti *typingIndicator, excludedPeer 
 		}).Fatal("unsupported scope for typing indicators")
 	}
 
-	// Serialised once here for the same reason as in broadcast: this is the only
-	// place the payload is computed, so the writers below share nothing.
-	prepared := preparedFrame{frameType: ti.getType(), payload: ti.getPayload()}
-
+	es := encodedSendable{frameType: ti.getType(), payload: ti.getPayload()}
 	for _, peer := range broadcastTargets {
 		go func(dst chan sendable, msg sendable) {
 			dst <- msg
-		}(peer.messages, prepared)
+		}(peer.messages, es)
 	}
 }
 

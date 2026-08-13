@@ -11,9 +11,6 @@ import (
 
 var catchUpMutex sync.Mutex
 
-// allowedCatchUpFrames is derived from the syncable entries in frameSpecs.
-// See chat/frame_registry.go.
-
 // A frame contains the ID, type, and marshalled payload of any other frame
 type frame struct {
 	ID      uuid.UUID

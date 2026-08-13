@@ -27,7 +27,7 @@ import (
 // syncable type has no handler. Adding a persisted frame type is one entry here
 // plus the broadcastable/catchUpAble methods on the struct itself.
 type frameSpec struct {
-	typ uint16
+	frameType uint16
 
 	// Gorm table name. Every persisted frame type has one, including the ones
 	// that never enter the reference flow, because getFramesToRequestAndAck
@@ -66,93 +66,93 @@ type frameSpec struct {
 // sortableCatchUpAbles.Less before it is marshalled.
 var frameSpecs = []frameSpec{
 	{
-		typ: typeAddUser, table: "add_users", syncable: true, dialWorthy: true,
+		frameType: typeAddUser, table: "add_users", syncable: true, dialWorthy: true,
 		load:  loadFrames[addUser](false, "add user"),
 		offer: (*Bounce).getAddUsersToOffer,
 	},
 	{
-		typ: typeDevice, table: "devices", syncable: true, dialWorthy: true,
+		frameType: typeDevice, table: "devices", syncable: true, dialWorthy: true,
 		load:  loadFrames[device](true, "device"),
 		offer: (*Bounce).getDevicesToOffer,
 	},
 	{
-		typ: typeUpdateDevice, table: "update_devices", syncable: true, dialWorthy: true,
+		frameType: typeUpdateDevice, table: "update_devices", syncable: true, dialWorthy: true,
 		load:  loadFrames[updateDevice](false, "update device"),
 		offer: (*Bounce).getUpdateDevicesToOffer,
 	},
 	{
 		// dialWorthy is false here and on updateDM, matching the behaviour of
 		// the shouldDialUser chain this replaced. Both types omitted it there.
-		typ: typeUpdateUser, table: "update_users", syncable: true,
+		frameType: typeUpdateUser, table: "update_users", syncable: true,
 		load:  loadFrames[updateUser](false, "update user"),
 		offer: (*Bounce).getUpdateUsersToOffer,
 	},
 	{
-		typ: typeUpdateDM, table: "update_dms", syncable: true,
+		frameType: typeUpdateDM, table: "update_dms", syncable: true,
 		load:  loadFrames[updateDM](false, "update DM"),
 		offer: (*Bounce).getUpdateDMsToOffer,
 	},
 	{
-		typ: typeDirectMessage, table: "direct_messages", syncable: true, dialWorthy: true,
+		frameType: typeDirectMessage, table: "direct_messages", syncable: true, dialWorthy: true,
 		load:  loadFrames[directMessage](true, "direct message"),
 		offer: (*Bounce).getDirectMessagesToOffer,
 	},
 	{
-		typ: typeGroupCreation, table: "group_creations", syncable: true, dialWorthy: true,
+		frameType: typeGroupCreation, table: "group_creations", syncable: true, dialWorthy: true,
 		load:  loadFrames[groupCreation](false, "group creation"),
 		offer: (*Bounce).getGroupCreationsToOffer,
 	},
 	{
-		typ: typeUpdateGroup, table: "update_groups", syncable: true, dialWorthy: true,
+		frameType: typeUpdateGroup, table: "update_groups", syncable: true, dialWorthy: true,
 		load:  loadFrames[updateGroup](true, "update group"),
 		offer: (*Bounce).getUpdateGroupsToOffer,
 	},
 	{
-		typ: typeGroupMessage, table: "group_messages", syncable: true, dialWorthy: true,
+		frameType: typeGroupMessage, table: "group_messages", syncable: true, dialWorthy: true,
 		load:  loadFrames[groupMessage](true, "group message"),
 		offer: (*Bounce).getGroupMessagesToOffer,
 	},
 	{
-		typ: typeConfirmation, table: "confirmations", syncable: true, dialWorthy: true,
+		frameType: typeConfirmation, table: "confirmations", syncable: true, dialWorthy: true,
 		load:  loadFrames[confirmation](false, "confirmation"),
 		offer: (*Bounce).getConfirmationsToOffer,
 	},
 	{
-		typ: typeReadReceipt, table: "read_receipts", syncable: true, dialWorthy: true,
+		frameType: typeReadReceipt, table: "read_receipts", syncable: true, dialWorthy: true,
 		load:  loadFrames[readReceipt](false, "read receipt"),
 		offer: (*Bounce).getReadReceiptsToOffer,
 	},
 	{
-		typ: typeUpdateSettings, table: "update_settings", syncable: true, dialWorthy: true,
+		frameType: typeUpdateSettings, table: "update_settings", syncable: true, dialWorthy: true,
 		load:  loadFrames[updateSettings](false, "update settings"),
 		offer: (*Bounce).getUpdateSettingsToOffer,
 	},
 	{
-		typ: typeFile, table: "files", syncable: true, dialWorthy: true,
+		frameType: typeFile, table: "files", syncable: true, dialWorthy: true,
 		load:  loadFrames[file](false, "file"),
 		offer: (*Bounce).getFilesToOffer,
 	},
 	{
-		typ: typeChunkOffer, table: "chunk_offers", syncable: true, dialWorthy: true,
+		frameType: typeChunkOffer, table: "chunk_offers", syncable: true, dialWorthy: true,
 		load:  loadFrames[chunkOffer](false, "chunk offer"),
 		offer: (*Bounce).getChunkOffersToOffer,
 	},
 	{
-		typ: typeEncryptedChunkOffer, table: "encrypted_chunk_offers", syncable: true, dialWorthy: true,
+		frameType: typeEncryptedChunkOffer, table: "encrypted_chunk_offers", syncable: true, dialWorthy: true,
 		load:  loadFrames[encryptedChunkOffer](false, "encrypted chunk offer"),
 		offer: (*Bounce).getEncryptedChunkOffersToOffer,
 	},
 	{
-		typ: typeDraft, table: "drafts", syncable: true, dialWorthy: true,
+		frameType: typeDraft, table: "drafts", syncable: true, dialWorthy: true,
 		load:  loadFrames[draft](false, "draft"),
 		offer: (*Bounce).getDraftsToOffer,
 	},
 
 	// Persisted, but not carried by the reference flow.
-	{typ: typeChunk, table: "chunks"},
-	{typ: typeAppendRecipient, table: "append_recipients"},
-	{typ: typeEncryptedChunkStorageRequest, table: "encrypted_chunk_storage_requests"},
-	{typ: typeEncryptedClearBefore, table: "encrypted_clear_befores"},
+	{frameType: typeChunk, table: "chunks"},
+	{frameType: typeAppendRecipient, table: "append_recipients"},
+	{frameType: typeEncryptedChunkStorageRequest, table: "encrypted_chunk_storage_requests"},
+	{frameType: typeEncryptedClearBefore, table: "encrypted_clear_befores"},
 }
 
 var (
@@ -180,20 +180,20 @@ func init() {
 	for i := range frameSpecs {
 		spec := &frameSpecs[i]
 
-		if _, duplicate := specsByType[spec.typ]; duplicate {
+		if _, duplicate := specsByType[spec.frameType]; duplicate {
 			log.WithFields(log.Fields{
-				"type": spec.typ,
+				"type": spec.frameType,
 			}).Fatal("duplicate frame type in the frame registry")
 		}
 
-		specsByType[spec.typ] = spec
-		typeTable[spec.typ] = spec.table
+		specsByType[spec.frameType] = spec
+		typeTable[spec.frameType] = spec.table
 
 		if spec.syncable {
-			catchUpOrder[spec.typ] = len(syncableSpecs)
-			allowedCatchUpFrames[spec.typ] = true
+			catchUpOrder[spec.frameType] = len(syncableSpecs)
+			allowedCatchUpFrames[spec.frameType] = true
 			syncableSpecs = append(syncableSpecs, spec)
-			syncableTypes = append(syncableTypes, spec.typ)
+			syncableTypes = append(syncableTypes, spec.frameType)
 		}
 	}
 }
