@@ -54,13 +54,6 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	broadcastables := []broadcastable{}
 	for _, spec := range syncableSpecs {
 		loaded := spec.load(b, deliverable[spec.frameType])
-
-		// An update group is loaded with its associations, so it already carries the confirmations
-		// that signed it; sending those separately would deliver the same signatures twice.
-		if spec.frameType == typeConfirmation {
-			loaded = dropConfirmationsCarriedBy(loaded, deliverable[typeUpdateGroup])
-		}
-
 		broadcastables = append(broadcastables, loaded...)
 	}
 
@@ -105,39 +98,6 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	}
 
 	return nil, false
-}
-
-// Drop any confirmation whose update group is itself being delivered in this
-// catch up, because that update group carries its confirmations with it.
-func dropConfirmationsCarriedBy(loaded []broadcastable, updateGroupIDs []uuid.UUID) []broadcastable {
-	if len(updateGroupIDs) == 0 {
-		return loaded
-	}
-
-	delivering := make(map[uuid.UUID]bool, len(updateGroupIDs))
-	for _, id := range updateGroupIDs {
-		delivering[id] = true
-	}
-
-	kept := make([]broadcastable, 0, len(loaded))
-	for _, br := range loaded {
-		c, ok := br.(*confirmation)
-		if !ok {
-			// Only reachable if the registry pointed typeConfirmation at the
-			// wrong model. Keep the frame rather than silently dropping it.
-			log.Error("frame loaded for typeConfirmation is not a confirmation")
-			kept = append(kept, br)
-			continue
-		}
-
-		if delivering[c.UpdateGroupID] {
-			continue
-		}
-
-		kept = append(kept, br)
-	}
-
-	return kept
 }
 
 // Given two lists of UUIDs, one representing the original offer and the other representing what

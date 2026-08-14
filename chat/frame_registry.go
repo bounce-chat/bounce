@@ -78,7 +78,7 @@ var frameSpecs = []frameSpec{
 		frameType:  typeUpdateGroup,
 		table:      "update_groups",
 		dialWorthy: true,
-		load:       loadFrames[updateGroup](true),
+		load:       loadFrames[updateGroup](false),
 		offer:      (*Bounce).getUpdateGroupsToOffer,
 	},
 	{
