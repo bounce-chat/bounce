@@ -158,69 +158,8 @@ func (b *Bounce) hasAnyReferencesFor(address string) bool {
 	catchUpMutex.Lock()
 	defer catchUpMutex.Unlock()
 
-	var userID uuid.UUID
-	dev, ok := b.getDeviceFromAddress(address)
-	if ok {
-		userID = dev.UserID
-	} else {
-		encryptedDeviceCacheMutex.Lock()
-		userID, ok = encryptedDeviceCache[address]
-		encryptedDeviceCacheMutex.Unlock()
-		if !ok {
-			return false
-		}
-	}
-
-	if len(b.getDirectMessagesToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getGroupMessagesToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getUpdateDMsToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getDevicesToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getAddUsersToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getGroupCreationsToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getUpdateGroupsToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getConfirmationsToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getUpdateUsersToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getUpdateDevicesToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getReadReceiptsToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getUpdateSettingsToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getFilesToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getChunkOffersToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getDraftsToOffer(address, userID)) > 0 {
-		return true
-	}
-	if len(b.getEncryptedChunkOffersToOffer(address, userID)) > 0 {
-		return true
-	}
-
-	return false
+	ro := b.getReferenceOfferFor(address)
+	return len(ro.References) > 0
 }
 
 func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {

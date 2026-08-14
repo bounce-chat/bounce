@@ -25,21 +25,13 @@ func TestEverySpecIsComplete(t *testing.T) {
 			t.Errorf("frame type %d has no table", spec.frameType)
 		}
 
-		if spec.syncable {
-			if spec.load == nil {
-				t.Errorf("syncable frame type %d has no load function, so a peer "+
-					"requesting it would be answered with nothing", spec.frameType)
-			}
-			if spec.offer == nil {
-				t.Errorf("syncable frame type %d has no offer function, so it would "+
-					"never be offered to an offline peer", spec.frameType)
-			}
-			continue
+		if spec.load == nil {
+			t.Errorf("syncable frame type %d has no load function, so a peer "+
+				"requesting it would be answered with nothing", spec.frameType)
 		}
-
-		if spec.load != nil || spec.offer != nil || spec.dialWorthy {
-			t.Errorf("frame type %d is not syncable but carries reference-flow "+
-				"fields; either mark it syncable or drop them", spec.frameType)
+		if spec.offer == nil {
+			t.Errorf("syncable frame type %d has no offer function, so it would "+
+				"never be offered to an offline peer", spec.frameType)
 		}
 	}
 }

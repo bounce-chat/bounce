@@ -9,50 +9,12 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// The frame registry is the single description of every frame type that has a
-// database table, and of the subset of those that travel through the reference
-// flow.
-//
-// Before it existed the same sixteen types were enumerated in eight separate
-// places - catchUpOrder, typeTable, allowedCatchUpFrames, typesToRespondWith,
-// shouldDialUser, the seed map in referencedIDs, the offer queries and the
-// request queries - and nothing connected them. Omitting a type from one of the
-// later ones produced a frame that worked perfectly between two online devices
-// and silently never reached an offline one, which is close to the worst
-// failure shape this codebase has: it does not error, it does not log, and it
-// only shows up as missing history days later on a device nobody is watching.
-//
-// Every one of those tables is now derived from this list in init(), and
-// frame_registry_test.go fails the build if an entry is incomplete or if a
-// syncable type has no handler. Adding a persisted frame type is one entry here
-// plus the broadcastable/catchUpAble methods on the struct itself.
 type frameSpec struct {
-	frameType uint16
-
-	// Gorm table name. Every persisted frame type has one, including the ones
-	// that never enter the reference flow, because getFramesToRequestAndAck
-	// counts rows by table name to decide whether a frame needs requesting.
-	table string
-
-	// syncable marks the types that move through offer -> request -> catch up.
-	// A false here is not an oversight: chunks, append recipients and the
-	// encrypted-device bookkeeping frames are persisted but are moved by their
-	// own protocols rather than by the reference flow.
-	syncable bool
-
-	// dialWorthy answers "is a peer offering only frames of this type worth
-	// opening a connection for". Consumed by referenceOffer.shouldDialUser.
-	dialWorthy bool
-
-	// load fetches the given IDs from the database as broadcastables. nil for
-	// non-syncable types. The IDs handed to it have already been intersected
-	// with what we offered - see handleReferenceRequest.
-	load func(b *Bounce, ids []uuid.UUID) []broadcastable
-
-	// offer produces the references for this type that address/userID has not
-	// received yet, including every authorisation check that decides whether
-	// they may have them at all. nil for non-syncable types.
-	offer func(b *Bounce, address string, userID uuid.UUID) []frameReference
+	frameType  uint16
+	table      string // Database table name
+	dialWorthy bool   // TODO: dialUserFor
+	load       func(b *Bounce, ids []uuid.UUID) []broadcastable
+	offer      func(b *Bounce, address string, userID uuid.UUID) []frameReference // TODO: need to pass the user iD?
 }
 
 // frameSpecs is ordered, and the order is load-bearing in exactly one way: the
@@ -66,93 +28,115 @@ type frameSpec struct {
 // sortableCatchUpAbles.Less before it is marshalled.
 var frameSpecs = []frameSpec{
 	{
-		frameType: typeAddUser, table: "add_users", syncable: true, dialWorthy: true,
-		load:  loadFrames[addUser](false, "add user"),
-		offer: (*Bounce).getAddUsersToOffer,
+		frameType:  typeAddUser,
+		table:      "add_users",
+		dialWorthy: true,
+		load:       loadFrames[addUser](false),
+		offer:      (*Bounce).getAddUsersToOffer,
 	},
 	{
-		frameType: typeDevice, table: "devices", syncable: true, dialWorthy: true,
-		load:  loadFrames[device](true, "device"),
-		offer: (*Bounce).getDevicesToOffer,
+		frameType:  typeDevice,
+		table:      "devices",
+		dialWorthy: true,
+		load:       loadFrames[device](true),
+		offer:      (*Bounce).getDevicesToOffer,
 	},
 	{
-		frameType: typeUpdateDevice, table: "update_devices", syncable: true, dialWorthy: true,
-		load:  loadFrames[updateDevice](false, "update device"),
-		offer: (*Bounce).getUpdateDevicesToOffer,
+		frameType:  typeUpdateDevice,
+		table:      "update_devices",
+		dialWorthy: true,
+		load:       loadFrames[updateDevice](false),
+		offer:      (*Bounce).getUpdateDevicesToOffer,
 	},
 	{
-		// dialWorthy is false here and on updateDM, matching the behaviour of
-		// the shouldDialUser chain this replaced. Both types omitted it there.
-		frameType: typeUpdateUser, table: "update_users", syncable: true,
-		load:  loadFrames[updateUser](false, "update user"),
-		offer: (*Bounce).getUpdateUsersToOffer,
+		frameType: typeUpdateUser,
+		table:     "update_users",
+		load:      loadFrames[updateUser](false),
+		offer:     (*Bounce).getUpdateUsersToOffer,
 	},
 	{
-		frameType: typeUpdateDM, table: "update_dms", syncable: true,
-		load:  loadFrames[updateDM](false, "update DM"),
-		offer: (*Bounce).getUpdateDMsToOffer,
+		frameType: typeUpdateDM,
+		table:     "update_dms",
+		load:      loadFrames[updateDM](false),
+		offer:     (*Bounce).getUpdateDMsToOffer,
 	},
 	{
-		frameType: typeDirectMessage, table: "direct_messages", syncable: true, dialWorthy: true,
-		load:  loadFrames[directMessage](true, "direct message"),
-		offer: (*Bounce).getDirectMessagesToOffer,
+		frameType:  typeDirectMessage,
+		table:      "direct_messages",
+		dialWorthy: true,
+		load:       loadFrames[directMessage](true),
+		offer:      (*Bounce).getDirectMessagesToOffer,
 	},
 	{
-		frameType: typeGroupCreation, table: "group_creations", syncable: true, dialWorthy: true,
-		load:  loadFrames[groupCreation](false, "group creation"),
-		offer: (*Bounce).getGroupCreationsToOffer,
+		frameType:  typeGroupCreation,
+		table:      "group_creations",
+		dialWorthy: true,
+		load:       loadFrames[groupCreation](false),
+		offer:      (*Bounce).getGroupCreationsToOffer,
 	},
 	{
-		frameType: typeUpdateGroup, table: "update_groups", syncable: true, dialWorthy: true,
-		load:  loadFrames[updateGroup](true, "update group"),
-		offer: (*Bounce).getUpdateGroupsToOffer,
+		frameType:  typeUpdateGroup,
+		table:      "update_groups",
+		dialWorthy: true,
+		load:       loadFrames[updateGroup](true),
+		offer:      (*Bounce).getUpdateGroupsToOffer,
 	},
 	{
-		frameType: typeGroupMessage, table: "group_messages", syncable: true, dialWorthy: true,
-		load:  loadFrames[groupMessage](true, "group message"),
-		offer: (*Bounce).getGroupMessagesToOffer,
+		frameType:  typeGroupMessage,
+		table:      "group_messages",
+		dialWorthy: true,
+		load:       loadFrames[groupMessage](true),
+		offer:      (*Bounce).getGroupMessagesToOffer,
 	},
 	{
-		frameType: typeConfirmation, table: "confirmations", syncable: true, dialWorthy: true,
-		load:  loadFrames[confirmation](false, "confirmation"),
-		offer: (*Bounce).getConfirmationsToOffer,
+		frameType:  typeConfirmation,
+		table:      "confirmations",
+		dialWorthy: true,
+		load:       loadFrames[confirmation](false),
+		offer:      (*Bounce).getConfirmationsToOffer,
 	},
 	{
-		frameType: typeReadReceipt, table: "read_receipts", syncable: true, dialWorthy: true,
-		load:  loadFrames[readReceipt](false, "read receipt"),
-		offer: (*Bounce).getReadReceiptsToOffer,
+		frameType:  typeReadReceipt,
+		table:      "read_receipts",
+		dialWorthy: true,
+		load:       loadFrames[readReceipt](false),
+		offer:      (*Bounce).getReadReceiptsToOffer,
 	},
 	{
-		frameType: typeUpdateSettings, table: "update_settings", syncable: true, dialWorthy: true,
-		load:  loadFrames[updateSettings](false, "update settings"),
-		offer: (*Bounce).getUpdateSettingsToOffer,
+		frameType:  typeUpdateSettings,
+		table:      "update_settings",
+		dialWorthy: true,
+		load:       loadFrames[updateSettings](false),
+		offer:      (*Bounce).getUpdateSettingsToOffer,
 	},
 	{
-		frameType: typeFile, table: "files", syncable: true, dialWorthy: true,
-		load:  loadFrames[file](false, "file"),
-		offer: (*Bounce).getFilesToOffer,
+		frameType:  typeFile,
+		table:      "files",
+		dialWorthy: true,
+		load:       loadFrames[file](false),
+		offer:      (*Bounce).getFilesToOffer,
 	},
 	{
-		frameType: typeChunkOffer, table: "chunk_offers", syncable: true, dialWorthy: true,
-		load:  loadFrames[chunkOffer](false, "chunk offer"),
-		offer: (*Bounce).getChunkOffersToOffer,
+		frameType:  typeChunkOffer,
+		table:      "chunk_offers",
+		dialWorthy: true,
+		load:       loadFrames[chunkOffer](false),
+		offer:      (*Bounce).getChunkOffersToOffer,
 	},
 	{
-		frameType: typeEncryptedChunkOffer, table: "encrypted_chunk_offers", syncable: true, dialWorthy: true,
-		load:  loadFrames[encryptedChunkOffer](false, "encrypted chunk offer"),
-		offer: (*Bounce).getEncryptedChunkOffersToOffer,
+		frameType:  typeEncryptedChunkOffer,
+		table:      "encrypted_chunk_offers",
+		dialWorthy: true,
+		load:       loadFrames[encryptedChunkOffer](false),
+		offer:      (*Bounce).getEncryptedChunkOffersToOffer,
 	},
 	{
-		frameType: typeDraft, table: "drafts", syncable: true, dialWorthy: true,
-		load:  loadFrames[draft](false, "draft"),
-		offer: (*Bounce).getDraftsToOffer,
+		frameType:  typeDraft,
+		table:      "drafts",
+		dialWorthy: true,
+		load:       loadFrames[draft](false),
+		offer:      (*Bounce).getDraftsToOffer,
 	},
-
-	// Persisted, but not carried by the reference flow.
-	{frameType: typeChunk, table: "chunks"},
-	{frameType: typeAppendRecipient, table: "append_recipients"},
-	{frameType: typeEncryptedChunkStorageRequest, table: "encrypted_chunk_storage_requests"},
-	{frameType: typeEncryptedClearBefore, table: "encrypted_clear_befores"},
 }
 
 var (
@@ -189,12 +173,10 @@ func init() {
 		specsByType[spec.frameType] = spec
 		typeTable[spec.frameType] = spec.table
 
-		if spec.syncable {
-			catchUpOrder[spec.frameType] = len(syncableSpecs)
-			allowedCatchUpFrames[spec.frameType] = true
-			syncableSpecs = append(syncableSpecs, spec)
-			syncableTypes = append(syncableTypes, spec.frameType)
-		}
+		catchUpOrder[spec.frameType] = i
+		allowedCatchUpFrames[spec.frameType] = true
+		syncableSpecs = append(syncableSpecs, spec)
+		syncableTypes = append(syncableTypes, spec.frameType)
 	}
 }
 
@@ -216,7 +198,7 @@ type framePtr[T any] interface {
 // preload selects Preload(clause.Associations), which the four types with
 // association rows need in order to marshal completely. what names the type in
 // log lines and nothing else.
-func loadFrames[T any, PT framePtr[T]](preload bool, what string) func(*Bounce, []uuid.UUID) []broadcastable {
+func loadFrames[T any, PT framePtr[T]](preload bool) func(*Bounce, []uuid.UUID) []broadcastable {
 	return func(b *Bounce, ids []uuid.UUID) []broadcastable {
 		loaded := []broadcastable{}
 
@@ -233,13 +215,11 @@ func loadFrames[T any, PT framePtr[T]](preload bool, what string) func(*Bounce, 
 					// Not necessarily misbehaviour: a frame can be deleted
 					// between the offer and the request that follows it.
 					log.WithFields(log.Fields{
-						"id":    id,
-						"frame": what,
+						"id": id,
 					}).Warn("reference request asks for a frame we no longer have")
 				} else {
 					log.WithFields(log.Fields{
 						"id":    id,
-						"frame": what,
 						"error": err.Error(),
 					}).Fatal("database error querying for requested frame")
 				}
