@@ -287,6 +287,14 @@ func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
 // calling startupFailed: a failure at startup is fatal, but the same failure
 // during a restart just means we try again later.
 func (bounceTor *TorNetwork) openSession() (*session, error) {
+	// In rare situations, arti has been known to put itself in a state where the information
+	// on disk prevents a successful bootstrap.  This seems related to devices that transition
+	// from one network to another often, like mobile phones.  The solution, for now, is to
+	// simply clear the state on disk at every launch, since the speed of bootstrapping is not
+	// negatively affected too much.
+	os.RemoveAll(bounceTor.routerDirectory)
+	os.MkdirAll(bounceTor.routerDirectory, 0700)
+
 	client, err := arti.Open(arti.Config{DataDir: bounceTor.routerDirectory})
 	if err != nil {
 		return nil, err
