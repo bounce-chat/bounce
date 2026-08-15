@@ -9,15 +9,15 @@ import (
 // which works live and silently never syncs - into a build failure.
 //
 // If you are here because one of them broke after adding a frame type, the fix
-// is almost always to complete the entry in frameSpecs rather than to relax the
+// is almost always to complete the entry in referencedFrames rather than to relax the
 // assertion.
 
 func TestEverySpecIsComplete(t *testing.T) {
 	seen := map[uint16]bool{}
 
-	for _, spec := range frameSpecs {
+	for _, spec := range referencedFrames {
 		if seen[spec.frameType] {
-			t.Errorf("frame type %d appears twice in frameSpecs", spec.frameType)
+			t.Errorf("frame type %d appears twice in referencedFrames", spec.frameType)
 		}
 		seen[spec.frameType] = true
 
@@ -42,7 +42,7 @@ func TestEverySyncableTypeHasAHandler(t *testing.T) {
 	b := &Bounce{}
 	handlers := b.getHandlers(false)
 
-	for _, spec := range syncableSpecs {
+	for _, spec := range referencedFrames {
 		if _, ok := handlers[spec.frameType]; !ok {
 			t.Errorf("syncable frame type %d has no entry in the normal handler map", spec.frameType)
 		}
@@ -53,31 +53,31 @@ func TestEverySyncableTypeHasAHandler(t *testing.T) {
 // actually came out of the registry rather than being left empty by an init
 // ordering mistake.
 func TestDerivedTablesMatchTheRegistry(t *testing.T) {
-	if len(typeTable) != len(frameSpecs) {
-		t.Errorf("typeTable has %d entries, frameSpecs has %d", len(typeTable), len(frameSpecs))
+	if len(typeTable) != len(referencedFrames) {
+		t.Errorf("typeTable has %d entries, referencedFrames has %d", len(typeTable), len(referencedFrames))
 	}
 
-	if len(catchUpOrder) != len(syncableSpecs) {
-		t.Errorf("catchUpOrder has %d entries, %d types are syncable", len(catchUpOrder), len(syncableSpecs))
+	if len(catchUpOrder) != len(referencedFrames) {
+		t.Errorf("catchUpOrder has %d entries, %d types are syncable", len(catchUpOrder), len(referencedFrames))
 	}
 
-	if len(allowedCatchUpFrames) != len(syncableSpecs) {
+	if len(allowedCatchUpFrames) != len(referencedFrames) {
 		t.Errorf("allowedCatchUpFrames has %d entries, %d types are syncable",
-			len(allowedCatchUpFrames), len(syncableSpecs))
+			len(allowedCatchUpFrames), len(referencedFrames))
 	}
 
-	if len(syncableTypes) != len(syncableSpecs) {
-		t.Errorf("syncableTypes has %d entries, syncableSpecs has %d",
-			len(syncableTypes), len(syncableSpecs))
+	if len(referencedTypes) != len(referencedFrames) {
+		t.Errorf("referencedTypes has %d entries, referencedFrames has %d",
+			len(referencedTypes), len(referencedFrames))
 	}
 
 	// catchUpOrder ranks must be a dense 0..n-1, since Less compares them
 	// directly and a gap would mean a type was skipped while building them.
 	ranks := map[int]bool{}
 	for frameType, rank := range catchUpOrder {
-		if rank < 0 || rank >= len(syncableSpecs) {
+		if rank < 0 || rank >= len(referencedFrames) {
 			t.Errorf("frame type %d has catch up rank %d, outside 0..%d",
-				frameType, rank, len(syncableSpecs)-1)
+				frameType, rank, len(referencedFrames)-1)
 		}
 		if ranks[rank] {
 			t.Errorf("catch up rank %d is used by more than one frame type", rank)
@@ -85,7 +85,7 @@ func TestDerivedTablesMatchTheRegistry(t *testing.T) {
 		ranks[rank] = true
 	}
 
-	for _, spec := range syncableSpecs {
+	for _, spec := range referencedFrames {
 		if typeTable[spec.frameType] != spec.table {
 			t.Errorf("typeTable[%d] is %q, registry says %q",
 				spec.frameType, typeTable[spec.frameType], spec.table)
@@ -96,7 +96,7 @@ func TestDerivedTablesMatchTheRegistry(t *testing.T) {
 	}
 }
 
-// The order of syncableSpecs is the replay order of a catch up, and some of it
+// The order of referencedFrames is the replay order of a catch up, and some of it
 // is a real ordering constraint rather than a preference: a group cannot be
 // updated before it has been created, and frames authored by a device cannot be
 // verified before that device is known.

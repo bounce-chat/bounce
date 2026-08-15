@@ -9,24 +9,52 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-type frameSpec struct {
-	frameType  uint16
-	table      string // Database table name
-	dialWorthy bool   // TODO: dialUserFor
-	load       func(b *Bounce, ids []uuid.UUID) []broadcastable
-	offer      func(b *Bounce, address string, userID uuid.UUID) []frameReference // TODO: need to pass the user iD?
+var (
+	// Look up a referenced frame definition by frame type
+	referencedFramesByType = map[uint16]*referencedFrame{}
+
+	// All types that can be synced via the reference flow
+	referencedTypes []uint16
+
+	// Database table names for each referenced frame
+	typeTable = map[uint16]string{}
+
+	// Order of frames inside of a catchup, when the timestamps are identical
+	catchUpOrder = map[uint16]int{}
+
+	// Frames that are allowed inside of a catch up
+	allowedCatchUpFrames = map[uint16]bool{}
+)
+
+func init() {
+	for i := range referencedFrames {
+		rf := referencedFrames[i]
+
+		if _, duplicate := referencedFramesByType[rf.frameType]; duplicate {
+			log.WithFields(log.Fields{
+				"type": rf.frameType,
+			}).Fatal("duplicate frame type in the frame registry")
+		}
+
+		referencedFramesByType[rf.frameType] = rf
+		typeTable[rf.frameType] = rf.table
+		catchUpOrder[rf.frameType] = i
+		allowedCatchUpFrames[rf.frameType] = true
+		referencedTypes = append(referencedTypes, rf.frameType)
+	}
 }
 
-// frameSpecs is ordered, and the order is load-bearing in exactly one way: the
-// position of a syncable entry becomes its catchUpOrder rank, which is the
-// order frames are replayed out of a catch up. groupCreation must precede
-// updateGroup, addUser and device must precede anything that references them,
-// and so on. Reordering these lines reorders replay.
-//
-// Nothing else depends on the order. The offer, request and ack paths all
-// group by type before doing anything, and a catch up is explicitly sorted by
-// sortableCatchUpAbles.Less before it is marshalled.
-var frameSpecs = []frameSpec{
+type referencedFrame struct {
+	frameType  uint16
+	table      string
+	dialWorthy bool
+	load       func(b *Bounce, ids []uuid.UUID) []broadcastable
+	offer      func(b *Bounce, address string, userID uuid.UUID) []frameReference
+}
+
+// All frames that are part of the reference flow have additional information defined here.  The order
+// of the frames here is used to tie break identical timestamps when sorting these frames in a catchup.
+var referencedFrames = []*referencedFrame{
 	{
 		frameType:  typeAddUser,
 		table:      "add_users",
@@ -139,47 +167,6 @@ var frameSpecs = []frameSpec{
 	},
 }
 
-var (
-	// specsByType indexes frameSpecs. Prefer syncableSpecs when iterating, so
-	// that catch up order is respected and the traversal is deterministic.
-	specsByType = map[uint16]*frameSpec{}
-
-	// syncableSpecs is frameSpecs filtered to syncable entries, order preserved.
-	syncableSpecs []*frameSpec
-
-	// syncableTypes is the same set as bare type IDs, in the same order.
-	syncableTypes []uint16
-
-	// typeTable maps a frame type to its gorm table.
-	typeTable = map[uint16]string{}
-
-	// catchUpOrder ranks types for replay out of a catch up.
-	catchUpOrder = map[uint16]int{}
-
-	// allowedCatchUpFrames gates which types a peer may put in a catch up.
-	allowedCatchUpFrames = map[uint16]bool{}
-)
-
-func init() {
-	for i := range frameSpecs {
-		spec := &frameSpecs[i]
-
-		if _, duplicate := specsByType[spec.frameType]; duplicate {
-			log.WithFields(log.Fields{
-				"type": spec.frameType,
-			}).Fatal("duplicate frame type in the frame registry")
-		}
-
-		specsByType[spec.frameType] = spec
-		typeTable[spec.frameType] = spec.table
-
-		catchUpOrder[spec.frameType] = i
-		allowedCatchUpFrames[spec.frameType] = true
-		syncableSpecs = append(syncableSpecs, spec)
-		syncableTypes = append(syncableTypes, spec.frameType)
-	}
-}
-
 // framePtr constrains PT to be *T where *T is a broadcastable. This is what
 // lets loadFrames allocate a T, hand back a pointer to it, and still satisfy
 // the interface - a plain [T broadcastable] would require the value type to
@@ -189,15 +176,7 @@ type framePtr[T any] interface {
 	broadcastable
 }
 
-// loadFrames builds the per-type loader stored in frameSpec.load.
-//
-// This replaced sixteen near-identical functions in reference_request.go that
-// differed only in the model type, whether they preloaded associations, and the
-// noun in their log lines.
-//
-// preload selects Preload(clause.Associations), which the four types with
-// association rows need in order to marshal completely. what names the type in
-// log lines and nothing else.
+// loadFrames builds the per-type loader stored in referencedFrame.load.
 func loadFrames[T any, PT framePtr[T]](preload bool) func(*Bounce, []uuid.UUID) []broadcastable {
 	return func(b *Bounce, ids []uuid.UUID) []broadcastable {
 		loaded := []broadcastable{}
@@ -212,11 +191,9 @@ func loadFrames[T any, PT framePtr[T]](preload bool) func(*Bounce, []uuid.UUID) 
 
 			if err := query.First(&row, "id = ?", id).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
-					// Not necessarily misbehaviour: a frame can be deleted
-					// between the offer and the request that follows it.
 					log.WithFields(log.Fields{
 						"id": id,
-					}).Warn("reference request asks for a frame we no longer have")
+					}).Debug("reference request asks for a frame we no longer have")
 				} else {
 					log.WithFields(log.Fields{
 						"id":    id,

@@ -47,13 +47,13 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	requestedIDs := referencedIDs(rr.References)
 
 	deliverable := map[uint16][]uuid.UUID{}
-	for _, spec := range syncableSpecs {
-		deliverable[spec.frameType] = getValidRequestedUUIDs(offeredIDs[spec.frameType], requestedIDs[spec.frameType])
+	for _, rf := range referencedFrames {
+		deliverable[rf.frameType] = getValidRequestedUUIDs(offeredIDs[rf.frameType], requestedIDs[rf.frameType])
 	}
 
 	broadcastables := []broadcastable{}
-	for _, spec := range syncableSpecs {
-		loaded := spec.load(b, deliverable[spec.frameType])
+	for _, rf := range referencedFrames {
+		loaded := rf.load(b, deliverable[rf.frameType])
 		broadcastables = append(broadcastables, loaded...)
 	}
 

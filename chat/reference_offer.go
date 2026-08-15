@@ -40,7 +40,7 @@ func (ro *referenceOffer) getPayload() []byte {
 // Check if anything in the reference offer is not global scope, or justifies dialing a user
 func (ro *referenceOffer) shouldDialUser() bool {
 	for _, reference := range ro.References {
-		if spec, ok := specsByType[reference.Type]; ok && spec.dialWorthy {
+		if rf, ok := referencedFramesByType[reference.Type]; ok && rf.dialWorthy {
 			return true
 		}
 	}
@@ -158,8 +158,33 @@ func (b *Bounce) hasAnyReferencesFor(address string) bool {
 	catchUpMutex.Lock()
 	defer catchUpMutex.Unlock()
 
-	ro := b.getReferenceOfferFor(address)
-	return len(ro.References) > 0
+	if b.encrypted {
+		log.Fatal("cannot generate reference offer from encrypted device")
+	}
+
+	var userID uuid.UUID
+	dev, ok := b.getDeviceFromAddress(address)
+	if ok {
+		userID = dev.UserID
+	} else {
+		encryptedDeviceCacheMutex.Lock()
+		userID, ok = encryptedDeviceCache[address]
+		encryptedDeviceCacheMutex.Unlock()
+		if !ok {
+			log.WithFields(log.Fields{
+				"address": address,
+			}).Warn("cannot generate reference offer for unknown device")
+			return false
+		}
+	}
+
+	for _, spec := range referencedFrames {
+		if len(spec.offer(b, address, userID)) > 0 {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
@@ -189,8 +214,8 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	}
 
 	references := []frameReference{}
-	for _, spec := range syncableSpecs {
-		references = append(references, spec.offer(b, address, userID)...)
+	for _, rf := range referencedFrames {
+		references = append(references, rf.offer(b, address, userID)...)
 	}
 
 	return &referenceOffer{
@@ -1331,7 +1356,7 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	references := []frameReference{}
 	acks := []frameReference{}
 	typesToIDs := referencedIDs(ro.References)
-	for _, frameType := range syncableTypes {
+	for _, frameType := range referencedTypes {
 		refs, as := b.getFramesToRequestAndAck(peer, typesToIDs[frameType], frameType)
 		references = append(references, refs...)
 		acks = append(acks, as...)

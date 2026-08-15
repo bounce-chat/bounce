@@ -241,8 +241,8 @@ func (b *Bounce) makeReferenceRequests() {
 }
 
 func referencedIDs(references []frameReference) map[uint16][]uuid.UUID {
-	ids := make(map[uint16][]uuid.UUID, len(syncableTypes))
-	for _, frameType := range syncableTypes {
+	ids := make(map[uint16][]uuid.UUID, len(referencedTypes))
+	for _, frameType := range referencedTypes {
 		ids[frameType] = []uuid.UUID{}
 	}
 
