@@ -62,7 +62,6 @@ var errMustBeInvitedToRespond = errors.New("user must have active invite to grou
 // sent to sync devices.  The data field of the structure contains different data depending on the type of update.
 type updateGroup struct {
 	SignedFrame
-	cachedEncoding
 	ID            uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Actor         uuid.UUID
 	Target        uuid.UUID
@@ -134,20 +133,18 @@ func (ug *updateGroup) getType() uint16 {
 }
 
 func (ug *updateGroup) getPayload() []byte {
-	if len(ug.payload) == 0 {
-		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   ug.OriginalPayload,
-			Signature: ug.Signature,
-			Signer:    ug.Signer,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling update group's signed container")
-		}
-		ug.payload = bytes
+	bytes, err := msgpack.Marshal(signedContainer{
+		Payload:   ug.OriginalPayload,
+		Signature: ug.Signature,
+		Signer:    ug.Signer,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling update group's signed container")
 	}
-	return ug.payload
+
+	return bytes
 }
 
 func (ug *updateGroup) getAuthor() uuid.UUID {

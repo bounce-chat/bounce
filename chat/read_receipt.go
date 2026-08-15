@@ -36,7 +36,6 @@ var readReceiptMutex sync.Mutex
 
 type readReceipt struct {
 	SignedFrame
-	cachedEncoding
 	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Actor       uuid.UUID
 	Destination uuid.UUID `msgpack:"-"`
@@ -80,20 +79,18 @@ func (rr *readReceipt) getType() uint16 {
 }
 
 func (rr *readReceipt) getPayload() []byte {
-	if len(rr.payload) == 0 {
-		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   rr.OriginalPayload,
-			Signature: rr.Signature,
-			Signer:    rr.Signer,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling read receipt's signed container")
-		}
-		rr.payload = bytes
+	bytes, err := msgpack.Marshal(signedContainer{
+		Payload:   rr.OriginalPayload,
+		Signature: rr.Signature,
+		Signer:    rr.Signer,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling read receipt's signed container")
 	}
-	return rr.payload
+
+	return bytes
 }
 
 func (rr *readReceipt) getAuthor() uuid.UUID {

@@ -53,7 +53,6 @@ var errInvalidImage = errors.New("invalid image data")
 
 type file struct {
 	SignedFrame
-	cachedEncoding
 	ID                uuid.UUID `gorm:"type:uuid;primary_key;index:idx_file_downloaded"`
 	Name              string
 	Type              int
@@ -141,21 +140,18 @@ func (f *file) getType() uint16 {
 }
 
 func (f *file) getPayload() []byte {
-	if len(f.payload) == 0 {
-		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   f.OriginalPayload,
-			Signature: f.Signature,
-			Signer:    f.Signer,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling file's signed container")
-		}
-		f.payload = bytes
+	bytes, err := msgpack.Marshal(signedContainer{
+		Payload:   f.OriginalPayload,
+		Signature: f.Signature,
+		Signer:    f.Signer,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling file's signed container")
 	}
 
-	return f.payload
+	return bytes
 }
 
 func (f *file) getAuthor() uuid.UUID {
@@ -350,7 +346,6 @@ func (f *file) embedded() bool {
 
 type chunkOffer struct {
 	SignedFrame
-	cachedEncoding
 	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Scope           int       `gorm:"index:idx_chunk_offers_scope_dest"`
 	Destination     uuid.UUID `gorm:"index:idx_chunk_offers_scope_dest"`
@@ -388,21 +383,18 @@ func (co *chunkOffer) getType() uint16 {
 }
 
 func (co *chunkOffer) getPayload() []byte {
-	if len(co.payload) == 0 {
-		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   co.OriginalPayload,
-			Signature: co.Signature,
-			Signer:    co.Signer,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling file's signed container")
-		}
-		co.payload = bytes
+	bytes, err := msgpack.Marshal(signedContainer{
+		Payload:   co.OriginalPayload,
+		Signature: co.Signature,
+		Signer:    co.Signer,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling file's signed container")
 	}
 
-	return co.payload
+	return bytes
 }
 
 func (co *chunkOffer) getAuthor() uuid.UUID {
@@ -512,7 +504,6 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) (br
 }
 
 type chunkRequest struct {
-	cachedEncoding
 	Hash string
 }
 
@@ -521,16 +512,14 @@ func (cr *chunkRequest) getType() uint16 {
 }
 
 func (cr *chunkRequest) getPayload() []byte {
-	if len(cr.payload) == 0 {
-		bytes, err := msgpack.Marshal(cr)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal chunk")
-		}
-		cr.payload = bytes
+	bytes, err := msgpack.Marshal(cr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal chunk")
 	}
-	return cr.payload
+
+	return bytes
 }
 
 func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
@@ -871,7 +860,6 @@ func (b *Bounce) encryptedPeerCanHaveChunk(userID uuid.UUID, hash string) bool {
 }
 
 type chunk struct {
-	cachedEncoding
 	ID            uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
 	FileID        uuid.UUID `msgpack:"-"`
 	Hash          string    `msgpack:"-" gorm:"index"`

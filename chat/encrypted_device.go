@@ -411,7 +411,6 @@ func (dr *deviceRecipient) BeforeCreate(tx *gorm.DB) error {
 }
 
 type encryptedFrame struct {
-	cachedEncoding
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Type             uint16
 	Timestamp        int64
@@ -446,16 +445,14 @@ func (ef encryptedFrame) getSavedAt() int64 {
 }
 
 func (ef encryptedFrame) getPayload() []byte {
-	if len(ef.payload) == 0 {
-		bytes, err := msgpack.Marshal(&ef)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal encrypted frame")
-		}
-		ef.payload = bytes
+	bytes, err := msgpack.Marshal(&ef)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal encrypted frame")
 	}
-	return ef.payload
+
+	return bytes
 }
 
 var encryptedFrameMutex sync.Mutex

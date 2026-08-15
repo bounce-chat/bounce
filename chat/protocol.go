@@ -96,25 +96,6 @@ type broadcastable interface {
 
 type sortableCatchUpAbles []catchUpAble
 
-var catchUpOrder = map[uint16]int{
-	typeAddUser:             0,
-	typeDevice:              1,
-	typeUpdateDevice:        2,
-	typeUpdateUser:          3,
-	typeUpdateDM:            4,
-	typeDirectMessage:       5,
-	typeGroupCreation:       6,
-	typeUpdateGroup:         7,
-	typeGroupMessage:        8,
-	typeConfirmation:        9,
-	typeReadReceipt:         10,
-	typeUpdateSettings:      11,
-	typeFile:                12,
-	typeChunkOffer:          13,
-	typeEncryptedChunkOffer: 14,
-	typeDraft:               15,
-}
-
 func (scua sortableCatchUpAbles) Len() int {
 	return len(scua)
 }
@@ -158,10 +139,6 @@ type SignedFrame struct {
 	Signer          string `msgpack:"-" gorm:"not null"`
 	OriginalPayload []byte `msgpack:"-" gorm:"not null"`
 	Signature       []byte `msgpack:"-" gorm:"not null"`
-}
-
-type cachedEncoding struct {
-	payload []byte
 }
 
 func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, bool) (broadcastable, bool) {
@@ -233,18 +210,34 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 	}
 }
 
+type encodedSendable struct {
+	frameType uint16
+	payload   []byte
+}
+
+func (es encodedSendable) getType() uint16 {
+	return es.frameType
+}
+
+func (es encodedSendable) getPayload() []byte {
+	return es.payload
+}
+
 func (b *Bounce) broadcast(br broadcastable) {
 	log.WithFields(log.Fields{
 		"type":        br.getType(),
 		"scope":       br.getScope(b.currentUserID()),
 		"destination": br.getDestination(b.currentUserID()),
 	}).Debug("broadcasting frame")
+
+	es := encodedSendable{frameType: br.getType(), payload: br.getPayload()}
+
 	for _, peer := range b.getBroadcastScope(br, true) {
 		rd := b.getRemoteDevice(peer)
 		if rd.connectedSockets() > 0 {
-			go func(dst chan sendable, msg broadcastable) {
+			go func(dst chan sendable, msg sendable) {
 				dst <- msg
-			}(rd.messages, br)
+			}(rd.messages, es)
 		}
 	}
 

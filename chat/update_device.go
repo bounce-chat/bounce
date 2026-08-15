@@ -28,7 +28,6 @@ var errCannotRevokeLastDevice = errors.New("cannot revoke last device")
 
 type updateDevice struct {
 	SignedFrame
-	cachedEncoding
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Target    uuid.UUID
 	Type      uint16
@@ -71,20 +70,18 @@ func (ud *updateDevice) getType() uint16 {
 }
 
 func (ud *updateDevice) getPayload() []byte {
-	if len(ud.payload) == 0 {
-		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   ud.OriginalPayload,
-			Signature: ud.Signature,
-			Signer:    ud.Signer,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling update device's signed container")
-		}
-		ud.payload = bytes
+	bytes, err := msgpack.Marshal(signedContainer{
+		Payload:   ud.OriginalPayload,
+		Signature: ud.Signature,
+		Signer:    ud.Signer,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling update device's signed container")
 	}
-	return ud.payload
+
+	return bytes
 }
 
 func (ud *updateDevice) getAuthor() uuid.UUID {

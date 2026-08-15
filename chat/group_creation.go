@@ -18,7 +18,6 @@ import (
 // are referencing this group via a hash of it's orignal state.
 type groupCreation struct {
 	SignedFrame
-	cachedEncoding
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Timestamp int64
 	SavedAt   int64  `msgpack:"-"`
@@ -57,20 +56,18 @@ func (gc *groupCreation) getType() uint16 {
 }
 
 func (gc *groupCreation) getPayload() []byte {
-	if len(gc.payload) == 0 {
-		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   gc.OriginalPayload,
-			Signature: gc.Signature,
-			Signer:    gc.Signer,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling group creation's signed container")
-		}
-		gc.payload = bytes
+	bytes, err := msgpack.Marshal(signedContainer{
+		Payload:   gc.OriginalPayload,
+		Signature: gc.Signature,
+		Signer:    gc.Signer,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling group creation's signed container")
 	}
-	return gc.payload
+
+	return bytes
 }
 
 func (gc *groupCreation) getAuthor() uuid.UUID {

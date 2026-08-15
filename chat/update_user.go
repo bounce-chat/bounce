@@ -41,7 +41,6 @@ type keySet struct {
 
 type updateUser struct {
 	SignedFrame
-	cachedEncoding
 	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Target       uuid.UUID
 	Type         uint16
@@ -82,20 +81,18 @@ func (uu *updateUser) getType() uint16 {
 }
 
 func (uu *updateUser) getPayload() []byte {
-	if len(uu.payload) == 0 {
-		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   uu.OriginalPayload,
-			Signature: uu.Signature,
-			Signer:    uu.Signer,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling update user's signed container")
-		}
-		uu.payload = bytes
+	bytes, err := msgpack.Marshal(signedContainer{
+		Payload:   uu.OriginalPayload,
+		Signature: uu.Signature,
+		Signer:    uu.Signer,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling update user's signed container")
 	}
-	return uu.payload
+
+	return bytes
 }
 
 func (uu *updateUser) getAuthor() uuid.UUID {

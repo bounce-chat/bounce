@@ -55,7 +55,6 @@ var updateDMMutex sync.Mutex
 // the type of update.
 type updateDM struct {
 	SignedFrame
-	cachedEncoding
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Actor     uuid.UUID
 	Target    uuid.UUID // XOR of two users in the DM
@@ -103,20 +102,18 @@ func (ud *updateDM) getType() uint16 {
 }
 
 func (ud *updateDM) getPayload() []byte {
-	if len(ud.payload) == 0 {
-		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   ud.OriginalPayload,
-			Signature: ud.Signature,
-			Signer:    ud.Signer,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling update direct message's signed container")
-		}
-		ud.payload = bytes
+	bytes, err := msgpack.Marshal(signedContainer{
+		Payload:   ud.OriginalPayload,
+		Signature: ud.Signature,
+		Signer:    ud.Signer,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling update direct message's signed container")
 	}
-	return ud.payload
+
+	return bytes
 }
 
 func (ud *updateDM) getAuthor() uuid.UUID {

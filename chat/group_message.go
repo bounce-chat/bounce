@@ -21,7 +21,6 @@ var gmDeliveryNotifications = map[uuid.UUID]chan bool{}
 // A group message is sent from a member of a group to a group
 type groupMessage struct {
 	SignedFrame
-	cachedEncoding
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	SavedAt          int64     `msgpack:"-"`
 	WrittenAt        int64
@@ -79,21 +78,18 @@ func (gm *groupMessage) getType() uint16 {
 }
 
 func (gm *groupMessage) getPayload() []byte {
-	if len(gm.payload) == 0 {
-		bytes, err := msgpack.Marshal(signedContainer{
-			Payload:   gm.OriginalPayload,
-			Signature: gm.Signature,
-			Signer:    gm.Signer,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error marshalling group message's signed container")
-		}
-		gm.payload = bytes
+	bytes, err := msgpack.Marshal(signedContainer{
+		Payload:   gm.OriginalPayload,
+		Signature: gm.Signature,
+		Signer:    gm.Signer,
+	})
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling group message's signed container")
 	}
 
-	return gm.payload
+	return bytes
 }
 
 func (gm *groupMessage) getAuthor() uuid.UUID {

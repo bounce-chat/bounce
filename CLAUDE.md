@@ -107,18 +107,19 @@ Group state is a replayable stack, not mutable rows: `groupCreation` (whose hash
 
 ### Adding a new persisted frame type
 
-A frame that must survive offline peers has to be registered in every stage of the pipeline. Grepping an existing type (`grep -rn typeReadReceipt chat/`) shows the full list:
+`chat/frame_registry.go` is the single description of every persisted frame type. `frameSpecs` gives each one its table, whether it travels through the reference flow, whether it is worth dialling for, and its loader and offer functions; `catchUpOrder`, `typeTable`, `allowedCatchUpFrames`, `syncableTypes` and `specsByType` are all derived from it in `init()`. Adding a type is:
 
-1. `chat/protocol.go` — type constant, `catchUpOrder` entry, handler-map entry
-2. `chat/database.go` — `typeTable` entry and the model in `AutoMigrate`
+1. `chat/protocol.go` — the type constant, and a handler-map entry
+2. `chat/database.go` — the model in `AutoMigrate`
 3. Implement `broadcastable` (`getID`/`getType`/`getPayload`/`getScope`/`getDestination`/`getAuthor`/`getTimestamp`) and `getSavedAt` for `catchUpAble`
-4. `chat/reference_offer.go` — the per-type offer query, `shouldDialUser`, and the `typesToRespondWith` list
-5. `chat/reference_request.go` — a `getRequestedXPayloads` function (this is where you re-check the peer is *authorized* for each frame)
-6. `chat/catch_up.go` — `allowedCatchUpFrames`, plus a case in the catch-up handler if the UI needs a bulk update
-7. `chat/reference_engine.go` — the per-type map initialization
-8. `chat/encryption.go` — a `batchDeleteKey` case if the frame is deletable as part of clearing history
+4. `chat/reference_offer.go` — the per-type offer query, which is where you decide who is *authorized* to receive these frames
+5. `chat/frame_registry.go` — one `frameSpec` entry wiring the above together
+6. `chat/catch_up.go` — a case in the catch-up handler if the UI needs a bulk update
+7. `chat/encryption.go` — a `batchDeleteKey` case if the frame is deletable as part of clearing history
 
-Miss one and the frame works live but silently never syncs to offline devices.
+The position of a syncable entry in `frameSpecs` is its catch-up replay rank, so ordering matters: `groupCreation` before `updateGroup`, `device` before anything signed by one. `chat/frame_registry_test.go` fails if an entry is incomplete, if a syncable type has no handler, if the derived tables disagree with the registry, or if a known ordering dependency is violated — that suite is what stops a half-registered frame from working live and silently never syncing to offline devices.
+
+Authorization on the sync path lives entirely in the offer queries. `handleReferenceRequest` regenerates the offer with `getReferenceOfferFor` and serves only the intersection of that with what the peer asked for, so the per-type loaders need no checks of their own and should not grow any — a loader that filters is a filter that the offer path doesn't know about.
 
 ### Encrypted devices
 

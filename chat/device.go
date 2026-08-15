@@ -18,7 +18,6 @@ var handleDevicesMutex sync.Mutex
 
 // A device represents an instance of bounce
 type device struct {
-	cachedEncoding
 	ID             uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Name           string    `msgpack:"-"`
 	UserID         uuid.UUID
@@ -64,16 +63,14 @@ func (d *device) getType() uint16 {
 }
 
 func (d *device) getPayload() []byte {
-	if len(d.payload) == 0 {
-		bytes, err := msgpack.Marshal(d)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("cannot msgpack marshal device")
-		}
-		d.payload = bytes
+	bytes, err := msgpack.Marshal(d)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("cannot msgpack marshal device")
 	}
-	return d.payload
+
+	return bytes
 }
 
 func (d *device) getAuthor() uuid.UUID {
