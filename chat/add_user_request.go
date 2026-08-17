@@ -181,6 +181,9 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 	return nil, false
 }
 
+var outstandingAddUserPeers = map[string]time.Time{}
+var outstandingAddUserPeersMutex sync.Mutex
+
 func (b *Bounce) RequestToAddUser(offer string) error {
 	// Parse the offer
 	parts := strings.Split(offer, ":")
@@ -210,6 +213,11 @@ func (b *Bounce) RequestToAddUser(offer string) error {
 			"error": err.Error(),
 		}).Fatal("cannot msgpack marshal requester user while adding friend")
 	}
+
+	// Record the time we made this request
+	outstandingAddUserPeersMutex.Lock()
+	outstandingAddUserPeers[address] = time.Now()
+	outstandingAddUserPeersMutex.Unlock()
 
 	// Send the request to the offer device
 	b.sendDirect(address, &addUserRequest{

@@ -42,6 +42,23 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 		return nil, false
 	}
 
+	// Make sure we sent a request to this peer recently
+	outstandingAddUserPeersMutex.Lock()
+	lastRequestTime, ok := outstandingAddUserPeers[peer]
+	outstandingAddUserPeersMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("ignoring SDRA received from peer that we did not send an add user request to")
+		return nil, false
+	}
+	if time.Since(lastRequestTime) > (time.Duration(addUserOfferValidForSeconds) * time.Second) {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("ignoring SDRA received too long after request was sent")
+		return nil, false
+	}
+
 	// Unmarshal the offer user
 	var offerUser user
 	err = msgpack.Unmarshal(aura.OfferUser, &offerUser)
@@ -55,6 +72,21 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 	// Make sure this profile has a valid device group
 	if !b.hasValidDeviceGroup(offerUser) {
 		log.Error("add user request accepted contains offer user with invalid device group")
+		return nil, false
+	}
+
+	// Ensure that the offer user owns the device that is responding
+	peerFound := false
+	for _, d := range offerUser.Devices {
+		if d.Address == peer {
+			peerFound = true
+			break
+		}
+	}
+	if !peerFound {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("ignoring SDRA received from device not in the offer user's device group")
 		return nil, false
 	}
 
