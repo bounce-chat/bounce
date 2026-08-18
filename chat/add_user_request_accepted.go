@@ -1,12 +1,14 @@
 package chat
 
 import (
+	"errors"
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
+	"gorm.io/gorm"
 )
 
 // An add user request accepted frame is sent from the offering device and includes their half of the signatures
@@ -88,6 +90,29 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 			"peer": peer,
 		}).Warn("ignoring SDRA received from device not in the offer user's device group")
 		return nil, false
+	}
+
+	// ENsure that the offer user and all devices are new
+	var existingUser user
+	err = b.database.Take(&existingUser, "id = ?", offerUser.ID).Error
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"peer":    peer,
+			"user_id": offerUser.ID,
+		}).Warn("ignoring SDRA received with conflicting offer user")
+		return nil, false
+	}
+	for _, d := range offerUser.Devices {
+		var existingDevice device
+		err = b.database.Take(&existingDevice, "id= ? OR address = ?", d.ID, d.Address).Error
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"peer":      peer,
+				"device_id": d.ID,
+				"address":   d.Address,
+			}).Warn("ignoring SDRA received with conflicting offer user device")
+			return nil, false
+		}
 	}
 
 	// Re-generate our user that was originally sent in the request
