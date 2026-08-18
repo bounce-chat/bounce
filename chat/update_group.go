@@ -196,6 +196,10 @@ func (ug *updateGroup) permissionPayloadIsRestricted() (bool, error) {
 }
 
 func (ug *updateGroup) validPayloadFormat() bool {
+	if ug.Timestamp < 0 {
+		return false
+	}
+
 	switch ug.Type {
 	case updateGroupTypeChangeName:
 		return validGroupName(string(ug.Data))

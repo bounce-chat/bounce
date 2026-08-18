@@ -104,16 +104,17 @@ func (b *Bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) error {
 	}
 	defer b.consensusStore.Unlock()
 
-	// Remove updates that are at or newer than timestamp from the stack
+	// Remove updates that are at or newer than timestamp from the stack, but never
+	// allow this process to remove the initial state of the group
 	untouchedState := []groupState{}
-	for _, gs := range stack.history {
+	for _, gs := range stack.history[1:] {
 		if gs.ug.Timestamp < ts {
 			untouchedState = append(untouchedState, gs)
 		} else {
 			break
 		}
 	}
-	stack.history = untouchedState
+	stack.history = append([]groupState{stack.history[0]}, untouchedState...)
 
 	// Load all updates that are timestamp or newer from the database
 	var ugs []updateGroup
