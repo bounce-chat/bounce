@@ -546,7 +546,6 @@ private fun FileOrVideoAttachment(
     onSave: (FileAttachment) -> Unit,
     onPlay: (FileAttachment, String) -> Unit,
 ) {
-    val path = remember(attachment.id) { EngineHolder.client?.blobPath(attachment.id) }
     val autoFetched = attachment.size <= Goengine.EmbeddedFileLimit
 
     // Two independent signals because neither alone is sufficient: a file this
@@ -566,25 +565,42 @@ private fun FileOrVideoAttachment(
             .getOrNull() == true
     }
 
-    // Keyed on progress as well as availability. `available` latches false->true
+    // Asked of the engine rather than rebuilt as blobs/<id>: a file too large to
+    // embed is downloaded to a destination outside the blob store, so the
+    // computed path named a file that never existed and every large video stayed
+    // a plain file row. Resolved after `available` because the path only exists
+    // once the download has been renamed into place.
+    val path by produceState<String?>(null, attachment.id, available, progress) {
+        value = if (available) {
+            runCatching { EngineHolder.client?.filePath(attachment.id) }.getOrNull()
+        } else {
+            null
+        }
+    }
+
+    // Keyed on progress as well as the path. `available` latches false->true
     // exactly once, so keying on it alone makes any probe failure permanent -
     // which is how a completed video stayed stuck as a plain file row after
     // being probed mid-download.
-    val video by produceState<VideoInfo?>(null, attachment.id, available, progress) {
-        value = if (available && path != null && looksLikeVideo(attachment.name)) {
-            VideoThumbnails.probe(path)
+    val video by produceState<VideoInfo?>(null, attachment.id, path, progress) {
+        val source = path
+        value = if (source != null && looksLikeVideo(attachment.name)) {
+            VideoThumbnails.probe(source)
         } else {
             null
         }
     }
 
     val playable = video
+    // Read into a local: `path` is a delegated property, so it cannot smart-cast
+    // to non-null inside the branch.
+    val playablePath = path
     when {
-        playable != null && path != null -> VideoAttachmentCard(
+        playable != null && playablePath != null -> VideoAttachmentCard(
             attachment = attachment,
             info = playable,
             contentColor = contentColor,
-            onPlay = { onPlay(attachment, path) },
+            onPlay = { onPlay(attachment, playablePath) },
         )
 
         available -> AttachmentRow(

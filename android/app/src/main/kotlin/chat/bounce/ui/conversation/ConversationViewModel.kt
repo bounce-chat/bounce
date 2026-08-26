@@ -394,18 +394,19 @@ class ConversationViewModel(
                 onResult(false)
                 return@launch
             }
+            val source = client.filePath(fileId)
             val saved = withContext(Dispatchers.IO) {
                 runCatching {
+                    if (source.isNullOrEmpty()) {
+                        Log.w(TAG, "no on-disk path for attachment $fileId")
+                        return@runCatching false
+                    }
                     appContext.contentResolver.openOutputStream(destination)?.use { out ->
-                        val blob = File(client.blobPath(fileId))
-                        if (blob.exists()) {
-                            blob.inputStream().use { it.copyTo(out) }
-                        } else {
-                            // Embedded blobs live on disk, but a file that was
-                            // seeded rather than embedded may not, so fall back
-                            // to asking the engine for the bytes.
-                            out.write(client.fileData(fileId))
-                        }
+                        // Streamed rather than read through the engine: an
+                        // attachment can be hundreds of megabytes and
+                        // GetFileData would materialize all of it as a byte[]
+                        // crossing JNI.
+                        File(source).inputStream().use { it.copyTo(out) }
                         true
                     } == true
                 }.getOrElse {
@@ -437,15 +438,21 @@ class ConversationViewModel(
                 onResult(0, attachments.size)
                 return@launch
             }
+            // Resolved before switching to IO so each path is one engine call,
+            // not one per retry inside the count loop.
+            val sources = attachments.associate { (id, _) -> id to client.filePath(id) }
             val saved = withContext(Dispatchers.IO) {
                 val dir = DocumentFile.fromTreeUri(appContext, tree)
                 if (dir == null) 0 else attachments.count { (id, name) ->
                     runCatching {
+                        val source = sources[id]
+                        if (source.isNullOrEmpty()) {
+                            Log.w(TAG, "no on-disk path for attachment $id")
+                            return@runCatching false
+                        }
                         val doc = dir.createFile(mimeForFileName(name), name) ?: return@runCatching false
                         appContext.contentResolver.openOutputStream(doc.uri)?.use { out ->
-                            val blob = File(client.blobPath(id))
-                            if (blob.exists()) blob.inputStream().use { it.copyTo(out) }
-                            else out.write(client.fileData(id))
+                            File(source).inputStream().use { it.copyTo(out) }
                             true
                         } == true
                     }.getOrElse {

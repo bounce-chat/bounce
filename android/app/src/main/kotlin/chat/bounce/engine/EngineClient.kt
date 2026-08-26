@@ -263,6 +263,16 @@ class EngineClient(
     /** Not suspending: pure string concatenation in Go, safe from any thread. */
     fun blobPath(fileId: String): String = engine.blobPath(fileId)
 
+    /**
+     * Where a completed file actually is on disk, or null if it is not finished.
+     *
+     * Unlike [blobPath] this asks the engine, so it is right for files too large
+     * to embed - those are downloaded to a destination outside the blobs
+     * directory and [blobPath] would name a file that does not exist.
+     */
+    suspend fun filePath(fileId: String): String? =
+        call("filePath") { runCatching { it.getFilePath(fileId) }.getOrNull() }
+
     suspend fun fileData(fileId: String): ByteArray = call("fileData") { it.getFileData(fileId) }
 
     suspend fun fileDownloaded(fileId: String): Boolean = call("fileDownloaded") { it.fileDownloaded(fileId) }

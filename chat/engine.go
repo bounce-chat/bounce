@@ -25,6 +25,7 @@ type Engine interface {
 	FileWanted(fileID uuid.UUID) bool
 	GetDMHistory(userID uuid.UUID) InitialState
 	GetFileData(fileID uuid.UUID) ([]byte, error)
+	GetFilePath(fileID uuid.UUID) (string, error)
 	GetInitialState() InitialState
 	GetNewAddUserString() string
 	GetNewSyncString() string

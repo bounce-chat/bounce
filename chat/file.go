@@ -1800,11 +1800,20 @@ func (b *Bounce) handleChunkUnavailable(peer string, payload []byte, catchUp boo
 }
 
 func (b *Bounce) GetFileData(fileID uuid.UUID) ([]byte, error) {
+	path, err := b.GetFilePath(fileID)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return os.ReadFile(path)
+}
+
+func (b *Bounce) GetFilePath(fileID uuid.UUID) (string, error) {
 	var f file
-	err := b.database.Select("id").Where("id = ? AND downloaded = ?", fileID, true).Take(&f).Error
+	err := b.database.Select("path").Where("id = ? AND downloaded = ?", fileID, true).Take(&f).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return []byte{}, errFileNotFound
+			return "", errFileNotFound
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -1812,7 +1821,7 @@ func (b *Bounce) GetFileData(fileID uuid.UUID) ([]byte, error) {
 		}
 	}
 
-	return ioutil.ReadFile(b.configDirectory + "/blobs/" + fileID.String())
+	return f.Path, nil
 }
 
 func (b *Bounce) FileDownloaded(fileID uuid.UUID) bool {

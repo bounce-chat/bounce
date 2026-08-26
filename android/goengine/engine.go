@@ -975,16 +975,35 @@ func (a *Engine) SetTypingIndicatorsByDefault(value bool) {
 // Files
 // ---------------------------------------------------------------------------
 
-// BlobPath returns the on-disk path of a completed blob so Kotlin can decode it
-// directly. Cheap and main-thread safe: pure string concatenation, no engine
-// call. The old build did the same thing implicitly - eval.go's GetFileData arm
-// was empty, with the comment "the activity can read files without IPC".
+// BlobPath returns the on-disk path an *embedded* blob would have. Cheap and
+// main-thread safe: pure string concatenation, no engine call.
+//
+// Only correct for files small enough to embed. A larger file is downloaded to
+// a destination the caller chose and does not live under blobs/ at all, so this
+// reports a path that does not exist for it - use GetFilePath, which asks the
+// engine where the file actually is. Image decoding can keep using this because
+// avatars and inline images are always embedded.
 func (a *Engine) BlobPath(fileID string) string {
 	return filepath.Join(config.GetConfigDirectory(), "blobs", fileID)
 }
 
+// GetFilePath is where a downloaded file actually is, whatever its size.
+//
+// Returns an error until the download finishes. BLOCKING: one database read.
+func (a *Engine) GetFilePath(fileID string) (string, error) {
+	e, err := a.engine()
+	if err != nil {
+		return "", err
+	}
+	id, err := parseID("fileID", fileID)
+	if err != nil {
+		return "", err
+	}
+	return e.GetFilePath(id)
+}
+
 // GetFileData is the fallback for callers that genuinely need the bytes in
-// memory. Prefer BlobPath. BLOCKING: reads from disk.
+// memory. Prefer GetFilePath and stream from it. BLOCKING: reads from disk.
 func (a *Engine) GetFileData(fileID string) ([]byte, error) {
 	e, err := a.engine()
 	if err != nil {
