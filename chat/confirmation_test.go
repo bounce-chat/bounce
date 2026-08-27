@@ -78,13 +78,13 @@ func TestEarlyConfirmationWorks(t *testing.T) {
 
 	// Make an arbitrary update group
 	restrictEdits := updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeChangeGroupEditsPermission,
 		Data:      []byte{permissionRestricted},
 	}
+	restrictEdits.ID = updateGroupID(restrictEdits)
 	var err error
 	restrictEdits.OriginalPayload, err = msgpack.Marshal(restrictEdits)
 	assert.NoError(t, err)

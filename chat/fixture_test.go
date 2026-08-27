@@ -558,13 +558,13 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 	var err error
 
 	addAlice := &updateGroup{
-		ID:        uuid.New(),
 		Actor:     me.currentUserID(),
 		Target:    groupID,
 		Timestamp: inviteTime,
 		Type:      updateGroupTypeInviteUser,
 		Data:      ab,
 	}
+	addAlice.ID = updateGroupID(*addAlice)
 	addAlice.OriginalPayload, err = msgpack.Marshal(addAlice)
 	assert.NoError(t, err)
 	sc := me.createSignedContainer(addAlice.OriginalPayload)
@@ -572,13 +572,13 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 	addAlice.Signer = sc.Signer
 
 	addBob := &updateGroup{
-		ID:        uuid.New(),
 		Actor:     me.currentUserID(),
 		Target:    groupID,
 		Timestamp: inviteTime,
 		Type:      updateGroupTypeInviteUser,
 		Data:      bb,
 	}
+	addBob.ID = updateGroupID(*addBob)
 	addBob.OriginalPayload, err = msgpack.Marshal(addBob)
 	assert.NoError(t, err)
 	sc = me.createSignedContainer(addBob.OriginalPayload)
@@ -586,13 +586,13 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 	addBob.Signer = sc.Signer
 
 	aliceAccepts := &updateGroup{
-		ID:        uuid.New(),
 		Actor:     alice.currentUserID(),
 		Target:    groupID,
 		Timestamp: acceptTime,
 		Type:      updateGroupTypeRespondToInvite,
 		Data:      []byte{acceptInvite},
 	}
+	aliceAccepts.ID = updateGroupID(*aliceAccepts)
 	aliceAccepts.OriginalPayload, err = msgpack.Marshal(aliceAccepts)
 	assert.NoError(t, err)
 	sc = alice.createSignedContainer(aliceAccepts.OriginalPayload)
@@ -600,13 +600,13 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 	aliceAccepts.Signer = sc.Signer
 
 	bobAccepts := &updateGroup{
-		ID:        uuid.New(),
 		Actor:     bob.currentUserID(),
 		Target:    groupID,
 		Timestamp: acceptTime,
 		Type:      updateGroupTypeRespondToInvite,
 		Data:      []byte{acceptInvite},
 	}
+	bobAccepts.ID = updateGroupID(*bobAccepts)
 	bobAccepts.OriginalPayload, err = msgpack.Marshal(bobAccepts)
 	assert.NoError(t, err)
 	sc = bob.createSignedContainer(bobAccepts.OriginalPayload)
