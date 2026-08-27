@@ -161,7 +161,8 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadc
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error saving new device")
+		}).Error("error saving new device")
+		return nil, false
 	}
 
 	// Inform the UI if this is a new sync device
