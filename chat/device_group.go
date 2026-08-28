@@ -50,6 +50,10 @@ func (b *Bounce) hasValidDeviceGroup(u user) bool {
 	}
 
 	for _, dev := range u.Devices {
+		if dev.UserID != u.ID {
+			return false
+		}
+
 		if dev.Signature != nil {
 			dg.signatures = append(
 				dg.signatures,
