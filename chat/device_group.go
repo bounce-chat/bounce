@@ -44,6 +44,18 @@ func (b *Bounce) hasValidDeviceGroup(u user) bool {
 		return false
 	}
 
+	seen := map[string]bool{}
+	for _, dev := range u.Devices {
+		seen[dev.Address] = true
+	}
+	preexistingDevices := []device{}
+	b.database.Where("user_id = ?", u.ID).Find(&preexistingDevices)
+	for _, dev := range preexistingDevices {
+		if !seen[dev.Address] {
+			seen[dev.Address] = true
+			u.Devices = append(u.Devices, dev)
+		}
+	}
 	revokedTimes := map[string]int64{}
 	for _, dev := range u.Devices {
 		revokedTimes[dev.Address] = dev.RevokedAt
@@ -96,7 +108,7 @@ func (b *Bounce) hasValidDeviceGroup(u user) bool {
 	// TODO: ensure there's at least one device that doesn't have an introduction signature?
 
 	// An empty device group is valid
-	if len(dg.signatures) == 0 {
+	if len(dg.signatures) == 0 && len(u.Devices) == 1 {
 		return true
 	}
 

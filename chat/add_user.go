@@ -258,22 +258,37 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 	// Learn about any of our sync devices that we're not already aware of
 	syncDevices := devices(myUser.Devices)
 	sort.Sort(syncDevices)
-	for _, dev := range syncDevices {
-		_, exists := b.getDeviceFromAddress(dev.Address)
-		if !exists {
+	validDevices := []device{}
+	for i, _ := range syncDevices {
+		dev := syncDevices[i]
+		existingSyncDevice, exists := b.getDeviceFromAddress(dev.Address)
+		if exists {
+			if existingSyncDevice.UserID != myUser.ID {
+				log.WithFields(log.Fields{
+					"address":       dev.Address,
+					"existing_user": existingSyncDevice.UserID,
+					"claimed_user":  myUser.ID,
+				}).Warn("rejecting add user claiming a device that belongs to another user as our sync device")
+				return nil, false
+			}
+		} else {
 			if b.isValidAddition(myUser, dev) {
-				err = b.database.Create(&dev).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Fatal("error saving sync device learned about via add user")
-				}
+				validDevices = append(validDevices, dev)
 			} else {
 				log.WithFields(log.Fields{
 					"id":      dev.ID,
 					"address": dev.Address,
 				}).Warn("rejecting add user with new sync device that is not a valid addition to our device group")
+				return nil, false
 			}
+		}
+	}
+	for _, dev := range validDevices {
+		err = b.database.Create(&dev).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error saving sync device learned about via add user")
 		}
 	}
 

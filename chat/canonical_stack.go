@@ -9,8 +9,10 @@ import (
 )
 
 var errStackEmpty = errors.New("stack is empty")
+var errInvalidDeviceGroup = errors.New("invalid device group")
 
 type canonicalStack struct {
+	groupID      uuid.UUID
 	myID         uuid.UUID
 	addressMap   map[string]uuid.UUID
 	revokedMap   map[string]int64
@@ -18,8 +20,9 @@ type canonicalStack struct {
 	historyStash []groupState
 }
 
-func newCanonicalStack(initialState groupState, addressMap map[string]uuid.UUID, revokedMap map[string]int64, myID uuid.UUID) *canonicalStack {
+func newCanonicalStack(initialState groupState, addressMap map[string]uuid.UUID, revokedMap map[string]int64, groupID, myID uuid.UUID) *canonicalStack {
 	return &canonicalStack{
+		groupID:    groupID,
 		myID:       myID,
 		addressMap: addressMap,
 		revokedMap: revokedMap,
@@ -93,49 +96,82 @@ func (cs *canonicalStack) restore() {
 	cs.history = cs.historyStash
 }
 
-// Given an update group, add it into the history stack if it should be applied, detecting and removing any conflicts in the process
-func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) {
-	// Update the map from address to user for this group if needed
-	if ug.Type == updateGroupTypeInviteUser {
-		var u user
-		err := msgpack.Unmarshal(ug.Data, &u)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error unmarshalling user in update group")
-			return
-		}
-
-		if !b.hasValidDeviceGroup(u) {
-			log.WithFields(log.Fields{
-				"user_id": u.ID,
-			}).Warn("rejecting user invite for user with invalid device group")
-			return
-		}
-
-		var devs []device
-		err = b.database.Where("user_id = ?", u.ID).Find(&devs).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error finding devices")
-		}
-
-		if len(devs) == 0 {
-			devs = u.Devices
-		}
-
-		for _, dev := range devs {
-			if _, set := cs.addressMap[dev.Address]; !set {
-				cs.addressMap[dev.Address] = u.ID
+func (b *Bounce) recomputeDeviceMaps(cs *canonicalStack) {
+	_, addressMap, revokedMap, err := b.createInitialGroupState(cs.groupID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error reloading group address maps")
+		return
+	}
+	for _, canonical := range cs.history {
+		if canonical.ug.Type == updateGroupTypeInviteUser {
+			addressMapAdditions, revokedMapAdditions, err := b.inviteAddressMaps(canonical.ug)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error parsing update group invite user")
+				continue
 			}
-			ts, ok := cs.revokedMap[dev.Address]
-			if !ok || ts > dev.RevokedAt {
-				cs.revokedMap[dev.Address] = dev.RevokedAt
+			for addr, id := range addressMapAdditions {
+				addressMap[addr] = id
+			}
+			for addr, ts := range revokedMapAdditions {
+				revokedMap[addr] = ts
 			}
 		}
 	}
+	cs.addressMap = addressMap
+	cs.revokedMap = revokedMap
+}
 
+func (b *Bounce) inviteAddressMaps(ug updateGroup) (map[string]uuid.UUID, map[string]int64, error) {
+	addressMap := map[string]uuid.UUID{}
+	revokedMap := map[string]int64{}
+
+	var u user
+	err := msgpack.Unmarshal(ug.Data, &u)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error unmarshalling user in update group")
+		return addressMap, revokedMap, err
+	}
+
+	if !b.hasValidDeviceGroup(u) {
+		log.WithFields(log.Fields{
+			"user_id": u.ID,
+		}).Warn("rejecting user invite for user with invalid device group")
+		return addressMap, revokedMap, errInvalidDeviceGroup
+	}
+
+	var devs []device
+	err = b.database.Where("user_id = ?", u.ID).Find(&devs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error finding devices")
+	}
+
+	if len(devs) == 0 {
+		devs = u.Devices
+	}
+
+	for _, dev := range devs {
+		if _, set := addressMap[dev.Address]; !set {
+			addressMap[dev.Address] = u.ID
+		}
+		ts, ok := revokedMap[dev.Address]
+		if !ok || ts > dev.RevokedAt {
+			revokedMap[dev.Address] = dev.RevokedAt
+		}
+	}
+
+	return addressMap, revokedMap, nil
+}
+
+// Given an update group, add it into the history stack if it should be applied, detecting and removing any conflicts in the process
+func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) {
 	// Make sure that the actor for this update is the user who signed it
 	if cs.addressMap[ug.Signer] != ug.Actor {
 		log.WithFields(log.Fields{
@@ -144,6 +180,27 @@ func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 			"signing_device": ug.Signer,
 		}).Warn("rejecting update group that was not signed by the actor")
 		return
+	}
+
+	// Recompute the device maps before and after evaluating changes, in order to rollback
+	// any rejected changes or changes that became non-canonical
+	defer b.recomputeDeviceMaps(cs)
+
+	// Update the map from address to user for this group if needed
+	if ug.Type == updateGroupTypeInviteUser {
+		addressMapAdditions, revokedMapAdditions, err := b.inviteAddressMaps(ug)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error parsing update group invite user")
+			return
+		}
+		for addr, id := range addressMapAdditions {
+			cs.addressMap[addr] = id
+		}
+		for addr, ts := range revokedMapAdditions {
+			cs.revokedMap[addr] = ts
+		}
 	}
 
 	// Make sure the signing device wasn't revoked

@@ -64,7 +64,7 @@ func (b *Bounce) reloadGroupConsensus(groupID uuid.UUID) error {
 		}).Debug("error creating initial state while updating group consensus")
 		return err
 	}
-	cs := newCanonicalStack(initialState, addressMap, revokedMap, b.currentUserID())
+	cs := newCanonicalStack(initialState, addressMap, revokedMap, groupID, b.currentUserID())
 
 	// Get all update groups for this group
 	var ugs []updateGroup
@@ -1045,11 +1045,12 @@ func (b *Bounce) createNewUserIfNeeded(u user, groupID uuid.UUID) bool {
 	u.IntroductionMethod = userIntroductionGroup
 	u.IntroductionTime = time.Now().Unix()
 	u.IntroductionMetadata = groupID
-	res := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&u)
+	res := b.database.Clauses(clause.OnConflict{DoNothing: true}).Omit("Devices").Create(&u)
 	if res.Error != nil {
 		log.WithFields(log.Fields{
 			"error": res.Error.Error(),
-		}).Fatal("error saving user that is being added to a group")
+		}).Error("error saving user that is being added to a group")
+		return false
 	}
 
 	// Attempt to make a connection to the user

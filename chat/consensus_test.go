@@ -276,7 +276,7 @@ func TestAddingConflictToHistoryStackIsIgnored(t *testing.T) {
 	// Create a canonical stack
 	initialState, addressMap, revokedMap, err := b.createInitialGroupState(groupID)
 	assert.NoError(t, err)
-	stack := newCanonicalStack(initialState, addressMap, revokedMap, b.currentUserID())
+	stack := newCanonicalStack(initialState, addressMap, revokedMap, groupID, b.currentUserID())
 
 	// Add a restriction to editing permissions to the stack
 	restrictEditing := updateGroup{
