@@ -53,6 +53,28 @@ var errNetworkRestarting = errors.New("network is restarting")
 // errNetworkStopped is returned once Shutdown has begun.
 var errNetworkStopped = errors.New("network is stopped")
 
+// errListenerClosed is returned when a session's listener has gone away for a
+// reason that is neither a shutdown nor a restart.
+var errListenerClosed = errors.New("listener closed")
+
+// handshakeTimeout bounds the whole three-flight exchange.
+//
+// It is absolute rather than per-read on purpose: re-arming before each flight
+// would let a peer that stalls just under the limit on every one of them hold
+// the connection for a multiple of it, which is the same wedge in slow motion.
+// A var rather than a const so tests can shorten it; nothing else reassigns it.
+var handshakeTimeout = 30 * time.Second
+
+// acceptQueueDepth is how many completed handshakes may wait for Accept to
+// collect them. Past this the workers block, which is backpressure rather than
+// loss: nothing is dropped, the pump simply stops taking new connections.
+const acceptQueueDepth = 64
+
+// maxConcurrentHandshakes caps the goroutines an inbound flood can create. Each
+// costs one socket for at most handshakeTimeout, so this bounds the damage to a
+// known number of stalled slots instead of an unbounded number.
+const maxConcurrentHandshakes = 256
+
 // session is one generation of the Tor client and the listener published on it.
 //
 // It is never mutated after construction. Restarting builds a whole new session
@@ -62,6 +84,19 @@ var errNetworkStopped = errors.New("network is stopped")
 type session struct {
 	client *arti.Client
 	onion  *arti.OnionService
+
+	// accepted carries connections whose handshake has already completed. The
+	// pump is the only writer and Accept the only reader, so Accept blocks on a
+	// queue rather than on a handshake: one peer that connects and never speaks
+	// no longer stalls every other inbound connection.
+	//
+	// It is closed when the pump exits, which is how Accept tells "this
+	// listener is finished" from "nothing has arrived yet".
+	accepted chan *torNetworkConnection
+
+	// stopping is closed by the pump once its listener is gone, releasing any
+	// worker still trying to hand over a connection nobody will collect.
+	stopping chan struct{}
 }
 
 type TorNetwork struct {
@@ -350,7 +385,17 @@ func (bounceTor *TorNetwork) openSession() (*session, error) {
 		return nil, err
 	}
 
-	s := &session{client: client, onion: onion}
+	s := &session{
+		client:   client,
+		onion:    onion,
+		accepted: make(chan *torNetworkConnection, acceptQueueDepth),
+		stopping: make(chan struct{}),
+	}
+
+	// Run handshakes off the accept path. The pump belongs to this session, so
+	// a restart replaces the listener and its queue together and Accept keeps
+	// telling shutdown, restart and real failure apart exactly as before.
+	go bounceTor.acceptPump(s)
 
 	// Report reachability when it arrives, without holding startup for it.
 	go bounceTor.reportWhenReachable(s)
@@ -701,37 +746,137 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 		return nil, err, errors.Is(err, errNetworkStopped)
 	}
 
-	connection, err := s.onion.Accept()
-	if err != nil {
-		// Shutting down: same reasoning as above, stop the loop.
+	return bounceTor.acceptFrom(s)
+}
+
+// acceptFrom waits for the next completed handshake on one session.
+//
+// Split from Accept so the queue-closed branches - which are how a shutdown and
+// a restart are told apart - can be exercised against a known session instead
+// of racing awaitSession.
+func (bounceTor *TorNetwork) acceptFrom(s *session) (net.Conn, error, bool) {
+	// Take the next connection whose handshake has already completed. The pump
+	// runs those concurrently, so a peer that connects and never speaks costs
+	// one slot for handshakeTimeout instead of blocking every other peer.
+	select {
+	case torConn, ok := <-s.accepted:
+		if ok {
+			return torConn, nil, false
+		}
+		// The pump closed the queue, so this session's listener is gone.
+		// Shutting down is terminal for the accept loop, same as before.
 		if bounceTor.shuttingDown() {
 			return nil, errNetworkStopped, true
 		}
-		// A restart replaced our session underneath us. That is not a failure,
-		// so report it non-fatally and let the caller come back and wait for
-		// the new listener.
+		// A restart replaced our session underneath us. Not a failure: report
+		// it non-fatally and let the caller come back for the new listener.
 		if bounceTor.superseded(s) {
 			return nil, errNetworkRestarting, false
 		}
-		return nil, err, true
+		return nil, errListenerClosed, true
+	case <-bounceTor.stopChannel():
+		return nil, errNetworkStopped, true
+	}
+}
+
+// acceptPump owns one session's listener. It accepts raw connections and runs
+// each handshake on its own goroutine, publishing only completed ones.
+//
+// Handshake failures are logged at Debug and dropped here rather than returned
+// from Accept: the caller retries non-fatal errors with no backoff and treats a
+// nil connection as fatal, so surfacing peer-triggered failures would let any
+// peer spin that loop and flood the log.
+func (bounceTor *TorNetwork) acceptPump(s *session) {
+	bounceTor.runAcceptPump(s.onion, s.onion.ID(), s.accepted, s.stopping)
+}
+
+// acceptor is the part of a listener the pump needs. *arti.OnionService already
+// satisfies it; tests supply their own so the pump can run without Tor.
+type acceptor interface {
+	Accept() (net.Conn, error)
+}
+
+// runAcceptPump is acceptPump with its dependencies passed in.
+func (bounceTor *TorNetwork) runAcceptPump(
+	listener acceptor,
+	listenerAddress string,
+	accepted chan *torNetworkConnection,
+	stopping chan struct{},
+) {
+	slots := make(chan struct{}, maxConcurrentHandshakes)
+	var workers sync.WaitGroup
+
+	for {
+		connection, err := listener.Accept()
+		if err != nil {
+			// The listener is gone: shutdown, or a restart that replaced this
+			// session. Either way this pump is finished.
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Debug("accept loop for this session is finished")
+			break
+		}
+
+		// Blocks once maxConcurrentHandshakes are in flight, which stops an
+		// inbound flood from creating unbounded goroutines.
+		slots <- struct{}{}
+		workers.Add(1)
+		go func(raw net.Conn) {
+			defer workers.Done()
+			defer func() { <-slots }()
+
+			torConn, err := bounceTor.handshakeListener(listenerAddress, raw)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Debug("inbound handshake failed")
+				return
+			}
+			select {
+			case accepted <- torConn:
+			case <-stopping:
+				// Nobody will collect this one.
+				torConn.Close()
+			}
+		}(connection)
+	}
+
+	// Release any worker still trying to hand over a connection, wait for them
+	// all to finish, then close the queue so a parked Accept wakes up.
+	close(stopping)
+	workers.Wait()
+	close(accepted)
+}
+
+// handshakeListener runs the listener half of the handshake on a raw connection
+// and returns the authenticated wrapper. Every failure path closes the socket:
+// a rejected peer must not leak a descriptor.
+func (bounceTor *TorNetwork) handshakeListener(listenerAddress string, connection net.Conn) (*torNetworkConnection, error) {
+	// One absolute budget for the whole exchange.
+	if err := connection.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
+		connection.Close()
+		return nil, err
 	}
 
 	// Handshake step one: read the dialer's address and nonce
-	dialerAddress, err := read(connection, len(s.onion.ID()))
+	dialerAddress, err := read(connection, len(listenerAddress))
 	if err != nil {
-		return nil, err, false
+		connection.Close()
+		return nil, err
 	}
 	canonical := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(string(dialerAddress))), ".onion")
 	if string(dialerAddress) != canonical {
 		log.WithFields(log.Fields{
 			"address": string(dialerAddress),
-		}).Warn("received non-lowercase dialer address")
-		return nil, errors.New("received non-canonical dialer address"), false
+		}).Warn("received non-canonical dialer address")
+		connection.Close()
+		return nil, errors.New("received non-canonical dialer address")
 	}
 
 	dialerNonce, err := read(connection, handshakeNonceSize)
 	if err != nil {
-		return nil, err, false
+		connection.Close()
+		return nil, err
 	}
 
 	// Handshake step two: generate and send a nonce, and generate a session and
@@ -739,15 +884,18 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 	listenerNonce := make([]byte, handshakeNonceSize)
 	n, err := rand.Read(listenerNonce)
 	if n != handshakeNonceSize {
-		return nil, errors.New("failed to generate random listener nonce"), false
+		connection.Close()
+		return nil, errors.New("failed to generate random listener nonce")
 	}
 	if err != nil {
-		return nil, err, false
+		connection.Close()
+		return nil, err
 	}
 
 	err = write(connection, listenerNonce)
 	if err != nil {
-		return nil, err, false
+		connection.Close()
+		return nil, err
 	}
 
 	listenerSessionBytes := slices.Concat(
@@ -761,38 +909,47 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 
 	err = write(connection, listenerSessionSignature)
 	if err != nil {
-		return nil, err, false
+		connection.Close()
+		return nil, err
 	}
 
 	// Handshake step three: read the dialer's session signature and verify
 	dialerSessionSignature, err := read(connection, signatureSize)
 	if err != nil {
-		return nil, err, false
+		connection.Close()
+		return nil, err
 	}
 
 	dialerSessionBytes := slices.Concat(
 		[]byte(handshakeDomain),
 		[]byte{handshakeRoleDialer},
-		[]byte(s.onion.ID()),
+		[]byte(listenerAddress),
 		dialerNonce,
 		listenerNonce,
 	)
 
 	ok := bounceTor.VerifySignature(string(dialerAddress), dialerSessionBytes, dialerSessionSignature)
 	if !ok {
-		return nil, errors.New("invalid dialer session signature"), false
+		connection.Close()
+		return nil, errors.New("invalid dialer session signature")
 	}
 
-	torConn := &torNetworkConnection{
+	// Clear the handshake budget before handing the socket to the engine, which
+	// manages its own lifetime and must not inherit a deadline.
+	if err := connection.SetDeadline(time.Time{}); err != nil {
+		connection.Close()
+		return nil, err
+	}
+
+	return &torNetworkConnection{
 		underlying: connection,
 		localAddress: &torAddress{
-			address: s.onion.ID(),
+			address: listenerAddress,
 		},
 		remoteAddress: &torAddress{
 			address: string(dialerAddress),
 		},
-	}
-	return torConn, nil, false
+	}, nil
 }
 
 func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
@@ -812,21 +969,42 @@ func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
 		return nil, err
 	}
 
+	return bounceTor.handshakeDialer(s.onion.ID(), address, conn)
+}
+
+// handshakeDialer runs the dialer half of the handshake on a raw connection and
+// returns the authenticated wrapper. Split out of Dial so it can be driven over
+// a net.Pipe with no Tor running. Every failure path closes the socket.
+//
+// localAddress is our own onion id; listenerAddress is the address we dialled,
+// which is what the listener's proof must name.
+func (bounceTor *TorNetwork) handshakeDialer(localAddress, listenerAddress string, conn net.Conn) (*torNetworkConnection, error) {
+	// Bound the whole handshake. Without this a listener that accepts and then
+	// says nothing parks this goroutine forever.
+	if err := conn.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
 	// Handshake step one: send our address and our nonce
-	err = write(conn, []byte(s.onion.ID()))
+	err := write(conn, []byte(localAddress))
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 	dialerNonce := make([]byte, handshakeNonceSize)
 	n, err := rand.Read(dialerNonce)
 	if n != handshakeNonceSize {
+		conn.Close()
 		return nil, errors.New("failed to generate random dialer nonce")
 	}
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 	err = write(conn, dialerNonce)
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 
@@ -834,22 +1012,25 @@ func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
 	// verify the signature
 	listenerNonce, err := read(conn, handshakeNonceSize)
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 	listenerSessionSignature, err := read(conn, signatureSize)
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 
 	listenerSessionBytes := slices.Concat(
 		[]byte(handshakeDomain),
 		[]byte{handshakeRoleListener},
-		[]byte(s.onion.ID()),
+		[]byte(localAddress),
 		dialerNonce,
 		listenerNonce,
 	)
-	ok := bounceTor.VerifySignature(address, listenerSessionBytes, listenerSessionSignature)
+	ok := bounceTor.VerifySignature(listenerAddress, listenerSessionBytes, listenerSessionSignature)
 	if !ok {
+		conn.Close()
 		return nil, errors.New("invalid listener session signature")
 	}
 
@@ -857,7 +1038,7 @@ func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
 	dialerSessionBytes := slices.Concat(
 		[]byte(handshakeDomain),
 		[]byte{handshakeRoleDialer},
-		[]byte(address),
+		[]byte(listenerAddress),
 		dialerNonce,
 		listenerNonce,
 	)
@@ -865,16 +1046,23 @@ func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
 
 	err = write(conn, dialerSessionSignature)
 	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	// Clear the handshake budget before handing the socket to the engine.
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		conn.Close()
 		return nil, err
 	}
 
 	torConn := &torNetworkConnection{
 		underlying: conn,
 		localAddress: &torAddress{
-			address: s.onion.ID(),
+			address: localAddress,
 		},
 		remoteAddress: &torAddress{
-			address: address,
+			address: listenerAddress,
 		},
 	}
 	return torConn, nil
@@ -1045,19 +1233,6 @@ func write(conn net.Conn, payload []byte) error {
 		bytesWritten += n
 	}
 	return nil
-}
-
-func xor(a, b []byte) []byte {
-	if len(a) != len(b) {
-		log.Fatal("cannot XOR byte slices of different length")
-	}
-	n := len(a)
-
-	dst := make([]byte, n)
-	for i := 0; i < n; i++ {
-		dst[i] = a[i] ^ b[i]
-	}
-	return dst
 }
 
 // p = 2^255 - 19, little-endian.
