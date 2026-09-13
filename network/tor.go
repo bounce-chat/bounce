@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/subtle"
 	"errors"
 	"io"
 	"net"
@@ -720,6 +721,14 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 	if err != nil {
 		return nil, err, false
 	}
+	canonical := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(string(dialerAddress))), ".onion")
+	if string(dialerAddress) != canonical {
+		log.WithFields(log.Fields{
+			"address": string(dialerAddress),
+		}).Warn("received non-lowercase dialer address")
+		return nil, errors.New("received non-canonical dialer address"), false
+	}
+
 	dialerNonce, err := read(connection, handshakeNonceSize)
 	if err != nil {
 		return nil, err, false
@@ -883,6 +892,14 @@ func (bounceTor *TorNetwork) Sign(data []byte) []byte {
 }
 
 func (bounceTor *TorNetwork) VerifySignature(address string, data []byte, signature []byte) bool {
+	canonical := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(address)), ".onion")
+	if address != canonical {
+		log.WithFields(log.Fields{
+			"address": address,
+		}).Error("non-canonical address passed to VerifySignature")
+		return false
+	}
+
 	publicKey, err := arti.PublicKeyFromOnionID(address)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -890,6 +907,14 @@ func (bounceTor *TorNetwork) VerifySignature(address string, data []byte, signat
 		}).Error("invalid address passed to VerifySignature")
 		return false
 	}
+
+	if isLowOrderKey(publicKey) {
+		log.WithFields(log.Fields{
+			"address": address,
+		}).Error("rejecting low-order public key in VerifySignature")
+		return false
+	}
+
 	return arti.Verify(publicKey, data, signature)
 }
 
@@ -1033,4 +1058,74 @@ func xor(a, b []byte) []byte {
 		dst[i] = a[i] ^ b[i]
 	}
 	return dst
+}
+
+// p = 2^255 - 19, little-endian.
+var fieldModulus = [32]byte{
+	0xed, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f,
+}
+
+// The five canonical y-coordinates of the ed25519 8-torsion subgroup, little
+// endian, sign bit cleared and reduced mod p. Eight points: the identity, one
+// of order 2, two of order 4 (both y = 0), and four of order 8 (two y values,
+// each with x and -x).
+var lowOrderYValues = [5][32]byte{
+	{},     // y = 0, the two order-4 points
+	{0x01}, // y = 1, the identity
+	{ // y = p-1, the order-2 point
+		0xec, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f,
+	},
+	{ // order 8
+		0xc7, 0x17, 0x6a, 0x70, 0x3d, 0x4d, 0xd8, 0x4f,
+		0xba, 0x3c, 0x0b, 0x76, 0x0d, 0x10, 0x67, 0x0f,
+		0x2a, 0x20, 0x53, 0xfa, 0x2c, 0x39, 0xcc, 0xc6,
+		0x4e, 0xc7, 0xfd, 0x77, 0x92, 0xac, 0x03, 0x7a,
+	},
+	{ // order 8, the negation of the above; the two sum to p
+		0x26, 0xe8, 0x95, 0x8f, 0xc2, 0xb2, 0x27, 0xb0,
+		0x45, 0xc3, 0xf4, 0x89, 0xf2, 0xef, 0x98, 0xf0,
+		0xd5, 0xdf, 0xac, 0x05, 0xd3, 0xc6, 0x33, 0x39,
+		0xb1, 0x38, 0x02, 0x88, 0x6d, 0x53, 0xfc, 0x05,
+	},
+}
+
+// isLowOrderKey reports whether key encodes a point in the 8-torsion subgroup.
+// Signatures for such a key are forgeable without the private key: with S = 0
+// and R = the identity encoding, [S]B == R + [k]A holds for every message.
+//
+// This blocks POINTS, not encodings. crypto/ed25519 accepts more than one
+// 32-byte spelling per point — the top bit is the sign of x, and y is not range
+// checked against p — so a literal blocklist is only as complete as whoever
+// wrote it. Normalising first makes the set exhaustive by construction.
+func isLowOrderKey(key ed25519.PublicKey) bool {
+	if len(key) != ed25519.PublicKeySize {
+		return true
+	}
+
+	var y [32]byte
+	copy(y[:], key)
+	y[31] &= 0x7f // the top bit is the sign of x, not part of y
+
+	// Reduce mod p. y < 2^255 and p > 2^255 - 2^5, so one conditional
+	// subtraction suffices. Constant time.
+	var reduced [32]byte
+	var borrow int
+	for i := 0; i < 32; i++ {
+		d := int(y[i]) - int(fieldModulus[i]) - borrow
+		borrow = (d >> 8) & 1
+		reduced[i] = byte(d)
+	}
+	subtle.ConstantTimeCopy(1-borrow, y[:], reduced[:])
+
+	blocked := 0
+	for i := range lowOrderYValues {
+		blocked |= subtle.ConstantTimeCompare(y[:], lowOrderYValues[i][:])
+	}
+	return blocked == 1
 }
