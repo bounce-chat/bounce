@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -21,8 +22,12 @@ import (
 // callbacks read.
 var torLock sync.Mutex
 
-var handshakeChallengeSize = 32
+var handshakeNonceSize = 32
 var signatureSize = 64
+
+var handshakeDomain = "bounce-handshake"
+var handshakeRoleDialer = byte(0x00)
+var handshakeRoleListener = byte(0x01)
 
 // restartWaitLimit bounds how long Accept and Dial will wait for a restart to
 // finish. It exists only so a restart that never completes cannot wedge the
@@ -710,41 +715,63 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 		return nil, err, true
 	}
 
-	// Handshake with the connection to learn the remote address
-	challenge := make([]byte, handshakeChallengeSize)
-	n, err := rand.Read(challenge)
-	if n != handshakeChallengeSize {
-		return nil, errors.New("failed to generate random challenge for handshake"), false
-	}
+	// Handshake step one: read the dialer's address and nonce
+	dialerAddress, err := read(connection, len(s.onion.ID()))
 	if err != nil {
 		return nil, err, false
 	}
-	err = write(connection, challenge)
+	dialerNonce, err := read(connection, handshakeNonceSize)
 	if err != nil {
 		return nil, err, false
 	}
 
-	// All onion IDs will be the same size, read the number of bytes that correspond to our ID
-	peerAddress, err := read(connection, len(s.onion.ID()))
+	// Handshake step two: generate and send a nonce, and generate a session and
+	// send a signature of that session
+	listenerNonce := make([]byte, handshakeNonceSize)
+	n, err := rand.Read(listenerNonce)
+	if n != handshakeNonceSize {
+		return nil, errors.New("failed to generate random listener nonce"), false
+	}
 	if err != nil {
 		return nil, err, false
 	}
 
-	// Read their bytes they XOR'd with our challenge
-	challengeXor, err := read(connection, handshakeChallengeSize)
+	err = write(connection, listenerNonce)
 	if err != nil {
 		return nil, err, false
 	}
 
-	// Read their signature of the challenge
-	response, err := read(connection, signatureSize)
+	listenerSessionBytes := slices.Concat(
+		[]byte(handshakeDomain),
+		[]byte{handshakeRoleListener},
+		dialerAddress,
+		dialerNonce,
+		listenerNonce,
+	)
+	listenerSessionSignature := bounceTor.Sign(listenerSessionBytes)
+
+	err = write(connection, listenerSessionSignature)
 	if err != nil {
 		return nil, err, false
 	}
 
-	ok := bounceTor.VerifySignature(string(peerAddress), xor(challenge, challengeXor), response)
+	// Handshake step three: read the dialer's session signature and verify
+	dialerSessionSignature, err := read(connection, signatureSize)
+	if err != nil {
+		return nil, err, false
+	}
+
+	dialerSessionBytes := slices.Concat(
+		[]byte(handshakeDomain),
+		[]byte{handshakeRoleDialer},
+		[]byte(s.onion.ID()),
+		dialerNonce,
+		listenerNonce,
+	)
+
+	ok := bounceTor.VerifySignature(string(dialerAddress), dialerSessionBytes, dialerSessionSignature)
 	if !ok {
-		return nil, errors.New("signature validation failed during handshake with " + string(peerAddress)), false
+		return nil, errors.New("invalid dialer session signature"), false
 	}
 
 	torConn := &torNetworkConnection{
@@ -753,7 +780,7 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 			address: s.onion.ID(),
 		},
 		remoteAddress: &torAddress{
-			address: string(peerAddress),
+			address: string(dialerAddress),
 		},
 	}
 	return torConn, nil, false
@@ -776,36 +803,58 @@ func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
 		return nil, err
 	}
 
-	// Handshake
-	challenge, err := read(conn, handshakeChallengeSize)
-	if err != nil {
-		return nil, err
-	}
-
-	challengeXor := make([]byte, handshakeChallengeSize)
-	n, err := rand.Read(challengeXor)
-	if n != handshakeChallengeSize {
-		return nil, errors.New("failed to generate random challenge for handshake XOR")
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	finalChallenge := xor(challenge, challengeXor)
-
-	response := bounceTor.Sign(finalChallenge)
-
+	// Handshake step one: send our address and our nonce
 	err = write(conn, []byte(s.onion.ID()))
 	if err != nil {
 		return nil, err
 	}
-
-	err = write(conn, challengeXor)
+	dialerNonce := make([]byte, handshakeNonceSize)
+	n, err := rand.Read(dialerNonce)
+	if n != handshakeNonceSize {
+		return nil, errors.New("failed to generate random dialer nonce")
+	}
+	if err != nil {
+		return nil, err
+	}
+	err = write(conn, dialerNonce)
 	if err != nil {
 		return nil, err
 	}
 
-	err = write(conn, response)
+	// Handshake step two: read a listener nonce and a signature of the session,
+	// verify the signature
+	listenerNonce, err := read(conn, handshakeNonceSize)
+	if err != nil {
+		return nil, err
+	}
+	listenerSessionSignature, err := read(conn, signatureSize)
+	if err != nil {
+		return nil, err
+	}
+
+	listenerSessionBytes := slices.Concat(
+		[]byte(handshakeDomain),
+		[]byte{handshakeRoleListener},
+		[]byte(s.onion.ID()),
+		dialerNonce,
+		listenerNonce,
+	)
+	ok := bounceTor.VerifySignature(address, listenerSessionBytes, listenerSessionSignature)
+	if !ok {
+		return nil, errors.New("invalid listener session signature")
+	}
+
+	// Handshake step three: send back our session signature
+	dialerSessionBytes := slices.Concat(
+		[]byte(handshakeDomain),
+		[]byte{handshakeRoleDialer},
+		[]byte(address),
+		dialerNonce,
+		listenerNonce,
+	)
+	dialerSessionSignature := bounceTor.Sign(dialerSessionBytes)
+
+	err = write(conn, dialerSessionSignature)
 	if err != nil {
 		return nil, err
 	}
