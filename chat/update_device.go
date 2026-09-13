@@ -484,7 +484,7 @@ func (b *Bounce) RenameDevice(deviceID uuid.UUID, name string) error {
 }
 
 func (b *Bounce) goOfflineAfterRevocation() {
-	b.networkIsOnline = false
+	b.networkIsOnline.Store(false)
 
 	b.devicePool.deviceMutex.Lock()
 	devices := make([]*remoteDevice, 0, len(b.devicePool.devices))

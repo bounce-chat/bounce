@@ -42,8 +42,8 @@ type Bounce struct {
 	postNotification      func(string, string, string, string, []byte)
 	clearNotification     func(string)
 	userID                uuid.UUID
-	networkIsOnline       bool
-	networkHasBeenOnline  bool
+	networkIsOnline       atomic.Bool
+	networkHasBeenOnline  atomic.Bool
 	shutdownStarted       atomic.Bool
 	databasePruningTicker *time.Ticker
 	pruningDatabase       sync.WaitGroup

@@ -231,10 +231,6 @@ func (b *Bounce) readFrames(s *socket) {
 			return
 		}
 
-		if b.shutdownStarted.Load() {
-			return
-		}
-
 		if !b.encrypted {
 			// Make sure that we can handle this type of frame without a profile if we don't have one
 			if !profileExists {
@@ -286,6 +282,9 @@ func (b *Bounce) readFrames(s *socket) {
 				"type": frameType,
 			}).Error("peer sent an unsupported frame type")
 		} else {
+			if b.shutdownStarted.Load() {
+				return
+			}
 			b.runningHandlers.Add(1)
 			go func(thisPeer string, thisData []byte) {
 				log.WithFields(log.Fields{

@@ -111,13 +111,13 @@ func (b *Bounce) monitorNetworkAndRestartWhenNeeded() {
 		currentSocketCount := b.devicePool.globallyConnectedSockets()
 
 		if (haveAcceptedConnections.Load() || haveDialedConnections.Load()) && lastSocketCount == 0 && currentSocketCount == 0 {
-			b.networkIsOnline = false
+			b.networkIsOnline.Store(false)
 			b.ui.NetworkOffline()
 			log.Debug("network failure detected, restarting network")
 
 			err := b.network.Restart()
 			if err == nil {
-				b.networkIsOnline = true
+				b.networkIsOnline.Store(true)
 				b.ui.NetworkOnline()
 
 				// Reset dial cooldowns
@@ -174,7 +174,7 @@ func (b *Bounce) auditPeers() {
 	defer b.devicePool.auditing.Unlock()
 
 	// Skip this audit if the network isn't online
-	if !b.networkIsOnline {
+	if !b.networkIsOnline.Load() {
 		return
 	}
 
@@ -666,7 +666,7 @@ func (b *Bounce) tryDialingAndAssociateWithGroup(address string, groupID uuid.UU
 }
 
 func (b *Bounce) tryDialing(address string) bool {
-	if !b.networkIsOnline {
+	if !b.networkIsOnline.Load() {
 		return false
 	}
 	if b.shouldCooldownDial(address) {
