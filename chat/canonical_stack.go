@@ -89,7 +89,7 @@ func (cs *canonicalStack) empty() bool {
 }
 
 func (cs *canonicalStack) stash() {
-	cs.historyStash = cs.history
+	cs.historyStash = append([]groupState(nil), cs.history...)
 }
 
 func (cs *canonicalStack) restore() {

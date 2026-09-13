@@ -674,6 +674,7 @@ func (b *Bounce) tryDialing(address string) bool {
 	}
 	if address == b.network.Address() {
 		log.Warn("ignoring request to dial self")
+		return false
 	}
 
 	b.devicePool.updateLastDial(address)

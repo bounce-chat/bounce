@@ -116,6 +116,9 @@ func (b *Bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) error {
 	}
 	stack.history = append([]groupState{stack.history[0]}, untouchedState...)
 
+	// Recompute the device maps for the pruned history
+	b.recomputeDeviceMaps(stack)
+
 	// Load all updates that are timestamp or newer from the database
 	var ugs []updateGroup
 	err := b.database.Preload(clause.Associations).Where("target = ? AND timestamp >= ? AND custom_scope = ?", groupID, ts, uuid.Nil).Order("timestamp asc").Find(&ugs).Order("id").Find(&ugs).Error
