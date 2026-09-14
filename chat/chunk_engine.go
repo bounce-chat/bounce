@@ -82,11 +82,18 @@ func (b *Bounce) loadChunkEngine() {
 	}
 	b.chunkEngine.Unlock()
 
-	go func() {
-		for range time.NewTicker(5 * time.Second).C {
-			b.makeAnyChunkRequests()
+	b.background(func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-b.done:
+				return
+			case <-ticker.C:
+				b.makeAnyChunkRequests()
+			}
 		}
-	}()
+	})
 }
 
 func (b *Bounce) makeAnyChunkRequests() {

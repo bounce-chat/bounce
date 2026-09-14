@@ -25,9 +25,12 @@ func (b *Bounce) networkOnline() {
 	// own goroutine and may do so more than once, and two callbacks that both pass
 	// a plain check would each start a second accept loop and peer loop.
 	if b.networkHasBeenOnline.CompareAndSwap(false, true) {
+		// acceptConnections is deliberately not a tracked background task: it blocks in
+		// network.Accept, which cannot be interrupted, so joining it would stall Shutdown.
+		// It returns via its own shutdownStarted checks instead.
 		go b.acceptConnections()
 		if !b.encrypted {
-			go b.peer()
+			b.background(b.peer)
 		}
 	}
 	if !b.encrypted {

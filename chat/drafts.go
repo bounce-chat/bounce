@@ -19,7 +19,9 @@ var draftHandlerMutex sync.Mutex
 
 func (b *Bounce) keepDraftsSynced() {
 	for {
-		time.Sleep(5 * time.Second)
+		if !b.sleepOrDone(5 * time.Second) {
+			return
+		}
 		b.syncDrafts()
 	}
 }

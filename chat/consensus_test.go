@@ -407,8 +407,12 @@ func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
 	b.consensusStore.Unlock()
 	assert.Equal(t, 6, stackLen)
 
-	// Get the final state and check that the name edit applied and the restriction did not
+	// Get the final state and check that the name edit applied and the restriction did not.
+	// top() reads cs.history, so it needs the same lock the stackLen read above takes:
+	// a live engine can be writing that slice from a frame handler.
+	b.consensusStore.Lock()
 	gs, err := stack.top()
+	b.consensusStore.Unlock()
 	assert.NoError(t, err)
 	assert.Equal(t, "New Name", gs.name)
 	assert.Equal(t, false, gs.editingRestricted)
@@ -521,8 +525,12 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 	b.consensusStore.Unlock()
 	assert.Equal(t, 6, stackLen)
 
-	// Get the final state and check that the name edit applied and the restriction did not
+	// Get the final state and check that the name edit applied and the restriction did not.
+	// top() reads cs.history, so it needs the same lock the stackLen read above takes:
+	// a live engine can be writing that slice from a frame handler.
+	b.consensusStore.Lock()
 	gs, err := stack.top()
+	b.consensusStore.Unlock()
 	assert.NoError(t, err)
 	assert.Equal(t, "Test Group", gs.name)
 	assert.Equal(t, true, gs.editingRestricted)

@@ -69,21 +69,34 @@ func (dp *devicePool) globallyConnectedSockets() int {
 
 func (b *Bounce) peer() {
 	b.makeInitialPeeringConnections()
-	go b.sendKeepAlives()
-	go b.keepRemoteDevicesPruned()
-	go b.monitorNetworkAndRestartWhenNeeded()
+	b.background(b.sendKeepAlives)
+	b.background(b.keepRemoteDevicesPruned)
+	b.background(b.monitorNetworkAndRestartWhenNeeded)
 	ticker := time.NewTicker(auditFrequency)
-	for _ = range ticker.C {
-		b.auditPeers()
+	defer ticker.Stop()
+	for {
+		select {
+		case <-b.done:
+			return
+		case <-ticker.C:
+			b.auditPeers()
+		}
 	}
 }
 
 func (b *Bounce) keepRemoteDevicesPruned() {
 	ticker := time.NewTicker(pruneFrequency)
+	defer ticker.Stop()
 
 	var devices []*remoteDevice
 
-	for _ = range ticker.C {
+	for {
+		select {
+		case <-b.done:
+			return
+		case <-ticker.C:
+		}
+
 		devices = devices[:0]
 
 		b.devicePool.deviceMutex.Lock()
@@ -104,10 +117,20 @@ func (b *Bounce) keepRemoteDevicesPruned() {
 // Arti seems to have trouble reconnecting after exteneded periods offline.  Restart the network if
 // it used to be healthy, but we haven't had a connection in some time
 func (b *Bounce) monitorNetworkAndRestartWhenNeeded() {
-	time.Sleep(2 * time.Minute)
+	if !b.sleepOrDone(2 * time.Minute) {
+		return
+	}
 
 	lastSocketCount := b.devicePool.globallyConnectedSockets()
-	for range time.NewTicker(3 * time.Minute).C {
+	ticker := time.NewTicker(3 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-b.done:
+			return
+		case <-ticker.C:
+		}
+
 		currentSocketCount := b.devicePool.globallyConnectedSockets()
 
 		if (haveAcceptedConnections.Load() || haveDialedConnections.Load()) && lastSocketCount == 0 && currentSocketCount == 0 {
@@ -199,10 +222,17 @@ func (b *Bounce) auditPeers() {
 
 func (b *Bounce) sendKeepAlives() {
 	ticker := time.NewTicker(keepAliveFrequency)
+	defer ticker.Stop()
 
 	var devices []*remoteDevice
 
-	for _ = range ticker.C {
+	for {
+		select {
+		case <-b.done:
+			return
+		case <-ticker.C:
+		}
+
 		devices = devices[:0]
 
 		b.devicePool.deviceMutex.Lock()
