@@ -42,13 +42,94 @@ type Bounce struct {
 	postNotification      func(string, string, string, string, []byte)
 	clearNotification     func(string)
 	userID                uuid.UUID
-	networkIsOnline       bool
-	networkHasBeenOnline  bool
+	networkIsOnline       atomic.Bool
+	networkHasBeenOnline  atomic.Bool
 	shutdownStarted       atomic.Bool
 	databasePruningTicker *time.Ticker
 	pruningDatabase       sync.WaitGroup
 	runningHandlers       sync.WaitGroup
 	shutdownMutex         sync.Mutex
+
+	// done is closed once, by stopBackgroundTasks, to tell every engine-lifetime
+	// loop to return. backgroundTasks counts those loops so Shutdown can join them.
+	// Registration and closing both happen under backgroundMutex so that a task
+	// starting concurrently with Shutdown can never call Add after Wait has begun.
+	done              chan struct{}
+	backgroundTasks   sync.WaitGroup
+	backgroundMutex   sync.Mutex
+	backgroundStopped bool
+
+	// handlersMutex guards registration with runningHandlers so that an Add can never
+	// overlap the Wait in Shutdown. See startHandler.
+	handlersMutex   sync.Mutex
+	handlersStopped bool
+}
+
+// background starts fn as an engine-lifetime goroutine that Shutdown will wait
+// for. Tasks started after shutdown has begun are dropped rather than spawned.
+func (b *Bounce) background(fn func()) {
+	b.backgroundMutex.Lock()
+	if b.backgroundStopped {
+		b.backgroundMutex.Unlock()
+		return
+	}
+	b.backgroundTasks.Add(1)
+	b.backgroundMutex.Unlock()
+
+	go func() {
+		defer b.backgroundTasks.Done()
+		fn()
+	}()
+}
+
+// stopBackgroundTasks closes done, which every background loop selects on. Safe to
+// call more than once, which matters because Shutdown can be reached twice.
+func (b *Bounce) stopBackgroundTasks() {
+	b.backgroundMutex.Lock()
+	defer b.backgroundMutex.Unlock()
+
+	if b.backgroundStopped {
+		return
+	}
+	b.backgroundStopped = true
+	close(b.done)
+}
+
+// startHandler registers a frame handler with runningHandlers, returning false once
+// shutdown has begun, in which case the caller must not spawn the handler at all.
+func (b *Bounce) startHandler() bool {
+	b.handlersMutex.Lock()
+	defer b.handlersMutex.Unlock()
+
+	if b.handlersStopped {
+		return false
+	}
+	b.runningHandlers.Add(1)
+	return true
+}
+
+// stopHandlers closes the gate above so that no further handlers can register. It must
+// return before Shutdown calls runningHandlers.Wait: waiting while holding handlersMutex
+// would deadlock against a handler blocked in startHandler.
+func (b *Bounce) stopHandlers() {
+	b.handlersMutex.Lock()
+	defer b.handlersMutex.Unlock()
+
+	b.handlersStopped = true
+}
+
+// sleepOrDone waits for d, returning false if the engine shut down first. Used by
+// background loops that sleep rather than tick, so shutdown does not wait out a sleep.
+func (b *Bounce) sleepOrDone(d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		return true
+	case <-b.done:
+		return false
+	}
 }
 
 // The main entrypoint for starting the Bounce chat engine, blocks until the user interface
@@ -91,16 +172,17 @@ func Open(ui UI, network Network, configDirectory string, postNotification func(
 		},
 		postNotification:  postNotification,
 		clearNotification: clearNotification,
+		done:              make(chan struct{}),
 	}
 	b.ensureOnlyOneInstance()
 	log.RegisterExitHandler(b.fatalShutdown)
 	go b.handleInterrupts()
 
 	b.openDatabase()
+	b.openReferenceDatabase()
 
 	go func() {
 		b.network.Load(b.configDirectory)
-		b.openReferenceDatabase()
 		go b.loadChunkEngine()
 		if !b.deviceIsRevoked() {
 			b.network.Start(
@@ -112,7 +194,7 @@ func Open(ui UI, network Network, configDirectory string, postNotification func(
 		}
 	}()
 
-	go b.keepDraftsSynced()
+	b.background(b.keepDraftsSynced)
 
 	return b
 }
@@ -120,6 +202,10 @@ func Open(ui UI, network Network, configDirectory string, postNotification func(
 // Gracefully stop all Bounce.  Used when a fatal error is encountered or the user interface is closed
 func (b *Bounce) Shutdown() {
 	b.shutdownStarted.Store(true)
+
+	// Tell every engine-lifetime loop to return. They are joined further down, once
+	// the connections they may be using have been closed.
+	b.stopBackgroundTasks()
 
 	// Save all drafts to the database
 	draftMutex.Lock()
@@ -188,8 +274,10 @@ func (b *Bounce) Shutdown() {
 		log.Warn("closing connections took longer than 2 seconds, giving up")
 	}
 
-	// Make sure any network handlers finish running
+	// Make sure any network handlers finish running. Close the gate first, so that no
+	// handler can register while the wait below is running.
 	log.Info("waiting for currently running handlers to stop")
+	b.stopHandlers()
 	handlersStopped := make(chan bool, 1)
 	go func() {
 		b.runningHandlers.Wait()
@@ -199,6 +287,19 @@ func (b *Bounce) Shutdown() {
 	case <-handlersStopped:
 	case <-time.After(2 * time.Second):
 		log.Warn("running handlers took more then 2 seconds to stop, giving up")
+	}
+
+	// Wait for the engine-lifetime background loops signalled above to return
+	log.Info("waiting for background tasks to stop")
+	backgroundTasksStopped := make(chan bool, 1)
+	go func() {
+		b.backgroundTasks.Wait()
+		backgroundTasksStopped <- true
+	}()
+	select {
+	case <-backgroundTasksStopped:
+	case <-time.After(2 * time.Second):
+		log.Warn("background tasks took more than 2 seconds to stop, giving up")
 	}
 
 	// Shutdown the network
@@ -216,10 +317,6 @@ func (b *Bounce) Shutdown() {
 
 	// Close the database
 	if !testing.Testing() {
-		// The shutdown function is supposed to stop all background processing, but currently does not do
-		// a perfect job at this.  Closing the database while things are running in the background can
-		// cause a fatal error.  This is currently only a problem while running tests, but TODO: create a
-		// more thorough shutdown function and remove this testing check.
 		log.Info("closing the database")
 		// Close the pruning ticker channel and wait for the database to no longer be pruning
 		if b.databasePruningTicker != nil {

@@ -286,7 +286,9 @@ func (b *Bounce) readFrames(s *socket) {
 				"type": frameType,
 			}).Error("peer sent an unsupported frame type")
 		} else {
-			b.runningHandlers.Add(1)
+			if !b.startHandler() {
+				return
+			}
 			go func(thisPeer string, thisData []byte) {
 				log.WithFields(log.Fields{
 					"peer": peer,

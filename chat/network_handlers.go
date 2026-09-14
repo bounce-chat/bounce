@@ -16,16 +16,21 @@ var haveAcceptedConnections atomic.Bool
 var haveDialedConnections atomic.Bool
 
 func (b *Bounce) NetworkOnline() bool {
-	return b.networkIsOnline
+	return b.networkIsOnline.Load()
 }
 
 func (b *Bounce) networkOnline() {
-	b.networkIsOnline = true
-	if !b.networkHasBeenOnline {
-		b.networkHasBeenOnline = true
+	b.networkIsOnline.Store(true)
+	// CompareAndSwap rather than test-and-set: the network calls this back on its
+	// own goroutine and may do so more than once, and two callbacks that both pass
+	// a plain check would each start a second accept loop and peer loop.
+	if b.networkHasBeenOnline.CompareAndSwap(false, true) {
+		// acceptConnections is deliberately not a tracked background task: it blocks in
+		// network.Accept, which cannot be interrupted, so joining it would stall Shutdown.
+		// It returns via its own shutdownStarted checks instead.
 		go b.acceptConnections()
 		if !b.encrypted {
-			go b.peer()
+			b.background(b.peer)
 		}
 	}
 	if !b.encrypted {
@@ -35,7 +40,7 @@ func (b *Bounce) networkOnline() {
 }
 
 func (b *Bounce) networkOffline() {
-	b.networkIsOnline = false
+	b.networkIsOnline.Store(false)
 	if !b.encrypted {
 		b.ui.NetworkOffline()
 	}

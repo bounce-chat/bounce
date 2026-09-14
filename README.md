@@ -20,9 +20,9 @@ Each instance of Bounce includes a Tor hidden service, and all connections betwe
 
 ## Status
 
-Things should be working pretty reliably, please open an issue if a feature in the UI is not behaving as expected.  Bounce has not been audited by a third party yet, and should be considered experimental.
+I am actively working through a comprehensive vulnerability assessment.  During this time the protocol, including the format of user profiles, may undergo breaking changes.  Once this process is done the protocol will be guaranteed backwards compatible and updates will not be as critical, but until then all clients must be on the latest release (not master) to communicate.
 
-There may still be breaking changes between updates, as the existing protocol has not been finalized.  For now, it's best to assume all clients must be on the latest release to communicate.
+Please open an issue if a feature in the UI is not behaving as expected.
 
 |Platform|Status|Notes|
 |---|---|---|
@@ -31,8 +31,6 @@ There may still be breaking changes between updates, as the existing protocol ha
 |Windows|✅|Fully supported|
 |Android|✅|Fully supported|
 |iOS|⛔|iOS does not allow apps to run in the background.  Implementing Bounce on iOS will require a light client that receives notifications from another instance of Bounce via APNs, and reaches out to that instance to send messages.  This has not been planned yet, and would change the privacy model around metadata protection.|
-
-For information on what's coming, see the [next steps](docs/next_steps.md) document.
 
 ## Installation
 

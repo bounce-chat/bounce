@@ -441,7 +441,7 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 
 	// Find any devices that were added by this device after it was revoked and delete them
 	var unauthorizedDevices []device
-	err = b.database.Preload("Devices.Signature").Where("devices.timestamp > ? AND introduction_signatures.preexisting_device = ?", revokedAt, address).Error
+	err = b.database.Preload("Devices.Signature").Where("devices.timestamp > ? AND introduction_signatures.preexisting_device = ?", revokedAt, address).Find(&unauthorizedDevices).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -484,7 +484,7 @@ func (b *Bounce) RenameDevice(deviceID uuid.UUID, name string) error {
 }
 
 func (b *Bounce) goOfflineAfterRevocation() {
-	b.networkIsOnline = false
+	b.networkIsOnline.Store(false)
 
 	b.devicePool.deviceMutex.Lock()
 	devices := make([]*remoteDevice, 0, len(b.devicePool.devices))

@@ -80,13 +80,20 @@ func (b *Bounce) openReferenceDatabase() {
 		}).Fatal("error migrating the reference database")
 	}
 
-	go b.keepReferenceDatabasePruned()
+	b.background(b.keepReferenceDatabasePruned)
 }
 
 func (b *Bounce) keepReferenceDatabasePruned() {
-	databasePruningTicker := time.NewTicker(300 * time.Second) // TODO: properly shut this down at shutdown?
+	databasePruningTicker := time.NewTicker(300 * time.Second)
+	defer databasePruningTicker.Stop()
 
-	for _ = range databasePruningTicker.C {
+	for {
+		select {
+		case <-b.done:
+			return
+		case <-databasePruningTicker.C:
+		}
+
 		//b.pruningDatabase.Add(1)
 		fiveMinutesAgo := time.Now().Add(-5 * time.Minute).Unix()
 
