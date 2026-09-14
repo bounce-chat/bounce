@@ -412,35 +412,75 @@ func (b *Bounce) getGlobalScope(br broadcastable, excludeDelivered bool) []strin
 	} else {
 		// Anything global that was written by someone else should be sent to our devices, their devices,
 		// and the devices of any users that have a group in common with the author
-		var overlapDevices []device
+		overlapMap := map[string]device{}
+
+		// Find all the groups this user is in
+		var groups []group
 		err := b.database.
 			Distinct().
-			Where(
-				"(user_id = ? OR user_id = ? OR user_id IN (?))",
-				b.currentUserID(),
-				author,
-				b.database.
-					Model(&user{}).
-					Distinct().
-					Select("users.id").
-					Joins("JOIN group_users ON group_users.user_id = users.id").
-					Where(
-						"group_users.group_id IN (?)",
-						b.database.
-							Model(&group{}).
-							Distinct().
-							Select("groups.id").
-							Joins("JOIN group_users ON group_users.group_id = groups.id").
-							Where("user_id = ?", author),
-					),
-			).
-			Find(&overlapDevices).Error
+			Select("groups.id").
+			Joins("JOIN group_users ON group_users.group_id = groups.id").
+			Where("user_id = ?", author).
+			Find(&groups).
+			Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("error selecting unsent overlap devices during broadcast scoping")
+			}).Fatal("database error looking up groups user is in")
 		}
-		for _, dev := range overlapDevices {
+
+		// Collect all of the devices belonging to all of the users and invites in these groups
+		for _, g := range groups {
+			state, err := b.currentGroupState(g.ID)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error getting consensus state for group during overlap scope calculation")
+				continue
+			}
+
+			for _, userID := range state.users {
+				var u user
+				err := b.database.Preload(clause.Associations).First(&u, "id = ?", userID).Error
+				if err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						log.WithFields(log.Fields{
+							"user_id": userID,
+						}).Error("group contains user not found in database")
+						continue
+					} else {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Fatal("database error looking up user")
+					}
+				}
+				for _, dev := range u.Devices {
+					overlapMap[dev.Address] = dev
+				}
+			}
+
+			for _, userID := range state.invites {
+				var u user
+				err := b.database.Preload(clause.Associations).First(&u, "id = ?", userID).Error
+				if err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						log.WithFields(log.Fields{
+							"user_id": userID,
+						}).Error("group contains invited user not found in database")
+						continue
+					} else {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Fatal("database error looking up user")
+					}
+				}
+				for _, dev := range u.Devices {
+					overlapMap[dev.Address] = dev
+				}
+			}
+		}
+
+		for _, dev := range overlapMap {
 			if dev.RevokedAt != 0 {
 				continue
 			}
