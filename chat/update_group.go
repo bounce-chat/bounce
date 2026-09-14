@@ -8,6 +8,7 @@ import (
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -77,8 +78,11 @@ type updateGroup struct {
 }
 
 func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
+	if ug.ID != updateGroupID(*ug) {
+		return errors.New("incorrect update group ID")
+	}
 	if ug.ID == uuid.Nil {
-		return errors.New("update group ID must be set before creation")
+		return errors.New("update group ID cannot be nil")
 	}
 	ug.SavedAt = time.Now().Unix()
 
@@ -167,7 +171,7 @@ func (ug *updateGroup) confirmingUsers(possibleUsers []uuid.UUID) int {
 
 	users := make(map[uuid.UUID]bool)
 	for _, c := range ug.Confirmations {
-		if possible[c.Author] {
+		if _, ok := possible[c.Author]; ok {
 			users[c.Author] = true
 		} else {
 			log.WithFields(log.Fields{
@@ -176,7 +180,9 @@ func (ug *updateGroup) confirmingUsers(possibleUsers []uuid.UUID) int {
 			}).Warn("update group has a confirmation that wasn't created by a possible user")
 		}
 	}
-	users[ug.getAuthor()] = true
+	if _, ok := possible[ug.getAuthor()]; ok {
+		users[ug.getAuthor()] = true
+	}
 
 	return len(users)
 }
@@ -303,6 +309,16 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 	ug.Signature = sc.Signature
 	ug.Signer = sc.Signer
 
+	// Validate that the ID is a hash of the content
+	if ug.ID != updateGroupID(ug) {
+		log.WithFields(log.Fields{
+			"peer":       peer,
+			"id":         ug.ID,
+			"content_id": updateGroupID(ug),
+		}).Error("rejecting update group with ID not generated from content")
+		return nil, false
+	}
+
 	// Ignore update groups for blocked groups
 	for _, blockedGroup := range b.blockedGroups() {
 		if ug.Target == blockedGroup {
@@ -332,7 +348,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 	}
 
 	// Save this update
-	err = b.database.Create(&ug).Error
+	err = b.database.Omit("Confirmations").Create(&ug).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -456,7 +472,6 @@ func (b *Bounce) RenameGroup(groupID uuid.UUID, newName string) error {
 	}
 
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -477,7 +492,6 @@ func (b *Bounce) SetGroupImage(groupID uuid.UUID, image []byte) error {
 	}
 
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -491,7 +505,6 @@ func (b *Bounce) SetGroupMutedUntil(groupID uuid.UUID, mutedUntil int64) error {
 	binary.LittleEndian.PutUint64(payload, uint64(mutedUntil))
 
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -505,7 +518,6 @@ func (b *Bounce) SetGroupRetention(groupID uuid.UUID, retention int64) error {
 	binary.LittleEndian.PutUint64(payload, uint64(retention))
 
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -521,7 +533,6 @@ func (b *Bounce) ClearGroupChatHistory(groupID uuid.UUID) error {
 	binary.LittleEndian.PutUint64(payload, uint64(time.Now().Unix()))
 
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -557,7 +568,6 @@ func (b *Bounce) InviteUserToGroup(groupID, userID uuid.UUID) error {
 		}).Fatal("error marshalling user while adding user to group")
 	}
 	err = b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -582,14 +592,12 @@ func (b *Bounce) InviteUserToGroup(groupID, userID uuid.UUID) error {
 func (b *Bounce) RemoveUserFromGroup(groupID, userID uuid.UUID) error {
 	// Create an update group
 	ug := &updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeRemoveUser,
 		Data:      userID[:],
 	}
-
 	err := b.applyAndBroadcastUpdateGroup(ug)
 	if err != nil {
 		return err
@@ -626,7 +634,6 @@ func (b *Bounce) RemoveUserFromGroup(groupID, userID uuid.UUID) error {
 
 func (b *Bounce) DeleteGroup(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -636,7 +643,6 @@ func (b *Bounce) DeleteGroup(groupID uuid.UUID) error {
 
 func (b *Bounce) PromoteGroupAdmin(groupID, userID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -647,7 +653,6 @@ func (b *Bounce) PromoteGroupAdmin(groupID, userID uuid.UUID) error {
 
 func (b *Bounce) DemoteGroupAdmin(groupID, userID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -658,7 +663,6 @@ func (b *Bounce) DemoteGroupAdmin(groupID, userID uuid.UUID) error {
 
 func (b *Bounce) RestrictUserManagement(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -669,7 +673,6 @@ func (b *Bounce) RestrictUserManagement(groupID uuid.UUID) error {
 
 func (b *Bounce) UnrestrictUserManagement(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -680,7 +683,6 @@ func (b *Bounce) UnrestrictUserManagement(groupID uuid.UUID) error {
 
 func (b *Bounce) RestrictGroupEdits(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -691,7 +693,6 @@ func (b *Bounce) RestrictGroupEdits(groupID uuid.UUID) error {
 
 func (b *Bounce) UnrestrictGroupEdits(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -702,7 +703,6 @@ func (b *Bounce) UnrestrictGroupEdits(groupID uuid.UUID) error {
 
 func (b *Bounce) RestrictPosting(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -713,7 +713,6 @@ func (b *Bounce) RestrictPosting(groupID uuid.UUID) error {
 
 func (b *Bounce) UnrestrictPosting(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -724,7 +723,6 @@ func (b *Bounce) UnrestrictPosting(groupID uuid.UUID) error {
 
 func (b *Bounce) BlockGroup(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -747,7 +745,6 @@ func (b *Bounce) SetGroupReadReceiptSettings(groupID uuid.UUID, override bool, e
 	}
 
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -771,7 +768,6 @@ func (b *Bounce) SetGroupTypingIndicatorSettings(groupID uuid.UUID, override boo
 	}
 
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -782,7 +778,6 @@ func (b *Bounce) SetGroupTypingIndicatorSettings(groupID uuid.UUID, override boo
 
 func (b *Bounce) RevokeInvite(groupID, userID uuid.UUID) error {
 	ug := &updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -824,7 +819,6 @@ func (b *Bounce) AcceptInvite(groupID uuid.UUID) error {
 	b.acceptAllUsers(groupID)
 
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -862,7 +856,6 @@ func (b *Bounce) acceptAllUsers(groupID uuid.UUID) {
 
 func (b *Bounce) RejectInvite(groupID uuid.UUID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
-		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
@@ -871,7 +864,31 @@ func (b *Bounce) RejectInvite(groupID uuid.UUID) error {
 	})
 }
 
+func updateGroupID(ug updateGroup) uuid.UUID {
+	ug.ID = uuid.Nil
+	ug.Confirmations = []confirmation{}
+	data, err := msgpack.Marshal(ug)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error marshalling update group for ID generation")
+		return uuid.Nil
+	}
+	hash := blake3.Sum256(data)
+	id, err := uuid.FromBytes(hash[:16])
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error generating UUID from update group hash")
+		return uuid.Nil
+	}
+	return id
+}
+
 func (b *Bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
+	// Derive the ID from content
+	ug.ID = updateGroupID(*ug)
+
 	// Find the group we're updating
 	var g group
 	err := b.database.Preload(clause.Associations).Where("id = ?", ug.Target).First(&g).Error
