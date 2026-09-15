@@ -389,7 +389,8 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 func (ui *ui) DisplayDirectMessage(dm chat.DirectMessage) {
 	dmThread, reloaded, err := ui.getOrReloadDM(dm.Thread)
 	if err != nil {
-		log.Fatal("DM doesn't exist immediately after creation")
+		log.Error("DM doesn't exist immediately after creation")
+		return
 	}
 	if reloaded {
 		// The DM was closed and we opened it and reloaded all of this history,

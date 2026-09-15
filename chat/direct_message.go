@@ -175,6 +175,15 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		return nil, false
 	}
 
+	// Make sure the thread and author line up
+	if !(dm.Author == b.currentUserID() || xor(dm.Xor, dm.Author) == b.currentUserID()) {
+		log.WithFields(log.Fields{
+			"id":     dm.ID,
+			"author": dm.Author,
+		}).Error("reject DM with author that does not line up with xor")
+		return nil, false
+	}
+
 	// Ignore anything from a blocked user
 	if blockedUser(dm.Author) {
 		log.WithFields(log.Fields{
