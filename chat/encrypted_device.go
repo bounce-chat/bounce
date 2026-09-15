@@ -13,6 +13,7 @@ import (
 	stdlog "log"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -1238,7 +1239,11 @@ func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []b
 		}).Error("error encrypting frame")
 		return nil, false
 	}
-	ciphertext := dekGCM.Seal(nil, []byte{}, eroc.Challenge, nil)
+	session := slices.Concat(
+		[]byte(peer),
+		[]byte(b.network.Address()),
+	)
+	ciphertext := dekGCM.Seal(nil, []byte{}, eroc.Challenge, session)
 
 	start := time.Now().Unix()
 	success := false
@@ -1267,30 +1272,22 @@ func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []b
 	return nil, false
 }
 
-var eroChallengePrivateKey = []byte{}
-var eroChallengePublicKey = []byte{}
-
 func eroChallengeKey() ([]byte, []byte) {
-	if len(eroChallengePrivateKey) == 0 {
-
-		curve := ecdh.X25519()
-		privateKey, err := curve.GenerateKey(rand.Reader)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error generating x25519 private key")
-		}
-		publicKey := privateKey.PublicKey()
-
-		eroChallengePrivateKey = privateKey.Bytes()
-		eroChallengePublicKey = publicKey.Bytes()
+	curve := ecdh.X25519()
+	privateKey, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error generating x25519 private key")
 	}
+	publicKey := privateKey.PublicKey()
 
-	return eroChallengePrivateKey, eroChallengePublicKey
+	return privateKey.Bytes(), publicKey.Bytes()
 }
 
 var referenceOfferChallengeMutex sync.Mutex
 var referenceOfferChallengeMap = map[string][]byte{}
+var referenceOfferKeyMap = map[string][]byte{}
 var referenceOfferChallengeTime = map[string]int64{}
 var peerUserKeys = map[string][]byte{}
 var peerUserKeyMutex sync.Mutex
@@ -1299,15 +1296,16 @@ var lastERORTime = map[string]int64{}
 var lastERORTimeMutex sync.Mutex
 
 func (b *Bounce) challengeUnencryptedPeerForReferenceOffer(peer string) {
+	privkey, pubkey := eroChallengeKey()
+
 	challenge := make([]byte, 32)
 	rand.Read(challenge)
 
 	referenceOfferChallengeMutex.Lock()
+	referenceOfferKeyMap[peer] = privkey
 	referenceOfferChallengeMap[peer] = challenge
 	referenceOfferChallengeTime[peer] = time.Now().Unix()
 	referenceOfferChallengeMutex.Unlock()
-
-	_, pubkey := eroChallengeKey()
 
 	start := time.Now().Unix()
 	go func() {
@@ -1397,7 +1395,16 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 
 	// Find our challenge private key, their public key, and do an ECDH exchange to get a shared key
 	curve := ecdh.X25519()
-	challengePrivateKeyBytes, _ := eroChallengeKey()
+	referenceOfferChallengeMutex.Lock()
+	challengePrivateKeyBytes, ok := referenceOfferKeyMap[peer]
+	referenceOfferChallengeMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Error("no reference offer challenge key for peer")
+		return nil, false
+	}
+
 	challengePrivateKey, err := curve.NewPrivateKey(challengePrivateKeyBytes)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -1437,7 +1444,11 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 	}
 
 	// Try to decypt the challenge and make sure the data is unchanged
-	decryptedChallenge, err := dekGCM.Open(nil, []byte{}, eroc.Response, nil)
+	session := slices.Concat(
+		[]byte(b.network.Address()),
+		[]byte(peer),
+	)
+	decryptedChallenge, err := dekGCM.Open(nil, []byte{}, eroc.Response, session)
 	if err == nil && bytes.Equal(challenge, decryptedChallenge) {
 		peerUserKeyMutex.Lock()
 		peerUserKeys[peer] = eroc.PublicKey
