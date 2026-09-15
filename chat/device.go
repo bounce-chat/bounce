@@ -35,6 +35,7 @@ func (d *device) BeforeCreate(tx *gorm.DB) error {
 	if d.ID == uuid.Nil {
 		return errors.New("device must have ID set before creation")
 	}
+	d.RevokedAt = 0 // Revoked status can only be set by signed updates
 	d.SavedAt = time.Now().Unix()
 	return nil
 }
@@ -97,6 +98,31 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadc
 			"error": err.Error(),
 		}).Error("error unmarshalling device")
 		return nil, false
+	}
+
+	// Ignore a new device who was introduced by a device we now know to be revoked
+	if d.Signature != nil {
+		var preexistingDevice device
+		err = b.database.Select("revoked_at").Where("address = ?", d.Signature.PreexistingDevice).First(&preexistingDevice).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"address": d.Signature.PreexistingDevice,
+				}).Error("preexisting device not found for device")
+				return nil, false
+			} else {
+				log.WithFields(log.Fields{
+					"address": d.Signature.PreexistingDevice,
+					"error":   err.Error(),
+				}).Fatal("database error looking up preexisting device")
+			}
+		}
+		if preexistingDevice.RevokedAt != 0 {
+			log.WithFields(log.Fields{
+				"signer": d.Signature.PreexistingDevice,
+			}).Warn("ignoring device introduced by revoked device")
+			return nil, false
+		}
 	}
 
 	// Ignore anything from a blocked user

@@ -182,7 +182,7 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) (
 		return nil, false
 	}
 
-	// Make sure the signing device was not revoked before creating this
+	// Make sure the signing device was not revoked
 	var signerDevice device
 	err = b.database.Select("revoked_at").Where("address = ?", ud.Signer).First(&signerDevice).Error
 	if err != nil {
@@ -198,7 +198,7 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) (
 			}).Fatal("database error looking up signing device")
 		}
 	}
-	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < ud.Timestamp {
+	if signerDevice.RevokedAt != 0 {
 		log.WithFields(log.Fields{
 			"id":     ud.ID,
 			"signer": ud.Signer,
@@ -439,9 +439,12 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 		b.updateUserState(target)
 	}
 
-	// Find any devices that were added by this device after it was revoked and delete them
+	// Find any devices that were added by this device after it was revoked and delete them.
 	var unauthorizedDevices []device
-	err = b.database.Preload("Devices.Signature").Where("devices.timestamp > ? AND introduction_signatures.preexisting_device = ?", revokedAt, address).Find(&unauthorizedDevices).Error
+	err = b.database.
+		Joins("JOIN introduction_signatures ON introduction_signatures.device_id = devices.id").
+		Where("devices.timestamp > ? AND introduction_signatures.preexisting_device = ?", revokedAt, address).
+		Find(&unauthorizedDevices).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

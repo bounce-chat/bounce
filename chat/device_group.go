@@ -50,15 +50,18 @@ func (b *Bounce) hasValidDeviceGroup(u user) bool {
 	}
 	preexistingDevices := []device{}
 	b.database.Where("user_id = ?", u.ID).Find(&preexistingDevices)
+	revokedTimes := map[string]int64{}
 	for _, dev := range preexistingDevices {
 		if !seen[dev.Address] {
 			seen[dev.Address] = true
 			u.Devices = append(u.Devices, dev)
 		}
-	}
-	revokedTimes := map[string]int64{}
-	for _, dev := range u.Devices {
 		revokedTimes[dev.Address] = dev.RevokedAt
+	}
+	for _, dev := range u.Devices {
+		if _, ok := revokedTimes[dev.Address]; !ok {
+			revokedTimes[dev.Address] = dev.RevokedAt
+		}
 	}
 
 	for _, dev := range u.Devices {
