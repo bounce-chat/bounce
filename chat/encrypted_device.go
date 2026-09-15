@@ -1560,9 +1560,7 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 
 	validSignature := ed25519.Verify(au.SigningKey, med.Action, med.Signature)
 	if !validSignature {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("manage encrypted device has invalid signature with authorized user key")
+		log.Error("manage encrypted device has invalid signature with authorized user key")
 		go b.sendDirect(peer, &response)
 		return nil, false
 	} else {
