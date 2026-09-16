@@ -253,6 +253,15 @@ func (b *Bounce) handleEncryptedDeviceManagementRequest(peer string, payload []b
 		return nil, false
 	}
 
+	if len(edmr.SigningKey) != ed25519.PublicKeySize {
+		log.WithFields(log.Fields{
+			"peer":     peer,
+			"length":   len(edmr.SigningKey),
+			"expected": ed25519.PublicKeySize,
+		}).Error("invalid signing key lengh in encrypted device management request")
+		return nil, false
+	}
+
 	if setupKey != "" && subtle.ConstantTimeCompare([]byte(edmr.Secret), []byte(setupKey)) == 1 {
 		au := authorizedUser{
 			ID:         uuid.New(),
@@ -1555,6 +1564,15 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 	err = b.database.First(&au).Error
 	if err != nil {
 		go b.sendDirect(peer, &response)
+		return nil, false
+	}
+
+	if len(au.SigningKey) != ed25519.PublicKeySize {
+		log.WithFields(log.Fields{
+			"peer":     peer,
+			"length":   len(au.SigningKey),
+			"expected": ed25519.PublicKeySize,
+		}).Error("invalid signing key lengh in manage encrypted device frame")
 		return nil, false
 	}
 

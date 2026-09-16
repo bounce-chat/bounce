@@ -289,20 +289,30 @@ func (b *Bounce) readFrames(s *socket) {
 			if !b.startHandler() {
 				return
 			}
-			go func(thisPeer string, thisData []byte) {
+			go func() {
+				defer b.runningHandlers.Done()
+				defer func() {
+					if r := recover(); r != nil {
+						log.WithFields(log.Fields{
+							"peer":  peer,
+							"panic": r,
+						}).Error("recovered a panic in a handler")
+					}
+				}()
+
 				log.WithFields(log.Fields{
 					"peer": peer,
 					"type": frameType,
-					"size": len(thisData),
+					"size": len(data),
 				}).Debug("handling a frame")
-				br, _ := handler(thisPeer, thisData, false)
+
+				br, _ := handler(peer, data, false)
 				if br != nil {
-					b.markDeliveredTo(br, thisPeer)
-					go b.sendAck(thisPeer, br.getType(), br.getID())
+					b.markDeliveredTo(br, peer)
+					go b.sendAck(peer, br.getType(), br.getID())
 					b.broadcast(br)
 				}
-				b.runningHandlers.Done()
-			}(peer, data)
+			}()
 		}
 	}
 }
