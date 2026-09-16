@@ -529,7 +529,7 @@ func (b *Bounce) getUsersInScope(br broadcastable) []user {
 			users = append(users, currentUser)
 		}
 	} else if scope == scopeGlobal {
-		users = b.getUsersInGlobalScope(br)
+		users = b.getUsersInGlobalScope(br.getAuthor())
 	} else if scope == scopeCustom {
 		users = b.getUsersInCustomScope(br)
 		profileIncluded := false
@@ -559,9 +559,9 @@ func (b *Bounce) getUsersInScope(br broadcastable) []user {
 	return users
 }
 
-func (b *Bounce) getUsersInGlobalScope(br broadcastable) []user {
+func (b *Bounce) getUsersInGlobalScope(userID uuid.UUID) []user {
 	var users []user
-	if br.getAuthor() == b.currentUserID() {
+	if userID == b.currentUserID() {
 		// TODO: select most active users, as opposed to random?
 		err := b.database.Clauses(clause.OrderBy{
 			Expression: clause.Expr{SQL: "RANDOM()"},
@@ -572,20 +572,73 @@ func (b *Bounce) getUsersInGlobalScope(br broadcastable) []user {
 			}).Fatal("database error getting all users")
 		}
 	} else {
-		b.database.
-			Joins("LEFT JOIN group_users ON group_users.user_id = users.id").
-			Where(
-				"(group_users.user_id IS NULL AND (users.id = ? OR users.id = ?)) OR group_users.group_id IN (?)",
-				br.getAuthor(),
-				b.currentUserID(),
-				b.database.
-					Model(&group{}).
-					Distinct().
-					Select("groups.id").
-					Joins("JOIN group_users ON group_users.group_id = groups.id").
-					Where("user_id = ?", br.getAuthor()),
-			).
-			Find(&users)
+		userMap := map[uuid.UUID]user{}
+
+		// Find all the groups this user is in
+		var groups []group
+		err := b.database.
+			Distinct().
+			Select("groups.id").
+			Joins("JOIN group_users ON group_users.group_id = groups.id").
+			Where("user_id = ?", userID).
+			Find(&groups).
+			Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up groups user is in")
+		}
+
+		// Collect all of the devices belonging to all of the users and invites in these groups
+		for _, g := range groups {
+			state, err := b.currentGroupState(g.ID)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error getting consensus state for group during overlap scope calculation")
+				continue
+			}
+
+			for _, userID := range state.users {
+				var u user
+				err := b.database.Preload(clause.Associations).First(&u, "id = ?", userID).Error
+				if err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						log.WithFields(log.Fields{
+							"user_id": userID,
+						}).Error("group contains user not found in database")
+						continue
+					} else {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Fatal("database error looking up user")
+					}
+				}
+				userMap[u.ID] = u
+			}
+
+			for _, userID := range state.invites {
+				var u user
+				err := b.database.Preload(clause.Associations).First(&u, "id = ?", userID).Error
+				if err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						log.WithFields(log.Fields{
+							"user_id": userID,
+						}).Error("group contains invited user not found in database")
+						continue
+					} else {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Fatal("database error looking up user")
+					}
+				}
+				userMap[u.ID] = u
+			}
+		}
+
+		for _, u := range userMap {
+			users = append(users, u)
+		}
 	}
 	return users
 }
@@ -703,8 +756,13 @@ func (b *Bounce) getUsersInGroupWithInvitesScope(br broadcastable) []user {
 }
 
 func (b *Bounce) pruneEncryptedRecipients(mustHave uuid.UUID, users []user) []user {
-	if len(users) <= maximumRecipients {
-		return users
+	allowedUserMap := map[uuid.UUID]bool{}
+	if mustHave != b.currentUserID() {
+		allowedUserMap[b.currentUserID()] = true
+		allowedUsers := b.getUsersInGlobalScope(mustHave)
+		for _, u := range allowedUsers {
+			allowedUserMap[u.ID] = true
+		}
 	}
 
 	// Determine which user we must have
@@ -714,13 +772,20 @@ func (b *Bounce) pruneEncryptedRecipients(mustHave uuid.UUID, users []user) []us
 		if users[i].ID == mustHave {
 			mustHaveUser = users[i]
 		} else {
-			otherUsers = append(otherUsers, users[i])
+			if mustHave == b.currentUserID() {
+				otherUsers = append(otherUsers, users[i])
+			} else {
+				if _, ok := allowedUserMap[users[i].ID]; ok {
+					otherUsers = append(otherUsers, users[i])
+				}
+			}
 		}
 	}
 
-	// TODO: prioritize based on which users are most likely to be online?  Choose random ones for now
-	otherUsersSelection := chooseNUsers(otherUsers, maximumRecipients-1)
-	return append(otherUsersSelection, mustHaveUser)
+	if len(otherUsers) <= maximumRecipients-1 {
+		return append(otherUsers, mustHaveUser)
+	}
+	return append(chooseNUsers(otherUsers, maximumRecipients-1), mustHaveUser)
 }
 
 func chooseNUsers(set []user, n int) []user {
