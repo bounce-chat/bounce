@@ -31,6 +31,7 @@ import (
 var writingChunk = map[string]bool{}
 var writingChunkMutex sync.Mutex
 var fileDataDownloaded = map[uuid.UUID]int64{}
+var fileDataDownloadedMutex sync.Mutex
 var totalAttemptCounter = map[string]int{}
 
 const EmbeddedFileLimit = 1024 * 1024 * 20 // 20MiB
@@ -59,7 +60,6 @@ type file struct {
 	AttachedTo        uuid.UUID
 	Hash              string
 	Size              int64
-	ChunkSize         int
 	HashList          string
 	EncryptedHashList string
 	Key               []byte
@@ -260,13 +260,36 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		}).Error("ignoring file with no hashes")
 		return nil, false
 	}
+	if f.Size <= 0 {
+		return nil, false
+	}
 
 	// Create the empty chunks of the file
 	var encryptedHashes = make(map[int]string)
 	for i, encryptedChunkHash := range strings.Split(f.EncryptedHashList, ",") {
 		encryptedHashes[i] = encryptedChunkHash
 	}
-	for i, chunkHash := range strings.Split(f.HashList, ",") {
+
+	// Limit the amount of chunks to prevent resource exhaustion.  This cap limits
+	// total file size to 1 TiB, which would still be expensive to process, but puts
+	// an upper bound that devices should still plausibly be able to handle.
+	chunkList := strings.Split(f.HashList, ",")
+	if len(chunkList) > 1024*1024 {
+		log.WithFields(log.Fields{
+			"id":   f.ID,
+			"peer": peer,
+		}).Error("ignoring file with too many chunks")
+		return nil, false
+	}
+
+	// Create the chunks
+	for i, chunkHash := range chunkList {
+		if allowed, _ := regexp.MatchString("^[a-f0-9]{64}$", chunkHash); !allowed {
+			log.WithFields(log.Fields{
+				"hash": chunkHash,
+			}).Error("ignoring file that contains chunk with invalid hash")
+			return nil, false
+		}
 		chunkID, err := uuid.FromBytes([]byte(chunkHash)[:16])
 		if err != nil {
 			log.Fatal("cannot make uuid from bytes for chunk")
@@ -283,7 +306,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 	}
 
 	// We don't want to auto-download message attachments from threads that aren't regularly read
-	if f.Type == fileTypeGroupImage || f.Type == fileTypeUserImage {
+	if (f.Type == fileTypeGroupImage || f.Type == fileTypeUserImage) && f.embedded() {
 		f.Wanted = true
 	}
 	if f.Type == fileTypeMessageAttachment && f.embedded() {
@@ -301,41 +324,43 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		}).Fatal("error saving file")
 	}
 
-	// Copy data from any existing chunks where possible
-	for _, c := range f.Chunks {
-		data, err := b.getChunkData(c.Hash)
-		if err == nil {
-			c.Data = data
-			b.writeChunkToDisk(c)
-		} else {
-			// If we have any chunk offers that came in
-			// before the file, load them into the chunk
-			// engine now
-			var offers []chunkOffer
-			err = b.database.Where("hash = ?", c.Hash).Find(&offers).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error looking up chunk offers")
-			}
-			for _, co := range offers {
-				b.addChunkOfferToChunkEngine(&co)
-			}
-
-			if c.EncryptedHash != "" {
-				var encryptedOffers []encryptedChunkOffer
-				err = b.database.Where("hash = ?", c.EncryptedHash).Find(&encryptedOffers).Error
+	// Copy data from any existing chunks where possible and load any early offers
+	go func() {
+		for _, c := range f.Chunks {
+			data, err := b.getChunkData(c.Hash)
+			if err == nil {
+				c.Data = data
+				b.writeChunkToDisk(c)
+			} else {
+				// If we have any chunk offers that came in
+				// before the file, load them into the chunk
+				// engine now
+				var offers []chunkOffer
+				err = b.database.Where("hash = ?", c.Hash).Find(&offers).Error
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
-					}).Fatal("database error looking up encypted chunk offers")
+					}).Fatal("database error looking up chunk offers")
 				}
-				for _, eco := range encryptedOffers {
-					b.addEncryptedChunkOfferToChunkEngine(&eco)
+				for _, co := range offers {
+					b.addChunkOfferToChunkEngine(&co)
+				}
+
+				if c.EncryptedHash != "" {
+					var encryptedOffers []encryptedChunkOffer
+					err = b.database.Where("hash = ?", c.EncryptedHash).Find(&encryptedOffers).Error
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Fatal("database error looking up encypted chunk offers")
+					}
+					for _, eco := range encryptedOffers {
+						b.addEncryptedChunkOfferToChunkEngine(&eco)
+					}
 				}
 			}
 		}
-	}
+	}()
 
 	return &f, true
 }
@@ -714,7 +739,7 @@ func (b *Bounce) getChunkData(hash string) ([]byte, error) {
 	for _, c := range cs {
 		// Find the file that this chunk is a part of
 		var f file
-		err = b.database.Select("chunk_size", "path", "size", "downloaded").Where("id = ?", c.FileID).First(&f).Error
+		err = b.database.Select("path", "size", "downloaded").Where("id = ?", c.FileID).First(&f).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"file_id":  c.FileID,
@@ -742,7 +767,7 @@ func (b *Bounce) getChunkData(hash string) ([]byte, error) {
 			continue
 		}
 
-		start := int64(c.Index * f.ChunkSize)
+		start := int64(c.Index * fileChunkSize)
 		sought, err := fh.Seek(start, 0)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -760,7 +785,7 @@ func (b *Bounce) getChunkData(hash string) ([]byte, error) {
 			continue
 		}
 
-		data := make([]byte, f.ChunkSize)
+		data := make([]byte, fileChunkSize)
 		n, err := fh.Read(data)
 		if err != nil && err != io.EOF {
 			log.WithFields(log.Fields{
@@ -1114,7 +1139,7 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 
 	// Find the file that contains this chunk
 	var f file
-	err := b.database.Select("chunk_size", "path", "size", "hash", "wanted").Where("id = ?", c.FileID).First(&f).Error
+	err := b.database.Select("path", "size", "hash", "wanted").Where("id = ?", c.FileID).First(&f).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"file_id": c.FileID,
@@ -1139,7 +1164,14 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 		return
 	}
 
-	start := int64(c.Index * f.ChunkSize)
+	start := int64(c.Index * fileChunkSize)
+	if int64(len(c.Data)) > int64(fileChunkSize) || start+int64(len(c.Data)) > f.Size {
+		log.WithFields(log.Fields{
+			"file_id":  c.FileID,
+			"chunk_id": c.ID,
+		}).Warn("ignoring chunk that exceeds the file's declared size")
+		return
+	}
 	_, err = fh.WriteAt(c.Data, start)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -1151,9 +1183,11 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 	fh.Close()
 
 	if !f.embedded() {
+		fileDataDownloadedMutex.Lock()
 		progress, _ := fileDataDownloaded[c.FileID]
 		progress += int64(len(c.Data))
 		fileDataDownloaded[c.FileID] = progress
+		fileDataDownloadedMutex.Unlock()
 		b.ui.FileDownloadProgress(c.FileID, float64(progress)/float64(f.Size))
 	}
 
@@ -1240,7 +1274,6 @@ func (b *Bounce) embedFile(fileID uuid.UUID, data []byte, scope int, destination
 		Key:               key,
 		Nonce:             nonce,
 		Size:              int64(len(data)),
-		ChunkSize:         fileChunkSize,
 		Wanted:            true,
 		Downloaded:        true,
 		Scope:             scope,
@@ -1291,7 +1324,6 @@ func (b *Bounce) seedFile(fileID uuid.UUID, path string, scope int, destination 
 		Path:        path,
 		AttachedTo:  attachment,
 		Size:        info.Size(),
-		ChunkSize:   fileChunkSize,
 		Wanted:      true,
 		Downloaded:  true,
 		Scope:       scope,
@@ -1541,7 +1573,9 @@ func (b *Bounce) DownloadFileToDisk(fileID uuid.UUID, destination string) {
 	}
 
 	// Start requesting chunks
+	fileDataDownloadedMutex.Lock()
 	fileDataDownloaded[fileID] = 0
+	fileDataDownloadedMutex.Unlock()
 	b.ui.FileDownloadProgress(fileID, 0)
 }
 

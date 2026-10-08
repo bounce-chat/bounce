@@ -18,6 +18,7 @@ var maximumPayloadFromUnknownDevice = 1024 * 1024
 
 var errUnknownDeviceFrameTooLarge = errors.New("refusing to read frame from unknown device that is too large")
 var errKnownDeviceFrameTooLarge = errors.New("refusing to read frame from device that is too large")
+var errChunkFrameTooLarge = errors.New("chunk payload declared size larger than maximum allowed chunk size")
 
 // Read a Bounce frame from the socket.  This will return the type of frame, the frame bytes, and any error
 func readFrame(conn net.Conn, deviceIsKnown bool) (uint16, []byte, error) {
@@ -43,6 +44,14 @@ func readFrame(conn net.Conn, deviceIsKnown bool) (uint16, []byte, error) {
 
 	typeInt := binary.BigEndian.Uint16(typeBytes)
 	payloadSize := binary.BigEndian.Uint32(sizeBytes)
+
+	if typeInt == typeChunk && payloadSize > fileChunkSize {
+		log.WithFields(log.Fields{
+			"peer": conn.RemoteAddr().String(),
+			"size": payloadSize,
+		}).Warn("ignoring chunk that is larger than chunk size")
+		return 0, []byte{}, errChunkFrameTooLarge
+	}
 
 	if deviceIsKnown {
 		if int(payloadSize) > maximumPayloadFromKnownDevice {

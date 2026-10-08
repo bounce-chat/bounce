@@ -1157,14 +1157,16 @@ func (b *Bounce) GetInitialState() InitialState {
 			if c.Downloaded {
 				if c.Index == len(chunks)-1 {
 					// The last chunk might be smaller than the chunk size
-					downloadedSize += int64(f.Size % int64(f.ChunkSize))
+					downloadedSize += int64(f.Size % int64(fileChunkSize))
 				} else {
-					downloadedSize += int64(f.ChunkSize)
+					downloadedSize += int64(fileChunkSize)
 				}
 			}
 		}
 
+		fileDataDownloadedMutex.Lock()
 		fileDataDownloaded[f.ID] = downloadedSize
+		fileDataDownloadedMutex.Unlock()
 		fileProgress = append(fileProgress, FileProgress{ID: f.ID, Progress: float64(downloadedSize) / float64(f.Size)})
 	}
 
@@ -1369,14 +1371,16 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 				if c.Downloaded {
 					if c.Index == len(chunks)-1 {
 						// The last chunk might be smaller than the chunk size
-						downloadedSize += int64(f.Size % int64(f.ChunkSize))
+						downloadedSize += int64(f.Size % int64(fileChunkSize))
 					} else {
-						downloadedSize += int64(f.ChunkSize)
+						downloadedSize += int64(fileChunkSize)
 					}
 				}
 			}
 
+			fileDataDownloadedMutex.Lock()
 			fileDataDownloaded[f.ID] = downloadedSize
+			fileDataDownloadedMutex.Unlock()
 			fileProgress = append(fileProgress, FileProgress{ID: f.ID, Progress: float64(downloadedSize) / float64(f.Size)})
 		}
 

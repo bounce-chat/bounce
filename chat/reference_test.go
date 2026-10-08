@@ -46,7 +46,6 @@ func TestChunkOffersInReferenceFollowOverlapScope(t *testing.T) {
 		Path:              os.TempDir() + "/bounce-file-" + uuid.New().String(),
 		Hash:              hashString(hash),
 		Size:              int64(len(data)),
-		ChunkSize:         fileChunkSize,
 		Wanted:            true,
 		Downloaded:        true,
 		Scope:             scopeGlobal,
