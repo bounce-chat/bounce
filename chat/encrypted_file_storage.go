@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -476,6 +477,7 @@ type encryptedChunkStorageRequest struct {
 	DownloadedAt    int64                     `msgpack:"-"`
 	LastAttemptedAt int64                     `msgpack:"-"`
 	FullPath        string                    `msgpack:"-" gorm:"not null"`
+	OwnerRequested  bool                      `msgpack:"-"`
 }
 
 func (ecsr *encryptedChunkStorageRequest) BeforeCreate(tx *gorm.DB) error {
@@ -532,6 +534,7 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 		return nil, false
 	}
 
+	sr.ID = uuid.New()
 	for _, key := range sr.Recipients {
 		sr.RecipientUsers = append(sr.RecipientUsers, encryptedChunkRecipient{
 			ID:        uuid.New(),
@@ -545,6 +548,26 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 	err = b.database.Where("hash = ? AND source = ?", sr.Hash, sr.Source).Take(&existingSR).Error
 	if err == nil {
 		return nil, false
+	}
+
+	peerUserKeyMutex.Lock()
+	peerKey, ok := peerUserKeys[peer]
+	peerUserKeyMutex.Unlock()
+	if !ok {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Error("unable to handle ecsr from unknown peer")
+		return nil, false
+	}
+	var au authorizedUser
+	err = b.database.First(&au).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error getting authorized user while handling ecsr")
+	}
+	if bytes.Equal(peerKey, au.PublicKey) {
+		sr.OwnerRequested = true
 	}
 
 	var alreadyDownloadedSR encryptedChunkStorageRequest
