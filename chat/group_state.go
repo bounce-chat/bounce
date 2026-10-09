@@ -715,18 +715,30 @@ func applyUpdateGroupRemoveUserToState(gs groupState, ug updateGroup) (groupStat
 }
 
 func applyUpdateGroupChangeMutedUntilToState(gs groupState, ug updateGroup) (groupState, error) {
+	if len(ug.Data) != 8 {
+		return gs, errInvalidPayloadLength
+	}
+
 	gs.mutedUntil = int64(binary.LittleEndian.Uint64(ug.Data))
 
 	return gs, nil
 }
 
 func applyUpdateGroupChangeRetentionToState(gs groupState, ug updateGroup) (groupState, error) {
+	if len(ug.Data) != 8 {
+		return gs, errInvalidPayloadLength
+	}
+
 	gs.retention = int64(binary.LittleEndian.Uint64(ug.Data))
 
 	return gs, nil
 }
 
 func applyUpdateGroupSetClearBeforeToState(gs groupState, ug updateGroup) (groupState, error) {
+	if len(ug.Data) != 8 {
+		return gs, errInvalidPayloadLength
+	}
+
 	gs.clearBefore = int64(binary.LittleEndian.Uint64(ug.Data))
 
 	return gs, nil

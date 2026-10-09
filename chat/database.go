@@ -623,6 +623,12 @@ func (b *Bounce) GetInitialState() InitialState {
 	for _, udm := range udms {
 		switch udm.Type {
 		case updateDMTypeChangeRetention:
+			if len(udm.Data) != 8 {
+				log.WithFields(log.Fields{
+					"id": udm.ID,
+				}).Warn("refusing to load invalid update DM from database")
+				continue
+			}
 			exportedUpdateDMRetentions = append(
 				exportedUpdateDMRetentions,
 				UpdateDMRetention{
@@ -635,6 +641,12 @@ func (b *Bounce) GetInitialState() InitialState {
 				},
 			)
 		case updateDMTypeSetClearBefore:
+			if len(udm.Data) != 8 {
+				log.WithFields(log.Fields{
+					"id": udm.ID,
+				}).Warn("refusing to load invalid update DM from database")
+				continue
+			}
 			exportedUpdateDMClearHistories = append(
 				exportedUpdateDMClearHistories,
 				UpdateDMClearHistory{
@@ -798,6 +810,12 @@ func (b *Bounce) GetInitialState() InitialState {
 				},
 			)
 		case updateGroupTypeChangeRetention:
+			if len(ug.Data) != 8 {
+				log.WithFields(log.Fields{
+					"id": ug.ID,
+				}).Warn("refusing to load invalid update group from database")
+				continue
+			}
 			exportedUpdateGroupRetentions = append(
 				exportedUpdateGroupRetentions,
 				UpdateGroupRetention{
@@ -853,6 +871,12 @@ func (b *Bounce) GetInitialState() InitialState {
 				},
 			)
 		case updateGroupTypeSetClearBefore:
+			if len(ug.Data) != 8 {
+				log.WithFields(log.Fields{
+					"id": ug.ID,
+				}).Warn("refusing to load invalid update group from database")
+				continue
+			}
 			exportedUpdateGroupClearHistories = append(
 				exportedUpdateGroupClearHistories,
 				UpdateGroupClearHistory{
@@ -1416,6 +1440,12 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 	for _, udm := range udms {
 		switch udm.Type {
 		case updateDMTypeChangeRetention:
+			if len(udm.Data) != 8 {
+				log.WithFields(log.Fields{
+					"id": udm.ID,
+				}).Warn("refusing to load invalid update DM from database")
+				continue
+			}
 			exportedUpdateDMRetentions = append(
 				exportedUpdateDMRetentions,
 				UpdateDMRetention{
@@ -1428,6 +1458,12 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 				},
 			)
 		case updateDMTypeSetClearBefore:
+			if len(udm.Data) != 8 {
+				log.WithFields(log.Fields{
+					"id": udm.ID,
+				}).Warn("refusing to load invalid update DM from database")
+				continue
+			}
 			exportedUpdateDMClearHistories = append(
 				exportedUpdateDMClearHistories,
 				UpdateDMClearHistory{

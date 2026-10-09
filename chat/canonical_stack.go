@@ -240,6 +240,7 @@ func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 		log.WithFields(log.Fields{
 			"id": ug.ID,
 		}).Error("ignoring update group with invalid data")
+		return
 	}
 
 	// Get the current state of history

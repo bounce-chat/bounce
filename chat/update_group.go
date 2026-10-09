@@ -220,11 +220,11 @@ func (ug *updateGroup) validPayloadFormat() bool {
 		_, err := uuid.FromBytes(ug.Data)
 		return err == nil
 	case updateGroupTypeChangeRetention:
-		return true
+		return len(ug.Data) == 8
 	case updateGroupTypeChangeMutedUntil:
-		return true
+		return len(ug.Data) == 8
 	case updateGroupTypeSetClearBefore:
-		return true
+		return len(ug.Data) == 8
 	case updateGroupTypePromoteAdmin:
 		_, err := uuid.FromBytes(ug.Data)
 		return err == nil
@@ -1071,6 +1071,13 @@ func (b *Bounce) informUIUpdateGroupRemoveUser(ug updateGroup) {
 }
 
 func (b *Bounce) informUIUpdateGroupChangeRetention(ug updateGroup) {
+	if len(ug.Data) != 8 {
+		log.WithFields(log.Fields{
+			"id": ug.ID,
+		}).Error("cannot inform UI of update group with invalid payload")
+		return
+	}
+
 	b.ui.GroupRetentionChanged(UpdateGroupRetention{
 		ID:        ug.ID,
 		Thread:    ug.Target,
@@ -1082,6 +1089,13 @@ func (b *Bounce) informUIUpdateGroupChangeRetention(ug updateGroup) {
 }
 
 func (b *Bounce) informUIUpdateGroupSetClearBefore(ug updateGroup) {
+	if len(ug.Data) != 8 {
+		log.WithFields(log.Fields{
+			"id": ug.ID,
+		}).Error("cannot inform UI of update group with invalid payload")
+		return
+	}
+
 	b.ui.GroupChatHistoryCleared(UpdateGroupClearHistory{
 		ID:        ug.ID,
 		Thread:    ug.Target,
