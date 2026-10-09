@@ -1,8 +1,6 @@
 package chat
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	crand "crypto/rand"
 	"os"
 	"testing"
@@ -24,21 +22,8 @@ func TestChunkOffersInReferenceFollowOverlapScope(t *testing.T) {
 	hash := blake3.Sum256(data)
 	key := make([]byte, 32)
 	crand.Read(key)
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error creating aes cipher from key")
-	}
-	aesgcm, err := cipher.NewGCM(block)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error creating gcm from block")
-	}
-	nonce := make([]byte, aesgcm.NonceSize())
-	crand.Read(nonce)
-	chunks, hashList, encryptedHashList := splitChunks(fileID, data, key, nonce)
+	var err error
+	chunks, hashList, encryptedHashList := splitChunks(fileID, data, key)
 	f := &file{
 		ID:                fileID,
 		Type:              fileTypeUserImage,
@@ -56,7 +41,6 @@ func TestChunkOffersInReferenceFollowOverlapScope(t *testing.T) {
 		EncryptedHashList: encryptedHashList,
 		Chunks:            chunks,
 		Key:               key,
-		Nonce:             nonce,
 	}
 	f.OriginalPayload, err = msgpack.Marshal(f)
 	if err != nil {
