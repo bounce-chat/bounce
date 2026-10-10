@@ -224,7 +224,7 @@ func (ug *updateGroup) validPayloadFormat() bool {
 	case updateGroupTypeChangeMutedUntil:
 		return len(ug.Data) == 8
 	case updateGroupTypeSetClearBefore:
-		return len(ug.Data) == 8
+		return len(ug.Data) == 0
 	case updateGroupTypePromoteAdmin:
 		_, err := uuid.FromBytes(ug.Data)
 		return err == nil
@@ -322,6 +322,17 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 	// Ignore update groups for blocked groups
 	for _, blockedGroup := range b.blockedGroups() {
 		if ug.Target == blockedGroup {
+			go b.sendAck(peer, typeUpdateGroup, ug.ID)
+			return nil, false
+		}
+	}
+
+	// Ignore clearBefore frames that target a time significantly in the future
+	if ug.Type == updateGroupTypeSetClearBefore {
+		if ug.Timestamp > time.Now().Add(15*time.Minute).Unix() {
+			log.WithFields(log.Fields{
+				"id": ug.ID,
+			}).Warn("ignoring update group clear before frame with timestamp too far in the future")
 			go b.sendAck(peer, typeUpdateGroup, ug.ID)
 			return nil, false
 		}
@@ -529,15 +540,11 @@ func (b *Bounce) SetGroupRetention(groupID uuid.UUID, retention int64) error {
 func (b *Bounce) ClearGroupChatHistory(groupID uuid.UUID) error {
 	go b.updateEncryptedClearBefore(groupID, time.Now().Unix())
 
-	payload := make([]byte, 8)
-	binary.LittleEndian.PutUint64(payload, uint64(time.Now().Unix()))
-
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeSetClearBefore,
-		Data:      payload,
 	})
 }
 
@@ -1102,7 +1109,7 @@ func (b *Bounce) informUIUpdateGroupSetClearBefore(ug updateGroup) {
 		Actor:     ug.Actor,
 		Timestamp: ug.Timestamp,
 		Seen:      ug.Seen,
-		ClearTime: int64(binary.LittleEndian.Uint64(ug.Data)),
+		ClearTime: ug.Timestamp,
 	})
 }
 

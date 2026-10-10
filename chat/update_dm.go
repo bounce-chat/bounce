@@ -171,6 +171,14 @@ func (ud *updateDM) validPayload() error {
 		if ud.Target == uuid.Nil {
 			return errCannotBlockSelf
 		}
+	case updateDMTypeChangeRetention, updateDMTypeChangeMutedUntil, updateDMTypeOfferRetention:
+		if len(ud.Data) != 8 {
+			return errInvalidPayloadLength
+		}
+	case updateDMTypeSetClearBefore:
+		if len(ud.Data) != 0 {
+			return errInvalidPayloadLength
+		}
 	}
 
 	return nil
@@ -232,6 +240,28 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 			"signer": sc.Signer,
 			"author": ud.Actor,
 		}).Warn("received update DM signed by a different user than the author, ignoring")
+		return nil, false
+	}
+
+	// Ignore clearBefore frames that target a time significantly in the future
+	if ud.Type == updateDMTypeSetClearBefore {
+		if ud.Timestamp > time.Now().Add(15*time.Minute).Unix() {
+			log.WithFields(log.Fields{
+				"id": ud.ID,
+			}).Warn("ignoring update DM clear before frame with timestamp too far in the future")
+			go b.sendAck(peer, typeUpdateDM, ud.ID)
+			return nil, false
+		}
+	}
+
+	// Make sure the payload of this update is valid for its type
+	err = ud.validPayload()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"id":    ud.ID,
+			"peer":  peer,
+			"error": err,
+		}).Warn("ignoring update DM with invalid data")
 		return nil, false
 	}
 
@@ -362,7 +392,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 			retention = int64(binary.LittleEndian.Uint64(ud.Data))
 			anyoneEverSetRetention = true
 		case updateDMTypeSetClearBefore:
-			clearBefore = int64(binary.LittleEndian.Uint64(ud.Data))
+			clearBefore = ud.Timestamp
 		case updateDMTypeSetReadReceipts:
 			readReceiptsOverridden = ud.Data[0] == readReceiptsOverriddenValue
 			readReceiptsEnabled = ud.Data[1] == readReceiptsEnabledValue
@@ -646,7 +676,7 @@ func (b *Bounce) informUIUpdateDMChangeRetention(u user, ud *updateDM) {
 
 func (b *Bounce) informUIUpdateDMSetClearBefore(u user, ud *updateDM) {
 	// Decode the new retention value
-	clearBefore := int64(binary.LittleEndian.Uint64(ud.Data))
+	clearBefore := ud.Timestamp
 
 	// Find and delete any DMs older than the retention value
 	dms := []directMessage{}
@@ -715,16 +745,12 @@ func (b *Bounce) SetDMRetention(userID uuid.UUID, retention int64) error {
 func (b *Bounce) ClearDMChatHistory(userID uuid.UUID) error {
 	go b.updateEncryptedClearBefore(xor(userID, b.currentUserID()), time.Now().Unix())
 
-	payload := make([]byte, 8)
-	binary.LittleEndian.PutUint64(payload, uint64(time.Now().Unix()))
-
 	return b.applyAndBroadcastUpdateDM(&updateDM{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
 		Type:      updateDMTypeSetClearBefore,
-		Data:      payload,
 	})
 }
 

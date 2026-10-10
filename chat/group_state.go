@@ -735,11 +735,7 @@ func applyUpdateGroupChangeRetentionToState(gs groupState, ug updateGroup) (grou
 }
 
 func applyUpdateGroupSetClearBeforeToState(gs groupState, ug updateGroup) (groupState, error) {
-	if len(ug.Data) != 8 {
-		return gs, errInvalidPayloadLength
-	}
-
-	gs.clearBefore = int64(binary.LittleEndian.Uint64(ug.Data))
+	gs.clearBefore = ug.Timestamp
 
 	return gs, nil
 }

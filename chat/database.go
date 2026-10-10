@@ -641,12 +641,6 @@ func (b *Bounce) GetInitialState() InitialState {
 				},
 			)
 		case updateDMTypeSetClearBefore:
-			if len(udm.Data) != 8 {
-				log.WithFields(log.Fields{
-					"id": udm.ID,
-				}).Warn("refusing to load invalid update DM from database")
-				continue
-			}
 			exportedUpdateDMClearHistories = append(
 				exportedUpdateDMClearHistories,
 				UpdateDMClearHistory{
@@ -655,7 +649,7 @@ func (b *Bounce) GetInitialState() InitialState {
 					Actor:     udm.Actor,
 					Timestamp: udm.Timestamp,
 					Seen:      udm.Seen,
-					ClearTime: int64(binary.LittleEndian.Uint64(udm.Data)),
+					ClearTime: udm.Timestamp,
 				},
 			)
 		}
@@ -871,12 +865,6 @@ func (b *Bounce) GetInitialState() InitialState {
 				},
 			)
 		case updateGroupTypeSetClearBefore:
-			if len(ug.Data) != 8 {
-				log.WithFields(log.Fields{
-					"id": ug.ID,
-				}).Warn("refusing to load invalid update group from database")
-				continue
-			}
 			exportedUpdateGroupClearHistories = append(
 				exportedUpdateGroupClearHistories,
 				UpdateGroupClearHistory{
@@ -885,7 +873,7 @@ func (b *Bounce) GetInitialState() InitialState {
 					Actor:     ug.Actor,
 					Timestamp: ug.Timestamp,
 					Seen:      ug.Seen,
-					ClearTime: int64(binary.LittleEndian.Uint64(ug.Data)),
+					ClearTime: ug.Timestamp,
 				},
 			)
 		case updateGroupTypePromoteAdmin:
@@ -1458,12 +1446,6 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 				},
 			)
 		case updateDMTypeSetClearBefore:
-			if len(udm.Data) != 8 {
-				log.WithFields(log.Fields{
-					"id": udm.ID,
-				}).Warn("refusing to load invalid update DM from database")
-				continue
-			}
 			exportedUpdateDMClearHistories = append(
 				exportedUpdateDMClearHistories,
 				UpdateDMClearHistory{
@@ -1472,7 +1454,7 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 					Actor:     udm.Actor,
 					Timestamp: udm.Timestamp,
 					Seen:      udm.Seen,
-					ClearTime: int64(binary.LittleEndian.Uint64(udm.Data)),
+					ClearTime: udm.Timestamp,
 				},
 			)
 		}
