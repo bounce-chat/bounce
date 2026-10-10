@@ -222,7 +222,7 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 			BatchDeleteKey: batchDeleteKey,
 			Recipients:     recipients,
 		}
-		rd.messages <- ef
+		rd.send(ef)
 	}
 }
 
@@ -393,11 +393,7 @@ func (b *Bounce) sendEncryptReKeyFrames(br broadcastable) {
 
 	for _, esd := range allESDs {
 		rd := b.getRemoteDevice(esd.Address)
-		if rd.connectedSockets() < 1 {
-			continue
-		}
-
-		rd.messages <- ef
+		rd.send(ef)
 	}
 }
 

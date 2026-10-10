@@ -23,7 +23,6 @@ const dialCooldown = time.Duration(30 * time.Second)
 const failedDialCooldown = time.Duration(30 * time.Minute)
 const auditFrequency = time.Duration(60 * time.Second)
 const pruneFrequency = time.Duration(15 * time.Second)
-const keepAliveFrequency = time.Duration(15 * time.Second)
 
 // The device pool is responsible for peering.  It stores all of the remote devices bounce is aware of in the devices field,
 // and these are used when broadcasting to collect a set of devices that are in scope for a frame.  The device pool needs to
@@ -69,7 +68,6 @@ func (dp *devicePool) globallyConnectedSockets() int {
 
 func (b *Bounce) peer() {
 	b.makeInitialPeeringConnections()
-	b.background(b.sendKeepAlives)
 	b.background(b.keepRemoteDevicesPruned)
 	b.background(b.monitorNetworkAndRestartWhenNeeded)
 	ticker := time.NewTicker(auditFrequency)
@@ -218,43 +216,6 @@ func (b *Bounce) auditPeers() {
 
 	// Dial additional sockets for devices we're already connected to if needed
 	b.dialMissingSockets()
-}
-
-func (b *Bounce) sendKeepAlives() {
-	ticker := time.NewTicker(keepAliveFrequency)
-	defer ticker.Stop()
-
-	var devices []*remoteDevice
-
-	for {
-		select {
-		case <-b.done:
-			return
-		case <-ticker.C:
-		}
-
-		devices = devices[:0]
-
-		b.devicePool.deviceMutex.Lock()
-		if cap(devices) < len(b.devicePool.devices) {
-			devices = make([]*remoteDevice, 0, len(b.devicePool.devices))
-		}
-		for _, rd := range b.devicePool.devices {
-			devices = append(devices, rd)
-		}
-		b.devicePool.deviceMutex.Unlock()
-
-		for _, rd := range devices {
-			if rd.connectedSockets() > 0 {
-				go func() {
-					select {
-					case rd.messages <- keepAlive{}:
-					case <-time.After(keepAliveFrequency):
-					}
-				}()
-			}
-		}
-	}
 }
 
 func (b *Bounce) connectToSyncDevices() {

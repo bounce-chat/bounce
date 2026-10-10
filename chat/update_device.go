@@ -338,9 +338,7 @@ func (b *Bounce) updateDeviceState(deviceID uuid.UUID) {
 
 			if sendDirect {
 				rd := b.getRemoteDevice(d.Address)
-				if rd.connectedSockets() > 0 {
-					rd.messages <- &revokeFrame
-				}
+				rd.send(&revokeFrame)
 			}
 		}
 	}

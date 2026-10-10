@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -118,6 +119,7 @@ func writeFrame(conn net.Conn, frameType uint16, payload []byte) error {
 	bytesToWrite := headerSize + length
 	bytesWritten := 0
 	for bytesWritten < bytesToWrite {
+		conn.SetWriteDeadline(writeDeadline(bytesToWrite))
 		n, err := conn.Write(frame[bytesWritten:])
 		if err != nil {
 			return err
@@ -125,6 +127,11 @@ func writeFrame(conn net.Conn, frameType uint16, payload []byte) error {
 		bytesWritten += n
 	}
 	return nil
+}
+
+func writeDeadline(size int) time.Time {
+	// Writes should finish in 60s, + allowing 4KiB/s for chunks and larger frames
+	return time.Now().Add(time.Duration(60*time.Second) + time.Duration(size/4096)*time.Second)
 }
 
 // https://stackoverflow.com/a/66429580

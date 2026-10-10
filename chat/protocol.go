@@ -234,11 +234,7 @@ func (b *Bounce) broadcast(br broadcastable) {
 
 	for _, peer := range b.getBroadcastScope(br, true) {
 		rd := b.getRemoteDevice(peer)
-		if rd.connectedSockets() > 0 {
-			go func(dst chan sendable, msg sendable) {
-				dst <- msg
-			}(rd.messages, es)
-		}
+		go rd.send(es)
 	}
 
 	if br.getType() != typeTypingIndicator {
@@ -249,9 +245,9 @@ func (b *Bounce) broadcast(br broadcastable) {
 func (b *Bounce) sendDirect(peer string, br sendable) {
 	rd := b.getRemoteDevice(peer)
 	if br.getType() == typeChunk {
-		rd.chunks <- br
+		rd.sendChunk(br)
 	} else {
-		rd.messages <- br
+		rd.send(br)
 	}
 }
 

@@ -8,6 +8,20 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const keepAliveFrequency = time.Duration(15 * time.Second)
+const sendTimeout = time.Duration(15 * time.Second)
+const sendChunkTimeout = time.Duration(120 * time.Second)
+
+func drain(ch chan sendable) {
+	for {
+		select {
+		case <-ch:
+		default:
+			return
+		}
+	}
+}
+
 type remoteDevice struct {
 	sync.Mutex
 	messages chan sendable
@@ -17,8 +31,8 @@ type remoteDevice struct {
 
 func newRemoteDevice() *remoteDevice {
 	rd := &remoteDevice{
-		messages: make(chan sendable),
-		chunks:   make(chan sendable),
+		messages: make(chan sendable, 50),
+		chunks:   make(chan sendable, 10),
 		sockets:  make([]*socket, 0),
 	}
 
@@ -72,6 +86,12 @@ func (rd *remoteDevice) pruneSockets() {
 		rd.sockets = rd.sockets[:len(rd.sockets)-1]
 		extra.close()
 	}
+
+	// Drain pending frames when no sockets are connected
+	if len(rd.sockets) == 0 {
+		drain(rd.messages)
+		drain(rd.chunks)
+	}
 }
 
 func (rd *remoteDevice) addSocket(s *socket) {
@@ -86,6 +106,30 @@ func (rd *remoteDevice) shutdown() {
 	defer rd.Unlock()
 	for _, s := range rd.sockets {
 		s.close()
+	}
+}
+
+func (rd *remoteDevice) send(s sendable) {
+	if rd.connectedSockets() == 0 {
+		return
+	}
+
+	select {
+	case rd.messages <- s:
+	case <-time.After(sendTimeout):
+		log.Warn("dropping sendable frame from outgoing remote device channel, channel is backed up")
+	}
+}
+
+func (rd *remoteDevice) sendChunk(s sendable) {
+	if rd.connectedSockets() == 0 {
+		return
+	}
+
+	select {
+	case rd.chunks <- s:
+	case <-time.After(sendChunkTimeout):
+		log.Warn("dropping chunk from outgoing remote device channel, channel is backed up")
 	}
 }
 
@@ -306,11 +350,13 @@ func (b *Bounce) readFrames(s *socket) {
 					"size": len(data),
 				}).Debug("handling a frame")
 
-				br, _ := handler(peer, data, false)
+				br, firstTimeSeen := handler(peer, data, false)
 				if br != nil {
-					b.markDeliveredTo(br, peer)
 					go b.sendAck(peer, br.getType(), br.getID())
-					b.broadcast(br)
+					b.markDeliveredTo(br, peer)
+					if firstTimeSeen {
+						b.broadcast(br)
+					}
 				}
 			}()
 		}
@@ -324,7 +370,7 @@ func (b *Bounce) writeFrames(rd *remoteDevice, s *socket) {
 	b.updateUserOnlineStatus(s.underlying.RemoteAddr().String())
 	encryptedHandlers := b.getHandlers(true)
 
-	writeChunk := func(br sendable) error {
+	writeUnderlying := func(br sendable) error {
 		if b.devicePool.isRevoked(s.underlying.RemoteAddr().String()) {
 			// Only send revoked devices frames that are used to tell them they are revoked, and keep alives
 			if !(br.getType() == typeReferenceOffer || br.getType() == typeCatchUp || br.getType() == typeUpdateDevice || br.getType() == typeKeepAlive || br.getType() == typeAck) {
@@ -370,6 +416,9 @@ func (b *Bounce) writeFrames(rd *remoteDevice, s *socket) {
 		return nil
 	}
 
+	sendKeepAlive := time.NewTicker(keepAliveFrequency)
+	defer sendKeepAlive.Stop()
+
 	for {
 		// Only one socket at a time is responsible for sending chunks, in order to keep other
 		// frames delivering in a low latency way while a large file is being transferred
@@ -386,14 +435,20 @@ func (b *Bounce) writeFrames(rd *remoteDevice, s *socket) {
 					b.updateUserOnlineStatus(s.underlying.RemoteAddr().String())
 				}
 				return
+			case <-sendKeepAlive.C:
+				err := writeUnderlying(&keepAlive{})
+				if err != nil {
+					s.close()
+					return
+				}
 			case br := <-rd.messages:
-				err := writeChunk(br)
+				err := writeUnderlying(br)
 				if err != nil {
 					s.close()
 					return
 				}
 			case br := <-rd.chunks:
-				err := writeChunk(br)
+				err := writeUnderlying(br)
 				if err != nil {
 					s.close()
 					return
@@ -409,8 +464,14 @@ func (b *Bounce) writeFrames(rd *remoteDevice, s *socket) {
 					b.updateUserOnlineStatus(s.underlying.RemoteAddr().String())
 				}
 				return
+			case <-sendKeepAlive.C:
+				err := writeUnderlying(&keepAlive{})
+				if err != nil {
+					s.close()
+					return
+				}
 			case br := <-rd.messages:
-				err := writeChunk(br)
+				err := writeUnderlying(br)
 				if err != nil {
 					s.close()
 					return
