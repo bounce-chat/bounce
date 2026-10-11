@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -11,6 +12,12 @@ import (
 )
 
 var headerSize = 6
+
+// payloadPreallocation is how much of a frame's payload buffer is reserved up front.  Most frames are far smaller
+// than this, so they cost a single allocation; anything larger grows as its bytes actually arrive, so a peer that
+// declares a large frame and then sends little or nothing cannot make us allocate for what it never sent.
+const payloadPreallocation = 64 * 1024
+
 var typeSize = 2
 var maxPayloadSize = intPow(2, (headerSize-typeSize)*8)
 
@@ -23,21 +30,10 @@ var errChunkFrameTooLarge = errors.New("chunk payload declared size larger than 
 
 // Read a Bounce frame from the socket.  This will return the type of frame, the frame bytes, and any error
 func readFrame(conn net.Conn, deviceIsKnown bool) (uint16, []byte, error) {
-	header := make([]byte, 0)
-	headerRead := 0
-	for headerRead < headerSize {
-		buf := make([]byte, headerSize-headerRead)
-		n, err := conn.Read(buf)
-		headerRead += n
-		if err == io.EOF {
-			if headerRead != headerSize {
-				return 0, []byte{}, err
-			}
-		} else if err != nil {
-			return 0, []byte{}, err
-
-		}
-		header = append(header, buf[:n]...)
+	header := make([]byte, headerSize)
+	_, err := io.ReadFull(conn, header)
+	if err != nil {
+		return 0, []byte{}, err
 	}
 
 	typeBytes := header[:typeSize]
@@ -74,23 +70,16 @@ func readFrame(conn net.Conn, deviceIsKnown bool) (uint16, []byte, error) {
 		}
 	}
 
-	payload := make([]byte, 0)
-	payloadRead := uint32(0)
-	for payloadRead < payloadSize {
-		buf := make([]byte, payloadSize-payloadRead)
-		n, err := conn.Read(buf)
-		payloadRead += uint32(n)
-		if err == io.EOF {
-			if payloadRead != payloadSize {
-				return 0, []byte{}, err
-			}
-		} else if err != nil {
-			return 0, []byte{}, err
-		}
-		payload = append(payload, buf[:n]...)
+	// Read exactly payloadSize bytes.  The buffer grows with the bytes received rather than being sized to the
+	// declared length, and io.CopyN reports io.EOF if the stream ends before the whole payload arrived.
+	var payload bytes.Buffer
+	payload.Grow(int(min(payloadSize, uint32(payloadPreallocation))))
+	_, err = io.CopyN(&payload, conn, int64(payloadSize))
+	if err != nil {
+		return 0, []byte{}, err
 	}
 
-	return typeInt, payload, nil
+	return typeInt, payload.Bytes(), nil
 }
 
 func writeFrame(conn net.Conn, frameType uint16, payload []byte) error {

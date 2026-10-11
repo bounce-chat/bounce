@@ -1203,21 +1203,13 @@ func (ta *torAddress) String() string {
 // Wire primatives for the handshake
 //
 
+// read returns exactly size bytes from the connection.  Only used for the fixed-size handshake fields, so sizing
+// the buffer up front is fine; a stream that ends early is an error.
 func read(conn net.Conn, size int) ([]byte, error) {
-	payload := make([]byte, 0)
-	payloadRead := 0
-	for payloadRead < size {
-		buf := make([]byte, size-payloadRead)
-		n, err := conn.Read(buf)
-		payloadRead += n
-		if err == io.EOF {
-			if payloadRead != size {
-				return []byte{}, err
-			}
-		} else if err != nil {
-			return []byte{}, err
-		}
-		payload = append(payload, buf[:n]...)
+	payload := make([]byte, size)
+	_, err := io.ReadFull(conn, payload)
+	if err != nil {
+		return []byte{}, err
 	}
 	return payload, nil
 }
