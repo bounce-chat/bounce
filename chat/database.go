@@ -381,6 +381,15 @@ func (b *Bounce) GetInitialState() InitialState {
 
 		if len(u.EncryptedDevices) > 0 {
 			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+				// A verified device always wins over a claim that the same address is an encrypted device
+				if _, isDevice := b.getDeviceFromAddress(addr); isDevice {
+					log.WithFields(log.Fields{
+						"address": addr,
+						"user":    u.ID,
+					}).Warn("ignoring encrypted device claim for an address that is a verified device")
+					continue
+				}
+
 				encryptedDeviceCacheMutex.Lock()
 				assigned, ok := encryptedDeviceCache[addr]
 				if ok {

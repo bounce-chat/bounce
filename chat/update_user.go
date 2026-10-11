@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -28,8 +29,10 @@ var updateUserTypeReplaceECDHPublicKey = uint16(6)
 
 var errInvalidUserName = errors.New("invalid name")
 var errUnsupportedUpdateUserType = errors.New("unsupported update user type")
-var errAddressTooShort = errors.New("address is too short")
+var errInvalidAddress = errors.New("address is not a valid onion service id")
 var errPayloadTooShort = errors.New("payload is too short")
+
+var onionAddressRegex = regexp.MustCompile(`^[a-z2-7]{56}$`)
 
 type keySet struct {
 	PrivateECDSAKey []byte
@@ -117,12 +120,12 @@ func (uu *updateUser) validPayload() error {
 		_, err := uuid.FromBytes(uu.Data)
 		return err
 	case updateUserTypeAddEncryptedDevice:
-		if len(uu.Data) == 0 {
-			return errAddressTooShort
+		if !onionAddressRegex.MatchString(string(uu.Data)) {
+			return errInvalidAddress
 		}
 	case updateUserTypeRemoveEncryptedDevice:
-		if len(uu.Data) == 0 {
-			return errAddressTooShort
+		if !onionAddressRegex.MatchString(string(uu.Data)) {
+			return errInvalidAddress
 		}
 	case updateUserTypeSetEncryptedDeviceName:
 		// Minimum payload length can't be determined here
@@ -409,7 +412,13 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 			}
 		case updateUserTypeAddEncryptedDevice:
 			address := string(uu.Data)
-			encryptedDevices[address] = true
+			_, ok := b.getDeviceFromAddress(address)
+			if ok {
+				log.WithFields(log.Fields{
+					"address": address,
+				}).Error("refusing to add encrypted device with address that matches existing regular device")
+				continue
+			}
 
 			encryptedDeviceCacheMutex.Lock()
 			currentUser, ok := encryptedDeviceCache[address]
@@ -420,6 +429,7 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 					"newUser":     userID,
 				}).Error("refusing to add encrypted device that already belongs to another user")
 			} else {
+				encryptedDevices[address] = true
 				encryptedDeviceCache[address] = userID
 			}
 			encryptedDeviceCacheMutex.Unlock()

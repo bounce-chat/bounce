@@ -40,6 +40,57 @@ func (d *device) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// AfterCreate evicts this device's address from the encrypted device cache and from any user's list of encrypted
+// devices.  A device row only exists once mutual introduction signatures have verified, while claiming an address as
+// an encrypted device is a bare assertion by one user, so when the two disagree the device wins.  Without this a
+// contact could claim another user's device address as their own encrypted device before we met that device, and
+// every frame to it would be refused as unsendable to an encrypted device from then on.
+func (d *device) AfterCreate(tx *gorm.DB) error {
+	encryptedDeviceCacheMutex.Lock()
+	claimedBy, squatted := encryptedDeviceCache[d.Address]
+	if squatted {
+		delete(encryptedDeviceCache, d.Address)
+	}
+	encryptedDeviceCacheMutex.Unlock()
+	if squatted {
+		log.WithFields(log.Fields{
+			"address":    d.Address,
+			"claimed_by": claimedBy,
+			"device":     d.ID,
+		}).Warn("evicting encrypted device claim for an address that is now a verified device")
+	}
+
+	// Remove the address from any user that lists it as an encrypted device, so it does not come back the next
+	// time the cache is rebuilt from the database
+	var claimants []user
+	err := tx.Model(&user{}).Select("id", "encrypted_devices").Where("encrypted_devices LIKE ?", "%"+d.Address+"%").Find(&claimants).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"address": d.Address,
+		}).Error("error looking up users claiming a device address as an encrypted device")
+		return nil
+	}
+	for _, claimant := range claimants {
+		kept := []string{}
+		for _, addr := range strings.Split(claimant.EncryptedDevices, ",") {
+			if addr != "" && addr != d.Address {
+				kept = append(kept, addr)
+			}
+		}
+		err := tx.Table("users").Where("id = ?", claimant.ID).Update("encrypted_devices", strings.Join(kept, ",")).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"address": d.Address,
+				"user":    claimant.ID,
+			}).Error("error removing device address from a user's encrypted devices")
+		}
+	}
+
+	return nil
+}
+
 func (d *device) AfterDelete(tx *gorm.DB) error {
 	if d.ID == uuid.Nil {
 		return nil
