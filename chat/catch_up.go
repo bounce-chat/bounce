@@ -484,7 +484,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			}).Error("error parsing read receipt")
 			return nil, false
 		}
-		_, author, _, err := b.getReadReceiptDestinationAuthorAndScope(rr.Target, targetTypeString)
+		_, author, _, err := b.getReadReceiptDestinationAuthorAndScope(rr.Target, targetTypeString, rr.Actor)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"id":    rr.ID,

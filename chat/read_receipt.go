@@ -31,6 +31,7 @@ var readReceiptTargetTypeInt = map[string]uint16{
 }
 
 var errUnknownReadReceiptTargetType = errors.New("unknown target type for read receipt")
+var errReadReceiptActorNotParticipant = errors.New("read receipt actor is not a participant of the thread the message belongs to")
 
 var readReceiptMutex sync.Mutex
 
@@ -173,7 +174,7 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) (b
 		}).Error("error parsing read receipt")
 		return nil, false
 	}
-	destination, author, scope, err := b.getReadReceiptDestinationAuthorAndScope(rr.Target, targetTypeString)
+	destination, author, scope, err := b.getReadReceiptDestinationAuthorAndScope(rr.Target, targetTypeString, rr.Actor)
 	if err == nil {
 		rr.Destination = destination
 		rr.Scope = scope
@@ -218,6 +219,14 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) (b
 		go b.sendAck(peer, typeReadReceipt, rr.ID)
 
 		return nil, false
+	} else if errors.Is(err, errReadReceiptActorNotParticipant) {
+		log.WithFields(log.Fields{
+			"id":     rr.ID,
+			"actor":  rr.Actor,
+			"target": rr.Target,
+			"peer":   peer,
+		}).Warn("ignoring read receipt from a user who is not a participant of the message's thread")
+		return nil, false
 	} else {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -247,8 +256,24 @@ func (b *Bounce) processEarlyReadReceipts(messageID uuid.UUID, messageType uint1
 
 			continue
 		}
-		destination, author, scope, err := b.getReadReceiptDestinationAuthorAndScope(rr.Target, targetTypeString)
+		destination, author, scope, err := b.getReadReceiptDestinationAuthorAndScope(rr.Target, targetTypeString, rr.Actor)
 		if err != nil {
+			if errors.Is(err, errReadReceiptActorNotParticipant) {
+				// The receipt was saved before we had the message, so we could not check the actor then.  Now that
+				// we can, it turns out they are not in this thread, so remove it rather than leaving it around forever.
+				log.WithFields(log.Fields{
+					"id":    rr.ID,
+					"actor": rr.Actor,
+				}).Warn("deleting early read receipt from a user who is not a participant of the message's thread")
+				err = b.database.Where("id = ?", rr.ID).Delete(&readReceipt{}).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+						"id":    rr.ID,
+					}).Error("error deleting early read receipt from non-participant")
+				}
+				continue
+			}
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 				"id":    rr.ID,
@@ -307,7 +332,12 @@ func (b *Bounce) processEarlyReadReceipts(messageID uuid.UUID, messageType uint1
 	return seen, rrsToNotify
 }
 
-func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType string) (uuid.UUID, uuid.UUID, int, error) {
+// getReadReceiptDestinationAuthorAndScope resolves where a read receipt for the given message should be sent, who
+// wrote that message, and the scope to send it at.  The actor is the user claiming to have read the message, and must
+// be a participant of the thread the message belongs to, otherwise errReadReceiptActorNotParticipant is returned.  A
+// contact can name any message ID they like in a read receipt, so this is what stops them planting "read by" markers
+// in DMs and groups they are not part of.
+func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType string, actor uuid.UUID) (uuid.UUID, uuid.UUID, int, error) {
 	var defaultSendReadReceipts bool
 	err := b.database.Model(&profileSettings{}).Select("default_send_read_receipts").Where("user_id = ?", b.currentUserID()).First(&defaultSendReadReceipts).Error
 	if err != nil {
@@ -330,6 +360,11 @@ func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 					"id":    id,
 				}).Fatal("database error looking up group message")
 			}
+		}
+
+		// Make sure the actor is actually in the group this message was sent to
+		if actor != gm.Author && !b.userIsInGroup(gm.Destination, actor) {
+			return uuid.Nil, uuid.Nil, scopeSync, errReadReceiptActorNotParticipant
 		}
 
 		// Find the group
@@ -367,6 +402,12 @@ func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 					"id":    id,
 				}).Fatal("database error looking up group message")
 			}
+		}
+
+		// Make sure the actor is one of the two users in this DM.  For a DM to ourselves the xor is nil, so the
+		// only participant is the author.
+		if actor != dm.Author && actor != xor(dm.Xor, dm.Author) {
+			return uuid.Nil, uuid.Nil, scopeSync, errReadReceiptActorNotParticipant
 		}
 
 		// Find the user
@@ -411,7 +452,7 @@ func (b *Bounce) sendReadReceipt(id uuid.UUID, frameType string) error {
 	if !ok {
 		return errUnknownReadReceiptTargetType
 	}
-	destination, author, scope, err := b.getReadReceiptDestinationAuthorAndScope(id, frameType)
+	destination, author, scope, err := b.getReadReceiptDestinationAuthorAndScope(id, frameType, b.currentUserID())
 	if err != nil {
 		if errors.Is(err, errUnknownReadReceiptTargetType) {
 			return nil
