@@ -556,7 +556,7 @@ func (b *Bounce) getUpdateGroupsToOffer(address string, userID uuid.UUID) []fram
 		err := b.database.
 			Preload(clause.Associations).
 			Distinct().
-			Select("update_groups.id").
+			Select("update_groups.*").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateGroup).
 			Joins("LEFT JOIN groups ON groups.id = update_groups.target").
 			Joins("LEFT JOIN group_users ON update_groups.target = group_users.group_id").
@@ -631,7 +631,7 @@ func (b *Bounce) getUpdateGroupsToOffer(address string, userID uuid.UUID) []fram
 			// Find all the undelivered update groups up until their last departure
 			var ugs []updateGroup
 			err = b.database.
-				Select("update_groups.id").
+				Select("update_groups.*").
 				Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateGroup).
 				Where(
 					"delivery_records.id IS NULL AND update_groups.target = ? AND update_groups.timestamp <= ?",
@@ -653,7 +653,7 @@ func (b *Bounce) getUpdateGroupsToOffer(address string, userID uuid.UUID) []fram
 		// Find all the groups this user has blocked, where we haven't delivered the block to this device
 		var ugs []updateGroup
 		err = b.database.
-			Select("update_groups.id").
+			Select("update_groups.*").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateGroup).
 			Where(
 				"delivery_records.id IS NULL AND update_groups.actor = ? AND update_groups.type = ?",
