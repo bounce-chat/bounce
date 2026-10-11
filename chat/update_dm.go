@@ -255,6 +255,13 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 	}
 
 	// Make sure the payload of this update is valid for its type
+	counterparty := xor(b.currentUserID(), ud.Target)
+	if ud.Actor != b.currentUserID() && ud.Actor != counterparty {
+		return nil, false
+	}
+	if ud.getScope(b.currentUserID()) == scopeSync && ud.Actor != b.currentUserID() {
+		return nil, false
+	}
 	err = ud.validPayload()
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -266,7 +273,6 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 	}
 
 	// Find the user this applies to
-	counterparty := xor(b.currentUserID(), ud.Target)
 	var targetUser user
 	err = b.database.Preload(clause.Associations).First(&targetUser, "id = ?", counterparty).Error
 	if err != nil {
