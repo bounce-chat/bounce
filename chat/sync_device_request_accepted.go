@@ -36,6 +36,17 @@ func (sdra *syncDeviceRequestAccepted) getPayload() []byte {
 }
 
 func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	// Make sure we've sent a sync request to this peer before
+	waitingForSyncResponseFromMutex.Lock()
+	_, requested := waitingForSyncResponseFrom[peer]
+	waitingForSyncResponseFromMutex.Unlock()
+	if !requested {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("ignoring sync device request accepted from peer we did not make a sync request to")
+		return nil, false
+	}
+
 	// Unmarshal the payload
 	var sdra syncDeviceRequestAccepted
 	err := msgpack.Unmarshal(payload, &sdra)
@@ -70,15 +81,26 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 
 	// Make sure that our device is in the device group of this new profile
 	localDeviceFound := false
+	peerFound := false
 	for _, dev := range sdra.Profile.Devices {
 		if dev.Address == b.network.Address() {
 			localDeviceFound = true
+		}
+		if dev.Address == peer {
+			peerFound = true
 		}
 	}
 	if !localDeviceFound {
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("rejecting sync device request accepted that does not contain this device in the device group")
+		return nil, false
+	}
+	if !peerFound {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("rejecting sync device request accepted that does not contain the peer in the device group")
+		return nil, false
 	}
 
 	// Save the new profile

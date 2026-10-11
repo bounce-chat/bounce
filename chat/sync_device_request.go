@@ -14,10 +14,10 @@ import (
 )
 
 var syncDeviceOfferValidForSeconds = int64(300)
-
 var syncDeviceRequestMutex sync.Mutex
-
 var waitingForInitialSyncFrom string
+var waitingForSyncResponseFrom = map[string]bool{}
+var waitingForSyncResponseFromMutex sync.Mutex
 
 // A sync device request is our request to join an existing profile.  We do this by sending the secret that was present in an offer,
 // as well as our signature of the address of the device that made the offer.
@@ -221,6 +221,11 @@ func (b *Bounce) RequestToSync(data string) error {
 		return errors.New("could not connect to device")
 	}
 	b.insertConnectionIntoDevicePool(conn)
+
+	// Track who we are willing to accept a sync request accepted from
+	waitingForSyncResponseFromMutex.Lock()
+	waitingForSyncResponseFrom[address] = true
+	waitingForSyncResponseFromMutex.Unlock()
 
 	// Send our request
 	b.sendDirect(address, &syncDeviceRequest{
