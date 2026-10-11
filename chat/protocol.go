@@ -271,7 +271,7 @@ func (b *Bounce) getBroadcastScope(br broadcastable, excludeDelivered bool) []st
 			"destination": br.getDestination(b.currentUserID()),
 			"type":        br.getType(),
 			"scope":       scope,
-		}).Fatal("unknown broadcast scope")
+		}).Error("unknown broadcast scope")
 	}
 
 	return []string{}

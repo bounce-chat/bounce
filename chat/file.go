@@ -257,10 +257,17 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		log.WithFields(log.Fields{
 			"id":   f.ID,
 			"peer": peer,
-		}).Error("ignoring file with no hashes")
+		}).Warn("ignoring file with no hashes")
 		return nil, false
 	}
 	if f.Size <= 0 {
+		return nil, false
+	}
+	if !(f.Scope >= scopeSync && f.Scope <= scopeGroupWithInvites) {
+		log.WithFields(log.Fields{
+			"id":   f.ID,
+			"peer": peer,
+		}).Warn("ignoring file with unknown scope")
 		return nil, false
 	}
 
@@ -492,6 +499,15 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) (br
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error looking up chunk offer")
+	}
+
+	// Validate the scope
+	if !(co.Scope >= scopeSync && co.Scope <= scopeGroupWithInvites) {
+		log.WithFields(log.Fields{
+			"id":   co.ID,
+			"peer": peer,
+		}).Warn("ignoring chunk offer with unknown scope")
+		return nil, false
 	}
 
 	// Save the offer

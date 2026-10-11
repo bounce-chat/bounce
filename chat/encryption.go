@@ -549,7 +549,7 @@ func (b *Bounce) getUsersInScope(br broadcastable) []user {
 			"destination": br.getDestination(b.currentUserID()),
 			"type":        br.getType(),
 			"scope":       scope,
-		}).Fatal("unknown broadcast scope for encrypted frame")
+		}).Error("unknown broadcast scope for encrypted frame")
 	}
 
 	return users
