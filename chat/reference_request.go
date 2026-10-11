@@ -61,7 +61,10 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 		return nil, false
 	}
 
-	if _, ok := encryptedDeviceCache[peer]; ok {
+	encryptedDeviceCacheMutex.Lock()
+	_, encrypted := encryptedDeviceCache[peer]
+	encryptedDeviceCacheMutex.Unlock()
+	if encrypted {
 		// If we're preparing this catch up for an encrypted device, pack it with encrypted versions of the frames
 		cuForEncryptedDevice := &catchUp{
 			sendables: sortableCatchUpAbles{},

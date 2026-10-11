@@ -321,7 +321,9 @@ func (b *Bounce) GetInitialState() InitialState {
 			}).Fatal("database error getting all encrypted sync devices")
 		}
 		for _, esd := range allEncryptedSyncDevices {
+			encryptedDeviceCacheMutex.Lock()
 			encryptedDeviceCache[esd.Address] = dbProfile.ID
+			encryptedDeviceCacheMutex.Unlock()
 			syncDevices = append(
 				syncDevices,
 				Device{
@@ -379,17 +381,21 @@ func (b *Bounce) GetInitialState() InitialState {
 
 		if len(u.EncryptedDevices) > 0 {
 			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
-				if assigned, ok := encryptedDeviceCache[addr]; ok {
+				encryptedDeviceCacheMutex.Lock()
+				assigned, ok := encryptedDeviceCache[addr]
+				if ok {
 					if assigned != u.ID {
 						log.WithFields(log.Fields{
 							"assigned_to": assigned,
 							"claiming":    u.ID,
 							"address":     addr,
 						}).Error("encrypted device already assigned to different user")
+						encryptedDeviceCacheMutex.Unlock()
 						continue
 					}
 				}
 				encryptedDeviceCache[addr] = u.ID
+				encryptedDeviceCacheMutex.Unlock()
 			}
 		}
 	}
