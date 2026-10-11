@@ -63,6 +63,10 @@ type Bounce struct {
 	// overlap the Wait in Shutdown. See startHandler.
 	handlersMutex   sync.Mutex
 	handlersStopped bool
+
+	// handlerSlots bounds the number of frame handlers running at once across all peers.
+	// See maximumRunningHandlersGlobal in remote_device.go.
+	handlerSlots chan struct{}
 }
 
 // background starts fn as an engine-lifetime goroutine that Shutdown will wait
@@ -173,6 +177,7 @@ func Open(ui UI, network Network, configDirectory string, postNotification func(
 		postNotification:  postNotification,
 		clearNotification: clearNotification,
 		done:              make(chan struct{}),
+		handlerSlots:      make(chan struct{}, maximumRunningHandlersGlobal),
 	}
 	b.ensureOnlyOneInstance()
 	log.RegisterExitHandler(b.fatalShutdown)

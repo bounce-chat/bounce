@@ -77,7 +77,8 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 			lastFailedDial:     make(map[string]time.Time),
 			revokedDevices:     make(map[string]bool),
 		},
-		done: make(chan struct{}),
+		done:         make(chan struct{}),
+		handlerSlots: make(chan struct{}, maximumRunningHandlersGlobal),
 	}
 	b.ensureOnlyOneInstance()
 	log.RegisterExitHandler(b.fatalShutdown)

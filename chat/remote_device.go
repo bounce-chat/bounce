@@ -12,6 +12,29 @@ const keepAliveFrequency = time.Duration(15 * time.Second)
 const sendTimeout = time.Duration(15 * time.Second)
 const sendChunkTimeout = time.Duration(120 * time.Second)
 
+// Frame handlers run in their own goroutines, so without a bound a peer could spawn as many as it can
+// send frames. Each remote device gets maximumRunningHandlersPerDevice concurrent handlers, and the whole engine
+// gets maximumRunningHandlersGlobal, so that many peers cannot collectively exhaust memory either. When the slots
+// are full the read loop for that socket blocks, which applies back-pressure to the peer through the
+// socket rather than queueing frames in memory.
+const maximumRunningHandlersPerDevice = 10
+const maximumRunningHandlersGlobal = 256
+
+// acquireHandlerSlot takes a slot from slots, giving up if the socket closes first so that a read
+// loop parked on a full semaphore cannot outlive its socket.
+func acquireHandlerSlot(slots chan struct{}, closer chan struct{}) bool {
+	select {
+	case slots <- struct{}{}:
+		return true
+	case <-closer:
+		return false
+	}
+}
+
+func releaseHandlerSlot(slots chan struct{}) {
+	<-slots
+}
+
 func drain(ch chan sendable) {
 	for {
 		select {
@@ -24,16 +47,18 @@ func drain(ch chan sendable) {
 
 type remoteDevice struct {
 	sync.Mutex
-	messages chan sendable
-	chunks   chan sendable
-	sockets  []*socket
+	messages     chan sendable
+	chunks       chan sendable
+	sockets      []*socket
+	handlerSlots chan struct{}
 }
 
 func newRemoteDevice() *remoteDevice {
 	rd := &remoteDevice{
-		messages: make(chan sendable, 50),
-		chunks:   make(chan sendable, 10),
-		sockets:  make([]*socket, 0),
+		messages:     make(chan sendable, 50),
+		chunks:       make(chan sendable, 10),
+		sockets:      make([]*socket, 0),
+		handlerSlots: make(chan struct{}, maximumRunningHandlersPerDevice),
 	}
 
 	return rd
@@ -139,7 +164,7 @@ type socket struct {
 	alive      bool
 	lastRead   time.Time
 	chunkDuty  bool
-	closer     chan bool
+	closer     chan struct{}
 	closeOnce  sync.Once
 }
 
@@ -174,13 +199,13 @@ func (b *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 		underlying: conn,
 		alive:      true,
 		lastRead:   time.Now(),
-		closer:     make(chan bool),
+		closer:     make(chan struct{}),
 	}
 	rd.addSocket(s)
 	rd.pruneSockets()
 
 	// Read and write frames from this socket
-	go b.readFrames(s)
+	go b.readFrames(rd, s)
 	go b.writeFrames(rd, s)
 
 	if !b.encrypted {
@@ -232,7 +257,7 @@ func (b *Bounce) getDeviceOrEncryptedSyncDevice(peer string) (bool, bool, device
 	return deviceIsKnown, deviceIsEncrypted, dev, esd
 }
 
-func (b *Bounce) readFrames(s *socket) {
+func (b *Bounce) readFrames(rd *remoteDevice, s *socket) {
 	handlers := b.getHandlers(b.encrypted)
 	peer := s.underlying.RemoteAddr().String()
 
@@ -330,10 +355,23 @@ func (b *Bounce) readFrames(s *socket) {
 				"type": frameType,
 			}).Error("peer sent an unsupported frame type")
 		} else {
+			// Wait for a handler slot for this peer and then for the engine as a whole before spawning the
+			// handler. While waiting we are not reading from the socket, which is the back-pressure.
+			if !acquireHandlerSlot(rd.handlerSlots, s.closer) {
+				return
+			}
+			if !acquireHandlerSlot(b.handlerSlots, s.closer) {
+				releaseHandlerSlot(rd.handlerSlots)
+				return
+			}
 			if !b.startHandler() {
+				releaseHandlerSlot(b.handlerSlots)
+				releaseHandlerSlot(rd.handlerSlots)
 				return
 			}
 			go func() {
+				defer releaseHandlerSlot(rd.handlerSlots)
+				defer releaseHandlerSlot(b.handlerSlots)
 				defer b.runningHandlers.Done()
 				defer func() {
 					if r := recover(); r != nil {
