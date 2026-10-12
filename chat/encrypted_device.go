@@ -1226,9 +1226,6 @@ func (eroc *encryptedReferenceOfferChallenge) getPayload() []byte {
 	return bytes
 }
 
-var lastROTime = map[string]int64{}
-var lastROTimeMutex sync.Mutex
-
 func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	currentUser, ok := b.currentUser()
 	if !ok {
@@ -1273,29 +1270,10 @@ func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []b
 	)
 	ciphertext := dekGCM.Seal(nil, []byte{}, eroc.Challenge, session)
 
-	start := time.Now().Unix()
-	success := false
-	for range 5 {
-		go b.sendDirect(peer, &encryptedReferenceOfferResponse{
-			PublicKey: currentUser.PublicECDHKey,
-			Response:  ciphertext,
-		})
-
-		time.Sleep(5 * time.Second)
-
-		lastROTimeMutex.Lock()
-		t, ok := lastROTime[peer]
-		lastROTimeMutex.Unlock()
-		if ok && t >= start {
-			success = true
-			break
-		}
-	}
-	if !success {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("gave up delivering encrypted reference offer response to peer")
-	}
+	b.sendDirect(peer, &encryptedReferenceOfferResponse{
+		PublicKey: currentUser.PublicECDHKey,
+		Response:  ciphertext,
+	})
 
 	return nil, false
 }

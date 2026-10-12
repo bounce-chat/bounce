@@ -1332,10 +1332,6 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 
 	go b.sendAck(peer, typeReferenceOffer, ro.ID)
 
-	lastROTimeMutex.Lock()
-	lastROTime[peer] = time.Now().Unix()
-	lastROTimeMutex.Unlock()
-
 	encryptedDeviceCacheMutex.Lock()
 	_, encryptedPeer := encryptedDeviceCache[peer]
 	encryptedDeviceCacheMutex.Unlock()
