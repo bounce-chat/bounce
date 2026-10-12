@@ -89,6 +89,7 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 	b.openReferenceDatabase()
 
 	go b.recheckEncryptedBlobStorageSize()
+	b.recheckUntrustedEncryptedFrameStorage()
 
 	if !b.encryptedManagerProvisioned() {
 		secretBytes := make([]byte, 16)
@@ -123,6 +124,9 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 					"error": err.Error(),
 				}).Error("error pruning encrypted frames")
 			}
+
+			// Pruning and other deletes do not adjust the in-memory untrusted storage size, so reload it
+			b.recheckUntrustedEncryptedFrameStorage()
 		}
 	}()
 
@@ -426,7 +430,8 @@ type encryptedFrame struct {
 	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
 	Type             uint16
 	Timestamp        int64
-	SavedAt          int64 `msgpack:"-"`
+	SavedAt          int64 `msgpack:"-" gorm:"index:idx_encrypted_frames_untrusted_age,priority:2"`
+	FromOwner        bool  `msgpack:"-" gorm:"index:idx_encrypted_frames_untrusted_age,priority:1"` // Stored by a peer that proved it is the owner, so not counted against the untrusted storage budget
 	Payload          []byte
 	DeleteAt         int64
 	BatchDeleteKey   uuid.UUID
@@ -494,7 +499,11 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 		}).Fatal("database error looking up encrypted frame")
 	}
 
+	// A peer that passed the reference offer challenge for an authorized user is the owner's own device.  Anyone
+	// else is authorized only by naming the owner as a recipient, which anyone who knows the owner's public key can
+	// do, so their frames are stored in the untrusted tier.
 	authorized := false
+	fromOwner := false
 	peerUserKeyMutex.Lock()
 	pubkey, ok := peerUserKeys[peer]
 	peerUserKeyMutex.Unlock()
@@ -503,6 +512,7 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 		err := b.database.Take(&au, "public_key = ?", pubkey).Error
 		if err == nil {
 			authorized = true
+			fromOwner = true
 		}
 	}
 
@@ -538,11 +548,19 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 		return nil, false
 	}
 
+	// Frames that did not come from the owner share a storage budget
+	ef.FromOwner = fromOwner
+	if !fromOwner && !b.makeRoomForUntrustedEncryptedFrame(&ef, peer) {
+		return nil, false
+	}
+
 	err = b.database.Create(&ef).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error saving encrypted frame")
+	} else if !fromOwner {
+		b.adjustUntrustedEncryptedFrameStorage(int64(len(ef.Payload)), 1)
 	}
 	b.markFrameDelivered(ef.ID, ef.Type, peer)
 	go b.sendAck(peer, ef.Type, ef.ID)

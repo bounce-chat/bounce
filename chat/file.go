@@ -1173,8 +1173,8 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 				}
 			} else {
 				// Other users can only evict old data
-				aMonthAgo := time.Now().Add(-4 * 7 * 24 * time.Hour).Unix()
-				err := b.deleteOldestChunkDownloadedBefore(aMonthAgo)
+				aWeekAgo := time.Now().Add(-7 * 24 * time.Hour).Unix()
+				err := b.deleteOldestChunkDownloadedBefore(aWeekAgo)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"peer": peer,
