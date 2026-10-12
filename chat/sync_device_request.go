@@ -55,7 +55,10 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 		return nil, false
 	}
 
-	if _, ok := ignoreOldSecrets[sdr.Secret]; ok {
+	oldSecretsMutex.Lock()
+	_, ok := ignoreOldSecrets["sync-device-request"+sdr.Secret]
+	oldSecretsMutex.Unlock()
+	if ok {
 		// Someone is resending a valid secret they used, it's ok to silently ignore
 		return nil, false
 	}
@@ -77,7 +80,9 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 		}
 	}
 
-	ignoreOldSecrets[sdr.Secret] = true
+	oldSecretsMutex.Lock()
+	ignoreOldSecrets["sync-device-request"+sdr.Secret] = true
+	oldSecretsMutex.Unlock()
 
 	// Delete the offer
 	err = b.database.Delete(&offer).Error

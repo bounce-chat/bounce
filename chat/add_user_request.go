@@ -14,6 +14,7 @@ import (
 
 var addUserOfferValidForSeconds = int64(300)
 var ignoreOldSecrets = map[string]bool{}
+var oldSecretsMutex sync.Mutex
 
 var addUserRequestMutex sync.Mutex
 
@@ -52,7 +53,10 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 		return nil, false
 	}
 
-	if _, ok := ignoreOldSecrets[aur.Secret]; ok {
+	oldSecretsMutex.Lock()
+	_, ok := ignoreOldSecrets["add-user-request"+aur.Secret]
+	oldSecretsMutex.Unlock()
+	if ok {
 		// Someone is resending a valid secret they used, it's ok to silently ignore
 		return nil, false
 	}
@@ -74,7 +78,9 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 		}
 	}
 
-	ignoreOldSecrets[aur.Secret] = true
+	oldSecretsMutex.Lock()
+	ignoreOldSecrets["add-user-request"+aur.Secret] = true
+	oldSecretsMutex.Unlock()
 
 	// Delete the offer
 	err = b.database.Delete(&offer).Error
