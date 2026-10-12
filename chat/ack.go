@@ -68,6 +68,16 @@ func (b *Bounce) handleAck(peer string, payload []byte, _ bool) (broadcastable, 
 			continue
 		}
 
+		// Make sure we have the frame before creating a delivery record
+		if !b.ackedFrameExists(fr.FrameID, fr.Type) {
+			log.WithFields(log.Fields{
+				"id":   fr.FrameID,
+				"type": fr.Type,
+				"peer": peer,
+			}).Debug("ignoring ack for a frame we do not have")
+			continue
+		}
+
 		// All other delivery records are stored in the main database
 		b.markFrameDelivered(fr.FrameID, fr.Type, peer)
 
@@ -78,6 +88,48 @@ func (b *Bounce) handleAck(peer string, payload []byte, _ bool) (broadcastable, 
 	}
 
 	return nil, false
+}
+
+// Frames that are delivery tracked through acks but are not part of the reference flow, so they have no entry
+// in typeTable, along with the table they are stored in
+var ackedOnlyTypeTable = map[uint16]string{
+	typeEncryptedClearBefore: "encrypted_clear_befores",
+}
+
+// ackedFrameExists reports whether we hold a frame with this ID and type.   On an encrypted device frames live
+// in encrypted_frames keyed by the inner frame's ID and type, apart from encrypted chunk offers which have their own table.
+func (b *Bounce) ackedFrameExists(id uuid.UUID, frameType uint16) bool {
+	if id == uuid.Nil {
+		return false
+	}
+
+	var count int64
+	var err error
+	if b.encrypted {
+		if frameType == typeEncryptedChunkOffer {
+			err = b.database.Model(&encryptedChunkOffer{}).Where("id = ?", id).Count(&count).Error
+		} else {
+			err = b.database.Model(&encryptedFrame{}).Where("id = ? AND type = ?", id, frameType).Count(&count).Error
+		}
+	} else {
+		table, ok := typeTable[frameType]
+		if !ok {
+			table, ok = ackedOnlyTypeTable[frameType]
+		}
+		if !ok {
+			return false
+		}
+		err = b.database.Table(table).Where("id = ?", id).Count(&count).Error
+	}
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"id":    id,
+			"type":  frameType,
+		}).Fatal("database error checking if an acked frame exists")
+	}
+
+	return count > 0
 }
 
 func (b *Bounce) handleAckSideEffects(fr frameReference, peer string) {
