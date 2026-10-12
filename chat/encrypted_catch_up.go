@@ -272,7 +272,7 @@ func (b *Bounce) decryptEncryptedReceive(f encryptedReceive, encryptionKeyHistor
 		return empty, err
 	}
 
-	decryptedPayload, err := dekGCM.Open(nil, []byte{}, f.Payload, nil)
+	decryptedPayload, err := dekGCM.Open(nil, []byte{}, f.Payload, encryptedFrameAdditionalData(f.ID, f.Type))
 	if err != nil {
 		log.WithFields(log.Fields{
 			"id":    f.ID,

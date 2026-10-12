@@ -109,14 +109,12 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		progressMod = int(frameCount / 1000)
 	}
 	for i, fr := range cu.Frames {
-		// Check if this type of frame is allowed in a catch up
 		if _, present := allowedCatchUpFrames[fr.Type]; !present {
 			log.WithFields(log.Fields{
 				"frame_type": fr.Type,
 				"peer":       peer,
-			}).Warn("refusing to process catch up that contains frame not allowed in catch ups")
-			catchUpMutex.Unlock()
-			return nil, false
+			}).Warn("ignoring frame in catch up with a type that is not allowed in catch ups")
+			continue
 		}
 
 		handler, ok := handlers[fr.Type]

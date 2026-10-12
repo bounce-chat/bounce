@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/ecdh"
 	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	insecurerand "math/rand"
 	"strings"
@@ -20,6 +21,19 @@ import (
 
 var encryptedDeviceCache = map[string]uuid.UUID{}
 var encryptedDeviceCacheMutex sync.Mutex
+
+// encryptedFrameAdditionalData binds a sealed frame to the ID and type that travel in the clear beside it.  An
+// encrypted device stores and relays these frames without being able to read them, but it could relabel one:
+// change the type so the recipient dispatches the payload to the wrong handler, or change the ID so delivery is
+// recorded against the wrong frame.  Authenticating both as GCM additional data means a relabelled frame simply
+// fails to open on the recipient instead of being dispatched and then discarded, or worse, breaking the rest of
+// the catch up it arrived in.
+func encryptedFrameAdditionalData(id uuid.UUID, frameType uint16) []byte {
+	additionalData := make([]byte, len(id)+2)
+	copy(additionalData, id[:])
+	binary.BigEndian.PutUint16(additionalData[len(id):], frameType)
+	return additionalData
+}
 
 const maximumRecipients = 15
 
@@ -167,7 +181,7 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 		}).Error("error encrypting frame")
 		return
 	}
-	ciphertext := dekGCM.Seal(nil, []byte{}, br.getPayload(), nil)
+	ciphertext := dekGCM.Seal(nil, []byte{}, br.getPayload(), encryptedFrameAdditionalData(br.getID(), br.getType()))
 
 	for addr, rd := range availableEncryptedDevices {
 		// Get the user that owns this device, since they must be one of the recipients
@@ -319,7 +333,7 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 		}).Error("error encrypting frame")
 		return nil
 	}
-	ciphertext := dekGCM.Seal(nil, []byte{}, br.getPayload(), nil)
+	ciphertext := dekGCM.Seal(nil, []byte{}, br.getPayload(), encryptedFrameAdditionalData(br.getID(), br.getType()))
 
 	// Get the user that owns this device, since they must be one of the recipients
 	owner, ok := deviceUsers[addr]
@@ -415,7 +429,7 @@ func (b *Bounce) encryptReKeyFrame(br broadcastable) *encryptedFrame {
 		}).Error("error encrypting frame")
 		return nil
 	}
-	ciphertext := dekGCM.Seal(nil, []byte{}, br.getPayload(), nil)
+	ciphertext := dekGCM.Seal(nil, []byte{}, br.getPayload(), encryptedFrameAdditionalData(br.getID(), br.getType()))
 
 	deviceRecipients := []deviceRecipient{}
 	addrs := b.getBroadcastScope(br, true)
