@@ -22,6 +22,12 @@ type groupCreation struct {
 	Timestamp int64
 	SavedAt   int64  `msgpack:"-"`
 	Data      []byte `gorm:"not null"` // Original group structure, msgpacked
+
+	// The secret that establishes the group's first key, wrapped for the creator (see group_key.go).  Kept outside
+	// Data so that the group ID, which is a hash of Data, does not depend on key material.
+	KeyEphemeralKey []byte
+	KeyWraps        []groupKeyWrap `gorm:"serializer:json"`
+	KeySecretHash   []byte
 }
 
 func (gc *groupCreation) BeforeCreate(tx *gorm.DB) error {

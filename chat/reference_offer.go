@@ -224,55 +224,6 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	}
 }
 
-func (b *Bounce) getEncryptedReferenceOfferFor(address string, publicKey []byte) *referenceOffer {
-	// Frame IDs this public key can have
-	var allowedPubkeyIDs []string
-	b.database.Model(&recipient{}).
-		Where("public_key = ?", publicKey).
-		Pluck("encrypted_frame_id", &allowedPubkeyIDs)
-
-	// Frmae IDs this device can have
-	var allowedDeviceIDs []string
-	b.database.Model(&deviceRecipient{}).
-		Where("recipient_address = ?", address).
-		Pluck("encrypted_frame_id", &allowedDeviceIDs)
-
-	allowedIDs := append(allowedPubkeyIDs, allowedDeviceIDs...)
-
-	// Frame IDs we have delivered
-	var deliveredIDs []string
-	b.database.Model(&deliveryRecord{}).
-		Where("destination = ?", address).
-		Pluck("frame_id", &deliveredIDs)
-	deliveredMap := map[string]bool{}
-	for _, id := range deliveredIDs {
-		deliveredMap[id] = true
-	}
-
-	offerIDs := []string{}
-	for _, id := range allowedIDs {
-		if _, present := deliveredMap[id]; !present {
-			offerIDs = append(offerIDs, id)
-		}
-	}
-
-	var encryptedFrames []encryptedFrame
-	b.database.
-		Select("id", "type").
-		Where("encrypted_frames.id IN (?)", offerIDs).
-		Find(&encryptedFrames)
-
-	references := []frameReference{}
-	for _, ef := range encryptedFrames {
-		references = append(references, frameReference{FrameID: ef.ID, Type: ef.Type})
-	}
-
-	return &referenceOffer{
-		ID:         uuid.New(),
-		References: references,
-	}
-}
-
 func (b *Bounce) getDirectMessagesToOffer(address string, userID uuid.UUID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
@@ -1341,9 +1292,22 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		// to be re-keyed.  This is the only case that an empty reference offer should ever be sent.
 		b.getManagementKeyHash(peer)
 		b.sendEncryptedClearBefores(peer)
-		b.sendDirect(peer, requestECRO{})
+		b.sendMailboxRequest(peer)
 		return nil, false
 	}
+
+	// References to frames stored on an encrypted device are opaque host IDs; we cannot tell from the outside
+	// whether we already hold the frame inside, so we request everything this host has not delivered to us before
+	hostReferences := []frameReference{}
+	otherReferences := []frameReference{}
+	for _, reference := range ro.References {
+		if reference.Type == typeEncryptedFrame {
+			hostReferences = append(hostReferences, reference)
+		} else {
+			otherReferences = append(otherReferences, reference)
+		}
+	}
+	ro.References = otherReferences
 
 	// Make sure we aren't still handling a catch up while determining what we need to request
 	catchUpMutex.Lock()
@@ -1351,6 +1315,15 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	// Create a set of references for all of the offered references that we don't have, ACKing the ones we do have in the process
 	references := []frameReference{}
 	acks := []frameReference{}
+	for _, reference := range hostReferences {
+		var dr deliveryRecord
+		err := b.database.Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, reference.FrameID, typeEncryptedFrame).First(&dr).Error
+		if err == nil {
+			acks = append(acks, reference)
+		} else {
+			references = append(references, reference)
+		}
+	}
 	typesToIDs := referencedIDs(ro.References)
 	for _, frameType := range referencedTypes {
 		refs, as := b.getFramesToRequestAndAck(peer, typesToIDs[frameType], frameType)
@@ -1397,7 +1370,7 @@ func (b *Bounce) getFramesToRequestAndAck(address string, offeredIDs []uuid.UUID
 		var err error
 		if b.encrypted {
 			var ef encryptedFrame
-			err = b.database.Where("id = ? AND type = ?", id, frameType).Take(&ef).Error
+			err = b.database.Where("id = ?", id).Take(&ef).Error
 		} else {
 			var count int64
 			err = b.database.Table(table).Where("id = ?", id).Count(&count).Error

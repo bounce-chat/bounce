@@ -115,7 +115,7 @@ Group state is a replayable stack, not mutable rows: `groupCreation` (whose hash
 4. `chat/reference_offer.go` — the per-type offer query, which is where you decide who is *authorized* to receive these frames
 5. `chat/frame_registry.go` — one `frameSpec` entry wiring the above together
 6. `chat/catch_up.go` — a case in the catch-up handler if the UI needs a bulk update
-7. `chat/encryption.go` — a `batchDeleteKey` case if the frame is deletable as part of clearing history
+7. `chat/encryption.go` — a `copySettingsFor` case if copies on encrypted devices should expire on their own or supersede each other (every copy carries a slot; it is random unless the type, like drafts, wants only its newest version kept)
 
 The position of a syncable entry in `frameSpecs` is its catch-up replay rank, so ordering matters: `groupCreation` before `updateGroup`, `device` before anything signed by one. `chat/frame_registry_test.go` fails if an entry is incomplete, if a syncable type has no handler, if the derived tables disagree with the registry, or if a known ordering dependency is violated — that suite is what stops a half-registered frame from working live and silently never syncing to offline devices.
 
@@ -123,7 +123,7 @@ Authorization on the sync path lives entirely in the offer queries. `handleRefer
 
 ### Encrypted devices
 
-Encrypted devices store and relay frames without being able to read them. Frames are sealed with a per-frame DEK; the DEK is wrapped per recipient user via ECDH (`chat/encryption.go`), and only the UUID and type stay in the clear so the reference flow still works. Recipients are capped at 15 for large groups. Because an encrypted device doesn't know which device belongs to which user, it challenges peers to prove key ownership before offering references. Any new frame type that should reach encrypted devices must be in the encrypted handler map *and* be encryptable.
+Encrypted devices store and relay frames without being able to read them. A stored frame is a random per-copy ID, a ciphertext (type, real ID and payload sealed under a per-frame DEK), a slot (random except for drafts, where it makes the host keep only the newest per thread), and one or more *mailbox entries* (`chat/mailbox.go`): a label derived from a conversation secret and the weekly epoch, a dedupe tag, and the DEK wrapped under a key derived from the same secret. Conversation secrets are the user's own ECDH key (sync), the ECDH agreement with a contact (DM), or the group key chain (`chat/group_key.go`), so a group frame costs one entry regardless of membership and the host never sees a public key, a real frame ID, a type, a timestamp or a conversation. A device proves it can read a mailbox by presenting its label in a `mailboxRequest`; the host offers and pushes frames by label, and accepts frames from strangers only into mailboxes its owner has registered. It still challenges peers to prove ownership of the owner key, which is what makes a peer the owner. Any new frame type that should reach encrypted devices must be in the encrypted handler map *and* have a scope `threadSecretsFor` can resolve.
 
 ## Conventions
 

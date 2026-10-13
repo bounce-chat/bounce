@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -253,20 +252,19 @@ func (esro encryptedStorageReferenceOffer) getPayload() []byte {
 func (b *Bounce) sendEncryptedStorageReferenceOffer(address string) encryptedStorageReferenceOffer {
 	esro := encryptedStorageReferenceOffer{}
 
-	peerUserKeyMutex.Lock()
-	peerKey, ok := peerUserKeys[address]
-	peerUserKeyMutex.Unlock()
-	if !ok {
-		log.WithFields(log.Fields{
-			"peer": address,
-		}).Error("unable to send encrypted storage reference to peer without known key")
+	labels := b.peerLabels(address)
+	if len(labels) == 0 {
 		return esro
+	}
+	labelList := make([][]byte, 0, len(labels))
+	for label := range labels {
+		labelList = append(labelList, []byte(label))
 	}
 
 	var ecos []encryptedChunkOffer
 	err := b.database.Distinct("encrypted_chunk_offers.id").
 		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_chunk_offers.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeEncryptedChunkOffer).
-		Joins("LEFT JOIN encrypted_chunk_recipients ON encrypted_chunk_recipients.hash == encrypted_chunk_offers.hash AND encrypted_chunk_recipients.public_key == ?", peerKey).
+		Joins("LEFT JOIN encrypted_chunk_recipients ON encrypted_chunk_recipients.hash == encrypted_chunk_offers.hash AND encrypted_chunk_recipients.label IN ?", labelList).
 		Where("delivery_records.id IS NULL AND encrypted_chunk_recipients.id IS NOT NULL").
 		Find(&ecos).
 		Error
@@ -349,17 +347,20 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 				var existingECO encryptedChunkOffer
 				err = b.database.Where("location = ? AND hash = ?", peer, hash).Take(&existingECO).Error
 				if errors.Is(err, gorm.ErrRecordNotFound) {
-					usersToInclude := b.getUsersInScope(&f)
-					userKeys := [][]byte{}
-					for i, _ := range usersToInclude {
-						userKeys = append(userKeys, usersToInclude[i].PublicECDHKey)
+					secrets, err := b.threadSecretsFor(&f)
+					if err != nil {
+						log.WithFields(log.Fields{
+							"file_id": f.ID,
+							"error":   err.Error(),
+						}).Warn("cannot derive mailboxes for file, not requesting encrypted storage")
+						continue
 					}
 					esrr.StorageRequests = append(
 						esrr.StorageRequests,
 						encryptedChunkStorageRequest{
 							ID:             uuid.New(),
 							Hash:           hash,
-							Recipients:     userKeys,
+							Labels:         currentLabels(b.secretsForOwner(secrets, ownerUser.ID)),
 							DeleteAt:       deleteAt,
 							BatchDeleteKey: batchDeleteKey,
 							CanBatchDelete: canBatchDelete,
@@ -426,11 +427,11 @@ func (b *Bounce) handleEncryptedStorageReferenceRequest(peer string, payload []b
 	}
 
 	for _, sr := range esrr.StorageRequests {
-		for _, key := range sr.Recipients {
+		for _, label := range sr.Labels {
 			sr.RecipientUsers = append(sr.RecipientUsers, encryptedChunkRecipient{
-				ID:        uuid.New(),
-				Hash:      sr.Hash,
-				PublicKey: key,
+				ID:    uuid.New(),
+				Hash:  sr.Hash,
+				Label: label,
 			})
 		}
 		sr.Source = peer
@@ -469,7 +470,7 @@ type encryptedChunkStorageRequest struct {
 	DeleteAt        int64
 	BatchDeleteKey  uuid.UUID
 	CanBatchDelete  bool
-	Recipients      [][]byte                  `gorm:"-"`
+	Labels          [][]byte                  `gorm:"-"` // The mailboxes (see mailbox.go) whose readers may fetch this chunk
 	Timestamp       int64                     `msgpack:"-"`
 	RecipientUsers  []encryptedChunkRecipient `msgpack:"-"`
 	Source          string                    `msgpack:"-"`
@@ -535,11 +536,17 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 	}
 
 	sr.ID = uuid.New()
-	for _, key := range sr.Recipients {
+	for _, label := range sr.Labels {
+		if len(label) != mailboxLabelSize {
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Warn("ignoring encrypted chunk storage request with a malformed mailbox label")
+			return nil, false
+		}
 		sr.RecipientUsers = append(sr.RecipientUsers, encryptedChunkRecipient{
-			ID:        uuid.New(),
-			Hash:      sr.Hash,
-			PublicKey: key,
+			ID:    uuid.New(),
+			Hash:  sr.Hash,
+			Label: label,
 		})
 	}
 	sr.Source = peer
@@ -550,24 +557,15 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 		return nil, false
 	}
 
-	peerUserKeyMutex.Lock()
-	peerKey, ok := peerUserKeys[peer]
-	peerUserKeyMutex.Unlock()
-	if !ok {
+	// The owner may store anything; anyone else may only store chunks addressed to one of the owner's mailboxes
+	if b.peerIsOwner(peer) {
+		sr.OwnerRequested = true
+	} else if !b.ownerCanReadAnyLabel(sr.Labels) {
 		log.WithFields(log.Fields{
 			"peer": peer,
-		}).Error("unable to handle ecsr from unknown peer")
+			"hash": sr.Hash,
+		}).Warn("ignoring encrypted chunk storage request that is not addressed to a mailbox of this device's owner")
 		return nil, false
-	}
-	var au authorizedUser
-	err = b.database.First(&au).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error getting authorized user while handling ecsr")
-	}
-	if bytes.Equal(peerKey, au.PublicKey) {
-		sr.OwnerRequested = true
 	}
 
 	var alreadyDownloadedSR encryptedChunkStorageRequest
@@ -589,11 +587,12 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 	return nil, false
 }
 
+// A mailbox whose readers may fetch a stored chunk
 type encryptedChunkRecipient struct {
 	ID                             uuid.UUID `gorm:"type:uuid;primary_key;"`
 	EncryptedChunkStorageRequestID uuid.UUID
 	Hash                           string
-	PublicKey                      []byte
+	Label                          []byte `gorm:"index"`
 }
 
 func (b *Bounce) getFilesUserCanHaveViaEncryptedDevice(userID uuid.UUID) []uuid.UUID {
