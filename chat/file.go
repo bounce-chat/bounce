@@ -270,6 +270,20 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		}).Warn("ignoring file with unknown scope")
 		return nil, false
 	}
+	if !(f.Type >= fileTypeGroupImage && f.Type <= fileTypeMessageAttachment) {
+		log.WithFields(log.Fields{
+			"id":   f.ID,
+			"peer": peer,
+		}).Warn("ignoring file with unknown type")
+		return nil, false
+	}
+	if (f.Type == fileTypeGroupImage || f.Type == fileTypeUserImage) && !f.embedded() {
+		log.WithFields(log.Fields{
+			"id":   f.ID,
+			"peer": peer,
+		}).Warn("ignoring file too large for the type")
+		return nil, false
+	}
 
 	// Create the empty chunks of the file
 	var encryptedHashes = make(map[int]string)
@@ -1288,6 +1302,12 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 		}).Fatal("database error looking up file")
 	}
 	if !f.Wanted {
+		return
+	}
+	if f.Path == "" {
+		log.WithFields(log.Fields{
+			"file_id": c.FileID,
+		}).Warn("refusing to write to file with empty path")
 		return
 	}
 
