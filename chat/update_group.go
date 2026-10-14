@@ -57,6 +57,7 @@ var errAdminRequired = errors.New("this action can only be performed by admins")
 var errCannotDemoteAdminWhoDeletedGroup = errors.New("admins who deleted group cannot be demoted")
 var errAlreadyDeleted = errors.New("group already deleted")
 var errMustBeInvitedToRespond = errors.New("user must have active invite to group in order to respond to invite")
+var errNonAdminCannotRemoveAdmin = errors.New("non-admin users cannot remove admins from groups")
 
 // An updateGroup frame changes the settings and status of a group, such as permissions, membership, retention, or notification settings.
 // Some settings, like retention and membership, must be observed by all participants of the group, where others like notification are only

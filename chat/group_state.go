@@ -435,7 +435,11 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 				return errNoPermissionToManageUsers
 			}
 		} else {
-			return nil
+			if gs.isAdmin(userID) && !gs.isAdmin(ug.Actor) {
+				return errNonAdminCannotRemoveAdmin
+			} else {
+				return nil
+			}
 		}
 	case updateGroupTypeChangeMutedUntil:
 		if myID == ug.Actor {
