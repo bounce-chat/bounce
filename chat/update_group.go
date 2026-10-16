@@ -31,6 +31,7 @@ const updateGroupTypeSetTypingIndicatorSettings = uint16(14)
 const updateGroupTypeSetImage = uint16(15)
 const updateGroupTypeRevokeInvite = uint16(16)
 const updateGroupTypeRespondToInvite = uint16(17)
+const updateGroupTypeRotateKey = uint16(18)
 
 const permissionUnrestricted = 0x00
 const permissionRestricted = 0x01
@@ -73,9 +74,15 @@ type updateGroup struct {
 	Data          []byte
 	CustomScope   uuid.UUID `msgpack:"-"`
 	Confirmations []confirmation
-	Applied       bool `msgpack:"-"`
-	Notified      bool `msgpack:"-"`
-	Seen          bool `msgpack:"-"`
+
+	// Group key material, see group_key.go.  Updates that shrink the membership, and explicit key rotations, carry a
+	// fresh secret wrapped for every remaining member; invites carry the chain so far wrapped for the invitee.
+	KeyEphemeralKey []byte
+	KeyWraps        []groupKeyWrap `gorm:"serializer:json"`
+	KeySecretHash   []byte
+	Applied         bool `msgpack:"-"`
+	Notified        bool `msgpack:"-"`
+	Seen            bool `msgpack:"-"`
 }
 
 func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
@@ -278,6 +285,8 @@ func (ug *updateGroup) validPayloadFormat() bool {
 			return false
 		}
 		return true
+	case updateGroupTypeRotateKey:
+		return len(ug.Data) == 0 && ug.carriesGroupKeySecret()
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,
@@ -567,7 +576,7 @@ func (b *Bounce) InviteUserToGroup(groupID, userID uuid.UUID) error {
 		}
 	}
 
-	// Create an update group that adds this user
+	// Create an update group that adds this user, carrying the group's keys for them
 	newUserBytes, err := msgpack.Marshal(newUser)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -575,13 +584,18 @@ func (b *Bounce) InviteUserToGroup(groupID, userID uuid.UUID) error {
 			"error":   err.Error(),
 		}).Fatal("error marshalling user while adding user to group")
 	}
-	err = b.applyAndBroadcastUpdateGroup(&updateGroup{
+	invite := &updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeInviteUser,
 		Data:      newUserBytes,
-	})
+	}
+	err = b.attachGroupKeyChain(invite, newUser)
+	if err != nil {
+		return err
+	}
+	err = b.applyAndBroadcastUpdateGroup(invite)
 	if err != nil {
 		return err
 	}
@@ -606,6 +620,20 @@ func (b *Bounce) RemoveUserFromGroup(groupID, userID uuid.UUID) error {
 		Type:      updateGroupTypeRemoveUser,
 		Data:      userID[:],
 	}
+
+	// Rotate the group key for everyone who remains.  When we are the one leaving, the others cannot trust a
+	// rotation from us, so we leave it to them (see ensureGroupKeyFresh).
+	if userID != b.currentUserID() {
+		gs, err := b.currentGroupState(groupID)
+		if err != nil {
+			return err
+		}
+		err = b.attachGroupKeySecret(ug, gs, userID)
+		if err != nil {
+			return err
+		}
+	}
+
 	err := b.applyAndBroadcastUpdateGroup(ug)
 	if err != nil {
 		return err
@@ -792,7 +820,18 @@ func (b *Bounce) RevokeInvite(groupID, userID uuid.UUID) error {
 		Type:      updateGroupTypeRevokeInvite,
 		Data:      userID[:],
 	}
-	err := b.applyAndBroadcastUpdateGroup(ug)
+
+	// The invitee held the group's keys, so rotate for everyone who remains
+	gs, err := b.currentGroupState(groupID)
+	if err != nil {
+		return err
+	}
+	err = b.attachGroupKeySecret(ug, gs, userID)
+	if err != nil {
+		return err
+	}
+
+	err = b.applyAndBroadcastUpdateGroup(ug)
 	if err != nil {
 		return err
 	}
@@ -1002,6 +1041,8 @@ func (b *Bounce) informUIOfUpdateGroup(ug updateGroup) {
 		b.informUIUpdateGroupRevokeInvite(ug)
 	case updateGroupTypeRespondToInvite:
 		b.informUIUpdateGroupRespondToInvite(ug)
+	case updateGroupTypeRotateKey:
+		return
 	default:
 		log.WithFields(log.Fields{
 			"type": ug.Type,

@@ -1,16 +1,10 @@
 package chat
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/ecdh"
-	"crypto/rand"
-	"encoding/binary"
 	"errors"
-	insecurerand "math/rand"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
@@ -21,19 +15,6 @@ import (
 
 var encryptedDeviceCache = map[string]uuid.UUID{}
 var encryptedDeviceCacheMutex sync.Mutex
-
-// encryptedFrameAdditionalData binds a sealed frame to the ID and type that travel in the clear beside it.  An
-// encrypted device stores and relays these frames without being able to read them, but it could relabel one:
-// change the type so the recipient dispatches the payload to the wrong handler, or change the ID so delivery is
-// recorded against the wrong frame.  Authenticating both as GCM additional data means a relabelled frame simply
-// fails to open on the recipient instead of being dispatched and then discarded, or worse, breaking the rest of
-// the catch up it arrived in.
-func encryptedFrameAdditionalData(id uuid.UUID, frameType uint16) []byte {
-	additionalData := make([]byte, len(id)+2)
-	copy(additionalData, id[:])
-	binary.BigEndian.PutUint16(additionalData[len(id):], frameType)
-	return additionalData
-}
 
 const maximumRecipients = 15
 
@@ -75,8 +56,11 @@ func (b *Bounce) generateKEKFromPrivateKey(privateKey, counterpartyPublicKeyByte
 	return kek, nil
 }
 
+// sendToEncryptedDevices stores a frame, sealed, on every online encrypted device of every user in scope.  Each
+// copy is addressed to the mailboxes of the conversation it belongs to (see mailbox.go), so the host learns nothing
+// about who is in scope.
 func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
-	// Encrypt re-key frames to the specific devices that should be able to decrypt them
+	// Re-key frames are sealed to specific devices rather than to the user key that is being replaced
 	if br.getType() == typeUpdateUser {
 		sc, err := b.unpackSignedContainer(br.getPayload())
 		if err != nil {
@@ -98,150 +82,55 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 		}
 	}
 
-	// Frames that might need to be deletes as part of clearing chat history should have a batch delete key assigned
-	batchDeleteKey := uuid.Nil
-	if br.getType() == typeDirectMessage {
-		dm, ok := br.(*directMessage)
-		if !ok {
-			log.WithFields(log.Fields{
-				"id": br.getID(),
-			}).Error("could not turn direct message broadcastable into direct message")
-			return
-		}
-		batchDeleteKey = dm.Xor
-	} else if br.getType() == typeGroupMessage {
-		batchDeleteKey = br.getDestination(b.currentUserID())
-	} else if br.getType() == typeFile {
-		f, ok := br.(*file)
-		if !ok {
-			log.WithFields(log.Fields{
-				"id": br.getID(),
-			}).Error("could not turn file broadcastable into file")
-			return
-		}
-		if f.Type == fileTypeMessageAttachment {
-			batchDeleteKey = f.Destination
-		}
-	} else if br.getType() == typeReadReceipt {
-		rr, ok := br.(*readReceipt)
-		if !ok {
-			log.WithFields(log.Fields{
-				"id": br.getID(),
-			}).Error("could not turn read receipt broadcastable into read receipt")
-			return
-		}
-		batchDeleteKey = rr.Destination
-	}
-
-	// Get the users that are in scope
-	currentUser, ok := b.currentUser()
-	if !ok {
-		log.Error("cannot send to encrypted devices before user exists")
-		return
-	}
-	users := b.getUsersInScope(br)
-
-	// Collect all the encrypted devices and their owners
-	allEncryptedDevices := map[string]bool{}
-	deviceUsers := map[string]uuid.UUID{}
-	for _, u := range users {
-		if len(u.EncryptedDevices) > 0 {
-			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
-				allEncryptedDevices[addr] = true
-				deviceUsers[addr] = u.ID
-			}
-		}
-	}
-	availableEncryptedDevices := map[string]*remoteDevice{}
-	for addr, _ := range allEncryptedDevices {
-		rd := b.getRemoteDevice(addr)
-		if rd.connectedSockets() > 0 {
-			availableEncryptedDevices[addr] = rd
-		}
-	}
+	availableEncryptedDevices := b.onlineEncryptedDevicesOf(b.getUsersInScope(br))
 	if len(availableEncryptedDevices) == 0 {
 		return
 	}
 
-	// Encrypt the frame with a random key
-	dek := make([]byte, 32)
-	rand.Read(dek)
-
-	dekBlock, err := aes.NewCipher(dek)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error encrypting frame")
-		return
-	}
-	dekGCM, err := cipher.NewGCMWithRandomNonce(dekBlock)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error encrypting frame")
-		return
-	}
-	ciphertext := dekGCM.Seal(nil, []byte{}, br.getPayload(), encryptedFrameAdditionalData(br.getID(), br.getType()))
-
+	// Each host gets its own copy, sealed to the mailboxes its owner can read
 	for addr, rd := range availableEncryptedDevices {
-		// Get the user that owns this device, since they must be one of the recipients
-		owner, ok := deviceUsers[addr]
-		if !ok {
+		secrets, err := b.hostSecretsFor(br, addr)
+		if err != nil {
 			log.WithFields(log.Fields{
-				"address": addr,
-			}).Warn("encrypted device not owned by user in scope")
+				"id":    br.getID(),
+				"type":  br.getType(),
+				"host":  addr,
+				"error": err.Error(),
+			}).Debug("not sealing frame for encrypted device")
 			continue
 		}
-
-		// Create recipients for each user in scope, up to a limit
-		recipients := []recipient{}
-		for _, u := range b.pruneEncryptedRecipients(owner, users) {
-			kek, err := b.generateKEK(u.PublicECDHKey)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error generating kek")
-				return
-			}
-
-			block, err := aes.NewCipher(kek)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error encrypting frame")
-				return
-			}
-			gcm, err := cipher.NewGCMWithRandomNonce(block)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error encrypting frame")
-				return
-			}
-
-			recipients = append(recipients, recipient{
-				EncrypterKey: currentUser.PublicECDHKey,
-				PublicKey:    u.PublicECDHKey,
-				EncryptedDEK: gcm.Seal(nil, []byte{}, dek, nil),
-			})
+		ef, err := sealFrame(br, secrets, b.copySettingsFor(br))
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    br.getID(),
+				"error": err.Error(),
+			}).Error("error sealing frame for encrypted device")
+			return
 		}
-
-		// Sign the encrypted frame and recipients, send to the encrypted device
-		ef := encryptedFrame{
-			ID:             br.getID(),
-			Type:           br.getType(),
-			Payload:        ciphertext,
-			Timestamp:      br.getTimestamp(),
-			DeleteAt:       getDeleteAt(br),
-			BatchDeleteKey: batchDeleteKey,
-			Recipients:     recipients,
-		}
-		rd.send(ef)
+		recordSealedCopy(ef.ID, br)
+		rd.send(*ef)
 	}
 }
 
+// onlineEncryptedDevicesOf returns the connected encrypted devices belonging to any of the given users
+func (b *Bounce) onlineEncryptedDevicesOf(users []user) map[string]*remoteDevice {
+	available := map[string]*remoteDevice{}
+	for _, u := range users {
+		if len(u.EncryptedDevices) == 0 {
+			continue
+		}
+		for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+			rd := b.getRemoteDevice(addr)
+			if rd.connectedSockets() > 0 {
+				available[addr] = rd
+			}
+		}
+	}
+	return available
+}
+
+// encryptFrameForDevice seals one copy of a frame for one encrypted device, for catch ups
 func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encryptedFrame {
-	// Encrypt re-key frames to the specific devices that should be able to decrypt them
 	if br.getType() == typeUpdateUser {
 		var uu updateUser
 		err := msgpack.Unmarshal(br.getPayload(), &uu)
@@ -255,139 +144,26 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 		}
 	}
 
-	// Frames that might need to be deletes as part of clearing chat history should have a batch delete key assigned
-	batchDeleteKey := uuid.Nil
-	canBatchDelete := false
-	if br.getType() == typeDirectMessage {
-		dm, ok := br.(*directMessage)
-		if !ok {
-			log.WithFields(log.Fields{
-				"id": br.getID(),
-			}).Error("could not turn direct message broadcastable into direct message")
-			return nil
-		}
-		batchDeleteKey = dm.Xor
-		canBatchDelete = true
-	} else if br.getType() == typeGroupMessage {
-		batchDeleteKey = br.getDestination(b.currentUserID())
-		canBatchDelete = true
-	} else if br.getType() == typeFile {
-		f, ok := br.(*file)
-		if !ok {
-			log.WithFields(log.Fields{
-				"id": br.getID(),
-			}).Error("could not turn file broadcastable into file")
-			return nil
-		}
-		if f.Type == fileTypeMessageAttachment {
-			batchDeleteKey = f.Destination
-			canBatchDelete = true
-		}
-	} else if br.getType() == typeReadReceipt {
-		rr, ok := br.(*readReceipt)
-		if !ok {
-			log.WithFields(log.Fields{
-				"id": br.getID(),
-			}).Error("could not turn read receipt broadcastable into read receipt")
-			return nil
-		}
-		batchDeleteKey = rr.Destination
-		canBatchDelete = true
-	}
-
-	// Get the users that are in scope
-	currentUser, ok := b.currentUser()
-	if !ok {
-		log.Error("cannot send to encrypted devices before user exists")
-		return nil
-	}
-	users := b.getUsersInScope(br)
-
-	// Collect all the encrypted devices and their owners
-	allEncryptedDevices := map[string]bool{}
-	deviceUsers := map[string]uuid.UUID{}
-	for _, u := range users {
-		if len(u.EncryptedDevices) > 0 {
-			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
-				allEncryptedDevices[addr] = true
-				deviceUsers[addr] = u.ID
-			}
-		}
-	}
-
-	// Encrypt the frame with a random key
-	dek := make([]byte, 32)
-	rand.Read(dek)
-
-	dekBlock, err := aes.NewCipher(dek)
+	secrets, err := b.hostSecretsFor(br, addr)
 	if err != nil {
 		log.WithFields(log.Fields{
+			"id":    br.getID(),
+			"type":  br.getType(),
+			"host":  addr,
 			"error": err.Error(),
-		}).Error("error encrypting frame")
+		}).Debug("not sealing frame for encrypted device")
 		return nil
 	}
-	dekGCM, err := cipher.NewGCMWithRandomNonce(dekBlock)
+	ef, err := sealFrame(br, secrets, b.copySettingsFor(br))
 	if err != nil {
 		log.WithFields(log.Fields{
+			"id":    br.getID(),
 			"error": err.Error(),
-		}).Error("error encrypting frame")
+		}).Error("error sealing frame for encrypted device")
 		return nil
 	}
-	ciphertext := dekGCM.Seal(nil, []byte{}, br.getPayload(), encryptedFrameAdditionalData(br.getID(), br.getType()))
-
-	// Get the user that owns this device, since they must be one of the recipients
-	owner, ok := deviceUsers[addr]
-	if !ok {
-		log.WithFields(log.Fields{
-			"address": addr,
-		}).Warn("encrypted device not owned by user in scope")
-		return nil
-	}
-
-	// Create recipients for each user in scope, up to a limit
-	recipients := []recipient{}
-	for _, u := range b.pruneEncryptedRecipients(owner, users) {
-		kek, err := b.generateKEK(u.PublicECDHKey)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error generating kek")
-			return nil
-		}
-
-		block, err := aes.NewCipher(kek)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error encrypting frame")
-			return nil
-		}
-		gcm, err := cipher.NewGCMWithRandomNonce(block)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error encrypting frame")
-			return nil
-		}
-
-		recipients = append(recipients, recipient{
-			EncrypterKey: currentUser.PublicECDHKey,
-			PublicKey:    u.PublicECDHKey,
-			EncryptedDEK: gcm.Seal(nil, []byte{}, dek, nil),
-		})
-	}
-
-	// Sign the encrypted frame and recipients, send to the encrypted device
-	return &encryptedFrame{
-		ID:             br.getID(),
-		Type:           br.getType(),
-		Payload:        ciphertext,
-		Timestamp:      br.getTimestamp(),
-		DeleteAt:       getDeleteAt(br),
-		BatchDeleteKey: batchDeleteKey,
-		CanBatchDelete: canBatchDelete,
-		Recipients:     recipients,
-	}
+	recordSealedCopy(ef.ID, br)
+	return ef
 }
 
 func (b *Bounce) sendEncryptReKeyFrames(br broadcastable) {
@@ -407,38 +183,21 @@ func (b *Bounce) sendEncryptReKeyFrames(br broadcastable) {
 
 	for _, esd := range allESDs {
 		rd := b.getRemoteDevice(esd.Address)
-		rd.send(ef)
+		rd.send(*ef)
 	}
 }
 
+// encryptReKeyFrame seals a frame that replaces our user keys to the device mailboxes of our other devices, which
+// derive from device keys rather than the user key being replaced
 func (b *Bounce) encryptReKeyFrame(br broadcastable) *encryptedFrame {
-	dek := make([]byte, 32)
-	rand.Read(dek)
-
-	dekBlock, err := aes.NewCipher(dek)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error encrypting frame")
-		return nil
-	}
-	dekGCM, err := cipher.NewGCMWithRandomNonce(dekBlock)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error encrypting frame")
-		return nil
-	}
-	ciphertext := dekGCM.Seal(nil, []byte{}, br.getPayload(), encryptedFrameAdditionalData(br.getID(), br.getType()))
-
-	deviceRecipients := []deviceRecipient{}
-	addrs := b.getBroadcastScope(br, true)
 	myDevice, ok := b.getDeviceFromAddress(b.network.Address())
 	if !ok {
 		log.Error("cannot encrypt re-key frames with no current device")
 		return nil
 	}
-	for _, addr := range addrs {
+
+	secrets := [][]byte{}
+	for _, addr := range b.getBroadcastScope(br, true) {
 		recipientDevice, ok := b.getDeviceFromAddress(addr)
 		if !ok {
 			log.WithFields(log.Fields{
@@ -446,60 +205,54 @@ func (b *Bounce) encryptReKeyFrame(br broadcastable) *encryptedFrame {
 			}).Warn("device in broadcast scope not found for re-key encryption")
 			continue
 		}
-
 		if recipientDevice.UserID != myDevice.UserID {
-			log.Error("refusing to create device recipient for re-key frame for a device that isn't mine")
+			log.Error("refusing to seal a re-key frame for a device that isn't mine")
 			continue
 		}
-
-		kek, err := b.generateKEKFromPrivateKey(myDevice.ECDHPrivateKey, recipientDevice.ECDHPublicKey)
+		secret, err := b.deviceThreadSecret(myDevice.ECDHPrivateKey, recipientDevice.ECDHPublicKey)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("error creating kek for device recipient")
+			}).Error("error deriving device thread secret for re-key frame")
 			continue
 		}
-
-		block, err := aes.NewCipher(kek)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error encrypting frame")
-			return nil
-		}
-		gcm, err := cipher.NewGCMWithRandomNonce(block)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error encrypting frame")
-			return nil
-		}
-
-		deviceRecipients = append(deviceRecipients, deviceRecipient{
-			RecipientAddress: addr,
-			Counterparty:     b.network.Address(),
-			EncryptedDEK:     gcm.Seal(nil, []byte{}, dek, nil),
-		})
+		secrets = append(secrets, secret)
+	}
+	if len(secrets) == 0 {
+		return nil
 	}
 
-	return &encryptedFrame{
-		ID:               br.getID(),
-		Type:             br.getType(),
-		Payload:          ciphertext,
-		Timestamp:        br.getTimestamp(),
-		DeleteAt:         getDeleteAt(br),
-		DeviceRecipients: deviceRecipients,
+	ef, err := sealFrame(br, secrets, b.copySettingsFor(br))
+	if err != nil {
+		log.WithFields(log.Fields{
+			"id":    br.getID(),
+			"error": err.Error(),
+		}).Error("error sealing re-key frame")
+		return nil
 	}
+	recordSealedCopy(ef.ID, br)
+	return ef
 }
 
-func getDeleteAt(br broadcastable) int64 {
+// copySettingsFor decides, per frame type, how a copy on an encrypted device behaves beyond its mailboxes: when the
+// host should delete it on its own, and which slot it occupies (see mailbox.go).  Drafts take the slot of their
+// thread so the host keeps only the newest, including an empty one that clears the thread, which stays until the
+// next draft replaces it so that a device offline for a long time still learns the draft was cleared.  Everything
+// else takes a random slot.
+func (b *Bounce) copySettingsFor(br broadcastable) copySettings {
+	settings := copySettings{Slot: randomSlot()}
 	switch item := br.(type) {
 	case *directMessage:
-		return item.DeleteAt
+		settings.DeleteAt = item.DeleteAt
 	case *groupMessage:
-		return item.DeleteAt
+		settings.DeleteAt = item.DeleteAt
+	case *draft:
+		if me, ok := b.currentUser(); ok {
+			settings.Slot = draftSlot(syncThreadSecret(me.PrivateECDHKey), item.Thread)
+			settings.Version = item.Timestamp
+		}
 	}
-	return 0
+	return settings
 }
 
 func (b *Bounce) getUsersInScope(br broadcastable) []user {
@@ -770,54 +523,4 @@ func (b *Bounce) getUsersInGroupWithInvitesScope(br broadcastable) []user {
 	}
 
 	return users
-}
-
-func (b *Bounce) pruneEncryptedRecipients(mustHave uuid.UUID, users []user) []user {
-	allowedUserMap := map[uuid.UUID]bool{}
-	if mustHave != b.currentUserID() {
-		allowedUserMap[b.currentUserID()] = true
-		allowedUsers := b.getUsersInGlobalScope(mustHave)
-		for _, u := range allowedUsers {
-			allowedUserMap[u.ID] = true
-		}
-	}
-
-	// Determine which user we must have
-	var mustHaveUser user
-	otherUsers := []user{}
-	for i, _ := range users {
-		if users[i].ID == mustHave {
-			mustHaveUser = users[i]
-		} else {
-			if mustHave == b.currentUserID() {
-				otherUsers = append(otherUsers, users[i])
-			} else {
-				if _, ok := allowedUserMap[users[i].ID]; ok {
-					otherUsers = append(otherUsers, users[i])
-				}
-			}
-		}
-	}
-
-	if len(otherUsers) <= maximumRecipients-1 {
-		return append(otherUsers, mustHaveUser)
-	}
-	return append(chooseNUsers(otherUsers, maximumRecipients-1), mustHaveUser)
-}
-
-func chooseNUsers(set []user, n int) []user {
-	if n < 0 {
-		return []user{}
-	}
-	if len(set) < n {
-		return set
-	}
-	r := insecurerand.New(insecurerand.NewSource(time.Now().UnixNano()))
-	order := r.Perm(len(set))
-	picks := order[0:n]
-	results := []user{}
-	for _, pick := range picks {
-		results = append(results, set[pick])
-	}
-	return results
 }

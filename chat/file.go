@@ -608,16 +608,6 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 	}
 
 	if b.encrypted {
-		peerUserKeyMutex.Lock()
-		peerKey, ok := peerUserKeys[peer]
-		peerUserKeyMutex.Unlock()
-		if !ok {
-			log.WithFields(log.Fields{
-				"peer": peer,
-			}).Warn("cannot respond to chunk request from device with unknown user key")
-			return nil, false
-		}
-
 		// Make sure the chunk string is safe to pass to the filesystem call
 		allowed, _ := regexp.MatchString("^[a-zA-Z0-9]*$", cr.Hash)
 		if !allowed {
@@ -638,7 +628,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 		allowed = false
 		for _, sr := range srs {
 			for _, r := range sr.RecipientUsers {
-				if bytes.Equal(r.PublicKey, peerKey) {
+				if b.peerCanReadLabel(peer, r.Label) {
 					allowed = true
 					break
 				}
@@ -1252,23 +1242,18 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 			"error": err.Error(),
 		}).Fatal("database error looking up encrypted chunk storage requests")
 	}
-	keysToSendTo := map[string]bool{}
+	// Offer the chunk to every connected peer that asked for one of the mailboxes it was stored for
+	addressesToSendTo := map[string]bool{}
 	for _, sr := range srs {
 		for _, r := range sr.RecipientUsers {
-			keysToSendTo[string(r.PublicKey)] = true
-		}
-	}
-
-	addressesToSendTo := map[string]bool{}
-	for k, _ := range keysToSendTo {
-		key := []byte(k)
-		peerUserKeyMutex.Lock()
-		for address, peerKey := range peerUserKeys {
-			if bytes.Equal(key, peerKey) {
-				addressesToSendTo[address] = true
+			peerMailboxLabelsMutex.Lock()
+			for address, labels := range peerMailboxLabels {
+				if labels[string(r.Label)] {
+					addressesToSendTo[address] = true
+				}
 			}
+			peerMailboxLabelsMutex.Unlock()
 		}
-		peerUserKeyMutex.Unlock()
 	}
 	for address, _ := range addressesToSendTo {
 		rd := b.getRemoteDevice(address)
@@ -1846,30 +1831,27 @@ func (b *Bounce) offerChunk(c chunk) {
 	}
 	b.broadcast(co)
 
-	// Request that each encrypted device that could store this chunk does so
-	usersInScope := b.getUsersInScope(co)
-	recipients := [][]byte{}
-	for _, u := range usersInScope {
-		recipients = append(recipients, u.PublicECDHKey)
-	}
+	// Request that each encrypted device that could store this chunk does so, addressed to the mailboxes of the
+	// conversation the file belongs to that the device's owner can read
 	deleteAt, batchDeleteKey, canBatchDelete := b.getDeleteAtAndBatchDeleteKey(c.FileID)
-	sr := encryptedChunkStorageRequest{
-		ID:             uuid.New(),
-		Hash:           c.EncryptedHash,
-		Recipients:     recipients,
-		DeleteAt:       deleteAt,
-		BatchDeleteKey: batchDeleteKey,
-		CanBatchDelete: canBatchDelete,
-	}
-	for _, u := range usersInScope {
-		if len(u.EncryptedDevices) > 0 {
-			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
-				rd := b.getRemoteDevice(addr)
-				if rd.connectedSockets() > 0 {
-					b.sendDirect(addr, sr)
-				}
-			}
+	for addr := range b.onlineEncryptedDevicesOf(b.getUsersInScope(co)) {
+		secrets, err := b.hostSecretsFor(co, addr)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"file_id": c.FileID,
+				"host":    addr,
+				"error":   err.Error(),
+			}).Warn("cannot derive mailboxes for chunk, not requesting encrypted storage")
+			continue
 		}
+		b.sendDirect(addr, encryptedChunkStorageRequest{
+			ID:             uuid.New(),
+			Hash:           c.EncryptedHash,
+			Labels:         currentLabels(secrets),
+			DeleteAt:       deleteAt,
+			BatchDeleteKey: batchDeleteKey,
+			CanBatchDelete: canBatchDelete,
+		})
 	}
 }
 

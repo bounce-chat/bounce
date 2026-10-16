@@ -191,6 +191,7 @@ func (b *Bounce) makeInitialPeeringConnections() {
 }
 
 func (b *Bounce) auditPeers() {
+	b.refreshMailboxRequests()
 	b.devicePool.auditing.Lock()
 	defer b.devicePool.auditing.Unlock()
 

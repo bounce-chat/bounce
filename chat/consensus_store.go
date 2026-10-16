@@ -158,7 +158,15 @@ func (b *Bounce) writeGroupConsensus(groupID uuid.UUID) error {
 	}
 
 	// Apply the group state to the database and UI, marking updates in the database as applied or not where needed
-	return b.setRollbacksApplicationsAndGroupState(groupID, stack, ugs)
+	err = b.setRollbacksApplicationsAndGroupState(groupID, stack, ugs)
+	if err != nil {
+		return err
+	}
+
+	// Derive the group's keys from the canonical history
+	b.updateGroupKeys(groupID, stack)
+
+	return nil
 }
 
 func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *canonicalStack, ugs []updateGroup) error {
@@ -895,7 +903,6 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 			b.addGroupInvite(g.ID, invitedID)
 
 			// Add this user as a recipient for the group creation and updates for any encrypted devices
-			go b.addInvitedUserAsEncryptedRecipient(invitedID, g.ID)
 		}
 
 		var u user
@@ -1517,26 +1524,6 @@ func (b *Bounce) cleanupRolledBackInvite(groupID uuid.UUID) {
 			"group_id": groupID,
 		}).Fatal("database error looking up group")
 	}
-}
-
-func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
-	for _, address := range b.encryptedDevicesInGroup(groupID) {
-		err := b.database.Create(&appendRecipient{
-			ID:        uuid.New(),
-			GroupID:   groupID,
-			UserID:    userID,
-			Timestamp: time.Now().Unix(),
-			Address:   address,
-		}).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error saving new appendRecipient")
-			return
-		}
-	}
-
-	b.addRecipientsIfNeeded()
 }
 
 func (b *Bounce) onlineEncryptedDevicesInGroup(groupID uuid.UUID) []string {

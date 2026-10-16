@@ -52,14 +52,10 @@ var typeEncryptedDeviceManagementRequest = uint16(31)
 var typeEncryptedDeviceManagementResponse = uint16(32)
 var typeEncryptedReferenceOfferChallenge = uint16(33)
 var typeEncryptedReferenceOfferResponse = uint16(34)
-var typeAppendRecipient = uint16(35)
 var typeManageEncryptedDevice = uint16(36)
 var typeEncryptedDeviceManagementActionResponse = uint16(37)
 var typeGetManagementKeyHash = uint16(38)
 var typeManagementKeyHashResponse = uint16(39)
-var typeAppendRecipientRequest = uint16(40)
-var typeAppendRecipientResponse = uint16(41)
-var typeAppendRecipientPayloads = uint16(42)
 var typeDraft = uint16(43)
 var typeEncryptedReceive = uint16(44)
 var typeEncryptedChunkOffer = uint16(45)
@@ -69,6 +65,9 @@ var typeEncryptedChunkStorageRequest = uint16(48)
 var typeRequestECRO = uint16(49)
 var typeEncryptedClearBefore = uint16(50)
 var typeChunkUnavailable = uint16(51)
+var typeGroupKeyRequest = uint16(52)
+var typeGroupKeyResponse = uint16(53)
+var typeMailboxRequest = uint16(54)
 
 type sendable interface {
 	getType() uint16
@@ -107,11 +106,11 @@ func (scua sortableCatchUpAbles) Less(i, j int) bool {
 		iType := scua[i].getType()
 		jType := scua[j].getType()
 
-		if iType == typeEncryptedFrame {
-			iType = scua[i].(*encryptedFrame).Type
-		}
-		if jType == typeEncryptedFrame {
-			jType = scua[j].(*encryptedFrame).Type
+		// Sealed frames hide their type; order them among themselves by ID, which is all a host would do
+		if iType == typeEncryptedFrame || jType == typeEncryptedFrame {
+			iID := scua[i].getID()
+			jID := scua[j].getID()
+			return strings.Compare(iID.String(), jID.String()) < 0
 		}
 
 		iOrder, ok := catchUpOrder[iType]
@@ -154,8 +153,7 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 			typeEncryptedReferenceOfferResponse:  b.handleEncryptedReferenceOfferResponse,
 			typeManageEncryptedDevice:            b.handleManageEncryptedDevice,
 			typeGetManagementKeyHash:             b.handleGetManagementKeyHash,
-			typeAppendRecipientRequest:           b.handleAppendRecipientRequest,
-			typeAppendRecipientPayloads:          b.handleAppendRecipientPayloads,
+			typeMailboxRequest:                   b.handleMailboxRequest,
 			typeEncryptedStorageReferenceRequest: b.handleEncryptedStorageReferenceRequest,
 			typeChunkRequest:                     b.handleChunkRequest,
 			typeChunk:                            b.handleEncryptedChunk,
@@ -202,11 +200,12 @@ func (b *Bounce) getHandlers(encrypted bool) map[uint16]func(string, []byte, boo
 		typeEncryptedReferenceOfferChallenge:  b.handleEncryptedReferenceOfferChallenge,
 		typeEncryptedDeviceManagementActionResponse: b.handleEncryptedDeviceManagementActionResponse,
 		typeManagementKeyHashResponse:               b.handleManagementKeyHashResponse,
-		typeAppendRecipientResponse:                 b.handleAppendRecipientResponse,
 		typeDraft:                                   b.handleDraft,
 		typeEncryptedChunkOffer:                     b.handleEncryptedChunkOffer,
 		typeEncryptedStorageReferenceOffer:          b.handleEncryptedStorageReferenceOffer,
 		typeChunkUnavailable:                        b.handleChunkUnavailable,
+		typeGroupKeyRequest:                         b.handleGroupKeyRequest,
+		typeGroupKeyResponse:                        b.handleGroupKeyResponse,
 	}
 }
 

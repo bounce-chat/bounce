@@ -249,6 +249,10 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 		Timestamp: creationTime,
 		Data:      groupData,
 	}
+	err = b.attachInitialGroupKey(&gc, profile)
+	if err != nil {
+		return errors.New("error creating group key: " + err.Error())
+	}
 	gc.OriginalPayload, err = msgpack.Marshal(gc)
 	if err != nil {
 		log.WithFields(log.Fields{

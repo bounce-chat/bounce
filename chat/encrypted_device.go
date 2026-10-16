@@ -125,6 +125,9 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 				}).Error("error pruning encrypted frames")
 			}
 
+			b.pruneOrphanMailboxEntries()
+			b.pruneOwnerMailboxes()
+
 			// Pruning and other deletes do not adjust the in-memory untrusted storage size, so reload it
 			b.recheckUntrustedEncryptedFrameStorage()
 		}
@@ -178,8 +181,8 @@ func (b *Bounce) openEncryptedDatabase() {
 		&authorizedUser{},
 		&oldKey{},
 		&encryptedFrame{},
-		&recipient{},
-		&deviceRecipient{},
+		&mailboxEntry{},
+		&ownerMailbox{},
 		&encryptedChunkOffer{},
 		&encryptedChunkStorageRequest{},
 		&encryptedChunkRecipient{},
@@ -400,44 +403,34 @@ func (b *Bounce) handleEncryptedDeviceManagementResponse(peer string, payload []
 	return nil, false
 }
 
-type recipient struct {
-	ID               uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
-	EncryptedFrameID uuid.UUID `msgpack:"-"`
-	PublicKey        []byte    `gorm:"index"`
-	EncrypterKey     []byte
-	EncryptedDEK     []byte
-}
-
-func (r *recipient) BeforeCreate(tx *gorm.DB) error {
-	r.ID = uuid.New()
-	return nil
-}
-
-type deviceRecipient struct {
-	ID               uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
-	EncryptedFrameID uuid.UUID `msgpack:"-"`
-	RecipientAddress string    `gorm:"index"`
-	Counterparty     string
-	EncryptedDEK     []byte
-}
-
-func (dr *deviceRecipient) BeforeCreate(tx *gorm.DB) error {
-	dr.ID = uuid.New()
-	return nil
-}
-
+// A frame as an encrypted device stores it (see mailbox.go).  The ID is a random value the sender chose for this
+// copy, the payload is sealed, and the mailboxes are the only thing the host can index by.  The type, the real
+// frame ID, the author, the conversation and the time are all inside the ciphertext.
 type encryptedFrame struct {
-	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Type             uint16
-	Timestamp        int64
-	SavedAt          int64 `msgpack:"-" gorm:"index:idx_encrypted_frames_untrusted_age,priority:2"`
-	FromOwner        bool  `msgpack:"-" gorm:"index:idx_encrypted_frames_untrusted_age,priority:1"` // Stored by a peer that proved it is the owner, so not counted against the untrusted storage budget
-	Payload          []byte
-	DeleteAt         int64
-	BatchDeleteKey   uuid.UUID
-	CanBatchDelete   bool
-	Recipients       []recipient
-	DeviceRecipients []deviceRecipient
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	SavedAt   int64     `msgpack:"-" gorm:"index:idx_encrypted_frames_untrusted_age,priority:2"`
+	FromOwner bool      `msgpack:"-" gorm:"index:idx_encrypted_frames_untrusted_age,priority:1"` // Stored by a peer that proved it is the owner, so not counted against the untrusted storage budget
+	Payload   []byte
+	DeleteAt  int64
+	Slot      []byte `gorm:"index"` // The slot this copy occupies; see "Slots" in mailbox.go.  Random for all but drafts.
+	Version   int64  // Which version of the slot's contents this is; a newer one replaces this copy
+	Mailboxes []mailboxEntry
+}
+
+// One mailbox a stored frame is in, with the frame's DEK wrapped for that mailbox
+type mailboxEntry struct {
+	ID               uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
+	EncryptedFrameID uuid.UUID `gorm:"index" msgpack:"-"`
+	Label            []byte    `gorm:"index"`
+	Tag              []byte    `gorm:"index"`
+	WrappedDEK       []byte
+}
+
+func (entry *mailboxEntry) BeforeCreate(tx *gorm.DB) error {
+	if entry.ID == uuid.Nil {
+		entry.ID = uuid.New()
+	}
+	return nil
 }
 
 func (ef *encryptedFrame) BeforeCreate(tx *gorm.DB) error {
@@ -454,7 +447,7 @@ func (ef encryptedFrame) getType() uint16 {
 }
 
 func (ef encryptedFrame) getTimestamp() int64 {
-	return ef.Timestamp
+	return ef.SavedAt
 }
 
 func (ef encryptedFrame) getSavedAt() int64 {
@@ -472,6 +465,34 @@ func (ef encryptedFrame) getPayload() []byte {
 	return bytes
 }
 
+// deleteEncryptedFrame removes one stored copy along with its mailbox entries and the records of who it was
+// delivered to
+func (b *Bounce) deleteEncryptedFrame(id uuid.UUID) {
+	for _, step := range []error{
+		b.database.Where("encrypted_frame_id = ?", id).Delete(&mailboxEntry{}).Error,
+		b.database.Where("frame_id = ? AND frame_type = ?", id, typeEncryptedFrame).Delete(&deliveryRecord{}).Error,
+		b.database.Where("id = ?", id).Delete(&encryptedFrame{}).Error,
+	} {
+		if step != nil {
+			log.WithFields(log.Fields{
+				"id":    id,
+				"error": step.Error(),
+			}).Error("error deleting encrypted frame")
+		}
+	}
+}
+
+// pruneOrphanMailboxEntries removes mailbox entries whose frame is gone.  Bulk deletes of frames do not run per row
+// hooks, so every bulk delete calls this afterwards.
+func (b *Bounce) pruneOrphanMailboxEntries() {
+	err := b.database.Exec("DELETE FROM mailbox_entries WHERE encrypted_frame_id NOT IN (SELECT id FROM encrypted_frames)").Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error pruning orphan mailbox entries")
+	}
+}
+
 var encryptedFrameMutex sync.Mutex
 
 func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
@@ -483,15 +504,33 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error unmarshalling encrypted send")
+		}).Error("error unmarshalling encrypted frame")
 		return nil, false
+	}
+	if ef.ID == uuid.Nil || len(ef.Mailboxes) == 0 || len(ef.Payload) == 0 || len(ef.Slot) != slotSize {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("ignoring encrypted frame without an id, payload, slot, or mailboxes")
+		return nil, false
+	}
+	labels := [][]byte{}
+	tags := [][]byte{}
+	for _, entry := range ef.Mailboxes {
+		if len(entry.Label) != mailboxLabelSize || len(entry.Tag) != mailboxTagSize || len(entry.WrappedDEK) == 0 {
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Warn("ignoring encrypted frame with a malformed mailbox entry")
+			return nil, false
+		}
+		labels = append(labels, entry.Label)
+		tags = append(tags, entry.Tag)
 	}
 
 	var existingEF encryptedFrame
 	err = b.database.Take(&existingEF, "id = ?", ef.ID).Error
 	if err == nil {
-		b.markFrameDelivered(ef.ID, ef.Type, peer)
-		go b.sendAck(peer, ef.Type, ef.ID)
+		b.markFrameDelivered(ef.ID, typeEncryptedFrame, peer)
+		go b.sendAck(peer, typeEncryptedFrame, ef.ID)
 		return nil, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
@@ -499,53 +538,62 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 		}).Fatal("database error looking up encrypted frame")
 	}
 
-	// A peer that passed the reference offer challenge for an authorized user is the owner's own device.  Anyone
-	// else is authorized only by naming the owner as a recipient, which anyone who knows the owner's public key can
-	// do, so their frames are stored in the untrusted tier.
-	authorized := false
-	fromOwner := false
-	peerUserKeyMutex.Lock()
-	pubkey, ok := peerUserKeys[peer]
-	peerUserKeyMutex.Unlock()
-	if ok {
-		var au authorizedUser
-		err := b.database.Take(&au, "public_key = ?", pubkey).Error
-		if err == nil {
-			authorized = true
-			fromOwner = true
-		}
-	}
-
-	if !authorized {
-		for _, r := range ef.Recipients {
-			var au authorizedUser
-			err := b.database.Take(&au, "public_key = ?", r.PublicKey).Error
-			if err == nil {
-				authorized = true
-				break
-			}
-		}
-	}
-
-	if !authorized {
+	// Another device may have relayed this same frame already under a different copy ID; the mailbox tags say so.
+	// Keep the copy we have, remember that this peer holds it, and ack the sender's copy so its own tracking works.
+	var existingEntry mailboxEntry
+	err = b.database.Take(&existingEntry, "tag IN ?", tags).Error
+	if err == nil {
+		b.markFrameDelivered(existingEntry.EncryptedFrameID, typeEncryptedFrame, peer)
+		go b.sendAck(peer, typeEncryptedFrame, ef.ID)
+		return nil, false
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
-			"type":       ef.Type,
-			"id":         ef.ID,
-			"peer":       peer,
-			"recipients": len(ef.Recipients),
-		}).Warn("ignoring encrypted frame that did not include an authorized user as a recipient")
+			"error": err.Error(),
+		}).Fatal("database error looking up mailbox entry")
+	}
+
+	// A peer that passed the reference offer challenge for the authorized user is the owner's own device.  Anyone
+	// else may only leave frames in the owner's mailboxes, which the owner registers on every connection; that is
+	// how the devices of contacts this device has never met deliver to the owner, without the host learning who
+	// they are.  Their frames are stored in the untrusted tier.
+	fromOwner := b.peerIsOwner(peer)
+	if !fromOwner && !b.ownerCanReadAnyLabel(labels) {
+		log.WithFields(log.Fields{
+			"id":        ef.ID,
+			"peer":      peer,
+			"mailboxes": len(ef.Mailboxes),
+		}).Warn("ignoring encrypted frame that is not addressed to a mailbox of this device's owner")
 		return nil, false
 	}
 
 	if ef.DeleteAt != 0 && ef.DeleteAt <= time.Now().Unix() {
 		log.WithFields(log.Fields{
-			"id":         ef.ID,
-			"peer":       peer,
-			"recipients": len(ef.Recipients),
+			"id":   ef.ID,
+			"peer": peer,
 		}).Warn("ignoring encrypted frame that should already be deleted")
-		b.markFrameDelivered(ef.ID, ef.Type, peer)
-		go b.sendAck(peer, ef.Type, ef.ID)
+		b.markFrameDelivered(ef.ID, typeEncryptedFrame, peer)
+		go b.sendAck(peer, typeEncryptedFrame, ef.ID)
 		return nil, false
+	}
+
+	// An owner frame occupies its slot alone: a newer version replaces what is there, an older one is dropped.  Only
+	// owner frames are compared, so nobody else can hold a slot against the owner.  Slots are random for everything
+	// but drafts, so this fires only for them (see "Slots" in mailbox.go).
+	if fromOwner {
+		var occupant encryptedFrame
+		err = b.database.Take(&occupant, "slot = ? AND from_owner = ?", ef.Slot, true).Error
+		if err == nil {
+			if occupant.Version >= ef.Version {
+				b.markFrameDelivered(occupant.ID, typeEncryptedFrame, peer)
+				go b.sendAck(peer, typeEncryptedFrame, ef.ID)
+				return nil, false
+			}
+			b.deleteEncryptedFrame(occupant.ID)
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up slot occupant")
+		}
 	}
 
 	// Frames that did not come from the owner share a storage budget
@@ -562,55 +610,55 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 	} else if !fromOwner {
 		b.adjustUntrustedEncryptedFrameStorage(int64(len(ef.Payload)), 1)
 	}
-	b.markFrameDelivered(ef.ID, ef.Type, peer)
-	go b.sendAck(peer, ef.Type, ef.ID)
+	b.markFrameDelivered(ef.ID, typeEncryptedFrame, peer)
+	go b.sendAck(peer, typeEncryptedFrame, ef.ID)
 
 	go b.encryptedBroadcast(ef)
 
 	return nil, false
 }
 
+// encryptedBroadcast pushes a newly stored frame to every connected peer that has asked for one of its mailboxes
 func (b *Bounce) encryptedBroadcast(ef encryptedFrame) {
-	for _, r := range ef.Recipients {
-		addr, ok := addressForKey(r.PublicKey)
-		if !ok {
-			return
-		}
-		var dr deliveryRecord
-		err := b.database.Where("destination = ? AND frame_id = ? AND frame_type = ?", addr, ef.ID, ef.Type).First(&dr).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			rd := b.getRemoteDevice(addr)
-			if rd.connectedSockets() > 0 {
-				b.sendDirect(addr, encryptedReceive{
-					ID:           ef.ID,
-					Type:         ef.Type,
-					Payload:      ef.Payload,
-					EncryptedDEK: r.EncryptedDEK,
-					EncrypterKey: r.EncrypterKey,
-					UseAddress:   false,
-					savedAt:      ef.SavedAt,
-				})
+	peerMailboxLabelsMutex.Lock()
+	readers := map[string]mailboxEntry{}
+	for peer, labels := range peerMailboxLabels {
+		for _, entry := range ef.Mailboxes {
+			if labels[string(entry.Label)] {
+				readers[peer] = entry
+				break
 			}
 		}
 	}
-}
+	peerMailboxLabelsMutex.Unlock()
 
-func addressForKey(key []byte) (string, bool) {
-	peerUserKeyMutex.Lock()
-	defer peerUserKeyMutex.Unlock()
-
-	for addr, peerKey := range peerUserKeys {
-		if bytes.Equal(peerKey, key) {
-			return addr, true
+	for peer, entry := range readers {
+		var dr deliveryRecord
+		err := b.database.Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, ef.ID, typeEncryptedFrame).First(&dr).Error
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			continue
+		}
+		rd := b.getRemoteDevice(peer)
+		if rd.connectedSockets() > 0 {
+			b.sendDirect(peer, encryptedReceive{
+				ID:         ef.ID,
+				Payload:    ef.Payload,
+				Label:      entry.Label,
+				WrappedDEK: entry.WrappedDEK,
+				savedAt:    ef.SavedAt,
+			})
 		}
 	}
-	return "", false
 }
 
+// A clear of a conversation's history on encrypted devices.  Locally it records which thread was cleared and up to
+// when; on the wire it carries only the mailbox labels of the completed epochs before that time, so the host deletes
+// mailboxes it cannot interpret rather than frames of a conversation it can name.
 type encryptedClearBefore struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
-	BatchKey  uuid.UUID
-	Timestamp int64
+	BatchKey  uuid.UUID `msgpack:"-"`
+	Timestamp int64     `msgpack:"-"`
+	Labels    [][]byte  `gorm:"-"`
 }
 
 func (ecb encryptedClearBefore) getType() uint16 {
@@ -637,61 +685,50 @@ func (b *Bounce) handleEncryptedClearBefore(peer string, payload []byte, _ bool)
 		return nil, false
 	}
 
-	peerUserKeyMutex.Lock()
-	requesterKey, ok := peerUserKeys[peer]
-	peerUserKeyMutex.Unlock()
-
-	if !ok {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Error("cannot handle encrypted clear before from peer with unknown user key")
+	labels := [][]byte{}
+	for _, label := range ecb.Labels {
+		if len(label) == mailboxLabelSize {
+			labels = append(labels, label)
+		}
+	}
+	if len(labels) == 0 {
+		b.sendAck(peer, typeEncryptedClearBefore, ecb.ID)
 		return nil, false
 	}
 
-	err = b.database.Where(
-		"id IN (?)",
-		b.database.
-			Model(&encryptedFrame{}).
-			Distinct("encrypted_frames.id").
-			Joins("LEFT JOIN recipients ON recipients.encrypted_frame_id == encrypted_frames.id AND recipients.public_key = ?", requesterKey).
-			Where(
-				"batch_delete_key = ? AND timestamp <= ? AND can_batch_delete = ?  AND recipients.id IS NOT NULL",
-				ecb.BatchKey,
-				ecb.Timestamp,
-				true,
-			),
-	).Delete(&encryptedFrame{}).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error":     err.Error(),
-			"batch_key": ecb.BatchKey,
-		}).Error("error deleting encrypted frames by batch key")
-	}
-
-	var ecsrToDelete = []encryptedChunkStorageRequest{}
-	err = b.database.
-		Joins("LEFT JOIN encrypted_chunk_recipients ON encrypted_chunk_recipients.encrypted_chunk_storage_request_id == encrypted_chunk_storage_requests.id AND encrypted_chunk_recipients.public_key = ?", requesterKey).
-		Where(
-			"batch_delete_key = ? AND timestamp <= ? AND can_batch_delete = ? AND encrypted_chunk_recipients.id IS NOT NULL",
-			ecb.BatchKey,
-			ecb.Timestamp,
-			true,
-		).Find(&ecsrToDelete).Error
+	// Presenting a label is the proof of being able to read that mailbox, which is the same standing as being
+	// allowed to clear it.  A frame belongs to one conversation, and its other mailboxes are only the sender's sync
+	// copy, so a frame in a cleared mailbox goes entirely rather than lingering under a label the clearer cannot
+	// name.
+	inClearedMailboxes := b.database.Model(&mailboxEntry{}).Select("encrypted_frame_id").Where("label IN ?", labels)
+	err = b.database.Where("id IN (?)", inClearedMailboxes).Delete(&encryptedFrame{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error finding ECSR to delete")
+		}).Error("error deleting encrypted frames for clear before")
 	}
-	for _, ecsr := range ecsrToDelete {
-		err := b.database.Clauses(clause.Returning{}).Delete(&ecsr).Error
+	b.pruneOrphanMailboxEntries()
+
+	// Likewise for stored chunks, which are deleted one at a time so that their files go with them
+	var clearedSRs []encryptedChunkStorageRequest
+	inClearedChunkMailboxes := b.database.Model(&encryptedChunkRecipient{}).Select("encrypted_chunk_storage_request_id").Where("label IN ?", labels)
+	err = b.database.Where("can_batch_delete = ? AND id IN (?)", true, inClearedChunkMailboxes).Find(&clearedSRs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error finding encrypted chunk storage requests to delete")
+	}
+	for _, sr := range clearedSRs {
+		err := b.database.Clauses(clause.Returning{}).Delete(&sr).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-				"id":    ecsr.ID,
-			}).Error("error deleting ECSR")
+				"id":    sr.ID,
+			}).Error("error deleting encrypted chunk storage request")
 		}
 	}
 
+	b.recheckUntrustedEncryptedFrameStorage()
 	b.sendAck(peer, typeEncryptedClearBefore, ecb.ID)
 
 	return nil, false
@@ -728,6 +765,9 @@ func (b *Bounce) updateEncryptedClearBefore(thread uuid.UUID, timestamp int64) {
 	encryptedDeviceCacheMutex.Unlock()
 }
 
+// sendEncryptedClearBefores sends an encrypted device every clear it has not yet received, as mailbox labels.  Our
+// own encrypted devices get every clear; another user's encrypted device gets the clears for the conversations we
+// share with that user.
 func (b *Bounce) sendEncryptedClearBefores(address string) {
 	encryptedDeviceCacheMutex.Lock()
 	ownerID, ok := encryptedDeviceCache[address]
@@ -739,46 +779,25 @@ func (b *Bounce) sendEncryptedClearBefores(address string) {
 		return
 	}
 
+	var clears []encryptedClearBefore
 	if ownerID == b.currentUserID() {
-		var all []encryptedClearBefore
 		err := b.database.
 			Select("encrypted_clear_befores.*").
 			Distinct().
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_clear_befores.id AND delivery_records.destination == ?", address).
 			Where("delivery_records.id IS NULL").
-			Find(&all).Error
-		if err == nil {
-			for _, ecb := range all {
-				b.sendDirect(address, ecb)
-			}
-		} else {
+			Find(&clears).Error
+		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Fatal("database error looking up encrypted clear befores")
 		}
 	} else {
-		var clearForTheUser encryptedClearBefore
-		err := b.database.
-			Select("encrypted_clear_befores.*").
-			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_clear_befores.id AND delivery_records.destination == ?", address).
-			Where("delivery_records.id IS NULL AND batch_key = ?", xor(b.currentUserID(), ownerID)).
-			Take(&clearForTheUser).Error
-		if err == nil {
-			b.sendDirect(address, clearForTheUser)
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up encrypted clear before")
-		}
-
 		groupIDs := []uuid.UUID{}
 		b.consensusStore.Lock()
 		for groupID, stack := range b.consensusStore.groups {
 			top, err := stack.top()
 			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error getting group state while sending encrypted clear befores")
 				continue
 			}
 			if top.isMember(ownerID) {
@@ -786,425 +805,28 @@ func (b *Bounce) sendEncryptedClearBefores(address string) {
 			}
 		}
 		b.consensusStore.Unlock()
+		threads := append(groupIDs, xor(b.currentUserID(), ownerID))
 
-		var clearsForTheGroups []encryptedClearBefore
-		err = b.database.
+		err := b.database.
 			Select("encrypted_clear_befores.*").
 			Distinct().
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == encrypted_clear_befores.id AND delivery_records.destination == ?", address).
-			Where("delivery_records.id IS NULL AND batch_key IN (?)", groupIDs).
-			Find(&clearsForTheGroups).Error
-		if err == nil {
-			for _, ecb := range clearsForTheGroups {
-				b.sendDirect(address, ecb)
-			}
-		} else {
+			Where("delivery_records.id IS NULL AND batch_key IN (?)", threads).
+			Find(&clears).Error
+		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Fatal("database error looking up encrypted clear befores")
 		}
 	}
 
-	b.pruneEncryptedDrafts()
-}
-
-// Stores our intention to add this user's key as a recipient to all a group's update groups up until this timestamp
-type appendRecipient struct {
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
-	GroupID   uuid.UUID
-	UserID    uuid.UUID
-	Timestamp int64
-	Address   string
-}
-
-var appendRecipientMutex sync.Mutex
-
-func (b *Bounce) addRecipientsIfNeeded() {
-	appendRecipientMutex.Lock()
-	defer appendRecipientMutex.Unlock()
-
-	var ars []appendRecipient
-	err := b.database.Find(&ars).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error looking up all append recipients")
-	}
-
-	for _, ar := range ars {
-		rd := b.getRemoteDevice(ar.Address)
-		if rd.connectedSockets() < 1 {
+	for _, ecb := range clears {
+		ecb.Labels = b.clearLabelsForThread(ecb.BatchKey, ecb.Timestamp)
+		if len(ecb.Labels) == 0 {
 			continue
 		}
-
-		var u user
-		err = b.database.Take(&u, "id = ?", ar.UserID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"user_id": ar.UserID,
-				}).Error("user not found in append recipeint")
-				continue
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error looking up user")
-			}
-		}
-
-		desiredIDs := []uuid.UUID{ar.GroupID}
-		var ugs []updateGroup
-		err = b.database.Select("id").Where("target = ?", ar.GroupID).Find(&ugs).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up update groups")
-		}
-		for _, ug := range ugs {
-			desiredIDs = append(desiredIDs, ug.ID)
-		}
-
-		go b.sendDirect(ar.Address, &appendRecipientRequest{
-			ID:     ar.ID,
-			Frames: desiredIDs,
-			Pubkey: u.PublicECDHKey,
-		})
+		b.sendDirect(address, ecb)
 	}
-}
-
-type appendRecipientRequest struct {
-	ID     uuid.UUID
-	Frames []uuid.UUID
-	Pubkey []byte
-}
-
-func (arr *appendRecipientRequest) getType() uint16 {
-	return typeAppendRecipientRequest
-}
-
-func (arr *appendRecipientRequest) getPayload() []byte {
-	bytes, err := msgpack.Marshal(arr)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("cannot msgpack marshal append recipient request")
-	}
-	return bytes
-}
-
-func (b *Bounce) handleAppendRecipientRequest(peer string, payload []byte, _ bool) (broadcastable, bool) {
-	var arr appendRecipientRequest
-	err := msgpack.Unmarshal(payload, &arr)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error unmarshalling append recipient request")
-		return nil, false
-	}
-
-	response := appendRecipientResponse{
-		ID: arr.ID,
-	}
-
-	peerUserKeyMutex.Lock()
-	peerKey, ok := peerUserKeys[peer]
-	peerUserKeyMutex.Unlock()
-	if !ok {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("append recipient request from peer without key")
-		b.sendDirect(peer, &response)
-		return nil, false
-	}
-
-	for _, frameID := range arr.Frames {
-		var ef encryptedFrame
-		err = b.database.Select("id").Take(&ef, "id = ?", frameID).Error
-		if err != nil {
-			continue
-		}
-
-		var r recipient
-		err = b.database.Select("id").Where("encrypted_frame_id = ? AND public_key = ?", frameID, arr.Pubkey).First(&r).Error
-		if err == nil {
-			continue
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up recipient")
-		}
-
-		var peerRecipient recipient
-		err = b.database.Where("encrypted_frame_id = ? AND public_key = ?", frameID, peerKey).First(&peerRecipient).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			continue
-		} else if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up recipient")
-		}
-
-		response.DEKs = append(response.DEKs, discloseDEK{
-			FrameID:      frameID,
-			EncrypterKey: peerRecipient.EncrypterKey,
-			EncryptedDEK: peerRecipient.EncryptedDEK,
-		})
-	}
-
-	b.sendDirect(peer, &response)
-	return nil, false
-}
-
-type discloseDEK struct {
-	FrameID      uuid.UUID
-	EncrypterKey []byte
-	EncryptedDEK []byte
-}
-
-type appendRecipientResponse struct {
-	ID   uuid.UUID
-	DEKs []discloseDEK
-}
-
-func (arr *appendRecipientResponse) getType() uint16 {
-	return typeAppendRecipientResponse
-}
-
-func (arr *appendRecipientResponse) getPayload() []byte {
-	bytes, err := msgpack.Marshal(arr)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("cannot msgpack marshal append recipient response")
-	}
-	return bytes
-}
-
-func (b *Bounce) handleAppendRecipientResponse(peer string, payload []byte, _ bool) (broadcastable, bool) {
-	var arr appendRecipientResponse
-	err := msgpack.Unmarshal(payload, &arr)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error unmarshalling append recipient response")
-		return nil, false
-	}
-
-	// Find the original intention and user
-	var ar appendRecipient
-	err = b.database.Take(&ar, "id = ?", arr.ID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"id": arr.ID,
-			}).Warn("append recipient not found from append recipient response")
-			return nil, false
-		} else if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up append recipient")
-		}
-	}
-
-	var u user
-	err = b.database.Take(&u, "id = ?", ar.UserID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"id": ar.UserID,
-			}).Warn("user not found from append recipient response")
-			return nil, false
-		} else if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up user")
-		}
-	}
-
-	currentUser, ok := b.currentUser()
-	if !ok {
-		log.Error("cannot handle append recipient response before profile is created")
-		return nil, false
-	}
-
-	// Delete if there is nothing to do
-	if len(arr.DEKs) == 0 {
-		b.database.Delete(&ar)
-		return nil, false
-	}
-
-	// Create the new recipients
-	recipients := map[uuid.UUID]recipient{}
-	for _, dd := range arr.DEKs {
-		// Decrypt the DEK
-		oldKek, err := b.generateKEK(dd.EncrypterKey)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error generating key encryption key from discloseDEK")
-			continue
-		}
-
-		oldKekBlock, err := aes.NewCipher(oldKek)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating block")
-			continue
-		}
-		oldKekGCM, err := cipher.NewGCMWithRandomNonce(oldKekBlock)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error creating gcm")
-			continue
-		}
-
-		dek, err := oldKekGCM.Open(nil, []byte{}, dd.EncryptedDEK, nil)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error decrypting key in disclose DEK")
-			continue
-		}
-
-		// Encrypt this DEK with the new recipient's key and generate a new recipient
-		newKek, err := b.generateKEK(u.PublicECDHKey)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error generating kek")
-			continue
-		}
-
-		block, err := aes.NewCipher(newKek)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error encrypting frame")
-			continue
-		}
-		gcm, err := cipher.NewGCMWithRandomNonce(block)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error encrypting frame")
-			continue
-		}
-
-		recipients[dd.FrameID] = recipient{
-			EncrypterKey: currentUser.PublicECDHKey,
-			PublicKey:    u.PublicECDHKey,
-			EncryptedDEK: gcm.Seal(nil, []byte{}, dek, nil),
-		}
-	}
-
-	arp := appendRecipientPayloads{
-		ID:         arr.ID,
-		Recipients: recipients,
-	}
-	for range 5 {
-		b.sendDirect(peer, &arp)
-		time.Sleep(5 * time.Second)
-
-		var originalAR appendRecipient
-		err = b.database.Take(&originalAR, "id = ?", arr.ID).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				break
-			} else {
-				log.WithFields(log.Fields{
-					"id":    arr.ID,
-					"error": err.Error(),
-				}).Fatal("database error looking up append recipient")
-			}
-		}
-	}
-	var originalAR appendRecipient
-	err = b.database.Take(&originalAR, "id = ?", arr.ID).Error
-	if err == nil {
-		log.WithFields(log.Fields{
-			"id": arr.ID,
-		}).Error("append recipient still exists in database after attempt to send new recipients")
-	}
-
-	return nil, false
-}
-
-type appendRecipientPayloads struct {
-	ID         uuid.UUID
-	Recipients map[uuid.UUID]recipient
-}
-
-func (arp *appendRecipientPayloads) getType() uint16 {
-	return typeAppendRecipientPayloads
-}
-
-func (arp *appendRecipientPayloads) getPayload() []byte {
-	bytes, err := msgpack.Marshal(arp)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("cannot msgpack marshal append recipient payloads")
-	}
-	return bytes
-}
-
-func (b *Bounce) handleAppendRecipientPayloads(peer string, payload []byte, _ bool) (broadcastable, bool) {
-	var arp appendRecipientPayloads
-	err := msgpack.Unmarshal(payload, &arp)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error unmarshalling append recipient payloads")
-		return nil, false
-	}
-
-	go b.sendAck(peer, typeAppendRecipientPayloads, arp.ID)
-
-	for id, r := range arp.Recipients {
-		r.ID = uuid.New()
-		r.EncryptedFrameID = id
-		err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&r).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error saving new recipient")
-		}
-	}
-
-	return nil, false
-}
-
-func (b *Bounce) encryptedDevicesInGroup(groupID uuid.UUID) []string {
-	gs, err := b.currentGroupState(groupID)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error getting group state for all encrypted devices in a group")
-		return []string{}
-	}
-
-	addresses := []string{}
-	for _, userID := range gs.users {
-		var u user
-		err = b.database.Select("encrypted_devices").Where("id = ?", userID).Take(&u).Error
-		if err != nil {
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error looking up user encrypted devices")
-			} else {
-				continue
-			}
-		}
-		if len(u.EncryptedDevices) > 0 {
-			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
-				addresses = append(addresses, addr)
-			}
-		}
-	}
-	return addresses
 }
 
 type encryptedReferenceOfferChallenge struct {
@@ -1274,6 +896,9 @@ func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []b
 		PublicKey: currentUser.PublicECDHKey,
 		Response:  ciphertext,
 	})
+
+	// The challenge is the encrypted device asking what we can read; answer that too
+	go b.sendMailboxRequest(peer)
 
 	return nil, false
 }
@@ -1460,46 +1085,12 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 		peerUserKeys[peer] = eroc.PublicKey
 		peerUserKeyMutex.Unlock()
 
-		ero := b.getEncryptedReferenceOfferFor(peer, eroc.PublicKey)
-
-		// If this public key belongs to our authorized user, then also include anything we have for their old keys
-		if bytes.Equal(eroc.PublicKey, au.PublicKey) {
-			var oldKeys []oldKey
-			err = b.database.Where("authorized_user_id = ?", au.ID).Find(&oldKeys).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error getting all old keys")
-			}
-
-			for _, pastKey := range oldKeys {
-				okEro := b.getEncryptedReferenceOfferFor(peer, pastKey.PublicKey)
-				if okEro != nil {
-					ero.References = append(ero.References, okEro.References...)
-				}
-			}
+		// The peer proved who it is; what it can read is decided by the mailboxes it asks for.  If it already
+		// asked before proving itself, register those as the owner's and answer now.
+		b.registerOwnerMailboxes(peer)
+		if len(b.peerLabels(peer)) > 0 {
+			go b.sendDirect(peer, b.hostOfferFor(peer))
 		}
-
-		go func() {
-			success := false
-			for range 5 {
-				b.sendDirect(peer, ero)
-
-				time.Sleep(time.Duration(referenceRetrySeconds) * time.Second)
-
-				var dr deliveryRecord
-				err := b.referenceDatabase.Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, ero.ID, typeReferenceOffer).First(&dr).Error
-				if err == nil {
-					success = true
-					break
-				}
-			}
-			if !success {
-				log.WithFields(log.Fields{
-					"peer": peer,
-				}).Warn("gave up delivering reference offer to peer")
-			}
-		}()
 
 		b.makeNextEncryptedChunkRequests()
 	} else {
@@ -1512,7 +1103,6 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 }
 
 const actionTypeChangeManagementKey = 0
-const actionTypePruneDrafts = 1
 
 type encryptedDeviceManagementAction struct {
 	ActionType int
@@ -1636,18 +1226,6 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 		} else {
 			response.Applied = true
 			go b.sendDirect(peer, &response)
-		}
-	case actionTypePruneDrafts:
-		draftPayload := string(edma.Data)
-		if len(draftPayload) > 0 {
-			drafts := strings.Split(draftPayload, ",")
-
-			err = b.database.Where("type = ? AND id NOT IN (?)", typeDraft, drafts).Delete(&encryptedFrame{}).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("database error pruning drafts")
-			}
 		}
 	default:
 		log.WithFields(log.Fields{
@@ -1934,57 +1512,4 @@ func (b *Bounce) encryptionKeyHistory() map[string][]byte {
 	}
 
 	return results
-}
-
-func (b *Bounce) pruneEncryptedDrafts() {
-	currentUser, ok := b.currentUser()
-	if !ok {
-		log.Warn("attempt to prune drafts from encrypted device when no profile exists")
-		return
-	}
-	if time.Now().Before(startupTime.Add(5 * time.Minute)) {
-		return
-	}
-
-	var esds []encryptedSyncDevice
-	err := b.database.Find(&esds).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error finding all encrypted sync devices")
-	}
-
-	draftIDs := []string{}
-	draftMutex.Lock()
-	for _, d := range draftCache {
-		draftIDs = append(draftIDs, d.ID.String())
-	}
-	draftMutex.Unlock()
-	draftsPayload := strings.Join(draftIDs, ",")
-
-	for _, esd := range esds {
-		rd := b.getRemoteDevice(esd.Address)
-		if rd.connectedSockets() > 0 {
-			edma := encryptedDeviceManagementAction{
-				ActionType: actionTypePruneDrafts,
-				Data:       []byte(draftsPayload),
-			}
-			encoded, err := msgpack.Marshal(&edma)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error encoding encrypted device management action")
-				return
-			}
-			signature := ed25519.Sign(currentUser.PrivateECDSAKey, encoded)
-
-			med := manageEncryptedDevice{
-				ID:        uuid.New(),
-				Action:    encoded,
-				Signature: signature,
-			}
-
-			b.sendDirect(esd.Address, &med)
-		}
-	}
 }
