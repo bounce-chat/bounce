@@ -309,6 +309,11 @@ func (b *Bounce) getUserScope(br broadcastable, excludeDelivered bool) []string 
 		return b.getSyncScope(br, excludeDelivered)
 	}
 
+	// Nothing goes to a blocked user's devices, but our own devices still need anything we write about the thread
+	if blockedUser(br.getDestination(b.currentUserID())) {
+		return b.getSyncScope(br, excludeDelivered)
+	}
+
 	// Add any devices that are owned by the destination user that are online
 	var destinationUser user
 	err := b.database.Preload(clause.Associations).First(&destinationUser, "id = ?", br.getDestination(b.currentUserID())).Error
@@ -364,6 +369,10 @@ func (b *Bounce) getGroupScope(br broadcastable, excludeDelivered bool) []string
 		}
 	}
 	for _, u := range destinationGroup.Users {
+		if blockedUser(u.ID) {
+			continue
+		}
+
 		for _, dev := range u.Devices {
 			if dev.RevokedAt != 0 {
 				continue
@@ -387,23 +396,26 @@ func (b *Bounce) getGlobalScope(br broadcastable, excludeDelivered bool) []strin
 
 	author := br.getAuthor()
 	if author == b.currentUserID() {
-		allAddresses := []string{}
-		err := b.database.Model(&device{}).Select("address").Where("revoked_at IS NULL OR revoked_at = 0").Find(&allAddresses).Error
+		allDevices := []device{}
+		err := b.database.Select("user_id", "address").Where("revoked_at IS NULL OR revoked_at = 0").Find(&allDevices).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Fatal("error selecting all device addresses")
 		}
 		// Anything global that we create can be sent to any known device
-		for _, address := range allAddresses {
-			if _, exists := b.getDeviceFromAddress(address); !exists {
+		for _, d := range allDevices {
+			if blockedUser(d.UserID) {
+				continue
+			}
+			if _, exists := b.getDeviceFromAddress(d.Address); !exists {
 				// Skip connections in the device pool if we don't have a device saved for them
 				continue
 			}
-			if excludeDelivered && b.isDeliveredTo(br, address) {
+			if excludeDelivered && b.isDeliveredTo(br, d.Address) {
 				continue
 			}
-			broadcastTargets = append(broadcastTargets, address)
+			broadcastTargets = append(broadcastTargets, d.Address)
 		}
 	} else {
 		// Anything global that was written by someone else should be sent to our devices, their devices,
@@ -436,6 +448,10 @@ func (b *Bounce) getGlobalScope(br broadcastable, excludeDelivered bool) []strin
 			}
 
 			for _, userID := range state.users {
+				if blockedUser(userID) {
+					continue
+				}
+
 				var u user
 				err := b.database.Preload(clause.Associations).First(&u, "id = ?", userID).Error
 				if err != nil {
@@ -514,6 +530,10 @@ func (b *Bounce) getCustomScope(br broadcastable, excludeDelivered bool) []strin
 	}
 
 	for _, addr := range cs.addresses() {
+		if b.peerIsBlocked(addr) {
+			continue
+		}
+
 		if b.devicePool.isRevoked(addr) {
 			continue
 		}
@@ -560,6 +580,10 @@ func (b *Bounce) getGroupWithInvitesScope(br broadcastable, excludeDelivered boo
 		}
 	}
 	for _, u := range destinationGroup.Users {
+		if blockedUser(u.ID) {
+			continue
+		}
+
 		for _, dev := range u.Devices {
 			if dev.RevokedAt != 0 {
 				continue

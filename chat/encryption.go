@@ -566,7 +566,14 @@ func (b *Bounce) getUsersInScope(br broadcastable) []user {
 		}).Error("unknown broadcast scope for encrypted frame")
 	}
 
-	return users
+	var unblockedUsers []user
+	for _, u := range users {
+		if !blockedUser(u.ID) {
+			unblockedUsers = append(unblockedUsers, u)
+		}
+	}
+
+	return unblockedUsers
 }
 
 func (b *Bounce) getUsersInGlobalScope(userID uuid.UUID) []user {

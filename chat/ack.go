@@ -135,20 +135,12 @@ func (b *Bounce) ackedFrameExists(id uuid.UUID, frameType uint16) bool {
 func (b *Bounce) handleAckSideEffects(fr frameReference, peer string) {
 	switch fr.Type {
 	case typeDirectMessage:
-		encryptedDeviceCacheMutex.Lock()
-		userID, ok := encryptedDeviceCache[peer]
-		encryptedDeviceCacheMutex.Unlock()
-		if ok {
-			b.ui.MessageDelivered(fr.FrameID, userID)
+		if owner, ok := b.peerOwner(peer); ok {
+			b.ui.MessageDelivered(fr.FrameID, owner)
 		} else {
-			dev, ok := b.getDeviceFromAddress(peer)
-			if ok {
-				b.ui.MessageDelivered(fr.FrameID, dev.UserID)
-			} else {
-				log.WithFields(log.Fields{
-					"peer": peer,
-				}).Warn("direct message acked by unknown peer")
-			}
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Warn("direct message acked by unknown peer")
 		}
 		// If we're waiting to check if this message becomes undeliverable, we can stop that now
 		dmDeliveryNotificationMutex.Lock()
@@ -159,20 +151,12 @@ func (b *Bounce) handleAckSideEffects(fr frameReference, peer string) {
 		}
 		dmDeliveryNotificationMutex.Unlock()
 	case typeGroupMessage:
-		encryptedDeviceCacheMutex.Lock()
-		userID, ok := encryptedDeviceCache[peer]
-		encryptedDeviceCacheMutex.Unlock()
-		if ok {
-			b.ui.MessageDelivered(fr.FrameID, userID)
+		if owner, ok := b.peerOwner(peer); ok {
+			b.ui.MessageDelivered(fr.FrameID, owner)
 		} else {
-			dev, ok := b.getDeviceFromAddress(peer)
-			if ok {
-				b.ui.MessageDelivered(fr.FrameID, dev.UserID)
-			} else {
-				log.WithFields(log.Fields{
-					"peer": peer,
-				}).Warn("group message acked by unknown peer")
-			}
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Warn("group message acked by unknown peer")
 		}
 
 		// If we're waiting to check if this message becomes undeliverable, we can stop that now

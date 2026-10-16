@@ -464,6 +464,21 @@ func blockedUser(userID uuid.UUID) bool {
 	return ok
 }
 
+func (b *Bounce) peerOwner(address string) (uuid.UUID, bool) {
+	if dev, ok := b.getDeviceFromAddress(address); ok {
+		return dev.UserID, true
+	}
+	encryptedDeviceCacheMutex.Lock()
+	owner, ok := encryptedDeviceCache[address]
+	encryptedDeviceCacheMutex.Unlock()
+	return owner, ok
+}
+
+func (b *Bounce) peerIsBlocked(address string) bool {
+	owner, ok := b.peerOwner(address)
+	return ok && blockedUser(owner)
+}
+
 func (b *Bounce) SetDMLastOpened(userID uuid.UUID, timestamp int64) {
 	err := b.database.Table("users").Where("id = ?", userID).Updates(map[string]interface{}{"last_opened": timestamp}).Error
 	if err != nil {

@@ -332,20 +332,12 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 			}
 		}
 
-		encryptedDeviceCacheMutex.Lock()
-		userID, ok := encryptedDeviceCache[peer]
-		encryptedDeviceCacheMutex.Unlock()
-		if ok {
-			b.ui.MessageDelivered(gm.ID, userID)
+		if owner, ok := b.peerOwner(peer); ok {
+			b.ui.MessageDelivered(gm.ID, owner)
 		} else {
-			dev, ok := b.getDeviceFromAddress(peer)
-			if ok {
-				b.ui.MessageDelivered(gm.ID, dev.UserID)
-			} else {
-				log.WithFields(log.Fields{
-					"peer": peer,
-				}).Warn("direct message received from unknown peer")
-			}
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Warn("group message received from unknown peer")
 		}
 
 		// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI

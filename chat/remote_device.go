@@ -1,10 +1,12 @@
 package chat
 
 import (
+	"errors"
 	"net"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,6 +21,8 @@ const sendChunkTimeout = time.Duration(120 * time.Second)
 // socket rather than queueing frames in memory.
 const maximumRunningHandlersPerDevice = 10
 const maximumRunningHandlersGlobal = 256
+
+var errUserBlocked = errors.New("refusing to send to blocked user")
 
 // acquireHandlerSlot takes a slot from slots, giving up if the socket closes first so that a read
 // loop parked on a full semaphore cannot outlive its socket.
@@ -191,6 +195,11 @@ func (b *Bounce) getRemoteDevice(address string) *remoteDevice {
 }
 
 func (b *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
+	if b.peerIsBlocked(conn.RemoteAddr().String()) {
+		conn.Close()
+		return
+	}
+
 	// Get the remote device
 	peer := conn.RemoteAddr().String()
 	rd := b.getRemoteDevice(peer)
@@ -268,6 +277,8 @@ func (b *Bounce) readFrames(rd *remoteDevice, s *socket) {
 	var deviceIsAnotherUsersEncryptedDevice bool
 	var dev device
 	var esd encryptedSyncDevice
+	var ownerID uuid.UUID
+	var ownerKnown bool
 	if !b.encrypted {
 		profile, profileExists = b.currentUser()
 		deviceIsKnown, deviceIsEncrypted, dev, esd = b.getDeviceOrEncryptedSyncDevice(peer)
@@ -276,6 +287,7 @@ func (b *Bounce) readFrames(rd *remoteDevice, s *socket) {
 			_, deviceIsAnotherUsersEncryptedDevice = encryptedDeviceCache[peer]
 			encryptedDeviceCacheMutex.Unlock()
 		}
+		ownerID, ownerKnown = b.peerOwner(peer)
 	}
 
 	for {
@@ -295,7 +307,10 @@ func (b *Bounce) readFrames(rd *remoteDevice, s *socket) {
 			}
 		}
 
-		if blockedUser(dev.UserID) {
+		if !ownerKnown {
+			ownerID, ownerKnown = b.peerOwner(peer)
+		}
+		if ownerKnown && blockedUser(ownerID) {
 			s.close()
 			return
 		}
@@ -408,7 +423,17 @@ func (b *Bounce) writeFrames(rd *remoteDevice, s *socket) {
 	b.updateUserOnlineStatus(s.underlying.RemoteAddr().String())
 	encryptedHandlers := b.getHandlers(true)
 
+	ownerID, ownerKnown := b.peerOwner(s.underlying.RemoteAddr().String())
+
 	writeUnderlying := func(br sendable) error {
+		if !ownerKnown {
+			ownerID, ownerKnown = b.peerOwner(s.underlying.RemoteAddr().String())
+		}
+		if ownerKnown && blockedUser(ownerID) {
+			// Close all connections to blocked users
+			return errUserBlocked
+		}
+
 		if b.devicePool.isRevoked(s.underlying.RemoteAddr().String()) {
 			// Only send revoked devices frames that are used to tell them they are revoked, and keep alives
 			if !(br.getType() == typeReferenceOffer || br.getType() == typeCatchUp || br.getType() == typeUpdateDevice || br.getType() == typeKeepAlive || br.getType() == typeAck) {

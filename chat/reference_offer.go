@@ -81,21 +81,17 @@ func (b *Bounce) sendReferences(peer string) {
 		return
 	}
 
-	dev, exists := b.getDeviceFromAddress(peer)
-	encryptedDeviceCacheMutex.Lock()
-	_, encrypted := encryptedDeviceCache[peer]
-	encryptedDeviceCacheMutex.Unlock()
-	if !exists && !encrypted {
+	owner, known := b.peerOwner(peer)
+	if !known {
 		// We have nothing to offer a device that we don't know about
 		return
 	}
-
-	if exists && blockedUser(dev.UserID) {
-		// Reject any reference offer from a block user's device
+	if blockedUser(owner) {
+		// Offer nothing to a blocked user's devices, encrypted ones included
 		return
 	}
 
-	_, exists = b.getDeviceFromAddress(b.network.Address())
+	_, exists := b.getDeviceFromAddress(b.network.Address())
 	if !exists {
 		// Our own devices doesn't exist yet, we're probably going to be added as a new sync
 		// device now.  In the meantime there's nothing to do.
@@ -162,20 +158,12 @@ func (b *Bounce) hasAnyReferencesFor(address string) bool {
 		log.Fatal("cannot generate reference offer from encrypted device")
 	}
 
-	var userID uuid.UUID
-	dev, ok := b.getDeviceFromAddress(address)
-	if ok {
-		userID = dev.UserID
-	} else {
-		encryptedDeviceCacheMutex.Lock()
-		userID, ok = encryptedDeviceCache[address]
-		encryptedDeviceCacheMutex.Unlock()
-		if !ok {
-			log.WithFields(log.Fields{
-				"address": address,
-			}).Warn("cannot generate reference offer for unknown device")
-			return false
-		}
+	userID, ok := b.peerOwner(address)
+	if !ok {
+		log.WithFields(log.Fields{
+			"address": address,
+		}).Warn("cannot generate reference offer for unknown device")
+		return false
 	}
 
 	for _, spec := range referencedFrames {
@@ -197,20 +185,12 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 		log.Fatal("cannot generate reference offer from encrypted device")
 	}
 
-	var userID uuid.UUID
-	dev, ok := b.getDeviceFromAddress(address)
-	if ok {
-		userID = dev.UserID
-	} else {
-		encryptedDeviceCacheMutex.Lock()
-		userID, ok = encryptedDeviceCache[address]
-		encryptedDeviceCacheMutex.Unlock()
-		if !ok {
-			log.WithFields(log.Fields{
-				"address": address,
-			}).Warn("cannot generate reference offer for unknown device")
-			return &referenceOffer{}
-		}
+	userID, ok := b.peerOwner(address)
+	if !ok {
+		log.WithFields(log.Fields{
+			"address": address,
+		}).Warn("cannot generate reference offer for unknown device")
+		return &referenceOffer{}
 	}
 
 	references := []frameReference{}

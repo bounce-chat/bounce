@@ -555,22 +555,8 @@ func (b *Bounce) GetInitialState() InitialState {
 		}).Fatal("error looking up delivery records")
 	}
 	for _, dr := range dmDRs {
-		dev, ok := b.getDeviceFromAddress(dr.Destination)
-		if ok {
-			dmDRmap[dr.FrameID] = append(
-				dmDRmap[dr.FrameID],
-				dev.UserID,
-			)
-		} else {
-			encryptedDeviceCacheMutex.Lock()
-			userID, ok := encryptedDeviceCache[dr.Destination]
-			encryptedDeviceCacheMutex.Unlock()
-			if ok {
-				dmDRmap[dr.FrameID] = append(
-					dmDRmap[dr.FrameID],
-					userID,
-				)
-			}
+		if owner, ok := b.peerOwner(dr.Destination); ok {
+			dmDRmap[dr.FrameID] = append(dmDRmap[dr.FrameID], owner)
 		}
 	}
 
@@ -707,22 +693,8 @@ func (b *Bounce) GetInitialState() InitialState {
 		}).Fatal("error looking up delivery records")
 	}
 	for _, dr := range gmDRs {
-		dev, ok := b.getDeviceFromAddress(dr.Destination)
-		if ok {
-			gmDRmap[dr.FrameID] = append(
-				gmDRmap[dr.FrameID],
-				dev.UserID,
-			)
-		} else {
-			encryptedDeviceCacheMutex.Lock()
-			userID, ok := encryptedDeviceCache[dr.Destination]
-			encryptedDeviceCacheMutex.Unlock()
-			if ok {
-				gmDRmap[dr.FrameID] = append(
-					gmDRmap[dr.FrameID],
-					userID,
-				)
-			}
+		if owner, ok := b.peerOwner(dr.Destination); ok {
+			gmDRmap[dr.FrameID] = append(gmDRmap[dr.FrameID], owner)
 		}
 	}
 

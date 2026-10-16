@@ -78,8 +78,8 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	_, encrypted := encryptedDeviceCache[peer]
 	encryptedDeviceCacheMutex.Unlock()
 
-	// Do not allow catchups from blocked users
-	if blockedUser(dev.UserID) {
+	// Do not allow catch ups from blocked users
+	if b.peerIsBlocked(peer) {
 		return nil, false
 	}
 

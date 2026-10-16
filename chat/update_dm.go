@@ -853,6 +853,8 @@ func (b *Bounce) BlockUser(userID uuid.UUID) error {
 		return errCannotBlockSelf
 	}
 
+	cacheBlockedUser(userID)
+
 	err := b.applyAndBroadcastUpdateDM(&updateDM{
 		ID:        uuid.New(),
 		Actor:     b.currentUserID(),
