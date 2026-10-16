@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,18 +44,18 @@ func (b *Bounce) markDeliveredTo(br broadcastable, destination string) {
 }
 
 func (b *Bounce) isDeliveredTo(br broadcastable, destination string) bool {
-	var dr deliveryRecord
-	err := b.database.Where("destination = ? AND frame_id = ? AND frame_type = ?", destination, br.getID(), br.getType()).First(&dr).Error
+	return b.frameIsDeliveredTo(br.getID(), br.getType(), destination)
+}
+
+func (b *Bounce) frameIsDeliveredTo(frameID uuid.UUID, frameType uint16, peer string) bool {
+	var count int64
+	err := b.database.Model(&deliveryRecord{}).Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, frameID, frameType).Count(&count).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error looking up delivery record")
-		}
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up delivery record")
 	}
-	return true
+	return count > 0
 }
 
 func (b *Bounce) markFrameDelivered(id uuid.UUID, frameType uint16, destination string) {

@@ -12,6 +12,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const maximumReferencesPerOffer = 100000
+
 var referenceOfferMutexLock sync.Mutex
 var referenceOfferMutexes = map[string]*sync.Mutex{}
 
@@ -119,7 +121,7 @@ func (b *Bounce) sendReferences(peer string) {
 		b.sendDirect(peer, referenceOffer)
 
 		// Wait for an ack before checking if it was delivered
-		time.Sleep(time.Duration(referenceRetrySeconds) * time.Second)
+		time.Sleep(referenceRetryInterval())
 
 		// Manually check the reference database for a delivery record, and delete it and return if found
 		var dr deliveryRecord
@@ -1358,28 +1360,22 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		return nil, false
 	}
 
-	// Make sure we aren't still handling a catch up while determining what we need to request
-	catchUpMutex.Lock()
-
-	// Create a set of references for all of the offered references that we don't have, ACKing the ones we do have in the process
-	references := []frameReference{}
-	acks := []frameReference{}
-	typesToIDs := referencedIDs(ro.References)
-	for _, frameType := range referencedTypes {
-		refs, as := b.getFramesToRequestAndAck(peer, typesToIDs[frameType], frameType)
-		references = append(references, refs...)
-		acks = append(acks, as...)
+	if len(ro.References) > maximumReferencesPerOffer {
+		log.WithFields(log.Fields{
+			"peer":       peer,
+			"references": len(ro.References),
+		}).Warn("reference offer names more frames than we will consider at once, ignoring the rest")
+		ro.References = ro.References[:maximumReferencesPerOffer]
 	}
 
-	// Unlock the catch up mutex
-	catchUpMutex.Unlock()
+	references, acks := b.processReferenceOffer(peer, ro.References)
 
 	// Inform the reference engine that this peer has these frames that we don't know about
 	if len(references) > 0 {
 		b.loadReferenceOffer(peer, references)
 	}
 
-	// Send an ack for everything we already have in the database
+	// Send an ack for everything we already have in the database and the peer may have
 	if len(acks) > 0 {
 		go b.sendDirect(peer, &ack{
 			References: acks,
@@ -1389,9 +1385,76 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	return nil, false
 }
 
-func (b *Bounce) getFramesToRequestAndAck(address string, offeredIDs []uuid.UUID, frameType uint16) ([]frameReference, []frameReference) {
-	references := []frameReference{}
+func (b *Bounce) processReferenceOffer(peer string, offered []frameReference) ([]frameReference, []frameReference) {
+	requests := []frameReference{}
 	acks := []frameReference{}
+	typesToIDs := referencedIDs(offered)
+
+	catchUpMutex.Lock()
+	peerIsKnown := false
+	if b.encrypted {
+		peerUserKeyMutex.Lock()
+		_, peerIsKnown = peerUserKeys[peer]
+		peerUserKeyMutex.Unlock()
+	} else {
+		_, peerIsKnown = b.peerOwner(peer)
+	}
+	if !peerIsKnown {
+		for _, frameType := range referencedTypes {
+			for _, id := range typesToIDs[frameType] {
+				// If the device is unknown we request everything so that a random device isn't able
+				// to determine what we already have
+				requests = append(requests, frameReference{FrameID: id, Type: frameType})
+			}
+		}
+		catchUpMutex.Unlock()
+		return requests, acks
+	}
+
+	alreadyHave := []frameReference{}
+	for _, frameType := range referencedTypes {
+		missing, have := b.determineFramesAlreadyReceived(typesToIDs[frameType], frameType)
+		requests = append(requests, missing...)
+		alreadyHave = append(alreadyHave, have...)
+	}
+	catchUpMutex.Unlock()
+	if len(alreadyHave) == 0 {
+		// If we have nothing that is being offered, there's nothing to ack and we can make the request now
+		return requests, acks
+	}
+
+	// Make sure that anything we ack is something this peer was allowed to offer us.  If not, they might be
+	// trying to figure out what we have
+	allowed := map[uint16]map[uuid.UUID]bool{}
+	var offerable *referenceOffer
+	if b.encrypted {
+		peerUserKeyMutex.Lock()
+		pubkey := peerUserKeys[peer]
+		peerUserKeyMutex.Unlock()
+		offerable = b.getEncryptedReferenceOfferFor(peer, pubkey)
+	} else {
+		offerable = b.getReferenceOfferFor(peer)
+	}
+
+	for frameType, ids := range referencedIDs(offerable.References) {
+		allowed[frameType] = map[uuid.UUID]bool{}
+		for _, id := range ids {
+			allowed[frameType][id] = true
+		}
+	}
+	for _, ref := range alreadyHave {
+		if allowed[ref.Type][ref.FrameID] || b.frameIsDeliveredTo(ref.FrameID, ref.Type, peer) {
+			b.markFrameDelivered(ref.FrameID, ref.Type, peer)
+			acks = append(acks, ref)
+		}
+	}
+
+	return requests, acks
+}
+
+func (b *Bounce) determineFramesAlreadyReceived(offeredIDs []uuid.UUID, frameType uint16) ([]frameReference, []frameReference) {
+	dontHave := []frameReference{}
+	alreadyHave := []frameReference{}
 
 	var table string
 	var ok bool
@@ -1420,10 +1483,9 @@ func (b *Bounce) getFramesToRequestAndAck(address string, offeredIDs []uuid.UUID
 		}
 
 		if err == nil {
-			b.markFrameDelivered(id, frameType, address)
-			acks = append(acks, ref)
+			alreadyHave = append(alreadyHave, ref)
 		} else if errors.Is(err, gorm.ErrRecordNotFound) {
-			references = append(references, ref)
+			dontHave = append(dontHave, ref)
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -1431,5 +1493,5 @@ func (b *Bounce) getFramesToRequestAndAck(address string, offeredIDs []uuid.UUID
 		}
 	}
 
-	return references, acks
+	return dontHave, alreadyHave
 }

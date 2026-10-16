@@ -5,6 +5,7 @@ import (
 	stdlog "log"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,7 +22,17 @@ var referenceStateOffered = 0
 var referenceStateRequested = 1
 
 // TODO: might make sense to dynamically retry depending on size of offer
-var referenceRetrySeconds = 30
+// How long to wait for an ack before re-sending a reference offer or request, or treating a request as failed.
+// Atomic because tests shorten it while engine goroutines started by earlier tests are still reading it.
+var referenceRetrySeconds = func() *atomic.Int64 {
+	seconds := &atomic.Int64{}
+	seconds.Store(30)
+	return seconds
+}()
+
+func referenceRetryInterval() time.Duration {
+	return time.Duration(referenceRetrySeconds.Load()) * time.Second
+}
 
 type frameReference struct {
 	ID         uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
@@ -145,7 +156,7 @@ func (b *Bounce) loadReferenceOffer(peer string, ro []frameReference) {
 	go func() {
 		// If the request we generated from this offer fails, check after the expiration to see if any other
 		// devices have offered the same references or if we should try this peer again
-		time.Sleep(time.Duration(referenceRetrySeconds+1) * time.Second)
+		time.Sleep(referenceRetryInterval() + time.Second)
 		referenceRequestMutex.Lock()
 		b.makeReferenceRequests()
 		referenceRequestMutex.Unlock()
@@ -203,11 +214,11 @@ func (b *Bounce) makeReferenceRequests() {
 				Where(
 					"state = ? AND last_action > ?",
 					referenceStateRequested,
-					time.Now().Unix()-int64(referenceRetrySeconds),
+					time.Now().Unix()-referenceRetrySeconds.Load(),
 				).
 				Table("frame_references"),
 			referenceStateRequested,
-			time.Now().Unix()-int64(referenceRetrySeconds),
+			time.Now().Unix()-referenceRetrySeconds.Load(),
 		).
 		Find(&references).Error
 	if err != nil {

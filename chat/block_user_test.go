@@ -16,9 +16,9 @@ import (
 // will never ack is being tested
 func quickReferenceRetries(t *testing.T) {
 	t.Helper()
-	old := referenceRetrySeconds
-	referenceRetrySeconds = 1
-	t.Cleanup(func() { referenceRetrySeconds = old })
+	old := referenceRetrySeconds.Load()
+	referenceRetrySeconds.Store(1)
+	t.Cleanup(func() { referenceRetrySeconds.Store(old) })
 }
 
 // fakeEncryptedDeviceOf registers a bare test network node as an encrypted device belonging to a user, the way a
