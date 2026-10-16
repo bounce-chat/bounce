@@ -1096,13 +1096,20 @@ func (b *Bounce) getChunkOffersToOffer(address string, userID uuid.UUID) []frame
 				Find(&userScoped)
 			unsentChunkOffers = append(unsentChunkOffers, userScoped...)
 
-			// Get all the group scoped chunks for any group accessible to the user
+			// Get the group scoped chunks for groups the user is a member of, and the group-with-invites scoped
+			// chunks for any group they have metadata access to; an invitee may see the icon but not the attachments
 			var groupScoped []chunkOffer
 			b.database.Model(&chunkOffer{}).
 				Distinct("id").
-				Where("scope IN ? AND destination IN ?", []int{scopeGroup, scopeGroupWithInvites}, allAccessibleGroupIDs).
+				Where("scope = ? AND destination IN ?", scopeGroup, groupIDs).
 				Find(&groupScoped)
 			unsentChunkOffers = append(unsentChunkOffers, groupScoped...)
+			var groupWithInvitesScoped []chunkOffer
+			b.database.Model(&chunkOffer{}).
+				Distinct("id").
+				Where("scope = ? AND destination IN ?", scopeGroupWithInvites, allAccessibleGroupIDs).
+				Find(&groupWithInvitesScoped)
+			unsentChunkOffers = append(unsentChunkOffers, groupWithInvitesScoped...)
 
 			// Get any overlap scoped offers
 			var globalScoped []chunkOffer
@@ -1128,13 +1135,20 @@ func (b *Bounce) getChunkOffersToOffer(address string, userID uuid.UUID) []frame
 				Find(&userScoped)
 			unsentChunkOffers = append(unsentChunkOffers, userScoped...)
 
-			// Get all the group scoped chunks for any group accessible to the user
+			// Get the group scoped chunks for groups the user is a member of, and the group-with-invites scoped
+			// chunks for any group they have metadata access to; an invitee may see the icon but not the attachments
 			var groupScoped []chunkOffer
 			b.database.Model(&chunkOffer{}).
 				Distinct("id").
-				Where("id NOT IN (?) AND scope IN ? AND destination IN ?", deliveredIDs, []int{scopeGroup, scopeGroupWithInvites}, allAccessibleGroupIDs).
+				Where("id NOT IN (?) AND scope = ? AND destination IN ?", deliveredIDs, scopeGroup, groupIDs).
 				Find(&groupScoped)
 			unsentChunkOffers = append(unsentChunkOffers, groupScoped...)
+			var groupWithInvitesScoped []chunkOffer
+			b.database.Model(&chunkOffer{}).
+				Distinct("id").
+				Where("id NOT IN (?) AND scope = ? AND destination IN ?", deliveredIDs, scopeGroupWithInvites, allAccessibleGroupIDs).
+				Find(&groupWithInvitesScoped)
+			unsentChunkOffers = append(unsentChunkOffers, groupWithInvitesScoped...)
 
 			// Get any overlap scoped offers
 			var globalScoped []chunkOffer
@@ -1245,13 +1259,20 @@ func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID uuid.UUID
 				Find(&userScoped)
 			unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, userScoped...)
 
-			// Next, get all the group scoped chunks for any group accessible to the user
+			// Next, the group scoped chunks for groups the user is a member of, and the group-with-invites scoped
+			// chunks for any group they have metadata access to
 			var groupScoped []encryptedChunkOffer
 			b.database.Model(&encryptedChunkOffer{}).
 				Distinct("id").
-				Where("scope IN ? AND destination IN ?", []int{scopeGroup, scopeGroupWithInvites}, allAccessibleGroupIDs).
+				Where("scope = ? AND destination IN ?", scopeGroup, groupIDs).
 				Find(&groupScoped)
 			unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, groupScoped...)
+			var groupWithInvitesScoped []encryptedChunkOffer
+			b.database.Model(&encryptedChunkOffer{}).
+				Distinct("id").
+				Where("scope = ? AND destination IN ?", scopeGroupWithInvites, allAccessibleGroupIDs).
+				Find(&groupWithInvitesScoped)
+			unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, groupWithInvitesScoped...)
 
 			// Lastly, get any overlap scoped offers
 			var globalScoped []encryptedChunkOffer
@@ -1269,13 +1290,20 @@ func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID uuid.UUID
 				Find(&userScoped)
 			unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, userScoped...)
 
-			// Next, get all the group scoped chunks for any group accessible to the user
+			// Next, the group scoped chunks for groups the user is a member of, and the group-with-invites scoped
+			// chunks for any group they have metadata access to
 			var groupScoped []encryptedChunkOffer
 			b.database.Model(&encryptedChunkOffer{}).
 				Distinct("id").
-				Where("id NOT IN (?) AND scope IN ? AND destination IN ?", deliveredIDs, []int{scopeGroup, scopeGroupWithInvites}, allAccessibleGroupIDs).
+				Where("id NOT IN (?) AND scope = ? AND destination IN ?", deliveredIDs, scopeGroup, groupIDs).
 				Find(&groupScoped)
 			unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, groupScoped...)
+			var groupWithInvitesScoped []encryptedChunkOffer
+			b.database.Model(&encryptedChunkOffer{}).
+				Distinct("id").
+				Where("id NOT IN (?) AND scope = ? AND destination IN ?", deliveredIDs, scopeGroupWithInvites, allAccessibleGroupIDs).
+				Find(&groupWithInvitesScoped)
+			unsentEncryptedChunkOffers = append(unsentEncryptedChunkOffers, groupWithInvitesScoped...)
 
 			// Lastly, get any overlap scoped offers
 			var globalScoped []encryptedChunkOffer
@@ -1288,8 +1316,13 @@ func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID uuid.UUID
 	}
 
 	references := []frameReference{}
+	alreadyIn := map[uuid.UUID]bool{}
 	for _, eco := range unsentEncryptedChunkOffers {
+		if alreadyIn[eco.ID] {
+			continue
+		}
 		references = append(references, frameReference{FrameID: eco.ID, Type: typeEncryptedChunkOffer})
+		alreadyIn[eco.ID] = true
 	}
 
 	return references
