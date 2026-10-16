@@ -291,7 +291,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 	defer groupMutex.Unlock()
 
 	// Unpack the signed container
-	sc, err := b.unpackSignedContainer(payload)
+	sc, err := b.unpackSignedContainer(typeUpdateGroup, payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -924,7 +924,7 @@ func (b *Bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
 			"error": err.Error(),
 		}).Fatal("error marshalling group update")
 	}
-	sc := b.createSignedContainer(ug.OriginalPayload)
+	sc := b.createSignedContainer(typeUpdateGroup, ug.OriginalPayload)
 	ug.Signature = sc.Signature
 	ug.Signer = sc.Signer
 

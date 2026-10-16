@@ -164,7 +164,7 @@ func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 	defer updateSettingsMutex.Unlock()
 
 	// Verify the signature
-	sc, err := b.unpackSignedContainer(payload)
+	sc, err := b.unpackSignedContainer(typeUpdateSettings, payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -260,7 +260,7 @@ func (b *Bounce) saveUpdateSettings(us updateSettings) error {
 			"error": err.Error(),
 		}).Fatal("error marshalling update settings")
 	}
-	sc := b.createSignedContainer(us.OriginalPayload)
+	sc := b.createSignedContainer(typeUpdateSettings, us.OriginalPayload)
 	us.Signature = sc.Signature
 	us.Signer = sc.Signer
 

@@ -112,7 +112,7 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) (
 	defer updateDeviceMutex.Unlock()
 
 	// Unpack the signed container
-	sc, err := b.unpackSignedContainer(payload)
+	sc, err := b.unpackSignedContainer(typeUpdateDevice, payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -607,7 +607,7 @@ func (b *Bounce) applyAndBroadcastUpdateDevice(ud updateDevice) error {
 			"error": err.Error(),
 		}).Fatal("error marshalling update device")
 	}
-	sc := b.createSignedContainer(ud.OriginalPayload)
+	sc := b.createSignedContainer(typeUpdateDevice, ud.OriginalPayload)
 	ud.Signature = sc.Signature
 	ud.Signer = sc.Signer
 

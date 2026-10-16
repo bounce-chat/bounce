@@ -255,7 +255,7 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 			"error": err.Error(),
 		}).Fatal("error marshalling group creation")
 	}
-	sc := b.createSignedContainer(gc.OriginalPayload)
+	sc := b.createSignedContainer(typeGroupCreation, gc.OriginalPayload)
 	gc.Signature = sc.Signature
 	gc.Signer = sc.Signer
 

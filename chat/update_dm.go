@@ -189,7 +189,7 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 	defer updateDMMutex.Unlock()
 
 	// Verify the signature
-	sc, err := b.unpackSignedContainer(payload)
+	sc, err := b.unpackSignedContainer(typeUpdateDM, payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -460,7 +460,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 							"error": err.Error(),
 						}).Fatal("error marshalling update DM")
 					}
-					sc := b.createSignedContainer(set.OriginalPayload)
+					sc := b.createSignedContainer(typeUpdateDM, set.OriginalPayload)
 					set.Signature = sc.Signature
 					set.Signer = sc.Signer
 
@@ -499,7 +499,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 						"error": err.Error(),
 					}).Fatal("error marshalling update DM")
 				}
-				sc := b.createSignedContainer(offer.OriginalPayload)
+				sc := b.createSignedContainer(typeUpdateDM, offer.OriginalPayload)
 				offer.Signature = sc.Signature
 				offer.Signer = sc.Signer
 
@@ -595,7 +595,7 @@ func (b *Bounce) saveAndDisplayUpdateDM(ud *updateDM) error {
 			"error": err.Error(),
 		}).Fatal("error marshalling update DM")
 	}
-	sc := b.createSignedContainer(ud.OriginalPayload)
+	sc := b.createSignedContainer(typeUpdateDM, ud.OriginalPayload)
 	ud.Signature = sc.Signature
 	ud.Signer = sc.Signer
 

@@ -92,7 +92,7 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 	encryptedChunkOfferMutex.Lock()
 	defer encryptedChunkOfferMutex.Unlock()
 
-	sc, err := b.unpackSignedContainer(payload)
+	sc, err := b.unpackSignedContainer(typeEncryptedChunkOffer, payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

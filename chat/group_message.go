@@ -115,7 +115,7 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 	defer readReceiptMutex.Unlock()
 
 	// Verify and unpack the signed container
-	sc, err := b.unpackSignedContainer(payload)
+	sc, err := b.unpackSignedContainer(typeGroupMessage, payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -598,7 +598,7 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 			"error": err.Error(),
 		}).Fatal("error marshalling group message")
 	}
-	sc := b.createSignedContainer(gm.OriginalPayload)
+	sc := b.createSignedContainer(typeGroupMessage, gm.OriginalPayload)
 	gm.Signature = sc.Signature
 	gm.Signer = sc.Signer
 

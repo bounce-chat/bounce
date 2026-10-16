@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"encoding/binary"
 	"errors"
 
 	"github.com/Basekick-Labs/msgpack/v6"
@@ -9,7 +10,7 @@ import (
 	"github.com/zeebo/blake3"
 )
 
-var ERR_SIGNED_CONTAINER_HAS_INVALID_SIGNATURE = errors.New("signed container has invalid signature")
+var errSignedContainerHasInvalidSignature = errors.New("signed container has invalid signature")
 
 type signedContainer struct {
 	Signer    string
@@ -17,18 +18,26 @@ type signedContainer struct {
 	Signature []byte
 }
 
-func (b *Bounce) createSignedContainer(payload []byte) *signedContainer {
-	hash := blake3.Sum256(payload)
+const signedContainerDomain = "bounce-signed-container:"
+
+func signedContainerHash(frameType uint16, payload []byte) []byte {
+	hasher := blake3.New()
+	hasher.Write([]byte(signedContainerDomain))
+	hasher.Write(binary.BigEndian.AppendUint16(nil, frameType))
+	hasher.Write(payload)
+	return hasher.Sum(nil)
+}
+
+func (b *Bounce) createSignedContainer(frameType uint16, payload []byte) *signedContainer {
 	return &signedContainer{
 		Signer:    b.network.Address(),
 		Payload:   payload,
-		Signature: b.network.Sign(hash[:]),
+		Signature: b.network.Sign(signedContainerHash(frameType, payload)),
 	}
 }
 
-func (b *Bounce) validSignedContainer(sc signedContainer) bool {
-	hash := blake3.Sum256(sc.Payload)
-	return b.network.VerifySignature(sc.Signer, hash[:], sc.Signature)
+func (b *Bounce) validSignedContainer(frameType uint16, sc signedContainer) bool {
+	return b.network.VerifySignature(sc.Signer, signedContainerHash(frameType, sc.Payload), sc.Signature)
 }
 
 func (b *Bounce) signedByUser(sc *signedContainer, userID uuid.UUID) bool {
@@ -50,15 +59,15 @@ func (b *Bounce) signedByUser(sc *signedContainer, userID uuid.UUID) bool {
 	return true
 }
 
-func (b *Bounce) unpackSignedContainer(payload []byte) (*signedContainer, error) {
+func (b *Bounce) unpackSignedContainer(frameType uint16, payload []byte) (*signedContainer, error) {
 	var sc signedContainer
 	err := msgpack.Unmarshal(payload, &sc)
 	if err != nil {
 		return nil, err
 	}
 
-	if !b.validSignedContainer(sc) {
-		return nil, ERR_SIGNED_CONTAINER_HAS_INVALID_SIGNATURE
+	if !b.validSignedContainer(frameType, sc) {
+		return nil, errSignedContainerHasInvalidSignature
 	}
 
 	return &sc, nil

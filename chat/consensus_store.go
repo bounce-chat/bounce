@@ -569,7 +569,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 				"error": err.Error(),
 			}).Fatal("error marshalling group update")
 		}
-		sc := b.createSignedContainer(injectedUpdate.OriginalPayload)
+		sc := b.createSignedContainer(typeUpdateGroup, injectedUpdate.OriginalPayload)
 		injectedUpdate.Signature = sc.Signature
 		injectedUpdate.Signer = sc.Signer
 
@@ -640,7 +640,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 						"error": err.Error(),
 					}).Fatal("error marshalling group update")
 				}
-				sc := b.createSignedContainer(accept.OriginalPayload)
+				sc := b.createSignedContainer(typeUpdateGroup, accept.OriginalPayload)
 				accept.Signature = sc.Signature
 				accept.Signer = sc.Signer
 

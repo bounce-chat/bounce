@@ -139,7 +139,7 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) (br
 	defer updateUserMutex.Unlock()
 
 	// Unpack the signed container
-	sc, err := b.unpackSignedContainer(payload)
+	sc, err := b.unpackSignedContainer(typeUpdateUser, payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -848,7 +848,7 @@ func (b *Bounce) applyAndBroadcastUpdateUser(uu updateUser) error {
 			"error": err.Error(),
 		}).Fatal("error marshalling update user")
 	}
-	sc := b.createSignedContainer(uu.OriginalPayload)
+	sc := b.createSignedContainer(typeUpdateUser, uu.OriginalPayload)
 	uu.Signature = sc.Signature
 	uu.Signer = sc.Signer
 

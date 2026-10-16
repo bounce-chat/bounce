@@ -78,7 +78,7 @@ func (b *Bounce) generateKEKFromPrivateKey(privateKey, counterpartyPublicKeyByte
 func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 	// Encrypt re-key frames to the specific devices that should be able to decrypt them
 	if br.getType() == typeUpdateUser {
-		sc, err := b.unpackSignedContainer(br.getPayload())
+		sc, err := b.unpackSignedContainer(typeUpdateUser, br.getPayload())
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

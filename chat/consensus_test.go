@@ -28,7 +28,7 @@ func TestMessagesAreValidIfCatchUpGivesPermission(t *testing.T) {
 	unrestriction.ID = updateGroupID(*unrestriction)
 	unrestriction.OriginalPayload, err = msgpack.Marshal(unrestriction)
 	assert.NoError(t, err)
-	sc := b.createSignedContainer(unrestriction.OriginalPayload)
+	sc := b.createSignedContainer(typeUpdateGroup, unrestriction.OriginalPayload)
 	unrestriction.Signature = sc.Signature
 	unrestriction.Signer = sc.Signer
 
@@ -42,7 +42,7 @@ func TestMessagesAreValidIfCatchUpGivesPermission(t *testing.T) {
 	}
 	alicePost.OriginalPayload, err = msgpack.Marshal(alicePost)
 	assert.NoError(t, err)
-	sc = alice.createSignedContainer(alicePost.OriginalPayload)
+	sc = alice.createSignedContainer(typeGroupMessage, alicePost.OriginalPayload)
 	alicePost.Signature = sc.Signature
 	alicePost.Signer = sc.Signer
 
@@ -89,7 +89,7 @@ func TestMessagesAreInvalidIfCatchUpRemovesPermission(t *testing.T) {
 	var err error
 	restriction.OriginalPayload, err = msgpack.Marshal(restriction)
 	assert.NoError(t, err)
-	sc := b.createSignedContainer(restriction.OriginalPayload)
+	sc := b.createSignedContainer(typeUpdateGroup, restriction.OriginalPayload)
 	restriction.Signature = sc.Signature
 	restriction.Signer = sc.Signer
 
@@ -103,7 +103,7 @@ func TestMessagesAreInvalidIfCatchUpRemovesPermission(t *testing.T) {
 	}
 	alicePost.OriginalPayload, err = msgpack.Marshal(alicePost)
 	assert.NoError(t, err)
-	sc = alice.createSignedContainer(alicePost.OriginalPayload)
+	sc = alice.createSignedContainer(typeGroupMessage, alicePost.OriginalPayload)
 	alicePost.Signature = sc.Signature
 	alicePost.Signer = sc.Signer
 
@@ -156,7 +156,7 @@ func TestMessagesAreValidIfUserBecomesAdminWhenRequired(t *testing.T) {
 	promotion.ID = updateGroupID(*promotion)
 	promotion.OriginalPayload, err = msgpack.Marshal(promotion)
 	assert.NoError(t, err)
-	sc := b.createSignedContainer(promotion.OriginalPayload)
+	sc := b.createSignedContainer(typeUpdateGroup, promotion.OriginalPayload)
 	promotion.Signature = sc.Signature
 	promotion.Signer = sc.Signer
 
@@ -170,7 +170,7 @@ func TestMessagesAreValidIfUserBecomesAdminWhenRequired(t *testing.T) {
 	}
 	alicePost.OriginalPayload, err = msgpack.Marshal(alicePost)
 	assert.NoError(t, err)
-	sc = alice.createSignedContainer(alicePost.OriginalPayload)
+	sc = alice.createSignedContainer(typeGroupMessage, alicePost.OriginalPayload)
 	alicePost.Signature = sc.Signature
 	alicePost.Signer = sc.Signer
 
@@ -225,7 +225,7 @@ func TestMessagesAreInvalidIfUserLoosesAdminWhenRequired(t *testing.T) {
 	demotion.ID = updateGroupID(*demotion)
 	demotion.OriginalPayload, err = msgpack.Marshal(demotion)
 	assert.NoError(t, err)
-	sc := b.createSignedContainer(demotion.OriginalPayload)
+	sc := b.createSignedContainer(typeUpdateGroup, demotion.OriginalPayload)
 	demotion.Signature = sc.Signature
 	demotion.Signer = sc.Signer
 
@@ -239,7 +239,7 @@ func TestMessagesAreInvalidIfUserLoosesAdminWhenRequired(t *testing.T) {
 	}
 	alicePost.OriginalPayload, err = msgpack.Marshal(alicePost)
 	assert.NoError(t, err)
-	sc = alice.createSignedContainer(alicePost.OriginalPayload)
+	sc = alice.createSignedContainer(typeGroupMessage, alicePost.OriginalPayload)
 	alicePost.Signature = sc.Signature
 	alicePost.Signer = sc.Signer
 
@@ -289,7 +289,7 @@ func TestAddingConflictToHistoryStackIsIgnored(t *testing.T) {
 	restrictEditing.ID = updateGroupID(restrictEditing)
 	restrictEditing.OriginalPayload, err = msgpack.Marshal(restrictEditing)
 	assert.NoError(t, err)
-	sc := b.createSignedContainer(restrictEditing.OriginalPayload)
+	sc := b.createSignedContainer(typeUpdateGroup, restrictEditing.OriginalPayload)
 	restrictEditing.Signature = sc.Signature
 	restrictEditing.Signer = sc.Signer
 	b.insertUpdateGroupIntoStack(stack, restrictEditing)
@@ -311,7 +311,7 @@ func TestAddingConflictToHistoryStackIsIgnored(t *testing.T) {
 	unauthorizedEdit.ID = updateGroupID(unauthorizedEdit)
 	unauthorizedEdit.OriginalPayload, err = msgpack.Marshal(unauthorizedEdit)
 	assert.NoError(t, err)
-	sc = b.createSignedContainer(unauthorizedEdit.OriginalPayload)
+	sc = b.createSignedContainer(typeUpdateGroup, unauthorizedEdit.OriginalPayload)
 	unauthorizedEdit.Signature = sc.Signature
 	unauthorizedEdit.Signer = sc.Signer
 	b.insertUpdateGroupIntoStack(stack, unauthorizedEdit)
@@ -345,7 +345,7 @@ func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
 	restrictEdits.ID = updateGroupID(restrictEdits)
 	restrictEdits.OriginalPayload, err = msgpack.Marshal(restrictEdits)
 	assert.NoError(t, err)
-	sc := b.createSignedContainer(restrictEdits.OriginalPayload)
+	sc := b.createSignedContainer(typeUpdateGroup, restrictEdits.OriginalPayload)
 	restrictEdits.Signature = sc.Signature
 	restrictEdits.Signer = sc.Signer
 	assert.NoError(t, b.database.Create(&restrictEdits).Error)
@@ -370,7 +370,7 @@ func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
 	unauthorizedEdit.ID = updateGroupID(unauthorizedEdit)
 	unauthorizedEdit.OriginalPayload, err = msgpack.Marshal(unauthorizedEdit)
 	assert.NoError(t, err)
-	sc = alice.createSignedContainer(unauthorizedEdit.OriginalPayload)
+	sc = alice.createSignedContainer(typeUpdateGroup, unauthorizedEdit.OriginalPayload)
 	unauthorizedEdit.Signature = sc.Signature
 	unauthorizedEdit.Signer = sc.Signer
 	assert.NoError(t, b.database.Create(&unauthorizedEdit).Error)
@@ -440,7 +440,7 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 	restrictEdits.ID = updateGroupID(restrictEdits)
 	restrictEdits.OriginalPayload, err = msgpack.Marshal(restrictEdits)
 	assert.NoError(t, err)
-	sc := b.createSignedContainer(restrictEdits.OriginalPayload)
+	sc := b.createSignedContainer(typeUpdateGroup, restrictEdits.OriginalPayload)
 	restrictEdits.Signature = sc.Signature
 	restrictEdits.Signer = sc.Signer
 	assert.NoError(t, b.database.Create(&restrictEdits).Error)
@@ -488,7 +488,7 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 	unauthorizedEdit.ID = updateGroupID(unauthorizedEdit)
 	unauthorizedEdit.OriginalPayload, err = msgpack.Marshal(unauthorizedEdit)
 	assert.NoError(t, err)
-	sc = b.createSignedContainer(unauthorizedEdit.OriginalPayload)
+	sc = b.createSignedContainer(typeUpdateGroup, unauthorizedEdit.OriginalPayload)
 	unauthorizedEdit.Signature = sc.Signature
 	unauthorizedEdit.Signer = sc.Signer
 	assert.NoError(t, b.database.Create(&unauthorizedEdit).Error)
@@ -552,7 +552,7 @@ func TestUpdatesWithCustomScopesGetDeletedWhenAllDelivered(t *testing.T) {
 	var err error
 	removal.OriginalPayload, err = msgpack.Marshal(removal)
 	assert.NoError(t, err)
-	sc := alice.createSignedContainer(removal.OriginalPayload)
+	sc := alice.createSignedContainer(typeUpdateGroup, removal.OriginalPayload)
 	removal.Signature = sc.Signature
 	removal.Signer = sc.Signer
 
@@ -600,7 +600,7 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 	var err error
 	removal.OriginalPayload, err = msgpack.Marshal(removal)
 	assert.NoError(t, err)
-	sc := alice.createSignedContainer(removal.OriginalPayload)
+	sc := alice.createSignedContainer(typeUpdateGroup, removal.OriginalPayload)
 	removal.Signature = sc.Signature
 	removal.Signer = sc.Signer
 
@@ -629,7 +629,7 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 	add.ID = updateGroupID(*add)
 	add.OriginalPayload, err = msgpack.Marshal(add)
 	assert.NoError(t, err)
-	sc = b.createSignedContainer(add.OriginalPayload)
+	sc = b.createSignedContainer(typeUpdateGroup, add.OriginalPayload)
 	add.Signature = sc.Signature
 	add.Signer = sc.Signer
 
@@ -643,7 +643,7 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 	accept.ID = updateGroupID(*accept)
 	accept.OriginalPayload, err = msgpack.Marshal(accept)
 	assert.NoError(t, err)
-	sc = alice.createSignedContainer(accept.OriginalPayload)
+	sc = alice.createSignedContainer(typeUpdateGroup, accept.OriginalPayload)
 	accept.Signature = sc.Signature
 	accept.Signer = sc.Signer
 
@@ -720,7 +720,7 @@ func TestCannotBeAddedToGroupByUnknownUser(t *testing.T) {
 	var err error
 	add.OriginalPayload, err = msgpack.Marshal(add)
 	assert.NoError(t, err)
-	sc := carol.createSignedContainer(add.OriginalPayload)
+	sc := carol.createSignedContainer(typeUpdateGroup, add.OriginalPayload)
 	add.Signature = sc.Signature
 	add.Signer = sc.Signer
 
@@ -791,7 +791,7 @@ func TestCanLearnAboutCreatingUserFromGroupInvite(t *testing.T) {
 	ts += 1
 	addAlice.OriginalPayload, err = msgpack.Marshal(addAlice)
 	assert.NoError(t, err)
-	sc := carol.createSignedContainer(addAlice.OriginalPayload)
+	sc := carol.createSignedContainer(typeUpdateGroup, addAlice.OriginalPayload)
 	addAlice.Signature = sc.Signature
 	addAlice.Signer = sc.Signer
 
@@ -807,7 +807,7 @@ func TestCanLearnAboutCreatingUserFromGroupInvite(t *testing.T) {
 	ts += 1
 	accept.OriginalPayload, err = msgpack.Marshal(accept)
 	assert.NoError(t, err)
-	sc = alice.createSignedContainer(accept.OriginalPayload)
+	sc = alice.createSignedContainer(typeUpdateGroup, accept.OriginalPayload)
 	accept.Signature = sc.Signature
 	accept.Signer = sc.Signer
 
@@ -824,7 +824,7 @@ func TestCanLearnAboutCreatingUserFromGroupInvite(t *testing.T) {
 	ts += 1
 	promote.OriginalPayload, err = msgpack.Marshal(promote)
 	assert.NoError(t, err)
-	sc = carol.createSignedContainer(promote.OriginalPayload)
+	sc = carol.createSignedContainer(typeUpdateGroup, promote.OriginalPayload)
 	promote.Signature = sc.Signature
 	promote.Signer = sc.Signer
 
@@ -844,7 +844,7 @@ func TestCanLearnAboutCreatingUserFromGroupInvite(t *testing.T) {
 	addMe.ID = updateGroupID(*addMe)
 	addMe.OriginalPayload, err = msgpack.Marshal(addMe)
 	assert.NoError(t, err)
-	sc = alice.createSignedContainer(addMe.OriginalPayload)
+	sc = alice.createSignedContainer(typeUpdateGroup, addMe.OriginalPayload)
 	addMe.Signature = sc.Signature
 	addMe.Signer = sc.Signer
 
@@ -923,7 +923,7 @@ func TestCanLearnAboutInvitedUserFromGroupInvite(t *testing.T) {
 	ts += 1
 	addCarol.OriginalPayload, err = msgpack.Marshal(addCarol)
 	assert.NoError(t, err)
-	sc := alice.createSignedContainer(addCarol.OriginalPayload)
+	sc := alice.createSignedContainer(typeUpdateGroup, addCarol.OriginalPayload)
 	addCarol.Signature = sc.Signature
 	addCarol.Signer = sc.Signer
 
@@ -1004,7 +1004,7 @@ func TestUserDoesNotJoinGroupWithUnknownUserByDefault(t *testing.T) {
 	addCarol.ID = updateGroupID(*addCarol)
 	addCarol.OriginalPayload, err = msgpack.Marshal(addCarol)
 	assert.NoError(t, err)
-	sc := alice.createSignedContainer(addCarol.OriginalPayload)
+	sc := alice.createSignedContainer(typeUpdateGroup, addCarol.OriginalPayload)
 	addCarol.Signature = sc.Signature
 	addCarol.Signer = sc.Signer
 

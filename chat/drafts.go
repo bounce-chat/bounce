@@ -91,7 +91,7 @@ func (b *Bounce) handleDraft(peer string, payload []byte, catchUp bool) (broadca
 	draftHandlerMutex.Lock()
 	defer draftHandlerMutex.Unlock()
 
-	sc, err := b.unpackSignedContainer(payload)
+	sc, err := b.unpackSignedContainer(typeDraft, payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -190,7 +190,7 @@ func (b *Bounce) UpdateDraft(threadID uuid.UUID, text string) {
 			"error": err.Error(),
 		}).Fatal("error marshalling draft")
 	}
-	sc := b.createSignedContainer(d.OriginalPayload)
+	sc := b.createSignedContainer(typeDraft, d.OriginalPayload)
 	d.Signature = sc.Signature
 	d.Signer = sc.Signer
 

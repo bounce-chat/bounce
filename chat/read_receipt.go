@@ -111,7 +111,7 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) (b
 	defer readReceiptMutex.Unlock()
 
 	// Unpack the signed container
-	sc, err := b.unpackSignedContainer(payload)
+	sc, err := b.unpackSignedContainer(typeReadReceipt, payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -480,7 +480,7 @@ func (b *Bounce) sendReadReceipt(id uuid.UUID, frameType string) error {
 			"error": err.Error(),
 		}).Fatal("error marshalling read reeceipt")
 	}
-	sc := b.createSignedContainer(rr.OriginalPayload)
+	sc := b.createSignedContainer(typeReadReceipt, rr.OriginalPayload)
 	rr.Signature = sc.Signature
 	rr.Signer = sc.Signer
 

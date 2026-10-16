@@ -171,7 +171,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 	defer fileMutex.Unlock()
 
 	// Verify and unpack the signed container
-	sc, err := b.unpackSignedContainer(payload)
+	sc, err := b.unpackSignedContainer(typeFile, payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -460,7 +460,7 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) (br
 	defer chunkOfferMutex.Unlock()
 
 	// Unpack the offer
-	sc, err := b.unpackSignedContainer(payload)
+	sc, err := b.unpackSignedContainer(typeChunkOffer, payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -1235,7 +1235,7 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 			"error": err.Error(),
 		}).Fatal("error marshalling encrypted chunk offer")
 	}
-	sc := b.createSignedContainer(eco.OriginalPayload)
+	sc := b.createSignedContainer(typeEncryptedChunkOffer, eco.OriginalPayload)
 	eco.Signature = sc.Signature
 	eco.Signer = sc.Signer
 
@@ -1432,7 +1432,7 @@ func (b *Bounce) embedFile(fileID uuid.UUID, data []byte, scope int, destination
 			"error": err.Error(),
 		}).Fatal("error marshalling file")
 	}
-	sc := b.createSignedContainer(f.OriginalPayload)
+	sc := b.createSignedContainer(typeFile, f.OriginalPayload)
 	f.Signature = sc.Signature
 	f.Signer = sc.Signer
 	err = b.database.Create(f).Error
@@ -1526,7 +1526,7 @@ func (b *Bounce) seedFile(fileID uuid.UUID, path string, scope int, destination 
 			"error": err.Error(),
 		}).Fatal("error marshalling file")
 	}
-	sc := b.createSignedContainer(f.OriginalPayload)
+	sc := b.createSignedContainer(typeFile, f.OriginalPayload)
 	f.Signature = sc.Signature
 	f.Signer = sc.Signer
 	err = b.database.Create(f).Error
@@ -1833,7 +1833,7 @@ func (b *Bounce) offerChunk(c chunk) {
 			"error": err.Error(),
 		}).Fatal("error marshalling chunk offer")
 	}
-	sc := b.createSignedContainer(co.OriginalPayload)
+	sc := b.createSignedContainer(typeChunkOffer, co.OriginalPayload)
 	co.Signature = sc.Signature
 	co.Signer = sc.Signer
 

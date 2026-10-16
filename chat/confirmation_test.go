@@ -88,7 +88,7 @@ func TestEarlyConfirmationWorks(t *testing.T) {
 	var err error
 	restrictEdits.OriginalPayload, err = msgpack.Marshal(restrictEdits)
 	assert.NoError(t, err)
-	sc := b.createSignedContainer(restrictEdits.OriginalPayload)
+	sc := b.createSignedContainer(typeUpdateGroup, restrictEdits.OriginalPayload)
 	restrictEdits.Signature = sc.Signature
 	restrictEdits.Signer = sc.Signer
 

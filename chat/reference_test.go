@@ -48,7 +48,7 @@ func TestChunkOffersInReferenceFollowOverlapScope(t *testing.T) {
 			"error": err.Error(),
 		}).Fatal("error marshalling file")
 	}
-	sc := b.createSignedContainer(f.OriginalPayload)
+	sc := b.createSignedContainer(typeFile, f.OriginalPayload)
 	f.Signature = sc.Signature
 	f.Signer = sc.Signer
 	err = b.database.Create(f).Error
@@ -71,7 +71,7 @@ func TestChunkOffersInReferenceFollowOverlapScope(t *testing.T) {
 			"error": err.Error(),
 		}).Fatal("error marshalling chunk offer")
 	}
-	bsc := b.createSignedContainer(bco.OriginalPayload)
+	bsc := b.createSignedContainer(typeChunkOffer, bco.OriginalPayload)
 	bco.Signature = bsc.Signature
 	bco.Signer = bsc.Signer
 	err = b.database.Create(bco).Error
@@ -98,7 +98,7 @@ func TestChunkOffersInReferenceFollowOverlapScope(t *testing.T) {
 			"error": err.Error(),
 		}).Fatal("error marshalling chunk offer")
 	}
-	asc := alice.createSignedContainer(aco.OriginalPayload)
+	asc := alice.createSignedContainer(typeChunkOffer, aco.OriginalPayload)
 	aco.Signature = asc.Signature
 	aco.Signer = asc.Signer
 	err = b.database.Create(aco).Error

@@ -89,7 +89,7 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 	defer groupMutex.Unlock()
 
 	// Verify and unpack the signed container
-	sc, err := b.unpackSignedContainer(payload)
+	sc, err := b.unpackSignedContainer(typeGroupCreation, payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

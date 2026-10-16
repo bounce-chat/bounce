@@ -115,7 +115,7 @@ func (ti *typingIndicator) getTimestamp() int64 {
 
 func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	// Unmarshal and signature verify the typing indicator
-	sc, err := b.unpackSignedContainer(payload)
+	sc, err := b.unpackSignedContainer(typeTypingIndicator, payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -611,7 +611,7 @@ func (b *Bounce) broadcastTypingIndicator(threadID uuid.UUID, messageType uint16
 		}).Fatal("unable to marshal typing indicator")
 	}
 
-	sc := b.createSignedContainer(ti.OriginalPayload)
+	sc := b.createSignedContainer(typeTypingIndicator, ti.OriginalPayload)
 	ti.Signer = sc.Signer
 	ti.Signature = sc.Signature
 

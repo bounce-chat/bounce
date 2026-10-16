@@ -567,7 +567,7 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 	addAlice.ID = updateGroupID(*addAlice)
 	addAlice.OriginalPayload, err = msgpack.Marshal(addAlice)
 	assert.NoError(t, err)
-	sc := me.createSignedContainer(addAlice.OriginalPayload)
+	sc := me.createSignedContainer(typeUpdateGroup, addAlice.OriginalPayload)
 	addAlice.Signature = sc.Signature
 	addAlice.Signer = sc.Signer
 
@@ -581,7 +581,7 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 	addBob.ID = updateGroupID(*addBob)
 	addBob.OriginalPayload, err = msgpack.Marshal(addBob)
 	assert.NoError(t, err)
-	sc = me.createSignedContainer(addBob.OriginalPayload)
+	sc = me.createSignedContainer(typeUpdateGroup, addBob.OriginalPayload)
 	addBob.Signature = sc.Signature
 	addBob.Signer = sc.Signer
 
@@ -595,7 +595,7 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 	aliceAccepts.ID = updateGroupID(*aliceAccepts)
 	aliceAccepts.OriginalPayload, err = msgpack.Marshal(aliceAccepts)
 	assert.NoError(t, err)
-	sc = alice.createSignedContainer(aliceAccepts.OriginalPayload)
+	sc = alice.createSignedContainer(typeUpdateGroup, aliceAccepts.OriginalPayload)
 	aliceAccepts.Signature = sc.Signature
 	aliceAccepts.Signer = sc.Signer
 
@@ -609,7 +609,7 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UU
 	bobAccepts.ID = updateGroupID(*bobAccepts)
 	bobAccepts.OriginalPayload, err = msgpack.Marshal(bobAccepts)
 	assert.NoError(t, err)
-	sc = bob.createSignedContainer(bobAccepts.OriginalPayload)
+	sc = bob.createSignedContainer(typeUpdateGroup, bobAccepts.OriginalPayload)
 	bobAccepts.Signature = sc.Signature
 	bobAccepts.Signer = sc.Signer
 
@@ -710,7 +710,7 @@ func (b *Bounce) createGroupCreation(ng NewGroup) groupCreation {
 			"error": err.Error(),
 		}).Fatal("error marshalling group creation")
 	}
-	sc := b.createSignedContainer(gc.OriginalPayload)
+	sc := b.createSignedContainer(typeGroupCreation, gc.OriginalPayload)
 	gc.Signature = sc.Signature
 	gc.Signer = sc.Signer
 

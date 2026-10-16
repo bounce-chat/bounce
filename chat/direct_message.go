@@ -121,7 +121,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 	defer readReceiptMutex.Unlock()
 
 	// Verify the signature
-	sc, err := b.unpackSignedContainer(payload)
+	sc, err := b.unpackSignedContainer(typeDirectMessage, payload)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -588,7 +588,7 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 			"error": err.Error(),
 		}).Fatal("error marshalling direct message")
 	}
-	sc := b.createSignedContainer(dm.OriginalPayload)
+	sc := b.createSignedContainer(typeDirectMessage, dm.OriginalPayload)
 	dm.Signature = sc.Signature
 	dm.Signer = sc.Signer
 
