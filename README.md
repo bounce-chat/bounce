@@ -30,6 +30,8 @@ Please open an issue if a feature in the UI is not behaving as expected.
 |macOS|✅|Fully supported|
 |Windows|✅|Fully supported|
 |Android|✅|Fully supported|
+|FreeBSD|✅|Fully supported, build with `-tags x11`|
+|OpenBSD|✅|Fully supported, build with `-tags x11`|
 |iOS|⛔|iOS does not allow apps to run in the background.  Implementing Bounce on iOS will require a light client that receives notifications from another instance of Bounce via APNs, and reaches out to that instance to send messages.  This has not been planned yet, and would change the privacy model around metadata protection.|
 
 ## Installation
