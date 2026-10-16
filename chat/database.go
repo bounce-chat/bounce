@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"gorm.io/driver/sqlite"
@@ -18,6 +19,34 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
+
+// Who a peer address belongs to can only change when a device row is created, an encrypted sync device is added, or
+// the encrypted device cache is written.  Each of those bumps this generation, so a socket loop that could not place
+// its peer re-resolves it only once something that could change the answer has happened, rather than on every
+// frame.  Without that, each frame from a peer we cannot place costs several database queries, and a stream of tiny
+// frames from a stranger keeps the connection pool busy for everything else.
+var peerIdentityGeneration atomic.Uint64
+
+func peerIdentitiesChanged() {
+	peerIdentityGeneration.Add(1)
+}
+
+type identityWatch struct {
+	seen uint64
+}
+
+func watchPeerIdentities() *identityWatch {
+	return &identityWatch{seen: peerIdentityGeneration.Load()}
+}
+
+func (w *identityWatch) changed() bool {
+	current := peerIdentityGeneration.Load()
+	if current == w.seen {
+		return false
+	}
+	w.seen = current
+	return true
+}
 
 func (b *Bounce) openDatabase() {
 	databaseFile := b.configDirectory + "/bounce.db?_journal_mode=WAL&_busy_timeout=10000&_txlock=immediate"
@@ -324,6 +353,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			encryptedDeviceCacheMutex.Lock()
 			encryptedDeviceCache[esd.Address] = dbProfile.ID
 			encryptedDeviceCacheMutex.Unlock()
+			peerIdentitiesChanged()
 			syncDevices = append(
 				syncDevices,
 				Device{
@@ -405,6 +435,7 @@ func (b *Bounce) GetInitialState() InitialState {
 				}
 				encryptedDeviceCache[addr] = u.ID
 				encryptedDeviceCacheMutex.Unlock()
+				peerIdentitiesChanged()
 			}
 		}
 	}

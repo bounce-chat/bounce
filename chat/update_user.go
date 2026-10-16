@@ -431,6 +431,7 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 			} else {
 				encryptedDevices[address] = true
 				encryptedDeviceCache[address] = userID
+				peerIdentitiesChanged()
 			}
 			encryptedDeviceCacheMutex.Unlock()
 		case updateUserTypeRemoveEncryptedDevice:
@@ -623,6 +624,7 @@ func (b *Bounce) createOrDeleteEncryptedSyncDevices(addresses []string) {
 					CreatedAt: time.Now().Unix(),
 				}
 				err = b.database.Create(&esd).Error
+				peerIdentitiesChanged()
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),

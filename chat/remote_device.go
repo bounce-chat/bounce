@@ -279,6 +279,8 @@ func (b *Bounce) readFrames(rd *remoteDevice, s *socket) {
 	var esd encryptedSyncDevice
 	var ownerID uuid.UUID
 	var ownerKnown bool
+	// A peer we cannot place is only looked up again once something that could place it has happened
+	identities := watchPeerIdentities()
 	if !b.encrypted {
 		profile, profileExists = b.currentUser()
 		deviceIsKnown, deviceIsEncrypted, dev, esd = b.getDeviceOrEncryptedSyncDevice(peer)
@@ -291,7 +293,13 @@ func (b *Bounce) readFrames(rd *remoteDevice, s *socket) {
 	}
 
 	for {
-		frameType, data, err := readFrame(s.underlying, deviceIsKnown || b.encrypted || deviceIsAnotherUsersEncryptedDevice)
+		allowLargeFrames := deviceIsKnown || deviceIsAnotherUsersEncryptedDevice
+		if b.encrypted {
+			peerUserKeyMutex.Lock()
+			_, allowLargeFrames = peerUserKeys[peer]
+			peerUserKeyMutex.Unlock()
+		}
+		frameType, data, err := readFrame(s.underlying, allowLargeFrames)
 		if err != nil {
 			s.close()
 			return
@@ -307,7 +315,8 @@ func (b *Bounce) readFrames(rd *remoteDevice, s *socket) {
 			}
 		}
 
-		if !ownerKnown {
+		identityChanged := identities.changed()
+		if !ownerKnown && identityChanged {
 			ownerID, ownerKnown = b.peerOwner(peer)
 		}
 		if ownerKnown && blockedUser(ownerID) {
@@ -335,9 +344,14 @@ func (b *Bounce) readFrames(rd *remoteDevice, s *socket) {
 				}
 			}
 
-			// Re-check if we're aware of this device if needed
-			if !deviceIsKnown {
+			// Re-check if we're aware of this device, once something has happened that could have made us aware
+			if !deviceIsKnown && identityChanged {
 				deviceIsKnown, deviceIsEncrypted, dev, esd = b.getDeviceOrEncryptedSyncDevice(peer)
+				if !deviceIsKnown {
+					encryptedDeviceCacheMutex.Lock()
+					_, deviceIsAnotherUsersEncryptedDevice = encryptedDeviceCache[peer]
+					encryptedDeviceCacheMutex.Unlock()
+				}
 			}
 			if deviceIsKnown && profileExists {
 				lastSeen := time.Now().Unix()
@@ -423,10 +437,11 @@ func (b *Bounce) writeFrames(rd *remoteDevice, s *socket) {
 	b.updateUserOnlineStatus(s.underlying.RemoteAddr().String())
 	encryptedHandlers := b.getHandlers(true)
 
+	identities := watchPeerIdentities()
 	ownerID, ownerKnown := b.peerOwner(s.underlying.RemoteAddr().String())
 
 	writeUnderlying := func(br sendable) error {
-		if !ownerKnown {
+		if !ownerKnown && identities.changed() {
 			ownerID, ownerKnown = b.peerOwner(s.underlying.RemoteAddr().String())
 		}
 		if ownerKnown && blockedUser(ownerID) {

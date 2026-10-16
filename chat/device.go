@@ -46,6 +46,7 @@ func (d *device) BeforeCreate(tx *gorm.DB) error {
 // contact could claim another user's device address as their own encrypted device before we met that device, and
 // every frame to it would be refused as unsendable to an encrypted device from then on.
 func (d *device) AfterCreate(tx *gorm.DB) error {
+	peerIdentitiesChanged()
 	encryptedDeviceCacheMutex.Lock()
 	claimedBy, squatted := encryptedDeviceCache[d.Address]
 	if squatted {
