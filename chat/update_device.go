@@ -437,7 +437,8 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 		b.updateUserState(target)
 	}
 
-	// Find any devices that were added by this device after it was revoked and delete them.
+	// Find any devices that were added by this device after it was revoked and delete them, recursively clearing out
+	// their actions as well
 	var unauthorizedDevices []device
 	err = b.database.
 		Joins("JOIN introduction_signatures ON introduction_signatures.device_id = devices.id").
@@ -449,6 +450,11 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 		}).Fatal("database error looking up unauthorized devices")
 	}
 	for _, dev := range unauthorizedDevices {
+		b.devicePool.revokedMutex.Lock()
+		b.devicePool.revokedDevices[dev.Address] = true
+		b.devicePool.revokedMutex.Unlock()
+		b.getRemoteDevice(dev.Address).shutdown()
+
 		err = b.database.Delete(&dev).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -456,6 +462,11 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 				"error": err.Error(),
 			}).Fatal("database error deleting unauthorized devices")
 		}
+		if dev.UserID == b.currentUserID() {
+			go b.ui.DeviceRevoked(dev.ID)
+		}
+
+		b.revokeUnauthorizedDeviceActions(dev.Address, 0)
 	}
 }
 

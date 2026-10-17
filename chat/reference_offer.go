@@ -588,12 +588,15 @@ func (b *Bounce) getUpdateGroupsToOffer(address string, userID uuid.UUID) []fram
 				continue
 			}
 
-			// Find the timestamp of their latest departure
+			// Find the timestamp of their latest departure from this group.  The departure rows found a moment ago
+			// can be gone by now, for instance when the group was deleted in between, so a missing maximum means
+			// there is nothing to offer rather than a broken database.
 			var lastRemoval int64
 			row := b.database.
 				Table("update_groups").
 				Where(
-					"((type = ? OR type = ?) AND data = ?) OR (type = ? AND data = ? AND actor = ?)",
+					"target = ? AND (((type = ? OR type = ?) AND data = ?) OR (type = ? AND data = ? AND actor = ?))",
+					groupID,
 					updateGroupTypeRemoveUser,
 					updateGroupTypeRevokeInvite,
 					userID[:],
@@ -601,13 +604,16 @@ func (b *Bounce) getUpdateGroupsToOffer(address string, userID uuid.UUID) []fram
 					[]byte{rejectInvite},
 					userID,
 				).
-				Select("MAX(timestamp)").
+				Select("COALESCE(MAX(timestamp), 0)").
 				Row()
 			err := row.Scan(&lastRemoval)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Fatal("error parsing timestamp of users last departure from group")
+			}
+			if lastRemoval == 0 {
+				continue
 			}
 
 			// Find all the undelivered update groups up until their last departure

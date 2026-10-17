@@ -96,6 +96,10 @@ func (d *device) AfterDelete(tx *gorm.DB) error {
 	if d.ID == uuid.Nil {
 		return nil
 	}
+	err := tx.Where("device_id = ?", d.ID).Delete(&introductionSignature{}).Error
+	if err != nil {
+		return err
+	}
 	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", d.ID, typeDevice).Delete(&deliveryRecord{}).Error
 }
 
