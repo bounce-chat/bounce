@@ -40,11 +40,42 @@ func (sdr *syncDeviceRequest) getPayload() []byte {
 	return bytes
 }
 
-func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
-	// Mutex lock prcessing to enure an offer can only be used once
+func (b *Bounce) claimSyncDeviceOffer(secret string) (offer syncDeviceOffer, found bool, repeat bool) {
 	syncDeviceRequestMutex.Lock()
 	defer syncDeviceRequestMutex.Unlock()
 
+	oldSecretsMutex.Lock()
+	_, repeat = ignoreOldSecrets["sync-device-request"+secret]
+	oldSecretsMutex.Unlock()
+	if repeat {
+		return offer, true, true
+	}
+
+	err := b.database.First(&offer, "secret = ?", secret).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return offer, false, false
+		}
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up sync device offer by secret")
+	}
+
+	oldSecretsMutex.Lock()
+	ignoreOldSecrets["sync-device-request"+secret] = true
+	oldSecretsMutex.Unlock()
+
+	err = b.database.Delete(&offer).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"id":    offer.ID,
+			"error": err.Error(),
+		}).Fatal("database error deleting sync device offer after use")
+	}
+	return offer, true, false
+}
+
+func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	// Unmarshal the payload
 	var sdr syncDeviceRequest
 	err := msgpack.Unmarshal(payload, &sdr)
@@ -55,42 +86,18 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 		return nil, false
 	}
 
-	oldSecretsMutex.Lock()
-	_, ok := ignoreOldSecrets["sync-device-request"+sdr.Secret]
-	oldSecretsMutex.Unlock()
-	if ok {
+	// Consume the offer this secret refers to
+	offer, found, repeat := b.claimSyncDeviceOffer(sdr.Secret)
+	if repeat {
 		// Someone is resending a valid secret they used, it's ok to silently ignore
 		return nil, false
 	}
-
-	// Make sure we've got an offer out with this secret
-	var offer syncDeviceOffer
-	err = b.database.First(&offer, "secret = ?", sdr.Secret).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"peer": peer,
-			}).Warn("peer sent a sync device request with an invalid secret")
-			b.sendDirect(peer, &syncDeviceRequestRejected{})
-			return nil, false
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up sync device offer by secret")
-		}
-	}
-
-	oldSecretsMutex.Lock()
-	ignoreOldSecrets["sync-device-request"+sdr.Secret] = true
-	oldSecretsMutex.Unlock()
-
-	// Delete the offer
-	err = b.database.Delete(&offer).Error
-	if err != nil {
+	if !found {
 		log.WithFields(log.Fields{
-			"id":    offer.ID,
-			"error": err.Error(),
-		}).Fatal("database error deleting sync device offer after use")
+			"peer": peer,
+		}).Warn("peer sent a sync device request with an invalid secret")
+		b.sendDirect(peer, &syncDeviceRequestRejected{})
+		return nil, false
 	}
 
 	// Enforce the timestamp on the offer

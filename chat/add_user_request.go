@@ -39,10 +39,42 @@ func (aur *addUserRequest) getPayload() []byte {
 	return bytes
 }
 
-func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broadcastable, bool) {
+func (b *Bounce) claimAddUserOffer(secret string) (offer addUserOffer, found bool, repeat bool) {
 	addUserRequestMutex.Lock()
 	defer addUserRequestMutex.Unlock()
 
+	oldSecretsMutex.Lock()
+	_, repeat = ignoreOldSecrets["add-user-request"+secret]
+	oldSecretsMutex.Unlock()
+	if repeat {
+		return offer, true, true
+	}
+
+	err := b.database.First(&offer, "secret = ?", secret).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return offer, false, false
+		}
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up add user offer by secret")
+	}
+
+	oldSecretsMutex.Lock()
+	ignoreOldSecrets["add-user-request"+secret] = true
+	oldSecretsMutex.Unlock()
+
+	err = b.database.Delete(&offer).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"id":    offer.ID,
+			"error": err.Error(),
+		}).Fatal("database error deleting add user offer after use")
+	}
+	return offer, true, false
+}
+
+func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broadcastable, bool) {
 	// Unmarshal the payload
 	var aur addUserRequest
 	err := msgpack.Unmarshal(payload, &aur)
@@ -53,42 +85,18 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 		return nil, false
 	}
 
-	oldSecretsMutex.Lock()
-	_, ok := ignoreOldSecrets["add-user-request"+aur.Secret]
-	oldSecretsMutex.Unlock()
-	if ok {
+	// Consume the offer this secret refers to
+	offer, found, repeat := b.claimAddUserOffer(aur.Secret)
+	if repeat {
 		// Someone is resending a valid secret they used, it's ok to silently ignore
 		return nil, false
 	}
-
-	// Make sure we've got an offer out with this secret
-	var offer addUserOffer
-	err = b.database.First(&offer, "secret = ?", aur.Secret).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"peer": peer,
-			}).Warn("peer sent an add user request with an invalid secret")
-			b.sendDirect(peer, &addUserRequestRejected{})
-			return nil, false
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error looking up add user offer by secret")
-		}
-	}
-
-	oldSecretsMutex.Lock()
-	ignoreOldSecrets["add-user-request"+aur.Secret] = true
-	oldSecretsMutex.Unlock()
-
-	// Delete the offer
-	err = b.database.Delete(&offer).Error
-	if err != nil {
+	if !found {
 		log.WithFields(log.Fields{
-			"id":    offer.ID,
-			"error": err.Error(),
-		}).Fatal("database error deleting add user offer after use")
+			"peer": peer,
+		}).Warn("peer sent an add user request with an invalid secret")
+		b.sendDirect(peer, &addUserRequestRejected{})
+		return nil, false
 	}
 
 	// Enforce the timestamp on the offer
@@ -120,13 +128,13 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 	}
 
 	// Make sure that the peer that sent us this is part of the requester user's device group
-	found := false
+	peerInDeviceGroup := false
 	for _, dev := range requesterUser.Devices {
 		if dev.Address == peer {
-			found = true
+			peerInDeviceGroup = true
 		}
 	}
-	if !found {
+	if !peerInDeviceGroup {
 		log.Warn("add user request came from device that is not part of the requester user's device group")
 		b.sendDirect(peer, &addUserRequestRejected{})
 		return nil, false
