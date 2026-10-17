@@ -372,7 +372,7 @@ func (b *Bounce) shouldNotifyGM(gm *groupMessage) bool {
 		return false
 	}
 
-	if waitingForInitialSyncFrom != "" {
+	if waitingForInitialSyncFrom() != "" {
 		return false
 	}
 

@@ -37,10 +37,7 @@ func (sdra *syncDeviceRequestAccepted) getPayload() []byte {
 
 func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	// Make sure we've sent a sync request to this peer before
-	waitingForSyncResponseFromMutex.Lock()
-	_, requested := waitingForSyncResponseFrom[peer]
-	waitingForSyncResponseFromMutex.Unlock()
-	if !requested {
+	if !syncRequestedFrom(peer) {
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("ignoring sync device request accepted from peer we did not make a sync request to")
@@ -156,7 +153,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 
 	// Mark that we're now waiting for a catch up for this device
 	if sdra.References {
-		waitingForInitialSyncFrom = peer
+		setWaitingForInitialSyncFrom(peer)
 	}
 
 	return nil, false

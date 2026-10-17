@@ -46,7 +46,7 @@ func (cu *catchUp) getPayload() []byte {
 var initialSyncMutex sync.Mutex
 
 func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastable, bool) {
-	if waitingForInitialSyncFrom == peer {
+	if waitingForInitialSyncFrom() == peer {
 		b.ui.InitialSyncStarting()
 
 		initialSyncMutex.Lock()
@@ -217,14 +217,14 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			draftsUpdated = true
 		}
 
-		if waitingForInitialSyncFrom == peer {
+		if waitingForInitialSyncFrom() == peer {
 			if i%progressMod == 0 {
 				b.ui.InitialSyncProgress(float64(i) / float64(frameCount))
 			}
 		}
 	}
 
-	if waitingForInitialSyncFrom == peer {
+	if waitingForInitialSyncFrom() == peer {
 		b.ui.InitialSyncPreparing()
 	}
 
@@ -505,7 +505,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			}
 		}
 	}
-	b.ui.CatchUpMessages(bulkUpdate, waitingForInitialSyncFrom == peer)
+	b.ui.CatchUpMessages(bulkUpdate, waitingForInitialSyncFrom() == peer)
 
 	for _, gm := range gmsToDisplay {
 		b.ui.MessageDelivered(gm.ID, dev.UserID)
@@ -552,8 +552,8 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	// now want to dial
 	go b.auditPeers()
 
-	if waitingForInitialSyncFrom == peer {
-		waitingForInitialSyncFrom = ""
+	if waitingForInitialSyncFrom() == peer {
+		setWaitingForInitialSyncFrom("")
 		b.ui.InitialSyncComplete()
 	}
 

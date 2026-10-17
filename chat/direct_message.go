@@ -351,7 +351,7 @@ func (b *Bounce) shouldNotifyDM(dm *directMessage) bool {
 		return false
 	}
 
-	if waitingForInitialSyncFrom != "" {
+	if waitingForInitialSyncFrom() != "" {
 		return false
 	}
 

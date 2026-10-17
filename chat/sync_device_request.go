@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
@@ -15,9 +16,28 @@ import (
 
 var syncDeviceOfferValidForSeconds = int64(300)
 var syncDeviceRequestMutex sync.Mutex
-var waitingForInitialSyncFrom string
+
+// Address of new sync device we're expecting our first catch up from, which will contain all of our history
+var initialSyncSource atomic.Value
+
+func waitingForInitialSyncFrom() string {
+	source, _ := initialSyncSource.Load().(string)
+	return source
+}
+
+func setWaitingForInitialSyncFrom(peer string) {
+	initialSyncSource.Store(peer)
+}
+
+// Addresses we have sent a sync device request to
 var waitingForSyncResponseFrom = map[string]bool{}
 var waitingForSyncResponseFromMutex sync.Mutex
+
+func syncRequestedFrom(peer string) bool {
+	waitingForSyncResponseFromMutex.Lock()
+	defer waitingForSyncResponseFromMutex.Unlock()
+	return waitingForSyncResponseFrom[peer]
+}
 
 // A sync device request is our request to join an existing profile.  We do this by sending the secret that was present in an offer,
 // as well as our signature of the address of the device that made the offer.
