@@ -270,11 +270,70 @@ func (b *Bounce) pruneUndeliverableCustomScopes() {
 	}
 }
 
+func (b *Bounce) pruneUnverifiedUpdateGroups() {
+	me, ok := b.currentUser()
+	if !ok {
+		return
+	}
+
+	cutoff := time.Now().Unix() - int64(unverifiedUpdateGroupLifetime.Seconds())
+	var orphans []updateGroup
+	err := b.database.Where(
+		`saved_at < ?
+		 AND
+		 (target NOT IN
+			(SELECT id FROM group_creations)
+			OR
+			(applied = ? AND signer NOT IN (SELECT address FROM devices))
+		)`,
+		cutoff,
+		false,
+	).Find(&orphans).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up unverified update groups")
+	}
+
+	for _, ug := range orphans {
+		if ug.Actor == me.ID {
+			continue
+		}
+		if ug.Type == updateGroupTypeInviteUser {
+			var invited user
+			if msgpack.Unmarshal(ug.Data, &invited) == nil && invited.ID == me.ID {
+				continue
+			}
+		}
+		err = b.database.Clauses(clause.Returning{}).Delete(&ug).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    ug.ID,
+				"error": err.Error(),
+			}).Error("error pruning unverified update group")
+		}
+	}
+}
+
+func (b *Bounce) keepUnverifiedUpdateGroupsPruned() {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-b.done:
+			return
+		case <-ticker.C:
+			b.pruneUnverifiedUpdateGroups()
+		}
+	}
+}
+
 func (b *Bounce) GetInitialState() InitialState {
 	// Prune the database
 	b.pruneDirectMessages()
 	b.pruneGroupMessages()
 	b.pruneUndeliverableCustomScopes()
+	b.pruneUnverifiedUpdateGroups()
 
 	// Load the profile and sync devices
 	var profile *User

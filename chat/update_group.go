@@ -38,6 +38,8 @@ const permissionRestricted = 0x01
 const rejectInvite = 0x00
 const acceptInvite = 0x01
 
+const maximumInviteUserBytes = 1024 * 1024 // Capped to prevent disk filling attack
+
 var errUpdateGroupWithUnknownType = errors.New("update group has unknown update type")
 var errInvalidGroupName = errors.New("invalid group name")
 var errMutedUntilOnlyMutableBySelf = errors.New("group muted until settings can only be modified by current user")
@@ -53,6 +55,11 @@ var errInvalidPermissionByte = errors.New("invalid permission byte")
 var errUpdateNotApplied = errors.New("update could not be applied")
 var errGroupNotFound = errors.New("group not found")
 var errUserNotInGroup = errors.New("user is not in group")
+
+var maximumUnverifiedUpdateGroupsPerSigner = int64(100)
+var maximumUnverifiedUpdateGroups = int64(1000)
+var unverifiedUpdateGroupLifetime = 24 * time.Hour
+
 var errAdminRequired = errors.New("this action can only be performed by admins")
 var errCannotDemoteAdminWhoDeletedGroup = errors.New("admins who deleted group cannot be demoted")
 var errAlreadyDeleted = errors.New("group already deleted")
@@ -214,6 +221,9 @@ func (ug *updateGroup) validPayloadFormat() bool {
 		_, err := uuid.FromBytes(ug.Data)
 		return err == nil
 	case updateGroupTypeInviteUser:
+		if len(ug.Data) > maximumInviteUserBytes {
+			return false
+		}
 		var u user
 		err := msgpack.Unmarshal(ug.Data, &u)
 		return err == nil
@@ -320,6 +330,31 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 		return nil, false
 	}
 
+	// Make sure signer of the update is the actor
+	signerDevice, signerKnown := b.getDeviceFromAddress(sc.Signer)
+	if signerKnown && signerDevice.UserID != ug.Actor {
+		log.WithFields(log.Fields{
+			"id":     ug.ID,
+			"actor":  ug.Actor,
+			"signer": ug.Signer,
+			"peer":   peer,
+		}).Warn("ignoring update group signed by a device of another user")
+		return nil, false
+	}
+
+	// If the signer device is not known and this isnt' a catch up, ignore this catch up for now without an ack.
+	// It could be us being invited by a user this device isn't aware of yet, in which case we can rely on it
+	// being re-offered after we learn the identity of the signer.
+	if !signerKnown && !catchUp {
+		log.WithFields(log.Fields{
+			"id":     ug.ID,
+			"actor":  ug.Actor,
+			"signer": ug.Signer,
+			"peer":   peer,
+		}).Debug("ignoring update group from a device we do not know")
+		return nil, false
+	}
+
 	// Ignore update groups for blocked groups
 	for _, blockedGroup := range b.blockedGroups() {
 		if ug.Target == blockedGroup {
@@ -356,6 +391,17 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 			"id":   ug.ID,
 			"peer": peer,
 		}).Warn("ignoring update group with invalid data")
+		return nil, false
+	}
+
+	// Limit the amount of updates that come from unknown devices or target unknown groups, in order
+	// to limit the effect of resource exhaustion attacks
+	if (!signerKnown || !b.haveGroupCreation(ug.Target)) && !b.unverifiedUpdateGroupAllowed(ug.Signer) {
+		log.WithFields(log.Fields{
+			"id":     ug.ID,
+			"target": ug.Target,
+			"signer": ug.Signer,
+		}).Warn("dropping unverified update group because limit has been reached")
 		return nil, false
 	}
 
@@ -445,9 +491,66 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 				}
 			}
 		}
+
+		// Return false to prevent broadcasting of update groups that we did not apply
+		if !ug.Applied {
+			return &ug, false
+		}
 	}
 
 	return &ug, true
+}
+
+func (b *Bounce) haveGroupCreation(groupID uuid.UUID) bool {
+	var count int64
+	err := b.database.Model(&groupCreation{}).Where("id = ?", groupID).Count(&count).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up group creation")
+	}
+	return count > 0
+}
+
+// Check if our quote for unverified update groups has been reached, for this signer or globally
+func (b *Bounce) unverifiedUpdateGroupAllowed(signer string) bool {
+	var bySigner int64
+	var total int64
+	err := b.database.
+		Model(&updateGroup{}).
+		Where(
+			`(
+				target NOT IN (
+					SELECT id FROM group_creations
+				) OR (
+					applied = ?
+					AND
+					signer NOT IN (SELECT address FROM devices))
+			) AND signer = ?`,
+			false,
+			signer,
+		).Count(&bySigner).Error
+	if err == nil {
+		err = b.database.
+			Model(&updateGroup{}).
+			Where(
+				`target NOT IN (
+					SELECT id FROM group_creations
+				) OR (
+					applied = ?
+					AND
+					signer NOT IN (SELECT address FROM devices)
+				)`,
+				false,
+			).Count(&total).Error
+	}
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error counting unverified update groups")
+	}
+
+	return bySigner < maximumUnverifiedUpdateGroupsPerSigner && total < maximumUnverifiedUpdateGroups
 }
 
 func (b *Bounce) processEarlyConfirmations(ug updateGroup) {
