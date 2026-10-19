@@ -127,16 +127,18 @@ func TestAnIncompleteCatchUpIsFollowedAtOnceByARequestForTheRest(t *testing.T) {
 }
 
 func TestInitialSyncCompletesOnlyWithTheFinalStage(t *testing.T) {
-	me, alice, _, _ := createUsersAndGroups(t)
-	setWaitingForInitialSyncFrom(me.network.Address())
+	_, alice, _, _ := createUsersAndGroups(t)
+	// A source that is not a live peer, so no real catch up from it can arrive mid-test and end the sync for us
+	source := newTestnet().Address()
+	setWaitingForInitialSyncFrom(source)
 	t.Cleanup(func() { setWaitingForInitialSyncFrom(""); initialSyncAnnounced.Store(false) })
 
 	incomplete, _ := msgpack.Marshal(catchUp{Incomplete: true})
-	alice.handleCatchUp(me.network.Address(), incomplete, false)
-	assert.Equal(t, me.network.Address(), waitingForInitialSyncFrom(), "still syncing while stages remain")
+	alice.handleCatchUp(source, incomplete, false)
+	assert.Equal(t, source, waitingForInitialSyncFrom(), "still syncing while stages remain")
 
 	complete, _ := msgpack.Marshal(catchUp{})
-	alice.handleCatchUp(me.network.Address(), complete, false)
+	alice.handleCatchUp(source, complete, false)
 	assert.Equal(t, "", waitingForInitialSyncFrom())
 }
 

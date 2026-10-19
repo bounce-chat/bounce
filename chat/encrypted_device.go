@@ -12,7 +12,6 @@ import (
 	"fmt"
 	stdlog "log"
 	"os"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -49,18 +48,11 @@ type oldKey struct {
 }
 
 func StartEncryptedDevice(network Network, configDirectory string) {
-	if runtime.GOOS == "android" {
+	if os.Getenv("DEBUG") == "true" {
 		log.SetLevel(log.DebugLevel)
-		if os.Getenv("DEBUG") == "true" {
-			log.SetReportCaller(true)
-		}
+		log.SetReportCaller(true)
 	} else {
-		if os.Getenv("DEBUG") == "true" {
-			log.SetLevel(log.DebugLevel)
-			log.SetReportCaller(true)
-		} else {
-			log.SetLevel(log.InfoLevel)
-		}
+		log.SetLevel(log.InfoLevel)
 	}
 	log.AddHook(&filehook{})
 

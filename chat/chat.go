@@ -139,21 +139,14 @@ func (b *Bounce) sleepOrDone(d time.Duration) bool {
 // The main entrypoint for starting the Bounce chat engine, blocks until the user interface
 // is closed, the network reaches a fatal error, or the process is sent an interrupt.
 func Open(ui UI, network Network, configDirectory string, postNotification func(id, title, content, openThread string, icon []byte), clearNotification func(string)) Engine {
-	if runtime.GOOS == "android" {
-		log.SetLevel(log.DebugLevel)
-		if os.Getenv("REPORT_CALLER") == "true" {
-			log.SetReportCaller(true)
-		}
-	} else {
-		if os.Getenv("REPORT_CALLER") == "true" {
-			log.SetReportCaller(true)
+	if os.Getenv("REPORT_CALLER") == "true" {
+		log.SetReportCaller(true)
 
-		}
-		if os.Getenv("DEBUG") == "true" {
-			log.SetLevel(log.DebugLevel)
-		} else {
-			log.SetLevel(log.InfoLevel)
-		}
+	}
+	if os.Getenv("DEBUG") == "true" {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
 	}
 	log.AddHook(&filehook{})
 
