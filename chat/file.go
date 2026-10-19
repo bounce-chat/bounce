@@ -1312,7 +1312,7 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 	}
 
 	path := f.Path + downloadExtension
-	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"path":  f.Path,
@@ -1398,7 +1398,7 @@ func (b *Bounce) embedFile(fileID uuid.UUID, data []byte, scope int, destination
 		return ErrFileTooBig
 	}
 
-	err := os.WriteFile(b.configDirectory+"/blobs/"+fileID.String(), data, 0644)
+	err := os.WriteFile(b.configDirectory+"/blobs/"+fileID.String(), data, 0600)
 	if err != nil {
 		return err
 	}

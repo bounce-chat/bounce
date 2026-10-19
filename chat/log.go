@@ -23,6 +23,7 @@ var onionAddressPattern = regexp.MustCompile(`[a-z2-7]{56}`)
 
 var logfile = &timberjack.Logger{
 	Filename:           config.GetConfigDirectory() + "/bounce-log.txt",
+	FileMode:           0600,
 	MaxAge:             3,
 	Compression:        "none",
 	LocalTime:          true,

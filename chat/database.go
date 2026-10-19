@@ -48,6 +48,19 @@ func (w *identityWatch) changed() bool {
 	return true
 }
 
+func restrictDatabaseFiles(dsn string) {
+	path := strings.SplitN(dsn, "?", 2)[0]
+	for _, file := range []string{path, path + "-wal", path + "-shm"} {
+		err := os.Chmod(file, 0600)
+		if err != nil && !os.IsNotExist(err) {
+			log.WithFields(log.Fields{
+				"file":  file,
+				"error": err.Error(),
+			}).Warn("could not restrict database file mode")
+		}
+	}
+}
+
 func (b *Bounce) openDatabase() {
 	databaseFile := b.configDirectory + "/bounce.db?_journal_mode=WAL&_busy_timeout=10000&_txlock=immediate"
 
@@ -78,6 +91,7 @@ func (b *Bounce) openDatabase() {
 			"error": err.Error(),
 		}).Fatal("error opening database")
 	}
+	restrictDatabaseFiles(databaseFile)
 
 	// Set max connections to 1 to avoid locks
 	sqliteDB, err := b.database.DB()

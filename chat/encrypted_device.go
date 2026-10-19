@@ -154,6 +154,7 @@ func (b *Bounce) openEncryptedDatabase() {
 			"error": err.Error(),
 		}).Fatal("error opening database")
 	}
+	restrictDatabaseFiles(databaseFile)
 
 	// Set max connections to 1 to avoid locks
 	sqliteDB, err := b.database.DB()
