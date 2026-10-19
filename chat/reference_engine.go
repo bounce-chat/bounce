@@ -199,6 +199,42 @@ func (b *Bounce) loadCatchUp(peer string, cu []frameReference) {
 	}
 }
 
+// requestOutstandingReferencesFrom is called when an incomplete catchup is finished, and is used to request the
+// next batch pf data from the peer.
+func (b *Bounce) requestOutstandingReferencesFrom(peer string) {
+	referenceRequestMutex.Lock()
+	defer referenceRequestMutex.Unlock()
+
+	var outstanding []frameReference
+	err := b.referenceDatabase.Where("peer = ?", peer).Find(&outstanding).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error getting outstanding frame references from reference database")
+	}
+	if len(outstanding) == 0 {
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"peer": peer,
+		"len":  len(outstanding),
+	}).Debug("requesting the next stage of an incomplete catch up")
+	go b.sendDirect(peer, &referenceRequest{References: outstanding})
+	err = b.referenceDatabase.
+		Table("frame_references").
+		Where("peer = ?", peer).
+		Updates(map[string]interface{}{
+			"state":       referenceStateRequested,
+			"last_action": time.Now().Unix(),
+		}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error updating frame references after requesting the next stage")
+	}
+}
+
 func (b *Bounce) makeReferenceRequests() {
 	// Make sure we aren't handling a catch up while checking what we still need to request
 	catchUpMutex.Lock()

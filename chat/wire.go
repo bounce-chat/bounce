@@ -19,7 +19,7 @@ var headerSize = 6
 const payloadPreallocation = 64 * 1024
 
 var typeSize = 2
-var maxPayloadSize = intPow(2, (headerSize-typeSize)*8)
+var maxPayloadSize = 256 * 1024 * 1024
 
 var maximumPayloadFromKnownDevice = maxPayloadSize
 var maximumPayloadFromUnknownDevice = 1024 * 1024
@@ -121,16 +121,4 @@ func writeFrame(conn net.Conn, frameType uint16, payload []byte) error {
 func writeDeadline(size int) time.Time {
 	// Writes should finish in 60s, + allowing 4KiB/s for chunks and larger frames
 	return time.Now().Add(time.Duration(60*time.Second) + time.Duration(size/4096)*time.Second)
-}
-
-// https://stackoverflow.com/a/66429580
-func intPow(n, m int) int {
-	if m == 0 {
-		return 1
-	}
-	result := n
-	for i := 2; i <= m; i++ {
-		result *= n
-	}
-	return result
 }

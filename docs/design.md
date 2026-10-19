@@ -80,7 +80,7 @@ When handing a reference offer, a device checks each reference and sees if it ha
 
 ### Catch Up
 
-When handling a reference request, a device iterates through the references and confirms that the requesting peer does indeed have the right to view the frame.  If so, each frames is collected into a slice on a catch up frame.  The frames are then sorted by the time the device first saved them locally, and this catch up frame is then sent to the requester.
+When handling a reference request, a device iterates through the references and confirms that the requesting peer does indeed have the right to view the frame.  If so, each frames is collected into a slice on a catch up frame.  The frames are then sorted by the time the device first saved them locally, and this catch up frame is then sent to the requester.  The catch up frames have a size limit, and if there are too many frames to fit in the catch up, the catch up is marked as incomplete.  After processing an incomplete catchup, devices should send another reference request for the remaining frames that were not included.
 
 When handling a catch up, each frame is sequentially processed by the same handler that would process it if it was received in real time on the wire.  However, when handlers know that a frame is part of a catchup, they forgo some calls into the UI.  The catch up handler keeps track of which UI states might need to be updated, and updates them in bulk after all of the frames are processed.  This prevents the UI from replaying everything that happened while the device was offline in sequence, and simply brings the UI up to speed all at once.
 

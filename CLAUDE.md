@@ -99,7 +99,7 @@ Handlers must verify: valid signature, signer device not revoked *at the time th
 
 `b.broadcast(br)` resolves the frame's scope to a set of device addresses (`chat/protocol.go`: `getSyncScope`, `getUserScope`, `getGroupScope`, `getGroupWithInvitesScope`, `getGlobalScope`, `getCustomScope`), skipping devices already known to have it. Delivery is tracked by `deliveryRecord` rows written when an ack arrives; there is no indirect knowledge of who holds what.
 
-When two devices connect they run the reference flow — offer (`chat/reference_offer.go`) → request (`chat/reference_request.go`) → catch up (`chat/catch_up.go`). The catch-up handler replays frames through the normal handlers with `catchUp=true`, which suppresses per-frame UI calls; accumulated state is flushed to the UI in one `CatchUpMessages` bulk update at the end so the UI doesn't replay hours of history.
+When two devices connect they run the reference flow — offer (`chat/reference_offer.go`) → request (`chat/reference_request.go`) → catch up (`chat/catch_up.go`). The catch-up handler replays frames through the normal handlers with `catchUp=true`, which suppresses per-frame UI calls; accumulated state is flushed to the UI in one `CatchUpMessages` bulk update at the end so the UI doesn't replay hours of history. A catch up carries at most `catchUpPayloadBudget` bytes; when more was requested the responder sends the earliest frames with `Incomplete` set and the receiver immediately re-requests whatever that peer still owes it, so stages arrive in order without the responder keeping any state between them.
 
 ### Group consensus
 

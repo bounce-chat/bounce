@@ -3,6 +3,7 @@ package chat
 import (
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/google/uuid"
@@ -11,6 +12,8 @@ import (
 
 var catchUpMutex sync.Mutex
 
+var catchUpPayloadBudget = maxPayloadSize / 4
+
 // A frame contains the ID, type, and marshalled payload of any other frame
 type frame struct {
 	ID      uuid.UUID
@@ -18,10 +21,15 @@ type frame struct {
 	Payload []byte
 }
 
-// A catch up is a frame that is used to transport a set of frames that are chronologically ordered
+// A catch up is a frame that is used to transport a set of frames that are chronologically ordered.  A catch up
+// carries at most catchUpPayloadBudget bytes of frames; when what a peer asked for does not fit, the earliest frames
+// are sent and Incomplete is set, and the peer asks again for the rest once it has handled these (see
+// requestOutstandingReferencesFrom).  Staging this way keeps catch ups in order, since the next stage is only ever
+// requested after the previous one was processed, and keeps every frame well under the size a peer will accept.
 type catchUp struct {
-	Frames    []frame
-	sendables sortableCatchUpAbles
+	Frames     []frame
+	Incomplete bool
+	sendables  sortableCatchUpAbles
 }
 
 func (cu *catchUp) getType() uint16 {
@@ -29,9 +37,21 @@ func (cu *catchUp) getType() uint16 {
 }
 
 func (cu *catchUp) getPayload() []byte {
-	sort.Sort(cu.sendables)
-	for _, br := range cu.sendables {
-		cu.Frames = append(cu.Frames, frame{ID: br.getID(), Type: br.getType(), Payload: br.getPayload()})
+	if len(cu.sendables) > 0 {
+		sort.Sort(cu.sendables)
+		cu.Frames = []frame{}
+		cu.Incomplete = false
+		total := 0
+		for _, br := range cu.sendables {
+			payload := br.getPayload()
+			size := len(payload)
+			if len(cu.Frames) > 0 && total+size > catchUpPayloadBudget {
+				cu.Incomplete = true
+				break
+			}
+			cu.Frames = append(cu.Frames, frame{ID: br.getID(), Type: br.getType(), Payload: payload})
+			total += size
+		}
 	}
 
 	bytes, err := msgpack.Marshal(cu)
@@ -44,10 +64,13 @@ func (cu *catchUp) getPayload() []byte {
 }
 
 var initialSyncMutex sync.Mutex
+var initialSyncAnnounced atomic.Bool
 
 func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastable, bool) {
 	if waitingForInitialSyncFrom() == peer {
-		b.ui.InitialSyncStarting()
+		if initialSyncAnnounced.CompareAndSwap(false, true) {
+			b.ui.InitialSyncStarting()
+		}
 
 		initialSyncMutex.Lock()
 		defer initialSyncMutex.Unlock()
@@ -66,6 +89,9 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	if b.encrypted {
 		for _, fr := range cu.Frames {
 			b.handleEncryptedFrame(peer, fr.Payload, true)
+		}
+		if cu.Incomplete {
+			b.requestOutstandingReferencesFrom(peer)
 		}
 		return nil, false
 	}
@@ -552,8 +578,15 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	// now want to dial
 	go b.auditPeers()
 
-	if waitingForInitialSyncFrom() == peer {
+	// The peer had more for us than fit in this catch up.  Ask for the rest now that this stage is handled; the
+	// reference engine knows exactly what is still outstanding from them.
+	if cu.Incomplete {
+		b.requestOutstandingReferencesFrom(peer)
+	}
+
+	if waitingForInitialSyncFrom() == peer && !cu.Incomplete {
 		setWaitingForInitialSyncFrom("")
+		initialSyncAnnounced.Store(false)
 		b.ui.InitialSyncComplete()
 	}
 

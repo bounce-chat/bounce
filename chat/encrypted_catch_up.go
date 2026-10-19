@@ -49,8 +49,11 @@ func (er encryptedReceive) getSavedAt() int64 {
 	return er.savedAt
 }
 
+// A catch up of frames stored on an encrypted device, staged the same way as a plain catch up: at most
+// catchUpPayloadBudget bytes per catch up, the earliest first, with Incomplete set when more is waiting
 type encryptedCatchUp struct {
-	Frames sortableEncryptedReceives
+	Frames     sortableEncryptedReceives
+	Incomplete bool
 }
 
 type sortableEncryptedReceives []encryptedReceive
@@ -121,7 +124,8 @@ func (b *Bounce) handleEncryptedCatchUp(peer string, payload []byte, _ bool) (br
 	}
 
 	cu := &catchUp{
-		Frames: decryptedFrames,
+		Frames:     decryptedFrames,
+		Incomplete: ecu.Incomplete,
 	}
 	decryptedCatchUpPayload, err := msgpack.Marshal(cu)
 	if err != nil {
@@ -431,6 +435,18 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 	}
 
 	sort.Sort(ecu.Frames)
+
+	// Send the earliest frames that fit the budget and set imcomplete as true if any didn't fit
+	total := 0
+	for i, er := range ecu.Frames {
+		size := len(er.Payload)
+		if i > 0 && total+size > catchUpPayloadBudget {
+			ecu.Frames = ecu.Frames[:i]
+			ecu.Incomplete = true
+			break
+		}
+		total += size
+	}
 
 	return ecu
 }
