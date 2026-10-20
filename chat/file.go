@@ -33,7 +33,6 @@ var writingChunk = map[string]bool{}
 var writingChunkMutex sync.Mutex
 var fileDataDownloaded = map[uuid.UUID]int64{}
 var fileDataDownloadedMutex sync.Mutex
-var totalAttemptCounter = map[string]int{}
 
 const EmbeddedFileLimit = 1024 * 1024 * 20 // 20MiB
 const fileChunkSize = 1024 * 1024          // 1MiB

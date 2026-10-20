@@ -309,9 +309,9 @@ func (b *Bounce) readFrames(rd *remoteDevice, s *socket) {
 		s.Unlock()
 
 		if b.devicePool.isRevoked(peer) {
-			// Drop all frames from revoked devices unless they are reference requests or keep alives
+			// Drop everything from a revoked device except what it needs to learn it is revoked
 			if !(frameType == typeReferenceRequest || frameType == typeKeepAlive || frameType == typeAck) {
-				return
+				continue
 			}
 		}
 
