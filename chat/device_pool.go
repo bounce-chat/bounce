@@ -2,7 +2,7 @@ package chat
 
 import (
 	"errors"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"time"
@@ -891,8 +891,7 @@ func chooseN(set []string, n int) []string {
 	if len(set) < n {
 		return set
 	}
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	order := r.Perm(len(set))
+	order := rand.Perm(len(set))
 	picks := order[0:n]
 	results := []string{}
 	for _, pick := range picks {
