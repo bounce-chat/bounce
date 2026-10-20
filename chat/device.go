@@ -26,9 +26,9 @@ type device struct {
 	SavedAt        int64 `msgpack:"-"`
 	LastSeen       int64 `msgpack:"-"`
 	RevokedAt      int64
-	ECDHPublicKey  []byte                 `msgpack:"-"`
-	ECDHPrivateKey []byte                 `msgpack:"-"`
-	Signature      *introductionSignature `gorm:"constraint:OnDelete:CASCADE;"`
+	ECDHPublicKey  []byte `msgpack:"-"`
+	ECDHPrivateKey []byte `msgpack:"-"`
+	Signature      *introductionSignature
 }
 
 func (d *device) BeforeCreate(tx *gorm.DB) error {

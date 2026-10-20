@@ -145,8 +145,9 @@ func (b *Bounce) openEncryptedDatabase() {
 	// Open the database
 	var err error
 	b.database, err = gorm.Open(sqlite.Open(databaseFile), &gorm.Config{
-		TranslateError: true,
-		Logger:         gormLogger,
+		TranslateError:                           true,
+		Logger:                                   gormLogger,
+		DisableForeignKeyConstraintWhenMigrating: true, // Use GORM hooks, not schema constraints
 	})
 	if err != nil {
 		log.WithFields(log.Fields{
