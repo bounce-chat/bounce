@@ -173,7 +173,7 @@ func (b *Bounce) loadCatchUp(peer string, cu []frameReference) {
 	for _, fr := range cu {
 		// Get all of the references for each frame in the catch up that are not the peer that sent the catch up
 		references := []frameReference{}
-		err := b.referenceDatabase.Where("id = ? AND type = ? AND peer != ?", fr.ID, fr.Type, peer).Find(&references).Error
+		err := b.referenceDatabase.Where("frame_id = ? AND type = ? AND peer != ?", fr.FrameID, fr.Type, peer).Find(&references).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -182,7 +182,7 @@ func (b *Bounce) loadCatchUp(peer string, cu []frameReference) {
 
 		// Ack these to any peer that offered it, or that didn't respond to our request
 		for _, unneededReference := range references {
-			acks[unneededReference.Peer] = append(acks[unneededReference.Peer], frameReference{ID: unneededReference.FrameID, Type: unneededReference.Type})
+			acks[unneededReference.Peer] = append(acks[unneededReference.Peer], frameReference{FrameID: unneededReference.FrameID, Type: unneededReference.Type})
 		}
 
 		// Batch delete all reference frames in the database for this frame
