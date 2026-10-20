@@ -171,6 +171,16 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 			References: b.hasAnyReferencesFor(peer),
 		})
 	} else {
+		// Enforce device cap
+		if len(profile.Devices) >= maximumDevicesPerUser {
+			log.WithFields(log.Fields{
+				"peer":    peer,
+				"devices": len(profile.Devices),
+			}).Warn("rejecting sync device request because we already have the maximum number of devices")
+			b.sendDirect(peer, &syncDeviceRequestRejected{})
+			return nil, false
+		}
+
 		// Save this new device in our database
 		newDevice := device{
 			ID:        uuid.New(),
