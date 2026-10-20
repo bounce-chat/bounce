@@ -110,6 +110,11 @@ func (b *Bounce) handleDraft(peer string, payload []byte, catchUp bool) (broadca
 	d.Signature = sc.Signature
 	d.Signer = sc.Signer
 
+	if utf8.RuneCountInString(d.Text) > MaximumMessageCharacters {
+		log.Warn("ignoring draft that is too long")
+		return nil, false
+	}
+
 	var signerDevice device
 	err = b.database.Select("revoked_at").Where("address = ?", d.Signer).First(&signerDevice).Error
 	if err != nil {
@@ -175,6 +180,7 @@ func (b *Bounce) handleDraft(peer string, payload []byte, catchUp bool) (broadca
 func (b *Bounce) UpdateDraft(threadID uuid.UUID, text string) {
 	if utf8.RuneCountInString(text) > MaximumMessageCharacters {
 		log.Warn("ignoring draft that is too long")
+		return
 	}
 	d := &draft{
 		ID:        uuid.New(),
