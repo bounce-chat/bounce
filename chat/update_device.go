@@ -131,28 +131,7 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) (
 	ud.Signature = sc.Signature
 	ud.Signer = sc.Signer
 
-	// Ignore anything from a blocked user
-	if blockedUser(ud.getAuthor()) {
-		log.WithFields(log.Fields{
-			"id":     ud.ID,
-			"author": ud.getAuthor(),
-		}).Warn("ignoring update device from blocked user")
-
-		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
-			if !blockedUser(peerDev.UserID) {
-				go b.sendAck(peer, typeUpdateDevice, ud.ID)
-			}
-		}
-		return nil, false
-	}
-
-	if err = ud.validPayload(); err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("ignoring update device with invalid payload")
-		return nil, false
-	}
-
+	// Look up the device
 	var d device
 	err = b.database.Where("id = ?", ud.Target).First(&d).Error
 	if err != nil {
@@ -171,6 +150,29 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) (
 		}
 	}
 	ud.Author = d.UserID
+
+	// Ignore anything from a blocked user
+	if blockedUser(ud.getAuthor()) {
+		log.WithFields(log.Fields{
+			"id":     ud.ID,
+			"author": ud.getAuthor(),
+		}).Warn("ignoring update device from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeUpdateDevice, ud.ID)
+			}
+		}
+		return nil, false
+	}
+
+	// Validate the payload
+	if err = ud.validPayload(); err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("ignoring update device with invalid payload")
+		return nil, false
+	}
 
 	// Make sure the user that signed this update owns the device
 	if !b.signedByUser(sc, d.UserID) {
