@@ -74,7 +74,7 @@ func (u *user) images() []ID {
 				log.WithFields(log.Fields{
 					"error":  err.Error(),
 					"images": u.Images,
-				}).Fatal("invalid UUID in user images list")
+				}).Fatal("invalid ID in user images list")
 			}
 			imageHistory = append(imageHistory, imageID)
 		}
@@ -156,7 +156,7 @@ func (b *Bounce) addBlockedGroup(groupID ID) {
 					"error":          err.Error(),
 					"user_id":        b.currentUserID(),
 					"blocked_groups": joinedBlockedGroups,
-				}).Fatal("invalid UUID in blocked groups list")
+				}).Fatal("invalid ID in blocked groups list")
 
 			}
 			if blockedID == groupID {
@@ -196,7 +196,7 @@ func (b *Bounce) blockedGroups() []ID {
 					"error":          err.Error(),
 					"user_id":        b.currentUserID(),
 					"blocked_groups": settings.BlockedGroups,
-				}).Fatal("invalid UUID in blocked groups list")
+				}).Fatal("invalid ID in blocked groups list")
 
 			}
 			blocked = append(blocked, blockedID)

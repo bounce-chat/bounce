@@ -404,7 +404,7 @@ func (b *Bounce) updateUserState(userID ID) {
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Error("update user contains image with invalid UUID")
+				}).Error("update user contains image with invalid ID")
 			} else {
 				images = append(images, imageID.String())
 				imageIDs = append(imageIDs, imageID)

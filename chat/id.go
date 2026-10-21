@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // An ID identifies a frame, a user, a group or a file.  It is 32 bytes so that it can hold a whole blake3 hash: frames
@@ -26,7 +28,9 @@ var errInvalidID = errors.New("invalid ID")
 func NewID() ID {
 	var id ID
 	if _, err := rand.Read(id[:]); err != nil {
-		panic("crypto/rand failed: " + err.Error())
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error using rand")
 	}
 	return id
 }
@@ -53,11 +57,13 @@ func ParseID(text string) (ID, error) {
 	return IDFromBytes(data)
 }
 
-// MustParseID is ParseID for constants in tests, and panics on anything else
+// MustParseID is ParseID for constants in tests, and logs a fatal error on anything else
 func MustParseID(text string) ID {
 	id, err := ParseID(text)
 	if err != nil {
-		panic(err)
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error parsing ID")
 	}
 	return id
 }

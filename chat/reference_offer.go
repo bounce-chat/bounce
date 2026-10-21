@@ -16,7 +16,7 @@ const maximumReferencesPerOffer = 100000
 var referenceOfferMutexLock sync.Mutex
 var referenceOfferMutexes = map[string]*sync.Mutex{}
 
-// A reference offer is a message sent to a newly connected device that provides the UUIDs of any frames that device
+// A reference offer is a message sent to a newly connected device that provides the IDs of any frames that device
 // should have, but that we didn't deliver to it.  Reference offers are delivery tracked using acks in order to
 // support re-send logic, so they do have an ID even though they are only ever sent directly.
 type referenceOffer struct {

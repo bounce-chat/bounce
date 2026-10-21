@@ -364,7 +364,7 @@ func (b *Bounce) GetInitialState() InitialState {
 					log.WithFields(log.Fields{
 						"error":  err.Error(),
 						"images": dbProfile.Images,
-					}).Fatal("invalid UUID in user images list")
+					}).Fatal("invalid ID in user images list")
 				}
 				imageHistory = append(imageHistory, imageID)
 			}
@@ -531,7 +531,7 @@ func (b *Bounce) GetInitialState() InitialState {
 					log.WithFields(log.Fields{
 						"error":  err.Error(),
 						"images": g.Images,
-					}).Fatal("invalid UUID in group images list")
+					}).Fatal("invalid ID in group images list")
 				}
 				imageHistory = append(imageHistory, imageID)
 			}
@@ -548,7 +548,7 @@ func (b *Bounce) GetInitialState() InitialState {
 					log.WithFields(log.Fields{
 						"error":  err.Error(),
 						"admins": g.Admins,
-					}).Fatal("invalid UUID in group admin list")
+					}).Fatal("invalid ID in group admin list")
 				}
 				adminList = append(adminList, adminID)
 			}
@@ -561,7 +561,7 @@ func (b *Bounce) GetInitialState() InitialState {
 					log.WithFields(log.Fields{
 						"error":   err.Error(),
 						"invites": g.Invites,
-					}).Fatal("invalid UUID in group invite list")
+					}).Fatal("invalid ID in group invite list")
 				}
 
 				var u user
@@ -590,7 +590,7 @@ func (b *Bounce) GetInitialState() InitialState {
 					log.WithFields(log.Fields{
 						"error":         err.Error(),
 						"blocked_users": g.BlockedUsers,
-					}).Fatal("invalid UUID in group block list")
+					}).Fatal("invalid ID in group block list")
 				}
 				blockedList = append(blockedList, blockedID)
 			}

@@ -122,7 +122,7 @@ func (a *Engine) CurrentUserID() (string, error) {
 	return id, nil
 }
 
-// parseID centralizes UUID conversion so a malformed ID is always reported as a
+// parseID centralizes ID conversion so a malformed ID is always reported as a
 // distinct, attributable error rather than being mixed in with engine errors.
 func parseID(field, s string) (chat.ID, error) {
 	id, err := chat.ParseID(s)
@@ -909,7 +909,7 @@ func (a *Engine) SetForeground(foreground bool) {
 }
 
 // SetNotificationIcon caches the avatar the engine should attach to
-// notifications for a thread. thread is a UUID string.
+// notifications for a thread. thread is an ID hex string.
 func (a *Engine) SetNotificationIcon(thread string, icon []byte) {
 	if e, err := a.engine(); err == nil {
 		e.SetNotificationIcon(thread, icon)

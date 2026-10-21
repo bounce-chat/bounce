@@ -562,7 +562,7 @@ func (tbd *threadButtonData) setName(name, initials string) {
 	tbd.initials = initials
 }
 
-func (tbd *threadButtonData) setLastMessage(name, text string, status bool) { // TODO: will need to detect when a user's name changes and they are the last message and update it here, or reference by UUID
+func (tbd *threadButtonData) setLastMessage(name, text string, status bool) { // TODO: will need to detect when a user's name changes and they are the last message and update it here, or reference by ID
 	if len(text) > 200 {
 		text = text[:200]
 	}

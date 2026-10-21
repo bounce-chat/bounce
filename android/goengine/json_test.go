@@ -14,7 +14,7 @@ import (
 // IDs render as hex strings (not 32-element byte arrays), and maps keyed
 // by chat.ID render as string-keyed objects.
 
-func TestUUIDsMarshalAsCanonicalStrings(t *testing.T) {
+func TestIDsMarshalAsHexStrings(t *testing.T) {
 	id := chat.MustParseID("550e8400e29b41d4a716446655440000550e8400e29b41d4a716446655440000")
 
 	b, err := json.Marshal(chat.DirectMessage{ID: id, Author: id, Thread: id})
@@ -24,15 +24,15 @@ func TestUUIDsMarshalAsCanonicalStrings(t *testing.T) {
 
 	got := string(b)
 	if !strings.Contains(got, `"550e8400e29b41d4a716446655440000550e8400e29b41d4a716446655440000"`) {
-		t.Fatalf("uuid did not marshal as a canonical string, got %s", got)
+		t.Fatalf("ID did not marshal as a hex string, got %s", got)
 	}
 	// A [32]byte that lost its TextMarshaler would come out as a JSON array.
 	if strings.Contains(got, `"ID":[`) {
-		t.Fatalf("uuid marshalled as a byte array, Kotlin cannot parse this: %s", got)
+		t.Fatalf("ID marshalled as a byte array, Kotlin cannot parse this: %s", got)
 	}
 }
 
-func TestBulkUpdateMapsKeyOnUUIDStrings(t *testing.T) {
+func TestBulkUpdateMapsKeyOnIDStrings(t *testing.T) {
 	id := chat.MustParseID("550e8400e29b41d4a716446655440000550e8400e29b41d4a716446655440000")
 
 	bu := chat.BulkUpdate{
@@ -138,9 +138,9 @@ func TestPrepareAttachmentsEmpty(t *testing.T) {
 	}
 }
 
-func TestPrepareAttachmentsRejectsBadUUID(t *testing.T) {
-	_, err := prepareAttachments(`[{"id":"not-a-uuid","path":"/tmp","name":"x"}]`)
+func TestPrepareAttachmentsRejectsBadID(t *testing.T) {
+	_, err := prepareAttachments(`[{"id":"not-an-id","path":"/tmp","name":"x"}]`)
 	if err == nil || !strings.Contains(err.Error(), "invalid attachment id") {
-		t.Fatalf("expected an attributable uuid error, got %v", err)
+		t.Fatalf("expected an attributable ID error, got %v", err)
 	}
 }

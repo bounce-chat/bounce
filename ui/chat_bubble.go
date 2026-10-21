@@ -364,7 +364,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 
 	if !m.direct && !m.outgoing {
 		cb.username.Segments[0].(*widget.TextSegment).Text = m.username
-		cb.username.Segments[0].(*widget.TextSegment).Style.ColorName = fyne.ThemeColorName("uuid:" + m.author.String())
+		cb.username.Segments[0].(*widget.TextSegment).Style.ColorName = fyne.ThemeColorName("id:" + m.author.String())
 		cb.username.Refresh()
 		cb.username.Show()
 

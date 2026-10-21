@@ -27,7 +27,7 @@ func (dr *deliveryRecord) BeforeCreate(tx *gorm.DB) error {
 
 func (b *Bounce) markDeliveredTo(br broadcastable, destination string) {
 	if br.getID() == NilID {
-		log.Warn("tracking delivery of broadcastable with nil UUID")
+		log.Warn("tracking delivery of broadcastable with nil ID")
 	}
 
 	err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
@@ -59,7 +59,7 @@ func (b *Bounce) frameIsDeliveredTo(frameID ID, frameType uint16, peer string) b
 
 func (b *Bounce) markFrameDelivered(id ID, frameType uint16, destination string) {
 	if id == NilID {
-		log.Warn("tracking delivery of broadcastable with nil UUID")
+		log.Warn("tracking delivery of broadcastable with nil ID")
 	}
 
 	err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{

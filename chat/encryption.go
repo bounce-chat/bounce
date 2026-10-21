@@ -742,7 +742,7 @@ func (b *Bounce) getUsersInGroupWithInvitesScope(br broadcastable) []user {
 					"error":    err.Error(),
 					"group_id": destinationGroup.ID,
 					"invites":  destinationGroup.Invites,
-				}).Fatal("invalid UUID in group invite list")
+				}).Fatal("invalid ID in group invite list")
 			}
 
 			invites = append(invites, inviteID)

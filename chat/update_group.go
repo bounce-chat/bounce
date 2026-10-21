@@ -455,7 +455,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 						"error":   err.Error(),
 						"actor":   ug.Actor,
 						"user_id": ug.Data,
-					}).Error("update group attempted to remove user with invalid UUID")
+					}).Error("update group attempted to remove user with invalid ID")
 					return nil, false
 				}
 			case updateGroupTypeBlock:
@@ -1156,7 +1156,7 @@ func (b *Bounce) informUIUpdateGroupRemoveUser(ug updateGroup) {
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to remove user with invalid UUID")
+		}).Error("update group attempted to remove user with invalid ID")
 		return
 	}
 
@@ -1209,14 +1209,14 @@ func (b *Bounce) informUIUpdateGroupSetClearBefore(ug updateGroup) {
 }
 
 func (b *Bounce) informUIUpdateGroupPromoteAdmin(ug updateGroup) {
-	// Parse the UUID
+	// Parse the ID
 	userID, err := IDFromBytes(ug.Data)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to promote admin with invalid UUID")
+		}).Error("update group attempted to promote admin with invalid ID")
 		return
 	}
 
@@ -1232,14 +1232,14 @@ func (b *Bounce) informUIUpdateGroupPromoteAdmin(ug updateGroup) {
 }
 
 func (b *Bounce) informUIUpdateGroupDemoteAdmin(ug updateGroup) {
-	// Parse the UUID
+	// Parse the ID
 	userID, err := IDFromBytes(ug.Data)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to promote admin with invalid UUID")
+		}).Error("update group attempted to promote admin with invalid ID")
 		return
 	}
 
@@ -1347,14 +1347,14 @@ func (b *Bounce) informUIUpdateGroupSetImage(ug updateGroup) {
 }
 
 func (b *Bounce) informUIUpdateGroupRevokeInvite(ug updateGroup) {
-	// Parse the UUID
+	// Parse the ID
 	userID, err := IDFromBytes(ug.Data)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to revoke invite with invalid UUID")
+		}).Error("update group attempted to revoke invite with invalid ID")
 		return
 	}
 

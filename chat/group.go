@@ -119,7 +119,7 @@ func (g *group) state() groupState {
 					"error":    err.Error(),
 					"group_id": g.ID,
 					"admins":   g.Admins,
-				}).Fatal("invalid UUID in group admin list")
+				}).Fatal("invalid ID in group admin list")
 			}
 
 			gs.admins = append(gs.admins, adminID)
@@ -134,7 +134,7 @@ func (g *group) state() groupState {
 					"error":         err.Error(),
 					"group_id":      g.ID,
 					"blocked_users": g.BlockedUsers,
-				}).Fatal("invalid UUID in group blocked list")
+				}).Fatal("invalid ID in group blocked list")
 			}
 
 			gs.blockedUsers = append(gs.blockedUsers, blockedID)
@@ -149,7 +149,7 @@ func (g *group) state() groupState {
 					"error":    err.Error(),
 					"group_id": g.ID,
 					"invites":  g.Invites,
-				}).Fatal("invalid UUID in group invite list")
+				}).Fatal("invalid ID in group invite list")
 			}
 
 			gs.invites = append(gs.invites, invitedID)
@@ -163,7 +163,7 @@ func (g *group) state() groupState {
 				log.WithFields(log.Fields{
 					"error":  err.Error(),
 					"images": g.Images,
-				}).Fatal("invalid UUID in group images list")
+				}).Fatal("invalid ID in group images list")
 			}
 			gs.images = append(gs.images, imageID)
 		}
@@ -387,7 +387,7 @@ func (b *Bounce) isGroupAdmin(groupID, userID ID) bool {
 					"error":    err.Error(),
 					"group_id": groupID,
 					"admins":   g.Admins,
-				}).Fatal("invalid UUID in group admin list")
+				}).Fatal("invalid ID in group admin list")
 			}
 
 			if adminID == userID {
@@ -426,7 +426,7 @@ func (b *Bounce) addGroupAdmin(groupID, userID ID) {
 					"error":    err.Error(),
 					"group_id": groupID,
 					"admins":   g.Admins,
-				}).Fatal("invalid UUID in group admin list")
+				}).Fatal("invalid ID in group admin list")
 
 			}
 
@@ -489,7 +489,7 @@ func (b *Bounce) removeGroupAdmin(groupID, userID ID) {
 					"error":    err.Error(),
 					"group_id": groupID,
 					"admins":   g.Admins,
-				}).Fatal("invalid UUID in group admin list")
+				}).Fatal("invalid ID in group admin list")
 			}
 
 			if adminID == userID {
@@ -547,7 +547,7 @@ func (b *Bounce) isBlockedFromGroup(groupID, userID ID) bool {
 					"error":         err.Error(),
 					"group_id":      groupID,
 					"blocked_users": g.BlockedUsers,
-				}).Fatal("invalid UUID in group blocked users list")
+				}).Fatal("invalid ID in group blocked users list")
 			}
 
 			if blockedID == userID {
@@ -586,7 +586,7 @@ func (b *Bounce) blockUserFromGroup(groupID, userID ID) {
 					"error":         err.Error(),
 					"group_id":      groupID,
 					"blocked_users": g.BlockedUsers,
-				}).Error("invalid UUID in group blocked users list")
+				}).Error("invalid ID in group blocked users list")
 				continue
 			}
 
@@ -649,7 +649,7 @@ func (b *Bounce) isInvited(groupID, userID ID) bool {
 					"error":    err.Error(),
 					"group_id": groupID,
 					"invites":  g.Invites,
-				}).Fatal("invalid UUID in group invite list")
+				}).Fatal("invalid ID in group invite list")
 			}
 
 			if inviteID == userID {
@@ -688,7 +688,7 @@ func (b *Bounce) addGroupInvite(groupID, userID ID) {
 					"error":    err.Error(),
 					"group_id": groupID,
 					"invites":  g.Invites,
-				}).Fatal("invalid UUID in group invite list")
+				}).Fatal("invalid ID in group invite list")
 
 			}
 
@@ -751,7 +751,7 @@ func (b *Bounce) removeGroupInvite(groupID, userID ID) {
 					"error":    err.Error(),
 					"group_id": groupID,
 					"invites":  g.Invites,
-				}).Fatal("invalid UUID in group invite list")
+				}).Fatal("invalid ID in group invite list")
 			}
 
 			if inviteID == userID {

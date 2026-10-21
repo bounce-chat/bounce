@@ -24,19 +24,19 @@ type forcedVariant struct {
 }
 
 func (f *forcedVariant) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
-	// UUID tags
-	if len(name) > 5 && name[0:5] == "uuid:" {
-		trimmed := string(name[5:len(name)])
+	// ID tags
+	if len(name) > 3 && name[0:3] == "id:" {
+		trimmed := string(name[3:])
 		id, err := chat.ParseID(trimmed)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"name":    name,
 				"trimmed": trimmed,
 				"error":   err.Error(),
-			}).Warn("invlid UUID color name")
+			}).Warn("invalid ID color name")
 			return color.RGBA{0xff, 0xff, 0xff, 0xff}
 		}
-		return uuidToColor(id)
+		return idToColor(id)
 	}
 
 	// Custom names

@@ -127,7 +127,7 @@ func (di *defaultImage) setDefaultBackground() {
 	}
 	di.backgroundColor.Image = makeCircle(&colorRectangle{
 		rect:  image.Rect(0, 0, int(di.size)*8, int(di.size)*8),
-		color: uuidToColor(di.id),
+		color: idToColor(di.id),
 	})
 
 	imageCacheMutex.Lock()
@@ -253,8 +253,8 @@ func (cr *colorRectangle) At(x, y int) color.Color {
 	return cr.color
 }
 
-// Deterministically generate a color from a UUID
-func uuidToColor(id chat.ID) color.RGBA {
+// Deterministically generate a color from an ID
+func idToColor(id chat.ID) color.RGBA {
 	colorCacheMutex.Lock()
 	defer colorCacheMutex.Unlock()
 

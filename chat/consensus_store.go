@@ -850,7 +850,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 					"error":    err.Error(),
 					"group_id": g.ID,
 					"admins":   g.Admins,
-				}).Fatal("invalid UUID in group admin list")
+				}).Fatal("invalid ID in group admin list")
 
 			}
 			admins = append(admins, adminID)
@@ -877,7 +877,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 					"error":    err.Error(),
 					"group_id": g.ID,
 					"invited":  g.Invites,
-				}).Fatal("invalid UUID in group invited list")
+				}).Fatal("invalid ID in group invited list")
 
 			}
 			invited = append(invited, invitedID)
@@ -1104,7 +1104,7 @@ func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID ID) {
 				log.WithFields(log.Fields{
 					"error":  err.Error(),
 					"images": g.Images,
-				}).Fatal("invalid UUID in group images list")
+				}).Fatal("invalid ID in group images list")
 			}
 			imageHistory = append(imageHistory, imageID)
 		}
@@ -1429,7 +1429,7 @@ func (b *Bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID ID) 
 					log.WithFields(log.Fields{
 						"error":  err.Error(),
 						"images": g.Images,
-					}).Fatal("invalid UUID in group images list")
+					}).Fatal("invalid ID in group images list")
 				}
 				imageHistory = append(imageHistory, imageID)
 			}
@@ -1561,7 +1561,7 @@ func (b *Bounce) onlineEncryptedDevicesInGroup(groupID ID) []string {
 					"error":    err.Error(),
 					"group_id": g.ID,
 					"invites":  g.Invites,
-				}).Fatal("invalid UUID in group invite list")
+				}).Fatal("invalid ID in group invite list")
 			}
 			userIDs = append(userIDs, invitedID)
 		}

@@ -17,7 +17,7 @@
 //
 // Consequences, applied uniformly below:
 //
-//   - Every UUID crosses as a canonical hyphenated string. chat.ID implements
+//   - Every ID crosses as a 64-character hex string. chat.ID implements
 //     TextMarshaler, so this is also what encoding/json emits, and it is exactly
 //     what Kotlin keeps as an opaque String.
 //   - Structured payloads cross as JSON, never msgpack: kotlinx.serialization

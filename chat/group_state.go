@@ -103,7 +103,7 @@ func (b *Bounce) createInitialGroupState(groupID ID) (groupState, map[string]ID,
 				"error":    err.Error(),
 				"group_id": groupID,
 				"images":   g.Images,
-			}).Fatal("invalid UUID in group creation group image")
+			}).Fatal("invalid ID in group creation group image")
 		}
 		gs.images = []ID{imageID}
 	}
@@ -162,7 +162,7 @@ func (b *Bounce) createInitialGroupState(groupID ID) (groupState, map[string]ID,
 					"error":    err.Error(),
 					"group_id": groupID,
 					"admins":   g.Admins,
-				}).Fatal("invalid UUID in group admin list")
+				}).Fatal("invalid ID in group admin list")
 			}
 
 			gs.admins = append(gs.admins, adminID)
@@ -418,7 +418,7 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID ID) error {
 				"error":   err.Error(),
 				"actor":   ug.Actor,
 				"user_id": ug.Data,
-			}).Error("update group attempted to remove user with invalid UUID")
+			}).Error("update group attempted to remove user with invalid ID")
 			return err
 		}
 		if ug.Actor == userID {
@@ -474,7 +474,7 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID ID) error {
 					"error":   err.Error(),
 					"actor":   ug.Actor,
 					"user_id": ug.Data,
-				}).Error("update group attempted to promote admin with invalid UUID")
+				}).Error("update group attempted to promote admin with invalid ID")
 				return err
 			}
 			if gs.isMember(userID) {
@@ -497,7 +497,7 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID ID) error {
 				"error":   err.Error(),
 				"actor":   ug.Actor,
 				"user_id": ug.Data,
-			}).Error("update group attempted to demote admin with invalid UUID")
+			}).Error("update group attempted to demote admin with invalid ID")
 			return err
 		}
 		if gs.deletedBy != nil && gs.deletedBy.Actor == userID {
@@ -641,7 +641,7 @@ func applyUpdateGroupSetImageToState(gs groupState, ug updateGroup) (groupState,
 			"error": err.Error(),
 			"actor": ug.Actor,
 			"image": ug.Data,
-		}).Error("update group attempted to set image with invalid UUID")
+		}).Error("update group attempted to set image with invalid ID")
 		return gs, err
 	}
 
@@ -689,7 +689,7 @@ func applyUpdateGroupRemoveUserToState(gs groupState, ug updateGroup) (groupStat
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to remove user with invalid UUID")
+		}).Error("update group attempted to remove user with invalid ID")
 		return gs, err
 	}
 
@@ -750,7 +750,7 @@ func applyUpdateGroupPromoteAdminToState(gs groupState, ug updateGroup) (groupSt
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to promote admin with invalid UUID")
+		}).Error("update group attempted to promote admin with invalid ID")
 		return gs, err
 	}
 
@@ -772,7 +772,7 @@ func applyUpdateGroupDemoteAdminToState(gs groupState, ug updateGroup) (groupSta
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to demote admin with invalid UUID")
+		}).Error("update group attempted to demote admin with invalid ID")
 		return gs, err
 	}
 
@@ -893,7 +893,7 @@ func applyUpdateGroupRevokeInviteToState(gs groupState, ug updateGroup) (groupSt
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to revoke invite with invalid UUID")
+		}).Error("update group attempted to revoke invite with invalid ID")
 		return gs, err
 	}
 
