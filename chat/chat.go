@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -41,7 +40,7 @@ type Bounce struct {
 	chunkEngine           *chunkEngine
 	postNotification      func(string, string, string, string, []byte)
 	clearNotification     func(string)
-	userID                uuid.UUID
+	userID                ID
 	networkIsOnline       atomic.Bool
 	networkHasBeenOnline  atomic.Bool
 	shutdownStarted       atomic.Bool
@@ -156,16 +155,16 @@ func Open(ui UI, network Network, configDirectory string, postNotification func(
 		ui:              ui,
 		devicePool: &devicePool{
 			devices:            make(map[string]*remoteDevice),
-			groupPools:         make(map[uuid.UUID][]*remoteDevice),
-			userPools:          make(map[uuid.UUID][]*remoteDevice),
-			userOnlineStatus:   make(map[uuid.UUID]bool),
-			deviceOnlineStatus: make(map[uuid.UUID]bool),
+			groupPools:         make(map[ID][]*remoteDevice),
+			userPools:          make(map[ID][]*remoteDevice),
+			userOnlineStatus:   make(map[ID]bool),
+			deviceOnlineStatus: make(map[ID]bool),
 			lastDial:           make(map[string]time.Time),
 			lastFailedDial:     make(map[string]time.Time),
 			revokedDevices:     make(map[string]bool),
 		},
 		consensusStore: &consensusStore{
-			groups: make(map[uuid.UUID]*canonicalStack),
+			groups: make(map[ID]*canonicalStack),
 		},
 		postNotification:  postNotification,
 		clearNotification: clearNotification,

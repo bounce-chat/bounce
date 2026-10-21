@@ -13,13 +13,12 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-var encryptedDeviceCache = map[string]uuid.UUID{}
+var encryptedDeviceCache = map[string]ID{}
 var encryptedDeviceCacheMutex sync.Mutex
 
 // encryptedFrameAdditionalData binds a sealed frame to the ID and type that travel in the clear beside it.  An
@@ -28,7 +27,7 @@ var encryptedDeviceCacheMutex sync.Mutex
 // recorded against the wrong frame.  Authenticating both as GCM additional data means a relabelled frame simply
 // fails to open on the recipient instead of being dispatched and then discarded, or worse, breaking the rest of
 // the catch up it arrived in.
-func encryptedFrameAdditionalData(id uuid.UUID, frameType uint16) []byte {
+func encryptedFrameAdditionalData(id ID, frameType uint16) []byte {
 	additionalData := make([]byte, len(id)+2)
 	copy(additionalData, id[:])
 	binary.BigEndian.PutUint16(additionalData[len(id):], frameType)
@@ -38,8 +37,8 @@ func encryptedFrameAdditionalData(id uuid.UUID, frameType uint16) []byte {
 const maximumRecipients = 15
 
 type encryptedSyncDevice struct {
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Address   string    `gorm:"uniqueIndex"`
+	ID        ID     `gorm:"primary_key;"`
+	Address   string `gorm:"uniqueIndex"`
 	Name      string
 	CreatedAt int64
 	LastSeen  int64
@@ -99,7 +98,7 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 	}
 
 	// Frames that might need to be deletes as part of clearing chat history should have a batch delete key assigned
-	batchDeleteKey := uuid.Nil
+	batchDeleteKey := NilID
 	if br.getType() == typeDirectMessage {
 		dm, ok := br.(*directMessage)
 		if !ok {
@@ -143,7 +142,7 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 
 	// Collect all the encrypted devices and their owners
 	allEncryptedDevices := map[string]bool{}
-	deviceUsers := map[string]uuid.UUID{}
+	deviceUsers := map[string]ID{}
 	for _, u := range users {
 		if len(u.EncryptedDevices) > 0 {
 			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
@@ -256,7 +255,7 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 	}
 
 	// Frames that might need to be deletes as part of clearing chat history should have a batch delete key assigned
-	batchDeleteKey := uuid.Nil
+	batchDeleteKey := NilID
 	canBatchDelete := false
 	if br.getType() == typeDirectMessage {
 		dm, ok := br.(*directMessage)
@@ -305,7 +304,7 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 
 	// Collect all the encrypted devices and their owners
 	allEncryptedDevices := map[string]bool{}
-	deviceUsers := map[string]uuid.UUID{}
+	deviceUsers := map[string]ID{}
 	for _, u := range users {
 		if len(u.EncryptedDevices) > 0 {
 			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
@@ -576,7 +575,7 @@ func (b *Bounce) getUsersInScope(br broadcastable) []user {
 	return unblockedUsers
 }
 
-func (b *Bounce) getUsersInGlobalScope(userID uuid.UUID) []user {
+func (b *Bounce) getUsersInGlobalScope(userID ID) []user {
 	var users []user
 	if userID == b.currentUserID() {
 		// TODO: select most active users, as opposed to random?
@@ -589,7 +588,7 @@ func (b *Bounce) getUsersInGlobalScope(userID uuid.UUID) []user {
 			}).Fatal("database error getting all users")
 		}
 	} else {
-		userMap := map[uuid.UUID]user{}
+		userMap := map[ID]user{}
 
 		// Find all the groups this user is in
 		var groups []group
@@ -682,7 +681,7 @@ func (b *Bounce) getUsersInCustomScope(br broadcastable) []user {
 		}
 	}
 
-	userIDs := map[uuid.UUID]bool{}
+	userIDs := map[ID]bool{}
 	for _, addr := range cs.addresses() {
 		if b.devicePool.isRevoked(addr) {
 			continue
@@ -693,7 +692,7 @@ func (b *Bounce) getUsersInCustomScope(br broadcastable) []user {
 		}
 	}
 
-	userList := []uuid.UUID{}
+	userList := []ID{}
 	for userID, _ := range userIDs {
 		userList = append(userList, userID)
 	}
@@ -734,10 +733,10 @@ func (b *Bounce) getUsersInGroupWithInvitesScope(br broadcastable) []user {
 	for _, u := range destinationGroup.Users {
 		users = append(users, u)
 	}
-	invites := []uuid.UUID{}
+	invites := []ID{}
 	if len(destinationGroup.Invites) > 0 {
 		for _, inviteIDString := range strings.Split(destinationGroup.Invites, ",") {
-			inviteID, err := uuid.Parse(inviteIDString)
+			inviteID, err := ParseID(inviteIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":    err.Error(),
@@ -772,8 +771,8 @@ func (b *Bounce) getUsersInGroupWithInvitesScope(br broadcastable) []user {
 	return users
 }
 
-func (b *Bounce) pruneEncryptedRecipients(mustHave uuid.UUID, users []user) []user {
-	allowedUserMap := map[uuid.UUID]bool{}
+func (b *Bounce) pruneEncryptedRecipients(mustHave ID, users []user) []user {
+	allowedUserMap := map[ID]bool{}
 	if mustHave != b.currentUserID() {
 		allowedUserMap[b.currentUserID()] = true
 		allowedUsers := b.getUsersInGlobalScope(mustHave)

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/alecthomas/assert/v2"
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -14,7 +13,7 @@ import (
 func TestDeletingAMessageDeletesAllFileData(t *testing.T) {
 	b, _, _, groupID := createUsersAndGroups(t)
 
-	fileID := uuid.New()
+	fileID := NewID()
 	data := []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}
 	text := "this message contains an embedded file"
 	gm := GroupMessage{
@@ -30,10 +29,10 @@ func TestDeletingAMessageDeletesAllFileData(t *testing.T) {
 		},
 	}
 
-	readers := map[uuid.UUID]io.ReadCloser{
+	readers := map[ID]io.ReadCloser{
 		fileID: io.NopCloser(bytes.NewReader(data)),
 	}
-	sources := map[uuid.UUID]string{}
+	sources := map[ID]string{}
 
 	b.SendGroupMessage(gm, readers, sources)
 

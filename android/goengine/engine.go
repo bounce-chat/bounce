@@ -10,7 +10,6 @@ import (
 	"github.com/bounce-chat/bounce/chat"
 	"github.com/bounce-chat/bounce/config"
 	"github.com/bounce-chat/bounce/network"
-	"github.com/google/uuid"
 )
 
 var errNotStarted = errors.New("engine not started")
@@ -125,10 +124,10 @@ func (a *Engine) CurrentUserID() (string, error) {
 
 // parseID centralizes UUID conversion so a malformed ID is always reported as a
 // distinct, attributable error rather than being mixed in with engine errors.
-func parseID(field, s string) (uuid.UUID, error) {
-	id, err := uuid.Parse(s)
+func parseID(field, s string) (chat.ID, error) {
+	id, err := chat.ParseID(s)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("invalid %s %q: %w", field, s, err)
+		return chat.NilID, fmt.Errorf("invalid %s %q: %w", field, s, err)
 	}
 	return id, nil
 }
@@ -864,9 +863,9 @@ func (a *Engine) SetActiveThread(threadID string) error {
 	if err != nil {
 		return err
 	}
-	// uuid.Nil is meaningful here: it means "no thread is open".
+	// chat.NilID is meaningful here: it means "no thread is open".
 	if threadID == "" {
-		e.SetActiveThread(uuid.Nil)
+		e.SetActiveThread(chat.NilID)
 		return nil
 	}
 	id, err := parseID("threadID", threadID)

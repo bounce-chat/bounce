@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -16,10 +15,10 @@ import (
 type consensusStore struct {
 	sync.Mutex
 
-	groups map[uuid.UUID]*canonicalStack
+	groups map[ID]*canonicalStack
 }
 
-func (b *Bounce) currentGroupStack(groupID uuid.UUID) (*canonicalStack, error) {
+func (b *Bounce) currentGroupStack(groupID ID) (*canonicalStack, error) {
 	b.consensusStore.Lock()
 	stack, ok := b.consensusStore.groups[groupID]
 	b.consensusStore.Unlock()
@@ -35,7 +34,7 @@ func (b *Bounce) currentGroupStack(groupID uuid.UUID) (*canonicalStack, error) {
 	return stack, nil
 }
 
-func (b *Bounce) currentGroupState(groupID uuid.UUID) (groupState, error) {
+func (b *Bounce) currentGroupState(groupID ID) (groupState, error) {
 	stack, err := b.currentGroupStack(groupID)
 	if err != nil {
 		return groupState{}, err
@@ -51,7 +50,7 @@ func (b *Bounce) currentGroupState(groupID uuid.UUID) (groupState, error) {
 	return top, nil
 }
 
-func (b *Bounce) reloadGroupConsensus(groupID uuid.UUID) error {
+func (b *Bounce) reloadGroupConsensus(groupID ID) error {
 	b.consensusStore.Lock()
 	defer b.consensusStore.Unlock()
 
@@ -68,7 +67,7 @@ func (b *Bounce) reloadGroupConsensus(groupID uuid.UUID) error {
 
 	// Get all update groups for this group
 	var ugs []updateGroup
-	err = b.database.Preload(clause.Associations).Where("target = ? AND custom_scope = ?", groupID, uuid.Nil).Order("timestamp asc").Find(&ugs).Order("id").Find(&ugs).Error
+	err = b.database.Preload(clause.Associations).Where("target = ? AND custom_scope = ?", groupID, NilID).Order("timestamp asc").Find(&ugs).Order("id").Find(&ugs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
@@ -87,7 +86,7 @@ func (b *Bounce) reloadGroupConsensus(groupID uuid.UUID) error {
 	return nil
 }
 
-func (b *Bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) error {
+func (b *Bounce) reloadGroupConsensusSince(groupID ID, ts int64) error {
 	b.consensusStore.Lock()
 
 	// Reload everything if timestamp is 0
@@ -121,7 +120,7 @@ func (b *Bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) error {
 
 	// Load all updates that are timestamp or newer from the database
 	var ugs []updateGroup
-	err := b.database.Preload(clause.Associations).Where("target = ? AND timestamp >= ? AND custom_scope = ?", groupID, ts, uuid.Nil).Order("timestamp asc").Find(&ugs).Order("id").Find(&ugs).Error
+	err := b.database.Preload(clause.Associations).Where("target = ? AND timestamp >= ? AND custom_scope = ?", groupID, ts, NilID).Order("timestamp asc").Find(&ugs).Order("id").Find(&ugs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
@@ -137,7 +136,7 @@ func (b *Bounce) reloadGroupConsensusSince(groupID uuid.UUID, ts int64) error {
 	return nil
 }
 
-func (b *Bounce) writeGroupConsensus(groupID uuid.UUID) error {
+func (b *Bounce) writeGroupConsensus(groupID ID) error {
 	b.consensusStore.Lock()
 	defer b.consensusStore.Unlock()
 
@@ -161,7 +160,7 @@ func (b *Bounce) writeGroupConsensus(groupID uuid.UUID) error {
 	return b.setRollbacksApplicationsAndGroupState(groupID, stack, ugs)
 }
 
-func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *canonicalStack, ugs []updateGroup) error {
+func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonicalStack, ugs []updateGroup) error {
 	finalState, err := cs.top()
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -170,14 +169,14 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 		return err
 	}
 
-	applied := map[uuid.UUID]bool{}
+	applied := map[ID]bool{}
 	for _, ug := range ugs {
 		if ug.Applied {
 			applied[ug.ID] = true
 		}
 	}
 
-	notified := map[uuid.UUID]bool{}
+	notified := map[ID]bool{}
 	for _, ug := range ugs {
 		if ug.Notified {
 			notified[ug.ID] = true
@@ -228,8 +227,8 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 	allUsers := []user{initialGroup.Users[0]}
 
 	// Find any canonical update groups that have not been applied and make them as applied and inform the UI if needed
-	canonical := make(map[uuid.UUID]bool)
-	everInGroup := make(map[uuid.UUID]bool)
+	canonical := make(map[ID]bool)
+	everInGroup := make(map[ID]bool)
 	ugsToNotify := []updateGroup{}
 	for i, gs := range cs.history[1:] {
 		canonical[gs.ug.ID] = true
@@ -437,7 +436,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 
 	// If the final state involves us being removed from the group, delete the group
 	if finalState.removedBy != nil {
-		if finalState.removedBy.CustomScope == uuid.Nil {
+		if finalState.removedBy.CustomScope == NilID {
 			// Attach a custom scope to this update group
 			err = b.createCustomScopeFromGroup(groupID)
 			if err == nil {
@@ -678,7 +677,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID uuid.UUID, cs *ca
 }
 
 func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs groupState, ugsToNotify []updateGroup) error {
-	newUsers := make(map[uuid.UUID]bool)
+	newUsers := make(map[ID]bool)
 	for _, u := range allUsers {
 		newUsers[u.ID] = b.createNewUserIfNeeded(u, initialGroup.ID)
 	}
@@ -842,10 +841,10 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 	}
 
 	// Set group admins
-	admins := []uuid.UUID{}
+	admins := []ID{}
 	if len(g.Admins) > 0 {
 		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := uuid.Parse(adminIDString)
+			adminID, err := ParseID(adminIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":    err.Error(),
@@ -869,10 +868,10 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 	}
 
 	// Set the invited users
-	invited := []uuid.UUID{}
+	invited := []ID{}
 	if len(g.Invites) > 0 {
 		for _, invitedIDString := range strings.Split(g.Invites, ",") {
-			invitedID, err := uuid.Parse(invitedIDString)
+			invitedID, err := ParseID(invitedIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":    err.Error(),
@@ -1022,7 +1021,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 	return nil
 }
 
-func (b *Bounce) createNewUserIfNeeded(u user, groupID uuid.UUID) bool {
+func (b *Bounce) createNewUserIfNeeded(u user, groupID ID) bool {
 	if u.ID == b.currentUserID() {
 		return false
 	}
@@ -1061,7 +1060,7 @@ func (b *Bounce) createNewUserIfNeeded(u user, groupID uuid.UUID) bool {
 	return res.RowsAffected == 1
 }
 
-func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {
+func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID ID) {
 	// Get the user
 	var u user
 	err := b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error
@@ -1097,10 +1096,10 @@ func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {
 			}).Fatal("database error looking up group")
 		}
 	}
-	imageHistory := []uuid.UUID{}
+	imageHistory := []ID{}
 	if len(g.Images) > 0 {
 		for _, imageIDString := range strings.Split(g.Images, ",") {
-			imageID, err := uuid.Parse(imageIDString)
+			imageID, err := ParseID(imageIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":  err.Error(),
@@ -1295,7 +1294,7 @@ func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID uuid.UUID) {
 	}
 }
 
-func (b *Bounce) pruneMessagesBeforeClear(clearBefore int64, groupID uuid.UUID) {
+func (b *Bounce) pruneMessagesBeforeClear(clearBefore int64, groupID ID) {
 	gms := []groupMessage{}
 	err := b.database.Select("id").Where("written_at <= ? AND destination = ?", clearBefore, groupID).Find(&gms).Error
 	if err != nil {
@@ -1315,7 +1314,7 @@ func (b *Bounce) pruneMessagesBeforeClear(clearBefore int64, groupID uuid.UUID) 
 	}
 }
 
-func (b *Bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID uuid.UUID) {
+func (b *Bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID ID) {
 	// Check if we've already cleared delivery records as a result of this update group
 	var g group
 	err := b.database.Select("images", "delivery_records_cleared_for").Where("id = ?", groupID).Find(&g).Error
@@ -1422,10 +1421,10 @@ func (b *Bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID uuid
 		}
 
 		// Clear delivery records for any group images
-		imageHistory := []uuid.UUID{}
+		imageHistory := []ID{}
 		if len(g.Images) > 0 {
 			for _, imageIDString := range strings.Split(g.Images, ",") {
-				imageID, err := uuid.Parse(imageIDString)
+				imageID, err := ParseID(imageIDString)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error":  err.Error(),
@@ -1447,7 +1446,7 @@ func (b *Bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID uuid
 	}
 }
 
-func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
+func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID ID) {
 	// Get the current state of the group
 	cs, ok := b.consensusStore.groups[groupID]
 	if !ok {
@@ -1492,7 +1491,7 @@ func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID uuid.UUID) {
 	}
 }
 
-func (b *Bounce) cleanupRolledBackInvite(groupID uuid.UUID) {
+func (b *Bounce) cleanupRolledBackInvite(groupID ID) {
 	id := b.createCustomScopeForSync()
 	err := b.database.Model(&updateGroup{}).Where("target = ?", groupID).Select("custom_scope").Update("custom_scope", id).Error
 	if err != nil {
@@ -1519,10 +1518,10 @@ func (b *Bounce) cleanupRolledBackInvite(groupID uuid.UUID) {
 	}
 }
 
-func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
+func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID ID) {
 	for _, address := range b.encryptedDevicesInGroup(groupID) {
 		err := b.database.Create(&appendRecipient{
-			ID:        uuid.New(),
+			ID:        NewID(),
 			GroupID:   groupID,
 			UserID:    userID,
 			Timestamp: time.Now().Unix(),
@@ -1539,7 +1538,7 @@ func (b *Bounce) addInvitedUserAsEncryptedRecipient(userID, groupID uuid.UUID) {
 	b.addRecipientsIfNeeded()
 }
 
-func (b *Bounce) onlineEncryptedDevicesInGroup(groupID uuid.UUID) []string {
+func (b *Bounce) onlineEncryptedDevicesInGroup(groupID ID) []string {
 	addrs := []string{}
 
 	var g group
@@ -1550,13 +1549,13 @@ func (b *Bounce) onlineEncryptedDevicesInGroup(groupID uuid.UUID) []string {
 		}).Error("error getting group when collecting encrypted devices")
 		return []string{}
 	}
-	userIDs := []uuid.UUID{}
+	userIDs := []ID{}
 	for _, u := range g.Users {
 		userIDs = append(userIDs, u.ID)
 	}
 	if len(g.Invites) > 0 {
 		for _, invitedIDString := range strings.Split(g.Invites, ",") {
-			invitedID, err := uuid.Parse(invitedIDString)
+			invitedID, err := ParseID(invitedIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":    err.Error(),

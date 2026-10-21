@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -28,17 +27,17 @@ var errCannotRevokeLastDevice = errors.New("cannot revoke last device")
 
 type updateDevice struct {
 	SignedFrame
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Target    uuid.UUID
+	ID        ID `gorm:"primary_key;"`
+	Target    ID
 	Type      uint16
 	Data      []byte
 	Timestamp int64
-	SavedAt   int64     `msgpack:"-"`
-	Author    uuid.UUID `msgpack:"-"`
+	SavedAt   int64 `msgpack:"-"`
+	Author    ID    `msgpack:"-"`
 }
 
 func (ud *updateDevice) BeforeCreate(tx *gorm.DB) error {
-	if ud.ID == uuid.Nil {
+	if ud.ID == NilID {
 		return errors.New("update device ID must be set before creation")
 	}
 	ud.SavedAt = time.Now().Unix()
@@ -46,11 +45,11 @@ func (ud *updateDevice) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (ud *updateDevice) getID() uuid.UUID {
+func (ud *updateDevice) getID() ID {
 	return ud.ID
 }
 
-func (ud *updateDevice) getScope(myID uuid.UUID) int {
+func (ud *updateDevice) getScope(myID ID) int {
 	if ud.Type == updateDeviceTypeRevoke {
 		return scopeGlobal
 	}
@@ -58,7 +57,7 @@ func (ud *updateDevice) getScope(myID uuid.UUID) int {
 	return scopeSync
 }
 
-func (ud *updateDevice) getDestination(myID uuid.UUID) uuid.UUID {
+func (ud *updateDevice) getDestination(myID ID) ID {
 	// Destination is not needed in sync or global scoped frames, and
 	// a device ID is not a valid destination, however we use this to
 	// track which devices need to be updated during a catch up.
@@ -84,7 +83,7 @@ func (ud *updateDevice) getPayload() []byte {
 	return bytes
 }
 
-func (ud *updateDevice) getAuthor() uuid.UUID {
+func (ud *updateDevice) getAuthor() ID {
 	return ud.Author
 }
 
@@ -236,7 +235,7 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) (
 	return &ud, true
 }
 
-func (b *Bounce) updateDeviceState(deviceID uuid.UUID) {
+func (b *Bounce) updateDeviceState(deviceID ID) {
 	var d device
 	err := b.database.Where("id = ?", deviceID).First(&d).Error
 	if err != nil {
@@ -375,7 +374,7 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 		}
 		b.ui.GroupDeleted(GroupDeleted{
 			Group: gc.ID,
-			Actor: uuid.Nil,
+			Actor: NilID,
 		})
 	}
 
@@ -406,7 +405,7 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 			"error": err.Error(),
 		}).Fatal("error looking up unauthorized update groups")
 	}
-	groupsToUpdate := map[uuid.UUID]bool{}
+	groupsToUpdate := map[ID]bool{}
 	for _, ug := range unauthorizedUpdateGroups {
 		groupsToUpdate[ug.Target] = true
 	}
@@ -423,7 +422,7 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 			"error": err.Error(),
 		}).Fatal("error looking up unauthorized update users")
 	}
-	usersToUpdate := map[uuid.UUID]bool{}
+	usersToUpdate := map[ID]bool{}
 	for _, uu := range unauthorizedUpdateUsers {
 		usersToUpdate[uu.Target] = true
 		err = b.database.Delete(&uu).Error
@@ -472,12 +471,12 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 	}
 }
 
-func (b *Bounce) RenameDevice(deviceID uuid.UUID, name string) error {
+func (b *Bounce) RenameDevice(deviceID ID, name string) error {
 	var esd encryptedSyncDevice
 	err := b.database.First(&esd, "id = ?", deviceID).Error
 	if err == nil {
 		return b.applyAndBroadcastUpdateUser(updateUser{
-			ID:        uuid.New(),
+			ID:        NewID(),
 			Target:    b.currentUserID(),
 			Timestamp: time.Now().Unix(),
 			Type:      updateUserTypeSetEncryptedDeviceName,
@@ -486,7 +485,7 @@ func (b *Bounce) RenameDevice(deviceID uuid.UUID, name string) error {
 	}
 
 	ud := updateDevice{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Target:    deviceID,
 		Type:      updateDeviceTypeUpdateName,
 		Data:      []byte(name),
@@ -515,12 +514,12 @@ func (b *Bounce) goOfflineAfterRevocation() {
 	b.network.Shutdown()
 }
 
-func (b *Bounce) RevokeDevice(deviceID uuid.UUID) error {
+func (b *Bounce) RevokeDevice(deviceID ID) error {
 	var esd encryptedSyncDevice
 	err := b.database.First(&esd, "id = ?", deviceID).Error
 	if err == nil {
 		return b.applyAndBroadcastUpdateUser(updateUser{
-			ID:        uuid.New(),
+			ID:        NewID(),
 			Target:    b.currentUserID(),
 			Timestamp: time.Now().Unix(),
 			Type:      updateUserTypeRemoveEncryptedDevice,
@@ -559,7 +558,7 @@ func (b *Bounce) RevokeDevice(deviceID uuid.UUID) error {
 	}
 
 	ud := updateDevice{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Target:    deviceID,
 		Type:      updateDeviceTypeRevoke,
 		Timestamp: time.Now().Unix(),
@@ -603,7 +602,7 @@ func (b *Bounce) createAndShareDeviceECDHKey() {
 	}
 
 	b.applyAndBroadcastUpdateDevice(updateDevice{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Target:    d.ID,
 		Type:      updateDeviceTypeSetPublicKey,
 		Data:      publicKeyBytes,

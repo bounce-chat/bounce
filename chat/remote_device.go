@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -277,7 +276,7 @@ func (b *Bounce) readFrames(rd *remoteDevice, s *socket) {
 	var deviceIsAnotherUsersEncryptedDevice bool
 	var dev device
 	var esd encryptedSyncDevice
-	var ownerID uuid.UUID
+	var ownerID ID
 	var ownerKnown bool
 	// A peer we cannot place is only looked up again once something that could place it has happened
 	identities := watchPeerIdentities()

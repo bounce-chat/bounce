@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	"github.com/mdp/qrterminal/v3"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
@@ -34,15 +33,15 @@ var setupKey string
 var encryptedDeviceManagementMutex sync.Mutex
 
 type authorizedUser struct {
-	ID         uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID         ID `gorm:"primary_key;"`
 	PublicKey  []byte
 	SigningKey []byte
 	OldKeys    []oldKey
 }
 
 type oldKey struct {
-	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
-	AuthorizedUserID uuid.UUID
+	ID               ID `gorm:"primary_key;"`
+	AuthorizedUserID ID
 	PublicKey        []byte
 	SigningKey       []byte
 }
@@ -63,8 +62,8 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 		devicePool: &devicePool{
 			deviceMutex:        sync.Mutex{},
 			devices:            make(map[string]*remoteDevice),
-			userOnlineStatus:   make(map[uuid.UUID]bool),
-			deviceOnlineStatus: make(map[uuid.UUID]bool),
+			userOnlineStatus:   make(map[ID]bool),
+			deviceOnlineStatus: make(map[ID]bool),
 			lastDial:           make(map[string]time.Time),
 			lastFailedDial:     make(map[string]time.Time),
 			revokedDevices:     make(map[string]bool),
@@ -263,7 +262,7 @@ func (b *Bounce) handleEncryptedDeviceManagementRequest(peer string, payload []b
 
 	if setupKey != "" && subtle.ConstantTimeCompare([]byte(edmr.Secret), []byte(setupKey)) == 1 {
 		au := authorizedUser{
-			ID:         uuid.New(),
+			ID:         NewID(),
 			PublicKey:  edmr.Pubkey,
 			SigningKey: edmr.SigningKey,
 		}
@@ -395,40 +394,40 @@ func (b *Bounce) handleEncryptedDeviceManagementResponse(peer string, payload []
 }
 
 type recipient struct {
-	ID               uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
-	EncryptedFrameID uuid.UUID `msgpack:"-"`
-	PublicKey        []byte    `gorm:"index"`
+	ID               ID     `gorm:"primary_key;" msgpack:"-"`
+	EncryptedFrameID ID     `msgpack:"-"`
+	PublicKey        []byte `gorm:"index"`
 	EncrypterKey     []byte
 	EncryptedDEK     []byte
 }
 
 func (r *recipient) BeforeCreate(tx *gorm.DB) error {
-	r.ID = uuid.New()
+	r.ID = NewID()
 	return nil
 }
 
 type deviceRecipient struct {
-	ID               uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
-	EncryptedFrameID uuid.UUID `msgpack:"-"`
-	RecipientAddress string    `gorm:"index"`
+	ID               ID     `gorm:"primary_key;" msgpack:"-"`
+	EncryptedFrameID ID     `msgpack:"-"`
+	RecipientAddress string `gorm:"index"`
 	Counterparty     string
 	EncryptedDEK     []byte
 }
 
 func (dr *deviceRecipient) BeforeCreate(tx *gorm.DB) error {
-	dr.ID = uuid.New()
+	dr.ID = NewID()
 	return nil
 }
 
 type encryptedFrame struct {
-	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID               ID `gorm:"primary_key;"`
 	Type             uint16
 	Timestamp        int64
 	SavedAt          int64 `msgpack:"-" gorm:"index:idx_encrypted_frames_untrusted_age,priority:2"`
 	FromOwner        bool  `msgpack:"-" gorm:"index:idx_encrypted_frames_untrusted_age,priority:1"` // Stored by a peer that proved it is the owner, so not counted against the untrusted storage budget
 	Payload          []byte
 	DeleteAt         int64
-	BatchDeleteKey   uuid.UUID
+	BatchDeleteKey   ID
 	CanBatchDelete   bool
 	Recipients       []recipient
 	DeviceRecipients []deviceRecipient
@@ -439,7 +438,7 @@ func (ef *encryptedFrame) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (ef encryptedFrame) getID() uuid.UUID {
+func (ef encryptedFrame) getID() ID {
 	return ef.ID
 }
 
@@ -602,8 +601,8 @@ func addressForKey(key []byte) (string, bool) {
 }
 
 type encryptedClearBefore struct {
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
-	BatchKey  uuid.UUID
+	ID        ID `gorm:"primary_key;"`
+	BatchKey  ID
 	Timestamp int64
 }
 
@@ -691,7 +690,7 @@ func (b *Bounce) handleEncryptedClearBefore(peer string, payload []byte, _ bool)
 	return nil, false
 }
 
-func (b *Bounce) updateEncryptedClearBefore(thread uuid.UUID, timestamp int64) {
+func (b *Bounce) updateEncryptedClearBefore(thread ID, timestamp int64) {
 	err := b.database.Where("batch_key = ?", thread).Delete(&encryptedClearBefore{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -701,7 +700,7 @@ func (b *Bounce) updateEncryptedClearBefore(thread uuid.UUID, timestamp int64) {
 	}
 
 	err = b.database.Create(&encryptedClearBefore{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		BatchKey:  thread,
 		Timestamp: timestamp,
 	}).Error
@@ -765,7 +764,7 @@ func (b *Bounce) sendEncryptedClearBefores(address string) {
 			}).Fatal("database error looking up encrypted clear before")
 		}
 
-		groupIDs := []uuid.UUID{}
+		groupIDs := []ID{}
 		b.consensusStore.Lock()
 		for groupID, stack := range b.consensusStore.groups {
 			top, err := stack.top()
@@ -804,9 +803,9 @@ func (b *Bounce) sendEncryptedClearBefores(address string) {
 
 // Stores our intention to add this user's key as a recipient to all a group's update groups up until this timestamp
 type appendRecipient struct {
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
-	GroupID   uuid.UUID
-	UserID    uuid.UUID
+	ID        ID `gorm:"primary_key;"`
+	GroupID   ID
+	UserID    ID
 	Timestamp int64
 	Address   string
 }
@@ -846,7 +845,7 @@ func (b *Bounce) addRecipientsIfNeeded() {
 			}
 		}
 
-		desiredIDs := []uuid.UUID{ar.GroupID}
+		desiredIDs := []ID{ar.GroupID}
 		var ugs []updateGroup
 		err = b.database.Select("id").Where("target = ?", ar.GroupID).Find(&ugs).Error
 		if err != nil {
@@ -867,8 +866,8 @@ func (b *Bounce) addRecipientsIfNeeded() {
 }
 
 type appendRecipientRequest struct {
-	ID     uuid.UUID
-	Frames []uuid.UUID
+	ID     ID
+	Frames []ID
 	Pubkey []byte
 }
 
@@ -950,13 +949,13 @@ func (b *Bounce) handleAppendRecipientRequest(peer string, payload []byte, _ boo
 }
 
 type discloseDEK struct {
-	FrameID      uuid.UUID
+	FrameID      ID
 	EncrypterKey []byte
 	EncryptedDEK []byte
 }
 
 type appendRecipientResponse struct {
-	ID   uuid.UUID
+	ID   ID
 	DEKs []discloseDEK
 }
 
@@ -1028,7 +1027,7 @@ func (b *Bounce) handleAppendRecipientResponse(peer string, payload []byte, _ bo
 	}
 
 	// Create the new recipients
-	recipients := map[uuid.UUID]recipient{}
+	recipients := map[ID]recipient{}
 	for _, dd := range arr.DEKs {
 		// Decrypt the DEK
 		oldKek, err := b.generateKEK(dd.EncrypterKey)
@@ -1126,8 +1125,8 @@ func (b *Bounce) handleAppendRecipientResponse(peer string, payload []byte, _ bo
 }
 
 type appendRecipientPayloads struct {
-	ID         uuid.UUID
-	Recipients map[uuid.UUID]recipient
+	ID         ID
+	Recipients map[ID]recipient
 }
 
 func (arp *appendRecipientPayloads) getType() uint16 {
@@ -1157,7 +1156,7 @@ func (b *Bounce) handleAppendRecipientPayloads(peer string, payload []byte, _ bo
 	go b.sendAck(peer, typeAppendRecipientPayloads, arp.ID)
 
 	for id, r := range arp.Recipients {
-		r.ID = uuid.New()
+		r.ID = NewID()
 		r.EncryptedFrameID = id
 		err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&r).Error
 		if err != nil {
@@ -1170,7 +1169,7 @@ func (b *Bounce) handleAppendRecipientPayloads(peer string, payload []byte, _ bo
 	return nil, false
 }
 
-func (b *Bounce) encryptedDevicesInGroup(groupID uuid.UUID) []string {
+func (b *Bounce) encryptedDevicesInGroup(groupID ID) []string {
 	gs, err := b.currentGroupState(groupID)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -1514,12 +1513,12 @@ type encryptedDeviceManagementAction struct {
 }
 
 type manageEncryptedDevice struct {
-	ID        uuid.UUID
+	ID        ID
 	Action    []byte
 	Signature []byte
 }
 
-func (med *manageEncryptedDevice) getID() uuid.UUID {
+func (med *manageEncryptedDevice) getID() ID {
 	return med.ID
 }
 
@@ -1600,7 +1599,7 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 
 		// Create a copy of the old key
 		err = b.database.Create(&oldKey{
-			ID:               uuid.New(),
+			ID:               NewID(),
 			AuthorizedUserID: au.ID,
 			PublicKey:        au.PublicKey,
 			SigningKey:       au.SigningKey,
@@ -1654,13 +1653,13 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 }
 
 type encryptedDeviceManagementActionResponse struct {
-	ID         uuid.UUID
+	ID         ID
 	Type       int
 	Authorized bool
 	Applied    bool
 }
 
-func (edmar *encryptedDeviceManagementActionResponse) getID() uuid.UUID {
+func (edmar *encryptedDeviceManagementActionResponse) getID() ID {
 	return edmar.ID
 }
 
@@ -1805,7 +1804,7 @@ func (b *Bounce) handleManagementKeyHashResponse(peer string, payload []byte, _ 
 		signature := ed25519.Sign(private, encoded)
 
 		med := manageEncryptedDevice{
-			ID:        uuid.New(),
+			ID:        NewID(),
 			Action:    encoded,
 			Signature: signature,
 		}
@@ -1973,7 +1972,7 @@ func (b *Bounce) pruneEncryptedDrafts() {
 			signature := ed25519.Sign(currentUser.PrivateECDSAKey, encoded)
 
 			med := manageEncryptedDevice{
-				ID:        uuid.New(),
+				ID:        NewID(),
 				Action:    encoded,
 				Signature: signature,
 			}

@@ -5,21 +5,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 type customScope struct {
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID        ID `gorm:"primary_key;"`
 	CreatedAt int64
 	Addresses string `gorm:"not null"` // not associating with the actual devices in case we want to delete them
 }
 
 func (cs *customScope) BeforeCreate(tx *gorm.DB) error {
 	cs.CreatedAt = time.Now().Unix()
-	if cs.ID == uuid.Nil {
+	if cs.ID == NilID {
 		return errors.New("custom scope must have an ID assigned before creation")
 	}
 	return nil
@@ -36,7 +35,7 @@ func (cs *customScope) addresses() []string {
 	return strings.Split(cs.Addresses, ",")
 }
 
-func (b *Bounce) createCustomScopeFromGroup(groupID uuid.UUID) error {
+func (b *Bounce) createCustomScopeFromGroup(groupID ID) error {
 	var gc groupCreation
 	err := b.database.Where("id = ?", groupID).First(&gc).Error
 	if err != nil {
@@ -86,11 +85,11 @@ func (b *Bounce) createCustomScopeFromGroup(groupID uuid.UUID) error {
 	return nil
 }
 
-func (b *Bounce) createCustomScopeForSync() uuid.UUID {
+func (b *Bounce) createCustomScopeForSync() ID {
 	addresses := b.getSyncScope(nil, false)
 
 	cs := &customScope{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Addresses: strings.Join(addresses, ","),
 	}
 
@@ -106,15 +105,15 @@ func (b *Bounce) createCustomScopeForSync() uuid.UUID {
 
 // This function is called when we've been re-added to a group we were previously removed from and we want to
 // undo the custom scoping of past frames
-func (b *Bounce) rescopeIfReAddedToGroup(groupID uuid.UUID) error {
+func (b *Bounce) rescopeIfReAddedToGroup(groupID ID) error {
 	// Remove custom scopes from updateGroups for this group
-	err := b.database.Model(&updateGroup{}).Where("custom_scope = ?", groupID).Updates(map[string]interface{}{"custom_scope": uuid.Nil, "applied": false}).Error
+	err := b.database.Model(&updateGroup{}).Where("custom_scope = ?", groupID).Updates(map[string]interface{}{"custom_scope": NilID, "applied": false}).Error
 	if err != nil {
 		return err
 	}
 
 	// Remove custom scopes from confirmations for this group
-	err = b.database.Model(&confirmation{}).Where("custom_scope = ?", groupID).Updates(map[string]interface{}{"custom_scope": uuid.Nil}).Error
+	err = b.database.Model(&confirmation{}).Where("custom_scope = ?", groupID).Updates(map[string]interface{}{"custom_scope": NilID}).Error
 	if err != nil {
 		return err
 	}

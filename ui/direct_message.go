@@ -14,7 +14,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -59,7 +58,7 @@ type directMessage struct {
 	opened                           bool
 }
 
-func (dm *directMessage) getID() uuid.UUID {
+func (dm *directMessage) getID() chat.ID {
 	return dm.user.id
 }
 
@@ -150,7 +149,7 @@ func (dm *directMessage) refreshTypingIndicatorSettingSelection(options []string
 	dm.typingIndicatorOverrideSelection.Refresh()
 }
 
-func (ui *ui) DMTypingIndicatorSettingsSet(userID uuid.UUID, override, enabled bool) {
+func (ui *ui) DMTypingIndicatorSettingsSet(userID chat.ID, override, enabled bool) {
 	dm, exists := ui.threads.getDM(userID)
 	if !exists {
 		log.WithFields(log.Fields{
@@ -258,8 +257,8 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 
 		imageAttachments := []chat.ImageAttachment{}
 		fileAttachments := []chat.FileAttachment{}
-		readers := map[uuid.UUID]io.ReadCloser{}
-		sources := map[uuid.UUID]string{}
+		readers := map[chat.ID]io.ReadCloser{}
+		sources := map[chat.ID]string{}
 
 		pendingAttachments := dm.pendingMessageAttachments.extract()
 		for _, pma := range pendingAttachments {
@@ -660,7 +659,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		ui.threads.remove(dm.user.id)
 		ui.containers.chat.Objects = []fyne.CanvasObject{ui.containers.defaultContainer}
 		ui.containers.chat.Refresh()
-		ui.state.activeThread = uuid.Nil
+		ui.state.activeThread = chat.NilID
 		ui.containers.threads.Refresh()
 		dm.opened = false
 		if fyne.CurrentDevice().IsMobile() {
@@ -982,7 +981,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 	)
 }
 
-func (ui *ui) SetDMState(userID uuid.UUID, state chat.DMState) {
+func (ui *ui) SetDMState(userID chat.ID, state chat.DMState) {
 	// Find the user and thread if it already opened
 	u, ok := ui.users.get(userID)
 	if !ok {
@@ -1012,7 +1011,7 @@ func (ui *ui) SetDMState(userID uuid.UUID, state chat.DMState) {
 			if ui.state.activeThread == dm.user.id {
 				ui.containers.chat.Objects = []fyne.CanvasObject{ui.containers.defaultContainer}
 				ui.containers.chat.Refresh()
-				ui.state.activeThread = uuid.Nil
+				ui.state.activeThread = chat.NilID
 			}
 			ui.containers.threads.Refresh()
 			return
@@ -1205,7 +1204,7 @@ func (ui *ui) DMRetentionChanged(udr chat.UpdateDMRetention) {
 	fyne.DoAndWait(func() { ui.appendThreadItem(dmThread, ti) })
 }
 
-func (ui *ui) getOrReloadDM(id uuid.UUID) (*directMessage, bool, error) {
+func (ui *ui) getOrReloadDM(id chat.ID) (*directMessage, bool, error) {
 	reloaded := false
 	dm, ok := ui.threads.getDM(id)
 	if !ok {

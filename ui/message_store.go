@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bounce-chat/bounce/chat"
 	"github.com/bounce-chat/bounce/config"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -22,15 +22,15 @@ type cachedData struct {
 
 type messageStore struct {
 	sync.Mutex
-	messages                 map[uuid.UUID]threadable
-	messagesByAuthor         map[uuid.UUID]map[uuid.UUID]threadable
-	messagesByFileAttachment map[uuid.UUID]threadable
-	cache                    map[uuid.UUID]cachedData
+	messages                 map[chat.ID]threadable
+	messagesByAuthor         map[chat.ID]map[chat.ID]threadable
+	messagesByFileAttachment map[chat.ID]threadable
+	cache                    map[chat.ID]cachedData
 	cacheFile                string
 }
 
 func newMessageStore() *messageStore {
-	cache := map[uuid.UUID]cachedData{}
+	cache := map[chat.ID]cachedData{}
 	cacheFile := config.GetConfigDirectory() + "/messageStore.cache"
 	data, err := ioutil.ReadFile(cacheFile)
 	if err != nil {
@@ -49,9 +49,9 @@ func newMessageStore() *messageStore {
 	}
 
 	ms := &messageStore{
-		messages:                 make(map[uuid.UUID]threadable),
-		messagesByAuthor:         make(map[uuid.UUID]map[uuid.UUID]threadable),
-		messagesByFileAttachment: make(map[uuid.UUID]threadable),
+		messages:                 make(map[chat.ID]threadable),
+		messagesByAuthor:         make(map[chat.ID]map[chat.ID]threadable),
+		messagesByFileAttachment: make(map[chat.ID]threadable),
 		cache:                    cache,
 		cacheFile:                cacheFile,
 	}
@@ -75,7 +75,7 @@ func (ms *messageStore) insert(t threadable) {
 	// Index by author
 	_, ok := ms.messagesByAuthor[t.getAuthor()]
 	if !ok {
-		ms.messagesByAuthor[t.getAuthor()] = make(map[uuid.UUID]threadable)
+		ms.messagesByAuthor[t.getAuthor()] = make(map[chat.ID]threadable)
 	}
 	ms.messagesByAuthor[t.getAuthor()][t.getID()] = t
 
@@ -90,7 +90,7 @@ func (ms *messageStore) insert(t threadable) {
 	}
 }
 
-func (ms *messageStore) get(id uuid.UUID) (threadable, bool) {
+func (ms *messageStore) get(id chat.ID) (threadable, bool) {
 	ms.Lock()
 	t, ok := ms.messages[id]
 	ms.Unlock()
@@ -98,7 +98,7 @@ func (ms *messageStore) get(id uuid.UUID) (threadable, bool) {
 	return t, ok
 }
 
-func (ms *messageStore) remove(id uuid.UUID) {
+func (ms *messageStore) remove(id chat.ID) {
 	ms.Lock()
 	defer ms.Unlock()
 
@@ -114,7 +114,7 @@ func (ms *messageStore) remove(id uuid.UUID) {
 	delete(ms.messagesByAuthor[m.getAuthor()], id)
 }
 
-func (ms *messageStore) renameUser(userID uuid.UUID, name, initials string) {
+func (ms *messageStore) renameUser(userID chat.ID, name, initials string) {
 	ms.Lock()
 	defer ms.Unlock()
 
@@ -132,7 +132,7 @@ func (ms *messageStore) renameUser(userID uuid.UUID, name, initials string) {
 	}
 }
 
-func (ms *messageStore) updateUserImage(userID uuid.UUID, images []uuid.UUID) {
+func (ms *messageStore) updateUserImage(userID chat.ID, images []chat.ID) {
 	ms.Lock()
 	defer ms.Unlock()
 
@@ -149,19 +149,19 @@ func (ms *messageStore) updateUserImage(userID uuid.UUID, images []uuid.UUID) {
 	}
 }
 
-func (ms *messageStore) getMessageWithFile(fileID uuid.UUID) (uuid.UUID, bool) {
+func (ms *messageStore) getMessageWithFile(fileID chat.ID) (chat.ID, bool) {
 	ms.Lock()
 	defer ms.Unlock()
 
 	t, ok := ms.messagesByFileAttachment[fileID]
 	if !ok {
-		return uuid.Nil, false
+		return chat.NilID, false
 	}
 
 	return t.getID(), true
 }
 
-func (ms *messageStore) queryCache(id uuid.UUID) (cachedData, bool) {
+func (ms *messageStore) queryCache(id chat.ID) (cachedData, bool) {
 	ms.Lock()
 	cd, ok := ms.cache[id]
 	ms.Unlock()
@@ -169,7 +169,7 @@ func (ms *messageStore) queryCache(id uuid.UUID) (cachedData, bool) {
 	return cd, ok
 }
 
-func (ms *messageStore) cacheHeight(id uuid.UUID, width, height float32) {
+func (ms *messageStore) cacheHeight(id chat.ID, width, height float32) {
 	ms.Lock()
 	defer ms.Unlock()
 
@@ -183,7 +183,7 @@ func (ms *messageStore) cacheHeight(id uuid.UUID, width, height float32) {
 	ms.cache[id] = cd
 }
 
-func (ms *messageStore) cacheMergeMode(id uuid.UUID, mergeMode int) {
+func (ms *messageStore) cacheMergeMode(id chat.ID, mergeMode int) {
 	ms.Lock()
 	defer ms.Unlock()
 

@@ -7,7 +7,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/mobile"
-	"github.com/google/uuid"
+	"github.com/bounce-chat/bounce/chat"
 	"github.com/rymdport/go-qrcode"
 	log "github.com/sirupsen/logrus"
 )
@@ -42,7 +42,7 @@ var hookedDialogs = make(map[dialog.Dialog]bool)
 
 type view struct {
 	viewType int
-	context  uuid.UUID
+	context  chat.ID
 	dialog   dialog.Dialog
 }
 
@@ -249,8 +249,8 @@ func (ui *ui) mobileBack() {
 
 	// If we're not looking at a thread, unset the active thread
 	if displayView.viewType != viewTypeThread {
-		ui.state.activeThread = uuid.Nil
-		ui.bounce.SetActiveThread(uuid.Nil)
+		ui.state.activeThread = chat.NilID
+		ui.bounce.SetActiveThread(chat.NilID)
 	}
 }
 

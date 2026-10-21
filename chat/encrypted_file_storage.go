@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -25,16 +24,16 @@ var encryptedChunkOfferMutex sync.Mutex
 
 type encryptedChunkOffer struct {
 	SignedFrame
-	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Hash            string    `gorm:"index;uniqueIndex:idx_hash_location"`
-	Location        string    `gorm:"index;uniqueIndex:idx_hash_location"`
+	ID              ID     `gorm:"primary_key;"`
+	Hash            string `gorm:"index;uniqueIndex:idx_hash_location"`
+	Location        string `gorm:"index;uniqueIndex:idx_hash_location"`
 	Timestamp       int64
-	Author          uuid.UUID `msgpack:"-"`
-	FileID          uuid.UUID `msgpack:"-"`
-	SavedAt         int64     `msgpack:"-"`
-	Scope           int       `msgpack:"-"`
-	Destination     uuid.UUID `msgpack:"-"`
-	LastRequestTime int64     `msgpack:"-"`
+	Author          ID    `msgpack:"-"`
+	FileID          ID    `msgpack:"-"`
+	SavedAt         int64 `msgpack:"-"`
+	Scope           int   `msgpack:"-"`
+	Destination     ID    `msgpack:"-"`
+	LastRequestTime int64 `msgpack:"-"`
 }
 
 func (eco *encryptedChunkOffer) BeforeCreate(tx *gorm.DB) error {
@@ -42,15 +41,15 @@ func (eco *encryptedChunkOffer) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (eco *encryptedChunkOffer) getID() uuid.UUID {
+func (eco *encryptedChunkOffer) getID() ID {
 	return eco.ID
 }
 
-func (eco *encryptedChunkOffer) getScope(myID uuid.UUID) int {
+func (eco *encryptedChunkOffer) getScope(myID ID) int {
 	return eco.Scope
 }
 
-func (eco *encryptedChunkOffer) getDestination(myID uuid.UUID) uuid.UUID {
+func (eco *encryptedChunkOffer) getDestination(myID ID) ID {
 	if eco.Scope == scopeUser {
 		return xor(eco.Destination, myID)
 	}
@@ -76,7 +75,7 @@ func (eco *encryptedChunkOffer) getPayload() []byte {
 	return bytes
 }
 
-func (eco *encryptedChunkOffer) getAuthor() uuid.UUID {
+func (eco *encryptedChunkOffer) getAuthor() ID {
 	return eco.Author
 }
 
@@ -233,7 +232,7 @@ func (b *Bounce) makeNextEncryptedChunkRequests() {
 }
 
 type encryptedStorageReferenceOffer struct {
-	ECOs []uuid.UUID
+	ECOs []ID
 }
 
 func (esro encryptedStorageReferenceOffer) getType() uint16 {
@@ -357,7 +356,7 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 					esrr.StorageRequests = append(
 						esrr.StorageRequests,
 						encryptedChunkStorageRequest{
-							ID:             uuid.New(),
+							ID:             NewID(),
 							Hash:           hash,
 							Recipients:     userKeys,
 							DeleteAt:       deleteAt,
@@ -380,7 +379,7 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 }
 
 type encryptedStorageReferenceRequest struct {
-	ECORequests     []uuid.UUID
+	ECORequests     []ID
 	StorageRequests []encryptedChunkStorageRequest
 }
 
@@ -428,7 +427,7 @@ func (b *Bounce) handleEncryptedStorageReferenceRequest(peer string, payload []b
 	for _, sr := range esrr.StorageRequests {
 		for _, key := range sr.Recipients {
 			sr.RecipientUsers = append(sr.RecipientUsers, encryptedChunkRecipient{
-				ID:        uuid.New(),
+				ID:        NewID(),
 				Hash:      sr.Hash,
 				PublicKey: key,
 			})
@@ -464,10 +463,10 @@ func (b *Bounce) handleEncryptedStorageReferenceRequest(peer string, payload []b
 }
 
 type encryptedChunkStorageRequest struct {
-	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID              ID `gorm:"primary_key;"`
 	Hash            string
 	DeleteAt        int64
-	BatchDeleteKey  uuid.UUID
+	BatchDeleteKey  ID
 	CanBatchDelete  bool
 	Recipients      [][]byte                  `gorm:"-"`
 	Timestamp       int64                     `msgpack:"-"`
@@ -534,10 +533,10 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 		return nil, false
 	}
 
-	sr.ID = uuid.New()
+	sr.ID = NewID()
 	for _, key := range sr.Recipients {
 		sr.RecipientUsers = append(sr.RecipientUsers, encryptedChunkRecipient{
-			ID:        uuid.New(),
+			ID:        NewID(),
 			Hash:      sr.Hash,
 			PublicKey: key,
 		})
@@ -590,13 +589,13 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 }
 
 type encryptedChunkRecipient struct {
-	ID                             uuid.UUID `gorm:"type:uuid;primary_key;"`
-	EncryptedChunkStorageRequestID uuid.UUID
+	ID                             ID `gorm:"primary_key;"`
+	EncryptedChunkStorageRequestID ID
 	Hash                           string
 	PublicKey                      []byte
 }
 
-func (b *Bounce) getFilesUserCanHaveViaEncryptedDevice(userID uuid.UUID) []uuid.UUID {
+func (b *Bounce) getFilesUserCanHaveViaEncryptedDevice(userID ID) []ID {
 	var allowedFiles []file
 
 	if userID == b.currentUserID() {
@@ -683,7 +682,7 @@ func (b *Bounce) getFilesUserCanHaveViaEncryptedDevice(userID uuid.UUID) []uuid.
 		}
 	}
 
-	ids := []uuid.UUID{}
+	ids := []ID{}
 	for _, f := range allowedFiles {
 		ids = append(ids, f.ID)
 	}

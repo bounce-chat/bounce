@@ -6,13 +6,12 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/alecthomas/assert/v2"
-	"github.com/google/uuid"
 	"gorm.io/gorm/clause"
 )
 
 func TestCanRenameGroupAndConfirm(t *testing.T) {
 	b, alice, bob, groupID := createUsersAndGroups(t)
-	userIDs := []uuid.UUID{b.currentUserID(), alice.currentUserID(), bob.currentUserID()}
+	userIDs := []ID{b.currentUserID(), alice.currentUserID(), bob.currentUserID()}
 
 	newName := "New Name"
 	b.RenameGroup(groupID, newName)
@@ -74,7 +73,7 @@ func TestCanRenameGroupAndConfirm(t *testing.T) {
 
 func TestEarlyConfirmationWorks(t *testing.T) {
 	b, alice, bob, groupID := createUsersAndGroups(t)
-	userIDs := []uuid.UUID{b.currentUserID(), alice.currentUserID(), bob.currentUserID()}
+	userIDs := []ID{b.currentUserID(), alice.currentUserID(), bob.currentUserID()}
 
 	// Make an arbitrary update group
 	restrictEdits := updateGroup{
@@ -94,7 +93,7 @@ func TestEarlyConfirmationWorks(t *testing.T) {
 
 	// Create a confirmation from Alice
 	aliceConfirmation := confirmation{
-		ID:            uuid.New(),
+		ID:            NewID(),
 		UpdateGroupID: restrictEdits.ID,
 		Destination:   groupID,
 		Author:        alice.currentUserID(),

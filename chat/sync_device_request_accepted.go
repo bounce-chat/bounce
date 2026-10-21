@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -101,7 +100,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	}
 
 	// Save the new profile
-	sdra.Settings.ID = uuid.New()
+	sdra.Settings.ID = NewID()
 	sdra.Profile.ProfileSettings = sdra.Settings
 	sdra.Profile.OpenDM = true
 	err = b.database.Create(&sdra.Profile).Error

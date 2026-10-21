@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -47,7 +46,7 @@ type idPayload struct {
 	ID string `json:"id"`
 }
 
-func (u *uiAdapter) emitID(kind string, id uuid.UUID) {
+func (u *uiAdapter) emitID(kind string, id chat.ID) {
 	u.emit(kind, idPayload{ID: id.String()})
 }
 
@@ -94,17 +93,17 @@ func (u *uiAdapter) AddUserRequestRejected(peer string) {
 
 // --- devices -----------------------------------------------------------------
 
-func (u *uiAdapter) DeviceAdded(d chat.Device)  { u.emit("DeviceAdded", &d) }
-func (u *uiAdapter) DeviceRevoked(id uuid.UUID) { u.emitID("DeviceRevoked", id) }
+func (u *uiAdapter) DeviceAdded(d chat.Device) { u.emit("DeviceAdded", &d) }
+func (u *uiAdapter) DeviceRevoked(id chat.ID)  { u.emitID("DeviceRevoked", id) }
 
-func (u *uiAdapter) DeviceRenamed(id uuid.UUID, name string) {
+func (u *uiAdapter) DeviceRenamed(id chat.ID, name string) {
 	u.emit("DeviceRenamed", struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	}{id.String(), name})
 }
 
-func (u *uiAdapter) DeviceLastSeen(id uuid.UUID, ts int64) {
+func (u *uiAdapter) DeviceLastSeen(id chat.ID, ts int64) {
 	u.emit("DeviceLastSeen", struct {
 		ID       string `json:"id"`
 		LastSeen int64  `json:"lastSeen"`
@@ -114,11 +113,11 @@ func (u *uiAdapter) DeviceLastSeen(id uuid.UUID, ts int64) {
 func (u *uiAdapter) EncryptedDeviceAdded()    { u.sink.OnEvent("EncryptedDeviceAdded", "") }
 func (u *uiAdapter) EncryptedDeviceRejected() { u.sink.OnEvent("EncryptedDeviceRejected", "") }
 
-func (u *uiAdapter) EncryptedDeviceManagable(id uuid.UUID) {
+func (u *uiAdapter) EncryptedDeviceManagable(id chat.ID) {
 	u.emitID("EncryptedDeviceManagable", id)
 }
 
-func (u *uiAdapter) EncryptedDeviceUnmanagable(id uuid.UUID) {
+func (u *uiAdapter) EncryptedDeviceUnmanagable(id chat.ID) {
 	u.emitID("EncryptedDeviceUnmanagable", id)
 }
 
@@ -145,7 +144,7 @@ func (u *uiAdapter) DisplaySentDirectMessage(dm chat.DirectMessage) {
 	u.emit("DisplaySentDirectMessage", &dm)
 }
 
-func (u *uiAdapter) SetDMState(id uuid.UUID, s chat.DMState) {
+func (u *uiAdapter) SetDMState(id chat.ID, s chat.DMState) {
 	u.emit("SetDMState", struct {
 		ID    string       `json:"id"`
 		State chat.DMState `json:"state"`
@@ -243,18 +242,18 @@ func (u *uiAdapter) GroupInviteRejected(v chat.UpdateGroupInviteRejected) {
 	u.emit("GroupInviteRejected", &v)
 }
 
-func (u *uiAdapter) RollbackGroup(id uuid.UUID) { u.emitID("RollbackGroup", id) }
+func (u *uiAdapter) RollbackGroup(id chat.ID) { u.emitID("RollbackGroup", id) }
 
 // --- generic thread items ----------------------------------------------------
 
-func (u *uiAdapter) DeleteItem(id uuid.UUID)  { u.emitID("DeleteItem", id) }
-func (u *uiAdapter) MessageSeen(id uuid.UUID) { u.emitID("MessageSeen", id) }
+func (u *uiAdapter) DeleteItem(id chat.ID)  { u.emitID("DeleteItem", id) }
+func (u *uiAdapter) MessageSeen(id chat.ID) { u.emitID("MessageSeen", id) }
 
-func (u *uiAdapter) MarkMessageUndeliverable(id uuid.UUID) {
+func (u *uiAdapter) MarkMessageUndeliverable(id chat.ID) {
 	u.emitID("MarkMessageUndeliverable", id)
 }
 
-func (u *uiAdapter) MessageDelivered(messageID, userID uuid.UUID) {
+func (u *uiAdapter) MessageDelivered(messageID, userID chat.ID) {
 	u.emit("MessageDelivered", struct {
 		MessageID string `json:"messageId"`
 		UserID    string `json:"userId"`
@@ -283,24 +282,24 @@ func (u *uiAdapter) SetSettings(s chat.Settings) { u.emit("SetSettings", &s) }
 
 // --- files -------------------------------------------------------------------
 
-func (u *uiAdapter) FileCompleted(id uuid.UUID) { u.emitID("FileCompleted", id) }
+func (u *uiAdapter) FileCompleted(id chat.ID) { u.emitID("FileCompleted", id) }
 
 // --- hot paths: typed, no JSON ----------------------------------------------
 
-func (u *uiAdapter) ShowTypingIndicator(userID, threadID uuid.UUID) {
+func (u *uiAdapter) ShowTypingIndicator(userID, threadID chat.ID) {
 	u.sink.OnTyping(userID.String(), threadID.String(), true)
 }
 
-func (u *uiAdapter) HideTypingIndicator(userID, threadID uuid.UUID) {
+func (u *uiAdapter) HideTypingIndicator(userID, threadID chat.ID) {
 	u.sink.OnTyping(userID.String(), threadID.String(), false)
 }
 
-func (u *uiAdapter) UserOnline(id uuid.UUID)    { u.sink.OnPresence(id.String(), "user", true) }
-func (u *uiAdapter) UserOffline(id uuid.UUID)   { u.sink.OnPresence(id.String(), "user", false) }
-func (u *uiAdapter) DeviceOnline(id uuid.UUID)  { u.sink.OnPresence(id.String(), "device", true) }
-func (u *uiAdapter) DeviceOffline(id uuid.UUID) { u.sink.OnPresence(id.String(), "device", false) }
+func (u *uiAdapter) UserOnline(id chat.ID)    { u.sink.OnPresence(id.String(), "user", true) }
+func (u *uiAdapter) UserOffline(id chat.ID)   { u.sink.OnPresence(id.String(), "user", false) }
+func (u *uiAdapter) DeviceOnline(id chat.ID)  { u.sink.OnPresence(id.String(), "device", true) }
+func (u *uiAdapter) DeviceOffline(id chat.ID) { u.sink.OnPresence(id.String(), "device", false) }
 
-func (u *uiAdapter) FileDownloadProgress(id uuid.UUID, fraction float64) {
+func (u *uiAdapter) FileDownloadProgress(id chat.ID, fraction float64) {
 	u.sink.OnProgress(id.String(), "file", fraction)
 }
 

@@ -12,17 +12,17 @@
 // gobind accepts only bool, int, int8/16/32/64, uint8, float32/64, string,
 // []byte, error, *T where T is declared here, and interfaces declared here.
 // Notably it rejects maps, every slice except []byte, structs by value, and
-// *all array types* - which includes uuid.UUID, since that is [16]byte. That
+// *all array types* - which includes chat.ID, since that is [32]byte. That
 // single exclusion is what makes ~59 of chat.Engine's 79 methods unbindable.
 //
 // Consequences, applied uniformly below:
 //
-//   - Every UUID crosses as a canonical hyphenated string. uuid.UUID implements
+//   - Every UUID crosses as a canonical hyphenated string. chat.ID implements
 //     TextMarshaler, so this is also what encoding/json emits, and it is exactly
-//     what java.util.UUID.toString() produces.
+//     what Kotlin keeps as an opaque String.
 //   - Structured payloads cross as JSON, never msgpack: kotlinx.serialization
-//     parses JSON natively, and JSON renders UUID map keys and values as strings
-//     rather than as 16-byte blobs Kotlin would have to reassemble by hand.
+//     parses JSON natively, and JSON renders ID map keys and values as strings
+//     rather than as 32-byte blobs Kotlin would have to reassemble by hand.
 //   - Raw image and file bytes never go through JSON. They cross as []byte, or
 //     stay on disk and cross as a path.
 //   - Go int maps to Java long, which is a surprising signature for small enum

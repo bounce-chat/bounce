@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -21,18 +20,18 @@ var ignoreTypingIndicatorsAfterSeconds = int64(3)
 // Typing indicators aren't delivery tracked, but we want to prevent broadcast loops by checking if we've already
 // seen them.  This in-memory map stores the ID of a typing indicator, and the time it was seen, so that we can
 // prune these records after some time.
-var typingIndicatorSeen = map[uuid.UUID]int64{}
+var typingIndicatorSeen = map[ID]int64{}
 var typingIndicatorSeenMutex sync.Mutex
 
 // We onlt want to broadcast a typing indicator for the same thread every so often, so this map stores the last time
 // we broadcast one for each thread
-var typingIndicatorCooldown = map[uuid.UUID]int64{}
+var typingIndicatorCooldown = map[ID]int64{}
 var typingIndicatorCooldownMutex sync.Mutex
 
 // The typing state is a representation of the user interface state of typing indicators.  It is a map from thread ID
 // to a map from user IDs to typing statuses.
-var typingState = map[uuid.UUID]map[uuid.UUID]*typingStatus{}
-var threadTypes = map[uuid.UUID]uint16{}
+var typingState = map[ID]map[ID]*typingStatus{}
+var threadTypes = map[ID]uint16{}
 var typingStateMutex sync.Mutex
 
 // A typing status contains the state of a user as it relates to a thread: where in the UI we're indicating typing,
@@ -46,18 +45,18 @@ type typingStatus struct {
 // of the thread that a user is currently typing
 type typingIndicator struct {
 	SignedFrame
-	ID          uuid.UUID
-	Thread      uuid.UUID
+	ID          ID
+	Thread      ID
 	MessageType uint16
-	Author      uuid.UUID
+	Author      ID
 	timestamp   int64 // Defined when received and not sent over the wire
 }
 
-func (ti *typingIndicator) getID() uuid.UUID {
+func (ti *typingIndicator) getID() ID {
 	return ti.ID
 }
 
-func (ti *typingIndicator) getScope(myID uuid.UUID) int {
+func (ti *typingIndicator) getScope(myID ID) int {
 	if ti.MessageType == typeDirectMessage {
 		if ti.getDestination(myID) == myID {
 			return scopeSync
@@ -73,7 +72,7 @@ func (ti *typingIndicator) getScope(myID uuid.UUID) int {
 	}
 }
 
-func (ti *typingIndicator) getDestination(myID uuid.UUID) uuid.UUID {
+func (ti *typingIndicator) getDestination(myID ID) ID {
 	if ti.MessageType == typeDirectMessage {
 		return xor(myID, ti.Thread)
 	} else if ti.MessageType == typeGroupMessage {
@@ -82,7 +81,7 @@ func (ti *typingIndicator) getDestination(myID uuid.UUID) uuid.UUID {
 		log.WithFields(log.Fields{
 			"type": ti.MessageType,
 		}).Fatal("unknown message type in typing indicator")
-		return uuid.Nil
+		return NilID
 	}
 }
 
@@ -105,7 +104,7 @@ func (ti *typingIndicator) getPayload() []byte {
 	return bytes
 }
 
-func (ti *typingIndicator) getAuthor() uuid.UUID {
+func (ti *typingIndicator) getAuthor() ID {
 	return ti.Author
 }
 
@@ -364,7 +363,7 @@ func (b *Bounce) manuallySendTypingIndicators(ti *typingIndicator, excludedPeer 
 	}
 }
 
-func typingIndicatorAlreadySeen(id uuid.UUID) bool {
+func typingIndicatorAlreadySeen(id ID) bool {
 	typingIndicatorSeenMutex.Lock()
 	defer typingIndicatorSeenMutex.Unlock()
 
@@ -384,7 +383,7 @@ func typingIndicatorAlreadySeen(id uuid.UUID) bool {
 	}
 }
 
-func shouldCooldownTypingIndicator(id uuid.UUID) bool {
+func shouldCooldownTypingIndicator(id ID) bool {
 	typingIndicatorCooldownMutex.Lock()
 	defer typingIndicatorCooldownMutex.Unlock()
 
@@ -411,7 +410,7 @@ func (b *Bounce) updateTypingState(ti typingIndicator) {
 
 	if _, ok := typingState[threadID]; !ok {
 		threadTypes[threadID] = ti.MessageType
-		typingState[threadID] = map[uuid.UUID]*typingStatus{}
+		typingState[threadID] = map[ID]*typingStatus{}
 	}
 	users := typingState[threadID]
 
@@ -434,7 +433,7 @@ func (b *Bounce) updateFrontendTypingIndicators() {
 	defer typingStateMutex.Unlock()
 
 	for thread, users := range typingState {
-		indicatingUsers := map[uuid.UUID]*typingStatus{}
+		indicatingUsers := map[ID]*typingStatus{}
 
 		for u, status := range users {
 			if status.uiIndicating && status.lastIndicated < time.Now().Unix()-typingIndicatorDisplayForSeconds {
@@ -455,7 +454,7 @@ func (b *Bounce) updateFrontendTypingIndicators() {
 	}
 }
 
-func (b *Bounce) clearUserTypingIndicator(userID, threadID uuid.UUID, threadType uint16) {
+func (b *Bounce) clearUserTypingIndicator(userID, threadID ID, threadType uint16) {
 	typingStateMutex.Lock()
 
 	_, ok := threadTypes[threadID]
@@ -464,7 +463,7 @@ func (b *Bounce) clearUserTypingIndicator(userID, threadID uuid.UUID, threadType
 	}
 
 	if _, ok = typingState[threadID]; !ok {
-		typingState[threadID] = map[uuid.UUID]*typingStatus{}
+		typingState[threadID] = map[ID]*typingStatus{}
 	}
 	users := typingState[threadID]
 
@@ -479,7 +478,7 @@ func (b *Bounce) clearUserTypingIndicator(userID, threadID uuid.UUID, threadType
 	b.updateFrontendTypingIndicators()
 }
 
-func (b *Bounce) typingIndicatorsEnabledForThread(threadID uuid.UUID) bool {
+func (b *Bounce) typingIndicatorsEnabledForThread(threadID ID) bool {
 	t, ok := threadTypes[threadID]
 	if !ok {
 		log.WithFields(log.Fields{
@@ -501,7 +500,7 @@ func (b *Bounce) typingIndicatorsEnabledForThread(threadID uuid.UUID) bool {
 	return false
 }
 
-func (b *Bounce) typingIndicatorsEnabledForUser(userID uuid.UUID) bool {
+func (b *Bounce) typingIndicatorsEnabledForUser(userID ID) bool {
 	var u user
 	err := b.database.Select("typing_indicators_overridden", "typing_indicators_enabled").First(&u, "id = ?", userID).Error
 	if err != nil {
@@ -539,14 +538,14 @@ func (b *Bounce) typingIndicatorsEnabledForUser(userID uuid.UUID) bool {
 	return defaultSendTypingIndicators
 }
 
-func (b *Bounce) TypingInDirectMessage(userID uuid.UUID) {
+func (b *Bounce) TypingInDirectMessage(userID ID) {
 	if !b.typingIndicatorsEnabledForUser(userID) {
 		return
 	}
 	b.broadcastTypingIndicator(xor(userID, b.currentUserID()), typeDirectMessage)
 }
 
-func (b *Bounce) typingIndicatorsEnabledForGroup(groupID uuid.UUID) bool {
+func (b *Bounce) typingIndicatorsEnabledForGroup(groupID ID) bool {
 	var g group
 	err := b.database.Select("typing_indicators_overridden", "typing_indicators_enabled").Take(&g, "id = ?", groupID).Error
 	if err != nil {
@@ -584,20 +583,20 @@ func (b *Bounce) typingIndicatorsEnabledForGroup(groupID uuid.UUID) bool {
 	return defaultSendTypingIndicators
 }
 
-func (b *Bounce) TypingInGroup(groupID uuid.UUID) { // TODO: merge with typgin in DM?
+func (b *Bounce) TypingInGroup(groupID ID) { // TODO: merge with typgin in DM?
 	if !b.typingIndicatorsEnabledForGroup(groupID) {
 		return
 	}
 	b.broadcastTypingIndicator(groupID, typeGroupMessage)
 }
 
-func (b *Bounce) broadcastTypingIndicator(threadID uuid.UUID, messageType uint16) {
+func (b *Bounce) broadcastTypingIndicator(threadID ID, messageType uint16) {
 	if shouldCooldownTypingIndicator(threadID) {
 		return
 	}
 
 	ti := &typingIndicator{
-		ID:          uuid.New(),
+		ID:          NewID(),
 		Thread:      threadID,
 		MessageType: messageType,
 		Author:      b.currentUserID(),

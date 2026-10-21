@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm/clause"
 )
@@ -123,7 +122,7 @@ func (b *Bounce) makeRoomForUntrustedEncryptedFrame(ef *encryptedFrame, peer str
 // time, returning the bytes and number of frames freed
 func (b *Bounce) evictUntrustedEncryptedFramesSavedBefore(before int64) (int64, int64) {
 	var oldest []struct {
-		ID   uuid.UUID
+		ID   ID
 		Size int64
 	}
 	err := b.database.
@@ -143,7 +142,7 @@ func (b *Bounce) evictUntrustedEncryptedFramesSavedBefore(before int64) (int64, 
 		return 0, 0
 	}
 
-	ids := make([]uuid.UUID, 0, len(oldest))
+	ids := make([]ID, 0, len(oldest))
 	freed := int64(0)
 	for _, frame := range oldest {
 		ids = append(ids, frame.ID)

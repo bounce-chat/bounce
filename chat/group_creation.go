@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
@@ -18,14 +17,14 @@ import (
 // are referencing this group via a hash of it's orignal state.
 type groupCreation struct {
 	SignedFrame
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID        ID `gorm:"primary_key;"`
 	Timestamp int64
 	SavedAt   int64  `msgpack:"-"`
 	Data      []byte `gorm:"not null"` // Original group structure, msgpacked
 }
 
 func (gc *groupCreation) BeforeCreate(tx *gorm.DB) error {
-	if gc.ID == uuid.Nil {
+	if gc.ID == NilID {
 		return errors.New("group creation must have an ID assigned before creation")
 	}
 	gc.SavedAt = time.Now().Unix()
@@ -33,21 +32,21 @@ func (gc *groupCreation) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (gc *groupCreation) AfterDelete(tx *gorm.DB) error {
-	if gc.ID == uuid.Nil {
+	if gc.ID == NilID {
 		return nil
 	}
 	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", gc.ID, typeGroupCreation).Delete(&deliveryRecord{}).Error
 }
 
-func (gc *groupCreation) getID() uuid.UUID {
+func (gc *groupCreation) getID() ID {
 	return gc.ID
 }
 
-func (gc *groupCreation) getScope(_ uuid.UUID) int {
+func (gc *groupCreation) getScope(_ ID) int {
 	return scopeGroupWithInvites
 }
 
-func (gc *groupCreation) getDestination(_ uuid.UUID) uuid.UUID {
+func (gc *groupCreation) getDestination(_ ID) ID {
 	return gc.ID
 }
 
@@ -70,10 +69,10 @@ func (gc *groupCreation) getPayload() []byte {
 	return bytes
 }
 
-func (gc *groupCreation) getAuthor() uuid.UUID {
+func (gc *groupCreation) getAuthor() ID {
 	// Since group creations will never be broadcast globally, we don't
 	// need to accurately report the author
-	return uuid.Nil
+	return NilID
 }
 
 func (gc *groupCreation) getTimestamp() int64 {
@@ -124,15 +123,8 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 			"written": written,
 		}).Fatal("failed to write all group data into hasher")
 	}
-	digest := hasher.Digest()
-	groupHash := make([]byte, 16)
-	digest.Read(groupHash)
-	groupID, err := uuid.FromBytes(groupHash)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("cannot create UUID from hash of group data")
-	}
+	var groupID ID
+	hasher.Digest().Read(groupID[:])
 	if gc.ID != groupID {
 		log.WithFields(log.Fields{
 			"group_creation_id": gc.ID,
@@ -250,7 +242,7 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 	return &gc, true
 }
 
-func (b *Bounce) groupCreationEmbeddedGroup(groupID uuid.UUID) (group, error) {
+func (b *Bounce) groupCreationEmbeddedGroup(groupID ID) (group, error) {
 	var gc groupCreation
 	err := b.database.First(&gc, "id = ?", groupID).Error
 	if err != nil {

@@ -1,13 +1,9 @@
 package chat
 
-import (
-	"github.com/google/uuid"
-)
-
 type User struct {
-	ID               uuid.UUID
+	ID               ID
 	Name             string
-	Images           []uuid.UUID
+	Images           []ID
 	State            DMState
 	IntroductionTime int64
 	Alias            string
@@ -27,7 +23,7 @@ type Settings struct {
 }
 
 type Device struct {
-	ID        uuid.UUID
+	ID        ID
 	Name      string
 	Address   string
 	LastSeen  int64
@@ -50,14 +46,14 @@ type DMState struct {
 }
 
 type FileAttachment struct {
-	ID       uuid.UUID
+	ID       ID
 	Name     string
 	Size     int64
 	Progress float64
 }
 
 type ImageAttachment struct {
-	ID       uuid.UUID
+	ID       ID
 	Name     string
 	Size     int64
 	Width    int
@@ -66,9 +62,9 @@ type ImageAttachment struct {
 }
 
 type DirectMessage struct {
-	ID               uuid.UUID
-	Author           uuid.UUID
-	Thread           uuid.UUID
+	ID               ID
+	Author           ID
+	Thread           ID
 	WrittenAt        int64
 	SavedAt          int64
 	ExpiresAt        int64
@@ -78,49 +74,49 @@ type DirectMessage struct {
 	ImageAttachments []ImageAttachment
 	FileAttachments  []FileAttachment
 	ReadReceipts     []ReadReceipt
-	DeliveredTo      []uuid.UUID
+	DeliveredTo      []ID
 }
 
 type UpdateDMRetention struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 	Retention int64
 }
 
 type UpdateDMClearHistory struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 	ClearTime int64
 }
 
 type UpdateDMSetAlias struct {
-	ID        uuid.UUID
-	User      uuid.UUID
+	ID        ID
+	User      ID
 	Timestamp int64
 	Alias     string
 }
 
 type Group struct {
-	ID                             uuid.UUID
+	ID                             ID
 	Name                           string
-	Images                         []uuid.UUID
+	Images                         []ID
 	Users                          []User
-	Admins                         []uuid.UUID
+	Admins                         []ID
 	Invites                        []User
-	InvitedBy                      uuid.UUID
+	InvitedBy                      ID
 	InvitedAt                      int64
 	AcceptedAt                     int64
-	BlockedUsers                   []uuid.UUID
+	BlockedUsers                   []ID
 	Retention                      int64
 	MutedUntil                     int64
 	LastActivity                   int64
-	CreatedBy                      uuid.UUID
+	CreatedBy                      ID
 	CreatedAt                      int64
 	RestrictUserManagement         bool
 	RestrictGroupEdits             bool
@@ -135,7 +131,7 @@ type Group struct {
 type NewGroup struct {
 	Name                   string
 	Image                  []byte
-	InitialInvites         []uuid.UUID
+	InitialInvites         []ID
 	Retention              int64
 	RestrictUserManagement bool
 	RestrictGroupEdits     bool
@@ -143,9 +139,9 @@ type NewGroup struct {
 }
 
 type GroupMessage struct {
-	ID               uuid.UUID
-	Author           uuid.UUID
-	Thread           uuid.UUID
+	ID               ID
+	Author           ID
+	Thread           ID
 	WrittenAt        int64
 	SavedAt          int64
 	ExpiresAt        int64
@@ -155,207 +151,207 @@ type GroupMessage struct {
 	ImageAttachments []ImageAttachment
 	FileAttachments  []FileAttachment
 	ReadReceipts     []ReadReceipt
-	DeliveredTo      []uuid.UUID
+	DeliveredTo      []ID
 }
 
 type UpdateGroupRetention struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 	Retention int64
 }
 
 type UpdateGroupName struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 	Name      string
 }
 
 type UpdateGroupInviteUser struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 	User      User
 }
 
 type UpdateGroupRemoveUser struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
-	User      uuid.UUID
+	User      ID
 }
 
 type UpdateGroupClearHistory struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 	ClearTime int64
 }
 
 type UpdateGroupAdminPromoted struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
-	UserID    uuid.UUID
+	UserID    ID
 }
 
 type UpdateGroupAdminDemoted struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
-	UserID    uuid.UUID
+	UserID    ID
 }
 
 type UpdateGroupUserManagementRestricted struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 }
 
 type UpdateGroupUserManagementUnrestricted struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 }
 
 type UpdateGroupEditsRestricted struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 }
 
 type UpdateGroupEditsUnrestricted struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 }
 
 type UpdateGroupPostingRestricted struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 }
 
 type UpdateGroupPostingUnrestricted struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 }
 
 type RemovedFromGroup struct {
-	Group uuid.UUID
-	Actor uuid.UUID
+	Group ID
+	Actor ID
 }
 
 type GroupDeleted struct {
-	Group uuid.UUID
-	Actor uuid.UUID
+	Group ID
+	Actor ID
 }
 
 type UserBlockedGroup struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 }
 
 type UpdateGroupUserChangedGroupImage struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 }
 
 type UpdateGroupInviteRevoked struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
-	UserID    uuid.UUID
+	UserID    ID
 	Seen      bool
 }
 
 type UpdateGroupInviteAccepted struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 }
 
 type UpdateGroupInviteRejected struct {
-	ID        uuid.UUID
-	Thread    uuid.UUID
-	Actor     uuid.UUID
+	ID        ID
+	Thread    ID
+	Actor     ID
 	Timestamp int64
 	Seen      bool
 }
 
 type UpdateUserUpdateName struct {
-	ID        uuid.UUID
-	User      uuid.UUID
+	ID        ID
+	User      ID
 	OldName   string
 	Name      string
 	Timestamp int64
 }
 
 type UpdateUserUpdateImage struct {
-	ID        uuid.UUID
-	User      uuid.UUID
+	ID        ID
+	User      ID
 	Timestamp int64
 }
 
 type ReadReceipt struct {
-	ID     uuid.UUID
-	Actor  uuid.UUID
-	Target uuid.UUID
+	ID     ID
+	Actor  ID
+	Target ID
 }
 
 type FileProgress struct {
-	ID       uuid.UUID
+	ID       ID
 	Progress float64
 }
 
 type Draft struct {
-	Thread uuid.UUID
+	Thread ID
 	Text   string
 }
 
 type BulkUpdate struct {
-	Source         uuid.UUID
-	Seen           []uuid.UUID
-	GroupMessages  map[uuid.UUID][]GroupMessage
-	DirectMessages map[uuid.UUID][]DirectMessage
-	ReadReceipts   map[uuid.UUID][]ReadReceipt
+	Source         ID
+	Seen           []ID
+	GroupMessages  map[ID][]GroupMessage
+	DirectMessages map[ID][]DirectMessage
+	ReadReceipts   map[ID][]ReadReceipt
 }
 
 type InitialState struct {
@@ -416,16 +412,16 @@ type UI interface {
 	InitialSyncComplete()
 
 	// Device management
-	DeviceOnline(uuid.UUID)
-	DeviceOffline(uuid.UUID)
+	DeviceOnline(ID)
+	DeviceOffline(ID)
 	DeviceAdded(Device)
-	DeviceRevoked(uuid.UUID)
-	DeviceRenamed(uuid.UUID, string)
-	DeviceLastSeen(uuid.UUID, int64)
+	DeviceRevoked(ID)
+	DeviceRenamed(ID, string)
+	DeviceLastSeen(ID, int64)
 	EncryptedDeviceAdded()
 	EncryptedDeviceRejected()
-	EncryptedDeviceUnmanagable(uuid.UUID)
-	EncryptedDeviceManagable(uuid.UUID)
+	EncryptedDeviceUnmanagable(ID)
+	EncryptedDeviceManagable(ID)
 
 	// User management
 	AddUserRequestRejected(string)
@@ -434,7 +430,7 @@ type UI interface {
 	// Direct messages
 	DisplayDirectMessage(DirectMessage)
 	DisplaySentDirectMessage(DirectMessage)
-	SetDMState(uuid.UUID, DMState)
+	SetDMState(ID, DMState)
 	DMRetentionChanged(UpdateDMRetention)      // The retention settings for a DM have been changed
 	DMChatHistoryCleared(UpdateDMClearHistory) // Display that a user has deleted all past DMs
 	UserAliased(UpdateDMSetAlias)
@@ -464,16 +460,16 @@ type UI interface {
 	GroupInviteRevoked(UpdateGroupInviteRevoked)
 	GroupInviteAccepted(UpdateGroupInviteAccepted)
 	GroupInviteRejected(UpdateGroupInviteRejected)
-	RollbackGroup(uuid.UUID)
+	RollbackGroup(ID)
 
 	// Generic thread items
-	DeleteItem(uuid.UUID)
-	MessageDelivered(messageID, userID uuid.UUID)
-	MarkMessageUndeliverable(uuid.UUID)
-	MessageSeen(uuid.UUID)           // We read a message on another device
+	DeleteItem(ID)
+	MessageDelivered(messageID, userID ID)
+	MarkMessageUndeliverable(ID)
+	MessageSeen(ID)                  // We read a message on another device
 	ReceivedReadReceipt(ReadReceipt) // Someone else read a message of ours
-	ShowTypingIndicator(userID, threadID uuid.UUID)
-	HideTypingIndicator(userID, threadID uuid.UUID)
+	ShowTypingIndicator(userID, threadID ID)
+	HideTypingIndicator(userID, threadID ID)
 	CatchUpMessages(BulkUpdate, bool)
 	UpdateDraft(Draft)
 
@@ -481,15 +477,15 @@ type UI interface {
 	SetUserState(User)
 	UserNameUpdated(UpdateUserUpdateName)
 	UserImageUpdated(UpdateUserUpdateImage)
-	UserOnline(userID uuid.UUID)
-	UserOffline(userID uuid.UUID)
+	UserOnline(userID ID)
+	UserOffline(userID ID)
 
 	// Settings
 	SetSettings(Settings)
 
 	// File management
-	FileCompleted(uuid.UUID)
-	FileDownloadProgress(uuid.UUID, float64)
+	FileCompleted(ID)
+	FileDownloadProgress(ID, float64)
 }
 
 // Frames that support being marked as read

@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -16,7 +15,7 @@ var catchUpPayloadBudget = maxPayloadSize / 4
 
 // A frame contains the ID, type, and marshalled payload of any other frame
 type frame struct {
-	ID      uuid.UUID
+	ID      ID
 	Type    uint16
 	Payload []byte
 }
@@ -110,13 +109,13 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	}
 
 	// Keep track of things that are impacted by this catch up
-	groupsToUpdateConsensus := map[uuid.UUID]bool{}
-	usersToUpdate := map[uuid.UUID]bool{}
-	dmsToUpdate := map[uuid.UUID]bool{}
+	groupsToUpdateConsensus := map[ID]bool{}
+	usersToUpdate := map[ID]bool{}
+	dmsToUpdate := map[ID]bool{}
 	devicesToReference := map[string]bool{}
 	settingsUpdated := false
 	draftsUpdated := true
-	devicesToUpdate := map[uuid.UUID]bool{}
+	devicesToUpdate := map[ID]bool{}
 
 	// Keep track of frames that will be shared with the UI in a BulkUpdate after everything else is processed
 	gmsToDisplay := []*groupMessage{}
@@ -291,8 +290,8 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	// Update all group consensus states for groups that had an update group in this catch up
 	for groupID, _ := range groupsToUpdateConsensus {
 		// Get the user IDs for this group
-		originalIDmap := make(map[uuid.UUID]bool)
-		var originalUserIDs []uuid.UUID
+		originalIDmap := make(map[ID]bool)
+		var originalUserIDs []ID
 		err := b.database.Table("group_users").
 			Select("user_id").
 			Where("group_id = ?", groupID).
@@ -312,7 +311,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 
 		// Get the user IDs for this group again, send references to any new users
 		// TODO: or any removed users?
-		var updatedUserIDs []uuid.UUID
+		var updatedUserIDs []ID
 		err = b.database.Table("group_users").
 			Select("user_id").
 			Where("group_id = ?", groupID).
@@ -369,17 +368,17 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 
 	// Display the group messages we received for the first time in this catch up, as long as we are still in the groups
 	bulkUpdate := BulkUpdate{
-		Source:         uuid.Nil,
-		Seen:           make([]uuid.UUID, 0),
-		GroupMessages:  make(map[uuid.UUID][]GroupMessage),
-		DirectMessages: make(map[uuid.UUID][]DirectMessage),
-		ReadReceipts:   make(map[uuid.UUID][]ReadReceipt),
+		Source:         NilID,
+		Seen:           make([]ID, 0),
+		GroupMessages:  make(map[ID][]GroupMessage),
+		DirectMessages: make(map[ID][]DirectMessage),
+		ReadReceipts:   make(map[ID][]ReadReceipt),
 	}
 	if deviceExists {
 		bulkUpdate.Source = dev.UserID
 	}
 
-	var mostRecentUnseenGMs = map[uuid.UUID]*groupMessage{}
+	var mostRecentUnseenGMs = map[ID]*groupMessage{}
 	for i, gm := range gmsToDisplay {
 		groupID := gm.getDestination(b.currentUserID())
 		gs, err := b.currentGroupState(groupID)
@@ -453,7 +452,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		b.updateLastGroupActivity(gm.Destination, gm.SavedAt)
 	}
 
-	var mostRecentUnseenDMs = map[uuid.UUID]*directMessage{}
+	var mostRecentUnseenDMs = map[ID]*directMessage{}
 	for i, dm := range dmsToDisplay {
 		uiImageAttachments := []ImageAttachment{}
 		for _, ia := range dm.ImageAttachments {

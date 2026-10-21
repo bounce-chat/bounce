@@ -1,16 +1,12 @@
 package chat
 
-import (
-	"github.com/google/uuid"
-)
-
 const OnlyAutoJoinGroupsWithNoNewUsers = 0
 const NeverAutoJoinGroups = 1
 const AlwaysAutoJoinGroups = 2
 
 type profileSettings struct {
-	ID                             uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
-	UserID                         uuid.UUID
+	ID                             ID `gorm:"primary_key;" msgpack:"-"`
+	UserID                         ID
 	BlockedGroups                  string
 	DefaultGroupRetention          int64
 	DefaultSendReadReceipts        bool

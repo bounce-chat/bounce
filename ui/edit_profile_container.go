@@ -14,7 +14,6 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -248,7 +247,7 @@ func (ui *ui) buildEditProfile() {
 	//
 	// Personal details section
 	//
-	ui.widgets.editProfile.profileIcon = newDefaultImage(uuid.Nil, []uuid.UUID{}, "", 128, ui.bounce.GetFileData, func() {
+	ui.widgets.editProfile.profileIcon = newDefaultImage(chat.NilID, []chat.ID{}, "", 128, ui.bounce.GetFileData, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return

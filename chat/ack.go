@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -98,8 +97,8 @@ var ackedOnlyTypeTable = map[uint16]string{
 
 // ackedFrameExists reports whether we hold a frame with this ID and type.   On an encrypted device frames live
 // in encrypted_frames keyed by the inner frame's ID and type, apart from encrypted chunk offers which have their own table.
-func (b *Bounce) ackedFrameExists(id uuid.UUID, frameType uint16) bool {
-	if id == uuid.Nil {
+func (b *Bounce) ackedFrameExists(id ID, frameType uint16) bool {
+	if id == NilID {
 		return false
 	}
 
@@ -186,7 +185,7 @@ func (b *Bounce) handleAckSideEffects(fr frameReference, peer string) {
 			}
 		}
 
-		if ug.CustomScope != uuid.Nil {
+		if ug.CustomScope != NilID {
 			var cs customScope
 			err = b.database.First(&cs, "id = ?", ug.CustomScope).Error
 			if err != nil {
@@ -231,7 +230,7 @@ func (b *Bounce) handleAckSideEffects(fr frameReference, peer string) {
 	}
 }
 
-func (b *Bounce) sendAck(peer string, frameType uint16, frameID uuid.UUID) {
+func (b *Bounce) sendAck(peer string, frameType uint16, frameID ID) {
 	b.sendDirect(peer, &ack{
 		References: []frameReference{frameReference{Type: frameType, FrameID: frameID}},
 	})

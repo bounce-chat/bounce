@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -44,8 +43,8 @@ type keySet struct {
 
 type updateUser struct {
 	SignedFrame
-	ID           uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Target       uuid.UUID
+	ID           ID `gorm:"primary_key;"`
+	Target       ID
 	Type         uint16
 	Data         []byte
 	PreviousData []byte `msgpack:"-"` // Used to store the old name during a name change
@@ -55,7 +54,7 @@ type updateUser struct {
 }
 
 func (uu *updateUser) BeforeCreate(tx *gorm.DB) error {
-	if uu.ID == uuid.Nil {
+	if uu.ID == NilID {
 		return errors.New("update user ID must be set before creation")
 	}
 	uu.SavedAt = time.Now().Unix()
@@ -63,11 +62,11 @@ func (uu *updateUser) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (uu *updateUser) getID() uuid.UUID {
+func (uu *updateUser) getID() ID {
 	return uu.ID
 }
 
-func (uu *updateUser) getScope(myID uuid.UUID) int {
+func (uu *updateUser) getScope(myID ID) int {
 	if uu.Type == updateUserTypeSetEncryptedDeviceName || uu.Type == updateUserTypeReplaceKeys {
 		return scopeSync
 	}
@@ -75,7 +74,7 @@ func (uu *updateUser) getScope(myID uuid.UUID) int {
 	return scopeGlobal
 }
 
-func (uu *updateUser) getDestination(myID uuid.UUID) uuid.UUID {
+func (uu *updateUser) getDestination(myID ID) ID {
 	return uu.Target
 }
 
@@ -98,7 +97,7 @@ func (uu *updateUser) getPayload() []byte {
 	return bytes
 }
 
-func (uu *updateUser) getAuthor() uuid.UUID {
+func (uu *updateUser) getAuthor() ID {
 	return uu.Target
 }
 
@@ -117,7 +116,7 @@ func (uu *updateUser) validPayload() error {
 			return errInvalidUserName
 		}
 	case updateUserTypeUpdateImage:
-		_, err := uuid.FromBytes(uu.Data)
+		_, err := IDFromBytes(uu.Data)
 		return err
 	case updateUserTypeAddEncryptedDevice:
 		if !onionAddressRegex.MatchString(string(uu.Data)) {
@@ -346,7 +345,7 @@ func (b *Bounce) informUIUpdateUserUpdateImage(uu updateUser) {
 	})
 }
 
-func (b *Bounce) updateUserState(userID uuid.UUID) {
+func (b *Bounce) updateUserState(userID ID) {
 	// Get the user and assign default states
 	var u user
 	err := b.database.Where("id = ?", userID).First(&u).Error
@@ -370,9 +369,9 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 	if len(existingImages) > 0 {
 		images = []string{existingImages[0].String()}
 	}
-	imageIDs := []uuid.UUID{}
+	imageIDs := []ID{}
 	if len(images) > 0 {
-		imageIDs = []uuid.UUID{existingImages[0]}
+		imageIDs = []ID{existingImages[0]}
 	}
 	encryptedDevices := map[string]bool{}
 	encryptedDeviceNames := map[string]string{}
@@ -401,7 +400,7 @@ func (b *Bounce) updateUserState(userID uuid.UUID) {
 		case updateUserTypeUpdateName:
 			newName = string(uu.Data)
 		case updateUserTypeUpdateImage:
-			imageID, err := uuid.FromBytes(uu.Data)
+			imageID, err := IDFromBytes(uu.Data)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -618,7 +617,7 @@ func (b *Bounce) createOrDeleteEncryptedSyncDevices(addresses []string) {
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				esd := encryptedSyncDevice{
-					ID:        uuid.New(),
+					ID:        NewID(),
 					Address:   addr,
 					Name:      "",
 					CreatedAt: time.Now().Unix(),
@@ -678,14 +677,14 @@ func (b *Bounce) UpdateProfileImage(newImage []byte) error {
 		return errInvalidImage
 	}
 
-	newImageID := uuid.New()
+	newImageID := NewID()
 	err := b.embedFile(newImageID, newImage, scopeGlobal, currentUser.ID, fileTypeUserImage, currentUser.ID)
 	if err != nil {
 		return err
 	}
 
 	return b.applyAndBroadcastUpdateUser(updateUser{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Target:    b.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeUpdateImage,
@@ -703,7 +702,7 @@ func (b *Bounce) UpdateProfileName(newName string) error {
 	}
 
 	return b.applyAndBroadcastUpdateUser(updateUser{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Target:    b.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeUpdateName,
@@ -713,7 +712,7 @@ func (b *Bounce) UpdateProfileName(newName string) error {
 
 func (b *Bounce) addEncryptedDevice(address string) error {
 	return b.applyAndBroadcastUpdateUser(updateUser{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Target:    b.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeAddEncryptedDevice,
@@ -799,7 +798,7 @@ func (b *Bounce) rollKeys() error {
 			signature := ed25519.Sign(oldECDSA, encoded)
 
 			med := manageEncryptedDevice{
-				ID:        uuid.New(),
+				ID:        NewID(),
 				Action:    encoded,
 				Signature: signature,
 			}
@@ -810,7 +809,7 @@ func (b *Bounce) rollKeys() error {
 
 	// Inform sync devices about new keys, and all other users about public ECDH key
 	err = b.applyAndBroadcastUpdateUser(updateUser{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Target:    b.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeReplaceKeys,
@@ -823,7 +822,7 @@ func (b *Bounce) rollKeys() error {
 		return err
 	}
 	err = b.applyAndBroadcastUpdateUser(updateUser{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Target:    b.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeReplaceECDHPublicKey,

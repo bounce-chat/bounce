@@ -16,7 +16,6 @@ import (
 	"github.com/alecthomas/assert/v2"
 	"github.com/cretz/bine/torutil"
 	"github.com/cretz/bine/torutil/ed25519"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
 )
@@ -238,7 +237,7 @@ func written(from, to string, frameType uint16, payload []byte) {
 	}
 }
 
-func awaitAck(t *testing.T, to, from *Bounce, frameType uint16, frameID uuid.UUID) {
+func awaitAck(t *testing.T, to, from *Bounce, frameType uint16, frameID ID) {
 	flow := from.network.Address() + to.network.Address()
 	networkTracking.Lock()
 	refs := acked[flow]
@@ -271,32 +270,32 @@ func awaitAck(t *testing.T, to, from *Bounce, frameType uint16, frameID uuid.UUI
 }
 
 /*
-func getID(frameType uint16, payload []byte) (uuid.UUID, bool, error) {
+func getID(frameType uint16, payload []byte) (ID, bool, error) {
 	switch frameType {
 	case typeDirectMessage:
 		var dm directMessage
 		err := msgpack.Unmarshal(payload, &dm)
 		if err != nil {
-			return uuid.Nil, true, err
+			return NilID, true, err
 		}
 		return dm.getID(), true, nil
 	case typeGroupMessage:
 		var gm groupMessage
 		err := msgpack.Unmarshal(payload, &gm)
 		if err != nil {
-			return uuid.Nil, true, err
+			return NilID, true, err
 		}
 		return gm.getID(), true, nil
 	case typeReferenceOffer:
-		return uuid.Nil, false, nil
+		return NilID, false, nil
 	case typeReferenceRequest:
-		return uuid.Nil, false, nil
+		return NilID, false, nil
 	case typeCatchUp:
-		return uuid.Nil, false, nil
+		return NilID, false, nil
 	case typeAck:
-		return uuid.Nil, false, nil
+		return NilID, false, nil
 	case typeKeepAlive:
-		return uuid.Nil, false, nil
+		return NilID, false, nil
 	case typeSyncDeviceRequest:
 	case typeSyncDeviceRequestRejected:
 	case typeSyncDeviceRequestAccepted:
@@ -315,7 +314,7 @@ func getID(frameType uint16, payload []byte) (uuid.UUID, bool, error) {
 	case typeReadReceipt:
 	case typeUpdateSettings:
 	}
-	return uuid.Nil, false, errors.New("unknown frame type")
+	return NilID, false, errors.New("unknown frame type")
 }
 */
 
@@ -420,15 +419,15 @@ func (t *testUI) AddUserRequestRejected(string)                  {}
 func (t *testUI) UserAdded(u User) {
 	t.called <- call{function: "UserAdded", args: []interface{}{u}}
 }
-func (t *testUI) DeleteItem(uuid.UUID)                      {}
-func (t *testUI) MarkMessageUndeliverable(uuid.UUID)        {}
+func (t *testUI) DeleteItem(ID)                             {}
+func (t *testUI) MarkMessageUndeliverable(ID)               {}
 func (t *testUI) DisplayDirectMessage(DirectMessage)        {}
 func (t *testUI) DisplaySentDirectMessage(DirectMessage)    {}
-func (t *testUI) SetDMState(uuid.UUID, DMState)             {}
+func (t *testUI) SetDMState(ID, DMState)                    {}
 func (t *testUI) DMRetentionChanged(UpdateDMRetention)      {}
 func (t *testUI) DMChatHistoryCleared(UpdateDMClearHistory) {}
 func (t *testUI) UserAliased(UpdateDMSetAlias)              {}
-func (t *testUI) SetUserName(uuid.UUID, string)             {}
+func (t *testUI) SetUserName(ID, string)                    {}
 func (t *testUI) UserNameUpdated(UpdateUserUpdateName)      {}
 func (t *testUI) OpenNewGroupChat(Group)                    {}
 func (t *testUI) NewGroupChat(g Group) {
@@ -459,43 +458,43 @@ func (t *testUI) GroupEditsUnrestricted(UpdateGroupEditsUnrestricted)           
 func (t *testUI) PostingRestricted(UpdateGroupPostingRestricted)                   {}
 func (t *testUI) PostingUnrestricted(UpdateGroupPostingUnrestricted)               {}
 func (t *testUI) InviteUser(UpdateGroupInviteUser)                                 {}
-func (t *testUI) RollbackGroup(uuid.UUID)                                          {}
+func (t *testUI) RollbackGroup(ID)                                                 {}
 func (t *testUI) GroupInviteRevoked(UpdateGroupInviteRevoked)                      {}
 func (t *testUI) GroupInviteAccepted(UpdateGroupInviteAccepted)                    {}
 func (t *testUI) GroupInviteRejected(UpdateGroupInviteRejected)                    {}
-func (t *testUI) ShowTypingIndicator(userID, threadID uuid.UUID)                   {}
-func (t *testUI) HideTypingIndicator(userID, threadID uuid.UUID)                   {}
-func (t *testUI) UserOnline(userID uuid.UUID)                                      {}
-func (t *testUI) UserOffline(userID uuid.UUID)                                     {}
-func (t *testUI) DeviceOnline(uuid.UUID)                                           {}
-func (t *testUI) DeviceOffline(uuid.UUID)                                          {}
+func (t *testUI) ShowTypingIndicator(userID, threadID ID)                          {}
+func (t *testUI) HideTypingIndicator(userID, threadID ID)                          {}
+func (t *testUI) UserOnline(userID ID)                                             {}
+func (t *testUI) UserOffline(userID ID)                                            {}
+func (t *testUI) DeviceOnline(ID)                                                  {}
+func (t *testUI) DeviceOffline(ID)                                                 {}
 func (t *testUI) DeviceAdded(Device)                                               {}
-func (t *testUI) DeviceRevoked(uuid.UUID)                                          {}
-func (t *testUI) DeviceRenamed(uuid.UUID, string)                                  {}
-func (t *testUI) DeviceLastSeen(uuid.UUID, int64)                                  {}
-func (t *testUI) MessageSeen(uuid.UUID)                                            {}
+func (t *testUI) DeviceRevoked(ID)                                                 {}
+func (t *testUI) DeviceRenamed(ID, string)                                         {}
+func (t *testUI) DeviceLastSeen(ID, int64)                                         {}
+func (t *testUI) MessageSeen(ID)                                                   {}
 func (t *testUI) ReceivedReadReceipt(ReadReceipt)                                  {}
 func (t *testUI) SetSettings(Settings)                                             {}
-func (t *testUI) MessageDelivered(messageID, userID uuid.UUID)                     {}
+func (t *testUI) MessageDelivered(messageID, userID ID)                            {}
 func (t *testUI) SetDarkMode(value bool)                                           {}
 func (t *testUI) SetUserState(User)                                                {}
-func (t *testUI) FileCompleted(uuid.UUID)                                          {}
+func (t *testUI) FileCompleted(ID)                                                 {}
 func (t *testUI) UserChangedGroupImage(UpdateGroupUserChangedGroupImage)           {}
 func (t *testUI) UserImageUpdated(UpdateUserUpdateImage)                           {}
-func (t *testUI) FileDownloadProgress(uuid.UUID, float64)                          {}
+func (t *testUI) FileDownloadProgress(ID, float64)                                 {}
 func (t *testUI) CatchUpMessages(BulkUpdate, bool)                                 {}
 func (t *testUI) AnotherDeviceActive()                                             {}
 func (t *testUI) NoOtherDeviceActive()                                             {}
 func (t *testUI) EncryptedDeviceAdded()                                            {}
 func (t *testUI) EncryptedDeviceRejected()                                         {}
-func (t *testUI) EncryptedDeviceManagable(uuid.UUID)                               {}
-func (t *testUI) EncryptedDeviceUnmanagable(uuid.UUID)                             {}
+func (t *testUI) EncryptedDeviceManagable(ID)                                      {}
+func (t *testUI) EncryptedDeviceUnmanagable(ID)                                    {}
 func (t *testUI) UpdateDraft(Draft)                                                {}
 
 func newBounce() *Bounce {
 	ui := newTestUI()
 	network := newTestnet()
-	configDirectory := os.TempDir() + "/bounce-test-" + uuid.New().String()
+	configDirectory := os.TempDir() + "/bounce-test-" + NewID().String()
 	os.MkdirAll(configDirectory, 0700)
 	os.MkdirAll(configDirectory+"/blobs/", 0700)
 
@@ -508,7 +507,7 @@ func newBounceUser(name string) *Bounce {
 	return b
 }
 
-func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID uuid.UUID) {
+func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID ID) {
 	me = newBounceUser("Me")
 	meUser, ok := me.currentUser()
 	assert.True(t, ok)
@@ -659,7 +658,7 @@ func (b *Bounce) createGroupCreation(ng NewGroup) groupCreation {
 	profile, _ := b.currentUser()
 	creationTime := time.Now().Unix() - 3 // Subtract one second to ensure any invites are ordered after the group creation
 	g := group{
-		ID:                     uuid.Nil,
+		ID:                     NilID,
 		Name:                   ng.Name,
 		Images:                 "",
 		CreatedBy:              b.currentUserID(),
@@ -688,15 +687,8 @@ func (b *Bounce) createGroupCreation(ng NewGroup) groupCreation {
 			"written": written,
 		}).Fatal("failed to write all group data into hasher")
 	}
-	digest := hasher.Digest()
-	groupHash := make([]byte, 16)
-	digest.Read(groupHash)
-	groupID, err := uuid.FromBytes(groupHash)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("cannot create UUID from hash of group data")
-	}
+	var groupID ID
+	hasher.Digest().Read(groupID[:])
 	g.ID = groupID
 
 	gc := groupCreation{

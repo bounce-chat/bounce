@@ -4,7 +4,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -76,7 +75,7 @@ type sendable interface {
 }
 
 type identifiable interface {
-	getID() uuid.UUID
+	getID() ID
 }
 
 type catchUpAble interface {
@@ -88,9 +87,9 @@ type catchUpAble interface {
 type broadcastable interface {
 	identifiable
 	sendable
-	getScope(myID uuid.UUID) int
-	getDestination(myID uuid.UUID) uuid.UUID
-	getAuthor() uuid.UUID
+	getScope(myID ID) int
+	getDestination(myID ID) ID
+	getAuthor() ID
 	getTimestamp() int64
 }
 
@@ -598,10 +597,10 @@ func (b *Bounce) getGroupWithInvitesScope(br broadcastable, excludeDelivered boo
 		}
 	}
 
-	invites := []uuid.UUID{}
+	invites := []ID{}
 	if len(destinationGroup.Invites) > 0 {
 		for _, inviteIDString := range strings.Split(destinationGroup.Invites, ",") {
-			inviteID, err := uuid.Parse(inviteIDString)
+			inviteID, err := ParseID(inviteIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":    err.Error(),

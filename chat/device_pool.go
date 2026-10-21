@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -36,10 +35,10 @@ type devicePool struct {
 	deviceMutex        sync.Mutex
 	onlineMutex        sync.Mutex
 	devices            map[string]*remoteDevice
-	groupPools         map[uuid.UUID][]*remoteDevice
-	userPools          map[uuid.UUID][]*remoteDevice
-	userOnlineStatus   map[uuid.UUID]bool
-	deviceOnlineStatus map[uuid.UUID]bool
+	groupPools         map[ID][]*remoteDevice
+	userPools          map[ID][]*remoteDevice
+	userOnlineStatus   map[ID]bool
+	deviceOnlineStatus map[ID]bool
 	lastDialMutex      sync.Mutex
 	lastDial           map[string]time.Time
 	lastFailedDial     map[string]time.Time
@@ -505,7 +504,7 @@ func (b *Bounce) dialMissingSockets() {
 	}
 }
 
-func (b *Bounce) UserConnectionDesired(id uuid.UUID) {
+func (b *Bounce) UserConnectionDesired(id ID) {
 	if id == b.currentUserID() {
 		// We always connect to sync devices, this is probably called because the UI
 		// opened a thread to ourselves, we can ignore
@@ -576,7 +575,7 @@ func (b *Bounce) UserConnectionDesired(id uuid.UUID) {
 	}
 }
 
-func (b *Bounce) GroupConnectionDesired(id uuid.UUID) {
+func (b *Bounce) GroupConnectionDesired(id ID) {
 	// Look up the group
 	var g group
 	err := b.database.Preload("Users.Devices").Preload(clause.Associations).First(&g, "id = ?", id).Error
@@ -650,7 +649,7 @@ func (b *Bounce) GroupConnectionDesired(id uuid.UUID) {
 	}
 }
 
-func (b *Bounce) tryDialingAndAssociateWithGroup(address string, groupID uuid.UUID) {
+func (b *Bounce) tryDialingAndAssociateWithGroup(address string, groupID ID) {
 	if b.tryDialing(address) {
 		b.insertRemoteDeviceIntoPool(address, poolTypeGroup, groupID)
 	}
@@ -691,7 +690,7 @@ func (b *Bounce) tryDialing(address string) bool {
 	return false
 }
 
-func (b *Bounce) insertRemoteDeviceIntoPool(address string, poolType int, id uuid.UUID) {
+func (b *Bounce) insertRemoteDeviceIntoPool(address string, poolType int, id ID) {
 	b.devicePool.poolMutex.Lock()
 	defer b.devicePool.poolMutex.Unlock()
 
@@ -733,7 +732,7 @@ func (b *Bounce) insertRemoteDeviceIntoPool(address string, poolType int, id uui
 	}
 }
 
-func (b *Bounce) prunePool(poolType int, id uuid.UUID) {
+func (b *Bounce) prunePool(poolType int, id ID) {
 	if poolType == poolTypeUser {
 		_, ok := b.devicePool.userPools[id]
 		if !ok {
@@ -819,8 +818,8 @@ func (b *Bounce) updateUserOnlineStatus(address string) {
 	b.devicePool.onlineMutex.Lock()
 	defer b.devicePool.onlineMutex.Unlock()
 
-	var deviceID uuid.UUID
-	var deviceOwner uuid.UUID
+	var deviceID ID
+	var deviceOwner ID
 	var esd encryptedSyncDevice
 	err := b.database.First(&esd, "address = ?", address).Error
 	if err == nil {

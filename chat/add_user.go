@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
@@ -19,8 +18,8 @@ var handleAddUsersMutex sync.Mutex
 // An addUser frame contains proof that two users became friends, where one of the users is us.  It is created as part
 // of the final step in adding a user over the wire.
 type addUser struct {
-	ID                 uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Xor                uuid.UUID
+	ID                 ID `gorm:"primary_key;"`
+	Xor                ID
 	Timestamp          int64
 	SavedAt            int64 `msgpack:"-"`
 	OfferUser          []byte
@@ -32,7 +31,7 @@ type addUser struct {
 }
 
 func (au *addUser) BeforeCreate(tx *gorm.DB) error {
-	if au.ID == uuid.Nil {
+	if au.ID == NilID {
 		log.Fatal("add user must have an ID assigned before save")
 	}
 	au.SavedAt = time.Now().Unix()
@@ -40,21 +39,21 @@ func (au *addUser) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (au *addUser) AfterDelete(tx *gorm.DB) error {
-	if au.ID == uuid.Nil {
+	if au.ID == NilID {
 		return nil
 	}
 	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", au.ID, typeAddUser).Delete(&deliveryRecord{}).Error
 }
 
-func (au *addUser) getID() uuid.UUID {
+func (au *addUser) getID() ID {
 	return au.ID
 }
 
-func (au *addUser) getScope(_ uuid.UUID) int {
+func (au *addUser) getScope(_ ID) int {
 	return scopeUser
 }
 
-func (au *addUser) getDestination(myID uuid.UUID) uuid.UUID {
+func (au *addUser) getDestination(myID ID) ID {
 	return xor(myID, au.Xor)
 }
 
@@ -73,10 +72,10 @@ func (au *addUser) getPayload() []byte {
 	return bytes
 }
 
-func (au *addUser) getAuthor() uuid.UUID {
+func (au *addUser) getAuthor() ID {
 	// Since add users will never be broadcast globally, we don't
 	// need to accurately report the author
-	return uuid.Nil
+	return NilID
 }
 
 func (au *addUser) getTimestamp() int64 {

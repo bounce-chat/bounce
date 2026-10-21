@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -15,16 +14,16 @@ import (
 // add user request.  A new secret is generated every time the UI displays this string, and only one is stored in the
 // database at a time.
 type addUserOffer struct {
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID        ID `gorm:"primary_key;"`
 	Timestamp int64
 	Secret    string
 }
 
 func (auo *addUserOffer) BeforeCreate(tx *gorm.DB) error {
-	if auo.ID != uuid.Nil {
+	if auo.ID != NilID {
 		log.Fatal("add user offer cannot have an ID assigned before creation")
 	}
-	auo.ID = uuid.New()
+	auo.ID = NewID()
 	return nil
 }
 

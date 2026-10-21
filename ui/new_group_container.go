@@ -13,7 +13,6 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -129,7 +128,7 @@ func (ui *ui) buildNewGroup() {
 			ui.showDialog(dialog.NewError(errors.New("invalid retention selection: "+selectedRetentionString), ui.window), nil)
 		}
 
-		initialInvites := []uuid.UUID{}
+		initialInvites := []chat.ID{}
 		for _, user := range ui.widgets.newGroup.pendingUsers.alphabetized() {
 			initialInvites = append(initialInvites, user.id)
 		}
@@ -194,10 +193,10 @@ func (ui *ui) buildNewGroup() {
 
 		ui.widgets.newGroup.icon.setString(initial)
 	}
-	fileGetter := func(_ uuid.UUID) ([]byte, error) {
+	fileGetter := func(_ chat.ID) ([]byte, error) {
 		return ui.widgets.newGroup.iconData, nil
 	}
-	ui.widgets.newGroup.icon = newDefaultImage(uuid.Nil, []uuid.UUID{}, initial, 128, fileGetter, func() {
+	ui.widgets.newGroup.icon = newDefaultImage(chat.NilID, []chat.ID{}, initial, 128, fileGetter, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
@@ -222,7 +221,7 @@ func (ui *ui) buildNewGroup() {
 			// TODO: make sure data is a valid image, allow for editing, etc
 
 			ui.widgets.newGroup.iconData = data
-			ui.widgets.newGroup.icon.images = []uuid.UUID{uuid.New()}
+			ui.widgets.newGroup.icon.images = []chat.ID{chat.NewID()}
 			ui.widgets.newGroup.icon.setBackground()
 			ui.widgets.newGroup.icon.Refresh()
 		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
@@ -262,7 +261,7 @@ func (ui *ui) showNewGroup() {
 	ui.clearNewGroupSelectors()
 	ui.setContent(viewTypeNewGroup, ui.views.newGroup)
 	ui.widgets.newGroup.iconData = []byte{}
-	ui.widgets.newGroup.icon.images = []uuid.UUID{}
+	ui.widgets.newGroup.icon.images = []chat.ID{}
 	ui.widgets.newGroup.icon.setBackground()
 	ui.widgets.newGroup.icon.Refresh()
 	if !fyne.CurrentDevice().IsMobile() {
@@ -276,7 +275,7 @@ func (ui *ui) clearNewGroupSelectors() {
 
 	ui.widgets.newGroup.icon.setString("")
 	ui.widgets.newGroup.iconData = []byte{}
-	ui.widgets.newGroup.icon.images = []uuid.UUID{}
+	ui.widgets.newGroup.icon.images = []chat.ID{}
 	ui.widgets.newGroup.icon.Refresh()
 
 	ui.widgets.newGroup.nameEntry.Text = ""

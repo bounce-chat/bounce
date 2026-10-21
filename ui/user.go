@@ -8,16 +8,15 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 type user struct {
-	id               uuid.UUID
+	id               chat.ID
 	name             string
 	alias            string
 	initials         string
-	images           []uuid.UUID
+	images           []chat.ID
 	notes            string
 	introductionTime int64
 	blocked          bool
@@ -325,7 +324,7 @@ func (ui *ui) UserAliased(udsa chat.UpdateDMSetAlias) {
 	}
 }
 
-func (ui *ui) UserOnline(userID uuid.UUID) {
+func (ui *ui) UserOnline(userID chat.ID) {
 	fyne.DoAndWait(func() {
 		log.WithFields(log.Fields{
 			"user_id": userID,
@@ -333,7 +332,7 @@ func (ui *ui) UserOnline(userID uuid.UUID) {
 	})
 }
 
-func (ui *ui) UserOffline(userID uuid.UUID) {
+func (ui *ui) UserOffline(userID chat.ID) {
 	fyne.DoAndWait(func() {
 		log.WithFields(log.Fields{
 			"user_id": userID,

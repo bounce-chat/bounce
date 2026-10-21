@@ -8,7 +8,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/google/uuid"
+	"github.com/bounce-chat/bounce/chat"
 )
 
 const typingIndicatorModeText = 0
@@ -23,7 +23,7 @@ type typingIndicator struct {
 	mode                int
 	users               []*user
 	icons               []*defaultImage
-	fileGetter          func(uuid.UUID) ([]byte, error)
+	fileGetter          func(chat.ID) ([]byte, error)
 	currentlyTypingUser *widget.RichText
 	typingAnimation     *fyne.Animation
 	firstTypingDot      *canvas.Circle
@@ -32,7 +32,7 @@ type typingIndicator struct {
 	objects             []fyne.CanvasObject
 }
 
-func newTypingIndicator(mode int, fileGetter func(uuid.UUID) ([]byte, error)) *typingIndicator {
+func newTypingIndicator(mode int, fileGetter func(chat.ID) ([]byte, error)) *typingIndicator {
 	ti := &typingIndicator{
 		mode:       mode,
 		icons:      []*defaultImage{},
@@ -134,7 +134,7 @@ func (ti *typingIndicator) showUser(u *user) {
 	ti.Refresh()
 }
 
-func (ti *typingIndicator) hideUser(userID uuid.UUID) {
+func (ti *typingIndicator) hideUser(userID chat.ID) {
 	iconsWithoutUser := []*defaultImage{}
 	usersWithoutUser := []*user{}
 

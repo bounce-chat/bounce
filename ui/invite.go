@@ -11,22 +11,21 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 type invite struct {
-	id             uuid.UUID
+	id             chat.ID
 	name           string
 	initial        string
-	members        []uuid.UUID
-	invited        []uuid.UUID
-	admins         []uuid.UUID
-	invitedBy      uuid.UUID
+	members        []chat.ID
+	invited        []chat.ID
+	admins         []chat.ID
+	invitedBy      chat.ID
 	inviteLabel    *widget.RichText
 	icon           *defaultImage
 	nameLabel      *widget.RichText
-	images         []uuid.UUID
+	images         []chat.ID
 	view           *fyne.Container
 	buttonData     *threadButtonData
 	userListScroll *container.Scroll
@@ -180,7 +179,7 @@ func (ui *ui) refreshInviteUsers(i *invite) {
 	userList := container.NewVBox()
 	userList.Add(widget.NewLabel("Current Users"))
 
-	adminMap := map[uuid.UUID]bool{}
+	adminMap := map[chat.ID]bool{}
 	for _, adminID := range i.admins {
 		adminMap[adminID] = true
 	}
@@ -231,7 +230,7 @@ func (ui *ui) refreshInviteUsers(i *invite) {
 
 func (ui *ui) refreshInvitedBy(i *invite) {
 	invitedString := "you have been invited to join"
-	if i.invitedBy != uuid.Nil {
+	if i.invitedBy != chat.NilID {
 		invitingUser, ok := ui.users.get(i.invitedBy)
 		if ok {
 			invitedString = invitingUser.getDisplayName() + " has invited you to join"
@@ -257,7 +256,7 @@ func (i *invite) setInitial() {
 	}
 }
 
-func (i *invite) getID() uuid.UUID {
+func (i *invite) getID() chat.ID {
 	return i.id
 }
 

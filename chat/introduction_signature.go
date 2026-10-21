@@ -1,21 +1,20 @@
 package chat
 
 import (
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 type introductionSignature struct {
-	ID                           uuid.UUID `gorm:"type:uuid;primary_key;"`
-	DeviceID                     uuid.UUID
+	ID                           ID `gorm:"primary_key;"`
+	DeviceID                     ID
 	PreexistingDevice            string
 	SignatureOfNewDevice         []byte
 	SignatureOfPreexistingDevice []byte
 }
 
 func (is *introductionSignature) BeforeCreate(tx *gorm.DB) error {
-	if is.ID == uuid.Nil {
-		is.ID = uuid.New()
+	if is.ID == NilID {
+		is.ID = NewID()
 	}
 	return nil
 }

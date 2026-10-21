@@ -16,7 +16,6 @@ import (
 	stdlog "log"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -277,7 +276,7 @@ func (b *Bounce) pruneUndeliverableCustomScopes() {
 	deleteBefore := time.Now().Unix() - int64(undeliverableAfter.Seconds())
 
 	// Prune update groups
-	err := b.database.Clauses(clause.Returning{}).Where("custom_scope != ? AND timestamp < ?", uuid.Nil, deleteBefore).Delete(&updateGroup{}).Error
+	err := b.database.Clauses(clause.Returning{}).Where("custom_scope != ? AND timestamp < ?", NilID, deleteBefore).Delete(&updateGroup{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -357,10 +356,10 @@ func (b *Bounce) GetInitialState() InitialState {
 	var dbProfile user
 	err := b.database.Preload(clause.Associations).Where("profile = ?", true).First(&dbProfile).Error
 	if err == nil {
-		imageHistory := []uuid.UUID{}
+		imageHistory := []ID{}
 		if len(dbProfile.Images) > 0 {
 			for _, imageIDString := range strings.Split(dbProfile.Images, ",") {
-				imageID, err := uuid.Parse(imageIDString)
+				imageID, err := ParseID(imageIDString)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error":  err.Error(),
@@ -524,10 +523,10 @@ func (b *Bounce) GetInitialState() InitialState {
 	}
 	chatGroups := []Group{}
 	for _, g := range groups {
-		imageHistory := []uuid.UUID{}
+		imageHistory := []ID{}
 		if len(g.Images) > 0 {
 			for _, imageIDString := range strings.Split(g.Images, ",") {
-				imageID, err := uuid.Parse(imageIDString)
+				imageID, err := ParseID(imageIDString)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error":  err.Error(),
@@ -541,10 +540,10 @@ func (b *Bounce) GetInitialState() InitialState {
 		for _, u := range g.Users {
 			userList = append(userList, User{ID: u.ID, Name: u.Name})
 		}
-		adminList := []uuid.UUID{}
+		adminList := []ID{}
 		if len(g.Admins) > 0 {
 			for _, adminIDString := range strings.Split(g.Admins, ",") {
-				adminID, err := uuid.Parse(adminIDString)
+				adminID, err := ParseID(adminIDString)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error":  err.Error(),
@@ -557,7 +556,7 @@ func (b *Bounce) GetInitialState() InitialState {
 		invitedList := []User{}
 		if len(g.Invites) > 0 {
 			for _, inviteIDString := range strings.Split(g.Invites, ",") {
-				invitedID, err := uuid.Parse(inviteIDString)
+				invitedID, err := ParseID(inviteIDString)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error":   err.Error(),
@@ -583,10 +582,10 @@ func (b *Bounce) GetInitialState() InitialState {
 				invitedList = append(invitedList, User{ID: invitedID, Name: u.Name})
 			}
 		}
-		blockedList := []uuid.UUID{}
+		blockedList := []ID{}
 		if len(g.BlockedUsers) > 0 {
 			for _, blockedIDString := range strings.Split(g.BlockedUsers, ",") {
-				blockedID, err := uuid.Parse(blockedIDString)
+				blockedID, err := ParseID(blockedIDString)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error":         err.Error(),
@@ -633,7 +632,7 @@ func (b *Bounce) GetInitialState() InitialState {
 	}
 
 	dmRRs := []readReceipt{}
-	dmRRmap := map[uuid.UUID][]ReadReceipt{}
+	dmRRmap := map[ID][]ReadReceipt{}
 	err = b.database.Where("target_type = ?", typeDirectMessage).Find(&dmRRs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -652,7 +651,7 @@ func (b *Bounce) GetInitialState() InitialState {
 	}
 
 	dmDRs := []deliveryRecord{}
-	dmDRmap := map[uuid.UUID][]uuid.UUID{}
+	dmDRmap := map[ID][]ID{}
 	err = b.database.Where("frame_type = ?", typeDirectMessage).Find(&dmDRs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -673,7 +672,7 @@ func (b *Bounce) GetInitialState() InitialState {
 		}
 		deliveredTo, ok := dmDRmap[dm.ID]
 		if !ok {
-			deliveredTo = []uuid.UUID{}
+			deliveredTo = []ID{}
 			if !dm.Undeliverable {
 				go b.checkIfDirectMessageUndeliverableAt(time.Unix(dm.WrittenAt, 0).Add(undeliverableAfter).Unix(), dm.ID)
 			}
@@ -771,7 +770,7 @@ func (b *Bounce) GetInitialState() InitialState {
 	}
 
 	gmRRs := []readReceipt{}
-	gmRRmap := map[uuid.UUID][]ReadReceipt{}
+	gmRRmap := map[ID][]ReadReceipt{}
 	err = b.database.Where("target_type = ?", typeGroupMessage).Find(&gmRRs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -790,7 +789,7 @@ func (b *Bounce) GetInitialState() InitialState {
 	}
 
 	gmDRs := []deliveryRecord{}
-	gmDRmap := map[uuid.UUID][]uuid.UUID{}
+	gmDRmap := map[ID][]ID{}
 	err = b.database.Where("frame_type = ?", typeGroupMessage).Find(&gmDRs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -811,7 +810,7 @@ func (b *Bounce) GetInitialState() InitialState {
 		}
 		deliveredTo, ok := gmDRmap[gm.ID]
 		if !ok {
-			deliveredTo = []uuid.UUID{}
+			deliveredTo = []ID{}
 			if !gm.Undeliverable {
 				go b.checkIfGroupMessageUndeliverableAt(time.Unix(gm.WrittenAt, 0).Add(undeliverableAfter).Unix(), gm.ID)
 			}
@@ -857,7 +856,7 @@ func (b *Bounce) GetInitialState() InitialState {
 
 	// Load all update groups
 	ugs := []updateGroup{}
-	err = b.database.Where("applied = true AND custom_scope = ?", uuid.Nil).Order("timestamp asc").Find(&ugs).Error
+	err = b.database.Where("applied = true AND custom_scope = ?", NilID).Order("timestamp asc").Find(&ugs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -938,7 +937,7 @@ func (b *Bounce) GetInitialState() InitialState {
 				},
 			)
 		case updateGroupTypeRemoveUser:
-			userID, err := uuid.FromBytes(ug.Data)
+			userID, err := IDFromBytes(ug.Data)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"id":    ug.Data,
@@ -969,7 +968,7 @@ func (b *Bounce) GetInitialState() InitialState {
 				},
 			)
 		case updateGroupTypePromoteAdmin:
-			userID, err := uuid.FromBytes(ug.Data)
+			userID, err := IDFromBytes(ug.Data)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"id":    ug.Data,
@@ -989,7 +988,7 @@ func (b *Bounce) GetInitialState() InitialState {
 				},
 			)
 		case updateGroupTypeDemoteAdmin:
-			userID, err := uuid.FromBytes(ug.Data)
+			userID, err := IDFromBytes(ug.Data)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"id":    ug.Data,
@@ -1126,7 +1125,7 @@ func (b *Bounce) GetInitialState() InitialState {
 				},
 			)
 		case updateGroupTypeRevokeInvite:
-			userID, err := uuid.FromBytes(ug.Data)
+			userID, err := IDFromBytes(ug.Data)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"id":    ug.Data,
@@ -1282,7 +1281,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			"error": err.Error(),
 		}).Fatal("database error finding drafts")
 	}
-	latestDrafts := map[uuid.UUID]draft{}
+	latestDrafts := map[ID]draft{}
 	for _, d := range drafts {
 		existing, ok := latestDrafts[d.Thread]
 		if !ok || existing.Timestamp < d.Timestamp {
@@ -1345,7 +1344,7 @@ func (b *Bounce) GetInitialState() InitialState {
 }
 
 // Get all structures that could be threaded in a direct message
-func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
+func (b *Bounce) GetDMHistory(userID ID) InitialState {
 	// Load the user
 	var chatUsers []User
 	var u user
@@ -1382,7 +1381,7 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 	}
 
 	dmRRs := []readReceipt{}
-	dmRRmap := map[uuid.UUID][]ReadReceipt{}
+	dmRRmap := map[ID][]ReadReceipt{}
 	err = b.database.Where("target_type = ? AND destination = ?", typeDirectMessage, userID).Find(&dmRRs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -1401,7 +1400,7 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 	}
 
 	dmDRs := []deliveryRecord{}
-	dmDRmap := map[uuid.UUID][]uuid.UUID{}
+	dmDRmap := map[ID][]ID{}
 	err = b.database.Where("frame_type = ?", typeDirectMessage).Find(&dmDRs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -1427,7 +1426,7 @@ func (b *Bounce) GetDMHistory(userID uuid.UUID) InitialState {
 		}
 		deliveredTo, ok := dmDRmap[dm.ID]
 		if !ok {
-			deliveredTo = []uuid.UUID{}
+			deliveredTo = []ID{}
 			if !dm.Undeliverable {
 				go b.checkIfDirectMessageUndeliverableAt(time.Unix(dm.WrittenAt, 0).Add(undeliverableAfter).Unix(), dm.ID)
 			}

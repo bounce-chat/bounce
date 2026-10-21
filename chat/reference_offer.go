@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -21,7 +20,7 @@ var referenceOfferMutexes = map[string]*sync.Mutex{}
 // should have, but that we didn't deliver to it.  Reference offers are delivery tracked using acks in order to
 // support re-send logic, so they do have an ID even though they are only ever sent directly.
 type referenceOffer struct {
-	ID         uuid.UUID
+	ID         ID
 	References []frameReference
 }
 
@@ -201,7 +200,7 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 	}
 
 	return &referenceOffer{
-		ID:         uuid.New(),
+		ID:         NewID(),
 		References: references,
 	}
 }
@@ -250,12 +249,12 @@ func (b *Bounce) getEncryptedReferenceOfferFor(address string, publicKey []byte)
 	}
 
 	return &referenceOffer{
-		ID:         uuid.New(),
+		ID:         NewID(),
 		References: references,
 	}
 }
 
-func (b *Bounce) getDirectMessagesToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getDirectMessagesToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -300,7 +299,7 @@ func (b *Bounce) getDirectMessagesToOffer(address string, userID uuid.UUID) []fr
 	return references
 }
 
-func (b *Bounce) getGroupMessagesToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getGroupMessagesToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -340,7 +339,7 @@ func (b *Bounce) getGroupMessagesToOffer(address string, userID uuid.UUID) []fra
 	return references
 }
 
-func (b *Bounce) getUpdateDMsToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getUpdateDMsToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -385,7 +384,7 @@ func (b *Bounce) getUpdateDMsToOffer(address string, userID uuid.UUID) []frameRe
 	return references
 }
 
-func (b *Bounce) getDevicesToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getDevicesToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -445,7 +444,7 @@ func (b *Bounce) getDevicesToOffer(address string, userID uuid.UUID) []frameRefe
 	return references
 }
 
-func (b *Bounce) getAddUsersToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getAddUsersToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -484,7 +483,7 @@ func (b *Bounce) getAddUsersToOffer(address string, userID uuid.UUID) []frameRef
 	return references
 }
 
-func (b *Bounce) getGroupCreationsToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getGroupCreationsToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -514,7 +513,7 @@ func (b *Bounce) getGroupCreationsToOffer(address string, userID uuid.UUID) []fr
 	return references
 }
 
-func (b *Bounce) getUpdateGroupsToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getUpdateGroupsToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -546,7 +545,7 @@ func (b *Bounce) getUpdateGroupsToOffer(address string, userID uuid.UUID) []fram
 				"delivery_records.id IS NULL AND (((group_users.user_id = ? OR groups.invites LIKE ?) AND update_groups.custom_scope == ?) OR update_groups.custom_scope IN (?))",
 				userID,
 				"%"+userID.String()+"%",
-				uuid.Nil,
+				NilID,
 				b.database.
 					Model(&customScope{}).
 					Distinct().
@@ -561,7 +560,7 @@ func (b *Bounce) getUpdateGroupsToOffer(address string, userID uuid.UUID) []fram
 		}
 
 		// Find all the groups this user has ever left, rejected, or been kicked from
-		groupsUserLeft := []uuid.UUID{}
+		groupsUserLeft := []ID{}
 		err = b.database.
 			Model(&updateGroup{}).
 			Distinct().
@@ -660,7 +659,7 @@ func (b *Bounce) getUpdateGroupsToOffer(address string, userID uuid.UUID) []fram
 
 	// Collect all these update groups into a set of references
 	references := []frameReference{}
-	included := map[uuid.UUID]bool{}
+	included := map[ID]bool{}
 	for _, ug := range unsentUpdateGroups {
 		if _, ok := included[ug.ID]; ok {
 			continue
@@ -677,7 +676,7 @@ func (b *Bounce) getUpdateGroupsToOffer(address string, userID uuid.UUID) []fram
 	return references
 }
 
-func (b *Bounce) getConfirmationsToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getConfirmationsToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -692,7 +691,7 @@ func (b *Bounce) getConfirmationsToOffer(address string, userID uuid.UUID) []fra
 		Where(
 			"delivery_records.id IS NULL AND ((group_users.user_id = ? AND confirmations.custom_scope == ?) OR confirmations.custom_scope IN (?))",
 			userID,
-			uuid.Nil,
+			NilID,
 			b.database.
 				Model(&customScope{}).
 				Distinct().
@@ -714,7 +713,7 @@ func (b *Bounce) getConfirmationsToOffer(address string, userID uuid.UUID) []fra
 	return references
 }
 
-func (b *Bounce) getUpdateUsersToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getUpdateUsersToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -772,7 +771,7 @@ func (b *Bounce) getUpdateUsersToOffer(address string, userID uuid.UUID) []frame
 	return references
 }
 
-func (b *Bounce) getUpdateDevicesToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getUpdateDevicesToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		dev, ok := b.getDeviceFromAddress(address)
 		if ok {
@@ -846,7 +845,7 @@ func (b *Bounce) getUpdateDevicesToOffer(address string, userID uuid.UUID) []fra
 	return references
 }
 
-func (b *Bounce) getReadReceiptsToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getReadReceiptsToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -901,7 +900,7 @@ func (b *Bounce) getReadReceiptsToOffer(address string, userID uuid.UUID) []fram
 	return references
 }
 
-func (b *Bounce) getUpdateSettingsToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getUpdateSettingsToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -931,7 +930,7 @@ func (b *Bounce) getUpdateSettingsToOffer(address string, userID uuid.UUID) []fr
 	return references
 }
 
-func (b *Bounce) getFilesToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getFilesToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -1035,7 +1034,7 @@ func (b *Bounce) getFilesToOffer(address string, userID uuid.UUID) []frameRefere
 	return references
 }
 
-func (b *Bounce) getChunkOffersToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getChunkOffersToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -1169,7 +1168,7 @@ func (b *Bounce) getChunkOffersToOffer(address string, userID uuid.UUID) []frame
 	}
 
 	references := []frameReference{}
-	alreadyIn := map[uuid.UUID]bool{}
+	alreadyIn := map[ID]bool{}
 	for _, co := range unsentChunkOffers {
 		if _, in := alreadyIn[co.ID]; in {
 			continue
@@ -1181,7 +1180,7 @@ func (b *Bounce) getChunkOffersToOffer(address string, userID uuid.UUID) []frame
 	return references
 }
 
-func (b *Bounce) getDraftsToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getDraftsToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -1211,7 +1210,7 @@ func (b *Bounce) getDraftsToOffer(address string, userID uuid.UUID) []frameRefer
 	return references
 }
 
-func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID uuid.UUID) []frameReference {
+func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID ID) []frameReference {
 	if b.devicePool.isRevoked(address) {
 		return []frameReference{}
 	}
@@ -1324,7 +1323,7 @@ func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID uuid.UUID
 	}
 
 	references := []frameReference{}
-	alreadyIn := map[uuid.UUID]bool{}
+	alreadyIn := map[ID]bool{}
 	for _, eco := range unsentEncryptedChunkOffers {
 		if alreadyIn[eco.ID] {
 			continue
@@ -1431,7 +1430,7 @@ func (b *Bounce) processReferenceOffer(peer string, offered []frameReference) ([
 
 	// Make sure that anything we ack is something this peer was allowed to offer us.  If not, they might be
 	// trying to figure out what we have
-	allowed := map[uint16]map[uuid.UUID]bool{}
+	allowed := map[uint16]map[ID]bool{}
 	var offerable *referenceOffer
 	if b.encrypted {
 		peerUserKeyMutex.Lock()
@@ -1443,7 +1442,7 @@ func (b *Bounce) processReferenceOffer(peer string, offered []frameReference) ([
 	}
 
 	for frameType, ids := range referencedIDs(offerable.References) {
-		allowed[frameType] = map[uuid.UUID]bool{}
+		allowed[frameType] = map[ID]bool{}
 		for _, id := range ids {
 			allowed[frameType][id] = true
 		}
@@ -1458,7 +1457,7 @@ func (b *Bounce) processReferenceOffer(peer string, offered []frameReference) ([
 	return requests, acks
 }
 
-func (b *Bounce) determineFramesAlreadyReceived(offeredIDs []uuid.UUID, frameType uint16) ([]frameReference, []frameReference) {
+func (b *Bounce) determineFramesAlreadyReceived(offeredIDs []ID, frameType uint16) ([]frameReference, []frameReference) {
 	dontHave := []frameReference{}
 	alreadyHave := []frameReference{}
 

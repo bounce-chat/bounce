@@ -7,13 +7,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-var draftCache = make(map[uuid.UUID]*draft)
+var draftCache = make(map[ID]*draft)
 var draftMutex sync.Mutex
 var draftHandlerMutex sync.Mutex
 
@@ -28,8 +27,8 @@ func (b *Bounce) keepDraftsSynced() {
 
 type draft struct {
 	SignedFrame
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Thread    uuid.UUID
+	ID        ID `gorm:"primary_key;"`
+	Thread    ID
 	Text      string
 	Timestamp int64
 	Saved     bool  `gorm:"-"`
@@ -45,7 +44,7 @@ func (d *draft) AfterDelete(tx *gorm.DB) error {
 	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", d.ID, typeDraft).Delete(&deliveryRecord{}).Error
 }
 
-func (d *draft) getID() uuid.UUID {
+func (d *draft) getID() ID {
 	return d.ID
 }
 
@@ -75,16 +74,16 @@ func (d *draft) getSavedAt() int64 {
 	return d.SavedAt
 }
 
-func (d *draft) getScope(myID uuid.UUID) int {
+func (d *draft) getScope(myID ID) int {
 	return scopeSync
 }
 
-func (d *draft) getDestination(myID uuid.UUID) uuid.UUID {
+func (d *draft) getDestination(myID ID) ID {
 	return myID
 }
 
-func (d *draft) getAuthor() uuid.UUID {
-	return uuid.Nil
+func (d *draft) getAuthor() ID {
+	return NilID
 }
 
 func (b *Bounce) handleDraft(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
@@ -177,13 +176,13 @@ func (b *Bounce) handleDraft(peer string, payload []byte, catchUp bool) (broadca
 	return &d, true
 }
 
-func (b *Bounce) UpdateDraft(threadID uuid.UUID, text string) {
+func (b *Bounce) UpdateDraft(threadID ID, text string) {
 	if utf8.RuneCountInString(text) > MaximumMessageCharacters {
 		log.Warn("ignoring draft that is too long")
 		return
 	}
 	d := &draft{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Thread:    threadID,
 		Text:      text,
 		Timestamp: time.Now().Unix(),

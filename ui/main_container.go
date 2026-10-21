@@ -18,7 +18,6 @@ import (
 
 	//xwidget "fyne.io/x/fyne/widget"
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -315,10 +314,10 @@ func (ui *ui) buildNewProfileCreator() {
 	}
 
 	ui.widgets.newInstall.newProfileImageData = []byte{}
-	fileGetter := func(id uuid.UUID) ([]byte, error) {
+	fileGetter := func(id chat.ID) ([]byte, error) {
 		return ui.widgets.newInstall.newProfileImageData, nil
 	}
-	ui.widgets.newInstall.newProfileImage = newDefaultImage(uuid.Nil, []uuid.UUID{}, "", 128, fileGetter, func() {
+	ui.widgets.newInstall.newProfileImage = newDefaultImage(chat.NilID, []chat.ID{}, "", 128, fileGetter, func() {
 		dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if reader == nil {
 				return
@@ -343,7 +342,7 @@ func (ui *ui) buildNewProfileCreator() {
 			// TODO: make sure data is a valid image, allow for editing, etc
 
 			ui.widgets.newInstall.newProfileImageData = data
-			ui.widgets.newInstall.newProfileImage.images = []uuid.UUID{uuid.New()}
+			ui.widgets.newInstall.newProfileImage.images = []chat.ID{chat.NewID()}
 			ui.widgets.newInstall.newProfileImage.setBackground()
 			ui.widgets.newInstall.newProfileImage.Refresh()
 			ui.views.newProfileCreator.Refresh()
@@ -417,7 +416,7 @@ func (ui *ui) buildNewProfileCreator() {
 		deviceNameEntry.Text = ""
 		deviceNameEntry.Refresh()
 		ui.widgets.newInstall.newProfileImageData = []byte{}
-		ui.widgets.newInstall.newProfileImage.images = []uuid.UUID{}
+		ui.widgets.newInstall.newProfileImage.images = []chat.ID{}
 		ui.widgets.newInstall.newProfileImage.Refresh()
 		ui.state.setupStep = setupStepInit
 		ui.setContent(viewTypeNewInstall, ui.views.newInstall)

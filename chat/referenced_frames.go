@@ -3,7 +3,6 @@ package chat
 import (
 	"errors"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -48,8 +47,8 @@ type referencedFrame struct {
 	frameType  uint16
 	table      string
 	dialWorthy bool
-	load       func(b *Bounce, ids []uuid.UUID) []broadcastable
-	offer      func(b *Bounce, address string, userID uuid.UUID) []frameReference
+	load       func(b *Bounce, ids []ID) []broadcastable
+	offer      func(b *Bounce, address string, userID ID) []frameReference
 }
 
 // All frames that are part of the reference flow have additional information defined here.  The order
@@ -177,8 +176,8 @@ type framePtr[T any] interface {
 }
 
 // loadFrames builds the per-type loader stored in referencedFrame.load.
-func loadFrames[T any, PT framePtr[T]](preload bool) func(*Bounce, []uuid.UUID) []broadcastable {
-	return func(b *Bounce, ids []uuid.UUID) []broadcastable {
+func loadFrames[T any, PT framePtr[T]](preload bool) func(*Bounce, []ID) []broadcastable {
+	return func(b *Bounce, ids []ID) []broadcastable {
 		loaded := []broadcastable{}
 
 		for _, id := range ids {

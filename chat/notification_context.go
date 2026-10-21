@@ -4,16 +4,15 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 var uiIsInForeground = atomic.Bool{}
 
-var activeThread uuid.UUID
+var activeThread ID
 var notificationContextMutex sync.Mutex
 
-var scrolledDown = make(map[uuid.UUID]bool)
+var scrolledDown = make(map[ID]bool)
 
 var notificationIcons = map[string][]byte{}
 var notificationIconsMutex sync.Mutex
@@ -22,20 +21,20 @@ func (b *Bounce) SetForeground(value bool) {
 	uiIsInForeground.Store(value)
 }
 
-func (b *Bounce) SetActiveThread(threadID uuid.UUID) {
+func (b *Bounce) SetActiveThread(threadID ID) {
 	notificationContextMutex.Lock()
 	activeThread = threadID
 	notificationContextMutex.Unlock()
 }
 
-func (b *Bounce) SetScrolledDown(id uuid.UUID, value bool) {
+func (b *Bounce) SetScrolledDown(id ID, value bool) {
 	notificationContextMutex.Lock()
 	defer notificationContextMutex.Unlock()
 
 	scrolledDown[id] = value
 }
 
-func autoscrolling(threadID uuid.UUID) bool {
+func autoscrolling(threadID ID) bool {
 	notificationContextMutex.Lock()
 	defer notificationContextMutex.Unlock()
 

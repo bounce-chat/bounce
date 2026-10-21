@@ -8,7 +8,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -18,9 +17,9 @@ var handleDevicesMutex sync.Mutex
 
 // A device represents an instance of bounce
 type device struct {
-	ID             uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Name           string    `msgpack:"-"`
-	UserID         uuid.UUID
+	ID             ID     `gorm:"primary_key;"`
+	Name           string `msgpack:"-"`
+	UserID         ID
 	Address        string `gorm:"uniqueIndex"`
 	Timestamp      int64
 	SavedAt        int64 `msgpack:"-"`
@@ -32,7 +31,7 @@ type device struct {
 }
 
 func (d *device) BeforeCreate(tx *gorm.DB) error {
-	if d.ID == uuid.Nil {
+	if d.ID == NilID {
 		return errors.New("device must have ID set before creation")
 	}
 	d.RevokedAt = 0 // Revoked status can only be set by signed updates
@@ -93,7 +92,7 @@ func (d *device) AfterCreate(tx *gorm.DB) error {
 }
 
 func (d *device) AfterDelete(tx *gorm.DB) error {
-	if d.ID == uuid.Nil {
+	if d.ID == NilID {
 		return nil
 	}
 	err := tx.Where("device_id = ?", d.ID).Delete(&introductionSignature{}).Error
@@ -103,16 +102,16 @@ func (d *device) AfterDelete(tx *gorm.DB) error {
 	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", d.ID, typeDevice).Delete(&deliveryRecord{}).Error
 }
 
-func (d *device) getID() uuid.UUID {
+func (d *device) getID() ID {
 	return d.ID
 }
 
-func (d *device) getScope(myID uuid.UUID) int {
+func (d *device) getScope(myID ID) int {
 	return scopeGlobal
 }
 
-func (d *device) getDestination(myID uuid.UUID) uuid.UUID {
-	return uuid.Nil
+func (d *device) getDestination(myID ID) ID {
+	return NilID
 }
 
 func (d *device) getType() uint16 {
@@ -130,7 +129,7 @@ func (d *device) getPayload() []byte {
 	return bytes
 }
 
-func (d *device) getAuthor() uuid.UUID {
+func (d *device) getAuthor() ID {
 	return d.UserID
 }
 

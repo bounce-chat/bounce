@@ -5,12 +5,12 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/google/uuid"
+	"github.com/bounce-chat/bounce/chat"
 )
 
 type statusChange struct {
 	widget.BaseWidget
-	id         uuid.UUID
+	id         chat.ID
 	timestamp  int64
 	action     *widget.RichText
 	actionSize fyne.Size
@@ -19,7 +19,7 @@ type statusChange struct {
 
 func newStatusChangeTemplate() *statusChange {
 	st := &statusChange{
-		id:        uuid.Nil,
+		id:        chat.NilID,
 		timestamp: 0,
 		action: widget.NewRichText(
 			&widget.TextSegment{
@@ -42,7 +42,7 @@ func newStatusChangeTemplate() *statusChange {
 	return st
 }
 
-func (st *statusChange) setData(id uuid.UUID, timestamp int64, str string) {
+func (st *statusChange) setData(id chat.ID, timestamp int64, str string) {
 	st.id = id
 	st.timestamp = timestamp
 	st.action.Segments[0].(*widget.TextSegment).Text = str

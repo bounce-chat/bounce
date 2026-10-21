@@ -5,7 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/theme"
-	"github.com/google/uuid"
+	"github.com/bounce-chat/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -27,7 +27,7 @@ func (f *forcedVariant) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) col
 	// UUID tags
 	if len(name) > 5 && name[0:5] == "uuid:" {
 		trimmed := string(name[5:len(name)])
-		id, err := uuid.Parse(trimmed)
+		id, err := chat.ParseID(trimmed)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"name":    name,

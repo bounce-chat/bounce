@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -15,16 +14,16 @@ import (
 // The other device scans or otherwise gets a strng with our address and this secret, then initiates the flow with a sync device request.
 // A new secret is generated every time the UI displays this string, and only one is stored in the database at a time.
 type syncDeviceOffer struct {
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID        ID `gorm:"primary_key;"`
 	Timestamp int64
 	Secret    string
 }
 
 func (sdo *syncDeviceOffer) BeforeCreate(tx *gorm.DB) error {
-	if sdo.ID != uuid.Nil {
+	if sdo.ID != NilID {
 		log.Fatal("sync device offer cannot have an ID assigned before creation")
 	}
-	sdo.ID = uuid.New()
+	sdo.ID = NewID()
 	return nil
 }
 

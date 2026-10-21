@@ -7,12 +7,11 @@ import (
 
 	"fyne.io/fyne/v2"
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 type thread interface {
-	getID() uuid.UUID
+	getID() chat.ID
 	getName() string
 	getView() *fyne.Container
 	getEntry() *threadEntry
@@ -127,7 +126,7 @@ func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
 // and read receipts in bulk.  Load them all in without needing to refresh or notify, then
 // update the UI all at once and send one notification per thread.
 func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
-	seen := map[uuid.UUID]bool{}
+	seen := map[chat.ID]bool{}
 	for _, seenID := range bu.Seen {
 		seen[seenID] = true
 	}
@@ -269,7 +268,7 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 	fyne.Do(func() { ui.containers.threads.Refresh() })
 }
 
-func (ui *ui) MarkMessageUndeliverable(id uuid.UUID) {
+func (ui *ui) MarkMessageUndeliverable(id chat.ID) {
 	item, ok := ui.messages.get(id)
 	if !ok {
 		log.WithFields(log.Fields{
@@ -293,7 +292,7 @@ func (ui *ui) MarkMessageUndeliverable(id uuid.UUID) {
 	})
 }
 
-func (ui *ui) MessageSeen(id uuid.UUID) {
+func (ui *ui) MessageSeen(id chat.ID) {
 	item, ok := ui.messages.get(id)
 	if !ok {
 		log.WithFields(log.Fields{
@@ -327,7 +326,7 @@ func (ui *ui) MessageSeen(id uuid.UUID) {
 
 }
 
-func (ui *ui) MessageDelivered(messageID, userID uuid.UUID) {
+func (ui *ui) MessageDelivered(messageID, userID chat.ID) {
 	item, ok := ui.messages.get(messageID)
 	if !ok {
 		log.WithFields(log.Fields{
@@ -404,7 +403,7 @@ func (ui *ui) ReceivedReadReceipt(rr chat.ReadReceipt) {
 	})
 }
 
-func (ui *ui) DeleteItem(id uuid.UUID) {
+func (ui *ui) DeleteItem(id chat.ID) {
 	t, ok := ui.threads.withItem(id)
 	if !ok {
 		log.WithFields(log.Fields{
@@ -468,7 +467,7 @@ func (ui *ui) isActive(t thread) bool {
 	return ui.state.activeThread == t.getID()
 }
 
-func (ui *ui) ShowTypingIndicator(userID, threadID uuid.UUID) {
+func (ui *ui) ShowTypingIndicator(userID, threadID chat.ID) {
 	t, ok := ui.threads.get(threadID)
 	if !ok {
 		log.WithFields(log.Fields{
@@ -495,7 +494,7 @@ func (ui *ui) ShowTypingIndicator(userID, threadID uuid.UUID) {
 	})
 }
 
-func (ui *ui) HideTypingIndicator(userID, threadID uuid.UUID) {
+func (ui *ui) HideTypingIndicator(userID, threadID chat.ID) {
 	t, ok := ui.threads.get(threadID)
 	if !ok {
 		log.WithFields(log.Fields{

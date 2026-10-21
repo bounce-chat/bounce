@@ -6,16 +6,15 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
-func (ui *ui) DeviceOnline(id uuid.UUID) {
+func (ui *ui) DeviceOnline(id chat.ID) {
 	ui.devices.online(id)
 	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 }
 
-func (ui *ui) DeviceOffline(id uuid.UUID) {
+func (ui *ui) DeviceOffline(id chat.ID) {
 	ui.devices.offline(id)
 	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 }
@@ -25,7 +24,7 @@ func (ui *ui) DeviceAdded(d chat.Device) {
 	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 }
 
-func (ui *ui) DeviceRevoked(id uuid.UUID) {
+func (ui *ui) DeviceRevoked(id chat.ID) {
 	if ui.devices.isLocal(id) {
 		fyne.DoAndWait(func() {
 			ui.widgets.networkOfflineWarning.SetText("This device has been revoked")
@@ -39,17 +38,17 @@ func (ui *ui) DeviceRevoked(id uuid.UUID) {
 	}
 }
 
-func (ui *ui) DeviceRenamed(id uuid.UUID, name string) {
+func (ui *ui) DeviceRenamed(id chat.ID, name string) {
 	ui.devices.rename(id, name)
 	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 }
 
-func (ui *ui) DeviceLastSeen(id uuid.UUID, timestamp int64) {
+func (ui *ui) DeviceLastSeen(id chat.ID, timestamp int64) {
 	ui.devices.updateLastSeen(id, timestamp)
 	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 }
 
-func (ui *ui) EncryptedDeviceUnmanagable(id uuid.UUID) {
+func (ui *ui) EncryptedDeviceUnmanagable(id chat.ID) {
 	ui.devices.Lock()
 	d, ok := ui.devices.devices[id]
 	ui.devices.Unlock()
@@ -82,5 +81,5 @@ func (ui *ui) EncryptedDeviceUnmanagable(id uuid.UUID) {
 	})
 }
 
-func (ui *ui) EncryptedDeviceManagable(id uuid.UUID) {
+func (ui *ui) EncryptedDeviceManagable(id chat.ID) {
 }

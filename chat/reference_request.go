@@ -2,7 +2,6 @@ package chat
 
 import (
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -46,7 +45,7 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	offeredIDs := referencedIDs(offerable.References)
 	requestedIDs := referencedIDs(rr.References)
 
-	deliverable := map[uint16][]uuid.UUID{}
+	deliverable := map[uint16][]ID{}
 	for _, rf := range referencedFrames {
 		deliverable[rf.frameType] = getValidRequestedUUIDs(offeredIDs[rf.frameType], requestedIDs[rf.frameType])
 	}
@@ -106,10 +105,10 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 // Given two lists of UUIDs, one representing the original offer and the other representing what
 // was requested by the peer, separate them into the valid requested UUIDs and the UUIDs that we
 // can assume were already delivered because they were not requested.
-func getValidRequestedUUIDs(originalOffer []uuid.UUID, requested []uuid.UUID) []uuid.UUID {
-	requestedSet := []uuid.UUID{}
+func getValidRequestedUUIDs(originalOffer []ID, requested []ID) []ID {
+	requestedSet := []ID{}
 
-	offeredCache := make(map[uuid.UUID]bool)
+	offeredCache := make(map[ID]bool)
 	for _, offeredID := range originalOffer {
 		if _, present := offeredCache[offeredID]; present {
 			log.WithFields(log.Fields{

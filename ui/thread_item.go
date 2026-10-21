@@ -7,34 +7,33 @@ import (
 
 	"fyne.io/fyne/v2"
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
-var deletedUser = makeUser(chat.User{ID: uuid.Nil, Name: "-deleted-"})
+var deletedUser = makeUser(chat.User{ID: chat.NilID, Name: "-deleted-"})
 
 var errUnknownThread = errors.New("unknown thread")
 var errUnknownActor = errors.New("unknown actor")
 var errUnknownUser = errors.New("unknown user")
 
 type threadable interface {
-	getID() uuid.UUID
+	getID() chat.ID
 	isSeen() bool
 	markSeen()
 	countsAsUnread() bool
 	getType() string
 	getState() int
 	setState(int)
-	getAuthor() uuid.UUID
+	getAuthor() chat.ID
 	getTimestamp() int64
 	populateTemplate(fyne.CanvasObject)
 }
 
 type chatBubbleData struct {
-	id               uuid.UUID
+	id               chat.ID
 	frameType        string
-	author           uuid.UUID
-	iconImages       []uuid.UUID
+	author           chat.ID
+	iconImages       []chat.ID
 	username         string
 	initials         string
 	text             string
@@ -50,7 +49,7 @@ type chatBubbleData struct {
 	imageDisplay     func([]image.Image, [][]byte, []string, int)
 }
 
-func (cbd *chatBubbleData) getID() uuid.UUID {
+func (cbd *chatBubbleData) getID() chat.ID {
 	return cbd.id
 }
 
@@ -74,7 +73,7 @@ func (cbd *chatBubbleData) getState() int {
 	return cbd.state
 }
 
-func (cbd *chatBubbleData) getAuthor() uuid.UUID {
+func (cbd *chatBubbleData) getAuthor() chat.ID {
 	return cbd.author
 }
 
@@ -93,15 +92,15 @@ func (cbd *chatBubbleData) populateTemplate(obj fyne.CanvasObject) {
 }
 
 type statusChangeData struct {
-	id           uuid.UUID
+	id           chat.ID
 	frameType    string
-	author       uuid.UUID
+	author       chat.ID
 	timestamp    int64
 	changeString string
 	seen         bool
 }
 
-func (scd *statusChangeData) getID() uuid.UUID {
+func (scd *statusChangeData) getID() chat.ID {
 	return scd.id
 }
 
@@ -129,7 +128,7 @@ func (scd *statusChangeData) setState(state int) {
 	return
 }
 
-func (scd *statusChangeData) getAuthor() uuid.UUID {
+func (scd *statusChangeData) getAuthor() chat.ID {
 	return scd.author
 }
 
@@ -144,7 +143,7 @@ func (scd *statusChangeData) populateTemplate(obj fyne.CanvasObject) {
 }
 
 type threadItem struct {
-	id             uuid.UUID
+	id             chat.ID
 	widgetData     threadable
 	setButtonData  func(*threadButtonData)
 	timestamp      int64
@@ -652,7 +651,7 @@ func (ui *ui) newUpdateGroupUserChangedGroupImage(ugci chat.UpdateGroupUserChang
 	)
 }
 
-func (ui *ui) newGroupCreated(id, groupID, actorID uuid.UUID, timestamp int64) (*threadItem, error) {
+func (ui *ui) newGroupCreated(id, groupID, actorID chat.ID, timestamp int64) (*threadItem, error) {
 	return ui.newStatusChangeThreadItem(
 		id,
 		groupID,
@@ -664,7 +663,7 @@ func (ui *ui) newGroupCreated(id, groupID, actorID uuid.UUID, timestamp int64) (
 	)
 }
 
-func (ui *ui) userChangedName(id, userID uuid.UUID, oldName, newName string, timestamp int64) (*threadItem, error) {
+func (ui *ui) userChangedName(id, userID chat.ID, oldName, newName string, timestamp int64) (*threadItem, error) {
 	user, ok := ui.users.get(userID)
 	if !ok {
 		return &threadItem{}, errUnknownActor
@@ -694,7 +693,7 @@ func (ui *ui) userChangedName(id, userID uuid.UUID, oldName, newName string, tim
 	}, nil
 }
 
-func (ui *ui) userChangedImage(id, userID uuid.UUID, timestamp int64) (*threadItem, error) {
+func (ui *ui) userChangedImage(id, userID chat.ID, timestamp int64) (*threadItem, error) {
 	user, ok := ui.users.get(userID)
 	if !ok {
 		return &threadItem{}, errUnknownActor
@@ -762,7 +761,7 @@ func (ui *ui) newUpdateGroupInviteRejected(ugir chat.UpdateGroupInviteRejected) 
 	)
 }
 
-func (ui *ui) newStatusChangeThreadItem(id, threadID, actorID uuid.UUID, frameType, action string, timestamp int64, seen bool) (*threadItem, error) {
+func (ui *ui) newStatusChangeThreadItem(id, threadID, actorID chat.ID, frameType, action string, timestamp int64, seen bool) (*threadItem, error) {
 	t, ok := ui.threads.get(threadID)
 	if !ok {
 		log.WithFields(log.Fields{
