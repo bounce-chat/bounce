@@ -22,11 +22,14 @@ func TestTheLogFileNamesNoAddresses(t *testing.T) {
 		"count":             3,
 	})
 	entry.Message = "handling a frame from " + alice
+	entry.Level = log.WarnLevel
 	sanitised := sanitizeLogEntry(entry)
 	line, err := nocolor.Format(sanitised)
 	assert.NoError(t, err)
 	text := string(line)
 
+	assert.True(t, strings.HasPrefix(text, "time="), text)
+	assert.True(t, strings.Contains(text, "level=warning"), "the level survives sanitising: "+text)
 	assert.False(t, strings.Contains(text, alice), "an address in a known field is gone")
 	assert.False(t, strings.Contains(text, bob), "and in a list, and in a field nobody listed, and in the message")
 	assert.True(t, strings.Contains(text, "count=3"), "ordinary fields are untouched")

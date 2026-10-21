@@ -61,7 +61,9 @@ func sanitizeLogText(text string) string {
 }
 
 func sanitizeLogEntry(e *log.Entry) *log.Entry {
+	// Dup copies the time, caller and fields but not the level or the message, and a zero level is panic
 	sanitised := e.Dup()
+	sanitised.Level = e.Level
 	sanitised.Message = sanitizeLogText(e.Message)
 	for key, value := range e.Data {
 		if sensitiveLogFields[key] {
