@@ -178,8 +178,9 @@ func Open(ui UI, network Network, configDirectory string, postNotification func(
 	b.openDatabase()
 	b.openReferenceDatabase()
 
+	b.network.Load(b.configDirectory)
+
 	go func() {
-		b.network.Load(b.configDirectory)
 		go b.loadChunkEngine()
 		if !b.deviceIsRevoked() {
 			b.network.Start(

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha512"
 	"crypto/subtle"
 	"errors"
 	"io"
@@ -271,26 +272,46 @@ func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, []byte) { //
 		}
 	}
 
-	// The keys do not exist.  Tor generates them when the service is first
-	// published, so there is nothing to write yet; saveHiddenServiceKey stores
-	// whatever the service comes back with.
-	return nil, nil
-}
-
-// saveHiddenServiceKey persists the identity of a freshly published service.
-func (bounceTor *TorNetwork) saveHiddenServiceKey(privateKey []byte, publicKey ed25519.PublicKey) {
-	if err := os.WriteFile(bounceTor.keyDirectory+"/public_key", publicKey, 0600); err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error writing public key")
-	}
-	if err := os.WriteFile(bounceTor.keyDirectory+"/private_key", privateKey, 0600); err != nil {
+	// The keys do not exist, so this is a first run.  Generate the identity here rather than letting Tor do it when
+	// the service is first published: the address and the signing key are needed as soon as the engine starts, for
+	// creating a profile, and the service is not published until Tor has finished bootstrapping.
+	publicKey, privateKey := generateHiddenServiceKey()
+	if err := os.WriteFile(privateKeyFile, privateKey, 0600); err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error writing private key")
 	}
-	bounceTor.publicKey = publicKey
-	bounceTor.privateKey = privateKey
+	if err := os.WriteFile(publicKeyFile, publicKey, 0600); err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error writing public key")
+	}
+	return publicKey, privateKey
+}
+
+// generateHiddenServiceKey makes a fresh onion service identity in the form Arti and C Tor both use: the 64-byte
+// expanded ed25519 secret, which is SHA-512 of a random seed with the scalar half clamped.  The seed itself is
+// never kept, which is also how C Tor stores these keys, so there is nothing else to persist.
+func generateHiddenServiceKey() (ed25519.PublicKey, []byte) {
+	seed := make([]byte, ed25519.SeedSize)
+	if _, err := rand.Read(seed); err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error generating hidden service key")
+	}
+	expanded := sha512.Sum512(seed)
+	expanded[0] &= 248
+	expanded[31] &= 127
+	expanded[31] |= 64
+	privateKey := expanded[:]
+
+	publicKey, err := arti.PublicKeyFromPrivate(privateKey)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("generated hidden service key is not usable")
+	}
+	return publicKey, privateKey
 }
 
 func (bounceTor *TorNetwork) Load(configDirectory string) {
@@ -399,16 +420,6 @@ func (bounceTor *TorNetwork) openSession() (*session, error) {
 
 	// Report reachability when it arrives, without holding startup for it.
 	go bounceTor.reportWhenReachable(s)
-
-	// A first run has no key until the service exists, so persist what we got.
-	if bounceTor.privateKey == nil {
-		pubkey, err := onion.PublicKey()
-		if err != nil {
-			client.Close()
-			return nil, err
-		}
-		bounceTor.saveHiddenServiceKey(onion.PrivateKey(), pubkey)
-	}
 
 	log.WithFields(log.Fields{
 		"id": onion.ID(),
@@ -717,12 +728,11 @@ func (bounceTor *TorNetwork) Address() string {
 		return s.onion.ID()
 	}
 
-	// If the network is offline, derive the address from the public key on disk
-	pubkey, _ := bounceTor.hiddenServiceKey()
-	if pubkey == nil {
+	// If the network is offline, derive the address from the key that was loaded
+	if bounceTor.publicKey == nil {
 		return ""
 	}
-	id, err := arti.OnionIDFromPublicKey(pubkey)
+	id, err := arti.OnionIDFromPublicKey(bounceTor.publicKey)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
