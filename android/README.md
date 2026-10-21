@@ -106,9 +106,9 @@ It only has to be redone when Arti itself changes, not on every bind.
 - **No Google Play Services.** Bounce is installed via Obtainium/F-Droid by
   people who often do not have them, so QR scanning uses ZXing + CameraX rather
   than ML Kit.
-- **UUIDs are strings everywhere.** `uuid.UUID` is `[16]byte`, which gobind
-  rejects outright; the canonical hyphenated form is what both `uuid.Parse` and
-  `java.util.UUID.toString()` speak.
+- **IDs are strings everywhere.** `chat.ID` is `[32]byte`, which gobind
+  rejects outright; the 64-character lowercase hex form is what `chat.ParseID`
+  reads and `chat.ID.String()` writes; Kotlin keeps it as an opaque String.
 
 ## Icons
 

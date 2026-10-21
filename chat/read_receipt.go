@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -37,18 +36,18 @@ var readReceiptMutex sync.Mutex
 
 type readReceipt struct {
 	SignedFrame
-	ID          uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Actor       uuid.UUID
-	Destination uuid.UUID `msgpack:"-"`
-	Scope       int       `msgpack:"-"`
-	Target      uuid.UUID
+	ID          ID `gorm:"primary_key;"`
+	Actor       ID
+	Destination ID  `msgpack:"-"`
+	Scope       int `msgpack:"-"`
+	Target      ID
 	TargetType  uint16
 	Timestamp   int64
 	SavedAt     int64 `msgpack:"-"`
 }
 
 func (rr *readReceipt) BeforeCreate(tx *gorm.DB) error {
-	if rr.ID == uuid.Nil {
+	if rr.ID == NilID {
 		return errors.New("read receipt ID must be set before creation")
 	}
 	rr.SavedAt = time.Now().Unix()
@@ -57,21 +56,21 @@ func (rr *readReceipt) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (rr *readReceipt) AfterDelete(tx *gorm.DB) error {
-	if rr.ID == uuid.Nil {
+	if rr.ID == NilID {
 		return nil
 	}
 	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", rr.ID, typeReadReceipt).Delete(&deliveryRecord{}).Error
 }
 
-func (rr *readReceipt) getID() uuid.UUID {
+func (rr *readReceipt) getID() ID {
 	return rr.ID
 }
 
-func (rr *readReceipt) getScope(myID uuid.UUID) int {
+func (rr *readReceipt) getScope(myID ID) int {
 	return rr.Scope
 }
 
-func (rr *readReceipt) getDestination(myID uuid.UUID) uuid.UUID {
+func (rr *readReceipt) getDestination(myID ID) ID {
 	return rr.Destination
 }
 
@@ -94,7 +93,7 @@ func (rr *readReceipt) getPayload() []byte {
 	return bytes
 }
 
-func (rr *readReceipt) getAuthor() uuid.UUID {
+func (rr *readReceipt) getAuthor() ID {
 	return rr.Actor
 }
 
@@ -235,7 +234,7 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) (b
 	}
 }
 
-func (b *Bounce) processEarlyReadReceipts(messageID uuid.UUID, messageType uint16, notify bool) (bool, []ReadReceipt) {
+func (b *Bounce) processEarlyReadReceipts(messageID ID, messageType uint16, notify bool) (bool, []ReadReceipt) {
 	// Find any read receipts for this message that came early, add missing data, and send to the UI
 	var rrs []readReceipt
 	err := b.database.Where("target = ? AND target_type = ?", messageID, messageType).Find(&rrs).Error
@@ -337,7 +336,7 @@ func (b *Bounce) processEarlyReadReceipts(messageID uuid.UUID, messageType uint1
 // be a participant of the thread the message belongs to, otherwise errReadReceiptActorNotParticipant is returned.  A
 // contact can name any message ID they like in a read receipt, so this is what stops them planting "read by" markers
 // in DMs and groups they are not part of.
-func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType string, actor uuid.UUID) (uuid.UUID, uuid.UUID, int, error) {
+func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id ID, frameType string, actor ID) (ID, ID, int, error) {
 	var defaultSendReadReceipts bool
 	err := b.database.Model(&profileSettings{}).Select("default_send_read_receipts").Where("user_id = ?", b.currentUserID()).First(&defaultSendReadReceipts).Error
 	if err != nil {
@@ -353,7 +352,7 @@ func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 		err := b.database.Select("destination", "author").First(&gm, "id = ?", id).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return uuid.Nil, uuid.Nil, scopeSync, err
+				return NilID, NilID, scopeSync, err
 			} else {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -364,7 +363,7 @@ func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 
 		// Make sure the actor is actually in the group this message was sent to
 		if actor != gm.Author && !b.userIsInGroup(gm.Destination, actor) {
-			return uuid.Nil, uuid.Nil, scopeSync, errReadReceiptActorNotParticipant
+			return NilID, NilID, scopeSync, errReadReceiptActorNotParticipant
 		}
 
 		// Find the group
@@ -372,7 +371,7 @@ func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 		err = b.database.Select("read_receipts_overridden", "read_receipts_enabled").First(&g, "id = ?", gm.Destination).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return uuid.Nil, uuid.Nil, scopeSync, err
+				return NilID, NilID, scopeSync, err
 			} else {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -395,7 +394,7 @@ func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 				log.WithFields(log.Fields{
 					"id": id,
 				}).Debug("direct message not found while marking as read")
-				return uuid.Nil, uuid.Nil, scopeSync, err
+				return NilID, NilID, scopeSync, err
 			} else {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -407,7 +406,7 @@ func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 		// Make sure the actor is one of the two users in this DM.  For a DM to ourselves the xor is nil, so the
 		// only participant is the author.
 		if actor != dm.Author && actor != xor(dm.Xor, dm.Author) {
-			return uuid.Nil, uuid.Nil, scopeSync, errReadReceiptActorNotParticipant
+			return NilID, NilID, scopeSync, errReadReceiptActorNotParticipant
 		}
 
 		// Find the user
@@ -419,7 +418,7 @@ func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 				log.WithFields(log.Fields{
 					"id": userID,
 				}).Error("user not found while marking as read")
-				return uuid.Nil, uuid.Nil, scopeSync, err
+				return NilID, NilID, scopeSync, err
 			} else {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -443,10 +442,10 @@ func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id uuid.UUID, frameType
 		// Currently not sending these, but could send and display in the future
 	}
 
-	return uuid.Nil, uuid.Nil, scopeSync, errUnknownReadReceiptTargetType
+	return NilID, NilID, scopeSync, errUnknownReadReceiptTargetType
 }
 
-func (b *Bounce) sendReadReceipt(id uuid.UUID, frameType string) error {
+func (b *Bounce) sendReadReceipt(id ID, frameType string) error {
 	// Create read receipt
 	targetTypeInt, ok := readReceiptTargetTypeInt[frameType]
 	if !ok {
@@ -464,7 +463,7 @@ func (b *Bounce) sendReadReceipt(id uuid.UUID, frameType string) error {
 	}
 
 	rr := readReceipt{
-		ID:          uuid.New(),
+		ID:          NewID(),
 		Actor:       b.currentUserID(),
 		Destination: destination,
 		Scope:       scope,
@@ -498,7 +497,7 @@ func (b *Bounce) sendReadReceipt(id uuid.UUID, frameType string) error {
 	return nil
 }
 
-func (b *Bounce) markSeenInDatabase(id uuid.UUID, frameType string) error {
+func (b *Bounce) markSeenInDatabase(id ID, frameType string) error {
 	tableName := ""
 	switch frameType {
 	case TypeGroupMessage:
@@ -538,7 +537,7 @@ func (b *Bounce) markSeenInDatabase(id uuid.UUID, frameType string) error {
 	return nil
 }
 
-func (b *Bounce) MarkAsRead(id uuid.UUID, frameType string) {
+func (b *Bounce) MarkAsRead(id ID, frameType string) {
 	if b.clearNotification != nil {
 		b.clearNotification(id.String())
 	}
@@ -563,7 +562,7 @@ func (b *Bounce) MarkAsRead(id uuid.UUID, frameType string) {
 	}
 }
 
-func (b *Bounce) MarkAllGroupMessagesAsRead(groupID uuid.UUID) {
+func (b *Bounce) MarkAllGroupMessagesAsRead(groupID ID) {
 	var gms []groupMessage
 	err := b.database.Select("id").Where("destination = ? AND seen = ?", groupID, false).Find(&gms).Error
 	if err != nil {
@@ -598,7 +597,7 @@ func (b *Bounce) MarkAllGroupMessagesAsRead(groupID uuid.UUID) {
 	}()
 }
 
-func (b *Bounce) MarkAllDirectMessagesAsRead(userID uuid.UUID) {
+func (b *Bounce) MarkAllDirectMessagesAsRead(userID ID) {
 	var dms []directMessage
 	err := b.database.Select("id").Where("xor = ? AND seen = ?", xor(userID, b.currentUserID()), false).Find(&dms).Error
 	if err != nil {

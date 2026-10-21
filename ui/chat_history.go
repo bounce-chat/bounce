@@ -10,7 +10,6 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 
 	"fyne.io/fyne/v2/theme"
@@ -23,12 +22,12 @@ const mergeSeconds = 300
 type chatHistory struct {
 	widget.BaseWidget
 
-	id       uuid.UUID
-	myID     uuid.UUID
+	id       chat.ID
+	myID     chat.ID
 	messages *messageStore
-	added    map[uuid.UUID]bool
+	added    map[chat.ID]bool
 
-	ids     []uuid.UUID
+	ids     []chat.ID
 	heights []float32
 
 	disableSeenTracking bool
@@ -44,11 +43,11 @@ type chatHistory struct {
 
 	windowFocused         func() bool
 	threadActive          func() bool
-	readCallback          func(uuid.UUID, string)
+	readCallback          func(chat.ID, string)
 	unreadCountCallback   func(int)
 	markAllAsReadCallback func()
 	reportScrolledDown    func(bool)
-	seenTracking          map[uuid.UUID]bool
+	seenTracking          map[chat.ID]bool
 }
 
 func (ui *ui) newChatHistory(t thread) *chatHistory {
@@ -57,8 +56,8 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 		id:            t.getID(),
 		myID:          ui.state.profile.id,
 		messages:      ui.messages,
-		added:         make(map[uuid.UUID]bool),
-		ids:           []uuid.UUID{},
+		added:         make(map[chat.ID]bool),
+		ids:           []chat.ID{},
 		heights:       []float32{},
 		windowFocused: func() bool { return ui.state.focused },
 		threadActive:  func() bool { return ui.isActive(t) },
@@ -77,7 +76,7 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 		reportScrolledDown: func(value bool) {
 			ui.bounce.SetScrolledDown(t.getID(), value)
 		},
-		seenTracking: make(map[uuid.UUID]bool),
+		seenTracking: make(map[chat.ID]bool),
 		template: func() fyne.CanvasObject {
 			return container.NewStack(
 				ui.newChatBubbleTemplate(),
@@ -124,7 +123,7 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 func (ch *chatHistory) setItems(items []threadable, initialSize fyne.Size) {
 	sizer := ch.template()
 
-	ch.ids = []uuid.UUID{}
+	ch.ids = []chat.ID{}
 	for _, item := range items {
 		if item == nil {
 			log.Warn("skipping nil threadable item")
@@ -197,14 +196,14 @@ func (ch *chatHistory) insertItem(item threadable, appendingToEnd bool) {
 	} else {
 		for i := len(ch.ids); i >= 0; i-- {
 			if i == 0 {
-				ch.ids = append([]uuid.UUID{item.getID()}, ch.ids...)
+				ch.ids = append([]chat.ID{item.getID()}, ch.ids...)
 				ch.heights = append([]float32{0}, ch.heights...)
 				ch.setMergeMode(0, true)
 				break
 			}
 			compare := ch.getItem(i - 1)
 			if item.getTimestamp() > compare.getTimestamp() {
-				ch.ids = append(ch.ids[:i], append([]uuid.UUID{item.getID()}, ch.ids[i:]...)...)
+				ch.ids = append(ch.ids[:i], append([]chat.ID{item.getID()}, ch.ids[i:]...)...)
 				if len(ch.heights) >= len(ch.ids)-1 {
 					ch.heights = append(ch.heights[:i], append([]float32{0}, ch.heights[i:]...)...)
 				}
@@ -230,7 +229,7 @@ func (ch *chatHistory) getItem(index int) threadable {
 	return item
 }
 
-func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
+func (ch *chatHistory) deleteItem(id chat.ID) bool {
 	found := false
 	location := 0
 	for i, itemID := range ch.ids {
@@ -252,7 +251,7 @@ func (ch *chatHistory) deleteItem(id uuid.UUID) bool {
 	return found
 }
 
-func (ch *chatHistory) isLastItem(id uuid.UUID) bool {
+func (ch *chatHistory) isLastItem(id chat.ID) bool {
 	if len(ch.ids) == 0 {
 		return false
 	}
@@ -261,7 +260,7 @@ func (ch *chatHistory) isLastItem(id uuid.UUID) bool {
 	return lastID == id
 }
 
-func (ch *chatHistory) isLastAuthor(id uuid.UUID) bool {
+func (ch *chatHistory) isLastAuthor(id chat.ID) bool {
 	if len(ch.ids) == 0 {
 		return false
 	}

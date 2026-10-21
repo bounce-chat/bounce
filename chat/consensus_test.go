@@ -6,7 +6,6 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/alecthomas/assert/v2"
-	"github.com/google/uuid"
 	"gorm.io/gorm/clause"
 )
 
@@ -34,7 +33,7 @@ func TestMessagesAreValidIfCatchUpGivesPermission(t *testing.T) {
 
 	// Create a post from a non-admin
 	alicePost := &groupMessage{
-		ID:          uuid.New(),
+		ID:          NewID(),
 		WrittenAt:   time.Now().Unix() + 1,
 		Author:      alice.currentUserID(),
 		Destination: groupID,
@@ -95,7 +94,7 @@ func TestMessagesAreInvalidIfCatchUpRemovesPermission(t *testing.T) {
 
 	// Create a post from a non-admin
 	alicePost := &groupMessage{
-		ID:          uuid.New(),
+		ID:          NewID(),
 		WrittenAt:   time.Now().Unix(),
 		Author:      alice.currentUserID(),
 		Destination: groupID,
@@ -162,7 +161,7 @@ func TestMessagesAreValidIfUserBecomesAdminWhenRequired(t *testing.T) {
 
 	// Create a post from Alice
 	alicePost := &groupMessage{
-		ID:          uuid.New(),
+		ID:          NewID(),
 		WrittenAt:   time.Now().Unix(),
 		Author:      alice.currentUserID(),
 		Destination: groupID,
@@ -231,7 +230,7 @@ func TestMessagesAreInvalidIfUserLoosesAdminWhenRequired(t *testing.T) {
 
 	// Create a post from Alice
 	alicePost := &groupMessage{
-		ID:          uuid.New(),
+		ID:          NewID(),
 		WrittenAt:   time.Now().Unix() + 1,
 		Author:      alice.currentUserID(),
 		Destination: groupID,
@@ -377,7 +376,7 @@ func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
 
 	// Add confirmations to this later update
 	myConfirmation := confirmation{
-		ID:            uuid.New(),
+		ID:            NewID(),
 		UpdateGroupID: unauthorizedEdit.ID,
 		Destination:   groupID,
 		Author:        b.currentUserID(),
@@ -388,7 +387,7 @@ func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
 	assert.NoError(t, b.database.Create(&myConfirmation).Error)
 
 	bobConfirmation := confirmation{
-		ID:            uuid.New(),
+		ID:            NewID(),
 		UpdateGroupID: unauthorizedEdit.ID,
 		Destination:   groupID,
 		Author:        bob.currentUserID(),
@@ -456,7 +455,7 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 
 	// Add confirmations for it
 	aliceConfirmation := confirmation{
-		ID:            uuid.New(),
+		ID:            NewID(),
 		UpdateGroupID: restrictEdits.ID,
 		Destination:   groupID,
 		Author:        alice.currentUserID(),
@@ -467,7 +466,7 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 	assert.NoError(t, b.database.Create(&aliceConfirmation).Error)
 
 	bobConfirmation := confirmation{
-		ID:            uuid.New(),
+		ID:            NewID(),
 		UpdateGroupID: restrictEdits.ID,
 		Destination:   groupID,
 		Author:        bob.currentUserID(),
@@ -495,7 +494,7 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 
 	// Add confirmations to this later update
 	myConfirmation := confirmation{
-		ID:            uuid.New(),
+		ID:            NewID(),
 		UpdateGroupID: unauthorizedEdit.ID,
 		Destination:   groupID,
 		Author:        b.currentUserID(),
@@ -506,7 +505,7 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 	assert.NoError(t, b.database.Create(&myConfirmation).Error)
 
 	bobConfirmation = confirmation{
-		ID:            uuid.New(),
+		ID:            NewID(),
 		UpdateGroupID: unauthorizedEdit.ID,
 		Destination:   groupID,
 		Author:        bob.currentUserID(),
@@ -560,7 +559,7 @@ func TestUpdatesWithCustomScopesGetDeletedWhenAllDelivered(t *testing.T) {
 	alice.reloadGroupConsensus(groupID)
 	alice.writeGroupConsensus(groupID)
 	assert.NoError(t, alice.database.First(&removal, "id = ?", removal.ID).Error)
-	assert.False(t, removal.CustomScope == uuid.Nil)
+	assert.False(t, removal.CustomScope == NilID)
 
 	// Create an ack for this update
 	a := &ack{
@@ -608,7 +607,7 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 	alice.reloadGroupConsensus(groupID)
 	alice.writeGroupConsensus(groupID)
 	assert.NoError(t, alice.database.First(&removal, "id = ?", removal.ID).Error)
-	assert.False(t, removal.CustomScope == uuid.Nil)
+	assert.False(t, removal.CustomScope == NilID)
 
 	// Create an update adding alice back to the group
 	var newUser user
@@ -683,7 +682,7 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 
 	// Ensure the custom scope has been removed from Alice's removal frame
 	assert.NoError(t, alice.database.First(&removal, "id = ?", removal.ID).Error)
-	assert.True(t, removal.CustomScope == uuid.Nil)
+	assert.True(t, removal.CustomScope == NilID)
 	var cs customScope
 	assert.Error(t, alice.database.First(&cs, "id = ?", groupID).Error)
 
@@ -814,7 +813,7 @@ func TestCanLearnAboutCreatingUserFromGroupInvite(t *testing.T) {
 	// Carol makes Alice an admin
 	aliceID := alice.currentUserID()
 	promote := &updateGroup{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Actor:     carol.currentUserID(),
 		Target:    gc.ID,
 		Timestamp: ts,

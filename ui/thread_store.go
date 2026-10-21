@@ -5,25 +5,25 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/google/uuid"
+	"github.com/bounce-chat/bounce/chat"
 )
 
 type threadStore struct {
 	sync.Mutex
-	threads map[uuid.UUID]thread // thread ID to thread
-	items   map[uuid.UUID]thread // thread item ID to thread
+	threads map[chat.ID]thread // thread ID to thread
+	items   map[chat.ID]thread // thread item ID to thread
 	ngrams  map[string][]thread
 }
 
 func newThreadStore() *threadStore {
 	return &threadStore{
-		threads: map[uuid.UUID]thread{},
-		items:   map[uuid.UUID]thread{},
+		threads: map[chat.ID]thread{},
+		items:   map[chat.ID]thread{},
 		ngrams:  make(map[string][]thread),
 	}
 }
 
-func (ts *threadStore) add(id uuid.UUID, t thread) {
+func (ts *threadStore) add(id chat.ID, t thread) {
 	ts.Lock()
 	defer ts.Unlock()
 
@@ -35,7 +35,7 @@ func (ts *threadStore) add(id uuid.UUID, t thread) {
 	}
 }
 
-func (ts *threadStore) get(id uuid.UUID) (thread, bool) {
+func (ts *threadStore) get(id chat.ID) (thread, bool) {
 	ts.Lock()
 	defer ts.Unlock()
 
@@ -43,7 +43,7 @@ func (ts *threadStore) get(id uuid.UUID) (thread, bool) {
 	return t, ok
 }
 
-func (ts *threadStore) remove(id uuid.UUID) {
+func (ts *threadStore) remove(id chat.ID) {
 	ts.Lock()
 	defer ts.Unlock()
 
@@ -69,14 +69,14 @@ func (ts *threadStore) remove(id uuid.UUID) {
 	ts.ngrams = prunedNgrams
 }
 
-func (ts *threadStore) associate(t thread, itemID uuid.UUID) {
+func (ts *threadStore) associate(t thread, itemID chat.ID) {
 	ts.Lock()
 	defer ts.Unlock()
 
 	ts.items[itemID] = t
 }
 
-func (ts *threadStore) bulkAssociate(t thread, items []uuid.UUID) {
+func (ts *threadStore) bulkAssociate(t thread, items []chat.ID) {
 	ts.Lock()
 	defer ts.Unlock()
 
@@ -85,11 +85,11 @@ func (ts *threadStore) bulkAssociate(t thread, items []uuid.UUID) {
 	}
 }
 
-func (ts *threadStore) associatedItems(threadID uuid.UUID) []uuid.UUID {
+func (ts *threadStore) associatedItems(threadID chat.ID) []chat.ID {
 	ts.Lock()
 	defer ts.Unlock()
 
-	items := []uuid.UUID{}
+	items := []chat.ID{}
 	for itemID, t := range ts.items {
 		if t.getID() == threadID {
 			items = append(items, itemID)
@@ -98,7 +98,7 @@ func (ts *threadStore) associatedItems(threadID uuid.UUID) []uuid.UUID {
 	return items
 }
 
-func (ts *threadStore) withItem(id uuid.UUID) (thread, bool) {
+func (ts *threadStore) withItem(id chat.ID) (thread, bool) {
 	ts.Lock()
 	defer ts.Unlock()
 
@@ -106,14 +106,14 @@ func (ts *threadStore) withItem(id uuid.UUID) (thread, bool) {
 	return t, ok
 }
 
-func (ts *threadStore) removeItem(id uuid.UUID) {
+func (ts *threadStore) removeItem(id chat.ID) {
 	ts.Lock()
 	defer ts.Unlock()
 
 	delete(ts.items, id)
 }
 
-func (ts *threadStore) getGroup(id uuid.UUID) (*group, bool) {
+func (ts *threadStore) getGroup(id chat.ID) (*group, bool) {
 	ts.Lock()
 	defer ts.Unlock()
 
@@ -130,7 +130,7 @@ func (ts *threadStore) getGroup(id uuid.UUID) (*group, bool) {
 	return g, true
 }
 
-func (ts *threadStore) getDM(id uuid.UUID) (*directMessage, bool) {
+func (ts *threadStore) getDM(id chat.ID) (*directMessage, bool) {
 	ts.Lock()
 	defer ts.Unlock()
 
@@ -172,7 +172,7 @@ func (ts *threadStore) sorted() []thread {
 	return threads
 }
 
-func (ts *threadStore) groupsWithUser(id uuid.UUID) int {
+func (ts *threadStore) groupsWithUser(id chat.ID) int {
 	ts.Lock()
 	defer ts.Unlock()
 

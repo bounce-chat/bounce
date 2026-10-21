@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -497,7 +496,7 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 
 func (ui *ui) refreshCurrentAndPendingUsers(g *group) {
 	currentUsersList := container.NewVBox()
-	adminMap := map[uuid.UUID]bool{}
+	adminMap := map[chat.ID]bool{}
 	for _, adminID := range g.admins {
 		adminMap[adminID] = true
 	}
@@ -640,11 +639,11 @@ func (ui *ui) refreshCurrentAndPendingUsers(g *group) {
 }
 
 func (ui *ui) refreshAvailableNewUsers(g *group, allAvailableUsers []*user) {
-	blockedUsersMap := map[uuid.UUID]bool{}
+	blockedUsersMap := map[chat.ID]bool{}
 	for _, id := range g.blockedUsers {
 		blockedUsersMap[id] = true
 	}
-	invitedUsersMap := map[uuid.UUID]bool{}
+	invitedUsersMap := map[chat.ID]bool{}
 	for _, id := range g.invites {
 		invitedUsersMap[id] = true
 	}

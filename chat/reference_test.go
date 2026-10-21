@@ -8,7 +8,6 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/alecthomas/assert/v2"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
 )
@@ -17,7 +16,7 @@ func TestChunkOffersInReferenceFollowOverlapScope(t *testing.T) {
 	b, alice, _, _ := createUsersAndGroups(t)
 
 	// Create a new file for my profile picture
-	fileID := uuid.New()
+	fileID := NewID()
 	data := []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06}
 	hash := blake3.Sum256(data)
 	key := make([]byte, 32)
@@ -28,7 +27,7 @@ func TestChunkOffersInReferenceFollowOverlapScope(t *testing.T) {
 		ID:                fileID,
 		Type:              fileTypeUserImage,
 		AttachedTo:        b.currentUserID(),
-		Path:              os.TempDir() + "/bounce-file-" + uuid.New().String(),
+		Path:              os.TempDir() + "/bounce-file-" + NewID().String(),
 		Hash:              hashString(hash),
 		Size:              int64(len(data)),
 		Wanted:            true,
@@ -56,7 +55,7 @@ func TestChunkOffersInReferenceFollowOverlapScope(t *testing.T) {
 	// Create a chunk offer from myself for this new file
 	c := chunks[0]
 	bco := &chunkOffer{
-		ID:          uuid.New(),
+		ID:          NewID(),
 		Author:      b.currentUserID(),
 		FileID:      c.FileID,
 		Hash:        c.Hash,
@@ -83,7 +82,7 @@ func TestChunkOffersInReferenceFollowOverlapScope(t *testing.T) {
 
 	// Create a chunk offer from Alice, so that I know Alice has the chunk
 	aco := &chunkOffer{
-		ID:          uuid.New(),
+		ID:          NewID(),
 		Author:      alice.currentUserID(),
 		FileID:      c.FileID,
 		Hash:        c.Hash,

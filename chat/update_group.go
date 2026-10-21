@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
@@ -71,14 +70,14 @@ var errNonAdminCannotRemoveAdmin = errors.New("non-admin users cannot remove adm
 // sent to sync devices.  The data field of the structure contains different data depending on the type of update.
 type updateGroup struct {
 	SignedFrame
-	ID            uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Actor         uuid.UUID
-	Target        uuid.UUID
+	ID            ID `gorm:"primary_key;"`
+	Actor         ID
+	Target        ID
 	Timestamp     int64
 	SavedAt       int64 `msgpack:"-"`
 	Type          uint16
 	Data          []byte
-	CustomScope   uuid.UUID `msgpack:"-"`
+	CustomScope   ID `msgpack:"-"`
 	Confirmations []confirmation
 	Applied       bool `msgpack:"-"`
 	Notified      bool `msgpack:"-"`
@@ -89,23 +88,23 @@ func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
 	if ug.ID != updateGroupID(*ug) {
 		return errors.New("incorrect update group ID")
 	}
-	if ug.ID == uuid.Nil {
+	if ug.ID == NilID {
 		return errors.New("update group ID cannot be nil")
 	}
 	ug.SavedAt = time.Now().Unix()
 
 	if len(ug.CustomScope) == 0 {
-		ug.CustomScope = uuid.Nil
+		ug.CustomScope = NilID
 	}
 
 	return nil
 }
 
 func (ug *updateGroup) AfterDelete(tx *gorm.DB) error {
-	if ug.ID == uuid.Nil {
+	if ug.ID == NilID {
 		return nil
 	}
-	if ug.CustomScope != uuid.Nil {
+	if ug.CustomScope != NilID {
 		err := tx.Clauses(clause.Returning{}).Where("id = ?", ug.CustomScope).Delete(&customScope{}).Error
 		if err != nil {
 			return err
@@ -120,23 +119,23 @@ func (ug *updateGroup) AfterDelete(tx *gorm.DB) error {
 	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", ug.ID, typeUpdateGroup).Delete(&deliveryRecord{}).Error
 }
 
-func (ug *updateGroup) getID() uuid.UUID {
+func (ug *updateGroup) getID() ID {
 	return ug.ID
 }
 
-func (ug *updateGroup) getScope(myID uuid.UUID) int {
+func (ug *updateGroup) getScope(myID ID) int {
 	if ug.Type == updateGroupTypeChangeMutedUntil || ug.Type == updateGroupTypeSetReadReceiptSettings || ug.Type == updateGroupTypeSetTypingIndicatorSettings {
 		return scopeSync
 	}
 
-	if ug.CustomScope != uuid.Nil {
+	if ug.CustomScope != NilID {
 		return scopeCustom
 	}
 
 	return scopeGroupWithInvites
 }
 
-func (ug *updateGroup) getDestination(myID uuid.UUID) uuid.UUID {
+func (ug *updateGroup) getDestination(myID ID) ID {
 	return ug.Target
 }
 
@@ -159,7 +158,7 @@ func (ug *updateGroup) getPayload() []byte {
 	return bytes
 }
 
-func (ug *updateGroup) getAuthor() uuid.UUID {
+func (ug *updateGroup) getAuthor() ID {
 	return ug.Actor
 }
 
@@ -171,13 +170,13 @@ func (ug *updateGroup) getSavedAt() int64 {
 	return ug.SavedAt
 }
 
-func (ug *updateGroup) confirmingUsers(possibleUsers []uuid.UUID) int {
-	possible := map[uuid.UUID]bool{}
+func (ug *updateGroup) confirmingUsers(possibleUsers []ID) int {
+	possible := map[ID]bool{}
 	for _, id := range possibleUsers {
 		possible[id] = true
 	}
 
-	users := make(map[uuid.UUID]bool)
+	users := make(map[ID]bool)
 	for _, c := range ug.Confirmations {
 		if _, ok := possible[c.Author]; ok {
 			users[c.Author] = true
@@ -218,7 +217,7 @@ func (ug *updateGroup) validPayloadFormat() bool {
 	case updateGroupTypeChangeName:
 		return validGroupName(string(ug.Data))
 	case updateGroupTypeSetImage:
-		_, err := uuid.FromBytes(ug.Data)
+		_, err := IDFromBytes(ug.Data)
 		return err == nil
 	case updateGroupTypeInviteUser:
 		if len(ug.Data) > maximumInviteUserBytes {
@@ -228,7 +227,7 @@ func (ug *updateGroup) validPayloadFormat() bool {
 		err := msgpack.Unmarshal(ug.Data, &u)
 		return err == nil
 	case updateGroupTypeRemoveUser:
-		_, err := uuid.FromBytes(ug.Data)
+		_, err := IDFromBytes(ug.Data)
 		return err == nil
 	case updateGroupTypeChangeRetention:
 		return len(ug.Data) == 8
@@ -237,10 +236,10 @@ func (ug *updateGroup) validPayloadFormat() bool {
 	case updateGroupTypeSetClearBefore:
 		return len(ug.Data) == 0
 	case updateGroupTypePromoteAdmin:
-		_, err := uuid.FromBytes(ug.Data)
+		_, err := IDFromBytes(ug.Data)
 		return err == nil
 	case updateGroupTypeDemoteAdmin:
-		_, err := uuid.FromBytes(ug.Data)
+		_, err := IDFromBytes(ug.Data)
 		return err == nil
 	case updateGroupTypeChangeUserManagementPermission:
 		_, err := ug.permissionPayloadIsRestricted()
@@ -278,7 +277,7 @@ func (ug *updateGroup) validPayloadFormat() bool {
 		}
 		return true
 	case updateGroupTypeRevokeInvite:
-		_, err := uuid.FromBytes(ug.Data)
+		_, err := IDFromBytes(ug.Data)
 		return err == nil
 	case updateGroupTypeRespondToInvite:
 		if len(ug.Data) != 1 {
@@ -447,16 +446,16 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 		// If this is a remove user frame, make sure to send it to the devices of the user who was removed
 		if ug.Type == updateGroupTypeRemoveUser || ug.Type == updateGroupTypeBlock {
 			// Find the user ID that's being removed or is blocking the group
-			userID := uuid.Nil
+			userID := NilID
 			switch ug.Type {
 			case updateGroupTypeRemoveUser:
-				userID, err = uuid.FromBytes(ug.Data)
+				userID, err = IDFromBytes(ug.Data)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error":   err.Error(),
 						"actor":   ug.Actor,
 						"user_id": ug.Data,
-					}).Error("update group attempted to remove user with invalid UUID")
+					}).Error("update group attempted to remove user with invalid ID")
 					return nil, false
 				}
 			case updateGroupTypeBlock:
@@ -501,7 +500,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 	return &ug, true
 }
 
-func (b *Bounce) haveGroupCreation(groupID uuid.UUID) bool {
+func (b *Bounce) haveGroupCreation(groupID ID) bool {
 	var count int64
 	err := b.database.Model(&groupCreation{}).Where("id = ?", groupID).Count(&count).Error
 	if err != nil {
@@ -581,7 +580,7 @@ func (b *Bounce) processEarlyConfirmations(ug updateGroup) {
 	}
 }
 
-func (b *Bounce) RenameGroup(groupID uuid.UUID, newName string) error {
+func (b *Bounce) RenameGroup(groupID ID, newName string) error {
 	if !validGroupName(newName) {
 		return errInvalidGroupName
 	}
@@ -595,12 +594,12 @@ func (b *Bounce) RenameGroup(groupID uuid.UUID, newName string) error {
 	})
 }
 
-func (b *Bounce) SetGroupImage(groupID uuid.UUID, image []byte) error {
+func (b *Bounce) SetGroupImage(groupID ID, image []byte) error {
 	if !validImage(image) {
 		return errInvalidImage
 	}
 
-	fileID := uuid.New()
+	fileID := NewID()
 	err := b.embedFile(fileID, image, scopeGroupWithInvites, groupID, fileTypeGroupImage, groupID)
 	if err != nil {
 		return err
@@ -615,7 +614,7 @@ func (b *Bounce) SetGroupImage(groupID uuid.UUID, image []byte) error {
 	})
 }
 
-func (b *Bounce) SetGroupMutedUntil(groupID uuid.UUID, mutedUntil int64) error {
+func (b *Bounce) SetGroupMutedUntil(groupID ID, mutedUntil int64) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(mutedUntil))
 
@@ -628,7 +627,7 @@ func (b *Bounce) SetGroupMutedUntil(groupID uuid.UUID, mutedUntil int64) error {
 	})
 }
 
-func (b *Bounce) SetGroupRetention(groupID uuid.UUID, retention int64) error {
+func (b *Bounce) SetGroupRetention(groupID ID, retention int64) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(retention))
 
@@ -641,7 +640,7 @@ func (b *Bounce) SetGroupRetention(groupID uuid.UUID, retention int64) error {
 	})
 }
 
-func (b *Bounce) ClearGroupChatHistory(groupID uuid.UUID) error {
+func (b *Bounce) ClearGroupChatHistory(groupID ID) error {
 	go b.updateEncryptedClearBefore(groupID, time.Now().Unix())
 
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
@@ -652,7 +651,7 @@ func (b *Bounce) ClearGroupChatHistory(groupID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) InviteUserToGroup(groupID, userID uuid.UUID) error {
+func (b *Bounce) InviteUserToGroup(groupID, userID ID) error {
 	// Look up the user to add with all associations
 	var newUser user
 	err := b.database.
@@ -700,7 +699,7 @@ func (b *Bounce) InviteUserToGroup(groupID, userID uuid.UUID) error {
 	return nil
 }
 
-func (b *Bounce) RemoveUserFromGroup(groupID, userID uuid.UUID) error {
+func (b *Bounce) RemoveUserFromGroup(groupID, userID ID) error {
 	// Create an update group
 	ug := &updateGroup{
 		Actor:     b.currentUserID(),
@@ -743,7 +742,7 @@ func (b *Bounce) RemoveUserFromGroup(groupID, userID uuid.UUID) error {
 	return nil
 }
 
-func (b *Bounce) DeleteGroup(groupID uuid.UUID) error {
+func (b *Bounce) DeleteGroup(groupID ID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -752,7 +751,7 @@ func (b *Bounce) DeleteGroup(groupID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) PromoteGroupAdmin(groupID, userID uuid.UUID) error {
+func (b *Bounce) PromoteGroupAdmin(groupID, userID ID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -762,7 +761,7 @@ func (b *Bounce) PromoteGroupAdmin(groupID, userID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) DemoteGroupAdmin(groupID, userID uuid.UUID) error {
+func (b *Bounce) DemoteGroupAdmin(groupID, userID ID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -772,7 +771,7 @@ func (b *Bounce) DemoteGroupAdmin(groupID, userID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) RestrictUserManagement(groupID uuid.UUID) error {
+func (b *Bounce) RestrictUserManagement(groupID ID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -782,7 +781,7 @@ func (b *Bounce) RestrictUserManagement(groupID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) UnrestrictUserManagement(groupID uuid.UUID) error {
+func (b *Bounce) UnrestrictUserManagement(groupID ID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -792,7 +791,7 @@ func (b *Bounce) UnrestrictUserManagement(groupID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) RestrictGroupEdits(groupID uuid.UUID) error {
+func (b *Bounce) RestrictGroupEdits(groupID ID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -802,7 +801,7 @@ func (b *Bounce) RestrictGroupEdits(groupID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) UnrestrictGroupEdits(groupID uuid.UUID) error {
+func (b *Bounce) UnrestrictGroupEdits(groupID ID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -812,7 +811,7 @@ func (b *Bounce) UnrestrictGroupEdits(groupID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) RestrictPosting(groupID uuid.UUID) error {
+func (b *Bounce) RestrictPosting(groupID ID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -822,7 +821,7 @@ func (b *Bounce) RestrictPosting(groupID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) UnrestrictPosting(groupID uuid.UUID) error {
+func (b *Bounce) UnrestrictPosting(groupID ID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -832,7 +831,7 @@ func (b *Bounce) UnrestrictPosting(groupID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) BlockGroup(groupID uuid.UUID) error {
+func (b *Bounce) BlockGroup(groupID ID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -841,7 +840,7 @@ func (b *Bounce) BlockGroup(groupID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) SetGroupReadReceiptSettings(groupID uuid.UUID, override bool, enabled bool) error {
+func (b *Bounce) SetGroupReadReceiptSettings(groupID ID, override bool, enabled bool) error {
 	payload := []byte{}
 	if override {
 		payload = append(payload, readReceiptsOverriddenValue)
@@ -864,7 +863,7 @@ func (b *Bounce) SetGroupReadReceiptSettings(groupID uuid.UUID, override bool, e
 	})
 }
 
-func (b *Bounce) SetGroupTypingIndicatorSettings(groupID uuid.UUID, override bool, enabled bool) error {
+func (b *Bounce) SetGroupTypingIndicatorSettings(groupID ID, override bool, enabled bool) error {
 	payload := []byte{}
 	if override {
 		payload = append(payload, typingIndicatorsOverriddenValue)
@@ -887,7 +886,7 @@ func (b *Bounce) SetGroupTypingIndicatorSettings(groupID uuid.UUID, override boo
 	})
 }
 
-func (b *Bounce) RevokeInvite(groupID, userID uuid.UUID) error {
+func (b *Bounce) RevokeInvite(groupID, userID ID) error {
 	ug := &updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -926,7 +925,7 @@ func (b *Bounce) RevokeInvite(groupID, userID uuid.UUID) error {
 	return nil
 }
 
-func (b *Bounce) AcceptInvite(groupID uuid.UUID) error {
+func (b *Bounce) AcceptInvite(groupID ID) error {
 	b.acceptAllUsers(groupID)
 
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
@@ -938,7 +937,7 @@ func (b *Bounce) AcceptInvite(groupID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) acceptAllUsers(groupID uuid.UUID) {
+func (b *Bounce) acceptAllUsers(groupID ID) {
 	gs, err := b.currentGroupState(groupID)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -948,7 +947,7 @@ func (b *Bounce) acceptAllUsers(groupID uuid.UUID) {
 		return
 	}
 
-	ids := []uuid.UUID{}
+	ids := []ID{}
 	for _, userID := range gs.users {
 		ids = append(ids, userID)
 	}
@@ -965,7 +964,7 @@ func (b *Bounce) acceptAllUsers(groupID uuid.UUID) {
 	}
 }
 
-func (b *Bounce) RejectInvite(groupID uuid.UUID) error {
+func (b *Bounce) RejectInvite(groupID ID) error {
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		Actor:     b.currentUserID(),
 		Target:    groupID,
@@ -975,25 +974,17 @@ func (b *Bounce) RejectInvite(groupID uuid.UUID) error {
 	})
 }
 
-func updateGroupID(ug updateGroup) uuid.UUID {
-	ug.ID = uuid.Nil
+func updateGroupID(ug updateGroup) ID {
+	ug.ID = NilID
 	ug.Confirmations = []confirmation{}
 	data, err := msgpack.Marshal(ug)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error marshalling update group for ID generation")
-		return uuid.Nil
+		return NilID
 	}
-	hash := blake3.Sum256(data)
-	id, err := uuid.FromBytes(hash[:16])
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error generating UUID from update group hash")
-		return uuid.Nil
-	}
-	return id
+	return ID(blake3.Sum256(data))
 }
 
 func (b *Bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
@@ -1159,13 +1150,13 @@ func (b *Bounce) informUIUpdateGroupInviteUser(ug updateGroup) {
 
 func (b *Bounce) informUIUpdateGroupRemoveUser(ug updateGroup) {
 	// Parse the user ID
-	userID, err := uuid.FromBytes(ug.Data)
+	userID, err := IDFromBytes(ug.Data)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to remove user with invalid UUID")
+		}).Error("update group attempted to remove user with invalid ID")
 		return
 	}
 
@@ -1218,14 +1209,14 @@ func (b *Bounce) informUIUpdateGroupSetClearBefore(ug updateGroup) {
 }
 
 func (b *Bounce) informUIUpdateGroupPromoteAdmin(ug updateGroup) {
-	// Parse the UUID
-	userID, err := uuid.FromBytes(ug.Data)
+	// Parse the ID
+	userID, err := IDFromBytes(ug.Data)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to promote admin with invalid UUID")
+		}).Error("update group attempted to promote admin with invalid ID")
 		return
 	}
 
@@ -1241,14 +1232,14 @@ func (b *Bounce) informUIUpdateGroupPromoteAdmin(ug updateGroup) {
 }
 
 func (b *Bounce) informUIUpdateGroupDemoteAdmin(ug updateGroup) {
-	// Parse the UUID
-	userID, err := uuid.FromBytes(ug.Data)
+	// Parse the ID
+	userID, err := IDFromBytes(ug.Data)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to promote admin with invalid UUID")
+		}).Error("update group attempted to promote admin with invalid ID")
 		return
 	}
 
@@ -1356,14 +1347,14 @@ func (b *Bounce) informUIUpdateGroupSetImage(ug updateGroup) {
 }
 
 func (b *Bounce) informUIUpdateGroupRevokeInvite(ug updateGroup) {
-	// Parse the UUID
-	userID, err := uuid.FromBytes(ug.Data)
+	// Parse the ID
+	userID, err := IDFromBytes(ug.Data)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to revoke invite with invalid UUID")
+		}).Error("update group attempted to revoke invite with invalid ID")
 		return
 	}
 

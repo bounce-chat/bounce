@@ -7,7 +7,6 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/alecthomas/assert/v2"
-	"github.com/google/uuid"
 )
 
 // A catch up is bounded in size.  When a peer asks for more than fits, it gets the earliest frames and a flag saying
@@ -24,11 +23,11 @@ func smallBudget(t *testing.T, bytes int) {
 }
 
 // messagesFrom builds n signed direct messages from author to counterparty, saved one second apart
-func messagesFrom(author *Bounce, counterparty uuid.UUID, n int) []*directMessage {
+func messagesFrom(author *Bounce, counterparty ID, n int) []*directMessage {
 	dms := []*directMessage{}
 	base := time.Now().Unix() - int64(n)
 	for i := 0; i < n; i++ {
-		dm := &directMessage{ID: uuid.New(), Author: author.currentUserID(), Xor: xor(author.currentUserID(), counterparty), Text: fmt.Sprintf("message %02d", i), WrittenAt: base + int64(i), SavedAt: base + int64(i)}
+		dm := &directMessage{ID: NewID(), Author: author.currentUserID(), Xor: xor(author.currentUserID(), counterparty), Text: fmt.Sprintf("message %02d", i), WrittenAt: base + int64(i), SavedAt: base + int64(i)}
 		dm.OriginalPayload, _ = msgpack.Marshal(dm)
 		sc := author.createSignedContainer(typeDirectMessage, dm.OriginalPayload)
 		dm.Signature, dm.Signer = sc.Signature, sc.Signer
@@ -110,7 +109,7 @@ func TestAnIncompleteCatchUpIsFollowedAtOnceByARequestForTheRest(t *testing.T) {
 	// so the check is on the six we know about rather than on the total.)
 	var left []frameReference
 	alice.referenceDatabase.Where("peer = ?", me.network.Address()).Find(&left)
-	remaining := map[uuid.UUID]frameReference{}
+	remaining := map[ID]frameReference{}
 	for _, fr := range left {
 		remaining[fr.FrameID] = fr
 	}

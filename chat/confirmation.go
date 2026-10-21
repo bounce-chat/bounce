@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -15,11 +14,11 @@ import (
 // This is used to establish which update groups are to be applied to a group in the case of a conflict
 // and reduce the risk of a malicious former admin manipulating the update history.
 type confirmation struct {
-	ID            uuid.UUID `gorm:"type:uuid;primary_key;"`
-	UpdateGroupID uuid.UUID
-	Destination   uuid.UUID `msgpack:"-"`
-	Author        uuid.UUID `msgpack:"-"`
-	CustomScope   uuid.UUID `msgpack:"-"`
+	ID            ID `gorm:"primary_key;"`
+	UpdateGroupID ID
+	Destination   ID `msgpack:"-"`
+	Author        ID `msgpack:"-"`
+	CustomScope   ID `msgpack:"-"`
 	SigningDevice string
 	Signature     []byte
 	Timestamp     int64
@@ -27,7 +26,7 @@ type confirmation struct {
 }
 
 func (c *confirmation) BeforeCreate(tx *gorm.DB) error {
-	if c.ID == uuid.Nil {
+	if c.ID == NilID {
 		return errors.New("confirmation must have an ID assigned before creation")
 	}
 	c.SavedAt = time.Now().Unix()
@@ -35,25 +34,25 @@ func (c *confirmation) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (c *confirmation) AfterDelete(tx *gorm.DB) error {
-	if c.ID == uuid.Nil {
+	if c.ID == NilID {
 		return nil
 	}
 	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", c.ID, typeConfirmation).Delete(&deliveryRecord{}).Error
 }
 
-func (c *confirmation) getID() uuid.UUID {
+func (c *confirmation) getID() ID {
 	return c.ID
 }
 
-func (c *confirmation) getScope(_ uuid.UUID) int {
-	if c.CustomScope != uuid.Nil {
+func (c *confirmation) getScope(_ ID) int {
+	if c.CustomScope != NilID {
 		return scopeCustom
 	}
 
 	return scopeGroup
 }
 
-func (c *confirmation) getDestination(_ uuid.UUID) uuid.UUID {
+func (c *confirmation) getDestination(_ ID) ID {
 	return c.Destination
 }
 
@@ -72,7 +71,7 @@ func (c *confirmation) getPayload() []byte {
 	return bytes
 }
 
-func (c *confirmation) getAuthor() uuid.UUID {
+func (c *confirmation) getAuthor() ID {
 	return c.Author
 }
 
@@ -182,7 +181,7 @@ func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) (
 	}
 
 	// Custom scoped updates remove us from a group, no need to update consensus there
-	if ug.CustomScope == uuid.Nil {
+	if ug.CustomScope == NilID {
 		// Update the group state without commiting to the database or sending to the UI
 		b.reloadGroupConsensusSince(ug.Target, ug.Timestamp)
 
@@ -210,7 +209,7 @@ func (b *Bounce) sendConfirmation(ug updateGroup) {
 
 	// Create a confirmation
 	c := confirmation{
-		ID:            uuid.New(),
+		ID:            NewID(),
 		UpdateGroupID: ug.ID,
 		Destination:   ug.Target,
 		Author:        b.currentUserID(),

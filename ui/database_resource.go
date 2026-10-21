@@ -2,17 +2,16 @@ package ui
 
 /*
 import (
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 type databaseResource struct {
 	cached []byte
-	fileID uuid.UUID
-	getter func(uuid.UUID) ([]byte, error)
+	fileID chat.ID
+	getter func(chat.ID) ([]byte, error)
 }
 
-func newDatabaseResource(fileID uuid.UUID, getter func(uuid.UUID) ([]byte, error)) *databaseResource {
+func newDatabaseResource(fileID chat.ID, getter func(chat.ID) ([]byte, error)) *databaseResource {
 	return &databaseResource{
 		cached: []byte{},
 		fileID: fileID,

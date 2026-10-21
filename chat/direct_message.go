@@ -9,7 +9,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -18,26 +17,26 @@ import (
 var directMessageMutex sync.Mutex
 
 var dmDeliveryNotificationMutex sync.Mutex
-var dmDeliveryNotifications = map[uuid.UUID]chan bool{}
+var dmDeliveryNotifications = map[ID]chan bool{}
 
 // A direct message is a chat message from one user to another
 type directMessage struct {
 	SignedFrame
-	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
-	SavedAt          int64     `msgpack:"-"`
+	ID               ID    `gorm:"primary_key;"`
+	SavedAt          int64 `msgpack:"-"`
 	WrittenAt        int64
 	DeleteAt         int64
 	Seen             bool `msgpack:"-"`
 	Undeliverable    bool `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
-	Author           uuid.UUID
-	Xor              uuid.UUID // XOR of the two users in the DM
+	Author           ID
+	Xor              ID // XOR of the two users in the DM
 	Text             string
 	FileAttachments  []fileAttachment  `gorm:"foreignKey:MessageID"`
 	ImageAttachments []imageAttachment `gorm:"foreignKey:MessageID"`
 }
 
 func (dm *directMessage) BeforeCreate(tx *gorm.DB) error {
-	if dm.ID == uuid.Nil {
+	if dm.ID == NilID {
 		return errors.New("direct message must have an ID assigned before creation")
 	}
 	dm.SavedAt = time.Now().Unix()
@@ -45,7 +44,7 @@ func (dm *directMessage) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (dm *directMessage) AfterDelete(tx *gorm.DB) error {
-	if dm.ID == uuid.Nil {
+	if dm.ID == NilID {
 		return nil
 	}
 	err := tx.Clauses(clause.Returning{}).Where("message_id = ?", dm.ID).Delete(&imageAttachment{}).Error
@@ -63,19 +62,19 @@ func (dm *directMessage) AfterDelete(tx *gorm.DB) error {
 	return tx.Clauses(clause.Returning{}).Where("target = ? AND target_type = ?", dm.ID, typeDirectMessage).Delete(&readReceipt{}).Error
 }
 
-func (dm *directMessage) getID() uuid.UUID {
+func (dm *directMessage) getID() ID {
 	return dm.ID
 }
 
-func (dm *directMessage) getScope(_ uuid.UUID) int {
-	if dm.Xor == uuid.Nil {
+func (dm *directMessage) getScope(_ ID) int {
+	if dm.Xor == NilID {
 		// A DM to ourselves, only needs to be sent to sync devices
 		return scopeSync
 	}
 	return scopeUser
 }
 
-func (dm *directMessage) getDestination(myID uuid.UUID) uuid.UUID {
+func (dm *directMessage) getDestination(myID ID) ID {
 	return xor(dm.Xor, myID)
 }
 
@@ -98,7 +97,7 @@ func (dm *directMessage) getPayload() []byte {
 	return bytes
 }
 
-func (dm *directMessage) getAuthor() uuid.UUID {
+func (dm *directMessage) getAuthor() ID {
 	return dm.Author
 }
 
@@ -402,11 +401,11 @@ func (b *Bounce) getDMNotificationContent(dm *directMessage) (string, string, er
 	return author.Name, content, nil
 }
 
-func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]io.ReadCloser, sources map[uuid.UUID]string) {
+func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[ID]io.ReadCloser, sources map[ID]string) {
 	if utf8.RuneCountInString(message.Text) > MaximumMessageCharacters {
 		log.Error("refusing to send message that is too long")
 	}
-	if message.ID != uuid.Nil {
+	if message.ID != NilID {
 		log.Fatal("direct message ID cannot be set by the UI")
 	}
 
@@ -427,7 +426,7 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 		deleteAt = now.Unix() + retentionSeconds
 	}
 	dm := &directMessage{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		WrittenAt: now.Unix(),
 		Seen:      true,
 		Author:    b.currentUserID(),
@@ -477,7 +476,7 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 		destination := xor(message.Thread, b.currentUserID())
 		if message.Thread == b.currentUserID() {
 			scope = scopeSync
-			destination = uuid.Nil
+			destination = NilID
 		}
 		err = b.embedFile(ia.ID, data, scope, destination, fileTypeMessageAttachment, dm.ID)
 		if err != nil {
@@ -489,7 +488,7 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 		} else {
 			includedImageAttachments = append(includedImageAttachments, ia)
 			dm.ImageAttachments = append(dm.ImageAttachments, imageAttachment{
-				ID:        uuid.New(),
+				ID:        NewID(),
 				FileID:    ia.ID,
 				MessageID: dm.ID,
 				Name:      ia.Name,
@@ -568,7 +567,7 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 		}
 		includedFileAttachments = append(includedFileAttachments, fa)
 		dm.FileAttachments = append(dm.FileAttachments, fileAttachment{
-			ID:        uuid.New(),
+			ID:        NewID(),
 			FileID:    fa.ID,
 			MessageID: dm.ID,
 			Name:      fa.Name,
@@ -619,7 +618,7 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[uuid.UUID]
 	b.broadcast(dm)
 }
 
-func (b *Bounce) deleteDirectMessageAt(timestamp int64, id uuid.UUID) {
+func (b *Bounce) deleteDirectMessageAt(timestamp int64, id ID) {
 	// Sleep as long as needed
 	duration := timestamp - time.Now().Unix()
 	if duration > 0 {
@@ -639,7 +638,7 @@ func (b *Bounce) deleteDirectMessageAt(timestamp int64, id uuid.UUID) {
 	b.ui.DeleteItem(id)
 }
 
-func (b *Bounce) checkIfDirectMessageUndeliverableAt(timestamp int64, id uuid.UUID) {
+func (b *Bounce) checkIfDirectMessageUndeliverableAt(timestamp int64, id ID) {
 	// Create a receiver for delivery notifications
 	delivered := make(chan bool, 1)
 	dmDeliveryNotificationMutex.Lock()

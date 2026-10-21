@@ -9,33 +9,32 @@ import (
 	"unicode/utf8"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 var gmDeliveryNotificationMutex sync.Mutex
-var gmDeliveryNotifications = map[uuid.UUID]chan bool{}
+var gmDeliveryNotifications = map[ID]chan bool{}
 
 // A group message is sent from a member of a group to a group
 type groupMessage struct {
 	SignedFrame
-	ID               uuid.UUID `gorm:"type:uuid;primary_key;"`
-	SavedAt          int64     `msgpack:"-"`
+	ID               ID    `gorm:"primary_key;"`
+	SavedAt          int64 `msgpack:"-"`
 	WrittenAt        int64
 	DeleteAt         int64
 	Seen             bool `msgpack:"-"`
 	Undeliverable    bool `msgpack:"-"` // The message was never delivered to another device and is beyond when we give up including it in reference offers
-	Author           uuid.UUID
-	Destination      uuid.UUID
+	Author           ID
+	Destination      ID
 	Text             string
 	FileAttachments  []fileAttachment  `gorm:"foreignKey:MessageID"`
 	ImageAttachments []imageAttachment `gorm:"foreignKey:MessageID"`
 }
 
 func (gm *groupMessage) BeforeCreate(tx *gorm.DB) error {
-	if gm.ID == uuid.Nil {
+	if gm.ID == NilID {
 		return errors.New("group message must have an ID assigned before creation")
 	}
 	gm.SavedAt = time.Now().Unix()
@@ -43,7 +42,7 @@ func (gm *groupMessage) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (gm *groupMessage) AfterDelete(tx *gorm.DB) error {
-	if gm.ID == uuid.Nil {
+	if gm.ID == NilID {
 		return nil
 	}
 	err := tx.Clauses(clause.Returning{}).Where("message_id = ?", gm.ID).Delete(&imageAttachment{}).Error
@@ -61,15 +60,15 @@ func (gm *groupMessage) AfterDelete(tx *gorm.DB) error {
 	return tx.Clauses(clause.Returning{}).Where("target = ? AND target_type = ?", gm.ID, typeGroupMessage).Delete(&readReceipt{}).Error
 }
 
-func (gm *groupMessage) getID() uuid.UUID {
+func (gm *groupMessage) getID() ID {
 	return gm.ID
 }
 
-func (gm *groupMessage) getScope(_ uuid.UUID) int {
+func (gm *groupMessage) getScope(_ ID) int {
 	return scopeGroup
 }
 
-func (gm *groupMessage) getDestination(_ uuid.UUID) uuid.UUID {
+func (gm *groupMessage) getDestination(_ ID) ID {
 	return gm.Destination
 }
 
@@ -92,7 +91,7 @@ func (gm *groupMessage) getPayload() []byte {
 	return bytes
 }
 
-func (gm *groupMessage) getAuthor() uuid.UUID {
+func (gm *groupMessage) getAuthor() ID {
 	return gm.Author
 }
 
@@ -432,11 +431,11 @@ func (b *Bounce) getGMNotificationContent(gm *groupMessage) (string, string, err
 	return g.Name, content, nil
 }
 
-func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io.ReadCloser, sources map[uuid.UUID]string) {
+func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[ID]io.ReadCloser, sources map[ID]string) {
 	if utf8.RuneCountInString(message.Text) > MaximumMessageCharacters {
 		log.Error("refusing to send message that is too long")
 	}
-	if message.ID != uuid.Nil {
+	if message.ID != NilID {
 		log.Fatal("group message ID cannot be set by the UI")
 	}
 
@@ -459,7 +458,7 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 		deleteAt = now.Unix() + retentionSeconds
 	}
 	gm := &groupMessage{
-		ID:          uuid.New(),
+		ID:          NewID(),
 		WrittenAt:   now.Unix(),
 		Seen:        true,
 		Author:      b.currentUserID(),
@@ -512,7 +511,7 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 		} else {
 			includedImageAttachments = append(includedImageAttachments, ia)
 			gm.ImageAttachments = append(gm.ImageAttachments, imageAttachment{
-				ID:        uuid.New(),
+				ID:        NewID(),
 				FileID:    ia.ID,
 				MessageID: gm.ID,
 				Name:      ia.Name,
@@ -579,7 +578,7 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 		}
 		includedFileAttachments = append(includedFileAttachments, fa)
 		gm.FileAttachments = append(gm.FileAttachments, fileAttachment{
-			ID:        uuid.New(),
+			ID:        NewID(),
 			FileID:    fa.ID,
 			MessageID: gm.ID,
 			Name:      fa.Name,
@@ -629,7 +628,7 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[uuid.UUID]io
 	b.broadcast(gm)
 }
 
-func (b *Bounce) deleteGroupMessageAt(timestamp int64, id uuid.UUID) {
+func (b *Bounce) deleteGroupMessageAt(timestamp int64, id ID) {
 	// Sleep as long as needed
 	duration := timestamp - time.Now().Unix()
 	if duration > 0 {
@@ -649,7 +648,7 @@ func (b *Bounce) deleteGroupMessageAt(timestamp int64, id uuid.UUID) {
 	b.ui.DeleteItem(id)
 }
 
-func (b *Bounce) checkIfGroupMessageUndeliverableAt(timestamp int64, id uuid.UUID) {
+func (b *Bounce) checkIfGroupMessageUndeliverableAt(timestamp int64, id ID) {
 	// Create a receiver for delivery notifications
 	delivered := make(chan bool, 1)
 	gmDeliveryNotificationMutex.Lock()

@@ -4,20 +4,19 @@ import (
 	"sync"
 
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 type deviceStore struct {
 	sync.Mutex
-	devices map[uuid.UUID]*chat.Device
+	devices map[chat.ID]*chat.Device
 	ordered []*chat.Device
 	local   *chat.Device
 }
 
 func newDeviceStore() *deviceStore {
 	return &deviceStore{
-		devices: make(map[uuid.UUID]*chat.Device),
+		devices: make(map[chat.ID]*chat.Device),
 		ordered: []*chat.Device{},
 	}
 }
@@ -48,14 +47,14 @@ func (ds *deviceStore) add(d *chat.Device) {
 	}
 }
 
-func (ds *deviceStore) isLocal(id uuid.UUID) bool {
+func (ds *deviceStore) isLocal(id chat.ID) bool {
 	ds.Lock()
 	defer ds.Unlock()
 
 	return ds.local != nil && ds.local.ID == id
 }
 
-func (ds *deviceStore) remove(id uuid.UUID) {
+func (ds *deviceStore) remove(id chat.ID) {
 	ds.Lock()
 	defer ds.Unlock()
 
@@ -96,7 +95,7 @@ func (ds *deviceStore) all() []*chat.Device {
 	return liveOrder
 }
 
-func (ds *deviceStore) online(id uuid.UUID) {
+func (ds *deviceStore) online(id chat.ID) {
 	ds.Lock()
 	defer ds.Unlock()
 
@@ -111,7 +110,7 @@ func (ds *deviceStore) online(id uuid.UUID) {
 	d.Online = true
 }
 
-func (ds *deviceStore) offline(id uuid.UUID) {
+func (ds *deviceStore) offline(id chat.ID) {
 	ds.Lock()
 	defer ds.Unlock()
 
@@ -126,7 +125,7 @@ func (ds *deviceStore) offline(id uuid.UUID) {
 	d.Online = false
 }
 
-func (ds *deviceStore) rename(id uuid.UUID, name string) {
+func (ds *deviceStore) rename(id chat.ID, name string) {
 	ds.Lock()
 	defer ds.Unlock()
 
@@ -141,7 +140,7 @@ func (ds *deviceStore) rename(id uuid.UUID, name string) {
 	d.Name = name
 }
 
-func (ds *deviceStore) updateLastSeen(id uuid.UUID, timestamp int64) {
+func (ds *deviceStore) updateLastSeen(id chat.ID, timestamp int64) {
 	ds.Lock()
 	defer ds.Unlock()
 

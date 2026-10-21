@@ -12,11 +12,11 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/widget"
-	"github.com/google/uuid"
+	"github.com/bounce-chat/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
 
-var colorCache = map[uuid.UUID]color.RGBA{}
+var colorCache = map[chat.ID]color.RGBA{}
 var colorCacheMutex sync.Mutex
 
 var imageCache = map[string]image.Image{}
@@ -24,17 +24,17 @@ var imageCacheMutex sync.Mutex
 
 type defaultImage struct {
 	widget.BaseWidget
-	id                    uuid.UUID
+	id                    chat.ID
 	size                  float32
 	foregroundText        *canvas.Text
 	backgroundColor       *canvas.Image
-	images                []uuid.UUID
-	fileGetter            func(uuid.UUID) ([]byte, error)
+	images                []chat.ID
+	fileGetter            func(chat.ID) ([]byte, error)
 	clicked               func()
 	newBackgroundCallback func()
 }
 
-func newDefaultImage(id uuid.UUID, images []uuid.UUID, str string, size float32, fileGetter func(uuid.UUID) ([]byte, error), clicked func()) *defaultImage {
+func newDefaultImage(id chat.ID, images []chat.ID, str string, size float32, fileGetter func(chat.ID) ([]byte, error), clicked func()) *defaultImage {
 	di := &defaultImage{
 		id:              id,
 		size:            size,
@@ -127,7 +127,7 @@ func (di *defaultImage) setDefaultBackground() {
 	}
 	di.backgroundColor.Image = makeCircle(&colorRectangle{
 		rect:  image.Rect(0, 0, int(di.size)*8, int(di.size)*8),
-		color: uuidToColor(di.id),
+		color: idToColor(di.id),
 	})
 
 	imageCacheMutex.Lock()
@@ -253,8 +253,8 @@ func (cr *colorRectangle) At(x, y int) color.Color {
 	return cr.color
 }
 
-// Deterministically generate a color from a UUID
-func uuidToColor(id uuid.UUID) color.RGBA {
+// Deterministically generate a color from an ID
+func idToColor(id chat.ID) color.RGBA {
 	colorCacheMutex.Lock()
 	defer colorCacheMutex.Unlock()
 

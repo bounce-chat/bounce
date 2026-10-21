@@ -11,7 +11,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -21,11 +20,11 @@ const userIntroductionProfile = "profile"
 const userIntroductionAddUser = "add_user"
 const userIntroductionGroup = "group"
 
-var blockedUsers = map[uuid.UUID]bool{}
+var blockedUsers = map[ID]bool{}
 var blockedUsersMutex sync.Mutex
 
 type user struct {
-	ID                         uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID                         ID `gorm:"primary_key;"`
 	Name                       string
 	Images                     string
 	Profile                    bool `gorm:"index:,where:profile = true" msgpack:"-"`
@@ -33,31 +32,31 @@ type user struct {
 	PublicECDSAKey             []byte `msgpack:"-"`
 	PrivateECDSAKey            []byte `msgpack:"-"`
 	PublicECDHKey              []byte
-	PrivateECDHKey             []byte    `msgpack:"-"`
-	OpenDM                     bool      `msgpack:"-"`
-	LastOpened                 int64     `msgpack:"-"`
-	Retention                  int64     `msgpack:"-"`
-	ClearBefore                int64     `msgpack:"-"`
-	MutedUntil                 int64     `msgpack:"-"`
-	LastActivity               int64     `msgpack:"-"`
-	ReadReceiptsOverridden     bool      `msgpack:"-"`
-	ReadReceiptsEnabled        bool      `msgpack:"-"`
-	TypingIndicatorsOverridden bool      `msgpack:"-"`
-	TypingIndicatorsEnabled    bool      `msgpack:"-"`
-	IntroductionMethod         string    `msgpack:"-"`
-	IntroductionTime           int64     `msgpack:"-"`
-	IntroductionMetadata       uuid.UUID `msgpack:"-"`
-	Alias                      string    `msgpack:"-"`
-	Notes                      string    `msgpack:"-"`
-	Blocked                    bool      `msgpack:"-"`
-	Accepted                   bool      `msgpack:"-"`
+	PrivateECDHKey             []byte `msgpack:"-"`
+	OpenDM                     bool   `msgpack:"-"`
+	LastOpened                 int64  `msgpack:"-"`
+	Retention                  int64  `msgpack:"-"`
+	ClearBefore                int64  `msgpack:"-"`
+	MutedUntil                 int64  `msgpack:"-"`
+	LastActivity               int64  `msgpack:"-"`
+	ReadReceiptsOverridden     bool   `msgpack:"-"`
+	ReadReceiptsEnabled        bool   `msgpack:"-"`
+	TypingIndicatorsOverridden bool   `msgpack:"-"`
+	TypingIndicatorsEnabled    bool   `msgpack:"-"`
+	IntroductionMethod         string `msgpack:"-"`
+	IntroductionTime           int64  `msgpack:"-"`
+	IntroductionMetadata       ID     `msgpack:"-"`
+	Alias                      string `msgpack:"-"`
+	Notes                      string `msgpack:"-"`
+	Blocked                    bool   `msgpack:"-"`
+	Accepted                   bool   `msgpack:"-"`
 	Devices                    []device
 	Groups                     []group          `gorm:"many2many:group_users;" msgpack:"-"`
 	ProfileSettings            *profileSettings `msgpack:"-"`
 }
 
 func (u *user) BeforeCreate(tx *gorm.DB) error {
-	if u.ID == uuid.Nil {
+	if u.ID == NilID {
 		return errors.New("user ID must be set before creation")
 	}
 
@@ -66,16 +65,16 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (u *user) images() []uuid.UUID {
-	imageHistory := []uuid.UUID{}
+func (u *user) images() []ID {
+	imageHistory := []ID{}
 	if len(u.Images) > 0 {
 		for _, imageIDString := range strings.Split(u.Images, ",") {
-			imageID, err := uuid.Parse(imageIDString)
+			imageID, err := ParseID(imageIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":  err.Error(),
 					"images": u.Images,
-				}).Fatal("invalid UUID in user images list")
+				}).Fatal("invalid ID in user images list")
 			}
 			imageHistory = append(imageHistory, imageID)
 		}
@@ -100,17 +99,17 @@ func (b *Bounce) currentUser() (user, bool) {
 	return currentUser, true
 }
 
-func (b *Bounce) CurrentUserID() uuid.UUID {
+func (b *Bounce) CurrentUserID() ID {
 	return b.currentUserID()
 }
 
 var currentUserMutex sync.Mutex
 
-func (b *Bounce) currentUserID() uuid.UUID {
+func (b *Bounce) currentUserID() ID {
 	currentUserMutex.Lock()
 	defer currentUserMutex.Unlock()
 
-	if b.userID == uuid.Nil {
+	if b.userID == NilID {
 		currentUser, ok := b.currentUser()
 		if !ok {
 			log.Fatal("a current user must exist before currentUserID can be called")
@@ -120,7 +119,7 @@ func (b *Bounce) currentUserID() uuid.UUID {
 	return b.userID
 }
 
-func (b *Bounce) getDMRetention(id uuid.UUID) int64 {
+func (b *Bounce) getDMRetention(id ID) int64 {
 	var u user
 	err := b.database.Select("retention").First(&u, "id = ?", id).Error
 	if err != nil {
@@ -138,7 +137,7 @@ func (b *Bounce) getDMRetention(id uuid.UUID) int64 {
 	return u.Retention
 }
 
-func (b *Bounce) addBlockedGroup(groupID uuid.UUID) {
+func (b *Bounce) addBlockedGroup(groupID ID) {
 	var joinedBlockedGroups string
 	err := b.database.Model(&profileSettings{}).Select("blocked_groups").Where("user_id = ?", b.currentUserID()).First(&joinedBlockedGroups).Error
 	if err != nil {
@@ -151,13 +150,13 @@ func (b *Bounce) addBlockedGroup(groupID uuid.UUID) {
 	alreadyBlocked := false
 	if len(joinedBlockedGroups) > 0 {
 		for _, blockedIDString := range strings.Split(joinedBlockedGroups, ",") {
-			blockedID, err := uuid.Parse(blockedIDString)
+			blockedID, err := ParseID(blockedIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":          err.Error(),
 					"user_id":        b.currentUserID(),
 					"blocked_groups": joinedBlockedGroups,
-				}).Fatal("invalid UUID in blocked groups list")
+				}).Fatal("invalid ID in blocked groups list")
 
 			}
 			if blockedID == groupID {
@@ -178,8 +177,8 @@ func (b *Bounce) addBlockedGroup(groupID uuid.UUID) {
 	}
 }
 
-func (b *Bounce) blockedGroups() []uuid.UUID {
-	blocked := []uuid.UUID{}
+func (b *Bounce) blockedGroups() []ID {
+	blocked := []ID{}
 
 	var settings profileSettings
 	err := b.database.Select("blocked_groups").Where("user_id = ?", b.currentUserID()).First(&settings).Error
@@ -191,13 +190,13 @@ func (b *Bounce) blockedGroups() []uuid.UUID {
 
 	if len(settings.BlockedGroups) > 0 {
 		for _, blockedIDString := range strings.Split(settings.BlockedGroups, ",") {
-			blockedID, err := uuid.Parse(blockedIDString)
+			blockedID, err := ParseID(blockedIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":          err.Error(),
 					"user_id":        b.currentUserID(),
 					"blocked_groups": settings.BlockedGroups,
-				}).Fatal("invalid UUID in blocked groups list")
+				}).Fatal("invalid ID in blocked groups list")
 
 			}
 			blocked = append(blocked, blockedID)
@@ -207,10 +206,10 @@ func (b *Bounce) blockedGroups() []uuid.UUID {
 	return blocked
 }
 func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string) error {
-	newID := uuid.New()
-	iconID := uuid.Nil
+	newID := NewID()
+	iconID := NilID
 	if len(image) > 0 {
-		iconID = uuid.New()
+		iconID = NewID()
 	}
 
 	var count int64
@@ -220,7 +219,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 	}
 
 	d := device{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Address:   b.network.Address(),
 		Timestamp: time.Now().Unix(),
 	}
@@ -331,7 +330,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		}
 
 		err = b.applyAndBroadcastUpdateUser(updateUser{
-			ID:        uuid.New(),
+			ID:        NewID(),
 			Target:    b.currentUserID(),
 			Timestamp: time.Now().Unix(),
 			Type:      updateUserTypeReplaceKeys,
@@ -346,9 +345,9 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 	return nil
 }
 
-func (b *Bounce) directMessageWrittenBeforeHistoryCleared(userID uuid.UUID, messageWrittenAt int64) bool {
+func (b *Bounce) directMessageWrittenBeforeHistoryCleared(userID ID, messageWrittenAt int64) bool {
 	// User ID is computed via XOR of my ID with source and destination, if it's a self-DM it would be nil
-	if userID == uuid.Nil {
+	if userID == NilID {
 		userID = b.currentUserID()
 	}
 
@@ -371,7 +370,7 @@ func (b *Bounce) directMessageWrittenBeforeHistoryCleared(userID uuid.UUID, mess
 	return messageWrittenAt < u.ClearBefore
 }
 
-func (b *Bounce) updateLastUserActivity(userID uuid.UUID, timestamp int64) {
+func (b *Bounce) updateLastUserActivity(userID ID, timestamp int64) {
 	var u user
 	err := b.database.Where("id = ?", userID).First(&u).Error
 	if err != nil {
@@ -397,7 +396,7 @@ func (b *Bounce) updateLastUserActivity(userID uuid.UUID, timestamp int64) {
 	}
 }
 
-func (b *Bounce) dmOpenByDefault(userID uuid.UUID) bool {
+func (b *Bounce) dmOpenByDefault(userID ID) bool {
 	var u user
 	err := b.database.Select("introduction_method").Where("id = ?", userID).First(&u).Error
 	if err != nil {
@@ -423,40 +422,29 @@ func validUserName(name string) bool {
 	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= MaximumNameLength
 }
 
-func xor(uuid1, uuid2 uuid.UUID) uuid.UUID {
-	xored := [16]byte{}
-	for i, b := range uuid1 {
-		xored[i] = b ^ uuid2[i]
+func xor(one, two ID) ID {
+	var xored ID
+	for i := range one {
+		xored[i] = one[i] ^ two[i]
 	}
-
-	xorUUID, err := uuid.FromBytes(xored[:])
-	if err != nil {
-		log.WithFields(log.Fields{
-			"uuid1": uuid1,
-			"uuid2": uuid2,
-			"xored": xored,
-			"error": err.Error(),
-		}).Fatal("unable to create UUID from XORed UUIDs")
-	}
-
-	return xorUUID
+	return xored
 }
 
-func cacheBlockedUser(userID uuid.UUID) {
+func cacheBlockedUser(userID ID) {
 	blockedUsersMutex.Lock()
 	defer blockedUsersMutex.Unlock()
 
 	blockedUsers[userID] = true
 }
 
-func cacheUnblockedUser(userID uuid.UUID) {
+func cacheUnblockedUser(userID ID) {
 	blockedUsersMutex.Lock()
 	defer blockedUsersMutex.Unlock()
 
 	delete(blockedUsers, userID)
 }
 
-func blockedUser(userID uuid.UUID) bool {
+func blockedUser(userID ID) bool {
 	blockedUsersMutex.Lock()
 	defer blockedUsersMutex.Unlock()
 
@@ -464,7 +452,7 @@ func blockedUser(userID uuid.UUID) bool {
 	return ok
 }
 
-func (b *Bounce) peerOwner(address string) (uuid.UUID, bool) {
+func (b *Bounce) peerOwner(address string) (ID, bool) {
 	if dev, ok := b.getDeviceFromAddress(address); ok {
 		return dev.UserID, true
 	}
@@ -479,7 +467,7 @@ func (b *Bounce) peerIsBlocked(address string) bool {
 	return ok && blockedUser(owner)
 }
 
-func (b *Bounce) SetDMLastOpened(userID uuid.UUID, timestamp int64) {
+func (b *Bounce) SetDMLastOpened(userID ID, timestamp int64) {
 	err := b.database.Table("users").Where("id = ?", userID).Updates(map[string]interface{}{"last_opened": timestamp}).Error
 	if err != nil {
 		log.WithFields(log.Fields{

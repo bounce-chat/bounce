@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -12,15 +11,15 @@ var errStackEmpty = errors.New("stack is empty")
 var errInvalidDeviceGroup = errors.New("invalid device group")
 
 type canonicalStack struct {
-	groupID      uuid.UUID
-	myID         uuid.UUID
-	addressMap   map[string]uuid.UUID
+	groupID      ID
+	myID         ID
+	addressMap   map[string]ID
 	revokedMap   map[string]int64
 	history      []groupState
 	historyStash []groupState
 }
 
-func newCanonicalStack(initialState groupState, addressMap map[string]uuid.UUID, revokedMap map[string]int64, groupID, myID uuid.UUID) *canonicalStack {
+func newCanonicalStack(initialState groupState, addressMap map[string]ID, revokedMap map[string]int64, groupID, myID ID) *canonicalStack {
 	return &canonicalStack{
 		groupID:    groupID,
 		myID:       myID,
@@ -125,8 +124,8 @@ func (b *Bounce) recomputeDeviceMaps(cs *canonicalStack) {
 	cs.revokedMap = revokedMap
 }
 
-func (b *Bounce) inviteAddressMaps(ug updateGroup) (map[string]uuid.UUID, map[string]int64, error) {
-	addressMap := map[string]uuid.UUID{}
+func (b *Bounce) inviteAddressMaps(ug updateGroup) (map[string]ID, map[string]int64, error) {
+	addressMap := map[string]ID{}
 	revokedMap := map[string]int64{}
 
 	var u user

@@ -7,7 +7,6 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/alecthomas/assert/v2"
-	"github.com/google/uuid"
 )
 
 // A device group is validated in full whenever a whole user record arrives, but a single new device is checked only
@@ -36,9 +35,9 @@ func validatorFor(b *Bounce) (*Bounce, *countingNetwork) {
 
 // introducedBy builds a device for owner introduced by the device at introducer's address, with both signatures made
 // by the keys given.  Passing a different key as introducerKey than the one behind the introducer address forges it.
-func introducedBy(owner uuid.UUID, introducer string, introducerKey *bnc01Onion, newDevice *bnc01Onion, timestamp int64) device {
+func introducedBy(owner ID, introducer string, introducerKey *bnc01Onion, newDevice *bnc01Onion, timestamp int64) device {
 	return device{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		UserID:    owner,
 		Address:   newDevice.addr(),
 		Timestamp: timestamp,
@@ -51,9 +50,9 @@ func introducedBy(owner uuid.UUID, introducer string, introducerKey *bnc01Onion,
 }
 
 // introducedByBounce is introducedBy for an introducer that is a running engine, which signs with its real key
-func introducedByBounce(owner uuid.UUID, introducer *Bounce, newDevice *bnc01Onion, timestamp int64) device {
+func introducedByBounce(owner ID, introducer *Bounce, newDevice *bnc01Onion, timestamp int64) device {
 	return device{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		UserID:    owner,
 		Address:   newDevice.addr(),
 		Timestamp: timestamp,
@@ -67,7 +66,7 @@ func introducedByBounce(owner uuid.UUID, introducer *Bounce, newDevice *bnc01Oni
 
 // growDeviceGroup stores count more devices for owner in b's database, each legitimately introduced by introducer,
 // as if they had been learned one at a time
-func growDeviceGroup(t *testing.T, b *Bounce, owner uuid.UUID, introducer *Bounce, count int) {
+func growDeviceGroup(t *testing.T, b *Bounce, owner ID, introducer *Bounce, count int) {
 	t.Helper()
 	added := make([]device, 0, count)
 	for i := 0; i < count; i++ {
@@ -76,7 +75,7 @@ func growDeviceGroup(t *testing.T, b *Bounce, owner uuid.UUID, introducer *Bounc
 	assert.NoError(t, b.database.CreateInBatches(&added, 100).Error)
 }
 
-func deviceCount(t *testing.T, b *Bounce, owner uuid.UUID) int {
+func deviceCount(t *testing.T, b *Bounce, owner ID) int {
 	t.Helper()
 	var count int64
 	assert.NoError(t, b.database.Model(&device{}).Where("user_id = ?", owner).Count(&count).Error)
@@ -140,7 +139,7 @@ func TestANewDeviceIsOnlyAcceptedFromOneOfTheUsersDevices(t *testing.T) {
 	assert.False(t, validator.isValidAddition(aliceRecord, introducedByBounce(bob.currentUserID(), alice, bnc01NewOnion(), now)))
 
 	// A second device with no introduction at all
-	assert.False(t, validator.isValidAddition(aliceRecord, device{ID: uuid.New(), UserID: aliceID, Address: bnc01NewOnion().addr(), Timestamp: now}),
+	assert.False(t, validator.isValidAddition(aliceRecord, device{ID: NewID(), UserID: aliceID, Address: bnc01NewOnion().addr(), Timestamp: now}),
 		"only the original device is unsigned")
 
 	// An address Alice already has

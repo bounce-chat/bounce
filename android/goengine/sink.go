@@ -41,7 +41,7 @@ type EventSink interface {
 // Same threading contract as EventSink: post to a handler and return.
 type NotificationSink interface {
 	// Post asks for a notification. id identifies the notification for a later
-	// Clear; openThread is the thread UUID to open when it is tapped; icon is
+	// Clear; openThread is the thread ID to open when it is tapped; icon is
 	// PNG bytes of the sender or group avatar, and may be empty.
 	Post(id string, title string, content string, openThread string, icon []byte)
 

@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -35,20 +34,20 @@ func referenceRetryInterval() time.Duration {
 }
 
 type frameReference struct {
-	ID         uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
-	FrameID    uuid.UUID `gorm:"index;uniqueIndex:idx_frame_id_type_peer"`
-	Type       uint16    `gorm:"index;uniqueIndex:idx_frame_id_type_peer"`
-	Peer       string    `gorm:"index;uniqueIndex:idx_frame_id_type_peer" msgpack:"-"`
-	State      int       `msgpack:"-"`
-	LastAction int64     `msgpack:"-"`
-	CreatedAt  int64     `msgpack:"-"`
+	ID         ID     `gorm:"primary_key;" msgpack:"-"`
+	FrameID    ID     `gorm:"index;uniqueIndex:idx_frame_id_type_peer"`
+	Type       uint16 `gorm:"index;uniqueIndex:idx_frame_id_type_peer"`
+	Peer       string `gorm:"index;uniqueIndex:idx_frame_id_type_peer" msgpack:"-"`
+	State      int    `msgpack:"-"`
+	LastAction int64  `msgpack:"-"`
+	CreatedAt  int64  `msgpack:"-"`
 }
 
 func (fr *frameReference) BeforeCreate(tx *gorm.DB) error {
-	if fr.ID != uuid.Nil {
+	if fr.ID != NilID {
 		return errors.New("cannot create frame reference with already specified ID")
 	}
-	fr.ID = uuid.New()
+	fr.ID = NewID()
 	fr.CreatedAt = time.Now().Unix()
 	return nil
 }
@@ -294,10 +293,10 @@ func (b *Bounce) makeReferenceRequests() {
 	}
 }
 
-func referencedIDs(references []frameReference) map[uint16][]uuid.UUID {
-	ids := make(map[uint16][]uuid.UUID, len(referencedTypes))
+func referencedIDs(references []frameReference) map[uint16][]ID {
+	ids := make(map[uint16][]ID, len(referencedTypes))
 	for _, frameType := range referencedTypes {
-		ids[frameType] = []uuid.UUID{}
+		ids[frameType] = []ID{}
 	}
 
 	for _, reference := range references {

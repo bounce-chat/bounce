@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
 )
@@ -40,7 +39,7 @@ func (b *Bounce) validSignedContainer(frameType uint16, sc signedContainer) bool
 	return b.network.VerifySignature(sc.Signer, signedContainerHash(frameType, sc.Payload), sc.Signature)
 }
 
-func (b *Bounce) signedByUser(sc *signedContainer, userID uuid.UUID) bool {
+func (b *Bounce) signedByUser(sc *signedContainer, userID ID) bool {
 	signerDevice, exists := b.getDeviceFromAddress(sc.Signer)
 	if !exists {
 		log.WithFields(log.Fields{

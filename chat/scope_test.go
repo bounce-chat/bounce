@@ -6,7 +6,6 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/alecthomas/assert/v2"
-	"github.com/google/uuid"
 	"github.com/zeebo/blake3"
 )
 
@@ -24,7 +23,7 @@ func TestOverlapUsersInScopeAreCorrect(t *testing.T) {
 	carolBytesHash := blake3.Sum256(carolBytes)
 
 	au := addUser{
-		ID:                 uuid.New(),
+		ID:                 NewID(),
 		Xor:                xor(carol.currentUserID(), me.currentUserID()),
 		Timestamp:          time.Now().Unix(),
 		OfferUser:          meBytes,
@@ -42,7 +41,7 @@ func TestOverlapUsersInScopeAreCorrect(t *testing.T) {
 
 	// Make a global update from Alice
 	aliceRename := updateUser{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Target:    alice.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeUpdateName,

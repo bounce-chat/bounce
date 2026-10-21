@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -55,9 +54,9 @@ var updateDMMutex sync.Mutex
 // the type of update.
 type updateDM struct {
 	SignedFrame
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Actor     uuid.UUID
-	Target    uuid.UUID // XOR of two users in the DM
+	ID        ID `gorm:"primary_key;"`
+	Actor     ID
+	Target    ID // XOR of two users in the DM
 	Timestamp int64
 	SavedAt   int64 `msgpack:"-"`
 	Seen      bool  `msgpack:"-"`
@@ -66,7 +65,7 @@ type updateDM struct {
 }
 
 func (ud *updateDM) BeforeCreate(tx *gorm.DB) error {
-	if ud.ID == uuid.Nil {
+	if ud.ID == NilID {
 		return errors.New("update DM ID must be set before creation")
 	}
 	ud.SavedAt = time.Now().Unix()
@@ -75,25 +74,25 @@ func (ud *updateDM) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (ud *updateDM) AfterDelete(tx *gorm.DB) error {
-	if ud.ID == uuid.Nil {
+	if ud.ID == NilID {
 		return nil
 	}
 	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", ud.ID, typeUpdateDM).Delete(&deliveryRecord{}).Error
 }
 
-func (ud *updateDM) getID() uuid.UUID {
+func (ud *updateDM) getID() ID {
 	return ud.ID
 }
 
-func (ud *updateDM) getScope(_ uuid.UUID) int {
-	if ud.Target != uuid.Nil && (ud.Type == updateDMTypeChangeRetention || ud.Type == updateDMTypeSetClearBefore || ud.Type == updateDMTypeOfferRetention) {
+func (ud *updateDM) getScope(_ ID) int {
+	if ud.Target != NilID && (ud.Type == updateDMTypeChangeRetention || ud.Type == updateDMTypeSetClearBefore || ud.Type == updateDMTypeOfferRetention) {
 		return scopeUser
 	}
 
 	return scopeSync
 }
 
-func (ud *updateDM) getDestination(myID uuid.UUID) uuid.UUID {
+func (ud *updateDM) getDestination(myID ID) ID {
 	return xor(myID, ud.Target)
 }
 
@@ -116,7 +115,7 @@ func (ud *updateDM) getPayload() []byte {
 	return bytes
 }
 
-func (ud *updateDM) getAuthor() uuid.UUID {
+func (ud *updateDM) getAuthor() ID {
 	return ud.Actor
 }
 
@@ -168,7 +167,7 @@ func (ud *updateDM) validPayload() error {
 		if !(ud.Data[0] == userNotBlocked || ud.Data[0] == userBlocked) {
 			return errInvalidSetBlockedValue
 		}
-		if ud.Target == uuid.Nil {
+		if ud.Target == NilID {
 			return errCannotBlockSelf
 		}
 	case updateDMTypeChangeRetention, updateDMTypeChangeMutedUntil, updateDMTypeOfferRetention:
@@ -321,7 +320,7 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 	return &ud, true
 }
 
-func (b *Bounce) updateDMState(userID uuid.UUID) {
+func (b *Bounce) updateDMState(userID ID) {
 	var u user
 	err := b.database.First(&u, "id = ?", userID).Error
 	if err != nil {
@@ -446,7 +445,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 					binary.LittleEndian.PutUint64(payload, uint64(profile.ProfileSettings.DefaultDMRetention))
 
 					set := &updateDM{
-						ID:        uuid.New(),
+						ID:        NewID(),
 						Actor:     b.currentUserID(),
 						Target:    xor(userID, b.currentUserID()),
 						Timestamp: time.Now().Unix(),
@@ -485,7 +484,7 @@ func (b *Bounce) updateDMState(userID uuid.UUID) {
 				binary.LittleEndian.PutUint64(payload, uint64(profile.ProfileSettings.DefaultDMRetention))
 
 				offer := &updateDM{
-					ID:        uuid.New(),
+					ID:        NewID(),
 					Actor:     b.currentUserID(),
 					Target:    xor(userID, b.currentUserID()),
 					Timestamp: time.Now().Unix(),
@@ -720,12 +719,12 @@ func (b *Bounce) informUIUpdateDMSetAlias(u user, ud *updateDM) {
 	})
 }
 
-func (b *Bounce) SetDMMutedUntil(userID uuid.UUID, mutedUntil int64) error {
+func (b *Bounce) SetDMMutedUntil(userID ID, mutedUntil int64) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(mutedUntil))
 
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -734,12 +733,12 @@ func (b *Bounce) SetDMMutedUntil(userID uuid.UUID, mutedUntil int64) error {
 	})
 }
 
-func (b *Bounce) SetDMRetention(userID uuid.UUID, retention int64) error {
+func (b *Bounce) SetDMRetention(userID ID, retention int64) error {
 	payload := make([]byte, 8)
 	binary.LittleEndian.PutUint64(payload, uint64(retention))
 
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -748,11 +747,11 @@ func (b *Bounce) SetDMRetention(userID uuid.UUID, retention int64) error {
 	})
 }
 
-func (b *Bounce) ClearDMChatHistory(userID uuid.UUID) error {
+func (b *Bounce) ClearDMChatHistory(userID ID) error {
 	go b.updateEncryptedClearBefore(xor(userID, b.currentUserID()), time.Now().Unix())
 
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -760,7 +759,7 @@ func (b *Bounce) ClearDMChatHistory(userID uuid.UUID) error {
 	})
 }
 
-func (b *Bounce) SetDMReadReceiptSettings(userID uuid.UUID, override bool, enabled bool) error {
+func (b *Bounce) SetDMReadReceiptSettings(userID ID, override bool, enabled bool) error {
 	payload := []byte{}
 	if override {
 		payload = append(payload, readReceiptsOverriddenValue)
@@ -775,7 +774,7 @@ func (b *Bounce) SetDMReadReceiptSettings(userID uuid.UUID, override bool, enabl
 	}
 
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -784,7 +783,7 @@ func (b *Bounce) SetDMReadReceiptSettings(userID uuid.UUID, override bool, enabl
 	})
 }
 
-func (b *Bounce) SetDMTypingIndicatorSettings(userID uuid.UUID, override bool, enabled bool) error {
+func (b *Bounce) SetDMTypingIndicatorSettings(userID ID, override bool, enabled bool) error {
 	payload := []byte{}
 	if override {
 		payload = append(payload, typingIndicatorsOverriddenValue)
@@ -799,7 +798,7 @@ func (b *Bounce) SetDMTypingIndicatorSettings(userID uuid.UUID, override bool, e
 	}
 
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -808,7 +807,7 @@ func (b *Bounce) SetDMTypingIndicatorSettings(userID uuid.UUID, override bool, e
 	})
 }
 
-func (b *Bounce) SetOpenDM(userID uuid.UUID, open bool) error {
+func (b *Bounce) SetOpenDM(userID ID, open bool) error {
 	payload := []byte{}
 	if open {
 		payload = append(payload, dmOpen)
@@ -817,7 +816,7 @@ func (b *Bounce) SetOpenDM(userID uuid.UUID, open bool) error {
 	}
 
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -826,9 +825,9 @@ func (b *Bounce) SetOpenDM(userID uuid.UUID, open bool) error {
 	})
 }
 
-func (b *Bounce) AliasUser(userID uuid.UUID, alias string) error {
+func (b *Bounce) AliasUser(userID ID, alias string) error {
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -837,9 +836,9 @@ func (b *Bounce) AliasUser(userID uuid.UUID, alias string) error {
 	})
 }
 
-func (b *Bounce) SetUserNotes(userID uuid.UUID, notes string) error {
+func (b *Bounce) SetUserNotes(userID ID, notes string) error {
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -848,7 +847,7 @@ func (b *Bounce) SetUserNotes(userID uuid.UUID, notes string) error {
 	})
 }
 
-func (b *Bounce) BlockUser(userID uuid.UUID) error {
+func (b *Bounce) BlockUser(userID ID) error {
 	if userID == b.currentUserID() {
 		return errCannotBlockSelf
 	}
@@ -856,7 +855,7 @@ func (b *Bounce) BlockUser(userID uuid.UUID) error {
 	cacheBlockedUser(userID)
 
 	err := b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -872,13 +871,13 @@ func (b *Bounce) BlockUser(userID uuid.UUID) error {
 	return nil
 }
 
-func (b *Bounce) UnblockUser(userID uuid.UUID) error {
+func (b *Bounce) UnblockUser(userID ID) error {
 	if userID == b.currentUserID() {
 		return errCannotBlockSelf
 	}
 
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),

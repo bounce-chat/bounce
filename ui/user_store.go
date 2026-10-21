@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/google/uuid"
+	"github.com/bounce-chat/bounce/chat"
 )
 
 var allUserStores = []*userStore{}
@@ -12,14 +12,14 @@ var allUserStoresMutex sync.Mutex
 
 type userStore struct {
 	sync.Mutex
-	userMap  map[uuid.UUID]*user
+	userMap  map[chat.ID]*user
 	userList []*user
 	ngrams   map[string][]*user
 }
 
 func newUserStore() *userStore {
 	us := &userStore{
-		userMap:  make(map[uuid.UUID]*user),
+		userMap:  make(map[chat.ID]*user),
 		userList: []*user{},
 		ngrams:   make(map[string][]*user),
 	}
@@ -57,7 +57,7 @@ func (store *userStore) add(u *user) {
 	}
 }
 
-func (store *userStore) contains(userID uuid.UUID) bool {
+func (store *userStore) contains(userID chat.ID) bool {
 	store.Lock()
 	defer store.Unlock()
 
@@ -65,7 +65,7 @@ func (store *userStore) contains(userID uuid.UUID) bool {
 	return ok
 }
 
-func (store *userStore) remove(id uuid.UUID) {
+func (store *userStore) remove(id chat.ID) {
 	store.Lock()
 	defer store.Unlock()
 
@@ -95,7 +95,7 @@ func (store *userStore) alphabetized() []*user {
 	return store.userList
 }
 
-func (store *userStore) get(id uuid.UUID) (*user, bool) {
+func (store *userStore) get(id chat.ID) (*user, bool) {
 	store.Lock()
 	defer store.Unlock()
 
@@ -107,7 +107,7 @@ func (store *userStore) empty() {
 	store.Lock()
 	defer store.Unlock()
 
-	store.userMap = make(map[uuid.UUID]*user)
+	store.userMap = make(map[chat.ID]*user)
 	store.userList = []*user{}
 }
 

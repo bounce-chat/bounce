@@ -19,7 +19,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/bbrks/go-blurhash"
-	"github.com/google/uuid"
+	"github.com/bounce-chat/bounce/chat"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/image/draw"
 )
@@ -51,7 +51,7 @@ var imageAttachmentCacheMutex sync.Mutex
 
 type chatBubble struct {
 	widget.BaseWidget
-	id                    uuid.UUID
+	id                    chat.ID
 	outgoing              bool
 	direct                bool
 	writtenAt             int64
@@ -80,12 +80,12 @@ type chatBubble struct {
 	chunkLengths          []float32
 	maxTextWidth          float32
 	maxMessageWidth       float32
-	fileIsDownloaded      func(uuid.UUID) bool
-	fileIsEmbedded        func(uuid.UUID) bool
-	fileIsWanted          func(uuid.UUID) bool
-	saveFile              func(string, uuid.UUID)
-	cancelDownload        func(uuid.UUID)
-	getFileData           func(uuid.UUID) ([]byte, error)
+	fileIsDownloaded      func(chat.ID) bool
+	fileIsEmbedded        func(chat.ID) bool
+	fileIsWanted          func(chat.ID) bool
+	saveFile              func(string, chat.ID)
+	cancelDownload        func(chat.ID)
+	getFileData           func(chat.ID) ([]byte, error)
 	window                fyne.Window
 	threads               *threadStore
 	users                 *userStore
@@ -217,7 +217,7 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 		fileIsDownloaded:   ui.bounce.FileDownloaded,
 		fileIsEmbedded:     ui.bounce.FileEmbedded,
 		fileIsWanted:       ui.bounce.FileWanted,
-		saveFile: func(name string, attachmentID uuid.UUID) {
+		saveFile: func(name string, attachmentID chat.ID) {
 			d := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
 				if err != nil {
 					return
@@ -247,7 +247,7 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 			d.SetFileName(name)
 			d.Show()
 		},
-		cancelDownload: func(attachmentID uuid.UUID) {
+		cancelDownload: func(attachmentID chat.ID) {
 			ui.bounce.CancelDownload(attachmentID)
 
 			messageID, ok := ui.messages.getMessageWithFile(attachmentID)
@@ -364,7 +364,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 
 	if !m.direct && !m.outgoing {
 		cb.username.Segments[0].(*widget.TextSegment).Text = m.username
-		cb.username.Segments[0].(*widget.TextSegment).Style.ColorName = fyne.ThemeColorName("uuid:" + m.author.String())
+		cb.username.Segments[0].(*widget.TextSegment).Style.ColorName = fyne.ThemeColorName("id:" + m.author.String())
 		cb.username.Refresh()
 		cb.username.Show()
 

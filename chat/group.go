@@ -8,7 +8,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
@@ -18,10 +17,10 @@ import (
 var groupMutex sync.Mutex
 
 type group struct {
-	ID                         uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID                         ID `gorm:"primary_key;"`
 	Name                       string
 	Images                     string
-	CreatedBy                  uuid.UUID
+	CreatedBy                  ID
 	CreatedAt                  int64
 	Retention                  int64
 	ClearBefore                int64
@@ -29,24 +28,24 @@ type group struct {
 	Users                      []user `gorm:"many2many:group_users;"`
 	Admins                     string
 	Invites                    string
-	InvitedBy                  uuid.UUID `msgpack:"-"`
-	InvitedAt                  int64     `msgpack:"-"`
-	AcceptedAt                 int64     `msgpack:"-"`
+	InvitedBy                  ID    `msgpack:"-"`
+	InvitedAt                  int64 `msgpack:"-"`
+	AcceptedAt                 int64 `msgpack:"-"`
 	BlockedUsers               string
 	RestrictUserManagement     bool
 	RestrictGroupEdits         bool
 	RestrictPosting            bool
 	LastActivity               int64
-	ReadReceiptsOverridden     bool      `msgpack:"-"`
-	ReadReceiptsEnabled        bool      `msgpack:"-"`
-	TypingIndicatorsOverridden bool      `msgpack:"-" gorm:"index:idx_group_typing_indicators"`
-	TypingIndicatorsEnabled    bool      `msgpack:"-" gorm:"index:idx_group_typing_indicators"`
-	DeliveryRecordsClearedFor  uuid.UUID `msgpack:"-"`
-	LastOpened                 int64     `msgpack:"-"`
+	ReadReceiptsOverridden     bool  `msgpack:"-"`
+	ReadReceiptsEnabled        bool  `msgpack:"-"`
+	TypingIndicatorsOverridden bool  `msgpack:"-" gorm:"index:idx_group_typing_indicators"`
+	TypingIndicatorsEnabled    bool  `msgpack:"-" gorm:"index:idx_group_typing_indicators"`
+	DeliveryRecordsClearedFor  ID    `msgpack:"-"`
+	LastOpened                 int64 `msgpack:"-"`
 }
 
 func (g *group) BeforeCreate(tx *gorm.DB) error {
-	if g.ID == uuid.Nil {
+	if g.ID == NilID {
 		log.Fatal("attempt to create group with nil ID, group ID must be set before creation")
 	}
 	g.LastActivity = time.Now().Unix()
@@ -55,7 +54,7 @@ func (g *group) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (g *group) AfterDelete(tx *gorm.DB) error {
-	if g.ID == uuid.Nil {
+	if g.ID == NilID {
 		log.Error("attempt to run delete hooks on empty group")
 		return nil
 	}
@@ -67,7 +66,7 @@ func (g *group) AfterDelete(tx *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	err = tx.Clauses(clause.Returning{}).Where("target = ? AND custom_scope = ?", g.ID, uuid.Nil).Delete(&updateGroup{}).Error
+	err = tx.Clauses(clause.Returning{}).Where("target = ? AND custom_scope = ?", g.ID, NilID).Delete(&updateGroup{}).Error
 	if err != nil {
 		return err
 	}
@@ -89,11 +88,11 @@ func (g *group) AfterDelete(tx *gorm.DB) error {
 func (g *group) state() groupState {
 	gs := groupState{
 		name:                       g.Name,
-		images:                     []uuid.UUID{},
-		users:                      []uuid.UUID{},
-		admins:                     []uuid.UUID{},
-		blockedUsers:               []uuid.UUID{},
-		invites:                    []uuid.UUID{},
+		images:                     []ID{},
+		users:                      []ID{},
+		admins:                     []ID{},
+		blockedUsers:               []ID{},
+		invites:                    []ID{},
 		invitedBy:                  g.InvitedBy,
 		invitedAt:                  g.InvitedAt,
 		mutedUntil:                 g.MutedUntil,
@@ -114,13 +113,13 @@ func (g *group) state() groupState {
 
 	if len(g.Admins) > 0 {
 		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := uuid.Parse(adminIDString)
+			adminID, err := ParseID(adminIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":    err.Error(),
 					"group_id": g.ID,
 					"admins":   g.Admins,
-				}).Fatal("invalid UUID in group admin list")
+				}).Fatal("invalid ID in group admin list")
 			}
 
 			gs.admins = append(gs.admins, adminID)
@@ -129,13 +128,13 @@ func (g *group) state() groupState {
 
 	if len(g.BlockedUsers) > 0 {
 		for _, blockedIDString := range strings.Split(g.BlockedUsers, ",") {
-			blockedID, err := uuid.Parse(blockedIDString)
+			blockedID, err := ParseID(blockedIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":         err.Error(),
 					"group_id":      g.ID,
 					"blocked_users": g.BlockedUsers,
-				}).Fatal("invalid UUID in group blocked list")
+				}).Fatal("invalid ID in group blocked list")
 			}
 
 			gs.blockedUsers = append(gs.blockedUsers, blockedID)
@@ -144,13 +143,13 @@ func (g *group) state() groupState {
 
 	if len(g.Invites) > 0 {
 		for _, invitedIDString := range strings.Split(g.Invites, ",") {
-			invitedID, err := uuid.Parse(invitedIDString)
+			invitedID, err := ParseID(invitedIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":    err.Error(),
 					"group_id": g.ID,
 					"invites":  g.Invites,
-				}).Fatal("invalid UUID in group invite list")
+				}).Fatal("invalid ID in group invite list")
 			}
 
 			gs.invites = append(gs.invites, invitedID)
@@ -159,12 +158,12 @@ func (g *group) state() groupState {
 
 	if len(g.Images) > 0 {
 		for _, imageIDString := range strings.Split(g.Images, ",") {
-			imageID, err := uuid.Parse(imageIDString)
+			imageID, err := ParseID(imageIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":  err.Error(),
 					"images": g.Images,
-				}).Fatal("invalid UUID in group images list")
+				}).Fatal("invalid ID in group images list")
 			}
 			gs.images = append(gs.images, imageID)
 		}
@@ -185,16 +184,16 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 		return errors.New("cannot create group when profile does not exist")
 	}
 
-	iconID := uuid.Nil
+	iconID := NilID
 	imagesString := ""
 	if len(ng.Image) > 0 {
-		iconID = uuid.New()
+		iconID = NewID()
 		imagesString = iconID.String()
 	}
 
 	creationTime := time.Now().Unix() - 1 // Subtract one second to ensure any invites are ordered after the group creation
 	g := group{
-		ID:                     uuid.Nil,
+		ID:                     NilID,
 		Name:                   ng.Name,
 		Images:                 imagesString,
 		CreatedBy:              b.currentUserID(),
@@ -226,15 +225,8 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 			"written": written,
 		}).Fatal("failed to write all group data into hasher")
 	}
-	digest := hasher.Digest()
-	groupHash := make([]byte, 16)
-	digest.Read(groupHash)
-	groupID, err := uuid.FromBytes(groupHash)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("cannot create UUID from hash of group data")
-	}
+	var groupID ID
+	hasher.Digest().Read(groupID[:])
 	g.ID = groupID
 
 	if len(ng.Image) > 0 {
@@ -285,7 +277,7 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 		Name:                   g.Name,
 		Retention:              ng.Retention,
 		Users:                  []User{User{ID: profile.ID}},
-		Admins:                 []uuid.UUID{b.currentUserID()},
+		Admins:                 []ID{b.currentUserID()},
 		CreatedBy:              g.CreatedBy,
 		CreatedAt:              g.CreatedAt,
 		LastActivity:           g.LastActivity,
@@ -294,7 +286,7 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 		RestrictPosting:        ng.RestrictPosting,
 	}
 	if len(ng.Image) > 0 {
-		uiGroup.Images = []uuid.UUID{iconID}
+		uiGroup.Images = []ID{iconID}
 	}
 
 	go b.ui.OpenNewGroupChat(uiGroup)
@@ -313,7 +305,7 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 	return nil
 }
 
-func (b *Bounce) userIsInGroup(groupID, userID uuid.UUID) bool { // TODO: replace with current group state where possible
+func (b *Bounce) userIsInGroup(groupID, userID ID) bool { // TODO: replace with current group state where possible
 	var exists bool
 	err := b.database.Table("group_users").
 		Select("count(*) = 1").
@@ -344,7 +336,7 @@ func validGroupName(name string) bool {
 	return utf8.ValidString(name) && utf8.RuneCountInString(name) <= MaximumNameLength
 }
 
-func (b *Bounce) updateLastGroupActivity(groupID uuid.UUID, timestamp int64) {
+func (b *Bounce) updateLastGroupActivity(groupID ID, timestamp int64) {
 	var g group
 	err := b.database.Where("id = ?", groupID).First(&g).Error
 	if err != nil {
@@ -370,7 +362,7 @@ func (b *Bounce) updateLastGroupActivity(groupID uuid.UUID, timestamp int64) {
 	}
 }
 
-func (b *Bounce) isGroupAdmin(groupID, userID uuid.UUID) bool {
+func (b *Bounce) isGroupAdmin(groupID, userID ID) bool {
 	var g group
 	err := b.database.Select("admins").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
@@ -389,13 +381,13 @@ func (b *Bounce) isGroupAdmin(groupID, userID uuid.UUID) bool {
 
 	if len(g.Admins) > 0 {
 		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := uuid.Parse(adminIDString)
+			adminID, err := ParseID(adminIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":    err.Error(),
 					"group_id": groupID,
 					"admins":   g.Admins,
-				}).Fatal("invalid UUID in group admin list")
+				}).Fatal("invalid ID in group admin list")
 			}
 
 			if adminID == userID {
@@ -407,7 +399,7 @@ func (b *Bounce) isGroupAdmin(groupID, userID uuid.UUID) bool {
 	return false
 }
 
-func (b *Bounce) addGroupAdmin(groupID, userID uuid.UUID) {
+func (b *Bounce) addGroupAdmin(groupID, userID ID) {
 	var g group
 	err := b.database.Select("admins").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
@@ -428,13 +420,13 @@ func (b *Bounce) addGroupAdmin(groupID, userID uuid.UUID) {
 	alreadyAnAdmin := false
 	if len(g.Admins) > 0 {
 		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := uuid.Parse(adminIDString)
+			adminID, err := ParseID(adminIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":    err.Error(),
 					"group_id": groupID,
 					"admins":   g.Admins,
-				}).Fatal("invalid UUID in group admin list")
+				}).Fatal("invalid ID in group admin list")
 
 			}
 
@@ -471,7 +463,7 @@ func (b *Bounce) addGroupAdmin(groupID, userID uuid.UUID) {
 	}
 }
 
-func (b *Bounce) removeGroupAdmin(groupID, userID uuid.UUID) {
+func (b *Bounce) removeGroupAdmin(groupID, userID ID) {
 	var g group
 	err := b.database.Select("admins").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
@@ -491,13 +483,13 @@ func (b *Bounce) removeGroupAdmin(groupID, userID uuid.UUID) {
 	removedUser := false
 	if len(g.Admins) > 0 {
 		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := uuid.Parse(adminIDString)
+			adminID, err := ParseID(adminIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":    err.Error(),
 					"group_id": groupID,
 					"admins":   g.Admins,
-				}).Fatal("invalid UUID in group admin list")
+				}).Fatal("invalid ID in group admin list")
 			}
 
 			if adminID == userID {
@@ -530,7 +522,7 @@ func (b *Bounce) removeGroupAdmin(groupID, userID uuid.UUID) {
 	}
 }
 
-func (b *Bounce) isBlockedFromGroup(groupID, userID uuid.UUID) bool {
+func (b *Bounce) isBlockedFromGroup(groupID, userID ID) bool {
 	var g group
 	err := b.database.Select("blocked_users").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
@@ -549,13 +541,13 @@ func (b *Bounce) isBlockedFromGroup(groupID, userID uuid.UUID) bool {
 
 	if len(g.BlockedUsers) > 0 {
 		for _, blockedIDString := range strings.Split(g.BlockedUsers, ",") {
-			blockedID, err := uuid.Parse(blockedIDString)
+			blockedID, err := ParseID(blockedIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":         err.Error(),
 					"group_id":      groupID,
 					"blocked_users": g.BlockedUsers,
-				}).Fatal("invalid UUID in group blocked users list")
+				}).Fatal("invalid ID in group blocked users list")
 			}
 
 			if blockedID == userID {
@@ -567,7 +559,7 @@ func (b *Bounce) isBlockedFromGroup(groupID, userID uuid.UUID) bool {
 	return false
 }
 
-func (b *Bounce) blockUserFromGroup(groupID, userID uuid.UUID) {
+func (b *Bounce) blockUserFromGroup(groupID, userID ID) {
 	var g group
 	err := b.database.Select("blocked_users").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
@@ -588,13 +580,13 @@ func (b *Bounce) blockUserFromGroup(groupID, userID uuid.UUID) {
 	alreadyBlocked := false
 	if len(g.BlockedUsers) > 0 {
 		for _, blockedIDString := range strings.Split(g.BlockedUsers, ",") {
-			blockedID, err := uuid.Parse(blockedIDString)
+			blockedID, err := ParseID(blockedIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":         err.Error(),
 					"group_id":      groupID,
 					"blocked_users": g.BlockedUsers,
-				}).Error("invalid UUID in group blocked users list")
+				}).Error("invalid ID in group blocked users list")
 				continue
 			}
 
@@ -632,7 +624,7 @@ func (b *Bounce) blockUserFromGroup(groupID, userID uuid.UUID) {
 	}
 }
 
-func (b *Bounce) isInvited(groupID, userID uuid.UUID) bool {
+func (b *Bounce) isInvited(groupID, userID ID) bool {
 	var g group
 	err := b.database.Select("invites").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
@@ -651,13 +643,13 @@ func (b *Bounce) isInvited(groupID, userID uuid.UUID) bool {
 
 	if len(g.Invites) > 0 {
 		for _, inviteIDString := range strings.Split(g.Invites, ",") {
-			inviteID, err := uuid.Parse(inviteIDString)
+			inviteID, err := ParseID(inviteIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":    err.Error(),
 					"group_id": groupID,
 					"invites":  g.Invites,
-				}).Fatal("invalid UUID in group invite list")
+				}).Fatal("invalid ID in group invite list")
 			}
 
 			if inviteID == userID {
@@ -669,7 +661,7 @@ func (b *Bounce) isInvited(groupID, userID uuid.UUID) bool {
 	return false
 }
 
-func (b *Bounce) addGroupInvite(groupID, userID uuid.UUID) {
+func (b *Bounce) addGroupInvite(groupID, userID ID) {
 	var g group
 	err := b.database.Select("invites").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
@@ -690,13 +682,13 @@ func (b *Bounce) addGroupInvite(groupID, userID uuid.UUID) {
 	alreadyInvited := false
 	if len(g.Invites) > 0 {
 		for _, inviteIDString := range strings.Split(g.Invites, ",") {
-			inviteID, err := uuid.Parse(inviteIDString)
+			inviteID, err := ParseID(inviteIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":    err.Error(),
 					"group_id": groupID,
 					"invites":  g.Invites,
-				}).Fatal("invalid UUID in group invite list")
+				}).Fatal("invalid ID in group invite list")
 
 			}
 
@@ -733,7 +725,7 @@ func (b *Bounce) addGroupInvite(groupID, userID uuid.UUID) {
 	}
 }
 
-func (b *Bounce) removeGroupInvite(groupID, userID uuid.UUID) {
+func (b *Bounce) removeGroupInvite(groupID, userID ID) {
 	var g group
 	err := b.database.Select("invites").Where("id = ?", groupID).Find(&g).Error
 	if err != nil {
@@ -753,13 +745,13 @@ func (b *Bounce) removeGroupInvite(groupID, userID uuid.UUID) {
 	removedUser := false
 	if len(g.Invites) > 0 {
 		for _, inviteIDString := range strings.Split(g.Invites, ",") {
-			inviteID, err := uuid.Parse(inviteIDString)
+			inviteID, err := ParseID(inviteIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":    err.Error(),
 					"group_id": groupID,
 					"invites":  g.Invites,
-				}).Fatal("invalid UUID in group invite list")
+				}).Fatal("invalid ID in group invite list")
 			}
 
 			if inviteID == userID {
@@ -792,8 +784,8 @@ func (b *Bounce) removeGroupInvite(groupID, userID uuid.UUID) {
 	}
 }
 
-func (b *Bounce) updateConsensusForGroupsWithUser(userID uuid.UUID) {
-	var groups []uuid.UUID
+func (b *Bounce) updateConsensusForGroupsWithUser(userID ID) {
+	var groups []ID
 	err := b.database.Table("group_users").
 		Select("group_id").
 		Where("user_id = ?", userID).
@@ -811,7 +803,7 @@ func (b *Bounce) updateConsensusForGroupsWithUser(userID uuid.UUID) {
 	}
 }
 
-func (b *Bounce) SetGroupLastOpened(groupID uuid.UUID, timestamp int64) {
+func (b *Bounce) SetGroupLastOpened(groupID ID, timestamp int64) {
 	err := b.database.Table("groups").Where("id = ?", groupID).Updates(map[string]interface{}{"last_opened": timestamp}).Error
 	if err != nil {
 		log.WithFields(log.Fields{

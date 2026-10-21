@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
@@ -139,7 +138,7 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 	// Create and marshal the new add user
 	offerUserHash := blake3.Sum256(aura.OfferUser)
 	newUser := addUser{
-		ID:                 uuid.New(),
+		ID:                 NewID(),
 		Xor:                xor(requesterUser.ID, offerUser.ID),
 		Timestamp:          time.Now().Unix(),
 		OfferUser:          aura.OfferUser,

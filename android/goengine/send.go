@@ -16,7 +16,6 @@ import (
 
 	"github.com/bbrks/go-blurhash"
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 	"golang.org/x/image/draw"
 )
 
@@ -35,8 +34,8 @@ type outgoingAttachment struct {
 
 // preparedAttachments is the engine-shaped result of resolving the JSON list.
 type preparedAttachments struct {
-	readers map[uuid.UUID]io.ReadCloser
-	sources map[uuid.UUID]string
+	readers map[chat.ID]io.ReadCloser
+	sources map[chat.ID]string
 	images  []chat.ImageAttachment
 	files   []chat.FileAttachment
 }
@@ -55,8 +54,8 @@ func (p *preparedAttachments) closeAll() {
 // so the same photo produces the same placeholder on every platform.
 func prepareAttachments(raw string) (*preparedAttachments, error) {
 	p := &preparedAttachments{
-		readers: map[uuid.UUID]io.ReadCloser{},
-		sources: map[uuid.UUID]string{},
+		readers: map[chat.ID]io.ReadCloser{},
+		sources: map[chat.ID]string{},
 		images:  []chat.ImageAttachment{},
 		files:   []chat.FileAttachment{},
 	}

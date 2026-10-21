@@ -2,7 +2,6 @@ package chat
 
 import (
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -46,9 +45,9 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	offeredIDs := referencedIDs(offerable.References)
 	requestedIDs := referencedIDs(rr.References)
 
-	deliverable := map[uint16][]uuid.UUID{}
+	deliverable := map[uint16][]ID{}
 	for _, rf := range referencedFrames {
-		deliverable[rf.frameType] = getValidRequestedUUIDs(offeredIDs[rf.frameType], requestedIDs[rf.frameType])
+		deliverable[rf.frameType] = getValidRequestedIDs(offeredIDs[rf.frameType], requestedIDs[rf.frameType])
 	}
 
 	broadcastables := []broadcastable{}
@@ -103,35 +102,35 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	return nil, false
 }
 
-// Given two lists of UUIDs, one representing the original offer and the other representing what
-// was requested by the peer, separate them into the valid requested UUIDs and the UUIDs that we
+// Given two lists of IDs, one representing the original offer and the other representing what
+// was requested by the peer, separate them into the valid requested IDs and the IDs that we
 // can assume were already delivered because they were not requested.
-func getValidRequestedUUIDs(originalOffer []uuid.UUID, requested []uuid.UUID) []uuid.UUID {
-	requestedSet := []uuid.UUID{}
+func getValidRequestedIDs(originalOffer []ID, requested []ID) []ID {
+	requestedSet := []ID{}
 
-	offeredCache := make(map[uuid.UUID]bool)
+	offeredCache := make(map[ID]bool)
 	for _, offeredID := range originalOffer {
 		if _, present := offeredCache[offeredID]; present {
 			log.WithFields(log.Fields{
 				"id": offeredID,
-			}).Warn("duplicate UUID in reference offer generated locally")
+			}).Warn("duplicate ID in reference offer generated locally")
 			continue
 		}
 		offeredCache[offeredID] = true
 	}
 
 	for _, requestedID := range requested {
-		// Make sure that this requested UUID is something we are still offering, and skip it if not.
+		// Make sure that this requested ID is something we are still offering, and skip it if not.
 		// This can sometimes happen for legitimate reasons and is not automatically evidence of bad
 		// behavior from a client.
 		if _, present := offeredCache[requestedID]; !present {
 			log.WithFields(log.Fields{
 				"id": requestedID,
-			}).Debug("reference request asks for UUID not present in reference offer")
+			}).Debug("reference request asks for ID not present in reference offer")
 			continue
 		}
 
-		// Include the requested UUID in the requested set
+		// Include the requested ID in the requested set
 		requestedSet = append(requestedSet, requestedID)
 	}
 

@@ -8,7 +8,6 @@ import (
 	"sort"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
@@ -16,7 +15,7 @@ import (
 )
 
 type encryptedReceive struct {
-	ID               uuid.UUID
+	ID               ID
 	Type             uint16
 	Payload          []byte
 	EncryptedDEK     []byte
@@ -27,7 +26,7 @@ type encryptedReceive struct {
 	savedAt          int64
 }
 
-func (er encryptedReceive) getID() uuid.UUID {
+func (er encryptedReceive) getID() ID {
 	return er.ID
 }
 
@@ -335,16 +334,16 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 		}
 	}
 
-	allowed := map[uuid.UUID]bool{}
+	allowed := map[ID]bool{}
 	for _, ref := range originalOffer.References {
 		allowed[ref.FrameID] = true
 	}
-	requested := map[uuid.UUID]bool{}
+	requested := map[ID]bool{}
 	for _, ref := range rr.References {
 		requested[ref.FrameID] = true
 	}
 
-	validIDs := []uuid.UUID{}
+	validIDs := []ID{}
 	for _, ref := range rr.References {
 		if _, ok := allowed[ref.FrameID]; ok {
 			validIDs = append(validIDs, ref.FrameID)

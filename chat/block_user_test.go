@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/alecthomas/assert/v2"
-	"github.com/google/uuid"
 )
 
 // Blocking a user is meant to be a hard boundary: nothing we write reaches any device of theirs, and a device of
@@ -23,7 +22,7 @@ func quickReferenceRetries(t *testing.T) {
 
 // fakeEncryptedDeviceOf registers a bare test network node as an encrypted device belonging to a user, the way a
 // user record announcing it would
-func fakeEncryptedDeviceOf(t *testing.T, owner uuid.UUID) *testnet {
+func fakeEncryptedDeviceOf(t *testing.T, owner ID) *testnet {
 	t.Helper()
 	host := newTestnet()
 	encryptedDeviceCacheMutex.Lock()
@@ -105,10 +104,10 @@ func TestBlockingACoMemberLeavesTheSharedGroup(t *testing.T) {
 func TestNothingIsSealedForABlockedUser(t *testing.T) {
 	quickReferenceRetries(t)
 	me, _, mallory, _ := createUsersAndGroups(t)
-	profileUpdate := &file{ID: uuid.New(), Scope: scopeGlobal, Author: me.currentUserID(), Destination: me.currentUserID()}
+	profileUpdate := &file{ID: NewID(), Scope: scopeGlobal, Author: me.currentUserID(), Destination: me.currentUserID()}
 
-	recipients := func() map[uuid.UUID]bool {
-		ids := map[uuid.UUID]bool{}
+	recipients := func() map[ID]bool {
+		ids := map[ID]bool{}
 		for _, u := range me.getUsersInScope(profileUpdate) {
 			ids[u.ID] = true
 		}

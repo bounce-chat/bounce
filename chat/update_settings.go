@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -31,7 +30,7 @@ var errInvalidPayloadValue = errors.New("invalid payload value")
 
 type updateSettings struct {
 	SignedFrame
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID        ID `gorm:"primary_key;"`
 	Type      uint16
 	Data      []byte
 	Timestamp int64
@@ -39,7 +38,7 @@ type updateSettings struct {
 }
 
 func (us *updateSettings) BeforeCreate(tx *gorm.DB) error {
-	if us.ID == uuid.Nil {
+	if us.ID == NilID {
 		return errors.New("update settings ID must be set before creation")
 	}
 	us.SavedAt = time.Now().Unix()
@@ -48,21 +47,21 @@ func (us *updateSettings) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (us *updateSettings) AfterDelete(tx *gorm.DB) error {
-	if us.ID == uuid.Nil {
+	if us.ID == NilID {
 		return nil
 	}
 	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", us.ID, typeUpdateSettings).Delete(&deliveryRecord{}).Error
 }
 
-func (us *updateSettings) getID() uuid.UUID {
+func (us *updateSettings) getID() ID {
 	return us.ID
 }
 
-func (us *updateSettings) getScope(_ uuid.UUID) int {
+func (us *updateSettings) getScope(_ ID) int {
 	return scopeSync
 }
 
-func (us *updateSettings) getDestination(myID uuid.UUID) uuid.UUID {
+func (us *updateSettings) getDestination(myID ID) ID {
 	return myID
 }
 
@@ -85,9 +84,9 @@ func (us *updateSettings) getPayload() []byte {
 	return bytes
 }
 
-func (us *updateSettings) getAuthor() uuid.UUID {
+func (us *updateSettings) getAuthor() ID {
 	// Author isn't needed for these and it can only ever be us
-	return uuid.Nil
+	return NilID
 }
 
 func (us *updateSettings) getTimestamp() int64 {
@@ -378,7 +377,7 @@ func (b *Bounce) SetNewGroupRetention(value int64) {
 	binary.LittleEndian.PutUint64(payload, uint64(value))
 
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetDefaultGroupRetention,
 		Data:      payload,
@@ -394,7 +393,7 @@ func (b *Bounce) SetReadReceiptsByDefault(value bool) {
 	}
 
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetDefatulReadReceipts,
 		Data:      payload,
@@ -410,7 +409,7 @@ func (b *Bounce) SetTypingIndicatorsByDefault(value bool) {
 	}
 
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetDefaultTypingIndicators,
 		Data:      payload,
@@ -426,7 +425,7 @@ func (b *Bounce) SetNewGroupRestrictUserManagement(value bool) {
 	}
 
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetNewGroupRestrictUserManagement,
 		Data:      payload,
@@ -442,7 +441,7 @@ func (b *Bounce) SetNewGroupRestrictGroupEdits(value bool) {
 	}
 
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetNewGroupRestirctGroupEdits,
 		Data:      payload,
@@ -458,7 +457,7 @@ func (b *Bounce) SetNewGroupRestrictPosting(value bool) {
 	}
 
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetNewGroupRestrictPosting,
 		Data:      payload,
@@ -467,7 +466,7 @@ func (b *Bounce) SetNewGroupRestrictPosting(value bool) {
 
 func (b *Bounce) SetAutoJoinGroups(value int) {
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetAutoJoinGroups,
 		Data:      []byte{byte(value)},
@@ -479,7 +478,7 @@ func (b *Bounce) SetNewDMRetention(value int64) {
 	binary.LittleEndian.PutUint64(payload, uint64(value))
 
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetDefaultDMRetention,
 		Data:      payload,

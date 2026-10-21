@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -183,7 +182,7 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 
 		// Save this new device in our database
 		newDevice := device{
-			ID:        uuid.New(),
+			ID:        NewID(),
 			UserID:    b.currentUserID(),
 			Address:   peer,
 			Timestamp: time.Now().Unix(),

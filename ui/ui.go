@@ -16,7 +16,6 @@ import (
 	"fyne.io/fyne/v2/driver/mobile"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -103,7 +102,7 @@ type state struct {
 	settings              chat.Settings
 	currentView           int
 	viewStack             []view
-	activeThread          uuid.UUID
+	activeThread          chat.ID
 	initialStateSet       bool
 	initialSyncIncomplete bool
 	focused               bool
@@ -387,7 +386,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 		}
 		ui.updateDeviceStatus()
 
-		threadItems := make(map[uuid.UUID]threadItems)
+		threadItems := make(map[chat.ID]threadItems)
 
 		for _, u := range state.Users {
 			uiUser := makeUser(u)
@@ -791,7 +790,7 @@ func chatContainerSizeAtStartup() fyne.Size {
 }
 
 func (ui *ui) NetworkOnline() {
-	if ui.state.activeThread != uuid.Nil {
+	if ui.state.activeThread != chat.NilID {
 		t, ok := ui.threads.get(ui.state.activeThread)
 		if !ok {
 			log.WithFields(log.Fields{
@@ -823,7 +822,7 @@ func (ui *ui) UserImported(u chat.User) {
 	fyne.DoAndWait(func() { ui.NewDirectMessage(u) })
 }
 
-func (ui *ui) FileCompleted(fileID uuid.UUID) {
+func (ui *ui) FileCompleted(fileID chat.ID) {
 	messageID, ok := ui.messages.getMessageWithFile(fileID)
 	if ok {
 		t, ok := ui.threads.withItem(messageID)
@@ -854,7 +853,7 @@ func (ui *ui) FileCompleted(fileID uuid.UUID) {
 	})
 }
 
-func (ui *ui) FileDownloadProgress(fileID uuid.UUID, progress float64) {
+func (ui *ui) FileDownloadProgress(fileID chat.ID, progress float64) {
 	messageID, ok := ui.messages.getMessageWithFile(fileID)
 	if !ok {
 		log.WithFields(log.Fields{

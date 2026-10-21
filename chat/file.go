@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
@@ -31,7 +30,7 @@ import (
 
 var writingChunk = map[string]bool{}
 var writingChunkMutex sync.Mutex
-var fileDataDownloaded = map[uuid.UUID]int64{}
+var fileDataDownloaded = map[ID]int64{}
 var fileDataDownloadedMutex sync.Mutex
 
 const EmbeddedFileLimit = 1024 * 1024 * 20 // 20MiB
@@ -54,10 +53,10 @@ var errInvalidImage = errors.New("invalid image data")
 
 type file struct {
 	SignedFrame
-	ID                uuid.UUID `gorm:"type:uuid;primary_key;index:idx_file_downloaded"`
+	ID                ID `gorm:"primary_key;index:idx_file_downloaded"`
 	Name              string
 	Type              int
-	AttachedTo        uuid.UUID
+	AttachedTo        ID
 	Hash              string
 	Size              int64
 	HashList          string
@@ -67,8 +66,8 @@ type file struct {
 	Wanted            bool   `msgpack:"-"`
 	Downloaded        bool   `msgpack:"-" gorm:"index:idx_file_downloaded"`
 	Scope             int
-	Destination       uuid.UUID
-	Author            uuid.UUID
+	Destination       ID
+	Author            ID
 	Timestamp         int64
 	SavedAt           int64   `msgpack:"-"`
 	Chunks            []chunk `msgpack:"-"`
@@ -80,7 +79,7 @@ func (f *file) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (f *file) AfterDelete(tx *gorm.DB) error {
-	if f.ID == uuid.Nil {
+	if f.ID == NilID {
 		return nil
 	}
 	f.SavedAt = time.Now().Unix()
@@ -116,15 +115,15 @@ func (f *file) AfterDelete(tx *gorm.DB) error {
 	return nil
 }
 
-func (f *file) getID() uuid.UUID {
+func (f *file) getID() ID {
 	return f.ID
 }
 
-func (f *file) getScope(myID uuid.UUID) int {
+func (f *file) getScope(myID ID) int {
 	return f.Scope
 }
 
-func (f *file) getDestination(myID uuid.UUID) uuid.UUID {
+func (f *file) getDestination(myID ID) ID {
 	if f.Scope == scopeSync {
 		return myID
 	}
@@ -153,7 +152,7 @@ func (f *file) getPayload() []byte {
 	return bytes
 }
 
-func (f *file) getAuthor() uuid.UUID {
+func (f *file) getAuthor() ID {
 	return f.Author
 }
 
@@ -310,9 +309,12 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 			}).Error("ignoring file that contains chunk with invalid hash")
 			return nil, false
 		}
-		chunkID, err := uuid.FromBytes([]byte(chunkHash)[:16])
+		chunkID, err := ParseID(chunkHash)
 		if err != nil {
-			log.Fatal("cannot make uuid from bytes for chunk")
+			log.WithFields(log.Fields{
+				"hash": chunkHash,
+			}).Error("ignoring file that contains chunk with invalid hash")
+			return nil, false
 		}
 		encryptedHash, _ := encryptedHashes[i]
 		c := chunk{
@@ -391,11 +393,11 @@ func (f *file) embedded() bool {
 
 type chunkOffer struct {
 	SignedFrame
-	ID              uuid.UUID `gorm:"type:uuid;primary_key;"`
-	Scope           int       `gorm:"index:idx_chunk_offers_scope_dest"`
-	Destination     uuid.UUID `gorm:"index:idx_chunk_offers_scope_dest"`
-	Author          uuid.UUID `gorm:"index"`
-	FileID          uuid.UUID
+	ID              ID  `gorm:"primary_key;"`
+	Scope           int `gorm:"index:idx_chunk_offers_scope_dest"`
+	Destination     ID  `gorm:"index:idx_chunk_offers_scope_dest"`
+	Author          ID  `gorm:"index"`
+	FileID          ID
 	Hash            string
 	Location        string
 	Timestamp       int64
@@ -408,15 +410,15 @@ func (co *chunkOffer) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (co *chunkOffer) getID() uuid.UUID {
+func (co *chunkOffer) getID() ID {
 	return co.ID
 }
 
-func (co *chunkOffer) getScope(myID uuid.UUID) int {
+func (co *chunkOffer) getScope(myID ID) int {
 	return co.Scope
 }
 
-func (co *chunkOffer) getDestination(myID uuid.UUID) uuid.UUID {
+func (co *chunkOffer) getDestination(myID ID) ID {
 	if co.Scope == scopeUser {
 		return xor(co.Destination, myID)
 	}
@@ -442,7 +444,7 @@ func (co *chunkOffer) getPayload() []byte {
 	return bytes
 }
 
-func (co *chunkOffer) getAuthor() uuid.UUID {
+func (co *chunkOffer) getAuthor() ID {
 	return co.Author
 }
 
@@ -882,7 +884,7 @@ func (b *Bounce) peerCanHaveChunk(peer, hash string) bool {
 	return false
 }
 
-func (b *Bounce) encryptedPeerCanHaveChunk(userID uuid.UUID, hash string) bool {
+func (b *Bounce) encryptedPeerCanHaveChunk(userID ID, hash string) bool {
 	var chunks []chunk
 	err := b.database.Select("file_id").Where("encrypted_hash = ?", hash).Find(&chunks).Error
 	if err != nil {
@@ -900,7 +902,7 @@ func (b *Bounce) encryptedPeerCanHaveChunk(userID uuid.UUID, hash string) bool {
 	}
 
 	allowedFiles := b.getFilesUserCanHaveViaEncryptedDevice(userID)
-	allowed := map[uuid.UUID]bool{}
+	allowed := map[ID]bool{}
 	for _, fID := range allowedFiles {
 		allowed[fID] = true
 	}
@@ -916,13 +918,13 @@ func (b *Bounce) encryptedPeerCanHaveChunk(userID uuid.UUID, hash string) bool {
 }
 
 type chunk struct {
-	ID            uuid.UUID `gorm:"type:uuid;primary_key;" msgpack:"-"`
-	FileID        uuid.UUID `msgpack:"-"`
-	Hash          string    `msgpack:"-" gorm:"index"`
-	EncryptedHash string    `msgpack:"-"`
-	Index         int       `msgpack:"-"`
-	Downloaded    bool      `msgpack:"-"`
-	Data          []byte    `gorm:"-"`
+	ID            ID     `gorm:"primary_key;" msgpack:"-"`
+	FileID        ID     `msgpack:"-"`
+	Hash          string `msgpack:"-" gorm:"index"`
+	EncryptedHash string `msgpack:"-"`
+	Index         int    `msgpack:"-"`
+	Downloaded    bool   `msgpack:"-"`
+	Data          []byte `gorm:"-"`
 }
 
 func (c *chunk) getType() uint16 {
@@ -1223,7 +1225,7 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 
 	// Distribute an encrypted chunk offer to online devices that should have it
 	eco := &encryptedChunkOffer{
-		ID:        uuid.New(),
+		ID:        NewID(),
 		Hash:      hash,
 		Location:  b.network.Address(),
 		Timestamp: time.Now().Unix(),
@@ -1392,7 +1394,7 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 	b.offerChunk(c)
 }
 
-func (b *Bounce) embedFile(fileID uuid.UUID, data []byte, scope int, destination uuid.UUID, fileType int, attachment uuid.UUID) error {
+func (b *Bounce) embedFile(fileID ID, data []byte, scope int, destination ID, fileType int, attachment ID) error {
 	if len(data) > EmbeddedFileLimit {
 		return ErrFileTooBig
 	}
@@ -1448,7 +1450,7 @@ func (b *Bounce) embedFile(fileID uuid.UUID, data []byte, scope int, destination
 	return nil
 }
 
-func (b *Bounce) seedFile(fileID uuid.UUID, path string, scope int, destination uuid.UUID, fileType int, attachment uuid.UUID) error {
+func (b *Bounce) seedFile(fileID ID, path string, scope int, destination ID, fileType int, attachment ID) error {
 	fh, err := os.Open(path)
 	if err != nil {
 		return err
@@ -1492,10 +1494,7 @@ func (b *Bounce) seedFile(fileID uuid.UUID, path string, scope int, destination 
 		hasher.Write(chunkData[:n])
 		chunkHash := blake3.Sum256(chunkData[:n])
 		chunkHashString := hashString(chunkHash)
-		chunkID, err := uuid.FromBytes(chunkHash[:16])
-		if err != nil {
-			return err
-		}
+		chunkID := ID(chunkHash)
 
 		chunks = append(
 			chunks,
@@ -1542,7 +1541,7 @@ func (b *Bounce) seedFile(fileID uuid.UUID, path string, scope int, destination 
 	return nil
 }
 
-func (b *Bounce) DownloadFileToDisk(fileID uuid.UUID, destination string) {
+func (b *Bounce) DownloadFileToDisk(fileID ID, destination string) {
 	// Find the file we want to download
 	var f file
 	err := b.database.Where("id = ?", fileID).First(&f).Error
@@ -1750,7 +1749,7 @@ func checkFileHash(path string) (bool, string) {
 	return true, hashString([32]byte(allDataHash[:32]))
 }
 
-func (b *Bounce) CancelDownload(fileID uuid.UUID) {
+func (b *Bounce) CancelDownload(fileID ID) {
 	err := b.database.Table("files").Where("id = ?", fileID).Update("wanted", false).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -1815,7 +1814,7 @@ func (b *Bounce) offerChunk(c chunk) {
 
 	// Create the chunk offer
 	co := &chunkOffer{
-		ID:          uuid.New(),
+		ID:          NewID(),
 		Author:      b.currentUserID(),
 		FileID:      c.FileID,
 		Hash:        c.Hash,
@@ -1853,7 +1852,7 @@ func (b *Bounce) offerChunk(c chunk) {
 	}
 	deleteAt, batchDeleteKey, canBatchDelete := b.getDeleteAtAndBatchDeleteKey(c.FileID)
 	sr := encryptedChunkStorageRequest{
-		ID:             uuid.New(),
+		ID:             NewID(),
 		Hash:           c.EncryptedHash,
 		Recipients:     recipients,
 		DeleteAt:       deleteAt,
@@ -1872,14 +1871,14 @@ func (b *Bounce) offerChunk(c chunk) {
 	}
 }
 
-func (b *Bounce) getDeleteAtAndBatchDeleteKey(fileID uuid.UUID) (int64, uuid.UUID, bool) {
+func (b *Bounce) getDeleteAtAndBatchDeleteKey(fileID ID) (int64, ID, bool) {
 	var f file
 	err := b.database.Take(&f, "id = ?", fileID).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("cannot find file attempting to get delete at and batch delete key")
-		return 0, uuid.Nil, false
+		return 0, NilID, false
 	}
 
 	deleteAt := int64(0)
@@ -1897,7 +1896,7 @@ func (b *Bounce) getDeleteAtAndBatchDeleteKey(fileID uuid.UUID) (int64, uuid.UUI
 		}
 	}
 
-	batchDeleteKey := uuid.Nil
+	batchDeleteKey := NilID
 	canBatchDelete := false
 	if f.Type == fileTypeMessageAttachment {
 		batchDeleteKey = f.Destination
@@ -1974,7 +1973,7 @@ func (b *Bounce) handleChunkUnavailable(peer string, payload []byte, catchUp boo
 	return nil, false
 }
 
-func (b *Bounce) GetFileData(fileID uuid.UUID) ([]byte, error) {
+func (b *Bounce) GetFileData(fileID ID) ([]byte, error) {
 	path, err := b.GetFilePath(fileID)
 	if err != nil {
 		return []byte{}, err
@@ -1983,7 +1982,7 @@ func (b *Bounce) GetFileData(fileID uuid.UUID) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
-func (b *Bounce) GetFilePath(fileID uuid.UUID) (string, error) {
+func (b *Bounce) GetFilePath(fileID ID) (string, error) {
 	var f file
 	err := b.database.Select("path").Where("id = ? AND downloaded = ?", fileID, true).Take(&f).Error
 	if err != nil {
@@ -1999,7 +1998,7 @@ func (b *Bounce) GetFilePath(fileID uuid.UUID) (string, error) {
 	return f.Path, nil
 }
 
-func (b *Bounce) FileDownloaded(fileID uuid.UUID) bool {
+func (b *Bounce) FileDownloaded(fileID ID) bool {
 	var f file
 	err := b.database.Select("downloaded").Where("id = ?", fileID).First(&f).Error
 	if err != nil {
@@ -2015,7 +2014,7 @@ func (b *Bounce) FileDownloaded(fileID uuid.UUID) bool {
 	return f.Downloaded
 }
 
-func (b *Bounce) FileEmbedded(fileID uuid.UUID) bool {
+func (b *Bounce) FileEmbedded(fileID ID) bool {
 	var f file
 	err := b.database.Select("size").Where("id = ?", fileID).First(&f).Error
 	if err != nil {
@@ -2031,7 +2030,7 @@ func (b *Bounce) FileEmbedded(fileID uuid.UUID) bool {
 	return f.Size <= EmbeddedFileLimit
 }
 
-func (b *Bounce) FileWanted(fileID uuid.UUID) bool {
+func (b *Bounce) FileWanted(fileID ID) bool {
 	var f file
 	err := b.database.Select("wanted").Where("id = ?", fileID).First(&f).Error
 	if err != nil {
@@ -2047,7 +2046,7 @@ func (b *Bounce) FileWanted(fileID uuid.UUID) bool {
 	return f.Wanted
 }
 
-func splitChunks(fileID uuid.UUID, data, key []byte) ([]chunk, string, string) {
+func splitChunks(fileID ID, data, key []byte) ([]chunk, string, string) {
 	chunks := []chunk{}
 	hashes := []string{}
 	encryptedHashes := []string{}
@@ -2076,12 +2075,9 @@ func splitChunks(fileID uuid.UUID, data, key []byte) ([]chunk, string, string) {
 	return chunks, strings.Join(hashes, ","), strings.Join(encryptedHashes, ",")
 }
 
-func makeChunk(fileID uuid.UUID, index int, data, key []byte) chunk {
+func makeChunk(fileID ID, index int, data, key []byte) chunk {
 	hash := blake3.Sum256(data)
-	chunkID, err := uuid.FromBytes(hash[:16])
-	if err != nil {
-		log.Fatal("cannot make uuid from bytes for chunk")
-	}
+	chunkID := ID(hash)
 
 	block, err := aes.NewCipher(key)
 	if err != nil {

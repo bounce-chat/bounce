@@ -6,19 +6,18 @@ import (
 	"strings"
 
 	"github.com/Basekick-Labs/msgpack/v6"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
 type groupState struct {
 	name                       string
-	images                     []uuid.UUID
-	users                      []uuid.UUID
-	admins                     []uuid.UUID
-	invites                    []uuid.UUID
-	blockedUsers               []uuid.UUID
-	devices                    map[uuid.UUID][]string
+	images                     []ID
+	users                      []ID
+	admins                     []ID
+	invites                    []ID
+	blockedUsers               []ID
+	devices                    map[ID][]string
 	mutedUntil                 int64
 	retention                  int64
 	clearBefore                int64
@@ -29,7 +28,7 @@ type groupState struct {
 	readReceiptsEnabled        bool
 	typingIndicatorsOverridden bool
 	typingIndicatorsEnabled    bool
-	invitedBy                  uuid.UUID
+	invitedBy                  ID
 	invitedAt                  int64
 	acceptedAt                 int64
 	deletedBy                  *updateGroup
@@ -38,15 +37,15 @@ type groupState struct {
 	ug                         updateGroup
 }
 
-func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[string]uuid.UUID, map[string]int64, error) {
+func (b *Bounce) createInitialGroupState(groupID ID) (groupState, map[string]ID, map[string]int64, error) {
 	// Create the group state
 	gs := groupState{
-		users:                      []uuid.UUID{},
-		images:                     []uuid.UUID{},
-		admins:                     []uuid.UUID{},
-		invites:                    []uuid.UUID{},
-		blockedUsers:               []uuid.UUID{},
-		devices:                    make(map[uuid.UUID][]string),
+		users:                      []ID{},
+		images:                     []ID{},
+		admins:                     []ID{},
+		invites:                    []ID{},
+		blockedUsers:               []ID{},
+		devices:                    make(map[ID][]string),
 		postingRestricted:          true,
 		editingRestricted:          true,
 		userManagementRestricted:   true,
@@ -55,7 +54,7 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[str
 		typingIndicatorsOverridden: false,
 		typingIndicatorsEnabled:    true,
 	}
-	initialDeviceMap := map[string]uuid.UUID{}
+	initialDeviceMap := map[string]ID{}
 	revokedTimeMap := map[string]int64{}
 
 	// Look up the group creation and unpack the original group
@@ -98,15 +97,15 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[str
 
 	// Get the original image, if there was one
 	if len(g.Images) != 0 {
-		imageID, err := uuid.Parse(g.Images)
+		imageID, err := ParseID(g.Images)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":    err.Error(),
 				"group_id": groupID,
 				"images":   g.Images,
-			}).Fatal("invalid UUID in group creation group image")
+			}).Fatal("invalid ID in group creation group image")
 		}
-		gs.images = []uuid.UUID{imageID}
+		gs.images = []ID{imageID}
 	}
 
 	// Set the values for the original members
@@ -157,13 +156,13 @@ func (b *Bounce) createInitialGroupState(groupID uuid.UUID) (groupState, map[str
 	// Set the values for the original admins
 	if len(g.Admins) != 0 {
 		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := uuid.Parse(adminIDString)
+			adminID, err := ParseID(adminIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":    err.Error(),
 					"group_id": groupID,
 					"admins":   g.Admins,
-				}).Fatal("invalid UUID in group admin list")
+				}).Fatal("invalid ID in group admin list")
 			}
 
 			gs.admins = append(gs.admins, adminID)
@@ -301,7 +300,7 @@ func (gs groupState) equals(otherState groupState) bool {
 	return true
 }
 
-func (gs groupState) isAdmin(userID uuid.UUID) bool {
+func (gs groupState) isAdmin(userID ID) bool {
 	for _, adminID := range gs.admins {
 		if adminID == userID {
 			return true
@@ -310,7 +309,7 @@ func (gs groupState) isAdmin(userID uuid.UUID) bool {
 	return false
 }
 
-func (gs groupState) isInvited(userID uuid.UUID) bool {
+func (gs groupState) isInvited(userID ID) bool {
 	for _, invitedID := range gs.invites {
 		if invitedID == userID {
 			return true
@@ -319,7 +318,7 @@ func (gs groupState) isInvited(userID uuid.UUID) bool {
 	return false
 }
 
-func (gs groupState) isMember(userID uuid.UUID) bool {
+func (gs groupState) isMember(userID ID) bool {
 	for _, memberID := range gs.users {
 		if memberID == userID {
 			return true
@@ -328,7 +327,7 @@ func (gs groupState) isMember(userID uuid.UUID) bool {
 	return false
 }
 
-func (gs groupState) isBlocked(userID uuid.UUID) bool {
+func (gs groupState) isBlocked(userID ID) bool {
 	for _, memberID := range gs.blockedUsers {
 		if memberID == userID {
 			return true
@@ -367,7 +366,7 @@ func (gs groupState) scope() []string {
 	return scope
 }
 
-func changeIsNOP(lastState groupState, ug updateGroup, myID uuid.UUID) bool {
+func changeIsNOP(lastState groupState, ug updateGroup, myID ID) bool {
 	updatedGroupState, err := applyUpdateGroupToState(lastState, ug, myID)
 	if err != nil {
 		return true
@@ -376,7 +375,7 @@ func changeIsNOP(lastState groupState, ug updateGroup, myID uuid.UUID) bool {
 	return updatedGroupState.equals(lastState)
 }
 
-func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
+func stateChangeAllowed(gs groupState, ug updateGroup, myID ID) error {
 	if !gs.isMember(ug.Actor) && !(ug.Type == updateGroupTypeRespondToInvite || ug.Type == updateGroupTypeBlock) {
 		return errUserNotInGroup
 	}
@@ -413,13 +412,13 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 			return nil
 		}
 	case updateGroupTypeRemoveUser:
-		userID, err := uuid.FromBytes(ug.Data)
+		userID, err := IDFromBytes(ug.Data)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":   err.Error(),
 				"actor":   ug.Actor,
 				"user_id": ug.Data,
-			}).Error("update group attempted to remove user with invalid UUID")
+			}).Error("update group attempted to remove user with invalid ID")
 			return err
 		}
 		if ug.Actor == userID {
@@ -469,13 +468,13 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 		}
 	case updateGroupTypePromoteAdmin:
 		if gs.isAdmin(ug.Actor) {
-			userID, err := uuid.FromBytes(ug.Data)
+			userID, err := IDFromBytes(ug.Data)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":   err.Error(),
 					"actor":   ug.Actor,
 					"user_id": ug.Data,
-				}).Error("update group attempted to promote admin with invalid UUID")
+				}).Error("update group attempted to promote admin with invalid ID")
 				return err
 			}
 			if gs.isMember(userID) {
@@ -492,13 +491,13 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 			}
 		}
 	case updateGroupTypeDemoteAdmin:
-		userID, err := uuid.FromBytes(ug.Data)
+		userID, err := IDFromBytes(ug.Data)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":   err.Error(),
 				"actor":   ug.Actor,
 				"user_id": ug.Data,
-			}).Error("update group attempted to demote admin with invalid UUID")
+			}).Error("update group attempted to demote admin with invalid ID")
 			return err
 		}
 		if gs.deletedBy != nil && gs.deletedBy.Actor == userID {
@@ -574,7 +573,7 @@ func stateChangeAllowed(gs groupState, ug updateGroup, myID uuid.UUID) error {
 	}
 }
 
-func applyUpdateGroupToState(gs groupState, ug updateGroup, myID uuid.UUID) (groupState, error) {
+func applyUpdateGroupToState(gs groupState, ug updateGroup, myID ID) (groupState, error) {
 	gs.ug = ug
 
 	switch ug.Type {
@@ -636,13 +635,13 @@ func applyUpdateGroupChangeNameToState(gs groupState, ug updateGroup) (groupStat
 }
 
 func applyUpdateGroupSetImageToState(gs groupState, ug updateGroup) (groupState, error) {
-	fileID, err := uuid.FromBytes(ug.Data)
+	fileID, err := IDFromBytes(ug.Data)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 			"actor": ug.Actor,
 			"image": ug.Data,
-		}).Error("update group attempted to set image with invalid UUID")
+		}).Error("update group attempted to set image with invalid ID")
 		return gs, err
 	}
 
@@ -651,7 +650,7 @@ func applyUpdateGroupSetImageToState(gs groupState, ug updateGroup) (groupState,
 	return gs, nil
 }
 
-func applyUpdateGroupInviteUserToState(gs groupState, ug updateGroup, myID uuid.UUID) (groupState, error) {
+func applyUpdateGroupInviteUserToState(gs groupState, ug updateGroup, myID ID) (groupState, error) {
 	var u user
 	err := msgpack.Unmarshal(ug.Data, &u)
 	if err != nil {
@@ -684,24 +683,24 @@ func applyUpdateGroupInviteUserToState(gs groupState, ug updateGroup, myID uuid.
 }
 
 func applyUpdateGroupRemoveUserToState(gs groupState, ug updateGroup) (groupState, error) {
-	userID, err := uuid.FromBytes(ug.Data)
+	userID, err := IDFromBytes(ug.Data)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to remove user with invalid UUID")
+		}).Error("update group attempted to remove user with invalid ID")
 		return gs, err
 	}
 
-	membersWithoutUser := []uuid.UUID{}
+	membersWithoutUser := []ID{}
 	for _, id := range gs.users {
 		if id != userID {
 			membersWithoutUser = append(membersWithoutUser, id)
 		}
 	}
 
-	adminsWithoutUser := []uuid.UUID{}
+	adminsWithoutUser := []ID{}
 	for _, id := range gs.admins {
 		if id != userID {
 			adminsWithoutUser = append(adminsWithoutUser, id)
@@ -745,13 +744,13 @@ func applyUpdateGroupSetClearBeforeToState(gs groupState, ug updateGroup) (group
 }
 
 func applyUpdateGroupPromoteAdminToState(gs groupState, ug updateGroup) (groupState, error) {
-	userID, err := uuid.FromBytes(ug.Data)
+	userID, err := IDFromBytes(ug.Data)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to promote admin with invalid UUID")
+		}).Error("update group attempted to promote admin with invalid ID")
 		return gs, err
 	}
 
@@ -767,17 +766,17 @@ func applyUpdateGroupPromoteAdminToState(gs groupState, ug updateGroup) (groupSt
 }
 
 func applyUpdateGroupDemoteAdminToState(gs groupState, ug updateGroup) (groupState, error) {
-	userID, err := uuid.FromBytes(ug.Data)
+	userID, err := IDFromBytes(ug.Data)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to demote admin with invalid UUID")
+		}).Error("update group attempted to demote admin with invalid ID")
 		return gs, err
 	}
 
-	adminsWithoutUser := []uuid.UUID{}
+	adminsWithoutUser := []ID{}
 	for _, id := range gs.admins {
 		if id != userID {
 			adminsWithoutUser = append(adminsWithoutUser, id)
@@ -837,21 +836,21 @@ func applyUpdateGroupBlockToState(gs groupState, ug updateGroup) (groupState, er
 		gs.blockedUsers = append(gs.blockedUsers, ug.Actor)
 	}
 
-	membersWithoutUser := []uuid.UUID{}
+	membersWithoutUser := []ID{}
 	for _, id := range gs.users {
 		if id != ug.Actor {
 			membersWithoutUser = append(membersWithoutUser, id)
 		}
 	}
 
-	adminsWithoutUser := []uuid.UUID{}
+	adminsWithoutUser := []ID{}
 	for _, id := range gs.admins {
 		if id != ug.Actor {
 			adminsWithoutUser = append(adminsWithoutUser, id)
 		}
 	}
 
-	invitesWithoutUser := []uuid.UUID{}
+	invitesWithoutUser := []ID{}
 	for _, id := range gs.invites {
 		if id != ug.Actor {
 			invitesWithoutUser = append(invitesWithoutUser, id)
@@ -888,17 +887,17 @@ func applyUpdateGroupSetTypingIndicatorsToState(gs groupState, ug updateGroup) (
 }
 
 func applyUpdateGroupRevokeInviteToState(gs groupState, ug updateGroup) (groupState, error) {
-	userID, err := uuid.FromBytes(ug.Data)
+	userID, err := IDFromBytes(ug.Data)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to revoke invite with invalid UUID")
+		}).Error("update group attempted to revoke invite with invalid ID")
 		return gs, err
 	}
 
-	invitesWithoutUser := []uuid.UUID{}
+	invitesWithoutUser := []ID{}
 	for _, id := range gs.invites {
 		if id != userID {
 			invitesWithoutUser = append(invitesWithoutUser, id)
@@ -916,7 +915,7 @@ func applyUpdateGroupRespondToInviteToState(gs groupState, ug updateGroup) (grou
 	}
 	accepted := ug.Data[0] == acceptInvite
 
-	invitesWithoutUser := []uuid.UUID{}
+	invitesWithoutUser := []ID{}
 	for _, id := range gs.invites {
 		if id != ug.Actor {
 			invitesWithoutUser = append(invitesWithoutUser, id)

@@ -17,7 +17,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/bbrks/go-blurhash"
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/image/draw"
 )
@@ -25,7 +24,7 @@ import (
 type messageAttachment struct {
 	widget.BaseWidget
 
-	id       uuid.UUID
+	id       chat.ID
 	reader   fyne.URIReadCloser
 	fileSize int64
 	isImage  bool
@@ -40,7 +39,7 @@ type messageAttachment struct {
 	progress *widget.ProgressBar
 }
 
-func newMessageAttachment(id uuid.UUID, name string, size int64) *messageAttachment {
+func newMessageAttachment(id chat.ID, name string, size int64) *messageAttachment {
 	ma := &messageAttachment{
 		id:       id,
 		reader:   nil,
@@ -69,7 +68,7 @@ func newMessageAttachment(id uuid.UUID, name string, size int64) *messageAttachm
 	return ma
 }
 
-func newPendingMessageAttachment(id uuid.UUID, reader fyne.URIReadCloser, actionCallback func()) (*messageAttachment, error) {
+func newPendingMessageAttachment(id chat.ID, reader fyne.URIReadCloser, actionCallback func()) (*messageAttachment, error) {
 	var size int64
 	var err error
 	size, reader, err = fileSizeInReader(reader)
@@ -352,7 +351,7 @@ func newPendingMessageAttachments() *pendingMessageAttachments {
 }
 
 func (pmas *pendingMessageAttachments) add(reader fyne.URIReadCloser, refocus func()) error {
-	id := uuid.New()
+	id := chat.NewID()
 	var newFile *messageAttachment
 	var err error
 	newFile, err = newPendingMessageAttachment(id, reader, func() {
@@ -370,7 +369,7 @@ func (pmas *pendingMessageAttachments) add(reader fyne.URIReadCloser, refocus fu
 	return err
 }
 
-func (pmas *pendingMessageAttachments) remove(id uuid.UUID) {
+func (pmas *pendingMessageAttachments) remove(id chat.ID) {
 	pruned := []*messageAttachment{}
 
 	for _, file := range pmas.files {

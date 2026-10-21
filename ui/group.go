@@ -15,19 +15,18 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 type group struct {
-	id                               uuid.UUID
+	id                               chat.ID
 	name                             string
 	initial                          string
-	images                           []uuid.UUID
+	images                           []chat.ID
 	users                            *userStore
-	admins                           []uuid.UUID
-	invites                          []uuid.UUID
-	blockedUsers                     []uuid.UUID
+	admins                           []chat.ID
+	invites                          []chat.ID
+	blockedUsers                     []chat.ID
 	retention                        int64
 	restrictUserManagement           bool
 	restrictGroupEdits               bool
@@ -67,11 +66,11 @@ type group struct {
 	currentUsersContainer            *container.Scroll
 	currentInvitesContainer          *container.Scroll
 	pendingUsersContainer            *container.Scroll
-	adminChecks                      map[uuid.UUID]*widget.Check
+	adminChecks                      map[chat.ID]*widget.Check
 	adminChecksMutex                 sync.Mutex
-	removeUserButtons                map[uuid.UUID]*widget.Button
+	removeUserButtons                map[chat.ID]*widget.Button
 	removeUserButtonsMutex           sync.Mutex
-	editUserDialogs                  map[uuid.UUID]dialogWithCallback
+	editUserDialogs                  map[chat.ID]dialogWithCallback
 	editUserDialogsMutex             sync.Mutex
 	typingIndicator                  *typingIndicator
 	pendingMessageAttachments        *pendingMessageAttachments
@@ -81,7 +80,7 @@ type group struct {
 	opened                           bool
 }
 
-func (g *group) getID() uuid.UUID {
+func (g *group) getID() chat.ID {
 	return g.id
 }
 
@@ -128,7 +127,7 @@ func (g *group) getHeaderIcon() *defaultImage {
 	return g.headerIcon
 }
 
-func (g *group) isAdmin(userID uuid.UUID) bool {
+func (g *group) isAdmin(userID chat.ID) bool {
 	for _, id := range g.admins {
 		if id == userID {
 			return true
@@ -153,7 +152,7 @@ func (g *group) hasDraft() bool {
 	return len(g.buttonData.draft) > 0
 }
 
-func (g *group) getAdminCheck(userID uuid.UUID) *widget.Check {
+func (g *group) getAdminCheck(userID chat.ID) *widget.Check {
 	g.adminChecksMutex.Lock()
 	defer g.adminChecksMutex.Unlock()
 
@@ -208,7 +207,7 @@ func (g *group) refreshTypingIndicatorSettingSelection(options []string) {
 	g.typingIndicatorOverrideSelection.Refresh()
 }
 
-func (ui *ui) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Button {
+func (ui *ui) getRemoveUserButton(g *group, userID chat.ID) *widget.Button {
 	g.removeUserButtonsMutex.Lock()
 	defer g.removeUserButtonsMutex.Unlock()
 
@@ -268,7 +267,7 @@ func (ui *ui) getRemoveUserButton(g *group, userID uuid.UUID) *widget.Button {
 	return button
 }
 
-func (ui *ui) getEditUserDialog(g *group, userID uuid.UUID) (dialog.Dialog, func()) {
+func (ui *ui) getEditUserDialog(g *group, userID chat.ID) (dialog.Dialog, func()) {
 	g.editUserDialogsMutex.Lock()
 	g.editUserDialogsMutex.Unlock()
 
@@ -351,7 +350,7 @@ func (ui *ui) getEditUserDialog(g *group, userID uuid.UUID) (dialog.Dialog, func
 	return userDetailsDialog, dialogCleanup
 }
 
-func (ui *ui) addAdmin(g *group, userID uuid.UUID) {
+func (ui *ui) addAdmin(g *group, userID chat.ID) {
 	alreadyAdded := false
 	for _, id := range g.admins {
 		if id == userID {
@@ -365,8 +364,8 @@ func (ui *ui) addAdmin(g *group, userID uuid.UUID) {
 	ui.updateEnabledFeatures(g)
 }
 
-func (ui *ui) removeAdmin(g *group, userID uuid.UUID) {
-	adminsWithoutUser := []uuid.UUID{}
+func (ui *ui) removeAdmin(g *group, userID chat.ID) {
+	adminsWithoutUser := []chat.ID{}
 	for _, id := range g.admins {
 		if id != userID {
 			adminsWithoutUser = append(adminsWithoutUser, id)
@@ -410,7 +409,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		return
 	}
 
-	invitedIDs := []uuid.UUID{}
+	invitedIDs := []chat.ID{}
 	for _, u := range bounceGroup.Invites {
 		invitedIDs = append(invitedIDs, u.ID)
 	}
@@ -439,9 +438,9 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		currentUsersContainer:          container.NewVScroll(container.NewVBox()),
 		currentInvitesContainer:        container.NewVScroll(container.NewVBox()),
 		pendingUsersContainer:          container.NewVScroll(container.NewVBox()),
-		adminChecks:                    make(map[uuid.UUID]*widget.Check),
-		removeUserButtons:              make(map[uuid.UUID]*widget.Button),
-		editUserDialogs:                make(map[uuid.UUID]dialogWithCallback),
+		adminChecks:                    make(map[chat.ID]*widget.Check),
+		removeUserButtons:              make(map[chat.ID]*widget.Button),
+		editUserDialogs:                make(map[chat.ID]dialogWithCallback),
 		lastMessage:                    time.Now().Unix(),
 		lastOpened:                     bounceGroup.LastOpened,
 	}
@@ -552,8 +551,8 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 
 		imageAttachments := []chat.ImageAttachment{}
 		fileAttachments := []chat.FileAttachment{}
-		readers := map[uuid.UUID]io.ReadCloser{}
-		sources := map[uuid.UUID]string{}
+		readers := map[chat.ID]io.ReadCloser{}
+		sources := map[chat.ID]string{}
 
 		pendingAttachments := g.pendingMessageAttachments.extract()
 		for _, pma := range pendingAttachments {
@@ -761,7 +760,7 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 			i.nameLabel.Segments[0].(*widget.TextSegment).Text = bounceGroup.Name
 			i.nameLabel.Refresh()
 
-			members := []uuid.UUID{}
+			members := []chat.ID{}
 			for _, bu := range bounceGroup.Users {
 				u, ok := ui.users.get(bu.ID)
 				if !ok {
@@ -773,7 +772,7 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 			i.members = members
 			i.admins = bounceGroup.Admins
 
-			invites := []uuid.UUID{}
+			invites := []chat.ID{}
 			for _, bu := range bounceGroup.Invites {
 				u, ok := ui.users.get(bu.ID)
 				if !ok {
@@ -862,7 +861,7 @@ func (ui *ui) SetGroupState(bounceGroup chat.Group) {
 			g.getAdminCheck(u.id).Refresh()
 		}
 
-		invites := []uuid.UUID{}
+		invites := []chat.ID{}
 		for _, bu := range bounceGroup.Invites {
 			u, ok := ui.users.get(bu.ID)
 			if !ok {
@@ -1092,7 +1091,7 @@ func (ui *ui) RemovedFromGroup(rfg chat.RemovedFromGroup) {
 			} else {
 				ui.containers.chat.Objects = []fyne.CanvasObject{ui.containers.defaultContainer}
 				ui.containers.chat.Refresh()
-				ui.state.activeThread = uuid.Nil
+				ui.state.activeThread = chat.NilID
 			}
 		}
 		if rfg.Actor != ui.state.profile.id {
@@ -1145,7 +1144,7 @@ func (ui *ui) GroupDeleted(gd chat.GroupDeleted) {
 			} else {
 				ui.containers.chat.Objects = []fyne.CanvasObject{ui.containers.defaultContainer}
 				ui.containers.chat.Refresh()
-				ui.state.activeThread = uuid.Nil
+				ui.state.activeThread = chat.NilID
 			}
 		}
 
@@ -1514,7 +1513,7 @@ func (ui *ui) GroupInviteRejected(ugir chat.UpdateGroupInviteRejected) {
 	fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
 }
 
-func (ui *ui) RollbackGroup(groupID uuid.UUID) {
+func (ui *ui) RollbackGroup(groupID chat.ID) {
 	ui.threads.remove(groupID)
 	ui.containers.threads.Refresh()
 }

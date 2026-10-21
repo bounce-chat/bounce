@@ -6,14 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/bounce-chat/bounce/chat"
 )
 
 var threadButtonHeight = float32(64)
@@ -46,7 +45,7 @@ type threadButton struct {
 	clicked                   func()
 }
 
-func newThreadButtonTemplate(fileGetter func(uuid.UUID) ([]byte, error)) *threadButton {
+func newThreadButtonTemplate(fileGetter func(chat.ID) ([]byte, error)) *threadButton {
 	pending := newThemedImage(
 		newEmbeddedResource("assets/icons/chat_bubble/white/png/pending.png"),
 		newEmbeddedResource("assets/icons/chat_bubble/black/png/pending.png"),
@@ -93,7 +92,7 @@ func newThreadButtonTemplate(fileGetter func(uuid.UUID) ([]byte, error)) *thread
 	errorIcon.Hide()
 
 	tb := &threadButton{
-		threadImage: newDefaultImage(uuid.Nil, []uuid.UUID{}, "", 64, fileGetter, nil),
+		threadImage: newDefaultImage(chat.NilID, []chat.ID{}, "", 64, fileGetter, nil),
 		threadName: widget.NewRichText(&widget.TextSegment{
 			Style: widget.RichTextStyle{
 				SizeName: theme.SizeNameSubHeadingText,
@@ -539,10 +538,10 @@ func (tbr *threadButtonRenderer) Refresh() {
 }
 
 type threadButtonData struct {
-	id                          uuid.UUID
+	id                          chat.ID
 	name                        string
 	initials                    string
-	images                      []uuid.UUID
+	images                      []chat.ID
 	clicked                     func()
 	lastMessageSegmentOne       string
 	lastMessageSegmentOneItalic bool
@@ -563,7 +562,7 @@ func (tbd *threadButtonData) setName(name, initials string) {
 	tbd.initials = initials
 }
 
-func (tbd *threadButtonData) setLastMessage(name, text string, status bool) { // TODO: will need to detect when a user's name changes and they are the last message and update it here, or reference by UUID
+func (tbd *threadButtonData) setLastMessage(name, text string, status bool) { // TODO: will need to detect when a user's name changes and they are the last message and update it here, or reference by ID
 	if len(text) > 200 {
 		text = text[:200]
 	}
@@ -616,7 +615,7 @@ func (tbd *threadButtonData) showTypingUser(u *user) {
 	tbd.typing = append(tbd.typing, u)
 }
 
-func (tbd *threadButtonData) hideTypingUser(userID uuid.UUID) {
+func (tbd *threadButtonData) hideTypingUser(userID chat.ID) {
 	usersWithoutUser := []*user{}
 
 	for _, u := range tbd.typing {
@@ -628,7 +627,7 @@ func (tbd *threadButtonData) hideTypingUser(userID uuid.UUID) {
 	tbd.typing = usersWithoutUser
 }
 
-func sameImages(old, updated []uuid.UUID) bool {
+func sameImages(old, updated []chat.ID) bool {
 	if len(old) != len(updated) {
 		return false
 	}
