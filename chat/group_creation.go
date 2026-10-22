@@ -6,7 +6,6 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
-	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -18,14 +17,26 @@ import (
 type groupCreation struct {
 	SignedFrame
 	ID        ID `gorm:"primary_key;"`
+	Nonce     nonce
 	Timestamp int64
 	SavedAt   int64  `msgpack:"-"`
 	Data      []byte `gorm:"not null"` // Original group structure, msgpacked
 }
 
+func (gc *groupCreation) getNonce() nonce {
+	return gc.Nonce
+}
+
+func (gc *groupCreation) generateID() ID {
+	return newContentHasher(typeGroupCreation, gc.Nonce).
+		int64(gc.Timestamp).
+		bytes(gc.Data).
+		generate()
+}
+
 func (gc *groupCreation) BeforeCreate(tx *gorm.DB) error {
-	if gc.ID == NilID {
-		return errors.New("group creation must have an ID assigned before creation")
+	if !idMatchesContent(gc) {
+		return errors.New("group creation ID is not generated from its content")
 	}
 	gc.SavedAt = time.Now().Unix()
 	return nil
@@ -114,22 +125,13 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		}
 	}
 
-	// Make sure the ID of this group creation matches the hash of the group data
-	hasher := blake3.New()
-	written, _ := hasher.Write(gc.Data)
-	if written != len(gc.Data) {
+	// Make sure the ID of this group creation is generated from its content
+	if !idMatchesContent(&gc) {
 		log.WithFields(log.Fields{
-			"length":  len(gc.Data),
-			"written": written,
-		}).Fatal("failed to write all group data into hasher")
-	}
-	var groupID ID
-	hasher.Digest().Read(groupID[:])
-	if gc.ID != groupID {
-		log.WithFields(log.Fields{
-			"group_creation_id": gc.ID,
-			"group_hash_id":     groupID,
-		}).Error("rejecting group creation with ID that does not match hash of group data")
+			"peer":       peer,
+			"id":         gc.getID(),
+			"content_id": gc.generateID(),
+		}).Error("rejecting group creation with an ID not generated from its content")
 		return nil, false
 	}
 

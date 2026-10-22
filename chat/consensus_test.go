@@ -18,13 +18,14 @@ func TestMessagesAreValidIfCatchUpGivesPermission(t *testing.T) {
 
 	// Create an update group to unrestrict posting
 	unrestriction := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix() + 1,
 		Type:      updateGroupTypeChangePostingPermission,
 		Data:      []byte{permissionUnrestricted},
 	}
-	unrestriction.ID = updateGroupID(*unrestriction)
+	unrestriction.ID = unrestriction.generateID()
 	unrestriction.OriginalPayload, err = msgpack.Marshal(unrestriction)
 	assert.NoError(t, err)
 	sc := b.createSignedContainer(typeUpdateGroup, unrestriction.OriginalPayload)
@@ -78,13 +79,14 @@ func TestMessagesAreInvalidIfCatchUpRemovesPermission(t *testing.T) {
 
 	// Create an update group to unrestrict posting
 	restriction := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeChangePostingPermission,
 		Data:      []byte{permissionRestricted},
 	}
-	restriction.ID = updateGroupID(*restriction)
+	restriction.ID = restriction.generateID()
 	var err error
 	restriction.OriginalPayload, err = msgpack.Marshal(restriction)
 	assert.NoError(t, err)
@@ -146,13 +148,14 @@ func TestMessagesAreValidIfUserBecomesAdminWhenRequired(t *testing.T) {
 	// Create an update group to make Alice an admin
 	aliceID := alice.currentUserID()
 	promotion := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypePromoteAdmin,
 		Data:      aliceID[:],
 	}
-	promotion.ID = updateGroupID(*promotion)
+	promotion.ID = promotion.generateID()
 	promotion.OriginalPayload, err = msgpack.Marshal(promotion)
 	assert.NoError(t, err)
 	sc := b.createSignedContainer(typeUpdateGroup, promotion.OriginalPayload)
@@ -215,13 +218,14 @@ func TestMessagesAreInvalidIfUserLoosesAdminWhenRequired(t *testing.T) {
 
 	// Create an update group to demote Alice
 	demotion := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix() + 1,
 		Type:      updateGroupTypeDemoteAdmin,
 		Data:      aliceID[:],
 	}
-	demotion.ID = updateGroupID(*demotion)
+	demotion.ID = demotion.generateID()
 	demotion.OriginalPayload, err = msgpack.Marshal(demotion)
 	assert.NoError(t, err)
 	sc := b.createSignedContainer(typeUpdateGroup, demotion.OriginalPayload)
@@ -279,13 +283,14 @@ func TestAddingConflictToHistoryStackIsIgnored(t *testing.T) {
 
 	// Add a restriction to editing permissions to the stack
 	restrictEditing := updateGroup{
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix() + 1,
 		Type:      updateGroupTypeChangeGroupEditsPermission,
 		Data:      []byte{permissionRestricted},
 	}
-	restrictEditing.ID = updateGroupID(restrictEditing)
+	restrictEditing.ID = restrictEditing.generateID()
 	restrictEditing.OriginalPayload, err = msgpack.Marshal(restrictEditing)
 	assert.NoError(t, err)
 	sc := b.createSignedContainer(typeUpdateGroup, restrictEditing.OriginalPayload)
@@ -301,13 +306,14 @@ func TestAddingConflictToHistoryStackIsIgnored(t *testing.T) {
 
 	// Try to insert an update group that isn't allowed
 	unauthorizedEdit := updateGroup{
+		Nonce:     newNonce(),
 		Actor:     alice.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix() + 1,
 		Type:      updateGroupTypeChangeName,
 		Data:      []byte("New Name"),
 	}
-	unauthorizedEdit.ID = updateGroupID(unauthorizedEdit)
+	unauthorizedEdit.ID = unauthorizedEdit.generateID()
 	unauthorizedEdit.OriginalPayload, err = msgpack.Marshal(unauthorizedEdit)
 	assert.NoError(t, err)
 	sc = b.createSignedContainer(typeUpdateGroup, unauthorizedEdit.OriginalPayload)
@@ -335,13 +341,14 @@ func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
 
 	// Create an update group that restricts edits and insert
 	restrictEdits := updateGroup{
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeChangeGroupEditsPermission,
 		Data:      []byte{permissionRestricted},
 	}
-	restrictEdits.ID = updateGroupID(restrictEdits)
+	restrictEdits.ID = restrictEdits.generateID()
 	restrictEdits.OriginalPayload, err = msgpack.Marshal(restrictEdits)
 	assert.NoError(t, err)
 	sc := b.createSignedContainer(typeUpdateGroup, restrictEdits.OriginalPayload)
@@ -360,13 +367,14 @@ func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
 
 	// Create an edit from Alice that happens later
 	unauthorizedEdit := updateGroup{
+		Nonce:     newNonce(),
 		Actor:     alice.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix() + 2,
 		Type:      updateGroupTypeChangeName,
 		Data:      []byte("New Name"),
 	}
-	unauthorizedEdit.ID = updateGroupID(unauthorizedEdit)
+	unauthorizedEdit.ID = unauthorizedEdit.generateID()
 	unauthorizedEdit.OriginalPayload, err = msgpack.Marshal(unauthorizedEdit)
 	assert.NoError(t, err)
 	sc = alice.createSignedContainer(typeUpdateGroup, unauthorizedEdit.OriginalPayload)
@@ -430,13 +438,14 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 
 	// Create an update group that restricts edits and insert
 	restrictEdits := updateGroup{
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeChangeGroupEditsPermission,
 		Data:      []byte{permissionRestricted},
 	}
-	restrictEdits.ID = updateGroupID(restrictEdits)
+	restrictEdits.ID = restrictEdits.generateID()
 	restrictEdits.OriginalPayload, err = msgpack.Marshal(restrictEdits)
 	assert.NoError(t, err)
 	sc := b.createSignedContainer(typeUpdateGroup, restrictEdits.OriginalPayload)
@@ -478,13 +487,14 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 
 	// Create an edit from Alice that happens later
 	unauthorizedEdit := updateGroup{
+		Nonce:     newNonce(),
 		Actor:     alice.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix() + 2,
 		Type:      updateGroupTypeChangeName,
 		Data:      []byte("New Name"),
 	}
-	unauthorizedEdit.ID = updateGroupID(unauthorizedEdit)
+	unauthorizedEdit.ID = unauthorizedEdit.generateID()
 	unauthorizedEdit.OriginalPayload, err = msgpack.Marshal(unauthorizedEdit)
 	assert.NoError(t, err)
 	sc = b.createSignedContainer(typeUpdateGroup, unauthorizedEdit.OriginalPayload)
@@ -541,13 +551,14 @@ func TestUpdatesWithCustomScopesGetDeletedWhenAllDelivered(t *testing.T) {
 	// Create an update for Alice to remove herself from the group, ensure that is gets custom scoped
 	myID := alice.currentUserID()
 	removal := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     alice.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeRemoveUser,
 		Data:      myID[:],
 	}
-	removal.ID = updateGroupID(*removal)
+	removal.ID = removal.generateID()
 	var err error
 	removal.OriginalPayload, err = msgpack.Marshal(removal)
 	assert.NoError(t, err)
@@ -589,13 +600,14 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 	// Create an update to remove myself from the group, ensure that is gets custom scoped
 	myID := alice.currentUserID()
 	removal := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     alice.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeRemoveUser,
 		Data:      myID[:],
 	}
-	removal.ID = updateGroupID(*removal)
+	removal.ID = removal.generateID()
 	var err error
 	removal.OriginalPayload, err = msgpack.Marshal(removal)
 	assert.NoError(t, err)
@@ -619,13 +631,14 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 	newUserBytes, err := msgpack.Marshal(newUser)
 	assert.NoError(t, err)
 	add := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix() + 1,
 		Type:      updateGroupTypeInviteUser,
 		Data:      newUserBytes,
 	}
-	add.ID = updateGroupID(*add)
+	add.ID = add.generateID()
 	add.OriginalPayload, err = msgpack.Marshal(add)
 	assert.NoError(t, err)
 	sc = b.createSignedContainer(typeUpdateGroup, add.OriginalPayload)
@@ -633,13 +646,14 @@ func TestCustomScopesGetRemovedWhenReAddedToGroup(t *testing.T) {
 	add.Signer = sc.Signer
 
 	accept := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     alice.currentUserID(),
 		Target:    groupID,
 		Timestamp: time.Now().Unix() + 2,
 		Type:      updateGroupTypeRespondToInvite,
 		Data:      []byte{acceptInvite},
 	}
-	accept.ID = updateGroupID(*accept)
+	accept.ID = accept.generateID()
 	accept.OriginalPayload, err = msgpack.Marshal(accept)
 	assert.NoError(t, err)
 	sc = alice.createSignedContainer(typeUpdateGroup, accept.OriginalPayload)
@@ -709,13 +723,14 @@ func TestCannotBeAddedToGroupByUnknownUser(t *testing.T) {
 	msgpack.Unmarshal(mb, &mu)
 
 	add := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     carol.currentUserID(),
 		Target:    gc.ID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeInviteUser,
 		Data:      mb,
 	}
-	add.ID = updateGroupID(*add)
+	add.ID = add.generateID()
 	var err error
 	add.OriginalPayload, err = msgpack.Marshal(add)
 	assert.NoError(t, err)
@@ -780,13 +795,14 @@ func TestCanLearnAboutCreatingUserFromGroupInvite(t *testing.T) {
 
 	// Carol adds alice to the group
 	addAlice := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     carol.currentUserID(),
 		Target:    gc.ID,
 		Timestamp: ts,
 		Type:      updateGroupTypeInviteUser,
 		Data:      ab,
 	}
-	addAlice.ID = updateGroupID(*addAlice)
+	addAlice.ID = addAlice.generateID()
 	ts += 1
 	addAlice.OriginalPayload, err = msgpack.Marshal(addAlice)
 	assert.NoError(t, err)
@@ -796,13 +812,14 @@ func TestCanLearnAboutCreatingUserFromGroupInvite(t *testing.T) {
 
 	// Alice accepts the invite to the group
 	accept := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     alice.currentUserID(),
 		Target:    gc.ID,
 		Timestamp: ts,
 		Type:      updateGroupTypeRespondToInvite,
 		Data:      []byte{acceptInvite},
 	}
-	accept.ID = updateGroupID(*accept)
+	accept.ID = accept.generateID()
 	ts += 1
 	accept.OriginalPayload, err = msgpack.Marshal(accept)
 	assert.NoError(t, err)
@@ -813,6 +830,7 @@ func TestCanLearnAboutCreatingUserFromGroupInvite(t *testing.T) {
 	// Carol makes Alice an admin
 	aliceID := alice.currentUserID()
 	promote := &updateGroup{
+		Nonce:     newNonce(),
 		ID:        NewID(),
 		Actor:     carol.currentUserID(),
 		Target:    gc.ID,
@@ -834,13 +852,14 @@ func TestCanLearnAboutCreatingUserFromGroupInvite(t *testing.T) {
 	msgpack.Unmarshal(mb, &mu)
 
 	addMe := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     alice.currentUserID(),
 		Target:    gc.ID,
 		Timestamp: ts,
 		Type:      updateGroupTypeInviteUser,
 		Data:      mb,
 	}
-	addMe.ID = updateGroupID(*addMe)
+	addMe.ID = addMe.generateID()
 	addMe.OriginalPayload, err = msgpack.Marshal(addMe)
 	assert.NoError(t, err)
 	sc = alice.createSignedContainer(typeUpdateGroup, addMe.OriginalPayload)
@@ -912,13 +931,14 @@ func TestCanLearnAboutInvitedUserFromGroupInvite(t *testing.T) {
 
 	// Alice invites Carol to the group
 	addCarol := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     alice.currentUserID(),
 		Target:    groupID,
 		Timestamp: ts,
 		Type:      updateGroupTypeInviteUser,
 		Data:      cb,
 	}
-	addCarol.ID = updateGroupID(*addCarol)
+	addCarol.ID = addCarol.generateID()
 	ts += 1
 	addCarol.OriginalPayload, err = msgpack.Marshal(addCarol)
 	assert.NoError(t, err)
@@ -994,13 +1014,14 @@ func TestUserDoesNotJoinGroupWithUnknownUserByDefault(t *testing.T) {
 
 	// Alice invites Carol to the group
 	addCarol := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     alice.currentUserID(),
 		Target:    groupID,
 		Timestamp: ts,
 		Type:      updateGroupTypeInviteUser,
 		Data:      cb,
 	}
-	addCarol.ID = updateGroupID(*addCarol)
+	addCarol.ID = addCarol.generateID()
 	addCarol.OriginalPayload, err = msgpack.Marshal(addCarol)
 	assert.NoError(t, err)
 	sc := alice.createSignedContainer(typeUpdateGroup, addCarol.OriginalPayload)

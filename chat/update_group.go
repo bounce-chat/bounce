@@ -7,7 +7,6 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
-	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -71,6 +70,7 @@ var errNonAdminCannotRemoveAdmin = errors.New("non-admin users cannot remove adm
 type updateGroup struct {
 	SignedFrame
 	ID            ID `gorm:"primary_key;"`
+	Nonce         nonce
 	Actor         ID
 	Target        ID
 	Timestamp     int64
@@ -84,12 +84,23 @@ type updateGroup struct {
 	Seen          bool `msgpack:"-"`
 }
 
+func (ug *updateGroup) getNonce() nonce {
+	return ug.Nonce
+}
+
+func (ug *updateGroup) generateID() ID {
+	return newContentHasher(typeUpdateGroup, ug.Nonce).
+		id(ug.Actor).
+		id(ug.Target).
+		int64(ug.Timestamp).
+		uint16(ug.Type).
+		bytes(ug.Data).
+		generate()
+}
+
 func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
-	if ug.ID != updateGroupID(*ug) {
-		return errors.New("incorrect update group ID")
-	}
-	if ug.ID == NilID {
-		return errors.New("update group ID cannot be nil")
+	if !idMatchesContent(ug) {
+		return errors.New("update group ID is not generated from its content")
 	}
 	ug.SavedAt = time.Now().Unix()
 
@@ -319,13 +330,13 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 	ug.Signature = sc.Signature
 	ug.Signer = sc.Signer
 
-	// Validate that the ID is a hash of the content
-	if ug.ID != updateGroupID(ug) {
+	// Validate that the ID is generated from the content
+	if !idMatchesContent(&ug) {
 		log.WithFields(log.Fields{
 			"peer":       peer,
-			"id":         ug.ID,
-			"content_id": updateGroupID(ug),
-		}).Error("rejecting update group with ID not generated from content")
+			"id":         ug.getID(),
+			"content_id": ug.generateID(),
+		}).Error("rejecting update group with an ID not generated from its content")
 		return nil, false
 	}
 
@@ -974,22 +985,12 @@ func (b *Bounce) RejectInvite(groupID ID) error {
 	})
 }
 
-func updateGroupID(ug updateGroup) ID {
-	ug.ID = NilID
-	ug.Confirmations = []confirmation{}
-	data, err := msgpack.Marshal(ug)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error marshalling update group for ID generation")
-		return NilID
-	}
-	return ID(blake3.Sum256(data))
-}
-
 func (b *Bounce) applyAndBroadcastUpdateGroup(ug *updateGroup) error {
-	// Derive the ID from content
-	ug.ID = updateGroupID(*ug)
+	// Give the update its nonce and derive the ID from content
+	if ug.Nonce == noNonce {
+		ug.Nonce = newNonce()
+	}
+	ug.ID = ug.generateID()
 
 	// Find the group we're updating
 	var g group

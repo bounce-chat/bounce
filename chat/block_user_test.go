@@ -88,7 +88,7 @@ func TestBlockingACoMemberLeavesTheSharedGroup(t *testing.T) {
 	// Mallory too and leaves as well; her side of the group cannot be inspected here.)
 	var departure updateGroup
 	assert.NoError(t, me.database.Where("target = ? AND type = ? AND actor = ?", groupID, updateGroupTypeRemoveUser, me.currentUserID()).First(&departure).Error)
-	assert.Equal(t, updateGroupID(departure), departure.ID)
+	assert.Equal(t, departure.generateID(), departure.ID)
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		var n int64

@@ -532,6 +532,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 		if finalState.isMember(b.currentUserID()) {
 			currentUserID := b.currentUserID()
 			injectedUpdate = updateGroup{
+				Nonce:     newNonce(),
 				Actor:     b.currentUserID(),
 				Target:    groupID,
 				Timestamp: time.Now().Unix(),
@@ -540,6 +541,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 			}
 		} else {
 			injectedUpdate = updateGroup{
+				Nonce:     newNonce(),
 				Actor:     b.currentUserID(),
 				Target:    groupID,
 				Timestamp: time.Now().Unix(),
@@ -561,7 +563,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 		injectedUpdate.CustomScope = scope.ID
 
 		// Derive the ID from the content, as every update group's is, then sign it
-		injectedUpdate.ID = updateGroupID(injectedUpdate)
+		injectedUpdate.ID = injectedUpdate.generateID()
 		injectedUpdate.OriginalPayload, err = msgpack.Marshal(injectedUpdate)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -626,13 +628,14 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 			if u.ProfileSettings.AutoJoinGroups == AlwaysAutoJoinGroups || (u.ProfileSettings.AutoJoinGroups == OnlyAutoJoinGroupsWithNoNewUsers && !unacceptedUsers) {
 				// Create an update group to auto-accept
 				accept := updateGroup{
+					Nonce:     newNonce(),
 					Actor:     b.currentUserID(),
 					Target:    groupID,
 					Timestamp: time.Now().Unix(),
 					Type:      updateGroupTypeRespondToInvite,
 					Data:      []byte{acceptInvite},
 				}
-				accept.ID = updateGroupID(accept)
+				accept.ID = accept.generateID()
 				accept.OriginalPayload, err = msgpack.Marshal(accept)
 				if err != nil {
 					log.WithFields(log.Fields{

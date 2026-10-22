@@ -9,7 +9,6 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
-	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -214,33 +213,23 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 		}).Fatal("cannot msgpack marshal group")
 	}
 
-	// Create a hash of the group without an ID to use as the group creation ID,
-	// and the group ID upon handling, to ensure that the original group state
-	// is not modified during replication
-	hasher := blake3.New()
-	written, _ := hasher.Write(groupData)
-	if written != len(groupData) {
-		log.WithFields(log.Fields{
-			"length":  len(groupData),
-			"written": written,
-		}).Fatal("failed to write all group data into hasher")
+	// The group creation's ID is generated from the marshalled group, which has no ID yet, and the creation time.
+	// That is the group's ID too, so the original state of a group cannot be modified during replication.
+	gc := groupCreation{
+		Nonce:     newNonce(),
+		Timestamp: creationTime,
+		Data:      groupData,
 	}
-	var groupID ID
-	hasher.Digest().Read(groupID[:])
-	g.ID = groupID
+	gc.ID = gc.generateID()
+	g.ID = gc.ID
 
 	if len(ng.Image) > 0 {
-		err := b.embedFile(iconID, ng.Image, scopeGroupWithInvites, groupID, fileTypeGroupImage, groupID)
+		err := b.embedFile(iconID, ng.Image, scopeGroupWithInvites, g.ID, fileTypeGroupImage, g.ID)
 		if err != nil {
 			return errors.New("error distributing new group image: " + err.Error())
 		}
 	}
 
-	gc := groupCreation{
-		ID:        groupID,
-		Timestamp: creationTime,
-		Data:      groupData,
-	}
 	gc.OriginalPayload, err = msgpack.Marshal(gc)
 	if err != nil {
 		log.WithFields(log.Fields{

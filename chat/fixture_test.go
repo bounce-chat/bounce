@@ -17,7 +17,6 @@ import (
 	"github.com/cretz/bine/torutil"
 	"github.com/cretz/bine/torutil/ed25519"
 	log "github.com/sirupsen/logrus"
-	"github.com/zeebo/blake3"
 )
 
 var hostsMutex sync.Mutex
@@ -557,13 +556,14 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID ID) {
 	var err error
 
 	addAlice := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     me.currentUserID(),
 		Target:    groupID,
 		Timestamp: inviteTime,
 		Type:      updateGroupTypeInviteUser,
 		Data:      ab,
 	}
-	addAlice.ID = updateGroupID(*addAlice)
+	addAlice.ID = addAlice.generateID()
 	addAlice.OriginalPayload, err = msgpack.Marshal(addAlice)
 	assert.NoError(t, err)
 	sc := me.createSignedContainer(typeUpdateGroup, addAlice.OriginalPayload)
@@ -571,13 +571,14 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID ID) {
 	addAlice.Signer = sc.Signer
 
 	addBob := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     me.currentUserID(),
 		Target:    groupID,
 		Timestamp: inviteTime,
 		Type:      updateGroupTypeInviteUser,
 		Data:      bb,
 	}
-	addBob.ID = updateGroupID(*addBob)
+	addBob.ID = addBob.generateID()
 	addBob.OriginalPayload, err = msgpack.Marshal(addBob)
 	assert.NoError(t, err)
 	sc = me.createSignedContainer(typeUpdateGroup, addBob.OriginalPayload)
@@ -585,13 +586,14 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID ID) {
 	addBob.Signer = sc.Signer
 
 	aliceAccepts := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     alice.currentUserID(),
 		Target:    groupID,
 		Timestamp: acceptTime,
 		Type:      updateGroupTypeRespondToInvite,
 		Data:      []byte{acceptInvite},
 	}
-	aliceAccepts.ID = updateGroupID(*aliceAccepts)
+	aliceAccepts.ID = aliceAccepts.generateID()
 	aliceAccepts.OriginalPayload, err = msgpack.Marshal(aliceAccepts)
 	assert.NoError(t, err)
 	sc = alice.createSignedContainer(typeUpdateGroup, aliceAccepts.OriginalPayload)
@@ -599,13 +601,14 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID ID) {
 	aliceAccepts.Signer = sc.Signer
 
 	bobAccepts := &updateGroup{
+		Nonce:     newNonce(),
 		Actor:     bob.currentUserID(),
 		Target:    groupID,
 		Timestamp: acceptTime,
 		Type:      updateGroupTypeRespondToInvite,
 		Data:      []byte{acceptInvite},
 	}
-	bobAccepts.ID = updateGroupID(*bobAccepts)
+	bobAccepts.ID = bobAccepts.generateID()
 	bobAccepts.OriginalPayload, err = msgpack.Marshal(bobAccepts)
 	assert.NoError(t, err)
 	sc = bob.createSignedContainer(typeUpdateGroup, bobAccepts.OriginalPayload)
@@ -679,23 +682,13 @@ func (b *Bounce) createGroupCreation(ng NewGroup) groupCreation {
 		}).Fatal("cannot msgpack marshal group")
 	}
 
-	hasher := blake3.New()
-	written, _ := hasher.Write(groupData)
-	if written != len(groupData) {
-		log.WithFields(log.Fields{
-			"length":  len(groupData),
-			"written": written,
-		}).Fatal("failed to write all group data into hasher")
-	}
-	var groupID ID
-	hasher.Digest().Read(groupID[:])
-	g.ID = groupID
-
 	gc := groupCreation{
-		ID:        groupID,
+		Nonce:     newNonce(),
 		Timestamp: creationTime,
 		Data:      groupData,
 	}
+	gc.ID = gc.generateID()
+	g.ID = gc.ID
 	gc.OriginalPayload, err = msgpack.Marshal(gc)
 	if err != nil {
 		log.WithFields(log.Fields{
