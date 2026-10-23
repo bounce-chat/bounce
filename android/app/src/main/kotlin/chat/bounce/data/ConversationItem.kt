@@ -47,6 +47,13 @@ sealed interface ConversationItem {
         val fileAttachments: List<FileAttachment> = emptyList(),
         val readReceipts: List<ReadReceipt> = emptyList(),
         val deliveredTo: List<String> = emptyList(),
+        /**
+         * True for a message this device is still sending: shown from the
+         * composer's own data while the engine works, and replaced by the real
+         * message when DisplaySent* arrives. Its [id] is a local handle, never
+         * an engine frame ID. See ChatRepository.beginPendingSend.
+         */
+        val pending: Boolean = false,
     ) : ConversationItem {
         override val timestamp: Long get() = writtenAt
 

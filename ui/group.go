@@ -2,7 +2,6 @@ package ui
 
 import (
 	"errors"
-	"io"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -544,55 +543,34 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 	}
 	entry.customFocusLost = func() { ui.containers.threads.Refresh() }
 	sendMessage := func() {
-		gm := chat.GroupMessage{
-			Thread: g.id,
-			Text:   entry.Text,
-		}
+		text := entry.Text
+		outgoing, images, files := outgoingAttachments(g.pendingMessageAttachments.extract())
 
-		imageAttachments := []chat.ImageAttachment{}
-		fileAttachments := []chat.FileAttachment{}
-		readers := map[chat.ID]io.ReadCloser{}
-		sources := map[chat.ID]string{}
-
-		pendingAttachments := g.pendingMessageAttachments.extract()
-		for _, pma := range pendingAttachments {
-			readers[pma.id] = pma.reader
-			sources[pma.id] = pma.reader.URI().Path()
-
-			if pma.isImage {
-				imageAttachments = append(
-					imageAttachments,
-					chat.ImageAttachment{
-						ID:       pma.id,
-						Name:     pma.reader.URI().Name(),
-						Size:     pma.fileSize,
-						Width:    pma.width,
-						Height:   pma.height,
-						BlurHash: pma.blurHash,
-					},
-				)
-			} else {
-				fileAttachments = append(
-					fileAttachments,
-					chat.FileAttachment{
-						ID:   pma.id,
-						Name: pma.reader.URI().Name(),
-						Size: pma.fileSize,
-					},
-				)
-			}
-		}
-
-		gm.ImageAttachments = imageAttachments
-		gm.FileAttachments = fileAttachments
+		entry.Text = ""
+		entry.Refresh()
 		go ui.bounce.UpdateDraft(g.id, "")
 		g.buttonData.setDraft("")
+
+		// Shown only if the engine takes a while, see pending_send.go
+		pending := ui.beginPendingSend(g, func(handle chat.ID) (*threadItem, error) {
+			return ui.newGroupMessage(chat.GroupMessage{
+				ID:               handle,
+				Author:           ui.state.profile.id,
+				Thread:           g.id,
+				WrittenAt:        time.Now().Unix(),
+				Text:             text,
+				Seen:             true,
+				ImageAttachments: images,
+				FileAttachments:  files,
+			})
+		})
 		go func() {
-			err := ui.bounce.SendGroupMessage(gm, readers, sources)
+			err := ui.bounce.SendGroupMessage(g.id, text, outgoing)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("message was not sent") // TODO: tell the user
+				ui.failPendingSend(pending)
 			}
 		}()
 	}
@@ -1040,6 +1018,7 @@ func (ui *ui) DisplaySentGroupMessage(gm chat.GroupMessage) {
 	}
 
 	fyne.DoAndWait(func() {
+		ui.completePendingSend(g)
 		ui.appendThreadItem(g, ti)
 
 		g.getEntry().Text = ""

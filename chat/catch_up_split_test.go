@@ -184,7 +184,7 @@ func TestABacklogSyncsInStagesOverTheNetwork(t *testing.T) {
 	// Alice goes offline and I write her twenty messages
 	sever(t, me, alice)
 	for i := 0; i < 20; i++ {
-		me.SendDirectMessage(DirectMessage{Thread: alice.currentUserID(), Text: fmt.Sprintf("while you were out %02d", i), WrittenAt: time.Now().Unix()}, nil, nil)
+		me.SendDirectMessage(alice.currentUserID(), fmt.Sprintf("while you were out %02d", i), nil)
 	}
 
 	// She comes back; the reference flow delivers all twenty in several catch ups, each requested only after the

@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -175,6 +176,8 @@ fun ChatBubble(
                 color = if (outgoing) bounce.outgoingBubble else bounce.incomingBubble,
                 modifier = Modifier
                     .widthIn(max = BUBBLE_MAX_WIDTH)
+                    // Still being sent: see ConversationItem.Message.pending
+                    .alpha(if (message.pending) 0.6f else 1f)
                     .combinedClickable(
                         onClick = {},
                         onLongClick = { menuOpen = true },

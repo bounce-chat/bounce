@@ -701,8 +701,7 @@ func (b *Bounce) UpdateProfileImage(newImage []byte) error {
 		return errInvalidImage
 	}
 
-	newImageID := NewID()
-	err := b.embedFile(newImageID, newImage, scopeGlobal, currentUser.ID, fileTypeUserImage, currentUser.ID)
+	f, err := b.embedFile(newImage, scopeGlobal, currentUser.ID, fileTypeUserImage, currentUser.ID)
 	if err != nil {
 		return err
 	}
@@ -712,7 +711,7 @@ func (b *Bounce) UpdateProfileImage(newImage []byte) error {
 		Target:    b.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeUpdateImage,
-		Data:      newImageID[:],
+		Data:      f.ID[:],
 	})
 }
 

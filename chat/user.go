@@ -207,9 +207,15 @@ func (b *Bounce) blockedGroups() []ID {
 }
 func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string) error {
 	newID := NewID()
-	iconID := NilID
+
+	// The icon is prepared first so the profile can name it, and published once the profile exists to be attached to
+	var icon *file
 	if len(image) > 0 {
-		iconID = NewID()
+		var err error
+		icon, err = b.prepareEmbeddedFile(image, scopeGlobal, fileTypeUserImage)
+		if err != nil {
+			return errors.New("error preparing profile image: " + err.Error())
+		}
 	}
 
 	var count int64
@@ -266,8 +272,8 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 			DefaultDMRetention:             int64(time.Duration(24 * time.Hour * 7 * 4).Seconds()),
 		},
 	}
-	if len(image) > 0 {
-		u.Images = iconID.String()
+	if icon != nil {
+		u.Images = icon.ID.String()
 	} else {
 		u.Images = ""
 	}
@@ -275,8 +281,8 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 	if err != nil {
 		return err
 	}
-	if len(image) > 0 {
-		err := b.embedFile(iconID, image, scopeGlobal, u.ID, fileTypeUserImage, u.ID)
+	if icon != nil {
+		err := b.publishFile(icon, u.ID, u.ID)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

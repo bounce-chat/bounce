@@ -19,6 +19,8 @@ import chat.bounce.data.ConversationItem
 import chat.bounce.data.ThreadSummary
 import chat.bounce.engine.EngineClient
 import chat.bounce.engine.EngineHolder
+import chat.bounce.engine.FileAttachment
+import chat.bounce.engine.ImageAttachment
 import chat.bounce.engine.Group
 import chat.bounce.engine.OutgoingAttachment
 import chat.bounce.engine.User
@@ -276,13 +278,44 @@ class ConversationViewModel(
         // returns.
         ChatRepository.requestThreadListScrollToTop()
 
+        // The engine reports the sent message when it has finished sending, which for a large attachment is
+        // after hashing the whole file. The message is shown from the composer's own data if that takes
+        // noticeably long; a quick send is drawn once, as the real message. See ChatRepository.beginPendingSend.
+        val handle = "pending-" + UUID.randomUUID()
+        ChatRepository.beginPendingSend(
+            ConversationItem.Message(
+                id = handle,
+                threadId = threadId,
+                authorId = ChatRepository.currentUserId,
+                text = body,
+                writtenAt = System.currentTimeMillis() / 1000,
+                seen = true,
+                undeliverable = false,
+                outgoing = true,
+                imageAttachments = attachments.filter { it.isImage }
+                    .map { ImageAttachment(id = it.id, name = it.name, size = it.size) },
+                fileAttachments = attachments.filterNot { it.isImage }
+                    .map { FileAttachment(id = it.id, name = it.name, size = it.size) },
+            ),
+        )
+        viewModelScope.launch {
+            delay(PENDING_SEND_DELAY_MS)
+            ChatRepository.showPendingSend(threadId, handle)
+        }
+
         viewModelScope.launch {
             val client = engine() ?: return@launch
             val outgoing = attachments.map { OutgoingAttachment(it.id, it.path, it.name, it.size) }
-            if (isGroup) {
-                client.sendGroupMessage(threadId, body, outgoing)
-            } else {
-                client.sendDirectMessage(threadId, body, outgoing)
+            val sent = runCatching {
+                if (isGroup) {
+                    client.sendGroupMessage(threadId, body, outgoing)
+                } else {
+                    client.sendDirectMessage(threadId, body, outgoing)
+                }
+            }
+            if (sent.isFailure) {
+                Log.e(TAG, "message was not sent", sent.exceptionOrNull())
+                ChatRepository.failPendingSend(threadId, handle)
             }
             client.updateDraft(threadId, "")
         }
@@ -668,6 +701,14 @@ class ConversationViewModel(
         val MAX_CHARACTERS: Int = Goengine.MaximumMessageCharacters.toInt()
 
         private const val DRAFT_DEBOUNCE_MS = 300L
+
+        /**
+         * How long a send may take before the message is drawn from the
+         * composer's data rather than waited for. Text and small files come
+         * back from the engine well inside this, so they never flicker through
+         * a pending state; a large file being hashed shows pending instead.
+         */
+        private const val PENDING_SEND_DELAY_MS = 300L
 
         /**
          * Longest a draft can go unpublished while the user keeps typing.

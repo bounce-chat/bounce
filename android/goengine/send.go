@@ -24,26 +24,13 @@ import (
 // Only a path crosses the boundary, never bytes: Go opens and streams the file,
 // so a 200MB video is never materialized as a byte[] on either side. Kotlin is
 // responsible for resolving a content:// URI to a real path first, which it has
-// to do anyway to get a stable handle.
+// to do anyway to get a stable handle. The id is Kotlin's own handle for the
+// composer and is not used here: the engine assigns every attachment's ID.
 type outgoingAttachment struct {
 	ID   string `json:"id"`
 	Path string `json:"path"`
 	Name string `json:"name"`
 	Size int64  `json:"size"`
-}
-
-// preparedAttachments is the engine-shaped result of resolving the JSON list.
-type preparedAttachments struct {
-	readers map[chat.ID]io.ReadCloser
-	sources map[chat.ID]string
-	images  []chat.ImageAttachment
-	files   []chat.FileAttachment
-}
-
-func (p *preparedAttachments) closeAll() {
-	for _, r := range p.readers {
-		r.Close()
-	}
 }
 
 // prepareAttachments opens every attachment and, for images, measures them.
@@ -52,15 +39,9 @@ func (p *preparedAttachments) closeAll() {
 // Go side already depends on go-blurhash and x/image, and this keeps the
 // measurement identical to the desktop client (ui/pending_message_attachments.go),
 // so the same photo produces the same placeholder on every platform.
-func prepareAttachments(raw string) (*preparedAttachments, error) {
-	p := &preparedAttachments{
-		readers: map[chat.ID]io.ReadCloser{},
-		sources: map[chat.ID]string{},
-		images:  []chat.ImageAttachment{},
-		files:   []chat.FileAttachment{},
-	}
+func prepareAttachments(raw string) ([]chat.OutgoingAttachment, error) {
 	if raw == "" {
-		return p, nil
+		return nil, nil
 	}
 
 	var atts []outgoingAttachment
@@ -68,16 +49,16 @@ func prepareAttachments(raw string) (*preparedAttachments, error) {
 		return nil, fmt.Errorf("bad attachments JSON: %w", err)
 	}
 
-	for _, at := range atts {
-		id, err := parseID("attachment id", at.ID)
-		if err != nil {
-			p.closeAll()
-			return nil, err
+	prepared := []chat.OutgoingAttachment{}
+	closeAll := func() {
+		for _, a := range prepared {
+			a.Reader.Close()
 		}
-
+	}
+	for _, at := range atts {
 		f, err := os.Open(at.Path)
 		if err != nil {
-			p.closeAll()
+			closeAll()
 			return nil, fmt.Errorf("opening attachment %q: %w", at.Name, err)
 		}
 
@@ -93,32 +74,18 @@ func prepareAttachments(raw string) (*preparedAttachments, error) {
 		width, height, hash, isImage := measureImage(f)
 		if _, err := f.Seek(0, io.SeekStart); err != nil {
 			f.Close()
-			p.closeAll()
+			closeAll()
 			return nil, fmt.Errorf("rewinding attachment %q: %w", at.Name, err)
 		}
 
-		p.readers[id] = f
-		p.sources[id] = at.Path
-
+		a := chat.OutgoingAttachment{Name: at.Name, Size: size, Reader: f, Source: at.Path}
 		if isImage {
-			p.images = append(p.images, chat.ImageAttachment{
-				ID:       id,
-				Name:     at.Name,
-				Size:     size,
-				Width:    width,
-				Height:   height,
-				BlurHash: hash,
-			})
-		} else {
-			p.files = append(p.files, chat.FileAttachment{
-				ID:   id,
-				Name: at.Name,
-				Size: size,
-			})
+			a.Image = &chat.ImageInfo{Width: width, Height: height, BlurHash: hash}
 		}
+		prepared = append(prepared, a)
 	}
 
-	return p, nil
+	return prepared, nil
 }
 
 // measureImage decodes r and returns its dimensions and BlurHash. It mirrors
@@ -167,17 +134,12 @@ func (a *Engine) SendDirectMessage(threadID string, text string, attachmentsJSON
 	if err != nil {
 		return err
 	}
-	p, err := prepareAttachments(attachmentsJSON)
+	attachments, err := prepareAttachments(attachmentsJSON)
 	if err != nil {
 		return err
 	}
 
-	return e.SendDirectMessage(chat.DirectMessage{
-		Thread:           tid,
-		Text:             text,
-		ImageAttachments: p.images,
-		FileAttachments:  p.files,
-	}, p.readers, p.sources)
+	return e.SendDirectMessage(tid, text, attachments)
 }
 
 // SendGroupMessage sends a group message. See SendDirectMessage.
@@ -190,15 +152,10 @@ func (a *Engine) SendGroupMessage(threadID string, text string, attachmentsJSON 
 	if err != nil {
 		return err
 	}
-	p, err := prepareAttachments(attachmentsJSON)
+	attachments, err := prepareAttachments(attachmentsJSON)
 	if err != nil {
 		return err
 	}
 
-	return e.SendGroupMessage(chat.GroupMessage{
-		Thread:           tid,
-		Text:             text,
-		ImageAttachments: p.images,
-		FileAttachments:  p.files,
-	}, p.readers, p.sources)
+	return e.SendGroupMessage(tid, text, attachments)
 }

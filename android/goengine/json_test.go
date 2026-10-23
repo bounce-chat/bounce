@@ -133,14 +133,7 @@ func TestPrepareAttachmentsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("empty attachments should be fine: %v", err)
 	}
-	if len(p.readers) != 0 || len(p.images) != 0 || len(p.files) != 0 {
+	if len(p) != 0 {
 		t.Fatal("expected nothing prepared")
-	}
-}
-
-func TestPrepareAttachmentsRejectsBadID(t *testing.T) {
-	_, err := prepareAttachments(`[{"id":"not-an-id","path":"/tmp","name":"x"}]`)
-	if err == nil || !strings.Contains(err.Error(), "invalid attachment id") {
-		t.Fatalf("expected an attributable ID error, got %v", err)
 	}
 }

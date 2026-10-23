@@ -610,8 +610,7 @@ func (b *Bounce) SetGroupImage(groupID ID, image []byte) error {
 		return errInvalidImage
 	}
 
-	fileID := NewID()
-	err := b.embedFile(fileID, image, scopeGroupWithInvites, groupID, fileTypeGroupImage, groupID)
+	f, err := b.embedFile(image, scopeGroupWithInvites, groupID, fileTypeGroupImage, groupID)
 	if err != nil {
 		return err
 	}
@@ -621,7 +620,7 @@ func (b *Bounce) SetGroupImage(groupID ID, image []byte) error {
 		Target:    groupID,
 		Timestamp: time.Now().Unix(),
 		Type:      updateGroupTypeSetImage,
-		Data:      fileID[:],
+		Data:      f.ID[:],
 	})
 }
 

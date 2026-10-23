@@ -1,5 +1,7 @@
 package chat
 
+import "io"
+
 type User struct {
 	ID               ID
 	Name             string
@@ -50,6 +52,28 @@ type FileAttachment struct {
 	Name     string
 	Size     int64
 	Progress float64
+}
+
+// An OutgoingAttachment is a file the UI wants on a message it is sending.  The engine assigns every attachment's ID,
+// so the UI keeps whatever handle it likes for its own bookkeeping and never passes one in.  The attachments of the
+// sent message come back through DisplaySentDirectMessage or DisplaySentGroupMessage in the order they were given.
+type OutgoingAttachment struct {
+	Name string
+	Size int64
+
+	// Reader is read and the data embedded when the file is small enough; it is closed either way.  Source is a
+	// path the file is seeded from when it is too large to embed.  Either may be left out when the other applies.
+	Reader io.ReadCloser
+	Source string
+
+	// Image is set when the attachment is an image the UI has measured, and nil for any other file
+	Image *ImageInfo
+}
+
+type ImageInfo struct {
+	Width    int
+	Height   int
+	BlurHash string
 }
 
 type ImageAttachment struct {
