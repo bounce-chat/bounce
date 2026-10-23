@@ -3,6 +3,7 @@ package chat
 import (
 	"bytes"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -518,4 +519,35 @@ func TestAnIconIsPreparedBeforeWhatCarriesIt(t *testing.T) {
 	assert.True(t, idMatchesContent(&icon))
 	assert.Equal(t, g.ID, icon.AttachedTo)
 	assert.Equal(t, g.ID, icon.Destination)
+}
+
+func TestAGroupCreationIsBoundedLikeAnInvite(t *testing.T) {
+	me, alice, _, _ := createUsersAndGroups(t)
+
+	// A creation whose group blob is over the invite cap is refused before anything looks inside it
+	oversized := groupCreation{Nonce: newNonce(), Timestamp: time.Now().Unix(), Data: make([]byte, maximumUserRecordBytes+1)}
+	oversized.ID = oversized.generateID()
+	var err error
+	oversized.OriginalPayload, err = msgpack.Marshal(oversized)
+	assert.NoError(t, err)
+	frame, err := msgpack.Marshal(alice.createSignedContainer(typeGroupCreation, oversized.OriginalPayload))
+	assert.NoError(t, err)
+	_, accepted := me.handleGroupCreation(alice.network.Address(), frame, false)
+	assert.False(t, accepted)
+	var stored int64
+	assert.NoError(t, me.database.Model(&groupCreation{}).Where("id = ?", oversized.ID).Count(&stored).Error)
+	assert.Equal(t, int64(0), stored)
+
+	// The largest legitimate creation, a creator with the maximum devices and the longest names, is well under it
+	creator, _ := alice.currentUser()
+	for i := 1; i < maximumDevicesPerUser; i++ {
+		creator.Devices = append(creator.Devices, introducedByBounce(creator.ID, alice, bnc01NewOnion(), time.Now().Unix()))
+	}
+	creator.Name = strings.Repeat("名", MaximumNameLength)
+	largest, err := msgpack.Marshal(group{
+		Name: strings.Repeat("名", MaximumNameLength), Images: NewID().String(), CreatedBy: creator.ID,
+		CreatedAt: time.Now().Unix(), Users: []user{creator}, Admins: creator.ID.String(),
+	})
+	assert.NoError(t, err)
+	assert.True(t, len(largest) < maximumUserRecordBytes*2/3, "headroom under the cap")
 }

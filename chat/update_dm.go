@@ -46,6 +46,8 @@ const dmOpen = 0x01
 const userNotBlocked = 0x00
 const userBlocked = 0x01
 
+const maximumUpdateDMHistoryPerType = 100
+
 var updateDMMutex sync.Mutex
 
 // An updateDM frame changes the settings of a direct message thread, such as retention or notification settings.
@@ -325,6 +327,9 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 
 	// Save the update
 	err = b.database.Create(&ud).Error
+	if err == nil {
+		b.pruneUpdateDMHistory(&ud)
+	}
 	if err != nil {
 		log.WithFields(log.Fields{
 			"user":  xor(ud.Target, b.currentUserID()),
@@ -627,6 +632,9 @@ func (b *Bounce) saveAndDisplayUpdateDM(ud *updateDM) error {
 
 	// Save the update DM
 	err = b.database.Create(ud).Error
+	if err == nil {
+		b.pruneUpdateDMHistory(ud)
+	}
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -939,4 +947,30 @@ func (b *Bounce) applyAndBroadcastUpdateDM(ud *updateDM) error {
 	}()
 
 	return nil
+}
+
+// Cap the number of update DMs that we keep per type+thread, to prevent a flood of updates from filling the database
+func (b *Bounce) pruneUpdateDMHistory(ud *updateDM) {
+	var stale []updateDM
+	err := b.database.
+		Where("actor = ? AND target = ? AND type = ?", ud.Actor, ud.Target, ud.Type).
+		Order("timestamp DESC, saved_at DESC").
+		Offset(maximumUpdateDMHistoryPerType).
+		Limit(maximumUpdateDMHistoryPerType).
+		Find(&stale).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error selecting update DMs to prune")
+	}
+	for _, old := range stale {
+		err = b.database.Delete(&old).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    old.ID,
+				"error": err.Error(),
+			}).Fatal("database error pruning update DM")
+		}
+		b.ui.DeleteItem(old.ID)
+	}
 }

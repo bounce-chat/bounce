@@ -36,7 +36,9 @@ const permissionRestricted = 0x01
 const rejectInvite = 0x00
 const acceptInvite = 0x01
 
-const maximumInviteUserBytes = 1024 * 1024 // Capped to prevent disk filling attack
+// A user record, with its device group, travels inside group invites and group creations.  Both are capped here to
+// prevent a disk filling attack; the largest legitimate record (1024 devices, longest names) is a little over half.
+const maximumUserRecordBytes = 1024 * 1024
 
 var errUpdateGroupWithUnknownType = errors.New("update group has unknown update type")
 var errInvalidGroupName = errors.New("invalid group name")
@@ -231,7 +233,7 @@ func (ug *updateGroup) validPayloadFormat() bool {
 		_, err := IDFromBytes(ug.Data)
 		return err == nil
 	case updateGroupTypeInviteUser:
-		if len(ug.Data) > maximumInviteUserBytes {
+		if len(ug.Data) > maximumUserRecordBytes {
 			return false
 		}
 		var u user

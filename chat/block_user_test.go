@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"encoding/binary"
+	"sync"
 	"testing"
 	"time"
 
@@ -120,4 +122,79 @@ func TestNothingIsSealedForABlockedUser(t *testing.T) {
 	for _, addr := range me.getBroadcastScope(profileUpdate, false) {
 		assert.NotEqual(t, mallory.network.Address(), addr)
 	}
+}
+
+// A contact can send as many retention changes or history clears as they like.  Only the newest hundred of each kind
+// from them are kept, and the ones that fall off the end leave the UI too, so a chatty or hostile contact cannot
+// fill the disk one small row at a time.
+
+// deletionRecordingUI is the fixture UI plus a record of which items it was told to delete
+type deletionRecordingUI struct {
+	*testUI
+	sync.Mutex
+	deleted []ID
+}
+
+func (ui *deletionRecordingUI) DeleteItem(id ID) {
+	ui.Lock()
+	ui.deleted = append(ui.deleted, id)
+	ui.Unlock()
+}
+
+func TestOnlyTheNewestUpdateDMsOfEachKindFromAContactAreKept(t *testing.T) {
+	me, alice, _, _ := createUsersAndGroups(t)
+	recorder := &deletionRecordingUI{testUI: me.ui.(*testUI)}
+	me.ui = recorder
+	target := xor(alice.currentUserID(), me.currentUserID())
+	retention := func(seconds uint64) []byte {
+		data := make([]byte, 8)
+		binary.LittleEndian.PutUint64(data, seconds)
+		return data
+	}
+	extra := 30
+
+	// Alice changes the DM retention far more times than we keep, oldest first
+	sent := []ID{}
+	for i := 0; i < maximumUpdateDMHistoryPerType+extra; i++ {
+		ud := updateDM{
+			Nonce:     newNonce(),
+			Actor:     alice.currentUserID(),
+			Target:    target,
+			Timestamp: int64(1_000_000 + i),
+			Type:      updateDMTypeChangeRetention,
+			Data:      retention(uint64(3600 + i)),
+		}
+		ud.ID = ud.generateID()
+		_, accepted := me.handleUpdateDM(alice.network.Address(), signedFrame(t, alice, typeUpdateDM, ud), false)
+		assert.True(t, accepted)
+		sent = append(sent, ud.ID)
+	}
+
+	// Exactly the bound remain, and they are the newest
+	var kept []updateDM
+	assert.NoError(t, me.database.Where("actor = ? AND type = ?", alice.currentUserID(), updateDMTypeChangeRetention).Order("timestamp ASC").Find(&kept).Error)
+	assert.Equal(t, maximumUpdateDMHistoryPerType, len(kept))
+	assert.Equal(t, sent[extra], kept[0].ID, "the oldest kept is the first one past the ones pruned")
+	assert.Equal(t, sent[len(sent)-1], kept[len(kept)-1].ID)
+
+	// The pruned ones were removed from the UI, in order, and nothing else was
+	recorder.Lock()
+	deleted := append([]ID{}, recorder.deleted...)
+	recorder.Unlock()
+	assert.Equal(t, sent[:extra], deleted)
+
+	// The bound is per kind: a single clear from Alice sits alongside the hundred retention changes untouched
+	clear := updateDM{
+		Nonce:     newNonce(),
+		Actor:     alice.currentUserID(),
+		Target:    target,
+		Timestamp: int64(2_000_000),
+		Type:      updateDMTypeSetClearBefore,
+	}
+	clear.ID = clear.generateID()
+	_, accepted := me.handleUpdateDM(alice.network.Address(), signedFrame(t, alice, typeUpdateDM, clear), false)
+	assert.True(t, accepted)
+	var total int64
+	assert.NoError(t, me.database.Model(&updateDM{}).Where("actor = ?", alice.currentUserID()).Count(&total).Error)
+	assert.Equal(t, int64(maximumUpdateDMHistoryPerType+1), total)
 }

@@ -125,6 +125,17 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		}
 	}
 
+	// A creation carries one user record, the creator's, so its size is bounded the same way an invite's is.  The
+	// largest legitimate creation, a creator with the maximum number of devices and the longest names, is a little
+	// over half of this.  Checked before the blob is decoded or hashed, so an oversized one costs nothing.
+	if len(gc.Data) > maximumUserRecordBytes {
+		log.WithFields(log.Fields{
+			"peer": peer,
+			"size": len(gc.Data),
+		}).Warn("rejecting group creation that is too large")
+		return nil, false
+	}
+
 	// Make sure the ID of this group creation is generated from its content
 	if !idMatchesContent(&gc) {
 		log.WithFields(log.Fields{
