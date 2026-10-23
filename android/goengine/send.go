@@ -172,13 +172,12 @@ func (a *Engine) SendDirectMessage(threadID string, text string, attachmentsJSON
 		return err
 	}
 
-	e.SendDirectMessage(chat.DirectMessage{
+	return e.SendDirectMessage(chat.DirectMessage{
 		Thread:           tid,
 		Text:             text,
 		ImageAttachments: p.images,
 		FileAttachments:  p.files,
 	}, p.readers, p.sources)
-	return nil
 }
 
 // SendGroupMessage sends a group message. See SendDirectMessage.
@@ -196,11 +195,10 @@ func (a *Engine) SendGroupMessage(threadID string, text string, attachmentsJSON 
 		return err
 	}
 
-	e.SendGroupMessage(chat.GroupMessage{
+	return e.SendGroupMessage(chat.GroupMessage{
 		Thread:           tid,
 		Text:             text,
 		ImageAttachments: p.images,
 		FileAttachments:  p.files,
 	}, p.readers, p.sources)
-	return nil
 }

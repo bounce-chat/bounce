@@ -182,7 +182,7 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 
 		// Save this new device in our database
 		newDevice := device{
-			ID:        NewID(),
+			Nonce:     newNonce(),
 			UserID:    b.currentUserID(),
 			Address:   peer,
 			Timestamp: time.Now().Unix(),
@@ -193,6 +193,7 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 				SignatureOfPreexistingDevice: sdr.Signature,
 			},
 		}
+		newDevice.ID = newDevice.generateID()
 		err = b.database.Create(&newDevice).Error
 		if err != nil {
 			log.WithFields(log.Fields{

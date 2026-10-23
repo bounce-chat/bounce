@@ -31,15 +31,28 @@ var errInvalidPayloadValue = errors.New("invalid payload value")
 type updateSettings struct {
 	SignedFrame
 	ID        ID `gorm:"primary_key;"`
+	Nonce     nonce
 	Type      uint16
 	Data      []byte
 	Timestamp int64
 	SavedAt   int64 `msgpack:"-"`
 }
 
+func (us *updateSettings) getNonce() nonce {
+	return us.Nonce
+}
+
+func (us *updateSettings) generateID() ID {
+	return newContentHasher(typeUpdateSettings, us.Nonce).
+		int64(us.Timestamp).
+		uint16(us.Type).
+		bytes(us.Data).
+		generate()
+}
+
 func (us *updateSettings) BeforeCreate(tx *gorm.DB) error {
-	if us.ID == NilID {
-		return errors.New("update settings ID must be set before creation")
+	if !idMatchesContent(us) {
+		return errors.New("update settings ID is not generated from its content")
 	}
 	us.SavedAt = time.Now().Unix()
 
@@ -181,6 +194,16 @@ func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 	us.OriginalPayload = sc.Payload
 	us.Signature = sc.Signature
 	us.Signer = sc.Signer
+
+	// Make sure the ID is generated from the content
+	if !idMatchesContent(&us) {
+		log.WithFields(log.Fields{
+			"peer":       peer,
+			"id":         us.getID(),
+			"content_id": us.generateID(),
+		}).Error("rejecting update settings with an ID not generated from its content")
+		return nil, false
+	}
 
 	// Make sure the signing device was not revoked before creating this
 	var signerDevice device
@@ -377,7 +400,7 @@ func (b *Bounce) SetNewGroupRetention(value int64) {
 	binary.LittleEndian.PutUint64(payload, uint64(value))
 
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetDefaultGroupRetention,
 		Data:      payload,
@@ -393,7 +416,7 @@ func (b *Bounce) SetReadReceiptsByDefault(value bool) {
 	}
 
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetDefatulReadReceipts,
 		Data:      payload,
@@ -409,7 +432,7 @@ func (b *Bounce) SetTypingIndicatorsByDefault(value bool) {
 	}
 
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetDefaultTypingIndicators,
 		Data:      payload,
@@ -425,7 +448,7 @@ func (b *Bounce) SetNewGroupRestrictUserManagement(value bool) {
 	}
 
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetNewGroupRestrictUserManagement,
 		Data:      payload,
@@ -441,7 +464,7 @@ func (b *Bounce) SetNewGroupRestrictGroupEdits(value bool) {
 	}
 
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetNewGroupRestirctGroupEdits,
 		Data:      payload,
@@ -457,7 +480,7 @@ func (b *Bounce) SetNewGroupRestrictPosting(value bool) {
 	}
 
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetNewGroupRestrictPosting,
 		Data:      payload,
@@ -466,7 +489,7 @@ func (b *Bounce) SetNewGroupRestrictPosting(value bool) {
 
 func (b *Bounce) SetAutoJoinGroups(value int) {
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetAutoJoinGroups,
 		Data:      []byte{byte(value)},
@@ -478,7 +501,7 @@ func (b *Bounce) SetNewDMRetention(value int64) {
 	binary.LittleEndian.PutUint64(payload, uint64(value))
 
 	b.applyAndBroadcastUpdateSettings(updateSettings{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateSettingsTypeSetDefaultDMRetention,
 		Data:      payload,
@@ -486,6 +509,12 @@ func (b *Bounce) SetNewDMRetention(value int64) {
 }
 
 func (b *Bounce) applyAndBroadcastUpdateSettings(us updateSettings) error {
+	// Give the update its nonce and derive the ID from content
+	if us.Nonce == noNonce {
+		us.Nonce = newNonce()
+	}
+	us.ID = us.generateID()
+
 	// Save the update to the database
 	err := b.saveUpdateSettings(us)
 	if err != nil {

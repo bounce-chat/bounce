@@ -36,8 +36,8 @@ func validatorFor(b *Bounce) (*Bounce, *countingNetwork) {
 // introducedBy builds a device for owner introduced by the device at introducer's address, with both signatures made
 // by the keys given.  Passing a different key as introducerKey than the one behind the introducer address forges it.
 func introducedBy(owner ID, introducer string, introducerKey *bnc01Onion, newDevice *bnc01Onion, timestamp int64) device {
-	return device{
-		ID:        NewID(),
+	d := device{
+		Nonce:     newNonce(),
 		UserID:    owner,
 		Address:   newDevice.addr(),
 		Timestamp: timestamp,
@@ -47,12 +47,14 @@ func introducedBy(owner ID, introducer string, introducerKey *bnc01Onion, newDev
 			SignatureOfPreexistingDevice: newDevice.sign([]byte(introducer)),
 		},
 	}
+	d.ID = d.generateID()
+	return d
 }
 
 // introducedByBounce is introducedBy for an introducer that is a running engine, which signs with its real key
 func introducedByBounce(owner ID, introducer *Bounce, newDevice *bnc01Onion, timestamp int64) device {
-	return device{
-		ID:        NewID(),
+	d := device{
+		Nonce:     newNonce(),
 		UserID:    owner,
 		Address:   newDevice.addr(),
 		Timestamp: timestamp,
@@ -62,6 +64,8 @@ func introducedByBounce(owner ID, introducer *Bounce, newDevice *bnc01Onion, tim
 			SignatureOfPreexistingDevice: newDevice.sign([]byte(introducer.network.Address())),
 		},
 	}
+	d.ID = d.generateID()
+	return d
 }
 
 // growDeviceGroup stores count more devices for owner in b's database, each legitimately introduced by introducer,
@@ -139,7 +143,9 @@ func TestANewDeviceIsOnlyAcceptedFromOneOfTheUsersDevices(t *testing.T) {
 	assert.False(t, validator.isValidAddition(aliceRecord, introducedByBounce(bob.currentUserID(), alice, bnc01NewOnion(), now)))
 
 	// A second device with no introduction at all
-	assert.False(t, validator.isValidAddition(aliceRecord, device{ID: NewID(), UserID: aliceID, Address: bnc01NewOnion().addr(), Timestamp: now}),
+	unsigned := device{Nonce: newNonce(), UserID: aliceID, Address: bnc01NewOnion().addr(), Timestamp: now}
+	unsigned.ID = unsigned.generateID()
+	assert.False(t, validator.isValidAddition(aliceRecord, unsigned),
 		"only the original device is unsigned")
 
 	// An address Alice already has

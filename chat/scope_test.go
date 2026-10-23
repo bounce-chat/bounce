@@ -41,12 +41,13 @@ func TestOverlapUsersInScopeAreCorrect(t *testing.T) {
 
 	// Make a global update from Alice
 	aliceRename := updateUser{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Target:    alice.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeUpdateName,
 		Data:      []byte("Alice 2"),
 	}
+	aliceRename.ID = aliceRename.generateID()
 
 	// Get the users who should receive this update from me, make sure
 	// all who share a group with alice are in there and carol is not

@@ -55,6 +55,7 @@ var updateDMMutex sync.Mutex
 type updateDM struct {
 	SignedFrame
 	ID        ID `gorm:"primary_key;"`
+	Nonce     nonce
 	Actor     ID
 	Target    ID // XOR of two users in the DM
 	Timestamp int64
@@ -64,9 +65,23 @@ type updateDM struct {
 	Data      []byte
 }
 
+func (ud *updateDM) getNonce() nonce {
+	return ud.Nonce
+}
+
+func (ud *updateDM) generateID() ID {
+	return newContentHasher(typeUpdateDM, ud.Nonce).
+		id(ud.Actor).
+		id(ud.Target).
+		int64(ud.Timestamp).
+		uint16(ud.Type).
+		bytes(ud.Data).
+		generate()
+}
+
 func (ud *updateDM) BeforeCreate(tx *gorm.DB) error {
-	if ud.ID == NilID {
-		return errors.New("update DM ID must be set before creation")
+	if !idMatchesContent(ud) {
+		return errors.New("update DM ID is not generated from its content")
 	}
 	ud.SavedAt = time.Now().Unix()
 
@@ -206,6 +221,16 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 	ud.OriginalPayload = sc.Payload
 	ud.Signature = sc.Signature
 	ud.Signer = sc.Signer
+
+	// Make sure the ID is generated from the content
+	if !idMatchesContent(&ud) {
+		log.WithFields(log.Fields{
+			"peer":       peer,
+			"id":         ud.getID(),
+			"content_id": ud.generateID(),
+		}).Error("rejecting update DM with an ID not generated from its content")
+		return nil, false
+	}
 
 	// Make sure the signing device was not revoked before creating this
 	var signerDevice device
@@ -445,7 +470,7 @@ func (b *Bounce) updateDMState(userID ID) {
 					binary.LittleEndian.PutUint64(payload, uint64(profile.ProfileSettings.DefaultDMRetention))
 
 					set := &updateDM{
-						ID:        NewID(),
+						Nonce:     newNonce(),
 						Actor:     b.currentUserID(),
 						Target:    xor(userID, b.currentUserID()),
 						Timestamp: time.Now().Unix(),
@@ -453,6 +478,7 @@ func (b *Bounce) updateDMState(userID ID) {
 						Data:      payload,
 					}
 
+					set.ID = set.generateID()
 					set.OriginalPayload, err = msgpack.Marshal(&set)
 					if err != nil {
 						log.WithFields(log.Fields{
@@ -484,7 +510,7 @@ func (b *Bounce) updateDMState(userID ID) {
 				binary.LittleEndian.PutUint64(payload, uint64(profile.ProfileSettings.DefaultDMRetention))
 
 				offer := &updateDM{
-					ID:        NewID(),
+					Nonce:     newNonce(),
 					Actor:     b.currentUserID(),
 					Target:    xor(userID, b.currentUserID()),
 					Timestamp: time.Now().Unix(),
@@ -492,6 +518,7 @@ func (b *Bounce) updateDMState(userID ID) {
 					Data:      payload,
 				}
 
+				offer.ID = offer.generateID()
 				offer.OriginalPayload, err = msgpack.Marshal(offer)
 				if err != nil {
 					log.WithFields(log.Fields{
@@ -724,7 +751,7 @@ func (b *Bounce) SetDMMutedUntil(userID ID, mutedUntil int64) error {
 	binary.LittleEndian.PutUint64(payload, uint64(mutedUntil))
 
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -738,7 +765,7 @@ func (b *Bounce) SetDMRetention(userID ID, retention int64) error {
 	binary.LittleEndian.PutUint64(payload, uint64(retention))
 
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -751,7 +778,7 @@ func (b *Bounce) ClearDMChatHistory(userID ID) error {
 	go b.updateEncryptedClearBefore(xor(userID, b.currentUserID()), time.Now().Unix())
 
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -774,7 +801,7 @@ func (b *Bounce) SetDMReadReceiptSettings(userID ID, override bool, enabled bool
 	}
 
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -798,7 +825,7 @@ func (b *Bounce) SetDMTypingIndicatorSettings(userID ID, override bool, enabled 
 	}
 
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -816,7 +843,7 @@ func (b *Bounce) SetOpenDM(userID ID, open bool) error {
 	}
 
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -827,7 +854,7 @@ func (b *Bounce) SetOpenDM(userID ID, open bool) error {
 
 func (b *Bounce) AliasUser(userID ID, alias string) error {
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -838,7 +865,7 @@ func (b *Bounce) AliasUser(userID ID, alias string) error {
 
 func (b *Bounce) SetUserNotes(userID ID, notes string) error {
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -855,7 +882,7 @@ func (b *Bounce) BlockUser(userID ID) error {
 	cacheBlockedUser(userID)
 
 	err := b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -877,7 +904,7 @@ func (b *Bounce) UnblockUser(userID ID) error {
 	}
 
 	return b.applyAndBroadcastUpdateDM(&updateDM{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Actor:     b.currentUserID(),
 		Target:    xor(userID, b.currentUserID()),
 		Timestamp: time.Now().Unix(),
@@ -887,6 +914,12 @@ func (b *Bounce) UnblockUser(userID ID) error {
 }
 
 func (b *Bounce) applyAndBroadcastUpdateDM(ud *updateDM) error {
+	// Give the update its nonce and derive the ID from content
+	if ud.Nonce == noNonce {
+		ud.Nonce = newNonce()
+	}
+	ud.ID = ud.generateID()
+
 	// Called in a goroutine since the UI can't be called back from main
 	go func() {
 		// Save and display the update the UI

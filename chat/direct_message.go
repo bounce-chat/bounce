@@ -22,7 +22,8 @@ var dmDeliveryNotifications = map[ID]chan bool{}
 // A direct message is a chat message from one user to another
 type directMessage struct {
 	SignedFrame
-	ID               ID    `gorm:"primary_key;"`
+	ID               ID `gorm:"primary_key;"`
+	Nonce            nonce
 	SavedAt          int64 `msgpack:"-"`
 	WrittenAt        int64
 	DeleteAt         int64
@@ -35,9 +36,25 @@ type directMessage struct {
 	ImageAttachments []imageAttachment `gorm:"foreignKey:MessageID"`
 }
 
+func (dm *directMessage) getNonce() nonce {
+	return dm.Nonce
+}
+
+func (dm *directMessage) generateID() ID {
+	ch := newContentHasher(typeDirectMessage, dm.Nonce).
+		id(dm.Author).
+		id(dm.Xor).
+		int64(dm.WrittenAt).
+		int64(dm.DeleteAt).
+		bytes([]byte(dm.Text))
+	packImageAttachments(ch, dm.ImageAttachments)
+	packFileAttachments(ch, dm.FileAttachments)
+	return ch.generate()
+}
+
 func (dm *directMessage) BeforeCreate(tx *gorm.DB) error {
-	if dm.ID == NilID {
-		return errors.New("direct message must have an ID assigned before creation")
+	if !idMatchesContent(dm) {
+		return errors.New("direct message ID is not generated from its content")
 	}
 	dm.SavedAt = time.Now().Unix()
 	return nil
@@ -138,6 +155,16 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 	dm.OriginalPayload = sc.Payload
 	dm.Signature = sc.Signature
 	dm.Signer = sc.Signer
+
+	// Make sure the ID is generated from the content
+	if !idMatchesContent(&dm) {
+		log.WithFields(log.Fields{
+			"peer":       peer,
+			"id":         dm.getID(),
+			"content_id": dm.generateID(),
+		}).Error("rejecting direct message with an ID not generated from its content")
+		return nil, false
+	}
 
 	// Make sure the signing device was not revoked before creating this
 	var signerDevice device
@@ -401,9 +428,20 @@ func (b *Bounce) getDMNotificationContent(dm *directMessage) (string, string, er
 	return author.Name, content, nil
 }
 
-func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[ID]io.ReadCloser, sources map[ID]string) {
+var errMessageTooLong = errors.New("message is too long")
+var errMessageEmpty = errors.New("message has no text or attachments")
+var errRecipientBlocked = errors.New("cannot send a message to a blocked user")
+var errAttachmentNotDistributed = errors.New("an attachment could not be distributed")
+
+// SendDirectMessage sends a message to a user.  Attachments that cannot be read or are too large to embed are left
+// out and the rest of the message is still sent; an error means nothing was sent.
+func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[ID]io.ReadCloser, sources map[ID]string) error {
 	if utf8.RuneCountInString(message.Text) > MaximumMessageCharacters {
 		log.Error("refusing to send message that is too long")
+		for _, r := range readers {
+			r.Close()
+		}
+		return errMessageTooLong
 	}
 	if message.ID != NilID {
 		log.Fatal("direct message ID cannot be set by the UI")
@@ -416,7 +454,7 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[ID]io.Read
 		for _, r := range readers {
 			r.Close()
 		}
-		return
+		return errRecipientBlocked
 	}
 
 	now := time.Now()
@@ -426,7 +464,7 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[ID]io.Read
 		deleteAt = now.Unix() + retentionSeconds
 	}
 	dm := &directMessage{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		WrittenAt: now.Unix(),
 		Seen:      true,
 		Author:    b.currentUserID(),
@@ -434,10 +472,12 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[ID]io.Read
 		DeleteAt:  deleteAt,
 		Text:      message.Text,
 	}
-	message.ID = dm.ID
 	message.Author = b.currentUserID()
 	message.WrittenAt = now.Unix()
 
+	// Attachments are part of the message's content, and distributing one broadcasts a file that names the message,
+	// so the attachments are gathered and checked first, the message gets its ID, and only then are the files sent
+	pending := []pendingAttachment{}
 	includedImageAttachments := []ImageAttachment{}
 	for _, ia := range message.ImageAttachments {
 		reader, ok := readers[ia.ID]
@@ -471,6 +511,14 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[ID]io.Read
 			}).Error("error reading image data to attach to message")
 			continue
 		}
+		if len(data) > EmbeddedFileLimit {
+			log.WithFields(log.Fields{
+				"id":   ia.ID,
+				"name": ia.Name,
+				"size": len(data),
+			}).Error("image is too large to embed, leaving it out of the message")
+			continue
+		}
 
 		scope := scopeUser
 		destination := xor(message.Thread, b.currentUserID())
@@ -478,26 +526,17 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[ID]io.Read
 			scope = scopeSync
 			destination = NilID
 		}
-		err = b.embedFile(ia.ID, data, scope, destination, fileTypeMessageAttachment, dm.ID)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"id":    ia.ID,
-				"name":  ia.Name,
-				"error": err.Error(),
-			}).Error("error distributing image attachment")
-		} else {
-			includedImageAttachments = append(includedImageAttachments, ia)
-			dm.ImageAttachments = append(dm.ImageAttachments, imageAttachment{
-				ID:        NewID(),
-				FileID:    ia.ID,
-				MessageID: dm.ID,
-				Name:      ia.Name,
-				Size:      ia.Size,
-				Width:     ia.Width,
-				Height:    ia.Height,
-				BlurHash:  ia.BlurHash,
-			})
-		}
+		pending = append(pending, pendingAttachment{fileID: ia.ID, name: ia.Name, data: data, scope: scope, destination: destination})
+		includedImageAttachments = append(includedImageAttachments, ia)
+		dm.ImageAttachments = append(dm.ImageAttachments, imageAttachment{
+			ID:       NewID(),
+			FileID:   ia.ID,
+			Name:     ia.Name,
+			Size:     ia.Size,
+			Width:    ia.Width,
+			Height:   ia.Height,
+			BlurHash: ia.BlurHash,
+		})
 	}
 	includedFileAttachments := []FileAttachment{}
 	for _, fa := range message.FileAttachments {
@@ -510,6 +549,12 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[ID]io.Read
 			continue
 		}
 
+		scope := scopeUser
+		destination := xor(message.Thread, b.currentUserID())
+		if message.Thread == b.currentUserID() {
+			scope = scopeSync
+			destination = b.currentUserID()
+		}
 		if fa.Size > EmbeddedFileLimit {
 			reader.Close()
 			source, ok := sources[fa.ID]
@@ -517,26 +562,10 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[ID]io.Read
 				log.WithFields(log.Fields{
 					"id":   fa.ID,
 					"name": fa.Name,
-				}).Error("cannot attach large large file to message without source")
+				}).Error("cannot attach large file to message without source")
 				continue
 			}
-
-			scope := scopeUser
-			destination := xor(message.Thread, b.currentUserID())
-			if message.Thread == b.currentUserID() {
-				scope = scopeSync
-				destination = b.currentUserID()
-			}
-			go func() {
-				err := b.seedFile(fa.ID, source, scope, destination, fileTypeMessageAttachment, dm.ID)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"id":    fa.ID,
-						"name":  fa.Name,
-						"error": err.Error(),
-					}).Error("error seeding file attachment")
-				}
-			}()
+			pending = append(pending, pendingAttachment{fileID: fa.ID, name: fa.Name, source: source, scope: scope, destination: destination})
 		} else {
 			data, err := io.ReadAll(reader)
 			reader.Close()
@@ -548,36 +577,51 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[ID]io.Read
 				}).Error("error reading file data to attach to message")
 				continue
 			}
-
-			scope := scopeUser
-			destination := xor(message.Thread, b.currentUserID())
-			if message.Thread == b.currentUserID() {
-				scope = scopeSync
-				destination = b.currentUserID()
-			}
-			err = b.embedFile(fa.ID, data, scope, destination, fileTypeMessageAttachment, dm.ID)
-			if err != nil {
+			if len(data) > EmbeddedFileLimit {
 				log.WithFields(log.Fields{
-					"id":    fa.ID,
-					"name":  fa.Name,
-					"error": err.Error(),
-				}).Error("error distributing file attachment")
+					"id":   fa.ID,
+					"name": fa.Name,
+					"size": len(data),
+				}).Error("file is too large to embed, leaving it out of the message")
 				continue
 			}
+			pending = append(pending, pendingAttachment{fileID: fa.ID, name: fa.Name, data: data, scope: scope, destination: destination})
 		}
 		includedFileAttachments = append(includedFileAttachments, fa)
 		dm.FileAttachments = append(dm.FileAttachments, fileAttachment{
-			ID:        NewID(),
-			FileID:    fa.ID,
-			MessageID: dm.ID,
-			Name:      fa.Name,
-			Size:      fa.Size,
+			ID:     NewID(),
+			FileID: fa.ID,
+			Name:   fa.Name,
+			Size:   fa.Size,
 		})
 	}
 
 	if dm.empty() {
 		log.Error("refusing to send empty direct message")
-		return
+		return errMessageEmpty
+	}
+
+	// The content is complete, so the message gets its ID and the attachments can be sent naming it.  Everything
+	// that could be wrong with an attachment has been checked, so a failure here is a disk or database problem and
+	// the message is not sent at all: its ID commits to this attachment list, so none can be dropped now.
+	dm.ID = dm.generateID()
+	message.ID = dm.ID
+	for i := range dm.ImageAttachments {
+		dm.ImageAttachments[i].MessageID = dm.ID
+	}
+	for i := range dm.FileAttachments {
+		dm.FileAttachments[i].MessageID = dm.ID
+	}
+	for _, p := range pending {
+		err := b.distributeAttachment(p, dm.ID)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    p.fileID,
+				"name":  p.name,
+				"error": err.Error(),
+			}).Error("error distributing attachment, not sending message")
+			return errAttachmentNotDistributed
+		}
 	}
 
 	var err error
@@ -616,6 +660,7 @@ func (b *Bounce) SendDirectMessage(message DirectMessage, readers map[ID]io.Read
 	})
 
 	b.broadcast(dm)
+	return nil
 }
 
 func (b *Bounce) deleteDirectMessageAt(timestamp int64, id ID) {

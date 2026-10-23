@@ -34,12 +34,13 @@ func TestMessagesAreValidIfCatchUpGivesPermission(t *testing.T) {
 
 	// Create a post from a non-admin
 	alicePost := &groupMessage{
-		ID:          NewID(),
+		Nonce:       newNonce(),
 		WrittenAt:   time.Now().Unix() + 1,
 		Author:      alice.currentUserID(),
 		Destination: groupID,
 		Text:        "I am allowed to post again",
 	}
+	alicePost.ID = alicePost.generateID()
 	alicePost.OriginalPayload, err = msgpack.Marshal(alicePost)
 	assert.NoError(t, err)
 	sc = alice.createSignedContainer(typeGroupMessage, alicePost.OriginalPayload)
@@ -96,12 +97,13 @@ func TestMessagesAreInvalidIfCatchUpRemovesPermission(t *testing.T) {
 
 	// Create a post from a non-admin
 	alicePost := &groupMessage{
-		ID:          NewID(),
+		Nonce:       newNonce(),
 		WrittenAt:   time.Now().Unix(),
 		Author:      alice.currentUserID(),
 		Destination: groupID,
 		Text:        "I am not allowed to post now",
 	}
+	alicePost.ID = alicePost.generateID()
 	alicePost.OriginalPayload, err = msgpack.Marshal(alicePost)
 	assert.NoError(t, err)
 	sc = alice.createSignedContainer(typeGroupMessage, alicePost.OriginalPayload)
@@ -164,12 +166,13 @@ func TestMessagesAreValidIfUserBecomesAdminWhenRequired(t *testing.T) {
 
 	// Create a post from Alice
 	alicePost := &groupMessage{
-		ID:          NewID(),
+		Nonce:       newNonce(),
 		WrittenAt:   time.Now().Unix(),
 		Author:      alice.currentUserID(),
 		Destination: groupID,
 		Text:        "I am now an admin",
 	}
+	alicePost.ID = alicePost.generateID()
 	alicePost.OriginalPayload, err = msgpack.Marshal(alicePost)
 	assert.NoError(t, err)
 	sc = alice.createSignedContainer(typeGroupMessage, alicePost.OriginalPayload)
@@ -234,12 +237,13 @@ func TestMessagesAreInvalidIfUserLoosesAdminWhenRequired(t *testing.T) {
 
 	// Create a post from Alice
 	alicePost := &groupMessage{
-		ID:          NewID(),
+		Nonce:       newNonce(),
 		WrittenAt:   time.Now().Unix() + 1,
 		Author:      alice.currentUserID(),
 		Destination: groupID,
 		Text:        "I am not an admin now",
 	}
+	alicePost.ID = alicePost.generateID()
 	alicePost.OriginalPayload, err = msgpack.Marshal(alicePost)
 	assert.NoError(t, err)
 	sc = alice.createSignedContainer(typeGroupMessage, alicePost.OriginalPayload)
