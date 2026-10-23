@@ -37,6 +37,7 @@ var readReceiptMutex sync.Mutex
 type readReceipt struct {
 	SignedFrame
 	ID          ID `gorm:"primary_key;"`
+	Nonce       nonce
 	Actor       ID
 	Destination ID  `msgpack:"-"`
 	Scope       int `msgpack:"-"`
@@ -46,9 +47,22 @@ type readReceipt struct {
 	SavedAt     int64 `msgpack:"-"`
 }
 
+func (rr *readReceipt) getNonce() nonce {
+	return rr.Nonce
+}
+
+func (rr *readReceipt) generateID() ID {
+	return newContentHasher(typeReadReceipt, rr.Nonce).
+		id(rr.Actor).
+		id(rr.Target).
+		uint16(rr.TargetType).
+		int64(rr.Timestamp).
+		generate()
+}
+
 func (rr *readReceipt) BeforeCreate(tx *gorm.DB) error {
-	if rr.ID == NilID {
-		return errors.New("read receipt ID must be set before creation")
+	if !idMatchesContent(rr) {
+		return errors.New("read receipt ID is not generated from its content")
 	}
 	rr.SavedAt = time.Now().Unix()
 
@@ -128,6 +142,16 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) (b
 	rr.OriginalPayload = sc.Payload
 	rr.Signature = sc.Signature
 	rr.Signer = sc.Signer
+
+	// Make sure the ID is generated from the content
+	if !idMatchesContent(&rr) {
+		log.WithFields(log.Fields{
+			"peer":       peer,
+			"id":         rr.getID(),
+			"content_id": rr.generateID(),
+		}).Error("rejecting read receipt with an ID not generated from its content")
+		return nil, false
+	}
 
 	// Make sure that the user that created this signed container is the actor
 	if !b.signedByUser(sc, rr.Actor) {
@@ -463,7 +487,7 @@ func (b *Bounce) sendReadReceipt(id ID, frameType string) error {
 	}
 
 	rr := readReceipt{
-		ID:          NewID(),
+		Nonce:       newNonce(),
 		Actor:       b.currentUserID(),
 		Destination: destination,
 		Scope:       scope,
@@ -471,6 +495,7 @@ func (b *Bounce) sendReadReceipt(id ID, frameType string) error {
 		TargetType:  targetTypeInt,
 		Timestamp:   time.Now().Unix(),
 	}
+	rr.ID = rr.generateID()
 
 	// Sign it
 	rr.OriginalPayload, err = msgpack.Marshal(rr)

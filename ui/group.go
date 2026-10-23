@@ -587,7 +587,14 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 		gm.FileAttachments = fileAttachments
 		go ui.bounce.UpdateDraft(g.id, "")
 		g.buttonData.setDraft("")
-		go ui.bounce.SendGroupMessage(gm, readers, sources)
+		go func() {
+			err := ui.bounce.SendGroupMessage(gm, readers, sources)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("message was not sent") // TODO: tell the user
+			}
+		}()
 	}
 	entry.customOnSubmitted = sendMessage
 

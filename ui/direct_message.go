@@ -294,7 +294,14 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 
 		go ui.bounce.UpdateDraft(dm.user.id, "")
 		dm.buttonData.setDraft("")
-		go ui.bounce.SendDirectMessage(chatDM, readers, sources)
+		go func() {
+			err := ui.bounce.SendDirectMessage(chatDM, readers, sources)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("message was not sent") // TODO: tell the user
+			}
+		}()
 	}
 	entry.customOnSubmitted = sendMessage
 

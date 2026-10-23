@@ -28,6 +28,7 @@ var errCannotRevokeLastDevice = errors.New("cannot revoke last device")
 type updateDevice struct {
 	SignedFrame
 	ID        ID `gorm:"primary_key;"`
+	Nonce     nonce
 	Target    ID
 	Type      uint16
 	Data      []byte
@@ -36,9 +37,22 @@ type updateDevice struct {
 	Author    ID    `msgpack:"-"`
 }
 
+func (ud *updateDevice) getNonce() nonce {
+	return ud.Nonce
+}
+
+func (ud *updateDevice) generateID() ID {
+	return newContentHasher(typeUpdateDevice, ud.Nonce).
+		id(ud.Target).
+		int64(ud.Timestamp).
+		uint16(ud.Type).
+		bytes(ud.Data).
+		generate()
+}
+
 func (ud *updateDevice) BeforeCreate(tx *gorm.DB) error {
-	if ud.ID == NilID {
-		return errors.New("update device ID must be set before creation")
+	if !idMatchesContent(ud) {
+		return errors.New("update device ID is not generated from its content")
 	}
 	ud.SavedAt = time.Now().Unix()
 
@@ -129,6 +143,16 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) (
 	ud.OriginalPayload = sc.Payload
 	ud.Signature = sc.Signature
 	ud.Signer = sc.Signer
+
+	// Make sure the ID is generated from the content
+	if !idMatchesContent(&ud) {
+		log.WithFields(log.Fields{
+			"peer":       peer,
+			"id":         ud.getID(),
+			"content_id": ud.generateID(),
+		}).Error("rejecting update device with an ID not generated from its content")
+		return nil, false
+	}
 
 	// Look up the device
 	var d device
@@ -476,7 +500,7 @@ func (b *Bounce) RenameDevice(deviceID ID, name string) error {
 	err := b.database.First(&esd, "id = ?", deviceID).Error
 	if err == nil {
 		return b.applyAndBroadcastUpdateUser(updateUser{
-			ID:        NewID(),
+			Nonce:     newNonce(),
 			Target:    b.currentUserID(),
 			Timestamp: time.Now().Unix(),
 			Type:      updateUserTypeSetEncryptedDeviceName,
@@ -485,7 +509,7 @@ func (b *Bounce) RenameDevice(deviceID ID, name string) error {
 	}
 
 	ud := updateDevice{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Target:    deviceID,
 		Type:      updateDeviceTypeUpdateName,
 		Data:      []byte(name),
@@ -519,7 +543,7 @@ func (b *Bounce) RevokeDevice(deviceID ID) error {
 	err := b.database.First(&esd, "id = ?", deviceID).Error
 	if err == nil {
 		return b.applyAndBroadcastUpdateUser(updateUser{
-			ID:        NewID(),
+			Nonce:     newNonce(),
 			Target:    b.currentUserID(),
 			Timestamp: time.Now().Unix(),
 			Type:      updateUserTypeRemoveEncryptedDevice,
@@ -558,7 +582,7 @@ func (b *Bounce) RevokeDevice(deviceID ID) error {
 	}
 
 	ud := updateDevice{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Target:    deviceID,
 		Type:      updateDeviceTypeRevoke,
 		Timestamp: time.Now().Unix(),
@@ -602,7 +626,7 @@ func (b *Bounce) createAndShareDeviceECDHKey() {
 	}
 
 	b.applyAndBroadcastUpdateDevice(updateDevice{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Target:    d.ID,
 		Type:      updateDeviceTypeSetPublicKey,
 		Data:      publicKeyBytes,
@@ -612,6 +636,12 @@ func (b *Bounce) createAndShareDeviceECDHKey() {
 }
 
 func (b *Bounce) applyAndBroadcastUpdateDevice(ud updateDevice) error {
+	// Give the update its nonce and derive the ID from content
+	if ud.Nonce == noNonce {
+		ud.Nonce = newNonce()
+	}
+	ud.ID = ud.generateID()
+
 	var err error
 	ud.OriginalPayload, err = msgpack.Marshal(&ud)
 	if err != nil {

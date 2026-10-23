@@ -219,10 +219,12 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 	}
 
 	d := device{
-		ID:        NewID(),
+		Nonce:     newNonce(),
+		UserID:    newID,
 		Address:   b.network.Address(),
 		Timestamp: time.Now().Unix(),
 	}
+	d.ID = d.generateID()
 
 	curve := ecdh.X25519()
 	privateECDHKey, err := curve.GenerateKey(rand.Reader)
@@ -330,7 +332,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		}
 
 		err = b.applyAndBroadcastUpdateUser(updateUser{
-			ID:        NewID(),
+			Nonce:     newNonce(),
 			Target:    b.currentUserID(),
 			Timestamp: time.Now().Unix(),
 			Type:      updateUserTypeReplaceKeys,

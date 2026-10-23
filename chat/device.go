@@ -17,7 +17,8 @@ var handleDevicesMutex sync.Mutex
 
 // A device represents an instance of bounce
 type device struct {
-	ID             ID     `gorm:"primary_key;"`
+	ID             ID `gorm:"primary_key;"`
+	Nonce          nonce
 	Name           string `msgpack:"-"`
 	UserID         ID
 	Address        string `gorm:"uniqueIndex"`
@@ -30,9 +31,31 @@ type device struct {
 	Signature      *introductionSignature
 }
 
+func (d *device) getNonce() nonce {
+	return d.Nonce
+}
+
+// A device's ID is generated from who it belongs to, its address, when it was created, and the introduction that
+// vouches for it.  Revocation is set by later updates and so it isn't included.
+func (d *device) generateID() ID {
+	ch := newContentHasher(typeDevice, d.Nonce).
+		id(d.UserID).
+		bytes([]byte(d.Address)).
+		int64(d.Timestamp)
+	if d.Signature == nil {
+		ch.uint16(0)
+	} else {
+		ch.uint16(1).
+			bytes([]byte(d.Signature.PreexistingDevice)).
+			bytes(d.Signature.SignatureOfNewDevice).
+			bytes(d.Signature.SignatureOfPreexistingDevice)
+	}
+	return ch.generate()
+}
+
 func (d *device) BeforeCreate(tx *gorm.DB) error {
-	if d.ID == NilID {
-		return errors.New("device must have ID set before creation")
+	if !idMatchesContent(d) {
+		return errors.New("device ID is not generated from its content")
 	}
 	d.RevokedAt = 0 // Revoked status can only be set by signed updates
 	d.SavedAt = time.Now().Unix()
@@ -152,6 +175,16 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadc
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling device")
+		return nil, false
+	}
+
+	// Make sure the ID is generated from the content
+	if !idMatchesContent(&d) {
+		log.WithFields(log.Fields{
+			"peer":       peer,
+			"id":         d.getID(),
+			"content_id": d.generateID(),
+		}).Error("rejecting device with an ID not generated from its content")
 		return nil, false
 	}
 

@@ -38,6 +38,15 @@ const maximumDevicesPerUser = 1024
 //  4. the new device has a valid mutual signature with an existing device
 //  5. the existing device was not revoked before it signed this new device
 func (b *Bounce) isValidAddition(u user, dev device) bool {
+	// New device must have ID generated from content
+	if !idMatchesContent(&dev) {
+		log.WithFields(log.Fields{
+			"user":   u.ID,
+			"device": dev.ID,
+		}).Warn("rejecting device addition because the device ID is not generated from its content")
+		return false
+	}
+
 	// New device must belong to the user
 	if dev.UserID != u.ID {
 		log.WithFields(log.Fields{
@@ -182,6 +191,13 @@ func (b *Bounce) hasValidDeviceGroup(u user) bool {
 
 	for _, dev := range u.Devices {
 		if dev.UserID != u.ID {
+			return false
+		}
+		if !idMatchesContent(&dev) {
+			log.WithFields(log.Fields{
+				"user":   u.ID,
+				"device": dev.ID,
+			}).Warn("a device group is invalid because a device ID is not generated from its content")
 			return false
 		}
 

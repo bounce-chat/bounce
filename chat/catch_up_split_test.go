@@ -27,7 +27,8 @@ func messagesFrom(author *Bounce, counterparty ID, n int) []*directMessage {
 	dms := []*directMessage{}
 	base := time.Now().Unix() - int64(n)
 	for i := 0; i < n; i++ {
-		dm := &directMessage{ID: NewID(), Author: author.currentUserID(), Xor: xor(author.currentUserID(), counterparty), Text: fmt.Sprintf("message %02d", i), WrittenAt: base + int64(i), SavedAt: base + int64(i)}
+		dm := &directMessage{Nonce: newNonce(), Author: author.currentUserID(), Xor: xor(author.currentUserID(), counterparty), Text: fmt.Sprintf("message %02d", i), WrittenAt: base + int64(i), SavedAt: base + int64(i)}
+		dm.ID = dm.generateID()
 		dm.OriginalPayload, _ = msgpack.Marshal(dm)
 		sc := author.createSignedContainer(typeDirectMessage, dm.OriginalPayload)
 		dm.Signature, dm.Signer = sc.Signature, sc.Signer

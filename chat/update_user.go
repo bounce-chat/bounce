@@ -44,6 +44,7 @@ type keySet struct {
 type updateUser struct {
 	SignedFrame
 	ID           ID `gorm:"primary_key;"`
+	Nonce        nonce
 	Target       ID
 	Type         uint16
 	Data         []byte
@@ -53,9 +54,22 @@ type updateUser struct {
 	Seen         bool  `msgpack:"-"`
 }
 
+func (uu *updateUser) getNonce() nonce {
+	return uu.Nonce
+}
+
+func (uu *updateUser) generateID() ID {
+	return newContentHasher(typeUpdateUser, uu.Nonce).
+		id(uu.Target).
+		int64(uu.Timestamp).
+		uint16(uu.Type).
+		bytes(uu.Data).
+		generate()
+}
+
 func (uu *updateUser) BeforeCreate(tx *gorm.DB) error {
-	if uu.ID == NilID {
-		return errors.New("update user ID must be set before creation")
+	if !idMatchesContent(uu) {
+		return errors.New("update user ID is not generated from its content")
 	}
 	uu.SavedAt = time.Now().Unix()
 
@@ -156,6 +170,16 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) (br
 	uu.OriginalPayload = sc.Payload
 	uu.Signature = sc.Signature
 	uu.Signer = sc.Signer
+
+	// Make sure the ID is generated from the content
+	if !idMatchesContent(&uu) {
+		log.WithFields(log.Fields{
+			"peer":       peer,
+			"id":         uu.getID(),
+			"content_id": uu.generateID(),
+		}).Error("rejecting update user with an ID not generated from its content")
+		return nil, false
+	}
 
 	// Ignore anything from a blocked user
 	if blockedUser(uu.getAuthor()) {
@@ -684,7 +708,7 @@ func (b *Bounce) UpdateProfileImage(newImage []byte) error {
 	}
 
 	return b.applyAndBroadcastUpdateUser(updateUser{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Target:    b.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeUpdateImage,
@@ -702,7 +726,7 @@ func (b *Bounce) UpdateProfileName(newName string) error {
 	}
 
 	return b.applyAndBroadcastUpdateUser(updateUser{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Target:    b.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeUpdateName,
@@ -712,7 +736,7 @@ func (b *Bounce) UpdateProfileName(newName string) error {
 
 func (b *Bounce) addEncryptedDevice(address string) error {
 	return b.applyAndBroadcastUpdateUser(updateUser{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Target:    b.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeAddEncryptedDevice,
@@ -809,7 +833,7 @@ func (b *Bounce) rollKeys() error {
 
 	// Inform sync devices about new keys, and all other users about public ECDH key
 	err = b.applyAndBroadcastUpdateUser(updateUser{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Target:    b.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeReplaceKeys,
@@ -822,7 +846,7 @@ func (b *Bounce) rollKeys() error {
 		return err
 	}
 	err = b.applyAndBroadcastUpdateUser(updateUser{
-		ID:        NewID(),
+		Nonce:     newNonce(),
 		Target:    b.currentUserID(),
 		Timestamp: time.Now().Unix(),
 		Type:      updateUserTypeReplaceECDHPublicKey,
@@ -839,6 +863,12 @@ func (b *Bounce) rollKeys() error {
 }
 
 func (b *Bounce) applyAndBroadcastUpdateUser(uu updateUser) error {
+	// Give the update its nonce and derive the ID from content
+	if uu.Nonce == noNonce {
+		uu.Nonce = newNonce()
+	}
+	uu.ID = uu.generateID()
+
 	// Create the signed container for this update
 	var err error
 	uu.OriginalPayload, err = msgpack.Marshal(&uu)

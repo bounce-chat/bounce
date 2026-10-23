@@ -20,7 +20,8 @@ var gmDeliveryNotifications = map[ID]chan bool{}
 // A group message is sent from a member of a group to a group
 type groupMessage struct {
 	SignedFrame
-	ID               ID    `gorm:"primary_key;"`
+	ID               ID `gorm:"primary_key;"`
+	Nonce            nonce
 	SavedAt          int64 `msgpack:"-"`
 	WrittenAt        int64
 	DeleteAt         int64
@@ -33,9 +34,25 @@ type groupMessage struct {
 	ImageAttachments []imageAttachment `gorm:"foreignKey:MessageID"`
 }
 
+func (gm *groupMessage) getNonce() nonce {
+	return gm.Nonce
+}
+
+func (gm *groupMessage) generateID() ID {
+	ch := newContentHasher(typeGroupMessage, gm.Nonce).
+		id(gm.Author).
+		id(gm.Destination).
+		int64(gm.WrittenAt).
+		int64(gm.DeleteAt).
+		bytes([]byte(gm.Text))
+	packImageAttachments(ch, gm.ImageAttachments)
+	packFileAttachments(ch, gm.FileAttachments)
+	return ch.generate()
+}
+
 func (gm *groupMessage) BeforeCreate(tx *gorm.DB) error {
-	if gm.ID == NilID {
-		return errors.New("group message must have an ID assigned before creation")
+	if !idMatchesContent(gm) {
+		return errors.New("group message ID is not generated from its content")
 	}
 	gm.SavedAt = time.Now().Unix()
 	return nil
@@ -132,6 +149,16 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 	gm.OriginalPayload = sc.Payload
 	gm.Signature = sc.Signature
 	gm.Signer = sc.Signer
+
+	// Make sure the ID is generated from the content
+	if !idMatchesContent(&gm) {
+		log.WithFields(log.Fields{
+			"peer":       peer,
+			"id":         gm.getID(),
+			"content_id": gm.generateID(),
+		}).Error("rejecting group message with an ID not generated from its content")
+		return nil, false
+	}
 
 	// Ignore empty messages
 	if gm.empty() {
@@ -431,9 +458,15 @@ func (b *Bounce) getGMNotificationContent(gm *groupMessage) (string, string, err
 	return g.Name, content, nil
 }
 
-func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[ID]io.ReadCloser, sources map[ID]string) {
+// SendGroupMessage sends a message to a group.  Attachments that cannot be read or are too large to embed are left
+// out and the rest of the message is still sent; an error means nothing was sent.
+func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[ID]io.ReadCloser, sources map[ID]string) error {
 	if utf8.RuneCountInString(message.Text) > MaximumMessageCharacters {
 		log.Error("refusing to send message that is too long")
+		for _, r := range readers {
+			r.Close()
+		}
+		return errMessageTooLong
 	}
 	if message.ID != NilID {
 		log.Fatal("group message ID cannot be set by the UI")
@@ -448,7 +481,7 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[ID]io.ReadCl
 		for _, r := range readers {
 			r.Close()
 		}
-		return
+		return err
 	}
 
 	now := time.Now()
@@ -458,7 +491,7 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[ID]io.ReadCl
 		deleteAt = now.Unix() + retentionSeconds
 	}
 	gm := &groupMessage{
-		ID:          NewID(),
+		Nonce:       newNonce(),
 		WrittenAt:   now.Unix(),
 		Seen:        true,
 		Author:      b.currentUserID(),
@@ -467,6 +500,9 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[ID]io.ReadCl
 		Text:        message.Text,
 	}
 
+	// Attachments are part of the message's content, and distributing one broadcasts a file that names the message,
+	// so the attachments are gathered and checked first, the message gets its ID, and only then are the files sent
+	pending := []pendingAttachment{}
 	includedImageAttachments := []ImageAttachment{}
 	for _, ia := range message.ImageAttachments {
 		reader, ok := readers[ia.ID]
@@ -500,27 +536,26 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[ID]io.ReadCl
 			}).Error("error reading image data to attach to message")
 			continue
 		}
-
-		err = b.embedFile(ia.ID, data, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
-		if err != nil {
+		if len(data) > EmbeddedFileLimit {
 			log.WithFields(log.Fields{
-				"id":    ia.ID,
-				"name":  ia.Name,
-				"error": err.Error(),
-			}).Error("error distributing image attachment")
-		} else {
-			includedImageAttachments = append(includedImageAttachments, ia)
-			gm.ImageAttachments = append(gm.ImageAttachments, imageAttachment{
-				ID:        NewID(),
-				FileID:    ia.ID,
-				MessageID: gm.ID,
-				Name:      ia.Name,
-				Size:      ia.Size,
-				Width:     ia.Width,
-				Height:    ia.Height,
-				BlurHash:  ia.BlurHash,
-			})
+				"id":   ia.ID,
+				"name": ia.Name,
+				"size": len(data),
+			}).Error("image is too large to embed, leaving it out of the message")
+			continue
 		}
+
+		pending = append(pending, pendingAttachment{fileID: ia.ID, name: ia.Name, data: data, scope: scopeGroup, destination: message.Thread})
+		includedImageAttachments = append(includedImageAttachments, ia)
+		gm.ImageAttachments = append(gm.ImageAttachments, imageAttachment{
+			ID:       NewID(),
+			FileID:   ia.ID,
+			Name:     ia.Name,
+			Size:     ia.Size,
+			Width:    ia.Width,
+			Height:   ia.Height,
+			BlurHash: ia.BlurHash,
+		})
 	}
 	includedFileAttachments := []FileAttachment{}
 	for _, fa := range message.FileAttachments {
@@ -540,20 +575,10 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[ID]io.ReadCl
 				log.WithFields(log.Fields{
 					"id":   fa.ID,
 					"name": fa.Name,
-				}).Error("cannot attach large file to message without reader")
+				}).Error("cannot attach large file to message without source")
 				continue
 			}
-
-			go func() {
-				err = b.seedFile(fa.ID, source, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"id":    fa.ID,
-						"name":  fa.Name,
-						"error": err.Error(),
-					}).Error("error seeding file attachment")
-				}
-			}()
+			pending = append(pending, pendingAttachment{fileID: fa.ID, name: fa.Name, source: source, scope: scopeGroup, destination: message.Thread})
 		} else {
 			data, err := io.ReadAll(reader)
 			reader.Close()
@@ -565,30 +590,50 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[ID]io.ReadCl
 				}).Error("error reading file data to attach to message")
 				continue
 			}
-
-			err = b.embedFile(fa.ID, data, scopeGroup, message.Thread, fileTypeMessageAttachment, gm.ID)
-			if err != nil {
+			if len(data) > EmbeddedFileLimit {
 				log.WithFields(log.Fields{
-					"id":    fa.ID,
-					"name":  fa.Name,
-					"error": err.Error(),
-				}).Error("error embedding file attachment")
+					"id":   fa.ID,
+					"name": fa.Name,
+					"size": len(data),
+				}).Error("file is too large to embed, leaving it out of the message")
 				continue
 			}
+			pending = append(pending, pendingAttachment{fileID: fa.ID, name: fa.Name, data: data, scope: scopeGroup, destination: message.Thread})
 		}
 		includedFileAttachments = append(includedFileAttachments, fa)
 		gm.FileAttachments = append(gm.FileAttachments, fileAttachment{
-			ID:        NewID(),
-			FileID:    fa.ID,
-			MessageID: gm.ID,
-			Name:      fa.Name,
-			Size:      fa.Size,
+			ID:     NewID(),
+			FileID: fa.ID,
+			Name:   fa.Name,
+			Size:   fa.Size,
 		})
 	}
 
 	if gm.empty() {
 		log.Error("refusing to send empty group message")
-		return
+		return errMessageEmpty
+	}
+
+	// The content is complete, so the message gets its ID and the attachments can be sent naming it.  Everything
+	// that could be wrong with an attachment has been checked, so a failure here is a disk or database problem and
+	// the message is not sent at all: its ID commits to this attachment list, so none can be dropped now.
+	gm.ID = gm.generateID()
+	for i := range gm.ImageAttachments {
+		gm.ImageAttachments[i].MessageID = gm.ID
+	}
+	for i := range gm.FileAttachments {
+		gm.FileAttachments[i].MessageID = gm.ID
+	}
+	for _, p := range pending {
+		err := b.distributeAttachment(p, gm.ID)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    p.fileID,
+				"name":  p.name,
+				"error": err.Error(),
+			}).Error("error distributing attachment, not sending message")
+			return errAttachmentNotDistributed
+		}
 	}
 
 	gm.OriginalPayload, err = msgpack.Marshal(gm)
@@ -626,6 +671,7 @@ func (b *Bounce) SendGroupMessage(message GroupMessage, readers map[ID]io.ReadCl
 	})
 
 	b.broadcast(gm)
+	return nil
 }
 
 func (b *Bounce) deleteGroupMessageAt(timestamp int64, id ID) {

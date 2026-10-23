@@ -46,8 +46,8 @@ type Engine interface {
 	RestrictUserManagement(groupID ID) error
 	RevokeDevice(deviceID ID) error
 	RevokeInvite(groupID ID, userID ID) error
-	SendDirectMessage(DirectMessage, map[ID]io.ReadCloser, map[ID]string)
-	SendGroupMessage(GroupMessage, map[ID]io.ReadCloser, map[ID]string)
+	SendDirectMessage(DirectMessage, map[ID]io.ReadCloser, map[ID]string) error
+	SendGroupMessage(GroupMessage, map[ID]io.ReadCloser, map[ID]string) error
 	SetActiveThread(id ID)
 	SetAutoJoinGroups(value int)
 	SetDMLastOpened(userID ID, timestamp int64)
