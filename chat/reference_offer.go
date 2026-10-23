@@ -736,8 +736,8 @@ func (b *Bounce) getUpdateUsersToOffer(address string, userID ID) []frameReferen
 			Distinct("update_users.id").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_users.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateUser).
 			Where(
-				"update_users.type != ? AND (update_users.target = ? OR update_users.target = ? OR update_users.target IN (?)) AND delivery_records.id IS NULL",
-				updateUserTypeSetEncryptedDeviceName,
+				"update_users.type NOT IN (?) AND (update_users.target = ? OR update_users.target = ? OR update_users.target IN (?)) AND delivery_records.id IS NULL",
+				[]uint16{updateUserTypeSetEncryptedDeviceName, updateUserTypeReplaceKeys},
 				userID,
 				b.currentUserID(),
 				b.database.
@@ -1189,7 +1189,7 @@ func (b *Bounce) getDraftsToOffer(address string, userID ID) []frameReference {
 		return []frameReference{}
 	}
 
-	// Select all update setting that have not been delivered
+	// Select all drafts that have not been delivered
 	var unsentDrafts []draft
 	err := b.database.
 		Select("drafts.*").

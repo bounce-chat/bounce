@@ -51,9 +51,21 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 	}
 
 	broadcastables := []broadcastable{}
+	owner, ownerKnown := b.peerOwner(peer)
+	myID := b.currentUserID()
 	for _, rf := range referencedFrames {
 		loaded := rf.load(b, deliverable[rf.frameType])
-		broadcastables = append(broadcastables, loaded...)
+		for _, br := range loaded {
+			if br.getScope(myID) == scopeSync && (!ownerKnown || owner != myID) {
+				log.WithFields(log.Fields{
+					"id":   br.getID(),
+					"type": br.getType(),
+					"peer": peer,
+				}).Error("refusing to serve sync-scoped frame to a device that is not a sync device")
+				continue
+			}
+			broadcastables = append(broadcastables, br)
+		}
 	}
 
 	if len(broadcastables) == 0 {
