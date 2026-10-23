@@ -1,5 +1,7 @@
 package chat
 
+import "io"
+
 type User struct {
 	ID               ID
 	Name             string
@@ -50,6 +52,20 @@ type FileAttachment struct {
 	Name     string
 	Size     int64
 	Progress float64
+}
+
+type OutgoingAttachment struct {
+	Name   string
+	Size   int64
+	Reader io.ReadCloser // Source of the file may either be a reader or a path on disk, set either
+	Source string        // one.  Readers are closed after they are used.
+	Image  *ImageInfo
+}
+
+type ImageInfo struct {
+	Width    int
+	Height   int
+	BlurHash string
 }
 
 type ImageAttachment struct {

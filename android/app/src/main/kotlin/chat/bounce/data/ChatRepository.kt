@@ -221,6 +221,19 @@ object ChatRepository {
      */
     private val messageIndex = MutableStateFlow<Map<String, ConversationItem.Message>>(emptyMap())
 
+    /**
+     * Messages this device is sending that the engine has not reported back yet,
+     * oldest first per thread. The engine answers sends in order, so the next
+     * DisplaySent* on a thread completes the oldest pending send there.
+     *
+     * A pending send is only *shown* if it is still outstanding after a short
+     * delay (see ConversationViewModel.send): a text-only message comes back
+     * from the engine inside that window and is drawn once, as the real thing,
+     * while one with a large attachment to hash shows as pending first.
+     */
+    private class PendingSend(val item: ConversationItem.Message, var shown: Boolean = false)
+    private val pendingSends = HashMap<String, ArrayDeque<PendingSend>>()
+
     // DROP_OLDEST rather than suspend: an effect emitted from the pump must never
     // block the engine's event stream because no Activity is currently collecting.
     private val _effects = MutableSharedFlow<RepositoryEffect>(
@@ -623,6 +636,41 @@ object ChatRepository {
         if (messages.isNotEmpty()) {
             messageIndex.update { index -> index + messages.associateBy { it.id } }
         }
+    }
+
+    /** Registers a send; [item] carries the composer's data under a local handle id. */
+    fun beginPendingSend(item: ConversationItem.Message) {
+        synchronized(pendingSends) {
+            pendingSends.getOrPut(item.threadId) { ArrayDeque() }.addLast(PendingSend(item))
+        }
+    }
+
+    /** Draws the pending message, if the engine has not reported it back yet. */
+    fun showPendingSend(threadId: String, handle: String) {
+        val toShow = synchronized(pendingSends) {
+            val ps = pendingSends[threadId]?.firstOrNull { it.item.id == handle } ?: return
+            ps.shown = true
+            ps.item.copy(pending = true)
+        }
+        addItem(toShow)
+    }
+
+    /** The engine reported a message this device sent: it replaces the oldest pending send on its thread. */
+    fun completePendingSend(real: ConversationItem.Message) {
+        val finished = synchronized(pendingSends) { pendingSends[real.threadId]?.removeFirstOrNull() }
+        if (finished != null && finished.shown) deleteItem(finished.item.id)
+        addItem(real)
+    }
+
+    /** The engine refused the send; whatever was drawn for it goes away. */
+    fun failPendingSend(threadId: String, handle: String) {
+        val failed = synchronized(pendingSends) {
+            val queue = pendingSends[threadId] ?: return
+            val ps = queue.firstOrNull { it.item.id == handle } ?: return
+            queue.remove(ps)
+            ps
+        }
+        if (failed.shown) deleteItem(handle)
     }
 
     /** Removes an item from whichever thread holds it. IDs are globally unique. */

@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"bytes"
+	"io"
 	"testing"
 	"time"
 
@@ -336,13 +338,13 @@ func TestAMessagesAttachmentsArePartOfItsContent(t *testing.T) {
 
 func TestASentMessageCarriesItsContentID(t *testing.T) {
 	me, alice, _, groupID := createUsersAndGroups(t)
-	me.SendGroupMessage(GroupMessage{Thread: groupID, Text: "hello everyone"}, nil, nil)
+	me.SendGroupMessage(groupID, "hello everyone", nil)
 	var sent groupMessage
 	assert.NoError(t, me.database.Preload("FileAttachments").Preload("ImageAttachments").Where("author = ? AND text = ?", me.currentUserID(), "hello everyone").First(&sent).Error)
 	assert.True(t, idMatchesContent(&sent))
 	awaitAck(t, me, alice, typeGroupMessage, sent.ID)
 
-	me.SendDirectMessage(DirectMessage{Thread: alice.currentUserID(), Text: "just you"}, nil, nil)
+	me.SendDirectMessage(alice.currentUserID(), "just you", nil)
 	var dm directMessage
 	assert.NoError(t, me.database.Where("author = ? AND text = ?", me.currentUserID(), "just you").First(&dm).Error)
 	assert.True(t, idMatchesContent(&dm))
@@ -413,7 +415,7 @@ func TestAnUpdateDeviceCannotBeRedefinedUnderItsID(t *testing.T) {
 
 func TestAReadReceiptCannotBeRedefinedUnderItsID(t *testing.T) {
 	me, alice, _, groupID := createUsersAndGroups(t)
-	me.SendGroupMessage(GroupMessage{Thread: groupID, Text: "read me"}, nil, nil)
+	me.SendGroupMessage(groupID, "read me", nil)
 	var sent groupMessage
 	assert.NoError(t, me.database.Where("text = ?", "read me").First(&sent).Error)
 	awaitAck(t, me, alice, typeGroupMessage, sent.ID)
@@ -466,4 +468,54 @@ func TestADeviceCannotBeRedefinedUnderItsID(t *testing.T) {
 	mislabelled.ID = NewID()
 	aliceRecord.Devices = append(aliceRecord.Devices, mislabelled)
 	assert.False(t, me.hasValidDeviceGroup(aliceRecord))
+}
+
+// Files are content addressed too, with one exception made for what refers to them: the message, group or user that
+// carries a file names the file's ID in its own content, so the file's ID is generated before they exist and cannot
+// include what it is attached to or sent towards.
+
+func TestAFileCannotBeRedefinedUnderItsID(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+	data := []byte("the minutes of the meeting")
+	assert.NoError(t, me.SendGroupMessage(groupID, "minutes attached", []OutgoingAttachment{{
+		Name: "minutes.txt", Size: int64(len(data)), Reader: io.NopCloser(bytes.NewReader(data)),
+	}}))
+	var sent groupMessage
+	assert.NoError(t, me.database.Preload("FileAttachments").First(&sent, "text = ?", "minutes attached").Error)
+	var f file
+	assert.NoError(t, me.database.First(&f, "id = ?", sent.FileAttachments[0].FileID).Error)
+	assert.True(t, idMatchesContent(&f))
+	assert.Equal(t, sent.ID, f.AttachedTo, "the file names the message that carries it")
+	awaitAck(t, me, alice, typeFile, f.ID)
+
+	// The same file ID claiming different data is refused, even signed by the real author
+	other := f
+	other.Hash = hashString(blake3.Sum256([]byte("different minutes")))
+	other.OriginalPayload, _ = msgpack.Marshal(other)
+	frame, err := msgpack.Marshal(me.createSignedContainer(typeFile, other.OriginalPayload))
+	assert.NoError(t, err)
+	_, accepted := alice.handleFile(me.network.Address(), frame, false)
+	assert.False(t, accepted)
+
+	// Whereas where it is attached is not content, so the author may attach one file to two things under one ID
+	elsewhere := f
+	elsewhere.AttachedTo = NewID()
+	assert.Equal(t, f.ID, elsewhere.generateID())
+}
+
+func TestAnIconIsPreparedBeforeWhatCarriesIt(t *testing.T) {
+	me, _, _, _ := createUsersAndGroups(t)
+	image := []byte("\x89PNG\r\n\x1a\nnot really a png but large enough to be a blob")
+
+	// A new group names its icon in the creation, and the icon's file carries the content ID and is attached to the group
+	assert.NoError(t, me.CreateGroup(NewGroup{Name: "Iconic", Image: image, Retention: 3600}))
+	var g group
+	assert.NoError(t, me.database.First(&g, "name = ?", "Iconic").Error)
+	iconID, err := ParseID(g.Images)
+	assert.NoError(t, err)
+	var icon file
+	assert.NoError(t, me.database.First(&icon, "id = ?", iconID).Error)
+	assert.True(t, idMatchesContent(&icon))
+	assert.Equal(t, g.ID, icon.AttachedTo)
+	assert.Equal(t, g.ID, icon.Destination)
 }

@@ -13,33 +13,20 @@ import (
 func TestDeletingAMessageDeletesAllFileData(t *testing.T) {
 	b, _, _, groupID := createUsersAndGroups(t)
 
-	fileID := NewID()
 	data := []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}
 	text := "this message contains an embedded file"
-	gm := GroupMessage{
-		Thread: groupID,
-		Text:   text,
-	}
-	gm.ImageAttachments = []ImageAttachment{}
-	gm.FileAttachments = []FileAttachment{
-		FileAttachment{
-			ID:   fileID,
-			Name: "filename",
-			Size: int64(len(data)),
-		},
-	}
+	assert.NoError(t, b.SendGroupMessage(groupID, text, []OutgoingAttachment{{
+		Name:   "filename",
+		Size:   int64(len(data)),
+		Reader: io.NopCloser(bytes.NewReader(data)),
+	}}))
 
-	readers := map[ID]io.ReadCloser{
-		fileID: io.NopCloser(bytes.NewReader(data)),
-	}
-	sources := map[ID]string{}
-
-	b.SendGroupMessage(gm, readers, sources)
-
-	// Make sure that all the database objects were created
+	// Make sure that all the database objects were created, with the file ID the engine assigned
 	var createdGM groupMessage
-	err := b.database.First(&createdGM, "text = ?", text).Error
+	err := b.database.Preload("FileAttachments").First(&createdGM, "text = ?", text).Error
 	assert.NoError(t, err)
+	assert.Equal(t, 1, len(createdGM.FileAttachments))
+	fileID := createdGM.FileAttachments[0].FileID
 
 	var createdFileAttachment fileAttachment
 	err = b.database.First(&createdFileAttachment, "message_id = ? AND file_id = ?", createdGM.ID, fileID).Error

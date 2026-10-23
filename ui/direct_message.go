@@ -250,56 +250,34 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 	}
 	entry.customFocusLost = func() { ui.containers.threads.Refresh() }
 	sendMessage := func() {
-		chatDM := chat.DirectMessage{
-			Thread: dm.user.id,
-			Text:   entry.Text,
-		}
+		text := entry.Text
+		outgoing, images, files := outgoingAttachments(dm.pendingMessageAttachments.extract())
 
-		imageAttachments := []chat.ImageAttachment{}
-		fileAttachments := []chat.FileAttachment{}
-		readers := map[chat.ID]io.ReadCloser{}
-		sources := map[chat.ID]string{}
-
-		pendingAttachments := dm.pendingMessageAttachments.extract()
-		for _, pma := range pendingAttachments {
-			readers[pma.id] = pma.reader
-			sources[pma.id] = pma.reader.URI().Path()
-
-			if pma.isImage {
-				imageAttachments = append(
-					imageAttachments,
-					chat.ImageAttachment{
-						ID:       pma.id,
-						Name:     pma.reader.URI().Name(),
-						Size:     pma.fileSize,
-						Width:    pma.width,
-						Height:   pma.height,
-						BlurHash: pma.blurHash,
-					},
-				)
-			} else {
-				fileAttachments = append(
-					fileAttachments,
-					chat.FileAttachment{
-						ID:   pma.id,
-						Name: pma.reader.URI().Name(),
-						Size: pma.fileSize,
-					},
-				)
-			}
-		}
-
-		chatDM.ImageAttachments = imageAttachments
-		chatDM.FileAttachments = fileAttachments
-
+		entry.Text = ""
+		entry.Refresh()
 		go ui.bounce.UpdateDraft(dm.user.id, "")
 		dm.buttonData.setDraft("")
+
+		// Shown only if the engine takes a while, see pending_send.go
+		pending := ui.beginPendingSend(dm, func(handle chat.ID) (*threadItem, error) {
+			return ui.newDirectMessage(chat.DirectMessage{
+				ID:               handle,
+				Author:           ui.state.profile.id,
+				Thread:           dm.user.id,
+				WrittenAt:        time.Now().Unix(),
+				Text:             text,
+				Seen:             true,
+				ImageAttachments: images,
+				FileAttachments:  files,
+			})
+		})
 		go func() {
-			err := ui.bounce.SendDirectMessage(chatDM, readers, sources)
+			err := ui.bounce.SendDirectMessage(dm.user.id, text, outgoing)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("message was not sent") // TODO: tell the user
+				ui.failPendingSend(pending)
 			}
 		}()
 	}
@@ -423,6 +401,7 @@ func (ui *ui) DisplaySentDirectMessage(dm chat.DirectMessage) {
 	if reloaded {
 		// The DM was closed and we opened it and reloaded all of this history,
 		// which would have included this message
+		fyne.DoAndWait(func() { ui.completePendingSend(dmThread) })
 		return
 	}
 
@@ -435,6 +414,7 @@ func (ui *ui) DisplaySentDirectMessage(dm chat.DirectMessage) {
 	}
 
 	fyne.DoAndWait(func() {
+		ui.completePendingSend(dmThread)
 		ui.appendThreadItem(dmThread, ti)
 
 		dmThread.entry.Text = ""

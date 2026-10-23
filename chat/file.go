@@ -54,6 +54,7 @@ var errInvalidImage = errors.New("invalid image data")
 type file struct {
 	SignedFrame
 	ID                ID `gorm:"primary_key;index:idx_file_downloaded"`
+	Nonce             nonce
 	Name              string
 	Type              int
 	AttachedTo        ID
@@ -73,7 +74,32 @@ type file struct {
 	Chunks            []chunk `msgpack:"-"`
 }
 
+func (f *file) getNonce() nonce {
+	return f.Nonce
+}
+
+// A file's ID is generated from the data, by its hashes, and from how it is encrypted, scoped and authored.  What
+// the file is attached to and sent towards is left out: the message, group or user that refers to a file names its
+// ID in their own content, so the file's ID has to exist before they do.  The signature still covers both fields.
+func (f *file) generateID() ID {
+	return newContentHasher(typeFile, f.Nonce).
+		bytes([]byte(f.Name)).
+		int64(int64(f.Type)).
+		bytes([]byte(f.Hash)).
+		int64(f.Size).
+		bytes([]byte(f.HashList)).
+		bytes([]byte(f.EncryptedHashList)).
+		bytes(f.Key).
+		int64(int64(f.Scope)).
+		id(f.Author).
+		int64(f.Timestamp).
+		generate()
+}
+
 func (f *file) BeforeCreate(tx *gorm.DB) error {
+	if !idMatchesContent(f) {
+		return errors.New("file ID is not generated from its content")
+	}
 	f.SavedAt = time.Now().Unix()
 	return nil
 }
@@ -187,6 +213,16 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 	f.OriginalPayload = sc.Payload
 	f.Signature = sc.Signature
 	f.Signer = sc.Signer
+
+	// Make sure the ID is generated from the content
+	if !idMatchesContent(&f) {
+		log.WithFields(log.Fields{
+			"peer":       peer,
+			"id":         f.getID(),
+			"content_id": f.generateID(),
+		}).Error("rejecting file with an ID not generated from its content")
+		return nil, false
+	}
 
 	// Make sure the signing device was not revoked before creating this
 	var signerDevice device
@@ -1394,39 +1430,124 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 	b.offerChunk(c)
 }
 
-func (b *Bounce) embedFile(fileID ID, data []byte, scope int, destination ID, fileType int, attachment ID) error {
+// Creating a file we author is two steps.  Preparing it reads or hashes the data, generates the file's ID from it
+// and writes the blob, so everything that can go wrong with the data goes wrong before anything refers to the file.
+// Publishing it then names what it is attached to, signs it, stores it and sends it.  The split exists because a
+// file's ID appears in the content of whatever carries it, a message or a group or user record, so that content
+// cannot be built until the file has its ID, and the file cannot be published until that content exists.
+
+// prepareEmbeddedFile prepares a file from data held in memory, which is embedded in the blobs directory
+func (b *Bounce) prepareEmbeddedFile(data []byte, scope int, fileType int) (*file, error) {
 	if len(data) > EmbeddedFileLimit {
-		return ErrFileTooBig
+		return nil, ErrFileTooBig
 	}
 
-	err := os.WriteFile(b.configDirectory+"/blobs/"+fileID.String(), data, 0600)
-	if err != nil {
-		return err
-	}
 	key := make([]byte, 32)
 	crand.Read(key)
-
 	hash := blake3.Sum256(data)
-	chunks, hashList, encryptedHashList := splitChunks(fileID, data, key)
+	chunks, hashList, encryptedHashList := splitChunks(NilID, data, key)
 
 	f := &file{
-		ID:                fileID,
+		Nonce:             newNonce(),
 		Type:              fileType,
-		AttachedTo:        attachment,
-		Path:              b.configDirectory + "/blobs/" + fileID.String(),
 		Hash:              hashString(hash),
 		Key:               key,
 		Size:              int64(len(data)),
 		Wanted:            true,
 		Downloaded:        true,
 		Scope:             scope,
-		Destination:       destination,
 		Timestamp:         time.Now().Unix(),
 		Author:            b.currentUserID(),
 		HashList:          hashList,
 		EncryptedHashList: encryptedHashList,
 		Chunks:            chunks,
 	}
+	f.ID = f.generateID()
+	f.Path = b.configDirectory + "/blobs/" + f.ID.String()
+	bindChunksToFile(f)
+
+	err := os.WriteFile(f.Path, data, 0600)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
+// prepareSeededFile prepares a file that stays where it is on disk and is served from there.  The whole file is
+// read to hash it, which is what makes the ID, so this takes as long as reading the file does.
+func (b *Bounce) prepareSeededFile(path string, scope int, fileType int) (*file, error) {
+	fh, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer fh.Close()
+
+	info, err := fh.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	chunks := []chunk{}
+	hashList := []string{}
+	hasher := blake3.New()
+	read := int64(0)
+	for i := 0; read < info.Size(); i++ {
+		chunkData := make([]byte, fileChunkSize)
+		n, err := fh.Read(chunkData)
+		read += int64(n)
+		if err != nil {
+			if !(err == io.EOF && read == info.Size()) {
+				return nil, err
+			}
+		}
+
+		hasher.Write(chunkData[:n])
+		chunkHash := hashString(blake3.Sum256(chunkData[:n]))
+		chunks = append(chunks, chunk{Hash: chunkHash, Index: i, Downloaded: true})
+		hashList = append(hashList, chunkHash)
+	}
+	var allDataHash [32]byte
+	hasher.Digest().Read(allDataHash[:])
+
+	f := &file{
+		Nonce:      newNonce(),
+		Type:       fileType,
+		Path:       path,
+		Hash:       hashString(allDataHash),
+		Size:       info.Size(),
+		Wanted:     true,
+		Downloaded: true,
+		Scope:      scope,
+		Timestamp:  time.Now().Unix(),
+		Author:     b.currentUserID(),
+		HashList:   strings.Join(hashList, ","),
+		Chunks:     chunks,
+	}
+	f.ID = f.generateID()
+	bindChunksToFile(f)
+	return f, nil
+}
+
+// bindChunksToFile gives a prepared file's chunks the IDs they have as chunks of that file, once the file's ID is known
+func bindChunksToFile(f *file) {
+	for i := range f.Chunks {
+		chunkHash, err := ParseID(f.Chunks[i].Hash)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("prepared chunk has an invalid hash")
+		}
+		f.Chunks[i].ID = xor(f.ID, chunkHash)
+		f.Chunks[i].FileID = f.ID
+	}
+}
+
+// publishFile stores and sends a prepared file as attached to something, towards a destination
+func (b *Bounce) publishFile(f *file, destination ID, attachedTo ID) error {
+	f.Destination = destination
+	f.AttachedTo = attachedTo
+
+	var err error
 	f.OriginalPayload, err = msgpack.Marshal(f)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -1450,95 +1571,13 @@ func (b *Bounce) embedFile(fileID ID, data []byte, scope int, destination ID, fi
 	return nil
 }
 
-func (b *Bounce) seedFile(fileID ID, path string, scope int, destination ID, fileType int, attachment ID) error {
-	fh, err := os.Open(path)
+// embedFile prepares and publishes a file held in memory in one step, for files whose referrer already exists
+func (b *Bounce) embedFile(data []byte, scope int, destination ID, fileType int, attachedTo ID) (*file, error) {
+	f, err := b.prepareEmbeddedFile(data, scope, fileType)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	info, err := fh.Stat()
-	if err != nil {
-		return err
-	}
-
-	f := &file{
-		ID:          fileID,
-		Type:        fileType,
-		Path:        path,
-		AttachedTo:  attachment,
-		Size:        info.Size(),
-		Wanted:      true,
-		Downloaded:  true,
-		Scope:       scope,
-		Destination: destination,
-		Timestamp:   time.Now().Unix(),
-		Author:      b.currentUserID(),
-	}
-
-	chunks := []chunk{}
-	hashList := []string{}
-	hasher := blake3.New()
-
-	read := int64(0)
-	i := 0
-	for read < info.Size() {
-		chunkData := make([]byte, fileChunkSize)
-		n, err := fh.Read(chunkData)
-		read += int64(n)
-		if err != nil {
-			if !(err == io.EOF && read == info.Size()) {
-				return err
-			}
-		}
-
-		hasher.Write(chunkData[:n])
-		chunkHash := blake3.Sum256(chunkData[:n])
-		chunkHashString := hashString(chunkHash)
-		chunkID := ID(chunkHash)
-
-		chunks = append(
-			chunks,
-			chunk{
-				ID:         xor(fileID, chunkID),
-				Hash:       chunkHashString,
-				Index:      i,
-				Downloaded: true,
-			},
-		)
-		hashList = append(
-			hashList,
-			chunkHashString,
-		)
-
-		i++
-	}
-
-	allDataHash := make([]byte, 32)
-	hasher.Digest().Read(allDataHash)
-	f.Hash = hashString([32]byte(allDataHash[:32]))
-	f.HashList = strings.Join(hashList, ",")
-	f.Chunks = chunks
-	f.OriginalPayload, err = msgpack.Marshal(f)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error marshalling file")
-	}
-	sc := b.createSignedContainer(typeFile, f.OriginalPayload)
-	f.Signature = sc.Signature
-	f.Signer = sc.Signer
-	err = b.database.Create(f).Error
-	if err != nil {
-		return err
-	}
-
-	b.broadcast(f)
-
-	for _, c := range f.Chunks {
-		b.offerChunk(c)
-	}
-
-	return nil
+	return f, b.publishFile(f, destination, attachedTo)
 }
 
 func (b *Bounce) DownloadFileToDisk(fileID ID, destination string) {

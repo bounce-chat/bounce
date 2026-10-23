@@ -183,11 +183,16 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 		return errors.New("cannot create group when profile does not exist")
 	}
 
-	iconID := NilID
+	// The icon is prepared first so the group can name it, and published once the group exists to be attached to
+	var icon *file
 	imagesString := ""
 	if len(ng.Image) > 0 {
-		iconID = NewID()
-		imagesString = iconID.String()
+		var err error
+		icon, err = b.prepareEmbeddedFile(ng.Image, scopeGroupWithInvites, fileTypeGroupImage)
+		if err != nil {
+			return errors.New("error preparing new group image: " + err.Error())
+		}
+		imagesString = icon.ID.String()
 	}
 
 	creationTime := time.Now().Unix() - 1 // Subtract one second to ensure any invites are ordered after the group creation
@@ -223,8 +228,8 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 	gc.ID = gc.generateID()
 	g.ID = gc.ID
 
-	if len(ng.Image) > 0 {
-		err := b.embedFile(iconID, ng.Image, scopeGroupWithInvites, g.ID, fileTypeGroupImage, g.ID)
+	if icon != nil {
+		err := b.publishFile(icon, g.ID, g.ID)
 		if err != nil {
 			return errors.New("error distributing new group image: " + err.Error())
 		}
@@ -275,7 +280,7 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 		RestrictPosting:        ng.RestrictPosting,
 	}
 	if len(ng.Image) > 0 {
-		uiGroup.Images = []ID{iconID}
+		uiGroup.Images = []ID{icon.ID}
 	}
 
 	go b.ui.OpenNewGroupChat(uiGroup)

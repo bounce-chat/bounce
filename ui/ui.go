@@ -46,10 +46,11 @@ type ui struct {
 	containers *containers
 	widgets    *widgets
 
-	users    *userStore
-	devices  *deviceStore
-	messages *messageStore
-	threads  *threadStore
+	users        *userStore
+	devices      *deviceStore
+	messages     *messageStore
+	threads      *threadStore
+	pendingSends *pendingSends
 }
 
 type widgets struct {
@@ -115,13 +116,14 @@ type state struct {
 
 func Main() {
 	ui := &ui{
-		containers: &containers{},
-		views:      &views{},
-		widgets:    &widgets{},
-		users:      newUserStore(),
-		devices:    newDeviceStore(),
-		messages:   newMessageStore(),
-		threads:    newThreadStore(),
+		containers:   &containers{},
+		views:        &views{},
+		widgets:      &widgets{},
+		users:        newUserStore(),
+		devices:      newDeviceStore(),
+		messages:     newMessageStore(),
+		threads:      newThreadStore(),
+		pendingSends: newPendingSends(),
 		state: &state{
 			focused:      true,
 			active:       true,

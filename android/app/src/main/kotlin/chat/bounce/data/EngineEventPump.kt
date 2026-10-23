@@ -198,11 +198,15 @@ class EngineEventPump(
             "UserAliased" -> handleUserAliased(decode(payload))
 
             // --- messages -------------------------------------------------------
-            "DisplayDirectMessage", "DisplaySentDirectMessage" ->
+            "DisplayDirectMessage" ->
                 repo.addItem(decode<DirectMessage>(payload).toConversationItem(repo.currentUserId))
+            "DisplaySentDirectMessage" ->
+                repo.completePendingSend(decode<DirectMessage>(payload).toConversationItem(repo.currentUserId))
 
-            "DisplayGroupMessage", "DisplaySentGroupMessage" ->
+            "DisplayGroupMessage" ->
                 repo.addItem(decode<GroupMessage>(payload).toConversationItem(repo.currentUserId))
+            "DisplaySentGroupMessage" ->
+                repo.completePendingSend(decode<GroupMessage>(payload).toConversationItem(repo.currentUserId))
 
             "DeleteItem" -> repo.deleteItem(decode<IdPayload>(payload).id)
             "MessageSeen" -> repo.markSeen(decode<IdPayload>(payload).id)
