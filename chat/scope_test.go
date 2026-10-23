@@ -23,7 +23,7 @@ func TestOverlapUsersInScopeAreCorrect(t *testing.T) {
 	carolBytesHash := blake3.Sum256(carolBytes)
 
 	au := addUser{
-		ID:                 NewID(),
+		Nonce:              newNonce(),
 		Xor:                xor(carol.currentUserID(), me.currentUserID()),
 		Timestamp:          time.Now().Unix(),
 		OfferUser:          meBytes,
@@ -33,6 +33,7 @@ func TestOverlapUsersInScopeAreCorrect(t *testing.T) {
 		OfferSignature:     me.network.Sign(carolBytesHash[:]),
 		RequesterSignature: carol.network.Sign(meBytesHash[:]),
 	}
+	au.ID = au.generateID()
 	auBytes, _ := msgpack.Marshal(&au)
 	myBr, _ := me.handleAddUser(carol.network.Address(), auBytes, false)
 	assert.True(t, myBr != nil)

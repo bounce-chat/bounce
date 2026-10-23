@@ -388,7 +388,7 @@ func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
 
 	// Add confirmations to this later update
 	myConfirmation := confirmation{
-		ID:            NewID(),
+		Nonce:         newNonce(),
 		UpdateGroupID: unauthorizedEdit.ID,
 		Destination:   groupID,
 		Author:        b.currentUserID(),
@@ -396,10 +396,11 @@ func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
 		Signature:     b.network.Sign(unauthorizedEdit.ID[:]),
 		Timestamp:     time.Now().Unix() + 2,
 	}
+	myConfirmation.ID = myConfirmation.generateID()
 	assert.NoError(t, b.database.Create(&myConfirmation).Error)
 
 	bobConfirmation := confirmation{
-		ID:            NewID(),
+		Nonce:         newNonce(),
 		UpdateGroupID: unauthorizedEdit.ID,
 		Destination:   groupID,
 		Author:        bob.currentUserID(),
@@ -407,6 +408,7 @@ func TestUnconfirmedOldChangesCanBeOverwritten(t *testing.T) {
 		Signature:     bob.network.Sign(unauthorizedEdit.ID[:]),
 		Timestamp:     time.Now().Unix() + 2,
 	}
+	bobConfirmation.ID = bobConfirmation.generateID()
 	assert.NoError(t, b.database.Create(&bobConfirmation).Error)
 
 	// Reload the stack, ensure there are the same number of changes
@@ -468,7 +470,7 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 
 	// Add confirmations for it
 	aliceConfirmation := confirmation{
-		ID:            NewID(),
+		Nonce:         newNonce(),
 		UpdateGroupID: restrictEdits.ID,
 		Destination:   groupID,
 		Author:        alice.currentUserID(),
@@ -476,10 +478,11 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 		Signature:     alice.network.Sign(restrictEdits.ID[:]),
 		Timestamp:     time.Now().Unix(),
 	}
+	aliceConfirmation.ID = aliceConfirmation.generateID()
 	assert.NoError(t, b.database.Create(&aliceConfirmation).Error)
 
 	bobConfirmation := confirmation{
-		ID:            NewID(),
+		Nonce:         newNonce(),
 		UpdateGroupID: restrictEdits.ID,
 		Destination:   groupID,
 		Author:        bob.currentUserID(),
@@ -487,6 +490,7 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 		Signature:     bob.network.Sign(restrictEdits.ID[:]),
 		Timestamp:     time.Now().Unix(),
 	}
+	bobConfirmation.ID = bobConfirmation.generateID()
 	assert.NoError(t, b.database.Create(&bobConfirmation).Error)
 
 	// Create an edit from Alice that happens later
@@ -508,7 +512,7 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 
 	// Add confirmations to this later update
 	myConfirmation := confirmation{
-		ID:            NewID(),
+		Nonce:         newNonce(),
 		UpdateGroupID: unauthorizedEdit.ID,
 		Destination:   groupID,
 		Author:        b.currentUserID(),
@@ -516,10 +520,11 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 		Signature:     b.network.Sign(unauthorizedEdit.ID[:]),
 		Timestamp:     time.Now().Unix() + 2,
 	}
+	myConfirmation.ID = myConfirmation.generateID()
 	assert.NoError(t, b.database.Create(&myConfirmation).Error)
 
 	bobConfirmation = confirmation{
-		ID:            NewID(),
+		Nonce:         newNonce(),
 		UpdateGroupID: unauthorizedEdit.ID,
 		Destination:   groupID,
 		Author:        bob.currentUserID(),
@@ -527,6 +532,7 @@ func TestTimestampWinsWhenBothConfirmed(t *testing.T) {
 		Signature:     bob.network.Sign(unauthorizedEdit.ID[:]),
 		Timestamp:     time.Now().Unix() + 2,
 	}
+	bobConfirmation.ID = bobConfirmation.generateID()
 	assert.NoError(t, b.database.Create(&bobConfirmation).Error)
 
 	// Reload the stack, ensure there are the same number of changes

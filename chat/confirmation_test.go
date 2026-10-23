@@ -94,7 +94,7 @@ func TestEarlyConfirmationWorks(t *testing.T) {
 
 	// Create a confirmation from Alice
 	aliceConfirmation := confirmation{
-		ID:            NewID(),
+		Nonce:         newNonce(),
 		UpdateGroupID: restrictEdits.ID,
 		Destination:   groupID,
 		Author:        alice.currentUserID(),
@@ -102,6 +102,7 @@ func TestEarlyConfirmationWorks(t *testing.T) {
 		Signature:     alice.network.Sign(restrictEdits.ID[:]),
 		Timestamp:     time.Now().Unix(),
 	}
+	aliceConfirmation.ID = aliceConfirmation.generateID()
 
 	// Handle the confirmation, ensure it gets saved
 	fr, _ := b.handleConfirmation(alice.network.Address(), aliceConfirmation.getPayload(), false)

@@ -15,6 +15,7 @@ import (
 // and reduce the risk of a malicious former admin manipulating the update history.
 type confirmation struct {
 	ID            ID `gorm:"primary_key;"`
+	Nonce         nonce
 	UpdateGroupID ID
 	Destination   ID `msgpack:"-"`
 	Author        ID `msgpack:"-"`
@@ -25,9 +26,24 @@ type confirmation struct {
 	SavedAt       int64 `msgpack:"-"`
 }
 
+func (c *confirmation) getNonce() nonce {
+	return c.Nonce
+}
+
+// A confirmation's ID is generated from the update it confirms, the device that signed it and the signature itself.
+// The author, destination and scope are resolved locally from those, so they are not content.
+func (c *confirmation) generateID() ID {
+	return newContentHasher(typeConfirmation, c.Nonce).
+		id(c.UpdateGroupID).
+		bytes([]byte(c.SigningDevice)).
+		bytes(c.Signature).
+		int64(c.Timestamp).
+		generate()
+}
+
 func (c *confirmation) BeforeCreate(tx *gorm.DB) error {
-	if c.ID == NilID {
-		return errors.New("confirmation must have an ID assigned before creation")
+	if !idMatchesContent(c) {
+		return errors.New("confirmation ID is not generated from its content")
 	}
 	c.SavedAt = time.Now().Unix()
 	return nil
@@ -97,30 +113,14 @@ func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) (
 		return nil, false
 	}
 
-	// Ignore anything from a blocked user
-	if blockedUser(c.Author) {
+	// Make sure the ID is generated from the content
+	if !idMatchesContent(&c) {
 		log.WithFields(log.Fields{
-			"id":     c.ID,
-			"author": c.getAuthor(),
-		}).Warn("ignoring confirmation from blocked user")
-
-		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
-			if !blockedUser(peerDev.UserID) {
-				go b.sendAck(peer, typeConfirmation, c.ID)
-			}
-		}
+			"peer":       peer,
+			"id":         c.getID(),
+			"content_id": c.generateID(),
+		}).Error("rejecting confirmation with an ID not generated from its content")
 		return nil, false
-	}
-
-	// Check if we already have this confirmation
-	var existingConfirmation confirmation
-	err = b.database.Where("id = ?", c.ID).First(&existingConfirmation).Error
-	if err == nil {
-		return &existingConfirmation, false
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error looking up confirmation")
 	}
 
 	// Validate the signature
@@ -145,6 +145,44 @@ func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) (
 		return nil, false
 	}
 	c.Author = dev.UserID
+
+	// Ignore anything from a blocked user
+	if blockedUser(c.Author) {
+		log.WithFields(log.Fields{
+			"id":     c.ID,
+			"author": c.getAuthor(),
+		}).Warn("ignoring confirmation from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeConfirmation, c.ID)
+			}
+		}
+		return nil, false
+	}
+
+	// Check if we already have this specific confirmation, or the same confirmation with a different nonce.
+	// A device can confirm an update once, a second confirmation of the same update from the same device with
+	// a different nonce and ID adds nothing to consensus and is neither stored nor passed on.
+	var existingConfirmation confirmation
+	err = b.database.Where("signing_device = ? AND update_group_id = ?", c.SigningDevice, c.UpdateGroupID).First(&existingConfirmation).Error
+	if err == nil {
+		if existingConfirmation.ID == c.ID {
+			return &existingConfirmation, false
+		}
+		log.WithFields(log.Fields{
+			"update_group_id": c.UpdateGroupID,
+			"signing_device":  c.SigningDevice,
+			"held":            existingConfirmation.ID,
+			"received":        c.ID,
+		}).Debug("ignoring repeated confirmation of an update by a device")
+		go b.sendAck(peer, typeConfirmation, c.ID)
+		return nil, false
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up confirmation")
+	}
 
 	// Look up the update group that is being signed
 	var ug updateGroup
@@ -209,7 +247,7 @@ func (b *Bounce) sendConfirmation(ug updateGroup) {
 
 	// Create a confirmation
 	c := confirmation{
-		ID:            NewID(),
+		Nonce:         newNonce(),
 		UpdateGroupID: ug.ID,
 		Destination:   ug.Target,
 		Author:        b.currentUserID(),
@@ -217,6 +255,7 @@ func (b *Bounce) sendConfirmation(ug updateGroup) {
 		Signature:     b.network.Sign(ug.ID[:]),
 		Timestamp:     time.Now().Unix(),
 	}
+	c.ID = c.generateID()
 
 	// Save it
 	err = b.database.Create(&c).Error

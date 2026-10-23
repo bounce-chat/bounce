@@ -19,6 +19,7 @@ var handleAddUsersMutex sync.Mutex
 // of the final step in adding a user over the wire.
 type addUser struct {
 	ID                 ID `gorm:"primary_key;"`
+	Nonce              nonce
 	Xor                ID
 	Timestamp          int64
 	SavedAt            int64 `msgpack:"-"`
@@ -30,9 +31,28 @@ type addUser struct {
 	RequesterSignature []byte
 }
 
+func (au *addUser) getNonce() nonce {
+	return au.Nonce
+}
+
+// An add user's ID is generated from everything in it: the two user records, which are packed as the bytes they
+// travel as, the two devices that made the introduction, and their signatures over the records
+func (au *addUser) generateID() ID {
+	return newContentHasher(typeAddUser, au.Nonce).
+		id(au.Xor).
+		int64(au.Timestamp).
+		bytes(au.OfferUser).
+		bytes(au.RequesterUser).
+		bytes([]byte(au.OfferDevice)).
+		bytes([]byte(au.RequesterDevice)).
+		bytes(au.OfferSignature).
+		bytes(au.RequesterSignature).
+		generate()
+}
+
 func (au *addUser) BeforeCreate(tx *gorm.DB) error {
-	if au.ID == NilID {
-		log.Fatal("add user must have an ID assigned before save")
+	if !idMatchesContent(au) {
+		return errors.New("add user ID is not generated from its content")
 	}
 	au.SavedAt = time.Now().Unix()
 	return nil
@@ -97,6 +117,16 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling add user")
+		return nil, false
+	}
+
+	// Make sure the ID is generated from the content
+	if !idMatchesContent(&au) {
+		log.WithFields(log.Fields{
+			"peer":       peer,
+			"id":         au.getID(),
+			"content_id": au.generateID(),
+		}).Error("rejecting add user with an ID not generated from its content")
 		return nil, false
 	}
 

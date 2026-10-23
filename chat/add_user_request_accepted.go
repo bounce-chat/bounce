@@ -138,7 +138,7 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 	// Create and marshal the new add user
 	offerUserHash := blake3.Sum256(aura.OfferUser)
 	newUser := addUser{
-		ID:                 NewID(),
+		Nonce:              newNonce(),
 		Xor:                xor(requesterUser.ID, offerUser.ID),
 		Timestamp:          time.Now().Unix(),
 		OfferUser:          aura.OfferUser,
@@ -148,6 +148,7 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 		OfferSignature:     aura.OfferSignature,
 		RequesterSignature: b.network.Sign(offerUserHash[:]),
 	}
+	newUser.ID = newUser.generateID()
 	newUserBytes, err := msgpack.Marshal(&newUser)
 	if err != nil {
 		log.WithFields(log.Fields{
