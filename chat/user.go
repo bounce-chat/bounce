@@ -99,33 +99,18 @@ func validEncryptedDeviceList(encryptedDevices string) bool {
 }
 
 func validImageHistory(images string) bool {
-	if images == "" {
-		return true
-	}
-	for _, imageIDString := range strings.Split(images, ",") {
-		if _, err := ParseID(imageIDString); err != nil {
-			return false
-		}
-	}
-	return true
+	_, err := parseIDList(images)
+	return err == nil
 }
 
 func (u *user) images() []ID {
-	imageHistory := []ID{}
-	if len(u.Images) > 0 {
-		for _, imageIDString := range strings.Split(u.Images, ",") {
-			imageID, err := ParseID(imageIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":   err.Error(),
-					"user_id": u.ID,
-				}).Error("skipping invalid ID in user images list")
-				continue
-			}
-			imageHistory = append(imageHistory, imageID)
-		}
+	imageHistory, err := parseIDList(u.Images)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"user_id": u.ID,
+		}).Error("skipping invalid IDs in user images list")
 	}
-
 	return imageHistory
 }
 
@@ -194,22 +179,17 @@ func (b *Bounce) addBlockedGroup(groupID ID) {
 
 	blocked := []string{}
 	alreadyBlocked := false
-	if len(joinedBlockedGroups) > 0 {
-		for _, blockedIDString := range strings.Split(joinedBlockedGroups, ",") {
-			blockedID, err := ParseID(blockedIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":          err.Error(),
-					"user_id":        b.currentUserID(),
-					"blocked_groups": joinedBlockedGroups,
-				}).Fatal("invalid ID in blocked groups list")
-
-			}
-			if blockedID == groupID {
-				alreadyBlocked = true
-			}
-			blocked = append(blocked, blockedIDString)
+	blockedIDs, err := parseIDList(joinedBlockedGroups)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("skipping invalid IDs in blocked groups list")
+	}
+	for _, blockedID := range blockedIDs {
+		if blockedID == groupID {
+			alreadyBlocked = true
 		}
+		blocked = append(blocked, blockedID.String())
 	}
 	if !alreadyBlocked {
 		blocked = append(blocked, groupID.String())
@@ -234,19 +214,11 @@ func (b *Bounce) blockedGroups() []ID {
 		}).Fatal("error selecting profile user blocked groups")
 	}
 
-	if len(settings.BlockedGroups) > 0 {
-		for _, blockedIDString := range strings.Split(settings.BlockedGroups, ",") {
-			blockedID, err := ParseID(blockedIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":          err.Error(),
-					"user_id":        b.currentUserID(),
-					"blocked_groups": settings.BlockedGroups,
-				}).Fatal("invalid ID in blocked groups list")
-
-			}
-			blocked = append(blocked, blockedID)
-		}
+	blocked, err = parseIDList(settings.BlockedGroups)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("skipping invalid IDs in blocked groups list")
 	}
 
 	return blocked

@@ -356,18 +356,12 @@ func (b *Bounce) GetInitialState() InitialState {
 	var dbProfile user
 	err := b.database.Preload(clause.Associations).Where("profile = ?", true).First(&dbProfile).Error
 	if err == nil {
-		imageHistory := []ID{}
-		if len(dbProfile.Images) > 0 {
-			for _, imageIDString := range strings.Split(dbProfile.Images, ",") {
-				imageID, err := ParseID(imageIDString)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error":  err.Error(),
-						"images": dbProfile.Images,
-					}).Fatal("invalid ID in user images list")
-				}
-				imageHistory = append(imageHistory, imageID)
-			}
+		imageHistory, err := parseIDList(dbProfile.Images)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": dbProfile.ID,
+			}).Error("skipping invalid IDs in profile images list")
 		}
 
 		profile = &User{
@@ -416,7 +410,7 @@ func (b *Bounce) GetInitialState() InitialState {
 		}
 
 		var allEncryptedSyncDevices []encryptedSyncDevice
-		err := b.database.Find(&allEncryptedSyncDevices).Error
+		err = b.database.Find(&allEncryptedSyncDevices).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -523,77 +517,56 @@ func (b *Bounce) GetInitialState() InitialState {
 	}
 	chatGroups := []Group{}
 	for _, g := range groups {
-		imageHistory := []ID{}
-		if len(g.Images) > 0 {
-			for _, imageIDString := range strings.Split(g.Images, ",") {
-				imageID, err := ParseID(imageIDString)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error":  err.Error(),
-						"images": g.Images,
-					}).Fatal("invalid ID in group images list")
-				}
-				imageHistory = append(imageHistory, imageID)
-			}
+		imageHistory, err := parseIDList(g.Images)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": g.ID,
+			}).Error("skipping invalid IDs in group image list")
 		}
 		userList := []User{}
 		for _, u := range g.Users {
 			userList = append(userList, User{ID: u.ID, Name: u.Name})
 		}
-		adminList := []ID{}
-		if len(g.Admins) > 0 {
-			for _, adminIDString := range strings.Split(g.Admins, ",") {
-				adminID, err := ParseID(adminIDString)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error":  err.Error(),
-						"admins": g.Admins,
-					}).Fatal("invalid ID in group admin list")
-				}
-				adminList = append(adminList, adminID)
-			}
+		adminList, err := parseIDList(g.Admins)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": g.ID,
+			}).Error("skipping invalid IDs in group admin list")
 		}
 		invitedList := []User{}
-		if len(g.Invites) > 0 {
-			for _, inviteIDString := range strings.Split(g.Invites, ",") {
-				invitedID, err := ParseID(inviteIDString)
-				if err != nil {
+		invitedIDs, err := parseIDList(g.Invites)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": g.ID,
+			}).Error("skipping invalid IDs in group invite list")
+		}
+		for _, invitedID := range invitedIDs {
+			var u user
+			err = b.database.Select("name").First(&u, "id = ?", invitedID).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
 					log.WithFields(log.Fields{
 						"error":   err.Error(),
-						"invites": g.Invites,
-					}).Fatal("invalid ID in group invite list")
-				}
-
-				var u user
-				err = b.database.Select("name").First(&u, "id = ?", invitedID).Error
-				if err != nil {
-					if errors.Is(err, gorm.ErrRecordNotFound) {
-						log.WithFields(log.Fields{
-							"error":   err.Error(),
-							"user_id": invitedID,
-						}).Error("group final state contains invited user not in database")
-						continue
-					} else {
-						log.WithFields(log.Fields{
-							"error": err.Error(),
-						}).Fatal("database error looking up user")
-					}
-				}
-				invitedList = append(invitedList, User{ID: invitedID, Name: u.Name})
-			}
-		}
-		blockedList := []ID{}
-		if len(g.BlockedUsers) > 0 {
-			for _, blockedIDString := range strings.Split(g.BlockedUsers, ",") {
-				blockedID, err := ParseID(blockedIDString)
-				if err != nil {
+						"user_id": invitedID,
+					}).Error("group final state contains invited user not in database")
+					continue
+				} else {
 					log.WithFields(log.Fields{
-						"error":         err.Error(),
-						"blocked_users": g.BlockedUsers,
-					}).Fatal("invalid ID in group block list")
+						"error": err.Error(),
+					}).Fatal("database error looking up user")
 				}
-				blockedList = append(blockedList, blockedID)
 			}
+			invitedList = append(invitedList, User{ID: invitedID, Name: u.Name})
+		}
+		blockedList, err := parseIDList(g.BlockedUsers)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": g.ID,
+			}).Error("skipping invalid IDs in group blocked user list")
 		}
 		chatGroups = append(chatGroups, Group{
 			ID:                             g.ID,

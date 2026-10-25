@@ -15,6 +15,10 @@ import (
 
 var groupMutex sync.Mutex
 
+var errInvalidGroupImages = errors.New("group creation image is not an ID")
+var errInvalidGroupInvites = errors.New("group creation has invites")
+var errInvalidGroupBlockedUsers = errors.New("group creation has blocked users")
+
 type group struct {
 	ID                         ID `gorm:"primary_key;"`
 	Name                       string
@@ -47,8 +51,31 @@ func (g *group) BeforeCreate(tx *gorm.DB) error {
 	if g.ID == NilID {
 		log.Fatal("attempt to create group with nil ID, group ID must be set before creation")
 	}
+
+	if err := validGroupCreationRecord(*g); err != nil {
+		return err
+	}
+
 	g.LastActivity = time.Now().Unix()
 
+	return nil
+}
+
+func validGroupCreationRecord(g group) error {
+	if !validGroupName(g.Name) {
+		return errInvalidGroupName
+	}
+	if g.Images != "" {
+		if _, err := ParseID(g.Images); err != nil {
+			return errInvalidGroupImages
+		}
+	}
+	if g.Invites != "" {
+		return errInvalidGroupInvites
+	}
+	if g.BlockedUsers != "" {
+		return errInvalidGroupBlockedUsers
+	}
 	return nil
 }
 
@@ -110,62 +137,34 @@ func (g *group) state() groupState {
 		gs.users = append(gs.users, u.ID)
 	}
 
-	if len(g.Admins) > 0 {
-		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := ParseID(adminIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": g.ID,
-					"admins":   g.Admins,
-				}).Fatal("invalid ID in group admin list")
-			}
-
-			gs.admins = append(gs.admins, adminID)
-		}
+	var err error
+	gs.admins, err = parseIDList(g.Admins)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": g.ID,
+		}).Error("skipping invalid IDs in group admin list")
 	}
-
-	if len(g.BlockedUsers) > 0 {
-		for _, blockedIDString := range strings.Split(g.BlockedUsers, ",") {
-			blockedID, err := ParseID(blockedIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":         err.Error(),
-					"group_id":      g.ID,
-					"blocked_users": g.BlockedUsers,
-				}).Fatal("invalid ID in group blocked list")
-			}
-
-			gs.blockedUsers = append(gs.blockedUsers, blockedID)
-		}
+	gs.blockedUsers, err = parseIDList(g.BlockedUsers)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": g.ID,
+		}).Error("skipping invalid IDs in group blocked user list")
 	}
-
-	if len(g.Invites) > 0 {
-		for _, invitedIDString := range strings.Split(g.Invites, ",") {
-			invitedID, err := ParseID(invitedIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": g.ID,
-					"invites":  g.Invites,
-				}).Fatal("invalid ID in group invite list")
-			}
-
-			gs.invites = append(gs.invites, invitedID)
-		}
+	gs.invites, err = parseIDList(g.Invites)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": g.ID,
+		}).Error("skipping invalid IDs in group invite list")
 	}
-
-	if len(g.Images) > 0 {
-		for _, imageIDString := range strings.Split(g.Images, ",") {
-			imageID, err := ParseID(imageIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"images": g.Images,
-				}).Fatal("invalid ID in group images list")
-			}
-			gs.images = append(gs.images, imageID)
-		}
+	gs.images, err = parseIDList(g.Images)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": g.ID,
+		}).Error("skipping invalid IDs in group image list")
 	}
 
 	return gs
@@ -373,20 +372,16 @@ func (b *Bounce) isGroupAdmin(groupID, userID ID) bool {
 		}
 	}
 
-	if len(g.Admins) > 0 {
-		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := ParseID(adminIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": groupID,
-					"admins":   g.Admins,
-				}).Fatal("invalid ID in group admin list")
-			}
-
-			if adminID == userID {
-				return true
-			}
+	adminIDs, err := parseIDList(g.Admins)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": groupID,
+		}).Error("skipping invalid IDs in group admin list")
+	}
+	for _, adminID := range adminIDs {
+		if adminID == userID {
+			return true
 		}
 	}
 
@@ -412,24 +407,18 @@ func (b *Bounce) addGroupAdmin(groupID, userID ID) {
 
 	admins := []string{}
 	alreadyAnAdmin := false
-	if len(g.Admins) > 0 {
-		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := ParseID(adminIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": groupID,
-					"admins":   g.Admins,
-				}).Fatal("invalid ID in group admin list")
-
-			}
-
-			if adminID == userID {
-				alreadyAnAdmin = true
-			}
-
-			admins = append(admins, adminIDString)
+	adminIDs, err := parseIDList(g.Admins)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": groupID,
+		}).Error("skipping invalid IDs in group admin list")
+	}
+	for _, adminID := range adminIDs {
+		if adminID == userID {
+			alreadyAnAdmin = true
 		}
+		admins = append(admins, adminID.String())
 	}
 
 	if !alreadyAnAdmin {
@@ -475,22 +464,18 @@ func (b *Bounce) removeGroupAdmin(groupID, userID ID) {
 
 	admins := []string{}
 	removedUser := false
-	if len(g.Admins) > 0 {
-		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := ParseID(adminIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": groupID,
-					"admins":   g.Admins,
-				}).Fatal("invalid ID in group admin list")
-			}
-
-			if adminID == userID {
-				removedUser = true
-			} else {
-				admins = append(admins, adminIDString)
-			}
+	adminIDs, err := parseIDList(g.Admins)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": groupID,
+		}).Error("skipping invalid IDs in group admin list")
+	}
+	for _, adminID := range adminIDs {
+		if adminID == userID {
+			removedUser = true
+		} else {
+			admins = append(admins, adminID.String())
 		}
 	}
 
@@ -533,20 +518,16 @@ func (b *Bounce) isBlockedFromGroup(groupID, userID ID) bool {
 		}
 	}
 
-	if len(g.BlockedUsers) > 0 {
-		for _, blockedIDString := range strings.Split(g.BlockedUsers, ",") {
-			blockedID, err := ParseID(blockedIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":         err.Error(),
-					"group_id":      groupID,
-					"blocked_users": g.BlockedUsers,
-				}).Fatal("invalid ID in group blocked users list")
-			}
-
-			if blockedID == userID {
-				return true
-			}
+	blockedIDs, err := parseIDList(g.BlockedUsers)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": groupID,
+		}).Error("skipping invalid IDs in group blocked user list")
+	}
+	for _, blockedID := range blockedIDs {
+		if blockedID == userID {
+			return true
 		}
 	}
 
@@ -572,24 +553,18 @@ func (b *Bounce) blockUserFromGroup(groupID, userID ID) {
 
 	blocked := []string{}
 	alreadyBlocked := false
-	if len(g.BlockedUsers) > 0 {
-		for _, blockedIDString := range strings.Split(g.BlockedUsers, ",") {
-			blockedID, err := ParseID(blockedIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":         err.Error(),
-					"group_id":      groupID,
-					"blocked_users": g.BlockedUsers,
-				}).Error("invalid ID in group blocked users list")
-				continue
-			}
-
-			if blockedID == userID {
-				alreadyBlocked = true
-			}
-
-			blocked = append(blocked, blockedIDString)
+	blockedIDs, err := parseIDList(g.BlockedUsers)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": groupID,
+		}).Error("skipping invalid IDs in group blocked user list")
+	}
+	for _, blockedID := range blockedIDs {
+		if blockedID == userID {
+			alreadyBlocked = true
 		}
+		blocked = append(blocked, blockedID.String())
 	}
 
 	if !alreadyBlocked {
@@ -635,20 +610,16 @@ func (b *Bounce) isInvited(groupID, userID ID) bool {
 		}
 	}
 
-	if len(g.Invites) > 0 {
-		for _, inviteIDString := range strings.Split(g.Invites, ",") {
-			inviteID, err := ParseID(inviteIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": groupID,
-					"invites":  g.Invites,
-				}).Fatal("invalid ID in group invite list")
-			}
-
-			if inviteID == userID {
-				return true
-			}
+	inviteIDs, err := parseIDList(g.Invites)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": groupID,
+		}).Error("skipping invalid IDs in group invite list")
+	}
+	for _, inviteID := range inviteIDs {
+		if inviteID == userID {
+			return true
 		}
 	}
 
@@ -674,24 +645,18 @@ func (b *Bounce) addGroupInvite(groupID, userID ID) {
 
 	invites := []string{}
 	alreadyInvited := false
-	if len(g.Invites) > 0 {
-		for _, inviteIDString := range strings.Split(g.Invites, ",") {
-			inviteID, err := ParseID(inviteIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": groupID,
-					"invites":  g.Invites,
-				}).Fatal("invalid ID in group invite list")
-
-			}
-
-			if inviteID == userID {
-				alreadyInvited = true
-			}
-
-			invites = append(invites, inviteIDString)
+	inviteIDs, err := parseIDList(g.Invites)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": groupID,
+		}).Error("skipping invalid IDs in group invite list")
+	}
+	for _, inviteID := range inviteIDs {
+		if inviteID == userID {
+			alreadyInvited = true
 		}
+		invites = append(invites, inviteID.String())
 	}
 
 	if !alreadyInvited {
@@ -737,22 +702,18 @@ func (b *Bounce) removeGroupInvite(groupID, userID ID) {
 
 	invites := []string{}
 	removedUser := false
-	if len(g.Invites) > 0 {
-		for _, inviteIDString := range strings.Split(g.Invites, ",") {
-			inviteID, err := ParseID(inviteIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": groupID,
-					"invites":  g.Invites,
-				}).Fatal("invalid ID in group invite list")
-			}
-
-			if inviteID == userID {
-				removedUser = true
-			} else {
-				invites = append(invites, inviteIDString)
-			}
+	inviteIDs, err := parseIDList(g.Invites)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": groupID,
+		}).Error("skipping invalid IDs in group invite list")
+	}
+	for _, inviteID := range inviteIDs {
+		if inviteID == userID {
+			removedUser = true
+		} else {
+			invites = append(invites, inviteID.String())
 		}
 	}
 

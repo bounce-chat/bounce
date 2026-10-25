@@ -733,20 +733,12 @@ func (b *Bounce) getUsersInGroupWithInvitesScope(br broadcastable) []user {
 	for _, u := range destinationGroup.Users {
 		users = append(users, u)
 	}
-	invites := []ID{}
-	if len(destinationGroup.Invites) > 0 {
-		for _, inviteIDString := range strings.Split(destinationGroup.Invites, ",") {
-			inviteID, err := ParseID(inviteIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": destinationGroup.ID,
-					"invites":  destinationGroup.Invites,
-				}).Fatal("invalid ID in group invite list")
-			}
-
-			invites = append(invites, inviteID)
-		}
+	invites, err := parseIDList(destinationGroup.Invites)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": destinationGroup.ID,
+		}).Error("skipping invalid IDs in group invite list")
 	}
 	for _, userID := range invites {
 		var u user

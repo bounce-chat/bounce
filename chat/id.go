@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -55,6 +56,28 @@ func ParseID(text string) (ID, error) {
 		return NilID, fmt.Errorf("%w: %q", errInvalidID, text)
 	}
 	return IDFromBytes(data)
+}
+
+// parseIDList reads a comma separated list of IDs, the form the engine stores ID lists in.  Entries that are not
+// IDs are left out and reported in the error, which names the first of them, so a caller can log it with its own
+// context and go on with the entries that parsed.
+func parseIDList(joined string) ([]ID, error) {
+	ids := []ID{}
+	if joined == "" {
+		return ids, nil
+	}
+	var err error
+	for _, idString := range strings.Split(joined, ",") {
+		id, parseErr := ParseID(idString)
+		if parseErr != nil {
+			if err == nil {
+				err = fmt.Errorf("list contains %q, which is not an ID", idString)
+			}
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids, err
 }
 
 // MustParseID is ParseID for constants in tests, and logs a fatal error on anything else

@@ -3,7 +3,6 @@ package chat
 import (
 	"encoding/binary"
 	"errors"
-	"strings"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
@@ -103,9 +102,10 @@ func (b *Bounce) createInitialGroupState(groupID ID) (groupState, map[string]ID,
 				"error":    err.Error(),
 				"group_id": groupID,
 				"images":   g.Images,
-			}).Fatal("invalid ID in group creation group image")
+			}).Error("skipping invalid ID in group creation image")
+		} else {
+			gs.images = []ID{imageID}
 		}
-		gs.images = []ID{imageID}
 	}
 
 	// Set the values for the original members
@@ -154,20 +154,14 @@ func (b *Bounce) createInitialGroupState(groupID ID) (groupState, map[string]ID,
 	}
 
 	// Set the values for the original admins
-	if len(g.Admins) != 0 {
-		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := ParseID(adminIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": groupID,
-					"admins":   g.Admins,
-				}).Fatal("invalid ID in group admin list")
-			}
-
-			gs.admins = append(gs.admins, adminID)
-		}
+	admins, err := parseIDList(g.Admins)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": groupID,
+		}).Error("skipping invalid IDs in group admin list")
 	}
+	gs.admins = admins
 
 	// Return the state
 	return gs, initialDeviceMap, revokedTimeMap, nil

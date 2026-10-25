@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -1055,4 +1056,68 @@ func TestUserDoesNotJoinGroupWithUnknownUserByDefault(t *testing.T) {
 	assert.NoError(t, err)
 	assert.False(t, gs.isMember(carol.currentUserID()))
 	assert.True(t, gs.isInvited(carol.currentUserID()))
+}
+
+// A group creation's string fields are stored exactly as the creator sent them and parsed later, so a bad value has
+// to be refused at the handler and again at the database, and a bad column that got in anyway must not take the
+// process down.
+func TestGroupCreationFieldsAreValidatedBeforeTheyAreStored(t *testing.T) {
+	me, alice, _, _ := createUsersAndGroups(t)
+
+	// creationFrom builds a creation the way alice's engine does, with the group changed first
+	creationFrom := func(mutate func(g *group)) (groupCreation, []byte) {
+		profile, ok := alice.currentUser()
+		assert.True(t, ok)
+		created := time.Now().Unix() - 3
+		g := group{
+			Name:      "Tampered",
+			CreatedBy: alice.currentUserID(),
+			CreatedAt: created,
+			Users:     []user{profile},
+			Admins:    alice.currentUserID().String(),
+		}
+		mutate(&g)
+		data, err := msgpack.Marshal(g)
+		assert.NoError(t, err)
+		gc := groupCreation{Nonce: newNonce(), Timestamp: created, Data: data}
+		gc.ID = gc.generateID()
+		return gc, signedFrame(t, alice, typeGroupCreation, gc)
+	}
+	rejected := func(name string, mutate func(g *group)) {
+		gc, payload := creationFrom(mutate)
+		_, accepted := me.handleGroupCreation(alice.network.Address(), payload, false)
+		assert.False(t, accepted, name)
+		var count int64
+		assert.NoError(t, me.database.Model(&groupCreation{}).Where("id = ?", gc.ID).Count(&count).Error)
+		assert.Equal(t, int64(0), count, name)
+		assert.NoError(t, me.database.Model(&group{}).Where("id = ?", gc.ID).Count(&count).Error)
+		assert.Equal(t, int64(0), count, name)
+	}
+	rejected("padded name", func(g *group) { g.Name = " padded" })
+	rejected("name too long", func(g *group) { g.Name = strings.Repeat("x", MaximumNameLength+1) })
+	rejected("image that is not an ID", func(g *group) { g.Images = "not-an-id" })
+	rejected("more than one image", func(g *group) { g.Images = NewID().String() + "," + NewID().String() })
+	rejected("invites in a creation", func(g *group) { g.Invites = NewID().String() })
+	rejected("blocked users in a creation", func(g *group) { g.BlockedUsers = NewID().String() })
+
+	// The same creation left alone passes the record check and is accepted
+	gc, payload := creationFrom(func(g *group) {})
+	var untouched group
+	assert.NoError(t, msgpack.Unmarshal(gc.Data, &untouched))
+	assert.NoError(t, validGroupCreationRecord(untouched))
+	_, accepted := me.handleGroupCreation(alice.network.Address(), payload, false)
+	assert.True(t, accepted)
+
+	// The database refuses a row with a creation-time field out of shape, even if a handler forgets to check
+	bad := group{ID: NewID(), Name: "Bad", CreatedBy: alice.currentUserID(), Admins: alice.currentUserID().String(), Invites: "junk"}
+	assert.Error(t, me.database.Create(&bad).Error)
+
+	// Corrupt columns on a stored group degrade to skipped entries rather than a fatal error
+	good := NewID()
+	corrupt := group{ID: NewID(), Admins: good.String() + ",garbage", Invites: "garbage", BlockedUsers: good.String(), Images: "garbage"}
+	gs := corrupt.state()
+	assert.Equal(t, []ID{good}, gs.admins)
+	assert.Equal(t, []ID{}, gs.invites)
+	assert.Equal(t, []ID{good}, gs.blockedUsers)
+	assert.Equal(t, []ID{}, gs.images)
 }

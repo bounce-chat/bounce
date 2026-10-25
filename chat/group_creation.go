@@ -168,6 +168,16 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		return nil, false
 	}
 
+	// Validate the fields on the group
+	if err := validGroupCreationRecord(g); err != nil {
+		log.WithFields(log.Fields{
+			"peer":     peer,
+			"group_id": g.ID,
+			"error":    err.Error(),
+		}).Warn("rejecting group creation with invalid group record")
+		return nil, false
+	}
+
 	// Make sure this group has one user, who is also the admin and creator
 	if len(g.Users) != 1 {
 		log.Warn("ignoring group creation that contains more than one user")

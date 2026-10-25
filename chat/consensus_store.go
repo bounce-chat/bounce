@@ -694,7 +694,8 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 				log.WithFields(log.Fields{
 					"error":    err.Error(),
 					"group_id": initialGroup.ID,
-				}).Fatal("database error creating group")
+				}).Error("error creating group")
+				return err
 			}
 			b.GroupConnectionDesired(g.ID)
 
@@ -844,20 +845,12 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 	}
 
 	// Set group admins
-	admins := []ID{}
-	if len(g.Admins) > 0 {
-		for _, adminIDString := range strings.Split(g.Admins, ",") {
-			adminID, err := ParseID(adminIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": g.ID,
-					"admins":   g.Admins,
-				}).Fatal("invalid ID in group admin list")
-
-			}
-			admins = append(admins, adminID)
-		}
+	admins, err := parseIDList(g.Admins)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": g.ID,
+		}).Error("skipping invalid IDs in group admin list")
 	}
 	for _, adminID := range admins {
 		if !gs.isAdmin(adminID) {
@@ -871,20 +864,12 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 	}
 
 	// Set the invited users
-	invited := []ID{}
-	if len(g.Invites) > 0 {
-		for _, invitedIDString := range strings.Split(g.Invites, ",") {
-			invitedID, err := ParseID(invitedIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": g.ID,
-					"invited":  g.Invites,
-				}).Fatal("invalid ID in group invited list")
-
-			}
-			invited = append(invited, invitedID)
-		}
+	invited, err := parseIDList(g.Invites)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": g.ID,
+		}).Error("skipping invalid IDs in group invite list")
 	}
 	for _, invitedID := range invited {
 		if !gs.isInvited(invitedID) {
@@ -1106,18 +1091,12 @@ func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID ID) {
 			}).Fatal("database error looking up group")
 		}
 	}
-	imageHistory := []ID{}
-	if len(g.Images) > 0 {
-		for _, imageIDString := range strings.Split(g.Images, ",") {
-			imageID, err := ParseID(imageIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"images": g.Images,
-				}).Fatal("invalid ID in group images list")
-			}
-			imageHistory = append(imageHistory, imageID)
-		}
+	imageHistory, err := parseIDList(g.Images)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": groupID,
+		}).Error("skipping invalid IDs in group image list")
 	}
 
 	// Delete all delivery records for this user for items in this group, and send the removal directly
@@ -1431,18 +1410,12 @@ func (b *Bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID ID) 
 		}
 
 		// Clear delivery records for any group images
-		imageHistory := []ID{}
-		if len(g.Images) > 0 {
-			for _, imageIDString := range strings.Split(g.Images, ",") {
-				imageID, err := ParseID(imageIDString)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error":  err.Error(),
-						"images": g.Images,
-					}).Fatal("invalid ID in group images list")
-				}
-				imageHistory = append(imageHistory, imageID)
-			}
+		imageHistory, err := parseIDList(g.Images)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"group_id": groupID,
+			}).Error("skipping invalid IDs in group image list")
 		}
 		err = b.database.Exec("DELETE FROM delivery_records WHERE frame_type = ? AND frame_id IN (?)", typeFile, imageHistory).Error
 		if err != nil {
@@ -1563,19 +1536,14 @@ func (b *Bounce) onlineEncryptedDevicesInGroup(groupID ID) []string {
 	for _, u := range g.Users {
 		userIDs = append(userIDs, u.ID)
 	}
-	if len(g.Invites) > 0 {
-		for _, invitedIDString := range strings.Split(g.Invites, ",") {
-			invitedID, err := ParseID(invitedIDString)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error":    err.Error(),
-					"group_id": g.ID,
-					"invites":  g.Invites,
-				}).Fatal("invalid ID in group invite list")
-			}
-			userIDs = append(userIDs, invitedID)
-		}
+	invitedIDs, err := parseIDList(g.Invites)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": g.ID,
+		}).Error("skipping invalid IDs in group invite list")
 	}
+	userIDs = append(userIDs, invitedIDs...)
 	for _, userID := range userIDs {
 		var u user
 		err = b.database.Select("encrypted_devices").Take(&u, "id = ?", userID).Error
