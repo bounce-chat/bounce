@@ -1114,15 +1114,15 @@ func hyperlinkify(text string) []widget.RichTextSegment {
 		if !strings.Contains(hyperlinkText, "://") {
 			parse = "http://" + hyperlinkText
 		}
-		url, err := url.Parse(parse)
-		if url.Scheme == "" {
-			url.Scheme = "http"
-		}
+		parsed, err := url.Parse(parse)
 		if err == nil {
+			if parsed.Scheme == "" {
+				parsed.Scheme = "http"
+			}
 			segments = append(segments,
 				&widget.HyperlinkSegment{
 					Text: hyperlinkText,
-					URL:  url,
+					URL:  parsed,
 				},
 			)
 		} else {
