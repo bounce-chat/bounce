@@ -70,7 +70,15 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 		return nil, false
 	}
 
-	// Make sure this profile has a valid device group
+	// Make sure the fields we store as-is are well formed, and that this profile has a valid device group
+	if err := validUserRecord(offerUser); err != nil {
+		log.WithFields(log.Fields{
+			"peer":    peer,
+			"user_id": offerUser.ID,
+			"error":   err.Error(),
+		}).Warn("add user request accepted contains invalid user record, ignoring")
+		return nil, false
+	}
 	if !b.hasValidDeviceGroup(offerUser) {
 		log.Error("add user request accepted contains offer user with invalid device group")
 		return nil, false

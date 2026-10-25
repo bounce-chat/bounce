@@ -198,7 +198,15 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		return nil, false
 	}
 
-	// Check that each user has a valid device group
+	// Check that the creator user has valid fields and a valid device group
+	if err := validUserRecord(g.Users[0]); err != nil {
+		log.WithFields(log.Fields{
+			"peer":    peer,
+			"user_id": g.Users[0].ID,
+			"error":   err.Error(),
+		}).Warn("ignoring group creation that contains invalid user record")
+		return nil, false
+	}
 	if !b.hasValidDeviceGroup(g.Users[0]) {
 		log.WithFields(log.Fields{
 			"peer":    peer,

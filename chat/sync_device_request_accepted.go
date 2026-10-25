@@ -69,7 +69,14 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	sdra.Profile.PrivateECDSAKey = sdra.PrivateECDSAKey
 	sdra.Profile.PublicECDSAKey = sdra.PublicECDSAKey
 
-	// Make sure this profile has a valid device group
+	// Make sure the profile has valid fields and a valid device group
+	if err := validUserRecord(sdra.Profile); err != nil {
+		log.WithFields(log.Fields{
+			"peer":  peer,
+			"error": err.Error(),
+		}).Error("sdra contains invalid profile record")
+		return nil, false
+	}
 	if !b.hasValidDeviceGroup(sdra.Profile) {
 		log.Error("sdra contains profile with invalid device group")
 		return nil, false

@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -267,4 +268,65 @@ func TestAWholeRecordIsStillCheckedInFull(t *testing.T) {
 	// Checked one at a time in creation order, the forgery is caught at the second device, before the third is
 	// ever considered on top of it
 	assert.False(t, validator.isValidAddition(aliceRecord, secondDevice))
+}
+
+// A user record's Images field is stored exactly as a peer sent it and parsed later, so a bad value has to be refused
+// at every ingress and again at the database, and a bad row that is already present must not take the process down.
+func TestUserRecordImagesAreValidatedBeforeTheyAreStored(t *testing.T) {
+	me, _, _, groupID := createUsersAndGroups(t)
+
+	carol := newBounceUser("Carol")
+	t.Cleanup(carol.Shutdown)
+	carolUser, ok := carol.currentUser()
+	assert.True(t, ok)
+	var cu user
+	cb, _ := msgpack.Marshal(carolUser)
+	assert.NoError(t, msgpack.Unmarshal(cb, &cu))
+
+	// The check every ingress runs: images, encrypted devices and name
+	cu.Images = ""
+	assert.NoError(t, validUserRecord(cu))
+	cu.Images = NewID().String() + "," + NewID().String()
+	assert.NoError(t, validUserRecord(cu))
+	cu.Images = "not-an-id"
+	assert.Error(t, validUserRecord(cu))
+	cu.Images = NewID().String() + ",,"
+	assert.Error(t, validUserRecord(cu))
+	cu.Images = ""
+
+	cu.EncryptedDevices = carol.network.Address() + "," + me.network.Address()
+	assert.NoError(t, validUserRecord(cu))
+	cu.EncryptedDevices = "not-an-address"
+	assert.Error(t, validUserRecord(cu))
+	cu.EncryptedDevices = carol.network.Address() + ","
+	assert.Error(t, validUserRecord(cu))
+	cu.EncryptedDevices = ""
+
+	for _, bad := range []string{"", " padded", "two\nlines", strings.Repeat("x", MaximumNameLength+1)} {
+		cu.Name = bad
+		assert.Error(t, validUserRecord(cu), bad)
+	}
+	cu.Name = "Carol"
+	assert.NoError(t, validUserRecord(cu))
+
+	// Our own profile is held to the same rules, so a peer never rejects a record we made
+	fresh := newBounce()
+	t.Cleanup(fresh.Shutdown)
+	assert.Error(t, fresh.SetProfile(" padded", []byte{}, "test"))
+	assert.NoError(t, fresh.SetProfile("Fresh", []byte{}, "test"))
+
+	// The invite path refuses to create the user, and nothing is written
+	cu.Images = "not-an-id"
+	assert.False(t, me.createNewUserIfNeeded(cu, groupID))
+	var count int64
+	assert.NoError(t, me.database.Model(&user{}).Where("id = ?", cu.ID).Count(&count).Error)
+	assert.Equal(t, int64(0), count)
+
+	// The database refuses the row even if a handler forgets to check
+	assert.Error(t, me.database.Create(&cu).Error)
+
+	// A corrupt row that is already present degrades to a skipped entry rather than a fatal error
+	good := NewID()
+	corrupt := user{ID: NewID(), Images: good.String() + ",garbage"}
+	assert.Equal(t, []ID{good}, corrupt.images())
 }

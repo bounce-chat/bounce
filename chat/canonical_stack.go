@@ -137,6 +137,13 @@ func (b *Bounce) inviteAddressMaps(ug updateGroup) (map[string]ID, map[string]in
 		return addressMap, revokedMap, err
 	}
 
+	if err := validUserRecord(u); err != nil {
+		log.WithFields(log.Fields{
+			"user_id": u.ID,
+			"error":   err.Error(),
+		}).Warn("rejecting user invite for user with invalid user record")
+		return addressMap, revokedMap, err
+	}
 	if !b.hasValidDeviceGroup(u) {
 		log.WithFields(log.Fields{
 			"user_id": u.ID,

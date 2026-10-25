@@ -196,6 +196,18 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		return nil, false
 	}
 
+	// Make sure both users contain valid data
+	for _, u := range []user{offerUser, requesterUser} {
+		if err := validUserRecord(u); err != nil {
+			log.WithFields(log.Fields{
+				"peer":    peer,
+				"user_id": u.ID,
+				"error":   err.Error(),
+			}).Warn("rejecting add user containing invalid user record")
+			return nil, false
+		}
+	}
+
 	// Make sure the xor matches the users
 	if au.Xor != xor(offerUser.ID, requesterUser.ID) {
 		log.WithFields(log.Fields{

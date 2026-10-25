@@ -116,7 +116,16 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 		return nil, false
 	}
 
-	// Validate that this new friend has a valid device group
+	// Validate user fields and  device group
+	if err := validUserRecord(requesterUser); err != nil {
+		log.WithFields(log.Fields{
+			"peer":    peer,
+			"user_id": requesterUser.ID,
+			"error":   err.Error(),
+		}).Warn("rejecting add user request containing invalid user record")
+		b.sendDirect(peer, &addUserRequestRejected{})
+		return nil, false
+	}
 	if !b.hasValidDeviceGroup(requesterUser) {
 		log.WithFields(log.Fields{
 			"peer":    peer,

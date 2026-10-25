@@ -1030,6 +1030,13 @@ func (b *Bounce) createNewUserIfNeeded(u user, groupID ID) bool {
 	}
 
 	// Ensure the user is valid
+	if err := validUserRecord(u); err != nil {
+		log.WithFields(log.Fields{
+			"user_id": u.ID,
+			"error":   err.Error(),
+		}).Warn("refusing to save user with invalid user record")
+		return false
+	}
 	if !b.hasValidDeviceGroup(u) {
 		log.WithFields(log.Fields{
 			"user_id": u.ID,

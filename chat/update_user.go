@@ -26,7 +26,6 @@ var updateUserTypeSetEncryptedDeviceName = uint16(4)
 var updateUserTypeReplaceKeys = uint16(5)
 var updateUserTypeReplaceECDHPublicKey = uint16(6)
 
-var errInvalidUserName = errors.New("invalid name")
 var errUnsupportedUpdateUserType = errors.New("unsupported update user type")
 var errInvalidAddress = errors.New("address is not a valid onion service id")
 var errPayloadTooShort = errors.New("payload is too short")

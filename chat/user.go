@@ -23,6 +23,10 @@ const userIntroductionGroup = "group"
 var blockedUsers = map[ID]bool{}
 var blockedUsersMutex sync.Mutex
 
+var errInvalidUserName = errors.New("invalid name")
+var errInvalidUserImages = errors.New("user images is not a list of IDs")
+var errInvalidEncryptedDevices = errors.New("user encrypted devices is not a list of addresses")
+
 type user struct {
 	ID                         ID `gorm:"primary_key;"`
 	Name                       string
@@ -60,9 +64,50 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 		return errors.New("user ID must be set before creation")
 	}
 
+	if err := validUserRecord(*u); err != nil {
+		return err
+	}
+
 	u.LastActivity = time.Now().Unix()
 
 	return nil
+}
+
+func validUserRecord(u user) error {
+	if !validUserName(u.Name) {
+		return errInvalidUserName
+	}
+	if !validImageHistory(u.Images) {
+		return errInvalidUserImages
+	}
+	if !validEncryptedDeviceList(u.EncryptedDevices) {
+		return errInvalidEncryptedDevices
+	}
+	return nil
+}
+
+func validEncryptedDeviceList(encryptedDevices string) bool {
+	if encryptedDevices == "" {
+		return true
+	}
+	for _, address := range strings.Split(encryptedDevices, ",") {
+		if !onionAddressRegex.MatchString(address) {
+			return false
+		}
+	}
+	return true
+}
+
+func validImageHistory(images string) bool {
+	if images == "" {
+		return true
+	}
+	for _, imageIDString := range strings.Split(images, ",") {
+		if _, err := ParseID(imageIDString); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func (u *user) images() []ID {
@@ -72,9 +117,10 @@ func (u *user) images() []ID {
 			imageID, err := ParseID(imageIDString)
 			if err != nil {
 				log.WithFields(log.Fields{
-					"error":  err.Error(),
-					"images": u.Images,
-				}).Fatal("invalid ID in user images list")
+					"error":   err.Error(),
+					"user_id": u.ID,
+				}).Error("skipping invalid ID in user images list")
+				continue
 			}
 			imageHistory = append(imageHistory, imageID)
 		}
@@ -206,6 +252,10 @@ func (b *Bounce) blockedGroups() []ID {
 	return blocked
 }
 func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string) error {
+	if !validUserName(profileName) {
+		return errInvalidUserName
+	}
+
 	newID := NewID()
 
 	// The icon is prepared first so the profile can name it, and published once the profile exists to be attached to
