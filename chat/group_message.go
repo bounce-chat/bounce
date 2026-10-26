@@ -61,19 +61,19 @@ func (gm *groupMessage) AfterDelete(tx *gorm.DB) error {
 	if gm.ID == NilID {
 		return nil
 	}
-	err := tx.Clauses(clause.Returning{}).Where("message_id = ?", gm.ID).Delete(&imageAttachment{}).Error
+	err := deleteEach[imageAttachment](tx, "message_id = ?", gm.ID)
 	if err != nil {
 		return err
 	}
-	err = tx.Clauses(clause.Returning{}).Where("message_id = ?", gm.ID).Delete(&fileAttachment{}).Error
+	err = deleteEach[fileAttachment](tx, "message_id = ?", gm.ID)
 	if err != nil {
 		return err
 	}
-	err = tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", gm.ID, typeGroupMessage).Delete(&deliveryRecord{}).Error
+	err = tx.Where("frame_id = ? AND frame_type = ?", gm.ID, typeGroupMessage).Delete(&deliveryRecord{}).Error
 	if err != nil {
 		return err
 	}
-	return tx.Clauses(clause.Returning{}).Where("target = ? AND target_type = ?", gm.ID, typeGroupMessage).Delete(&readReceipt{}).Error
+	return deleteEach[readReceipt](tx, "target = ? AND target_type = ?", gm.ID, typeGroupMessage)
 }
 
 func (gm *groupMessage) getID() ID {
@@ -556,7 +556,7 @@ func (b *Bounce) deleteGroupMessageAt(timestamp int64, id ID) {
 	}
 
 	// Delete from the database
-	err := b.database.Clauses(clause.Returning{}).Where("id = ?", id).Delete(&groupMessage{}).Error
+	err := deleteEach[groupMessage](b.database, "id = ?", id)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"message_id": id,

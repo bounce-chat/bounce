@@ -103,13 +103,13 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 	go func() {
 		for {
 			<-ticker.C
-			err := b.database.Clauses(clause.Returning{}).Where("delete_at != 0 AND delete_at <= ?", time.Now().Unix()).Delete(&encryptedFrame{}).Error
+			err := b.database.Where("delete_at != 0 AND delete_at <= ?", time.Now().Unix()).Delete(&encryptedFrame{}).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("error pruning encrypted frames")
 			}
-			err = b.database.Clauses(clause.Returning{}).Where("delete_at != 0 AND delete_at <= ?", time.Now().Unix()).Delete(&encryptedChunkStorageRequest{}).Error
+			err = deleteEach[encryptedChunkStorageRequest](b.database, "delete_at != 0 AND delete_at <= ?", time.Now().Unix())
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -676,7 +676,7 @@ func (b *Bounce) handleEncryptedClearBefore(peer string, payload []byte, _ bool)
 		}).Fatal("error finding ECSR to delete")
 	}
 	for _, ecsr := range ecsrToDelete {
-		err := b.database.Clauses(clause.Returning{}).Delete(&ecsr).Error
+		err := b.database.Delete(&ecsr).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

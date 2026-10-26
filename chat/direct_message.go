@@ -63,19 +63,19 @@ func (dm *directMessage) AfterDelete(tx *gorm.DB) error {
 	if dm.ID == NilID {
 		return nil
 	}
-	err := tx.Clauses(clause.Returning{}).Where("message_id = ?", dm.ID).Delete(&imageAttachment{}).Error
+	err := deleteEach[imageAttachment](tx, "message_id = ?", dm.ID)
 	if err != nil {
 		return err
 	}
-	err = tx.Clauses(clause.Returning{}).Where("message_id = ?", dm.ID).Delete(&fileAttachment{}).Error
+	err = deleteEach[fileAttachment](tx, "message_id = ?", dm.ID)
 	if err != nil {
 		return err
 	}
-	err = tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", dm.ID, typeDirectMessage).Delete(&deliveryRecord{}).Error
+	err = tx.Where("frame_id = ? AND frame_type = ?", dm.ID, typeDirectMessage).Delete(&deliveryRecord{}).Error
 	if err != nil {
 		return err
 	}
-	return tx.Clauses(clause.Returning{}).Where("target = ? AND target_type = ?", dm.ID, typeDirectMessage).Delete(&readReceipt{}).Error
+	return deleteEach[readReceipt](tx, "target = ? AND target_type = ?", dm.ID, typeDirectMessage)
 }
 
 func (dm *directMessage) getID() ID {
@@ -534,7 +534,7 @@ func (b *Bounce) deleteDirectMessageAt(timestamp int64, id ID) {
 	}
 
 	// Delete from the database
-	err := b.database.Clauses(clause.Returning{}).Where("id = ?", id).Delete(&directMessage{}).Error
+	err := deleteEach[directMessage](b.database, "id = ?", id)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"message_id": id,

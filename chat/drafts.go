@@ -9,7 +9,6 @@ import (
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var draftCache = make(map[ID]*draft)
@@ -41,7 +40,7 @@ func (d *draft) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (d *draft) AfterDelete(tx *gorm.DB) error {
-	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", d.ID, typeDraft).Delete(&deliveryRecord{}).Error
+	return tx.Where("frame_id = ? AND frame_type = ?", d.ID, typeDraft).Delete(&deliveryRecord{}).Error
 }
 
 func (d *draft) getID() ID {
@@ -215,7 +214,7 @@ func (b *Bounce) syncDrafts() {
 
 	for _, d := range draftCache {
 		if !d.Saved {
-			err := b.database.Clauses(clause.Returning{}).Where("thread = ?", d.Thread).Delete(&draft{}).Error
+			err := deleteEach[draft](b.database, "thread = ?", d.Thread)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),

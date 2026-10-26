@@ -291,7 +291,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 		err = b.database.Select("id").First(&invitedByUser, "id = ?", finalState.invitedBy).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				err = b.database.Exec("DELETE FROM group_creations WHERE id = ?", groupID).Error
+				err = deleteEach[groupCreation](b.database, "id = ?", groupID)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"group_id": groupID,
@@ -299,7 +299,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 					}).Error("error removing group creation from unauthorized group")
 				}
 
-				err = b.database.Exec("DELETE FROM update_groups WHERE target = ?", groupID).Error
+				err = deleteEach[updateGroup](b.database, "target = ?", groupID)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"group_id": groupID,

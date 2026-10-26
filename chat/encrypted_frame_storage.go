@@ -6,7 +6,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"gorm.io/gorm/clause"
 )
 
 // Frames can be left on an encrypted device by any peer that names the owner as a recipient.  That is how the
@@ -148,7 +147,7 @@ func (b *Bounce) evictUntrustedEncryptedFramesSavedBefore(before int64) (int64, 
 		ids = append(ids, frame.ID)
 		freed += frame.Size
 	}
-	err = b.database.Clauses(clause.Returning{}).Where("id IN (?)", ids).Delete(&encryptedFrame{}).Error
+	err = b.database.Where("id IN (?)", ids).Delete(&encryptedFrame{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

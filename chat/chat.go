@@ -15,7 +15,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const MutedForever = int64(-1)
@@ -210,7 +209,7 @@ func (b *Bounce) Shutdown() {
 	draftMutex.Lock()
 	for _, d := range draftCache {
 		if !d.Saved {
-			err := b.database.Clauses(clause.Returning{}).Where("thread = ?", d.Thread).Delete(&draft{}).Error
+			err := deleteEach[draft](b.database, "thread = ?", d.Thread)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),

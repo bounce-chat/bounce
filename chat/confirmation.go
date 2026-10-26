@@ -7,7 +7,6 @@ import (
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // A confirmation is a signature of an update group from a device which is broadcast to the entire group.
@@ -53,7 +52,7 @@ func (c *confirmation) AfterDelete(tx *gorm.DB) error {
 	if c.ID == NilID {
 		return nil
 	}
-	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", c.ID, typeConfirmation).Delete(&deliveryRecord{}).Error
+	return tx.Where("frame_id = ? AND frame_type = ?", c.ID, typeConfirmation).Delete(&deliveryRecord{}).Error
 }
 
 func (c *confirmation) getID() ID {

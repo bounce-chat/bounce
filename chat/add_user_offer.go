@@ -46,7 +46,7 @@ func (b *Bounce) GetNewAddUserString() string {
 	}
 
 	// Delete all other past offers
-	err = b.database.Where("id != ?", offer.ID).Delete(addUserOffer{}).Error
+	err = b.database.Where("id != ?", offer.ID).Delete(&addUserOffer{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

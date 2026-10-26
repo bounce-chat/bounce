@@ -10,7 +10,6 @@ import (
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var groupMutex sync.Mutex
@@ -84,27 +83,27 @@ func (g *group) AfterDelete(tx *gorm.DB) error {
 		log.Error("attempt to run delete hooks on empty group")
 		return nil
 	}
-	err := tx.Clauses(clause.Returning{}).Where("id = ?", g.ID).Delete(&groupCreation{}).Error
+	err := deleteEach[groupCreation](tx, "id = ?", g.ID)
 	if err != nil {
 		return err
 	}
-	err = tx.Clauses(clause.Returning{}).Where("destination = ?", g.ID).Delete(&groupMessage{}).Error
+	err = deleteEach[groupMessage](tx, "destination = ?", g.ID)
 	if err != nil {
 		return err
 	}
-	err = tx.Clauses(clause.Returning{}).Where("target = ? AND custom_scope = ?", g.ID, NilID).Delete(&updateGroup{}).Error
+	err = deleteEach[updateGroup](tx, "target = ? AND custom_scope = ?", g.ID, NilID)
 	if err != nil {
 		return err
 	}
-	err = tx.Clauses(clause.Returning{}).Exec("DELETE FROM group_users WHERE group_id = ?", g.ID).Error
+	err = tx.Exec("DELETE FROM group_users WHERE group_id = ?", g.ID).Error
 	if err != nil {
 		return err
 	}
-	err = tx.Clauses(clause.Returning{}).Where("type = ? AND destination = ?", fileTypeGroupImage, g.ID).Delete(&file{}).Error
+	err = deleteEach[file](tx, "type = ? AND destination = ?", fileTypeGroupImage, g.ID)
 	if err != nil {
 		return err
 	}
-	err = tx.Clauses(clause.Returning{}).Where("thread = ?", g.ID).Delete(&draft{}).Error
+	err = deleteEach[draft](tx, "thread = ?", g.ID)
 	if err != nil {
 		return err
 	}

@@ -109,15 +109,15 @@ func (f *file) AfterDelete(tx *gorm.DB) error {
 		return nil
 	}
 	f.SavedAt = time.Now().Unix()
-	err := tx.Clauses(clause.Returning{}).Where("file_id = ?", f.ID).Delete(&chunk{}).Error
+	err := tx.Where("file_id = ?", f.ID).Delete(&chunk{}).Error
 	if err != nil {
 		return err
 	}
-	err = tx.Clauses(clause.Returning{}).Where("file_id = ?", f.ID).Delete(&chunkOffer{}).Error
+	err = tx.Where("file_id = ?", f.ID).Delete(&chunkOffer{}).Error
 	if err != nil {
 		return err
 	}
-	err = tx.Clauses(clause.Returning{}).Where("file_id = ?", f.ID).Delete(&encryptedChunkOffer{}).Error
+	err = tx.Where("file_id = ?", f.ID).Delete(&encryptedChunkOffer{}).Error
 	if err != nil {
 		return err
 	}
@@ -1081,7 +1081,7 @@ func (b *Bounce) deleteOldestChunkDownloadedBefore(time int64) error {
 			"error": err.Error(),
 		}).Error("unable to stat oldest chunk in blobs directory")
 
-		err = b.database.Where("hash = ?", oldestSR.Hash).Delete(&encryptedChunkStorageRequest{}).Error
+		err = deleteEach[encryptedChunkStorageRequest](b.database, "hash = ?", oldestSR.Hash)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -1101,7 +1101,7 @@ func (b *Bounce) deleteOldestChunkDownloadedBefore(time int64) error {
 		}).Error("error removing file")
 		return err
 	}
-	err = b.database.Where("hash = ?", oldestSR.Hash).Delete(&encryptedChunkStorageRequest{}).Error
+	err = deleteEach[encryptedChunkStorageRequest](b.database, "hash = ?", oldestSR.Hash)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -1149,7 +1149,7 @@ func (b *Bounce) deleteOldestChunk() error {
 			"error": err.Error(),
 		}).Error("unable to stat oldest chunk in blobs directory")
 
-		err = b.database.Where("hash = ?", oldestSR.Hash).Delete(&encryptedChunkStorageRequest{}).Error
+		err = deleteEach[encryptedChunkStorageRequest](b.database, "hash = ?", oldestSR.Hash)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -1169,7 +1169,7 @@ func (b *Bounce) deleteOldestChunk() error {
 		}).Error("error removing file")
 		return err
 	}
-	err = b.database.Where("hash = ?", oldestSR.Hash).Delete(&encryptedChunkStorageRequest{}).Error
+	err = deleteEach[encryptedChunkStorageRequest](b.database, "hash = ?", oldestSR.Hash)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -1974,7 +1974,7 @@ func (b *Bounce) handleChunkUnavailable(peer string, payload []byte, catchUp boo
 	}
 
 	if b.encrypted {
-		err := b.database.Clauses(clause.Returning{}).Where("hash = ? and source = ?", cu.Hash, peer).Delete(&encryptedChunkStorageRequest{}).Error
+		err := deleteEach[encryptedChunkStorageRequest](b.database, "hash = ? and source = ?", cu.Hash, peer)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -1986,7 +1986,7 @@ func (b *Bounce) handleChunkUnavailable(peer string, payload []byte, catchUp boo
 		encryptedDeviceCacheMutex.Unlock()
 
 		if encryptedPeer {
-			err := b.database.Clauses(clause.Returning{}).Where("hash = ? and location = ?", cu.Hash, peer).Delete(&encryptedChunkOffer{}).Error
+			err := b.database.Where("hash = ? and location = ?", cu.Hash, peer).Delete(&encryptedChunkOffer{}).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -1999,7 +1999,7 @@ func (b *Bounce) handleChunkUnavailable(peer string, payload []byte, catchUp boo
 				b.chunkEngine.remove(peer, c.Hash)
 			}
 		} else {
-			err := b.database.Clauses(clause.Returning{}).Where("hash = ? and location = ?", cu.Hash, peer).Delete(&chunkOffer{}).Error
+			err := b.database.Where("hash = ? and location = ?", cu.Hash, peer).Delete(&chunkOffer{}).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),

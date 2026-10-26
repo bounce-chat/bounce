@@ -10,7 +10,6 @@ import (
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var updateDeviceMutex sync.Mutex
@@ -389,7 +388,7 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 		}).Fatal("database error looking up unauthorized group creations")
 	}
 	for _, gc := range unauthorizedGroupCreations {
-		err = b.database.Delete(&group{}, gc.ID).Error
+		err = deleteEach[group](b.database, "id = ?", gc.ID)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"id":    gc.ID,
@@ -411,7 +410,7 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 		}).Fatal("error looking up unauthorized group messages")
 	}
 	for _, gm := range unauthorizedGroupMessages {
-		err := b.database.Clauses(clause.Returning{}).Where("id = ?", gm.ID).Delete(&groupMessage{}).Error
+		err := deleteEach[groupMessage](b.database, "id = ?", gm.ID)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"id":    gm.ID,

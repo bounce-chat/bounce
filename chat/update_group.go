@@ -118,18 +118,18 @@ func (ug *updateGroup) AfterDelete(tx *gorm.DB) error {
 		return nil
 	}
 	if ug.CustomScope != NilID {
-		err := tx.Clauses(clause.Returning{}).Where("id = ?", ug.CustomScope).Delete(&customScope{}).Error
+		err := tx.Where("id = ?", ug.CustomScope).Delete(&customScope{}).Error
 		if err != nil {
 			return err
 		}
 	}
 
-	err := tx.Clauses(clause.Returning{}).Where("update_group_id = ?", ug.ID).Delete(&confirmation{}).Error
+	err := deleteEach[confirmation](tx, "update_group_id = ?", ug.ID)
 	if err != nil {
 		return err
 	}
 
-	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", ug.ID, typeUpdateGroup).Delete(&deliveryRecord{}).Error
+	return tx.Where("frame_id = ? AND frame_type = ?", ug.ID, typeUpdateGroup).Delete(&deliveryRecord{}).Error
 }
 
 func (ug *updateGroup) getID() ID {

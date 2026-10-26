@@ -5,7 +5,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type fileAttachment struct {
@@ -20,7 +19,7 @@ func (fa *fileAttachment) AfterDelete(tx *gorm.DB) error {
 	if fa.ID == NilID {
 		return nil
 	}
-	return tx.Clauses(clause.Returning{}).Where("id = ?", fa.FileID).Delete(&file{}).Error
+	return deleteEach[file](tx, "id = ?", fa.FileID)
 }
 
 type imageAttachment struct {
@@ -38,7 +37,7 @@ func (ia *imageAttachment) AfterDelete(tx *gorm.DB) error {
 	if ia.ID == NilID {
 		return nil
 	}
-	return tx.Clauses(clause.Returning{}).Where("id = ?", ia.FileID).Delete(&file{}).Error
+	return deleteEach[file](tx, "id = ?", ia.FileID)
 }
 
 // Attachments are part of a message's content, so they are packed into its ID.  The message ID itself is left out

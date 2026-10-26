@@ -62,7 +62,7 @@ func (au *addUser) AfterDelete(tx *gorm.DB) error {
 	if au.ID == NilID {
 		return nil
 	}
-	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", au.ID, typeAddUser).Delete(&deliveryRecord{}).Error
+	return tx.Where("frame_id = ? AND frame_type = ?", au.ID, typeAddUser).Delete(&deliveryRecord{}).Error
 }
 
 func (au *addUser) getID() ID {

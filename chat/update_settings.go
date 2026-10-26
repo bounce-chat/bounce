@@ -9,7 +9,6 @@ import (
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var updateSettingsMutex sync.Mutex
@@ -63,7 +62,7 @@ func (us *updateSettings) AfterDelete(tx *gorm.DB) error {
 	if us.ID == NilID {
 		return nil
 	}
-	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", us.ID, typeUpdateSettings).Delete(&deliveryRecord{}).Error
+	return tx.Where("frame_id = ? AND frame_type = ?", us.ID, typeUpdateSettings).Delete(&deliveryRecord{}).Error
 }
 
 func (us *updateSettings) getID() ID {

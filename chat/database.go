@@ -176,9 +176,19 @@ func (b *Bounce) deviceIsRevoked() bool {
 	return dev.RevokedAt != 0
 }
 
+// deleteEach deletes every row of T matching the conditions and runs T's delete hooks once per row.  There are no
+// foreign keys in this schema; a parent's AfterDelete hook is what removes its children.  GORM runs that hook once,
+// on the first returned row, when the destination is a struct, and on a zero value when there is no RETURNING, so
+// a delete through a struct literal only ever cascades one row at best.  A slice destination is what makes the
+// hook run for each row, so every delete of a hooked model by condition goes through here.
+func deleteEach[T any](db *gorm.DB, query string, args ...interface{}) error {
+	var rows []T
+	return db.Clauses(clause.Returning{}).Where(query, args...).Delete(&rows).Error
+}
+
 func (b *Bounce) pruneDirectMessages() {
 	// Delete messages from the database that are past expiration
-	err := b.database.Clauses(clause.Returning{}).Where("delete_at != 0 AND delete_at < ?", time.Now().Unix()).Delete(&directMessage{}).Error
+	err := deleteEach[directMessage](b.database, "delete_at != 0 AND delete_at < ?", time.Now().Unix())
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -226,7 +236,7 @@ func (b *Bounce) pruneDirectMessages() {
 
 func (b *Bounce) pruneGroupMessages() {
 	// Delete messages from the database that are past expiration
-	err := b.database.Clauses(clause.Returning{}).Where("delete_at != 0 AND delete_at < ?", time.Now().Unix()).Delete(&groupMessage{}).Error
+	err := deleteEach[groupMessage](b.database, "delete_at != 0 AND delete_at < ?", time.Now().Unix())
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -276,7 +286,7 @@ func (b *Bounce) pruneUndeliverableCustomScopes() {
 	deleteBefore := time.Now().Unix() - int64(undeliverableAfter.Seconds())
 
 	// Prune update groups
-	err := b.database.Clauses(clause.Returning{}).Where("custom_scope != ? AND timestamp < ?", NilID, deleteBefore).Delete(&updateGroup{}).Error
+	err := deleteEach[updateGroup](b.database, "custom_scope != ? AND timestamp < ?", NilID, deleteBefore)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -319,7 +329,7 @@ func (b *Bounce) pruneUnverifiedUpdateGroups() {
 				continue
 			}
 		}
-		err = b.database.Clauses(clause.Returning{}).Delete(&ug).Error
+		err = b.database.Delete(&ug).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"id":    ug.ID,

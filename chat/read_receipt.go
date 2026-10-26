@@ -8,7 +8,6 @@ import (
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var readReceiptTargetTypeString = map[uint16]string{
@@ -73,7 +72,7 @@ func (rr *readReceipt) AfterDelete(tx *gorm.DB) error {
 	if rr.ID == NilID {
 		return nil
 	}
-	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", rr.ID, typeReadReceipt).Delete(&deliveryRecord{}).Error
+	return tx.Where("frame_id = ? AND frame_type = ?", rr.ID, typeReadReceipt).Delete(&deliveryRecord{}).Error
 }
 
 func (rr *readReceipt) getID() ID {
@@ -288,7 +287,7 @@ func (b *Bounce) processEarlyReadReceipts(messageID ID, messageType uint16, noti
 					"id":    rr.ID,
 					"actor": rr.Actor,
 				}).Warn("deleting early read receipt from a user who is not a participant of the message's thread")
-				err = b.database.Where("id = ?", rr.ID).Delete(&readReceipt{}).Error
+				err = deleteEach[readReceipt](b.database, "id = ?", rr.ID)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),

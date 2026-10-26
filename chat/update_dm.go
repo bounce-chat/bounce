@@ -94,7 +94,7 @@ func (ud *updateDM) AfterDelete(tx *gorm.DB) error {
 	if ud.ID == NilID {
 		return nil
 	}
-	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", ud.ID, typeUpdateDM).Delete(&deliveryRecord{}).Error
+	return tx.Where("frame_id = ? AND frame_type = ?", ud.ID, typeUpdateDM).Delete(&deliveryRecord{}).Error
 }
 
 func (ud *updateDM) getID() ID {
@@ -727,7 +727,7 @@ func (b *Bounce) informUIUpdateDMSetClearBefore(u user, ud *updateDM) {
 		}).Fatal("error selecting direct messages to delete while clearing chat history")
 	}
 	for _, dm := range dms {
-		err := b.database.Clauses(clause.Returning{}).Delete(&dm).Error
+		err := b.database.Delete(&dm).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),

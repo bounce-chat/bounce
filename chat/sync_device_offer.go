@@ -7,7 +7,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // A sync device offer is the secret stored on our device that is conveyed to another device that wants to be a sync device for our user.
@@ -46,7 +45,7 @@ func (b *Bounce) GetNewSyncString() string {
 	}
 
 	// Delete all other past offers
-	err = b.database.Clauses(clause.Returning{}).Where("id != ?", offer.ID).Delete(&syncDeviceOffer{}).Error
+	err = b.database.Where("id != ?", offer.ID).Delete(&syncDeviceOffer{}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

@@ -7,7 +7,6 @@ import (
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // A group creation captures the original state of a group.  This is the original source of truth on the structure of a group, and all
@@ -46,7 +45,7 @@ func (gc *groupCreation) AfterDelete(tx *gorm.DB) error {
 	if gc.ID == NilID {
 		return nil
 	}
-	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", gc.ID, typeGroupCreation).Delete(&deliveryRecord{}).Error
+	return tx.Where("frame_id = ? AND frame_type = ?", gc.ID, typeGroupCreation).Delete(&deliveryRecord{}).Error
 }
 
 func (gc *groupCreation) getID() ID {

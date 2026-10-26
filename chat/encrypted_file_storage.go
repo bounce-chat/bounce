@@ -495,11 +495,11 @@ func (ecsr *encryptedChunkStorageRequest) AfterDelete(tx *gorm.DB) error {
 		}
 	}
 
-	err := tx.Clauses(clause.Returning{}).Where("encrypted_chunk_storage_request_id = ?", ecsr.ID).Delete(&encryptedChunkRecipient{}).Error
+	err := tx.Where("encrypted_chunk_storage_request_id = ?", ecsr.ID).Delete(&encryptedChunkRecipient{}).Error
 	if err != nil {
 		return err
 	}
-	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", ecsr.ID, typeEncryptedChunkStorageRequest).Delete(&deliveryRecord{}).Error
+	return tx.Where("frame_id = ? AND frame_type = ?", ecsr.ID, typeEncryptedChunkStorageRequest).Delete(&deliveryRecord{}).Error
 }
 
 func (ecsr encryptedChunkStorageRequest) getType() uint16 {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/alecthomas/assert/v2"
 	"gorm.io/gorm"
@@ -56,4 +57,51 @@ func TestDeletingAMessageDeletesAllFileData(t *testing.T) {
 
 	err = b.database.First(&createdChunk, "file_id = ?", fileID).Error
 	assert.Equal(t, gorm.ErrRecordNotFound, err)
+}
+
+// Child rows are removed by their parent's AfterDelete hook, and GORM runs that hook once per batch unless the
+// delete goes through deleteEach.  Every cascade that can match more than one row is exercised here: the retention
+// prune (many messages, each with many attachments) and deleting a group (many messages, updates and files).
+func TestDeletingManyMessagesDeletesAllOfTheirFileData(t *testing.T) {
+	b, _, _, groupID := createUsersAndGroups(t)
+
+	sendWithTwoAttachments := func(text string) (ID, []ID) {
+		attachments := []OutgoingAttachment{}
+		for _, name := range []string{"one", "two"} {
+			data := []byte(text + " " + name)
+			attachments = append(attachments, OutgoingAttachment{Name: name, Size: int64(len(data)), Reader: io.NopCloser(bytes.NewReader(data))})
+		}
+		assert.NoError(t, b.SendGroupMessage(groupID, text, attachments))
+		var gm groupMessage
+		assert.NoError(t, b.database.Preload("FileAttachments").First(&gm, "text = ?", text).Error)
+		assert.Equal(t, 2, len(gm.FileAttachments))
+		return gm.ID, []ID{gm.FileAttachments[0].FileID, gm.FileAttachments[1].FileID}
+	}
+	count := func(table, where string, ids []ID) int64 {
+		var n int64
+		assert.NoError(t, b.database.Table(table).Where(where, ids).Count(&n).Error)
+		return n
+	}
+
+	first, firstFiles := sendWithTwoAttachments("expires first")
+	second, secondFiles := sendWithTwoAttachments("expires second")
+	messages := []ID{first, second}
+	files := append(firstFiles, secondFiles...)
+	assert.Equal(t, int64(4), count("files", "id IN ?", files))
+
+	// Both expire at once, through the engine's own prune
+	assert.NoError(t, b.database.Table("group_messages").Where("id IN ?", messages).Update("delete_at", time.Now().Unix()-1).Error)
+	b.pruneGroupMessages()
+	assert.Equal(t, int64(0), count("group_messages", "id IN ?", messages))
+	assert.Equal(t, int64(0), count("file_attachments", "message_id IN ?", messages))
+	assert.Equal(t, int64(0), count("files", "id IN ?", files))
+	assert.Equal(t, int64(0), count("chunks", "file_id IN ?", files))
+
+	// Deleting the group cascades through every message it still has
+	third, thirdFiles := sendWithTwoAttachments("deleted with the group")
+	fourth, fourthFiles := sendWithTwoAttachments("also deleted with the group")
+	assert.NoError(t, deleteEach[group](b.database, "id = ?", groupID))
+	assert.Equal(t, int64(0), count("group_messages", "id IN ?", []ID{third, fourth}))
+	assert.Equal(t, int64(0), count("files", "id IN ?", append(thirdFiles, fourthFiles...)))
+	assert.Equal(t, int64(0), count("group_creations", "id IN ?", []ID{groupID}))
 }

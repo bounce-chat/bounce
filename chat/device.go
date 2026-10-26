@@ -122,7 +122,7 @@ func (d *device) AfterDelete(tx *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	return tx.Clauses(clause.Returning{}).Where("frame_id = ? AND frame_type = ?", d.ID, typeDevice).Delete(&deliveryRecord{}).Error
+	return tx.Where("frame_id = ? AND frame_type = ?", d.ID, typeDevice).Delete(&deliveryRecord{}).Error
 }
 
 func (d *device) getID() ID {
