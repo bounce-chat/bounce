@@ -1,7 +1,9 @@
 package chat
 
 import (
+	"bytes"
 	crand "crypto/rand"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -133,4 +135,47 @@ func TestChunkOffersInReferenceFollowOverlapScope(t *testing.T) {
 	}
 	assert.True(t, hasMyChunkOffer)
 	assert.False(t, hasAliceChunkOffer)
+}
+
+// Chunk offers are offered by the scope of their file.  The offer queries compare ID columns, which are blobs, so
+// the IDs they are compared against have to be bound as IDs; bound as hex strings nothing matches, group attachments
+// are never offered to anyone who missed the live broadcast, and nothing is ever excluded as delivered.
+func TestChunkOffersAreOfferedByScopeAndExcludedOnceDelivered(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+
+	// A real group attachment, with the chunk offer the engine creates for it
+	data := []byte("group attachment payload")
+	assert.NoError(t, me.SendGroupMessage(groupID, "group attachment", []OutgoingAttachment{{
+		Name:   "f.bin",
+		Size:   int64(len(data)),
+		Reader: io.NopCloser(bytes.NewReader(data)),
+	}}))
+	var gm groupMessage
+	assert.NoError(t, me.database.Preload("FileAttachments").First(&gm, "text = ?", "group attachment").Error)
+	assert.Equal(t, 1, len(gm.FileAttachments))
+	var co chunkOffer
+	assert.NoError(t, me.database.First(&co, "file_id = ? AND location = ?", gm.FileAttachments[0].FileID, me.network.Address()).Error)
+	assert.Equal(t, scopeGroup, co.Scope)
+
+	offered := func(address string, userID ID) bool {
+		for _, ref := range me.getChunkOffersToOffer(address, userID) {
+			if ref.FrameID == co.ID {
+				return true
+			}
+		}
+		return false
+	}
+
+	// A co-member's device that missed the live broadcast is offered it, and not once it has been delivered there.
+	// Alice's connected device already has it (the live broadcast was acked), so use another device of hers.
+	aliceOffline := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	assert.True(t, offered(aliceOffline, alice.currentUserID()))
+	me.markDeliveredTo(&co, aliceOffline)
+	assert.False(t, offered(aliceOffline, alice.currentUserID()))
+
+	// Our own sync device is offered it too, including when nothing has been delivered to that device yet
+	syncDevice := "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+	assert.True(t, offered(syncDevice, me.currentUserID()))
+	me.markDeliveredTo(&co, syncDevice)
+	assert.False(t, offered(syncDevice, me.currentUserID()))
 }

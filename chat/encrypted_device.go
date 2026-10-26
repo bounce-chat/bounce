@@ -1631,16 +1631,19 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 			go b.sendDirect(peer, &response)
 		}
 	case actionTypePruneDrafts:
-		draftPayload := string(edma.Data)
-		if len(draftPayload) > 0 {
-			drafts := strings.Split(draftPayload, ",")
-
-			err = b.database.Where("type = ? AND id NOT IN (?)", typeDraft, drafts).Delete(&encryptedFrame{}).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("database error pruning drafts")
-			}
+		var keep []ID
+		err = msgpack.Unmarshal(edma.Data, &keep)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error decoding draft IDs in encrypted device prune")
+			break
+		}
+		err = b.deleteDraftsExcept(keep)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("database error pruning drafts")
 		}
 	default:
 		log.WithFields(log.Fields{
@@ -1929,6 +1932,17 @@ func (b *Bounce) encryptionKeyHistory() map[string][]byte {
 	return results
 }
 
+// deleteDraftsExcept removes every stored draft but the ones the managing user still has.  An empty list means the
+// user has no drafts, so every stored one goes; IDs are bound as IDs, since the column is a blob and a hex string
+// would never match it.
+func (b *Bounce) deleteDraftsExcept(keep []ID) error {
+	query := b.database.Where("type = ?", typeDraft)
+	if len(keep) > 0 {
+		query = query.Where("id NOT IN (?)", keep)
+	}
+	return query.Delete(&encryptedFrame{}).Error
+}
+
 func (b *Bounce) pruneEncryptedDrafts() {
 	currentUser, ok := b.currentUser()
 	if !ok {
@@ -1947,20 +1961,26 @@ func (b *Bounce) pruneEncryptedDrafts() {
 		}).Fatal("database error finding all encrypted sync devices")
 	}
 
-	draftIDs := []string{}
+	draftIDs := []ID{}
 	draftMutex.Lock()
 	for _, d := range draftCache {
-		draftIDs = append(draftIDs, d.ID.String())
+		draftIDs = append(draftIDs, d.ID)
 	}
 	draftMutex.Unlock()
-	draftsPayload := strings.Join(draftIDs, ",")
+	draftsPayload, err := msgpack.Marshal(draftIDs)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error encoding draft IDs for encrypted device prune")
+		return
+	}
 
 	for _, esd := range esds {
 		rd := b.getRemoteDevice(esd.Address)
 		if rd.connectedSockets() > 0 {
 			edma := encryptedDeviceManagementAction{
 				ActionType: actionTypePruneDrafts,
-				Data:       []byte(draftsPayload),
+				Data:       draftsPayload,
 			}
 			encoded, err := msgpack.Marshal(&edma)
 			if err != nil {

@@ -207,13 +207,13 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 
 func (b *Bounce) getEncryptedReferenceOfferFor(address string, publicKey []byte) *referenceOffer {
 	// Frame IDs this public key can have
-	var allowedPubkeyIDs []string
+	var allowedPubkeyIDs []ID
 	b.database.Model(&recipient{}).
 		Where("public_key = ?", publicKey).
 		Pluck("encrypted_frame_id", &allowedPubkeyIDs)
 
 	// Frmae IDs this device can have
-	var allowedDeviceIDs []string
+	var allowedDeviceIDs []ID
 	b.database.Model(&deviceRecipient{}).
 		Where("recipient_address = ?", address).
 		Pluck("encrypted_frame_id", &allowedDeviceIDs)
@@ -221,16 +221,16 @@ func (b *Bounce) getEncryptedReferenceOfferFor(address string, publicKey []byte)
 	allowedIDs := append(allowedPubkeyIDs, allowedDeviceIDs...)
 
 	// Frame IDs we have delivered
-	var deliveredIDs []string
+	var deliveredIDs []ID
 	b.database.Model(&deliveryRecord{}).
 		Where("destination = ?", address).
 		Pluck("frame_id", &deliveredIDs)
-	deliveredMap := map[string]bool{}
+	deliveredMap := map[ID]bool{}
 	for _, id := range deliveredIDs {
 		deliveredMap[id] = true
 	}
 
-	offerIDs := []string{}
+	offerIDs := []ID{}
 	for _, id := range allowedIDs {
 		if _, present := deliveredMap[id]; !present {
 			offerIDs = append(offerIDs, id)
@@ -1042,24 +1042,26 @@ func (b *Bounce) getChunkOffersToOffer(address string, userID ID) []frameReferen
 	var unsentChunkOffers []chunkOffer
 
 	if userID == b.currentUserID() {
-		var deliveredIDs []string
+		var deliveredIDs []ID
 		b.database.Model(&deliveryRecord{}).
 			Where("destination = ? AND frame_type = ?", address, typeChunkOffer).
 			Pluck("frame_id", &deliveredIDs)
 
-		b.database.Model(&chunkOffer{}).
-			Distinct("id").
-			Where("id NOT IN (?)", deliveredIDs).
-			Find(&unsentChunkOffers)
+		// An empty NOT IN list renders as NOT IN (NULL), which matches nothing, so only add it when there is something to exclude
+		query := b.database.Model(&chunkOffer{}).Distinct("id")
+		if len(deliveredIDs) > 0 {
+			query = query.Where("id NOT IN (?)", deliveredIDs)
+		}
+		query.Find(&unsentChunkOffers)
 	} else {
 		// Groups the user is in
-		var groupIDs []string
+		var groupIDs []ID
 		b.database.Table("group_users").
 			Where("user_id = ?", userID).
 			Pluck("group_id", &groupIDs)
 
 		// All the users in the groups this user is in
-		var peerIDs []string
+		var peerIDs []ID
 		if len(groupIDs) > 0 {
 			b.database.Table("group_users").
 				Where("group_id IN ?", groupIDs).
@@ -1067,7 +1069,7 @@ func (b *Bounce) getChunkOffersToOffer(address string, userID ID) []frameReferen
 		}
 
 		// Groups that this user is invited to
-		var groupInviteIDs []string
+		var groupInviteIDs []ID
 		b.database.Model(&group{}).
 			Where("invites LIKE ?", "%"+userID.String()+"%").
 			Pluck("id", &groupInviteIDs)
@@ -1076,7 +1078,7 @@ func (b *Bounce) getChunkOffersToOffer(address string, userID ID) []frameReferen
 		allAccessibleGroupIDs := append(groupIDs, groupInviteIDs...)
 
 		// All delivered chunk offers
-		var deliveredIDs []string
+		var deliveredIDs []ID
 		b.database.Model(&deliveryRecord{}).
 			Where("destination = ? AND frame_type = ?", address, typeChunkOffer).
 			Pluck("frame_id", &deliveredIDs)
@@ -1218,24 +1220,26 @@ func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID ID) []fra
 	var unsentEncryptedChunkOffers []encryptedChunkOffer
 
 	if userID == b.currentUserID() {
-		var deliveredIDs []string
+		var deliveredIDs []ID
 		b.database.Model(&deliveryRecord{}).
 			Where("destination = ? AND frame_type = ?", address, typeEncryptedChunkOffer).
 			Pluck("frame_id", &deliveredIDs)
 
-		b.database.Model(&encryptedChunkOffer{}).
-			Distinct("id").
-			Where("id NOT IN (?)", deliveredIDs).
-			Find(&unsentEncryptedChunkOffers)
+		// An empty NOT IN list renders as NOT IN (NULL), which matches nothing, so only add it when there is something to exclude
+		query := b.database.Model(&encryptedChunkOffer{}).Distinct("id")
+		if len(deliveredIDs) > 0 {
+			query = query.Where("id NOT IN (?)", deliveredIDs)
+		}
+		query.Find(&unsentEncryptedChunkOffers)
 	} else {
 		// Groups the user is in
-		var groupIDs []string
+		var groupIDs []ID
 		b.database.Table("group_users").
 			Where("user_id = ?", userID).
 			Pluck("group_id", &groupIDs)
 
 		// All the users in the groups this user is in
-		var peerIDs []string
+		var peerIDs []ID
 		if len(groupIDs) > 0 {
 			b.database.Table("group_users").
 				Where("group_id IN ?", groupIDs).
@@ -1243,7 +1247,7 @@ func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID ID) []fra
 		}
 
 		// Groups that this user is invited to
-		var groupInviteIDs []string
+		var groupInviteIDs []ID
 		b.database.Model(&group{}).
 			Where("invites LIKE ?", "%"+userID.String()+"%").
 			Pluck("id", &groupInviteIDs)
@@ -1252,7 +1256,7 @@ func (b *Bounce) getEncryptedChunkOffersToOffer(address string, userID ID) []fra
 		allAccessibleGroupIDs := append(groupIDs, groupInviteIDs...)
 
 		// All delivered chunk offers
-		var deliveredIDs []string
+		var deliveredIDs []ID
 		b.database.Model(&deliveryRecord{}).
 			Where("destination = ? AND frame_type = ?", address, typeEncryptedChunkOffer).
 			Pluck("frame_id", &deliveredIDs)
