@@ -309,6 +309,11 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 		}).Fatal("error saving group message")
 	}
 
+	// Expire the message on time if it has a retention
+	if gm.DeleteAt != 0 {
+		go b.deleteGroupMessageAt(gm.DeleteAt, gm.ID)
+	}
+
 	uiImageAttachments := []ImageAttachment{}
 	for _, ia := range gm.ImageAttachments {
 		uiImageAttachments = append(uiImageAttachments, ImageAttachment{
@@ -528,6 +533,11 @@ func (b *Bounce) SendGroupMessage(thread ID, text string, attachments []Outgoing
 	}
 	b.updateLastGroupActivity(gm.Destination, gm.SavedAt)
 
+	// Expire the message on time if it has a retention
+	if gm.DeleteAt != 0 {
+		go b.deleteGroupMessageAt(gm.DeleteAt, gm.ID)
+	}
+
 	go b.checkIfGroupMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), gm.ID)
 
 	go b.ui.DisplaySentGroupMessage(GroupMessage{
@@ -549,10 +559,10 @@ func (b *Bounce) SendGroupMessage(thread ID, text string, attachments []Outgoing
 }
 
 func (b *Bounce) deleteGroupMessageAt(timestamp int64, id ID) {
-	// Sleep as long as needed
-	duration := timestamp - time.Now().Unix()
-	if duration > 0 {
-		time.Sleep(time.Duration(duration) * time.Second)
+	// Wait until the message is due (a timer for a time already past fires at once), unless the engine shuts down
+	// first, in which case the sweep at the next start deletes it
+	if !b.sleepOrDone(time.Until(time.Unix(timestamp, 0))) {
+		return
 	}
 
 	// Delete from the database

@@ -285,6 +285,11 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		}).Fatal("error saving incoming direct message")
 	}
 
+	// Expire the message on time if it has a retention
+	if dm.DeleteAt != 0 {
+		go b.deleteDirectMessageAt(dm.DeleteAt, dm.ID)
+	}
+
 	// Update the activity timestamp on the user model
 	b.updateLastUserActivity(dm.getDestination(b.currentUserID()), dm.SavedAt)
 
@@ -506,6 +511,11 @@ func (b *Bounce) SendDirectMessage(thread ID, text string, attachments []Outgoin
 	}
 	b.updateLastUserActivity(thread, dm.SavedAt)
 
+	// Expire the message on time if it has a retention
+	if dm.DeleteAt != 0 {
+		go b.deleteDirectMessageAt(dm.DeleteAt, dm.ID)
+	}
+
 	go b.checkIfDirectMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), dm.ID)
 
 	go b.ui.DisplaySentDirectMessage(DirectMessage{
@@ -527,10 +537,10 @@ func (b *Bounce) SendDirectMessage(thread ID, text string, attachments []Outgoin
 }
 
 func (b *Bounce) deleteDirectMessageAt(timestamp int64, id ID) {
-	// Sleep as long as needed
-	duration := timestamp - time.Now().Unix()
-	if duration > 0 {
-		time.Sleep(time.Duration(duration) * time.Second)
+	// Wait until the message is due (a timer for a time already past fires at once), unless the engine shuts down
+	// first, in which case the sweep at the next start deletes it
+	if !b.sleepOrDone(time.Until(time.Unix(timestamp, 0))) {
+		return
 	}
 
 	// Delete from the database
