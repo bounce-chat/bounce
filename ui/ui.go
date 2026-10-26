@@ -798,6 +798,7 @@ func (ui *ui) NetworkOnline() {
 			log.WithFields(log.Fields{
 				"thread": ui.state.activeThread,
 			}).Error("active thread is not a known user or group")
+			return
 		}
 		_, isGroup := t.(*group)
 		_, isInvite := t.(*invite)
@@ -807,7 +808,7 @@ func (ui *ui) NetworkOnline() {
 			ui.bounce.UserConnectionDesired(ui.state.activeThread)
 		}
 	}
-	fyne.DoAndWait(func() { ui.widgets.networkOfflineWarning.Hide() })
+	fyne.Do(func() { ui.widgets.networkOfflineWarning.Hide() })
 	ui.state.networkState = networkStateOnline
 }
 
