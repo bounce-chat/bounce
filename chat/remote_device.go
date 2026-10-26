@@ -217,10 +217,10 @@ func (b *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	go b.writeFrames(rd, s)
 
 	if !b.encrypted {
-		// Associate this device with a user if there is one
-		dev, ok := b.getDeviceFromAddress(conn.RemoteAddr().String())
-		if ok {
-			b.insertRemoteDeviceIntoPool(conn.RemoteAddr().String(), poolTypeUser, dev.UserID)
+		// Associate this connection with the user it belongs to, whether the peer is one of their devices or one of
+		// their encrypted devices, so the user's pool shows them reachable either way
+		if owner, ok := b.peerOwner(peer); ok {
+			b.insertRemoteDeviceIntoPool(peer, poolTypeUser, owner)
 		}
 
 		// Do a reference flow
@@ -480,7 +480,11 @@ func (b *Bounce) writeFrames(rd *remoteDevice, s *socket) {
 				"peer":  s.underlying.RemoteAddr().String(),
 				"type":  br.getType(),
 			}).Debug("error writing frame")
-			b.updateUserOnlineStatus(s.underlying.RemoteAddr().String())
+
+			s.close()
+			if !b.shutdownStarted.Load() {
+				b.updateUserOnlineStatus(s.underlying.RemoteAddr().String())
+			}
 
 			// If this socket died during a write, but there are other sockets that might still be alive,
 			// send references for anything that might not have made it through this socket

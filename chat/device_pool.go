@@ -369,18 +369,18 @@ func (b *Bounce) connectToUsers(desiredConnections int) {
 			go b.tryDialing(address)
 		}
 
-		// Try to dial some encrypted devices if there are no regular devices online
-		if !anyOnline {
-			if len(u.EncryptedDevices) > 0 {
-				encryptedDevices := []string{}
-				for _, addr := range strings.Split(u.EncryptedDevices, ",") {
-					encryptedDevices = append(encryptedDevices, addr)
+		// Try to dial some encrypted devices if nothing of this user's is online, skipping any we already hold a
+		// connection to or dialled recently, as with their regular devices above
+		if !anyOnline && len(u.EncryptedDevices) > 0 {
+			unconnectedEncryptedAddresses := []string{}
+			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
+				if !b.shouldCooldownDial(addr) && b.getRemoteDevice(addr).connectedSockets() == 0 {
+					unconnectedEncryptedAddresses = append(unconnectedEncryptedAddresses, addr)
 				}
-				encryptedAddressesToDial := chooseN(encryptedDevices, desiredConnections)
-
-				for _, address := range encryptedAddressesToDial {
-					go b.tryDialing(address)
-				}
+			}
+			encryptedAddressesToDial := chooseN(unconnectedEncryptedAddresses, desiredConnections)
+			for _, address := range encryptedAddressesToDial {
+				go b.tryDialing(address)
 			}
 		}
 	}
