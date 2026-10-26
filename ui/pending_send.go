@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -14,6 +13,10 @@ import (
 // long enough to notice: the pending bubble is drawn after a short delay, and a message the engine reports back
 // before then is shown once, as the real thing, with no flicker.  When the real message arrives it takes the pending
 // bubble's place.
+//
+// All pending send state belongs to the UI thread.  Every function below either runs there already or hands its work
+// to it with fyne.DoAndWait, so no lock is needed; holding one across a DoAndWait would deadlock against the UI
+// thread taking the same lock.
 const pendingSendDelay = 300 * time.Millisecond
 
 type pendingSend struct {
@@ -25,7 +28,6 @@ type pendingSend struct {
 }
 
 type pendingSends struct {
-	sync.Mutex
 	byThread map[chat.ID][]*pendingSend // Oldest first
 }
 
@@ -34,32 +36,29 @@ func newPendingSends() *pendingSends {
 }
 
 // beginPendingSend registers a message that is being sent on a thread.  build makes the bubble for it, and is only
-// called if the engine has not reported the sent message before the delay passes.
+// called if the engine has not reported the sent message before the delay passes.  Called on the UI thread, from the
+// send handler.
 func (ui *ui) beginPendingSend(t thread, build func(handle chat.ID) (*threadItem, error)) *pendingSend {
 	ps := &pendingSend{handle: chat.NewID(), thread: t, build: build}
-	ui.pendingSends.Lock()
 	ui.pendingSends.byThread[t.getID()] = append(ui.pendingSends.byThread[t.getID()], ps)
-	ui.pendingSends.Unlock()
 
 	go func() {
 		time.Sleep(pendingSendDelay)
-		ui.pendingSends.Lock()
-		defer ui.pendingSends.Unlock()
-		if ps.done {
-			return
-		}
-		ti, err := ps.build(ps.handle)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Warn("could not build a pending bubble for a message being sent")
-			return
-		}
 		fyne.DoAndWait(func() {
+			if ps.done {
+				return
+			}
+			ti, err := ps.build(ps.handle)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Warn("could not build a pending bubble for a message being sent")
+				return
+			}
 			ui.appendThreadItem(ps.thread, ti)
 			ps.thread.chatHistoryScroll().ScrollToBottom()
+			ps.shown = true
 		})
-		ps.shown = true
 	}()
 	return ps
 }
@@ -68,8 +67,6 @@ func (ui *ui) beginPendingSend(t thread, build func(handle chat.ID) (*threadItem
 // thread is the one it answers; its bubble, if one was drawn, is removed so the real message can take its place.
 // Must be called on the UI thread.
 func (ui *ui) completePendingSend(t thread) {
-	ui.pendingSends.Lock()
-	defer ui.pendingSends.Unlock()
 	queue := ui.pendingSends.byThread[t.getID()]
 	if len(queue) == 0 {
 		return
@@ -82,24 +79,24 @@ func (ui *ui) completePendingSend(t thread) {
 	}
 }
 
-// failPendingSend is called when the engine refused to send the message
+// failPendingSend is called when the engine refused to send the message, from the goroutine that asked it to
 func (ui *ui) failPendingSend(ps *pendingSend) {
-	ui.pendingSends.Lock()
-	defer ui.pendingSends.Unlock()
-	if ps.done {
-		return
-	}
-	ps.done = true
-	queue := ui.pendingSends.byThread[ps.thread.getID()]
-	for i, other := range queue {
-		if other == ps {
-			ui.pendingSends.byThread[ps.thread.getID()] = append(queue[:i], queue[i+1:]...)
-			break
+	fyne.DoAndWait(func() {
+		if ps.done {
+			return
 		}
-	}
-	if ps.shown {
-		fyne.DoAndWait(func() { ui.removePendingBubble(ps) })
-	}
+		ps.done = true
+		queue := ui.pendingSends.byThread[ps.thread.getID()]
+		for i, other := range queue {
+			if other == ps {
+				ui.pendingSends.byThread[ps.thread.getID()] = append(queue[:i], queue[i+1:]...)
+				break
+			}
+		}
+		if ps.shown {
+			ui.removePendingBubble(ps)
+		}
+	})
 }
 
 func (ui *ui) removePendingBubble(ps *pendingSend) {

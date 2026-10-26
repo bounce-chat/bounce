@@ -1396,6 +1396,7 @@ func (ui *ui) PostingUnrestricted(ugpu chat.UpdateGroupPostingUnrestricted) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error creating thread item for update group posting unrestricted")
+		return
 	}
 
 	fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
@@ -1415,6 +1416,7 @@ func (ui *ui) UserBlockedGroup(ubg chat.UserBlockedGroup) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error creating thread item for user blocked group")
+		return
 	}
 
 	fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
@@ -1434,6 +1436,7 @@ func (ui *ui) UserChangedGroupImage(ugci chat.UpdateGroupUserChangedGroupImage) 
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error creating thread item for user changed group image")
+		return
 	}
 
 	fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })

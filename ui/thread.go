@@ -274,6 +274,7 @@ func (ui *ui) MarkMessageUndeliverable(id chat.ID) {
 		log.WithFields(log.Fields{
 			"id": id,
 		}).Warn("item not found during attempt to mark item as undeliverable")
+		return
 	}
 
 	item.setState(stateError)
@@ -298,6 +299,7 @@ func (ui *ui) MessageSeen(id chat.ID) {
 		log.WithFields(log.Fields{
 			"id": id,
 		}).Warn("item not found during attempt to mark item as seen")
+		return
 	}
 
 	t, ok := ui.threads.withItem(id)
