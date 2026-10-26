@@ -97,40 +97,8 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 		}
 	}
 
-	// Frames that might need to be deletes as part of clearing chat history should have a batch delete key assigned
-	batchDeleteKey := NilID
-	if br.getType() == typeDirectMessage {
-		dm, ok := br.(*directMessage)
-		if !ok {
-			log.WithFields(log.Fields{
-				"id": br.getID(),
-			}).Error("could not turn direct message broadcastable into direct message")
-			return
-		}
-		batchDeleteKey = dm.Xor
-	} else if br.getType() == typeGroupMessage {
-		batchDeleteKey = br.getDestination(b.currentUserID())
-	} else if br.getType() == typeFile {
-		f, ok := br.(*file)
-		if !ok {
-			log.WithFields(log.Fields{
-				"id": br.getID(),
-			}).Error("could not turn file broadcastable into file")
-			return
-		}
-		if f.Type == fileTypeMessageAttachment {
-			batchDeleteKey = f.Destination
-		}
-	} else if br.getType() == typeReadReceipt {
-		rr, ok := br.(*readReceipt)
-		if !ok {
-			log.WithFields(log.Fields{
-				"id": br.getID(),
-			}).Error("could not turn read receipt broadcastable into read receipt")
-			return
-		}
-		batchDeleteKey = rr.Destination
-	}
+	// Frames that are deleted when a chat's history is cleared carry the key the encrypted device groups them under
+	batchDeleteKey, canBatchDelete := b.batchDeleteKeyFor(br)
 
 	// Get the users that are in scope
 	currentUser, ok := b.currentUser()
@@ -233,6 +201,7 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 			Timestamp:      br.getTimestamp(),
 			DeleteAt:       getDeleteAt(br),
 			BatchDeleteKey: batchDeleteKey,
+			CanBatchDelete: canBatchDelete,
 			Recipients:     recipients,
 		}
 		rd.send(ef)
@@ -254,45 +223,8 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 		}
 	}
 
-	// Frames that might need to be deletes as part of clearing chat history should have a batch delete key assigned
-	batchDeleteKey := NilID
-	canBatchDelete := false
-	if br.getType() == typeDirectMessage {
-		dm, ok := br.(*directMessage)
-		if !ok {
-			log.WithFields(log.Fields{
-				"id": br.getID(),
-			}).Error("could not turn direct message broadcastable into direct message")
-			return nil
-		}
-		batchDeleteKey = dm.Xor
-		canBatchDelete = true
-	} else if br.getType() == typeGroupMessage {
-		batchDeleteKey = br.getDestination(b.currentUserID())
-		canBatchDelete = true
-	} else if br.getType() == typeFile {
-		f, ok := br.(*file)
-		if !ok {
-			log.WithFields(log.Fields{
-				"id": br.getID(),
-			}).Error("could not turn file broadcastable into file")
-			return nil
-		}
-		if f.Type == fileTypeMessageAttachment {
-			batchDeleteKey = f.Destination
-			canBatchDelete = true
-		}
-	} else if br.getType() == typeReadReceipt {
-		rr, ok := br.(*readReceipt)
-		if !ok {
-			log.WithFields(log.Fields{
-				"id": br.getID(),
-			}).Error("could not turn read receipt broadcastable into read receipt")
-			return nil
-		}
-		batchDeleteKey = rr.Destination
-		canBatchDelete = true
-	}
+	// Frames that are deleted when a chat's history is cleared carry the key the encrypted device groups them under
+	batchDeleteKey, canBatchDelete := b.batchDeleteKeyFor(br)
 
 	// Get the users that are in scope
 	currentUser, ok := b.currentUser()
@@ -489,6 +421,26 @@ func (b *Bounce) encryptReKeyFrame(br broadcastable) *encryptedFrame {
 		DeleteAt:         getDeleteAt(br),
 		DeviceRecipients: deviceRecipients,
 	}
+}
+
+// batchDeleteKeyFor returns the key an encrypted device groups a stored frame under when the history of a chat is
+// cleared, and whether the frame is cleared that way at all.  Messages, their attachments and read receipts are
+// keyed by their thread (a DM's xor, a group's ID); everything else stays until it expires.  Both ways a frame
+// reaches an encrypted device, the live push and a reference request, use this, so a clear reaches both.
+func (b *Bounce) batchDeleteKeyFor(br broadcastable) (ID, bool) {
+	switch item := br.(type) {
+	case *directMessage:
+		return item.Xor, true
+	case *groupMessage:
+		return item.getDestination(b.currentUserID()), true
+	case *file:
+		if item.Type == fileTypeMessageAttachment {
+			return item.Destination, true
+		}
+	case *readReceipt:
+		return item.Destination, true
+	}
+	return NilID, false
 }
 
 func getDeleteAt(br broadcastable) int64 {

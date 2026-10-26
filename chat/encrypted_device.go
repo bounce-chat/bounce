@@ -567,7 +567,7 @@ func (b *Bounce) encryptedBroadcast(ef encryptedFrame) {
 	for _, r := range ef.Recipients {
 		addr, ok := addressForKey(r.PublicKey)
 		if !ok {
-			return
+			continue
 		}
 		var dr deliveryRecord
 		err := b.database.Where("destination = ? AND frame_id = ? AND frame_type = ?", addr, ef.ID, ef.Type).First(&dr).Error
