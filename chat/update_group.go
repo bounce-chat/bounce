@@ -1193,13 +1193,6 @@ func (b *Bounce) informUIUpdateGroupChangeRetention(ug updateGroup) {
 }
 
 func (b *Bounce) informUIUpdateGroupSetClearBefore(ug updateGroup) {
-	if len(ug.Data) != 8 {
-		log.WithFields(log.Fields{
-			"id": ug.ID,
-		}).Error("cannot inform UI of update group with invalid payload")
-		return
-	}
-
 	b.ui.GroupChatHistoryCleared(UpdateGroupClearHistory{
 		ID:        ug.ID,
 		Thread:    ug.Target,

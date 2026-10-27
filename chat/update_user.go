@@ -405,7 +405,7 @@ func (b *Bounce) updateUserState(userID ID) {
 
 	// Get all update users for this user
 	var uus []updateUser
-	err = b.database.Where("target = ?", userID).Find(&uus).Error
+	err = b.database.Where("target = ?", userID).Order("timestamp asc, id").Find(&uus).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"user_id": userID,
