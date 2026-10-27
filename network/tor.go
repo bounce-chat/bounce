@@ -800,6 +800,9 @@ func (bounceTor *TorNetwork) acceptPump(s *session) {
 	bounceTor.runAcceptPump(s.onion, s.onion.ID(), s.accepted, s.stopping)
 }
 
+// The pause before retrying a failed Accept.
+const acceptRetryDelay = time.Second
+
 // acceptor is the part of a listener the pump needs. *arti.OnionService already
 // satisfies it; tests supply their own so the pump can run without Tor.
 type acceptor interface {
@@ -816,14 +819,30 @@ func (bounceTor *TorNetwork) runAcceptPump(
 	slots := make(chan struct{}, maxConcurrentHandshakes)
 	var workers sync.WaitGroup
 
+	// Accept errors other than the listener being closed are transient - the
+	// process is out of descriptors, or a connection was aborted before it was
+	// accepted - and a healthy listener keeps working afterwards, so they are
+	// retried after a pause rather than ending the pump, which the engine
+	// would treat as fatal.
 	for {
 		connection, err := listener.Accept()
 		if err != nil {
-			// The listener is gone: shutdown, or a restart that replaced this
-			// session. Either way this pump is finished.
+			if errors.Is(err, net.ErrClosed) {
+				// The listener is gone: shutdown, or a restart that replaced
+				// this session. Either way this pump is finished.
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Debug("accept loop for this session is finished")
+				break
+			}
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Debug("accept loop for this session is finished")
+			}).Warn("error accepting a connection, retrying")
+			select {
+			case <-time.After(acceptRetryDelay):
+				continue
+			case <-bounceTor.stopChannel():
+			}
 			break
 		}
 

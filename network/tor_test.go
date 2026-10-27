@@ -71,7 +71,9 @@ func shortHandshakeTimeout(t *testing.T, d time.Duration) {
 // error, standing in for *arti.OnionService.
 type fakeListener struct {
 	conns chan net.Conn
-	// closed makes Accept return an error, which is how a real listener
+	// errs feeds Accept transient errors, the kind a healthy listener recovers from
+	errs chan error
+	// closed makes Accept report net.ErrClosed, which is how a real listener
 	// reports that it has gone away.
 	closed chan struct{}
 }
@@ -79,16 +81,19 @@ type fakeListener struct {
 func newFakeListener() *fakeListener {
 	return &fakeListener{
 		conns:  make(chan net.Conn, 512),
+		errs:   make(chan error, 16),
 		closed: make(chan struct{}),
 	}
 }
 
 func (f *fakeListener) Accept() (net.Conn, error) {
 	select {
+	case err := <-f.errs:
+		return nil, err
 	case c := <-f.conns:
 		return c, nil
 	case <-f.closed:
-		return nil, errors.New("listener closed")
+		return nil, net.ErrClosed
 	}
 }
 
@@ -574,4 +579,38 @@ func TestAcceptReportsStoppedOnShutdown(t *testing.T) {
 	if !fatal {
 		t.Error("shutdown must be fatal so the accept loop exits")
 	}
+}
+
+func TestAcceptPumpSurvivesATransientAcceptError(t *testing.T) {
+	// Running out of descriptors, or a peer aborting before it is accepted, makes
+	// Accept fail once on a listener that is otherwise fine. The pump used to
+	// treat any error as the listener being gone and end, which the engine turns
+	// into a fatal error; it has to retry instead and go on accepting.
+	listener, listenerAddress := newTestIdentity(t)
+	fake := newFakeListener()
+	accepted, _, done := startPump(t, listener, listenerAddress, fake)
+
+	fake.errs <- errors.New("accept tcp 127.0.0.1:0: accept4: too many open files")
+
+	dialer, dialerAddress := newTestIdentity(t)
+	listenerSide, dialerSide := net.Pipe()
+	fake.conns <- listenerSide
+	go func() {
+		_, _ = dialer.handshakeDialer(dialerAddress, listenerAddress, dialerSide)
+	}()
+
+	select {
+	case conn := <-accepted:
+		if conn == nil {
+			t.Fatal("the pump ended on a transient accept error instead of retrying")
+		}
+		if got := conn.RemoteAddr().String(); got != dialerAddress {
+			t.Errorf("delivered peer %q, want %q", got, dialerAddress)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no connection was delivered after a transient accept error")
+	}
+
+	fake.stop()
+	done.Wait()
 }
