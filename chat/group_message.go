@@ -291,15 +291,12 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 	}
 
 	// If this message created before we joined the group, mark it as already seen
-	if gs.acceptedAt != 0 && gm.WrittenAt < gs.acceptedAt {
+	if gm.Author == b.currentUserID() || (gs.acceptedAt != 0 && gm.WrittenAt < gs.acceptedAt) {
 		gm.Seen = true
 	}
 
 	// Make sure the user interface isn't still displaying that the user is typing
 	b.clearUserTypingIndicator(gm.Author, gm.Destination, typeGroupMessage)
-
-	// If we wrote this message, assume we've seen it
-	gm.Seen = gm.Author == b.currentUserID()
 
 	// Save the new group message
 	err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&gm).Error
