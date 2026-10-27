@@ -291,6 +291,21 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 		err = b.database.Select("id").First(&invitedByUser, "id = ?", finalState.invitedBy).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
+				// No known user invited us.  If we hold a row for this group we were invited before, and consensus
+				// has since rolled that invite back: the history was rebuilt from before it, which is why nothing
+				// invites us any more.  Otherwise this is a group a stranger sent us, which we never accepted.
+				var g group
+				err = b.database.Select("id").First(&g, "id = ?", groupID).Error
+				if err == nil {
+					b.rollbackInvitedGroup(groupID)
+					return nil
+				} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"group_id": groupID,
+						"error":    err.Error(),
+					}).Fatal("database error looking up group")
+				}
+
 				err = deleteEach[groupCreation](b.database, "id = ?", groupID)
 				if err != nil {
 					log.WithFields(log.Fields{
@@ -306,6 +321,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 						"error":    err.Error(),
 					}).Error("error removing update groups from unauthorized group")
 				}
+				delete(b.consensusStore.groups, groupID)
 
 				return nil
 			} else {
@@ -468,11 +484,10 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 	}
 
 	if !finalState.isMember(b.currentUserID()) && !finalState.isInvited(b.currentUserID()) {
-		// We are not a member of this group nor have we been invited.  We also haven't blocked it, been removed from it, or deleted it.
-		// This indicates that our previous invitation to the group has been rolled back by a consensus operation.  We should remove
-		// everything about the group from this device, aside from custom sync scoping the updates, and remove it from the UI.
-		b.cleanupRolledBackInvite(groupID)
-		b.ui.RollbackGroup(groupID)
+		// We are neither a member nor invited, and have not blocked, left or deleted the group, so our invitation has
+		// been rolled back by consensus
+		b.rollbackInvitedGroup(groupID)
+		return nil
 	}
 
 	// Find any non-canonical update groups that have been applied and mark them as not applied roll them back in the UI
@@ -1472,6 +1487,15 @@ func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID ID) {
 	for _, addr := range b.onlineEncryptedDevicesInGroup(groupID) {
 		go b.sendReferences(addr)
 	}
+}
+
+// rollbackInvitedGroup takes down a group whose invitation of us consensus has rolled back: its updates are kept
+// for our sync devices under a sync scope, the group and everything hanging off it is deleted through its hooks,
+// its consensus state is dropped, and the UI is told to remove the thread.  Called with the consensus store locked.
+func (b *Bounce) rollbackInvitedGroup(groupID ID) {
+	b.cleanupRolledBackInvite(groupID)
+	delete(b.consensusStore.groups, groupID)
+	go b.ui.RollbackGroup(groupID)
 }
 
 func (b *Bounce) cleanupRolledBackInvite(groupID ID) {

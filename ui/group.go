@@ -1503,8 +1503,20 @@ func (ui *ui) GroupInviteRejected(ugir chat.UpdateGroupInviteRejected) {
 }
 
 func (ui *ui) RollbackGroup(groupID chat.ID) {
-	ui.threads.remove(groupID)
-	ui.containers.threads.Refresh()
+	fyne.DoAndWait(func() {
+		// If the thread is open, show the default view in its place, as when we are removed from a group
+		if ui.state.activeThread == groupID {
+			if fyne.CurrentDevice().IsMobile() {
+				ui.showMainContainer()
+			} else {
+				ui.containers.chat.Objects = []fyne.CanvasObject{ui.containers.defaultContainer}
+				ui.containers.chat.Refresh()
+				ui.state.activeThread = chat.NilID
+			}
+		}
+		ui.threads.remove(groupID)
+		ui.containers.threads.Refresh()
+	})
 }
 
 func (ui *ui) updateEnabledFeatures(g *group) {

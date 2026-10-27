@@ -149,6 +149,9 @@ func (ug *updateGroup) getScope(myID ID) int {
 }
 
 func (ug *updateGroup) getDestination(myID ID) ID {
+	if ug.CustomScope != NilID {
+		return ug.CustomScope
+	}
 	return ug.Target
 }
 

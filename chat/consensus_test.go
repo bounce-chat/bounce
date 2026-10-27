@@ -1121,3 +1121,70 @@ func TestGroupCreationFieldsAreValidatedBeforeTheyAreStored(t *testing.T) {
 	assert.Equal(t, []ID{good}, gs.blockedUsers)
 	assert.Equal(t, []ID{}, gs.images)
 }
+
+// An invitation of us that consensus later rolls back takes the group down the way a removal does: the group row
+// and its consensus state go, its updates stay for our sync devices under a sync scope, and the UI is told.  The
+// rebuilt history no longer says who invited us, so this used to fall into the branch for a stranger's group,
+// which deleted the creation and updates and left the group row, the consensus state and the thread behind.
+type rollbackCapturingUI struct {
+	*testUI
+	rolledBack chan ID
+}
+
+func (r *rollbackCapturingUI) RollbackGroup(id ID) { r.rolledBack <- id }
+
+func TestARolledBackInviteRemovesTheGroup(t *testing.T) {
+	me, alice, bob, _ := createUsersAndGroups(t)
+	capture := &rollbackCapturingUI{testUI: me.ui.(*testUI), rolledBack: make(chan ID, 2)}
+	me.ui = capture
+	aliceID, bobID := alice.currentUserID(), bob.currentUserID()
+	base := time.Now().Unix() - 10
+
+	// Alice's group, in which Bob is a member and then invites me
+	gc := alice.createGroupCreation(NewGroup{Name: "Rollback"})
+	groupID := gc.ID
+	assert.NoError(t, me.database.Create(&gc).Error)
+	bobUser, _ := bob.currentUser()
+	bobRecord, _ := msgpack.Marshal(bobUser)
+	meUser, _ := me.currentUser()
+	meRecord, _ := msgpack.Marshal(meUser)
+	for _, ug := range []*updateGroup{
+		bnc01BuildUG(alice, aliceID, groupID, base+1, updateGroupTypeInviteUser, bobRecord),
+		bnc01BuildUG(bob, bobID, groupID, base+2, updateGroupTypeRespondToInvite, []byte{acceptInvite}),
+		bnc01BuildUG(bob, bobID, groupID, base+4, updateGroupTypeInviteUser, meRecord),
+	} {
+		assert.NoError(t, me.database.Create(ug).Error)
+	}
+	assert.NoError(t, me.reloadGroupConsensus(groupID))
+	assert.NoError(t, me.writeGroupConsensus(groupID))
+
+	count := func(table, where string, args ...interface{}) int64 {
+		var n int64
+		assert.NoError(t, me.database.Table(table).Where(where, args...).Count(&n).Error)
+		return n
+	}
+	assert.Equal(t, int64(1), count("groups", "id = ?", groupID), "the invite put the group on this device")
+
+	// A confirmed, earlier restriction of user management to admins arrives afterwards, so Bob's invite of me is no
+	// longer allowed and consensus rebuilds the history without it
+	restrict := bnc01BuildUG(alice, aliceID, groupID, base+3, updateGroupTypeChangeUserManagementPermission, []byte{permissionRestricted})
+	assert.NoError(t, me.database.Create(restrict).Error)
+	assert.NoError(t, me.database.Create(bnc01Confirmation(alice, restrict.ID, groupID)).Error)
+	assert.NoError(t, me.database.Create(bnc01Confirmation(bob, restrict.ID, groupID)).Error)
+	assert.NoError(t, me.reloadGroupConsensus(groupID))
+	assert.NoError(t, me.writeGroupConsensus(groupID))
+
+	assert.Equal(t, int64(0), count("groups", "id = ?", groupID), "the group row is gone")
+	me.consensusStore.Lock()
+	_, tracked := me.consensusStore.groups[groupID]
+	me.consensusStore.Unlock()
+	assert.False(t, tracked, "the consensus state is gone")
+	assert.Equal(t, int64(0), count("update_groups", "target = ? AND custom_scope = ?", groupID, NilID), "no update is left in the group's scope")
+	assert.NotEqual(t, int64(0), count("update_groups", "target = ? AND custom_scope != ?", groupID, NilID), "the updates are kept for our sync devices")
+	select {
+	case id := <-capture.rolledBack:
+		assert.Equal(t, groupID, id)
+	case <-time.After(2 * time.Second):
+		t.Fatal("the UI was not told to take the group down")
+	}
+}

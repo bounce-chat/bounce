@@ -67,7 +67,11 @@ func (c *confirmation) getScope(_ ID) int {
 	return scopeGroup
 }
 
+// A custom scoped confirmation is addressed to its scope rather than its group, as with update groups
 func (c *confirmation) getDestination(_ ID) ID {
+	if c.CustomScope != NilID {
+		return c.CustomScope
+	}
 	return c.Destination
 }
 
