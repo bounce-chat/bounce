@@ -176,6 +176,7 @@ func (b *Bounce) makeAnyChunkRequests() {
 			encryptedDeviceCacheMutex.Lock()
 			_, encrypted := encryptedDeviceCache[option]
 			encryptedDeviceCacheMutex.Unlock()
+			requestHash := hash
 			if encrypted {
 				encryptedHash, ok := b.chunkEngine.toEncryptedHash[hash]
 				if !ok {
@@ -185,7 +186,7 @@ func (b *Bounce) makeAnyChunkRequests() {
 					}).Warn("cannot get encrypted hash for hash stored on encrypted device")
 					continue
 				}
-				hash = encryptedHash
+				requestHash = encryptedHash
 			}
 
 			b.chunkEngine.updateLastRequestTime(option, hash)
@@ -196,7 +197,7 @@ func (b *Bounce) makeAnyChunkRequests() {
 				"hash":     hash,
 				"location": option,
 			}).Debug("requesting a chunk")
-			go b.sendDirect(option, &chunkRequest{Hash: hash})
+			go b.sendDirect(option, &chunkRequest{Hash: requestHash})
 			break
 		}
 	}
@@ -215,6 +216,7 @@ func (b *Bounce) makeAnyChunkRequests() {
 				encryptedDeviceCacheMutex.Lock()
 				_, encrypted := encryptedDeviceCache[location]
 				encryptedDeviceCacheMutex.Unlock()
+				requestHash := hash
 				if encrypted {
 					encryptedHash, ok := b.chunkEngine.toEncryptedHash[hash]
 					if !ok {
@@ -224,7 +226,7 @@ func (b *Bounce) makeAnyChunkRequests() {
 						}).Warn("cannot get encrypted hash for hash stored on encrypted device")
 						continue
 					}
-					hash = encryptedHash
+					requestHash = encryptedHash
 				}
 
 				b.chunkEngine.updateLastRequestTime(location, hash)
@@ -233,7 +235,7 @@ func (b *Bounce) makeAnyChunkRequests() {
 					"hash":     hash,
 					"location": location,
 				}).Warn("re-requesting a chunk")
-				go b.sendDirect(location, &chunkRequest{Hash: hash})
+				go b.sendDirect(location, &chunkRequest{Hash: requestHash})
 			}
 		}
 	}
