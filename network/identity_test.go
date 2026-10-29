@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	arti "github.com/bounce-chat/go-arti"
+	log "github.com/sirupsen/logrus"
 )
 
 // A fresh install has to be able to create a profile straight away, which means signing and knowing our own address
@@ -17,7 +18,7 @@ func TestAFreshInstallHasAnIdentityBeforeTorStarts(t *testing.T) {
 	tor := &TorNetwork{}
 	tor.Load(configDirectory)
 
-	// Both halves are on disk, private to the user, in the 64-byte expanded form
+	// The private key is on disk, private to the user, in the 64-byte expanded form; the public key is derived from it
 	private, err := os.ReadFile(configDirectory + "/tor/keys/private_key")
 	if err != nil {
 		t.Fatalf("no private key written: %v", err)
@@ -29,9 +30,9 @@ func TestAFreshInstallHasAnIdentityBeforeTorStarts(t *testing.T) {
 	if info.Mode().Perm() != 0600 {
 		t.Fatalf("private key mode is %o, want 0600", info.Mode().Perm())
 	}
-	public, err := os.ReadFile(configDirectory + "/tor/keys/public_key")
+	public, err := arti.PublicKeyFromPrivate(private)
 	if err != nil {
-		t.Fatalf("no public key written: %v", err)
+		t.Fatalf("stored private key does not derive a public key: %v", err)
 	}
 
 	// The address is known while offline, and signatures made now verify against it with plain ed25519, which is
@@ -58,5 +59,55 @@ func TestAFreshInstallHasAnIdentityBeforeTorStarts(t *testing.T) {
 	again.Load(configDirectory)
 	if again.Address() != address {
 		t.Fatalf("a second load produced a different address")
+	}
+}
+
+// exitsFatally runs fn with logrus's exit replaced by a panic, and reports whether fn reached a fatal log.  The
+// network package registers no exit handler, so this is safe here.
+func exitsFatally(t *testing.T, fn func()) (fatal bool) {
+	t.Helper()
+	previous := log.StandardLogger().ExitFunc
+	log.StandardLogger().ExitFunc = func(int) { panic("fatal") }
+	defer func() {
+		log.StandardLogger().ExitFunc = previous
+		if r := recover(); r != nil {
+			fatal = true
+		}
+	}()
+	fn()
+	return false
+}
+
+func TestAPrivateKeyOfTheWrongSizeRefusesToStart(t *testing.T) {
+	// The private key file is the user's identity.  A damaged one must not be silently replaced or padded, which
+	// would change their address or sign with garbage; the app stops and says which file is wrong.
+	configDirectory := t.TempDir()
+	if err := os.MkdirAll(configDirectory+"/tor/keys", 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configDirectory+"/tor/keys/private_key", []byte("truncated"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	tor := &TorNetwork{}
+	if !exitsFatally(t, func() { tor.Load(configDirectory) }) {
+		t.Fatal("a private key file of the wrong size was accepted")
+	}
+}
+
+func TestTheStoredPublicKeyFileIsNotTrusted(t *testing.T) {
+	// Only the private key is the identity; whatever a public_key file from an older layout says is ignored, and
+	// the address always comes from the private key
+	configDirectory := t.TempDir()
+	tor := &TorNetwork{}
+	tor.Load(configDirectory)
+	address := tor.Address()
+
+	if err := os.WriteFile(configDirectory+"/tor/keys/public_key", make([]byte, 32), 0600); err != nil {
+		t.Fatal(err)
+	}
+	again := &TorNetwork{}
+	again.Load(configDirectory)
+	if again.Address() != address {
+		t.Fatalf("a stray public_key file changed the address")
 	}
 }

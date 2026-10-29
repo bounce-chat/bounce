@@ -614,3 +614,32 @@ func TestAcceptPumpSurvivesATransientAcceptError(t *testing.T) {
 	fake.stop()
 	done.Wait()
 }
+
+func TestASessionOpenedAfterShutdownIsNotPublished(t *testing.T) {
+	// Restart can be in the middle of opening a session when Shutdown runs.
+	// Shutdown takes away the session it finds and never looks again, so a
+	// session published afterwards would outlive the shutdown; publishSession
+	// has to refuse it.
+	running, _ := newTestIdentity(t)
+	if !running.publishSession(&session{}) {
+		t.Fatal("a session opened before shutdown was refused")
+	}
+	running.sessionMutex.Lock()
+	installed := running.session != nil
+	running.sessionMutex.Unlock()
+	if !installed {
+		t.Fatal("the session was accepted but not installed")
+	}
+
+	stopped, _ := newTestIdentity(t)
+	stopped.Shutdown()
+	if stopped.publishSession(&session{}) {
+		t.Fatal("a session opened after shutdown began was published")
+	}
+	stopped.sessionMutex.Lock()
+	installed = stopped.session != nil
+	stopped.sessionMutex.Unlock()
+	if installed {
+		t.Fatal("a session opened after shutdown began was installed")
+	}
+}

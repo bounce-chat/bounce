@@ -1801,7 +1801,7 @@ func (b *Bounce) CancelDownload(fileID ID) {
 			"error": err.Error(),
 		}).Error("database error updating file")
 	}
-	err = b.database.Table("chunks").Where("id = ?", fileID).Update("downloaded", false).Error
+	err = b.database.Table("chunks").Where("file_id = ?", fileID).Update("downloaded", false).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

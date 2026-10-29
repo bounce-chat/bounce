@@ -232,59 +232,52 @@ func (bounceTor *TorNetwork) loadConfig(configDirectory string) {
 	bounceTor.privateKey = privkey
 }
 
-func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, []byte) { // TODO: reverse the order?
-	// Create the config directory if needed
-	err := os.MkdirAll(bounceTor.keyDirectory, 0700)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-			"path":  bounceTor.keyDirectory,
-		}).Fatal("error creating hidden service key directory")
-	}
-
-	// Check for keys on disk, return them if they exist
+// hiddenServiceKey loads the hidden service identity from the key directory, generating one on the first run.  Only
+// the private key is stored: it is the 64-byte expanded ed25519 secret, and the public key is derived from it on
+// every load, which gives the same key every time and leaves one file to keep safe.  A private key file of any other
+// size is refused with a fatal error rather than worked around, since it is the user's identity and only they can
+// decide what to do with a damaged copy.
+func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, []byte) {
 	privateKeyFile := bounceTor.keyDirectory + "/private_key"
-	publicKeyFile := bounceTor.keyDirectory + "/public_key"
-	privateKeyBytes, err := os.ReadFile(privateKeyFile)
+	privateKey, err := os.ReadFile(privateKeyFile)
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			log.WithFields(log.Fields{
+				"path":  privateKeyFile,
+				"error": err.Error(),
+			}).Fatal("cannot read the hidden service private key")
+		}
+
+		// This is a first run.  Generate the identity here rather than letting Tor do it when the service is first
+		// published: the address and the signing key are needed as soon as the engine starts, for creating a profile,
+		// and the service is not published until Tor has finished bootstrapping.
 		log.WithFields(log.Fields{
 			"path": privateKeyFile,
-		}).Debug("no hidden service private key found, generating new key pair")
-	} else {
-		publicKeyBytes, err := os.ReadFile(publicKeyFile)
-		if err != nil {
-			// We have the private key but the public key is missing.  This is weird, but we can regenerate it.
-			pubkey, err := arti.PublicKeyFromPrivate(privateKeyBytes)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("stored private key is not usable")
-			}
-			err = os.WriteFile(publicKeyFile, pubkey, 0600)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("error writing regenerated public key")
-			}
-			return pubkey, privateKeyBytes
-		} else {
-			return publicKeyBytes, privateKeyBytes
+		}).Debug("no hidden service private key found, generating a new identity")
+		var publicKey ed25519.PublicKey
+		publicKey, privateKey = generateHiddenServiceKey()
+		if err := os.WriteFile(privateKeyFile, privateKey, 0600); err != nil {
+			log.WithFields(log.Fields{
+				"path":  privateKeyFile,
+				"error": err.Error(),
+			}).Fatal("error writing private key")
 		}
+		return publicKey, privateKey
 	}
 
-	// The keys do not exist, so this is a first run.  Generate the identity here rather than letting Tor do it when
-	// the service is first published: the address and the signing key are needed as soon as the engine starts, for
-	// creating a profile, and the service is not published until Tor has finished bootstrapping.
-	publicKey, privateKey := generateHiddenServiceKey()
-	if err := os.WriteFile(privateKeyFile, privateKey, 0600); err != nil {
+	if len(privateKey) != arti.PrivateKeySize {
 		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error writing private key")
+			"path":     privateKeyFile,
+			"size":     len(privateKey),
+			"expected": arti.PrivateKeySize,
+		}).Fatal("the hidden service private key file is not a key of the expected size")
 	}
-	if err := os.WriteFile(publicKeyFile, publicKey, 0600); err != nil {
+	publicKey, err := arti.PublicKeyFromPrivate(privateKey)
+	if err != nil {
 		log.WithFields(log.Fields{
+			"path":  privateKeyFile,
 			"error": err.Error(),
-		}).Fatal("error writing public key")
+		}).Fatal("the hidden service private key file is not a usable key")
 	}
 	return publicKey, privateKey
 }
@@ -331,7 +324,9 @@ func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
 		bounceTor.startupFailed(err, "failed to start TOR")
 		return
 	}
-	bounceTor.publishSession(s)
+	if !bounceTor.publishSession(s) {
+		return
+	}
 
 	// Only now report connectivity. NetworkOnline is what starts the accept
 	// loop, so announcing it any earlier hands out a service that does not yet
@@ -430,8 +425,21 @@ func (bounceTor *TorNetwork) openSession() (*session, error) {
 
 // publishSession makes a session visible to Accept and Dial and releases anyone
 // waiting on the readiness gate.
-func (bounceTor *TorNetwork) publishSession(s *session) {
+//
+// A session that finished opening after Shutdown began is closed instead of
+// installed, and false is returned: Shutdown takes away whatever session it
+// finds and never looks again, so a session published after that point would
+// run, with its accept pump and status watcher, for the rest of the process.
+// The check is made under the same lock Shutdown takes the session with, so
+// one of the two always sees the other.
+func (bounceTor *TorNetwork) publishSession(s *session) bool {
 	bounceTor.sessionMutex.Lock()
+	if bounceTor.shuttingDown() {
+		bounceTor.sessionMutex.Unlock()
+		log.Warn("discarding a tor session that opened after shutdown began")
+		s.close()
+		return false
+	}
 	bounceTor.session = s
 	gate := bounceTor.ready
 	if gate == nil {
@@ -443,6 +451,20 @@ func (bounceTor *TorNetwork) publishSession(s *session) {
 	// Closing releases every waiter at once, and works whether there are none
 	// or many - unlike a send, which would need exactly one receiver.
 	releaseGate(gate)
+	return true
+}
+
+// close drops the session's Tor client, which also closes its onion service and
+// stops its accept pump
+func (s *session) close() {
+	if s.client == nil {
+		return
+	}
+	if err := s.client.Close(); err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Warn("error closing a tor session")
+	}
 }
 
 // releaseGate closes a readiness channel unless it is already closed.
@@ -541,7 +563,9 @@ func (bounceTor *TorNetwork) Restart() error {
 		return err
 	}
 
-	bounceTor.publishSession(s)
+	if !bounceTor.publishSession(s) {
+		return errNetworkStopped
+	}
 	go bounceTor.watchOnlineStatus(s)
 	bounceTor.setOnline(true)
 
