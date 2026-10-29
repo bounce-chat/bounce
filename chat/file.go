@@ -1357,6 +1357,7 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 		}).Warn("error opening file for writing chunk data")
 		return
 	}
+	defer fh.Close()
 
 	start := int64(c.Index * fileChunkSize)
 	if int64(len(c.Data)) > int64(fileChunkSize) || start+int64(len(c.Data)) > f.Size {
@@ -1763,6 +1764,7 @@ func checkFileHash(path string) (bool, string) {
 	if err != nil {
 		return false, ""
 	}
+	defer fh.Close()
 
 	info, err := fh.Stat()
 	if err != nil {
