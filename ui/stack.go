@@ -56,26 +56,14 @@ func (ui *ui) setContent(viewType int, view fyne.CanvasObject) {
 		if viewType != viewTypeAddUser && cameraIsRunning && cameraRunningFor == viewTypeAddUser {
 			stopCameraPreview()
 			cameraIsRunning = false
-			select {
-			case stopAddUserCameraProcessing <- true:
-			default:
-			}
 		}
 		if viewType != viewTypeNewSyncDevice && cameraIsRunning && cameraRunningFor == viewTypeNewSyncDevice {
 			stopCameraPreview()
 			cameraIsRunning = false
-			select {
-			case stopNewSyncDeviceCameraProcessing <- true:
-			default:
-			}
 		}
 		if viewType != viewTypeDisplaySyncString && cameraIsRunning && cameraRunningFor == cameraRunningForNewEncryptedDevice {
 			stopCameraPreview()
 			cameraIsRunning = false
-			select {
-			case stopNewEncryptedDeviceCameraProcessing <- true:
-			default:
-			}
 		}
 	}
 

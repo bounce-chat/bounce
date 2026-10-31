@@ -20,7 +20,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var stopNewEncryptedDeviceCameraProcessing chan bool
 var newEncryptedDeviceScanner = make(chan image.Image)
 
 type addSyncDevice struct {
@@ -105,10 +104,9 @@ func (ui *ui) buildDisplaySyncString() {
 	ui.widgets.addSyncDevice.standardHeader.Importance = widget.HighImportance
 	ui.widgets.addSyncDevice.encryptedHeader = widget.NewButton("Encrypted", func() {
 		if cameraSupported() && !cameraIsRunning {
-			startCameraPreview()
+			go ui.processCameraFramesForNewEncryptedDevice(startCameraPreview())
 			cameraIsRunning = true
 			cameraRunningFor = cameraRunningForNewEncryptedDevice
-			go ui.processCameraFramesForNewEncryptedDevice()
 		}
 		ui.widgets.addSyncDevice.encryptedHeader.Importance = widget.HighImportance
 		ui.widgets.addSyncDevice.encryptedHeader.Refresh()
@@ -196,10 +194,9 @@ func (ui *ui) buildInputEncryptedSyncString() {
 					ui.containers.scanUser.Refresh()
 					ui.showDialog(dialog.NewError(errors.New("Error sending management request: "+err.Error()), ui.window), func() {
 						if cameraSupported() && !cameraIsRunning {
-							startCameraPreview()
+							go ui.processCameraFramesForNewEncryptedDevice(startCameraPreview())
 							cameraIsRunning = true
 							cameraRunningFor = cameraRunningForNewEncryptedDevice
-							go ui.processCameraFramesForNewEncryptedDevice()
 						}
 					})
 				} else {
@@ -239,10 +236,6 @@ func (ui *ui) buildInputEncryptedSyncString() {
 						if cameraIsRunning {
 							stopCameraPreview()
 							cameraIsRunning = false
-							select {
-							case stopNewEncryptedDeviceCameraProcessing <- true:
-							default:
-							}
 						}
 						ui.widgets.addSyncDevice.encryptedEntry.SetText(text)
 						ui.widgets.addSyncDevice.encryptedEntry.OnSubmitted(text)
@@ -312,37 +305,28 @@ func (ui *ui) EncryptedDeviceRejected() {
 	fyne.DoAndWait(func() {
 		ui.showDialog(dialog.NewError(errors.New("Request to manage a new encrypted device was rejected"), ui.window), func() {
 			if cameraSupported() && !cameraIsRunning {
-				startCameraPreview()
+				go ui.processCameraFramesForNewEncryptedDevice(startCameraPreview())
 				cameraIsRunning = true
 				cameraRunningFor = cameraRunningForNewEncryptedDevice
-				go ui.processCameraFramesForNewEncryptedDevice()
 			}
 		})
 	})
 }
 
-func (ui *ui) processCameraFramesForNewEncryptedDevice() {
-	if !cameraSupported() {
-		return
-	}
-	p := cameraPreview()
-
-	for {
-		select {
-		case img := <-p:
-			fyne.Do(func() {
-				if ui.widgets.newSyncDevice.videoStream == nil {
-					return
-				}
-				ui.widgets.addSyncDevice.videoStream.Image = img
-				ui.widgets.addSyncDevice.videoStream.Refresh()
-			})
-			select {
-			case newEncryptedDeviceScanner <- img:
-			default:
+// processCameraFramesForNewEncryptedDevice shows each preview frame and offers it to the QR scanner, until the
+// camera stops
+func (ui *ui) processCameraFramesForNewEncryptedDevice(preview <-chan image.Image) {
+	for img := range preview {
+		fyne.Do(func() {
+			if ui.widgets.addSyncDevice.videoStream == nil {
+				return
 			}
-		case <-stopNewEncryptedDeviceCameraProcessing:
-			return
+			ui.widgets.addSyncDevice.videoStream.Image = img
+			ui.widgets.addSyncDevice.videoStream.Refresh()
+		})
+		select {
+		case newEncryptedDeviceScanner <- img:
+		default:
 		}
 	}
 }

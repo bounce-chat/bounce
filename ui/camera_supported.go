@@ -6,9 +6,9 @@ import (
 	"bytes"
 	"context"
 	"image"
-	"log"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/svanichkin/gocam"
 )
 
@@ -16,8 +16,6 @@ func cameraSupported() bool {
 	return true
 }
 
-var previewFrames = make(chan image.Image)
-var cameraContext context.Context
 var cameraCancelFunc context.CancelFunc
 
 func capturePhoto() (image.Image, error) {
@@ -34,39 +32,49 @@ func capturePhoto() (image.Image, error) {
 	return img, nil
 }
 
-func startCameraPreview() {
-	cameraContext, cameraCancelFunc = context.WithCancel(context.Background())
-	frames, err := gocam.StartStream(cameraContext)
+// startCameraPreview opens the camera and returns its preview frames.  The channel is closed when the camera
+// stops, by stopCameraPreview or because the stream could not be opened, so a frame processor ranging over it exits
+// on its own, and a processor left over from an earlier preview can never receive frames from a later one.
+func startCameraPreview() <-chan image.Image {
+	preview := make(chan image.Image)
+	ctx, cancel := context.WithCancel(context.Background())
+	cameraCancelFunc = cancel
+
+	frames, err := gocam.StartStream(ctx)
 	if err != nil {
-		log.Printf("error starting camera string: %s\n", err.Error())
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error starting camera stream")
+		cancel()
+		close(preview)
+		return preview
 	}
+
 	go func() {
+		defer close(preview)
 		for frame := range frames {
 			img, err := decodeInterleaved444(frame.Data, frame.Width, frame.Height)
-			if err == nil {
-				select {
-				case previewFrames <- img:
-				default:
-					log.Printf("camera preview frame is backed up")
-				}
-			} else {
-				log.Printf("error decoding frame: %s\n", err.Error())
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error decoding camera frame")
+				continue
+			}
+			// A frame nobody is waiting for is dropped so the preview never falls behind the camera
+			select {
+			case preview <- img:
+			default:
 			}
 		}
 	}()
+	return preview
 }
 
 func stopCameraPreview() {
 	if cameraCancelFunc != nil {
 		cameraCancelFunc()
+		cameraCancelFunc = nil
 	}
-	for len(previewFrames) > 0 {
-		<-previewFrames
-	}
-}
-
-func cameraPreview() chan image.Image {
-	return previewFrames
 }
 
 func decodeInterleaved444(rawBytes []byte, width, height int) (image.Image, error) {

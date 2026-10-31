@@ -17,15 +17,11 @@ func capturePhoto() (image.Image, error) {
 	return nil, nil
 }
 
-func startCameraPreview() {
+func startCameraPreview() <-chan image.Image {
 	log.Fatal("unsupported camera device")
+	return nil
 }
 
 func stopCameraPreview() {
 	log.Fatal("unsupported camera device")
-}
-
-func cameraPreview() chan image.Image {
-	log.Fatal("unsupported camera device")
-	return nil
 }

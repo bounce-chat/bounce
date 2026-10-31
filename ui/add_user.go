@@ -21,7 +21,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var stopAddUserCameraProcessing chan bool
 var addUserScanner = make(chan image.Image)
 
 type addUser struct {
@@ -122,10 +121,9 @@ func (ui *ui) buildAddUser() {
 	ui.widgets.addUser.shareButton.Importance = widget.HighImportance
 	ui.widgets.addUser.scanButton = widget.NewButton("Scan", func() {
 		if cameraSupported() && !cameraIsRunning {
-			startCameraPreview()
+			go ui.processCameraFramesForAddUser(startCameraPreview())
 			cameraIsRunning = true
 			cameraRunningFor = viewTypeAddUser
-			go ui.processCameraFramesForAddUser()
 		}
 		ui.widgets.addUser.scanButton.Importance = widget.HighImportance
 		ui.widgets.addUser.scanButton.Refresh()
@@ -199,8 +197,7 @@ func (ui *ui) buildScanUser() {
 					ui.containers.scanUser.Refresh()
 					ui.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), ui.window), func() {
 						if cameraSupported() && !cameraIsRunning {
-							startCameraPreview()
-							go ui.processCameraFramesForAddUser()
+							go ui.processCameraFramesForAddUser(startCameraPreview())
 							cameraIsRunning = true
 							cameraRunningFor = viewTypeAddUser
 						}
@@ -238,10 +235,6 @@ func (ui *ui) buildScanUser() {
 						if cameraIsRunning {
 							stopCameraPreview()
 							cameraIsRunning = false
-							select {
-							case stopAddUserCameraProcessing <- true:
-							default:
-							}
 						}
 						ui.widgets.addUser.scanEntry.SetText(text)
 						ui.widgets.addUser.scanEntry.OnSubmitted(text)
@@ -321,28 +314,19 @@ func (ui *ui) AddUserRequestRejected(peer string) {
 	})
 }
 
-func (ui *ui) processCameraFramesForAddUser() {
-	if !cameraSupported() {
-		return
-	}
-	p := cameraPreview()
-
-	for {
-		select {
-		case img := <-p:
-			fyne.Do(func() {
-				if ui.widgets.addUser.videoStream == nil {
-					return
-				}
-				ui.widgets.addUser.videoStream.Image = img
-				ui.widgets.addUser.videoStream.Refresh()
-			})
-			select {
-			case addUserScanner <- img:
-			default:
+// processCameraFramesForAddUser shows each preview frame and offers it to the QR scanner, until the camera stops
+func (ui *ui) processCameraFramesForAddUser(preview <-chan image.Image) {
+	for img := range preview {
+		fyne.Do(func() {
+			if ui.widgets.addUser.videoStream == nil {
+				return
 			}
-		case <-stopAddUserCameraProcessing:
-			return
+			ui.widgets.addUser.videoStream.Image = img
+			ui.widgets.addUser.videoStream.Refresh()
+		})
+		select {
+		case addUserScanner <- img:
+		default:
 		}
 	}
 }

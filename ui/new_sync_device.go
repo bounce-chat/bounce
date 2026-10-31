@@ -21,7 +21,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var stopNewSyncDeviceCameraProcessing chan bool
 var newSyncDeviceScanner = make(chan image.Image)
 
 type newSyncDevice struct {
@@ -103,10 +102,6 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 						if cameraIsRunning {
 							stopCameraPreview()
 							cameraIsRunning = false
-							select {
-							case stopNewSyncDeviceCameraProcessing <- true:
-							default:
-							}
 						}
 						ui.widgets.newSyncDevice.syncStringEntry.SetText(text)
 						ui.widgets.newSyncDevice.syncStringEntry.OnSubmitted(text)
@@ -231,10 +226,9 @@ func (ui *ui) showNewSyncDevice() {
 	ui.widgets.newSyncDevice.currentStep.Refresh()
 
 	if cameraSupported() && !cameraIsRunning {
-		startCameraPreview()
+		go ui.processCameraFramesForNewSyncDevice(startCameraPreview())
 		cameraIsRunning = true
 		cameraRunningFor = viewTypeNewSyncDevice
-		go ui.processCameraFramesForNewSyncDevice()
 	}
 }
 
@@ -301,10 +295,9 @@ func (ui *ui) buildNewSyncDevice() {
 					ui.widgets.newSyncDevice.syncStringInput.Show()
 					ui.showDialog(dialog.NewError(errors.New("Error sending sync request: "+err.Error()), ui.window), func() {
 						if cameraSupported() && !cameraIsRunning {
-							startCameraPreview()
+							go ui.processCameraFramesForNewSyncDevice(startCameraPreview())
 							cameraIsRunning = true
 							cameraRunningFor = viewTypeNewSyncDevice
-							go ui.processCameraFramesForNewSyncDevice()
 						}
 					})
 				})
@@ -347,10 +340,9 @@ func (ui *ui) SyncDeviceRequestRejected(peer string) {
 	fyne.DoAndWait(func() {
 		ui.showDialog(dialog.NewError(errors.New("Sync request rejected, make sure you scan the device quickly"), ui.window), func() {
 			if cameraSupported() && !cameraIsRunning {
-				startCameraPreview()
+				go ui.processCameraFramesForNewSyncDevice(startCameraPreview())
 				cameraIsRunning = true
 				cameraRunningFor = viewTypeNewSyncDevice
-				go ui.processCameraFramesForNewSyncDevice()
 			}
 		})
 		ui.widgets.newSyncDevice.currentStep.Text = ""
@@ -411,28 +403,20 @@ func (ui *ui) InitialSyncComplete() {
 	}
 }
 
-func (ui *ui) processCameraFramesForNewSyncDevice() {
-	if !cameraSupported() {
-		return
-	}
-	p := cameraPreview()
-
-	for {
-		select {
-		case img := <-p:
-			fyne.Do(func() {
-				if ui.widgets.newSyncDevice.videoStream == nil {
-					return
-				}
-				ui.widgets.newSyncDevice.videoStream.Image = img
-				ui.widgets.newSyncDevice.videoStream.Refresh()
-			})
-			select {
-			case newSyncDeviceScanner <- img:
-			default:
+// processCameraFramesForNewSyncDevice shows each preview frame and offers it to the QR scanner, until the camera
+// stops
+func (ui *ui) processCameraFramesForNewSyncDevice(preview <-chan image.Image) {
+	for img := range preview {
+		fyne.Do(func() {
+			if ui.widgets.newSyncDevice.videoStream == nil {
+				return
 			}
-		case <-stopNewSyncDeviceCameraProcessing:
-			return
+			ui.widgets.newSyncDevice.videoStream.Image = img
+			ui.widgets.newSyncDevice.videoStream.Refresh()
+		})
+		select {
+		case newSyncDeviceScanner <- img:
+		default:
 		}
 	}
 }
