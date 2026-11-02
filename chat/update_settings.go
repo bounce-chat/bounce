@@ -204,6 +204,17 @@ func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 		return nil, false
 	}
 
+	// Validate payload
+	err = us.validPayload()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"peer":  peer,
+			"id":    us.getID(),
+			"error": err.Error(),
+		}).Error("rejecting update settings with invalid payload")
+		return nil, false
+	}
+
 	// Make sure the signing device was not revoked before creating this
 	var signerDevice device
 	err = b.database.Select("revoked_at").Where("address = ?", us.Signer).First(&signerDevice).Error
@@ -249,42 +260,6 @@ func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 		}).Fatal("database error looking up update settings")
 	}
 
-	// Apply this update locally
-	err = b.saveUpdateSettings(us)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"type":  us.Type,
-			"error": err.Error(),
-		}).Error("error applying update DM")
-		return nil, false
-	}
-
-	// Update the database state if we're not in a catch up
-	if !catchUp {
-		b.updateSettingsState()
-	}
-
-	return &us, true
-}
-
-func (b *Bounce) saveUpdateSettings(us updateSettings) error {
-	// Validate payload
-	err := us.validPayload()
-	if err != nil {
-		return err
-	}
-
-	// Sign it
-	us.OriginalPayload, err = msgpack.Marshal(&us)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error marshalling update settings")
-	}
-	sc := b.createSignedContainer(typeUpdateSettings, us.OriginalPayload)
-	us.Signature = sc.Signature
-	us.Signer = sc.Signer
-
 	// Save the update
 	err = b.database.Create(&us).Error
 	if err != nil {
@@ -293,7 +268,12 @@ func (b *Bounce) saveUpdateSettings(us updateSettings) error {
 		}).Fatal("database error saving update settings")
 	}
 
-	return nil
+	// Update the database state if we're not in a catch up
+	if !catchUp {
+		b.updateSettingsState()
+	}
+
+	return &us, true
 }
 
 func (b *Bounce) updateSettingsState() {
@@ -514,13 +494,29 @@ func (b *Bounce) applyAndBroadcastUpdateSettings(us updateSettings) error {
 	}
 	us.ID = us.generateID()
 
-	// Save the update to the database
-	err := b.saveUpdateSettings(us)
+	// Validate payload
+	err := us.validPayload()
+	if err != nil {
+		return err
+	}
+
+	// Sign it
+	us.OriginalPayload, err = msgpack.Marshal(&us)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error applying update settings")
-		return err
+		}).Fatal("error marshalling update settings")
+	}
+	sc := b.createSignedContainer(typeUpdateSettings, us.OriginalPayload)
+	us.Signature = sc.Signature
+	us.Signer = sc.Signer
+
+	// Save the update
+	err = b.database.Create(&us).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error saving update settings")
 	}
 
 	// Set the database and UI states
