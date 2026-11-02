@@ -91,6 +91,7 @@ type DirectMessage struct {
 	FileAttachments  []FileAttachment
 	ReadReceipts     []ReadReceipt
 	DeliveredTo      []ID
+	ClientRef        ID // Only in DisplaySentDirectMessage: the clientRef the sender passed to SendDirectMessage
 }
 
 type UpdateDMRetention struct {
@@ -168,6 +169,7 @@ type GroupMessage struct {
 	FileAttachments  []FileAttachment
 	ReadReceipts     []ReadReceipt
 	DeliveredTo      []ID
+	ClientRef        ID // Only in DisplaySentGroupMessage: the clientRef the sender passed to SendGroupMessage
 }
 
 type UpdateGroupRetention struct {

@@ -339,13 +339,13 @@ func TestAMessagesAttachmentsArePartOfItsContent(t *testing.T) {
 
 func TestASentMessageCarriesItsContentID(t *testing.T) {
 	me, alice, _, groupID := createUsersAndGroups(t)
-	me.SendGroupMessage(groupID, "hello everyone", nil)
+	me.SendGroupMessage(groupID, "hello everyone", nil, NilID)
 	var sent groupMessage
 	assert.NoError(t, me.database.Preload("FileAttachments").Preload("ImageAttachments").Where("author = ? AND text = ?", me.currentUserID(), "hello everyone").First(&sent).Error)
 	assert.True(t, idMatchesContent(&sent))
 	awaitAck(t, me, alice, typeGroupMessage, sent.ID)
 
-	me.SendDirectMessage(alice.currentUserID(), "just you", nil)
+	me.SendDirectMessage(alice.currentUserID(), "just you", nil, NilID)
 	var dm directMessage
 	assert.NoError(t, me.database.Where("author = ? AND text = ?", me.currentUserID(), "just you").First(&dm).Error)
 	assert.True(t, idMatchesContent(&dm))
@@ -416,7 +416,7 @@ func TestAnUpdateDeviceCannotBeRedefinedUnderItsID(t *testing.T) {
 
 func TestAReadReceiptCannotBeRedefinedUnderItsID(t *testing.T) {
 	me, alice, _, groupID := createUsersAndGroups(t)
-	me.SendGroupMessage(groupID, "read me", nil)
+	me.SendGroupMessage(groupID, "read me", nil, NilID)
 	var sent groupMessage
 	assert.NoError(t, me.database.Where("text = ?", "read me").First(&sent).Error)
 	awaitAck(t, me, alice, typeGroupMessage, sent.ID)
@@ -480,7 +480,7 @@ func TestAFileCannotBeRedefinedUnderItsID(t *testing.T) {
 	data := []byte("the minutes of the meeting")
 	assert.NoError(t, me.SendGroupMessage(groupID, "minutes attached", []OutgoingAttachment{{
 		Name: "minutes.txt", Size: int64(len(data)), Reader: io.NopCloser(bytes.NewReader(data)),
-	}}))
+	}}, NilID))
 	var sent groupMessage
 	assert.NoError(t, me.database.Preload("FileAttachments").First(&sent, "text = ?", "minutes attached").Error)
 	var f file

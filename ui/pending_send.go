@@ -14,13 +14,16 @@ import (
 // before then is shown once, as the real thing, with no flicker.  When the real message arrives it takes the pending
 // bubble's place.
 //
+// Sends on one thread finish in any order, so each send is given the pending bubble's handle as its client
+// reference, and the engine echoes it in the report; that is how the report finds its pending send.
+//
 // All pending send state belongs to the UI thread.  Every function below either runs there already or hands its work
 // to it with fyne.DoAndWait, so no lock is needed; holding one across a DoAndWait would deadlock against the UI
 // thread taking the same lock.
 const pendingSendDelay = 300 * time.Millisecond
 
 type pendingSend struct {
-	handle chat.ID // The bubble's ID while pending, local to this UI
+	handle chat.ID // The bubble's ID while pending, local to this UI, and the send's client reference
 	thread thread
 	build  func(handle chat.ID) (*threadItem, error)
 	shown  bool
@@ -35,9 +38,9 @@ func newPendingSends() *pendingSends {
 	return &pendingSends{byThread: map[chat.ID][]*pendingSend{}}
 }
 
-// beginPendingSend registers a message that is being sent on a thread.  build makes the bubble for it, and is only
-// called if the engine has not reported the sent message before the delay passes.  Called on the UI thread, from the
-// send handler.
+// beginPendingSend registers a message that is being sent on a thread.  The returned pending send's handle must be
+// passed to the engine as the send's client reference.  build makes the bubble for it, and is only called if the
+// engine has not reported the sent message before the delay passes.  Called on the UI thread, from the send handler.
 func (ui *ui) beginPendingSend(t thread, build func(handle chat.ID) (*threadItem, error)) *pendingSend {
 	ps := &pendingSend{handle: chat.NewID(), thread: t, build: build}
 	ui.pendingSends.byThread[t.getID()] = append(ui.pendingSends.byThread[t.getID()], ps)
@@ -63,40 +66,43 @@ func (ui *ui) beginPendingSend(t thread, build func(handle chat.ID) (*threadItem
 	return ps
 }
 
-// completePendingSend is called when the engine reports a sent message on a thread.  The oldest pending send on that
-// thread is the one it answers; its bubble, if one was drawn, is removed so the real message can take its place.
-// Must be called on the UI thread.
-func (ui *ui) completePendingSend(t thread) {
-	queue := ui.pendingSends.byThread[t.getID()]
-	if len(queue) == 0 {
-		return
-	}
-	ps := queue[0]
-	ui.pendingSends.byThread[t.getID()] = queue[1:]
-	ps.done = true
-	if ps.shown {
-		ui.removePendingBubble(ps)
+// completePendingSend is called when the engine reports a sent message on a thread, with the client reference the
+// send was given.  The pending send with that handle is finished; its bubble, if one was drawn, is removed so the
+// real message can take its place.  A report with no matching pending send is a message sent from elsewhere, such as
+// another of this user's devices, and leaves them alone.  Must be called on the UI thread.
+func (ui *ui) completePendingSend(t thread, clientRef chat.ID) {
+	for _, ps := range ui.pendingSends.byThread[t.getID()] {
+		if ps.handle == clientRef {
+			ui.endPendingSend(ps)
+			return
+		}
 	}
 }
 
-// failPendingSend is called when the engine refused to send the message, from the goroutine that asked it to
+// failPendingSend is called when the engine refused to send the message, from the goroutine that asked it to.
+// Whatever was drawn for it goes away.
 func (ui *ui) failPendingSend(ps *pendingSend) {
 	fyne.DoAndWait(func() {
 		if ps.done {
 			return
 		}
-		ps.done = true
-		queue := ui.pendingSends.byThread[ps.thread.getID()]
-		for i, other := range queue {
-			if other == ps {
-				ui.pendingSends.byThread[ps.thread.getID()] = append(queue[:i], queue[i+1:]...)
-				break
-			}
-		}
-		if ps.shown {
-			ui.removePendingBubble(ps)
-		}
+		ui.endPendingSend(ps)
 	})
+}
+
+// endPendingSend forgets a pending send and removes its bubble if one was drawn.  Must be called on the UI thread.
+func (ui *ui) endPendingSend(ps *pendingSend) {
+	ps.done = true
+	queue := ui.pendingSends.byThread[ps.thread.getID()]
+	for i, other := range queue {
+		if other == ps {
+			ui.pendingSends.byThread[ps.thread.getID()] = append(queue[:i], queue[i+1:]...)
+			break
+		}
+	}
+	if ps.shown {
+		ui.removePendingBubble(ps)
+	}
 }
 
 func (ui *ui) removePendingBubble(ps *pendingSend) {

@@ -43,6 +43,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.security.SecureRandom
 import java.util.UUID
 
 /**
@@ -281,7 +282,9 @@ class ConversationViewModel(
         // The engine reports the sent message when it has finished sending, which for a large attachment is
         // after hashing the whole file. The message is shown from the composer's own data if that takes
         // noticeably long; a quick send is drawn once, as the real message. See ChatRepository.beginPendingSend.
-        val handle = "pending-" + UUID.randomUUID()
+        // The handle is also the send's client reference, which the engine echoes in the report so the report
+        // finds this pending send and not merely the oldest one on the thread.
+        val handle = newClientRef()
         ChatRepository.beginPendingSend(
             ConversationItem.Message(
                 id = handle,
@@ -308,9 +311,9 @@ class ConversationViewModel(
             val outgoing = attachments.map { OutgoingAttachment(it.id, it.path, it.name, it.size) }
             val sent = runCatching {
                 if (isGroup) {
-                    client.sendGroupMessage(threadId, body, outgoing)
+                    client.sendGroupMessage(threadId, body, outgoing, handle)
                 } else {
-                    client.sendDirectMessage(threadId, body, outgoing)
+                    client.sendDirectMessage(threadId, body, outgoing, handle)
                 }
             }
             if (sent.isFailure) {
@@ -320,6 +323,10 @@ class ConversationViewModel(
             client.updateDraft(threadId, "")
         }
     }
+
+    /** A fresh engine-shaped ID (32 random bytes as lowercase hex) for a pending send. */
+    private fun newClientRef(): String =
+        ByteArray(32).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
 
     /**
      * Copies each picked item into cacheDir/outgoing/<uuid>. The engine reads

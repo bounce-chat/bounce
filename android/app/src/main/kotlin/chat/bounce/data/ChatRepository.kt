@@ -655,9 +655,18 @@ object ChatRepository {
         addItem(toShow)
     }
 
-    /** The engine reported a message this device sent: it replaces the oldest pending send on its thread. */
-    fun completePendingSend(real: ConversationItem.Message) {
-        val finished = synchronized(pendingSends) { pendingSends[real.threadId]?.removeFirstOrNull() }
+    /**
+     * The engine reported a message this device sent, echoing the handle the send was given as [clientRef]: it
+     * replaces that pending send. Sends on one thread finish in any order, so the oldest is not necessarily it. A
+     * report that references no pending send - one sent from another of this user's devices - is just added.
+     */
+    fun completePendingSend(real: ConversationItem.Message, clientRef: String) {
+        val finished = synchronized(pendingSends) {
+            val queue = pendingSends[real.threadId]
+            val ps = queue?.firstOrNull { it.item.id == clientRef }
+            if (ps != null) queue.remove(ps)
+            ps
+        }
         if (finished != null && finished.shown) deleteItem(finished.item.id)
         addItem(real)
     }

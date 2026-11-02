@@ -20,7 +20,7 @@ func TestDeletingAMessageDeletesAllFileData(t *testing.T) {
 		Name:   "filename",
 		Size:   int64(len(data)),
 		Reader: io.NopCloser(bytes.NewReader(data)),
-	}}))
+	}}, NilID))
 
 	// Make sure that all the database objects were created, with the file ID the engine assigned
 	var createdGM groupMessage
@@ -71,7 +71,7 @@ func TestDeletingManyMessagesDeletesAllOfTheirFileData(t *testing.T) {
 			data := []byte(text + " " + name)
 			attachments = append(attachments, OutgoingAttachment{Name: name, Size: int64(len(data)), Reader: io.NopCloser(bytes.NewReader(data))})
 		}
-		assert.NoError(t, b.SendGroupMessage(groupID, text, attachments))
+		assert.NoError(t, b.SendGroupMessage(groupID, text, attachments, NilID))
 		var gm groupMessage
 		assert.NoError(t, b.database.Preload("FileAttachments").First(&gm, "text = ?", text).Error)
 		assert.Equal(t, 2, len(gm.FileAttachments))

@@ -188,17 +188,24 @@ class EngineClient(
 
     // --- messages ----------------------------------------------------------
 
+    /**
+     * [clientRef] is a 64-hex-character ID of the caller's choosing, echoed back as
+     * ClientRef on the DisplaySent* event for this message so the caller can match
+     * the report to the send; "" when the caller does not need to.
+     */
     suspend fun sendDirectMessage(
         threadId: String,
         text: String,
         attachments: List<OutgoingAttachment> = emptyList(),
-    ) = call("sendDirectMessage") { it.sendDirectMessage(threadId, text, encodeAttachments(attachments)) }
+        clientRef: String = "",
+    ) = call("sendDirectMessage") { it.sendDirectMessage(threadId, text, encodeAttachments(attachments), clientRef) }
 
     suspend fun sendGroupMessage(
         threadId: String,
         text: String,
         attachments: List<OutgoingAttachment> = emptyList(),
-    ) = call("sendGroupMessage") { it.sendGroupMessage(threadId, text, encodeAttachments(attachments)) }
+        clientRef: String = "",
+    ) = call("sendGroupMessage") { it.sendGroupMessage(threadId, text, encodeAttachments(attachments), clientRef) }
 
     private fun encodeAttachments(attachments: List<OutgoingAttachment>): String =
         if (attachments.isEmpty()) "" else json.encodeToString(attachments)

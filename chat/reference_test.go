@@ -149,7 +149,7 @@ func TestChunkOffersAreOfferedByScopeAndExcludedOnceDelivered(t *testing.T) {
 		Name:   "f.bin",
 		Size:   int64(len(data)),
 		Reader: io.NopCloser(bytes.NewReader(data)),
-	}}))
+	}}, NilID))
 	var gm groupMessage
 	assert.NoError(t, me.database.Preload("FileAttachments").First(&gm, "text = ?", "group attachment").Error)
 	assert.Equal(t, 1, len(gm.FileAttachments))

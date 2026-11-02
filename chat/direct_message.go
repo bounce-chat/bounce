@@ -238,7 +238,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		log.WithFields(log.Fields{
 			"id": dm.ID,
 		}).Warn("ignoring direct message that is too long")
-		go b.sendAck(peer, typeGroupMessage, dm.ID)
+		go b.sendAck(peer, typeDirectMessage, dm.ID)
 		return nil, false
 	}
 
@@ -439,7 +439,7 @@ var errAttachmentNotDistributed = errors.New("an attachment could not be distrib
 
 // SendDirectMessage sends a message to a user.  Attachments that cannot be read or are too large to embed are left
 // out and the rest of the message is still sent; an error means nothing was sent.
-func (b *Bounce) SendDirectMessage(thread ID, text string, attachments []OutgoingAttachment) error {
+func (b *Bounce) SendDirectMessage(thread ID, text string, attachments []OutgoingAttachment, clientRef ID) error {
 	if utf8.RuneCountInString(text) > MaximumMessageCharacters {
 		log.Error("refusing to send message that is too long")
 		closeAttachments(attachments)
@@ -530,6 +530,7 @@ func (b *Bounce) SendDirectMessage(thread ID, text string, attachments []Outgoin
 		Undeliverable:    dm.Undeliverable,
 		ImageAttachments: attached.imageDTOs,
 		FileAttachments:  attached.fileDTOs,
+		ClientRef:        clientRef,
 	})
 
 	b.broadcast(dm)

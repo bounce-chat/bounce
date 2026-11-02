@@ -565,7 +565,7 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 			})
 		})
 		go func() {
-			err := ui.bounce.SendGroupMessage(g.id, text, outgoing)
+			err := ui.bounce.SendGroupMessage(g.id, text, outgoing, pending.handle)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -1018,12 +1018,8 @@ func (ui *ui) DisplaySentGroupMessage(gm chat.GroupMessage) {
 	}
 
 	fyne.DoAndWait(func() {
-		ui.completePendingSend(g)
+		ui.completePendingSend(g, gm.ClientRef)
 		ui.appendThreadItem(g, ti)
-
-		g.getEntry().Text = ""
-		g.getEntry().Refresh()
-
 		g.chatHistoryScroll().ScrollToBottom()
 		ui.containers.chat.Refresh()
 	})

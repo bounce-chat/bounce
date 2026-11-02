@@ -272,7 +272,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 			})
 		})
 		go func() {
-			err := ui.bounce.SendDirectMessage(dm.user.id, text, outgoing)
+			err := ui.bounce.SendDirectMessage(dm.user.id, text, outgoing, pending.handle)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -401,7 +401,7 @@ func (ui *ui) DisplaySentDirectMessage(dm chat.DirectMessage) {
 	if reloaded {
 		// The DM was closed and we opened it and reloaded all of this history,
 		// which would have included this message
-		fyne.DoAndWait(func() { ui.completePendingSend(dmThread) })
+		fyne.DoAndWait(func() { ui.completePendingSend(dmThread, dm.ClientRef) })
 		return
 	}
 
@@ -414,12 +414,8 @@ func (ui *ui) DisplaySentDirectMessage(dm chat.DirectMessage) {
 	}
 
 	fyne.DoAndWait(func() {
-		ui.completePendingSend(dmThread)
+		ui.completePendingSend(dmThread, dm.ClientRef)
 		ui.appendThreadItem(dmThread, ti)
-
-		dmThread.entry.Text = ""
-		dmThread.entry.Refresh()
-
 		dmThread.chatHistoryScroll().ScrollToBottom()
 		ui.containers.chat.Refresh()
 	})

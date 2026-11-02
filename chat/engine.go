@@ -42,8 +42,8 @@ type Engine interface {
 	RestrictUserManagement(groupID ID) error
 	RevokeDevice(deviceID ID) error
 	RevokeInvite(groupID ID, userID ID) error
-	SendDirectMessage(thread ID, text string, attachments []OutgoingAttachment) error
-	SendGroupMessage(thread ID, text string, attachments []OutgoingAttachment) error
+	SendDirectMessage(thread ID, text string, attachments []OutgoingAttachment, clientRef ID) error
+	SendGroupMessage(thread ID, text string, attachments []OutgoingAttachment, clientRef ID) error
 	SetActiveThread(id ID)
 	SetAutoJoinGroups(value int)
 	SetDMLastOpened(userID ID, timestamp int64)

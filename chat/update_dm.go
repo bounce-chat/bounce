@@ -748,7 +748,7 @@ func (b *Bounce) informUIUpdateDMSetClearBefore(u user, ud *updateDM) {
 func (b *Bounce) informUIUpdateDMSetAlias(u user, ud *updateDM) {
 	b.ui.UserAliased(UpdateDMSetAlias{
 		ID:        ud.ID,
-		User:      ud.Target,
+		User:      u.ID,
 		Timestamp: ud.Timestamp,
 		Alias:     string(ud.Data),
 	})

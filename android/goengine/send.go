@@ -124,8 +124,12 @@ func measureImage(r io.Reader) (width, height int, hash string, ok bool) {
 // calls log.Fatal if the caller sets one - so this takes the thread and text
 // rather than a whole serialized message.
 //
+// clientRef is an ID of the caller's choosing, or "", echoed back as ClientRef
+// on the DisplaySentDirectMessage event for this message so the caller can
+// match the report to the send that produced it.
+//
 // BLOCKING: database write plus attachment spooling.
-func (a *Engine) SendDirectMessage(threadID string, text string, attachmentsJSON string) error {
+func (a *Engine) SendDirectMessage(threadID string, text string, attachmentsJSON string, clientRef string) error {
 	e, err := a.engine()
 	if err != nil {
 		return err
@@ -134,16 +138,20 @@ func (a *Engine) SendDirectMessage(threadID string, text string, attachmentsJSON
 	if err != nil {
 		return err
 	}
+	ref, err := parseClientRef(clientRef)
+	if err != nil {
+		return err
+	}
 	attachments, err := prepareAttachments(attachmentsJSON)
 	if err != nil {
 		return err
 	}
 
-	return e.SendDirectMessage(tid, text, attachments)
+	return e.SendDirectMessage(tid, text, attachments, ref)
 }
 
 // SendGroupMessage sends a group message. See SendDirectMessage.
-func (a *Engine) SendGroupMessage(threadID string, text string, attachmentsJSON string) error {
+func (a *Engine) SendGroupMessage(threadID string, text string, attachmentsJSON string, clientRef string) error {
 	e, err := a.engine()
 	if err != nil {
 		return err
@@ -152,10 +160,22 @@ func (a *Engine) SendGroupMessage(threadID string, text string, attachmentsJSON 
 	if err != nil {
 		return err
 	}
+	ref, err := parseClientRef(clientRef)
+	if err != nil {
+		return err
+	}
 	attachments, err := prepareAttachments(attachmentsJSON)
 	if err != nil {
 		return err
 	}
 
-	return e.SendGroupMessage(tid, text, attachments)
+	return e.SendGroupMessage(tid, text, attachments, ref)
+}
+
+// parseClientRef reads an optional client reference: "" means none.
+func parseClientRef(s string) (chat.ID, error) {
+	if s == "" {
+		return chat.NilID, nil
+	}
+	return parseID("clientRef", s)
 }

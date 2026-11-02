@@ -110,6 +110,8 @@ data class DirectMessage(
     @SerialName("FileAttachments") val fileAttachments: List<FileAttachment> = emptyList(),
     @SerialName("ReadReceipts") val readReceipts: List<ReadReceipt> = emptyList(),
     @SerialName("DeliveredTo") val deliveredTo: List<String> = emptyList(),
+    /** Only on DisplaySent*: the clientRef passed to the send that produced this message, else all zeros. */
+    @SerialName("ClientRef") val clientRef: String = "",
 )
 
 @Serializable
@@ -127,6 +129,8 @@ data class GroupMessage(
     @SerialName("FileAttachments") val fileAttachments: List<FileAttachment> = emptyList(),
     @SerialName("ReadReceipts") val readReceipts: List<ReadReceipt> = emptyList(),
     @SerialName("DeliveredTo") val deliveredTo: List<String> = emptyList(),
+    /** Only on DisplaySent*: the clientRef passed to the send that produced this message, else all zeros. */
+    @SerialName("ClientRef") val clientRef: String = "",
 )
 
 @Serializable

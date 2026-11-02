@@ -200,13 +200,15 @@ class EngineEventPump(
             // --- messages -------------------------------------------------------
             "DisplayDirectMessage" ->
                 repo.addItem(decode<DirectMessage>(payload).toConversationItem(repo.currentUserId))
-            "DisplaySentDirectMessage" ->
-                repo.completePendingSend(decode<DirectMessage>(payload).toConversationItem(repo.currentUserId))
+            "DisplaySentDirectMessage" -> decode<DirectMessage>(payload).let {
+                repo.completePendingSend(it.toConversationItem(repo.currentUserId), it.clientRef)
+            }
 
             "DisplayGroupMessage" ->
                 repo.addItem(decode<GroupMessage>(payload).toConversationItem(repo.currentUserId))
-            "DisplaySentGroupMessage" ->
-                repo.completePendingSend(decode<GroupMessage>(payload).toConversationItem(repo.currentUserId))
+            "DisplaySentGroupMessage" -> decode<GroupMessage>(payload).let {
+                repo.completePendingSend(it.toConversationItem(repo.currentUserId), it.clientRef)
+            }
 
             "DeleteItem" -> repo.deleteItem(decode<IdPayload>(payload).id)
             "MessageSeen" -> repo.markSeen(decode<IdPayload>(payload).id)

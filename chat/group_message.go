@@ -461,7 +461,7 @@ func (b *Bounce) getGMNotificationContent(gm *groupMessage) (string, string, err
 
 // SendGroupMessage sends a message to a group.  Attachments that cannot be read or are too large to embed are left
 // out and the rest of the message is still sent; an error means nothing was sent.
-func (b *Bounce) SendGroupMessage(thread ID, text string, attachments []OutgoingAttachment) error {
+func (b *Bounce) SendGroupMessage(thread ID, text string, attachments []OutgoingAttachment, clientRef ID) error {
 	if utf8.RuneCountInString(text) > MaximumMessageCharacters {
 		log.Error("refusing to send message that is too long")
 		closeAttachments(attachments)
@@ -549,6 +549,7 @@ func (b *Bounce) SendGroupMessage(thread ID, text string, attachments []Outgoing
 		Undeliverable:    gm.Undeliverable,
 		ImageAttachments: attached.imageDTOs,
 		FileAttachments:  attached.fileDTOs,
+		ClientRef:        clientRef,
 	})
 
 	b.broadcast(gm)
