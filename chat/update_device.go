@@ -576,7 +576,13 @@ func (b *Bounce) RevokeDevice(deviceID ID) error {
 		log.Fatal("cannot revoke devices when no profile exists")
 	}
 
-	if len(profile.Devices) == 1 {
+	unrevokedDevices := 0
+	for _, d := range profile.Devices {
+		if d.RevokedAt == 0 {
+			unrevokedDevices += 1
+		}
+	}
+	if unrevokedDevices <= 1 {
 		return errCannotRevokeLastDevice
 	}
 
@@ -593,6 +599,7 @@ func (b *Bounce) RevokeDevice(deviceID ID) error {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error applying update device that revokes a device")
+		return err
 	}
 
 	return b.rollKeys()
