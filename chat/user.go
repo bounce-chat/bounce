@@ -284,15 +284,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		Devices: []device{
 			d,
 		},
-		ProfileSettings: &profileSettings{
-			DefaultGroupRetention:          int64(time.Duration(24 * time.Hour * 7 * 4).Seconds()),
-			DefaultSendReadReceipts:        true,
-			DefaultSendTypingIndicators:    true,
-			NewGroupRestrictUserManagement: true,
-			NewGroupRestrictGroupEdits:     false,
-			NewGroupRestrictPosting:        false,
-			DefaultDMRetention:             int64(time.Duration(24 * time.Hour * 7 * 4).Seconds()),
-		},
+		ProfileSettings: defaultProfileSettings(),
 	}
 	if icon != nil {
 		u.Images = icon.ID.String()

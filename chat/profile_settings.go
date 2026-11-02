@@ -1,5 +1,9 @@
 package chat
 
+import (
+	"time"
+)
+
 const OnlyAutoJoinGroupsWithNoNewUsers = 0
 const NeverAutoJoinGroups = 1
 const AlwaysAutoJoinGroups = 2
@@ -16,6 +20,18 @@ type profileSettings struct {
 	NewGroupRestrictPosting        bool
 	AutoJoinGroups                 int
 	DefaultDMRetention             int64
+}
+
+func defaultProfileSettings() *profileSettings {
+	return &profileSettings{
+		DefaultGroupRetention:          int64(time.Duration(24 * time.Hour * 7 * 4).Seconds()),
+		DefaultSendReadReceipts:        true,
+		DefaultSendTypingIndicators:    true,
+		NewGroupRestrictUserManagement: true,
+		NewGroupRestrictGroupEdits:     false,
+		NewGroupRestrictPosting:        false,
+		DefaultDMRetention:             int64(time.Duration(24 * time.Hour * 7 * 4).Seconds()),
+	}
 }
 
 func (b *Bounce) lastAutoJoinGroupSettingChange() int64 {
