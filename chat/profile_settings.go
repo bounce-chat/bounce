@@ -36,7 +36,7 @@ func defaultProfileSettings() *profileSettings {
 
 func (b *Bounce) lastAutoJoinGroupSettingChange() int64 {
 	var us updateSettings
-	err := b.database.Select("timestamp", "MAX(timestamp)").Find(&us).Error
+	err := b.database.Select("timestamp").Where("type = ?", updateSettingsTypeSetAutoJoinGroups).Order("timestamp desc").Take(&us).Error
 	if err != nil {
 		return 0
 	}
