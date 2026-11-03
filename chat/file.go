@@ -1396,6 +1396,9 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 		}).Error("database error updating chunk data")
 	}
 
+	// Offer this chunk
+	b.offerChunk(c)
+
 	// Mark the file as downloaded if this was the last chunk to get
 	var otherEmptyChunks []chunk
 	err = b.database.Where("file_id = ? AND downloaded = ?", c.FileID, false).Find(&otherEmptyChunks).Error
@@ -1405,6 +1408,33 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 		}).Fatal("database error checking for remaining empty chunks")
 	}
 	if len(otherEmptyChunks) == 0 {
+		_, hash := checkFileHash(f.Path + downloadExtension)
+		if hash != f.Hash {
+			log.WithFields(log.Fields{
+				"file_id":  c.FileID,
+				"expected": f.Hash,
+				"actual":   hash,
+				"path":     f.Path + downloadExtension,
+			}).Error("downloaded file does not have expected hash, giving up on it")
+
+			err = b.database.Table("files").Where("id = ?", c.FileID).Update("wanted", false).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error giving up on a corrupt file")
+			}
+
+			err = os.Remove(f.Path + downloadExtension)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"path":  f.Path + downloadExtension,
+					"error": err.Error(),
+				}).Warn("error removing corrupt download")
+			}
+
+			return
+		}
+
 		err = b.database.Table("files").Where("id = ?", c.FileID).Update("downloaded", true).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -1419,18 +1449,7 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 		}
 
 		b.ui.FileCompleted(c.FileID)
-
-		_, hash := checkFileHash(f.Path)
-		if hash != f.Hash {
-			log.WithFields(log.Fields{
-				"expected": f.Hash,
-				"actual":   hash,
-			}).Error("completed file does not have expected hash")
-		}
 	}
-
-	// Offer this chunk
-	b.offerChunk(c)
 }
 
 // Creating a file we author is two steps.  Preparing it reads or hashes the data, generates the file's ID from it
