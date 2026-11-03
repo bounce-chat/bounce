@@ -173,15 +173,14 @@ func (ui *ui) buildNewGroup() {
 			ui.widgets.newGroup.nameEntry.CursorRow = 0
 			ui.widgets.newGroup.nameEntry.CursorColumn = 0
 		}
-		ui.widgets.newGroup.nameEntry.Text = str
 
 		// Enforce length limit
 		if utf8.RuneCountInString(str) > chat.MaximumNameLength {
 			runes := []rune(str)
 			truncated := runes[0:chat.MaximumNameLength]
-			initial = string(truncated)
-
+			str = string(truncated)
 		}
+		ui.widgets.newGroup.nameEntry.Text = str
 		ui.widgets.newGroup.nameEntry.Refresh()
 
 		// Set the group icon
