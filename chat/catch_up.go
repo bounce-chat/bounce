@@ -379,6 +379,12 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	}
 
 	var mostRecentUnseenGMs = map[ID]*groupMessage{}
+	// Delivery so far, including the record just written for this peer, so the UI's snapshot matches the database
+	gmIDs := make([]ID, 0, len(gmsToDisplay))
+	for _, gm := range gmsToDisplay {
+		gmIDs = append(gmIDs, gm.ID)
+	}
+	gmDelivered := b.deliveredUsers(typeGroupMessage, gmIDs)
 	for i, gm := range gmsToDisplay {
 		groupID := gm.getDestination(b.currentUserID())
 		gs, err := b.currentGroupState(groupID)
@@ -439,6 +445,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			Text:             gm.Text,
 			ImageAttachments: uiImageAttachments,
 			FileAttachments:  uiFileAttachments,
+			DeliveredTo:      gmDelivered[gm.ID],
 		})
 
 		// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI
@@ -455,6 +462,11 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	}
 
 	var mostRecentUnseenDMs = map[ID]*directMessage{}
+	dmIDs := make([]ID, 0, len(dmsToDisplay))
+	for _, dm := range dmsToDisplay {
+		dmIDs = append(dmIDs, dm.ID)
+	}
+	dmDelivered := b.deliveredUsers(typeDirectMessage, dmIDs)
 	for i, dm := range dmsToDisplay {
 		uiImageAttachments := []ImageAttachment{}
 		for _, ia := range dm.ImageAttachments {
@@ -489,6 +501,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			Text:             dm.Text,
 			ImageAttachments: uiImageAttachments,
 			FileAttachments:  uiFileAttachments,
+			DeliveredTo:      dmDelivered[dm.ID],
 		})
 
 		// Find any read receipts for this message that came early, add missing data, broadcast and send to the UI
@@ -533,13 +546,6 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		}
 	}
 	b.ui.CatchUpMessages(bulkUpdate, waitingForInitialSyncFrom() == peer)
-
-	for _, gm := range gmsToDisplay {
-		b.ui.MessageDelivered(gm.ID, dev.UserID)
-	}
-	for _, dm := range dmsToDisplay {
-		b.ui.MessageDelivered(dm.ID, dev.UserID)
-	}
 
 	for _, dm := range mostRecentUnseenDMs {
 		if b.postNotification != nil && b.shouldNotifyDM(dm) {

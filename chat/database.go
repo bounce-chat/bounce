@@ -589,19 +589,7 @@ func (b *Bounce) GetInitialState() InitialState {
 		)
 	}
 
-	dmDRs := []deliveryRecord{}
-	dmDRmap := map[ID][]ID{}
-	err = b.database.Where("frame_type = ?", typeDirectMessage).Find(&dmDRs).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error looking up delivery records")
-	}
-	for _, dr := range dmDRs {
-		if owner, ok := b.peerOwner(dr.Destination); ok {
-			dmDRmap[dr.FrameID] = append(dmDRmap[dr.FrameID], owner)
-		}
-	}
+	dmDRmap := b.deliveredUsers(typeDirectMessage, nil)
 
 	exportedDMs := []DirectMessage{}
 	for _, dm := range dms {
@@ -729,19 +717,7 @@ func (b *Bounce) GetInitialState() InitialState {
 		)
 	}
 
-	gmDRs := []deliveryRecord{}
-	gmDRmap := map[ID][]ID{}
-	err = b.database.Where("frame_type = ?", typeGroupMessage).Find(&gmDRs).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error looking up delivery records")
-	}
-	for _, dr := range gmDRs {
-		if owner, ok := b.peerOwner(dr.Destination); ok {
-			gmDRmap[dr.FrameID] = append(gmDRmap[dr.FrameID], owner)
-		}
-	}
+	gmDRmap := b.deliveredUsers(typeGroupMessage, nil)
 
 	exportedGMs := []GroupMessage{}
 	for _, gm := range gms {
@@ -1336,23 +1312,11 @@ func (b *Bounce) GetDMHistory(userID ID) InitialState {
 		)
 	}
 
-	dmDRs := []deliveryRecord{}
-	dmDRmap := map[ID][]ID{}
-	err = b.database.Where("frame_type = ?", typeDirectMessage).Find(&dmDRs).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error looking up delivery records")
+	dmIDs := make([]ID, 0, len(dms))
+	for _, dm := range dms {
+		dmIDs = append(dmIDs, dm.ID)
 	}
-	for _, dr := range dmDRs {
-		dev, ok := b.getDeviceFromAddress(dr.Destination)
-		if ok {
-			dmDRmap[dr.FrameID] = append(
-				dmDRmap[dr.FrameID],
-				dev.UserID,
-			)
-		}
-	}
+	dmDRmap := b.deliveredUsers(typeDirectMessage, dmIDs)
 
 	fileProgress := []FileProgress{}
 	exportedDMs := []DirectMessage{}

@@ -57,6 +57,44 @@ func (b *Bounce) frameIsDeliveredTo(frameID ID, frameType uint16, peer string) b
 	return count > 0
 }
 
+func (b *Bounce) deliveredUsers(frameType uint16, frameIDs []ID) map[ID][]ID {
+	query := b.database.Where("frame_type = ?", frameType)
+	if frameIDs != nil {
+		if len(frameIDs) == 0 {
+			return map[ID][]ID{}
+		}
+		query = query.Where("frame_id IN (?)", frameIDs)
+	}
+	var records []deliveryRecord
+	err := query.Find(&records).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error looking up delivery records")
+	}
+
+	owners := map[string]ID{}
+	unknown := map[string]bool{}
+	delivered := map[ID][]ID{}
+	for _, dr := range records {
+		owner, known := owners[dr.Destination]
+		if !known {
+			if unknown[dr.Destination] {
+				continue
+			}
+			var ok bool
+			owner, ok = b.peerOwner(dr.Destination)
+			if !ok {
+				unknown[dr.Destination] = true
+				continue
+			}
+			owners[dr.Destination] = owner
+		}
+		delivered[dr.FrameID] = append(delivered[dr.FrameID], owner)
+	}
+	return delivered
+}
+
 func (b *Bounce) markFrameDelivered(id ID, frameType uint16, destination string) {
 	if id == NilID {
 		log.Warn("tracking delivery of broadcastable with nil ID")
