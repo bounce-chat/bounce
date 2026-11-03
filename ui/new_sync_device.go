@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
@@ -136,12 +137,12 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 
 	ui.widgets.newSyncDevice.deviceNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
-		str, trimmed := trimLeadingSpace(str)
-		ui.widgets.newSyncDevice.deviceNameEntry.Text = str
-		if trimmed != 0 {
+		if trimmed := strings.TrimLeftFunc(str, unicode.IsSpace); trimmed != str {
+			str = trimmed
 			ui.widgets.newSyncDevice.deviceNameEntry.CursorRow = 0
 			ui.widgets.newSyncDevice.deviceNameEntry.CursorColumn = 0
 		}
+		ui.widgets.newSyncDevice.deviceNameEntry.Text = str
 
 		// Enforce length limit
 		if utf8.RuneCountInString(str) > chat.MaximumNameLength {

@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"unicode"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -1047,7 +1048,7 @@ func (cb *chatBubble) decoratorNeedsNewLine(availableWidth, decoratorWidth float
 			if len(cb.chunks) <= i { // TODO: locking issue with chatHistory replacing the widget?
 				return true
 			}
-			firstWord, _ := trimLeadingSpace(cb.chunks[i])
+			firstWord := strings.TrimLeftFunc(cb.chunks[i], unicode.IsSpace)
 			currentWrap = fyne.MeasureText(
 				firstWord,
 				theme.Size(theme.SizeNameText),

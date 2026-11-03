@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
@@ -167,12 +168,12 @@ func (ui *ui) buildNewGroup() {
 	initial := ""
 	ui.widgets.newGroup.nameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
-		str, trimmed := trimLeadingSpace(str)
-		ui.widgets.newGroup.nameEntry.Text = str
-		if trimmed != 0 {
+		if trimmed := strings.TrimLeftFunc(str, unicode.IsSpace); trimmed != str {
+			str = trimmed
 			ui.widgets.newGroup.nameEntry.CursorRow = 0
 			ui.widgets.newGroup.nameEntry.CursorColumn = 0
 		}
+		ui.widgets.newGroup.nameEntry.Text = str
 
 		// Enforce length limit
 		if utf8.RuneCountInString(str) > chat.MaximumNameLength {

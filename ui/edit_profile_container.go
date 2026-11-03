@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
@@ -88,12 +89,12 @@ func (ui *ui) updateDeviceStatus() {
 			nameEntry := widget.NewEntry()
 			nameEntry.OnChanged = func(str string) {
 				// Remove any leading whitespace
-				str, trimmed := trimLeadingSpace(str)
-				nameEntry.Text = str
-				if trimmed != 0 {
+				if trimmed := strings.TrimLeftFunc(str, unicode.IsSpace); trimmed != str {
+					str = trimmed
 					nameEntry.CursorRow = 0
 					nameEntry.CursorColumn = 0
 				}
+				nameEntry.Text = str
 
 				// Enforce length limit
 				if utf8.RuneCountInString(str) > chat.MaximumNameLength {
@@ -294,12 +295,12 @@ func (ui *ui) buildEditProfile() {
 	ui.widgets.editProfile.profileNameEntry = widget.NewEntry()
 	ui.widgets.editProfile.profileNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
-		str, trimmed := trimLeadingSpace(str)
-		ui.widgets.editProfile.profileNameEntry.Text = str
-		if trimmed != 0 {
+		if trimmed := strings.TrimLeftFunc(str, unicode.IsSpace); trimmed != str {
+			str = trimmed
 			ui.widgets.editProfile.profileNameEntry.CursorRow = 0
 			ui.widgets.editProfile.profileNameEntry.CursorColumn = 0
 		}
+		ui.widgets.editProfile.profileNameEntry.Text = str
 
 		// Enforce length limit
 		if utf8.RuneCountInString(str) > chat.MaximumNameLength {

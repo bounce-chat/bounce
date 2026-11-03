@@ -2,8 +2,10 @@ package ui
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/bounce-chat/bounce/chat"
@@ -460,12 +462,12 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 
 	g.editThreadNameEntry.OnChanged = func(str string) {
 		// Remove any leading whitespace
-		str, trimmed := trimLeadingSpace(str)
-		g.editThreadNameEntry.Text = str
-		if trimmed != 0 {
+		if trimmed := strings.TrimLeftFunc(str, unicode.IsSpace); trimmed != str {
+			str = trimmed
 			g.editThreadNameEntry.CursorRow = 0
 			g.editThreadNameEntry.CursorColumn = 0
 		}
+		g.editThreadNameEntry.Text = str
 
 		// Enforce length limit
 		if utf8.RuneCountInString(str) > chat.MaximumNameLength {
