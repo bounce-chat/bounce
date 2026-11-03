@@ -1283,7 +1283,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			Thread:    d.Thread,
 			Text:      d.Text,
 			Timestamp: d.Timestamp,
-			Saved:     d.Saved,
+			Saved:     true,
 		}
 		dr.OriginalPayload = d.OriginalPayload
 		dr.Signer = d.Signer
@@ -1337,10 +1337,18 @@ func (b *Bounce) GetDMHistory(userID ID) InitialState {
 	var u user
 	err := b.database.Where("id = ?", userID).First(&u).Error
 	if err != nil {
-		log.WithFields(log.Fields{
-			"error":   err.Error(),
-			"user_id": userID,
-		}).Fatal("database error looking up user")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Error("user not found when getting DM history")
+			return InitialState{}
+		} else {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"user_id": userID,
+			}).Fatal("database error looking up user")
+		}
 	}
 	chatUsers = append(chatUsers, User{
 		ID:               u.ID,
