@@ -308,7 +308,7 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 
 	// Expire the message on time if it has a retention
 	if gm.DeleteAt != 0 {
-		go b.deleteGroupMessageAt(gm.DeleteAt, gm.ID)
+		b.background(func() { b.deleteGroupMessageAt(gm.DeleteAt, gm.ID) })
 	}
 
 	uiImageAttachments := []ImageAttachment{}
@@ -532,10 +532,10 @@ func (b *Bounce) SendGroupMessage(thread ID, text string, attachments []Outgoing
 
 	// Expire the message on time if it has a retention
 	if gm.DeleteAt != 0 {
-		go b.deleteGroupMessageAt(gm.DeleteAt, gm.ID)
+		b.background(func() { b.deleteGroupMessageAt(gm.DeleteAt, gm.ID) })
 	}
 
-	go b.checkIfGroupMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), gm.ID)
+	b.background(func() { b.checkIfGroupMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), gm.ID) })
 
 	go b.ui.DisplaySentGroupMessage(GroupMessage{
 		ID:               gm.ID,
@@ -576,30 +576,32 @@ func (b *Bounce) deleteGroupMessageAt(timestamp int64, id ID) {
 	b.ui.DeleteItem(id)
 }
 
+// checkIfGroupMessageUndeliverableAt marks the message undeliverable if no delivery record has arrived by the timestamp
 func (b *Bounce) checkIfGroupMessageUndeliverableAt(timestamp int64, id ID) {
-	// Create a receiver for delivery notifications
+	// Create a receiver for delivery notifications, unless one already exists
 	delivered := make(chan bool, 1)
 	gmDeliveryNotificationMutex.Lock()
-	gmDeliveryNotifications[id] = delivered
-	gmDeliveryNotificationMutex.Unlock()
-
-	// Create a timer that waits until the timestamp
-	duration := time.Duration(timestamp-time.Now().Unix()) * time.Second
-	sleeper := time.NewTimer(duration)
-	defer sleeper.Stop()
-
-	// If this message gets ack'd then just return here, otherwise wait until the timestamp
-	select {
-	case <-delivered:
-		gmDeliveryNotificationMutex.Lock()
-		delete(gmDeliveryNotifications, id)
+	if _, watched := gmDeliveryNotifications[id]; watched {
 		gmDeliveryNotificationMutex.Unlock()
 		return
-	case <-sleeper.C:
+	}
+	gmDeliveryNotifications[id] = delivered
+	gmDeliveryNotificationMutex.Unlock()
+	defer func() {
 		gmDeliveryNotificationMutex.Lock()
 		delete(gmDeliveryNotifications, id)
 		gmDeliveryNotificationMutex.Unlock()
-		break
+	}()
+
+	// Return once the message is acked or the engine shuts down, otherwise wait until the timestamp
+	sleeper := time.NewTimer(time.Until(time.Unix(timestamp, 0)))
+	defer sleeper.Stop()
+	select {
+	case <-delivered:
+		return
+	case <-b.done:
+		return
+	case <-sleeper.C:
 	}
 
 	// Check if the message still hasn't been delivered

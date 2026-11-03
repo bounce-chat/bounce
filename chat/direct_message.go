@@ -287,7 +287,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 
 	// Expire the message on time if it has a retention
 	if dm.DeleteAt != 0 {
-		go b.deleteDirectMessageAt(dm.DeleteAt, dm.ID)
+		b.background(func() { b.deleteDirectMessageAt(dm.DeleteAt, dm.ID) })
 	}
 
 	// Update the activity timestamp on the user model
@@ -513,10 +513,10 @@ func (b *Bounce) SendDirectMessage(thread ID, text string, attachments []Outgoin
 
 	// Expire the message on time if it has a retention
 	if dm.DeleteAt != 0 {
-		go b.deleteDirectMessageAt(dm.DeleteAt, dm.ID)
+		b.background(func() { b.deleteDirectMessageAt(dm.DeleteAt, dm.ID) })
 	}
 
-	go b.checkIfDirectMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), dm.ID)
+	b.background(func() { b.checkIfDirectMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), dm.ID) })
 
 	go b.ui.DisplaySentDirectMessage(DirectMessage{
 		ID:               dm.ID,
@@ -557,30 +557,32 @@ func (b *Bounce) deleteDirectMessageAt(timestamp int64, id ID) {
 	b.ui.DeleteItem(id)
 }
 
+// checkIfDirectMessageUndeliverableAt marks the message undeliverable if no delivery record has arrived by the timestamp
 func (b *Bounce) checkIfDirectMessageUndeliverableAt(timestamp int64, id ID) {
-	// Create a receiver for delivery notifications
+	// Create a receiver for delivery notifications, unless one already exists
 	delivered := make(chan bool, 1)
 	dmDeliveryNotificationMutex.Lock()
-	dmDeliveryNotifications[id] = delivered
-	dmDeliveryNotificationMutex.Unlock()
-
-	// Create a timer that waits until the timestamp
-	duration := time.Duration(timestamp-time.Now().Unix()) * time.Second
-	sleeper := time.NewTimer(duration)
-	defer sleeper.Stop()
-
-	// If this message gets ack'd then just return here, otherwise wait until the timestamp
-	select {
-	case <-delivered:
-		dmDeliveryNotificationMutex.Lock()
-		delete(dmDeliveryNotifications, id)
+	if _, watched := dmDeliveryNotifications[id]; watched {
 		dmDeliveryNotificationMutex.Unlock()
 		return
-	case <-sleeper.C:
+	}
+	dmDeliveryNotifications[id] = delivered
+	dmDeliveryNotificationMutex.Unlock()
+	defer func() {
 		dmDeliveryNotificationMutex.Lock()
 		delete(dmDeliveryNotifications, id)
 		dmDeliveryNotificationMutex.Unlock()
-		break
+	}()
+
+	// Return once the message is acked or the engine shuts down, otherwise wait until the timestamp
+	sleeper := time.NewTimer(time.Until(time.Unix(timestamp, 0)))
+	defer sleeper.Stop()
+	select {
+	case <-delivered:
+		return
+	case <-b.done:
+		return
+	case <-sleeper.C:
 	}
 
 	// Check if the message still hasn't been delivered

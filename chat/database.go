@@ -204,7 +204,7 @@ func (b *Bounce) pruneDirectMessages() {
 		}).Fatal("error selecting direct messages that will expire")
 	}
 	for _, dm := range dmsToDeleteLater {
-		go b.deleteDirectMessageAt(dm.DeleteAt, dm.ID)
+		b.background(func() { b.deleteDirectMessageAt(dm.DeleteAt, dm.ID) })
 	}
 
 	// Mark any messages that can no longer be delivered as undeliverable
@@ -252,7 +252,7 @@ func (b *Bounce) pruneGroupMessages() {
 		}).Fatal("error selecting group messages that will expire")
 	}
 	for _, gm := range gmsToDeleteLater {
-		go b.deleteGroupMessageAt(gm.DeleteAt, gm.ID)
+		b.background(func() { b.deleteGroupMessageAt(gm.DeleteAt, gm.ID) })
 	}
 
 	// Mark any messages that can no longer be delivered as undeliverable
@@ -657,7 +657,9 @@ func (b *Bounce) GetInitialState() InitialState {
 		if !ok {
 			deliveredTo = []ID{}
 			if !dm.Undeliverable {
-				go b.checkIfDirectMessageUndeliverableAt(time.Unix(dm.WrittenAt, 0).Add(undeliverableAfter).Unix(), dm.ID)
+				b.background(func() {
+					b.checkIfDirectMessageUndeliverableAt(time.Unix(dm.WrittenAt, 0).Add(undeliverableAfter).Unix(), dm.ID)
+				})
 			}
 		}
 		uiImageAttachments := []ImageAttachment{}
@@ -795,7 +797,9 @@ func (b *Bounce) GetInitialState() InitialState {
 		if !ok {
 			deliveredTo = []ID{}
 			if !gm.Undeliverable {
-				go b.checkIfGroupMessageUndeliverableAt(time.Unix(gm.WrittenAt, 0).Add(undeliverableAfter).Unix(), gm.ID)
+				b.background(func() {
+					b.checkIfGroupMessageUndeliverableAt(time.Unix(gm.WrittenAt, 0).Add(undeliverableAfter).Unix(), gm.ID)
+				})
 			}
 		}
 		uiImageAttachments := []ImageAttachment{}
@@ -1411,7 +1415,9 @@ func (b *Bounce) GetDMHistory(userID ID) InitialState {
 		if !ok {
 			deliveredTo = []ID{}
 			if !dm.Undeliverable {
-				go b.checkIfDirectMessageUndeliverableAt(time.Unix(dm.WrittenAt, 0).Add(undeliverableAfter).Unix(), dm.ID)
+				b.background(func() {
+					b.checkIfDirectMessageUndeliverableAt(time.Unix(dm.WrittenAt, 0).Add(undeliverableAfter).Unix(), dm.ID)
+				})
 			}
 		}
 
