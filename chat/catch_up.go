@@ -114,7 +114,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	dmsToUpdate := map[ID]bool{}
 	devicesToReference := map[string]bool{}
 	settingsUpdated := false
-	draftsUpdated := true
+	draftsUpdated := false
 	devicesToUpdate := map[ID]bool{}
 
 	// Keep track of frames that will be shared with the UI in a BulkUpdate after everything else is processed
