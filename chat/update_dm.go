@@ -594,16 +594,16 @@ func (b *Bounce) updateDMState(userID ID) {
 		},
 	)
 
-	// Update the user in case the alias or notes changed
-	b.ui.SetUserState(User{
-		ID:               u.ID,
-		Name:             u.Name,
-		IntroductionTime: u.IntroductionTime,
-		Images:           u.images(),
-		Alias:            alias,
-		Notes:            notes,
-		Blocked:          blocked,
-	})
+	// Update the user in case the alias or notes changed, from the row as just written
+	var updated user
+	err = b.database.Where("id = ?", userID).Take(&updated).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"user_id": userID,
+			"error":   err.Error(),
+		}).Fatal("database error reloading user after updating DM fields")
+	}
+	b.ui.SetUserState(updated.exportedUser())
 }
 
 func (b *Bounce) saveAndDisplayUpdateDM(ud *updateDM) error {

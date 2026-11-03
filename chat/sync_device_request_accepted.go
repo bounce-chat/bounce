@@ -145,16 +145,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	}
 
 	// Inform the UI
-	exportedUser := User{
-		ID:               sdra.Profile.ID,
-		Name:             sdra.Profile.Name,
-		Images:           sdra.Profile.images(),
-		IntroductionTime: sdra.Profile.IntroductionTime,
-		State: DMState{
-			Open: true,
-		},
-	}
-	b.ui.SyncDeviceRequestAccepted(exportedUser, devices, sdra.References)
+	b.ui.SyncDeviceRequestAccepted(sdra.Profile.exportedUser(), devices, sdra.References)
 
 	// Connect to any other sync devices now
 	b.auditPeers()

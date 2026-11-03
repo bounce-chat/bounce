@@ -366,33 +366,8 @@ func (b *Bounce) GetInitialState() InitialState {
 	var dbProfile user
 	err := b.database.Preload(clause.Associations).Where("profile = ?", true).First(&dbProfile).Error
 	if err == nil {
-		imageHistory, err := parseIDList(dbProfile.Images)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":   err.Error(),
-				"user_id": dbProfile.ID,
-			}).Error("skipping invalid IDs in profile images list")
-		}
-
-		profile = &User{
-			ID:               dbProfile.ID,
-			Name:             dbProfile.Name,
-			Alias:            dbProfile.Alias,
-			Notes:            dbProfile.Notes,
-			IntroductionTime: dbProfile.IntroductionTime,
-			Images:           imageHistory,
-			State: DMState{
-				Open:                           dbProfile.OpenDM,
-				Retention:                      dbProfile.Retention,
-				MutedUntil:                     dbProfile.MutedUntil,
-				LastActivity:                   dbProfile.LastActivity,
-				OverrideReadReceiptSetting:     dbProfile.ReadReceiptsOverridden,
-				ReadReceiptsEnabled:            dbProfile.ReadReceiptsEnabled,
-				OverrideTypingIndicatorSetting: dbProfile.TypingIndicatorsOverridden,
-				TypingIndicatorsEnabled:        dbProfile.TypingIndicatorsEnabled,
-				LastOpened:                     dbProfile.LastOpened,
-			},
-		}
+		exportedProfile := dbProfile.exportedUser()
+		profile = &exportedProfile
 		settings.DefaultDMRetention = dbProfile.ProfileSettings.DefaultDMRetention
 		settings.DefaultGroupRetention = dbProfile.ProfileSettings.DefaultGroupRetention
 		settings.DefaultSendReadReceipts = dbProfile.ProfileSettings.DefaultSendReadReceipts
@@ -461,26 +436,7 @@ func (b *Bounce) GetInitialState() InitialState {
 	}
 	chatUsers := []User{}
 	for _, u := range users {
-		chatUsers = append(chatUsers, User{
-			ID:               u.ID,
-			Name:             u.Name,
-			Alias:            u.Alias,
-			Notes:            u.Notes,
-			Blocked:          u.Blocked,
-			Images:           u.images(),
-			IntroductionTime: u.IntroductionTime,
-			State: DMState{
-				Open:                           u.OpenDM,
-				Retention:                      u.Retention,
-				MutedUntil:                     u.MutedUntil,
-				LastActivity:                   u.LastActivity,
-				OverrideReadReceiptSetting:     u.ReadReceiptsOverridden,
-				ReadReceiptsEnabled:            u.ReadReceiptsEnabled,
-				OverrideTypingIndicatorSetting: u.TypingIndicatorsOverridden,
-				TypingIndicatorsEnabled:        u.TypingIndicatorsEnabled,
-				LastOpened:                     u.LastOpened,
-			},
-		})
+		chatUsers = append(chatUsers, u.exportedUser())
 
 		if u.Blocked {
 			cacheBlockedUser(u.ID)
@@ -1350,21 +1306,7 @@ func (b *Bounce) GetDMHistory(userID ID) InitialState {
 			}).Fatal("database error looking up user")
 		}
 	}
-	chatUsers = append(chatUsers, User{
-		ID:               u.ID,
-		Name:             u.Name,
-		Images:           u.images(),
-		IntroductionTime: u.IntroductionTime,
-		State: DMState{
-			Open:                           u.OpenDM,
-			Retention:                      u.Retention,
-			MutedUntil:                     u.MutedUntil,
-			OverrideReadReceiptSetting:     u.ReadReceiptsOverridden,
-			ReadReceiptsEnabled:            u.ReadReceiptsEnabled,
-			OverrideTypingIndicatorSetting: u.TypingIndicatorsOverridden,
-			TypingIndicatorsEnabled:        u.TypingIndicatorsEnabled,
-		},
-	})
+	chatUsers = append(chatUsers, u.exportedUser())
 
 	// Load all direct messages
 	dms := []directMessage{}

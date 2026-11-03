@@ -429,12 +429,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 
 	// Inform the UI that a new friend has been added
 	if userIsNew {
-		b.ui.UserAdded(User{
-			ID:               counterparty.ID,
-			Name:             counterparty.Name,
-			Images:           counterparty.images(),
-			IntroductionTime: counterparty.IntroductionTime,
-		})
+		b.ui.UserAdded(counterparty.exportedUser())
 		b.updateDMState(counterparty.ID)
 	}
 

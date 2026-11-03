@@ -103,6 +103,29 @@ func validImageHistory(images string) bool {
 	return err == nil
 }
 
+func (u *user) exportedUser() User {
+	return User{
+		ID:               u.ID,
+		Name:             u.Name,
+		Alias:            u.Alias,
+		Notes:            u.Notes,
+		Blocked:          u.Blocked,
+		Images:           u.images(),
+		IntroductionTime: u.IntroductionTime,
+		State: DMState{
+			Open:                           u.OpenDM,
+			Retention:                      u.Retention,
+			MutedUntil:                     u.MutedUntil,
+			LastActivity:                   u.LastActivity,
+			OverrideReadReceiptSetting:     u.ReadReceiptsOverridden,
+			ReadReceiptsEnabled:            u.ReadReceiptsEnabled,
+			OverrideTypingIndicatorSetting: u.TypingIndicatorsOverridden,
+			TypingIndicatorsEnabled:        u.TypingIndicatorsEnabled,
+			LastOpened:                     u.LastOpened,
+		},
+	}
+}
+
 func (u *user) images() []ID {
 	imageHistory, err := parseIDList(u.Images)
 	if err != nil {
@@ -306,12 +329,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 
 	go func() {
 		b.ui.ProfileSet(
-			User{
-				ID:               u.ID,
-				Name:             u.Name,
-				Images:           u.images(),
-				IntroductionTime: u.IntroductionTime,
-			},
+			u.exportedUser(),
 			Device{
 				ID:        d.ID,
 				Address:   d.Address,

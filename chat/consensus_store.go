@@ -829,15 +829,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 				}).Fatal("database error looking up user")
 			}
 		}
-		finalUsers = append(finalUsers, User{
-			ID:               u.ID,
-			Name:             u.Name,
-			Alias:            u.Alias,
-			Notes:            u.Notes,
-			Blocked:          u.Blocked,
-			Images:           u.images(),
-			IntroductionTime: u.IntroductionTime,
-		})
+		finalUsers = append(finalUsers, u.exportedUser())
 
 		if !b.userIsInGroup(g.ID, userID) {
 			err = b.database.Exec("INSERT INTO group_users VALUES(?, ?)", g.ID, userID).Error
@@ -915,15 +907,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 				}).Fatal("database error looking up user")
 			}
 		}
-		finalInvites = append(finalInvites, User{
-			ID:               u.ID,
-			Name:             u.Name,
-			Alias:            u.Alias,
-			Notes:            u.Notes,
-			Blocked:          u.Blocked,
-			Images:           u.images(),
-			IntroductionTime: u.IntroductionTime,
-		})
+		finalInvites = append(finalInvites, u.exportedUser())
 	}
 
 	// Set blocked users

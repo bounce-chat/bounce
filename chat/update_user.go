@@ -619,15 +619,16 @@ func (b *Bounce) updateUserState(userID ID) {
 		}
 	}
 
-	go b.ui.SetUserState(User{
-		ID:               u.ID,
-		Name:             u.Name,
-		Alias:            u.Alias,
-		Notes:            u.Notes,
-		Images:           imageIDs,
-		Blocked:          u.Blocked,
-		IntroductionTime: u.IntroductionTime,
-	})
+	// Hand the UI the row as just written
+	var updated user
+	err = b.database.Where("id = ?", userID).Take(&updated).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"user_id": userID,
+			"error":   err.Error(),
+		}).Fatal("database error reloading user after applying update users")
+	}
+	go b.ui.SetUserState(updated.exportedUser())
 }
 
 func (b *Bounce) createOrDeleteEncryptedSyncDevices(addresses []string) {

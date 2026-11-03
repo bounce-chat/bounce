@@ -260,6 +260,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			"destination": dm.getDestination(b.currentUserID()),
 			"written_at":  dm.WrittenAt,
 		}).Debug("ignoring a direct message that was written before the history was cleared")
+		go b.sendAck(peer, typeDirectMessage, dm.ID)
 		return nil, false
 	}
 
@@ -271,6 +272,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			"destination": dm.getDestination(b.currentUserID()),
 			"delete_at":   dm.DeleteAt,
 		}).Debug("ignoring a direct message that has delete time that occured before now")
+		go b.sendAck(peer, typeDirectMessage, dm.ID)
 		return nil, false
 	}
 
