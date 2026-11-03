@@ -99,7 +99,7 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 	g.readReceiptOverrideSelection = widget.NewSelect(ui.readReceiptOverrideSelectionOptions(), nil)
 	g.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
 	g.typingIndicatorOverrideSelection = widget.NewSelect(ui.typingIndicatorOverrideSelectionOptions(), nil)
-	g.refreshTypingIndicatorSettingSelection(ui.readReceiptOverrideSelectionOptions())
+	g.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
 
 	returnToThread := false
 	focusEntry := false
@@ -344,7 +344,7 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 
 		// Reset the read receipt and typing indicator overrides
 		g.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
-		g.refreshTypingIndicatorSettingSelection(ui.readReceiptOverrideSelectionOptions())
+		g.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
 
 		// Show main tontainer
 		if fyne.CurrentDevice().IsMobile() {
