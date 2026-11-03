@@ -1052,7 +1052,9 @@ func (b *Bounce) handleChunk(peer string, payload []byte, catchUp bool) (broadca
 
 		b.writeChunkToDisk(c)
 	}
-	b.chunkEngine.completed(hash)
+	if !b.chunkWanted(hash) {
+		b.chunkEngine.completed(hash)
+	}
 
 	return nil, false
 }
