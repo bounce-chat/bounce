@@ -131,36 +131,32 @@ func (b *Bounce) monitorNetworkAndRestartWhenNeeded() {
 		currentSocketCount := b.devicePool.globallyConnectedSockets()
 
 		if (haveAcceptedConnections.Load() || haveDialedConnections.Load()) && lastSocketCount == 0 && currentSocketCount == 0 {
-			b.networkIsOnline.Store(false)
-			b.ui.NetworkOffline()
 			log.Debug("network failure detected, restarting network")
-
-			err := b.network.Restart()
-			if err == nil {
-				b.networkIsOnline.Store(true)
-				b.ui.NetworkOnline()
-
-				// Reset dial cooldowns
-				b.devicePool.lastDialMutex.Lock()
-				b.devicePool.lastDial = make(map[string]time.Time)
-				b.devicePool.lastDialMutex.Unlock()
-				b.devicePool.lastDialMutex.Lock()
-				b.devicePool.lastFailedDial = make(map[string]time.Time)
-				b.devicePool.lastDialMutex.Unlock()
-
-				// Reset all remote devices
-				b.devicePool.deviceMutex.Lock()
-				b.devicePool.devices = make(map[string]*remoteDevice)
-				b.devicePool.deviceMutex.Unlock()
-
-				// Attempt to dial
-				b.makeInitialPeeringConnections()
-			} else {
-				log.Debug("network was not able to connect upon restart")
-			}
+			b.restartNetwork()
 		}
 
 		lastSocketCount = b.devicePool.globallyConnectedSockets()
+	}
+}
+
+// restartNetwork takes the network down and up again after the engine has decided it is dead.  The transport
+// reports offline and online through the usual callbacks as it goes, and the online report audits peers, so the
+// engine's only job is to clear the device pool and dial cooldowns beforehand: the sockets are dead, and anything
+// dialled by that audit must land in the pool that survives rather than be thrown away afterwards.
+func (b *Bounce) restartNetwork() {
+	b.devicePool.lastDialMutex.Lock()
+	b.devicePool.lastDial = make(map[string]time.Time)
+	b.devicePool.lastFailedDial = make(map[string]time.Time)
+	b.devicePool.lastDialMutex.Unlock()
+	b.devicePool.deviceMutex.Lock()
+	b.devicePool.devices = make(map[string]*remoteDevice)
+	b.devicePool.deviceMutex.Unlock()
+
+	err := b.network.Restart()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Debug("network was not able to connect upon restart")
 	}
 }
 
@@ -682,7 +678,7 @@ func (b *Bounce) tryDialing(address string) bool {
 		log.WithFields(log.Fields{
 			"peer": address,
 		}).Debug("dialed")
-		haveAcceptedConnections.Store(true)
+		haveDialedConnections.Store(true)
 		b.insertConnectionIntoDevicePool(conn)
 		return true
 	}
