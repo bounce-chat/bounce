@@ -326,7 +326,7 @@ func startPump(t *testing.T, listener *TorNetwork, listenerAddress string, fake 
 	done.Add(1)
 	go func() {
 		defer done.Done()
-		listener.runAcceptPump(fake, listenerAddress, accepted, stopping)
+		listener.runAcceptPump(fake, listenerAddress, accepted, nil, stopping)
 	}()
 	return accepted, stopping, &done
 }
@@ -480,7 +480,7 @@ func TestAcceptPumpClosesConnectionsNobodyCollects(t *testing.T) {
 	done.Add(1)
 	go func() {
 		defer done.Done()
-		listener.runAcceptPump(fake, listenerAddress, accepted, stopping)
+		listener.runAcceptPump(fake, listenerAddress, accepted, nil, stopping)
 	}()
 
 	listenerSide, dialerSide := net.Pipe()

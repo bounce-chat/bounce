@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bounce-chat/bounce/chat"
@@ -98,6 +99,12 @@ type session struct {
 	// stopping is closed by the pump once its listener is gone, releasing any
 	// worker still trying to hand over a connection nobody will collect.
 	stopping chan struct{}
+
+	// canaryAccepted carries the accepting end of this session's canary, the
+	// connection it makes to its own address (see liveness.go). The pump routes
+	// a connection from our own address here instead of to accepted, so the
+	// engine never sees it.
+	canaryAccepted chan *torNetworkConnection
 }
 
 type TorNetwork struct {
@@ -129,6 +136,14 @@ type TorNetwork struct {
 	// stopped is closed by Shutdown, releasing Start.
 	stopped     chan struct{}
 	stoppedOnce sync.Once
+
+	// lastPeerRead is when a peer connection last read a byte, as UnixNano; the
+	// canary's own traffic is excluded. recovering serialises recoveries and
+	// restartBackoff is the pause before the next restart of a session whose
+	// canary never connected. See liveness.go.
+	lastPeerRead   atomic.Int64
+	recovering     atomic.Bool
+	restartBackoff atomic.Int64
 }
 
 // readyChannel returns the current readiness gate, creating it on first use.
@@ -333,6 +348,10 @@ func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
 	// exist to accept on.
 	go bounceTor.watchOnlineStatus(s)
 
+	// Watch the session from the inside: Arti never reports that the network
+	// went away, so the canary finds out by connecting to our own address.
+	go bounceTor.runCanary(s)
+
 	// Start blocks for the lifetime of the network, as it did before, but
 	// returns on shutdown rather than leaving the goroutine parked forever.
 	<-bounceTor.stopChannel()
@@ -402,10 +421,11 @@ func (bounceTor *TorNetwork) openSession() (*session, error) {
 	}
 
 	s := &session{
-		client:   client,
-		onion:    onion,
-		accepted: make(chan *torNetworkConnection, acceptQueueDepth),
-		stopping: make(chan struct{}),
+		client:         client,
+		onion:          onion,
+		accepted:       make(chan *torNetworkConnection, acceptQueueDepth),
+		stopping:       make(chan struct{}),
+		canaryAccepted: make(chan *torNetworkConnection, 1),
 	}
 
 	// Run handshakes off the accept path. The pump belongs to this session, so
@@ -484,7 +504,9 @@ func releaseGate(gate chan struct{}) {
 }
 
 // Restart replaces the Tor client with a fresh one against the same state
-// directory, and is the blunt way to recover when Tor is up but useless.
+// directory, and is the blunt way to recover when Tor is up but useless. The
+// transport decides when: its canary (liveness.go) calls in here through
+// recoverNetwork once the network appears to be dead.
 //
 // No guard failure state is persisted by Arti, so a new client starts with
 // every guard retriable and no accumulated backoff - which is the effect we
@@ -567,6 +589,7 @@ func (bounceTor *TorNetwork) Restart() error {
 		return errNetworkStopped
 	}
 	go bounceTor.watchOnlineStatus(s)
+	go bounceTor.runCanary(s)
 	bounceTor.setOnline(true)
 
 	log.WithFields(log.Fields{
@@ -821,7 +844,7 @@ func (bounceTor *TorNetwork) acceptFrom(s *session) (net.Conn, error, bool) {
 // nil connection as fatal, so surfacing peer-triggered failures would let any
 // peer spin that loop and flood the log.
 func (bounceTor *TorNetwork) acceptPump(s *session) {
-	bounceTor.runAcceptPump(s.onion, s.onion.ID(), s.accepted, s.stopping)
+	bounceTor.runAcceptPump(s.onion, s.onion.ID(), s.accepted, s.canaryAccepted, s.stopping)
 }
 
 // The pause before retrying a failed Accept.
@@ -833,11 +856,14 @@ type acceptor interface {
 	Accept() (net.Conn, error)
 }
 
-// runAcceptPump is acceptPump with its dependencies passed in.
+// runAcceptPump is acceptPump with its dependencies passed in. A connection
+// from our own address is the canary dialling in and goes to canary, never to
+// accepted; with no canary channel it is closed.
 func (bounceTor *TorNetwork) runAcceptPump(
 	listener acceptor,
 	listenerAddress string,
 	accepted chan *torNetworkConnection,
+	canary chan *torNetworkConnection,
 	stopping chan struct{},
 ) {
 	slots := make(chan struct{}, maxConcurrentHandshakes)
@@ -883,6 +909,22 @@ func (bounceTor *TorNetwork) runAcceptPump(
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Debug("inbound handshake failed")
+				return
+			}
+			if torConn.RemoteAddr().String() == listenerAddress {
+				// Ourselves: held by the liveness check, and not peer traffic.
+				// The canary drains this channel before each dial, so a full
+				// one means an attempt it has already given up on.
+				torConn.tracker = nil
+				if canary == nil {
+					torConn.Close()
+					return
+				}
+				select {
+				case canary <- torConn:
+				default:
+					torConn.Close()
+				}
 				return
 			}
 			select {
@@ -1002,6 +1044,7 @@ func (bounceTor *TorNetwork) handshakeListener(listenerAddress string, connectio
 		remoteAddress: &torAddress{
 			address: string(dialerAddress),
 		},
+		tracker: &bounceTor.lastPeerRead,
 	}, nil
 }
 
@@ -1117,6 +1160,7 @@ func (bounceTor *TorNetwork) handshakeDialer(localAddress, listenerAddress strin
 		remoteAddress: &torAddress{
 			address: listenerAddress,
 		},
+		tracker: &bounceTor.lastPeerRead,
 	}
 	return torConn, nil
 }
@@ -1206,10 +1250,19 @@ type torNetworkConnection struct {
 	underlying    net.Conn
 	localAddress  net.Addr
 	remoteAddress net.Addr
+
+	// tracker, when set, records the time of every successful read so the
+	// liveness check can tell whether peers are still talking to us. Nil on
+	// the canary's own connections.
+	tracker *atomic.Int64
 }
 
 func (conn *torNetworkConnection) Read(b []byte) (int, error) {
-	return conn.underlying.Read(b)
+	n, err := conn.underlying.Read(b)
+	if n > 0 && conn.tracker != nil {
+		conn.tracker.Store(time.Now().UnixNano())
+	}
+	return n, err
 }
 
 func (conn *torNetworkConnection) Write(b []byte) (int, error) {

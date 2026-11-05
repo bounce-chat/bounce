@@ -1,19 +1,10 @@
 package chat
 
 import (
-	"sync/atomic"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
-
-// haveAcceptedConnections records whether this process has ever accepted an
-// inbound connection. It gates the restart monitor, so that a fresh install
-// with no peers yet is never mistaken for a network that has gone dead.
-//
-// Atomic because the accept loop writes it while the monitor goroutine reads
-// it on its own timer.
-var haveAcceptedConnections atomic.Bool
-var haveDialedConnections atomic.Bool
 
 func (b *Bounce) NetworkOnline() bool {
 	return b.networkIsOnline.Load()
@@ -41,6 +32,18 @@ func (b *Bounce) networkOnline() {
 
 func (b *Bounce) networkOffline() {
 	b.networkIsOnline.Store(false)
+
+	// The network only says this once nothing can be read any more, so every remote device entry is stale.  They
+	// are cleared now, along with the dial cooldowns, so that the audit run by the online report that follows a
+	// recovery dials into a pool that survives rather than one about to be thrown away.
+	b.devicePool.lastDialMutex.Lock()
+	b.devicePool.lastDial = make(map[string]time.Time)
+	b.devicePool.lastFailedDial = make(map[string]time.Time)
+	b.devicePool.lastDialMutex.Unlock()
+	b.devicePool.deviceMutex.Lock()
+	b.devicePool.devices = make(map[string]*remoteDevice)
+	b.devicePool.deviceMutex.Unlock()
+
 	if !b.encrypted {
 		b.ui.NetworkOffline()
 	}
@@ -74,7 +77,6 @@ func (b *Bounce) acceptConnections() {
 				}).Debug("error accepting connection")
 			}
 		} else {
-			haveAcceptedConnections.Store(true)
 			log.WithFields(log.Fields{
 				"peer": conn.RemoteAddr().String(),
 			}).Debug("accepted connection")
