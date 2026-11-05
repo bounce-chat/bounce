@@ -10,6 +10,8 @@ import (
 )
 
 const keepAliveFrequency = time.Duration(15 * time.Second)
+
+const lastSeenUpdateInterval = time.Minute
 const sendTimeout = time.Duration(15 * time.Second)
 const sendChunkTimeout = time.Duration(120 * time.Second)
 
@@ -291,6 +293,9 @@ func (b *Bounce) readFrames(rd *remoteDevice, s *socket) {
 		ownerID, ownerKnown = b.peerOwner(peer)
 	}
 
+	// When this socket last recorded that its device was seen
+	var lastSeenRecorded time.Time
+
 	for {
 		allowLargeFrames := deviceIsKnown || deviceIsAnotherUsersEncryptedDevice
 		if b.encrypted {
@@ -352,8 +357,9 @@ func (b *Bounce) readFrames(rd *remoteDevice, s *socket) {
 					encryptedDeviceCacheMutex.Unlock()
 				}
 			}
-			if deviceIsKnown && profileExists {
-				lastSeen := time.Now().Unix()
+			if deviceIsKnown && profileExists && time.Since(lastSeenRecorded) >= lastSeenUpdateInterval {
+				lastSeenRecorded = time.Now()
+				lastSeen := lastSeenRecorded.Unix()
 				if deviceIsEncrypted {
 					b.ui.DeviceLastSeen(esd.ID, lastSeen)
 				} else {
