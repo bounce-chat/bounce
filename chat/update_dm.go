@@ -3,6 +3,7 @@ package chat
 import (
 	"encoding/binary"
 	"errors"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -469,7 +470,16 @@ func (b *Bounce) updateDMState(userID ID) {
 			retention = profileDefaultRetention
 		} else {
 			if counterpartyOfferedRetention {
-				if profile.ProfileSettings.DefaultDMRetention != 0 && profile.ProfileSettings.DefaultDMRetention < counterpartyDefaultRetention {
+				myDefault := profile.ProfileSettings.DefaultDMRetention
+				if myDefault == 0 {
+					myDefault = math.MaxInt64
+				}
+				theirDefault := counterpartyDefaultRetention
+				if theirDefault == 0 {
+					theirDefault = math.MaxInt64
+				}
+
+				if myDefault < theirDefault {
 					// Set the retention to my default
 					payload := make([]byte, 8)
 					binary.LittleEndian.PutUint64(payload, uint64(profile.ProfileSettings.DefaultDMRetention))
