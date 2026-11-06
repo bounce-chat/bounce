@@ -343,29 +343,68 @@ func (b *Bounce) connectToUsers(desiredConnections int) {
 		}).Fatal("error loading inactive users")
 	}
 	for _, u := range inactiveUsers {
+		addresses := []string{}
 		for _, dev := range u.Devices {
-			if b.devicePool.isRevoked(dev.Address) {
-				continue
-			}
-			references := b.getReferenceOfferFor(dev.Address)
-			rd := b.getRemoteDevice(dev.Address)
-			// Dial this inactive user if we have non-global content that isn't just group messages
-			if references.shouldDialUser() && !references.onlyGroupContent() && rd.connectedSockets() == 0 {
-				go b.tryDialing(dev.Address)
+			if !b.devicePool.isRevoked(dev.Address) {
+				addresses = append(addresses, dev.Address)
 			}
 		}
-
 		if len(u.EncryptedDevices) > 0 {
-			for _, addr := range strings.Split(u.EncryptedDevices, ",") {
-				references := b.getReferenceOfferFor(addr)
-				rd := b.getRemoteDevice(addr)
-				// Dial this inactive user if we have non-global content that isn't just group messages
-				if references.shouldDialUser() && !references.onlyGroupContent() && rd.connectedSockets() == 0 {
-					go b.tryDialing(addr)
-				}
+			addresses = append(addresses, strings.Split(u.EncryptedDevices, ",")...)
+		}
+		for _, address := range addresses {
+			if b.getRemoteDevice(address).connectedSockets() > 0 || b.shouldCooldownDial(address) {
+				continue
+			}
+			if b.hasUndeliveredDirectContentFor(address, u.ID) {
+				go b.tryDialing(address)
 			}
 		}
 	}
+}
+
+func (b *Bounce) hasUndeliveredDirectContentFor(address string, userID ID) bool {
+	thread := xor(userID, b.currentUserID())
+
+	var undelivered int64
+	err := b.database.
+		Model(&directMessage{}).
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == direct_messages.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeDirectMessage).
+		Where(
+			"delivery_records.id IS NULL AND direct_messages.written_at >= ? AND direct_messages.xor = ?",
+			time.Now().Add(-undeliverableAfter).Unix(),
+			thread,
+		).
+		Limit(1).
+		Count(&undelivered).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"peer":  address,
+			"error": err.Error(),
+		}).Fatal("error checking for undelivered direct messages")
+	}
+	if undelivered > 0 {
+		return true
+	}
+
+	// Only the update DMs that are user scoped travel to the other user; the rest are for our own sync devices
+	err = b.database.
+		Model(&updateDM{}).
+		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_dms.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateDM).
+		Where(
+			"delivery_records.id IS NULL AND update_dms.target = ? AND update_dms.type IN (?)",
+			thread,
+			[]uint16{updateDMTypeChangeRetention, updateDMTypeSetClearBefore, updateDMTypeOfferRetention},
+		).
+		Limit(1).
+		Count(&undelivered).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"peer":  address,
+			"error": err.Error(),
+		}).Fatal("error checking for undelivered update DMs")
+	}
+	return undelivered > 0
 }
 
 func (b *Bounce) connectToCustomScopes(desiredConnections int) {
