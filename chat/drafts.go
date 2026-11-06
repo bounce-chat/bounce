@@ -30,7 +30,7 @@ type draft struct {
 	Thread    ID
 	Text      string
 	Timestamp int64
-	Saved     bool  `gorm:"-"`
+	Saved     bool  `gorm:"-" msgpack:"-"`
 	SavedAt   int64 `msgpack:"-"`
 }
 
@@ -158,19 +158,31 @@ func (b *Bounce) handleDraft(peer string, payload []byte, catchUp bool) (broadca
 	draftMutex.Lock()
 	existingDraft, ok := draftCache[d.Thread]
 	draftMutex.Unlock()
-
-	if !ok || d.Timestamp > existingDraft.Timestamp || (d.Timestamp == existingDraft.Timestamp && d.Text == "") {
-		draftMutex.Lock()
-		draftCache[d.Thread] = &d
-		draftMutex.Unlock()
-
-		if !catchUp {
-			b.ui.UpdateDraft(Draft{Thread: d.Thread, Text: d.Text})
-		}
+	if ok && !(d.Timestamp > existingDraft.Timestamp || (d.Timestamp == existingDraft.Timestamp && d.Text == "")) {
+		go b.sendAck(peer, typeDraft, d.ID)
+		return nil, false
 	}
 
+	err = deleteEach[draft](b.database, "thread = ?", d.Thread)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error deleting drafts superseded by a received draft")
+	}
+	d.Saved = true
+	err = b.database.Create(&d).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"thread": d.Thread,
+			"error":  err.Error(),
+		}).Fatal("database error saving received draft")
+	}
+	draftMutex.Lock()
+	draftCache[d.Thread] = &d
+	draftMutex.Unlock()
+
 	if !catchUp {
-		b.syncDrafts()
+		b.ui.UpdateDraft(Draft{Thread: d.Thread, Text: d.Text})
 	}
 	return &d, true
 }
