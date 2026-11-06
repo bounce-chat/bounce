@@ -16,6 +16,8 @@ import (
 var gmDeliveryNotificationMutex sync.Mutex
 var gmDeliveryNotifications = map[ID]chan bool{}
 
+var errPostingRestricted = errors.New("only admins may post in this group")
+
 // A group message is sent from a member of a group to a group
 type groupMessage struct {
 	SignedFrame
@@ -475,6 +477,21 @@ func (b *Bounce) SendGroupMessage(thread ID, text string, attachments []Outgoing
 		}).Error("error getting group state while sending group message")
 		closeAttachments(attachments)
 		return err
+	}
+
+	if !gs.isMember(b.currentUserID()) {
+		log.WithFields(log.Fields{
+			"group_id": thread,
+		}).Warn("refusing to send a message to a group we are not in")
+		closeAttachments(attachments)
+		return errUserNotInGroup
+	}
+	if gs.postingRestricted && !gs.isAdmin(b.currentUserID()) {
+		log.WithFields(log.Fields{
+			"group_id": thread,
+		}).Warn("refusing to send a message to a group where posting is restricted to admins")
+		closeAttachments(attachments)
+		return errPostingRestricted
 	}
 
 	now := time.Now()
