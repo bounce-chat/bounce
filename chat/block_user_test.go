@@ -142,9 +142,8 @@ func (ui *deletionRecordingUI) DeleteItem(id ID) {
 }
 
 func TestOnlyTheNewestUpdateDMsOfEachKindFromAContactAreKept(t *testing.T) {
-	me, alice, _, _ := createUsersAndGroups(t)
-	recorder := &deletionRecordingUI{testUI: me.ui.(*testUI)}
-	me.ui = recorder
+	recorder := &deletionRecordingUI{testUI: newTestUI()}
+	me, alice, _, _ := createUsersAndGroupsFor(t, newBounceUserWithUI("Me", recorder))
 	target := xor(alice.currentUserID(), me.currentUserID())
 	retention := func(seconds uint64) []byte {
 		data := make([]byte, 8)

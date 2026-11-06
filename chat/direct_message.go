@@ -513,29 +513,29 @@ func (b *Bounce) SendDirectMessage(thread ID, text string, attachments []Outgoin
 	}
 	b.updateLastUserActivity(thread, dm.SavedAt)
 
-	// Expire the message on time if it has a retention
 	if dm.DeleteAt != 0 {
 		b.background(func() { b.deleteDirectMessageAt(dm.DeleteAt, dm.ID) })
 	}
-
 	b.background(func() { b.checkIfDirectMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), dm.ID) })
 
-	go b.ui.DisplaySentDirectMessage(DirectMessage{
-		ID:               dm.ID,
-		Author:           dm.Author,
-		Thread:           dm.getDestination(b.currentUserID()),
-		WrittenAt:        dm.WrittenAt,
-		SavedAt:          dm.SavedAt,
-		ExpiresAt:        dm.DeleteAt,
-		Text:             dm.Text,
-		Seen:             dm.Seen,
-		Undeliverable:    dm.Undeliverable,
-		ImageAttachments: attached.imageDTOs,
-		FileAttachments:  attached.fileDTOs,
-		ClientRef:        clientRef,
-	})
+	go func() {
+		b.ui.DisplaySentDirectMessage(DirectMessage{
+			ID:               dm.ID,
+			Author:           dm.Author,
+			Thread:           dm.getDestination(b.currentUserID()),
+			WrittenAt:        dm.WrittenAt,
+			SavedAt:          dm.SavedAt,
+			ExpiresAt:        dm.DeleteAt,
+			Text:             dm.Text,
+			Seen:             dm.Seen,
+			Undeliverable:    dm.Undeliverable,
+			ImageAttachments: attached.imageDTOs,
+			FileAttachments:  attached.fileDTOs,
+			ClientRef:        clientRef,
+		})
 
-	b.broadcast(dm)
+		b.broadcast(dm)
+	}()
 	return nil
 }
 

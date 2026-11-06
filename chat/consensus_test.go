@@ -1134,9 +1134,8 @@ type rollbackCapturingUI struct {
 func (r *rollbackCapturingUI) RollbackGroup(id ID) { r.rolledBack <- id }
 
 func TestARolledBackInviteRemovesTheGroup(t *testing.T) {
-	me, alice, bob, _ := createUsersAndGroups(t)
-	capture := &rollbackCapturingUI{testUI: me.ui.(*testUI), rolledBack: make(chan ID, 2)}
-	me.ui = capture
+	capture := &rollbackCapturingUI{testUI: newTestUI(), rolledBack: make(chan ID, 2)}
+	me, alice, bob, _ := createUsersAndGroupsFor(t, newBounceUserWithUI("Me", capture))
 	aliceID, bobID := alice.currentUserID(), bob.currentUserID()
 	base := time.Now().Unix() - 10
 

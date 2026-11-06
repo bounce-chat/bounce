@@ -530,29 +530,29 @@ func (b *Bounce) SendGroupMessage(thread ID, text string, attachments []Outgoing
 	}
 	b.updateLastGroupActivity(gm.Destination, gm.SavedAt)
 
-	// Expire the message on time if it has a retention
 	if gm.DeleteAt != 0 {
 		b.background(func() { b.deleteGroupMessageAt(gm.DeleteAt, gm.ID) })
 	}
-
 	b.background(func() { b.checkIfGroupMessageUndeliverableAt(now.Add(undeliverableAfter).Unix(), gm.ID) })
 
-	go b.ui.DisplaySentGroupMessage(GroupMessage{
-		ID:               gm.ID,
-		Author:           gm.Author,
-		Thread:           gm.getDestination(b.currentUserID()),
-		WrittenAt:        gm.WrittenAt,
-		SavedAt:          gm.SavedAt,
-		ExpiresAt:        gm.DeleteAt,
-		Text:             gm.Text,
-		Seen:             gm.Seen,
-		Undeliverable:    gm.Undeliverable,
-		ImageAttachments: attached.imageDTOs,
-		FileAttachments:  attached.fileDTOs,
-		ClientRef:        clientRef,
-	})
+	go func() {
+		b.ui.DisplaySentGroupMessage(GroupMessage{
+			ID:               gm.ID,
+			Author:           gm.Author,
+			Thread:           gm.getDestination(b.currentUserID()),
+			WrittenAt:        gm.WrittenAt,
+			SavedAt:          gm.SavedAt,
+			ExpiresAt:        gm.DeleteAt,
+			Text:             gm.Text,
+			Seen:             gm.Seen,
+			Undeliverable:    gm.Undeliverable,
+			ImageAttachments: attached.imageDTOs,
+			FileAttachments:  attached.fileDTOs,
+			ClientRef:        clientRef,
+		})
 
-	b.broadcast(gm)
+		b.broadcast(gm)
+	}()
 	return nil
 }
 

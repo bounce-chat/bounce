@@ -262,8 +262,6 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 
 	b.reloadGroupConsensus(g.ID)
 
-	b.broadcast(&gc)
-
 	uiGroup := Group{
 		ID:                     g.ID,
 		Name:                   g.Name,
@@ -281,18 +279,20 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 		uiGroup.Images = []ID{icon.ID}
 	}
 
-	go b.ui.OpenNewGroupChat(uiGroup)
-
-	for _, i := range ng.InitialInvites {
-		err = b.InviteUserToGroup(g.ID, i)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":    err.Error(),
-				"user_id":  i,
-				"group_id": g.ID,
-			}).Error("error inviting user to new group")
+	go func() {
+		b.ui.OpenNewGroupChat(uiGroup)
+		b.broadcast(&gc)
+		for _, i := range ng.InitialInvites {
+			err := b.InviteUserToGroup(g.ID, i)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":    err.Error(),
+					"user_id":  i,
+					"group_id": g.ID,
+				}).Error("error inviting user to new group")
+			}
 		}
-	}
+	}()
 
 	return nil
 }

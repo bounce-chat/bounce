@@ -489,7 +489,12 @@ func (t *testUI) EncryptedDeviceUnmanagable(ID)                                 
 func (t *testUI) UpdateDraft(Draft)                                                {}
 
 func newBounce() *Bounce {
-	ui := newTestUI()
+	return newBounceWithUI(newTestUI())
+}
+
+// newBounceWithUI opens an engine on the given UI.  A test that wants to observe UI callbacks must supply its UI
+// here rather than assign b.ui afterwards: the engine's goroutines read that field from the moment it is opened.
+func newBounceWithUI(ui UI) *Bounce {
 	network := newTestnet()
 	configDirectory := os.TempDir() + "/bounce-test-" + NewID().String()
 	os.MkdirAll(configDirectory, 0700)
@@ -504,8 +509,19 @@ func newBounceUser(name string) *Bounce {
 	return b
 }
 
+func newBounceUserWithUI(name string, ui UI) *Bounce {
+	b := newBounceWithUI(ui)
+	b.SetProfile(name, []byte{}, "test")
+	return b
+}
+
 func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID ID) {
-	me = newBounceUser("Me")
+	return createUsersAndGroupsFor(t, newBounceUser("Me"))
+}
+
+// createUsersAndGroupsFor is createUsersAndGroups around an engine the test has already built, for tests that need
+// "me" opened on a UI of their own
+func createUsersAndGroupsFor(t *testing.T, me *Bounce) (_, alice, bob *Bounce, groupID ID) {
 	meUser, ok := me.currentUser()
 	assert.True(t, ok)
 
@@ -642,17 +658,22 @@ func createUsersAndGroups(t *testing.T) (me, alice, bob *Bounce, groupID ID) {
 		os.RemoveAll(bob.configDirectory)
 	})
 
-	me.ui.(*testUI).Lock()
-	me.ui.(*testUI).calls = []call{}
-	me.ui.(*testUI).Unlock()
-	alice.ui.(*testUI).Lock()
-	alice.ui.(*testUI).calls = []call{}
-	alice.ui.(*testUI).Unlock()
-	bob.ui.(*testUI).Lock()
-	bob.ui.(*testUI).calls = []call{}
-	bob.ui.(*testUI).Unlock()
+	me.ui.(callRecorder).resetCalls()
+	alice.ui.(callRecorder).resetCalls()
+	bob.ui.(callRecorder).resetCalls()
 
-	return
+	return me, alice, bob, groupID
+}
+
+// callRecorder is what the fixture needs of a UI: *testUI, or anything that embeds one
+type callRecorder interface {
+	resetCalls()
+}
+
+func (t *testUI) resetCalls() {
+	t.Lock()
+	t.calls = []call{}
+	t.Unlock()
 }
 
 func (b *Bounce) createGroupCreation(ng NewGroup) groupCreation {
