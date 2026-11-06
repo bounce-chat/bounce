@@ -186,7 +186,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			"id":     dm.ID,
 			"signer": dm.Signer,
 		}).Warn("ignoring direct message signed by revoked device")
-		go b.sendAck(peer, typeDirectMessage, dm.ID)
+		b.rejectMessage(peer, typeDirectMessage, dm.ID)
 		return nil, false
 	}
 
@@ -218,7 +218,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 
 		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
 			if !blockedUser(peerDev.UserID) {
-				go b.sendAck(peer, typeDirectMessage, dm.ID)
+				b.rejectMessage(peer, typeDirectMessage, dm.ID)
 			}
 		}
 		return nil, false
@@ -229,7 +229,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		log.WithFields(log.Fields{
 			"id": dm.ID,
 		}).Warn("ignoring empty direct message")
-		go b.sendAck(peer, typeDirectMessage, dm.ID)
+		b.rejectMessage(peer, typeDirectMessage, dm.ID)
 		return nil, false
 	}
 
@@ -238,7 +238,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		log.WithFields(log.Fields{
 			"id": dm.ID,
 		}).Warn("ignoring direct message that is too long")
-		go b.sendAck(peer, typeDirectMessage, dm.ID)
+		b.rejectMessage(peer, typeDirectMessage, dm.ID)
 		return nil, false
 	}
 
@@ -260,7 +260,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			"destination": dm.getDestination(b.currentUserID()),
 			"written_at":  dm.WrittenAt,
 		}).Debug("ignoring a direct message that was written before the history was cleared")
-		go b.sendAck(peer, typeDirectMessage, dm.ID)
+		b.rejectMessage(peer, typeDirectMessage, dm.ID)
 		return nil, false
 	}
 
@@ -272,7 +272,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			"destination": dm.getDestination(b.currentUserID()),
 			"delete_at":   dm.DeleteAt,
 		}).Debug("ignoring a direct message that has delete time that occured before now")
-		go b.sendAck(peer, typeDirectMessage, dm.ID)
+		b.rejectMessage(peer, typeDirectMessage, dm.ID)
 		return nil, false
 	}
 

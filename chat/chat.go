@@ -192,7 +192,7 @@ func Open(ui UI, network Network, configDirectory string, postNotification func(
 	}()
 
 	b.background(b.keepDraftsSynced)
-	b.background(b.keepUnverifiedUpdateGroupsPruned)
+	b.background(b.keepDatabasePruned)
 
 	return b
 }

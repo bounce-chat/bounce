@@ -339,7 +339,9 @@ func (b *Bounce) pruneUnverifiedUpdateGroups() {
 	}
 }
 
-func (b *Bounce) keepUnverifiedUpdateGroupsPruned() {
+// keepDatabasePruned runs the periodic prunes for the life of the engine: rows that are only worth keeping for a
+// while and have no event of their own to remove them
+func (b *Bounce) keepDatabasePruned() {
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 	for {
@@ -348,6 +350,7 @@ func (b *Bounce) keepUnverifiedUpdateGroupsPruned() {
 			return
 		case <-ticker.C:
 			b.pruneUnverifiedUpdateGroups()
+			b.pruneEarlyReadReceipts()
 		}
 	}
 }
@@ -358,6 +361,7 @@ func (b *Bounce) GetInitialState() InitialState {
 	b.pruneGroupMessages()
 	b.pruneUndeliverableCustomScopes()
 	b.pruneUnverifiedUpdateGroups()
+	b.pruneEarlyReadReceipts()
 
 	// Load the profile and sync devices
 	var profile *User

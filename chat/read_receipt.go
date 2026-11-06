@@ -257,6 +257,30 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) (b
 	}
 }
 
+func (b *Bounce) rejectMessage(peer string, messageType uint16, messageID ID) {
+	go b.sendAck(peer, messageType, messageID)
+	b.discardEarlyReadReceiptsFor(messageID, messageType)
+}
+
+func (b *Bounce) discardEarlyReadReceiptsFor(messageID ID, messageType uint16) {
+	err := deleteEach[readReceipt](b.database, "target = ? AND target_type = ? AND destination = ?", messageID, messageType, NilID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":      err.Error(),
+			"message_id": messageID,
+		}).Error("error discarding read receipts that arrived before a rejected message")
+	}
+}
+
+func (b *Bounce) pruneEarlyReadReceipts() {
+	err := deleteEach[readReceipt](b.database, "destination = ? AND saved_at < ?", NilID, time.Now().Add(-undeliverableAfter).Unix())
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error pruning read receipts whose messages never arrived")
+	}
+}
+
 func (b *Bounce) processEarlyReadReceipts(messageID ID, messageType uint16, notify bool) (bool, []ReadReceipt) {
 	// Find any read receipts for this message that came early, add missing data, and send to the UI
 	var rrs []readReceipt
