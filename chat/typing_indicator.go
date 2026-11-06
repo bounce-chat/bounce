@@ -357,9 +357,7 @@ func (b *Bounce) manuallySendTypingIndicators(ti *typingIndicator, excludedPeer 
 
 	es := encodedSendable{frameType: ti.getType(), payload: ti.getPayload()}
 	for _, peer := range broadcastTargets {
-		go func(dst chan sendable, msg sendable) {
-			dst <- msg
-		}(peer.messages, es)
+		go peer.send(es)
 	}
 }
 
