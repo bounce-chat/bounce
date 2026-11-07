@@ -32,7 +32,7 @@ Please open an issue if a feature in the UI is not behaving as expected.
 |Android|✅|Fully supported|
 |FreeBSD|✅|Fully supported, build with `-tags x11`|
 |OpenBSD|✅|Fully supported, build with `-tags x11`|
-|iOS|⛔|iOS does not allow apps to run in the background.  Implementing Bounce on iOS will require a light client that receives notifications from another instance of Bounce via APNs, and reaches out to that instance to send messages.  This has not been planned yet, and would change the privacy model around metadata protection.|
+|iOS|⚠️|Not currently supported, but support is planned.  iOS does not allow apps to continuously run in the background, but allows scheduled tasks that should be sufficient for periodic syncing.|
 
 ## Installation
 

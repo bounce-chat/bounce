@@ -184,23 +184,6 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			usersToUpdate[br.getAuthor()] = true
 		case typeUpdateDM:
 			dmsToUpdate[br.getDestination(b.currentUserID())] = true
-
-			// If this is an update to anyone's block status, do the update immediately
-			// so that the change applies to handling other frames in the catch up
-			ud, ok := br.(*updateDM)
-			if !ok {
-				log.WithFields(log.Fields{
-					"id": br.getID(),
-				}).Warn("cannot cast update DM broadcastable")
-				continue
-			}
-			if ud.Type == updateDMTypeSetBlocked {
-				u, ok := b.currentUser()
-				if !ok {
-					continue
-				}
-				b.updateDMState(ud.getDestination(u.ID))
-			}
 		case typeUpdateSettings:
 			settingsUpdated = true
 		case typeUpdateDevice:
