@@ -187,6 +187,7 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 	offerUser, ok := b.currentUser()
 	if !ok {
 		log.Error("cannot handle add user request when no profile exists")
+		b.sendDirect(peer, &addUserRequestRejected{})
 		return nil, false
 	}
 	offerBytes, err := msgpack.Marshal(offerUser)

@@ -137,6 +137,7 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 	profile, exists := b.currentUser()
 	if !exists {
 		log.Error("cannot accept new sync device when no profile exists")
+		b.sendDirect(peer, &syncDeviceRequestRejected{})
 		return nil, false
 	}
 
@@ -146,7 +147,8 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 		log.WithFields(log.Fields{
 			"peer": peer,
 			"user": dev.UserID,
-		}).Warn("a peer that is known to belong to another user sent a valid sync device request, ignoring")
+		}).Warn("a peer that is known to belong to another user sent a valid sync device request, rejecting")
+		b.sendDirect(peer, &syncDeviceRequestRejected{})
 		return nil, false
 	}
 
