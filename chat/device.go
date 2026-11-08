@@ -228,11 +228,16 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadc
 		return nil, false
 	}
 
-	// If the device already exists, track delivery, ack it, and return
+	// Check if this device already exists, acking but ignoring it if the address exists under another ID
 	var existingDevice device
 	err = b.database.Preload(clause.Associations).Where("address = ?", d.Address).First(&existingDevice).Error
 	if err == nil {
-		return &existingDevice, false
+		if existingDevice.ID == d.ID {
+			return &existingDevice, false
+		} else {
+			go b.sendAck(peer, typeDevice, d.ID)
+			return nil, false
+		}
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
