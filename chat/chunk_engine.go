@@ -40,7 +40,7 @@ func (b *Bounce) loadChunkEngine() {
 
 	b.chunkEngine.Lock()
 	var unfinishedFiles []file
-	err := b.database.Preload(clause.Associations).Where("downloaded = ?", false).Find(&unfinishedFiles).Error
+	err := b.database.Preload(clause.Associations).Where("downloaded = ? AND wanted = ?", false, true).Find(&unfinishedFiles).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -134,6 +134,7 @@ func (b *Bounce) makeAnyChunkRequests() {
 	unassignedHashes := b.chunkEngine.unassignedHashes()
 	for _, hash := range unassignedHashes {
 		if !b.chunkWanted(hash) {
+			b.chunkEngine.removeHash(hash)
 			continue
 		}
 
@@ -209,6 +210,7 @@ func (b *Bounce) makeAnyChunkRequests() {
 		}
 		for _, hash := range requests {
 			if !b.chunkWanted(hash) {
+				b.chunkEngine.removeHash(hash)
 				continue
 			}
 
@@ -306,7 +308,7 @@ func (ce *chunkEngine) unassignedHashes() []string {
 }
 
 func (b *Bounce) addChunkOfferToChunkEngine(co *chunkOffer) {
-	if co.Location == b.network.Address() {
+	if co.Location == b.network.Address() || !b.chunkWanted(co.Hash) {
 		return
 	}
 
@@ -338,8 +340,6 @@ func (b *Bounce) addEncryptedChunkOfferToChunkEngine(eco *encryptedChunkOffer) {
 	if eco.Location == b.network.Address() {
 		return
 	}
-	b.chunkEngine.Lock()
-	defer b.chunkEngine.Unlock()
 
 	var c chunk
 	err := b.database.Where("encrypted_hash = ?", eco.Hash).Take(&c).Error
@@ -349,6 +349,12 @@ func (b *Bounce) addEncryptedChunkOfferToChunkEngine(eco *encryptedChunkOffer) {
 		}).Warn("cannot add encrypted chunk offer to chunk engine for chunk we don't yet have")
 		return
 	}
+	if !b.chunkWanted(c.Hash) {
+		return
+	}
+
+	b.chunkEngine.Lock()
+	defer b.chunkEngine.Unlock()
 
 	alreadyInHash := false
 	for _, l := range b.chunkEngine.byHash[c.Hash] {
@@ -374,7 +380,10 @@ func (b *Bounce) addEncryptedChunkOfferToChunkEngine(eco *encryptedChunkOffer) {
 func (ce *chunkEngine) completed(target string) {
 	ce.Lock()
 	defer ce.Unlock()
+	ce.removeHash(target)
+}
 
+func (ce *chunkEngine) removeHash(target string) {
 	prunedLocations := make(map[string][]string)
 	for location, hashes := range ce.byLocation {
 		hashesWithoutTarget := []string{}
