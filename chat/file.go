@@ -1885,6 +1885,18 @@ func (b *Bounce) offerChunk(c chunk) {
 		}
 	}
 
+	// Return if we have already created this chunk offer
+	var offered int64
+	err = b.database.Model(&chunkOffer{}).Where("hash = ? AND location = ? AND scope = ? AND destination = ?", c.Hash, b.network.Address(), f.Scope, f.Destination).Count(&offered).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up our chunk offers")
+	}
+	if offered > 0 {
+		return
+	}
+
 	// Create the chunk offer
 	co := &chunkOffer{
 		ID:          NewID(),
