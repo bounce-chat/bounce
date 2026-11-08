@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
@@ -26,6 +27,7 @@ const updateDMTypeSetBlocked = uint16(8)
 const updateDMTypeOfferRetention = uint16(9)
 
 var errUpdateDMWithUnknownType = errors.New("update DM has unknown update type")
+var errInvalidNotes = errors.New("notes are not valid text or are too long")
 var errInvalidPayloadLength = errors.New("invalid payload length")
 var errInvalidOverriddenValue = errors.New("invalid value for overridden byte")
 var errInvalidEnabledValue = errors.New("invalid value for enabled byte")
@@ -196,6 +198,13 @@ func (ud *updateDM) validPayload() error {
 		if len(ud.Data) != 0 {
 			return errInvalidPayloadLength
 		}
+	case updateDMTypeSetNotes:
+		notes := string(ud.Data)
+		if !utf8.ValidString(notes) || utf8.RuneCountInString(notes) > MaximumNotesCharacters {
+			return errInvalidNotes
+		}
+	default:
+		return errUpdateDMWithUnknownType
 	}
 
 	return nil

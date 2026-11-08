@@ -26,6 +26,7 @@ const updateSettingsTypeSetAutoJoinGroups = uint16(6)
 const updateSettingsTypeSetDefaultDMRetention = uint16(7)
 
 var errInvalidPayloadValue = errors.New("invalid payload value")
+var errUnsupportedUpdateSettingsType = errors.New("unsupported update settings type")
 
 type updateSettings struct {
 	SignedFrame
@@ -163,9 +164,7 @@ func (us *updateSettings) validPayload() error {
 			return errInvalidPayloadLength
 		}
 	default:
-		log.WithFields(log.Fields{
-			"type": us.Type,
-		}).Warn("update settings with unknown type")
+		return errUnsupportedUpdateSettingsType
 	}
 	return nil
 }

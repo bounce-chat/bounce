@@ -27,6 +27,7 @@ var updateUserTypeReplaceKeys = uint16(5)
 var updateUserTypeReplaceECDHPublicKey = uint16(6)
 
 var errUnsupportedUpdateUserType = errors.New("unsupported update user type")
+var errInvalidKeyMaterial = errors.New("key material has the wrong size")
 var errInvalidAddress = errors.New("address is not a valid onion service id")
 var errPayloadTooShort = errors.New("payload is too short")
 
@@ -141,6 +142,27 @@ func (uu *updateUser) validPayload() error {
 		}
 	case updateUserTypeSetEncryptedDeviceName:
 		// Minimum payload length can't be determined here
+	case updateUserTypeReplaceKeys:
+		var ks keySet
+		if err := msgpack.Unmarshal(uu.Data, &ks); err != nil {
+			return err
+		}
+		if len(ks.PrivateECDSAKey) != ed25519.PrivateKeySize || len(ks.PublicECDSAKey) != ed25519.PublicKeySize {
+			return errInvalidKeyMaterial
+		}
+		curve := ecdh.X25519()
+		if _, err := curve.NewPrivateKey(ks.PrivateECDHKey); err != nil {
+			return errInvalidKeyMaterial
+		}
+		if _, err := curve.NewPublicKey(ks.PublicECDHKey); err != nil {
+			return errInvalidKeyMaterial
+		}
+	case updateUserTypeReplaceECDHPublicKey:
+		if _, err := ecdh.X25519().NewPublicKey(uu.Data); err != nil {
+			return errInvalidKeyMaterial
+		}
+	default:
+		return errUnsupportedUpdateUserType
 	}
 
 	return nil
@@ -304,12 +326,6 @@ func (b *Bounce) saveAndDisplayUpdateUser(uu updateUser) error {
 		// Changing keys does not create a status change
 	case updateUserTypeReplaceECDHPublicKey:
 		// Changing keys does not create a status change
-	default:
-		log.WithFields(log.Fields{
-			"id":   uu.ID,
-			"type": uu.Type,
-		}).Warn("ignoring unsupported update user type")
-		return errUnsupportedUpdateUserType
 	}
 
 	return nil

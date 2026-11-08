@@ -20,6 +20,7 @@ import (
 const MutedForever = int64(-1)
 const MaximumNameLength = 128
 const MaximumMessageCharacters = 15000
+const MaximumNotesCharacters = MaximumMessageCharacters
 
 // This constant defines the amount of time a message can exist without a successful delivery
 // before the chat engine gives up and stops attempting to deliver it
