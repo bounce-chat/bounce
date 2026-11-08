@@ -47,6 +47,7 @@ var chunkOfferMutex sync.Mutex
 var chunkMutex sync.Mutex
 
 var ErrFileTooBig = errors.New("file is too large")
+var ErrFileEmpty = errors.New("file is empty")
 var errFileNotFound = errors.New("file not found")
 var errChunkDataNotFound = errors.New("chunk data not found")
 var errInvalidImage = errors.New("invalid image data")
@@ -295,6 +296,10 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		return nil, false
 	}
 	if f.Size <= 0 {
+		log.WithFields(log.Fields{
+			"id":   f.ID,
+			"peer": peer,
+		}).Warn("ignoring empty file")
 		return nil, false
 	}
 	if !(f.Scope >= scopeSync && f.Scope <= scopeGroupWithInvites) {
@@ -1463,6 +1468,9 @@ func (b *Bounce) prepareEmbeddedFile(data []byte, scope int, fileType int) (*fil
 	if len(data) > EmbeddedFileLimit {
 		return nil, ErrFileTooBig
 	}
+	if len(data) == 0 {
+		return nil, ErrFileEmpty
+	}
 
 	key := make([]byte, 32)
 	crand.Read(key)
@@ -1507,6 +1515,9 @@ func (b *Bounce) prepareSeededFile(path string, scope int, fileType int) (*file,
 	info, err := fh.Stat()
 	if err != nil {
 		return nil, err
+	}
+	if info.Size() == 0 {
+		return nil, ErrFileEmpty
 	}
 
 	chunks := []chunk{}
