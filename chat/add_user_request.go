@@ -13,8 +13,6 @@ import (
 )
 
 var addUserOfferValidForSeconds = int64(300)
-var ignoreOldSecrets = map[string]bool{}
-var oldSecretsMutex sync.Mutex
 
 var addUserRequestMutex sync.Mutex
 
@@ -43,10 +41,7 @@ func (b *Bounce) claimAddUserOffer(secret string) (offer addUserOffer, found boo
 	addUserRequestMutex.Lock()
 	defer addUserRequestMutex.Unlock()
 
-	oldSecretsMutex.Lock()
-	_, repeat = ignoreOldSecrets["add-user-request"+secret]
-	oldSecretsMutex.Unlock()
-	if repeat {
+	if secretRecentlyUsed("add-user-request" + secret) {
 		return offer, true, true
 	}
 
@@ -60,9 +55,7 @@ func (b *Bounce) claimAddUserOffer(secret string) (offer addUserOffer, found boo
 		}).Fatal("database error looking up add user offer by secret")
 	}
 
-	oldSecretsMutex.Lock()
-	ignoreOldSecrets["add-user-request"+secret] = true
-	oldSecretsMutex.Unlock()
+	markSecretUsed("add-user-request"+secret, time.Duration(addUserOfferValidForSeconds)*time.Second)
 
 	err = b.database.Delete(&offer).Error
 	if err != nil {
@@ -205,9 +198,6 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 	return nil, false
 }
 
-var outstandingAddUserPeers = map[string]time.Time{}
-var outstandingAddUserPeersMutex sync.Mutex
-
 func (b *Bounce) RequestToAddUser(offer string) error {
 	// Parse the offer
 	parts := strings.Split(offer, ":")
@@ -238,10 +228,8 @@ func (b *Bounce) RequestToAddUser(offer string) error {
 		}).Fatal("cannot msgpack marshal requester user while adding friend")
 	}
 
-	// Record the time we made this request
-	outstandingAddUserPeersMutex.Lock()
-	outstandingAddUserPeers[address] = time.Now()
-	outstandingAddUserPeersMutex.Unlock()
+	// Record the request
+	pendingAddUserRequests.expectFrom(address)
 
 	// Send the request to the offer device
 	b.sendDirect(address, &addUserRequest{

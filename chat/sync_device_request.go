@@ -27,16 +27,6 @@ func setWaitingForInitialSyncFrom(peer string) {
 	initialSyncSource.Store(peer)
 }
 
-// Addresses we have sent a sync device request to
-var waitingForSyncResponseFrom = map[string]bool{}
-var waitingForSyncResponseFromMutex sync.Mutex
-
-func syncRequestedFrom(peer string) bool {
-	waitingForSyncResponseFromMutex.Lock()
-	defer waitingForSyncResponseFromMutex.Unlock()
-	return waitingForSyncResponseFrom[peer]
-}
-
 // A sync device request is our request to join an existing profile.  We do this by sending the secret that was present in an offer,
 // as well as our signature of the address of the device that made the offer.
 type syncDeviceRequest struct {
@@ -62,10 +52,7 @@ func (b *Bounce) claimSyncDeviceOffer(secret string) (offer syncDeviceOffer, fou
 	syncDeviceRequestMutex.Lock()
 	defer syncDeviceRequestMutex.Unlock()
 
-	oldSecretsMutex.Lock()
-	_, repeat = ignoreOldSecrets["sync-device-request"+secret]
-	oldSecretsMutex.Unlock()
-	if repeat {
+	if secretRecentlyUsed("sync-device-request" + secret) {
 		return offer, true, true
 	}
 
@@ -79,9 +66,7 @@ func (b *Bounce) claimSyncDeviceOffer(secret string) (offer syncDeviceOffer, fou
 		}).Fatal("database error looking up sync device offer by secret")
 	}
 
-	oldSecretsMutex.Lock()
-	ignoreOldSecrets["sync-device-request"+secret] = true
-	oldSecretsMutex.Unlock()
+	markSecretUsed("sync-device-request"+secret, time.Duration(syncDeviceOfferValidForSeconds)*time.Second)
 
 	err = b.database.Delete(&offer).Error
 	if err != nil {
@@ -265,10 +250,8 @@ func (b *Bounce) RequestToSync(data string) error {
 	}
 	b.insertConnectionIntoDevicePool(conn)
 
-	// Track who we are willing to accept a sync request accepted from
-	waitingForSyncResponseFromMutex.Lock()
-	waitingForSyncResponseFrom[address] = true
-	waitingForSyncResponseFromMutex.Unlock()
+	// Track who we are willing to accept an answer from, and for how long
+	pendingSyncRequests.expectFrom(address)
 
 	// Send our request
 	b.sendDirect(address, &syncDeviceRequest{

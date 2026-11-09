@@ -33,6 +33,14 @@ func (aura *addUserRequestAccepted) getPayload() []byte {
 }
 
 func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	// Make sure we sent a request to this peer recently
+	if !pendingAddUserRequests.isExpectedFrom(peer) {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("ignoring add user request accepted from a peer we did not recently send a request to")
+		return nil, false
+	}
+
 	// Unmarshal the payload
 	var aura addUserRequestAccepted
 	err := msgpack.Unmarshal(payload, &aura)
@@ -40,23 +48,6 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling add user request accepted")
-		return nil, false
-	}
-
-	// Make sure we sent a request to this peer recently
-	outstandingAddUserPeersMutex.Lock()
-	lastRequestTime, ok := outstandingAddUserPeers[peer]
-	outstandingAddUserPeersMutex.Unlock()
-	if !ok {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("ignoring SDRA received from peer that we did not send an add user request to")
-		return nil, false
-	}
-	if time.Since(lastRequestTime) > (time.Duration(addUserOfferValidForSeconds) * time.Second) {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("ignoring SDRA received too long after request was sent")
 		return nil, false
 	}
 

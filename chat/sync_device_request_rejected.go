@@ -18,10 +18,10 @@ func (sdrr *syncDeviceRequestRejected) getPayload() []byte {
 }
 
 func (b *Bounce) handleSyncDeviceRequestRejected(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
-	if !syncRequestedFrom(peer) {
+	if !pendingSyncRequests.isExpectedFrom(peer) {
 		log.WithFields(log.Fields{
 			"peer": peer,
-		}).Warn("ignoring sync device request rejected from peer we did not make a sync request to")
+		}).Warn("ignoring sync device request rejected from a peer we did not recently make a sync request to")
 		return nil, false
 	}
 

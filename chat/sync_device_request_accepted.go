@@ -36,10 +36,10 @@ func (sdra *syncDeviceRequestAccepted) getPayload() []byte {
 
 func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	// Make sure we've sent a sync request to this peer before
-	if !syncRequestedFrom(peer) {
+	if !pendingSyncRequests.isExpectedFrom(peer) {
 		log.WithFields(log.Fields{
 			"peer": peer,
-		}).Warn("ignoring sync device request accepted from peer we did not make a sync request to")
+		}).Warn("ignoring sync device request accepted from a peer we did not recently make a sync request to")
 		return nil, false
 	}
 
