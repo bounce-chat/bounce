@@ -250,6 +250,9 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 	if !validUserName(profileName) {
 		return errInvalidUserName
 	}
+	if !validDeviceName(deviceName) {
+		return errInvalidDeviceName
+	}
 
 	newID := NewID()
 

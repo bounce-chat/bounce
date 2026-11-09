@@ -141,7 +141,13 @@ func (uu *updateUser) validPayload() error {
 			return errInvalidAddress
 		}
 	case updateUserTypeSetEncryptedDeviceName:
-		// Minimum payload length can't be determined here
+		address, name, found := strings.Cut(string(uu.Data), ":")
+		if !found || !onionAddressRegex.MatchString(address) {
+			return errInvalidAddress
+		}
+		if !validDeviceName(name) {
+			return errInvalidDeviceName
+		}
 	case updateUserTypeReplaceKeys:
 		var ks keySet
 		if err := msgpack.Unmarshal(uu.Data, &ks); err != nil {

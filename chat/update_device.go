@@ -114,7 +114,11 @@ func (ud *updateDevice) validPayload() error {
 		if !validDeviceName(string(ud.Data)) {
 			return errInvalidDeviceName
 		}
-	case updateDeviceTypeRevoke, updateDeviceTypeSetPublicKey:
+	case updateDeviceTypeSetPublicKey:
+		if _, err := ecdh.X25519().NewPublicKey(ud.Data); err != nil {
+			return errInvalidKeyMaterial
+		}
+	case updateDeviceTypeRevoke:
 	default:
 		return errUnsupportedUpdateDeviceType
 	}
