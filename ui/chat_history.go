@@ -3,7 +3,6 @@ package ui
 import (
 	"sort"
 	"sync"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -16,7 +15,6 @@ import (
 )
 
 const jumpToBottomIconSize = 46
-const timestampRefreshSeconds = 30
 const mergeSeconds = 300
 
 type chatHistory struct {
@@ -107,14 +105,6 @@ func (ui *ui) newChatHistory(t thread) *chatHistory {
 		},
 	)
 	ch.jumpToBottomIcon.Hide()
-
-	// Keep chat bubble timestamps up to date by periodically refreshing
-	go func() {
-		for {
-			time.Sleep(timestampRefreshSeconds * time.Second)
-			fyne.Do(func() { ch.Refresh() })
-		}
-	}()
 
 	ch.ExtendBaseWidget(ch)
 	return ch

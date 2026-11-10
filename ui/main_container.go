@@ -54,6 +54,9 @@ func (ui *ui) showMainContainer() {
 	}
 }
 
+// How often the relative times shown in the UI are redrawn; "now" becomes a minute count after sixty seconds
+const timestampRefreshSeconds = 30
+
 func (ui *ui) buildMainContainer() {
 	// Logo and welcome message / instructions to be shown before a thread is selected
 	ui.containers.defaultContainer = container.NewMax(
@@ -87,11 +90,18 @@ func (ui *ui) buildMainContainer() {
 		},
 	)
 	ui.containers.threads.HideSeparators = true
+	// Keep the relative times on the thread buttons and on the chat bubbles of the open thread current.  Only the
+	// open thread needs this: a thread is refreshed when it is displayed, so one that is not showing can go stale.
+	// This is the one such loop in the app, living as long as the process does.
 	go func() {
-		// Keep the last message time counter up to date
 		for {
-			time.Sleep(1 * time.Minute)
-			fyne.Do(func() { ui.containers.threads.Refresh() })
+			time.Sleep(timestampRefreshSeconds * time.Second)
+			fyne.Do(func() {
+				ui.containers.threads.Refresh()
+				if t, ok := ui.threads.get(ui.state.activeThread); ok && t.chatHistoryScroll() != nil {
+					t.chatHistoryScroll().Refresh()
+				}
+			})
 		}
 	}()
 
