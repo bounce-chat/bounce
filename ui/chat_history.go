@@ -204,7 +204,9 @@ func (ch *chatHistory) insertItem(item threadable, appendingToEnd bool) {
 			compare := ch.getItem(i - 1)
 			if item.getTimestamp() > compare.getTimestamp() {
 				ch.ids = append(ch.ids[:i], append([]chat.ID{item.getID()}, ch.ids[i:]...)...)
-				if len(ch.heights) >= len(ch.ids)-1 {
+				// Heights are filled in lazily, so shift whatever has been measured past the insertion point to
+				// keep every measured height beside the item it belongs to
+				if i < len(ch.heights) {
 					ch.heights = append(ch.heights[:i], append([]float32{0}, ch.heights[i:]...)...)
 				}
 				ch.setMergeMode(i, true)

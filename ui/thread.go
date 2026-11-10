@@ -95,7 +95,7 @@ func (ui *ui) appendThreadItem(t thread, ti *threadItem) {
 	}
 
 	// Determine if the thread item we are adding will be the latest item in the thread
-	appendingToEnd := ti.timestamp > t.chatHistoryScroll().headTimestamp()
+	appendingToEnd := ti.timestamp >= t.chatHistoryScroll().headTimestamp()
 
 	// Add this thread item to the chat history
 	t.chatHistoryScroll().insertItem(ti.widgetData, appendingToEnd)
@@ -140,7 +140,7 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 			continue
 		}
 
-		var lastButtonItem *threadItem
+		items := threadItems{}
 		allSeen := true
 		for _, gm := range gms {
 			ti, err := ui.newGroupMessage(gm)
@@ -150,49 +150,12 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 				}).Error("error creating thread item for group message")
 				continue
 			}
-
-			if _, ok := seen[gm.ID]; ok {
-				ti.widgetData.markSeen()
-			} else {
+			if !ui.prepareCaughtUpItem(ti, gm.ID, gm.Author, bu, seen) {
 				allSeen = false
 			}
-
-			if rrs, ok := bu.ReadReceipts[gm.ID]; ok {
-				for _, rr := range rrs {
-					if rr.Actor == ui.state.profile.id && gm.Author == ui.state.profile.id {
-						continue
-					} else {
-						ti.widgetData.setState(stateRead)
-						delete(bu.ReadReceipts, gm.ID)
-						break
-					}
-				}
-			}
-
-			appendingToEnd := ti.timestamp > g.chatHistoryScroll().headTimestamp()
-			fyne.Do(func() { g.chatHistoryScroll().insertItem(ti.widgetData, appendingToEnd) })
-			ui.threads.associate(g, ti.id)
-			if ti.setButtonData != nil {
-				lastButtonItem = ti
-			}
+			items = append(items, ti)
 		}
-
-		if lastButtonItem != nil && (initialSync || lastButtonItem.timestamp > g.getLastMessageTime()) {
-			g.setLastMessageTime(lastButtonItem.timestamp)
-			fyne.Do(func() { lastButtonItem.setButtonData(g.getButtonData()) })
-			if lastButtonItem.widgetData.getAuthor() == ui.state.profile.id {
-				fyne.Do(func() { g.getButtonData().setShowLastMessageState(lastButtonItem.widgetData.getState()) })
-			}
-		}
-
-		if !allSeen {
-			fyne.Do(func() {
-				g.chatHistoryScroll().scrollToLastRead()
-				g.chatHistoryScroll().displayJumpToBottomIfNeeded()
-			})
-		}
-
-		fyne.Do(func() { g.chatHistoryScroll().Refresh() })
+		ui.showCaughtUpItems(g, items, allSeen, initialSync)
 	}
 
 	for userID, dms := range bu.DirectMessages {
@@ -204,7 +167,7 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 			continue
 		}
 
-		var lastButtonItem *threadItem
+		items := threadItems{}
 		allSeen := true
 		for _, dm := range dms {
 			ti, err := ui.newDirectMessage(dm)
@@ -214,49 +177,12 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 				}).Error("error creating thread item for direct message")
 				continue
 			}
-
-			if _, ok := seen[dm.ID]; ok {
-				ti.widgetData.markSeen()
-			} else {
+			if !ui.prepareCaughtUpItem(ti, dm.ID, dm.Author, bu, seen) {
 				allSeen = false
 			}
-
-			if rrs, ok := bu.ReadReceipts[dm.ID]; ok {
-				for _, rr := range rrs {
-					if rr.Actor == ui.state.profile.id && dm.Author == ui.state.profile.id {
-						continue
-					} else {
-						ti.widgetData.setState(stateRead)
-						delete(bu.ReadReceipts, dm.ID)
-						break
-					}
-				}
-			}
-
-			appendingToEnd := ti.timestamp > t.chatHistoryScroll().headTimestamp()
-			fyne.Do(func() { t.chatHistoryScroll().insertItem(ti.widgetData, appendingToEnd) })
-			ui.threads.associate(t, ti.id)
-			if ti.setButtonData != nil {
-				lastButtonItem = ti
-			}
+			items = append(items, ti)
 		}
-
-		if lastButtonItem != nil && (initialSync || lastButtonItem.timestamp > t.getLastMessageTime()) {
-			t.setLastMessageTime(lastButtonItem.timestamp)
-			fyne.Do(func() { lastButtonItem.setButtonData(t.getButtonData()) })
-			if lastButtonItem.widgetData.getAuthor() == ui.state.profile.id {
-				fyne.Do(func() { t.getButtonData().setShowLastMessageState(lastButtonItem.widgetData.getState()) })
-			}
-		}
-
-		if !allSeen {
-			fyne.Do(func() {
-				t.chatHistoryScroll().scrollToLastRead()
-				t.chatHistoryScroll().displayJumpToBottomIfNeeded()
-			})
-		}
-
-		fyne.Do(func() { t.chatHistoryScroll().Refresh() })
+		ui.showCaughtUpItems(t, items, allSeen, initialSync)
 	}
 
 	for _, rrs := range bu.ReadReceipts {
@@ -266,6 +192,58 @@ func (ui *ui) CatchUpMessages(bu chat.BulkUpdate, initialSync bool) {
 	}
 
 	fyne.Do(func() { ui.containers.threads.Refresh() })
+}
+
+// prepareCaughtUpItem marks a caught up item as seen when the sync said it was, and as read when a read receipt for
+// it arrived in the same catch up, consuming that receipt.  It reports whether the item was seen.
+func (ui *ui) prepareCaughtUpItem(ti *threadItem, id, author chat.ID, bu chat.BulkUpdate, seen map[chat.ID]bool) bool {
+	if seen[id] {
+		ti.widgetData.markSeen()
+	}
+	for _, rr := range bu.ReadReceipts[id] {
+		if rr.Actor == ui.state.profile.id && author == ui.state.profile.id {
+			continue
+		}
+		ti.widgetData.setState(stateRead)
+		delete(bu.ReadReceipts, id)
+		break
+	}
+	return seen[id]
+}
+
+// showCaughtUpItems places a thread's caught up items into its history in timestamp order, in one pass on the UI
+// thread.  A catch up arrives in the order the other device saved its frames, which is not the order they were
+// written when an older message reached it late, so each item is placed against the head the one before it left,
+// and the thread button shows the latest message rather than the last one received.  Each item is claimed by its
+// thread only once it is in the message store, so a lookup by thread never finds an item the store does not have.
+func (ui *ui) showCaughtUpItems(t thread, items threadItems, allSeen, initialSync bool) {
+	sort.Stable(items)
+	fyne.DoAndWait(func() {
+		var latest *threadItem
+		for _, ti := range items {
+			// An item written in the same second as the head goes after it, keeping the order they were sorted in
+			appendingToEnd := ti.timestamp >= t.chatHistoryScroll().headTimestamp()
+			t.chatHistoryScroll().insertItem(ti.widgetData, appendingToEnd)
+			ui.threads.associate(t, ti.id)
+			if ti.setButtonData != nil {
+				latest = ti
+			}
+		}
+
+		if latest != nil && (initialSync || latest.timestamp > t.getLastMessageTime()) {
+			t.setLastMessageTime(latest.timestamp)
+			latest.setButtonData(t.getButtonData())
+			if latest.widgetData.getAuthor() == ui.state.profile.id {
+				t.getButtonData().setShowLastMessageState(latest.widgetData.getState())
+			}
+		}
+
+		if !allSeen {
+			t.chatHistoryScroll().scrollToLastRead()
+			t.chatHistoryScroll().displayJumpToBottomIfNeeded()
+		}
+		t.chatHistoryScroll().Refresh()
+	})
 }
 
 func (ui *ui) MarkMessageUndeliverable(id chat.ID) {
