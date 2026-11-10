@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"image"
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
@@ -490,18 +489,10 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 		}
 	} else {
 		if len(dm.user.images) > 0 {
-			data, err := ui.bounce.GetFileData(dm.user.images[len(dm.user.images)-1])
-			if err == nil {
-				img, _, err := image.Decode(bytes.NewReader(data))
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error":   err.Error(),
-						"file_id": dm.user.images[0],
-					}).Warn("error decoding image")
-				} else {
-					selectImage = func() {
-						ui.showImageViewer([]image.Image{img}, [][]byte{data}, []string{}, 0)
-					}
+			imageID := dm.user.images[len(dm.user.images)-1]
+			if _, err := ui.bounce.GetFilePath(imageID); err == nil {
+				selectImage = func() {
+					ui.showImageViewer([]*chat.ImageAttachment{{ID: imageID}}, 0)
 				}
 			}
 		}

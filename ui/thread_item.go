@@ -2,7 +2,6 @@ package ui
 
 import (
 	"errors"
-	"image"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -46,7 +45,7 @@ type chatBubbleData struct {
 	seen             bool
 	state            int
 	mergeMode        int
-	imageDisplay     func([]image.Image, [][]byte, []string, int)
+	imageDisplay     func([]*chat.ImageAttachment, int)
 }
 
 func (cbd *chatBubbleData) getID() chat.ID {

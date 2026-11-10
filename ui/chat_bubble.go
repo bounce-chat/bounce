@@ -9,7 +9,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"sync"
 	"unicode"
 
 	"fyne.io/fyne/v2"
@@ -47,8 +46,9 @@ var stateError = 4
 
 var wordWrapRE = regexp.MustCompile(`\s*\S+`)
 
-var imageAttachmentCache = map[string]image.Image{}
-var imageAttachmentCacheMutex sync.Mutex
+// Thumbnails of the image attachments shown in chat bubbles, so that scrolling back to a message neither reads its
+// attachments from disk nor decodes them again
+var imageAttachmentThumbnails = newThumbnailCache(64 << 20)
 
 type chatBubble struct {
 	widget.BaseWidget
@@ -57,8 +57,6 @@ type chatBubble struct {
 	direct                bool
 	writtenAt             int64
 	mergeMode             int
-	rawImages             []image.Image
-	imageData             [][]byte
 	username              *widget.RichText
 	message               *widget.RichText
 	imageAttachments      *fyne.Container
@@ -95,7 +93,7 @@ type chatBubble struct {
 	showDialog            func(dialog.Dialog, func())
 	newChatBubbleTemplate func() *chatBubble
 	openThread            func(*directMessage)
-	showImageViewer       func([]image.Image, [][]byte, []string, int)
+	showImageViewer       func([]*chat.ImageAttachment, int)
 	mobileBack            func()
 }
 
@@ -379,23 +377,16 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 				if len(m.iconImages) == 0 {
 					return
 				}
-				data, err := cb.getFileData(m.iconImages[len(m.iconImages)-1])
-				if err == nil {
-					img, _, err := image.Decode(bytes.NewReader(data))
-					if err != nil {
-						log.WithFields(log.Fields{
-							"error":   err.Error(),
-							"file_id": m.iconImages[0],
-						}).Warn("error decoding image")
-					} else {
-						if fyne.CurrentDevice().IsMobile() {
-							cb.mobileBack()
-						} else {
-							d.Dismiss()
-						}
-						cb.showImageViewer([]image.Image{img}, [][]byte{data}, []string{}, 0)
-					}
+				imageID := m.iconImages[len(m.iconImages)-1]
+				if _, err := cb.getFileData(imageID); err != nil {
+					return
 				}
+				if fyne.CurrentDevice().IsMobile() {
+					cb.mobileBack()
+				} else {
+					d.Dismiss()
+				}
+				cb.showImageViewer([]*chat.ImageAttachment{{ID: imageID}}, 0)
 			}))
 			name := widget.NewLabel(m.username)
 			name.Truncation = fyne.TextTruncateEllipsis
@@ -479,9 +470,6 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 		cb.message.Hide()
 	}
 
-	cb.rawImages = []image.Image{}
-	cb.imageData = [][]byte{}
-	names := []string{}
 	cb.imageAttachments.Objects = []fyne.CanvasObject{}
 	if len(m.imageAttachments) > 0 {
 		size := imageAttachmentWidth / float32(len(m.imageAttachments))
@@ -499,83 +487,22 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 		}
 
 		for i, attachment := range m.imageAttachments {
-			var rawImage image.Image
-			var scaledImage image.Image
-			var err error
-			data, err := cb.icon.fileGetter(attachment.ID)
-
-			if err != nil || len(data) == 0 {
-				cacheKey := "blurhash-" + attachment.ID.String()
-				scaledCacheKey := "blurhash-" + attachment.ID.String() + "-scaled"
-
-				var rawOk bool
-				var scaledOk bool
-				imageAttachmentCacheMutex.Lock()
-				rawImage, rawOk = imageAttachmentCache[cacheKey]
-				scaledImage, scaledOk = imageAttachmentCache[scaledCacheKey]
-				imageAttachmentCacheMutex.Unlock()
-
-				if !rawOk || !scaledOk {
-					rawImage, err = blurhash.Decode(attachment.BlurHash, attachment.Width, attachment.Height, 1)
-					if err != nil {
-						log.WithFields(log.Fields{
-							"error":    err.Error(),
-							"blurhash": attachment.BlurHash,
-						}).Error("invalid blurhash on image attachment")
-						continue
-					}
-
-					scaledImageDst := image.NewRGBA(image.Rect(0, 0, int(size), int((float32(rawImage.Bounds().Dy())/float32(rawImage.Bounds().Dx()))*size)))
-					draw.ApproxBiLinear.Scale(scaledImageDst, scaledImageDst.Rect, rawImage, rawImage.Bounds(), draw.Over, nil)
-					scaledImage = scaledImageDst
-
-					imageAttachmentCacheMutex.Lock()
-					imageAttachmentCache[cacheKey] = rawImage
-					imageAttachmentCache[scaledCacheKey] = scaledImage
-					imageAttachmentCacheMutex.Unlock()
-				}
-			} else {
-				cacheKey := attachment.ID.String()
-				scaledCacheKey := attachment.ID.String() + "-scaled"
-
-				var rawOk bool
-				var scaledOk bool
-				imageAttachmentCacheMutex.Lock()
-				rawImage, rawOk = imageAttachmentCache[cacheKey]
-				scaledImage, scaledOk = imageAttachmentCache[scaledCacheKey]
-				imageAttachmentCacheMutex.Unlock()
-
-				if !rawOk || !scaledOk {
-					rawImage, _, err = image.Decode(bytes.NewReader(data))
-					if err != nil {
-						log.WithFields(log.Fields{
-							"blurhash": attachment.BlurHash,
-						}).Error("invalid image data on image attachment")
-						continue
-					}
-
-					scaledImageDst := image.NewRGBA(image.Rect(0, 0, int(size), int((float32(rawImage.Bounds().Dy())/float32(rawImage.Bounds().Dx()))*size)))
-					draw.ApproxBiLinear.Scale(scaledImageDst, scaledImageDst.Rect, rawImage, rawImage.Bounds(), draw.Over, nil)
-					scaledImage = scaledImageDst
-
-					imageAttachmentCacheMutex.Lock()
-					imageAttachmentCache[cacheKey] = rawImage
-					imageAttachmentCache[scaledCacheKey] = scaledImage
-					imageAttachmentCacheMutex.Unlock()
-				}
+			thumb, err := cb.thumbnail(attachment, size)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":   err.Error(),
+					"file_id": attachment.ID,
+				}).Error("cannot display image attachment")
+				continue
 			}
-
-			cb.rawImages = append(cb.rawImages, rawImage)
-			cb.imageData = append(cb.imageData, data)
-			names = append(names, attachment.Name)
 			cb.imageAttachments.Add(
 				newClickableImage(
 					"",
-					canvas.NewImageFromImage(scaledImage),
+					canvas.NewImageFromImage(thumb),
 					size,
 					size,
 					false,
-					func() { m.imageDisplay(cb.rawImages, cb.imageData, names, i) },
+					func() { m.imageDisplay(m.imageAttachments, i) },
 				),
 			)
 		}
@@ -1189,4 +1116,92 @@ func parenthesisAreBalanced(text string) bool {
 	}
 
 	return len(stack) == 0
+}
+
+// The width a blurhash is decoded at before being scaled up to a thumbnail; its gradients survive the scaling
+var blurhashDecodeWidth = float32(32)
+
+// A thumbnail is never taller than this many times its width: real pictures almost never are, but the dimensions
+// of an attachment that has not been downloaded are whatever the sender claimed
+var maximumThumbnailAspect = float32(10)
+
+// thumbnail returns the attachment scaled to the given width, from the cache when it was shown before.  The file
+// is only read and decoded on a miss, and the full size decode is dropped as soon as it has been scaled.  Until the
+// file has been downloaded its blurhash stands in.
+func (cb *chatBubble) thumbnail(attachment *chat.ImageAttachment, width float32) (image.Image, error) {
+	key := attachment.ID.String()
+	placeholderKey := "blurhash-" + key
+	if thumb, ok := imageAttachmentThumbnails.get(key); ok {
+		return thumb, nil
+	}
+
+	data, err := cb.icon.fileGetter(attachment.ID)
+	downloaded := err == nil && len(data) > 0
+	if downloaded {
+		decoded, _, err := image.Decode(bytes.NewReader(data))
+		if err == nil {
+			thumb := fitThumbnail(decoded, width)
+			imageAttachmentThumbnails.put(key, thumb)
+			imageAttachmentThumbnails.remove(placeholderKey)
+			return thumb, nil
+		}
+		log.WithFields(log.Fields{
+			"error":   err.Error(),
+			"file_id": attachment.ID,
+		}).Warn("invalid image data on image attachment, showing its blurhash instead")
+	}
+
+	placeholder, ok := imageAttachmentThumbnails.get(placeholderKey)
+	if !ok {
+		decoded, err := blurhash.Decode(attachment.BlurHash, int(blurhashDecodeWidth), scaledHeight(blurhashDecodeWidth, attachment.Width, attachment.Height), 1)
+		if err != nil {
+			return nil, errors.New("invalid blurhash: " + err.Error())
+		}
+		placeholder = fitThumbnail(decoded, width)
+		imageAttachmentThumbnails.put(placeholderKey, placeholder)
+	}
+	if downloaded {
+		// The file will not decode any better next time, so remember the blurhash as this attachment's thumbnail
+		// rather than reading the file again on every refresh
+		imageAttachmentThumbnails.put(key, placeholder)
+	}
+	return placeholder, nil
+}
+
+// fitThumbnail scales an image to the given width in proportion.  One taller than maximumThumbnailAspect allows
+// is letterboxed in a canvas of the maximum height instead, so that no attachment can make a bubble, or its entry
+// in the cache, arbitrarily tall.
+func fitThumbnail(img image.Image, width float32) *image.RGBA {
+	bounds := img.Bounds()
+	height := scaledHeight(width, bounds.Dx(), bounds.Dy())
+	canvas := image.NewRGBA(image.Rect(0, 0, int(width), height))
+
+	target := canvas.Rect
+	if float32(bounds.Dy()) > float32(height)/width*float32(bounds.Dx()) {
+		fitted := int(float32(height) * float32(bounds.Dx()) / float32(bounds.Dy()))
+		if fitted < 1 {
+			fitted = 1
+		}
+		left := (int(width) - fitted) / 2
+		target = image.Rect(left, 0, left+fitted, height)
+	}
+	draw.ApproxBiLinear.Scale(canvas, target, img, bounds, draw.Over, nil)
+	return canvas
+}
+
+// scaledHeight is the height that keeps an image of the given source dimensions in proportion at the given width,
+// never more than maximumThumbnailAspect times the width.  Missing dimensions give a square.
+func scaledHeight(width float32, sourceWidth, sourceHeight int) int {
+	if sourceWidth <= 0 || sourceHeight <= 0 {
+		return int(width)
+	}
+	aspect := float32(sourceHeight) / float32(sourceWidth)
+	if aspect > maximumThumbnailAspect {
+		aspect = maximumThumbnailAspect
+	}
+	height := int(aspect * width)
+	if height < 1 {
+		return 1
+	}
+	return height
 }

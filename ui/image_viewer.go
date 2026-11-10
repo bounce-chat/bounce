@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"image"
 
 	"fyne.io/fyne/v2"
@@ -10,22 +11,29 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/bbrks/go-blurhash"
+	"github.com/bounce-chat/bounce/chat"
 	log "github.com/sirupsen/logrus"
 )
 
+// The width the blurhash of an attachment is decoded at while the viewer reads and decodes the file itself
+var imageViewerPlaceholderWidth = float32(32)
+
+// The image viewer shows the image attachments of one message at full size, one at a time.  It is handed the
+// attachments rather than their pixels: the selected one is read and decoded when it is shown and dropped when
+// the next is, so a full size decode lives only while it is on screen.
 type imageViewer struct {
-	viewer    *fyne.Container
-	imageArea *fyne.Container
-	download  *widget.Button
-	left      *widget.Button
-	right     *widget.Button
-	images    []image.Image
-	data      [][]byte
-	names     []string
-	index     int
+	viewer     *fyne.Container
+	imageArea  *fyne.Container
+	download   *widget.Button
+	left       *widget.Button
+	right      *widget.Button
+	images     []*chat.ImageAttachment
+	index      int
+	generation int // advanced each time the shown image changes, so a slow load of the previous one is discarded
 }
 
-func (ui *ui) showImageViewer(images []image.Image, data [][]byte, names []string, index int) {
+func (ui *ui) showImageViewer(images []*chat.ImageAttachment, index int) {
 	if index > len(images)-1 {
 		log.WithFields(log.Fields{
 			"index":  index,
@@ -35,8 +43,6 @@ func (ui *ui) showImageViewer(images []image.Image, data [][]byte, names []strin
 	}
 
 	ui.widgets.imageViewer.images = images
-	ui.widgets.imageViewer.data = data
-	ui.widgets.imageViewer.names = names
 	ui.widgets.imageViewer.index = index
 
 	ui.refreshImageViewer()
@@ -48,20 +54,37 @@ func (ui *ui) showImageViewer(images []image.Image, data [][]byte, names []strin
 	ui.widgets.imageViewer.viewer.Show()
 }
 
+func (v *imageViewer) current() (*chat.ImageAttachment, bool) {
+	if v.index < 0 || v.index > len(v.images)-1 {
+		log.WithFields(log.Fields{
+			"index":  v.index,
+			"images": len(v.images),
+		}).Error("image viewer index is beyond its images")
+		return nil, false
+	}
+	return v.images[v.index], true
+}
+
+func (v *imageViewer) show(img image.Image) {
+	shown := canvas.NewImageFromImage(img)
+	shown.FillMode = canvas.ImageFillContain
+	v.imageArea.Objects = []fyne.CanvasObject{shown}
+	v.imageArea.Refresh()
+}
+
 func (ui *ui) buildImageViewer() {
 	download := widget.NewButtonWithIcon("", theme.DownloadIcon(), func() {
-		if ui.widgets.imageViewer.index > len(ui.widgets.imageViewer.data)-1 {
-			log.WithFields(log.Fields{
-				"index":       ui.widgets.imageViewer.index,
-				"data_length": len(ui.widgets.imageViewer.images),
-			}).Error("cannot save image data with invalid index")
+		attachment, ok := ui.widgets.imageViewer.current()
+		if !ok {
 			return
 		}
-		data := ui.widgets.imageViewer.data[ui.widgets.imageViewer.index]
-
-		name := ""
-		if ui.widgets.imageViewer.index <= len(ui.widgets.imageViewer.names)-1 {
-			name = ui.widgets.imageViewer.names[ui.widgets.imageViewer.index]
+		data, err := ui.bounce.GetFileData(attachment.ID)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"file_id": attachment.ID,
+			}).Warn("cannot save an image that has not been downloaded")
+			return
 		}
 
 		d := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
@@ -76,7 +99,7 @@ func (ui *ui) buildImageViewer() {
 			writer.Write(data)
 			writer.Close()
 		}, ui.window)
-		d.SetFileName(name)
+		d.SetFileName(attachment.Name)
 		d.Show()
 	})
 	download.Importance = widget.LowImportance
@@ -127,42 +150,58 @@ func (ui *ui) buildImageViewer() {
 
 }
 
+// refreshImageViewer shows the selected attachment.  Its blurhash goes up at once and the file is read and decoded
+// off the UI thread, since a large photo can take a moment; the viewer is one widget whose fields change only on
+// the UI thread, so the generation check is all that is needed to drop a load the user has already moved past.
 func (ui *ui) refreshImageViewer() {
-	if ui.widgets.imageViewer.index > len(ui.widgets.imageViewer.images)-1 {
-		log.WithFields(log.Fields{
-			"index":  ui.widgets.imageViewer.index,
-			"images": len(ui.widgets.imageViewer.images),
-		}).Error("cannot refresh the image viewer with invalid index")
+	v := ui.widgets.imageViewer
+	attachment, ok := v.current()
+	if !ok {
 		return
 	}
-	image := canvas.NewImageFromImage(ui.widgets.imageViewer.images[ui.widgets.imageViewer.index])
-	image.FillMode = canvas.ImageFillContain
-	ui.widgets.imageViewer.imageArea.Objects = []fyne.CanvasObject{image}
-	ui.widgets.imageViewer.imageArea.Refresh()
+	v.generation++
+	generation := v.generation
 
-	if ui.widgets.imageViewer.index == 0 {
-		ui.widgets.imageViewer.left.Disable()
+	placeholderHeight := scaledHeight(imageViewerPlaceholderWidth, attachment.Width, attachment.Height)
+	if placeholder, err := blurhash.Decode(attachment.BlurHash, int(imageViewerPlaceholderWidth), placeholderHeight, 1); err == nil {
+		v.show(placeholder)
 	} else {
-		ui.widgets.imageViewer.left.Enable()
+		v.imageArea.Objects = []fyne.CanvasObject{}
+		v.imageArea.Refresh()
+	}
+	v.download.Disable()
+
+	if v.index == 0 {
+		v.left.Disable()
+	} else {
+		v.left.Enable()
+	}
+	if v.index == len(v.images)-1 {
+		v.right.Disable()
+	} else {
+		v.right.Enable()
 	}
 
-	if ui.widgets.imageViewer.index == len(ui.widgets.imageViewer.images)-1 {
-		ui.widgets.imageViewer.right.Disable()
-	} else {
-		ui.widgets.imageViewer.right.Enable()
-	}
-
-	if ui.widgets.imageViewer.index > len(ui.widgets.imageViewer.data)-1 {
-		log.WithFields(log.Fields{
-			"index":       ui.widgets.imageViewer.index,
-			"data_length": len(ui.widgets.imageViewer.images),
-		}).Error("cannot refresh the image viewer with invalid index")
-		return
-	}
-	data := ui.widgets.imageViewer.data[ui.widgets.imageViewer.index]
-	if len(data) == 0 {
-		ui.widgets.imageViewer.download.Disable()
-	} else {
-		ui.widgets.imageViewer.download.Enable()
-	}
+	go func() {
+		data, err := ui.bounce.GetFileData(attachment.ID)
+		if err != nil {
+			// Not downloaded yet, so the blurhash stays
+			return
+		}
+		decoded, _, err := image.Decode(bytes.NewReader(data))
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"file_id": attachment.ID,
+			}).Warn("invalid image data on image attachment")
+			return
+		}
+		fyne.Do(func() {
+			if v.generation != generation {
+				return
+			}
+			v.show(decoded)
+			v.download.Enable()
+		})
+	}()
 }
