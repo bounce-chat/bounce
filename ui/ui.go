@@ -2,6 +2,8 @@ package ui
 
 import (
 	"runtime"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bounce-chat/bounce/chat"
@@ -22,6 +24,47 @@ import (
 const networkStateStarting = 0
 const networkStateOnline = 1
 const networkStateOffline = 2
+
+// networkStatus is the UI's copy of the engine's online state.  Engine callbacks write it and the flows that must
+// wait for the network before sending a request read it from their own goroutines, so it is atomic, and it wakes
+// those waiters whenever it changes rather than having them poll.
+type networkStatus struct {
+	state   atomic.Int32
+	mutex   sync.Mutex
+	changed chan struct{} // closed and replaced on every change
+}
+
+func newNetworkStatus() *networkStatus {
+	return &networkStatus{changed: make(chan struct{})}
+}
+
+func (ns *networkStatus) set(state int32) {
+	ns.state.Store(state)
+	ns.mutex.Lock()
+	close(ns.changed)
+	ns.changed = make(chan struct{})
+	ns.mutex.Unlock()
+}
+
+func (ns *networkStatus) online() bool {
+	return ns.state.Load() == networkStateOnline
+}
+
+// awaitOnline blocks until the network is online, or until the given channel closes because the user has left the
+// view that was waiting, and reports which happened
+func (ns *networkStatus) awaitOnline(left <-chan struct{}) bool {
+	for !ns.online() {
+		ns.mutex.Lock()
+		changed := ns.changed
+		ns.mutex.Unlock()
+		select {
+		case <-changed:
+		case <-left:
+			return false
+		}
+	}
+	return true
+}
 
 const setupStepInit = 0
 const setupStepProfile = 1
@@ -102,6 +145,7 @@ type state struct {
 	profile               *user
 	settings              chat.Settings
 	currentView           int
+	viewLeft              chan struct{} // closed when the view on screen changes, then replaced
 	viewStack             []view
 	activeThread          chat.ID
 	initialStateSet       bool
@@ -109,7 +153,7 @@ type state struct {
 	focused               bool
 	active                bool
 	anotherDeviceActive   bool
-	networkState          int
+	networkState          *networkStatus
 	setupStep             int
 	threadSearch          string
 }
@@ -127,7 +171,8 @@ func Main() {
 		state: &state{
 			focused:      true,
 			active:       true,
-			networkState: networkStateStarting,
+			networkState: newNetworkStatus(),
+			viewLeft:     make(chan struct{}),
 			viewStack:    []view{},
 		},
 	}
@@ -809,11 +854,11 @@ func (ui *ui) NetworkOnline() {
 		}
 	}
 	fyne.Do(func() { ui.widgets.networkOfflineWarning.Hide() })
-	ui.state.networkState = networkStateOnline
+	ui.state.networkState.set(networkStateOnline)
 }
 
 func (ui *ui) NetworkOffline() {
-	ui.state.networkState = networkStateOffline
+	ui.state.networkState.set(networkStateOffline)
 	fyne.DoAndWait(func() {
 		ui.widgets.networkOfflineWarning.SetText("network connection lost, reconnecting...")
 		ui.widgets.networkOfflineWarning.Show()

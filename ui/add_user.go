@@ -6,7 +6,6 @@ import (
 	"image"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -114,6 +113,7 @@ func (ui *ui) buildAddUser() {
 	}
 
 	ui.widgets.addUser.shareButton = widget.NewButton("Share", func() {
+		stopScanningFor(viewTypeAddUser)
 		ui.widgets.addUser.shareButton.Importance = widget.HighImportance
 		ui.widgets.addUser.shareButton.Refresh()
 		ui.widgets.addUser.scanButton.Importance = widget.MediumImportance
@@ -124,11 +124,6 @@ func (ui *ui) buildAddUser() {
 	})
 	ui.widgets.addUser.shareButton.Importance = widget.HighImportance
 	ui.widgets.addUser.scanButton = widget.NewButton("Scan", func() {
-		if cameraSupported() && !cameraIsRunning {
-			go ui.processCameraFramesForAddUser(startCameraPreview())
-			cameraIsRunning = true
-			cameraRunningFor = viewTypeAddUser
-		}
 		ui.widgets.addUser.scanButton.Importance = widget.HighImportance
 		ui.widgets.addUser.scanButton.Refresh()
 		ui.widgets.addUser.shareButton.Importance = widget.MediumImportance
@@ -136,6 +131,7 @@ func (ui *ui) buildAddUser() {
 
 		ui.containers.addUserContent.Objects = []fyne.CanvasObject{ui.containers.scanUser}
 		ui.containers.addUserContent.Refresh()
+		ui.scanForAddUser()
 		if !cameraSupported() {
 			ui.window.Canvas().Focus(ui.widgets.addUser.scanEntry)
 		}
@@ -166,18 +162,18 @@ func (ui *ui) buildScanUser() {
 	ui.widgets.addUser.scanEntry.OnSubmitted = func(str string) {
 		ui.widgets.addUser.progressBar.Start()
 		ui.widgets.addUser.progressBar.Show()
+		left := ui.untilViewChanges()
 		go func() {
-			if ui.state.networkState == networkStateStarting || ui.state.networkState == networkStateOffline {
+			if !ui.state.networkState.online() {
 				fyne.Do(func() {
 					ui.widgets.addUser.currentStep.Text = "Waiting for network..."
 					ui.widgets.addUser.currentStep.Refresh()
 					ui.widgets.addUser.currentStep.Show()
 				})
-				for {
-					time.Sleep(500 * time.Millisecond) // TODO: use a callback for this?
-					if ui.state.networkState == networkStateOnline {
-						break
-					}
+				if !ui.state.networkState.awaitOnline(left) {
+					// The user left before the network came up, so nothing is sent
+					fyne.Do(ui.resetAddUserRequest)
+					return
 				}
 			}
 
@@ -195,17 +191,8 @@ func (ui *ui) buildScanUser() {
 				})
 			} else {
 				fyne.Do(func() {
-					ui.widgets.addUser.scanEntry.Text = ""
-					ui.widgets.addUser.progressBar.Hide()
-					ui.widgets.addUser.currentStep.Hide()
-					ui.containers.scanUser.Refresh()
-					ui.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), ui.window), func() {
-						if cameraSupported() && !cameraIsRunning {
-							go ui.processCameraFramesForAddUser(startCameraPreview())
-							cameraIsRunning = true
-							cameraRunningFor = viewTypeAddUser
-						}
-					})
+					ui.resetAddUserRequest()
+					ui.showDialog(dialog.NewError(errors.New("Error sending friend request: "+err.Error()), ui.window), ui.scanForAddUser)
 				})
 			}
 		}()
@@ -235,10 +222,7 @@ func (ui *ui) buildScanUser() {
 					continue
 				}
 				fyne.Do(func() {
-					if cameraIsRunning {
-						stopCameraPreview()
-						cameraIsRunning = false
-					}
+					stopScanningFor(viewTypeAddUser)
 					ui.widgets.addUser.scanEntry.SetText(text)
 					ui.widgets.addUser.scanEntry.OnSubmitted(text)
 				})
@@ -312,18 +296,32 @@ func (ui *ui) UserAdded(u chat.User) {
 func (ui *ui) AddUserRequestRejected(peer string) {
 	fyne.DoAndWait(func() {
 		// Back to where the request started: clear the progress, and scan again once the error has been read
-		ui.widgets.addUser.scanEntry.Text = ""
-		ui.widgets.addUser.progressBar.Hide()
-		ui.widgets.addUser.currentStep.Hide()
-		ui.containers.scanUser.Refresh()
-		ui.showDialog(dialog.NewError(errors.New("Friend request rejected, make sure you scan the device quickly"), ui.window), func() {
-			if cameraSupported() && !cameraIsRunning {
-				go ui.processCameraFramesForAddUser(startCameraPreview())
-				cameraIsRunning = true
-				cameraRunningFor = viewTypeAddUser
-			}
-		})
+		ui.resetAddUserRequest()
+		ui.showDialog(dialog.NewError(errors.New("Friend request rejected, make sure you scan the device quickly"), ui.window), ui.scanForAddUser)
 	})
+}
+
+// resetAddUserRequest returns the add user view to how it was before a request was submitted
+func (ui *ui) resetAddUserRequest() {
+	ui.widgets.addUser.scanEntry.Text = ""
+	ui.widgets.addUser.progressBar.Hide()
+	ui.widgets.addUser.currentStep.Hide()
+	ui.containers.scanUser.Refresh()
+}
+
+// scanForAddUser starts the camera for the add user view, but only while that view is on screen with its scan tab
+// showing: a dialog dismissed after the user has moved on must not turn the camera on somewhere else
+func (ui *ui) scanForAddUser() {
+	if !cameraSupported() || cameraIsRunning || ui.state.currentView != viewTypeAddUser {
+		return
+	}
+	showing := ui.containers.addUserContent.Objects
+	if len(showing) != 1 || showing[0] != ui.containers.scanUser {
+		return
+	}
+	go ui.processCameraFramesForAddUser(startCameraPreview())
+	cameraIsRunning = true
+	cameraRunningFor = viewTypeAddUser
 }
 
 // processCameraFramesForAddUser shows each preview frame and offers it to the QR scanner, until the camera stops

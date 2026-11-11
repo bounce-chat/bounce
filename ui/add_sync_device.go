@@ -6,7 +6,6 @@ import (
 	"image"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -97,6 +96,7 @@ func (ui *ui) buildDisplaySyncString() {
 	)
 
 	ui.widgets.addSyncDevice.standardHeader = widget.NewButton("Standard", func() {
+		stopScanningFor(cameraRunningForNewEncryptedDevice)
 		ui.widgets.addSyncDevice.standardHeader.Importance = widget.HighImportance
 		ui.widgets.addSyncDevice.standardHeader.Refresh()
 		ui.widgets.addSyncDevice.encryptedHeader.Importance = widget.MediumImportance
@@ -107,11 +107,6 @@ func (ui *ui) buildDisplaySyncString() {
 	})
 	ui.widgets.addSyncDevice.standardHeader.Importance = widget.HighImportance
 	ui.widgets.addSyncDevice.encryptedHeader = widget.NewButton("Encrypted", func() {
-		if cameraSupported() && !cameraIsRunning {
-			go ui.processCameraFramesForNewEncryptedDevice(startCameraPreview())
-			cameraIsRunning = true
-			cameraRunningFor = cameraRunningForNewEncryptedDevice
-		}
 		ui.widgets.addSyncDevice.encryptedHeader.Importance = widget.HighImportance
 		ui.widgets.addSyncDevice.encryptedHeader.Refresh()
 		ui.widgets.addSyncDevice.standardHeader.Importance = widget.MediumImportance
@@ -119,6 +114,7 @@ func (ui *ui) buildDisplaySyncString() {
 
 		ui.containers.addSyncDeviceContent.Objects = []fyne.CanvasObject{ui.containers.inputEncryptedSyncString}
 		ui.containers.addSyncDeviceContent.Refresh()
+		ui.scanForEncryptedDevice()
 		if !cameraSupported() {
 			ui.window.Canvas().Focus(ui.widgets.addSyncDevice.encryptedEntry)
 		}
@@ -169,18 +165,18 @@ func (ui *ui) buildInputEncryptedSyncString() {
 	ui.widgets.addSyncDevice.encryptedEntry.OnSubmitted = func(str string) {
 		ui.widgets.addSyncDevice.progressBar.Start()
 		ui.widgets.addSyncDevice.progressBar.Show()
+		left := ui.untilViewChanges()
 		go func() {
-			if ui.state.networkState == networkStateStarting || ui.state.networkState == networkStateOffline {
+			if !ui.state.networkState.online() {
 				fyne.Do(func() {
 					ui.widgets.addSyncDevice.currentStep.Text = "Waiting for network..."
 					ui.widgets.addSyncDevice.currentStep.Refresh()
 					ui.widgets.addSyncDevice.currentStep.Show()
 				})
-				for {
-					time.Sleep(500 * time.Millisecond) // TODO: use a callback for this?
-					if ui.state.networkState == networkStateOnline {
-						break
-					}
+				if !ui.state.networkState.awaitOnline(left) {
+					// The user left before the network came up, so nothing is sent
+					fyne.Do(ui.resetEncryptedDeviceRequest)
+					return
 				}
 			}
 
@@ -192,17 +188,8 @@ func (ui *ui) buildInputEncryptedSyncString() {
 			err := ui.bounce.RequestToManageEncryptedDevice(strings.TrimSpace(str))
 			fyne.Do(func() {
 				if err != nil {
-					ui.widgets.addSyncDevice.encryptedEntry.Text = ""
-					ui.widgets.addSyncDevice.progressBar.Hide()
-					ui.widgets.addSyncDevice.currentStep.Hide()
-					ui.containers.scanUser.Refresh()
-					ui.showDialog(dialog.NewError(errors.New("Error sending management request: "+err.Error()), ui.window), func() {
-						if cameraSupported() && !cameraIsRunning {
-							go ui.processCameraFramesForNewEncryptedDevice(startCameraPreview())
-							cameraIsRunning = true
-							cameraRunningFor = cameraRunningForNewEncryptedDevice
-						}
-					})
+					ui.resetEncryptedDeviceRequest()
+					ui.showDialog(dialog.NewError(errors.New("Error sending management request: "+err.Error()), ui.window), ui.scanForEncryptedDevice)
 				} else {
 					ui.widgets.addSyncDevice.currentStep.Text = "Waiting for response..."
 					ui.widgets.addSyncDevice.currentStep.Refresh()
@@ -236,10 +223,7 @@ func (ui *ui) buildInputEncryptedSyncString() {
 					continue
 				}
 				fyne.Do(func() {
-					if cameraIsRunning {
-						stopCameraPreview()
-						cameraIsRunning = false
-					}
+					stopScanningFor(cameraRunningForNewEncryptedDevice)
 					ui.widgets.addSyncDevice.encryptedEntry.SetText(text)
 					ui.widgets.addSyncDevice.encryptedEntry.OnSubmitted(text)
 				})
@@ -304,14 +288,33 @@ func (ui *ui) EncryptedDeviceAdded() {
 
 func (ui *ui) EncryptedDeviceRejected() {
 	fyne.DoAndWait(func() {
-		ui.showDialog(dialog.NewError(errors.New("Request to manage a new encrypted device was rejected"), ui.window), func() {
-			if cameraSupported() && !cameraIsRunning {
-				go ui.processCameraFramesForNewEncryptedDevice(startCameraPreview())
-				cameraIsRunning = true
-				cameraRunningFor = cameraRunningForNewEncryptedDevice
-			}
-		})
+		ui.resetEncryptedDeviceRequest()
+		ui.showDialog(dialog.NewError(errors.New("Request to manage a new encrypted device was rejected"), ui.window), ui.scanForEncryptedDevice)
 	})
+}
+
+// resetEncryptedDeviceRequest returns the encrypted device tab to how it was before a request was submitted
+func (ui *ui) resetEncryptedDeviceRequest() {
+	ui.widgets.addSyncDevice.encryptedEntry.Text = ""
+	ui.widgets.addSyncDevice.progressBar.Hide()
+	ui.widgets.addSyncDevice.currentStep.Hide()
+	ui.containers.inputEncryptedSyncString.Refresh()
+}
+
+// scanForEncryptedDevice starts the camera for the encrypted device tab, but only while the sync device view is on
+// screen with that tab showing: a dialog dismissed after the user has moved on must not turn the camera on
+// somewhere else
+func (ui *ui) scanForEncryptedDevice() {
+	if !cameraSupported() || cameraIsRunning || ui.state.currentView != viewTypeDisplaySyncString {
+		return
+	}
+	showing := ui.containers.addSyncDeviceContent.Objects
+	if len(showing) != 1 || showing[0] != ui.containers.inputEncryptedSyncString {
+		return
+	}
+	go ui.processCameraFramesForNewEncryptedDevice(startCameraPreview())
+	cameraIsRunning = true
+	cameraRunningFor = cameraRunningForNewEncryptedDevice
 }
 
 // processCameraFramesForNewEncryptedDevice shows each preview frame and offers it to the QR scanner, until the

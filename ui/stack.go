@@ -51,22 +51,36 @@ type dialogWithCallback struct {
 	callback func()
 }
 
+// stopScanningFor stops the camera if it is running for the given owner, once that owner's scanner is no longer
+// showing: the view changed, or a tab without the scanner was selected
+func stopScanningFor(owner int) {
+	if cameraSupported() && cameraIsRunning && cameraRunningFor == owner {
+		stopCameraPreview()
+		cameraIsRunning = false
+	}
+}
+
+// untilViewChanges returns a channel that is closed when the user leaves the view on screen, for work started from
+// a view that should stop once the view is gone.  Call it on the UI thread, where the current view is known.
+func (ui *ui) untilViewChanges() <-chan struct{} {
+	return ui.state.viewLeft
+}
+
 func (ui *ui) setContent(viewType int, view fyne.CanvasObject) {
-	if cameraSupported() {
-		if viewType != viewTypeAddUser && cameraIsRunning && cameraRunningFor == viewTypeAddUser {
-			stopCameraPreview()
-			cameraIsRunning = false
-		}
-		if viewType != viewTypeNewSyncDevice && cameraIsRunning && cameraRunningFor == viewTypeNewSyncDevice {
-			stopCameraPreview()
-			cameraIsRunning = false
-		}
-		if viewType != viewTypeDisplaySyncString && cameraIsRunning && cameraRunningFor == cameraRunningForNewEncryptedDevice {
-			stopCameraPreview()
-			cameraIsRunning = false
-		}
+	if viewType != viewTypeAddUser {
+		stopScanningFor(viewTypeAddUser)
+	}
+	if viewType != viewTypeNewSyncDevice {
+		stopScanningFor(viewTypeNewSyncDevice)
+	}
+	if viewType != viewTypeDisplaySyncString {
+		stopScanningFor(cameraRunningForNewEncryptedDevice)
 	}
 
+	if viewType != ui.state.currentView {
+		close(ui.state.viewLeft)
+		ui.state.viewLeft = make(chan struct{})
+	}
 	ui.state.currentView = viewType
 	ui.window.SetContent(view)
 }

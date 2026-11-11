@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
-	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -103,10 +102,7 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 					continue
 				}
 				fyne.Do(func() {
-					if cameraIsRunning {
-						stopCameraPreview()
-						cameraIsRunning = false
-					}
+					stopScanningFor(viewTypeNewSyncDevice)
 					ui.widgets.newSyncDevice.syncStringEntry.SetText(text)
 					ui.widgets.newSyncDevice.syncStringEntry.OnSubmitted(text)
 				})
@@ -227,11 +223,35 @@ func (ui *ui) showNewSyncDevice() {
 	ui.widgets.newSyncDevice.currentStep.Text = ""
 	ui.widgets.newSyncDevice.currentStep.Refresh()
 
-	if cameraSupported() && !cameraIsRunning {
-		go ui.processCameraFramesForNewSyncDevice(startCameraPreview())
-		cameraIsRunning = true
-		cameraRunningFor = viewTypeNewSyncDevice
+	ui.scanForNewSyncDevice()
+}
+
+// resetNewSyncDeviceRequest returns the new sync device view to how it was before a sync string was submitted
+func (ui *ui) resetNewSyncDeviceRequest() {
+	ui.state.initialSyncIncomplete = false
+	ui.widgets.newSyncDevice.infiniteProgressBar.Hide()
+	ui.widgets.newSyncDevice.progressBar.Hide()
+	ui.widgets.newSyncDevice.currentStep.Text = ""
+	ui.widgets.newSyncDevice.currentStep.Refresh()
+	ui.widgets.newSyncDevice.currentStep.Hide()
+	ui.widgets.newSyncDevice.syncStringEntry.Text = ""
+	ui.widgets.newSyncDevice.syncStringEntry.Refresh()
+	ui.widgets.newSyncDevice.backButton.Enable()
+	ui.widgets.newSyncDevice.syncStringInput.Show()
+}
+
+// scanForNewSyncDevice starts the camera for the new sync device view, but only while it is on screen and waiting
+// for a sync string: a dialog dismissed after the user has moved on must not turn the camera on somewhere else
+func (ui *ui) scanForNewSyncDevice() {
+	if !cameraSupported() || cameraIsRunning || ui.state.currentView != viewTypeNewSyncDevice {
+		return
 	}
+	if !ui.widgets.newSyncDevice.syncStringInput.Visible() {
+		return
+	}
+	go ui.processCameraFramesForNewSyncDevice(startCameraPreview())
+	cameraIsRunning = true
+	cameraRunningFor = viewTypeNewSyncDevice
 }
 
 func (ui *ui) buildNewSyncDevice() {
@@ -258,18 +278,18 @@ func (ui *ui) buildNewSyncDevice() {
 		ui.state.initialSyncIncomplete = true
 		// TODO: change logo to loading version
 		ui.widgets.newSyncDevice.currentStep.Show()
+		left := ui.untilViewChanges()
 		go func() {
-			if ui.state.networkState == networkStateStarting || ui.state.networkState == networkStateOffline {
+			if !ui.state.networkState.online() {
 				fyne.Do(func() {
 					ui.widgets.newSyncDevice.currentStep.Text = "Waiting for network..."
 					ui.widgets.newSyncDevice.currentStep.Refresh()
 					ui.widgets.newSyncDevice.infiniteProgressBar.Show()
 				})
-				for {
-					time.Sleep(500 * time.Millisecond) // TODO: use a callback for this?
-					if ui.state.networkState == networkStateOnline {
-						break
-					}
+				if !ui.state.networkState.awaitOnline(left) {
+					// The user left before the network came up, so nothing is sent
+					fyne.Do(ui.resetNewSyncDeviceRequest)
+					return
 				}
 			}
 
@@ -287,21 +307,8 @@ func (ui *ui) buildNewSyncDevice() {
 				})
 			} else {
 				fyne.Do(func() {
-					ui.state.initialSyncIncomplete = false
-					ui.widgets.newSyncDevice.infiniteProgressBar.Hide()
-					ui.widgets.newSyncDevice.currentStep.Text = ""
-					ui.widgets.newSyncDevice.currentStep.Hide()
-					ui.widgets.newSyncDevice.syncStringEntry.Text = ""
-					ui.widgets.newSyncDevice.syncStringEntry.Refresh()
-					ui.widgets.newSyncDevice.backButton.Enable()
-					ui.widgets.newSyncDevice.syncStringInput.Show()
-					ui.showDialog(dialog.NewError(errors.New("Error sending sync request: "+err.Error()), ui.window), func() {
-						if cameraSupported() && !cameraIsRunning {
-							go ui.processCameraFramesForNewSyncDevice(startCameraPreview())
-							cameraIsRunning = true
-							cameraRunningFor = viewTypeNewSyncDevice
-						}
-					})
+					ui.resetNewSyncDeviceRequest()
+					ui.showDialog(dialog.NewError(errors.New("Error sending sync request: "+err.Error()), ui.window), ui.scanForNewSyncDevice)
 				})
 			}
 		}()
@@ -340,20 +347,8 @@ func (ui *ui) SyncDeviceRequestAccepted(profile chat.User, devices []chat.Device
 
 func (ui *ui) SyncDeviceRequestRejected(peer string) {
 	fyne.DoAndWait(func() {
-		ui.showDialog(dialog.NewError(errors.New("Sync request rejected, make sure you scan the device quickly"), ui.window), func() {
-			if cameraSupported() && !cameraIsRunning {
-				go ui.processCameraFramesForNewSyncDevice(startCameraPreview())
-				cameraIsRunning = true
-				cameraRunningFor = viewTypeNewSyncDevice
-			}
-		})
-		ui.widgets.newSyncDevice.currentStep.Text = ""
-		ui.widgets.newSyncDevice.currentStep.Refresh()
-		ui.widgets.newSyncDevice.currentStep.Hide()
-		ui.widgets.newSyncDevice.infiniteProgressBar.Hide()
-		ui.widgets.newSyncDevice.progressBar.Hide()
-		ui.widgets.newSyncDevice.backButton.Enable()
-		ui.widgets.newSyncDevice.syncStringInput.Show()
+		ui.resetNewSyncDeviceRequest()
+		ui.showDialog(dialog.NewError(errors.New("Sync request rejected, make sure you scan the device quickly"), ui.window), ui.scanForNewSyncDevice)
 	})
 }
 
