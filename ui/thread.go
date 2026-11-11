@@ -290,9 +290,11 @@ func (ui *ui) MessageSeen(id chat.ID) {
 
 	if !item.isSeen() {
 		item.markSeen()
-		if item.countsAsUnread() {
+		if item.countsAsUnread() && item.getAuthor() != ui.state.profile.id {
 			fyne.DoAndWait(func() {
-				t.chatHistoryScroll().unread -= 1
+				if t.chatHistoryScroll().unread > 0 {
+					t.chatHistoryScroll().unread -= 1
+				}
 				t.chatHistoryScroll().updateUnreadCounter()
 				t.chatHistoryScroll().Refresh()
 				ui.containers.threads.Refresh()
@@ -436,6 +438,7 @@ func (ui *ui) displayThread(t thread) {
 	if !opened && !isInvite {
 		t.chatHistoryScroll().scrollToLastRead()
 		t.chatHistoryScroll().disableSeenTracking = false
+		t.chatHistoryScroll().Refresh()
 	}
 
 	if !isInvite {

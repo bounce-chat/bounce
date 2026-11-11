@@ -222,25 +222,42 @@ func (ch *chatHistory) getItem(index int) threadable {
 }
 
 func (ch *chatHistory) deleteItem(id chat.ID) bool {
-	found := false
-	location := 0
+	location := -1
 	for i, itemID := range ch.ids {
 		if itemID == id {
-			found = true
 			location = i
 			break
 		}
 	}
-
-	if found {
-		ch.ids = append(ch.ids[:location], ch.ids[location+1:]...)
-		ch.heights = append(ch.heights[:location], ch.heights[location+1:]...)
-		ch.Refresh()
+	if location == -1 {
+		ch.messages.remove(id)
+		return false
 	}
 
+	item := ch.getItem(location)
+	if item.countsAsUnread() && !item.isSeen() && item.getAuthor() != ch.myID && ch.unread > 0 {
+		ch.unread -= 1
+		ch.updateUnreadCounter()
+	}
+
+	ch.ids = append(ch.ids[:location], ch.ids[location+1:]...)
+	if location < len(ch.heights) {
+		ch.heights = append(ch.heights[:location], ch.heights[location+1:]...)
+	}
+	delete(ch.added, id)
+	delete(ch.seenTracking, id)
 	ch.messages.remove(id)
 
-	return found
+	// The bubbles either side may have been merged with the one removed
+	if location > 0 {
+		ch.setMergeMode(location-1, true)
+	}
+	if location < len(ch.ids) {
+		ch.setMergeMode(location, true)
+	}
+
+	ch.Refresh()
+	return true
 }
 
 func (ch *chatHistory) isLastItem(id chat.ID) bool {
@@ -404,6 +421,9 @@ func (ch *chatHistory) seen(index int) {
 		ch.seenTracking[id] = true
 
 		item := ch.getItem(index)
+		if item.isSeen() {
+			return
+		}
 		item.markSeen()
 		if item.countsAsUnread() && !(item.getAuthor() == ch.myID) {
 			if ch.unread > 0 {
@@ -787,17 +807,15 @@ func (chl *chatHistoryLayout) offsetUpdated(pos fyne.Position) {
 
 	if pos.Y == chl.ch.contentHeight()-chl.ch.scroller.Size().Height {
 		chl.ch.reportScrolledDown(true)
-		if chl.ch.unread > 0 {
+		if chl.ch.unread > 0 && !chl.ch.disableSeenTracking {
 			chl.ch.markAllAsReadCallback()
 			chl.ch.unread = 0
 			chl.ch.updateUnreadCounter()
 
 			for index, id := range chl.ch.ids {
-				if !chl.ch.disableSeenTracking {
-					item := chl.ch.getItem(index)
-					item.markSeen()
-					chl.ch.seenTracking[id] = true
-				}
+				item := chl.ch.getItem(index)
+				item.markSeen()
+				chl.ch.seenTracking[id] = true
 			}
 		}
 	} else {
