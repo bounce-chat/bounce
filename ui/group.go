@@ -292,13 +292,9 @@ func (ui *ui) getEditUserDialog(g *group, userID chat.ID) (dialog.Dialog, func()
 		widget.NewButton("Direct Message", func() {
 			dm, ok := ui.threads.getDM(u.id)
 			if !ok {
-				ui.NewDirectMessage(chat.User{
-					ID:   u.id,
-					Name: u.getDisplayName(),
-				})
-				dm, ok = ui.threads.getDM(u.id)
-				if !ok {
-					log.Fatal("DM doesn't exist immediately after creation")
+				dm = ui.openDM(u)
+				if dm == nil {
+					return
 				}
 			}
 

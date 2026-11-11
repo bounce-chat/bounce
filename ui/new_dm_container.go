@@ -101,7 +101,7 @@ func (ui *ui) refreshAllUsersDMLinks() {
 				func() {
 					dm, ok := ui.threads.getDM(u.id)
 					if !ok {
-						dm = ui.openAndPopulateDM(u)
+						dm = ui.openDM(u)
 						if dm == nil {
 							return
 						}

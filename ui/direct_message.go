@@ -1186,13 +1186,21 @@ func (ui *ui) getOrReloadDM(id chat.ID) (*directMessage, bool, error) {
 		if !ok {
 			return nil, false, errUnknownUser
 		}
-		fyne.DoAndWait(func() { ui.openAndPopulateDM(u) })
+		fyne.DoAndWait(func() { ui.openDM(u) })
 		dm, ok = ui.threads.getDM(id)
-		ui.bounce.SetOpenDM(u.id, true)
 		reloaded = true
 	}
 
 	return dm, reloaded, nil
+}
+
+// Open DM and broadcast sync frame instructing all other devices to open as well
+func (ui *ui) openDM(u *user) *directMessage {
+	dm := ui.openAndPopulateDM(u)
+	if dm != nil {
+		go ui.bounce.SetOpenDM(u.id, true)
+	}
+	return dm
 }
 
 func (ui *ui) openAndPopulateDM(u *user) *directMessage {
@@ -1252,7 +1260,6 @@ func (ui *ui) openAndPopulateDM(u *user) *directMessage {
 		}
 	}
 	ui.populateInitialItems(dm, tis)
-	ui.threads.add(u.id, dm)
 	ui.containers.threads.Refresh()
 	for _, fp := range state.FileProgress {
 		ui.FileDownloadProgress(fp.ID, fp.Progress)
@@ -1260,8 +1267,6 @@ func (ui *ui) openAndPopulateDM(u *user) *directMessage {
 	for _, d := range state.Drafts {
 		go ui.UpdateDraft(d)
 	}
-
-	go ui.bounce.SetOpenDM(u.id, true)
 
 	return dm
 }

@@ -88,7 +88,7 @@ type chatBubble struct {
 	window                fyne.Window
 	threads               *threadStore
 	users                 *userStore
-	openAndPopulateDM     func(*user) *directMessage
+	openDM                func(*user) *directMessage
 	showEditDMContainer   func(*directMessage)
 	showDialog            func(dialog.Dialog, func())
 	newChatBubbleTemplate func() *chatBubble
@@ -275,7 +275,7 @@ func (ui *ui) newChatBubbleTemplate() *chatBubble {
 		newChatBubbleTemplate: ui.newChatBubbleTemplate,
 		threads:               ui.threads,
 		users:                 ui.users,
-		openAndPopulateDM:     ui.openAndPopulateDM,
+		openDM:                ui.openDM,
 		showEditDMContainer:   ui.showEditDMContainer,
 		openThread: func(dm *directMessage) {
 			ui.displayThread(dm)
@@ -405,7 +405,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 						}).Error("cannot open DM for unknown user")
 						return
 					}
-					dm = cb.openAndPopulateDM(u)
+					dm = cb.openDM(u)
 				}
 				if fyne.CurrentDevice().IsMobile() {
 					cb.mobileBack()
@@ -424,7 +424,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 						}).Error("cannot open DM for unknown user")
 						return
 					}
-					dm = cb.openAndPopulateDM(u)
+					dm = cb.openDM(u)
 				}
 				if fyne.CurrentDevice().IsMobile() {
 					cb.mobileBack()
