@@ -742,7 +742,7 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 
 		for _, d := range state.Drafts {
 			t, ok := ui.threads.get(d.Thread)
-			if ok {
+			if _, isInvite := t.(*invite); ok && !isInvite {
 				t.getEntry().Text = d.Text
 				t.getEntry().Refresh()
 

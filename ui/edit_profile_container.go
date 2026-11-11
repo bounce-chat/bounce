@@ -319,7 +319,7 @@ func (ui *ui) buildEditProfile() {
 		} else {
 			ui.showMainContainer()
 			t, ok := ui.threads.get(ui.state.activeThread)
-			if ok {
+			if ok && t.getEntry() != nil {
 				ui.window.Canvas().Focus(t.getEntry())
 			}
 		}

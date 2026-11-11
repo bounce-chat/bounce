@@ -458,6 +458,9 @@ func (ui *ui) ShowTypingIndicator(userID, threadID chat.ID) {
 		}).Warn("thread not found showing typing indicators")
 		return
 	}
+	if _, isInvite := t.(*invite); isInvite {
+		return
+	}
 
 	u, ok := ui.users.get(userID)
 	if !ok {
@@ -485,6 +488,9 @@ func (ui *ui) HideTypingIndicator(userID, threadID chat.ID) {
 		}).Warn("thread not found hiding typing indicators")
 		return
 	}
+	if _, isInvite := t.(*invite); isInvite {
+		return
+	}
 
 	fyne.DoAndWait(func() {
 		t.getTypingIndicator().hideUser(userID)
@@ -498,6 +504,9 @@ func (ui *ui) HideTypingIndicator(userID, threadID chat.ID) {
 func (ui *ui) UpdateDraft(d chat.Draft) {
 	t, ok := ui.threads.get(d.Thread)
 	if !ok {
+		return
+	}
+	if _, isInvite := t.(*invite); isInvite {
 		return
 	}
 
