@@ -675,7 +675,7 @@ func (b *Bounce) createOrDeleteEncryptedSyncDevices(addresses []string) {
 						"error": err.Error(),
 					}).Error("database error creating encrypted sync device")
 				} else {
-					b.ui.DeviceAdded(Device{
+					go b.ui.DeviceAdded(Device{
 						ID:        esd.ID,
 						Address:   addr,
 						CreatedAt: esd.CreatedAt,

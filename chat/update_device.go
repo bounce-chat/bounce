@@ -402,7 +402,7 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 				"error": err.Error(),
 			}).Fatal("error deleting unauthorized group")
 		}
-		b.ui.GroupDeleted(GroupDeleted{
+		go b.ui.GroupDeleted(GroupDeleted{
 			Group: gc.ID,
 			Actor: NilID,
 		})
@@ -424,7 +424,7 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 				"error": err.Error(),
 			}).Fatal("error deleting unauthorized group message")
 		}
-		b.ui.DeleteItem(gm.ID)
+		go b.ui.DeleteItem(gm.ID)
 	}
 
 	// Find any update groups signed by this device after it was revoked and delete them, then re-do group consensus
@@ -462,7 +462,7 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 				"error": err.Error(),
 			}).Fatal("error deleting unauthorized update user")
 		}
-		b.ui.DeleteItem(uu.ID)
+		go b.ui.DeleteItem(uu.ID)
 	}
 	for target, _ := range usersToUpdate {
 		b.updateUserState(target)
