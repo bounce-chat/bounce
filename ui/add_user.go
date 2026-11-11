@@ -311,7 +311,18 @@ func (ui *ui) UserAdded(u chat.User) {
 
 func (ui *ui) AddUserRequestRejected(peer string) {
 	fyne.DoAndWait(func() {
-		ui.showDialog(dialog.NewError(errors.New("Friend request rejected, make sure you scan the device quickly"), ui.window), nil)
+		// Back to where the request started: clear the progress, and scan again once the error has been read
+		ui.widgets.addUser.scanEntry.Text = ""
+		ui.widgets.addUser.progressBar.Hide()
+		ui.widgets.addUser.currentStep.Hide()
+		ui.containers.scanUser.Refresh()
+		ui.showDialog(dialog.NewError(errors.New("Friend request rejected, make sure you scan the device quickly"), ui.window), func() {
+			if cameraSupported() && !cameraIsRunning {
+				go ui.processCameraFramesForAddUser(startCameraPreview())
+				cameraIsRunning = true
+				cameraRunningFor = viewTypeAddUser
+			}
+		})
 	})
 }
 

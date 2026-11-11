@@ -199,8 +199,8 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 }
 
 func (b *Bounce) RequestToAddUser(offer string) error {
-	// Parse the offer
-	parts := strings.Split(offer, ":")
+	// Parse the offer, which may have been pasted with surrounding whitespace
+	parts := strings.Split(strings.TrimSpace(offer), ":")
 	if len(parts) != 2 {
 		return errors.New("invalid friend request string")
 	}

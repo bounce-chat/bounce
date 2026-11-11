@@ -279,7 +279,7 @@ func (ui *ui) buildNewSyncDevice() {
 				ui.widgets.newSyncDevice.infiniteProgressBar.Show()
 			})
 
-			err := ui.bounce.RequestToSync(str)
+			err := ui.bounce.RequestToSync(strings.TrimSpace(str))
 			if err == nil {
 				fyne.Do(func() {
 					ui.widgets.newSyncDevice.currentStep.Text = "Waiting for sync response..."

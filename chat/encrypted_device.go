@@ -287,7 +287,7 @@ func (b *Bounce) RequestToManageEncryptedDevice(data string) error {
 		log.Error("cannot manage encrypted device before profile creation")
 	}
 
-	parts := strings.Split(data, ":")
+	parts := strings.Split(strings.TrimSpace(data), ":")
 	if len(parts) != 2 {
 		return errors.New("invalid data")
 	}

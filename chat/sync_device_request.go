@@ -235,8 +235,8 @@ func (b *Bounce) RequestToSync(data string) error {
 		return errors.New("profile already exists")
 	}
 
-	// Parse the offer
-	parts := strings.Split(data, ":")
+	// Parse the offer, which may have been pasted with surrounding whitespace
+	parts := strings.Split(strings.TrimSpace(data), ":")
 	if len(parts) != 2 {
 		return errors.New("invalid sync data")
 	}
