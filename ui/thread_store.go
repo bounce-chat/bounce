@@ -54,6 +54,10 @@ func (ts *threadStore) remove(id chat.ID) {
 		}
 	}
 
+	if g, ok := ts.threads[id].(*group); ok {
+		g.users.release()
+		g.pendingUsers.release()
+	}
 	delete(ts.threads, id)
 
 	prunedNgrams := map[string][]thread{}

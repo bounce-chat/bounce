@@ -255,6 +255,7 @@ func (ui *ui) showDialog(d dialog.Dialog, cleanup func()) {
 			if cleanup != nil {
 				cleanup()
 			}
+			delete(hookedDialogs, d)
 		})
 		hookedDialogs[d] = true
 	}

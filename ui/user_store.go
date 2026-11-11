@@ -109,6 +109,20 @@ func (store *userStore) empty() {
 
 	store.userMap = make(map[chat.ID]*user)
 	store.userList = []*user{}
+	store.ngrams = make(map[string][]*user)
+}
+
+// Remove this user store from the global set of all user stores
+func (store *userStore) release() {
+	allUserStoresMutex.Lock()
+	defer allUserStoresMutex.Unlock()
+
+	for i, us := range allUserStores {
+		if us == store {
+			allUserStores = append(allUserStores[:i], allUserStores[i+1:]...)
+			return
+		}
+	}
 }
 
 func (store *userStore) search(str string) []*user {

@@ -112,6 +112,16 @@ func (ms *messageStore) remove(id chat.ID) {
 
 	// Delete from index by author
 	delete(ms.messagesByAuthor[m.getAuthor()], id)
+
+	// Delete from index by attachment file ID
+	if cbd, ok := m.(*chatBubbleData); ok {
+		for _, ia := range cbd.imageAttachments {
+			delete(ms.messagesByFileAttachment, ia.ID)
+		}
+		for _, fa := range cbd.fileAttachments {
+			delete(ms.messagesByFileAttachment, fa.ID)
+		}
+	}
 }
 
 func (ms *messageStore) renameUser(userID chat.ID, name, initials string) {
