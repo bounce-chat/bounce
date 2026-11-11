@@ -77,9 +77,7 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 
 			err = ui.bounce.SetGroupImage(g.id, data)
 			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error setting group image")
+				ui.showDialog(dialog.NewError(errors.New("error setting group image: "+err.Error()), ui.window), nil)
 			}
 		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
 	})
@@ -287,31 +285,41 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 		switchedTypingIndicatorEnabled := (typingIndicatorSelection == off && g.typingIndicatorsEnabled) || (typingIndicatorSelection == on && !g.typingIndicatorsEnabled)
 		// Set values if needed
 		if switchedReadReceiptDefault || switchedReadReceiptEnabled {
+			var err error
 			if defaultReadReceiptSelected {
-				ui.bounce.SetGroupReadReceiptSettings(g.id, false, true)
+				err = ui.bounce.SetGroupReadReceiptSettings(g.id, false, true)
 			} else if readReceiptSelection == on {
-				ui.bounce.SetGroupReadReceiptSettings(g.id, true, true)
+				err = ui.bounce.SetGroupReadReceiptSettings(g.id, true, true)
 			} else if readReceiptSelection == off {
-				ui.bounce.SetGroupReadReceiptSettings(g.id, true, false)
+				err = ui.bounce.SetGroupReadReceiptSettings(g.id, true, false)
 			} else {
 				log.WithFields(log.Fields{
 					"group_id":  g.id,
 					"selection": readReceiptSelection,
 				}).Error("invalid selection for read receipt override")
 			}
+			if err != nil {
+				ui.showDialog(dialog.NewError(errors.New("error setting read receipt preference: "+err.Error()), ui.window), nil)
+				return
+			}
 		}
 		if switchedTypingIndicatorDefault || switchedTypingIndicatorEnabled {
+			var err error
 			if defaultTypingIndicatorSelected {
-				ui.bounce.SetGroupTypingIndicatorSettings(g.id, false, true)
+				err = ui.bounce.SetGroupTypingIndicatorSettings(g.id, false, true)
 			} else if typingIndicatorSelection == on {
-				ui.bounce.SetGroupTypingIndicatorSettings(g.id, true, true)
+				err = ui.bounce.SetGroupTypingIndicatorSettings(g.id, true, true)
 			} else if typingIndicatorSelection == off {
-				ui.bounce.SetGroupTypingIndicatorSettings(g.id, true, false)
+				err = ui.bounce.SetGroupTypingIndicatorSettings(g.id, true, false)
 			} else {
 				log.WithFields(log.Fields{
 					"group_id":  g.id,
 					"selection": typingIndicatorSelection,
 				}).Error("invalid selection for typing indicator override")
+			}
+			if err != nil {
+				ui.showDialog(dialog.NewError(errors.New("error setting typing indicator preference: "+err.Error()), ui.window), nil)
+				return
 			}
 		}
 

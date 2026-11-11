@@ -506,7 +506,7 @@ func TestAFileCannotBeRedefinedUnderItsID(t *testing.T) {
 
 func TestAnIconIsPreparedBeforeWhatCarriesIt(t *testing.T) {
 	me, _, _, _ := createUsersAndGroups(t)
-	image := []byte("\x89PNG\r\n\x1a\nnot really a png but large enough to be a blob")
+	image := onePixelPNG(t)
 
 	// A new group names its icon in the creation, and the icon's file carries the content ID and is attached to the group
 	assert.NoError(t, me.CreateGroup(NewGroup{Name: "Iconic", Image: image, Retention: 3600}))

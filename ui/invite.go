@@ -86,10 +86,14 @@ func (ui *ui) buildNewGroupChatInvite(bounceGroup chat.Group) {
 			return
 		}
 
+		var err error
 		if blockCheck.Checked {
-			ui.bounce.BlockGroup(i.id)
+			err = ui.bounce.BlockGroup(i.id)
 		} else {
-			ui.bounce.RejectInvite(i.id)
+			err = ui.bounce.RejectInvite(i.id)
+		}
+		if err != nil {
+			ui.showDialog(dialog.NewError(err, ui.window), nil)
 		}
 	}, ui.window)
 	rejectButton := widget.NewButton("Reject Group", func() {

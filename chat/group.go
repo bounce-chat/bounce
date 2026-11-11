@@ -185,6 +185,9 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 	var icon *file
 	imagesString := ""
 	if len(ng.Image) > 0 {
+		if !validImage(ng.Image) {
+			return errInvalidImage
+		}
 		var err error
 		icon, err = b.prepareEmbeddedFile(ng.Image, scopeGroupWithInvites, fileTypeGroupImage)
 		if err != nil {

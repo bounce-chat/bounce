@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"bytes"
 	"errors"
+	"image"
 	"io"
 	"strings"
 	"unicode"
@@ -209,6 +211,23 @@ func (ui *ui) buildNewGroup() {
 				return
 			}
 
+			var size int64
+			size, reader, err = fileSizeInReader(reader)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error getting file size")
+				if reader != nil {
+					reader.Close()
+				}
+				return
+			}
+			if size > chat.EmbeddedFileLimit {
+				ui.showDialog(dialog.NewError(errors.New("file is too large"), ui.window), nil)
+				reader.Close()
+				return
+			}
+
 			data, err := io.ReadAll(reader)
 			reader.Close()
 			if err != nil {
@@ -217,8 +236,12 @@ func (ui *ui) buildNewGroup() {
 				}).Debug("error reading new group image")
 				return
 			}
+			if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
+				ui.showDialog(dialog.NewError(errors.New("the selected file is not an image"), ui.window), nil)
+				return
+			}
 
-			// TODO: make sure data is a valid image, allow for editing, etc
+			// TODO: allow for editing, etc
 
 			ui.widgets.newGroup.iconData = data
 			ui.widgets.newGroup.icon.images = []chat.ID{chat.NewID()}
