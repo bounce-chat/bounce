@@ -23,6 +23,10 @@ import (
 
 var addUserScanner = make(chan image.Image)
 
+// Set by the decoder once a QR code has been read from the current preview, so that the frames still arriving
+// until the camera stops are not submitted again; cleared when a new preview starts feeding frames
+var addUserScanned atomic.Bool
+
 type addUser struct {
 	currentStep  *widget.Label
 	progressBar  *widget.ProgressBarInfinite
@@ -222,25 +226,22 @@ func (ui *ui) buildScanUser() {
 		guide.Resize(fyne.Size{Height: size, Width: size})
 		guide.SetMinSize(fyne.Size{Height: size, Width: size})
 
-		var haveResult atomic.Bool
 		go func() {
 			for frame := range addUserScanner {
 				text, err := go_qr.Decode(frame)
-				if err == nil {
-					fyne.Do(func() {
-						if haveResult.Load() {
-							return
-						}
-						haveResult.Store(true)
-						if cameraIsRunning {
-							stopCameraPreview()
-							cameraIsRunning = false
-						}
-						ui.widgets.addUser.scanEntry.SetText(text)
-						ui.widgets.addUser.scanEntry.OnSubmitted(text)
-						haveResult.Store(false)
-					})
+				// The first successful decode of a preview claims it here, on the decoding goroutine, before anything is
+				// queued for the UI thread: the camera keeps delivering frames until that queued closure stops it
+				if err != nil || !addUserScanned.CompareAndSwap(false, true) {
+					continue
 				}
+				fyne.Do(func() {
+					if cameraIsRunning {
+						stopCameraPreview()
+						cameraIsRunning = false
+					}
+					ui.widgets.addUser.scanEntry.SetText(text)
+					ui.widgets.addUser.scanEntry.OnSubmitted(text)
+				})
 			}
 		}()
 
@@ -316,6 +317,7 @@ func (ui *ui) AddUserRequestRejected(peer string) {
 
 // processCameraFramesForAddUser shows each preview frame and offers it to the QR scanner, until the camera stops
 func (ui *ui) processCameraFramesForAddUser(preview <-chan image.Image) {
+	addUserScanned.Store(false)
 	for img := range preview {
 		fyne.Do(func() {
 			if ui.widgets.addUser.videoStream == nil {

@@ -24,6 +24,10 @@ import (
 
 var newSyncDeviceScanner = make(chan image.Image)
 
+// Set by the decoder once a QR code has been read from the current preview, so that the frames still arriving
+// until the camera stops are not submitted again; cleared when a new preview starts feeding frames
+var newSyncDeviceScanned atomic.Bool
+
 type newSyncDevice struct {
 	currentStep         *widget.Label
 	progressBars        *fyne.Container
@@ -90,25 +94,22 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 		guide.Resize(fyne.Size{Height: size, Width: size})
 		guide.SetMinSize(fyne.Size{Height: size, Width: size})
 
-		var haveResult atomic.Bool
 		go func() {
 			for frame := range newSyncDeviceScanner {
 				text, err := go_qr.Decode(frame)
-				if err == nil {
-					fyne.Do(func() {
-						if haveResult.Load() {
-							return
-						}
-						haveResult.Store(true)
-						if cameraIsRunning {
-							stopCameraPreview()
-							cameraIsRunning = false
-						}
-						ui.widgets.newSyncDevice.syncStringEntry.SetText(text)
-						ui.widgets.newSyncDevice.syncStringEntry.OnSubmitted(text)
-						haveResult.Store(false)
-					})
+				// The first successful decode of a preview claims it here, on the decoding goroutine, before anything is
+				// queued for the UI thread: the camera keeps delivering frames until that queued closure stops it
+				if err != nil || !newSyncDeviceScanned.CompareAndSwap(false, true) {
+					continue
 				}
+				fyne.Do(func() {
+					if cameraIsRunning {
+						stopCameraPreview()
+						cameraIsRunning = false
+					}
+					ui.widgets.newSyncDevice.syncStringEntry.SetText(text)
+					ui.widgets.newSyncDevice.syncStringEntry.OnSubmitted(text)
+				})
 			}
 		}()
 
@@ -407,6 +408,7 @@ func (ui *ui) InitialSyncComplete() {
 // processCameraFramesForNewSyncDevice shows each preview frame and offers it to the QR scanner, until the camera
 // stops
 func (ui *ui) processCameraFramesForNewSyncDevice(preview <-chan image.Image) {
+	newSyncDeviceScanned.Store(false)
 	for img := range preview {
 		fyne.Do(func() {
 			if ui.widgets.newSyncDevice.videoStream == nil {
