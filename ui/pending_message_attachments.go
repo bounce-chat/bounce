@@ -77,6 +77,9 @@ func newPendingMessageAttachment(id chat.ID, reader fyne.URIReadCloser, actionCa
 			"id":    id,
 			"error": err.Error(),
 		}).Error("error getting file size")
+		if reader != nil {
+			reader.Close()
+		}
 		return nil, err
 	}
 	sizeString := fileSizeString(size)
@@ -86,7 +89,7 @@ func newPendingMessageAttachment(id chat.ID, reader fyne.URIReadCloser, actionCa
 	blurHash := ""
 	width := 0
 	height := 0
-	if size < chat.EmbeddedFileLimit {
+	if size <= chat.EmbeddedFileLimit {
 		var err error
 		imageBytes := []byte{}
 		if fyne.CurrentDevice().IsMobile() {
@@ -102,6 +105,7 @@ func newPendingMessageAttachment(id chat.ID, reader fyne.URIReadCloser, actionCa
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("error re-opening reader")
+				return nil, err
 			}
 		} else {
 			diskReader, err := os.Open(reader.URI().Path())
@@ -110,16 +114,18 @@ func newPendingMessageAttachment(id chat.ID, reader fyne.URIReadCloser, actionCa
 					"error": err.Error(),
 					"path":  reader.URI().Path(),
 				}).Error("file selected as message attachment cannot be read from disk")
+				reader.Close()
 				return nil, err
 			}
 			imageBytes, err = io.ReadAll(diskReader)
+			diskReader.Close()
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 				}).Error("error reading all from disk")
+				reader.Close()
 				return nil, err
 			}
-			diskReader.Close()
 		}
 
 		img, _, err := image.Decode(bytes.NewReader(imageBytes))
@@ -163,6 +169,7 @@ func newPendingMessageAttachment(id chat.ID, reader fyne.URIReadCloser, actionCa
 				dir := "/data/data/chat.bounce/cache/copied/"
 				err := os.MkdirAll(dir, 0700)
 				if err != nil {
+					reader.Close()
 					return nil, err
 				}
 
@@ -170,24 +177,31 @@ func newPendingMessageAttachment(id chat.ID, reader fyne.URIReadCloser, actionCa
 				path := dir + reader.URI().Name()
 				dst, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 				if err != nil {
+					reader.Close()
 					return nil, err
 				}
 
 				// Copy the data in
 				_, err = io.Copy(dst, reader)
+				dst.Close()
 				if err != nil {
+					os.Remove(path)
+					reader.Close()
 					return nil, err
 				}
 
 				// Create a new URIReadCloser for this file on disk
+				reader.Close()
 				newURI := storage.NewFileURI(path)
 				reader, err = storage.Reader(newURI)
 				if err != nil {
+					os.Remove(path)
 					return nil, err
 				}
 
 				icon = canvas.NewImageFromResource(theme.FileIcon())
 			} else {
+				reader.Close()
 				return nil, errors.New("unsupported URI scheme on this platform")
 			}
 		} else {
@@ -352,15 +366,9 @@ func newPendingMessageAttachments() *pendingMessageAttachments {
 
 func (pmas *pendingMessageAttachments) add(reader fyne.URIReadCloser, refocus func()) error {
 	id := chat.NewID()
-	var newFile *messageAttachment
-	var err error
-	newFile, err = newPendingMessageAttachment(id, reader, func() {
+	newFile, err := newPendingMessageAttachment(id, reader, func() {
 		refocus()
 		pmas.remove(id)
-
-		if newFile.fileSize > chat.EmbeddedFileLimit && runtime.GOOS == "android" {
-			os.Remove(newFile.reader.URI().Path())
-		}
 	})
 	if err == nil {
 		pmas.files = append(pmas.files, newFile)
@@ -369,12 +377,19 @@ func (pmas *pendingMessageAttachments) add(reader fyne.URIReadCloser, refocus fu
 	return err
 }
 
+// remove takes an attachment the user no longer wants out of the pending list, closing the reader that was held
+// open for it and, on android, deleting the copy made of a file too large to embed
 func (pmas *pendingMessageAttachments) remove(id chat.ID) {
 	pruned := []*messageAttachment{}
 
 	for _, file := range pmas.files {
 		if file.id != id {
 			pruned = append(pruned, file)
+			continue
+		}
+		file.reader.Close()
+		if file.fileSize > chat.EmbeddedFileLimit && runtime.GOOS == "android" {
+			os.Remove(file.reader.URI().Path())
 		}
 	}
 	pmas.files = pruned
@@ -471,13 +486,16 @@ func fileSizeString(size int64) string {
 	return fmt.Sprintf("%.1f %s", float64(size)/float64(div), suffixes[exp])
 }
 
+// fileSizeInReader measures the file behind the reader.  On mobile the only way is to read it through, so the
+// reader is reopened afterwards.  On failure the returned reader is whichever one is still open, nil if none is, so
+// the caller can close it.
 func fileSizeInReader(reader fyne.URIReadCloser) (int64, fyne.URIReadCloser, error) {
 	size := int64(0)
 	if fyne.CurrentDevice().IsMobile() {
 		var err error
 		size, err = io.Copy(io.Discard, reader)
 		if err != nil {
-			return 0, nil, err
+			return 0, reader, err
 		}
 		reader.Close()
 		reader, err = storage.Reader(reader.URI())
@@ -487,7 +505,7 @@ func fileSizeInReader(reader fyne.URIReadCloser) (int64, fyne.URIReadCloser, err
 	} else {
 		f, err := os.Stat(reader.URI().Path())
 		if err != nil {
-			return 0, nil, err
+			return 0, reader, err
 		}
 		size = f.Size()
 	}
