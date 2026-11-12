@@ -543,19 +543,35 @@ func (b *Bounce) getGroupCreationsToOffer(address string, userID ID) []frameRefe
 
 	var unsentGroupCreations []groupCreation
 
-	err := b.database.
-		Preload(clause.Associations).
-		Distinct().
-		Select("group_creations.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_creations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeGroupCreation).
-		Joins("JOIN groups ON groups.id = group_creations.id").
-		Joins("JOIN group_users ON groups.id = group_users.group_id JOIN users ON group_users.user_id = users.id").
-		Where("delivery_records.id IS NULL AND (group_users.user_id = ? OR groups.invites LIKE ?)", userID, "%"+userID.String()+"%").
-		Find(&unsentGroupCreations).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error selecting unsent group creations in reference offer")
+	if userID == b.currentUserID() {
+		// Our own devices should know everything we know, so they get every creation we still hold, including the
+		// groups we have since left; the update history of those groups is already offered to them, and without the
+		// creation it could not be verified
+		err := b.database.
+			Select("group_creations.id").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_creations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeGroupCreation).
+			Where("delivery_records.id IS NULL").
+			Find(&unsentGroupCreations).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting unsent group creations in reference offer")
+		}
+	} else {
+		err := b.database.
+			Preload(clause.Associations).
+			Distinct().
+			Select("group_creations.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == group_creations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeGroupCreation).
+			Joins("JOIN groups ON groups.id = group_creations.id").
+			Joins("JOIN group_users ON groups.id = group_users.group_id JOIN users ON group_users.user_id = users.id").
+			Where("delivery_records.id IS NULL AND (group_users.user_id = ? OR groups.invites LIKE ?)", userID, "%"+userID.String()+"%").
+			Find(&unsentGroupCreations).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting unsent group creations in reference offer")
+		}
 	}
 
 	references := []frameReference{}
@@ -735,27 +751,41 @@ func (b *Bounce) getConfirmationsToOffer(address string, userID ID) []frameRefer
 	}
 
 	var unsentConfirmations []confirmation
-	err := b.database.
-		Preload(clause.Associations).
-		Select("confirmations.*").
-		Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == confirmations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeConfirmation).
-		Joins("JOIN update_groups ON update_groups.id == confirmations.update_group_id").
-		Joins("LEFT JOIN group_users ON update_groups.target == group_users.group_id").
-		Where(
-			"delivery_records.id IS NULL AND ((group_users.user_id = ? AND confirmations.custom_scope == ?) OR confirmations.custom_scope IN (?))",
-			userID,
-			NilID,
-			b.database.
-				Model(&customScope{}).
-				Distinct().
-				Select("id").
-				Where("addresses LIKE ?", "%"+address+"%"),
-		).
-		Find(&unsentConfirmations).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error selecting unsent confirmations in reference offer")
+	if userID == b.currentUserID() {
+		// Our own devices get every confirmation we hold, as they do every update group and creation
+		err := b.database.
+			Select("confirmations.id").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == confirmations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeConfirmation).
+			Where("delivery_records.id IS NULL").
+			Find(&unsentConfirmations).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting unsent confirmations in reference offer")
+		}
+	} else {
+		err := b.database.
+			Preload(clause.Associations).
+			Select("confirmations.*").
+			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == confirmations.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeConfirmation).
+			Joins("JOIN update_groups ON update_groups.id == confirmations.update_group_id").
+			Joins("LEFT JOIN group_users ON update_groups.target == group_users.group_id").
+			Where(
+				"delivery_records.id IS NULL AND ((group_users.user_id = ? AND confirmations.custom_scope == ?) OR confirmations.custom_scope IN (?))",
+				userID,
+				NilID,
+				b.database.
+					Model(&customScope{}).
+					Distinct().
+					Select("id").
+					Where("addresses LIKE ?", "%"+address+"%"),
+			).
+			Find(&unsentConfirmations).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error selecting unsent confirmations in reference offer")
+		}
 	}
 
 	references := []frameReference{}
