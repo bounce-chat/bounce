@@ -11,7 +11,34 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const maximumReferencesPerOffer = 100000
+// A reference offer names at most this many frames.  A peer whose history is larger offers it in parts, flagging each
+// part Incomplete; the receiver asks for the next part once it has drained the current one (see handleCatchUp).  The
+// same number bounds how many of one peer's references the reference engine keeps, so it is also the memory a single
+// peer can tie up there.  A variable so tests can shrink it.
+var maximumReferencesPerOffer = 100000
+
+// The reference engine holds at most this many references across every peer, however many peers there are
+var maximumReferences = 1000000
+
+// Peers whose last reference offer to us was a part of a larger one.  Guarded by its mutex.
+var incompleteOffers = map[string]bool{}
+var incompleteOffersMutex sync.Mutex
+
+func incompleteOfferFrom(peer string) bool {
+	incompleteOffersMutex.Lock()
+	defer incompleteOffersMutex.Unlock()
+	return incompleteOffers[peer]
+}
+
+func setIncompleteOfferFrom(peer string, incomplete bool) {
+	incompleteOffersMutex.Lock()
+	defer incompleteOffersMutex.Unlock()
+	if incomplete {
+		incompleteOffers[peer] = true
+	} else {
+		delete(incompleteOffers, peer)
+	}
+}
 
 var referenceOfferMutexLock sync.Mutex
 var referenceOfferMutexes = map[string]*sync.Mutex{}
@@ -22,6 +49,24 @@ var referenceOfferMutexes = map[string]*sync.Mutex{}
 type referenceOffer struct {
 	ID         ID
 	References []frameReference
+	Incomplete bool // more frames than fit in one offer; ask again once these are handled
+}
+
+// A requestReferenceOffer asks a peer for its next reference offer.  It is sent once an Incomplete offer has been
+// drained, and the peer answers with a fresh offer that naturally leaves out everything delivered since.
+type requestReferenceOffer struct{}
+
+func (rro requestReferenceOffer) getType() uint16 {
+	return typeRequestReferenceOffer
+}
+
+func (rro requestReferenceOffer) getPayload() []byte {
+	return []byte{}
+}
+
+func (b *Bounce) handleRequestReferenceOffer(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
+	go b.sendReferences(peer)
+	return nil, false
 }
 
 func (ro *referenceOffer) getType() uint16 {
@@ -199,9 +244,17 @@ func (b *Bounce) getReferenceOfferFor(address string) *referenceOffer {
 		references = append(references, rf.offer(b, address, userID)...)
 	}
 
+	// The registry order puts what everything else depends on first, so the first part of a large history is the
+	// one worth having first
+	incomplete := false
+	if len(references) > maximumReferencesPerOffer {
+		references = references[:maximumReferencesPerOffer]
+		incomplete = true
+	}
 	return &referenceOffer{
 		ID:         NewID(),
 		References: references,
+		Incomplete: incomplete,
 	}
 }
 
@@ -1376,6 +1429,7 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		}).Warn("reference offer names more frames than we will consider at once, ignoring the rest")
 		ro.References = ro.References[:maximumReferencesPerOffer]
 	}
+	setIncompleteOfferFrom(peer, ro.Incomplete)
 
 	references, acks := b.processReferenceOffer(peer, ro.References)
 

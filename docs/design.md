@@ -74,6 +74,8 @@ In order to prevent re-delivering frames, Bounce keeps track of which devices ha
 
 The reference offer is the first step in the reference flow.  Every time a device opens a socket to another device, it checks if it has any frames to offer that peer.  To generate a reference offer, a device checks every frame that the peer is authorized to have, and if there is no record of that peer acking the frame in the past, a reference to the frame is included in the reference offer.
 
+A reference offer has a maximum number of frames it can hold, and when there are more frames than that to include, the reference offer is sorted, truncated, and marked as incomplete.  Peers handling incomplete reference offers mark that peer as having more references waiting, and after the reference flow completes with the first offer, it asks for the next offer to be sent.
+
 ### Reference Request
 
 When handing a reference offer, a device checks each reference and sees if it has the frame in the database.  If it already has the frame, it includes the reference in an ack that gets sent back to the peer.  If it doesn't have the frame, it includes the reference in a reference request that gets sent back to the peer.

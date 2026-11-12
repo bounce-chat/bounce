@@ -19,6 +19,7 @@ var referenceRequestMutex sync.Mutex
 
 var referenceStateOffered = 0
 var referenceStateRequested = 1
+var referenceStateRefused = 2 // the peer served it and we would not take it; do not ask them for it again
 
 // TODO: might make sense to dynamically retry depending on size of offer
 // How long to wait for an ack before re-sending a reference offer or request, or treating a request as failed.
@@ -103,26 +104,47 @@ func (b *Bounce) keepReferenceDatabasePruned() {
 			return
 		case <-databasePruningTicker.C:
 		}
+		b.pruneReferences()
+	}
+}
 
-		//b.pruningDatabase.Add(1)
-		fiveMinutesAgo := time.Now().Add(-5 * time.Minute).Unix()
+// pruneReferences forgets what departed peers offered us.  There is no time limit: a peer that is still connected may
+// be mid way through a sync of any size, and its references live until the frames arrive or its sockets go.  The
+// reference offer delivery records are only there to dedupe acks, so those are cleared after a few minutes.
+func (b *Bounce) pruneReferences() {
+	var peers []string
+	err := b.referenceDatabase.Model(&frameReference{}).Distinct("peer").Pluck("peer", &peers).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error listing peers with frame references")
+	}
+	for _, peer := range peers {
+		// Every connected peer has a pool entry, whether or not we know whose device it is; this is a peek rather than
+		// getRemoteDevice so that a departed peer does not get an empty entry made for it
+		b.devicePool.deviceMutex.Lock()
+		rd, inPool := b.devicePool.devices[peer]
+		b.devicePool.deviceMutex.Unlock()
+		if inPool && rd.connectedSockets() > 0 {
+			continue
+		}
 
-		err := b.referenceDatabase.Where("created_at < ?", fiveMinutesAgo).Delete(&frameReference{}).Error
+		err := b.referenceDatabase.Where("peer = ?", peer).Delete(&frameReference{}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("error pruning frame references")
+			}).Fatal("error pruning frame references of a departed peer")
 		}
-
-		err = b.referenceDatabase.Where("created_at < ?", fiveMinutesAgo).Delete(&deliveryRecord{}).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error pruning delivery records from reference database")
-		}
-		//b.pruningDatabase.Done()
+		setIncompleteOfferFrom(peer, false)
 	}
 
+	fiveMinutesAgo := time.Now().Add(-5 * time.Minute).Unix()
+	err = b.referenceDatabase.Where("created_at < ?", fiveMinutesAgo).Delete(&deliveryRecord{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error pruning delivery records from reference database")
+	}
 }
 
 // only load things from the reference offer that we don't have, the ones
@@ -136,17 +158,55 @@ func (b *Bounce) loadReferenceOffer(peer string, ro []frameReference) {
 	}).Debug("reference engine learning about a reference offer")
 	now := time.Now().Unix()
 
+	// Every peer is allowed one offer's worth of references at a time, and the engine as a whole a fixed number, so
+	// that a peer naming frames it never serves cannot grow this table without bound.  A frame offered again only
+	// has its timestamp refreshed: a request already in flight is not made twice.
+	var fromPeer, total int64
+	b.referenceDatabase.Model(&frameReference{}).Where("peer = ?", peer).Count(&fromPeer)
+	b.referenceDatabase.Model(&frameReference{}).Count(&total)
+	room := min(int64(maximumReferencesPerOffer)-fromPeer, int64(maximumReferences)-total)
+	refresh := clause.OnConflict{
+		Columns:   []clause.Column{{Name: "frame_id"}, {Name: "type"}, {Name: "peer"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{"last_action": now}),
+	}
+	dropped := 0
 	for _, fr := range ro {
 		fr.State = referenceStateOffered
 		fr.Peer = peer
 		fr.LastAction = now
 
-		err := b.referenceDatabase.Clauses(clause.OnConflict{DoNothing: true}).Create(&fr).Error
+		if room < int64(len(ro)) {
+			// Near the allowance, so tell a refresh from a new reference and count only the new ones
+			refreshed := b.referenceDatabase.Model(&frameReference{}).
+				Where("frame_id = ? AND type = ? AND peer = ?", fr.FrameID, fr.Type, peer).
+				Update("last_action", now)
+			if refreshed.Error != nil {
+				log.WithFields(log.Fields{
+					"error": refreshed.Error.Error(),
+				}).Fatal("error refreshing reference from offer")
+			}
+			if refreshed.RowsAffected > 0 {
+				continue
+			}
+			if room <= 0 {
+				dropped++
+				continue
+			}
+			room--
+		}
+
+		err := b.referenceDatabase.Clauses(refresh).Create(&fr).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Fatal("error loading new reference offer into database")
 		}
+	}
+	if dropped > 0 {
+		log.WithFields(log.Fields{
+			"peer":    peer,
+			"dropped": dropped,
+		}).Warn("peer offered more references than it may have outstanding, ignoring the rest")
 	}
 
 	b.makeReferenceRequests()
@@ -205,7 +265,7 @@ func (b *Bounce) requestOutstandingReferencesFrom(peer string) {
 	defer referenceRequestMutex.Unlock()
 
 	var outstanding []frameReference
-	err := b.referenceDatabase.Where("peer = ?", peer).Find(&outstanding).Error
+	err := b.referenceDatabase.Where("peer = ? AND state != ?", peer, referenceStateRefused).Find(&outstanding).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -222,7 +282,7 @@ func (b *Bounce) requestOutstandingReferencesFrom(peer string) {
 	go b.sendDirect(peer, &referenceRequest{References: outstanding})
 	err = b.referenceDatabase.
 		Table("frame_references").
-		Where("peer = ?", peer).
+		Where("peer = ? AND state != ?", peer, referenceStateRefused).
 		Updates(map[string]interface{}{
 			"state":       referenceStateRequested,
 			"last_action": time.Now().Unix(),
@@ -231,6 +291,35 @@ func (b *Bounce) requestOutstandingReferencesFrom(peer string) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error updating frame references after requesting the next stage")
+	}
+}
+
+// outstandingReferencesFrom counts the frames a peer has offered that we still want from them
+func (b *Bounce) outstandingReferencesFrom(peer string) int64 {
+	var outstanding int64
+	err := b.referenceDatabase.Model(&frameReference{}).Where("peer = ? AND state != ?", peer, referenceStateRefused).Count(&outstanding).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error counting outstanding frame references")
+	}
+	return outstanding
+}
+
+// refuseReference records that a peer served us a frame we would not take, so that we never ask them for it again.
+// It is not acked: a client that learns to take the frame later can still be offered it by the peer.
+func (b *Bounce) refuseReference(peer string, frameID ID, frameType uint16) {
+	err := b.referenceDatabase.
+		Table("frame_references").
+		Where("frame_id = ? AND type = ? AND peer = ?", frameID, frameType, peer).
+		Updates(map[string]interface{}{
+			"state":       referenceStateRefused,
+			"last_action": time.Now().Unix(),
+		}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marking a frame reference refused")
 	}
 }
 
