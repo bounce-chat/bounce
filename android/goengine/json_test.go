@@ -84,7 +84,6 @@ func TestEveryUIDTORoundTrips(t *testing.T) {
 		{"FileProgress", chat.FileProgress{ID: id, Progress: 0.5}, &chat.FileProgress{}},
 		{"UpdateDMRetention", chat.UpdateDMRetention{ID: id, Retention: 1}, &chat.UpdateDMRetention{}},
 		{"UpdateDMClearHistory", chat.UpdateDMClearHistory{ID: id}, &chat.UpdateDMClearHistory{}},
-		{"UpdateDMSetAlias", chat.UpdateDMSetAlias{ID: id, Alias: "A"}, &chat.UpdateDMSetAlias{}},
 		{"UpdateGroupName", chat.UpdateGroupName{ID: id, Name: "N"}, &chat.UpdateGroupName{}},
 		{"UpdateGroupRetention", chat.UpdateGroupRetention{ID: id}, &chat.UpdateGroupRetention{}},
 		{"UpdateGroupInviteUser", chat.UpdateGroupInviteUser{ID: id}, &chat.UpdateGroupInviteUser{}},

@@ -159,8 +159,6 @@ func (u *uiAdapter) DMChatHistoryCleared(v chat.UpdateDMClearHistory) {
 	u.emit("DMChatHistoryCleared", &v)
 }
 
-func (u *uiAdapter) UserAliased(v chat.UpdateDMSetAlias) { u.emit("UserAliased", &v) }
-
 // --- group chats -------------------------------------------------------------
 
 func (u *uiAdapter) OpenNewGroupChat(g chat.Group) { u.emit("OpenNewGroupChat", &g) }

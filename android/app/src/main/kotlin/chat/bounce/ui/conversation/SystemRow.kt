@@ -149,18 +149,6 @@ fun systemEventText(event: ConversationItem.SystemEvent): String {
             } else {
                 stringResource(R.string.conv_sys_user_image_changed, actor)
             }
-
-        // An alias is local, so the person is named by the name they gave rather
-        // than by the alias that is being set on top of it.
-        SystemEventKind.ALIAS_SET -> {
-            val aliased = ChatRepository.userById(event.targetUserId ?: event.actorId)
-                ?.name?.takeIf { it.isNotBlank() } ?: target
-            if (event.name.isBlank()) {
-                stringResource(R.string.conv_sys_alias_cleared, aliased)
-            } else {
-                stringResource(R.string.conv_sys_alias_set, aliased, event.name)
-            }
-        }
     }
 }
 

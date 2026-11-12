@@ -213,14 +213,6 @@ data class UpdateDMClearHistory(
 )
 
 @Serializable
-data class UpdateDMSetAlias(
-    @SerialName("ID") val id: String = "",
-    @SerialName("User") val user: String = "",
-    @SerialName("Timestamp") val timestamp: Long = 0,
-    @SerialName("Alias") val alias: String = "",
-)
-
-@Serializable
 data class UpdateGroupRetention(
     @SerialName("ID") val id: String = "",
     @SerialName("Thread") val thread: String = "",

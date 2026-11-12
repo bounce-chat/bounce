@@ -20,7 +20,6 @@ import chat.bounce.engine.ReadReceipt
 import chat.bounce.engine.Settings
 import chat.bounce.engine.UpdateDMClearHistory
 import chat.bounce.engine.UpdateDMRetention
-import chat.bounce.engine.UpdateDMSetAlias
 import chat.bounce.engine.UpdateGroupClearHistory
 import chat.bounce.engine.UpdateGroupInviteUser
 import chat.bounce.engine.UpdateGroupName
@@ -195,7 +194,6 @@ class EngineEventPump(
 
             "UserNameUpdated" -> handleUserNameUpdated(decode(payload))
             "UserImageUpdated" -> handleUserImageUpdated(decode(payload))
-            "UserAliased" -> handleUserAliased(decode(payload))
 
             // --- messages -------------------------------------------------------
             "DisplayDirectMessage" ->
@@ -434,23 +432,6 @@ class EngineEventPump(
                     kind = SystemEventKind.USER_IMAGE_CHANGED,
                     actorId = update.user,
                     targetUserId = update.user,
-                )
-            }
-        )
-    }
-
-    private fun handleUserAliased(update: UpdateDMSetAlias) {
-        repo.userById(update.user)?.let { repo.upsertUser(it.copy(alias = update.alias)) }
-        repo.addItems(
-            repo.threadsForUserUpdate(update.user).map { threadId ->
-                ConversationItem.SystemEvent(
-                    id = update.id,
-                    threadId = threadId,
-                    timestamp = update.timestamp,
-                    kind = SystemEventKind.ALIAS_SET,
-                    actorId = update.user,
-                    targetUserId = update.user,
-                    name = update.alias,
                 )
             }
         )

@@ -99,19 +99,31 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 		return
 	}
 
-	// Rename the user
-	u.name = chatUser.Name
-	u.alias = chatUser.Alias
-	u.notes = chatUser.Notes
-	u.images = chatUser.Images
-	u.blocked = chatUser.Blocked
-	u.setInitials()
+	// Everything the UI thread reads about this user changes together, on the UI thread: the shared user record,
+	// the search indexes keyed by its display name, and the widgets that show it.  The thread list is read on that
+	// thread too, so its entry is replaced where no refresh can find the thread missing.
+	fyne.DoAndWait(func() {
+		u.name = chatUser.Name
+		u.alias = chatUser.Alias
+		u.notes = chatUser.Notes
+		u.images = chatUser.Images
+		u.blocked = chatUser.Blocked
+		u.setInitials()
 
-	ui.messages.renameUser(chatUser.ID, u.getDisplayName(), u.initials)
+		ui.messages.renameUser(chatUser.ID, u.getDisplayName(), u.initials)
+		ui.messages.updateUserImage(chatUser.ID, chatUser.Images)
 
-	dm, ok := ui.threads.getDM(chatUser.ID)
-	if ok {
-		fyne.DoAndWait(func() {
+		// Re-add the user to the stores they are in, to regenerate their search tokens
+		allUserStoresMutex.Lock()
+		for _, us := range allUserStores {
+			if us.contains(chatUser.ID) {
+				us.remove(chatUser.ID)
+				us.add(u)
+			}
+		}
+		allUserStoresMutex.Unlock()
+
+		if dm, ok := ui.threads.getDM(chatUser.ID); ok {
 			dm.user.images = chatUser.Images
 			dm.editIcon.images = chatUser.Images
 			dm.editIcon.setBackground()
@@ -137,7 +149,6 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 			dm.headerIcon.setString(u.initials)
 			dm.editIcon.setString(u.initials)
 			dm.buttonData.setName(u.getDisplayName(), u.initials)
-			ui.containers.threads.Refresh()
 
 			if u.blocked {
 				dm.entry.Disable()
@@ -146,56 +157,29 @@ func (ui *ui) SetUserState(chatUser chat.User) {
 			}
 
 			dm.chatHistoryScroll().Refresh()
-		})
-	}
 
-	ui.threads.rangeFunc(func(t thread) {
-		if g, ok := t.(*group); ok {
-			if g.users.contains(chatUser.ID) {
-				fyne.DoAndWait(func() { g.chatHistoryScroll().Refresh() })
-			}
+			// Redo the thread's search tokens under its new name
+			items := ui.threads.associatedItems(chatUser.ID)
+			ui.threads.remove(chatUser.ID)
+			ui.threads.add(chatUser.ID, dm)
+			ui.threads.bulkAssociate(dm, items)
 		}
-	})
 
-	// Re-add user to any user stores they are in, in order to regenerate ngram search tokens
-	allUserStoresMutex.Lock()
-	for _, us := range allUserStores {
-		if us.contains(chatUser.ID) {
-			us.remove(chatUser.ID)
-			us.add(u)
-		}
-	}
-	allUserStoresMutex.Unlock()
-
-	// Redo the ngrams for the DM in the thread store
-	t, ok := ui.threads.getDM(chatUser.ID)
-	if ok {
-		items := ui.threads.associatedItems(chatUser.ID)
-		ui.threads.remove(chatUser.ID)
-		ui.threads.add(chatUser.ID, t)
-		ui.threads.bulkAssociate(t, items)
-	}
-
-	// Set the images
-	if chatUser.ID == ui.state.profile.id {
-		ui.widgets.editProfile.profileIcon.images = u.images
-		fyne.DoAndWait(func() {
+		if chatUser.ID == ui.state.profile.id {
+			ui.widgets.editProfile.profileIcon.images = u.images
 			ui.widgets.editProfile.profileIcon.setBackground()
 			ui.widgets.editProfile.profileIcon.Refresh()
-		})
-	}
+		}
 
-	// Update the chat bubbles that have an icon
-	ui.messages.updateUserImage(chatUser.ID, chatUser.Images)
-	if chatUser.ID != ui.state.profile.id {
+		// Every bubble of theirs in a group shows the name and icon
 		ui.threads.rangeFunc(func(t thread) {
-			if g, ok := t.(*group); ok {
-				if g.users.contains(chatUser.ID) {
-					fyne.DoAndWait(func() { g.chatHistoryScroll().Refresh() })
-				}
+			if g, ok := t.(*group); ok && g.users.contains(chatUser.ID) {
+				g.chatHistoryScroll().Refresh()
 			}
 		})
-	}
+
+		ui.containers.threads.Refresh()
+	})
 }
 
 func (ui *ui) UserNameUpdated(uuun chat.UpdateUserUpdateName) {
@@ -273,48 +257,6 @@ func (ui *ui) UserImageUpdated(uuui chat.UpdateUserUpdateImage) {
 						log.WithFields(log.Fields{
 							"error": err.Error(),
 						}).Error("error creating thread item for user image change")
-					} else {
-						fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
-					}
-				}
-			}
-		})
-	}
-}
-
-func (ui *ui) UserAliased(udsa chat.UpdateDMSetAlias) {
-	if udsa.User == ui.state.profile.id {
-		ui.threads.rangeFunc(func(t thread) {
-			ti, err := ui.userAliasSet(udsa)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error creating thread item for user alias set")
-			} else {
-				fyne.DoAndWait(func() { ui.appendThreadItem(t, ti) })
-			}
-		})
-	} else {
-		dm, ok := ui.threads.getDM(udsa.User)
-		if ok {
-			ti, err := ui.userAliasSet(udsa)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error creating thread item for user alias set")
-			} else {
-				fyne.DoAndWait(func() { ui.appendThreadItem(dm, ti) })
-			}
-		}
-
-		ui.threads.rangeFunc(func(t thread) {
-			if g, ok := t.(*group); ok {
-				if g.users.contains(udsa.User) {
-					ti, err := ui.userAliasSet(udsa)
-					if err != nil {
-						log.WithFields(log.Fields{
-							"error": err.Error(),
-						}).Error("error creating thread item for user alias set")
 					} else {
 						fyne.DoAndWait(func() { ui.appendThreadItem(g, ti) })
 					}

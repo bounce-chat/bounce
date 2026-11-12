@@ -699,7 +699,7 @@ func (b *Bounce) informUIOfUpdateDM(ud *updateDM) {
 	case updateDMTypeSetOpen:
 		// No UI status changes for opening and closing DMs
 	case updateDMTypeSetAlias:
-		b.informUIUpdateDMSetAlias(u, ud)
+		// An alias is a private note to ourselves; the new display name reaches the UI through SetUserState
 	case updateDMTypeSetNotes:
 		// No UI status changes for notes
 	case updateDMTypeSetBlocked:
@@ -761,15 +761,6 @@ func (b *Bounce) informUIUpdateDMSetClearBefore(u user, ud *updateDM) {
 		Actor:     ud.Actor,
 		Timestamp: ud.Timestamp,
 		ClearTime: clearBefore,
-	})
-}
-
-func (b *Bounce) informUIUpdateDMSetAlias(u user, ud *updateDM) {
-	b.ui.UserAliased(UpdateDMSetAlias{
-		ID:        ud.ID,
-		User:      u.ID,
-		Timestamp: ud.Timestamp,
-		Alias:     string(ud.Data),
 	})
 }
 

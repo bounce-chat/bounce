@@ -1122,7 +1122,7 @@ object ChatRepository {
     /**
      * Which threads a profile-level change about [userId] should appear in.
      *
-     * Split out because live UserNameUpdated / UserImageUpdated / UserAliased
+     * Split out because live UserNameUpdated / UserImageUpdated
      * events need exactly the same fan-out as the initial load.
      */
     fun threadsForUserUpdate(userId: String): List<String> = ThreadScope(

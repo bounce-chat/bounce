@@ -2,6 +2,8 @@ package chat
 
 import (
 	"bytes"
+	"image"
+	"image/png"
 	"io"
 	"strings"
 	"testing"
@@ -502,6 +504,14 @@ func TestAFileCannotBeRedefinedUnderItsID(t *testing.T) {
 	elsewhere := f
 	elsewhere.AttachedTo = NewID()
 	assert.Equal(t, f.ID, elsewhere.generateID())
+}
+
+// onePixelPNG is the smallest real image the engine accepts as an icon, now that creations validate theirs
+func onePixelPNG(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	assert.NoError(t, png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 1, 1))))
+	return buf.Bytes()
 }
 
 func TestAnIconIsPreparedBeforeWhatCarriesIt(t *testing.T) {

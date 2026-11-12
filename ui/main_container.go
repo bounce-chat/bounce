@@ -81,6 +81,11 @@ func (ui *ui) buildMainContainer() {
 			b, ok := bo.(*threadButton)
 			if ok {
 				ts := ui.threads.search(ui.state.threadSearch)
+				if int(id) >= len(ts) {
+					// The list shrank between asking its length and drawing this row; the refresh that follows
+					// a removal redraws it with the right rows
+					return
+				}
 				data := ts[int(id)].getButtonData()
 				b.setContent(data)
 				b.threadImage.setBackground()

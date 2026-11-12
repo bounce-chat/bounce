@@ -123,7 +123,6 @@ enum class SystemEventKind {
     GROUP_IMAGE_CHANGED,
     USER_RENAMED,
     USER_IMAGE_CHANGED,
-    ALIAS_SET,
 }
 
 /**
