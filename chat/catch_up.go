@@ -334,7 +334,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	// If we didn't know who this device belonged to at first, check to make sure we know who it belongs to
 	// after handling all of the frames
 	if !encrypted && !deviceExists {
-		if _, deviceExists = b.getDeviceFromAddress(peer); deviceExists {
+		if dev, deviceExists = b.getDeviceFromAddress(peer); deviceExists {
 			// An unknown device sent a catch up that included frames that prove we should add the device,
 			// since we didn't initially offer references to this device we should now do so now that we
 			// have context on what this device is
