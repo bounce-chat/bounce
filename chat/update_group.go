@@ -953,7 +953,15 @@ func (b *Bounce) RevokeInvite(groupID, userID ID) error {
 }
 
 func (b *Bounce) AcceptInvite(groupID ID) error {
-	b.acceptAllUsers(groupID)
+	gs, err := b.currentGroupState(groupID)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":    err.Error(),
+			"group_id": groupID,
+		}).Error("error getting current group state")
+	} else {
+		b.acceptUsersOf(gs)
+	}
 
 	return b.applyAndBroadcastUpdateGroup(&updateGroup{
 		Actor:     b.currentUserID(),
@@ -964,16 +972,8 @@ func (b *Bounce) AcceptInvite(groupID ID) error {
 	})
 }
 
-func (b *Bounce) acceptAllUsers(groupID ID) {
-	gs, err := b.currentGroupState(groupID)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error":    err.Error(),
-			"group_id": groupID,
-		}).Error("error getting current group state")
-		return
-	}
-
+// acceptUsersOf marks everyone in a group state, members and invitees, as accepted contacts
+func (b *Bounce) acceptUsersOf(gs groupState) {
 	ids := []ID{}
 	for _, userID := range gs.users {
 		ids = append(ids, userID)
@@ -982,11 +982,10 @@ func (b *Bounce) acceptAllUsers(groupID ID) {
 		ids = append(ids, userID)
 	}
 
-	err = b.database.Table("users").Where("id IN (?)", ids).Updates(map[string]interface{}{"accepted": true}).Error
+	err := b.database.Table("users").Where("id IN (?)", ids).Updates(map[string]interface{}{"accepted": true}).Error
 	if err != nil {
 		log.WithFields(log.Fields{
-			"error":    err.Error(),
-			"group_id": groupID,
+			"error": err.Error(),
 		}).Error("error marking all users in a group as accepted")
 	}
 }

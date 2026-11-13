@@ -67,7 +67,7 @@ func (b *Bounce) reloadGroupConsensus(groupID ID) error {
 
 	// Get all update groups for this group
 	var ugs []updateGroup
-	err = b.database.Preload(clause.Associations).Where("target = ? AND custom_scope = ?", groupID, NilID).Order("timestamp asc").Find(&ugs).Order("id").Find(&ugs).Error
+	err = b.database.Preload(clause.Associations).Where("target = ? AND custom_scope = ?", groupID, NilID).Order("timestamp asc, id").Find(&ugs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
@@ -120,7 +120,7 @@ func (b *Bounce) reloadGroupConsensusSince(groupID ID, ts int64) error {
 
 	// Load all updates that are timestamp or newer from the database
 	var ugs []updateGroup
-	err := b.database.Preload(clause.Associations).Where("target = ? AND timestamp >= ? AND custom_scope = ?", groupID, ts, NilID).Order("timestamp asc").Find(&ugs).Order("id").Find(&ugs).Error
+	err := b.database.Preload(clause.Associations).Where("target = ? AND timestamp >= ? AND custom_scope = ?", groupID, ts, NilID).Order("timestamp asc, id").Find(&ugs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
@@ -676,13 +676,13 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 					}).Fatal("database error saving update group")
 				}
 
-				// Push it onto the canonical stack
+				b.acceptUsersOf(finalState)
+				b.broadcast(&accept)
+
 				err = cs.push(accept)
 				if err != nil {
 					log.Error("error pushing group invite auto-accept into canonical stack")
 				} else {
-					// Broadcast it and recursively set the state
-					// TODO: doesn't work because of the return below
 					return b.setRollbacksApplicationsAndGroupState(groupID, cs, append(ugs, accept))
 				}
 			}
