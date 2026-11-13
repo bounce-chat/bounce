@@ -958,7 +958,7 @@ func (ui *ui) setGroupMutedUntilButton(g *group) {
 		g.muteButton.OnTapped = func() {
 			var muteMenu dialog.Dialog
 			content := container.NewHBox(
-				widget.NewLabel("Muted until "+mutedTimestampString(g.notificationsMutedUntil)),
+				widget.NewLabel("Muted until "+timestampString(g.notificationsMutedUntil, time.Now())),
 				widget.NewButton("Unmute Now", func() {
 					err := ui.bounce.SetGroupMutedUntil(g.id, 0)
 					if err != nil {

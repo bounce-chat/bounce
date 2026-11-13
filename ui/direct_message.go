@@ -1098,7 +1098,7 @@ func (ui *ui) setDMMutedUntilButton(dm *directMessage) {
 		dm.muteButton.OnTapped = func() {
 			var muteMenu dialog.Dialog
 			content := container.NewHBox(
-				widget.NewLabel("Muted until "+mutedTimestampString(dm.notificationsMutedUntil)),
+				widget.NewLabel("Muted until "+timestampString(dm.notificationsMutedUntil, time.Now())),
 				widget.NewButton("Unmute Now", func() {
 					err := ui.bounce.SetDMMutedUntil(dm.user.id, 0)
 					if err != nil {

@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/bounce-chat/bounce/chat"
+	"time"
 )
 
 type statusChange struct {
@@ -53,7 +54,7 @@ func (st *statusChange) setData(id chat.ID, timestamp int64, str string) {
 		st.action.Segments[0].(*widget.TextSegment).Style.TextStyle,
 	)
 	st.actionSize.Width += theme.Padding() * 2
-	st.time.Text = timestampString(timestamp)
+	st.time.Text = timestampString(timestamp, time.Now())
 	st.time.Refresh()
 }
 
@@ -120,7 +121,7 @@ func (str *statusChangeRenderer) Objects() []fyne.CanvasObject {
 
 func (str *statusChangeRenderer) Refresh() {
 	str.st.time.Color = theme.Color(theme.ColorNameForeground)
-	str.st.time.Text = timestampString(str.st.timestamp)
+	str.st.time.Text = timestampString(str.st.timestamp, time.Now())
 	for _, obj := range str.Objects() {
 		obj.Refresh()
 	}

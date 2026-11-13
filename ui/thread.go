@@ -1,8 +1,8 @@
 package ui
 
 import (
+	"math"
 	"sort"
-	"strconv"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -518,72 +518,30 @@ func (ui *ui) UpdateDraft(d chat.Draft) {
 	})
 }
 
-func timestampString(timestamp int64) string {
-	now := time.Now()
-	diff := now.Unix() - timestamp
-	if diff >= 0 && diff < 60 {
+// timestampString renders a time relative to now, for message timestamps and for "muted until" alike: the clock
+// alone on the same calendar day, the weekday within a week in either direction, the date beyond that, and the year
+// only when it differs.  Days are compared as calendar days, so yesterday evening is never shown as a bare clock
+// and a date a year ago is never mistaken for today.
+func timestampString(timestamp int64, now time.Time) string {
+	if diff := now.Unix() - timestamp; diff >= 0 && diff < 60 {
 		return "Now"
 	}
 
-	timestampTime := time.Unix(timestamp, 0)
-	timestring := ""
-	if timestampTime.Year() != now.Year() {
-		timestring = strconv.Itoa(timestampTime.Year())
-	}
-	if timestampTime.Month() != now.Month() {
-		if len(timestring) != 0 {
-			timestring = timestring + " "
-		}
-		timestring = timestring + timestampTime.Format("Jan 2")
-	} else if timestampTime.Day() != now.Day() {
-		if timestampTime.Before(now.Add(time.Duration(-24 * time.Hour))) {
-			if len(timestring) != 0 {
-				timestring = timestring + " "
-			}
-			timestring = timestring + timestampTime.Weekday().String()[0:3]
-			if timestampTime.Before(now.Add(time.Duration(-7 * 24 * time.Hour))) {
-				timestring = timestring + " " + timestampTime.Format("2")
-			}
-		}
+	t := time.Unix(timestamp, 0).In(now.Location())
+	clock := t.Format(time.Kitchen)
+	if t.Year() == now.Year() && t.YearDay() == now.YearDay() {
+		return clock
 	}
 
-	if len(timestring) != 0 {
-		timestring = timestring + " "
+	startOfDay := func(x time.Time) time.Time {
+		return time.Date(x.Year(), x.Month(), x.Day(), 0, 0, 0, 0, x.Location())
 	}
-	timestring = timestring + timestampTime.Format(time.Kitchen)
-
-	return timestring
-}
-
-func mutedTimestampString(timestamp int64) string {
-	now := time.Now()
-	diff := now.Unix() - timestamp
-	if diff >= 0 && diff < 60 {
-		return "Now"
+	days := math.Abs(math.Round(startOfDay(now).Sub(startOfDay(t)).Hours() / 24))
+	if days < 7 {
+		return t.Weekday().String()[:3] + " " + clock
 	}
-
-	timestampTime := time.Unix(timestamp, 0)
-	timestring := ""
-	if timestampTime.Year() != now.Year() {
-		timestring = strconv.Itoa(timestampTime.Year())
+	if t.Year() == now.Year() {
+		return t.Format("Jan 2") + " " + clock
 	}
-	if timestampTime.Month() != now.Month() {
-		if len(timestring) != 0 {
-			timestring = timestring + " "
-		}
-		timestring = timestring + timestampTime.Format("Jan 2")
-	} else if timestampTime.Day() != now.Day() {
-		if len(timestring) != 0 {
-			timestring = timestring + " "
-		}
-		timestring = timestring + timestampTime.Weekday().String()[0:3]
-		timestring = timestring + " " + timestampTime.Format("2")
-	}
-
-	if len(timestring) != 0 {
-		timestring = timestring + " "
-	}
-	timestring = timestring + timestampTime.Format(time.Kitchen)
-
-	return timestring
+	return t.Format("Jan 2 2006") + " " + clock
 }

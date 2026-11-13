@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 
 	"fyne.io/fyne/v2"
@@ -657,7 +658,7 @@ func (cb *chatBubble) setData(m *chatBubbleData) {
 }
 
 func (cb *chatBubble) updateDisplayTime() {
-	cb.timestamp.Text = timestampString(cb.writtenAt)
+	cb.timestamp.Text = timestampString(cb.writtenAt, time.Now())
 }
 
 func (cb *chatBubble) Tapped(e *fyne.PointEvent) {

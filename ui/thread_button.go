@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -270,13 +271,13 @@ func (tb *threadButton) setContent(tbd *threadButtonData) {
 
 	tb.typingIndicator.setUsers(tbd.typing)
 	if len(tb.typingIndicator.icons) == 0 {
-		tb.typingIndicator.typingAnimation.Stop()
+		tb.typingIndicator.stopAnimating()
 		tb.typingIndicator.Hide()
 	} else {
 		tb.draft.Hide()
 		tb.lastMessage.Hide()
 		tb.statusIcons.Hide()
-		tb.typingIndicator.typingAnimation.Start()
+		tb.typingIndicator.startAnimating()
 		tb.typingIndicator.Show()
 	}
 	tb.typingIndicator.updateObjects()
@@ -563,9 +564,7 @@ func (tbd *threadButtonData) setName(name, initials string) {
 }
 
 func (tbd *threadButtonData) setLastMessage(name, text string, status bool) { // TODO: will need to detect when a user's name changes and they are the last message and update it here, or reference by ID
-	if len(text) > 200 {
-		text = text[:200]
-	}
+	text = previewOf(text)
 	tbd.showLastMessageState = status
 	tbd.lastMessageSegmentOne = name + ": "
 	tbd.lastMessageSegmentOneItalic = false
@@ -582,10 +581,18 @@ func (tbd *threadButtonData) setLastAction(text string, status bool) {
 }
 
 func (tbd *threadButtonData) setDraft(text string) {
-	if len(text) > 200 {
-		text = text[:200]
+	tbd.draft = previewOf(text)
+}
+
+// The thread button shows at most this many characters of a message or draft
+const previewRunes = 200
+
+// previewOf shortens text for a thread button, cutting between characters rather than inside one
+func previewOf(text string) string {
+	if utf8.RuneCountInString(text) <= previewRunes {
+		return text
 	}
-	tbd.draft = text
+	return string([]rune(text)[:previewRunes])
 }
 
 func (tbd *threadButtonData) setShowLastMessageState(state int) {

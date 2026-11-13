@@ -26,6 +26,7 @@ type typingIndicator struct {
 	fileGetter          func(chat.ID) ([]byte, error)
 	currentlyTypingUser *widget.RichText
 	typingAnimation     *fyne.Animation
+	animating           bool // Fyne registers a ticker on every Start, so the animation is started and stopped on edges
 	firstTypingDot      *canvas.Circle
 	secondTypingDot     *canvas.Circle
 	thirdTypingDot      *canvas.Circle
@@ -126,7 +127,7 @@ func (ti *typingIndicator) showUser(u *user) {
 	)
 
 	if len(ti.icons) == 1 {
-		ti.typingAnimation.Start()
+		ti.startAnimating()
 		ti.Show()
 	}
 
@@ -153,7 +154,7 @@ func (ti *typingIndicator) hideUser(userID chat.ID) {
 	ti.users = usersWithoutUser
 
 	if len(ti.icons) == 0 {
-		ti.typingAnimation.Stop()
+		ti.stopAnimating()
 		ti.Hide()
 	}
 
@@ -292,4 +293,20 @@ func (tir *typingIndicatorRenderer) Refresh() {
 	for _, obj := range tir.Objects() {
 		obj.Refresh()
 	}
+}
+
+func (ti *typingIndicator) startAnimating() {
+	if ti.animating {
+		return
+	}
+	ti.animating = true
+	ti.typingAnimation.Start()
+}
+
+func (ti *typingIndicator) stopAnimating() {
+	if !ti.animating {
+		return
+	}
+	ti.animating = false
+	ti.typingAnimation.Stop()
 }
