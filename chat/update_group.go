@@ -117,16 +117,28 @@ func (ug *updateGroup) AfterDelete(tx *gorm.DB) error {
 	if ug.ID == NilID {
 		return nil
 	}
-	if ug.CustomScope != NilID {
-		err := tx.Where("id = ?", ug.CustomScope).Delete(&customScope{}).Error
-		if err != nil {
-			return err
-		}
-	}
-
 	err := deleteEach[confirmation](tx, "update_group_id = ?", ug.ID)
 	if err != nil {
 		return err
+	}
+
+	// A deleted group's updates share one custom scope, so it goes only with the last of them
+	if ug.CustomScope != NilID {
+		var updates, confirmations int64
+		err = tx.Model(&updateGroup{}).Where("custom_scope = ? AND id != ?", ug.CustomScope, ug.ID).Count(&updates).Error
+		if err != nil {
+			return err
+		}
+		err = tx.Model(&confirmation{}).Where("custom_scope = ?", ug.CustomScope).Count(&confirmations).Error
+		if err != nil {
+			return err
+		}
+		if updates == 0 && confirmations == 0 {
+			err = tx.Where("id = ?", ug.CustomScope).Delete(&customScope{}).Error
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return tx.Where("frame_id = ? AND frame_type = ?", ug.ID, typeUpdateGroup).Delete(&deliveryRecord{}).Error

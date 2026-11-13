@@ -58,6 +58,10 @@ type Bounce struct {
 	backgroundMutex   sync.Mutex
 	backgroundStopped bool
 
+	// uiNotifications carries UI calls that must reach the UI in the order the engine decided them, without the
+	// engine waiting on the UI.  One goroutine drains it; see notifyUI.
+	uiNotifications chan func()
+
 	// handlersMutex guards registration with runningHandlers so that an Add can never
 	// overlap the Wait in Shutdown. See startHandler.
 	handlersMutex   sync.Mutex
@@ -169,6 +173,7 @@ func Open(ui UI, network Network, configDirectory string, postNotification func(
 		postNotification:  postNotification,
 		clearNotification: clearNotification,
 		done:              make(chan struct{}),
+		uiNotifications:   make(chan func(), 1024),
 		handlerSlots:      make(chan struct{}, maximumRunningHandlersGlobal),
 	}
 	b.ensureOnlyOneInstance()
@@ -193,8 +198,31 @@ func Open(ui UI, network Network, configDirectory string, postNotification func(
 
 	b.background(b.keepDraftsSynced)
 	b.background(b.keepDatabasePruned)
+	b.background(b.deliverUINotifications)
 
 	return b
+}
+
+// notifyUI queues a UI call to be made after every one queued before it.  Group consensus can decide several things
+// about one group in quick succession, a new state and then its deletion for instance, and separate goroutines would
+// let the UI see them in either order.  The queue keeps the engine's order without making it wait on the UI.  During
+// shutdown the call is dropped, since the UI is going too.
+func (b *Bounce) notifyUI(call func()) {
+	select {
+	case b.uiNotifications <- call:
+	case <-b.done:
+	}
+}
+
+func (b *Bounce) deliverUINotifications() {
+	for {
+		select {
+		case <-b.done:
+			return
+		case call := <-b.uiNotifications:
+			call()
+		}
+	}
 }
 
 // Gracefully stop all Bounce.  Used when a fatal error is encountered or the user interface is closed

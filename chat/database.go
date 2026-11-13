@@ -339,6 +339,19 @@ func (b *Bounce) pruneUnverifiedUpdateGroups() {
 	}
 }
 
+// pruneEarlyConfirmations forgets confirmations of updates that never arrived.  A confirmation reaching us before its
+// update is kept so it can count when the update does arrive, but any known peer can sign any ID, so one that has
+// waited as long as an unverified update is allowed to is dropped.
+func (b *Bounce) pruneEarlyConfirmations() {
+	cutoff := time.Now().Unix() - int64(unverifiedUpdateGroupLifetime.Seconds())
+	err := deleteEach[confirmation](b.database, "saved_at < ? AND update_group_id NOT IN (SELECT id FROM update_groups)", cutoff)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error pruning early confirmations")
+	}
+}
+
 // keepDatabasePruned runs the periodic prunes for the life of the engine: rows that are only worth keeping for a
 // while and have no event of their own to remove them
 func (b *Bounce) keepDatabasePruned() {
@@ -350,6 +363,7 @@ func (b *Bounce) keepDatabasePruned() {
 			return
 		case <-ticker.C:
 			b.pruneUnverifiedUpdateGroups()
+			b.pruneEarlyConfirmations()
 			b.pruneEarlyReadReceipts()
 		}
 	}
@@ -361,6 +375,7 @@ func (b *Bounce) GetInitialState() InitialState {
 	b.pruneGroupMessages()
 	b.pruneUndeliverableCustomScopes()
 	b.pruneUnverifiedUpdateGroups()
+	b.pruneEarlyConfirmations()
 	b.pruneEarlyReadReceipts()
 
 	// Load the profile and sync devices

@@ -355,9 +355,11 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 		}
 
 		// Inform the UI
-		go b.ui.GroupDeleted(GroupDeleted{
-			Group: groupID,
-			Actor: b.currentUserID(),
+		b.notifyUI(func() {
+			b.ui.GroupDeleted(GroupDeleted{
+				Group: groupID,
+				Actor: b.currentUserID(),
+			})
 		})
 
 		// Delete the group
@@ -440,9 +442,11 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 		}
 
 		// Inform the UI
-		go b.ui.GroupDeleted(GroupDeleted{
-			Group: groupID,
-			Actor: finalState.ug.Actor,
+		b.notifyUI(func() {
+			b.ui.GroupDeleted(GroupDeleted{
+				Group: groupID,
+				Actor: finalState.ug.Actor,
+			})
 		})
 
 		// Delete the group
@@ -473,9 +477,11 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 
 		// TODO: we only need to do these things if the UI is already aware of the group
 		// Inform the UI
-		go b.ui.RemovedFromGroup(RemovedFromGroup{
-			Group: groupID,
-			Actor: finalState.removedBy.Actor,
+		b.notifyUI(func() {
+			b.ui.RemovedFromGroup(RemovedFromGroup{
+				Group: groupID,
+				Actor: finalState.removedBy.Actor,
+			})
 		})
 
 		// Delete the group
@@ -494,11 +500,13 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 	for _, ug := range ugs {
 		if _, ok := canonical[ug.ID]; !ok {
 			if ug.Applied {
-				err := b.database.Model(&ug).Select("applied").Update("applied", false).Error
+				// Forgetting that it was shown is what lets it be shown again should consensus bring it back
+				err := b.database.Model(&ug).Select("applied", "notified").Updates(map[string]interface{}{"applied": false, "notified": false}).Error
 				if err != nil {
 					return err
 				}
-				go b.ui.DeleteItem(ug.ID)
+				id := ug.ID
+				b.notifyUI(func() { b.ui.DeleteItem(id) })
 			}
 		}
 	}
@@ -961,7 +969,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 		}
 	}
 
-	go func() {
+	b.notifyUI(func() {
 		b.ui.SetGroupState(Group{
 			ID:                             g.ID,
 			Name:                           g.Name,
@@ -1001,7 +1009,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 				b.updateDMState(id)
 			}
 		}
-	}()
+	})
 
 	b.referenceAllOnlineDevicesInGroup(g.ID)
 
@@ -1298,7 +1306,8 @@ func (b *Bounce) pruneMessagesBeforeClear(clearBefore int64, groupID ID) {
 				"id":    gm.ID,
 			}).Fatal("error deleting group message while clearing chat history")
 		}
-		go b.ui.DeleteItem(gm.ID)
+		id := gm.ID
+		b.notifyUI(func() { b.ui.DeleteItem(id) })
 	}
 }
 
@@ -1479,7 +1488,7 @@ func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID ID) {
 func (b *Bounce) rollbackInvitedGroup(groupID ID) {
 	b.cleanupRolledBackInvite(groupID)
 	delete(b.consensusStore.groups, groupID)
-	go b.ui.RollbackGroup(groupID)
+	b.notifyUI(func() { b.ui.RollbackGroup(groupID) })
 }
 
 func (b *Bounce) cleanupRolledBackInvite(groupID ID) {
