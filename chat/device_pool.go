@@ -594,14 +594,15 @@ func (b *Bounce) GroupConnectionDesired(id ID) {
 		groupAddresses := []string{}
 		groupEncryptedDevices := map[string]bool{}
 		for _, u := range g.Users {
+			// A blocked user's devices are never dialled, their encrypted ones included
+			if u.Blocked {
+				log.WithFields(log.Fields{
+					"group_id": g.ID,
+					"user_id":  u.ID,
+				}).Debug("blocking attempt to dial blocked user as part of dialing group")
+				continue
+			}
 			for _, dev := range u.Devices {
-				if u.Blocked {
-					log.WithFields(log.Fields{
-						"group_id": g.ID,
-						"user_id":  u.ID,
-					}).Debug("blocking attempt to dial blocked user as part of dialing group")
-					continue
-				}
 				if b.devicePool.isRevoked(dev.Address) {
 					continue
 				}

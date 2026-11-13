@@ -403,13 +403,12 @@ func (b *Bounce) getGlobalScope(br broadcastable, excludeDelivered bool) []strin
 				"error": err.Error(),
 			}).Fatal("error selecting all device addresses")
 		}
-		// Anything global that we create can be sent to any known device
+		// Anything global that we create can be sent to any known device but this one
 		for _, d := range allDevices {
 			if blockedUser(d.UserID) {
 				continue
 			}
-			if _, exists := b.getDeviceFromAddress(d.Address); !exists {
-				// Skip connections in the device pool if we don't have a device saved for them
+			if d.Address == b.network.Address() {
 				continue
 			}
 			if excludeDelivered && b.isDeliveredTo(br, d.Address) {
