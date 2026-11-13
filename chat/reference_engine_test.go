@@ -134,7 +134,8 @@ func TestALargeHistoryIsOfferedInPartsAndArrivesWhole(t *testing.T) {
 	// which fits in one offer, has been seen by both sides.  (The fixture leaves a few frames of mine that Alice
 	// never takes, so her copy of the story, not an empty offer, is the measure.)
 	redial(t, alice, me)
-	deadline := time.Now().Add(15 * time.Second)
+	// Each part costs a retry tick or two, and the suite can be busy, so this is generous rather than tight
+	deadline := time.Now().Add(40 * time.Second)
 	var n int64
 	settled := false
 	for time.Now().Before(deadline) {

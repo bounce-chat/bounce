@@ -151,7 +151,8 @@ func Open(ui UI, network Network, configDirectory string, postNotification func(
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	log.AddHook(&filehook{})
+	installLogHooks()
+	runningEngines.Add(1)
 
 	b := &Bounce{
 		configDirectory: configDirectory,
@@ -227,7 +228,10 @@ func (b *Bounce) deliverUINotifications() {
 
 // Gracefully stop all Bounce.  Used when a fatal error is encountered or the user interface is closed
 func (b *Bounce) Shutdown() {
-	b.shutdownStarted.Store(true)
+	if b.shutdownStarted.CompareAndSwap(false, true) {
+		runningEngines.Add(-1)
+		engineShutdowns.Add(1)
+	}
 
 	// Tell every engine-lifetime loop to return. They are joined further down, once
 	// the connections they may be using have been closed.
@@ -436,23 +440,23 @@ func (b *Bounce) fatalShutdown() {
 		b.ui.Quit()
 	}
 
-	// Close the database connection
-	sqliteDB, err := b.database.DB()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error getting underlying database interface from gorm during fatal shutdown")
-	}
-	err = sqliteDB.Close()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error closing database during fatal shutdown")
+	// Close the database connection, if the Fatal did not fire while it was being opened
+	if b.database != nil {
+		sqliteDB, err := b.database.DB()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error getting underlying database interface from gorm during fatal shutdown")
+		} else if err = sqliteDB.Close(); err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error closing database during fatal shutdown")
+		}
 	}
 
 	// Delete our PID file
 	pidFile := b.configDirectory + "/.pid"
-	err = os.Remove(pidFile)
+	err := os.Remove(pidFile)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"path":  pidFile,

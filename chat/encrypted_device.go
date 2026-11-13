@@ -53,7 +53,8 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	log.AddHook(&filehook{})
+	installLogHooks()
+	runningEngines.Add(1)
 
 	b := &Bounce{
 		encrypted:       true,
