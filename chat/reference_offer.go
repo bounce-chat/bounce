@@ -139,7 +139,7 @@ func (b *Bounce) sendReferences(peer string) {
 
 	_, exists := b.getDeviceFromAddress(b.network.Address())
 	if !exists {
-		// Our own devices doesn't exist yet, we're probably going to be added as a new sync
+		// Our own device doesn't exist yet, we're probably going to be added as a new sync
 		// device now.  In the meantime there's nothing to do.
 		return
 	}
@@ -265,7 +265,7 @@ func (b *Bounce) getEncryptedReferenceOfferFor(address string, publicKey []byte)
 		Where("public_key = ?", publicKey).
 		Pluck("encrypted_frame_id", &allowedPubkeyIDs)
 
-	// Frmae IDs this device can have
+	// Frame IDs this device can have
 	var allowedDeviceIDs []ID
 	b.database.Model(&deviceRecipient{}).
 		Where("recipient_address = ?", address).

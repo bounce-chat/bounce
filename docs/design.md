@@ -78,7 +78,7 @@ A reference offer has a maximum number of frames it can hold, and when there are
 
 ### Reference Request
 
-When handing a reference offer, a device checks each reference and sees if it has the frame in the database.  If it already has the frame, it includes the reference in an ack that gets sent back to the peer.  If it doesn't have the frame, it includes the reference in a reference request that gets sent back to the peer.
+When handling a reference offer, a device checks each reference and sees if it has the frame in the database.  If it already has the frame, it includes the reference in an ack that gets sent back to the peer.  If it doesn't have the frame, it includes the reference in a reference request that gets sent back to the peer.
 
 ### Catch Up
 
@@ -113,7 +113,7 @@ With the above out of the way, sending messages is straightforward.  A user crea
 
 The state of groups (including the group attributes, like the name and settings, as well as who is a member or invited, and the permission of the members) must be consistent across all devices with the same data, regardless of the order that data was received in.  This is accomplished via a process called "group consensus".
 
-Groups are created via a frame called a "groupCreation", which defines the original state of the group, and changes to groups are accomplished via atmoic updates known as "updateGroups".  The ID of a group is derived from a hash of the original state as defined by the groupCreation, making it impossible for a client to lie about the original state of a group and still be referring to the same group.  Updates are applied in timestamp order, however relying just on the timestamps opens up a trivial vulnerability.  Consider the following situation:
+Groups are created via a frame called a "groupCreation", which defines the original state of the group, and changes to groups are accomplished via atomic updates known as "updateGroups".  The ID of a group is derived from a hash of the original state as defined by the groupCreation, making it impossible for a client to lie about the original state of a group and still be referring to the same group.  Updates are applied in timestamp order, however relying just on the timestamps opens up a trivial vulnerability.  Consider the following situation:
 
 1. Group G contains admins A and B
 2. A decides to revoke B's admin status via an updateGroup, and broadcasts it
@@ -127,7 +127,7 @@ Group consensus is implemented as a stack.  The stack begins with the group crea
 
 ## Files
 
-Distributing files is an important part of several features in Bounce.  Users and groups can have icons, and messages can have both image and file attachments.  Files are identified by ID and are distributed as a hash list, each hash created from a chunk with a maximum size of 1MiB.  Small files (20MiB or less) are embedded in Bounce's blobs directory, and are automatically downloaded by clients.  This size also serves as the limit for user and group icons, and for images displayed in messages.  Larger files are "seeded" off disk where they are and are not copied into Bounce's blobs directory (except an android, where all files are copied into a Bounce-controlled directory as a temporary workaround).  These files are not automatically downloaded by clients.
+Distributing files is an important part of several features in Bounce.  Users and groups can have icons, and messages can have both image and file attachments.  Files are identified by ID and are distributed as a hash list, each hash created from a chunk with a maximum size of 1MiB.  Small files (20MiB or less) are embedded in Bounce's blobs directory, and are automatically downloaded by clients.  This size also serves as the limit for user and group icons, and for images displayed in messages.  Larger files are "seeded" off disk where they are and are not copied into Bounce's blobs directory (except on Android, where all files are copied into a Bounce-controlled directory as a temporary workaround).  These files are not automatically downloaded by clients.
 
 ### Chunk Offers
 

@@ -462,7 +462,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 					if err != nil {
 						log.WithFields(log.Fields{
 							"error": err.Error(),
-						}).Fatal("database error looking up encypted chunk offers")
+						}).Fatal("database error looking up encrypted chunk offers")
 					}
 					for _, eco := range encryptedOffers {
 						b.addEncryptedChunkOfferToChunkEngine(&eco)

@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// An ack is a frame that contains any number of frame references.  Acks indicate that a peer has a received
+// An ack is a frame that contains any number of frame references.  Acks indicate that a peer has received
 // a frame, and are sent in response to most frames as well as to indicate that frames offered during a
 // reference offer have already been delivered to a device.
 type ack struct {

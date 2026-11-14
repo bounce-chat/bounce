@@ -350,22 +350,22 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		if existingDevice, exists := b.getDeviceFromAddress(dev.Address); exists {
 			if existingDevice.UserID != counterparty.ID {
 				log.WithFields(log.Fields{
-					"address":        dev.Address,
-					"new_user":       counterparty.ID,
-					"exisiting_user": existingDevice.UserID,
+					"address":       dev.Address,
+					"new_user":      counterparty.ID,
+					"existing_user": existingDevice.UserID,
 				}).Warn("rejecting add user with device address collision with separate existing user")
 				return nil, false
 			}
 		}
-		// Primary keys cannot collise
+		// Primary keys cannot collide
 		var existingDevice device
 		err = b.database.Where("id = ?", dev.ID).First(&existingDevice).Error
 		if err == nil {
 			if existingDevice.UserID != counterparty.ID {
 				log.WithFields(log.Fields{
-					"id":             dev.ID,
-					"new_user":       counterparty.ID,
-					"exisiting_user": existingDevice.UserID,
+					"id":            dev.ID,
+					"new_user":      counterparty.ID,
+					"existing_user": existingDevice.UserID,
 				}).Warn("rejecting add user with device ID collision with separate existing user")
 				return nil, false
 			}
@@ -407,7 +407,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("error saving new user while handing add user")
+			}).Error("error saving new user while handling add user")
 			return nil, false
 		}
 

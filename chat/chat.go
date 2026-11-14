@@ -266,7 +266,7 @@ func (b *Bounce) Shutdown() {
 	// error will then call os.Exit before the network is actually shut down and this function has returned.
 	// Therefore we make this shutdown process synchronous with a mutex lock.  We intentionally never unlock,
 	// so all future calls into shutdown will block indefinitely until the application exits (either because
-	// logrus has called os.Exit, or because Start() returns).  A concequence of this locking behavior however
+	// logrus has called os.Exit, or because Start() returns).  A consequence of this locking behavior however
 	// is that fatal errors cannot be called from within this function without deadlocking the application, so
 	// any errors encountered here must be logged as errors.
 	b.shutdownMutex.Lock()
@@ -316,7 +316,7 @@ func (b *Bounce) Shutdown() {
 	select {
 	case <-handlersStopped:
 	case <-time.After(2 * time.Second):
-		log.Warn("running handlers took more then 2 seconds to stop, giving up")
+		log.Warn("running handlers took more than 2 seconds to stop, giving up")
 	}
 
 	// Wait for the engine-lifetime background loops signalled above to return
@@ -421,7 +421,7 @@ func (b *Bounce) VersionString() string {
 	}
 
 	if len(revision) > 7 {
-		version += " , Build " + revision[:7]
+		version += ", Build " + revision[:7]
 	}
 	if modified {
 		version += "-modified"
@@ -475,10 +475,10 @@ func (b *Bounce) handleInterrupts() {
 	signal.Notify(c, os.Interrupt, os.Kill)
 	for s := range c {
 		log.WithFields(log.Fields{
-			"at":     "chat.handleInterruptsGracefully",
+			"at":     "chat.handleInterrupts",
 			"signal": s.String(),
 		}).Info("signal received to kill process, shutting down")
-		// Stopping the user interface unblocks the main blocking call of the appplication,
+		// Stopping the user interface unblocks the main blocking call of the application,
 		// which in turn shuts down the network handler and the network
 		if b.encrypted {
 			b.fatalShutdown()

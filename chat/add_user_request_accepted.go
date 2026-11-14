@@ -90,7 +90,7 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 		return nil, false
 	}
 
-	// ENsure that the offer user and all devices are new
+	// Ensure that the offer user and all devices are new
 	var existingUser user
 	err = b.database.Take(&existingUser, "id = ?", offerUser.ID).Error
 	if !errors.Is(err, gorm.ErrRecordNotFound) {

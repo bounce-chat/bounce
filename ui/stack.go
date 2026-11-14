@@ -114,7 +114,7 @@ func (ui *ui) mobileBack() {
 		return
 	}
 
-	// Grab the view that occured before the current one as the one we want to display
+	// Grab the view that occurred before the current one as the one we want to display
 	displayView := ui.state.viewStack[len(ui.state.viewStack)-2]
 
 	// Remove the current view from history

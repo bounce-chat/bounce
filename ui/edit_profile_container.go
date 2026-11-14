@@ -286,7 +286,7 @@ func (ui *ui) buildEditProfile() {
 			}
 
 			// TODO: make sure data is a valid image, allow for editing, etc
-			// TODO: don't actualy set it until they hit save?
+			// TODO: don't actually set it until they hit save?
 
 			ui.bounce.UpdateProfileImage(data)
 		}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
@@ -338,7 +338,7 @@ func (ui *ui) buildEditProfile() {
 	)
 
 	//
-	// Sync devices secttion
+	// Sync devices section
 	//
 
 	devicesLabel := widget.NewLabel("Devices")

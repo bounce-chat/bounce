@@ -321,7 +321,7 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"address": peer,
-			}).Warn("could not determine owner of encrypted device that send encrypted storage reference offer")
+			}).Warn("could not determine owner of encrypted device that sent encrypted storage reference offer")
 			b.sendDirect(peer, esrr)
 			return nil, false
 		} else {

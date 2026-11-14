@@ -174,7 +174,7 @@ func (g *group) setInitial() {
 		log.WithFields(log.Fields{
 			"rune_error": r,
 			"size":       n,
-		}).Error("error setting group inital")
+		}).Warn("error setting group initial")
 		return
 	}
 	g.initial = string(r)
@@ -396,7 +396,7 @@ func (ui *ui) OpenNewGroupChat(bounceGroup chat.Group) { // TODO: rename "create
 			ui.state.currentView = viewTypeThread
 			ui.displayThread(g)
 		} else {
-			log.Error("cannot open newly created g because the UI isn't aware of it")
+			log.Error("cannot open newly created group because the UI isn't aware of it")
 		}
 	})
 }
@@ -662,9 +662,9 @@ func (ui *ui) buildNewGroupChat(bounceGroup chat.Group) {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":      err.Error(),
-			"g":          g.id,
+			"group":      g.id,
 			"created_by": bounceGroup.CreatedBy,
-		}).Warn("error creating thread item for g creation")
+		}).Warn("error creating thread item for group creation")
 	} else {
 		ui.appendThreadItem(g, ti)
 		ti.setButtonData(g.buttonData)
@@ -1056,7 +1056,7 @@ func (ui *ui) RemoveUser(ugru chat.UpdateGroupRemoveUser) {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error creating thread item for removing user to group")
+		}).Error("error creating thread item for removing user from group")
 		return
 	}
 
@@ -1156,7 +1156,7 @@ func (ui *ui) GroupDeleted(gd chat.GroupDeleted) {
 			if !ok {
 				log.WithFields(log.Fields{
 					"group": gd.Group,
-				}).Error("delete group applied tp thread that is not group")
+				}).Error("delete group applied to thread that is not group")
 				return
 			}
 			if !ui.state.initialSyncIncomplete {

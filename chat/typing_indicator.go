@@ -23,7 +23,7 @@ var ignoreTypingIndicatorsAfterSeconds = int64(3)
 var typingIndicatorSeen = map[ID]int64{}
 var typingIndicatorSeenMutex sync.Mutex
 
-// We onlt want to broadcast a typing indicator for the same thread every so often, so this map stores the last time
+// We only want to broadcast a typing indicator for the same thread every so often, so this map stores the last time
 // we broadcast one for each thread
 var typingIndicatorCooldown = map[ID]int64{}
 var typingIndicatorCooldownMutex sync.Mutex
@@ -581,7 +581,7 @@ func (b *Bounce) typingIndicatorsEnabledForGroup(groupID ID) bool {
 	return defaultSendTypingIndicators
 }
 
-func (b *Bounce) TypingInGroup(groupID ID) { // TODO: merge with typgin in DM?
+func (b *Bounce) TypingInGroup(groupID ID) { // TODO: merge with typing in DM?
 	if !b.typingIndicatorsEnabledForGroup(groupID) {
 		return
 	}

@@ -524,7 +524,7 @@ func (b *Bounce) sendReadReceipt(id ID, frameType string) error {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error marshalling read reeceipt")
+		}).Fatal("error marshalling read receipt")
 	}
 	sc := b.createSignedContainer(typeReadReceipt, rr.OriginalPayload)
 	rr.Signature = sc.Signature

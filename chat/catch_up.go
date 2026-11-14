@@ -125,7 +125,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	// Collect all the processed frames into a single ack
 	a := &ack{}
 
-	// Handle reach frame in the catch up using it's handler
+	// Handle each frame in the catch up using its handler
 	handlers := b.getHandlers(b.encrypted)
 	catchUpMutex.Lock()
 	frameCount := len(cu.Frames)
@@ -175,7 +175,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			devicesToReference[dst] = true
 		}
 
-		// Track any follow up actions we need to take on these frames after the catchup compeltes
+		// Track any follow up actions we need to take on these frames after the catchup completes
 		switch fr.Type {
 		case typeUpdateGroup:
 			groupsToUpdateConsensus[br.getDestination(b.currentUserID())] = true
@@ -292,7 +292,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 			originalIDmap[id] = true
 		}
 
-		// Update the group consensis
+		// Update the group consensus
 		b.writeGroupConsensus(groupID)
 
 		// Get the user IDs for this group again, send references to any new users
@@ -588,7 +588,7 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		b.ui.InitialSyncComplete()
 	}
 
-	// If this is an encryped device (and we aren't), check if we manage it, and if so check if we need to re-key it
+	// If this is an encrypted device (and we aren't), check if we manage it, and if so check if we need to re-key it
 	if encrypted && !b.encrypted {
 		b.getManagementKeyHash(peer)
 	}

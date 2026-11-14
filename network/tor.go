@@ -695,7 +695,7 @@ func (bounceTor *TorNetwork) pumpTorLogs(records <-chan arti.LogRecord) {
 		case "ERROR":
 			entry.Error(record.Message)
 		case "WARN":
-			entry.Debug(record.Message) // Hide Arti logs when logging at Info level
+			entry.Warn(record.Message)
 		case "INFO":
 			entry.Debug(record.Message) // Hide Arti logs when logging at Info level
 		default:
@@ -1330,7 +1330,7 @@ func (ta *torAddress) String() string {
 }
 
 //
-// Wire primatives for the handshake
+// Wire primitives for the handshake
 //
 
 // read returns exactly size bytes from the connection.  Only used for the fixed-size handshake fields, so sizing

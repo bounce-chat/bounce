@@ -12,7 +12,7 @@ import (
 // A group creation captures the original state of a group.  This is the original source of truth on the structure of a group, and all
 // modifications from this point on are done with updateGroup frames.  The ID of a group is determined by a hash of the original
 // marshalled group that is contained in this structure.  This prevents any modification to the group during broadcast, as future frames
-// are referencing this group via a hash of it's orignal state.
+// are referencing this group via a hash of its original state.
 type groupCreation struct {
 	SignedFrame
 	ID        ID `gorm:"primary_key;"`
@@ -163,7 +163,7 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 		log.WithFields(log.Fields{
 			"timestamp":        gc.Timestamp,
 			"group_created_at": g.CreatedAt,
-		}).Error("rejection group creation with timestamp mismatch")
+		}).Error("rejecting group creation with timestamp mismatch")
 		return nil, false
 	}
 

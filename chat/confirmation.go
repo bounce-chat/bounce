@@ -233,7 +233,7 @@ func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) (
 
 	// Custom scoped updates remove us from a group, no need to update consensus there
 	if ug.CustomScope == NilID {
-		// Update the group state without commiting to the database or sending to the UI
+		// Update the group state without committing to the database or sending to the UI
 		b.reloadGroupConsensusSince(ug.Target, ug.Timestamp)
 
 		if !catchUp {

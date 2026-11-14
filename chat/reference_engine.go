@@ -55,7 +55,7 @@ func (fr *frameReference) BeforeCreate(tx *gorm.DB) error {
 
 func (b *Bounce) openReferenceDatabase() {
 	gormLogger := logger.New(
-		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags), // TODO: https://gist.github.com/bnadland/2e4287b801a47dcfcc94
+		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags),
 		logger.Config{
 			//SlowThreshold:             time.Second,
 			LogLevel:                  logger.Error,
@@ -148,7 +148,7 @@ func (b *Bounce) pruneReferences() {
 }
 
 // only load things from the reference offer that we don't have, the ones
-// that we do have we ack while handing the offer
+// that we do have we ack while handling the offer
 func (b *Bounce) loadReferenceOffer(peer string, ro []frameReference) {
 	referenceRequestMutex.Lock()
 
@@ -222,7 +222,7 @@ func (b *Bounce) loadReferenceOffer(peer string, ro []frameReference) {
 	}()
 }
 
-// Inform any devies that offered us a frame that we just handled that we no longer need that frame, and remove those references from the database
+// Inform any devices that offered us a frame that we just handled that we no longer need that frame, and remove those references from the database
 func (b *Bounce) loadCatchUp(peer string, cu []frameReference) {
 	log.WithFields(log.Fields{
 		"peer": peer,
@@ -259,7 +259,7 @@ func (b *Bounce) loadCatchUp(peer string, cu []frameReference) {
 }
 
 // requestOutstandingReferencesFrom is called when an incomplete catchup is finished, and is used to request the
-// next batch pf data from the peer.
+// next batch of data from the peer.
 func (b *Bounce) requestOutstandingReferencesFrom(peer string) {
 	referenceRequestMutex.Lock()
 	defer referenceRequestMutex.Unlock()

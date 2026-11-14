@@ -386,7 +386,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 			}).Error("error creating custom scope for update group")
 		}
 
-		// Determing if the actor who deleted this group was ever not an admin and collect any updates about their admin status
+		// Determine if the actor who deleted this group was ever not an admin and collect any updates about their admin status
 		alwaysAnAdmin := true
 		ugsWithAdminStatusSideEffects := []updateGroup{}
 		for _, gs := range cs.history {
@@ -951,21 +951,21 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 		}
 	}
 
-	// Mark every update group and group message that occured before the last time we accepted the invite as having already been seen
+	// Mark every update group and group message that occurred before the last time we accepted the invite as having already been seen
 	if gs.acceptedAt != 0 {
 		err := b.database.Exec("UPDATE update_groups SET seen = true WHERE target = ? AND timestamp < ?", g.ID, gs.acceptedAt).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"group_id": g.ID,
 				"error":    err.Error(),
-			}).Error("error marking update groups that occured before accepting the group as seen")
+			}).Error("error marking update groups that occurred before accepting the group as seen")
 		}
 		err = b.database.Exec("UPDATE group_messages SET seen = true WHERE destination = ? AND written_at < ?", g.ID, gs.acceptedAt).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"group_id": g.ID,
 				"error":    err.Error(),
-			}).Error("error marking group messages that occured before accepting the group as seen")
+			}).Error("error marking group messages that occurred before accepting the group as seen")
 		}
 	}
 
@@ -1005,7 +1005,7 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 		for id, created := range newUsers {
 			if created {
 				// For users that were just created, start the process of
-				// figuring out a shared DM rentention setting
+				// figuring out a shared DM retention setting
 				b.updateDMState(id)
 			}
 		}

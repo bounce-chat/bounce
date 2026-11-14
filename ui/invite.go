@@ -254,7 +254,7 @@ func (i *invite) setInitial() {
 		log.WithFields(log.Fields{
 			"rune_error": r,
 			"size":       n,
-		}).Error("error setting group inital")
+		}).Warn("error setting group initial")
 	} else {
 		i.initial = string(r)
 	}

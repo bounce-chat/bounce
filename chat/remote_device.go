@@ -343,7 +343,7 @@ func (b *Bounce) readFrames(rd *remoteDevice, s *socket) {
 					log.WithFields(log.Fields{
 						"frame_type": frameType,
 						"peer":       peer,
-					}).Warn("peer sent a frame that cannot be handeled when no profile exists")
+					}).Warn("peer sent a frame that cannot be handled when no profile exists")
 					continue
 				}
 			}

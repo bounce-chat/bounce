@@ -110,7 +110,7 @@ func (b *Bounce) keepRemoteDevicesPruned() {
 	}
 }
 
-// Arti seems to have trouble reconnecting after exteneded periods offline.  Restart the network if
+// Arti seems to have trouble reconnecting after extended periods offline.  Restart the network if
 // it used to be healthy, but we haven't had a connection in some time
 
 func (b *Bounce) populateRevokedDevices() {
@@ -409,7 +409,7 @@ func (b *Bounce) hasUndeliveredDirectContentFor(address string, userID ID) bool 
 
 func (b *Bounce) connectToCustomScopes(desiredConnections int) {
 	// treat each custom scope like a group, use the same logic otherwise
-	// Connect to all gustom scopes
+	// Connect to all custom scopes
 	var customScopes []customScope
 	threeMonthsAgo := time.Now().Add(-3 * 4 * 7 * 24 * time.Hour).Unix()
 	err := b.database.Where("created_at > ?", threeMonthsAgo).Find(&customScopes).Error

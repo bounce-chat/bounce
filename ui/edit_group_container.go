@@ -73,7 +73,7 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 			}
 
 			// TODO: make sure data is a valid image, allow for editing, etc
-			// TODO: don't actualy set it until they hit save?
+			// TODO: don't actually set it until they hit save?
 
 			err = ui.bounce.SetGroupImage(g.id, data)
 			if err != nil {
@@ -354,7 +354,7 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 		g.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())
 		g.refreshTypingIndicatorSettingSelection(ui.typingIndicatorOverrideSelectionOptions())
 
-		// Show main tontainer
+		// Show main container
 		if fyne.CurrentDevice().IsMobile() {
 			ui.mobileBack()
 		} else {

@@ -92,7 +92,7 @@ func (di *defaultImage) setBackground() {
 	// If this image should have a non-default image, try to load it from cache
 	if len(di.images) > 0 {
 		chosen := -1
-		// Set the first cached image, if any are avilable
+		// Set the first cached image, if any are available
 		for i := len(di.images) - 1; i >= 0; i-- {
 			id := di.images[i]
 
@@ -241,7 +241,7 @@ func (dir *defaultImageRenderer) Refresh() {
 }
 
 //
-// A color rectange is a single color in a rectangle image
+// A color rectangle is a single color in a rectangle image
 //
 
 type colorRectangle struct {
@@ -250,7 +250,7 @@ type colorRectangle struct {
 }
 
 func (cr *colorRectangle) ColorModel() color.Model {
-	return color.RGBAModel /// TODO: match color?
+	return color.RGBAModel // TODO: match color?
 }
 
 func (cr *colorRectangle) Bounds() image.Rectangle {

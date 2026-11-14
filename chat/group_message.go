@@ -279,7 +279,7 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 			"author":      gm.Author,
 			"destination": gm.getDestination(b.currentUserID()),
 			"delete_at":   gm.DeleteAt,
-		}).Debug("ignoring a group message that has delete time that occured before now")
+		}).Debug("ignoring a group message that has delete time that occurred before now")
 		b.rejectMessage(peer, typeGroupMessage, gm.ID)
 		return nil, false
 	}

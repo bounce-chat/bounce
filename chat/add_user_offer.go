@@ -10,7 +10,7 @@ import (
 )
 
 // An add user offer is the secret stored on our device that is conveyed to another device that wants to be our friend.
-// The other device scans or otherwise gets a strng with our address and this secret, then initiates thr flow with an
+// The other device scans or otherwise gets a string with our address and this secret, then initiates the flow with an
 // add user request.  A new secret is generated every time the UI displays this string, and only one is stored in the
 // database at a time.
 type addUserOffer struct {

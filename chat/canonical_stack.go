@@ -228,7 +228,7 @@ func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 		}).Warn("no revocation time found for address")
 	}
 
-	// Don't allow updated that were signed by a device after it was revoked
+	// Don't allow updates that were signed by a device after it was revoked
 	var dev device
 	err := b.database.First(&dev, "address = ?", ug.Signer).Error
 	if err == nil {
@@ -292,7 +292,7 @@ func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 			recheck := []updateGroup{}
 			cs.stash()
 			for {
-				// Remove the lastest change and add it to a slice
+				// Remove the latest change and add it to a slice
 				removed, err := cs.pop()
 				if err != nil {
 					// This shouldn't be possible
@@ -317,7 +317,7 @@ func (b *Bounce) insertUpdateGroupIntoStack(cs *canonicalStack, ug updateGroup) 
 
 				}
 				if err = stateChangeAllowed(newTop, ug, cs.myID); err == nil {
-					// If this chnage is now allwed, then the conflict was the last thing we removed from the stack
+					// If this change is now allowed, then the conflict was the last thing we removed from the stack
 					conflict := recheck[0]
 
 					// Check if this conflict was confirmed

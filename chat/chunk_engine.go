@@ -129,8 +129,8 @@ func (b *Bounce) makeAnyChunkRequests() {
 	}
 	b.chunkEngine.outstandingRequests = updatedOutstandingRequests
 
-	// For any hashes that we want that are not outstanding, find a peer to assign them to, prefering ones we haven't already
-	// tried, if any are avilable
+	// For any hashes that we want that are not outstanding, find a peer to assign them to, preferring ones we haven't already
+	// tried, if any are available
 	unassignedHashes := b.chunkEngine.unassignedHashes()
 	for _, hash := range unassignedHashes {
 		if !b.chunkWanted(hash) {
@@ -464,7 +464,7 @@ func (b *Bounce) chunkWanted(hash string) bool {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
 					"file_id": c.FileID,
-				}).Warn("count not find file for chunk")
+				}).Warn("could not find file for chunk")
 				continue
 			} else {
 				log.WithFields(log.Fields{

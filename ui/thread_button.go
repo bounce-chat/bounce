@@ -218,7 +218,7 @@ func (tb *threadButton) setContent(tbd *threadButtonData) {
 		tb.draft.Segments[0].(*widget.TextSegment).Text = "Draft: "
 		tb.draft.Segments[0].(*widget.TextSegment).Style.TextStyle.Italic = true
 		tb.draft.Segments[0].(*widget.TextSegment).Style.TextStyle.Bold = true
-		tb.draft.Segments[1].(*widget.TextSegment).Text = strings.ReplaceAll(tbd.draft, "\n", " ") // TODO: use non-platform-scpeific newlines?
+		tb.draft.Segments[1].(*widget.TextSegment).Text = strings.ReplaceAll(tbd.draft, "\n", " ") // TODO: use non-platform-specific newlines?
 		tb.draft.Segments[1].(*widget.TextSegment).Style.TextStyle.Italic = true
 		tb.draft.Refresh()
 		tb.lastMessage.Hide()
@@ -569,7 +569,7 @@ func (tbd *threadButtonData) setLastMessage(name, text string, status bool) { //
 	tbd.lastMessageSegmentOne = name + ": "
 	tbd.lastMessageSegmentOneItalic = false
 	tbd.lastMessageSegmentOneBold = true
-	tbd.lastMessageSegmentTwo = strings.ReplaceAll(text, "\n", " ") // TODO: use non-platform-scpeific newlines?
+	tbd.lastMessageSegmentTwo = strings.ReplaceAll(text, "\n", " ") // TODO: use non-platform-specific newlines?
 }
 
 func (tbd *threadButtonData) setLastAction(text string, status bool) {

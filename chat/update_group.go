@@ -381,7 +381,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 		return nil, false
 	}
 
-	// If the signer device is not known and this isnt' a catch up, ignore this catch up for now without an ack.
+	// If the signer device is not known and this isn't a catch up, ignore this catch up for now without an ack.
 	// It could be us being invited by a user this device isn't aware of yet, in which case we can rely on it
 	// being re-offered after we learn the identity of the signer.
 	if !signerKnown && !catchUp {
@@ -452,7 +452,7 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 		}).Fatal("database error saving update group")
 	}
 
-	// Update the group state without commiting to the database or sending to the UI
+	// Update the group state without committing to the database or sending to the UI
 	err = b.reloadGroupConsensusSince(ug.Target, ug.Timestamp)
 	if err != nil {
 		// We are getting an update that isn't a part of a valid consensus stack.  This is probably an invite for
@@ -551,7 +551,7 @@ func (b *Bounce) haveGroupCreation(groupID ID) bool {
 	return count > 0
 }
 
-// Check if our quote for unverified update groups has been reached, for this signer or globally
+// Check if our quota for unverified update groups has been reached, for this signer or globally
 func (b *Bounce) unverifiedUpdateGroupAllowed(signer string) bool {
 	var bySigner int64
 	var total int64
@@ -753,7 +753,7 @@ func (b *Bounce) RemoveUserFromGroup(groupID, userID ID) error {
 	}
 
 	// If we're not removing ourselves and are therefore using a group scope, since we're already removed the user from the group,
-	// we need to directly broadcast this rfg to the user's online devices
+	// we need to directly broadcast this removal to the user's online devices
 	if userID != b.currentUserID() {
 		var u user
 		err := b.database.Preload(clause.Associations).Where("id = ?", userID).First(&u).Error

@@ -271,7 +271,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			"author":      dm.Author,
 			"destination": dm.getDestination(b.currentUserID()),
 			"delete_at":   dm.DeleteAt,
-		}).Debug("ignoring a direct message that has delete time that occured before now")
+		}).Debug("ignoring a direct message that has delete time that occurred before now")
 		b.rejectMessage(peer, typeDirectMessage, dm.ID)
 		return nil, false
 	}

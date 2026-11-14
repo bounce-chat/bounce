@@ -104,7 +104,7 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error unmarshalling requester user while handing user request")
+		}).Error("error unmarshalling requester user while handling user request")
 		b.sendDirect(peer, &addUserRequestRejected{})
 		return nil, false
 	}
@@ -148,23 +148,23 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 		if existingDevice, exists := b.getDeviceFromAddress(dev.Address); exists {
 			if existingDevice.UserID != requesterUser.ID {
 				log.WithFields(log.Fields{
-					"address":        dev.Address,
-					"new_user":       requesterUser.ID,
-					"exisiting_user": existingDevice.UserID,
+					"address":       dev.Address,
+					"new_user":      requesterUser.ID,
+					"existing_user": existingDevice.UserID,
 				}).Warn("rejecting add user request with device address collision with separate existing user")
 				b.sendDirect(peer, &addUserRequestRejected{})
 				return nil, false
 			}
 		}
-		// Primary keys cannot collise
+		// Primary keys cannot collide
 		var existingDevice device
 		err = b.database.Where("id = ?", dev.ID).First(&existingDevice).Error
 		if err == nil {
 			if existingDevice.UserID != requesterUser.ID {
 				log.WithFields(log.Fields{
-					"id":             dev.ID,
-					"new_user":       requesterUser.ID,
-					"exisiting_user": existingDevice.UserID,
+					"id":            dev.ID,
+					"new_user":      requesterUser.ID,
+					"existing_user": existingDevice.UserID,
 				}).Warn("rejecting add user with device ID collision with separate existing user")
 				b.sendDirect(peer, &addUserRequestRejected{})
 				return nil, false

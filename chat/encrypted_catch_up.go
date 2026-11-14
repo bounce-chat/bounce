@@ -397,7 +397,7 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 		if !found {
 			log.WithFields(log.Fields{
 				"id": id,
-			}).Error("encrypted frame requested by recipient no in recipient list")
+			}).Error("encrypted frame requested by recipient not in recipient list")
 			continue
 		}
 
@@ -435,7 +435,7 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 
 	sort.Sort(ecu.Frames)
 
-	// Send the earliest frames that fit the budget and set imcomplete as true if any didn't fit
+	// Send the earliest frames that fit the budget and set incomplete as true if any didn't fit
 	total := 0
 	for i, er := range ecu.Frames {
 		size := len(er.Payload)

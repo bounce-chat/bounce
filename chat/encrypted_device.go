@@ -135,7 +135,7 @@ func (b *Bounce) openEncryptedDatabase() {
 
 	// Define a logger for gorm that uses logrus
 	gormLogger := logger.New(
-		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags), // TODO: https://gist.github.com/bnadland/2e4287b801a47dcfcc94
+		stdlog.New(os.Stdout, "\r\n", stdlog.LstdFlags),
 		logger.Config{
 			LogLevel:                  logger.Error,
 			IgnoreRecordNotFoundError: true,
@@ -198,7 +198,7 @@ func (b *Bounce) openEncryptedDatabase() {
 		if err != nil {
 			log.WithFields(log.Fields{
 				"path": path,
-			}).Warn("removing downlaoded storage request without file")
+			}).Warn("removing downloaded storage request without file")
 			b.database.Delete(&sr)
 		}
 	}
@@ -257,7 +257,7 @@ func (b *Bounce) handleEncryptedDeviceManagementRequest(peer string, payload []b
 			"peer":     peer,
 			"length":   len(edmr.SigningKey),
 			"expected": ed25519.PublicKeySize,
-		}).Error("invalid signing key lengh in encrypted device management request")
+		}).Error("invalid signing key length in encrypted device management request")
 		return nil, false
 	}
 
@@ -837,7 +837,7 @@ func (b *Bounce) addRecipientsIfNeeded() {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
 					"user_id": ar.UserID,
-				}).Error("user not found in append recipeint")
+				}).Error("user not found in append recipient")
 				continue
 			} else {
 				log.WithFields(log.Fields{
@@ -1443,7 +1443,7 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 		return nil, false
 	}
 
-	// Try to decypt the challenge and make sure the data is unchanged
+	// Try to decrypt the challenge and make sure the data is unchanged
 	session := slices.Concat(
 		[]byte(b.network.Address()),
 		[]byte(peer),
@@ -1563,7 +1563,7 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 			"peer":     peer,
 			"length":   len(au.SigningKey),
 			"expected": ed25519.PublicKeySize,
-		}).Error("invalid signing key lengh in manage encrypted device frame")
+		}).Error("invalid signing key length in manage encrypted device frame")
 		return nil, false
 	}
 
@@ -1594,7 +1594,7 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("invlaid key set in manage encrypted device")
+			}).Error("invalid key set in manage encrypted device")
 			return nil, false
 		}
 
@@ -1846,7 +1846,7 @@ func (b *Bounce) updateManagableWarning(peer string, managable bool) {
 	}
 }
 
-// Create a map from publick key hash to private key for all encrypted device management keys we've ever used
+// Create a map from public key hash to private key for all encrypted device management keys we've ever used
 func (b *Bounce) managementKeyHistory() map[string]ed25519.PrivateKey {
 	results := make(map[string]ed25519.PrivateKey)
 
@@ -1880,7 +1880,7 @@ func (b *Bounce) managementKeyHistory() map[string]ed25519.PrivateKey {
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("invlaid key set in update user")
+			}).Error("invalid key set in update user")
 			continue
 		}
 
@@ -1923,7 +1923,7 @@ func (b *Bounce) encryptionKeyHistory() map[string][]byte {
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("invlaid key set in update user")
+			}).Error("invalid key set in update user")
 			continue
 		}
 

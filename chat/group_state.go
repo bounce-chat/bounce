@@ -620,7 +620,7 @@ func applyUpdateGroupChangeNameToState(gs groupState, ug updateGroup) (groupStat
 	if !validGroupName(newName) {
 		log.WithFields(log.Fields{
 			"name": newName,
-		}).Error("cannot apply update group with invalid name")
+		}).Warn("cannot apply update group with invalid name")
 		return gs, errInvalidGroupName
 	}
 	gs.name = newName

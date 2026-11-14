@@ -501,7 +501,7 @@ func (b *Bounce) updateUserState(userID ID) {
 			if len(uu.Data) < addressLength+2 {
 				log.WithFields(log.Fields{
 					"length": len(uu.Data),
-				}).Error("update user data length to short to update encrypted device name")
+				}).Warn("update user data length too short to update encrypted device name")
 				continue
 			}
 			address := string(uu.Data[:addressLength])
@@ -513,7 +513,7 @@ func (b *Bounce) updateUserState(userID ID) {
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Error("invlaid key set in update user")
+				}).Error("invalid key set in update user")
 				continue
 			}
 
@@ -768,7 +768,7 @@ func (b *Bounce) addEncryptedDevice(address string) error {
 }
 
 func (b *Bounce) rollKeys() error {
-	// Cache the current signing key that is about to be repalced
+	// Cache the current signing key that is about to be replaced
 	cu, ok := b.currentUser()
 	if !ok {
 		return errors.New("cannot roll keys without existing current user")

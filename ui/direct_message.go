@@ -230,7 +230,7 @@ func (ui *ui) NewDirectMessage(bounceUser chat.User) {
 	)
 
 	//
-	// BUild the entry bar
+	// Build the entry bar
 	//
 	entry := newThreadEntry(5, func() bool { return len(dm.pendingMessageAttachments.files) > 0 })
 	dm.entry = entry
@@ -482,7 +482,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 				}
 
 				// TODO: make sure data is a valid image, allow for editing, etc
-				// TODO: don't actualy set it until they hit save?
+				// TODO: don't actually set it until they hit save?
 
 				ui.bounce.UpdateProfileImage(data)
 			}, ui.window).Show() // We do not use showDialog here because on mobile this uses a native intent
@@ -890,7 +890,7 @@ func (ui *ui) buildEditDMContainer(dm *directMessage) {
 			editNotesButton.Show()
 		}
 
-		// Show main tontainer
+		// Show main container
 		if fyne.CurrentDevice().IsMobile() {
 			ui.mobileBack()
 		} else {
@@ -1000,7 +1000,7 @@ func (ui *ui) SetDMState(userID chat.ID, state chat.DMState) {
 		dm.retentionSelection.Selected = newRetentionName
 		dm.retentionSelection.Refresh()
 
-		// Update read receipt and typign indicator selections
+		// Update read receipt and typing indicator selections
 		dm.overrideReadReceiptSetting = state.OverrideReadReceiptSetting
 		dm.readReceiptsEnabled = state.ReadReceiptsEnabled
 		dm.refreshReadReceiptSettingSelection(ui.readReceiptOverrideSelectionOptions())

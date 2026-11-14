@@ -1021,7 +1021,7 @@ func hyperlinkify(text string) []widget.RichTextSegment {
 
 		hyperlinkText := string(text[loc[0]:end])
 		if terminal == ")" && !parenthesisAreBalanced(hyperlinkText) {
-			// The link ends with a parentesis but the URL suggests that the author
+			// The link ends with a parenthesis but the URL suggests that the author
 			// didn't intend for that to be part of the link
 			end -= 1
 			stripped = terminal + stripped

@@ -409,7 +409,7 @@ func (b *Bounce) updateDMState(userID ID) {
 
 	// Find all updates
 	uds := []updateDM{}
-	err = b.database.Where("target =  ?", xor(userID, b.currentUserID())).Order("timestamp asc").Find(&uds).Error
+	err = b.database.Where("target = ?", xor(userID, b.currentUserID())).Order("timestamp asc").Find(&uds).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -473,7 +473,7 @@ func (b *Bounce) updateDMState(userID ID) {
 		}
 	}
 
-	// If retention has never been set, advertize our default retention and see if one needs to be set
+	// If retention has never been set, advertise our default retention and see if one needs to be set
 	bothSharedSameDefault := profileOfferedRetention && counterpartyOfferedRetention && profileDefaultRetention == counterpartyDefaultRetention
 	if !anyoneEverSetRetention && userID != b.currentUserID() {
 		if bothSharedSameDefault {
@@ -694,7 +694,7 @@ func (b *Bounce) informUIOfUpdateDM(ud *updateDM) {
 	case updateDMTypeSetReadReceipts:
 		// No UI status changes for read receipt settings
 	case updateDMTypeSetTypingIndicators:
-		// No UI status changes for read receipt settings
+		// No UI status changes for typing indicator settings
 	case updateDMTypeSetOpen:
 		// No UI status changes for opening and closing DMs
 	case updateDMTypeSetAlias:

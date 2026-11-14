@@ -242,7 +242,7 @@ func (b *Bounce) hasValidDeviceGroup(u user) bool {
 
 	// TODO: ensure there's at least one device that doesn't have an introduction signature?
 
-	// An empty device group is valid
+	// A group of one device with no introductions is valid
 	if len(dg.signatures) == 0 && len(u.Devices) == 1 {
 		return true
 	}
@@ -268,7 +268,7 @@ func (b *Bounce) hasValidDeviceGroup(u user) bool {
 				"user":           u.ID,
 				"signing_device": pair.DeviceOne,
 				"target_device":  pair.DeviceTwo,
-			}).Warn("a device group is invalid because an invalid signature")
+			}).Warn("a device group is invalid because of an invalid signature")
 			return false
 		}
 		validSignature = b.network.VerifySignature(pair.DeviceTwo, []byte(pair.DeviceOne), pair.TwoSignsOne)
@@ -277,7 +277,7 @@ func (b *Bounce) hasValidDeviceGroup(u user) bool {
 				"user":           u.ID,
 				"signing_device": pair.DeviceTwo,
 				"target_device":  pair.DeviceOne,
-			}).Warn("a device group is invalid because an invalid signature")
+			}).Warn("a device group is invalid because of an invalid signature")
 			return false
 		}
 
