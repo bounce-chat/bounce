@@ -149,6 +149,16 @@ func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) (
 	}
 	c.Author = dev.UserID
 
+	// Do not allow frames from revoked devices
+	if dev.RevokedAt != 0 {
+		log.WithFields(log.Fields{
+			"id":             c.ID,
+			"signing_device": c.SigningDevice,
+		}).Warn("ignoring confirmation signed by revoked device")
+		go b.sendAck(peer, typeConfirmation, c.ID)
+		return nil, false
+	}
+
 	// Ignore anything from a blocked user
 	if blockedUser(c.Author) {
 		log.WithFields(log.Fields{

@@ -369,6 +369,16 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 		return nil, false
 	}
 
+	// Do not allow frames from revoked devices
+	if signerKnown && signerDevice.RevokedAt != 0 {
+		log.WithFields(log.Fields{
+			"id":     ug.ID,
+			"signer": ug.Signer,
+		}).Warn("ignoring update group signed by revoked device")
+		go b.sendAck(peer, typeUpdateGroup, ug.ID)
+		return nil, false
+	}
+
 	// If the signer device is not known and this isnt' a catch up, ignore this catch up for now without an ack.
 	// It could be us being invited by a user this device isn't aware of yet, in which case we can rely on it
 	// being re-offered after we learn the identity of the signer.

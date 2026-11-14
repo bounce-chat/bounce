@@ -336,7 +336,7 @@ func (b *Bounce) deviceWasRevokedAt(address string, ts int64) bool {
 		return false
 	}
 
-	return dev.RevokedAt <= ts
+	return dev.RevokedAt < ts
 }
 
 func validDeviceName(name string) bool {

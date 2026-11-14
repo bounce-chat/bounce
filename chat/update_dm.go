@@ -260,11 +260,12 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 			}).Fatal("database error looking up signing device")
 		}
 	}
-	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < ud.Timestamp {
+	// Do not allow frames from revoked devices
+	if signerDevice.RevokedAt != 0 {
 		log.WithFields(log.Fields{
 			"id":     ud.ID,
 			"signer": ud.Signer,
-		}).Warn("ignoring direct message signed by revoked device")
+		}).Warn("ignoring update DM signed by revoked device")
 		go b.sendAck(peer, typeUpdateDM, ud.ID)
 		return nil, false
 	}

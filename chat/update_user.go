@@ -239,7 +239,9 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) (br
 			}).Fatal("database error looking up signing device")
 		}
 	}
-	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < uu.Timestamp {
+
+	// Do not allow frames from revoked devices
+	if signerDevice.RevokedAt != 0 {
 		log.WithFields(log.Fields{
 			"id":     uu.ID,
 			"signer": uu.Signer,

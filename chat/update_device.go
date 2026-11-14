@@ -229,6 +229,8 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) (
 			}).Fatal("database error looking up signing device")
 		}
 	}
+
+	// Do not allow frames from revoked devices
 	if signerDevice.RevokedAt != 0 {
 		log.WithFields(log.Fields{
 			"id":     ud.ID,
