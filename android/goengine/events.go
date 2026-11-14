@@ -15,6 +15,9 @@ import (
 // side effect of a buffer overflowing.
 type uiAdapter struct {
 	sink EventSink
+	// profileKnown is told the local user's ID whenever the engine reports a profile, whether it was created here or
+	// arrived by sync, so that the binding can answer CurrentUserID without ever asking the engine speculatively
+	profileKnown func(id string)
 }
 
 // Fails the build if chat.UI gains or changes a method, which is the point:
@@ -65,6 +68,9 @@ func (u *uiAdapter) InitialSyncComplete()  { u.sink.OnEvent("InitialSyncComplete
 // --- profile creation and device pairing -------------------------------------
 
 func (u *uiAdapter) ProfileSet(usr chat.User, dev chat.Device) {
+	if u.profileKnown != nil {
+		u.profileKnown(usr.ID.String())
+	}
 	u.emit("ProfileSet", struct {
 		User   chat.User   `json:"user"`
 		Device chat.Device `json:"device"`
@@ -72,6 +78,9 @@ func (u *uiAdapter) ProfileSet(usr chat.User, dev chat.Device) {
 }
 
 func (u *uiAdapter) SyncDeviceRequestAccepted(usr chat.User, devs []chat.Device, refs bool) {
+	if u.profileKnown != nil {
+		u.profileKnown(usr.ID.String())
+	}
 	u.emit("SyncDeviceRequestAccepted", struct {
 		User       chat.User     `json:"user"`
 		Devices    []chat.Device `json:"devices"`

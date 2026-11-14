@@ -67,6 +67,10 @@ var errListenerClosed = errors.New("listener closed")
 // A var rather than a const so tests can shorten it; nothing else reassigns it.
 var handshakeTimeout = 30 * time.Second
 
+// How long a dial may take before it is abandoned.  A rendezvous that has not completed in this time is not going to,
+// and without a bound every dial goroutine lives as long as Arti takes to give up on its own.
+const dialTimeout = 90 * time.Second
+
 // acceptQueueDepth is how many completed handshakes may wait for Accept to
 // collect them. Past this the workers block, which is backpressure rather than
 // loss: nothing is dropped, the pump simply stops taking new connections.
@@ -141,9 +145,12 @@ type TorNetwork struct {
 	// canary's own traffic is excluded. recovering serialises recoveries and
 	// restartBackoff is the pause before the next restart of a session whose
 	// canary never connected. See liveness.go.
-	lastPeerRead   atomic.Int64
-	recovering     atomic.Bool
-	restartBackoff atomic.Int64
+	lastPeerRead atomic.Int64
+	recovering   atomic.Bool
+	// descriptorPublished records that the current session's descriptor has been seen going up, so that the first
+	// publication of each session is reported once and the next session's is reported again
+	descriptorPublished atomic.Bool
+	restartBackoff      atomic.Int64
 }
 
 // readyChannel returns the current readiness gate, creating it on first use.
@@ -461,6 +468,7 @@ func (bounceTor *TorNetwork) publishSession(s *session) bool {
 		return false
 	}
 	bounceTor.session = s
+	bounceTor.descriptorPublished.Store(false)
 	gate := bounceTor.ready
 	if gate == nil {
 		gate = make(chan struct{})
@@ -648,40 +656,52 @@ func (bounceTor *TorNetwork) forwardTorLogs() {
 		return
 	}
 
-	go func() {
-		descriptorSeen := false
-		for record := range records {
-			// Arti has no API for "the descriptor is up" - its status
-			// aggregates the publisher with the introduction point manager and
-			// reports neither alone. The publisher does announce its next
-			// upload once one has succeeded, so recognising that gives an
-			// accurate first-publication time. Diagnostic only: if Arti
-			// rewrites the message this silently stops reporting, and nothing
-			// depends on it.
-			if !descriptorSeen && record.Target == "tor_hsservice::publish::reactor" &&
-				strings.Contains(record.Message, "reuploading descriptor") {
-				descriptorSeen = true
-				log.WithFields(log.Fields{
-					"id": bounceTor.Address(),
-				}).Info("hidden service descriptor published")
-			}
+	go bounceTor.pumpTorLogs(records)
+}
 
-			entry := log.WithFields(log.Fields{
-				"source": "tor",
-				"target": record.Target,
-			})
-			switch record.Level {
-			case "ERROR":
-				entry.Error(record.Message)
-			case "WARN":
-				entry.Debug(record.Message) // Hide Arti logs when logging at Info level
-			case "INFO":
-				entry.Debug(record.Message) // Hide Arti logs when logging at Info level
-			default:
-				entry.Debug(record.Message)
+// pumpTorLogs forwards Arti's records until the network shuts down or the channel is closed.  Arti's logging is
+// process-wide and hands out another channel on every call, so a forwarder that outlived its network would log every
+// record a second time, under a dead network's address.
+func (bounceTor *TorNetwork) pumpTorLogs(records <-chan arti.LogRecord) {
+	stop := bounceTor.stopChannel()
+	for {
+		var record arti.LogRecord
+		var ok bool
+		select {
+		case <-stop:
+			return
+		case record, ok = <-records:
+			if !ok {
+				return
 			}
 		}
-	}()
+
+		// Arti has no API for "the descriptor is up" - its status aggregates the publisher with the introduction
+		// point manager and reports neither alone. The publisher does announce its next upload once one has
+		// succeeded, so recognising that gives an accurate first-publication time, once per session. Diagnostic
+		// only: if Arti rewrites the message this silently stops reporting, and nothing depends on it.
+		if record.Target == "tor_hsservice::publish::reactor" && strings.Contains(record.Message, "reuploading descriptor") &&
+			bounceTor.descriptorPublished.CompareAndSwap(false, true) {
+			log.WithFields(log.Fields{
+				"id": bounceTor.Address(),
+			}).Info("hidden service descriptor published")
+		}
+
+		entry := log.WithFields(log.Fields{
+			"source": "tor",
+			"target": record.Target,
+		})
+		switch record.Level {
+		case "ERROR":
+			entry.Error(record.Message)
+		case "WARN":
+			entry.Debug(record.Message) // Hide Arti logs when logging at Info level
+		case "INFO":
+			entry.Debug(record.Message) // Hide Arti logs when logging at Info level
+		default:
+			entry.Debug(record.Message)
+		}
+	}
 }
 
 // logProgress reports bootstrap progress until the returned function is called.
@@ -1060,7 +1080,9 @@ func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
 		return nil, err
 	}
 
-	conn, err := s.client.DialContext(context.Background(), "tcp", address+".onion:80")
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	defer cancel()
+	conn, err := s.client.DialContext(ctx, "tcp", address+".onion:80")
 	if err != nil {
 		return nil, err
 	}
@@ -1239,6 +1261,8 @@ func (bounceTor *TorNetwork) Shutdown() {
 			}).Error("error stopping tor")
 		}
 	}
+	// Release the log forwarder's channel; a later Start enables logging again
+	arti.StopLogging()
 	log.Info("tor stopped")
 }
 

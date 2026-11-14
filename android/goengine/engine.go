@@ -71,7 +71,7 @@ func (a *Engine) Start(configDir string, events EventSink, notes NotificationSin
 		notes.Clear(id)
 	}
 
-	a.e = chat.Open(&uiAdapter{sink: events}, &network.TorNetwork{}, configDir, post, clear)
+	a.e = chat.Open(&uiAdapter{sink: events, profileKnown: a.setUserID}, &network.TorNetwork{}, configDir, post, clear)
 	return nil
 }
 
@@ -83,6 +83,7 @@ func (a *Engine) Stop() {
 		a.e.Shutdown()
 		a.e = nil
 	}
+	a.userID = ""
 }
 
 // Ready reports whether Start has completed.
