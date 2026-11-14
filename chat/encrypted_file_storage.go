@@ -18,7 +18,7 @@ import (
 
 const encryptedBlobStorageLimit = 1024 * 1024 * 1024 * 10 // 10GiB
 var encryptedBlobStorageSize = int64(0)
-var encryptedBlockStorageLimitMutex sync.Mutex
+var encryptedBlobStorageLimitMutex sync.Mutex
 
 var encryptedChunkOfferMutex sync.Mutex
 
@@ -72,7 +72,7 @@ func (eco *encryptedChunkOffer) getPayload() []byte {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error marshalling file's signed container")
+		}).Fatal("error marshalling encrypted chunk offer's signed container")
 	}
 
 	return bytes
@@ -709,22 +709,22 @@ func (b *Bounce) handleRequestECRO(peer string, payload []byte, catchUp bool) (b
 }
 
 func (b *Bounce) getEncryptedBlobStorageSize() int64 {
-	encryptedBlockStorageLimitMutex.Lock()
+	encryptedBlobStorageLimitMutex.Lock()
 	size := encryptedBlobStorageSize
-	encryptedBlockStorageLimitMutex.Unlock()
+	encryptedBlobStorageLimitMutex.Unlock()
 	return size
 }
 
 func (b *Bounce) incrementEncryptedBlobStorageSize(size int64) {
-	encryptedBlockStorageLimitMutex.Lock()
-	defer encryptedBlockStorageLimitMutex.Unlock()
+	encryptedBlobStorageLimitMutex.Lock()
+	defer encryptedBlobStorageLimitMutex.Unlock()
 
 	encryptedBlobStorageSize += size
 }
 
 func (b *Bounce) decrementEncryptedBlobStorageSize(size int64) {
-	encryptedBlockStorageLimitMutex.Lock()
-	defer encryptedBlockStorageLimitMutex.Unlock()
+	encryptedBlobStorageLimitMutex.Lock()
+	defer encryptedBlobStorageLimitMutex.Unlock()
 
 	encryptedBlobStorageSize -= size
 	if encryptedBlobStorageSize < 0 {
@@ -733,8 +733,8 @@ func (b *Bounce) decrementEncryptedBlobStorageSize(size int64) {
 }
 
 func (b *Bounce) recheckEncryptedBlobStorageSize() {
-	encryptedBlockStorageLimitMutex.Lock()
-	defer encryptedBlockStorageLimitMutex.Unlock()
+	encryptedBlobStorageLimitMutex.Lock()
+	defer encryptedBlobStorageLimitMutex.Unlock()
 
 	var size int64
 	err := filepath.Walk(b.configDirectory+"/blobs/", func(_ string, info os.FileInfo, err error) error {

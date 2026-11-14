@@ -32,7 +32,7 @@ func GetConfigDirectory() string {
 			log.WithFields(log.Fields{
 				"at":    "configDirectory",
 				"error": err.Error(),
-			}).Fatal("error getting home directory")
+			}).Fatal("error getting user config directory")
 		}
 		configDirectory = home + "/bounce"
 	}
@@ -69,7 +69,7 @@ func GetEncryptedConfigDirectory() string {
 			log.WithFields(log.Fields{
 				"at":    "configDirectory",
 				"error": err.Error(),
-			}).Fatal("error getting home directory")
+			}).Fatal("error getting user config directory")
 		}
 		configDirectory = home + "/bounce-encrypted"
 	}

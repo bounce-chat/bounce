@@ -12,7 +12,7 @@ type autoscrollLayout struct {
 func (asl *autoscrollLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 	if len(objects) != 1 {
 		log.WithFields(log.Fields{
-			"oject_count": len(objects),
+			"object_count": len(objects),
 		}).Fatal("cannot create autoscrollLayout with multiple objects")
 	}
 
@@ -22,7 +22,7 @@ func (asl *autoscrollLayout) Layout(objects []fyne.CanvasObject, size fyne.Size)
 
 	s, ok := embedded.(*chatHistory)
 	if !ok {
-		log.Fatal("cannot create autoscrollLayout with anything other than chatHisotry")
+		log.Fatal("cannot create autoscrollLayout with anything other than chatHistory")
 	}
 
 	if asl.lastHeight != 0 {
@@ -46,7 +46,7 @@ func (asl *autoscrollLayout) Layout(objects []fyne.CanvasObject, size fyne.Size)
 func (asl *autoscrollLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
 	if len(objects) != 1 {
 		log.WithFields(log.Fields{
-			"oject_count": len(objects),
+			"object_count": len(objects),
 		}).Fatal("cannot create autoscrollLayout with multiple objects")
 	}
 

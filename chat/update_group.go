@@ -1260,7 +1260,7 @@ func (b *Bounce) informUIUpdateGroupDemoteAdmin(ug updateGroup) {
 			"error":   err.Error(),
 			"actor":   ug.Actor,
 			"user_id": ug.Data,
-		}).Error("update group attempted to promote admin with invalid ID")
+		}).Error("update group attempted to demote admin with invalid ID")
 		return
 	}
 

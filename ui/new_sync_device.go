@@ -70,7 +70,7 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 	}
 	ui.widgets.newSyncDevice.currentStep.Alignment = fyne.TextAlignCenter
 
-	syncStringEntryLabel := widget.NewLabel("Paste in the string to pair this device with an exiting profile")
+	syncStringEntryLabel := widget.NewLabel("Paste in the string to pair this device with an existing profile")
 	syncStringEntryLabel.Alignment = fyne.TextAlignCenter
 
 	syncButton := widget.NewButton("Sync", func() {

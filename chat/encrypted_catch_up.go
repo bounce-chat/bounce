@@ -204,7 +204,7 @@ func (b *Bounce) decryptEncryptedReceive(f encryptedReceive, encryptionKeyHistor
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("error generating key encryption key from device for encrypted catch up frame")
+			}).Error("error generating key encryption key from device for encrypted frame")
 			return empty, err
 		}
 	} else if f.OldKeyHash != "" {
@@ -222,7 +222,7 @@ func (b *Bounce) decryptEncryptedReceive(f encryptedReceive, encryptionKeyHistor
 			log.WithFields(log.Fields{
 				"old_key": f.OldKeyHash,
 				"error":   err.Error(),
-			}).Error("error generating key encryption key for encrypted catch up frame")
+			}).Error("error generating key encryption key for encrypted frame")
 			return empty, err
 		}
 	} else {
@@ -230,7 +230,7 @@ func (b *Bounce) decryptEncryptedReceive(f encryptedReceive, encryptionKeyHistor
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("error generating key encryption key for encrypted catch up frame")
+			}).Error("error generating key encryption key for encrypted frame")
 			return empty, err
 		}
 	}
@@ -256,7 +256,7 @@ func (b *Bounce) decryptEncryptedReceive(f encryptedReceive, encryptionKeyHistor
 			"id":    f.ID,
 			"type":  f.Type,
 			"error": err.Error(),
-		}).Error("error decrypting key in encrypted catch up")
+		}).Error("error decrypting key in encrypted frame")
 		return empty, err
 	}
 
@@ -281,7 +281,7 @@ func (b *Bounce) decryptEncryptedReceive(f encryptedReceive, encryptionKeyHistor
 			"id":    f.ID,
 			"type":  f.Type,
 			"error": err.Error(),
-		}).Error("error decrypting frame in encrypted catch up")
+		}).Error("error decrypting encrypted frame")
 		return empty, err
 	}
 

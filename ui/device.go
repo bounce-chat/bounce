@@ -48,14 +48,14 @@ func (ui *ui) DeviceLastSeen(id chat.ID, timestamp int64) {
 	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 }
 
-func (ui *ui) EncryptedDeviceUnmanagable(id chat.ID) {
+func (ui *ui) EncryptedDeviceUnmanageable(id chat.ID) {
 	ui.devices.Lock()
 	d, ok := ui.devices.devices[id]
 	ui.devices.Unlock()
 	if !ok {
 		log.WithFields(log.Fields{
 			"device_id": id,
-		}).Warn("unknown device is not managable")
+		}).Warn("unknown device is not manageable")
 		return
 	}
 
@@ -81,5 +81,5 @@ func (ui *ui) EncryptedDeviceUnmanagable(id chat.ID) {
 	})
 }
 
-func (ui *ui) EncryptedDeviceManagable(id chat.ID) {
+func (ui *ui) EncryptedDeviceManageable(id chat.ID) {
 }

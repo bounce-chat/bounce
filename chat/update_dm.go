@@ -219,7 +219,7 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error unpacking signed container for group message")
+		}).Error("error unpacking signed container for update DM")
 		return nil, false
 	}
 	var ud updateDM
@@ -251,7 +251,7 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"address": ud.Signer,
-			}).Error("signer device not found for update device")
+			}).Error("signer device not found for update DM")
 			return nil, false
 		} else {
 			log.WithFields(log.Fields{

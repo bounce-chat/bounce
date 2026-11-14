@@ -529,7 +529,7 @@ func (co *chunkOffer) getPayload() []byte {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error marshalling file's signed container")
+		}).Fatal("error marshalling chunk offer's signed container")
 	}
 
 	return bytes
@@ -671,7 +671,7 @@ func (cr *chunkRequest) getPayload() []byte {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("cannot msgpack marshal chunk")
+		}).Fatal("cannot msgpack marshal chunk request")
 	}
 
 	return bytes
@@ -1904,7 +1904,7 @@ func (b *Bounce) CancelDownload(fileID ID) {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("database error updating file")
+		}).Error("database error updating chunks")
 	}
 
 	var f file

@@ -275,7 +275,7 @@ func (b *Bounce) updateDeviceState(deviceID ID) {
 			log.WithFields(log.Fields{
 				"device_id": deviceID,
 				"error":     err.Error(),
-			}).Error("device not found when updating user state")
+			}).Error("device not found when updating device state")
 			return
 		} else {
 			log.WithFields(log.Fields{

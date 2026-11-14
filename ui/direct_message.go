@@ -1017,7 +1017,7 @@ func (ui *ui) setDMMutedUntilButton(dm *directMessage) {
 		dm.muteButton.OnTapped = func() {
 			err := ui.bounce.SetDMMutedUntil(dm.user.id, 0)
 			if err != nil {
-				ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+				ui.showDialog(dialog.NewError(errors.New("error updating mute settings: "+err.Error()), ui.window), nil)
 			}
 		}
 	} else if dm.notificationsMutedUntil == 0 || dm.notificationsMutedUntil < time.Now().Unix() {
@@ -1029,7 +1029,7 @@ func (ui *ui) setDMMutedUntilButton(dm *directMessage) {
 				widget.NewButton("Mute for 5 mins", func() {
 					err := ui.bounce.SetDMMutedUntil(dm.user.id, time.Now().Unix()+60*5)
 					if err != nil {
-						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+						ui.showDialog(dialog.NewError(errors.New("error updating mute settings: "+err.Error()), ui.window), nil)
 					}
 					if fyne.CurrentDevice().IsMobile() {
 						ui.mobileBack()
@@ -1040,7 +1040,7 @@ func (ui *ui) setDMMutedUntilButton(dm *directMessage) {
 				widget.NewButton("Mute for 1 hour", func() {
 					err := ui.bounce.SetDMMutedUntil(dm.user.id, time.Now().Unix()+60*60)
 					if err != nil {
-						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+						ui.showDialog(dialog.NewError(errors.New("error updating mute settings: "+err.Error()), ui.window), nil)
 					}
 					if fyne.CurrentDevice().IsMobile() {
 						ui.mobileBack()
@@ -1051,7 +1051,7 @@ func (ui *ui) setDMMutedUntilButton(dm *directMessage) {
 				widget.NewButton("Mute for 1 day", func() {
 					err := ui.bounce.SetDMMutedUntil(dm.user.id, time.Now().Unix()+60*60*24)
 					if err != nil {
-						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+						ui.showDialog(dialog.NewError(errors.New("error updating mute settings: "+err.Error()), ui.window), nil)
 					}
 					if fyne.CurrentDevice().IsMobile() {
 						ui.mobileBack()
@@ -1062,7 +1062,7 @@ func (ui *ui) setDMMutedUntilButton(dm *directMessage) {
 				widget.NewButton("Mute for 1 week", func() {
 					err := ui.bounce.SetDMMutedUntil(dm.user.id, time.Now().Unix()+60*60*24*7)
 					if err != nil {
-						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+						ui.showDialog(dialog.NewError(errors.New("error updating mute settings: "+err.Error()), ui.window), nil)
 					}
 					if fyne.CurrentDevice().IsMobile() {
 						ui.mobileBack()
@@ -1073,7 +1073,7 @@ func (ui *ui) setDMMutedUntilButton(dm *directMessage) {
 				widget.NewButton("Mute forever", func() {
 					err := ui.bounce.SetDMMutedUntil(dm.user.id, chat.MutedForever)
 					if err != nil {
-						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+						ui.showDialog(dialog.NewError(errors.New("error updating mute settings: "+err.Error()), ui.window), nil)
 					}
 					if fyne.CurrentDevice().IsMobile() {
 						ui.mobileBack()
@@ -1102,7 +1102,7 @@ func (ui *ui) setDMMutedUntilButton(dm *directMessage) {
 				widget.NewButton("Unmute Now", func() {
 					err := ui.bounce.SetDMMutedUntil(dm.user.id, 0)
 					if err != nil {
-						ui.showDialog(dialog.NewError(errors.New("error updating group mute settings: "+err.Error()), ui.window), nil)
+						ui.showDialog(dialog.NewError(errors.New("error updating mute settings: "+err.Error()), ui.window), nil)
 					}
 					if fyne.CurrentDevice().IsMobile() {
 						ui.mobileBack()

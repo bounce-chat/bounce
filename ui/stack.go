@@ -162,7 +162,7 @@ func (ui *ui) mobileBack() {
 			ui.setGroupMutedUntilButton(g)
 			ui.setContent(displayView.viewType, g.editContainer)
 		} else {
-			log.Error("cannot go back to edit group settings view for unknown DM")
+			log.Error("cannot go back to edit group settings view for unknown group")
 			ui.mobileBack()
 		}
 	case viewTypeSettings:

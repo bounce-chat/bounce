@@ -122,12 +122,12 @@ func (u *uiAdapter) DeviceLastSeen(id chat.ID, ts int64) {
 func (u *uiAdapter) EncryptedDeviceAdded()    { u.sink.OnEvent("EncryptedDeviceAdded", "") }
 func (u *uiAdapter) EncryptedDeviceRejected() { u.sink.OnEvent("EncryptedDeviceRejected", "") }
 
-func (u *uiAdapter) EncryptedDeviceManagable(id chat.ID) {
-	u.emitID("EncryptedDeviceManagable", id)
+func (u *uiAdapter) EncryptedDeviceManageable(id chat.ID) {
+	u.emitID("EncryptedDeviceManageable", id)
 }
 
-func (u *uiAdapter) EncryptedDeviceUnmanagable(id chat.ID) {
-	u.emitID("EncryptedDeviceUnmanagable", id)
+func (u *uiAdapter) EncryptedDeviceUnmanageable(id chat.ID) {
+	u.emitID("EncryptedDeviceUnmanageable", id)
 }
 
 // --- users -------------------------------------------------------------------

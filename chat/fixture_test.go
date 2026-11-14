@@ -483,8 +483,8 @@ func (t *testUI) AnotherDeviceActive()                                          
 func (t *testUI) NoOtherDeviceActive()                                             {}
 func (t *testUI) EncryptedDeviceAdded()                                            {}
 func (t *testUI) EncryptedDeviceRejected()                                         {}
-func (t *testUI) EncryptedDeviceManagable(ID)                                      {}
-func (t *testUI) EncryptedDeviceUnmanagable(ID)                                    {}
+func (t *testUI) EncryptedDeviceManageable(ID)                                     {}
+func (t *testUI) EncryptedDeviceUnmanageable(ID)                                   {}
 func (t *testUI) UpdateDraft(Draft)                                                {}
 
 func newBounce() *Bounce {

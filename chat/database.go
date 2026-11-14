@@ -221,7 +221,7 @@ func (b *Bounce) pruneDirectMessages() {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error selecting direct message that are undeliverable while pruning database")
+		}).Fatal("error selecting direct messages that are undeliverable while pruning database")
 	}
 	for _, dm := range undeliverableDMs {
 		err = b.database.Model(&dm).Update("undeliverable", true).Error
@@ -269,7 +269,7 @@ func (b *Bounce) pruneGroupMessages() {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("error selecting group message that are undeliverable while pruning database")
+		}).Fatal("error selecting group messages that are undeliverable while pruning database")
 	}
 	for _, gm := range undeliverableGMs {
 		err = b.database.Model(&gm).Update("undeliverable", true).Error
@@ -878,7 +878,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			userID, err := IDFromBytes(ug.Data)
 			if err != nil {
 				log.WithFields(log.Fields{
-					"id":    ug.Data,
+					"data":  ug.Data,
 					"error": err.Error(),
 				}).Fatal("error parsing user ID for remove user in database")
 			}
@@ -909,7 +909,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			userID, err := IDFromBytes(ug.Data)
 			if err != nil {
 				log.WithFields(log.Fields{
-					"id":    ug.Data,
+					"data":  ug.Data,
 					"error": err.Error(),
 				}).Fatal("error parsing user ID for admin promotion in database")
 			}
@@ -929,7 +929,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			userID, err := IDFromBytes(ug.Data)
 			if err != nil {
 				log.WithFields(log.Fields{
-					"id":    ug.Data,
+					"data":  ug.Data,
 					"error": err.Error(),
 				}).Fatal("error parsing user ID for admin demotion in database")
 			}
@@ -1066,7 +1066,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			userID, err := IDFromBytes(ug.Data)
 			if err != nil {
 				log.WithFields(log.Fields{
-					"id":    ug.Data,
+					"data":  ug.Data,
 					"error": err.Error(),
 				}).Fatal("error parsing user ID for invite revocation in database")
 			}
@@ -1492,7 +1492,7 @@ func (b *Bounce) GetDMHistory(userID ID) InitialState {
 		case updateUserTypeRemoveEncryptedDevice:
 			// Encrypted devices do not create status changes
 		case updateUserTypeSetEncryptedDeviceName:
-			// Setting encrypted device name doesn't create state change
+			// Setting encrypted device name doesn't create status change
 		case updateUserTypeReplaceKeys:
 			// Changing keys does not create a status change
 		case updateUserTypeReplaceECDHPublicKey:

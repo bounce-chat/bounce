@@ -193,7 +193,7 @@ func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
 			})
 		}
 
-		// Sign the encrypted frame and recipients, send to the encrypted device
+		// Build the encrypted frame with its recipients and send it to the encrypted device
 		ef := encryptedFrame{
 			ID:             br.getID(),
 			Type:           br.getType(),
@@ -308,7 +308,7 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 		})
 	}
 
-	// Sign the encrypted frame and recipients, send to the encrypted device
+	// Build the encrypted frame with its recipients and send it to the encrypted device
 	return &encryptedFrame{
 		ID:             br.getID(),
 		Type:           br.getType(),

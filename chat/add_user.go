@@ -149,8 +149,8 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 	}
 	if b.devicePool.isRevoked(au.RequesterDevice) {
 		log.WithFields(log.Fields{
-			"peer":         peer,
-			"offer_device": au.RequesterDevice,
+			"peer":             peer,
+			"requester_device": au.RequesterDevice,
 		}).Warn("ignoring add user with revoked requester device")
 		return nil, false
 	}

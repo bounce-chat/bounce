@@ -114,7 +114,7 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Error("error pruning encrypted frames")
+				}).Error("error pruning encrypted chunk storage requests")
 			}
 
 			// Pruning and other deletes do not adjust the in-memory untrusted storage size, so reload it
@@ -335,7 +335,7 @@ func (edmr *encryptedDeviceManagementResponse) getPayload() []byte {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("cannot msgpack marshal encrypted device management request")
+		}).Fatal("cannot msgpack marshal encrypted device management response")
 	}
 	return payload
 }
@@ -477,7 +477,7 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error unmarshalling encrypted send")
+		}).Error("error unmarshalling encrypted frame")
 		return nil, false
 	}
 
@@ -1035,7 +1035,7 @@ func (b *Bounce) handleAppendRecipientResponse(peer string, payload []byte, _ bo
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("error generating key encryption key from discloseDEK")
+			}).Error("error generating key encryption key for disclosed DEK")
 			continue
 		}
 
@@ -1075,14 +1075,14 @@ func (b *Bounce) handleAppendRecipientResponse(peer string, payload []byte, _ bo
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("error encrypting frame")
+			}).Error("error creating block")
 			continue
 		}
 		gcm, err := cipher.NewGCMWithRandomNonce(block)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("error encrypting frame")
+			}).Error("error creating gcm")
 			continue
 		}
 
@@ -1248,14 +1248,14 @@ func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []b
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error encrypting frame")
+		}).Error("error creating block")
 		return nil, false
 	}
 	dekGCM, err := cipher.NewGCMWithRandomNonce(dekBlock)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error encrypting frame")
+		}).Error("error creating gcm")
 		return nil, false
 	}
 	session := slices.Concat(
@@ -1348,7 +1348,7 @@ func (eroc *encryptedReferenceOfferResponse) getPayload() []byte {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("cannot msgpack marshal encrypted reference offer challenge")
+		}).Fatal("cannot msgpack marshal encrypted reference offer response")
 	}
 	return bytes
 }
@@ -1499,7 +1499,7 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 	} else {
 		log.WithFields(log.Fields{
 			"peer": peer,
-		}).Error("received encrypted reference offer response with invalid signature")
+		}).Error("received encrypted reference offer response that could not be decrypted")
 	}
 
 	return nil, false
@@ -1687,15 +1687,15 @@ func (b *Bounce) handleEncryptedDeviceManagementActionResponse(peer string, payl
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error unmarshalling encrypted device management response")
+		}).Error("error unmarshalling encrypted device management action response")
 		return nil, false
 	}
 
 	if !edmr.Authorized {
-		b.updateManagableWarning(peer, false)
+		b.updateManageableWarning(peer, false)
 		return nil, false
 	} else {
-		b.updateManagableWarning(peer, true)
+		b.updateManageableWarning(peer, true)
 	}
 
 	return nil, false
@@ -1776,7 +1776,7 @@ func (b *Bounce) handleManagementKeyHashResponse(peer string, payload []byte, _ 
 
 	if mkhr.Hash == hashString(blake3.Sum256(cu.PublicECDSAKey)) {
 		// Keys already match, sync up the authorized user state now
-		b.updateManagableWarning(peer, true)
+		b.updateManageableWarning(peer, true)
 		return nil, false
 	}
 
@@ -1815,25 +1815,25 @@ func (b *Bounce) handleManagementKeyHashResponse(peer string, payload []byte, _ 
 
 		b.sendDirect(peer, &med)
 
-		b.updateManagableWarning(peer, true)
+		b.updateManageableWarning(peer, true)
 	} else {
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("encrypted device cannot be managed with any known key")
-		b.updateManagableWarning(peer, false)
+		b.updateManageableWarning(peer, false)
 	}
 
 	return nil, false
 }
 
-func (b *Bounce) updateManagableWarning(peer string, managable bool) {
+func (b *Bounce) updateManageableWarning(peer string, manageable bool) {
 	var esd encryptedSyncDevice
 	err := b.database.First(&esd, "address = ?", peer).Error
 	if err == nil {
-		if managable {
-			b.ui.EncryptedDeviceManagable(esd.ID)
+		if manageable {
+			b.ui.EncryptedDeviceManageable(esd.ID)
 		} else {
-			b.ui.EncryptedDeviceUnmanagable(esd.ID)
+			b.ui.EncryptedDeviceUnmanageable(esd.ID)
 		}
 	} else if errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
@@ -1899,7 +1899,7 @@ func (b *Bounce) encryptionKeyHistory() map[string][]byte {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("cannot get management key history before user exists")
+			}).Error("cannot get encryption key history before user exists")
 			return results
 		} else {
 			log.WithFields(log.Fields{

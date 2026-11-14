@@ -146,8 +146,9 @@ func (ui *ui) updateDeviceStatus() {
 					showError = nil
 					hideEditDialog = confirmed
 					if confirmed {
-						showError = ui.bounce.RevokeDevice(dev.ID)
-						if showError != nil {
+						err := ui.bounce.RevokeDevice(dev.ID)
+						if err != nil {
+							showError = errors.New("error revoking device: " + err.Error())
 							hideEditDialog = false
 						}
 					}

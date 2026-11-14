@@ -382,7 +382,7 @@ func (b *Bounce) getGroupMessagesToOffer(address string, userID ID) []frameRefer
 		log.WithFields(log.Fields{
 			"peer":  address,
 			"error": err.Error(),
-		}).Fatal("error loading DMs for reference offer")
+		}).Fatal("error loading group messages for reference offer")
 	}
 
 	references := []frameReference{}
@@ -842,7 +842,7 @@ func (b *Bounce) getUpdateUsersToOffer(address string, userID ID) []frameReferen
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("error selecting unsent update devices in reference offer")
+			}).Fatal("error selecting unsent update users in reference offer")
 		}
 	}
 
@@ -971,7 +971,7 @@ func (b *Bounce) getReadReceiptsToOffer(address string, userID ID) []frameRefere
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("error selecting unsent update devices in reference offer")
+			}).Fatal("error selecting unsent read receipts in reference offer")
 		}
 	}
 
@@ -992,7 +992,7 @@ func (b *Bounce) getUpdateSettingsToOffer(address string, userID ID) []frameRefe
 		return []frameReference{}
 	}
 
-	// Select all update setting that have not been delivered
+	// Select all update settings that have not been delivered
 	var unsentUpdateSettings []updateSettings
 	err := b.database.
 		Select("update_settings.*").

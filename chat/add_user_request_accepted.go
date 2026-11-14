@@ -86,7 +86,7 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 	if !peerFound {
 		log.WithFields(log.Fields{
 			"peer": peer,
-		}).Warn("ignoring SDRA received from device not in the offer user's device group")
+		}).Warn("ignoring add user request accepted from device not in the offer user's device group")
 		return nil, false
 	}
 
@@ -97,7 +97,7 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 		log.WithFields(log.Fields{
 			"peer":    peer,
 			"user_id": offerUser.ID,
-		}).Warn("ignoring SDRA received with conflicting offer user")
+		}).Warn("ignoring add user request accepted with conflicting offer user")
 		return nil, false
 	}
 	for _, d := range offerUser.Devices {
@@ -108,7 +108,7 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 				"peer":      peer,
 				"device_id": d.ID,
 				"address":   d.Address,
-			}).Warn("ignoring SDRA received with conflicting offer user device")
+			}).Warn("ignoring add user request accepted with conflicting offer user device")
 			return nil, false
 		}
 	}

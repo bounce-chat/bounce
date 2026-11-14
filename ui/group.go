@@ -1421,7 +1421,7 @@ func (ui *ui) UserChangedGroupImage(ugci chat.UpdateGroupUserChangedGroupImage) 
 	if !exists {
 		log.WithFields(log.Fields{
 			"group_id": ugci.Thread,
-		}).Error("cannot display block for group that doesn't exist")
+		}).Error("cannot display image change for group that doesn't exist")
 		return
 	}
 

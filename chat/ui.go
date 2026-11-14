@@ -431,8 +431,8 @@ type UI interface {
 	DeviceLastSeen(ID, int64)
 	EncryptedDeviceAdded()
 	EncryptedDeviceRejected()
-	EncryptedDeviceUnmanagable(ID)
-	EncryptedDeviceManagable(ID)
+	EncryptedDeviceUnmanageable(ID)
+	EncryptedDeviceManageable(ID)
 
 	// User management
 	AddUserRequestRejected(string)

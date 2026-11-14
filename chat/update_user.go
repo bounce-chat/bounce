@@ -498,7 +498,7 @@ func (b *Bounce) updateUserState(userID ID) {
 			encryptedDeviceCacheMutex.Unlock()
 		case updateUserTypeSetEncryptedDeviceName:
 			addressLength := len(b.network.Address())
-			if len(uu.Data) < addressLength+2 {
+			if len(uu.Data) < addressLength+1 {
 				log.WithFields(log.Fields{
 					"length": len(uu.Data),
 				}).Warn("update user data length too short to update encrypted device name")

@@ -445,7 +445,7 @@ func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id ID, frameType string
 				log.WithFields(log.Fields{
 					"error": err.Error(),
 					"id":    id,
-				}).Fatal("database error looking up group message")
+				}).Fatal("database error looking up direct message")
 			}
 		}
 

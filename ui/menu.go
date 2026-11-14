@@ -31,7 +31,7 @@ func (ui *ui) buildMenu() {
 			fyne.NewMenuItem("Contacts", func() {
 				ui.showNewDM()
 			}),
-			fyne.NewMenuItem("Add Contact", func() {
+			fyne.NewMenuItem("Add User", func() {
 				ui.showAddUser()
 			}),
 		),

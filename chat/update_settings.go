@@ -17,10 +17,10 @@ const disabled = 0x00
 const enabled = 0x01
 
 const updateSettingsTypeSetDefaultGroupRetention = uint16(0)
-const updateSettingsTypeSetDefatulReadReceipts = uint16(1)
+const updateSettingsTypeSetDefaultReadReceipts = uint16(1)
 const updateSettingsTypeSetDefaultTypingIndicators = uint16(2)
 const updateSettingsTypeSetNewGroupRestrictUserManagement = uint16(3)
-const updateSettingsTypeSetNewGroupRestirctGroupEdits = uint16(4)
+const updateSettingsTypeSetNewGroupRestrictGroupEdits = uint16(4)
 const updateSettingsTypeSetNewGroupRestrictPosting = uint16(5)
 const updateSettingsTypeSetAutoJoinGroups = uint16(6)
 const updateSettingsTypeSetDefaultDMRetention = uint16(7)
@@ -116,7 +116,7 @@ func (us *updateSettings) validPayload() error {
 		if len(us.Data) != 8 {
 			return errInvalidPayloadLength
 		}
-	case updateSettingsTypeSetDefatulReadReceipts:
+	case updateSettingsTypeSetDefaultReadReceipts:
 		if len(us.Data) != 1 {
 			return errInvalidPayloadLength
 		}
@@ -137,7 +137,7 @@ func (us *updateSettings) validPayload() error {
 		if !(us.Data[0] == enabled || us.Data[0] == disabled) {
 			return errInvalidPayloadValue
 		}
-	case updateSettingsTypeSetNewGroupRestirctGroupEdits:
+	case updateSettingsTypeSetNewGroupRestrictGroupEdits:
 		if len(us.Data) != 1 {
 			return errInvalidPayloadLength
 		}
@@ -178,7 +178,7 @@ func (b *Bounce) handleUpdateSettings(peer string, payload []byte, catchUp bool)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("error unpacking signed container for group message")
+		}).Error("error unpacking signed container for update settings")
 		return nil, false
 	}
 	var us updateSettings
@@ -315,13 +315,13 @@ func (b *Bounce) updateSettingsState() {
 		switch us.Type {
 		case updateSettingsTypeSetDefaultGroupRetention:
 			defaultGroupRetention = int64(binary.LittleEndian.Uint64(us.Data))
-		case updateSettingsTypeSetDefatulReadReceipts:
+		case updateSettingsTypeSetDefaultReadReceipts:
 			defaultSendReadReceipts = us.Data[0] == enabled
 		case updateSettingsTypeSetDefaultTypingIndicators:
 			defaultSendTypingIndicators = us.Data[0] == enabled
 		case updateSettingsTypeSetNewGroupRestrictUserManagement:
 			newGroupRestrictUserManagement = us.Data[0] == enabled
-		case updateSettingsTypeSetNewGroupRestirctGroupEdits:
+		case updateSettingsTypeSetNewGroupRestrictGroupEdits:
 			newGroupRestrictGroupEdits = us.Data[0] == enabled
 		case updateSettingsTypeSetNewGroupRestrictPosting:
 			newGroupRestrictPosting = us.Data[0] == enabled
@@ -395,7 +395,7 @@ func (b *Bounce) SetReadReceiptsByDefault(value bool) {
 	b.applyAndBroadcastUpdateSettings(updateSettings{
 		Nonce:     newNonce(),
 		Timestamp: time.Now().Unix(),
-		Type:      updateSettingsTypeSetDefatulReadReceipts,
+		Type:      updateSettingsTypeSetDefaultReadReceipts,
 		Data:      payload,
 	})
 }
@@ -443,7 +443,7 @@ func (b *Bounce) SetNewGroupRestrictGroupEdits(value bool) {
 	b.applyAndBroadcastUpdateSettings(updateSettings{
 		Nonce:     newNonce(),
 		Timestamp: time.Now().Unix(),
-		Type:      updateSettingsTypeSetNewGroupRestirctGroupEdits,
+		Type:      updateSettingsTypeSetNewGroupRestrictGroupEdits,
 		Data:      payload,
 	})
 }

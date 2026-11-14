@@ -13,7 +13,7 @@ import (
 
 var indicatorAlreadySeenRetentionSeconds = int64(60)
 var sendNewTypingIndicatorCooldownSeconds = int64(3)
-var followUpTypingIndicatorUpdateSeconds = 5 * time.Second
+var followUpTypingIndicatorUpdateInterval = 5 * time.Second
 var typingIndicatorDisplayForSeconds = int64(3)
 var ignoreTypingIndicatorsAfterSeconds = int64(3)
 
@@ -421,7 +421,7 @@ func (b *Bounce) updateTypingState(ti typingIndicator) {
 
 	b.updateFrontendTypingIndicators()
 	go func() {
-		time.Sleep(followUpTypingIndicatorUpdateSeconds)
+		time.Sleep(followUpTypingIndicatorUpdateInterval)
 		b.updateFrontendTypingIndicators()
 	}()
 }

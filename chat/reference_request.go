@@ -103,7 +103,7 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 		for _, br := range broadcastables {
 			s, ok := br.(catchUpAble)
 			if !ok {
-				log.Error("broadcastable frame is not also a sortableSendable frame")
+				log.Error("broadcastable frame is not also a catchUpAble frame")
 			}
 			cu.sendables = append(cu.sendables, s)
 		}

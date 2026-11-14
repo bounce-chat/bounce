@@ -172,11 +172,11 @@ class EngineEventPump(
             "EncryptedDeviceAdded" -> repo.emit(RepositoryEffect.EncryptedDeviceAdded)
             "EncryptedDeviceRejected" -> repo.emit(RepositoryEffect.EncryptedDeviceRejected)
 
-            "EncryptedDeviceManagable" -> repo.emit(
+            "EncryptedDeviceManageable" -> repo.emit(
                 RepositoryEffect.EncryptedDeviceManageable(decode<IdPayload>(payload).id, true)
             )
 
-            "EncryptedDeviceUnmanagable" -> repo.emit(
+            "EncryptedDeviceUnmanageable" -> repo.emit(
                 RepositoryEffect.EncryptedDeviceManageable(decode<IdPayload>(payload).id, false)
             )
 

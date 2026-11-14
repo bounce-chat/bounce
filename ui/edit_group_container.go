@@ -391,7 +391,7 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 		layout.NewBorderLayout(g.newUserSearchEntry, nil, nil, nil),
 		g.newUserSearchEntry,
 		container.NewVBox(
-			widget.NewLabel("Users to add:"),
+			widget.NewLabel("Users to invite:"),
 			g.pendingUsersContainer,
 			widget.NewLabel("All Users:"),
 			g.availableNewUsersScroll,
@@ -415,7 +415,7 @@ func (ui *ui) buildEditGroupContainer(g *group) {
 			for _, thisUser := range g.pendingUsers.userList {
 				err := ui.bounce.InviteUserToGroup(g.id, thisUser.id)
 				if err != nil {
-					showError = errors.New("error adding user: " + err.Error())
+					showError = errors.New("error inviting user: " + err.Error())
 					return
 				}
 			}

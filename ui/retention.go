@@ -26,8 +26,8 @@ var retentionOneWeek = retentionSelection{
 	value:   int64(time.Duration(7 * 24 * time.Hour).Seconds()),
 }
 
-var retentionOneMonth = retentionSelection{
-	display: "1 Month",
+var retentionFourWeeks = retentionSelection{
+	display: "4 Weeks",
 	value:   int64(time.Duration(4 * 7 * 24 * time.Hour).Seconds()),
 }
 
@@ -36,20 +36,20 @@ var retentionOff = retentionSelection{
 	value:   0,
 }
 
-var retentionSelections = []string{retentionOneHour.display, retentionOneDay.display, retentionOneWeek.display, retentionOneMonth.display, retentionOff.display}
+var retentionSelections = []string{retentionOneHour.display, retentionOneDay.display, retentionOneWeek.display, retentionFourWeeks.display, retentionOff.display}
 var retentionValues = map[string]int64{
-	retentionOneHour.display:  retentionOneHour.value,
-	retentionOneDay.display:   retentionOneDay.value,
-	retentionOneWeek.display:  retentionOneWeek.value,
-	retentionOneMonth.display: retentionOneMonth.value,
-	retentionOff.display:      retentionOff.value,
+	retentionOneHour.display:   retentionOneHour.value,
+	retentionOneDay.display:    retentionOneDay.value,
+	retentionOneWeek.display:   retentionOneWeek.value,
+	retentionFourWeeks.display: retentionFourWeeks.value,
+	retentionOff.display:       retentionOff.value,
 }
 var retentionNames = map[int64]string{
-	retentionOneHour.value:  retentionOneHour.display,
-	retentionOneDay.value:   retentionOneDay.display,
-	retentionOneWeek.value:  retentionOneWeek.display,
-	retentionOneMonth.value: retentionOneMonth.display,
-	retentionOff.value:      retentionOff.display,
+	retentionOneHour.value:   retentionOneHour.display,
+	retentionOneDay.value:    retentionOneDay.display,
+	retentionOneWeek.value:   retentionOneWeek.display,
+	retentionFourWeeks.value: retentionFourWeeks.display,
+	retentionOff.value:       retentionOff.display,
 }
 
 func getRetentionName(retention int64) string {
