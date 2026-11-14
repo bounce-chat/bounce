@@ -369,12 +369,14 @@ func (b *Bounce) handleUpdateGroup(peer string, payload []byte, catchUp bool) (b
 		return nil, false
 	}
 
-	// Do not allow frames from revoked devices
-	if signerKnown && signerDevice.RevokedAt != 0 {
+	// A malicious user could backdate frames and claim they were created before their device was revoked, however
+	// any dangerous conflicts will be handled by confirmations, and dropping those updates here risks a consensus
+	// split between members of a group
+	if signerKnown && signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < ug.Timestamp {
 		log.WithFields(log.Fields{
 			"id":     ug.ID,
 			"signer": ug.Signer,
-		}).Warn("ignoring update group signed by revoked device")
+		}).Warn("ignoring update group signed by a device after it was revoked")
 		go b.sendAck(peer, typeUpdateGroup, ug.ID)
 		return nil, false
 	}

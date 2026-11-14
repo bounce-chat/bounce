@@ -154,7 +154,7 @@ func (b *Bounce) handleConfirmation(peer string, payload []byte, catchUp bool) (
 		log.WithFields(log.Fields{
 			"id":             c.ID,
 			"signing_device": c.SigningDevice,
-		}).Warn("ignoring confirmation signed by revoked device")
+		}).Warn("ignoring confirmation signed by a device after it was revoked")
 		go b.sendAck(peer, typeConfirmation, c.ID)
 		return nil, false
 	}
