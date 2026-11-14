@@ -96,7 +96,7 @@ func (ui *ui) mobileBack() {
 	// If there's only one view left in the history, we're at the beginning and should close the app
 	if len(ui.state.viewStack) == 1 {
 		if drv, ok := ui.app.Driver().(mobile.Driver); ok {
-			drv.(mobile.Driver).GoBack()
+			drv.GoBack()
 		}
 		return
 	}

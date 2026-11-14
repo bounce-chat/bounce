@@ -91,7 +91,7 @@ func newPendingMessageAttachment(id chat.ID, reader fyne.URIReadCloser, actionCa
 	height := 0
 	if size <= chat.EmbeddedFileLimit {
 		var err error
-		imageBytes := []byte{}
+		var imageBytes []byte
 		if fyne.CurrentDevice().IsMobile() {
 			imageBytes, err = io.ReadAll(reader)
 			if err != nil {

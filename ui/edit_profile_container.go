@@ -23,37 +23,6 @@ type editProfile struct {
 	profileIcon      *defaultImage
 }
 
-type expirationSelection struct {
-	display       string
-	unixIncrement int64
-}
-
-var expirationOneHour = expirationSelection{
-	display:       "1 Hour",
-	unixIncrement: int64(time.Duration(1 * time.Hour).Seconds()),
-}
-
-var expirationOneDay = expirationSelection{
-	display:       "1 Day",
-	unixIncrement: int64(time.Duration(24 * time.Hour).Seconds()),
-}
-
-var expirationOneWeek = expirationSelection{
-	display:       "1 Week",
-	unixIncrement: int64(time.Duration(24 * time.Hour * 7).Seconds()),
-}
-
-var expirationNever = expirationSelection{
-	display: "Never",
-}
-
-var expirationSelections = []string{expirationOneHour.display, expirationOneDay.display, expirationOneWeek.display, expirationNever.display}
-var expirationIncrements = map[string]int64{
-	expirationOneHour.display: expirationOneHour.unixIncrement,
-	expirationOneDay.display:  expirationOneDay.unixIncrement,
-	expirationOneWeek.display: expirationOneWeek.unixIncrement,
-}
-
 func (ui *ui) showEditProfile() {
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeEditProfile})

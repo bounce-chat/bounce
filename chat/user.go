@@ -227,7 +227,7 @@ func (b *Bounce) addBlockedGroup(groupID ID) {
 }
 
 func (b *Bounce) blockedGroups() []ID {
-	blocked := []ID{}
+	var blocked []ID
 
 	var settings profileSettings
 	err := b.database.Select("blocked_groups").Where("user_id = ?", b.currentUserID()).First(&settings).Error

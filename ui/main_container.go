@@ -217,18 +217,6 @@ func (ui *ui) buildMainContainer() {
 }
 
 func (ui *ui) buildDatabaseLoading() {
-	//animation, err := xwidget.NewAnimatedGifFromResource(newEmbeddedResource("assets/icon-animated.gif"))
-	//if err != nil {
-	//	log.WithFields(log.Fields{
-	//		"error": err.Error(),
-	//	}).Fatal("error creating gif")
-	//}
-	//animation.SetMinSize(fyne.NewSize(200, 200))
-	//animation.Start()
-
-	//progress := widget.NewProgressBarInfinite()
-	//progress.Start()
-
 	loading := widget.NewLabel("loading...")
 	loading.Alignment = fyne.TextAlignCenter
 

@@ -3,10 +3,8 @@
 package ui
 
 import (
-	"bytes"
 	"context"
 	"image"
-	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/svanichkin/gocam"
@@ -17,20 +15,6 @@ func cameraSupported() bool {
 }
 
 var cameraCancelFunc context.CancelFunc
-
-func capturePhoto() (image.Image, error) {
-	frame, err := gocam.CaptureSingleFrame(context.Background(), time.Duration(5*time.Second))
-	if err != nil {
-		return nil, err
-	}
-
-	img, _, err := image.Decode(bytes.NewReader(frame.Data))
-	if err != nil {
-		return nil, err
-	}
-
-	return img, nil
-}
 
 // startCameraPreview opens the camera and returns its preview frames.  The channel is closed when the camera
 // stops, by stopCameraPreview or because the stream could not be opened, so a frame processor ranging over it exits

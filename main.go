@@ -1,9 +1,6 @@
 package main
 
 import (
-	//"net/http"
-	//_ "net/http/pprof"
-
 	"flag"
 
 	"github.com/bounce-chat/bounce/chat"
@@ -13,10 +10,6 @@ import (
 )
 
 func main() {
-	//go func() {
-	//	log.Println(http.ListenAndServe("localhost:6060", nil))
-	//}()
-
 	encrypted := flag.Bool("encrypted", false, "start an encrypted device")
 	flag.Parse()
 	if *encrypted {

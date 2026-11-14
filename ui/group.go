@@ -36,7 +36,6 @@ type group struct {
 	readReceiptsEnabled              bool
 	overrideTypingIndicatorSetting   bool
 	typingIndicatorsEnabled          bool
-	lastAdminActionMutex             sync.Mutex
 	pendingUsers                     *userStore
 	notificationsMutedUntil          int64
 	createdAt                        int64
@@ -114,10 +113,6 @@ func (g *group) getLastMessageTime() int64 {
 
 func (g *group) setLastMessageTime(time int64) {
 	g.lastMessage = time
-}
-
-func (g *group) getNotificationsMutedUntil() int64 {
-	return g.notificationsMutedUntil
 }
 
 func (g *group) getEditIcon() *defaultImage {
@@ -345,42 +340,6 @@ func (ui *ui) getEditUserDialog(g *group, userID chat.ID) (dialog.Dialog, func()
 	g.editUserDialogs[userID] = dialogWithCallback{dialog: userDetailsDialog, callback: dialogCleanup}
 
 	return userDetailsDialog, dialogCleanup
-}
-
-func (ui *ui) addAdmin(g *group, userID chat.ID) {
-	alreadyAdded := false
-	for _, id := range g.admins {
-		if id == userID {
-			alreadyAdded = true
-		}
-	}
-	if !alreadyAdded {
-		g.admins = append(g.admins, userID)
-	}
-
-	ui.updateEnabledFeatures(g)
-}
-
-func (ui *ui) removeAdmin(g *group, userID chat.ID) {
-	adminsWithoutUser := []chat.ID{}
-	for _, id := range g.admins {
-		if id != userID {
-			adminsWithoutUser = append(adminsWithoutUser, id)
-		}
-	}
-	g.admins = adminsWithoutUser
-
-	ui.updateEnabledFeatures(g)
-}
-
-func (ui *ui) amAdmin(g *group) bool {
-	for _, id := range g.admins {
-		if ui.state.profile.id == id {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (ui *ui) OpenNewGroupChat(bounceGroup chat.Group) { // TODO: rename "create and open"?
@@ -1130,19 +1089,15 @@ func (ui *ui) GroupDeleted(gd chat.GroupDeleted) {
 
 		if gd.Actor != ui.state.profile.id {
 			var actorName string
-			if gd.Actor == ui.state.profile.id {
-				actorName = "You"
+			actor, ok := ui.users.get(gd.Actor)
+			if ok {
+				actorName = actor.getDisplayName()
 			} else {
-				actor, ok := ui.users.get(gd.Actor)
-				if ok {
-					actorName = actor.getDisplayName()
-				} else {
-					log.WithFields(log.Fields{
-						"actor": gd.Actor,
-						"group": gd.Group,
-					}).Warn("unknown user deleted group")
-					actorName = "unknown user"
-				}
+				log.WithFields(log.Fields{
+					"actor": gd.Actor,
+					"group": gd.Group,
+				}).Warn("unknown user deleted group")
+				actorName = "unknown user"
 			}
 
 			t, ok := ui.threads.get(gd.Group)

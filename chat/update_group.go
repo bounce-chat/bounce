@@ -46,7 +46,6 @@ var errMutedUntilOnlyMutableBySelf = errors.New("group muted until settings can 
 var errReadReceiptOnlyMutableBySelf = errors.New("group read receipt settings can only be modified by current user")
 var errTypingIndicatorOnlyMutableBySelf = errors.New("group typing indicator settings can only be modified by current user")
 var errUserNotFound = errors.New("no user found with that ID")
-var errUserHasInvalidDeviceGroup = errors.New("user has invalid device group")
 var errNoPermissionToEditGroup = errors.New("user does not have permission to edit group")
 var errNoPermissionToManageUsers = errors.New("user does not have permission to manage users")
 var errCannotPromoteAdminNotInGroup = errors.New("cannot promote a user that is not a member of a group to admin")

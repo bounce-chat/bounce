@@ -26,7 +26,6 @@ import (
 var torLock sync.Mutex
 
 var handshakeNonceSize = 32
-var signatureSize = 64
 
 var handshakeDomain = "bounce-handshake"
 var handshakeRoleDialer = byte(0x00)
@@ -250,7 +249,7 @@ func (bounceTor *TorNetwork) loadConfig(configDirectory string) {
 
 	// Load or create the keypair for the hidden service
 	pubkey, privkey := bounceTor.hiddenServiceKey()
-	bounceTor.publicKey = pubkey // TODO: needed?  move to the get function?
+	bounceTor.publicKey = pubkey
 	bounceTor.privateKey = privkey
 }
 
@@ -743,8 +742,7 @@ func (bounceTor *TorNetwork) logProgress(client *arti.Client, what string) func(
 
 // watchOnlineStatus reports connectivity changes to the callbacks.
 //
-// This replaces polling the control port: an update is pushed whenever the
-// client's bootstrap view changes, rather than up to a poll interval later.
+// An update is pushed whenever the client's bootstrap view changes.
 //
 // Known limitation: Ready does not retract. Arti derives it from timestamps
 // written on success and never cleared, so once bootstrap succeeds it stays
@@ -1029,7 +1027,7 @@ func (bounceTor *TorNetwork) handshakeListener(listenerAddress string, connectio
 	}
 
 	// Handshake step three: read the dialer's session signature and verify
-	dialerSessionSignature, err := read(connection, signatureSize)
+	dialerSessionSignature, err := read(connection, arti.SignatureSize)
 	if err != nil {
 		connection.Close()
 		return nil, err
@@ -1069,8 +1067,6 @@ func (bounceTor *TorNetwork) handshakeListener(listenerAddress string, connectio
 }
 
 func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
-	// Dialing no longer needs to be serialised against the connectivity check:
-	// that used to share the control port, and now arrives as an event.
 	// Same gate as Accept. A dial that arrives mid-restart waits for the new
 	// client instead of failing, and callers that cannot wait get
 	// errNetworkRestarting after restartWaitLimit, which they treat like any
@@ -1133,7 +1129,7 @@ func (bounceTor *TorNetwork) handshakeDialer(localAddress, listenerAddress strin
 		conn.Close()
 		return nil, err
 	}
-	listenerSessionSignature, err := read(conn, signatureSize)
+	listenerSessionSignature, err := read(conn, arti.SignatureSize)
 	if err != nil {
 		conn.Close()
 		return nil, err

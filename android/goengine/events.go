@@ -30,10 +30,6 @@ var _ chat.UI = (*uiAdapter)(nil)
 // wrapped so Kotlin always receives a JSON object and never a bare value, which
 // keeps the sealed hierarchy on that side uniform.
 func (u *uiAdapter) emit(kind string, v any) {
-	if v == nil {
-		u.sink.OnEvent(kind, "")
-		return
-	}
 	b, err := json.Marshal(v)
 	if err != nil {
 		log.WithFields(log.Fields{

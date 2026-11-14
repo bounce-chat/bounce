@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fyne.io/fyne/v2"
-	log "github.com/sirupsen/logrus"
 )
 
 type paddedCenterLayout struct {
@@ -18,12 +17,6 @@ func newPaddedCenterLayout(topOffset fyne.CanvasObject) fyne.Layout {
 }
 
 func (pcl *paddedCenterLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
-	if pcl.sidePadding >= 0.5 {
-		log.WithFields(log.Fields{
-			"padding": pcl.sidePadding,
-		}).Error("cannot use padded center layout with side padding >= 0.5")
-		pcl.sidePadding = 0
-	}
 	portion := size.Width * pcl.sidePadding
 	childWidth := size.Width - 2*portion
 

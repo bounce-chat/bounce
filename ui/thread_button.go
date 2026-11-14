@@ -548,8 +548,6 @@ type threadButtonData struct {
 	lastMessageSegmentOneItalic bool
 	lastMessageSegmentOneBold   bool
 	lastMessageSegmentTwo       string
-	lastMessageSegmentTwoItalic bool
-	lastMessageSegmentTwoBold   bool
 	draft                       string
 	lastMessageState            int
 	showLastMessageState        bool

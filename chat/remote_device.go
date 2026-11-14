@@ -260,8 +260,6 @@ func (b *Bounce) getDeviceOrEncryptedSyncDevice(peer string) (bool, bool, device
 			deviceIsKnown = true
 			deviceIsEncrypted = true
 		}
-	} else {
-		deviceIsEncrypted = false
 	}
 
 	return deviceIsKnown, deviceIsEncrypted, dev, esd

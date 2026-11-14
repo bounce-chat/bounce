@@ -20,7 +20,6 @@ type thread interface {
 	getTypingIndicator() *typingIndicator
 	getLastMessageTime() int64
 	setLastMessageTime(int64)
-	getNotificationsMutedUntil() int64
 	refreshReadReceiptSettingSelection([]string)
 	refreshTypingIndicatorSettingSelection([]string)
 	getEditIcon() *defaultImage

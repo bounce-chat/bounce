@@ -54,17 +54,6 @@ func (dp *devicePool) isRevoked(address string) bool {
 	return revoked
 }
 
-func (dp *devicePool) globallyConnectedSockets() int {
-	dp.deviceMutex.Lock()
-	defer dp.deviceMutex.Unlock()
-
-	count := 0
-	for _, rd := range dp.devices {
-		count += rd.connectedSockets()
-	}
-	return count
-}
-
 func (b *Bounce) peer() {
 	b.makeInitialPeeringConnections()
 	b.background(b.keepRemoteDevicesPruned)
@@ -693,6 +682,7 @@ func (b *Bounce) insertRemoteDeviceIntoPool(address string, poolType int, id ID)
 		for _, existingRD := range currentPool {
 			if existingRD == rd {
 				alreadyIn = true
+				break
 			}
 		}
 		if !alreadyIn {
@@ -708,6 +698,7 @@ func (b *Bounce) insertRemoteDeviceIntoPool(address string, poolType int, id ID)
 		for _, existingRD := range currentPool {
 			if existingRD == rd {
 				alreadyIn = true
+				break
 			}
 		}
 		if !alreadyIn {

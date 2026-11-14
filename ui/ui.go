@@ -21,7 +21,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const networkStateStarting = 0
 const networkStateOnline = 1
 const networkStateOffline = 2
 
@@ -151,8 +150,6 @@ type state struct {
 	initialStateSet       bool
 	initialSyncIncomplete bool
 	focused               bool
-	active                bool
-	anotherDeviceActive   bool
 	networkState          *networkStatus
 	setupStep             int
 	threadSearch          string
@@ -170,7 +167,6 @@ func Main() {
 		pendingSends: newPendingSends(),
 		state: &state{
 			focused:      true,
-			active:       true,
 			networkState: newNetworkStatus(),
 			viewLeft:     make(chan struct{}),
 			viewStack:    []view{},
@@ -198,7 +194,6 @@ func (ui *ui) build() {
 	firstTime := true
 	ui.app.Lifecycle().SetOnEnteredForeground(func() {
 		ui.state.focused = true
-		ui.state.active = true
 		ui.bounce.SetForeground(true)
 
 		activeTicker = time.NewTicker(5 * time.Second)
@@ -209,9 +204,7 @@ func (ui *ui) build() {
 				case <-activeTickerCleanup:
 					return
 				case <-activeTicker.C:
-					if ui.bounce != nil {
-						ui.bounce.CurrentDeviceActive()
-					}
+					ui.bounce.CurrentDeviceActive()
 				}
 			}
 		}()
@@ -224,12 +217,10 @@ func (ui *ui) build() {
 					} else {
 						fyne.Do(func() { setStatusBar(false) })
 					}
-					if ui.bounce != nil {
-						if ui.bounce.NetworkOnline() {
-							ui.NetworkOnline()
-						} else {
-							ui.NetworkOffline()
-						}
+					if ui.bounce.NetworkOnline() {
+						ui.NetworkOnline()
+					} else {
+						ui.NetworkOffline()
 					}
 				}()
 			}
@@ -238,7 +229,6 @@ func (ui *ui) build() {
 	})
 	ui.app.Lifecycle().SetOnExitedForeground(func() {
 		ui.state.focused = false
-		ui.state.active = false
 		ui.bounce.SetForeground(false)
 
 		if activeTicker != nil {
@@ -270,42 +260,12 @@ func (ui *ui) build() {
 	// Define the main window
 	ui.window = ui.app.NewWindow("Bounce")
 	ui.window.SetMaster()
-	//ui.window.SetOnClosed(func() {
-	//	if !fyne.CurrentDevice().IsMobile() {
-	//		ui.app.Preferences().SetBool("size-set", true)
-	//		ui.app.Preferences().SetBool("fullscreen", ui.window.FullScreen())
-	//		mainSize := ui.window.Canvas().Size()
-	//		mainSize.Width -= 2 // The window appears to always be 2px less wide than the canvas size
-	//		ui.app.Preferences().SetFloat("main-width", float64(mainSize.Width))
-	//		ui.app.Preferences().SetFloat("main-height", float64(mainSize.Height))
-	//		log.WithFields(log.Fields{
-	//			"w": mainSize.Width,
-	//			"h": mainSize.Height,
-	//		}).Warn("closing, saving sizes")
-	//	}
-	//})
 	ui.window.SetCloseIntercept(func() {
 		// There's some bug in Fyne where the app will hang when the close button
 		// is hit unless this is explicitly set https://github.com/fyne-io/fyne/issues/2314
 		ui.Quit()
 	})
-	//if !fyne.CurrentDevice().IsMobile() {
-	//	if ui.app.Preferences().Bool("size-set") {
-	//		if ui.app.Preferences().Bool("fullscreen") {
-	//			ui.window.SetFullScreen(true)
-	//		} else {
-	//			w := float32(ui.app.Preferences().Float("main-width"))
-	//			h := float32(ui.app.Preferences().Float("main-height"))
-	//			log.WithFields(log.Fields{
-	//				"w": w,
-	//				"h": h,
-	//			}).Warn("starting up, sizes")
-	//			ui.window.Resize(fyne.Size{Height: h, Width: w})
-	//		}
-	//	} else {
 	ui.window.Resize(fyne.Size{Height: defaultHeight, Width: defaultWidth})
-	//	}
-	//}
 	ui.window.Canvas().SetOnTypedKey(func(ev *fyne.KeyEvent) {
 		if fyne.CurrentDevice().IsMobile() && ev.Name == mobile.KeyBack {
 			ui.mobileBack()
@@ -819,17 +779,6 @@ func chatContainerSizeAtStartup() fyne.Size {
 		return fyne.CurrentApp().Driver().AllWindows()[0].Canvas().Size()
 	}
 
-	//if fyne.CurrentApp().Preferences().Bool("size-set") {
-	//	log.WithFields(log.Fields{
-	//		"chat-width":  float32(fyne.CurrentApp().Preferences().Float("chat-width")),
-	//		"chat-height": float32(fyne.CurrentApp().Preferences().Float("chat-height")),
-	//	}).Warn("default height pulled from store")
-	//	return fyne.Size{
-	//		Width:  float32(fyne.CurrentApp().Preferences().Float("chat-width")),
-	//		Height: float32(fyne.CurrentApp().Preferences().Float("chat-height")),
-	//	}
-	//}
-
 	return fyne.Size{
 		Width:  defaultChatHistoryWidth,
 		Height: defaultChatHistoryHeight,
@@ -863,11 +812,6 @@ func (ui *ui) NetworkOffline() {
 		ui.widgets.networkOfflineWarning.SetText("network connection lost, reconnecting...")
 		ui.widgets.networkOfflineWarning.Show()
 	})
-}
-
-func (ui *ui) UserImported(u chat.User) {
-	ui.users.add(makeUser(u))
-	fyne.DoAndWait(func() { ui.NewDirectMessage(u) })
 }
 
 func (ui *ui) FileCompleted(fileID chat.ID) {
@@ -942,10 +886,8 @@ func (ui *ui) FileDownloadProgress(fileID chat.ID, progress float64) {
 	})
 }
 
-func (ui *ui) AnotherDeviceActive() {
-	ui.state.anotherDeviceActive = true
-}
+// The desktop UI does not change anything when another of the user's devices is active; the events exist for clients
+// that suppress notifications while the user is reading elsewhere.
+func (ui *ui) AnotherDeviceActive() {}
 
-func (ui *ui) NoOtherDeviceActive() {
-	ui.state.anotherDeviceActive = false
-}
+func (ui *ui) NoOtherDeviceActive() {}

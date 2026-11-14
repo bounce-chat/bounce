@@ -22,7 +22,6 @@ import (
 type newGroup struct {
 	icon                          *defaultImage
 	iconData                      []byte
-	iconName                      string
 	nameEntry                     *widget.Entry
 	selectedUsersContainer        *container.Scroll
 	pendingUsersList              *container.Scroll
@@ -31,7 +30,6 @@ type newGroup struct {
 	selectedUsers                 *userStore
 	pendingUsers                  *userStore
 	createButton                  *widget.Button
-	addAdminsButton               *widget.Button
 	addUsersButton                *widget.Button
 	retentionSelection            *widget.Select
 	userManagementRestrictedCheck *widget.Check

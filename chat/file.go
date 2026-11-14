@@ -140,7 +140,6 @@ func (f *file) AfterDelete(tx *gorm.DB) error {
 	if f.ID == NilID {
 		return nil
 	}
-	f.SavedAt = time.Now().Unix()
 	err := tx.Where("file_id = ?", f.ID).Delete(&chunk{}).Error
 	if err != nil {
 		return err

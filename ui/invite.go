@@ -295,10 +295,6 @@ func (i *invite) getLastMessageTime() int64 {
 func (i *invite) setLastMessageTime(timestamp int64) {
 }
 
-func (i *invite) getNotificationsMutedUntil() int64 {
-	return 0
-}
-
 func (i *invite) refreshReadReceiptSettingSelection([]string) {}
 
 func (i *invite) refreshTypingIndicatorSettingSelection([]string) {}

@@ -83,27 +83,6 @@ func (ro *referenceOffer) getPayload() []byte {
 	return bytes
 }
 
-// Check if anything in the reference offer is not global scope, or justifies dialing a user
-func (ro *referenceOffer) shouldDialUser() bool {
-	for _, reference := range ro.References {
-		if rf, ok := referencedFramesByType[reference.Type]; ok && rf.dialWorthy {
-			return true
-		}
-	}
-	return false
-}
-
-// Check if a reference offer only contains content destined for a group
-func (ro *referenceOffer) onlyGroupContent() bool {
-	for _, reference := range ro.References {
-		if !(reference.Type == typeGroupMessage || reference.Type == typeUpdateGroup) {
-			return false
-		}
-	}
-
-	return true
-}
-
 func getReferenceOfferMutexForPeer(peer string) *sync.Mutex {
 	referenceOfferMutexLock.Lock()
 	defer referenceOfferMutexLock.Unlock()

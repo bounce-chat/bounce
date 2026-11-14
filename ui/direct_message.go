@@ -92,10 +92,6 @@ func (dm *directMessage) setLastMessageTime(time int64) {
 	dm.lastMessage = time
 }
 
-func (dm *directMessage) getNotificationsMutedUntil() int64 {
-	return dm.notificationsMutedUntil
-}
-
 func (dm *directMessage) getEditIcon() *defaultImage {
 	return dm.editIcon
 }
@@ -146,19 +142,6 @@ func (dm *directMessage) refreshTypingIndicatorSettingSelection(options []string
 		}
 	}
 	dm.typingIndicatorOverrideSelection.Refresh()
-}
-
-func (ui *ui) DMTypingIndicatorSettingsSet(userID chat.ID, override, enabled bool) {
-	dm, exists := ui.threads.getDM(userID)
-	if !exists {
-		log.WithFields(log.Fields{
-			"userID": userID,
-		}).Error("cannot set typing indicator override settings for unknown direct message")
-		return
-	}
-
-	dm.overrideTypingIndicatorSetting = override
-	dm.typingIndicatorsEnabled = enabled
 }
 
 func (ui *ui) NewDirectMessage(bounceUser chat.User) {
@@ -1188,6 +1171,9 @@ func (ui *ui) getOrReloadDM(id chat.ID) (*directMessage, bool, error) {
 		}
 		fyne.DoAndWait(func() { ui.openDM(u) })
 		dm, ok = ui.threads.getDM(id)
+		if !ok {
+			return nil, false, errUnknownUser
+		}
 		reloaded = true
 	}
 

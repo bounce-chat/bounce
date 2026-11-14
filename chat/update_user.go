@@ -29,7 +29,6 @@ var updateUserTypeReplaceECDHPublicKey = uint16(6)
 var errUnsupportedUpdateUserType = errors.New("unsupported update user type")
 var errInvalidKeyMaterial = errors.New("key material has the wrong size")
 var errInvalidAddress = errors.New("address is not a valid onion service id")
-var errPayloadTooShort = errors.New("payload is too short")
 
 var onionAddressRegex = regexp.MustCompile(`^[a-z2-7]{56}$`)
 

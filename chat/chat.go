@@ -29,25 +29,23 @@ const undeliverableAfter = time.Duration(4 * 7 * 24 * time.Hour)
 var startupTime = time.Now()
 
 type Bounce struct {
-	encrypted             bool
-	configDirectory       string
-	database              *gorm.DB
-	referenceDatabase     *gorm.DB
-	ui                    UI
-	network               Network
-	devicePool            *devicePool
-	consensusStore        *consensusStore
-	chunkEngine           *chunkEngine
-	postNotification      func(string, string, string, string, []byte)
-	clearNotification     func(string)
-	userID                ID
-	networkIsOnline       atomic.Bool
-	networkHasBeenOnline  atomic.Bool
-	shutdownStarted       atomic.Bool
-	databasePruningTicker *time.Ticker
-	pruningDatabase       sync.WaitGroup
-	runningHandlers       sync.WaitGroup
-	shutdownMutex         sync.Mutex
+	encrypted            bool
+	configDirectory      string
+	database             *gorm.DB
+	referenceDatabase    *gorm.DB
+	ui                   UI
+	network              Network
+	devicePool           *devicePool
+	consensusStore       *consensusStore
+	chunkEngine          *chunkEngine
+	postNotification     func(string, string, string, string, []byte)
+	clearNotification    func(string)
+	userID               ID
+	networkIsOnline      atomic.Bool
+	networkHasBeenOnline atomic.Bool
+	shutdownStarted      atomic.Bool
+	runningHandlers      sync.WaitGroup
+	shutdownMutex        sync.Mutex
 
 	// done is closed once, by stopBackgroundTasks, to tell every engine-lifetime
 	// loop to return. backgroundTasks counts those loops so Shutdown can join them.
@@ -348,11 +346,6 @@ func (b *Bounce) Shutdown() {
 	// Close the database
 	if !testing.Testing() {
 		log.Info("closing the database")
-		// Close the pruning ticker channel and wait for the database to no longer be pruning
-		if b.databasePruningTicker != nil {
-			b.databasePruningTicker.Stop()
-		}
-		b.pruningDatabase.Wait()
 		// Close the database connection
 		sqliteDB, err := b.database.DB()
 		if err != nil {
@@ -472,7 +465,7 @@ func (b *Bounce) handleInterrupts() {
 	// line or a kill signal elsewhere
 	//
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, os.Kill)
+	signal.Notify(c, os.Interrupt)
 	for s := range c {
 		log.WithFields(log.Fields{
 			"at":     "chat.handleInterrupts",

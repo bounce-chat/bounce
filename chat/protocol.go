@@ -50,7 +50,7 @@ var typeEncryptedDeviceManagementRequest = uint16(31)
 var typeEncryptedDeviceManagementResponse = uint16(32)
 var typeEncryptedReferenceOfferChallenge = uint16(33)
 var typeEncryptedReferenceOfferResponse = uint16(34)
-var typeAppendRecipient = uint16(35)
+var typeRequestReferenceOffer = uint16(35)
 var typeManageEncryptedDevice = uint16(36)
 var typeEncryptedDeviceManagementActionResponse = uint16(37)
 var typeGetManagementKeyHash = uint16(38)
@@ -67,7 +67,6 @@ var typeEncryptedChunkStorageRequest = uint16(48)
 var typeRequestECRO = uint16(49)
 var typeEncryptedClearBefore = uint16(50)
 var typeChunkUnavailable = uint16(51)
-var typeRequestReferenceOffer = uint16(52)
 
 type sendable interface {
 	getType() uint16

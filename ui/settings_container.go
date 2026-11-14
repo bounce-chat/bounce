@@ -86,11 +86,7 @@ func (ui *ui) buildSettings() {
 	var closeBar fyne.CanvasObject
 	if fyne.CurrentDevice().IsMobile() {
 		closeButton := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() {
-			if fyne.CurrentDevice().IsMobile() {
-				ui.mobileBack()
-			} else {
-				ui.showMainContainer()
-			}
+			ui.mobileBack()
 		})
 		closeButton.Importance = widget.LowImportance
 
@@ -100,11 +96,7 @@ func (ui *ui) buildSettings() {
 		)
 	} else {
 		closeButton := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
-			if fyne.CurrentDevice().IsMobile() {
-				ui.mobileBack()
-			} else {
-				ui.showMainContainer()
-			}
+			ui.showMainContainer()
 		})
 		closeButton.Importance = widget.LowImportance
 

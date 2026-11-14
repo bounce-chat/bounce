@@ -15,9 +15,6 @@ type threadEntry struct {
 	customOnSubmitted func()
 	customFocusLost   func()
 	selectKeyDown     bool
-	selecting         bool
-	selectRow         int
-	selectColumn      int
 	sizingLabel       *widget.Label
 	maxHeightLabel    *widget.Label
 }
@@ -94,10 +91,6 @@ func (e *threadEntry) KeyDown(key *fyne.KeyEvent) {
 		return
 	}
 	if key.Name == desktop.KeyShiftLeft || key.Name == desktop.KeyShiftRight {
-		if !e.selecting {
-			e.selectRow = e.CursorRow
-			e.selectColumn = e.CursorColumn
-		}
 		e.selectKeyDown = true
 	}
 	e.Entry.KeyDown(key)

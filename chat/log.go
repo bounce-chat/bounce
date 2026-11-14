@@ -12,7 +12,6 @@ import (
 	"github.com/bounce-chat/bounce/config"
 
 	"github.com/DeRuina/timberjack"
-	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
 )
@@ -20,7 +19,7 @@ import (
 const redactedLogValue = "[redacted]"
 
 var unsanitizedLogs = os.Getenv("UNSANITIZED_LOGS") == "true"
-var nocolor = logrus.TextFormatter{DisableColors: true}
+var nocolor = log.TextFormatter{DisableColors: true}
 var onionAddressPattern = regexp.MustCompile(`[a-z2-7]{56}`)
 
 var logfile = &timberjack.Logger{

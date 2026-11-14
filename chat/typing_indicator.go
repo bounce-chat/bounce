@@ -15,7 +15,6 @@ var indicatorAlreadySeenRetentionSeconds = int64(60)
 var sendNewTypingIndicatorCooldownSeconds = int64(3)
 var followUpTypingIndicatorUpdateInterval = 5 * time.Second
 var typingIndicatorDisplayForSeconds = int64(3)
-var ignoreTypingIndicatorsAfterSeconds = int64(3)
 
 // Typing indicators aren't delivery tracked, but we want to prevent broadcast loops by checking if we've already
 // seen them.  This in-memory map stores the ID of a typing indicator, and the time it was seen, so that we can

@@ -52,19 +52,10 @@ func (f *forcedVariant) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) col
 		}
 		return color.NRGBA{0xdd, 0xdd, 0xdd, 0xff}
 	case colorNameDeviceLocal:
-		if f.variant == theme.VariantDark {
-			return color.RGBA{0x38, 0x2a, 0xf7, 0xff}
-		}
 		return color.RGBA{0x38, 0x2a, 0xf7, 0xff}
 	case colorNameDeviceOffline:
-		if f.variant == theme.VariantDark {
-			return color.RGBA{0xaa, 0xaa, 0xaa, 0xff}
-		}
 		return color.RGBA{0xaa, 0xaa, 0xaa, 0xff}
 	case colorNameDeviceOnline:
-		if f.variant == theme.VariantDark {
-			return color.RGBA{0x2d, 0xc2, 0x39, 0xff}
-		}
 		return color.RGBA{0x2d, 0xc2, 0x39, 0xff}
 	}
 

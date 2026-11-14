@@ -269,15 +269,6 @@ func (ch *chatHistory) isLastItem(id chat.ID) bool {
 	return lastID == id
 }
 
-func (ch *chatHistory) isLastAuthor(id chat.ID) bool {
-	if len(ch.ids) == 0 {
-		return false
-	}
-
-	item := ch.getItem(len(ch.ids) - 1)
-	return item.getAuthor() == id
-}
-
 func (ch *chatHistory) setMergeMode(index int, neighbors bool) {
 	mergeUp := false
 	mergeDown := false
@@ -681,18 +672,6 @@ func (chr *chatHistoryRenderer) MinSize() fyne.Size {
 }
 
 func (chr *chatHistoryRenderer) Refresh() {
-	//size := chr.ch.Size()
-	//if (size.Width != 0 && size.Height != 0) && (chr.cachedWidth != size.Width || chr.cachedHeight != size.Height) {
-	//	fyne.CurrentApp().Preferences().SetFloat("chat-width", float64(size.Width))
-	//	fyne.CurrentApp().Preferences().SetFloat("chat-height", float64(size.Height))
-	//	chr.cachedWidth = size.Width
-	//	chr.cachedHeight = size.Height
-	//	log.WithFields(log.Fields{
-	//		"chat-width":  size.Width,
-	//		"chat-height": size.Height,
-	//	}).Warn("saving real size")
-	//}
-
 	chr.Layout(chr.ch.Size())
 	for _, obj := range chr.Objects() {
 		obj.Refresh()
