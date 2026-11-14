@@ -336,8 +336,8 @@ func (b *Bounce) updateSettingsState() {
 		}
 	}
 
-	// Set the values in the database
-	err = b.database.Table("profile_settings").Where("user_id = ?", b.currentUserID()).Updates(map[string]interface{}{
+	// Set the values in the database.  An update never reports not found, only how many rows it touched.
+	result := b.database.Table("profile_settings").Where("user_id = ?", b.currentUserID()).Updates(map[string]interface{}{
 		"default_group_retention":            defaultGroupRetention,
 		"default_send_read_receipts":         defaultSendReadReceipts,
 		"default_send_typing_indicators":     defaultSendTypingIndicators,
@@ -346,18 +346,15 @@ func (b *Bounce) updateSettingsState() {
 		"new_group_restrict_posting":         newGroupRestrictPosting,
 		"auto_join_groups":                   autoJoinGroups,
 		"default_dm_retention":               defaultDMRetention,
-	}).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("user not found when updating settings fields")
-			return
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error updating settings fields")
-		}
+	})
+	if result.Error != nil {
+		log.WithFields(log.Fields{
+			"error": result.Error.Error(),
+		}).Fatal("database error updating settings fields")
+	}
+	if result.RowsAffected == 0 {
+		log.Error("profile settings not found when updating settings fields")
+		return
 	}
 
 	// Inform the UI of the current state

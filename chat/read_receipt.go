@@ -29,6 +29,7 @@ var readReceiptTargetTypeInt = map[string]uint16{
 }
 
 var errUnknownReadReceiptTargetType = errors.New("unknown target type for read receipt")
+var errSeenTargetNotFound = errors.New("item to mark as seen not found")
 var errReadReceiptActorNotParticipant = errors.New("read receipt actor is not a participant of the thread the message belongs to")
 
 var readReceiptMutex sync.Mutex
@@ -329,24 +330,22 @@ func (b *Bounce) processEarlyReadReceipts(messageID ID, messageType uint16, noti
 		}
 		rr.Destination = destination
 		rr.Scope = scope
-		err = b.database.Table("read_receipts").Where("id = ?", rr.ID).Updates(map[string]interface{}{
+		// An update never reports not found, only how many rows it touched
+		result := b.database.Table("read_receipts").Where("id = ?", rr.ID).Updates(map[string]interface{}{
 			"destination": destination,
 			"scope":       scope,
-		}).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-					"id":    rr.ID,
-				}).Error("read receipt not found for update")
-
-				continue
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-					"id":    rr.ID,
-				}).Fatal("database error updating read receipt")
-			}
+		})
+		if result.Error != nil {
+			log.WithFields(log.Fields{
+				"error": result.Error.Error(),
+				"id":    rr.ID,
+			}).Fatal("database error updating read receipt")
+		}
+		if result.RowsAffected == 0 {
+			log.WithFields(log.Fields{
+				"id": rr.ID,
+			}).Error("read receipt not found for update")
+			continue
 		}
 
 		if rr.Actor == b.currentUserID() {
@@ -565,21 +564,21 @@ func (b *Bounce) markSeenInDatabase(id ID, frameType string) error {
 		return errUnknownReadReceiptTargetType
 	}
 
-	err := b.database.Table(tableName).Where("id = ?", id).Updates(map[string]interface{}{"seen": true}).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"id":         id,
-				"frame_type": frameType,
-			}).Error("item not found while marking as seen")
-			return err
-		} else {
-			log.WithFields(log.Fields{
-				"error":      err.Error(),
-				"id":         id,
-				"frame_type": frameType,
-			}).Fatal("database error marking item as seen")
-		}
+	// An update never reports not found, only how many rows it touched
+	result := b.database.Table(tableName).Where("id = ?", id).Updates(map[string]interface{}{"seen": true})
+	if result.Error != nil {
+		log.WithFields(log.Fields{
+			"error":      result.Error.Error(),
+			"id":         id,
+			"frame_type": frameType,
+		}).Fatal("database error marking item as seen")
+	}
+	if result.RowsAffected == 0 {
+		log.WithFields(log.Fields{
+			"id":         id,
+			"frame_type": frameType,
+		}).Error("item not found while marking as seen")
+		return errSeenTargetNotFound
 	}
 
 	return nil

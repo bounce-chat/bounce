@@ -566,8 +566,8 @@ func (b *Bounce) updateDMState(userID ID) {
 		}
 	}
 
-	// Set the values in the database
-	err = b.database.Model(&user{}).Where("id = ?", userID).Updates(map[string]interface{}{
+	// Set the values in the database.  An update never reports not found, only how many rows it touched.
+	result := b.database.Model(&user{}).Where("id = ?", userID).Updates(map[string]interface{}{
 		"open_dm":                      open,
 		"retention":                    retention,
 		"muted_until":                  mutedUntil,
@@ -579,19 +579,17 @@ func (b *Bounce) updateDMState(userID ID) {
 		"alias":                        alias,
 		"notes":                        notes,
 		"blocked":                      blocked,
-	}).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"user_id": userID,
-				"error":   err.Error(),
-			}).Error("user not found when updating DM fields")
-			return
-		} else {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("database error updating user fields")
-		}
+	})
+	if result.Error != nil {
+		log.WithFields(log.Fields{
+			"error": result.Error.Error(),
+		}).Fatal("database error updating user fields")
+	}
+	if result.RowsAffected == 0 {
+		log.WithFields(log.Fields{
+			"user_id": userID,
+		}).Error("user not found when updating DM fields")
+		return
 	}
 
 	if blocked {
