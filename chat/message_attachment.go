@@ -2,6 +2,8 @@ package chat
 
 import (
 	"io"
+	"os"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
@@ -160,6 +162,29 @@ func (b *Bounce) prepareAttachment(a OutgoingAttachment, scope int) (*file, erro
 		return b.prepareSeededFile(a.Source, scope, fileTypeMessageAttachment)
 	}
 	return b.prepareEmbeddedFile(data, scope, fileTypeMessageAttachment)
+}
+
+// discardPreparedAttachments removes what preparing the attachments left on disk when the message is not going to be
+// sent after all: the blob written for each embedded file that was never published.  Seeded files point at the
+// user's own copy and are left alone, as is anything already published.
+func (b *Bounce) discardPreparedAttachments(ma messageAttachments) {
+	blobs := b.configDirectory + "/blobs/"
+	for _, f := range ma.prepared {
+		if !strings.HasPrefix(f.Path, blobs) {
+			continue
+		}
+		var published int64
+		b.database.Model(&file{}).Where("id = ?", f.ID).Count(&published)
+		if published > 0 {
+			continue
+		}
+		if err := os.Remove(f.Path); err != nil && !os.IsNotExist(err) {
+			log.WithFields(log.Fields{
+				"path":  f.Path,
+				"error": err.Error(),
+			}).Warn("error removing the blob of an attachment that was not sent")
+		}
+	}
 }
 
 // stampMessageID fills in the message every attachment row belongs to, once the message has its ID

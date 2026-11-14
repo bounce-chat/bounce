@@ -526,6 +526,7 @@ func (b *Bounce) SendGroupMessage(thread ID, text string, attachments []Outgoing
 	attached.stampMessageID(gm.ID)
 	err = b.publishMessageAttachments(attached, destination, gm.ID)
 	if err != nil {
+		b.discardPreparedAttachments(attached)
 		return err
 	}
 

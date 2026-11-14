@@ -1194,16 +1194,7 @@ func (b *Bounce) GetInitialState() InitialState {
 			}).Fatal("database error looking up chunks")
 		}
 
-		for _, c := range chunks {
-			if c.Downloaded {
-				if c.Index == len(chunks)-1 {
-					// The last chunk might be smaller than the chunk size
-					downloadedSize += int64(f.Size % int64(fileChunkSize))
-				} else {
-					downloadedSize += int64(fileChunkSize)
-				}
-			}
-		}
+		downloadedSize = downloadedBytes(f, chunks)
 
 		fileDataDownloadedMutex.Lock()
 		fileDataDownloaded[f.ID] = downloadedSize
@@ -1392,16 +1383,7 @@ func (b *Bounce) GetDMHistory(userID ID) InitialState {
 				}).Fatal("database error looking up chunks")
 			}
 
-			for _, c := range chunks {
-				if c.Downloaded {
-					if c.Index == len(chunks)-1 {
-						// The last chunk might be smaller than the chunk size
-						downloadedSize += int64(f.Size % int64(fileChunkSize))
-					} else {
-						downloadedSize += int64(fileChunkSize)
-					}
-				}
-			}
+			downloadedSize = downloadedBytes(f, chunks)
 
 			fileDataDownloadedMutex.Lock()
 			fileDataDownloaded[f.ID] = downloadedSize

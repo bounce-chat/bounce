@@ -33,6 +33,37 @@ var writingChunkMutex sync.Mutex
 var fileDataDownloaded = map[ID]int64{}
 var fileDataDownloadedMutex sync.Mutex
 
+// forgetDownloadProgress drops a file's progress once it is complete, abandoned or cancelled, so the map only holds
+// downloads that are under way
+func forgetDownloadProgress(fileID ID) {
+	fileDataDownloadedMutex.Lock()
+	delete(fileDataDownloaded, fileID)
+	fileDataDownloadedMutex.Unlock()
+}
+
+// chunksFor is the number of chunks a file of the given size is split into
+func chunksFor(size int64) int64 {
+	return (size + int64(fileChunkSize) - 1) / int64(fileChunkSize)
+}
+
+// downloadedBytes is how much of a file its downloaded chunks amount to.  Every chunk is a full chunk except the last,
+// which is whatever the size leaves over, a full chunk when the size is an exact multiple.
+func downloadedBytes(f file, chunks []chunk) int64 {
+	last := chunksFor(f.Size) - 1
+	downloaded := int64(0)
+	for _, c := range chunks {
+		if !c.Downloaded {
+			continue
+		}
+		if int64(c.Index) == last {
+			downloaded += f.Size - last*int64(fileChunkSize)
+		} else {
+			downloaded += int64(fileChunkSize)
+		}
+	}
+	return downloaded
+}
+
 const EmbeddedFileLimit = 1024 * 1024 * 20 // 20MiB
 const fileChunkSize = 1024 * 1024          // 1MiB
 
@@ -341,6 +372,22 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		}).Error("ignoring file with too many chunks")
 		return nil, false
 	}
+	if int64(len(chunkList)) != chunksFor(f.Size) {
+		log.WithFields(log.Fields{
+			"id":     f.ID,
+			"peer":   peer,
+			"size":   f.Size,
+			"chunks": len(chunkList),
+		}).Warn("ignoring file whose hash list does not match its size")
+		return nil, false
+	}
+	if f.EncryptedHashList != "" && len(encryptedHashes) != len(chunkList) {
+		log.WithFields(log.Fields{
+			"id":   f.ID,
+			"peer": peer,
+		}).Warn("ignoring file whose encrypted hash list does not match its hash list")
+		return nil, false
+	}
 
 	// Create the chunks
 	for i, chunkHash := range chunkList {
@@ -460,6 +507,9 @@ func (co *chunkOffer) getScope(myID ID) int {
 }
 
 func (co *chunkOffer) getDestination(myID ID) ID {
+	if co.Scope == scopeSync {
+		return myID
+	}
 	if co.Scope == scopeUser {
 		return xor(co.Destination, myID)
 	}
@@ -528,6 +578,14 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) (br
 			"author":         co.Author,
 			"signing_device": sc.Signer,
 		}).Warn("ignoring chunk offer that could not be signature validated")
+		return nil, false
+	}
+	if signerDevice, known := b.getDeviceFromAddress(sc.Signer); known && signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < co.Timestamp {
+		log.WithFields(log.Fields{
+			"id":     co.ID,
+			"signer": sc.Signer,
+		}).Warn("ignoring chunk offer signed by revoked device")
+		go b.sendAck(peer, typeChunkOffer, co.ID)
 		return nil, false
 	}
 
@@ -815,11 +873,12 @@ func (b *Bounce) getChunkData(hash string) ([]byte, error) {
 		var f file
 		err = b.database.Select("path", "size", "downloaded").Where("id = ?", c.FileID).First(&f).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Another file may hold the same chunk, so look at the next copy rather than giving up
 			log.WithFields(log.Fields{
 				"file_id":  c.FileID,
 				"chunk_id": c.ID,
-			}).Warn("peer sent request for file chunk with unknown file")
-			return []byte{}, errFileNotFound
+			}).Warn("chunk belongs to a file we no longer have")
+			continue
 		} else if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -841,35 +900,28 @@ func (b *Bounce) getChunkData(hash string) ([]byte, error) {
 			continue
 		}
 
-		start := int64(c.Index * fileChunkSize)
-		sought, err := fh.Seek(start, 0)
-		if err != nil {
+		// Read exactly this chunk: a single Read may return less than asked for on some storage, which would hash wrong
+		start := int64(c.Index) * int64(fileChunkSize)
+		want := min(int64(fileChunkSize), f.Size-start)
+		if want <= 0 {
+			fh.Close()
 			log.WithFields(log.Fields{
 				"path":  f.Path,
-				"error": err.Error(),
-			}).Warn("error seeking file containing chunk data")
+				"index": c.Index,
+			}).Warn("chunk index lies beyond the file's size")
 			continue
 		}
-		if sought != start {
-			log.WithFields(log.Fields{
-				"path":   f.Path,
-				"start":  start,
-				"sought": sought,
-			}).Warn("seeking file containing chunk data did not seek to correct location")
-			continue
-		}
-
-		data := make([]byte, fileChunkSize)
-		n, err := fh.Read(data)
-		if err != nil && err != io.EOF {
+		data := make([]byte, want)
+		_, err = fh.ReadAt(data, start)
+		fh.Close()
+		if err != nil {
 			log.WithFields(log.Fields{
 				"path":  f.Path,
 				"error": err.Error(),
 			}).Warn("error reading file containing chunk data")
 			continue
 		}
-
-		c.Data = data[:n]
+		c.Data = data
 
 		// Make sure that the hash of the data matches what has been requested, if so send it over and break
 		if hash == hashString(blake3.Sum256(c.Data)) {
@@ -1366,7 +1418,7 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 	}
 	defer fh.Close()
 
-	start := int64(c.Index * fileChunkSize)
+	start := int64(c.Index) * int64(fileChunkSize)
 	if int64(len(c.Data)) > int64(fileChunkSize) || start+int64(len(c.Data)) > f.Size {
 		log.WithFields(log.Fields{
 			"file_id":  c.FileID,
@@ -1384,7 +1436,10 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 	}
 	fh.Close()
 
-	if !f.embedded() {
+	// A chunk's bytes count towards progress once, however many times a copy of it arrives
+	var alreadyHad int64
+	b.database.Model(&chunk{}).Where("id = ? AND downloaded = ?", c.ID, true).Count(&alreadyHad)
+	if !f.embedded() && alreadyHad == 0 {
 		fileDataDownloadedMutex.Lock()
 		progress, _ := fileDataDownloaded[c.FileID]
 		progress += int64(len(c.Data))
@@ -1428,6 +1483,7 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 					"error": err.Error(),
 				}).Fatal("database error giving up on a corrupt file")
 			}
+			forgetDownloadProgress(c.FileID)
 
 			err = os.Remove(f.Path + downloadExtension)
 			if err != nil {
@@ -1446,6 +1502,7 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 				"error": err.Error(),
 			}).Fatal("database error setting file as downloaded")
 		}
+		forgetDownloadProgress(c.FileID)
 		err = os.Rename(f.Path+downloadExtension, f.Path)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -1525,17 +1582,15 @@ func (b *Bounce) prepareSeededFile(path string, scope int, fileType int) (*file,
 	hasher := blake3.New()
 	read := int64(0)
 	for i := 0; read < info.Size(); i++ {
-		chunkData := make([]byte, fileChunkSize)
-		n, err := fh.Read(chunkData)
-		read += int64(n)
-		if err != nil {
-			if !(err == io.EOF && read == info.Size()) {
-				return nil, err
-			}
+		// Exactly a chunk, or what is left: a single Read may return less on some storage and would hash wrong
+		chunkData := make([]byte, min(int64(fileChunkSize), info.Size()-read))
+		if _, err := io.ReadFull(fh, chunkData); err != nil {
+			return nil, err
 		}
+		read += int64(len(chunkData))
 
-		hasher.Write(chunkData[:n])
-		chunkHash := hashString(blake3.Sum256(chunkData[:n]))
+		hasher.Write(chunkData)
+		chunkHash := hashString(blake3.Sum256(chunkData))
 		chunks = append(chunks, chunk{Hash: chunkHash, Index: i, Downloaded: true})
 		hashList = append(hashList, chunkHash)
 	}
@@ -1614,6 +1669,11 @@ func (b *Bounce) embedFile(data []byte, scope int, destination ID, fileType int,
 }
 
 func (b *Bounce) DownloadFileToDisk(fileID ID, destination string) {
+	// The file's download state is changed under the same lock that chunk writes hold, so a chunk landing while the
+	// download is set up or cancelled sees either the old state or the new, never half of each
+	chunkWritingMutex.Lock()
+	defer chunkWritingMutex.Unlock()
+
 	// Find the file we want to download
 	var f file
 	err := b.database.Where("id = ?", fileID).First(&f).Error
@@ -1626,6 +1686,10 @@ func (b *Bounce) DownloadFileToDisk(fileID ID, destination string) {
 		log.WithFields(log.Fields{
 			"file_id": fileID,
 		}).Fatal("database error looking up file")
+	}
+	if f.Wanted && !f.Downloaded && f.Path == destination {
+		// Already downloading to this very place; a second click must not throw away the chunks that have arrived
+		return
 	}
 
 	// Check if it is already on disk anywhere
@@ -1806,15 +1870,12 @@ func checkFileHash(path string) (bool, string) {
 	hasher := blake3.New()
 	read := int64(0)
 	for read < info.Size() {
-		chunkData := make([]byte, fileChunkSize)
-		n, err := fh.Read(chunkData)
-		read += int64(n)
-		if err != nil {
-			if !(err == io.EOF && read == info.Size()) {
-				return false, ""
-			}
+		chunkData := make([]byte, min(int64(fileChunkSize), info.Size()-read))
+		if _, err := io.ReadFull(fh, chunkData); err != nil {
+			return false, ""
 		}
-		hasher.Write(chunkData[:n])
+		read += int64(len(chunkData))
+		hasher.Write(chunkData)
 	}
 
 	allDataHash := make([]byte, 32)
@@ -1823,6 +1884,10 @@ func checkFileHash(path string) (bool, string) {
 }
 
 func (b *Bounce) CancelDownload(fileID ID) {
+	chunkWritingMutex.Lock()
+	defer chunkWritingMutex.Unlock()
+	forgetDownloadProgress(fileID)
+
 	err := b.database.Table("files").Where("id = ?", fileID).Update("wanted", false).Error
 	if err != nil {
 		log.WithFields(log.Fields{

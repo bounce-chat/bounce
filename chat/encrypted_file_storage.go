@@ -50,6 +50,9 @@ func (eco *encryptedChunkOffer) getScope(myID ID) int {
 }
 
 func (eco *encryptedChunkOffer) getDestination(myID ID) ID {
+	if eco.Scope == scopeSync {
+		return myID
+	}
 	if eco.Scope == scopeUser {
 		return xor(eco.Destination, myID)
 	}

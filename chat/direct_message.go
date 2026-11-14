@@ -492,6 +492,7 @@ func (b *Bounce) SendDirectMessage(thread ID, text string, attachments []Outgoin
 	attached.stampMessageID(dm.ID)
 	err := b.publishMessageAttachments(attached, destination, dm.ID)
 	if err != nil {
+		b.discardPreparedAttachments(attached)
 		return err
 	}
 
