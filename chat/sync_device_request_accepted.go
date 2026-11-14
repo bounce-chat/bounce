@@ -113,6 +113,8 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	sdra.Settings.ID = NewID()
 	sdra.Profile.ProfileSettings = sdra.Settings
 	sdra.Profile.OpenDM = true
+	sdra.Profile.IntroductionMethod = userIntroductionProfile
+	sdra.Profile.IntroductionTime = time.Now().Unix()
 	err = b.database.Create(&sdra.Profile).Error
 	if err != nil {
 		log.WithFields(log.Fields{

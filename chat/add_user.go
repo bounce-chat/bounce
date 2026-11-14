@@ -107,6 +107,9 @@ func (au *addUser) getSavedAt() int64 {
 }
 
 func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastable, bool) {
+	// An add user we built ourselves, on accepting a request, comes through here under our own address so that it is
+	// saved and applied the same way; it has no peer to ack, record delivery to or offer references to
+	fromPeer := peer != b.network.Address()
 	handleAddUsersMutex.Lock()
 	defer handleAddUsersMutex.Unlock()
 
@@ -331,6 +334,14 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 				"error": err.Error(),
 			}).Fatal("error saving sync device learned about via add user")
 		}
+		b.ui.DeviceAdded(Device{
+			ID:        dev.ID,
+			Name:      dev.Name,
+			Address:   dev.Address,
+			CreatedAt: dev.Timestamp,
+			Local:     false,
+			Online:    b.getRemoteDevice(dev.Address).connectedSockets() > 0,
+		})
 	}
 
 	// Make sure that none of the devices don't already belong to another user
@@ -402,8 +413,10 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 
 		// Ack and delivery track these devices
 		for _, dev := range counterparty.Devices {
-			go b.sendAck(peer, typeDevice, dev.ID)
-			b.markDeliveredTo(&dev, peer)
+			if fromPeer {
+				go b.sendAck(peer, typeDevice, dev.ID)
+				b.markDeliveredTo(&dev, peer)
+			}
 		}
 	} else {
 		// We already know about this user, just save any devices we might not be aware of
@@ -416,13 +429,17 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 			}
 
 			// Ack and delivery track these devices as well
-			go b.sendAck(peer, typeDevice, dev.ID)
-			b.markDeliveredTo(&dev, peer)
+			if fromPeer {
+				go b.sendAck(peer, typeDevice, dev.ID)
+				b.markDeliveredTo(&dev, peer)
+			}
 		}
 	}
 
 	// Do a reference flow with this peer
-	go b.sendReferences(peer)
+	if fromPeer {
+		go b.sendReferences(peer)
+	}
 
 	// Connect to this new user if needed
 	go b.auditPeers()
