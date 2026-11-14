@@ -62,7 +62,7 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 			if fyne.CurrentDevice().IsMobile() {
 				ui.mobileBack()
 			} else {
-				ui.showNewSyncDevice()
+				ui.showNameNewDevice()
 			}
 		}),
 		deviceNameEntry: widget.NewEntry(),
@@ -218,7 +218,6 @@ func (ui *ui) showNewSyncDevice() {
 	ui.window.Canvas().Focus(ui.widgets.newSyncDevice.syncStringEntry)
 
 	ui.widgets.newSyncDevice.syncStringInput.Show()
-	ui.widgets.newSyncDevice.backButton.Enable()
 	ui.widgets.newSyncDevice.infiniteProgressBar.Hide()
 	ui.widgets.newSyncDevice.currentStep.Text = ""
 	ui.widgets.newSyncDevice.currentStep.Refresh()
@@ -236,7 +235,6 @@ func (ui *ui) resetNewSyncDeviceRequest() {
 	ui.widgets.newSyncDevice.currentStep.Hide()
 	ui.widgets.newSyncDevice.syncStringEntry.Text = ""
 	ui.widgets.newSyncDevice.syncStringEntry.Refresh()
-	ui.widgets.newSyncDevice.backButton.Enable()
 	ui.widgets.newSyncDevice.syncStringInput.Show()
 }
 
@@ -341,7 +339,7 @@ func (ui *ui) SyncDeviceRequestAccepted(profile chat.User, devices []chat.Device
 	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
 
 	if !references {
-		fyne.DoAndWait(func() { ui.showMainContainer() })
+		ui.InitialSyncComplete()
 	}
 }
 
