@@ -32,6 +32,11 @@ type defaultImage struct {
 	fileGetter            func(chat.ID) ([]byte, error)
 	clicked               func()
 	newBackgroundCallback func()
+	// generation counts calls to setBackground. A background load captures the value current when it
+	// started and applies its result only if it is still current: list rows reuse one defaultImage for
+	// many ids, so a load that finishes after the widget has been pointed at someone else must not paint
+	// the previous occupant's picture over the current one.
+	generation uint64
 }
 
 func newDefaultImage(id chat.ID, images []chat.ID, str string, size float32, fileGetter func(chat.ID) ([]byte, error), clicked func()) *defaultImage {
@@ -79,7 +84,11 @@ func (di *defaultImage) CreateRenderer() fyne.WidgetRenderer {
 	return dir
 }
 
+// setBackground shows the newest of di.images, or the coloured initial until one has been loaded. It must
+// be called on the UI thread, which is what lets generation be read and written without a lock.
 func (di *defaultImage) setBackground() {
+	di.generation++
+
 	// If this image should have a non-default image, try to load it from cache
 	if len(di.images) > 0 {
 		chosen := -1
@@ -99,10 +108,14 @@ func (di *defaultImage) setBackground() {
 			}
 		}
 
-		// If we didn't set the last image, go try to get and set the first available image and cache it
+		// If we didn't set the last image, go try to get and set the first available image and cache it.
+		// The load works from a snapshot of the fields it needs, since the UI thread may reassign them
+		// before it finishes.
 		if chosen != len(di.images)-1 {
 			di.setDefaultBackground()
-			go di.setFirstAvailableImage(len(di.images) - 1)
+			images := make([]chat.ID, len(di.images))
+			copy(images, di.images)
+			go di.setFirstAvailableImage(di.generation, images, di.size, di.fileGetter)
 		}
 	} else {
 		di.setDefaultBackground()
@@ -140,61 +153,56 @@ func (di *defaultImage) setDefaultBackground() {
 	}
 }
 
-func (di *defaultImage) setFirstAvailableImage(startIndex int) {
-	if startIndex < 0 {
-		return
-	}
-	if startIndex > len(di.images)-1 {
-		return
-	}
-	id := di.images[startIndex]
-	nextIndex := startIndex - 1
+// setFirstAvailableImage loads and caches the newest image in images that can be decoded, then shows it
+// if generation is still di's current one. It runs off the UI thread and reads nothing from di until the
+// fyne.Do, so it takes everything it needs as arguments rather than through the receiver.
+func (di *defaultImage) setFirstAvailableImage(generation uint64, images []chat.ID, size float32, fileGetter func(chat.ID) ([]byte, error)) {
+	for i := len(images) - 1; i >= 0; i-- {
+		id := images[i]
 
-	originalImage, err := di.fileGetter(id)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"file_id": id,
-			"error":   err.Error(),
-		}).Debug("error loading image")
-		if nextIndex >= 0 {
-			di.setFirstAvailableImage(nextIndex)
+		originalImage, err := fileGetter(id)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"file_id": id,
+				"error":   err.Error(),
+			}).Debug("error loading image")
+			continue
 		}
-		return
-	}
-	if len(originalImage) == 0 {
-		log.WithFields(log.Fields{
-			"file_id": id,
-		}).Warn("image file has no content")
-		if nextIndex >= 0 {
-			di.setFirstAvailableImage(nextIndex)
+		if len(originalImage) == 0 {
+			log.WithFields(log.Fields{
+				"file_id": id,
+			}).Warn("image file has no content")
+			continue
 		}
-		return
-	}
 
-	goImg, _, err := image.Decode(bytes.NewReader(originalImage))
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error":   err.Error(),
-			"file_id": id,
-		}).Warn("error decoding image")
-		if nextIndex >= 0 {
-			di.setFirstAvailableImage(nextIndex)
+		goImg, _, err := image.Decode(bytes.NewReader(originalImage))
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":   err.Error(),
+				"file_id": id,
+			}).Warn("error decoding image")
+			continue
 		}
+		croppedImage := makeCircle(goImg)
+		cacheKey := id.String() + strconv.FormatFloat(float64(size), 'f', -1, 32)
+		imageCacheMutex.Lock()
+		imageCache[cacheKey] = croppedImage
+		imageCacheMutex.Unlock()
+		fyne.Do(func() {
+			// Cached for next time, but this widget has moved on; its current occupant either found
+			// its own image in the cache or has a load of its own in flight.
+			if di.generation != generation {
+				return
+			}
+			di.backgroundColor.Image = croppedImage
+			di.foregroundText.Hide()
+			di.Refresh()
+			if di.newBackgroundCallback != nil {
+				di.newBackgroundCallback()
+			}
+		})
 		return
 	}
-	croppedImage := makeCircle(goImg)
-	cacheKey := id.String() + strconv.FormatFloat(float64(di.size), 'f', -1, 32)
-	imageCacheMutex.Lock()
-	imageCache[cacheKey] = croppedImage
-	imageCacheMutex.Unlock()
-	fyne.Do(func() {
-		di.backgroundColor.Image = croppedImage
-		di.foregroundText.Hide()
-		di.Refresh()
-		if di.newBackgroundCallback != nil {
-			di.newBackgroundCallback()
-		}
-	})
 }
 
 type defaultImageRenderer struct {
