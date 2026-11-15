@@ -417,7 +417,8 @@ func (b *Bounce) handleEncryptedStorageReferenceRequest(peer string, payload []b
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
 					"encrypted_chunk_offer_id": ecoRequest,
-				}).Error("device requested encrypted chunk offer that could not be found")
+				}).Warn("device requested encrypted chunk offer that could not be found")
+				continue
 			} else {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -428,38 +429,14 @@ func (b *Bounce) handleEncryptedStorageReferenceRequest(peer string, payload []b
 		b.sendDirect(peer, &eco)
 	}
 
+	stored := false
 	for _, sr := range esrr.StorageRequests {
-		for _, label := range sr.Labels {
-			sr.RecipientUsers = append(sr.RecipientUsers, encryptedChunkRecipient{
-				ID:    NewID(),
-				Hash:  sr.Hash,
-				Label: label,
-			})
-		}
-		sr.Source = peer
-
-		var existingSR encryptedChunkStorageRequest
-		err = b.database.Where("hash = ? AND source = ?", sr.Hash, sr.Source).Take(&existingSR).Error
-		if err == nil {
-			continue
-		}
-
-		var alreadyDownloadedSR encryptedChunkStorageRequest
-		err = b.database.Where("hash = ? AND downloaded = ?", sr.Hash, true).Take(&alreadyDownloadedSR).Error
-		if err == nil {
-			sr.Downloaded = true
-			sr.DownloadedAt = time.Now().Unix()
-		}
-
-		err = b.database.Create(&sr).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("database error saving encrypted chunk storage request")
+		if b.storeEncryptedChunkStorageRequest(sr, peer) {
+			stored = true
 		}
 	}
 
-	if len(esrr.StorageRequests) > 0 {
+	if stored {
 		b.makeNextEncryptedChunkRequests()
 	}
 
@@ -488,14 +465,22 @@ func (ecsr *encryptedChunkStorageRequest) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// A chunk's blob is shared by every storage request for its hash, one per source and message, so it is removed only
+// with the last of them, and the storage counter is adjusted here, in the one place every delete path passes.  The
+// host database is single connection, so this must use the transaction it is given and never b.database.
 func (ecsr *encryptedChunkStorageRequest) AfterDelete(tx *gorm.DB) error {
+	if ecsr.ID == NilID {
+		return nil
+	}
+
 	if ecsr.FullPath != "" {
-		err := os.Remove(ecsr.FullPath)
+		var remaining int64
+		err := tx.Model(&encryptedChunkStorageRequest{}).Where("hash = ? AND id != ?", ecsr.Hash, ecsr.ID).Count(&remaining).Error
 		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-				"path":  ecsr.FullPath,
-			}).Warn("failed to remove encrypted chunk from disk")
+			return err
+		}
+		if remaining == 0 {
+			releaseEncryptedBlob(ecsr.FullPath)
 		}
 	}
 
@@ -530,11 +515,33 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 		return nil, false
 	}
 
-	if !regexp.MustCompile("^[a-f0-9]{64}$").MatchString(sr.Hash) {
+	if b.storeEncryptedChunkStorageRequest(sr, peer) {
+		b.makeNextEncryptedChunkRequests()
+	}
+
+	return nil, false
+}
+
+var encryptedChunkHashFormat = regexp.MustCompile("^[a-f0-9]{64}$")
+
+// storeEncryptedChunkStorageRequest records a peer's request that we fetch a chunk from it and keep it for the
+// readers of some mailboxes, and reports whether there is now something new to fetch.  A request arrives on its own
+// or inside a storage reference request; both come through here, so a chunk is taken on the same terms either way:
+// the owner may store anything, and anyone else only chunks addressed to one of the owner's mailboxes.
+func (b *Bounce) storeEncryptedChunkStorageRequest(sr encryptedChunkStorageRequest, peer string) bool {
+	if !encryptedChunkHashFormat.MatchString(sr.Hash) {
 		log.WithFields(log.Fields{
 			"hash": sr.Hash,
+			"peer": peer,
 		}).Warn("ignoring encrypted chunk storage request with invalid hash")
-		return nil, false
+		return false
+	}
+	if len(sr.Labels) == 0 || len(sr.Labels) > maximumMailboxesPerCopy {
+		log.WithFields(log.Fields{
+			"peer":      peer,
+			"mailboxes": len(sr.Labels),
+		}).Warn("ignoring encrypted chunk storage request with no mailboxes or too many")
+		return false
 	}
 
 	sr.ID = NewID()
@@ -543,7 +550,7 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 			log.WithFields(log.Fields{
 				"peer": peer,
 			}).Warn("ignoring encrypted chunk storage request with a malformed mailbox label")
-			return nil, false
+			return false
 		}
 		sr.RecipientUsers = append(sr.RecipientUsers, encryptedChunkRecipient{
 			ID:    NewID(),
@@ -552,22 +559,21 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 		})
 	}
 	sr.Source = peer
+	sr.FullPath = b.platform.ConfigDirectory + "/blobs/" + sr.Hash
 
 	var existingSR encryptedChunkStorageRequest
-	err = b.database.Where("hash = ? AND source = ?", sr.Hash, sr.Source).Take(&existingSR).Error
+	err := b.database.Where("hash = ? AND source = ?", sr.Hash, sr.Source).Take(&existingSR).Error
 	if err == nil {
-		return nil, false
+		return false
 	}
 
-	// The owner may store anything; anyone else may only store chunks addressed to one of the owner's mailboxes
-	if b.peerIsOwner(peer) {
-		sr.OwnerRequested = true
-	} else if !b.ownerCanReadAnyLabel(sr.Labels) {
+	sr.OwnerRequested = b.peerIsOwner(peer)
+	if !sr.OwnerRequested && !b.ownerCanReadAnyLabel(sr.Labels) {
 		log.WithFields(log.Fields{
 			"peer": peer,
 			"hash": sr.Hash,
 		}).Warn("ignoring encrypted chunk storage request that is not addressed to a mailbox of this device's owner")
-		return nil, false
+		return false
 	}
 
 	var alreadyDownloadedSR encryptedChunkStorageRequest
@@ -577,16 +583,14 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 		sr.DownloadedAt = time.Now().Unix()
 	}
 
-	sr.FullPath = b.platform.ConfigDirectory + "/blobs/" + sr.Hash
 	err = b.database.Create(&sr).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("database error saving encrypted chunk storage request")
+		return false
 	}
-	b.makeNextEncryptedChunkRequests()
-
-	return nil, false
+	return !sr.Downloaded
 }
 
 // A mailbox whose readers may fetch a stored chunk
@@ -707,6 +711,29 @@ func (b *Bounce) handleRequestECRO(peer string, payload []byte, catchUp bool) (b
 	return nil, false
 }
 
+// releaseEncryptedBlob removes a chunk's file and takes its size off the storage counter.  Several storage request
+// rows deleted together share one blob; whichever hook runs first removes it and the rest find it already gone.
+func releaseEncryptedBlob(path string) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	err = os.Remove(path)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"path":  path,
+		}).Warn("failed to remove encrypted chunk from disk")
+		return
+	}
+	encryptedBlobStorageLimitMutex.Lock()
+	encryptedBlobStorageSize -= info.Size()
+	if encryptedBlobStorageSize < 0 {
+		encryptedBlobStorageSize = 0
+	}
+	encryptedBlobStorageLimitMutex.Unlock()
+}
+
 func (b *Bounce) getEncryptedBlobStorageSize() int64 {
 	encryptedBlobStorageLimitMutex.Lock()
 	size := encryptedBlobStorageSize
@@ -719,16 +746,6 @@ func (b *Bounce) incrementEncryptedBlobStorageSize(size int64) {
 	defer encryptedBlobStorageLimitMutex.Unlock()
 
 	encryptedBlobStorageSize += size
-}
-
-func (b *Bounce) decrementEncryptedBlobStorageSize(size int64) {
-	encryptedBlobStorageLimitMutex.Lock()
-	defer encryptedBlobStorageLimitMutex.Unlock()
-
-	encryptedBlobStorageSize -= size
-	if encryptedBlobStorageSize < 0 {
-		encryptedBlobStorageSize = 0
-	}
 }
 
 func (b *Bounce) recheckEncryptedBlobStorageSize() {

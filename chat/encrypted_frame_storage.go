@@ -147,7 +147,7 @@ func (b *Bounce) evictUntrustedEncryptedFramesSavedBefore(before int64) (int64, 
 		ids = append(ids, frame.ID)
 		freed += frame.Size
 	}
-	err = b.database.Where("id IN (?)", ids).Delete(&encryptedFrame{}).Error
+	err = deleteEach[encryptedFrame](b.database, "id IN (?)", ids)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

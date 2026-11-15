@@ -50,6 +50,11 @@ const mailboxLookbackEpochs = 13
 const mailboxLabelSize = 32
 const mailboxTagSize = 16
 
+// A copy on a host is in one mailbox per conversation its frame belongs to.  That is one for a message, and one per
+// contact for the few frames a user sends to everyone they know, so this is far above anything legitimate; it is
+// here so that a single copy cannot carry an unbounded number of rows onto a host.
+const maximumMailboxesPerCopy = 4096
+
 const mailboxLabelInfo = "bounce-mailbox-label"
 const mailboxWrapInfo = "bounce-mailbox-wrap"
 const mailboxTagInfo = "bounce-mailbox-tag"

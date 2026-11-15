@@ -123,7 +123,7 @@ func StartEncryptedDevice(network Network, platform Platform) {
 	go func() {
 		for {
 			<-ticker.C
-			err := b.database.Where("delete_at != 0 AND delete_at <= ?", time.Now().Unix()).Delete(&encryptedFrame{}).Error
+			err := deleteEach[encryptedFrame](b.database, "delete_at != 0 AND delete_at <= ?", time.Now().Unix())
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
@@ -136,7 +136,6 @@ func StartEncryptedDevice(network Network, platform Platform) {
 				}).Error("error pruning encrypted chunk storage requests")
 			}
 
-			b.pruneOrphanMailboxEntries()
 			b.pruneOwnerMailboxes()
 
 			// Pruning and other deletes do not adjust the in-memory untrusted storage size, so reload it
@@ -451,6 +450,19 @@ func (ef *encryptedFrame) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// A stored copy's mailbox entries and the records of who it was delivered to go with it.  The host database is single
+// connection, so this must use the transaction it is given and never b.database.
+func (ef *encryptedFrame) AfterDelete(tx *gorm.DB) error {
+	if ef.ID == NilID {
+		return nil
+	}
+	err := tx.Where("encrypted_frame_id = ?", ef.ID).Delete(&mailboxEntry{}).Error
+	if err != nil {
+		return err
+	}
+	return tx.Where("frame_id = ? AND frame_type = ?", ef.ID, typeEncryptedFrame).Delete(&deliveryRecord{}).Error
+}
+
 func (ef encryptedFrame) getID() ID {
 	return ef.ID
 }
@@ -476,34 +488,6 @@ func (ef encryptedFrame) getPayload() []byte {
 	}
 
 	return bytes
-}
-
-// deleteEncryptedFrame removes one stored copy along with its mailbox entries and the records of who it was
-// delivered to
-func (b *Bounce) deleteEncryptedFrame(id ID) {
-	for _, step := range []error{
-		b.database.Where("encrypted_frame_id = ?", id).Delete(&mailboxEntry{}).Error,
-		b.database.Where("frame_id = ? AND frame_type = ?", id, typeEncryptedFrame).Delete(&deliveryRecord{}).Error,
-		b.database.Where("id = ?", id).Delete(&encryptedFrame{}).Error,
-	} {
-		if step != nil {
-			log.WithFields(log.Fields{
-				"id":    id,
-				"error": step.Error(),
-			}).Error("error deleting encrypted frame")
-		}
-	}
-}
-
-// pruneOrphanMailboxEntries removes mailbox entries whose frame is gone.  Bulk deletes of frames do not run per row
-// hooks, so every bulk delete calls this afterwards.
-func (b *Bounce) pruneOrphanMailboxEntries() {
-	err := b.database.Exec("DELETE FROM mailbox_entries WHERE encrypted_frame_id NOT IN (SELECT id FROM encrypted_frames)").Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error pruning orphan mailbox entries")
-	}
 }
 
 var encryptedFrameMutex sync.Mutex
@@ -601,7 +585,13 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 				go b.sendAck(peer, typeEncryptedFrame, ef.ID)
 				return nil, false
 			}
-			b.deleteEncryptedFrame(occupant.ID)
+			err = b.database.Delete(&occupant).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error replacing the occupant of a slot")
+				return nil, false
+			}
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
@@ -617,10 +607,13 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 
 	err = b.database.Create(&ef).Error
 	if err != nil {
+		// Not acked and not recorded as delivered, so the sender keeps offering it and a later attempt can store it
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error saving encrypted frame")
-	} else if !fromOwner {
+		return nil, false
+	}
+	if !fromOwner {
 		b.adjustUntrustedEncryptedFrameStorage(int64(len(ef.Payload)), 1)
 	}
 	b.markFrameDelivered(ef.ID, typeEncryptedFrame, peer)
@@ -713,13 +706,12 @@ func (b *Bounce) handleEncryptedClearBefore(peer string, payload []byte, _ bool)
 	// copy, so a frame in a cleared mailbox goes entirely rather than lingering under a label the clearer cannot
 	// name.
 	inClearedMailboxes := b.database.Model(&mailboxEntry{}).Select("encrypted_frame_id").Where("label IN ?", labels)
-	err = b.database.Where("id IN (?)", inClearedMailboxes).Delete(&encryptedFrame{}).Error
+	err = deleteEach[encryptedFrame](b.database, "id IN (?)", inClearedMailboxes)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error deleting encrypted frames for clear before")
 	}
-	b.pruneOrphanMailboxEntries()
 
 	// Likewise for stored chunks, which are deleted one at a time so that their files go with them
 	var clearedSRs []encryptedChunkStorageRequest
