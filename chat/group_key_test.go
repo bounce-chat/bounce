@@ -69,6 +69,15 @@ func sameKeys(a, b []groupKey) bool {
 	return true
 }
 
+// waitForTheNextSecond waits until the clock ticks over.  Updates made in the same second are ordered by ID, so an
+// update that depends on another one has to be made in a later second to be sure of following it.
+func waitForTheNextSecond() {
+	start := time.Now().Unix()
+	for time.Now().Unix() == start {
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // introduce makes two engines aware of each other as contacts and connects them
 func introduce(t *testing.T, a, b *Bounce) {
 	t.Helper()
@@ -188,6 +197,7 @@ func TestConcurrentRemovalsComposeUnderConsensus(t *testing.T) {
 	}
 	assert.NoError(t, me.InviteUserToGroup(groupID, carol.currentUserID()))
 	waitForGroupKeys(t, carol, groupID, 1)
+	waitForTheNextSecond()
 	assert.NoError(t, carol.AcceptInvite(groupID))
 	assert.NoError(t, me.PromoteGroupAdmin(groupID, alice.currentUserID()))
 	for _, b := range []*Bounce{me, alice, bob, carol} {

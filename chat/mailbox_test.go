@@ -608,11 +608,19 @@ func TestAReKeyFrameIsSealedToDeviceMailboxesHoweverItReachesAHost(t *testing.T)
 	}
 	assert.True(t, len(myDevice.ECDHPrivateKey) > 0)
 
+	// Roll the keys in a later second than the profile got its first ones: updates to a user that share a second are
+	// applied in ID order, and the roll has to be the later of the two
+	waitForTheNextSecond()
 	before := mustCurrentUser(me)
 	assert.NoError(t, me.rollKeys())
 	var reKey updateUser
 	assert.NoError(t, me.database.Where("target = ? AND type = ?", me.currentUserID(), updateUserTypeReplaceKeys).First(&reKey).Error)
+	// The new keys are applied to the profile shortly after the update is stored
 	after := mustCurrentUser(me)
+	for time.Now().Before(deadline) && bytes.Equal(before.PrivateECDHKey, after.PrivateECDHKey) {
+		time.Sleep(25 * time.Millisecond)
+		after = mustCurrentUser(me)
+	}
 	assert.NotEqual(t, before.PrivateECDHKey, after.PrivateECDHKey)
 
 	// It is recognised as a re-key whether we hold the update itself or only its signed payload
