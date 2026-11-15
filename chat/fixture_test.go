@@ -881,6 +881,12 @@ func (b *Bounce) createGroupCreation(ng NewGroup) groupCreation {
 		Timestamp: creationTime,
 		Data:      groupData,
 	}
+	err = b.attachInitialGroupKey(&gc, profile)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error creating group key")
+	}
 	gc.ID = gc.generateID()
 	g.ID = gc.ID
 	gc.OriginalPayload, err = msgpack.Marshal(gc)

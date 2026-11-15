@@ -20,6 +20,11 @@ type groupCreation struct {
 	Timestamp int64
 	SavedAt   int64  `msgpack:"-"`
 	Data      []byte `gorm:"not null"` // Original group structure, msgpacked
+
+	// The secret that establishes the group's first key, wrapped for the creator (see group_key.go)
+	KeyEphemeralKey []byte
+	KeyWraps        []groupKeyWrap `gorm:"serializer:json"`
+	KeySecretHash   []byte
 }
 
 func (gc *groupCreation) getNonce() nonce {
@@ -27,10 +32,10 @@ func (gc *groupCreation) getNonce() nonce {
 }
 
 func (gc *groupCreation) generateID() ID {
-	return newContentHasher(typeGroupCreation, gc.Nonce).
+	hasher := newContentHasher(typeGroupCreation, gc.Nonce).
 		int64(gc.Timestamp).
-		bytes(gc.Data).
-		generate()
+		bytes(gc.Data)
+	return hashGroupKeyMaterial(hasher, gc.KeyEphemeralKey, gc.KeyWraps, gc.KeySecretHash).generate()
 }
 
 func (gc *groupCreation) BeforeCreate(tx *gorm.DB) error {

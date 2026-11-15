@@ -326,6 +326,19 @@ func (b *Bounce) requestOutstandingReferencesFrom(peer string) {
 	}
 }
 
+// forgetReferencesFrom drops everything a peer has offered us
+func (b *Bounce) forgetReferencesFrom(peer string) {
+	referenceRequestMutex.Lock()
+	defer referenceRequestMutex.Unlock()
+
+	err := b.referenceDatabase.Where("peer = ?", peer).Delete(&frameReference{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error forgetting the frame references of a peer")
+	}
+}
+
 // outstandingReferencesFrom counts the frames a peer has offered that we still want from them
 func (b *Bounce) outstandingReferencesFrom(peer string) int64 {
 	var outstanding int64

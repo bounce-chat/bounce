@@ -54,13 +54,12 @@ func (b *Bounce) handleAck(peer string, payload []byte, _ bool) (broadcastable, 
 			continue
 		}
 
-		// Append recipient payloads just delete the append recipient intentions in the database
-		if fr.Type == typeAppendRecipientPayloads {
-			err = b.database.Where("id = ?", fr.FrameID).Delete(&appendRecipient{}).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error deleting append recipient")
+		// An encrypted device acks the copy we sealed for it by the random ID we gave that copy; map it back to the
+		// frame it was so delivery is tracked against the real frame
+		if fr.Type == typeEncryptedFrame && !b.encrypted {
+			if original, ok := sealedCopyReference(fr.FrameID); ok {
+				b.markFrameDelivered(original.FrameID, original.Type, peer)
+				b.handleAckSideEffects(original, peer)
 			}
 			continue
 		}
@@ -94,7 +93,7 @@ var ackedOnlyTypeTable = map[uint16]string{
 }
 
 // ackedFrameExists reports whether we hold a frame with this ID and type.   On an encrypted device frames live
-// in encrypted_frames keyed by the inner frame's ID and type, apart from encrypted chunk offers which have their own table.
+// in encrypted_frames keyed by the ID of the stored copy, apart from encrypted chunk offers which have their own table.
 func (b *Bounce) ackedFrameExists(id ID, frameType uint16) bool {
 	if id == NilID {
 		return false
@@ -106,7 +105,7 @@ func (b *Bounce) ackedFrameExists(id ID, frameType uint16) bool {
 		if frameType == typeEncryptedChunkOffer {
 			err = b.database.Model(&encryptedChunkOffer{}).Where("id = ?", id).Count(&count).Error
 		} else {
-			err = b.database.Model(&encryptedFrame{}).Where("id = ? AND type = ?", id, frameType).Count(&count).Error
+			err = b.database.Model(&encryptedFrame{}).Where("id = ?", id).Count(&count).Error
 		}
 	} else {
 		table, ok := typeTable[frameType]

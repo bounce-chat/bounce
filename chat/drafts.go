@@ -216,7 +216,6 @@ func (b *Bounce) UpdateDraft(threadID ID, text string) {
 
 	if text == "" {
 		b.syncDrafts()
-		b.pruneEncryptedDrafts()
 	}
 }
 

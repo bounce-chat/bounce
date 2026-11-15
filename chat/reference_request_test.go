@@ -44,32 +44,33 @@ func TestEncryptedReferenceRequestLoadsOnlyOnePart(t *testing.T) {
 	assert.NoError(t, err)
 	t.Cleanup(func() { database.Close() })
 
+	// The peer has asked for one mailbox, and every stored copy is in it
 	peer := newTestnet().Address()
-	peerKey := []byte("peer encryption key")
-	peerUserKeyMutex.Lock()
-	peerUserKeys[peer] = peerKey
-	peerUserKeyMutex.Unlock()
+	label := randomTestBytes(mailboxLabelSize)
+	peerMailboxLabelsMutex.Lock()
+	peerMailboxLabels[peer] = map[string]bool{string(label): true}
+	peerMailboxLabelsMutex.Unlock()
 	t.Cleanup(func() {
-		peerUserKeyMutex.Lock()
-		delete(peerUserKeys, peer)
-		peerUserKeyMutex.Unlock()
+		peerMailboxLabelsMutex.Lock()
+		delete(peerMailboxLabels, peer)
+		peerMailboxLabelsMutex.Unlock()
 	})
-	assert.NoError(t, b.database.Create(&authorizedUser{ID: NewID(), PublicKey: []byte("another key")}).Error)
 
 	const payloadSize = 64
 	references := []frameReference{}
 	for i := 0; i < 6; i++ {
 		ef := encryptedFrame{
-			ID:        NewID(),
-			Type:      typeDirectMessage,
-			Timestamp: int64(i + 1),
-			Payload:   bytes.Repeat([]byte{byte(i)}, payloadSize),
-			Recipients: []recipient{{
-				PublicKey: peerKey,
+			ID:      NewID(),
+			Payload: bytes.Repeat([]byte{byte(i)}, payloadSize),
+			Slot:    randomSlot(),
+			Mailboxes: []mailboxEntry{{
+				Label:      label,
+				Tag:        randomTestBytes(mailboxTagSize),
+				WrappedDEK: randomTestBytes(60),
 			}},
 		}
 		assert.NoError(t, b.database.Create(&ef).Error)
-		references = append(references, frameReference{FrameID: ef.ID, Type: typeDirectMessage})
+		references = append(references, frameReference{FrameID: ef.ID, Type: typeEncryptedFrame})
 	}
 	smallBudget(t, 3*payloadSize)
 
@@ -87,6 +88,9 @@ func TestEncryptedReferenceRequestLoadsOnlyOnePart(t *testing.T) {
 	assert.Equal(t, 3, len(ecu.Frames))
 	assert.True(t, ecu.Incomplete)
 	assert.Equal(t, int64(4), loaded.Load(), "only the fitting frames and the first frame for the next part are loaded")
+	for i, er := range ecu.Frames {
+		assert.Equal(t, references[i].FrameID, er.ID, "the copies are served in the order they arrived")
+	}
 }
 
 func TestReferenceRequestIsIgnoredWhileCatchUpIsInFlight(t *testing.T) {

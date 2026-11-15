@@ -110,14 +110,18 @@ frames:
 
 			var s catchUpAble
 			if encrypted {
-				s = b.encryptFrameForDevice(br, peer)
-				if s == nil {
+				// An encrypted device is sent a sealed copy of the frame.  It cannot order what it cannot read, so the
+				// copies go in the order a plain catch up carries the frames inside them, and the host keeps the order
+				// they arrive in.
+				ef := b.encryptFrameForDevice(br, peer)
+				if ef == nil {
 					log.WithFields(log.Fields{
 						"id":   br.getID(),
 						"type": br.getType(),
 					}).Warn("excluding broadcastable from catch up that could not be encrypted")
 					continue
 				}
+				s = ef
 			} else {
 				var ok bool
 				s, ok = br.(catchUpAble)
@@ -129,6 +133,10 @@ frames:
 
 			payload := s.getPayload()
 			if len(cu.Frames) > 0 && total+len(payload) > catchUpPayloadBudget {
+				if encrypted {
+					// This copy was sealed and is not being sent, so no ack will ever name it
+					forgetSealedCopy(s.getID())
+				}
 				cu.Incomplete = true
 				break frames
 			}

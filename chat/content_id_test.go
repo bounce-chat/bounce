@@ -112,6 +112,57 @@ func TestAnUpdateGroupCannotBeRedefinedUnderItsID(t *testing.T) {
 	assert.Error(t, me.database.Create(&wrong).Error)
 }
 
+// The key material an update carries (see group_key.go) is part of what its ID names.  Members confirm an update by
+// its ID, so if the wraps or the commitment to the secret were outside it, an author could hand two members the same
+// rotation with different secrets and their confirmations would hide the fork.
+func TestAnUpdatesKeyMaterialIsPartOfItsContent(t *testing.T) {
+	me, alice, bob, groupID := createUsersAndGroups(t)
+	gs, err := me.currentGroupState(groupID)
+	assert.NoError(t, err)
+	rotation := updateGroup{
+		Nonce:     newNonce(),
+		Actor:     me.currentUserID(),
+		Target:    groupID,
+		Type:      updateGroupTypeRotateKey,
+		Timestamp: time.Now().Unix(),
+	}
+	assert.NoError(t, me.attachGroupKeySecret(&rotation, gs, NilID))
+	assert.True(t, len(rotation.KeyWraps) > 1)
+	rotation.ID = rotation.generateID()
+
+	// Every part of the key material changes the ID
+	recommitted := rotation
+	_, recommitted.KeySecretHash = newGroupKeySecret()
+	assert.NotEqual(t, rotation.ID, recommitted.generateID())
+	rewrapped := rotation
+	rewrapped.KeyWraps = append([]groupKeyWrap{}, rotation.KeyWraps...)
+	rewrapped.KeyWraps[0].Ciphertext = append([]byte{}, rotation.KeyWraps[1].Ciphertext...)
+	assert.NotEqual(t, rotation.ID, rewrapped.generateID())
+	readdressed := rotation
+	readdressed.KeyWraps = append([]groupKeyWrap{}, rotation.KeyWraps...)
+	readdressed.KeyWraps[0].UserID = NewID()
+	assert.NotEqual(t, rotation.ID, readdressed.generateID())
+	dropped := rotation
+	dropped.KeyWraps = rotation.KeyWraps[:1]
+	assert.NotEqual(t, rotation.ID, dropped.generateID())
+	rekeyed := rotation
+	rekeyed.KeyEphemeralKey = append([]byte{}, rotation.KeyEphemeralKey...)
+	rekeyed.KeyEphemeralKey[0] ^= 1
+	assert.NotEqual(t, rotation.ID, rekeyed.generateID())
+
+	// Alice takes the real rotation; Bob, handed another commitment under the same ID, refuses it
+	_, accepted := alice.handleUpdateGroup(me.network.Address(), signedBy(t, me, rotation), false)
+	assert.True(t, accepted)
+	_, accepted = bob.handleUpdateGroup(me.network.Address(), signedBy(t, me, recommitted), false)
+	assert.False(t, accepted, "a second definition of the rotation")
+
+	// The stored row still generates its ID once the wraps have been through the database
+	var stored updateGroup
+	assert.NoError(t, alice.database.First(&stored, "id = ?", rotation.ID).Error)
+	assert.Equal(t, len(rotation.KeyWraps), len(stored.KeyWraps))
+	assert.True(t, idMatchesContent(&stored))
+}
+
 func TestAGroupCreationCannotBeRedefinedUnderItsID(t *testing.T) {
 	me, alice, _, groupID := createUsersAndGroups(t)
 	var original groupCreation

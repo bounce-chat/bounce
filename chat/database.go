@@ -141,10 +141,10 @@ func (b *Bounce) openDatabase(databaseKey []byte) {
 		&imageAttachment{},
 		&fileAttachment{},
 		&encryptedSyncDevice{},
-		&appendRecipient{},
 		&draft{},
 		&encryptedChunkOffer{},
 		&encryptedClearBefore{},
+		&groupKey{},
 	)
 	if err != nil {
 		log.WithFields(log.Fields{
