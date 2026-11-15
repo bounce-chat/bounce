@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdh"
+	"crypto/ed25519"
 	"crypto/rand"
 	"net"
 	"os"
@@ -392,4 +393,176 @@ func TestAHostBoundsWhatAPeerCanMakeItStoreOrLookUp(t *testing.T) {
 	direct := sealForHost(t, bob, signedDM(bob, alice.currentUserID(), "direct"), host)
 	direct.Mailboxes[0].Label = []byte("not a label")
 	assert.Error(t, host.database.Create(direct).Error)
+}
+
+// The keys a device is claimed with, and any it is later re-keyed to, are what every proof of ownership and every
+// management action is checked against.  A key that could never check anything is refused, so a device cannot be
+// left unmanageable by one, and every action is answered so the manager knows where it stands.
+func TestManagementKeysAreValidatedAndEveryActionIsAnswered(t *testing.T) {
+	host, setup := newEncryptedDevice(t)
+	manager := newTestnet()
+	conn, err := manager.Dial(host.network.Address())
+	assert.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+
+	signingPublic, signingPrivate, err := ed25519.GenerateKey(rand.Reader)
+	assert.NoError(t, err)
+	userKey, err := ecdh.X25519().GenerateKey(rand.Reader)
+	assert.NoError(t, err)
+
+	claim := func(request encryptedDeviceManagementRequest) bool {
+		assert.NoError(t, writeFrame(conn, typeEncryptedDeviceManagementRequest, request.getPayload()))
+		var response encryptedDeviceManagementResponse
+		assert.NoError(t, msgpack.Unmarshal(readUntil(t, conn, typeEncryptedDeviceManagementResponse), &response))
+		return response.Accepted
+	}
+	assert.False(t, claim(encryptedDeviceManagementRequest{Secret: setup, SigningKey: signingPublic, Pubkey: []byte("not a key")}))
+	assert.False(t, host.encryptedManagerProvisioned(), "a device was claimed with a key nobody could ever prove they hold")
+	assert.True(t, claim(encryptedDeviceManagementRequest{Secret: setup, SigningKey: signingPublic, Pubkey: userKey.PublicKey().Bytes()}))
+
+	act := func(action []byte) encryptedDeviceManagementActionResponse {
+		med := manageEncryptedDevice{ID: NewID(), Action: action, Signature: ed25519.Sign(signingPrivate, action)}
+		assert.NoError(t, writeFrame(conn, typeManageEncryptedDevice, med.getPayload()))
+		var response encryptedDeviceManagementActionResponse
+		assert.NoError(t, msgpack.Unmarshal(readUntil(t, conn, typeEncryptedDeviceManagementActionResponse), &response))
+		assert.Equal(t, med.ID, response.ID)
+		return response
+	}
+	changeKeyTo := func(keys keySet) []byte {
+		data, err := msgpack.Marshal(&keys)
+		assert.NoError(t, err)
+		action, err := msgpack.Marshal(&encryptedDeviceManagementAction{ActionType: actionTypeChangeManagementKey, Data: data})
+		assert.NoError(t, err)
+		return action
+	}
+	storedKeys := func() authorizedUser {
+		var au authorizedUser
+		assert.NoError(t, host.database.First(&au).Error)
+		return au
+	}
+
+	// An action that is not an action at all is answered, authorized by its signature and not applied
+	response := act([]byte{0xc1, 0xc1, 0xc1})
+	assert.True(t, response.Authorized)
+	assert.False(t, response.Applied)
+
+	// A change to keys that could verify nothing is refused, and the device stays on the keys it had
+	newSigningPublic, _, err := ed25519.GenerateKey(rand.Reader)
+	assert.NoError(t, err)
+	newUserKey, err := ecdh.X25519().GenerateKey(rand.Reader)
+	assert.NoError(t, err)
+	for _, unusable := range []keySet{
+		{PublicECDSAKey: []byte("short"), PublicECDHKey: newUserKey.PublicKey().Bytes()},
+		{PublicECDSAKey: newSigningPublic, PublicECDHKey: []byte("short")},
+		{},
+	} {
+		response = act(changeKeyTo(unusable))
+		assert.True(t, response.Authorized)
+		assert.False(t, response.Applied)
+		assert.Equal(t, []byte(signingPublic), storedKeys().SigningKey, "the device was re-keyed to a key that cannot manage it")
+		assert.Equal(t, int64(0), rowsIn(t, host, "old_keys"))
+	}
+
+	// A real change is applied, and the old keys are remembered
+	response = act(changeKeyTo(keySet{PublicECDSAKey: newSigningPublic, PublicECDHKey: newUserKey.PublicKey().Bytes()}))
+	assert.True(t, response.Authorized)
+	assert.True(t, response.Applied)
+	assert.Equal(t, []byte(newSigningPublic), storedKeys().SigningKey)
+	assert.Equal(t, newUserKey.PublicKey().Bytes(), storedKeys().PublicKey)
+	assert.Equal(t, int64(1), rowsIn(t, host, "old_keys"))
+}
+
+func TestClaimingADeviceNeedsAProfileAndARecentRequest(t *testing.T) {
+	host, setup := newEncryptedDevice(t)
+
+	// Without a profile there are no keys to claim a device with
+	nobody := newBounce()
+	t.Cleanup(nobody.Shutdown)
+	assert.Error(t, nobody.RequestToManageEncryptedDevice(host.network.Address()+":"+setup))
+	assert.False(t, host.encryptedManagerProvisioned())
+
+	// An acceptance is only taken from a device we asked recently
+	bob := newBounceUser("Bob")
+	t.Cleanup(bob.Shutdown)
+	accepted, _ := msgpack.Marshal(encryptedDeviceManagementResponse{Accepted: true})
+	wantToManageMutex.Lock()
+	wantToManage[host.network.Address()] = time.Now().Add(-wantToManageWindow - time.Second)
+	wantToManageMutex.Unlock()
+	bob.handleEncryptedDeviceManagementResponse(host.network.Address(), accepted, false)
+	assert.Equal(t, int64(0), rowsIn(t, bob, "encrypted_sync_devices"), "an acceptance was taken from a device asked too long ago")
+
+	// Asking again starts a new window, and clears out requests that have run out
+	stale := newTestnet().Address()
+	wantToManageMutex.Lock()
+	wantToManage[stale] = time.Now().Add(-wantToManageWindow - time.Second)
+	wantToManageMutex.Unlock()
+	claimEncryptedDevice(t, bob, host, setup)
+	wantToManageMutex.Lock()
+	_, kept := wantToManage[stale]
+	wantToManageMutex.Unlock()
+	assert.False(t, kept)
+}
+
+// What a host keeps in memory about a peer lasts as long as the peer's connection.  When the peer comes back it is
+// challenged again and says again what it can read.
+func TestAHostForgetsPeersThatHaveGone(t *testing.T) {
+	bob := newBounceUser("Bob")
+	t.Cleanup(bob.Shutdown)
+	host, key := newEncryptedDevice(t)
+	claimEncryptedDevice(t, bob, host, key)
+	waitForOwnerMailboxes(t, host)
+	assert.True(t, len(host.peerLabels(bob.network.Address())) > 0)
+
+	// Still connected: housekeeping leaves it alone
+	host.pruneEncryptedDevice()
+	assert.True(t, host.peerIsOwner(bob.network.Address()))
+	assert.True(t, len(host.peerLabels(bob.network.Address())) > 0)
+
+	disconnectFrom(t, bob, host)
+	host.pruneEncryptedDevice()
+	assert.False(t, host.peerIsOwner(bob.network.Address()), "a peer that left is still taken for the owner")
+	assert.Equal(t, 0, len(host.peerLabels(bob.network.Address())))
+	referenceOfferChallengeMutex.Lock()
+	_, challengeKept := referenceOfferKeyMap[bob.network.Address()]
+	referenceOfferChallengeMutex.Unlock()
+	assert.False(t, challengeKept, "the private key of a challenge outlived the peer it was posed to")
+
+	// Back again, it proves itself and names its mailboxes afresh
+	connectTo(t, bob, host.network.Address())
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && !(host.peerIsOwner(bob.network.Address()) && len(host.peerLabels(bob.network.Address())) > 0) {
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.True(t, host.peerIsOwner(bob.network.Address()))
+	assert.True(t, len(host.peerLabels(bob.network.Address())) > 0)
+}
+
+// A frame that reaches a device live through an encrypted device is treated like one that came from any other peer:
+// the host is recorded as holding it, so it is not offered straight back, and it is passed on.
+func TestAFramePushedByAHostIsRecordedAndPassedOn(t *testing.T) {
+	quickReferenceRetries(t)
+	alice, bob := connectUsers(t)
+	host, key := newEncryptedDevice(t)
+	claimEncryptedDevice(t, bob, host, key)
+	waitForOwnerMailboxes(t, host)
+	waitForUserToKnowEncryptedDevice(t, alice, bob.currentUserID(), host.network.Address())
+	connectTo(t, alice, host.network.Address())
+
+	// Bob can only be reached through his host, which pushes him what Alice leaves there
+	disconnectFrom(t, bob, alice)
+	assert.NoError(t, alice.SendDirectMessage(bob.currentUserID(), "pushed through the host", nil, NilID))
+	var dm directMessage
+	assert.NoError(t, alice.database.First(&dm, "text = ?", "pushed through the host").Error)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && !bob.frameIsDeliveredTo(dm.ID, typeDirectMessage, host.network.Address()) {
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.Equal(t, int64(1), countWhere(t, bob, &directMessage{}, "id = ?", dm.ID))
+	assert.True(t, bob.frameIsDeliveredTo(dm.ID, typeDirectMessage, host.network.Address()), "the host a frame came from was not recorded as holding it")
+
+	// So the frame is not on offer to the host it came from
+	for _, reference := range bob.getReferenceOfferFor(host.network.Address()).References {
+		assert.NotEqual(t, dm.ID, reference.FrameID)
+	}
 }

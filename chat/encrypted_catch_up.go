@@ -152,10 +152,17 @@ func (b *Bounce) handleEncryptedReceive(peer string, payload []byte, _ bool) (br
 		return nil, false
 	}
 
-	br, _ := handler(peer, decrypted.Payload, false)
+	// The host is acked by the ID of its copy, never the ID of the frame inside, which is why this is done here and
+	// the frame is not handed back to the read loop to ack.  Otherwise the frame is treated as one that arrived from
+	// any other device: the host is recorded as holding it, and the first time we see it, it is passed on.
+	br, firstTimeSeen := handler(peer, decrypted.Payload, false)
 	if br != nil {
 		go b.sendAck(peer, typeEncryptedFrame, er.ID)
 		b.recordHostDelivery(peer, er.ID)
+		b.markDeliveredTo(br, peer)
+		if firstTimeSeen {
+			b.broadcast(br)
+		}
 	}
 
 	return nil, false

@@ -27,8 +27,14 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-var wantToManage = map[string]bool{}
+// The encrypted devices we have asked to manage, and when.  An answer is only taken from a device asked within
+// wantToManageWindow; entries are compared against the clock rather than removed by a timer, so asking again
+// restarts the window instead of being cut short by the first request's expiry.
+var wantToManage = map[string]time.Time{}
 var wantToManageMutex sync.Mutex
+
+const wantToManageWindow = 5 * time.Minute
+
 var setupKey string
 var encryptedDeviceManagementMutex sync.Mutex
 
@@ -119,29 +125,7 @@ func StartEncryptedDevice(network Network, platform Platform) {
 		fmt.Print("\n\n")
 	}
 
-	ticker := time.NewTicker(5 * time.Minute)
-	go func() {
-		for {
-			<-ticker.C
-			err := deleteEach[encryptedFrame](b.database, "delete_at != 0 AND delete_at <= ?", time.Now().Unix())
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error pruning encrypted frames")
-			}
-			err = deleteEach[encryptedChunkStorageRequest](b.database, "delete_at != 0 AND delete_at <= ?", time.Now().Unix())
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error pruning encrypted chunk storage requests")
-			}
-
-			b.pruneOwnerMailboxes()
-
-			// Pruning and other deletes do not adjust the in-memory untrusted storage size, so reload it
-			b.recheckUntrustedEncryptedFrameStorage()
-		}
-	}()
+	b.background(b.keepEncryptedDevicePruned)
 
 	b.network.Start(
 		NetworkCallbacks{
@@ -149,6 +133,89 @@ func StartEncryptedDevice(network Network, platform Platform) {
 			NetworkOffline: b.networkOffline,
 		},
 	)
+}
+
+// keepEncryptedDevicePruned is the encrypted device's housekeeping: what has expired is deleted, and what is only
+// kept in memory about a peer goes once the peer has
+func (b *Bounce) keepEncryptedDevicePruned() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-b.done:
+			return
+		case <-ticker.C:
+		}
+		b.pruneEncryptedDevice()
+	}
+}
+
+func (b *Bounce) pruneEncryptedDevice() {
+	err := deleteEach[encryptedFrame](b.database, "delete_at != 0 AND delete_at <= ?", time.Now().Unix())
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error pruning encrypted frames")
+	}
+	err = deleteEach[encryptedChunkStorageRequest](b.database, "delete_at != 0 AND delete_at <= ?", time.Now().Unix())
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("error pruning encrypted chunk storage requests")
+	}
+
+	b.pruneOwnerMailboxes()
+	b.forgetDepartedPeers()
+
+	// Pruning and other deletes do not adjust the in-memory untrusted storage size, so reload it
+	b.recheckUntrustedEncryptedFrameStorage()
+}
+
+// forgetDepartedPeers drops what an encrypted device holds in memory about peers that are no longer connected: the
+// key each proved, the mailboxes each asked for, and any challenge still open.  A peer that returns is challenged
+// again and says again what it can read, so nothing here needs to outlive the connection.
+func (b *Bounce) forgetDepartedPeers() {
+	connected := func(peer string) bool {
+		b.devicePool.deviceMutex.Lock()
+		rd, inPool := b.devicePool.devices[peer]
+		b.devicePool.deviceMutex.Unlock()
+		return inPool && rd.connectedSockets() > 0
+	}
+
+	peerUserKeyMutex.Lock()
+	for peer := range peerUserKeys {
+		if !connected(peer) {
+			delete(peerUserKeys, peer)
+		}
+	}
+	peerUserKeyMutex.Unlock()
+
+	peerMailboxLabelsMutex.Lock()
+	for peer := range peerMailboxLabels {
+		if !connected(peer) {
+			delete(peerMailboxLabels, peer)
+		}
+	}
+	peerMailboxLabelsMutex.Unlock()
+
+	lastERORTimeMutex.Lock()
+	for peer := range lastERORTime {
+		if !connected(peer) {
+			delete(lastERORTime, peer)
+		}
+	}
+	lastERORTimeMutex.Unlock()
+
+	referenceOfferChallengeMutex.Lock()
+	for peer := range referenceOfferChallengeTime {
+		if !connected(peer) {
+			delete(referenceOfferChallengeTime, peer)
+			delete(referenceOfferChallengeMap, peer)
+			delete(referenceOfferKeyMap, peer)
+		}
+	}
+	referenceOfferChallengeMutex.Unlock()
 }
 
 func (b *Bounce) openEncryptedDatabase(databaseKey []byte) {
@@ -237,6 +304,16 @@ func (b *Bounce) encryptedManagerProvisioned() bool {
 	return err == nil
 }
 
+// validManagementKeys reports whether an X25519 public key and an ed25519 public key are usable as the keys of the
+// user who manages an encrypted device
+func validManagementKeys(publicECDHKey []byte, signingKey []byte) bool {
+	if len(signingKey) != ed25519.PublicKeySize {
+		return false
+	}
+	_, err := ecdh.X25519().NewPublicKey(publicECDHKey)
+	return err == nil
+}
+
 type encryptedDeviceManagementRequest struct {
 	Secret     string
 	SigningKey []byte
@@ -275,12 +352,13 @@ func (b *Bounce) handleEncryptedDeviceManagementRequest(peer string, payload []b
 		return nil, false
 	}
 
-	if len(edmr.SigningKey) != ed25519.PublicKeySize {
+	// These are the keys every later proof of ownership and management action is checked against, so a key that could
+	// never check anything is refused here rather than stored
+	if !validManagementKeys(edmr.Pubkey, edmr.SigningKey) {
 		log.WithFields(log.Fields{
-			"peer":     peer,
-			"length":   len(edmr.SigningKey),
-			"expected": ed25519.PublicKeySize,
-		}).Error("invalid signing key length in encrypted device management request")
+			"peer": peer,
+		}).Warn("invalid keys in encrypted device management request")
+		go b.sendDirect(peer, &encryptedDeviceManagementResponse{Accepted: false})
 		return nil, false
 	}
 
@@ -309,6 +387,7 @@ func (b *Bounce) RequestToManageEncryptedDevice(data string) error {
 	currentUser, ok := b.currentUser()
 	if !ok {
 		log.Error("cannot manage encrypted device before profile creation")
+		return errUserNotFound
 	}
 
 	address, secret, err := b.parseSyncString(data)
@@ -329,14 +408,13 @@ func (b *Bounce) RequestToManageEncryptedDevice(data string) error {
 	}
 
 	wantToManageMutex.Lock()
-	wantToManage[address] = true
+	for asked, at := range wantToManage {
+		if time.Since(at) > wantToManageWindow {
+			delete(wantToManage, asked)
+		}
+	}
+	wantToManage[address] = time.Now()
 	wantToManageMutex.Unlock()
-	go func() {
-		time.Sleep(5 * time.Minute)
-		wantToManageMutex.Lock()
-		delete(wantToManage, address)
-		wantToManageMutex.Unlock()
-	}()
 
 	go b.sendDirect(address, &edmr)
 
@@ -372,9 +450,9 @@ func (b *Bounce) handleEncryptedDeviceManagementResponse(peer string, payload []
 	}
 
 	wantToManageMutex.Lock()
-	_, ok := wantToManage[peer]
+	asked, ok := wantToManage[peer]
 	wantToManageMutex.Unlock()
-	if !ok {
+	if !ok || time.Since(asked) > wantToManageWindow {
 		log.Warn("received encrypted device management response from peer that we did not request to manage recently")
 		return nil, false
 	}
@@ -990,7 +1068,7 @@ func (b *Bounce) challengeUnencryptedPeerForReferenceOffer(peer string) {
 	referenceOfferChallengeMutex.Unlock()
 
 	start := time.Now().Unix()
-	go func() {
+	b.background(func() {
 		success := false
 		for range 5 {
 			go b.sendDirect(peer, &encryptedReferenceOfferChallenge{
@@ -998,7 +1076,11 @@ func (b *Bounce) challengeUnencryptedPeerForReferenceOffer(peer string) {
 				Challenge: challenge,
 			})
 
-			time.Sleep(5 * time.Second)
+			select {
+			case <-b.done:
+				return
+			case <-time.After(5 * time.Second):
+			}
 
 			lastERORTimeMutex.Lock()
 			t, ok := lastERORTime[peer]
@@ -1013,7 +1095,7 @@ func (b *Bounce) challengeUnencryptedPeerForReferenceOffer(peer string) {
 				"peer": peer,
 			}).Warn("gave up delivering encrypted reference offer challenge to peer")
 		}
-	}()
+	})
 }
 
 type encryptedReferenceOfferResponse struct {
@@ -1064,14 +1146,16 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 		if ts < time.Now().Add(-5*time.Minute).Unix() {
 			delete(referenceOfferChallengeTime, peer)
 			delete(referenceOfferChallengeMap, peer)
+			delete(referenceOfferKeyMap, peer)
 		}
 	}
 	challenge, ok := referenceOfferChallengeMap[peer]
 	referenceOfferChallengeMutex.Unlock()
 	if !ok {
+		// A slow peer answering a challenge that has since expired does this routinely
 		log.WithFields(log.Fields{
 			"peer": peer,
-		}).Error("received encrypted reference offer response for unknown challenge")
+		}).Warn("received encrypted reference offer response for unknown challenge")
 		return nil, false
 	}
 
@@ -1212,12 +1296,13 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 			"length":   len(au.SigningKey),
 			"expected": ed25519.PublicKeySize,
 		}).Error("invalid signing key length in manage encrypted device frame")
+		go b.sendDirect(peer, &response)
 		return nil, false
 	}
 
 	validSignature := ed25519.Verify(au.SigningKey, med.Action, med.Signature)
 	if !validSignature {
-		log.Error("manage encrypted device has invalid signature with authorized user key")
+		log.Warn("manage encrypted device has invalid signature with authorized user key")
 		go b.sendDirect(peer, &response)
 		return nil, false
 	} else {
@@ -1225,7 +1310,7 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 	}
 
 	var edma encryptedDeviceManagementAction
-	msgpack.Unmarshal(med.Action, &edma)
+	err = msgpack.Unmarshal(med.Action, &edma)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -1237,12 +1322,15 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 
 	switch edma.ActionType {
 	case actionTypeChangeManagementKey:
+		// The new keys replace the ones every later action is checked against, so they are checked first: a key
+		// that could never verify anything would leave the device unmanageable for good
 		var ks keySet
 		err = msgpack.Unmarshal(edma.Data, &ks)
-		if err != nil {
+		if err != nil || !validManagementKeys(ks.PublicECDHKey, ks.PublicECDSAKey) {
 			log.WithFields(log.Fields{
-				"error": err.Error(),
+				"peer": peer,
 			}).Error("invalid key set in manage encrypted device")
+			go b.sendDirect(peer, &response)
 			return nil, false
 		}
 
@@ -1324,12 +1412,13 @@ func (b *Bounce) handleEncryptedDeviceManagementActionResponse(peer string, payl
 		return nil, false
 	}
 
-	if !edmr.Authorized {
-		b.updateManageableWarning(peer, false)
-		return nil, false
-	} else {
-		b.updateManageableWarning(peer, true)
+	// A key change the device authorized but could not apply leaves it on a key we no longer use, which is as
+	// unmanageable as one that would not authorize us at all
+	manageable := edmr.Authorized
+	if edmr.Type == actionTypeChangeManagementKey && !edmr.Applied {
+		manageable = false
 	}
+	b.updateManageableWarning(peer, manageable)
 
 	return nil, false
 }

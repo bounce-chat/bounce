@@ -2347,6 +2347,12 @@ func (b *Bounce) offerChunk(c chunk) {
 	}
 	b.broadcast(co)
 
+	// A seeded file is served from where it sits on disk and has no encrypted form, so there is nothing for an
+	// encrypted device to store: files too large to embed are not relayed through encrypted devices
+	if c.EncryptedHash == "" {
+		return
+	}
+
 	// Request that each encrypted device that could store this chunk does so, addressed to the mailboxes of the
 	// conversation the file belongs to that the device's owner can read
 	deleteAt, canBatchDelete := b.getDeleteAtAndCanBatchDelete(c.FileID)
