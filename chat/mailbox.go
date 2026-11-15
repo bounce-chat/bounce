@@ -55,6 +55,14 @@ const mailboxTagSize = 16
 // here so that a single copy cannot carry an unbounded number of rows onto a host.
 const maximumMailboxesPerCopy = 4096
 
+// A peer may ask a host for this many mailboxes.  A device has a mailbox per conversation it can read for each epoch
+// it looks back over, so this is a few hundred conversations.  It is also what keeps a query over one peer's labels
+// within what the database will bind.
+const maximumMailboxLabelsPerPeer = 16384
+
+// How many labels go into one query when a peer names more than a handful
+const mailboxLabelQueryBatch = 500
+
 const mailboxLabelInfo = "bounce-mailbox-label"
 const mailboxWrapInfo = "bounce-mailbox-wrap"
 const mailboxTagInfo = "bounce-mailbox-tag"
@@ -760,7 +768,20 @@ func (b *Bounce) sendMailboxRequestFrom(peer string, index *mailboxIndex) {
 	mailboxRequestDigestsMutex.Lock()
 	mailboxRequestDigests[b.network.Address()+peer] = index.digest()
 	mailboxRequestDigestsMutex.Unlock()
-	b.sendDirect(peer, &mailboxRequest{Labels: index.labels()})
+
+	// A host takes no more than this many, in the order given.  The index lists our mailboxes newest epoch first
+	// within each conversation, so what is cut off is the far end of the list, and it is said here rather than
+	// left to look like missing messages.
+	labels := index.labels()
+	if len(labels) > maximumMailboxLabelsPerPeer {
+		log.WithFields(log.Fields{
+			"peer":      peer,
+			"mailboxes": len(labels),
+			"limit":     maximumMailboxLabelsPerPeer,
+		}).Warn("we can read more mailboxes than an encrypted device will take, asking for the first of them only")
+		labels = labels[:maximumMailboxLabelsPerPeer]
+	}
+	b.sendDirect(peer, &mailboxRequest{Labels: labels})
 }
 
 // refreshMailboxRequests re-sends our mailboxes to every connected encrypted device whose view of them is stale.
@@ -823,6 +844,13 @@ func (b *Bounce) handleMailboxRequest(peer string, payload []byte, _ bool) (broa
 
 	labels := map[string]bool{}
 	for _, label := range request.Labels {
+		if len(labels) >= maximumMailboxLabelsPerPeer {
+			log.WithFields(log.Fields{
+				"peer":      peer,
+				"mailboxes": len(request.Labels),
+			}).Warn("peer asked for more mailboxes than it may, ignoring the rest")
+			break
+		}
 		if len(label) == mailboxLabelSize {
 			labels[string(label)] = true
 		}

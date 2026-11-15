@@ -316,15 +316,13 @@ func TestAnOwnersBacklogReachesItsHostInStages(t *testing.T) {
 	assert.NoError(t, bob.database.Where("text LIKE ?", "before the host%").Order("saved_at asc").Find(&sent).Error)
 	assert.Equal(t, 20, len(sent))
 
-	// He claims a host, and the next time he connects to it his history goes to it sealed, a few copies at a time
+	// He claims a host, and his history goes to it sealed, a few copies at a time, without waiting for him to
+	// connect to it again
 	sample, err := sealFrame(&sent[0], [][]byte{syncThreadSecret(mustCurrentUser(bob).PrivateECDHKey)}, copySettings{})
 	assert.NoError(t, err)
 	smallBudget(t, 4*len(sample.getPayload()))
 	host, key := newEncryptedDevice(t)
 	claimEncryptedDevice(t, bob, host, key)
-	waitForOwnerMailboxes(t, host)
-	disconnectFrom(t, bob, host)
-	connectTo(t, bob, host.network.Address())
 
 	deadline := time.Now().Add(20 * time.Second)
 	held := map[ID]bool{}

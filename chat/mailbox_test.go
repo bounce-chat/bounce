@@ -527,6 +527,14 @@ func TestTheHostStoresNothingThatNamesAnyone(t *testing.T) {
 		assert.NotEqual(t, "public_key", c.Name)
 		assert.NotEqual(t, "encrypter_key", c.Name)
 	}
+	for _, table := range []string{"encrypted_chunk_storage_requests", "encrypted_chunk_recipients"} {
+		host.database.Raw("SELECT name FROM pragma_table_info(?)", table).Scan(&columns)
+		assert.True(t, len(columns) > 0)
+		for _, c := range columns {
+			assert.NotEqual(t, "batch_delete_key", c.Name, "a stored chunk must not name its conversation")
+			assert.NotEqual(t, "public_key", c.Name)
+		}
+	}
 
 	// Bob is connected and asked for his mailboxes, so the host pushed the copy to him; he opened it, acked the
 	// host's ID for it, and the host recorded the delivery

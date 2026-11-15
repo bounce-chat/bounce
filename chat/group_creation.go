@@ -42,6 +42,9 @@ func (gc *groupCreation) BeforeCreate(tx *gorm.DB) error {
 	if !idMatchesContent(gc) {
 		return errors.New("group creation ID is not generated from its content")
 	}
+	if err := validGroupKeyMaterial(gc.KeyEphemeralKey, gc.KeyWraps, gc.KeySecretHash); err != nil {
+		return err
+	}
 	gc.SavedAt = time.Now().Unix()
 	return nil
 }
@@ -179,6 +182,22 @@ func (b *Bounce) handleGroupCreation(peer string, payload []byte, catchUp bool) 
 			"group_id": g.ID,
 			"error":    err.Error(),
 		}).Warn("rejecting group creation with invalid group record")
+		return nil, false
+	}
+
+	// The creation wraps the group's first secret for its creator, who is the only member, and for nobody else
+	if err := validGroupKeyMaterial(gc.KeyEphemeralKey, gc.KeyWraps, gc.KeySecretHash); err != nil || len(gc.KeyWraps) > 1 {
+		log.WithFields(log.Fields{
+			"peer":     peer,
+			"group_id": g.ID,
+		}).Warn("rejecting group creation with invalid key material")
+		return nil, false
+	}
+	if len(gc.KeyWraps) == 1 && gc.KeyWraps[0].UserID != g.CreatedBy {
+		log.WithFields(log.Fields{
+			"peer":     peer,
+			"group_id": g.ID,
+		}).Warn("rejecting group creation whose key is wrapped for someone other than its creator")
 		return nil, false
 	}
 

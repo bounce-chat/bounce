@@ -112,6 +112,9 @@ func (ug *updateGroup) BeforeCreate(tx *gorm.DB) error {
 	if !idMatchesContent(ug) {
 		return errors.New("update group ID is not generated from its content")
 	}
+	if err := validGroupKeyMaterial(ug.KeyEphemeralKey, ug.KeyWraps, ug.KeySecretHash); err != nil {
+		return err
+	}
 	ug.SavedAt = time.Now().Unix()
 
 	if len(ug.CustomScope) == 0 {
@@ -247,6 +250,24 @@ func (ug *updateGroup) permissionPayloadIsRestricted() (bool, error) {
 func (ug *updateGroup) validPayloadFormat() bool {
 	if ug.Timestamp < 0 {
 		return false
+	}
+
+	// Key material is stored as it arrives, so its shape and size are checked here, and only the updates that have
+	// a use for it may carry any: an invite carries the chain, and a removal, a revoked invite or a rotation carries
+	// a secret
+	if validGroupKeyMaterial(ug.KeyEphemeralKey, ug.KeyWraps, ug.KeySecretHash) != nil {
+		return false
+	}
+	switch ug.Type {
+	case updateGroupTypeInviteUser:
+		if len(ug.KeySecretHash) != 0 {
+			return false
+		}
+	case updateGroupTypeRemoveUser, updateGroupTypeRevokeInvite, updateGroupTypeRotateKey:
+	default:
+		if !ug.carriesNoGroupKeyMaterial() {
+			return false
+		}
 	}
 
 	switch ug.Type {

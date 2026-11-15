@@ -343,7 +343,7 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 		}
 
 		if len(f.EncryptedHashList) > 0 {
-			deleteAt, batchDeleteKey, canBatchDelete := b.getDeleteAtAndBatchDeleteKey(fileID)
+			deleteAt, canBatchDelete := b.getDeleteAtAndCanBatchDelete(fileID)
 			for _, hash := range strings.Split(f.EncryptedHashList, ",") {
 				// Request that this encrypted devices store the chunks it does not have
 				var existingECO encryptedChunkOffer
@@ -364,7 +364,6 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 							Hash:           hash,
 							Labels:         currentLabels(b.secretsForOwner(secrets, ownerUser.ID)),
 							DeleteAt:       deleteAt,
-							BatchDeleteKey: batchDeleteKey,
 							CanBatchDelete: canBatchDelete,
 						},
 					)
@@ -447,7 +446,6 @@ type encryptedChunkStorageRequest struct {
 	ID              ID `gorm:"primary_key;"`
 	Hash            string
 	DeleteAt        int64
-	BatchDeleteKey  ID
 	CanBatchDelete  bool
 	Labels          [][]byte                  `gorm:"-"` // The mailboxes (see mailbox.go) whose readers may fetch this chunk
 	Timestamp       int64                     `msgpack:"-"`

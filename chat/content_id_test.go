@@ -163,6 +163,61 @@ func TestAnUpdatesKeyMaterialIsPartOfItsContent(t *testing.T) {
 	assert.True(t, idMatchesContent(&stored))
 }
 
+// Key material is stored as it arrives, so it is checked for shape and size where it arrives and again where it is
+// stored, and only the updates with a use for it may carry any
+func TestKeyMaterialIsValidatedBeforeItIsStored(t *testing.T) {
+	me, alice, bob, groupID := createUsersAndGroups(t)
+	gs, err := me.currentGroupState(groupID)
+	assert.NoError(t, err)
+	waitForTheNextSecond()
+
+	rotation := func(change func(*updateGroup)) updateGroup {
+		ug := updateGroup{Nonce: newNonce(), Actor: me.currentUserID(), Target: groupID, Type: updateGroupTypeRotateKey, Timestamp: time.Now().Unix()}
+		assert.NoError(t, me.attachGroupKeySecret(&ug, gs, NilID))
+		change(&ug)
+		ug.ID = ug.generateID()
+		return ug
+	}
+	stored := func(b *Bounce, ug updateGroup) bool {
+		b.handleUpdateGroup(me.network.Address(), signedBy(t, me, ug), false)
+		return countWhere(t, b, &updateGroup{}, "id = ?", ug.ID) == 1
+	}
+
+	assert.True(t, stored(alice, rotation(func(ug *updateGroup) {})), "a well formed rotation is stored")
+	assert.False(t, stored(alice, rotation(func(ug *updateGroup) { ug.KeyEphemeralKey = []byte("short") })))
+	assert.False(t, stored(alice, rotation(func(ug *updateGroup) { ug.KeySecretHash = make([]byte, 31) })))
+	assert.False(t, stored(alice, rotation(func(ug *updateGroup) { ug.KeyWraps[0].Ciphertext = nil })))
+	assert.False(t, stored(alice, rotation(func(ug *updateGroup) {
+		ug.KeyWraps[0].Ciphertext = make([]byte, maximumGroupKeyMaterialBytes)
+	})), "key material larger than any group's is refused")
+
+	// A rename has no use for key material, so one that carries some is refused rather than stored with it
+	rename := rotation(func(ug *updateGroup) {
+		ug.Type = updateGroupTypeChangeName
+		ug.Data = []byte("Smuggled")
+	})
+	assert.False(t, stored(alice, rename))
+
+	// The same rules stand between any update and the table
+	malformed := rotation(func(ug *updateGroup) { ug.KeyEphemeralKey = []byte("short") })
+	assert.Error(t, bob.database.Create(&malformed).Error)
+
+	// A creation wraps its secret for its creator and for nobody else
+	var original groupCreation
+	assert.NoError(t, me.database.First(&original, "id = ?", groupID).Error)
+	foreign := groupCreation{Nonce: newNonce(), Timestamp: original.Timestamp, Data: original.Data,
+		KeyEphemeralKey: original.KeyEphemeralKey, KeySecretHash: original.KeySecretHash,
+		KeyWraps: []groupKeyWrap{{UserID: alice.currentUserID(), Ciphertext: original.KeyWraps[0].Ciphertext}}}
+	foreign.ID = foreign.generateID()
+	foreign.OriginalPayload, err = msgpack.Marshal(foreign)
+	assert.NoError(t, err)
+	frame, err := msgpack.Marshal(me.createSignedContainer(typeGroupCreation, foreign.OriginalPayload))
+	assert.NoError(t, err)
+	_, accepted := bob.handleGroupCreation(me.network.Address(), frame, false)
+	assert.False(t, accepted)
+	assert.Equal(t, int64(0), countWhere(t, bob, &groupCreation{}, "id = ?", foreign.ID))
+}
+
 func TestAGroupCreationCannotBeRedefinedUnderItsID(t *testing.T) {
 	me, alice, _, groupID := createUsersAndGroups(t)
 	var original groupCreation

@@ -69,6 +69,16 @@ func TestAChallengeIsAnsweredUnderAKeyOfItsOwn(t *testing.T) {
 	assert.NoError(t, err)
 	conversation, err := me.dmThreadSecret(meUser.PrivateECDHKey, aliceUser.PublicECDHKey)
 	assert.NoError(t, err)
+	// A stranger posing a challenge learns nothing else: our mailboxes are only told to encrypted devices we know of
+	conn.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	for {
+		frameType, _, err := readFrame(conn, true)
+		if err != nil {
+			break
+		}
+		assert.NotEqual(t, typeMailboxRequest, frameType, "a stranger was told which mailboxes we can read")
+	}
+
 	assert.False(t, opens(agreement, response.Response, session), "the answer was sealed under the bare agreement between two user keys")
 	assert.False(t, opens(conversation, response.Response, session))
 	assert.False(t, opens(mailboxWrapKey(conversation, currentMailboxEpoch()), response.Response, session))
@@ -320,4 +330,66 @@ func TestAChunkStorageRequestIsCheckedTheSameOnBothPaths(t *testing.T) {
 		assert.Equal(t, host.platform.ConfigDirectory+"/blobs/"+hash, fromOwner.FullPath)
 		assert.NoError(t, deleteEach[encryptedChunkStorageRequest](host.database, "hash = ?", hash))
 	}
+}
+
+// Everything a host stores about a copy is of a known size, and a peer chooses how many mailboxes it asks for or
+// clears.  None of that may grow past what the host will hold in a row or bind in a query: an oversized request is
+// cut down or refused, never passed to the database to fail there.
+func TestAHostBoundsWhatAPeerCanMakeItStoreOrLookUp(t *testing.T) {
+	_, alice, bob, _ := createUsersAndGroups(t)
+	host, key := newEncryptedDevice(t)
+	claimEncryptedDevice(t, bob, host, key)
+	waitForOwnerMailboxes(t, host)
+	stranger := newTestnet().Address()
+
+	manyLabels := func(n int) [][]byte {
+		labels := make([][]byte, 0, n)
+		for i := 0; i < n; i++ {
+			label := make([]byte, mailboxLabelSize)
+			rand.Read(label)
+			labels = append(labels, label)
+		}
+		return labels
+	}
+
+	// More mailboxes than a query can bind: the request is cut down, and answering it still works
+	request, _ := msgpack.Marshal(mailboxRequest{Labels: manyLabels(40000)})
+	host.handleMailboxRequest(stranger, request, false)
+	assert.Equal(t, maximumMailboxLabelsPerPeer, len(host.peerLabels(stranger)))
+	assert.Equal(t, 0, len(host.hostOfferFor(stranger).References))
+
+	// Clearing more mailboxes than a query can bind is done a batch at a time, and still clears what it names
+	good := sealForHost(t, bob, signedDM(bob, alice.currentUserID(), "to be cleared"), host)
+	payload, _ := msgpack.Marshal(good)
+	host.handleEncryptedFrame(bob.network.Address(), payload, false)
+	assert.Equal(t, int64(1), countWhere(t, host, &encryptedFrame{}, "id = ?", good.ID))
+	clear, _ := msgpack.Marshal(encryptedClearBefore{ID: NewID(), Labels: append(manyLabels(40000), good.Mailboxes[0].Label)})
+	host.handleEncryptedClearBefore(stranger, clear, false)
+	assert.Equal(t, int64(0), countWhere(t, host, &encryptedFrame{}, "id = ?", good.ID))
+
+	// A copy is refused when it is in more mailboxes than any frame belongs in, or carries a wrapped key that is
+	// not the size of one
+	refused := func(change func(*encryptedFrame)) bool {
+		ef := sealForHost(t, bob, signedDM(bob, alice.currentUserID(), "malformed"), host)
+		change(ef)
+		payload, _ := msgpack.Marshal(ef)
+		host.handleEncryptedFrame(bob.network.Address(), payload, false)
+		return countWhere(t, host, &encryptedFrame{}, "id = ?", ef.ID) == 0
+	}
+	assert.False(t, refused(func(ef *encryptedFrame) {}), "an untouched copy is stored")
+	assert.True(t, refused(func(ef *encryptedFrame) {
+		for _, label := range manyLabels(maximumMailboxesPerCopy) {
+			ef.Mailboxes = append(ef.Mailboxes, mailboxEntry{Label: label, Tag: ef.Mailboxes[0].Tag, WrappedDEK: ef.Mailboxes[0].WrappedDEK})
+		}
+	}))
+	assert.True(t, refused(func(ef *encryptedFrame) {
+		ef.Mailboxes[0].WrappedDEK = make([]byte, maximumWrappedDEKBytes+1)
+	}))
+	assert.True(t, refused(func(ef *encryptedFrame) { ef.Slot = []byte("short") }))
+	assert.True(t, refused(func(ef *encryptedFrame) { ef.DeleteAt = -1 }))
+
+	// And the same shape is required of a copy however it gets to the table
+	direct := sealForHost(t, bob, signedDM(bob, alice.currentUserID(), "direct"), host)
+	direct.Mailboxes[0].Label = []byte("not a label")
+	assert.Error(t, host.database.Create(direct).Error)
 }

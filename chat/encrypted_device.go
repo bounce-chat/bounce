@@ -407,6 +407,11 @@ func (b *Bounce) handleEncryptedDeviceManagementResponse(peer string, payload []
 			})
 			b.ui.EncryptedDeviceAdded()
 			b.updateUserOnlineStatus(peer)
+
+			// It was a stranger when we connected to it, so it was told nothing then.  Now that it is ours, tell it
+			// which mailboxes we can read and offer it what we hold, rather than leaving both to the next connection.
+			go b.sendMailboxRequest(peer)
+			go b.sendReferences(peer)
 		}
 	} else {
 		b.ui.EncryptedDeviceRejected()
@@ -445,7 +450,35 @@ func (entry *mailboxEntry) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// A wrapped DEK is a 32 byte key sealed with AES-GCM, sixty bytes; anything much larger is not one
+const maximumWrappedDEKBytes = 128
+
+var errInvalidEncryptedFrame = errors.New("invalid encrypted frame")
+
+// validEncryptedFrame checks the shape of a copy a peer wants stored.  A host cannot read a copy, but everything it
+// stores about one is of a known size, so anything else is refused before it is stored.
+func validEncryptedFrame(ef *encryptedFrame) error {
+	if ef.ID == NilID || len(ef.Payload) == 0 || len(ef.Slot) != slotSize || ef.DeleteAt < 0 {
+		return errInvalidEncryptedFrame
+	}
+	if len(ef.Mailboxes) == 0 || len(ef.Mailboxes) > maximumMailboxesPerCopy {
+		return errInvalidEncryptedFrame
+	}
+	for _, entry := range ef.Mailboxes {
+		if len(entry.Label) != mailboxLabelSize || len(entry.Tag) != mailboxTagSize {
+			return errInvalidEncryptedFrame
+		}
+		if len(entry.WrappedDEK) == 0 || len(entry.WrappedDEK) > maximumWrappedDEKBytes {
+			return errInvalidEncryptedFrame
+		}
+	}
+	return nil
+}
+
 func (ef *encryptedFrame) BeforeCreate(tx *gorm.DB) error {
+	if err := validEncryptedFrame(ef); err != nil {
+		return err
+	}
 	ef.SavedAt = time.Now().Unix()
 	return nil
 }
@@ -504,21 +537,16 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 		}).Error("error unmarshalling encrypted frame")
 		return nil, false
 	}
-	if ef.ID == NilID || len(ef.Mailboxes) == 0 || len(ef.Payload) == 0 || len(ef.Slot) != slotSize {
+	if err := validEncryptedFrame(&ef); err != nil {
 		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("ignoring encrypted frame without an id, payload, slot, or mailboxes")
+			"peer":      peer,
+			"mailboxes": len(ef.Mailboxes),
+		}).Warn("ignoring encrypted frame without an id, payload or slot, or with missing, malformed or too many mailbox entries")
 		return nil, false
 	}
 	labels := [][]byte{}
 	tags := [][]byte{}
 	for _, entry := range ef.Mailboxes {
-		if len(entry.Label) != mailboxLabelSize || len(entry.Tag) != mailboxTagSize || len(entry.WrappedDEK) == 0 {
-			log.WithFields(log.Fields{
-				"peer": peer,
-			}).Warn("ignoring encrypted frame with a malformed mailbox entry")
-			return nil, false
-		}
 		labels = append(labels, entry.Label)
 		tags = append(tags, entry.Tag)
 	}
@@ -704,31 +732,26 @@ func (b *Bounce) handleEncryptedClearBefore(peer string, payload []byte, _ bool)
 	// Presenting a label is the proof of being able to read that mailbox, which is the same standing as being
 	// allowed to clear it.  A frame belongs to one conversation, and its other mailboxes are only the sender's sync
 	// copy, so a frame in a cleared mailbox goes entirely rather than lingering under a label the clearer cannot
-	// name.
-	inClearedMailboxes := b.database.Model(&mailboxEntry{}).Select("encrypted_frame_id").Where("label IN ?", labels)
-	err = deleteEach[encryptedFrame](b.database, "id IN (?)", inClearedMailboxes)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error deleting encrypted frames for clear before")
-	}
+	// name.  The labels are taken a batch at a time, so that however many a peer sends, no one query binds more than
+	// the database allows.
+	for start := 0; start < len(labels); start += mailboxLabelQueryBatch {
+		batch := labels[start:min(start+mailboxLabelQueryBatch, len(labels))]
 
-	// Likewise for stored chunks, which are deleted one at a time so that their files go with them
-	var clearedSRs []encryptedChunkStorageRequest
-	inClearedChunkMailboxes := b.database.Model(&encryptedChunkRecipient{}).Select("encrypted_chunk_storage_request_id").Where("label IN ?", labels)
-	err = b.database.Where("can_batch_delete = ? AND id IN (?)", true, inClearedChunkMailboxes).Find(&clearedSRs).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error finding encrypted chunk storage requests to delete")
-	}
-	for _, sr := range clearedSRs {
-		err := b.database.Delete(&sr).Error
+		inClearedMailboxes := b.database.Model(&mailboxEntry{}).Select("encrypted_frame_id").Where("label IN ?", batch)
+		err = deleteEach[encryptedFrame](b.database, "id IN (?)", inClearedMailboxes)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-				"id":    sr.ID,
-			}).Error("error deleting encrypted chunk storage request")
+			}).Error("error deleting encrypted frames for clear before")
+		}
+
+		// Likewise for stored chunks, whose files go with their rows
+		inClearedChunkMailboxes := b.database.Model(&encryptedChunkRecipient{}).Select("encrypted_chunk_storage_request_id").Where("label IN ?", batch)
+		err = deleteEach[encryptedChunkStorageRequest](b.database, "can_batch_delete = ? AND id IN (?)", true, inClearedChunkMailboxes)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error deleting encrypted chunk storage requests for clear before")
 		}
 	}
 
@@ -902,8 +925,14 @@ func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []b
 		Response:  ciphertext,
 	})
 
-	// The challenge is the encrypted device asking what we can read; answer that too
-	go b.sendMailboxRequest(peer)
+	// The challenge is an encrypted device asking who we are; one we know of is also told what we can read.  Anyone
+	// can pose a challenge, and our mailboxes are not for anyone who asks.
+	encryptedDeviceCacheMutex.Lock()
+	_, encryptedPeer := encryptedDeviceCache[peer]
+	encryptedDeviceCacheMutex.Unlock()
+	if encryptedPeer {
+		go b.sendMailboxRequest(peer)
+	}
 
 	return nil, false
 }

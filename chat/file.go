@@ -2349,7 +2349,7 @@ func (b *Bounce) offerChunk(c chunk) {
 
 	// Request that each encrypted device that could store this chunk does so, addressed to the mailboxes of the
 	// conversation the file belongs to that the device's owner can read
-	deleteAt, batchDeleteKey, canBatchDelete := b.getDeleteAtAndBatchDeleteKey(c.FileID)
+	deleteAt, canBatchDelete := b.getDeleteAtAndCanBatchDelete(c.FileID)
 	for addr := range b.onlineEncryptedDevicesOf(b.getUsersInScope(co)) {
 		secrets, err := b.hostSecretsFor(co, addr)
 		if err != nil {
@@ -2365,45 +2365,42 @@ func (b *Bounce) offerChunk(c chunk) {
 			Hash:           c.EncryptedHash,
 			Labels:         currentLabels(secrets),
 			DeleteAt:       deleteAt,
-			BatchDeleteKey: batchDeleteKey,
 			CanBatchDelete: canBatchDelete,
 		})
 	}
 }
 
-func (b *Bounce) getDeleteAtAndBatchDeleteKey(fileID ID) (int64, ID, bool) {
+// getDeleteAtAndCanBatchDelete returns what a host is told about a chunk it stores besides its mailboxes: when to
+// delete it on its own, and whether it goes when the history of a mailbox it is in is cleared.  Message attachments
+// do; a profile or group image outlives any one conversation.  The host is not told which conversation: a clear
+// names mailboxes, and the chunk's labels already say which of those it is in.
+func (b *Bounce) getDeleteAtAndCanBatchDelete(fileID ID) (int64, bool) {
 	var f file
 	err := b.database.Take(&f, "id = ?", fileID).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Error("cannot find file attempting to get delete at and batch delete key")
-		return 0, NilID, false
+		}).Error("cannot find file attempting to get delete at and whether it can be batch deleted")
+		return 0, false
+	}
+	if f.Type != fileTypeMessageAttachment {
+		return 0, false
 	}
 
 	deleteAt := int64(0)
-	if f.Type == fileTypeMessageAttachment {
-		var dm directMessage
-		err = b.database.Select("delete_at").Take(&dm, "id = ?", f.AttachedTo).Error
+	var dm directMessage
+	err = b.database.Select("delete_at").Take(&dm, "id = ?", f.AttachedTo).Error
+	if err == nil {
+		deleteAt = dm.DeleteAt
+	} else {
+		var gm groupMessage
+		err = b.database.Select("delete_at").Take(&gm, "id = ?", f.AttachedTo).Error
 		if err == nil {
-			deleteAt = dm.DeleteAt
-		} else {
-			var gm groupMessage
-			err = b.database.Select("delete_at").Take(&gm, "id = ?", f.AttachedTo).Error
-			if err == nil {
-				deleteAt = gm.DeleteAt
-			}
+			deleteAt = gm.DeleteAt
 		}
 	}
 
-	batchDeleteKey := NilID
-	canBatchDelete := false
-	if f.Type == fileTypeMessageAttachment {
-		batchDeleteKey = f.Destination
-		canBatchDelete = true
-	}
-
-	return deleteAt, batchDeleteKey, canBatchDelete
+	return deleteAt, true
 }
 
 type chunkUnavailable struct {

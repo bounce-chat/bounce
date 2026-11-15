@@ -90,6 +90,47 @@ func (gk *groupKey) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// Key material arrives from other users and is stored as it came, so it is bounded and checked for shape before it
+// is stored: an ephemeral key and a commitment are 32 bytes or absent, there are wraps only beside an ephemeral key,
+// and the whole of it is no larger than the wraps of the largest group we expect to see.  A wrap of a secret is
+// about a hundred bytes per member, so this allows for groups of tens of thousands; a wrap of a chain, in an
+// invite, grows with the number of rotations the group has been through.
+const maximumGroupKeyMaterialBytes = 8 * 1024 * 1024
+
+var errInvalidGroupKeyMaterial = errors.New("invalid group key material")
+
+func validGroupKeyMaterial(ephemeralKey []byte, wraps []groupKeyWrap, secretHash []byte) error {
+	if len(ephemeralKey) != 0 && len(ephemeralKey) != 32 {
+		return errInvalidGroupKeyMaterial
+	}
+	if len(secretHash) != 0 && len(secretHash) != 32 {
+		return errInvalidGroupKeyMaterial
+	}
+	if len(wraps) > 0 && len(ephemeralKey) == 0 {
+		return errInvalidGroupKeyMaterial
+	}
+	if len(secretHash) > 0 && len(wraps) == 0 {
+		return errInvalidGroupKeyMaterial
+	}
+	total := 0
+	for _, wrap := range wraps {
+		if wrap.UserID == NilID || len(wrap.Ciphertext) == 0 {
+			return errInvalidGroupKeyMaterial
+		}
+		total += len(wrap.UserID) + len(wrap.Ciphertext)
+		if total > maximumGroupKeyMaterialBytes {
+			return errInvalidGroupKeyMaterial
+		}
+	}
+	return nil
+}
+
+// carriesNoGroupKeyMaterial reports whether an update is free of key material, as every update must be that
+// neither shrinks the membership, rotates the key, nor invites
+func (ug *updateGroup) carriesNoGroupKeyMaterial() bool {
+	return len(ug.KeyEphemeralKey) == 0 && len(ug.KeyWraps) == 0 && len(ug.KeySecretHash) == 0
+}
+
 // hashGroupKeyMaterial adds the key material a group creation or update carries to its content ID, in a fixed order
 // with the number of wraps in front, so that the frame's ID names exactly one ephemeral key, one set of wraps and
 // one commitment.
@@ -509,7 +550,7 @@ func (b *Bounce) updateGroupKeys(groupID ID, cs *canonicalStack) {
 				continue
 			}
 			for _, k := range export.Keys {
-				if len(k.Key) == groupKeySize {
+				if len(k.Key) == groupKeySize && k.Index >= 0 {
 					held[k.Epoch] = groupKey{Epoch: k.Epoch, Index: k.Index, Key: k.Key}
 				}
 			}
@@ -831,7 +872,7 @@ func (b *Bounce) handleGroupKeyResponse(peer string, payload []byte, _ bool) (br
 
 	keys := []groupKey{}
 	for _, k := range export.Keys {
-		if len(k.Key) != groupKeySize {
+		if len(k.Key) != groupKeySize || k.Index < 0 {
 			continue
 		}
 		keys = append(keys, groupKey{Epoch: k.Epoch, Index: k.Index, Key: k.Key})
