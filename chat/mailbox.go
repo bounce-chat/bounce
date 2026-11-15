@@ -159,7 +159,7 @@ func syncThreadSecret(privateECDHKey []byte) []byte {
 
 // dmThreadSecret is the secret shared by two users, derived the same way from either side
 func (b *Bounce) dmThreadSecret(privateECDHKey []byte, counterpartyPublicKey []byte) ([]byte, error) {
-	shared, err := b.generateKEKFromPrivateKey(privateECDHKey, counterpartyPublicKey)
+	shared, err := ecdhSharedSecret(privateECDHKey, counterpartyPublicKey)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +169,7 @@ func (b *Bounce) dmThreadSecret(privateECDHKey []byte, counterpartyPublicKey []b
 // deviceThreadSecret is the secret shared by two devices of the same user, used for re-key frames that must not be
 // readable with the user key that is being replaced
 func (b *Bounce) deviceThreadSecret(myDevicePrivateKey []byte, otherDevicePublicKey []byte) ([]byte, error) {
-	shared, err := b.generateKEKFromPrivateKey(myDevicePrivateKey, otherDevicePublicKey)
+	shared, err := ecdhSharedSecret(myDevicePrivateKey, otherDevicePublicKey)
 	if err != nil {
 		return nil, err
 	}

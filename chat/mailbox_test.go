@@ -2,6 +2,7 @@ package chat
 
 import (
 	"bytes"
+	"crypto/ecdh"
 	"crypto/rand"
 	"testing"
 	"time"
@@ -579,4 +580,77 @@ func TestAnOfflineOwnerReceivesThroughTheHostAfterReconnecting(t *testing.T) {
 
 	var dr deliveryRecord
 	assert.NoError(t, host.database.Where("destination = ? AND frame_id = ? AND frame_type = ?", bob.network.Address(), stored.ID, typeEncryptedFrame).First(&dr).Error)
+}
+
+// opaque hides a frame's concrete type, the way a frame known only by its type and payload would arrive
+type opaque struct{ broadcastable }
+
+// The update that replaces a user's keys must not be readable with the key it replaces, so it is sealed to the
+// mailboxes two of the user's own devices share.  There is one way to seal a frame, used for a live broadcast and
+// for a catch up alike, so a re-key a host asks for later is sealed the same way as one pushed to it live.
+func TestAReKeyFrameIsSealedToDeviceMailboxesHoweverItReachesAHost(t *testing.T) {
+	me, _, _, _ := createUsersAndGroups(t)
+
+	// Give me a second device with a key of its own
+	siblingKey, err := ecdh.X25519().GenerateKey(rand.Reader)
+	assert.NoError(t, err)
+	sibling := introducedByBounce(me.currentUserID(), me, bnc01NewOnion(), time.Now().Unix())
+	sibling.ECDHPublicKey = siblingKey.PublicKey().Bytes()
+	assert.NoError(t, me.database.Create(&sibling).Error)
+	var myDevice device
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		myDevice, _ = me.getDeviceFromAddress(me.network.Address())
+		if len(myDevice.ECDHPrivateKey) > 0 {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.True(t, len(myDevice.ECDHPrivateKey) > 0)
+
+	before := mustCurrentUser(me)
+	assert.NoError(t, me.rollKeys())
+	var reKey updateUser
+	assert.NoError(t, me.database.Where("target = ? AND type = ?", me.currentUserID(), updateUserTypeReplaceKeys).First(&reKey).Error)
+	after := mustCurrentUser(me)
+	assert.NotEqual(t, before.PrivateECDHKey, after.PrivateECDHKey)
+
+	// It is recognised as a re-key whether we hold the update itself or only its signed payload
+	isReKey, err := me.replacesUserKeys(&reKey)
+	assert.NoError(t, err)
+	assert.True(t, isReKey)
+	isReKey, err = me.replacesUserKeys(opaque{&reKey})
+	assert.NoError(t, err)
+	assert.True(t, isReKey, "the payload of an update user is a signed container, which has to be unpacked to see its type")
+
+	// Sealed for a host, it sits in the mailbox the two devices share and nowhere else
+	shared, err := me.deviceThreadSecret(myDevice.ECDHPrivateKey, sibling.ECDHPublicKey)
+	assert.NoError(t, err)
+	for _, frame := range []broadcastable{&reKey, opaque{&reKey}} {
+		ef := me.sealForHost(frame, newTestnet().Address())
+		assert.True(t, ef != nil)
+		assert.Equal(t, 1, len(ef.Mailboxes))
+		assert.Equal(t, mailboxLabel(shared, currentMailboxEpoch()), ef.Mailboxes[0].Label)
+
+		// The sibling opens it with the secret it derives from its own device key
+		theirs, err := me.deviceThreadSecret(siblingKey.Bytes(), myDevice.ECDHPublicKey)
+		assert.NoError(t, err)
+		mb := mailbox{Label: mailboxLabel(theirs, currentMailboxEpoch()), Secret: theirs, Epoch: currentMailboxEpoch()}
+		index := &mailboxIndex{byLabel: map[string]mailbox{string(mb.Label): mb}}
+		opened, err := index.open(receivesOf(ef)[0])
+		assert.NoError(t, err)
+		assert.Equal(t, reKey.ID, opened.ID)
+		assert.Equal(t, typeUpdateUser, opened.Type)
+
+		// Neither the old user key nor the new one names a mailbox it is in
+		for _, userKey := range [][]byte{before.PrivateECDHKey, after.PrivateECDHKey} {
+			assert.NotEqual(t, mailboxLabel(syncThreadSecret(userKey), currentMailboxEpoch()), ef.Mailboxes[0].Label)
+		}
+	}
+
+	// Every host gets a copy of its own, so two hosts cannot tell they hold the same frame
+	one := me.sealForHost(&reKey, newTestnet().Address())
+	other := me.sealForHost(&reKey, newTestnet().Address())
+	assert.NotEqual(t, one.ID, other.ID)
+	assert.NotEqual(t, one.Payload, other.Payload)
 }

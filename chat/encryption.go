@@ -25,16 +25,10 @@ type encryptedSyncDevice struct {
 	LastSeen  int64
 }
 
-func (b *Bounce) generateKEK(counterpartyPublicKeyBytes []byte) ([]byte, error) {
-	currentUser, ok := b.currentUser()
-	if !ok {
-		return []byte{}, errUserNotFound
-	}
-
-	return b.generateKEKFromPrivateKey(currentUser.PrivateECDHKey, counterpartyPublicKeyBytes)
-}
-
-func (b *Bounce) generateKEKFromPrivateKey(privateKey, counterpartyPublicKeyBytes []byte) ([]byte, error) {
+// ecdhSharedSecret is the X25519 agreement between a private key and a counterparty's public key.  It is input to a
+// key derivation, never a key: everything made from it goes through HKDF with a label of its own (see mailbox.go
+// and referenceOfferChallengeKey), so that no two uses of the same agreement share a key.
+func ecdhSharedSecret(privateKey, counterpartyPublicKeyBytes []byte) ([]byte, error) {
 	curve := ecdh.X25519()
 
 	counterpartyPublicKey, err := curve.NewPublicKey(counterpartyPublicKeyBytes)
@@ -47,68 +41,66 @@ func (b *Bounce) generateKEKFromPrivateKey(privateKey, counterpartyPublicKeyByte
 		return []byte{}, err
 	}
 
-	kek, err := myPrivateKey.ECDH(counterpartyPublicKey)
-	if err != nil {
-		return []byte{}, err
-	}
-
-	return kek, nil
+	return myPrivateKey.ECDH(counterpartyPublicKey)
 }
 
 // sendToEncryptedDevices stores a frame, sealed, on every online encrypted device of every user in scope.  Each
 // copy is addressed to the mailboxes of the conversation it belongs to (see mailbox.go), so the host learns nothing
 // about who is in scope.
 func (b *Bounce) sendToEncryptedDevices(br broadcastable) {
-	// Re-key frames are sealed to specific devices rather than to the user key that is being replaced
-	if br.getType() == typeUpdateUser {
-		sc, err := b.unpackSignedContainer(typeUpdateUser, br.getPayload())
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error unpacking signed container for update user")
-			return
-		}
-		var uu updateUser
-		err = msgpack.Unmarshal(sc.Payload, &uu)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error unmarshalling updateUser for encryption")
-		}
-		if uu.Type == updateUserTypeReplaceKeys {
-			b.sendEncryptReKeyFrames(br)
-			return
-		}
-	}
-
-	availableEncryptedDevices := b.onlineEncryptedDevicesOf(b.getUsersInScope(br))
-	if len(availableEncryptedDevices) == 0 {
+	reKey, err := b.replacesUserKeys(br)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"id":    br.getID(),
+			"error": err.Error(),
+		}).Error("cannot tell whether an update user replaces our keys, not sealing it for encrypted devices")
 		return
 	}
 
-	// Each host gets its own copy, sealed to the mailboxes its owner can read
-	for addr, rd := range availableEncryptedDevices {
-		secrets, err := b.hostSecretsFor(br, addr)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"id":    br.getID(),
-				"type":  br.getType(),
-				"host":  addr,
-				"error": err.Error(),
-			}).Debug("not sealing frame for encrypted device")
+	// A re-key goes to our own encrypted devices; everything else to those of every user in scope
+	var hosts map[string]*remoteDevice
+	if reKey {
+		hosts = b.onlineEncryptedSyncDevices()
+	} else {
+		hosts = b.onlineEncryptedDevicesOf(b.getUsersInScope(br))
+	}
+
+	// Each host gets its own copy, sealed to the mailboxes its owner can read.  A host we know to hold the frame
+	// already, because it is where we got it, is not sent another.
+	for addr, rd := range hosts {
+		if b.isDeliveredTo(br, addr) {
 			continue
 		}
-		ef, err := sealFrame(br, secrets, b.copySettingsFor(br))
-		if err != nil {
-			log.WithFields(log.Fields{
-				"id":    br.getID(),
-				"error": err.Error(),
-			}).Error("error sealing frame for encrypted device")
-			return
+		ef := b.sealForHost(br, addr)
+		if ef == nil {
+			continue
 		}
-		recordSealedCopy(ef.ID, br)
 		rd.send(*ef)
 	}
+}
+
+// replacesUserKeys reports whether a frame is the update that replaces our user keys.  That frame must not be
+// readable with the key it replaces, so it is sealed to device mailboxes instead of a conversation's.  An update
+// user we cannot classify is an error, so that it is never sealed the ordinary way by default.
+func (b *Bounce) replacesUserKeys(br broadcastable) (bool, error) {
+	if br.getType() != typeUpdateUser {
+		return false, nil
+	}
+	if uu, ok := br.(*updateUser); ok {
+		return uu.Type == updateUserTypeReplaceKeys, nil
+	}
+
+	// An update user's payload is a signed container around the update, not the update itself
+	sc, err := b.unpackSignedContainer(typeUpdateUser, br.getPayload())
+	if err != nil {
+		return false, err
+	}
+	var uu updateUser
+	err = msgpack.Unmarshal(sc.Payload, &uu)
+	if err != nil {
+		return false, err
+	}
+	return uu.Type == updateUserTypeReplaceKeys, nil
 }
 
 // onlineEncryptedDevicesOf returns the connected encrypted devices belonging to any of the given users
@@ -128,31 +120,59 @@ func (b *Bounce) onlineEncryptedDevicesOf(users []user) map[string]*remoteDevice
 	return available
 }
 
-// encryptFrameForDevice seals one copy of a frame for one encrypted device, for catch ups
-func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encryptedFrame {
-	if br.getType() == typeUpdateUser {
-		var uu updateUser
-		err := msgpack.Unmarshal(br.getPayload(), &uu)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Error("error unmarshalling updateUser for encryption")
-		}
-		if uu.Type == updateUserTypeReplaceKeys {
-			return b.encryptReKeyFrame(br)
-		}
+// onlineEncryptedSyncDevices returns our own connected encrypted devices
+func (b *Bounce) onlineEncryptedSyncDevices() map[string]*remoteDevice {
+	var allESDs []encryptedSyncDevice
+	err := b.database.Find(&allESDs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error loading all encrypted sync devices")
 	}
 
-	secrets, err := b.hostSecretsFor(br, addr)
+	available := map[string]*remoteDevice{}
+	for _, esd := range allESDs {
+		rd := b.getRemoteDevice(esd.Address)
+		if rd.connectedSockets() > 0 {
+			available[esd.Address] = rd
+		}
+	}
+	return available
+}
+
+// sealForHost seals one copy of a frame for one encrypted device.  It is the only way a frame is sealed, for a live
+// broadcast and for a catch up alike, so the two cannot disagree about which mailboxes a frame belongs in.  Every
+// host gets a copy of its own, with its own ID and key, so hosts cannot recognise each other's copies.
+func (b *Bounce) sealForHost(br broadcastable, addr string) *encryptedFrame {
+	reKey, err := b.replacesUserKeys(br)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"id":    br.getID(),
-			"type":  br.getType(),
-			"host":  addr,
 			"error": err.Error(),
-		}).Debug("not sealing frame for encrypted device")
+		}).Error("cannot tell whether an update user replaces our keys, not sealing it for encrypted devices")
 		return nil
 	}
+
+	var secrets [][]byte
+	if reKey {
+		secrets = b.reKeySecrets(br)
+		if len(secrets) == 0 {
+			// None of our other devices still needs it
+			return nil
+		}
+	} else {
+		secrets, err = b.hostSecretsFor(br, addr)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":    br.getID(),
+				"type":  br.getType(),
+				"host":  addr,
+				"error": err.Error(),
+			}).Debug("not sealing frame for encrypted device")
+			return nil
+		}
+	}
+
 	ef, err := sealFrame(br, secrets, b.copySettingsFor(br))
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -165,33 +185,12 @@ func (b *Bounce) encryptFrameForDevice(br broadcastable, addr string) *encrypted
 	return ef
 }
 
-func (b *Bounce) sendEncryptReKeyFrames(br broadcastable) {
-	ef := b.encryptReKeyFrame(br)
-	if ef == nil {
-		log.Error("failed to encrypt re-key frame")
-		return
-	}
-
-	var allESDs []encryptedSyncDevice
-	err := b.database.Find(&allESDs).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("database error loading all encrypted sync devices")
-	}
-
-	for _, esd := range allESDs {
-		rd := b.getRemoteDevice(esd.Address)
-		rd.send(*ef)
-	}
-}
-
-// encryptReKeyFrame seals a frame that replaces our user keys to the device mailboxes of our other devices, which
-// derive from device keys rather than the user key being replaced
-func (b *Bounce) encryptReKeyFrame(br broadcastable) *encryptedFrame {
+// reKeySecrets returns the secrets a frame that replaces our user keys is sealed to: one per other device of ours
+// that does not have it yet, each derived from the two devices' own keys rather than the user key being replaced
+func (b *Bounce) reKeySecrets(br broadcastable) [][]byte {
 	myDevice, ok := b.getDeviceFromAddress(b.network.Address())
 	if !ok {
-		log.Error("cannot encrypt re-key frames with no current device")
+		log.Error("cannot seal re-key frames with no current device")
 		return nil
 	}
 
@@ -217,20 +216,7 @@ func (b *Bounce) encryptReKeyFrame(br broadcastable) *encryptedFrame {
 		}
 		secrets = append(secrets, secret)
 	}
-	if len(secrets) == 0 {
-		return nil
-	}
-
-	ef, err := sealFrame(br, secrets, b.copySettingsFor(br))
-	if err != nil {
-		log.WithFields(log.Fields{
-			"id":    br.getID(),
-			"error": err.Error(),
-		}).Error("error sealing re-key frame")
-		return nil
-	}
-	recordSealedCopy(ef.ID, br)
-	return ef
+	return secrets
 }
 
 // copySettingsFor decides, per frame type, how a copy on an encrypted device behaves beyond its mailboxes: when the

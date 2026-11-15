@@ -113,7 +113,7 @@ frames:
 				// An encrypted device is sent a sealed copy of the frame.  It cannot order what it cannot read, so the
 				// copies go in the order a plain catch up carries the frames inside them, and the host keeps the order
 				// they arrive in.
-				ef := b.encryptFrameForDevice(br, peer)
+				ef := b.sealForHost(br, peer)
 				if ef == nil {
 					log.WithFields(log.Fields{
 						"id":   br.getID(),

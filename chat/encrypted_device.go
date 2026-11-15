@@ -6,7 +6,9 @@ import (
 	"crypto/cipher"
 	"crypto/ecdh"
 	"crypto/ed25519"
+	"crypto/hkdf"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"errors"
 	"fmt"
@@ -874,13 +876,14 @@ func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []b
 		return nil, false
 	}
 
-	dek, err := b.generateKEK(eroc.Key)
+	shared, err := ecdhSharedSecret(currentUser.PrivateECDHKey, eroc.Key)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error generating reference offer challenge key")
 		return nil, false
 	}
+	dek := referenceOfferChallengeKey(shared)
 
 	dekBlock, err := aes.NewCipher(dek)
 	if err != nil {
@@ -911,6 +914,23 @@ func (b *Bounce) handleEncryptedReferenceOfferChallenge(peer string, payload []b
 	go b.sendMailboxRequest(peer)
 
 	return nil, false
+}
+
+const referenceOfferChallengeInfo = "bounce-reference-offer-challenge"
+
+// referenceOfferChallengeKey derives the key a reference offer challenge is answered under from the agreement
+// between the encrypted device's ephemeral key and the user's key.  Whoever poses a challenge chooses both the
+// public key the user agrees with and the bytes the user seals, so the answer is never sealed under the agreement
+// itself or under anything else derived from it: with a label of its own, an answer says nothing about the keys
+// that wrap a conversation between the same two public keys.
+func referenceOfferChallengeKey(shared []byte) []byte {
+	key, err := hkdf.Key(sha256.New, shared, nil, referenceOfferChallengeInfo, 32)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error deriving reference offer challenge key")
+	}
+	return key
 }
 
 func eroChallengeKey() ([]byte, []byte) {
@@ -1060,13 +1080,14 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 		}).Error("error parsing public key")
 		return nil, false
 	}
-	dek, err := challengePrivateKey.ECDH(counterpartyPublicKey)
+	shared, err := challengePrivateKey.ECDH(counterpartyPublicKey)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error doing ECDH exchange during reference offer challenge")
 		return nil, false
 	}
+	dek := referenceOfferChallengeKey(shared)
 
 	// Prepare to decrypt with this key
 	dekBlock, err := aes.NewCipher(dek)
