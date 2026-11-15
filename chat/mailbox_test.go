@@ -670,3 +670,47 @@ func TestAReKeyFrameIsSealedToDeviceMailboxesHoweverItReachesAHost(t *testing.T)
 	assert.NotEqual(t, one.ID, other.ID)
 	assert.NotEqual(t, one.Payload, other.Payload)
 }
+
+// Frames scoped to a user's own devices never leave for anyone else's host, and a host hands a copy only to a peer
+// that named a mailbox it is in.  Together these are what the sync scope guard is to a plain reference request.
+func TestSyncFramesStayOnTheirOwnersHostsAndCopiesGoOnlyToTheirReaders(t *testing.T) {
+	_, alice, bob, _ := createUsersAndGroups(t)
+	bobsHost, key := newEncryptedDevice(t)
+	claimEncryptedDevice(t, bob, bobsHost, key)
+	waitForOwnerMailboxes(t, bobsHost)
+	waitForUserToKnowEncryptedDevice(t, alice, bob.currentUserID(), bobsHost.network.Address())
+
+	// A draft is sync scoped.  Alice has nothing to seal it to on Bob's host, and seals it for one of her own.
+	draftOfAlices := signedDraft(alice, bob.currentUserID(), "not for bob's host", time.Now().Unix())
+	assert.Equal(t, scopeSync, draftOfAlices.getScope(alice.currentUserID()))
+	_, err := alice.hostSecretsFor(draftOfAlices, bobsHost.network.Address())
+	assert.Equal(t, errNothingToSealTo, err)
+	assert.True(t, alice.sealForHost(draftOfAlices, bobsHost.network.Address()) == nil)
+	alicesHost := fakeEncryptedDeviceOf(t, alice.currentUserID())
+	assert.True(t, alice.sealForHost(draftOfAlices, alicesHost.Address()) != nil)
+
+	// Bob's own draft, on his host, is in his sync mailbox.  Alice has asked that host for every mailbox she can
+	// read, and is neither offered the copy nor served it if she asks for it by ID.
+	draftOfBobs := signedDraft(bob, alice.currentUserID(), "bob's own", time.Now().Unix())
+	ef := sealForHost(t, bob, draftOfBobs, bobsHost)
+	payload, _ := msgpack.Marshal(ef)
+	bobsHost.handleEncryptedFrame(bob.network.Address(), payload, false)
+	assert.Equal(t, int64(1), countWhere(t, bobsHost, &encryptedFrame{}, "id = ?", ef.ID))
+
+	request, _ := msgpack.Marshal(mailboxRequest{Labels: alice.mailboxIndex().labels()})
+	bobsHost.handleMailboxRequest(alice.network.Address(), request, false)
+	for _, reference := range bobsHost.hostOfferFor(alice.network.Address()).References {
+		assert.NotEqual(t, ef.ID, reference.FrameID)
+	}
+	served := bobsHost.generateEncryptedCatchUpFor(alice.network.Address(), referenceRequest{References: []frameReference{{FrameID: ef.ID, Type: typeEncryptedFrame}}})
+	assert.Equal(t, 0, len(served.Frames))
+
+	// Bob's own device is offered it and served it
+	offered := false
+	for _, reference := range bobsHost.hostOfferFor(bob.network.Address()).References {
+		offered = offered || reference.FrameID == ef.ID
+	}
+	assert.True(t, offered || bobsHost.frameIsDeliveredTo(ef.ID, typeEncryptedFrame, bob.network.Address()))
+	served = bobsHost.generateEncryptedCatchUpFor(bob.network.Address(), referenceRequest{References: []frameReference{{FrameID: ef.ID, Type: typeEncryptedFrame}}})
+	assert.Equal(t, 1, len(served.Frames))
+}
