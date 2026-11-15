@@ -312,9 +312,9 @@ func (gs groupState) equals(otherState groupState) bool {
 }
 
 // recordKeyChange notes the effect of an update on the group's key chain.  A trusted rotation is one carried by a
-// frame whose author remains in the group afterwards; a user leaving on their own, or an invitee rejecting, shrinks
-// the set of people who hold the chain without anyone trustworthy rotating it, so the chain becomes stale until a
-// remaining member rotates.
+// frame whose author remains in the group afterwards; a user leaving on their own, blocking the group, or rejecting
+// an invite shrinks the set of people who hold the chain without anyone trustworthy rotating it, so the chain
+// becomes stale until a remaining member rotates.
 func (gs groupState) recordKeyChange(ug updateGroup, departed ID) groupState {
 	if ug.carriesGroupKeySecret() && ug.Actor != departed {
 		gs.keyEpochs = append(append([]ID{}, gs.keyEpochs...), ug.ID)
@@ -869,6 +869,9 @@ func applyUpdateGroupDeleteToState(gs groupState, ug updateGroup) (groupState, e
 }
 
 func applyUpdateGroupBlockToState(gs groupState, ug updateGroup) (groupState, error) {
+	// Anyone may block a group, but only someone who was in it or invited to it held its keys
+	heldTheChain := gs.isMember(ug.Actor) || gs.isInvited(ug.Actor)
+
 	if !gs.isBlocked(ug.Actor) {
 		gs.blockedUsers = append(gs.blockedUsers, ug.Actor)
 	}
@@ -898,6 +901,11 @@ func applyUpdateGroupBlockToState(gs groupState, ug updateGroup) (groupState, er
 	gs.admins = adminsWithoutUser
 	gs.invites = invitesWithoutUser
 
+	// A user who blocks the group leaves it on their own, like one who removes themselves: they held the chain and
+	// cannot be trusted to rotate it for the others
+	if heldTheChain {
+		return gs.recordKeyChange(ug, ug.Actor), nil
+	}
 	return gs, nil
 }
 

@@ -289,6 +289,42 @@ func TestLeavingMarksTheChainStaleUntilAMemberRotates(t *testing.T) {
 	assert.Equal(t, 2, len(me.groupKeyChain(groupID)))
 }
 
+func TestBlockingAGroupMarksTheChainStaleLikeLeavingIt(t *testing.T) {
+	me, alice, bob, groupID := createUsersAndGroups(t)
+	for _, b := range []*Bounce{me, alice, bob} {
+		waitForGroupKeys(t, b, groupID, 1)
+	}
+	gs, _ := me.currentGroupState(groupID)
+	assert.False(t, gs.keyStale)
+
+	// Someone who was never in the group can block it, which changes nothing about who holds its keys
+	outsider := updateGroup{Type: updateGroupTypeBlock, Actor: NewID()}
+	after, err := applyUpdateGroupBlockToState(gs, outsider)
+	assert.NoError(t, err)
+	assert.False(t, after.keyStale, "an outsider could force the group to rotate")
+
+	// Bob blocks the group.  He held the chain and is gone without rotating it, so the next member to seal rotates.
+	waitForTheNextSecond()
+	assert.NoError(t, bob.BlockGroup(groupID))
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		gs, _ = me.currentGroupState(groupID)
+		if !gs.isMember(bob.currentUserID()) {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.False(t, gs.isMember(bob.currentUserID()))
+	assert.True(t, gs.keyStale, "a member left by blocking and the chain was not marked stale")
+
+	waitForTheNextSecond()
+	assert.NoError(t, me.ensureGroupKeyFresh(groupID))
+	mine := waitForGroupKeys(t, me, groupID, 2)
+	time.Sleep(200 * time.Millisecond)
+	_, found := bob.groupKeyByID(groupID, mine[1].KeyID)
+	assert.False(t, found, "the member who blocked the group can derive the key it rotated to")
+}
+
 func TestConcurrentRotationsKeepEveryIntermediateKeyReachable(t *testing.T) {
 	// Me and Alice both rotate at once.  Consensus orders the two rotations, but Alice sealed a frame under the
 	// key she had after applying only her own rotation, which is not on the canonical chain.  Every member can
