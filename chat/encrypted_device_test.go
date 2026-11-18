@@ -14,6 +14,7 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/alecthomas/assert/v2"
+	"github.com/zeebo/blake3"
 )
 
 // readUntil reads frames from a connection until one of the wanted type arrives, and returns its payload
@@ -565,4 +566,123 @@ func TestAFramePushedByAHostIsRecordedAndPassedOn(t *testing.T) {
 	for _, reference := range bob.getReferenceOfferFor(host.network.Address()).References {
 		assert.NotEqual(t, dm.ID, reference.FrameID)
 	}
+}
+
+// An encrypted device's offer of a chunk is kept on the strength of the file alone.  A plain offer for the same chunk
+// would come from a device that holds the file, and an encrypted device is there for when none of those is online.
+func TestAnEncryptedChunkOfferIsKeptWithoutAPlainOfferForItsChunk(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+
+	// A file Alice sent to the group, with one chunk that no device has offered us
+	plainHash := "1111111111111111111111111111111111111111111111111111111111111111"
+	encryptedHash := "2222222222222222222222222222222222222222222222222222222222222222"
+	f := &file{
+		Nonce:              newNonce(),
+		Name:               "holiday.jpg",
+		Type:               fileTypeMessageAttachment,
+		Hash:               "3333333333333333333333333333333333333333333333333333333333333333",
+		Size:               10,
+		HashList:           plainHash,
+		EncryptedHashList:  encryptedHash,
+		EncryptedDeviceKey: make([]byte, 32),
+		Scope:              scopeGroup,
+		Destination:        groupID,
+		Author:             alice.currentUserID(),
+		Timestamp:          time.Now().Unix(),
+	}
+	f.ID = f.generateID()
+	f.Path = me.platform.ConfigDirectory + "/blobs/" + f.ID.String()
+	f.LocalKey = newLocalKey()
+	var err error
+	f.OriginalPayload, err = msgpack.Marshal(f)
+	assert.NoError(t, err)
+	signedFile := alice.createSignedContainer(typeFile, f.OriginalPayload)
+	f.Signature = signedFile.Signature
+	f.Signer = signedFile.Signer
+	assert.NoError(t, me.database.Create(f).Error)
+	assert.NoError(t, me.database.Create(&chunk{ID: NewID(), FileID: f.ID, Hash: plainHash, EncryptedHash: encryptedHash}).Error)
+	assert.Equal(t, int64(0), countWhere(t, me, &chunkOffer{}, "hash = ?", plainHash))
+
+	// Alice's device passes on that her encrypted device holds the chunk
+	eco := &encryptedChunkOffer{
+		ID:        NewID(),
+		Hash:      encryptedHash,
+		Location:  fakeEncryptedDeviceOf(t, alice.currentUserID()).Address(),
+		Timestamp: time.Now().Unix(),
+	}
+	eco.OriginalPayload, err = msgpack.Marshal(eco)
+	assert.NoError(t, err)
+	sc := alice.createSignedContainer(typeEncryptedChunkOffer, eco.OriginalPayload)
+	eco.Signature = sc.Signature
+	eco.Signer = sc.Signer
+	me.handleEncryptedChunkOffer(alice.network.Address(), eco.getPayload(), false)
+
+	// It is kept, to be passed on to whoever may have the file, and acked so that it is not sent again
+	var kept encryptedChunkOffer
+	assert.NoError(t, me.database.Take(&kept, "id = ?", eco.ID).Error, "the offer was dropped for want of a plain offer")
+	assert.Equal(t, f.ID, kept.FileID)
+	assert.Equal(t, f.Author, kept.Author)
+	assert.Equal(t, f.Scope, kept.Scope)
+	assert.Equal(t, f.Destination, kept.Destination)
+	awaitAck(t, alice, me, typeEncryptedChunkOffer, eco.ID)
+}
+
+// An encrypted device fetches the chunks a peer asked it to store one at a time: a storage request starts it, and
+// each chunk that arrives is what has it ask for the next.
+func TestAHostFetchesAPeersChunksOneAfterAnother(t *testing.T) {
+	quickReferenceRetries(t)
+	_, bob := connectUsers(t)
+	host, key := newEncryptedDevice(t)
+	claimEncryptedDevice(t, bob, host, key)
+	waitForOwnerMailboxes(t, host)
+	var owners ownerMailbox
+	assert.NoError(t, host.database.First(&owners).Error)
+
+	// A contact's device leaves three chunks for Bob
+	source := newTestnet()
+	conn, err := source.Dial(host.network.Address())
+	assert.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+	chunks := map[string][]byte{}
+	for _, data := range [][]byte{[]byte("the first chunk"), []byte("the second chunk"), []byte("the third chunk")} {
+		hash := hashString(blake3.Sum256(data))
+		chunks[hash] = data
+		payload, err := msgpack.Marshal(encryptedChunkStorageRequest{Hash: hash, Labels: [][]byte{owners.Label}})
+		assert.NoError(t, err)
+		assert.NoError(t, writeFrame(conn, typeEncryptedChunkStorageRequest, payload))
+	}
+	nextChunkAskedFor := func() []byte {
+		var asked chunkRequest
+		assert.NoError(t, msgpack.Unmarshal(readUntil(t, conn, typeChunkRequest), &asked))
+		data, waiting := chunks[asked.Hash]
+		assert.True(t, waiting, "asked for a chunk that is not waiting to be fetched")
+		delete(chunks, asked.Hash)
+		return data
+	}
+
+	// With all three requests in, the device has asked for one chunk and asks for no other while it is on its way
+	first := nextChunkAskedFor()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && countWhere(t, host, &encryptedChunkStorageRequest{}, "source = ?", source.Address()) < 3 {
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.Equal(t, int64(3), countWhere(t, host, &encryptedChunkStorageRequest{}, "source = ?", source.Address()))
+	conn.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	for {
+		frameType, _, err := readFrame(conn, true)
+		if err != nil {
+			break
+		}
+		assert.NotEqual(t, typeChunkRequest, frameType, "a second chunk was asked for before the first arrived")
+	}
+
+	assert.NoError(t, writeFrame(conn, typeChunk, first))
+	assert.NoError(t, writeFrame(conn, typeChunk, nextChunkAskedFor()))
+	assert.NoError(t, writeFrame(conn, typeChunk, nextChunkAskedFor()))
+
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && countWhere(t, host, &encryptedChunkStorageRequest{}, "downloaded = ?", true) < 3 {
+		time.Sleep(25 * time.Millisecond)
+	}
+	assert.Equal(t, int64(3), countWhere(t, host, &encryptedChunkStorageRequest{}, "downloaded = ?", true))
 }

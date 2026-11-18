@@ -35,8 +35,9 @@ func newEncryptedDevice(t *testing.T) (*Bounce, string) {
 			lastFailedDial:     make(map[string]time.Time),
 			revokedDevices:     make(map[string]bool),
 		},
-		done:         make(chan struct{}),
-		handlerSlots: make(chan struct{}, maximumRunningHandlersGlobal),
+		done:                      make(chan struct{}),
+		handlerSlots:              make(chan struct{}, maximumRunningHandlersGlobal),
+		encryptedChunkRequestWake: make(chan struct{}, 1),
 	}
 	installLogHooks(dir)
 	runningEngines.Add(1)
@@ -48,6 +49,7 @@ func newEncryptedDevice(t *testing.T) (*Bounce, string) {
 	b.network.Load(dir, keys.networkKey())
 	b.openReferenceDatabase()
 	b.recheckUntrustedEncryptedFrameStorage()
+	b.background(b.keepEncryptedChunksRequested)
 
 	secretBytes := make([]byte, 16)
 	rand.Read(secretBytes)

@@ -136,26 +136,30 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 		}
 	}
 
-	var unencryptedCO chunkOffer
-	err = b.database.Take(&unencryptedCO, "hash = ?", c.Hash).Error
+	// Who this offer may be passed on to is decided by the file the chunk belongs to.  It is not taken from a plain
+	// offer for the same chunk: those come from devices that hold the file, and an encrypted device is there for
+	// when they are all offline.
+	var f file
+	err = b.database.Select("id", "author", "scope", "destination").Take(&f, "id = ?", c.FileID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.WithFields(log.Fields{
 				"hash": eco.Hash,
 				"peer": peer,
-			}).Warn("received encrypted chunk offer for chunk with no unencrypted offers")
+			}).Error("received encrypted chunk offer for chunk with no file")
+			b.sendAck(peer, typeEncryptedChunkOffer, eco.ID)
 			return nil, false
 		} else {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Fatal("database error looking up chunk offer")
+			}).Fatal("database error looking up file for encrypted chunk offer")
 		}
 	}
 
-	eco.Author = unencryptedCO.Author
-	eco.FileID = unencryptedCO.FileID
-	eco.Scope = unencryptedCO.Scope
-	eco.Destination = unencryptedCO.Destination
+	eco.Author = f.Author
+	eco.FileID = f.ID
+	eco.Scope = f.Scope
+	eco.Destination = f.Destination
 
 	err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&eco).Error
 	if err != nil {
@@ -171,6 +175,35 @@ func (b *Bounce) handleEncryptedChunkOffer(peer string, payload []byte, _ bool) 
 
 var encryptedChunkRequestMutex sync.Mutex
 
+// wakeEncryptedChunkRequests has keepEncryptedChunksRequested look for chunks to ask for now, not at its next tick.
+// It never blocks: one wake is remembered, which is enough for any number that arrive while a pass is running.
+func (b *Bounce) wakeEncryptedChunkRequests() {
+	select {
+	case b.encryptedChunkRequestWake <- struct{}{}:
+	default:
+	}
+}
+
+// keepEncryptedChunksRequested is the one goroutine on an encrypted device that asks peers for the chunks they want
+// stored.  It is woken when a storage request or a chunk arrives, and ticks so that a request that went unanswered,
+// or that waited behind another to the same peer, is made without anything else having to arrive first.
+func (b *Bounce) keepEncryptedChunksRequested() {
+	ticker := time.NewTicker((expectedChunkDeliverySeconds + 1) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-b.done:
+			return
+		case <-b.encryptedChunkRequestWake:
+		case <-ticker.C:
+		}
+		b.makeNextEncryptedChunkRequests()
+	}
+}
+
+// makeNextEncryptedChunkRequests asks each connected peer for one of the chunks it wants stored, unless a request to
+// that peer is still within the time a chunk is expected to take
 func (b *Bounce) makeNextEncryptedChunkRequests() {
 	encryptedChunkRequestMutex.Lock()
 	defer encryptedChunkRequestMutex.Unlock()
@@ -187,12 +220,10 @@ func (b *Bounce) makeNextEncryptedChunkRequests() {
 		return
 	}
 
-	recheck := false
 	neededChunks := map[string][]string{}
 	alreadyHitPeer := map[string]bool{}
 	for _, sr := range srs {
 		if sr.LastAttemptedAt > time.Now().Unix()-expectedChunkDeliverySeconds {
-			recheck = true
 			alreadyHitPeer[sr.Source] = true
 		} else {
 			neededChunks[sr.Hash] = append(neededChunks[sr.Hash], sr.Source)
@@ -200,9 +231,8 @@ func (b *Bounce) makeNextEncryptedChunkRequests() {
 	}
 
 	for hash, sources := range neededChunks {
-		for i, s := range sources {
+		for _, s := range sources {
 			if _, alreadyHit := alreadyHitPeer[s]; alreadyHit {
-				recheck = true
 				continue
 			}
 
@@ -216,20 +246,9 @@ func (b *Bounce) makeNextEncryptedChunkRequests() {
 				if err != nil {
 					log.Error("error updating last attempt field for encrypted chunk storage request")
 				}
-
-				if len(sources) > i+1 {
-					recheck = true
-				}
 				break
 			}
 		}
-	}
-
-	if recheck {
-		go func() {
-			time.Sleep((expectedChunkDeliverySeconds + 1) * time.Second)
-			b.makeNextEncryptedChunkRequests()
-		}()
 	}
 }
 
@@ -436,7 +455,7 @@ func (b *Bounce) handleEncryptedStorageReferenceRequest(peer string, payload []b
 	}
 
 	if stored {
-		b.makeNextEncryptedChunkRequests()
+		b.wakeEncryptedChunkRequests()
 	}
 
 	return nil, false
@@ -514,7 +533,7 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 	}
 
 	if b.storeEncryptedChunkStorageRequest(sr, peer) {
-		b.makeNextEncryptedChunkRequests()
+		b.wakeEncryptedChunkRequests()
 	}
 
 	return nil, false

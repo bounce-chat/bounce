@@ -559,9 +559,16 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 	}
 
 	// Copy data from existing local chunks only for our own files (e.g., sync devices); another user's file
-	// must never inherit bytes from an unrelated local conversation.  Load any early offers for this file.
-	go func() {
+	// must never inherit bytes from an unrelated local conversation.  Load any early offers for this file.  A file
+	// can have a great many chunks, so this stops between two of them when the engine does.
+	b.background(func() {
 		for _, c := range f.Chunks {
+			select {
+			case <-b.done:
+				return
+			default:
+			}
+
 			var data []byte
 			err := errChunkDataNotFound
 			if f.Author == b.currentUserID() {
@@ -599,7 +606,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 				}
 			}
 		}
-	}()
+	})
 
 	return &f, true
 }
@@ -1557,7 +1564,7 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 		}
 	}
 
-	go b.makeNextEncryptedChunkRequests()
+	b.wakeEncryptedChunkRequests()
 
 	return nil, false
 }

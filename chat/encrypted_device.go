@@ -76,8 +76,9 @@ func StartEncryptedDevice(network Network, platform Platform) {
 			lastFailedDial:     make(map[string]time.Time),
 			revokedDevices:     make(map[string]bool),
 		},
-		done:         make(chan struct{}),
-		handlerSlots: make(chan struct{}, maximumRunningHandlersGlobal),
+		done:                      make(chan struct{}),
+		handlerSlots:              make(chan struct{}, maximumRunningHandlersGlobal),
+		encryptedChunkRequestWake: make(chan struct{}, 1),
 	}
 	b.ensureOnlyOneInstance()
 
@@ -126,6 +127,7 @@ func StartEncryptedDevice(network Network, platform Platform) {
 	}
 
 	b.background(b.keepEncryptedDevicePruned)
+	b.background(b.keepEncryptedChunksRequested)
 
 	b.network.Start(
 		NetworkCallbacks{
@@ -1228,7 +1230,7 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 			go b.sendDirect(peer, b.hostOfferFor(peer))
 		}
 
-		b.makeNextEncryptedChunkRequests()
+		b.wakeEncryptedChunkRequests()
 	} else {
 		log.WithFields(log.Fields{
 			"peer": peer,
