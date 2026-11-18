@@ -143,6 +143,30 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) (b
 	rr.Signature = sc.Signature
 	rr.Signer = sc.Signer
 
+	// Make sure the signing device has not been revoked
+	var signerDevice device
+	err = b.database.Select("revoked_at").Where("address = ?", rr.Signer).First(&signerDevice).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"address": rr.Signer,
+			}).Error("signer device not found for read receipt")
+			return nil, false
+		} else {
+			log.WithFields(log.Fields{
+				"address": rr.Signer,
+				"error":   err.Error(),
+			}).Fatal("database error looking up signing device")
+		}
+	}
+	if signerDevice.RevokedAt != 0 {
+		log.WithFields(log.Fields{
+			"id":     rr.ID,
+			"signer": rr.Signer,
+		}).Warn("ignoring read receipt signed by revoked device")
+		return nil, false
+	}
+
 	// Make sure the ID is generated from the content
 	if !idMatchesContent(&rr) {
 		log.WithFields(log.Fields{

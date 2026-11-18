@@ -195,7 +195,7 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 			}).Fatal("database error looking up signing device")
 		}
 	}
-	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < gm.WrittenAt {
+	if signerDevice.RevokedAt != 0 {
 		log.WithFields(log.Fields{
 			"id":     gm.ID,
 			"signer": gm.Signer,

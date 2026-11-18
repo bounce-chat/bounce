@@ -181,7 +181,7 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			}).Fatal("database error looking up signing device")
 		}
 	}
-	if signerDevice.RevokedAt != 0 && signerDevice.RevokedAt < dm.WrittenAt {
+	if signerDevice.RevokedAt != 0 {
 		log.WithFields(log.Fields{
 			"id":     dm.ID,
 			"signer": dm.Signer,

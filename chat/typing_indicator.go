@@ -132,6 +132,30 @@ func (b *Bounce) handleTypingIndicator(peer string, payload []byte, catchUp bool
 	ti.OriginalPayload = sc.Payload
 	ti.Signature = sc.Signature
 
+	// Make sure the signing device has not been revoked
+	var signerDevice device
+	err = b.database.Select("revoked_at").Where("address = ?", ti.Signer).First(&signerDevice).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"address": ti.Signer,
+			}).Error("signer device not found for typing indicator")
+			return nil, false
+		} else {
+			log.WithFields(log.Fields{
+				"address": ti.Signer,
+				"error":   err.Error(),
+			}).Fatal("database error looking up signing device")
+		}
+	}
+	if signerDevice.RevokedAt != 0 {
+		log.WithFields(log.Fields{
+			"id":     ti.ID,
+			"signer": ti.Signer,
+		}).Warn("ignoring typing indicator signed by revoked device")
+		return nil, false
+	}
+
 	// Ignore anything from a blocked user
 	if blockedUser(ti.getAuthor()) {
 		log.WithFields(log.Fields{
