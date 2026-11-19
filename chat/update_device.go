@@ -19,6 +19,7 @@ var updateDeviceTypeRevoke = uint16(1)
 var updateDeviceTypeSetPublicKey = uint16(2)
 
 var errInvalidDeviceName = errors.New("invalid name")
+var errInvalidDeviceRevokePayload = errors.New("invalid device revoke payload")
 var errUnsupportedUpdateDeviceType = errors.New("unsupported update device type")
 var errCannotRevokeAnotherUsersDevice = errors.New("cannot revoke device owned by another user")
 var errDeviceAlreadyRevoked = errors.New("device has already been revoked")
@@ -108,6 +109,17 @@ func (ud *updateDevice) getSavedAt() int64 {
 	return ud.SavedAt
 }
 
+func introducedDevicesToKeep(ud updateDevice) ([]ID, error) {
+	devices := []ID{}
+	if err := msgpack.Unmarshal(ud.Data, &devices); err != nil {
+		return nil, err
+	}
+	if len(devices) > maximumDevicesPerUser {
+		return nil, errInvalidDeviceRevokePayload
+	}
+	return devices, nil
+}
+
 func (ud *updateDevice) validPayload() error {
 	switch ud.Type {
 	case updateDeviceTypeUpdateName:
@@ -119,6 +131,8 @@ func (ud *updateDevice) validPayload() error {
 			return errInvalidKeyMaterial
 		}
 	case updateDeviceTypeRevoke:
+		_, err := introducedDevicesToKeep(*ud)
+		return err
 	default:
 		return errUnsupportedUpdateDeviceType
 	}
@@ -352,7 +366,15 @@ func (b *Bounce) updateDeviceState(deviceID ID) {
 			go b.goOfflineAfterRevocation()
 			go b.ui.DeviceRevoked(deviceID)
 		} else {
-			err := b.database.Table("devices").Where("id = ?", deviceID).Updates(map[string]interface{}{"revoked_at": revokedAt}).Error
+			devicesToKeep, err := introducedDevicesToKeep(revokeFrame)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error":     err.Error(),
+					"device_id": deviceID,
+				}).Error("error decoding devices to keep in device revocation")
+				return
+			}
+			err = b.database.Table("devices").Where("id = ?", deviceID).Updates(map[string]interface{}{"revoked_at": revokedAt}).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error":     err.Error(),
@@ -363,7 +385,7 @@ func (b *Bounce) updateDeviceState(deviceID ID) {
 			b.devicePool.revokedDevices[d.Address] = true
 			b.devicePool.revokedMutex.Unlock()
 
-			b.revokeUnauthorizedDeviceActions(d.Address, revokedAt)
+			b.revokeUnauthorizedDeviceActions(d.Address, revokedAt, devicesToKeep)
 
 			if d.UserID == b.currentUserID() {
 				go b.ui.DeviceRevoked(deviceID)
@@ -387,7 +409,7 @@ func (b *Bounce) updateDeviceState(deviceID ID) {
 	}
 }
 
-func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64) {
+func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64, devicesToKeep []ID) {
 	// Find any group creations signed by this device after it was revoked and delete those groups
 	var unauthorizedGroupCreations []groupCreation
 	err := b.database.Where("signer = ? AND timestamp > ?", address, revokedAt).Find(&unauthorizedGroupCreations).Error
@@ -470,13 +492,15 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 		b.updateUserState(target)
 	}
 
-	// Find any devices that were added by this device after it was revoked and delete them, recursively clearing out
-	// their actions as well
+	// Find devices this device introduced that the revoke did not retain, and recursively clear their actions as well
 	var unauthorizedDevices []device
-	err = b.database.
+	query := b.database.
 		Joins("JOIN introduction_signatures ON introduction_signatures.device_id = devices.id").
-		Where("devices.timestamp > ? AND introduction_signatures.preexisting_device = ?", revokedAt, address).
-		Find(&unauthorizedDevices).Error
+		Where("introduction_signatures.preexisting_device = ?", address)
+	if len(devicesToKeep) > 0 {
+		query = query.Where("devices.id NOT IN ?", devicesToKeep)
+	}
+	err = query.Find(&unauthorizedDevices).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -499,7 +523,7 @@ func (b *Bounce) revokeUnauthorizedDeviceActions(address string, revokedAt int64
 			go b.ui.DeviceRevoked(dev.ID)
 		}
 
-		b.revokeUnauthorizedDeviceActions(dev.Address, 0)
+		b.revokeUnauthorizedDeviceActions(dev.Address, 0, nil)
 	}
 }
 
@@ -595,10 +619,24 @@ func (b *Bounce) RevokeDevice(deviceID ID) error {
 		return errCannotRevokeLastDevice
 	}
 
+	devicesToKeep := []ID{}
+	for _, d := range profile.Devices {
+		if d.Signature != nil && d.Signature.PreexistingDevice == dev.Address {
+			devicesToKeep = append(devicesToKeep, d.ID)
+		}
+	}
+	data, err := msgpack.Marshal(devicesToKeep)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error marshalling devices to keep when revoking a device")
+	}
+
 	ud := updateDevice{
 		Nonce:     newNonce(),
 		Target:    deviceID,
 		Type:      updateDeviceTypeRevoke,
+		Data:      data,
 		Timestamp: time.Now().Unix(),
 		Author:    b.currentUserID(),
 	}

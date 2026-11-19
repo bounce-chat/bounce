@@ -26,6 +26,8 @@ The above process can repeat indefinitely, with the phone able to add another de
 
 Any device can revoke another member of the device group by broadcasting a signed frame that does so.  Revoking a device does not revoke any other devices that device previously added.  Revoked devices are marked as revoked and lose the ability to do anything, but they are retained in the device group forever, as their keys might be necessary to validate the historic mutual signatures in a device group.
 
+A revoke carries the IDs of devices introduced by the revoked key that the revoker still recognizes.  Recipients remove introduced devices outside that set, to prevent a revoked device from being able to continue to add new devices to the device group via a backdated timestamp.
+
 Losing control over device keys can destroy a device group.  If a bad actor steals a device they can revoke the legitimate devices in the group, and other users will not be able to tell that this was done by a bad actor.  If a device is stolen, a race occurs to revoke that device before it revokes you, potentially leading to an unrecoverable loss of control over your identity.  Such is the nature of distributed cryptographic systems.
 
 ## Frames

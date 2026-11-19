@@ -193,6 +193,100 @@ func TestARevokedDeviceCannotIntroduceNewOnes(t *testing.T) {
 	assert.False(t, validator.isValidAddition(aliceRecord, introducedBy(aliceID, second.addr(), second, bnc01NewOnion(), 2500)))
 }
 
+func TestRevokeDeviceListsDevicesIntroducedByTheTarget(t *testing.T) {
+	alice := newBounceUser("Alice")
+	t.Cleanup(alice.Shutdown)
+	aliceID := alice.currentUserID()
+	aliceAddr := alice.network.Address()
+	now := time.Now().Unix()
+
+	secondKey := bnc01NewOnion()
+	second := introducedByBounce(aliceID, alice, secondKey, now-300)
+	_, accepted := alice.handleDevice(aliceAddr, second.getPayload(), false)
+	assert.True(t, accepted)
+
+	introducedKey := bnc01NewOnion()
+	introduced := introducedBy(aliceID, secondKey.addr(), secondKey, introducedKey, now-200)
+	_, accepted = alice.handleDevice(secondKey.addr(), introduced.getPayload(), false)
+	assert.True(t, accepted)
+
+	assert.NoError(t, alice.RevokeDevice(second.ID))
+	var revoke updateDevice
+	assert.NoError(t, alice.database.Where("target = ? AND type = ?", second.ID, updateDeviceTypeRevoke).First(&revoke).Error)
+	devicesToKeep := []ID{}
+	assert.NoError(t, msgpack.Unmarshal(revoke.Data, &devicesToKeep))
+	assert.Equal(t, []ID{introduced.ID}, devicesToKeep)
+
+	_, kept := alice.getDeviceFromAddress(introduced.Address)
+	assert.True(t, kept)
+}
+
+func TestRevokeKeepListControlsIntroducedDevices(t *testing.T) {
+	me, alice, bob, _ := createUsersAndGroups(t)
+	aliceID := alice.currentUserID()
+	aliceAddr := alice.network.Address()
+	now := time.Now().Unix()
+	revokeTime := now - 10
+
+	secondKey := bnc01NewOnion()
+	second := introducedByBounce(aliceID, alice, secondKey, now-1000)
+	for _, b := range []*Bounce{me, alice, bob} {
+		_, accepted := b.handleDevice(aliceAddr, second.getPayload(), false)
+		assert.True(t, accepted)
+	}
+
+	keptKey := bnc01NewOnion()
+	keptDevice := introducedBy(aliceID, secondKey.addr(), secondKey, keptKey, revokeTime-100)
+	for _, b := range []*Bounce{me, alice} {
+		_, accepted := b.handleDevice(secondKey.addr(), keptDevice.getPayload(), false)
+		assert.True(t, accepted)
+	}
+
+	backdatedKey := bnc01NewOnion()
+	backdated := introducedBy(aliceID, secondKey.addr(), secondKey, backdatedKey, revokeTime-50)
+	later := introducedBy(aliceID, secondKey.addr(), secondKey, bnc01NewOnion(), revokeTime+50)
+	grandchild := introducedBy(aliceID, backdatedKey.addr(), backdatedKey, bnc01NewOnion(), revokeTime-40)
+	for _, d := range []device{backdated, later, grandchild} {
+		_, accepted := me.handleDevice(d.Signature.PreexistingDevice, d.getPayload(), false)
+		assert.True(t, accepted)
+	}
+
+	data, err := msgpack.Marshal([]ID{keptDevice.ID})
+	assert.NoError(t, err)
+	revoke := updateDevice{
+		Nonce:     newNonce(),
+		Target:    second.ID,
+		Type:      updateDeviceTypeRevoke,
+		Data:      data,
+		Timestamp: revokeTime,
+	}
+	revoke.ID = revoke.generateID()
+	revokePayload, err := msgpack.Marshal(&revoke)
+	assert.NoError(t, err)
+	revokeFrame, err := msgpack.Marshal(alice.createSignedContainer(typeUpdateDevice, revokePayload))
+	assert.NoError(t, err)
+
+	for _, b := range []*Bounce{alice, me, bob} {
+		_, accepted := b.handleUpdateDevice(aliceAddr, revokeFrame, false)
+		assert.True(t, accepted)
+	}
+
+	_, exists := me.getDeviceFromAddress(keptDevice.Address)
+	assert.True(t, exists, "the revoke explicitly retains this introduced device")
+	for _, d := range []device{backdated, later, grandchild} {
+		_, exists = me.getDeviceFromAddress(d.Address)
+		assert.False(t, exists, "an introduced device omitted from the keep list cannot survive by backdating")
+	}
+
+	// Bob learned the revoke before any of the devices it introduced. The keep list controls those arrivals too.
+	_, accepted := bob.handleDevice(aliceAddr, keptDevice.getPayload(), false)
+	assert.True(t, accepted, "a listed device can still arrive after the revoke")
+	for _, d := range []device{backdated, later, grandchild} {
+		_, accepted = bob.handleDevice(aliceAddr, d.getPayload(), false)
+		assert.False(t, accepted, "an omitted device cannot arrive after the revoke")
+	}
+}
+
 func TestAUserHasAtMostTheMaximumNumberOfDevices(t *testing.T) {
 	me, alice, _, _ := createUsersAndGroups(t)
 	aliceID := alice.currentUserID()

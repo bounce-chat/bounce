@@ -188,10 +188,10 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadc
 		return nil, false
 	}
 
-	// Ignore a new device who was introduced by a device we now know to be revoked
+	// A device introduced by a revoked device is accepted only when the revoke retained it
 	if d.Signature != nil {
 		var preexistingDevice device
-		err = b.database.Select("revoked_at").Where("address = ?", d.Signature.PreexistingDevice).First(&preexistingDevice).Error
+		err = b.database.Select("id", "revoked_at").Where("address = ?", d.Signature.PreexistingDevice).First(&preexistingDevice).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
@@ -206,10 +206,42 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadc
 			}
 		}
 		if preexistingDevice.RevokedAt != 0 {
-			log.WithFields(log.Fields{
-				"signer": d.Signature.PreexistingDevice,
-			}).Warn("ignoring device introduced by revoked device")
-			return nil, false
+			var revoke updateDevice
+			err = b.database.Where("target = ? AND type = ? AND timestamp = ?", preexistingDevice.ID, updateDeviceTypeRevoke, preexistingDevice.RevokedAt).First(&revoke).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					log.WithFields(log.Fields{
+						"address": d.Signature.PreexistingDevice,
+					}).Error("revoke not found for revoked device")
+					return nil, false
+				} else {
+					log.WithFields(log.Fields{
+						"address": d.Signature.PreexistingDevice,
+						"error":   err.Error(),
+					}).Fatal("database error looking up device revoke")
+				}
+			}
+			devicesToKeep, err := introducedDevicesToKeep(revoke)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"signer": d.Signature.PreexistingDevice,
+					"error":  err.Error(),
+				}).Warn("ignoring device with invalid revoke keep list")
+				return nil, false
+			}
+			keep := false
+			for _, deviceID := range devicesToKeep {
+				if deviceID == d.ID {
+					keep = true
+					break
+				}
+			}
+			if !keep {
+				log.WithFields(log.Fields{
+					"signer": d.Signature.PreexistingDevice,
+				}).Warn("ignoring device introduced by revoked device")
+				return nil, false
+			}
 		}
 	}
 
