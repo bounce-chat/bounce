@@ -287,6 +287,68 @@ func TestRevokeKeepListControlsIntroducedDevices(t *testing.T) {
 	}
 }
 
+func TestCarriedRecordsRespectRevokeKeepList(t *testing.T) {
+	me, _, bob, groupID := createUsersAndGroups(t)
+	bobID := bob.currentUserID()
+	bobAddr := bob.network.Address()
+	now := time.Now().Unix()
+	revokeTime := now - 10
+
+	secondKey := bnc01NewOnion()
+	second := introducedByBounce(bobID, bob, secondKey, now-1000)
+	_, accepted := me.handleDevice(bobAddr, second.getPayload(), false)
+	assert.True(t, accepted)
+
+	listedKey := bnc01NewOnion()
+	listed := introducedBy(bobID, secondKey.addr(), secondKey, listedKey, revokeTime-100)
+	omittedKey := bnc01NewOnion()
+	omitted := introducedBy(bobID, secondKey.addr(), secondKey, omittedKey, revokeTime-90)
+	descendant := introducedBy(bobID, omittedKey.addr(), omittedKey, bnc01NewOnion(), revokeTime-80)
+
+	data, err := msgpack.Marshal([]ID{listed.ID})
+	assert.NoError(t, err)
+	revoke := updateDevice{
+		Nonce:     newNonce(),
+		Target:    second.ID,
+		Type:      updateDeviceTypeRevoke,
+		Data:      data,
+		Timestamp: revokeTime,
+	}
+	revoke.ID = revoke.generateID()
+	revokePayload, err := msgpack.Marshal(&revoke)
+	assert.NoError(t, err)
+	revokeFrame, err := msgpack.Marshal(bob.createSignedContainer(typeUpdateDevice, revokePayload))
+	assert.NoError(t, err)
+	_, accepted = me.handleUpdateDevice(bobAddr, revokeFrame, false)
+	assert.True(t, accepted)
+
+	var record user
+	assert.NoError(t, me.database.Preload("Devices.Signature").First(&record, "id = ?", bobID).Error)
+	record.Devices = append(record.Devices, descendant, omitted, listed)
+	me.createNewUserIfNeeded(record, groupID)
+
+	_, exists := me.getDeviceFromAddress(listed.Address)
+	assert.True(t, exists, "a carried record can teach a device retained by the revoke")
+	assertOmitted := func() {
+		for _, d := range []device{omitted, descendant} {
+			_, exists = me.getDeviceFromAddress(d.Address)
+			assert.False(t, exists, "a carried record cannot plant an omitted device or its descendants")
+		}
+	}
+	assertOmitted()
+
+	projectedGroup := group{
+		ID:        NewID(),
+		Name:      "carried devices",
+		CreatedBy: bobID,
+		CreatedAt: now,
+		Users:     []user{record},
+		Admins:    bobID.String(),
+	}
+	assert.NoError(t, me.setGroupStateInDatabase(projectedGroup, []user{record}, projectedGroup.state(), nil))
+	assertOmitted()
+}
+
 func TestAUserHasAtMostTheMaximumNumberOfDevices(t *testing.T) {
 	me, alice, _, _ := createUsersAndGroups(t)
 	aliceID := alice.currentUserID()

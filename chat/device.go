@@ -164,6 +164,68 @@ func (d *device) getSavedAt() int64 {
 	return d.SavedAt
 }
 
+func (b *Bounce) deviceIntroductionAllowed(d device) bool {
+	if d.Signature == nil {
+		return true
+	}
+
+	var preexistingDevice device
+	err := b.database.Select("id", "revoked_at").Where("address = ?", d.Signature.PreexistingDevice).First(&preexistingDevice).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.WithFields(log.Fields{
+				"address": d.Signature.PreexistingDevice,
+			}).Error("preexisting device not found for device")
+			return false
+		} else {
+			log.WithFields(log.Fields{
+				"address": d.Signature.PreexistingDevice,
+				"error":   err.Error(),
+			}).Fatal("database error looking up preexisting device")
+		}
+	}
+	if preexistingDevice.RevokedAt != 0 {
+		var revoke updateDevice
+		err = b.database.Where("target = ? AND type = ? AND timestamp = ?", preexistingDevice.ID, updateDeviceTypeRevoke, preexistingDevice.RevokedAt).First(&revoke).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				log.WithFields(log.Fields{
+					"address": d.Signature.PreexistingDevice,
+				}).Error("revoke not found for revoked device")
+				return false
+			} else {
+				log.WithFields(log.Fields{
+					"address": d.Signature.PreexistingDevice,
+					"error":   err.Error(),
+				}).Fatal("database error looking up device revoke")
+			}
+		}
+		devicesToKeep, err := introducedDevicesToKeep(revoke)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"signer": d.Signature.PreexistingDevice,
+				"error":  err.Error(),
+			}).Warn("ignoring device with invalid revoke keep list")
+			return false
+		}
+		keep := false
+		for _, deviceID := range devicesToKeep {
+			if deviceID == d.ID {
+				keep = true
+				break
+			}
+		}
+		if !keep {
+			log.WithFields(log.Fields{
+				"signer": d.Signature.PreexistingDevice,
+			}).Warn("ignoring device introduced by revoked device")
+			return false
+		}
+	}
+
+	return true
+}
+
 func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	handleDevicesMutex.Lock()
 	defer handleDevicesMutex.Unlock()
@@ -189,60 +251,8 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadc
 	}
 
 	// A device introduced by a revoked device is accepted only when the revoke retained it
-	if d.Signature != nil {
-		var preexistingDevice device
-		err = b.database.Select("id", "revoked_at").Where("address = ?", d.Signature.PreexistingDevice).First(&preexistingDevice).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"address": d.Signature.PreexistingDevice,
-				}).Error("preexisting device not found for device")
-				return nil, false
-			} else {
-				log.WithFields(log.Fields{
-					"address": d.Signature.PreexistingDevice,
-					"error":   err.Error(),
-				}).Fatal("database error looking up preexisting device")
-			}
-		}
-		if preexistingDevice.RevokedAt != 0 {
-			var revoke updateDevice
-			err = b.database.Where("target = ? AND type = ? AND timestamp = ?", preexistingDevice.ID, updateDeviceTypeRevoke, preexistingDevice.RevokedAt).First(&revoke).Error
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					log.WithFields(log.Fields{
-						"address": d.Signature.PreexistingDevice,
-					}).Error("revoke not found for revoked device")
-					return nil, false
-				} else {
-					log.WithFields(log.Fields{
-						"address": d.Signature.PreexistingDevice,
-						"error":   err.Error(),
-					}).Fatal("database error looking up device revoke")
-				}
-			}
-			devicesToKeep, err := introducedDevicesToKeep(revoke)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"signer": d.Signature.PreexistingDevice,
-					"error":  err.Error(),
-				}).Warn("ignoring device with invalid revoke keep list")
-				return nil, false
-			}
-			keep := false
-			for _, deviceID := range devicesToKeep {
-				if deviceID == d.ID {
-					keep = true
-					break
-				}
-			}
-			if !keep {
-				log.WithFields(log.Fields{
-					"signer": d.Signature.PreexistingDevice,
-				}).Warn("ignoring device introduced by revoked device")
-				return nil, false
-			}
-		}
+	if !b.deviceIntroductionAllowed(d) {
+		return nil, false
 	}
 
 	// Ignore anything from a blocked user
