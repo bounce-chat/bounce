@@ -41,7 +41,7 @@
 // Sink callbacks run on Go-owned threads attached to the JVM, never on the
 // Android main looper, and possibly several at once; see EventSink.
 //
-//go:generate gomobile bind -target=android/arm64,android/amd64 -androidapi 29 -javapkg chat.bounce -o ../app/libs/goengine.aar -ldflags=-checklinkname=0 github.com/bounce-chat/bounce/android/goengine
+//go:generate gomobile bind -target=android/arm64,android/amd64 -androidapi 29 -javapkg chat.bounce -o ../app/libs/goengine.aar -ldflags=-checklinkname=0 github.com/bounce-chat/bounce/ui/android/goengine
 package goengine
 
 import "github.com/bounce-chat/bounce/chat"

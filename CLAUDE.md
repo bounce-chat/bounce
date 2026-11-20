@@ -61,7 +61,7 @@ Three packages with strictly one-way dependencies:
 - **`ui/fyneui/`** — Fyne desktop UI (package `fyneui`, so named because every file imports upstream `fyne`). Talks to the engine only through the interfaces below. Its images come from `ui/assets/`, which is a directory of icons and logos that the packaging scripts and the README read by path, and also a minimal Go package exporting them as `assets.FS`: `//go:embed` cannot reach a parent directory or follow a symlink, so the embed has to live beside the files. Paths into it are relative to that directory (`"icons/menu/about.png"`), and a wrong one is a `log.Fatal` at first use, not a build error.
 - **`network/tor/`** — Tor transport (package `tor`), `tor.go` plus its self-watch in `liveness.go`, over `go-arti`. (`bine` is still in `go.mod`, but only `chat/fixture_test.go` uses it, for onion-style ed25519 keys.)
 
-`android/goengine` is a fourth Go package but not a fourth layer: it is a gomobile binding surface over the same `chat.Engine`, so the Kotlin client is a second consumer of the seam `ui/fyneui/` uses rather than something built on top of it.
+`ui/android/goengine` is a fourth Go package but not a fourth layer: it is a gomobile binding surface over the same `chat.Engine`, so the Kotlin client is a second consumer of the seam `ui/fyneui/` uses rather than something built on top of it.
 
 The seam between engine and UI is two interfaces in `chat/`:
 
@@ -142,9 +142,9 @@ Encrypted devices store and relay frames without being able to read them. Frames
 
 ## Android
 
-`android/` is a Kotlin client in one process with one Go runtime. `android/goengine` is a gomobile binding exposing `chat.Engine` as typed methods, and Kotlin implements two Go interfaces (`EventSink`, `NotificationSink`) so the engine pushes events *into* Kotlin. The Activity and the foreground service share a process, so Kotlin calls the `.aar` directly — there is no IPC, no serialization of commands, and no polling. `android/README.md` has the details.
+`ui/android/` is a Kotlin client in one process with one Go runtime. `ui/android/goengine` is a gomobile binding exposing `chat.Engine` as typed methods, and Kotlin implements two Go interfaces (`EventSink`, `NotificationSink`) so the engine pushes events *into* Kotlin. The Activity and the foreground service share a process, so Kotlin calls the `.aar` directly — there is no IPC, no serialization of commands, and no polling. `ui/android/README.md` has the details. Moving the Go package does not move the Kotlin imports: gobind names the Java package from `-javapkg` plus the Go package *name*, so it stays `chat.bounce.goengine` wherever the directory sits.
 
-Re-run `make android-bind` whenever `chat/`, `config/`, `network/` or `goengine/` changes — the `.aar` is a build artifact and is not checked in. `android/goengine/doc.go` carries an equivalent `//go:generate` line; keep the two in step.
+Re-run `make android-bind` whenever `chat/`, `config/`, `network/` or `goengine/` changes — the `.aar` is a build artifact and is not checked in. `ui/android/goengine/doc.go` carries an equivalent `//go:generate` line; keep the two in step.
 
 Two things to know before editing it: `applicationId` must stay `chat.bounce` because `config/directory.go` hardcodes `/data/data/chat.bounce/bounce`, and every bound call blocks the calling thread, which is why the whole engine is wrapped in `Dispatchers.IO`.
 

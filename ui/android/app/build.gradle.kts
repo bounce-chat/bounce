@@ -90,7 +90,7 @@ kotlin {
 }
 
 dependencies {
-    // Produced by `make android-bind` (gomobile bind of android/goengine).
+    // Produced by `make android-bind` (gomobile bind of ui/android/goengine).
     // fileTree rather than files(...) so the project still configures before the
     // first bind run.
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))

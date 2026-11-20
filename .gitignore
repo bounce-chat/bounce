@@ -23,4 +23,4 @@ pkg/debian
 *.so
 *.aar
 *.apk
-/android/app/build
+/ui/android/app/build

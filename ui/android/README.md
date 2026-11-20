@@ -1,7 +1,7 @@
 # android
 
 A native Kotlin + Jetpack Compose Android client for Bounce, replacing the Fyne
-UI in `android/`.
+UI that used to live in `ui/fyne/`.
 
 ## Why this exists
 
@@ -69,7 +69,7 @@ Overridable: `ANDROID_SDK`, `ANDROID_NDK` (defaults to the highest installed),
 `NATIVE_ABIS` (default `android/arm64,android/amd64` — arm64 for phones, amd64
 so it runs on an emulator), `NATIVE_API`.
 
-Tor comes from [go-arti](../network/tor/go-arti), which is Rust and cannot be built by the
+Tor comes from [go-arti](../../network/tor/go-arti), which is Rust and cannot be built by the
 Go toolchain, so its static library has to exist for every ABI being bound
 before `make android-bind` will link:
 

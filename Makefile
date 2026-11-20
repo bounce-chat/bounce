@@ -104,32 +104,32 @@ linux-debian-release-docker:
 
 android-bind:
 	@test -d "$(ANDROID_NDK)" || (echo "No NDK found under $(ANDROID_SDK)/ndk. Set ANDROID_NDK=..." && false)
-	mkdir -p android/app/libs
+	mkdir -p ui/android/app/libs
 	ANDROID_HOME=$(ANDROID_SDK) ANDROID_NDK_HOME=$(ANDROID_NDK) \
 		gomobile bind \
 		-target=$(NATIVE_ABIS) \
 		-androidapi $(NATIVE_API) \
 		-javapkg chat.bounce \
-		-o android/app/libs/goengine.aar \
+		-o ui/android/app/libs/goengine.aar \
 		-ldflags="-checklinkname=0 $(VERSION_LDFLAGS)" \
-		github.com/bounce-chat/bounce/android/goengine
+		github.com/bounce-chat/bounce/ui/android/goengine
 
 android: android-bind
-	cd android && ANDROID_HOME=$(ANDROID_SDK) ANDROID_SDK_ROOT=$(ANDROID_SDK) ./gradlew assembleDebug
-	cp android/app/build/outputs/apk/debug/app-debug.apk ./Bounce.apk
+	cd ui/android && ANDROID_HOME=$(ANDROID_SDK) ANDROID_SDK_ROOT=$(ANDROID_SDK) ./gradlew assembleDebug
+	cp ui/android/app/build/outputs/apk/debug/app-debug.apk ./Bounce.apk
 
 android-release: check-version android-bind
 	mkdir -p releases
-	cd android && ANDROID_HOME=$(ANDROID_SDK) ANDROID_SDK_ROOT=$(ANDROID_SDK) ./gradlew assembleRelease \
+	cd ui/android && ANDROID_HOME=$(ANDROID_SDK) ANDROID_SDK_ROOT=$(ANDROID_SDK) ./gradlew assembleRelease \
 		-Pandroid.injected.signing.store.file=$(ANDROID_KEYSTORE_PATH) \
 		-Pandroid.injected.signing.store.password=$(ANDROID_KEYSTORE_PASSWORD) \
 		-Pandroid.injected.signing.key.alias=$(ANDROID_KEY_ALIAS) \
 		-Pandroid.injected.signing.key.password=$(ANDROID_KEY_PASSWORD)
-	cp android/app/build/outputs/apk/release/app-release.apk releases/Bounce-$(VERSION).apk
+	cp ui/android/app/build/outputs/apk/release/app-release.apk releases/Bounce-$(VERSION).apk
 
 android-clean:
-	rm -rf android/app/libs/goengine.aar android/app/libs/goengine-sources.jar
-	rm -rf android/app/build android/build android/.gradle
+	rm -rf ui/android/app/libs/goengine.aar ui/android/app/libs/goengine-sources.jar
+	rm -rf ui/android/app/build ui/android/build ui/android/.gradle
 	rm -f Bounce.apk
 
 clean: android-clean
