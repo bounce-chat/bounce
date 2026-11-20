@@ -13,7 +13,7 @@ func main() {
 	encrypted := flag.Bool("encrypted", false, "start an encrypted device")
 	flag.Parse()
 	if *encrypted {
-		chat.StartEncryptedDevice(&tor.TorNetwork{}, config.GetEncryptedConfigDirectory())
+		chat.StartEncryptedDevice(&tor.Network{}, config.GetEncryptedConfigDirectory())
 	} else {
 		ui.Main()
 	}

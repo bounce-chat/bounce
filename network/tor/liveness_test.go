@@ -108,7 +108,7 @@ func waitFor(t *testing.T, d time.Duration, cond func() bool) bool {
 	return cond()
 }
 
-func newLivenessNetwork(t *testing.T) *TorNetwork {
+func newLivenessNetwork(t *testing.T) *Network {
 	t.Helper()
 	n, _ := newTestIdentity(t)
 	n.callbacks = chat.NetworkCallbacks{NetworkOnline: func() {}, NetworkOffline: func() {}}
@@ -117,7 +117,7 @@ func newLivenessNetwork(t *testing.T) *TorNetwork {
 
 // startCanary runs the canary on a session that is stopped, and waited for, when the test ends: the duration vars
 // it reads are restored by cleanup, so it must be gone before then
-func startCanary(t *testing.T, n *TorNetwork, self *fakeSelf, v *verdict) {
+func startCanary(t *testing.T, n *Network, self *fakeSelf, v *verdict) {
 	t.Helper()
 	stopping := make(chan struct{})
 	done := make(chan struct{})

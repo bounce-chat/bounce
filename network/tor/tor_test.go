@@ -24,7 +24,7 @@ import (
 // - SHA512 of a seed, with the usual clamping - and arti.PublicKeyFromPrivate
 // derives the public half from it, so the pair round-trips through the same
 // code path the real hidden-service key uses.
-func newTestIdentity(t *testing.T) (*TorNetwork, string) {
+func newTestIdentity(t *testing.T) (*Network, string) {
 	t.Helper()
 
 	seed := make([]byte, 32)
@@ -47,7 +47,7 @@ func newTestIdentity(t *testing.T) (*TorNetwork, string) {
 		t.Fatalf("deriving onion id: %v", err)
 	}
 
-	network := &TorNetwork{privateKey: expanded, publicKey: pub}
+	network := &Network{privateKey: expanded, publicKey: pub}
 
 	// Sanity: the identity must actually verify under the real code path, or
 	// every test below would be asserting against a broken fixture.
@@ -115,8 +115,8 @@ func (c *countingConn) Close() error {
 // returns the listener-side result.
 func runHandshakePair(
 	t *testing.T,
-	listener *TorNetwork, listenerAddress string,
-	dialer *TorNetwork, dialerAddress string,
+	listener *Network, listenerAddress string,
+	dialer *Network, dialerAddress string,
 ) (*torNetworkConnection, error, *torNetworkConnection, error) {
 	t.Helper()
 
@@ -318,7 +318,7 @@ func TestHandshakeDialerRejectsWrongListener(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // startPump runs the pump against a fake listener and returns its queue.
-func startPump(t *testing.T, listener *TorNetwork, listenerAddress string, fake *fakeListener) (chan *torNetworkConnection, chan struct{}, *sync.WaitGroup) {
+func startPump(t *testing.T, listener *Network, listenerAddress string, fake *fakeListener) (chan *torNetworkConnection, chan struct{}, *sync.WaitGroup) {
 	t.Helper()
 	accepted := make(chan *torNetworkConnection, acceptQueueDepth)
 	stopping := make(chan struct{})

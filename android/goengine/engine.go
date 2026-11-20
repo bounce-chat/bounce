@@ -71,7 +71,7 @@ func (a *Engine) Start(configDir string, events EventSink, notes NotificationSin
 		notes.Clear(id)
 	}
 
-	a.e = chat.Open(&uiAdapter{sink: events, profileKnown: a.setUserID}, &tor.TorNetwork{}, configDir, post, clear)
+	a.e = chat.Open(&uiAdapter{sink: events, profileKnown: a.setUserID}, &tor.Network{}, configDir, post, clear)
 	return nil
 }
 

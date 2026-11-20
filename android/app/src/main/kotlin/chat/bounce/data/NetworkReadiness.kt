@@ -11,10 +11,10 @@ import kotlin.time.Duration.Companion.minutes
  * This exists because "the engine is running" and "the engine can reach a peer"
  * are minutes apart, and nothing in the API surface says so. chat.Open starts
  * Tor on a goroutine and returns immediately, so an EngineClient exists within
- * milliseconds of launch, while TorNetwork.tor and .onion stay nil until the
+ * milliseconds of launch, while tor.Network.tor and .onion stay nil until the
  * whole bootstrap and hidden-service publish finishes.
  *
- * In that window TorNetwork.Dial does not block - it returns
+ * In that window tor.Network.Dial does not block - it returns
  * "cannot dial while network is not started" instantly. Every pairing call
  * dials (requestToSync, requestToAddUser, requestToManageEncryptedDevice), so a
  * user who scans a code in the first seconds after install gets an immediate

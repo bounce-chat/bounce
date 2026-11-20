@@ -93,7 +93,7 @@ It only has to be redone when Arti itself changes, not on every bind.
   `blobPath`, is documented as pure string concatenation.
 - **A running engine cannot necessarily dial.** `chat.Open` starts Tor on a
   goroutine and returns immediately, so `EngineHolder.client` is non-null within
-  milliseconds while `TorNetwork.tor`/`.onion` stay nil until the bootstrap and
+  milliseconds while `tor.Network.tor`/`.onion` stay nil until the bootstrap and
   hidden-service publish finish — a minute or more on a first run. `Dial` in
   that window does not wait; it returns
   `"cannot dial while network is not started"` *instantly*, which surfaces as a

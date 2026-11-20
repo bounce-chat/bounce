@@ -110,7 +110,7 @@ type session struct {
 	canaryAccepted chan *torNetworkConnection
 }
 
-type TorNetwork struct {
+type Network struct {
 	routerDirectory string
 	keyDirectory    string
 	callbacks       chat.NetworkCallbacks
@@ -153,7 +153,7 @@ type TorNetwork struct {
 }
 
 // readyChannel returns the current readiness gate, creating it on first use.
-func (bounceTor *TorNetwork) readyChannel() chan struct{} {
+func (bounceTor *Network) readyChannel() chan struct{} {
 	bounceTor.sessionMutex.Lock()
 	defer bounceTor.sessionMutex.Unlock()
 	if bounceTor.ready == nil {
@@ -168,7 +168,7 @@ func (bounceTor *TorNetwork) readyChannel() chan struct{} {
 // It blocks rather than failing fast on purpose: the accept loop retries a
 // non-fatal error immediately with no backoff, so returning straight away
 // during a restart would spin a core until the restart finished.
-func (bounceTor *TorNetwork) awaitSession() (*session, error) {
+func (bounceTor *Network) awaitSession() (*session, error) {
 	for {
 		bounceTor.sessionMutex.RLock()
 		current, ready := bounceTor.session, bounceTor.ready
@@ -195,7 +195,7 @@ func (bounceTor *TorNetwork) awaitSession() (*session, error) {
 
 // peekSession returns the current session without waiting, for callers that
 // have something useful to do when Tor is unavailable.
-func (bounceTor *TorNetwork) peekSession() *session {
+func (bounceTor *Network) peekSession() *session {
 	bounceTor.sessionMutex.RLock()
 	defer bounceTor.sessionMutex.RUnlock()
 	return bounceTor.session
@@ -203,22 +203,22 @@ func (bounceTor *TorNetwork) peekSession() *session {
 
 // superseded reports whether s has already been replaced, which is how Accept
 // and Dial tell "the network is restarting under me" from a real failure.
-func (bounceTor *TorNetwork) superseded(s *session) bool {
+func (bounceTor *Network) superseded(s *session) bool {
 	bounceTor.sessionMutex.RLock()
 	defer bounceTor.sessionMutex.RUnlock()
 	return bounceTor.session != s
 }
 
 // shuttingDown reports whether Shutdown has been entered.
-func (bounceTor *TorNetwork) shuttingDown() bool {
+func (bounceTor *Network) shuttingDown() bool {
 	bounceTor.shutdownMutex.Lock()
 	defer bounceTor.shutdownMutex.Unlock()
 	return bounceTor.shutdown
 }
 
 // stopChannel returns the channel closed on shutdown, creating it on first use
-// so a zero-value TorNetwork still works.
-func (bounceTor *TorNetwork) stopChannel() chan struct{} {
+// so a zero-value Network still works.
+func (bounceTor *Network) stopChannel() chan struct{} {
 	bounceTor.shutdownMutex.Lock()
 	defer bounceTor.shutdownMutex.Unlock()
 	if bounceTor.stopped == nil {
@@ -227,7 +227,7 @@ func (bounceTor *TorNetwork) stopChannel() chan struct{} {
 	return bounceTor.stopped
 }
 
-func (bounceTor *TorNetwork) loadConfig(configDirectory string) {
+func (bounceTor *Network) loadConfig(configDirectory string) {
 	bounceTor.routerDirectory = configDirectory + "/tor/router"
 	bounceTor.keyDirectory = configDirectory + "/tor/keys"
 
@@ -258,7 +258,7 @@ func (bounceTor *TorNetwork) loadConfig(configDirectory string) {
 // every load, which gives the same key every time and leaves one file to keep safe.  A private key file of any other
 // size is refused with a fatal error rather than worked around, since it is the user's identity and only they can
 // decide what to do with a damaged copy.
-func (bounceTor *TorNetwork) hiddenServiceKey() (ed25519.PublicKey, []byte) {
+func (bounceTor *Network) hiddenServiceKey() (ed25519.PublicKey, []byte) {
 	privateKeyFile := bounceTor.keyDirectory + "/private_key"
 	privateKey, err := os.ReadFile(privateKeyFile)
 	if err != nil {
@@ -328,11 +328,11 @@ func generateHiddenServiceKey() (ed25519.PublicKey, []byte) {
 	return publicKey, privateKey
 }
 
-func (bounceTor *TorNetwork) Load(configDirectory string) {
+func (bounceTor *Network) Load(configDirectory string) {
 	bounceTor.loadConfig(configDirectory)
 }
 
-func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
+func (bounceTor *Network) Start(callbacks chat.NetworkCallbacks) {
 	bounceTor.callbacks = callbacks
 	log.Info("connecting to the Tor network")
 
@@ -368,7 +368,7 @@ func (bounceTor *TorNetwork) Start(callbacks chat.NetworkCallbacks) {
 // Shared by Start and Restart, which is why it reports errors rather than
 // calling startupFailed: a failure at startup is fatal, but the same failure
 // during a restart just means we try again later.
-func (bounceTor *TorNetwork) openSession() (*session, error) {
+func (bounceTor *Network) openSession() (*session, error) {
 	// In rare situations, arti has been known to put itself in a state where the information
 	// on disk prevents a successful bootstrap.  This seems related to devices that transition
 	// from one network to another often, like mobile phones.  The solution, for now, is to
@@ -458,7 +458,7 @@ func (bounceTor *TorNetwork) openSession() (*session, error) {
 // run, with its accept pump and status watcher, for the rest of the process.
 // The check is made under the same lock Shutdown takes the session with, so
 // one of the two always sees the other.
-func (bounceTor *TorNetwork) publishSession(s *session) bool {
+func (bounceTor *Network) publishSession(s *session) bool {
 	bounceTor.sessionMutex.Lock()
 	if bounceTor.shuttingDown() {
 		bounceTor.sessionMutex.Unlock()
@@ -533,7 +533,7 @@ func releaseGate(gate chan struct{}) {
 // to discard is already gone by the time Tor is reached: Arti persists no guard
 // failure state, so opening a fresh client wipes it, whether or not the
 // bootstrap that follows succeeds.
-func (bounceTor *TorNetwork) Restart() error {
+func (bounceTor *Network) Restart() error {
 	bounceTor.restartMutex.Lock()
 	defer bounceTor.restartMutex.Unlock()
 
@@ -611,7 +611,7 @@ func (bounceTor *TorNetwork) Restart() error {
 // operations, and that is ordinary rather than fatal - publication routinely
 // takes minutes, so a user quitting before it finishes must not be treated as
 // a crash.
-func (bounceTor *TorNetwork) startupFailed(err error, message string) {
+func (bounceTor *Network) startupFailed(err error, message string) {
 	bounceTor.shutdownMutex.Lock()
 	shuttingDown := bounceTor.shutdown
 	bounceTor.shutdownMutex.Unlock()
@@ -628,7 +628,7 @@ func (bounceTor *TorNetwork) startupFailed(err error, message string) {
 //
 // Purely informational: startup does not wait for it, because it can lag the
 // descriptor going up by several minutes.
-func (bounceTor *TorNetwork) reportWhenReachable(s *session) {
+func (bounceTor *Network) reportWhenReachable(s *session) {
 	started := time.Now()
 	if err := s.onion.WaitPublished(context.Background()); err != nil {
 		log.WithFields(log.Fields{
@@ -646,7 +646,7 @@ func (bounceTor *TorNetwork) reportWhenReachable(s *session) {
 //
 // Arti is the only thing that knows why a bootstrap is slow, so without this
 // a stall is indistinguishable from ordinary progress.
-func (bounceTor *TorNetwork) forwardTorLogs() {
+func (bounceTor *Network) forwardTorLogs() {
 	records, err := arti.EnableLogging("info")
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -661,7 +661,7 @@ func (bounceTor *TorNetwork) forwardTorLogs() {
 // pumpTorLogs forwards Arti's records until the network shuts down or the channel is closed.  Arti's logging is
 // process-wide and hands out another channel on every call, so a forwarder that outlived its network would log every
 // record a second time, under a dead network's address.
-func (bounceTor *TorNetwork) pumpTorLogs(records <-chan arti.LogRecord) {
+func (bounceTor *Network) pumpTorLogs(records <-chan arti.LogRecord) {
 	stop := bounceTor.stopChannel()
 	for {
 		var record arti.LogRecord
@@ -707,7 +707,7 @@ func (bounceTor *TorNetwork) pumpTorLogs(records <-chan arti.LogRecord) {
 //
 // Only bootstrap has a meaningful progress figure; publication does not, which
 // is why nothing waits on it.
-func (bounceTor *TorNetwork) logProgress(client *arti.Client, what string) func() {
+func (bounceTor *Network) logProgress(client *arti.Client, what string) func() {
 	done := make(chan struct{})
 	started := time.Now()
 
@@ -750,7 +750,7 @@ func (bounceTor *TorNetwork) logProgress(client *arti.Client, what string) func(
 // and regaining it produces no event. In practice this reports coming online
 // once at startup and never reports going offline. Restoring that needs a
 // liveness signal go-arti does not currently expose.
-func (bounceTor *TorNetwork) watchOnlineStatus(s *session) {
+func (bounceTor *Network) watchOnlineStatus(s *session) {
 	updates := s.client.StatusUpdates()
 	defer s.client.Unsubscribe(updates)
 
@@ -770,7 +770,7 @@ func (bounceTor *TorNetwork) watchOnlineStatus(s *session) {
 }
 
 // setOnline notifies the callbacks when connectivity changes state.
-func (bounceTor *TorNetwork) setOnline(online bool) {
+func (bounceTor *Network) setOnline(online bool) {
 	torLock.Lock()
 	defer torLock.Unlock()
 
@@ -785,7 +785,7 @@ func (bounceTor *TorNetwork) setOnline(online bool) {
 	}
 }
 
-func (bounceTor *TorNetwork) Address() string {
+func (bounceTor *Network) Address() string {
 	// If the network is online, get the ID from the service
 	// Peek rather than wait: this is called from log forwarding and from the
 	// UI, neither of which should block for a restart.
@@ -807,17 +807,17 @@ func (bounceTor *TorNetwork) Address() string {
 	return id
 }
 
-// networkNameTor is the single source of the wire value "tor".  Both TorNetwork.Name() and torAddress.Network()
+// networkNameTor is the single source of the wire value "tor".  Both Network.Name() and torAddress.Network()
 // return it, so a device's self-assigned network always equals the network its peers observe for it.
 const networkNameTor = "tor"
 
 // Name is the overlay-network identifier Bounce stamps onto addresses reached over this provider.  It must match
 // torAddress.Network() so that a device's self-assigned network equals what its peers observe for it.
-func (bounceTor *TorNetwork) Name() string {
+func (bounceTor *Network) Name() string {
 	return networkNameTor
 }
 
-func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
+func (bounceTor *Network) Accept() (net.Conn, error, bool) {
 	// Wait for a live session rather than failing fast: the accept loop retries
 	// non-fatal errors with no backoff, so returning immediately during a
 	// restart would spin.
@@ -839,7 +839,7 @@ func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 // Split from Accept so the queue-closed branches - which are how a shutdown and
 // a restart are told apart - can be exercised against a known session instead
 // of racing awaitSession.
-func (bounceTor *TorNetwork) acceptFrom(s *session) (net.Conn, error, bool) {
+func (bounceTor *Network) acceptFrom(s *session) (net.Conn, error, bool) {
 	// Take the next connection whose handshake has already completed. The pump
 	// runs those concurrently, so a peer that connects and never speaks costs
 	// one slot for handshakeTimeout instead of blocking every other peer.
@@ -871,7 +871,7 @@ func (bounceTor *TorNetwork) acceptFrom(s *session) (net.Conn, error, bool) {
 // from Accept: the caller retries non-fatal errors with no backoff and treats a
 // nil connection as fatal, so surfacing peer-triggered failures would let any
 // peer spin that loop and flood the log.
-func (bounceTor *TorNetwork) acceptPump(s *session) {
+func (bounceTor *Network) acceptPump(s *session) {
 	bounceTor.runAcceptPump(s.onion, s.onion.ID(), s.accepted, s.canaryAccepted, s.stopping)
 }
 
@@ -887,7 +887,7 @@ type acceptor interface {
 // runAcceptPump is acceptPump with its dependencies passed in. A connection
 // from our own address is the canary dialling in and goes to canary, never to
 // accepted; with no canary channel it is closed.
-func (bounceTor *TorNetwork) runAcceptPump(
+func (bounceTor *Network) runAcceptPump(
 	listener acceptor,
 	listenerAddress string,
 	accepted chan *torNetworkConnection,
@@ -974,7 +974,7 @@ func (bounceTor *TorNetwork) runAcceptPump(
 // handshakeListener runs the listener half of the handshake on a raw connection
 // and returns the authenticated wrapper. Every failure path closes the socket:
 // a rejected peer must not leak a descriptor.
-func (bounceTor *TorNetwork) handshakeListener(listenerAddress string, connection net.Conn) (*torNetworkConnection, error) {
+func (bounceTor *Network) handshakeListener(listenerAddress string, connection net.Conn) (*torNetworkConnection, error) {
 	// One absolute budget for the whole exchange.
 	if err := connection.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
 		connection.Close()
@@ -1076,7 +1076,7 @@ func (bounceTor *TorNetwork) handshakeListener(listenerAddress string, connectio
 	}, nil
 }
 
-func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
+func (bounceTor *Network) Dial(address string) (net.Conn, error) {
 	// Same gate as Accept. A dial that arrives mid-restart waits for the new
 	// client instead of failing, and callers that cannot wait get
 	// errNetworkRestarting after restartWaitLimit, which they treat like any
@@ -1102,7 +1102,7 @@ func (bounceTor *TorNetwork) Dial(address string) (net.Conn, error) {
 //
 // localAddress is our own onion id; listenerAddress is the address we dialled,
 // which is what the listener's proof must name.
-func (bounceTor *TorNetwork) handshakeDialer(localAddress, listenerAddress string, conn net.Conn) (*torNetworkConnection, error) {
+func (bounceTor *Network) handshakeDialer(localAddress, listenerAddress string, conn net.Conn) (*torNetworkConnection, error) {
 	// Bound the whole handshake. Without this a listener that accepts and then
 	// says nothing parks this goroutine forever.
 	if err := conn.SetDeadline(time.Now().Add(handshakeTimeout)); err != nil {
@@ -1193,7 +1193,7 @@ func (bounceTor *TorNetwork) handshakeDialer(localAddress, listenerAddress strin
 	return torConn, nil
 }
 
-func (bounceTor *TorNetwork) Sign(data []byte) []byte {
+func (bounceTor *Network) Sign(data []byte) []byte {
 	signature, err := arti.Sign(bounceTor.privateKey, data)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -1204,7 +1204,7 @@ func (bounceTor *TorNetwork) Sign(data []byte) []byte {
 	return signature
 }
 
-func (bounceTor *TorNetwork) VerifySignature(address string, data []byte, signature []byte) bool {
+func (bounceTor *Network) VerifySignature(address string, data []byte, signature []byte) bool {
 	canonical := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(address)), ".onion")
 	if address != canonical {
 		log.WithFields(log.Fields{
@@ -1231,7 +1231,7 @@ func (bounceTor *TorNetwork) VerifySignature(address string, data []byte, signat
 	return arti.Verify(publicKey, data, signature)
 }
 
-func (bounceTor *TorNetwork) Shutdown() {
+func (bounceTor *Network) Shutdown() {
 	bounceTor.shutdownMutex.Lock()
 	if bounceTor.shutdown {
 		// We're already shutting down, there's no need to enter this

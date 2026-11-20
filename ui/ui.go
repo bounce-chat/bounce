@@ -173,7 +173,7 @@ func Main() {
 		},
 	}
 
-	ui.bounce = chat.Open(ui, &tor.TorNetwork{}, config.GetConfigDirectory(), ui.postNotification, nil)
+	ui.bounce = chat.Open(ui, &tor.Network{}, config.GetConfigDirectory(), ui.postNotification, nil)
 	ui.build()
 	go func() {
 		ui.loadInitialState(ui.bounce.GetInitialState())

@@ -15,7 +15,7 @@ import (
 
 func TestAFreshInstallHasAnIdentityBeforeTorStarts(t *testing.T) {
 	configDirectory := t.TempDir()
-	tor := &TorNetwork{}
+	tor := &Network{}
 	tor.Load(configDirectory)
 
 	// The private key is on disk, private to the user, in the 64-byte expanded form; the public key is derived from it
@@ -55,7 +55,7 @@ func TestAFreshInstallHasAnIdentityBeforeTorStarts(t *testing.T) {
 	}
 
 	// Loading the same directory again is the same identity, not a new one
-	again := &TorNetwork{}
+	again := &Network{}
 	again.Load(configDirectory)
 	if again.Address() != address {
 		t.Fatalf("a second load produced a different address")
@@ -88,7 +88,7 @@ func TestAPrivateKeyOfTheWrongSizeRefusesToStart(t *testing.T) {
 	if err := os.WriteFile(configDirectory+"/tor/keys/private_key", []byte("truncated"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	tor := &TorNetwork{}
+	tor := &Network{}
 	if !exitsFatally(t, func() { tor.Load(configDirectory) }) {
 		t.Fatal("a private key file of the wrong size was accepted")
 	}
@@ -98,14 +98,14 @@ func TestTheStoredPublicKeyFileIsNotTrusted(t *testing.T) {
 	// Only the private key is the identity; whatever a public_key file from an older layout says is ignored, and
 	// the address always comes from the private key
 	configDirectory := t.TempDir()
-	tor := &TorNetwork{}
+	tor := &Network{}
 	tor.Load(configDirectory)
 	address := tor.Address()
 
 	if err := os.WriteFile(configDirectory+"/tor/keys/public_key", make([]byte, 32), 0600); err != nil {
 		t.Fatal(err)
 	}
-	again := &TorNetwork{}
+	again := &Network{}
 	again.Load(configDirectory)
 	if again.Address() != address {
 		t.Fatalf("a stray public_key file changed the address")

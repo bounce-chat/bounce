@@ -72,7 +72,7 @@ type canaryEnds struct {
 }
 
 // runCanary watches one session for its lifetime and gives up on it when the network appears to be dead
-func (bounceTor *TorNetwork) runCanary(s *session) {
+func (bounceTor *Network) runCanary(s *session) {
 	bounceTor.runCanaryWith(
 		func() (net.Conn, error) { return bounceTor.dialSelf(s) },
 		s.canaryAccepted,
@@ -83,7 +83,7 @@ func (bounceTor *TorNetwork) runCanary(s *session) {
 
 // dialSelf dials this session's own onion address and runs the dialer half of the handshake, the way Dial does for a
 // peer.  The result is held by the canary and never handed to the engine, and its bytes are not peer traffic.
-func (bounceTor *TorNetwork) dialSelf(s *session) (net.Conn, error) {
+func (bounceTor *Network) dialSelf(s *session) (net.Conn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), canaryDialTimeout)
 	defer cancel()
 
@@ -103,7 +103,7 @@ func (bounceTor *TorNetwork) dialSelf(s *session) (net.Conn, error) {
 // runCanaryWith is runCanary with its dependencies passed in.  dial establishes the dialled end; the accepting end
 // arrives on accepted, routed there by the accept pump; stopping ends the canary with its session; dead reports that
 // the session has been given up on, and whether a canary ever connected on it.
-func (bounceTor *TorNetwork) runCanaryWith(
+func (bounceTor *Network) runCanaryWith(
 	dial func() (net.Conn, error),
 	accepted <-chan *torNetworkConnection,
 	stopping <-chan struct{},
@@ -144,7 +144,7 @@ func (bounceTor *TorNetwork) runCanaryWith(
 
 // establishCanary dials until a canary is up or canaryRedialWindow has passed.  Returns no ends when it gave up, and
 // stopped when the session ended first.
-func (bounceTor *TorNetwork) establishCanary(
+func (bounceTor *Network) establishCanary(
 	dial func() (net.Conn, error),
 	accepted <-chan *torNetworkConnection,
 	stopping <-chan struct{},
@@ -192,7 +192,7 @@ func (bounceTor *TorNetwork) establishCanary(
 
 // holdCanary keeps one canary alive until it dies, returning whether the session stopped instead.  The dialled end
 // carries a byte every canaryKeepAliveInterval; the accepted end must see one within every canaryReadWindow.
-func (bounceTor *TorNetwork) holdCanary(ends *canaryEnds, stopping <-chan struct{}) (stopped bool) {
+func (bounceTor *Network) holdCanary(ends *canaryEnds, stopping <-chan struct{}) (stopped bool) {
 	// Both ends are closed on the way out, and the reader is waited for, so nothing of this canary outlives it
 	readerDone := make(chan struct{})
 	defer func() {
@@ -243,14 +243,14 @@ func (bounceTor *TorNetwork) holdCanary(ends *canaryEnds, stopping <-chan struct
 }
 
 // peersRecentlyRead reports whether any peer connection read something within the last canaryReadWindow
-func (bounceTor *TorNetwork) peersRecentlyRead() bool {
+func (bounceTor *Network) peersRecentlyRead() bool {
 	last := bounceTor.lastPeerRead.Load()
 	return last != 0 && time.Since(time.Unix(0, last)) < canaryReadWindow
 }
 
 // networkDead is the canary's verdict on its session.  One recovery runs at a time, and a session that has already
 // been replaced needs none.
-func (bounceTor *TorNetwork) networkDead(s *session, confirmed bool) {
+func (bounceTor *Network) networkDead(s *session, confirmed bool) {
 	if bounceTor.superseded(s) || bounceTor.shuttingDown() {
 		return
 	}
@@ -270,7 +270,7 @@ func (bounceTor *TorNetwork) networkDead(s *session, confirmed bool) {
 // directory was downloaded for nothing, and that is the case that is rate limited, waiting longer each time in a
 // row up to restartBackoffLimit.  A bootstrap that fails is the internet being down, which costs nothing, so it is
 // retried every restartInterval with no backoff and the backoff is reset, as it is when a canary connects.
-func (bounceTor *TorNetwork) recoverNetwork(confirmed bool, restart func() error, sleep func(time.Duration) bool) {
+func (bounceTor *Network) recoverNetwork(confirmed bool, restart func() error, sleep func(time.Duration) bool) {
 	defer bounceTor.recovering.Store(false)
 	bounceTor.setOnline(false)
 
@@ -313,7 +313,7 @@ func (bounceTor *TorNetwork) recoverNetwork(confirmed bool, restart func() error
 }
 
 // sleepUnless waits for d, returning false if the session (when given) or the network stopped first
-func (bounceTor *TorNetwork) sleepUnless(d time.Duration, stopping <-chan struct{}) bool {
+func (bounceTor *Network) sleepUnless(d time.Duration, stopping <-chan struct{}) bool {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	select {

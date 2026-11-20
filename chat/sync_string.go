@@ -15,7 +15,7 @@ import (
 // a hashed field on the device record) so the network is explicit everywhere; it is never folded into the address
 // string itself, which stays the bare locator that gets signed and recovered back into the device's key.
 //
-// The network name is owned by the network provider (tor.TorNetwork.Name()); the engine never hardcodes a wire
+// The network name is owned by the network provider (tor.Network.Name()); the engine never hardcodes a wire
 // value for it and always reads it back through b.network.Name().
 
 // buildSyncString renders "<network>://<address>:<secret>" for our own address and the given secret.
