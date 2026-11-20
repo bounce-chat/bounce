@@ -14,7 +14,8 @@ import (
 // is held to one offer's worth of references at a time, a frame it served that we refused is never asked of it
 // again, and a history too large for one offer comes in parts that the receiver asks for one at a time.
 
-// smallOffers shrinks reference offers, and the per peer allowance with them, for the duration of a test
+// smallOffers shrinks reference offers, and the per peer allowance with them, for the duration of a test.  Call it
+// before creating engines so their shutdown cleanup runs before the global limit is restored.
 func smallOffers(t *testing.T, references int) {
 	t.Helper()
 	old := maximumReferencesPerOffer
@@ -54,8 +55,11 @@ func TestReferencesLiveWhileThePeerIsConnectedAndGoWhenItLeaves(t *testing.T) {
 }
 
 func TestAPeerIsHeldToItsReferenceAllowance(t *testing.T) {
-	me, alice, _, _ := createUsersAndGroups(t)
 	smallOffers(t, 3)
+	oldTotal := maximumReferences
+	maximumReferences = 4
+	t.Cleanup(func() { maximumReferences = oldTotal })
+	me, alice, _, _ := createUsersAndGroups(t)
 	stranger := newTestnet().Address()
 	dms := messagesFrom(me, alice.currentUserID(), 5)
 
@@ -74,9 +78,6 @@ func TestAPeerIsHeldToItsReferenceAllowance(t *testing.T) {
 	}
 
 	// The engine as a whole has a ceiling too, whoever is offering
-	oldTotal := maximumReferences
-	maximumReferences = 4
-	t.Cleanup(func() { maximumReferences = oldTotal })
 	other := newTestnet().Address()
 	alice.loadReferenceOffer(other, referencesTo(messagesFrom(me, alice.currentUserID(), 3)))
 	assert.Equal(t, 1, len(rowsFrom(alice, other)), "the global ceiling was not applied")
@@ -118,8 +119,8 @@ func TestARefusedFrameIsNotAskedOfThatPeerAgain(t *testing.T) {
 
 func TestALargeHistoryIsOfferedInPartsAndArrivesWhole(t *testing.T) {
 	quickReferenceRetries(t)
-	me, alice, _, _ := createUsersAndGroups(t)
 	smallOffers(t, 4)
+	me, alice, _, _ := createUsersAndGroups(t)
 
 	// Alice goes offline and I write her ten messages, more than one offer names
 	sever(t, me, alice)
