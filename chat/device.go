@@ -61,6 +61,10 @@ func (d *device) BeforeCreate(tx *gorm.DB) error {
 	if !idMatchesContent(d) {
 		return errors.New("device ID is not generated from its content")
 	}
+	if d.Signature != nil {
+		d.Signature.ID = d.ID
+		d.Signature.DeviceID = d.ID
+	}
 	d.RevokedAt = 0 // Revoked status can only be set by signed updates
 	d.SavedAt = time.Now().Unix()
 	return nil

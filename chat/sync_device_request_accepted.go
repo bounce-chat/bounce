@@ -110,7 +110,6 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	if sdra.Settings == nil {
 		sdra.Settings = defaultProfileSettings()
 	}
-	sdra.Settings.ID = NewID()
 	sdra.Profile.ProfileSettings = sdra.Settings
 	sdra.Profile.OpenDM = true
 	sdra.Profile.IntroductionMethod = userIntroductionProfile

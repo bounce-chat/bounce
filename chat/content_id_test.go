@@ -322,7 +322,7 @@ func TestAMessagesAttachmentsArePartOfItsContent(t *testing.T) {
 	}
 	withAttachment := gm.generateID()
 
-	// Changing anything about the attachment, or dropping it, is a different message
+	// Changing the signed attachment content, or dropping it, is a different message
 	renamed := gm
 	renamed.FileAttachments = []fileAttachment{{ID: gm.FileAttachments[0].ID, FileID: gm.FileAttachments[0].FileID, Name: "agenda.pdf", Size: 1024}}
 	assert.NotEqual(t, withAttachment, renamed.generateID())
@@ -333,9 +333,9 @@ func TestAMessagesAttachmentsArePartOfItsContent(t *testing.T) {
 	none.FileAttachments = nil
 	assert.NotEqual(t, withAttachment, none.generateID())
 
-	// Whereas the message ID written into the attachment row is not, since it is what is being generated
+	// Local storage IDs and parent foreign keys are not message content
 	linked := gm
-	linked.FileAttachments = []fileAttachment{{ID: gm.FileAttachments[0].ID, FileID: gm.FileAttachments[0].FileID, MessageID: withAttachment, Name: "minutes.pdf", Size: 1024}}
+	linked.FileAttachments = []fileAttachment{{ID: NewID(), FileID: gm.FileAttachments[0].FileID, MessageID: withAttachment, Name: "minutes.pdf", Size: 1024}}
 	assert.Equal(t, withAttachment, linked.generateID())
 }
 

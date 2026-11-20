@@ -2,6 +2,8 @@ package chat
 
 import (
 	"time"
+
+	"gorm.io/gorm"
 )
 
 const OnlyAutoJoinGroupsWithNoNewUsers = 0
@@ -10,7 +12,7 @@ const AlwaysAutoJoinGroups = 2
 
 type profileSettings struct {
 	ID                             ID `gorm:"primary_key;" msgpack:"-"`
-	UserID                         ID
+	UserID                         ID `msgpack:"-"`
 	BlockedGroups                  string
 	DefaultGroupRetention          int64
 	DefaultSendReadReceipts        bool
@@ -20,6 +22,11 @@ type profileSettings struct {
 	NewGroupRestrictPosting        bool
 	AutoJoinGroups                 int
 	DefaultDMRetention             int64
+}
+
+func (ps *profileSettings) BeforeCreate(tx *gorm.DB) error {
+	ps.ID = NewID()
+	return nil
 }
 
 func defaultProfileSettings() *profileSettings {

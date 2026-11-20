@@ -10,11 +10,16 @@ import (
 )
 
 type fileAttachment struct {
-	ID        ID
+	ID        ID `gorm:"primary_key;" msgpack:"-"`
 	FileID    ID
-	MessageID ID
+	MessageID ID `msgpack:"-"`
 	Name      string
 	Size      int64
+}
+
+func (fa *fileAttachment) BeforeCreate(tx *gorm.DB) error {
+	fa.ID = NewID()
+	return nil
 }
 
 func (fa *fileAttachment) AfterDelete(tx *gorm.DB) error {
@@ -25,14 +30,19 @@ func (fa *fileAttachment) AfterDelete(tx *gorm.DB) error {
 }
 
 type imageAttachment struct {
-	ID        ID
+	ID        ID `gorm:"primary_key;" msgpack:"-"`
 	FileID    ID
-	MessageID ID
+	MessageID ID `msgpack:"-"`
 	Name      string
 	Size      int64
 	Width     int
 	Height    int
 	BlurHash  string
+}
+
+func (ia *imageAttachment) BeforeCreate(tx *gorm.DB) error {
+	ia.ID = NewID()
+	return nil
 }
 
 func (ia *imageAttachment) AfterDelete(tx *gorm.DB) error {
@@ -42,13 +52,12 @@ func (ia *imageAttachment) AfterDelete(tx *gorm.DB) error {
 	return deleteEach[file](tx, "id = ?", ia.FileID)
 }
 
-// Attachments are part of a message's content, so they are packed into its ID.  The message ID itself is left out
-// of each row, since it is what is being generated.
+// Attachment file IDs and metadata are part of a message's content, so they are packed into its ID.  Database row IDs
+// and parent message IDs are assigned locally and are not content.
 func packImageAttachments(ch *contentHasher, attachments []imageAttachment) *contentHasher {
 	ch.int64(int64(len(attachments)))
 	for _, ia := range attachments {
-		ch.id(ia.ID).
-			id(ia.FileID).
+		ch.id(ia.FileID).
 			bytes([]byte(ia.Name)).
 			int64(ia.Size).
 			int64(int64(ia.Width)).
@@ -61,8 +70,7 @@ func packImageAttachments(ch *contentHasher, attachments []imageAttachment) *con
 func packFileAttachments(ch *contentHasher, attachments []fileAttachment) *contentHasher {
 	ch.int64(int64(len(attachments)))
 	for _, fa := range attachments {
-		ch.id(fa.ID).
-			id(fa.FileID).
+		ch.id(fa.FileID).
 			bytes([]byte(fa.Name)).
 			int64(fa.Size)
 	}
@@ -80,7 +88,7 @@ type messageAttachments struct {
 	fileDTOs  []FileAttachment
 }
 
-// prepareMessageAttachments reads, hashes and assigns IDs to a message's attachments, before the message exists.  An
+// prepareMessageAttachments reads and hashes files for a message's attachments, before the message exists.  An
 // attachment that cannot be read, is too large to embed and has no source, or cannot be prepared is left out and
 // the rest of the message still goes.  Images too large to embed travel as plain file attachments, seeded.
 func (b *Bounce) prepareMessageAttachments(attachments []OutgoingAttachment, scope int) messageAttachments {
@@ -98,7 +106,6 @@ func (b *Bounce) prepareMessageAttachments(attachments []OutgoingAttachment, sco
 
 		if a.Image != nil && a.Size <= EmbeddedFileLimit {
 			result.images = append(result.images, imageAttachment{
-				ID:       NewID(),
 				FileID:   f.ID,
 				Name:     a.Name,
 				Size:     f.Size,
@@ -116,7 +123,6 @@ func (b *Bounce) prepareMessageAttachments(attachments []OutgoingAttachment, sco
 			})
 		} else {
 			result.files = append(result.files, fileAttachment{
-				ID:     NewID(),
 				FileID: f.ID,
 				Name:   a.Name,
 				Size:   f.Size,
