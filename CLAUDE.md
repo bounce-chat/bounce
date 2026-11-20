@@ -43,11 +43,12 @@ Release targets (`macos-release`, `windows-release`, `android-release`, `linux-a
 
 ## Test
 
-Only `chat/` has tests, and they are fast (<1s) because they run against an in-process fake network.
+Most of the tests are in `chat/`, which runs against an in-process fake network and takes about half a minute. Three smaller suites need no Tor, display or device either: `network/tor` (handshake, accept pump, liveness canary and key loading, over fakes; about 12 s), `ui/fyneui` (chat history, thumbnail cache, timestamps and image loading) and `ui/android/goengine` (the JSON that crosses to Kotlin, and attachment preparation). `config/` and `ui/assets/` have none.
 
 ```bash
-go test ./chat/                              # whole suite
+go test ./chat/                              # the main suite
 go test ./chat/ -run TestEarlyConfirmationWorks -count=1
+go test ./network/tor/ ./ui/...              # transport, Fyne UI and Android binding
 go vet ./chat ./ui/... ./network/tor ./config
 ```
 
