@@ -9,7 +9,7 @@ import (
 
 	"github.com/bounce-chat/bounce/chat"
 	"github.com/bounce-chat/bounce/config"
-	"github.com/bounce-chat/bounce/network"
+	"github.com/bounce-chat/bounce/network/tor"
 )
 
 var errNotStarted = errors.New("engine not started")
@@ -71,7 +71,7 @@ func (a *Engine) Start(configDir string, events EventSink, notes NotificationSin
 		notes.Clear(id)
 	}
 
-	a.e = chat.Open(&uiAdapter{sink: events, profileKnown: a.setUserID}, &network.TorNetwork{}, configDir, post, clear)
+	a.e = chat.Open(&uiAdapter{sink: events, profileKnown: a.setUserID}, &tor.TorNetwork{}, configDir, post, clear)
 	return nil
 }
 

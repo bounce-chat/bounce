@@ -8,7 +8,7 @@ import (
 
 	"github.com/bounce-chat/bounce/chat"
 	"github.com/bounce-chat/bounce/config"
-	"github.com/bounce-chat/bounce/network"
+	"github.com/bounce-chat/bounce/network/tor"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -173,7 +173,7 @@ func Main() {
 		},
 	}
 
-	ui.bounce = chat.Open(ui, &network.TorNetwork{}, config.GetConfigDirectory(), ui.postNotification, nil)
+	ui.bounce = chat.Open(ui, &tor.TorNetwork{}, config.GetConfigDirectory(), ui.postNotification, nil)
 	ui.build()
 	go func() {
 		ui.loadInitialState(ui.bounce.GetInitialState())

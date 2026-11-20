@@ -1,4 +1,4 @@
-package network
+package tor
 
 import (
 	"crypto/ed25519"
@@ -63,7 +63,7 @@ func TestAFreshInstallHasAnIdentityBeforeTorStarts(t *testing.T) {
 }
 
 // exitsFatally runs fn with logrus's exit replaced by a panic, and reports whether fn reached a fatal log.  The
-// network package registers no exit handler, so this is safe here.
+// tor package registers no exit handler, so this is safe here.
 func exitsFatally(t *testing.T, fn func()) (fatal bool) {
 	t.Helper()
 	previous := log.StandardLogger().ExitFunc
