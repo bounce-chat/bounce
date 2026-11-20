@@ -417,9 +417,10 @@ private fun LinkDeviceFlow(
                     }
                     // Holding the request rather than sending it immediately:
                     // Tor is still bootstrapping for the first minute or so
-                    // after install, and dialing during that window fails
-                    // instantly instead of waiting. The progress screen already
-                    // renders a "waiting for the network" state for exactly this.
+                    // after install, and dialing during that window blocks
+                    // inside the engine call, which cannot be cancelled. The
+                    // progress screen already renders a "waiting for the
+                    // network" state for exactly this.
                     if (!awaitNetworkOnline()) {
                         Log.w(TAG, "network never came online, abandoning pairing request")
                         requestFailed = true

@@ -94,13 +94,16 @@ It only has to be redone when Arti itself changes, not on every bind.
   `blobPath`, is documented as pure string concatenation.
 - **A running engine cannot necessarily dial.** `chat.Open` starts Tor on a
   goroutine and returns immediately, so `EngineHolder.client` is non-null within
-  milliseconds while `tor.Network.tor`/`.onion` stay nil until the bootstrap and
-  hidden-service publish finish — a minute or more on a first run. `Dial` in
-  that window does not wait; it returns
-  `"cannot dial while network is not started"` *instantly*, which surfaces as a
-  misleading "could not connect to device". Gate anything that dials
-  (`requestToSync`, `requestToAddUser`, `requestToManageEncryptedDevice`) on
-  `awaitNetworkOnline()`, never on a non-null client.
+  milliseconds while the transport has no session until Tor has bootstrapped and
+  the onion service exists — which can take up to three minutes. `Dial` in that
+  window does not fail; it *blocks* until the session is there, and the bound
+  call blocks with it. The pairing calls (`requestToSync`, `requestToAddUser`,
+  `requestToManageEncryptedDevice`) dial directly, so they are the ones that
+  stall. The same wait happens while the transport restarts Tor after an outage,
+  where it gives up after four minutes and surfaces as a misleading "could not
+  connect to device". Gate anything that dials on `awaitNetworkOnline()`, never
+  on a non-null client, so the wait happens where the UI can show it and bound
+  it rather than inside an engine call that cannot be cancelled.
 - **Sink callbacks must never block.** They run on Go threads with the emitting
   goroutine parked. Blocking on a lock that a thread inside an engine call holds
   deadlocks across JNI, and nothing on the Kotlin side will diagnose it.

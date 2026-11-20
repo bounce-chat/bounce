@@ -402,7 +402,7 @@ private fun submitScannedCode(what: String, block: suspend (EngineClient) -> Uni
     }
     BounceApplication.scope.launch {
         // Both of these dial the peer, and dialing before Tor has finished
-        // bootstrapping fails instantly rather than waiting - see
+        // bootstrapping blocks inside the engine call until it has - see
         // awaitNetworkOnline. Holding the request costs the user nothing here
         // because the scanner has already been popped.
         if (!awaitNetworkOnline()) {
