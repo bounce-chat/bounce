@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -171,6 +170,7 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 			Nonce:     newNonce(),
 			UserID:    b.currentUserID(),
 			Address:   peer,
+			Network:   b.peerNetwork(peer),
 			Timestamp: time.Now().Unix(),
 			LastSeen:  time.Now().Unix(),
 			Signature: &introductionSignature{
@@ -236,12 +236,10 @@ func (b *Bounce) RequestToSync(data string) error {
 	}
 
 	// Parse the offer, which may have been pasted with surrounding whitespace
-	parts := strings.Split(strings.TrimSpace(data), ":")
-	if len(parts) != 2 {
-		return errors.New("invalid sync data")
+	address, secret, err := b.parseSyncString(data)
+	if err != nil {
+		return err
 	}
-	address := parts[0]
-	secret := parts[1]
 
 	// Dial the offer device
 	conn, err := b.network.Dial(address)

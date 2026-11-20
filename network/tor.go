@@ -807,6 +807,16 @@ func (bounceTor *TorNetwork) Address() string {
 	return id
 }
 
+// networkNameTor is the single source of the wire value "tor".  Both TorNetwork.Name() and torAddress.Network()
+// return it, so a device's self-assigned network always equals the network its peers observe for it.
+const networkNameTor = "tor"
+
+// Name is the overlay-network identifier Bounce stamps onto addresses reached over this provider.  It must match
+// torAddress.Network() so that a device's self-assigned network equals what its peers observe for it.
+func (bounceTor *TorNetwork) Name() string {
+	return networkNameTor
+}
+
 func (bounceTor *TorNetwork) Accept() (net.Conn, error, bool) {
 	// Wait for a live session rather than failing fast: the accept loop retries
 	// non-fatal errors with no backoff, so returning immediately during a
@@ -1318,7 +1328,7 @@ type torAddress struct {
 }
 
 func (ta *torAddress) Network() string {
-	return "tor"
+	return networkNameTor
 }
 
 func (ta *torAddress) String() string {

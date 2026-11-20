@@ -22,6 +22,7 @@ type device struct {
 	Name           string `msgpack:"-"`
 	UserID         ID
 	Address        string `gorm:"uniqueIndex"`
+	Network        string
 	Timestamp      int64
 	SavedAt        int64 `msgpack:"-"`
 	LastSeen       int64 `msgpack:"-"`
@@ -35,12 +36,15 @@ func (d *device) getNonce() nonce {
 	return d.Nonce
 }
 
-// A device's ID is generated from who it belongs to, its address, when it was created, and the introduction that
-// vouches for it.  Revocation is set by later updates and so it isn't included.
+// A device's ID is generated from who it belongs to, its address, the network that address is on, when it was
+// created, and the introduction that vouches for it.  Revocation is set by later updates and so it isn't included.
+// The network is a separate hashed field, not a prefix on the address: the bare address stays what is signed and
+// recovered back into the key, while the network term makes (address, network) jointly the device's identity.
 func (d *device) generateID() ID {
 	ch := newContentHasher(typeDevice, d.Nonce).
 		id(d.UserID).
 		bytes([]byte(d.Address)).
+		bytes([]byte(d.Network)).
 		int64(d.Timestamp)
 	if d.Signature == nil {
 		ch.uint16(0)

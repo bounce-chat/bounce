@@ -58,6 +58,10 @@ func (t *testnet) Address() string {
 	return torutil.OnionServiceIDFromV3PublicKey(t.publicKey)
 }
 
+func (t *testnet) Name() string {
+	return "testnet"
+}
+
 func (t *testnet) Accept() (conn net.Conn, err error, fatal bool) {
 	c := <-t.incoming
 	return c, nil, false

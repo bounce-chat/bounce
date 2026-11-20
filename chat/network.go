@@ -19,6 +19,11 @@ type Network interface {
 	// the address from the stored private key.
 	Address() string
 
+	// Name returns the stable identifier for this overlay network (for example "tor").  It must equal the
+	// Network() reported by the net.Addr of the connections this provider accepts and dials, so that a device's
+	// self-assigned network matches the network its peers observe for it.
+	Name() string
+
 	// Accept an incoming connection on the network.  Returns the net.Conn, any errors, and a boolean indicating if the
 	// error was fatal.  Non-fatal errors will result in another immediate call to Accept, so Accept should block while
 	// the network is offline, or at least have an internal cooldown sleep.

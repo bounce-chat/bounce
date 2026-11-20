@@ -52,5 +52,5 @@ func (b *Bounce) GetNewSyncString() string {
 		}).Fatal("database error deleting old sync device offers while creating new one")
 	}
 
-	return b.network.Address() + ":" + secret
+	return b.buildSyncString(secret)
 }

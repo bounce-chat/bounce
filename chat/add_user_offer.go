@@ -53,5 +53,5 @@ func (b *Bounce) GetNewAddUserString() string {
 		}).Fatal("database error deleting old add user offers while creating new one")
 	}
 
-	return b.network.Address() + ":" + secret
+	return b.buildSyncString(secret)
 }

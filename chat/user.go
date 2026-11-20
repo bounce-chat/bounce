@@ -276,6 +276,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		Nonce:     newNonce(),
 		UserID:    newID,
 		Address:   b.network.Address(),
+		Network:   b.network.Name(),
 		Timestamp: time.Now().Unix(),
 	}
 	d.ID = d.generateID()

@@ -2,7 +2,6 @@ package chat
 
 import (
 	"errors"
-	"strings"
 	"sync"
 	"time"
 
@@ -200,12 +199,10 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 
 func (b *Bounce) RequestToAddUser(offer string) error {
 	// Parse the offer, which may have been pasted with surrounding whitespace
-	parts := strings.Split(strings.TrimSpace(offer), ":")
-	if len(parts) != 2 {
-		return errors.New("invalid friend request string")
+	address, secret, err := b.parseSyncString(offer)
+	if err != nil {
+		return err
 	}
-	address := parts[0]
-	secret := parts[1]
 
 	// Dial the offer device
 	conn, err := b.network.Dial(address)

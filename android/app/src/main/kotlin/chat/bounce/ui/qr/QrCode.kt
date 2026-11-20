@@ -42,7 +42,8 @@ import kotlinx.coroutines.withContext
 /**
  * Renders [content] as a [sizePx] x [sizePx] QR bitmap.
  *
- * Error correction is left at M: the payload is ~90 characters, so a higher
+ * Error correction is left at M: the payload is ~95 characters (a network
+ * scheme, a bare onion id and a hex secret), so a higher error-correction
  * level would push the symbol into a denser version for no practical gain,
  * and a denser symbol is harder to read off a phone screen at arm's length.
  *
@@ -121,15 +122,22 @@ fun QrCodeImage(content: String, modifier: Modifier = Modifier) {
 
 /**
  * Cheap shape check for the strings produced by the engine's
- * `GetNewAddUserString` / `GetNewSyncString`: a v3 onion service ID, a colon,
- * and a hex secret.
+ * `GetNewAddUserString` / `GetNewSyncString`: a network scheme (`tor://`), a v3
+ * onion service ID, a colon, and a hex secret.
  *
  * This exists so the scanner can ignore unrelated QR codes (a Wi-Fi config, a
  * URL on a poster) and keep looking, instead of firing the one-shot result
  * callback with something the engine will only reject. Bounds are loose so a
  * change to the secret length on the Go side does not silently break scanning.
+ *
+ * The scheme is matched generically rather than pinned to `tor` on purpose: a
+ * code for a network this client is too old to dial still looks like a Bounce
+ * code, so it reaches the engine and is rejected with a clear "unsupported
+ * network" error instead of being silently skipped as junk. The engine is the
+ * authority on which schemes are dialable; this check only recognises the shape.
  */
 fun looksLikeBounceCode(text: String): Boolean =
     BOUNCE_CODE_SHAPE.matches(text.trim())
 
-private val BOUNCE_CODE_SHAPE = Regex("^[a-z2-7]{16,128}:[0-9a-f]{16,128}$", RegexOption.IGNORE_CASE)
+private val BOUNCE_CODE_SHAPE =
+    Regex("^[a-z][a-z0-9+.-]*://[a-z2-7]{16,128}:[0-9a-f]{16,128}$", RegexOption.IGNORE_CASE)

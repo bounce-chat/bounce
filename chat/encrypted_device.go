@@ -88,7 +88,7 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 		rand.Read(secretBytes)
 		setupKey = fmt.Sprintf("%x", secretBytes)
 		fmt.Println("Welcome to Bounce!  This encrypted device is currently unmanaged.  Use the following setup key on an existing device to manage this encrypted device:")
-		fmt.Printf("\n%s:%s\n\n", b.network.Address(), setupKey)
+		fmt.Printf("\n%s\n\n", b.buildSyncString(setupKey))
 		config := qrterminal.Config{
 			Level:     qrterminal.L,
 			Writer:    os.Stdout,
@@ -96,7 +96,7 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 			WhiteChar: qrterminal.WHITE,
 			QuietZone: 1,
 		}
-		qrterminal.GenerateWithConfig(b.network.Address()+":"+setupKey, config)
+		qrterminal.GenerateWithConfig(b.buildSyncString(setupKey), config)
 		fmt.Print("\n\n")
 	}
 
@@ -288,12 +288,10 @@ func (b *Bounce) RequestToManageEncryptedDevice(data string) error {
 		log.Error("cannot manage encrypted device before profile creation")
 	}
 
-	parts := strings.Split(strings.TrimSpace(data), ":")
-	if len(parts) != 2 {
-		return errors.New("invalid data")
+	address, secret, err := b.parseSyncString(data)
+	if err != nil {
+		return err
 	}
-	address := parts[0]
-	secret := parts[1]
 
 	conn, err := b.network.Dial(address)
 	if err != nil {

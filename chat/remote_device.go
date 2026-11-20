@@ -52,6 +52,7 @@ func drain(ch chan sendable) {
 
 type remoteDevice struct {
 	sync.Mutex
+	network      string
 	messages     chan sendable
 	chunks       chan sendable
 	sockets      []*socket
@@ -195,6 +196,20 @@ func (b *Bounce) getRemoteDevice(address string) *remoteDevice {
 	return rd
 }
 
+// peerNetwork reports the overlay network a currently-connected peer reached us on, falling back to our own
+// network when no live connection has recorded one.  It is the source for the Network stamped on a device we
+// introduce for a peer, which must match the network that peer (and everyone else) computes for that device.
+func (b *Bounce) peerNetwork(peer string) string {
+	rd := b.getRemoteDevice(peer)
+	rd.Lock()
+	network := rd.network
+	rd.Unlock()
+	if network == "" {
+		return b.network.Name()
+	}
+	return network
+}
+
 func (b *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	if b.peerIsBlocked(conn.RemoteAddr().String()) {
 		conn.Close()
@@ -204,6 +219,12 @@ func (b *Bounce) insertConnectionIntoDevicePool(conn net.Conn) {
 	// Get the remote device
 	peer := conn.RemoteAddr().String()
 	rd := b.getRemoteDevice(peer)
+
+	// Record which overlay network this peer connected over, so a device we later introduce for them is stamped
+	// with their network rather than ours.
+	rd.Lock()
+	rd.network = conn.RemoteAddr().Network()
+	rd.Unlock()
 
 	s := &socket{
 		underlying: conn,
