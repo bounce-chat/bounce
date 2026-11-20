@@ -2,7 +2,7 @@ module github.com/bounce-chat/bounce
 
 go 1.26.0
 
-replace github.com/bounce-chat/go-arti => ./go-arti
+replace github.com/bounce-chat/go-arti => ./network/tor/go-arti
 
 require (
 	fyne.io/fyne/v2 v2.8.1

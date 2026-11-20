@@ -1,4 +1,4 @@
 [submodule "go-arti"]
-	path = go-arti
+	path = network/tor/go-arti
 	url = ../go-arti
 	branch = master

@@ -69,16 +69,17 @@ Overridable: `ANDROID_SDK`, `ANDROID_NDK` (defaults to the highest installed),
 `NATIVE_ABIS` (default `android/arm64,android/amd64` — arm64 for phones, amd64
 so it runs on an emulator), `NATIVE_API`.
 
-Tor comes from [go-arti](../go-arti), which is Rust and cannot be built by the
+Tor comes from [go-arti](../network/tor/go-arti), which is Rust and cannot be built by the
 Go toolchain, so its static library has to exist for every ABI being bound
 before `make android-bind` will link:
 
 ```bash
-cd go-arti && make android      # builds libarti_ffi.a for each Android ABI
+cd network/tor/go-arti && make android      # builds libarti_ffi.a for each Android ABI
 ```
 
 That needs a Rust toolchain with the Android targets installed and an NDK; run
-`make doctor GOOS=android GOARCH=arm64` in `go-arti` to see what is missing.
+`make doctor GOOS=android GOARCH=arm64` in `network/tor/go-arti` to see what
+is missing.
 It only has to be redone when Arti itself changes, not on every bind.
 
 ## Constraints worth knowing before changing anything

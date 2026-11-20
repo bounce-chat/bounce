@@ -63,7 +63,7 @@ prepare() {
 
     # Fetch dependencies here so build() needs no network, per Arch policy.
     go mod download
-    cd go-arti/rust/arti-ffi && cargo fetch
+    cd network/tor/go-arti/rust/arti-ffi && cargo fetch
 }
 
 build() {
@@ -77,13 +77,13 @@ build() {
 
     # Arti is Rust; the Go toolchain cannot invoke cargo, so the static library
     # has to exist before the first `go build`. It lands in
-    # go-arti/lib/linux_amd64/, which is where the #cgo LDFLAGS in
-    # go-arti/internal/arti/cgo.go look -- no -extldflags needed.
+    # network/tor/go-arti/lib/linux_amd64/, which is where the #cgo LDFLAGS in
+    # network/tor/go-arti/internal/arti/cgo.go look -- no -extldflags needed.
     #
     # Build it in place inside the submodule checkout. Copying the sibling
     # clone over the submodule instead would both nest a duplicate tree and
     # discard the pinned commit.
-    make -C go-arti lib
+    make -C network/tor/go-arti lib
 
     go build -tags migrated_fynedo -ldflags "-linkmode=external" -o "${pkgname}" .
 }

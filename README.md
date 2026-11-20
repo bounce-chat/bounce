@@ -48,7 +48,7 @@ Bounce uses submodules, and should be cloned with:
 
 `git clone --recurse-submodules git@github.com:bounce-chat/bounce.git`
 
-Then, `cd go-arti && make lib` to generate a compiled arti library for your platform.  This will require the rust compiler.  If you plan to cross-compile windows, also run `make lib GOOS=windows`, and if you plan to build android also run `make android` in `go-arti`.
+Then, `cd network/tor/go-arti && make lib` to generate a compiled arti library for your platform.  This will require the rust compiler.  If you plan to cross-compile windows, also run `make lib GOOS=windows`, and if you plan to build android also run `make android` in `network/tor/go-arti`.
 
 #### Desktop
 

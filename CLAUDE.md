@@ -10,7 +10,7 @@ Bounce is a distributed, metadata-protecting group chat app. Every instance runs
 
 ## Repository layout
 
-The repo has one git submodule — clone with `--recurse-submodules`. `go-arti/` is the Tor implementation (see Build); `go.mod` has `replace github.com/bounce-chat/go-arti => ./go-arti`.
+The repo has one git submodule — clone with `--recurse-submodules`. `network/tor/go-arti/` is the Tor implementation (see Build), sitting beside the `tor` package that is its only consumer; `go.mod` has `replace github.com/bounce-chat/go-arti => ./network/tor/go-arti`. It is its own Go module, so `./...` patterns from the repo root skip it.
 
 Fyne is now tracked upstream (`fyne.io/fyne/v2 v2.8.1`, no `replace`). It used to be a fork whose reason for existing was camera capture; that now lives in `ui/camera_supported.go` / `ui/camera_unsupported.go` over `github.com/svanichkin/gocam`, split by `//go:build linux || windows`. The unsupported stubs `log.Fatal`, so every call site guards with `cameraSupported()` — keep that up if you add one.
 
@@ -19,12 +19,12 @@ Fyne is now tracked upstream (`fyne.io/fyne/v2 v2.8.1`, no `replace`). It used t
 Arti is Rust and the Go toolchain cannot invoke Cargo, so the static library has to exist before the first `go build`:
 
 ```bash
-cd go-arti && make lib            # host target; needs a Rust toolchain, takes a couple of minutes
-make lib GOOS=windows             # additionally, to cross-compile Windows
-make android                      # additionally, for the Android ABIs
+cd network/tor/go-arti && make lib   # host target; needs a Rust toolchain, takes a couple of minutes
+make lib GOOS=windows                # additionally, to cross-compile Windows
+make android                         # additionally, for the Android ABIs
 ```
 
-The result lands in `go-arti/lib/<goos>_<goarch>/libarti_ffi.a`, which is where the `#cgo LDFLAGS` in `go-arti/internal/arti/cgo.go` look. Always rebuild through `make lib` rather than calling `cargo` directly: Go's build cache doesn't hash a library reached via `LDFLAGS`, so `make lib` also regenerates `internal/arti/libstamp.go` to give the cache something Go-visible to notice. Without it, editing the Rust and rebuilding silently relinks nothing.
+The result lands in `network/tor/go-arti/lib/<goos>_<goarch>/libarti_ffi.a`, which is where the `#cgo LDFLAGS` in `network/tor/go-arti/internal/arti/cgo.go` look. Always rebuild through `make lib` rather than calling `cargo` directly: Go's build cache doesn't hash a library reached via `LDFLAGS`, so `make lib` also regenerates `internal/arti/libstamp.go` to give the cache something Go-visible to notice. Without it, editing the Rust and rebuilding silently relinks nothing.
 
 Then, from the repo root:
 
@@ -37,7 +37,7 @@ make android-bind                 # regenerate the .aar only
 
 Release targets (`macos-release`, `windows-release`, `android-release`, `linux-arch-release`, `linux-debian-release`) sign/notarize/package into `releases/` and read credentials from `.env`. The desktop and Windows release builds pass `-tags migrated_fynedo`; plain `go build` does not. The tag changes what a Fyne threading mistake does: `fyne.DoAndWait` called on the main goroutine (from a button handler, or nested inside another `DoAndWait` closure) logs `*** Error in Fyne call thread ***` and runs asynchronously in a dev build, but deadlocks in a release build. Treat that log line in development as a release hang. `fyne.Do` from the main goroutine is fine in both: it only enqueues onto an unbounded queue.
 
-`make android` needs the Android SDK, an NDK, and the Arti libraries for each ABI it binds (`NATIVE_ABIS`, default `android/arm64,android/amd64`) — `cd go-arti && make android` builds all of them. `ANDROID_SDK` defaults to `~/Android/sdk`; `ANDROID_NDK` is not pinned but discovered as the highest version installed under `$(ANDROID_SDK)/ndk`, so it does not rot when the NDK is upgraded. Override either on the command line or in `.env`. There is no dex2jar step and no forked-CLI prerequisite — that pipeline belonged to the Fyne Android client, which was replaced.
+`make android` needs the Android SDK, an NDK, and the Arti libraries for each ABI it binds (`NATIVE_ABIS`, default `android/arm64,android/amd64`) — `cd network/tor/go-arti && make android` builds all of them. `ANDROID_SDK` defaults to `~/Android/sdk`; `ANDROID_NDK` is not pinned but discovered as the highest version installed under `$(ANDROID_SDK)/ndk`, so it does not rot when the NDK is upgraded. Override either on the command line or in `.env`. There is no dex2jar step and no forked-CLI prerequisite — that pipeline belonged to the Fyne Android client, which was replaced.
 
 `go-arti`'s own `make doctor` reports which cross-compilation toolchain is missing for a target, and is a faster way to diagnose a failed release build than reading a linker error.
 
