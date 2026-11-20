@@ -55,6 +55,9 @@ func (dm *directMessage) BeforeCreate(tx *gorm.DB) error {
 	if !idMatchesContent(dm) {
 		return errors.New("direct message ID is not generated from its content")
 	}
+	if err := validMessageAttachments(dm.ImageAttachments, dm.FileAttachments); err != nil {
+		return err
+	}
 	dm.SavedAt = time.Now().Unix()
 	return nil
 }
@@ -238,6 +241,15 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 		log.WithFields(log.Fields{
 			"id": dm.ID,
 		}).Warn("ignoring direct message that is too long")
+		b.rejectMessage(peer, typeDirectMessage, dm.ID)
+		return nil, false
+	}
+
+	if err := validMessageAttachments(dm.ImageAttachments, dm.FileAttachments); err != nil {
+		log.WithFields(log.Fields{
+			"id":    dm.ID,
+			"error": err.Error(),
+		}).Warn("ignoring direct message with invalid attachments")
 		b.rejectMessage(peer, typeDirectMessage, dm.ID)
 		return nil, false
 	}
@@ -483,6 +495,13 @@ func (b *Bounce) SendDirectMessage(thread ID, text string, attachments []Outgoin
 	dm.ImageAttachments = attached.images
 	dm.FileAttachments = attached.files
 
+	if err := validMessageAttachments(dm.ImageAttachments, dm.FileAttachments); err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("refusing to send direct message with invalid attachments")
+		b.discardPreparedAttachments(attached)
+		return err
+	}
 	if dm.empty() {
 		log.Error("refusing to send empty direct message")
 		return errMessageEmpty

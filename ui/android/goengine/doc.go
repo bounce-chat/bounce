@@ -68,6 +68,8 @@ const MutedForever = chat.MutedForever
 const (
 	MaximumNameLength        = chat.MaximumNameLength
 	MaximumMessageCharacters = chat.MaximumMessageCharacters
+	MaximumImageAttachments  = chat.MaximumImageAttachments
+	MaximumFileAttachments   = chat.MaximumFileAttachments
 )
 
 // EmbeddedFileLimit is the size at or below which a file is embedded and

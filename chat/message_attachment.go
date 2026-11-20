@@ -1,13 +1,23 @@
 package chat
 
 import (
+	"errors"
 	"io"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
+
+const MaximumImageAttachments = 32
+const MaximumFileAttachments = 32
+const maximumAttachmentNameLength = 255
+const maximumBlurHashLength = 166
+const maximumAttachmentDimension = 65535
+
+var errInvalidMessageAttachments = errors.New("invalid message attachments")
 
 type fileAttachment struct {
 	ID        ID `gorm:"primary_key;" msgpack:"-"`
@@ -26,7 +36,7 @@ func (fa *fileAttachment) AfterDelete(tx *gorm.DB) error {
 	if fa.ID == NilID {
 		return nil
 	}
-	return deleteEach[file](tx, "id = ?", fa.FileID)
+	return deleteMessageAttachmentFile(tx, fa.FileID, fa.MessageID)
 }
 
 type imageAttachment struct {
@@ -49,7 +59,11 @@ func (ia *imageAttachment) AfterDelete(tx *gorm.DB) error {
 	if ia.ID == NilID {
 		return nil
 	}
-	return deleteEach[file](tx, "id = ?", ia.FileID)
+	return deleteMessageAttachmentFile(tx, ia.FileID, ia.MessageID)
+}
+
+func deleteMessageAttachmentFile(tx *gorm.DB, fileID ID, messageID ID) error {
+	return deleteEach[file](tx, "id = ? AND attached_to = ? AND type = ?", fileID, messageID, fileTypeMessageAttachment)
 }
 
 // Attachment file IDs and metadata are part of a message's content, so they are packed into its ID.  Database row IDs
@@ -75,6 +89,29 @@ func packFileAttachments(ch *contentHasher, attachments []fileAttachment) *conte
 			int64(fa.Size)
 	}
 	return ch
+}
+
+// Attachment row IDs and parent IDs are assigned locally, so only signed attachment content is validated here.
+func validMessageAttachments(images []imageAttachment, files []fileAttachment) error {
+	if len(images) > MaximumImageAttachments || len(files) > MaximumFileAttachments {
+		return errInvalidMessageAttachments
+	}
+	fileIDs := make(map[ID]bool, len(images)+len(files))
+	for _, ia := range images {
+		if ia.FileID == NilID || ia.Size < 0 || utf8.RuneCountInString(ia.Name) > maximumAttachmentNameLength ||
+			len(ia.BlurHash) > maximumBlurHashLength || ia.Width < 0 || ia.Width > maximumAttachmentDimension ||
+			ia.Height < 0 || ia.Height > maximumAttachmentDimension || fileIDs[ia.FileID] {
+			return errInvalidMessageAttachments
+		}
+		fileIDs[ia.FileID] = true
+	}
+	for _, fa := range files {
+		if fa.FileID == NilID || fa.Size < 0 || utf8.RuneCountInString(fa.Name) > maximumAttachmentNameLength || fileIDs[fa.FileID] {
+			return errInvalidMessageAttachments
+		}
+		fileIDs[fa.FileID] = true
+	}
+	return nil
 }
 
 // messageAttachments is everything the engine makes of the attachments the UI asked for on one message: the rows

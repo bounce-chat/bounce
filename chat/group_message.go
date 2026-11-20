@@ -55,6 +55,9 @@ func (gm *groupMessage) BeforeCreate(tx *gorm.DB) error {
 	if !idMatchesContent(gm) {
 		return errors.New("group message ID is not generated from its content")
 	}
+	if err := validMessageAttachments(gm.ImageAttachments, gm.FileAttachments); err != nil {
+		return err
+	}
 	gm.SavedAt = time.Now().Unix()
 	return nil
 }
@@ -175,6 +178,15 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 		log.WithFields(log.Fields{
 			"id": gm.ID,
 		}).Warn("ignoring group message that is too long")
+		b.rejectMessage(peer, typeGroupMessage, gm.ID)
+		return nil, false
+	}
+
+	if err := validMessageAttachments(gm.ImageAttachments, gm.FileAttachments); err != nil {
+		log.WithFields(log.Fields{
+			"id":    gm.ID,
+			"error": err.Error(),
+		}).Warn("ignoring group message with invalid attachments")
 		b.rejectMessage(peer, typeGroupMessage, gm.ID)
 		return nil, false
 	}
@@ -517,6 +529,13 @@ func (b *Bounce) SendGroupMessage(thread ID, text string, attachments []Outgoing
 	gm.ImageAttachments = attached.images
 	gm.FileAttachments = attached.files
 
+	if err := validMessageAttachments(gm.ImageAttachments, gm.FileAttachments); err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Error("refusing to send group message with invalid attachments")
+		b.discardPreparedAttachments(attached)
+		return err
+	}
 	if gm.empty() {
 		log.Error("refusing to send empty group message")
 		return errMessageEmpty
