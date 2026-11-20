@@ -10,7 +10,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var handleAddUsersMutex sync.Mutex
@@ -253,12 +252,15 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 	// Figure out which user is not us
 	var counterparty user
 	var myUser user
+	var counterpartySigningDeviceAddress string
 	if offerUser.ID == b.currentUserID() && requesterUser.ID != b.currentUserID() {
 		counterparty = requesterUser
 		myUser = offerUser
+		counterpartySigningDeviceAddress = au.RequesterDevice
 	} else if requesterUser.ID == b.currentUserID() && offerUser.ID != b.currentUserID() {
 		counterparty = offerUser
 		myUser = requesterUser
+		counterpartySigningDeviceAddress = au.OfferDevice
 	} else {
 		log.WithFields(log.Fields{
 			"offer_user":     offerUser.ID,
@@ -299,11 +301,11 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		}
 	}
 
-	// Learn about any of our sync devices that we're not already aware of
+	// Learn every sync device that we can verify
 	syncDevices := devices(myUser.Devices)
 	sort.Sort(syncDevices)
 	validDevices := []device{}
-	for i, _ := range syncDevices {
+	for i := range syncDevices {
 		dev := syncDevices[i]
 		existingSyncDevice, exists := b.getDeviceFromAddress(dev.Address)
 		if exists {
@@ -388,6 +390,28 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		}).Fatal("database error looking up user")
 	}
 
+	// A new user's devices are saved only if we persist the user; a known user's valid devices are safe to keep
+	if userIsNew {
+		counterparty.Devices = b.admissibleCarriedDevices(counterparty.Devices)
+	} else {
+		counterparty.Devices = b.saveCarriedDevices(counterparty.Devices)
+	}
+
+	// A device rejected by those admission checks cannot sign for the counterparty
+	counterpartySignerFound := false
+	for _, dev := range counterparty.Devices {
+		if dev.Address == counterpartySigningDeviceAddress {
+			counterpartySignerFound = true
+			break
+		}
+	}
+	if !counterpartySignerFound {
+		log.WithFields(log.Fields{
+			"address": counterpartySigningDeviceAddress,
+		}).Warn("rejecting add user whose counterparty signer is not an admitted device")
+		return nil, false
+	}
+
 	// Save the addUser
 	err = b.database.Create(&au).Error
 	if err != nil {
@@ -396,43 +420,27 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		}).Fatal("error saving add user")
 	}
 
-	// Save the new user
+	// Save the new user without letting GORM bypass the device admission checks
 	if userIsNew {
-		// Save this new user and all of their devices
 		counterparty.OpenDM = true
 		counterparty.IntroductionMethod = userIntroductionAddUser
 		counterparty.IntroductionTime = time.Now().Unix()
 		counterparty.Accepted = true
-		err = b.database.Create(&counterparty).Error
+		err = b.database.Omit("Devices").Create(&counterparty).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
 			}).Error("error saving new user while handling add user")
 			return nil, false
 		}
+		counterparty.Devices = b.saveCarriedDevices(counterparty.Devices)
+	}
 
-		// Ack and delivery track these devices
-		for _, dev := range counterparty.Devices {
-			if fromPeer {
-				go b.sendAck(peer, typeDevice, dev.ID)
-				b.markDeliveredTo(&dev, peer)
-			}
-		}
-	} else {
-		// We already know about this user, just save any devices we might not be aware of
-		for _, dev := range counterparty.Devices {
-			err = b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Error("error saving new device belonging to existing user while handling add user")
-			}
-
-			// Ack and delivery track these devices as well
-			if fromPeer {
-				go b.sendAck(peer, typeDevice, dev.ID)
-				b.markDeliveredTo(&dev, peer)
-			}
+	// Ack and delivery track only devices we accepted
+	for _, dev := range counterparty.Devices {
+		if fromPeer {
+			go b.sendAck(peer, typeDevice, dev.ID)
+			b.markDeliveredTo(&dev, peer)
 		}
 	}
 

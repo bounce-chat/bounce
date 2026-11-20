@@ -36,7 +36,7 @@ const maximumDevicesPerUser = 1024
 //  2. it doesn't already exist
 //  3. adding it wouldn't put the device group over the size limit
 //  4. the new device has a valid mutual signature with an existing device
-//  5. the existing device was not revoked before it signed this new device
+//  5. if the existing device is revoked, its revoke explicitly retains this new device
 func (b *Bounce) isValidAddition(u user, dev device) bool {
 	// New device must have ID generated from content
 	if !idMatchesContent(&dev) {
@@ -126,13 +126,13 @@ func (b *Bounce) isValidAddition(u user, dev device) bool {
 		return false
 	}
 
-	// The introducing device cannot be revoked
-	if introducer.RevokedAt != 0 && introducer.RevokedAt < dev.Timestamp {
+	// A revoked introducer's keep list, not the new device's claimed timestamp, controls admission
+	if introducer.RevokedAt != 0 && !b.deviceIntroductionAllowed(dev) {
 		log.WithFields(log.Fields{
 			"user":       u.ID,
 			"device":     dev.ID,
 			"introducer": introducer.Address,
-		}).Warn("rejecting device addition because it was introduced by a device that had already been revoked")
+		}).Warn("rejecting device addition because it was not retained by the revoked introducer")
 		return false
 	}
 

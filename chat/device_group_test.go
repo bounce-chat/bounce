@@ -8,6 +8,7 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/alecthomas/assert/v2"
+	"github.com/zeebo/blake3"
 )
 
 // A device group is validated in full whenever a whole user record arrives, but a single new device is checked only
@@ -169,28 +170,44 @@ func TestANewDeviceIsOnlyAcceptedFromOneOfTheUsersDevices(t *testing.T) {
 	assert.Equal(t, 1, deviceCount(t, me, aliceID))
 }
 
-func TestARevokedDeviceCannotIntroduceNewOnes(t *testing.T) {
+func TestIsValidAdditionUsesRevokeKeepList(t *testing.T) {
 	me, alice, _, _ := createUsersAndGroups(t)
 	aliceID := alice.currentUserID()
 	validator, _ := validatorFor(me)
 
-	// Alice's original introduces a second device, which then introduces a third, and the second is later revoked
 	second := bnc01NewOnion()
 	secondDevice := introducedByBounce(aliceID, alice, second, 1000)
 	assert.NoError(t, me.database.Create(&secondDevice).Error)
-	assert.NoError(t, me.database.Model(&device{}).Where("address = ?", second.addr()).Update("revoked_at", 2000).Error)
+	listed := introducedBy(aliceID, second.addr(), second, bnc01NewOnion(), 2500)
+	omitted := introducedBy(aliceID, second.addr(), second, bnc01NewOnion(), 1500)
+
+	data, err := msgpack.Marshal([]ID{listed.ID})
+	assert.NoError(t, err)
+	revoke := updateDevice{
+		Nonce:     newNonce(),
+		Target:    secondDevice.ID,
+		Type:      updateDeviceTypeRevoke,
+		Data:      data,
+		Timestamp: 2000,
+	}
+	revoke.ID = revoke.generateID()
+	revokePayload, err := msgpack.Marshal(&revoke)
+	assert.NoError(t, err)
+	revokeFrame, err := msgpack.Marshal(alice.createSignedContainer(typeUpdateDevice, revokePayload))
+	assert.NoError(t, err)
+	_, accepted := me.handleUpdateDevice(alice.network.Address(), revokeFrame, false)
+	assert.True(t, accepted)
+
 	var aliceRecord user
 	assert.NoError(t, me.database.Preload("Devices.Signature").First(&aliceRecord, "id = ?", aliceID).Error)
-
-	// A device the second introduced before it was revoked is still a valid addition, one after is not
-	assert.True(t, validator.isValidAddition(aliceRecord, introducedBy(aliceID, second.addr(), second, bnc01NewOnion(), 1500)))
-	assert.False(t, validator.isValidAddition(aliceRecord, introducedBy(aliceID, second.addr(), second, bnc01NewOnion(), 2500)))
+	assert.True(t, validator.isValidAddition(aliceRecord, listed), "a listed device is valid regardless of its timestamp")
+	assert.False(t, validator.isValidAddition(aliceRecord, omitted), "an omitted device is invalid even when backdated")
 
 	// A record that claims the second is not revoked does not get to override what we know
 	for i := range aliceRecord.Devices {
 		aliceRecord.Devices[i].RevokedAt = 0
 	}
-	assert.False(t, validator.isValidAddition(aliceRecord, introducedBy(aliceID, second.addr(), second, bnc01NewOnion(), 2500)))
+	assert.False(t, validator.isValidAddition(aliceRecord, omitted))
 }
 
 func TestRevokeDeviceListsDevicesIntroducedByTheTarget(t *testing.T) {
@@ -347,6 +364,262 @@ func TestCarriedRecordsRespectRevokeKeepList(t *testing.T) {
 	}
 	assert.NoError(t, me.setGroupStateInDatabase(projectedGroup, []user{record}, projectedGroup.state(), nil))
 	assertOmitted()
+}
+
+func TestAddUserCannotAdoptDeviceIntroducedByRevokedSyncDevice(t *testing.T) {
+	me := newBounceUser("Me")
+	t.Cleanup(me.Shutdown)
+	meID := me.currentUserID()
+	meAddr := me.network.Address()
+	now := time.Now().Unix()
+	revokeTime := now - 10
+
+	revokedKey := bnc01NewOnion()
+	revoked := introducedByBounce(meID, me, revokedKey, now-1000)
+	_, accepted := me.handleDevice(meAddr, revoked.getPayload(), false)
+	assert.True(t, accepted)
+
+	data, err := msgpack.Marshal([]ID{})
+	assert.NoError(t, err)
+	revoke := updateDevice{
+		Nonce:     newNonce(),
+		Target:    revoked.ID,
+		Type:      updateDeviceTypeRevoke,
+		Data:      data,
+		Timestamp: revokeTime,
+	}
+	revoke.ID = revoke.generateID()
+	revokePayload, err := msgpack.Marshal(&revoke)
+	assert.NoError(t, err)
+	revokeFrame, err := msgpack.Marshal(me.createSignedContainer(typeUpdateDevice, revokePayload))
+	assert.NoError(t, err)
+	_, accepted = me.handleUpdateDevice(meAddr, revokeFrame, false)
+	assert.True(t, accepted)
+
+	backdatedKey := bnc01NewOnion()
+	backdated := introducedBy(meID, revokedKey.addr(), revokedKey, backdatedKey, revokeTime-100)
+	myRecord, ok := me.currentUser()
+	assert.True(t, ok)
+	myRecord.Devices = append(myRecord.Devices, backdated)
+
+	counterpartyKey := bnc01NewOnion()
+	counterpartyID := NewID()
+	counterparty := user{
+		ID:      counterpartyID,
+		Name:    "Counterparty",
+		Devices: []device{bnc01Original(counterpartyID, counterpartyKey.addr(), now)},
+	}
+	payload := bnc01BuildAddUser(t, counterparty, myRecord, counterpartyKey, backdatedKey)
+	_, accepted = me.handleAddUser(bnc01NewOnion().addr(), payload, false)
+
+	_, exists := me.getDeviceFromAddress(backdated.Address)
+	assert.False(t, exists, "addUser cannot adopt a backdated device introduced by a revoked sync device")
+	assert.False(t, accepted, "a device omitted by its introducer's revoke cannot sign for our side of an addUser")
+	assert.False(t, me.signedByUser(&signedContainer{Signer: backdated.Address}, meID))
+}
+
+func TestAddUserAcceptsVerifiableUnknownSyncDevice(t *testing.T) {
+	me := newBounceUser("Me")
+	t.Cleanup(me.Shutdown)
+	meID := me.currentUserID()
+	now := time.Now().Unix()
+
+	newKey := bnc01NewOnion()
+	newDevice := introducedByBounce(meID, me, newKey, now)
+	myRecord, ok := me.currentUser()
+	assert.True(t, ok)
+	myRecord.Devices = append(myRecord.Devices, newDevice)
+
+	counterpartyKey := bnc01NewOnion()
+	counterpartyID := NewID()
+	counterparty := user{
+		ID:      counterpartyID,
+		Name:    "Counterparty",
+		Devices: []device{bnc01Original(counterpartyID, counterpartyKey.addr(), now)},
+	}
+	payload := bnc01BuildAddUser(t, counterparty, myRecord, counterpartyKey, newKey)
+	_, accepted := me.handleAddUser(counterpartyKey.addr(), payload, false)
+	assert.True(t, accepted, "a valid mutual introduction allows a new sync device to authorize addUser")
+
+	stored, exists := me.getDeviceFromAddress(newDevice.Address)
+	assert.True(t, exists, "a verifiable sync device is retained")
+	assert.Equal(t, meID, stored.UserID)
+	assert.True(t, me.signedByUser(&signedContainer{Signer: newDevice.Address}, meID))
+	var storedCounterparty user
+	assert.NoError(t, me.database.Where("id = ?", counterpartyID).First(&storedCounterparty).Error)
+	_, exists = me.getDeviceFromAddress(counterpartyKey.addr())
+	assert.True(t, exists, "an accepted new user's devices are saved after the user")
+}
+
+func TestRejectedAddUserDoesNotSaveDevicesForNewCounterparty(t *testing.T) {
+	me := newBounceUser("Me")
+	t.Cleanup(me.Shutdown)
+	now := time.Now().Unix()
+	revokeTime := now - 10
+
+	counterpartyID := NewID()
+	originalKey := bnc01NewOnion()
+	original := bnc01Original(counterpartyID, originalKey.addr(), now-1000)
+	revokedKey := bnc01NewOnion()
+	revoked := introducedBy(counterpartyID, originalKey.addr(), originalKey, revokedKey, now-900)
+	assert.NoError(t, me.database.Create(&original).Error)
+	assert.NoError(t, me.database.Create(&revoked).Error)
+
+	data, err := msgpack.Marshal([]ID{})
+	assert.NoError(t, err)
+	revoke := updateDevice{
+		Nonce:     newNonce(),
+		Target:    revoked.ID,
+		Type:      updateDeviceTypeRevoke,
+		Data:      data,
+		Timestamp: revokeTime,
+	}
+	revoke.ID = revoke.generateID()
+	revokePayload, err := msgpack.Marshal(&revoke)
+	assert.NoError(t, err)
+	revokeFrame, err := msgpack.Marshal(signedContainer{
+		Signer:    originalKey.addr(),
+		Payload:   revokePayload,
+		Signature: originalKey.sign(signedContainerHash(typeUpdateDevice, revokePayload)),
+	})
+	assert.NoError(t, err)
+	_, accepted := me.handleUpdateDevice(originalKey.addr(), revokeFrame, false)
+	assert.True(t, accepted)
+
+	omittedKey := bnc01NewOnion()
+	omitted := introducedBy(counterpartyID, revokedKey.addr(), revokedKey, omittedKey, revokeTime-100)
+	validKey := bnc01NewOnion()
+	validDevice := introducedBy(counterpartyID, originalKey.addr(), originalKey, validKey, now-800)
+	counterparty := user{
+		ID:      counterpartyID,
+		Name:    "New counterparty",
+		Devices: []device{original, revoked, validDevice, omitted},
+	}
+	myRecord, ok := me.currentUser()
+	assert.True(t, ok)
+	offerBytes, err := msgpack.Marshal(counterparty)
+	assert.NoError(t, err)
+	requesterBytes, err := msgpack.Marshal(myRecord)
+	assert.NoError(t, err)
+	offerHash := blake3.Sum256(offerBytes)
+	requesterHash := blake3.Sum256(requesterBytes)
+	au := addUser{
+		Nonce:              newNonce(),
+		Xor:                xor(counterpartyID, me.currentUserID()),
+		Timestamp:          now,
+		OfferUser:          offerBytes,
+		RequesterUser:      requesterBytes,
+		OfferDevice:        omitted.Address,
+		RequesterDevice:    me.network.Address(),
+		OfferSignature:     omittedKey.sign(requesterHash[:]),
+		RequesterSignature: me.network.Sign(offerHash[:]),
+	}
+	au.ID = au.generateID()
+	payload, err := msgpack.Marshal(&au)
+	assert.NoError(t, err)
+	_, accepted = me.handleAddUser(bnc01NewOnion().addr(), payload, false)
+	assert.False(t, accepted)
+
+	for _, d := range []device{validDevice, omitted} {
+		_, exists := me.getDeviceFromAddress(d.Address)
+		assert.False(t, exists, "a rejected new counterparty's devices must not be left behind")
+	}
+	for _, d := range []device{original, revoked} {
+		_, exists := me.getDeviceFromAddress(d.Address)
+		assert.True(t, exists, "devices that predated the addUser are untouched")
+	}
+	var storedCounterparty user
+	assert.Error(t, me.database.Where("id = ?", counterpartyID).First(&storedCounterparty).Error)
+}
+
+func TestAddUserCarriedRecordsRespectRevokeKeepList(t *testing.T) {
+	me, _, bob, _ := createUsersAndGroups(t)
+	bobID := bob.currentUserID()
+	bobAddr := bob.network.Address()
+	now := time.Now().Unix()
+	revokeTime := now - 10
+
+	secondKey := bnc01NewOnion()
+	second := introducedByBounce(bobID, bob, secondKey, now-1000)
+	_, accepted := me.handleDevice(bobAddr, second.getPayload(), false)
+	assert.True(t, accepted)
+
+	listedKey := bnc01NewOnion()
+	listed := introducedBy(bobID, secondKey.addr(), secondKey, listedKey, revokeTime-100)
+	omittedKey := bnc01NewOnion()
+	omitted := introducedBy(bobID, secondKey.addr(), secondKey, omittedKey, revokeTime-90)
+	descendant := introducedBy(bobID, omittedKey.addr(), omittedKey, bnc01NewOnion(), revokeTime-80)
+
+	data, err := msgpack.Marshal([]ID{listed.ID})
+	assert.NoError(t, err)
+	revoke := updateDevice{
+		Nonce:     newNonce(),
+		Target:    second.ID,
+		Type:      updateDeviceTypeRevoke,
+		Data:      data,
+		Timestamp: revokeTime,
+	}
+	revoke.ID = revoke.generateID()
+	revokePayload, err := msgpack.Marshal(&revoke)
+	assert.NoError(t, err)
+	revokeFrame, err := msgpack.Marshal(bob.createSignedContainer(typeUpdateDevice, revokePayload))
+	assert.NoError(t, err)
+	_, accepted = me.handleUpdateDevice(bobAddr, revokeFrame, false)
+	assert.True(t, accepted)
+
+	var bobRecord user
+	assert.NoError(t, me.database.Preload("Devices.Signature").First(&bobRecord, "id = ?", bobID).Error)
+	// The child deliberately precedes its parent in the carried record.
+	bobRecord.Devices = append(bobRecord.Devices, descendant, omitted, listed)
+	myRecord, ok := me.currentUser()
+	assert.True(t, ok)
+	offerBytes, err := msgpack.Marshal(bobRecord)
+	assert.NoError(t, err)
+	requesterBytes, err := msgpack.Marshal(myRecord)
+	assert.NoError(t, err)
+	offerHash := blake3.Sum256(offerBytes)
+	requesterHash := blake3.Sum256(requesterBytes)
+	au := addUser{
+		Nonce:              newNonce(),
+		Xor:                xor(bobID, me.currentUserID()),
+		Timestamp:          now,
+		OfferUser:          offerBytes,
+		RequesterUser:      requesterBytes,
+		OfferDevice:        listed.Address,
+		RequesterDevice:    me.network.Address(),
+		OfferSignature:     listedKey.sign(requesterHash[:]),
+		RequesterSignature: me.network.Sign(offerHash[:]),
+	}
+	au.ID = au.generateID()
+	payload, err := msgpack.Marshal(&au)
+	assert.NoError(t, err)
+	_, accepted = me.handleAddUser(bnc01NewOnion().addr(), payload, false)
+	assert.True(t, accepted, "a retained device unknown to us can sign for the counterparty")
+
+	_, exists := me.getDeviceFromAddress(listed.Address)
+	assert.True(t, exists, "addUser can teach a counterparty device retained by the revoke")
+	for _, d := range []device{omitted, descendant} {
+		_, exists = me.getDeviceFromAddress(d.Address)
+		assert.False(t, exists, "addUser cannot plant an omitted counterparty device or its descendants")
+	}
+
+	additional := introducedByBounce(bobID, bob, bnc01NewOnion(), now)
+	bobRecord.Devices = append(bobRecord.Devices, additional)
+	offerBytes, err = msgpack.Marshal(bobRecord)
+	assert.NoError(t, err)
+	offerHash = blake3.Sum256(offerBytes)
+	au.Nonce = newNonce()
+	au.OfferUser = offerBytes
+	au.OfferDevice = omitted.Address
+	au.OfferSignature = omittedKey.sign(requesterHash[:])
+	au.RequesterSignature = me.network.Sign(offerHash[:])
+	au.ID = au.generateID()
+	payload, err = msgpack.Marshal(&au)
+	assert.NoError(t, err)
+	_, accepted = me.handleAddUser(bnc01NewOnion().addr(), payload, false)
+	assert.False(t, accepted, "a counterparty device omitted by the revoke cannot authorize addUser")
+	_, exists = me.getDeviceFromAddress(additional.Address)
+	assert.True(t, exists, "a known counterparty's valid devices are kept even when addUser is rejected")
 }
 
 func TestAUserHasAtMostTheMaximumNumberOfDevices(t *testing.T) {

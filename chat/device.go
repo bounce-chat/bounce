@@ -230,6 +230,59 @@ func (b *Bounce) deviceIntroductionAllowed(d device) bool {
 	return true
 }
 
+// Select admissible carried devices. Children become eligible only after their parent has been admitted.
+func (b *Bounce) admissibleCarriedDevices(carriedDevices []device) []device {
+	admissibleDevices := []device{}
+	pendingDevices := map[string]device{}
+	for _, dev := range carriedDevices {
+		if _, exists := b.getDeviceFromAddress(dev.Address); exists {
+			admissibleDevices = append(admissibleDevices, dev)
+		} else {
+			pendingDevices[dev.Address] = dev
+		}
+	}
+	children := map[string][]device{}
+	devicesToCheck := []device{}
+	for _, dev := range pendingDevices {
+		if dev.Signature != nil {
+			if _, parentPending := pendingDevices[dev.Signature.PreexistingDevice]; parentPending {
+				children[dev.Signature.PreexistingDevice] = append(children[dev.Signature.PreexistingDevice], dev)
+				continue
+			}
+		}
+		devicesToCheck = append(devicesToCheck, dev)
+	}
+	newlyAdmitted := map[string]bool{}
+	for len(devicesToCheck) > 0 {
+		dev := devicesToCheck[0]
+		devicesToCheck = devicesToCheck[1:]
+		parentAdmitted := dev.Signature != nil && newlyAdmitted[dev.Signature.PreexistingDevice]
+		if !parentAdmitted && !b.deviceIntroductionAllowed(dev) {
+			continue
+		}
+		admissibleDevices = append(admissibleDevices, dev)
+		newlyAdmitted[dev.Address] = true
+		devicesToCheck = append(devicesToCheck, children[dev.Address]...)
+	}
+	return admissibleDevices
+}
+
+func (b *Bounce) saveCarriedDevices(carriedDevices []device) []device {
+	admissibleDevices := b.admissibleCarriedDevices(carriedDevices)
+	for _, dev := range admissibleDevices {
+		if _, exists := b.getDeviceFromAddress(dev.Address); exists {
+			continue
+		}
+		err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("error saving carried device")
+		}
+	}
+	return admissibleDevices
+}
+
 func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
 	handleDevicesMutex.Lock()
 	defer handleDevicesMutex.Unlock()

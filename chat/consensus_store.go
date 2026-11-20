@@ -1036,38 +1036,7 @@ func (b *Bounce) createNewUserIfNeeded(u user, groupID ID) bool {
 		return false
 	}
 
-	// Learn only admissible carried devices. Children become eligible only after their parent has been stored.
-	pendingDevices := map[string]device{}
-	for _, dev := range u.Devices {
-		if _, exists := b.getDeviceFromAddress(dev.Address); !exists {
-			pendingDevices[dev.Address] = dev
-		}
-	}
-	children := map[string][]device{}
-	devicesToCheck := []device{}
-	for _, dev := range pendingDevices {
-		if dev.Signature != nil {
-			if _, parentPending := pendingDevices[dev.Signature.PreexistingDevice]; parentPending {
-				children[dev.Signature.PreexistingDevice] = append(children[dev.Signature.PreexistingDevice], dev)
-				continue
-			}
-		}
-		devicesToCheck = append(devicesToCheck, dev)
-	}
-	for len(devicesToCheck) > 0 {
-		dev := devicesToCheck[0]
-		devicesToCheck = devicesToCheck[1:]
-		if !b.deviceIntroductionAllowed(dev) {
-			continue
-		}
-		err := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&dev).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error saving device that belongs to a user being added to a group")
-		}
-		devicesToCheck = append(devicesToCheck, children[dev.Address]...)
-	}
+	b.saveCarriedDevices(u.Devices)
 	u.IntroductionMethod = userIntroductionGroup
 	u.IntroductionTime = time.Now().Unix()
 	u.IntroductionMetadata = groupID
