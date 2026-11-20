@@ -1,0 +1,286 @@
+package fyneui
+
+import (
+	"bytes"
+	"image"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/mobile"
+	"github.com/bounce-chat/bounce/chat"
+	"github.com/rymdport/go-qrcode"
+	log "github.com/sirupsen/logrus"
+)
+
+const (
+	viewTypeAllThreads = iota
+	viewTypeThread
+	viewTypeDMSettings
+	viewTypeGroupSettings
+	viewTypeSettings
+	viewTypeNewSyncDevice
+	viewTypeNewInstall
+	viewTypeProfileCreator
+	viewTypeNewGroup
+	viewTypeNewDM
+	viewTypeMenu
+	viewTypeDisplaySyncString
+	viewTypeAddUser
+	viewTypeAbout
+	viewTypeEditProfile
+	viewTypeNameNewDevice
+	viewTypeDialog
+	viewTypeImageViewer
+	viewTypeDatabaseLoading
+	cameraRunningForNewEncryptedDevice
+)
+
+var cameraIsRunning = false
+var cameraRunningFor = 0
+
+var hookedDialogs = make(map[dialog.Dialog]bool)
+
+type view struct {
+	viewType int
+	context  chat.ID
+	dialog   dialog.Dialog
+}
+
+type dialogWithCallback struct {
+	dialog   dialog.Dialog
+	callback func()
+}
+
+// stopScanningFor stops the camera if it is running for the given owner, once that owner's scanner is no longer
+// showing: the view changed, or a tab without the scanner was selected
+func stopScanningFor(owner int) {
+	if cameraSupported() && cameraIsRunning && cameraRunningFor == owner {
+		stopCameraPreview()
+		cameraIsRunning = false
+	}
+}
+
+// untilViewChanges returns a channel that is closed when the user leaves the view on screen, for work started from
+// a view that should stop once the view is gone.  Call it on the UI thread, where the current view is known.
+func (ui *ui) untilViewChanges() <-chan struct{} {
+	return ui.state.viewLeft
+}
+
+func (ui *ui) setContent(viewType int, view fyne.CanvasObject) {
+	if viewType != viewTypeAddUser {
+		stopScanningFor(viewTypeAddUser)
+	}
+	if viewType != viewTypeNewSyncDevice {
+		stopScanningFor(viewTypeNewSyncDevice)
+	}
+	if viewType != viewTypeDisplaySyncString {
+		stopScanningFor(cameraRunningForNewEncryptedDevice)
+	}
+
+	if viewType != ui.state.currentView {
+		close(ui.state.viewLeft)
+		ui.state.viewLeft = make(chan struct{})
+	}
+	ui.state.currentView = viewType
+	ui.window.SetContent(view)
+}
+
+func (ui *ui) mobileBack() {
+	if cameraIsRunning {
+		if cameraSupported() {
+			stopCameraPreview()
+			cameraIsRunning = false
+		}
+	}
+
+	// If there's only one view left in the history, we're at the beginning and should close the app
+	if len(ui.state.viewStack) == 1 {
+		if drv, ok := ui.app.Driver().(mobile.Driver); ok {
+			drv.GoBack()
+		}
+		return
+	}
+
+	// If the current view is a dialog, hide that dialog and run any cleanup tasks required
+	currentView := ui.state.viewStack[len(ui.state.viewStack)-1]
+	if currentView.viewType == viewTypeDialog {
+		if currentView.dialog != nil {
+			// view stack is popped and cleanup is ran in dialog closed callback
+			currentView.dialog.Hide()
+			return
+		} else {
+			log.Warn("view type dialog in view stack is missing dialog")
+		}
+		return
+	}
+
+	// Grab the view that occurred before the current one as the one we want to display
+	displayView := ui.state.viewStack[len(ui.state.viewStack)-2]
+
+	// Remove the current view from history
+	ui.state.viewStack = ui.state.viewStack[0 : len(ui.state.viewStack)-1]
+
+	// Set the UI to the view we want to display
+	switch displayView.viewType {
+	case viewTypeAllThreads:
+		ui.setContent(displayView.viewType, ui.views.main)
+	case viewTypeThread:
+		t, ok := ui.threads.get(displayView.context)
+		if !ok {
+			log.WithFields(log.Fields{
+				"type": displayView.viewType,
+			}).Warn("cannot display unknown thread when handling mobile back button")
+			ui.setContent(displayView.viewType, ui.views.main)
+			ui.views.main.Show()
+		} else {
+			ui.displayThread(t)
+		}
+	case viewTypeDMSettings:
+		dm, ok := ui.threads.getDM(displayView.context)
+		if ok {
+			ui.setDMMutedUntilButton(dm)
+			if dm.user.blocked {
+				dm.blockUserButton.Hide()
+				dm.unblockUserButton.Show()
+			} else {
+				dm.blockUserButton.Show()
+				dm.unblockUserButton.Hide()
+			}
+			if dm.user.id == ui.state.profile.id {
+				dm.blockUserButton.Hide()
+				dm.unblockUserButton.Hide()
+			}
+
+			ui.setContent(displayView.viewType, dm.editContainer)
+		} else {
+			log.Error("cannot go back to edit DM settings view for unknown DM")
+			ui.mobileBack()
+		}
+	case viewTypeGroupSettings:
+		g, ok := ui.threads.getGroup(displayView.context)
+		if ok {
+			ui.setGroupMutedUntilButton(g)
+			ui.setContent(displayView.viewType, g.editContainer)
+		} else {
+			log.Error("cannot go back to edit group settings view for unknown group")
+			ui.mobileBack()
+		}
+	case viewTypeSettings:
+		ui.setContent(displayView.viewType, ui.views.settings)
+	case viewTypeNewSyncDevice:
+		ui.widgets.newSyncDevice.syncStringInput.Show()
+		ui.setContent(displayView.viewType, ui.views.newSyncDevice)
+	case viewTypeNewInstall:
+		ui.setContent(displayView.viewType, ui.views.newInstall)
+	case viewTypeProfileCreator:
+		ui.setContent(displayView.viewType, ui.views.newProfileCreator)
+	case viewTypeNewGroup:
+		ui.clearNewGroupSelectors()
+		ui.setContent(displayView.viewType, ui.views.newGroup)
+	case viewTypeNewDM:
+		ui.widgets.newDM.searchEntry.Text = ""
+		ui.widgets.newDM.searchEntry.Refresh()
+		ui.refreshAllUsersDMLinks()
+		ui.setContent(displayView.viewType, ui.views.newDM)
+	case viewTypeMenu:
+		ui.setContent(displayView.viewType, ui.views.mobileMenu)
+	case viewTypeDisplaySyncString:
+		newSyncString := ui.bounce.GetNewSyncString()
+		ui.widgets.addSyncDevice.entry.SetText(newSyncString)
+		qrData, err := qrcode.Encode(newSyncString, qrcode.Medium, 256)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error QR encoding add device string")
+		} else {
+			qrImg, _, err := image.Decode(bytes.NewReader(qrData))
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error decoding QR data as image")
+			} else {
+				ui.widgets.addSyncDevice.qrCode.Image = qrImg
+				ui.widgets.addSyncDevice.qrCode.Refresh()
+			}
+		}
+		ui.setContent(displayView.viewType, ui.views.addSyncDevice)
+	case viewTypeAddUser:
+		newAddUserString := ui.bounce.GetNewAddUserString()
+		ui.widgets.addUser.displayEntry.SetText(newAddUserString)
+		qrData, err := qrcode.Encode(newAddUserString, qrcode.Medium, 256)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Error("error QR encoding add user string")
+		} else {
+			qrImg, _, err := image.Decode(bytes.NewReader(qrData))
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error decoding QR data as image")
+			} else {
+				ui.widgets.addUser.qrCode.Image = qrImg
+				ui.widgets.addUser.qrCode.Refresh()
+			}
+		}
+		ui.setContent(displayView.viewType, ui.views.addUser)
+	case viewTypeAbout:
+		ui.setContent(displayView.viewType, ui.views.about)
+	case viewTypeEditProfile:
+		ui.widgets.editProfile.profileIcon.id = ui.state.profile.id
+		ui.widgets.editProfile.profileIcon.images = ui.state.profile.images
+		ui.widgets.editProfile.profileIcon.foregroundText.Text = ui.state.profile.initials
+		ui.widgets.editProfile.profileIcon.Refresh()
+
+		ui.widgets.editProfile.profileNameEntry.Text = ui.state.profile.getDisplayName()
+		ui.widgets.editProfile.profileNameEntry.Refresh()
+		ui.widgets.editProfile.profileNameEntry.FocusLost()
+
+		ui.containers.profileOptions.Refresh()
+		ui.setContent(displayView.viewType, ui.views.editProfile)
+	case viewTypeNameNewDevice:
+		ui.setContent(displayView.viewType, ui.views.nameNewDevice)
+	case viewTypeImageViewer:
+		ui.setContent(displayView.viewType, ui.widgets.imageViewer.viewer)
+	default:
+		log.WithFields(log.Fields{
+			"type": displayView.viewType,
+		}).Warn("cannot display unknown view type when handling mobile back button")
+		ui.mobileBack()
+	}
+
+	// If we're not looking at a thread, unset the active thread
+	if displayView.viewType != viewTypeThread {
+		ui.state.activeThread = chat.NilID
+		ui.bounce.SetActiveThread(chat.NilID)
+	}
+}
+
+func (ui *ui) showDialog(d dialog.Dialog, cleanup func()) {
+	if _, hooked := hookedDialogs[d]; !hooked {
+		d.SetOnClosed(func() {
+			if fyne.CurrentDevice().IsMobile() {
+				if len(ui.state.viewStack) == 1 {
+					log.Warn("view stack has one member when hiding dialog")
+					return
+				}
+				ui.state.viewStack = ui.state.viewStack[0 : len(ui.state.viewStack)-1]
+			}
+			if cleanup != nil {
+				cleanup()
+			}
+			delete(hookedDialogs, d)
+		})
+		hookedDialogs[d] = true
+	}
+	d.Show()
+	if fyne.CurrentDevice().IsMobile() {
+		ui.state.viewStack = append(
+			ui.state.viewStack,
+			view{
+				viewType: viewTypeDialog,
+				dialog:   d,
+			},
+		)
+	}
+}

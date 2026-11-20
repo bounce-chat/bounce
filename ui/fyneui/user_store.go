@@ -1,0 +1,158 @@
+package fyneui
+
+import (
+	"strings"
+	"sync"
+
+	"github.com/bounce-chat/bounce/chat"
+)
+
+var allUserStores = []*userStore{}
+var allUserStoresMutex sync.Mutex
+
+type userStore struct {
+	sync.Mutex
+	userMap  map[chat.ID]*user
+	userList []*user
+	ngrams   map[string][]*user
+}
+
+func newUserStore() *userStore {
+	us := &userStore{
+		userMap:  make(map[chat.ID]*user),
+		userList: []*user{},
+		ngrams:   make(map[string][]*user),
+	}
+
+	allUserStoresMutex.Lock()
+	allUserStores = append(allUserStores, us)
+	allUserStoresMutex.Unlock()
+
+	return us
+}
+
+func (store *userStore) add(u *user) {
+	store.Lock()
+	defer store.Unlock()
+
+	_, exists := store.userMap[u.id]
+	if exists {
+		return
+	}
+
+	store.userMap[u.id] = u
+	smaller := 0
+	for _, existingUser := range store.userList {
+		if existingUser.getDisplayName() < u.getDisplayName() {
+			smaller++
+		}
+	}
+	smallerUsers := store.userList[:smaller]
+	largerUsers := store.userList[smaller:]
+	store.userList = append(smallerUsers, append([]*user{u}, largerUsers...)...)
+
+	grams := makeNgrams(strings.ToLower(u.getDisplayName()))
+	for _, gram := range grams {
+		store.ngrams[gram] = append(store.ngrams[gram], u)
+	}
+}
+
+func (store *userStore) contains(userID chat.ID) bool {
+	store.Lock()
+	defer store.Unlock()
+
+	_, ok := store.userMap[userID]
+	return ok
+}
+
+func (store *userStore) remove(id chat.ID) {
+	store.Lock()
+	defer store.Unlock()
+
+	delete(store.userMap, id)
+	newList := []*user{}
+	for _, u := range store.userList {
+		if u.id != id {
+			newList = append(newList, u)
+		}
+	}
+	store.userList = newList
+
+	prunedNgrams := map[string][]*user{}
+	for gram, users := range store.ngrams {
+		usersWithoutThisUser := []*user{}
+		for _, u := range users {
+			if u.id != id {
+				usersWithoutThisUser = append(usersWithoutThisUser, u)
+			}
+		}
+		prunedNgrams[gram] = usersWithoutThisUser
+	}
+	store.ngrams = prunedNgrams
+}
+
+func (store *userStore) alphabetized() []*user {
+	return store.userList
+}
+
+func (store *userStore) get(id chat.ID) (*user, bool) {
+	store.Lock()
+	defer store.Unlock()
+
+	u, exists := store.userMap[id]
+	return u, exists
+}
+
+func (store *userStore) empty() {
+	store.Lock()
+	defer store.Unlock()
+
+	store.userMap = make(map[chat.ID]*user)
+	store.userList = []*user{}
+	store.ngrams = make(map[string][]*user)
+}
+
+// Remove this user store from the global set of all user stores
+func (store *userStore) release() {
+	allUserStoresMutex.Lock()
+	defer allUserStoresMutex.Unlock()
+
+	for i, us := range allUserStores {
+		if us == store {
+			allUserStores = append(allUserStores[:i], allUserStores[i+1:]...)
+			return
+		}
+	}
+}
+
+func (store *userStore) search(str string) []*user {
+	store.Lock()
+	defer store.Unlock()
+
+	if str == "" {
+		return store.userList
+	}
+	results, ok := store.ngrams[strings.ToLower(str)]
+	if !ok {
+		return []*user{}
+	}
+	return results
+}
+
+func makeNgrams(str string) []string {
+	strLen := len(str)
+	ngrams := []string{}
+	alreadyPresent := map[string]bool{}
+
+	for i := 1; i <= strLen; i++ {
+		for n := 0; n+i <= strLen; n++ {
+			gram := str[n : n+i]
+			if _, present := alreadyPresent[gram]; !present {
+				ngrams = append(ngrams, gram)
+				alreadyPresent[gram] = true
+			}
+		}
+	}
+
+	return ngrams
+}

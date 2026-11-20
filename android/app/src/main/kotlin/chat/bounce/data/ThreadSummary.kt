@@ -67,7 +67,7 @@ data class ThreadSummary(
      *
      * Normally the last thing that happened in the conversation - but a thread
      * with an unsent draft counts as of when it was last opened, if that is
-     * later. Mirrors ui/thread.go's sortableThreads.Less, and the effect is that
+     * later. Mirrors ui/fyneui/thread.go's sortableThreads.Less, and the effect is that
      * opening a thread you have a draft in lifts it to the top and it then sinks
      * back down as other conversations move, rather than being stuck wherever
      * its last message left it.

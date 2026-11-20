@@ -1,0 +1,96 @@
+package fyneui
+
+import (
+	"image/color"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/theme"
+	"github.com/bounce-chat/bounce/chat"
+	log "github.com/sirupsen/logrus"
+)
+
+var colorNameOutgoingChatBubble = fyne.ThemeColorName("outgoingChatBubble")
+var colorNameIncomingChatBubble = fyne.ThemeColorName("incomingChatBubble")
+var colorNameDeviceLocal = fyne.ThemeColorName("deviceLocal")
+var colorNameDeviceOffline = fyne.ThemeColorName("deviceOffline")
+var colorNameDeviceOnline = fyne.ThemeColorName("deviceOnline")
+
+var iconNameLogo = fyne.ThemeIconName("bounceLogo")
+
+type forcedVariant struct {
+	fyne.Theme
+
+	variant fyne.ThemeVariant
+}
+
+func (f *forcedVariant) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
+	// ID tags
+	if len(name) > 3 && name[0:3] == "id:" {
+		trimmed := string(name[3:])
+		id, err := chat.ParseID(trimmed)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"name":    name,
+				"trimmed": trimmed,
+				"error":   err.Error(),
+			}).Warn("invalid ID color name")
+			return color.RGBA{0xff, 0xff, 0xff, 0xff}
+		}
+		return idToColor(id)
+	}
+
+	// Custom names
+	switch name {
+	case colorNameOutgoingChatBubble:
+		if f.variant == theme.VariantDark {
+			return color.NRGBA{0, 0x2c, 0x94, 0xff}
+		}
+		return color.NRGBA{0xb5, 0xd0, 0xff, 0xff}
+	case colorNameIncomingChatBubble:
+		if f.variant == theme.VariantDark {
+			return color.NRGBA{0x20, 0x20, 0x20, 0xff}
+		}
+		return color.NRGBA{0xdd, 0xdd, 0xdd, 0xff}
+	case colorNameDeviceLocal:
+		return color.RGBA{0x38, 0x2a, 0xf7, 0xff}
+	case colorNameDeviceOffline:
+		return color.RGBA{0xaa, 0xaa, 0xaa, 0xff}
+	case colorNameDeviceOnline:
+		return color.RGBA{0x2d, 0xc2, 0x39, 0xff}
+	}
+
+	// Match hyperlinks to text
+	if name == theme.ColorNameHyperlink {
+		if fyne.CurrentDevice().IsMobile() {
+			// Mobile devices don't have a hover effect, until I can add underlining, make the links more obvious
+			if f.variant == theme.VariantDark {
+				return color.NRGBA{R: 0xe0, G: 0xe0, B: 0xff, A: 0xff}
+			} else {
+				return color.NRGBA{R: 0x46, G: 0x46, B: 0x56, A: 0xff}
+			}
+		}
+		return f.Theme.Color(theme.ColorNameForeground, f.variant)
+	}
+
+	// Default to the default theme
+	return f.Theme.Color(name, f.variant)
+}
+
+func (f *forcedVariant) Size(name fyne.ThemeSizeName) float32 {
+	if name == theme.SizeNameButtonRadius || name == theme.SizeNameSelectionRadius || name == theme.SizeNameInputRadius {
+		return 12
+	}
+	return f.Theme.Size(name)
+}
+
+func (f *forcedVariant) Icon(name fyne.ThemeIconName) fyne.Resource {
+	if name == iconNameLogo {
+		if f.variant == theme.VariantDark {
+			return newEmbeddedResource("logo_dark.png")
+		} else {
+			return newEmbeddedResource("logo.png")
+		}
+	}
+
+	return f.Theme.Icon(name)
+}

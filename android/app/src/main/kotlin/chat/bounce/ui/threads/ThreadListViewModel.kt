@@ -272,7 +272,7 @@ private fun ThreadSummary.toRow(input: RowInputs, nowMillis: Long) = ThreadRow(
 )
 
 /**
- * The desktop client's thread-row clock (ui/thread_button.go): now, 12m, 3h,
+ * The desktop client's thread-row clock (ui/fyneui/thread_button.go): now, 12m, 3h,
  * Wed, Mar 4, Mar 4 2024.
  */
 private fun relativeTime(nowMillis: Long, unixSeconds: Long): String {

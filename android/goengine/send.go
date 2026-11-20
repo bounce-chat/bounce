@@ -37,7 +37,7 @@ type outgoingAttachment struct {
 //
 // Deriving width/height/BlurHash here rather than in Kotlin is deliberate: the
 // Go side already depends on go-blurhash and x/image, and this keeps the
-// measurement identical to the desktop client (ui/pending_message_attachments.go),
+// measurement identical to the desktop client (ui/fyneui/pending_message_attachments.go),
 // so the same photo produces the same placeholder on every platform.
 func prepareAttachments(raw string) ([]chat.OutgoingAttachment, error) {
 	if raw == "" {
@@ -89,7 +89,7 @@ func prepareAttachments(raw string) ([]chat.OutgoingAttachment, error) {
 }
 
 // measureImage decodes r and returns its dimensions and BlurHash. It mirrors
-// ui/pending_message_attachments.go: scale the longest edge down to ~32px with
+// ui/fyneui/pending_message_attachments.go: scale the longest edge down to ~32px with
 // nearest-neighbour first, because BlurHash over a full-resolution photo is
 // slow enough to be felt on a phone.
 func measureImage(r io.Reader) (width, height int, hash string, ok bool) {

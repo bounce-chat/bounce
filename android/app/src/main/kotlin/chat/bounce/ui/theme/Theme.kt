@@ -21,7 +21,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
-/** ui/theme.go pins buttons, inputs and selections at a 12dp radius. */
+/** ui/fyneui/theme.go pins buttons, inputs and selections at a 12dp radius. */
 val BounceShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),

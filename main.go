@@ -6,7 +6,7 @@ import (
 	"github.com/bounce-chat/bounce/chat"
 	"github.com/bounce-chat/bounce/config"
 	"github.com/bounce-chat/bounce/network/tor"
-	"github.com/bounce-chat/bounce/ui"
+	"github.com/bounce-chat/bounce/ui/fyneui"
 )
 
 func main() {
@@ -15,6 +15,6 @@ func main() {
 	if *encrypted {
 		chat.StartEncryptedDevice(&tor.Network{}, config.GetEncryptedConfigDirectory())
 	} else {
-		ui.Main()
+		fyneui.Main()
 	}
 }

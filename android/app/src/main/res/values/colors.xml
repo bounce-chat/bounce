@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Mirrors ui/theme.go so the native client keeps Bounce's identity. -->
+    <!-- Mirrors ui/fyneui/theme.go so the native client keeps Bounce's identity. -->
     <color name="bounce_primary">#382AF7</color>
     <color name="bounce_online">#2DC239</color>
     <color name="window_background">#FFFFFF</color>

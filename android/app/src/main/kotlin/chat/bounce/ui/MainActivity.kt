@@ -167,7 +167,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Mirrors ui/ui.go:225-238. The engine routes a message to whichever of the
+     * Mirrors ui/fyneui/ui.go:225-238. The engine routes a message to whichever of the
      * user's devices is actually being used, and a device only counts as active
      * while it keeps saying so; a missed heartbeat means this phone stops
      * winning that race and the message is announced elsewhere instead.

@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.Color
 import chat.bounce.data.Avatars
 
 /**
- * The palette from the desktop client's ui/theme.go. The two clients ship as one
+ * The palette from the desktop client's ui/fyneui/theme.go. The two clients ship as one
  * product, so the brand hues are copied verbatim rather than re-derived.
  */
 val BrandPrimary = Color(0xFF382AF7)
@@ -150,7 +150,7 @@ internal val BounceDarkColorScheme = darkColorScheme(
 )
 
 /**
- * The desktop client's uuidToColor (ui/default_image.go) as a Compose [Color]:
+ * The desktop client's uuidToColor (ui/fyneui/default_image.go) as a Compose [Color]:
  * a contact's generated avatar and their group-chat name colour have to match
  * across platforms, since that colour is often the only thing distinguishing two
  * people with the same initial.

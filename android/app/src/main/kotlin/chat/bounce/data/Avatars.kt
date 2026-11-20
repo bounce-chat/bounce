@@ -20,7 +20,7 @@ import kotlin.math.abs
  * A contact who has never set a picture must show the same colour on the phone
  * as on the laptop, because that colour is the only thing distinguishing two
  * people with the same initial. The algorithm is therefore reproduced from
- * ui/default_image.go exactly, including Go's truncating float-to-uint8
+ * ui/fyneui/default_image.go exactly, including Go's truncating float-to-uint8
  * conversion - rounding instead would shift channels by one and break the match.
  */
 object Avatars {
