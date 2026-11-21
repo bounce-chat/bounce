@@ -165,7 +165,8 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 			return nil, false
 		}
 
-		// Save this new device in our database
+		// Give the requester a complete record to self-sign. The offer device does not save it until the signed
+		// device frame comes back through the normal device handler.
 		newDevice := device{
 			Nonce:     newNonce(),
 			UserID:    b.currentUserID(),
@@ -180,21 +181,9 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 			},
 		}
 		newDevice.ID = newDevice.generateID()
-		err = b.database.Create(&newDevice).Error
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error saving new sync device")
-		}
+		profile.Devices = append(profile.Devices, newDevice)
+		pendingSyncDeviceOffers.expectFrom(syncDeviceCompletionKey(b.network.Address(), peer))
 
-		// Reload the profile to include the new device we just saved
-		profile, exists = b.currentUser()
-		if !exists {
-			log.Fatal("profile disappeared after new sync device was saved")
-		}
-
-		// Accept this device as a new sync device by responding with our updated profile information
-		// that includes this new device
 		b.sendDirect(peer, &syncDeviceRequestAccepted{
 			Profile:         profile,
 			PrivateECDHKey:  profile.PrivateECDHKey,
@@ -202,29 +191,13 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 			PrivateECDSAKey: profile.PrivateECDSAKey,
 			PublicECDSAKey:  profile.PublicECDSAKey,
 			Settings:        profile.ProfileSettings,
-			References:      b.hasAnyReferencesFor(peer),
+			References:      b.hasAnyReferencesForUser(peer, profile.ID),
 		})
-
-		// Tell the UI that we've accepted the sync device
-		b.ui.NewSyncDeviceAdded()
-		b.ui.DeviceAdded(Device{
-			ID:        newDevice.ID,
-			Address:   newDevice.Address,
-			CreatedAt: newDevice.Timestamp,
-			Local:     false,
-			Online:    true,
-		})
-		b.updateUserOnlineStatus(peer)
-
-		// Store that we've told this device about themselves
-		b.markDeliveredTo(&newDevice, peer)
-
-		// Tell everyone about the new device
-		b.broadcast(&newDevice)
 	}
 
-	// Send a reference offer to the new device
-	b.sendReferences(peer)
+	if exists {
+		b.sendReferences(peer)
+	}
 
 	return nil, false
 }

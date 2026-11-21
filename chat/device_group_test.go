@@ -50,6 +50,7 @@ func introducedBy(owner ID, introducer string, introducerKey *bnc01Onion, newDev
 		},
 	}
 	d.ID = d.generateID()
+	d.SelfSignature = newDevice.sign(deviceSelfSignatureHash(d.ID))
 	return d
 }
 
@@ -67,6 +68,7 @@ func introducedByBounce(owner ID, introducer *Bounce, newDevice *bnc01Onion, tim
 		},
 	}
 	d.ID = d.generateID()
+	d.SelfSignature = newDevice.sign(deviceSelfSignatureHash(d.ID))
 	return d
 }
 
@@ -97,16 +99,16 @@ func TestLearningADeviceCostsTheSameHoweverManyTheUserHas(t *testing.T) {
 	assert.NoError(t, me.database.Preload("Devices.Signature").First(&aliceRecord, "id = ?", aliceID).Error)
 	assert.Equal(t, 201, len(aliceRecord.Devices))
 
-	// One more device introduced by Alice's original: only its own two signatures are checked
+	// One more device introduced by Alice's original: its self-signature and two introduction signatures are checked
 	validator, counting := validatorFor(me)
 	newest := introducedByBounce(aliceID, alice, bnc01NewOnion(), time.Now().Unix())
 	assert.True(t, validator.isValidAddition(aliceRecord, newest))
-	assert.Equal(t, int64(2), counting.verifications.Load())
+	assert.Equal(t, int64(3), counting.verifications.Load())
 
-	// Whereas taking the whole record at face value means checking every introduction in it
+	// Whereas taking the whole record at face value means checking every device and introduction in it
 	counting.verifications.Store(0)
 	assert.True(t, validator.hasValidDeviceGroup(aliceRecord))
-	assert.Equal(t, int64(2*200), counting.verifications.Load())
+	assert.Equal(t, int64(1+3*200), counting.verifications.Load())
 
 	// And the device handler accepts it the same way
 	_, accepted := me.handleDevice(alice.network.Address(), newest.getPayload(), false)
@@ -145,10 +147,12 @@ func TestANewDeviceIsOnlyAcceptedFromOneOfTheUsersDevices(t *testing.T) {
 	assert.False(t, validator.isValidAddition(aliceRecord, introducedByBounce(bob.currentUserID(), alice, bnc01NewOnion(), now)))
 
 	// A second device with no introduction at all
-	unsigned := device{Nonce: newNonce(), UserID: aliceID, Address: bnc01NewOnion().addr(), Timestamp: now}
-	unsigned.ID = unsigned.generateID()
-	assert.False(t, validator.isValidAddition(aliceRecord, unsigned),
-		"only the original device is unsigned")
+	unintroducedKey := bnc01NewOnion()
+	unintroduced := device{Nonce: newNonce(), UserID: aliceID, Address: unintroducedKey.addr(), Timestamp: now}
+	unintroduced.ID = unintroduced.generateID()
+	unintroduced.SelfSignature = unintroducedKey.sign(deviceSelfSignatureHash(unintroduced.ID))
+	assert.False(t, validator.isValidAddition(aliceRecord, unintroduced),
+		"only the original device has no introduction")
 
 	// An address Alice already has
 	again := introducedByBounce(aliceID, alice, bnc01NewOnion(), now)
@@ -168,6 +172,48 @@ func TestANewDeviceIsOnlyAcceptedFromOneOfTheUsersDevices(t *testing.T) {
 	_, accepted := me.handleDevice(alice.network.Address(), forged.getPayload(), false)
 	assert.False(t, accepted)
 	assert.Equal(t, 1, deviceCount(t, me, aliceID))
+}
+
+func TestADeviceCannotBeReminted(t *testing.T) {
+	_, alice, bob, _ := createUsersAndGroups(t)
+	aliceID := alice.currentUserID()
+	newKey := bnc01NewOnion()
+	honest := introducedByBounce(aliceID, alice, newKey, time.Now().Unix())
+
+	variant := honest
+	variant.Nonce = newNonce()
+	variant.Timestamp = honest.Timestamp + 100
+	variant.ID = variant.generateID()
+	assert.NotEqual(t, honest.ID, variant.ID)
+
+	_, accepted := bob.handleDevice(bnc01NewOnion().addr(), variant.getPayload(), false)
+	assert.False(t, accepted, "copied introduction signatures do not authorize a different device ID")
+	_, exists := bob.getDeviceFromAddress(newKey.addr())
+	assert.False(t, exists, "a re-minted device must not occupy the genuine device's address")
+
+	_, accepted = bob.handleDevice(alice.network.Address(), honest.getPayload(), false)
+	assert.True(t, accepted)
+	stored, exists := bob.getDeviceFromAddress(newKey.addr())
+	assert.True(t, exists)
+	assert.Equal(t, honest.ID, stored.ID)
+}
+
+func TestADeviceCannotBeReboundToAnotherUser(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+	aliceUser, ok := alice.currentUser()
+	assert.True(t, ok)
+
+	forged := aliceUser.Devices[0]
+	forged.UserID = NewID()
+	forged.ID = forged.generateID()
+	impostor := user{ID: forged.UserID, Name: "Impostor", Devices: []device{forged}}
+
+	assert.False(t, me.createNewUserIfNeeded(impostor, groupID), "a copied device cannot approve a new user binding")
+	var storedImpostor user
+	assert.Error(t, me.database.Where("id = ?", impostor.ID).First(&storedImpostor).Error)
+	stored, exists := me.getDeviceFromAddress(forged.Address)
+	assert.True(t, exists)
+	assert.Equal(t, aliceUser.ID, stored.UserID)
 }
 
 func TestIsValidAdditionUsesRevokeKeepList(t *testing.T) {
@@ -407,7 +453,7 @@ func TestAddUserCannotAdoptDeviceIntroducedByRevokedSyncDevice(t *testing.T) {
 	counterparty := user{
 		ID:      counterpartyID,
 		Name:    "Counterparty",
-		Devices: []device{bnc01Original(counterpartyID, counterpartyKey.addr(), now)},
+		Devices: []device{bnc01Original(counterpartyID, counterpartyKey.addr(), now, counterpartyKey.sign)},
 	}
 	payload := bnc01BuildAddUser(t, counterparty, myRecord, counterpartyKey, backdatedKey)
 	_, accepted = me.handleAddUser(bnc01NewOnion().addr(), payload, false)
@@ -435,7 +481,7 @@ func TestAddUserAcceptsVerifiableUnknownSyncDevice(t *testing.T) {
 	counterparty := user{
 		ID:      counterpartyID,
 		Name:    "Counterparty",
-		Devices: []device{bnc01Original(counterpartyID, counterpartyKey.addr(), now)},
+		Devices: []device{bnc01Original(counterpartyID, counterpartyKey.addr(), now, counterpartyKey.sign)},
 	}
 	payload := bnc01BuildAddUser(t, counterparty, myRecord, counterpartyKey, newKey)
 	_, accepted := me.handleAddUser(counterpartyKey.addr(), payload, false)
@@ -459,7 +505,7 @@ func TestRejectedAddUserDoesNotSaveDevicesForNewCounterparty(t *testing.T) {
 
 	counterpartyID := NewID()
 	originalKey := bnc01NewOnion()
-	original := bnc01Original(counterpartyID, originalKey.addr(), now-1000)
+	original := bnc01Original(counterpartyID, originalKey.addr(), now-1000, originalKey.sign)
 	revokedKey := bnc01NewOnion()
 	revoked := introducedBy(counterpartyID, originalKey.addr(), originalKey, revokedKey, now-900)
 	assert.NoError(t, me.database.Create(&original).Error)

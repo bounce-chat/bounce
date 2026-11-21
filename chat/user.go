@@ -280,6 +280,7 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		Timestamp: time.Now().Unix(),
 	}
 	d.ID = d.generateID()
+	b.signDevice(&d)
 
 	curve := ecdh.X25519()
 	privateECDHKey, err := curve.GenerateKey(rand.Reader)

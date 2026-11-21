@@ -174,6 +174,17 @@ func (b *Bounce) sendReferences(peer string) {
 }
 
 func (b *Bounce) hasAnyReferencesFor(address string) bool {
+	userID, ok := b.peerOwner(address)
+	if !ok {
+		log.WithFields(log.Fields{
+			"address": address,
+		}).Warn("cannot generate reference offer for unknown device")
+		return false
+	}
+	return b.hasAnyReferencesForUser(address, userID)
+}
+
+func (b *Bounce) hasAnyReferencesForUser(address string, userID ID) bool {
 	// Make sure we don't generate references while we're in the middle of handling a catch up,
 	// in order to not generate incomplete references of update group histories
 	catchUpMutex.Lock()
@@ -181,14 +192,6 @@ func (b *Bounce) hasAnyReferencesFor(address string) bool {
 
 	if b.encrypted {
 		log.Fatal("cannot generate reference offer from encrypted device")
-	}
-
-	userID, ok := b.peerOwner(address)
-	if !ok {
-		log.WithFields(log.Fields{
-			"address": address,
-		}).Warn("cannot generate reference offer for unknown device")
-		return false
 	}
 
 	for _, spec := range referencedFrames {

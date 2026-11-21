@@ -50,6 +50,12 @@ func (p *pendingRequests) isExpectedFrom(peer string) bool {
 
 var pendingAddUserRequests = newPendingRequests(time.Duration(addUserOfferValidForSeconds) * time.Second)
 var pendingSyncRequests = newPendingRequests(time.Duration(syncDeviceOfferValidForSeconds) * time.Second)
+var pendingSyncDeviceOffers = newPendingRequests(time.Duration(syncDeviceOfferValidForSeconds) * time.Second)
+
+// The offer side waits for the requester to return its self-signed device before reporting that pairing completed.
+func syncDeviceCompletionKey(offerAddress, requesterAddress string) string {
+	return offerAddress + ":" + requesterAddress
+}
 
 // Secrets that have been claimed, so a request that re-uses one is ignored rather than refused.  A secret only
 // needs remembering for as long as its offer could have been valid.

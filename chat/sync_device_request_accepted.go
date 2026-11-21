@@ -69,7 +69,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	sdra.Profile.PrivateECDSAKey = sdra.PrivateECDSAKey
 	sdra.Profile.PublicECDSAKey = sdra.PublicECDSAKey
 
-	// Make sure the profile has valid fields and a valid device group
+	// Make sure the profile has valid fields
 	if err := validUserRecord(sdra.Profile); err != nil {
 		log.WithFields(log.Fields{
 			"peer":  peer,
@@ -77,27 +77,40 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 		}).Error("sdra contains invalid profile record")
 		return nil, false
 	}
+
+	// The offer device cannot sign for us. Complete our provisional record before validating the whole device group.
+	localDeviceIndex := -1
+	for i := range sdra.Profile.Devices {
+		dev := &sdra.Profile.Devices[i]
+		if dev.Address != b.network.Address() {
+			continue
+		}
+		if localDeviceIndex != -1 || !idMatchesContent(dev) || dev.Signature == nil || dev.Signature.PreexistingDevice != peer {
+			log.WithFields(log.Fields{
+				"peer": peer,
+			}).Warn("rejecting sync device request accepted with an invalid provisional device")
+			return nil, false
+		}
+		localDeviceIndex = i
+		b.signDevice(dev)
+	}
+	if localDeviceIndex == -1 {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("rejecting sync device request accepted that does not contain this device in the device group")
+		return nil, false
+	}
 	if !b.hasValidDeviceGroup(sdra.Profile) {
 		log.Error("sdra contains profile with invalid device group")
 		return nil, false
 	}
 
-	// Make sure that our device is in the device group of this new profile
-	localDeviceFound := false
+	// The offer device must be in the group as our introducer
 	peerFound := false
 	for _, dev := range sdra.Profile.Devices {
-		if dev.Address == b.network.Address() {
-			localDeviceFound = true
-		}
 		if dev.Address == peer {
 			peerFound = true
 		}
-	}
-	if !localDeviceFound {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("rejecting sync device request accepted that does not contain this device in the device group")
-		return nil, false
 	}
 	if !peerFound {
 		log.WithFields(log.Fields{
@@ -120,6 +133,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 			"error": err.Error(),
 		}).Fatal("error saving new sync profile")
 	}
+	b.broadcast(&sdra.Profile.Devices[localDeviceIndex])
 	b.createAndShareDeviceECDHKey()
 
 	// Collect the sync devices for the UI

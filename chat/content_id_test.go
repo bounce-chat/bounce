@@ -144,7 +144,7 @@ func TestAnAddUserCannotBeRedefinedUnderItsID(t *testing.T) {
 	// A new contact and I introduce each other: they offered, my device requested and signed their record
 	them := bnc01NewOnion()
 	theirID := NewID()
-	theirUser := user{ID: theirID, Name: "New contact", Devices: []device{bnc01Original(theirID, them.addr(), time.Now().Unix())}}
+	theirUser := user{ID: theirID, Name: "New contact", Devices: []device{bnc01Original(theirID, them.addr(), time.Now().Unix(), them.sign)}}
 	theirBytes, err := msgpack.Marshal(theirUser)
 	assert.NoError(t, err)
 	myBytes := bnc01MarshalUser(me)

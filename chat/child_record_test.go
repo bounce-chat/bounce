@@ -23,13 +23,14 @@ func TestIntroductionSignatureCannotBeReparented(t *testing.T) {
 	attacker.Signature.ID = original.ID
 	attacker.Signature.DeviceID = original.DeviceID
 	payload, err := msgpack.Marshal(map[string]interface{}{
-		"ID":        attacker.ID,
-		"Nonce":     attacker.Nonce,
-		"UserID":    attacker.UserID,
-		"Address":   attacker.Address,
-		"Network":   attacker.Network,
-		"Timestamp": attacker.Timestamp,
-		"RevokedAt": attacker.RevokedAt,
+		"ID":            attacker.ID,
+		"Nonce":         attacker.Nonce,
+		"UserID":        attacker.UserID,
+		"Address":       attacker.Address,
+		"Network":       attacker.Network,
+		"Timestamp":     attacker.Timestamp,
+		"RevokedAt":     attacker.RevokedAt,
+		"SelfSignature": attacker.SelfSignature,
 		"Signature": map[string]interface{}{
 			"ID":                           attacker.Signature.ID,
 			"DeviceID":                     attacker.Signature.DeviceID,

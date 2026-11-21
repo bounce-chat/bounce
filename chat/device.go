@@ -9,6 +9,7 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
+	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -30,6 +31,7 @@ type device struct {
 	ECDHPublicKey  []byte `msgpack:"-"`
 	ECDHPrivateKey []byte `msgpack:"-"`
 	Signature      *introductionSignature
+	SelfSignature  []byte
 }
 
 func (d *device) getNonce() nonce {
@@ -40,6 +42,7 @@ func (d *device) getNonce() nonce {
 // created, and the introduction that vouches for it.  Revocation is set by later updates and so it isn't included.
 // The network is a separate hashed field, not a prefix on the address: the bare address stays what is signed and
 // recovered back into the key, while the network term makes (address, network) jointly the device's identity.
+// SelfSignature signs this ID, so the signature itself is not part of the hash.
 func (d *device) generateID() ID {
 	ch := newContentHasher(typeDevice, d.Nonce).
 		id(d.UserID).
@@ -57,9 +60,29 @@ func (d *device) generateID() ID {
 	return ch.generate()
 }
 
+const deviceSelfSignatureDomain = "bounce-device-self-signature:"
+
+func deviceSelfSignatureHash(deviceID ID) []byte {
+	hasher := blake3.New()
+	hasher.Write([]byte(deviceSelfSignatureDomain))
+	hasher.Write(deviceID[:])
+	return hasher.Sum(nil)
+}
+
+func (b *Bounce) signDevice(d *device) {
+	d.SelfSignature = b.network.Sign(deviceSelfSignatureHash(d.ID))
+}
+
+func (b *Bounce) hasValidSelfSignature(d device) bool {
+	return b.network.VerifySignature(d.Address, deviceSelfSignatureHash(d.ID), d.SelfSignature)
+}
+
 func (d *device) BeforeCreate(tx *gorm.DB) error {
 	if !idMatchesContent(d) {
 		return errors.New("device ID is not generated from its content")
+	}
+	if len(d.SelfSignature) == 0 {
+		return errors.New("device self-signature is missing")
 	}
 	if d.Signature != nil {
 		d.Signature.ID = d.ID
@@ -71,9 +94,9 @@ func (d *device) BeforeCreate(tx *gorm.DB) error {
 }
 
 // AfterCreate evicts this device's address from the encrypted device cache and from any user's list of encrypted
-// devices.  A device row only exists once mutual introduction signatures have verified, while claiming an address as
-// an encrypted device is a bare assertion by one user, so when the two disagree the device wins.  Without this a
-// contact could claim another user's device address as their own encrypted device before we met that device, and
+// devices.  A device row only exists once its self-signature and any required introduction have verified, while
+// claiming an address as an encrypted device is a bare assertion by one user, so when the two disagree the device
+// wins.  Without this a contact could claim another user's device address as their own encrypted device before we met that device, and
 // every frame to it would be refused as unsendable to an encrypted device from then on.
 func (d *device) AfterCreate(tx *gorm.DB) error {
 	peerIdentitiesChanged()
@@ -396,6 +419,9 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadc
 			lastSeen = time.Now().Unix()
 		}
 
+		if pendingSyncDeviceOffers.isExpectedFrom(syncDeviceCompletionKey(b.network.Address(), d.Address)) {
+			b.ui.NewSyncDeviceAdded()
+		}
 		b.ui.DeviceAdded(Device{
 			ID:        d.ID,
 			Name:      d.Name,
@@ -405,6 +431,8 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadc
 			Local:     false,
 			Online:    online,
 		})
+		b.updateUserOnlineStatus(d.Address)
+		go b.sendReferences(d.Address)
 	}
 
 	return &d, true

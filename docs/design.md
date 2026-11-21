@@ -12,13 +12,15 @@ A user has a few basic properties like a name and profile image, and a collectio
 
 ### Device Groups 
 
-A device group is a set of devices owned by the same person.  They are defined as a tree structure of mutual signatures of network keys.  This means that any device can add a new device to the group, and devices have to consent to be added.
+A device group is a set of devices owned by the same person.  They are defined as a tree structure of mutual signatures of network keys.  This means that any device can add a new device to the group, and devices have to consent to be added.  Every device signs its content-derived device ID, to prove that the device approved its binding to the user, and prevents tampering or claims from other users.
 
 For example:
 1. A user creates their Bounce profile on their phone, and their device group consists of just one device, the phone
 2. The user now wants to add their laptop to their profile, which has its own device keys
 3. The phone signs the laptop's public key (consenting to add), and the laptop signs the phone's public key (consenting to be added)
-4. Both of these device details can now be distributed along with this pair of signatures, to show that the device group now consists of two devices
+4. The phone constructs a provisional device record but does not save it, then sends it to the laptop with the profile details
+5. The laptop self-signs its device ID, saves the profile, and broadcasts its completed device frame
+6. The phone and other peers accept the device through the normal device validation path
 
 The above process can repeat indefinitely, with the phone able to add another device, and the laptop now also able to add devices and extend the device group.  The device group that you own is known as your "sync devices".
 

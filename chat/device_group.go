@@ -32,7 +32,7 @@ func dfs(n *node) {
 const maximumDevicesPerUser = 1024
 
 // A new device can be added to a device group if:
-//  1. it belongs to the user
+//  1. it belongs to the user and its key signed its canonical ID
 //  2. it doesn't already exist
 //  3. adding it wouldn't put the device group over the size limit
 //  4. the new device has a valid mutual signature with an existing device
@@ -44,6 +44,13 @@ func (b *Bounce) isValidAddition(u user, dev device) bool {
 			"user":   u.ID,
 			"device": dev.ID,
 		}).Warn("rejecting device addition because the device ID is not generated from its content")
+		return false
+	}
+	if !b.hasValidSelfSignature(dev) {
+		log.WithFields(log.Fields{
+			"user":   u.ID,
+			"device": dev.ID,
+		}).Warn("rejecting device addition because its self-signature is invalid")
 		return false
 	}
 
@@ -113,7 +120,7 @@ func (b *Bounce) isValidAddition(u user, dev device) bool {
 		log.WithFields(log.Fields{
 			"user":   u.ID,
 			"device": dev.ID,
-		}).Warn("rejecting device addition because a device group can only have one unsigned device")
+		}).Warn("rejecting device addition because the device does not have an introduction signature and is not the original device")
 		return false
 	}
 	introducer, known := knownDevices[dev.Signature.PreexistingDevice]
@@ -200,6 +207,13 @@ func (b *Bounce) hasValidDeviceGroup(u user) bool {
 			}).Warn("a device group is invalid because a device ID is not generated from its content")
 			return false
 		}
+		if !b.hasValidSelfSignature(dev) {
+			log.WithFields(log.Fields{
+				"user":   u.ID,
+				"device": dev.ID,
+			}).Warn("a device group is invalid because a device self-signature is invalid")
+			return false
+		}
 
 		if dev.Signature != nil {
 			dg.signatures = append(
@@ -229,10 +243,10 @@ func (b *Bounce) hasValidDeviceGroup(u user) bool {
 			}
 		} else {
 			if originalDevice != "" {
-				// Can't have more than one device that was never signed
+				// Only one original device can lack an introduction
 				log.WithFields(log.Fields{
 					"user": u.ID,
-				}).Warn("a device group is invalid because it has more than one unsigned devices")
+				}).Warn("a device group is invalid because it has more than one original device")
 				return false
 			} else {
 				originalDevice = dev.Address
