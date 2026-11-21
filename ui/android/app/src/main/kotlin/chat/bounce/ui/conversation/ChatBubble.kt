@@ -793,7 +793,7 @@ private fun FileAttachmentRow(
         Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
             if (downloading) {
                 CircularProgressIndicator(
-                    progress = { progress?.toFloat() ?: 0f },
+                    progress = { progress.toFloat() },
                     strokeWidth = 2.dp,
                     modifier = Modifier.size(38.dp),
                 )

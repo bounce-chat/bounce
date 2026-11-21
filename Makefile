@@ -102,6 +102,10 @@ linux-debian-release-docker:
 	# manual rename at upload time.
 	cd pkg/debian && dpkg-deb --build bounce && chown 1000:1000 bounce.deb && mv bounce.deb ../../releases/bounce-$(VERSION).deb && cd .. && rm -rf debian
 
+# -s -w leaves the symbol table and debug info out of libgojni.so, about 15 MB
+# per ABI. Gradle would strip them at packaging time, but only with its own
+# default NDK version, which is rarely the one installed. Go stack traces do
+# not need either.
 android-bind:
 	@test -d "$(ANDROID_NDK)" || (echo "No NDK found under $(ANDROID_SDK)/ndk. Set ANDROID_NDK=..." && false)
 	mkdir -p ui/android/app/libs
@@ -111,7 +115,7 @@ android-bind:
 		-androidapi $(NATIVE_API) \
 		-javapkg chat.bounce \
 		-o ui/android/app/libs/goengine.aar \
-		-ldflags="-checklinkname=0 $(VERSION_LDFLAGS)" \
+		-ldflags="-s -w -checklinkname=0 $(VERSION_LDFLAGS)" \
 		github.com/bounce-chat/bounce/ui/android/goengine
 
 android: android-bind

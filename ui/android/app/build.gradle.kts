@@ -76,6 +76,11 @@ android {
             // The Tor/OpenSSL .so shipped inside the gomobile AAR must stay
             // uncompressed and page-aligned so it can be mapped directly.
             useLegacyPackaging = false
+            // libgojni.so is linked without its symbol table and debug info
+            // (-s -w in the Makefile). Left to itself AGP tries to strip native
+            // libraries with its own default NDK version, which is rarely the
+            // one installed, and then reports on every build that it could not.
+            keepDebugSymbols += "**/*.so"
         }
     }
 

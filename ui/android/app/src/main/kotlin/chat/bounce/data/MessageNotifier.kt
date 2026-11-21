@@ -20,12 +20,12 @@ import chat.bounce.engine.EngineSignal
  * implementations do not need to be reentrant.
  */
 interface MessageNotifier {
-    suspend fun onNotificationPost(signal: EngineSignal.NotificationPost)
+    suspend fun onNotificationPost(post: EngineSignal.NotificationPost)
     fun onNotificationClear(messageId: String)
 }
 
 /** For tests, and for any component that drives the pump without a UI. */
 object NoOpMessageNotifier : MessageNotifier {
-    override suspend fun onNotificationPost(signal: EngineSignal.NotificationPost) = Unit
+    override suspend fun onNotificationPost(post: EngineSignal.NotificationPost) = Unit
     override fun onNotificationClear(messageId: String) = Unit
 }

@@ -26,9 +26,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -158,7 +158,7 @@ fun Composer(
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.conv_attach_file)) },
-                            leadingIcon = { Icon(Icons.Outlined.InsertDriveFile, contentDescription = null) },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Outlined.InsertDriveFile, contentDescription = null) },
                             onClick = {
                                 attachMenuOpen = false
                                 documentPicker.launch(arrayOf("*/*"))
@@ -263,7 +263,7 @@ private fun AttachmentStrip(
                             modifier = Modifier.padding(4.dp),
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.InsertDriveFile,
+                                imageVector = Icons.AutoMirrored.Outlined.InsertDriveFile,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

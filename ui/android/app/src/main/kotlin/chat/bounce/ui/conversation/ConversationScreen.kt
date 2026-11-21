@@ -92,6 +92,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -854,12 +855,19 @@ private fun ImageViewerDialog(
         return Offset(raw.x.coerceIn(-maxX, maxX), raw.y.coerceIn(-maxY, maxY))
     }
 
-    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
+    val transformState = rememberTransformableState { centroid, zoomChange, panChange, _ ->
         val next = (scale * zoomChange).coerceIn(1f, MAX_VIEWER_ZOOM)
+        // Zoom about the point between the fingers, so it stays under them, the
+        // same way a double tap keeps the tapped point in place. A transformation
+        // that names no centroid zooms about the centre.
+        val centre = Offset(boxSize.width / 2f, boxSize.height / 2f)
+        val pinch = if (centroid.isSpecified) centroid - centre else Offset.Zero
+        val ratio = next / scale
+        val zoomed = pinch * (1f - ratio) + offset * ratio
         scale = next
         // At 1x the clamp collapses to zero, so panning an unzoomed photo does
         // nothing rather than sliding it around the screen.
-        offset = clamp(offset + panChange, next)
+        offset = clamp(zoomed + panChange, next)
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -1056,7 +1064,6 @@ private fun buildRows(items: List<ConversationItem>): List<ConversationRow> {
                 rows.add(ConversationRow.Bubble(item, grouping(items, days, index)))
             is ConversationItem.SystemEvent ->
                 rows.add(ConversationRow.System(item))
-            else -> Unit
         }
         if (index == 0 || days[index - 1] != days[index]) {
             rows.add(ConversationRow.DayHeader(days[index], items[index].sortTime))
@@ -1087,7 +1094,6 @@ private val ConversationItem.sortTime: Long
     get() = when (this) {
         is ConversationItem.Message -> writtenAt
         is ConversationItem.SystemEvent -> timestamp
-        else -> 0L
     }
 
 private fun epochDay(epochSeconds: Long, zone: ZoneId): Long =
