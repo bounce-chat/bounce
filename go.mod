@@ -75,3 +75,5 @@ require (
 )
 
 tool golang.org/x/mobile/cmd/gobind
+
+replace github.com/mattn/go-sqlite3 => github.com/bounce-chat/go-sqlite3 v1.14.53-bounce.1
