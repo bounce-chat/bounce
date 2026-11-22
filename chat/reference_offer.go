@@ -20,28 +20,41 @@ var maximumReferencesPerOffer = 100000
 // The reference engine holds at most this many references across every peer, however many peers there are
 var maximumReferences = 1000000
 
-// Peers whose last reference offer to us was a part of a larger one.  Guarded by its mutex.
-var incompleteOffers = map[string]bool{}
-var incompleteOffersMutex sync.Mutex
-
-func incompleteOfferFrom(peer string) bool {
-	incompleteOffersMutex.Lock()
-	defer incompleteOffersMutex.Unlock()
-	return incompleteOffers[peer]
+type referenceState struct {
+	referenceOfferStatesMutex sync.Mutex
+	referenceOfferStates      map[string]*referenceOfferState
+	incompleteOffersMutex     sync.Mutex
+	incompleteOffers          map[string]bool
 }
 
-func setIncompleteOfferFrom(peer string, incomplete bool) {
-	incompleteOffersMutex.Lock()
-	defer incompleteOffersMutex.Unlock()
-	if incomplete {
-		incompleteOffers[peer] = true
-	} else {
-		delete(incompleteOffers, peer)
+func newReferenceState() *referenceState {
+	return &referenceState{
+		referenceOfferStates: map[string]*referenceOfferState{},
+		incompleteOffers:     map[string]bool{},
 	}
 }
 
-var referenceOfferMutexLock sync.Mutex
-var referenceOfferMutexes = map[string]*sync.Mutex{}
+func (b *Bounce) incompleteOfferFrom(peer string) bool {
+	b.referenceState.incompleteOffersMutex.Lock()
+	defer b.referenceState.incompleteOffersMutex.Unlock()
+	return b.referenceState.incompleteOffers[peer]
+}
+
+func (b *Bounce) setIncompleteOfferFrom(peer string, incomplete bool) {
+	b.referenceState.incompleteOffersMutex.Lock()
+	defer b.referenceState.incompleteOffersMutex.Unlock()
+	if incomplete {
+		b.referenceState.incompleteOffers[peer] = true
+	} else {
+		delete(b.referenceState.incompleteOffers, peer)
+	}
+}
+
+type referenceOfferState struct {
+	sync.Mutex
+	running bool
+	pending bool
+}
 
 // A reference offer is a message sent to a newly connected device that provides the IDs of any frames that device
 // should have, but that we didn't deliver to it.  Reference offers are delivery tracked using acks in order to
@@ -83,24 +96,48 @@ func (ro *referenceOffer) getPayload() []byte {
 	return bytes
 }
 
-func getReferenceOfferMutexForPeer(peer string) *sync.Mutex {
-	referenceOfferMutexLock.Lock()
-	defer referenceOfferMutexLock.Unlock()
+func (b *Bounce) getReferenceOfferStateForPeer(peer string) *referenceOfferState {
+	b.referenceState.referenceOfferStatesMutex.Lock()
+	defer b.referenceState.referenceOfferStatesMutex.Unlock()
 
-	mutex, ok := referenceOfferMutexes[peer]
+	state, ok := b.referenceState.referenceOfferStates[peer]
 	if !ok {
-		mutex = &sync.Mutex{}
-		referenceOfferMutexes[peer] = mutex
+		state = &referenceOfferState{}
+		b.referenceState.referenceOfferStates[peer] = state
 	}
 
-	return mutex
+	return state
 }
 
+// sendReferences coalesces every trigger into one active run and at most one pending follow-up per peer. Calls made
+// while a run is active return immediately instead of accumulating behind its retry loop.
 func (b *Bounce) sendReferences(peer string) {
-	mutex := getReferenceOfferMutexForPeer(peer)
-	mutex.Lock()
-	defer mutex.Unlock()
+	state := b.getReferenceOfferStateForPeer(peer)
+	state.Lock()
+	if state.running {
+		state.pending = true
+		state.Unlock()
+		return
+	}
+	state.running = true
+	state.Unlock()
 
+	for {
+		b.sendReferenceOffer(peer)
+
+		state.Lock()
+		if state.pending {
+			state.pending = false
+			state.Unlock()
+		} else {
+			state.running = false
+			state.Unlock()
+			return
+		}
+	}
+}
+
+func (b *Bounce) sendReferenceOffer(peer string) {
 	if _, exists := b.currentUser(); !exists {
 		// Our profile hasn't been setup yet, we have nothing to offer
 		return
@@ -1441,7 +1478,7 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		}).Warn("reference offer names more frames than we will consider at once, ignoring the rest")
 		ro.References = ro.References[:maximumReferencesPerOffer]
 	}
-	setIncompleteOfferFrom(peer, ro.Incomplete)
+	b.setIncompleteOfferFrom(peer, ro.Incomplete)
 
 	references, acks := b.processReferenceOffer(peer, ro.References)
 
@@ -1455,6 +1492,13 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		go b.sendDirect(peer, &ack{
 			References: acks,
 		})
+	}
+
+	// If we already had everything in this offer request the next one now, don't wait for a catch up since we aren't
+	// going to make one
+	if ro.Incomplete && len(ro.References) > 0 && len(references) == 0 {
+		b.setIncompleteOfferFrom(peer, false)
+		go b.sendDirect(peer, requestReferenceOffer{})
 	}
 
 	return nil, false

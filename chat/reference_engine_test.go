@@ -40,18 +40,18 @@ func rowsFrom(b *Bounce, peer string) []frameReference {
 func TestReferencesLiveWhileThePeerIsConnectedAndGoWhenItLeaves(t *testing.T) {
 	me, alice, _, _ := createUsersAndGroups(t)
 	alice.loadReferenceOffer(me.network.Address(), referencesTo(messagesFrom(me, alice.currentUserID(), 3)))
-	setIncompleteOfferFrom(me.network.Address(), true)
+	alice.setIncompleteOfferFrom(me.network.Address(), true)
 	// However old the references are, a connected peer keeps them
 	alice.referenceDatabase.Table("frame_references").Where("peer = ?", me.network.Address()).Updates(map[string]interface{}{"created_at": 1, "last_action": 1})
 
 	alice.pruneReferences()
 	assert.True(t, len(rowsFrom(alice, me.network.Address())) >= 3, "a connected peer's references were pruned")
-	assert.True(t, incompleteOfferFrom(me.network.Address()))
+	assert.True(t, alice.incompleteOfferFrom(me.network.Address()))
 
 	sever(t, me, alice)
 	alice.pruneReferences()
 	assert.Equal(t, 0, len(rowsFrom(alice, me.network.Address())), "a departed peer's references remain")
-	assert.False(t, incompleteOfferFrom(me.network.Address()), "a departed peer's part offer is still awaited")
+	assert.False(t, alice.incompleteOfferFrom(me.network.Address()), "a departed peer's part offer is still awaited")
 }
 
 func TestAPeerIsHeldToItsReferenceAllowance(t *testing.T) {
@@ -141,7 +141,7 @@ func TestALargeHistoryIsOfferedInPartsAndArrivesWhole(t *testing.T) {
 	settled := false
 	for time.Now().Before(deadline) {
 		alice.database.Model(&directMessage{}).Where("text LIKE ?", "part of a long story%").Count(&n)
-		settled = n == 10 && !me.getReferenceOfferFor(alice.network.Address()).Incomplete && !incompleteOfferFrom(me.network.Address())
+		settled = n == 10 && !me.getReferenceOfferFor(alice.network.Address()).Incomplete && !alice.incompleteOfferFrom(me.network.Address())
 		if settled {
 			break
 		}
@@ -158,15 +158,15 @@ func TestInitialSyncWaitsForTheFinalOfferPart(t *testing.T) {
 	t.Cleanup(func() {
 		setWaitingForInitialSyncFrom("")
 		initialSyncAnnounced.Store(false)
-		setIncompleteOfferFrom(source, false)
+		alice.setIncompleteOfferFrom(source, false)
 	})
 
 	// The source's offer was one part of more; a complete catch up drains it, so the next part is asked for
-	setIncompleteOfferFrom(source, true)
+	alice.setIncompleteOfferFrom(source, true)
 	complete, _ := msgpack.Marshal(catchUp{})
 	alice.handleCatchUp(source, complete, false)
 	assert.Equal(t, source, waitingForInitialSyncFrom(), "still syncing while offer parts remain")
-	assert.False(t, incompleteOfferFrom(source), "the next part should have been asked for")
+	assert.False(t, alice.incompleteOfferFrom(source), "the next part should have been asked for")
 
 	// The last part's catch up ends the sync
 	alice.handleCatchUp(source, complete, false)

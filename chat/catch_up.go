@@ -574,11 +574,11 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	// The peer had more for us than fit in this catch up.  Ask for the rest now that this stage is handled; the
 	// reference engine knows exactly what is still outstanding from them.
 	// Once nothing is outstanding, a peer whose offer was itself one part of a larger one is asked for the next part.
-	offerIncomplete := incompleteOfferFrom(peer)
+	offerIncomplete := b.incompleteOfferFrom(peer)
 	if cu.Incomplete {
 		b.requestOutstandingReferencesFrom(peer)
 	} else if offerIncomplete && b.outstandingReferencesFrom(peer) == 0 {
-		setIncompleteOfferFrom(peer, false)
+		b.setIncompleteOfferFrom(peer, false)
 		go b.sendDirect(peer, requestReferenceOffer{})
 	}
 

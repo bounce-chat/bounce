@@ -35,6 +35,7 @@ type Bounce struct {
 	referenceDatabase    *gorm.DB
 	ui                   UI
 	network              Network
+	referenceState       *referenceState
 	devicePool           *devicePool
 	consensusStore       *consensusStore
 	chunkEngine          *chunkEngine
@@ -156,6 +157,7 @@ func Open(ui UI, network Network, configDirectory string, postNotification func(
 		configDirectory: configDirectory,
 		network:         network,
 		ui:              ui,
+		referenceState:  newReferenceState(),
 		devicePool: &devicePool{
 			devices:            make(map[string]*remoteDevice),
 			groupPools:         make(map[ID][]*remoteDevice),

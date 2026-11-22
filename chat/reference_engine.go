@@ -135,7 +135,7 @@ func (b *Bounce) pruneReferences() {
 				"error": err.Error(),
 			}).Fatal("error pruning frame references of a departed peer")
 		}
-		setIncompleteOfferFrom(peer, false)
+		b.setIncompleteOfferFrom(peer, false)
 	}
 
 	fiveMinutesAgo := time.Now().Add(-5 * time.Minute).Unix()

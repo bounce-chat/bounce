@@ -60,6 +60,7 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 		encrypted:       true,
 		configDirectory: configDirectory,
 		network:         network,
+		referenceState:  newReferenceState(),
 		devicePool: &devicePool{
 			deviceMutex:        sync.Mutex{},
 			devices:            make(map[string]*remoteDevice),
