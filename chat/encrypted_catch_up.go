@@ -53,6 +53,15 @@ func (er encryptedReceive) getSavedAt() int64 {
 type encryptedCatchUp struct {
 	Frames     sortableEncryptedReceives
 	Incomplete bool
+	onComplete func()
+}
+
+func (ecu *encryptedCatchUp) complete() {
+	if ecu.onComplete != nil {
+		complete := ecu.onComplete
+		ecu.onComplete = nil
+		complete()
+	}
 }
 
 type sortableEncryptedReceives []encryptedReceive
@@ -338,11 +347,6 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 	for _, ref := range originalOffer.References {
 		allowed[ref.FrameID] = true
 	}
-	requested := map[ID]bool{}
-	for _, ref := range rr.References {
-		requested[ref.FrameID] = true
-	}
-
 	validIDs := []ID{}
 	for _, ref := range rr.References {
 		if _, ok := allowed[ref.FrameID]; ok {
@@ -350,13 +354,19 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 		}
 	}
 
-	for _, id := range validIDs {
+	metadata := loadCatchUpFrameMetadata(
+		b.database.Model(&encryptedFrame{}).Select("id, type, timestamp AS saved_at"),
+		validIDs,
+	)
+	sort.Sort(sortableCatchUpFrameMetadata(metadata))
+	total := 0
+	for _, item := range metadata {
 		var ef encryptedFrame
-		err := b.database.Preload(clause.Associations).Take(&ef, "id = ?", id).Error
+		err := b.database.Preload(clause.Associations).Take(&ef, "id = ?", item.ID).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				log.WithFields(log.Fields{
-					"id": id,
+					"id": item.ID,
 				}).Error("requested encrypted frame not found")
 				continue
 			} else {
@@ -396,7 +406,7 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 
 		if !found {
 			log.WithFields(log.Fields{
-				"id": id,
+				"id": item.ID,
 			}).Error("encrypted frame requested by recipient not in recipient list")
 			continue
 		}
@@ -430,21 +440,12 @@ func (b *Bounce) generateEncryptedCatchUpFor(peer string, rr referenceRequest) *
 			}
 		}
 
-		ecu.Frames = append(ecu.Frames, er)
-	}
-
-	sort.Sort(ecu.Frames)
-
-	// Send the earliest frames that fit the budget and set incomplete as true if any didn't fit
-	total := 0
-	for i, er := range ecu.Frames {
-		size := len(er.Payload)
-		if i > 0 && total+size > catchUpPayloadBudget {
-			ecu.Frames = ecu.Frames[:i]
+		if len(ecu.Frames) > 0 && total+len(er.Payload) > catchUpPayloadBudget {
 			ecu.Incomplete = true
 			break
 		}
-		total += size
+		ecu.Frames = append(ecu.Frames, er)
+		total += len(er.Payload)
 	}
 
 	return ecu

@@ -7,6 +7,7 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 var catchUpMutex sync.Mutex
@@ -29,10 +30,19 @@ type catchUp struct {
 	Frames     []frame
 	Incomplete bool
 	sendables  sortableCatchUpAbles
+	onComplete func()
 }
 
 func (cu *catchUp) getType() uint16 {
 	return typeCatchUp
+}
+
+func (cu *catchUp) complete() {
+	if cu.onComplete != nil {
+		complete := cu.onComplete
+		cu.onComplete = nil
+		complete()
+	}
 }
 
 func (cu *catchUp) getPayload() []byte {
@@ -60,6 +70,46 @@ func (cu *catchUp) getPayload() []byte {
 		}).Fatal("cannot msgpack marshal catch up")
 	}
 	return bytes
+}
+
+const catchUpMetadataBatchSize = 500
+
+type catchUpFrameMetadata struct {
+	ID      ID
+	Type    uint16
+	SavedAt int64
+}
+
+type sortableCatchUpFrameMetadata []catchUpFrameMetadata
+
+func (m sortableCatchUpFrameMetadata) Len() int {
+	return len(m)
+}
+func (m sortableCatchUpFrameMetadata) Swap(i, j int) {
+	m[i], m[j] = m[j], m[i]
+}
+func (m sortableCatchUpFrameMetadata) Less(i, j int) bool {
+	if m[i].SavedAt == m[j].SavedAt {
+		iOrder, iKnown := catchUpOrder[m[i].Type]
+		jOrder, jKnown := catchUpOrder[m[j].Type]
+		return iKnown && jKnown && iOrder < jOrder
+	}
+	return m[i].SavedAt < m[j].SavedAt
+}
+
+func loadCatchUpFrameMetadata(query *gorm.DB, ids []ID) []catchUpFrameMetadata {
+	metadata := []catchUpFrameMetadata{}
+	for start := 0; start < len(ids); start += catchUpMetadataBatchSize {
+		end := min(start+catchUpMetadataBatchSize, len(ids))
+		batch := []catchUpFrameMetadata{}
+		if err := query.Where("id IN ?", ids[start:end]).Scan(&batch).Error; err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error loading requested frame metadata")
+		}
+		metadata = append(metadata, batch...)
+	}
+	return metadata
 }
 
 var initialSyncMutex sync.Mutex

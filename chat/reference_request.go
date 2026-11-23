@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"sort"
+
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
 )
@@ -36,26 +38,67 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 		return nil, false
 	}
 
+	rd := b.getRemoteDevice(peer)
+	if !rd.beginCatchUp() {
+		return nil, false
+	}
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			rd.finishCatchUp()
+		}
+	}()
+
 	if b.encrypted {
-		go b.sendDirect(peer, b.generateEncryptedCatchUpFor(peer, rr))
+		ecu := b.generateEncryptedCatchUpFor(peer, rr)
+		ecu.onComplete = rd.finishCatchUp
+		handedOff = true
+		go b.sendDirect(peer, ecu)
 		return nil, false
 	}
 
+	cu := b.generateCatchUpFor(peer, rr)
+	if len(cu.Frames) == 0 {
+		return nil, false
+	}
+	cu.onComplete = rd.finishCatchUp
+	handedOff = true
+	go b.sendDirect(peer, cu)
+	return nil, false
+}
+
+func (b *Bounce) generateCatchUpFor(peer string, rr referenceRequest) *catchUp {
 	offerable := b.getReferenceOfferFor(peer)
 	offeredIDs := referencedIDs(offerable.References)
 	requestedIDs := referencedIDs(rr.References)
 
-	deliverable := map[uint16][]ID{}
+	metadata := []catchUpFrameMetadata{}
 	for _, rf := range referencedFrames {
-		deliverable[rf.frameType] = getValidRequestedIDs(offeredIDs[rf.frameType], requestedIDs[rf.frameType])
+		deliverable := getValidRequestedIDs(offeredIDs[rf.frameType], requestedIDs[rf.frameType])
+		loaded := loadCatchUpFrameMetadata(
+			b.database.Table(rf.table).Select("id, saved_at"),
+			deliverable,
+		)
+		for i := range loaded {
+			loaded[i].Type = rf.frameType
+		}
+		metadata = append(metadata, loaded...)
 	}
+	sort.Sort(sortableCatchUpFrameMetadata(metadata))
 
-	broadcastables := []broadcastable{}
+	encryptedDeviceCacheMutex.Lock()
+	_, encrypted := encryptedDeviceCache[peer]
+	encryptedDeviceCacheMutex.Unlock()
+
+	cu := &catchUp{}
+	total := 0
 	owner, ownerKnown := b.peerOwner(peer)
 	myID := b.currentUserID()
-	for _, rf := range referencedFrames {
-		loaded := rf.load(b, deliverable[rf.frameType])
-		for _, br := range loaded {
+
+frames:
+	for _, item := range metadata {
+		rf := referencedFramesByType[item.Type]
+		for _, br := range rf.load(b, []ID{item.ID}) {
 			if br.getScope(myID) == scopeSync && (!ownerKnown || owner != myID) {
 				log.WithFields(log.Fields{
 					"id":   br.getID(),
@@ -64,54 +107,37 @@ func (b *Bounce) handleReferenceRequest(peer string, payload []byte, _ bool) (br
 				}).Error("refusing to serve sync-scoped frame to a device that is not a sync device")
 				continue
 			}
-			broadcastables = append(broadcastables, br)
-		}
-	}
 
-	if len(broadcastables) == 0 {
-		return nil, false
-	}
-
-	encryptedDeviceCacheMutex.Lock()
-	_, encrypted := encryptedDeviceCache[peer]
-	encryptedDeviceCacheMutex.Unlock()
-	if encrypted {
-		// If we're preparing this catch up for an encrypted device, pack it with encrypted versions of the frames
-		cuForEncryptedDevice := &catchUp{
-			sendables: sortableCatchUpAbles{},
-		}
-
-		for _, br := range broadcastables {
-			s := b.encryptFrameForDevice(br, peer)
-			if s != nil {
-				cuForEncryptedDevice.sendables = append(cuForEncryptedDevice.sendables, s)
+			var s catchUpAble
+			if encrypted {
+				s = b.encryptFrameForDevice(br, peer)
+				if s == nil {
+					log.WithFields(log.Fields{
+						"id":   br.getID(),
+						"type": br.getType(),
+					}).Warn("excluding broadcastable from catch up that could not be encrypted")
+					continue
+				}
 			} else {
-				log.WithFields(log.Fields{
-					"id":   br.getID(),
-					"type": br.getType(),
-				}).Warn("excluding broadcastable from catch up that could not be encrypted")
+				var ok bool
+				s, ok = br.(catchUpAble)
+				if !ok {
+					log.Error("broadcastable frame is not also a catchUpAble frame")
+					continue
+				}
 			}
-		}
 
-		go b.sendDirect(peer, cuForEncryptedDevice)
-	} else {
-		// If we're preparing this catch up for a normal device, pack the frames in directly
-		cu := &catchUp{
-			sendables: sortableCatchUpAbles{},
-		}
-
-		for _, br := range broadcastables {
-			s, ok := br.(catchUpAble)
-			if !ok {
-				log.Error("broadcastable frame is not also a catchUpAble frame")
+			payload := s.getPayload()
+			if len(cu.Frames) > 0 && total+len(payload) > catchUpPayloadBudget {
+				cu.Incomplete = true
+				break frames
 			}
-			cu.sendables = append(cu.sendables, s)
+			cu.Frames = append(cu.Frames, frame{ID: s.getID(), Type: s.getType(), Payload: payload})
+			total += len(payload)
 		}
-
-		go b.sendDirect(peer, cu)
 	}
 
-	return nil, false
+	return cu
 }
 
 // Given two lists of IDs, one representing the original offer and the other representing what

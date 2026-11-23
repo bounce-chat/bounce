@@ -43,20 +43,53 @@ func releaseHandlerSlot(slots chan struct{}) {
 func drain(ch chan sendable) {
 	for {
 		select {
-		case <-ch:
+		case s := <-ch:
+			completeSendable(s)
 		default:
 			return
 		}
 	}
 }
 
+type completableSendable interface {
+	complete()
+}
+
+func completeSendable(s sendable) {
+	if cs, ok := s.(completableSendable); ok {
+		cs.complete()
+	}
+}
+
+func isCatchUp(s sendable) bool {
+	return s.getType() == typeCatchUp || s.getType() == typeEncryptedCatchUp
+}
+
 type remoteDevice struct {
 	sync.Mutex
-	network      string
-	messages     chan sendable
-	chunks       chan sendable
-	sockets      []*socket
-	handlerSlots chan struct{}
+	network         string
+	messages        chan sendable
+	chunks          chan sendable
+	sockets         []*socket
+	handlerSlots    chan struct{}
+	catchUpMutex    sync.Mutex
+	catchUpInFlight bool
+}
+
+func (rd *remoteDevice) beginCatchUp() bool {
+	rd.catchUpMutex.Lock()
+	defer rd.catchUpMutex.Unlock()
+	if rd.catchUpInFlight {
+		return false
+	}
+	rd.catchUpInFlight = true
+	return true
+}
+
+func (rd *remoteDevice) finishCatchUp() {
+	rd.catchUpMutex.Lock()
+	rd.catchUpInFlight = false
+	rd.catchUpMutex.Unlock()
 }
 
 func newRemoteDevice() *remoteDevice {
@@ -142,6 +175,17 @@ func (rd *remoteDevice) shutdown() {
 
 func (rd *remoteDevice) send(s sendable) {
 	if rd.connectedSockets() == 0 {
+		completeSendable(s)
+		return
+	}
+
+	if isCatchUp(s) {
+		select {
+		case rd.messages <- s:
+		default:
+			completeSendable(s)
+			log.Warn("dropping catch up from outgoing remote device channel, channel is backed up")
+		}
 		return
 	}
 
@@ -549,6 +593,7 @@ func (b *Bounce) writeFrames(rd *remoteDevice, s *socket) {
 				}
 			case br := <-rd.messages:
 				err := writeUnderlying(br)
+				completeSendable(br)
 				if err != nil {
 					s.close()
 					return
@@ -578,6 +623,7 @@ func (b *Bounce) writeFrames(rd *remoteDevice, s *socket) {
 				}
 			case br := <-rd.messages:
 				err := writeUnderlying(br)
+				completeSendable(br)
 				if err != nil {
 					s.close()
 					return
