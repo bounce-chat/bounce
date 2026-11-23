@@ -723,18 +723,14 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 			b.GroupConnectionDesired(g.ID)
 
 			if gs.isMember(b.currentUserID()) {
-				if b.postNotification != nil {
-					deferToAnotherDevice := !uiIsInForeground.Load() && anotherDeviceIsActive.Load()
-					if !deferToAnotherDevice && waitingForInitialSyncFrom() == "" {
-						b.postNotification(initialGroup.ID.String(), initialGroup.Name, "You have been added to a group", initialGroup.ID.String(), []byte{})
-					}
+				deferToAnotherDevice := !uiIsInForeground.Load() && anotherDeviceIsActive.Load()
+				if !deferToAnotherDevice && waitingForInitialSyncFrom() == "" {
+					b.ui.PostNotification(initialGroup.ID.String(), initialGroup.Name, "You have been added to a group", initialGroup.ID.String(), []byte{})
 				}
 			} else {
-				if b.postNotification != nil {
-					deferToAnotherDevice := !uiIsInForeground.Load() && anotherDeviceIsActive.Load()
-					if !deferToAnotherDevice && waitingForInitialSyncFrom() == "" {
-						b.postNotification(initialGroup.ID.String(), initialGroup.Name, "You have been invited to a group", initialGroup.ID.String(), []byte{})
-					}
+				deferToAnotherDevice := !uiIsInForeground.Load() && anotherDeviceIsActive.Load()
+				if !deferToAnotherDevice && waitingForInitialSyncFrom() == "" {
+					b.ui.PostNotification(initialGroup.ID.String(), initialGroup.Name, "You have been invited to a group", initialGroup.ID.String(), []byte{})
 				}
 			}
 		} else {

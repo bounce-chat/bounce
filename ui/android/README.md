@@ -177,14 +177,14 @@ Built on `NotificationCompat.MessagingStyle` + `Person` + long-lived
 conversation shortcuts, so conversations appear in Android's Conversations
 section with per-conversation settings.
 
-The engine's `postNotification(id, title, content, openThread, icon)` is too
+The engine's `PostNotification(id, title, content, openThread, icon)` is too
 thin for this on its own: for a group message it concatenates the sender name
 into the body, carries no timestamp, and does not say whether the thread is a
 group. Rather than parse that back out — the body can contain a colon, and the
 attachment-only fallback has no separator at all — notifications and UI events
 travel the **same ordered channel**. The engine emits `DisplayGroupMessage`
 with the full structured message immediately before it calls
-`postNotification` for that message, so by the time the pump handles the
+`PostNotification` for that message, so by the time the pump handles the
 notification the message is already in the repository, with its author,
 timestamp and attachments intact.
 

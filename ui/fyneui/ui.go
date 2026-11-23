@@ -173,7 +173,7 @@ func Main() {
 		},
 	}
 
-	ui.bounce = chat.Open(ui, &tor.Network{}, config.GetConfigDirectory(), ui.postNotification, nil)
+	ui.bounce = chat.Open(ui, &tor.Network{}, config.GetConfigDirectory())
 	ui.build()
 	go func() {
 		ui.loadInitialState(ui.bounce.GetInitialState())
@@ -770,9 +770,12 @@ func (ui *ui) loadInitialState(state chat.InitialState) {
 	go ui.messages.writeCache()
 }
 
-func (ui *ui) postNotification(_, title, content, _ string, _ []byte) {
+func (ui *ui) PostNotification(_, title, content, _ string, _ []byte) {
 	ui.app.SendNotification(fyne.NewNotification(title, content))
 }
+
+// Fyne can send a notification but has no way to withdraw one that was delivered.
+func (ui *ui) ClearNotification(string) {}
 
 func chatContainerSizeAtStartup() fyne.Size {
 	if fyne.CurrentDevice().IsMobile() {

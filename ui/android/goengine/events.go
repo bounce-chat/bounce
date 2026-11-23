@@ -15,6 +15,8 @@ import (
 // side effect of a buffer overflowing.
 type uiAdapter struct {
 	sink EventSink
+	// notes receives the engine's requests to post and clear operating system notifications
+	notes NotificationSink
 	// profileKnown is told the local user's ID whenever the engine reports a profile, whether it was created here or
 	// arrived by sync, so that the binding can answer CurrentUserID without ever asking the engine speculatively
 	profileKnown func(id string)
@@ -309,3 +311,11 @@ func (u *uiAdapter) FileDownloadProgress(id chat.ID, fraction float64) {
 func (u *uiAdapter) InitialSyncProgress(fraction float64) {
 	u.sink.OnProgress("", "initialsync", fraction)
 }
+
+// --- notifications -----------------------------------------------------------
+
+func (u *uiAdapter) PostNotification(id, title, content, openThread string, icon []byte) {
+	u.notes.Post(id, title, content, openThread, icon)
+}
+
+func (u *uiAdapter) ClearNotification(id string) { u.notes.Clear(id) }

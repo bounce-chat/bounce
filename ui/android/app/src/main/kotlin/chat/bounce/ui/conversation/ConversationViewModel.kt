@@ -559,7 +559,7 @@ class ConversationViewModel(
      * messages on this device is what the notification was for.
      *
      * The engine clears a notification itself for a *single* message - MarkAsRead
-     * calls clearNotification - but MarkAll*MessagesAsRead does not, and that is
+     * calls ClearNotification - but MarkAll*MessagesAsRead does not, and that is
      * what both local read paths use. Hence the asymmetry this fixes: the same
      * messages read on another sync device did clear the notification, because
      * that arrives here as a read receipt and the receipt handler clears.

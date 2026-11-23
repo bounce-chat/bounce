@@ -9,7 +9,7 @@ import chat.bounce.engine.EngineSignal
  * [EngineEventPump] can hand off a notification without depending on Android's
  * NotificationManager - and so the pump can be exercised with a no-op notifier.
  *
- * The engine, not this app, decides *whether* to notify: postNotification is
+ * The engine, not this app, decides *whether* to notify: PostNotification is
  * only called after the engine has applied its mute, foreground and
  * cross-device DND rules. The implementation's job is to render the
  * notification, not to second-guess it.

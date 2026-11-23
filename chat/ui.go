@@ -496,6 +496,12 @@ type UI interface {
 	// File management
 	FileCompleted(ID)
 	FileDownloadProgress(ID, float64)
+
+	// Notifications.  PostNotification asks for an operating system notification: id identifies it for a later
+	// ClearNotification, openThread is the thread to open when it is activated, and icon is PNG bytes that may be
+	// empty.  A UI that cannot withdraw a notification implements ClearNotification as a no-op.
+	PostNotification(id, title, content, openThread string, icon []byte)
+	ClearNotification(id string)
 }
 
 // Frames that support being marked as read

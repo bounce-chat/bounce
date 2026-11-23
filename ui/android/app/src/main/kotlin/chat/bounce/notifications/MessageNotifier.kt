@@ -33,19 +33,19 @@ import java.util.UUID
 /**
  * Turns the engine's notification callbacks into `MessagingStyle` conversations.
  *
- * The engine's `postNotification(id, title, content, openThread, icon)` is too
+ * The engine's `PostNotification(id, title, content, openThread, icon)` is too
  * thin to build one of these on its own: for a group message it concatenates the
  * sender's name into `content`, it carries no timestamp, and it never says
  * whether the thread is a group. None of that is recovered by parsing strings.
  *
  * Instead this leans on the ordering guarantee of the signal channel. The engine
  * emits `DisplayDirectMessage`/`DisplayGroupMessage` - the whole structured
- * message, author UUID and all - immediately before it calls `postNotification`,
+ * message, author UUID and all - immediately before it calls `PostNotification`,
  * and both travel the same ordered channel to the same consumer. By the time a
  * [EngineSignal.NotificationPost] is handled, [ChatRepository.messageById] can
  * already resolve the author, the text and the timestamp, and
  * [ChatRepository.threadFor] knows whether the thread is a group, what it is
- * called and who is in it. `postNotification` is then used for the only thing it
+ * called and who is in it. `PostNotification` is then used for the only thing it
  * uniquely knows: the *decision* to notify, which encodes the engine's mute,
  * foreground and cross-device do-not-disturb rules.
  *
@@ -323,7 +323,7 @@ class BounceMessageNotifier(
 
         // Keyed off the post id rather than the thread so an invite is not
         // clobbered by the first message in the group it invited you to. Group
-        // invites are never passed to clearNotification by the engine, so this is
+        // invites are never passed to ClearNotification by the engine, so this is
         // also the only notification the user has to dismiss by hand.
         val id = plainNotificationIdFor(post.id)
         mutex.withLock {

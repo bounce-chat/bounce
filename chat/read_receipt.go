@@ -240,9 +240,7 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) (b
 			if !catchUp {
 				b.ui.MessageSeen(rr.Target)
 			}
-			if b.clearNotification != nil {
-				b.clearNotification(rr.Target.String())
-			}
+			b.ui.ClearNotification(rr.Target.String())
 		} else if author == b.currentUserID() {
 			if rr.Scope != scopeSync && !catchUp {
 				b.ui.ReceivedReadReceipt(ReadReceipt{
@@ -378,9 +376,7 @@ func (b *Bounce) processEarlyReadReceipts(messageID ID, messageType uint16, noti
 			if notify {
 				b.ui.MessageSeen(rr.Target)
 			}
-			if b.clearNotification != nil {
-				b.clearNotification(rr.Target.String())
-			}
+			b.ui.ClearNotification(rr.Target.String())
 		} else if author == b.currentUserID() {
 			if rr.Scope != scopeSync {
 				exportedRR := ReadReceipt{
@@ -609,9 +605,7 @@ func (b *Bounce) markSeenInDatabase(id ID, frameType string) error {
 }
 
 func (b *Bounce) MarkAsRead(id ID, frameType string) {
-	if b.clearNotification != nil {
-		b.clearNotification(id.String())
-	}
+	b.ui.ClearNotification(id.String())
 
 	err := b.markSeenInDatabase(id, frameType)
 	if err != nil {

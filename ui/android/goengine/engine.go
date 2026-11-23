@@ -64,14 +64,7 @@ func (a *Engine) Start(configDir string, events EventSink, notes NotificationSin
 	// level and adds its file hook, so it will not undo this.
 	installPlatformLogger()
 
-	post := func(id, title, content, openThread string, icon []byte) {
-		notes.Post(id, title, content, openThread, icon)
-	}
-	clear := func(id string) {
-		notes.Clear(id)
-	}
-
-	a.e = chat.Open(&uiAdapter{sink: events, profileKnown: a.setUserID}, &tor.Network{}, configDir, post, clear)
+	a.e = chat.Open(&uiAdapter{sink: events, notes: notes, profileKnown: a.setUserID}, &tor.Network{}, configDir)
 	return nil
 }
 

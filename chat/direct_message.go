@@ -345,10 +345,10 @@ func (b *Bounce) handleDirectMessage(peer string, payload []byte, catchUp bool) 
 			FileAttachments:  uiFileAttachments,
 		})
 
-		if b.postNotification != nil && b.shouldNotifyDM(&dm) {
+		if b.shouldNotifyDM(&dm) {
 			title, content, err := b.getDMNotificationContent(&dm)
 			if err == nil {
-				b.postNotification(
+				b.ui.PostNotification(
 					dm.ID.String(),
 					title,
 					content,

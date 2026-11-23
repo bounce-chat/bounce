@@ -360,10 +360,10 @@ func (b *Bounce) handleGroupMessage(peer string, payload []byte, catchUp bool) (
 			FileAttachments:  uiFileAttachments,
 		})
 
-		if b.postNotification != nil && b.shouldNotifyGM(&gm) {
+		if b.shouldNotifyGM(&gm) {
 			title, content, err := b.getGMNotificationContent(&gm)
 			if err == nil {
-				b.postNotification(
+				b.ui.PostNotification(
 					gm.ID.String(),
 					title,
 					content,

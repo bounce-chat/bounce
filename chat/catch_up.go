@@ -584,10 +584,10 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	b.ui.CatchUpMessages(bulkUpdate, waitingForInitialSyncFrom() == peer)
 
 	for _, dm := range mostRecentUnseenDMs {
-		if b.postNotification != nil && b.shouldNotifyDM(dm) {
+		if b.shouldNotifyDM(dm) {
 			title, content, err := b.getDMNotificationContent(dm)
 			if err == nil {
-				b.postNotification(
+				b.ui.PostNotification(
 					dm.ID.String(),
 					title,
 					content,
@@ -598,10 +598,10 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 		}
 	}
 	for _, gm := range mostRecentUnseenGMs {
-		if b.postNotification != nil && b.shouldNotifyGM(gm) {
+		if b.shouldNotifyGM(gm) {
 			title, content, err := b.getGMNotificationContent(gm)
 			if err == nil {
-				b.postNotification(
+				b.ui.PostNotification(
 					gm.ID.String(),
 					title,
 					content,

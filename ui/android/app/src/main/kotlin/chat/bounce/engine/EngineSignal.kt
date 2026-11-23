@@ -4,13 +4,13 @@ package chat.bounce.engine
  * Everything the Go engine pushes at us, in one ordered stream.
  *
  * UI events and notification requests deliberately share a channel. The engine
- * emits chat.UI.DisplayDirectMessage *before* it calls postNotification for the
+ * emits chat.UI.DisplayDirectMessage *before* it calls PostNotification for the
  * same message, so a single ordered consumer is guaranteed to have already
  * recorded the structured message - author, timestamp, attachments - by the
  * time it handles the matching [NotificationPost].
  *
  * That is what makes a proper MessagingStyle notification possible without
- * touching the Go engine: postNotification alone carries only
+ * touching the Go engine: PostNotification alone carries only
  * (id, title, content, openThread, icon), which for a group message has the
  * sender name string-concatenated into the body and no timestamp at all. The
  * event stream supplies the structure; the notification callback supplies the

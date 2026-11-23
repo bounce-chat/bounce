@@ -491,6 +491,14 @@ func (t *testUI) EncryptedDeviceManageable(ID)                                  
 func (t *testUI) EncryptedDeviceUnmanageable(ID)                                   {}
 func (t *testUI) UpdateDraft(Draft)                                                {}
 
+func (t *testUI) PostNotification(id, title, content, openThread string, icon []byte) {
+	t.called <- call{function: "PostNotification", args: []interface{}{id, title, content, openThread}}
+}
+
+func (t *testUI) ClearNotification(id string) {
+	t.called <- call{function: "ClearNotification", args: []interface{}{id}}
+}
+
 func newBounce() *Bounce {
 	return newBounceWithUI(newTestUI())
 }
@@ -503,7 +511,7 @@ func newBounceWithUI(ui UI) *Bounce {
 	os.MkdirAll(configDirectory, 0700)
 	os.MkdirAll(configDirectory+"/blobs/", 0700)
 
-	return Open(ui, network, configDirectory, nil, nil).(*Bounce)
+	return Open(ui, network, configDirectory).(*Bounce)
 }
 
 func newBounceUser(name string) *Bounce {
