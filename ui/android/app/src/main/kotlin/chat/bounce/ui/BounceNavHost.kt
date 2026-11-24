@@ -44,6 +44,7 @@ import chat.bounce.ui.details.ContactProfileScreen
 import chat.bounce.ui.details.GroupInfoScreen
 import chat.bounce.ui.devices.DevicesScreen
 import chat.bounce.ui.groups.NewGroupScreen
+import chat.bounce.ui.lock.LockedScreen
 import chat.bounce.ui.onboarding.OnboardingScreen
 import chat.bounce.ui.qr.QrScannerScreen
 import chat.bounce.ui.settings.SettingsScreen
@@ -114,6 +115,14 @@ fun BounceNavHost(
 ) {
     val profile by ChatRepository.profile.collectAsStateWithLifecycle()
     val ready by rememberEngineReady(hasProfile = profile != null)
+
+    // An install that needs its password, its recovery code or a decision from
+    // the user is not open, and nothing below can be shown until it is.
+    val lockReason by EngineHolder.lockReason.collectAsStateWithLifecycle()
+    lockReason?.let { reason ->
+        LockedScreen(reason = reason, modifier = modifier)
+        return
+    }
 
     // Before the engine has handed over its initial state, "no profile" and
     // "not read yet" look identical, and guessing wrong flashes the first-run

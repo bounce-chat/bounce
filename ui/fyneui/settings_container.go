@@ -43,6 +43,11 @@ type settings struct {
 	autoAcceptGroupInvites                *widget.Select
 	darkMode                              *widget.Check
 	sysTray                               *widget.Check
+	securityStatus                        *widget.Label
+	setPassword                           *widget.Button
+	removePassword                        *widget.Button
+	recoveryCodeStatus                    *widget.Label
+	createRecoveryCode                    *widget.Button
 }
 
 func (ui *ui) showSettings() {
@@ -66,6 +71,7 @@ func (ui *ui) showSettings() {
 	ui.widgets.settings.darkMode.Refresh()
 	ui.widgets.settings.sysTray.Checked = ui.app.Preferences().Bool(sysTray)
 	ui.widgets.settings.sysTray.Refresh()
+	ui.refreshSecurity()
 
 	if fyne.CurrentDevice().IsMobile() {
 		ui.state.viewStack = append(ui.state.viewStack, view{viewType: viewTypeSettings})
@@ -79,6 +85,9 @@ func (ui *ui) buildSettings() {
 
 	groupSettingsLabel := widget.NewLabel("New Group Defaults")
 	groupSettingsLabel.TextStyle = fyne.TextStyle{Bold: true}
+
+	securitySettingsLabel := widget.NewLabel("Security")
+	securitySettingsLabel.TextStyle = fyne.TextStyle{Bold: true}
 
 	themeSettingsLabel := widget.NewLabel("Theme")
 	themeSettingsLabel.TextStyle = fyne.TextStyle{Bold: true}
@@ -118,6 +127,7 @@ func (ui *ui) buildSettings() {
 		darkMode:                              widget.NewCheck("Dark Mode", ui.setDarkMode),
 		sysTray:                               widget.NewCheck("Use System Tray (requires restart)", ui.setSysTray),
 	}
+	ui.buildSecurity()
 
 	header := container.NewVBox(
 		closeBar,
@@ -144,6 +154,16 @@ func (ui *ui) buildSettings() {
 		ui.widgets.settings.defaultNewGroupRestrictUserManagement,
 		ui.widgets.settings.defaultNewGroupRestrictGroupEdits,
 		ui.widgets.settings.defaultNewGroupRestrictPosting,
+		securitySettingsLabel,
+		ui.widgets.settings.securityStatus,
+		container.NewHBox(
+			ui.widgets.settings.setPassword,
+			ui.widgets.settings.removePassword,
+		),
+		container.NewHBox(
+			ui.widgets.settings.recoveryCodeStatus,
+			ui.widgets.settings.createRecoveryCode,
+		),
 		themeSettingsLabel,
 		ui.widgets.settings.darkMode,
 	)

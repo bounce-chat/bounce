@@ -184,6 +184,10 @@ fun SettingsScreen(onBack: () -> Unit) {
             )
 
             HorizontalDivider()
+            SectionTitle(stringResource(R.string.security_title))
+            SecuritySection()
+
+            HorizontalDivider()
             SectionTitle(stringResource(R.string.settings_appearance))
             Column(Modifier.padding(horizontal = 24.dp)) {
                 Text(

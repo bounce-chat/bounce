@@ -226,6 +226,22 @@ class EngineClient(
      */
     suspend fun versionString(): String = call("versionString") { it.versionString() }
 
+    // --- at-rest protection ------------------------------------------------
+    //
+    // The three calls below throw with one of the Goengine.Error* codes as the
+    // exception's message when the engine refuses for a reason the user can do
+    // something about, such as a wrong password.
+
+    suspend fun securityStatus(): SecurityStatus =
+        call("securityStatus") { json.decodeFromString<SecurityStatus>(it.securityStatus()) }
+
+    /** Sets, changes or removes the password: [current] is empty when none is set, an empty [new] removes it. */
+    suspend fun setPassword(current: String, new: String) = call("setPassword") { it.setPassword(current, new) }
+
+    /** Returns the new code, which replaces the one before it and cannot be asked for again. */
+    suspend fun createRecoveryCode(password: String): String =
+        call("createRecoveryCode") { it.createRecoveryCode(password) }
+
     // --- read state, drafts, presence hints --------------------------------
 
     suspend fun markAsRead(id: String, frameType: String) = call("markAsRead") { it.markAsRead(id, frameType) }

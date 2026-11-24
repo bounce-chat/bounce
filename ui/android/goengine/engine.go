@@ -41,9 +41,17 @@ func DefaultConfigDir() string { return platform.GetConfigDirectory() }
 
 // Start constructs the chat engine and returns once it is running.
 //
-// BLOCKING: opens the sqlite database, loads keys and starts the embedded Tor
-// stack. This takes seconds, not milliseconds. Never call it on the main thread.
-func (a *Engine) Start(configDir string, events EventSink, notes NotificationSink) error {
+// Everything the install keeps at rest is encrypted, so Start first has to
+// unlock it. secrets is the device's keystore. password is empty on the first
+// attempt: an install that has one fails with ErrorPasswordRequired, and Start
+// is called again with what the user typed. The other Error* codes say why an
+// install could not be unlocked. A Start that fails has started nothing and can
+// simply be called again.
+//
+// BLOCKING: unlocks and opens the sqlite database, loads keys and starts the
+// embedded Tor stack. This takes seconds, not milliseconds. Never call it on
+// the main thread.
+func (a *Engine) Start(configDir string, password string, secrets SecretStore, events EventSink, notes NotificationSink) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -56,18 +64,14 @@ func (a *Engine) Start(configDir string, events EventSink, notes NotificationSin
 	if notes == nil {
 		return errors.New("a notification sink is required")
 	}
-	if configDir == "" {
-		configDir = platform.GetConfigDirectory()
-	}
 
 	// Before chat.Open, so the Tor bootstrap is visible. chat.Open only sets a
 	// level and adds its file hook, so it will not undo this.
 	installPlatformLogger()
 
-	// The keystore and the password are still to be bound, so for now the install is opened with neither
-	engine, err := chat.Open(&uiAdapter{sink: events, notes: notes, profileKnown: a.setUserID}, &tor.Network{}, chat.Platform{ConfigDirectory: configDir}, "")
+	engine, err := chat.Open(&uiAdapter{sink: events, notes: notes, profileKnown: a.setUserID}, &tor.Network{}, installPlatform(configDir, secrets), password)
 	if err != nil {
-		return err
+		return coded(err)
 	}
 	a.e = engine
 	return nil

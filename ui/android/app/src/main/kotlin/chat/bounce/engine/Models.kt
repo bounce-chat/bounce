@@ -70,6 +70,18 @@ data class Settings(
     @SerialName("DefaultDMRetention") val defaultDMRetention: Long = 0,
 )
 
+/** How the install is protected on this device. Mirrors chat.SecurityStatus. */
+@Serializable
+data class SecurityStatus(
+    @SerialName("KeystoreUsed") val keystoreUsed: Boolean = false,
+    @SerialName("PasswordSet") val passwordSet: Boolean = false,
+    /** Seconds since the Unix epoch, zero when there is no recovery code. */
+    @SerialName("RecoveryCodeCreatedAt") val recoveryCodeCreatedAt: Long = 0,
+) {
+    /** False for an install that nothing protects, which is the only kind that cannot have a recovery code. */
+    val protected: Boolean get() = keystoreUsed || passwordSet
+}
+
 @Serializable
 data class ImageAttachment(
     @SerialName("ID") val id: String = "",

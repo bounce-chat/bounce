@@ -78,11 +78,16 @@ const sysTray = "sysTray"
 const neverAskForBatteryOptimizations = "neverAskForBatteryOptimizations"
 
 type ui struct {
-	bounce chat.Engine
-	state  *state
+	bounce   chat.Engine
+	platform chat.Platform
+	state    *state
 
 	app    fyne.App
 	window fyne.Window
+
+	// What runs when the app comes to the foreground, kept for a start that had to ask for a password: its window
+	// was in the foreground before there was an engine to tell
+	enteredForeground func()
 
 	views      *views
 	containers *containers
@@ -97,6 +102,7 @@ type ui struct {
 
 type widgets struct {
 	networkOfflineWarning *widget.Label
+	recoveryBannerText    *widget.Label
 	newInstall            *newInstall
 	editProfile           *editProfile
 	newGroup              *newGroup
@@ -121,6 +127,7 @@ type containers struct {
 	chat                     *fyne.Container
 	currentDevices           *container.Scroll
 	mainMenu                 *fyne.MainMenu
+	recoveryBanner           *fyne.Container
 }
 
 type views struct {
@@ -143,6 +150,7 @@ type views struct {
 type state struct {
 	profile               *user
 	settings              chat.Settings
+	security              chat.SecurityStatus
 	currentView           int
 	viewLeft              chan struct{} // closed when the view on screen changes, then replaced
 	viewStack             []view
@@ -173,24 +181,35 @@ func Main() {
 		},
 	}
 
-	// The screens that ask for a password or a recovery code are still to come, so for now an install that cannot
-	// be unlocked without one cannot be opened
-	var err error
-	ui.bounce, err = chat.Open(ui, &tor.Network{}, platform.Get(), "")
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("Bounce could not be opened")
-	}
+	// Most installs open with nothing asked.  One that needs its password, its recovery code or a decision from the
+	// user gets the window with the screen for that in it, and the main user interface is built once it is open.
+	ui.platform = platform.Get()
+	engine, err := chat.Open(ui, &tor.Network{}, ui.platform, "")
 	ui.build()
+	if err == nil {
+		ui.engineOpened(engine)
+	} else {
+		ui.showOpenError(err, "")
+	}
+	ui.window.Show()
+
+	ui.app.Run()
+	if ui.bounce != nil {
+		ui.bounce.Shutdown()
+	}
+}
+
+// engineOpened builds the main user interface around the engine that has opened the install, and loads its state
+func (ui *ui) engineOpened(engine chat.Engine) {
+	ui.bounce = engine
+	ui.buildWidgets()
+	ui.showMainContainer()
 	go func() {
 		ui.loadInitialState(ui.bounce.GetInitialState())
 	}()
-
-	ui.app.Run()
-	ui.bounce.Shutdown()
 }
 
+// build makes the app and its window, which is everything that does not need the install to be open
 func (ui *ui) build() {
 	// Define the app
 	ui.app = app.NewWithID("chat.bounce")
@@ -200,8 +219,12 @@ func (ui *ui) build() {
 	var activeTicker *time.Ticker
 	var activeTickerCleanup chan bool
 	firstTime := true
-	ui.app.Lifecycle().SetOnEnteredForeground(func() {
+	ui.enteredForeground = func() {
 		ui.state.focused = true
+		// A locked install has no engine yet
+		if ui.bounce == nil {
+			return
+		}
 		ui.bounce.SetForeground(true)
 
 		activeTicker = time.NewTicker(5 * time.Second)
@@ -234,9 +257,13 @@ func (ui *ui) build() {
 			}
 		}
 		firstTime = false
-	})
+	}
+	ui.app.Lifecycle().SetOnEnteredForeground(ui.enteredForeground)
 	ui.app.Lifecycle().SetOnExitedForeground(func() {
 		ui.state.focused = false
+		if ui.bounce == nil {
+			return
+		}
 		ui.bounce.SetForeground(false)
 
 		if activeTicker != nil {
@@ -294,11 +321,6 @@ func (ui *ui) build() {
 		}
 	}
 
-	ui.buildWidgets()
-
-	// Default to displaying the loading container
-	ui.showMainContainer()
-	ui.window.Show()
 }
 
 func (ui *ui) buildWidgets() {

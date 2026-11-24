@@ -114,6 +114,36 @@ It only has to be redone when Arti itself changes, not on every bind.
   rejects outright; the 64-character lowercase hex form is what `chat.ParseID`
   reads and `chat.ID.String()` writes; Kotlin keeps it as an opaque String.
 
+## A locked install
+
+Everything the engine keeps on disk is encrypted under a key that normally needs
+nothing from the user, so most starts look exactly as they did before. These are
+the pieces that exist for the starts that do need something:
+
+- **`KeystoreSecretStore`** is the keystore the engine asks for its secret. The
+  Android Keystore stores nothing of ours: it holds an AES key that never leaves
+  it, so the engine's secret is encrypted with that key and the ciphertext is
+  kept in `keystore.bin` in the engine's directory. The key is not bound to user
+  authentication, because the service has to open the install after a reboot
+  with nobody there. Go calls into the store on its own thread, like the sinks.
+- **Errors cross as codes.** gobind carries nothing of a Go error but its text,
+  so `Engine.start`, `Goengine.recover` and the security calls throw exceptions
+  whose whole message is one of the `Goengine.Error*` constants. Compare
+  messages against those constants; never parse them.
+- **`EngineHolder.lockReason`** holds the code of an install that did not open,
+  and is the only thing that puts `LockedScreen` (unlock, recovery, reset) on
+  screen. Every attempt to open clears it first, so the loading screen shows
+  while an attempt runs. That is why attempts are launched on
+  `BounceApplication.scope`: the lock screen's own scope is gone by then.
+- **`BounceService` cannot unlock.** It is started by a reboot, an update or a
+  low-memory kill with nobody there to type a password. For an install that has
+  one it waits in a `LOCKED` phase, with a notification saying so, until
+  `EngineHolder.awaitClient()` returns because the user unlocked it from the
+  app. Nothing is received in the meantime. That is the cost of a password on
+  Android, and the set-password dialog says so.
+- **Passwords stay out of saved state.** The fields use `remember`, never
+  `rememberSaveable`: a saved-state Bundle can be written to disk by the system.
+
 ## Icons
 
 Both are vectors hand-converted from `ui/assets/icon.svg`, with paths and

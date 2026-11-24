@@ -2,6 +2,7 @@
 .DS_Store
 .env
 .claude
+AGENTS.md
 fyne_metadata_init.go
 /bounce
 /bounce.exe

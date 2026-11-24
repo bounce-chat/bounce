@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strings for how the install is protected on this device: the screens shown
+  when it cannot be opened with nothing asked, the security section of the
+  settings, and the foreground notification of a locked install.
+
+  The wording follows the desktop client's (ui/fyneui/locked.go and
+  security.go), except where Android differs: the keystore always exists here,
+  and a password means the service cannot open the install by itself.
+-->
+<resources>
+    <!-- Foreground service, while the install waits for the user -->
+    <string name="service_notification_locked_title">Bounce is locked</string>
+    <string name="service_notification_locked">Open Bounce to unlock it. No messages arrive until you do.</string>
+
+    <string name="password_show">Show password</string>
+    <string name="password_hide">Hide password</string>
+
+    <!-- Unlock -->
+    <string name="lock_unlock_title">Bounce is locked</string>
+    <string name="lock_password">Password</string>
+    <string name="lock_wrong_password">That password is not right.</string>
+    <string name="lock_unlock">Unlock</string>
+    <string name="lock_forgot_password">Forgot password?</string>
+
+    <!-- Recovery -->
+    <string name="lock_recover_title">Recover Bounce</string>
+    <string name="lock_recover_forgotten">Enter your recovery code to open Bounce again. You can choose a new password, or leave it empty to have none.</string>
+    <string name="lock_recover_keystore">This device no longer holds the key to Bounce\'s data. That happens when the app\'s data is moved or restored onto another device. Enter your recovery code to open Bounce again.</string>
+    <string name="lock_recovery_code">Recovery code</string>
+    <string name="lock_new_password">New password (optional)</string>
+    <string name="lock_confirm_password">Confirm new password</string>
+    <string name="lock_passwords_differ">The two passwords are not the same.</string>
+    <string name="lock_recover">Recover</string>
+    <string name="lock_no_code">I don\'t have a recovery code</string>
+    <string name="lock_code_mistyped">That code has a typing mistake in it. Check it against the one you wrote down.</string>
+    <string name="lock_code_wrong">That is not the recovery code for this install. Only the last code created for it works.</string>
+    <string name="lock_recover_failed">Bounce could not be recovered: %1$s</string>
+
+    <string name="lock_recovered_title">Bounce is recovered</string>
+    <string name="lock_recovered_password">The data Bounce keeps on this device can be opened again. From now on Bounce asks for your new password when it starts.</string>
+    <string name="lock_recovered_no_password">The data Bounce keeps on this device can be opened again. No password is set.</string>
+    <string name="lock_recovered_settings">How this install is protected now, and whether your recovery code still works, is shown under Security in the settings.</string>
+    <string name="lock_open">Open Bounce</string>
+
+    <!-- Data that nothing can open -->
+    <string name="lock_dead_end_title">Bounce can\'t open its data</string>
+    <string name="lock_dead_end_no_code">Without a recovery code, the data Bounce keeps on this device cannot be opened.</string>
+    <string name="lock_dead_end_never_had_code">No recovery code was ever created for this install. Without one, the data Bounce keeps on this device cannot be opened.</string>
+    <string name="lock_dead_end_key_file_missing">The file that holds the key to Bounce\'s data is missing from this device, and without it the data cannot be opened.</string>
+    <string name="lock_dead_end_key_file_damaged">The file that holds the key to Bounce\'s data is damaged, and without it the data cannot be opened.</string>
+    <string name="lock_reset_explanation">Resetting deletes the messages, files, contacts and identity Bounce keeps on this device, and starts over as a new install. Your other devices are not changed.</string>
+    <string name="lock_reset">Reset Bounce on this device</string>
+    <string name="lock_reset_confirm_title">Reset Bounce on this device?</string>
+    <string name="lock_reset_confirm_body">Everything Bounce keeps on this device will be deleted, and it cannot be brought back.</string>
+    <string name="lock_reset_confirm">Reset</string>
+    <string name="lock_reset_failed">Bounce could not be reset: %1$s</string>
+
+    <!-- A failure that trying again may clear -->
+    <string name="lock_failed_title">Bounce could not be opened</string>
+    <string name="lock_keystore_unavailable_title">Bounce can\'t reach this device\'s keystore</string>
+    <string name="lock_keystore_unavailable">The key to Bounce\'s data is kept in this device\'s keystore, which did not answer. Try again, and restart the device if it keeps happening.</string>
+    <string name="lock_try_again">Try again</string>
+
+    <!-- Settings -->
+    <string name="security_title">Security</string>
+    <string name="security_status_keystore_password">Protected by this device and your password</string>
+    <string name="security_status_keystore">Protected by this device</string>
+    <string name="security_status_password">Protected by your password</string>
+    <string name="security_status_none">Not protected on this device</string>
+    <string name="security_help">Everything Bounce stores on this device is encrypted with a key kept in the device\'s keystore, which other apps and a copy of the app\'s data cannot use. A password adds less here than on a computer: it protects the data only while Bounce is locked, which is from when the device or Bounce restarts until you type it.</string>
+    <string name="security_set_password">Set password</string>
+    <string name="security_change_password">Change password</string>
+    <string name="security_remove_password">Remove password</string>
+    <string name="security_recovery_none">Recovery code: none</string>
+    <string name="security_recovery_created">Recovery code: created %1$s</string>
+    <string name="security_recovery_unavailable">A recovery code can be created once a password is set.</string>
+    <string name="security_create_code">Create recovery code</string>
+    <string name="security_create_new_code">Create new recovery code</string>
+
+    <string name="security_password">Password</string>
+    <string name="security_current_password">Current password</string>
+    <string name="security_new_password">New password</string>
+    <string name="security_confirm_password">Confirm new password</string>
+    <string name="security_password_consequences">Bounce asks for this password every time it starts. After the device restarts, or Android restarts Bounce in the background, no messages arrive until you open Bounce and type it. Bounce also has to stay running to receive messages, because it cannot be woken on a schedule with nobody there to unlock it.\n\nIf you forget the password and have no recovery code, the data Bounce keeps on this device cannot be opened.</string>
+    <string name="security_enter_new_password">Enter a new password.</string>
+    <string name="security_passwords_differ">The two passwords are not the same.</string>
+
+    <string name="security_password_set_title">Password set</string>
+    <string name="security_password_changed_title">Password changed</string>
+    <string name="security_password_set">Bounce asks for your password from the next start on.</string>
+    <string name="security_password_set_restart">Bounce asks for your password from the next start on. That start also finishes protecting the data already on this device, so restart Bounce when you can.</string>
+    <string name="security_password_changed">Bounce asks for your new password from the next start on.</string>
+    <string name="security_not_now">Not now</string>
+    <string name="security_done">OK</string>
+
+    <string name="security_remove_keeps_keystore">Bounce will open without asking for a password, with its data protected by this device alone.</string>
+    <string name="security_remove_unprotected">Nothing will protect the data Bounce keeps on this device, and your recovery code will stop working.</string>
+
+    <string name="security_code_dialog_title">Recovery code</string>
+    <string name="security_code_explanation">A recovery code opens Bounce if you forget your password, or if this device loses the key to Bounce\'s data. It is shown once, to be written down and kept somewhere safe.</string>
+    <string name="security_code_replaces">The code you have now will stop working.</string>
+    <string name="security_code_title">Your recovery code</string>
+    <string name="security_code_instructions">Write this code down and keep it somewhere safe. It is not shown again, and anyone who has it and this device can open your messages.</string>
+    <string name="security_code_done">I have written it down</string>
+    <string name="security_code_clip_label">Bounce recovery code</string>
+
+    <string name="security_error_wrong_password">That password is not right.</string>
+    <string name="security_error_password_required">Enter your password.</string>
+    <string name="security_error_keystore_unavailable">This device\'s keystore could not be reached. Try again.</string>
+    <string name="security_error_keystore_missing">This device no longer holds the key to Bounce\'s data.</string>
+    <string name="security_error_restart_first">Bounce has to be restarted before a password can be set again.</string>
+    <string name="security_error_other">That did not work: %1$s</string>
+</resources>

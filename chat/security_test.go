@@ -318,3 +318,50 @@ func TestRecoverWithACodeFromBeforeTheRollFinished(t *testing.T) {
 	assert.Equal(t, masterKeySet{master: keys.master}.networkKey(), networkKey)
 	assertRollFinished(t, platform, keys, rows)
 }
+
+// A reset leaves nothing of the install behind but its log, and the start after it is a first run
+func TestResetDeletesTheInstallAndTheNextStartIsAFirstRun(t *testing.T) {
+	b, keys := newTestInstall(t, &testSecretStore{})
+	assert.NoError(t, b.SetPassword("", "long forgotten"))
+	directory := b.platform.ConfigDirectory
+	assert.NoError(t, os.MkdirAll(directory+"/blobs", 0700))
+	assert.NoError(t, os.MkdirAll(directory+"/tor/keys", 0700))
+	kept := []string{"bounce-log-2026-11-24T10-00-00.000.txt", "bounce-log.txt"}
+	deleted := []string{"bounce.db", "bounce.db-wal", "keystore.bin", "messageStore.cache", "blobs/attachment", "tor/keys/private_key"}
+	for _, name := range append(kept, deleted...) {
+		assert.NoError(t, os.WriteFile(directory+"/"+name, []byte("kept on this device"), 0600))
+	}
+
+	assert.NoError(t, Reset(b.platform))
+
+	entries, err := os.ReadDir(directory)
+	assert.NoError(t, err)
+	names := []string{}
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	assert.Equal(t, append([]string{"blobs"}, kept...), names, "the lock is released as well")
+	blobs, err := os.ReadDir(directory + "/blobs")
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(blobs))
+
+	fresh, err := openTestInstall(b, "")
+	assert.NoError(t, err)
+	assert.False(t, fresh.equal(keys), "the new install has a master key of its own")
+	status, err := b.SecurityStatus()
+	assert.NoError(t, err)
+	assert.Equal(t, SecurityStatus{KeystoreUsed: true}, status)
+}
+
+// The install a reset is for may have lost its key file, which is one of the ways it comes to need one
+func TestResetWorksOnAnInstallWithNoKeyFile(t *testing.T) {
+	platform := Platform{ConfigDirectory: t.TempDir()}
+	databaseFile := platform.ConfigDirectory + "/bounce.db"
+	keyedTestDatabase(t, databaseFile, make([]byte, 32))
+	_, _, err := unlock(platform, databaseFile, "")
+	assert.True(t, errors.Is(err, ErrKeyFileMissing))
+
+	assert.NoError(t, Reset(platform))
+	_, _, err = unlock(platform, databaseFile, "")
+	assert.NoError(t, err)
+}

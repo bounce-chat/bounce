@@ -50,6 +50,7 @@ func (ui *ui) showMainContainer() {
 	} else {
 		ui.state.viewStack = []view{view{viewType: viewTypeAllThreads}}
 		ui.window.SetMainMenu(ui.containers.mainMenu)
+		ui.refreshSecurity()
 		ui.setContent(viewTypeAllThreads, ui.views.main)
 	}
 }
@@ -209,7 +210,8 @@ func (ui *ui) buildMainContainer() {
 			widget.NewSeparator(),
 		)
 		ui.views.main = container.New(
-			layout.NewBorderLayout(nil, nil, threads, nil),
+			layout.NewBorderLayout(ui.containers.recoveryBanner, nil, threads, nil),
+			ui.containers.recoveryBanner,
 			threads,
 			ui.containers.chat,
 		)

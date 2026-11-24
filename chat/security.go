@@ -4,8 +4,11 @@ import (
 	"crypto/rand"
 	"errors"
 	"os"
+	"strings"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // ErrInstallUnwrapped is returned when a recovery code is asked for on an install that has no keystore and no
@@ -173,4 +176,41 @@ func Recover(platform Platform, recoveryCode string, newPassword string) error {
 		kf.dropRecovery()
 	}
 	return kf.save(platform.ConfigDirectory, keys)
+}
+
+// Reset deletes everything an install keeps on this device, for an install that cannot be opened and has nothing
+// left to open it with.  The key file goes first, which alone puts the database and the network identity out of
+// reach, and then everything else in the config directory except the log.  The Open that follows is a first run,
+// with a new identity that no contact and none of the user's other devices knows.
+//
+// It works on an install that is not open.  A secret the install had in the keystore of the operating system is
+// left there, where it opens nothing any more.
+func Reset(platform Platform) error {
+	// The instance lock, so that nothing is deleted under an engine that has the install open
+	b := &Bounce{platform: platform}
+	b.ensureOnlyOneInstance()
+	defer b.releaseInstance()
+
+	err := os.Remove(platform.ConfigDirectory + "/" + keyFileName)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	entries, err := os.ReadDir(platform.ConfigDirectory)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		// The lock is released on the way out, and the log is open in this process and records the reset
+		if entry.Name() == ".pid" || strings.HasPrefix(entry.Name(), "bounce-log") {
+			continue
+		}
+		err = os.RemoveAll(platform.ConfigDirectory + "/" + entry.Name())
+		if err != nil {
+			return err
+		}
+	}
+	log.Warn("this install was reset, and everything it kept on this device was deleted")
+
+	// The directory is left the way the platform package hands it over
+	return os.MkdirAll(platform.ConfigDirectory+"/blobs/", 0700)
 }

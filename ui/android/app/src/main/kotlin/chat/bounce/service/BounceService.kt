@@ -42,7 +42,7 @@ import kotlinx.coroutines.launch
  */
 class BounceService : LifecycleService() {
 
-    private enum class Phase { CONNECTING, ONLINE, OFFLINE, STOPPING }
+    private enum class Phase { CONNECTING, LOCKED, ONLINE, OFFLINE, STOPPING }
 
     private val phase = MutableStateFlow(Phase.CONNECTING)
 
@@ -111,7 +111,17 @@ class BounceService : LifecycleService() {
      */
     private suspend fun boot() {
         val client = try {
-            EngineHolder.start(this).also { ChatRepository.load(it) }
+            // An install that needs its password, or anything else from the
+            // user, cannot be opened from here: the service is started by a
+            // reboot, an update or a low-memory kill, with nobody there to ask.
+            // It stays in the foreground saying so, receives nothing, and
+            // carries on from this point once the user has unlocked the install
+            // from the app.
+            val opened = EngineHolder.start(this) ?: run {
+                phase.value = Phase.LOCKED
+                EngineHolder.awaitClient().also { phase.value = Phase.CONNECTING }
+            }
+            opened.also { ChatRepository.load(it) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -220,6 +230,7 @@ class BounceService : LifecycleService() {
         val text = getString(
             when (state) {
                 Phase.CONNECTING -> R.string.service_notification_connecting
+                Phase.LOCKED -> R.string.service_notification_locked
                 Phase.ONLINE -> R.string.service_notification_online
                 Phase.OFFLINE, Phase.STOPPING -> R.string.service_notification_offline
             },
@@ -253,7 +264,15 @@ class BounceService : LifecycleService() {
 
         return NotificationCompat.Builder(this, NotificationChannels.SERVICE_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(R.string.service_notification_title))
+            .setContentTitle(
+                getString(
+                    if (state == Phase.LOCKED) {
+                        R.string.service_notification_locked_title
+                    } else {
+                        R.string.service_notification_title
+                    },
+                ),
+            )
             .setContentText(text)
             .setContentIntent(openPending)
             .setDeleteIntent(restorePending)
