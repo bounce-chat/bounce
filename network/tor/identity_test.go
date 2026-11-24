@@ -211,3 +211,83 @@ func TestAnIdentitySealedBeforeStillOpens(t *testing.T) {
 		t.Fatalf("a private key sealed earlier no longer opens: %v", err)
 	}
 }
+
+// When the engine replaces the key it derives for the transport, the identity has to come through unchanged
+func TestRekeySealsTheSameIdentityUnderTheNewKey(t *testing.T) {
+	configDirectory := t.TempDir()
+	privateKeyFile := configDirectory + "/tor/keys/private_key"
+	newKey := bytes.Repeat([]byte{0x17}, 32)
+	tor := &Network{}
+	tor.Load(configDirectory, testIdentityFileKey)
+	address := tor.Address()
+
+	if err := (&Network{}).Rekey(configDirectory, testIdentityFileKey, newKey); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := os.ReadFile(privateKeyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := openSealedPrivateKey(stored, testIdentityFileKey); err == nil {
+		t.Fatal("the identity file still opens under the previous key")
+	}
+	rekeyed := &Network{}
+	rekeyed.Load(configDirectory, newKey)
+	if rekeyed.Address() != address {
+		t.Fatal("the identity changed when its file was moved to a new key")
+	}
+
+	// Asked again, as a roll picked up after an interruption asks
+	if err := (&Network{}).Rekey(configDirectory, testIdentityFileKey, newKey); err != nil {
+		t.Fatal(err)
+	}
+	again, err := os.ReadFile(privateKeyFile)
+	if err != nil || !bytes.Equal(stored, again) {
+		t.Fatalf("a file already under the new key was written again: %v", err)
+	}
+
+	// Under neither key, the file is somebody's identity all the same and is not touched
+	other := bytes.Repeat([]byte{0x23}, 32)
+	if err := (&Network{}).Rekey(configDirectory, other, bytes.Repeat([]byte{0x29}, 32)); err == nil {
+		t.Fatal("a file under neither key was accepted")
+	}
+	again, err = os.ReadFile(privateKeyFile)
+	if err != nil || !bytes.Equal(stored, again) {
+		t.Fatalf("a file under neither key was changed: %v", err)
+	}
+}
+
+func TestRekeyLeavesToLoadWhatLoadDealsWith(t *testing.T) {
+	newKey := bytes.Repeat([]byte{0x17}, 32)
+
+	// No identity yet: nothing is made, since Load generates it
+	configDirectory := t.TempDir()
+	if err := (&Network{}).Rekey(configDirectory, testIdentityFileKey, newKey); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(configDirectory + "/tor"); !os.IsNotExist(err) {
+		t.Fatal("rekeying an install with no identity created something")
+	}
+
+	// An identity still stored in the clear: Load seals it under the key it is given
+	if err := os.MkdirAll(configDirectory+"/tor/keys", 0700); err != nil {
+		t.Fatal(err)
+	}
+	public, private := generateHiddenServiceKey()
+	privateKeyFile := configDirectory + "/tor/keys/private_key"
+	if err := os.WriteFile(privateKeyFile, private, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&Network{}).Rekey(configDirectory, testIdentityFileKey, newKey); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := os.ReadFile(privateKeyFile)
+	if err != nil || !bytes.Equal(stored, private) {
+		t.Fatalf("the plaintext identity was changed by a rekey: %v", err)
+	}
+	tor := &Network{}
+	tor.Load(configDirectory, newKey)
+	if !bytes.Equal(tor.publicKey, public) {
+		t.Fatal("the identity changed")
+	}
+}

@@ -243,7 +243,7 @@ func TestSendingRejectsInvalidAttachments(t *testing.T) {
 	var groupMessages int64
 	assert.NoError(t, me.database.Model(&groupMessage{}).Where("text = ?", "too many").Count(&groupMessages).Error)
 	assert.Equal(t, int64(0), groupMessages)
-	blobs, err := os.ReadDir(me.configDirectory + "/blobs")
+	blobs, err := os.ReadDir(me.platform.ConfigDirectory + "/blobs")
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(blobs), "rejected messages must not leave prepared blobs behind")
 }

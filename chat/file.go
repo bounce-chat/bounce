@@ -422,7 +422,7 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		f.Wanted = true
 	}
 	if f.embedded() {
-		f.Path = b.configDirectory + "/blobs/" + f.ID.String()
+		f.Path = b.platform.ConfigDirectory + "/blobs/" + f.ID.String()
 	}
 
 	// Save the new file
@@ -755,7 +755,7 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 			return nil, false
 		}
 
-		chunkData, err := ioutil.ReadFile(b.configDirectory + "/blobs/" + cr.Hash)
+		chunkData, err := ioutil.ReadFile(b.platform.ConfigDirectory + "/blobs/" + cr.Hash)
 		if err == nil {
 			b.sendDirect(peer, &chunk{Data: chunkData})
 		} else {
@@ -1129,7 +1129,7 @@ func (b *Bounce) deleteOldestChunkDownloadedBefore(time int64) error {
 			}).Fatal("database error looking up encrypted chunk storage request")
 		}
 	}
-	oldestChunkPath := b.configDirectory + "/blobs/" + oldestSR.Hash
+	oldestChunkPath := b.platform.ConfigDirectory + "/blobs/" + oldestSR.Hash
 
 	// Get the size of the file
 	fi, err := os.Stat(oldestChunkPath)
@@ -1197,7 +1197,7 @@ func (b *Bounce) deleteOldestChunk() error {
 			}).Fatal("database error looking up encrypted chunk storage request")
 		}
 	}
-	oldestChunkPath := b.configDirectory + "/blobs/" + oldestSR.Hash
+	oldestChunkPath := b.platform.ConfigDirectory + "/blobs/" + oldestSR.Hash
 
 	// Get the size of the file
 	fi, err := os.Stat(oldestChunkPath)
@@ -1295,7 +1295,7 @@ func (b *Bounce) handleEncryptedChunk(peer string, payload []byte, catchUp bool)
 	}
 
 	// Save it to disk
-	path := b.configDirectory + "/blobs/" + hash
+	path := b.platform.ConfigDirectory + "/blobs/" + hash
 	err = ioutil.WriteFile(path, payload, 0600)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -1549,7 +1549,7 @@ func (b *Bounce) prepareEmbeddedFile(data []byte, scope int, fileType int) (*fil
 		Chunks:            chunks,
 	}
 	f.ID = f.generateID()
-	f.Path = b.configDirectory + "/blobs/" + f.ID.String()
+	f.Path = b.platform.ConfigDirectory + "/blobs/" + f.ID.String()
 	bindChunksToFile(f)
 
 	err := os.WriteFile(f.Path, data, 0600)

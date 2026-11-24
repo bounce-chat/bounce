@@ -424,6 +424,33 @@ func (bounceTor *Network) Load(configDirectory string, key []byte) {
 	bounceTor.loadConfig(configDirectory, key)
 }
 
+// Rekey seals the identity file under a new key, for when the engine replaces the key it derives for the transport.
+// It runs before Load and is safe to repeat.  A file that already opens under the new key is left alone, and so is
+// whatever Load deals with itself: no file at all, or a key still stored in the clear.
+func (bounceTor *Network) Rekey(configDirectory string, previousKey []byte, key []byte) error {
+	privateKeyFile := configDirectory + "/tor/keys/private_key"
+	stored, err := os.ReadFile(privateKeyFile)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if len(stored) == arti.PrivateKeySize {
+		return nil
+	}
+
+	_, err = openSealedPrivateKey(stored, key)
+	if err == nil {
+		return nil
+	}
+	privateKey, err := openSealedPrivateKey(stored, previousKey)
+	if err != nil {
+		return errors.New("the hidden service private key file opens under neither key")
+	}
+	return writeSealedPrivateKey(privateKeyFile, privateKey, key)
+}
+
 func (bounceTor *Network) Start(callbacks chat.NetworkCallbacks) {
 	bounceTor.callbacks = callbacks
 	log.Info("connecting to the Tor network")

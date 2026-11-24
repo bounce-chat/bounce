@@ -11,6 +11,12 @@ type Network interface {
 	// finds stored in the clear by a version that did not.
 	Load(configDirectory string, key []byte)
 
+	// Rekey moves the network keys on disk from encryption under previousKey to encryption under key, for when the
+	// engine replaces the key it derives for the provider.  It is called before Load.  It has to be safe to repeat:
+	// keys that are already under key, that are still stored in the clear, or that do not exist yet are all left for
+	// Load, and none of those is an error.
+	Rekey(configDirectory string, previousKey []byte, key []byte) error
+
 	// Start is the main entry point to a network provider.  It is responsible for connecting to the overlay network and
 	// maintain a connection between network failures, and can block until Shutdown().  After Start() is called, the
 	// network must continue to run, even between failures in the device's internet connection.  Start() is only called

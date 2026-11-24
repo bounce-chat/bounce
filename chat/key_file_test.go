@@ -462,8 +462,8 @@ func hexTestBytes(t *testing.T, encoded string) []byte {
 }
 
 // Every other test here writes and reads with the same code, so a change to how keys are stored or derived passes
-// them all.  This one opens two key files as they were written on 2026-11-23, which is how every install since has
-// them on disk: a change that fails it leaves those installs unable to open.  Both files were also opened by an
+// them all.  This one opens key files as they were written on 2026-11-23, which is how every install since has them
+// on disk: a change that fails it leaves those installs unable to open.  The files were also opened by an
 // implementation that shares no code with this one, so they hold the documented format and not only this code's.
 func TestStoredKeysStillOpenAsTheyWereWritten(t *testing.T) {
 	master := hexTestBytes(t, "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
@@ -480,7 +480,7 @@ func TestStoredKeysStillOpenAsTheyWereWritten(t *testing.T) {
 		"da2faf593a5e0d7abc7413f7b2e9ecb028b12364a86afce3a2a52cafe2f9348dbf79d4e4fbe6c1a8e5fa64496c9d73e7b15265636f76"+
 		"657279437265617465644174d3000000006afd86c0"), 0600))
 	platform := Platform{ConfigDirectory: directory, Secrets: &testSecretStore{secret: keystoreSecret}}
-	keys, err := unlock(platform, directory+"/bounce.db", "correct horse battery staple")
+	_, keys, err := unlock(platform, directory+"/bounce.db", "correct horse battery staple")
 	assert.NoError(t, err)
 	assert.Equal(t, master, keys.master)
 	assert.Equal(t, 0, len(keys.previous))
@@ -501,11 +501,57 @@ func TestStoredKeysStillOpenAsTheyWereWritten(t *testing.T) {
 		"50617373776f7264506173736573ce00000000b150617373776f72644d656d6f72794b6942ce00000000ad50617373776f72644c616e"+
 		"6573cc00ad4b657973746f7265436865636bc0a75072696d617279c420000102030405060708090a0b0c0d0e0f101112131415161718"+
 		"191a1b1c1d1e1fa85265636f76657279c0b15265636f76657279437265617465644174d30000000000000000"), 0600))
-	keys, err = unlock(Platform{ConfigDirectory: directory}, directory+"/bounce.db", "")
+	_, keys, err = unlock(Platform{ConfigDirectory: directory}, directory+"/bounce.db", "")
+	assert.NoError(t, err)
+	assert.Equal(t, master, keys.master)
+
+	// Wrapped by a password alone.  The password was stretched as "caf\u00e9 1", and is typed here with a combining
+	// accent and a full-width digit, so this also holds the normalization form in place.
+	directory = t.TempDir()
+	assert.NoError(t, os.WriteFile(directory+"/"+keyFileName, hexTestBytes(t, ""+
+		"8ba756657273696f6ecc01ac4b657973746f726555736564c2ac50617373776f726455736564c3ac50617373776f726453616c74c410"+
+		"626f756e63652d746573742d73616c74ae50617373776f7264506173736573ce00000003b150617373776f72644d656d6f72794b6942"+
+		"ce00010000ad50617373776f72644c616e6573cc04ad4b657973746f7265436865636bc0a75072696d617279c43c4e569cd7c664ea94"+
+		"cd1442a2f2e70164c2f0ffdb3605f4f0d397680223929dcbcc37c93f7b1c66b0e8cde80849204ddd80efffc8b580b33184b544f7a852"+
+		"65636f76657279c0b15265636f76657279437265617465644174d30000000000000000"), 0600))
+	_, keys, err = unlock(Platform{ConfigDirectory: directory}, directory+"/bounce.db", "cafe\u0301 \uff11")
 	assert.NoError(t, err)
 	assert.Equal(t, master, keys.master)
 
 	// The keys the database and the network identity are encrypted under
 	assert.Equal(t, "f1a88cf5cbfe7694acfb1d58efeae596b4aea953afd9ff9f76f81a098dcc0ab9", hex.EncodeToString(keys.databaseKey()))
 	assert.Equal(t, "756cb6d97cbb38e4324c5bb3bf4f5de4a76e1b90e7f57653a4ca6fce38fa702b", hex.EncodeToString(keys.networkKey()))
+}
+
+// The same password reaches us as different bytes depending on the keyboard and input method it was typed with, and
+// it has to open the install either way
+func TestPasswordOpensHoweverItsCharactersWereTyped(t *testing.T) {
+	spellings := map[string][2]string{
+		"an accent as one character or as a combining mark": {"café au lait", "café au lait"},
+		"full-width letters from an input method":           {"ｐａｓｓｗｏｒｄ", "password"},
+		"a ligature for two letters":                        {"ﬁsh", "fish"},
+	}
+	for name, spelling := range spellings {
+		t.Run(name, func(t *testing.T) {
+			for _, order := range [][2]string{{spelling[0], spelling[1]}, {spelling[1], spelling[0]}} {
+				directory := t.TempDir()
+				keys := savedTestKeyFile(t, directory, nil, order[0])
+				kf, err := readKeyFile(directory)
+				assert.NoError(t, err)
+				opened, err := kf.openPrimary(nil, order[1])
+				assert.NoError(t, err, "set as %q, typed as %q", order[0], order[1])
+				assert.True(t, opened.equal(keys))
+			}
+		})
+	}
+
+	// What is a different password stays one
+	directory := t.TempDir()
+	savedTestKeyFile(t, directory, nil, "password")
+	kf, err := readKeyFile(directory)
+	assert.NoError(t, err)
+	for _, different := range []string{"Password", "password ", " password", "pass word", "passwörd"} {
+		_, err = kf.openPrimary(nil, different)
+		assert.True(t, errors.Is(err, errSlotNotOpened), "%q opened a file whose password is %q", different, "password")
+	}
 }

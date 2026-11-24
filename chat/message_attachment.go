@@ -211,7 +211,7 @@ func (b *Bounce) prepareAttachment(a OutgoingAttachment, scope int) (*file, erro
 // sent after all: the blob written for each embedded file that was never published.  Seeded files point at the
 // user's own copy and are left alone, as is anything already published.
 func (b *Bounce) discardPreparedAttachments(ma messageAttachments) {
-	blobs := b.configDirectory + "/blobs/"
+	blobs := b.platform.ConfigDirectory + "/blobs/"
 	for _, f := range ma.prepared {
 		if !strings.HasPrefix(f.Path, blobs) {
 			continue

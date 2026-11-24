@@ -38,7 +38,7 @@ func TestReferenceRequestLoadsOnlyOnePart(t *testing.T) {
 }
 
 func TestEncryptedReferenceRequestLoadsOnlyOnePart(t *testing.T) {
-	b := &Bounce{encrypted: true, configDirectory: t.TempDir()}
+	b := &Bounce{encrypted: true, platform: Platform{ConfigDirectory: t.TempDir()}}
 	b.openEncryptedDatabase(randomTestBytes(masterKeySize))
 	database, err := b.database.DB()
 	assert.NoError(t, err)

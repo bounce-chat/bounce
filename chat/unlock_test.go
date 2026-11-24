@@ -100,7 +100,7 @@ func TestUnlockOnAFirstRunGeneratesTheKeys(t *testing.T) {
 	store := &testSecretStore{}
 	platform := Platform{ConfigDirectory: directory, Secrets: store}
 
-	keys, err := unlock(platform, directory+"/bounce.db", "")
+	_, keys, err := unlock(platform, directory+"/bounce.db", "")
 	assert.NoError(t, err)
 	assert.Equal(t, masterKeySize, len(keys.master))
 	assert.Equal(t, 0, len(keys.previous))
@@ -115,7 +115,7 @@ func TestUnlockOnAFirstRunGeneratesTheKeys(t *testing.T) {
 	assert.Equal(t, keystoreCheckValue(store.secret), kf.KeystoreCheck)
 
 	// The second start opens what the first one made, with or without a database beside it
-	again, err := unlock(platform, directory+"/bounce.db", "")
+	_, again, err := unlock(platform, directory+"/bounce.db", "")
 	assert.NoError(t, err)
 	assert.True(t, again.equal(keys))
 }
@@ -130,14 +130,14 @@ func TestUnlockWithoutAKeystoreLeavesTheKeyFileUnwrapped(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			directory := t.TempDir()
 			platform := Platform{ConfigDirectory: directory, Secrets: store}
-			keys, err := unlock(platform, directory+"/bounce.db", "")
+			_, keys, err := unlock(platform, directory+"/bounce.db", "")
 			assert.NoError(t, err)
 
 			kf, err := readKeyFile(directory)
 			assert.NoError(t, err)
 			assert.False(t, kf.wrapped())
 
-			again, err := unlock(platform, directory+"/bounce.db", "")
+			_, again, err := unlock(platform, directory+"/bounce.db", "")
 			assert.NoError(t, err)
 			assert.True(t, again.equal(keys))
 		})
@@ -166,12 +166,12 @@ func TestUnlockEncryptsAnExistingDatabase(t *testing.T) {
 			assert.Equal(t, databasePlaintext, state)
 
 			platform := Platform{ConfigDirectory: directory, Secrets: &testSecretStore{}}
-			keys, err := unlock(platform, databaseFile, "")
+			_, keys, err := unlock(platform, databaseFile, "")
 			assert.NoError(t, err)
 			assertDatabaseEncrypted(t, directory, databaseFile, keys.databaseKey(), rows)
 
 			// The next start has nothing left to do
-			again, err := unlock(platform, databaseFile, "")
+			_, again, err := unlock(platform, databaseFile, "")
 			assert.NoError(t, err)
 			assert.True(t, again.equal(keys))
 			assertDatabaseEncrypted(t, directory, databaseFile, keys.databaseKey(), rows)
@@ -185,14 +185,14 @@ func TestUnlockFinishesAnInterruptedEncryption(t *testing.T) {
 	directory := t.TempDir()
 	databaseFile := directory + "/bounce.db"
 	platform := Platform{ConfigDirectory: directory, Secrets: &testSecretStore{}}
-	keys, err := unlock(platform, databaseFile, "")
+	_, keys, err := unlock(platform, databaseFile, "")
 	assert.NoError(t, err)
 
 	rows := plaintextTestDatabase(t, databaseFile, true)
 	assert.NoError(t, os.WriteFile(databaseFile+".encrypting", []byte("half of an encrypted copy"), 0600))
 	assert.NoError(t, os.WriteFile(databaseFile+".encrypting-journal", []byte("and its journal"), 0600))
 
-	again, err := unlock(platform, databaseFile, "")
+	_, again, err := unlock(platform, databaseFile, "")
 	assert.NoError(t, err)
 	assert.True(t, again.equal(keys), "the keys made before the interruption are the ones used")
 	assertDatabaseEncrypted(t, directory, databaseFile, keys.databaseKey(), rows)
@@ -204,12 +204,12 @@ func TestUnlockNeverGeneratesAKeyOverAnEncryptedDatabase(t *testing.T) {
 	store := &testSecretStore{}
 	platform := Platform{ConfigDirectory: directory, Secrets: store}
 	rows := plaintextTestDatabase(t, databaseFile, true)
-	keys, err := unlock(platform, databaseFile, "")
+	_, keys, err := unlock(platform, databaseFile, "")
 	assert.NoError(t, err)
 	secret := append([]byte{}, store.secret...)
 
 	assert.NoError(t, os.Remove(directory+"/"+keyFileName))
-	_, err = unlock(platform, databaseFile, "")
+	_, _, err = unlock(platform, databaseFile, "")
 	assert.True(t, errors.Is(err, ErrKeyFileMissing))
 
 	_, err = os.Stat(directory + "/" + keyFileName)
@@ -223,27 +223,27 @@ func TestUnlockTellsALostKeystoreSecretFromAnUnreachableKeystore(t *testing.T) {
 	databaseFile := directory + "/bounce.db"
 	store := &testSecretStore{}
 	platform := Platform{ConfigDirectory: directory, Secrets: store}
-	keys, err := unlock(platform, databaseFile, "")
+	_, keys, err := unlock(platform, databaseFile, "")
 	assert.NoError(t, err)
 	before, err := os.ReadFile(directory + "/" + keyFileName)
 	assert.NoError(t, err)
 	secret := append([]byte{}, store.secret...)
 
 	store.unavailable = errors.New("the keyring is locked")
-	_, err = unlock(platform, databaseFile, "")
+	_, _, err = unlock(platform, databaseFile, "")
 	assert.True(t, errors.Is(err, ErrKeystoreUnavailable))
 	assert.True(t, strings.Contains(err.Error(), "the keyring is locked"), "the reason is kept for the log")
 	store.unavailable = nil
 
 	store.secret = nil
-	_, err = unlock(platform, databaseFile, "")
+	_, _, err = unlock(platform, databaseFile, "")
 	assert.True(t, errors.Is(err, ErrKeystoreSecretMissing), "the keystore answered and has no secret")
 
 	store.secret = randomTestBytes(keystoreSecretSize)
-	_, err = unlock(platform, databaseFile, "")
+	_, _, err = unlock(platform, databaseFile, "")
 	assert.True(t, errors.Is(err, ErrKeystoreSecretMissing), "the keystore holds another install's secret")
 
-	_, err = unlock(Platform{ConfigDirectory: directory}, databaseFile, "")
+	_, _, err = unlock(Platform{ConfigDirectory: directory}, databaseFile, "")
 	assert.True(t, errors.Is(err, ErrKeystoreSecretMissing), "the platform has no keystore at all")
 
 	// None of those failures fell back to anything: the key file is as it was, and the right secret still opens it
@@ -251,7 +251,7 @@ func TestUnlockTellsALostKeystoreSecretFromAnUnreachableKeystore(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, before, after)
 	store.secret = secret
-	again, err := unlock(platform, databaseFile, "")
+	_, again, err := unlock(platform, databaseFile, "")
 	assert.NoError(t, err)
 	assert.True(t, again.equal(keys))
 }
@@ -261,7 +261,7 @@ func TestUnlockAsksForThePasswordAndChecksIt(t *testing.T) {
 	databaseFile := directory + "/bounce.db"
 	store := &testSecretStore{}
 	platform := Platform{ConfigDirectory: directory, Secrets: store}
-	keys, err := unlock(platform, databaseFile, "")
+	_, keys, err := unlock(platform, databaseFile, "")
 	assert.NoError(t, err)
 
 	kf, err := readKeyFile(directory)
@@ -269,20 +269,20 @@ func TestUnlockAsksForThePasswordAndChecksIt(t *testing.T) {
 	assert.NoError(t, kf.wrapWith(store.secret, "correct horse"))
 	assert.NoError(t, kf.save(directory, keys))
 
-	_, err = unlock(platform, databaseFile, "")
+	_, _, err = unlock(platform, databaseFile, "")
 	assert.True(t, errors.Is(err, ErrPasswordRequired))
-	_, err = unlock(platform, databaseFile, "wrong horse")
+	_, _, err = unlock(platform, databaseFile, "wrong horse")
 	assert.True(t, errors.Is(err, ErrWrongPassword))
-	again, err := unlock(platform, databaseFile, "correct horse")
+	_, again, err := unlock(platform, databaseFile, "correct horse")
 	assert.NoError(t, err)
 	assert.True(t, again.equal(keys))
 
 	// A lost keystore secret is reported before the password is asked for, since no password could help
 	secret := store.secret
 	store.secret = nil
-	_, err = unlock(platform, databaseFile, "")
+	_, _, err = unlock(platform, databaseFile, "")
 	assert.True(t, errors.Is(err, ErrKeystoreSecretMissing))
-	_, err = unlock(platform, databaseFile, "correct horse")
+	_, _, err = unlock(platform, databaseFile, "correct horse")
 	assert.True(t, errors.Is(err, ErrKeystoreSecretMissing))
 	store.secret = secret
 
@@ -290,11 +290,11 @@ func TestUnlockAsksForThePasswordAndChecksIt(t *testing.T) {
 	assert.NoError(t, kf.wrapWith(nil, "correct horse"))
 	assert.NoError(t, kf.save(directory, keys))
 	noKeystore := Platform{ConfigDirectory: directory}
-	_, err = unlock(noKeystore, databaseFile, "")
+	_, _, err = unlock(noKeystore, databaseFile, "")
 	assert.True(t, errors.Is(err, ErrPasswordRequired))
-	_, err = unlock(noKeystore, databaseFile, "wrong horse")
+	_, _, err = unlock(noKeystore, databaseFile, "wrong horse")
 	assert.True(t, errors.Is(err, ErrWrongPassword))
-	again, err = unlock(noKeystore, databaseFile, "correct horse")
+	_, again, err = unlock(noKeystore, databaseFile, "correct horse")
 	assert.NoError(t, err)
 	assert.True(t, again.equal(keys))
 }
@@ -303,7 +303,7 @@ func TestUnlockReportsAChangedKeyFileAsDamaged(t *testing.T) {
 	directory := t.TempDir()
 	databaseFile := directory + "/bounce.db"
 	platform := Platform{ConfigDirectory: directory, Secrets: &testSecretStore{}}
-	_, err := unlock(platform, databaseFile, "")
+	_, _, err := unlock(platform, databaseFile, "")
 	assert.NoError(t, err)
 
 	// With the keystore's secret right and no password involved, a slot that does not open was tampered with
@@ -316,11 +316,11 @@ func TestUnlockReportsAChangedKeyFileAsDamaged(t *testing.T) {
 	stored[position+len(kf.Primary)-1] ^= 1
 	assert.NoError(t, os.WriteFile(directory+"/"+keyFileName, stored, 0600))
 
-	_, err = unlock(platform, databaseFile, "")
+	_, _, err = unlock(platform, databaseFile, "")
 	assert.True(t, errors.Is(err, ErrKeyFileDamaged))
 
 	assert.NoError(t, os.WriteFile(directory+"/"+keyFileName, []byte("not a key file"), 0600))
-	_, err = unlock(platform, databaseFile, "")
+	_, _, err = unlock(platform, databaseFile, "")
 	assert.True(t, errors.Is(err, ErrKeyFileDamaged))
 }
 
@@ -328,10 +328,10 @@ func TestOpenedEngineKeepsNothingReadableOnDisk(t *testing.T) {
 	alice := newBounceUser("Alice Unmistakable")
 	t.Cleanup(alice.Shutdown)
 
-	state, err := readDatabaseState(alice.configDirectory + "/bounce.db")
+	state, err := readDatabaseState(alice.platform.ConfigDirectory + "/bounce.db")
 	assert.NoError(t, err)
 	assert.Equal(t, databaseEncrypted, state)
-	kf, err := readKeyFile(alice.configDirectory)
+	kf, err := readKeyFile(alice.platform.ConfigDirectory)
 	assert.NoError(t, err)
 	assert.True(t, kf.KeystoreUsed)
 
@@ -340,7 +340,7 @@ func TestOpenedEngineKeepsNothingReadableOnDisk(t *testing.T) {
 	assert.Equal(t, "1", cipherStatus)
 
 	for _, name := range []string{"bounce.db", "bounce.db-wal", keyFileName} {
-		content, err := os.ReadFile(alice.configDirectory + "/" + name)
+		content, err := os.ReadFile(alice.platform.ConfigDirectory + "/" + name)
 		assert.NoError(t, err)
 		assert.False(t, bytes.Contains(content, []byte("Alice Unmistakable")), "%s holds the profile name in the clear", name)
 		assert.False(t, bytes.Contains(content, []byte("CREATE TABLE")), "%s holds the schema in the clear", name)
@@ -354,7 +354,7 @@ func TestOpenReturnsWhatStoppedItAndCanBeCalledAgain(t *testing.T) {
 	assert.NoError(t, os.MkdirAll(directory+"/blobs", 0700))
 	store := &testSecretStore{}
 	platform := Platform{ConfigDirectory: directory, Secrets: store}
-	keys, err := unlock(platform, directory+"/bounce.db", "")
+	_, keys, err := unlock(platform, directory+"/bounce.db", "")
 	assert.NoError(t, err)
 	kf, err := readKeyFile(directory)
 	assert.NoError(t, err)
@@ -391,16 +391,16 @@ func TestInstanceLockTakesOverFromAProcessThatIsGone(t *testing.T) {
 
 	for name, contents := range stale {
 		t.Run(name, func(t *testing.T) {
-			b := &Bounce{configDirectory: t.TempDir()}
-			assert.NoError(t, os.WriteFile(b.configDirectory+"/.pid", []byte(contents), 0600))
+			b := &Bounce{platform: Platform{ConfigDirectory: t.TempDir()}}
+			assert.NoError(t, os.WriteFile(b.platform.ConfigDirectory+"/.pid", []byte(contents), 0600))
 			b.ensureOnlyOneInstance()
 
-			pid, err := os.ReadFile(b.configDirectory + "/.pid")
+			pid, err := os.ReadFile(b.platform.ConfigDirectory + "/.pid")
 			assert.NoError(t, err)
 			assert.Equal(t, strconv.Itoa(os.Getpid()), string(pid))
 
 			b.releaseInstance()
-			_, err = os.Stat(b.configDirectory + "/.pid")
+			_, err = os.Stat(b.platform.ConfigDirectory + "/.pid")
 			assert.True(t, errors.Is(err, os.ErrNotExist))
 			b.releaseInstance()
 		})
@@ -412,7 +412,7 @@ func TestEncryptedCopyIsCheckedBeforeItReplacesTheDatabase(t *testing.T) {
 	directory := t.TempDir()
 	databaseFile := directory + "/bounce.db"
 	plaintextTestDatabase(t, databaseFile, true)
-	keys, err := unlock(Platform{ConfigDirectory: directory}, databaseFile, "")
+	_, keys, err := unlock(Platform{ConfigDirectory: directory}, databaseFile, "")
 	assert.NoError(t, err)
 
 	// The test database holds one table and one index

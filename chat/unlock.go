@@ -86,34 +86,35 @@ func readDatabaseState(databaseFile string) (databaseState, error) {
 //	present    missing      the key file is opened, and the caller creates a new database
 //	present    plaintext    the key file is opened and the interrupted encryption is finished
 //
-// It is called with the instance lock held, so that two processes can never both decide this is a first run.
-func unlock(platform Platform, databaseFile string, password string) (masterKeySet, error) {
+// It is called with the instance lock held, so that two processes can never both decide this is a first run.  The key
+// file comes back opened, ready to be wrapped differently and saved again.
+func unlock(platform Platform, databaseFile string, password string) (*keyFile, masterKeySet, error) {
 	state, err := readDatabaseState(databaseFile)
 	if err != nil {
-		return masterKeySet{}, err
+		return nil, masterKeySet{}, err
 	}
 
 	var keys masterKeySet
 	kf, err := readKeyFile(platform.ConfigDirectory)
 	if errors.Is(err, os.ErrNotExist) {
 		if state == databaseEncrypted {
-			return masterKeySet{}, ErrKeyFileMissing
+			return nil, masterKeySet{}, ErrKeyFileMissing
 		}
-		keys, err = createKeyFile(platform)
+		kf, keys, err = createKeyFile(platform)
 	} else if err == nil {
 		keys, err = openKeyFile(kf, platform, password)
 	}
 	if err != nil {
-		return masterKeySet{}, err
+		return nil, masterKeySet{}, err
 	}
 
 	if state == databasePlaintext {
 		err = encryptDatabase(databaseFile, keys.databaseKey())
 		if err != nil {
-			return masterKeySet{}, fmt.Errorf("the database could not be encrypted: %w", err)
+			return nil, masterKeySet{}, fmt.Errorf("the database could not be encrypted: %w", err)
 		}
 	}
-	return keys, nil
+	return kf, keys, nil
 }
 
 // newKeystoreSecret generates a secret, stores it in the keystore and reads it back.  It returns nil when the
@@ -154,27 +155,24 @@ func newKeystoreSecret(secrets SecretStore) []byte {
 	return keystoreSecret
 }
 
-func createKeyFile(platform Platform) (masterKeySet, error) {
+func createKeyFile(platform Platform) (*keyFile, masterKeySet, error) {
 	keys := masterKeySet{master: make([]byte, masterKeySize)}
 	_, err := rand.Read(keys.master)
 	if err != nil {
-		return masterKeySet{}, err
+		return nil, masterKeySet{}, err
 	}
 
 	keystoreSecret := newKeystoreSecret(platform.Secrets)
-	kf := &keyFile{Version: keyFileVersion}
+	kf := &keyFile{Version: keyFileVersion, keystoreTried: true}
 	err = kf.wrapWith(keystoreSecret, "")
 	if err != nil {
-		return masterKeySet{}, err
+		return nil, masterKeySet{}, err
 	}
 	err = kf.save(platform.ConfigDirectory, keys)
 	if err != nil {
-		return masterKeySet{}, err
+		return nil, masterKeySet{}, err
 	}
-	if !kf.wrapped() {
-		log.Warn("no keystore could be used, so the data in this install is not protected on this device")
-	}
-	return keys, nil
+	return kf, keys, nil
 }
 
 // keystoreSecretFor returns the keystore secret a key file is wrapped with.  A keystore that could not be asked is
@@ -224,10 +222,6 @@ func openKeyFile(kf *keyFile, platform Platform, password string) (masterKeySet,
 	}
 	if err != nil {
 		return masterKeySet{}, err
-	}
-
-	if !kf.wrapped() {
-		log.Warn("the data in this install is not protected on this device: it has no keystore and no password")
 	}
 	return keys, nil
 }

@@ -579,7 +579,7 @@ func (b *Bounce) handleEncryptedChunkStorageRequest(peer string, payload []byte,
 		sr.DownloadedAt = time.Now().Unix()
 	}
 
-	sr.FullPath = b.configDirectory + "/blobs/" + sr.Hash
+	sr.FullPath = b.platform.ConfigDirectory + "/blobs/" + sr.Hash
 	err = b.database.Create(&sr).Error
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -737,7 +737,7 @@ func (b *Bounce) recheckEncryptedBlobStorageSize() {
 	defer encryptedBlobStorageLimitMutex.Unlock()
 
 	var size int64
-	err := filepath.Walk(b.configDirectory+"/blobs/", func(_ string, info os.FileInfo, err error) error {
+	err := filepath.Walk(b.platform.ConfigDirectory+"/blobs/", func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -759,7 +759,7 @@ func (b *Bounce) recheckEncryptedBlobStorageSize() {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-			"path":  b.configDirectory + "/blobs/",
+			"path":  b.platform.ConfigDirectory + "/blobs/",
 		}).Error("error getting blob storage usage")
 	}
 	encryptedBlobStorageSize = size

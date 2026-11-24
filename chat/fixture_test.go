@@ -49,6 +49,8 @@ func newTestnet() *testnet {
 
 func (t *testnet) Load(_ string, _ []byte) {}
 
+func (t *testnet) Rekey(_ string, _ []byte, _ []byte) error { return nil }
+
 func (t *testnet) Start(callbacks NetworkCallbacks) {
 	callbacks.NetworkOnline()
 	select {}
@@ -698,9 +700,9 @@ func createUsersAndGroupsFor(t *testing.T, me *Bounce) (_, alice, bob *Bounce, g
 		me.Shutdown()
 		alice.Shutdown()
 		bob.Shutdown()
-		os.RemoveAll(me.configDirectory)
-		os.RemoveAll(alice.configDirectory)
-		os.RemoveAll(bob.configDirectory)
+		os.RemoveAll(me.platform.ConfigDirectory)
+		os.RemoveAll(alice.platform.ConfigDirectory)
+		os.RemoveAll(bob.platform.ConfigDirectory)
 	})
 
 	me.ui.(callRecorder).resetCalls()

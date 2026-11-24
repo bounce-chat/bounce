@@ -62,7 +62,7 @@ func restrictDatabaseFiles(dsn string) {
 
 // The DSN a database is opened with holds its key, so only the path is ever logged
 func (b *Bounce) openDatabase(databaseKey []byte) {
-	databasePath := b.configDirectory + "/bounce.db"
+	databasePath := b.platform.ConfigDirectory + "/bounce.db"
 	databaseFile := databasePath + "?_journal_mode=WAL&_busy_timeout=10000&_txlock=immediate&_key=" + sqlcipherKey(databaseKey)
 
 	// Define a logger for gorm that uses logrus

@@ -57,10 +57,10 @@ func StartEncryptedDevice(network Network, platform Platform) {
 	runningEngines.Add(1)
 
 	b := &Bounce{
-		encrypted:       true,
-		configDirectory: platform.ConfigDirectory,
-		network:         network,
-		referenceState:  newReferenceState(),
+		encrypted:      true,
+		platform:       platform,
+		network:        network,
+		referenceState: newReferenceState(),
 		devicePool: &devicePool{
 			deviceMutex:        sync.Mutex{},
 			devices:            make(map[string]*remoteDevice),
@@ -76,20 +76,27 @@ func StartEncryptedDevice(network Network, platform Platform) {
 	b.ensureOnlyOneInstance()
 
 	// An encrypted device has nobody to ask for a password or a recovery code, so its key file is wrapped by the
-	// keystore or by nothing, and an install that cannot be unlocked cannot be started at all
-	keys, err := unlock(platform, b.configDirectory+"/bounce.enc.db", "")
+	// keystore or by nothing, and an install that cannot be unlocked cannot be started at all.
+	//
+	// It is also never moved onto the keystore after its first run, as Open does for a user's install.  These run
+	// on machines with nobody at them, and one that was started a single time from a desktop session would from
+	// then on need that session's keyring to start at all.
+	kf, keys, err := unlock(platform, b.platform.ConfigDirectory+"/bounce.enc.db", "")
 	if err != nil {
 		b.releaseInstance()
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("this encrypted device could not be unlocked")
 	}
+	if !kf.wrapped() {
+		log.Warn("the data in this install is not protected on this device: it has no keystore")
+	}
 
 	log.RegisterExitHandler(b.fatalShutdown)
 	go b.handleInterrupts()
 
 	b.openEncryptedDatabase(keys.databaseKey())
-	b.network.Load(b.configDirectory, keys.networkKey())
+	b.network.Load(b.platform.ConfigDirectory, keys.networkKey())
 	b.openReferenceDatabase()
 
 	go b.recheckEncryptedBlobStorageSize()
@@ -143,7 +150,7 @@ func StartEncryptedDevice(network Network, platform Platform) {
 }
 
 func (b *Bounce) openEncryptedDatabase(databaseKey []byte) {
-	databasePath := b.configDirectory + "/bounce.enc.db"
+	databasePath := b.platform.ConfigDirectory + "/bounce.enc.db"
 	databaseFile := databasePath + "?_key=" + sqlcipherKey(databaseKey)
 
 	// Define a logger for gorm that uses logrus
@@ -207,7 +214,7 @@ func (b *Bounce) openEncryptedDatabase(databaseKey []byte) {
 		}).Fatal("database error finding downloaded encrypted chunk storage requests")
 	}
 	for _, sr := range srs {
-		path := b.configDirectory + "/blobs/" + sr.Hash
+		path := b.platform.ConfigDirectory + "/blobs/" + sr.Hash
 		_, err := os.Stat(path)
 		if err != nil {
 			log.WithFields(log.Fields{

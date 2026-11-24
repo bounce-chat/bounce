@@ -31,7 +31,7 @@ var startupTime = time.Now()
 
 type Bounce struct {
 	encrypted            bool
-	configDirectory      string
+	platform             Platform
 	database             *gorm.DB
 	referenceDatabase    *gorm.DB
 	ui                   UI
@@ -158,10 +158,10 @@ func Open(ui UI, network Network, platform Platform, password string) (Engine, e
 	runningEngines.Add(1)
 
 	b := &Bounce{
-		configDirectory: platform.ConfigDirectory,
-		network:         network,
-		ui:              ui,
-		referenceState:  newReferenceState(),
+		platform:       platform,
+		network:        network,
+		ui:             ui,
+		referenceState: newReferenceState(),
 		devicePool: &devicePool{
 			devices:            make(map[string]*remoteDevice),
 			groupPools:         make(map[ID][]*remoteDevice),
@@ -182,19 +182,32 @@ func Open(ui UI, network Network, platform Platform, password string) (Engine, e
 	b.ensureOnlyOneInstance()
 
 	// Only the instance lock is held at this point, so a failure to unlock has nothing else to undo
-	keys, err := unlock(platform, b.configDirectory+"/bounce.db", password)
+	databaseFile := b.platform.ConfigDirectory + "/bounce.db"
+	kf, keys, err := unlock(platform, databaseFile, password)
 	if err != nil {
 		b.releaseInstance()
 		runningEngines.Add(-1)
 		return nil, err
 	}
 
+	// An install that could not use the keystore before is moved onto it as soon as it can.  That, and a first
+	// password set during the last run, leave a master key to be replaced, which is done here because nothing has
+	// the database open yet.
+	kf, keys = addKeystore(kf, platform, password, keys)
+	if !kf.wrapped() {
+		log.Warn("the data in this install is not protected on this device: it has no keystore and no password")
+	}
+	databaseKey, networkKey := keys.databaseKey(), keys.networkKey()
+	if keys.previous != nil {
+		databaseKey, networkKey = rollMasterKey(kf, platform, network, databaseFile, keys)
+	}
+
 	log.RegisterExitHandler(b.fatalShutdown)
 	go b.handleInterrupts()
 
-	b.openDatabase(keys.databaseKey())
+	b.openDatabase(databaseKey)
 	b.openReferenceDatabase()
-	b.network.Load(b.configDirectory, keys.networkKey())
+	b.network.Load(b.platform.ConfigDirectory, networkKey)
 	b.loadChunkEngine()
 
 	go func() {
@@ -375,7 +388,7 @@ func (b *Bounce) Shutdown() {
 	}
 
 	// Delete our PID file
-	pidFile := b.configDirectory + "/.pid"
+	pidFile := b.platform.ConfigDirectory + "/.pid"
 	err := os.Remove(pidFile)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -461,7 +474,7 @@ func (b *Bounce) fatalShutdown() {
 	}
 
 	// Delete our PID file
-	pidFile := b.configDirectory + "/.pid"
+	pidFile := b.platform.ConfigDirectory + "/.pid"
 	err := os.Remove(pidFile)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -508,7 +521,7 @@ func (b *Bounce) ensureOnlyOneInstance() {
 		return
 	}
 
-	pidFile := b.configDirectory + "/.pid"
+	pidFile := b.platform.ConfigDirectory + "/.pid"
 	for attempt := 0; attempt < 5; attempt++ {
 		file, err := os.OpenFile(pidFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 		if err == nil {
@@ -621,7 +634,7 @@ func (b *Bounce) ensureOnlyOneInstance() {
 // releaseInstance gives the instance lock back when an engine could not be opened.  An engine that did open gives it
 // back in Shutdown.
 func (b *Bounce) releaseInstance() {
-	pidFile := b.configDirectory + "/.pid"
+	pidFile := b.platform.ConfigDirectory + "/.pid"
 	err := os.Remove(pidFile)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.WithFields(log.Fields{

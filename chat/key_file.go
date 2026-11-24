@@ -15,6 +15,7 @@ import (
 	"github.com/Basekick-Labs/msgpack/v6"
 	"github.com/zeebo/blake3"
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/text/unicode/norm"
 )
 
 // Everything an install keeps at rest is encrypted under keys derived from one random master key.  The master key
@@ -147,6 +148,13 @@ type keyFile struct {
 	// the header has been set by wrapWith, and it is what save seals the slot with, so a file is always saved under
 	// the key its own header derives.
 	wrappingKey []byte
+
+	// The keystore secret the wrapping key was derived from, known from the same moment and never stored either.  It
+	// is what lets the password be changed without asking the keystore a second time.
+	keystoreSecret []byte
+
+	// Set on a key file made by this start, which has asked the keystore for a secret once already
+	keystoreTried bool
 }
 
 func keystoreCheckValue(keystoreSecret []byte) []byte {
@@ -215,6 +223,12 @@ func (kf *keyFile) recoveryAssociatedData() []byte {
 // password the header says are used.  The keystore secret goes first and the stretched password after it, so with a
 // keystore the file alone cannot be attacked by guessing passwords, however weak the password is.  It returns nil for
 // an unwrapped file.
+//
+// The password is put into Unicode normalization form KC before it is stretched.  The same text can arrive as
+// different bytes: an accented letter as one code point or as a letter followed by a combining mark, or a full-width
+// letter from an East Asian input method.  Form KC gives all of those one spelling, so an install is unlocked by its
+// password and not by the keyboard the password was typed on.  The form is part of the file format, since a file
+// written under one does not open under another.
 func (kf *keyFile) primaryWrappingKey(keystoreSecret []byte, password string) []byte {
 	if !kf.wrapped() {
 		return nil
@@ -225,7 +239,7 @@ func (kf *keyFile) primaryWrappingKey(keystoreSecret []byte, password string) []
 		material = append(material, keystoreSecret...)
 	}
 	if kf.PasswordUsed {
-		stretched := argon2.IDKey([]byte(password), kf.PasswordSalt, kf.PasswordPasses, kf.PasswordMemoryKiB, kf.PasswordLanes, 32)
+		stretched := argon2.IDKey(norm.NFKC.Bytes([]byte(password)), kf.PasswordSalt, kf.PasswordPasses, kf.PasswordMemoryKiB, kf.PasswordLanes, 32)
 		material = append(material, stretched...)
 	}
 	return deriveKey(primarySlotContext, material)
@@ -258,6 +272,7 @@ func (kf *keyFile) wrapWith(keystoreSecret []byte, password string) error {
 	}
 
 	kf.wrappingKey = kf.primaryWrappingKey(keystoreSecret, password)
+	kf.keystoreSecret = keystoreSecret
 	return nil
 }
 
@@ -274,6 +289,7 @@ func (kf *keyFile) openPrimary(keystoreSecret []byte, password string) (masterKe
 		return masterKeySet{}, err
 	}
 	kf.wrappingKey = wrappingKey
+	kf.keystoreSecret = keystoreSecret
 	return keys, nil
 }
 

@@ -9,6 +9,7 @@ type Engine interface {
 	ClearDMChatHistory(userID ID) error
 	ClearGroupChatHistory(groupID ID) error
 	CreateGroup(ng NewGroup) error
+	CreateRecoveryCode(password string) (string, error)
 	CurrentDeviceActive()
 	CurrentUserID() ID
 	DeleteGroup(groupID ID) error
@@ -42,6 +43,7 @@ type Engine interface {
 	RestrictUserManagement(groupID ID) error
 	RevokeDevice(deviceID ID) error
 	RevokeInvite(groupID ID, userID ID) error
+	SecurityStatus() (SecurityStatus, error)
 	SendDirectMessage(thread ID, text string, attachments []OutgoingAttachment, clientRef ID) error
 	SendGroupMessage(thread ID, text string, attachments []OutgoingAttachment, clientRef ID) error
 	SetActiveThread(id ID)
@@ -65,6 +67,7 @@ type Engine interface {
 	SetNewGroupRetention(value int64)
 	SetNotificationIcon(thread string, icon []byte)
 	SetOpenDM(userID ID, open bool) error
+	SetPassword(currentPassword string, newPassword string) error
 	SetProfile(profileName string, image []byte, deviceName string) error
 	SetReadReceiptsByDefault(value bool)
 	SetScrolledDown(id ID, value bool)
