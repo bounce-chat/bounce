@@ -1,7 +1,9 @@
 package tor
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -299,6 +301,64 @@ func TestRecoveryBacksOffOnlyForBootstrapsThatWentNowhere(t *testing.T) {
 	eq(run(true, errNetworkStopped))
 	if n.recovering.Load() {
 		t.Error("recovery did not release its flag")
+	}
+}
+
+// Starting with no internet is waited out the way a failed restart is, and only that: any other failure to open the
+// first session is handed straight back, which is what keeps it fatal
+func TestStartWaitsOutABootstrapThatRunsOutOfTime(t *testing.T) {
+	shortLiveness(t)
+	n := newLivenessNetwork(t)
+	offline := fmt.Errorf("arti: bootstrap: %w", context.DeadlineExceeded)
+	opened := &session{}
+	var script []error
+	attempts := 0
+	open := func() (*session, error) {
+		err := script[attempts]
+		attempts++
+		if err != nil {
+			return nil, err
+		}
+		return opened, nil
+	}
+
+	// Two bootstraps run out of time, and the third finds the internet there
+	script = []error{offline, offline, nil}
+	started := time.Now()
+	s, err := n.openFirstSession(open)
+	if err != nil {
+		t.Fatalf("a bootstrap that ran out of time ended the start: %v", err)
+	}
+	if s != opened {
+		t.Error("the session that opened was not the one returned")
+	}
+	if attempts != 3 {
+		t.Errorf("%d attempts, want 3", attempts)
+	}
+	if waited := time.Since(started); waited < 2*restartInterval {
+		t.Errorf("waited %v between three attempts, want at least %v", waited, 2*restartInterval)
+	}
+
+	// A failure that trying again does not fix is not retried
+	broken := errors.New("arti: cannot create local listener")
+	script, attempts = []error{broken, nil}, 0
+	s, err = n.openFirstSession(open)
+	if !errors.Is(err, broken) || s != nil {
+		t.Errorf("got session %v and error %v, want the failure handed back", s, err)
+	}
+	if attempts != 1 {
+		t.Errorf("%d attempts at a start that cannot work, want 1", attempts)
+	}
+
+	// Shutdown ends the wait
+	script, attempts = []error{offline, nil}, 0
+	n.Shutdown()
+	s, err = n.openFirstSession(open)
+	if !errors.Is(err, errNetworkStopped) || s != nil {
+		t.Errorf("got session %v and error %v after shutdown, want the network reported stopped", s, err)
+	}
+	if attempts != 1 {
+		t.Errorf("%d attempts after shutdown, want 1", attempts)
 	}
 }
 

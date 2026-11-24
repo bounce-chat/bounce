@@ -52,7 +52,8 @@ var (
 	// canaryDialTimeout bounds one dial of our own address, rendezvous included.
 	canaryDialTimeout = 60 * time.Second
 
-	// restartInterval is the pause between restart attempts while bootstrap keeps failing.
+	// restartInterval is the pause between attempts to bring Tor up while bootstrap keeps failing, at startup and
+	// in recovery alike.
 	restartInterval = 3 * time.Minute
 
 	// restartBackoffLimit caps the growing pause before restarting a session that bootstrapped but whose canary

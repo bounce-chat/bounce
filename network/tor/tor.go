@@ -459,7 +459,7 @@ func (bounceTor *Network) Start(callbacks chat.NetworkCallbacks) {
 	// the application log rather than only on stderr.
 	bounceTor.forwardTorLogs()
 
-	s, err := bounceTor.openSession()
+	s, err := bounceTor.openFirstSession(bounceTor.openSession)
 	if err != nil {
 		bounceTor.startupFailed(err, "failed to start TOR")
 		return
@@ -482,11 +482,35 @@ func (bounceTor *Network) Start(callbacks chat.NetworkCallbacks) {
 	<-bounceTor.stopChannel()
 }
 
+// openFirstSession opens the session Start publishes, and waits out an internet connection that is not there yet.
+//
+// A bootstrap that runs out of time is not a failure to start.  It is what a laptop opened away from its network
+// sees, and a phone in flight mode, and a relay that boots faster than its router after a power cut, and ending the
+// process there leaves the last of those down for good.  So it is retried every restartInterval for as long as it
+// takes, the way a restart that cannot bootstrap is.  Any other error is returned at once, because trying again does
+// not fix a state directory that cannot be opened or a service that cannot be created.
+func (bounceTor *Network) openFirstSession(open func() (*session, error)) (*session, error) {
+	for {
+		s, err := open()
+		if !errors.Is(err, context.DeadlineExceeded) {
+			return s, err
+		}
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"wait":  restartInterval.String(),
+		}).Info("tor could not bootstrap, retrying")
+		if !bounceTor.sleepUnless(restartInterval, nil) {
+			return nil, errNetworkStopped
+		}
+	}
+}
+
 // openSession brings up a Tor client and publishes the hidden service on it.
 //
 // Shared by Start and Restart, which is why it reports errors rather than
-// calling startupFailed: a failure at startup is fatal, but the same failure
-// during a restart just means we try again later.
+// calling startupFailed: each decides for itself what a failure means.  At
+// startup only a bootstrap that ran out of time is retried and anything else
+// is fatal, and during a restart every failure means we try again later.
 func (bounceTor *Network) openSession() (*session, error) {
 	// In rare situations, arti has been known to put itself in a state where the information
 	// on disk prevents a successful bootstrap.  This seems related to devices that transition

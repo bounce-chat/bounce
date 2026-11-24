@@ -388,8 +388,11 @@ func (ui *ui) askToIgnoreBatteryOptimizations() {
 	}
 }
 
+// Quit is called by the engine from whichever goroutine a fatal error or an interrupt arrived on, and closing the
+// windows is work for the UI thread.  It is queued rather than waited for: a fatal error can be raised on the UI
+// thread itself, where waiting would never return.
 func (ui *ui) Quit() {
-	ui.app.Quit()
+	fyne.Do(ui.app.Quit)
 }
 
 func (ui *ui) loadInitialState(state chat.InitialState) {
