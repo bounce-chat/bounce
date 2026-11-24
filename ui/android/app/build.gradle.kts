@@ -13,7 +13,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        // MUST stay chat.bounce: config/directory.go hardcodes the engine's data
+        // MUST stay chat.bounce: platform/directory.go hardcodes the engine's data
         // directory to /data/data/chat.bounce/bounce. Changing the applicationId
         // points the Go engine at a path this process cannot write.
         applicationId = "chat.bounce"

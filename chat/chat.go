@@ -1,7 +1,8 @@
 package chat
 
 import (
-	"io/ioutil"
+	"bytes"
+	"errors"
 	"os"
 	"os/signal"
 	"runtime"
@@ -136,9 +137,14 @@ func (b *Bounce) sleepOrDone(d time.Duration) bool {
 	}
 }
 
-// The main entrypoint for starting the Bounce chat engine, blocks until the user interface
-// is closed, the network reaches a fatal error, or the process is sent an interrupt.
-func Open(ui UI, network Network, configDirectory string) Engine {
+// The main entrypoint for starting the Bounce chat engine.
+//
+// Everything the install keeps at rest is encrypted, so the first thing Open does is unlock it, and that can fail in
+// ways a user interface has to act on: ErrPasswordRequired, ErrWrongPassword, ErrKeystoreSecretMissing,
+// ErrKeystoreUnavailable, ErrKeyFileMissing and ErrKeyFileDamaged, matched with errors.Is.  When Open returns an
+// error nothing has been started and it can simply be called again, which is how a password is asked for: call it
+// with an empty password first, and again with what the user typed after ErrPasswordRequired.
+func Open(ui UI, network Network, platform Platform, password string) (Engine, error) {
 	if os.Getenv("REPORT_CALLER") == "true" {
 		log.SetReportCaller(true)
 
@@ -148,11 +154,11 @@ func Open(ui UI, network Network, configDirectory string) Engine {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	installLogHooks()
+	installLogHooks(platform.ConfigDirectory)
 	runningEngines.Add(1)
 
 	b := &Bounce{
-		configDirectory: configDirectory,
+		configDirectory: platform.ConfigDirectory,
 		network:         network,
 		ui:              ui,
 		referenceState:  newReferenceState(),
@@ -174,12 +180,21 @@ func Open(ui UI, network Network, configDirectory string) Engine {
 		handlerSlots:    make(chan struct{}, maximumRunningHandlersGlobal),
 	}
 	b.ensureOnlyOneInstance()
+
+	// Only the instance lock is held at this point, so a failure to unlock has nothing else to undo
+	keys, err := unlock(platform, b.configDirectory+"/bounce.db", password)
+	if err != nil {
+		b.releaseInstance()
+		runningEngines.Add(-1)
+		return nil, err
+	}
+
 	log.RegisterExitHandler(b.fatalShutdown)
 	go b.handleInterrupts()
 
-	b.openDatabase()
+	b.openDatabase(keys.databaseKey())
 	b.openReferenceDatabase()
-	b.network.Load(b.configDirectory)
+	b.network.Load(b.configDirectory, keys.networkKey())
 	b.loadChunkEngine()
 
 	go func() {
@@ -197,7 +212,7 @@ func Open(ui UI, network Network, configDirectory string) Engine {
 	b.background(b.keepDatabasePruned)
 	b.background(b.deliverUINotifications)
 
-	return b
+	return b, nil
 }
 
 // notifyUI queues a UI call to be made after every one queued before it.  Group consensus can decide several things
@@ -480,6 +495,13 @@ func (b *Bounce) handleInterrupts() {
 	}
 }
 
+// ensureOnlyOneInstance takes the instance lock, which is the .pid file in the config directory, or ends the process
+// when another instance holds it.
+//
+// Creating the file is what takes the lock, so it is created exclusively: of two processes started together only one
+// can create it, and the other goes on to find the first alive.  That matters most on a first run, when each would
+// otherwise generate its own keys for the same install.  A file left behind by a process that is gone is removed and
+// the creation tried again, so taking over a stale lock goes through the same exclusive step.
 func (b *Bounce) ensureOnlyOneInstance() {
 	// Let mobile operating systems handle this problem
 	if runtime.GOOS == "android" || runtime.GOOS == "ios" {
@@ -487,105 +509,124 @@ func (b *Bounce) ensureOnlyOneInstance() {
 	}
 
 	pidFile := b.configDirectory + "/.pid"
-
-	// If there's no PID file, make one and return
-	_, err := os.Stat(pidFile)
-	if os.IsNotExist(err) {
-		// Write the current PID to file
-		err = os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0600) // TODO: sync/flush?
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-				"path":  pidFile,
-			}).Fatal("error writing current pid file")
-		}
-		return
-	}
-
-	// If we can't stat the pid file, fatal error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-			"file":  pidFile,
-		}).Fatal("error stating PID file")
-	}
-
-	// Get the PID from the file
-	pidBytes, err := ioutil.ReadFile(pidFile)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-			"file":  pidFile,
-		}).Fatal("error reading PID file")
-	}
-
-	pid, err := strconv.Atoi(string(pidBytes))
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error":    err.Error(),
-			"file":     pidFile,
-			"contents": string(pidBytes),
-		}).Error("pid file did not contain int")
-		err = os.Remove(pidFile)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"path":  pidFile,
-				"error": err.Error(),
-			}).Fatal("error deleting old pid file")
-		}
-		return
-	}
-
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		if runtime.GOOS == "windows" {
-			err = os.Remove(pidFile)
+	for attempt := 0; attempt < 5; attempt++ {
+		file, err := os.OpenFile(pidFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err == nil {
+			_, err = file.WriteString(strconv.Itoa(os.Getpid()))
 			if err != nil {
+				file.Close()
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"path":  pidFile,
+				}).Fatal("error writing current pid file")
+			}
+			err = file.Close()
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"path":  pidFile,
+				}).Fatal("error writing current pid file")
+			}
+			return
+		}
+		if !errors.Is(err, os.ErrExist) {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"file":  pidFile,
+			}).Fatal("error creating PID file")
+		}
+
+		// Get the PID from the file.  A file that has gone again belonged to an instance that just closed.
+		pidBytes, err := os.ReadFile(pidFile)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"file":  pidFile,
+			}).Fatal("error reading PID file")
+		}
+		pid, err := strconv.Atoi(string(pidBytes))
+		if err != nil {
+			// An instance that is starting right now has created the file and may not have written to it yet, so
+			// look once more before deciding the file is damaged
+			time.Sleep(100 * time.Millisecond)
+			pidBytes, err = os.ReadFile(pidFile)
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+					"file":  pidFile,
+				}).Fatal("error reading PID file")
+			}
+			pid, err = strconv.Atoi(string(pidBytes))
+		}
+
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":    err.Error(),
+				"file":     pidFile,
+				"contents": string(pidBytes),
+			}).Error("pid file did not contain int")
+		} else {
+			process, err := os.FindProcess(pid)
+			if err != nil {
+				if runtime.GOOS != "windows" {
+					log.WithFields(log.Fields{
+						"pid":   pid,
+						"error": err.Error(),
+					}).Error("os.FindProcess returned an error on a non-windows system")
+				}
+			} else if runtime.GOOS == "windows" {
+				log.WithFields(log.Fields{
+					"pid": pid,
+				}).Fatal("Another instance of Bounce is running.  Please close it, or if you are sure it is not running, delete the pid file and try again: ", pidFile)
+			} else {
+				err := process.Signal(syscall.Signal(0))
+				if err == nil {
+					log.WithFields(log.Fields{
+						"pid": pid,
+					}).Fatal("Another instance of Bounce is running.  Please close it, or if you are sure it is not running, delete the pid file and try again: ", pidFile)
+				} else if err.Error() != "no such process" && err.Error() != "os: process already finished" {
+					log.WithFields(log.Fields{
+						"pid":           pid,
+						"syscall_error": err.Error(),
+					}).Fatal("Another instance of Bounce may be running.  Please close it, or if you are sure it is not running, delete the pid file and try again: ", pidFile)
+				}
+			}
+		}
+
+		// The file refers to a process that is gone.  Delete it only while it is still the file that was examined:
+		// another instance may have taken the stale lock over in the meantime, and its file must not be removed.
+		current, err := os.ReadFile(pidFile)
+		if err == nil && bytes.Equal(current, pidBytes) {
+			err = os.Remove(pidFile)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
 				log.WithFields(log.Fields{
 					"path":  pidFile,
 					"error": err.Error(),
 				}).Fatal("error deleting old pid file")
 			}
-		} else {
-			log.WithFields(log.Fields{
-				"pid":   pid,
-				"error": err.Error(),
-			}).Error("os.FindProcess returned an error on a non-windows system")
 		}
-	} else {
-		if runtime.GOOS == "windows" {
-			log.WithFields(log.Fields{
-				"pid": pid,
-			}).Fatal("Another instance of Bounce is running.  Please close it, or if you are sure it is not running, delete the pid file and try again: ", pidFile)
-		} else {
-			err := process.Signal(syscall.Signal(0))
-			if err == nil {
-				log.WithFields(log.Fields{
-					"pid": pid,
-				}).Fatal("Another instance of Bounce is running.  Please close it, or if you are sure it is not running, delete the pid file and try again: ", pidFile)
-			} else if err.Error() == "no such process" || err.Error() == "os: process already finished" {
-				// Delete the old pid file that refers to a dead process
-				err = os.Remove(pidFile)
-				if err != nil {
-					log.WithFields(log.Fields{
-						"path":  pidFile,
-						"error": err.Error(),
-					}).Fatal("error deleting old pid file")
-				}
-				// Write the current PID to file
-				err = os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0600) // TODO: sync/flush?
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-						"path":  pidFile,
-					}).Fatal("error writing current pid file")
-				}
-			} else {
-				log.WithFields(log.Fields{
-					"pid":           pid,
-					"syscall_error": err.Error(),
-				}).Fatal("Another instance of Bounce may be running.  Please close it, or if you are sure it is not running, delete the pid file and try again: ", pidFile)
-			}
-		}
+	}
+
+	log.WithFields(log.Fields{
+		"file": pidFile,
+	}).Fatal("Another instance of Bounce appears to be starting.  Please close it, or if you are sure it is not running, delete the pid file and try again")
+}
+
+// releaseInstance gives the instance lock back when an engine could not be opened.  An engine that did open gives it
+// back in Shutdown.
+func (b *Bounce) releaseInstance() {
+	pidFile := b.configDirectory + "/.pid"
+	err := os.Remove(pidFile)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.WithFields(log.Fields{
+			"path":  pidFile,
+			"error": err.Error(),
+		}).Error("error deleting pid file")
 	}
 }

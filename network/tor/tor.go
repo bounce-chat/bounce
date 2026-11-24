@@ -1,7 +1,10 @@
 package tor
 
 import (
+	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha512"
@@ -227,7 +230,7 @@ func (bounceTor *Network) stopChannel() chan struct{} {
 	return bounceTor.stopped
 }
 
-func (bounceTor *Network) loadConfig(configDirectory string) {
+func (bounceTor *Network) loadConfig(configDirectory string, key []byte) {
 	bounceTor.routerDirectory = configDirectory + "/tor/router"
 	bounceTor.keyDirectory = configDirectory + "/tor/keys"
 
@@ -248,19 +251,23 @@ func (bounceTor *Network) loadConfig(configDirectory string) {
 	}
 
 	// Load or create the keypair for the hidden service
-	pubkey, privkey := bounceTor.hiddenServiceKey()
+	pubkey, privkey := bounceTor.hiddenServiceKey(key)
 	bounceTor.publicKey = pubkey
 	bounceTor.privateKey = privkey
 }
 
 // hiddenServiceKey loads the hidden service identity from the key directory, generating one on the first run.  Only
 // the private key is stored: it is the 64-byte expanded ed25519 secret, and the public key is derived from it on
-// every load, which gives the same key every time and leaves one file to keep safe.  A private key file of any other
-// size is refused with a fatal error rather than worked around, since it is the user's identity and only they can
-// decide what to do with a damaged copy.
-func (bounceTor *Network) hiddenServiceKey() (ed25519.PublicKey, []byte) {
+// every load, which gives the same key every time and leaves one file to keep safe.
+//
+// The file holds the private key sealed under the key the engine supplies.  A file of exactly the private key's size
+// is the key itself, written in the clear before identities were encrypted, which a sealed key can never be mistaken
+// for because sealing makes it longer: it is used as it is and sealed for the next start.  A file that is neither is
+// refused with a fatal error rather than worked around, since it is the user's identity and only they can decide what
+// to do with a damaged copy.
+func (bounceTor *Network) hiddenServiceKey(key []byte) (ed25519.PublicKey, []byte) {
 	privateKeyFile := bounceTor.keyDirectory + "/private_key"
-	privateKey, err := os.ReadFile(privateKeyFile)
+	stored, err := os.ReadFile(privateKeyFile)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			log.WithFields(log.Fields{
@@ -275,9 +282,8 @@ func (bounceTor *Network) hiddenServiceKey() (ed25519.PublicKey, []byte) {
 		log.WithFields(log.Fields{
 			"path": privateKeyFile,
 		}).Debug("no hidden service private key found, generating a new identity")
-		var publicKey ed25519.PublicKey
-		publicKey, privateKey = generateHiddenServiceKey()
-		if err := os.WriteFile(privateKeyFile, privateKey, 0600); err != nil {
+		publicKey, privateKey := generateHiddenServiceKey()
+		if err := writeSealedPrivateKey(privateKeyFile, privateKey, key); err != nil {
 			log.WithFields(log.Fields{
 				"path":  privateKeyFile,
 				"error": err.Error(),
@@ -286,12 +292,24 @@ func (bounceTor *Network) hiddenServiceKey() (ed25519.PublicKey, []byte) {
 		return publicKey, privateKey
 	}
 
-	if len(privateKey) != arti.PrivateKeySize {
-		log.WithFields(log.Fields{
-			"path":     privateKeyFile,
-			"size":     len(privateKey),
-			"expected": arti.PrivateKeySize,
-		}).Fatal("the hidden service private key file is not a key of the expected size")
+	privateKey := stored
+	if len(stored) == arti.PrivateKeySize {
+		// The plaintext file stays in place if sealing fails, and the next start tries again
+		if err := writeSealedPrivateKey(privateKeyFile, privateKey, key); err != nil {
+			log.WithFields(log.Fields{
+				"path":  privateKeyFile,
+				"error": err.Error(),
+			}).Error("the hidden service private key could not be encrypted and is still stored in the clear")
+		}
+	} else {
+		privateKey, err = openSealedPrivateKey(stored, key)
+		if err != nil || len(privateKey) != arti.PrivateKeySize {
+			log.WithFields(log.Fields{
+				"path":     privateKeyFile,
+				"size":     len(stored),
+				"expected": arti.PrivateKeySize,
+			}).Fatal("the hidden service private key file is neither a key of the expected size nor one encrypted for this install")
+		}
 	}
 	publicKey, err := arti.PublicKeyFromPrivate(privateKey)
 	if err != nil {
@@ -301,6 +319,80 @@ func (bounceTor *Network) hiddenServiceKey() (ed25519.PublicKey, []byte) {
 		}).Fatal("the hidden service private key file is not a usable key")
 	}
 	return publicKey, privateKey
+}
+
+// The private key file is sealed with AES-256-GCM, with this as associated data so that nothing else the engine's key
+// might ever seal can be put in the file's place
+var privateKeyFileDomain = "bounce-tor-private-key"
+
+func privateKeyCipher(key []byte) (cipher.AEAD, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	return cipher.NewGCMWithRandomNonce(block)
+}
+
+func openSealedPrivateKey(sealed []byte, key []byte) ([]byte, error) {
+	gcm, err := privateKeyCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	return gcm.Open(nil, nil, sealed, []byte(privateKeyFileDomain))
+}
+
+// writeSealedPrivateKey seals the private key and puts it in place of whatever the file held.  The file is the
+// user's identity, so the sealed key is written beside it, synced, and read back and opened again before it is
+// renamed over the old file.
+func writeSealedPrivateKey(privateKeyFile string, privateKey []byte, key []byte) error {
+	gcm, err := privateKeyCipher(key)
+	if err != nil {
+		return err
+	}
+	sealed := gcm.Seal(nil, nil, privateKey, []byte(privateKeyFileDomain))
+
+	temporaryFile := privateKeyFile + ".tmp"
+	err = os.Remove(temporaryFile)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	file, err := os.OpenFile(temporaryFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return err
+	}
+	_, err = file.Write(sealed)
+	if err != nil {
+		file.Close()
+		os.Remove(temporaryFile)
+		return err
+	}
+	err = file.Sync()
+	if err != nil {
+		file.Close()
+		os.Remove(temporaryFile)
+		return err
+	}
+	err = file.Close()
+	if err != nil {
+		os.Remove(temporaryFile)
+		return err
+	}
+
+	written, err := os.ReadFile(temporaryFile)
+	if err != nil {
+		os.Remove(temporaryFile)
+		return err
+	}
+	reopened, err := openSealedPrivateKey(written, key)
+	if err != nil {
+		os.Remove(temporaryFile)
+		return err
+	}
+	if !bytes.Equal(reopened, privateKey) {
+		os.Remove(temporaryFile)
+		return errors.New("the encrypted private key read back differently from how it was written")
+	}
+	return os.Rename(temporaryFile, privateKeyFile)
 }
 
 // generateHiddenServiceKey makes a fresh onion service identity in the form Arti and C Tor both use: the 64-byte
@@ -328,8 +420,8 @@ func generateHiddenServiceKey() (ed25519.PublicKey, []byte) {
 	return publicKey, privateKey
 }
 
-func (bounceTor *Network) Load(configDirectory string) {
-	bounceTor.loadConfig(configDirectory)
+func (bounceTor *Network) Load(configDirectory string, key []byte) {
+	bounceTor.loadConfig(configDirectory, key)
 }
 
 func (bounceTor *Network) Start(callbacks chat.NetworkCallbacks) {

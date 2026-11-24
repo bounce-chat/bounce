@@ -12,15 +12,20 @@ require (
 	github.com/bbrks/go-blurhash v1.2.0
 	github.com/bounce-chat/go-arti v0.0.0-20260804161614-527c1b1f808c
 	github.com/cretz/bine v0.2.0
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
+	github.com/keybase/go-keychain v0.0.1
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/piglig/go-qr v1.1.0
 	github.com/rymdport/go-qrcode v1.2.1
 	github.com/sirupsen/logrus v1.10.2
 	github.com/svanichkin/gocam v0.1.0
+	github.com/zalando/go-keyring v0.2.8
 	github.com/zeebo/blake3 v0.2.4
+	golang.org/x/crypto v0.59.0
 	golang.org/x/image v0.45.0
+	golang.org/x/sys v0.50.0
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.2
 )
@@ -32,6 +37,7 @@ require (
 	github.com/alecthomas/repr v0.4.0 // indirect
 	github.com/anthonynsimon/bild v0.17.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
+	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/fyne-io/gl-js v0.2.1-0.20260315212741-029c47fd27e8 // indirect
 	github.com/fyne-io/glfw-js v0.4.0 // indirect
@@ -41,7 +47,6 @@ require (
 	github.com/go-gl/glfw/v3.4/glfw v0.1.0-pre.2 // indirect
 	github.com/go-text/render v0.2.1 // indirect
 	github.com/go-text/typesetting v0.3.4 // indirect
-	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/hack-pad/go-indexeddb v0.3.2 // indirect
 	github.com/hack-pad/safejs v0.1.1 // indirect
 	github.com/hexops/gotextdiff v1.0.3 // indirect
@@ -62,12 +67,10 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/yuin/goldmark v1.8.5 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/crypto v0.59.0 // indirect
 	golang.org/x/mobile v0.0.0-20260730202154-c700fe717e6e // indirect
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/net v0.63.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
-	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/term v0.48.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 	golang.org/x/tools v0.52.0 // indirect
@@ -76,4 +79,4 @@ require (
 
 tool golang.org/x/mobile/cmd/gobind
 
-replace github.com/mattn/go-sqlite3 => github.com/bounce-chat/go-sqlite3 v1.14.53-bounce.1
+replace github.com/mattn/go-sqlite3 => github.com/bounce-chat/go-sqlite3 v1.14.53-bounce.2

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/bounce-chat/bounce/config"
 	"github.com/bounce-chat/bounce/network/tor"
+	"github.com/bounce-chat/bounce/platform"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -173,7 +173,15 @@ func Main() {
 		},
 	}
 
-	ui.bounce = chat.Open(ui, &tor.Network{}, config.GetConfigDirectory())
+	// The screens that ask for a password or a recovery code are still to come, so for now an install that cannot
+	// be unlocked without one cannot be opened
+	var err error
+	ui.bounce, err = chat.Open(ui, &tor.Network{}, platform.Get(), "")
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("Bounce could not be opened")
+	}
 	ui.build()
 	go func() {
 		ui.loadInitialState(ui.bounce.GetInitialState())

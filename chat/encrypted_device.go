@@ -46,19 +46,19 @@ type oldKey struct {
 	SigningKey       []byte
 }
 
-func StartEncryptedDevice(network Network, configDirectory string) {
+func StartEncryptedDevice(network Network, platform Platform) {
 	if os.Getenv("DEBUG") == "true" {
 		log.SetLevel(log.DebugLevel)
 		log.SetReportCaller(true)
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	installLogHooks()
+	installLogHooks(platform.ConfigDirectory)
 	runningEngines.Add(1)
 
 	b := &Bounce{
 		encrypted:       true,
-		configDirectory: configDirectory,
+		configDirectory: platform.ConfigDirectory,
 		network:         network,
 		referenceState:  newReferenceState(),
 		devicePool: &devicePool{
@@ -74,11 +74,22 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 		handlerSlots: make(chan struct{}, maximumRunningHandlersGlobal),
 	}
 	b.ensureOnlyOneInstance()
+
+	// An encrypted device has nobody to ask for a password or a recovery code, so its key file is wrapped by the
+	// keystore or by nothing, and an install that cannot be unlocked cannot be started at all
+	keys, err := unlock(platform, b.configDirectory+"/bounce.enc.db", "")
+	if err != nil {
+		b.releaseInstance()
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("this encrypted device could not be unlocked")
+	}
+
 	log.RegisterExitHandler(b.fatalShutdown)
 	go b.handleInterrupts()
 
-	b.openEncryptedDatabase()
-	b.network.Load(b.configDirectory)
+	b.openEncryptedDatabase(keys.databaseKey())
+	b.network.Load(b.configDirectory, keys.networkKey())
 	b.openReferenceDatabase()
 
 	go b.recheckEncryptedBlobStorageSize()
@@ -131,8 +142,9 @@ func StartEncryptedDevice(network Network, configDirectory string) {
 	)
 }
 
-func (b *Bounce) openEncryptedDatabase() {
-	databaseFile := b.configDirectory + "/bounce.enc.db"
+func (b *Bounce) openEncryptedDatabase(databaseKey []byte) {
+	databasePath := b.configDirectory + "/bounce.enc.db"
+	databaseFile := databasePath + "?_key=" + sqlcipherKey(databaseKey)
 
 	// Define a logger for gorm that uses logrus
 	gormLogger := logger.New(
@@ -152,11 +164,12 @@ func (b *Bounce) openEncryptedDatabase() {
 	})
 	if err != nil {
 		log.WithFields(log.Fields{
-			"file":  databaseFile,
+			"file":  databasePath,
 			"error": err.Error(),
 		}).Fatal("error opening database")
 	}
 	restrictDatabaseFiles(databaseFile)
+	b.requireEncryptedDatabase()
 
 	// Set max connections to 1 to avoid locks
 	sqliteDB, err := b.database.DB()

@@ -6,8 +6,10 @@ import (
 
 // Any overlay network that can satisfy this interface can host Bounce
 type Network interface {
-	// Load the network keys from the config directory
-	Load(configDirectory string)
+	// Load the network keys from the config directory, generating them on the first run.  The provider keeps them
+	// on disk encrypted under the given key, which the engine derives for this purpose alone, and encrypts keys it
+	// finds stored in the clear by a version that did not.
+	Load(configDirectory string, key []byte)
 
 	// Start is the main entry point to a network provider.  It is responsible for connecting to the overlay network and
 	// maintain a connection between network failures, and can block until Shutdown().  After Start() is called, the

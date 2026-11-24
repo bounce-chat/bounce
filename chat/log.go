@@ -9,8 +9,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/bounce-chat/bounce/config"
-
 	"github.com/DeRuina/timberjack"
 	log "github.com/sirupsen/logrus"
 	"github.com/zeebo/blake3"
@@ -22,8 +20,8 @@ var unsanitizedLogs = os.Getenv("UNSANITIZED_LOGS") == "true"
 var nocolor = log.TextFormatter{DisableColors: true}
 var onionAddressPattern = regexp.MustCompile(`[a-z2-7]{56}`)
 
+// The log file's name is set by installLogHooks, from the config directory of the first engine opened in the process
 var logfile = &timberjack.Logger{
-	Filename:           config.GetConfigDirectory() + "/bounce-log.txt",
 	FileMode:           0600,
 	MaxAge:             3,
 	Compression:        "none",
@@ -112,10 +110,12 @@ func processShuttingDown() bool {
 var logHooksInstalled sync.Once
 
 // installLogHooks registers the engine's logrus hooks once per process.  Both are stateless and write to package-level
-// state, so every engine opened in a process, test binaries included, shares the same two.  The shutdown hook goes
-// first so that a Fatal during shutdown reaches the log file as the warning it is turned into.
-func installLogHooks() {
+// state, so every engine opened in a process, test binaries included, shares the same two, and the log file lives in
+// the config directory of the first of them.  The shutdown hook goes first so that a Fatal during shutdown reaches the
+// log file as the warning it is turned into.
+func installLogHooks(configDirectory string) {
 	logHooksInstalled.Do(func() {
+		logfile.Filename = configDirectory + "/bounce-log.txt"
 		log.AddHook(&shutdownFatalHook{})
 		log.AddHook(&filehook{})
 	})

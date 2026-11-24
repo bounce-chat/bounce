@@ -62,7 +62,7 @@ make android-clean      # drop the .aar, the gradle build dirs and Bounce.apk
 ```
 
 `make android-bind` must be re-run whenever anything under `chat/`,
-`config/`, `network/` or `goengine/` changes — the `.aar` is a compiled
+`platform/`, `network/` or `goengine/` changes — the `.aar` is a compiled
 artifact and is not checked in.
 
 Overridable: `ANDROID_SDK`, `ANDROID_NDK` (defaults to the highest installed),
@@ -84,7 +84,7 @@ It only has to be redone when Arti itself changes, not on every bind.
 
 ## Constraints worth knowing before changing anything
 
-- **`applicationId` must stay `chat.bounce`.** `config/directory.go` hardcodes
+- **`applicationId` must stay `chat.bounce`.** `platform/directory.go` hardcodes
   the engine's data directory to `/data/data/chat.bounce/bounce`. Change the id
   and the engine writes somewhere the app cannot reach.
 - **AGP 9 supplies Kotlin itself.** Applying `org.jetbrains.kotlin.android` is a

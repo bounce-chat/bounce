@@ -47,7 +47,7 @@ func newTestnet() *testnet {
 	return t
 }
 
-func (t *testnet) Load(_ string) {}
+func (t *testnet) Load(_ string, _ []byte) {}
 
 func (t *testnet) Start(callbacks NetworkCallbacks) {
 	callbacks.NetworkOnline()
@@ -511,7 +511,41 @@ func newBounceWithUI(ui UI) *Bounce {
 	os.MkdirAll(configDirectory, 0700)
 	os.MkdirAll(configDirectory+"/blobs/", 0700)
 
-	return Open(ui, network, configDirectory).(*Bounce)
+	engine, err := Open(ui, network, Platform{ConfigDirectory: configDirectory, Secrets: &testSecretStore{}}, "")
+	if err != nil {
+		panic("the test engine could not be opened: " + err.Error())
+	}
+	return engine.(*Bounce)
+}
+
+// A testSecretStore is a keystore held in memory, so no test ever reaches the real one.  Setting unavailable makes
+// it fail the way a locked or unreachable keystore does.
+type testSecretStore struct {
+	sync.Mutex
+	secret      []byte
+	unavailable error
+}
+
+func (s *testSecretStore) Get() ([]byte, error) {
+	s.Lock()
+	defer s.Unlock()
+	if s.unavailable != nil {
+		return nil, s.unavailable
+	}
+	if s.secret == nil {
+		return nil, ErrSecretNotFound
+	}
+	return append([]byte{}, s.secret...), nil
+}
+
+func (s *testSecretStore) Store(secret []byte) error {
+	s.Lock()
+	defer s.Unlock()
+	if s.unavailable != nil {
+		return s.unavailable
+	}
+	s.secret = append([]byte{}, secret...)
+	return nil
 }
 
 func newBounceUser(name string) *Bounce {

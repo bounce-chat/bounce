@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/bounce-chat/bounce/config"
 	"github.com/bounce-chat/bounce/network/tor"
+	"github.com/bounce-chat/bounce/platform"
 )
 
 var errNotStarted = errors.New("engine not started")
@@ -35,9 +35,9 @@ func NewEngine() *Engine { return &Engine{} }
 
 // DefaultConfigDir is where the engine keeps its database, blobs and Tor keys.
 // On Android this is fixed at /data/data/chat.bounce/bounce by
-// config.GetConfigDirectory, which is why the app's applicationId must stay
+// platform.GetConfigDirectory, which is why the app's applicationId must stay
 // chat.bounce.
-func DefaultConfigDir() string { return config.GetConfigDirectory() }
+func DefaultConfigDir() string { return platform.GetConfigDirectory() }
 
 // Start constructs the chat engine and returns once it is running.
 //
@@ -57,14 +57,19 @@ func (a *Engine) Start(configDir string, events EventSink, notes NotificationSin
 		return errors.New("a notification sink is required")
 	}
 	if configDir == "" {
-		configDir = config.GetConfigDirectory()
+		configDir = platform.GetConfigDirectory()
 	}
 
 	// Before chat.Open, so the Tor bootstrap is visible. chat.Open only sets a
 	// level and adds its file hook, so it will not undo this.
 	installPlatformLogger()
 
-	a.e = chat.Open(&uiAdapter{sink: events, notes: notes, profileKnown: a.setUserID}, &tor.Network{}, configDir)
+	// The keystore and the password are still to be bound, so for now the install is opened with neither
+	engine, err := chat.Open(&uiAdapter{sink: events, notes: notes, profileKnown: a.setUserID}, &tor.Network{}, chat.Platform{ConfigDirectory: configDir}, "")
+	if err != nil {
+		return err
+	}
+	a.e = engine
 	return nil
 }
 
@@ -977,7 +982,7 @@ func (a *Engine) SetTypingIndicatorsByDefault(value bool) {
 // engine where the file actually is. Image decoding can keep using this because
 // avatars and inline images are always embedded.
 func (a *Engine) BlobPath(fileID string) string {
-	return filepath.Join(config.GetConfigDirectory(), "blobs", fileID)
+	return filepath.Join(platform.GetConfigDirectory(), "blobs", fileID)
 }
 
 // GetFilePath is where a downloaded file actually is, whatever its size.

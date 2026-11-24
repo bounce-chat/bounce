@@ -60,8 +60,10 @@ func restrictDatabaseFiles(dsn string) {
 	}
 }
 
-func (b *Bounce) openDatabase() {
-	databaseFile := b.configDirectory + "/bounce.db?_journal_mode=WAL&_busy_timeout=10000&_txlock=immediate"
+// The DSN a database is opened with holds its key, so only the path is ever logged
+func (b *Bounce) openDatabase(databaseKey []byte) {
+	databasePath := b.configDirectory + "/bounce.db"
+	databaseFile := databasePath + "?_journal_mode=WAL&_busy_timeout=10000&_txlock=immediate&_key=" + sqlcipherKey(databaseKey)
 
 	// Define a logger for gorm that uses logrus
 	databaseLogLevel := logger.Error
@@ -87,11 +89,12 @@ func (b *Bounce) openDatabase() {
 	})
 	if err != nil {
 		log.WithFields(log.Fields{
-			"file":  databaseFile,
+			"file":  databasePath,
 			"error": err.Error(),
 		}).Fatal("error opening database")
 	}
 	restrictDatabaseFiles(databaseFile)
+	b.requireEncryptedDatabase()
 
 	// Set max connections to 1 to avoid locks
 	sqliteDB, err := b.database.DB()
@@ -166,6 +169,22 @@ func (b *Bounce) openDatabase() {
 
 	// Load revoked devices into the in-memory map
 	b.populateRevokedDevices()
+}
+
+// requireEncryptedDatabase stops the engine unless the database it has just opened is being encrypted.  A driver
+// that ignored the key would otherwise read and write a plaintext database without a word, so the cipher is asked
+// directly and anything but a clear yes is fatal.
+func (b *Bounce) requireEncryptedDatabase() {
+	var cipherStatus string
+	err := b.database.Raw("PRAGMA cipher_status").Scan(&cipherStatus).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error checking that the database is encrypted")
+	}
+	if cipherStatus != "1" {
+		log.Fatal("the database was opened without encryption")
+	}
 }
 
 func (b *Bounce) deviceIsRevoked() bool {

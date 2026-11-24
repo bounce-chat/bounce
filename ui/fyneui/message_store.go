@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/bounce-chat/bounce/chat"
-	"github.com/bounce-chat/bounce/config"
+	"github.com/bounce-chat/bounce/platform"
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
@@ -31,7 +31,7 @@ type messageStore struct {
 
 func newMessageStore() *messageStore {
 	cache := map[chat.ID]cachedData{}
-	cacheFile := config.GetConfigDirectory() + "/messageStore.cache"
+	cacheFile := platform.GetConfigDirectory() + "/messageStore.cache"
 	data, err := ioutil.ReadFile(cacheFile)
 	if err != nil {
 		if !os.IsNotExist(err) {
