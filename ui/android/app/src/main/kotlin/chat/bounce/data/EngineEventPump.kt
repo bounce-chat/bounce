@@ -144,6 +144,9 @@ class EngineEventPump(
             "SyncDeviceRequestRejected" ->
                 repo.emit(RepositoryEffect.SyncDeviceRejected(decode<PeerPayload>(payload).peer))
 
+            "SyncDeviceProfileRefused" ->
+                repo.emit(RepositoryEffect.SyncDeviceProfileRefused(decode<ReasonPayload>(payload).reason))
+
             "AddUserRequestRejected" ->
                 repo.emit(RepositoryEffect.AddUserRejected(decode<PeerPayload>(payload).peer))
 
@@ -505,6 +508,9 @@ private data class IdPayload(val id: String = "")
 
 @Serializable
 private data class PeerPayload(val peer: String = "")
+
+@Serializable
+private data class ReasonPayload(val reason: String = "")
 
 @Serializable
 private data class ProfileSetPayload(val user: User = User(), val device: Device = Device())

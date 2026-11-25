@@ -417,6 +417,7 @@ type UI interface {
 	NewSyncDeviceAdded()
 	SyncDeviceRequestAccepted(User, []Device, bool)
 	SyncDeviceRequestRejected(peer string)
+	SyncDeviceProfileRefused(reason string)
 	InitialSyncStarting()
 	InitialSyncProgress(float64)
 	InitialSyncPreparing()

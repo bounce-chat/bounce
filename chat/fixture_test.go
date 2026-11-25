@@ -413,6 +413,7 @@ func (t *testUI) NetworkOffline()                                {}
 func (t *testUI) NewSyncDeviceAdded()                            {}
 func (t *testUI) SyncDeviceRequestAccepted(User, []Device, bool) {}
 func (t *testUI) SyncDeviceRequestRejected(peer string)          {}
+func (t *testUI) SyncDeviceProfileRefused(reason string)         {}
 func (t *testUI) ProfileSet(User, Device)                        {}
 func (t *testUI) InitialSyncStarting()                           {}
 func (t *testUI) InitialSyncProgress(float64)                    {}

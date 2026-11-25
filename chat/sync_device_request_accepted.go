@@ -43,6 +43,20 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 		return nil, false
 	}
 
+	// Make sure a profile doesn't already exist.  This comes before anything that tells the UI the answer was refused,
+	// so that nothing arriving after this device has its profile can raise that
+	_, exists := b.currentUser()
+	if exists {
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Warn("peer sent a sync device request accepted after a profile exists")
+		return nil, false
+	}
+
+	// From here on the device we asked has answered, and the user is waiting on that answer.  An answer that cannot be
+	// used is refused out loud: the usual cause is a device running another version, or one whose profile was made by
+	// one, and with only a log line the user is left looking at a pairing that never finishes.
+
 	// Unmarshal the payload
 	var sdra syncDeviceRequestAccepted
 	err := msgpack.Unmarshal(payload, &sdra)
@@ -50,15 +64,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("error unmarshalling sync device request accepted")
-		return nil, false
-	}
-
-	// Make sure a profile doesn't already exist
-	_, exists := b.currentUser()
-	if exists {
-		log.WithFields(log.Fields{
-			"peer": peer,
-		}).Warn("peer sent a sync device request accepted after a profile exists")
+		b.ui.SyncDeviceProfileRefused("its answer could not be read")
 		return nil, false
 	}
 
@@ -75,6 +81,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 			"peer":  peer,
 			"error": err.Error(),
 		}).Error("sdra contains invalid profile record")
+		b.ui.SyncDeviceProfileRefused("its profile is not valid: " + err.Error())
 		return nil, false
 	}
 
@@ -89,6 +96,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 			log.WithFields(log.Fields{
 				"peer": peer,
 			}).Warn("rejecting sync device request accepted with an invalid provisional device")
+			b.ui.SyncDeviceProfileRefused("the record it made for this device is not valid")
 			return nil, false
 		}
 		localDeviceIndex = i
@@ -98,10 +106,12 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("rejecting sync device request accepted that does not contain this device in the device group")
+		b.ui.SyncDeviceProfileRefused("its profile does not include this device")
 		return nil, false
 	}
 	if !b.hasValidDeviceGroup(sdra.Profile) {
 		log.Error("sdra contains profile with invalid device group")
+		b.ui.SyncDeviceProfileRefused("a device in its profile is not valid")
 		return nil, false
 	}
 
@@ -116,6 +126,7 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("rejecting sync device request accepted that does not contain the peer in the device group")
+		b.ui.SyncDeviceProfileRefused("its profile does not include the device that answered")
 		return nil, false
 	}
 

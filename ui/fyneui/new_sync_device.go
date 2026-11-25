@@ -351,6 +351,15 @@ func (ui *ui) SyncDeviceRequestRejected(peer string) {
 	})
 }
 
+// SyncDeviceProfileRefused is the other device answering with a profile this one cannot use, which is what a device
+// on another version of Bounce, or a profile made by one, looks like from here
+func (ui *ui) SyncDeviceProfileRefused(reason string) {
+	fyne.DoAndWait(func() {
+		ui.resetNewSyncDeviceRequest()
+		ui.showDialog(dialog.NewError(errors.New("The other device answered, but this device could not use what it sent ("+reason+").  Make sure both devices are running the same version of Bounce."), ui.window), ui.scanForNewSyncDevice)
+	})
+}
+
 func (ui *ui) InitialSyncStarting() {
 	fyne.DoAndWait(func() {
 		ui.widgets.newSyncDevice.currentStep.Text = "Importing data..."

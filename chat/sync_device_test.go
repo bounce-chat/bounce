@@ -20,6 +20,10 @@ func (u *syncDeviceTestUI) InitialSyncComplete() {
 	u.called <- call{function: "InitialSyncComplete"}
 }
 
+func (u *syncDeviceTestUI) SyncDeviceProfileRefused(reason string) {
+	u.called <- call{function: "SyncDeviceProfileRefused", args: []interface{}{reason}}
+}
+
 func awaitSyncDeviceCall(t *testing.T, ui *syncDeviceTestUI, function string) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
@@ -97,4 +101,31 @@ func TestSyncDevicePairingSelfSignsAndCompletesInitialSync(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("offer device did not accept the requester's signed device frame")
+}
+
+// An install whose own device record was written before device IDs changed still answers a pairing request, and the
+// device asking refuses what it is sent.  The user is waiting on that answer, so the refusal has to reach the UI.
+func TestSyncDeviceProfileThatIsRefusedIsReportedToTheUI(t *testing.T) {
+	offer := newBounceUser("Offer")
+	t.Cleanup(offer.Shutdown)
+	ui := &syncDeviceTestUI{testUI: newTestUI()}
+	requester := newBounceWithUI(ui)
+	t.Cleanup(requester.Shutdown)
+
+	// The offer device's own record no longer matches its ID, the way a record from an older version does not
+	assert.NoError(t, offer.database.Model(&device{}).Where("address = ?", offer.network.Address()).Update("network", "a network from before").Error)
+
+	assert.NoError(t, requester.RequestToSync(offer.GetNewSyncString()))
+	awaitSyncDeviceCall(t, ui, "SyncDeviceProfileRefused")
+
+	ui.Lock()
+	for _, c := range ui.calls {
+		assert.NotEqual(t, "SyncDeviceRequestAccepted", c.function)
+		if c.function == "SyncDeviceProfileRefused" {
+			assert.Equal(t, []interface{}{"a device in its profile is not valid"}, c.args)
+		}
+	}
+	ui.Unlock()
+	_, exists := requester.currentUser()
+	assert.False(t, exists, "a refused profile was saved")
 }

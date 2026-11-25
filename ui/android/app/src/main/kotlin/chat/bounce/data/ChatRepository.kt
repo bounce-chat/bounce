@@ -54,6 +54,9 @@ sealed interface RepositoryEffect {
     data class GroupRolledBack(val groupId: String) : RepositoryEffect
 
     data class SyncDeviceRejected(val peer: String) : RepositoryEffect
+
+    /** The other device answered, and this one could not use the profile it sent. */
+    data class SyncDeviceProfileRefused(val reason: String) : RepositoryEffect
     data class SyncDeviceAccepted(val userId: String, val references: Boolean) : RepositoryEffect
     data object SyncDeviceAdded : RepositoryEffect
     data class AddUserRejected(val peer: String) : RepositoryEffect

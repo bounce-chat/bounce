@@ -369,6 +369,8 @@ private fun LinkDeviceFlow(
     /** The engine's own message, shown beneath the generic one so a failure is diagnosable. */
     var requestError by remember { mutableStateOf<String?>(null) }
     var rejected by remember { mutableStateOf(false) }
+    /** The other device answered, but with a profile the engine would not take. */
+    var refused by remember { mutableStateOf(false) }
 
     // Null until the peer answers; false means it accepted but had no history to
     // send, in which case no InitialSync* event will ever arrive.
@@ -381,6 +383,10 @@ private fun LinkDeviceFlow(
         ChatRepository.effects.collect { effect ->
             when (effect) {
                 is RepositoryEffect.SyncDeviceRejected -> rejected = true
+                is RepositoryEffect.SyncDeviceProfileRefused -> {
+                    requestError = effect.reason
+                    refused = true
+                }
                 is RepositoryEffect.SyncDeviceAccepted -> importExpected = effect.references
                 else -> Unit
             }
@@ -404,6 +410,7 @@ private fun LinkDeviceFlow(
                 requestFailed = false
                 requestError = null
                 rejected = false
+                refused = false
                 importExpected = null
                 scope.launch {
                     val engine = client ?: EngineHolder.client
@@ -446,6 +453,7 @@ private fun LinkDeviceFlow(
                 sync = sync,
                 networkOnline = networkOnline,
                 rejected = rejected,
+                refused = refused,
                 requestFailed = requestFailed,
                 requestError = requestError,
                 onRetry = { onStepChange(OnboardingStep.LinkIntro) },
@@ -522,6 +530,7 @@ private fun SyncProgressBody(
     sync: InitialSyncState,
     networkOnline: Boolean,
     rejected: Boolean,
+    refused: Boolean,
     requestFailed: Boolean,
     requestError: String?,
     onRetry: () -> Unit,
@@ -534,11 +543,14 @@ private fun SyncProgressBody(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        if (rejected || requestFailed) {
+        if (rejected || refused || requestFailed) {
             Text(
                 text = stringResource(
-                    if (rejected) R.string.onboarding_sync_rejected
-                    else R.string.onboarding_sync_failed
+                    when {
+                        rejected -> R.string.onboarding_sync_rejected
+                        refused -> R.string.onboarding_sync_refused
+                        else -> R.string.onboarding_sync_failed
+                    }
                 ),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.error,

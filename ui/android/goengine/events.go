@@ -92,6 +92,12 @@ func (u *uiAdapter) SyncDeviceRequestRejected(peer string) {
 	}{peer})
 }
 
+func (u *uiAdapter) SyncDeviceProfileRefused(reason string) {
+	u.emit("SyncDeviceProfileRefused", struct {
+		Reason string `json:"reason"`
+	}{reason})
+}
+
 func (u *uiAdapter) AddUserRequestRejected(peer string) {
 	u.emit("AddUserRequestRejected", struct {
 		Peer string `json:"peer"`

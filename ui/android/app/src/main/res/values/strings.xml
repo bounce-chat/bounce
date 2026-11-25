@@ -137,6 +137,7 @@
     <string name="onboarding_sync_importing">Importing your messages…</string>
     <string name="onboarding_sync_preparing">Preparing the database…</string>
     <string name="onboarding_sync_rejected">The other device turned the request down. Codes expire quickly, so show a fresh one and scan it right away.</string>
+    <string name="onboarding_sync_refused">The other device answered, but this device could not use what it sent. Make sure both devices are running the same version of Bounce. If they are, the profile on the other device was made by an older version and has to be set up again.</string>
     <string name="onboarding_sync_failed">The pairing request could not be sent. Check that both devices are online and try again.</string>
     <string name="onboarding_keep_app_open">Keep both devices awake and Bounce open until this finishes.</string>
     <string name="onboarding_try_again">Try again</string>
