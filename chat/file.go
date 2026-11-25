@@ -17,6 +17,7 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -332,14 +333,38 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 		}).Warn("ignoring empty file")
 		return nil, false
 	}
-	if !(f.Scope >= scopeSync && f.Scope <= scopeGroupWithInvites) {
-		log.WithFields(log.Fields{
-			"id":   f.ID,
-			"peer": peer,
-		}).Warn("ignoring file with unknown scope")
-		return nil, false
-	}
-	if !(f.Type >= fileTypeGroupImage && f.Type <= fileTypeMessageAttachment) {
+	switch f.Type {
+	case fileTypeGroupImage:
+		if f.Scope != scopeGroupWithInvites {
+			log.WithFields(log.Fields{
+				"id":    f.ID,
+				"peer":  peer,
+				"scope": f.Scope,
+				"type":  f.Type,
+			}).Warn("ignoring group image file with unexpected scope")
+			return nil, false
+		}
+	case fileTypeUserImage:
+		if f.Scope != scopeGlobal {
+			log.WithFields(log.Fields{
+				"id":    f.ID,
+				"peer":  peer,
+				"scope": f.Scope,
+				"type":  f.Type,
+			}).Warn("ignoring user image file with unexpected scope")
+			return nil, false
+		}
+	case fileTypeMessageAttachment:
+		if f.Scope != scopeSync && f.Scope != scopeUser && f.Scope != scopeGroup {
+			log.WithFields(log.Fields{
+				"id":    f.ID,
+				"peer":  peer,
+				"scope": f.Scope,
+				"type":  f.Type,
+			}).Warn("ignoring attachment file with unexpected scope")
+			return nil, false
+		}
+	default:
 		log.WithFields(log.Fields{
 			"id":   f.ID,
 			"peer": peer,
@@ -352,6 +377,80 @@ func (b *Bounce) handleFile(peer string, payload []byte, catchUp bool) (broadcas
 			"peer": peer,
 		}).Warn("ignoring file too large for the type")
 		return nil, false
+	}
+
+	// Make sure the author belongs to the scope this file targets
+	switch f.Scope {
+	case scopeSync:
+		if f.Author != b.currentUserID() {
+			log.WithFields(log.Fields{
+				"id":     f.ID,
+				"peer":   peer,
+				"author": f.Author,
+			}).Warn("ignoring sync-scoped file from another user")
+			return nil, false
+		}
+	case scopeUser:
+		if !(f.Author == b.currentUserID() || xor(f.Destination, f.Author) == b.currentUserID()) {
+			log.WithFields(log.Fields{
+				"id":          f.ID,
+				"peer":        peer,
+				"author":      f.Author,
+				"destination": f.Destination,
+			}).Warn("ignoring user-scoped file whose destination does not match author")
+			return nil, false
+		}
+	case scopeGlobal:
+		if f.Destination != f.Author {
+			log.WithFields(log.Fields{
+				"id":          f.ID,
+				"peer":        peer,
+				"author":      f.Author,
+				"destination": f.Destination,
+			}).Warn("ignoring global-scoped file whose destination does not match author")
+			return nil, false
+		}
+	case scopeGroup:
+		gs, err := b.currentGroupState(f.Destination)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":       f.ID,
+				"group_id": f.Destination,
+				"error":    err.Error(),
+			}).Debug("ignoring group-scoped file without group state")
+			return nil, false
+		}
+		if !gs.isMember(f.Author) {
+			log.WithFields(log.Fields{
+				"id":     f.ID,
+				"author": f.Author,
+				"group":  f.Destination,
+			}).Warn("ignoring group-scoped file from user not in group")
+			if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+				if !blockedUser(peerDev.UserID) {
+					go b.sendAck(peer, typeFile, f.ID)
+				}
+			}
+			return nil, false
+		}
+	case scopeGroupWithInvites:
+		gs, err := b.currentGroupState(f.Destination)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":       f.ID,
+				"group_id": f.Destination,
+				"error":    err.Error(),
+			}).Debug("ignoring group image file without group state")
+			return nil, false
+		}
+		if !gs.isMember(f.Author) && !slices.Contains(gs.images, f.ID) {
+			log.WithFields(log.Fields{
+				"id":     f.ID,
+				"author": f.Author,
+				"group":  f.Destination,
+			}).Warn("ignoring group image file from user not in group")
+			return nil, false
+		}
 	}
 
 	// Create the empty chunks of the file
@@ -614,11 +713,138 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) (br
 		}).Fatal("database error looking up chunk offer")
 	}
 
-	// Validate the scope
-	if !(co.Scope >= scopeSync && co.Scope <= scopeGroupWithInvites) {
+	// Validate the scope and make sure the author belongs to it
+	switch co.Scope {
+	case scopeSync:
+		if co.Author != b.currentUserID() {
+			log.WithFields(log.Fields{
+				"id":     co.ID,
+				"peer":   peer,
+				"author": co.Author,
+			}).Warn("ignoring sync-scoped chunk offer from another user")
+			return nil, false
+		}
+	case scopeUser:
+		if !(co.Author == b.currentUserID() || xor(co.Destination, co.Author) == b.currentUserID()) {
+			log.WithFields(log.Fields{
+				"id":          co.ID,
+				"peer":        peer,
+				"author":      co.Author,
+				"destination": co.Destination,
+			}).Warn("ignoring user-scoped chunk offer whose destination does not match author")
+			return nil, false
+		}
+	case scopeGlobal:
+		// A user may offer chunks of their own profile image, our own profile image, or (via a sync device)
+		// any profile image we hold; another user re-seeding a third user's avatar must share a group with them.
+		if co.Author != b.currentUserID() && co.Destination != co.Author && co.Destination != b.currentUserID() {
+			var shared int64
+			err = b.database.Table("group_users AS a").
+				Joins("JOIN group_users AS b ON a.group_id = b.group_id").
+				Where("a.user_id = ? AND b.user_id = ?", co.Author, co.Destination).
+				Count(&shared).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Fatal("database error checking whether chunk offer author and destination share a group")
+			}
+			inSharedGroup := shared > 0
+			if !inSharedGroup {
+				b.consensusStore.Lock()
+				for _, cs := range b.consensusStore.groups {
+					gs, topErr := cs.top()
+					if topErr != nil {
+						continue
+					}
+					if (gs.isMember(co.Author) || gs.isInvited(co.Author)) && (gs.isMember(co.Destination) || gs.isInvited(co.Destination)) {
+						inSharedGroup = true
+						break
+					}
+				}
+				b.consensusStore.Unlock()
+			}
+			if !inSharedGroup {
+				var invitedGroupIDs []ID
+				err = b.database.Model(&group{}).
+					Where("invites LIKE ? OR invites LIKE ?", "%"+co.Author.String()+"%", "%"+co.Destination.String()+"%").
+					Pluck("id", &invitedGroupIDs).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Fatal("database error looking up invited groups for chunk offer")
+				}
+				for _, groupID := range invitedGroupIDs {
+					gs, stateErr := b.currentGroupState(groupID)
+					if stateErr != nil {
+						continue
+					}
+					if (gs.isMember(co.Author) || gs.isInvited(co.Author)) && (gs.isMember(co.Destination) || gs.isInvited(co.Destination)) {
+						inSharedGroup = true
+						break
+					}
+				}
+			}
+			if !inSharedGroup {
+				log.WithFields(log.Fields{
+					"id":          co.ID,
+					"peer":        peer,
+					"author":      co.Author,
+					"destination": co.Destination,
+				}).Warn("ignoring global-scoped chunk offer for unrelated user")
+				return nil, false
+			}
+		}
+	case scopeGroup:
+		gs, err := b.currentGroupState(co.Destination)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":       co.ID,
+				"group_id": co.Destination,
+				"error":    err.Error(),
+			}).Debug("ignoring group-scoped chunk offer without group state")
+			return nil, false
+		}
+		if !gs.isMember(co.Author) {
+			log.WithFields(log.Fields{
+				"id":     co.ID,
+				"author": co.Author,
+				"group":  co.Destination,
+			}).Warn("ignoring group-scoped chunk offer from user not in group")
+			if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+				if !blockedUser(peerDev.UserID) {
+					go b.sendAck(peer, typeChunkOffer, co.ID)
+				}
+			}
+			return nil, false
+		}
+	case scopeGroupWithInvites:
+		gs, err := b.currentGroupState(co.Destination)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"id":       co.ID,
+				"group_id": co.Destination,
+				"error":    err.Error(),
+			}).Debug("ignoring group image chunk offer without group state")
+			return nil, false
+		}
+		if !gs.isMember(co.Author) && !gs.isInvited(co.Author) {
+			log.WithFields(log.Fields{
+				"id":     co.ID,
+				"author": co.Author,
+				"group":  co.Destination,
+			}).Warn("ignoring group image chunk offer from user not in group")
+			if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+				if !blockedUser(peerDev.UserID) {
+					go b.sendAck(peer, typeChunkOffer, co.ID)
+				}
+			}
+			return nil, false
+		}
+	default:
 		log.WithFields(log.Fields{
-			"id":   co.ID,
-			"peer": peer,
+			"id":    co.ID,
+			"peer":  peer,
+			"scope": co.Scope,
 		}).Warn("ignoring chunk offer with unknown scope")
 		return nil, false
 	}
