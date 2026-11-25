@@ -15,27 +15,32 @@ const expectedKbps = 100
 const expectedChunkDeliverySeconds = ((fileChunkSize / 1024) / expectedKbps) * maxOutstandingChunkRequests
 const maxChunkAttempts = 3
 
+type chunkKey struct {
+	fileID ID
+	hash   string
+}
+
 type chunkEngine struct {
 	sync.Mutex
 
-	byLocation          map[string][]string
-	byHash              map[string][]string
-	toEncryptedHash     map[string]string
-	preferToAvoid       map[string][]string             // From hash to list of peers we've already tried unsuccessfully
-	lastRequestTime     map[string]map[string]time.Time // From hash to location to time of last sent chunkRequest
-	requestCount        map[string]map[string]int       // From hash to location to the number of requests we've sent
-	outstandingRequests map[string][]string             // From location to list of hashes
+	byLocation          map[string][]chunkKey
+	byKey               map[chunkKey][]string
+	toEncryptedHash     map[chunkKey]string
+	preferToAvoid       map[chunkKey][]string             // From chunk key to list of peers we've already tried unsuccessfully
+	lastRequestTime     map[chunkKey]map[string]time.Time // From chunk key to location to time of last sent chunkRequest
+	requestCount        map[chunkKey]map[string]int       // From chunk key to location to the number of requests we've sent
+	outstandingRequests map[string][]chunkKey             // From location to list of chunk keys
 }
 
 func (b *Bounce) loadChunkEngine() {
 	b.chunkEngine = &chunkEngine{
-		byLocation:          make(map[string][]string),
-		byHash:              make(map[string][]string),
-		toEncryptedHash:     make(map[string]string),
-		preferToAvoid:       make(map[string][]string),
-		lastRequestTime:     make(map[string]map[string]time.Time),
-		requestCount:        make(map[string]map[string]int),
-		outstandingRequests: make(map[string][]string),
+		byLocation:          make(map[string][]chunkKey),
+		byKey:               make(map[chunkKey][]string),
+		toEncryptedHash:     make(map[chunkKey]string),
+		preferToAvoid:       make(map[chunkKey][]string),
+		lastRequestTime:     make(map[chunkKey]map[string]time.Time),
+		requestCount:        make(map[chunkKey]map[string]int),
+		outstandingRequests: make(map[string][]chunkKey),
 	}
 
 	b.chunkEngine.Lock()
@@ -50,20 +55,21 @@ func (b *Bounce) loadChunkEngine() {
 	for _, f := range unfinishedFiles {
 		for _, c := range f.Chunks {
 			if !c.Downloaded {
+				key := chunkKey{fileID: f.ID, hash: c.Hash}
 				offers := []chunkOffer{}
-				err = b.database.Where("hash = ? AND location != ?", c.Hash, b.network.Address()).Find(&offers).Error
+				err = b.database.Where("file_id = ? AND hash = ? AND location != ?", f.ID, c.Hash, b.network.Address()).Find(&offers).Error
 				if err != nil {
 					log.WithFields(log.Fields{
 						"error": err.Error(),
 					}).Fatal("database error looking up chunk offers")
 				}
 				for _, co := range offers {
-					b.chunkEngine.byHash[c.Hash] = append(b.chunkEngine.byHash[c.Hash], co.Location)
-					b.chunkEngine.byLocation[co.Location] = append(b.chunkEngine.byLocation[co.Location], co.Hash)
+					b.chunkEngine.byKey[key] = append(b.chunkEngine.byKey[key], co.Location)
+					b.chunkEngine.byLocation[co.Location] = append(b.chunkEngine.byLocation[co.Location], key)
 				}
 
 				if c.EncryptedHash != "" {
-					b.chunkEngine.toEncryptedHash[c.Hash] = c.EncryptedHash
+					b.chunkEngine.toEncryptedHash[key] = c.EncryptedHash
 
 					encryptedOffers := []encryptedChunkOffer{}
 					err = b.database.Where("hash = ? AND location != ?", c.EncryptedHash, b.network.Address()).Find(&encryptedOffers).Error
@@ -73,8 +79,8 @@ func (b *Bounce) loadChunkEngine() {
 						}).Fatal("database error looking up encrypted chunk offers")
 					}
 					for _, eco := range encryptedOffers {
-						b.chunkEngine.byHash[c.Hash] = append(b.chunkEngine.byHash[c.Hash], eco.Location)
-						b.chunkEngine.byHash[eco.Location] = append(b.chunkEngine.byHash[eco.Location], c.Hash)
+						b.chunkEngine.byKey[key] = append(b.chunkEngine.byKey[key], eco.Location)
+						b.chunkEngine.byLocation[eco.Location] = append(b.chunkEngine.byLocation[eco.Location], key)
 					}
 				}
 			}
@@ -101,55 +107,57 @@ func (b *Bounce) makeAnyChunkRequests() {
 	defer b.chunkEngine.Unlock()
 
 	// Keep all outstanding requests as outstanding, unless we've had multiple unsuccessful tries and there are other options,
-	// in which case evict that outstanding request and disfavor that peer for that hash.
-	updatedOutstandingRequests := map[string][]string{}
+	// in which case evict that outstanding request and disfavor that peer for that chunk.
+	updatedOutstandingRequests := map[string][]chunkKey{}
 	for location, requests := range b.chunkEngine.outstandingRequests {
 		if b.getRemoteDevice(location).connectedSockets() <= 0 {
 			continue
 		}
 
-		for _, hash := range requests {
-			if b.chunkEngine.requestsMade(location, hash) > maxChunkAttempts {
-				totalOptions, ok := b.chunkEngine.byHash[hash]
+		for _, key := range requests {
+			if b.chunkEngine.requestsMade(location, key) > maxChunkAttempts {
+				totalOptions, ok := b.chunkEngine.byKey[key]
 				if !ok {
 					log.WithFields(log.Fields{
-						"hash": hash,
-					}).Error("chunk engine hash map has no options for chunk that is current outstanding")
+						"file_id": key.fileID,
+						"hash":    key.hash,
+					}).Error("chunk engine map has no options for chunk that is currently outstanding")
 					continue
 				}
 				if len(totalOptions) > 1 {
-					b.chunkEngine.preferToAvoid[hash] = append(b.chunkEngine.preferToAvoid[hash], location)
+					b.chunkEngine.preferToAvoid[key] = append(b.chunkEngine.preferToAvoid[key], location)
 				} else {
-					updatedOutstandingRequests[location] = append(updatedOutstandingRequests[location], hash)
+					updatedOutstandingRequests[location] = append(updatedOutstandingRequests[location], key)
 				}
 			} else {
-				updatedOutstandingRequests[location] = append(updatedOutstandingRequests[location], hash)
+				updatedOutstandingRequests[location] = append(updatedOutstandingRequests[location], key)
 			}
 		}
 	}
 	b.chunkEngine.outstandingRequests = updatedOutstandingRequests
 
-	// For any hashes that we want that are not outstanding, find a peer to assign them to, preferring ones we haven't already
+	// For any chunks that we want that are not outstanding, find a peer to assign them to, preferring ones we haven't already
 	// tried, if any are available
-	unassignedHashes := b.chunkEngine.unassignedHashes()
-	for _, hash := range unassignedHashes {
-		if !b.chunkWanted(hash) {
-			b.chunkEngine.removeHash(hash)
+	unassignedKeys := b.chunkEngine.unassignedKeys()
+	for _, key := range unassignedKeys {
+		if !b.chunkWanted(key) {
+			b.chunkEngine.removeKey(key)
 			continue
 		}
 
-		options, ok := b.chunkEngine.byHash[hash]
+		options, ok := b.chunkEngine.byKey[key]
 		if !ok {
 			log.WithFields(log.Fields{
-				"hash": hash,
-			}).Warn("no locations in map for hash")
+				"file_id": key.fileID,
+				"hash":    key.hash,
+			}).Warn("no locations in map for chunk")
 			continue
 		}
 
 		if len(options) > 1 {
 			filteredOptions := []string{}
 
-			disfavored := b.chunkEngine.preferToAvoid[hash]
+			disfavored := b.chunkEngine.preferToAvoid[key]
 			disfavoredMap := map[string]bool{}
 			for _, peer := range disfavored {
 				disfavoredMap[peer] = true
@@ -177,28 +185,30 @@ func (b *Bounce) makeAnyChunkRequests() {
 			encryptedDeviceCacheMutex.Lock()
 			_, encrypted := encryptedDeviceCache[option]
 			encryptedDeviceCacheMutex.Unlock()
-			requestHash := hash
+			req := &chunkRequest{FileID: key.fileID, Hash: key.hash}
 			if encrypted {
-				encryptedHash, ok := b.chunkEngine.toEncryptedHash[hash]
+				encryptedHash, ok := b.chunkEngine.toEncryptedHash[key]
 				if !ok {
 					log.WithFields(log.Fields{
-						"hash":     hash,
+						"file_id":  key.fileID,
+						"hash":     key.hash,
 						"location": option,
 					}).Warn("cannot get encrypted hash for hash stored on encrypted device")
 					continue
 				}
-				requestHash = encryptedHash
+				req = &chunkRequest{Hash: encryptedHash}
 			}
 
-			b.chunkEngine.updateLastRequestTime(option, hash)
-			b.chunkEngine.setRequestCount(option, hash, 1)
+			b.chunkEngine.updateLastRequestTime(option, key)
+			b.chunkEngine.setRequestCount(option, key, 1)
 
-			b.chunkEngine.outstandingRequests[option] = append(b.chunkEngine.outstandingRequests[option], hash)
+			b.chunkEngine.outstandingRequests[option] = append(b.chunkEngine.outstandingRequests[option], key)
 			log.WithFields(log.Fields{
-				"hash":     hash,
+				"file_id":  key.fileID,
+				"hash":     key.hash,
 				"location": option,
 			}).Debug("requesting a chunk")
-			go b.sendDirect(option, &chunkRequest{Hash: requestHash})
+			go b.sendDirect(option, req)
 			break
 		}
 	}
@@ -208,45 +218,47 @@ func (b *Bounce) makeAnyChunkRequests() {
 		if b.getRemoteDevice(location).connectedSockets() <= 0 {
 			continue
 		}
-		for _, hash := range requests {
-			if !b.chunkWanted(hash) {
-				b.chunkEngine.removeHash(hash)
+		for _, key := range requests {
+			if !b.chunkWanted(key) {
+				b.chunkEngine.removeKey(key)
 				continue
 			}
 
-			if time.Since(b.chunkEngine.getLastRequestTime(location, hash)) > expectedChunkDeliverySeconds*time.Second {
+			if time.Since(b.chunkEngine.getLastRequestTime(location, key)) > expectedChunkDeliverySeconds*time.Second {
 				encryptedDeviceCacheMutex.Lock()
 				_, encrypted := encryptedDeviceCache[location]
 				encryptedDeviceCacheMutex.Unlock()
-				requestHash := hash
+				req := &chunkRequest{FileID: key.fileID, Hash: key.hash}
 				if encrypted {
-					encryptedHash, ok := b.chunkEngine.toEncryptedHash[hash]
+					encryptedHash, ok := b.chunkEngine.toEncryptedHash[key]
 					if !ok {
 						log.WithFields(log.Fields{
-							"hash":     hash,
+							"file_id":  key.fileID,
+							"hash":     key.hash,
 							"location": location,
 						}).Warn("cannot get encrypted hash for hash stored on encrypted device")
 						continue
 					}
-					requestHash = encryptedHash
+					req = &chunkRequest{Hash: encryptedHash}
 				}
 
-				b.chunkEngine.updateLastRequestTime(location, hash)
-				b.chunkEngine.setRequestCount(location, hash, b.chunkEngine.requestsMade(location, hash)+1)
+				b.chunkEngine.updateLastRequestTime(location, key)
+				b.chunkEngine.setRequestCount(location, key, b.chunkEngine.requestsMade(location, key)+1)
 				log.WithFields(log.Fields{
-					"hash":     hash,
+					"file_id":  key.fileID,
+					"hash":     key.hash,
 					"location": location,
 				}).Warn("re-requesting a chunk")
-				go b.sendDirect(location, &chunkRequest{Hash: requestHash})
+				go b.sendDirect(location, req)
 			}
 		}
 	}
 }
 
-func (ce *chunkEngine) setRequestCount(location, hash string, count int) {
-	locationCounts, ok := ce.requestCount[hash]
+func (ce *chunkEngine) setRequestCount(location string, key chunkKey, count int) {
+	locationCounts, ok := ce.requestCount[key]
 	if !ok {
-		ce.requestCount[hash] = map[string]int{
+		ce.requestCount[key] = map[string]int{
 			location: count,
 		}
 	} else {
@@ -254,21 +266,21 @@ func (ce *chunkEngine) setRequestCount(location, hash string, count int) {
 	}
 }
 
-func (ce *chunkEngine) requestsMade(location, hash string) int {
+func (ce *chunkEngine) requestsMade(location string, key chunkKey) int {
 	count := 0
-	locationCounts, ok := ce.requestCount[hash]
+	locationCounts, ok := ce.requestCount[key]
 	if !ok {
-		ce.requestCount[hash] = make(map[string]int)
+		ce.requestCount[key] = make(map[string]int)
 	} else {
 		count, _ = locationCounts[location]
 	}
 	return count
 }
 
-func (ce *chunkEngine) updateLastRequestTime(location, hash string) {
-	locationTimes, ok := ce.lastRequestTime[hash]
+func (ce *chunkEngine) updateLastRequestTime(location string, key chunkKey) {
+	locationTimes, ok := ce.lastRequestTime[key]
 	if !ok {
-		ce.lastRequestTime[hash] = map[string]time.Time{
+		ce.lastRequestTime[key] = map[string]time.Time{
 			location: time.Now(),
 		}
 	} else {
@@ -276,31 +288,31 @@ func (ce *chunkEngine) updateLastRequestTime(location, hash string) {
 	}
 }
 
-func (ce *chunkEngine) getLastRequestTime(location, hash string) time.Time {
+func (ce *chunkEngine) getLastRequestTime(location string, key chunkKey) time.Time {
 	t := time.Time{}
 
-	locationTimes, ok := ce.lastRequestTime[hash]
+	locationTimes, ok := ce.lastRequestTime[key]
 	if !ok {
-		ce.lastRequestTime[hash] = make(map[string]time.Time)
+		ce.lastRequestTime[key] = make(map[string]time.Time)
 	} else {
 		t, _ = locationTimes[location]
 	}
 	return t
 }
 
-func (ce *chunkEngine) unassignedHashes() []string {
-	unassigned := []string{}
+func (ce *chunkEngine) unassignedKeys() []chunkKey {
+	unassigned := []chunkKey{}
 
-	outstandingHashes := map[string]bool{}
+	outstandingKeys := map[chunkKey]bool{}
 	for _, outstanding := range ce.outstandingRequests {
-		for _, hash := range outstanding {
-			outstandingHashes[hash] = true
+		for _, key := range outstanding {
+			outstandingKeys[key] = true
 		}
 	}
 
-	for hash, _ := range ce.byHash {
-		if _, outstanding := outstandingHashes[hash]; !outstanding {
-			unassigned = append(unassigned, hash)
+	for key := range ce.byKey {
+		if _, outstanding := outstandingKeys[key]; !outstanding {
+			unassigned = append(unassigned, key)
 		}
 	}
 
@@ -308,31 +320,32 @@ func (ce *chunkEngine) unassignedHashes() []string {
 }
 
 func (b *Bounce) addChunkOfferToChunkEngine(co *chunkOffer) {
-	if co.Location == b.network.Address() || !b.chunkWanted(co.Hash) {
+	key := chunkKey{fileID: co.FileID, hash: co.Hash}
+	if co.Location == b.network.Address() || !b.chunkWanted(key) {
 		return
 	}
 
 	b.chunkEngine.Lock()
 	defer b.chunkEngine.Unlock()
 
-	alreadyInHash := false
-	for _, l := range b.chunkEngine.byHash[co.Hash] {
+	alreadyInKey := false
+	for _, l := range b.chunkEngine.byKey[key] {
 		if l == co.Location {
-			alreadyInHash = true
+			alreadyInKey = true
 		}
 	}
-	if !alreadyInHash {
-		b.chunkEngine.byHash[co.Hash] = append(b.chunkEngine.byHash[co.Hash], co.Location)
+	if !alreadyInKey {
+		b.chunkEngine.byKey[key] = append(b.chunkEngine.byKey[key], co.Location)
 	}
 
 	alreadyInLocation := false
-	for _, h := range b.chunkEngine.byLocation[co.Location] {
-		if h == co.Hash {
+	for _, k := range b.chunkEngine.byLocation[co.Location] {
+		if k == key {
 			alreadyInLocation = true
 		}
 	}
 	if !alreadyInLocation {
-		b.chunkEngine.byLocation[co.Location] = append(b.chunkEngine.byLocation[co.Location], co.Hash)
+		b.chunkEngine.byLocation[co.Location] = append(b.chunkEngine.byLocation[co.Location], key)
 	}
 }
 
@@ -349,65 +362,68 @@ func (b *Bounce) addEncryptedChunkOfferToChunkEngine(eco *encryptedChunkOffer) {
 		}).Warn("cannot add encrypted chunk offer to chunk engine for chunk we don't yet have")
 		return
 	}
-	if !b.chunkWanted(c.Hash) {
+	key := chunkKey{fileID: c.FileID, hash: c.Hash}
+	if !b.chunkWanted(key) {
 		return
 	}
 
 	b.chunkEngine.Lock()
 	defer b.chunkEngine.Unlock()
 
-	alreadyInHash := false
-	for _, l := range b.chunkEngine.byHash[c.Hash] {
+	b.chunkEngine.toEncryptedHash[key] = c.EncryptedHash
+
+	alreadyInKey := false
+	for _, l := range b.chunkEngine.byKey[key] {
 		if l == eco.Location {
-			alreadyInHash = true
+			alreadyInKey = true
 		}
 	}
-	if !alreadyInHash {
-		b.chunkEngine.byHash[c.Hash] = append(b.chunkEngine.byHash[c.Hash], eco.Location)
+	if !alreadyInKey {
+		b.chunkEngine.byKey[key] = append(b.chunkEngine.byKey[key], eco.Location)
 	}
 
 	alreadyInLocation := false
-	for _, h := range b.chunkEngine.byLocation[eco.Location] {
-		if h == c.Hash {
+	for _, k := range b.chunkEngine.byLocation[eco.Location] {
+		if k == key {
 			alreadyInLocation = true
 		}
 	}
 	if !alreadyInLocation {
-		b.chunkEngine.byLocation[eco.Location] = append(b.chunkEngine.byLocation[eco.Location], c.Hash)
+		b.chunkEngine.byLocation[eco.Location] = append(b.chunkEngine.byLocation[eco.Location], key)
 	}
 }
 
-func (ce *chunkEngine) completed(target string) {
+func (ce *chunkEngine) completed(target chunkKey) {
 	ce.Lock()
 	defer ce.Unlock()
-	ce.removeHash(target)
+	ce.removeKey(target)
 }
 
-func (ce *chunkEngine) removeHash(target string) {
-	prunedLocations := make(map[string][]string)
-	for location, hashes := range ce.byLocation {
-		hashesWithoutTarget := []string{}
-		for _, hash := range hashes {
-			if hash != target {
-				hashesWithoutTarget = append(hashesWithoutTarget, hash)
+func (ce *chunkEngine) removeKey(target chunkKey) {
+	prunedLocations := make(map[string][]chunkKey)
+	for location, keys := range ce.byLocation {
+		keysWithoutTarget := []chunkKey{}
+		for _, key := range keys {
+			if key != target {
+				keysWithoutTarget = append(keysWithoutTarget, key)
 			}
 		}
-		prunedLocations[location] = hashesWithoutTarget
+		prunedLocations[location] = keysWithoutTarget
 	}
 	ce.byLocation = prunedLocations
 
-	delete(ce.byHash, target)
+	delete(ce.byKey, target)
 	delete(ce.toEncryptedHash, target)
 	delete(ce.preferToAvoid, target)
 	delete(ce.lastRequestTime, target)
 	delete(ce.requestCount, target)
 
-	prunedOutstandingRequests := make(map[string][]string)
+	prunedOutstandingRequests := make(map[string][]chunkKey)
 	for location, requests := range ce.outstandingRequests {
-		requestsWithoutTarget := []string{}
-		for _, hash := range requests {
-			if hash != target {
-				requestsWithoutTarget = append(requestsWithoutTarget, hash)
+		requestsWithoutTarget := []chunkKey{}
+		for _, key := range requests {
+			if key != target {
+				requestsWithoutTarget = append(requestsWithoutTarget, key)
 			}
 		}
 		prunedOutstandingRequests[location] = requestsWithoutTarget
@@ -416,65 +432,59 @@ func (ce *chunkEngine) removeHash(target string) {
 	ce.outstandingRequests = prunedOutstandingRequests
 }
 
-func (ce *chunkEngine) remove(targetLocation, targetHash string) {
+func (ce *chunkEngine) remove(targetLocation string, targetKey chunkKey) {
 	ce.Lock()
 	defer ce.Unlock()
 
-	currentLocationsWithHash, _ := ce.byHash[targetHash]
-	hashLocationsWithoutTargetLocation := []string{}
-	for _, l := range currentLocationsWithHash {
+	currentLocationsWithKey := ce.byKey[targetKey]
+	locationsWithoutTarget := []string{}
+	for _, l := range currentLocationsWithKey {
 		if l != targetLocation {
-			hashLocationsWithoutTargetLocation = append(hashLocationsWithoutTargetLocation, l)
+			locationsWithoutTarget = append(locationsWithoutTarget, l)
 		}
 	}
-	ce.byHash[targetHash] = hashLocationsWithoutTargetLocation
+	ce.byKey[targetKey] = locationsWithoutTarget
 
-	currentHashesAtLocation, _ := ce.byLocation[targetLocation]
-	hashesAtLocationWithoutTargetHash := []string{}
-	for _, h := range currentHashesAtLocation {
-		if h != targetHash {
-			hashesAtLocationWithoutTargetHash = append(hashesAtLocationWithoutTargetHash, h)
+	currentKeysAtLocation := ce.byLocation[targetLocation]
+	keysWithoutTarget := []chunkKey{}
+	for _, k := range currentKeysAtLocation {
+		if k != targetKey {
+			keysWithoutTarget = append(keysWithoutTarget, k)
 		}
 	}
-	ce.byLocation[targetLocation] = hashesAtLocationWithoutTargetHash
+	ce.byLocation[targetLocation] = keysWithoutTarget
 
-	currentOutstandingRequests, _ := ce.outstandingRequests[targetLocation]
-	outstandingRequestsWithoutTargetHash := []string{}
-	for _, h := range currentOutstandingRequests {
-		if h != targetHash {
-			outstandingRequestsWithoutTargetHash = append(outstandingRequestsWithoutTargetHash, h)
+	currentOutstandingRequests := ce.outstandingRequests[targetLocation]
+	outstandingWithoutTarget := []chunkKey{}
+	for _, k := range currentOutstandingRequests {
+		if k != targetKey {
+			outstandingWithoutTarget = append(outstandingWithoutTarget, k)
 		}
 	}
-	ce.outstandingRequests[targetLocation] = outstandingRequestsWithoutTargetHash
+	ce.outstandingRequests[targetLocation] = outstandingWithoutTarget
 }
 
-func (b *Bounce) chunkWanted(hash string) bool {
-	var chunks []chunk
-	err := b.database.Select("file_id").Where("hash = ?", hash).Find(&chunks).Error
+func (b *Bounce) chunkWanted(key chunkKey) bool {
+	var f file
+	err := b.database.Select("wanted", "downloaded").Where("id = ?", key.fileID).Take(&f).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false
+		}
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up file")
+	}
+	if !f.Wanted || f.Downloaded {
+		return false
+	}
+
+	var count int64
+	err = b.database.Model(&chunk{}).Where("file_id = ? AND hash = ? AND downloaded = ?", key.fileID, key.hash, false).Count(&count).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("database error looking up chunks")
 	}
-
-	for _, c := range chunks {
-		var f file
-		err = b.database.Select("wanted", "downloaded").Where("id = ?", c.FileID).Take(&f).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				log.WithFields(log.Fields{
-					"file_id": c.FileID,
-				}).Warn("could not find file for chunk")
-				continue
-			} else {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error looking up file")
-			}
-		}
-		if f.Wanted && !f.Downloaded {
-			return true
-		}
-	}
-	return false
+	return count > 0
 }

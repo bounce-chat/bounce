@@ -342,3 +342,247 @@ func TestCanonicalGroupIconFromRemovedMemberStillAccepted(t *testing.T) {
 	br, first = me.handleChunkOffer(bob.network.Address(), bobOfferWire, false)
 	assert.True(t, br != nil && first, "chunk offer from current member for canonical group icon must be accepted")
 }
+
+func TestCrossFileChunkIsolation(t *testing.T) {
+	me, alice, bob, groupID := createUsersAndGroups(t)
+
+	// Bob sends a private DM attachment to Me so Me holds its downloaded chunk on disk.
+	secretData := []byte("top secret me-bob DM attachment bytes " + NewID().String())
+	assert.NoError(t, bob.SendDirectMessage(me.currentUserID(), "private dm", []OutgoingAttachment{{
+		Name:   "secret.txt",
+		Size:   int64(len(secretData)),
+		Reader: io.NopCloser(bytes.NewReader(secretData)),
+	}}, NilID))
+
+	var secretDM directMessage
+	assert.NoError(t, bob.database.Preload("FileAttachments").First(&secretDM, "text = ?", "private dm").Error)
+	assert.Equal(t, 1, len(secretDM.FileAttachments))
+	secretFileID := secretDM.FileAttachments[0].FileID
+	var secretFile file
+	assert.NoError(t, bob.database.First(&secretFile, "id = ?", secretFileID).Error)
+	secretHash := secretFile.HashList
+
+	// Wait until Me has downloaded Bob's private DM attachment
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		var meSecret file
+		if me.database.First(&meSecret, "id = ?", secretFileID).Error == nil && meSecret.Downloaded {
+			break
+		}
+		me.makeAnyChunkRequests()
+		time.Sleep(20 * time.Millisecond)
+	}
+	var meSecret file
+	assert.NoError(t, me.database.First(&meSecret, "id = ?", secretFileID).Error)
+	assert.True(t, meSecret.Downloaded, "Me must have downloaded Bob's private DM attachment")
+
+	// Alice (not party to Me-Bob's DM) declares a valid DM wrapper file naming secretHash.
+	makeWrapper := func(author *Bounce, dest ID, chunkHash string, size int64) (*file, []byte) {
+		key := make([]byte, 32)
+		_, err := crand.Read(key)
+		assert.NoError(t, err)
+		f := &file{
+			Nonce:       newNonce(),
+			Name:        "probe.bin",
+			Type:        fileTypeMessageAttachment,
+			AttachedTo:  dest,
+			Hash:        chunkHash,
+			Size:        size,
+			HashList:    chunkHash,
+			Scope:       scopeUser,
+			Destination: dest,
+			Author:      author.currentUserID(),
+			Timestamp:   time.Now().Unix(),
+			Key:         key,
+		}
+		f.ID = f.generateID()
+		f.OriginalPayload, err = msgpack.Marshal(f)
+		assert.NoError(t, err)
+		sc := author.createSignedContainer(typeFile, f.OriginalPayload)
+		wire, err := msgpack.Marshal(sc)
+		assert.NoError(t, err)
+		return f, wire
+	}
+
+	aliceWrapper, aliceWrapperWire := makeWrapper(alice, xor(me.currentUserID(), alice.currentUserID()), secretHash, int64(len(secretData)))
+	br, first := me.handleFile(alice.network.Address(), aliceWrapperWire, false)
+	assert.True(t, br != nil && first, "wrapper file in Alice-Me DM scope is structurally valid")
+
+	// Save the wrapper file and a planted offer on Alice so any chunk reply from Me would complete it,
+	// while a chunkUnavailable reply from Me deletes the planted offer.
+	chunkID, err := ParseID(secretHash)
+	assert.NoError(t, err)
+	aliceLocal := *aliceWrapper
+	aliceLocal.Path = alice.platform.ConfigDirectory + "/blobs/" + aliceLocal.ID.String()
+	aliceLocal.Wanted = true
+	aliceLocal.Downloaded = false
+	aliceLocal.Signature = make([]byte, 64)
+	aliceLocal.Signer = alice.network.Address()
+	aliceLocal.Chunks = []chunk{{ID: xor(aliceLocal.ID, chunkID), FileID: aliceLocal.ID, Hash: secretHash, Index: 0}}
+	assert.NoError(t, alice.database.Create(&aliceLocal).Error)
+
+	plantedOffer := &chunkOffer{
+		ID:          NewID(),
+		Scope:       scopeUser,
+		Destination: aliceLocal.Destination,
+		Author:      me.currentUserID(),
+		FileID:      aliceLocal.ID,
+		Hash:        secretHash,
+		Location:    me.network.Address(),
+		Timestamp:   time.Now().Unix(),
+	}
+	plantedOffer.OriginalPayload, err = msgpack.Marshal(plantedOffer)
+	assert.NoError(t, err)
+	plantedOffer.Signature = make([]byte, 64)
+	plantedOffer.Signer = me.network.Address()
+	assert.NoError(t, alice.database.Create(plantedOffer).Error)
+
+	// Request secretFile directly (unauthorized file ID) followed by aliceWrapper (authorized wrapper, undownloaded).
+	// Me must ignore the unauthorized request and reply chunkUnavailable for aliceWrapper, never copying or serving secretData.
+	alice.sendDirect(me.network.Address(), &chunkRequest{FileID: secretFileID, Hash: secretHash})
+	alice.sendDirect(me.network.Address(), &chunkRequest{FileID: aliceWrapper.ID, Hash: secretHash})
+
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		var count int64
+		assert.NoError(t, alice.database.Model(&chunkOffer{}).Where("id = ?", plantedOffer.ID).Count(&count).Error)
+		if count == 0 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	var remainingOffers int64
+	assert.NoError(t, alice.database.Model(&chunkOffer{}).Where("id = ?", plantedOffer.ID).Count(&remainingOffers).Error)
+	assert.Equal(t, int64(0), remainingOffers, "Me must reply chunkUnavailable for Alice's undownloaded wrapper")
+
+	// Alice must not have received secretData, and Me must neither have filled aliceWrapper nor created an offer for it
+	var aliceAfter file
+	assert.NoError(t, alice.database.First(&aliceAfter, "id = ?", aliceWrapper.ID).Error)
+	assert.False(t, aliceAfter.Downloaded, "Alice must not extract bytes from Bob's private DM via wrapper file")
+
+	var meWrapperChunk chunk
+	assert.NoError(t, me.database.First(&meWrapperChunk, "file_id = ?", aliceWrapper.ID).Error)
+	assert.False(t, meWrapperChunk.Downloaded, "Me must not copy Bob's private chunk into Alice's wrapper file")
+
+	var meOffersForWrapper int64
+	assert.NoError(t, me.database.Model(&chunkOffer{}).Where("file_id = ? AND author = ?", aliceWrapper.ID, me.currentUserID()).Count(&meOffersForWrapper).Error)
+	assert.Equal(t, int64(0), meOffersForWrapper, "Me must not create a chunk offer revealing possession of secretHash")
+
+	// A chunk frame tagged with secretFileID arriving in handleChunk must not fill aliceWrapper either
+	me.handleChunk(bob.network.Address(), (&chunk{FileID: secretFileID, Data: secretData}).getPayload(), false)
+	assert.NoError(t, me.database.First(&meWrapperChunk, "file_id = ?", aliceWrapper.ID).Error)
+	assert.False(t, meWrapperChunk.Downloaded, "handleChunk for secretFileID must not fill aliceWrapper")
+
+	// Removed group member cannot pull a group attachment either directly or via a DM wrapper
+	groupData := []byte("confidential group attachment bytes " + NewID().String())
+	assert.NoError(t, me.SendGroupMessage(groupID, "group secret", []OutgoingAttachment{{
+		Name:   "group.txt",
+		Size:   int64(len(groupData)),
+		Reader: io.NopCloser(bytes.NewReader(groupData)),
+	}}, NilID))
+	var groupGM groupMessage
+	assert.NoError(t, me.database.Preload("FileAttachments").First(&groupGM, "text = ?", "group secret").Error)
+	groupFileID := groupGM.FileAttachments[0].FileID
+	var groupFile file
+	assert.NoError(t, me.database.First(&groupFile, "id = ?", groupFileID).Error)
+	groupHash := groupFile.HashList
+
+	assert.NoError(t, me.RemoveUserFromGroup(groupID, bob.currentUserID()))
+	gs, err := me.currentGroupState(groupID)
+	assert.NoError(t, err)
+	assert.False(t, gs.isMember(bob.currentUserID()))
+
+	bobWrapper, bobWrapperWire := makeWrapper(bob, xor(me.currentUserID(), bob.currentUserID()), groupHash, int64(len(groupData)))
+	br, first = me.handleFile(bob.network.Address(), bobWrapperWire, false)
+	assert.True(t, br != nil && first)
+
+	groupChunkID, err := ParseID(groupHash)
+	assert.NoError(t, err)
+	bobLocal := *bobWrapper
+	bobLocal.Path = bob.platform.ConfigDirectory + "/blobs/" + bobLocal.ID.String()
+	bobLocal.Wanted = true
+	bobLocal.Downloaded = false
+	bobLocal.Signature = make([]byte, 64)
+	bobLocal.Signer = bob.network.Address()
+	bobLocal.Chunks = []chunk{{ID: xor(bobLocal.ID, groupChunkID), FileID: bobLocal.ID, Hash: groupHash, Index: 0}}
+	assert.NoError(t, bob.database.Create(&bobLocal).Error)
+
+	bobPlantedOffer := &chunkOffer{
+		ID:          NewID(),
+		Scope:       scopeUser,
+		Destination: bobLocal.Destination,
+		Author:      me.currentUserID(),
+		FileID:      bobLocal.ID,
+		Hash:        groupHash,
+		Location:    me.network.Address(),
+		Timestamp:   time.Now().Unix(),
+	}
+	bobPlantedOffer.OriginalPayload, err = msgpack.Marshal(bobPlantedOffer)
+	assert.NoError(t, err)
+	bobPlantedOffer.Signature = make([]byte, 64)
+	bobPlantedOffer.Signer = me.network.Address()
+	assert.NoError(t, bob.database.Create(bobPlantedOffer).Error)
+
+	bob.sendDirect(me.network.Address(), &chunkRequest{FileID: groupFileID, Hash: groupHash})
+	bob.sendDirect(me.network.Address(), &chunkRequest{FileID: bobWrapper.ID, Hash: groupHash})
+
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		var count int64
+		assert.NoError(t, bob.database.Model(&chunkOffer{}).Where("id = ?", bobPlantedOffer.ID).Count(&count).Error)
+		if count == 0 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	assert.NoError(t, bob.database.Model(&chunkOffer{}).Where("id = ?", bobPlantedOffer.ID).Count(&remainingOffers).Error)
+	assert.Equal(t, int64(0), remainingOffers, "Me must reply chunkUnavailable for removed member's wrapper")
+
+	var bobAfter file
+	assert.NoError(t, bob.database.First(&bobAfter, "id = ?", bobWrapper.ID).Error)
+	assert.False(t, bobAfter.Downloaded, "removed member must not extract group attachment bytes")
+}
+
+func TestMultiChunkAndRepeatedContentFileTransfer(t *testing.T) {
+	me, alice, _, _ := createUsersAndGroups(t)
+
+	// 1 MiB + 123 bytes exercises a full fileChunkSize chunk (plus FileID wire prefix) and a trailing partial chunk.
+	payload := make([]byte, fileChunkSize+123)
+	_, err := crand.Read(payload)
+	assert.NoError(t, err)
+
+	sendAndVerify := func(text string) ID {
+		assert.NoError(t, me.SendDirectMessage(alice.currentUserID(), text, []OutgoingAttachment{{
+			Name:   "multi.bin",
+			Size:   int64(len(payload)),
+			Reader: io.NopCloser(bytes.NewReader(payload)),
+		}}, NilID))
+
+		var dm directMessage
+		assert.NoError(t, me.database.Preload("FileAttachments").First(&dm, "text = ?", text).Error)
+		assert.Equal(t, 1, len(dm.FileAttachments))
+		fileID := dm.FileAttachments[0].FileID
+
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			var af file
+			if alice.database.First(&af, "id = ?", fileID).Error == nil && af.Downloaded {
+				break
+			}
+			alice.makeAnyChunkRequests()
+			time.Sleep(20 * time.Millisecond)
+		}
+		var af file
+		assert.NoError(t, alice.database.First(&af, "id = ?", fileID).Error)
+		assert.True(t, af.Downloaded, "Alice must finish downloading multi-chunk file "+text)
+
+		got, err := alice.GetFileData(fileID)
+		assert.NoError(t, err)
+		assert.Equal(t, payload, got)
+		return fileID
+	}
+
+	firstID := sendAndVerify("first transfer")
+	secondID := sendAndVerify("repeat identical content transfer")
+	assert.NotEqual(t, firstID, secondID)
+}

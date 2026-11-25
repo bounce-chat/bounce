@@ -42,7 +42,7 @@ func readFrame(conn net.Conn, deviceIsKnown bool) (uint16, []byte, error) {
 	typeInt := binary.BigEndian.Uint16(typeBytes)
 	payloadSize := binary.BigEndian.Uint32(sizeBytes)
 
-	if typeInt == typeChunk && payloadSize > fileChunkSize {
+	if typeInt == typeChunk && payloadSize > uint32(fileChunkSize+len(ID{})) {
 		log.WithFields(log.Fields{
 			"peer": conn.RemoteAddr().String(),
 			"size": payloadSize,
