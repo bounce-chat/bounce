@@ -555,7 +555,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 		Find(&failedDelete).
 		Error
 	if err == nil {
-		b.clearDeliveryRecordsForFailedDelete(groupID, failedDelete.ID)
+		b.clearDeliveryRecordsForFailedDelete(groupID, failedDelete.ID, followUp)
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"group_id": groupID,
@@ -1358,7 +1358,7 @@ func (b *Bounce) pruneMessagesBeforeClear(clearBefore int64, groupID ID) {
 	}
 }
 
-func (b *Bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID ID) {
+func (b *Bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID ID, followUp *consensusWriteFollowUp) {
 	// Check if we've already cleared delivery records as a result of this update group
 	var g group
 	err := b.database.Select("images", "delivery_records_cleared_for").Where("id = ?", groupID).Find(&g).Error
@@ -1480,14 +1480,16 @@ func (b *Bounce) clearDeliveryRecordsForFailedDelete(groupID, updateGroupID ID) 
 			}).Fatal("database error deleting delivery records")
 		}
 
-		b.referenceAllOnlineDevicesInGroup(groupID)
+		followUp.referenceGroup = true
 	}
 }
 
 func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID ID) {
 	// Get the current state of the group
+	b.consensusStore.Lock()
 	cs, ok := b.consensusStore.groups[groupID]
 	if !ok {
+		b.consensusStore.Unlock()
 		log.WithFields(log.Fields{
 			"group_id": groupID,
 		}).Error("cannot reference online devices of group without consensus stack")
@@ -1495,18 +1497,23 @@ func (b *Bounce) referenceAllOnlineDevicesInGroup(groupID ID) {
 	}
 	gs, err := cs.top()
 	if err != nil {
+		b.consensusStore.Unlock()
 		log.WithFields(log.Fields{
 			"group_id": groupID,
 			"error":    err.Error(),
 		}).Error("cannot reference online devices of group without consensus stack")
 		return
 	}
+	userIDs := make([]ID, 0, len(gs.users)+len(gs.invites))
+	userIDs = append(userIDs, gs.users...)
+	userIDs = append(userIDs, gs.invites...)
+	b.consensusStore.Unlock()
 
 	// Get all the addresses for all these users devices, excluding this device
 	var addresses []string
 	err = b.database.Table("devices").
 		Select("address").
-		Where("address != ? AND user_id IN (?)", b.network.Address(), append(gs.users, gs.invites...)).
+		Where("address != ? AND user_id IN (?)", b.network.Address(), userIDs).
 		Find(&addresses).
 		Error
 	if err != nil {
