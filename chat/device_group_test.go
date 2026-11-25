@@ -805,3 +805,375 @@ func TestUserRecordImagesAreValidatedBeforeTheyAreStored(t *testing.T) {
 	corrupt := user{ID: NewID(), Images: good.String() + ",garbage"}
 	assert.Equal(t, []ID{good}, corrupt.images())
 }
+
+type carriedRevocationSyncUI struct {
+	*testUI
+	acceptedDevices chan []Device
+}
+
+func (u *carriedRevocationSyncUI) SyncDeviceRequestAccepted(_ User, devices []Device, _ bool) {
+	copied := make([]Device, len(devices))
+	copy(copied, devices)
+	u.acceptedDevices <- copied
+}
+
+func TestAddUserCarriesAndAppliesDeviceRevocations(t *testing.T) {
+	alice := newBounceUser("Alice")
+	t.Cleanup(alice.Shutdown)
+	bob := newBounceUser("Bob")
+	t.Cleanup(bob.Shutdown)
+	bobSyncUI := &syncDeviceTestUI{testUI: newTestUI()}
+	bobSync := newBounceWithUI(bobSyncUI)
+	t.Cleanup(bobSync.Shutdown)
+	t.Cleanup(func() {
+		setWaitingForInitialSyncFrom("")
+		initialSyncAnnounced.Store(false)
+	})
+
+	// Pair bobSync with bob first, then take bobSync offline so it cannot receive later revokes via reference flow.
+	assert.NoError(t, bobSync.RequestToSync(bob.GetNewSyncString()))
+	awaitSyncDeviceCall(t, bobSyncUI, "SyncDeviceRequestAccepted")
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, found := bob.getDeviceFromAddress(bobSync.network.Address()); found {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	hostsMutex.Lock()
+	delete(hosts, bobSync.network.Address())
+	hostsMutex.Unlock()
+	sever(t, bob, bobSync)
+	bobSync.networkOffline()
+
+	now := time.Now().Unix()
+
+	// Alice introduces and revokes a device.
+	aliceRevokedKey := bnc01NewOnion()
+	aliceRevoked := introducedByBounce(alice.currentUserID(), alice, aliceRevokedKey, now-200)
+	_, accepted := alice.handleDevice(alice.network.Address(), aliceRevoked.getPayload(), false)
+	assert.True(t, accepted)
+	assert.NoError(t, alice.RevokeDevice(aliceRevoked.ID))
+
+	// Bob introduces and revokes a device while bobSync is offline.
+	bobRevokedKey := bnc01NewOnion()
+	bobRevoked := introducedByBounce(bob.currentUserID(), bob, bobRevokedKey, now-150)
+	_, accepted = bob.handleDevice(bob.network.Address(), bobRevoked.getPayload(), false)
+	assert.True(t, accepted)
+	assert.NoError(t, bob.RevokeDevice(bobRevoked.ID))
+
+	// Real add-user handshake between bob and alice; both sides carry revocations, and bob's re-marshalled
+	// requester user must still match alice's OfferSignature.
+	assert.NoError(t, bob.RequestToAddUser(alice.GetNewAddUserString()))
+	var au addUser
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := bob.database.First(&au).Error; err == nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	assert.NotEqual(t, NilID, au.ID, "addUser handshake should complete when both users carry device revocations")
+
+	// Feed only the addUser frame offline into bobSync (no sockets, no catch-up, no separate updateDevice frames).
+	_, accepted = bobSync.handleAddUser("", au.getPayload(), false)
+	assert.True(t, accepted)
+
+	storedAliceRevoked, found := bobSync.getDeviceFromAddress(aliceRevoked.Address)
+	assert.True(t, found)
+	assert.True(t, storedAliceRevoked.RevokedAt != 0, "counterparty device revoked before addUser must be marked revoked immediately")
+
+	storedBobRevoked, found := bobSync.getDeviceFromAddress(bobRevoked.Address)
+	assert.True(t, found)
+	assert.True(t, storedBobRevoked.RevokedAt != 0, "sync device revoked before addUser must be marked revoked immediately")
+
+	bobSync.devicePool.revokedMutex.Lock()
+	aliceInPool := bobSync.devicePool.revokedDevices[aliceRevoked.Address]
+	bobInPool := bobSync.devicePool.revokedDevices[bobRevoked.Address]
+	bobSync.devicePool.revokedMutex.Unlock()
+	assert.True(t, aliceInPool)
+	assert.True(t, bobInPool)
+
+	// A rogue counter-revoke from alice's already-revoked device must be refused by bobSync right away.
+	aliceHonest, found := bobSync.getDeviceFromAddress(alice.network.Address())
+	assert.True(t, found)
+	emptyKeep, err := msgpack.Marshal([]ID{})
+	assert.NoError(t, err)
+	rogue := updateDevice{
+		Nonce:     newNonce(),
+		Target:    aliceHonest.ID,
+		Type:      updateDeviceTypeRevoke,
+		Data:      emptyKeep,
+		Timestamp: now,
+	}
+	rogue.ID = rogue.generateID()
+	roguePayload, err := msgpack.Marshal(&rogue)
+	assert.NoError(t, err)
+	rogueFrame, err := msgpack.Marshal(signedContainer{
+		Signer:    aliceRevokedKey.addr(),
+		Payload:   roguePayload,
+		Signature: aliceRevokedKey.sign(signedContainerHash(typeUpdateDevice, roguePayload)),
+	})
+	assert.NoError(t, err)
+	_, accepted = bobSync.handleUpdateDevice(aliceRevoked.Address, rogueFrame, false)
+	assert.False(t, accepted)
+
+	aliceHonest, found = bobSync.getDeviceFromAddress(alice.network.Address())
+	assert.True(t, found)
+	assert.Equal(t, int64(0), aliceHonest.RevokedAt)
+}
+
+func TestGroupCreationAndInviteCarryDeviceRevocations(t *testing.T) {
+	alice := newBounceUser("Alice")
+	t.Cleanup(alice.Shutdown)
+	bob := newBounceUser("Bob")
+	t.Cleanup(bob.Shutdown)
+	carol := newBounceUser("Carol")
+	t.Cleanup(carol.Shutdown)
+
+	// Bob adds Alice and Alice adds Carol before any revocations exist, then sever all sockets so no reference flow
+	// can deliver updateDevice frames behind the scenes.
+	assert.NoError(t, bob.RequestToAddUser(alice.GetNewAddUserString()))
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		_, aHasB := alice.getDeviceFromAddress(bob.network.Address())
+		_, bHasA := bob.getDeviceFromAddress(alice.network.Address())
+		if aHasB && bHasA {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	assert.NoError(t, alice.RequestToAddUser(carol.GetNewAddUserString()))
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		_, aHasC := alice.getDeviceFromAddress(carol.network.Address())
+		_, cHasA := carol.getDeviceFromAddress(alice.network.Address())
+		if aHasC && cHasA {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	hostsMutex.Lock()
+	delete(hosts, bob.network.Address())
+	hostsMutex.Unlock()
+	alice.networkOffline()
+	bob.networkOffline()
+	carol.networkOffline()
+
+	now := time.Now().Unix()
+
+	// Alice introduces and revokes a device after disconnecting from Bob.
+	aliceRevokedKey := bnc01NewOnion()
+	aliceRevoked := introducedByBounce(alice.currentUserID(), alice, aliceRevokedKey, now-300)
+	_, accepted := alice.handleDevice(alice.network.Address(), aliceRevoked.getPayload(), false)
+	assert.True(t, accepted)
+	assert.NoError(t, alice.RevokeDevice(aliceRevoked.ID))
+
+	// Carol introduces and revokes a device, and Alice learns of both (Bob has never met Carol).
+	carolRevokedKey := bnc01NewOnion()
+	carolRevoked := introducedByBounce(carol.currentUserID(), carol, carolRevokedKey, now-250)
+	_, accepted = carol.handleDevice(carol.network.Address(), carolRevoked.getPayload(), false)
+	assert.True(t, accepted)
+	assert.NoError(t, carol.RevokeDevice(carolRevoked.ID))
+	var carolRevokeUD updateDevice
+	assert.NoError(t, carol.database.Where("target = ? AND type = ?", carolRevoked.ID, updateDeviceTypeRevoke).First(&carolRevokeUD).Error)
+	_, accepted = alice.handleDevice(carol.network.Address(), carolRevoked.getPayload(), false)
+	assert.True(t, accepted)
+	_, accepted = alice.handleUpdateDevice(carol.network.Address(), carolRevokeUD.getPayload(), false)
+	assert.True(t, accepted)
+
+	// Alice creates a group and invites Bob and Carol.
+	assert.NoError(t, alice.CreateGroup(NewGroup{Name: "Carried Revocations"}))
+	var gc groupCreation
+	assert.NoError(t, alice.database.First(&gc).Error)
+	assert.NoError(t, alice.InviteUserToGroup(gc.ID, bob.currentUserID()))
+	assert.NoError(t, alice.InviteUserToGroup(gc.ID, carol.currentUserID()))
+
+	var invites []updateGroup
+	assert.NoError(t, alice.database.Where("target = ? AND type = ?", gc.ID, updateGroupTypeInviteUser).Order("timestamp asc, id asc").Find(&invites).Error)
+	assert.Equal(t, 2, len(invites))
+
+	// Deliver only the invite frames and group creation to Bob offline (no updateDevice frames).
+	for _, inv := range invites {
+		bob.handleUpdateGroup(alice.network.Address(), inv.getPayload(), false)
+	}
+	_, accepted = bob.handleGroupCreation(alice.network.Address(), gc.getPayload(), false)
+	assert.True(t, accepted)
+
+	// Both Alice's revoked device (from groupCreation) and Carol's revoked device (from inviteUser) must be revoked
+	// immediately on Bob.
+	storedAliceRevoked, found := bob.getDeviceFromAddress(aliceRevoked.Address)
+	assert.True(t, found)
+	assert.True(t, storedAliceRevoked.RevokedAt != 0, "group creation must carry creator device revocations")
+
+	storedCarolRevoked, found := bob.getDeviceFromAddress(carolRevoked.Address)
+	assert.True(t, found)
+	assert.True(t, storedCarolRevoked.RevokedAt != 0, "group invite must carry invitee device revocations")
+
+	// Carol's revoked device cannot counter-revoke Carol's honest device on Bob.
+	carolHonest, found := bob.getDeviceFromAddress(carol.network.Address())
+	assert.True(t, found)
+	emptyKeep, err := msgpack.Marshal([]ID{})
+	assert.NoError(t, err)
+	rogue := updateDevice{
+		Nonce:     newNonce(),
+		Target:    carolHonest.ID,
+		Type:      updateDeviceTypeRevoke,
+		Data:      emptyKeep,
+		Timestamp: now,
+	}
+	rogue.ID = rogue.generateID()
+	roguePayload, err := msgpack.Marshal(&rogue)
+	assert.NoError(t, err)
+	rogueFrame, err := msgpack.Marshal(signedContainer{
+		Signer:    carolRevokedKey.addr(),
+		Payload:   roguePayload,
+		Signature: carolRevokedKey.sign(signedContainerHash(typeUpdateDevice, roguePayload)),
+	})
+	assert.NoError(t, err)
+	_, accepted = bob.handleUpdateDevice(carolRevoked.Address, rogueFrame, false)
+	assert.False(t, accepted)
+
+	carolHonest, found = bob.getDeviceFromAddress(carol.network.Address())
+	assert.True(t, found)
+	assert.Equal(t, int64(0), carolHonest.RevokedAt)
+}
+
+func TestSyncDevicePairingCarriesDeviceRevocations(t *testing.T) {
+	offer := newBounceUser("Offer")
+	t.Cleanup(offer.Shutdown)
+	offerID := offer.currentUserID()
+	now := time.Now().Unix()
+
+	// Build a chained revocation: offer -> mid -> leaf; mid revokes leaf at t1, then offer revokes mid at t2 > t1.
+	midKey := bnc01NewOnion()
+	leafKey := bnc01NewOnion()
+	mid := introducedByBounce(offerID, offer, midKey, now-300)
+	leaf := introducedBy(offerID, mid.Address, midKey, leafKey, now-250)
+	_, accepted := offer.handleDevice(offer.network.Address(), mid.getPayload(), false)
+	assert.True(t, accepted)
+	_, accepted = offer.handleDevice(mid.Address, leaf.getPayload(), false)
+	assert.True(t, accepted)
+
+	emptyKeep, err := msgpack.Marshal([]ID{})
+	assert.NoError(t, err)
+	revokeLeaf := updateDevice{
+		Nonce:     newNonce(),
+		Target:    leaf.ID,
+		Type:      updateDeviceTypeRevoke,
+		Data:      emptyKeep,
+		Timestamp: now - 100,
+	}
+	revokeLeaf.ID = revokeLeaf.generateID()
+	revokeLeafPayload, err := msgpack.Marshal(&revokeLeaf)
+	assert.NoError(t, err)
+	revokeLeafFrame, err := msgpack.Marshal(signedContainer{
+		Signer:    midKey.addr(),
+		Payload:   revokeLeafPayload,
+		Signature: midKey.sign(signedContainerHash(typeUpdateDevice, revokeLeafPayload)),
+	})
+	assert.NoError(t, err)
+	_, accepted = offer.handleUpdateDevice(mid.Address, revokeLeafFrame, false)
+	assert.True(t, accepted)
+
+	assert.NoError(t, offer.RevokeDevice(mid.ID))
+
+	ui := &carriedRevocationSyncUI{
+		testUI:          newTestUI(),
+		acceptedDevices: make(chan []Device, 1),
+	}
+	requester := newBounceWithUI(ui)
+	t.Cleanup(requester.Shutdown)
+	t.Cleanup(func() {
+		setWaitingForInitialSyncFrom("")
+		initialSyncAnnounced.Store(false)
+	})
+
+	assert.NoError(t, requester.RequestToSync(offer.GetNewSyncString()))
+	var uiDevices []Device
+	select {
+	case uiDevices = <-ui.acceptedDevices:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for SyncDeviceRequestAccepted")
+	}
+
+	// SyncDeviceRequestAccepted fires before any initial catch-up completes, so both revoked devices must already be
+	// excluded from the UI list and marked revoked in the database and device pool.
+	for _, d := range uiDevices {
+		assert.NotEqual(t, mid.Address, d.Address, "revoked sync device must not be reported as active to UI")
+		assert.NotEqual(t, leaf.Address, d.Address, "chained revoked sync device must not be reported as active to UI")
+	}
+	storedMid, found := requester.getDeviceFromAddress(mid.Address)
+	assert.True(t, found)
+	assert.True(t, storedMid.RevokedAt != 0)
+	storedLeaf, found := requester.getDeviceFromAddress(leaf.Address)
+	assert.True(t, found)
+	assert.True(t, storedLeaf.RevokedAt != 0)
+
+	requester.devicePool.revokedMutex.Lock()
+	midInPool := requester.devicePool.revokedDevices[mid.Address]
+	leafInPool := requester.devicePool.revokedDevices[leaf.Address]
+	requester.devicePool.revokedMutex.Unlock()
+	assert.True(t, midInPool)
+	assert.True(t, leafInPool)
+}
+
+func TestCarriedDeviceRevocationsIgnoreNonRevokesAndForeignTargets(t *testing.T) {
+	me, alice, bob, groupID := createUsersAndGroups(t)
+	now := time.Now().Unix()
+
+	// Build a valid rename for Alice's device and a valid revoke for Bob's second device, then bundle both inside
+	// a user record for Alice.
+	bobSecondKey := bnc01NewOnion()
+	bobSecond := introducedByBounce(bob.currentUserID(), bob, bobSecondKey, now-200)
+	_, accepted := me.handleDevice(bob.network.Address(), bobSecond.getPayload(), false)
+	assert.True(t, accepted)
+
+	emptyKeep, err := msgpack.Marshal([]ID{})
+	assert.NoError(t, err)
+	bobRevoke := updateDevice{
+		Nonce:     newNonce(),
+		Target:    bobSecond.ID,
+		Type:      updateDeviceTypeRevoke,
+		Data:      emptyKeep,
+		Timestamp: now - 50,
+	}
+	bobRevoke.ID = bobRevoke.generateID()
+	bobRevokePayload, err := msgpack.Marshal(&bobRevoke)
+	assert.NoError(t, err)
+	bobRevokeFrame, err := msgpack.Marshal(bob.createSignedContainer(typeUpdateDevice, bobRevokePayload))
+	assert.NoError(t, err)
+
+	aliceDev, found := me.getDeviceFromAddress(alice.network.Address())
+	assert.True(t, found)
+	originalAliceName := aliceDev.Name
+	aliceRename := updateDevice{
+		Nonce:     newNonce(),
+		Target:    aliceDev.ID,
+		Type:      updateDeviceTypeUpdateName,
+		Data:      []byte("smuggled rename"),
+		Timestamp: now - 40,
+	}
+	aliceRename.ID = aliceRename.generateID()
+	aliceRenamePayload, err := msgpack.Marshal(&aliceRename)
+	assert.NoError(t, err)
+	aliceRenameFrame, err := msgpack.Marshal(alice.createSignedContainer(typeUpdateDevice, aliceRenamePayload))
+	assert.NoError(t, err)
+
+	var aliceRecord user
+	assert.NoError(t, me.database.Preload("Devices.Signature").First(&aliceRecord, "id = ?", alice.currentUserID()).Error)
+	aliceRecord.DeviceRevocations = [][]byte{aliceRenameFrame, bobRevokeFrame}
+	me.createNewUserIfNeeded(aliceRecord, groupID)
+
+	aliceDevAfter, found := me.getDeviceFromAddress(alice.network.Address())
+	assert.True(t, found)
+	assert.Equal(t, originalAliceName, aliceDevAfter.Name, "non-revoke updateDevice frames must not apply via DeviceRevocations")
+
+	bobSecondAfter, found := me.getDeviceFromAddress(bobSecond.Address)
+	assert.True(t, found)
+	assert.Equal(t, int64(0), bobSecondAfter.RevokedAt, "revocations targeting another user must not apply via DeviceRevocations")
+
+	// Exceeding the cap is rejected by validUserRecord.
+	aliceRecord.DeviceRevocations = make([][]byte, maximumDevicesPerUser+1)
+	assert.Error(t, validUserRecord(aliceRecord))
+}

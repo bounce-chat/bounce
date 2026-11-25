@@ -180,6 +180,7 @@ func (b *Bounce) CreateGroup(ng NewGroup) error {
 	if !ok {
 		return errors.New("cannot create group when profile does not exist")
 	}
+	b.attachDeviceRevocations(&profile)
 
 	// The icon is prepared first so the group can name it, and published once the group exists to be attached to
 	var icon *file

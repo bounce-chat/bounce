@@ -119,6 +119,7 @@ func (b *Bounce) handleAddUserRequestAccepted(peer string, payload []byte, catch
 		log.Error("cannot handle add user request accepted when no profile exists")
 		return nil, false
 	}
+	b.attachDeviceRevocations(&requesterUser)
 	requesterBytes, err := msgpack.Marshal(requesterUser)
 	if err != nil {
 		log.WithFields(log.Fields{

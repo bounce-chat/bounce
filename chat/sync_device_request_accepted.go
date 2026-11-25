@@ -158,12 +158,20 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 			"error": err.Error(),
 		}).Fatal("error saving new sync profile")
 	}
+	b.applyCarriedDeviceRevocations(peer, sdra.Profile)
 	b.broadcast(&sdra.Profile.Devices[localDeviceIndex])
 	b.createAndShareDeviceECDHKey()
 
-	// Collect the sync devices for the UI
+	// Collect the sync devices for the UI from the database so any carried revocations are reflected
+	var storedDevices []device
+	err = b.database.Where("user_id = ?", sdra.Profile.ID).Find(&storedDevices).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error loading sync devices after applying carried revocations")
+	}
 	var devices []Device
-	for _, dev := range sdra.Profile.Devices {
+	for _, dev := range storedDevices {
 		if dev.RevokedAt == 0 {
 			syncDev := Device{
 				ID:        dev.ID,

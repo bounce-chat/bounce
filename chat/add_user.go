@@ -336,6 +336,14 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 				"error": err.Error(),
 			}).Fatal("error saving sync device learned about via add user")
 		}
+	}
+	b.applyCarriedDeviceRevocations(peer, myUser)
+	for _, dev := range validDevices {
+		var stored device
+		err = b.database.Select("revoked_at").Where("id = ?", dev.ID).First(&stored).Error
+		if err != nil || stored.RevokedAt != 0 {
+			continue
+		}
 		b.ui.DeviceAdded(Device{
 			ID:        dev.ID,
 			Name:      dev.Name,
@@ -435,6 +443,7 @@ func (b *Bounce) handleAddUser(peer string, payload []byte, _ bool) (broadcastab
 		}
 		counterparty.Devices = b.saveCarriedDevices(counterparty.Devices)
 	}
+	b.applyCarriedDeviceRevocations(peer, counterparty)
 
 	// Ack and delivery track only devices we accepted
 	for _, dev := range counterparty.Devices {

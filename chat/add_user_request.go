@@ -182,6 +182,7 @@ func (b *Bounce) handleAddUserRequest(peer string, payload []byte, _ bool) (broa
 		b.sendDirect(peer, &addUserRequestRejected{})
 		return nil, false
 	}
+	b.attachDeviceRevocations(&offerUser)
 	offerBytes, err := msgpack.Marshal(offerUser)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -218,6 +219,7 @@ func (b *Bounce) RequestToAddUser(offer string) error {
 		log.Error(err.Error())
 		return err
 	}
+	b.attachDeviceRevocations(&requesterUser)
 	requesterBytes, err := msgpack.Marshal(requesterUser)
 	if err != nil {
 		log.WithFields(log.Fields{

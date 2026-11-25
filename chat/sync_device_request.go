@@ -133,6 +133,7 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 		b.sendDirect(peer, &syncDeviceRequestRejected{})
 		return nil, false
 	}
+	b.attachDeviceRevocations(&profile)
 
 	// Make sure we don't already know this device belongs to another user
 	dev, exists := b.getDeviceFromAddress(peer)

@@ -1,9 +1,11 @@
 package chat
 
 import (
+	"bytes"
 	"crypto/ecdh"
 	"crypto/rand"
 	"errors"
+	"sort"
 	"sync"
 	"time"
 
@@ -250,7 +252,9 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) (
 			"id":     ud.ID,
 			"signer": ud.Signer,
 		}).Warn("ignoring update device signed by revoked device")
-		go b.sendAck(peer, typeUpdateDevice, ud.ID)
+		if peer != "" && peer != b.network.Address() {
+			go b.sendAck(peer, typeUpdateDevice, ud.ID)
+		}
 		return nil, false
 	}
 
@@ -727,4 +731,133 @@ func (b *Bounce) applyAndBroadcastUpdateDevice(ud updateDevice) error {
 	b.broadcast(&ud)
 
 	return nil
+}
+
+// attachDeviceRevocations attaches the signed effective revoke frame for each revoked device in u.Devices so
+// recipients learn which carried devices are already revoked before dialing them or relying on catch-up order.
+func (b *Bounce) attachDeviceRevocations(u *user) {
+	revokedAtByID := make(map[ID]int64)
+	revokedIDs := make([]ID, 0)
+	for _, dev := range u.Devices {
+		if dev.RevokedAt != 0 {
+			if _, seen := revokedAtByID[dev.ID]; !seen {
+				revokedAtByID[dev.ID] = dev.RevokedAt
+				revokedIDs = append(revokedIDs, dev.ID)
+			}
+		}
+	}
+	if len(revokedIDs) == 0 {
+		u.DeviceRevocations = nil
+		return
+	}
+
+	var revokes []updateDevice
+	err := b.database.
+		Where("target IN ? AND type = ?", revokedIDs, updateDeviceTypeRevoke).
+		Order("timestamp asc, id asc").
+		Find(&revokes).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"user_id": u.ID,
+			"error":   err.Error(),
+		}).Fatal("database error looking up device revocations to attach to user")
+	}
+
+	seenTarget := make(map[ID]bool, len(revokedIDs))
+	attached := make([][]byte, 0, len(revokedIDs))
+	for i := range revokes {
+		ud := revokes[i]
+		if seenTarget[ud.Target] || ud.Timestamp != revokedAtByID[ud.Target] {
+			continue
+		}
+		seenTarget[ud.Target] = true
+		attached = append(attached, ud.getPayload())
+	}
+	u.DeviceRevocations = attached
+}
+
+type carriedDeviceRevocation struct {
+	timestamp int64
+	id        ID
+	payload   []byte
+}
+
+// applyCarriedDeviceRevocations verifies and applies signed device revocations bundled with a carried user record.
+// Must not be called while holding b.consensusStore's lock, because updateDeviceState can reload group consensus.
+func (b *Bounce) applyCarriedDeviceRevocations(peer string, u user) {
+	if len(u.DeviceRevocations) == 0 {
+		return
+	}
+
+	allowedTargets := make(map[ID]bool, len(u.Devices))
+	for _, dev := range u.Devices {
+		if dev.UserID == u.ID {
+			allowedTargets[dev.ID] = true
+		}
+	}
+
+	limit := len(u.DeviceRevocations)
+	if limit > maximumDevicesPerUser {
+		limit = maximumDevicesPerUser
+	}
+
+	seenID := make(map[ID]bool, limit)
+	revocations := make([]carriedDeviceRevocation, 0, limit)
+	for _, rawPayload := range u.DeviceRevocations[:limit] {
+		sc, err := b.unpackSignedContainer(typeUpdateDevice, rawPayload)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"user_id": u.ID,
+				"error":   err.Error(),
+			}).Warn("ignoring carried device revocation with invalid signed container")
+			continue
+		}
+		var ud updateDevice
+		if err := msgpack.Unmarshal(sc.Payload, &ud); err != nil {
+			log.WithFields(log.Fields{
+				"user_id": u.ID,
+				"error":   err.Error(),
+			}).Warn("ignoring carried device revocation that failed to unmarshal")
+			continue
+		}
+		if ud.Type != updateDeviceTypeRevoke || !allowedTargets[ud.Target] {
+			log.WithFields(log.Fields{
+				"user_id": u.ID,
+				"target":  ud.Target,
+				"type":    ud.Type,
+			}).Warn("ignoring carried device update that is not a revocation for this user")
+			continue
+		}
+		if seenID[ud.ID] {
+			continue
+		}
+		seenID[ud.ID] = true
+		revocations = append(revocations, carriedDeviceRevocation{
+			timestamp: ud.Timestamp,
+			id:        ud.ID,
+			payload:   rawPayload,
+		})
+	}
+
+	sort.Slice(revocations, func(i, j int) bool {
+		if revocations[i].timestamp != revocations[j].timestamp {
+			return revocations[i].timestamp < revocations[j].timestamp
+		}
+		return bytes.Compare(revocations[i].id[:], revocations[j].id[:]) < 0
+	})
+
+	fromPeer := peer != "" && peer != b.network.Address()
+	for _, rev := range revocations {
+		br, firstTimeSeeing := b.handleUpdateDevice(peer, rev.payload, false)
+		if br == nil {
+			continue
+		}
+		if fromPeer {
+			go b.sendAck(peer, typeUpdateDevice, br.getID())
+			b.markDeliveredTo(br, peer)
+		}
+		if firstTimeSeeing {
+			b.broadcast(br)
+		}
+	}
 }

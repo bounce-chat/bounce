@@ -708,6 +708,7 @@ func (b *Bounce) InviteUserToGroup(groupID, userID ID) error {
 	}
 
 	// Create an update group that adds this user
+	b.attachDeviceRevocations(&newUser)
 	newUserBytes, err := msgpack.Marshal(newUser)
 	if err != nil {
 		log.WithFields(log.Fields{

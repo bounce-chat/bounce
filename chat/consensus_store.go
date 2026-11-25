@@ -136,13 +136,19 @@ func (b *Bounce) reloadGroupConsensusSince(groupID ID, ts int64) error {
 	return nil
 }
 
+type consensusWriteFollowUp struct {
+	carriedUsers   []user
+	groupCreated   bool
+	referenceGroup bool
+}
+
 func (b *Bounce) writeGroupConsensus(groupID ID) error {
 	b.consensusStore.Lock()
-	defer b.consensusStore.Unlock()
 
 	// Get the canonical history stack
 	stack, ok := b.consensusStore.groups[groupID]
 	if !ok {
+		b.consensusStore.Unlock()
 		return errors.New("cannot write group consensus for group without a history stack")
 	}
 
@@ -150,6 +156,7 @@ func (b *Bounce) writeGroupConsensus(groupID ID) error {
 	var ugs []updateGroup
 	err := b.database.Find(&ugs, "target = ?", groupID).Error
 	if err != nil {
+		b.consensusStore.Unlock()
 		log.WithFields(log.Fields{
 			"group_id": groupID,
 			"error":    err.Error(),
@@ -157,10 +164,31 @@ func (b *Bounce) writeGroupConsensus(groupID ID) error {
 	}
 
 	// Apply the group state to the database and UI, marking updates in the database as applied or not where needed
-	return b.setRollbacksApplicationsAndGroupState(groupID, stack, ugs)
+	followUp := consensusWriteFollowUp{}
+	err = b.setRollbacksApplicationsAndGroupState(groupID, stack, ugs, &followUp)
+	b.consensusStore.Unlock()
+	if err != nil {
+		return err
+	}
+
+	// Apply carried device revocations outside the consensus lock (updateDeviceState can reload consensus) and
+	// before requesting connections so newly learned revoked devices are never dialed.
+	for _, u := range followUp.carriedUsers {
+		b.applyCarriedDeviceRevocations("", u)
+	}
+	for _, u := range followUp.carriedUsers {
+		b.UserConnectionDesired(u.ID)
+	}
+	if followUp.groupCreated {
+		b.GroupConnectionDesired(groupID)
+	}
+	if followUp.referenceGroup {
+		b.referenceAllOnlineDevicesInGroup(groupID)
+	}
+	return nil
 }
 
-func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonicalStack, ugs []updateGroup) error {
+func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonicalStack, ugs []updateGroup, followUp *consensusWriteFollowUp) error {
 	finalState, err := cs.top()
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -612,7 +640,7 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 		} else {
 			// Broadcast it and recursively set the state
 			b.broadcast(&injectedUpdate)
-			return b.setRollbacksApplicationsAndGroupState(groupID, cs, append(ugs, injectedUpdate))
+			return b.setRollbacksApplicationsAndGroupState(groupID, cs, append(ugs, injectedUpdate), followUp)
 		}
 
 	}
@@ -683,13 +711,13 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 				if err != nil {
 					log.Error("error pushing group invite auto-accept into canonical stack")
 				} else {
-					return b.setRollbacksApplicationsAndGroupState(groupID, cs, append(ugs, accept))
+					return b.setRollbacksApplicationsAndGroupState(groupID, cs, append(ugs, accept), followUp)
 				}
 			}
 		}
 	}
 
-	err = b.setGroupStateInDatabase(initialGroup, allUsers, finalState, ugsToNotify)
+	err = b.writeGroupStateToDatabase(initialGroup, allUsers, finalState, ugsToNotify, followUp)
 	if err != nil {
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -703,9 +731,21 @@ func (b *Bounce) setRollbacksApplicationsAndGroupState(groupID ID, cs *canonical
 }
 
 func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs groupState, ugsToNotify []updateGroup) error {
+	return b.writeGroupStateToDatabase(initialGroup, allUsers, gs, ugsToNotify, nil)
+}
+
+func (b *Bounce) writeGroupStateToDatabase(initialGroup group, allUsers []user, gs groupState, ugsToNotify []updateGroup, followUp *consensusWriteFollowUp) error {
 	newUsers := make(map[ID]bool)
 	for _, u := range allUsers {
-		newUsers[u.ID] = b.createNewUserIfNeeded(u, initialGroup.ID)
+		if followUp != nil {
+			created, ok := b.saveCarriedUser(u, initialGroup.ID)
+			newUsers[u.ID] = created
+			if ok {
+				followUp.carriedUsers = append(followUp.carriedUsers, u)
+			}
+		} else {
+			newUsers[u.ID] = b.createNewUserIfNeeded(u, initialGroup.ID)
+		}
 	}
 	var g group
 	err := b.database.Preload(clause.Associations).Where("id = ?", initialGroup.ID).First(&g).Error
@@ -720,7 +760,11 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 				}).Error("error creating group")
 				return err
 			}
-			b.GroupConnectionDesired(g.ID)
+			if followUp != nil {
+				followUp.groupCreated = true
+			} else {
+				b.GroupConnectionDesired(g.ID)
+			}
 
 			if gs.isMember(b.currentUserID()) {
 				deferToAnotherDevice := !uiIsInForeground.Load() && anotherDeviceIsActive.Load()
@@ -1007,14 +1051,18 @@ func (b *Bounce) setGroupStateInDatabase(initialGroup group, allUsers []user, gs
 		}
 	})
 
-	b.referenceAllOnlineDevicesInGroup(g.ID)
+	if followUp != nil {
+		followUp.referenceGroup = true
+	} else {
+		b.referenceAllOnlineDevicesInGroup(g.ID)
+	}
 
 	return nil
 }
 
-func (b *Bounce) createNewUserIfNeeded(u user, groupID ID) bool {
+func (b *Bounce) saveCarriedUser(u user, groupID ID) (bool, bool) {
 	if u.ID == b.currentUserID() {
-		return false
+		return false, false
 	}
 
 	// Ensure the user is valid
@@ -1023,13 +1071,13 @@ func (b *Bounce) createNewUserIfNeeded(u user, groupID ID) bool {
 			"user_id": u.ID,
 			"error":   err.Error(),
 		}).Warn("refusing to save user with invalid user record")
-		return false
+		return false, false
 	}
 	if !b.hasValidDeviceGroup(u) {
 		log.WithFields(log.Fields{
 			"user_id": u.ID,
 		}).Warn("refusing to save user with invalid device group")
-		return false
+		return false, false
 	}
 
 	b.saveCarriedDevices(u.Devices)
@@ -1041,13 +1089,24 @@ func (b *Bounce) createNewUserIfNeeded(u user, groupID ID) bool {
 		log.WithFields(log.Fields{
 			"error": res.Error.Error(),
 		}).Error("error saving user that is being added to a group")
+		return false, false
+	}
+
+	return res.RowsAffected == 1, true
+}
+
+func (b *Bounce) createNewUserIfNeeded(u user, groupID ID) bool {
+	created, ok := b.saveCarriedUser(u, groupID)
+	if !ok {
 		return false
 	}
+
+	b.applyCarriedDeviceRevocations("", u)
 
 	// Attempt to make a connection to the user
 	b.UserConnectionDesired(u.ID)
 
-	return res.RowsAffected == 1
+	return created
 }
 
 func (b *Bounce) clearGroupDeliveryRecordsForUser(userID, groupID ID) {

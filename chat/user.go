@@ -26,6 +26,7 @@ var blockedUsersMutex sync.Mutex
 var errInvalidUserName = errors.New("invalid name")
 var errInvalidUserImages = errors.New("user images is not a list of IDs")
 var errInvalidEncryptedDevices = errors.New("user encrypted devices is not a list of addresses")
+var errTooManyDeviceRevocations = errors.New("user has too many device revocations")
 
 type user struct {
 	ID                         ID `gorm:"primary_key;"`
@@ -55,6 +56,7 @@ type user struct {
 	Blocked                    bool   `msgpack:"-"`
 	Accepted                   bool   `msgpack:"-"`
 	Devices                    []device
+	DeviceRevocations          [][]byte         `gorm:"-"`
 	Groups                     []group          `gorm:"many2many:group_users;" msgpack:"-"`
 	ProfileSettings            *profileSettings `msgpack:"-"`
 }
@@ -82,6 +84,9 @@ func validUserRecord(u user) error {
 	}
 	if !validEncryptedDeviceList(u.EncryptedDevices) {
 		return errInvalidEncryptedDevices
+	}
+	if len(u.DeviceRevocations) > maximumDevicesPerUser {
+		return errTooManyDeviceRevocations
 	}
 	return nil
 }
