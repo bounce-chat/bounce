@@ -449,12 +449,7 @@ func TestAddUserCannotAdoptDeviceIntroducedByRevokedSyncDevice(t *testing.T) {
 	myRecord.Devices = append(myRecord.Devices, backdated)
 
 	counterpartyKey := bnc01NewOnion()
-	counterpartyID := NewID()
-	counterparty := user{
-		ID:      counterpartyID,
-		Name:    "Counterparty",
-		Devices: []device{bnc01Original(counterpartyID, counterpartyKey.addr(), now, counterpartyKey.sign)},
-	}
+	counterparty := bnc01SyntheticUser("Counterparty", counterpartyKey, now)
 	payload := bnc01BuildAddUser(t, counterparty, myRecord, counterpartyKey, backdatedKey)
 	_, accepted = me.handleAddUser(bnc01NewOnion().addr(), payload, false)
 
@@ -477,12 +472,8 @@ func TestAddUserAcceptsVerifiableUnknownSyncDevice(t *testing.T) {
 	myRecord.Devices = append(myRecord.Devices, newDevice)
 
 	counterpartyKey := bnc01NewOnion()
-	counterpartyID := NewID()
-	counterparty := user{
-		ID:      counterpartyID,
-		Name:    "Counterparty",
-		Devices: []device{bnc01Original(counterpartyID, counterpartyKey.addr(), now, counterpartyKey.sign)},
-	}
+	counterparty := bnc01SyntheticUser("Counterparty", counterpartyKey, now)
+	counterpartyID := counterparty.ID
 	payload := bnc01BuildAddUser(t, counterparty, myRecord, counterpartyKey, newKey)
 	_, accepted := me.handleAddUser(counterpartyKey.addr(), payload, false)
 	assert.True(t, accepted, "a valid mutual introduction allows a new sync device to authorize addUser")
@@ -503,9 +494,10 @@ func TestRejectedAddUserDoesNotSaveDevicesForNewCounterparty(t *testing.T) {
 	now := time.Now().Unix()
 	revokeTime := now - 10
 
-	counterpartyID := NewID()
 	originalKey := bnc01NewOnion()
-	original := bnc01Original(counterpartyID, originalKey.addr(), now-1000, originalKey.sign)
+	counterpartySeed := bnc01SyntheticUser("New counterparty", originalKey, now-1000)
+	counterpartyID := counterpartySeed.ID
+	original := counterpartySeed.Devices[0]
 	revokedKey := bnc01NewOnion()
 	revoked := introducedBy(counterpartyID, originalKey.addr(), originalKey, revokedKey, now-900)
 	assert.NoError(t, me.database.Create(&original).Error)
@@ -1176,4 +1168,100 @@ func TestCarriedDeviceRevocationsIgnoreNonRevokesAndForeignTargets(t *testing.T)
 	// Exceeding the cap is rejected by validUserRecord.
 	aliceRecord.DeviceRevocations = make([][]byte, maximumDevicesPerUser+1)
 	assert.Error(t, validUserRecord(aliceRecord))
+}
+
+func TestUserIDSquattingViaBaitGroupIsRefused(t *testing.T) {
+	victim := newBounceUser("Victim")
+	t.Cleanup(victim.Shutdown)
+	mallory := newBounceUser("Mallory")
+	t.Cleanup(mallory.Shutdown)
+	carol := newBounceUser("Carol")
+	t.Cleanup(carol.Shutdown)
+
+	// Mallory is a contact of Victim; Victim has never met Carol.
+	assert.NoError(t, victim.RequestToAddUser(mallory.GetNewAddUserString()))
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		_, mHasV := mallory.getDeviceFromAddress(victim.network.Address())
+		_, vHasM := victim.getDeviceFromAddress(mallory.network.Address())
+		if mHasV && vHasM {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// Mallory creates a bait group, invites Victim, and sends a forged invite claiming Carol's user ID with
+	// Mallory's own freshly self-signed root device.
+	assert.NoError(t, mallory.CreateGroup(NewGroup{Name: "Bait"}))
+	var gc groupCreation
+	assert.NoError(t, mallory.database.First(&gc).Error)
+	assert.NoError(t, mallory.InviteUserToGroup(gc.ID, victim.currentUserID()))
+
+	var victimInvite updateGroup
+	assert.NoError(t, mallory.database.Where("target = ? AND type = ?", gc.ID, updateGroupTypeInviteUser).First(&victimInvite).Error)
+
+	carolID := carol.currentUserID()
+	squatKey := bnc01NewOnion()
+	squatUser := user{
+		ID:      carolID,
+		Name:    "Carol",
+		Devices: []device{bnc01Original(carolID, squatKey.addr(), time.Now().Unix(), squatKey.sign)},
+	}
+	squatBytes, err := msgpack.Marshal(squatUser)
+	assert.NoError(t, err)
+	squatInvite := bnc01BuildUG(mallory, mallory.currentUserID(), gc.ID, time.Now().Unix()+1, updateGroupTypeInviteUser, squatBytes)
+
+	victim.handleUpdateGroup(mallory.network.Address(), victimInvite.getPayload(), false)
+	victim.handleUpdateGroup(mallory.network.Address(), squatInvite.getPayload(), false)
+	victim.handleGroupCreation(mallory.network.Address(), gc.getPayload(), false)
+
+	// Victim must not have persisted Mallory's onion or a squatted user row under Carol's ID.
+	_, planted := victim.getDeviceFromAddress(squatKey.addr())
+	assert.False(t, planted, "squatting device under another user's ID must be rejected")
+	var carolCount int64
+	assert.NoError(t, victim.database.Model(&user{}).Where("id = ?", carolID).Count(&carolCount).Error)
+	assert.Equal(t, int64(0), carolCount, "squatted user row must not be stored")
+
+	// Victim can still legitimately add the real Carol.
+	assert.NoError(t, victim.RequestToAddUser(carol.GetNewAddUserString()))
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, found := victim.getDeviceFromAddress(carol.network.Address()); found {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	storedCarolDev, found := victim.getDeviceFromAddress(carol.network.Address())
+	assert.True(t, found, "victim must still be able to add the real Carol after a squatting attempt")
+	assert.Equal(t, carolID, storedCarolDev.UserID)
+}
+
+func TestUserIDDerivationAndBeforeCreateBackstop(t *testing.T) {
+	me := newBounceUser("Me")
+	t.Cleanup(me.Shutdown)
+
+	profile, ok := me.currentUser()
+	assert.True(t, ok)
+	assert.Equal(t, 1, len(profile.Devices))
+	assert.True(t, userIDMatchesOriginalDevice(profile.ID, profile.Devices[0]))
+
+	// A user whose ID does not match its original device is refused by both hasValidDeviceGroup and BeforeCreate.
+	key := bnc01NewOnion()
+	wrongID := NewID()
+	badUser := user{
+		ID:      wrongID,
+		Name:    "Unbound",
+		Devices: []device{bnc01Original(wrongID, key.addr(), time.Now().Unix(), key.sign)},
+	}
+	assert.False(t, me.hasValidDeviceGroup(badUser))
+	assert.Error(t, me.database.Create(&badUser).Error)
+
+	// A user with no original device is refused by both hasValidDeviceGroup and BeforeCreate.
+	noOrig := user{
+		ID:      NewID(),
+		Name:    "NoRoot",
+		Devices: []device{},
+	}
+	assert.False(t, me.hasValidDeviceGroup(noOrig))
+	assert.Error(t, me.database.Create(&noOrig).Error)
 }

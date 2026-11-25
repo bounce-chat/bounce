@@ -161,7 +161,7 @@ func (b *Bounce) isValidAddition(u user, dev device) bool {
 // Check if the devices belonging to this user constitute a valid device group
 func (b *Bounce) hasValidDeviceGroup(u user) bool {
 	dg := &deviceGroup{}
-	originalDevice := ""
+	var originalDevice *device
 	signers := map[string]bool{}
 
 	if len(u.Devices) == 0 {
@@ -242,19 +242,32 @@ func (b *Bounce) hasValidDeviceGroup(u user) bool {
 				return false
 			}
 		} else {
-			if originalDevice != "" {
+			if originalDevice != nil {
 				// Only one original device can lack an introduction
 				log.WithFields(log.Fields{
 					"user": u.ID,
 				}).Warn("a device group is invalid because it has more than one original device")
 				return false
 			} else {
-				originalDevice = dev.Address
+				orig := dev
+				originalDevice = &orig
 			}
 		}
 	}
 
-	// TODO: ensure there's at least one device that doesn't have an introduction signature?
+	if originalDevice == nil {
+		log.WithFields(log.Fields{
+			"user": u.ID,
+		}).Warn("a device group is invalid because it has no original device")
+		return false
+	}
+	if !userIDMatchesOriginalDevice(u.ID, *originalDevice) {
+		log.WithFields(log.Fields{
+			"user":            u.ID,
+			"original_device": originalDevice.ID,
+		}).Warn("a device group is invalid because the user ID is not derived from its original device")
+		return false
+	}
 
 	// A group of one device with no introductions is valid
 	if len(dg.signatures) == 0 && len(u.Devices) == 1 {
@@ -263,9 +276,9 @@ func (b *Bounce) hasValidDeviceGroup(u user) bool {
 
 	// The original device that has no introduction signature must have been used to
 	// sign at least one of the other devices
-	if _, present := signers[originalDevice]; !present {
+	if _, present := signers[originalDevice.Address]; !present {
 		log.WithFields(log.Fields{
-			"original_device": originalDevice,
+			"original_device": originalDevice.Address,
 			"device_count":    len(u.Devices),
 			"user":            u.ID,
 		}).Warn("a device group is invalid because the original device did not sign any of the other devices")

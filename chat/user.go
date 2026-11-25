@@ -12,6 +12,7 @@ import (
 
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
+	"github.com/zeebo/blake3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -61,6 +62,21 @@ type user struct {
 	ProfileSettings            *profileSettings `msgpack:"-"`
 }
 
+const userIDDomain = "bounce-user-id:"
+
+func generateUserID(n nonce, network string, address string) ID {
+	ch := &contentHasher{hasher: blake3.New()}
+	ch.hasher.Write([]byte(userIDDomain))
+	ch.hasher.Write(n[:])
+	ch.bytes([]byte(network)).bytes([]byte(address))
+	return ch.generate()
+}
+
+func userIDMatchesOriginalDevice(id ID, orig device) bool {
+	return id != NilID && orig.Nonce != noNonce && orig.Network != "" && orig.Address != "" &&
+		id == generateUserID(orig.Nonce, orig.Network, orig.Address)
+}
+
 func (u *user) BeforeCreate(tx *gorm.DB) error {
 	if u.ID == NilID {
 		return errors.New("user ID must be set before creation")
@@ -68,6 +84,33 @@ func (u *user) BeforeCreate(tx *gorm.DB) error {
 
 	if err := validUserRecord(*u); err != nil {
 		return err
+	}
+
+	var original *device
+	for i := range u.Devices {
+		if u.Devices[i].Signature == nil {
+			if original != nil {
+				return errors.New("user has more than one original device")
+			}
+			original = &u.Devices[i]
+		}
+	}
+	if original == nil {
+		var stored []device
+		if err := tx.Preload("Signature").Where("user_id = ?", u.ID).Find(&stored).Error; err != nil {
+			return err
+		}
+		for i := range stored {
+			if stored[i].Signature == nil {
+				if original != nil {
+					return errors.New("user has more than one original device")
+				}
+				original = &stored[i]
+			}
+		}
+	}
+	if original == nil || !userIDMatchesOriginalDevice(u.ID, *original) {
+		return errors.New("user ID is not derived from its original device")
 	}
 
 	u.LastActivity = time.Now().Unix()
@@ -259,8 +302,6 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 		return errInvalidDeviceName
 	}
 
-	newID := NewID()
-
 	// The icon is prepared first so the profile can name it, and published once the profile exists to be attached to
 	var icon *file
 	if len(image) > 0 {
@@ -279,11 +320,12 @@ func (b *Bounce) SetProfile(profileName string, image []byte, deviceName string)
 
 	d := device{
 		Nonce:     newNonce(),
-		UserID:    newID,
 		Address:   b.network.Address(),
 		Network:   b.network.Name(),
 		Timestamp: time.Now().Unix(),
 	}
+	newID := generateUserID(d.Nonce, d.Network, d.Address)
+	d.UserID = newID
 	d.ID = d.generateID()
 	b.signDevice(&d)
 
