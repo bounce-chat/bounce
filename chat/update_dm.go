@@ -280,6 +280,21 @@ func (b *Bounce) handleUpdateDM(peer string, payload []byte, catchUp bool) (broa
 		return nil, false
 	}
 
+	// Ignore anything from a blocked user
+	if ud.Actor != b.currentUserID() && blockedUser(ud.Actor) {
+		log.WithFields(log.Fields{
+			"id":     ud.ID,
+			"author": ud.Actor,
+		}).Warn("ignoring update DM from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeUpdateDM, ud.ID)
+			}
+		}
+		return nil, false
+	}
+
 	// Ignore clearBefore frames that target a time significantly in the future
 	if ud.Type == updateDMTypeSetClearBefore {
 		if ud.Timestamp > time.Now().Add(15*time.Minute).Unix() {

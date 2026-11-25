@@ -197,3 +197,90 @@ func TestOnlyTheNewestUpdateDMsOfEachKindFromAContactAreKept(t *testing.T) {
 	assert.NoError(t, me.database.Model(&updateDM{}).Where("actor = ?", alice.currentUserID()).Count(&total).Error)
 	assert.Equal(t, int64(maximumUpdateDMHistoryPerType+1), total)
 }
+
+func TestBlockedUserCannotUpdateDM(t *testing.T) {
+	quickReferenceRetries(t)
+	me, _, mallory, _ := createUsersAndGroups(t)
+	malloryID := mallory.currentUserID()
+	target := xor(me.currentUserID(), malloryID)
+
+	// Send a pre-block DM so we can verify a blocked SetClearBefore does not wipe history.
+	assert.NoError(t, me.SendDirectMessage(malloryID, "keep this message", nil, NilID))
+	var preBlockDM directMessage
+	assert.NoError(t, me.database.Where("xor = ?", target).First(&preBlockDM).Error)
+
+	assert.NoError(t, me.BlockUser(malloryID))
+	t.Cleanup(func() {
+		blockedUsersMutex.Lock()
+		delete(blockedUsers, malloryID)
+		blockedUsersMutex.Unlock()
+	})
+
+	var beforeUser user
+	assert.NoError(t, me.database.First(&beforeUser, "id = ?", malloryID).Error)
+
+	freshPeer := bnc01NewOnion().addr()
+	now := time.Now().Unix()
+	retentionBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(retentionBytes, 77777)
+
+	attempts := []updateDM{
+		{
+			Nonce:     newNonce(),
+			Actor:     malloryID,
+			Target:    target,
+			Timestamp: now + 60,
+			Type:      updateDMTypeSetClearBefore,
+		},
+		{
+			Nonce:     newNonce(),
+			Actor:     malloryID,
+			Target:    target,
+			Timestamp: now + 61,
+			Type:      updateDMTypeChangeRetention,
+			Data:      retentionBytes,
+		},
+		{
+			Nonce:     newNonce(),
+			Actor:     malloryID,
+			Target:    target,
+			Timestamp: now + 62,
+			Type:      updateDMTypeOfferRetention,
+			Data:      retentionBytes,
+		},
+	}
+
+	for _, ud := range attempts {
+		ud.ID = ud.generateID()
+		_, accepted := me.handleUpdateDM(freshPeer, signedFrame(t, mallory, typeUpdateDM, ud), false)
+		assert.False(t, accepted, "blocked user's updateDM type %d must be rejected", ud.Type)
+
+		var stored int64
+		assert.NoError(t, me.database.Model(&updateDM{}).Where("id = ?", ud.ID).Count(&stored).Error)
+		assert.Equal(t, int64(0), stored, "blocked user's updateDM must not be saved")
+	}
+
+	var dmCount int64
+	assert.NoError(t, me.database.Model(&directMessage{}).Where("id = ?", preBlockDM.ID).Count(&dmCount).Error)
+	assert.Equal(t, int64(1), dmCount, "pre-block DM must survive blocked user's SetClearBefore")
+
+	var afterUser user
+	assert.NoError(t, me.database.First(&afterUser, "id = ?", malloryID).Error)
+	assert.Equal(t, beforeUser.ClearBefore, afterUser.ClearBefore)
+	assert.Equal(t, beforeUser.Retention, afterUser.Retention)
+
+	// Our own updates targeting the blocked thread must still apply (e.g., notes and unblock).
+	notes := updateDM{
+		Nonce:     newNonce(),
+		Actor:     me.currentUserID(),
+		Target:    target,
+		Timestamp: now + 63,
+		Type:      updateDMTypeSetNotes,
+		Data:      []byte("blocked note"),
+	}
+	notes.ID = notes.generateID()
+	_, accepted := me.handleUpdateDM(me.network.Address(), signedFrame(t, me, typeUpdateDM, notes), false)
+	assert.True(t, accepted)
+	assert.NoError(t, me.database.First(&afterUser, "id = ?", malloryID).Error)
+	assert.Equal(t, "blocked note", afterUser.Notes)
+}
