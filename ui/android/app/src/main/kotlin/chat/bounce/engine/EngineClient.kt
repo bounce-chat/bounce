@@ -67,6 +67,12 @@ class EngineClient(
 
     suspend fun requestToSync(data: String) = call("requestToSync") { it.requestToSync(data) }
 
+    /**
+     * Gives up on a pairing request that has not been answered. False means the
+     * answer was accepted first, and pairing is going ahead.
+     */
+    suspend fun cancelSyncRequest(): Boolean = call("cancelSyncRequest") { it.cancelSyncRequest() }
+
     suspend fun requestToManageEncryptedDevice(data: String) =
         call("requestToManageEncryptedDevice") { it.requestToManageEncryptedDevice(data) }
 

@@ -14,6 +14,15 @@ import (
 var syncDeviceOfferValidForSeconds = int64(300)
 var syncDeviceRequestMutex sync.Mutex
 
+var ErrSyncRequestCancelled = errors.New("the request to sync was cancelled")
+
+// syncRequestCancelMutex guards how many times a request to become a sync device has been cancelled, and with it
+// the two decisions that depend on that count: whether a request that was dialling when it changed is still sent,
+// and whether the answer to a request is still accepted.  The second is settled under the lock together with saving
+// the profile, so a cancel and an answer that cross end one way or the other, never both.
+var syncRequestCancelMutex sync.Mutex
+var syncRequestsCancelled int
+
 // Address of new sync device we're expecting our first catch up from, which will contain all of our history
 var initialSyncSource atomic.Value
 
@@ -203,6 +212,12 @@ func (b *Bounce) handleSyncDeviceRequest(peer string, payload []byte, catchUp bo
 }
 
 func (b *Bounce) RequestToSync(data string) error {
+	// Note how many requests have been cancelled, before anything that takes time: the dial below can run for over a
+	// minute, and a cancel made at any point from here on has to find this request
+	syncRequestCancelMutex.Lock()
+	cancelled := syncRequestsCancelled
+	syncRequestCancelMutex.Unlock()
+
 	// Make sure we don't have a profile before trying to become a sync device for another profile
 	if _, exists := b.currentUser(); exists {
 		return errors.New("profile already exists")
@@ -221,8 +236,17 @@ func (b *Bounce) RequestToSync(data string) error {
 	}
 	b.insertConnectionIntoDevicePool(conn)
 
+	// The dial cannot be interrupted, so a request that was cancelled while it ran ends here with nothing sent.  The
+	// connection stays in the pool, where the connection of any request goes.
+	syncRequestCancelMutex.Lock()
+	if syncRequestsCancelled != cancelled {
+		syncRequestCancelMutex.Unlock()
+		return ErrSyncRequestCancelled
+	}
+
 	// Track who we are willing to accept an answer from, and for how long
 	pendingSyncRequests.expectFrom(address)
+	syncRequestCancelMutex.Unlock()
 
 	// Send our request
 	b.sendDirect(address, &syncDeviceRequest{
@@ -231,4 +255,23 @@ func (b *Bounce) RequestToSync(data string) error {
 	})
 
 	return nil
+}
+
+// CancelSyncRequest gives up on the request this device made to become a sync device.  A request that is still
+// dialling sends nothing when the dial returns, and the answer to one that was sent is ignored when it arrives.
+// Nothing needs undoing on the device that was asked: it saves the new device only once this one has accepted its
+// answer, and all it has spent is the secret in its offer, so asking again takes a new offer from it.
+//
+// It reports whether the request was given up.  False means the answer was accepted first, and this device has the
+// profile now: there is nothing left to cancel, and the import that follows is not something to back out of.
+func (b *Bounce) CancelSyncRequest() bool {
+	syncRequestCancelMutex.Lock()
+	defer syncRequestCancelMutex.Unlock()
+
+	if _, exists := b.currentUser(); exists {
+		return false
+	}
+	syncRequestsCancelled++
+	pendingSyncRequests.forgetAll()
+	return true
 }

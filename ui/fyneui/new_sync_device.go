@@ -54,6 +54,11 @@ func (ui *ui) buildNewSyncDeviceWidgets() {
 		progressBar:         progressBar,
 		infiniteProgressBar: infiniteProgressBar,
 		backButton: widget.NewButton("Back", func() {
+			// Leaving gives up a request that is waiting on its answer, so that an answer arriving later is not
+			// taken.  When the answer was accepted first there is nothing to give up, and the import carries on here.
+			if !ui.bounce.CancelSyncRequest() {
+				return
+			}
 			ui.widgets.newSyncDevice.infiniteProgressBar.Hide()
 			ui.widgets.newSyncDevice.currentStep.Text = ""
 			ui.widgets.newSyncDevice.currentStep.Hide()
@@ -299,6 +304,10 @@ func (ui *ui) buildNewSyncDevice() {
 			})
 
 			err := ui.bounce.RequestToSync(strings.TrimSpace(str))
+			if errors.Is(err, chat.ErrSyncRequestCancelled) {
+				// The user backed out while the request was dialling, which is not an error to show them
+				return
+			}
 			if err == nil {
 				fyne.Do(func() {
 					ui.widgets.newSyncDevice.currentStep.Text = "Waiting for sync response..."
@@ -337,7 +346,11 @@ func (ui *ui) SyncDeviceRequestAccepted(profile chat.User, devices []chat.Device
 		ui.devices.add(&dev)
 	}
 	ui.state.initialStateSet = true
-	fyne.DoAndWait(func() { ui.updateDeviceStatus() })
+	fyne.DoAndWait(func() {
+		// Both devices have each other from here, so there is no request left to back out of
+		ui.widgets.newSyncDevice.backButton.Disable()
+		ui.updateDeviceStatus()
+	})
 
 	if !references {
 		ui.InitialSyncComplete()

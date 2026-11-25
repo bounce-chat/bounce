@@ -6,6 +6,7 @@ type Engine interface {
 	BlockGroup(groupID ID) error
 	BlockUser(userID ID) error
 	CancelDownload(fileID ID)
+	CancelSyncRequest() bool
 	ClearDMChatHistory(userID ID) error
 	ClearGroupChatHistory(groupID ID) error
 	CreateGroup(ng NewGroup) error

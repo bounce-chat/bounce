@@ -35,8 +35,13 @@ func (sdra *syncDeviceRequestAccepted) getPayload() []byte {
 }
 
 func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, catchUp bool) (broadcastable, bool) {
-	// Make sure we've sent a sync request to this peer before
-	if !pendingSyncRequests.isExpectedFrom(peer) {
+	// Make sure we've sent a sync request to this peer before, and note how many requests have been cancelled as of
+	// that moment, so that one cancelled while this answer is being checked is seen before the profile is saved
+	syncRequestCancelMutex.Lock()
+	expected := pendingSyncRequests.isExpectedFrom(peer)
+	cancelled := syncRequestsCancelled
+	syncRequestCancelMutex.Unlock()
+	if !expected {
 		log.WithFields(log.Fields{
 			"peer": peer,
 		}).Warn("ignoring sync device request accepted from a peer we did not recently make a sync request to")
@@ -138,7 +143,16 @@ func (b *Bounce) handleSyncDeviceRequestAccepted(peer string, payload []byte, ca
 	sdra.Profile.OpenDM = true
 	sdra.Profile.IntroductionMethod = userIntroductionProfile
 	sdra.Profile.IntroductionTime = time.Now().Unix()
+	syncRequestCancelMutex.Lock()
+	if syncRequestsCancelled != cancelled {
+		syncRequestCancelMutex.Unlock()
+		log.WithFields(log.Fields{
+			"peer": peer,
+		}).Info("ignoring the answer to a sync device request that was cancelled while the answer was being checked")
+		return nil, false
+	}
 	err = b.database.Create(&sdra.Profile).Error
+	syncRequestCancelMutex.Unlock()
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),

@@ -204,6 +204,19 @@ func (a *Engine) RequestToSync(data string) error {
 	return e.RequestToSync(data)
 }
 
+// CancelSyncRequest gives up on a pairing request that has not been answered. It returns at once even while
+// RequestToSync is still blocked in its dial: that call carries on, sends nothing, and returns an error.
+//
+// False means the answer was accepted first. The profile is on this device and the import has begun, so the caller
+// should carry on as it would after SyncDeviceRequestAccepted.
+func (a *Engine) CancelSyncRequest() (bool, error) {
+	e, err := a.engine()
+	if err != nil {
+		return false, err
+	}
+	return e.CancelSyncRequest(), nil
+}
+
 func (a *Engine) RequestToManageEncryptedDevice(data string) error {
 	e, err := a.engine()
 	if err != nil {

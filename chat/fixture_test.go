@@ -509,7 +509,11 @@ func newBounce() *Bounce {
 // newBounceWithUI opens an engine on the given UI.  A test that wants to observe UI callbacks must supply its UI
 // here rather than assign b.ui afterwards: the engine's goroutines read that field from the moment it is opened.
 func newBounceWithUI(ui UI) *Bounce {
-	network := newTestnet()
+	return newBounceOnNetwork(ui, newTestnet())
+}
+
+// newBounceOnNetwork opens an engine on a network the test made, for tests that stand in the network's way
+func newBounceOnNetwork(ui UI, network Network) *Bounce {
 	configDirectory := os.TempDir() + "/bounce-test-" + NewID().String()
 	os.MkdirAll(configDirectory, 0700)
 	os.MkdirAll(configDirectory+"/blobs/", 0700)

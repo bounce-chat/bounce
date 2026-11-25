@@ -2,6 +2,7 @@ package chat.bounce.ui.onboarding
 
 import android.os.Build
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -41,6 +42,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -89,6 +91,17 @@ fun OnboardingScreen(onDone: () -> Unit) {
     }
 
     var step by rememberSaveable { mutableStateOf(OnboardingStep.Welcome) }
+
+    // The system back button walks the steps the way their arrows do. The
+    // progress step is not here: leaving it has to give the request up, which
+    // LinkDeviceFlow does.
+    BackHandler(
+        enabled = step == OnboardingStep.CreateProfile ||
+            step == OnboardingStep.LinkIntro ||
+            step == OnboardingStep.LinkScan,
+    ) {
+        step = if (step == OnboardingStep.LinkScan) OnboardingStep.LinkIntro else OnboardingStep.Welcome
+    }
 
     when (step) {
         OnboardingStep.Welcome -> WelcomeStep(
@@ -376,6 +389,29 @@ private fun LinkDeviceFlow(
     // send, in which case no InitialSync* event will ever arrive.
     var importExpected by remember { mutableStateOf<Boolean?>(null) }
 
+    // Counts the requests made and given up. What a request does once it comes
+    // back from waiting, for the network or inside the engine, is only acted on
+    // if the count is still what it was when the request began.
+    var attempt by remember { mutableIntStateOf(0) }
+
+    // A request can be given up until the other device's answer is accepted.
+    // After that both devices have each other and the import is running, which
+    // is not something to back out of.
+    val cancellable = importExpected == null
+    val cancelRequest: () -> Unit = {
+        attempt += 1
+        // Leave first: the engine call below can take a moment, and nothing
+        // visible should wait on it.
+        onStepChange(OnboardingStep.LinkIntro)
+        scope.launch {
+            val engine = client ?: EngineHolder.client
+            val cancelled = engine == null || runCatching { engine.cancelSyncRequest() }.getOrDefault(true)
+            // The answer was accepted before the cancel got there, so pairing
+            // is going ahead and this is the step that shows it.
+            if (!cancelled) onStepChange(OnboardingStep.LinkProgress)
+        }
+    }
+
     val networkOnline by ChatRepository.networkOnline.collectAsStateWithLifecycle()
     val sync by ChatRepository.initialSync.collectAsStateWithLifecycle()
 
@@ -387,7 +423,13 @@ private fun LinkDeviceFlow(
                     requestError = effect.reason
                     refused = true
                 }
-                is RepositoryEffect.SyncDeviceAccepted -> importExpected = effect.references
+                is RepositoryEffect.SyncDeviceAccepted -> {
+                    importExpected = effect.references
+                    // Wherever the user has got to: an answer can be accepted
+                    // in the instant they back out, and from here on the
+                    // progress step is the only one that leads anywhere.
+                    onStepChange(OnboardingStep.LinkProgress)
+                }
                 else -> Unit
             }
         }
@@ -402,6 +444,8 @@ private fun LinkDeviceFlow(
         }
     }
 
+    BackHandler(enabled = step == OnboardingStep.LinkProgress && cancellable, onBack = cancelRequest)
+
     when (step) {
         OnboardingStep.LinkScan -> QrScannerScreen(
             title = stringResource(R.string.onboarding_link_device),
@@ -412,6 +456,8 @@ private fun LinkDeviceFlow(
                 rejected = false
                 refused = false
                 importExpected = null
+                attempt += 1
+                val mine = attempt
                 scope.launch {
                     val engine = client ?: EngineHolder.client
                     if (engine == null) {
@@ -425,12 +471,19 @@ private fun LinkDeviceFlow(
                     // inside the engine call, which cannot be cancelled. The
                     // progress screen already renders a "waiting for the
                     // network" state for exactly this.
-                    if (!awaitNetworkOnline()) {
+                    val online = awaitNetworkOnline()
+                    // Given up while the network was coming up: nothing has
+                    // been sent, and nothing is.
+                    if (mine != attempt) return@launch
+                    if (!online) {
                         Log.w(TAG, "network never came online, abandoning pairing request")
                         requestFailed = true
                         return@launch
                     }
                     runCatching { engine.requestToSync(code) }.onFailure {
+                        // A request given up while it was dialling comes back
+                        // as a failure, and is not one the user is waiting on.
+                        if (mine != attempt) return@onFailure
                         Log.w(TAG, "requestToSync failed", it)
                         requestError = it.message
                         requestFailed = true
@@ -444,6 +497,16 @@ private fun LinkDeviceFlow(
             topBar = {
                 TopAppBar(
                     title = { Text(stringResource(R.string.onboarding_link_device)) },
+                    navigationIcon = {
+                        if (cancellable) {
+                            IconButton(onClick = cancelRequest) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(R.string.action_back),
+                                )
+                            }
+                        }
+                    },
                 )
             },
         ) { padding ->

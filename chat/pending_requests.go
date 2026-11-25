@@ -48,6 +48,14 @@ func (p *pendingRequests) isExpectedFrom(peer string) bool {
 	return ok && time.Since(at) <= p.window
 }
 
+// forgetAll stops waiting on every request, for when the requests themselves are given up
+func (p *pendingRequests) forgetAll() {
+	p.Lock()
+	defer p.Unlock()
+
+	clear(p.sent)
+}
+
 var pendingAddUserRequests = newPendingRequests(time.Duration(addUserOfferValidForSeconds) * time.Second)
 var pendingSyncRequests = newPendingRequests(time.Duration(syncDeviceOfferValidForSeconds) * time.Second)
 var pendingSyncDeviceOffers = newPendingRequests(time.Duration(syncDeviceOfferValidForSeconds) * time.Second)
