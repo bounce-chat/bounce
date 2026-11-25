@@ -654,7 +654,8 @@ func (b *Bounce) getUpdateGroupsToOffer(address string, userID ID) []frameRefere
 			Distinct().
 			Select("target").
 			Where(
-				"((type = ? OR type = ?) AND data = ?) OR (type = ? AND data = ? AND actor = ?)",
+				"applied = true AND custom_scope = ? AND (((type = ? OR type = ?) AND data = ?) OR (type = ? AND data = ? AND actor = ?))",
+				NilID,
 				updateGroupTypeRemoveUser,
 				updateGroupTypeRevokeInvite,
 				userID[:],
@@ -675,14 +676,21 @@ func (b *Bounce) getUpdateGroupsToOffer(address string, userID ID) []frameRefere
 				continue
 			}
 
-			// Find the timestamp of their latest departure from this group.  The departure rows found a moment ago
-			// can be gone by now, for instance when the group was deleted in between, so a missing maximum means
-			// there is nothing to offer rather than a broken database.
-			var lastRemoval int64
-			row := b.database.
+			// Find the user's latest applied departure from this group, including its local insertion order so a
+			// future-dated departure cannot open the offer window to updates saved afterwards.  The departure rows
+			// found a moment ago can be gone by now, for instance when the group was deleted in between, so not
+			// finding one means there is nothing to offer rather than a broken database.
+			var lastDeparture struct {
+				Timestamp int64
+				SavedAt   int64
+				RowID     int64 `gorm:"column:rowid"`
+			}
+			err := b.database.
 				Table("update_groups").
+				Select("timestamp, saved_at, rowid").
 				Where(
-					"target = ? AND (((type = ? OR type = ?) AND data = ?) OR (type = ? AND data = ? AND actor = ?))",
+					"applied = true AND custom_scope = ? AND target = ? AND (((type = ? OR type = ?) AND data = ?) OR (type = ? AND data = ? AND actor = ?))",
+					NilID,
 					groupID,
 					updateGroupTypeRemoveUser,
 					updateGroupTypeRevokeInvite,
@@ -691,27 +699,29 @@ func (b *Bounce) getUpdateGroupsToOffer(address string, userID ID) []frameRefere
 					[]byte{rejectInvite},
 					userID,
 				).
-				Select("COALESCE(MAX(timestamp), 0)").
-				Row()
-			err := row.Scan(&lastRemoval)
+				Order("timestamp desc, saved_at desc, rowid desc").
+				Take(&lastDeparture).Error
 			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					continue
+				}
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Fatal("error parsing timestamp of users last departure from group")
-			}
-			if lastRemoval == 0 {
-				continue
+				}).Fatal("error looking up users last departure from group")
 			}
 
-			// Find all the undelivered update groups up until their last departure
+			// Find all the undelivered applied update groups up until their last departure
 			var ugs []updateGroup
 			err = b.database.
 				Select("update_groups.*").
 				Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == update_groups.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeUpdateGroup).
 				Where(
-					"delivery_records.id IS NULL AND update_groups.target = ? AND update_groups.timestamp <= ?",
+					"delivery_records.id IS NULL AND update_groups.applied = true AND update_groups.custom_scope = ? AND update_groups.target = ? AND update_groups.timestamp <= ? AND update_groups.saved_at <= ? AND update_groups.rowid <= ?",
+					NilID,
 					groupID,
-					lastRemoval,
+					lastDeparture.Timestamp,
+					lastDeparture.SavedAt,
+					lastDeparture.RowID,
 				).Find(&ugs).Error
 			if err != nil {
 				log.WithFields(log.Fields{

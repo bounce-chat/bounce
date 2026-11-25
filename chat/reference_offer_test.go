@@ -136,3 +136,91 @@ func TestAlreadyHeldIncompleteOfferRequestsNextPart(t *testing.T) {
 		}
 	}
 }
+
+func offerContainsFrame(offer *referenceOffer, frameType uint16, id ID) bool {
+	for _, ref := range offer.References {
+		if ref.Type == frameType && ref.FrameID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func TestDepartedMemberCannotReopenUpdateGroupOfferWindow(t *testing.T) {
+	me, alice, bob, groupID := createUsersAndGroups(t)
+	bobID := bob.currentUserID()
+	bobAddr := bob.network.Address()
+	aliceID := alice.currentUserID()
+	aliceAddr := alice.network.Address()
+
+	// Add a non-member contact (Dave) who knows Me, so we can also test the never-a-member variant.
+	dave := newBounceUser("Dave")
+	t.Cleanup(dave.Shutdown)
+	assert.NoError(t, me.RequestToAddUser(dave.GetNewAddUserString()))
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, found := me.getDeviceFromAddress(dave.network.Address()); found {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// Disconnect everyone so delivery records are not written in the background while checking offers.
+	hostsMutex.Lock()
+	delete(hosts, me.network.Address())
+	hostsMutex.Unlock()
+	sever(t, me, alice)
+	sever(t, me, bob)
+	sever(t, me, dave)
+	me.networkOffline()
+
+	// Remove Bob, then rename the group at a strictly later timestamp so the control holds before any forgery.
+	assert.NoError(t, me.RemoveUserFromGroup(groupID, bobID))
+	var bobRemoval updateGroup
+	assert.NoError(t, me.database.Where("target = ? AND type = ? AND data = ?", groupID, updateGroupTypeRemoveUser, bobID[:]).First(&bobRemoval).Error)
+	assert.NoError(t, me.applyAndBroadcastUpdateGroup(&updateGroup{
+		Actor:     me.currentUserID(),
+		Target:    groupID,
+		Timestamp: bobRemoval.Timestamp + 1,
+		Type:      updateGroupTypeChangeName,
+		Data:      []byte("After Bob Left"),
+	}))
+	var renameAfterBob updateGroup
+	assert.NoError(t, me.database.Where("target = ? AND type = ? AND data = ?", groupID, updateGroupTypeChangeName, []byte("After Bob Left")).First(&renameAfterBob).Error)
+
+	t.Run("ForgedFutureDepartureByRemovedMember", func(t *testing.T) {
+		bobOffer := me.getReferenceOfferFor(bobAddr)
+		assert.True(t, offerContainsFrame(bobOffer, typeUpdateGroup, bobRemoval.ID), "departed member must still be offered their removal")
+		assert.False(t, offerContainsFrame(bobOffer, typeUpdateGroup, renameAfterBob.ID), "control: post-removal rename is not offered before forgery")
+
+		forgedReject := bnc01BuildUG(bob, bobID, groupID, int64(1)<<60, updateGroupTypeRespondToInvite, []byte{rejectInvite})
+		me.handleUpdateGroup(bobAddr, forgedReject.getPayload(), false)
+
+		bobOfferAfterForgery := me.getReferenceOfferFor(bobAddr)
+		assert.False(t, offerContainsFrame(bobOfferAfterForgery, typeUpdateGroup, renameAfterBob.ID),
+			"forged future-dated departure must not reopen update-group offers for a removed member")
+	})
+
+	t.Run("FutureDatedSelfRemoval", func(t *testing.T) {
+		futureLeave := bnc01BuildUG(alice, aliceID, groupID, int64(1)<<60, updateGroupTypeRemoveUser, aliceID[:])
+		me.handleUpdateGroup(aliceAddr, futureLeave.getPayload(), false)
+		assert.False(t, me.userIsInGroup(groupID, aliceID))
+
+		assert.NoError(t, me.RenameGroup(groupID, "After Alice Future Left"))
+		var renameAfterAlice updateGroup
+		assert.NoError(t, me.database.Where("target = ? AND type = ? AND data = ?", groupID, updateGroupTypeChangeName, []byte("After Alice Future Left")).First(&renameAfterAlice).Error)
+
+		aliceOffer := me.getReferenceOfferFor(aliceAddr)
+		assert.False(t, offerContainsFrame(aliceOffer, typeUpdateGroup, renameAfterAlice.ID),
+			"future-dated real departure must not expose updates saved after the departure")
+	})
+
+	t.Run("ForgedDepartureByNeverMember", func(t *testing.T) {
+		daveReject := bnc01BuildUG(dave, dave.currentUserID(), groupID, int64(1)<<60, updateGroupTypeRespondToInvite, []byte{rejectInvite})
+		me.handleUpdateGroup(dave.network.Address(), daveReject.getPayload(), false)
+
+		daveOffer := me.getReferenceOfferFor(dave.network.Address())
+		assert.False(t, offerContainsFrame(daveOffer, typeUpdateGroup, renameAfterBob.ID),
+			"a contact who was never a member must not be offered group updates via a forged departure")
+	})
+}
