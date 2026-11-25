@@ -117,8 +117,6 @@
     <string name="qr_invalid_code">That does not look like a Bounce code.</string>
 
     <!-- Onboarding -->
-    <string name="onboarding_tagline">Group chat with no servers.</string>
-    <string name="onboarding_tor_note">Bounce carries every message over Tor, directly between devices. The first start can take a minute while that connection is built.</string>
     <string name="onboarding_starting">Starting the network…</string>
     <string name="onboarding_create_profile">Create a new profile</string>
     <string name="onboarding_create_profile_subtitle">Start fresh on this device.</string>

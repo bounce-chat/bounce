@@ -34,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -65,6 +66,7 @@ import chat.bounce.engine.EngineHolder
 import chat.bounce.ui.components.AvatarPickerButton
 import chat.bounce.ui.components.rememberAvatarPicker
 import chat.bounce.ui.qr.QrScannerScreen
+import chat.bounce.ui.theme.isDarkTheme
 import kotlinx.coroutines.launch
 
 /**
@@ -123,64 +125,59 @@ private fun WelcomeStep(
     onCreate: () -> Unit,
     onLink: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Spacer(Modifier.height(48.dp))
-        Image(
-            painter = painterResource(R.drawable.ic_bounce_logo),
-            contentDescription = stringResource(R.string.app_name),
-            modifier = Modifier.size(96.dp),
-        )
-        Spacer(Modifier.height(16.dp))
-        Text(
-            text = stringResource(R.string.onboarding_tagline),
-            style = MaterialTheme.typography.headlineSmall,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(12.dp))
-        Text(
-            text = stringResource(R.string.onboarding_tor_note),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
+    // The Surface is what makes this step follow the app's theme. Without it the
+    // background is the window's, which follows the system even when the theme
+    // has been set the other way in the app, and text with no colour of its own
+    // is black on either.
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.height(72.dp))
+            Image(
+                painter = painterResource(
+                    if (isDarkTheme()) R.drawable.ic_bounce_wordmark_dark else R.drawable.ic_bounce_wordmark,
+                ),
+                contentDescription = stringResource(R.string.app_name),
+                modifier = Modifier.height(64.dp),
+            )
 
-        Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(56.dp))
 
-        SetupCard(
-            title = stringResource(R.string.onboarding_create_profile),
-            subtitle = stringResource(R.string.onboarding_create_profile_subtitle),
-            icon = { Icon(Icons.Filled.PersonAdd, contentDescription = null) },
-            onClick = onCreate,
-        )
-        Spacer(Modifier.height(12.dp))
-        SetupCard(
-            title = stringResource(R.string.onboarding_link_device),
-            subtitle = stringResource(R.string.onboarding_link_device_subtitle),
-            icon = { Icon(Icons.Filled.Devices, contentDescription = null) },
-            onClick = onLink,
-        )
+            SetupCard(
+                title = stringResource(R.string.onboarding_create_profile),
+                subtitle = stringResource(R.string.onboarding_create_profile_subtitle),
+                icon = { Icon(Icons.Filled.PersonAdd, contentDescription = null) },
+                onClick = onCreate,
+            )
+            Spacer(Modifier.height(12.dp))
+            SetupCard(
+                title = stringResource(R.string.onboarding_link_device),
+                subtitle = stringResource(R.string.onboarding_link_device_subtitle),
+                icon = { Icon(Icons.Filled.Devices, contentDescription = null) },
+                onClick = onLink,
+            )
 
-        Spacer(Modifier.height(24.dp))
-        if (engineStarting) {
-            // The engine may still be bootstrapping Tor when this screen paints.
-            // Saying so is better than a button that silently does nothing.
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                Text(
-                    text = stringResource(R.string.onboarding_starting),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 12.dp),
-                )
+            Spacer(Modifier.height(24.dp))
+            if (engineStarting) {
+                // The engine may still be bootstrapping Tor when this screen paints.
+                // Saying so is better than a button that silently does nothing.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text(
+                        text = stringResource(R.string.onboarding_starting),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 12.dp),
+                    )
+                }
             }
+            Spacer(Modifier.height(32.dp))
         }
-        Spacer(Modifier.height(32.dp))
     }
 }
 
