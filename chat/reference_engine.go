@@ -39,7 +39,9 @@ type frameReference struct {
 	FrameID    ID     `gorm:"index;uniqueIndex:idx_frame_id_type_peer"`
 	Type       uint16 `gorm:"index;uniqueIndex:idx_frame_id_type_peer"`
 	Peer       string `gorm:"index;uniqueIndex:idx_frame_id_type_peer" msgpack:"-"`
+	KnownPeer  bool   `gorm:"index" msgpack:"-"`
 	State      int    `msgpack:"-"`
+	Attempts   int    `msgpack:"-"`
 	LastAction int64  `msgpack:"-"`
 	CreatedAt  int64  `msgpack:"-"`
 }
@@ -82,7 +84,6 @@ func (b *Bounce) openReferenceDatabase() {
 	sqliteDB.SetMaxOpenConns(1)
 
 	err = b.referenceDatabase.AutoMigrate(
-		&deliveryRecord{},
 		&frameReference{},
 	)
 	if err != nil {
@@ -108,9 +109,30 @@ func (b *Bounce) keepReferenceDatabasePruned() {
 	}
 }
 
-// pruneReferences forgets what departed peers offered us.  There is no time limit: a peer that is still connected may
-// be mid way through a sync of any size, and its references live until the frames arrive or its sockets go.  The
-// reference offer delivery records are only there to dedupe acks, so those are cleared after a few minutes.
+// expireUnknownReferences removes references from unknown peers that have either gone unserved across repeated
+// request attempts or lived past unknownReferenceLifetime, even if the peer keeps its socket alive.
+func (b *Bounce) expireUnknownReferences() {
+	now := time.Now().Unix()
+	retryCutoff := now - referenceRetrySeconds.Load()
+	ageCutoff := now - int64(unknownReferenceLifetime.Seconds())
+	err := b.referenceDatabase.Where(
+		"known_peer = ? AND ((state = ? AND attempts >= ? AND last_action < ?) OR created_at < ?)",
+		false,
+		referenceStateRequested,
+		maximumUnknownReferenceAttempts,
+		retryCutoff,
+		ageCutoff,
+	).Delete(&frameReference{}).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("error expiring unserved references from unknown peers")
+	}
+}
+
+// pruneReferences forgets what departed peers offered us, and expires unserved references from unknown peers.
+// Known peers that are still connected have no time limit so a sync of any size keeps its references until the
+// frames arrive or its sockets go.
 func (b *Bounce) pruneReferences() {
 	var peers []string
 	err := b.referenceDatabase.Model(&frameReference{}).Distinct("peer").Pluck("peer", &peers).Error
@@ -138,18 +160,13 @@ func (b *Bounce) pruneReferences() {
 		b.setIncompleteOfferFrom(peer, false)
 	}
 
-	fiveMinutesAgo := time.Now().Add(-5 * time.Minute).Unix()
-	err = b.referenceDatabase.Where("created_at < ?", fiveMinutesAgo).Delete(&deliveryRecord{}).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Fatal("error pruning delivery records from reference database")
-	}
+	b.expireUnknownReferences()
 }
 
 // only load things from the reference offer that we don't have, the ones
-// that we do have we ack while handling the offer
-func (b *Bounce) loadReferenceOffer(peer string, ro []frameReference) {
+// that we do have we ack while handling the offer.  Returns how many offered
+// references were dropped for lack of room.
+func (b *Bounce) loadReferenceOffer(peer string, ro []frameReference) int {
 	referenceRequestMutex.Lock()
 
 	log.WithFields(log.Fields{
@@ -157,29 +174,42 @@ func (b *Bounce) loadReferenceOffer(peer string, ro []frameReference) {
 		"len":  len(ro),
 	}).Debug("reference engine learning about a reference offer")
 	now := time.Now().Unix()
+	peerKnown := b.isKnownReferencePeer(peer)
 
-	// Every peer is allowed one offer's worth of references at a time, and the engine as a whole a fixed number, so
-	// that a peer naming frames it never serves cannot grow this table without bound.  A frame offered again only
-	// has its timestamp refreshed: a request already in flight is not made twice.
+	b.expireUnknownReferences()
+
+	// Partition the table between known peers (contacts and sync devices) and unknown peers so throwaway
+	// identities cannot crowd out honest catch-ups.  A frame offered again only has its timestamp refreshed:
+	// a request already in flight is not made twice.
 	var fromPeer, total int64
 	b.referenceDatabase.Model(&frameReference{}).Where("peer = ?", peer).Count(&fromPeer)
 	b.referenceDatabase.Model(&frameReference{}).Count(&total)
-	room := min(int64(maximumReferencesPerOffer)-fromPeer, int64(maximumReferences)-total)
+	var room int64
+	if peerKnown {
+		room = min(int64(maximumReferencesPerOffer)-fromPeer, int64(maximumReferences)-total)
+	} else {
+		var totalUnknown int64
+		b.referenceDatabase.Model(&frameReference{}).Where("known_peer = ?", false).Count(&totalUnknown)
+		peerLimit := min(maximumReferencesPerOffer, maximumUnknownReferencesPerPeer)
+		unknownLimit := min(maximumReferences, maximumUnknownReferences)
+		room = min(int64(peerLimit)-fromPeer, int64(unknownLimit)-totalUnknown, int64(maximumReferences)-total)
+	}
 	refresh := clause.OnConflict{
 		Columns:   []clause.Column{{Name: "frame_id"}, {Name: "type"}, {Name: "peer"}},
-		DoUpdates: clause.Assignments(map[string]interface{}{"last_action": now}),
+		DoUpdates: clause.Assignments(map[string]interface{}{"last_action": now, "known_peer": peerKnown}),
 	}
 	dropped := 0
 	for _, fr := range ro {
 		fr.State = referenceStateOffered
 		fr.Peer = peer
+		fr.KnownPeer = peerKnown
 		fr.LastAction = now
 
 		if room < int64(len(ro)) {
 			// Near the allowance, so tell a refresh from a new reference and count only the new ones
 			refreshed := b.referenceDatabase.Model(&frameReference{}).
 				Where("frame_id = ? AND type = ? AND peer = ?", fr.FrameID, fr.Type, peer).
-				Update("last_action", now)
+				Updates(map[string]interface{}{"last_action": now, "known_peer": peerKnown})
 			if refreshed.Error != nil {
 				log.WithFields(log.Fields{
 					"error": refreshed.Error.Error(),
@@ -220,6 +250,8 @@ func (b *Bounce) loadReferenceOffer(peer string, ro []frameReference) {
 		b.makeReferenceRequests()
 		referenceRequestMutex.Unlock()
 	}()
+
+	return dropped
 }
 
 // Inform any devices that offered us a frame that we just handled that we no longer need that frame, and remove those references from the database
@@ -324,8 +356,13 @@ func (b *Bounce) refuseReference(peer string, frameID ID, frameType uint16) {
 }
 
 func (b *Bounce) makeReferenceRequests() {
+	b.expireUnknownReferences()
+
 	// Make sure we aren't handling a catch up while checking what we still need to request
 	catchUpMutex.Lock()
+
+	now := time.Now().Unix()
+	retryCutoff := now - referenceRetrySeconds.Load()
 
 	// Get a unique list of all the frames we need to learn about and a device we can get them from.  This includes all frames that have been offered to
 	// us that we haven't requested yet, as well as alternative devices for frames that we have requested but have not received a response for in time
@@ -338,11 +375,11 @@ func (b *Bounce) makeReferenceRequests() {
 				Where(
 					"state = ? AND last_action > ?",
 					referenceStateRequested,
-					time.Now().Unix()-referenceRetrySeconds.Load(),
+					retryCutoff,
 				).
 				Table("frame_references"),
 			referenceStateRequested,
-			time.Now().Unix()-referenceRetrySeconds.Load(),
+			retryCutoff,
 		).
 		Find(&references).Error
 	if err != nil {
@@ -362,21 +399,26 @@ func (b *Bounce) makeReferenceRequests() {
 			"peer": peer,
 			"len":  len(frs),
 		}).Debug("making a reference request")
-		// broadcast the reference request to the peer
+		// Send the reference request to the peer and batch-update the requested rows
 		go b.sendDirect(peer, &referenceRequest{References: frs})
-		for _, fr := range frs {
-			// Update the references to indicate the new state and time we made these requests
+		rowIDs := make([]ID, len(frs))
+		for i, fr := range frs {
+			rowIDs[i] = fr.ID
+		}
+		for start := 0; start < len(rowIDs); start += catchUpMetadataBatchSize {
+			end := min(start+catchUpMetadataBatchSize, len(rowIDs))
 			err = b.referenceDatabase.
 				Table("frame_references").
-				Where("frame_id = ? AND type = ? AND peer = ?", fr.FrameID, fr.Type, fr.Peer).
+				Where("id IN ?", rowIDs[start:end]).
 				Updates(map[string]interface{}{
 					"state":       referenceStateRequested,
-					"last_action": time.Now().Unix(),
+					"last_action": now,
+					"attempts":    gorm.Expr("attempts + 1"),
 				}).Error
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err.Error(),
-				}).Fatal("error updating frame reference after making reference request")
+				}).Fatal("error updating frame references after making reference request")
 			}
 		}
 	}

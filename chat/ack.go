@@ -6,7 +6,6 @@ import (
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // An ack is a frame that contains any number of frame references.  Acks indicate that a peer has received
@@ -40,19 +39,18 @@ func (b *Bounce) handleAck(peer string, payload []byte, _ bool) (broadcastable, 
 		return nil, false
 	}
 
+	if len(a.References) > maximumReferencesPerOffer {
+		log.WithFields(log.Fields{
+			"peer":       peer,
+			"references": len(a.References),
+		}).Warn("ack names more references than allowed at once, ignoring the rest")
+		a.References = a.References[:maximumReferencesPerOffer]
+	}
+
 	for _, fr := range a.References {
-		// Reference offer delivery records are stored in the reference database
+		// Reference offer acks only complete offers we actually have in flight for this peer
 		if fr.Type == typeReferenceOffer {
-			err := b.referenceDatabase.Clauses(clause.OnConflict{DoNothing: true}).Create(&deliveryRecord{
-				Destination: peer,
-				FrameID:     fr.FrameID,
-				FrameType:   typeReferenceOffer,
-			}).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("error creating delivery record for reference offer")
-			}
+			b.ackPendingReferenceOffer(peer, fr.FrameID)
 			continue
 		}
 

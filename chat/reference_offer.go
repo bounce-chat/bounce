@@ -20,18 +20,81 @@ var maximumReferencesPerOffer = 100000
 // The reference engine holds at most this many references across every peer, however many peers there are
 var maximumReferences = 1000000
 
+// Unknown peers (devices with no known owner yet) get a smaller per-peer and combined ceiling so throwaway
+// identities cannot crowd out contacts or our own sync devices.  Variables so tests can shrink them.
+var maximumUnknownReferencesPerPeer = 1000
+var maximumUnknownReferences = 10000
+var maximumUnknownReferenceAttempts = 3
+var unknownReferenceLifetime = 5 * time.Minute
+
+type pendingOfferKey struct {
+	peer    string
+	offerID ID
+}
+
 type referenceState struct {
 	referenceOfferStatesMutex sync.Mutex
 	referenceOfferStates      map[string]*referenceOfferState
 	incompleteOffersMutex     sync.Mutex
 	incompleteOffers          map[string]bool
+	pendingOfferAcksMutex     sync.Mutex
+	pendingOfferAcks          map[pendingOfferKey]bool
 }
 
 func newReferenceState() *referenceState {
 	return &referenceState{
 		referenceOfferStates: map[string]*referenceOfferState{},
 		incompleteOffers:     map[string]bool{},
+		pendingOfferAcks:     map[pendingOfferKey]bool{},
 	}
+}
+
+func (b *Bounce) registerPendingReferenceOffer(peer string, offerID ID) {
+	b.referenceState.pendingOfferAcksMutex.Lock()
+	b.referenceState.pendingOfferAcks[pendingOfferKey{peer: peer, offerID: offerID}] = false
+	b.referenceState.pendingOfferAcksMutex.Unlock()
+}
+
+func (b *Bounce) ackPendingReferenceOffer(peer string, offerID ID) {
+	key := pendingOfferKey{peer: peer, offerID: offerID}
+	b.referenceState.pendingOfferAcksMutex.Lock()
+	if _, pending := b.referenceState.pendingOfferAcks[key]; pending {
+		b.referenceState.pendingOfferAcks[key] = true
+	} else {
+		log.WithFields(log.Fields{
+			"peer": peer,
+			"id":   offerID,
+		}).Debug("ignoring ack for reference offer not in flight")
+	}
+	b.referenceState.pendingOfferAcksMutex.Unlock()
+}
+
+func (b *Bounce) consumePendingReferenceOfferAck(peer string, offerID ID) bool {
+	key := pendingOfferKey{peer: peer, offerID: offerID}
+	b.referenceState.pendingOfferAcksMutex.Lock()
+	acked := b.referenceState.pendingOfferAcks[key]
+	if acked {
+		delete(b.referenceState.pendingOfferAcks, key)
+	}
+	b.referenceState.pendingOfferAcksMutex.Unlock()
+	return acked
+}
+
+func (b *Bounce) clearPendingReferenceOffer(peer string, offerID ID) {
+	b.referenceState.pendingOfferAcksMutex.Lock()
+	delete(b.referenceState.pendingOfferAcks, pendingOfferKey{peer: peer, offerID: offerID})
+	b.referenceState.pendingOfferAcksMutex.Unlock()
+}
+
+func (b *Bounce) isKnownReferencePeer(peer string) bool {
+	if b.encrypted {
+		peerUserKeyMutex.Lock()
+		_, known := peerUserKeys[peer]
+		peerUserKeyMutex.Unlock()
+		return known
+	}
+	_, known := b.peerOwner(peer)
+	return known
 }
 
 func (b *Bounce) incompleteOfferFrom(peer string) bool {
@@ -177,28 +240,17 @@ func (b *Bounce) sendReferenceOffer(peer string) {
 			return
 		}
 
-		// Send the offer to the peer
+		// Register the offer ID as in flight before sending so only its ack can complete it
+		b.registerPendingReferenceOffer(peer, referenceOffer.ID)
 		b.sendDirect(peer, referenceOffer)
 
 		// Wait for an ack before checking if it was delivered
 		time.Sleep(referenceRetryInterval())
 
-		// Manually check the reference database for a delivery record, and delete it and return if found
-		var dr deliveryRecord
-		err := b.referenceDatabase.Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, referenceOffer.ID, typeReferenceOffer).First(&dr).Error
-		if err == nil {
-			err = b.referenceDatabase.Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, referenceOffer.ID, typeReferenceOffer).Delete(&deliveryRecord{}).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("error deleting reference offer delivery record")
-			}
+		if b.consumePendingReferenceOfferAck(peer, referenceOffer.ID) {
 			return
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			log.WithFields(log.Fields{
-				"error": err.Error(),
-			}).Fatal("error looking up reference offer delivery record")
 		}
+		b.clearPendingReferenceOffer(peer, referenceOffer.ID)
 
 		// Stop attempting to deliver an offer after a timeout
 		if time.Now().After(giveUpTime) {
@@ -1466,8 +1518,6 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		return nil, false
 	}
 
-	go b.sendAck(peer, typeReferenceOffer, ro.ID)
-
 	encryptedDeviceCacheMutex.Lock()
 	_, encryptedPeer := encryptedDeviceCache[peer]
 	encryptedDeviceCacheMutex.Unlock()
@@ -1475,6 +1525,7 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		// An encrypted device may send an empty reference offer in order to trigger the peer
 		// to request the management key hash, so that the peer can check if the encrypted device needs
 		// to be re-keyed.  This is the only case that an empty reference offer should ever be sent.
+		go b.sendAck(peer, typeReferenceOffer, ro.ID)
 		b.getManagementKeyHash(peer)
 		b.sendEncryptedClearBefores(peer)
 		b.sendDirect(peer, requestECRO{})
@@ -1493,8 +1544,16 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 	references, acks := b.processReferenceOffer(peer, ro.References)
 
 	// Inform the reference engine that this peer has these frames that we don't know about
+	dropped := 0
 	if len(references) > 0 {
-		b.loadReferenceOffer(peer, references)
+		dropped = b.loadReferenceOffer(peer, references)
+	}
+
+	// Ack the offer unless we had to drop part of a known peer's offer for lack of room, in which case
+	// leaving it unacked lets the sender's retry loop re-offer once capacity frees up.  Unknown peers
+	// are always acked so they cannot probe table fullness.
+	if dropped == 0 || !b.isKnownReferencePeer(peer) {
+		go b.sendAck(peer, typeReferenceOffer, ro.ID)
 	}
 
 	// Send an ack for everything we already have in the database and the peer may have
@@ -1520,14 +1579,7 @@ func (b *Bounce) processReferenceOffer(peer string, offered []frameReference) ([
 	typesToIDs := referencedIDs(offered)
 
 	catchUpMutex.Lock()
-	peerIsKnown := false
-	if b.encrypted {
-		peerUserKeyMutex.Lock()
-		_, peerIsKnown = peerUserKeys[peer]
-		peerUserKeyMutex.Unlock()
-	} else {
-		_, peerIsKnown = b.peerOwner(peer)
-	}
+	peerIsKnown := b.isKnownReferencePeer(peer)
 	if !peerIsKnown {
 		for _, frameType := range referencedTypes {
 			for _, id := range typesToIDs[frameType] {

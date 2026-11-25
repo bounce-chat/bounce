@@ -1494,19 +1494,19 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 		}
 
 		go func() {
+			b.registerPendingReferenceOffer(peer, ero.ID)
 			success := false
 			for range 5 {
 				b.sendDirect(peer, ero)
 
 				time.Sleep(referenceRetryInterval())
 
-				var dr deliveryRecord
-				err := b.referenceDatabase.Where("destination = ? AND frame_id = ? AND frame_type = ?", peer, ero.ID, typeReferenceOffer).First(&dr).Error
-				if err == nil {
+				if b.consumePendingReferenceOfferAck(peer, ero.ID) {
 					success = true
 					break
 				}
 			}
+			b.clearPendingReferenceOffer(peer, ero.ID)
 			if !success {
 				log.WithFields(log.Fields{
 					"peer": peer,

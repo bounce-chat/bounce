@@ -385,10 +385,21 @@ func (b *Bounce) handleCatchUp(peer string, payload []byte, _ bool) (broadcastab
 	// after handling all of the frames
 	if !encrypted && !deviceExists {
 		if dev, deviceExists = b.getDeviceFromAddress(peer); deviceExists {
-			// An unknown device sent a catch up that included frames that prove we should add the device,
-			// since we didn't initially offer references to this device we should now do so now that we
-			// have context on what this device is
+			// An unknown device sent a catch up that included frames that prove we should add the device.
+			// Promote any remaining references from it to known, offer our own references now that we
+			// have context on what this device is, and ask it for a fresh reference offer in case part
+			// of its initial offer was capped while it was still unknown.
+			referenceRequestMutex.Lock()
+			err = b.referenceDatabase.Table("frame_references").Where("peer = ?", peer).Update("known_peer", true).Error
+			referenceRequestMutex.Unlock()
+			if err != nil {
+				log.WithFields(log.Fields{
+					"peer":  peer,
+					"error": err.Error(),
+				}).Fatal("error promoting frame references for newly learned device")
+			}
 			go b.sendReferences(peer)
+			go b.sendDirect(peer, requestReferenceOffer{})
 		} else {
 			encryptedDeviceCacheMutex.Lock()
 			_, encrypted := encryptedDeviceCache[peer]
