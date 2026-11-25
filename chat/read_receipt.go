@@ -8,6 +8,7 @@ import (
 	"github.com/Basekick-Labs/msgpack/v6"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var readReceiptTargetTypeString = map[uint16]string{
@@ -32,17 +33,22 @@ var errUnknownReadReceiptTargetType = errors.New("unknown target type for read r
 var errSeenTargetNotFound = errors.New("item to mark as seen not found")
 var errReadReceiptActorNotParticipant = errors.New("read receipt actor is not a participant of the thread the message belongs to")
 
+var (
+	maximumEarlyReadReceiptsPerActor = 200
+	maximumEarlyReadReceipts         = 2000
+)
+
 var readReceiptMutex sync.Mutex
 
 type readReceipt struct {
 	SignedFrame
 	ID          ID `gorm:"primary_key;"`
 	Nonce       nonce
-	Actor       ID
-	Destination ID  `msgpack:"-"`
-	Scope       int `msgpack:"-"`
-	Target      ID
-	TargetType  uint16
+	Actor       ID     `gorm:"uniqueIndex:idx_read_receipt_actor_target"`
+	Destination ID     `msgpack:"-"`
+	Scope       int    `msgpack:"-"`
+	Target      ID     `gorm:"uniqueIndex:idx_read_receipt_actor_target"`
+	TargetType  uint16 `gorm:"uniqueIndex:idx_read_receipt_actor_target"`
 	Timestamp   int64
 	SavedAt     int64 `msgpack:"-"`
 }
@@ -221,17 +227,40 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) (b
 		}).Error("error parsing read receipt")
 		return nil, false
 	}
+
+	// Only accept one read receipt per (actor, target, target_type).
+	var existingForTarget readReceipt
+	err = b.database.Select("id").Where("actor = ? AND target = ? AND target_type = ?", rr.Actor, rr.Target, rr.TargetType).First(&existingForTarget).Error
+	if err == nil {
+		log.WithFields(log.Fields{
+			"id":          rr.ID,
+			"existing_id": existingForTarget.ID,
+			"actor":       rr.Actor,
+			"target":      rr.Target,
+		}).Debug("ignoring duplicate read receipt for actor and target")
+		go b.sendAck(peer, typeReadReceipt, rr.ID)
+		return nil, false
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up existing read receipt for target")
+	}
+
 	destination, author, scope, err := b.getReadReceiptDestinationAuthorAndScope(rr.Target, targetTypeString, rr.Actor)
 	if err == nil {
 		rr.Destination = destination
 		rr.Scope = scope
 
 		// Save to database
-		err = b.database.Create(&rr).Error
-		if err != nil {
+		result := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&rr)
+		if result.Error != nil {
 			log.WithFields(log.Fields{
-				"error": err.Error(),
+				"error": result.Error.Error(),
 			}).Fatal("database error saving read receipt")
+		}
+		if result.RowsAffected == 0 {
+			go b.sendAck(peer, typeReadReceipt, rr.ID)
+			return nil, false
 		}
 
 		// Update the database and UI
@@ -253,12 +282,51 @@ func (b *Bounce) handleReadReceipt(peer string, payload []byte, catchUp bool) (b
 
 		return &rr, true
 	} else if errors.Is(err, gorm.ErrRecordNotFound) {
-		// A read receipt may have arrived before the message, just save it and ack but don't broadcast,
-		// additional details will be saved on this read receipt when the message arrives
-		err = b.database.Create(&rr).Error
+		// Cap unresolved early read receipts so a peer cannot fill the table with receipts for nonexistent targets.
+		// Over-cap receipts are dropped without acking so honest out-of-order receipts can be re-offered once the
+		// message arrives.
+		var actorEarlyCount int64
+		err = b.database.Model(&readReceipt{}).
+			Where("destination = ? AND actor = ?", NilID, rr.Actor).
+			Count(&actorEarlyCount).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
+			}).Fatal("database error counting early read receipts for actor")
+		}
+		if actorEarlyCount >= int64(maximumEarlyReadReceiptsPerActor) {
+			log.WithFields(log.Fields{
+				"id":    rr.ID,
+				"actor": rr.Actor,
+				"count": actorEarlyCount,
+			}).Warn("dropping early read receipt: actor early read receipt limit reached")
+			return nil, false
+		}
+
+		var totalEarlyCount int64
+		err = b.database.Model(&readReceipt{}).
+			Where("destination = ?", NilID).
+			Count(&totalEarlyCount).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error counting early read receipts")
+		}
+		if totalEarlyCount >= int64(maximumEarlyReadReceipts) {
+			log.WithFields(log.Fields{
+				"id":    rr.ID,
+				"actor": rr.Actor,
+				"count": totalEarlyCount,
+			}).Warn("dropping early read receipt: global early read receipt limit reached")
+			return nil, false
+		}
+
+		// A read receipt may have arrived before the message, just save it and ack but don't broadcast,
+		// additional details will be saved on this read receipt when the message arrives
+		result := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&rr)
+		if result.Error != nil {
+			log.WithFields(log.Fields{
+				"error": result.Error.Error(),
 			}).Fatal("database error saving read receipt")
 		}
 		go b.sendAck(peer, typeReadReceipt, rr.ID)
@@ -512,11 +580,24 @@ func (b *Bounce) getReadReceiptDestinationAuthorAndScope(id ID, frameType string
 }
 
 func (b *Bounce) sendReadReceipt(id ID, frameType string) error {
+	readReceiptMutex.Lock()
+	defer readReceiptMutex.Unlock()
+
 	// Create read receipt
 	targetTypeInt, ok := readReceiptTargetTypeInt[frameType]
 	if !ok {
 		return errUnknownReadReceiptTargetType
 	}
+	var existingRR readReceipt
+	err := b.database.Select("id").Where("actor = ? AND target = ? AND target_type = ?", b.currentUserID(), id, targetTypeInt).First(&existingRR).Error
+	if err == nil {
+		return nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up existing read receipt")
+	}
+
 	destination, author, scope, err := b.getReadReceiptDestinationAuthorAndScope(id, frameType, b.currentUserID())
 	if err != nil {
 		if errors.Is(err, errUnknownReadReceiptTargetType) {
@@ -551,11 +632,14 @@ func (b *Bounce) sendReadReceipt(id ID, frameType string) error {
 	rr.Signer = sc.Signer
 
 	// Save to database
-	err = b.database.Create(&rr).Error
-	if err != nil {
+	result := b.database.Clauses(clause.OnConflict{DoNothing: true}).Create(&rr)
+	if result.Error != nil {
 		log.WithFields(log.Fields{
-			"error": err.Error(),
+			"error": result.Error.Error(),
 		}).Fatal("database error saving read receipt")
+	}
+	if result.RowsAffected == 0 {
+		return nil
 	}
 
 	// Broadcast
@@ -695,4 +779,31 @@ func (b *Bounce) MarkAllDirectMessagesAsRead(userID ID) {
 			}
 		}
 	}()
+}
+
+// groupReadReceiptsByTarget indexes read receipts by target message ID while ensuring at most one entry per
+// (target, actor) pair reaches callers even if older rows existed prior to deduplication.
+func groupReadReceiptsByTarget(rrs []readReceipt) map[ID][]ReadReceipt {
+	rrMap := map[ID][]ReadReceipt{}
+	seen := map[ID]map[ID]struct{}{}
+	for _, rr := range rrs {
+		actors, ok := seen[rr.Target]
+		if !ok {
+			actors = map[ID]struct{}{}
+			seen[rr.Target] = actors
+		}
+		if _, dup := actors[rr.Actor]; dup {
+			continue
+		}
+		actors[rr.Actor] = struct{}{}
+		rrMap[rr.Target] = append(
+			rrMap[rr.Target],
+			ReadReceipt{
+				ID:     rr.ID,
+				Actor:  rr.Actor,
+				Target: rr.Target,
+			},
+		)
+	}
+	return rrMap
 }

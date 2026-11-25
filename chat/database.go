@@ -609,23 +609,13 @@ func (b *Bounce) GetInitialState() InitialState {
 	}
 
 	dmRRs := []readReceipt{}
-	dmRRmap := map[ID][]ReadReceipt{}
-	err = b.database.Where("target_type = ?", typeDirectMessage).Find(&dmRRs).Error
+	err = b.database.Select("id", "actor", "target").Where("target_type = ? AND destination != ?", typeDirectMessage, NilID).Find(&dmRRs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error looking up read receipts")
 	}
-	for _, rr := range dmRRs {
-		dmRRmap[rr.Target] = append(
-			dmRRmap[rr.Target],
-			ReadReceipt{
-				ID:     rr.ID,
-				Actor:  rr.Actor,
-				Target: rr.Target,
-			},
-		)
-	}
+	dmRRmap := groupReadReceiptsByTarget(dmRRs)
 
 	dmDRmap := b.deliveredUsers(typeDirectMessage, nil)
 
@@ -737,23 +727,13 @@ func (b *Bounce) GetInitialState() InitialState {
 	}
 
 	gmRRs := []readReceipt{}
-	gmRRmap := map[ID][]ReadReceipt{}
-	err = b.database.Where("target_type = ?", typeGroupMessage).Find(&gmRRs).Error
+	err = b.database.Select("id", "actor", "target").Where("target_type = ? AND destination != ?", typeGroupMessage, NilID).Find(&gmRRs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error looking up read receipts")
 	}
-	for _, rr := range gmRRs {
-		gmRRmap[rr.Target] = append(
-			gmRRmap[rr.Target],
-			ReadReceipt{
-				ID:     rr.ID,
-				Actor:  rr.Actor,
-				Target: rr.Target,
-			},
-		)
-	}
+	gmRRmap := groupReadReceiptsByTarget(gmRRs)
 
 	gmDRmap := b.deliveredUsers(typeGroupMessage, nil)
 
@@ -1323,23 +1303,13 @@ func (b *Bounce) GetDMHistory(userID ID) InitialState {
 	}
 
 	dmRRs := []readReceipt{}
-	dmRRmap := map[ID][]ReadReceipt{}
-	err = b.database.Where("target_type = ? AND destination = ?", typeDirectMessage, userID).Find(&dmRRs).Error
+	err = b.database.Select("id", "actor", "target").Where("target_type = ? AND destination = ?", typeDirectMessage, userID).Find(&dmRRs).Error
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Fatal("error looking up read receipts")
 	}
-	for _, rr := range dmRRs {
-		dmRRmap[rr.Target] = append(
-			dmRRmap[rr.Target],
-			ReadReceipt{
-				ID:     rr.ID,
-				Actor:  rr.Actor,
-				Target: rr.Target,
-			},
-		)
-	}
+	dmRRmap := groupReadReceiptsByTarget(dmRRs)
 
 	dmIDs := make([]ID, 0, len(dms))
 	for _, dm := range dms {

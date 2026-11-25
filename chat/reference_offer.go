@@ -1020,7 +1020,7 @@ func (b *Bounce) getReadReceiptsToOffer(address string, userID ID) []frameRefere
 		err := b.database.
 			Distinct("read_receipts.id").
 			Joins("LEFT JOIN delivery_records ON delivery_records.frame_id == read_receipts.id AND delivery_records.destination == ? AND delivery_records.frame_type == ?", address, typeReadReceipt).
-			Where("delivery_records.id IS NULL").
+			Where("read_receipts.destination != ? AND delivery_records.id IS NULL", NilID).
 			Find(&unsentReadReceipts).Error
 		if err != nil {
 			log.WithFields(log.Fields{
