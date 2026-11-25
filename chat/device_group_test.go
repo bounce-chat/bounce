@@ -1265,3 +1265,119 @@ func TestUserIDDerivationAndBeforeCreateBackstop(t *testing.T) {
 	assert.False(t, me.hasValidDeviceGroup(noOrig))
 	assert.Error(t, me.database.Create(&noOrig).Error)
 }
+
+func TestDeviceFrameDoesNotLeakKnownAddresses(t *testing.T) {
+	me, alice, _, _ := createUsersAndGroups(t)
+
+	// Add Carol as a DM-only contact of Me (not sharing any group with Alice)
+	carol := newBounceUser("Carol")
+	t.Cleanup(carol.Shutdown)
+	carolUser, ok := carol.currentUser()
+	assert.True(t, ok)
+	var carolCopy user
+	cb, err := msgpack.Marshal(carolUser)
+	assert.NoError(t, err)
+	assert.NoError(t, msgpack.Unmarshal(cb, &carolCopy))
+	assert.NoError(t, me.database.Create(&carolCopy).Error)
+
+	// Stranger is an unknown peer with its own onion identity, connected directly to Me
+	stranger := newBounceUser("Stranger")
+	t.Cleanup(stranger.Shutdown)
+	strangerConn, err := stranger.network.Dial(me.network.Address())
+	assert.NoError(t, err)
+	t.Cleanup(func() { strangerConn.Close() })
+	go func() {
+		for {
+			if _, _, err := readFrame(strangerConn, true); err != nil {
+				return
+			}
+		}
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if me.getRemoteDevice(stranger.network.Address()).connectedSockets() > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	assert.True(t, me.getRemoteDevice(stranger.network.Address()).connectedSockets() > 0)
+
+	wasAcked := func(from, to *Bounce, frameID ID) bool {
+		flow := from.network.Address() + to.network.Address()
+		networkTracking.Lock()
+		defer networkTracking.Unlock()
+		for _, ref := range acked[flow] {
+			if ref.Type == typeDevice && ref.FrameID == frameID {
+				return true
+			}
+		}
+		return false
+	}
+
+	// 1. Stranger sends an unsigned device frame naming Alice's known address, Alice's real device frame,
+	// and a self-signed variant of Alice's device: none may be acked.
+	now := time.Now().Unix()
+	unsignedProbe := &device{
+		Nonce:     newNonce(),
+		UserID:    NewID(),
+		Address:   alice.network.Address(),
+		Network:   alice.network.Name(),
+		Timestamp: now,
+	}
+	unsignedProbe.ID = unsignedProbe.generateID()
+
+	aliceReal, found := me.getDeviceFromAddress(alice.network.Address())
+	assert.True(t, found)
+
+	// Variant of Alice's device with a different ID, genuinely self-signed by Alice's key
+	aliceVariant := &device{
+		Nonce:     newNonce(),
+		UserID:    alice.currentUserID(),
+		Address:   alice.network.Address(),
+		Network:   alice.network.Name(),
+		Timestamp: now,
+	}
+	aliceVariant.ID = aliceVariant.generateID()
+	alice.signDevice(aliceVariant)
+
+	assert.NoError(t, writeFrame(strangerConn, typeDevice, unsignedProbe.getPayload()))
+	assert.NoError(t, writeFrame(strangerConn, typeDevice, aliceReal.getPayload()))
+	assert.NoError(t, writeFrame(strangerConn, typeDevice, aliceVariant.getPayload()))
+
+	// 2. Unrelated DM contact Alice probes Carol's address (unsigned and real self-signed): neither may be acked.
+	carolReal, found := me.getDeviceFromAddress(carol.network.Address())
+	assert.True(t, found)
+	carolUnsignedProbe := &device{
+		Nonce:     newNonce(),
+		UserID:    NewID(),
+		Address:   carol.network.Address(),
+		Network:   carol.network.Name(),
+		Timestamp: now,
+	}
+	carolUnsignedProbe.ID = carolUnsignedProbe.generateID()
+
+	alice.sendDirect(me.network.Address(), carolUnsignedProbe)
+	alice.sendDirect(me.network.Address(), &carolReal)
+
+	// 3. Control (BUG-91 re-sync): Alice sends a self-signed variant of her OWN device (different ID,
+	// same address) -> Alice IS entitled to know about her own device, so Me MUST ack it.
+	aliceOwnVariant := &device{
+		Nonce:     newNonce(),
+		UserID:    alice.currentUserID(),
+		Address:   alice.network.Address(),
+		Network:   alice.network.Name(),
+		Timestamp: now,
+	}
+	aliceOwnVariant.ID = aliceOwnVariant.generateID()
+	alice.signDevice(aliceOwnVariant)
+	alice.sendDirect(me.network.Address(), aliceOwnVariant)
+	awaitAck(t, alice, me, typeDevice, aliceOwnVariant.ID)
+
+	// Give any stray goroutine acks a brief chance to arrive, then assert silence on all probes
+	time.Sleep(50 * time.Millisecond)
+	assert.False(t, wasAcked(me, stranger, unsignedProbe.ID), "stranger unsigned address probe must not be acked")
+	assert.False(t, wasAcked(me, stranger, aliceReal.ID), "stranger probe with real device frame must not be acked")
+	assert.False(t, wasAcked(me, stranger, aliceVariant.ID), "stranger probe with self-signed variant must not be acked")
+	assert.False(t, wasAcked(me, alice, carolUnsignedProbe.ID), "unrelated contact unsigned probe for Carol must not be acked")
+	assert.False(t, wasAcked(me, alice, carolReal.ID), "unrelated contact probe with Carol's device frame must not be acked")
+}

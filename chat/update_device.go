@@ -196,6 +196,16 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) (
 	}
 	ud.Author = d.UserID
 
+	// Make sure the user that signed this update owns the device before checking block status
+	if !b.signedByUser(sc, d.UserID) {
+		log.WithFields(log.Fields{
+			"id":     ud.ID,
+			"target": ud.Target,
+			"signer": ud.Signer,
+		}).Warn("ignoring update device not signed by user who owns device")
+		return nil, false
+	}
+
 	// Ignore anything from a blocked user
 	if blockedUser(ud.getAuthor()) {
 		log.WithFields(log.Fields{
@@ -216,16 +226,6 @@ func (b *Bounce) handleUpdateDevice(peer string, payload []byte, catchUp bool) (
 		log.WithFields(log.Fields{
 			"error": err.Error(),
 		}).Error("ignoring update device with invalid payload")
-		return nil, false
-	}
-
-	// Make sure the user that signed this update owns the device
-	if !b.signedByUser(sc, d.UserID) {
-		log.WithFields(log.Fields{
-			"id":     ud.ID,
-			"target": ud.Target,
-			"signer": ud.Signer,
-		}).Warn("ignoring update device not signed by user who owns device")
 		return nil, false
 	}
 

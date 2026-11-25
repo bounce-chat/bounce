@@ -207,22 +207,7 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) (br
 		return nil, false
 	}
 
-	// Ignore anything from a blocked user
-	if blockedUser(uu.getAuthor()) {
-		log.WithFields(log.Fields{
-			"id":     uu.ID,
-			"author": uu.getAuthor(),
-		}).Warn("ignoring update user from blocked user")
-
-		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
-			if !blockedUser(peerDev.UserID) {
-				go b.sendAck(peer, typeUpdateUser, uu.ID)
-			}
-		}
-		return nil, false
-	}
-
-	// Make sure the signing device was not revoked before creating this
+	// Make sure the signing device is known
 	var signerDevice device
 	err = b.database.Select("revoked_at").Where("address = ?", uu.Signer).First(&signerDevice).Error
 	if err != nil {
@@ -239,6 +224,31 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) (br
 		}
 	}
 
+	// Make sure this update was signed by the user who it applies to before checking block or revocation status
+	if !b.signedByUser(sc, uu.Target) {
+		log.WithFields(log.Fields{
+			"target": uu.Target,
+			"signer": uu.Signer,
+			"peer":   peer,
+		}).Warn("ignoring update user not signed by the user it targets")
+		return nil, false
+	}
+
+	// Ignore anything from a blocked user
+	if blockedUser(uu.getAuthor()) {
+		log.WithFields(log.Fields{
+			"id":     uu.ID,
+			"author": uu.getAuthor(),
+		}).Warn("ignoring update user from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeUpdateUser, uu.ID)
+			}
+		}
+		return nil, false
+	}
+
 	// Do not allow frames from revoked devices
 	if signerDevice.RevokedAt != 0 {
 		log.WithFields(log.Fields{
@@ -246,16 +256,6 @@ func (b *Bounce) handleUpdateUser(peer string, payload []byte, catchUp bool) (br
 			"signer": uu.Signer,
 		}).Warn("ignoring update user signed by revoked device")
 		go b.sendAck(peer, typeUpdateUser, uu.ID)
-		return nil, false
-	}
-
-	// Make sure this update was signed by the user who it applies to
-	if !b.signedByUser(sc, uu.Target) {
-		log.WithFields(log.Fields{
-			"target": uu.Target,
-			"signer": uu.Signer,
-			"peer":   peer,
-		}).Warn("ignoring update user not signed by the user it targets")
 		return nil, false
 	}
 

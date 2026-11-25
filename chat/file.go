@@ -742,62 +742,14 @@ func (b *Bounce) handleChunkOffer(peer string, payload []byte, catchUp bool) (br
 	case scopeGlobal:
 		// A user may offer chunks of their own profile image, our own profile image, or (via a sync device)
 		// any profile image we hold; another user re-seeding a third user's avatar must share a group with them.
-		if co.Author != b.currentUserID() && co.Destination != co.Author && co.Destination != b.currentUserID() {
-			var shared int64
-			err = b.database.Table("group_users AS a").
-				Joins("JOIN group_users AS b ON a.group_id = b.group_id").
-				Where("a.user_id = ? AND b.user_id = ?", co.Author, co.Destination).
-				Count(&shared).Error
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err.Error(),
-				}).Fatal("database error checking whether chunk offer author and destination share a group")
-			}
-			inSharedGroup := shared > 0
-			if !inSharedGroup {
-				b.consensusStore.Lock()
-				for _, cs := range b.consensusStore.groups {
-					gs, topErr := cs.top()
-					if topErr != nil {
-						continue
-					}
-					if (gs.isMember(co.Author) || gs.isInvited(co.Author)) && (gs.isMember(co.Destination) || gs.isInvited(co.Destination)) {
-						inSharedGroup = true
-						break
-					}
-				}
-				b.consensusStore.Unlock()
-			}
-			if !inSharedGroup {
-				var invitedGroupIDs []ID
-				err = b.database.Model(&group{}).
-					Where("invites LIKE ? OR invites LIKE ?", "%"+co.Author.String()+"%", "%"+co.Destination.String()+"%").
-					Pluck("id", &invitedGroupIDs).Error
-				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err.Error(),
-					}).Fatal("database error looking up invited groups for chunk offer")
-				}
-				for _, groupID := range invitedGroupIDs {
-					gs, stateErr := b.currentGroupState(groupID)
-					if stateErr != nil {
-						continue
-					}
-					if (gs.isMember(co.Author) || gs.isInvited(co.Author)) && (gs.isMember(co.Destination) || gs.isInvited(co.Destination)) {
-						inSharedGroup = true
-						break
-					}
-				}
-			}
-			if !inSharedGroup {
-				log.WithFields(log.Fields{
-					"id":          co.ID,
-					"peer":        peer,
-					"author":      co.Author,
-					"destination": co.Destination,
-				}).Warn("ignoring global-scoped chunk offer for unrelated user")
-				return nil, false
-			}
+		if co.Author != b.currentUserID() && co.Destination != co.Author && co.Destination != b.currentUserID() && !b.usersShareGroup(co.Author, co.Destination) {
+			log.WithFields(log.Fields{
+				"id":          co.ID,
+				"peer":        peer,
+				"author":      co.Author,
+				"destination": co.Destination,
+			}).Warn("ignoring global-scoped chunk offer for unrelated user")
+			return nil, false
 		}
 	case scopeGroup:
 		gs, err := b.currentGroupState(co.Destination)

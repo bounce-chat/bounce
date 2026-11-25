@@ -284,3 +284,130 @@ func TestBlockedUserCannotUpdateDM(t *testing.T) {
 	assert.NoError(t, me.database.First(&afterUser, "id = ?", malloryID).Error)
 	assert.Equal(t, "blocked note", afterUser.Notes)
 }
+
+func TestBlockListNotLeakedByUnauthenticatedAcks(t *testing.T) {
+	me, alice, bob, _ := createUsersAndGroups(t)
+
+	bobDev, found := me.getDeviceFromAddress(bob.network.Address())
+	assert.True(t, found)
+
+	// Block Bob on Me while keeping Alice as an unblocked contact
+	assert.NoError(t, me.BlockUser(bob.currentUserID()))
+	assert.True(t, blockedUser(bob.currentUserID()))
+
+	wasAcked := func(frameType uint16, frameID ID) bool {
+		flow := me.network.Address() + alice.network.Address()
+		networkTracking.Lock()
+		defer networkTracking.Unlock()
+		for _, ref := range acked[flow] {
+			if ref.Type == frameType && ref.FrameID == frameID {
+				return true
+			}
+		}
+		return false
+	}
+
+	now := time.Now().Unix()
+
+	// 1. Forged device probe from Alice claiming UserID=Bob without a valid introduction from Bob
+	probeKey := bnc01NewOnion()
+	forgedDevice := &device{
+		Nonce:     newNonce(),
+		UserID:    bob.currentUserID(),
+		Address:   probeKey.addr(),
+		Network:   me.network.Name(),
+		Timestamp: now,
+	}
+	forgedDevice.ID = forgedDevice.generateID()
+	forgedDevice.SelfSignature = probeKey.sign(deviceSelfSignatureHash(forgedDevice.ID))
+	alice.sendDirect(me.network.Address(), forgedDevice)
+
+	// 2. Forged updateUser probe signed by Alice targeting blocked Bob
+	forgedUU := updateUser{
+		Nonce:     newNonce(),
+		Target:    bob.currentUserID(),
+		Type:      updateUserTypeUpdateName,
+		Data:      []byte("probe"),
+		Timestamp: now,
+	}
+	forgedUU.ID = forgedUU.generateID()
+	alice.sendDirect(me.network.Address(), encodedSendable{
+		frameType: typeUpdateUser,
+		payload:   signedFrame(t, alice, typeUpdateUser, forgedUU),
+	})
+
+	// 3. Forged updateDevice probe signed by Alice targeting blocked Bob's device
+	forgedUD := updateDevice{
+		Nonce:     newNonce(),
+		Target:    bobDev.ID,
+		Type:      updateDeviceTypeUpdateName,
+		Data:      []byte("probe"),
+		Timestamp: now,
+	}
+	forgedUD.ID = forgedUD.generateID()
+	alice.sendDirect(me.network.Address(), encodedSendable{
+		frameType: typeUpdateDevice,
+		payload:   signedFrame(t, alice, typeUpdateDevice, forgedUD),
+	})
+
+	// Send a legitimate frame from Alice on the same connection so we know all three probes were processed
+	sentinel := updateUser{
+		Nonce:     newNonce(),
+		Target:    alice.currentUserID(),
+		Type:      updateUserTypeUpdateName,
+		Data:      []byte("Alice Updated"),
+		Timestamp: now + 1,
+	}
+	sentinel.ID = sentinel.generateID()
+	alice.sendDirect(me.network.Address(), encodedSendable{
+		frameType: typeUpdateUser,
+		payload:   signedFrame(t, alice, typeUpdateUser, sentinel),
+	})
+	awaitAck(t, alice, me, typeUpdateUser, sentinel.ID)
+
+	time.Sleep(50 * time.Millisecond)
+	assert.False(t, wasAcked(typeDevice, forgedDevice.ID), "forged device frame naming blocked user must not be acked")
+	assert.False(t, wasAcked(typeUpdateUser, forgedUU.ID), "forged updateUser naming blocked user must not be acked")
+	assert.False(t, wasAcked(typeUpdateDevice, forgedUD.ID), "forged updateDevice naming blocked user's device must not be acked")
+
+	// Control: genuine frames authored by blocked Bob and relayed by honest Alice ARE still acked (and dropped)
+	genuineBobSecond := introducedByBounce(bob.currentUserID(), bob, bnc01NewOnion(), now+2)
+	alice.sendDirect(me.network.Address(), &genuineBobSecond)
+	awaitAck(t, alice, me, typeDevice, genuineBobSecond.ID)
+	_, storedDev := me.getDeviceFromAddress(genuineBobSecond.Address)
+	assert.False(t, storedDev, "genuine device from blocked user must not be saved")
+
+	genuineUU := updateUser{
+		Nonce:     newNonce(),
+		Target:    bob.currentUserID(),
+		Type:      updateUserTypeUpdateName,
+		Data:      []byte("Bob New Name"),
+		Timestamp: now + 3,
+	}
+	genuineUU.ID = genuineUU.generateID()
+	alice.sendDirect(me.network.Address(), encodedSendable{
+		frameType: typeUpdateUser,
+		payload:   signedFrame(t, bob, typeUpdateUser, genuineUU),
+	})
+	awaitAck(t, alice, me, typeUpdateUser, genuineUU.ID)
+	var uuCount int64
+	assert.NoError(t, me.database.Model(&updateUser{}).Where("id = ?", genuineUU.ID).Count(&uuCount).Error)
+	assert.Equal(t, int64(0), uuCount, "genuine updateUser from blocked user must not be saved")
+
+	genuineUD := updateDevice{
+		Nonce:     newNonce(),
+		Target:    bobDev.ID,
+		Type:      updateDeviceTypeUpdateName,
+		Data:      []byte("Bob New Device"),
+		Timestamp: now + 4,
+	}
+	genuineUD.ID = genuineUD.generateID()
+	alice.sendDirect(me.network.Address(), encodedSendable{
+		frameType: typeUpdateDevice,
+		payload:   signedFrame(t, bob, typeUpdateDevice, genuineUD),
+	})
+	awaitAck(t, alice, me, typeUpdateDevice, genuineUD.ID)
+	var udCount int64
+	assert.NoError(t, me.database.Model(&updateDevice{}).Where("id = ?", genuineUD.ID).Count(&udCount).Error)
+	assert.Equal(t, int64(0), udCount, "genuine updateDevice from blocked user must not be saved")
+}

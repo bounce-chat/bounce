@@ -769,3 +769,53 @@ func (b *Bounce) SetGroupLastOpened(groupID ID, timestamp int64) {
 		}).Error("error updating group last opened time")
 	}
 }
+
+func (b *Bounce) usersShareGroup(userA, userB ID) bool {
+	var shared int64
+	err := b.database.Table("group_users AS a").
+		Joins("JOIN group_users AS b ON a.group_id = b.group_id").
+		Where("a.user_id = ? AND b.user_id = ?", userA, userB).
+		Count(&shared).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error checking whether users share a group")
+	}
+	if shared > 0 {
+		return true
+	}
+
+	b.consensusStore.Lock()
+	for _, cs := range b.consensusStore.groups {
+		gs, topErr := cs.top()
+		if topErr != nil {
+			continue
+		}
+		if (gs.isMember(userA) || gs.isInvited(userA)) && (gs.isMember(userB) || gs.isInvited(userB)) {
+			b.consensusStore.Unlock()
+			return true
+		}
+	}
+	b.consensusStore.Unlock()
+
+	var invitedGroupIDs []ID
+	err = b.database.Model(&group{}).
+		Where("invites LIKE ? OR invites LIKE ?", "%"+userA.String()+"%", "%"+userB.String()+"%").
+		Pluck("id", &invitedGroupIDs).Error
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+		}).Fatal("database error looking up invited groups")
+	}
+	for _, groupID := range invitedGroupIDs {
+		gs, stateErr := b.currentGroupState(groupID)
+		if stateErr != nil {
+			continue
+		}
+		if (gs.isMember(userA) || gs.isInvited(userA)) && (gs.isMember(userB) || gs.isInvited(userB)) {
+			return true
+		}
+	}
+
+	return false
+}

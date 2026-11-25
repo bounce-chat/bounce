@@ -334,36 +334,42 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadc
 		return nil, false
 	}
 
+	// Every device frame must be self-signed by the key of the address it names
+	if !b.hasValidSelfSignature(d) {
+		log.WithFields(log.Fields{
+			"peer":    peer,
+			"id":      d.ID,
+			"address": d.Address,
+		}).Warn("rejecting device without a valid self-signature")
+		return nil, false
+	}
+
 	// A device introduced by a revoked device is accepted only when the revoke retained it
 	if !b.deviceIntroductionAllowed(d) {
 		return nil, false
 	}
 
-	// Ignore anything from a blocked user
-	if blockedUser(d.getAuthor()) {
-		log.WithFields(log.Fields{
-			"id":     d.ID,
-			"author": d.getAuthor(),
-		}).Warn("ignoring device from blocked user")
-
-		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
-			if !blockedUser(peerDev.UserID) {
-				go b.sendAck(peer, typeDevice, d.ID)
-			}
-		}
-		return nil, false
-	}
-
-	// Check if this device already exists, acking but ignoring it if the address exists under another ID
+	// Check if this device already exists.  Only ack when the delivering peer is entitled to know about the
+	// existing device (same rule as getDevicesToOffer), so probes from strangers or unrelated contacts get silence.
 	var existingDevice device
 	err = b.database.Preload(clause.Associations).Where("address = ?", d.Address).First(&existingDevice).Error
 	if err == nil {
-		if existingDevice.ID == d.ID {
-			return &existingDevice, false
-		} else {
-			go b.sendAck(peer, typeDevice, d.ID)
+		peerDev, known := b.getDeviceFromAddress(peer)
+		entitled := known &&
+			peerDev.RevokedAt == 0 &&
+			!blockedUser(peerDev.UserID) &&
+			(peerDev.UserID == b.currentUserID() ||
+				existingDevice.UserID == b.currentUserID() ||
+				existingDevice.UserID == peerDev.UserID ||
+				b.usersShareGroup(peerDev.UserID, existingDevice.UserID))
+		if !entitled {
 			return nil, false
 		}
+		if existingDevice.ID == d.ID {
+			return &existingDevice, false
+		}
+		go b.sendAck(peer, typeDevice, d.ID)
+		return nil, false
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
@@ -398,6 +404,21 @@ func (b *Bounce) handleDevice(peer string, payload []byte, catchUp bool) (broadc
 			"address": d.Address,
 			"peer":    peer,
 		}).Warn("rejecting received device because it would result in an invalid device group")
+		return nil, false
+	}
+
+	// Ignore anything from a blocked user, checked only after introduction verifies so contacts cannot probe our block list
+	if blockedUser(d.getAuthor()) {
+		log.WithFields(log.Fields{
+			"id":     d.ID,
+			"author": d.getAuthor(),
+		}).Warn("ignoring device from blocked user")
+
+		if peerDev, ok := b.getDeviceFromAddress(peer); ok {
+			if !blockedUser(peerDev.UserID) {
+				go b.sendAck(peer, typeDevice, d.ID)
+			}
+		}
 		return nil, false
 	}
 
