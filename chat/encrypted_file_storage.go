@@ -372,26 +372,49 @@ func (b *Bounce) handleEncryptedStorageReferenceOffer(peer string, payload []byt
 		}
 
 		if len(f.EncryptedHashList) > 0 {
+			secrets, err := b.threadSecretsFor(&f)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"file_id": f.ID,
+					"error":   err.Error(),
+				}).Warn("cannot derive mailboxes for file, not requesting encrypted storage")
+				continue
+			}
+			labels := currentLabels(b.secretsForOwner(secrets, ownerUser.ID))
+			if len(labels) == 0 {
+				continue
+			}
+
+			var downloadedHashes []string
+			err = b.database.Model(&chunk{}).
+				Where("file_id = ? AND downloaded = ? AND length(encrypted_hash) > 0", f.ID, true).
+				Pluck("encrypted_hash", &downloadedHashes).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"file_id": f.ID,
+					"error":   err.Error(),
+				}).Fatal("database error looking up downloaded chunks for encrypted storage")
+			}
+			downloaded := map[string]bool{}
+			for _, h := range downloadedHashes {
+				downloaded[h] = true
+			}
+
 			deleteAt, canBatchDelete := b.getDeleteAtAndCanBatchDelete(fileID)
 			for _, hash := range strings.Split(f.EncryptedHashList, ",") {
-				// Request that this encrypted devices store the chunks it does not have
+				if !downloaded[hash] {
+					continue
+				}
+				// Request that this encrypted device store the chunks it does not have
 				var existingECO encryptedChunkOffer
 				err = b.database.Where("location = ? AND hash = ?", peer, hash).Take(&existingECO).Error
 				if errors.Is(err, gorm.ErrRecordNotFound) {
-					secrets, err := b.threadSecretsFor(&f)
-					if err != nil {
-						log.WithFields(log.Fields{
-							"file_id": f.ID,
-							"error":   err.Error(),
-						}).Warn("cannot derive mailboxes for file, not requesting encrypted storage")
-						continue
-					}
 					esrr.StorageRequests = append(
 						esrr.StorageRequests,
 						encryptedChunkStorageRequest{
 							ID:             NewID(),
 							Hash:           hash,
-							Labels:         currentLabels(b.secretsForOwner(secrets, ownerUser.ID)),
+							Labels:         labels,
 							DeleteAt:       deleteAt,
 							CanBatchDelete: canBatchDelete,
 						},
@@ -454,6 +477,29 @@ func (b *Bounce) handleEncryptedStorageReferenceRequest(peer string, payload []b
 			}
 		}
 
+		// Only serve chunk offers for chunks addressed to a mailbox the peer has asked for
+		var recipients []encryptedChunkRecipient
+		err = b.database.Where("hash = ?", eco.Hash).Find(&recipients).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error looking up encrypted chunk recipients")
+		}
+		allowed := false
+		for _, r := range recipients {
+			if b.peerCanReadLabel(peer, r.Label) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			log.WithFields(log.Fields{
+				"peer": peer,
+				"id":   eco.ID,
+			}).Warn("peer requested encrypted chunk offer for a mailbox it did not ask for")
+			continue
+		}
+
 		go b.sendDirect(peer, &eco)
 	}
 
@@ -500,14 +546,26 @@ func (ecsr *encryptedChunkStorageRequest) AfterDelete(tx *gorm.DB) error {
 		return nil
 	}
 
-	if ecsr.FullPath != "" {
-		var remaining int64
-		err := tx.Model(&encryptedChunkStorageRequest{}).Where("hash = ? AND id != ?", ecsr.Hash, ecsr.ID).Count(&remaining).Error
-		if err != nil {
+	var remaining int64
+	err := tx.Model(&encryptedChunkStorageRequest{}).Where("hash = ? AND id != ?", ecsr.Hash, ecsr.ID).Count(&remaining).Error
+	if err != nil {
+		return err
+	}
+	if remaining == 0 {
+		if ecsr.FullPath != "" {
+			releaseEncryptedBlob(ecsr.FullPath)
+		}
+		var offerIDs []ID
+		if err := tx.Model(&encryptedChunkOffer{}).Where("hash = ?", ecsr.Hash).Pluck("id", &offerIDs).Error; err != nil {
 			return err
 		}
-		if remaining == 0 {
-			releaseEncryptedBlob(ecsr.FullPath)
+		if len(offerIDs) > 0 {
+			if err := tx.Where("frame_id IN ? AND frame_type = ?", offerIDs, typeEncryptedChunkOffer).Delete(&deliveryRecord{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("id IN ?", offerIDs).Delete(&encryptedChunkOffer{}).Error; err != nil {
+				return err
+			}
 		}
 	}
 

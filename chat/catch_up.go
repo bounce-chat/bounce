@@ -687,8 +687,10 @@ func (b *Bounce) applyCatchUp(peer string, cu catchUp, hostCopies []ID) {
 		b.ui.InitialSyncComplete()
 	}
 
-	// If this is an encrypted device (and we aren't), check if we manage it, and if so check if we need to re-key it
+	// If this is an encrypted device (and we aren't), check if we manage it, and if so check if we need to re-key it,
+	// and send any pending history clears it has not received yet.
 	if encrypted && !b.encrypted {
 		b.getManagementKeyHash(peer)
+		go b.sendEncryptedClearBefores(peer)
 	}
 }

@@ -143,6 +143,14 @@ func (b *Bounce) handleEncryptedReceive(peer string, payload []byte, _ bool) (br
 		return nil, false
 	}
 
+	if _, present := allowedCatchUpFrames[decrypted.Type]; !present {
+		log.WithFields(log.Fields{
+			"frame_type": decrypted.Type,
+			"peer":       peer,
+		}).Warn("ignoring frame in encrypted receive with a type that is not allowed")
+		return nil, false
+	}
+
 	handlers := b.getHandlers(false)
 	handler, ok := handlers[decrypted.Type]
 	if !ok {

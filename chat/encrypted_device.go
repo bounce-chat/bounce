@@ -631,6 +631,21 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 		tags = append(tags, entry.Tag)
 	}
 
+	// A peer that passed the reference offer challenge for the authorized user is the owner's own device.  Anyone
+	// else may only leave frames in the owner's mailboxes, which the owner registers on every connection; that is
+	// how the devices of contacts this device has never met deliver to the owner, without the host learning who
+	// they are.  Their frames are stored in the untrusted tier.
+	// Checked before duplicate lookups so a stranger cannot probe whether a copy ID or tag is stored here.
+	fromOwner := b.peerIsOwner(peer)
+	if !fromOwner && !b.ownerCanReadAnyLabel(labels) {
+		log.WithFields(log.Fields{
+			"id":        ef.ID,
+			"peer":      peer,
+			"mailboxes": len(ef.Mailboxes),
+		}).Warn("ignoring encrypted frame that is not addressed to a mailbox of this device's owner")
+		return nil, false
+	}
+
 	var existingEF encryptedFrame
 	err = b.database.Take(&existingEF, "id = ?", ef.ID).Error
 	if err == nil {
@@ -644,31 +659,68 @@ func (b *Bounce) handleEncryptedFrame(peer string, payload []byte, catchUp bool)
 	}
 
 	// Another device may have relayed this same frame already under a different copy ID; the mailbox tags say so.
-	// Keep the copy we have, remember that this peer holds it, and ack the sender's copy so its own tracking works.
-	var existingEntry mailboxEntry
-	err = b.database.Take(&existingEntry, "tag IN ?", tags).Error
-	if err == nil {
-		b.markFrameDelivered(existingEntry.EncryptedFrameID, typeEncryptedFrame, peer)
-		go b.sendAck(peer, typeEncryptedFrame, ef.ID)
-		return nil, false
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+	// Keep the copy we have unless the owner is providing a trusted or more complete copy to replace an untrusted
+	// or partial one (so a non-owner cannot poison or narrow an owner copy by racing its tag).
+	var existingEntries []mailboxEntry
+	err = b.database.Where("tag IN ?", tags).Find(&existingEntries).Error
+	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-		}).Fatal("database error looking up mailbox entry")
+		}).Fatal("database error looking up mailbox entries")
 	}
+	if len(existingEntries) > 0 {
+		if !fromOwner {
+			b.markFrameDelivered(existingEntries[0].EncryptedFrameID, typeEncryptedFrame, peer)
+			go b.sendAck(peer, typeEncryptedFrame, ef.ID)
+			return nil, false
+		}
 
-	// A peer that passed the reference offer challenge for the authorized user is the owner's own device.  Anyone
-	// else may only leave frames in the owner's mailboxes, which the owner registers on every connection; that is
-	// how the devices of contacts this device has never met deliver to the owner, without the host learning who
-	// they are.  Their frames are stored in the untrusted tier.
-	fromOwner := b.peerIsOwner(peer)
-	if !fromOwner && !b.ownerCanReadAnyLabel(labels) {
-		log.WithFields(log.Fields{
-			"id":        ef.ID,
-			"peer":      peer,
-			"mailboxes": len(ef.Mailboxes),
-		}).Warn("ignoring encrypted frame that is not addressed to a mailbox of this device's owner")
-		return nil, false
+		matchedIDs := []ID{}
+		seenID := map[ID]bool{}
+		for _, entry := range existingEntries {
+			if !seenID[entry.EncryptedFrameID] {
+				seenID[entry.EncryptedFrameID] = true
+				matchedIDs = append(matchedIDs, entry.EncryptedFrameID)
+			}
+		}
+		var matchedFrames []encryptedFrame
+		err = b.database.Preload("Mailboxes").Where("id IN ?", matchedIDs).Find(&matchedFrames).Error
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+			}).Fatal("database error loading matched encrypted frames")
+		}
+
+		alreadyCovered := len(matchedFrames) == 1 && matchedFrames[0].FromOwner
+		if alreadyCovered {
+			existingLabels := map[string]bool{}
+			for _, entry := range matchedFrames[0].Mailboxes {
+				existingLabels[string(entry.Label)] = true
+			}
+			for _, entry := range ef.Mailboxes {
+				if !existingLabels[string(entry.Label)] {
+					alreadyCovered = false
+					break
+				}
+			}
+		}
+		if alreadyCovered {
+			b.markFrameDelivered(matchedFrames[0].ID, typeEncryptedFrame, peer)
+			go b.sendAck(peer, typeEncryptedFrame, ef.ID)
+			return nil, false
+		}
+
+		for i := range matchedFrames {
+			if err := b.database.Delete(&matchedFrames[i]).Error; err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error replacing existing encrypted frame with owner copy")
+				return nil, false
+			}
+			if !matchedFrames[i].FromOwner {
+				b.adjustUntrustedEncryptedFrameStorage(-int64(len(matchedFrames[i].Payload)), -1)
+			}
+		}
 	}
 
 	if ef.DeleteAt != 0 && ef.DeleteAt <= time.Now().Unix() {
@@ -810,28 +862,68 @@ func (b *Bounce) handleEncryptedClearBefore(peer string, payload []byte, _ bool)
 	}
 
 	// Presenting a label is the proof of being able to read that mailbox, which is the same standing as being
-	// allowed to clear it.  A frame belongs to one conversation, and its other mailboxes are only the sender's sync
-	// copy, so a frame in a cleared mailbox goes entirely rather than lingering under a label the clearer cannot
-	// name.  The labels are taken a batch at a time, so that however many a peer sends, no one query binds more than
-	// the database allows.
+	// allowed to clear it.  Only the cleared mailbox entries are removed; a copy is deleted once none of its
+	// mailboxes remain, so clearing one conversation does not wipe a multi-mailbox copy (such as a profile update on
+	// the author's own host) from every other conversation it belongs to.  The labels are taken a batch at a time, so
+	// that however many a peer sends, no one query binds more than the database allows.
 	for start := 0; start < len(labels); start += mailboxLabelQueryBatch {
 		batch := labels[start:min(start+mailboxLabelQueryBatch, len(labels))]
 
-		inClearedMailboxes := b.database.Model(&mailboxEntry{}).Select("encrypted_frame_id").Where("label IN ?", batch)
-		err = deleteEach[encryptedFrame](b.database, "id IN (?)", inClearedMailboxes)
+		var affectedFrameIDs []ID
+		err = b.database.Model(&mailboxEntry{}).Distinct("encrypted_frame_id").Where("label IN ?", batch).Pluck("encrypted_frame_id", &affectedFrameIDs).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("error deleting encrypted frames for clear before")
+			}).Error("error finding encrypted frames for clear before")
+		} else if len(affectedFrameIDs) > 0 {
+			err = b.database.Where("label IN ?", batch).Delete(&mailboxEntry{}).Error
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err.Error(),
+				}).Error("error deleting mailbox entries for clear before")
+			} else {
+				for fStart := 0; fStart < len(affectedFrameIDs); fStart += mailboxLabelQueryBatch {
+					frameBatch := affectedFrameIDs[fStart:min(fStart+mailboxLabelQueryBatch, len(affectedFrameIDs))]
+					stillHasEntries := b.database.Model(&mailboxEntry{}).Select("encrypted_frame_id").Where("encrypted_frame_id IN ?", frameBatch)
+					err = deleteEach[encryptedFrame](b.database, "id IN ? AND id NOT IN (?)", frameBatch, stillHasEntries)
+					if err != nil {
+						log.WithFields(log.Fields{
+							"error": err.Error(),
+						}).Error("error deleting encrypted frames for clear before")
+					}
+				}
+			}
 		}
 
-		// Likewise for stored chunks, whose files go with their rows
-		inClearedChunkMailboxes := b.database.Model(&encryptedChunkRecipient{}).Select("encrypted_chunk_storage_request_id").Where("label IN ?", batch)
-		err = deleteEach[encryptedChunkStorageRequest](b.database, "can_batch_delete = ? AND id IN (?)", true, inClearedChunkMailboxes)
+		// Likewise for batch-deletable stored chunks, whose files go once their last storage request is gone
+		batchDeletableRequests := b.database.Model(&encryptedChunkStorageRequest{}).Select("id").Where("can_batch_delete = ?", true)
+		var affectedRequestIDs []ID
+		err = b.database.Model(&encryptedChunkRecipient{}).
+			Distinct("encrypted_chunk_storage_request_id").
+			Where("label IN ? AND encrypted_chunk_storage_request_id IN (?)", batch, batchDeletableRequests).
+			Pluck("encrypted_chunk_storage_request_id", &affectedRequestIDs).Error
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-			}).Error("error deleting encrypted chunk storage requests for clear before")
+			}).Error("error finding encrypted chunk storage requests for clear before")
+		} else if len(affectedRequestIDs) > 0 {
+			for rStart := 0; rStart < len(affectedRequestIDs); rStart += mailboxLabelQueryBatch {
+				reqBatch := affectedRequestIDs[rStart:min(rStart+mailboxLabelQueryBatch, len(affectedRequestIDs))]
+				err = b.database.Where("label IN ? AND encrypted_chunk_storage_request_id IN ?", batch, reqBatch).Delete(&encryptedChunkRecipient{}).Error
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error deleting encrypted chunk recipients for clear before")
+					continue
+				}
+				stillHasRecipients := b.database.Model(&encryptedChunkRecipient{}).Select("encrypted_chunk_storage_request_id").Where("encrypted_chunk_storage_request_id IN ?", reqBatch)
+				err = deleteEach[encryptedChunkStorageRequest](b.database, "id IN ? AND id NOT IN (?)", reqBatch, stillHasRecipients)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err.Error(),
+					}).Error("error deleting encrypted chunk storage requests for clear before")
+				}
+			}
 		}
 	}
 
@@ -1133,15 +1225,6 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 		return nil, false
 	}
 
-	// Get the current user
-	var au authorizedUser
-	err = b.database.First(&au).Error
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err.Error(),
-		}).Error("error getting authorized user while handling encrypted reference offer response")
-	}
-
 	// Make sure that we offered a challenge to this device recently, and store it if we did
 	referenceOfferChallengeMutex.Lock()
 	for peer, ts := range referenceOfferChallengeTime {
@@ -1219,6 +1302,13 @@ func (b *Bounce) handleEncryptedReferenceOfferResponse(peer string, payload []by
 	)
 	decryptedChallenge, err := dekGCM.Open(nil, []byte{}, eroc.Response, session)
 	if err == nil && bytes.Equal(challenge, decryptedChallenge) {
+		// Discard the single-use challenge and its ephemeral private key immediately
+		referenceOfferChallengeMutex.Lock()
+		delete(referenceOfferChallengeTime, peer)
+		delete(referenceOfferChallengeMap, peer)
+		delete(referenceOfferKeyMap, peer)
+		referenceOfferChallengeMutex.Unlock()
+
 		peerUserKeyMutex.Lock()
 		peerUserKeys[peer] = eroc.PublicKey
 		peerUserKeyMutex.Unlock()
@@ -1349,16 +1439,7 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 			}).Error("error creating old key for authorized user")
 		}
 
-		// Update the peer address to key map
-		peerUserKeyMutex.Lock()
-		for addr, key := range peerUserKeys {
-			if bytes.Equal(key, au.PublicKey) {
-				peerUserKeys[addr] = ks.PublicECDHKey
-			}
-		}
-		peerUserKeyMutex.Unlock()
-
-		// Update the key in the database
+		// Update the key in the database before revoking active owner sessions for the old key
 		err = b.database.Table("authorized_users").Where("id = ?", au.ID).Updates(map[string]interface{}{"public_key": ks.PublicECDHKey, "signing_key": ks.PublicECDSAKey}).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -1366,6 +1447,24 @@ func (b *Bounce) handleManageEncryptedDevice(peer string, payload []byte, catchU
 			}).Error("error updating management key")
 			go b.sendDirect(peer, &response)
 		} else {
+			// Drop every cached owner proof under the replaced key and re-challenge connected peers so that
+			// revoked devices cannot keep owner privileges on an existing connection while legitimate devices
+			// with the new key re-prove ownership.
+			rechallenge := []string{}
+			peerUserKeyMutex.Lock()
+			for addr, key := range peerUserKeys {
+				if bytes.Equal(key, au.PublicKey) {
+					delete(peerUserKeys, addr)
+					rechallenge = append(rechallenge, addr)
+				}
+			}
+			peerUserKeyMutex.Unlock()
+			for _, addr := range rechallenge {
+				if b.getRemoteDevice(addr).connectedSockets() > 0 {
+					b.challengeUnencryptedPeerForReferenceOffer(addr)
+				}
+			}
+
 			response.Applied = true
 			go b.sendDirect(peer, &response)
 		}

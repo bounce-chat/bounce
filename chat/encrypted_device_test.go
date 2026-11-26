@@ -895,3 +895,291 @@ func TestAFileReachesAnOfflineUserThroughTheirEncryptedDevice(t *testing.T) {
 	assert.Equal(t, data, received)
 	assert.Equal(t, 0, bob.getRemoteDevice(alice.network.Address()).connectedSockets(), "the file has to have come from the encrypted device")
 }
+
+// A live encryptedReceive may carry only syncable frames allowed in catch ups.  A contact who shares a mailbox with us
+// must not be able to seal a control frame (such as an unmanageable-device response or a forged ack) into our host and
+// have our device execute it as if it came from our host.
+func TestAnEncryptedReceiveRejectsNonSyncableControlFrames(t *testing.T) {
+	alice, bob := connectUsers(t)
+	host, key := newEncryptedDevice(t)
+	claimEncryptedDevice(t, bob, host, key)
+	waitForOwnerMailboxes(t, host)
+
+	// Prepare a fake management action response (Authorized=false) and seal it inside the (Alice, Bob) DM mailbox
+	secret, err := alice.dmThreadSecret(mustCurrentUser(alice).PrivateECDHKey, mustCurrentUser(bob).PublicECDHKey)
+	assert.NoError(t, err)
+	forgedControl := &encryptedDeviceManagementActionResponse{
+		ID:         NewID(),
+		Type:       actionTypeChangeManagementKey,
+		Authorized: false,
+		Applied:    false,
+	}
+	sealedPayload, err := msgpack.Marshal(sealedFrame{
+		Type:    typeEncryptedDeviceManagementActionResponse,
+		ID:      forgedControl.ID,
+		Payload: forgedControl.getPayload(),
+	})
+	assert.NoError(t, err)
+
+	hostID := NewID()
+	dek := make([]byte, 32)
+	_, err = rand.Read(dek)
+	assert.NoError(t, err)
+	dekGCM, err := newGCM(dek)
+	assert.NoError(t, err)
+	ciphertext := dekGCM.Seal(nil, []byte{}, sealedPayload, sealedFrameAdditionalData(hostID))
+
+	epoch := currentMailboxEpoch()
+	label := mailboxLabel(secret, epoch)
+	wrapGCM, err := newGCM(mailboxWrapKey(secret, epoch))
+	assert.NoError(t, err)
+	er := encryptedReceive{
+		ID:         hostID,
+		Payload:    ciphertext,
+		Label:      label,
+		WrappedDEK: wrapGCM.Seal(nil, []byte{}, dek, mailboxEntryAdditionalData(label)),
+	}
+
+	bob.handleEncryptedReceive(host.network.Address(), er.getPayload(), false)
+	assert.False(t, bob.frameIsDeliveredTo(hostID, typeEncryptedFrame, host.network.Address()), "control frame in encryptedReceive must be rejected and not acked")
+
+	// Also verify a forged ack cannot mark an undelivered DM as delivered to the host
+	dm := signedDM(bob, alice.currentUserID(), "not delivered")
+	assert.NoError(t, bob.database.Create(dm).Error)
+	forgedAckPayload, err := msgpack.Marshal(&ack{References: []frameReference{{FrameID: dm.ID, Type: typeDirectMessage}}})
+	assert.NoError(t, err)
+	sealedAck, err := msgpack.Marshal(sealedFrame{Type: typeAck, ID: NewID(), Payload: forgedAckPayload})
+	assert.NoError(t, err)
+	ackHostID := NewID()
+	erAck := encryptedReceive{
+		ID:         ackHostID,
+		Payload:    dekGCM.Seal(nil, []byte{}, sealedAck, sealedFrameAdditionalData(ackHostID)),
+		Label:      label,
+		WrappedDEK: er.WrappedDEK,
+	}
+	bob.handleEncryptedReceive(host.network.Address(), erAck.getPayload(), false)
+	assert.False(t, bob.frameIsDeliveredTo(dm.ID, typeDirectMessage, host.network.Address()), "forged ack inside encryptedReceive must never be executed")
+}
+
+// A compromised encrypted device must not be able to probe which inner frames we hold by placing non-copy frame
+// references in a referenceOffer.
+func TestAnEncryptedDeviceCannotProbeInnerFramesViaReferenceOffer(t *testing.T) {
+	me, alice, _, _ := createUsersAndGroups(t)
+	host := fakeEncryptedDeviceOf(t, me.currentUserID())
+	conn, err := host.Dial(me.network.Address())
+	assert.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+
+	dm := signedDM(me, alice.currentUserID(), "secret dm")
+	assert.NoError(t, me.database.Create(dm).Error)
+
+	// Malicious host offers the real DM ID/type directly in a referenceOffer
+	offer := &referenceOffer{
+		ID:         NewID(),
+		References: []frameReference{{FrameID: dm.ID, Type: typeDirectMessage}},
+	}
+	assert.NoError(t, writeFrame(conn, typeReferenceOffer, offer.getPayload()))
+
+	conn.SetReadDeadline(time.Now().Add(400 * time.Millisecond))
+	for {
+		frameType, payload, err := readFrame(conn, true)
+		if err != nil {
+			break
+		}
+		if frameType == typeAck {
+			var a ack
+			assert.NoError(t, msgpack.Unmarshal(payload, &a))
+			for _, ref := range a.References {
+				assert.NotEqual(t, dm.ID, ref.FrameID, "encrypted device must never receive an ack for a probed inner frame ID")
+				assert.NotEqual(t, typeDirectMessage, ref.Type, "encrypted device must never receive an ack naming an inner frame type")
+			}
+		}
+	}
+}
+
+// Admission runs before duplicate checks so strangers cannot probe copy IDs or tags.  And an owner copy with a
+// matching tag replaces an untrusted (or narrower) copy so a contact cannot poison or narrow the owner's copy.
+func TestAnOwnerCopyReplacesAnUntrustedCopyWithTheSameTagAndStrangersCannotProbe(t *testing.T) {
+	me := newBounceUser("Me")
+	t.Cleanup(me.Shutdown)
+	assert.NoError(t, me.CreateGroup(NewGroup{Name: "Tag Group"}))
+	var g group
+	assert.NoError(t, me.database.First(&g, "name = ?", "Tag Group").Error)
+	waitForGroupKeys(t, me, g.ID, 1)
+
+	carol := newBounceUser("Carol")
+	t.Cleanup(carol.Shutdown)
+	carolUser := mustCurrentUser(carol)
+	var carolCopy user
+	cb, _ := msgpack.Marshal(carolUser)
+	assert.NoError(t, msgpack.Unmarshal(cb, &carolCopy))
+	assert.NoError(t, me.database.Create(&carolCopy).Error)
+
+	host, key := newEncryptedDevice(t)
+	claimEncryptedDevice(t, me, host, key)
+	waitForOwnerMailboxes(t, host)
+
+	// Disconnect Me so UpdateProfileName does not live-broadcast to host before we stage the contact-first race
+	// (host still remembers Me as owner until housekeeping runs).
+	disconnectFrom(t, me, host)
+	assert.NoError(t, me.UpdateProfileName("Upgraded Name"))
+	var profileUpdate updateUser
+	assert.NoError(t, me.database.Where("target = ? AND type = ?", me.currentUserID(), updateUserTypeUpdateName).First(&profileUpdate).Error)
+	ownerCopy := sealForHost(t, me, &profileUpdate, host)
+	assert.Equal(t, 2, len(ownerCopy.Mailboxes))
+
+	untrustedCopy := &encryptedFrame{
+		ID:        NewID(),
+		Payload:   []byte("corrupted untrusted payload"),
+		Slot:      randomSlot(),
+		Mailboxes: []mailboxEntry{ownerCopy.Mailboxes[0]},
+	}
+	untrustedPayload, _ := msgpack.Marshal(untrustedCopy)
+	contact := newTestnet().Address()
+	host.handleEncryptedFrame(contact, untrustedPayload, false)
+	assert.Equal(t, int64(1), countWhere(t, host, &encryptedFrame{}, "id = ?", untrustedCopy.ID))
+	untrustedBytes, untrustedCount := host.untrustedEncryptedFrameStorage()
+	assert.Equal(t, int64(1), untrustedCount)
+	assert.Equal(t, int64(len(untrustedCopy.Payload)), untrustedBytes)
+
+	// A stranger who does not know any owner label probes with the exact existing copy ID and tag, and gets no ack
+	stranger := newTestnet()
+	conn, err := stranger.Dial(host.network.Address())
+	assert.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+	probe := &encryptedFrame{
+		ID:      untrustedCopy.ID,
+		Payload: []byte("probe"),
+		Slot:    randomSlot(),
+		Mailboxes: []mailboxEntry{{
+			Label:      make([]byte, mailboxLabelSize),
+			Tag:        untrustedCopy.Mailboxes[0].Tag,
+			WrappedDEK: []byte("dek"),
+		}},
+	}
+	probePayload, _ := msgpack.Marshal(probe)
+	assert.NoError(t, writeFrame(conn, typeEncryptedFrame, probePayload))
+	conn.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	for {
+		frameType, payload, err := readFrame(conn, true)
+		if err != nil {
+			break
+		}
+		if frameType == typeAck {
+			var a ack
+			assert.NoError(t, msgpack.Unmarshal(payload, &a))
+			for _, ref := range a.References {
+				assert.NotEqual(t, probe.ID, ref.FrameID, "stranger must not get an existence-oracle ack")
+			}
+		}
+	}
+
+	// Now Me (the owner) sends the real, full-mailbox copy: it replaces the untrusted copy and frees untrusted quota
+	ownerPayload, _ := msgpack.Marshal(ownerCopy)
+	host.handleEncryptedFrame(me.network.Address(), ownerPayload, false)
+	assert.Equal(t, int64(0), countWhere(t, host, &encryptedFrame{}, "id = ?", untrustedCopy.ID))
+	assert.Equal(t, int64(1), countWhere(t, host, &encryptedFrame{}, "id = ? AND from_owner = ?", ownerCopy.ID, true))
+	assert.Equal(t, int64(2), countWhere(t, host, &mailboxEntry{}, "encrypted_frame_id = ?", ownerCopy.ID))
+	untrustedBytes, untrustedCount = host.untrustedEncryptedFrameStorage()
+	assert.Equal(t, int64(0), untrustedCount)
+	assert.Equal(t, int64(0), untrustedBytes)
+}
+
+// A host serves an encryptedChunkOffer only to peers that asked for one of the chunk's mailboxes, and deleting the
+// last storage request for a hash removes the chunk's offer and its delivery records along with the blob.
+func TestAHostRequiresMailboxAccessForChunkOffersAndRemovesOffersWithTheLastRequest(t *testing.T) {
+	host, _ := newEncryptedDevice(t)
+	label := mailboxLabel([]byte("secret-for-chunk-auth"), currentMailboxEpoch())
+	hash := hashString(blake3.Sum256([]byte("chunk-auth-payload")))
+	assert.NoError(t, os.WriteFile(host.platform.ConfigDirectory+"/blobs/"+hash, []byte("chunk-auth-payload"), 0600))
+
+	sr := encryptedChunkStorageRequest{
+		ID:             NewID(),
+		Hash:           hash,
+		Source:         "sender",
+		Downloaded:     true,
+		FullPath:       host.platform.ConfigDirectory + "/blobs/" + hash,
+		OwnerRequested: true,
+		RecipientUsers: []encryptedChunkRecipient{{ID: NewID(), Hash: hash, Label: label}},
+	}
+	assert.NoError(t, host.database.Create(&sr).Error)
+	eco := encryptedChunkOffer{
+		ID:       NewID(),
+		Hash:     hash,
+		Location: host.network.Address(),
+	}
+	eco.OriginalPayload, _ = msgpack.Marshal(&eco)
+	sc := host.createSignedContainer(typeEncryptedChunkOffer, eco.OriginalPayload)
+	eco.Signature = sc.Signature
+	eco.Signer = sc.Signer
+	assert.NoError(t, host.database.Create(&eco).Error)
+	host.markFrameDelivered(eco.ID, typeEncryptedChunkOffer, "some-peer")
+
+	// Unauthorized peer (did not present label) asks for eco.ID directly -> must not receive it
+	unauthorized := newTestnet()
+	conn, err := unauthorized.Dial(host.network.Address())
+	assert.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+	req := encryptedStorageReferenceRequest{ECORequests: []ID{eco.ID}}
+	assert.NoError(t, writeFrame(conn, typeEncryptedStorageReferenceRequest, req.getPayload()))
+	conn.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	for {
+		frameType, _, err := readFrame(conn, true)
+		if err != nil {
+			break
+		}
+		assert.NotEqual(t, typeEncryptedChunkOffer, frameType, "unauthorized peer must not receive encryptedChunkOffer")
+	}
+
+	// Deleting the last storage request removes the blob, the offer, and its delivery records
+	assert.NoError(t, deleteEach[encryptedChunkStorageRequest](host.database, "id = ?", sr.ID))
+	_, statErr := os.Stat(sr.FullPath)
+	assert.True(t, os.IsNotExist(statErr))
+	assert.Equal(t, int64(0), countWhere(t, host, &encryptedChunkOffer{}, "id = ?", eco.ID))
+	assert.Equal(t, int64(0), countWhere(t, host, &deliveryRecord{}, "frame_id = ? AND frame_type = ?", eco.ID, typeEncryptedChunkOffer))
+}
+
+// Rotating a host's management key must revoke owner privileges from any connected device that only holds the old key,
+// while allowing a device holding the new key to re-prove ownership.
+func TestReKeyingAHostRevokesOwnerPrivilegesOfConnectedDevicesHoldingTheOldKey(t *testing.T) {
+	host, setup := newEncryptedDevice(t)
+	legit := newBounceUser("Alice")
+	t.Cleanup(legit.Shutdown)
+	claimEncryptedDevice(t, legit, host, setup)
+	assert.True(t, host.peerIsOwner(legit.network.Address()))
+
+	// Simulate a second connected device (e.g. a stolen phone) that previously proved ownership with Alice's old key
+	oldUser := mustCurrentUser(legit)
+	revokedPeer := newTestnet()
+	conn, err := revokedPeer.Dial(host.network.Address())
+	assert.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+	peerUserKeyMutex.Lock()
+	peerUserKeys[revokedPeer.Address()] = oldUser.PublicECDHKey
+	peerUserKeyMutex.Unlock()
+	t.Cleanup(func() {
+		peerUserKeyMutex.Lock()
+		delete(peerUserKeys, revokedPeer.Address())
+		peerUserKeyMutex.Unlock()
+	})
+	assert.True(t, host.peerIsOwner(revokedPeer.Address()))
+
+	// Legit rolls keys, which sends actionTypeChangeManagementKey to host
+	waitForTheNextSecond()
+	assert.NoError(t, legit.rollKeys())
+
+	// Wait until host switches authorized_users to the new key and legit re-proves ownership with it
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var au authorizedUser
+		if host.database.First(&au).Error == nil && !bytes.Equal(au.PublicKey, oldUser.PublicECDHKey) && host.peerIsOwner(legit.network.Address()) {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	var au authorizedUser
+	assert.NoError(t, host.database.First(&au).Error)
+	assert.NotEqual(t, oldUser.PublicECDHKey, au.PublicKey)
+	assert.True(t, host.peerIsOwner(legit.network.Address()), "legitimate device with new key must re-prove ownership")
+	assert.False(t, host.peerIsOwner(revokedPeer.Address()), "connected device holding only the old key must lose owner privileges immediately")
+}

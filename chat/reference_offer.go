@@ -1500,7 +1500,8 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 
 	// References to frames stored on an encrypted device are opaque copy IDs.  We cannot tell from the outside whether
 	// we already hold the frame inside one, so we request every copy this host has not delivered to us before, and
-	// ack the ones it has.  Only an encrypted device we know of is taken up on such an offer.
+	// ack the ones it has.  Only an encrypted device we know of is taken up on such an offer, and an encrypted device
+	// is never answered on non-copy references so it cannot probe which inner frames we hold.
 	hostReferences := []frameReference{}
 	otherReferences := []frameReference{}
 	for _, reference := range ro.References {
@@ -1511,7 +1512,7 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 		}
 	}
 
-	references, acks := b.processReferenceOffer(peer, otherReferences)
+	var references, acks []frameReference
 	if encryptedPeer && !b.encrypted {
 		for _, reference := range hostReferences {
 			if b.frameIsDeliveredTo(reference.FrameID, typeEncryptedFrame, peer) {
@@ -1520,6 +1521,8 @@ func (b *Bounce) handleReferenceOffer(peer string, payload []byte, catchUp bool)
 				references = append(references, reference)
 			}
 		}
+	} else {
+		references, acks = b.processReferenceOffer(peer, otherReferences)
 	}
 
 	// Inform the reference engine that this peer has these frames that we don't know about
