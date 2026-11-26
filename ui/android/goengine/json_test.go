@@ -1,7 +1,14 @@
 package goengine
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"image"
+	"image/png"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -118,7 +125,7 @@ func TestEveryUIDTORoundTrips(t *testing.T) {
 // prepareAttachments is the one piece of real logic in the binding, so its
 // failure modes are worth pinning: a bad path must not leak open files.
 func TestPrepareAttachmentsRejectsMissingFile(t *testing.T) {
-	_, err := prepareAttachments(`[{"id":"550e8400e29b41d4a716446655440000550e8400e29b41d4a716446655440000","path":"/nonexistent/nope","name":"nope"}]`)
+	_, err := prepareAttachments(boundFileStore{}, `[{"id":"550e8400e29b41d4a716446655440000550e8400e29b41d4a716446655440000","location":"/nonexistent/nope","name":"nope"}]`)
 	if err == nil {
 		t.Fatal("expected an error for a missing attachment path")
 	}
@@ -128,11 +135,253 @@ func TestPrepareAttachmentsRejectsMissingFile(t *testing.T) {
 }
 
 func TestPrepareAttachmentsEmpty(t *testing.T) {
-	p, err := prepareAttachments("")
+	p, err := prepareAttachments(boundFileStore{}, "")
 	if err != nil {
 		t.Fatalf("empty attachments should be fine: %v", err)
 	}
 	if len(p) != 0 {
 		t.Fatal("expected nothing prepared")
+	}
+}
+
+// attachmentJSON is one attachment the way Kotlin sends it
+func attachmentJSON(t *testing.T, at outgoingAttachment) string {
+	t.Helper()
+	raw, err := json.Marshal([]outgoingAttachment{at})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// testPNG is a small image that decodes
+func testPNG(t *testing.T) []byte {
+	t.Helper()
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 40, 30))); err != nil {
+		t.Fatal(err)
+	}
+	return encoded.Bytes()
+}
+
+func TestPrepareAttachmentsReadsASmallFileAndMeasuresAnImage(t *testing.T) {
+	data := testPNG(t)
+	path := filepath.Join(t.TempDir(), "small.png")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A small file is embedded whatever Kotlin said should happen to a large one
+	prepared, err := prepareAttachments(boundFileStore{}, attachmentJSON(t, outgoingAttachment{Location: path, Name: "small.png", CopyIn: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := prepared[0]
+	read, err := io.ReadAll(a.Reader)
+	if err != nil || !bytes.Equal(data, read) || a.Size != int64(len(data)) {
+		t.Fatalf("read %d of %d bytes, size %d, error %v", len(read), len(data), a.Size, err)
+	}
+	if a.Image == nil || a.Image.Width != 40 || a.Image.Height != 30 {
+		t.Fatalf("the image was not measured: %+v", a.Image)
+	}
+	if a.Source != "" {
+		t.Fatalf("a location is only a source when Kotlin says it can be served in place, got %q", a.Source)
+	}
+}
+
+func TestPrepareAttachmentsLeavesALargeFileToTheEngine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "large.bin")
+	if err := os.WriteFile(path, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(path, chat.EmbeddedFileLimit+1); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, test := range map[string]struct {
+		at     outgoingAttachment
+		source string
+		copyIn bool
+	}{
+		"served in place":    {outgoingAttachment{Location: path, InPlace: true}, path, false},
+		"copied in":          {outgoingAttachment{Location: path, CopyIn: true}, "", true},
+		"neither":            {outgoingAttachment{Location: path}, "", false},
+		"a size from Kotlin": {outgoingAttachment{Location: path, Size: chat.EmbeddedFileLimit + 1, InPlace: true}, path, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			prepared, err := prepareAttachments(boundFileStore{}, attachmentJSON(t, test.at))
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := prepared[0]
+			defer a.Reader.Close()
+			if a.Size != chat.EmbeddedFileLimit+1 || a.Source != test.source || a.CopyIn != test.copyIn || a.Image != nil {
+				t.Fatalf("size %d, source %q, copy in %v, image %v", a.Size, a.Source, a.CopyIn, a.Image)
+			}
+		})
+	}
+}
+
+func TestPrepareAttachmentsTrustsTheFileOverTheSizeItWasGiven(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "large.bin")
+	if err := os.WriteFile(path, []byte("the start of the file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(path, chat.EmbeddedFileLimit+10); err != nil {
+		t.Fatal(err)
+	}
+
+	prepared, err := prepareAttachments(boundFileStore{}, attachmentJSON(t, outgoingAttachment{Location: path, Size: 5, CopyIn: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := prepared[0]
+	defer a.Reader.Close()
+	if a.Size != chat.EmbeddedFileLimit+10 || !a.CopyIn {
+		t.Fatalf("the engine must be told the file is large: size %d, copy in %v", a.Size, a.CopyIn)
+	}
+	read, err := io.Copy(io.Discard, a.Reader)
+	if err != nil || read != chat.EmbeddedFileLimit+10 {
+		t.Fatalf("the file is handed over unread, but %d bytes were left, error %v", read, err)
+	}
+}
+
+// pipeFiles hands out the reading end of a pipe, as a provider that produces a
+// file while it is being read does. A pipe has no size and cannot seek.
+type pipeFiles struct {
+	data []byte
+}
+
+func (p pipeFiles) Open(location string) (*os.File, error) {
+	reading, writing, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		writing.Write(p.data)
+		writing.Close()
+	}()
+	return reading, nil
+}
+
+func (p pipeFiles) Release(location string) error {
+	return nil
+}
+
+func TestPrepareAttachmentsReadsAFileThatCannotSeek(t *testing.T) {
+	data := testPNG(t)
+	prepared, err := prepareAttachments(pipeFiles{data: data}, attachmentJSON(t, outgoingAttachment{Location: "content://example/1", Name: "piped.png"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := prepared[0]
+	read, err := io.ReadAll(a.Reader)
+	if err != nil || !bytes.Equal(data, read) || a.Size != int64(len(data)) || a.Image == nil {
+		t.Fatalf("read %d of %d bytes, size %d, image %v, error %v", len(read), len(data), a.Size, a.Image, err)
+	}
+
+	// One too large to embed is found out by reading it, and loses nothing of what was read finding out
+	large := make([]byte, chat.EmbeddedFileLimit+10)
+	copy(large, "the start of the file")
+	prepared, err = prepareAttachments(pipeFiles{data: large}, attachmentJSON(t, outgoingAttachment{Location: "content://example/2", CopyIn: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a = prepared[0]
+	defer a.Reader.Close()
+	if a.Size <= chat.EmbeddedFileLimit || !a.CopyIn || a.Image != nil {
+		t.Fatalf("the engine must be told the file is large: size %d, copy in %v, image %v", a.Size, a.CopyIn, a.Image)
+	}
+	start := make([]byte, 21)
+	if _, err := io.ReadFull(a.Reader, start); err != nil || string(start) != "the start of the file" {
+		t.Fatalf("got %q, %v", start, err)
+	}
+	rest, err := io.Copy(io.Discard, a.Reader)
+	if err != nil || rest != chat.EmbeddedFileLimit+10-21 {
+		t.Fatalf("%d bytes followed, error %v", rest, err)
+	}
+}
+
+// kotlinFiles stands in for the store Kotlin implements. It can open one
+// content URI and remembers everything it was asked.
+type kotlinFiles struct {
+	uri      string
+	path     string
+	opened   []string
+	released []string
+}
+
+// A descriptor handed to Go belongs to Go. The file it was opened through is
+// kept reachable for as long as the test binary runs, so that its finalizer
+// never closes a descriptor that is no longer its own.
+var handedOver []*os.File
+
+func (k *kotlinFiles) Open(uri string) (int32, error) {
+	k.opened = append(k.opened, uri)
+	if uri != k.uri {
+		return 0, errors.New("FileNotFoundException: No content provider")
+	}
+	f, err := os.Open(k.path)
+	if err != nil {
+		return 0, err
+	}
+	handedOver = append(handedOver, f)
+	return int32(f.Fd()), nil
+}
+
+func (k *kotlinFiles) Release(location string) error {
+	k.released = append(k.released, location)
+	return nil
+}
+
+func TestContentURIsAreOpenedByKotlinAndPathsAreNot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "picked.txt")
+	if err := os.WriteFile(path, []byte("picked with the photo picker"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	kotlin := &kotlinFiles{uri: "content://media/picker/0/com.android.providers.media.photopicker/media/1", path: path}
+	files := boundFileStore{store: kotlin}
+
+	prepared, err := prepareAttachments(files, attachmentJSON(t, outgoingAttachment{Location: kotlin.uri, Name: "picked.txt"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, err := io.ReadAll(prepared[0].Reader)
+	if err != nil || string(read) != "picked with the photo picker" {
+		t.Fatalf("read %q through the descriptor Kotlin opened, error %v", read, err)
+	}
+
+	f, err := files.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if len(kotlin.opened) != 1 || kotlin.opened[0] != kotlin.uri {
+		t.Fatalf("only the content URI crosses to Kotlin, got %v", kotlin.opened)
+	}
+
+	// A URI that can no longer be read is an error, and so is any URI on a host with no store
+	if _, err := files.Open("content://media/gone"); err == nil {
+		t.Fatal("expected Kotlin's failure to open the URI")
+	}
+	if _, err := (boundFileStore{}).Open(kotlin.uri); err == nil {
+		t.Fatal("expected an error with no store to open the URI")
+	}
+
+	// Kotlin is told about every location the engine is finished with, because a path may be a copy it made
+	if err := files.Release(kotlin.uri); err != nil {
+		t.Fatal(err)
+	}
+	if err := files.Release(path); err != nil {
+		t.Fatal(err)
+	}
+	if len(kotlin.released) != 2 || kotlin.released[0] != kotlin.uri || kotlin.released[1] != path {
+		t.Fatalf("released %v", kotlin.released)
+	}
+	if err := (boundFileStore{}).Release(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("releasing a location never deletes anything on this side")
 	}
 }

@@ -144,6 +144,39 @@ the pieces that exist for the starts that do need something:
 - **Passwords stay out of saved state.** The fields use `remember`, never
   `rememberSaveable`: a saved-state Bundle can be written to disk by the system.
 
+## Attachments
+
+Android's pickers hand out `content://` URIs, and nothing is copied when one is
+attached. The URI itself is the attachment's location: it crosses to Go in the
+send call, and Go asks Kotlin for a file descriptor each time it needs to read.
+
+- **`ContentFileStore`** is that door. `open` returns a detached descriptor from
+  the ContentResolver, which Go wraps and closes; `release` is the engine saying
+  the last message served from a location is gone. Go calls both on its own
+  threads, several at once while chunks are being served.
+- **`takeAttachment`** decides, when a file is attached, what happens if it is
+  over the engine's embed limit (`Goengine.EmbeddedFileLimit`). At or under the
+  limit every file is read into the engine's `blobs/` when the message is sent.
+
+| Over the limit, from | What happens |
+| --- | --- |
+| The photo picker (an item on the device), Downloads, device storage | Stays where it is. The app takes the lasting permission and the engine serves the file from its URI, including after a restart. |
+| Google Drive, any other provider | Copied into `blobs/` when the message is sent, and deleted with the message. |
+| Another app's share sheet | Refused, with a message to attach it from inside Bounce. A share's access ends with the share. |
+
+Three things follow from this and are easy to trip over:
+
+- **A file's location is not always a path.** `EngineClient.filePath` returns
+  the content URI for a large file this device sent. Check for the `content://`
+  prefix before handing it to anything that wants a `File`.
+- **Android keeps at most 512 lasting permissions per app** and silently drops
+  the oldest beyond that. A file whose permission is gone simply stops being
+  served, the same as one the user moved or deleted.
+- **The list of providers served in place is a list of what was tested.** A
+  provider that is missing from it is copied, which always works. Add one only
+  after checking that its files read at any offset, that the permission
+  survives a restart of the phone, and that opening one takes milliseconds.
+
 ## Icons
 
 Both are vectors hand-converted from `ui/assets/icon.svg`, with paths and

@@ -57,9 +57,14 @@ type FileAttachment struct {
 type OutgoingAttachment struct {
 	Name   string
 	Size   int64
-	Reader io.ReadCloser // Source of the file may either be a reader or a path on disk, set either
-	Source string        // one.  Readers are closed after they are used.
+	Reader io.ReadCloser // Source of the file may either be a reader or a location the platform can open, set
+	Source string        // either one.  Readers are closed after they are used.
 	Image  *ImageInfo
+
+	// A file too large to embed is served from its Source for as long as the message lives.  CopyIn is for a
+	// source that cannot be relied on for that long, such as a file in cloud storage: the engine then copies
+	// the file from the Reader into its blobs directory and serves that copy, which is deleted with the message.
+	CopyIn bool
 }
 
 type ImageInfo struct {

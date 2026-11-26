@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -572,7 +573,9 @@ private fun FileOrVideoAttachment(
     // embed is downloaded to a destination outside the blob store, so the
     // computed path named a file that never existed and every large video stayed
     // a plain file row. Resolved after `available` because the path only exists
-    // once the download has been renamed into place.
+    // once the download has been renamed into place. For a large file this
+    // device sent it is not a path at all but the content URI the file was
+    // attached from, which everything below accepts.
     val path by produceState<String?>(null, attachment.id, available, progress) {
         value = if (available) {
             runCatching { EngineHolder.client?.filePath(attachment.id) }.getOrNull()
@@ -585,10 +588,11 @@ private fun FileOrVideoAttachment(
     // exactly once, so keying on it alone makes any probe failure permanent -
     // which is how a completed video stayed stuck as a plain file row after
     // being probed mid-download.
+    val context = LocalContext.current
     val video by produceState<VideoInfo?>(null, attachment.id, path, progress) {
         val source = path
         value = if (source != null && looksLikeVideo(attachment.name)) {
-            VideoThumbnails.probe(source)
+            VideoThumbnails.probe(context, source)
         } else {
             null
         }

@@ -1,11 +1,11 @@
 package goengine
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"image"
 	"io"
-	"os"
 
 	// Register the decoders image.Decode needs to measure attachments.
 	_ "image/gif"
@@ -21,25 +21,48 @@ import (
 
 // outgoingAttachment is what Kotlin sends for each file on an outgoing message.
 //
-// Only a path crosses the boundary, never bytes: Go opens and streams the file,
-// so a 200MB video is never materialized as a byte[] on either side. Kotlin is
-// responsible for resolving a content:// URI to a real path first, which it has
-// to do anyway to get a stable handle. The id is Kotlin's own handle for the
-// composer and is not used here: the engine assigns every attachment's ID.
+// Only a location crosses the boundary, never bytes: Go opens and streams the
+// file, so a 200MB video is never materialized as a byte[] on either side. The
+// location is a content URI exactly as a picker or a share handed it to Kotlin,
+// read through the FileStore given to Start, or a path. The id is Kotlin's own
+// handle for the composer and is not used here: the engine assigns every
+// attachment's ID.
+//
+// A file no larger than EmbeddedFileLimit is read into the engine's blobs
+// directory whatever its location is. What happens to a larger one depends on
+// where it came from, which only Kotlin knows, so Kotlin says:
+//
+//   - inPlace: the file stays where it is and is served from its location for
+//     as long as its message lives. Kotlin must already hold the persistable
+//     permission for the URI.
+//   - copyIn: the engine copies the file into its blobs directory and serves
+//     the copy. For a location that cannot be relied on, or that is slow to
+//     open, such as a file in cloud storage.
+//   - neither: the file is left out of the message. For a file shared from
+//     another app, whose access does not outlive the share.
 type outgoingAttachment struct {
-	ID   string `json:"id"`
-	Path string `json:"path"`
-	Name string `json:"name"`
-	Size int64  `json:"size"`
+	ID       string `json:"id"`
+	Location string `json:"location"`
+	Name     string `json:"name"`
+	Size     int64  `json:"size"`
+	InPlace  bool   `json:"inPlace"`
+	CopyIn   bool   `json:"copyIn"`
 }
 
 // prepareAttachments opens every attachment and, for images, measures them.
 //
+// A file larger than the embed limit is left unread for the engine, which
+// hashes it or copies it as a stream. A smaller one is read here only to
+// measure it, and rewound - unless the provider handed out a pipe, which cannot
+// be rewound, and is read into memory instead.
+//
 // Deriving width/height/BlurHash here rather than in Kotlin is deliberate: the
 // Go side already depends on go-blurhash and x/image, and this keeps the
 // measurement identical to the desktop client (ui/fyneui/pending_message_attachments.go),
-// so the same photo produces the same placeholder on every platform.
-func prepareAttachments(raw string) ([]chat.OutgoingAttachment, error) {
+// so the same photo produces the same placeholder on every platform. Only a
+// file small enough to embed is measured, because a larger image travels as a
+// plain file.
+func prepareAttachments(files chat.FileStore, raw string) ([]chat.OutgoingAttachment, error) {
 	if raw == "" {
 		return nil, nil
 	}
@@ -56,31 +79,62 @@ func prepareAttachments(raw string) ([]chat.OutgoingAttachment, error) {
 		}
 	}
 	for _, at := range atts {
-		f, err := os.Open(at.Path)
+		f, err := files.Open(at.Location)
 		if err != nil {
 			closeAll()
 			return nil, fmt.Errorf("opening attachment %q: %w", at.Name, err)
 		}
 
+		// What the file itself says about its size beats what the provider's
+		// listing told Kotlin. A provider may also hand out a pipe, which has
+		// no size and cannot be rewound.
 		size := at.Size
-		if size == 0 {
-			if info, statErr := f.Stat(); statErr == nil {
-				size = info.Size()
+		regular := false
+		if info, statErr := f.Stat(); statErr == nil && info.Mode().IsRegular() {
+			size = info.Size()
+			regular = true
+		}
+
+		a := chat.OutgoingAttachment{Name: at.Name, Size: size, Reader: f, CopyIn: at.CopyIn}
+		if at.InPlace {
+			a.Source = at.Location
+		}
+
+		if regular && size <= chat.EmbeddedFileLimit {
+			// Whether this is an image is decided by whether it actually
+			// decodes, not by the name or the MIME type Kotlin guessed.
+			if width, height, hash, isImage := measureImage(f); isImage {
+				a.Image = &chat.ImageInfo{Width: width, Height: height, BlurHash: hash}
 			}
-		}
-
-		// Whether this is an image is decided by whether it actually decodes,
-		// not by the name or the MIME type Kotlin guessed.
-		width, height, hash, isImage := measureImage(f)
-		if _, err := f.Seek(0, io.SeekStart); err != nil {
-			f.Close()
-			closeAll()
-			return nil, fmt.Errorf("rewinding attachment %q: %w", at.Name, err)
-		}
-
-		a := chat.OutgoingAttachment{Name: at.Name, Size: size, Reader: f, Source: at.Path}
-		if isImage {
-			a.Image = &chat.ImageInfo{Width: width, Height: height, BlurHash: hash}
+			if _, err := f.Seek(0, io.SeekStart); err != nil {
+				f.Close()
+				closeAll()
+				return nil, fmt.Errorf("rewinding attachment %q: %w", at.Name, err)
+			}
+		} else if !regular {
+			// Read once, as far as the embed limit, and measured from memory.
+			// One byte past the limit shows the file is too large to embed.
+			data, err := io.ReadAll(io.LimitReader(f, chat.EmbeddedFileLimit+1))
+			if err != nil {
+				f.Close()
+				closeAll()
+				return nil, fmt.Errorf("reading attachment %q: %w", at.Name, err)
+			}
+			a.Size = int64(len(data))
+			if len(data) > chat.EmbeddedFileLimit {
+				// What was read is still the start of the file, and the rest
+				// follows it.
+				a.Reader = struct {
+					io.Reader
+					io.Closer
+				}{io.MultiReader(bytes.NewReader(data), f), f}
+			} else {
+				f.Close()
+				a.Reader = io.NopCloser(bytes.NewReader(data))
+				if width, height, hash, isImage := measureImage(bytes.NewReader(data)); isImage {
+					a.Image = &chat.ImageInfo{Width: width, Height: height, BlurHash: hash}
+				}
+			}
 		}
 		prepared = append(prepared, a)
 	}
@@ -142,7 +196,7 @@ func (a *Engine) SendDirectMessage(threadID string, text string, attachmentsJSON
 	if err != nil {
 		return err
 	}
-	attachments, err := prepareAttachments(attachmentsJSON)
+	attachments, err := prepareAttachments(a.files, attachmentsJSON)
 	if err != nil {
 		return err
 	}
@@ -164,7 +218,7 @@ func (a *Engine) SendGroupMessage(threadID string, text string, attachmentsJSON 
 	if err != nil {
 		return err
 	}
-	attachments, err := prepareAttachments(attachmentsJSON)
+	attachments, err := prepareAttachments(a.files, attachmentsJSON)
 	if err != nil {
 		return err
 	}

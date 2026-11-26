@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"os"
@@ -60,6 +61,9 @@ func restrictDatabaseFiles(dsn string) {
 	}
 }
 
+// platformContextKey is where the install's Platform is kept in the context of the engine's database
+type platformContextKey struct{}
+
 // The DSN a database is opened with holds its key, so only the path is ever logged
 func (b *Bounce) openDatabase(databaseKey []byte) {
 	databasePath := b.platform.ConfigDirectory + "/bounce.db"
@@ -95,6 +99,9 @@ func (b *Bounce) openDatabase(databaseKey []byte) {
 	}
 	restrictDatabaseFiles(databaseFile)
 	b.requireEncryptedDatabase()
+
+	// A hook on a model is handed the database and nothing else, so what a hook needs of the engine travels with it
+	b.database = b.database.WithContext(context.WithValue(context.Background(), platformContextKey{}, b.platform))
 
 	// Set max connections to 1 to avoid locks
 	sqliteDB, err := b.database.DB()

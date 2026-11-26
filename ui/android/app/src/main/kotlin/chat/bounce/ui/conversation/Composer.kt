@@ -1,7 +1,8 @@
 package chat.bounce.ui.conversation
 
-import android.graphics.BitmapFactory
+import android.content.Context
 import android.net.Uri
+import android.util.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -67,9 +68,9 @@ import kotlinx.coroutines.withContext
 /**
  * The input row: attachments, a growing text field, and send.
  *
- * Picked media is handed upward as content:// URIs and staged to real files by
- * [ConversationViewModel.addAttachments] - the Go engine reads attachments off
- * the filesystem by path and cannot resolve a content URI.
+ * Picked media is handed upward as content:// URIs, and stays that way:
+ * [ConversationViewModel.addAttachments] copies nothing, and the Go engine
+ * reads each URI through the app when the message is sent.
  */
 @Composable
 fun Composer(
@@ -246,8 +247,9 @@ private fun AttachmentStrip(
                     contentAlignment = Alignment.Center,
                 ) {
                     if (attachment.isImage) {
-                        val thumbnail by produceState<ImageBitmap?>(null, attachment.path) {
-                            value = withContext(Dispatchers.IO) { decodeThumbnail(attachment.path) }
+                        val context = LocalContext.current
+                        val thumbnail by produceState<ImageBitmap?>(null, attachment.uri) {
+                            value = withContext(Dispatchers.IO) { decodeThumbnail(context, attachment.uri) }
                         }
                         thumbnail?.let {
                             Image(
@@ -299,16 +301,16 @@ private fun AttachmentStrip(
     }
 }
 
-/** Downsamples on decode; a full-resolution photo would be wasted on a 64dp chip. */
-private fun decodeThumbnail(path: String): ImageBitmap? = runCatching {
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeFile(path, bounds)
-    var sample = 1
-    while (bounds.outWidth / sample > THUMBNAIL_PIXELS || bounds.outHeight / sample > THUMBNAIL_PIXELS) {
-        sample *= 2
-    }
-    val options = BitmapFactory.Options().apply { inSampleSize = sample }
-    BitmapFactory.decodeFile(path, options)?.asImageBitmap()
+/**
+ * A small picture of a picked image, straight from its content URI.
+ *
+ * Asked of the provider rather than decoded here from the whole file: a gallery
+ * already has a thumbnail to hand over, and a cloud provider can produce one
+ * without fetching the original. A provider with nothing smaller hands back
+ * the image itself, which is downsampled on decode.
+ */
+private fun decodeThumbnail(context: Context, uri: Uri): ImageBitmap? = runCatching {
+    context.contentResolver.loadThumbnail(uri, Size(THUMBNAIL_PIXELS, THUMBNAIL_PIXELS), null).asImageBitmap()
 }.getOrNull()
 
 private const val MAX_COMPOSER_LINES = 5

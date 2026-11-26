@@ -131,7 +131,7 @@ Group consensus is implemented as a stack.  The stack begins with the group crea
 
 ## Files
 
-Distributing files is an important part of several features in Bounce.  Users and groups can have icons, and messages can have both image and file attachments.  Files are identified by ID and are distributed as a hash list, each hash created from a chunk with a maximum size of 1MiB.  Small files (20MiB or less) are embedded in Bounce's blobs directory, and are automatically downloaded by clients.  This size also serves as the limit for user and group icons, and for images displayed in messages.  Larger files are "seeded" off disk where they are and are not copied into Bounce's blobs directory (except on Android, where all files are copied into a Bounce-controlled directory as a temporary workaround).  These files are not automatically downloaded by clients.
+Distributing files is an important part of several features in Bounce.  Users and groups can have icons, and messages can have both image and file attachments.  Files are identified by ID and are distributed as a hash list, each hash created from a chunk with a maximum size of 1MiB.  Small files (20MiB or less) are embedded in Bounce's blobs directory, and are automatically downloaded by clients.  This size also serves as the limit for user and group icons, and for images displayed in messages.  Larger files are "seeded" off disk where they are and are not copied into Bounce's blobs directory.  The exception is a file that cannot be relied on to stay readable where it is, such as one picked from cloud storage on Android: it is copied into the blobs directory when it is sent.
 
 ### Chunk Offers
 

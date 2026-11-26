@@ -24,7 +24,8 @@
 //     parses JSON natively, and JSON renders ID map keys and values as strings
 //     rather than as 32-byte blobs Kotlin would have to reassemble by hand.
 //   - Raw image and file bytes never go through JSON. They cross as []byte, or
-//     stay on disk and cross as a path.
+//     stay where they are and cross as a location: a path, or a content URI
+//     that Go reads through a FileStore.
 //   - Go int maps to Java long, which is a surprising signature for small enum
 //     values, so this package uses int32 explicitly where the range allows.
 //
@@ -48,7 +49,7 @@ import "github.com/bounce-chat/bounce/chat"
 
 // BindingVersion is checked by the Kotlin layer at startup so an .aar that is
 // out of step with the app fails loudly instead of as a NoSuchMethodError.
-const BindingVersion = 3
+const BindingVersion = 4
 
 // Frame type names accepted by MarkAsRead. Re-exported so Kotlin does not carry
 // its own copies of these string literals.
@@ -74,8 +75,9 @@ const (
 
 // EmbeddedFileLimit is the size at or below which a file is embedded and
 // fetched automatically by every client that can see it. Above it a file is
-// seeded from wherever it already sits on the sender's disk and is only
-// transferred when someone explicitly asks for it.
+// seeded from wherever it already sits on the sender's device, or from a copy
+// the engine makes when it cannot stay there, and is only transferred when
+// someone explicitly asks for it.
 //
 // Re-exported so the UI can tell "this will arrive on its own" from "the user
 // has to ask for this" without hardcoding a number that would silently drift

@@ -1,9 +1,12 @@
 package chat.bounce.data
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
+import android.net.Uri
 import android.util.Log
 import android.util.LruCache
+import chat.bounce.engine.ContentFileStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -94,8 +97,12 @@ object VideoThumbnails {
      * Null is also the answer for a blob that has not finished downloading yet,
      * which is normal rather than an error; that verdict is not cached, so the
      * next call after the transfer completes will look again.
+     *
+     * [path] is wherever the engine says the file is. For a large file this
+     * device sent that is the content URI it was attached from, which is read
+     * through [context].
      */
-    suspend fun probe(path: String, maxDimension: Int = 1024): VideoInfo? {
+    suspend fun probe(context: Context, path: String, maxDimension: Int = 1024): VideoInfo? {
         if (path.isEmpty()) return null
         // The requested size is part of the key for the same reason as in
         // ImageCache: a 96px preview and a full-screen poster of one file are
@@ -110,12 +117,19 @@ object VideoThumbnails {
                 // Stat inside the IO dispatch, not on the fast path above, so a
                 // recomposing bubble never touches the filesystem from the main
                 // thread.
-                val file = File(path)
-                val length = file.length()
-                if (!file.isFile || length == 0L) return@withLock null
+                // A content URI is a whole file the user already had, so there
+                // is no partial download to look at again and one fixed length
+                // remembers the verdict for good.
+                val length = if (path.startsWith(ContentFileStore.CONTENT_PREFIX)) {
+                    CONTENT_LENGTH
+                } else {
+                    val file = File(path)
+                    if (!file.isFile || file.length() == 0L) return@withLock null
+                    file.length()
+                }
                 if (notVideo.get(path) == length) return@withLock null
 
-                val info = probeBlocking(path, maxDimension)
+                val info = probeBlocking(context.applicationContext, path, maxDimension)
                 if (info == null) notVideo.put(path, length) else cache.put(key, info)
                 info
             }
@@ -167,13 +181,17 @@ object VideoThumbnails {
      * per attachment, and a device runs out of codec instances long before it
      * runs out of memory.
      */
-    private fun probeBlocking(path: String, maxDimension: Int): VideoInfo? {
+    private fun probeBlocking(context: Context, path: String, maxDimension: Int): VideoInfo? {
         val retriever = MediaMetadataRetriever()
         try {
             // This call is the sniff. There is no extension to trust, so a
             // document, an audio file or a half-written blob is identified by
             // the decoder refusing it.
-            retriever.setDataSource(path)
+            if (path.startsWith(ContentFileStore.CONTENT_PREFIX)) {
+                retriever.setDataSource(context, Uri.parse(path))
+            } else {
+                retriever.setDataSource(path)
+            }
 
             val hasVideo = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO)
             // An audio file parses perfectly and answers "no" here. Absent is
@@ -312,4 +330,7 @@ object VideoThumbnails {
     }
 
     private const val TAG = "BounceVideo"
+
+    /** Stands in for the length of a file behind a content URI, which is never stat'ed. */
+    private const val CONTENT_LENGTH = -1L
 }

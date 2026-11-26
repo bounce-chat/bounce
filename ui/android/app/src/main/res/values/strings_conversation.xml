@@ -82,6 +82,12 @@
     <string name="conv_attach_photos">Photos</string>
     <string name="conv_attach_file">File</string>
     <string name="conv_remove_attachment">Remove %1$s</string>
+    <!-- A file shared in from another app can be read only while the share lasts, so one too large to
+         copy in is turned away. %1$s is its name (or %1$d how many), %2$d the limit in megabytes. -->
+    <string name="conv_share_too_large">“%1$s” is over %2$d MB, which is too large to share into Bounce. Attach it here with + instead.</string>
+    <string name="conv_shares_too_large">%1$d files are over %2$d MB, which is too large to share into Bounce. Attach them here with + instead.</string>
+    <string name="conv_attachment_unreadable">“%1$s” could not be opened, so it was not attached.</string>
+    <string name="conv_attachments_unreadable">%1$d files could not be opened, so they were not attached.</string>
     <string name="conv_character_count">%1$d/%2$d</string>
     <string name="conv_composer_restricted">Only admins can post in this group</string>
     <string name="conv_composer_blocked">You blocked this contact. Unblock them to send messages.</string>

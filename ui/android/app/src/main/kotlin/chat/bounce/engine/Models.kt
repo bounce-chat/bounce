@@ -380,11 +380,20 @@ data class InitialState(
     @SerialName("Drafts") val drafts: List<Draft> = emptyList(),
 )
 
-/** One outgoing attachment, serialized for Engine.sendDirectMessage/sendGroupMessage. */
+/**
+ * One outgoing attachment, serialized for Engine.sendDirectMessage/sendGroupMessage.
+ *
+ * [location] is what the engine opens to read the file: a content URI exactly
+ * as a picker or a share handed it over, or a path. [inPlace] and [copyIn] say
+ * what becomes of a file over the embed limit, and with neither set such a file
+ * is left out of the message; see outgoingAttachment in goengine/send.go.
+ */
 @Serializable
 data class OutgoingAttachment(
     @SerialName("id") val id: String,
-    @SerialName("path") val path: String,
+    @SerialName("location") val location: String,
     @SerialName("name") val name: String,
     @SerialName("size") val size: Long = 0,
+    @SerialName("inPlace") val inPlace: Boolean = false,
+    @SerialName("copyIn") val copyIn: Boolean = false,
 )

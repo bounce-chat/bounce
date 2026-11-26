@@ -58,7 +58,9 @@ import chat.bounce.R
  * engine names blobs by bare UUID with no extension, which is fine here because
  * MediaPlayer sniffs the container rather than trusting the file name.
  *
- * @param path absolute path to a blob in app-private storage.
+ * @param path where the engine says the file is: an absolute path in
+ *   app-private storage, or for a large video this device sent, the content URI
+ *   it was attached from. VideoView takes either.
  * @param title the attachment's filename, shown in the header.
  */
 @Composable

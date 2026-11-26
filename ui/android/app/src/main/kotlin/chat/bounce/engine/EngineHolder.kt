@@ -84,7 +84,14 @@ object EngineHolder {
 
             Log.i(TAG, "starting bounce engine, binding version ${Goengine.BindingVersion}")
             try {
-                newEngine.start(configDir, password, secretStore(configDir), newBridge, newBridge)
+                newEngine.start(
+                    configDir,
+                    password,
+                    secretStore(configDir),
+                    ContentFileStore(context),
+                    newBridge,
+                    newBridge,
+                )
             } catch (e: Exception) {
                 // The message is a code or an engine error, never anything the
                 // user typed.
@@ -132,9 +139,16 @@ object EngineHolder {
             Goengine.reset(Goengine.defaultConfigDir())
 
             // The engine's own directory is gone. These are the copies of
-            // attachments the app made outside it, to send and to display.
+            // attachments the app made outside it: large ones it received, and
+            // ones an earlier version staged in its cache before sending.
             File(app.filesDir, "downloads").deleteRecursively()
             File(app.cacheDir, "outgoing").deleteRecursively()
+
+            // And the permissions kept so that large files could be served
+            // from where the user keeps them. No message refers to them now.
+            runCatching {
+                app.contentResolver.persistedUriPermissions.forEach { app.contentResolver.releaseRead(it.uri) }
+            }.onFailure { Log.w(TAG, "could not give back file permissions", it) }
 
             // And the launcher's shortcuts, which carry the names and pictures
             // of the conversations that were just deleted.

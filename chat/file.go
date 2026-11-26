@@ -16,7 +16,6 @@ import (
 	"io/ioutil"
 	"os"
 	"regexp"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -69,6 +68,9 @@ const EmbeddedFileLimit = 1024 * 1024 * 20 // 20MiB
 const fileChunkSize = 1024 * 1024          // 1MiB
 
 const downloadExtension = ".bouncedownload"
+
+// A file being copied into the blobs directory has this in front of a random name until its ID is known
+const copyingPrefix = "copying-"
 
 const fileTypeGroupImage = 0
 const fileTypeUserImage = 1
@@ -153,7 +155,18 @@ func (f *file) AfterDelete(tx *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	if f.embedded() || runtime.GOOS == "android" {
+	if f.Path == "" {
+		return nil
+	}
+
+	// A download that was still under way leaves a partial file, which nothing can resume once the record is gone
+	if f.Wanted && !f.Downloaded {
+		removePartialDownload(f.Path)
+	}
+
+	// A file in the blobs directory is the engine's own copy and goes with its record
+	platform, _ := tx.Statement.Context.Value(platformContextKey{}).(Platform)
+	if strings.HasPrefix(f.Path, platform.ConfigDirectory+"/blobs/") {
 		err = os.Remove(f.Path)
 		if err != nil && !os.IsNotExist(err) {
 			log.WithFields(log.Fields{
@@ -161,12 +174,23 @@ func (f *file) AfterDelete(tx *gorm.DB) error {
 				"path":  f.Path,
 			}).Warn("error removing file that is being deleted from disk")
 		}
-		err = os.Remove(f.Path + downloadExtension)
-		if err != nil && !os.IsNotExist(err) {
+		return nil
+	}
+
+	// A file anywhere else is where the user keeps it, and stays there.  The platform is told the engine is
+	// finished with the location, unless another record is still served from the same place.
+	var served int64
+	err = tx.Model(&file{}).Where("path = ?", f.Path).Count(&served).Error
+	if err != nil {
+		return err
+	}
+	if served == 0 && platform.Files != nil {
+		err = platform.Files.Release(f.Path)
+		if err != nil {
 			log.WithFields(log.Fields{
 				"error": err.Error(),
-				"path":  f.Path + downloadExtension,
-			}).Warn("error removing partially downloaded file from disk")
+				"path":  f.Path,
+			}).Warn("error releasing the location of a file that is being deleted")
 		}
 	}
 
@@ -1062,12 +1086,21 @@ func (b *Bounce) handleChunkRequest(peer string, payload []byte, catchUp bool) (
 	return nil, false
 }
 
+// openFile opens a file for reading wherever its record says it is.  The blobs directory is the engine's own, and a
+// location anywhere else is one the user picked, which only the platform knows how to open.
+func (b *Bounce) openFile(location string) (*os.File, error) {
+	if strings.HasPrefix(location, b.platform.ConfigDirectory+"/blobs/") {
+		return os.Open(location)
+	}
+	return b.platform.Files.Open(location)
+}
+
 func (b *Bounce) readChunkFromFile(f file, c chunk) ([]byte, error) {
 	filename := f.Path
 	if !f.Downloaded {
 		filename += downloadExtension
 	}
-	fh, err := os.Open(filename)
+	fh, err := b.openFile(filename)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"file_id": c.FileID,
@@ -1687,7 +1720,7 @@ func (b *Bounce) writeChunkToDisk(c chunk) {
 		}).Fatal("database error checking for remaining empty chunks")
 	}
 	if len(otherEmptyChunks) == 0 {
-		_, hash := checkFileHash(f.Path + downloadExtension)
+		_, hash := b.checkFileHash(f.Path + downloadExtension)
 		if hash != f.Hash {
 			log.WithFields(log.Fields{
 				"file_id":  c.FileID,
@@ -1782,7 +1815,7 @@ func (b *Bounce) prepareEmbeddedFile(data []byte, scope int, fileType int) (*fil
 // prepareSeededFile prepares a file that stays where it is on disk and is served from there.  The whole file is
 // read to hash it, which is what makes the ID, so this takes as long as reading the file does.
 func (b *Bounce) prepareSeededFile(path string, scope int, fileType int) (*file, error) {
-	fh, err := os.Open(path)
+	fh, err := b.openFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -1833,6 +1866,110 @@ func (b *Bounce) prepareSeededFile(path string, scope int, fileType int) (*file,
 	f.ID = f.generateID()
 	bindChunksToFile(f)
 	return f, nil
+}
+
+// prepareCopiedFile prepares a file too large to embed whose source cannot be served from later.  The data is copied
+// into the blobs directory in the same pass that hashes it, under a temporary name because the file has no ID until
+// its last byte has been read, and it is served from that copy.
+func (b *Bounce) prepareCopiedFile(source io.Reader, scope int, fileType int) (*file, error) {
+	blobs := b.platform.ConfigDirectory + "/blobs/"
+	copying, err := os.CreateTemp(blobs, copyingPrefix+"*")
+	if err != nil {
+		return nil, err
+	}
+
+	chunks := []chunk{}
+	hashList := []string{}
+	hasher := blake3.New()
+	size := int64(0)
+	chunkData := make([]byte, fileChunkSize)
+	for i := 0; ; i++ {
+		// Exactly a chunk, or what is left: a single Read may return less and would hash wrong
+		read, err := io.ReadFull(source, chunkData)
+		if read > 0 {
+			_, writeErr := copying.Write(chunkData[:read])
+			if writeErr != nil {
+				copying.Close()
+				os.Remove(copying.Name())
+				return nil, writeErr
+			}
+			size += int64(read)
+
+			hasher.Write(chunkData[:read])
+			chunkHash := hashString(blake3.Sum256(chunkData[:read]))
+			chunks = append(chunks, chunk{Hash: chunkHash, Index: i, Downloaded: true})
+			hashList = append(hashList, chunkHash)
+		}
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			break
+		}
+		if err != nil {
+			copying.Close()
+			os.Remove(copying.Name())
+			return nil, err
+		}
+	}
+	err = copying.Close()
+	if err != nil {
+		os.Remove(copying.Name())
+		return nil, err
+	}
+	if size == 0 {
+		os.Remove(copying.Name())
+		return nil, ErrFileEmpty
+	}
+	var allDataHash [32]byte
+	hasher.Digest().Read(allDataHash[:])
+
+	f := &file{
+		Nonce:      newNonce(),
+		Type:       fileType,
+		Hash:       hashString(allDataHash),
+		Size:       size,
+		Wanted:     true,
+		Downloaded: true,
+		Scope:      scope,
+		Timestamp:  time.Now().Unix(),
+		Author:     b.currentUserID(),
+		HashList:   strings.Join(hashList, ","),
+		Chunks:     chunks,
+	}
+	f.ID = f.generateID()
+	f.Path = blobs + f.ID.String()
+	bindChunksToFile(f)
+
+	err = os.Rename(copying.Name(), f.Path)
+	if err != nil {
+		os.Remove(copying.Name())
+		return nil, err
+	}
+	return f, nil
+}
+
+// removeUnfinishedCopies removes what prepareCopiedFile was writing when an earlier run ended.  Such a copy never
+// became a file, so no record points at it and nothing else would ever remove it.
+func (b *Bounce) removeUnfinishedCopies() {
+	blobs := b.platform.ConfigDirectory + "/blobs/"
+	entries, err := os.ReadDir(blobs)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err.Error(),
+			"path":  blobs,
+		}).Warn("error looking for unfinished copies in the blobs directory")
+		return
+	}
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), copyingPrefix) {
+			continue
+		}
+		err = os.Remove(blobs + entry.Name())
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error": err.Error(),
+				"path":  blobs + entry.Name(),
+			}).Warn("error removing an unfinished copy from the blobs directory")
+		}
+	}
 }
 
 // bindChunksToFile gives a prepared file's chunks the IDs they have as chunks of that file, once the file's ID is known
@@ -1911,14 +2048,21 @@ func (b *Bounce) DownloadFileToDisk(fileID ID, destination string) {
 		return
 	}
 
+	// A download still under way to some other place is abandoned once this one takes over the record.  What
+	// arrived there cannot be carried over, so it is removed when that happens.
+	abandoning := f.Wanted && !f.Downloaded
+
 	// Check if it is already on disk anywhere
-	destinationExists, destinationHash := checkFileHash(destination)
-	sourceExists, sourceHash := checkFileHash(f.Path)
+	destinationExists, destinationHash := b.checkFileHash(destination)
+	sourceExists, sourceHash := b.checkFileHash(f.Path)
 	if destinationExists && destinationHash == f.Hash {
 		// If we have the file already at the requested destination, mark it as done in the database and return
 		log.WithFields(log.Fields{
 			"path": destination,
 		}).Info("file requested for download already exists")
+		if abandoning {
+			removePartialDownload(f.Path)
+		}
 		err = b.database.Table("chunks").Where("file_id = ?", fileID).Update("downloaded", true).Error
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -1941,7 +2085,7 @@ func (b *Bounce) DownloadFileToDisk(fileID ID, destination string) {
 	} else if sourceExists && sourceHash == f.Hash {
 		// The file doesn't exist at the destination, but it is still on disk at the last location we had it,
 		// so we create a copy at the new destination and update the database
-		sourceHandler, err := os.Open(f.Path)
+		sourceHandler, err := b.openFile(f.Path)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"path":  f.Path,
@@ -2003,6 +2147,9 @@ func (b *Bounce) DownloadFileToDisk(fileID ID, destination string) {
 		return
 	} else {
 		testHandler.Close()
+	}
+	if abandoning {
+		removePartialDownload(f.Path)
 	}
 
 	// Set up the database for downloading
@@ -2074,8 +2221,8 @@ func (b *Bounce) DownloadFileToDisk(fileID ID, destination string) {
 	b.ui.FileDownloadProgress(fileID, 0)
 }
 
-func checkFileHash(path string) (bool, string) {
-	fh, err := os.Open(path)
+func (b *Bounce) checkFileHash(path string) (bool, string) {
+	fh, err := b.openFile(path)
 	if err != nil {
 		return false, ""
 	}
@@ -2135,18 +2282,26 @@ func (b *Bounce) CancelDownload(fileID ID) {
 		}).Warn("error looking up partially downloaded file for deletion")
 		return
 	}
-	err = os.Remove(f.Path + downloadExtension)
-	if err != nil {
+	removePartialDownload(f.Path)
+}
+
+// removePartialDownload removes what an unfinished download leaves at its destination once nothing can use it any
+// more: the partial file, and the empty file that holds the destination's name until the download completes.  A
+// file with anything in it at the destination is never touched.
+func removePartialDownload(destination string) {
+	if destination == "" {
+		return
+	}
+	err := os.Remove(destination + downloadExtension)
+	if err != nil && !os.IsNotExist(err) {
 		log.WithFields(log.Fields{
 			"error": err.Error(),
-			"path":  f.Path + downloadExtension,
-		}).Warn("error deleting partially downloaded file")
+			"path":  destination + downloadExtension,
+		}).Warn("error removing partially downloaded file from disk")
 	}
-	info, err := os.Stat(f.Path)
-	if err == nil {
-		if info.Size() == 0 {
-			os.Remove(f.Path)
-		}
+	info, err := os.Stat(destination)
+	if err == nil && info.Size() == 0 {
+		os.Remove(destination)
 	}
 }
 
@@ -2349,7 +2504,12 @@ func (b *Bounce) GetFileData(fileID ID) ([]byte, error) {
 		return []byte{}, err
 	}
 
-	return os.ReadFile(path)
+	fh, err := b.openFile(path)
+	if err != nil {
+		return []byte{}, err
+	}
+	defer fh.Close()
+	return io.ReadAll(fh)
 }
 
 func (b *Bounce) GetFilePath(fileID ID) (string, error) {

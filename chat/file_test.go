@@ -7,7 +7,9 @@ import (
 	"image/color"
 	"image/png"
 	"io"
+	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -585,4 +587,113 @@ func TestMultiChunkAndRepeatedContentFileTransfer(t *testing.T) {
 	firstID := sendAndVerify("first transfer")
 	secondID := sendAndVerify("repeat identical content transfer")
 	assert.NotEqual(t, firstID, secondID)
+}
+
+func TestDeletingAMessageLeavesTheUsersFileWhereItIs(t *testing.T) {
+	me, _, _, groupID := createUsersAndGroups(t)
+	files := me.platform.Files.(*testFileStore)
+	source, data := largeSourceFile(t)
+
+	// The same file is attached to two messages, so two records are served from one location
+	first, _ := sendFile(t, me, groupID, "first", OutgoingAttachment{Name: "large.bin", Size: int64(len(data)), Source: source})
+	second, f := sendFile(t, me, groupID, "second", OutgoingAttachment{Name: "large.bin", Size: int64(len(data)), Source: source})
+
+	me.deleteGroupMessageAt(time.Now().Unix(), first)
+	assert.Equal(t, 0, len(files.releases()), "the second message is still served from the location")
+	chunkData, err := me.getFileChunkData(f, strings.Split(f.HashList, ",")[0])
+	assert.NoError(t, err)
+	assert.Equal(t, data[:fileChunkSize], chunkData)
+
+	me.deleteGroupMessageAt(time.Now().Unix(), second)
+	assert.Equal(t, []string{source}, files.releases())
+	kept, err := os.ReadFile(source)
+	assert.NoError(t, err)
+	assert.True(t, bytes.Equal(data, kept), "the file is the user's and is never deleted")
+}
+
+func TestDeletingAMessageRemovesAnUnfinishedDownloadAndKeepsAFinishedOne(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+	files := me.platform.Files.(*testFileStore)
+	source, data := largeSourceFile(t)
+	downloads := scratchDirectory(t)
+
+	// A download that is still under way: the empty file holding the name, and the partial file beside it
+	unfinishedMessage, unfinished := sendFile(t, alice, groupID, "unfinished", OutgoingAttachment{Name: "large.bin", Size: int64(len(data)), Source: source})
+	receiveFile(t, me, unfinishedMessage, unfinished.ID)
+	underWay := downloads + "/unfinished.bin"
+	assert.NoError(t, os.WriteFile(underWay, []byte{}, 0600))
+	assert.NoError(t, os.WriteFile(underWay+downloadExtension, data[:fileChunkSize], 0600))
+	assert.NoError(t, me.database.Model(&file{}).Where("id = ?", unfinished.ID).Updates(map[string]interface{}{"path": underWay, "wanted": true, "downloaded": false}).Error)
+
+	me.deleteGroupMessageAt(time.Now().Unix(), unfinishedMessage)
+	assert.Equal(t, gorm.ErrRecordNotFound, me.database.First(&file{}, "id = ?", unfinished.ID).Error)
+	_, err := os.Stat(underWay + downloadExtension)
+	assert.True(t, os.IsNotExist(err), "nothing can resume the partial file once its record is gone")
+	_, err = os.Stat(underWay)
+	assert.True(t, os.IsNotExist(err))
+
+	// A download that finished is the user's file, in the place they chose for it
+	finishedMessage, finished := sendFile(t, alice, groupID, "finished", OutgoingAttachment{Name: "large.bin", Size: int64(len(data)), Source: source})
+	receiveFile(t, me, finishedMessage, finished.ID)
+	saved := downloads + "/finished.bin"
+	assert.NoError(t, os.WriteFile(saved, data, 0600))
+	assert.NoError(t, me.database.Model(&file{}).Where("id = ?", finished.ID).Updates(map[string]interface{}{"path": saved, "wanted": true, "downloaded": true}).Error)
+
+	me.deleteGroupMessageAt(time.Now().Unix(), finishedMessage)
+	assert.Equal(t, gorm.ErrRecordNotFound, me.database.First(&file{}, "id = ?", finished.ID).Error)
+	kept, err := os.ReadFile(saved)
+	assert.NoError(t, err)
+	assert.True(t, bytes.Equal(data, kept))
+	assert.Equal(t, []string{underWay, saved}, files.releases())
+}
+
+func TestDownloadingToAnotherPlaceRemovesWhatTheFirstDownloadLeft(t *testing.T) {
+	me, alice, _, groupID := createUsersAndGroups(t)
+	source, data := largeSourceFile(t)
+	downloads := scratchDirectory(t)
+
+	messageID, f := sendFile(t, alice, groupID, "downloaded twice", OutgoingAttachment{Name: "large.bin", Size: int64(len(data)), Source: source})
+	receiveFile(t, me, messageID, f.ID)
+	first := downloads + "/first.bin"
+	assert.NoError(t, os.WriteFile(first, []byte{}, 0600))
+	assert.NoError(t, os.WriteFile(first+downloadExtension, data[:fileChunkSize], 0600))
+	assert.NoError(t, me.database.Model(&file{}).Where("id = ?", f.ID).Updates(map[string]interface{}{"path": first, "wanted": true, "downloaded": false}).Error)
+
+	// The record can only follow one download, and the chunks of the first cannot be carried over to the second
+	second := downloads + "/second.bin"
+	me.DownloadFileToDisk(f.ID, second)
+	var moved file
+	assert.NoError(t, me.database.First(&moved, "id = ?", f.ID).Error)
+	assert.Equal(t, second, moved.Path)
+	_, err := os.Stat(first + downloadExtension)
+	assert.True(t, os.IsNotExist(err))
+	_, err = os.Stat(first)
+	assert.True(t, os.IsNotExist(err))
+
+	// Cancelling leaves nothing at the second place either
+	me.CancelDownload(f.ID)
+	_, err = os.Stat(second + downloadExtension)
+	assert.True(t, os.IsNotExist(err))
+	_, err = os.Stat(second)
+	assert.True(t, os.IsNotExist(err))
+}
+
+func TestCopiesLeftUnfinishedAreRemovedAtStart(t *testing.T) {
+	// Not t.TempDir(): an engine keeps its database and log open after Shutdown in a test binary, and Windows
+	// cannot remove a directory that holds open files
+	directory := os.TempDir() + "/bounce-test-" + NewID().String()
+	assert.NoError(t, os.MkdirAll(directory+"/blobs", 0700))
+	unfinished := directory + "/blobs/" + copyingPrefix + "1234567890"
+	assert.NoError(t, os.WriteFile(unfinished, []byte("half of a file that was being copied in"), 0600))
+	blob := directory + "/blobs/" + NewID().String()
+	assert.NoError(t, os.WriteFile(blob, []byte("a file the engine holds"), 0600))
+
+	engine, err := Open(newTestUI(), newTestnet(), Platform{ConfigDirectory: directory, Secrets: &testSecretStore{}, Files: &testFileStore{}}, "")
+	assert.NoError(t, err)
+	t.Cleanup(engine.Shutdown)
+
+	_, err = os.Stat(unfinished)
+	assert.True(t, os.IsNotExist(err))
+	_, err = os.Stat(blob)
+	assert.NoError(t, err)
 }

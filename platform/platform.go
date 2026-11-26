@@ -1,5 +1,5 @@
 // Package platform supplies what the engine needs from the operating system it runs on: the directory an install
-// keeps its files in, and the keystore that holds the install's secret.
+// keeps its files in, the keystore that holds the install's secret, and a way to open the files a user picks.
 package platform
 
 import (
@@ -19,6 +19,7 @@ func Get() chat.Platform {
 	return chat.Platform{
 		ConfigDirectory: configDirectory,
 		Secrets:         secretStoreFor(configDirectory),
+		Files:           localFiles{},
 	}
 }
 
@@ -28,6 +29,7 @@ func GetEncrypted() chat.Platform {
 	return chat.Platform{
 		ConfigDirectory: configDirectory,
 		Secrets:         secretStoreFor(configDirectory),
+		Files:           localFiles{},
 	}
 }
 

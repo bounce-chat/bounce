@@ -518,7 +518,7 @@ func newBounceOnNetwork(ui UI, network Network) *Bounce {
 	os.MkdirAll(configDirectory, 0700)
 	os.MkdirAll(configDirectory+"/blobs/", 0700)
 
-	engine, err := Open(ui, network, Platform{ConfigDirectory: configDirectory, Secrets: &testSecretStore{}}, "")
+	engine, err := Open(ui, network, Platform{ConfigDirectory: configDirectory, Secrets: &testSecretStore{}, Files: &testFileStore{}}, "")
 	if err != nil {
 		panic("the test engine could not be opened: " + err.Error())
 	}
@@ -553,6 +553,99 @@ func (s *testSecretStore) Store(secret []byte) error {
 	}
 	s.secret = append([]byte{}, secret...)
 	return nil
+}
+
+// A testFileStore opens paths the way a desktop does and remembers what it was asked, so a test can tell which files
+// the engine reached through the platform and which locations it said it was finished with.  Setting unreadable
+// makes every open fail the way a location does once the platform has lost its permission to read it.
+type testFileStore struct {
+	sync.Mutex
+	opened     []string
+	released   []string
+	unreadable error
+}
+
+func (s *testFileStore) Open(location string) (*os.File, error) {
+	s.Lock()
+	defer s.Unlock()
+	s.opened = append(s.opened, location)
+	if s.unreadable != nil {
+		return nil, s.unreadable
+	}
+	return os.Open(location)
+}
+
+func (s *testFileStore) Release(location string) error {
+	s.Lock()
+	defer s.Unlock()
+	s.released = append(s.released, location)
+	return nil
+}
+
+// opens is how many times the engine has opened a location through the platform
+func (s *testFileStore) opens(location string) int {
+	s.Lock()
+	defer s.Unlock()
+	count := 0
+	for _, opened := range s.opened {
+		if opened == location {
+			count++
+		}
+	}
+	return count
+}
+
+// releases is every location the engine has said it is finished with, in order
+func (s *testFileStore) releases() []string {
+	s.Lock()
+	defer s.Unlock()
+	return append([]string{}, s.released...)
+}
+
+// largeSourceFile writes a file just too large to embed outside every engine's config directory, where a user's own
+// file would be, and returns where it is and what is in it
+func largeSourceFile(t *testing.T) (string, []byte) {
+	t.Helper()
+	data := make([]byte, EmbeddedFileLimit+fileChunkSize/2)
+	_, err := rand.Read(data)
+	assert.NoError(t, err)
+	source := scratchDirectory(t) + "/large.bin"
+	assert.NoError(t, os.WriteFile(source, data, 0600))
+	return source, data
+}
+
+// scratchDirectory makes a directory outside every engine's config directory, for files that are the user's
+func scratchDirectory(t *testing.T) string {
+	t.Helper()
+	directory := os.TempDir() + "/bounce-test-files-" + NewID().String()
+	assert.NoError(t, os.MkdirAll(directory, 0700))
+	t.Cleanup(func() { os.RemoveAll(directory) })
+	return directory
+}
+
+// sendFile sends a group message with one attachment and returns the message's ID and the file the engine made of it
+func sendFile(t *testing.T, b *Bounce, groupID ID, text string, attachment OutgoingAttachment) (ID, file) {
+	t.Helper()
+	assert.NoError(t, b.SendGroupMessage(groupID, text, []OutgoingAttachment{attachment}, NilID))
+	var gm groupMessage
+	assert.NoError(t, b.database.Preload("FileAttachments").First(&gm, "text = ?", text).Error)
+	assert.Equal(t, 1, len(gm.FileAttachments))
+	var f file
+	assert.NoError(t, b.database.First(&f, "id = ?", gm.FileAttachments[0].FileID).Error)
+	return gm.ID, f
+}
+
+// receiveFile waits until a message another user sent, and the file attached to it, have reached b
+func receiveFile(t *testing.T, b *Bounce, messageID ID, fileID ID) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if b.database.First(&groupMessage{}, "id = ?", messageID).Error == nil && b.database.First(&file{}, "id = ?", fileID).Error == nil {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("the message and its file never arrived")
 }
 
 func newBounceUser(name string) *Bounce {

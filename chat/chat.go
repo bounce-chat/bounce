@@ -207,6 +207,7 @@ func Open(ui UI, network Network, platform Platform, password string) (Engine, e
 
 	b.openDatabase(databaseKey)
 	b.openReferenceDatabase()
+	b.removeUnfinishedCopies()
 	b.network.Load(b.platform.ConfigDirectory, networkKey)
 	b.loadChunkEngine()
 

@@ -70,6 +70,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -192,6 +193,31 @@ fun ConversationScreen(
     // Attachments awaiting a destination. A message can carry several files, so
     // one picker names a single file and the other picks a folder for the rest.
     var pendingAttachments by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+
+    // Files that could not be attached. Said once, where the user can act on
+    // it: the attach button is on this screen.
+    LaunchedEffect(viewModel) {
+        val limitMegabytes = (Goengine.EmbeddedFileLimit / (1024 * 1024)).toInt()
+        viewModel.attachmentRefusals.collect { refusal ->
+            val one = refusal.names.size == 1
+            val message = when (refusal) {
+                is AttachmentRefusal.TooLargeToShare ->
+                    if (one) {
+                        context.getString(R.string.conv_share_too_large, refusal.names.first(), limitMegabytes)
+                    } else {
+                        context.getString(R.string.conv_shares_too_large, refusal.names.size, limitMegabytes)
+                    }
+
+                is AttachmentRefusal.Unreadable ->
+                    if (one) {
+                        context.getString(R.string.conv_attachment_unreadable, refusal.names.first())
+                    } else {
+                        context.getString(R.string.conv_attachments_unreadable, refusal.names.size)
+                    }
+            }
+            snackbars.showSnackbar(message, duration = SnackbarDuration.Long)
+        }
+    }
 
     val savedLabel = stringResource(R.string.conv_save_succeeded)
     val saveFailedLabel = stringResource(R.string.conv_save_failed)

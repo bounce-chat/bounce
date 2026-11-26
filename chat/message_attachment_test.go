@@ -247,3 +247,122 @@ func TestSendingRejectsInvalidAttachments(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(blobs), "rejected messages must not leave prepared blobs behind")
 }
+
+func TestALargeAttachmentIsServedFromWhereTheUserKeepsIt(t *testing.T) {
+	me, _, _, groupID := createUsersAndGroups(t)
+	files := me.platform.Files.(*testFileStore)
+	source, data := largeSourceFile(t)
+
+	_, f := sendFile(t, me, groupID, "served in place", OutgoingAttachment{Name: "large.bin", Size: int64(len(data)), Source: source})
+	assert.Equal(t, source, f.Path)
+	assert.Equal(t, int64(len(data)), f.Size)
+	assert.True(t, files.opens(source) > 0, "the file was hashed through the platform")
+	blobs, err := os.ReadDir(me.platform.ConfigDirectory + "/blobs")
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(blobs), "a file served in place is not copied")
+
+	// Every chunk is read through the platform as well, from the file where it sits
+	hashes := strings.Split(f.HashList, ",")
+	last := len(hashes) - 1
+	opens := files.opens(source)
+	chunkData, err := me.getFileChunkData(f, hashes[last])
+	assert.NoError(t, err)
+	assert.Equal(t, data[last*fileChunkSize:], chunkData)
+	assert.Equal(t, opens+1, files.opens(source))
+
+	whole, err := me.GetFileData(f.ID)
+	assert.NoError(t, err)
+	assert.True(t, bytes.Equal(data, whole))
+
+	// A location the platform can no longer read has no chunks to serve
+	files.Lock()
+	files.unreadable = os.ErrPermission
+	files.Unlock()
+	_, err = me.getFileChunkData(f, hashes[0])
+	assert.Equal(t, errChunkDataNotFound, err)
+}
+
+func TestALargeAttachmentCanBeCopiedIntoTheBlobsDirectory(t *testing.T) {
+	me, _, _, groupID := createUsersAndGroups(t)
+	files := me.platform.Files.(*testFileStore)
+	data := make([]byte, EmbeddedFileLimit+fileChunkSize/2)
+	for i := range data {
+		data[i] = byte(i / 251)
+	}
+	blobs := me.platform.ConfigDirectory + "/blobs/"
+
+	messageID, f := sendFile(t, me, groupID, "copied in", OutgoingAttachment{
+		Name: "large.bin", Size: int64(len(data)), Reader: io.NopCloser(bytes.NewReader(data)), CopyIn: true,
+	})
+	assert.Equal(t, blobs+f.ID.String(), f.Path)
+	assert.Equal(t, int64(len(data)), f.Size)
+	copied, err := os.ReadFile(f.Path)
+	assert.NoError(t, err)
+	assert.True(t, bytes.Equal(data, copied))
+	entries, err := os.ReadDir(blobs)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(entries), "nothing is left of the temporary name the copy was written under")
+
+	// The copy is the engine's own, so it is read without the platform and deleted with its message
+	hashes := strings.Split(f.HashList, ",")
+	chunkData, err := me.getFileChunkData(f, hashes[1])
+	assert.NoError(t, err)
+	assert.Equal(t, data[fileChunkSize:2*fileChunkSize], chunkData)
+	assert.Equal(t, 0, files.opens(f.Path))
+	me.deleteGroupMessageAt(time.Now().Unix(), messageID)
+	_, err = os.Stat(f.Path)
+	assert.True(t, os.IsNotExist(err))
+	assert.Equal(t, 0, len(files.releases()))
+
+	// A size that was given wrong does not cost the copy the bytes read finding that out
+	_, f = sendFile(t, me, groupID, "copied in, size unknown", OutgoingAttachment{
+		Name: "large.bin", Reader: io.NopCloser(bytes.NewReader(data)), CopyIn: true,
+	})
+	assert.Equal(t, int64(len(data)), f.Size)
+	copied, err = os.ReadFile(f.Path)
+	assert.NoError(t, err)
+	assert.True(t, bytes.Equal(data, copied))
+
+	// A copy made for a message that is then refused is removed again
+	entries, err = os.ReadDir(blobs)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(entries))
+	err = me.SendGroupMessage(groupID, "refused", []OutgoingAttachment{{
+		Name: strings.Repeat("n", maximumAttachmentNameLength+1), Size: int64(len(data)),
+		Reader: io.NopCloser(bytes.NewReader(data)), CopyIn: true,
+	}}, NilID)
+	assert.Equal(t, errInvalidMessageAttachments, err)
+	entries, err = os.ReadDir(blobs)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(entries))
+}
+
+// countingReader counts the bytes read through it
+type countingReader struct {
+	source io.Reader
+	read   int
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	n, err := r.source.Read(p)
+	r.read += n
+	return n, err
+}
+
+func TestAnAttachmentWithNowhereToBeServedFromIsOnlyReadAsFarAsTheEmbeddedLimit(t *testing.T) {
+	me, _, _, groupID := createUsersAndGroups(t)
+	data := make([]byte, EmbeddedFileLimit+3*fileChunkSize)
+	counted := &countingReader{source: bytes.NewReader(data)}
+
+	// No size is given, as for a file shared from another app that does not say how large it is
+	assert.NoError(t, me.SendGroupMessage(groupID, "too large to embed", []OutgoingAttachment{{
+		Name: "large.bin", Reader: io.NopCloser(counted),
+	}}, NilID))
+	var gm groupMessage
+	assert.NoError(t, me.database.Preload("FileAttachments").First(&gm, "text = ?", "too large to embed").Error)
+	assert.Equal(t, 0, len(gm.FileAttachments), "the attachment is left out")
+	assert.Equal(t, EmbeddedFileLimit+1, counted.read)
+	blobs, err := os.ReadDir(me.platform.ConfigDirectory + "/blobs")
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(blobs))
+}

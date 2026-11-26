@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"os"
@@ -174,18 +175,15 @@ func (b *Bounce) prepareMessageAttachments(attachments []OutgoingAttachment, sco
 	return result
 }
 
-// prepareAttachment prepares one attachment's file: embedded from its reader when small enough, otherwise seeded
-// from its source.  The reader is always closed.
+// prepareAttachment prepares one attachment's file: embedded from its reader when small enough, otherwise served from
+// its source or copied in.  The reader is always closed.
 func (b *Bounce) prepareAttachment(a OutgoingAttachment, scope int) (*file, error) {
 	if a.Reader != nil {
 		defer a.Reader.Close()
 	}
 
 	if a.Size > EmbeddedFileLimit {
-		if a.Source == "" {
-			return nil, ErrFileTooBig
-		}
-		return b.prepareSeededFile(a.Source, scope, fileTypeMessageAttachment)
+		return b.prepareLargeAttachment(a, a.Reader, scope)
 	}
 
 	if a.Reader == nil {
@@ -194,22 +192,37 @@ func (b *Bounce) prepareAttachment(a OutgoingAttachment, scope int) (*file, erro
 		}
 		return b.prepareSeededFile(a.Source, scope, fileTypeMessageAttachment)
 	}
-	data, err := io.ReadAll(a.Reader)
+
+	// The size given is not trusted to bound what is held in memory: one byte past the limit shows it was wrong
+	data, err := io.ReadAll(io.LimitReader(a.Reader, EmbeddedFileLimit+1))
 	if err != nil {
 		return nil, err
 	}
 	if len(data) > EmbeddedFileLimit {
-		if a.Source == "" {
-			return nil, ErrFileTooBig
-		}
-		return b.prepareSeededFile(a.Source, scope, fileTypeMessageAttachment)
+		// What was read finding that out is still the start of the file
+		return b.prepareLargeAttachment(a, io.MultiReader(bytes.NewReader(data), a.Reader), scope)
 	}
 	return b.prepareEmbeddedFile(data, scope, fileTypeMessageAttachment)
 }
 
+// prepareLargeAttachment prepares an attachment that is too large to embed.  It is copied into the blobs directory
+// from data when the UI asked for that, and otherwise served from its source, where it stays.
+func (b *Bounce) prepareLargeAttachment(a OutgoingAttachment, data io.Reader, scope int) (*file, error) {
+	if a.CopyIn {
+		if data == nil {
+			return nil, io.ErrUnexpectedEOF
+		}
+		return b.prepareCopiedFile(data, scope, fileTypeMessageAttachment)
+	}
+	if a.Source == "" {
+		return nil, ErrFileTooBig
+	}
+	return b.prepareSeededFile(a.Source, scope, fileTypeMessageAttachment)
+}
+
 // discardPreparedAttachments removes what preparing the attachments left on disk when the message is not going to be
-// sent after all: the blob written for each embedded file that was never published.  Seeded files point at the
-// user's own copy and are left alone, as is anything already published.
+// sent after all: the blob written for each embedded or copied file that was never published.  Seeded files point
+// at the user's own copy and are left alone, as is anything already published.
 func (b *Bounce) discardPreparedAttachments(ma messageAttachments) {
 	blobs := b.platform.ConfigDirectory + "/blobs/"
 	for _, f := range ma.prepared {

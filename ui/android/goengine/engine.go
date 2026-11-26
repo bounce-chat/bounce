@@ -21,6 +21,9 @@ type Engine struct {
 	mu sync.RWMutex
 	e  chat.Engine
 
+	// files opens the attachments of an outgoing message. Set by Start.
+	files chat.FileStore
+
 	// userID caches the local profile's ID. chat.Engine.CurrentUserID() calls
 	// log.Fatal when no profile row exists, which would take the whole process
 	// down, so this package never calls it speculatively - it is populated from
@@ -48,10 +51,12 @@ func DefaultConfigDir() string { return platform.GetConfigDirectory() }
 // install could not be unlocked. A Start that fails has started nothing and can
 // simply be called again.
 //
+// files is how the engine reads what the user attaches; see FileStore.
+//
 // BLOCKING: unlocks and opens the sqlite database, loads keys and starts the
 // embedded Tor stack. This takes seconds, not milliseconds. Never call it on
 // the main thread.
-func (a *Engine) Start(configDir string, password string, secrets SecretStore, events EventSink, notes NotificationSink) error {
+func (a *Engine) Start(configDir string, password string, secrets SecretStore, files FileStore, events EventSink, notes NotificationSink) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -69,10 +74,13 @@ func (a *Engine) Start(configDir string, password string, secrets SecretStore, e
 	// level and adds its file hook, so it will not undo this.
 	installPlatformLogger()
 
-	engine, err := chat.Open(&uiAdapter{sink: events, notes: notes, profileKnown: a.setUserID}, &tor.Network{}, installPlatform(configDir, secrets), password)
+	install := installPlatform(configDir, secrets)
+	install.Files = boundFileStore{store: files}
+	engine, err := chat.Open(&uiAdapter{sink: events, notes: notes, profileKnown: a.setUserID}, &tor.Network{}, install, password)
 	if err != nil {
 		return coded(err)
 	}
+	a.files = install.Files
 	a.e = engine
 	return nil
 }
@@ -1003,6 +1011,10 @@ func (a *Engine) BlobPath(fileID string) string {
 }
 
 // GetFilePath is where a downloaded file actually is, whatever its size.
+//
+// For a large file this device sent, that is the location it was attached
+// from, which is a content URI when it is served in place: check for the
+// content:// scheme before treating the result as a path.
 //
 // Returns an error until the download finishes. BLOCKING: one database read.
 func (a *Engine) GetFilePath(fileID string) (string, error) {

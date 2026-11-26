@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.os.SystemClock
-import android.provider.OpenableColumns
 import androidx.annotation.StringRes
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
@@ -18,33 +17,39 @@ import chat.bounce.data.PendingShare
 import chat.bounce.data.ConversationItem
 import chat.bounce.data.ThreadSummary
 import chat.bounce.engine.EngineClient
+import chat.bounce.engine.ContentFileStore
 import chat.bounce.engine.EngineHolder
 import chat.bounce.engine.FileAttachment
 import chat.bounce.engine.ImageAttachment
 import chat.bounce.engine.Group
 import chat.bounce.engine.OutgoingAttachment
 import chat.bounce.engine.User
+import chat.bounce.engine.releaseRead
 import chat.bounce.goengine.Goengine
 import chat.bounce.notifications.BounceMessageNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.io.FileNotFoundException
+import java.io.InputStream
 import java.security.SecureRandom
-import java.util.UUID
 
 /**
  * State and engine plumbing for one open conversation.
@@ -84,6 +89,15 @@ class ConversationViewModel(
     /** Text the user has typed here, which always wins over a synced draft. */
     private val localDraft = MutableStateFlow("")
     private val pending = MutableStateFlow<List<PendingAttachment>>(emptyList())
+
+    /**
+     * Files that could not be attached, for the screen to tell the user about.
+     * A channel rather than a shared flow because a share can be turned away
+     * before the screen has started collecting, and a shared flow with nobody
+     * listening drops what it is given.
+     */
+    private val refusals = Channel<AttachmentRefusal>(Channel.BUFFERED)
+    val attachmentRefusals: Flow<AttachmentRefusal> = refusals.receiveAsFlow()
 
     private var draftPushJob: Job? = null
     private var lastLocalEdit = 0L
@@ -174,7 +188,7 @@ class ConversationViewModel(
             PendingShare.pending.collect { pending ->
                 if (pending?.threadId != threadId) return@collect
                 val payload = PendingShare.claim(threadId) ?: return@collect
-                if (payload.uris.isNotEmpty()) addAttachments(payload.uris)
+                if (payload.uris.isNotEmpty()) attach(payload.uris, shared = true)
                 // Appended, so a share does not silently discard something the
                 // user had already typed here.
                 if (payload.text.isNotBlank()) {
@@ -205,7 +219,11 @@ class ConversationViewModel(
         // Synchronously, so leaving the screen mid-keystroke cannot strand a
         // draft that the debounce had not published yet.
         ChatRepository.setDraft(threadId, text)
+        // Attachments still in the composer are not kept, so neither is the
+        // permission taken to serve any of them in place.
+        val unsent = pending.value
         teardownScope.launch {
+            unsent.forEach { giveBackPermission(it) }
             val client = engine() ?: return@launch
             client.updateDraft(threadId, text)
             // Navigation destroys the outgoing entry after the incoming one is
@@ -280,8 +298,9 @@ class ConversationViewModel(
         ChatRepository.requestThreadListScrollToTop()
 
         // The engine reports the sent message when it has finished sending, which for a large attachment is
-        // after hashing the whole file. The message is shown from the composer's own data if that takes
-        // noticeably long; a quick send is drawn once, as the real message. See ChatRepository.beginPendingSend.
+        // after hashing the whole file, and for one it has to copy in, after the copy. The message is shown
+        // from the composer's own data if that takes noticeably long; a quick send is drawn once, as the real
+        // message. See ChatRepository.beginPendingSend.
         // The handle is also the send's client reference, which the engine echoes in the report so the report
         // finds this pending send and not merely the oldest one on the thread.
         val handle = newClientRef()
@@ -296,9 +315,9 @@ class ConversationViewModel(
                 undeliverable = false,
                 outgoing = true,
                 imageAttachments = attachments.filter { it.isImage }
-                    .map { ImageAttachment(id = it.id, name = it.name, size = it.size) },
+                    .map { ImageAttachment(id = it.id, name = it.name, size = it.size.coerceAtLeast(0)) },
                 fileAttachments = attachments.filterNot { it.isImage }
-                    .map { FileAttachment(id = it.id, name = it.name, size = it.size) },
+                    .map { FileAttachment(id = it.id, name = it.name, size = it.size.coerceAtLeast(0)) },
             ),
         )
         viewModelScope.launch {
@@ -308,7 +327,17 @@ class ConversationViewModel(
 
         viewModelScope.launch {
             val client = engine() ?: return@launch
-            val outgoing = attachments.map { OutgoingAttachment(it.id, it.path, it.name, it.size) }
+            val outgoing = attachments.map {
+                OutgoingAttachment(
+                    id = it.id,
+                    location = it.location,
+                    name = it.name,
+                    // Zero asks the engine to find the size out for itself
+                    size = it.size.coerceAtLeast(0),
+                    inPlace = it.whenLarge == LargeFile.IN_PLACE,
+                    copyIn = it.whenLarge == LargeFile.COPY,
+                )
+            }
             val sent = runCatching {
                 if (isGroup) {
                     client.sendGroupMessage(threadId, body, outgoing, handle)
@@ -329,24 +358,50 @@ class ConversationViewModel(
         ByteArray(32).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
 
     /**
-     * Copies each picked item into cacheDir/outgoing/<uuid>. The engine reads
-     * attachments from the filesystem by path; a content:// URI is meaningless
-     * to it, and the grant would be gone by the time a large upload finished.
+     * Adds files the user picked with one of the composer's pickers.
+     *
+     * Nothing is copied. Each attachment keeps the content URI it was picked
+     * as, and the engine reads it through that when the message is sent; see
+     * [takeAttachment] for how it is decided what happens to a large one.
      */
-    fun addAttachments(uris: List<Uri>) {
+    fun addAttachments(uris: List<Uri>) = attach(uris, shared = false)
+
+    private fun attach(uris: List<Uri>, shared: Boolean) {
         if (uris.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
-            val copied = uris.mapNotNull { copyToOutgoing(it) }
-            if (copied.isNotEmpty()) pending.update { it + copied }
+            // Every step asks another app's provider, and a provider can throw
+            // anything. One that does costs its own attachment, not the app.
+            val taken = uris.map { uri ->
+                runCatching { takeAttachment(appContext, uri, shared) }.getOrElse {
+                    Log.w(TAG, "could not take an attachment, authority=${uri.authority}", it)
+                    Intake.Unreadable(UNNAMED_ATTACHMENT)
+                }
+            }
+
+            val ready = taken.filterIsInstance<Intake.Ready>().map { it.attachment }
+            if (ready.isNotEmpty()) pending.update { it + ready }
+
+            val tooLarge = taken.filterIsInstance<Intake.TooLargeToShare>().map { it.name }
+            if (tooLarge.isNotEmpty()) refusals.send(AttachmentRefusal.TooLargeToShare(tooLarge))
+            val unreadable = taken.filterIsInstance<Intake.Unreadable>().map { it.name }
+            if (unreadable.isNotEmpty()) refusals.send(AttachmentRefusal.Unreadable(unreadable))
         }
     }
 
     fun removeAttachment(id: String) {
         val removed = pending.value.firstOrNull { it.id == id }
         pending.update { current -> current.filterNot { it.id == id } }
-        // The staged copy exists only for this composer, so drop it now rather
-        // than leaving it for cache eviction.
-        if (removed != null) teardownScope.launch { runCatching { File(removed.path).delete() } }
+        if (removed != null) teardownScope.launch { giveBackPermission(removed) }
+    }
+
+    /**
+     * Gives back the permission that was taken to serve [attachment] in place,
+     * for an attachment that is not going to be sent after all. One that is
+     * sent keeps it: from then on it is the engine that says when the file is
+     * finished with, through [ContentFileStore.release].
+     */
+    private fun giveBackPermission(attachment: PendingAttachment) {
+        if (attachment.tookPermission) appContext.contentResolver.releaseRead(attachment.uri)
     }
 
     // --- reading -----------------------------------------------------------
@@ -426,6 +481,9 @@ class ConversationViewModel(
      * nothing outside the app can see it. Exporting has to go through a
      * destination Uri from the system picker, because that is the only way an
      * app holding no storage permission can write somewhere the user can find.
+     *
+     * The source is wherever the engine says the file is, which for a large
+     * file this device sent is the place it was attached from.
      */
     fun exportAttachment(fileId: String, destination: Uri, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
@@ -446,7 +504,7 @@ class ConversationViewModel(
                         // attachment can be hundreds of megabytes and
                         // GetFileData would materialize all of it as a byte[]
                         // crossing JNI.
-                        File(source).inputStream().use { it.copyTo(out) }
+                        openLocation(source).use { it.copyTo(out) }
                         true
                     } == true
                 }.getOrElse {
@@ -492,7 +550,7 @@ class ConversationViewModel(
                         }
                         val doc = dir.createFile(mimeForFileName(name), name) ?: return@runCatching false
                         appContext.contentResolver.openOutputStream(doc.uri)?.use { out ->
-                            File(source).inputStream().use { it.copyTo(out) }
+                            openLocation(source).use { it.copyTo(out) }
                             true
                         } == true
                     }.getOrElse {
@@ -592,40 +650,17 @@ class ConversationViewModel(
         client
     }
 
-    private fun copyToOutgoing(uri: Uri): PendingAttachment? = runCatchingLogged(uri) {
-        val resolver = appContext.contentResolver
-        val displayName = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { cursor -> if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null }
-        val name = displayName?.takeIf { it.isNotBlank() }
-            ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
-            ?: "attachment"
-
-        val id = UUID.randomUUID().toString()
-        val destination = File(File(appContext.cacheDir, "outgoing").apply { mkdirs() }, id)
-        resolver.openInputStream(uri)?.use { input ->
-            destination.outputStream().use { output -> input.copyTo(output) }
-        } ?: return@runCatchingLogged null
-
-        PendingAttachment(
-            id = id,
-            path = destination.absolutePath,
-            name = name,
-            size = destination.length(),
-            isImage = resolver.getType(uri)?.startsWith("image/") == true,
-        )
-    }
-
     /**
-     * Kept rather than folded back into a bare runCatching: staging an
-     * attachment fails silently by design - a null just means the attachment
-     * does not appear - and the commonest cause is a content URI whose read
-     * grant has expired, which is invisible without this. The URI itself is not
-     * logged, only its shape.
+     * Opens a file for reading where the engine says it is: a path, or for a
+     * large file served in place, the content URI it was attached from.
      */
-    private fun <T> runCatchingLogged(uri: Uri, block: () -> T): T? =
-        runCatching(block)
-            .onFailure { Log.w(TAG, "staging attachment failed, scheme=${uri.scheme} authority=${uri.authority}", it) }
-            .getOrNull()
+    private fun openLocation(location: String): InputStream =
+        if (location.startsWith(ContentFileStore.CONTENT_PREFIX)) {
+            appContext.contentResolver.openInputStream(Uri.parse(location))
+                ?: throw FileNotFoundException("the provider returned no stream")
+        } else {
+            File(location).inputStream()
+        }
 
     private fun uniqueFile(dir: File, name: String): File {
         val safe = name.replace(Regex("[/\\\\:*?\"<>|]"), "_").ifBlank { "download" }
@@ -744,14 +779,37 @@ class ConversationViewModel(
     }
 }
 
-/** A file the user picked but has not sent yet, already staged on disk. */
+/**
+ * A file the user picked but has not sent yet. Nothing has been copied: [uri]
+ * is where the file is, and the engine reads it from there when the message is
+ * sent.
+ *
+ * @param size in bytes, or negative when the provider does not say.
+ * @param whenLarge what the engine does with the file if it is over its embed
+ *   limit.
+ * @param tookPermission true when attaching this took the lasting permission
+ *   to read [uri], which is given back if the attachment is never sent.
+ */
 data class PendingAttachment(
     val id: String,
-    val path: String,
+    val uri: Uri,
     val name: String,
     val size: Long,
     val isImage: Boolean,
+    val whenLarge: LargeFile,
+    val tookPermission: Boolean = false,
 )
+
+/** Files that were not attached, with the names they would have had. */
+sealed interface AttachmentRefusal {
+    val names: List<String>
+
+    /** Shared in from another app, and too large to be read while the share lasts. */
+    data class TooLargeToShare(override val names: List<String>) : AttachmentRefusal
+
+    /** Could not be opened at all. */
+    data class Unreadable(override val names: List<String>) : AttachmentRefusal
+}
 
 sealed interface ComposerState {
     data object Enabled : ComposerState
